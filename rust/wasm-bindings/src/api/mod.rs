@@ -8,6 +8,7 @@ mod alignment_lines;
 mod appearance;
 mod appearance_page;
 mod annotation_plane;
+mod captured_mesh;
 mod appearance_calibration;
 mod bool2d;
 mod clash;

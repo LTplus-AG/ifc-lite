@@ -49,7 +49,7 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
         <Button type="button" variant={reference ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={reference} onClick={() => props.onIntentChange?.('reference')}>Place as reference</Button>
       </div>}
       {!reference && <AppearanceScopeFields {...props} disabled={applying} />}
-      {reference && <AppearanceReferenceLibrary disabled={applying} />}
+      {reference && <AppearanceReferenceLibrary disabled={applying} onEdit={props.onEditReference} />}
       {props.calibration && <AppearanceCalibrationFields key={`${props.sourceId}:${props.calibration.sourceKey}:${inputReset}`}
         {...props.calibration} disabled={applying || blocked || !!props.sourceBusy} onInvalid={onInvalid} />}
       <AppearanceMappingFields calibrated={!!props.calibration} key={`${props.modelId}:${props.sourceId}:${inputReset}`} settings={props.settings} onChange={props.onSettingsChange} disabled={applying || blocked} onInvalid={onInvalid} />
@@ -66,7 +66,7 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
       </Button>}
       <div className="grid grid-cols-2 gap-2">
         <Button type="button" variant="outline" size="sm" disabled={!props.canDiscard} onClick={() => { setInputReset(value => value + 1); setInvalidFields(new Set()); props.onDiscard(); }}>Discard</Button>
-        <Button type="button" size="sm" disabled={!!applyDisabled} onClick={props.onApply}><Check aria-hidden="true" />{reference ? 'Place reference' : 'Apply'}</Button>
+        <Button type="button" size="sm" disabled={!!applyDisabled} onClick={props.onApply}><Check aria-hidden="true" />{reference ? props.editingReference ? 'Save registration' : 'Place reference' : 'Apply'}</Button>
       </div>
     </footer>
   </div>;

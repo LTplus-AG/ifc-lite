@@ -259,6 +259,29 @@ export interface ClashRuleCoverage {
    */
   matchedKeysA?: readonly string[];
   matchedKeysB?: readonly string[] | null;
+  /**
+   * Broad-phase candidate pairs the geometry kernel actually narrow-phase
+   * tested for THIS rule (`RuleDetection.candidatesProcessed` in
+   * `engine-ts/kernel.ts`), surfaced here so a caller can tell "matched
+   * elements on both sides AND compared some of them" apart from "matched
+   * elements on both sides but the broad phase found nothing worth testing".
+   * `matchedA`/`matchedB` alone cannot make that distinction — they are
+   * selector-match counts taken before any geometry runs, so they read as
+   * full coverage even when the broad phase (BVH margin query) ends up
+   * empty (#4244).
+   *
+   * `0` here is NOT on its own evidence of a problem: two selected groups
+   * that are genuinely far apart (further than the rule's tolerance/
+   * clearance margin) legitimately produce zero candidate pairs and a real
+   * `'clean'` result — that is the ordinary, correct outcome for a rule
+   * whose matched elements never come close to touching. `classifyRuleCoverage`
+   * does not treat this field as a coverage signal for exactly that reason;
+   * it exists as a diagnostic a caller can inspect when a `'clean'` result
+   * looks suspicious for other reasons (e.g. a much larger selector match
+   * count than expected), not as an automatic verdict. Absent on a result
+   * recorded before this field existed, or from a hand-built fixture.
+   */
+  candidatesExamined?: number;
 }
 
 export interface ClashResult {

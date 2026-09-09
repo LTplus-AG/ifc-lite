@@ -40,6 +40,8 @@ use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 
+mod support;
+
 const FIXTURE: &str = "issues/1007_roof_brep_opening_winding.ifc";
 
 fn read_fixture() -> Option<String> {
@@ -48,11 +50,21 @@ fn read_fixture() -> Option<String> {
         .join(FIXTURE);
     match std::fs::read_to_string(&path) {
         Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture is an LFS pointer and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download real bytes"
+            );
             eprintln!("skipping: fixture {FIXTURE} is an LFS pointer — run `pnpm fixtures`");
             None
         }
         Ok(s) => Some(s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
             eprintln!("skipping: fixture {FIXTURE} not present — run `pnpm fixtures`");
             None
         }

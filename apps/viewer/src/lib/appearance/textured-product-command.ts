@@ -7,32 +7,32 @@ import { equivalentAppearanceGeometry, type Renderer } from '@ifc-lite/renderer'
 import { useViewerStore } from '@/store';
 import { entityRefToString } from '@/store/types';
 import type { MeshData } from '@ifc-lite/geometry';
-import { setAnnotationMembership } from './annotation-hierarchy';
+import { setTexturedProductMembership } from './textured-product-hierarchy';
 import { appearanceRevision, captureAppearanceSource, type AppearanceCommitOptions } from './command';
 import { prepareAppearanceEntities } from './prepare-plan';
 import { replayAppearanceEntitiesInDraft } from './apply-plan';
 import { prepareAppearanceHistory, type AppearanceHistoryPublication } from './history';
 import { appearanceAssets, modelAppearanceAssets } from './model-assets';
-import { annotationMesh } from './annotation-mesh';
-import type { AnnotationPlanePlan } from './planner-types';
+import { texturedProductMesh } from './textured-product-mesh';
+import type { TexturedProductPlan } from './textured-product-types';
 
 /** Native planned IFC rows, canonical geometry and its original image become one undo step. */
-export async function commitAnnotationPlane(modelId: string, assetId: string, native: AnnotationPlanePlan,
+export async function commitTexturedProduct(modelId: string, assetId: string, native: TexturedProductPlan,
   containerId: number, renderer: Renderer, source: ReturnType<typeof captureAppearanceSource>,
   options: AppearanceCommitOptions = {}): Promise<{ expressId: number; globalId: number }> {
   const state = useViewerStore.getState(), model = state.models.get(modelId), view = state.mutationViews.get(modelId);
   if (!model?.ifcDataStore || !model.geometryResult || !view) throw new Error('The target IFC model is not ready.');
-  if (state.collabRoomId) throw new Error('Leave the shared room before creating annotations, then share the finished model.');
+  if (state.collabRoomId) throw new Error('Leave the shared room before creating textured objects, then share the finished model.');
   if (native.mesh.texture.url !== modelAppearanceAssets.getAuthoredUri(modelId, assetId)) {
-    throw new Error('The planned annotation image does not match its retained source.');
+    throw new Error('The planned object image does not match its retained source.');
   }
   const data = model.ifcDataStore, plan = native.plan;
   const owner = { kind: 'history' as const, id: crypto.randomUUID() };
   const validate = () => {
-    if (options.signal?.aborted) throw new DOMException('Annotation creation cancelled.', 'AbortError');
+    if (options.signal?.aborted) throw new DOMException('Object creation cancelled.', 'AbortError');
     const now = useViewerStore.getState();
     if (now.modelPlacement !== state.modelPlacement || now.models.get(modelId) !== model || now.collabRoomId || appearanceRevision(modelId) !== plan.sourceRevision) {
-      throw new Error('The model changed while preparing the annotation. Try again.');
+      throw new Error('The model changed while preparing the object. Try again.');
     }
     source.validate(now.mutationViews.get(modelId));
   };
@@ -46,18 +46,18 @@ export async function commitAnnotationPlane(modelId: string, assetId: string, na
     expectedGeometry = part && { ...part, origin: part.origin && [...part.origin] };
   };
   let installed = false, hierarchyInstalled = false, published = false;
-  const globalId = state.toGlobalId(modelId, native.annotationId);
+  const globalId = state.toGlobalId(modelId, native.objectId);
   const hierarchy = data.spatialHierarchy;
   const membership = (present: boolean) => {
-    if (hierarchy) setAnnotationMembership(hierarchy, containerId, native.annotationId, present);
+    if (hierarchy) setTexturedProductMembership(hierarchy, containerId, native.objectId, present);
   };
   try {
     const bitmap = await appearanceAssets.decode(assetId, owner, options.signal);
     validate();
-    const mesh = annotationMesh(state, modelId, native, bitmap);
+    const mesh = texturedProductMesh(state, modelId, native, bitmap);
     const publication = (present: boolean): AppearanceHistoryPublication => {
       const now = useViewerStore.getState(), current = now.models.get(modelId);
-      if (!current?.geometryResult) throw new Error('The annotation model was removed.');
+      if (!current?.geometryResult) throw new Error('The target model was removed.');
       const old = current.geometryResult;
       const removed = old.meshes.filter(part => part.expressId === globalId);
       const meshes = old.meshes.filter(part => part.expressId !== globalId);
@@ -65,7 +65,7 @@ export async function commitAnnotationPlane(modelId: string, assetId: string, na
       const geometryResult = { ...old, meshes,
         totalTriangles: old.totalTriangles - removed.reduce((n, part) => n + part.indices.length / 3, 0) + (present ? mesh.indices.length / 3 : 0),
         totalVertices: old.totalVertices - removed.reduce((n, part) => n + part.positions.length / 3, 0) + (present ? mesh.positions.length / 3 : 0) };
-      const removedRef = { modelId, expressId: native.annotationId };
+      const removedRef = { modelId, expressId: native.objectId };
       const selectedEntityIds = new Set(now.selectedEntityIds);
       selectedEntityIds.delete(globalId);
       const selectedEntitiesSet = new Set(now.selectedEntitiesSet);
@@ -74,7 +74,7 @@ export async function commitAnnotationPlane(modelId: string, assetId: string, na
       return { models: new Map(now.models).set(modelId, { ...current, geometryResult }),
         ...(!present ? { selectedEntityIds, selectedEntitiesSet, selectedEntityId,
           selectedEntity: selectedEntityId === null ? null : now.resolveGlobalIdFromModels(selectedEntityId) ?? null,
-          selectedEntities: now.selectedEntities.filter(ref => ref.modelId !== modelId || ref.expressId !== native.annotationId) } : {}),
+          selectedEntities: now.selectedEntities.filter(ref => ref.modelId !== modelId || ref.expressId !== native.objectId) } : {}),
         ...(now.activeModelId === modelId ? { geometryResult } : {}) };
     };
     options.onProgress?.('preparing');
@@ -103,12 +103,12 @@ export async function commitAnnotationPlane(modelId: string, assetId: string, na
     const record = prepareAppearanceHistory(useViewerStore, modelId, {
       mutations: applied.mutations,
       replay(direction) {
-        if (useViewerStore.getState().collabRoomId) throw new Error('Leave the shared room before editing annotations.');
+        if (useViewerStore.getState().collabRoomId) throw new Error('Leave the shared room before editing textured objects.');
         (direction === 'undo' ? after : before).validate(view);
         const adding = direction === 'redo';
         const current = renderer.getScene().getMeshDataPieces(globalId);
         if (!adding && (current?.length !== 1 || !expectedGeometry || !equivalentAppearanceGeometry(current[0], expectedGeometry))) {
-          throw new Error('The annotation geometry changed. Undo its later edits first.');
+          throw new Error('The object geometry changed. Undo its later edits first.');
         }
         const next = publication(adding);
         const transaction = view.prepareAtomic(draft => { replayAppearanceEntitiesInDraft(draft, applied, direction); return draft; });
@@ -136,7 +136,7 @@ export async function commitAnnotationPlane(modelId: string, assetId: string, na
     membership(true); hierarchyInstalled = true;
     published = true;
     record(next);
-    return { expressId: native.annotationId, globalId };
+    return { expressId: native.objectId, globalId };
   } catch (error) {
     if (!published) {
       preparation?.prepared.rollback();

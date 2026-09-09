@@ -60,7 +60,8 @@ import { useIfcCache, getCached, deleteCached } from './useIfcCache.js';
 // Server hook
 import { useIfcServer } from './useIfcServer.js';
 
-import { getMaxExpressId, parseGlbViewerModel, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
+import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
+import { getMaxExpressId, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
 import {
   createGeometryProcessorDisposer,
@@ -1046,7 +1047,8 @@ export function useIfcLoader() {
         setGeometryStreamingActive(false);
 
         try {
-          const result = await parseGlbViewerModel(buffer);
+          const result = await prepareGlbViewerModel(buffer, appearanceLoad!.decode, () => loadSessionRef.current !== currentSession);
+          if (!result) return;
           if (target.kind === 'primary') {
             setGeometryResult(result.geometryResult);
             setIfcDataStore(null);
@@ -1059,11 +1061,14 @@ export function useIfcLoader() {
             result.geometryResult, result.schemaVersion, { loadPath: 'wasm' },
           );
 
+          if (loadSessionRef.current !== currentSession) return;
+          appearanceLoad?.finish(useViewerStore.getState().models.has(modelId));
           setProgress({ phase: 'Complete', percent: 100 });
           captureModelLoaded({ format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, result.geometryResult));
           setLoading(false);
           return;
         } catch (err: unknown) {
+          if (loadSessionRef.current !== currentSession) return;
           console.error('[useIfc] GLB parsing failed:', err);
           const message = err instanceof Error ? err.message : String(err);
           updateModel(modelId, { loadState: 'error', loadError: message });

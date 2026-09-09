@@ -859,3 +859,18 @@ and dimensions. The file budget is 512 MiB of unique pixel/resource bytes, with
 The current RGBA wire favors exact, wasm-free roundtrips over compressed file
 size. It can make IFCX substantially larger than IFCZIP. Original source images
 are archival alongside pixels, rather than a second mandatory decoder pipeline.
+
+## Importing textured GLB captures
+
+Use **Open** or **Add model** for an opaque textured GLB. Embedded base-colour
+PNG/JPEG images and their UV seams now follow the same model load path for
+primary and federated models. Original encoded images remain available to
+capture authoring while the model is loaded. Node translation, rotation and
+scale are applied once; UV texture transforms and repeat/clamp are preserved.
+
+This capture slice supports albedo, not a complete glTF material renderer.
+Unsupported texture alpha modes, transparent pixels, additional material maps,
+compression, external resources, mirrored repeat and UV sets beyond
+`TEXCOORD_0` stop import with a diagnostic rather than produce an untextured
+success. Images use the existing inventory limits (32 MiB per encoded image,
+8192 px maximum edge, 16 megapixels per image).

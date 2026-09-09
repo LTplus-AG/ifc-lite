@@ -37,10 +37,14 @@ impl Author {
     }
 }
 
-/// Create one bounded, textured IfcAnnotation in an explicitly chosen spatial
-/// container. The source image is retained, not baked. Native production is the
-/// same element funnel used by ordinary imports; no live model is mutated.
-pub fn plan_annotation_plane(bytes: &[u8], request: &AnnotationPlaneRequest) -> Result<AnnotationPlanePlan, String> {
+pub(super) struct AuthoredProductPlan {
+    pub plan: AppearancePlan,
+    pub product_id:u32,
+    pub geometry_item_id:u32,
+    pub mesh:crate::types::mesh::MeshData,
+    pub rtc_offset:[f64;3],
+}
+pub(super) fn plan_textured_product(bytes:&[u8], request:&AnnotationPlaneRequest, captured:Option<&super::captured_types::CapturedMesh>, repeat:[bool;2]) -> Result<AuthoredProductPlan,String> {
     let r=request;
     if !matches!(r.schema.as_str(), "IFC4"|"IFC4X3") || r.source_revision.len()>4096 || r.name.len()>1024
         || !valid_guid(&r.global_id) || !valid_guid(&r.containment_global_id) || r.global_id==r.containment_global_id {
@@ -103,43 +107,53 @@ pub fn plan_annotation_plane(bytes: &[u8], request: &AnnotationPlaneRequest) -> 
     let direction=author.add(IfcType::IfcDirection,vec![vector(u)]);
     let axes=author.add(IfcType::IfcAxis2Placement3D,vec![A::EntityRef(point),A::EntityRef(axis),A::EntityRef(direction)]);
     let placement=author.add(IfcType::IfcLocalPlacement,vec![container.get_ref(5).map_or(A::Null,A::EntityRef),A::EntityRef(axes)]);
-    let mut point_attributes=vec![A::List([[0.,0.,0.],[size[0],0.,0.],[size[0],size[1],0.],[0.,size[1],0.]].into_iter().map(vector).collect())];
+    let vertices = captured.map_or_else(|| vec![[0.,0.,0.],[size[0],0.,0.],[size[0],size[1],0.],[0.,size[1],0.]], |m| m.positions.iter().map(|p| std::array::from_fn(|i| (p[i]-f.origin[i])/scale)).collect());
+    let mut point_attributes=vec![A::List(vertices.into_iter().map(vector).collect())];
     if r.schema=="IFC4X3" { point_attributes.push(A::Null); } // TagList, IFC4X3 only.
     let points=author.add(IfcType::IfcCartesianPointList3D,point_attributes);
-    let triangles=[[1,2,3],[1,3,4]];
-    let index_value=||A::List(triangles.into_iter().map(|row|A::List(row.into_iter().map(A::Integer).collect())).collect());
+    let triangles:Vec<[i64;3]>=captured.map_or_else(|| vec![[1,2,3],[1,3,4]], |m| m.triangles.iter().map(|r|r.map(|i|i64::from(i)+1)).collect());
+    let index_value=||A::List(triangles.iter().map(|row|A::List(row.iter().copied().map(A::Integer).collect())).collect());
     let item=author.add(IfcType::IfcTriangulatedFaceSet,vec![A::EntityRef(points),A::Null,A::Enum("F".into()),index_value(),A::Null]);
-    let image=author.add(IfcType::IfcImageTexture,vec![A::Enum("F".into()),A::Enum("F".into()),A::Null,A::Null,A::Null,A::String(r.image_uri.clone())]);
-    let uv=[[0.,0.],[1.,0.],[1.,1.],[0.,1.]];
-    let vertices=author.add(IfcType::IfcTextureVertexList,vec![A::List(uv.into_iter().map(|v|A::List(v.into_iter().map(A::Float).collect())).collect())]);
-    author.add(IfcType::IfcIndexedTriangleTextureMap,vec![refs(&[image]),A::EntityRef(item),A::EntityRef(vertices),index_value()]);
+    let image=author.add(IfcType::IfcImageTexture,vec![A::Enum(if repeat[0] {"T"} else {"F"}.into()),A::Enum(if repeat[1] {"T"} else {"F"}.into()),A::Null,A::Null,A::Null,A::String(r.image_uri.clone())]);
+    let uv=captured.map_or_else(|| vec![[0.,0.],[1.,0.],[1.,1.],[0.,1.]], |m|m.uvs.clone());
+    let uv_triangles:Vec<[u32;3]>=captured.map_or_else(||vec![[1,2,3],[1,3,4]], |m|m.uv_triangles.iter().map(|r|r.map(|i|i+1)).collect());
+    let vertices=author.add(IfcType::IfcTextureVertexList,vec![A::List(uv.iter().map(|v|A::List(v.iter().copied().map(A::Float).collect())).collect())]);
+    author.add(IfcType::IfcIndexedTriangleTextureMap,vec![refs(&[image]),A::EntityRef(item),A::EntityRef(vertices),A::List(uv_triangles.iter().map(|r|A::List(r.iter().map(|i|A::Integer(i64::from(*i))).collect())).collect())]);
     let white=author.add(IfcType::IfcColourRgb,vec![A::Null,A::Float(1.),A::Float(1.),A::Float(1.)]);
     let shading=author.add(IfcType::IfcSurfaceStyleShading,vec![A::EntityRef(white),A::Float(0.)]);
     let texture=author.add(IfcType::IfcSurfaceStyleWithTextures,vec![refs(&[image])]);
     let style=author.add(IfcType::IfcSurfaceStyle,vec![A::String("Registered image".into()),A::Enum("BOTH".into()),refs(&[shading,texture])]);
     let styled=author.add(IfcType::IfcStyledItem,vec![A::EntityRef(item),refs(&[style]),A::Null]);
-    let shape=author.add(IfcType::IfcShapeRepresentation,vec![A::EntityRef(contexts[0]),A::String("Annotation".into()),A::String("Tessellation".into()),refs(&[item])]);
+    let shape=author.add(IfcType::IfcShapeRepresentation,vec![A::EntityRef(contexts[0]),A::String(if captured.is_some() {"Body"} else {"Annotation"}.into()),A::String("Tessellation".into()),refs(&[item])]);
     let product_shape=author.add(IfcType::IfcProductDefinitionShape,vec![A::Null,A::Null,refs(&[shape])]);
     let owner=project.get_ref(1).map_or(A::Null,A::EntityRef);
     let mut annotation_attributes=vec![A::String(r.global_id.clone()),owner.clone(),A::String(r.name.clone()),A::Null,
-        A::String("IfcLite:RegisteredImage".into()),A::EntityRef(placement),A::EntityRef(product_shape)];
-    if r.schema=="IFC4X3" { annotation_attributes.push(A::Enum("USERDEFINED".into())); }
-    let annotation=author.add(IfcType::IfcAnnotation,annotation_attributes);
+        A::String(if captured.is_some() {"IfcLite:CapturedSurface"} else {"IfcLite:RegisteredImage"}.into()),A::EntityRef(placement),A::EntityRef(product_shape)];
+    if captured.is_some() { annotation_attributes.extend([A::Null,A::Enum("USERDEFINED".into())]); }
+    else if r.schema=="IFC4X3" { annotation_attributes.push(A::Enum("USERDEFINED".into())); }
+    let annotation=author.add(if captured.is_some() {IfcType::IfcBuildingElementProxy} else {IfcType::IfcAnnotation},annotation_attributes);
     author.add(IfcType::IfcRelContainedInSpatialStructure,vec![A::String(r.containment_global_id.clone()),owner,A::Null,A::Null,refs(&[annotation]),A::EntityRef(r.container_id)]);
     source.decoder.inject_shared_cache(&author.entities);
     let mut styles=crate::prepass::ResolvedPrepass::default();
     let (_,info)=crate::prepass::surface_style_from_styled_item(&author.entities[&styled],&mut source.decoder).ok_or("Generated style failed canonical resolution")?;
     styles.geometry_style_index.insert(item,info);
     let textures=FxHashMap::from_iter([(item,ResolvedTextureMap { texture_id:image,
-        texture:TextureSource::Image(ImageTextureRef { url:r.image_uri.clone(),repeat_s:false,repeat_t:false }),
-        tex_coords:uv.map(|v|v.map(|x|x as f32)).to_vec(),tex_coord_index:Some(vec![[1,2,3],[1,3,4]]) })]);
+        texture:TextureSource::Image(ImageTextureRef { url:r.image_uri.clone(),repeat_s:repeat[0],repeat_t:repeat[1] }),
+        tex_coords:uv.iter().map(|v|v.map(|x|x as f32)).collect(),tex_coord_index:Some(uv_triangles) })]);
     let mut meshes=canonical::produce(&mut source,annotation,&textures,Some(&styles))?;
     if meshes.len()!=1 { return Err("Canonical annotation geometry did not produce exactly one textured plane".into()); }
     let mesh=meshes.remove(0);
-    if mesh.indices.len()!=6 || mesh.positions.len()!=12 || mesh.uvs.as_ref().is_none_or(|uv|uv.len()!=8)
+    if mesh.indices.len()!=triangles.len()*3 || mesh.uvs.as_ref().is_none_or(|uv|uv.len()!=mesh.positions.len()/3*2)
         || mesh.positions.iter().chain(&mesh.normals).any(|v|!v.is_finite()) {
-        return Err("Canonical annotation geometry collapsed or lost its texture coordinates".into());
+        return Err("Canonical authored geometry collapsed or lost its texture coordinates".into());
     }
+    Ok(AuthoredProductPlan { plan:author.plan, product_id:annotation, geometry_item_id:item, mesh, rtc_offset })
+}
+
+/// Create one bounded textured annotation through the shared native product planner.
+pub fn plan_annotation_plane(bytes: &[u8], request: &AnnotationPlaneRequest) -> Result<AnnotationPlanePlan,String> {
+    let AuthoredProductPlan {plan,product_id,geometry_item_id,mesh,rtc_offset}=plan_textured_product(bytes,request,None,[false,false])?;
+    let f=&request.frame;
     let uv=mesh.uvs.as_ref().ok_or("Missing canonical annotation UVs")?;
     let tolerance=f.size_metres[0].min(f.size_metres[1])*1e-6;
     for (i,p) in mesh.positions.chunks_exact(3).enumerate() {
@@ -150,8 +164,8 @@ pub fn plan_annotation_plane(bytes: &[u8], request: &AnnotationPlaneRequest) -> 
             return Err("Annotation frame loses precision in canonical geometry; move closer to the model origin or increase its size".into());
         }
     }
-    Ok(AnnotationPlanePlan { plan:author.plan,annotation_id:annotation,geometry_item_id:item,mesh,
-        coordinate_space:"ifc-z-up",rtc_offset,frame:r.frame.clone() })
+    Ok(AnnotationPlanePlan { plan,annotation_id:product_id,geometry_item_id,mesh,
+        coordinate_space:"ifc-z-up",rtc_offset,frame:request.frame.clone() })
 }
 
 #[cfg(test)]

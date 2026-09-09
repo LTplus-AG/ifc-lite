@@ -140,3 +140,20 @@ Serialization borrows valid sorted columns synchronously, preserving stable dupl
 `BinaryCacheWriter.write` accepts `compressGeometryChunksInWorker: true` to run geometry chunk compression in one lazily created browser module worker. The viewer enables it to keep codec work off the UI thread. The default is `false`, preserving workerless SDK and Node use. The existing compression size floor and four-chunk concurrency limit remain in effect; disabling `compressGeometryChunks` creates no worker. Cache format, chunk order, compressed-versus-raw selection and readers are unchanged.
 
 The browser application must bundle the package worker asset and permit module workers. Worker startup, codec and transport failures reject the cache write; there is no silent main-thread retry. Only newly serialized chunk buffers cross the worker boundary, and the worker terminates after geometry serialization succeeds or fails. Source/model data stay with the caller. This moves compression CPU rather than eliminating it; include cache completion when measuring cold loads.
+
+### Textured GLB capture import
+
+`parseGLBToMeshData` and `loadGLBToMeshData` preserve base-colour `TEXCOORD_0`
+coordinates (including normalized integer UVs and `KHR_texture_transform`),
+texture references, node TRS/matrices and mirrored winding. UV vertices remain
+separate across seams. Node translation stays in the double-precision `origin`.
+Use `parseGLBImageResources(parsed.json, parsed.bin)` to obtain original encoded
+PNG/JPEG images keyed by each mesh's `textureRef.url`. Decode these at the host
+boundary; this package never allocates browser image objects.
+
+This is opaque captured-albedo import. Embedded base-colour PNG/JPEG images and
+repeat/clamp samplers are supported. External images/buffers, other UV sets,
+mirrored repeat, sparse accessors, compression, skinning/morphs, vertex colours,
+additional material maps, and textured MASK/BLEND produce explicit errors.
+The viewer also refuses transparent image pixels, retains original bytes with
+the model, and releases images on removal. It does not claim full PBR fidelity.

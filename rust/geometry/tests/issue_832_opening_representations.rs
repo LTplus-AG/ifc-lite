@@ -30,6 +30,8 @@ use ifc_lite_geometry::GeometryRouter;
 use rustc_hash::FxHashMap;
 use voids_common::production::fold_origin;
 
+mod support;
+
 const FIXTURE: &str = "../../tests/models/issues/832_opening_representations.ifc";
 
 /// (wall_id, opening_id, label).  Wall #222 is the broken one in the screenshot.
@@ -60,6 +62,11 @@ fn read_fixture() -> Option<String> {
     match std::fs::read_to_string(FIXTURE) {
         Ok(s) => Some(s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
             eprintln!(
                 "skipping issue-832 regression: fixture missing at {FIXTURE} — \
                  add it from the issue attachment"

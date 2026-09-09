@@ -276,7 +276,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
   return {
     allowPdf: true, pdf: pdfSource.controls, pdfPassword: pdfSource.passwordPrompt,
     calibration: selectedSource && (selectedSource.pdf || intent === 'reference') && selectedSource.thumbnailUrl ? {
-      frame: selectedSource.pdf ? pdfCalibrationFrame(selectedSource.pdf.recipe) : imageCalibrationFrame(selectedSource.width, selectedSource.height), sourceKey: `${selectedSource.id}:${selectedSource.pdf?.recipe.page.pageNumber ?? 0}`, thumbnailUrl: selectedSource.thumbnailUrl,
+      frame: selectedSource.calibrationFrame ?? (selectedSource.pdf ? pdfCalibrationFrame(selectedSource.pdf.recipe) : imageCalibrationFrame(selectedSource.width, selectedSource.height)), sourceKey: `${selectedSource.id}:${selectedSource.pdf?.recipe.page.pageNumber ?? 0}`, thumbnailUrl: selectedSource.thumbnailUrl,
       value: selectedSource.calibration, onChange: calibration => {
         const current = useViewerStore.getState().appearanceSources.find(source => source.id === selectedSource.id);
         if (current) useViewerStore.getState().updateAppearanceSource({ ...current, calibration });

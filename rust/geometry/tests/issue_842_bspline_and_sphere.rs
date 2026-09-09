@@ -13,11 +13,18 @@
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
 
+mod support;
+
 const FIXTURE: &str = "../../tests/models/issues/842_rational_bspline_surface.ifc";
 
 fn read_fixture() -> Option<String> {
     match std::fs::read_to_string(FIXTURE) {
         Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture is an LFS pointer and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download real bytes"
+            );
             // PR #657 removed Git LFS from this repo (fixtures live in a
             // GitHub Release now), but a contributor cloning before that
             // change can still have an LFS pointer at this path. Skip
@@ -31,6 +38,11 @@ fn read_fixture() -> Option<String> {
         }
         Ok(s) => Some(s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
             eprintln!(
                 "skipping issue-842 regression: fixture missing at {FIXTURE} — \
                  run `pnpm fixtures` to fetch it"

@@ -122,7 +122,7 @@
   1226 apps/viewer/src/hooks/useIDS.ts
    586 apps/viewer/src/hooks/useIfcCache.ts
    667 apps/viewer/src/hooks/useIfcFederation.ts
-  2240 apps/viewer/src/hooks/useIfcLoader.ts
+  2245 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    483 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    493 apps/viewer/src/hooks/useSymbolicAnnotations.ts
@@ -179,13 +179,12 @@
    457 apps/viewer/src/utils/serverDataModel.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
-   413 apps/viewer/vite.config.ts
+   417 apps/viewer/vite.config.ts
    788 packages/bcf/src/ids-reporter.ts
    495 packages/bcf/src/overlay-renderer.ts
    801 packages/bcf/src/reader.ts
    595 packages/bcf/src/viewpoint.ts
    753 packages/bcf/src/writer.ts
-   605 packages/cache/src/glb.ts
    414 packages/clash/src/adapters/step.ts
    441 packages/clash/src/bcf-bridge.ts
    433 packages/clash/src/duplicates.ts
@@ -311,7 +310,7 @@
    514 packages/renderer/src/section-plane.ts
    639 packages/renderer/src/shaders/main.wgsl.ts
    454 packages/renderer/src/shadow-pass.ts
-   764 packages/renderer/src/snap-detector.ts
+   768 packages/renderer/src/snap-detector.ts
    765 packages/renderer/src/symbolic-overlay-pipelines.ts
    587 packages/sandbox/src/bridge-create.ts
    421 packages/sandbox/src/bridge-query.ts
@@ -330,7 +329,7 @@
   1486 packages/viewer/src/viewer-html.ts
    500 scripts/check-agents-md-size.mjs
    680 scripts/check-changeset-bump.mjs
-   523 scripts/check-ci-path-coverage.mjs
+   526 scripts/check-ci-path-coverage.mjs
    574 scripts/check-collab-room-model-target.mjs
    529 scripts/check-generated.mjs
    430 scripts/check-git-lfs.mjs

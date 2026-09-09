@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 /* This Source Code Form is subject to the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
@@ -53,7 +57,7 @@ class ControlledWorker implements AppearanceWorker {
       }).catch(error => this.onerror?.({ message: String(error) } as ErrorEvent));
       return;
     }
-    if (message.type === 'page-plan' || message.type === 'annotation-plan') throw new Error('Image-only controller fixture received a page plan');
+    if (message.type === 'page-plan' || message.type === 'annotation-plan' || message.type === 'captured-mesh-plan') throw new Error('Image-only controller fixture received a page plan');
     this.message = structuredClone(message);
     this.lateMessage = this.onmessage;
   }

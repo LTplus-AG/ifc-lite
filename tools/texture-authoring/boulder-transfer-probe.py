@@ -83,6 +83,7 @@ request = dict(schema='IFC4', sourceRevision='controlled-boulder-derived-self-tr
     maxDistanceMetres=0.001, minNormalDot=0.9, ambiguityDistanceMetres=0.0001)
 javascript = """
 import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {initSync,IfcAPI} from './packages/wasm/pkg/ifc-lite.js';
 import {unpackTransfer} from './scripts/lib/wasm-mesh-transfer-contract.mjs';
 initSync({module:readFileSync('./packages/wasm/pkg/ifc-lite_bg.wasm')});const api=new IfcAPI();
@@ -90,8 +91,9 @@ try {
  const {request,source,rgba}=JSON.parse(readFileSync(0,'utf8'));
  request.registrationSha256=JSON.parse(new TextDecoder().decode(api.registerScanCorrespondences(JSON.stringify(request.registration)))).requestSha256;
  try {
-  const result=unpackTransfer(api.planMeshTransfer(new TextEncoder().encode(source),JSON.stringify(request),Buffer.from(rgba,'base64')));
-  console.log(JSON.stringify({transfer:result.metadata.transfer,assets:result.metadata.assets,pngBytes:result.png.length}));
+  const bytes=api.planMeshTransfer(new TextEncoder().encode(source),JSON.stringify(request),Buffer.from(rgba,'base64'));
+  const result=unpackTransfer(bytes);
+  console.log(JSON.stringify({transfer:result.metadata.transfer,assets:result.metadata.assets,pngBytes:result.png.length,ifpaSha256:createHash('sha256').update(bytes).digest('hex'),pngSha256:createHash('sha256').update(result.png).digest('hex')}));
  } catch(error) { console.log(JSON.stringify({refusal:error.message})); }
 } finally {api.free();}
 """

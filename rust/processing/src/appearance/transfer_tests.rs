@@ -285,7 +285,11 @@ fn issue_4381_insufficient_registration_checks_cannot_produce_applicable_transfe
     assert!(!result.transfer.applicable);
     assert!(result.output.is_none());
     assert!(result.transfer.registration.held_out.rms_metres.is_none());
-    assert!(!result.transfer.diagnostics.iter().any(|d|d.contains("No observed target samples")));
+    assert!(!result
+        .transfer
+        .diagnostics
+        .iter()
+        .any(|d| d.contains("No observed target samples")));
     assert!(result
         .transfer
         .diagnostics
@@ -334,4 +338,40 @@ fn issue_4381_target_exclusions_remain_visible_without_applicable_output() {
     assert_eq!(result.transfer.exclusions.len(), 1);
     assert_eq!(result.transfer.exclusions[0].product_id, 1);
     assert!(!result.transfer.exclusions[0].reason.is_empty());
+}
+
+#[test]
+fn issue_4381_cached_region_and_point_queries_keep_unknowns_and_outside_points() {
+    let (mut request, _) = fixture();
+    request.source_mesh.positions.extend([
+        [0.2, 0.2, 5.0001],
+        [0.6, 0.2, 5.0001],
+        [0.2, 0.6, 5.0001],
+    ]);
+    request
+        .source_mesh
+        .uvs
+        .extend([[1., 1.], [0., 1.], [1., 0.]]);
+    request.source_mesh.triangles.push([5, 4, 3]);
+    let mut budget = TransferBudget::new();
+    let mut cached = Surface::new(&request, &identity(), &mut budget).unwrap();
+    cached
+        .prepare_region([[0., 0., 5.], [1., 0., 5.], [0., 1., 5.]], &mut budget)
+        .unwrap();
+    for point in [
+        [0.3, 0.3, 5.],
+        [0.3, 0.3, 5.0002],
+        [0.9, 0.9, 5.],
+        [100., 100., 100.],
+        [0.3, 0.3, 5.],
+    ] {
+        let mut direct_budget = TransferBudget::new();
+        let mut direct = Surface::new(&request, &identity(), &mut direct_budget).unwrap();
+        assert_eq!(
+            cached.observe(point, [0., 0., 1.], &mut budget).unwrap(),
+            direct
+                .observe(point, [0., 0., 1.], &mut direct_budget)
+                .unwrap()
+        );
+    }
 }

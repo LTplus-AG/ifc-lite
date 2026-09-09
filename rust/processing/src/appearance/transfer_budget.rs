@@ -4,16 +4,18 @@
 //! Aggregate scan-owned memory and work, including atlas samples and BVH traversal.
 pub(super) struct TransferBudget {
     pub work: usize,
+    pub category:usize, pub charges:[usize;6],pub calls:[usize;4],pub sample_work:[usize;2],
     memory: usize,
 }
 impl TransferBudget {
     pub fn new() -> Self {
         Self {
-            work: 64_000_000,
+            work: 1_000_000_000,category:5,charges:[0;6],calls:[0;4],sample_work:[0;2],
             memory: 256 * 1024 * 1024,
         }
     }
     pub fn charge(&mut self, work: usize) -> Result<(), String> {
+        self.charges[self.category]+=work;
         self.work = self
             .work
             .checked_sub(work)

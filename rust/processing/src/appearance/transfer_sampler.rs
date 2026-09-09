@@ -51,11 +51,16 @@ impl<'a> TransferSampler<'a> {
         count: bool,
     ) -> Result<(Observation, [f64; 2]), String> {
         let target = &self.targets[triangle];
+        let work_before=self.budget.work;self.budget.calls[usize::from(count)]+=1;
+        self.surface
+            .prepare_region(target.points, &mut self.budget)?;
         let result = self.surface.observe(
             interpolate(target.points, weights),
             target.normal,
             &mut self.budget,
-        )?;
+        );
+        self.budget.sample_work[usize::from(count)]+=work_before-self.budget.work;
+        let result=result.map_err(|e|format!("{e}; charges={:?}; calls={:?}; sample_work={:?}",self.budget.charges,self.budget.calls,self.budget.sample_work))?;
         if count {
             let coverage = &mut self.samples[triangle];
             coverage.samples += 1;
@@ -104,6 +109,8 @@ impl AtlasSampler for TransferSampler<'_> {
             .current
             .take()
             .ok_or("Missing transfer coverage item")?;
+        return Err(format!("PROBE COMPLETE; remaining={}; charges={:?}; calls={:?}; sample_work={:?}",self.budget.work,self.budget.charges,self.budget.calls,self.budget.sample_work));
+        #[allow(unreachable_code)]
         self.items.push(TransferItemCoverage {
             product_id,
             geometry_item_id,
@@ -112,6 +119,7 @@ impl AtlasSampler for TransferSampler<'_> {
         Ok(())
     }
     fn reserve_pixels(&mut self, pixels: usize) -> Result<(), String> {
+        self.budget.category=5;
         self.budget.reserve(
             pixels
                 .checked_mul(12)

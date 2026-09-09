@@ -5,7 +5,7 @@ import { captureAppearanceDependencies, planAuthoredResourceCleanup } from '@ifc
 import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
-import { applyAppearanceEntities, replayAppearanceEntities } from './apply-plan.js';
+import { applyAppearanceEntitiesInDraft, replayAppearanceEntitiesInDraft } from './apply-plan.js';
 import { appearanceAssets, modelAppearanceAssets } from './model-assets.js';
 import { prepareAppearanceHistory } from './history.js';
 import type { AppearanceHistoryPublication } from './history.js';
@@ -93,7 +93,7 @@ export function commitAppearance(
   // All IFC edits, history records and allocator changes stay detached until
   // assets, history and every GPU token have passed preparation.
   const prepared = view.prepareAtomic(draft => ({ draft,
-    applied: applyAppearanceEntities(new StoreEditor(model.ifcDataStore!, draft), draft, plan, appearanceRevision(modelId)),
+    applied: applyAppearanceEntitiesInDraft(new StoreEditor(model.ifcDataStore!, draft), draft, plan, appearanceRevision(modelId)),
   }));
   const { applied, draft } = prepared.result;
   const roots = new Set([...plan.items.flatMap(item => [item.productId, item.geometryItemId]),
@@ -128,7 +128,7 @@ export function commitAppearance(
         const parts = appearanceHistoryParts(renderer, changes, direction);
         const nextGeometry = geometryWithAppearance(modelId, parts);
         const replay = new AppearancePreviewSession(renderer);
-        const transaction = view.prepareAtomic(target => { replayAppearanceEntities(target, applied, direction); return target; });
+        const transaction = view.prepareAtomic(target => { replayAppearanceEntitiesInDraft(target, applied, direction); return target; });
         const hadRegistration = modelAppearanceAssets.hasAuthoredRegistration(modelId, commandId);
         const currentModel = useViewerStore.getState().models.get(modelId);
         try {

@@ -25,6 +25,27 @@ export function applyAppearanceEntities(
   plan: AppearanceEntityPlan,
   currentRevision: string,
 ): AppliedAppearanceEntities {
+  return applyAppearanceEntitiesUsing(editor, view, plan, currentRevision, edit => editor.runAtomic(edit));
+}
+
+/** Internal command composition: caller owns a detached prepareAtomic draft.
+ * Failure must escape that outer transaction; this function does not publish it. */
+export function applyAppearanceEntitiesInDraft(
+  editor: StoreEditor,
+  view: MutablePropertyView,
+  plan: AppearanceEntityPlan,
+  currentRevision: string,
+): AppliedAppearanceEntities {
+  return applyAppearanceEntitiesUsing(editor, view, plan, currentRevision, edit => edit(editor));
+}
+
+function applyAppearanceEntitiesUsing(
+  editor: StoreEditor,
+  view: MutablePropertyView,
+  plan: AppearanceEntityPlan,
+  currentRevision: string,
+  mutate: (edit: (draft: StoreEditor) => void) => void,
+): AppliedAppearanceEntities {
   if (plan.sourceRevision !== currentRevision || plan.nextExpressId !== view.peekNextExpressId()) {
     throw new Error('The model changed while preparing appearance. Refresh the preview.');
   }
@@ -59,7 +80,7 @@ export function applyAppearanceEntities(
     return { expressId, entity: structuredClone(editor.getNewEntity(expressId)) };
   });
   const oldHistory = new Set(view.getMutations().map(mutation => mutation.id));
-  editor.runAtomic(draft => {
+  mutate(draft => {
     for (const entity of plan.created) {
       const result = draft.addEntity(entity.type, structuredClone(entity.attributes));
       if (result.expressId !== entity.expressId) throw new Error('Appearance entity allocation changed.');
@@ -82,21 +103,28 @@ export function replayAppearanceEntities(
   edit: AppliedAppearanceEntities,
   direction: 'undo' | 'redo',
 ): void {
-  view.runAtomic(draft => {
-    if (direction === 'undo') {
-      for (const entity of [...edit.created].reverse()) draft.deleteEntity(entity.expressId);
-      for (const removed of edit.removed) {
-        if (removed.entity) draft.restoreNewEntity(structuredClone(removed.entity));
-        else draft.restoreFromTombstone(removed.expressId);
-      }
-      for (const previous of edit.before) {
-        if (previous.present) draft.setPositionalAttribute(previous.expressId, previous.index, structuredClone(previous.value), true);
-        else draft.removePositionalMutation(previous.expressId, previous.index);
-      }
-    } else {
-      for (const entity of edit.created) draft.restoreNewEntity(structuredClone(entity));
-      for (const after of edit.after) draft.setPositionalAttribute(after.expressId, after.index, structuredClone(after.value), true);
-      for (const removed of edit.removed) draft.deleteEntity(removed.expressId);
+  view.runAtomic(draft => replayAppearanceEntitiesInDraft(draft, edit, direction));
+}
+
+/** Internal command composition under the caller's detached transaction. */
+export function replayAppearanceEntitiesInDraft(
+  draft: MutablePropertyView,
+  edit: AppliedAppearanceEntities,
+  direction: 'undo' | 'redo',
+): void {
+  if (direction === 'undo') {
+    for (const entity of [...edit.created].reverse()) draft.deleteEntity(entity.expressId);
+    for (const removed of edit.removed) {
+      if (removed.entity) draft.restoreNewEntity(structuredClone(removed.entity));
+      else draft.restoreFromTombstone(removed.expressId);
     }
-  });
+    for (const previous of edit.before) {
+      if (previous.present) draft.setPositionalAttribute(previous.expressId, previous.index, structuredClone(previous.value), true);
+      else draft.removePositionalMutation(previous.expressId, previous.index);
+    }
+  } else {
+    for (const entity of edit.created) draft.restoreNewEntity(structuredClone(entity));
+    for (const after of edit.after) draft.setPositionalAttribute(after.expressId, after.index, structuredClone(after.value), true);
+    for (const removed of edit.removed) draft.deleteEntity(removed.expressId);
+  }
 }

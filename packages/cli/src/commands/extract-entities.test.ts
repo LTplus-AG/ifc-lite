@@ -651,6 +651,89 @@ describe('buildSubset: a product reachable ONLY via IfcRelReferencedInSpatialStr
   });
 });
 
+// #80 is blocked on TWO ids: a real private IfcOwnerHistory #6 (owning a
+// four-record subtree) and a phantom #999 in its Description slot. #81 is
+// blocked on a clean private IfcOwnerHistory #7 and nothing else. The replan
+// can only rescue #81, so #6's subtree must stay out: force-keeping it emits
+// five records nothing in the file references (#4150).
+const STOREY_MODEL_MIXED_BLOCKERS = STOREY_MODEL.replace(
+  "#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000001',#5,'L01 contents',$,",
+  "#6= IFCOWNERHISTORY(#16,#17,$,.ADDED.,$,$,$,0);\n" +
+    '#16= IFCPERSONANDORGANIZATION(#18,#19,$);\n' +
+    "#18= IFCPERSON($,'p',$,$,$,$,$,$);\n" +
+    "#19= IFCORGANIZATION($,'o',$,$,$);\n" +
+    "#17= IFCAPPLICATION(#19,'1','app','app');\n" +
+    "#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000001',#6,'L01 contents',#999,",
+).replace(
+  "#81= IFCRELREFERENCEDINSPATIALSTRUCTURE('RREF000000000000000001',#5,",
+  "#7= IFCOWNERHISTORY($,$,$,.ADDED.,$,$,$,0);\n" +
+    "#81= IFCRELREFERENCEDINSPATIALSTRUCTURE('RREF000000000000000001',#7,",
+);
+
+describe('buildSubset: a relation blocked on a private OwnerHistory AND a phantom (#4150)', () => {
+  const p = parseStep(STOREY_MODEL_MIXED_BLOCKERS);
+  const { keep, rewritten } = buildSubset(new Set([70, 72]), p);
+
+  it('leaves the OwnerHistory subtree out when the replan still drops the relation', () => {
+    // The phantom #999 blocks #80 in round two exactly as it did in round one,
+    // so keeping #6 buys nothing and costs five orphaned records.
+    expect(keep.has(80)).toBe(false);
+    for (const id of [6, 16, 17, 18, 19]) expect(keep.has(id)).toBe(false);
+  });
+
+  it('still rescues a relation whose blockers are ALL a defined OwnerHistory (#4126)', () => {
+    // The blockers are grouped per relation for this: #80's unresolvable group
+    // must not suppress #81's resolvable one.
+    expect(keep.has(81)).toBe(true);
+    expect(keep.has(7)).toBe(true);
+    expect(rewritten.get(81)).toContain('(#70)');
+  });
+
+  it('serializes with zero dangling references', () => {
+    const out = serializeSubset({ keep, rewritten }, p);
+    expectNoDanglingRefs(out);
+    expect(out).not.toContain('#6=');
+    expect(out).toContain('#81=');
+  });
+});
+
+// #80's Description slot holds a bare `#74`, an L02 chair that no selector
+// picked. Unlike the `'Chair pairs with #71'` case above it is a bare argument,
+// not text, so it IS a reference and the plan reports it as blocking #80. But it
+// is a PRODUCT, and closing over it drags a second storey's contents into a
+// first-storey selection (#4150).
+const STOREY_MODEL_PRODUCT_BLOCKER = STOREY_MODEL.replace(
+  "#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000001',#5,'L01 contents',$,",
+  "#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000001',#5,'L01 contents',#74,",
+);
+
+describe('buildSubset: a blocker that is a product, not an OwnerHistory (#4150)', () => {
+  const p = parseStep(STOREY_MODEL_PRODUCT_BLOCKER);
+  const { keep, rewritten } = buildSubset(new Set([70, 72]), p);
+
+  it('does not extract the unselected product the blocker names', () => {
+    expect(keep.has(74)).toBe(false);
+  });
+
+  it('does not resurrect the other storey containment on the second round', () => {
+    // #82's member intersection with the selection is empty, so round one drops
+    // it. Keeping #74 makes it non-empty, and #82 comes back rewritten to
+    // `(#74)`: one selected pair of chairs, two extra records in the output.
+    expect(keep.has(82)).toBe(false);
+    expect(rewritten.has(82)).toBe(false);
+  });
+
+  it('drops the relation the unresolvable blocker belongs to', () => {
+    expect(keep.has(80)).toBe(false);
+  });
+
+  it('serializes with zero dangling references', () => {
+    const out = serializeSubset({ keep, rewritten }, p);
+    expectNoDanglingRefs(out);
+    expect(out).not.toContain('#74=');
+  });
+});
+
 describe('planSpatialRelations: a record it cannot scan, or cannot read as six attributes', () => {
   const record = (body: string) => ({
     id: 80,

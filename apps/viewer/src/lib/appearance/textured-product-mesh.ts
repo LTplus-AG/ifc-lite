@@ -7,12 +7,12 @@ import { totalYupOffset } from '@/hooks/ingest/federationAlign';
 import { placementFrameCoordinateInfo } from '@/lib/model-placement/persistence';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { toRenderTranslation } from '@/lib/model-placement/translation';
-import type { AnnotationPlanePlan } from './planner-types';
+import type { TexturedProductPlan } from './textured-product-types';
 
 /** Keep local f32 vertices local; reconstruct native RTC + origin in f64 once. */
-export function annotationMesh(state: ViewerState, modelId: string, plan: AnnotationPlanePlan, bitmap: ImageBitmap): MeshData {
+export function texturedProductMesh(state: ViewerState, modelId: string, plan: TexturedProductPlan, bitmap: ImageBitmap): MeshData {
   const { mesh } = plan;
-  if (plan.coordinateSpace !== 'ifc-z-up' || mesh.express_id !== plan.annotationId
+  if (plan.coordinateSpace !== 'ifc-z-up' || mesh.express_id !== plan.objectId
     || mesh.geometry_item_id !== plan.geometryItemId || !mesh.uvs.length) throw new Error('Invalid native annotation geometry.');
   const convert = (values: number[]) => {
     const result = new Float32Array(values.length);
@@ -24,7 +24,7 @@ export function annotationMesh(state: ViewerState, modelId: string, plan: Annota
   const offset = totalYupOffset(placementFrameCoordinateInfo(state));
   origin[0] -= offset.x; origin[1] -= offset.y; origin[2] -= offset.z;
   const indices = new Uint32Array(mesh.indices);
-  return { expressId: state.toGlobalId(modelId, plan.annotationId),
+  return { expressId: state.toGlobalId(modelId, plan.objectId),
     geometryItemId: state.toGlobalId(modelId, plan.geometryItemId),
     modelIndex: modelIndices(state.models).get(modelId),
     positions: convert(mesh.positions), normals: convert(mesh.normals), indices,

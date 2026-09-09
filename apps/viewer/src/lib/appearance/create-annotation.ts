@@ -12,7 +12,7 @@ import { appearanceRevision, captureAppearanceSource, type AppearanceCommitOptio
 import { modelAppearanceAssets } from './model-assets';
 import { prepareAppearanceSerialization } from './serialization';
 import { createAppearancePlanner, type AppearancePlanner } from './planner-worker-client';
-import { commitAnnotationPlane } from './annotation-command';
+import { commitTexturedProduct } from './textured-product-command';
 import type { AnnotationPlaneFrame } from './planner-types';
 import type { RegisteredAppearanceReference } from './references/types';
 
@@ -73,6 +73,6 @@ export async function createAnnotationFromReference(modelId: string, containerId
       Name: options.Name?.trim() || 'Image reference', imageUri: modelAppearanceAssets.getAuthoredUri(modelId, reference.assetId),
       frame }, { signal: options.signal });
     validate();
-    return await commitAnnotationPlane(modelId, reference.assetId, native, containerId, renderer, { validate(current) { validate(); source.validate(current); } }, options);
+    return await commitTexturedProduct(modelId, reference.assetId, { ...native, objectId: native.annotationId }, containerId, renderer, { validate(current) { validate(); source.validate(current); } }, options);
   } finally { if (!options.planner) planner.dispose(); }
 }

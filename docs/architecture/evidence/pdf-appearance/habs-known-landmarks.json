@@ -1,0 +1,47 @@
+{
+  "printedDimension": "193 feet 4 inches",
+  "metres": 58.928,
+  "dimensionPdfRotatedPoints": [
+    [
+      67.83333333333333,
+      270.8333333333333
+    ],
+    [
+      381.1666666666667,
+      270.8333333333333
+    ]
+  ],
+  "dimensionPdfNativePoints": [
+    [
+      270.8333333333333,
+      555.5333453333333
+    ],
+    [
+      270.8333333333333,
+      868.8666786666666
+    ]
+  ],
+  "imageBox": {
+    "x": 1213,
+    "y": 503.5,
+    "width": 326,
+    "height": 219.78125
+  },
+  "chosenPixels": [
+    [
+      1228.259502365612,
+      607.3593579364582
+    ],
+    [
+      1382.4035398270887,
+      607.3593579364582
+    ]
+  ],
+  "cropPoints": [
+    36.814872807930094,
+    59.599968350666124,
+    662.6702423841398,
+    447
+  ],
+  "nativeCoordinateExplanation": "PDF CropBox [0,487.700012,596,1224], clockwise90 page coordinates=(nativeY-487.700012,nativeX). Reference tick positions measured from a6px/point raster; chosen browser events quantize coordinates."
+}

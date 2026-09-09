@@ -295,7 +295,7 @@ export function useAppearancePanel(): AppearancePanelViewProps {
     affectedCount: counts.affected, excludedCount: counts.excluded, exclusions: counts.reasons,
     settings, onSettingsChange: patch => { setSettings(current => ({ ...current, ...patch })); setPreviewEnabled(true); },
     status, statusMessage, unavailableReason, canApply: status === 'ready' && !!draft.current?.session,
-    canDiscard: !!draft.current || status === 'preparing', hasPreview: !!draft.current,
+    canDiscard: !!draft.current || status === 'preparing' || pdfSource.busy || !!pdfSource.passwordPrompt, hasPreview: !!draft.current,
     showingOriginal, onCompareChange: compare, onApply: () => { void apply(); }, onDiscard: discard,
   };
 }

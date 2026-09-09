@@ -2,9 +2,9 @@
 
 Actual Chromium/WebGPU viewer journeys on the integration runtime recorded in
 [runtime.json](runtime.json), 9 September 2026. This qualifies page appearance,
-finite coverage, calibration, ownership and transport. It does **not** claim that
-all original material metadata is preserved: the separate rendering-style
-follow-up was still pending during this run.
+finite coverage, calibration, ownership and transport. The initial run preceded the rendering-style follow-up. The final controlled
+and known-span rerun below verifies that follow-up on a separately recorded
+runtime; signed-room evidence retains its original runtime identity.
 
 ## Controlled seam and independent oracle
 
@@ -77,3 +77,40 @@ claimed for the room's decoded-pixel transport. No old user room or token was
 used, and no access token is recorded here.
 
 ![Fresh context rejoined after the owner closed](room-rejoined.png)
+
+## Final real-dimension and material rerun
+
+The final runtime is recorded separately in [runtime-final.json](runtime-final.json).
+The HABS second-floor wing explicitly labels **193′-4″**, which converts to
+58.928m using `(193 + 4/12) × 0.3048`. The image below identifies the actual
+reference and its end ticks. [Landmark input evidence](habs-known-landmarks.json)
+records the PDF CropBox, measured native/rotated PDF coordinates and actual
+browser image bounds and pointer coordinates. No page-width or nominal print-DPI
+assumption determines the building scale.
+
+![Printed HABS dimension and end ticks](habs-printed-dimension.png)
+
+Two IfcOpenShell-authored 80m-wide × 100m-high wall quads accommodate the real
+sheet scale. The same rotation/crop UI was used; point A was anchored at
+(30,0,50), and the printed 58.928m span entered. Apply, Undo/Redo, normal IFCZIP
+export and fresh reopen completed. The viewer's automatic linear-model view is
+edge-on for this controlled vertical fixture; selecting the normal **View →
+Front** preset reveals it, and both owners are selectable.
+
+[The independent exported-IFC oracle](habs-known-span-oracle.json) reconstructs
+world samples from the exported face sets, texture maps and PNGs. It detects the
+two printed dimension end ticks at X=30.080m and 89.063m: **58.983m apart**, 55mm
+from the printed reference. The stated 0.5m acceptance tolerance allows for the
+compact UI's integer pointer coordinates and atlas sampling; the sampling step
+is 0.01m. It also predicts the crop's world corners from the selected native
+landmarks and independently detects its exported left/right image boundaries.
+The metadata records both predictions and observations.
+
+The exported rendering styles retain each original SpecularColour=0.2,
+IfcSpecularRoughness=0.35 and ReflectanceMethod=NOTDEFINED. Outside albedo samples
+still match exactly and EXPRESS validation reports no errors. The final
+controlled-PDF rerun also passed the earlier scale/albedo oracle and both owner
+picks, with an 8,424-byte IFCZIP. These material checks qualify this fixture's
+fields; they are not a claim about every possible material style.
+
+![Known architectural span reopened and selected](habs-known-span-reopened-picked.png)

@@ -26,6 +26,10 @@ DATA;
 #13=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#14));
 #14=IFCTRIANGULATEDFACESET(#15,$,.F.,((1,2,3)),$);
 #15=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.)));
+#20=IFCSTYLEDITEM(#14,(#21),$);
+#21=IFCSURFACESTYLE('Wall material',.BOTH.,(#22));
+#22=IFCSURFACESTYLERENDERING(#23,0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.2),IFCSPECULARROUGHNESS(0.35),.PHONG.);
+#23=IFCCOLOURRGB($,0.4,0.5,0.6);
 ENDSEC;
 END-ISO-10303-21;`);
 const request: PageAppearanceRequest = {
@@ -51,6 +55,13 @@ test('real WASM finite-page output binds PNG atlas assets and rejects corrupt bi
     assert.deepEqual(result.plan.exclusions, []);
     assert.equal(result.itemImages.length, 1);
     assert.equal(result.assets.length, 1);
+    const material = result.plan.created.find(entity => entity.type === 'IfcSurfaceStyleRendering');
+    assert.ok(material, 'finite page export must retain the source rendering leaf');
+    assert.deepEqual(material.attributes[6], { typed: { type: 'IFCNORMALISEDRATIOMEASURE', value: 0.2 } });
+    assert.deepEqual(material.attributes[7], { typed: { type: 'IFCSPECULARROUGHNESS', value: 0.35 } });
+    assert.equal(material.attributes[8], '.PHONG.');
+    assert.ok(result.plan.created.some(entity => entity.type === 'IfcSurfaceStyle'
+      && Array.isArray(entity.attributes[2]) && entity.attributes[2].includes(`#${material.expressId}`)));
     const asset = result.assets[0];
     assert.equal(asset.imageUri, result.itemImages[0].imageUri);
     assert.equal(asset.imageUri, `textures/${createHash('sha256').update(asset.png).digest('hex')}.png`);

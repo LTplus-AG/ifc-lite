@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import { afterEach, test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, cleanup } from '@/test/render.js';
+import { render, click, cleanup } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { appearanceAssets } from '@/lib/appearance/model-assets.js';
 import { PdfAppearanceSource } from '@/lib/appearance/pdf/source-document.js';
@@ -16,6 +16,7 @@ import type { PdfWorkerClient } from '@/lib/appearance/pdf/worker-client.js';
 import { PdfAppearanceError, type PdfRasterRecipe, type PdfRasterRequest } from '@/lib/appearance/pdf/types.js';
 import { usePdfAppearanceSource } from './usePdfAppearanceSource.js';
 import { useAppearancePanel } from './useAppearancePanel.js';
+import { AppearancePanelView } from './AppearancePanelView.js';
 
 const png = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==', 'base64'));
 const baseRecipe: PdfRasterRecipe = {
@@ -51,16 +52,21 @@ async function fixture(recipe: PdfRasterRecipe = baseRecipe, panel = false) {
   let current: ReturnType<typeof usePdfAppearanceSource> | undefined;
   let panelCurrent: ReturnType<typeof useAppearancePanel> | undefined;
   const errors: unknown[] = [];
-  function PanelProbe() { panelCurrent = useAppearancePanel(); return null; }
+  function PanelProbe() { panelCurrent = useAppearancePanel(); return <AppearancePanelView {...panelCurrent} />; }
   function Probe() {
     const source = useViewerStore(state => state.appearanceSources.find(item => item.id === key));
     current = usePdfAppearanceSource(source, () => {}, error => errors.push(error));
     return null;
   }
-  render(panel ? <PanelProbe /> : <Probe />);
+  const ui = render(panel ? <PanelProbe /> : <Probe />);
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 260)); });
   requests.length = 0;
-  return { requests, errors, key, holdRaster(promise: Promise<void>) { waitForRaster = promise; },
+  return { requests, errors, key, discard() {
+      const button = [...ui.querySelectorAll('button')].find(item => item.textContent === 'Discard');
+      assert.ok(button instanceof HTMLButtonElement);
+      assert.equal(button.disabled, false, 'the actual footer must allow cancellation without a model preview');
+      click(button);
+    }, holdRaster(promise: Promise<void>) { waitForRaster = promise; },
     get panel() { assert.ok(panelCurrent); return panelCurrent; }, get current() { assert.ok(current); return current; } };
 }
 
@@ -106,7 +112,7 @@ test('Discard cancels pending PDF controls without removing the retained source 
   const before = useViewerStore.getState().appearanceSources.find(item => item.id === f.key)!;
   act(() => f.panel.pdf!.onPageChange(3));
   act(() => f.panel.pdf!.onDpiChange(300));
-  act(() => f.panel.onDiscard());
+  f.discard();
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 260)); });
   assert.equal(f.requests.length, 0);
   assert.equal(f.panel.pdf!.pageNumber, 1);
@@ -125,7 +131,7 @@ test('Discard rejects a late PDF raster without resurrecting the appearance prev
   act(() => f.panel.pdf!.onDpiChange(300));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 260)); });
   assert.equal(f.requests.length, 1, 'raster really started before cancellation');
-  act(() => f.panel.onDiscard());
+  f.discard();
   await act(async () => { complete(); await new Promise(resolve => setTimeout(resolve, 20)); });
   assert.equal(useViewerStore.getState().appearanceSources.find(item => item.id === f.key), before);
   assert.equal(useViewerStore.getState().appearanceDraft!.previewEnabled, false);
@@ -141,7 +147,7 @@ test('Discard closes a PDF password prompt and preserves the existing source (#4
   });
   await act(async () => { f.panel.onUpload(new File([controlledPdf()], 'protected.pdf', { type: 'application/pdf' })); });
   assert.ok(f.panel.pdfPassword);
-  act(() => f.panel.onDiscard());
+  f.discard();
   assert.equal(f.panel.pdfPassword, undefined);
   assert.equal(f.panel.sourceBusy, false);
   assert.equal(useViewerStore.getState().appearanceSources.find(item => item.id === f.key), before);

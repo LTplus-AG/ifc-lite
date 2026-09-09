@@ -231,4 +231,7 @@ fn issue_4404_materialization_payload_restores_georeferenced_native_frame_once()
     assert!(max_error<1e-6,"restored native world error: {max_error}");
     let json=serde_json::to_value(&plan).unwrap();
     assert_eq!(json["conversions"][0]["rtcOffset"],serde_json::json!(binding.rtc_offset));
+    for key in ["sourcePositions","sourceNormals","sourceOrigin","sourceColor","rtcOffset"] {
+        assert!(json["conversions"][0][key].as_array().unwrap().iter().all(|v|v.as_f64().is_some_and(f64::is_finite)), "{key}");
+    }
 }

@@ -71,7 +71,8 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
             evaluated_source::validate_style_tree(source,&body,old_item)?;
             let surface=evaluated_source::surface_styles(source,old_item)?;
             if mesh.positions.len()%3!=0 || mesh.normals.len()!=mesh.positions.len() || mesh.indices.len()%3!=0 || mesh.positions.is_empty()
-                || mesh.indices.is_empty() || mesh.positions.iter().chain(&mesh.normals).any(|n|!n.is_finite())
+                || mesh.indices.is_empty() || mesh.positions.iter().chain(&mesh.normals).chain(&mesh.color).any(|n|!n.is_finite())
+                || mesh.origin.iter().any(|n|!n.is_finite())
                 || mesh.indices.iter().any(|&i|i as usize>=mesh.positions.len()/3) {
                 return Err("Canonical source geometry is invalid".into());
             }
@@ -130,7 +131,8 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
         normalized.request.next_express_id=plan.next_available_express_id;
         normalized.request.product_ids.push(product_id);
         let context=source.context.as_ref().ok_or("Missing canonical source frame")?;
-        let rtc_offset=if context.meta.needs_shift {context.meta.rtc_offset.into()} else {[0.;3]};
+        let rtc_offset: [f64;3]=if context.meta.needs_shift {context.meta.rtc_offset.into()} else {[0.;3]};
+        if rtc_offset.iter().any(|value|!value.is_finite()) {return Err("Invalid canonical source RTC frame".into());}
         normalized.conversions.push(Conversion {plan,styled_id:styled,binding:AppearanceConversion {
             product_id,representation_id:body_id,source_geometry_item_id:old_item,geometry_item_id:item,
             source_indices:mesh.indices,source_positions:mesh.positions,source_normals:mesh.normals,

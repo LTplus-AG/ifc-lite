@@ -41,8 +41,8 @@
  *     and dropping there was the orphaned-storey symptom again (#4126). This
  *     function still takes no `parsed`, so it cannot close over such a
  *     reference; it REPORTS it in {@link SpatialRelationPlan.blockedOn} and the
- *     caller, which does have `parsed`, keeps it and replans. Purity is intact:
- *     `blockedOn` is a finding, not a mutation.
+ *     caller, which does have `parsed`, decides whether to keep it and replan.
+ *     Purity is intact: `blockedOn` is a finding, not a mutation.
  *
  * A KNOWN gap: {@link keepWhole}, the fallback for a record this module could
  * not read as its six attributes, still drops on the same private
@@ -111,14 +111,14 @@ export interface SpatialRelationPlan {
   /** Relation id → rewritten record text, for the ones that lost a member. */
   rewritten: Map<number, string>;
   /**
-   * Unkept non-SET references, in practice a relation-private `OwnerHistory`,
-   * of the relations that this plan dropped for THAT reason alone: their
-   * relating parent is kept and their member intersection is non-empty, so
-   * keeping these ids is all that stands between them and surviving. A caller
-   * holding the parsed model can close over them and replan (#4126). Every
-   * other drop is final and reports nothing here.
+   * One entry per relation this plan dropped for ONE reason alone: unkept non-SET references,
+   * in practice a relation-private `OwnerHistory`. Its relating parent is kept and its member
+   * intersection is non-empty, so keeping EVERY id in the entry is all that stands between it
+   * and surviving. Grouped per relation, because keeping only SOME of one relation's blockers
+   * leaves it dropped and those ids orphaned (#4150). A caller with the parsed model closes
+   * over a group and replans (#4126). Every other drop is final and reports nothing here.
    */
-  blockedOn: number[];
+  blockedOn: number[][];
 }
 
 /**
@@ -174,7 +174,7 @@ export function planSpatialRelations(
 ): SpatialRelationPlan {
   const add: number[] = [];
   const rewritten = new Map<number, string>();
-  const blockedOn: number[] = [];
+  const blockedOn: number[][] = [];
   for (const inst of instances) {
     const slots = STRUCTURE_RELATIONS[inst.type];
     if (slots === undefined) continue;
@@ -188,15 +188,15 @@ export function planSpatialRelations(
 
 /**
  * The record text this relation contributes to the subset, or null to drop it.
- * Returns `inst.full` unchanged when nothing was filtered out. Appends to
- * `blocked` when the ONLY thing standing in the way is an unkept non-SET
- * reference; see {@link SpatialRelationPlan.blockedOn}.
+ * Returns `inst.full` unchanged when nothing was filtered out. Appends ONE entry
+ * to `blocked` when the ONLY thing standing in the way is unkept non-SET
+ * references; see {@link SpatialRelationPlan.blockedOn}.
  */
 function relationLine(
   inst: StepRecord,
   [relatingIdx, relatedIdx]: [number, number],
   keep: ReadonlySet<number>,
-  blocked: number[],
+  blocked: number[][],
 ): string | null {
   // A null is a REJECTED scan, not an empty list: its parts are wherever the
   // scanner happened to be, so reading `args[relatingIdx]` or writing
@@ -238,7 +238,7 @@ function relationLine(
     }
   }
   if (unkept.length > 0) {
-    blocked.push(...unkept);
+    blocked.push(unkept);
     return null;
   }
 

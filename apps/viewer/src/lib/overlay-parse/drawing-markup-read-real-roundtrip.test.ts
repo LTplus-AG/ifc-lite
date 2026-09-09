@@ -106,8 +106,12 @@ function assertPointClose(actual: MarkupPoint2D, expected: MarkupPoint2D, label:
   );
 }
 
-describe('drawing-markup-read: real round trip on building-architecture.ifc (#4153)', { skip: !existsSync(SAMPLE_PATH) }, () => {
+describe('drawing-markup-read: real round trip on building-architecture.ifc (#4153)', () => {
   it('recovers every markup point after write → StepExporter export → re-parse → real WASM symbolic parse', async () => {
+    // Fail loudly rather than silently reporting zero tests if the committed
+    // sample fixture is ever deleted or moved without updating SAMPLE_PATH.
+    assert.ok(existsSync(SAMPLE_PATH), `missing fixture: ${SAMPLE_PATH}`);
+
     const store1: IfcDataStore = await new IfcParser().parseColumnar(
       toArrayBuffer(readFileSync(SAMPLE_PATH)),
     );
@@ -196,15 +200,28 @@ describe('drawing-markup-read: real round trip on building-architecture.ifc (#41
       return { objectType: entity.attributes[4] as string | null, quantities, properties };
     };
 
+    // Sanity: the real placement chain actually distorted the parsed
+    // geometry (else this test could pass vacuously the way the synthetic
+    // fixtures did). The bug's own reproduction: local (1,2) parses back as
+    // world (4,-5) before any compensation is applied — assert that raw
+    // value directly, not merely that the final (compensated) result is
+    // correct, so a regression that collapses the placement chain to
+    // identity (making compensation a no-op) cannot pass vacuously.
+    const rawLines = [...parseResult.loose, ...[...parseResult.byStorey.values()].flatMap((b) => b.lines)];
+    assert.ok(rawLines.length > 0, 'expected parsed annotation geometry');
+    const rawMeasureLine = rawLines.find(
+      (l) => Math.abs(l.line.start.x - 4) < 1e-6 && Math.abs(l.line.start.y - (-5)) < 1e-6,
+    );
+    assert.ok(
+      rawMeasureLine,
+      `expected raw measure start (4, -5) before compensation; got ${JSON.stringify(rawLines.map((l) => l.line.start))}`,
+    );
+
     const result = readDrawingMarkupFromParseResult(parseResult, meta, {
       lengthUnitScale: LENGTH_UNIT_SCALE,
       store: store2,
     });
 
-    // Sanity: the real placement chain actually distorted the parsed
-    // geometry (else this test could pass vacuously the way the synthetic
-    // fixtures did). The bug's own reproduction: local (1,2) parses back as
-    // world (4,-5) before any compensation.
     assert.strictEqual(result.measure2DResults.length, 1, 'expected exactly one measure result');
     assert.strictEqual(result.polygonArea2DResults.length, 1, 'expected exactly one polygon result');
     assert.strictEqual(result.textAnnotations2D.length, 1, 'expected exactly one text result');

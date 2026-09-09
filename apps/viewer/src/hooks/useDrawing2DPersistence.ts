@@ -33,7 +33,7 @@ import { getCachedHash, setCachedHash, notifyDecided } from './drawingMarkupRest
 import { resetSaveState, beginRestore, endRestore, setRestoredSectionConfig, ensureSaveSubscription } from './drawingMarkupSave.js';
 
 export { hasPersistedMarkupEntryFor, onLocalStorageDecidedFor } from './drawingMarkupRestorePrecedence.js';
-export { notifyDrawing2DSectionConfig } from './drawingMarkupSave.js';
+export { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './drawingMarkupSave.js';
 
 /**
  * Resolves the active model's content hash (from `FederatedModel.sourceFile`)

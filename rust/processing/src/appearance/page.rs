@@ -113,7 +113,9 @@ fn encode_png(atlas: &page_atlas::Atlas, limit: usize) -> Result<Vec<u8>, String
     let mut output = Bounded { bytes: Vec::new(), limit };
     let mut encoder = png::Encoder::new(&mut output, atlas.width, atlas.height);
     encoder.set_color(png::ColorType::Rgba); encoder.set_depth(png::BitDepth::Eight);
-    encoder.write_header().map_err(|e| e.to_string())?.write_image_data(&atlas.rgba).map_err(|e| e.to_string())?;
+    let mut writer = encoder.write_header().map_err(|e| e.to_string())?;
+    writer.write_image_data(&atlas.rgba).map_err(|e| e.to_string())?;
+    writer.finish().map_err(|e| e.to_string())?;
     Ok(output.bytes)
 }
 fn bind_images(plan: &mut AppearancePlan, images: &[AppearanceItemImage], source: &mut Source<'_>, styles: &crate::prepass::ResolvedPrepass) -> Result<(), String> {

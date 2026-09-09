@@ -226,3 +226,19 @@ fn issue_4260_page_refuses_inherited_rendering_instead_of_dropping_its_propertie
     assert!(!result.plan.items.iter().any(|item| item.geometry_item_id == 14));
     assert!(result.plan.exclusions.iter().any(|excluded| excluded.product_id == 10));
 }
+
+#[test]
+fn png_budget_refuses_truncated_final_chunk_4260() {
+    let atlas = page_atlas::Atlas { width: 1, height: 1, rgba: vec![20, 80, 160, 255], uv: vec![] };
+    let complete = encode_png(&atlas, 4096).unwrap();
+    assert_eq!(&complete[complete.len() - 8..complete.len() - 4], b"IEND");
+    // Image data fits, but the final IEND chunk does not. Drop cannot report this error.
+    for missing in [1, 4, 8, 12] {
+        assert!(encode_png(&atlas, complete.len() - missing).is_err(), "accepted incomplete PNG missing {missing} bytes");
+    }
+    assert_eq!(encode_png(&atlas, complete.len()).unwrap(), complete);
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(&complete)).read_info().unwrap();
+    let mut pixels = vec![0; decoder.output_buffer_size().unwrap()];
+    decoder.next_frame(&mut pixels).unwrap();
+    assert_eq!(pixels, atlas.rgba);
+}

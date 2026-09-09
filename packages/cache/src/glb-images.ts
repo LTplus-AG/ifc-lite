@@ -29,6 +29,12 @@ function imageResources(gltf: GLTFDocument, bin: Uint8Array, copy: boolean): Map
     if (!view || view.buffer !== 0 || length === undefined || !Number.isSafeInteger(start) || !Number.isSafeInteger(length) || start < 0 || length <= 0 || start + length > bin.byteLength) {
       throw new Error('GLB: image buffer view exceeds the embedded buffer');
     }
+    // The host can skip alpha readback for JPEG paths only when the encoded
+    // payload really is JPEG. Do not derive that guarantee from untrusted MIME.
+    const signature = image.mimeType === 'image/png' ? [137,80,78,71,13,10,26,10] : [255,216,255];
+    if (length < signature.length || signature.some((value, offset) => bin[start + offset] !== value)) {
+      throw new Error('GLB: image signature does not match its declared MIME type');
+    }
     total += length;
     if (resources.size >= 256 || total > 256 * 1024 * 1024) throw new Error('GLB: embedded images exceed the 256-image / 256 MiB limit');
     resources.set(path, copy ? bin.slice(start, start + length) : bin.subarray(start, start + length));

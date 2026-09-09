@@ -23,7 +23,7 @@ DATA;
 ENDSEC;END-ISO-10303-21;`);
   const data = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer);
   data.spatialHierarchy = rebuildSpatialHierarchy(data.entities, data.relationships);
-  return { ...fixtureModel(id), schemaVersion: 'IFC4', ifcDataStore: data };
+  return { ...fixtureModel(id), schemaVersion: 'IFC4' as const, ifcDataStore: data };
 }
 function select(ui: HTMLElement, label: string) {
   const input = ui.querySelector(`select[aria-label="${label}"]`);

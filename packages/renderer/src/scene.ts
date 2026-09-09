@@ -24,7 +24,7 @@ import {
   rayIntersectsBox,
 } from './scene-raycaster.js';
 import { selectBoundingBoxesInRect } from './scene-rect-select.js';
-import { mergeGeometry, splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources } from './scene-geometry.js';
+import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
@@ -2515,19 +2515,6 @@ export class Scene {
   }
 
   /**
-   * Merge multiple mesh geometries into single vertex/index buffers.
-   * Delegates to the extracted mergeGeometry() utility.
-   */
-  private mergeGeometry(meshDataArray: MeshData[], forcedOrigin?: [number, number, number]): {
-    vertexData: Float32Array;
-    indices: Uint32Array;
-    bounds: { min: [number, number, number]; max: [number, number, number] };
-    origin: [number, number, number];
-  } {
-    return mergeGeometry(meshDataArray, forcedOrigin);
-  }
-
-  /**
    * Get the effective max buffer size for this GPU device, with a safety margin.
    */
   private getMaxBufferSize(device: GPUDevice): number {
@@ -3792,22 +3779,12 @@ export class Scene {
   }
 
   /**
-   * Clear flat/batched geometry (meshes, batches, buckets, textured meshes,
-   * colour overlays, streaming state, residency bookkeeping) WITHOUT
-   * touching GPU-instanced templates (#2073). A reshape that still has at
-   * least one model present should call this instead of `clear()`, then
-   * reconcile instanced ownership with `removeInstancedTemplatesForModel`
-   * for any model that did NOT survive — that way a still-loaded model's
-   * repeated geometry (windows, doors, bolts, ...) stays resident across a
-   * visibility toggle / in-place content mutation / federated model add
-   * instead of silently vanishing (nothing re-uploads instanced shard bytes
-   * after their one-time drain).
-   *
-   * Bounding boxes are only dropped for ids with NO surviving instanced
-   * occurrence — an instanced-only id's box must outlive this call so
-   * raycast / measure / section keep working for the geometry that was
-   * just retained; a flat-only id's box is stale the moment its mesh data
-   * is gone, so it is dropped like everything else here.
+   * Clear flat/batched geometry, textures, overlays and streaming/residency
+   * state while preserving GPU-instanced templates (#2073). Reshapes use this
+   * instead of clear(), then removeInstancedTemplatesForModel for departed
+   * models: surviving shards are not uploaded again after their initial drain.
+   * Drop retained flat bounds and rebuild boxes from surviving instances so
+   * picking and sections cannot see a removed flat contribution (#4226).
    */
   clearFlatGeometry(): void {
     this.appearanceController?.forget();

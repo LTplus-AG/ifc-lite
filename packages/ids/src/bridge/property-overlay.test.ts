@@ -44,6 +44,31 @@ function makeStore(): IfcDataStore {
         },
       ],
     ],
+    // A wall carrying TWO distinct `Pset_WallCommon` sets (e.g. one from
+    // `IfcRelDefinesByProperties` on the type, one on the occurrence — a
+    // legitimate model shape `collectAllPropertySets`/`property-overlay-resolver.ts`
+    // both document). The first carries only `IsExternal`; the SECOND
+    // carries `FireRating`. A first-match-only lookup against this shape
+    // finds a `Pset_WallCommon` (the first one) but not the property this
+    // override targets, so it takes the "create" branch against the WRONG
+    // set instead of updating the real one.
+    [
+      4,
+      [
+        {
+          name: 'Pset_WallCommon',
+          properties: [
+            { name: 'IsExternal', value: true, type: 3, dataType: 'IFCBOOLEAN' },
+          ],
+        },
+        {
+          name: 'Pset_WallCommon',
+          properties: [
+            { name: 'FireRating', value: 'NONE', type: 0, dataType: 'IFCLABEL' },
+          ],
+        },
+      ],
+    ],
   ]);
 
   return {
@@ -133,5 +158,45 @@ describe('createDataAccessor property overlay (#3929)', () => {
     // second, differently-cased property that a case-insensitive scan could
     // resolve to either one depending on array order.
     expect(accessor.getPropertySets(3)[0].properties).toHaveLength(1);
+  });
+
+  describe('same-named-pset collision (two distinct Pset_WallCommon sets, #4XXX)', () => {
+    it('an update corrects the value on the SET THAT ACTUALLY CARRIES the property, not the first same-named set', () => {
+      const overrides = new Map<number, PropertyOverride[]>([
+        [4, [{ psetName: 'Pset_WallCommon', propName: 'FireRating', value: 'F90' }]],
+      ]);
+      const accessor = createDataAccessor(makeStore(), (id) => overrides.get(id));
+
+      expect(accessor.getPropertyValue(4, 'Pset_WallCommon', 'FireRating')?.value).toBe('F90');
+
+      // No duplicate FireRating was created: exactly one property named
+      // FireRating exists across BOTH same-named psets combined.
+      const sets = accessor.getPropertySets(4).filter((p) => p.name === 'Pset_WallCommon');
+      const fireRatingCount = sets
+        .flatMap((s) => s.properties)
+        .filter((p) => p.name === 'FireRating').length;
+      expect(fireRatingCount).toBe(1);
+
+      // The sibling property on the OTHER same-named set is untouched.
+      expect(accessor.getPropertyValue(4, 'Pset_WallCommon', 'IsExternal')?.value).toBe(true);
+    });
+
+    it('a delete removes the property from the set that actually carries it, and the read-back confirms it is gone', () => {
+      const overrides = new Map<number, PropertyOverride[]>([
+        [4, [{ psetName: 'Pset_WallCommon', propName: 'FireRating', value: null, deleted: true }]],
+      ]);
+      const accessor = createDataAccessor(makeStore(), (id) => overrides.get(id));
+
+      expect(accessor.getPropertyValue(4, 'Pset_WallCommon', 'FireRating')).toBeUndefined();
+
+      const sets = accessor.getPropertySets(4).filter((p) => p.name === 'Pset_WallCommon');
+      const fireRatingCount = sets
+        .flatMap((s) => s.properties)
+        .filter((p) => p.name === 'FireRating').length;
+      expect(fireRatingCount).toBe(0);
+
+      // The other set's own property survives.
+      expect(accessor.getPropertyValue(4, 'Pset_WallCommon', 'IsExternal')?.value).toBe(true);
+    });
   });
 });

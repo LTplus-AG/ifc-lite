@@ -70,9 +70,11 @@ import { playbackTeardown } from './slices/playbackSlice.js';
 import { searchTeardown } from './slices/searchSlice.teardown.js';
 import { annotationsTeardown } from './slices/annotationsSlice.teardown.js';
 import { addElementTeardown } from './slices/addElementSlice.teardown.js';
+import { splitToolTeardown } from './slices/splitToolSlice.js';
 import { modelPlacementTeardown } from './slices/modelPlacementSlice.js';
 import { pointCloudTeardown } from './slices/pointCloudSlice.js';
 import { zonesTeardown } from './slices/zonesSlice.js';
+import { layerStackTeardown } from './slices/layerStackSlice.teardown.js';
 
 /**
  * Every slice teardown the viewer store knows about.
@@ -108,9 +110,11 @@ export const viewerTeardownRegistry: readonly AnySliceTeardown[] = createTeardow
   searchTeardown,
   annotationsTeardown,
   addElementTeardown,
+  splitToolTeardown,
   pointCloudTeardown,
   modelPlacementTeardown,
   zonesTeardown,
+  layerStackTeardown,
 ]);
 
 /**

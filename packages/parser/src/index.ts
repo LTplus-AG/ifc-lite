@@ -51,7 +51,7 @@ export type { IfcSourceBytes, IfcSourceTransfer } from './source-bytes.js';
 export { CompactEntityIndex, CompactEntityIndexBuilder, buildCompactEntityIndex } from './compact-entity-index.js';
 export { scanIfcEntities } from './entity-scanner.js';
 export type { EntityScanPath, EntityScanResult, PreScannedEntityIndex, WasmScanApi } from './entity-scanner.js';
-export { REL_TYPE_MAP, RELATIONSHIP_TYPES, isIfcTypeLikeEntity } from './columnar-parser-indexes.js';
+export { REL_TYPE_MAP, isIfcTypeLikeEntity } from './columnar-parser-indexes.js';
 export { IFC_SUBTYPES, expandTypes, QUERY_REL_TYPE_MAP } from './query-backend-maps.js';
 export { PropertyExtractor } from './property-extractor.js';
 export { QuantityExtractor } from './quantity-extractor.js';
@@ -75,6 +75,7 @@ export { ColumnarParser, type IfcDataStore, type EntityByIdIndex, extractPropert
 export type { IfcStoreBase, IfcSourceHeader, SpatialHierarchy, EntityTable } from '@ifc-lite/data';
 export { parseSourceHeader } from './source-header.js';
 export { attachDataStoreAccessors, type IfcStoreData } from './data-store-accessors.js';
+export { buildDropCensus, type DropCensus, type DropCensusInput, type ClassCensusEntry, type DropCategory } from './drop-census.js';
 export { createSyntheticDataStore, type SyntheticDataStoreOptions, type SyntheticEntity } from './synthetic-data-store.js';
 // WorkerParser is browser-only due to Vite worker imports
 // Import from '@ifc-lite/parser/browser' instead
@@ -146,6 +147,11 @@ export { deterministicGlobalId } from './deterministic-global-id.js';
 
 // Generated IFC4 schema (100% coverage - 776 entities, 397 types, 207 enums)
 export { SCHEMA_REGISTRY, getEntityMetadata, getAllAttributesForEntity, getInheritanceChainForEntity, isKnownEntity } from './generated/schema-registry.js';
+export {
+  getSchemaRegistryForVersion,
+  type SchemaVersionWithRegistry,
+  type SchemaRegistry,
+} from './generated/schema-registry-by-version.js';
 export type * from './generated/entities.js';
 export * from './generated/enums.js';
 

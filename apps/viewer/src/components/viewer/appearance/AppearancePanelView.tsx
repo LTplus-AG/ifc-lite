@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { AppearancePdfFields, AppearancePdfPassword } from './AppearancePdfFields.js';
 import { AppearanceSourceFields } from './AppearanceSourceFields.js';
 import { AppearanceScopeFields } from './AppearanceScopeFields.js';
+import { AppearanceCalibrationFields } from './AppearanceCalibrationFields.js';
 import { AppearanceMappingFields } from './AppearanceMappingFields.js';
 import type { AppearancePanelViewProps } from './types.js';
 
@@ -42,7 +43,9 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
       {props.pdfPassword && <AppearancePdfPassword key={props.pdfPassword.documentName} prompt={props.pdfPassword} disabled={applying} />}
       {props.pdf && <AppearancePdfFields key={`${props.pdf.documentId}:${props.pdf.pageNumber}:${props.pdf.rotation}:${inputReset}`} pdf={props.pdf} disabled={applying} onInvalid={onInvalid} />}
       <AppearanceScopeFields {...props} disabled={applying} />
-      <AppearanceMappingFields key={`${props.modelId}:${props.sourceId}:${inputReset}`} settings={props.settings} onChange={props.onSettingsChange} disabled={applying || blocked} onInvalid={onInvalid} />
+      {props.calibration && <AppearanceCalibrationFields key={`${props.sourceId}:${props.calibration.recipe.page.pageNumber}:${inputReset}`}
+        {...props.calibration} disabled={applying || blocked || !!props.sourceBusy} onInvalid={onInvalid} />}
+      <AppearanceMappingFields calibrated={!!props.calibration} key={`${props.modelId}:${props.sourceId}:${inputReset}`} settings={props.settings} onChange={props.onSettingsChange} disabled={applying || blocked} onInvalid={onInvalid} />
     </div>
     <footer className="shrink-0 space-y-2 border-t bg-background p-3">
       <div role={props.status === 'error' || invalidFields.size ? 'alert' : 'status'} aria-live="polite"

@@ -170,6 +170,11 @@ the WebGPU view updates immediately throughout the move.
 
 Both the 3D cut and the 2D drawing resolve section percentages from the same
 placed bounds, including a model moved beyond its original extent.
+Construction projection also uses the placed floor elevations. Moving a model
+and its section plane together preserves the floor/ceiling projection bands and
+the resulting drawing geometry, for either section direction. Floor bands
+refresh when the model moves or its storey membership changes; no reload is
+needed. See [2D drawings after repositioning](drawing-2d.md#drawings-after-repositioning).
 
 ![A real Archicad IFC section after moving the model up 100 metres](../assets/model-reposition-section.png)
 

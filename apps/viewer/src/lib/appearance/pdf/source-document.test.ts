@@ -117,3 +117,19 @@ test('late PDF rasterization cannot publish or leak a source image after documen
     'late rasterization retained no hidden lease',
   );
 });
+
+test('replaced PDF rasters release temporary leases while the document and committed images stay usable (#4260)', async () => {
+  const images = inventory();
+  const document = await PdfAppearanceSource.open(new File([controlledPdf()], 'drawing.pdf'), images, { worker: worker() });
+  const first = await document.rasterize({ pageNumber: 1 });
+  images.retain(first.asset.id, { kind: 'model', id: 'committed' });
+  document.releaseRaster(first.asset.id);
+  assert.ok(images.get(first.asset.id), 'committed image ownership survives page replacement');
+  images.release(first.asset.id, { kind: 'model', id: 'committed' });
+  assert.equal(images.get(first.asset.id), undefined, 'the PDF original does not pin discarded raster pixels');
+  const second = await document.rasterize({ pageNumber: 1 });
+  assert.equal(second.asset.id, first.asset.id, 'the retained original can reproduce the same derivative');
+  document.releaseRaster(second.asset.id);
+  assert.equal(images.get(second.asset.id), undefined);
+  document.dispose();
+});

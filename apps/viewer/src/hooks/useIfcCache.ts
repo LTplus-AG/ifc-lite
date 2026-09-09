@@ -224,13 +224,12 @@ export function useIfcCache() {
 
       const reader = new BinaryCacheReader();
 
-      // No full-file hash on the repeat-open path (the #1 un-flag blocker). The
-      // hit is already validated by the strengthened, spread-sampled cache key
-      // (`sourceFingerprint.ts`): a key match means the exact byte length AND a
-      // 64-bit hash of a ~160KB spread (head + tail + interior windows) match, so
-      // a genuinely different file can never key the same entry. That makes the
-      // former ~0.7-1.7s `xxhash64(fullSource)` recompute here redundant, and
-      // dropping it removes the main-thread stall for BOTH cache tiers. A
+      // No SYNCHRONOUS full-file hash on the repeat-open path (the former
+      // ~0.7-1.7s `xxhash64(fullSource)` main-thread stall). The spread-sampled
+      // cache key (`sourceFingerprint.ts`) only KEYS the lookup — it cannot see
+      // a byte-length-preserving edit between its sample windows; staleness is
+      // gated by the mtime guard + off-thread full-hash revalidation in
+      // `cacheTier.ts` / `useIfcLoader` (#4269). A
       // truncated/corrupt cache buffer still fails fast in `reader.read` below →
       // the catch deletes the entry and returns a graceful miss.
       // Blob entries (cold-tier writes) are disk-backed: materialize once
@@ -544,13 +543,11 @@ export function useIfcCache() {
       const cacheDataStore: CacheDataStore = toCacheDataStore(dataStore);
 
       // Compute the true full-file validation hash off the main thread (runs in
-      // parallel with the cache-buffer serialization below). ONLY for the
-      // source-decoupled tier: the source-persisting tier serves cached geometry
-      // AND cached source together (self-consistent) and never consults it, so
-      // its <=150MB write path stays exactly as it was.
-      const fullHashPromise = persistSource
-        ? Promise.resolve<string | null>(null)
-        : computeFullSourceHash(sourceBuffer);
+      // parallel with the cache-buffer serialization below) for BOTH tiers
+      // (#4269): the loader background-revalidates a served hit against it and
+      // purges + reloads on mismatch — the only gate that catches an
+      // mtime-preserved, byte-length-preserving in-place edit.
+      const fullHashPromise = computeFullSourceHash(sourceBuffer);
 
       console.log('[useIfcCache] Writing cache buffer...');
       const cacheBuffer = await writer.write(cacheDataStore, geometry, sourceBuffer, {

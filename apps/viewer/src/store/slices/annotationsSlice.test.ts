@@ -162,6 +162,36 @@ describe('AnnotationsSlice', () => {
         'deleting a pin we never persisted must not add a storage entry',
       );
     });
+
+    it('cleans up a stale storage entry left over from before the pin flipped to remote', () => {
+      // Create a local pin (persisted)...
+      state.beginDraft({ x: 0, y: 0, z: 0 }, null, null);
+      const id = state.commitDraft('local, then flipped remote out-of-band')!;
+      assert.ok(persistedIds().includes(id), 'sanity: pin was persisted while local');
+      const current = state.annotations.get(id)!;
+
+      // ...then flip its `remote` flag directly on the in-memory map, bypassing
+      // upsertRemoteAnnotation (which would clean the storage entry itself).
+      // This reproduces the scenario where a pin's ownership resolves to
+      // remote by some path other than upsertRemoteAnnotation, leaving the
+      // old localStorage entry stale.
+      const flipped = new Map(state.annotations);
+      flipped.set(id, { ...current, remote: true });
+      setState({ annotations: flipped });
+      assert.strictEqual(state.annotations.get(id)?.remote, true, 'sanity: pin is now flagged remote');
+      assert.ok(
+        persistedIds().includes(id),
+        'sanity: the storage entry from before the flip is still there (stale)',
+      );
+
+      state.removeRemoteAnnotation(id);
+
+      assert.strictEqual(state.annotations.has(id), false, 'removed from in-memory map');
+      assert.ok(
+        !persistedIds().includes(id),
+        'removeRemoteAnnotation must clean up the stale storage entry even though the pin is now flagged remote',
+      );
+    });
   });
 
   describe('upsertRemoteAnnotation — persistence symmetry', () => {

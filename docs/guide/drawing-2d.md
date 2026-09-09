@@ -21,6 +21,23 @@ Each drawing includes:
 | **Architectural symbols** | Door swings, window frames, stair arrows |
 | **Annotations** | Dimensions and labels |
 
+## Drawings After Repositioning
+
+In the viewer, section cuts and construction projection use the model's current
+workspace placement. After [repositioning a model](federation.md#repositioning-models-and-pointclouds),
+the floor and ceiling limits used for construction projection refresh with its
+displayed geometry and storey membership.
+
+To compare the same floor plan before and after a vertical move, move the
+section plane by the same amount, or use the same section percentage for the
+same model bounds. Once drawing generation finishes, the equivalent cut keeps
+the same projection geometry and floor/ceiling bands. Moving only the model
+while keeping an absolute section elevation fixed produces a different cut.
+
+This is a viewer workspace adjustment: it does not rewrite the source IFC
+placements. Existing measurements retain their recorded workspace points and
+are marked stale after movement; remeasure them in the new arrangement.
+
 ## Quick Start
 
 ### Generating a Floor Plan

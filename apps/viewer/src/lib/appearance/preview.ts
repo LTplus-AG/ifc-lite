@@ -16,6 +16,12 @@ function textureIdentity(bitmap: ImageBitmap): number {
   return id;
 }
 
+export interface AppearancePreviewImage {
+  bitmap: ImageBitmap;
+  imageUri: string;
+  repeatS: boolean;
+  repeatT: boolean;
+}
 export interface AppearancePreviewParts {
   globalId: number;
   modelIndex: number;
@@ -28,6 +34,7 @@ export function bindAppearancePreview(
   bitmap: ImageBitmap, imageUri: string, repeatS: boolean, repeatT: boolean,
   expandCorners: (mesh: MeshData, sourceIndices: readonly number[], cornerUvs: readonly number[], targetIndices: Uint32Array,
     targetCornerNormals: readonly number[], targetVertexCount: number) => MeshData,
+  itemImages?: ReadonlyMap<number, AppearancePreviewImage>,
 ): AppearancePreviewParts[] {
   const targetTopologies = new Map(plan.items.map(item => [item.geometryItemId, new Uint32Array(item.targetIndices)]));
   const byProduct = new Map<number, Map<number, AppearancePlan['items'][number]>>();
@@ -49,10 +56,12 @@ export function bindAppearancePreview(
         throw new Error(`The geometry of IFC object #${productId} changed. Reload it before applying appearance.`);
       }
       represented.add(item.geometryItemId);
+      const image = itemImages ? itemImages.get(item.geometryItemId) : { bitmap, imageUri, repeatS, repeatT };
+      if (!image) throw new Error(`The baked image for IFC geometry #${item.geometryItemId} is missing.`);
       return { ...expandCorners(mesh, item.sourceIndices, item.previewCornerUvs, targetTopologies.get(item.geometryItemId)!, item.targetCornerNormals, item.targetVertexCount), color: [1, 1, 1, 1] as [number, number, number, number],
         shadingColor: undefined, texture: undefined,
-        textureBitmap: bitmap,
-        textureRef: { textureId: textureIdentity(bitmap), url: imageUri, repeatS, repeatT } };
+        textureBitmap: image.bitmap,
+        textureRef: { textureId: textureIdentity(image.bitmap), url: image.imageUri, repeatS: image.repeatS, repeatT: image.repeatT } };
     });
     if (represented.size !== items.size) throw new Error(`Some geometry for IFC object #${productId} is still loading.`);
     return { globalId, modelIndex, parts };

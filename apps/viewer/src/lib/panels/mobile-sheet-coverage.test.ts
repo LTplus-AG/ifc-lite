@@ -22,6 +22,8 @@
 import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { isValidElement, Suspense, type ReactNode } from 'react';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { WORKSPACE_PANELS, getPanelDef } from './registry.js';
 import { renderPanelBody } from './renderPanelBody.js';
 
@@ -44,9 +46,16 @@ describe('workspace panel registry coverage', () => {
     // Properties. Compares the element TYPE, which is the component function.
     const byType = new Map<unknown, string[]>();
     for (const panel of WORKSPACE_PANELS) {
-      const body = renderPanelBody(panel.id, () => {}) as { type?: unknown } | null;
-      const type = body?.type;
-      if (type === undefined) continue;
+      let body = renderPanelBody(panel.id, () => {});
+      // #4243: Layers and Appearance share loading/error hosts, not content.
+      // Compare the actual panel beneath those hosts so the fall-through
+      // regression remains detectable without rejecting legitimate wrappers.
+      while (isValidElement<{ children?: ReactNode }>(body) &&
+        (body.type === ChunkErrorBoundary || body.type === Suspense)) {
+        body = body.props.children;
+      }
+      assert.ok(isValidElement(body), `${panel.id} must have panel content beneath its loading/error hosts`);
+      const type = body.type;
       const ids = byType.get(type) ?? [];
       ids.push(panel.id);
       byType.set(type, ids);

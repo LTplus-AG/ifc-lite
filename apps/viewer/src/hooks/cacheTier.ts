@@ -11,9 +11,11 @@
  *     directly from IndexedDB.
  *   - `mesh-only`: the source-decoupled tier. Persist tables + geometry +
  *     instanced shards WITHOUT the source (too big for IndexedDB at 150-400MB);
- *     on re-open the freshly read file buffer hydrates the accessors. The hit is
- *     validated by the strengthened cache key (see `sourceFingerprint.ts`), not
- *     a full-file hash, so repeat opens have no main-thread stall.
+ *     on re-open the freshly read file buffer hydrates the accessors. The
+ *     spread-sampled cache key (see `sourceFingerprint.ts`) only KEYS the
+ *     lookup; the hit is VALIDATED by the mtime guard plus an off-thread
+ *     full-file hash ({@link decideMeshOnlyCacheHit}), so repeat opens still
+ *     have no main-thread stall.
  *
  * The ONLY difference between the two caching tiers is `persistSource` (and the
  * size band that selects them) — the save/load code is otherwise shared, so
@@ -104,6 +106,36 @@ export function decideMeshOnlyCacheHit(opts: {
   const mtimeKnown = !!storedMtime && !!freshMtime;
   if (mtimeKnown && storedMtime !== freshMtime) return 'miss';
   if (!mtimeKnown && !hasFullHash) return 'miss';
+  return 'serve';
+}
+
+/**
+ * Whether a SOURCE-PERSISTING cache hit may be served, given the file's
+ * modified-time guard (#4269).
+ *
+ * The spread-sampled cache key only KEYS the lookup — it cannot see a
+ * byte-length-preserving in-place edit between its sample windows (a GUID
+ * regeneration at its fixed 22-char width, a same-width coordinate patch), so
+ * without this gate the tier serves the OLD geometry/properties/source for an
+ * edited file with no error. The rule is deliberately SOFTER than
+ * {@link decideMeshOnlyCacheHit}:
+ *   - both mtimes known and DIFFERENT → `miss` (a real on-disk edit; reparse);
+ *   - otherwise → `serve`.
+ * Serving on an unknown mtime is safe HERE because this tier serves cached
+ * geometry + cached source together — the worst case is stale-but-consistent
+ * (today's behavior for every hit), never the mesh-only tier's chimera — and a
+ * `miss` on unknown would mass-invalidate every entry written before the mtime
+ * field existed. The mtime-PRESERVED edit is closed by the same background
+ * full-hash revalidation the mesh-only tier uses (purge + auto-reload on
+ * mismatch), once the entry carries a `fullSourceHash`.
+ */
+export function decideSourceTierCacheHit(opts: {
+  storedMtime?: number;
+  freshMtime?: number;
+}): 'serve' | 'miss' {
+  const { storedMtime, freshMtime } = opts;
+  const mtimeKnown = !!storedMtime && !!freshMtime;
+  if (mtimeKnown && storedMtime !== freshMtime) return 'miss';
   return 'serve';
 }
 

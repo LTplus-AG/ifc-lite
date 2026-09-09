@@ -119,10 +119,6 @@ impl Surface {
             return Ok((Observation::Distance, [0.; 2]));
         }
         let nearest = &self.triangles[index as usize];
-        // Never look through an incompatible nearest face for a farther matching normal.
-        if dot(nearest.normal, target_normal) < self.normal_dot {
-            return Ok((Observation::Normal, [0.; 2]));
-        }
         for &i in &self.candidates {
             if i == index {
                 continue;
@@ -135,6 +131,10 @@ impl Surface {
             {
                 return Ok((Observation::Ambiguous, [0.; 2]));
             }
+        }
+        // Never look through an incompatible nearest face for a farther matching normal.
+        if dot(nearest.normal, target_normal) < self.normal_dot {
+            return Ok((Observation::Normal, [0.; 2]));
         }
         Ok((
             Observation::Observed,

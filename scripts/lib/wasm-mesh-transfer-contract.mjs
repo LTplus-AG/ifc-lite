@@ -72,6 +72,12 @@ export function checkMeshTransferContract(IfcAPI) {
     assert.equal(metadata.assets.length, 1);
     assert.equal(metadata.assets[0].byteLength, png.length);
     assert.equal(metadata.assets[0].imageUri, `textures/${createHash('sha256').update(png).digest('hex')}.png`);
+    const insufficient = structuredClone(request); insufficient.registration.heldOut = [];
+    insufficient.registrationSha256 = JSON.parse(new TextDecoder().decode(api.registerScanCorrespondences(JSON.stringify(insufficient.registration)))).requestSha256;
+    const unapproved = run(insufficient).metadata;
+    assert.ok(unapproved.transfer.coverage.observedSamples > 0);
+    assert.equal(unapproved.plan, null); assert.equal(unapproved.transfer.applicable, false);
+    assert.equal(unapproved.transfer.registration.heldOut.rmsMetres, null);
     const moved = structuredClone(request); moved.targetFromIfcWorld.targetAnchor[0] = 10;
     const unknown = run(moved);
     assert.equal(unknown.metadata.plan, null); assert.equal(unknown.png.length, 0);

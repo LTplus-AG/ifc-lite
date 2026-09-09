@@ -86,7 +86,7 @@ pub struct MeshTransferSummary {
 }
 #[derive(Debug)]
 pub struct MeshTransferPlan {
-    /// None when no interior/centroid target sample is observed. Coverage remains available.
+    /// None for wholly unknown coverage or fewer than 4 fit/4 held-out observations.
     pub output: Option<PageAppearancePlan>,
     pub transfer: MeshTransferSummary,
     pub texels_per_metre: f64,

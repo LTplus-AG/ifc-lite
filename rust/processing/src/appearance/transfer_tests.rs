@@ -304,7 +304,7 @@ fn issue_4381_triangle_permutation_does_not_change_tie_refusal() {
     ];
     request.source_mesh.triangles = vec![[0, 1, 2], [3, 4, 5]];
     request.source_mesh.uvs = vec![[0., 0.]; 6];
-    for triangles in [vec![[0, 1, 2], [3, 4, 5]], vec![[3, 4, 5], [0, 1, 2]]] {
+    for triangles in [vec![[0, 1, 2], [3, 4, 5]], vec![[3, 4, 5], [0, 1, 2]], vec![[0, 2, 1], [3, 4, 5]], vec![[3, 4, 5], [0, 2, 1]]] {
         request.source_mesh.triangles = triangles;
         let mut budget = TransferBudget::new();
         let mut surface = Surface::new(&request, &identity(), &mut budget).unwrap();

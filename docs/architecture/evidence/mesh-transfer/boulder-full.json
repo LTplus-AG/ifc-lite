@@ -1,0 +1,13 @@
+{
+  "refusal": "BVH query work budget exhausted",
+  "sourceTriangles": 66122,
+  "targetTriangles": 40087,
+  "originalTargetTriangles": 40087,
+  "targetTriangleOrdinals": [
+    0,
+    40086
+  ],
+  "sourceGlbSha256": "b6a0b51894427c37505632f4d4513d0424f0d84b014554755aa53eb74af6dcd6",
+  "ifcSha256": "0efc7987670ddb1287cb88fe1b9a239da754f41170e9420bf04293c0c54f34e3",
+  "knownDerivedCoordinateMaxDelta": 1.2412670766236366e-16
+}

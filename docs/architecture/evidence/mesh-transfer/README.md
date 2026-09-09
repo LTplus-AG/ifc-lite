@@ -35,3 +35,38 @@ fetch assets or provide an application IFC writer. Browser acceptance, source
 lease/frozen-frame wiring, ordinary Apply/Undo/export/share and real distributed
 held-out correspondences remain separate gates under #4381. CRAS plane-support
 evidence does not supply those missing correspondences.
+
+## Real boulder geometry: conservative coverage and capacity
+
+The public CC0 albedo-only boulder GLB already qualified for captured-mesh
+creation supplies 66,122 source triangles. This probe uses the existing captured
+IFCZIP from [the portability acceptance](../captured-room/README.md), with a
+40,087-triangle proxy. It first verifies that target coordinates are the known
+Y-up→Z-up conversion of that exact GLB. The four fit/four check observations are
+therefore **known-derived controls**, not independent scan/BIM correspondences.
+The embedded fit residuals measure that control transformation only.
+
+[The complete target](boulder-full.json) refuses the aggregate BVH work budget;
+it produces no partial mutation plan. This foundation does not yet qualify
+model-wide transfer at that size. A future measured optimization should reuse
+conservative candidates across target tiles/triangles while preserving unknown
+coverage and one final atomic Apply; raising the cap is not the acceptance gate.
+
+[The first 500 target triangles](boulder-prefix-500.json), retaining original
+coordinates and parallel UV maps, complete within the same bounds. The sampled
+area estimate is about 77% observed. Of 22,915 centroid/interior samples, 5,403
+are ambiguous and 135 fail the normal criterion. Exact coplanar UV-continuous
+neighbors are exempt from ties; curved facets and seams remain conservative
+unknowns. This result is a bounded prefix measurement, not full-boulder coverage
+or proof of smooth-surface continuity. The preserved old boulder image supplies
+unknown albedo. Source and effective derived IFC identities are in each report.
+
+Reproduce with the existing qualified GLB and captured IFCZIP:
+
+```sh
+python3 tools/texture-authoring/boulder-transfer-probe.py source.glb captured.ifczip
+python3 tools/texture-authoring/boulder-transfer-probe.py source.glb captured.ifczip 500
+```
+
+The script is deliberately a hash-qualified offline evidence decoder, not a new
+application ingest path. It requires SciPy as well as the oracle dependencies.

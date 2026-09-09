@@ -16,9 +16,11 @@ export function CapturePreview({ mesh, assetId, triangles, disabled, onRegion, o
 }) {
   const canvas = useRef<HTMLCanvasElement>(null), renderer = useRef<Renderer | null>(null);
   const bitmap = useRef<ImageBitmap | null>(null);
+  const failure = useRef<((message: string) => void) | null>(null);
   const callbacks = useRef({ onRegion, onReady, onError }); callbacks.current = { onRegion, onReady, onError };
   const region = useRef(triangles); region.current = triangles;
   const blocked = useRef(disabled); blocked.current = disabled;
+  const [generation, setGeneration] = useState(0), [failed, setFailed] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [box, setBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const gesture = useRef<{ start: { x: number; y: number }; last: { x: number; y: number }; pointer: number } | null>(null);
@@ -27,10 +29,11 @@ export function CapturePreview({ mesh, assetId, triangles, disabled, onRegion, o
     if (!view || !image) return false;
     try {
     view.getScene().clear();
-    if (region.current.length) view.loadGeometry([{ ...mesh, origin: [0,0,0], textureBitmap: image,
-      indices: Uint32Array.from(region.current.flatMap(id => [mesh.indices[id * 3], mesh.indices[id * 3 + 1], mesh.indices[id * 3 + 2]])) }]);
+    const visible = selecting ? Array.from({ length: mesh.indices.length / 3 }, (_, i) => i) : region.current;
+    if (visible.length) view.loadGeometry([{ ...mesh, origin: [0,0,0], textureBitmap: image,
+      indices: Uint32Array.from(visible.flatMap(id => [mesh.indices[id * 3], mesh.indices[id * 3 + 1], mesh.indices[id * 3 + 2]])) }]);
     view.render(); return true;
-    } catch (error) { callbacks.current.onReady(false); callbacks.current.onError(error instanceof Error ? error.message : String(error)); return false; }
+    } catch (error) { failure.current?.(error instanceof Error ? error.message : String(error)); return false; }
   }
   useEffect(() => {
     const element = canvas.current; if (!element) return;
@@ -39,7 +42,16 @@ export function CapturePreview({ mesh, assetId, triangles, disabled, onRegion, o
     let frame = 0, observer: ResizeObserver | undefined;
     const wheel = (event: WheelEvent) => { event.preventDefault(); event.stopPropagation(); if (!blocked.current && renderer.current === view) { view.getCamera().zoom(event.deltaY); view.requestRender(); } };
     element.addEventListener('wheel', wheel, { passive: false });
-    callbacks.current.onReady(false);
+    setFailed(false); callbacks.current.onReady(false);
+    const fail = (message: string) => {
+      if (controller.signal.aborted) return; controller.abort(); cancelAnimationFrame(frame);
+      setFailed(true); callbacks.current.onReady(false); callbacks.current.onError(message);
+      observer?.disconnect();
+      if (renderer.current === view) { renderer.current = null; bitmap.current = null; }
+      view.destroy(); appearanceAssets.releaseOwner(owner);
+    };
+    failure.current = fail;
+    const unsubscribeLoss = view.onDeviceLost(() => fail('The preview graphics connection was lost. Reload the preview to continue.'));
     void (async () => {
       try {
         appearanceAssets.retain(assetId, owner);
@@ -48,25 +60,27 @@ export function CapturePreview({ mesh, assetId, triangles, disabled, onRegion, o
         renderer.current = view; bitmap.current = image;
         const resize = () => { view.resize(element.clientWidth, element.clientHeight); view.requestRender(); };
         observer = new ResizeObserver(resize); observer.observe(element); resize();
-        if (!draw()) return; view.fitToView(); view.requestRender();
-        const tick = () => { if (controller.signal.aborted) return; if (view.consumeRenderRequest()) view.render(); frame = requestAnimationFrame(tick); };
+        if (!draw()) { view.destroy(); appearanceAssets.releaseOwner(owner); return; } view.fitToView(); view.requestRender();
+        const tick = () => { if (controller.signal.aborted) return; try { if (view.consumeRenderRequest()) view.render(); frame = requestAnimationFrame(tick); } catch (error) { fail(error instanceof Error ? error.message : String(error)); } };
         frame = requestAnimationFrame(tick); callbacks.current.onReady(true);
       } catch (error) {
-        if (!controller.signal.aborted) callbacks.current.onError(error instanceof Error ? error.message : String(error));
+        if (!controller.signal.aborted) { setFailed(true); callbacks.current.onError(error instanceof Error ? error.message : String(error)); }
         view.destroy(); appearanceAssets.releaseOwner(owner);
       }
     })();
     return () => {
-      controller.abort(); cancelAnimationFrame(frame); observer?.disconnect(); element.removeEventListener('wheel', wheel);
+      controller.abort(); cancelAnimationFrame(frame); observer?.disconnect(); unsubscribeLoss(); element.removeEventListener('wheel', wheel);
+      if (failure.current === fail) failure.current = null;
       view.destroy(); if (renderer.current === view) { renderer.current = null; bitmap.current = null; }
       appearanceAssets.releaseOwner(owner); callbacks.current.onReady(false);
     };
-  }, [mesh, assetId]);
-  useEffect(() => { draw(); }, [triangles]);
+  }, [mesh, assetId, generation]);
+  useEffect(() => { draw(); }, [triangles, selecting]);
   function point(event: React.PointerEvent<HTMLCanvasElement>) {
     const bounds = event.currentTarget.getBoundingClientRect(); return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
   }
   return <div className="space-y-2">
+    {failed && <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => setGeneration(value => value + 1)}>Reload preview</Button>}
     <div className="flex gap-2"><Button type="button" size="sm" variant={selecting ? 'secondary' : 'outline'} aria-pressed={selecting}
       disabled={disabled} onClick={() => { setSelecting(value => !value); setBox(null); }}>Select region</Button>
       <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => onRegion(Array.from({ length: mesh.indices.length / 3 }, (_, i) => i))}>Entire surface</Button></div>

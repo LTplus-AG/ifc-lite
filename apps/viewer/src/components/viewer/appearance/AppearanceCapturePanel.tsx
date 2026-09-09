@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { selectCreatedAppearanceObject } from './select-created-object';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
@@ -15,6 +16,7 @@ import { appearanceSelectClass } from './AppearanceSourceFields';
 export function AppearanceCapturePanel() {
   const models = useViewerStore(state => state.models), selected = useViewerStore(state => state.selectedEntityId);
   const room = useViewerStore(state => state.collabRoomId);
+  const placement = useViewerStore(state => state.modelPlacement), mutationVersion = useViewerStore(state => state.mutationVersion);
   const target = useIfcAuthoringTarget();
   const candidates = useMemo(() => [...models.values()].flatMap(model => (model.geometryResult?.meshes ?? [])
     .flatMap((mesh, index) => mesh.textureRef ? [{ id: `${model.id}:${index}`, modelId: model.id, mesh,
@@ -25,6 +27,7 @@ export function AppearanceCapturePanel() {
   const [prepared, setPrepared] = useState<CapturedMeshSource | null>(null);
   const [assetId, setAssetId] = useState<string | null>(null);
   const [Name, setName] = useState('Captured surface');
+  const [created, setCreated] = useState(false);
   const [ready, setReady] = useState(false), [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(''), [error, setError] = useState(false);
   const operation = useRef<AbortController | null>(null);
@@ -39,12 +42,15 @@ export function AppearanceCapturePanel() {
       setAssetId(first.assetId); setTriangles(Array.from({ length: candidate.mesh.indices.length / 3 }, (_, i) => i));
     } catch (failure) { setTriangles([]); setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); }
   }, [candidate?.modelId, candidate?.mesh]);
+  useEffect(() => { setCreated(false); }, [candidate?.mesh, triangles]);
   useEffect(() => {
+    if (operation.current || created) return;
     setPrepared(null); if (!candidate || !assetId) return;
+    if (placement.preview) { setMessage('Finish repositioning the model to create this region.'); return; }
     if (!triangles.length) { setMessage('The rectangle contains no triangle centres. Choose another region or Entire surface.'); return; }
     try { setPrepared(prepareCapturedRegion(candidate.modelId,candidate.mesh,triangles)); setError(false); setMessage('Review the textured region, then choose where to create it.'); }
     catch (failure) { setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); }
-  }, [candidate?.modelId, candidate?.mesh, assetId, triangles]);
+  }, [candidate?.modelId, candidate?.mesh, assetId, triangles, placement, mutationVersion, created]);
   async function create() {
     const renderer = getGlobalRenderer();
     if (!prepared || !ready || !renderer || !target.modelId || target.containerId === undefined || operation.current || room) return;
@@ -52,9 +58,8 @@ export function AppearanceCapturePanel() {
     try {
       const result = await createIfcFromCapturedMesh(target.modelId,target.containerId,prepared,renderer,{ Name,signal:controller.signal });
       if (controller.signal.aborted) return;
-      const state = useViewerStore.getState(); state.selectAppearanceReference(null);
-      state.setSelectedEntityId(result.globalId); state.setSelectedEntity({ modelId: target.modelId, expressId: result.expressId });
-      setPrepared(null);
+      selectCreatedAppearanceObject(target.modelId, result);
+      setPrepared(null); setCreated(true);
       setMessage('Textured IfcBuildingElementProxy created and selected. Undo is available.');
     } catch (failure) { if (!controller.signal.aborted) { setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); } }
     finally { if (operation.current === controller) { operation.current = null; setBusy(false); } }
@@ -67,7 +72,7 @@ export function AppearanceCapturePanel() {
       {candidates.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
     </select></label>
     {candidate && assetId && <CapturePreview key={candidate.id} mesh={candidate.mesh} assetId={assetId} triangles={triangles} disabled={busy}
-      onRegion={setTriangles} onReady={setReady} onError={text => { setReady(false); setError(true); setMessage(text); }} />}
+      onRegion={setTriangles} onReady={value => { setReady(value); if (value) { setError(false); setMessage('Review the textured region, then choose where to create it.'); } }} onError={text => { setReady(false); setError(true); setMessage(text); }} />}
     {!!assetId && <p className="text-[11px]" role="status">{triangles.length.toLocaleString()} triangles in this region</p>}
     <fieldset disabled={busy || !!room} className="space-y-2">
       <label className="block text-[11px]">Destination model<select aria-label="Capture destination model" className={appearanceSelectClass} value={target.modelId}
@@ -81,7 +86,7 @@ export function AppearanceCapturePanel() {
         {target.containers.map(node => <option key={node.expressId} value={node.expressId}>{node.name || `#${node.expressId}`}</option>)}
       </select></label>
       <label className="block text-[11px]">Name<Input aria-label="Captured object Name" value={Name} onChange={event => setName(event.target.value)} /></label>
-      <Button type="button" className="w-full" disabled={!ready || !prepared || !target.modelId || target.containerId === undefined || !Name.trim()}
+      <Button type="button" className="w-full" disabled={!ready || !prepared || !!placement.preview || !target.modelId || target.containerId === undefined || !Name.trim()}
         onClick={() => { void create(); }}>Create IFC object</Button>
     </fieldset>
     {room && <p className="text-[11px] text-muted-foreground">Leave the shared room to create captured objects, then share the saved model.</p>}

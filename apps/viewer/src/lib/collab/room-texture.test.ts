@@ -9,6 +9,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { seedGeometryToRoom, hydrateGeometryFromRoom, type CollabGeomApi } from './geometry-sync.js';
 import { encodeMesh, decodeMesh } from './mesh-codec.js';
 import { encodeTexture, decodeTexture } from './room-texture.js';
+import { seedFailureMessage } from './geometry-seed-signal.js';
 
 const api: CollabGeomApi = collab;
 const path = collab.guidToPath('0aBcDeFgHiJkLmNoPqRsT1');
@@ -107,7 +108,7 @@ it('rejects truncated, oversized and inconsistent texture payloads before pixel 
   assert.throws(() => decodeTexture(bytes.subarray(0, 11)), /truncated/);
   assert.throws(() => decodeTexture(bytes.subarray(0, bytes.length - 1)), /payload/);
   new DataView(bytes.buffer).setUint32(4, 0xffffffff, true);
-  assert.throws(() => decodeTexture(bytes), /dimensions/);
+  assert.throws(() => decodeTexture(bytes), /[Dd]imensions/);
   assert.throws(() => encodeTexture({ width: 2, height: 2, rgba: new Uint8Array(3) }), /length/);
 });
 
@@ -159,5 +160,33 @@ it('accepts the corpus 4096-square images at the decoded pixel budget boundary',
   const texture = { width: 4096, height: 4096, rgba: new Uint8Array(4096 * 4096 * 4) };
   const bytes = encodeTexture(texture);
   assert.equal(bytes.length, 12 + texture.rgba.length);
-  assert.throws(() => encodeTexture({ ...texture, height: 4097 }), /dimensions/);
+  assert.throws(() => encodeTexture({ ...texture, height: 4097 }), /[Dd]imensions/);
+});
+
+
+// #4232: an area-only limit admits narrow images the recipient GPU cannot upload.
+it('rejects over-wide and over-tall textures within the total pixel budget', () => {
+  for (const [width, height] of [[8193, 1], [1, 8193]]) {
+    const rgba = new Uint8Array(width * height * 4);
+    assert.throws(() => encodeTexture({ width, height, rgba }), /8192 pixels per side/);
+    // Construct the invalid wire payload from a valid, equally sized image.
+    const wire = encodeTexture({ width: 2731, height: 3, rgba });
+    const header = new DataView(wire.buffer);
+    header.setUint32(4, width, true); header.setUint32(8, height, true);
+    assert.throws(() => decodeTexture(wire), /8192 pixels per side/);
+  }
+  assert.equal(decodeTexture(encodeTexture({ width: 8192, height: 1, rgba: new Uint8Array(8192 * 4) })).width, 8192);
+});
+
+
+it('refuses oversized source textures before publishing refs and tells the owner how to recover', async () => {
+  const source = owner(), original = mesh(), store = new collab.MemoryBlobStore();
+  original.texture = { ...original.texture!, width: 8193, height: 1, rgba: new Uint8Array(8193 * 4) };
+  const report = await seedGeometryToRoom(api, source, store, [original], () => path, { retries: 0 });
+  assert.equal(report.failed, 1);
+  assert.equal(report.seeded, 0);
+  assert.equal(collab.getGeometryRef(source.doc, path), undefined);
+  assert.deepEqual(await store.list(), []);
+  assert.match(seedFailureMessage(report)!, /Resize the source image, reload the IFCZIP/);
+  source.doc.destroy();
 });

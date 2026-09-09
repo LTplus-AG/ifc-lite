@@ -9,12 +9,18 @@ import { putBlobWithRetry } from './blob-upload';
 
 // A single decoded image is bounded independently of mesh size. Keep below
 // the room blob endpoint's default 100 MiB limit, including our 12-byte header.
+// The viewer requests a core adapter and raises buffer limits only; its
+// maxTextureDimension2D remains the WebGPU core default of 8192.
+const MAX_DIMENSION = 8192;
 const MAX_PIXELS = 4096 * 4096;
 const MAGIC = 0x54584649; // IFXT, top-down RGBA8, straight alpha, sRGB.
 
+/** Static, user-actionable source failures safe to show in the Share dialog. */
+export class TextureSharingError extends Error {}
+
 function pixelBytes(width: number, height: number): number {
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || width * height > MAX_PIXELS) {
-    throw new Error('room-texture: invalid dimensions or image exceeds 4096 × 4096 pixels');
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || width > MAX_DIMENSION || height > MAX_DIMENSION || width * height > MAX_PIXELS) {
+    throw new TextureSharingError('Texture dimensions must fit 8192 pixels per side and 16,777,216 pixels total. Resize the source image, reload the IFCZIP, and share again.');
   }
   return width * height * 4;
 }

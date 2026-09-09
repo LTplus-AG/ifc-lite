@@ -46,7 +46,8 @@ for the room.
 Textured models share their UV coordinates and image pixels with the geometry.
 Recipients do not need the original IFCZIP or access to its image filenames.
 Images are shared once per content hash, with each surface retaining its wrap
-settings. Each decoded image is limited to 16,777,216 pixels (4096 × 4096); an unavailable or
+settings. Each decoded image is limited to 16,777,216 pixels total (4096 × 4096),
+with at most 8192 pixels on either side; an unavailable or
 oversized image is reported as a sharing failure instead of silently dropping
 its appearance.
 

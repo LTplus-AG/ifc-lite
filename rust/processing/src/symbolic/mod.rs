@@ -73,6 +73,7 @@ mod grid;
 mod item_walk;
 mod items;
 mod output_cap;
+mod output_cap_types;
 mod output_cap_validate;
 #[cfg(test)]
 mod items_cycle_tests;
@@ -84,7 +85,7 @@ mod text;
 mod transform;
 mod trimmed_curve;
 
-pub use output_cap::{SymbolicTruncation, SymbolicTruncationReason};
+pub use output_cap_types::{SymbolicTruncation, SymbolicTruncationReason};
 pub use primitives::{
     SymbolicCircle, SymbolicData, SymbolicFillArea, SymbolicGridAxis, SymbolicPolyline, SymbolicText,
 };

@@ -10,7 +10,8 @@
 //! allowed to do; nothing here knows about any IFC type.
 
 use super::items::extract_symbolic_item_inner;
-use super::output_cap::{SymbolicAccumulator, SymbolicTruncationReason};
+use super::output_cap::SymbolicAccumulator;
+use super::output_cap_types::SymbolicTruncationReason;
 use super::rebase::RenderFrameRebase;
 use super::transform::Transform2D;
 use ifc_lite_core::{DecodedEntity, EntityDecoder};

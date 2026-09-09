@@ -50,7 +50,8 @@
 //! they are fixed by one instrument: a cap on the OUTPUT, plus a diagnostics
 //! field that says the cap was hit. Both halves are pinned here.
 //!
-use super::output_cap::{SymbolicAccumulator, SymbolicTruncationReason};
+use super::output_cap::SymbolicAccumulator;
+use super::output_cap_types::SymbolicTruncationReason;
 use super::primitives::{
     SymbolicData, SymbolicFillArea, SymbolicGridAxis, SymbolicPolyline, SymbolicText,
 };

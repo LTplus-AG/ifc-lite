@@ -1,7 +1,7 @@
 {
-  "name": "@ifc-lite/query",
-  "version": "2.2.0",
-  "description": "Query system for IFC-Lite",
+  "name": "@ifc-lite/regex-guard",
+  "version": "0.1.0",
+  "description": "A shared, dependency-free guard against catastrophic-backtracking (ReDoS) regex patterns compiled from untrusted input",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,14 +18,8 @@
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },
-  "dependencies": {
-    "@ifc-lite/parser": "workspace:^",
-    "@ifc-lite/data": "workspace:^",
-    "@ifc-lite/spatial": "workspace:^",
-    "@ifc-lite/geometry": "workspace:^",
-    "@ifc-lite/regex-guard": "workspace:^"
-  },
   "devDependencies": {
+    "@types/node": "^26.4.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.11"
   },
@@ -34,16 +28,16 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
-    "directory": "packages/query"
+    "directory": "packages/regex-guard"
   },
   "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",
     "bim",
-    "query",
-    "sql",
-    "aec"
+    "regex",
+    "redos",
+    "security"
   ],
   "publishConfig": {
     "access": "public"

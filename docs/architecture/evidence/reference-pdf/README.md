@@ -46,3 +46,22 @@ this does not assert a deployed production-room test.
 Independent references remain registration records, not shared IFC products.
 This room acceptance covers the saved annotations. The generated IFCZIP and
 room tokens are intentionally not committed.
+
+## Calibrated reference in the 2D canvas
+
+The follow-up browser run includes canvas source `2c0f98359`. After placing the
+same two references through the dock, the user-facing Section tool opened its
+2D panel. Resizing and **Fit to view**, followed by **Down** and **Front** cuts,
+showed the complete rotated/cropped PDF in both views (`drawing-plan.png` and
+`drawing-front.png`). This exercises independent references, before creating
+IFC annotations.
+
+The run observed the actual Canvas2D `drawImage` transforms while still calling
+the original drawing method. `canvas-oracle.json` records those matrices and all
+four resulting screen corners, each inside the 950 × 711 canvas. Dividing the
+rendered edge lengths by the registered IFC edge lengths gives the same scale
+in both directions (difference below 0.000001 pixels/metre). Independently
+inverting the recorded PDF-to-raster affine transform maps the chosen printed
+dimension to 58.928 metres in both views, within 0.00001 metre. This complements
+the independent IFC-reader world-corner check; it does not claim PDF/SVG/DXF
+export of these independent canvas references.

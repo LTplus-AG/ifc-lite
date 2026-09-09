@@ -108,13 +108,28 @@ export interface AnnotationPlanePlan {
       repeat_s: boolean; repeat_t: boolean };
   };
 }
+export interface CapturedMeshRequest extends Omit<AnnotationPlaneRequest, 'frame'> {
+  mesh: {
+    /** IFC world Z-up metres. Triangle and UV indices are zero-based. */
+    positions: [number, number, number][];
+    triangles: [number, number, number][];
+    /** IFC V-up UVs; the returned canonical mesh already uses GPU top-down UVs. */
+    uvs: [number, number][];
+    uvTriangles: [number, number, number][];
+  };
+}
+export interface CapturedMeshPlan extends Omit<AnnotationPlanePlan, 'annotationId' | 'frame'> {
+  objectId: number;
+}
 export type AppearanceWorkerJob =
+  | { type: 'captured-mesh-plan'; request: CapturedMeshRequest }
   | { type: 'annotation-plan'; request: AnnotationPlaneRequest }
   | { type: 'plan'; request: AppearanceRequest }
   | { type: 'catalog'; request: AppearanceCatalogRequest }
   | { type: 'page-plan'; request: PageAppearanceRequest; rgba: Uint8Array };
 export type AppearanceWorkerRequest = AppearanceWorkerJob & { id: number; source: Uint8Array };
 export type AppearanceWorkerResponse =
+  | { type: 'captured-mesh-complete'; id: number; result: CapturedMeshPlan }
   | { type: 'annotation-complete'; id: number; result: AnnotationPlanePlan }
   | { type: 'complete'; id: number; plan: AppearancePlan }
   | { type: 'catalog-complete'; id: number; catalog: AppearanceCatalog }

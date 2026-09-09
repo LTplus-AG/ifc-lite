@@ -35,3 +35,55 @@ fn issue_4380_capture_rejects_invalid_triangle_uv_and_degenerate_inputs() {
     invalid=r.clone();invalid.mesh.uvs[0][0]=f64::NAN;
     assert!(plan_captured_mesh(source.as_bytes(),&invalid).is_err());
 }
+#[test]
+fn issue_4380_captured_surface_rotated_millimetre_container_retains_world_vertices() {
+    let (source,request)=fixture();
+    let source=source.replace(".LENGTHUNIT.,$,.METRE.",".LENGTHUNIT.,.MILLI.,.METRE.")
+        .replace("'Level',$,$,#11", "'Level',$,$,#41")
+        .replace("#37=IFCINDEXEDTRIANGLETEXTUREMAP", "#41=IFCLOCALPLACEMENT($,#42);\n#42=IFCAXIS2PLACEMENT3D(#43,#44,#45);\n#43=IFCCARTESIANPOINT((10000.,20000.,3000.));\n#44=IFCDIRECTION((0.,0.,1.));\n#45=IFCDIRECTION((0.,1.,0.));\n#37=IFCINDEXEDTRIANGLETEXTUREMAP");
+    let result=plan_captured_mesh(source.as_bytes(),&request).unwrap();
+    let restored=crate::process_geometry(apply(&source,&result.plan).as_bytes());
+    let mesh=restored.meshes.iter().find(|m|m.express_id==result.object_id).unwrap();
+    assert_eq!(mesh.positions,result.mesh.positions);
+    assert_eq!(mesh.uvs,result.mesh.uvs);
+}
+#[test]
+fn issue_4380_public_boulder_exact_triangle_image_correspondence() {
+    let Ok(path)=std::env::var("IFCLITE_CAPTURED_MESH_FIXTURE") else {
+        eprintln!("Skipping external captured surface: fetch the public Poly Haven boulder fixture and set IFCLITE_CAPTURED_MESH_FIXTURE");return;
+    };
+    let input:serde_json::Value=serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let (source,mut request)=fixture();
+    request.mesh=serde_json::from_value(serde_json::json!({"positions":input["vertices"],"triangles":input["triangles"],"uvs":input["uvs"],"uvTriangles":input["uv_triangles"]})).unwrap();
+    let plan=plan_captured_mesh(source.as_bytes(),&request).unwrap();
+    assert_eq!(plan.mesh.indices.len(),request.mesh.triangles.len()*3);
+    let restored=crate::process_geometry(apply(&source,&plan.plan).as_bytes());
+    let mesh=restored.meshes.iter().find(|m|m.express_id==plan.object_id).unwrap();
+    assert_eq!(mesh.indices.len(),plan.mesh.indices.len());
+    for (left,right) in mesh.indices.iter().zip(&plan.mesh.indices) {
+        for axis in 0..3 {
+            let a=f64::from(mesh.positions[*left as usize*3+axis])+mesh.origin[axis];
+            let b=f64::from(plan.mesh.positions[*right as usize*3+axis])+plan.mesh.origin[axis];
+            assert!((a-b).abs()<1e-6,"roundtrip triangle corner difference {}",(a-b).abs());
+        }
+        for axis in 0..2 {
+            let a=mesh.uvs.as_ref().unwrap()[*left as usize*2+axis];
+            let b=plan.mesh.uvs.as_ref().unwrap()[*right as usize*2+axis];
+            assert!((a-b).abs()<1e-6,"roundtrip triangle UV difference {}",(a-b).abs());
+        }
+    }
+    eprintln!("Public capture verified {} triangles, {} vertices",mesh.indices.len()/3,mesh.positions.len()/3);
+}
+#[test]
+fn issue_4380_ifc4x3_captured_proxy_has_tag_and_predefined_type_slots() {
+    let (source,mut request)=fixture();
+    request.schema="IFC4X3".into();
+    let source=source.replace("FILE_SCHEMA(('IFC4'))","FILE_SCHEMA(('IFC4X3'))");
+    let result=plan_captured_mesh(source.as_bytes(),&request).unwrap();
+    let proxy=result.plan.created.iter().find(|e|e.r#type=="IfcBuildingElementProxy").unwrap();
+    assert_eq!(proxy.attributes.len(),9);
+    assert_eq!(proxy.attributes[7],serde_json::Value::Null);
+    assert_eq!(proxy.attributes[8],".USERDEFINED.");
+    let points=result.plan.created.iter().find(|e|e.r#type=="IfcCartesianPointList3D").unwrap();
+    assert_eq!(points.attributes.len(),2);
+}

@@ -4,9 +4,20 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RepresentationPolicy {
+    #[default]
+    Preserve,
+    EvaluatedOccurrence,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AppearanceRequest {
+    /// Parametric conversion is never implicit.
+    #[serde(default)]
+    pub representation_policy: RepresentationPolicy,
     pub schema: String,
     pub source_revision: String,
     pub next_express_id: u32,
@@ -94,6 +105,8 @@ pub struct Exclusion {
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppearancePlan {
+    /// Explicit occurrence-local conversions, with original renderer provenance.
+    pub conversions: Vec<AppearanceConversion>,
     pub source_revision: String,
     pub next_express_id: u32,
     pub next_available_express_id: u32,
@@ -102,4 +115,14 @@ pub struct AppearancePlan {
     pub removed: Vec<u32>,
     pub items: Vec<AppearanceItem>,
     pub exclusions: Vec<Exclusion>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppearanceConversion {
+    pub product_id: u32,
+    pub representation_id: u32,
+    pub source_geometry_item_id: u32,
+    pub geometry_item_id: u32,
+    pub source_indices: Vec<u32>,
 }

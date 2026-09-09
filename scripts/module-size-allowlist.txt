@@ -291,7 +291,6 @@
    523 packages/parser/src/project-units.ts
    594 packages/parser/src/schedule-extractor.ts
    494 packages/parser/src/source-bytes.ts
-   487 packages/parser/src/spatial-hierarchy-builder.ts
    513 packages/plugin-api/src/types.ts
    678 packages/pointcloud/src/formats/e57-decode.ts
    424 packages/pointcloud/src/formats/pcd.ts

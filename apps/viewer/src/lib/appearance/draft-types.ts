@@ -4,7 +4,7 @@
 import type { PdfRasterRecipe } from './pdf/types.js';
 import type { RasterCalibration, RasterCalibrationFrame } from './raster-calibration.js';
 
-export type AppearanceIntent = 'apply' | 'reference';
+export type AppearanceIntent = 'apply' | 'reference' | 'capture';
 
 export type AppearanceScope =
   | { kind: 'model' | 'selection' }

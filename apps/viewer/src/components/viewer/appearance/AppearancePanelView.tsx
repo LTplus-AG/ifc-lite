@@ -38,16 +38,21 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
       stale: 'The model changed. Refresh the preview before applying.',
       error: 'Could not prepare appearance. Adjust the settings and try again.',
     }[props.status]);
+  const sourceActions = <>
+      {props.onIntentChange && <div className="grid grid-cols-1 gap-1 rounded-md border p-1" role="group" aria-label="Source action">
+        <Button type="button" variant={props.intent === 'apply' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'apply'} onClick={() => props.onIntentChange?.('apply')}>Apply to IFC</Button>
+        <Button type="button" variant={reference ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={reference} onClick={() => props.onIntentChange?.('reference')}>Place as reference</Button>
+        <Button type="button" variant={props.intent === 'capture' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'capture'} onClick={() => props.onIntentChange?.('capture')}>Create from scan</Button>
+      </div>}
+  </>;
+  if (props.intent === 'capture') return <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background p-3" aria-label="Appearance workspace">{sourceActions}{props.capture}</div>;
   return <div className="flex h-full min-h-0 flex-col bg-background" aria-label="Appearance workspace" aria-busy={!!busy}>
     <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-3">
       <div><h2 className="text-sm font-semibold">Appearance</h2><p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{props.allowPdf ? 'Images and PDF pages across the surfaces you choose.' : 'One image, across the surfaces you choose.'}</p></div>
+      {sourceActions}
       <AppearanceSourceFields {...props} disabled={applying} />
       {props.pdfPassword && <AppearancePdfPassword key={props.pdfPassword.documentName} prompt={props.pdfPassword} disabled={applying} />}
       {props.pdf && <AppearancePdfFields key={`${props.pdf.documentId}:${props.pdf.pageNumber}:${props.pdf.rotation}:${inputReset}`} pdf={props.pdf} disabled={applying} onInvalid={onInvalid} />}
-      {props.onIntentChange && <div className="grid grid-cols-2 gap-1 rounded-md border p-1" role="group" aria-label="Source action">
-        <Button type="button" variant={!reference ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={!reference} onClick={() => props.onIntentChange?.('apply')}>Apply to IFC</Button>
-        <Button type="button" variant={reference ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={reference} onClick={() => props.onIntentChange?.('reference')}>Place as reference</Button>
-      </div>}
       {!reference && <AppearanceScopeFields {...props} disabled={applying} />}
       {reference && <AppearanceReferenceLibrary disabled={applying} onEdit={props.onEditReference} />}
       {props.calibration && <AppearanceCalibrationFields key={`${props.sourceId}:${props.calibration.sourceKey}:${inputReset}`}

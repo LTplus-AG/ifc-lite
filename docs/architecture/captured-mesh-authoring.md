@@ -1,12 +1,12 @@
 # Captured mesh authoring
 
-Implementation contract for F5, tracked by #4380. This document describes the
-next slice; it does not claim that capture creation is enabled in the viewer.
+Implementation contract for F5, tracked by #4380. The viewer exposes captured
+surface creation inside Author → Appearance → Create from scan.
 
 ## User workflow
 
 Load a textured capture through the existing Open/Add path. From its Appearance
-source choose **Create from region**, align the capture in the workspace, select
+workspace choose **Create from scan**, align the capture in the workspace, select
 a bounded region, and preview the resulting surface. Choose the destination IFC
 model and spatial container, then enter its Name. The initial semantic class is
 `IfcBuildingElementProxy`: captured surface geometry does not establish wall,
@@ -83,5 +83,12 @@ owns a bounded numeric snapshot before its first await, converts workspace
 coordinates into the destination model frame, and sends that snapshot to the
 native planner. It revalidates registration and target state before publication.
 
-This host layer does not itself expose a viewer creation button. The integrated
-region-selection UI and its real-browser acceptance remain part of #4380.
+The integrated capture panel uses an independent instance of the existing
+renderer to preview the retained original image and selected source triangles.
+Orbit and zoom affect only that preview. A through-surface screen rectangle
+selects whole triangles by projected centroid; it never synthesizes border cuts.
+Preview graphics failure disables Create and offers a local preview reload.
+The original model, image/PDF draft controls, and main camera remain independent.
+
+Actual WebGPU creation, original-image export, normal re-import, and picking are
+recorded in [captured UI acceptance](evidence/captured-ui/README.md).

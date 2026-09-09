@@ -74,6 +74,21 @@ export function toNativeLength(anchor: Pick<SpatialAnchor, 'lengthUnitScale'>, m
   return Math.round((metres / scale) * 1e9) / 1e9;
 }
 
+/**
+ * Inverse of {@link toNativeLength}: convert a value stored in the anchor's
+ * native length unit back to metres. Used by read-side translators (e.g.
+ * `apps/viewer`'s drawing-markup reader) to invert a derived value a writer
+ * scaled with `toNativeLength` before storing it in a quantity set — the
+ * mathematical inverse of that function's rounding rule, kept next to it so
+ * a future change to the rounding constant cannot update one side without
+ * the other.
+ */
+export function fromNativeLength(anchor: Pick<SpatialAnchor, 'lengthUnitScale'>, native: number): number {
+  const scale = anchor.lengthUnitScale;
+  if (!scale || !Number.isFinite(scale) || scale <= 0 || scale === 1) return native;
+  return Math.round(native * scale * 1e9) / 1e9;
+}
+
 /** 2D point variant of {@link toNativeLength}. */
 export function toNativePoint2(anchor: SpatialAnchor, p: readonly [number, number]): [number, number] {
   return [toNativeLength(anchor, p[0]), toNativeLength(anchor, p[1])];

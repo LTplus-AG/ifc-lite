@@ -555,6 +555,166 @@ describe('SpatialHierarchyBuilder', () => {
     });
   });
 
+  describe('duplicate direct storey containment resolves first-declared, matching containedIn() (#4248)', () => {
+    // Malformed-but-real: an element named as the target of TWO
+    // IfcRelContainedInSpatialStructure edges, from two different storeys.
+    // #1 Project, #2 Storey A, #3 Storey B, #4 Wall. Maintainer ruling on
+    // #4248: first-declared ContainsElements edge wins, matching
+    // packages/query's `containedIn()` (`getRelated(ContainsElements,
+    // 'inverse')[0]`, which reads `relationships.inverse.getEdges(...)[0]` -
+    // the same first-declared-by-construction CSR order
+    // spatial-hierarchy-canonical-parent.ts documents and relies on).
+    it('storey A declared/visited first: wall resolves to storey A', () => {
+      const strings = new StringTable();
+      const entities = new EntityTableBuilder(4, strings);
+      entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+      entities.add(2, 'IFCBUILDINGSTOREY', 'st0', 'Storey A', '', '');
+      entities.add(3, 'IFCBUILDINGSTOREY', 'st1', 'Storey B', '', '');
+      entities.add(4, 'IFCWALL', 'w0', 'Wall', '', '', true);
+
+      const relationships = new RelationshipGraphBuilder();
+      relationships.addEdge(1, 2, RelationshipType.Aggregates, 10); // Project -> Storey A
+      relationships.addEdge(1, 3, RelationshipType.Aggregates, 11); // Project -> Storey B
+      relationships.addEdge(2, 4, RelationshipType.ContainsElements, 20); // Storey A contains Wall (first-declared)
+      relationships.addEdge(3, 4, RelationshipType.ContainsElements, 21); // Storey B contains Wall (second-declared)
+
+      const hierarchy = new SpatialHierarchyBuilder().build(
+        entities.build(),
+        relationships.build(),
+        strings,
+        new Uint8Array(),
+        { byId: { get: () => undefined } },
+      );
+
+      expect(hierarchy.elementToStorey.get(4)).toBe(2);
+    });
+
+    // Mirror image: the ContainsElements edges are declared in the OPPOSITE
+    // order (storey B first). Must resolve to storey B - swapping which edge
+    // is first-declared flips the answer. A fixture that "commutes" (gives
+    // the same answer regardless of which edge is declared first) would not
+    // actually be testing the tie-break at all.
+    it('storey B declared first: wall resolves to storey B', () => {
+      const strings = new StringTable();
+      const entities = new EntityTableBuilder(4, strings);
+      entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+      entities.add(2, 'IFCBUILDINGSTOREY', 'st0', 'Storey A', '', '');
+      entities.add(3, 'IFCBUILDINGSTOREY', 'st1', 'Storey B', '', '');
+      entities.add(4, 'IFCWALL', 'w0', 'Wall', '', '', true);
+
+      const relationships = new RelationshipGraphBuilder();
+      relationships.addEdge(1, 2, RelationshipType.Aggregates, 10); // Project -> Storey A
+      relationships.addEdge(1, 3, RelationshipType.Aggregates, 11); // Project -> Storey B
+      relationships.addEdge(3, 4, RelationshipType.ContainsElements, 20); // Storey B contains Wall (first-declared)
+      relationships.addEdge(2, 4, RelationshipType.ContainsElements, 21); // Storey A contains Wall (second-declared)
+
+      const hierarchy = new SpatialHierarchyBuilder().build(
+        entities.build(),
+        relationships.build(),
+        strings,
+        new Uint8Array(),
+        { byId: { get: () => undefined } },
+      );
+
+      expect(hierarchy.elementToStorey.get(4)).toBe(3);
+    });
+
+    // The critical case: buildNode visits storeys in AGGREGATES order
+    // (Storey A is Project's first aggregated child, so buildNode reaches it
+    // before Storey B), but the WALL's first-declared ContainsElements edge
+    // names Storey B. A naive "first write during traversal wins" fix would
+    // let Storey A win here (visited first), which disagrees with
+    // containedIn() (first-declared inverse CSR edge = Storey B). The
+    // resolution must be keyed off ContainsElements declaration order for
+    // the element itself, independent of which storey the tree walk reaches
+    // first - the same global, order-of-visits-independent approach
+    // computeCanonicalParent uses for spatial-structure children.
+    it('resolves by ContainsElements order even when it disagrees with storey traversal order', () => {
+      const strings = new StringTable();
+      const entities = new EntityTableBuilder(4, strings);
+      entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+      entities.add(2, 'IFCBUILDINGSTOREY', 'st0', 'Storey A', '', '');
+      entities.add(3, 'IFCBUILDINGSTOREY', 'st1', 'Storey B', '', '');
+      entities.add(4, 'IFCWALL', 'w0', 'Wall', '', '', true);
+
+      const relationships = new RelationshipGraphBuilder();
+      // Storey B is visited FIRST in the tree (first aggregated child of
+      // Project) - the opposite of its ContainsElements declaration order
+      // below. A "whichever storey the tree walk reaches first/last wins"
+      // implementation (either direction) would disagree with the correct
+      // answer here; only resolving off ContainsElements declaration order
+      // for the element itself gets this right regardless of traversal order.
+      relationships.addEdge(1, 3, RelationshipType.Aggregates, 10); // Project -> Storey B
+      relationships.addEdge(1, 2, RelationshipType.Aggregates, 11); // Project -> Storey A
+      // But the Wall's ContainsElements edges are declared with Storey A FIRST.
+      relationships.addEdge(2, 4, RelationshipType.ContainsElements, 20); // Storey A contains Wall (first-declared)
+      relationships.addEdge(3, 4, RelationshipType.ContainsElements, 21); // Storey B contains Wall (second-declared)
+
+      const hierarchy = new SpatialHierarchyBuilder().build(
+        entities.build(),
+        relationships.build(),
+        strings,
+        new Uint8Array(),
+        { byId: { get: () => undefined } },
+      );
+
+      // Must be Storey A (2), the first-declared ContainsElements edge - NOT
+      // Storey B (3), which is merely visited first in the spatial tree walk
+      // (and would win under either a "first write during traversal" or a
+      // "last write during traversal" naive fix, since traversal visits B
+      // before A here).
+      expect(hierarchy.elementToStorey.get(4)).toBe(2);
+    });
+
+    // Composed with #4246's cycle guard: Storey A is itself the child of a
+    // spurious mutual aggregation back-edge (Building <-> Storey A), the
+    // exact shape #4246 fixed. #4246's cycle-skip only ever changes which
+    // BUILDING is picked as Storey A's Aggregates parent - Storey A is still
+    // reached and visited either way (the fix's whole point is that the
+    // child is never orphaned). It has no reach into ContainsElements
+    // resolution at all (the cycle-skip branch in computeCanonicalParent is
+    // gated on `relType === RelationshipType.Aggregates`). This fixture
+    // proves the two fixes compose: the wall still resolves to Storey A (the
+    // first-declared ContainsElements edge), independent of which building
+    // parents Storey A or in what order that gets resolved.
+    it('composes with the #4246 aggregation back-edge cycle guard', () => {
+      const strings = new StringTable();
+      const entities = new EntityTableBuilder(5, strings);
+      entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+      entities.add(2, 'IFCBUILDING', 'b0', 'Building', '', '');
+      entities.add(3, 'IFCBUILDINGSTOREY', 'st0', 'Storey A', '', '');
+      entities.add(4, 'IFCBUILDINGSTOREY', 'st1', 'Storey B', '', '');
+      entities.add(5, 'IFCWALL', 'w0', 'Wall', '', '', true);
+
+      const relationships = new RelationshipGraphBuilder();
+      // Spurious mutual back-edge between Building and Storey A (#4246 shape),
+      // back-edge declared FIRST so the cycle guard must actually engage.
+      relationships.addEdge(2, 3, RelationshipType.Aggregates, 10); // Building -> Storey A (real)
+      relationships.addEdge(3, 2, RelationshipType.Aggregates, 11); // Storey A -> Building (spurious back-edge)
+      relationships.addEdge(1, 2, RelationshipType.Aggregates, 12); // Project -> Building (real anchor)
+      relationships.addEdge(1, 4, RelationshipType.Aggregates, 13); // Project -> Storey B is unreachable here;
+      // route Storey B through Building instead so both storeys are siblings:
+      relationships.addEdge(2, 4, RelationshipType.Aggregates, 14); // Building -> Storey B
+      // Wall's first-declared ContainsElements edge names Storey A.
+      relationships.addEdge(3, 5, RelationshipType.ContainsElements, 20); // Storey A contains Wall (first-declared)
+      relationships.addEdge(4, 5, RelationshipType.ContainsElements, 21); // Storey B contains Wall (second-declared)
+
+      const hierarchy = new SpatialHierarchyBuilder().build(
+        entities.build(),
+        relationships.build(),
+        strings,
+        new Uint8Array(),
+        { byId: { get: () => undefined } },
+      );
+
+      // Storey A must still be reachable (the #4246 fix's guarantee) and the
+      // wall must still resolve to it (the #4248 fix's guarantee).
+      expect(hierarchy.byBuilding.size).toBeGreaterThan(0);
+      expect(hierarchy.byStorey.get(3)).toEqual([5]);
+      expect(hierarchy.elementToStorey.get(5)).toBe(3);
+    });
+  });
+
   it('leaves longName undefined on the source-less cache-restore path', () => {
     const strings = new StringTable();
     const entities = new EntityTableBuilder(2, strings);

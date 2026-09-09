@@ -260,6 +260,24 @@ export class SpatialHierarchyBuilder {
 
     if (isStoreyLikeSpatialType(typeEnum)) {
       for (const elementId of containedElements) {
+        // A malformed file can name the same element in more than one
+        // IfcRelContainedInSpatialStructure edge, from different storeys.
+        // Resolve the tie the way `containedIn()` (packages/query's
+        // `EntityNode`, `getRelated(ContainsElements, 'inverse')[0]`) and
+        // `computeCanonicalParent` (spatial-hierarchy-canonical-parent.ts)
+        // both do: first-DECLARED wins, read directly off the inverse
+        // ContainsElements CSR edge order - not off which storey this tree
+        // walk happens to reach first or last, which can disagree with
+        // declaration order (#4248). `relationships.inverse.getEdges` gives
+        // edges in declaration order (see the doc comment on
+        // computeCanonicalParent for why), so `edges[0]` is the
+        // first-declared parent storey for this element, globally.
+        const firstContainer = relationships.inverse.getEdges(elementId, RelationshipType.ContainsElements)[0];
+        if (firstContainer && firstContainer.target !== expressId) {
+          // A different, first-declared storey already owns this element;
+          // this storey's (later-declared) claim is dropped, not merged.
+          continue;
+        }
         ctx.elementToStorey.set(elementId, expressId);
         // Propagate the storey assignment to aggregated descendants (e.g. an
         // IfcBuildingElementPart child of an IfcWall). Without this, parts have no

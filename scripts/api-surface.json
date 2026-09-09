@@ -4733,6 +4733,7 @@
     "safeUtf8Decode: function",
     "searchEpsgIndex: function",
     "serializeValue: function",
+    "spatialLookups: function",
     "textDecoderAcceptsSab: function",
     "toStepLineWithRegistry: function"
   ],
@@ -7820,6 +7821,7 @@
     "ExportHbjsonOptions: interface",
     "ExportNamespace: class",
     "ExportStepOptions: interface",
+    "ExtractedViewpointState: interface",
     "FileAttachmentInfo: interface",
     "FilesBackendMethods: interface",
     "FilesNamespace: class",
@@ -7844,6 +7846,7 @@
     "IfcWorkPlanParams: type",
     "IfcWorkScheduleParams: type",
     "IfcWorkScheduleType: type",
+    "IncompleteCameraStateError: class",
     "LShapeProfile: interface",
     "LensBackendMethods: interface",
     "LensNamespace: class",
@@ -7859,6 +7862,7 @@
     "MaterialProfileData: interface",
     "MemberParams: interface",
     "MessagePortTransport: class",
+    "MissingSectionBoundsError: class",
     "ModelBackendMethods: interface",
     "ModelInfo: interface",
     "ModelNamespace: class",
@@ -8131,7 +8135,6 @@
     "union2d: function",
     "version: function"
   ],
-  "create-ifc-lite": [],
   "@ifc-lite/wasm-lifecycle": [
     "InitWasmRetryOptions: interface",
     "WASM_PANIC_STASH_KEY: const",
@@ -8140,5 +8143,6 @@
     "isTransientWasmLoadError: function",
     "restashWasmPanicLocation: function",
     "takeWasmPanicStash: function"
-  ]
+  ],
+  "create-ifc-lite": []
 }

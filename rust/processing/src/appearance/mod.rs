@@ -22,6 +22,7 @@ mod catalog;
 mod context;
 mod mapping;
 mod page;
+mod atlas_plan;
 mod page_atlas;
 mod page_raster;
 mod page_types;

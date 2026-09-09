@@ -168,3 +168,85 @@ handles and asserts every original mesh is nonempty before comparison.
 This IFC4 derivative removes the source-schema obstacle for an appearance
 experiment. It does **not** supply the still-missing scan registration, normals,
 full spatial coverage or held-out feature correspondences.
+
+## Broader building-region exploration
+
+A second bounded acquisition examines the first **64 MiB compressed bytes**,
+not the whole archive. Its 8,429,719 complete rows span source metres
+`[0.1985, -0.4335, -2.0665]` to `[7.9005, 19.6315, 1.6895]`.
+Every 64th unchanged row yields 131,715 RGB points with original row indices.
+All examined labels remain zero. The [manifest](cras-broader-sample.json) records
+both range and output hashes; full-archive integrity/completeness is still not
+established. `tools/texture-authoring/cras-prefix-sample.py` reproduces the bounded
+acquisition and TSV without fabricating points or a registration.
+
+Local `cras-broader-sample.ply` (5.1 MiB) is now a usable manual exploration
+source. Reopening it and comparing all rows against the TSV proves exact XYZ,
+RGB and source-index identity. No normals or transform are appended. It preserves
+far more context than the original 41,697-point narrow crop: a room-sized layout
+and lower structural surfaces are visible around source X 0.2–8 m, Y 0–10.5 m.
+This observation does not establish completeness or semantic point labels.
+
+![Unregistered source points and independently extracted IFC wall footprints](cras-layout-compare.png)
+
+The IFC panel comes from independent IfcOpenShell world-coordinate tessellation
+of the original source. It shows convex wall footprints, deliberately omitting
+openings, and labels original EXPRESS IDs. The third panel simply overlays raw
+coordinate numbers: **it is not a registered result**. The visible offsets are
+one reason matching bounds cannot justify an identity transform.
+
+Concrete IFC reference owners for a correspondence session include east wall
+`383` (`0FDABnXCHCUR8gI54b$Kx2`), cross walls `703`
+(`1gsZ4XbYD0qRhfvwOUEI1z`) and `1273` (`3qeiF73TD1uOeHIcNGcTy8`), and floor
+`159`. Preserve GlobalIds when using the IFC4 derivative, where EXPRESS IDs differ.
+These are reference-owner candidates, **not accepted scan/IFC point pairs**.
+
+The achievable next gate is a documented *manual correspondence consistency*
+experiment on this real pair: freeze fitting and held-out structural feature
+lists, identify their actual scan neighborhoods and IFC surface intersections,
+then solve and report checks separately. The inspected prefix does not yet expose
+four fitting plus four distinct, vertically distributed check intersections
+unambiguously; sparse upper patches and clutter must not be relabeled as corners.
+The next acquisition artifact should add that structural coverage (a further
+bounded prefix or a full verified archive spatial query), retaining source rows.
+Only then can normals/orientation and texture-transfer uncertainty be qualified.
+The original survey-accuracy gate remains unpassed, and the paper's scan-to-scan
+3 mm registration statistic remains inapplicable to this scan-to-IFC experiment.
+
+### Prefix coverage comparison and the 128 MiB stop
+
+Before expanding again, occupied 25 cm cells were measured over **every decoded
+point**, and coordinate quantiles over every 64th original row. The
+[coverage report](cras-prefix-coverage.json) separates disjoint compressed blocks
+from cumulative statistics. These are source-coordinate distributions, not
+semantic wall/floor classes.
+
+| Compressed block | Complete new rows | New XYZ voxels | New XY cells | Block Z 5th / median / 95th percentile (m) |
+| --- | ---: | ---: | ---: | --- |
+| 0–16 MiB | 2,112,397 | 726 | 311 | -1.537 / -1.009 / 1.438 |
+| 16–32 MiB | 2,135,691 | 444 | 188 | -1.152 / -1.137 / -0.170 |
+| 32–64 MiB | 4,181,631 | 880 | 300 | -1.147 / -0.694 / -0.053 |
+| 64–128 MiB | 8,325,670 | 1,441 | 566 | -1.148 / -0.674 / -0.090 |
+
+The 32–64 MiB block contributed substantial new horizontal coverage, so one
+capped expansion to 128 MiB was performed. It adds coverage up to Y=17.6635 m,
+but every new point still has Z below zero; it supplies **no additional upper
+wall-height coverage**. All 16,755,389 examined labels are zero. Acquisition
+stops at this bound: further prefix growth is not asserted to solve the missing
+vertically distributed correspondences.
+
+The [128 MiB manifest](cras-expanded-sample.json) pins the 130,902-point systematic
+sample and its local `cras-expanded-sample.ply`. PLY reopening again proves exact
+XYZ/RGB/source-index equality. Both 64 and 128 MiB samples can be reproduced with
+`cras-prefix-sample.py OUTPUT_DIRECTORY [64|128]`; the coverage comparison is
+reproduced by `cras-prefix-coverage.py DIRECTORY_CONTAINING_128M_PREFIX`.
+No scan normals, registration matrix, fitted point pair or check residual has
+been invented.
+
+The [candidate-owner catalog](cras-reference-owner-candidates.json) pins the exact
+original and IFC4-derivative SHA-256 hashes and maps the four reference GlobalIds
+to both EXPRESS-ID spaces. It intentionally contains an empty correspondence
+list. A next manual registration artifact must populate source-row neighborhoods,
+actual feature definitions and uncertainty, partitioned into fit/check sets
+before solving. The current pair is useful for that UI exploration; the quality
+gate remains open because those measurements have not been made.

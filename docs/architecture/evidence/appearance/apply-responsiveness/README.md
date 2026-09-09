@@ -12,7 +12,7 @@ The median trusted-input roundtrip changes from 3805 ms to 17 ms. Main delivered
 
 ## Workflow and measurement
 
-Open public `convento.ifczip` and add the unrelated `untextured-wall.ifc` through the existing loader. Author → Appearance → Entire model, upload `boulder_01_diff_1k.jpg`, use planar XZ mapping, wait for Preview ready. Each run uses a fresh browser with actual WebGPU. No builds or other acceptance browser runs overlap the measured Apply.
+Open public `convento.ifczip` and add the unrelated `untextured-wall.ifc` through the existing loader. Author → Appearance → Entire model, upload `boulder_01_diff_1k.jpg`, use planar XZ mapping, wait for Preview ready. Each run uses a fresh browser with actual WebGPU. No builds or other acceptance browser runs from this lane overlap the measured Apply. Other repository agents were active on the shared development machine, so these are observed paired interaction results, not isolated-machine throughput guarantees.
 
 A capture-phase listener timestamps the real Apply click before its handler and emits a console event to the external driver. After receiving that event, the driver waits 100 ms and sends a trusted CDP mouse-wheel event at viewport coordinates (800,550). The DOM listener records `isTrusted` and delivery time. The reported roundtrip includes protocol transport; delivery timestamps independently establish whether input reached the page before completion. This avoids synthetic DOM `.click()` and avoids sending the wheel over the Apply button in the dock.
 

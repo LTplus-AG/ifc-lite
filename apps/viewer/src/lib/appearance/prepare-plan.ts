@@ -12,7 +12,7 @@ function yieldAppearanceTask(): Promise<void> {
   };
   // A fresh background task lets pending interaction run ahead of preparation.
   // scheduler.yield() continuations can retain the initiating input priority.
-  return host.scheduler?.postTask
+  return typeof host.scheduler?.postTask === 'function'
     ? host.scheduler.postTask(() => undefined, { priority: 'background' })
     : new Promise(resolve => setTimeout(resolve, 0));
 }

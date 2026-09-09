@@ -17,7 +17,9 @@
       "wasm": "b16e848b442a80ee3a5136a1b7e252044ee8f0fdc373578d9c9bfbe9a17aecf6",
       "branchPreparation": "c5bb70e75617d8420a52bc2483b598471cc04973962c802d3b76432d82d1b2aa",
       "basePreparation": "71fdb7bd8f1105b6eb628402685916400bfd7f90281889f400cbe01c67b4b301"
-    }
+    },
+    "measuredBranchCheckpoint": "5a2248d58",
+    "finalGuardNote": "After measurement, feature detection was tightened from truthiness to typeof postTask === function; the measured native scheduler path is unchanged."
   },
   "runs": [
     {

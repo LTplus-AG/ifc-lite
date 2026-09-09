@@ -29,15 +29,6 @@ fn export_step_round_trips_a_backslash_carrying_schema_label_through_source_sche
     );
 }
 
-#[test]
-fn split_top_level_args_respects_nesting() {
-    let args = "'a',$,(#1,#2,#3),IFCBOOLEAN(.T.),#9";
-    let parts = split_top_level_args(args);
-    assert_eq!(parts.len(), 5);
-    assert_eq!(parts[2], "(#1,#2,#3)");
-    assert_eq!(parts[3], "IFCBOOLEAN(.T.)");
-}
-
 // The `escape()` literal-table tests that used to live here (backslash
 // doubling, apostrophe+backslash ordering, per-char control mapping, run
 // length, byte-identical plain text, non-ASCII directive encoding) are now
@@ -277,5 +268,69 @@ fn export_step_with_stats_reports_refused_refs_in_a_filtered_export() {
     assert_eq!(
         control_stats.refused_refs, 0,
         "an ordinary reference must not be counted as refused"
+    );
+}
+
+/// #4125: a record whose argument list does not scan into slots must NOT be
+/// edited by index. Before the validating splitter, writing `Description`
+/// (index 3) on this line landed on `ObjectPlacement`, deleted the `#5` that
+/// was there, and returned a `String` the caller read as a success.
+#[test]
+fn apply_attr_mutations_refuses_a_record_whose_slots_do_not_scan() {
+    let line = "#1=IFCWALL('g',$,IFCLABEL('a's'),$,IFCLABEL('b's'),#5,#6,'T',.SOLIDWALL.);";
+    let mut muts = BTreeMap::new();
+    muts.insert(3usize, "'NEWDESC'".to_string());
+    let mut refused = 0usize;
+    assert_eq!(
+        apply_attr_mutations_counted(line, &muts, &mut refused),
+        line,
+        "an edit by index into a mis-scanned list must refuse, not land on another attribute"
+    );
+    assert_eq!(refused, 1, "and the refusal must be counted, not silent");
+
+    // The control: the SAME record with its apostrophes doubled, where slot 3
+    // really is `Description`, still takes the edit.
+    let control = "#1=IFCWALL('g',$,IFCLABEL('a''s'),$,IFCLABEL('b''s'),#5,#6,'T',.SOLIDWALL.);";
+    assert_eq!(
+        apply_attr_mutations_counted(control, &muts, &mut refused),
+        "#1=IFCWALL('g',$,IFCLABEL('a''s'),'NEWDESC',IFCLABEL('b''s'),#5,#6,'T',.SOLIDWALL.);",
+        "a scannable record must still take the edit"
+    );
+    assert_eq!(refused, 1, "and must not be counted as a refusal");
+}
+
+/// The refusal above must be VISIBLE. An unchanged line is what a no-op edit
+/// also produces, so the export counts the refusal into its stats.
+#[test]
+fn export_step_counts_a_refused_attribute_edit() {
+    use crate::step::{export_step_with_stats, AttrMutation, StepOptions};
+
+    let source = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCWALL('g',$,IFCLABEL('a's'),$,IFCLABEL('b's'),#5,#6,'T',.SOLIDWALL.);\nENDSEC;\nEND-ISO-10303-21;\n";
+    let opts = StepOptions {
+        attribute_mutations: vec![AttrMutation {
+            express_id: 1,
+            index: 3,
+            value: "'NEWDESC'".to_string(),
+        }],
+        ..Default::default()
+    };
+    let (step, stats) = export_step_with_stats(source, &opts);
+    assert_eq!(stats.attribute_edits_refused, 1);
+    assert!(
+        step.contains("#1=IFCWALL('g',$,IFCLABEL('a's'),$,IFCLABEL('b's'),#5,#6,'T',.SOLIDWALL.);"),
+        "the source line ships unedited rather than corrupted; got:\n{step}"
+    );
+    assert!(
+        !step.contains("NEWDESC"),
+        "the refused edit must not appear anywhere; got:\n{step}"
+    );
+
+    // The control, so a zero above is not merely "this export never edits".
+    let control_source = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCWALL('g',$,IFCLABEL('a''s'),$,IFCLABEL('b''s'),#5,#6,'T',.SOLIDWALL.);\nENDSEC;\nEND-ISO-10303-21;\n";
+    let (control_step, control_stats) = export_step_with_stats(control_source, &opts);
+    assert_eq!(control_stats.attribute_edits_refused, 0);
+    assert!(
+        control_step.contains("'NEWDESC'"),
+        "the control edit must land; got:\n{control_step}"
     );
 }

@@ -462,7 +462,7 @@ fn an_exhausted_id_space_emits_no_copy() {
     assert_eq!(ids.len(), before, "an id was handed out twice");
 }
 
-/// An attribute index past the end of the record. `apply_attr_mutations`
+/// An attribute index past the end of the record. `apply_attr_mutations_counted`
 /// ignores it, so the copy would be a byte-identical twin and the referrer
 /// would be repointed at a record that changed nothing.
 #[test]
@@ -735,7 +735,7 @@ fn a_caller_edit_at_a_missing_index_does_not_buy_a_copy() {
     let (out, stats) = export_step_with_stats(
         src.as_bytes(),
         &StepOptions {
-            // Index 9 is past the end of #9, and apply_attr_mutations ignores
+            // Index 9 is past the end of #9, and apply_attr_mutations_counted ignores
             // it, so the repointing computed from it never reaches the file.
             attribute_mutations: vec![AttrMutation {
                 express_id: 9,

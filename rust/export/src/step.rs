@@ -12,114 +12,13 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use ifc_lite_core::EntityScanner;
 
-/// A single root-attribute edit: replace the top-level attribute at `index` of entity
-/// `express_id` with `value` (already STEP-serialized, e.g. `'New Name'` or `$`).
-/// This is the wasm-bridge form of a `MutablePropertyView` UPDATE_ATTRIBUTE mutation.
-pub struct AttrMutation {
-    pub express_id: u32,
-    pub index: usize,
-    pub value: String,
-}
-
-/// A property create/update: attach (or overwrite) `prop_name` in `pset_name` on
-/// `express_id` with `value` — the STEP-serialized nominal value, e.g. `IFCLABEL('2HR')`
-/// or `IFCREAL(42.)`. The wasm-bridge form of a `MutablePropertyView` CREATE/UPDATE_PROPERTY.
-/// Synthesizes fresh `IfcPropertySingleValue` / `IfcPropertySet` / `IfcRelDefinesByProperties`
-/// entities appended to DATA (new psets; merge-into-existing is a follow-on).
-pub struct PropMutation {
-    pub express_id: u32,
-    pub pset_name: String,
-    pub prop_name: String,
-    pub value: String,
-}
-
-/// Replace one attribute of a record that other records share, by copying the
-/// record and repointing a single referrer at the copy.
-///
-/// The reason this is a writer job rather than a caller one is the id. A copy
-/// needs a number no record holds, and the writer is what knows `max_id`; a
-/// caller that allocates its own has to agree with `PropMutation`'s synthesis
-/// about which numbers are free, and two allocators sharing one space is a
-/// collision waiting for the first export that uses both.
-///
-/// Doing it here also keeps the copy inside the emit path, so it is counted in
-/// [`StepStats::written`] and converted when the export targets another schema.
-/// A record spliced into the output afterwards is neither.
-///
-/// Property sets are the case this exists for. IFC exporters routinely give
-/// each element its own `IfcPropertySet` and point them all at one
-/// `IfcPropertySingleValue` per distinct value, so editing that value in place
-/// changes it for every element sharing it. Copying first changes one.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CopyOnWriteMutation {
-    /// The record to copy.
-    pub express_id: u32,
-    /// Which attribute of the copy to replace, zero-based.
-    pub index: usize,
-    /// The replacement, STEP-serialized, e.g. `IFCLABEL('2HR')`.
-    pub value: String,
-    /// The record that should point at the copy instead of the original.
-    pub referrer_id: u32,
-    /// Which attribute of the referrer holds that reference. A list attribute
-    /// is rewritten with the one reference substituted and the rest untouched.
-    pub referrer_index: usize,
-}
-
-/// Options for STEP export.
-#[derive(Default)]
-pub struct StepOptions {
-    /// FILE_SCHEMA label to write (e.g. `IFC4`). `None` ⇒ preserve the source schema.
-    /// When `Some` and the target differs, entity types/attributes are converted (P2).
-    pub schema: Option<String>,
-    /// Express ids to include. `None` ⇒ the whole model. When set, the forward
-    /// reference closure is added so every emitted `#ref` resolves.
-    pub included: Option<Vec<u32>>,
-    /// Root-attribute edits to apply during serialization (P3 mutation bridge).
-    pub attribute_mutations: Vec<AttrMutation>,
-    /// Property create/update edits — synthesized as new pset entities appended to DATA.
-    pub property_mutations: Vec<PropMutation>,
-    /// Copy-then-edit mutations for records other records share.
-    pub copy_on_write: Vec<CopyOnWriteMutation>,
-    /// `FILE_DESCRIPTION` item. `None` ⇒ keep the source file's items, and
-    /// fall back to the generic view-definition default only when the source
-    /// carried none.
-    pub description: Option<String>,
-    /// `FILE_NAME` author. `None` ⇒ keep the source file's.
-    pub author: Option<String>,
-    /// `FILE_NAME` organization. `None` ⇒ keep the source file's.
-    pub organization: Option<String>,
-    /// `FILE_NAME` preprocessor_version — the tool writing this file.
-    /// `None` ⇒ `ifc-lite`.
-    pub application: Option<String>,
-    /// `FILE_NAME` name. `None` ⇒ `export.ifc`.
-    pub filename: Option<String>,
-    /// `FILE_NAME` time_stamp. `None` ⇒ the source file's stamp. There is no
-    /// clock fallback: `SystemTime::now` is unavailable on the
-    /// `wasm32-unknown-unknown` target this exporter ships to, so a caller that
-    /// wants "now" states it.
-    pub time_stamp: Option<String>,
-}
-
-/// Coverage stats for a STEP export.
-pub struct StepStats {
-    /// Entities in the source model.
-    pub total: usize,
-    /// Entities written (after filtering + reference closure).
-    pub written: usize,
-    /// Copy-on-write mutations the file could not express, so none was made.
-    /// Non-zero means an edit the caller asked for is not in the output, and
-    /// the caller is the only one who can say what to do about it.
-    pub copies_refused: usize,
-    /// `#<digits>` references above `u32::MAX` refused (issue #3421) while
-    /// resolving a filtered export's reference closure. The referenced record
-    /// could never itself be a real entity, so this excludes nothing
-    /// reachable — it only says the source has an id ifc-lite can't hold (#3752).
-    pub refused_refs: usize,
-}
+pub use crate::step_api::{
+    AttrMutation, CopyOnWriteMutation, PropMutation, StepOptions, StepStats,
+};
 
 use crate::schema_detect::detect_schema;
 use crate::step_text::{
-    apply_attr_mutations, escape, merge_edits, refs_in_line_counted, renumber,
+    apply_attr_mutations_counted, escape, merge_edits, refs_in_line_counted, renumber,
 };
 
 /// Export the parsed model in `content` as a STEP/IFC string.
@@ -194,6 +93,7 @@ fn emit<W: std::io::Write>(
 
     // 2. Resolve the included set + forward reference closure.
     let mut refused_refs = 0usize;
+    let mut attribute_edits_refused = 0usize;
     let included: HashSet<u32> = match &opts.included {
         None => order.iter().copied().collect(),
         Some(roots) => {
@@ -262,7 +162,9 @@ fn emit<W: std::io::Write>(
                 let raw = String::from_utf8_lossy(&content[s..e]);
                 // Apply root-attribute edits first (original-schema positions), then convert.
                 let edited = match merge_edits(muts_by_id.get(id), repointed.get(id)) {
-                    Some(edits) => apply_attr_mutations(&raw, &edits),
+                    Some(edits) => {
+                        apply_attr_mutations_counted(&raw, &edits, &mut attribute_edits_refused)
+                    }
                     None => raw.into_owned(),
                 };
                 if converting {
@@ -295,7 +197,7 @@ fn emit<W: std::io::Write>(
             // why they are resolved into their own map.
             let mut muts = muts_by_id.get(source_id).cloned().unwrap_or_default();
             muts.extend(edits.iter().map(|(i, v)| (*i, v.clone())));
-            let edited = apply_attr_mutations(&raw, &muts);
+            let edited = apply_attr_mutations_counted(&raw, &muts, &mut attribute_edits_refused);
             let renumbered = renumber(&edited, *copy_id);
             if converting {
                 out.write_all(
@@ -337,7 +239,13 @@ fn emit<W: std::io::Write>(
         // duplicate real records.
         let Some(mut next) = next_id else {
             out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
-            return Ok(StepStats { total: order.len(), written, copies_refused, refused_refs });
+            return Ok(StepStats {
+                total: order.len(),
+                written,
+                copies_refused,
+                refused_refs,
+                attribute_edits_refused,
+            });
         };
         for ((express_id, pset_name), props) in &groups {
             // One property set costs one id per property plus one for the set
@@ -387,7 +295,13 @@ fn emit<W: std::io::Write>(
 
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
-    Ok(StepStats { total: order.len(), written, copies_refused, refused_refs })
+    Ok(StepStats {
+        total: order.len(),
+        written,
+        copies_refused,
+        refused_refs,
+        attribute_edits_refused,
+    })
 }
 
 #[cfg(test)]

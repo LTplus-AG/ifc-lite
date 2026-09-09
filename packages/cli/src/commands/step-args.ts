@@ -87,13 +87,39 @@
  * deliberately its near-twin rather than an import: `@ifc-lite/export`'s
  * `exports` map exposes only `.`, so reaching it would mean adding a published
  * export (and an `api-surface` entry) to a v4.0.0 package to fix a CLI bug.
- * #4125 tracks consolidating them (`derive-variants.mts` and
- * `placement-datum.test.ts` are two the issue does not name), and that is a real merge rather
- * than a no-op swap: its `splitTopLevelStepArguments` has the three structural
- * checks and NO per-part check at all, which is exactly the top-level-only
- * version the two paragraphs above show is insufficient. Measured, it splits
- * `$,/* renamed *\/ $` into two parts and `'guid',$,'Name',/* c *\/,$` into five.
- * The three structural checks are the contract the two DO share.
+ * #4125 declined consolidating them, with its own measurement of why: the
+ * splitters in this repo have different CONTRACTS, so a shared function needs a
+ * mode flag or a richer return type, which is a new abstraction rather than a
+ * de-duplication. What they could share is the REFUSE side, and for TWO of the
+ * three it is pinned rather than described: the export twin and the Rust
+ * `split_top_level_args` are both held to the vectors in
+ * `rust/export/tests/fixtures/step_refuse_vectors.json`, by
+ * `packages/export/src/step-refuse.parity.test.ts` and by
+ * `rust/export/src/step_slot_tests.rs`'s
+ * `refuses_every_shared_cross_language_vector`.
+ *
+ * THIS splitter is NOT held to those vectors, and would not pass them today. `"`
+ * is absent from `isTokenBreak` below, so a binary literal is consumed as a bare
+ * run and two of the shared vectors are ACCEPTED here: `'g',"0F` splits as two
+ * parts with the unterminated literal intact, and `'g',"01,23"` splits into
+ * THREE parts for two attributes, because the comma inside the literal is read
+ * as a separator. The consumer is a live by-index writer — `mutate-step-record.ts`
+ * does `args[attrIdx] = …` and then `args.join(',')` — so that is the #4125
+ * failure still open in this file, not a hypothetical one. Adding the character
+ * is a behaviour change that would also refuse legitimate binary literals such
+ * as `"0F"`, which needs corpus verification rather than a one-character edit;
+ * LTplus-AG/ifc-lite#4200 tracks both the fix and the parity test that would
+ * have caught it.
+ *
+ * They diverge on the ACCEPT side, deliberately: this one refuses any slot
+ * carrying a `/* ... *\/` comment, while the export twin keeps the comment's
+ * bytes inside the slot and accepts it. That divergence is each caller's
+ * choice, so no fixture pins it.
+ *
+ * The export twin's `splitTopLevelStepArguments` used to have the three
+ * structural checks and no per-part check at all; #4173 gave it one
+ * (`isWellFormedStepSlot`), so the two now agree that a part must be one
+ * well-formed value.
  */
 
 /**
@@ -159,12 +185,12 @@ export function splitTopLevelStepArgs(input: string): string[] | null {
   if (inString || depth !== 0) return null;
   parts.push(current);
   // These three are the contract this shares with
-  // `packages/export/src/step-argument-parser.ts`, which has exactly them and no
-  // per-part check. That parity, not speed, is why they are kept: they add no
-  // coverage at all, and deleting any one of them, or all three, fails no test
-  // (measured). Only the `depth < 0` check above is an early exit; these two run
-  // after the whole scan and save only a walk over the parts. Kept as
-  // the shared spelling until #4125 merges the copies.
+  // `packages/export/src/step-argument-parser.ts`, which has them too (plus its
+  // own per-part check since #4173). That parity, not speed, is why they are
+  // kept: they add no coverage at all, and deleting any one of them, or all
+  // three, fails no test (measured). Only the `depth < 0` check above is an
+  // early exit; these two run after the whole scan and save only a walk over
+  // the parts.
   return parts.every(isLoneStepToken) ? parts : null;
 }
 

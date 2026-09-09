@@ -1062,3 +1062,7 @@ an async return type or successful cancellation tests. Retain the exact fences
 while addressing remaining synchronous dependency work separately. Raw timing,
 source/runtime identity and functional Undo/Redo evidence are recorded under
 `docs/architecture/evidence/appearance/appearance-cooperative-apply-*`.
+
+### Calibrated image annotation creation (#4308)
+
+The opt-in native annotation planner reuses canonical placement, schema validation and per-element geometry production. A source-matched ordinary worker-load A/B observed a small increase with overlapping samples and identical geometry/provenance; no speedup or zero-cost claim is made. Final JavaScript/assets were identical while the verified IFC WASM was swapped, so this checks runtime size/initialization effects without invoking annotation creation. See [the exact runtime hashes and paired samples](annotation-plane-load-evidence.json). Annotation creation and the downstream Save Into Model UI are outside this load measurement.

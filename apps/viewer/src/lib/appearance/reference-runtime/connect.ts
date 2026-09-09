@@ -23,16 +23,23 @@ export function connectAppearanceReferences(
   inventory: AppearanceAssetInventory = appearanceAssets,
 ): () => void {
   const channel = renderer.getReferenceImages(), jobs = new Map<string, Job>();
+  const diagnostics = new Map<string, string>();
+  const report = (diagnostic: ReferenceRuntimeDiagnostic) => {
+    const key = JSON.stringify([diagnostic.status, diagnostic.message]);
+    if (diagnostics.get(diagnostic.id) === key) return;
+    diagnostics.set(diagnostic.id, key); onDiagnostic(diagnostic);
+  };
   const runtimeId = crypto.randomUUID();
   let disposed = false;
   const remove = (id: string) => { jobs.get(id)?.abort.abort(); jobs.delete(id); channel.remove(id); };
   const sync = (state: ViewerState) => {
     if (disposed) return;
+    for (const id of diagnostics.keys()) if (!state.appearanceReferences.has(id)) diagnostics.delete(id);
     for (const id of jobs.keys()) if (!state.appearanceReferences.has(id)) remove(id);
     for (const [id, record] of state.appearanceReferences) {
       const corners = referenceRenderCorners(record, state);
       const unavailable = !record.visible ? 'hidden' : !corners ? 'frame-mismatch' : !inventory.get(record.assetId) ? 'missing-asset' : null;
-      if (unavailable) { remove(id); onDiagnostic({ id, status: unavailable }); continue; }
+      if (unavailable) { if (jobs.has(id)) remove(id); report({ id, status: unavailable }); continue; }
       const key = JSON.stringify([record.assetId, corners, record.locked, record.opacity]);
       if (jobs.get(id)?.key === key) continue;
       // Keep the previous valid raster visible until its replacement uploads.
@@ -41,7 +48,7 @@ export function connectAppearanceReferences(
       const abort = new AbortController();
       const job = { key, abort };
       jobs.set(id, job);
-      onDiagnostic({ id, status: 'loading' });
+      report({ id, status: 'loading' });
       const owner = { kind: 'draft' as const, id: `reference-runtime:${runtimeId}:${id}:${crypto.randomUUID()}` };
       inventory.retain(record.assetId, owner);
       void (async () => {
@@ -49,17 +56,17 @@ export function connectAppearanceReferences(
           const bitmap = await inventory.decode(record.assetId, owner, abort.signal);
           if (disposed || jobs.get(id) !== job || !corners) return;
           await channel.set({ id, bitmap, corners, visible: true, locked: record.locked, opacity: record.opacity }, abort.signal);
-          if (!disposed && jobs.get(id) === job) onDiagnostic({ id, status: 'ready' });
+          if (!disposed && jobs.get(id) === job) report({ id, status: 'ready' });
         } catch (error) {
           if (!abort.signal.aborted && !disposed && jobs.get(id) === job) {
-            onDiagnostic({ id, status: 'error', message: error instanceof Error ? error.message : 'Could not display this reference image.' });
+            report({ id, status: 'error', message: error instanceof Error ? error.message : 'Could not display this reference image.' });
           }
         } finally { inventory.release(record.assetId, owner); }
       })();
     }
   };
   const unsubscribe = store.subscribe(sync);
-  const lost = renderer.onDeviceLost(() => { for (const id of [...jobs.keys()]) remove(id); });
+  const lost = renderer.onDeviceLost(() => { for (const id of jobs.keys()) remove(id); });
   sync(store.getState());
-  return () => { disposed = true; unsubscribe(); lost(); for (const id of [...jobs.keys()]) remove(id); };
+  return () => { disposed = true; unsubscribe(); lost(); for (const id of jobs.keys()) remove(id); };
 }

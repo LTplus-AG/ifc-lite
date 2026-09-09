@@ -4,7 +4,7 @@
 import type { ReferenceCorners } from '@ifc-lite/renderer';
 import type { ViewerState } from '@/store';
 import { totalYupOffset } from '@/hooks/ingest/federationAlign';
-import { placementFrameKey } from '@/lib/model-placement/persistence';
+import { placementFrameKey, placementFrameCoordinateInfo } from '@/lib/model-placement/persistence';
 import { toRenderTranslation } from '@/lib/model-placement/translation';
 import type { RegisteredAppearanceReference } from '../references/types.js';
 
@@ -39,8 +39,7 @@ export function referenceFrameStatus(record: Registration, state: ViewerState): 
  * are derived again after RTC/origin changes, retaining size and landmark position. */
 export function referenceRenderCorners(record: Registration, state: ViewerState): ReferenceCorners | null {
   if (referenceFrameStatus(record, state) !== 'ready') return null;
-  const anchor = [...state.models.values()].find(model => model.federationAlignmentStatus === 'anchor');
-  const info = anchor?.geometryResult?.coordinateInfo ?? state.geometryResult?.coordinateInfo;
+  const info = placementFrameCoordinateInfo(state);
   const offset = totalYupOffset(info);
   const convert = (point: RegisteredAppearanceReference['cornersIfcWorld'][number]): readonly [number, number, number] => {
     const render = toRenderTranslation(point);

@@ -19,12 +19,24 @@ export function georeferencedPlacementFrameKey(georef: ModelGeoref): string {
     rtc: info?.wasmRtcOffset, rotation: info?.buildingRotation });
 }
 
-export function placementFrameKey(state: ViewerState): string {
-  if (state.modelPlacement.frameKey) return state.modelPlacement.frameKey;
+function placementAnchor(state: ViewerState) {
   // An anchor/georef edit is only a proposal until Re-align actually re-bakes
   // the scene. Start from the loaded source frame; realignment stamps its frame.
   const actualAnchor = [...state.models].find(([, model]) => model.federationAlignmentStatus === 'anchor')?.[0];
-  const anchor = selectAnchorGeoref({ models: state.models, georefMutations: new Map(), anchorModelIdOverride: actualAnchor });
+  return selectAnchorGeoref({ models: state.models, georefMutations: new Map(), anchorModelIdOverride: actualAnchor });
+}
+
+/** The committed workspace anchor, never the currently selected model or an
+ * uncommitted georeference edit. Shared by placement identity and references. */
+export function placementFrameCoordinateInfo(state: ViewerState) {
+  const anchor = placementAnchor(state);
+  return anchor?.coordinateInfo ?? [...state.models.values()].sort((a, b) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0))
+    .find(model => model.geometryResult)?.geometryResult?.coordinateInfo ?? state.geometryResult?.coordinateInfo;
+}
+
+export function placementFrameKey(state: ViewerState): string {
+  if (state.modelPlacement.frameKey) return state.modelPlacement.frameKey;
+  const anchor = placementAnchor(state);
   if (!anchor) return 'local-engineering:m:z-up';
   return georeferencedPlacementFrameKey({ ...anchor.eff, coordinateInfo: anchor.coordinateInfo });
 }

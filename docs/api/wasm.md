@@ -616,3 +616,24 @@ Catalog limits are 10,000 requested IDs, a 4,096-byte revision, the planner's sh
 owner/type memberships and 4 MiB total type-name bytes. Request JSON is limited to
 256 KiB and output serialization uses the existing 64 MiB ceiling. A refusal throws
 instead of returning a truncated selector catalog.
+
+### Finite page appearance output
+
+`IfcAPI.planPageAppearance(content, requestJson, rgba)` is the worker-oriented
+binding for `plan_page_appearance`. The JSON request is
+`{appearance, page, sourceImages: [{imageUri, raster}], texelsPerMetre}`; raster
+ranges use `{width, height, byteOffset, byteLength}`. It preserves existing
+appearance outside the finite planar page by baking bounded PNG atlases. The
+original image-only `planAppearance` method remains unchanged.
+
+The returned bytes contain the ASCII magic `IFPA`, a little-endian `u32` JSON
+byte length, UTF-8 JSON metadata, then concatenated PNG payloads. Metadata is
+`{plan, itemImages, assets, texelsPerMetre}`. Each asset is
+`{imageUri, width, height, byteOffset, byteLength}` with its range relative to the
+PNG section. `itemImages` maps `geometryItemId` to `imageUri`. The metadata ceiling
+is 64 MiB and the complete envelope ceiling is 160 MiB. No PNG bytes are expanded
+into base64 or JSON number arrays. Hosts should run this synchronously expensive
+operation in a cancellable worker, validate the source/allocator checkpoint,
+and atomically register every digest-named PNG before applying its IFC plan.
+See [finite page appearance](rust.md#finite-page-appearance) for quality limits
+and explicit refusals.

@@ -807,3 +807,34 @@ The function reuses appearance source decoding and its budgets, performs no mesh
 or texture-image decoding, and rejects malformed relevant type assignments or oversized
 catalog metadata without partial results. Hosts retain federation and selection
 orchestration and must fence stale snapshot responses before use.
+
+### Finite page appearance
+
+`ifc_lite_processing::appearance::plan_page_appearance(source, &request, rgba)`
+adds a calibrated planar page while sampling each object's original albedo
+outside the page. `PageAppearanceRequest.appearance` is the existing request with
+`Planar` mapping and both repeat flags false. `page` and `source_images[].raster`
+are `{width, height, byte_offset, byte_length}` ranges in a separate top-down,
+straight-alpha RGBA8 payload. External images are keyed by their exact effective
+`IfcImageTexture.URLReference` in `image_uri`; embedded textures are decoded by
+the canonical Rust resolver. Missing external pixels are an explicit refusal.
+
+The returned `PageAppearancePlan` contains the ordinary atomic `plan`, per-item
+`item_images`, deduplicated `assets` with encoded PNG bytes, and the requested
+`texels_per_metre`. Each generated URI is `textures/<SHA256 of PNG bytes>.png`.
+The host must adopt all returned image resources and IFC edits as one command;
+normal planning, undo and model export must retain those resources together.
+
+The topology-preserving triangle atlas resamples the original appearance at the
+requested physical density. Finite page bounds and straight-alpha compositing
+prevent repeated/clamped page borders outside the page. Sampling guard pixels
+reduce chart seams; bilinear filtering still has finite resolution at page
+edges. This is visual preservation at an explicit sampling density, not pixel
+identity or exact vector clipping. It projects through the selected objects
+without visibility/occlusion testing. It does not silently reduce quality.
+
+Output is bounded to 4096 pixels per axis and 16,777,216 total atlas pixels,
+500,000 UV corners, and 96 MiB of PNG output. Inputs reuse the ordinary planner
+limits, plus a 128 MiB RGBA payload and bounded raster ranges. The current path
+explicitly refuses split per-face palettes, presentation-layer style overrides,
+and translucent untextured surfaces whose rendering path cannot be preserved.

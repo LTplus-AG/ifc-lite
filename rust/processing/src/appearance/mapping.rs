@@ -6,7 +6,7 @@ use super::types::{AppearanceItem, AppearanceRequest, Mapping, MappingFrame};
 use ifc_lite_core::{AttributeValue as A, IfcType};
 use ifc_lite_geometry::GeometryRouter;
 
-fn rows<const N: usize>(value: Option<&A>) -> Result<Vec<[f64; N]>, String> {
+pub(super) fn rows<const N: usize>(value: Option<&A>) -> Result<Vec<[f64; N]>, String> {
     let list = value
         .and_then(A::as_list)
         .ok_or("Missing coordinate list")?;
@@ -15,7 +15,7 @@ fn rows<const N: usize>(value: Option<&A>) -> Result<Vec<[f64; N]>, String> {
     }
     list.iter().map(numbers).collect()
 }
-fn triangles(value: Option<&A>, max: usize) -> Result<Vec<[u32; 3]>, String> {
+pub(super) fn triangles(value: Option<&A>, max: usize) -> Result<Vec<[u32; 3]>, String> {
     rows::<3>(value)?
         .into_iter()
         .map(|r| {

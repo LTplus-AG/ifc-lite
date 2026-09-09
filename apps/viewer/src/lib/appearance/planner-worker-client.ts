@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import type { AppearanceCatalog, AppearanceCatalogRequest, AppearancePlan, AppearanceRequest, AppearanceWorkerJob, AppearanceWorkerRequest, AppearanceWorkerResponse } from './planner-types.js';
+import type { PageAppearancePlan, PageAppearanceRequest, AppearanceCatalog, AppearanceCatalogRequest, AppearancePlan, AppearanceRequest, AppearanceWorkerJob, AppearanceWorkerRequest, AppearanceWorkerResponse } from './planner-types.js';
 
 export interface AppearanceWorker {
   onmessage: ((event: MessageEvent<AppearanceWorkerResponse>) => void) | null;
@@ -12,6 +12,7 @@ export interface AppearanceWorker {
 }
 export interface AppearancePlanner {
   plan(source: Uint8Array, request: AppearanceRequest, options?: { signal?: AbortSignal }): Promise<AppearancePlan>;
+  pagePlan(source: Uint8Array, request: PageAppearanceRequest, rgba: Uint8Array, options?: { signal?: AbortSignal }): Promise<PageAppearancePlan>;
   catalog(source: Uint8Array, request: AppearanceCatalogRequest, options?: { signal?: AbortSignal }): Promise<AppearanceCatalog>;
   cancel(): void;
   dispose(): void;
@@ -43,7 +44,11 @@ export function createAppearancePlanner(options: {
     if (source.byteLength > 128 * 1024 * 1024) {
       return Promise.reject(new Error('Appearance source exceeds 128 MiB. Use a smaller IFC model.'));
     }
-    if (job.request.productIds.length > 10_000) {
+    const request = job.type === 'page-plan' ? job.request.appearance : job.request;
+    if (job.type === 'page-plan' && job.rgba.byteLength > 128 * 1024 * 1024) {
+      return Promise.reject(new Error('Page raster payload exceeds 128 MiB. Use a smaller source.'));
+    }
+    if (request.productIds.length > 10_000) {
       return Promise.reject(new Error('Appearance scope exceeds 10000 owners. Choose a smaller scope.'));
     }
     const id = ++sequence;
@@ -94,6 +99,17 @@ export function createAppearancePlanner(options: {
         if (message.type !== 'complete' || !message.plan || message.plan.sourceRevision !== revision
           || message.plan.nextExpressId !== allocationStart) throw new Error('Appearance worker returned a stale model revision');
         return message.plan;
+      }, options);
+    },
+    pagePlan(source, request, rgba, options) {
+      const revision = request.appearance.sourceRevision, allocationStart = request.appearance.nextExpressId;
+      return run(source, { type: 'page-plan', request, rgba }, message => {
+        if (message.type !== 'page-complete' || !message.result
+          || message.result.plan?.sourceRevision !== revision || message.result.plan.nextExpressId !== allocationStart
+          || !Array.isArray(message.result.assets) || !Array.isArray(message.result.itemImages)) {
+          throw new Error('Appearance worker returned a stale or invalid page plan');
+        }
+        return message.result;
       }, options);
     },
     catalog(source, request, options) {

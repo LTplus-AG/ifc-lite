@@ -53,6 +53,7 @@ class ControlledWorker implements AppearanceWorker {
       }).catch(error => this.onerror?.({ message: String(error) } as ErrorEvent));
       return;
     }
+    if (message.type === 'page-plan') throw new Error('Image-only controller fixture received a page plan');
     this.message = structuredClone(message);
     this.lateMessage = this.onmessage;
   }

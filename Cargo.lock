@@ -1561,10 +1561,12 @@ dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
  "memchr",
+ "png",
  "rayon",
  "rustc-hash",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tracing",
 ]
 

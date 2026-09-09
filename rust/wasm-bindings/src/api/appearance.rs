@@ -6,7 +6,7 @@ use super::IfcAPI;
 use ifc_lite_processing::appearance::{catalog_appearance, plan_appearance, AppearanceCatalogRequest, AppearanceRequest};
 use wasm_bindgen::prelude::*;
 
-fn decode_request<T: serde::de::DeserializeOwned>(request_json: &str) -> Result<T, String> {
+pub(super) fn decode_request<T: serde::de::DeserializeOwned>(request_json: &str) -> Result<T, String> {
     if request_json.len() > 256 * 1024 {
         return Err("Appearance request exceeds the scope budget".into());
     }
@@ -23,7 +23,7 @@ fn catalog_json(content: &[u8], request_json: &str) -> Result<Vec<u8>, String> {
 
 // A writer ceiling stops serialization before allocating an oversized JSON buffer.
 // The host then holds UTF-8 bytes, a JS string and its parsed/structured-cloned graph.
-fn encode_bounded(value: &impl serde::Serialize) -> Result<Vec<u8>, String> {
+pub(super) fn encode_bounded(value: &impl serde::Serialize) -> Result<Vec<u8>, String> {
     struct Output(Vec<u8>);
     impl std::io::Write for Output {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {

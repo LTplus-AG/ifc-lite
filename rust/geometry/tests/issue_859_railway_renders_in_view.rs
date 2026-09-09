@@ -24,6 +24,8 @@
 use ifc_lite_core::{has_geometry_by_name, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::GeometryRouter;
 
+mod support;
+
 const FIXTURE: &str = "../../tests/models/issues/859_linear_placement_of_signal.ifc";
 
 /// Matches `apps/viewer/src/components/viewer/useGeometryStreaming.ts:75`.
@@ -37,9 +39,21 @@ const MAX_REASONABLE_OFFSET: f32 = 50_000.0;
 
 fn read_fixture() -> Option<String> {
     match std::fs::read_to_string(FIXTURE) {
-        Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => None,
+        Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture is an LFS pointer and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download real bytes"
+            );
+            None
+        }
         Ok(s) => Some(s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
             eprintln!("issue-859 fixture missing — skipping (run `pnpm fixtures`)");
             None
         }

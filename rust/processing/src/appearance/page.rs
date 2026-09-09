@@ -28,6 +28,7 @@ impl AtlasSampler for PageSampler<'_> {
 /// canonical IFC image/material planning with other surface samplers.
 pub fn plan_page_appearance(bytes: &[u8], request: &PageAppearanceRequest, rgba: &[u8]) -> Result<PageAppearancePlan, String> {
     let spec = &request.appearance;
+    if spec.product_ids.is_empty() { return Err("Appearance scope must contain 1..10000 products".into()); }
     if !matches!(spec.mapping, Mapping::Planar { .. }) || spec.repeat_s || spec.repeat_t {
         return Err("Page appearance requires non-repeating planar mapping".into());
     }

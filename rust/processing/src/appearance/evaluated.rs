@@ -152,13 +152,11 @@ impl Normalized {
         }
         // The common wire contract edits existing rows. Fold edits of private
         // normalization rows into their creation records before publication.
-        let created:BTreeSet<_>=plan.created.iter().map(|entity|entity.express_id).collect();
+        let created:std::collections::BTreeMap<_,_>=plan.created.iter().enumerate().map(|(index,entity)|(entity.express_id,index)).collect();
         let edits=std::mem::take(&mut plan.edits);
         for edit in edits {
-            if created.contains(&edit.express_id) {
-                if let Some(entity)=plan.created.iter_mut().find(|entity|entity.express_id==edit.express_id) {
-                    entity.attributes[edit.index]=edit.value;
-                }
+            if let Some(&index)=created.get(&edit.express_id) {
+                plan.created[index].attributes[edit.index]=edit.value;
             } else { plan.edits.push(edit); }
         }
         plan.next_express_id=self.start;

@@ -84,3 +84,11 @@ fn issue_4404_inherited_aggregate_voids_cannot_be_baked_as_uncut_geometry() {
     assert_eq!(plan.exclusions.len(),1);assert!(plan.exclusions[0].reason.contains("opening-bearing"));
     assert!(plan.items.is_empty());assert!(plan.created.is_empty());assert!(plan.edits.is_empty());
 }
+#[test]
+fn issue_4404_failed_image_mapping_never_publishes_its_successful_private_conversion() {
+    let Some(source)=real_source() else{return};let mut request=request();
+    request.mapping=Mapping::Box {frame:MappingFrame::World,origin:[0.;3],metres_per_tile:[f64::MIN_POSITIVE;3]};
+    let plan=plan_appearance(source.as_bytes(),&request).unwrap();
+    assert_eq!(plan.exclusions.len(),1);assert!(plan.items.is_empty());assert!(plan.created.is_empty());
+    assert!(plan.edits.is_empty());assert!(plan.conversions.is_empty());
+}

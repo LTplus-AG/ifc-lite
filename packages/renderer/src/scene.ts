@@ -6,6 +6,8 @@
  * Scene graph and mesh management
  */
 
+import { materializeInstances } from './scene-instance-materialization.js';
+import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
 import { createSceneAppearancePreview } from './scene-appearance-preview.js';
 import { interleaveTexturedVertices } from './textured-vertices.js';
@@ -317,6 +319,12 @@ export class Scene {
   private instancedTemplateCpu: (InstancedTemplateCpu | undefined)[] = [];
   private instancedDevice?: GPUDevice;                              // cached for per-instance flag/colour writeBuffer updates
   private instancedSelected: Set<number> = new Set();              // currently flag-selected instanced express_ids
+  private readonly instanceSuppression = new InstanceSuppression((id) => {
+    if (this.instancedDevice) this.writeInstanceFlags(this.instancedDevice, id);
+    this.boundingBoxes.delete(id);
+    if (!this.instanceSuppression.has(id)) this.recomputeInstancedBounds(id);
+    this.evictHighlightMeshes(id);
+  });
   private instancedHidden: Set<number> = new Set();               // currently hidden instanced express_ids (hide/isolate)
   private instancedOverridden: Set<number> = new Set();            // currently colour-overridden instanced express_ids
   private instancedGhosted: Set<number> = new Set();               // currently X-Ray ghosted instanced express_ids
@@ -1435,6 +1443,7 @@ export class Scene {
     if (this.instancedSelected.has(expressId)) {
       this.bumpTemplateSelectedCount(expressId, -1);
     }
+    this.instanceSuppression.forget(expressId);
     this.instancedEntityMap.delete(expressId);
     this.instancedSelected.delete(expressId);
     this.instancedHidden.delete(expressId);
@@ -1683,6 +1692,7 @@ export class Scene {
       const template = this.instancedTemplates[occ.templateIndex];
       if (template) foldOccurrenceWorldBox(template, w);
     }
+    if (this.instanceSuppression.has(expressId)) this.boundingBoxes.delete(expressId);
   }
 
   /** Drop the per-entity selection-highlight meshes for `expressId` (frozen
@@ -1705,13 +1715,15 @@ export class Scene {
   setModelTranslation(modelIndex: number, translation: readonly [number, number, number]): boolean {
     const batches = this.finalizeInProgress ? [...new Set([...this.batchedMeshes,
       ...[...this.buckets.values()].flatMap((bucket) => bucket.batchedMesh ? [bucket.batchedMesh] : [])])] : this.batchedMeshes;
-    return translateSceneModel({ translations: this.modelTranslations, pieces: this.meshDataMap,
+    const changed = translateSceneModel({ translations: this.modelTranslations, pieces: this.meshDataMap,
       bounds: this.boundingBoxes, batches, meshes: this.meshes, overrides: this.overrideBatches, textured: this.texturedMeshes,
       templates: this.instancedTemplates, cpu: this.instancedTemplateCpu, occurrences: this.instancedEntityMap,
       device: this.instancedDevice, evictHighlight: (id) => this.evictHighlightMeshes(id, true),
       clearPartial: () => this.dropAllPartialCaches(),
       unionBounds: (id, view, offset, min, max) => this.unionInstancedWorldAabb(id, view, offset, ...min, ...max),
     }, modelIndex, translation);
+    for (const id of this.instanceSuppression.suppressedIds()) if (!this.meshDataMap.has(id)) this.boundingBoxes.delete(id);
+    return changed;
   }
 
   /** Bulk variant of `translateMeshesForEntity`. */
@@ -2348,6 +2360,10 @@ export class Scene {
    */
   releaseGeometryData(): void {
     if (this.geometryReleased) return;
+    if (this.instanceSuppression.retained) {
+      console.warn('[Appearance] Retained occurrence history still needs CPU geometry');
+      return;
+    }
 
     // Guard: releasing while async batch work is in-flight would corrupt GPU state
     if (this.pendingBatchKeys.size > 0 || this.streamingFragments.length > 0) {
@@ -2978,6 +2994,7 @@ export class Scene {
    * no-op).
    */
   removeInstancedTemplatesForModel(modelIndex: number): number {
+    this.instanceSuppression.forgetModel(modelIndex);
     const freed = new Set<number>();
     for (let i = 0; i < this.instancedTemplates.length; i++) {
       const t = this.instancedTemplates[i];
@@ -3293,10 +3310,22 @@ export class Scene {
     return this.instancedEntityMap.has(expressId);
   }
 
+  /** Retain one model-owned occurrence for reversible appearance replacement. */
+  retainInstancedOccurrence(expressId: number, modelIndex: number) {
+    const occurrences = this.instancedEntityMap.get(expressId);
+    if (this.geometryReleased || this.finalizeInProgress || this.streamingFragments.length
+      || this.pendingBatchKeys.size || !occurrences?.length
+      || occurrences.some(o => this.instancedTemplates[o.templateIndex]?.modelIndex !== modelIndex
+        || !this.instancedTemplateCpu[o.templateIndex]?.positions.length)) {
+      throw new Error('Appearance requires resident instances owned by the specified model');
+    }
+    return this.instanceSuppression.acquire(expressId, modelIndex);
+  }
+
   /** All instanced occurrence express_ids (for CPU consumers that enumerate geometry,
    *  e.g. the raycast-engine and exporters). */
-  getInstancedEntityIds(): IterableIterator<number> {
-    return this.instancedEntityMap.keys();
+  *getInstancedEntityIds(): IterableIterator<number> {
+    for (const id of this.instancedEntityMap.keys()) if (!this.instanceSuppression.has(id)) yield id;
   }
 
   /** Number of distinct GPU-instanced entities. O(1) — for size heuristics
@@ -3322,7 +3351,7 @@ export class Scene {
   /** World-space AABB for an instanced occurrence (union over its occurrences),
    *  or null if not instanced. Populated at upload time, so this is O(1). */
   getInstancedEntityBounds(expressId: number): BoundingBox | null {
-    if (!this.instancedEntityMap.has(expressId)) return null;
+    if (!this.instancedEntityMap.has(expressId) || this.instanceSuppression.has(expressId)) return null;
     return this.boundingBoxes.get(expressId) ?? null;
   }
 
@@ -3332,50 +3361,8 @@ export class Scene {
    *  export). Returns undefined if the id is not instanced. */
   getInstancedMeshDataPieces(expressId: number): MeshData[] | undefined {
     const occ = this.instancedEntityMap.get(expressId);
-    if (!occ || occ.length === 0) return undefined;
-    const out: MeshData[] = [];
-    for (const o of occ) {
-      const tpl = this.instancedTemplateCpu[o.templateIndex];
-      if (!tpl || tpl.positions.length === 0) continue;
-      const dv = new DataView(tpl.instanceData);
-      const b = o.byteOffset;
-      const m0 = dv.getFloat32(b + 0, true), m1 = dv.getFloat32(b + 4, true), m2 = dv.getFloat32(b + 8, true);
-      const m4 = dv.getFloat32(b + 16, true), m5 = dv.getFloat32(b + 20, true), m6 = dv.getFloat32(b + 24, true);
-      const m8 = dv.getFloat32(b + 32, true), m9 = dv.getFloat32(b + 36, true), m10 = dv.getFloat32(b + 40, true);
-      const m12 = dv.getFloat32(b + 48, true), m13 = dv.getFloat32(b + 52, true), m14 = dv.getFloat32(b + 56, true);
-      const n = tpl.positions.length;
-      const positions = new Float32Array(n);
-      const normals = new Float32Array(tpl.normals.length);
-      for (let i = 0; i < n; i += 3) {
-        const x = tpl.positions[i], y = tpl.positions[i + 1], z = tpl.positions[i + 2];
-        positions[i] = m0 * x + m4 * y + m8 * z + m12;
-        positions[i + 1] = m1 * x + m5 * y + m9 * z + m13;
-        positions[i + 2] = m2 * x + m6 * y + m10 * z + m14;
-        if (i + 2 < tpl.normals.length) {
-          // Rotate normals by the upper-3×3 (instancing transforms are rigid +
-          // uniform scale, so this is correct up to a renormalize).
-          const nx = tpl.normals[i], ny = tpl.normals[i + 1], nz = tpl.normals[i + 2];
-          let rx = m0 * nx + m4 * ny + m8 * nz;
-          let ry = m1 * nx + m5 * ny + m9 * nz;
-          let rz = m2 * nx + m6 * ny + m10 * nz;
-          const len = Math.hypot(rx, ry, rz) || 1;
-          rx /= len; ry /= len; rz /= len;
-          normals[i] = rx; normals[i + 1] = ry; normals[i + 2] = rz;
-        }
-      }
-      const color: [number, number, number, number] = [...o.originalColor];
-      // Per-occurrence key so CPU caches that would otherwise key on `expressId`
-      // alone (measure-snap geometry cache) don't collide across occurrences of
-      // this instanced entity, which share `expressId` but hold distinct
-      // world-space positions (issue #1405). templateIndex+byteOffset uniquely
-      // and stably identifies an occurrence within the instance buffers.
-      const occurrenceKey = `${expressId}:inst:${o.templateIndex}:${o.byteOffset}`;
-      // #2985: the same drill-to-source id a flat mesh carries, so a consumer of
-      // these pieces is not worse off for the geometry having been instanced.
-      const item = o.itemId !== undefined ? { geometryItemId: o.itemId } : {};
-      out.push({ expressId, positions, normals, indices: tpl.indices, color, occurrenceKey, ...item });
-    }
-    return out.length > 0 ? out : undefined;
+    if (!occ || occ.length === 0 || this.instanceSuppression.has(expressId)) return undefined;
+    return materializeInstances(expressId, occ, this.instancedTemplateCpu);
   }
 
   /**
@@ -3598,7 +3585,7 @@ export class Scene {
     if (!locs) return;
     const flags =
       (this.instancedSelected.has(eid) ? INSTANCE_FLAG_SELECTED : 0) |
-      (this.instancedHidden.has(eid) ? INSTANCE_FLAG_HIDDEN : 0);
+      (this.instancedHidden.has(eid) || this.instanceSuppression.has(eid) ? INSTANCE_FLAG_HIDDEN : 0);
     const data = new Uint32Array([flags >>> 0]);
     for (const loc of locs) {
       const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
@@ -3786,6 +3773,7 @@ export class Scene {
     this.instancedTemplates = [];
     this.liveInstancedTemplates = [];
     this.instancedTemplateCpu = [];
+    this.instanceSuppression.forget();
     this.instancedEntityMap.clear();
     this.instancedSelected.clear();
     this.instancedHidden.clear();
@@ -3820,6 +3808,7 @@ export class Scene {
    */
   clearFlatGeometry(): void {
     this.appearanceController?.forget();
+    this.instanceSuppression.restore();
     for (const mesh of this.meshes) destroyGpuResources(mesh);
     for (const batch of this.batchedMeshes) destroyGpuResources(batch);
     for (const tm of this.texturedMeshes) {
@@ -3946,7 +3935,7 @@ export class Scene {
     // enumerating geometry see them too. IDs only — no geometry materialized.
     // (#1238 review)
     const ids = new Set<number>(this.meshDataMap.keys());
-    for (const eid of this.instancedEntityMap.keys()) ids.add(eid);
+    for (const eid of this.getInstancedEntityIds()) ids.add(eid);
     return Array.from(ids);
   }
 
@@ -3957,6 +3946,7 @@ export class Scene {
    * @returns Bounding box with min/max corners, or null if no mesh data exists
    */
   getEntityBoundingBox(expressId: number): BoundingBox | null {
+    if (this.instanceSuppression.has(expressId) && !this.meshDataMap.has(expressId)) return null;
     return cachedWorldAabb(expressId, this.meshDataMap.get(expressId), this.boundingBoxes);
   }
 

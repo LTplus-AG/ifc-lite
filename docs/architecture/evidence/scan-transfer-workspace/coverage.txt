@@ -1,0 +1,11 @@
+Estimated observed area: 79.7%
+
+6,117 transferred interior texels of 7,963.
+
+6,467 observed samples of 8,313.
+
+Unknown: 0 too far · 33 incompatible normals · 1,813 ambiguous.
+
+Coverage per IFC surface
+
+Area includes diagnostic centroid samples and is not an exact surface integral. Transferred texels count image interiors, excluding padding. Unknown samples keep the previous IFC appearance.

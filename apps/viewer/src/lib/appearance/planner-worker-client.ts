@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { MeshTransferRequest, MeshTransferPlan } from './scan/transfer-types';
 import type { ScanRegistrationRequest, ScanRegistrationReport } from './scan/types';
 import type { CapturedMeshPlan, CapturedMeshRequest, AnnotationPlanePlan, AnnotationPlaneRequest, PageAppearancePlan, PageAppearanceRequest, AppearanceCatalog, AppearanceCatalogRequest, AppearancePlan, AppearanceRequest, AppearanceWorkerJob, AppearanceWorkerRequest, AppearanceWorkerResponse } from './planner-types.js';
 
@@ -12,6 +13,7 @@ export interface AppearanceWorker {
   terminate(): void;
 }
 export interface AppearancePlanner {
+  meshTransfer(source: Uint8Array, request: MeshTransferRequest, rgba: Uint8Array, options?: { signal?: AbortSignal }): Promise<MeshTransferPlan>;
   registerScan(request: ScanRegistrationRequest, options?: { signal?: AbortSignal }): Promise<ScanRegistrationReport>;
   capturedMeshPlan(source: Uint8Array, request: CapturedMeshRequest, options?: { signal?: AbortSignal }): Promise<CapturedMeshPlan>;
   annotationPlan(source: Uint8Array, request: AnnotationPlaneRequest, options?: { signal?: AbortSignal }): Promise<AnnotationPlanePlan>;
@@ -49,7 +51,7 @@ export function createAppearancePlanner(options: {
       return Promise.reject(new Error('Appearance source exceeds 128 MiB. Use a smaller IFC model.'));
     }
     const request = job.type === 'page-plan' ? job.request.appearance : job.request;
-    if (job.type === 'page-plan' && job.rgba.byteLength > 128 * 1024 * 1024) {
+    if ((job.type === 'page-plan' || job.type === 'mesh-transfer') && job.rgba.byteLength > 128 * 1024 * 1024) {
       return Promise.reject(new Error('Page raster payload exceeds 128 MiB. Use a smaller source.'));
     }
     // Refuse oversized capture arrays before structured clone and JSON encoding
@@ -106,6 +108,19 @@ export function createAppearancePlanner(options: {
   return {
     cancel,
     dispose() { disposed = true; cancel(); },
+    meshTransfer(source, request, rgba, options) {
+      const mesh = request.sourceMesh;
+      if ([mesh.positions.length, mesh.triangles.length, mesh.uvs.length].some(n => n === 0 || n > 200_000)
+        || request.registration.fit.length > 256 || request.registration.heldOut.length > 256) return Promise.reject(new Error('Scan transfer exceeds its source or landmark budget. Choose a smaller source.'));
+      return run(source, { type: 'mesh-transfer', request, rgba }, message => {
+        if (message.type !== 'mesh-transfer-complete' || !message.result.transfer
+          || message.result.transfer.registrationSha256 !== request.registrationSha256
+          || message.result.transfer.registration.requestSha256 !== request.registrationSha256
+          || !/^[a-f0-9]{64}$/.test(message.result.transfer.preparedSha256)
+          || (message.result.plan && (message.result.plan.sourceRevision !== request.sourceRevision || message.result.plan.nextExpressId !== request.nextExpressId))) throw new Error('Scan worker returned a stale transfer');
+        return message.result;
+      }, options);
+    },
     registerScan(request, options) {
       if (request.fit.length > 256 || request.heldOut.length > 256 || new TextEncoder().encode(JSON.stringify(request)).byteLength > 512 * 1024) return Promise.reject(new Error('Scan registration exceeds its request budget'));
       const frozen = structuredClone(request);

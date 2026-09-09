@@ -171,6 +171,11 @@ export class PdfAppearanceSource<B extends AppearanceBitmap = ImageBitmap> {
       this.inventory.release(asset.id, owner);
     }
   }
+  /** Drop the document's temporary raster lease after a catalog/model owner adopts it. */
+  releaseRaster(assetId: string): void {
+    if (!this.derived.delete(assetId)) return;
+    this.inventory.release(assetId, { kind: 'source', id: this.ownerId });
+  }
   cancel(): void {
     this.revision++;
     this.worker.cancel();

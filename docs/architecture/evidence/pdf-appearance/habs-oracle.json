@@ -1,0 +1,67 @@
+{
+  "expressValidationErrors": 0,
+  "owners": [
+    {
+      "expressId": 34,
+      "GlobalId": "3mpfqvLAbPVRpwxIwYPgEV"
+    },
+    {
+      "expressId": 46,
+      "GlobalId": "2suSFkYNjHpx6ZYAWo7w_I"
+    }
+  ],
+  "samples": [
+    {
+      "owner": 34,
+      "worldPoint": [
+        0.2,
+        0,
+        0.5
+      ],
+      "outsideRGBA": [
+        15,
+        46,
+        153,
+        255
+      ],
+      "expectedOriginalRGBA": [
+        15,
+        46,
+        153,
+        255
+      ]
+    },
+    {
+      "owner": 46,
+      "worldPoint": [
+        1.8,
+        0,
+        0.5
+      ],
+      "outsideRGBA": [
+        15,
+        124,
+        34,
+        255
+      ],
+      "expectedOriginalRGBA": [
+        15,
+        124,
+        34,
+        255
+      ]
+    }
+  ],
+  "calibration": {
+    "chosenSpanMetres": 1,
+    "note": "Test placement span, not a claim about the actual architectural scale"
+  },
+  "undoExactOriginalMeshes": true,
+  "redoExactAppliedMeshes": true,
+  "archiveBytes": 1483040,
+  "reopenExactGeometryUvColor": true,
+  "reopenOwnerPicks": [
+    34,
+    46
+  ]
+}

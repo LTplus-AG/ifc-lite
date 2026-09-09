@@ -1,0 +1,11 @@
+{
+  "workingTreeHead": "ef980bbd8e22c17cba963115b1b9a211142ba4a7",
+  "wasmSha256": "e4473eb7cfa65a25d865eac8d8a71a867308ce399ba20c9d3caa71f66d80c8d2",
+  "date": "2026-09-09",
+  "sourceFiles": {
+    "apps/viewer/src/components/viewer/appearance/usePdfAppearanceSource.ts": "43910f937d2234eee174f7ef931a16790958b5903366dd58172e909f6f16bc5f",
+    "apps/viewer/src/components/viewer/appearance/useAppearancePanel.ts": "92b2ca15c9d7d3f57698b39ea52f5048996dc07460c1bc2930e3d635fc08ac26",
+    "apps/viewer/src/components/viewer/appearance/AppearanceCalibrationFields.tsx": "88c5845b700e576e654380cb23394ba9d67923651bbc689a4af17a3a4b6a9612",
+    "rust/processing/src/appearance/page_atlas.rs": "78219cc5c9e5c6bd18e4ffa82a3fc92ca7d640efbc2027ba2ade5f04eb067803"
+  }
+}

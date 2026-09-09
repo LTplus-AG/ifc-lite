@@ -1,6 +1,9 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { PdfRasterRecipe } from './pdf/types.js';
+import type { PdfCalibration } from './pdf/calibration.js';
+
 export type AppearanceScope =
   | { kind: 'model' | 'selection' }
   | { kind: 'class'; ifcClass: string }
@@ -24,7 +27,15 @@ export interface AppearanceDraftSettings {
   repeatT: boolean;
 }
 export interface AppearanceSourceOption {
+  /** Session source identity. Images use their digest; PDFs keep document identity. */
   id: string;
+  /** Encoded derivative identity; independent from the source's page/calibration recipe. */
+  assetId?: string;
+  pdf?: {
+    documentKey: string;
+    recipe: PdfRasterRecipe;
+    calibration?: PdfCalibration;
+  };
   name: string;
   width: number;
   height: number;

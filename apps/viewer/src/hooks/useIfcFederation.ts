@@ -13,18 +13,16 @@
 import { commitRealignmentFrame } from '@/lib/model-placement/realignment-frame';
 import { useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useViewerStore, type FederatedModel, type SchemaVersion } from '../store/index.js';
+import { useViewerStore, type FederatedModel } from '../store/index.js';
 import { layerStackEntry } from '../lib/layers/stack.js';
 import {
   detectFormat,
   parseFederatedIfcx,
   type IfcDataStore,
-  type FederatedIfcxParseResult,
 } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { IfcQuery } from '@ifc-lite/query';
-import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
-import { getDynamicBatchConfig } from '../utils/ifcConfig.js';
+import { buildSpatialIndexForModel } from '../utils/loadingUtils.js';
 import { calculateMeshBounds, createCoordinateInfo } from '../utils/localParsingUtils.js';
 import {
   buildIfcxDataStore,
@@ -76,9 +74,7 @@ export function useIfcFederation(
     removeModel: storeRemoveModel,
     clearAllModels,
     getModel,
-    hasModels,
     // Federation Registry helpers
-    registerModelOffset,
     fromGlobalId,
     findModelForGlobalId,
     resolveGlobalIdFromModels,
@@ -92,8 +88,6 @@ export function useIfcFederation(
     removeModel: s.removeModel,
     clearAllModels: s.clearAllModels,
     getModel: s.getModel,
-    hasModels: s.hasModels,
-    registerModelOffset: s.registerModelOffset,
     fromGlobalId: s.fromGlobalId,
     findModelForGlobalId: s.findModelForGlobalId,
     resolveGlobalIdFromModels: s.resolveGlobalIdFromModels,

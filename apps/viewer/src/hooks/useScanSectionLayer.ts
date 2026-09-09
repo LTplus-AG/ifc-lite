@@ -119,6 +119,8 @@ function collectScanSources(
             count: cached.count,
             ...(() => {
               const matrix = getGlobalRenderer()?.getPointCloudTransform({ id: model.pointCloudHandleId });
+              // Exact GPU world coordinates, even with alignment disabled.
+              // Subtracting the reference IFC RTC here would shift only 2D.
               return { model: matrix, modelOutputsRenderFrame: true };
             })(),
           });

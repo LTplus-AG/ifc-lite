@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
 import { modelIndices, geometryWithModelIndex } from '@/lib/model-placement/model-indices';
 import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
 import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
@@ -270,6 +271,8 @@ export function ViewportContainer() {
     // Legacy mode (no federation): use original geometryResult
     return geometryResult;
   }, [storeModels, geometryResult, modelIdToIndex, geometryContentVersion]);
+
+  const placedCoordinateInfo = usePlacementCoordinateInfo(mergedGeometryResult?.coordinateInfo);
 
   /**
    * Aggregate point clouds across visible models.
@@ -1495,6 +1498,7 @@ export function ViewportContainer() {
         geometryContentVersion={geometryContentVersion}
         pointClouds={mergedPointClouds}
         coordinateInfo={mergedGeometryResult?.coordinateInfo}
+        sectionCoordinateInfo={placedCoordinateInfo}
         computedIsolatedIds={computedIsolatedIds}
         modelIdToIndex={modelIdToIndex}
         cesiumActive={cesiumEnabled && georef !== null}

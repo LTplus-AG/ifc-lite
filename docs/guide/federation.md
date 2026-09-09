@@ -168,6 +168,11 @@ World Context refreshes its Cesium model after movement pauses, using the same
 placed geometry. Its previous model stays visible until the replacement is ready;
 the WebGPU view updates immediately throughout the move.
 
+Both the 3D cut and the 2D drawing resolve section percentages from the same
+placed bounds, including a model moved beyond its original extent.
+
+![A real Archicad IFC section after moving the model up 100 metres](../assets/model-reposition-section.png)
+
 Large translations and their subsequent fine corrections are retained in double
 precision. Mesh and scan vertices stay near their own decode/draw origins;
 manual correction is composed before GPU narrowing. Precision still depends on

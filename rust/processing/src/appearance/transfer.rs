@@ -111,7 +111,7 @@ pub fn plan_mesh_transfer(
     }
     let sufficient_counts =
         request.registration.fit.len() >= 4 && request.registration.held_out.len() >= 4;
-    let applicable = coverage.observed_samples > 0 && sufficient_counts;
+    let applicable = coverage.observed_raster_interior_texels > 0 && sufficient_counts;
     let mut diagnostics=vec!["Coverage is a triangle-area-weighted centroid/interior-texel estimate, not a registration accuracy approval".into(),
         "Unknown samples preserve the existing target albedo through the shared atlas; source GLB byte-to-decoded-mesh/image identity is verified by the host".into()];
     diagnostics.extend(registration.diagnostics.clone());
@@ -121,6 +121,9 @@ pub fn plan_mesh_transfer(
     if coverage.observed_samples == 0 {
         diagnostics
             .push("No observed target samples; no applicable mutation plan was produced".into());
+    }
+    if coverage.observed_samples > 0 && coverage.observed_raster_interior_texels == 0 {
+        diagnostics.push("No observed interior raster texels; centroid observations alone do not establish emitted scan appearance, so no applicable mutation plan was produced".into());
     }
     let exclusions = output.plan.exclusions.clone();
     Ok(MeshTransferPlan {

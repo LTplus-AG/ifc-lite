@@ -802,7 +802,16 @@ an insufficient-evidence diagnostic and `plan: null`, `applicable: false`, even
 when samples are observed. Operational acceptance additionally requires that the
 host verifies spatially distributed held-out observations and
 their accepted residuals. Counts distinguish observed, distance, normal and ambiguity
-outcomes. Area values are triangle-area-weighted estimates from centroid/interior
+outcomes. `centroidSamples` / `observedCentroidSamples` describe the mandatory
+per-triangle geometric observations; `rasterInteriorTexels` /
+`observedRasterInteriorTexels` count actual interior raster pixel evaluations.
+The existing `samples` and `observedSamples` include both sets. Application also
+requires at least one observed interior raster texel: centroid-only coverage
+returns `plan: null`, `applicable: false`, and no PNG assets. This prevents sparse
+sampling from offering an atlas containing only the old appearance. Review the
+interior texel counts separately from the geometric estimate; increasing density
+can resolve subpixel observations, but never guarantees coverage.
+Area values remain triangle-area-weighted estimates from centroid/interior
 texel observations over eligible planned items; chart padding is excluded and
 excluded products are reported separately, not counted as observed area. They are not exact covered-area
 integrals. Entirely unknown output has `plan: null` and no PNG assets or mutations.

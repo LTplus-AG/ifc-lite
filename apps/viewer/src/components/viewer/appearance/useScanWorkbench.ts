@@ -27,13 +27,15 @@ export function useScanWorkbench() {
   const [busy, setBusy] = useState(false), [stale, setStale] = useState(false), [previewReady, setPreviewReady] = useState(false);
   const [status, setStatus] = useState('Open a textured GLB and an IFC model to align a scan.'), [error, setError] = useState(false), [aligned, setAligned] = useState(false);
   const planner = useRef<ReturnType<typeof createAppearancePlanner> | null>(null), operation = useRef<AbortController | null>(null);
+  const ownAppearance = useRef(false);
+  const recovery = useRef<{ request: ScanRegistrationRequest; rebind: (next: ScanSession) => void } | null>(null);
   const rows = useRef(pairs); rows.current = pairs;
   useEffect(() => { const p = createAppearancePlanner(); planner.current = p; return () => { operation.current?.abort(); p.dispose(); planner.current = null; }; }, []);
   useEffect(() => { if (!sourceId && sources[0]) setSourceId(sources[0].id); if (!targetId && targets[0]) setTargetId(targets[0].id); }, [sources, targets, sourceId, targetId]);
   useEffect(() => {
     const source = sources.find(item => item.id === sourceId);
     const controller = new AbortController(); operation.current?.abort(); planner.current?.cancel(); operation.current = controller;
-    setSession(null); setPending(null); setPairs([]); setResult(null); setAligned(false); setStale(false); setError(false);
+    recovery.current = null; setSession(null); setPending(null); setPairs([]); setResult(null); setAligned(false); setStale(false); setError(false);
     if (!source || !models.has(targetId)) { setBusy(false); setStatus('Choose a loaded scan surface and IFC model.'); return () => controller.abort(); }
     setBusy(true); setStatus('Preparing source and IFC coordinate frames…');
     void prepareScanSession(source.modelId, source.index, targetId, controller.signal).then(prepared => {
@@ -43,7 +45,7 @@ export function useScanWorkbench() {
     // Model/frame changes invalidate the pinned session below; they never replace its source silently.
   }, [sourceId, targetId, restart]);
   useEffect(() => {
-    if (!session) return;
+    if (!session || ownAppearance.current) return;
     try { session.validate(); } catch (failure) { operation.current?.abort(); planner.current?.cancel(); setBusy(false); setStale(true); setPending(null); setResult(null); setAligned(false); setError(true); setStatus(message(failure)); }
   }, [session, models, mutationViews, mutationVersion, placement, room, section, terrain, cesium]);
   useEffect(() => {
@@ -84,9 +86,46 @@ export function useScanWorkbench() {
     } catch (failure) { if (!controller.signal.aborted) { setError(true); setStatus(message(failure)); } }
     finally { if (operation.current === controller) { operation.current = null; setBusy(false); } }
   }
-  function cancel() { if (!session) setStale(true); operation.current?.abort(); planner.current?.cancel(); setPending(null); setBusy(false); setStatus('Alignment operation cancelled. Existing pairs are retained.'); }
+  async function refreshAppearanceBinding(controller: AbortController) {
+    const saved = recovery.current;
+    if (!session || !saved || !planner.current) throw new Error('No retained landmark binding is available.');
+    setResult(null); setAligned(false); setStatus('Refreshing alignment against the updated IFC…');
+    const next = await prepareScanSession(session.sourceModelId, session.sourceMeshOrdinal, session.targetModelId, controller.signal);
+    saved.rebind(next);
+    const request: ScanRegistrationRequest = { ...structuredClone(saved.request), sourceFrame: next.sourceFrame, targetFrame: next.targetFrame };
+    const report = await planner.current.registerScan(request, { signal: controller.signal });
+    next.validate(); controller.signal.throwIfAborted();
+    recovery.current = { request, rebind: next.afterAppearance() }; setSession(next); setResult({ request, report }); setStale(false); setError(false);
+    setStatus('Landmark geometry is unchanged and the IFC binding has been refreshed. Review before another transfer.');
+  }
+  async function revalidateAppearance() {
+    if (!recovery.current || busy) return;
+    const controller = new AbortController(); operation.current = controller; ownAppearance.current = true; setBusy(true);
+    try { await refreshAppearanceBinding(controller); }
+    catch (failure) { setStale(true); setError(true); setStatus(controller.signal.aborted ? 'Revalidation cancelled. Landmarks are retained.' : message(failure)); }
+    finally { ownAppearance.current = false; if (operation.current === controller) { operation.current = null; setBusy(false); } }
+  }
+  async function applyAppearance(action: (signal: AbortSignal) => Promise<void>) {
+    if (!session || !result || busy || stale || !planner.current) return;
+    recovery.current = { rebind: session.afterAppearance(), request: result.request };
+    const controller = new AbortController(); operation.current = controller; ownAppearance.current = true;
+    let applied = false; setBusy(true); setError(false); setStatus('Applying appearance…');
+    try {
+      await action(controller.signal); applied = true;
+      await refreshAppearanceBinding(controller);
+    } catch (failure) {
+      let valid = false;
+      if (!applied) try { session.validate(); valid = true; recovery.current = null; } catch (invalid) { console.info('The previous scan binding needs explicit revalidation after appearance rollback.', invalid); }
+      if (!valid) { setResult(null); setAligned(false); setStale(true); }
+      setError(true); setStatus(controller.signal.aborted ? 'Appearance operation cancelled. Existing landmarks are retained for review.' : message(failure));
+    } finally {
+      ownAppearance.current = false;
+      if (operation.current === controller) { operation.current = null; setBusy(false); }
+    }
+  }
+  function cancel() { if (!session) setStale(true); operation.current?.abort(); planner.current?.cancel(); setPending(null); if (!ownAppearance.current) setBusy(false); setStatus(ownAppearance.current ? 'Cancelling appearance operation…' : 'Alignment operation cancelled. Existing pairs are retained.'); }
   return { sources, targets, sourceId, targetId, setSourceId, setTargetId, session, pairs, partition, setPartition, pending, result,
-    busy, stale, previewReady, setPreviewReady, status, error, aligned, setAligned, pickSource, calculate, cancel,
+    busy, stale, applyAppearance, revalidateAppearance, canRevalidateAppearance: stale && recovery.current !== null, previewReady, setPreviewReady, status, error, aligned, setAligned, pickSource, calculate, cancel,
     restart() { setRestart(value => value + 1); },
     remove(id: string) { setPairs(previous => previous.filter(p => p.correspondence.id !== id)); setResult(null); setAligned(false); },
     changePartition(id: string, value: 'fit' | 'check') { setPairs(previous => previous.map(p => p.correspondence.id === id ? { ...p, partition: value } : p)); setResult(null); setAligned(false); },

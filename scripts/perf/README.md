@@ -1151,6 +1151,15 @@ surface refusal and one atomic result, rather than enlarging the work ceiling.
 [Real-surface coverage and refusal evidence](../../docs/architecture/evidence/mesh-transfer/README.md#real-boulder-geometry-conservative-coverage-and-capacity)
 keeps that limitation separate from the ordinary-load measurements.
 
+The emitted-texel applicability follow-up separates geometric centroid evidence
+from pixels actually sampled into a transfer atlas. Ordinary-load paired probes
+show mixed subphase differences at the probe's millisecond precision, with the
+same ordered mesh payload fingerprint; no consistently directed change or
+worker-pool speedup is claimed. The correctness result is refusing an all-old
+atlas despite positive centroid coverage while retaining byte-identical dense
+transfer output. [Samples, fingerprints and PNG evidence](../../docs/architecture/evidence/mesh-transfer-texel-gate/README.md)
+record that distinction.
+
 Canonical occurrence source snapshots reuse the mesh already evaluated by the
 opt-in appearance planner. Moving its bounded vectors into the plan avoids
 reconstructing IFC geometry from GPU instance transforms. Interleaved exact-base
@@ -1160,3 +1169,13 @@ or conversion throughput claim; the additional authored payload remains governed
 by the existing aggregate geometry budget.
 [Source-mesh payload probe](../../docs/architecture/evidence/evaluated-occurrences/source-mesh-load.json)
 records source heads, precision limits and the unchanged census.
+
+Candidate reuse for registered transfer was tested through whole-triangle leaf
+caches, exact observation memoization, lazy spatial cells, and conservative
+centroid-witness seed bounds. These preserve bounded controls but still exceed
+the complete captured-boulder work quota; none was merged. A calculation-only
+fresh-worker diagnostic separates actual traversal latency/memory from the work
+proxy, without authorizing a larger quota or producing an applicable plan.
+Do not repeat those cache mechanisms unchanged or infer broad capacity from a
+small target prefix. [Recorded experiments and worker evidence](../../docs/architecture/evidence/mesh-transfer-capacity/README.md)
+state the remaining gate and the limits of the measurement.

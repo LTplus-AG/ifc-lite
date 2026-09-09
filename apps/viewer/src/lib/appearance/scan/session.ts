@@ -9,16 +9,21 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { computeFullSourceHash, computeFullSourceHashFromBlob } from '@/utils/sourceContentHash';
 import { placementFrameKey } from '@/lib/model-placement/persistence';
-import { captureAppearanceSource } from '../command';
+import { appearanceRevision, captureAppearanceSource } from '../command';
 import { prepareAppearanceSerialization } from '../serialization';
 import { modelAppearanceAssets } from '../model-assets';
+import { scanTargetGlobalId } from './landmarks';
+import { sameLandmarkGeometry } from './geometry-proof';
 import type { ScanFrame } from './types';
 
 export interface ScanSession {
   sourceModelId: string; targetModelId: string; sourceMeshOrdinal: number;
   source: MeshData; assetId: string;
   sourceFrame: ScanFrame; targetFrame: ScanFrame;
+  bytes: Uint8Array; schema: 'IFC4' | 'IFC4X3'; revision: string; nextExpressId: number;
+  appearanceSource: ReturnType<typeof captureAppearanceSource>;
   retainTargetMesh(mesh: MeshData): void;
+  afterAppearance(): (next: ScanSession) => void;
   validate(): void;
 }
 function equal(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
@@ -38,10 +43,12 @@ export async function prepareScanSession(sourceModelId: string, meshOrdinal: num
   if (initial.modelPlacement.preview || initial.collabRoomId) throw new Error('Finish repositioning and leave the shared room before aligning a scan.');
   const positions = mesh.positions, indices = mesh.indices, uvs = mesh.uvs;
   const source: MeshData = { ...mesh, positions: positions.slice(), indices: indices.slice(), normals: mesh.normals.slice(), uvs: uvs.slice(), origin: mesh.origin?.slice() as MeshData['origin'] };
+  const color = [...mesh.color], textureRef = { ...mesh.textureRef };
   const origin = mesh.origin?.slice(), frame = placementFrameKey(initial), placement = initial.modelPlacement;
   const assetId = modelAppearanceAssets.resolveImageAsset(sourceModelId, mesh.textureRef.url);
   new StoreEditor(target.ifcDataStore, view);
-  const guard = captureAppearanceSource(view);
+  const guard = captureAppearanceSource(view), revision = appearanceRevision(targetModelId), nextExpressId = view.peekNextExpressId();
+  const schema = target.schemaVersion.startsWith('IFC4X3') ? 'IFC4X3' : 'IFC4';
   const targetMeshes = new Map<MeshData, { positions: Float32Array; indices: Uint32Array; origin?: MeshData['origin'] }>();
   let retainedVertices = 0, retainedTriangles = 0;
   const retainTargetMesh = (piece: MeshData) => {
@@ -61,6 +68,8 @@ export async function prepareScanSession(sourceModelId: string, meshOrdinal: num
       || now.mutationVersion !== initial.mutationVersion || now.modelPlacement !== placement || placementFrameKey(now) !== frame
       || now.collabRoomId || now.modelPlacement.preview || model.geometryResult?.meshes[meshOrdinal] !== mesh
       || mesh.positions !== positions || mesh.indices !== indices || mesh.uvs !== uvs
+      || !mesh.color.every((v, i) => v === color[i]) || mesh.textureRef?.url !== textureRef.url
+      || mesh.textureRef?.repeatS !== textureRef.repeatS || mesh.textureRef?.repeatT !== textureRef.repeatT
       || !equal(positions, source.positions) || !equal(indices, source.indices) || !equal(uvs, source.uvs!)
       || (origin ? !mesh.origin || !equal(mesh.origin, origin) : mesh.origin !== undefined)
       || modelAppearanceAssets.resolveImageAsset(sourceModelId, mesh.textureRef!.url) !== assetId) throw new Error('The scan, IFC model or coordinate frame changed. Restart alignment.');
@@ -74,14 +83,33 @@ export async function prepareScanSession(sourceModelId: string, meshOrdinal: num
   const sourceHash = await computeFullSourceHashFromBlob(model.sourceFile); validate();
   if (!target.schemaVersion.startsWith('IFC4')) throw new Error('Choose an IFC4 or IFC4X3 destination.');
   const serialized = prepareAppearanceSerialization(targetModelId, target.ifcDataStore, view);
-  const exported = await new StepExporter(target.ifcDataStore, serialized.view).exportAsync({ schema: target.schemaVersion.startsWith('IFC4X3') ? 'IFC4X3' : 'IFC4', applyMutations: true, includeGeometry: true, visibleOnly: false, onProgress: validate });
+  const exported = await new StepExporter(target.ifcDataStore, serialized.view).exportAsync({ schema, applyMutations: true, includeGeometry: true, visibleOnly: false, onProgress: validate });
   validate();
   const bytes = typeof exported.content === 'string' ? new TextEncoder().encode(exported.content) : exported.content;
   const targetHash = await computeFullSourceHash(bytes);
   const frameHash = await computeFullSourceHash(new TextEncoder().encode(JSON.stringify({ frame, placement: [...placement.placements], revision: placement.revision, targetModelId })));
   validate();
   if (!sourceHash || !targetHash || !frameHash) throw new Error('Secure content hashing is unavailable. Open the viewer in a secure browser context.');
-  return { sourceModelId, targetModelId, sourceMeshOrdinal: meshOrdinal, source, assetId, retainTargetMesh,
+  return { sourceModelId, targetModelId, sourceMeshOrdinal: meshOrdinal, source, assetId, retainTargetMesh, afterAppearance() {
+      validate();
+      const paired = [...targetMeshes].map(([piece, saved]) => ({ guid: scanTargetGlobalId(piece.expressId), ordinal: target.geometryResult!.meshes.indexOf(piece), mesh: { ...piece, positions: saved.positions, indices: saved.indices, origin: saved.origin } }));
+      const untouched = target.geometryResult!.meshes.map((piece, ordinal) => ({ piece, ordinal })).filter(({ piece }) => !targetMeshes.has(piece));
+      return next => {
+        const now = useViewerStore.getState();
+        if (next.sourceModelId !== sourceModelId || next.targetModelId !== targetModelId
+          || next.sourceFrame.assetSha256 !== sourceHash || next.sourceFrame.frameKey !== `glb-scene-y-up-metres-v1:${sourceHash}:${meshOrdinal}`
+          || next.targetFrame.frameKey !== `workspace-ifc-z-up-metres:${frameHash}`
+          || now.models.get(targetModelId)?.ifcDataStore !== target.ifcDataStore) throw new Error('Geometry or coordinate frames changed. Restart alignment.');
+        const current = now.models.get(targetModelId)?.geometryResult?.meshes ?? [];
+        if (untouched.some(({ piece, ordinal }) => current[ordinal] !== piece) || current.length !== target.geometryResult!.meshes.length) throw new Error('Unrelated IFC geometry changed. Restart alignment.');
+        for (const previous of paired) {
+          const match = current[previous.ordinal];
+          if (!match || scanTargetGlobalId(match.expressId) !== previous.guid || !sameLandmarkGeometry(previous.mesh, match)) throw new Error('A paired IFC surface changed. Restart alignment.');
+          next.retainTargetMesh(match);
+        }
+        next.validate();
+      };
+    }, bytes, schema, revision, nextExpressId, appearanceSource: guard,
     sourceFrame: { assetSha256: sourceHash, frameKey: `glb-scene-y-up-metres-v1:${sourceHash}:${meshOrdinal}` },
     targetFrame: { assetSha256: targetHash, frameKey: `workspace-ifc-z-up-metres:${frameHash}` }, validate };
 }

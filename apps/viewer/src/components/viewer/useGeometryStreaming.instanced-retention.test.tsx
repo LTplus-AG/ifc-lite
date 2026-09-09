@@ -26,7 +26,7 @@
  * Two invariants are asserted, matching the issue's design requirement:
  *  1. A reshape where the model is STILL present must retain its instanced
  *     geometry (the bug: it did not).
- *  2. A reshape where the model was hidden/removed must NOT retain its
+ *  2. A reshape where the model was removed must NOT retain its
  *     instanced geometry (the naive "just don't clear" fix the issue's own
  *     design comment rejected, because the scene/hook couldn't tell WHICH
  *     model a template belonged to before #2172's per-model ownership +
@@ -37,6 +37,8 @@ import '../../test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useRef, useState } from 'react';
+import { fixtureModel } from '@/test/store-fixture.js';
+import { loadedInstancedModelIndices } from '@/lib/visibility/model-hidden-entities.js';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { Renderer } from '@ifc-lite/renderer';
@@ -272,7 +274,7 @@ describe('useGeometryStreaming — instanced-template retention across scene.cle
     act(() => { root.unmount(); });
   });
 
-  it('does NOT retain a hidden/removed model\'s instanced geometry (the case the naive fix breaks)', () => {
+  it('does NOT retain a removed model\'s instanced geometry (the case the naive fix breaks)', () => {
     const scene = new FakeScene();
     const container = document.createElement('div');
     const root = mountHarness(container);
@@ -301,8 +303,25 @@ describe('useGeometryStreaming — instanced-template retention across scene.cle
     assert.deepEqual([...scene.instancedModelIndices].sort(), [0, 1], 'both models own instanced templates');
     scene.calls.length = 0;
 
-    // Reshape: model 1 is hidden (a type-visibility toggle or a federation
-    // hide) — geometry shrinks to just model 0's mesh, and the caller updates
+    // #4428: the real caller retains loaded model ownership while hiding every
+    // flat mesh. One-time drained templates must survive both hide and show.
+    const loadedModels = new Map([['a', fixtureModel('a')], ['b', fixtureModel('b')]]);
+    const modelIndices = new Map([['a', 0], ['b', 1]]);
+    for (const model of loadedModels.values()) model.visible = false;
+    act(() => root.render(<Harness {...baseParams(scene, {
+      geometry: [], geometryVersion: 2, modelCount: 2,
+      presentInstancedModelIndices: loadedInstancedModelIndices(loadedModels, modelIndices),
+    })} initialShardBytes={[SHARD_BYTES]} />));
+    assert.deepEqual([...scene.instancedModelIndices].sort(), [0, 1], 'all-hidden reshape retains uploads');
+    for (const model of loadedModels.values()) model.visible = true;
+    act(() => root.render(<Harness {...baseParams(scene, {
+      geometry: [mesh(1, 0), mesh(2, 1)], geometryVersion: 3, modelCount: 2,
+      presentInstancedModelIndices: loadedInstancedModelIndices(loadedModels, modelIndices),
+    })} initialShardBytes={[SHARD_BYTES]} />));
+    assert.deepEqual([...scene.instancedModelIndices].sort(), [0, 1], 'show restores without replaying shards');
+
+    // Reshape: model 1 is removed — geometry shrinks to model 0's mesh,
+    // and the caller updates
     // presentInstancedModelIndices to reflect that model 1 is no longer
     // present.
     act(() => {
@@ -322,9 +341,7 @@ describe('useGeometryStreaming — instanced-template retention across scene.cle
     assert.deepEqual(
       [...scene.instancedModelIndices],
       [0],
-      'model 1\'s instanced geometry must be torn down when it is hidden — retaining it would reproduce ' +
-      'exactly the bug the original design comment rejected (a hidden model\'s repeated geometry staying ' +
-      'on screen because the scene could not tell which template belonged to which model).',
+      'model 1\'s templates must be released on removal.',
     );
     assert.ok(
       scene.calls.includes('removeInstancedTemplatesForModel:1'),

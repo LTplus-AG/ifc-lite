@@ -115,3 +115,32 @@ test('scan target identities include overlay-created IFC owners and refuse a cle
   editor.setPositionalAttribute(10, 0, null);
   assert.throws(() => scanTargetGlobalId(10), /stable GlobalId/, 'base GUID must not mask an effective null');
 });
+
+test('retained alignment rebind accepts UV corner duplication but rejects changed or untracked geometry #4381', async () => {
+  const { source, target, mesh } = await alignmentFixture();
+  const paired: MeshData = { ...mesh, expressId: 10, geometryItemId: 20, textureRef: undefined };
+  const untouched: MeshData = { ...paired, geometryItemId: 21 };
+  const geometry = { ...source.geometryResult!, meshes: [paired, untouched] };
+  const currentTarget = { ...target, geometryResult: geometry };
+  useViewerStore.setState({ models: new Map([['source', source], ['target', currentTarget]]) });
+  const session = await prepareScanSession('source', 0, 'target', new AbortController().signal);
+  session.retainTargetMesh(paired);
+  const rebind = session.afterAppearance();
+  const remapped: MeshData = { ...paired, positions: new Float32Array([0,1,0,0,0,0,1,0,0]), indices: new Uint32Array([1,2,0]), uvs: new Float32Array([1,1,0,0,1,0]) };
+  const view = useViewerStore.getState().mutationViews.get('target')!;
+  new StoreEditor(target.ifcDataStore!, view).setPositionalAttribute(10, 2, 'Updated appearance metadata');
+  const nextTarget = { ...currentTarget, geometryResult: { ...geometry, meshes: [remapped, untouched] } };
+  useViewerStore.setState({ models: new Map([['source', source], ['target', nextTarget]]), mutationVersion: 1 });
+  const next = await prepareScanSession('source', 0, 'target', new AbortController().signal);
+  assert.notEqual(next.targetFrame.assetSha256, session.targetFrame.assetSha256, 'new effective IFC bytes require a new native registration request');
+  assert.doesNotThrow(() => rebind(next));
+  const replace = async (meshes: MeshData[]) => {
+    useViewerStore.setState({ models: new Map([['source', source], ['target', { ...nextTarget, geometryResult: { ...geometry, meshes } }]]) });
+    return prepareScanSession('source', 0, 'target', new AbortController().signal);
+  };
+  const moved = { ...remapped, positions: remapped.positions.slice() }; moved.positions[0] += 0.1;
+  const changed = await replace([moved, untouched]);
+  assert.throws(() => rebind(changed), /paired IFC surface changed/);
+  const unrelated = await replace([remapped, { ...untouched }]);
+  assert.throws(() => rebind(unrelated), /Unrelated IFC geometry changed/);
+});

@@ -1,0 +1,32 @@
+{
+  "id": 84,
+  "Name": "Transfer control region",
+  "meshCount": 4,
+  "triangles": 350,
+  "textureRef": {
+    "textureId": 93,
+    "url": "textures/c156dae2b082a95ad85112cec41d33b5f4ca737f2be23c82120ae266cfa7e200.png",
+    "repeatS": false,
+    "repeatT": false
+  },
+  "width": 256,
+  "height": 271,
+  "decodedRgbaSha256": "7c4af00dedec4304d849edf3c6d6fb50935e66600ed732dfc9abd77f0613ddf4",
+  "retainedBluePixels": 25230,
+  "opaqueNonBluePixels": 21970,
+  "uvCount": 2100,
+  "origin": [
+    -0.1356201171875,
+    0.4276885986328125,
+    0.014007568359375
+  ],
+  "offset": {
+    "x": 0,
+    "y": 0,
+    "z": 0
+  },
+  "actualMousePick": {
+    "x": 555.1862155252859,
+    "y": 615.4275547029578
+  }
+}

@@ -143,10 +143,10 @@ export interface UseGeometryStreamingParams {
    * instanced buffers) and reconcile ownership against this set — any
    * modelIndex the scene still holds templates for but that is NOT in this
    * set gets torn down via `removeInstancedTemplatesForModel`, so a
-   * genuinely removed/hidden model's instanced geometry does not linger.
+   * genuinely removed model's instanced geometry does not linger.
    * `undefined` defaults to "only modelIndex 0 is present" — the
    * non-federated case, where `addInstancedShard` has always defaulted new
-   * templates to modelIndex 0.
+   * templates to modelIndex 0. Hidden models remain present and masked (#4428).
    */
   presentInstancedModelIndices?: ReadonlySet<number>;
   clearPendingMeshColorUpdates: () => void;
@@ -185,6 +185,7 @@ const MAX_VALID_COORD = NORMAL_COORD_THRESHOLD_M;
 function traceGeometrySync(message: string): void {
   console.log(`[GeomSync] ${message}`);
 }
+
 
 
 export function useGeometryStreaming(params: UseGeometryStreamingParams): void {

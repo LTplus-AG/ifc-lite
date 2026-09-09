@@ -56,7 +56,7 @@ export function AppearanceMappingFields({ settings: s, onChange, disabled, onInv
         <>{field('tileWidth', box ? 'Tile X (m)' : 'Tile width (m)', true)}{field('tileHeight', box ? 'Tile Y (m)' : 'Tile height (m)', true)}{box && field('tileDepth', 'Tile Z (m)', true)}</>}
     </div>}
     <details className="rounded-md border px-2.5 py-2">
-      <summary className="cursor-pointer text-[11px] font-medium">Alignment and tiling</summary>
+      <summary className="cursor-pointer text-[11px] font-medium">{calibrated ? 'Alignment' : 'Alignment and tiling'}</summary>
       <div className="mt-2 grid grid-cols-2 gap-2">
         {!box && field('rotationDegrees', 'Rotation (°)')}
         {field('offsetU', calibrated ? 'Point A · X (m)' : uv ? 'Offset U (UV)' : box ? 'Offset X (m)' : 'Offset U (m)')}

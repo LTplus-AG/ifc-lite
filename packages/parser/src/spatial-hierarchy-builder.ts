@@ -22,6 +22,7 @@ import {
   isSpatialStructureType,
   isStoreyLikeSpatialType,
   findStoreyByElevation,
+  spatialLookups,
 } from '@ifc-lite/data';
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
@@ -153,33 +154,7 @@ export class SpatialHierarchyBuilder {
         return findStoreyByElevation(storeyElevations, z);
       },
 
-      getContainingSpace(elementId: number): number | null {
-        // Consult the live canonical reverse index: authored containment and
-        // Undo update it after the initial parse (#4308).
-        const container = elementToContainer.get(elementId);
-        return container !== undefined && bySpace.has(container) ? container : null;
-      },
-
-      getPath(elementId: number): SpatialNode[] {
-        const path: SpatialNode[] = [];
-        const findPath = (node: SpatialNode, targetId: number): boolean => {
-          path.push(node);
-          // Match the node itself (so a promoted space/zone resolves) or one of
-          // its contained elements.
-          if (node.expressId === targetId || node.elements.includes(targetId)) {
-            return true;
-          }
-          for (const child of node.children) {
-            if (findPath(child, targetId)) {
-              return true;
-            }
-          }
-          path.pop();
-          return false;
-        };
-        findPath(projectNode, elementId);
-        return path;
-      },
+      ...spatialLookups(projectNode, bySpace, elementToContainer),
     };
   }
 

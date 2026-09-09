@@ -5,7 +5,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { IfcTypeEnum, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
+import { IfcTypeEnum, spatialLookups, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
 import { IfcParser } from '../src/index.js';
 import {
   collectTransferables,
@@ -366,4 +366,27 @@ describe('spatialHierarchyToColumns / spatialHierarchyFromColumns: ambiguousStor
     expect(rebuilt.ambiguousStorey).toBeDefined();
     expect(rebuilt.ambiguousStorey!.size).toBe(0);
   });
+});
+
+
+it('worker hydration resolves spatial nodes and live authored space membership (#4308)', () => {
+  const room: SpatialNode = { expressId: 3, type: IfcTypeEnum.IfcSpace, name: 'Room', children: [], elements: [4] };
+  const project: SpatialNode = { expressId: 1, type: IfcTypeEnum.IfcProject, name: 'Project', children: [room], elements: [] };
+  const original = { project, bySpace: new Map([[3, room.elements]]), byStorey: new Map(), byBuilding: new Map(),
+    bySite: new Map(), storeyElevations: new Map(), storeyHeights: new Map(), elementToStorey: new Map(),
+    elementToContainer: new Map([[4, 3]]), getStoreyElements: () => [], getStoreyByElevation: () => null,
+    ...spatialLookups(project, new Map([[3, room.elements]]), new Map([[4, 3]])) } satisfies SpatialHierarchy;
+  const hydrated = spatialHierarchyFromColumns(structuredClone(spatialHierarchyToColumns(original)));
+  expect(hydrated.getPath(3).map(node => node.expressId)).toEqual([1, 3]);
+  expect(hydrated.getPath(4).map(node => node.expressId)).toEqual([1, 3]);
+  hydrated.project.children[0].elements.push(5);
+  hydrated.bySpace.get(3)!.push(5);
+  hydrated.elementToContainer!.set(5, 3);
+  expect(hydrated.getPath(5).map(node => node.expressId)).toEqual([1, 3]);
+  expect(hydrated.getContainingSpace(5)).toBe(3);
+  hydrated.project.children[0].elements.splice(1, 1);
+  hydrated.bySpace.get(3)!.splice(1, 1);
+  hydrated.elementToContainer!.delete(5);
+  expect(hydrated.getPath(5)).toEqual([]);
+  expect(hydrated.getContainingSpace(5)).toBeNull();
 });

@@ -81,7 +81,9 @@ lint, API/module/license gates and documentation checks pass.
 
 The broader Node 26 viewer run has 7,668 passing tests, 12 skips and one existing
 registry failure: `layerStackSlice` was both registered and exempt. That defect
-is tracked independently as #4424; it is not hidden as a passing full suite.
+was fixed independently by #4425 (closing #4424). After merging that fix, the
+final Node 22 registry shard passes all six tests. The original broad run is
+not relabeled as a passing full suite.
 Build graphs and final acceptance runs were separated. Chromium and owned dev
 servers are closed after acceptance.
 

@@ -64,5 +64,13 @@
     "native-source.ifc": "631f7d84e8d7b151caf906e0e6c68d681238cd93d440be011d0a4c42ab6192ab",
     "native-rgba.bin": "b10c189ab07af7d47a1dd92f3e9f9f818ab54c89baec6c36b912e119d7371b08",
     "transferred.ifczip": "2d6a3f4d2f675df85903c906fafeaa1a06bdad739ce742f4810bcd29d8b81db9"
+  },
+  "registryFix": {
+    "pullRequest": 4425,
+    "nodeVersion": "22.23.2",
+    "rootTurboShard": 810868,
+    "tests": 6,
+    "passed": 6,
+    "failed": 0
   }
 }

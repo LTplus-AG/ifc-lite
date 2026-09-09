@@ -60,6 +60,13 @@ test('real WASM annotation creation preserves canonical owner/UV frame and share
     assert.ok(result.plan.created.some(e => e.type === 'IfcBuildingElementProxy' && e.attributes[0] === request.GlobalId));
     assert.ok(result.plan.created.some(e => e.type === 'IfcRelContainedInSpatialStructure' && e.attributes[5] === '#40'));
     assert.throws(() => api.planCapturedMesh(source, JSON.stringify({ ...request, containerId: 1 })), /IfcSpatialElement/);
+    for (const repeatS of [false, true]) for (const repeatT of [false, true]) {
+      const sampled = JSON.parse(new TextDecoder().decode(api.planCapturedMesh(source, JSON.stringify({ ...request, repeatS, repeatT })))) as CapturedMeshPlan;
+      assert.equal(sampled.mesh.texture.repeat_s, repeatS);
+      assert.equal(sampled.mesh.texture.repeat_t, repeatT);
+      assert.deepEqual(sampled.mesh.uvs, result.mesh.uvs);
+    }
+
   } finally { api.free(); }
   const { runCapturedMeshPlanning } = await import('../../workers/appearance.worker.js');
   assert.equal((await runCapturedMeshPlanning(source, request)).objectId, result.objectId);

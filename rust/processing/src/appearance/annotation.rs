@@ -44,7 +44,7 @@ pub(super) struct AuthoredProductPlan {
     pub mesh:crate::types::mesh::MeshData,
     pub rtc_offset:[f64;3],
 }
-pub(super) fn plan_textured_product(bytes:&[u8], request:&AnnotationPlaneRequest, captured:Option<&super::captured_types::CapturedMesh>) -> Result<AuthoredProductPlan,String> {
+pub(super) fn plan_textured_product(bytes:&[u8], request:&AnnotationPlaneRequest, captured:Option<&super::captured_types::CapturedMesh>, repeat:[bool;2]) -> Result<AuthoredProductPlan,String> {
     let r=request;
     if !matches!(r.schema.as_str(), "IFC4"|"IFC4X3") || r.source_revision.len()>4096 || r.name.len()>1024
         || !valid_guid(&r.global_id) || !valid_guid(&r.containment_global_id) || r.global_id==r.containment_global_id {
@@ -114,7 +114,7 @@ pub(super) fn plan_textured_product(bytes:&[u8], request:&AnnotationPlaneRequest
     let triangles:Vec<[i64;3]>=captured.map_or_else(|| vec![[1,2,3],[1,3,4]], |m| m.triangles.iter().map(|r|r.map(|i|i64::from(i)+1)).collect());
     let index_value=||A::List(triangles.iter().map(|row|A::List(row.iter().copied().map(A::Integer).collect())).collect());
     let item=author.add(IfcType::IfcTriangulatedFaceSet,vec![A::EntityRef(points),A::Null,A::Enum("F".into()),index_value(),A::Null]);
-    let image=author.add(IfcType::IfcImageTexture,vec![A::Enum("F".into()),A::Enum("F".into()),A::Null,A::Null,A::Null,A::String(r.image_uri.clone())]);
+    let image=author.add(IfcType::IfcImageTexture,vec![A::Enum(if repeat[0] {"T"} else {"F"}.into()),A::Enum(if repeat[1] {"T"} else {"F"}.into()),A::Null,A::Null,A::Null,A::String(r.image_uri.clone())]);
     let uv=captured.map_or_else(|| vec![[0.,0.],[1.,0.],[1.,1.],[0.,1.]], |m|m.uvs.clone());
     let uv_triangles:Vec<[u32;3]>=captured.map_or_else(||vec![[1,2,3],[1,3,4]], |m|m.uv_triangles.iter().map(|r|r.map(|i|i+1)).collect());
     let vertices=author.add(IfcType::IfcTextureVertexList,vec![A::List(uv.iter().map(|v|A::List(v.iter().copied().map(A::Float).collect())).collect())]);
@@ -138,7 +138,7 @@ pub(super) fn plan_textured_product(bytes:&[u8], request:&AnnotationPlaneRequest
     let (_,info)=crate::prepass::surface_style_from_styled_item(&author.entities[&styled],&mut source.decoder).ok_or("Generated style failed canonical resolution")?;
     styles.geometry_style_index.insert(item,info);
     let textures=FxHashMap::from_iter([(item,ResolvedTextureMap { texture_id:image,
-        texture:TextureSource::Image(ImageTextureRef { url:r.image_uri.clone(),repeat_s:false,repeat_t:false }),
+        texture:TextureSource::Image(ImageTextureRef { url:r.image_uri.clone(),repeat_s:repeat[0],repeat_t:repeat[1] }),
         tex_coords:uv.iter().map(|v|v.map(|x|x as f32)).collect(),tex_coord_index:Some(uv_triangles) })]);
     let mut meshes=canonical::produce(&mut source,annotation,&textures,Some(&styles))?;
     if meshes.len()!=1 { return Err("Canonical annotation geometry did not produce exactly one textured plane".into()); }
@@ -152,7 +152,7 @@ pub(super) fn plan_textured_product(bytes:&[u8], request:&AnnotationPlaneRequest
 
 /// Create one bounded textured annotation through the shared native product planner.
 pub fn plan_annotation_plane(bytes: &[u8], request: &AnnotationPlaneRequest) -> Result<AnnotationPlanePlan,String> {
-    let AuthoredProductPlan {plan,product_id,geometry_item_id,mesh,rtc_offset}=plan_textured_product(bytes,request,None)?;
+    let AuthoredProductPlan {plan,product_id,geometry_item_id,mesh,rtc_offset}=plan_textured_product(bytes,request,None,[false,false])?;
     let f=&request.frame;
     let uv=mesh.uvs.as_ref().ok_or("Missing canonical annotation UVs")?;
     let tolerance=f.size_metres[0].min(f.size_metres[1])*1e-6;

@@ -75,7 +75,11 @@ test('capture rejects invalid regions, missing correspondence, out-of-image UVs 
   f.mesh.uvs![0] = 0; f.mesh.color[0] = 0.5;
   assert.throws(() => captureRegion(f.mesh, [0], captureRegistration('capture', f.mesh, f.getState)), /tint/);
   f.mesh.color[0] = 1; f.mesh.textureRef!.repeatS = true;
-  assert.throws(() => captureRegion(f.mesh, [0], captureRegistration('capture', f.mesh, f.getState)), /Repeating/);
+  assert.throws(() => registration.validate(), /changed/, 'a sampler edit invalidates an earlier capture');
+  const repeated = captureRegion(f.mesh, [0], captureRegistration('capture', f.mesh, f.getState));
+  assert.equal(repeated.textureRef.repeatS, true);
+  assert.equal(repeated.textureRef.repeatT, false);
+  assert.deepEqual(repeated.mesh.uvs[0], [0,1], 'sampler preservation does not wrap or shift source UVs');
 });
 
 test('capture bounds compact output rows while allowing a small region of a larger scan (#4380)', () => {

@@ -31,3 +31,18 @@ The fixture is a stated geometric control, not a captured real building or an
 accuracy measurement. No source IFC assets are committed. The oracle retains its
 shape owner while reading geometry; releasing a temporary IfcOpenShell shape
 before accessing its borrowed geometry invalidates that data.
+
+## Validation and performance
+
+Native controls exercise both ring windings, triangle/normal agreement, invalid
+boundaries, mixed/invalid paint, source-index reuse and duplicate-ID refusal.
+Actual WASM prepass/batch controls preserve geometry/colour and refuse invalid
+paint. Full Rust and WASM contract suites, strict workspace clippy, root Turbo
+typechecking and a fresh PyO3 wheel's committed-reference parity quick lane pass.
+
+`native-load.json` records two interleaved base/branch pairs with five native
+iterations per run on AC20, using separately built immutable binaries. Paired
+phase medians, mesh census and the separately checked mesh fingerprints match.
+This is ordinary load regression evidence; it does not measure annotation
+throughput or browser worker-pool performance. The annotation control's expected
+new meshes are validated separately from the unchanged building fixture.

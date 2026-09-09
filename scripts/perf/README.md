@@ -1169,3 +1169,13 @@ or conversion throughput claim; the additional authored payload remains governed
 by the existing aggregate geometry budget.
 [Source-mesh payload probe](../../docs/architecture/evidence/evaluated-occurrences/source-mesh-load.json)
 records source heads, precision limits and the unchanged census.
+
+### Product-scoped polygonal annotation fills (#4406)
+
+Direct annotation fills reuse canonical placement/triangulation and a lazy
+source-owned inverse style index shared across recreated native/batch decoders.
+The ordinary AC20 source-matched A/B/A/B probe found identical paired phase
+medians and identical mesh fingerprints/counts; this is a normal-load regression
+check, not annotation throughput or worker-pool speedup evidence. Keep style
+lookup failures cached and diagnostic, and keep auxiliary type maps excluded.
+[Exact inputs and paired runs](../../docs/architecture/evidence/annotation-fills/native-load.json).

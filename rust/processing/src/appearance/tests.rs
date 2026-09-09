@@ -4,7 +4,7 @@
 use super::*;
 use ifc_lite_core::{AttributeValue as A, EntityDecoder, EntityScanner};
 
-const CONTROLLED_IFC: &str = r#"ISO-10303-21;
+pub(super) const CONTROLLED_IFC: &str = r#"ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('issue-1781 image texture fixture'),'2;1');
 FILE_NAME('imgtex.ifc','2026-07-17T00:00:00',(''),(''),'','','');
@@ -85,7 +85,7 @@ fn step(value: &Value) -> String {
 }
 /// Test-only consumer: apply typed mutations to decoded source records, then
 /// re-open the resulting actual IFC through the production geometry pipeline.
-fn apply(source: &str, plan: &AppearancePlan) -> String {
+pub(super) fn apply(source: &str, plan: &AppearancePlan) -> String {
     let mut output = source[..source.find("DATA;").unwrap() + 5].to_string();
     let mut scan = EntityScanner::new(source.as_bytes());
     let mut decoder = EntityDecoder::new(source);

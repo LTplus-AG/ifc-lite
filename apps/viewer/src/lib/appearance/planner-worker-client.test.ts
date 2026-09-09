@@ -34,6 +34,25 @@ function setup(timeoutMs = 120_000) {
   return { workers, client };
 }
 describe('appearance worker ownership (#4243)', () => {
+  it('finite page jobs share supersession and reject stale allocator output without detaching pixels (#4260)', async () => {
+    const { client, workers } = setup();
+    const rgba = new Uint8Array([255, 0, 0, 255]);
+    const page = { appearance: request, page: { width: 1, height: 1, byteOffset: 0, byteLength: 4 }, sourceImages: [], texelsPerMetre: 64 };
+    const first = client.pagePlan(new Uint8Array([1]), page, rgba);
+    const rejected = assert.rejects(first, { name: 'AbortError' });
+    const second = client.catalog(new Uint8Array([1]), { schema: 'IFC4', sourceRevision: 'new', productIds: [10] });
+    await rejected;
+    assert.equal(workers[0].terminated, 1); assert.equal(rgba.byteLength, 4);
+    const wrongCatalog = assert.rejects(second, /stale/);
+    workers[1].emit({ type: 'page-complete', id: workers[1].posted!.id,
+      result: { plan: plan(), itemImages: [], assets: [], texelsPerMetre: 64 } });
+    await wrongCatalog;
+    const stale = client.pagePlan(new Uint8Array([1]), page, rgba);
+    workers[2].emit({ type: 'page-complete', id: workers[2].posted!.id,
+      result: { plan: { ...plan(), nextExpressId: 101 }, itemImages: [], assets: [], texelsPerMetre: 64 } });
+    await assert.rejects(stale, /stale/); assert.equal(workers[2].terminated, 1);
+    client.dispose();
+  });
   it('catalog and plan share cancellation, revision fencing and deterministic worker release (#4243)', async () => {
     const { client, workers } = setup();
     const first = client.catalog(new Uint8Array([1]), { schema: 'IFC4', sourceRevision: 'catalog-old', productIds: [10] });

@@ -26,7 +26,7 @@ pub(super) fn collect_presentation_layer_assignments(
     }
 }
 
-pub(super) fn resolve_element_color_for_product_definition_shape(
+pub(crate) fn resolve_element_color_for_product_definition_shape(
     product_definition_shape_id: u32,
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
     decoder: &mut EntityDecoder,

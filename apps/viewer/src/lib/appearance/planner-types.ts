@@ -60,11 +60,31 @@ export interface AppearanceCatalog {
   types: Array<{ typeId: number; ifcClass: string; Name: string | null }>;
   missingProductIds: number[];
 }
+export interface AppearanceRaster {
+  width: number;
+  height: number;
+  byteOffset: number;
+  byteLength: number;
+}
+export interface PageAppearanceRequest {
+  appearance: AppearanceRequest;
+  page: AppearanceRaster;
+  sourceImages: Array<{ imageUri: string; raster: AppearanceRaster }>;
+  texelsPerMetre: number;
+}
+export interface PageAppearancePlan {
+  plan: AppearancePlan;
+  itemImages: Array<{ geometryItemId: number; imageUri: string }>;
+  assets: Array<{ imageUri: string; width: number; height: number; png: Uint8Array }>;
+  texelsPerMetre: number;
+}
 export type AppearanceWorkerJob =
   | { type: 'plan'; request: AppearanceRequest }
-  | { type: 'catalog'; request: AppearanceCatalogRequest };
+  | { type: 'catalog'; request: AppearanceCatalogRequest }
+  | { type: 'page-plan'; request: PageAppearanceRequest; rgba: Uint8Array };
 export type AppearanceWorkerRequest = AppearanceWorkerJob & { id: number; source: Uint8Array };
 export type AppearanceWorkerResponse =
   | { type: 'complete'; id: number; plan: AppearancePlan }
   | { type: 'catalog-complete'; id: number; catalog: AppearanceCatalog }
+  | { type: 'page-complete'; id: number; result: PageAppearancePlan }
   | { type: 'error'; id: number; message: string };

@@ -46,6 +46,24 @@ a baseline first-load viewport initialization race. Those failed samples were
 retained and excluded, not treated as successful loads. The lesson is to name
 and qualify the measured boundary before interpreting small load-time deltas.
 
+## Manual scan registration foundation (#4381)
+
+The correspondence solver is opt-in, bounded to 256 fitting and 256 held-out
+points, with fixed-size matrix decompositions and explicit iteration limits.
+It is reachable through the dedicated registration API only; parse, element mesh
+production, styling and worker-load paths do not invoke it. An interleaved native
+AC20-FZK-Haus base/branch probe found equal reported parse/geometry/total phase
+medians and a full-wall median difference within the observed run spread. Every
+ordered mesh fingerprint and mesh/vertex/triangle count matched. The verdict is
+no material regression observed on that fixture, not a load optimization or a
+browser worker-pool speed claim. See the [raw measurement](../../docs/architecture/evidence/scan-registration/native-load-perf.json).
+
+Independent numerical review also ruled out the specialized small-matrix SVD:
+its squared-matrix path lost thin but valid correspondence directions. The
+bounded direct decomposition and two retained counterexamples prevent repeating
+that failure. Small point-to-plane residuals remain no substitute for spatially
+distributed check correspondences, as the CRAS evidence demonstrates.
+
 ## The native probe (`perf_probe`)
 
 `rust/processing/examples/perf_probe.rs`, wrapped by `probe.sh`. It drains the

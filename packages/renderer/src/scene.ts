@@ -3810,8 +3810,8 @@ export class Scene {
    * picking and sections cannot see a removed flat contribution (#4226).
    */
   clearFlatGeometry(): void {
-    this.appearanceController?.forget();
     this.instanceSuppression.restore();
+    this.appearanceController?.forget();
     for (const mesh of this.meshes) destroyGpuResources(mesh);
     for (const batch of this.batchedMeshes) destroyGpuResources(batch);
     for (const tm of this.texturedMeshes) {

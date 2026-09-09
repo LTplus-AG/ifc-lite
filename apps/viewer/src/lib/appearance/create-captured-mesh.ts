@@ -22,25 +22,37 @@ export async function createIfcFromCapturedMesh(modelId: string, containerId: nu
   capture: CapturedMeshSource, renderer: Renderer,
   options: AppearanceCommitOptions & { Name?: string; planner?: AppearancePlanner } = {}) {
   capture.validate();
+  const input = capture.mesh;
+  if ([input.positions.length, input.triangles.length, input.uvs.length].some(n => n === 0 || n > 200_000)
+    || input.uvTriangles.length !== input.triangles.length) {
+    throw new Error('Captured mesh needs 1..200000 position, triangle and UV rows, with one UV triangle per face');
+  }
+  // Own numeric rows before the first await: a caller replacing or mutating its
+  // capture cannot alter an in-flight native request halfway through creation.
+  const mesh: CapturedMeshRequest['mesh'] = {
+    positions: input.positions.map(p => [...p]), triangles: input.triangles.map(t => [...t]),
+    uvs: input.uvs.map(uv => [...uv]), uvTriangles: input.uvTriangles.map(t => [...t]),
+  };
+  const assetId = capture.assetId;
   const owner = { kind: 'draft' as const, id: crypto.randomUUID() };
-  appearanceAssets.retain(capture.assetId, owner);
+  appearanceAssets.retain(assetId, owner);
   let planner: AppearancePlanner | undefined;
   try {
     const target = await prepareTexturedProduct(modelId, options.signal, () => capture.validate());
     // Native planning receives target-source coordinates. Workspace translation
-    // is restored exactly once by the shared canonical-mesh publication path.
+    // is applied by the renderer through its existing model placement transform.
     const [x, y, z] = target.translation;
-    const positions: [number, number, number][] = capture.mesh.positions.map(p => [p[0] - x, p[1] - y, p[2] - z]);
+    const positions: [number, number, number][] = mesh.positions.map(p => [p[0] - x, p[1] - y, p[2] - z]);
     planner = options.planner ?? createAppearancePlanner();
     const native = await planner.capturedMeshPlan(target.bytes, {
       schema: target.schema, sourceRevision: target.sourceRevision, nextExpressId: target.nextExpressId,
       containerId, GlobalId: generateIfcGuid(), containmentGlobalId: generateIfcGuid(),
       Name: options.Name?.trim() || 'Captured surface',
-      imageUri: modelAppearanceAssets.getAuthoredUri(modelId, capture.assetId),
-      mesh: { ...capture.mesh, positions },
+      imageUri: modelAppearanceAssets.getAuthoredUri(modelId, assetId),
+      mesh: { ...mesh, positions },
     }, { signal: options.signal });
     target.validate();
-    return await commitTexturedProduct(modelId, capture.assetId, native, containerId, renderer, target.source, options);
+    return await commitTexturedProduct(modelId, assetId, native, containerId, renderer, target.source, options);
   } finally {
     if (!options.planner) planner?.dispose();
     appearanceAssets.releaseOwner(owner);

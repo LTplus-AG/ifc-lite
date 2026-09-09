@@ -2,7 +2,7 @@
 
 The offline `tools/texture-authoring/derive-boulder-glb.mjs` packages the public
 [Poly Haven boulder_01](https://polyhaven.com/a/boulder_01) glTF/BIN/diffuse JPEG
-as a GLB. Poly Haven assets are CC0. The derivation **explicitly removes normal
+as a GLB. Poly Haven assets are [CC0](https://polyhaven.com/license). The derivation **explicitly removes normal
 and metallic/roughness maps**, producing an albedo-only fixture; the production
 importer refuses those unsupported maps on the original full material.
 Geometry, indexed UV seams, and diffuse JPEG bytes are unchanged.
@@ -20,7 +20,9 @@ Recorded hashes:
 An actual run through the built cache decoder retained 67,042 vertices,
 66,122 triangles, 67,042 UV pairs, and the exact diffuse JPEG digest above.
 The sampler defaults to repeat in both directions; it is not silently clamped
-to satisfy a downstream authoring limitation.
+to satisfy a downstream authoring limitation. Measured U range is
+[0.00126901979, 0.99843168259] and V range is
+[0.00172561407, 0.99873685837], inside the native capture planner’s [0, 1] range.
 
 Automated invariants include an asymmetric seam, texture transform, rotated
 nonuniform node scale, inverse-transpose normals, mirrored winding, a 12,000-node

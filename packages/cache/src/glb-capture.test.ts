@@ -37,6 +37,10 @@ describe('captured GLB appearance #4380', () => {
     expect(mesh.color[0]).toBeCloseTo(0.5370987);
     expect([...parseGLBImageResources(json,bin).get(mesh.textureRef!.url)!]).toEqual([137,80,78,71,13,10,26,10]);
   });
+  it('honours OPAQUE material alpha independently of the stored factor', () => {
+    const {json,bin}=capture(); json.materials![0].pbrMetallicRoughness!.baseColorFactor=[1,1,1,0];
+    expect(parseGLBToMeshData(json,bin)[0].color[3]).toBe(1);
+  });
   it('bakes KHR_texture_transform once without flipping glTF top-down V', () => {
     const {json,bin}=capture(); json.materials![0].pbrMetallicRoughness!.baseColorTexture!.extensions={KHR_texture_transform:{offset:[0.2,0.3],scale:[2,3],rotation:Math.PI/2}};
     const [mesh]=parseGLBToMeshData(json,bin); expect(mesh.uvs![2]).toBeCloseTo(0.2); expect(mesh.uvs![3]).toBeCloseTo(1.3);

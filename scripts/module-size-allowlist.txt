@@ -298,7 +298,7 @@
    529 packages/query/src/duckdb-integration.ts
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
-  3708 packages/renderer/src/index.ts
+  3716 packages/renderer/src/index.ts
    756 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts
    475 packages/renderer/src/pointcloud/point-cloud-renderer.ts

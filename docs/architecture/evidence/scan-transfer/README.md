@@ -250,3 +250,82 @@ list. A next manual registration artifact must populate source-row neighborhoods
 actual feature definitions and uncertainty, partitioned into fit/check sets
 before solving. The current pair is useful for that UI exploration; the quality
 gate remains open because those measurements have not been made.
+
+## Offline correspondence feasibility: measured planar support
+
+The next bounded investigation used the existing pinned 130,902-point sample,
+with **no further download**. [Source-plane report](cras-planar-support.json)
+records 23 connected planar neighborhoods, exact source-row examples and hashes
+of their complete row lists. These are geometric candidates, not semantic walls,
+IFC correspondences, or accepted fitting/check landmarks.
+
+Reproduce offline with NumPy, SciPy and Matplotlib installed:
+
+```sh
+OPENBLAS_NUM_THREADS=1 python3 tools/texture-authoring/cras-planar-support.py /tmp/ifclite-public-captures
+```
+
+The script verifies the input TSV hash before work. It retains the first unchanged
+source point per 3 cm voxel (63,219 points), estimates **unoriented** local normals
+from 20 neighbors within 20 cm, and admits 24,633 locally planar points under the
+recorded eigenvalue criteria. Seeded plane hypotheses use 2 cm distance and normal
+agreement thresholds. Connected components within 22 cm separate distant support;
+components with fewer than 60 points are omitted. These are exploratory fixed
+parameters, not a quality threshold chosen from held-out registration results.
+Source RGB is not used to classify the patches. Normal signs are canonicalized
+only for reporting, not established as outward-facing scan normals.
+
+![Measured source plane neighborhoods, with no IFC assignments](cras-planar-support.png)
+
+Candidates 0–3 are near-horizontal components around source Z=-1.147 m, spanning
+separate source Y regions. Their local plane RMS values are 0.7–2.8 mm. Candidate
+4 is a long near-vertical patch spanning Y=2.262–7.104 m and Z=-1.958–-0.772 m;
+it extends both above and below the horizontal level. Its geometry alone does
+not establish that it corresponds to an IFC wall or which face. Other candidates
+include shorter planes around X=7 m with repeated orientations. They must not be
+silently paired to repeated IFC walls merely because a nearest-surface fit exists.
+No four fitting plus four distinct, vertically distributed check intersections
+have been identified from these neighborhoods.
+
+The five candidate normals (0–4) expose a concrete failure mode: the normal
+matrix has singular values `[1.999998, 1.000004, 0.000972]`, a condition number of
+**2,058**. Translating one metre along its weakest direction changes the signed
+plane distances by at most **0.671 mm**. This is an observability calculation on
+source-plane normals, **not an estimated scan-to-IFC transform**. Finite patch
+boundaries or verified additional features could constrain that direction, but
+those would require their own matched evidence. A low point-to-plane residual
+on these surfaces alone can therefore coexist with a large positional error.
+The millimetre local RMS values cannot be presented as registration accuracy.
+
+The run writes full source-row lists outside Git as `cras-plane-NN-rows.txt`.
+The report hashes the ordered lists as little-endian signed 64-bit integers;
+representative row indices allow quick inspection without committing the scan.
+Results were repeated in the recorded NumPy/SciPy environment. Neighborhood ties
+and numerical eigensolvers may vary across platforms; this is an evidence tool,
+not a cross-platform golden geometry test. No published package API changed.
+
+### Useful next implementation: auditable correspondence selection
+
+The next useful slice is a correspondence workbench using the existing reference
+frame/alignment model, before automatic transfer is offered for this pair:
+
+1. Select a source neighborhood in 3D and persist its source asset hash, original
+   row indices, coordinate frame and actual point/plane/intersection definition.
+   Show its fitted residual and support extent separately from registration error.
+2. Pick an IFC feature through the canonical model/entity resolver, retaining model
+   identity, `GlobalId`, source hash and representation-derived feature definition.
+   Require explicit confirmation of a match; a nearest surface is only a suggestion.
+3. Mark each correspondence **fit** or **check**, record uncertainty and freeze the
+   lists before solving. Display spatial coverage and rank/conditioning; refuse an
+   accuracy verdict for ambiguous or inadequately distributed constraints. Changing
+   a feature or partition invalidates the previously measured verdict.
+4. Solve only on fitting features. Report every held-out residual vector, aggregate
+   metrics and transform revision without discarding inconvenient checks. Preserve
+   the source points and IFC geometry. A manual match test remains distinct from
+   surveyed absolute accuracy.
+
+For CRAS, the missing artifact is still a reviewed list of identifiable matching
+features, with multiple heights and separated room locations, **not another ICP
+score**. The measured neighborhoods make selection reviewable and reveal where
+more structural context is required. This run supplies neither registration nor
+held-out residuals, so #4381 and the original F4 acceptance gate remain open.

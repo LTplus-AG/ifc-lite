@@ -115,7 +115,7 @@
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
    458 apps/viewer/src/hooks/ingest/pointCloudAlignment.ts
    545 apps/viewer/src/hooks/ingest/pointCloudIngest.ts
-   551 apps/viewer/src/hooks/useAnnotation2D.ts
+   461 apps/viewer/src/hooks/useAnnotation2D.ts
    690 apps/viewer/src/hooks/useBCF.ts
   1374 apps/viewer/src/hooks/useClash.ts
    482 apps/viewer/src/hooks/useCompare.ts
@@ -305,7 +305,7 @@
    535 packages/query/src/duckdb-integration.ts
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
-  3707 packages/renderer/src/index.ts
+  3708 packages/renderer/src/index.ts
    756 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts
    477 packages/renderer/src/pointcloud/point-cloud-renderer.ts
@@ -313,7 +313,7 @@
    474 packages/renderer/src/raycast-engine.ts
    401 packages/renderer/src/render-section-plane.ts
    462 packages/renderer/src/scene-raycaster.ts
-  4196 packages/renderer/src/scene.ts
+  4205 packages/renderer/src/scene.ts
    639 packages/renderer/src/section-2d-overlay.ts
    514 packages/renderer/src/section-plane.ts
    639 packages/renderer/src/shaders/main.wgsl.ts

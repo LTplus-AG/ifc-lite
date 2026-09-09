@@ -147,3 +147,12 @@ it('Discard restores the last valid PDF calibration instead of clearing its erro
   assert.equal(restored.value, '1');
   assert.equal(button(ui, 'Apply').disabled, false);
 });
+
+it('allows cancelling cooperative Apply while preventing a second Apply (#4336)', () => {
+  const controller = new AbortController();
+  const ui = render(<AppearancePanelView {...props({ status: 'applying', onDiscard: () => controller.abort() })} />);
+  assert.equal(button(ui, 'Apply').disabled, true);
+  assert.equal(button(ui, 'Discard').disabled, false);
+  click(button(ui, 'Discard'));
+  assert.equal(controller.signal.aborted, true);
+});

@@ -6,8 +6,9 @@ import type { AppearancePdfControls, AppearancePdfPasswordPrompt } from './pdf-c
 import type { AppearanceScope, AppearanceDraftSettings, AppearanceSourceOption } from '@/lib/appearance/draft-types.js';
 export type { AppearanceScope, AppearanceDraftSettings, AppearanceSourceOption } from '@/lib/appearance/draft-types.js';
 export interface AppearancePanelViewProps {
-  intent?: 'apply' | 'reference';
-  onIntentChange?(intent: 'apply' | 'reference'): void;
+  intent?: 'apply' | 'reference' | 'capture';
+  capture?: React.ReactNode;
+  onIntentChange?(intent: 'apply' | 'reference' | 'capture'): void;
   /** Advertise PDF upload only once a controller provides document ingestion. */
   allowPdf?: boolean;
   onEditReference?(id: string): void;

@@ -4168,6 +4168,7 @@
     "StepExporter: class",
     "Vec3: type",
     "applySimplifiedGeometry: function",
+    "captureAppearanceDependencies: function",
     "collectReferencedEntityIds: function",
     "collectRelatedEntities: function",
     "collectStyleEntities: function",
@@ -4187,7 +4188,8 @@
     "isParquet: function",
     "needsConversion: function",
     "parseGLB: function",
-    "parseGLBToMeshData: function"
+    "parseGLBToMeshData: function",
+    "planAuthoredResourceCleanup: function"
   ],
   "@ifc-lite/extensions": [
     "ACTION_INTENTS: const",

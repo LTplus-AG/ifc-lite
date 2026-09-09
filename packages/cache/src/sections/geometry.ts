@@ -8,6 +8,7 @@
 
 import type { MeshData, CoordinateInfo, Vec3, AABB } from '@ifc-lite/geometry';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
+import { writeProvenance, readProvenance, provenanceByteLength, type AppearanceSourcePool } from './appearance-provenance.js';
 
 /**
  * Validate + filter meshes (detached buffers / size mismatches / absurd
@@ -49,10 +50,10 @@ export function validateMeshes(meshes: MeshData[]): {
 }
 
 /**
- * One per-mesh record inside a v13 chunk (layout unchanged since the
- * pre-v13 sequential format — v13 only changed how records are GROUPED).
+ * One current-version per-mesh record inside a v13+ chunk. Version 19
+ * appends optional canonical appearance provenance after geometry arrays.
  */
-export function writeMeshRecord(writer: BufferWriter, mesh: MeshData): void {
+export function writeMeshRecord(writer: BufferWriter, mesh: MeshData, pool?: AppearanceSourcePool): void {
   writer.writeUint32(mesh.expressId);
 
   const vertexCount = mesh.positions.length / 3;
@@ -106,10 +107,11 @@ export function writeMeshRecord(writer: BufferWriter, mesh: MeshData): void {
   writer.writeTypedArray(mesh.positions);
   writer.writeTypedArray(mesh.normals);
   writer.writeTypedArray(mesh.indices);
+  writeProvenance(writer, mesh, pool);
 }
 
 /** Exact serialized size of one per-mesh record, for chunk byte budgeting. */
-export function meshRecordByteLength(mesh: MeshData): number {
+export function meshRecordByteLength(mesh: MeshData, pool?: AppearanceSourcePool): number {
   const ifcTypeBytes = mesh.ifcType ? new TextEncoder().encode(mesh.ifcType).length : 0;
   return (
     4 + 4 + 4 +            // expressId, vertexCount, indexCount
@@ -118,7 +120,7 @@ export function meshRecordByteLength(mesh: MeshData): number {
     1 +                    // geometryClass
     8 +                    // geometryItemId + materialId u32x2 (v14+)
     24 +                   // origin f64x3
-    mesh.positions.byteLength + mesh.normals.byteLength + mesh.indices.byteLength
+    mesh.positions.byteLength + mesh.normals.byteLength + mesh.indices.byteLength + provenanceByteLength(mesh, pool)
   );
 }
 
@@ -213,7 +215,7 @@ function assertFiniteVertexData(
 }
 
 /** Read one per-mesh record (see writeMeshRecord for the layout). */
-export function readMeshRecord(reader: BufferReader, version: number, meshIndex: number = 0): MeshData {
+export function readMeshRecord(reader: BufferReader, version: number, meshIndex: number = 0, pool?: readonly Uint32Array[]): MeshData {
   const expressId = reader.readUint32();
   const vertexCount = reader.readUint32();
   const indexCount = reader.readUint32();
@@ -290,7 +292,7 @@ export function readMeshRecord(reader: BufferReader, version: number, meshIndex:
   assertFiniteVertexData(positions, 'positions', meshIndex, expressId);
   assertFiniteVertexData(normals, 'normals', meshIndex, expressId);
 
-  return {
+  const mesh: MeshData = {
     expressId,
     positions,
     normals,
@@ -304,6 +306,8 @@ export function readMeshRecord(reader: BufferReader, version: number, meshIndex:
     ...(materialId !== undefined ? { materialId } : {}),
     ...(origin ? { origin } : {}),
   };
+  if (version >= 19) readProvenance(reader, mesh, pool);
+  return mesh;
 }
 
 export function readCoordinateInfo(reader: BufferReader, version: number = 2): CoordinateInfo {

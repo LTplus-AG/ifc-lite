@@ -241,6 +241,23 @@ A material-layer slice is a fourth kind of absence with a different reading: it
 carries `materialId` instead, so the identity is present but is a material's,
 not an item's.
 
+### Canonical triangle provenance
+
+Item-identified meshes extracted from WASM carry optional `appearanceSource`
+metadata. Its `indices` reference identifies the current topology, while
+`sourceIndices` identifies the canonical unsplit triangle order. At extraction,
+both reference the existing mesh index array; no geometry buffer is copied.
+Those shared references survive worker structured clone and buffer transfer.
+
+Consumers that split triangles must carry a `cornerIndices` mapping from each
+current triangle corner to its canonical triangle corner. A consumer that
+rebuilds topology without such a mapping must discard the metadata. This is
+provenance for matching authored UVs to actual geometry, not a claim that every
+item is eligible for editing. Transports and caches must explicitly preserve
+the array identities before a downstream authoring tool can rely on them.
+Keeping a fragment may retain its original unsplit index array; callers that
+release CPU geometry must release this metadata too.
+
 ## Streaming Geometry
 
 Process geometry incrementally for large files:

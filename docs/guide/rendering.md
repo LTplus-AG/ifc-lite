@@ -991,3 +991,30 @@ async function createViewer() {
 - [Server Guide](server.md) - Server-based rendering
 - [2D Drawing Guide](drawing-2d.md) - Generate 2D plans and elevations
 - [API Reference](../api/typescript.md) - Complete API docs
+
+
+## Model workspace translations
+
+`Renderer.setModelTranslation(modelIndex, [x, y, z])` sets an absolute manual
+translation in **renderer Y-up metres**. It applies to flat, textured, instanced
+and embedded pointcloud geometry assigned that model index, including later
+uploads. Pass `[0, 0, 0]` to reset. Keep each loaded model's index stable until
+it is removed; do not compact indices while its geometry remains on the GPU.
+`renderer.getScene().getModelTranslation(modelIndex)` reads the current offset
+in the same Y-up metre frame. It defaults to zero before a placement is set.
+The scene retains occurrence records and bounds after releasing CPU vertices,
+so whole-model movement remains available in GPU-resident mode.
+
+For a separately streamed scan, call
+`Renderer.setPointCloudTranslation(handle, [x, y, z])`. Its manual translation
+composes after the matrix passed to `setPointCloudTransform`, which accepts
+`Float64Array` as well as `Float32Array`. Pass coarse alignment matrices in
+float64 so cancellation with a manual correction happens before GPU rounding.
+`getPointCloudTransform(handle)` returns the final draw matrix for CPU spatial
+consumers. `getModelPlacementBounds(modelIndex, handle?)` returns placed bounds
+for framing a model and its streamed scan.
+
+These APIs move workspace geometry; they do not rewrite source IFC placements
+or point records. The web viewer supplies transactions, undo, persistence and
+engineering Z-up inputs on top of them. See [Repositioning models and
+pointclouds](federation.md#repositioning-models-and-pointclouds).

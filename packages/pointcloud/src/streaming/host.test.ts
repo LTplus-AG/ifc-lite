@@ -53,6 +53,34 @@ function buildLasFile(rows: Array<{ x: number; y: number; z: number; cls?: numbe
 }
 
 describe('streamPointCloud (in-process source)', () => {
+  it('preserves millimetre LAS samples loaded before an IFC provides an alignment (#4226)', async () => {
+    const bytes = await buildLasFile([{ x: 1, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }]).arrayBuffer();
+    const view = new DataView(bytes);
+    view.setFloat64(131, 0.001, true);
+    view.setFloat64(155, 10_000_000, true);
+    view.setFloat64(179, 10_000_000.002, true);
+    view.setFloat64(187, 10_000_000.001, true);
+    let origin = 0;
+    const samples: number[] = [];
+    const handle = streamPointCloud({
+      format: 'las', blob: new Blob([bytes]), autoOrigin: true,
+      onOpen: (info) => { origin = info.originOffset?.[0] ?? 0; },
+      onChunk: (chunk) => {
+        for (let i = 0; i < chunk.pointCount; i++) samples.push(chunk.positions[i * 3]);
+      },
+      createSource: ({ blob, stride, originOffset }) => new LasStreamingSource(blob, {
+        downsample: { stride: stride ?? 1 }, originOffset,
+      }),
+    });
+    await handle.done;
+    expect(samples).toHaveLength(2);
+    // Coarse translation is evaluated in f64 before the final small coordinates
+    // reach the renderer; the decoder must not already have collapsed the pair.
+    expect(Math.abs((origin - 10_000_000) + samples[0] - 0.001)).toBeLessThan(1e-7);
+    expect(Math.abs((origin - 10_000_000) + samples[1] - 0.002)).toBeLessThan(1e-7);
+    expect(samples[1] - samples[0]).toBeGreaterThan(0.000999);
+  });
+
   it('streams chunks to the host callback and reports completion', async () => {
     const rows: Array<{ x: number; y: number; z: number }> = [];
     for (let i = 0; i < 12; i++) rows.push({ x: i, y: 0, z: 0 });
@@ -90,6 +118,13 @@ describe('streamPointCloud (in-process source)', () => {
     expect(opened).toBe(1);
     expect(completedTotal).toBe(12);
     expect(collected).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  });
+
+  it('rejects invalid point caps before opening a source (#4226)', () => {
+    for (const maxPointsInMemory of [0, -1, NaN, Infinity]) {
+      expect(() => streamPointCloud({ format: 'las', blob: buildLasFile([]), maxPointsInMemory,
+        onChunk: () => {}, createSource: () => { throw new Error('must not open'); } })).toThrow(/maxPointsInMemory/);
+    }
   });
 
   it('downsamples when total exceeds maxPointsInMemory', async () => {

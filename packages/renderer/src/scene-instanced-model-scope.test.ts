@@ -4,6 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { sceneMeshBounds } from './model-placement-bounds.js';
 import { Scene } from './scene.js';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
 
@@ -218,9 +219,9 @@ describe('Scene.removeInstancedTemplatesForModel — index stability', () => {
     assert.deepStrictEqual([cpu[2]?.indices.length, cpu[3]?.indices.length, cpu[4]?.indices.length], [3, 6, 9]);
   });
 
-  it('keeps CPU templates slot-aligned after releaseGeometryData() drops them', () => {
-    // releaseGeometryData() empties the CPU template array while the GPU slots
-    // live on. A shard uploaded afterwards must land on its GPU slot, not at
+  it('keeps occurrence slots and placement after releasing template vertices (#4226)', () => {
+    // releaseGeometryData() drops template vertices while occurrence records
+    // and GPU slots live on. A shard uploaded afterwards must land on its GPU slot, not at
     // CPU index 0 — otherwise every CPU consumer (raycast / measure / section /
     // export) reads a different template's triangles than the occurrence names.
     const { scene, device } = twoModelScene();
@@ -229,7 +230,13 @@ describe('Scene.removeInstancedTemplatesForModel — index stability', () => {
 
     assert.deepStrictEqual(occSlots(scene, 30), [5]);
     const cpu = scene['instancedTemplateCpu'] as ReadonlyArray<{ indices: Uint32Array } | undefined>;
-    assert.strictEqual(cpu[0], undefined, 'the new template must not squat on a released slot');
+    assert.strictEqual(cpu[0]?.indices.length, 0, 'the new template must not squat on a released slot');
+    const before = scene.getEntityBoundingBox(10)!.min.x;
+    const other = scene.getEntityBoundingBox(20)!.min.x;
+    scene.setModelTranslation(3, [5, 0, 0]);
+    assert.strictEqual(scene.getEntityBoundingBox(10)!.min.x, before + 5);
+    assert.strictEqual(scene.getEntityBoundingBox(20)!.min.x, other);
+    assert.strictEqual(scene.getInstancedMeshDataPieces(10), undefined, 'release still drops exact triangle geometry');
     assert.strictEqual(cpu[5]?.indices.length, 3);
     assert.strictEqual(scene.getInstancedMeshDataPieces(30)?.length, 1);
   });
@@ -478,5 +485,15 @@ describe('Scene.removeInstancedTemplatesForModel — bounding-box teardown (#207
 
     const after = scene.raycast({ x: 0.3, y: 5, z: -0.3 }, { x: 0, y: -1, z: 0 });
     assert.strictEqual(after, null, 'id 10 had geometry only in the removed model; no box should remain to hit');
+  });
+});
+
+it('refreshes camera bounds for a moved instance-only model (#4226)', () => {
+  const scene = new Scene(), { device } = fakeDevice();
+  scene.addInstancedShard(device, shard(1, [1]), 3);
+  scene.setModelTranslation(3, [100, 200, 300]);
+  assert.deepStrictEqual(sceneMeshBounds(scene), {
+    // The shard is IFC Z-up: its unit Y edge becomes renderer negative Z.
+    min: { x: 100, y: 200, z: 299 }, max: { x: 101, y: 200, z: 300 },
   });
 });

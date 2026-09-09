@@ -7,7 +7,7 @@ fn fixture()->(String,CapturedMeshRequest) {
     let source=CONTROLLED_IFC.replace("#37=IFCINDEXEDTRIANGLETEXTUREMAP", "#40=IFCBUILDINGSTOREY('0Storey0000000000000000',$,'Level',$,$,#11,$,$,.ELEMENT.,0.);\n#37=IFCINDEXEDTRIANGLETEXTUREMAP");
     (source,CapturedMeshRequest {schema:"IFC4".into(),source_revision:"capture-test".into(),next_express_id:100,
         container_id:40,global_id:"0aaaaaaaaaaaaaaaaaaaaa".into(),containment_global_id:"0bbbbbbbbbbbbbbbbbbbbb".into(),
-        name:"Captured surface".into(),image_uri:"textures/captured.png".into(),mesh:CapturedMesh {
+        name:"Captured surface".into(),repeat_s:false,repeat_t:false,image_uri:"textures/captured.png".into(),mesh:CapturedMesh {
             positions:vec![[2.,3.,4.],[3.,3.,4.],[3.,4.,4.],[2.,4.,5.]],triangles:vec![[0,1,2],[0,2,3]],
             uvs:vec![[0.,0.],[1.,0.],[1.,1.],[0.,1.],[0.2,0.2]],uv_triangles:vec![[0,1,2],[4,2,3]] }})
 }
@@ -109,4 +109,20 @@ fn issue_4380_georeferenced_capture_reopens_at_same_world_triangle_corners() {
             assert!((world-value).abs()<1e-6);
         }
     }
+}
+
+#[test]
+fn issue_4380_capture_retains_each_original_sampler_combination_on_reimport() {
+    for repeat_s in [false,true] { for repeat_t in [false,true] {
+        let (source,mut request)=fixture();
+        request.repeat_s=repeat_s;request.repeat_t=repeat_t;
+        let plan=plan_captured_mesh(source.as_bytes(),&request).unwrap();
+        let texture=plan.mesh.texture.as_ref().unwrap();
+        assert_eq!((texture.repeat_s,texture.repeat_t),(repeat_s,repeat_t));
+        let restored=crate::process_geometry(apply(&source,&plan.plan).as_bytes());
+        let mesh=restored.meshes.iter().find(|mesh|mesh.express_id==plan.object_id).unwrap();
+        let texture=mesh.texture.as_ref().unwrap();
+        assert_eq!((texture.repeat_s,texture.repeat_t),(repeat_s,repeat_t));
+        assert_eq!(mesh.uvs,plan.mesh.uvs);
+    } }
 }

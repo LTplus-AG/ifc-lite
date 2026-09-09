@@ -682,3 +682,8 @@ The UTF-8 JSON response contains `plan`, `objectId`, `geometryItemId`, `mesh`,
 canonical mesh UVs are already top-down for GPU upload; do not flip them again.
 A fresh import can weld vertices differently, so round-trip correspondence is
 measured per triangle corner rather than by assuming an identical vertex layout.
+
+Captured mesh requests accept optional `repeatS` and `repeatT` booleans to retain
+an imported image sampler on the authored `IfcImageTexture` and canonical mesh.
+Both default to `false` when omitted. This does not extend the current supported
+UV range: capture coordinates must still lie within `[0, 1]`.

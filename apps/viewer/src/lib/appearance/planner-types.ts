@@ -109,6 +109,9 @@ export interface AnnotationPlanePlan {
   };
 }
 export interface CapturedMeshRequest extends Omit<AnnotationPlaneRequest, 'frame'> {
+  /** Original sampler; omitted means non-repeating. */
+  repeatS?: boolean;
+  repeatT?: boolean;
   mesh: {
     /** IFC world Z-up metres. Triangle and UV indices are zero-based. */
     positions: [number, number, number][];

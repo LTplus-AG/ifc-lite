@@ -20,6 +20,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { modelPlacementBounds, sceneMeshBounds } from './model-placement-bounds.js';
 import { Scene } from './scene.js';
 import { mergeGeometry } from './scene-geometry.js';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -153,4 +154,51 @@ describe('textured meshes carry their per-element origin (#1973)', () => {
 
     assert.deepStrictEqual([...scene.getTexturedMeshes()[0].origin], [0, 0, 0]);
   });
+});
+
+
+it('moves only the owning textured model and keeps texture uploads stable (#4226)', () => {
+  const scene = new Scene(), { device, writes } = fakeDevice();
+  const moving = { ...meshData(1, ORIGIN, true), modelIndex: 7 };
+  const fixed = { ...meshData(2, [0, 0, 0], true), modelIndex: 0 };
+  scene.appendToBatches([moving, fixed], device, fakePipeline);
+  const uploads = writes.length;
+  scene.setModelTranslation(7, [100, 200, 300]);
+  const meshes = scene.getTexturedMeshes();
+  assert.deepStrictEqual(meshes.find((m) => m.expressId === 1)!.origin, [112.5, 210.5, 296.75]);
+  assert.deepStrictEqual(meshes.find((m) => m.expressId === 2)!.origin, [0, 0, 0]);
+  assert.strictEqual(writes.length, uploads, 'moving a textured model does not re-upload its vertices or texture');
+  assert.deepStrictEqual(moving.origin, ORIGIN, 'the source placement remains unchanged');
+  scene.setModelTranslation(7, [0, 0, 0]);
+  assert.deepStrictEqual(meshes.find((m) => m.expressId === 1)!.origin, ORIGIN);
+  scene.clear();
+});
+
+it('frames textured pieces by model even when entity ids coincide (#4226)', () => {
+  const scene = new Scene(), { device } = fakeDevice();
+  scene.appendToBatches([{ ...meshData(1, ORIGIN, true), modelIndex: 7 },
+    { ...meshData(1, [0, 0, 0], true), modelIndex: 0 }], device, fakePipeline);
+  scene.releaseGeometryData(); scene.setModelTranslation(7, [100, 0, 0]);
+  assert.deepStrictEqual(modelPlacementBounds(scene, null, 0), { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } });
+  assert.strictEqual(modelPlacementBounds(scene, null, 7)!.min.x, 112.5);
+  assert.deepStrictEqual(sceneMeshBounds(scene), { min: { x: 0, y: 0, z: -3.25 }, max: { x: 113.5, y: 11.5, z: 0 } });
+  scene.clear();
+});
+
+for (const edit of ['translate', 'rotate'] as const) it(`refreshes textured bounds after ${edit} and subsequent model placement (#4226)`, () => {
+  const scene = new Scene(), { device, writes } = fakeDevice();
+  scene.appendToBatches([{ ...meshData(1, [0, 0, 0], true), modelIndex: 7 }], device, fakePipeline);
+  scene.setModelTranslation(7, [100, 0, 0]);
+  if (edit === 'translate') scene.translateMeshesForEntity(1, [2, 3, 4]);
+  else scene.rotateMeshesForEntity(1, Math.PI / 2, [100, 0, 0]);
+  const drawable = scene.getTexturedMeshes()[0];
+  const expected = worldBounds(texturedPositions(writes.at(-1)!, 3), [...drawable.origin]);
+  assert.deepStrictEqual(drawable.bounds, expected, 'bounds enclose the actual uploaded vertices');
+  scene.setModelTranslation(7, [110, 0, 0]);
+  const moved = { min: [...expected.min], max: [...expected.max] };
+  moved.min[0] += 10; moved.max[0] += 10;
+  assert.deepStrictEqual(drawable.bounds, moved, 'the next preview retains the geometry edit');
+  scene.setModelTranslation(7, [0, 0, 0]);
+  assert.strictEqual(drawable.bounds!.min[0], expected.min[0] - 100);
+  scene.clear();
 });

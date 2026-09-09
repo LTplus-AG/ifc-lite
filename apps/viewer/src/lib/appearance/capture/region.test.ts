@@ -4,6 +4,7 @@
 import '@/test/setup-dom.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { linearToSrgb } from '@ifc-lite/data';
 import type { MeshData } from '@ifc-lite/geometry';
 import { useViewerStore, type ViewerState } from '@/store';
 import { fixtureModel } from '@/test/store-fixture';
@@ -90,4 +91,14 @@ test('capture bounds compact output rows while allowing a small region of a larg
   const registration = captureRegistration('capture', f.mesh, f.getState);
   assert.equal(captureRegion(f.mesh, [0], registration).mesh.positions.length, 3);
   assert.throws(() => captureRegion(f.mesh, Array.from({ length: count / 3 }, (_, i) => i), registration), /200000 position/);
+});
+
+
+test('explicit white glTF albedo remains neutral at the renderer upload precision (#4380)', () => {
+  const f = fixture();
+  const white = linearToSrgb(1);
+  f.mesh.color = [white, white, white, 1];
+  assert.equal(captureRegion(f.mesh,[0],captureRegistration('capture',f.mesh,f.getState)).mesh.triangles.length,1);
+  f.mesh.color[0] = linearToSrgb(.9);
+  assert.throws(() => captureRegion(f.mesh,[0],captureRegistration('capture',f.mesh,f.getState)), /tint/);
 });

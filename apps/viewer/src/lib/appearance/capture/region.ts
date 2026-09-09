@@ -60,7 +60,7 @@ export function captureRegion(mesh: MeshData, triangleIds: readonly number[], re
   registration.validate();
   if (registration.source !== mesh) throw new Error('The registration belongs to another captured surface.');
   if (!mesh.textureRef || mesh.texture) throw new Error('The captured surface needs one external image texture.');
-  if (mesh.color.some(value => value !== 1)) throw new Error('Bake the material tint and opacity into the image before IFC capture.');
+  if (mesh.color.some(value => Math.fround(value) !== 1)) throw new Error('Bake the material tint and opacity into the image before IFC capture.');
   if ((mesh.geometryClass ?? 0) === 2 || mesh.entityIds) throw new Error('Choose one concrete surface occurrence.');
   if (triangleIds.length === 0 || triangleIds.length > MAX_ROWS) throw new Error('Choose 1..200000 captured triangles.');
   const vertexCount = mesh.positions.length / 3;

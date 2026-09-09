@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { selectCreatedAppearanceObject } from './select-created-object';
 import { useEffect, useRef, useState } from 'react';
 import { useIfcAuthoringTarget } from './useIfcAuthoringTarget';
 import { Button } from '@/components/ui/button';
@@ -34,10 +35,7 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
     try {
       const result = await createAnnotationFromReference(modelId, containerId, referenceId, renderer, { Name, signal: controller.signal });
       if (controller.signal.aborted) return;
-      const state = useViewerStore.getState();
-      state.selectAppearanceReference(null);
-      state.setSelectedEntityId(result.globalId);
-      state.setSelectedEntity({ modelId, expressId: result.expressId });
+      selectCreatedAppearanceObject(modelId, result);
       setMessage('Textured IfcAnnotation created and selected. Undo is available.');
     } catch (failure) {
       if (!controller.signal.aborted) {

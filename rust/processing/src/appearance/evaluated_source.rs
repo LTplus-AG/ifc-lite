@@ -36,6 +36,10 @@ pub(super) fn body(source: &mut Source<'_>, product_id: u32) -> Result<(DecodedE
         if rep.get_string(2) != Some("MappedRepresentation") {
             return Err("Evaluated appearance currently supports mapped occurrence bodies only".into());
         }
+        let items=refs(rep.get(3))?;
+        if items.len()!=1 || source.types.get(&items[0])!=Some(&IfcType::IfcMappedItem) {
+            return Err("Evaluated appearance requires one mapped occurrence item".into());
+        }
         found = Some(rep);
     }
     Ok((product, found.ok_or("No occurrence Body representation")?))

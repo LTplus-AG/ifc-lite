@@ -18,6 +18,8 @@ export type AppearanceMapping =
       axisU: [number, number, number]; axisV: [number, number, number]; metresPerTile: [number, number] }
   | { kind: 'box'; frame: 'item' | 'world'; origin: [number, number, number]; metresPerTile: [number, number, number] };
 export interface AppearanceRequest {
+  /** Explicit conversion consent; omitted preserves the existing direct-only policy. */
+  representationPolicy?: 'preserve' | 'evaluatedOccurrence';
   schema: 'IFC4' | 'IFC4X3';
   sourceRevision: string;
   nextExpressId: number;
@@ -28,6 +30,9 @@ export interface AppearanceRequest {
   mapping: AppearanceMapping;
 }
 export interface AppearancePlan extends AppearanceEntityPlan {
+  /** Original renderer provenance for opted-in occurrence-local Body conversions. */
+  conversions?: Array<{ productId: number; representationId: number; sourceGeometryItemId: number;
+    geometryItemId: number; sourceIndices: number[] }>; 
   nextAvailableExpressId: number;
   items: Array<{
     productId: number;

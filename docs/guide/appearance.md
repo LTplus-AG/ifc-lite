@@ -150,3 +150,16 @@ Creation is available outside shared rooms; the saved IFC can then be shared.
 
 For implementation status, shared workflow boundaries and future scan/PDF options,
 see the [appearance roadmap](../architecture/appearance-roadmap.md).
+
+## Native evaluated-occurrence policy
+
+Native `planAppearance` and `planPageAppearance` requests accept
+`representationPolicy: "evaluatedOccurrence"` to convert supported mapped
+occurrences to tessellation as part of the same appearance plan. The omitted
+policy remains `"preserve"`. This backend option is not yet exposed by the
+Appearance panel. Hosts must explain the loss of parametric Body geometry before
+opting in and use the returned `conversions` provenance to bind the existing
+rendered occurrence to its new geometry item. Product identities, placements,
+properties and shared type graphs remain intact. Opening-bearing and ambiguous
+representation/material cases are still refused. See the
+[evaluated-occurrence contract](../architecture/appearance-evaluated-occurrences.md).

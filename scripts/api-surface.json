@@ -7110,5 +7110,14 @@
     "union2d: function",
     "version: function"
   ],
-  "create-ifc-lite": []
+  "create-ifc-lite": [],
+  "@ifc-lite/wasm-lifecycle": [
+    "InitWasmRetryOptions: interface",
+    "WASM_PANIC_STASH_KEY: const",
+    "WasmPanicStash: interface",
+    "initWasmWithRetry: function",
+    "isTransientWasmLoadError: function",
+    "restashWasmPanicLocation: function",
+    "takeWasmPanicStash: function"
+  ]
 }

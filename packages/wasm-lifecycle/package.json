@@ -1,7 +1,7 @@
 {
-  "name": "@ifc-lite/parser",
-  "version": "5.2.0",
-  "description": "IFC/STEP parser for IFC-Lite",
+  "name": "@ifc-lite/wasm-lifecycle",
+  "version": "0.1.0",
+  "description": "Shared WASM engine load-retry classification and cross-realm panic-forwarding, used by @ifc-lite/geometry and @ifc-lite/parser",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -10,10 +10,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./browser": {
-      "types": "./dist/browser.d.ts",
-      "import": "./dist/browser.js"
     }
   },
   "scripts": {
@@ -22,16 +18,8 @@
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },
-  "dependencies": {
-    "@ifc-lite/data": "workspace:^",
-    "@ifc-lite/encoding": "workspace:^",
-    "@ifc-lite/ifcx": "workspace:^",
-    "@ifc-lite/wasm": "workspace:^",
-    "@ifc-lite/wasm-lifecycle": "workspace:^",
-    "fflate": "^0.8.3",
-    "jszip": "^3.10.0"
-  },
   "devDependencies": {
+    "@types/node": "^26.4.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.11"
   },
@@ -40,16 +28,16 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
-    "directory": "packages/parser"
+    "directory": "packages/wasm-lifecycle"
   },
   "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",
     "bim",
-    "parser",
-    "step",
-    "aec"
+    "wasm",
+    "retry",
+    "panic"
   ],
   "publishConfig": {
     "access": "public"

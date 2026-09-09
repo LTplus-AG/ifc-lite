@@ -272,7 +272,13 @@ const exportObj: Tool = {
       const gp = new GeometryProcessor();
       try {
         await gp.init();
-        const obj = gp.exportObj(bytes, true, new Uint32Array(), isolated);
+        // `isolated` is empty-but-active only when `type` matched nothing
+        // (rejected above); no `type` must pass `undefined` to exportObj,
+        // not an empty Uint32Array — the wasm boundary now treats an
+        // explicit empty array as "isolation active, matches nothing"
+        // (the OBJ twin of #4328/#4364), and would fail-close every
+        // unfiltered export otherwise.
+        const obj = gp.exportObj(bytes, true, new Uint32Array(), filterType ? isolated : undefined);
         if (obj == null) {
           throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'OBJ export produced no output.' });
         }

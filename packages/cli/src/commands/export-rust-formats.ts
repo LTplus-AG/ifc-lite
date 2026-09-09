@@ -101,7 +101,13 @@ export async function exportRustFormat(
       if (out == null) fatal('JSON-LD export failed (geometry pipeline not initialized)');
       await writeOutput(out as Uint8Array, outPath);
     } else if (format === 'obj') {
-      const out = gp.exportObj(bytes, true, new Uint32Array(), isolated);
+      // `isolated` is empty-but-active only when a filter matched nothing
+      // (rejected above); an inactive filter must pass `undefined` to
+      // exportObj, not an empty Uint32Array — the wasm boundary now treats
+      // an explicit empty array as "isolation active, matches nothing"
+      // (the OBJ twin of #4328/#4364), and would fail-close every
+      // unfiltered export otherwise.
+      const out = gp.exportObj(bytes, true, new Uint32Array(), filterActive ? isolated : undefined);
       if (out == null) fatal('OBJ export failed (geometry pipeline not initialized)');
       await writeOutput(out as Uint8Array, outPath);
     } else {

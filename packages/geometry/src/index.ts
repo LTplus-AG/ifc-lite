@@ -1093,11 +1093,15 @@ export class GeometryProcessor {
    * not initialized.
    */
 
+  /**
+   * `isolated`: `undefined` ⇒ no filter; empty `Uint32Array` ⇒ active but
+   * matching nothing (hides every mesh) — don't collapse the two.
+   */
   exportObj(
     buffer: Uint8Array,
     includeNormals = true,
     hidden: Uint32Array = new Uint32Array(),
-    isolated: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array | undefined = undefined,
   ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportObj(buffer, includeNormals, hidden, isolated);

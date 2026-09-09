@@ -269,7 +269,7 @@ describe('rescaleEntityLengths (full entity lines)', () => {
   });
 
   it('rescales a length quantity that carries a binary literal in another slot (#4173 regression repro)', () => {
-    // `isWellFormedStepSlot` (step-argument-parser.ts, #4162) did not recognize
+    // `isWellFormedStepSlot` (step-slot-grammar.ts, #4162) did not recognize
     // the STEP binary literal `"..."` as a value, so a well-formed line whose
     // Description happened to be a binary literal made `splitTopLevelStepArguments`
     // reject the whole split — and this function used to treat that null as

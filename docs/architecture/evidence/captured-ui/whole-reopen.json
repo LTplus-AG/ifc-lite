@@ -1,0 +1,20 @@
+{
+  "sourceTriangles": 66122,
+  "reopenedTriangles": 66122,
+  "allReopenedFacesRetainSourceWorldAndUvCorners": true,
+  "worldToleranceMetres": 0.0001,
+  "uvTolerance": 0.000001,
+  "maxWorldError": 5.960464477539063e-8,
+  "maxUvError": 0,
+  "textureRef": {
+    "textureId": 55,
+    "url": "textures/c38f0e918f6dc16b8d386ba3cdd89805c78320c119a1ceec85856f82b09a65b8.jpg",
+    "repeatS": true,
+    "repeatT": true
+  },
+  "actualMousePick": {
+    "x": 543.0423881759149,
+    "y": 754.0593557350116,
+    "id": 65
+  }
+}

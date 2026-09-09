@@ -42,10 +42,10 @@ export class RgbaTexturePool {
     const owner = this.owners.get(texture);
     if (!owner) return false;
     if (--owner.entry.refs === 0) {
-      texture.destroy();
       const siblings = owner.siblings;
       siblings.splice(siblings.indexOf(owner.entry), 1);
       this.owners.delete(texture);
+      texture.destroy();
     }
     return true;
   }

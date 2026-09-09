@@ -25,6 +25,7 @@ import {
   setChild,
   setPropertyValue,
 } from '../src/doc/entity.js';
+import { createConflictDetector, type ConflictEvent } from '../src/conflicts/detector.js';
 
 const PEERS = 3;
 const ROUNDS = 30;
@@ -90,6 +91,8 @@ describe('property: random concurrent edits converge', () => {
   it.each([42, 1337, 0xc0ffee])('seed=%i', (seed) => {
     const rand = mulberry32(seed);
     const docs = Array.from({ length: PEERS }, () => createCollabDoc());
+    const events: ConflictEvent[][] = docs.map(() => []);
+    docs.forEach((d, i) => createConflictDetector(d, { windowMs: 60_000 }).onConflict((e) => events[i].push(e)));
 
     // Seed: each peer starts with the same five entities.
     docs.forEach((d) => {
@@ -98,6 +101,11 @@ describe('property: random concurrent edits converge', () => {
       }
     });
     syncAll(docs);
+    // The seed itself is a legitimate same-path concurrent create (every
+    // peer independently creates e0..e4) — that's #4241's new signal
+    // firing correctly, not noise. Clear it here so the assertion below
+    // is about the randomized *editing* rounds, not the seed.
+    events.forEach((e) => (e.length = 0));
 
     for (let round = 0; round < ROUNDS; round++) {
       docs.forEach((doc, peerIdx) => {
@@ -149,6 +157,19 @@ describe('property: random concurrent edits converge', () => {
     docs.slice(1).forEach((d, idx) => {
       expect(snapshotJSON(d), `peer ${idx + 1} diverged from peer 0`).toBe(ref);
     });
+
+    // Survival, not just agreement (#4241): this randomized trace never
+    // creates at a colliding path after the seed (every round mutates
+    // one of the five already-shared entities), so ordinary concurrent
+    // editing across 30 rounds / 3 peers must never raise a false
+    // `concurrent-create`. If it does, either the fixture grew a
+    // same-path create the assertion isn't accounting for, or the
+    // detector regressed into flagging non-colliding writes.
+    for (const peerEvents of events) {
+      for (const e of peerEvents) {
+        expect(e.kind, `unexpected ${e.kind} conflict at ${e.path}`).not.toBe('concurrent-create');
+      }
+    }
   });
 
   it('survives concurrent deletes', () => {
@@ -164,5 +185,39 @@ describe('property: random concurrent edits converge', () => {
     Y.applyUpdate(a, Y.encodeStateAsUpdate(b, Y.encodeStateVector(a)));
 
     expect(snapshotJSON(a)).toBe(snapshotJSON(b));
+  });
+
+  it('a same-path concurrent create is visible, not just agreed on (#4241)', () => {
+    // Before #4241, this scenario passed the suite's convergence checks
+    // (both peers agree on the same final entity) while an entire
+    // peer's entity — class, attributes, everything — vanished with no
+    // signal anywhere. Agreement alone can't distinguish "both peers
+    // correctly merged" from "the CRDT quietly discarded one side and
+    // everyone agrees on what's left." This test asserts the write's
+    // disappearance is actually observable via the conflict detector.
+    const a = createCollabDoc();
+    const b = createCollabDoc();
+    const aEvents: ConflictEvent[] = [];
+    const bEvents: ConflictEvent[] = [];
+    createConflictDetector(a, { windowMs: 60_000 }).onConflict((e) => aEvents.push(e));
+    createConflictDetector(b, { windowMs: 60_000 }).onConflict((e) => bEvents.push(e));
+
+    a.transact(() => createEntity(a, 'wall-7', { ifcClass: 'IfcWall' }));
+    a.transact(() => setAttribute(a, 'wall-7', 'Name', 'Wall from Alice'));
+
+    b.transact(() => createEntity(b, 'wall-7', { ifcClass: 'IfcColumn' }));
+    b.transact(() => setAttribute(b, 'wall-7', 'Name', 'Column from Bob'));
+
+    const aSv = Y.encodeStateVector(a);
+    const bSv = Y.encodeStateVector(b);
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a, bSv));
+    Y.applyUpdate(a, Y.encodeStateAsUpdate(b, aSv));
+
+    // Agreement still holds — this is correct CRDT behaviour, unchanged.
+    expect(snapshotJSON(a)).toBe(snapshotJSON(b));
+
+    // But it is no longer silent: both peers saw the collision.
+    expect(aEvents.some((e) => e.kind === 'concurrent-create' && e.path === 'wall-7')).toBe(true);
+    expect(bEvents.some((e) => e.kind === 'concurrent-create' && e.path === 'wall-7')).toBe(true);
   });
 });

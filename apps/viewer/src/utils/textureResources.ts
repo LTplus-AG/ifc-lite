@@ -19,33 +19,6 @@ import type { MeshData } from '@ifc-lite/geometry';
 export type TextureBitmapStore = Map<string, ImageBitmap>;
 
 /**
- * Decode every sibling raster image to an `ImageBitmap`. Failures are
- * per-image and non-fatal (a corrupt entry just renders that texture's meshes
- * with their style colour). Returns null when there is nothing to decode so
- * untextured loads pay nothing.
- */
-export async function decodeTextureResources(
-  resources: Map<string, Uint8Array>,
-): Promise<TextureBitmapStore | null> {
-  if (resources.size === 0) return null;
-  const store: TextureBitmapStore = new Map();
-  await Promise.all(
-    Array.from(resources, async ([name, bytes]) => {
-      try {
-        // Copy into a fresh ArrayBuffer-backed blob part: `bytes` may be a
-        // view over a larger (or Shared) buffer.
-        const copy = new Uint8Array(bytes);
-        const bitmap = await createImageBitmap(new Blob([copy]));
-        store.set(name, bitmap);
-      } catch (err) {
-        console.warn(`[textures] Failed to decode .ifcZIP image "${name}"`, err);
-      }
-    }),
-  );
-  return store.size > 0 ? store : null;
-}
-
-/**
  * Normalize an `IfcImageTexture.URLReference` to the sibling-store key:
  * strip any URI scheme/path, URL-decode, lowercase — so `Textures/Wood.JPG`,
  * `./wood.jpg` and `file:///x/wood.jpg` all resolve a `wood.jpg` entry.

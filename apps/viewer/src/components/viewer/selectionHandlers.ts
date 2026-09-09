@@ -8,6 +8,8 @@
  * Pure functions that operate on a MouseHandlerContext — no React dependency.
  */
 
+import { isTouchSelectionClick, selectViewportTarget } from './referenceSelection.js';
+import type { PickResult } from '@ifc-lite/renderer';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { useViewerStore } from '@/store';
 import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
@@ -28,6 +30,7 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
   const tool = ctx.activeToolRef.current;
+  if (isTouchSelectionClick(canvas, e, x, y)) return;
 
   // Skip selection if user was dragging (orbiting/panning)
   if (mouseState.didDrag) {
@@ -279,35 +282,25 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   const now = Date.now();
   const timeSinceLastClick = now - ctx.lastClickTimeRef.current;
   const clickPos = { x, y };
-  if (ctx.lastClickPosRef.current &&
-    timeSinceLastClick < 300 &&
-    Math.abs(clickPos.x - ctx.lastClickPosRef.current.x) < 5 &&
-    Math.abs(clickPos.y - ctx.lastClickPosRef.current.y) < 5) {
-    const pickOptions = ctx.getPickOptions();
-    // Double-click - isolate element
-    // Uses visibility filtering so only visible elements can be selected
-    const pickResult = await renderer.pick(x, y, pickOptions);
-    if (pickResult) {
-      ctx.handlePickForSelection(pickResult);
-    }
-    ctx.lastClickTimeRef.current = 0;
-    ctx.lastClickPosRef.current = null;
-  } else {
-    const pickOptions = ctx.getPickOptions();
-    // Single click - uses visibility filtering so only visible elements can be selected
-    const pickResult = await renderer.pick(x, y, pickOptions);
-
-    // Multi-selection with Ctrl/Cmd
-    if (e.ctrlKey || e.metaKey) {
-      if (pickResult) {
-        ctx.toggleSelection(pickResult.expressId);
-      }
+  const doubleClick = ctx.lastClickPosRef.current && timeSinceLastClick < 300
+    && Math.abs(clickPos.x - ctx.lastClickPosRef.current.x) < 5
+    && Math.abs(clickPos.y - ctx.lastClickPosRef.current.y) < 5;
+  const applyIfc = (pickResult: PickResult | null) => {
+    if (doubleClick) {
+      if (pickResult) ctx.handlePickForSelection(pickResult);
+      ctx.lastClickTimeRef.current = 0; ctx.lastClickPosRef.current = null;
     } else {
-      ctx.handlePickForSelection(pickResult);
+      if (e.ctrlKey || e.metaKey) { if (pickResult) ctx.toggleSelection(pickResult.expressId); }
+      else ctx.handlePickForSelection(pickResult);
+      ctx.lastClickTimeRef.current = now; ctx.lastClickPosRef.current = clickPos;
     }
-
-    ctx.lastClickTimeRef.current = now;
-    ctx.lastClickPosRef.current = clickPos;
+  };
+  if (tool === 'select') {
+    await selectViewportTarget({ canvas, renderer, x, y, getTool: () => ctx.activeToolRef.current,
+      getPickOptions: ctx.getPickOptions, onIfc: applyIfc,
+      onReference: () => { ctx.lastClickTimeRef.current = 0; ctx.lastClickPosRef.current = null; } });
+  } else {
+    applyIfc(await renderer.pick(x, y, ctx.getPickOptions()));
   }
 }
 

@@ -311,6 +311,18 @@ describe('convertMeshCollectionToBatch', () => {
     );
 
     expect(batch[0].geometryItemId).toBe(4242);
+    // #4243: canonical extraction is the authority for vertex-order provenance.
+    expect(batch[0].appearanceSource?.kind).toBe('canonical-item');
+    expect(batch[0].appearanceSource?.indices).toBe(batch[0].indices);
+    const cloned = structuredClone(batch[0]);
+    expect(cloned.appearanceSource?.indices).toBe(cloned.indices);
+    expect(cloned.appearanceSource?.sourceIndices).toBe(cloned.indices);
+    const transferred = structuredClone(cloned, { transfer: [cloned.indices.buffer] });
+    expect(cloned.indices.byteLength).toBe(0);
+    expect(transferred.appearanceSource?.indices).toBe(transferred.indices);
+    expect(transferred.appearanceSource?.sourceIndices).toBe(transferred.indices);
+    expect(transferred.indices).toEqual(batch[0].indices);
+    expect(batch[1].appearanceSource).toBeUndefined();
     expect(batch[0].materialId).toBeUndefined();
     // Absent stays ABSENT rather than becoming a key with `undefined`: the
     // cache writer and the REST mirror both distinguish "no key" from a value,

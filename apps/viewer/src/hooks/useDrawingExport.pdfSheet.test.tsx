@@ -262,7 +262,7 @@ function stubRasterization(): {
     if (type === '2d') {
       return { fillStyle: '', fillRect() {}, drawImage() {} };
     }
-    return originalGetContext.call(this, type as '2d');
+    return (originalGetContext as (contextId: string) => RenderingContext | null).call(this, type);
   };
 
   const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;

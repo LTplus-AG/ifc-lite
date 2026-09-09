@@ -248,3 +248,28 @@ describe('unwrapIfcZipWithResources aggregate budgets (#1781)', () => {
     expect(resources.size).toBe(256);
   });
 });
+
+// #4243: basename resolution is compatibility, not archive identity.
+it('preserves exact IFC/image archive paths and colliding resources without byte copies', async () => {
+  const zip = await makeZip({
+    'nested/Model.IFC': STEP_HEADER,
+    'nested/a/Wood.PNG': 'first',
+    'nested/b/wood.png': 'second',
+  });
+  const result = await unwrapIfcZipWithResources(zip);
+  expect(result.modelPath).toBe('nested/Model.IFC');
+  expect([...result.originalResources.keys()]).toEqual(['nested/a/Wood.PNG', 'nested/b/wood.png']);
+  expect(result.resources.get('wood.png')).toBe(result.originalResources.get('nested/a/Wood.PNG'));
+  expect(new TextDecoder().decode(result.originalResources.get('nested/b/wood.png'))).toBe('second');
+});
+
+it('reports extraction omissions at the entry cap without reporting complete archives as partial (#4243)', async () => {
+  const entries: Record<string, string> = { 'model.ifc': STEP_HEADER };
+  for (let i = 0; i < 256; i++) entries[`image${i}.png`] = 'x';
+  expect((await unwrapIfcZipWithResources(await makeZip(entries))).resourcesIncomplete).toBe(false);
+  entries['omitted.png'] = 'x';
+  const partial = await unwrapIfcZipWithResources(await makeZip(entries));
+  expect(partial.originalResources.size).toBe(256);
+  expect(partial.resourcesIncomplete).toBe(true);
+  expect((await unwrapIfcZipWithResources(toArrayBuffer(STEP_HEADER))).resourcesIncomplete).toBe(false);
+});

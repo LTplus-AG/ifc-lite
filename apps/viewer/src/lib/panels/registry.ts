@@ -58,7 +58,8 @@ export type WorkspacePanelId =
   | 'collab'
   | 'layers'
   | 'zones'
-  | 'loadReport';
+  | 'loadReport'
+  | 'appearance';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -118,6 +119,7 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // `loadReportPanelVisible` boolean; `openWorkspacePanel`'s generic
   // non-SIDEBAR_PANEL_FLAGS branch adopts it directly (issue #3927).
   { id: 'loadReport', title: 'Load report', short: 'Load report', Icon: FileWarning, group: 'review', region: 'side' },
+  { id: 'appearance', title: 'Appearance', short: 'Appearance', Icon: Palette, group: 'author', region: 'side' },
 ];
 
 /** The bottom-strip panel ids, mapped to their store visibility flag + setter

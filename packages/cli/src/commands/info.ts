@@ -12,6 +12,7 @@ import { loadIfcFile } from '../loader.js';
 import { printJson, formatTable, hasFlag, fatal } from '../output.js';
 import { EntityNode } from '@ifc-lite/query';
 import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
+import type { ClassCensusEntry } from '@ifc-lite/parser';
 
 export async function infoCommand(args: string[]): Promise<void> {
   const filePath = args.find(a => !a.startsWith('-'));
@@ -38,6 +39,29 @@ export async function infoCommand(args: string[]): Promise<void> {
     return { name: node.name, expressId: id };
   });
 
+  // Semantic drop census (#4208): report honestly whether it ran, distinct
+  // from "it ran and found nothing" — an absent `dropCensus` on the store
+  // must never render the same as zero drops.
+  const dropCensus = store.dropCensus;
+  const dropCensusSummary = dropCensus
+    ? {
+        ran: true as const,
+        totalScanned: dropCensus.totalScanned,
+        totalRetained: dropCensus.totalRetained,
+        totalSkipped: dropCensus.totalSkipped,
+        skippedClasses: dropCensus.skippedClasses.map((c: ClassCensusEntry) => ({ type: c.type, scanned: c.scanned, knownInSchema: c.knownInSchema })),
+        // Split so a JSON consumer doesn't have to re-derive "is this a real
+        // regression or universal geometry noise" itself — see
+        // ClassCensusEntry.isRootDescendant in @ifc-lite/parser's drop-census.ts.
+        expectedSkippedClasses: dropCensus.expectedSkippedClasses.map((c: ClassCensusEntry) => ({ type: c.type, scanned: c.scanned, knownInSchema: c.knownInSchema })),
+        unexpectedSkippedClasses: dropCensus.unexpectedSkippedClasses.map((c: ClassCensusEntry) => ({ type: c.type, scanned: c.scanned, knownInSchema: c.knownInSchema })),
+        unknownClasses: dropCensus.unknownClasses.map((c: ClassCensusEntry) => ({ type: c.type, scanned: c.scanned })),
+        relClassesSeen: dropCensus.relClassesSeen,
+        relClassesIndexed: dropCensus.relClassesIndexed,
+        unindexedRelClasses: dropCensus.unindexedRelClasses.map((c: ClassCensusEntry) => ({ type: c.type, scanned: c.scanned })),
+      }
+    : { ran: false as const };
+
   const summary = {
     file: filePath,
     schema: store.schemaVersion,
@@ -47,6 +71,7 @@ export async function infoCommand(args: string[]): Promise<void> {
     parseTime: `${store.parseTime.toFixed(0)}ms`,
     storeys: storeys.map(s => s.name),
     typeCounts,
+    dropCensus: dropCensusSummary,
   };
 
   if (jsonOutput) {
@@ -104,6 +129,53 @@ export async function infoCommand(args: string[]): Promise<void> {
       ['Type', 'Count'],
       otherTypes.map(([name, count]) => [name, count.toLocaleString()]),
     ).split('\n').map(l => '    ' + l).join('\n') + '\n');
+  }
+
+  // Semantic drop census (#4208)
+  if (!dropCensusSummary.ran) {
+    process.stdout.write(`\n  Drop census: did not run (no dropCensus on this store).\n`);
+  } else {
+    process.stdout.write(
+      `\n  Drop census: ${dropCensusSummary.totalScanned.toLocaleString()} scanned, `
+      + `${dropCensusSummary.totalRetained.toLocaleString()} retained, `
+      + `${dropCensusSummary.totalSkipped.toLocaleString()} skipped.\n`
+    );
+    if (dropCensusSummary.unexpectedSkippedClasses.length > 0) {
+      // Classes with a GlobalId (IfcRoot descendants) that fell to CAT_SKIP
+      // anyway — the shape of a real regression, not routine geometry noise.
+      process.stdout.write(`  Skipped classes with a GlobalId (unexpected):\n`);
+      process.stdout.write(formatTable(
+        ['Type', 'Count', 'In schema'],
+        dropCensusSummary.unexpectedSkippedClasses.map((c: { type: string; scanned: number; knownInSchema: boolean }) => [c.type, c.scanned.toLocaleString(), c.knownInSchema ? 'yes' : 'no']),
+      ).split('\n').map(l => '    ' + l).join('\n') + '\n');
+    }
+    if (dropCensusSummary.expectedSkippedClasses.length > 0) {
+      // Geometry/placement/style resource classes with no GlobalId — this
+      // fires on nearly every file and is not, by itself, a problem.
+      process.stdout.write(`  Skipped classes with no GlobalId (expected — geometry/placement/style resources):\n`);
+      process.stdout.write(formatTable(
+        ['Type', 'Count', 'In schema'],
+        dropCensusSummary.expectedSkippedClasses.map((c: { type: string; scanned: number; knownInSchema: boolean }) => [c.type, c.scanned.toLocaleString(), c.knownInSchema ? 'yes' : 'no']),
+      ).split('\n').map(l => '    ' + l).join('\n') + '\n');
+    }
+    if (dropCensusSummary.unindexedRelClasses.length > 0) {
+      process.stdout.write(`  IFCREL* classes seen but not indexed as edges:\n`);
+      process.stdout.write(formatTable(
+        ['Type', 'Count'],
+        dropCensusSummary.unindexedRelClasses.map((c: { type: string; scanned: number }) => [c.type, c.scanned.toLocaleString()]),
+      ).split('\n').map(l => '    ' + l).join('\n') + '\n');
+    }
+    if (dropCensusSummary.unknownClasses.length > 0) {
+      // Classes not recognised by the bundled schema registry at all —
+      // vendor extensions or a registry gap. Loud signal; must not be
+      // silently dropped from the human-readable output while it's still
+      // in the JSON payload.
+      process.stdout.write(`  Classes not recognised by the schema registry (unknown):\n`);
+      process.stdout.write(formatTable(
+        ['Type', 'Count'],
+        dropCensusSummary.unknownClasses.map((c: { type: string; scanned: number }) => [c.type, c.scanned.toLocaleString()]),
+      ).split('\n').map(l => '    ' + l).join('\n') + '\n');
+    }
   }
 
   process.stdout.write('\n');

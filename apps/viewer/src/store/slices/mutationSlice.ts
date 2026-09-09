@@ -46,14 +46,11 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { getEntityBounds, getEntityCenter } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
-import type { AddElementType } from './addElementSlice.js';
 import type { TypeViewMode } from '../constants.js';
 import {
   resolvePlacementChain,
   resolveRotationState,
-  rotateProductYaw,
   resolveWallEditChain,
-  resizeRectangleWall,
   computeWallSplitGeometry,
   projectOntoWallAxis,
 } from '@/lib/placement-edit.js';
@@ -73,6 +70,7 @@ import {
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
+import { replayAppearanceHistory } from '@/lib/appearance/history.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -719,12 +717,6 @@ function generateChangeSetId(): string {
 }
 
 /**
- * Get-or-create the per-model `StoreEditor`. The editor pairs a parsed
- * `IfcDataStore` with a `MutablePropertyView`; both must already exist
- * (the data store comes from `models`, the view from PropertiesPanel's
- * lazy-init effect). Returns null if either is missing.
- */
-/**
  * Push the overlay's effective class for an entity into the model's
  * EntityTable as an additive display override, so a UI retype reflects
  * immediately in the inspector, hover, and the (mutationVersion-rebuilt)
@@ -1086,7 +1078,7 @@ export const createMutationSlice: StateCreator<
   [],
   [],
   MutationSlice
-> = (set, get) => ({
+> = (set, get, api) => ({
   // Initial state
   mutationViews: new Map(),
   storeEditors: new Map(),
@@ -1110,8 +1102,8 @@ export const createMutationSlice: StateCreator<
     if (fields.length === 0) return;
     set((state) => {
       const newGeorefMuts = new Map(state.georefMutations);
-      const modelMuts = { ...(newGeorefMuts.get(modelId) || {}) };
-      const entityMuts = { ...(modelMuts[entity] || {}) } as Record<string, unknown>;
+      const modelMuts = { ...newGeorefMuts.get(modelId) };
+      const entityMuts = { ...modelMuts[entity] } as Record<string, unknown>;
       for (const entry of fields) {
         entityMuts[entry.field] = entry.value;
       }
@@ -1179,7 +1171,7 @@ export const createMutationSlice: StateCreator<
       // leak into future mutation views with the same id.
       const newRemoved = new Map(state.removedNewEntities);
       const prefix = `${modelId}:`;
-      for (const key of [...newRemoved.keys()]) {
+      for (const key of newRemoved.keys()) {
         if (key.startsWith(prefix)) newRemoved.delete(key);
       }
       return {
@@ -2660,6 +2652,7 @@ export const createMutationSlice: StateCreator<
 
   // Undo/Redo
   undo: (modelId) => {
+    if (replayAppearanceHistory(api, modelId, 'undo')) return;
     const state = get();
     const undoStack = state.undoStacks.get(modelId) || [];
     if (undoStack.length === 0) return;
@@ -2680,8 +2673,8 @@ export const createMutationSlice: StateCreator<
       const field = parts[2];
       set((s) => {
         const newGeorefMuts = new Map(s.georefMutations);
-        const modelMuts = { ...(newGeorefMuts.get(modelId) || {}) };
-        const entityMuts = { ...(modelMuts[entity] || {}) } as Record<string, unknown>;
+        const modelMuts = { ...newGeorefMuts.get(modelId) };
+        const entityMuts = { ...modelMuts[entity] } as Record<string, unknown>;
         if (mutation.oldValue !== undefined && mutation.oldValue !== null) {
           entityMuts[field] = mutation.oldValue;
         } else {
@@ -2874,6 +2867,7 @@ export const createMutationSlice: StateCreator<
   },
 
   redo: (modelId) => {
+    if (replayAppearanceHistory(api, modelId, 'redo')) return;
     const state = get();
     const redoStack = state.redoStacks.get(modelId) || [];
     if (redoStack.length === 0) return;
@@ -2888,8 +2882,8 @@ export const createMutationSlice: StateCreator<
       const field = parts[2];
       set((s) => {
         const newGeorefMuts = new Map(s.georefMutations);
-        const modelMuts = { ...(newGeorefMuts.get(modelId) || {}) };
-        const entityMuts = { ...(modelMuts[entity] || {}) } as Record<string, unknown>;
+        const modelMuts = { ...newGeorefMuts.get(modelId) };
+        const entityMuts = { ...modelMuts[entity] } as Record<string, unknown>;
         if (mutation.newValue !== undefined && mutation.newValue !== null) {
           entityMuts[field] = mutation.newValue;
         } else {
@@ -3215,7 +3209,7 @@ export const createMutationSlice: StateCreator<
 
       const newRemoved = new Map(state.removedNewEntities);
       const prefix = `${modelId}:`;
-      for (const key of [...newRemoved.keys()]) {
+      for (const key of newRemoved.keys()) {
         if (key.startsWith(prefix)) newRemoved.delete(key);
       }
 

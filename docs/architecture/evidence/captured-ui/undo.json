@@ -1,0 +1,37 @@
+{
+  "selected": null,
+  "selectedIds": [],
+  "selectedRefs": [],
+  "models": [
+    {
+      "id": "69fdaedc-e746-4d19-ad12-36782a977494",
+      "name": "two-coloured-seam-walls.ifc",
+      "meshes": [
+        {
+          "expressId": 34,
+          "triangles": 2
+        },
+        {
+          "expressId": 46,
+          "triangles": 2
+        }
+      ]
+    },
+    {
+      "id": "9451bb87-6663-44d9-93b1-19dccef337f4",
+      "name": "boulder-albedo.glb",
+      "meshes": [
+        {
+          "expressId": 0,
+          "triangles": 66122,
+          "textureRef": {
+            "textureId": 1,
+            "url": "textures/glb-image-0.jpg",
+            "repeatS": true,
+            "repeatT": true
+          }
+        }
+      ]
+    }
+  ]
+}

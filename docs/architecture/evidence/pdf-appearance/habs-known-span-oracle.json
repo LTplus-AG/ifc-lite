@@ -1,0 +1,99 @@
+{
+  "printedDimension": "193 feet 4 inches",
+  "metres": 58.928,
+  "unitConversion": "(193 + 4/12) * 0.3048",
+  "selectedNativePdfLandmarks": [
+    [
+      270.1024566202524,
+      555.00584688082
+    ],
+    [
+      270.1024566202524,
+      868.0463908291559
+    ]
+  ],
+  "detectedExportedDimensionTickWorldX": [
+    30.08000000000025,
+    89.06300000000084
+  ],
+  "detectedDistanceMetres": 58.98300000000059,
+  "toleranceMetres": 0.5,
+  "samplingStepMetres": 0.01,
+  "predictedCropWorldCorners": [
+    [
+      24.260259740259748,
+      0,
+      89.62582760780472
+    ],
+    [
+      149.00394805194804,
+      0,
+      89.62582760780472
+    ],
+    [
+      149.00394805194804,
+      0,
+      5.480765540869172
+    ],
+    [
+      24.260259740259748,
+      0,
+      5.480765540869172
+    ]
+  ],
+  "detectedPageEdgesWorldX": [
+    24.260259740259905,
+    148.9439480519472
+  ],
+  "outsideOriginalSamples": [
+    {
+      "owner": 34,
+      "worldPoint": [
+        10,
+        0,
+        50
+      ],
+      "rgba": [
+        15,
+        46,
+        153,
+        255
+      ]
+    },
+    {
+      "owner": 46,
+      "worldPoint": [
+        155,
+        0,
+        50
+      ],
+      "rgba": [
+        15,
+        124,
+        34,
+        255
+      ]
+    }
+  ],
+  "preservedRenderingMetadata": [
+    {
+      "owner": 34,
+      "SpecularColour": 0.2,
+      "SpecularRoughness": 0.35,
+      "ReflectanceMethod": "NOTDEFINED"
+    },
+    {
+      "owner": 46,
+      "SpecularColour": 0.2,
+      "SpecularRoughness": 0.35,
+      "ReflectanceMethod": "NOTDEFINED"
+    }
+  ],
+  "expressValidationErrors": 0,
+  "archiveBytes": 1370789,
+  "reopenExactGeometryUvColor": true,
+  "reopenOwnerPicks": [
+    34,
+    46
+  ]
+}

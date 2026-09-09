@@ -26,6 +26,7 @@ export {
   type ClashRulePreset,
 } from './disciplines.js';
 export { createClashEngine, type ClashEngine, type ClashBackend, type CreateClashEngineOptions } from './engine.js';
+export { NonFiniteToleranceError } from './engine-ts/orchestrator.js';
 export { makeExclusionSet, isExcluded, pairKey, qualifiedKey } from './exclude.js';
 export {
   buildTriageSystemPrompt,

@@ -14,6 +14,7 @@
 import type { DataModel } from '@ifc-lite/server-client';
 import {
   findStoreyByElevation,
+  spatialLookups,
   IfcTypeEnum,
   IfcTypeEnumFromString,
   isBuildingLikeSpatialType,
@@ -160,19 +161,10 @@ export function buildSpatialHierarchy(
   // Build project node tree
   const projectNode = buildSpatialNodeTree(dataModel.spatialHierarchy.project_id, nodesMap);
 
-  const findPath = (node: SpatialNode, targetId: number, path: SpatialNode[] = []): SpatialNode[] => {
-    const nextPath = [...path, node];
-    if (node.elements.includes(targetId)) {
-      return nextPath;
-    }
-    for (const child of node.children) {
-      const childPath = findPath(child, targetId, nextPath);
-      if (childPath.length > 0) {
-        return childPath;
-      }
-    }
-    return [];
-  };
+  const elementToContainer = new Map<number, number>(dataModel.spatialHierarchy.element_to_space);
+  for (const node of nodesMap.values()) {
+    for (const id of node.element_ids) elementToContainer.set(id, node.entity_id);
+  }
 
   return {
     project: projectNode,
@@ -189,11 +181,7 @@ export function buildSpatialHierarchy(
     // 1m, so the same Z resolved to a different storey depending on whether the
     // model came from the server or from wasm.
     getStoreyByElevation: (z: number) => findStoreyByElevation(storeyElevations, z),
-    getContainingSpace: (elementId: number) => {
-      return dataModel.spatialHierarchy.element_to_space.get(elementId) || null;
-    },
-    getPath: (elementId: number) => {
-      return findPath(projectNode, elementId);
-    },
+    elementToContainer,
+    ...spatialLookups(projectNode, bySpace, elementToContainer),
   };
 }

@@ -15,35 +15,17 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { EntityTable } from '@ifc-lite/data';
+import { EntityTableBuilder, StringTable } from '@ifc-lite/data';
 import { UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
 import { BulkQueryEngine } from './bulk-query-engine.js';
 import { MutablePropertyView } from './mutable-property-view.js';
 
-/** Minimal EntityTable with just what `select`'s namePattern path reads. */
-function makeEntityTable(names: string[]): { table: EntityTable; strings: { get(i: number): string } } {
-  const count = names.length;
-  const table: EntityTable = {
-    count,
-    expressId: Uint32Array.from(names.map((_, i) => i + 1)),
-    typeEnum: new Uint16Array(count),
-    globalId: new Uint32Array(count),
-    name: Uint32Array.from(names.map((_, i) => i)), // name index == array index
-    description: new Uint32Array(count),
-    objectType: new Uint32Array(count),
-    flags: new Uint8Array(count),
-    containedInStorey: new Int32Array(count).fill(-1),
-    definedByType: new Int32Array(count).fill(-1),
-    geometryIndex: new Int32Array(count).fill(-1),
-    typeRanges: new Map(),
-    getGlobalId: () => '',
-    getName: (expressId: number) => names[expressId - 1] ?? '',
-    getDescription: () => '',
-    getObjectType: () => '',
-    getTypeName: () => '',
-  };
-  const strings = { get: (idx: number) => names[idx] ?? '' };
-  return { table, strings };
+/** #4366: use canonical columns/getters so this fixture obeys the real table contract. */
+function makeEntityTable(names: string[]) {
+  const strings = new StringTable();
+  const builder = new EntityTableBuilder(names.length, strings);
+  names.forEach((name, index) => builder.add(index + 1, 'IFCWALL', `fixture-${index}`, name, '', ''));
+  return { table: builder.build(), strings };
 }
 
 describe('BulkQueryEngine.select — namePattern ReDoS guard', () => {

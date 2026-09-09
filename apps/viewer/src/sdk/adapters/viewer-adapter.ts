@@ -119,8 +119,27 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
       state.setPendingColorUpdates(colorMap);
       return undefined;
     },
-    flyTo() {
-      // flyTo requires renderer access — wired via useBimHost
+    /**
+     * Frame the camera on the bounds of the given refs, reusing the exact
+     * global-id resolution `colorize()` above already performs: skip refs
+     * whose model isn't loaded, resolve to global ids, then expand through
+     * `resolvePresentationIds` so a geometry-less `IfcElementAssembly` id
+     * (#3338) frames its parts instead of framing nothing. The resolved ids
+     * are handed straight to `cameraCallbacks.frameEntities`, the same
+     * federated-id callback `SearchModal.filter.tsx` already uses to frame a
+     * search/filter result — it guards against degenerate/NaN bounds itself
+     * (`Viewport.tsx`), so a non-geometric id in the mix can't fling the
+     * camera off-model.
+     */
+    flyTo(refs: EntityRef[]) {
+      const state = store.getState();
+      const picked: number[] = [];
+      for (const ref of refs) {
+        if (!getModelForRef(state, ref.modelId)) continue;
+        picked.push(toGlobalIdForRef(state.models, ref));
+      }
+      const ids = resolvePresentationIds(state.cameraCallbacks?.resolveHighlightIds, picked);
+      state.cameraCallbacks?.frameEntities?.(ids);
       return undefined;
     },
     setSection(section: SectionPlane | null) {
@@ -151,16 +170,75 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
         flipped: state.sectionPlane.flipped,
       };
     },
+    /**
+     * Applies position/target/up through `cameraCallbacks.applyViewpoint`,
+     * the same store callback `lib/tours/snapshot.ts` and
+     * `store/basket/basketViewActivator.ts` already use to restore a saved
+     * camera pose from outside React. It takes a FULL `CameraViewpoint`
+     * (`{ position, target, up, fov, projectionMode, orthoSize? }`, all
+     * `{x,y,z}` objects — Viewport.tsx wires it straight to the renderer's
+     * `Camera.setPosition/setTarget/setUp`, no axis remapping), so a partial
+     * `CameraState` is merged onto `getViewpoint()`'s current values before
+     * calling it — position/target/up are optional here and each defaults to
+     * its current value if omitted. `CameraState`'s `[x, y, z]` tuples are the
+     * only thing converted; the coordinate space itself is untouched.
+     * `animate: false` matches `setCamera`'s prior behaviour of applying the
+     * mode immediately with no transition.
+     */
     setCamera(cameraState: Partial<CameraState>) {
       const state = store.getState();
       if (cameraState.mode) {
         state.setProjectionMode?.(cameraState.mode);
       }
+      if (cameraState.position || cameraState.target || cameraState.up) {
+        const current = state.cameraCallbacks?.getViewpoint?.();
+        if (current) {
+          const [px, py, pz] = cameraState.position ?? [
+            current.position.x,
+            current.position.y,
+            current.position.z,
+          ];
+          const [tx, ty, tz] = cameraState.target ?? [
+            current.target.x,
+            current.target.y,
+            current.target.z,
+          ];
+          const [ux, uy, uz] = cameraState.up ?? [current.up.x, current.up.y, current.up.z];
+          state.cameraCallbacks?.applyViewpoint?.(
+            {
+              ...current,
+              position: { x: px, y: py, z: pz },
+              target: { x: tx, y: ty, z: tz },
+              up: { x: ux, y: uy, z: uz },
+            },
+            false,
+          );
+        }
+      }
       return undefined;
     },
-    getCamera() {
+    /**
+     * Reads real position/target/up through `cameraCallbacks.getViewpoint` —
+     * the same store callback `lib/tours/snapshot.ts` and
+     * `store/slices/pinboardSlice.ts` already use to capture the live camera
+     * from outside React (`Viewport.tsx` wires it straight to the renderer's
+     * `Camera.getPosition/getTarget/getUp`) — so the documented
+     * `createViewpoint({ camera: bim.viewer.getCamera() })` pattern gets a
+     * real camera instead of a positionless one (#4264). No viewport mounted
+     * (headless, or before first paint, when `cameraCallbacks` carries no
+     * `getViewpoint`) falls back to `{ mode }` only, same as before.
+     */
+    getCamera(): CameraState {
       const state = store.getState();
-      return { mode: state.projectionMode ?? 'perspective' };
+      const mode = state.projectionMode ?? 'perspective';
+      const viewpoint = state.cameraCallbacks?.getViewpoint?.();
+      if (!viewpoint) return { mode };
+      return {
+        mode,
+        position: [viewpoint.position.x, viewpoint.position.y, viewpoint.position.z],
+        target: [viewpoint.target.x, viewpoint.target.y, viewpoint.target.z],
+        up: [viewpoint.up.x, viewpoint.up.y, viewpoint.up.z],
+      };
     },
   };
 }

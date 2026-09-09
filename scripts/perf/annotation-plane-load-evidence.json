@@ -1,0 +1,164 @@
+{
+  "issue": 4308,
+  "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "baseSource": "e927106f63f68aa0bc4484b2707331805089010f",
+  "branchSource": "16dd2483d",
+  "method": "Five interleaved fresh Chromium processes per side; identical final JS/assets with only source-matched base/final IFC WASM replaced. No annotation operation invoked. Worker-model readiness, not renderer readiness. OS caches uncontrolled. Both WASM import lists identical (40 entries).",
+  "browserVersion": "151.0.7922.34",
+  "identicalNonIfcWasmAssetManifestSha256": "7dff13edbd3ee88f6a2eeb70e557f8feadca94a5bc785723a9598c596ec3c3ae",
+  "harnessSha256": "66ef8f42d59c87ab2b29d624ce959c8b60cce78d02f0a8f1fc566b0ae099141e",
+  "wasm": {
+    "base": {
+      "bytes": 4854687,
+      "sha256": "d5af3ede6696bd8e3941c1de8cabc4aa67dda8a319d353f11919e561ce634f68"
+    },
+    "branch": {
+      "bytes": 4892750,
+      "sha256": "e997a55d023539bbd67f3833a3b2bf5014b5705c2a0d3ad45a4e84714eeea310"
+    }
+  },
+  "geometry": {
+    "meshes": 275,
+    "vertices": 56698,
+    "triangles": 31986,
+    "sourceStamped": 243,
+    "validAliases": 243,
+    "identitySha256": "c00cc8d87ef71ef24c6c3b9402e6f375a0523a122f98b79e5a4f847444d7879f",
+    "identicalAllTenSamples": true
+  },
+  "medians": {
+    "workerModelReadyMs": {
+      "baseMedian": 230.32916699999987,
+      "branchMedian": 233.69458300000042,
+      "delta": 3.3654160000005504,
+      "deltaPercent": 1.4611332311207257
+    },
+    "totalWallClockMs": {
+      "baseMedian": 200,
+      "branchMedian": 200,
+      "delta": 0,
+      "deltaPercent": 0.0
+    },
+    "entityScanMs": {
+      "baseMedian": 6,
+      "branchMedian": 6,
+      "delta": 0,
+      "deltaPercent": 0.0
+    },
+    "geometryStreamingMs": {
+      "baseMedian": 162,
+      "branchMedian": 163,
+      "delta": 1,
+      "deltaPercent": 0.6172839506172839
+    },
+    "metadataCompleteMs": {
+      "baseMedian": 208,
+      "branchMedian": 209,
+      "delta": 1,
+      "deltaPercent": 0.4807692307692308
+    }
+  },
+  "samples": [
+    {
+      "side": "base",
+      "round": 1,
+      "ok": true,
+      "workerModelReadyMs": 242.66987500000005,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 170,
+      "metadataCompleteMs": 216
+    },
+    {
+      "side": "branch",
+      "round": 1,
+      "ok": true,
+      "workerModelReadyMs": 232.3145000000004,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 162,
+      "metadataCompleteMs": 209
+    },
+    {
+      "side": "base",
+      "round": 2,
+      "ok": true,
+      "workerModelReadyMs": 230.79941700000018,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 164,
+      "metadataCompleteMs": 196
+    },
+    {
+      "side": "branch",
+      "round": 2,
+      "ok": true,
+      "workerModelReadyMs": 233.69458300000042,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 162,
+      "metadataCompleteMs": 208
+    },
+    {
+      "side": "base",
+      "round": 3,
+      "ok": true,
+      "workerModelReadyMs": 228.6494590000002,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 162,
+      "metadataCompleteMs": 208
+    },
+    {
+      "side": "branch",
+      "round": 3,
+      "ok": true,
+      "workerModelReadyMs": 234.84799999999814,
+      "totalWallClockMs": 200,
+      "entityScanMs": 5,
+      "geometryStreamingMs": 165,
+      "metadataCompleteMs": 211
+    },
+    {
+      "side": "base",
+      "round": 4,
+      "ok": true,
+      "workerModelReadyMs": 220.8731250000019,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 157,
+      "metadataCompleteMs": 202
+    },
+    {
+      "side": "branch",
+      "round": 4,
+      "ok": true,
+      "workerModelReadyMs": 241.6163749999978,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 173,
+      "metadataCompleteMs": 219
+    },
+    {
+      "side": "base",
+      "round": 5,
+      "ok": true,
+      "workerModelReadyMs": 230.32916699999987,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 162,
+      "metadataCompleteMs": 208
+    },
+    {
+      "side": "branch",
+      "round": 5,
+      "ok": true,
+      "workerModelReadyMs": 231.205750000001,
+      "totalWallClockMs": 200,
+      "entityScanMs": 7,
+      "geometryStreamingMs": 163,
+      "metadataCompleteMs": 209
+    }
+  ],
+  "verdict": "Small observed ordinary-load increase in this bounded run; samples overlap and no speedup or zero-cost claim is made. Geometry bytes and canonical provenance aliases match on every run. This does not measure annotation creation latency or viewer Save Into Model."
+}

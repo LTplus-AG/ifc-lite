@@ -25,7 +25,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as gate from './check-codegen-sync.mjs';
 
-const { diffDirs, listFilesRecursive, buildCodegen, runCodegenCli, runDataGenerator } = gate;
+const { diffDirs, listFilesRecursive, buildCodegen, runCodegenCli, runDataGenerator, runAllTargets } = gate;
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -145,6 +145,24 @@ describe('real codegen generator — determinism', { skip: !existsSync(join(ROOT
     } finally {
       rmSync(out1, { recursive: true, force: true });
       rmSync(out2, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('real repo — runAllTargets (#4202: IFC2X3 joins IFC4/IFC4X3)', { skip: !existsSync(join(ROOT, 'packages/codegen/schemas/IFC2X3_TC1.exp')) ? 'no IFC2X3 schema on disk' : false }, () => {
+  test('names an ifc2x3 target and it passes against a clean checkout', () => {
+    const results = runAllTargets(ROOT);
+    const names = results.map((r) => r.name);
+    assert.ok(
+      names.some((n) => n.includes('ifc2x3') && n.startsWith('packages/codegen')),
+      `expected a packages/codegen/generated/ifc2x3 target, got: ${names.join(', ')}`,
+    );
+    assert.ok(
+      names.some((n) => n.includes('ifc2x3') && n.startsWith('packages/parser')),
+      `expected a packages/parser/src/generated/ifc2x3 target, got: ${names.join(', ')}`,
+    );
+    for (const r of results) {
+      assert.equal(r.ok, true, `${r.name} unexpectedly stale: ${JSON.stringify(r)}`);
     }
   });
 });

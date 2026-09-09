@@ -19,6 +19,7 @@
 //! The test skips cleanly when the fixture is absent so a fresh clone never
 //! panics.
 
+mod support;
 mod voids_common;
 
 use ifc_lite_core::{EntityDecoder, IfcType};
@@ -45,6 +46,11 @@ const DOOR_ID: u32 = 2390;
 
 fn read_fixture() -> Option<String> {
     if !Path::new(FIXTURE).exists() {
+        assert!(
+            !support::require_fixtures(),
+            "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+             run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+        );
         eprintln!(
             "skipping issue-604 regression: fixture missing at {FIXTURE} — \
              run `pnpm fixtures` from the repo root to download it",

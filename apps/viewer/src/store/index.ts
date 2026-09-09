@@ -2,13 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Combined Zustand store for viewer state
- *
- * This file combines all domain-specific slices into a single store.
- * Each slice manages a specific domain of state (loading, selection, etc.)
- */
+/** Combined Zustand store. Domain slices own their state and actions. */
 
+import { createAppearanceSlice, type AppearanceSlice } from './slices/appearanceSlice.js';
 import { create } from 'zustand';
 
 // Import slices
@@ -53,12 +49,14 @@ import { createCollabSlice, type CollabSlice } from './slices/collabSlice.js';
 import { createAddElementSlice, type AddElementSlice } from './slices/addElementSlice.js';
 import { createSplitToolSlice, type SplitToolSlice } from './slices/splitToolSlice.js';
 import { createLevelDisplaySlice, type LevelDisplaySlice } from './slices/levelDisplaySlice.js';
+import { createModelPlacementSlice, type ModelPlacementSlice } from './slices/modelPlacementSlice.js';
 import { createPointCloudSlice, type PointCloudSlice } from './slices/pointCloudSlice.js';
 import { createUnitDisplaySlice, type UnitDisplaySlice } from './slices/unitDisplaySlice.js';
 import { createSpaceMouseSlice, type SpaceMouseSlice } from './slices/spaceMouseSlice.js';
 import { createLayerStackSlice, type LayerStackSlice } from './slices/layerStackSlice.js';
 import { createZonesSlice, type ZonesSlice } from './slices/zonesSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
+import { withPlacementHistory } from './placement-history.js';
 import { withVisibilityOwnershipInvalidation } from './visibility-invalidation.js';
 // The composed teardown `resetViewerState` dispatches. Its own module rather
 // than this file: `slices/modelSlice.ts` is another entry point and this file
@@ -138,9 +136,7 @@ export {
   parseIsoDate,
 } from './slices/scheduleSlice.js';
 export { resolveScheduleSourceModelId } from './slices/schedule-edit-helpers.js';
-
-// Combined store type
-export type ViewerState = LoadingSlice &
+export type ViewerState = AppearanceSlice & LoadingSlice &
   SelectionSlice &
   VisibilitySlice &
   UISlice &
@@ -177,7 +173,7 @@ export type ViewerState = LoadingSlice &
   AddElementSlice &
   SplitToolSlice &
   LevelDisplaySlice &
-  PointCloudSlice &
+  PointCloudSlice & ModelPlacementSlice &
   UnitDisplaySlice &
   SpaceMouseSlice &
   ZonesSlice &
@@ -234,7 +230,7 @@ export type ViewerState = LoadingSlice &
  * `store/visibility-invalidation.ts` for why that is a middleware rather than a
  * helper each writing action remembers to call.
  */
-const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInvalidation((...args) => ({
+const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInvalidation(withPlacementHistory((...args) => ({
   // Spread all slices
   ...createLoadingSlice(...args),
   ...createSelectionSlice(...args),
@@ -274,11 +270,13 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createSplitToolSlice(...args),
   ...createLevelDisplaySlice(...args),
   ...createPointCloudSlice(...args),
+  ...createModelPlacementSlice(...args),
   ...createUnitDisplaySlice(...args),
   ...createSpaceMouseSlice(...args),
   ...createZonesSlice(...args),
   ...createExtensionsSlice(...args),
   ...createSourcesSlice(...args),
+  ...createAppearanceSlice(...args),
 
   // Reset all viewer state when loading new file
   // Note: Does NOT clear models - use clearAllModels() for that
@@ -476,7 +474,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
       get().showWorkspacePanel(panel);
     }
   },
-})));
+}))));
 
 const STORE_SINGLETON_KEY = '__ifc_lite_viewer_store__';
 const globalStoreRegistry = globalThis as typeof globalThis & {

@@ -103,6 +103,7 @@ jobs:
       plato: ${{ steps.filter.outputs.plato }}
       docs: ${{ steps.filter.outputs.docs }}
       agents_md: ${{ steps.filter.outputs.agents_md }}
+      license_headers: ${{ steps.filter.outputs.license_headers }}
       # `true` when the WASM source is byte-identical to the published release
       # tag, so `build` can fetch the prebuilt bundle instead of compiling
       # wasm32. See the `build` job and scripts/ci-wasm-prebuilt-eligible.sh.
@@ -157,6 +158,54 @@ jobs:
               # check (that allowlist's own header says so), and the cost is one
               # 5-minute free-runner job with no install and no build artifact.
               - 'scripts/**'
+            # The MPL-2.0 header gate (`add-license-headers.mjs --check`). Its
+            # own job for the same reasons agents_md has one: it needs no build
+            # artifact, no pnpm install and no Depot runner, and its INPUT is
+            # every first-party source tree in the repo -- `docs/**` (its
+            # stylesheets), `tools/**` (its `.mjs` and `.py` harnesses) and
+            # `apps/landing/**` among them, none of which is in `frontend` and
+            # none of which should drag a PR through the nine-job frontend
+            # lane just to check a comment at the top of a file. Each of those
+            # three was confirmed to hold scanned files, not assumed to: a
+            # trigger justified by a tree the gate reads nothing from is the
+            # same false comfort as the gate itself was before #4087. A gate
+            # whose trigger is narrower than its input cannot fire on the PR
+            # that introduces the very thing it guards against
+            # (scripts/check-ci-path-coverage.mjs), so this filter is the whole
+            # scanned population, deliberately over-triggering.
+            license_headers:
+              # test.yml DEFINES the license-headers job, so an edit that
+              # breaks, renames or deletes its steps must be able to run it.
+              - '.github/workflows/test.yml'
+              - 'api/**'
+              - 'apps/**'
+              - 'docs/**'
+              - 'examples/**'
+              - 'packages/**'
+              - 'rust/**'
+              - 'server/**'
+              - 'tests/**'
+              - 'tools/**'
+              # The gate's own source and its scanned `scripts/` tree, one
+              # glob covering both.
+              - 'scripts/**'
+              # The REPO ROOT, scanned non-recursively by extension (it used to
+              # be one named file, `playwright.config.ts`, which is still the
+              # only root-level file any of these match today). A gate that
+              # reads a path no glob can trigger it on is a gate that does not
+              # run on the PR introducing the mistake, so these have to widen
+              # with the scan. `*` does not cross `/`, so each of these matches
+              # root-level files ONLY and costs nothing on a subtree edit.
+              - '*.ts'
+              - '*.tsx'
+              - '*.js'
+              - '*.mjs'
+              - '*.cjs'
+              - '*.mts'
+              - '*.cts'
+              - '*.css'
+              - '*.rs'
+              - '*.py'
             frontend:
               # A changeset naming a package that does not exist fails the
               # RELEASE workflow, which only runs on main - so the Lint job has
@@ -1344,7 +1393,7 @@ jobs:
       # scripts/docs/ joined it for the same reason in #3200 - the catch-all is
       # per-DIRECTORY, so it goes blind on the next subdirectory anyone adds.
       - name: Run every scripts/ test file (glob catch-all)
-        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs scripts/review/*.test.mjs scripts/review/lib/*.test.mjs
+        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs scripts/review/*.test.mjs scripts/review/lib/*.test.mjs scripts/perf/*.test.mjs
       # Committed codegen output (packages/codegen/generated/**,
       # packages/parser/src/generated/**, packages/data/src/ifc-schema/
       # generated/**) had no CI freshness gate at all — a generator bug fixed
@@ -1984,9 +2033,47 @@ jobs:
       - name: Check AGENTS.md ratchet regressions
         run: node --test scripts/check-agents-md-size.test.mjs
 
+  # AGENTS.md: "MPL-2.0 header on every new file". `add-license-headers.mjs`
+  # has had a `--check` mode that says whether that held, and NOTHING RAN IT
+  # (#4087) — a gate that exists and never executes is the same absence as no
+  # gate at all, and it had drifted accordingly: it exited 1 with 128 files
+  # flagged, 85 of them correctly-licensed SPDX files it could not recognise.
+  #
+  # Its own job rather than a step in node-tests, for the reason the
+  # `license_headers` filter block above states: the gate READS every
+  # first-party source tree, including `docs/**`, `tools/**` (whose `.mjs` and
+  # `.py` harnesses it scans) and `apps/landing/**`, which `frontend`
+  # deliberately does not carry. Wiring it into node-tests would either leave
+  # it unable to fire on three of the trees it scans, or drag doc-only PRs
+  # through the whole frontend lane. Here it is
+  # one checkout plus node on a free runner: no pnpm install, no build
+  # artifact, no Depot runner.
+  #
+  # The detector's own tests run FIRST, the same order the node-tests gate
+  # pairs use: this gate's entire value is in not passing over a tree it
+  # misread, so a broken detector must fail here rather than report agreement.
+  license-headers:
+    name: MPL license headers
+    needs: changes
+    if: needs.changes.outputs.license_headers == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Check the license-header classifier's own regressions
+        run: node --test scripts/lib/license-header.test.mjs
+      - name: Check every source file declares MPL-2.0
+        run: node scripts/add-license-headers.mjs --check
+
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, revert-oracle, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks, agents-md]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks, agents-md, license-headers]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -2007,6 +2094,7 @@ jobs:
             [plato-check]="${{ needs.plato-check.result }}"
             [docs-checks]="${{ needs.docs-checks.result }}"
             [agents-md]="${{ needs.agents-md.result }}"
+            [license-headers]="${{ needs.license-headers.result }}"
           )
           fail=0
           for j in "${!results[@]}"; do

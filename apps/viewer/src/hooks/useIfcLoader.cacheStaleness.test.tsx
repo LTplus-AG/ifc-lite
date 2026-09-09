@@ -61,7 +61,7 @@ import { CACHE_SIZE_THRESHOLD } from '@/utils/ifcConfig.js';
 import { resolveLoadTessellationTier } from '@/store/constants.js';
 import { computeSourceFingerprint } from './sourceFingerprint.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
-import { setCached } from '../services/cacheService.js';
+import { getCached, setCached } from '../services/cacheService.js';
 import { useIfcLoader } from './useIfcLoader.js';
 
 // ─── Fixtures ──────────────────────────────────────────────────────────────
@@ -162,9 +162,9 @@ describe('useIfcLoader — a superseded cache-hit load must not fall through to 
       bufferA,
       { includeGeometry: false, omitSourceHash: true },
     );
-    // A `sourceBuffer` is supplied so the entry is NOT source-decoupled —
-    // `mayServe` short-circuits true with no mtime/hash gate, so `fileA`
-    // reaches the `isStale` guard unconditionally.
+    // A `sourceBuffer` is supplied so the entry is NOT source-decoupled, and
+    // no stored mtime is supplied so `decideSourceTierCacheHit` serves —
+    // `fileA` reaches the `isStale` guard unconditionally.
     await setCached(cacheKey, entryBuffer as ArrayBuffer, fileA.name, bufferA.byteLength, bufferA);
 
     // fileB: well under CACHE_SIZE_THRESHOLD, so its own load never touches
@@ -208,6 +208,128 @@ describe('useIfcLoader — a superseded cache-hit load must not fall through to 
       + 'full reparse of the OLD file would enter it a second time, which is '
       + 'the fall-through PR #2301 exists to close (useIfcLoader.ts, '
       + "`if (cacheOutcome === 'stale') return;`).",
+    );
+  });
+});
+
+describe('useIfcLoader — the source-persisting tier gates on mtime before serving (#4269)', () => {
+  /** Wrap `setProgress` to count entries into the local WASM path, and prove
+   *  the hook re-rendered over the wrapper (same technique as above). */
+  async function countWasmEntries(): Promise<() => number> {
+    let calls = 0;
+    const realSetProgress = useViewerStore.getState().setProgress;
+    await act(async () => {
+      useViewerStore.setState({
+        setProgress: (p) => {
+          if (p?.phase === 'Starting geometry streaming') calls++;
+          return realSetProgress(p);
+        },
+      });
+    });
+    assert.notEqual(
+      useViewerStore.getState().setProgress,
+      realSetProgress,
+      'the wrapped setProgress must have replaced the original in the store',
+    );
+    return () => calls;
+  }
+
+  /** Count the gate's own rejection line (`cache MISS (source changed /
+   *  unvalidatable)`), logged ONLY by the pre-serve staleness gate — never by
+   *  the corrupt-entry cleanup inside `loadFromCache` — so it distinguishes a
+   *  gate MISS from every other way an entry can disappear. Restores
+   *  `console.warn` via the returned cleanup. */
+  function countGateMisses(): { count: () => number; restore: () => void } {
+    let calls = 0;
+    const realWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      if (typeof args[0] === 'string' && args[0].includes('cache MISS (source changed / unvalidatable)')) calls++;
+      return realWarn(...args);
+    };
+    return { count: () => calls, restore: () => { console.warn = realWarn; } };
+  }
+
+  /** Seed a SOURCE-PERSISTING entry (sourceBuffer supplied) for `file` whose
+   *  stored mtime is `file.lastModified + skewMs`. */
+  async function seedEntry(file: File, skewMs: number): Promise<string> {
+    const buffer = await file.arrayBuffer();
+    const cacheKey = cacheKeyFor(buffer);
+    const entryBuffer = await new BinaryCacheWriter().write(
+      buildMinimalCacheDataStore(),
+      undefined,
+      buffer,
+      { includeGeometry: false, omitSourceHash: true },
+    );
+    await setCached(cacheKey, entryBuffer as ArrayBuffer, file.name, buffer.byteLength, buffer, {
+      lastModified: file.lastModified + skewMs,
+    });
+    return cacheKey;
+  }
+
+  it('a hit whose stored mtime differs from the file is PURGED and reparsed, not served', async () => {
+    // The #4269 defect: an in-place edit that preserves the byte length is
+    // invisible to the spread-sampled key, so before the gate this entry was
+    // served unconditionally. Any real on-disk edit bumps mtime; a stored
+    // mtime differing from the fresh one must purge + reparse.
+    const file = buildStepFile('cache-mtime-miss.ifc', CACHE_SIZE_THRESHOLD + 8192);
+    const cacheKey = await seedEntry(file, -5000);
+    const wasmEntries = await countWasmEntries();
+    const gate = countGateMisses();
+
+    try {
+      await act(async () => {
+        await Promise.allSettled([hookApi!.loadFile(file)]);
+      });
+    } finally {
+      gate.restore();
+    }
+
+    assert.equal(
+      gate.count(),
+      1,
+      'the pre-serve staleness gate itself must reject the mtime-mismatched '
+      + 'hit (its distinctive `cache MISS (source changed / unvalidatable)` '
+      + 'warn), not some later failure path (#4269)',
+    );
+    assert.equal(
+      await getCached(cacheKey),
+      null,
+      'a source-persisting hit with a DIFFERENT stored mtime must be deleted, '
+      + 'not served (#4269 — the pre-gate loader served it unconditionally)',
+    );
+    assert.equal(
+      wasmEntries(),
+      1,
+      'the mtime-mismatched load must fall through to exactly one fresh local '
+      + 'WASM parse instead of serving the stale entry',
+    );
+  });
+
+  it('bounding control: a hit whose stored mtime MATCHES the file passes the gate un-rejected', async () => {
+    // "Gate everything" would satisfy the miss test by rejecting every hit.
+    // A matching mtime must pass the gate: its distinctive rejection warn must
+    // not fire. (The gate decision — not a full served load — is the unit
+    // under test here: under `tsx --test`, fake-indexeddb's Blob round-trip
+    // hands `loadFromCache` a buffer it cannot read, so the post-gate load
+    // ends in the corrupt-entry cleanup either way; asserting on the gate's
+    // own warn keeps the control immune to that environment artifact.)
+    const file = buildStepFile('cache-mtime-match.ifc', CACHE_SIZE_THRESHOLD + 12288);
+    await seedEntry(file, 0);
+    const gate = countGateMisses();
+
+    try {
+      await act(async () => {
+        await Promise.allSettled([hookApi!.loadFile(file)]);
+      });
+    } finally {
+      gate.restore();
+    }
+
+    assert.equal(
+      gate.count(),
+      0,
+      'a source-persisting hit with a MATCHING stored mtime must not be '
+      + 'rejected by the staleness gate (#4269 gates only a CHANGED mtime)',
     );
   });
 });

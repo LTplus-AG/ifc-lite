@@ -28,7 +28,6 @@ import {
   isEntitySubtypeOf,
   RESERVED_PSET_PREFIXES,
   type IfcEntityInfo,
-  type IfcPropertyInfo,
   type IfcSchemaVersion,
 } from '@ifc-lite/data';
 

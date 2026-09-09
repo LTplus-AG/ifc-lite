@@ -221,7 +221,7 @@ export interface EntityRelationshipsData {
 // Query Types
 // ============================================================================
 
-export type ComparisonOp = '=' | '!=' | '>' | '<' | '>=' | '<=' | 'contains' | 'exists';
+export type ComparisonOp = '=' | '!=' | '>' | '<' | '>=' | '<=' | 'contains' | 'exists' | 'matches'; // kept in step with FilterComparisonOp in @ifc-lite/query/filter-predicate.ts
 
 export interface QueryFilter {
   psetName: string;

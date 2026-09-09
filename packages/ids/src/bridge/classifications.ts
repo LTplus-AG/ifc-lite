@@ -7,7 +7,7 @@ import {
   EntityExtractor,
   extractClassificationsOnDemand,
 } from '@ifc-lite/parser';
-import { isProperSubtypeOfAny, type HierarchyRegistry } from '@ifc-lite/codegen';
+import { isProperSubtypeOfAny, type HierarchyRegistry } from '@ifc-lite/codegen/schema-hierarchy';
 import * as IFC4_SCHEMA from '@ifc-lite/codegen/ifc4';
 import * as IFC4X3_SCHEMA from '@ifc-lite/codegen/ifc4x3';
 import type { ClassificationInfo } from '../types.js';

@@ -31,6 +31,12 @@
       "@ifc-lite/wasm/*": [
         "packages/wasm/pkg/*"
       ],
+      "@ifc-lite/wasm-lifecycle": [
+        "packages/wasm-lifecycle/dist/index.d.ts"
+      ],
+      "@ifc-lite/wasm-lifecycle/*": [
+        "packages/wasm-lifecycle/dist/*"
+      ],
       "@ifc-lite/geometry": [
         "packages/geometry/dist/index.d.ts"
       ],

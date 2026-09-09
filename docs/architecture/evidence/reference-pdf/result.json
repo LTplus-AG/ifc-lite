@@ -1,0 +1,26 @@
+{
+  "complete": true,
+  "pdf": "/tmp/ifclite-public-captures/pdf/cyclorama-floor-plans-habs-pa-6709-sheet-4.pdf",
+  "printedDimension": "193 feet 4 inches",
+  "metres": 58.928,
+  "cropPoints": [
+    36.814872807930094,
+    59.599968350666124,
+    662.6702423841398,
+    447
+  ],
+  "dimensionRotatedPdfPoints": [
+    [
+      67.83333333333333,
+      270.8333333333333
+    ],
+    [
+      381.1666666666667,
+      270.8333333333333
+    ]
+  ],
+  "referenceIds": [
+    "71720a5f-1fc3-4bec-96f5-38aa6e6765ff",
+    "80322229-abd0-4f3c-84ce-777a22045d6b"
+  ]
+}

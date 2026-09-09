@@ -720,6 +720,58 @@ describe('BCF Writer', () => {
     }
   });
 
+  it('keeps two GUIDs that collide under BOTH the sanitizer AND the hash suffix in distinct folders (#4229)', async () => {
+    // sanitizeZipComponent's disambiguation is two independent, lossy
+    // many-to-one mappings of the raw GUID stacked together: dot-collapse
+    // sanitization, then (when sanitization changed the string) an FNV-1a-32
+    // hash of the RAW guid appended as a suffix. The '-2' counter loop is
+    // only ever reached when a raw-string pair collides under BOTH mappings
+    // at once, which is why 'a?b'/'a:b' above -- same cleaned string,
+    // different hash -- never exercises it. This pair does: both raw guids
+    // sanitize (dot-collapse) to 'topicA_X_topicB' AND hash (FNV-1a-32 over
+    // the raw string, matching writer.ts's shortGuidHash exactly) to the
+    // same 'a8ee56f2', so both produce the identical base
+    // 'topicA_X_topicB-a8ee56f2' and only the counter can still tell them
+    // apart. A fixture colliding on only one of the two mappings would keep
+    // passing even with the counter loop deleted, so it would not
+    // discriminate this guard; verified against #4229's search.
+    const raw1 = `topicA${'.'.repeat(34)}X${'.'.repeat(2)}topicB`; // 49 chars
+    const raw2 = `topicA${'.'.repeat(595)}X${'.'.repeat(325)}topicB`; // 933 chars
+
+    const makeTopic = (guid: string, title: string): BCFTopic => ({
+      guid,
+      title,
+      creationDate: new Date().toISOString(),
+      creationAuthor: 'author@example.com',
+      viewpoints: [],
+      comments: [],
+    });
+    const guids = [raw1, raw2];
+    const project: BCFProject = {
+      version: '2.1',
+      topics: new Map(guids.map((g, i) => [g, makeTopic(g, `Topic ${i}`)])),
+    };
+
+    const blob = await writeBCF(project);
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
+
+    const markupPaths: string[] = [];
+    zip.forEach((relativePath) => {
+      if (relativePath.endsWith('markup.bcf')) markupPaths.push(relativePath);
+    });
+    // Two distinct folders, not one collapsed by the hash-suffix collision.
+    expect(markupPaths).toHaveLength(2);
+    expect(new Set(markupPaths).size).toBe(2);
+
+    // Round-trip: both topics survive with their original, distinct GUIDs --
+    // neither was silently overwritten in the archive.
+    const readProject = await readBCF(await blob.arrayBuffer());
+    expect([...readProject.topics.keys()].sort()).toEqual([...guids].sort());
+    for (const g of guids) {
+      expect(readProject.topics.get(g)?.guid).toBe(g);
+    }
+  });
+
   // --------------------------------------------------------------------------
   // Fields that a BCF consumer reads but that no fixture pinned. Each of these
   // survived a mutation of the writer: the file stayed readable, so nothing on

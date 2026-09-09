@@ -30,7 +30,6 @@ import { Label } from '@/components/ui/label';
 import { useViewerStore } from '@/store';
 import { resolveScheduleSourceModelId } from '@/store/slices/schedule-edit-helpers';
 import { useIfc } from '@/hooks/useIfc';
-import { serializeScheduleToStep } from '@ifc-lite/parser';
 import {
   generateScheduleFromSpatialHierarchy,
   canGenerateScheduleFrom,
@@ -40,7 +39,7 @@ import {
   type GenerateScheduleOptions,
   type GenerateOrder,
 } from './generate-schedule';
-import { formatDateTime } from './schedule-utils';
+import { formatDateTime, buildWorkPlanInfo, logGeneratedScheduleDebug } from './schedule-utils';
 import { HeightStrategyPanel } from './HeightStrategyPanel';
 import { GenerateAdvancedPanel } from './GenerateAdvancedPanel';
 
@@ -78,6 +77,10 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
   const [options, setOptions] = useState<GenerateScheduleOptions>(DEFAULT_OPTIONS);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Standalone IfcWorkPlan — see `buildWorkPlanInfo`'s doc comment for why
+  // it's kept out of `GenerateScheduleOptions` and composed in here instead.
+  const [createWorkPlan, setCreateWorkPlan] = useState(false);
+  const [workPlanName, setWorkPlanName] = useState('Project plan');
 
   // Reset form state on every (re)open so users can reuse the dialog.
   useEffect(() => {
@@ -88,6 +91,8 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
       setOptions({ ...DEFAULT_OPTIONS, startDate: defaultStartDate() });
       setAdvancedOpen(false);
       setSubmitting(false);
+      setCreateWorkPlan(false);
+      setWorkPlanName('Project plan');
     }
   }, [open]);
 
@@ -122,40 +127,22 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
     if (!preview || preview.empty) return;
     setSubmitting(true);
 
-    // DEBUG: full inspection of what's being added to the model. Dumps the
-    // extraction (tasks + work schedules + sequences) *and* the STEP lines
-    // the serializer will emit when the file is exported. Safe to keep —
-    // runs only on user-initiated generation and only logs to console.
-    try {
-      const extraction = preview.extraction;
-      const stepPreview = serializeScheduleToStep(extraction, {
-        // These IDs don't matter for inspection — the export adapter
-        // remaps them to the host file's ID space at injection time.
-        nextId: 1_000_000,
-      });
-      /* eslint-disable no-console */
-      console.groupCollapsed(
-        `%c[IfcTask] Generated schedule — ${extraction.tasks.length} task(s), ${stepPreview.lines.length} STEP line(s)`,
-        'color:#6ea2ff;font-weight:bold',
-      );
-      console.log('options', options);
-      console.log('workSchedules', extraction.workSchedules);
-      console.log('tasks', extraction.tasks);
-      console.log('sequences', extraction.sequences);
-      console.log('stats', stepPreview.stats);
-      console.log('STEP preview (first 50 lines):');
-      for (const line of stepPreview.lines.slice(0, 50)) console.log(line);
-      if (stepPreview.lines.length > 50) {
-        console.log(`… ${stepPreview.lines.length - 50} more line(s). Full STEP:`);
-        console.log(stepPreview.lines.join('\n'));
-      }
-      console.log('raw extraction (JSON)', JSON.stringify(extraction, null, 2));
-      console.groupEnd();
-      /* eslint-enable no-console */
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[IfcTask] Debug log failed (non-fatal):', err);
-    }
+    // Compose in the optional standalone IfcWorkPlan. A new object, not a
+    // mutation of `preview.extraction` — that object is `useMemo`-cached
+    // and reused across renders until `options` changes, so mutating it
+    // in place would leak the plan into a later preview that didn't ask
+    // for one.
+    const extraction = createWorkPlan
+      ? {
+          ...preview.extraction,
+          workSchedules: [
+            ...preview.extraction.workSchedules,
+            buildWorkPlanInfo(preview.extraction.workSchedules[0]?.globalId ?? 'workplan', workPlanName),
+          ],
+        }
+      : preview.extraction;
+
+    logGeneratedScheduleDebug(extraction, options);
 
     // rAF gives the button time to paint its pressed state before we swap
     // the Gantt rows; cheap-but-visible feedback.
@@ -164,13 +151,13 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
       // Legacy single-model sessions fall back to '__legacy__' so the
       // dirty flag still pairs with the viewer's model identity.
       const sourceModelId = resolveScheduleSourceModelId(models, activeModelId, '__legacy__');
-      commitGeneratedSchedule(preview.extraction, sourceModelId);
+      commitGeneratedSchedule(extraction, sourceModelId);
       setGanttPanelVisible(true);
       setAnimationEnabled(true);
       setSubmitting(false);
       onOpenChange(false);
     });
-  }, [preview, options, commitGeneratedSchedule, setGanttPanelVisible, setAnimationEnabled, onOpenChange, activeModelId, models]);
+  }, [preview, options, createWorkPlan, workPlanName, commitGeneratedSchedule, setGanttPanelVisible, setAnimationEnabled, onOpenChange, activeModelId, models]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -311,6 +298,10 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
               linkSequences={options.linkSequences}
               skipEmptyGroups={options.skipEmptyGroups}
               onChange={handleChange}
+              createWorkPlan={createWorkPlan}
+              onCreateWorkPlanChange={setCreateWorkPlan}
+              workPlanName={workPlanName}
+              onWorkPlanNameChange={setWorkPlanName}
             />
 
             {/* Live summary */}

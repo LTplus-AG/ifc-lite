@@ -132,10 +132,7 @@ it('can reuse the remaining library image when no source is selected', () => {
 it('Discard restores the last valid PDF calibration instead of clearing its error around an empty distance (#4260)', () => {
   const ui = render(<AppearancePanelView {...props({ calibration: {
     thumbnailUrl: 'blob:page', onChange() {}, value: { sourcePoints: [[0, 0], [100, 0]], distanceMetres: 1 },
-    recipe: { page: { pageNumber: 1, viewBox: [0, 0, 100, 100], userUnit: 1, intrinsicRotation: 0,
-      widthPoints: 100, heightPoints: 100, pdfToPage: [1, 0, 0, -1, 0, 100] },
-      rotation: 0, cropPoints: [0, 0, 100, 100], requestedDpi: 72, effectiveDpi: 72,
-      pixelWidth: 100, pixelHeight: 100, paperSizeMetres: [0.035, 0.035], pixelToPdf: [1, 0, 0, -1, 0, 100] },
+    sourceKey: 'page:1', frame: { rasterSize: [100, 100], rasterToSource: [1, 0, 0, -1, 0, 100] },
   } })} />);
   const distance = ui.querySelector('input[aria-label="Distance A–B (m)"]');
   assert.ok(distance instanceof HTMLInputElement);

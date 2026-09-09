@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { pdfCalibrationFrame } from '@/lib/appearance/pdf/calibration.js';
 import { usePdfAppearanceSource } from './usePdfAppearanceSource.js';
 import { preparePdfPagePreview } from '@/lib/appearance/pdf/page-preview.js';
 import { prepareAppearanceSnapshot, type AppearanceSnapshot } from '@/lib/appearance/snapshot.js';
@@ -269,7 +270,7 @@ export function useAppearancePanel(): AppearancePanelViewProps {
   return {
     allowPdf: true, pdf: pdfSource.controls, pdfPassword: pdfSource.passwordPrompt,
     calibration: selectedSource?.pdf && selectedSource.thumbnailUrl ? {
-      recipe: selectedSource.pdf.recipe, thumbnailUrl: selectedSource.thumbnailUrl,
+      frame: pdfCalibrationFrame(selectedSource.pdf.recipe), sourceKey: `${selectedSource.id}:${selectedSource.pdf.recipe.page.pageNumber}`, thumbnailUrl: selectedSource.thumbnailUrl,
       value: selectedSource.pdf.calibration, onChange: calibration => {
         const current = useViewerStore.getState().appearanceSources.find(source => source.id === selectedSource.id);
         if (current?.pdf) useViewerStore.getState().updateAppearanceSource({ ...current, pdf: { ...current.pdf, calibration } });

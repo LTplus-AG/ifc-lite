@@ -888,3 +888,25 @@ on failure. Its fresh containment relation targets `IfcSpatialElement`, not only
 
 IFC4X3 creation also emits `IfcAnnotation.PredefinedType=USERDEFINED` and the
 optional `IfcCartesianPointList3D.TagList` slot; IFC4 omits these schema additions.
+
+### Scan correspondence registration
+
+`ifc_lite_processing::appearance::register_scan_correspondences` takes a
+`ScanRegistrationRequest` and returns a `ScanRegistrationReport`. It is the single
+native/WASM domain implementation for bounded manual point-pair rigid registration.
+Fitting uses only `fit`; `held_out` is evaluated afterward, with every residual
+retained. The request pins source/destination frame identities and exact asset
+hashes; the report binds the frozen request with SHA-256. A report is neither an
+alignment mutation nor an accuracy approval.
+
+The solver uses a proper Kabsch rotation with no scale estimation. Non-collinear
+planar points are valid; coincident/near-collinear point scatter and degenerate
+correspondence covariance refuse the operation. It reports scatter singular values
+separately from residuals. Do not confuse point-correspondence rank with rank of
+plane normals in a point-to-plane experiment. The anchored transform avoids a
+large standalone translation when evaluating georeferenced points.
+
+The [WASM contract](wasm.md#scan-correspondence-registration) documents bounds,
+coordinate conventions, disjoint observations, request digest and reporting.
+This opt-in computation never runs during parsing or geometry generation and
+never mutates source points, IFC placement or renderer alignment state.

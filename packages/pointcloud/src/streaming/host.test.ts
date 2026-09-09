@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { streamPointCloud } from './host.js';
 import { LasStreamingSource } from './las-source.js';
+import type { DecodedPointChunk } from '../types.js';
 import type { StreamingPointSource } from './types.js';
 
 function buildLasFile(rows: Array<{ x: number; y: number; z: number; cls?: number }>): Blob {
@@ -280,17 +281,17 @@ describe('streamPointCloud (in-process source)', () => {
     // a finite sentinel would win the `< bboxMin` / `> bboxMax` comparisons
     // here and report a bbox that includes the origin even though no real
     // point is anywhere near it.
-    const goodChunk = {
+    const goodChunk: DecodedPointChunk = {
       positions: new Float32Array([500000, 200000, 100, 500100, 200100, 120]),
       pointCount: 2,
-      bbox: { min: [500000, 200000, 100] as const, max: [500100, 200100, 120] as const },
+      bbox: { min: [500000, 200000, 100], max: [500100, 200100, 120] },
     };
-    const badChunk = {
+    const badChunk: DecodedPointChunk = {
       positions: new Float32Array(0),
       pointCount: 0,
       bbox: {
-        min: [Infinity, Infinity, Infinity] as const,
-        max: [-Infinity, -Infinity, -Infinity] as const,
+        min: [Infinity, Infinity, Infinity],
+        max: [-Infinity, -Infinity, -Infinity],
       },
     };
     const chunks = [badChunk, goodChunk];
@@ -321,16 +322,16 @@ describe('streamPointCloud (in-process source)', () => {
   });
 
   it('falls back to the header bbox when every chunk in the stream is non-finite', async () => {
-    const badChunk = {
+    const badChunk: DecodedPointChunk = {
       positions: new Float32Array(0),
       pointCount: 0,
       bbox: {
-        min: [Infinity, Infinity, Infinity] as const,
-        max: [-Infinity, -Infinity, -Infinity] as const,
+        min: [Infinity, Infinity, Infinity],
+        max: [-Infinity, -Infinity, -Infinity],
       },
     };
     const chunks = [badChunk];
-    const headerBbox = { min: [1, 2, 3] as const, max: [4, 5, 6] as const };
+    const headerBbox: DecodedPointChunk['bbox'] = { min: [1, 2, 3], max: [4, 5, 6] };
     let bbox: { min: readonly number[]; max: readonly number[] } | null = null;
     const stub: StreamingPointSource = {
       open: async () => ({

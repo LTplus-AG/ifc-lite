@@ -273,20 +273,24 @@ describe('useAnnotation2D hitTestAnnotations — top-most wins (#4195)', () => {
     // Measure hit-testing is line-segment proximity (within
     // HIT_TEST_RADIUS_PX=10), not a bounding-box test. Both segments below
     // pass within 10px of the click point (10,5), a genuine proximity hit
-    // on BOTH, not merely a visual overlap.
+    // on BOTH — and at an EQUAL distance (4px) from each other, so the pick
+    // can only be explained by pass 2's reverse (topmost-first) iteration
+    // order, not by a distance tiebreak in either measure's favour. If pass
+    // 2 iterated forward instead, distance alone would still decide the
+    // winner here and this test would not catch the regression.
     const measures: Measure2DResult[] = [
       {
         id: 'measure-old',
-        // Horizontal segment at y=0: nearest point to (10,5) is (10,0), dist=5 < 10.
-        start: { x: 0, y: 0 },
-        end: { x: 20, y: 0 },
+        // Horizontal segment at y=1: nearest point to (10,5) is (10,1), dist=4 < 10.
+        start: { x: 0, y: 1 },
+        end: { x: 20, y: 1 },
         distance: 20,
       },
       {
         id: 'measure-new',
-        // Horizontal segment at y=8: nearest point to (10,5) is (10,8), dist=3 < 10.
-        start: { x: 0, y: 8 },
-        end: { x: 20, y: 8 },
+        // Horizontal segment at y=9: nearest point to (10,5) is (10,9), dist=4 < 10.
+        start: { x: 0, y: 9 },
+        end: { x: 20, y: 9 },
         distance: 20,
       },
     ];

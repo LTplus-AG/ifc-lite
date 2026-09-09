@@ -37,6 +37,13 @@
  * published list, a crate whose `lib.rs` yields zero `pub use`/`pub` items,
  * or an ambiguous struct/enum name silently resolved instead of flagged.
  * None of those reads as a pass.
+ *
+ * SNAPSHOT KEY ORDER. Each crate's surface is written sorted by name, not in
+ * `lib.rs` source order — a purely cosmetic reshuffle of `pub use` lines then
+ * produces no diff in the committed snapshot at all, rather than a large
+ * no-op one that obscures a real change sitting in the same PR. The
+ * pass/fail comparison (`diffCrate`) is already order-independent, so this
+ * affects only how the committed JSON reads on review, never the verdict.
  */
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -96,7 +103,12 @@ export function buildSnapshot({ crates = CRATES, rustRoot = RUST_ROOT } = {}) {
       throw new Error(`EMPTY_SURFACE: ${crate} yielded zero crate-root-reachable public items`);
     }
     for (const w of crateWarnings) warnings.push(`${crate}: ${w}`);
-    snapshot[crate] = surface;
+    // Sorted by name rather than `lib.rs` insertion order: a cosmetic
+    // `pub use` reshuffle in the source then produces no diff at all in the
+    // committed snapshot, instead of a large no-op one. The pass/fail check
+    // above (`diffCrate`) is already order-independent, so this only affects
+    // reviewability of the snapshot file itself.
+    snapshot[crate] = Object.fromEntries(Object.entries(surface).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
     void pubUseCount;
   }
   return { snapshot, warnings };

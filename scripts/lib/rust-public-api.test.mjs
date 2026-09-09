@@ -217,6 +217,37 @@ test('nested pub use groups, `as` aliases, and multi-line groups all resolve', (
   assert.equal(surface.Aliased, 'struct { w: u32 }');
 });
 
+test('a `pub use` inside an inline `pub mod { ... }` block is NOT folded into the crate-root surface', () => {
+  // Regression for the conflation bug: `collectRootUses` used to scan the
+  // whole masked `lib.rs` for `pub use` regardless of brace nesting, so an
+  // inline `pub mod sub { pub use ...; }` block's re-export was treated as a
+  // root-level item. Combined with first-wins dedup, that let a NESTED `X`
+  // silently displace a genuine ROOT `X` declared later in the file — the
+  // wrong shape recorded with no warning, contradicting this module's own
+  // "NOT tracked" docblock rule for items reachable only via a `pub mod`'s
+  // own path.
+  const { surface } = withCrate(
+    {
+      'src/lib.rs': `
+        mod real;
+        mod other;
+
+        pub mod sub {
+          pub use crate::real::Thing as X;
+        }
+
+        pub use other::Other as X;
+      `,
+      'src/real.rs': `pub struct Thing { pub inner_field: u32 }`,
+      'src/other.rs': `pub struct Other { pub outer_field: u32 }`,
+    },
+    (dir) => extractCrateSurface(dir)
+  );
+  // The root-level `pub use other::Other as X;` must win — the inline mod's
+  // re-export is out of scope for the crate-root surface entirely.
+  assert.equal(surface.X, 'struct { outer_field: u32 }');
+});
+
 test('a re-export whose path is not a locally declared module is external — no field detail claimed', () => {
   const { surface } = withCrate(
     {

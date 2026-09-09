@@ -77,6 +77,15 @@
  *     attributes are stripped) marks the WHOLE item "fields: unparsed"
  *     rather than reporting a partial list — a partial list understates the
  *     surface, which is the false-green shape this repo's gates refuse.
+ *   - A NAMED struct's fields, and an enum's variants, are sorted before
+ *     being joined into the descriptor string (see `rust-item-shape.mjs`'s
+ *     `parseNamedFields`/`describeEnumBody`) — a pure reorder of either is
+ *     INVISIBLE to this gate. That is deliberate, not an oversight: reorder
+ *     alone cannot break a caller that constructs by field name or matches
+ *     an enum by variant name, which is how safe Rust uses both. A TUPLE
+ *     struct/variant's fields are the opposite: declaration order IS the
+ *     shape (a positional constructor breaks on reorder), so those are left
+ *     unsorted — see `parseTupleFields`'s own comment.
  *
  * Reuses `lex()` from `./rust-source-text-detect.mjs` (already masks Rust
  * comments and string/char literals to spaces, keeping every offset and
@@ -133,12 +142,46 @@ function parseUseItems(pathPrefix, groupText) {
   return out;
 }
 
-/** All root-level `pub use` re-exports declared in `lib.rs` (masked plane, so multi-line groups are one statement). */
+/**
+ * Brace-nesting depth (curly braces only — the unit that scopes an inline
+ * `mod { ... }` block) at every offset in `masked`, so a caller can tell a
+ * crate-root statement from one buried inside an inline module.
+ */
+function braceDepths(masked) {
+  const depths = new Int32Array(masked.length);
+  let depth = 0;
+  for (let i = 0; i < masked.length; i++) {
+    depths[i] = depth;
+    const c = masked[i];
+    if (c === '{') depth++;
+    else if (c === '}') depth = Math.max(0, depth - 1);
+  }
+  return depths;
+}
+
+/**
+ * All root-level `pub use` re-exports declared in `lib.rs` (masked plane, so
+ * multi-line groups are one statement).
+ *
+ * Scoped to brace-depth 0: a `pub use` inside an inline `pub mod sub { ... }`
+ * block sits at depth 1+ and is deliberately skipped — the SCOPE rule above
+ * tracks only what a crate root itself re-exports, and an item declared
+ * inside an inline module is reachable only via that module's own path
+ * (`crate::sub::X`), not the crate root, exactly like the file-module case
+ * already documented above. Without this check, an inline module's `pub use`
+ * folds into the flat root surface and can silently displace a genuine
+ * root-level item declared under the same name (first-wins dedup below),
+ * recording the wrong shape with no warning. No crate's `src/lib.rs` in this
+ * repo currently uses an inline `pub mod { ... }` block (all are `pub mod
+ * name;`), so this is a dormant correctness fix, not a live one.
+ */
 function collectRootUses(masked) {
   const items = [];
+  const depths = braceDepths(masked);
   const re = /\bpub\s+use\s+/g;
   let m;
   while ((m = re.exec(masked)) !== null) {
+    if (depths[m.index] !== 0) continue; // nested inside a `pub mod { ... }` block — not root
     let end = m.index + m[0].length;
     let depth = 0;
     while (end < masked.length) {

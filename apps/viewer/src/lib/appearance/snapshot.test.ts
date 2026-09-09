@@ -30,6 +30,7 @@ ENDSEC;END-ISO-10303-21;`);
 
 function catalogBoundary(beforeReply?: () => Promise<void>): AppearancePlanner {
   return {
+    async registerScan() { throw new Error('Catalog tests must not solve registration'); },
     async catalog(_bytes, request) {
       await beforeReply?.();
       return { sourceRevision: request.sourceRevision, products: [], types: [], missingProductIds: [] };

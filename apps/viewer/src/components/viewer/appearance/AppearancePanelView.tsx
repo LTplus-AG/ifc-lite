@@ -43,8 +43,10 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
         <Button type="button" variant={props.intent === 'apply' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'apply'} onClick={() => props.onIntentChange?.('apply')}>Apply to IFC</Button>
         <Button type="button" variant={reference ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={reference} onClick={() => props.onIntentChange?.('reference')}>Place as reference</Button>
         <Button type="button" variant={props.intent === 'capture' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'capture'} onClick={() => props.onIntentChange?.('capture')}>Create from scan</Button>
+        <Button type="button" variant={props.intent === 'scan' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'scan'} onClick={() => props.onIntentChange?.('scan')}>Align scan</Button>
       </div>}
   </>;
+  if (props.intent === 'scan') return <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background p-3" aria-label="Appearance workspace">{sourceActions}{props.scan}</div>;
   if (props.intent === 'capture') return <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background p-3" aria-label="Appearance workspace">{sourceActions}{props.capture}</div>;
   return <div className="flex h-full min-h-0 flex-col bg-background" aria-label="Appearance workspace" aria-busy={!!busy}>
     <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-3">

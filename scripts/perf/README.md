@@ -1128,3 +1128,25 @@ supports no resolvable native-load regression, not an authoring or worker-pool
 speedup. Preserve literal-versus-reference schema slots when compacting plans;
 never trade semantic fidelity for convenient generic string rewriting.
 [Follow-up samples and limits](../../docs/architecture/evidence/evaluated-occurrences/allocation-load.json).
+
+### Shared appearance atlas sampling (#4381)
+
+Factoring target appearance preservation, charts and canonical image binding into
+an internal sampler retains the finite-page operation and avoids a second atlas
+pipeline for scan observations. Interleaved native AC20 base/extraction/transfer
+probes found no resolvable ordinary-load regression, with identical geometry
+counts and ordered fingerprints. This is a load-path isolation verdict, not a
+browser worker-pool speedup or authoring-capacity claim. Keep expensive source
+matching opt-in and separately bounded; broad transfer needs its own measured
+candidate-reuse work. [Raw probes and limits](../../docs/architecture/evidence/shared-atlas/native-load.json)
+record the comparison.
+
+
+The registered mesh-transfer foundation preserves that ordinary-load isolation,
+but its aggregate per-texel BVH work cap refuses the complete captured boulder.
+A bounded prefix qualifies the surface/UV and unknown-coverage behavior; it does
+not establish broad authoring capacity. The next mechanism to evaluate is
+conservative candidate reuse across target triangles/tiles, retaining nearest
+surface refusal and one atomic result, rather than enlarging the work ceiling.
+[Real-surface coverage and refusal evidence](../../docs/architecture/evidence/mesh-transfer/README.md#real-boulder-geometry-conservative-coverage-and-capacity)
+keeps that limitation separate from the ordinary-load measurements.

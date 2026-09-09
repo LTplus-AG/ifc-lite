@@ -4,20 +4,24 @@
 import { StepExporter } from '@ifc-lite/export';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
+import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { placementFor } from '@/lib/model-placement/state';
 import { appearanceRevision, captureAppearanceSource } from './command';
 import { prepareAppearanceSerialization } from './serialization';
 
 /** One effective IFC snapshot and allocation guard for every textured product. */
 export async function prepareTexturedProduct(modelId: string, signal?: AbortSignal, validateSource: () => void = () => {}) {
-  const state = useViewerStore.getState(), model = state.models.get(modelId), view = state.mutationViews.get(modelId);
-  if (!model?.ifcDataStore || !view || !model.schemaVersion.startsWith('IFC4')) throw new Error('Choose an editable IFC4 or IFC4X3 model.');
+  const state = useViewerStore.getState(), model = state.models.get(modelId);
+  if (!model?.ifcDataStore || /\.glb$/i.test(model.sourceFile?.name ?? '') || !model.schemaVersion.startsWith('IFC4')) throw new Error('Choose an editable IFC4 or IFC4X3 model.');
   if (state.modelPlacement.preview) throw new Error('Finish repositioning the model before creating an object.');
   if (model.federationAlignmentStatus === 'same-crs' || model.federationAlignmentStatus === 'reprojected') {
     throw new Error('Creating an object in a realigned model requires its source coordinate transform. Choose the workspace anchor model.');
   }
   if (state.collabRoomId) throw new Error('Leave the shared room before creating objects, then share the finished model.');
   if (model.ifcDataStore.source.byteLength > 128 * 1024 * 1024) throw new Error('This model exceeds the 128 MiB object preparation budget.');
+  signal?.throwIfAborted();
+  const view = getOrCreateMutationView(useViewerStore, modelId);
+  if (!view) throw new Error('The target IFC model is no longer available.');
   new StoreEditor(model.ifcDataStore, view);
   const source = captureAppearanceSource(view), sourceRevision = appearanceRevision(modelId);
   const nextExpressId = view.peekNextExpressId();

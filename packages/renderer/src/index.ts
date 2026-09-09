@@ -3270,13 +3270,12 @@ export class Renderer {
         return this.pickingManager.pickRect(x0, y0, x1, y1, options, this.activePickClip());
     }
 
-    /**
-     * Raycast into the scene to get precise 3D intersection point
-     * This is more accurate than pick() as it returns the exact surface point
-     *
-     * Note: x, y are CSS pixel coordinates relative to the canvas element.
-     * These are scaled internally to match the actual canvas pixel dimensions.
-     */
+    /** Whether the last rendered frame clipped surfaces (section, terrain or box). */
+    hasActiveClipping(): boolean {
+        return this._activePickSection !== null || this._activePickClipBox !== null;
+    }
+
+    /** Exact surface raycast in CSS canvas coordinates; does not apply clipping. */
     raycastScene(
         x: number,
         y: number,

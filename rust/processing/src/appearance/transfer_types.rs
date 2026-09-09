@@ -56,6 +56,12 @@ pub struct MeshTransferRequest {
 pub struct TransferCoverage {
     pub samples: u64,
     pub observed_samples: u64,
+    /// One independent geometric observation per target triangle, including subpixel charts.
+    pub centroid_samples: u64,
+    pub observed_centroid_samples: u64,
+    /// Actual raster pixel centers inside target charts; excludes guard padding and centroids.
+    pub raster_interior_texels: u64,
+    pub observed_raster_interior_texels: u64,
     pub unknown_distance_samples: u64,
     pub unknown_normal_samples: u64,
     pub unknown_ambiguous_samples: u64,
@@ -88,7 +94,7 @@ pub struct MeshTransferSummary {
 }
 #[derive(Debug)]
 pub struct MeshTransferPlan {
-    /// None for wholly unknown coverage or fewer than 4 fit/4 held-out observations.
+    /// None without observed interior raster texels or at least 4 fit/4 held-out observations.
     pub output: Option<PageAppearancePlan>,
     pub transfer: MeshTransferSummary,
     pub texels_per_metre: f64,

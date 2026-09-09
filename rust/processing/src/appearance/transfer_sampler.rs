@@ -24,6 +24,12 @@ pub(super) struct TransferSampler<'a> {
     samples: Vec<TransferCoverage>,
     current: Option<(u32, u32)>,
 }
+#[derive(Clone, Copy)]
+enum SampleKind {
+    Centroid,
+    Interior,
+    Guard,
+}
 impl<'a> TransferSampler<'a> {
     pub fn new(
         surface: Surface,
@@ -48,7 +54,7 @@ impl<'a> TransferSampler<'a> {
         &mut self,
         triangle: usize,
         weights: Point,
-        count: bool,
+        kind: SampleKind,
     ) -> Result<(Observation, [f64; 2]), String> {
         let target = &self.targets[triangle];
         let result = self.surface.observe(
@@ -56,8 +62,20 @@ impl<'a> TransferSampler<'a> {
             target.normal,
             &mut self.budget,
         )?;
-        if count {
+        if !matches!(kind, SampleKind::Guard) {
             let coverage = &mut self.samples[triangle];
+            let observed = result.0 == Observation::Observed;
+            match kind {
+                SampleKind::Centroid => {
+                    coverage.centroid_samples += 1;
+                    coverage.observed_centroid_samples += u64::from(observed);
+                }
+                SampleKind::Interior => {
+                    coverage.raster_interior_texels += 1;
+                    coverage.observed_raster_interior_texels += u64::from(observed);
+                }
+                SampleKind::Guard => unreachable!(),
+            }
             coverage.samples += 1;
             match result.0 {
                 Observation::Observed => coverage.observed_samples += 1,
@@ -86,9 +104,9 @@ impl AtlasSampler for TransferSampler<'_> {
             transfer_target::prepare(source, product, points, triangles, mesh, self.frame)?;
         self.samples = vec![TransferCoverage::default(); triangles.len()];
         self.current = Some((product, item.geometry_item_id));
-        // Even subpixel charts have one interior observation; padding never counts.
+        // Even subpixel charts have one centroid observation; padding never counts.
         for triangle in 0..triangles.len() {
-            self.observe(triangle, [1. / 3.; 3], true)?;
+            self.observe(triangle, [1. / 3.; 3], SampleKind::Centroid)?;
         }
         Ok(())
     }
@@ -127,7 +145,15 @@ impl AtlasSampler for TransferSampler<'_> {
         interior: bool,
         background: [f64; 4],
     ) -> Result<[u8; 4], String> {
-        let (observation, uv) = self.observe(triangle, weights, interior)?;
+        let (observation, uv) = self.observe(
+            triangle,
+            weights,
+            if interior {
+                SampleKind::Interior
+            } else {
+                SampleKind::Guard
+            },
+        )?;
         let color = if observation == Observation::Observed {
             // GLB top-down UVs become IFC bottom-up at the existing raster boundary.
             self.image.sample([uv[0], 1. - uv[1]], self.repeat)
@@ -140,6 +166,10 @@ impl AtlasSampler for TransferSampler<'_> {
 pub(super) fn accumulate(total: &mut TransferCoverage, item: &TransferCoverage) {
     total.samples += item.samples;
     total.observed_samples += item.observed_samples;
+    total.centroid_samples += item.centroid_samples;
+    total.observed_centroid_samples += item.observed_centroid_samples;
+    total.raster_interior_texels += item.raster_interior_texels;
+    total.observed_raster_interior_texels += item.observed_raster_interior_texels;
     total.unknown_distance_samples += item.unknown_distance_samples;
     total.unknown_normal_samples += item.unknown_normal_samples;
     total.unknown_ambiguous_samples += item.unknown_ambiguous_samples;

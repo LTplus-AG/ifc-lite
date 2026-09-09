@@ -17,6 +17,7 @@ export class InstanceSuppression {
   *suppressedIds(): IterableIterator<number> {
     for (const [id, entry] of this.entries) if (entry.suppressed) yield id;
   }
+  owns(id: number): boolean { return this.entries.has(id); }
   get retained(): boolean { return this.entries.size > 0; }
   has(id: number): boolean { return this.entries.get(id)?.suppressed === true; }
   acquire(expressId: number, modelIndex: number): InstanceLease {
@@ -46,9 +47,19 @@ export class InstanceSuppression {
     });
   }
   restore(): void {
-    const hidden = [...this.entries].filter(([, entry]) => entry.suppressed).map(([id]) => id);
+    const hidden = [...this.entries].filter(([, entry]) => entry.suppressed);
+    for (const [, entry] of hidden) entry.suppressed = false;
+    try { for (const [id] of hidden) this.changed(id); }
+    catch (error) {
+      for (const [, entry] of hidden) entry.suppressed = true;
+      const failures: unknown[] = [error];
+      for (const [id] of hidden) {
+        try { this.changed(id); } catch (rollbackError) { failures.push(rollbackError); }
+      }
+      if (failures.length > 1) throw new AggregateError(failures, 'Occurrence restoration and rollback failed');
+      throw error;
+    }
     this.entries.clear();
-    for (const id of hidden) this.changed(id);
   }
   forget(id?: number): void {
     if (id === undefined) this.entries.clear();

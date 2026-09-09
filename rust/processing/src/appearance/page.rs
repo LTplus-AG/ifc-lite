@@ -103,7 +103,15 @@ pub fn plan_page_appearance(bytes: &[u8], request: &PageAppearanceRequest, rgba:
         start += count;
     }
     bind_images(&mut plan, &item_images, &mut source, &styles)?;
-    let plan=match normalization { Some(n)=>n.compose(plan),None=>plan };
+    let plan=match normalization {
+        Some(n)=> {
+            let (plan,ids)=n.compose(plan);
+            for image in &mut item_images {
+                if let Some(&id)=ids.get(&image.geometry_item_id) {image.geometry_item_id=id;}
+            }
+            plan
+        },None=>plan
+    };
     Ok(PageAppearancePlan { plan, item_images, assets, texels_per_metre: request.texels_per_metre })
 }
 fn encode_png(atlas: &page_atlas::Atlas, limit: usize) -> Result<Vec<u8>, String> {

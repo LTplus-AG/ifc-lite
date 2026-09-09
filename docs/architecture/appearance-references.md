@@ -31,8 +31,9 @@ references. Missing images remain recoverable registrations. Relinking accepts
 only the exact saved image digest and changes no coordinates or source lineage.
 It does not silently substitute a newer raster from the same PDF source.
 
-Session reset and clearing all models clear reference records, history and leases.
-Removing one model does not remove workspace references. A change of coordinate
+Session reset clears reference records, history and leases. Removing one model or
+clearing IFC models for a georeferencing reload preserves independent workspace
+references and their ownership; incompatible new frames remain unresolved. A change of coordinate
 frame must be handled by the runtime's canonical frame conversion or reported as
 unresolved; importing a manifest into a different frame is rejected. The state
 foundation does not claim portable project image packaging or IFC annotation

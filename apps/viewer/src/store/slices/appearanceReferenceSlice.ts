@@ -130,5 +130,7 @@ export const appearanceReferenceTeardown = defineSliceTeardown('appearanceRefere
   ['appearanceReferences', 'referenceUndo', 'referenceRedo', 'referenceRevision', 'selectedAppearanceReferenceId'], {
     'model-removed': () => ({}),
     'session-reset': () => ({ appearanceReferences: new Map(), referenceUndo: [], referenceRedo: [], referenceRevision: 0, selectedAppearanceReferenceId: null }),
-    'all-models-cleared': () => ({ appearanceReferences: new Map(), referenceUndo: [], referenceRedo: [], referenceRevision: 0, selectedAppearanceReferenceId: null }),
+    // Georeferencing reloads clear IFC models without resetting the workspace.
+    // Reference identities contain no IFC IDs; keep registrations and their leases.
+    'all-models-cleared': () => ({}),
   });

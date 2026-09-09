@@ -87,6 +87,40 @@
  * limitation for the pre-existing suppression mechanism this builds on. What
  * changed here is that the PRODUCTION call graph now has exactly one correct
  * implementation instead of an easy-to-forget copy at every call site.
+ *
+ * ## In-progress and selection state (#4196, #4199)
+ * This function's `Drawing2DMarkupPatch` return type originally covered only
+ * the five COMMITTED fields above — never the in-progress placement
+ * (`polygonArea2DPoints`, `cloudAnnotation2DPoints`, `measure2DStart`/
+ * `measure2DCurrent`) or the live `selectedAnnotation2D`/
+ * `textAnnotation2DEditing`. A half-drawn polygon spanning two coordinate
+ * frames computed a plausible but wrong area on `completePolygonArea2D`, and
+ * a `selectedAnnotation2D` could dangle at an id absent from the new model's
+ * arrays, making Delete a silent no-op. `inProgressClearPatch()` below closes
+ * this by clearing those six on every real transition this function handles
+ * — never cached, never restored, unlike the five committed fields.
+ * `annotation2DActiveTool` is deliberately excluded: see that function's doc.
+ *
+ * #4199 (this PR's own review) found the same bug class a SIXTH time inside
+ * the PR meant to end it: `measure2DSnapPoint` and `annotation2DCursorPos`
+ * are both frame-dependent `Point2D | null` fields — consumed for rendering
+ * as `measureSnapPoint`/`annotation2DCursorPos` props in `Section2DPanel.tsx`
+ * — that were on `Drawing2DState` before this file's `#4196` pass and were
+ * missed by it: neither the five committed fields nor the original six
+ * in-progress fields covered them. A snap indicator or cursor preview
+ * computed in the outgoing model's drawing coordinates would render at the
+ * wrong place over the incoming model's drawing until the next mouse-move.
+ * They are now the seventh and eighth fields `inProgressClearPatch()` clears.
+ *
+ * That is EIGHT fields, hand-picked by `Drawing2DTransitionClearPatch`
+ * below, in a file that has now undercounted its own field list six times.
+ * `FIELD_CLASSIFICATION` right below makes a seventh recurrence a compile
+ * error instead of a silent gap: it is `satisfies Record<keyof
+ * Drawing2DState, ...>`, so TypeScript refuses to build the moment
+ * `Drawing2DState` gains a key this file hasn't classified. See the two
+ * exported symbols immediately below for how the in-progress type and the
+ * classification stay provably in sync with each other, not just with
+ * `Drawing2DState`.
  */
 
 import {
@@ -94,6 +128,130 @@ import {
   suppressNextSaveFor,
   type Drawing2DMarkupPatch,
 } from './drawing2DSlice.persistence.js';
+import type { Drawing2DState } from './drawing2DSlice.js';
+
+/**
+ * How this file treats EVERY key of `Drawing2DState` on an `activeModelId`
+ * transition — the structural fix for the recurring bug class named in the
+ * module doc (six rounds, most recently #4199 finding two more fields this
+ * same PR had missed).
+ *
+ * - `'committed'`: cached per model in `liveMarkupCache` and restored on
+ *   revisit — {@link Drawing2DMarkupPatch}'s five fields, owned by
+ *   `drawing2DSlice.persistence.ts`.
+ * - `'in-progress'`: frame-dependent or id-referencing state that is never
+ *   cached and never restored — always reset by
+ *   {@link inProgressClearPatch} on every real transition. See the module
+ *   doc for why: it is expressed in, or references ids scoped to, the
+ *   OUTGOING model.
+ * - `'preserved'`: everything else. Not touched by the returned patch at
+ *   all — a session-wide UI preference (e.g. `annotation2DActiveTool`, see
+ *   its own doc) or drawing-generation state owned by a different code path.
+ *
+ * The `satisfies Record<keyof Drawing2DState, ...>` below is the actual
+ * guard: it is a TYPE ERROR, not a lint warning or a convention, for
+ * `Drawing2DState` to gain a key this object does not list. A field added
+ * there with no row here fails the build before it can ship uncleared.
+ */
+const FIELD_CLASSIFICATION = {
+  drawing2D: 'preserved',
+  drawing2DStatus: 'preserved',
+  drawing2DProgress: 'preserved',
+  drawing2DPhase: 'preserved',
+  drawing2DError: 'preserved',
+  drawing2DPanelVisible: 'preserved',
+  suppressNextSection2DPanelAutoOpen: 'preserved',
+  drawing2DSvgContent: 'preserved',
+  drawing2DDisplayOptions: 'committed',
+  graphicOverridePresets: 'preserved',
+  activePresetId: 'preserved',
+  customOverrideRules: 'preserved',
+  overridesEnabled: 'preserved',
+  overridesPanelVisible: 'preserved',
+  measure2DMode: 'preserved',
+  measure2DStart: 'in-progress',
+  measure2DCurrent: 'in-progress',
+  measure2DShiftLocked: 'preserved',
+  measure2DLockedAxis: 'preserved',
+  measure2DResults: 'committed',
+  measure2DSnapPoint: 'in-progress',
+  annotation2DActiveTool: 'preserved',
+  annotation2DCursorPos: 'in-progress',
+  polygonArea2DPoints: 'in-progress',
+  polygonArea2DResults: 'committed',
+  textAnnotations2D: 'committed',
+  textAnnotation2DEditing: 'in-progress',
+  cloudAnnotation2DPoints: 'in-progress',
+  cloudAnnotations2D: 'committed',
+  selectedAnnotation2D: 'in-progress',
+  dxfUnderlays: 'preserved',
+} satisfies Record<keyof Drawing2DState, 'committed' | 'in-progress' | 'preserved'>;
+
+/** Exported for `drawing2DSlice.markupTransition.test.ts` only — production code has no other reason to read the raw classification. */
+export const drawing2DFieldClassificationForTests = FIELD_CLASSIFICATION;
+
+/**
+ * Keys of `FIELD_CLASSIFICATION` classified `'in-progress'`, derived by
+ * TYPE from the object above rather than re-listed — the second half of the
+ * structural fix. Reclassifying a field to or from `'in-progress'` changes
+ * this type automatically, which in turn changes what
+ * {@link inProgressClearPatch} is required to return: adding a key here
+ * with no matching line in that function's return object is a compile
+ * error, not a silent gap.
+ */
+type InProgressKey = {
+  [K in keyof typeof FIELD_CLASSIFICATION]: (typeof FIELD_CLASSIFICATION)[K] extends 'in-progress' ? K : never;
+}[keyof typeof FIELD_CLASSIFICATION];
+
+/**
+ * The in-progress and selection fields (#4196, #4199) — distinct from
+ * {@link Drawing2DMarkupPatch}'s five COMMITTED fields, which are cached per
+ * model and restored on revisit (see `liveMarkupCache` above). These are
+ * never cached and never restored: they are always reset to their cleared
+ * value on a real `activeModelId` transition, regardless of which model is
+ * next or whether it has a live cache entry.
+ *
+ * A half-placed polygon or an in-flight measurement, or a snap/cursor
+ * preview point, is expressed in the OUTGOING model's coordinate frame;
+ * carrying it into the next model's `set()` would compute results (area,
+ * perimeter, distance) or render a preview that silently mixes two frames —
+ * see this file's module doc and the issues this closes. A dangling
+ * `selectedAnnotation2D` is worse than merely meaningless: it can reference an
+ * id absent from the new model's arrays, so Delete becomes a silent no-op
+ * while the selection UI still shows something selected.
+ *
+ * `annotation2DActiveTool` is deliberately NOT in this list (classified
+ * `'preserved'` above). Unlike the fields above, the chosen tool (measure /
+ * polygon / cloud / text / none) carries no coordinate-frame data of its
+ * own — it is a UI preference for "what happens on the next click", not a
+ * value computed from points in a frame. A user switching models
+ * mid-session keeps the tool they had selected; only the half-drawn shape
+ * underneath it is discarded. Leaving it out of the returned patch means
+ * `set()` never touches it, which is exactly "persist" for a Zustand
+ * partial patch.
+ */
+type Drawing2DTransitionClearPatch = Pick<Drawing2DState, InProgressKey>;
+
+/**
+ * Exported for `drawing2DSlice.markupTransition.test.ts` only — production
+ * code calls this indirectly through {@link markupTransitionPatch}. The test
+ * asserts this function's own key set exactly matches `FIELD_CLASSIFICATION`'s
+ * `'in-progress'` keys, so a reclassification with no matching line here (or
+ * vice versa) fails at test time even though both already agree at compile
+ * time via {@link InProgressKey}.
+ */
+export function inProgressClearPatch(): Drawing2DTransitionClearPatch {
+  return {
+    polygonArea2DPoints: [],
+    cloudAnnotation2DPoints: [],
+    measure2DStart: null,
+    measure2DCurrent: null,
+    measure2DSnapPoint: null,
+    annotation2DCursorPos: null,
+    selectedAnnotation2D: null,
+    textAnnotation2DEditing: null,
+  };
+}
 
 /**
  * Session-scoped only — never written to or read from `localStorage`
@@ -132,7 +290,7 @@ export function wasLiveMarkupCached(modelId: string): boolean {
 export function markupTransitionPatch(
   state: MarkupTransitionState,
   nextModelId: string | null,
-): Partial<Drawing2DMarkupPatch> {
+): Partial<Drawing2DMarkupPatch> & Partial<Drawing2DTransitionClearPatch> {
   if (nextModelId === state.activeModelId) return {};
 
   if (state.activeModelId) {
@@ -145,17 +303,25 @@ export function markupTransitionPatch(
     });
   }
 
-  if (nextModelId === null) return defaultMarkupPatch();
+  // #4196: in-progress placement and any live selection belong to the
+  // OUTGOING model's coordinate frame (or reference ids from its arrays) and
+  // are never meaningful after `activeModelId` actually moves — on EVERY
+  // arm below, not just the cache-miss "genuinely new model" case. See
+  // `inProgressClearPatch`'s doc for why `annotation2DActiveTool` is
+  // excluded from this and therefore persists across the switch.
+  const clearInProgress = inProgressClearPatch();
+
+  if (nextModelId === null) return { ...defaultMarkupPatch(), ...clearInProgress };
 
   const cached = liveMarkupCache.get(nextModelId);
-  if (cached) return cached;
+  if (cached) return { ...cached, ...clearInProgress };
 
   // Genuinely new to this session: nothing to restore synchronously.
   // `useDrawing2DPersistence.ts`'s restore effect owns the async,
   // content-hash-keyed `localStorage` lookup for this case, and needs its
   // own upcoming defaults-clear not mistaken for a real edit.
   suppressNextSaveFor(nextModelId);
-  return defaultMarkupPatch();
+  return { ...defaultMarkupPatch(), ...clearInProgress };
 }
 
 /** Test-only: drop every cached snapshot so tests don't leak state between runs. */

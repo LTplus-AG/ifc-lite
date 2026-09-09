@@ -847,6 +847,21 @@ jobs:
         run: node --test scripts/check-rust-source-text-assertions.test.mjs
       - name: Check for source-text assertions in Rust tests
         run: node scripts/check-rust-source-text-assertions.mjs
+      # #4178 added `pub triangle_count: usize` to `OpeningDiagnostic`, a `pub`
+      # struct re-exported at the `ifc-lite-geometry` crate root with every
+      # field `pub` and no `#[non_exhaustive]`. cargo-semver-checks correctly
+      # demanded a major, but nothing said so until the RELEASE PR
+      # (`check-rust-semver.mjs`, which needs a real build and only runs
+      # there), by which point the field had to be reverted rather than
+      # choosing the bump up front (issue #4192). This is a SOURCE-DERIVED
+      # snapshot of the same class of change `check-api-surface.mjs` guards
+      # for TypeScript — no build, so it runs on every PR touching `rust/`.
+      # Its own tests run first, same reason as the source-text gate above:
+      # this check's whole value is in not passing vacuously.
+      - name: Check Rust API surface gate's own tests
+        run: node --test scripts/lib/rust-public-api.test.mjs scripts/check-rust-api-surface.test.mjs
+      - name: Check Rust public API surface
+        run: node scripts/check-rust-api-surface.mjs
       # A walk that follows a file-supplied entity reference with no visited set
       # and no depth cap overflows the Rust stack on a self-referential
       # reference, which is SIGABRT rather than a catchable panic -- in the wasm

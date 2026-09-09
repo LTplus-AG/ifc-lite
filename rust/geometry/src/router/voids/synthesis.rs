@@ -124,7 +124,6 @@ impl GeometryRouter {
                         opening_id,
                         kind,
                         vertex_count,
-                        triangle_count,
                     });
                 }
             };

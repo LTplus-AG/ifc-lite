@@ -3,16 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * 2D Drawing generation state slice
- *
- * Manages state for generating and viewing 2D architectural drawings
- * (floor plans, sections, elevations) from the 3D model.
+ * 2D Drawing generation state slice: manages state for generating and
+ * viewing 2D architectural drawings (floor plans, sections, elevations) from the 3D model.
  */
 
 import type { StateCreator } from 'zustand';
 import type { Drawing2D, DxfPlacement, DxfUnderlay, GraphicOverrideRule, GraphicOverridePreset } from '@ifc-lite/drawing-2d';
 import { BUILT_IN_PRESETS, DEFAULT_DXF_PLACEMENT } from '@ifc-lite/drawing-2d';
 import { DEFAULT_SCAN_SECTION_THICKNESS } from '@/hooks/scanSectionMath';
+import { isDegenerateMeasurement, isDegenerateArea, isDegenerateCloud } from './drawing2DDegenerateGuards';
 
 export type Drawing2DStatus = 'idle' | 'generating' | 'ready' | 'error';
 
@@ -559,8 +558,7 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
       const distance = Math.sqrt(dx * dx + dy * dy);
 
       // Ignore zero-length measurements (click without drag)
-      const MIN_MEASUREMENT_DISTANCE = 0.001; // 1mm minimum
-      if (distance < MIN_MEASUREMENT_DISTANCE) {
+      if (isDegenerateMeasurement(distance)) {
         // Reset state without saving the measurement
         set({
           measure2DStart: null,
@@ -635,6 +633,7 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
     const state = get();
     if (state.polygonArea2DPoints.length < 3) return;
 
+    if (isDegenerateArea(area)) { set({ polygonArea2DPoints: [], annotation2DCursorPos: null }); return; } // near-zero-area guard (#4197)
     const result: PolygonArea2DResult = {
       id: `poly-area-${Date.now()}`,
       points: [...state.polygonArea2DPoints],
@@ -692,6 +691,7 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
     const state = get();
     if (state.cloudAnnotation2DPoints.length < 2) return;
 
+    if (isDegenerateCloud(state.cloudAnnotation2DPoints)) { set({ cloudAnnotation2DPoints: [], annotation2DCursorPos: null }); return; } // near-zero-size guard (#4197)
     const result: CloudAnnotation2D = {
       id: `cloud-${Date.now()}`,
       points: [...state.cloudAnnotation2DPoints],

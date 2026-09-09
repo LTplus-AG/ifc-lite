@@ -24,10 +24,17 @@ export function usePdfAppearanceSource(source: AppearanceSourceOption | undefine
   const mounted = useRef(true);
   const callbacks = useRef({ onSelect, onError });
   callbacks.current = { onSelect, onError };
-  function cancel() { pending.current?.abort(); }
+  function abortPending() { pending.current?.abort(); }
+  function cancel() {
+    abortPending();
+    pending.current = undefined;
+    setJob(undefined);
+    setPasswordFile(undefined);
+    setBusy(false);
+  }
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; cancel(); if (previewRef.current) URL.revokeObjectURL(previewRef.current.url); previewRef.current = undefined; };
+    return () => { mounted.current = false; abortPending(); if (previewRef.current) URL.revokeObjectURL(previewRef.current.url); previewRef.current = undefined; };
   }, []);
 
   async function raster(documentKey: string, request: PdfRasterRequest, signal: AbortSignal) {
@@ -79,7 +86,7 @@ export function usePdfAppearanceSource(source: AppearanceSourceOption | undefine
 
   useEffect(() => {
     if (!job) return;
-    cancel();
+    abortPending();
     const controller = new AbortController(); pending.current = controller;
     setBusy(true); setError(undefined);
     const timer = setTimeout(() => { void raster(job.documentKey, job.request, controller.signal).catch(failure => {
@@ -93,7 +100,7 @@ export function usePdfAppearanceSource(source: AppearanceSourceOption | undefine
   const pdf = source?.pdf;
   // Rebuild only the session-owned full-page preview when reopening the dock.
   useEffect(() => {
-    cancel(); setJob(undefined); setBusy(false);
+    cancel();
     if (!pdf || previewRef.current?.documentKey === pdf.documentKey) return;
     setJob({ documentKey: pdf.documentKey, request: { pageNumber: pdf.recipe.page.pageNumber,
       rotation: pdf.recipe.rotation, cropPoints: pdf.recipe.cropPoints, dpi: pdf.recipe.requestedDpi } });
@@ -108,7 +115,7 @@ export function usePdfAppearanceSource(source: AppearanceSourceOption | undefine
         cropPoints: recipe.cropPoints, dpi: recipe.requestedDpi };
       const effective = job?.documentKey === pdf.documentKey ? job.request : request;
       const change = (patch: Partial<PdfRasterRequest>) => {
-        cancel(); setBusy(true);
+        abortPending(); setBusy(true);
         setJob(previous => ({ documentKey: pdf.documentKey,
           request: { ...(previous?.documentKey === pdf.documentKey ? previous.request : request), ...patch } }));
       };
@@ -128,7 +135,7 @@ export function usePdfAppearanceSource(source: AppearanceSourceOption | undefine
   const passwordPrompt: AppearancePdfPasswordPrompt | undefined = passwordFile ? {
     documentName: passwordFile.file.name, incorrect: passwordFile.incorrect, busy,
     onSubmit: password => { void upload(passwordFile.file, password); },
-    onCancel: () => { cancel(); setPasswordFile(undefined); setBusy(false); },
+    onCancel: cancel,
   } : undefined;
   return { upload, controls, passwordPrompt, busy, cancel };
 }

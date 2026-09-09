@@ -227,6 +227,7 @@ export function useAppearancePanel(): AppearancePanelViewProps {
     }
   }
   function discard(): void {
+    pdfSource.cancel();
     applyAbort.current?.abort();
     appliedRevision.current = null;
     pendingAbort.current?.abort();

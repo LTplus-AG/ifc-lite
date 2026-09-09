@@ -347,8 +347,8 @@ impl SymbolicAccumulator {
     /// only the LOCAL center before transforming it, so a malformed ambient
     /// placement can still turn a finite local point into a non-finite one.
     pub(super) fn push_circle(&mut self, circle: SymbolicCircle) {
-        if !(circle.center_x.is_finite() && circle.center_y.is_finite() && circle.radius.is_finite())
-        {
+        let finite = circle.center_x.is_finite() && circle.center_y.is_finite();
+        if !finite || !circle.radius.is_finite() {
             return;
         }
         let payload = 8 + circle.ifc_type.len() + circle.representation.len();

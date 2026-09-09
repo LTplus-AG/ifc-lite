@@ -370,4 +370,22 @@ describe('BulkQueryEngine: local-edit guard (mutation-guard.ts)', () => {
     expect(mutation).not.toBeNull();
     expect(view.getPropertyValue(1, 'Pset_Test', 'Prop')).toBe(42);
   });
+
+  it('select({ globalIds }) throws rather than silently returning the unfiltered candidate set when the string table is unavailable', () => {
+    const entities = makeEntities(5);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const engine = new BulkQueryEngine(entities, view, null, null, null);
+
+    expect(() => engine.select({ globalIds: ['x'] })).toThrow(/string table/i);
+  });
+
+  it('select({ namePattern }) throws rather than silently returning the unfiltered candidate set when the string table is unavailable', () => {
+    const entities = makeEntities(5);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const engine = new BulkQueryEngine(entities, view, null, null, null);
+
+    expect(() => engine.select({ namePattern: 'Wall.*' })).toThrow(/string table/i);
+  });
 });

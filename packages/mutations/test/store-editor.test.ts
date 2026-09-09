@@ -204,4 +204,30 @@ describe('StoreEditor', () => {
       setEntityTypeNormalizer(null);
     }
   });
+
+  // Defence against a stale watermark: the store can grow after StoreEditor
+  // construction (lazy index hydration, federated merge) without notifying
+  // the editor. Simulate that by mutating byId in place post-construction,
+  // then confirm addEntity refreshes the watermark instead of handing out
+  // an id that collides with the store's own new entry.
+  it('addEntity refreshes the watermark when the store grows after construction', () => {
+    const store = makeStore(10);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+
+    // Simulate the store growing (e.g. lazy index hydration) to include #11
+    // AFTER the editor was constructed with a watermark of 10.
+    store.entityIndex.byId.set(11, {
+      expressId: 11,
+      type: 'IFCWALL',
+      byteOffset: 0,
+      byteLength: 1,
+      lineNumber: 11,
+    });
+
+    const ref = editor.addEntity('IFCWALL', []);
+
+    // Must not collide with the store's own #11 entry.
+    expect(ref.expressId).toBeGreaterThan(11);
+  });
 });

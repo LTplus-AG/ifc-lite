@@ -17,6 +17,8 @@ import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnab
 import { buildModelLoadedGeometryProps, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideMeshOnlyCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
+import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
+import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { computeSourceFingerprint } from './sourceFingerprint.js';
 import { computeFullSourceHash } from '../utils/sourceContentHash.js';
 import { IfcParser, detectFormat, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
@@ -666,7 +668,7 @@ export function useIfcLoader() {
           const federatedModel: FederatedModel = {
             id: modelId,
             name: target.name ?? file.name,
-            sourceFingerprint: modelSourceIdentity,
+            sourceFingerprint: modelSourceIdentity, sourceContentHash: placementIdentity,
             ifcDataStore: dataStore,
             geometryResult,
             visible: target.visible ?? true,
@@ -787,7 +789,9 @@ export function useIfcLoader() {
 
       const sourceKeyFingerprint = computeSourceFingerprint(buffer);
       const modelSourceIdentity = `${file.name}:${sourceKeyFingerprint.hex}`;
-      if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity });
+      const placementIdentity = pointCloudFormat ? undefined : await placementSourceIdentity(file, () => loadSessionRef.current !== currentSession);
+      if (loadSessionRef.current !== currentSession) return;
+      if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity, sourceContentHash: placementIdentity });
       // IFCX/IFC5 vs IFC4 STEP vs GLB resolved from the full buffer; point
       // cloud format was already resolved from the head slice above.
       const format = pointCloudFormat ?? detectFormat(buffer);
@@ -973,6 +977,7 @@ export function useIfcLoader() {
         await finalizeModel(ingest.dataStore, ingest.geometryResult, ingest.schemaVersion, {
           pointCloudHandleId: ingest.rendererHandle.id, loadPath: 'point-cloud',
         });
+        void identifyLoadedPlacementSource(modelId, file);
         setProgress({ phase: 'Complete', percent: 100 });
         // Snapshot: points, not meshes - the ingest GeometryResult's zero
         // triangle/mesh totals are placeholders, not measurements, so only the
@@ -1070,12 +1075,8 @@ export function useIfcLoader() {
         }
       }
 
-      // Cache key = size + spread-sampled content fingerprint + format version.
-      // The fingerprint (`sourceFingerprint.ts`) hashes a ~160KB spread (head +
-      // tail + interior windows) plus the exact byte length, so a key match is
-      // itself the validation — a genuinely different file can't key the same
-      // entry. `.hash` is reused as the cache header's `sourceHash` so the write
-      // path never pays a full-file hash either.
+      // The sampled cache key is a lookup hint, validated by the mtime/full
+      // hash gates below. Placement matching uses its separate full identity.
       // Snapshot the merge-layers flag *before* the cache lookup: it is a
       // load-time WASM tessellation input (issue #540) and must discriminate
       // the cache key, otherwise toggling it + reloading serves geometry built

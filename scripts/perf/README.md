@@ -1036,3 +1036,16 @@ UVs, owner identity, Undo/Redo and the untouched federated model were checked;
 the remaining main-thread stall still fails the intended smoothness requirement.
 Do not treat fewer copies or a faster helper microbenchmark as acceptance: retain
 the paired interaction measurement and continue profiling transaction preparation.
+
+### Finite page appearance composition (#4260)
+
+The opt-in page planner bakes topology-preserving PNG charts and retains source
+texture density outside the page. It adds a PNG encoder to WASM; ordinary loading
+does not invoke the new operation. Source-verified baseline and final runtimes
+were compared in fresh interleaved browser workers under identical JS/assets.
+All geometry, color, UV and provenance fingerprints matched. A small ordinary
+worker-readiness increase was observed with overlapping samples; this is neither
+a speedup nor a zero-cost claim. Retain the explicit atlas budgets and source
+fidelity floor rather than silently downsampling photos to page resolution.
+Exact runtime provenance, samples and deltas are in `pdf-page-load-evidence.json`;
+page compositing latency and renderer readiness were not measured by this check.

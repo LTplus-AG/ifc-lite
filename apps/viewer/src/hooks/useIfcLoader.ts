@@ -1982,8 +1982,8 @@ export function useIfcLoader() {
                 //  - `mesh-only` (150-400MB, on by default; kill switch `?meshCache=0`):
                 //    the source is too big to persist, so cache tables + geometry
                 //    WITHOUT it; on re-open the freshly read buffer rehydrates the
-                //    accessors. The hit is validated by the strengthened cache key,
-                //    so repeat opens have no main-thread hash stall.
+                //    accessors. The cache key avoids a hash stall; the safety gate
+                //    is `decideMeshOnlyCacheHit`'s mtime + SHA-256 (`cacheTier.ts`).
                 // Files above 400MB (or with the mesh-only kill switch set) are not cached.
                 // Textured models are NOT cached (#1781): the binary cache
                 // format doesn't persist UVs/textures yet, so a cache hit would

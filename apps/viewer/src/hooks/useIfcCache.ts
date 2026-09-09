@@ -225,14 +225,14 @@ export function useIfcCache() {
       const reader = new BinaryCacheReader();
 
       // No full-file hash on the repeat-open path (the #1 un-flag blocker). The
-      // hit is already validated by the strengthened, spread-sampled cache key
-      // (`sourceFingerprint.ts`): a key match means the exact byte length AND a
-      // 64-bit hash of a ~160KB spread (head + tail + interior windows) match, so
-      // a genuinely different file can never key the same entry. That makes the
-      // former ~0.7-1.7s `xxhash64(fullSource)` recompute here redundant, and
-      // dropping it removes the main-thread stall for BOTH cache tiers. A
-      // truncated/corrupt cache buffer still fails fast in `reader.read` below →
-      // the catch deletes the entry and returns a graceful miss.
+      // strengthened, spread-sampled cache key (`sourceFingerprint.ts`) is a
+      // performance property, not a safety guarantee: it can't see a
+      // byte-length-preserving in-place edit between its sample windows. The
+      // mesh-only tier compensates with `decideMeshOnlyCacheHit`'s mtime +
+      // background SHA-256 gate (`cacheTier.ts`); skipping the full hash HERE
+      // just removes the former ~0.7-1.7s `xxhash64(fullSource)` main-thread
+      // stall. A truncated/corrupt cache buffer still fails fast in
+      // `reader.read` below → the catch deletes the entry, graceful miss.
       // Blob entries (cold-tier writes) are disk-backed: materialize once
       // for the load, but KEEP the blob handle — the cold-storage provider
       // uses slice() for partial chunk reads later (issue #1682 phase 3b).

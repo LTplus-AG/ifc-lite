@@ -11,9 +11,11 @@
  *     directly from IndexedDB.
  *   - `mesh-only`: the source-decoupled tier. Persist tables + geometry +
  *     instanced shards WITHOUT the source (too big for IndexedDB at 150-400MB);
- *     on re-open the freshly read file buffer hydrates the accessors. The hit is
- *     validated by the strengthened cache key (see `sourceFingerprint.ts`), not
- *     a full-file hash, so repeat opens have no main-thread stall.
+ *     on re-open the freshly read file buffer hydrates the accessors. The
+ *     strengthened cache key (see `sourceFingerprint.ts`) avoids a main-thread
+ *     stall on repeat opens, but is a performance property, not the safety
+ *     guarantee — that's {@link decideMeshOnlyCacheHit}'s mtime guard plus
+ *     background SHA-256 revalidation, below.
  *
  * The ONLY difference between the two caching tiers is `persistSource` (and the
  * size band that selects them) — the save/load code is otherwise shared, so

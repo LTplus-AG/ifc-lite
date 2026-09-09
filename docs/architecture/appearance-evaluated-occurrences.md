@@ -58,6 +58,7 @@ gaps. Generated references, replacement-item provenance and page image bindings
 are rebound together before the plan leaves Rust; host allocation checks remain
 strict.
 
-Page material names beginning with `#` are refused explicitly: the current
-authoring wire cannot distinguish those literals from reference strings. They
-are never silently rewritten or exported as a Name reference.
+Page material names equal to reserved wire tokens after trimming (`#123`,
+`.ENUM.`, `$`, or `*`) are refused explicitly. The current authoring wire cannot
+distinguish those literals from references/enumerations/null/derived values.
+Other labels, including `#material` and `.surface`, remain literal strings.

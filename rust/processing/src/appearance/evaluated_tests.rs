@@ -156,12 +156,22 @@ fn issue_4404_filtered_private_conversion_prefix_compacts_to_host_allocation_ord
 #[test]
 fn issue_4404_real_page_material_name_that_looks_like_generated_reference_is_literal() {
     let Some(source)=real_source() else{return};
-    let ambiguous_source=source.replace("'Kiefer'","'#100001'");
     let mut appearance=request(); appearance.repeat_s=false;appearance.repeat_t=false;
     appearance.mapping=Mapping::Planar {frame:MappingFrame::World,origin:[1.,6.,3.],axis_u:[0.,1.,0.],axis_v:[0.,0.,1.],metres_per_tile:[2.,2.]};
     let request=PageAppearanceRequest {appearance,page:AppearanceRaster {width:1,height:1,byte_offset:0,byte_length:4},source_images:vec![],texels_per_metre:32.};
-    let error=plan_page_appearance(ambiguous_source.as_bytes(),&request,&[255,0,0,255]).unwrap_err();
-    assert!(error.contains("names beginning with '#'"),"{error}");
+    for name in ["#100001",".FOO.","*","$"," .T. "," #100001 "] {
+        let ambiguous_source=source.replace("'Kiefer'",&format!("'{name}'"));
+        let error=plan_page_appearance(ambiguous_source.as_bytes(),&request,&[255,0,0,255]).unwrap_err();
+        assert!(error.contains("reserved appearance wire token"),"{name}: {error}");
+    }
+    for name in ["#material",".surface","*label","$label","ordinary'quoted"] {
+        let named_source=source.replace("'Kiefer'",&format!("'{}'",name.replace('\'',"''")));
+        let result=plan_page_appearance(named_source.as_bytes(),&request,&[255,0,0,255]).unwrap();
+        let output=apply(&named_source,&result.plan);
+        let reopened=crate::process_geometry(output.as_bytes());
+        let target=reopened.meshes.iter().find(|mesh|mesh.express_id==35169).unwrap();
+        assert_eq!(target.material_name.as_deref(),Some(name));
+    }
     // The public path refuses the ambiguous Name instead of emitting invalid
     // STEP. Also protect the finalizer itself against treating literal slots as
     // references, independently of the page writer's current restriction.

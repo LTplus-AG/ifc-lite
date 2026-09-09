@@ -82,11 +82,13 @@ export interface AppearanceCommitOptions extends EntityPreparationOptions {
 
 /** Prepared resources become one IFC edit and one existing viewer history command. */
 export async function commitAppearance(
-  modelId: string, assetId: string, plan: AppearancePlan,
+  modelId: string, assetId: string | readonly string[], plan: AppearancePlan,
   renderer: Renderer, preview: AppearancePreviewSession, groups: readonly AppearancePreviewParts[],
   source: ReturnType<typeof captureAppearanceSource>,
   options: AppearanceCommitOptions = {},
 ): Promise<void> {
+  const assetIds = [...new Set(typeof assetId === 'string' ? [assetId] : assetId)];
+  if (!assetIds.length) throw new Error('Appearance needs at least one retained image.');
   const state = useViewerStore.getState();
   const model = state.models.get(modelId);
   const view = state.mutationViews.get(modelId);
@@ -135,8 +137,8 @@ export async function commitAppearance(
     // No await or store publication may occur between this temporary IFC install
     // and GPU/history publication. Any guard/resource failure restores the overlay.
     const afterGuard = captureAppearanceDependencies(model.ifcDataStore, view, roots);
-    appearanceAssets.retain(assetId, historyOwner);
-    modelAppearanceAssets.registerAuthored(modelId, commandId, [assetId]);
+    for (const id of assetIds) appearanceAssets.retain(id, historyOwner);
+    modelAppearanceAssets.registerAuthored(modelId, commandId, assetIds);
     modelAppearanceAssets.authoredLifecycle.track(modelId, commandId, {
       dataStore: model.ifcDataStore, view,
       isCurrent: () => useViewerStore.getState().mutationViews.get(modelId) === view
@@ -165,7 +167,7 @@ export async function commitAppearance(
           const imageUris = direction === 'undo'
             ? planAuthoredResourceCleanup(model.ifcDataStore!, transaction.result, new Set()).retainedImageUris : undefined;
           replay.stage(parts);
-          if (direction === 'redo') modelAppearanceAssets.registerAuthored(modelId, commandId, [assetId]);
+          if (direction === 'redo') modelAppearanceAssets.registerAuthored(modelId, commandId, assetIds);
           if (useViewerStore.getState().models.get(modelId) !== currentModel
             || useViewerStore.getState().mutationViews.get(modelId) !== view) {
             throw new Error('The target model changed during appearance replay.');

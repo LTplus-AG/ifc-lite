@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { usePdfAppearanceSource } from './usePdfAppearanceSource.js';
+import { preparePdfPagePreview } from '@/lib/appearance/pdf/page-preview.js';
 import { prepareAppearanceSnapshot, type AppearanceSnapshot } from '@/lib/appearance/snapshot.js';
 import { expandAppearanceCorners } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
@@ -18,7 +20,7 @@ import type { AppearancePanelViewProps, AppearanceScope, AppearanceDraftSettings
 
 interface Draft {
   modelId: string;
-  sourceId: string;
+  assetIds: string[];
   plan: AppearancePlan;
   groups: AppearancePreviewParts[];
   session: AppearancePreviewSession | null;
@@ -57,6 +59,7 @@ export function useAppearancePanel(): AppearancePanelViewProps {
   const [counts, setCounts] = useState({ affected: 0, excluded: 0, reasons: [] as string[] });
   const [previewEnabled, setPreviewEnabled] = useState(canResumeModel && (savedDraft?.previewEnabled ?? true));
   const pendingAbort = useRef<AbortController | null>(null);
+  const applyAbort = useRef<AbortController | null>(null);
   const appliedRevision = useRef<string | null>(null);
   const draft = useRef<Draft | null>(null);
   const planner = useRef<ReturnType<typeof createAppearancePlanner> | null>(null);
@@ -64,6 +67,7 @@ export function useAppearancePanel(): AppearancePanelViewProps {
   const snapshot = useRef<AppearanceSnapshot | null>(null);
   const [catalogState, setCatalogState] = useState<{ modelId: string; catalog: AppearanceCatalog } | null>(null);
   const mounted = useRef(true);
+  const selectedSource = sources.find(source => source.id === sourceId);
   const target = models.get(modelId ?? '');
   const owners = useMemo(() => appearanceOwners(useViewerStore.getState(), modelId ?? ''),
     [models, modelId, selection, primarySelection, mutationVersion]);
@@ -72,6 +76,14 @@ export function useAppearancePanel(): AppearancePanelViewProps {
     : !target?.ifcDataStore ? 'Open an IFC model to apply appearance.'
     : target.schemaVersion === 'IFC2X3' || target.schemaVersion === 'IFC5' ? 'Appearance authoring currently needs an IFC4 or IFC4X3 model.'
     : target.loadState && target.loadState !== 'complete' ? 'Wait for the model to finish loading.' : undefined;
+
+  const pdfSource = usePdfAppearanceSource(selectedSource, id => {
+    setSourceId(id); setSettings(current => ({ ...current, kind: 'planar', repeatS: false, repeatT: false }));
+    setPreviewEnabled(true);
+  }, error => {
+    pendingAbort.current?.abort(); planner.current?.cancel();
+    setStatus('error'); setStatusMessage(message(error));
+  });
 
   useEffect(() => {
     useViewerStore.getState().saveAppearanceDraft({ modelId, sourceId, scope, settings, previewEnabled });
@@ -83,6 +95,7 @@ export function useAppearancePanel(): AppearancePanelViewProps {
     planner.current = ownedPlanner;
     return () => {
       mounted.current = false;
+      applyAbort.current?.abort();
       ownedPlanner.dispose();
       snapshot.current = null;
       if (planner.current === ownedPlanner) planner.current = null;
@@ -137,11 +150,15 @@ export function useAppearancePanel(): AppearancePanelViewProps {
         const renderer = getGlobalRenderer();
         if (!renderer) throw new Error('The renderer is not ready to preview appearance.');
         const { source, schema, nextExpressId, bytes } = currentSnapshot;
-        const imageUri = modelAppearanceAssets.getAuthoredUri(modelId, sourceId);
-        appearanceAssets.retain(sourceId, owner);
-        const bitmap = await appearanceAssets.decode(sourceId, owner, controller.signal);
+        const assetId = selectedSource?.assetId ?? sourceId;
+        const page = selectedSource?.pdf ? await preparePdfPagePreview({ snapshot: currentSnapshot,
+          productIds: currentScope.productIds, source: selectedSource, settings, planner: worker, owner, signal: controller.signal }) : undefined;
+        const firstPageImage = page?.itemImages.values().next().value;
+        const imageUri = page ? firstPageImage?.imageUri ?? '' : modelAppearanceAssets.getAuthoredUri(modelId, assetId);
+        if (!page) appearanceAssets.retain(assetId, owner);
+        const bitmap = page ? firstPageImage?.bitmap : await appearanceAssets.decode(assetId, owner, controller.signal);
         currentSnapshot.validate();
-        const plan = await worker.plan(bytes, { schema, sourceRevision: currentSnapshot.revision, nextExpressId,
+        const plan = page?.plan ?? await worker.plan(bytes, { schema, sourceRevision: currentSnapshot.revision, nextExpressId,
           productIds: currentScope.productIds, imageUri, repeatS: settings.repeatS,
           repeatT: settings.repeatT, mapping: appearanceMapping(settings) }, { signal: controller.signal });
         if (controller.signal.aborted || !mounted.current) return;
@@ -157,11 +174,12 @@ export function useAppearancePanel(): AppearancePanelViewProps {
         }
         const previous = draft.current; draft.current = null;
         discardDraft(previous);
+        if (!bitmap) throw new Error('The projected surfaces have no image.');
         const groups = bindAppearancePreview(state, renderer, modelId, plan, bitmap, imageUri,
-          settings.repeatS, settings.repeatT, expandAppearanceCorners);
+          settings.repeatS, settings.repeatT, expandAppearanceCorners, page?.itemImages);
         const session = new AppearancePreviewSession(renderer);
         session.stage(groups);
-        draft.current = { modelId, sourceId, plan, groups, session, owner, source };
+        draft.current = { modelId, assetIds: page?.assetIds ?? [assetId], plan, groups, session, owner, source };
         adopted = true;
         setCounts({ affected: groups.length, excluded: 0, reasons: [] });
         setShowingOriginal(false); setStatus('ready'); setStatusMessage('Preview ready. Apply to save this appearance in the IFC model.');
@@ -169,10 +187,12 @@ export function useAppearancePanel(): AppearancePanelViewProps {
         if (!controller.signal.aborted && mounted.current) { setStatus('error'); setStatusMessage(message(error)); }
       } finally { if (!adopted) appearanceAssets.releaseOwner(owner); }
     })(); }, 250);
-    return () => { clearTimeout(timer); controller.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };
-  }, [modelId, sourceId, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled]);
+    return () => { clearTimeout(timer); controller.abort(); applyAbort.current?.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };
+  }, [modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled]);
 
   async function upload(file: File): Promise<void> {
+    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) { await pdfSource.upload(file); return; }
+    pdfSource.cancel();
     const uploadOwner: AppearanceAssetOwner = { kind: 'draft', id: crypto.randomUUID() };
     let assetId: string | undefined;
     let sourceOwner: AppearanceAssetOwner | undefined;
@@ -207,6 +227,7 @@ export function useAppearancePanel(): AppearancePanelViewProps {
     }
   }
   function discard(): void {
+    applyAbort.current?.abort();
     appliedRevision.current = null;
     pendingAbort.current?.abort();
     planner.current?.cancel();
@@ -225,26 +246,44 @@ export function useAppearancePanel(): AppearancePanelViewProps {
       setShowingOriginal(original);
     } catch (error) { setStatus('error'); setStatusMessage(message(error)); }
   }
-  function apply(): void {
+  async function apply(): Promise<void> {
     const current = draft.current;
     const renderer = getGlobalRenderer();
     if (!current?.session || !renderer || status !== 'ready') return;
+    const controller = new AbortController(); applyAbort.current = controller;
     setStatus('applying');
     try {
-      commitAppearance(current.modelId, current.sourceId, current.plan, renderer, current.session, current.groups, current.source);
+      await commitAppearance(current.modelId, current.assetIds, current.plan, renderer, current.session, current.groups, current.source, {
+        signal: controller.signal,
+        onProgress: phase => { if (mounted.current) setStatusMessage(phase === 'preparing' ? 'Preparing IFC changes…' : 'Saving appearance…'); },
+      });
       setPreviewEnabled(false);
       appliedRevision.current = appearanceRevision(current.modelId);
       draft.current = null;
       appearanceAssets.releaseOwner(current.owner);
       setStatus('idle'); setStatusMessage('Appearance applied. Undo is available.');
-    } catch (error) { setStatus('error'); setStatusMessage(message(error)); }
+    } catch (error) { if (mounted.current && !controller.signal.aborted) { setStatus('error'); setStatusMessage(message(error)); } }
+    finally { if (applyAbort.current === controller) applyAbort.current = null; }
   }
   return {
+    allowPdf: true, pdf: pdfSource.controls, pdfPassword: pdfSource.passwordPrompt,
+    calibration: selectedSource?.pdf && selectedSource.thumbnailUrl ? {
+      recipe: selectedSource.pdf.recipe, thumbnailUrl: selectedSource.thumbnailUrl,
+      value: selectedSource.pdf.calibration, onChange: calibration => {
+        const current = useViewerStore.getState().appearanceSources.find(source => source.id === selectedSource.id);
+        if (current?.pdf) useViewerStore.getState().updateAppearanceSource({ ...current, pdf: { ...current.pdf, calibration } });
+        setPreviewEnabled(true);
+      },
+    } : undefined,
     models: [...models.values()].map(model => ({ id: model.id, name: model.name })), modelId,
     onModelChange: id => { setChosenModel(id); setPreviewEnabled(true); }, sources, sourceId,
-    onSourceChange: id => { setSourceId(id); setPreviewEnabled(true); },
-    onRemoveSource: id => { if (sourceId === id) { discard(); setSourceId(null); } useViewerStore.getState().removeAppearanceSource(id); },
-    onUpload: file => { void upload(file); }, sourceBusy, scope, onScopeChange: value => { setScope(value); setPreviewEnabled(true); },
+    onSourceChange: id => {
+      pdfSource.cancel(); setSourceId(id);
+      if (sources.find(source => source.id === id)?.pdf) setSettings(current => ({ ...current, kind: 'planar', repeatS: false, repeatT: false }));
+      setPreviewEnabled(true);
+    },
+    onRemoveSource: id => { pdfSource.cancel(); if (sourceId === id) { discard(); setSourceId(null); } useViewerStore.getState().removeAppearanceSource(id); },
+    onUpload: file => { void upload(file); }, sourceBusy: sourceBusy || pdfSource.busy, scope, onScopeChange: value => { setScope(value); setPreviewEnabled(true); },
     classes: scopeResult.classes, types: scopeResult.types, selectionCount: scopeResult.selectionCount,
     onUseSupported: () => {
       if (!modelId || !supported.current.length) return;
@@ -256,6 +295,6 @@ export function useAppearancePanel(): AppearancePanelViewProps {
     settings, onSettingsChange: patch => { setSettings(current => ({ ...current, ...patch })); setPreviewEnabled(true); },
     status, statusMessage, unavailableReason, canApply: status === 'ready' && !!draft.current?.session,
     canDiscard: !!draft.current || status === 'preparing', hasPreview: !!draft.current,
-    showingOriginal, onCompareChange: compare, onApply: apply, onDiscard: discard,
+    showingOriginal, onCompareChange: compare, onApply: () => { void apply(); }, onDiscard: discard,
   };
 }

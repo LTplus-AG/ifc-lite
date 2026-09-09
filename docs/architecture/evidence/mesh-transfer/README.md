@@ -38,8 +38,8 @@ evidence does not supply those missing correspondences.
 
 ## Real boulder geometry: conservative coverage and capacity
 
-The public CC0 albedo-only boulder GLB already qualified for captured-mesh
-creation supplies 66,122 source triangles. This probe uses the existing captured
+The [public CC0 albedo-only boulder GLB](../captured-glb/README.md), already qualified for captured-mesh
+creation, supplies 66,122 source triangles. This probe uses the existing captured
 IFCZIP from [the portability acceptance](../captured-room/README.md), with a
 40,087-triangle proxy. It first verifies that target coordinates are the known
 Y-up→Z-up conversion of that exact GLB. The four fit/four check observations are

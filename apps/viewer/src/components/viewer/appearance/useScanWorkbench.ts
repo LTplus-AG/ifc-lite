@@ -13,10 +13,12 @@ const message = (error: unknown) => error instanceof Error ? error.message : Str
 
 export function useScanWorkbench() {
   const models = useViewerStore(s => s.models), mutationVersion = useViewerStore(s => s.mutationVersion);
+  const mutationViews = useViewerStore(s => s.mutationViews);
+  const section = useViewerStore(s => s.sectionPlane), terrain = useViewerStore(s => s.cesiumTerrainClipY), cesium = useViewerStore(s => s.cesiumEnabled);
   const placement = useViewerStore(s => s.modelPlacement), room = useViewerStore(s => s.collabRoomId);
   const sources = useMemo(() => [...models.values()].filter(model => /\.glb$/i.test(model.sourceFile?.name ?? '')).flatMap(model =>
     (model.geometryResult?.meshes ?? []).flatMap((mesh, index) => mesh.textureRef && mesh.uvs ? [{ id: `${model.id}:${index}`, modelId: model.id, index, label: `${model.name} · Surface ${index + 1}` }] : [])), [models]);
-  const targets = [...models.values()].filter(model => model.ifcDataStore && !/\.glb$/i.test(model.sourceFile?.name ?? '') && useViewerStore.getState().mutationViews.has(model.id));
+  const targets = useMemo(() => [...models.values()].filter(model => model.ifcDataStore && !/\.glb$/i.test(model.sourceFile?.name ?? '')), [models]);
   const [sourceId, setSourceId] = useState(''), [targetId, setTargetId] = useState(''), [restart, setRestart] = useState(0);
   const [session, setSession] = useState<ScanSession | null>(null), [pairs, setPairs] = useState<ScanPair[]>([]);
   const [partition, setPartition] = useState<'fit' | 'check'>('fit');
@@ -43,7 +45,7 @@ export function useScanWorkbench() {
   useEffect(() => {
     if (!session) return;
     try { session.validate(); } catch (failure) { operation.current?.abort(); planner.current?.cancel(); setBusy(false); setStale(true); setPending(null); setResult(null); setAligned(false); setError(true); setStatus(message(failure)); }
-  }, [session, models, mutationVersion, placement, room]);
+  }, [session, models, mutationViews, mutationVersion, placement, room, section, terrain, cesium]);
   useEffect(() => {
     if (!pending || !session || stale) return;
     const renderer = getGlobalRenderer(); if (!renderer) { setError(true); setStatus('The main view is not ready. Cancel this point and retry once the IFC is visible.'); return; }

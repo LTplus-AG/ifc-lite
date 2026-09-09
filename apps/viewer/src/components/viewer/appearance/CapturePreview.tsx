@@ -26,7 +26,7 @@ export function CapturePreview({ mesh, assetId, triangles, disabled, onRegion, o
   const [projected, setProjected] = useState<{ id: string; x: number; y: number; check?: boolean }[]>([]);
   function projectMarkers(view: Renderer) {
     const element = canvas.current; if (!element) return;
-    const next = markerRef.current.flatMap(marker => { const p = view.getCamera().projectToScreen(marker.point, element.clientWidth, element.clientHeight); return p ? [{ id: marker.id, check: marker.check, x: p.x, y: p.y }] : []; });
+    const next = markerRef.current.flatMap(marker => { const p = view.getCamera().projectToScreen(marker.point, element.getBoundingClientRect().width, element.getBoundingClientRect().height); return p ? [{ id: marker.id, check: marker.check, x: p.x, y: p.y }] : []; });
     setProjected(previous => previous.length === next.length && previous.every((p, i) => p.id === next[i].id && p.x === next[i].x && p.y === next[i].y && p.check === next[i].check) ? previous : next);
   }
   const region = useRef(triangles); region.current = triangles;
@@ -110,7 +110,7 @@ export function CapturePreview({ mesh, assetId, triangles, disabled, onRegion, o
           const current = gesture.current, view = renderer.current;
           if (!current || current.pointer !== event.pointerId || !view || disabled) return;
           gesture.current = null; setBox(null);
-          if (!selecting && callbacks.current.onLandmark && Math.hypot(point(event).x - current.start.x, point(event).y - current.start.y) < 4) { const p = point(event); const element = event.currentTarget; const ray = view.getCamera().unprojectToRay(p.x * element.width / element.clientWidth, p.y * element.height / element.clientHeight, element.width, element.height); const hit = new Raycaster().raycast(ray, [{ ...mesh, origin: [0,0,0] }]); if (hit) callbacks.current.onLandmark(hit); }
+          if (!selecting && callbacks.current.onLandmark && Math.hypot(point(event).x - current.start.x, point(event).y - current.start.y) < 4) { const p = point(event); const element = event.currentTarget; const ray = view.getCamera().unprojectToRay(p.x * element.width / element.getBoundingClientRect().width, p.y * element.height / element.getBoundingClientRect().height, element.width, element.height); const hit = new Raycaster().raycast(ray, [{ ...mesh, origin: [0,0,0] }]); if (hit) callbacks.current.onLandmark(hit); }
           if (selecting) { const size = event.currentTarget; onRegion(capturedScreenRegion(mesh,current.start,point(event), p => view.getCamera().projectToScreen(p,size.clientWidth,size.clientHeight))); setSelecting(false); }
         }} onPointerCancel={() => { gesture.current = null; setBox(null); }}
  />

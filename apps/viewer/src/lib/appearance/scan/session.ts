@@ -5,6 +5,8 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { StepExporter } from '@ifc-lite/export';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
+import { getGlobalRenderer } from '@/hooks/useBCF';
+import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { computeFullSourceHash, computeFullSourceHashFromBlob } from '@/utils/sourceContentHash';
 import { placementFrameKey } from '@/lib/model-placement/persistence';
 import { captureAppearanceSource } from '../command';
@@ -27,7 +29,8 @@ function equal(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
 /** The source is an immutable decoded GLB-scene snapshot, not a placed view copy. */
 export async function prepareScanSession(sourceModelId: string, meshOrdinal: number, targetModelId: string, signal: AbortSignal): Promise<ScanSession> {
   const initial = useViewerStore.getState(), model = initial.models.get(sourceModelId), target = initial.models.get(targetModelId);
-  const mesh = model?.geometryResult?.meshes[meshOrdinal], view = initial.mutationViews.get(targetModelId);
+  const mesh = model?.geometryResult?.meshes[meshOrdinal];
+  const view = target?.ifcDataStore && !/\.glb$/i.test(target.sourceFile?.name ?? '') ? getOrCreateMutationView(useViewerStore, targetModelId) : null;
   if (!model?.sourceFile || !/\.glb$/i.test(model.sourceFile.name) || !mesh?.textureRef || !mesh.uvs
     || !target?.ifcDataStore || !view || sourceModelId === targetModelId) throw new Error('Choose a loaded textured GLB surface and an editable IFC destination.');
   if (mesh.indices.length / 3 > 200_000 || mesh.positions.length / 3 > 200_000
@@ -51,7 +54,10 @@ export async function prepareScanSession(sourceModelId: string, meshOrdinal: num
   const validate = () => {
     signal.throwIfAborted();
     const now = useViewerStore.getState();
-    if (now.models.get(sourceModelId) !== model || now.models.get(targetModelId) !== target
+    if (now.sectionPlane.enabled || (now.cesiumEnabled && now.cesiumTerrainClipY !== null) || getGlobalRenderer()?.hasActiveClipping()) throw new Error('Turn off section, terrain and box clipping before picking scan alignment landmarks.');
+    const currentSource = now.models.get(sourceModelId), currentTarget = now.models.get(targetModelId);
+    if (currentSource?.sourceFile !== model.sourceFile || currentSource?.geometryResult !== model.geometryResult
+      || currentTarget?.ifcDataStore !== target.ifcDataStore || currentTarget?.geometryResult !== target.geometryResult
       || now.mutationVersion !== initial.mutationVersion || now.modelPlacement !== placement || placementFrameKey(now) !== frame
       || now.collabRoomId || now.modelPlacement.preview || model.geometryResult?.meshes[meshOrdinal] !== mesh
       || mesh.positions !== positions || mesh.indices !== indices || mesh.uvs !== uvs

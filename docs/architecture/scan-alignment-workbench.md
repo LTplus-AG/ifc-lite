@@ -58,5 +58,8 @@ Changing a source, target, placement or effective IFC invalidates the draft;
 restart explicitly against the current models. A missing pinned source never
 silently selects another scan. Cancel aborts preparation or terminates the worker
 and rejects late completion. Closing the panel also disposes the dedicated
-renderer and its borrowed image lease. Shared rooms and an active placement
-preview are currently refused.
+renderer and its borrowed image lease. Shared rooms, an active placement preview and section/terrain/box clipping are
+currently refused. Visibility-only model changes preserve the pairs; changing
+source geometry invalidates them. The renderer
+`hasActiveClipping()` query reports the actual last-rendered clipping snapshot,
+including plugin-supplied clip boxes; store flags alone cannot certify it.

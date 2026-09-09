@@ -138,3 +138,6 @@ an already segmented textured triangle mesh, retaining independent UV seams and
 the original image URI. It uses the same native authoring and geometry path as
 annotation creation. See [captured surface creation](../../docs/api/wasm.md#captured-textured-surface-creation)
 for coordinate, budget and atomic host-commit requirements.
+
+Captured-mesh planning preserves optional `repeatS`/`repeatT` image sampler flags
+(default `false`); UVs remain bounded to `[0, 1]`.

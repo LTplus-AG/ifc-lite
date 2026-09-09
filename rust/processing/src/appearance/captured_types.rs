@@ -30,6 +30,11 @@ pub struct CapturedMeshRequest {
     #[serde(rename="Name")]
     pub name:String,
     pub image_uri:String,
+    /// Original image sampler. Omitted fields retain the non-repeating default.
+    #[serde(default)]
+    pub repeat_s:bool,
+    #[serde(default)]
+    pub repeat_t:bool,
     pub mesh:CapturedMesh,
 }
 #[derive(Debug,Serialize)]

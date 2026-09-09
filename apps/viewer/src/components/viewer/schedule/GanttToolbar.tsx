@@ -103,7 +103,7 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
     if (!scheduleData) return [];
     return [
       { value: ALL_SCHEDULES_SENTINEL, label: 'All tasks' },
-      ...scheduleData.workSchedules.map(s => ({
+      ...scheduleData.workSchedules.filter(s => s.kind === 'WorkSchedule').map(s => ({ // 'WorkPlan' never controls tasks directly
         value: s.globalId,
         label: s.name || s.globalId,
       })),

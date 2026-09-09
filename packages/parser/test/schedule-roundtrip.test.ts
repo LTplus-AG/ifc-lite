@@ -320,4 +320,47 @@ describe('schedule roundtrip — serializer ↔ parser', () => {
     expect(parsed.sequences[0].timeLagDuration).toBe('P2D');
     expect(parsed.sequences[0].timeLagSeconds).toBe(172_800);
   });
+
+  it('round-trips a standalone IfcWorkPlan added alongside a schedule (#4323)', async () => {
+    // The viewer's Generate dialog can now add a standalone IfcWorkPlan
+    // (apps/viewer/.../schedule-utils.ts's buildWorkPlanInfo) — a
+    // WorkScheduleInfo with kind: 'WorkPlan' and an empty taskGlobalIds,
+    // deliberately not grouped with the schedule via IfcRelAssignsToControl
+    // or IfcRelNests (neither round-trips today). This proves the plan
+    // itself — the entity the issue asked for — survives serialize+parse
+    // as an independent IFCWORKPLAN with no relation invented for it.
+    const extraction = makeExtraction();
+    extraction.workSchedules.push({
+      expressId: 0,
+      globalId: 'plan-standalone',
+      kind: 'WorkPlan',
+      name: 'Project plan',
+      taskGlobalIds: [],
+    });
+
+    const result = serializeScheduleToStep(extraction, {
+      nextId: 100,
+      ownerHistoryId: 10,
+      resolveProductExpressId: (gid) => (gid === 'wall-A' ? 11 : gid === 'wall-B' ? 12 : undefined),
+    });
+    expect(result.lines.some(l => l.includes('=IFCWORKPLAN('))).toBe(true);
+    // No IfcRelAssignsToControl referencing the plan — it has no
+    // taskGlobalIds, so the serializer must not invent a relation for it.
+    const controlRels = result.lines.filter(l => l.includes('=IFCRELASSIGNSTOCONTROL('));
+    expect(controlRels).toHaveLength(1); // only the schedule's own task assignment
+
+    const final = splice(buildBaseStep(), result.lines);
+    const store = await parseStep(final);
+    const parsed = extractScheduleOnDemand(store);
+
+    expect(parsed.workSchedules).toHaveLength(2);
+    const plan = parsed.workSchedules.find(ws => ws.kind === 'WorkPlan');
+    expect(plan).toBeDefined();
+    expect(plan!.name).toBe('Project plan');
+    // Standalone: no tasks resolve as controlled by the plan.
+    expect(plan!.taskGlobalIds).toHaveLength(0);
+    const schedule = parsed.workSchedules.find(ws => ws.kind === 'WorkSchedule');
+    expect(schedule).toBeDefined();
+    expect(schedule!.taskGlobalIds).toHaveLength(2);
+  });
 });

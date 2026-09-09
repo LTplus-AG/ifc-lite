@@ -2868,6 +2868,14 @@
     "serializeValue: function",
     "toStepLine: function"
   ],
+  "@ifc-lite/codegen/schema-hierarchy": [
+    "HierarchyEntity: interface",
+    "HierarchyRegistry: interface",
+    "isProperSubtypeOf: function",
+    "isProperSubtypeOfAny: function",
+    "isSubtypeOf: function",
+    "isSubtypeOfAny: function"
+  ],
   "@ifc-lite/collab": [
     "AGENT_PALETTE: const",
     "AgentIdentity: interface",

@@ -1120,3 +1120,11 @@ This is native load evidence, not a worker-pool speedup or conversion-latency
 claim. Preserve the opt-in boundary and measure broad authoring separately when
 its host UI lands. [Raw samples and measurement limits](../../docs/architecture/evidence/evaluated-occurrences/native-load.json)
 record the comparison.
+
+The F6 composite-allocation follow-up keeps compaction inside authoring only.
+Repeated base/branch AC20 load probes retained identical phase timings at the
+probe's measurement precision and identical ordered mesh fingerprints. This
+supports no resolvable native-load regression, not an authoring or worker-pool
+speedup. Preserve literal-versus-reference schema slots when compacting plans;
+never trade semantic fidelity for convenient generic string rewriting.
+[Follow-up samples and limits](../../docs/architecture/evidence/evaluated-occurrences/allocation-load.json).

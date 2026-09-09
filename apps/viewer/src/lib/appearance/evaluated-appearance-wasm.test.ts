@@ -25,6 +25,7 @@ test('real WASM preserves mapped occurrences unless explicitly opted in and comp
     assert.equal(preserved.items.length, 0); assert.equal(preserved.created.length, 0);
     request.representationPolicy = 'evaluatedOccurrence';
     const result = JSON.parse(new TextDecoder().decode(api.planAppearance(source, JSON.stringify(request)))) as AppearancePlan;
+    assert.deepEqual(result.created.map(row => row.expressId), Array.from({ length: result.created.length }, (_, index) => result.nextExpressId + index));
     assert.equal(result.items.length, 1); assert.deepEqual(result.exclusions, []);
     assert.equal(result.conversions?.[0].productId, 35169);
     assert.equal(result.conversions?.[0].sourceGeometryItemId, 35135);
@@ -39,6 +40,8 @@ test('real WASM preserves mapped occurrences unless explicitly opted in and comp
       mapping: { kind: 'planar', frame: 'world', origin: [1, 6, 3], axisU: [0, 1, 0], axisV: [0, 0, 1], metresPerTile: [2, 2] } },
     page: { width: 1, height: 1, byteOffset: 0, byteLength: 4 }, sourceImages: [], texelsPerMetre: 32,
   }, new Uint8Array([255, 0, 0, 255]));
+  assert.deepEqual(page.plan.created.map(row => row.expressId), Array.from({ length: page.plan.created.length }, (_, index) => page.plan.nextExpressId + index));
+  assert.equal(page.itemImages[0].geometryItemId, page.plan.items[0].geometryItemId);
   assert.equal(page.plan.conversions?.length, 1); assert.ok(page.assets.length > 0);
   assert.ok(page.plan.edits.every(edit => edit.expressId === 35155));
 });

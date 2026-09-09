@@ -35,6 +35,8 @@
 use ifc_lite_core::{EntityDecoder, IfcSchema, IfcType};
 use ifc_lite_geometry::{GeometryRouter, ProfileProcessor, TessellationQuality};
 
+mod support;
+
 const FIXTURE: &str = "../../tests/models/issues/953_trimmed_curve_cartesian_arc.ifc";
 
 /// `#206` — the `IfcArbitraryClosedProfileDef` whose outer curve is the
@@ -54,6 +56,11 @@ fn lfs_pointer_prefix() -> String {
 fn read_fixture() -> Option<String> {
     match std::fs::read_to_string(FIXTURE) {
         Ok(s) if s.starts_with(&lfs_pointer_prefix()) => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture is an LFS pointer and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download real bytes"
+            );
             eprintln!(
                 "skipping issue-953 regression: fixture at {FIXTURE} is a Git LFS \
                  pointer — run `pnpm fixtures` from the repo root to download it",
@@ -62,6 +69,11 @@ fn read_fixture() -> Option<String> {
         }
         Ok(s) => Some(s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
             eprintln!(
                 "skipping issue-953 regression: fixture missing at {FIXTURE} — \
                  run `pnpm fixtures` from the repo root to download it",

@@ -1,0 +1,13 @@
+{
+  "base": {
+    "apps/viewer/src/lib/appearance/apply-plan.ts": "fa6ad5251eff5be1b975bb0e4f518374576b135c28398ce522cbfc1a850794a0",
+    "apps/viewer/src/lib/appearance/command.ts": "4d7e9904c6b67941a717b192f37765a7dc8c27b1e59f0a537be04ee8f3651a23",
+    "packages/export/src/appearance-dependencies.ts": "f8db520a4df7ff93a593d30f42fee323047cf8eea47019940786d7526073ac62"
+  },
+  "combined": {
+    "apps/viewer/src/lib/appearance/apply-plan.ts": "efe1dbda97c240a55996446df0fdc5c9daeb822f4811072b460acce48367b99b",
+    "apps/viewer/src/lib/appearance/command.ts": "ddf6d35e0c9f3992a302262d02ffddd94a1637d0ebac0943bff594698fb2a1fe",
+    "packages/export/src/appearance-dependencies.ts": "1f0cf39f6cebfe7361585cbefbb3d06df570b8435ec35a0e29638e436eee52cd"
+  },
+  "wasm": "69773df4b6f0e2f4bfe4b3461b3cbf25fae41d6aa1b8e493fc8971238cc7ef3a"
+}

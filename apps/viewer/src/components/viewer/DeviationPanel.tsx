@@ -18,6 +18,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
+import { placementSnapshot, placementSnapshotIsCurrent } from '@/lib/model-placement/placement-snapshot';
+import { noteDeviationWrite } from '@/lib/model-placement/preview-analysis';
 import { cn } from '@/lib/utils';
 
 export interface DeviationPanelProps {
@@ -51,8 +53,13 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     setError(null);
     setRunning(true);
     const t0 = performance.now();
+    const placement = placementSnapshot(useViewerStore.getState());
     try {
+      noteDeviationWrite(renderer);
       const result = await renderer.computeDeviations({ maxRange: 1.0 });
+      if (!placementSnapshotIsCurrent(placement, useViewerStore.getState())) {
+        setError('Model positions changed during computation. Compute deviation again.'); return;
+      }
       const dt = performance.now() - t0;
       if (result.pointsProcessed === 0) {
         setError('No points processed — load a point cloud first.');

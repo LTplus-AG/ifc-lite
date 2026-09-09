@@ -39,6 +39,18 @@ export interface MeshData {
    *  Do not use winding for front/back-face determination or normal-based
    *  culling. Use depth testing or `abs(dot(normal, viewDir))` for shading. */
   indices: Uint32Array;
+  /** Canonical item triangle order, stamped at WASM extraction before streaming.
+   * Rebuilt topology must discard this metadata. The repeated indices reference
+   * survives structured clone and detects replacement without hashing geometry. */
+  appearanceSource?: {
+    kind: 'canonical-item';
+    /** Identity fence for the current geometry topology. */
+    indices: Uint32Array;
+    /** Original canonical final geometry, before streaming fragments. */
+    sourceIndices: Uint32Array;
+    /** Current triangle corner -> canonical triangle corner. Absent means identity. */
+    cornerIndices?: Uint32Array;
+  };
   /** Apparent rendering colour: IfcSurfaceStyleRendering.DiffuseColour
    *  when authored, otherwise the SurfaceColour. Matches what most IFC
    *  viewers display and what the GLB exporter uses by default. */

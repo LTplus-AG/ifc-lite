@@ -1,0 +1,146 @@
+{
+  "stages": {
+    "owner-applied": [
+      {
+        "id": 34,
+        "guid": "3mpfqvLAbPVRpwxIwYPgEV",
+        "triangles": 2,
+        "vertices": 6,
+        "positions": "6ae36185",
+        "worldPositions": "7d767d75",
+        "indices": "40964454",
+        "uvs": "e2a3167b",
+        "image": {
+          "width": 512,
+          "height": 418,
+          "rgba": "123e8890"
+        },
+        "url": "textures/cd10e732ea59c57cc5dc250bac1407f17c5691d17a7728fcce2e3ad2457d0992.png"
+      },
+      {
+        "id": 46,
+        "guid": "2suSFkYNjHpx6ZYAWo7w_I",
+        "triangles": 2,
+        "vertices": 6,
+        "positions": "6ae36185",
+        "worldPositions": "db23b765",
+        "indices": "40964454",
+        "uvs": "e2a3167b",
+        "image": {
+          "width": 512,
+          "height": 418,
+          "rgba": "30319955"
+        },
+        "url": "textures/cc987310cf253fbc5409603c2bd8d6767d645a2326b481f32d2520e6acd2e806.png"
+      }
+    ],
+    "guest-joined": [
+      {
+        "id": 2,
+        "guid": "/3mpfqvLAbPVRpwxIwYPgEV",
+        "triangles": 2,
+        "vertices": 6,
+        "positions": "6ae36185",
+        "worldPositions": "7d767d75",
+        "indices": "40964454",
+        "uvs": "e2a3167b",
+        "image": {
+          "width": 512,
+          "height": 418,
+          "rgba": "123e8890"
+        },
+        "url": null
+      },
+      {
+        "id": 3,
+        "guid": "/2suSFkYNjHpx6ZYAWo7w_I",
+        "triangles": 2,
+        "vertices": 6,
+        "positions": "6ae36185",
+        "worldPositions": "db23b765",
+        "indices": "40964454",
+        "uvs": "e2a3167b",
+        "image": {
+          "width": 512,
+          "height": 418,
+          "rgba": "30319955"
+        },
+        "url": null
+      }
+    ],
+    "guest-rejoined": [
+      {
+        "id": 2,
+        "guid": "/3mpfqvLAbPVRpwxIwYPgEV",
+        "triangles": 2,
+        "vertices": 6,
+        "positions": "6ae36185",
+        "worldPositions": "7d767d75",
+        "indices": "40964454",
+        "uvs": "e2a3167b",
+        "image": {
+          "width": 512,
+          "height": 418,
+          "rgba": "123e8890"
+        },
+        "url": null
+      },
+      {
+        "id": 3,
+        "guid": "/2suSFkYNjHpx6ZYAWo7w_I",
+        "triangles": 2,
+        "vertices": 6,
+        "positions": "6ae36185",
+        "worldPositions": "db23b765",
+        "indices": "40964454",
+        "uvs": "e2a3167b",
+        "image": {
+          "width": 512,
+          "height": 418,
+          "rgba": "30319955"
+        },
+        "url": null
+      }
+    ],
+    "room-export-reopened": [
+      {
+        "id": 1,
+        "guid": "/3mpfqvLAbPVRpwxIwYPgEV",
+        "triangles": 2,
+        "vertices": 6,
+        "positions": "7f5d2275",
+        "worldPositions": "7d767d75",
+        "indices": "40964454",
+        "uvs": "e2a3167b",
+        "image": {
+          "width": 512,
+          "height": 418,
+          "rgba": "123e8890"
+        },
+        "url": null
+      },
+      {
+        "id": 2,
+        "guid": "/2suSFkYNjHpx6ZYAWo7w_I",
+        "triangles": 2,
+        "vertices": 6,
+        "positions": "3ff58865",
+        "worldPositions": "db23b765",
+        "indices": "40964454",
+        "uvs": "e2a3167b",
+        "image": {
+          "width": 512,
+          "height": 418,
+          "rgba": "30319955"
+        },
+        "url": null
+      }
+    ]
+  },
+  "exactOwnerAssociatedWorldPositionIndexUvRgbaHashes": true,
+  "worldCoordinates": "Float32 positions plus origin, rounded to Float32; no byte identity claim for differing local coordinate storage",
+  "identity": "Room IFCX node paths prefix the original IFC GlobalId with /. Numeric Express IDs change. This verifies corresponding owners, not unchanged EXPRESS GlobalId strings.",
+  "signedLocalRelay": true,
+  "ownerClosedBeforeRejoin": true,
+  "roomExportBytes": 2291027
+}

@@ -144,6 +144,12 @@ export interface IfcZipContents {
    * versa). Empty for non-zip input and archives without images.
    */
   resources: Map<string, Uint8Array>;
+  /** Original archive paths, sharing the same bytes as basename aliases. */
+  originalResources: Map<string, Uint8Array>;
+  /** Preserve this entry path when exporting relative texture references. */
+  modelPath?: string;
+  /** At least one raster entry was omitted by extraction budgets. */
+  resourcesIncomplete: boolean;
 }
 
 /**
@@ -156,31 +162,32 @@ export interface IfcZipContents {
 export async function unwrapIfcZipWithResources(
   buffer: ArrayBuffer,
 ): Promise<IfcZipContents> {
-  if (!isZipBuffer(buffer)) return { model: buffer, resources: new Map() };
+  if (!isZipBuffer(buffer)) return { model: buffer, resources: new Map(), originalResources: new Map(), resourcesIncomplete: false };
   const { zip, entry } = await openZipModelEntry(buffer, MAX_UNCOMPRESSED_BYTES);
 
   const resources = new Map<string, Uint8Array>();
+  const originalResources = new Map<string, Uint8Array>();
   let totalImageBytes = 0;
+  let resourcesIncomplete = false;
   for (const res of Object.values(zip.files)) {
     if (res.dir || !IMAGE_ENTRY_RE.test(res.name)) continue;
-    if (resources.size >= MAX_IMAGE_ENTRIES) break;
+    if (originalResources.size >= MAX_IMAGE_ENTRIES) { resourcesIncomplete = true; break; }
     const size = declaredUncompressedSize(res);
-    if (typeof size === 'number' && size > MAX_IMAGE_BYTES) continue;
+    if (typeof size === 'number' && size > MAX_IMAGE_BYTES) { resourcesIncomplete = true; continue; }
     const basename = res.name.split('/').pop()?.toLowerCase();
     if (!basename) continue;
-    // First entry wins on a (pathological) basename collision — matching the
-    // deterministic first-wins convention used across the style indexes.
-    if (resources.has(basename)) continue;
     const bytes = await res.async('uint8array');
     // Enforce the aggregate budget on REAL decompressed sizes (the central-
     // directory declaration is advisory and absent on some writers).
-    if (bytes.byteLength > MAX_IMAGE_BYTES) continue;
-    if (totalImageBytes + bytes.byteLength > MAX_TOTAL_IMAGE_BYTES) break;
+    if (bytes.byteLength > MAX_IMAGE_BYTES) { resourcesIncomplete = true; continue; }
+    if (totalImageBytes + bytes.byteLength > MAX_TOTAL_IMAGE_BYTES) { resourcesIncomplete = true; break; }
     totalImageBytes += bytes.byteLength;
-    resources.set(basename, bytes);
+    originalResources.set(res.name, bytes);
+    // Preserve basename first-wins compatibility, retaining every original.
+    if (!resources.has(basename)) resources.set(basename, bytes);
   }
 
-  return { model: await entry.async('arraybuffer'), resources };
+  return { model: await entry.async('arraybuffer'), resources, originalResources, modelPath: entry.name, resourcesIncomplete };
 }
 
 /** JSZip's central-directory uncompressed size — internal field, so read

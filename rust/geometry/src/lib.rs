@@ -204,7 +204,7 @@ pub use mesh_orient::{orient_mesh_outward, orient_mesh_outward_verdict, OrientVe
 pub use processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
     ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor, FacetedBrepProcessor,
-    build_texture_index, ImageTextureRef, MeshTexture, PolygonalFaceSetProcessor,
+    build_texture_index, embedded_raster_dimensions, MAX_TEXTURE_DIMENSION, ImageTextureRef, MeshTexture, PolygonalFaceSetProcessor,
     ResolvedTextureMap, RevolvedAreaSolidProcessor, TextureAttachment, TextureSource, SurfaceOfLinearExtrusionProcessor,
     SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };

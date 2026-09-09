@@ -10,6 +10,25 @@
  * converting between IDS reports and BCF topics.
  */
 
+import type { AABB } from '../types.js';
+import {
+  type ViewpointOptions,
+  type ExtractedViewpointState,
+  type BcfViewerCameraState,
+  type BcfViewerSectionPlane,
+  IncompleteCameraStateError,
+  MissingSectionBoundsError,
+  DEFAULT_VIEWPOINT_FOV,
+  toVec3,
+  toTuple,
+  collectMissingCameraFields,
+  SDK_AXIS_TO_BCF_AXIS,
+  BCF_AXIS_TO_SDK_AXIS,
+} from './bcf-viewpoint.js';
+
+export type { ViewpointOptions, ExtractedViewpointState };
+export { IncompleteCameraStateError, MissingSectionBoundsError };
+
 // ============================================================================
 // Option types for the namespace API
 // ============================================================================
@@ -30,35 +49,6 @@ export interface CommentOptions {
   author: string;
   comment: string;
   viewpointGuid?: string;
-}
-
-export interface ViewpointOptions {
-  /** Camera state from bim.viewer.getCamera() */
-  camera?: {
-    mode: 'perspective' | 'orthographic';
-    position?: [number, number, number];
-    target?: [number, number, number];
-    up?: [number, number, number];
-  };
-  /** Section plane from bim.viewer.getSection() */
-  sectionPlane?: {
-    axis: 'x' | 'y' | 'z';
-    position: number;
-    enabled: boolean;
-    flipped: boolean;
-  };
-  /** Component selection/visibility */
-  components?: {
-    selection?: Array<{ GlobalId: string }>;
-    visibility?: {
-      defaultVisibility: boolean;
-      exceptions?: Array<{ GlobalId: string }>;
-    };
-    coloring?: Array<{
-      color: string;
-      components: Array<{ GlobalId: string }>;
-    }>;
-  };
 }
 
 export interface IDSBCFOptions {
@@ -152,16 +142,55 @@ export class BCFNamespace {
   // Viewpoints
   // --------------------------------------------------------------------------
 
-  /** Create a BCF viewpoint from viewer camera/section state. */
+  /**
+   * Create a BCF viewpoint from viewer camera/section state.
+   *
+   * Converts the SDK's tuple-based `camera`/x-y-z `sectionPlane` shapes
+   * (`bim.viewer.getCamera()`/`getSection()`) into `@ifc-lite/bcf`'s
+   * object-based `ViewerCameraState`/`ViewerSectionPlane` shapes. Throws
+   * `IncompleteCameraStateError` for a camera missing position/target/up,
+   * and `MissingSectionBoundsError` for an enabled section plane with no
+   * `bounds` — see #4251.
+   */
   async createViewpoint(options?: ViewpointOptions): Promise<unknown> {
     const mod = await loadBCF();
-    if (!options) return (mod.createViewpoint as AnyFn)({});
+
+    const missingCamera = collectMissingCameraFields(options?.camera);
+    if (missingCamera.length > 0) {
+      throw new IncompleteCameraStateError(missingCamera);
+    }
+    const camera = options!.camera!;
 
     // Map SDK's GlobalId (IFC convention) to BCF library's guid-based lists
-    const comps = options.components;
-    const bcfOptions: Record<string, unknown> = {};
-    if (options.camera) bcfOptions.camera = options.camera;
-    if (options.sectionPlane) bcfOptions.sectionPlane = options.sectionPlane;
+    const comps = options?.components;
+    const bcfOptions: Record<string, unknown> = {
+      camera: {
+        position: toVec3(camera.position!),
+        target: toVec3(camera.target!),
+        up: toVec3(camera.up!),
+        fov: DEFAULT_VIEWPOINT_FOV,
+        isOrthographic: camera.mode === 'orthographic',
+      } satisfies BcfViewerCameraState,
+    };
+
+    if (options?.sectionPlane) {
+      const sp = options.sectionPlane;
+      if (sp.enabled && !options.bounds) {
+        throw new MissingSectionBoundsError();
+      }
+      bcfOptions.sectionPlane = {
+        axis: SDK_AXIS_TO_BCF_AXIS[sp.axis],
+        position: sp.position,
+        enabled: sp.enabled,
+        flipped: sp.flipped,
+      } satisfies BcfViewerSectionPlane;
+    }
+    if (options?.bounds) {
+      bcfOptions.bounds = {
+        min: toVec3(options.bounds.min),
+        max: toVec3(options.bounds.max),
+      };
+    }
 
     if (comps?.selection) {
       bcfOptions.selectedGuids = comps.selection.map(c => c.GlobalId);
@@ -191,10 +220,54 @@ export class BCFNamespace {
     (mod.addViewpointToTopic as AnyFn)(topic, viewpoint);
   }
 
-  /** Extract viewer state from a BCF viewpoint. */
-  async extractViewpointState(viewpoint: unknown): Promise<unknown> {
+  /**
+   * Extract viewer state from a BCF viewpoint.
+   *
+   * Converts `@ifc-lite/bcf`'s object-based `camera`/`sectionPlane`
+   * (`down`/`front`/`side` axis) back into the SDK's tuple `camera` /
+   * `x`/`y`/`z` `sectionPlane` shapes, so the result round-trips straight
+   * into `bim.viewer.setCamera()`/`setSection()` — the same conversion
+   * `createViewpoint()` performs in reverse (#4251). Pass `bounds` (the
+   * model's AABB) to also recover `sectionPlane`; without it
+   * `@ifc-lite/bcf` cannot place a clipping plane and `sectionPlane` is
+   * omitted, matching `createViewpoint()`'s own bounds requirement.
+   */
+  async extractViewpointState(viewpoint: unknown, bounds?: AABB): Promise<ExtractedViewpointState> {
     const mod = await loadBCF();
-    return (mod.extractViewpointState as AnyFn)(viewpoint);
+    const bcfBounds = bounds
+      ? { min: toVec3(bounds.min), max: toVec3(bounds.max) }
+      : undefined;
+    const raw = (mod.extractViewpointState as AnyFn)(viewpoint, bcfBounds) as {
+      camera?: BcfViewerCameraState;
+      sectionPlane?: BcfViewerSectionPlane;
+      selectedGuids: string[];
+      hiddenGuids: string[];
+      visibleGuids: string[];
+      coloredGuids: Array<{ color: string; guids: string[] }>;
+    };
+
+    return {
+      camera: raw.camera
+        ? {
+            mode: raw.camera.isOrthographic ? 'orthographic' : 'perspective',
+            position: toTuple(raw.camera.position),
+            target: toTuple(raw.camera.target),
+            up: toTuple(raw.camera.up),
+          }
+        : undefined,
+      sectionPlane: raw.sectionPlane
+        ? {
+            axis: BCF_AXIS_TO_SDK_AXIS[raw.sectionPlane.axis],
+            position: raw.sectionPlane.position,
+            enabled: raw.sectionPlane.enabled,
+            flipped: raw.sectionPlane.flipped,
+          }
+        : undefined,
+      selectedGuids: raw.selectedGuids,
+      hiddenGuids: raw.hiddenGuids,
+      visibleGuids: raw.visibleGuids,
+      coloredGuids: raw.coloredGuids,
+    };
   }
 
   // --------------------------------------------------------------------------

@@ -13,7 +13,7 @@ import {
 } from '@ifc-lite/data';
 import { isSourceBytes } from '@ifc-lite/parser';
 
-import { buildIfcxDataStore } from './viewerModelIngest.js';
+import { buildIfcxDataStore, convertIfcxMeshes } from './viewerModelIngest.js';
 
 /**
  * Build a minimal IFCX parse-result shape: a populated entity table (so the
@@ -124,4 +124,19 @@ describe('buildIfcxDataStore source contract (#2183)', () => {
     // Lengths alone would pass on a zero-filled placeholder of the right size.
     assert.deepEqual(store.source.materialize(), new Uint8Array(buffer));
   });
+});
+
+
+it('retains IFCX texture bytes and UV associations at the canonical viewer ingest boundary (#4325)', () => {
+  const uvs = new Float32Array([0, 0, 1, 0, 0, 1]);
+  const rgba = new Uint8Array([255, 20, 40, 128]);
+  const result = convertIfcxMeshes([{
+    expressId: 8, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), uvs,
+    texture: { rgba, width: 1, height: 1, repeatS: true, repeatT: false },
+  }]);
+  assert.equal(result[0].expressId, 8);
+  assert.equal(result[0].uvs, uvs);
+  assert.equal(result[0].texture?.rgba, rgba);
+  assert.equal(result[0].texture?.repeatS, true);
 });

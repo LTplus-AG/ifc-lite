@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
+import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
 /**
  * Geometry streaming hook for the 3D viewport.
  *
@@ -238,7 +238,6 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     clearPendingMeshTranslations,
     clearPendingMeshRotations,
     clearInstancedShards,
-    clearColorRef,
     releaseGeometryAfterFinalize = false,
     onGeometryReleased,
   } = params;
@@ -275,7 +274,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       const pipeline = renderer.getPipeline();
       const scene = renderer.getScene();
       if (!device || !pipeline || !scene.hasQueuedMeshes()) return;
-      const flushed = runGpuUpload('flushPending:pump', () => scene.flushPending(device, pipeline)) ?? false;
+      const flushed = runGpuUpload('flushPending:pump', () => flushPlacementGeometry(scene, device, pipeline)) ?? false;
       if (flushed) {
         renderer.clearCaches();
         renderer.requestRender();

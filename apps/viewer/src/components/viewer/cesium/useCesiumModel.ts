@@ -30,10 +30,11 @@ import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { VisibilityEpochTracker } from '@ifc-lite/renderer';
 import { effectiveIsolatedIds } from '@/lib/effective-isolation';
 import { ghostExemptSelection } from '@/lib/ghost-selection';
-import { buildCesiumModelGLB, cesiumModelGLBKey, type CesiumModelGLBInput } from '@/lib/geo/cesium-model-glb';
+import { buildCesiumModelGLB, cesiumModelGLBKey, cesiumPlacementKey, type CesiumModelGLBInput } from '@/lib/geo/cesium-model-glb';
 import { swapCesiumModel } from '@/lib/geo/cesium-model-swap';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
 import { getCesiumModule } from './cesium-module';
+import { whenModelRenderable, type CesiumModelPrimitive } from './cesium-model-renderable';
 
 /**
  * Build a Cesium model matrix for placing the IFC model in ECEF.
@@ -76,60 +77,6 @@ function buildModelMatrix(
     0,               0, 0,               1,
   );
   return Cesium.Matrix4.multiply(enuToEcef, ifcToEnu, new Cesium.Matrix4());
-}
-
-/** The slice of `Cesium.Model` this overlay touches. */
-type CesiumModelPrimitive = {
-  modelMatrix: any;
-  shadows?: any;
-  ready?: boolean;
-  readyEvent?: { addEventListener(cb: () => void): () => void };
-  destroy?: () => void;
-};
-
-/**
- * Resolves once `model` can actually draw.
- *
- * `Model.fromGltfAsync` resolving only means the glTF was fetched and parsed:
- * Cesium finishes creating WebGL resources inside `update()` over subsequent
- * frames, raises `readyEvent` from `frameState.afterRender`, and then skips one
- * more frame before rendering. Waiting for the event plus a rendered frame is
- * what makes "swap without a visible gap" true rather than merely
- * "swap without an empty collection" (#2583).
- *
- * Rejects if neither happens within the timeout, so a model that never becomes
- * renderable cannot strand its predecessor on the globe for the session.
- */
-function whenModelRenderable(
-  viewer: { scene: { postRender: { addEventListener(cb: () => void): () => void } }; },
-  model: CesiumModelPrimitive,
-  timeoutMs = 5_000,
-): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    let done = false;
-    const finish = (ok: boolean) => {
-      if (done) return;
-      done = true;
-      offReady?.();
-      offFrame?.();
-      globalThis.clearTimeout(timer);
-      if (ok) { resolve(); return; }
-      // Bounded on purpose: the timeout path degrades to exactly the old
-      // behaviour (drop the previous model and accept a brief blank), so a
-      // model that is merely slow costs a flicker, not a stranded primitive.
-      console.warn('[CesiumOverlay] model did not report renderable within %d ms; swapping anyway', timeoutMs);
-      reject(new Error('model never became renderable'));
-    };
-    // One rendered frame AFTER ready — Cesium deliberately returns early from
-    // the update that raises the event, so the model draws on the next one.
-    const afterReady = () => { offFrame = viewer.scene.postRender.addEventListener(() => finish(true)); };
-    let offFrame: (() => void) | undefined;
-    let offReady: (() => void) | undefined;
-    const timer = globalThis.setTimeout(() => finish(false), timeoutMs);
-    if (model.ready) { afterReady(); return; }
-    if (!model.readyEvent) { finish(true); return; } // nothing to wait on
-    offReady = model.readyEvent.addEventListener(() => { offReady?.(); afterReady(); });
-  });
 }
 
 export interface UseCesiumModelParams {
@@ -181,6 +128,8 @@ export function useCesiumModel({
   // In-place mesh mutations (a gizmo move rewrites positions in the SAME
   // arrays) change no mesh count, so the world-view GLB cache keys on this too.
   const geometryContentVersion = useViewerStore((s) => s.geometryContentVersion);
+  const placement = useViewerStore((s) => s.modelPlacement);
+  const placementKey = useMemo(() => cesiumPlacementKey(placement), [placement]);
   // Hide/isolate, resolved the way Viewport resolves what it hands the
   // renderer, so the map draws the elements the viewport draws (#2578).
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
@@ -271,9 +220,10 @@ export function useCesiumModel({
     if (!viewer || !bridge || !Cesium) return;
 
     let cancelled = false;
+    const superseded = () => cancelled || cesiumPlacementKey(useViewerStore.getState().modelPlacement) !== placementKey;
 
     const startExport = async () => {
-      if (cancelled) return;
+      if (superseded()) return;
       // Declared at this scope so the catch can release a model that was built
       // but never installed (the viewer was destroyed mid-load).
       let model: CesiumModelPrimitive | null = null;
@@ -284,6 +234,7 @@ export function useCesiumModel({
         const glbInput: CesiumModelGLBInput = {
           geometryResult,
           geometryContentVersion,
+          placementKey,
           hiddenIds: visibilityRef.current.hiddenIds,
           isolatedIds: visibilityRef.current.isolatedIds,
           visibilityVersion,
@@ -311,15 +262,15 @@ export function useCesiumModel({
           glbBytes = cached.glb;
         } else {
           await new Promise(r => setTimeout(r, 50));
-          if (cancelled) return;
+          if (superseded()) return;
           const built = buildCesiumModelGLB(glbInput);
           glbBytes = built.glb;
           glbCacheRef.current = { key: built.key, glb: built.glb };
         }
-        if (cancelled) return;
+        if (superseded()) return;
 
         await new Promise(r => setTimeout(r, 0));
-        if (cancelled) return;
+        if (superseded()) return;
 
         // Build initial model matrix
         const modelMatrix = buildModelMatrix(Cesium, bridge, coordinateInfo);
@@ -358,7 +309,7 @@ export function useCesiumModel({
         } finally {
           URL.revokeObjectURL(glbUrl);
         }
-        if (cancelled) {
+        if (superseded()) {
           model?.destroy?.();
           return;
         }
@@ -368,12 +319,12 @@ export function useCesiumModel({
           cesiumModelRef.current,
           model,
           (m) => whenModelRenderable(viewer, m),
-          () => cancelled,
+          superseded,
         );
         // Superseded: a newer build owns the outcome, the globe still shows the
         // previous model, and `model` has already been destroyed. Recording it
         // would leave the refs pointing at geometry nobody is rendering.
-        if (outcome === 'superseded' || cancelled) return;
+        if (outcome === 'superseded' || superseded()) return;
         cesiumModelRef.current = model;
         loadedKeyRef.current = key;
         setCesiumGlbLoaded(true);
@@ -400,7 +351,7 @@ export function useCesiumModel({
       cancelled = true;
       clearTimeout(deferTimer);
     };
-  }, [status, bridgeVersion, geometryResult, geometryContentVersion, visibilityVersion, ghostVersion]);
+  }, [status, bridgeVersion, geometryResult, geometryContentVersion, placementKey, visibilityVersion, ghostVersion]);
 
   // ─── Effect 2d: Update model matrix (instant, no reload) ────────────────
   // When terrain placement or georef changes, just update the

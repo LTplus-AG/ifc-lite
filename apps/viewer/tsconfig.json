@@ -39,6 +39,6 @@
       "@ifc-lite/source-msgraph": ["../../packages/source-msgraph/src"]
     }
   },
-  "include": ["src/**/*", "../../packages/renderer/src/webgpu-types.d.ts"],
+  "include": ["src/**/*"],
   "exclude": ["src/lib/scripts/templates"]
 }

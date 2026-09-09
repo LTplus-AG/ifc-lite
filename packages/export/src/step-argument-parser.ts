@@ -4,6 +4,7 @@
 
 import { STEP_TRIVIA } from '@ifc-lite/parser';
 import { skipStepComment } from './step-comment-skip.js';
+import { isWellFormedStepSlot } from './step-slot-grammar.js';
 
 /**
  * `#N=CLASS(...)` record prefix, with STEP trivia (whitespace and/or a
@@ -178,6 +179,13 @@ export function replaceStepArgument(
  *     dips negative and climbs back looks balanced at the end while every comma
  *     in between was read as nested.
  *
+ * A part whose parentheses nest deeper than the per-slot grammar's bound is
+ * refused the same way — see `MAX_SLOT_NESTING_DEPTH` in `step-slot-grammar.ts`
+ * for why that bound exists and how the number was chosen. It is the one
+ * rejection here that is not about the record's text being wrong; it is what
+ * keeps this function's answer to "parts, or null" total, instead of letting a
+ * deeply nested list reach the caller as a thrown `RangeError` nothing handles.
+ *
  * An EMPTY top-level slot (`a,,b`, or a trailing comma) is deliberately NOT
  * rejected, though it is invalid STEP. It costs no alignment: an empty argument
  * is ONE part, exactly as the entity parser counts it, so every index still
@@ -261,134 +269,4 @@ export function splitTopLevelStepArguments(input: string): string[] | null {
     if (!isWellFormedStepSlot(part)) return null;
   }
   return parts;
-}
-
-/**
- * Whether `part` — one slot `splitTopLevelStepArguments` already separated on
- * a top-level comma, raw text including any surrounding whitespace/comments —
- * is a single well-formed STEP value (a string literal, a binary literal
- * (`"..."`), `$`, `*`, a bare keyword / enumeration / number / `#`-reference
- * token, or a typed value or list `NAME(...)` / `(...)`), or is empty.
- *
- * Empty is deliberately accepted, matching the docstring above: `a,,b` is one
- * empty part, not a rejection, so slot indices after it stay aligned with what
- * the entity parser counts. A part that is ONLY a comment (no value) is NOT
- * given that same pass — a lone `/* c *​/` between two commas is not a
- * value at all, so treating it as one more empty slot is exactly the index
- * shift that produces a phantom slot; rejecting the whole split is the
- * correct answer there, same as any other malformed argument list.
- *
- * A `/` that is not opening a comment cannot be swallowed into a bare token:
- * it is outside every token's character set, so it stops the scan and the
- * top-of-function "consumed to the end" check then fails the whole part.
- */
-function isWellFormedStepSlot(part: string): boolean {
-  if (part.trim() === '') return true;
-
-  let i = 0;
-  const n = part.length;
-
-  const skipTrivia = (): void => {
-    for (;;) {
-      while (i < n && /\s/.test(part[i])) i++;
-      if (part[i] === '/' && part[i + 1] === '*') {
-        const end = part.indexOf('*/', i + 2);
-        if (end === -1) {
-          i = n; // unterminated: leave content unconsumed so parseValue fails
-          return;
-        }
-        i = end + 2;
-        continue;
-      }
-      break;
-    }
-  };
-
-  const parseParenList = (): boolean => {
-    // Caller has already consumed the opening '('.
-    skipTrivia();
-    if (part[i] === ')') {
-      i++;
-      return true;
-    }
-    for (;;) {
-      if (!parseValue()) return false;
-      skipTrivia();
-      if (part[i] === ',') {
-        i++;
-        skipTrivia();
-        continue;
-      }
-      if (part[i] === ')') {
-        i++;
-        return true;
-      }
-      return false;
-    }
-  };
-
-  const parseValue = (): boolean => {
-    skipTrivia();
-    if (i >= n) return false;
-    const c = part[i];
-
-    if (c === "'") {
-      i++;
-      while (i < n) {
-        if (part[i] === "'") {
-          if (part[i + 1] === "'") {
-            i += 2;
-            continue;
-          }
-          i++;
-          return true;
-        }
-        i++;
-      }
-      return false; // unterminated string
-    }
-
-    if (c === '(') {
-      i++;
-      return parseParenList();
-    }
-
-    // Binary literal (ISO 10303-21 `"..."`, e.g. `"0123ABC"` — an
-    // IfcBinary-typed value, distinct from the `'...'` string literal above.
-    // Unlike a string, `"` has no doubled-quote escape in STEP: ifcopenshell's
-    // tokenizer (`IfcParse.cpp`, `GeneralTokenPtr`/`IfcSpfLexer::Next`)
-    // classifies a token as binary purely by its leading `"` and does not
-    // decode escapes inside it, so the first following `"` ends the literal.
-    if (c === '"') {
-      i++;
-      while (i < n && part[i] !== '"') i++;
-      if (i >= n) return false; // unterminated binary literal
-      i++;
-      return true;
-    }
-
-    if (c === '$' || c === '*') {
-      i++;
-      return true;
-    }
-
-    // Bare token: keyword, enumeration (`.NOTDEFINED.`), number (incl.
-    // exponent), or an `#`-prefixed entity reference.
-    const start = i;
-    while (i < n && /[A-Za-z0-9_.+\-#]/.test(part[i])) i++;
-    if (i === start) return false;
-
-    // A typed value: NAME(...), trivia tolerated before '(' the same way
-    // `RECORD_PREFIX_RE` above tolerates it before a record's own '('.
-    skipTrivia();
-    if (part[i] === '(') {
-      i++;
-      return parseParenList();
-    }
-    return true;
-  };
-
-  if (!parseValue()) return false;
-  skipTrivia();
-  return i === n;
 }

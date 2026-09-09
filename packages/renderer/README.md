@@ -108,3 +108,5 @@ See the [Rendering Guide](https://ifclite.dev/docs/guide/rendering/) and [API Re
 ## License
 
 [MPL-2.0](../../LICENSE)
+
+Registered raster references are available through `renderer.getReferenceImages()`; see the [rendering guide](../../docs/guide/rendering.md#registered-raster-references) for identity, coordinates, resource ownership and picking.

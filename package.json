@@ -112,7 +112,7 @@
     "typescript": "^6.0.3"
   },
   "engines": {
-    "node": ">=22.11 <23 || 24.x",
+    "node": ">=22.13 <23 || 24.x",
     "pnpm": ">=10.0.0"
   },
   "dependencies": {

@@ -1,16 +1,19 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { prepareAppearanceSerialization } from '../../lib/appearance/serialization.js';
+import { packagePortableIfc, portableIfcDownload } from '../../lib/export/portable-ifc.js';
 
 import type { StoreApi } from './types.js';
 import type { EntityRef, EntityData, PropertySetData, QuantitySetData, ExportBackendMethods } from '@ifc-lite/sdk';
 import { EntityNode, findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import { escapeCsvCell, StepExporter, type StepExportOptions } from '@ifc-lite/export';
-import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
+import { getModelForRef } from './model-compat.js';
 import { applyAttributeMutationsToEntityData, getMutationViewForModel } from './mutation-view.js';
 import { serializeScheduleToStep, type ScheduleExtraction, type IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from './export-schedule-splice.js';
 import { downloadFile, sanitizeFilename, buildExportFilename } from '../../lib/export/download.js';
+import { resolveExportVisibility } from '../../store/exportVisibility.js';
 
 /** Options for CSV export */
 interface CsvOptions {
@@ -82,25 +85,28 @@ function normalizeRefs(raw: unknown[]): EntityRef[] {
   });
 }
 
+/**
+ * Resolve `sdk.export.ifc()` visibility filters. "Full model" means coverage, not size: `selectedExpressIds` is
+ * the whole model only when size === `entityCount` and `hasEntity` confirms every id exists -- cardinality alone
+ * let nonexistent ids pass as "full", silently exporting the whole model (reproduced live). Short of that it
+ * isolates to `selectedExpressIds`; a verified full model instead routes through `resolveExportVisibility()`
+ * (ExportDialog/GLBExportDialog's resolver) so `classFilter`/`selectedStoreys`/`typeVisibility` apply too (#4328). */
 export function resolveVisibilityFilterSets(
   state: StoreApi['getState'] extends () => infer T ? T : never,
   modelId: string,
   selectedExpressIds: Set<number>,
   entityCount: number,
+  hasEntity: (expressId: number) => boolean,
 ): { visibleOnly: boolean; hiddenEntityIds: Set<number>; isolatedEntityIds: Set<number> | null } {
-  const shouldLimitToSelection = selectedExpressIds.size < entityCount;
-  const isLegacyModel = state.models.size === 0 && (modelId === LEGACY_MODEL_ID || modelId === 'legacy');
-  const modelHidden = state.hiddenEntitiesByModel.get(modelId) ?? (isLegacyModel ? state.hiddenEntities : undefined);
-  const modelIsolated = state.isolatedEntitiesByModel.get(modelId) ?? (isLegacyModel ? state.isolatedEntities : null);
+  if (selectedExpressIds.size !== entityCount || ![...selectedExpressIds].every(hasEntity)) {
+    return { visibleOnly: true, hiddenEntityIds: new Set<number>(), isolatedEntityIds: selectedExpressIds };
+  }
 
+  const visibility = resolveExportVisibility(state, modelId);
   return {
-    visibleOnly: shouldLimitToSelection,
-    hiddenEntityIds: shouldLimitToSelection
-      ? new Set<number>()
-      : new Set<number>(modelHidden ?? []),
-    isolatedEntityIds: shouldLimitToSelection
-      ? selectedExpressIds
-      : modelIsolated,
+    visibleOnly: false,
+    hiddenEntityIds: visibility.hiddenLocalIds,
+    isolatedEntityIds: visibility.isolatedLocalIds,
   };
 }
 
@@ -329,27 +335,26 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
       if (!model?.ifcDataStore) {
         throw new Error(`export.ifc: model '${modelId}' is not loaded`);
       }
-
-      if (model.ifcDataStore.schemaVersion === 'IFC5') {
+      const dataStore = model.ifcDataStore;
+      if (dataStore.schemaVersion === 'IFC5') {
         throw new Error('export.ifc: IFC5 export is not supported by STEP exporter, use IFC2X3/IFC4/IFC4X3 models');
       }
 
       const options = candidateOptions;
       const selectedExpressIds = new Set(refs.map(ref => ref.expressId));
       const visibilityFilters = resolveVisibilityFilterSets(
-        state,
-        modelId,
-        selectedExpressIds,
-        model.ifcDataStore.entityCount,
+        state, modelId, selectedExpressIds, dataStore.entityCount,
+        (expressId) => dataStore.entityIndex.byId.has(expressId),
       );
       const visibleOnly = options.visibleOnly === true || visibilityFilters.visibleOnly;
       const hiddenEntityIds = visibleOnly ? visibilityFilters.hiddenEntityIds : new Set<number>();
       const isolatedEntityIds = visibleOnly ? visibilityFilters.isolatedEntityIds : null;
 
-      const exporter = new StepExporter(
-        model.ifcDataStore,
+      const serialized = prepareAppearanceSerialization(
+        modelId, model.ifcDataStore,
         options.includeMutations === false ? undefined : getMutationViewForModel(store, modelId) ?? undefined,
       );
+      const exporter = new StepExporter(model.ifcDataStore, serialized.view);
       // Include georeferencing mutations if present
       const georefMutations = options.includeMutations !== false
         ? state.georefMutations?.get(modelId) ?? undefined
@@ -379,7 +384,7 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
         scheduleIsEdited: state.scheduleIsEdited === true,
         scheduleSourceModelId: state.scheduleSourceModelId ?? null,
       });
-      return spliced.content;
+      return packagePortableIfc(modelId, spliced.content, serialized.resources).content;
     },
 
     download(content: string | Uint8Array, filename: string, mimeType?: string) {
@@ -399,7 +404,8 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
       const safe = ext
         ? buildExportFilename(stem, ext)
         : sanitizeFilename(filename, { fallback: 'export' });
-      triggerDownload(content, safe, mimeType ?? 'text/plain');
+      const portable = portableIfcDownload(content, safe, mimeType ?? 'text/plain');
+      triggerDownload(content, portable.filename, portable.mime);
       return undefined;
     },
   };

@@ -6,8 +6,9 @@
  * Gather everything the to-scale 3D-view PDF export needs from the live viewer
  * — store state, renderer camera, viewport canvas — in one place (#2042).
  *
- * DEFECT CLASS — an export that draws a different model from the screen. Two
- * ways that happens, and both are folded here rather than at the call site:
+ * DEFECT CLASS — an export that draws a different model from the screen.
+ * Three ways that happens, and all three are folded here rather than at the
+ * call site:
  *
  *  1. **The instanced half goes missing** (#2558). GPU-instanced occurrences
  *     never appear in `geometryResult.meshes`; the Cesium world view read that
@@ -21,6 +22,26 @@
  *     storey while the screen shows one, so this resolves the full allowlist
  *     through `computeIsolationFilterSet` — the shared derivation, not a
  *     restatement of it.
+ *  3. **The per-model "Isolate in 3D" channel is a separate map.**
+ *     `hiddenEntitiesByModel` / `isolatedEntitiesByModel` (federation-only,
+ *     keyed by `modelId`, values in that model's LOCAL express-id space) are
+ *     not part of `state.hiddenEntities` / `state.isolatedEntities` or
+ *     `computeIsolationFilterSet` at all — `getVisibleGlobalIds` in
+ *     `basketVisibleSet.ts` applies them as a THIRD, independent AND, per
+ *     candidate, scoped to that candidate's own model. An export that folded
+ *     only `hiddenEntities`/`isolatedEntities`/`computedIsolatedIds` would
+ *     print a federated model the user isolated away with a model-scoped
+ *     hide/isolate — the same "export disagrees with the viewport" class as
+ *     (2), just via the channel neither `hiddenEntities` nor
+ *     `computeIsolationFilterSet` covers. `gatherDrawnMeshes` below applies
+ *     it inline, per model, in that model's own LOCAL id space (mirroring
+ *     `getVisibleGlobalIds`), rather than converting it to a global `Set` and
+ *     handing it to `collectViewMeshes`: `collectViewMeshes`'s existing
+ *     `modelVisibility` gate keys off `MeshData.modelIndex`, and this file's
+ *     meshes carry no reliable `modelIndex` (only `ViewportContainer`'s render
+ *     memo stamps that, via `geometryWithModelIndex`) — inventing one here
+ *     would be a second, parallel identity scheme for the same models this
+ *     loop already indexes correctly by `modelId`.
  *
  * The camera is read once, imperatively, at the moment this is called: it is
  * not store state, so nothing re-renders when the user orbits. Callers refresh
@@ -86,14 +107,22 @@ export function readViewPdfSource(state: ViewerState): ViewPdfSource {
 
 /**
  * Every visible model's real-building geometry, instanced occurrences included,
- * in federated global-id space.
+ * in federated global-id space, with the per-model "Isolate in 3D" channel
+ * (`hiddenEntitiesByModel` / `isolatedEntitiesByModel`) already applied.
  *
  * `selectModelMeshes` drops type-library geometry for the same reason the 2D
  * drawing pipeline does: a printed drawing draws the building, never the type
  * library (#2058).
  */
 function gatherDrawnMeshes(state: ViewerState): MeshData[] {
-  const results: { geometry: GeometryResult; instancedModelRange: InstancedModelRange | null }[] = [];
+  const results: {
+    geometry: GeometryResult;
+    instancedModelRange: InstancedModelRange | null;
+    /** `null` for the legacy single-model slot, which has no per-model
+     *  hide/isolate channel to look up. */
+    modelId: string | null;
+    idOffset: number;
+  }[] = [];
 
   if (state.models.size > 0) {
     for (const model of state.models.values()) {
@@ -104,22 +133,42 @@ function gatherDrawnMeshes(state: ViewerState): MeshData[] {
       // entities into this one's drawn set (#2865/#2878 follow-up).
       results.push({
         geometry: model.geometryResult,
-        instancedModelRange: { idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0 },
+        instancedModelRange: { modelId: model.id, idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0 },
+        modelId: model.id,
+        idOffset: model.idOffset ?? 0,
       });
     }
   } else if (state.geometryResult) {
     // The legacy single-model slot is provably the sole model loaded — nothing
     // else to wrongly include, so `null` (no filter) is correct.
-    results.push({ geometry: state.geometryResult, instancedModelRange: null });
+    results.push({ geometry: state.geometryResult, instancedModelRange: null, modelId: null, idOffset: 0 });
   }
 
   const meshes: MeshData[] = [];
-  for (const { geometry, instancedModelRange } of results) {
+  for (const { geometry, instancedModelRange, modelId, idOffset } of results) {
+    // Per-model "Isolate in 3D" channel for THIS model only, in its own LOCAL
+    // express-id space — same lookup `getVisibleGlobalIds` (basketVisibleSet.ts)
+    // does per candidate. A model absent from either map is unrestricted by
+    // this channel, matching the store's own convention (an emptied Set is
+    // deleted from the map, never left present-and-empty; see
+    // `showEntityInModel`/`clearModelVisibility` in `visibilitySlice.ts`).
+    const modelHidden = modelId ? state.hiddenEntitiesByModel.get(modelId) : undefined;
+    const modelIsolated = modelId ? state.isolatedEntitiesByModel.get(modelId) : undefined;
+
     // Appended one at a time, NOT `push(...meshes)`: the argument count would
     // be one model's whole mesh list, which on a large federated model can
     // exceed the engine's maximum argument count and throw a RangeError. Same
     // failure mode as `clipMeshesToHalfSpace` in packages/drawing-2d.
     for (const mesh of selectModelMeshes(withInstancedMeshes(geometry, instancedModelRange).meshes)) {
+      if (modelHidden || modelIsolated) {
+        // `mesh.expressId` is already global (offset baked in — see
+        // `withInstancedMeshes`'s doc and `basketVisibleSet.ts`'s
+        // `collectVisibleCandidates`); the by-model maps are LOCAL, so
+        // subtract the offset back out before checking them.
+        const localId = mesh.expressId - idOffset;
+        if (modelHidden?.has(localId)) continue;
+        if (modelIsolated && !modelIsolated.has(localId)) continue;
+      }
       meshes.push(mesh);
     }
   }

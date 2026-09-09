@@ -46,3 +46,18 @@ it('cancels queued work and invalidates the running publication (#3921)', async 
   await Promise.all([running, pending]);
   assert.deepEqual(events, []);
 });
+
+it('invalidates an in-flight run when cancel() is called with nothing queued after it', async () => {
+  const queue = createDrawingRequestQueue();
+  let release!: () => void;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  let currentAtPublish: boolean | undefined;
+  const running = queue.request(async isCurrent => {
+    await blocked;
+    currentAtPublish = isCurrent();
+  });
+  queue.cancel();
+  release();
+  await running;
+  assert.equal(currentAtPublish, false);
+});

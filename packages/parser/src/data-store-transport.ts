@@ -31,6 +31,7 @@ import {
   relationshipGraphFromColumns,
   relationshipGraphToColumns,
   findStoreyByElevation,
+  spatialLookups,
 } from '@ifc-lite/data';
 
 import { CompactEntityIndex } from './compact-entity-index.js';
@@ -76,6 +77,7 @@ export interface SpatialHierarchyColumns {
   storeyHeights: Array<[number, number]>;
   elementToStorey: Array<[number, number]>;
   elementToContainer?: Array<[number, number]>;
+  ambiguousStorey?: number[]; // #4311
 }
 
 function serializeSpatialNode(node: SpatialNode): SerializedSpatialNode {
@@ -115,6 +117,7 @@ export function spatialHierarchyToColumns(hierarchy: SpatialHierarchy): SpatialH
     elementToContainer: hierarchy.elementToContainer
       ? [...hierarchy.elementToContainer.entries()]
       : undefined,
+    ambiguousStorey: hierarchy.ambiguousStorey ? [...hierarchy.ambiguousStorey] : undefined, // #4311
   };
 }
 
@@ -130,16 +133,7 @@ export function spatialHierarchyFromColumns(columns: SpatialHierarchyColumns): S
   const elementToContainer = columns.elementToContainer
     ? new Map<number, number>(columns.elementToContainer)
     : undefined;
-
-  // elementToSpace is the inverse of bySpace and is what `getContainingSpace`
-  // queries. Only this direction is shipped over the wire because it is
-  // O(unique-spaces) and trivially derivable from `bySpace`.
-  const elementToSpace = new Map<number, number>();
-  for (const [spaceId, elementIds] of bySpace) {
-    for (const elementId of elementIds) {
-      elementToSpace.set(elementId, spaceId);
-    }
-  }
+  const ambiguousStorey = columns.ambiguousStorey ? new Set<number>(columns.ambiguousStorey) : undefined; // #4311
 
   return {
     project,
@@ -151,6 +145,7 @@ export function spatialHierarchyFromColumns(columns: SpatialHierarchyColumns): S
     storeyHeights,
     elementToStorey,
     elementToContainer,
+    ambiguousStorey, // #4311
 
     getStoreyElements(storeyId: number): number[] {
       return byStorey.get(storeyId) ?? [];
@@ -162,23 +157,7 @@ export function spatialHierarchyFromColumns(columns: SpatialHierarchyColumns): S
       // worker boundary.
       return findStoreyByElevation(storeyElevations, z);
     },
-    getContainingSpace(elementId: number): number | null {
-      return elementToSpace.get(elementId) ?? null;
-    },
-    getPath(elementId: number): SpatialNode[] {
-      const path: SpatialNode[] = [];
-      const walk = (node: SpatialNode): boolean => {
-        path.push(node);
-        if (node.elements.includes(elementId)) return true;
-        for (const child of node.children) {
-          if (walk(child)) return true;
-        }
-        path.pop();
-        return false;
-      };
-      walk(project);
-      return path;
-    },
+    ...spatialLookups(project, bySpace, elementToContainer),
   };
 }
 

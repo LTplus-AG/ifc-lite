@@ -7,6 +7,7 @@
 //! This crate extracts the core processing logic so it can be used by both
 //! the HTTP server and the native FFI library.
 
+pub mod appearance;
 pub mod determinism;
 pub(crate) mod parallel_scan;
 mod shard_classes;

@@ -1,0 +1,21 @@
+{
+  "meshes": 115,
+  "triangles": 120835,
+  "owners": 20,
+  "texturedMeshes": 115,
+  "ownerTriangleIndexUvRgbaMultisetExact": true,
+  "worldFloat32HashesExact": true,
+  "coordinateComponents": 1077621,
+  "maximumWorldErrorMetres": 1.9073486328125e-06,
+  "rmsWorldErrorMetres": 3.060902389330056e-07,
+  "maximumAbsoluteWorldCoordinateMetres": 41.131011962890625,
+  "maximumPerComponentToleranceMetres": 4.903198714600876e-06,
+  "perComponentTolerance": "max(2^-149, abs(sourceWorldComponent) * 2^-23); conservative one-f32-ULP relative bound",
+  "exportBytes": 81784152,
+  "decodedImage": {
+    "width": 1024,
+    "height": 1024,
+    "rgbaFnv1a": "f98e6d8d"
+  },
+  "postLayeredPathFixSameWorldFloat32Fingerprints": true
+}

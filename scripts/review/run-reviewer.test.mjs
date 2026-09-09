@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 import assert from 'node:assert/strict';
 import { classify, checkToken, fenceUntrusted, buildPrompt, runReviewer, runReviewerWithFailover, resolveTokens, DISALLOWED_TOOLS } from './run-reviewer.mjs';
+import { RETRYABLE_VALIDATION_REASONS } from './retry-prompt.mjs';
 import { applicableClassesFromRaw } from './lib/class-applicability.mjs';
 import { DEFECT_CLASSES } from './lib/defect-classes.mjs';
 
@@ -515,4 +516,24 @@ test('buildPrompt says nothing fired when nothing fires, leaving not-applicable 
   };
   assert.equal(applicableClassesFromRaw(input).size, 0);
   assert.match(buildPrompt('R', input), /found no site for any class/);
+});
+
+// The retry set lives in TWO places that nothing held together: this Set, and
+// `claude-review.yml`'s bash `grep -oE '^❌ (A|B|...):'` that extracts the reason
+// from the validator's log. The docstring on RETRYABLE_VALIDATION_REASONS claimed
+// this file pinned them to each other; it did not, and adding RAW_UNPARSEABLE to
+// the Set alone changed nothing, because the workflow would never have matched it.
+// Two copies held together only by prose is how they silently diverge.
+test('the workflow grep matches RETRYABLE_VALIDATION_REASONS exactly', () => {
+  const wf = readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  const m = wf.match(/grep -oE '\^❌ \(([A-Z_|]+)\):'/);
+  assert.ok(m, 'claude-review.yml must still extract the retry reason with a grep over an alternation');
+  const inWorkflow = new Set(m[1].split('|'));
+  const inModule = RETRYABLE_VALIDATION_REASONS;
+  assert.deepEqual(
+    [...inWorkflow].sort(),
+    [...inModule].sort(),
+    'the workflow grep and RETRYABLE_VALIDATION_REASONS must list the same reasons; ' +
+      'a reason in one but not the other is either a retry that never fires or prose that lies',
+  );
 });

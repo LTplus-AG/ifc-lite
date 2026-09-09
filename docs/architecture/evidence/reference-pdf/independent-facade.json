@@ -1,0 +1,36 @@
+{
+  "reader": "IfcOpenShell",
+  "readerVersion": "0.8.2",
+  "schema": "IFC4",
+  "annotationName": "HABS facade annotation",
+  "GlobalId": "2Z85TEbbz8IQhv$aud8q43",
+  "expressId": 84,
+  "schemaValidationErrors": 0,
+  "textureSHA256": "2901242c28908542acd202f2f38f0626a3fff4d1453934f241cebb96db970529",
+  "maxCornerErrorMetres": 0.0,
+  "toleranceMetres": 1e-06,
+  "referenceCornersIfcWorld": [
+    [
+      -5.739740259740252,
+      0,
+      39.721542167243854
+    ],
+    [
+      119.00394805194802,
+      0,
+      39.721542167243854
+    ],
+    [
+      119.00394805194802,
+      0,
+      -44.4235198996917
+    ],
+    [
+      -5.739740259740252,
+      0,
+      -44.4235198996917
+    ]
+  ],
+  "shapeTriangles": 2,
+  "archiveSHA256": "463ceabcda6c09490af59cb83e31901813953da49b07b144dc3a94372f05f4fe"
+}

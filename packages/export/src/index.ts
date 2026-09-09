@@ -61,3 +61,7 @@ export { columnsToParquet, isParquet } from './columns-to-parquet.js';
 // are the guard's internals, and the parity suite imports them from the module
 // directly. Callers need the two functions and the options type.
 export { escapeCsvCell, guardSpreadsheetFormula, type CsvCellOptions } from './csv-cell.js';
+
+export { planAuthoredResourceCleanup } from './authored-resource-cleanup.js';
+
+export { captureAppearanceDependencies } from './appearance-dependencies.js';

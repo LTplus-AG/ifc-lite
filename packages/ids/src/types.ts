@@ -2,10 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * IDS (Information Delivery Specification) types
- * Based on buildingSMART IDS 1.0 specification
- */
+/** IDS (Information Delivery Specification) types, per buildingSMART IDS 1.0. */
 
 import type { IDSConstraint } from './constraint-types.js';
 
@@ -285,6 +282,8 @@ export interface IDSSpecificationResult {
   entityResults: IDSEntityResult[];
   /** Cardinality result (if minOccurs/maxOccurs specified) */
   cardinalityResult?: IDSCardinalityResult;
+  /** Set when unevaluable (e.g. a ReDoS-rejected pattern) — `status` is `'fail'` */
+  error?: string;
 }
 
 /** Cardinality check result */

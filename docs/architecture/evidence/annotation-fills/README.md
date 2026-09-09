@@ -42,7 +42,7 @@ typechecking and a fresh PyO3 wheel's committed-reference parity quick lane pass
 
 `native-load.json` records two interleaved base/branch pairs with five native
 iterations per run on AC20, using separately built immutable binaries. Paired
-phase medians, mesh census and the separately checked mesh fingerprints match.
+reported best-of-five phase timings, mesh census and the separately checked mesh fingerprints match.
 This is ordinary load regression evidence; it does not measure annotation
 throughput or browser worker-pool performance. The annotation control's expected
 new meshes are validated separately from the unchanged building fixture.

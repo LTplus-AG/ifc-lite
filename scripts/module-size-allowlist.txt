@@ -116,7 +116,7 @@
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
    458 apps/viewer/src/hooks/ingest/pointCloudAlignment.ts
    545 apps/viewer/src/hooks/ingest/pointCloudIngest.ts
-   551 apps/viewer/src/hooks/useAnnotation2D.ts
+   461 apps/viewer/src/hooks/useAnnotation2D.ts
    690 apps/viewer/src/hooks/useBCF.ts
   1374 apps/viewer/src/hooks/useClash.ts
    482 apps/viewer/src/hooks/useCompare.ts

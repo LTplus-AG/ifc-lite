@@ -16,7 +16,8 @@ import type {
   Annotation2DTool, Point2D, TextAnnotation2D,
   SelectedAnnotation2D, Measure2DResult, PolygonArea2DResult, CloudAnnotation2D,
 } from '@/store/slices/drawing2DSlice';
-import { computePolygonArea, computePolygonPerimeter, computePolygonCentroid } from '@/components/viewer/tools/computePolygonArea';
+import { computePolygonArea, computePolygonPerimeter } from '@/components/viewer/tools/computePolygonArea';
+import { nearestPointOnSegment, hitTestAnnotations as hitTestAnnotationsPure } from '@/hooks/annotation2DHitTest';
 
 // ─── Public interfaces ──────────────────────────────────────────────────────
 
@@ -216,81 +217,12 @@ export function useAnnotation2D({
   // ── Hit-testing for annotation selection ──────────────────────────────
 
   const hitTestAnnotations = useCallback((screenX: number, screenY: number): SelectedAnnotation2D | null => {
-    const threshold = HIT_TEST_RADIUS_PX;
     const { textAnnotations2D: texts, cloudAnnotations2D: clouds,
       polygonArea2DResults: polys, measure2DResults: measures } = storeRef.current;
-
-    // Hit-test in REVERSE PAINT ORDER so the item on top wins (#4195).
-    // Drawing2DCanvas paints, in order: measure -> polygon -> text -> cloud
-    // (each loop forward, so within a type the LAST array entry is drawn
-    // last and ends up on top). The reverse of that paint order is
-    // cloud -> text -> polygon -> measure, and each array below is walked
-    // backwards for the same reason.
-
-    // Cloud annotations (painted last — checked first)
-    for (let i = clouds.length - 1; i >= 0; i--) {
-      const cloud = clouds[i];
-      if (cloud.points.length < 2) continue;
-      const sp1 = drawingToScreen(cloud.points[0]);
-      const sp2 = drawingToScreen(cloud.points[1]);
-      const minX = Math.min(sp1.x, sp2.x);
-      const maxX = Math.max(sp1.x, sp2.x);
-      const minY = Math.min(sp1.y, sp2.y);
-      const maxY = Math.max(sp1.y, sp2.y);
-      if (screenX >= minX - threshold && screenX <= maxX + threshold &&
-          screenY >= minY - threshold && screenY <= maxY + threshold) {
-        return { type: 'cloud', id: cloud.id };
-      }
-    }
-
-    // Text annotations
-    for (let i = texts.length - 1; i >= 0; i--) {
-      const annotation = texts[i];
-      if (!annotation.text.trim()) continue;
-      const sp = drawingToScreen(annotation.position);
-      const fontSize = annotation.fontSize;
-      const lines = annotation.text.split('\n');
-      const lineHeight = fontSize * 1.3;
-      const padding = 6;
-      const approxCharWidth = fontSize * 0.6;
-      const maxLineLen = Math.max(...lines.map((l) => l.length));
-      const w = maxLineLen * approxCharWidth + padding * 2;
-      const h = lines.length * lineHeight + padding * 2;
-      if (screenX >= sp.x - 2 && screenX <= sp.x + w + 2 &&
-          screenY >= sp.y - 2 && screenY <= sp.y + h + 2) {
-        return { type: 'text', id: annotation.id };
-      }
-    }
-
-    // Polygon area results (edge proximity + centroid label)
-    for (let i = polys.length - 1; i >= 0; i--) {
-      const result = polys[i];
-      if (result.points.length < 3) continue;
-      for (let j = 0; j < result.points.length; j++) {
-        const a = drawingToScreen(result.points[j]);
-        const b = drawingToScreen(result.points[(j + 1) % result.points.length]);
-        if (nearestPointOnScreenSegment({ x: screenX, y: screenY }, a, b).dist < threshold) {
-          return { type: 'polygon', id: result.id };
-        }
-      }
-      const centroid = computePolygonCentroid(result.points);
-      const sc = drawingToScreen(centroid);
-      if (Math.abs(screenX - sc.x) < 40 && Math.abs(screenY - sc.y) < 20) {
-        return { type: 'polygon', id: result.id };
-      }
-    }
-
-    // Measure results (line proximity, painted first — checked last)
-    for (let i = measures.length - 1; i >= 0; i--) {
-      const result = measures[i];
-      const sa = drawingToScreen(result.start);
-      const sb = drawingToScreen(result.end);
-      if (nearestPointOnScreenSegment({ x: screenX, y: screenY }, sa, sb).dist < threshold) {
-        return { type: 'measure', id: result.id };
-      }
-    }
-
-    return null;
+    return hitTestAnnotationsPure({
+      screenX, screenY, threshold: HIT_TEST_RADIUS_PX, drawingToScreen,
+      texts, clouds, polys, measures,
+    });
   }, [drawingToScreen]); // stable — reads annotation data from storeRef
 
   // ── Get annotation origin (reads latest data from refs) ───────────────
@@ -524,39 +456,6 @@ export function useAnnotation2D({
     handleDoubleClick,
     isDraggingRef,
   };
-}
-
-// ─── Helpers (module-level, zero allocation) ────────────────────────────────
-
-function nearestPointOnSegment(
-  p: Point2D, a: Point2D, b: Point2D
-): { point: Point2D; dist: number } {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq < 0.0001) {
-    return { point: a, dist: Math.sqrt((p.x - a.x) ** 2 + (p.y - a.y) ** 2) };
-  }
-  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq));
-  const nearest = { x: a.x + t * dx, y: a.y + t * dy };
-  return { point: nearest, dist: Math.sqrt((p.x - nearest.x) ** 2 + (p.y - nearest.y) ** 2) };
-}
-
-function nearestPointOnScreenSegment(
-  p: { x: number; y: number },
-  a: { x: number; y: number },
-  b: { x: number; y: number }
-): { dist: number } {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq < 0.01) {
-    return { dist: Math.sqrt((p.x - a.x) ** 2 + (p.y - a.y) ** 2) };
-  }
-  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq));
-  const nx = a.x + t * dx;
-  const ny = a.y + t * dy;
-  return { dist: Math.sqrt((p.x - nx) ** 2 + (p.y - ny) ** 2) };
 }
 
 export default useAnnotation2D;

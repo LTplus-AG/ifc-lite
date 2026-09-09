@@ -22,7 +22,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { after, before, describe, it } from 'node:test';
+import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -286,6 +286,43 @@ describe('useAnnotation2D hitTestAnnotations — top-most wins (#4195)', () => {
       'measure-new',
       `expected the topmost (newer) measure to be selected via line proximity, got ${JSON.stringify(lastSelected)}`,
     );
+
+    unmount();
+  });
+
+  it('padded miss does not beat a real hit: a cloud\'s click-tolerance padding must not steal a click that is genuinely inside a neighbouring text box and outside the cloud\'s drawn extent (#4198)', () => {
+    // Cloud rect (0,0)-(10,10) draws over x:[0,10], y:[0,10]. Cloud
+    // hit-testing pads that bbox by HIT_TEST_RADIUS_PX=10px for click
+    // tolerance, extending the padded hit rect to x:[-10,20], y:[-10,20].
+    // Text sits at (12,0), 'X', fontSize 14: box ~= x:[10,34.4], y:[-2,32.2].
+    // The click at (18,5) is 8px outside the cloud's drawn edge (not a
+    // genuine cloud hit — only a padding hit) but genuinely inside the
+    // text box. The cloud is checked first (topmost paint order), so a
+    // first-match-by-type scan would wrongly return the cloud.
+    const clouds: CloudAnnotation2D[] = [
+      { id: 'cloud-1', points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], color: '#E53935', label: '' },
+    ];
+    const texts: TextAnnotation2D[] = [
+      {
+        id: 'text-1',
+        position: { x: 12, y: 0 },
+        text: 'X',
+        fontSize: 14,
+        color: '#000000',
+        backgroundColor: 'rgba(255,255,255,0.9)',
+        borderColor: '#333333',
+      },
+    ];
+    mount({ textAnnotations2D: texts, cloudAnnotations2D: clouds });
+
+    act(() => { click(18, 5); });
+
+    assert.equal(
+      lastSelected?.type,
+      'text',
+      `expected the genuine text hit to win over the cloud's padding-only hit, got ${JSON.stringify(lastSelected)}`,
+    );
+    assert.equal(lastSelected?.id, 'text-1');
 
     unmount();
   });

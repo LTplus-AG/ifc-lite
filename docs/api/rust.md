@@ -840,3 +840,12 @@ Output is bounded to 4096 pixels per axis and 16,777,216 total atlas pixels,
 limits, plus a 128 MiB RGBA payload and bounded raster ranges. The current path
 explicitly refuses split per-face palettes, presentation-layer style overrides,
 and translucent untextured surfaces whose rendering path cannot be preserved.
+
+The page compositor clones directly attached `IfcSurfaceStyleRendering` metadata
+using canonical style precedence. Specular strength, typed roughness/exponent,
+reflectance method, transmission/reflection fields, surface name/side and other
+supported lighting/refraction leaves survive export. Albedo factors and opacity
+already baked into the atlas are neutralized to prevent double multiplication.
+Inherited material/representation metadata currently refuses page composition
+rather than silently discarding rendering properties. Original shared styles
+remain untouched.

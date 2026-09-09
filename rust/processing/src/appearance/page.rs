@@ -32,7 +32,7 @@ pub fn plan_page_appearance(bytes: &[u8], request: &PageAppearanceRequest, rgba:
     let textures = ifc_lite_geometry::build_texture_index(bytes, &mut source.decoder);
     let styles = page_source::appearance(bytes, &mut source);
     let scale = source.decoder.length_unit_scale();
-    let extra = plan.items.len().checked_mul(3).ok_or("Page entity capacity overflow")?;
+    let extra = plan.items.len().checked_mul(4).ok_or("Page entity capacity overflow")?;
     if u64::from(plan.next_available_express_id) + extra as u64 >= u64::from(u32::MAX) {
         return Err("Page entity capacity exceeded".into());
     }
@@ -96,7 +96,7 @@ pub fn plan_page_appearance(bytes: &[u8], request: &PageAppearanceRequest, rgba:
         canonical::align_source_corners(&mut source, product, &mut plan.items[start..start + count], &textures, spec)?;
         start += count;
     }
-    bind_images(&mut plan, &item_images, &source)?;
+    bind_images(&mut plan, &item_images, &mut source, &styles)?;
     Ok(PageAppearancePlan { plan, item_images, assets, texels_per_metre: request.texels_per_metre })
 }
 fn encode_png(atlas: &page_atlas::Atlas, limit: usize) -> Result<Vec<u8>, String> {
@@ -116,7 +116,7 @@ fn encode_png(atlas: &page_atlas::Atlas, limit: usize) -> Result<Vec<u8>, String
     encoder.write_header().map_err(|e| e.to_string())?.write_image_data(&atlas.rgba).map_err(|e| e.to_string())?;
     Ok(output.bytes)
 }
-fn bind_images(plan: &mut AppearancePlan, images: &[AppearanceItemImage], source: &Source<'_>) -> Result<(), String> {
+fn bind_images(plan: &mut AppearancePlan, images: &[AppearanceItemImage], source: &mut Source<'_>, styles: &crate::prepass::ResolvedPrepass) -> Result<(), String> {
     if images.is_empty() { return Ok(()); }
     let master_image = plan.created.iter().find(|e| e.r#type == "IfcImageTexture").ok_or("Missing planned image")?.clone();
     let master_textures = plan.created.iter().find(|e| e.r#type == "IfcSurfaceStyleWithTextures").ok_or("Missing planned textures")?.clone();
@@ -134,6 +134,8 @@ fn bind_images(plan: &mut AppearancePlan, images: &[AppearanceItemImage], source
             for value in list { if *value == reference(master_textures.express_id) { *value = reference(texture_id); } }
             (image_id, add(plan, "IfcSurfaceStyle", attributes))
         };
+        let product = plan.items.iter().find(|i| i.geometry_item_id == image.geometry_item_id).ok_or("Missing planned item")?.product_id;
+        page_material::preserve(plan, source, image.geometry_item_id, style_id, styles.element_to_material.contains_key(&product))?;
         let item = plan.items.iter().find(|i| i.geometry_item_id == image.geometry_item_id).ok_or("Missing planned item")?;
         let map = plan.created.iter_mut().find(|e| e.r#type == "IfcIndexedTriangleTextureMap" && e.attributes[1] == reference(image.geometry_item_id)).ok_or("Missing planned UV map")?;
         map.attributes[0] = json!([reference(image_id)]); map.attributes[3] = json!(item.tex_coord_index);

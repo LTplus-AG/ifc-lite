@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::*;
+use ifc_lite_core::AttributeValue as A;
 use crate::appearance::tests::{apply, CONTROLLED_IFC};
 use crate::types::mesh::MeshData;
 fn fixture() -> (PageAppearanceRequest, Vec<u8>) {
@@ -185,4 +186,43 @@ fn issue_4260_low_resolution_page_does_not_erase_high_frequency_source_checker_o
         let actual = sample(new, Raster::new(asset.width, asset.height, &pixels).unwrap(), point, [false, false]);
         assert!((actual[0] - expected[0]).abs() < 0.15, "source detail {point:?}: {actual:?} != {expected:?}");
     }
+}
+
+#[test]
+fn issue_4260_page_preserves_independent_rendering_fields_and_typed_roughness() {
+    let (request, rgba) = fixture();
+    let source = CONTROLLED_IFC.replace("#25=IFCSURFACESTYLERENDERING(#27,0.,$,$,$,$,$,$,.NOTDEFINED.);",
+        "#25=IFCSURFACESTYLERENDERING(#27,0.,IFCNORMALISEDRATIOMEASURE(0.7),#27,$,#27,IFCNORMALISEDRATIOMEASURE(0.2),IFCSPECULARROUGHNESS(0.35),.PHONG.);");
+    let source = source.replace("#37=IFCINDEXEDTRIANGLETEXTUREMAP", "#38=IFCSTYLEDITEM(#34,(#24),$);\n#37=IFCINDEXEDTRIANGLETEXTUREMAP");
+    assert!(source.contains("IFCSPECULARROUGHNESS"));
+    let result = plan_page_appearance(source.as_bytes(), &request, &rgba).unwrap();
+    let exported = apply(&source, &result.plan);
+    let mut decoded = Source::new(exported.as_bytes()).unwrap();
+    for item in &result.item_images {
+        let styled_id = decoded.styled_items[&item.geometry_item_id][0];
+        let styled = decoded.entity(styled_id).unwrap();
+        let (style_id, _) = crate::prepass::surface_style_from_styled_item(&styled, &mut decoded.decoder).unwrap();
+        let style = decoded.entity(style_id).unwrap();
+        let rendering = style.get_list(2).unwrap().iter().filter_map(A::as_entity_ref)
+            .map(|id| decoded.entity(id).unwrap()).find(|e| e.ifc_type == IfcType::IfcSurfaceStyleRendering).unwrap();
+        assert_eq!(rendering.get_float(6), Some(0.2));
+        assert_eq!(rendering.get_float(7), Some(0.35));
+        assert_eq!(rendering.get_list(7).unwrap()[0].as_string(), Some("IFCSPECULARROUGHNESS"));
+        assert_eq!(rendering.get_ref(3), Some(27));
+        assert_eq!(rendering.get_ref(5), Some(27));
+        assert!(matches!(rendering.get(8), Some(A::Enum(name)) if name == "PHONG"));
+        assert!(matches!(rendering.get(2), Some(A::Null)), "baked diffuse factor must not apply twice");
+    }
+    let original = decoded.entity(25).unwrap();
+    assert_eq!(original.get_ref(0), Some(27));
+    assert_eq!(original.get_float(2), Some(0.7));
+}
+
+#[test]
+fn issue_4260_page_refuses_inherited_rendering_instead_of_dropping_its_properties() {
+    let (request, rgba) = fixture();
+    let source = CONTROLLED_IFC.replace("#23=IFCSTYLEDITEM(#14,", "#23=IFCSTYLEDITEM(#13,");
+    let result = plan_page_appearance(source.as_bytes(), &request, &rgba).unwrap();
+    assert!(!result.plan.items.iter().any(|item| item.geometry_item_id == 14));
+    assert!(result.plan.exclusions.iter().any(|excluded| excluded.product_id == 10));
 }

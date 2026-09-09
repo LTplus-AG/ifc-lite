@@ -289,12 +289,12 @@ function applyExpectations(value: unknown, expect: ManifestTestExpect): SingleRe
     if (text === undefined) {
       reasons.push(`regex: result has no text representation`);
     } else if (expect.regex.length > MAX_GUARDED_REGEX_PATTERN_LENGTH) {
-      // Length cap is a shallow defence — pathological short patterns
-      // (`(a+)+$` is 7 chars and catastrophic) still get through. For
-      // registry-distributed extensions a real defence would run the
-      // regex in a Worker with a timeout, or use re2-wasm. v1 assumes
-      // manifest tests are author-trusted; harden this when remote
-      // bundles can land via the registry (RFC §10).
+      // Length cap is a shallow defence (`(a+)+$` is 7 chars and
+      // catastrophic). The real boundary is drag-drop side-loading
+      // (ExtensionsPanel.tsx), not a future registry (deferred
+      // Phase-5, see 10-registry-and-signing.md): "Run tests" or
+      // RepairQueuePanel's "Run check" reach runBundleTests and run
+      // this regex on the viewer's main JS thread, no sandbox/Worker.
       reasons.push(`regex: pattern exceeds ${MAX_GUARDED_REGEX_PATTERN_LENGTH}-char limit`);
     } else if (hasCatastrophicBacktrackingShape(expect.regex)) {
       // Cheap shape check for the well-known catastrophic-backtracking

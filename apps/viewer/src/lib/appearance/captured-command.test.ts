@@ -127,3 +127,18 @@ for (const failure of ['source', 'model', 'cancel'] as const) test(`capture ${fa
     assert.equal(modelAppearanceAssets.exportResources('capture').resources.size, 0);
   } finally { native.planner.dispose(); }
 });
+
+
+test('capture snapshot bounds row width and respects prior cancellation before resource allocation #4380', async () => {
+  // Runtime caller input need not honor TypeScript tuple width. Oversized rows
+  // must be refused before copying; otherwise the outer 200000-row cap is hollow.
+  const mesh = geometryMesh();
+  mesh.positions[0].push(...Array<number>(10000).fill(1));
+  await assert.rejects(createIfcFromCapturedMesh('absent', 40, {
+    assetId: 'unretained', mesh, validate() {},
+  }, {} as Renderer), /exactly three/);
+  const aborted = new AbortController(); aborted.abort();
+  await assert.rejects(createIfcFromCapturedMesh('absent', 40, {
+    assetId: 'unretained', mesh: geometryMesh(), validate() { throw new Error('Source should not be inspected after cancellation'); },
+  }, {} as Renderer, { signal: aborted.signal }), { name: 'AbortError' });
+});

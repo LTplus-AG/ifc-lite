@@ -10,6 +10,7 @@ import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { MeshData, GeometryResult } from '@ifc-lite/geometry';
 import { federationRegistry, type Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { entityRefToString } from '@/store/types';
 import { fixtureModel } from '@/test/store-fixture';
 import { rebuildSpatialHierarchy } from '@/utils/spatialHierarchy';
 import { annotationFrame } from './create-annotation';
@@ -123,7 +124,15 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     assert.equal(reopenedHierarchy.elementToStorey.get(native.annotationId), hierarchy.elementToStorey.get(native.annotationId));
     assert.match(new TextDecoder().decode(exportedBytes), /IFCINDEXEDTRIANGLETEXTUREMAP/);
     assert.deepEqual([...serialized.resources.exportResources().resources.values()][0], png);
+    const selectedRef = { modelId: 'annotation', expressId: native.annotationId };
+    useViewerStore.setState({ selectedEntityId: result.globalId, selectedEntityIds: new Set([result.globalId]),
+      selectedEntity: selectedRef, selectedEntitiesSet: new Set([entityRefToString(selectedRef)]), selectedEntities: [selectedRef] });
     useViewerStore.getState().undo('annotation');
+    assert.equal(useViewerStore.getState().selectedEntityId, null);
+    assert.equal(useViewerStore.getState().selectedEntity, null);
+    assert.equal(useViewerStore.getState().selectedEntityIds.size, 0);
+    assert.equal(useViewerStore.getState().selectedEntitiesSet.size, 0);
+    assert.deepEqual(useViewerStore.getState().selectedEntities, []);
     assert.equal(meshes.size, 0);
     assert.ok(!containerMap.get(containerId)?.includes(native.annotationId));
     assert.ok(!container.elements.includes(native.annotationId), 'Undo removes the annotation from the visible spatial tree');

@@ -533,17 +533,18 @@ for (const flipped of [false, true]) it(`keeps construction bands and lines when
     typeVisibility: ALL_VISIBLE, ifcDataStore: source, flipped,
   })));
   const first = drawings[0];
-  assert.ok(first?.lines.some((line) => line.category === 'projection'), 'real mesh projection must produce lines');
+  assert.ok(first);
+  assert.ok(first.lines.some((line) => line.category === 'projection'), 'real mesh projection must produce lines');
   for (const next of drawings.slice(1)) {
     assert.ok(next);
     assert.equal(next.config.projectionBelowDepth, first.config.projectionBelowDepth, 'floor band follows the placed model');
     assert.equal(next.config.projectionAboveDepth, first.config.projectionAboveDepth, 'ceiling band follows the placed model');
     assert.equal(next.lines.length, first.lines.length);
     for (let i = 0; i < first.lines.length; i++) {
-      const { depth: expectedDepth, ...expectedLine } = first.lines[i];
-      const { depth, ...line } = next.lines[i];
-      assert.deepEqual(line, expectedLine, 'moving along the cut normal preserves every projected endpoint and style');
-      assert.ok(Math.abs(depth - expectedDepth) < 1e-5, 'projection depth is stable within float32 rounding at 100 m');
+      const expected: Drawing2D['lines'][number] = first.lines[i];
+      const actual: Drawing2D['lines'][number] = next.lines[i];
+      assert.deepEqual({ ...actual, depth: expected.depth }, expected, 'moving along the cut normal preserves every projected endpoint and style');
+      assert.ok(Math.abs(actual.depth - expected.depth) < 1e-5, 'projection depth is stable within float32 rounding at 100 m');
     }
   }
 });

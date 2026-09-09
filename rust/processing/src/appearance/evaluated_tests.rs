@@ -29,6 +29,7 @@ fn issue_4404_real_mapped_member_is_opt_in_and_preserves_every_sibling_and_world
     request.representation_policy=RepresentationPolicy::EvaluatedOccurrence;
     let plan=plan_appearance(source.as_bytes(),&request).unwrap();
     assert!(plan.exclusions.is_empty(),"{:?}",plan.exclusions);
+    assert_eq!(plan.created.iter().map(|row|row.express_id).collect::<Vec<_>>(),(plan.next_express_id..plan.next_available_express_id).collect::<Vec<_>>());
     assert_eq!(plan.conversions.len(),1);assert_eq!(plan.items.len(),1);
     assert_eq!(plan.conversions[0].representation_id,35155);
     assert_eq!(plan.conversions[0].source_geometry_item_id,35135);
@@ -68,6 +69,8 @@ fn issue_4404_page_projection_composes_conversion_and_atlas_in_one_plan() {
     appearance.mapping=Mapping::Planar {frame:MappingFrame::World,origin:[1.,6.,3.],axis_u:[0.,1.,0.],axis_v:[0.,0.,1.],metres_per_tile:[2.,2.]};
     let request=PageAppearanceRequest {appearance,page:AppearanceRaster {width:1,height:1,byte_offset:0,byte_length:4},source_images:vec![],texels_per_metre:32.};
     let result=plan_page_appearance(source.as_bytes(),&request,&[255,0,0,255]).unwrap();
+    assert_eq!(result.plan.created.iter().map(|row|row.express_id).collect::<Vec<_>>(),(result.plan.next_express_id..result.plan.next_available_express_id).collect::<Vec<_>>());
+    assert_eq!(result.item_images[0].geometry_item_id,result.plan.items[0].geometry_item_id);
     assert_eq!(result.plan.conversions.len(),1);assert_eq!(result.item_images.len(),1);assert!(!result.assets.is_empty());
     assert!(result.plan.edits.iter().all(|edit|edit.express_id==35155));
     let output=apply(&source,&result.plan);
@@ -121,4 +124,31 @@ fn issue_4404_material_layer_slicing_refusal_precedes_mapped_evaluation() {
     let plan=plan_appearance(changed.as_bytes(),&request()).unwrap();
     assert_eq!(plan.exclusions.len(),1);assert!(plan.exclusions[0].reason.contains("Material-layer slicing"));
     assert!(plan.created.is_empty());assert!(plan.edits.is_empty());
+}
+
+#[test]
+fn issue_4404_filtered_private_conversion_prefix_compacts_to_host_allocation_order() {
+    let Some(text)=real_source() else{return};
+    let mut request=request(); request.product_ids=vec![35169,35304];
+    let mut source=Source::new(text.as_bytes()).unwrap();
+    let mut normalized=prepare(text.as_bytes(),&request,&mut source).unwrap();
+    assert_eq!(normalized.conversions.len(),2);
+    // The final appearance pass can exclude a normalized occurrence. Its unused
+    // private IDs must not leave a gap before the accepted occurrence's rows.
+    normalized.request.product_ids.retain(|id|*id==35304);
+    let mapped=super::super::plan_with_source(text.as_bytes(),&normalized.request,&mut source).unwrap();
+    let (plan,ids)=normalized.compose(mapped);
+    assert_eq!(plan.conversions.len(),1);
+    assert_eq!(plan.conversions[0].product_id,35304);
+    assert!(ids.iter().any(|(old,new)|old!=new));
+    assert_eq!(plan.created.iter().map(|row|row.express_id).collect::<Vec<_>>(),(plan.next_express_id..plan.next_available_express_id).collect::<Vec<_>>());
+    let output=apply(&text,&plan);
+    let before=crate::process_geometry(text.as_bytes()); let after=crate::process_geometry(output.as_bytes());
+    for id in [35169,35304] {
+        let original=before.meshes.iter().find(|m|m.express_id==id).unwrap();
+        let replacement=after.meshes.iter().find(|m|m.express_id==id).unwrap();
+        assert_eq!(corners(original),corners(replacement));
+        if id==35169 {assert_eq!(serde_json::to_value(original).unwrap(),serde_json::to_value(replacement).unwrap());}
+        else {assert_eq!(replacement.geometry_item_id,Some(plan.conversions[0].geometry_item_id));assert!(replacement.texture.is_some());}
+    }
 }

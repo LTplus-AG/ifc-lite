@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Private evaluated-occurrence normalization; publication is one appearance plan.
+use std::collections::BTreeMap;
 use super::{evaluated_source, source::Source, *};
 use ifc_lite_core::{AttributeValue as A, DecodedEntity};
 use rustc_hash::FxHashMap;
@@ -143,7 +144,7 @@ impl Normalized {
         }
         Ok(())
     }
-    pub(super) fn compose(self,mut plan:AppearancePlan)->AppearancePlan {
+    pub(super) fn compose(self,mut plan:AppearancePlan)->(AppearancePlan,BTreeMap<u32,u32>) {
         let accepted:BTreeSet<_>=plan.items.iter().map(|item|item.product_id).collect();
         for conversion in self.conversions {
             if accepted.contains(&conversion.binding.product_id) {
@@ -161,7 +162,9 @@ impl Normalized {
             } else { plan.edits.push(edit); }
         }
         plan.next_express_id=self.start;
-        plan.exclusions.extend(self.exclusions); plan
+        plan.exclusions.extend(self.exclusions);
+        let ids=super::evaluated_allocation::compact(&mut plan);
+        (plan,ids)
     }
 }
 

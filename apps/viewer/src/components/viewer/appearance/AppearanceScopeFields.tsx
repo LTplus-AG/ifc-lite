@@ -47,9 +47,9 @@ export function AppearanceScopeFields(props: Pick<AppearancePanelViewProps,
       </span>
     </label>
     <div className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px]" aria-live="polite">
-      <span className="font-medium">{props.affectedCount.toLocaleString()} objects affected</span>
+      <span className="font-medium">{props.affectedCount.toLocaleString()} {props.affectedCount === 1 ? 'object' : 'objects'} affected</span>
       {props.excludedCount > 0 && <span className="text-muted-foreground"> · {props.excludedCount.toLocaleString()} excluded</span>}
-      {!!props.convertedObjects?.length && <details className="mt-1"><summary className="cursor-pointer font-medium">{props.convertedObjects.length} objects will become mesh geometry</summary>
+      {!!props.convertedObjects?.length && <details className="mt-1"><summary className="cursor-pointer font-medium">{props.convertedObjects.length} {props.convertedObjects.length === 1 ? 'object' : 'objects'} will become mesh geometry</summary>
         <ul className="mt-1 max-h-28 space-y-1 overflow-y-auto text-muted-foreground">{props.convertedObjects.map(item => <li key={item.productId}>{item.name}</li>)}</ul>
       </details>}
       {!!props.exclusions?.length && <details className="mt-1 text-muted-foreground"><summary className="cursor-pointer">Why some objects are excluded</summary><ul className="mt-1 space-y-1">{props.exclusions.map((reason, index) => <li key={`${index}:${reason}`}>{reason}</li>)}</ul></details>}

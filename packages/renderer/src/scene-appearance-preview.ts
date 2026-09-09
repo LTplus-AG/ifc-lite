@@ -55,9 +55,9 @@ export function createSceneAppearancePreview(
         if (!models.has(record.owner.modelIndex)) return false;
         const incoming = byOwner.get(record.owner.expressId) ?? [];
         if (record.active) return incoming.length === 0;
-        const current = access.data.get(record.owner.expressId);
-        return !!current && current.length === incoming.length && current.every((placed, index) => {
-          const part = access.source(placed), next = incoming[index];
+        const current = access.data.get(record.owner.expressId)?.map(part => access.source(part)) ?? record.flatSources;
+        return !!current && current.length === incoming.length && current.every((part, index) => {
+          const next = incoming[index];
           return (next.modelIndex ?? 0) === record.owner.modelIndex && next.geometryItemId === part.geometryItemId
             && equivalentAppearanceGeometry(next, part) && next.color.every((value, axis) => value === part.color[axis])
             && next.texture === part.texture && next.textureRef === part.textureRef && next.textureBitmap === part.textureBitmap
@@ -72,7 +72,8 @@ export function createSceneAppearancePreview(
       return !!record && instances.isOriginal(record, parts);
     },
     parts(owner) {
-      return access.data.get(owner.expressId) ?? instances.get(owner)?.originals;
+      const record = instances.get(owner);
+      return access.data.get(owner.expressId) ?? (record?.active ? record.originals : undefined);
     },
     retainSource: owner => instances.retain(owner),
     capture(owner, originals) {
@@ -160,6 +161,7 @@ export function createSceneAppearancePreview(
       );
       const original = resources.find(resource => resource.kind === 'instance');
       const record = instances.get(owner);
+      const sources = record && !original ? Object.freeze(installed.map(part => Object.freeze({ ...access.source(part) }))) : undefined;
       if (record) instances.activate(record, !!original);
       buckets.detach(owner.expressId);
       for (let i = meshes.length - 1; i >= 0; i--) {
@@ -172,6 +174,7 @@ export function createSceneAppearancePreview(
       buckets.refresh();
       if (original) access.data.delete(owner.expressId);
       else access.data.set(owner.expressId, installed);
+      if (record) record.flatSources = sources;
       access.invalidate(owner.expressId);
     },
     finished(owner) { try { buckets.finish(owner); } finally { instances.finish(owner); } },

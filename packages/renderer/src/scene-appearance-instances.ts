@@ -13,6 +13,8 @@ export interface InstanceAppearanceRecord {
   active: boolean;
   drafts: number;
   history: number;
+  /** Canonical model-local replacement while visible flat resources are absent. */
+  flatSources?: readonly MeshData[];
 }
 export interface InstanceAppearanceAccess {
   has(id: number): boolean;

@@ -223,3 +223,10 @@ it beneath a newer edit. `scene.appearanceSourceMesh(mesh)` recovers model-local
 geometry for publication without applying the registered model translation twice.
 These methods are optional on custom renderer adapters; the viewer refuses
 instance conversion if its frame conversion API is unavailable.
+
+For a flat-geometry rebuild, `scene.clearFlatGeometryForRebuild(visibleGeometry,
+loadedModelIndices, sourceGeometry)` validates every retained owner against the
+full loaded source geometry before disposing GPU buffers. Pass hidden models in
+that source inventory to retain their appearance history across hide/show.
+Changed or removed owners lose their old instance lease; ordinary
+`clearFlatGeometry()` and full scene reset still invalidate all such leases.

@@ -167,6 +167,6 @@ export interface SceneContents {
   // ─── Teardown ────────────────────────────────────────────────────────
   clearFlatGeometry(): void;
   /** Preserve only exactly matching committed appearance owners during source rebuild. */
-  clearFlatGeometryForRebuild?(geometry: readonly MeshData[], models: ReadonlySet<number>): void;
+  clearFlatGeometryForRebuild?(geometry: readonly MeshData[], models: ReadonlySet<number>, sourceGeometry?: readonly MeshData[]): void;
   clear(): void;
 }

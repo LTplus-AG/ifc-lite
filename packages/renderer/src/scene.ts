@@ -3784,8 +3784,8 @@ export class Scene {
 
   /** Reconcile an ordinary source-geometry rebuild; exact surviving appearance
    * owners keep their original-instance history. Full reset remains separate. */
-  clearFlatGeometryForRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>): void {
-    const retained = this.appearanceController?.prepareRebuild(geometry, models) ?? new Set<number>();
+  clearFlatGeometryForRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>, sourceGeometry = geometry): void {
+    const retained = this.appearanceController?.prepareRebuild(sourceGeometry, models) ?? new Set<number>();
     const discarded = this.appearanceController?.discardedForRebuild(retained) ?? [];
     // A discarded converted owner must not resurrect its obsolete type instance.
     // Its GPU slots are already hidden, so tombstoning after this atomic restore

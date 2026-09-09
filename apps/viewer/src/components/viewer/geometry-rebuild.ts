@@ -24,9 +24,10 @@ export function reshapeSceneKeepingPresentInstanced(
   scene: SceneContents,
   presentInstancedModelIndices: ReadonlySet<number> | undefined,
   geometry: readonly MeshData[],
+  appearanceSourceGeometry?: readonly MeshData[],
 ): void {
   const present = presentInstancedModelIndices ?? DEFAULT_PRESENT_INSTANCED_MODEL_INDICES;
-  if (scene.clearFlatGeometryForRebuild) scene.clearFlatGeometryForRebuild(geometry, present);
+  if (scene.clearFlatGeometryForRebuild) scene.clearFlatGeometryForRebuild(geometry, present, appearanceSourceGeometry);
   else scene.clearFlatGeometry();
   for (const modelIndex of scene.getInstancedModelIndices()) {
     if (!present.has(modelIndex)) {
@@ -34,4 +35,3 @@ export function reshapeSceneKeepingPresentInstanced(
     }
   }
 }
-

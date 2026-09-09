@@ -64,6 +64,8 @@ export interface UseGeometryStreamingParams {
   rendererRef: MutableRefObject<Renderer | null>;
   isInitialized: boolean;
   geometry: MeshData[] | null;
+  /** Full loaded source geometry, including hidden models, for retained appearance history. */
+  appearanceSourceGeometry?: readonly MeshData[];
   /** Monotonic counter — triggers the streaming effect even when the geometry
    *  array reference is stable (incremental filtering reuses the same array). */
   geometryVersion?: number;
@@ -191,6 +193,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     isInitialized,
     geometry,
     geometryVersion,
+    appearanceSourceGeometry,
     geometryContentVersion,
     coordinateInfo,
     isStreaming,
@@ -339,7 +342,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     const isCleared = currentLength === 0;
 
     if (isCleared) {
-      reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry);
+      reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
       processedMeshIdsRef.current.clear();
       lastGeometryLengthRef.current = 0;
       lastGeometryRef.current = null;
@@ -354,7 +357,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       // disguises itself as "new file" by resetting lastGeometryLengthRef to 0
       // above — retention must still apply here, not just at the bump site,
       // or this branch would immediately undo it with a blind clear().
-      reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry);
+      reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
       scene.setEphemeralStreamingMode(releaseGeometryAfterFinalize);
       processedMeshIdsRef.current.clear();
       cameraFittedRef.current = false;
@@ -372,7 +375,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         // #2073: reconcile instanced ownership instead of a blind clear() so
         // a model that is STILL present keeps its instanced geometry; only
         // the model(s) missing from presentInstancedModelIndices lose theirs.
-        reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry);
+        reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
         scene.setEphemeralStreamingMode(releaseGeometryAfterFinalize);
         processedMeshIdsRef.current.clear();
         lastGeometryLengthRef.current = 0;
@@ -380,7 +383,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       } else {
         traceGeometrySync(`geometry rebuilt after replace currentLength=${currentLength} lastLength=${lastLength} releaseAfterFinalize=${releaseGeometryAfterFinalize}`);
         // New file while another was open — full reset
-        reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry);
+        reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
         scene.setEphemeralStreamingMode(releaseGeometryAfterFinalize);
         processedMeshIdsRef.current.clear();
         cameraFittedRef.current = false;
@@ -415,7 +418,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     // Visibility toggle while NOT streaming — array rebuilt from scratch
     if (isIncremental && !isStreaming && !prevIsStreamingRef.current) {
-      reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry);
+      reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
       processedMeshIdsRef.current.clear();
       lastGeometryLengthRef.current = 0;
       lastGeometryRef.current = geometry;
@@ -597,7 +600,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     }
 
     renderer.requestRender();
-  }, [geometry, geometryVersion, geometryContentVersion, coordinateInfo, isInitialized, isStreaming, modelCount]);
+  }, [geometry, geometryVersion, geometryContentVersion, appearanceSourceGeometry, coordinateInfo, isInitialized, isStreaming, modelCount]);
 
   useEffect(() => {
     return () => {

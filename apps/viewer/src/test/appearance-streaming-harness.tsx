@@ -7,6 +7,7 @@ import { useViewerStore } from '@/store';
 import { useGeometryStreaming } from '@/components/viewer/useGeometryStreaming';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 const noop = () => {};
+const emptyGeometry: [] = [];
 /** Mount the actual viewport reconciler alongside native authoring UI. */
 export function AppearanceStreamingHarness({ renderer }: { renderer: Renderer }) {
   const models = useViewerStore(state => state.models);
@@ -14,7 +15,8 @@ export function AppearanceStreamingHarness({ renderer }: { renderer: Renderer })
   const rendererRef = useRef<Renderer | null>(renderer);
   const geometryBoundsRef = useRef({ min: { x: -10, y: -10, z: -10 }, max: { x: 10, y: 10, z: 10 } });
   const clearColorRef = useRef<[number, number, number, number]>([0,0,0,1]);
-  useGeometryStreaming({ rendererRef, geometry: geometry.meshes, coordinateInfo: geometry.coordinateInfo,
+  useGeometryStreaming({ rendererRef, geometry: models.get('evaluated')!.visible ? geometry.meshes : emptyGeometry,
+    appearanceSourceGeometry: geometry.meshes, coordinateInfo: geometry.coordinateInfo,
     modelCount: models.size, presentInstancedModelIndices: new Set(modelIndices(models).values()),
     isInitialized: true, isStreaming: false, geometryBoundsRef, clearColorRef,
     pendingMeshColorUpdates: null, pendingColorUpdates: null, pendingMeshRemovals: null,

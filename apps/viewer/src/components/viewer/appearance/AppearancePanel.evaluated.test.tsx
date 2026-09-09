@@ -146,6 +146,7 @@ for (const instanced of [false, true]) for (const pageSource of [false, true]) f
     const gpu = new AppearancePreviewController<number>({ capture: owner => ({ parts: resident.get(owner.expressId)!, resources: [] }),
       stage: () => [], install: (owner, parts) => { resident.set(owner.expressId, parts); }, release() {} });
     if (instanced) instanceScene = appearanceInstanceScene(originals);
+    if (instanced && federated) instanceScene!.scene.setModelTranslation(1, [13,-7,5]);
     const activePreview = instanceScene?.preview ?? gpu;
     const readParts = (id: number) => instanceScene
       ? activePreview.getParts?.({ expressId: id, modelIndex: federated ? 1 : 0 }) ?? instanceScene.scene.getInstancedMeshDataPieces(id)
@@ -165,7 +166,7 @@ for (const instanced of [false, true]) for (const pageSource of [false, true]) f
     await act(async () => consent.click());
     const button = (name: string) => [...ui.querySelectorAll('button')].find(item => item.textContent?.trim() === name)!;
     await until(() => !!button('Apply') && !button('Apply').disabled);
-    assert.match(ui.textContent ?? '', /1 objects will become mesh geometry/);
+    assert.match(ui.textContent ?? '', /1 object will become mesh geometry/);
     const plan = requests.at(-1)!; assert.equal(plan.conversions?.length,1);
     assert.equal(view.getNewEntities().length,0,'preview publishes no IFC conversion');
     assert.deepEqual(readParts(globalId(35))!, siblingBefore);
@@ -173,10 +174,17 @@ for (const instanced of [false, true]) for (const pageSource of [false, true]) f
     assert.equal(readParts(selection)![0].geometryItemId,globalId(11));
     await act(async () => button('Show preview').click());
     assert.equal(readParts(selection)![0].geometryItemId,globalId(plan.conversions![0].geometryItemId));
+
     await act(async () => button('Apply').click());
     await until(() => (useViewerStore.getState().undoStacks.get('evaluated')?.length ?? 0) === 1);
     assert.equal(useViewerStore.getState().selectedEntityId,selection);
     assert.equal(readParts(selection)![0].geometryItemId,globalId(plan.conversions![0].geometryItemId));
+    if (instanced && federated) {
+      const placed = readParts(selection)![0], sourceMesh = useViewerStore.getState().models.get('evaluated')!.geometryResult!.meshes[0];
+      assert.deepEqual(placed.origin!.map((value, axis) => value - sourceMesh.origin![axis]), [13,-7,5]);
+      const points = [...sourceMesh.indices].map(index => JSON.stringify([0,1,2].map(axis => sourceMesh.positions[index * 3 + axis] + sourceMesh.origin![axis]))).sort();
+      assert.deepEqual(points, [[0,0,0],[1,0,0],[0,0,-1]].map(point => JSON.stringify(point)).sort(), 'publication stores canonical source corners without the registered translation');
+    }
     const serialized = prepareAppearanceSerialization('evaluated',data,view);
     const resourceMap = serialized.resources.exportResources().resources;
     const resources = [...resourceMap.values()];
@@ -192,6 +200,18 @@ for (const instanced of [false, true]) for (const pageSource of [false, true]) f
     assert.equal(readParts(selection)![0].geometryItemId,globalId(11));
     await act(async () => useViewerStore.getState().redo('evaluated'));
     assert.equal(readParts(selection)![0].geometryItemId,globalId(plan.conversions![0].geometryItemId));
+    if (instanced) {
+      await act(async () => useViewerStore.getState().setModelVisibility('evaluated', false));
+      assert.equal(instanceScene!.scene.getMeshDataPieces(selection), undefined);
+      assert.equal(instanceScene!.scene.getInstancedMeshDataPieces(selection), undefined, 'hidden converted owner cannot expose the original instance');
+      await act(async () => useViewerStore.getState().setModelVisibility('evaluated', true));
+      assert.equal(readParts(selection)!.length, 1);
+      await act(async () => useViewerStore.getState().undo('evaluated'));
+      assert.equal(instanceScene!.scene.getMeshDataPieces(selection), undefined);
+      assert.ok(instanceScene!.scene.getInstancedMeshDataPieces(selection), 'history survives hide/show and restores the original instance');
+      await act(async () => useViewerStore.getState().redo('evaluated'));
+      assert.equal(readParts(selection)![0].geometryItemId, globalId(plan.conversions![0].geometryItemId));
+    }
     assert.deepEqual(readParts(globalId(35))!, siblingBefore);
     if(federated) assert.equal(useViewerStore.getState().models.get('other'),other);
   } finally {

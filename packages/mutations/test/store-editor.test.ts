@@ -200,7 +200,9 @@ describe('StoreEditor', () => {
     // hydration or federated merge looks like. StoreEditor's watermark
     // (seeded at 10, the max at construction time) doesn't know id 11
     // now exists.
-    store.entityIndex.byId.set(11, {
+    // `makeStore` builds a real Map; `MutationEntityByIdIndex` deliberately
+    // exposes only the read methods, so reach the concrete map to grow it.
+    (store.entityIndex.byId as Map<number, MutationEntityRef>).set(11, {
       expressId: 11,
       type: 'IFCWALL',
       byteOffset: 0,

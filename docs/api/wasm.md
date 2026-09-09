@@ -637,3 +637,19 @@ operation in a cancellable worker, validate the source/allocator checkpoint,
 and atomically register every digest-named PNG before applying its IFC plan.
 See [finite page appearance](rust.md#finite-page-appearance) for quality limits
 and explicit refusals.
+
+### Calibrated annotation creation
+
+`IfcAPI.planAnnotationPlane(content, requestJson)` returns UTF-8
+`AnnotationPlanePlan` JSON from the native creation planner. Requests use
+`{schema, sourceRevision, nextExpressId, containerId, GlobalId, containmentGlobalId,
+Name, imageUri, frame: {origin, axisU, axisV, sizeMetres}}`. No image bytes or new
+model-load call are needed: retain the already registered image URI and commit
+its asset lease together with the typed creation plan. Run in a cancellable worker
+and revalidate the captured source/allocator immediately before publication.
+
+The viewer's `annotationPlan()` shares cancellation, supersession, timeout,
+worker teardown and stale-result validation with image/page planning and catalog
+requests. Its `mesh` is canonical native Z-up geometry, while UVs already use
+bitmap top-down orientation. See [calibrated annotations](rust.md#calibrated-image-annotations)
+for the exact coordinate/containment contract and bounded refusal conditions.

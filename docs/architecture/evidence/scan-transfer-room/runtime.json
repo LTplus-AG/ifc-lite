@@ -1,0 +1,26 @@
+{
+  "sourceCommit": "8a962988e",
+  "node": "22.23.2",
+  "nodeExecutable": "/Users/louistrue/.nvm/versions/node/v22.23.2/bin/node",
+  "browser": "Chromium 151.0.7922.34",
+  "viewport": [
+    1600,
+    1200
+  ],
+  "webGpu": true,
+  "relay": "Disposable local signed relay; secret generated in process, not retained",
+  "artifacts": {
+    "inputIfcZip": {
+      "bytes": 4184939,
+      "sha256": "2d6a3f4d2f675df85903c906fafeaa1a06bdad739ce742f4810bcd29d8b81db9"
+    },
+    "exportedIfcX": {
+      "bytes": 48786218,
+      "sha256": "de6085fd20a80d177b986c02dd1668ca9225e6aeabb140b310e896a1221aa217"
+    },
+    "wasm": {
+      "bytes": 5152683,
+      "sha256": "89a2ed43603c541252ed42de25ea134aab2b8305f0c8221ad496566fa58706d4"
+    }
+  }
+}

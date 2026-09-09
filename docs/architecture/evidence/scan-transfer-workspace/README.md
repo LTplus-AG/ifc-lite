@@ -89,7 +89,8 @@ servers are closed after acceptance.
 
 The control does not validate independent surveyed registration, RGB-point or
 posed-photo transfer, general scan reconstruction, arbitrary full-model
-capacity, or room sharing of this specific transfer. Those remain #4381 and
-future-adapter acceptance. The existing native work/memory limits remain active;
+capacity. Those remain #4381 and future-adapter acceptance.
+[Room portability acceptance](../scan-transfer-room/README.md) subsequently
+verified sharing and room export of this exact transferred IFCZIP. The existing native work/memory limits remain active;
 the full boulder target is not silently substituted for this explicitly selected
 small region.

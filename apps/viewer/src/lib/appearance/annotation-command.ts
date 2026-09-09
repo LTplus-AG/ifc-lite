@@ -5,6 +5,7 @@ import { captureAppearanceDependencies, planAuthoredResourceCleanup } from '@ifc
 import { StoreEditor } from '@ifc-lite/mutations';
 import { equivalentAppearanceGeometry, type Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { entityRefToString } from '@/store/types';
 import type { MeshData } from '@ifc-lite/geometry';
 import { setAnnotationMembership } from './annotation-hierarchy';
 import { appearanceRevision, captureAppearanceSource, type AppearanceCommitOptions } from './command';
@@ -64,7 +65,16 @@ export async function commitAnnotationPlane(modelId: string, assetId: string, na
       const geometryResult = { ...old, meshes,
         totalTriangles: old.totalTriangles - removed.reduce((n, part) => n + part.indices.length / 3, 0) + (present ? mesh.indices.length / 3 : 0),
         totalVertices: old.totalVertices - removed.reduce((n, part) => n + part.positions.length / 3, 0) + (present ? mesh.positions.length / 3 : 0) };
+      const removedRef = { modelId, expressId: native.annotationId };
+      const selectedEntityIds = new Set(now.selectedEntityIds);
+      selectedEntityIds.delete(globalId);
+      const selectedEntitiesSet = new Set(now.selectedEntitiesSet);
+      selectedEntitiesSet.delete(entityRefToString(removedRef));
+      const selectedEntityId = now.selectedEntityId === globalId ? [...selectedEntityIds].at(-1) ?? null : now.selectedEntityId;
       return { models: new Map(now.models).set(modelId, { ...current, geometryResult }),
+        ...(!present ? { selectedEntityIds, selectedEntitiesSet, selectedEntityId,
+          selectedEntity: selectedEntityId === null ? null : now.resolveGlobalIdFromModels(selectedEntityId) ?? null,
+          selectedEntities: now.selectedEntities.filter(ref => ref.modelId !== modelId || ref.expressId !== native.annotationId) } : {}),
         ...(now.activeModelId === modelId ? { geometryResult } : {}) };
     };
     options.onProgress?.('preparing');

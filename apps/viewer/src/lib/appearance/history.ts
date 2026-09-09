@@ -12,7 +12,7 @@ export interface AppearanceHistoryCommand {
   /** Release this history owner's resource leases, never the live model's owner. */
   dispose(): void;
 }
-export type AppearanceHistoryPublication = Partial<Pick<ViewerState, 'models' | 'geometryResult'>>;
+export type AppearanceHistoryPublication = Partial<Pick<ViewerState, 'models' | 'geometryResult' | 'selectedEntityId' | 'selectedEntityIds' | 'selectedEntity' | 'selectedEntitiesSet' | 'selectedEntities'>>;
 interface Entry {
   modelId: string;
   view: MutablePropertyView;

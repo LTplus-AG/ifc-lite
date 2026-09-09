@@ -36,6 +36,7 @@
  * wrongly include.
  */
 import { getGlobalRenderer } from '../hooks/useBCF.js';
+import { placedViewGeometry } from '@/lib/model-placement/view-geometry';
 import type { GeometryResult } from '@ifc-lite/geometry';
 
 /** This model's global-id bracket, for scoping `getAllInstancedMeshData()`'s
@@ -52,6 +53,7 @@ export function withInstancedMeshes(
   geometryResult: GeometryResult,
   modelRange: InstancedModelRange | null,
 ): GeometryResult {
+  geometryResult = placedViewGeometry(geometryResult);
   const scene = getGlobalRenderer()?.getScene();
   const all = scene?.getAllInstancedMeshData() ?? [];
   const instanced = modelRange

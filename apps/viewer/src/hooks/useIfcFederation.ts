@@ -10,6 +10,7 @@
  * Extracted from useIfc.ts for better separation of concerns
  */
 
+import { commitRealignmentFrame } from '@/lib/model-placement/realignment-frame';
 import { useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel, type SchemaVersion } from '../store/index.js';
@@ -238,25 +239,11 @@ export function useIfcFederation(
       return;
     }
 
-    // ONE snapshot of the user's georef edits for the whole pass, on purpose.
-    // `findReferenceGeorefModel()` just read them to build the anchor's georef
-    // and every `resolveGeoref` below reads the same Map, with no await in
-    // between, so every model in the federation is placed from one consistent
-    // set of inputs.
-    //
-    // The cross-CRS path awaits `resolveProjection`, which can load a precision
-    // grid or fetch a definition — a real window in which the georeferencing
-    // panel (the Re-align button's `busy` flag disables only itself) can commit
-    // an edit. Re-reading the store per callback would then place the models
-    // handled after that edit from different inputs than the ones before it AND
-    // than the anchor, whose georef is necessarily resolved up front — the
-    // anchor's frame has to be read before the restores run (#2007), so it
-    // cannot be refreshed mid-pass without reintroducing that bug. The result
-    // would be a federation aligned half to one frame and half to another, with
-    // nothing in the UI saying so. A uniformly one-edit-stale result is the
-    // better failure: it is what the user asked for when they clicked, and the
-    // next Re-align picks the edit up.
+    // Snapshot georef edits once for the whole pass. Cross-CRS projection
+    // awaits can race new edits; re-reading here would mix coordinate frames
+    // across models. Apply a newer edit only on the next explicit realignment.
     const georefMutations = state.georefMutations;
+    state.closeReposition();
 
     const { counts, anchorGeoref, movedModelIds } = await realignFederationModels({
       models: allModels,
@@ -273,6 +260,10 @@ export function useIfcFederation(
       ),
       updateModel: state.updateModel,
     });
+
+    // Manual offsets remain explicit workspace vectors after re-alignment.
+    // Picked anchors were cancelled above; exchange files must name the new frame.
+    const frameCommitted = commitRealignmentFrame(state.models, anchorGeoref);
 
     // Everything keyed on "whose geometry actually moved", not on the align
     // count — a restored anchor (#2007) and a restored-then-skipped model both
@@ -302,6 +293,7 @@ export function useIfcFederation(
       }
     }
 
+    if (!frameCommitted) return; // Surviving geometry still needed the invalidation above.
     const messageParts: string[] = [];
     if (counts.aligned > 0) messageParts.push(`${counts.aligned} aligned`);
     if (counts.reprojected > 0) messageParts.push(`${counts.reprojected} reprojected`);

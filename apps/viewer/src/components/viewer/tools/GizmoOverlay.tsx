@@ -36,6 +36,7 @@ import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { getEntityCenter } from '@/utils/viewportUtils';
+import { dragTranslation } from '@/lib/model-placement/drag';
 
 type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
@@ -210,18 +211,13 @@ export function GizmoOverlay() {
       x: e.clientX - drag.cursorStart.x,
       y: e.clientY - drag.cursorStart.y,
     };
-    // Scalar projection of the cursor delta onto the on-screen axis
-    // direction. |axisScreenPerMeter|^2 is the squared pixel length
-    // of a 1m world segment along this axis — dividing by it converts
-    // pixels back into metres.
-    const ax = drag.axisScreenPerMeter;
-    const denom = ax.x * ax.x + ax.y * ax.y;
-    if (denom < 1e-6) return;
-    const metres = (cursorDelta.x * ax.x + cursorDelta.y * ax.y) / denom;
+    const idx = drag.axis === 'x' ? 0 : drag.axis === 'y' ? 1 : 2;
+    const movement = dragTranslation([{ axis: idx, screen: drag.axisScreenPerMeter }], cursorDelta);
+    if (!movement) return;
+    const metres = movement[idx];
     // Delta since the LAST frame of this drag.
     const previous = drag.accumulatedDelta;
     const delta: [number, number, number] = [0, 0, 0];
-    const idx = drag.axis === 'x' ? 0 : drag.axis === 'y' ? 1 : 2;
     delta[idx] = metres - (drag.axis === 'x' ? previous.x : drag.axis === 'y' ? previous.y : previous.z);
     if (Math.abs(delta[idx]) < 1e-6) return;
     // Only advance the per-axis accumulator if the mutation actually
@@ -239,11 +235,7 @@ export function GizmoOverlay() {
 
   const onDragEnd = (e: React.PointerEvent<SVGElement>) => {
     if (!dragRef.current) return;
-    try {
-      (e.target as SVGElement).releasePointerCapture(e.pointerId);
-    } catch {
-      /* pointer already released — safe to ignore */
-    }
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
     dragRef.current = null;
   };
 

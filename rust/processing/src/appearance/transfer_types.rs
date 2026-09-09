@@ -82,6 +82,8 @@ pub struct MeshTransferSummary {
     pub applicable: bool,
     pub coverage: TransferCoverage,
     pub items: Vec<TransferItemCoverage>,
+    /// Target eligibility refusals survive even when no applicable plan exists.
+    pub exclusions: Vec<super::Exclusion>,
     pub diagnostics: Vec<String>,
 }
 #[derive(Debug)]

@@ -304,7 +304,12 @@ fn issue_4381_triangle_permutation_does_not_change_tie_refusal() {
     ];
     request.source_mesh.triangles = vec![[0, 1, 2], [3, 4, 5]];
     request.source_mesh.uvs = vec![[0., 0.]; 6];
-    for triangles in [vec![[0, 1, 2], [3, 4, 5]], vec![[3, 4, 5], [0, 1, 2]], vec![[0, 2, 1], [3, 4, 5]], vec![[3, 4, 5], [0, 2, 1]]] {
+    for triangles in [
+        vec![[0, 1, 2], [3, 4, 5]],
+        vec![[3, 4, 5], [0, 1, 2]],
+        vec![[0, 2, 1], [3, 4, 5]],
+        vec![[3, 4, 5], [0, 2, 1]],
+    ] {
         request.source_mesh.triangles = triangles;
         let mut budget = TransferBudget::new();
         let mut surface = Surface::new(&request, &identity(), &mut budget).unwrap();
@@ -316,4 +321,16 @@ fn issue_4381_triangle_permutation_does_not_change_tie_refusal() {
             Observation::Ambiguous
         );
     }
+}
+
+#[test]
+fn issue_4381_target_exclusions_remain_visible_without_applicable_output() {
+    let (mut request, rgba) = fixture();
+    request.product_ids = vec![1];
+    let result = plan_mesh_transfer(CONTROLLED_IFC.as_bytes(), &request, &rgba).unwrap();
+    assert!(result.output.is_none());
+    assert!(!result.transfer.applicable);
+    assert_eq!(result.transfer.exclusions.len(), 1);
+    assert_eq!(result.transfer.exclusions[0].product_id, 1);
+    assert!(!result.transfer.exclusions[0].reason.is_empty());
 }

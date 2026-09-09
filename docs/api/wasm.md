@@ -795,7 +795,8 @@ matching, not camera visibility reconstruction or confidence learned from scans.
 Unknown samples preserve existing target albedo through the shared atlas/material
 planner. The output adds `transfer` metadata: `preparedSha256`,
 `registrationSha256`, the full `registration` fit/check residual report,
-`applicable`, aggregate `coverage`, per-item coverage and
+`applicable`, aggregate `coverage`, per-item coverage, target eligibility
+`exclusions` (also retained without an applicable plan), and
 explicit diagnostics. Fewer than four fit or four held-out observations carries
 an insufficient-evidence diagnostic and `plan: null`, `applicable: false`, even
 when samples are observed. Operational acceptance additionally requires that the
@@ -813,7 +814,8 @@ Invalidate prepared results after any source, frame, target, pixel or criterion
 change. Atomically adopt all assets and edits through the existing appearance
 transaction, retaining owner leases and rechecking snapshot/allocator revisions.
 
-JSON transport is capped at 64 MiB, source vertices/triangles at 200,000 each,
+JSON transport is capped at 64 MiB, source revision at 256 bytes, target raster
+identities at 10,000 entries of 4,096 bytes, source vertices/triangles at 200,000 each,
 source/target RGBA at 128 MiB combined and individual images at the existing
 16-megapixel/8192-axis limits. Transfer preparation, BVH traversal/candidate tests
 and atlas sampling share 64 million work units and a conservative 256-MiB

@@ -37,6 +37,18 @@ pub fn plan_mesh_transfer(
     {
         return Err("Transfer requires bounded positive distance, oriented normal threshold, and nonnegative ambiguity distance".into());
     }
+    if !matches!(request.schema.as_str(), "IFC4" | "IFC4X3")
+        || request.source_revision.len() > 256
+        || request.source_images.len() > 10_000
+        || request
+            .source_images
+            .iter()
+            .any(|image| image.image_uri.is_empty() || image.image_uri.len() > 4096)
+    {
+        return Err(
+            "Transfer schema, revision or target raster identities exceed their bounds".into(),
+        );
+    }
     validate_frame(&request.target_from_ifc_world)?;
     let registration = register_scan_correspondences(&request.registration)?;
     if registration.request_sha256 != request.registration_sha256 {
@@ -110,6 +122,7 @@ pub fn plan_mesh_transfer(
         diagnostics
             .push("No observed target samples; no applicable mutation plan was produced".into());
     }
+    let exclusions = output.plan.exclusions.clone();
     Ok(MeshTransferPlan {
         output: applicable.then_some(output),
         texels_per_metre: request.texels_per_metre,
@@ -120,6 +133,7 @@ pub fn plan_mesh_transfer(
             applicable,
             coverage,
             items: sampler.items,
+            exclusions,
             diagnostics,
         },
     })

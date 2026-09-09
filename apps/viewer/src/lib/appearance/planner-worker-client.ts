@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import type { AnnotationPlanePlan, AnnotationPlaneRequest, PageAppearancePlan, PageAppearanceRequest, AppearanceCatalog, AppearanceCatalogRequest, AppearancePlan, AppearanceRequest, AppearanceWorkerJob, AppearanceWorkerRequest, AppearanceWorkerResponse } from './planner-types.js';
+import type { CapturedMeshPlan, CapturedMeshRequest, AnnotationPlanePlan, AnnotationPlaneRequest, PageAppearancePlan, PageAppearanceRequest, AppearanceCatalog, AppearanceCatalogRequest, AppearancePlan, AppearanceRequest, AppearanceWorkerJob, AppearanceWorkerRequest, AppearanceWorkerResponse } from './planner-types.js';
 
 export interface AppearanceWorker {
   onmessage: ((event: MessageEvent<AppearanceWorkerResponse>) => void) | null;
@@ -11,6 +11,7 @@ export interface AppearanceWorker {
   terminate(): void;
 }
 export interface AppearancePlanner {
+  capturedMeshPlan(source: Uint8Array, request: CapturedMeshRequest, options?: { signal?: AbortSignal }): Promise<CapturedMeshPlan>;
   annotationPlan(source: Uint8Array, request: AnnotationPlaneRequest, options?: { signal?: AbortSignal }): Promise<AnnotationPlanePlan>;
   plan(source: Uint8Array, request: AppearanceRequest, options?: { signal?: AbortSignal }): Promise<AppearancePlan>;
   pagePlan(source: Uint8Array, request: PageAppearanceRequest, rgba: Uint8Array, options?: { signal?: AbortSignal }): Promise<PageAppearancePlan>;
@@ -48,6 +49,15 @@ export function createAppearancePlanner(options: {
     const request = job.type === 'page-plan' ? job.request.appearance : job.request;
     if (job.type === 'page-plan' && job.rgba.byteLength > 128 * 1024 * 1024) {
       return Promise.reject(new Error('Page raster payload exceeds 128 MiB. Use a smaller source.'));
+    }
+    // Refuse oversized capture arrays before structured clone and JSON encoding
+    // allocate copies; semantic geometry validation remains canonical Rust.
+    if (job.type === 'captured-mesh-plan') {
+      const mesh = job.request.mesh;
+      if ([mesh.positions.length, mesh.triangles.length, mesh.uvs.length].some(n => n === 0 || n > 200_000)
+        || mesh.uvTriangles.length !== mesh.triangles.length) {
+        return Promise.reject(new Error('Captured mesh needs 1..200000 position, triangle and UV rows, with one UV triangle per face'));
+      }
     }
     if ('productIds' in request && request.productIds.length > 10_000) {
       return Promise.reject(new Error('Appearance scope exceeds 10000 owners. Choose a smaller scope.'));
@@ -100,6 +110,20 @@ export function createAppearancePlanner(options: {
         if (message.type !== 'complete' || !message.plan || message.plan.sourceRevision !== revision
           || message.plan.nextExpressId !== allocationStart) throw new Error('Appearance worker returned a stale model revision');
         return message.plan;
+      }, options);
+    },
+    capturedMeshPlan(source, request, options) {
+      const revision = request.sourceRevision, allocationStart = request.nextExpressId;
+      return run(source, { type: 'captured-mesh-plan', request }, message => {
+        if (message.type !== 'captured-mesh-complete' || !message.result
+          || message.result.plan?.sourceRevision !== revision || message.result.plan.nextExpressId !== allocationStart
+          || message.result.coordinateSpace !== 'ifc-z-up'
+          || message.result.mesh?.express_id !== message.result.objectId
+          || message.result.mesh.geometry_item_id !== message.result.geometryItemId
+          || message.result.mesh.texture?.url !== request.imageUri) {
+          throw new Error('Appearance worker returned a stale or invalid captured mesh plan');
+        }
+        return message.result;
       }, options);
     },
     annotationPlan(source, request, options) {

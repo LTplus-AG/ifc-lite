@@ -132,3 +132,9 @@ plan for an explicit spatial container, reusing canonical native geometry. Run i
 in a worker and publish its typed entities, source-image lease and returned mesh
 as one existing model/history transaction. See the [WASM API guide](../../docs/api/wasm.md#calibrated-annotation-creation)
 for the Z-up geometry/top-down UV and allocator/source validation contract.
+
+`IfcAPI.planCapturedMesh` creates a bounded `IfcBuildingElementProxy` plan from
+an already segmented textured triangle mesh, retaining independent UV seams and
+the original image URI. It uses the same native authoring and geometry path as
+annotation creation. See [captured surface creation](../../docs/api/wasm.md#captured-textured-surface-creation)
+for coordinate, budget and atomic host-commit requirements.

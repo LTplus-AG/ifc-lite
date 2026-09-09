@@ -185,3 +185,17 @@ IDs in `AppearancePreview.begin(owner, { geometryItemRemaps })`; each pair has
 triangle-corner and ownership checks, and records the pairs in `AppearanceChange`
 for reversible history. Unlisted item-ID changes remain invalid. See the
 [evaluated-occurrence contract](../architecture/appearance-evaluated-occurrences.md).
+
+Renderer integrations preparing an occurrence replacement can call
+`scene.retainInstancedOccurrence(globalId, modelIndex)` after geometry is resident.
+The returned lease has `valid`, `setSuppressed(boolean)`, and `release()` members.
+Suppression removes that occurrence from drawing, picking, and CPU instance
+geometry enumeration while retaining its shared template, current placement,
+selection, and colour override state. Releasing it restores the current user
+hide/isolate state. Model removal or a scene reset invalidates the lease.
+Retained leases prevent CPU geometry release until history releases them.
+
+This resource operation does not create IFC geometry or canonical UV provenance.
+An appearance integration must separately validate the native evaluated mesh and
+its model frame, publish a replacement, and retain the lease for Undo. It must
+release the lease if preparation fails or the preview is discarded.

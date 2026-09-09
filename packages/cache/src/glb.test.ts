@@ -23,7 +23,7 @@ function buildGLB(materials: Array<[number, number, number, number]>): Uint8Arra
     const v = i * 9;
     verts.set([0, 0, 0, 1, 0, 0, 0, 1, 0], v);
     norms.set([0, 0, 1, 0, 0, 1, 0, 0, 1], v);
-    idx.set([i * 3, i * 3 + 1, i * 3 + 2], i * 3);
+    idx.set([0, 1, 2], i * 3); // Each primitive has its own three-vertex accessor.
   }
 
   const posBytes = new Uint8Array(verts.buffer);

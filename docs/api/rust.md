@@ -826,7 +826,9 @@ The host must adopt all returned image resources and IFC edits as one command;
 normal planning, undo and model export must retain those resources together.
 
 The topology-preserving triangle atlas resamples the original appearance at the
-requested physical density. Finite page bounds and straight-alpha compositing
+requested physical density, raised per triangle to preserve at least the source
+texture pixel frequency in every direction (including skewed or repeated UVs).
+Budget refusal never silently lowers that source-fidelity floor. Finite page bounds and straight-alpha compositing
 prevent repeated/clamped page borders outside the page. Sampling guard pixels
 reduce chart seams; bilinear filtering still has finite resolution at page
 edges. This is visual preservation at an explicit sampling density, not pixel

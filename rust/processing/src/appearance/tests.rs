@@ -45,6 +45,7 @@ END-ISO-10303-21;
 
 fn request(products: Vec<u32>) -> AppearanceRequest {
     AppearanceRequest {
+        representation_policy: RepresentationPolicy::Preserve,
         schema: "IFC4".into(),
         source_revision: "revision-1".into(),
         next_express_id: 100,
@@ -84,7 +85,12 @@ fn step(value: &Value) -> String {
             "({})",
             values.iter().map(step).collect::<Vec<_>>().join(",")
         ),
-        Value::String(s) if s.starts_with('#') || s.starts_with('.') || s == "*" => s.clone(),
+        Value::String(s) if {
+            let token=s.trim();
+            matches!(token,"$"|"*")
+                || token.strip_prefix('#').is_some_and(|id|!id.is_empty() && id.bytes().all(|c|c.is_ascii_digit()))
+                || token.strip_prefix('.').and_then(|s|s.strip_suffix('.')).is_some_and(|s|!s.is_empty() && s.bytes().all(|c|c.is_ascii_alphanumeric() || c==b'_'))
+        } => s.trim().into(),
         Value::String(s) => format!("'{}'", s.replace('\'', "''")),
         other => other.to_string(),
     }

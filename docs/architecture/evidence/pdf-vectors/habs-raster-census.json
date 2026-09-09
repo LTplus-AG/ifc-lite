@@ -1,0 +1,61 @@
+{
+  "purpose": "operator inventory only; no conversion or fidelity verdict",
+  "sourceSha256": "f75301c338d80bc2f428dede7c54d4799def2c2726cea8bed50c3e85d5f6305a",
+  "sourceBytes": 675723,
+  "pdfjs": "6.3.289",
+  "pageNumber": 1,
+  "pageCount": 1,
+  "page": {
+    "viewBox": [
+      0,
+      487.700012,
+      596,
+      1224
+    ],
+    "userUnit": 1,
+    "rotation": 0,
+    "pdfToPage": [
+      1,
+      0,
+      0,
+      -1,
+      0,
+      1224
+    ]
+  },
+  "operationCount": 22,
+  "operators": {
+    "save": 4,
+    "transform": 8,
+    "dependency": 3,
+    "paintImageXObject": 3,
+    "restore": 4
+  },
+  "paints": {},
+  "pathCommands": {},
+  "totalPathNumbers": 0,
+  "maxExplicitSaveDepth": 2,
+  "fidelityWork": {
+    "clipping": 0,
+    "text": 0,
+    "groups": 0,
+    "forms": 0,
+    "optionalContent": 0,
+    "graphicsState": 0,
+    "rasterImages": 3,
+    "shading": 0
+  },
+  "limits": {
+    "bytes": 67108864,
+    "operations": 100000,
+    "pathNumbers": 2000000,
+    "deadlineMs": 60000
+  },
+  "caveats": [
+    "Paint counts do not measure visible area; clipping/optional content/groups need full interpretation.",
+    "Operator indices are not render-operation filter indices.",
+    "PDF.js may normalize or repair input; original PDF syntax is not inventoried.",
+    "Fonts, ICC colors, transparency, paint order and line semantics have not been converted or compared.",
+    "Page paper units do not establish architectural drawing scale."
+  ]
+}

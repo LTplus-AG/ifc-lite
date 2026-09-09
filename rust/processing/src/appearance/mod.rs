@@ -4,6 +4,9 @@
 //! Opt-in appearance authoring over an effective IFC snapshot. No load-time
 //! geometry changes. Plans are applied atomically by the host mutation editor.
 mod budget;
+mod evaluated;
+mod evaluated_source;
+mod evaluated_allocation;
 mod annotation;
 mod captured;
 mod captured_types;
@@ -79,17 +82,27 @@ pub fn plan_appearance(
     bytes: &[u8],
     request: &AppearanceRequest,
 ) -> Result<AppearancePlan, String> {
+    if request.product_ids.is_empty() { return Err("Appearance scope must contain 1..10000 products".into()); }
+    let mut source=Source::new(bytes)?;
+    if request.representation_policy==RepresentationPolicy::EvaluatedOccurrence {
+        let normalized=evaluated::prepare(bytes,request,&mut source)?;
+        let plan=plan_with_source(bytes,normalized.request(),&mut source)?;
+        return Ok(normalized.compose(plan)?.0);
+    }
+    plan_with_source(bytes,request,&mut source)
+}
+
+fn plan_with_source(bytes:&[u8], request:&AppearanceRequest, source:&mut Source<'_>) -> Result<AppearancePlan,String> {
     if request.schema != "IFC4" && request.schema != "IFC4X3" {
         return Err("Appearance authoring requires IFC4 or IFC4X3".into());
     }
-    if request.product_ids.is_empty() || request.product_ids.len() > 10_000 {
+    if request.product_ids.len() > 10_000 {
         return Err("Appearance scope must contain 1..10000 products".into());
     }
     let uri = &request.image_uri;
     validate_image_uri(uri)?;
     mapping::validate(&request.mapping)?;
-    let mut source = Source::new(bytes)?;
-    texture_budget::preflight(&mut source)?;
+    texture_budget::preflight(source)?;
     let textures = ifc_lite_geometry::build_texture_index(bytes, &mut source.decoder);
     let max_id = source
         .types
@@ -134,9 +147,9 @@ pub fn plan_appearance(
                         }
                     }
                 }
-                items.push(mapping::map_item(&mut source, request, product, id, &mut budget)?);
+                items.push(mapping::map_item(source, request, product, id, &mut budget)?);
             }
-            canonical::align_source_corners(&mut source, product, &mut items, &textures, request)?;
+            canonical::align_source_corners(source, product, &mut items, &textures, request)?;
             Ok::<_, String>(items)
         })();
         // Resource refusal invalidates the whole command, never a partial success.

@@ -33,3 +33,12 @@ typecheck; documentation examples; module size, test wiring and source assertion
 gates. The WASM test frees the API deterministically and independently verifies
 request-digest serialization, held-out exclusion, frame identities and refusal
 bounds. No large model or captured scan fixture is committed here.
+
+After merging current main, the path-gated geometry quick lane was also run
+locally using a freshly built abi3 Python wheel installed into an isolated
+virtual environment. All 15 comparator unit tests passed; all four committed
+in-tree geometry references matched. The existing halfspace fixture reports a
+non-blocking triangle-density advisory. No reference or allowlist was changed.
+The wheel's own Cargo.lock retains the new processing-to-nalgebra dependency.
+Repository-wide license, API snapshot, module-size and enforcing issue-queue
+checks also passed; the maintainer-authored prerequisite PR leaves #4381 open.

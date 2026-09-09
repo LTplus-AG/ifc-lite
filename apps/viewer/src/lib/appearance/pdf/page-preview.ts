@@ -84,7 +84,7 @@ export async function preparePdfPagePreview(options: {
   const result = await planner.pagePlan(snapshot.bytes, {
     appearance: { schema: snapshot.schema, sourceRevision: snapshot.revision, nextExpressId: snapshot.nextExpressId,
       productIds, imageUri: modelAppearanceAssets.getAuthoredUri(snapshot.modelId, source.assetId),
-      repeatS: false, repeatT: false, mapping: calibration.mapping },
+      repeatS: false, repeatT: false, representationPolicy: settings.representationPolicy ?? 'preserve', mapping: calibration.mapping },
     page, sourceImages: [...images].map(([imageUri, raster]) => ({ imageUri, raster })),
     texelsPerMetre: Math.max(pdf.recipe.pixelWidth / calibration.mapping.metresPerTile[0],
       pdf.recipe.pixelHeight / calibration.mapping.metresPerTile[1]),

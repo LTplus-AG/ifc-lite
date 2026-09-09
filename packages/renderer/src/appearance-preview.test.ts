@@ -612,3 +612,34 @@ describe('flat batch appearance ownership (#4243)', () => {
     assert.ok(state.textures.every((texture) => texture.destroyed === 1));
   });
 });
+
+it('occurrence remaps are explicit, immutable, geometry-preserving and cancellable (#4404)', () => {
+  const scene = new Scene(), state = gpu();
+  const source = { ...mesh(7, new Uint8Array([255, 0, 0, 255])), geometryItemId: 21 };
+  scene.appendToBatches([source], state.device, pipeline);
+  const original = scene.getMeshDataPieces(7)![0];
+  const api = scene.appearancePreview(state.device, pipeline);
+  const replacement = { ...original, geometryItemId: 31 };
+  const ordinary = api.begin({ expressId: 7, modelIndex: 0 });
+  assert.throws(() => api.update(ordinary, [replacement]), /geometry or ownership/);
+  api.cancel(ordinary);
+  assert.throws(() => api.begin({ expressId: 7, modelIndex: 0 }, { geometryItemRemaps: [{ from: 99, to: 31 }] }), /remap/);
+  const pairs = [{ from: 21, to: 31 }];
+  const token = api.begin({ expressId: 7, modelIndex: 0 }, { geometryItemRemaps: pairs });
+  pairs[0].to = 999;
+  assert.throws(() => api.update(token, [{ ...replacement, geometryItemId: 999 }]), /geometry or ownership/);
+  assert.throws(() => api.update(token, [{ ...replacement, expressId: 8 }]), /geometry or ownership/);
+  assert.throws(() => api.update(token, [{ ...replacement, positions: replacement.positions.map(value => value + 1) }]), /geometry or ownership/);
+  api.update(token, [replacement]);
+  assert.equal(scene.getMeshDataPieces(7)![0].geometryItemId, 31);
+  api.cancel(token);
+  assert.equal(scene.getMeshDataPieces(7)![0].geometryItemId, 21);
+  const committed = api.begin({ expressId: 7, modelIndex: 0 }, { geometryItemRemaps: [{ from: 21, to: 31 }] });
+  api.update(committed, [replacement]);
+  const change = api.commit(committed);
+  assert.deepEqual(change.geometryItemRemaps, [{ from: 21, to: 31 }]);
+  assert.equal(change.before[0].geometryItemId, 21);
+  assert.equal(change.after[0].geometryItemId, 31);
+  assert.equal(scene.getMeshDataPieces(7)!.length, 1);
+  scene.clear();
+});

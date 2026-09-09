@@ -26,6 +26,7 @@ export interface AppearancePreviewParts {
   globalId: number;
   modelIndex: number;
   parts: readonly MeshData[];
+  geometryItemRemaps?: AppearanceChange['geometryItemRemaps'];
 }
 
 /** Resolve source IFC item identity independently of model/federation offsets. */
@@ -36,12 +37,25 @@ export function bindAppearancePreview(
     targetCornerNormals: readonly number[], targetVertexCount: number) => MeshData,
   itemImages?: ReadonlyMap<number, AppearancePreviewImage>,
 ): AppearancePreviewParts[] {
+  const plannedItems = new Map(plan.items.map(item => [item.geometryItemId, item]));
+  const conversions = new Map<number, NonNullable<AppearancePlan['conversions']>[number]>();
+  for (const conversion of plan.conversions ?? []) {
+    const item = plannedItems.get(conversion.geometryItemId);
+    if (!item || item.productId !== conversion.productId || conversions.has(conversion.geometryItemId)
+      || conversion.sourceGeometryItemId === conversion.geometryItemId
+      || conversion.sourceIndices.length !== item.sourceIndices.length) {
+      throw new Error('Invalid native occurrence conversion provenance.');
+    }
+    conversions.set(conversion.geometryItemId, conversion);
+  }
   const targetTopologies = new Map(plan.items.map(item => [item.geometryItemId, new Uint32Array(item.targetIndices)]));
   const byProduct = new Map<number, Map<number, AppearancePlan['items'][number]>>();
   for (const item of plan.items) {
     let items = byProduct.get(item.productId);
     if (!items) { items = new Map(); byProduct.set(item.productId, items); }
-    items.set(item.geometryItemId, item);
+    const sourceItem = conversions.get(item.geometryItemId)?.sourceGeometryItemId ?? item.geometryItemId;
+    if (items.has(sourceItem)) throw new Error('Ambiguous occurrence conversion provenance.');
+    items.set(sourceItem, item);
   }
   return [...byProduct].map(([productId, items]) => {
     const globalId = state.toGlobalId(modelId, productId);
@@ -49,6 +63,7 @@ export function bindAppearancePreview(
     if (!originals?.length) throw new Error(`Geometry for IFC object #${productId} is not available. Reload the model and try again.`);
     const represented = new Set<number>();
     const modelIndex = originals[0].modelIndex ?? 0;
+    const geometryItemRemaps: NonNullable<AppearanceChange['geometryItemRemaps']>[number][] = [];
     const parts = originals.map(mesh => {
       const ref = mesh.geometryItemId === undefined ? null : state.resolveGlobalIdFromModels(mesh.geometryItemId);
       const item = ref?.modelId === modelId ? items.get(ref.expressId) : undefined;
@@ -58,13 +73,17 @@ export function bindAppearancePreview(
       represented.add(item.geometryItemId);
       const image = itemImages ? itemImages.get(item.geometryItemId) : { bitmap, imageUri, repeatS, repeatT };
       if (!image) throw new Error(`The baked image for IFC geometry #${item.geometryItemId} is missing.`);
-      return { ...expandCorners(mesh, item.sourceIndices, item.previewCornerUvs, targetTopologies.get(item.geometryItemId)!, item.targetCornerNormals, item.targetVertexCount), color: [1, 1, 1, 1] as [number, number, number, number],
+      const conversion = conversions.get(item.geometryItemId);
+      if (conversion && !geometryItemRemaps.some(pair => pair.from === mesh.geometryItemId)) {
+        geometryItemRemaps.push({ from: mesh.geometryItemId!, to: state.toGlobalId(modelId, item.geometryItemId) });
+      }
+      return { ...expandCorners(mesh, conversion?.sourceIndices ?? item.sourceIndices, item.previewCornerUvs, targetTopologies.get(item.geometryItemId)!, item.targetCornerNormals, item.targetVertexCount), geometryItemId: state.toGlobalId(modelId, item.geometryItemId), color: [1, 1, 1, 1] as [number, number, number, number],
         shadingColor: undefined, texture: undefined,
         textureBitmap: image.bitmap,
         textureRef: { textureId: textureIdentity(image.bitmap), url: image.imageUri, repeatS: image.repeatS, repeatT: image.repeatT } };
     });
     if (represented.size !== items.size) throw new Error(`Some geometry for IFC object #${productId} is still loading.`);
-    return { globalId, modelIndex, parts };
+    return { globalId, modelIndex, parts, ...(geometryItemRemaps.length ? { geometryItemRemaps } : {}) };
   });
 }
 
@@ -79,7 +98,7 @@ export class AppearancePreviewSession {
     if (this.tokens.length) throw new Error('Discard the previous appearance preview before staging another.');
     try {
       for (const group of groups) {
-        const token = this.preview.begin({ expressId: group.globalId, modelIndex: group.modelIndex });
+        const token = this.preview.begin({ expressId: group.globalId, modelIndex: group.modelIndex }, { geometryItemRemaps: group.geometryItemRemaps });
         this.tokens.push(token);
         this.preview.update(token, group.parts);
       }
@@ -139,20 +158,22 @@ export function appearanceHistoryParts(renderer: Renderer, changes: readonly App
     if (!current || current.length !== target.length || current.length !== expectedCurrent.length) {
       throw new Error('Cannot restore appearance because the object geometry changed.');
     }
+    const geometryItemRemaps = change.geometryItemRemaps?.map(pair => direction === 'undo'
+      ? { from: pair.to, to: pair.from } : pair);
     const parts = current.map((mesh, index) => {
       const appearance = target[index];
       const expected = expectedCurrent[index];
       if (mesh.geometryItemId !== expected.geometryItemId || !equivalentAppearanceGeometry(mesh, expected)) {
         throw new Error('Cannot restore appearance because current geometry or shading changed.');
       }
-      if (mesh.geometryItemId !== appearance.geometryItemId
+      if ((geometryItemRemaps?.find(pair => pair.from === mesh.geometryItemId)?.to ?? mesh.geometryItemId) !== appearance.geometryItemId
         || !equivalentAppearanceGeometry(mesh, appearance, { allowNormalChanges: true })) {
         throw new Error('Cannot restore appearance because the object topology changed.');
       }
-      return { ...mesh, positions: appearance.positions, normals: appearance.normals, indices: appearance.indices,
+      return { ...mesh, geometryItemId: appearance.geometryItemId, positions: appearance.positions, normals: appearance.normals, indices: appearance.indices,
         appearanceSource: appearance.appearanceSource, color: appearance.color, shadingColor: appearance.shadingColor,
         uvs: appearance.uvs, texture: appearance.texture, textureRef: appearance.textureRef, textureBitmap: appearance.textureBitmap };
     });
-    return { globalId: change.owner.expressId, modelIndex: change.owner.modelIndex, parts };
+    return { globalId: change.owner.expressId, modelIndex: change.owner.modelIndex, parts, ...(geometryItemRemaps?.length ? { geometryItemRemaps } : {}) };
   });
 }

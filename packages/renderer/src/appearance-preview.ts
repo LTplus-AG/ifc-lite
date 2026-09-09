@@ -16,10 +16,12 @@ export interface AppearanceChange {
   readonly owner: AppearanceOwner;
   readonly before: readonly MeshData[];
   readonly after: readonly MeshData[];
+  /** Explicit occurrence-local representation changes, captured before preview. */
+  readonly geometryItemRemaps?: readonly { readonly from: number; readonly to: number }[];
 }
 export interface AppearancePreview {
   /** Requires retained, non-instanced CPU geometry in finalized resident batches. */
-  begin(owner: AppearanceOwner): AppearanceToken;
+  begin(owner: AppearanceOwner, options?: Pick<AppearanceChange, 'geometryItemRemaps'>): AppearanceToken;
   /** Full part list in source order. Geometry must preserve exact triangle corners.
    * Mesh arrays are borrowed immutable data, including image pixels and UVs. */
   update(token: AppearanceToken, parts: readonly MeshData[]): void;
@@ -49,6 +51,7 @@ interface Draft<Resource> {
   original: readonly Resource[];
   after: readonly MeshData[];
   current: readonly Resource[];
+  geometryItemRemaps: NonNullable<AppearanceChange['geometryItemRemaps']>;
 }
 
 /** Owns detached GPU originals until cancellation/commit; never exports GPU handles. */
@@ -59,10 +62,22 @@ export class AppearancePreviewController<Resource>
   private issued = new WeakSet<AppearanceToken>();
   constructor(private readonly adapter: AppearanceAdapter<Resource>) {}
 
-  begin(owner: AppearanceOwner): AppearanceToken {
+  begin(owner: AppearanceOwner, options?: Pick<AppearanceChange, 'geometryItemRemaps'>): AppearanceToken {
     if (this.drafts.has(owner.expressId))
       throw new Error('An appearance preview already owns this entity');
     const captured = this.adapter.capture(owner);
+    const remaps = options?.geometryItemRemaps ?? [];
+    if (remaps.length > captured.parts.length) throw new Error('Appearance item remap exceeds the original part count');
+    const originals = new Set(captured.parts.map(part => part.geometryItemId));
+    const from = new Set<number>(), to = new Set<number>();
+    for (const pair of remaps) {
+      if (!Number.isSafeInteger(pair.from) || !Number.isSafeInteger(pair.to)
+        || pair.from <= 0 || pair.to <= 0 || pair.from === pair.to
+        || !originals.has(pair.from) || from.has(pair.from) || to.has(pair.to)
+        || originals.has(pair.to)) throw new Error('Invalid occurrence geometry item remap');
+      from.add(pair.from); to.add(pair.to);
+    }
+    const geometryItemRemaps = Object.freeze(remaps.map(pair => Object.freeze({ ...pair })));
     const token = Object.freeze({ owner: Object.freeze({ ...owner }) });
     const before = Object.freeze(
       captured.parts.map((part) => Object.freeze({ ...part })),
@@ -74,6 +89,7 @@ export class AppearancePreviewController<Resource>
       original: captured.resources,
       after: before,
       current: captured.resources,
+      geometryItemRemaps,
     });
     return token;
   }
@@ -105,7 +121,7 @@ export class AppearancePreviewController<Resource>
         !equivalentAppearanceGeometry(p, b, { allowNormalChanges: true }) ||
         p.origin !== b.origin ||
         p.entityIds !== b.entityIds ||
-        p.geometryItemId !== b.geometryItemId ||
+        p.geometryItemId !== (draft.geometryItemRemaps.find(pair => pair.from === b.geometryItemId)?.to ?? b.geometryItemId) ||
         p.normals.length !== p.positions.length ||
         !p.normals.every(Number.isFinite)
       ) {
@@ -139,6 +155,7 @@ export class AppearancePreviewController<Resource>
       parts.map((part, index) =>
         Object.freeze({
           ...draft.before[index],
+          geometryItemId: part.geometryItemId,
           positions: part.positions,
           normals: part.normals,
           indices: part.indices,
@@ -192,6 +209,7 @@ export class AppearancePreviewController<Resource>
         owner: draft.token.owner,
         before: draft.before,
         after,
+        ...(draft.geometryItemRemaps.length ? { geometryItemRemaps: draft.geometryItemRemaps } : {}),
       }),
     );
     let committed = false;

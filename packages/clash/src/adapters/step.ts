@@ -18,7 +18,7 @@ import { type IfcDataStore } from '@ifc-lite/parser';
 import { EntityNode } from '@ifc-lite/query';
 import type { MeshData } from '@ifc-lite/geometry';
 import { makeExclusionSet, qualifiedKey } from '../exclude.js';
-import { fromPositions } from '../math/aabb.js';
+import { fromPositions, NonFiniteAxisError } from '../math/aabb.js';
 import type { ClashElement, ExclusionSet, Mat4 } from '../types.js';
 import { isNonClashableTag, mergeMeshes } from './shared.js';
 
@@ -193,6 +193,9 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
   const byExpressId = new Map<number, ClashElement[]>();
   /** Elements whose GlobalId lookup came back empty — see the check below. */
   let missingGlobalIds = 0;
+  /** Occurrences dropped because every vertex was non-finite on some axis —
+   *  see the warning below and {@link NonFiniteAxisError}'s doc (#4254). */
+  let nonFiniteBoundsSkipped = 0;
 
   // Pass 1: group every mesh by its OWNING OCCURRENCE — `occurrenceKey` when
   // present (a GPU-instanced entity's individual placement), else the bare
@@ -290,6 +293,23 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     const key = occurrenceKey ? `${baseKey}:${occurrenceKey}` : baseKey;
     if (!storedGlobalId) missingGlobalIds += 1;
 
+    // A corrupt mesh (every vertex non-finite on one axis, e.g. a NaN'd
+    // transform or a malformed source file) has no usable AABB — see
+    // `NonFiniteAxisError`. Skip just this occurrence rather than letting it
+    // in with an inverted box that would silently vanish from every later
+    // spatial query (#4254), and rather than aborting the whole clash run
+    // for one corrupt element among many.
+    let bounds;
+    try {
+      bounds = fromPositions(merged.positions, worldTransform);
+    } catch (err) {
+      if (err instanceof NonFiniteAxisError) {
+        nonFiniteBoundsSkipped += 1;
+        continue;
+      }
+      throw err;
+    }
+
     const element: ClashElement = {
       key,
       // `expressId` is local here, so the offset is applied exactly ONCE and
@@ -305,7 +325,7 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
       tag,
       name: storedName || undefined,
       storey: node.storey()?.name || undefined,
-      bounds: fromPositions(merged.positions, worldTransform),
+      bounds,
       positions: merged.positions,
       indices: merged.indices,
       transform: worldTransform,
@@ -350,6 +370,18 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
         'match the shift the host applied to `mesh.expressId`, so the store is being addressed ' +
         'with ids it does not contain — element keys, names and the void/host exclusions are ' +
         'all degraded.',
+    );
+  }
+
+  // Loud by construction: unlike the near-silent inverted box this replaces
+  // (#4254), a dropped occurrence is counted and named here rather than
+  // shipping in the result set invisible to every spatial query.
+  if (nonFiniteBoundsSkipped > 0) {
+    console.warn(
+      `[clash/step] skipped ${nonFiniteBoundsSkipped} occurrence(s) in model "${modelId}": ` +
+        'every vertex was non-finite on at least one axis after the world transform, so no ' +
+        'usable AABB could be computed. These occurrences are excluded from clash detection ' +
+        'entirely rather than participating with a corrupt bound.',
     );
   }
 

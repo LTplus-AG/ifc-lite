@@ -383,10 +383,13 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
   }
 
   // The sweep key must be a TOTAL order, so it is compared, never subtracted.
-  // `a - b` returns NaN for any pair involving a non-finite minimum — NaN bounds
-  // from a direct SDK caller, and `+Infinity` from `fromPositions` when no vertex
-  // on an axis was finite (it returns the box inverted). A comparator that
-  // answers NaN violates the contract `Array.prototype.sort` requires, and V8's
+  // `a - b` returns NaN for any pair involving a non-finite minimum — e.g. NaN
+  // or an inverted (`min > max`) bound handed in directly by an SDK caller
+  // that built `ClashElement.bounds` itself rather than via `fromPositions`
+  // (which now throws `NonFiniteAxisError` instead of ever returning such a
+  // box — see its doc, #4254). This sweep still has to tolerate one arriving
+  // by hand: a comparator that answers NaN violates the contract `Array.
+  // prototype.sort` requires, and V8's
   // TimSort then merges runs against that answer and emits an arbitrary
   // permutation of the WHOLE array: the sweep's eviction sees minima going
   // backwards, drops boxes that are still live, and real duplicates elsewhere in

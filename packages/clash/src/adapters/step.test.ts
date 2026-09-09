@@ -563,6 +563,75 @@ describe('elementsFromStep - total GlobalId miss warning', () => {
   });
 });
 
+// #4254: a mesh whose every vertex is non-finite on some axis used to produce
+// an inverted (`min > max`) AABB — sound-looking, but invisible to the BVH
+// broad phase (`engine-ts/broad.ts`), so the element silently never clashed
+// with anything. `fromPositions` now throws `NonFiniteAxisError` for that
+// shape; the adapter catches it, drops just that occurrence, and warns once
+// with a count — the same shape as the GlobalId-miss warning above.
+function nonFiniteAxisMesh(expressId: number): MeshData {
+  const positions = new Float32Array([
+    NaN, 1, 1, NaN, 2, 2, NaN, 2, 1,
+  ]);
+  return {
+    expressId,
+    ifcType: 'IfcWall',
+    positions,
+    normals: new Float32Array(positions.length),
+    indices: new Uint32Array([0, 1, 2]),
+    color: [0.5, 0.5, 0.5, 1],
+  };
+}
+
+describe('elementsFromStep - drops an occurrence with a non-finite axis (#4254)', () => {
+  it('excludes the corrupt occurrence and warns once, naming the model and the count', async () => {
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(WALL_AND_SPACE_IFC).buffer as ArrayBuffer,
+    );
+    const wallId = (store.entityIndex.byType.get('IFCWALL') ?? [])[0];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { elements } = elementsFromStep({
+        store,
+        meshes: [nonFiniteAxisMesh(wallId)],
+        modelId: 'model-4254',
+      });
+      // The corrupt occurrence never becomes a ClashElement — never an
+      // inverted box that would silently vanish from every spatial query.
+      expect(elements).toHaveLength(0);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const msg = warn.mock.calls[0].join(' ');
+      expect(msg).toContain('[clash/step]');
+      expect(msg).toContain('model-4254');
+      expect(msg).toContain('skipped 1');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('still returns the good occurrence when only one of several is corrupt', async () => {
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(STOREY_WITH_GEOMETRY_IFC).buffer as ArrayBuffer,
+    );
+    const slabId = (store.entityIndex.byType.get('IFCSLAB') ?? [])[0];
+    const wallId = (store.entityIndex.byType.get('IFCWALL') ?? [])[0];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { elements } = elementsFromStep({
+        store,
+        meshes: [nonFiniteAxisMesh(slabId), solidBoxMesh(wallId, 0.5)],
+        modelId: 'model-4254-mixed',
+      });
+      expect(elements).toHaveLength(1);
+      expect(elements[0].tag).toBe('IfcWall');
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0].join(' ')).toContain('skipped 1');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
 /**
  * The SYNTHETIC FALLBACK KEY has to be unique per model.
  *

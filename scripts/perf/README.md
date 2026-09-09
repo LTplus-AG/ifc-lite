@@ -910,3 +910,18 @@ distributions directly to the TypeScript entrypoint and retain their provenance.
 `--skip-branch-build` labels its input as supplied distribution, not a verified
 current-commit build. The wrapper retains the temporary base through child exit
 and then removes it while preserving the child failure status.
+
+### Prepared-overlay comparison ownership (#4243)
+
+Compare a private borrowed overlay descriptor synchronously against the detached
+checkpoint. Cloning the live overlay solely to compare it adds allocation while
+providing no additional isolation; original/draft/prepared/publication snapshots
+remain deep copies. Cyclic escaped values, skip-history edits and rollback
+rejection remain covered. A fresh real Convento Apply profile with this change
+and the earlier command/dependency changes still locates substantial synchronous
+work in dependency scanning and authored-data/history construction plus retained
+snapshots. This single sampled run does not establish an isolated improvement
+for comparison-only clone removal. Keep ownership guards while investigating
+preparation outside the Apply interaction. The profile, timing, summary and
+exact source/runtime hashes are in
+`docs/architecture/evidence/appearance/appearance-apply-after-comparison-*`.

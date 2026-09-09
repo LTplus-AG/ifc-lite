@@ -370,6 +370,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.1.1
         version: 6.1.1(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
+      '@webgpu/types':
+        specifier: ^0.1.72
+        version: 0.1.72
       fake-indexeddb:
         specifier: ^6.2.5
         version: 6.2.5
@@ -512,6 +515,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.1.1
         version: 6.1.1(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
+      '@webgpu/types':
+        specifier: ^0.1.72
+        version: 0.1.72
       happy-dom:
         specifier: ^20.14.0
         version: 20.14.0
@@ -2256,6 +2262,12 @@ packages:
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
+
+  '@napi-rs/canvas-win32-arm64-msvc@1.0.9':
+    resolution: {integrity: sha512-yjmVS3ArZeRVCP7jqbPq4rpZa/BhTeI7ELE2XqJg3snICQBDevLZyArxswHkiTnT34KRic33/4fLirrHI+SY8A==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [win32]
 
   '@napi-rs/canvas-win32-x64-msvc@1.0.9':
     resolution: {integrity: sha512-QlSYQdMQslB81nlABo9wNfQ6npFhE7/O+saCZdqVGueGanyRk4jCogD5EwQenfP3kIq9e+mm6GreQBjX5MrA8g==}
@@ -6457,6 +6469,9 @@ snapshots:
   '@napi-rs/canvas-linux-x64-musl@1.0.9':
     optional: true
 
+  '@napi-rs/canvas-win32-arm64-msvc@1.0.9':
+    optional: true
+
   '@napi-rs/canvas-win32-x64-msvc@1.0.9':
     optional: true
 
@@ -6471,6 +6486,7 @@ snapshots:
       '@napi-rs/canvas-linux-riscv64-gnu': 1.0.9
       '@napi-rs/canvas-linux-x64-gnu': 1.0.9
       '@napi-rs/canvas-linux-x64-musl': 1.0.9
+      '@napi-rs/canvas-win32-arm64-msvc': 1.0.9
       '@napi-rs/canvas-win32-x64-msvc': 1.0.9
     optional: true
 

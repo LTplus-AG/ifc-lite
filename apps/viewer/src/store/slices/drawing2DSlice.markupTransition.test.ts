@@ -18,6 +18,8 @@ import {
   markupTransitionPatch,
   wasLiveMarkupCached,
   __resetLiveMarkupCacheForTests,
+  inProgressClearPatch,
+  drawing2DFieldClassificationForTests,
   type MarkupTransitionState,
 } from './drawing2DSlice.markupTransition.js';
 import { getDefaultDrawing2DState } from './drawing2DSlice.js';
@@ -100,6 +102,22 @@ describe('markupTransitionPatch', () => {
       assert.strictEqual(patch.textAnnotation2DEditing, null);
     });
 
+    // #4199: measure2DSnapPoint and annotation2DCursorPos are frame-dependent
+    // Point2D fields consumed for rendering by Section2DPanel.tsx
+    // (measureSnapPoint / annotation2DCursorPos props) that #4196's own pass
+    // missed. Without this clear, a snap indicator or cursor preview computed
+    // in the outgoing model's drawing coordinates renders at the wrong place
+    // over the incoming model's drawing until the next mouse-move.
+    it('clears measure2DSnapPoint on a model switch — MUTATION TARGET (#4199)', () => {
+      const patch = markupTransitionPatch(stateFor('model-a', []), 'model-b');
+      assert.strictEqual(patch.measure2DSnapPoint, null);
+    });
+
+    it('clears annotation2DCursorPos on a model switch — MUTATION TARGET (#4199)', () => {
+      const patch = markupTransitionPatch(stateFor('model-a', []), 'model-b');
+      assert.strictEqual(patch.annotation2DCursorPos, null);
+    });
+
     it('also clears in-progress state when the target is a previously-cached model (restore path)', () => {
       markupTransitionPatch(stateFor('model-a', [sampleMeasure('mA')]), 'model-b');
       const patch = markupTransitionPatch(stateFor('model-b', []), 'model-a');
@@ -128,6 +146,44 @@ describe('markupTransitionPatch', () => {
     it('is a true no-op (still {}) when re-selecting the already-active model, even with in-progress state present', () => {
       const patch = markupTransitionPatch(stateFor('model-a', []), 'model-a');
       assert.deepStrictEqual(patch, {});
+    });
+  });
+
+  // #4199: the structural fix for six recurrences of the same bug shape —
+  // a field on `Drawing2DState` that should be cleared on transition but
+  // isn't, because the clear patch is a hand-picked list nothing forces to
+  // stay in sync with the state shape. `FIELD_CLASSIFICATION` in the source
+  // module is `satisfies Record<keyof Drawing2DState, ...>`, so an
+  // unclassified new field is already a COMPILE error; this suite is the
+  // matching RUNTIME check that `inProgressClearPatch()` itself has not
+  // drifted from what `FIELD_CLASSIFICATION` says is `'in-progress'` — the
+  // compile-time `InProgressKey` type ties them together, but a type only
+  // constrains shape, not a specific test asserting the two enumerations
+  // actually match key-for-key at run time.
+  describe('structural mechanism: field classification stays in sync with the clear patch (#4199)', () => {
+    it('inProgressClearPatch() returns exactly the in-progress-classified keys, no more, no fewer', () => {
+      const classifiedInProgress = Object.entries(drawing2DFieldClassificationForTests)
+        .filter(([, category]) => category === 'in-progress')
+        .map(([key]) => key)
+        .sort();
+      const actualClearedKeys = Object.keys(inProgressClearPatch()).sort();
+      assert.deepStrictEqual(
+        actualClearedKeys,
+        classifiedInProgress,
+        'inProgressClearPatch() must clear exactly the fields FIELD_CLASSIFICATION marks in-progress',
+      );
+    });
+
+    it('classifies every key of Drawing2DState into exactly one category', () => {
+      const defaults = getDefaultDrawing2DState();
+      const stateKeys = Object.keys(defaults).sort();
+      const classifiedKeys = Object.keys(drawing2DFieldClassificationForTests).sort();
+      assert.deepStrictEqual(
+        classifiedKeys,
+        stateKeys,
+        'FIELD_CLASSIFICATION must cover exactly the keys getDefaultDrawing2DState() produces — ' +
+          'a divergence here means the compile-time satisfies check and the runtime default state have drifted apart',
+      );
     });
   });
 });

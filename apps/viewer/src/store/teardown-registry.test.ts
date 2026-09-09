@@ -118,13 +118,19 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
  * coordinate frame). `annotation2DActiveTool` is deliberately NOT in this
  * list: the chosen tool is a session preference, not frame-dependent data,
  * so it is left untouched and does not appear here.
+ *
+ * `measure2DSnapPoint` and `annotation2DCursorPos` are a third widening
+ * (#4199): both are frame-dependent `Point2D | null` fields that `#4196`'s
+ * own in-progress pass missed — see `drawing2DSlice.markupTransition.ts`'s
+ * `FIELD_CLASSIFICATION` for the structural fix that now makes an omission
+ * like this one a compile error.
  */
 const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
-  'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'classFilter',
+  'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'annotation2DCursorPos', 'classFilter',
   'cloudAnnotation2DPoints', 'cloudAnnotations2D', 'contextMenu', 'drawing2DDisplayOptions', 'geometryResult',
   'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
   'hierarchyBasketSelection', 'hoverState', 'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel',
-  'measure2DCurrent', 'measure2DResults', 'measure2DStart', 'meshColorBackup', 'models', 'pinboardEntities',
+  'measure2DCurrent', 'measure2DResults', 'measure2DSnapPoint', 'measure2DStart', 'meshColorBackup', 'models', 'pinboardEntities',
   'polygonArea2DPoints', 'polygonArea2DResults',
   'selectedAnnotation2D', 'selectedEntities', 'selectedEntitiesSet',
   'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedModelId', 'selectedStoreys',

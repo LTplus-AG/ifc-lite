@@ -655,3 +655,111 @@ ${facets}
     expect(matchConstraint(bounds, 'abcde')).toBe(false);
   });
 });
+
+// ============================================================================
+// A malformed numeric facet must not silently become "unbounded"
+// ============================================================================
+
+/**
+ * `readNumber`/`readInt` (parse-restriction.ts) used to drop a facet to
+ * `undefined` whenever `parseFloat`/`parseInt` failed — identical to the
+ * facet never being present. `matchBounds` then treated an all-`undefined`
+ * bounds constraint as an unconditional pass, so a typo like
+ * `<xs:minInclusive value="not-a-number"/>` silently disabled the
+ * restriction instead of rejecting the malformed IDS (or the value it was
+ * meant to bound). `parseRestriction` now records the facet name and raw
+ * value in `unparseableFacets`, and `matchBounds` fails closed whenever
+ * that list is non-empty.
+ */
+describe('parseIDS: a facet present but unparseable fails closed, not open', () => {
+  const idsWith = (facets: string): string => `<ids xmlns="http://standards.buildingsmart.org/IDS"
+     xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <info><title>T</title></info>
+  <specifications>
+    <specification name="Test" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <attribute>
+          <name><simpleValue>Name</simpleValue></name>
+          <value>
+            <xs:restriction base="xs:double">
+${facets}
+            </xs:restriction>
+          </value>
+        </attribute>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>`;
+
+  const boundsOf = (xml: string): IDSBoundsConstraint => {
+    const facet = parseIDS(xml).specifications[0].requirements[0].facet;
+    expect(facet.type).toBe('attribute');
+    const value = (facet as { value?: unknown }).value as IDSBoundsConstraint;
+    expect(value.type).toBe('bounds');
+    return value;
+  };
+
+  it('a non-numeric xs:minInclusive is recorded, dropped from the numeric field, and rejects every value', () => {
+    const bounds = boundsOf(idsWith('              <xs:minInclusive value="not-a-number"/>'));
+    expect(bounds.minInclusive).toBeUndefined();
+    expect(bounds.unparseableFacets).toEqual([
+      { facet: 'minInclusive', rawValue: 'not-a-number' },
+    ]);
+
+    // Pre-fix this was `true` for any number, including one the author
+    // meant to reject (FireRating=0 with an intended `minInclusive=60`).
+    expect(matchConstraint(bounds, 0)).toBe(false);
+    expect(matchConstraint(bounds, 60)).toBe(false);
+    expect(matchConstraint(bounds, -999999999)).toBe(false);
+  });
+
+  it('a negative xs:totalDigits is recorded and rejects every value', () => {
+    // `readInt` requires `v >= 0`; a negative totalDigits is nonsensical
+    // XSD and used to vanish exactly like an absent facet.
+    const bounds = boundsOf(idsWith('              <xs:totalDigits value="-3"/>'));
+    expect(bounds.totalDigits).toBeUndefined();
+    expect(bounds.unparseableFacets).toEqual([
+      { facet: 'totalDigits', rawValue: '-3' },
+    ]);
+
+    expect(matchConstraint(bounds, 123456)).toBe(false);
+  });
+
+  it('the European decimal comma parses via parseFloat leniency (documented, not this fix)', () => {
+    // `parseFloat` stops at the first invalid character rather than
+    // failing outright, so "60,0" (meant as 60.0) reads as the number
+    // `60` — not `unparseableFacets`. This is a real but separate
+    // misparsing hazard (a European "6,5" would silently become `6`);
+    // it is out of scope for the fail-closed fix here, which only
+    // covers values `parseFloat`/`parseInt` reject outright.
+    const bounds = boundsOf(idsWith('              <xs:minInclusive value="60,0"/>'));
+    expect(bounds.minInclusive).toBe(60);
+    expect(bounds.unparseableFacets).toBeUndefined();
+    expect(matchConstraint(bounds, 0)).toBe(false);
+    expect(matchConstraint(bounds, 60)).toBe(true);
+  });
+
+  it('a legitimately absent facet is unaffected — no unparseableFacets, still unbounded on that side', () => {
+    const bounds = boundsOf(idsWith('              <xs:maxInclusive value="100"/>'));
+    expect(bounds.minInclusive).toBeUndefined();
+    expect(bounds.maxInclusive).toBe(100);
+    expect(bounds.unparseableFacets).toBeUndefined();
+
+    expect(matchConstraint(bounds, -999999)).toBe(true);
+    expect(matchConstraint(bounds, 100)).toBe(true);
+    expect(matchConstraint(bounds, 101)).toBe(false);
+  });
+
+  it('a well-formed bound keeps working exactly as before', () => {
+    const bounds = boundsOf(idsWith('              <xs:minInclusive value="60"/>'));
+    expect(bounds.minInclusive).toBe(60);
+    expect(bounds.unparseableFacets).toBeUndefined();
+
+    expect(matchConstraint(bounds, 0)).toBe(false);
+    expect(matchConstraint(bounds, 60)).toBe(true);
+    expect(matchConstraint(bounds, 61)).toBe(true);
+  });
+});

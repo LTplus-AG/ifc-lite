@@ -58,6 +58,12 @@ export function generateFromSchema(
   outputDir: string,
   options: GeneratorOptions = {}
 ): FullGeneratedCode {
+  // Normalize line endings so a CRLF (or lone-CR) source file can never leak
+  // a stray \r into a generated string literal downstream (#4220). This is
+  // the single boundary both generateFromFile and direct callers funnel
+  // through before the content reaches the parser.
+  schemaContent = schemaContent.replace(/\r\n?/g, '\n');
+
   console.log('📖 Parsing EXPRESS schema...');
   const schema = parseExpressSchema(schemaContent);
 
@@ -240,7 +246,7 @@ console.log('  STEP line:', stepLine);
 }
 
 /**
- * Generate code for both IFC4 and IFC4X3 schemas
+ * Generate code for IFC4, IFC4X3 and IFC2X3 schemas
  */
 export function generateAll(
   schemasDir: string,
@@ -250,6 +256,7 @@ export function generateAll(
   const schemas = [
     { name: 'IFC4', file: 'IFC4_ADD2_TC1.exp', dir: 'ifc4' },
     { name: 'IFC4X3', file: 'IFC4X3.exp', dir: 'ifc4x3' },
+    { name: 'IFC2X3', file: 'IFC2X3_TC1.exp', dir: 'ifc2x3' },
   ];
 
   for (const schema of schemas) {

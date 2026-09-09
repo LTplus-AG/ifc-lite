@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { streamPointCloud } from './host.js';
 import { LasStreamingSource } from './las-source.js';
+import type { DecodedPointChunk } from '../types.js';
 import type { StreamingPointSource } from './types.js';
 
 function buildLasFile(rows: Array<{ x: number; y: number; z: number; cls?: number }>): Blob {
@@ -269,6 +270,92 @@ describe('streamPointCloud (in-process source)', () => {
     await handle.done.catch(() => {});
     // We should have seen at most a couple chunks before the cancel kicked in.
     expect(chunksSeen).toBeLessThan(10);
+  });
+
+  it('does not let a wholly non-finite chunk drag the aggregate bbox toward the origin (#4348 regression)', async () => {
+    // One chunk overflows entirely (e.g. a finite-but-huge LAS header scale
+    // sends every point in that chunk to ±Infinity — see las.ts's
+    // decodeLasPoints); the other chunk is ordinary, far-from-origin data.
+    // decodeLasPoints must report the bad chunk's bbox as the ±Infinity
+    // seed (an absorbing no-op in the union below), NOT a finite [0,0,0] —
+    // a finite sentinel would win the `< bboxMin` / `> bboxMax` comparisons
+    // here and report a bbox that includes the origin even though no real
+    // point is anywhere near it.
+    const goodChunk: DecodedPointChunk = {
+      positions: new Float32Array([500000, 200000, 100, 500100, 200100, 120]),
+      pointCount: 2,
+      bbox: { min: [500000, 200000, 100], max: [500100, 200100, 120] },
+    };
+    const badChunk: DecodedPointChunk = {
+      positions: new Float32Array(0),
+      pointCount: 0,
+      bbox: {
+        min: [Infinity, Infinity, Infinity],
+        max: [-Infinity, -Infinity, -Infinity],
+      },
+    };
+    const chunks = [badChunk, goodChunk];
+    let bbox: { min: readonly number[]; max: readonly number[] } | null = null;
+    const stub: StreamingPointSource = {
+      open: async () => ({
+        totalPointCount: 2,
+        bbox: { min: [-1, -1, -1], max: [-1, -1, -1] }, // deliberately wrong: proves onComplete used the fold, not this
+        hasColor: false,
+        hasClassification: false,
+        hasIntensity: false,
+      }),
+      next: async () => chunks.shift() ?? null,
+      close: () => {},
+    };
+    const handle = streamPointCloud({
+      format: 'las',
+      blob: new Blob([new Uint8Array(0)]),
+      onChunk: () => {},
+      onComplete: (b) => { bbox = b; },
+      createSource: () => stub,
+    });
+    await handle.done;
+    expect(bbox).not.toBeNull();
+    const b = bbox as unknown as { min: readonly number[]; max: readonly number[] };
+    expect(b.min).toEqual([500000, 200000, 100]);
+    expect(b.max).toEqual([500100, 200100, 120]);
+  });
+
+  it('falls back to the header bbox when every chunk in the stream is non-finite', async () => {
+    const badChunk: DecodedPointChunk = {
+      positions: new Float32Array(0),
+      pointCount: 0,
+      bbox: {
+        min: [Infinity, Infinity, Infinity],
+        max: [-Infinity, -Infinity, -Infinity],
+      },
+    };
+    const chunks = [badChunk];
+    const headerBbox: DecodedPointChunk['bbox'] = { min: [1, 2, 3], max: [4, 5, 6] };
+    let bbox: { min: readonly number[]; max: readonly number[] } | null = null;
+    const stub: StreamingPointSource = {
+      open: async () => ({
+        totalPointCount: 1,
+        bbox: headerBbox,
+        hasColor: false,
+        hasClassification: false,
+        hasIntensity: false,
+      }),
+      next: async () => chunks.shift() ?? null,
+      close: () => {},
+    };
+    const handle = streamPointCloud({
+      format: 'las',
+      blob: new Blob([new Uint8Array(0)]),
+      onChunk: () => {},
+      onComplete: (b) => { bbox = b; },
+      createSource: () => stub,
+    });
+    await handle.done;
+    expect(bbox).not.toBeNull();
+    const b = bbox as unknown as { min: readonly number[]; max: readonly number[] };
+    expect(b.min).toEqual([1, 2, 3]);
+    expect(b.max).toEqual([4, 5, 6]);
   });
 
   it('uses the createSource override (in-process source contract)', async () => {

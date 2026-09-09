@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
-import { flattenTaskTree } from './schedule-utils.js';
+import { flattenTaskTree, buildWorkPlanInfo } from './schedule-utils.js';
 
 function task(
   globalId: string,
@@ -82,5 +82,28 @@ describe('flattenTaskTree', () => {
     const rows = flattenTaskTree(data, new Set(['A', 'B']), 'some-other-schedule');
 
     assert.deepEqual(rows, []);
+  });
+});
+
+describe('buildWorkPlanInfo', () => {
+  it('builds a standalone IfcWorkPlan with the given name and no task links', () => {
+    const plan = buildWorkPlanInfo('seed-1', 'Project plan');
+
+    assert.equal(plan.kind, 'WorkPlan');
+    assert.equal(plan.name, 'Project plan');
+    assert.deepEqual(plan.taskGlobalIds, []);
+    assert.equal(typeof plan.globalId, 'string');
+    assert.ok(plan.globalId.length > 0);
+  });
+
+  it('is deterministic for the same seed and distinct for different seeds', () => {
+    const a1 = buildWorkPlanInfo('schedule-gid-A', 'Plan A');
+    const a2 = buildWorkPlanInfo('schedule-gid-A', 'Plan A (renamed)');
+    const b = buildWorkPlanInfo('schedule-gid-B', 'Plan A');
+
+    // Same seed -> same globalId, independent of the name.
+    assert.equal(a1.globalId, a2.globalId);
+    // Different seed -> different globalId.
+    assert.notEqual(a1.globalId, b.globalId);
   });
 });

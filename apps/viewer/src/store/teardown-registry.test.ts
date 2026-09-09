@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { teardownOwnedKeys } from './teardown.js';
@@ -14,6 +14,7 @@ import { viewerTeardown } from './teardown-registry.js';
 import type { TeardownState } from './teardown.js';
 import { UI_DEFAULTS } from './constants.js';
 import type { FederatedModel } from './types.js';
+import { TEARDOWN_EXEMPTIONS } from './teardown-exemptions.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -50,7 +51,9 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'hiddenEntities', 'hiddenEntitiesByModel', 'hierarchyBasketSelection', 'hoverState',
   'hoveredTaskGlobalId', 'idsActiveEntityId', 'idsActiveSpecificationId', 'idsError',
   'idsFocusVisibilityOwned', 'idsLoading', 'idsPanelVisible', 'idsProgress',
-  'interactionMode', 'isolatedEntities', 'isolatedEntitiesByModel', 'lensAppliedColors',
+  'interactionMode', 'isolatedEntities', 'isolatedEntitiesByModel',
+  'layerDiffBusy', 'layerStack', 'layerStackDiff', 'layerStackPathToId', 'layersPanelVisible',
+  'lensAppliedColors',
   'lensAppliedHiddenIds', 'lensAutoColorLegend', 'lensColorMap',
   'lensHiddenIds', 'lensPanelVisible', 'lensRuleCounts', 'lensRuleEntityIds',
   'lensRuleIsolation', 'listExecuting', 'listPanelVisible', 'listResult', 'loading',
@@ -76,7 +79,10 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'selectedEntitiesSet', 'selectedEntity', 'selectedEntityId', 'selectedEntityIds',
   'selectedModelId', 'selectedStoreys', 'selectedTaskGlobalIds', 'separationLinesEnabled',
   'separationLinesIntensity', 'separationLinesQuality', 'separationLinesRadius',
-  'sheetEnabled', 'sheetPanelVisible', 'suppressNextSection2DPanelAutoOpen',
+  'sheetEnabled', 'sheetPanelVisible', 'slabCutAnchor', 'slabCutFootprint',
+  'slabCutStoreyElevation', 'splitHoverAxisDirection', 'splitHoverCutPoint',
+  'splitHoverDistance', 'splitHoverLength', 'splitHoverPoint', 'splitMode',
+  'splitTargetExpressId', 'splitTargetModelId', 'suppressNextSection2DPanelAutoOpen',
   'textAnnotation2DEditing', 'textAnnotations2D', 'titleBlockEditorVisible', 'typeViewMode',
   'typeVisibility', 'undoStacks', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
@@ -89,8 +95,12 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
   'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'classFilter',
   'contextMenu', 'geometryResult', 'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
   'hierarchyBasketSelection', 'hoverState', 'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel',
+  'layerDiffBusy', 'layerStack', 'layerStackDiff', 'layerStackPathToId',
   'meshColorBackup', 'models', 'pinboardEntities', 'selectedEntities', 'selectedEntitiesSet',
   'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedModelId', 'selectedStoreys',
+  'slabCutAnchor', 'slabCutFootprint', 'slabCutStoreyElevation', 'splitHoverAxisDirection',
+  'splitHoverCutPoint', 'splitHoverDistance', 'splitHoverLength', 'splitHoverPoint', 'splitMode',
+  'splitTargetExpressId', 'splitTargetModelId',
 ];
 
 /**
@@ -134,6 +144,7 @@ const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
   'cloudAnnotation2DPoints', 'cloudAnnotations2D', 'contextMenu', 'drawing2DDisplayOptions', 'geometryResult',
   'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
   'hierarchyBasketSelection', 'hoverState', 'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel',
+  'layerDiffBusy', 'layerStack', 'layerStackDiff', 'layerStackPathToId',
   'measure2DCurrent', 'measure2DResults', 'measure2DSnapPoint', 'measure2DStart', 'meshColorBackup', 'models', 'pinboardEntities',
   'polygonArea2DPoints', 'polygonArea2DResults',
   'selectedAnnotation2D', 'selectedEntities', 'selectedEntitiesSet',
@@ -177,6 +188,13 @@ function modelRemovedFixture() {
     ifcDataStore: null,
     geometryResult: null,
     mutationViews: new Map(),
+    // #4309: a federated layer stack where entry 'A' is the model being
+    // removed (`LayerStackEntry.id` mirrors the `FederatedModel.id`
+    // `useIfcFederation.ts`'s per-layer `storeAddModel` loop assigns it).
+    layerStack: [{ id: 'A', name: 'a.ifcx' }],
+    layerStackPathToId: new Map([['wall-1', 42]]),
+    layerStackDiff: { layerId: 'A', diff: { added: [], deleted: [], modified: [] } },
+    layerDiffBusy: true,
   } as unknown as Parameters<typeof modelRemovedScope>[0];
 }
 
@@ -212,7 +230,9 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel', 'hierarchyBasketSelection',
   'hoverState', 'hoveredTaskGlobalId', 'idsActiveEntityId', 'idsActiveSpecificationId',
   'idsError', 'idsFocusVisibilityOwned', 'idsLoading', 'idsPanelVisible', 'idsProgress',
-  'ifcDataStore', 'interactionMode', 'isolatedEntities', 'isolatedEntitiesByModel', 'lensAppliedColors',
+  'ifcDataStore', 'interactionMode', 'isolatedEntities', 'isolatedEntitiesByModel',
+  'layerDiffBusy', 'layerStack', 'layerStackDiff', 'layerStackPathToId', 'layersPanelVisible',
+  'lensAppliedColors',
   'lensAppliedHiddenIds', 'lensAutoColorLegend',
   'lensColorMap', 'lensHiddenIds', 'lensPanelVisible', 'lensRuleCounts', 'lensRuleEntityIds',
   'lensRuleIsolation', 'listExecuting', 'listPanelVisible', 'listResult', 'loading',
@@ -238,7 +258,10 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'selectedEntitiesSet', 'selectedEntity', 'selectedEntityId', 'selectedEntityIds',
   'selectedModelId', 'selectedStoreys', 'selectedTaskGlobalIds', 'separationLinesEnabled',
   'separationLinesIntensity', 'separationLinesQuality', 'separationLinesRadius',
-  'sheetEnabled', 'sheetPanelVisible', 'suppressNextSection2DPanelAutoOpen',
+  'sheetEnabled', 'sheetPanelVisible', 'slabCutAnchor', 'slabCutFootprint',
+  'slabCutStoreyElevation', 'splitHoverAxisDirection', 'splitHoverCutPoint',
+  'splitHoverDistance', 'splitHoverLength', 'splitHoverPoint', 'splitMode',
+  'splitTargetExpressId', 'splitTargetModelId', 'suppressNextSection2DPanelAutoOpen',
   'textAnnotation2DEditing', 'textAnnotations2D', 'titleBlockEditorVisible', 'typeViewMode',
   'typeVisibility', 'undoStacks', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
@@ -432,6 +455,78 @@ describe('the teardown registry stays complete', () => {
       viewerTeardownRegistry.length,
       found.length,
       'the registry holds a different number of entries than the slices directory exports',
+    );
+  });
+
+  it('requires every slice composed into ViewerState to be registered or explicitly exempt, so a slice cannot be born without a teardown answer', () => {
+    // The gap issue #4249 calls out: the sweep above catches a teardown that
+    // was WRITTEN and then left out of the registry. It says nothing about a
+    // slice that never had a teardown written for it in the first place —
+    // exactly splitToolSlice's shape, for as long as nobody happened to grep
+    // for it. This closes that: every slice actually wired into the store
+    // must answer "registered" or "exempt, and here is why", or this fails
+    // by name.
+    //
+    // The canonical list of composed slices comes from `index.ts`'s own
+    // `import { createXxxSlice, type XxxSlice } from './slices/xxxSlice.js'`
+    // lines — a TEXT parse, not a module import, so this test never has to
+    // load index.ts's full module graph (and whatever wasm-backed slice
+    // happens to be unimportable in this environment) just to get a list of
+    // file names. That also makes it hard to spoof: adding a slice to
+    // `ViewerState` without one of these import lines does not compile, the
+    // sequence of slice imports is the input `store/index.ts`'s own module
+    // doc says to read side-by-side with the registry, and `createXxxSlice`
+    // is the one spelling every slice-composing import in this file shares
+    // (a plain `export type { X } from './slices/xxxSlice.js'` re-export
+    // does NOT match, so a type-only re-export cannot inflate the list).
+    const indexSource = readFileSync(join(HERE, 'index.ts'), 'utf8');
+    const sliceImportPattern = /^import \{ create[A-Za-z0-9]+Slice(?:,[^}]*)? \} from '\.\/slices\/([A-Za-z0-9]+)\.js';$/gm;
+    const composedSlices = new Set<string>();
+    for (const match of indexSource.matchAll(sliceImportPattern)) {
+      composedSlices.add(match[1]);
+    }
+
+    // Non-vacuity: if the regex stops matching (index.ts reshuffles its
+    // import style), this must fail loudly rather than silently checking zero
+    // slices and reporting "nothing missing".
+    assert.ok(
+      composedSlices.size >= 40,
+      `expected to parse at least 40 slice imports out of index.ts, found ${composedSlices.size} — ` +
+        'the parser is broken, not the registry (index.ts likely changed its import style)',
+    );
+
+    const registeredSliceNames = new Set(viewerTeardownRegistry.map((entry) => entry.slice));
+    const exemptSliceNames = new Set(Object.keys(TEARDOWN_EXEMPTIONS));
+
+    const unaccountedFor = [...composedSlices]
+      .filter((name) => !registeredSliceNames.has(name) && !exemptSliceNames.has(name))
+      .sort();
+
+    assert.deepStrictEqual(
+      unaccountedFor,
+      [],
+      'these slices are composed into ViewerState but have NEITHER a registered teardown NOR an ' +
+        `exemption: ${unaccountedFor.join(', ')}. Either give the slice a SliceTeardown and add it ` +
+        "to viewerTeardownRegistry (teardown-registry.ts), or — only if it genuinely holds no " +
+        'per-model state, or tears itself down some other documented way — add an entry to ' +
+        'TEARDOWN_EXEMPTIONS (teardown-exemptions.ts) explaining why.',
+    );
+
+    // Catch the exemption list drifting the OTHER way too: an entry for a
+    // slice that is registered (redundant) or that no longer exists in
+    // ViewerState (stale) is a smell worth a loud failure, not a silent typo.
+    const staleExemptions = [...exemptSliceNames].filter((name) => !composedSlices.has(name));
+    assert.deepStrictEqual(
+      staleExemptions,
+      [],
+      `these TEARDOWN_EXEMPTIONS entries name a slice not composed into ViewerState any more: ${staleExemptions.join(', ')}`,
+    );
+    const redundantExemptions = [...exemptSliceNames].filter((name) => registeredSliceNames.has(name));
+    assert.deepStrictEqual(
+      redundantExemptions,
+      [],
+      'these slices are BOTH registered and exempt, which cannot both be true: ' +
+        redundantExemptions.join(', '),
     );
   });
 });

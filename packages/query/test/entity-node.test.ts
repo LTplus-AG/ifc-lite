@@ -150,6 +150,41 @@ describe('EntityNode', () => {
       const project = new EntityNode(store, 1);
       expect(project.containedIn()).toBeNull();
     });
+
+    // #4311: containedIn() only ever returns ONE answer (first-declared wins);
+    // containedInAmbiguous() is how a caller learns whether that answer was a
+    // tie-break or the only candidate the source file declared.
+    it('containedInAmbiguous() is false for the ordinary single-container case', () => {
+      const store = buildSpatialStore();
+      const wall = new EntityNode(store, 10);
+      expect(wall.containedInAmbiguous()).toBe(false);
+    });
+
+    it('containedInAmbiguous() is false when there is no container at all', () => {
+      const store = buildSpatialStore();
+      const project = new EntityNode(store, 1);
+      expect(project.containedInAmbiguous()).toBe(false);
+    });
+
+    it('containedInAmbiguous() is true when two different storeys directly contain the same element', () => {
+      const store = createMockStore({
+        entities: [
+          { expressId: 1, type: 'IFCPROJECT', globalId: 'proj-1', name: 'My Project' },
+          { expressId: 4, type: 'IFCBUILDINGSTOREY', globalId: 'storey-1', name: 'Level 0' },
+          { expressId: 5, type: 'IFCBUILDINGSTOREY', globalId: 'storey-2', name: 'Level 1' },
+          { expressId: 10, type: 'IFCWALL', globalId: 'wall-1', name: 'Exterior Wall' },
+        ],
+        relationships: [
+          { source: 1, target: 4, type: RelationshipType.Aggregates, relId: 100 },
+          { source: 1, target: 5, type: RelationshipType.Aggregates, relId: 101 },
+          { source: 4, target: 10, type: RelationshipType.ContainsElements, relId: 200 },
+          { source: 5, target: 10, type: RelationshipType.ContainsElements, relId: 201 },
+        ],
+      });
+      const wall = new EntityNode(store, 10);
+      expect(wall.containedIn()).not.toBeNull(); // still resolves to a single answer
+      expect(wall.containedInAmbiguous()).toBe(true);
+    });
   });
 
   // ── Aggregation ───────────────────────────────────────────────

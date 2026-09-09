@@ -185,7 +185,7 @@ function stubRasterization(): () => void {
   // @ts-expect-error -- test stub, narrower signature than the DOM lib's overloaded getContext
   HTMLCanvasElement.prototype.getContext = function (type: string) {
     if (type === '2d') return { fillStyle: '', fillRect() {}, drawImage() {} };
-    return originalGetContext.call(this, type as '2d');
+    return (originalGetContext as (contextId: string) => RenderingContext | null).call(this, type);
   };
   const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
   HTMLCanvasElement.prototype.toDataURL = function () {

@@ -22,7 +22,7 @@ import type { ComparisonOp } from '@ifc-lite/sdk';
 /**
  * Parse a --where filter string into psetName, propName, operator, value.
  */
-function parseWhereFilter(filter: string): { psetName: string; propName: string; operator: string; value?: string } {
+export function parseWhereFilter(filter: string): { psetName: string; propName: string; operator: string; value?: string } {
   const dotIdx = filter.indexOf('.');
   if (dotIdx <= 0) {
     fatal(`Invalid --where syntax: "${filter}". Expected: PsetName.PropName[=Value]`);
@@ -31,12 +31,14 @@ function parseWhereFilter(filter: string): { psetName: string; propName: string;
   const psetName = filter.slice(0, dotIdx);
   const rest = filter.slice(dotIdx + 1);
 
-  for (const op of ['!=', '>=', '<=', '>', '<', '=', '~']) {
+  // `~=` MUST be checked before `=` and `~` -- see the same note in
+  // `where-filter.ts`, whose token list this mirrors.
+  for (const op of ['!=', '>=', '<=', '~=', '>', '<', '=', '~']) {
     const opIdx = rest.indexOf(op);
     if (opIdx > 0) {
       const propName = rest.slice(0, opIdx);
       const value = rest.slice(opIdx + op.length);
-      const mappedOp = op === '~' ? 'contains' : op;
+      const mappedOp = op === '~' ? 'contains' : op === '~=' ? 'matches' : op;
       return { psetName, propName, operator: mappedOp, value };
     }
   }

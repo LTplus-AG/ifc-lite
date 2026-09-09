@@ -45,6 +45,12 @@ import { compileNameMatcher, isNamePattern } from '@ifc-lite/lists';
  * A name with no declared kind was typed into a chip field, where the
  * Lists-panel `/…/` convention (#1591) is the user's only way to say
  * "pattern"; anything else there is the historical case-insensitive equality.
+ *
+ * `compileNameMatcher` throws when the regex body is syntactically valid but
+ * rejected by `@ifc-lite/regex-guard` as unsafe (catastrophic-backtracking
+ * shaped, or over the length cap) — see `filter-ops.ts`'s `regexOpMatches`
+ * docstring for the full contract. This function does not catch that; it
+ * propagates to `filter-evaluate.ts`'s caller, which must.
  */
 export function nameMatches(rulePattern: string, rowName: string, kind?: TextKind): boolean {
   if (kind === 'regex') return compileNameMatcher(`/${rulePattern}/`)(rowName);

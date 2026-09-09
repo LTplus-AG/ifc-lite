@@ -27,6 +27,7 @@ import { fatal } from '../output.js';
  *   PsetName.PropName>=Value    (greater or equal)
  *   PsetName.PropName<=Value    (less or equal)
  *   PsetName.PropName~Value     (contains)
+ *   PsetName.PropName~=Pattern  (regex match — see `matches` on FilterComparisonOp)
  *   PsetName.PropName           (exists)
  */
 export function parseWhereFilter(filter: string): { psetName: string; propName: string; operator: string; value?: string } {
@@ -38,13 +39,16 @@ export function parseWhereFilter(filter: string): { psetName: string; propName: 
   const psetName = filter.slice(0, dotIdx);
   const rest = filter.slice(dotIdx + 1);
 
-  // Try multi-char operators first, then single-char
-  for (const op of ['!=', '>=', '<=', '>', '<', '=', '~']) {
+  // Try multi-char operators first, then single-char. `~=` MUST be checked
+  // before both `=` and `~` — either alone would split "Prop~=pattern" wrong
+  // (matching bare `=` mid-token, or bare `~` and leaving a stray `=` in the
+  // value).
+  for (const op of ['!=', '>=', '<=', '~=', '>', '<', '=', '~']) {
     const opIdx = rest.indexOf(op);
     if (opIdx > 0) {
       const propName = rest.slice(0, opIdx);
       const value = rest.slice(opIdx + op.length);
-      const mappedOp = op === '~' ? 'contains' : op;
+      const mappedOp = op === '~' ? 'contains' : op === '~=' ? 'matches' : op;
       return { psetName, propName, operator: mappedOp, value };
     }
   }

@@ -38,6 +38,16 @@
  * mesh list already narrowed by `selectModelMeshes` (the same thing the 2D
  * drawing pipeline does), because a printed drawing always draws the building,
  * never the type library.
+ *
+ * A SIXTH channel — `hiddenEntitiesByModel` / `isolatedEntitiesByModel`, the
+ * per-model "Isolate in 3D" allowlist/denylist — is also not folded here, but
+ * NOT deliberately: it is applied by the caller (`view-pdf-export-source.ts`'s
+ * `gatherDrawnMeshes`) directly on the mesh list, in each model's own LOCAL
+ * id space, before this function ever sees the meshes. It could not join the
+ * five above without a `MeshData.modelIndex` this file's callers do not
+ * reliably stamp (see that file's module doc). A caller that narrows the mesh
+ * list before handing it here still owes this channel the same treatment the
+ * other five get — it is not exempt just because it lives upstream.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';

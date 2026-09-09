@@ -17,31 +17,23 @@ import type { EntityTable, StringTable, RelationshipGraph, SpatialHierarchy, Spa
 import {
   IfcTypeEnum,
   RelationshipType,
-  createLogger,
   isBuildingLikeSpatialType,
   isSpaceLikeSpatialType,
   isSpatialStructureType,
   isStoreyLikeSpatialType,
-  IFC_BUILDING_STOREY_ELEVATION_INDEX,
-  IFC_BUILDING_STOREY_PLACEMENT_INDEX,
   findStoreyByElevation,
 } from '@ifc-lite/data';
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
 import type { IfcSourceBytes } from './source-bytes.js';
-import { getAttributeNamesAcrossSchemas } from './ifc-schema.js';
 import { computeCanonicalParent } from './spatial-hierarchy-canonical-parent.js';
-
-const log = createLogger('SpatialHierarchy');
-
-/** Source bytes needed to read on-demand attributes off the raw records
- *  (storey elevation, LongName). Present on the fresh-parse / cache-with-source
- *  path, absent on the source-less `buildFromCache` fallback. */
-interface AttributeSource {
-  source: Uint8Array | IfcSourceBytes;
-  entityIndex: { byId: { get(expressId: number): EntityRef | undefined } };
-  lengthUnitScale: number;
-}
+import {
+  type AttributeSource,
+  extractLongName,
+  extractElevation,
+  extractPlacementElevation,
+} from './spatial-hierarchy-attributes.js';
+import { computeAmbiguousStorey } from './spatial-hierarchy-ambiguity.js';
 
 /** Accumulators threaded through the recursion, plus the optional attribute source. */
 interface BuildContext {
@@ -155,6 +147,7 @@ export class SpatialHierarchyBuilder {
       storeyHeights: new Map<number, number>(),
       elementToStorey,
       elementToContainer,
+      ambiguousStorey: computeAmbiguousStorey(byStorey), // #4311
 
       getStoreyElements(storeyId: number): number[] {
         return byStorey.get(storeyId) ?? [];
@@ -203,7 +196,7 @@ export class SpatialHierarchyBuilder {
     // show both (issue #1634). It lives only in the raw record, so it needs the
     // source bytes; the source-less buildFromCache fallback leaves it undefined,
     // exactly like storey elevation.
-    const rawLongName = this.extractLongName(expressId, ctx);
+    const rawLongName = extractLongName(expressId, ctx.attrSource, ctx.attrExtractor);
     // Fall back to LongName when Name is empty (common for IfcSpace). Left
     // empty, not a fabricated `Entity #<id>` — it flows into the export layer.
     const name = rawName || rawLongName || '';
@@ -224,12 +217,12 @@ export class SpatialHierarchyBuilder {
     let elevation: number | undefined;
     if (typeEnum === IfcTypeEnum.IfcBuildingStorey && ctx.attrSource) {
       const { source, entityIndex, lengthUnitScale } = ctx.attrSource;
-      let rawElevation = this.extractElevation(expressId, source, entityIndex);
+      let rawElevation = extractElevation(expressId, source, entityIndex);
       if (rawElevation === undefined) {
         // Elevation is optional and frequently null (Revit / ArchiCAD). Fall back
         // to the storey's Z from its ObjectPlacement so it still orders + lifts in
         // Exploded mode instead of collapsing to a single floor (#1289).
-        rawElevation = this.extractPlacementElevation(expressId, source, entityIndex);
+        rawElevation = extractPlacementElevation(expressId, source, entityIndex);
       }
       if (rawElevation !== undefined) {
         elevation = rawElevation * lengthUnitScale;
@@ -350,138 +343,5 @@ export class SpatialHierarchyBuilder {
     }
 
     return { expressId, type: typeEnum, name, longName, elevation, children: childNodes, elements: containedElements };
-  }
-
-  /**
-   * Read an entity's LongName by schema attribute *name*. IfcSite / IfcBuilding /
-   * IfcBuildingStorey / IfcSpace (and the IFC4.3 facility/infra containers)
-   * declare LongName at index 7, but IfcProject carries it at a different slot,
-   * so resolving by name (not a fixed index) stays correct across the IfcRoot
-   * family. The lookup spans every bundled schema, so IFC4.3 leaves outside the
-   * parser's IFC4 codegen pin resolve too. Returns the trimmed value, or
-   * undefined when the type declares no LongName, it is empty, or no source
-   * buffer is available (the buildFromCache path).
-   */
-  private extractLongName(expressId: number, ctx: BuildContext): string | undefined {
-    if (!ctx.attrSource || !ctx.attrExtractor) return undefined;
-    const ref = ctx.attrSource.entityIndex.byId.get(expressId);
-    if (!ref) return undefined;
-    try {
-      const entity = ctx.attrExtractor.extractEntity(ref);
-      if (!entity) return undefined;
-      const idx = getAttributeNamesAcrossSchemas(entity.type).indexOf('LongName');
-      if (idx < 0) return undefined;
-      const raw = (entity.attributes || [])[idx];
-      const value = typeof raw === 'string' ? raw.trim() : '';
-      return value.length > 0 ? value : undefined;
-    } catch (error) {
-      log.caught('Failed to extract LongName', error, {
-        operation: 'extractLongName',
-        entityId: expressId,
-      });
-      return undefined;
-    }
-  }
-
-  /**
-   * Extract elevation from an IfcBuildingStorey. Elevation is attribute index 9
-   * in both IFC2x3 and IFC4 (GlobalId, OwnerHistory, Name, Description,
-   * ObjectType, ObjectPlacement, Representation, LongName, CompositionType,
-   * Elevation).
-   */
-  private extractElevation(
-    expressId: number,
-    source: Uint8Array | IfcSourceBytes,
-    entityIndex: { byId: { get(expressId: number): EntityRef | undefined } }
-  ): number | undefined {
-    const ref = entityIndex.byId.get(expressId);
-    if (!ref) return undefined;
-
-    try {
-      const extractor = new EntityExtractor(source);
-      const entity = extractor.extractEntity(ref);
-      if (!entity) return undefined;
-
-      const attrs = entity.attributes || [];
-
-      // Number from a raw value or a typed value like ['IFCLENGTHMEASURE', 3.0].
-      const extractNumber = (val: any): number | undefined => {
-        if (typeof val === 'number') return val;
-        if (Array.isArray(val) && val.length === 2 && typeof val[1] === 'number') {
-          return val[1];
-        }
-        return undefined;
-      };
-
-      // Read ONLY the Elevation slot: a previous "scan every attribute for a
-      // number < 10000" fallback wrongly treated reference attributes (parsed as
-      // bare express-id numbers, e.g. OwnerHistory #3628 -> 3628) as elevations,
-      // so a storey with a null Elevation got a garbage value instead of falling
-      // through to the ObjectPlacement-Z fallback below (#1289).
-      if (attrs.length > IFC_BUILDING_STOREY_ELEVATION_INDEX) {
-        return extractNumber(attrs[IFC_BUILDING_STOREY_ELEVATION_INDEX]);
-      }
-    } catch (error) {
-      log.caught('Failed to extract elevation', error, {
-        operation: 'extractElevation',
-        entityId: expressId,
-        entityType: 'IfcBuildingStorey',
-      });
-    }
-
-    return undefined;
-  }
-
-  /**
-   * Resolve a storey's elevation from its ObjectPlacement, used as a fallback when
-   * the Elevation attribute is null. Walks
-   *   IfcBuildingStorey.ObjectPlacement (IfcLocalPlacement)
-   *     -> RelativePlacement (IfcAxis2Placement3D)
-   *       -> Location (IfcCartesianPoint).Coordinates[2]
-   * i.e. the storey's Z relative to its parent spatial container, which matches
-   * the semantics of the Elevation attribute and avoids folding in any site-level
-   * georeferencing Z. Returns the raw (unscaled) Z, or undefined when the chain
-   * can't be resolved.
-   */
-  private extractPlacementElevation(
-    expressId: number,
-    source: Uint8Array | IfcSourceBytes,
-    entityIndex: { byId: { get(expressId: number): EntityRef | undefined } }
-  ): number | undefined {
-    try {
-      const extractor = new EntityExtractor(source);
-      const readAttrs = (id: number): unknown[] | undefined => {
-        const ref = entityIndex.byId.get(id);
-        if (!ref) return undefined;
-        return extractor.extractEntity(ref)?.attributes ?? undefined;
-      };
-
-      const placementId = readAttrs(expressId)?.[IFC_BUILDING_STOREY_PLACEMENT_INDEX];
-      if (typeof placementId !== 'number') return undefined;
-
-      // IfcLocalPlacement(PlacementRelTo, RelativePlacement) - RelativePlacement
-      // (index 1) is the IfcAxis2Placement3D carrying this storey's own offset.
-      const axisId = readAttrs(placementId)?.[1];
-      if (typeof axisId !== 'number') return undefined;
-
-      // IfcAxis2Placement3D(Location, Axis, RefDirection) - Location (index 0) is
-      // an IfcCartesianPoint.
-      const locationId = readAttrs(axisId)?.[0];
-      if (typeof locationId !== 'number') return undefined;
-
-      // IfcCartesianPoint.Coordinates (index 0) is a list [x, y, z].
-      const coords = readAttrs(locationId)?.[0];
-      if (Array.isArray(coords) && coords.length >= 3 && typeof coords[2] === 'number') {
-        return coords[2];
-      }
-    } catch (error) {
-      log.caught('Failed to extract placement elevation', error, {
-        operation: 'extractPlacementElevation',
-        entityId: expressId,
-        entityType: 'IfcBuildingStorey',
-      });
-    }
-
-    return undefined;
   }
 }

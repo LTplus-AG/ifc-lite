@@ -182,8 +182,18 @@ export { IDSNamespace } from './namespaces/ids.js';
 export type { IDSValidationSummary, IDSSupportedLocale, IDSValidateOptions } from './namespaces/ids.js';
 
 // BCF — full collaboration: topics, viewpoints, comments, GUID, colors, IDS→BCF
-export { BCFNamespace } from './namespaces/bcf.js';
-export type { TopicOptions, CommentOptions, ViewpointOptions, IDSBCFOptions } from './namespaces/bcf.js';
+export {
+  BCFNamespace,
+  IncompleteCameraStateError,
+  MissingSectionBoundsError,
+} from './namespaces/bcf.js';
+export type {
+  TopicOptions,
+  CommentOptions,
+  ViewpointOptions,
+  ExtractedViewpointState,
+  IDSBCFOptions,
+} from './namespaces/bcf.js';
 
 // Drawing — section cuts, styles, symbols, sheets, SVG, graphic overrides
 export { DrawingNamespace } from './namespaces/drawing.js';

@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
 import { buildHiddenIfcTypes } from '@/store/typeVisibilityFilter';
+import { resolveExportVisibility } from '@/store/exportVisibility';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { GeometryProcessor, isNoRenderGeometryError, type MeshData } from '@ifc-lite/geometry';
@@ -70,6 +71,13 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
   // openings the user never rendered (issue surfaced on the Revit door
   // fixture where IfcOpeningElement #2438 leaked through).
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  // Not read directly below — `resolveExportVisibility` reads the live store
+  // snapshot at export time — but subscribed so the dialog re-renders when
+  // the Class tab filter, storey isolation, or a lens hides something while
+  // the dialog is open (#4328).
+  const classFilter = useViewerStore((s) => s.classFilter);
+  const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
+  const lensHiddenIds = useViewerStore((s) => s.lensHiddenIds);
   // Legacy single-model fallback so this dialog works before any
   // FederatedModel is registered (the common case for v1 users). Only
   // the geometryResult is needed — GLB export doesn't read the parsed
@@ -142,57 +150,27 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
    * (which works in local entity space), so don't reuse ExportDialog's
    * helpers here.
    */
-  const getGlobalHiddenIds = useCallback((modelId: string): Set<number> => {
-    if (modelId === '__legacy__') return hiddenEntities;
+  // Single resolver every export path routes through (`resolveExportVisibility`,
+  // `@/store/exportVisibility`) — folds in `classFilter` (Class tab) and storey
+  // isolation on top of hidden/isolated entities, which this dialog used to
+  // miss entirely (#4328: filtering the Class tab did nothing to a GLB
+  // "Visible Only" export). Reads `useViewerStore.getState()` at call time so
+  // export always sees the state at click time, not a stale render.
+  const getExportVisibility = useCallback(
+    (modelId: string) => resolveExportVisibility(useViewerStore.getState(), modelId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [models, hiddenEntities, isolatedEntities, hiddenEntitiesByModel, isolatedEntitiesByModel, classFilter, selectedStoreys, typeVisibility, lensHiddenIds],
+  );
 
-    const model = models.get(modelId);
-    if (!model) return new Set();
-    const offset = model.idOffset ?? 0;
+  const getGlobalHiddenIds = useCallback(
+    (modelId: string): Set<number> => getExportVisibility(modelId).hiddenGlobalIds,
+    [getExportVisibility],
+  );
 
-    const out = new Set<number>();
-    // Global IDs from the legacy / global store — already global, just
-    // restrict to this model's range so we don't carry over hidden IDs
-    // that belong to sibling federated models.
-    for (const globalId of hiddenEntities) {
-      const localId = globalId - offset;
-      if (localId > 0 && localId <= model.maxExpressId) {
-        out.add(globalId);
-      }
-    }
-    // Per-model entries are LOCAL IDs — convert to global.
-    const modelHidden = hiddenEntitiesByModel.get(modelId);
-    if (modelHidden) {
-      for (const localId of modelHidden) {
-        out.add(localId + offset);
-      }
-    }
-    return out;
-  }, [models, hiddenEntities, hiddenEntitiesByModel]);
-
-  const getGlobalIsolatedIds = useCallback((modelId: string): Set<number> | null => {
-    if (modelId === '__legacy__') return isolatedEntities;
-
-    const model = models.get(modelId);
-    if (!model) return null;
-    const offset = model.idOffset ?? 0;
-
-    const out = new Set<number>();
-    if (isolatedEntities) {
-      for (const globalId of isolatedEntities) {
-        const localId = globalId - offset;
-        if (localId > 0 && localId <= model.maxExpressId) {
-          out.add(globalId);
-        }
-      }
-    }
-    const modelIsolated = isolatedEntitiesByModel.get(modelId);
-    if (modelIsolated) {
-      for (const localId of modelIsolated) {
-        out.add(localId + offset);
-      }
-    }
-    return out.size > 0 ? out : null;
-  }, [models, isolatedEntities, isolatedEntitiesByModel]);
+  const getGlobalIsolatedIds = useCallback(
+    (modelId: string): Set<number> | null => getExportVisibility(modelId).isolatedGlobalIds,
+    [getExportVisibility],
+  );
 
   const handleExport = useCallback(async () => {
     if (!selectedModel?.geometryResult) return;

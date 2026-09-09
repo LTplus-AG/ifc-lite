@@ -155,6 +155,7 @@ describe('PickingManager', () => {
 
     function harness(overrides: {
       released?: boolean;
+      texturedOnly?: boolean;
       existingMeshes?: Array<{ expressId: number }>;
       pieces?: (id: number) => Array<{ expressId: number }> | undefined;
       pointNodes?: PointPickNode[] | null;
@@ -176,7 +177,8 @@ describe('PickingManager', () => {
 
       const scene = {
         getMeshes: () => createdMeshes,
-        getBatchedMeshes: () => [{ expressIds: [WALL] }],
+        getBatchedMeshes: () => overrides.texturedOnly ? [] : [{ expressIds: [WALL] }],
+        getTexturedMeshes: () => overrides.texturedOnly ? [{ expressId: WALL }, { expressId: SLAB }] : [],
         isGeometryDataReleased: () => overrides.released ?? false,
         getAllMeshDataExpressIds: () => [WALL, SLAB],
         getMeshDataPieces:
@@ -241,6 +243,15 @@ describe('PickingManager', () => {
         get selectRectCalls() { return selectRectCalls; },
       };
     }
+
+    it('hydrates textured-only captured objects without a colour batch (#4228)', async () => {
+      const h = harness({ texturedOnly: true, pieces: id => [{ expressId: id }, { expressId: id }] });
+      await h.manager.pickRect(0, 0, 100, 100);
+      assert.deepStrictEqual(h.createdMeshes.map(mesh => mesh.expressId), [WALL, WALL, SLAB, SLAB]);
+      // A second pick must reuse the hydrated pieces rather than duplicating them.
+      await h.manager.pickRect(0, 0, 100, 100);
+      assert.equal(h.createdMeshes.length, 4);
+    });
 
     it('hydrates batched pieces so the rect pass can see them', async () => {
       const h = harness();

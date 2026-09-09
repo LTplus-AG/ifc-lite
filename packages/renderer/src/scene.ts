@@ -6,6 +6,7 @@
  * Scene graph and mesh management
  */
 
+import { splitMeshForStreaming } from './scene-stream-split.js';
 import type { Mesh, BatchedMesh, Vec3, PickClipState } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { RenderPipeline } from './pipeline.js';
@@ -1894,67 +1895,8 @@ export class Scene {
   }
 
   private splitMeshForStreaming(meshData: MeshData): MeshData[] {
-    const vertexBytes = meshData.positions.byteLength + meshData.normals.byteLength;
-    if (
-      meshData.indices.length <= Scene.STREAMING_FRAGMENT_MAX_INDICES &&
-      vertexBytes <= Scene.STREAMING_FRAGMENT_MAX_VERTEX_BYTES
-    ) {
-      return [meshData];
-    }
-
-    const maxIndexCount = Math.max(3, Math.floor(Scene.STREAMING_FRAGMENT_MAX_INDICES / 3) * 3);
-    const fragments: MeshData[] = [];
-
-    for (let start = 0; start < meshData.indices.length; start += maxIndexCount) {
-      const end = Math.min(start + maxIndexCount, meshData.indices.length);
-      const sourceIndices = meshData.indices.subarray(start, end);
-      const remap = new Map<number, number>();
-      const positions: number[] = [];
-      const normals: number[] = [];
-      const indices = new Uint32Array(sourceIndices.length);
-
-      for (let i = 0; i < sourceIndices.length; i++) {
-        const sourceIndex = sourceIndices[i];
-        let nextIndex = remap.get(sourceIndex);
-        if (nextIndex === undefined) {
-          nextIndex = remap.size;
-          remap.set(sourceIndex, nextIndex);
-          const base = sourceIndex * 3;
-          positions.push(
-            meshData.positions[base],
-            meshData.positions[base + 1],
-            meshData.positions[base + 2]
-          );
-          normals.push(
-            meshData.normals[base],
-            meshData.normals[base + 1],
-            meshData.normals[base + 2]
-          );
-        }
-        indices[i] = nextIndex;
-      }
-
-      fragments.push({
-        expressId: meshData.expressId,
-        ifcType: meshData.ifcType,
-        positions: new Float32Array(positions),
-        normals: new Float32Array(normals),
-        indices,
-        color: meshData.color,
-        // Fragments are subsets of the same source mesh → same local frame.
-        // Preserve origin so each fragment relativizes/renders in world space.
-        ...(meshData.origin ? { origin: meshData.origin } : {}),
-        // Each fragment is a vertex SUBSET of the same source mesh, so the
-        // parent's localBounds/localToWorld (issue #1474) still apply
-        // unchanged: localBounds is a safe (if loose) superset — the caller
-        // unions across an entity's pieces anyway — and localToWorld is the
-        // one placement shared by the whole (pre-split) mesh.
-        ...(meshData.localBounds ? { localBounds: meshData.localBounds } : {}),
-        ...(meshData.localToWorld ? { localToWorld: meshData.localToWorld } : {}),
-      });
-    }
-
-    return fragments;
+    return splitMeshForStreaming(meshData, Scene.STREAMING_FRAGMENT_MAX_INDICES,
+      Scene.STREAMING_FRAGMENT_MAX_VERTEX_BYTES);
   }
 
   /**

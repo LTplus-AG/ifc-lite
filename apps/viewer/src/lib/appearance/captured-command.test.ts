@@ -40,7 +40,7 @@ async function setup(federated = false) {
     coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } };
   if (federated) federationRegistry.registerModel('other', 100);
   const idOffset = federationRegistry.registerModel('capture', 53);
-  const model = { ...fixtureModel('capture'), idOffset, maxExpressId: 53, ifcDataStore: data, geometryResult: geometry };
+  const model = { ...fixtureModel('capture'), schemaVersion: 'IFC4', idOffset, maxExpressId: 53, ifcDataStore: data, geometryResult: geometry };
   const other = fixtureModel('other');
   useViewerStore.setState({ models: new Map([...(federated ? [['other', other] as const] : []), ['capture', model]]), activeModelId: 'capture',
     geometryResult: geometry, mutationViews: new Map([['capture', view]]), storeEditors: new Map([['capture', editor]]),
@@ -78,11 +78,13 @@ for (const federated of [false, true]) test(`captured wrapper owns placement, id
   globalThis.createImageBitmap = (async () => ({ width: 1, height: 1, close() {} })) as typeof createImageBitmap;
   try {
     const mesh = geometryMesh();
-    const work = createIfcFromCapturedMesh('capture', 40, { assetId: fixture.asset.id, mesh, validate() {} }, fixture.renderer, { planner: native.planner });
+    const work = createIfcFromCapturedMesh('capture', 40, { assetId: fixture.asset.id, mesh, repeatS: true, repeatT: false, validate() {} }, fixture.renderer, { planner: native.planner });
     mesh.positions[0][0] = 999; mesh.uvs[0][0] = 0.9;
     const result = await work;
     assert.deepEqual(native.request()!.mesh.positions[0], [2,3,4], 'translation is removed exactly once and caller mutations cannot replace the captured snapshot');
     assert.deepEqual(native.request()!.mesh.uvs[0], [0,0]);
+    assert.equal(native.request()!.repeatS, true);
+    assert.equal(native.request()!.repeatT, false);
     assert.deepEqual(useViewerStore.getState().resolveGlobalIdFromModels(result.globalId), { modelId: 'capture', expressId: result.expressId });
     const rendered = fixture.meshes.get(result.globalId)!;
     const first = rendered.indices[0];

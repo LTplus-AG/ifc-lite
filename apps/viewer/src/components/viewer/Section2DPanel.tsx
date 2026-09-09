@@ -164,9 +164,10 @@ export function Section2DPanel({
 
   const placement = useViewerStore((state) => state.modelPlacement);
   const placedCoordinateInfo = usePlacementCoordinateInfo((mergedGeometry ?? legacyGeometryResult)?.coordinateInfo);
+  const drawingActive = panelVisible || (activeTool === 'section' && displayOptions.show3DOverlay);
   const geometryResult = useMemo(() => { const source = mergedGeometry ?? legacyGeometryResult;
-    return source && panelVisible ? { ...placedViewGeometry(source), coordinateInfo: placedCoordinateInfo ?? source.coordinateInfo } : source;
-  }, [mergedGeometry, legacyGeometryResult, placement, placedCoordinateInfo, panelVisible]);
+    return source && drawingActive ? { ...placedViewGeometry(source), coordinateInfo: placedCoordinateInfo ?? source.coordinateInfo } : source;
+  }, [mergedGeometry, legacyGeometryResult, placement, placedCoordinateInfo, drawingActive]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // AUTO-SHOW PANEL EFFECT

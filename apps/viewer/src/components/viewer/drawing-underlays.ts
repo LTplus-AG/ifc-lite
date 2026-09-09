@@ -97,4 +97,3 @@ export function drawDxfUnderlaysScreenSpace(
     ctx.restore();
   }
 }
-

@@ -16,3 +16,12 @@ triangle, original RGB, finite red page and density. Their complete IFPA respons
 (metadata and encoded PNG, 2,547 bytes) is byte-identical. The after-runtime also
 contains the separately planned transfer API; this check invokes only the existing
 page API and is not a claim that transfer itself is enabled by this refactor.
+
+The [native load comparison](native-load.json) uses immutable F6 base, extraction
+and transfer-stack profiling binaries, interleaved on an otherwise idle machine
+with five iterations per run. All 30 AC20 loads preserve mesh/vertex/triangle
+counts and the ordered geometry fingerprint. No normal-load regression is
+resolvable at the integer-millisecond phase precision. This does not measure
+page/transfer authoring latency or a browser worker-pool speedup. The comparison
+includes the transfer stack to avoid claiming it was measured on a pure
+extraction runtime; each production checkpoint and binary hash is recorded.

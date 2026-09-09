@@ -82,3 +82,36 @@ test('real WASM annotation creation preserves canonical owner/UV frame and share
   assert.ok(source.byteLength > 0);
   planner.dispose();
 });
+
+test('real WASM authors the public boulder without losing a triangle or UV seam (#4380)', async t => {
+  const fixture = process.env.IFCLITE_CAPTURED_MESH_FIXTURE;
+  if (!fixture) { t.skip('Set IFCLITE_CAPTURED_MESH_FIXTURE to the public boulder JSON described in native capture evidence'); return; }
+  const wasmUrl = new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+  const bytes = await readFile(fixture);
+  const capture = JSON.parse(bytes.toString()) as {
+    vertices: CapturedMeshRequest['mesh']['positions']; triangles: CapturedMeshRequest['mesh']['triangles'];
+    uvs: CapturedMeshRequest['mesh']['uvs']; uv_triangles: CapturedMeshRequest['mesh']['uvTriangles'];
+  };
+  const { default: init, IfcAPI } = await import('@ifc-lite/wasm');
+  await init({ module_or_path: await readFile(wasmUrl) });
+  const api = new IfcAPI();
+  try {
+    const input: CapturedMeshRequest = { ...request, imageUri: 'textures/boulder.jpg', mesh: {
+      positions: capture.vertices, triangles: capture.triangles, uvs: capture.uvs, uvTriangles: capture.uv_triangles,
+    } };
+    const result = JSON.parse(new TextDecoder().decode(api.planCapturedMesh(source, JSON.stringify(input)))) as CapturedMeshPlan;
+    assert.equal(result.mesh.indices.length, capture.triangles.length * 3);
+    assert.equal(result.mesh.texture.url, input.imageUri);
+    result.mesh.indices.forEach((index, corner) => {
+      const face = Math.floor(corner / 3), local = corner % 3;
+      const expected = capture.vertices[capture.triangles[face][local]];
+      const uv = capture.uvs[capture.uv_triangles[face][local]];
+      for (let axis = 0; axis < 3; axis++) {
+        const world = result.mesh.positions[index * 3 + axis] + (result.mesh.origin?.[axis] ?? 0) + result.rtcOffset[axis];
+        assert.ok(Math.abs(world - expected[axis]) < 1e-4);
+      }
+      assert.ok(Math.abs(result.mesh.uvs[index * 2] - uv[0]) < 1e-6);
+      assert.ok(Math.abs(result.mesh.uvs[index * 2 + 1] - (1 - uv[1])) < 1e-6);
+    });
+  } finally { api.free(); }
+});

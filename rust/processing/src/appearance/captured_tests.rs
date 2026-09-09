@@ -52,7 +52,14 @@ fn issue_4380_public_boulder_exact_triangle_image_correspondence() {
     let Ok(path)=std::env::var("IFCLITE_CAPTURED_MESH_FIXTURE") else {
         eprintln!("Skipping external captured surface: fetch the public Poly Haven boulder fixture and set IFCLITE_CAPTURED_MESH_FIXTURE");return;
     };
-    let input:serde_json::Value=serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let bytes=match std::fs::read(path) {
+        Ok(bytes)=>bytes,
+        Err(error) if error.kind()==std::io::ErrorKind::NotFound=>{
+            eprintln!("Skipping missing captured fixture; run pnpm fixtures and fetch the public capture described in the authoring evidence");return;
+        },
+        Err(error)=>panic!("Cannot read captured fixture: {error}"),
+    };
+    let input:serde_json::Value=serde_json::from_slice(&bytes).unwrap();
     let (source,mut request)=fixture();
     request.mesh=serde_json::from_value(serde_json::json!({"positions":input["vertices"],"triangles":input["triangles"],"uvs":input["uvs"],"uvTriangles":input["uv_triangles"]})).unwrap();
     let plan=plan_captured_mesh(source.as_bytes(),&request).unwrap();
@@ -86,4 +93,20 @@ fn issue_4380_ifc4x3_captured_proxy_has_tag_and_predefined_type_slots() {
     assert_eq!(proxy.attributes[8],".USERDEFINED.");
     let points=result.plan.created.iter().find(|e|e.r#type=="IfcCartesianPointList3D").unwrap();
     assert_eq!(points.attributes.len(),2);
+}
+#[test]
+fn issue_4380_georeferenced_capture_reopens_at_same_world_triangle_corners() {
+    let (source,mut request)=fixture();
+    let source=source.replace("#4=IFCCARTESIANPOINT((0.,0.,0.));", "#4=IFCCARTESIANPOINT((5000000.,6000000.,100.));");
+    for p in &mut request.mesh.positions { for axis in 0..3 {p[axis]+=[5000000.,6000000.,100.][axis];} }
+    let result=plan_captured_mesh(source.as_bytes(),&request).unwrap();
+    let restored=crate::process_geometry(apply(&source,&result.plan).as_bytes());
+    let mesh=restored.meshes.iter().find(|m|m.express_id==result.object_id).unwrap();
+    for (corner,index) in mesh.indices.iter().enumerate() {
+        let expected=request.mesh.positions[request.mesh.triangles[corner/3][corner%3] as usize];
+        for (axis,value) in expected.iter().enumerate() {
+            let world=f64::from(mesh.positions[*index as usize*3+axis])+mesh.origin[axis]+restored.metadata.coordinate_info.origin_shift[axis];
+            assert!((world-value).abs()<1e-6);
+        }
+    }
 }

@@ -30,6 +30,7 @@ import {
 import { isNumericXsdBase, isBooleanXsdBase } from './xsd-cast.js';
 import { translateXsdRegex } from './xsd-regex.js';
 import { matchDigitFacets } from './digit-facets.js';
+import { assertGuardedRegexPattern } from '@ifc-lite/regex-guard';
 
 /** Tolerance for the bounds matcher's exclusive comparators. */
 export const NUMERIC_TOLERANCE = 1e-6;
@@ -178,6 +179,15 @@ function buildPatternRegex(
   xsdPattern: string,
   caseInsensitive: boolean
 ): RegExp | null {
+  // Reject a catastrophic-backtracking or over-long pattern BEFORE any
+  // translation/compilation is attempted. This throws (rather than
+  // returning null like the malformed-syntax cases below) because a
+  // rejected pattern must surface as a validation failure the caller
+  // can see, not silently evaluate to "no match" — see
+  // `@ifc-lite/regex-guard`'s doc comment and this package's
+  // `validateSpecification`, which turns the thrown error into a
+  // failed specification result.
+  assertGuardedRegexPattern(xsdPattern);
   // XSD char-class subtraction `[a-z-[aeiou]]` has no JS equivalent;
   // approximate as the positive class (drop the exclusion) so the rest
   // of the pattern still evaluates, matching long-standing behaviour.
@@ -281,6 +291,21 @@ function matchBounds(
   constraint: IDSBoundsConstraint,
   actualValue: string | number | boolean
 ): boolean {
+  // A facet element was present in the source `<xs:restriction>` but
+  // its `@value` could not be parsed (typo, wrong decimal separator, a
+  // negative digit-count facet, …). `parseRestriction` dropped it to
+  // `undefined` the same as a facet that was never present at all —
+  // which would otherwise make this an unconditional pass (an
+  // all-`undefined` bounds constraint satisfies every numeric value).
+  // Fail closed instead: we cannot verify compliance against a
+  // restriction we could not fully parse, so no value passes until the
+  // IDS is corrected. See `getBoundsMismatchReason` for the
+  // author-facing explanation and `audit/coherence` for the
+  // corresponding lint diagnostic.
+  if (constraint.unparseableFacets !== undefined && constraint.unparseableFacets.length > 0) {
+    return false;
+  }
+
   // String-length facets (xs:length / xs:minLength / xs:maxLength)
   // operate on the textual length, not on numeric magnitude. When any
   // of them are present, evaluate the length constraints first.

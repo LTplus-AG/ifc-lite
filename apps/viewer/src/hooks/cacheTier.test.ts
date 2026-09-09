@@ -9,6 +9,7 @@ import {
   classifyCacheTier,
   planCacheWrite,
   decideMeshOnlyCacheHit,
+  decideSourceTierCacheHit,
   decideCacheLoadOutcome,
   type CacheTierOptions,
 } from './cacheTier.js';
@@ -117,6 +118,37 @@ describe('decideMeshOnlyCacheHit', () => {
     assert.equal(decideMeshOnlyCacheHit({ storedMtime: 0, freshMtime: 1000, hasFullHash: false }), 'miss');
     assert.equal(decideMeshOnlyCacheHit({ freshMtime: 1000, hasFullHash: true }), 'serve');
     assert.equal(decideMeshOnlyCacheHit({ hasFullHash: false }), 'miss');
+  });
+});
+
+describe('decideSourceTierCacheHit', () => {
+  it('MISSES when the fresh mtime differs from the stored one (silent-stale reopen closed, #4269)', () => {
+    // The defect this gate closes: a byte-length-preserving in-place edit is
+    // invisible to the spread-sampled key, so before this gate the source tier
+    // served the OLD model unconditionally. Any ordinary edit bumps mtime.
+    assert.equal(
+      decideSourceTierCacheHit({ storedMtime: 1000, freshMtime: 2000 }),
+      'miss',
+    );
+  });
+
+  it('SERVES when the mtimes match (then the caller background-revalidates the full hash)', () => {
+    assert.equal(
+      decideSourceTierCacheHit({ storedMtime: 1000, freshMtime: 1000 }),
+      'serve',
+    );
+  });
+
+  it('SERVES on an unknown mtime — softer than the mesh-only rule, by design', () => {
+    // This tier serves cached geometry + cached source TOGETHER, so the worst
+    // case is stale-but-consistent (the pre-gate behavior for every hit), not
+    // the mesh-only tier's chimera — and a `miss` on unknown would
+    // mass-invalidate every legacy entry written before the mtime field.
+    // `0` counts as unknown, matching decideMeshOnlyCacheHit.
+    assert.equal(decideSourceTierCacheHit({ storedMtime: 0, freshMtime: 1000 }), 'serve');
+    assert.equal(decideSourceTierCacheHit({ storedMtime: 1000, freshMtime: 0 }), 'serve');
+    assert.equal(decideSourceTierCacheHit({ freshMtime: 1000 }), 'serve');
+    assert.equal(decideSourceTierCacheHit({}), 'serve');
   });
 });
 

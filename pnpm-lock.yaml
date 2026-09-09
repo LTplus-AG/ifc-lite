@@ -1045,6 +1045,9 @@ importers:
 
   packages/extensions:
     dependencies:
+      '@ifc-lite/regex-guard':
+        specifier: workspace:^
+        version: link:../regex-guard
       acorn:
         specifier: ^8.18.0
         version: 8.18.0
@@ -1099,6 +1102,9 @@ importers:
       '@ifc-lite/parser':
         specifier: workspace:*
         version: link:../parser
+      '@ifc-lite/regex-guard':
+        specifier: workspace:*
+        version: link:../regex-guard
       '@xmldom/xmldom':
         specifier: ^0.9.12
         version: 0.9.12
@@ -1161,6 +1167,9 @@ importers:
       '@ifc-lite/encoding':
         specifier: workspace:*
         version: link:../encoding
+      '@ifc-lite/regex-guard':
+        specifier: workspace:*
+        version: link:../regex-guard
     devDependencies:
       csv-parse:
         specifier: 7.0.2
@@ -1260,6 +1269,9 @@ importers:
       '@ifc-lite/data':
         specifier: workspace:^
         version: link:../data
+      '@ifc-lite/regex-guard':
+        specifier: workspace:^
+        version: link:../regex-guard
       '@noble/hashes':
         specifier: ^2.4.0
         version: 2.4.0
@@ -1353,10 +1365,25 @@ importers:
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../parser
+      '@ifc-lite/regex-guard':
+        specifier: workspace:^
+        version: link:../regex-guard
       '@ifc-lite/spatial':
         specifier: workspace:^
         version: link:../spatial
     devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.11(@edge-runtime/vm@3.2.0)(@types/node@26.4.1)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
+
+  packages/regex-guard:
+    devDependencies:
+      '@types/node':
+        specifier: ^26.4.1
+        version: 26.4.1
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

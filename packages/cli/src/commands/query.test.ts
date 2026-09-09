@@ -74,6 +74,22 @@ describe('parseWhereFilter', () => {
   it('treats a bare PsetName.PropName as an existence check', () => {
     expect(parseWhereFilter('Pset.Prop')).toEqual({ psetName: 'Pset', propName: 'Prop', operator: 'exists' });
   });
+
+  /**
+   * Kills checking `~=` after `=` or `~` in the operator scan (or dropping
+   * `~=` from the scan list entirely): either alone would misparse
+   * "Prop~=oo" -- `=` alone matches mid-token and yields propName "Prop~"
+   * with operator '=', `~` alone matches first and leaves a stray "=oo" in
+   * the value with operator 'contains'.
+   */
+  it('recognizes ~= as a single two-character regex operator, not = or ~ alone', () => {
+    expect(parseWhereFilter('Pset.Prop~=^REI')).toEqual({
+      psetName: 'Pset',
+      propName: 'Prop',
+      operator: 'matches',
+      value: '^REI',
+    });
+  });
 });
 
 describe('normalizeBooleanValue', () => {
@@ -117,6 +133,11 @@ describe('compareValues', () => {
    */
   it('>= includes the exact boundary value', () => {
     expect(compareValues(5, '>=', '5')).toBe(true);
+  });
+
+  it('matches tests the value against a regex pattern', () => {
+    expect(compareValues('REI60', 'matches', '^REI')).toBe(true);
+    expect(compareValues('WT01-Wall', 'matches', '^REI')).toBe(false);
   });
 });
 

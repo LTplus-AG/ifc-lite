@@ -144,7 +144,19 @@ export class EntityNode {
     const nodes = this.getRelated(RelationshipType.ContainsElements, 'inverse');
     return nodes[0] ?? null;
   }
-  
+
+  /**
+   * True when this element has more than one direct
+   * `IfcRelContainedInSpatialStructure` edge, i.e. `containedIn()`'s answer
+   * (first-declared wins) was a tie-break rather than the only candidate the
+   * source file declared (#4311). Duplicate edges naming the SAME structure
+   * collapse to one before either method ever sees them (relationship-graph
+   * dedupe), so this only fires on genuinely different candidates.
+   */
+  containedInAmbiguous(): boolean {
+    return this.getRelated(RelationshipType.ContainsElements, 'inverse').length > 1;
+  }
+
   // Aggregation
   decomposes(): EntityNode[] {
     return this.getRelated(RelationshipType.Aggregates, 'forward');

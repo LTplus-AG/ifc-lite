@@ -40,9 +40,23 @@ function lower(s: string | null | undefined): string {
  * a Python regular expression, and those do not fold case. Write JavaScript's
  * equivalent of `(?i)` by adding an `i` flag to a full literal (`/wand/i`).
  *
- * An empty operand never matches; an invalid pattern never matches either
- * (`compileNameMatcher` logs it and falls back to an exact compare against the
- * literal text, which no property value equals).
+ * An empty operand never matches; a MALFORMED literal (bad regex syntax)
+ * never matches either (`compileNameMatcher` logs it and falls back to an
+ * exact compare against the literal text, which no property value equals).
+ *
+ * An UNSAFE pattern — syntactically valid but rejected by
+ * `@ifc-lite/regex-guard` as catastrophic-backtracking-shaped or over the
+ * length cap — is different: `compileNameMatcher` THROWS a plain `Error`
+ * naming the pattern and reason, once, on the first row that reaches it.
+ * This function does not catch that throw; it propagates out of
+ * `stringOpMatches` / `matchStringAnyNone` / `valueOpMatches` and out of
+ * `filter-evaluate.ts`'s per-entity loop. Every current caller of the
+ * evaluator (`SearchModal.filter.tsx`'s `runFilter`, `resolveClashSetFilter`,
+ * `query-adapter.ts`'s `entitiesMatchingActiveFilter`) already wraps its call
+ * in a try/catch that turns this into a visible, recoverable error rather
+ * than an unhandled exception — see those call sites for how each one
+ * surfaces it. A new caller of `evaluateFilterRules` /
+ * `evaluateFilterRulesFederated` MUST do the same.
  */
 export function regexOpMatches(candidate: string, value: string, kind: TextKind | undefined): boolean {
   if (value.length === 0) return false;

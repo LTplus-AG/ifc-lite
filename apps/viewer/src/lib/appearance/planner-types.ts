@@ -34,7 +34,11 @@ export interface AppearanceRequest {
 export interface AppearancePlan extends AppearanceEntityPlan {
   /** Original renderer provenance for opted-in occurrence-local Body conversions. */
   conversions?: Array<{ productId: number; representationId: number; sourceGeometryItemId: number;
-    geometryItemId: number; sourceIndices: number[] }>;
+    geometryItemId: number; sourceIndices: number[];
+    /** Native canonical Z-up source mesh; older runtimes cannot materialize instances. */
+    sourcePositions?: number[]; sourceNormals?: number[];
+    sourceOrigin?: [number, number, number]; sourceColor?: [number, number, number, number];
+    rtcOffset?: [number, number, number] }>;
   nextAvailableExpressId: number;
   items: Array<{
     productId: number;

@@ -58,11 +58,16 @@ pub(super) fn preserve(plan: &mut AppearancePlan, source: &mut Source<'_>, item:
     if original.get_string(0).is_some_and(|name| name.len() > 4096) {
         return Err("Source material name exceeds 4096-byte budget".into());
     }
-    // The current authoring wire encodes references as '#id' strings. A label
-    // beginning with '#' cannot be serialized unambiguously; refuse rather than
-    // publish a Name reference or silently alter the exporter's material label.
-    if original.get_string(0).is_some_and(|name|name.starts_with('#')) {
-        return Err("Page material names beginning with '#' cannot be preserved by the current appearance wire format".into());
+    // Match the generic wire writer's reserved tokens after whitespace trim.
+    // It cannot distinguish these free-text labels from null/derived/ref/enum
+    // values when serializing a newly created style, so refuse losslessly.
+    if original.get_string(0).is_some_and(|name| {
+        let token=name.trim();
+        matches!(token,"$"|"*")
+            || token.strip_prefix('#').is_some_and(|id|!id.is_empty() && id.bytes().all(|c|c.is_ascii_digit()))
+            || token.strip_prefix('.').and_then(|s|s.strip_suffix('.')).is_some_and(|s|!s.is_empty() && s.bytes().all(|c|c.is_ascii_alphanumeric() || c==b'_'))
+    }) {
+        return Err("Page material name is a reserved appearance wire token and cannot be preserved".into());
     }
     let members = original.get_list(2).ok_or("Missing source surface style elements")?;
     if members.len() > 5 { return Err("Source surface style exceeds five-element schema limit".into()); }

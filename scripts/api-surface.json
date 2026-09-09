@@ -6269,7 +6269,6 @@
     "PropertyValue: interface",
     "QUERY_REL_TYPE_MAP: const",
     "QuantityExtractor: class",
-    "RELATIONSHIP_TYPES: const",
     "REL_TYPE_MAP: const",
     "Relationship: interface",
     "RelationshipExtractor: class",

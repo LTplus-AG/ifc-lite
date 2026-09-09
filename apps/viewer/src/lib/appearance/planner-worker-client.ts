@@ -1,3 +1,4 @@
+import type { ScanRegistrationRequest, ScanRegistrationReport } from './scan/types';
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
@@ -11,6 +12,7 @@ export interface AppearanceWorker {
   terminate(): void;
 }
 export interface AppearancePlanner {
+  registerScan(request: ScanRegistrationRequest, options?: { signal?: AbortSignal }): Promise<ScanRegistrationReport>;
   capturedMeshPlan(source: Uint8Array, request: CapturedMeshRequest, options?: { signal?: AbortSignal }): Promise<CapturedMeshPlan>;
   annotationPlan(source: Uint8Array, request: AnnotationPlaneRequest, options?: { signal?: AbortSignal }): Promise<AnnotationPlanePlan>;
   plan(source: Uint8Array, request: AppearanceRequest, options?: { signal?: AbortSignal }): Promise<AppearancePlan>;
@@ -104,6 +106,17 @@ export function createAppearancePlanner(options: {
   return {
     cancel,
     dispose() { disposed = true; cancel(); },
+    registerScan(request, options) {
+      if (request.fit.length > 256 || request.heldOut.length > 256 || new TextEncoder().encode(JSON.stringify(request)).byteLength > 512 * 1024) return Promise.reject(new Error('Scan registration exceeds its request budget'));
+      const frozen = structuredClone(request);
+      return run(new Uint8Array(), { type: 'scan-registration', request: frozen }, message => {
+        if (message.type !== 'scan-registration-complete' || !message.result
+          || JSON.stringify(message.result.sourceFrame) !== JSON.stringify(frozen.sourceFrame)
+          || JSON.stringify(message.result.targetFrame) !== JSON.stringify(frozen.targetFrame)
+          || message.result.algorithm !== 'ifclite-rigid-correspondence-v1') throw new Error('Scan worker returned a stale registration');
+        return message.result;
+      }, options);
+    },
     plan(source, request, options) {
       const revision = request.sourceRevision, allocationStart = request.nextExpressId;
       return run(source, { type: 'plan', request }, message => {

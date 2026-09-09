@@ -11,7 +11,8 @@ const identities = new WeakMap<SourceBlob, Promise<string | undefined>>();
  * The version identifies this fixed-size, ordered SHA-256 chunk construction;
  * size distinguishes a short final chunk. Names and modification times are not
  * content identity. A failed hash disables automatic matching, never samples. */
-export function placementSourceIdentity(source: SourceBlob): Promise<string | undefined> {
+export function placementSourceIdentity(source: SourceBlob, cancelled?: () => boolean): Promise<string | undefined> {
+  if (cancelled) return hashSource(source, cancelled);
   let pending = identities.get(source);
   if (!pending) {
     pending = hashSource(source);
@@ -20,14 +21,16 @@ export function placementSourceIdentity(source: SourceBlob): Promise<string | un
   return pending;
 }
 
-async function hashSource(source: SourceBlob): Promise<string | undefined> {
+async function hashSource(source: SourceBlob, cancelled: () => boolean = () => false): Promise<string | undefined> {
   try {
     const chunks = [`placement-sha256-1m-v1:${source.size}`];
     for (let start = 0; start < source.size; start += CHUNK_BYTES) {
+      if (cancelled()) return undefined;
       const hash = await computeFullSourceHash(await source.slice(start, start + CHUNK_BYTES).arrayBuffer());
       if (!hash) return undefined;
       chunks.push(hash);
     }
+    if (cancelled()) return undefined;
     const digest = await computeFullSourceHash(new TextEncoder().encode(chunks.join(':')));
     return digest ? `placement-sha256-1m-v1:${digest}` : undefined;
   } catch (error) {

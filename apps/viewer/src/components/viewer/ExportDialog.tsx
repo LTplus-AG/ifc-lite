@@ -468,7 +468,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           ? withInstancedMeshes(
               selectedModel.geometryResult,
               federatedModel
-                ? { idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0 }
+                ? { modelId: federatedModel.id, idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0 }
                 : null,
             )
           : selectedModel.geometryResult;

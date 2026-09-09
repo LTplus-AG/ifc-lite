@@ -66,7 +66,7 @@ export async function exportChangedModelToStep(
  * without loading the browser renderer.
  */
 export async function exportChangedModelToIfcx(
-  _modelId: string,
+  modelId: string,
   dataStore: IfcDataStore,
   view: MutablePropertyView | undefined,
   invocation: IfcxExportInvocation,
@@ -82,7 +82,7 @@ export async function exportChangedModelToIfcx(
     ? withInstancedMeshes(
         invocation.geometryResult,
         invocation.maxExpressId !== undefined
-          ? { idOffset: invocation.idOffset, maxExpressId: invocation.maxExpressId }
+          ? { modelId, idOffset: invocation.idOffset, maxExpressId: invocation.maxExpressId }
           : null,
       )
     : invocation.geometryResult;

@@ -20,7 +20,7 @@ export function createPlacementIndexSync() {
       for (const id of pending) {
         const model = latest.models.get(id);
         if (!model?.ifcDataStore || !model.geometryResult) continue;
-        const geometry = withInstancedMeshes(model.geometryResult, { idOffset: model.idOffset, maxExpressId: model.maxExpressId });
+        const geometry = withInstancedMeshes(model.geometryResult, { modelId: id, idOffset: model.idOffset, maxExpressId: model.maxExpressId });
         buildSpatialIndexForModel(geometry.meshes, id, model.ifcDataStore, 'placed');
       }
       pending.clear(); timer = undefined;

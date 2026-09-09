@@ -104,7 +104,7 @@ function gatherDrawnMeshes(state: ViewerState): MeshData[] {
       // entities into this one's drawn set (#2865/#2878 follow-up).
       results.push({
         geometry: model.geometryResult,
-        instancedModelRange: { idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0 },
+        instancedModelRange: { modelId: model.id, idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0 },
       });
     }
   } else if (state.geometryResult) {

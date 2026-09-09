@@ -42,6 +42,8 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 /** This model's global-id bracket, for scoping `getAllInstancedMeshData()`'s
  *  unfiltered (all-models) output down to just this model's occurrences. */
 export interface InstancedModelRange {
+  /** Known owner; ID ranges can overlap between collab and normally loaded models. */
+  modelId?: string;
   /** `FederatedModel.idOffset` — global ids for this model start at `idOffset + 1`. */
   idOffset: number;
   /** `FederatedModel.maxExpressId` — the highest LOCAL id in this model, so the
@@ -53,7 +55,7 @@ export function withInstancedMeshes(
   geometryResult: GeometryResult,
   modelRange: InstancedModelRange | null,
 ): GeometryResult {
-  geometryResult = placedViewGeometry(geometryResult);
+  geometryResult = placedViewGeometry(geometryResult, undefined, modelRange?.modelId);
   const scene = getGlobalRenderer()?.getScene();
   const all = scene?.getAllInstancedMeshData() ?? [];
   const instanced = modelRange
@@ -96,7 +98,7 @@ export function resolveInstancedExportGate(
 ): { instancedModelRange: InstancedModelRange | null; canExport: boolean } {
   const model = modelId ? models.get(modelId) : undefined;
   const instancedModelRange: InstancedModelRange | null = model
-    ? { idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0 }
+    ? { modelId, idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0 }
     : null;
   const canExport = models.size <= 1 || instancedModelRange !== null;
   return { instancedModelRange, canExport };

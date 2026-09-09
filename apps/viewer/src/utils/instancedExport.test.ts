@@ -140,7 +140,7 @@ describe('resolveInstancedExportGate', () => {
     ]);
     const result = resolveInstancedExportGate('b', models);
     assert.equal(result.canExport, true);
-    assert.deepEqual(result.instancedModelRange, { idOffset: 50, maxExpressId: 30 });
+    assert.deepEqual(result.instancedModelRange, { modelId: 'b', idOffset: 50, maxExpressId: 30 });
   });
 
   // `null` (no filter) is safe ONLY when this is provably the sole loaded

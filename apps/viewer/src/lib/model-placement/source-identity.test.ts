@@ -43,3 +43,13 @@ it('reads every scan byte in bounded chunks and never reads the whole Blob (#422
   assert.ok(await placementSourceIdentity(scan));
   assert.equal(readBytes, scan.size); assert.ok(largestRead <= 1024 * 1024);
 });
+
+it('stops the full-file pass at the next chunk after cancellation (#4226)', async () => {
+  let reads = 0, cancelled = false;
+  const source = { size: 3 * 1024 * 1024, slice() { reads++; return { async arrayBuffer() {
+    cancelled = true; return new ArrayBuffer(1024 * 1024);
+  } }; } };
+  assert.equal(await placementSourceIdentity(source, () => cancelled), undefined);
+  assert.equal(reads, 1, 'cancelling a scan does not drain the rest of its bytes');
+  assert.ok(await placementSourceIdentity(source), 'a cancelled request is not cached as the file identity');
+});

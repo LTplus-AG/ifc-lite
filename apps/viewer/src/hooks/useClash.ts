@@ -339,7 +339,7 @@ export function useClash() {
       // instanced for this model), so this is a no-op for every case this bug
       // did not touch.
       const meshes = withInstancedMeshes(geometryResult, {
-        idOffset: model.idOffset ?? 0,
+        modelId: model.id, idOffset: model.idOffset ?? 0,
         maxExpressId: model.maxExpressId ?? 0,
       }).meshes;
       if (meshes.length === 0) continue;

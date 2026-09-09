@@ -285,7 +285,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
         const exportGeometry = withInstancedMeshes(
           selectedModel.geometryResult,
           federatedModel
-            ? { idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0 }
+            ? { modelId: federatedModel.id, idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0 }
             : null,
         );
         const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;

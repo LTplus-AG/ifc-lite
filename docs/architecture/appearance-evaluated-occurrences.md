@@ -62,3 +62,13 @@ Page material names equal to reserved wire tokens after trimming (`#123`,
 `.ENUM.`, `$`, or `*`) are refused explicitly. The current authoring wire cannot
 distinguish those literals from references/enumerations/null/derived values.
 Other labels, including `#material` and `.surface`, remain literal strings.
+
+For occurrence materialization, each conversion also carries the original canonical
+`sourcePositions`, `sourceNormals`, `sourceOrigin`, `sourceColor`, and `rtcOffset`.
+`sourceIndices` indexes these positions. Values use IFC Z-up metres: add the f64
+source origin and the f64 RTC offset exactly once around local f32 vertices.
+These are moved from the same bounded evaluated mesh already checked against the
+replacement, not reconstructed from the renderer's rounded instance matrices.
+The existing aggregate plan geometry budget also bounds these retained arrays.
+The host must resolve the model index and registered placement frame explicitly;
+this payload does not make renderer instance expansion canonical UV provenance.

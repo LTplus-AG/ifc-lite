@@ -42,6 +42,13 @@ fn issue_4404_real_mapped_member_is_opt_in_and_preserves_every_sibling_and_world
         let other=after.meshes.iter().find(|m|m.express_id==mesh.express_id && (m.express_id==35169 || m.geometry_item_id==mesh.geometry_item_id)).unwrap();
         if mesh.express_id==35169 {
             assert_eq!(corners(mesh),corners(other));assert!(other.uvs.is_some());assert!(other.texture.is_some());
+            let binding=&plan.conversions[0];
+            assert_eq!(binding.source_positions,mesh.positions);
+            assert_eq!(binding.source_normals,mesh.normals);
+            assert_eq!(binding.source_indices,mesh.indices);
+            assert_eq!(binding.source_origin,mesh.origin);
+            assert_eq!(binding.source_color,mesh.color);
+            assert_eq!(binding.rtc_offset,[0.;3]);
             assert_eq!(mesh.global_id,other.global_id);
         } else { assert_eq!(serde_json::to_value(mesh).unwrap(),serde_json::to_value(other).unwrap()); }
     }
@@ -189,4 +196,42 @@ fn issue_4404_real_page_material_name_that_looks_like_generated_reference_is_lit
     assert_ne!(ids[&100001],100001);
     assert_eq!(names(&result.plan),original_names);
     assert_eq!(result.plan.created[0].express_id,result.plan.next_express_id);
+}
+
+#[test]
+fn issue_4404_materialization_payload_restores_georeferenced_native_frame_once() {
+    let Some(source)=real_source() else{return};
+    let source=source.replace("#112= IFCCARTESIANPOINT((0.,0.,0.));", "#112= IFCCARTESIANPOINT((1000000.,2000000.,0.));");
+    let plan=plan_appearance(source.as_bytes(),&request()).unwrap();
+    assert!(plan.exclusions.is_empty(),"{:?}",plan.exclusions);
+    let binding=&plan.conversions[0];
+    assert!(binding.rtc_offset.iter().any(|v|v.abs()>10_000.));
+    let mut effective=source::Source::new(source.as_bytes()).unwrap();
+    let context=context::Context::new(source.as_bytes(),&mut effective.decoder);
+    effective.context=Some(context);
+    let styles=page_source::appearance(source.as_bytes(),&mut effective);
+    let textures=ifc_lite_geometry::build_texture_index(source.as_bytes(),&mut effective.decoder);
+    let meshes=canonical::produce(&mut effective,35169,&textures,Some(&styles)).unwrap();
+    let mesh=&meshes[0];
+    assert_eq!(binding.source_positions,mesh.positions);
+    assert_eq!(binding.source_normals,mesh.normals);
+    assert_eq!(binding.source_origin,mesh.origin);
+    let output=apply(&source,&plan);
+    let reopened=crate::process_geometry(output.as_bytes());
+    let target=reopened.meshes.iter().find(|m|m.express_id==35169).unwrap();
+    // Full native loads choose a site-local frame; the planner uses detected RTC.
+    // Restore both in f64 before comparing their independently rounded f32 vertices.
+    let mut max_error=0.0_f64;
+    for (before,after) in corners(mesh).iter().zip(corners(target)) {
+        for axis in 0..3 {
+            max_error=max_error.max((before[axis]+binding.rtc_offset[axis]
+                -after[axis]-reopened.metadata.coordinate_info.origin_shift[axis]).abs());
+        }
+    }
+    assert!(max_error<1e-6,"restored native world error: {max_error}");
+    let json=serde_json::to_value(&plan).unwrap();
+    assert_eq!(json["conversions"][0]["rtcOffset"],serde_json::json!(binding.rtc_offset));
+    for key in ["sourcePositions","sourceNormals","sourceOrigin","sourceColor","rtcOffset"] {
+        assert!(json["conversions"][0][key].as_array().unwrap().iter().all(|v|v.as_f64().is_some_and(f64::is_finite)), "{key}");
+    }
 }

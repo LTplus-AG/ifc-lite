@@ -37,3 +37,11 @@ frame must be handled by the runtime's canonical frame conversion or reported as
 unresolved; importing a manifest into a different frame is rejected. The state
 foundation does not claim portable project image packaging or IFC annotation
 creation. Those use separate, explicit authoring/export operations.
+
+`AppearanceReferenceLibrary` is the compact list hosted inside the Appearance
+workspace. Its controls use the real registration actions for separate selection,
+visibility, locking, removal, one committed opacity edit, registration file
+import/export and exact-image relinking. Invalid files produce inline errors;
+imports are canceled on unmount and refuse to overwrite registrations changed
+while the file was being read. A host-provided edit callback restores the selected
+reference into the shared calibration controls rather than opening another panel.

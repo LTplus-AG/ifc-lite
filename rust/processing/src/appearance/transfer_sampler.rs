@@ -21,6 +21,7 @@ pub(super) struct TransferSampler<'a> {
     pub repeat: [bool; 2],
     pub items: Vec<TransferItemCoverage>,
     targets: Vec<TargetTriangle>,
+    seeds: Vec<Option<u32>>,
     samples: Vec<TransferCoverage>,
     current: Option<(u32, u32)>,
 }
@@ -40,6 +41,7 @@ impl<'a> TransferSampler<'a> {
             repeat,
             items: Vec::new(),
             targets: Vec::new(),
+            seeds: Vec::new(),
             samples: Vec::new(),
             current: None,
         }
@@ -51,16 +53,14 @@ impl<'a> TransferSampler<'a> {
         count: bool,
     ) -> Result<(Observation, [f64; 2]), String> {
         let target = &self.targets[triangle];
-        let work_before=self.budget.work;self.budget.calls[usize::from(count)]+=1;
         self.surface
-            .prepare_region(target.points, &mut self.budget)?;
+            .prepare_region(target.points, self.seeds[triangle], &mut self.budget)?;
         let result = self.surface.observe(
             interpolate(target.points, weights),
             target.normal,
             &mut self.budget,
-        );
-        self.budget.sample_work[usize::from(count)]+=work_before-self.budget.work;
-        let result=result.map_err(|e|format!("{e}; charges={:?}; calls={:?}; sample_work={:?}",self.budget.charges,self.budget.calls,self.budget.sample_work))?;
+        )?;
+        self.seeds[triangle] = self.surface.last_nearest;
         if count {
             let coverage = &mut self.samples[triangle];
             coverage.samples += 1;
@@ -84,12 +84,14 @@ impl AtlasSampler for TransferSampler<'_> {
         triangles: &[[u32; 3]],
         mesh: &crate::types::mesh::MeshData,
     ) -> Result<(), String> {
-        self.budget
-            .reserve(triangles.len() * 256 + points.len() * 24)?;
+        self.budget.reserve(
+            triangles.len() * (256 + std::mem::size_of::<Option<u32>>()) + points.len() * 24,
+        )?;
         self.budget.charge(triangles.len() * 8 + points.len())?;
         self.targets =
             transfer_target::prepare(source, product, points, triangles, mesh, self.frame)?;
         self.samples = vec![TransferCoverage::default(); triangles.len()];
+        self.seeds = vec![None; triangles.len()];
         self.current = Some((product, item.geometry_item_id));
         // Even subpixel charts have one interior observation; padding never counts.
         for triangle in 0..triangles.len() {
@@ -109,8 +111,6 @@ impl AtlasSampler for TransferSampler<'_> {
             .current
             .take()
             .ok_or("Missing transfer coverage item")?;
-        return Err(format!("PROBE COMPLETE; remaining={}; charges={:?}; calls={:?}; sample_work={:?}",self.budget.work,self.budget.charges,self.budget.calls,self.budget.sample_work));
-        #[allow(unreachable_code)]
         self.items.push(TransferItemCoverage {
             product_id,
             geometry_item_id,
@@ -119,7 +119,6 @@ impl AtlasSampler for TransferSampler<'_> {
         Ok(())
     }
     fn reserve_pixels(&mut self, pixels: usize) -> Result<(), String> {
-        self.budget.category=5;
         self.budget.reserve(
             pixels
                 .checked_mul(12)

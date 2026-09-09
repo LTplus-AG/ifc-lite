@@ -356,7 +356,11 @@ fn issue_4381_cached_region_and_point_queries_keep_unknowns_and_outside_points()
     let mut budget = TransferBudget::new();
     let mut cached = Surface::new(&request, &identity(), &mut budget).unwrap();
     cached
-        .prepare_region([[0., 0., 5.], [1., 0., 5.], [0., 1., 5.]], &mut budget)
+        .prepare_region(
+            [[0., 0., 5.], [1., 0., 5.], [0., 1., 5.]],
+            None,
+            &mut budget,
+        )
         .unwrap();
     for point in [
         [0.3, 0.3, 5.],
@@ -374,4 +378,87 @@ fn issue_4381_cached_region_and_point_queries_keep_unknowns_and_outside_points()
                 .unwrap()
         );
     }
+}
+
+#[test]
+fn issue_4381_seeded_region_matches_unseeded_queries_across_faces_seams_and_order() {
+    let (mut request, _) = fixture();
+    request.max_distance_metres = 0.01;
+    request.ambiguity_distance_metres = 0.00001;
+    request.source_mesh.positions = vec![
+        [0., 0., 0.],
+        [1., 0., 0.],
+        [0., 1., 0.],
+        [1., 0., 0.],
+        [1., 1., 0.],
+        [0., 1., 0.],
+        [0., 0., 0.0002],
+        [1., 0., 0.0002],
+        [0., 1., 0.0002],
+        [2., 0., 0.],
+        [3., 0., 0.],
+        [2., 1., 0.],
+    ];
+    request.source_mesh.triangles = vec![[0, 1, 2], [3, 4, 5], [8, 7, 6], [9, 10, 11]];
+    request.source_mesh.uvs = (0..4)
+        .flat_map(|_| [[0., 0.], [1., 0.], [0., 1.]])
+        .collect();
+    let mut kinds = [0_usize; 4];
+    for offset in [0., 1e8] {
+        let mut shifted = request.clone();
+        for point in &mut shifted.source_mesh.positions {
+            point[0] += offset;
+        }
+        for _ in 0..4 {
+            shifted.source_mesh.triangles.rotate_left(1);
+            for seed in 0..4 {
+                for (x, y) in [(0.1, 0.1), (0.48, 0.48), (2.1, 0.1)] {
+                    for z in [0., 0.00015, 0.02] {
+                        let region = [
+                            [offset + x, y, z],
+                            [offset + x + 0.08, y, z],
+                            [offset + x, y + 0.08, z],
+                        ];
+                        let mut budget = TransferBudget::new();
+                        let mut cached = Surface::new(&shifted, &identity(), &mut budget).unwrap();
+                        cached
+                            .prepare_region(region, Some(seed), &mut budget)
+                            .unwrap();
+                        for weights in [
+                            [1., 0., 0.],
+                            [0., 1., 0.],
+                            [0., 0., 1.],
+                            [0.5, 0.5, 0.],
+                            [0.25, 0.25, 0.5],
+                            [1. / 3.; 3],
+                        ] {
+                            for normal in [[0., 0., 1.], [0., 0., -1.]] {
+                                let point = interpolate(region, weights);
+                                let mut direct_budget = TransferBudget::new();
+                                let mut direct =
+                                    Surface::new(&shifted, &identity(), &mut direct_budget)
+                                        .unwrap();
+                                let expected =
+                                    direct.observe(point, normal, &mut direct_budget).unwrap();
+                                assert_eq!(
+                                    cached.observe(point, normal, &mut budget).unwrap(),
+                                    expected
+                                );
+                                kinds[match expected.0 {
+                                    Observation::Observed => 0,
+                                    Observation::Distance => 1,
+                                    Observation::Normal => 2,
+                                    Observation::Ambiguous => 3,
+                                }] += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        kinds.iter().all(|count| *count > 0),
+        "all classifications must be exercised: {kinds:?}"
+    );
 }

@@ -20,6 +20,9 @@ pub(super) enum Observation {
 pub(super) struct Surface {
     pub triangles: Vec<Triangle>,
     tree: Bvh,
+    pub last_nearest: Option<u32>,
+    conditioning: f64,
+    source_magnitude: f64,
     candidates: Vec<PointCandidate>,
     matches: Vec<(u32, Point, f64)>,
     region: Option<[Point; 3]>,
@@ -38,7 +41,6 @@ impl Surface {
         budget: &mut TransferBudget,
     ) -> Result<Self, String> {
         let mesh = &request.source_mesh;
-        budget.category=0;
         budget.reserve(256 * 128 + 65536 * std::mem::size_of::<usize>() + 64 * 32)?;
         if mesh.positions.len() < 3
             || mesh.positions.len() > 200_000
@@ -83,12 +85,18 @@ impl Surface {
             .map(|p| transform(frame, *p))
             .collect();
         let mut triangles = Vec::with_capacity(mesh.triangles.len());
+        let mut conditioning = 1_f64;
+        budget.charge(mesh.triangles.len() * 3)?;
         for indices in &mesh.triangles {
             if indices.iter().any(|i| *i as usize >= points.len()) {
                 return Err("Transfer source triangle index is out of range".into());
             }
             let points = indices.map(|i| points[i as usize]);
-            let (normal, _) = normal(points)?;
+            let (normal, area) = normal(points)?;
+            for i in 0..3 {
+                let edge = sub(points[(i + 1) % 3], points[i]);
+                conditioning = conditioning.max(dot(edge, edge) / (2. * area));
+            }
             triangles.push(Triangle {
                 points,
                 normal,
@@ -100,6 +108,9 @@ impl Surface {
         Ok(Self {
             triangles,
             tree,
+            last_nearest: None,
+            conditioning,
+            source_magnitude: points.iter().flatten().fold(1_f64, |m, v| m.max(v.abs())),
             candidates: Vec::with_capacity(mesh.triangles.len()),
             matches: Vec::with_capacity(mesh.triangles.len()),
             region: None,
@@ -117,12 +128,13 @@ impl Surface {
     pub fn prepare_region(
         &mut self,
         points: [Point; 3],
+        seed: Option<u32>,
         budget: &mut TransferBudget,
     ) -> Result<(), String> {
         if self.region == Some(points) {
             return Ok(());
         }
-        budget.category=1; budget.charge(3)?;
+        budget.charge(3)?;
         let guard = points.iter().flatten().fold(1_f64, |m, v| m.max(v.abs())) * 16. * f64::EPSILON;
         let min = std::array::from_fn(|a| {
             points.iter().map(|p| p[a]).fold(f64::INFINITY, f64::min) - guard
@@ -138,16 +150,39 @@ impl Surface {
         self.observations.clear();
         self.cells.fill(None);
         self.cell_candidates.clear();
-        let before=budget.work;
-        let query=self.tree.bounds_candidates_bounded(
+        let mut radius = self.distance + self.ambiguity;
+        if let Some(index) = seed.or(self.last_nearest) {
+            budget.charge(6)?;
+            let source = self.triangles[index as usize].points;
+            let upper = points
+                .map(|p| {
+                    let (weights, _) = closest(source, p);
+                    let positive = weights.map(|w| w.max(0.));
+                    let sum: f64 = positive.iter().sum();
+                    if !sum.is_finite() || sum<=0. || weights.iter().any(|w|!w.is_finite()) {return f64::INFINITY;}
+                    let normalized = positive.map(|w| w / sum);
+                    let delta = sub(interpolate(source, normalized), p);
+                    let distance=dot(delta, delta).sqrt();
+                    if distance.is_finite() {distance} else {f64::INFINITY}
+                })
+                .into_iter()
+                .fold(0_f64, f64::max);
+            let magnitude = points
+                .iter()
+                .flatten()
+                .fold(self.source_magnitude, |m, v| m.max(v.abs()));
+            let outward = 128. * f64::EPSILON * magnitude * self.conditioning;
+            if upper.is_finite() {
+                radius = radius.min((upper + self.ambiguity + outward).next_up());
+            }
+        }
+        self.tree.bounds_candidates_bounded(
             min,
             max,
-            self.distance + self.ambiguity,
+            radius,
             &mut self.candidates,
             &mut budget.work,
-        );
-        budget.charges[1]+=before-budget.work;
-        query?;
+        )?;
         self.region = Some(points);
         self.region_bounds = Some((min, max));
         Ok(())
@@ -158,12 +193,12 @@ impl Surface {
         target_normal: Point,
         budget: &mut TransferBudget,
     ) -> Result<(Observation, [f64; 2]), String> {
-        budget.category=2; budget.charge(1)?;
+        budget.charge(1)?;
         if self
             .region_bounds
             .is_none_or(|(min, max)| (0..3).any(|a| point[a] < min[a] || point[a] > max[a]))
         {
-            self.prepare_region([point; 3], budget)?;
+            self.prepare_region([point; 3], None, budget)?;
         }
         let key = std::array::from_fn(|i| {
             if i < 3 {
@@ -173,9 +208,9 @@ impl Surface {
             }
         });
         if let Some(result) = self.observations.get(&key) {
-            budget.calls[2]+=1;return Ok(*result);
+            return Ok(*result);
         }
-        budget.calls[3]+=1;let result = self.observe_uncached(point, target_normal, budget)?;
+        let result = self.observe_uncached(point, target_normal, budget)?;
         if self.observations.len() < 128 {
             self.observations.insert(key, result);
         }
@@ -201,7 +236,7 @@ impl Surface {
             std::array::from_fn(|a| min[a] + (max[a] - min[a]) * (bins[a] + 1) as f64 / 4. + guard);
         let start = self.cell_candidates.len();
         for (i, candidate) in self.candidates.iter().enumerate() {
-            budget.category=2; budget.charge(1)?;
+            budget.charge(1)?;
             if candidate.overlaps(cell_min, cell_max) {
                 if self.cell_candidates.len() == 65536 {
                     return Err("Transfer region candidate memory budget exhausted".into());
@@ -224,10 +259,11 @@ impl Surface {
         let mut nearest = None;
         for ordinal in start..end {
             let candidate = &self.candidates[self.cell_candidates[ordinal]];
-            budget.category=2; budget.charge(1)?;
-            if !candidate.contains(point) { continue; }
-            budget.category=2; budget.charge(1)?;
-            budget.charges[2]-=1; budget.charges[3]+=1;
+            budget.charge(1)?;
+            if !candidate.contains(point) {
+                continue;
+            }
+            budget.charge(1)?;
             let i = candidate.triangle;
             let (weights, d2) = closest(self.triangles[i as usize].points, point);
             self.matches.push((i, weights, d2));
@@ -238,6 +274,7 @@ impl Surface {
         let Some((index, weights, d2)) = nearest else {
             return Ok((Observation::Distance, [0.; 2]));
         };
+        self.last_nearest = Some(index);
         let distance = d2.sqrt();
         if distance > self.distance {
             return Ok((Observation::Distance, [0.; 2]));
@@ -247,8 +284,7 @@ impl Surface {
             if i == index {
                 continue;
             }
-            budget.category=2; budget.charge(1)?;
-            budget.charges[2]-=1; budget.charges[4]+=1;
+            budget.charge(1)?;
             let other = &self.triangles[i as usize];
             if other_distance.sqrt() <= distance + self.ambiguity
                 && !continuous_neighbor(nearest, other)

@@ -7,7 +7,9 @@ import type { AppearanceDraftRecipe, AppearanceSourceOption } from '@/lib/appear
 import { appearanceAssets } from '@/lib/appearance/model-assets.js';
 import { removePdfDocument } from '@/lib/appearance/pdf/documents.js';
 
-export interface AppearanceSlice {
+import { createAppearanceReferenceSlice, type AppearanceReferenceSlice } from './appearanceReferenceSlice.js';
+
+export interface AppearanceSlice extends AppearanceReferenceSlice {
   /** Session source metadata only; original bytes and decoded images stay in the inventory. */
   appearanceSources: readonly AppearanceSourceOption[];
   appearanceDraft: AppearanceDraftRecipe | null;
@@ -16,7 +18,8 @@ export interface AppearanceSlice {
   updateAppearanceSource(source: AppearanceSourceOption): void;
   removeAppearanceSource(id: string): void;
 }
-export const createAppearanceSlice: StateCreator<ViewerState, [], [], AppearanceSlice> = (set, get) => ({
+export const createAppearanceSlice: StateCreator<ViewerState, [], [], AppearanceSlice> = (set, get, api) => ({
+  ...createAppearanceReferenceSlice(set, get, api),
   appearanceSources: [],
   appearanceDraft: null,
   saveAppearanceDraft(draft) {

@@ -14,11 +14,18 @@ export function replayWorkspaceHistory(state: ViewerState, direction: 'undo' | '
   const placement = state.modelPlacement[direction].at(-1);
   const modelId = state.activeModelId;
   const mutation = modelId ? state[direction === 'undo' ? 'undoStacks' : 'redoStacks'].get(modelId)?.at(-1) : undefined;
-  const placementFirst = placement && (!mutation || (direction === 'undo'
-    ? compareOperations(placement, mutation) >= 0 : compareOperations(placement, mutation) <= 0));
-  if (placementFirst) {
-    if (direction === 'undo') state.undoModelTranslation(); else state.redoModelTranslation();
-  } else if (modelId) {
-    if (direction === 'undo') state.undo(modelId); else state.redo(modelId);
-  }
+  const reference = state[direction === 'undo' ? 'referenceUndo' : 'referenceRedo']?.at(-1);
+  const candidates = [
+    ...(placement ? [{ command: placement, replay: () => direction === 'undo' ? state.undoModelTranslation() : state.redoModelTranslation() }] : []),
+    ...(mutation && modelId ? [{ command: mutation, replay: () => direction === 'undo' ? state.undo(modelId) : state.redo(modelId) }] : []),
+    ...(reference ? [{ command: reference, replay: () => state.replayAppearanceReference(direction) }] : []),
+  ];
+  candidates.sort((a, b) => direction === 'undo' ? compareOperations(b.command, a.command) : compareOperations(a.command, b.command));
+  candidates[0]?.replay();
+}
+
+export function hasWorkspaceHistory(state: ViewerState, direction: 'undo' | 'redo'): boolean {
+  return state.modelPlacement[direction].length > 0
+    || (state[direction === 'undo' ? 'referenceUndo' : 'referenceRedo']?.length ?? 0) > 0
+    || (state.activeModelId !== null && (state[direction === 'undo' ? 'undoStacks' : 'redoStacks'].get(state.activeModelId)?.length ?? 0) > 0);
 }

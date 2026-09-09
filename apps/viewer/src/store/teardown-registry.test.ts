@@ -28,6 +28,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * field on every file swap.
  */
 const PINNED_SESSION_RESET_KEYS: readonly string[] = [
+  'appearanceReferences', 'referenceUndo', 'referenceRedo', 'referenceRevision', 'selectedAppearanceReferenceId', // #4308 drawing workspace lifecycle
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle
   'activeBasketViewId', 'activeChangeSetId', 'activeLensId', 'activeListId', 'activeModelId',
   'activePresetId',
@@ -205,6 +206,7 @@ function modelRemovedFixture() {
  * `owns` list fails even when no scope emits it under an empty state.
  */
 const PINNED_OWNED_KEYS: readonly string[] = [
+  'appearanceReferences', 'referenceUndo', 'referenceRedo', 'referenceRevision', 'selectedAppearanceReferenceId', // #4308 drawing workspace lifecycle
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle
   'activeBasketViewId', 'activeChangeSetId', 'activeLensId', 'activeListId', 'activeModelId',
   'activePresetId', 'activeSheet', 'activeStorey', 'activeTool', 'activeTopicId',

@@ -14,6 +14,7 @@ import { PropertyValueType } from '@ifc-lite/data';
 import type { MutablePropertyView } from './mutable-property-view.js';
 import type { Mutation, PropertyValue } from './types.js';
 import { checkMutationGuard, type MutationGuard } from './mutation-guard.js';
+import { assertSafeNamePattern } from './name-pattern-guard.js';
 
 /**
  * Filter operators for property values
@@ -157,9 +158,7 @@ export class BulkQueryEngine {
     }
   }
 
-  /**
-   * Select entities matching criteria
-   */
+  /** Select entities matching criteria. */
   select(criteria: SelectionCriteria): number[] {
     let candidates: number[];
 
@@ -271,6 +270,7 @@ export class BulkQueryEngine {
 
     // Filter by name pattern
     if (criteria.namePattern && this.strings) {
+      assertSafeNamePattern(criteria.namePattern); // guard: see name-pattern-guard.ts
       const regex = new RegExp(criteria.namePattern, 'i');
       candidates = candidates.filter((id) => {
         const idx = this.findEntityIndex(id);

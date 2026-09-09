@@ -26,27 +26,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { useViewerStore } from '@/store';
@@ -63,6 +45,7 @@ import {
   type PropertyFilter as BulkPropertyFilter,
   type BulkQueryPreview,
   type BulkQueryResult,
+  unsafeNamePatternReason,
 } from '@ifc-lite/mutations';
 import { extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 
@@ -167,6 +150,13 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const [selectedStoreys, setSelectedStoreys] = useState<number[]>([]);
   const [namePattern, setNamePattern] = useState<string>('');
   const [filters, setFilters] = useState<PropertyFilterUI[]>([]);
+
+  // Rejects visibly per keystroke (mirrors pattern-preview.ts's isInvalid)
+  // instead of letting select()'s throw get swallowed by the try/catch below.
+  const namePatternError = useMemo(
+    () => (namePattern.trim() ? unsafeNamePatternReason(namePattern.trim()) : undefined),
+    [namePattern]
+  );
 
   // Action configuration
   const [actionType, setActionType] = useState<ActionType>('SET_PROPERTY');
@@ -375,8 +365,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       criteria.storeys = selectedStoreys;
     }
 
-    // Filter by name pattern
-    if (namePattern.trim()) {
+    // Withhold an invalid pattern — its own error text is the rejection.
+    if (namePattern.trim() && !namePatternError) {
       criteria.namePattern = namePattern;
     }
 
@@ -401,7 +391,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     }
 
     return criteria;
-  }, [selectedTypes, selectedStoreys, namePattern, filters, typeNameToEnums]);
+  }, [selectedTypes, selectedStoreys, namePattern, namePatternError, filters, typeNameToEnums]);
 
   // Deferred: select + property discovery yield to the browser first so pill toggles paint instantly.
   const [isComputing, setIsComputing] = useState(false);
@@ -420,7 +410,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     if (selectTimerRef.current) clearTimeout(selectTimerRef.current);
     if (discoveryTimerRef.current) clearTimeout(discoveryTimerRef.current);
 
-    if (!queryEngine) {
+    // Force zero rather than matching the remaining criteria alone.
+    if (!queryEngine || namePatternError) {
       setIsComputing(false);
       setMatchResult({ count: 0, psets: new Map(), allProps: new Set() });
       return;
@@ -490,7 +481,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       if (selectTimerRef.current) clearTimeout(selectTimerRef.current);
       if (discoveryTimerRef.current) clearTimeout(discoveryTimerRef.current);
     };
-  }, [queryEngine, currentCriteria, selectedModel]);
+  }, [queryEngine, currentCriteria, selectedModel, namePatternError]);
 
   const liveMatchCount = matchResult.count;
   const discoveredProperties = { psets: matchResult.psets, allProps: matchResult.allProps };
@@ -555,6 +546,11 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     setPreviewResult(null);
     setExecuteResult(null);
 
+    // Same reasoning as the live-match effect: don't preview the remaining criteria alone.
+    if (namePatternError) {
+      return setExecuteResult({ mutations: [], affectedEntityCount: 0, success: false, errors: [`Name pattern rejected: ${namePatternError}`] });
+    }
+
     const built = buildAction();
     // Refuse rather than build around a fabricated value; same Alert Execute uses.
     if (!built.ok) return setExecuteResult({ mutations: [], affectedEntityCount: 0, success: false, errors: [built.message] });
@@ -566,7 +562,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       console.error('Preview failed:', error);
       setPreviewResult({ matchedEntityIds: [], matchedCount: 0, estimatedMutations: 0 });
     }
-  }, [queryEngine, currentCriteria, buildAction]);
+  }, [queryEngine, currentCriteria, buildAction, namePatternError]);
 
   // Execute bulk update — chunked so the UI stays responsive with a live progress bar
   const handleExecute = useCallback(async () => {
@@ -809,7 +805,11 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
                 value={namePattern}
                 onChange={(e) => setNamePattern(e.target.value)}
                 className="h-8 text-sm"
+                aria-invalid={namePatternError ? true : undefined}
               />
+              {namePatternError && (
+                <p className="text-xs text-destructive flex items-center gap-1"><AlertCircle className="h-3 w-3 shrink-0" />Pattern rejected: {namePatternError}</p>
+              )}
             </div>
 
             {/* Property filters */}

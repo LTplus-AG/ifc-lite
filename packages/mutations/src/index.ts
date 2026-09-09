@@ -21,6 +21,7 @@ export {
 } from './store-editor.js';
 export { ChangeSetManager } from './change-set.js';
 export { MutationGuardError, type MutationGuard } from './mutation-guard.js';
+export { unsafeNamePatternReason } from './name-pattern-guard.js';
 export {
   BulkQueryEngine,
   type SelectionCriteria,

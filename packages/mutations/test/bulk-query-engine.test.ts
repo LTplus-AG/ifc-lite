@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { PropertyValueType } from '@ifc-lite/data';
+import { PropertyValueType, StringTable } from '@ifc-lite/data';
 import { BulkQueryEngine, MutablePropertyView, MutationGuardError } from '../src/index.js';
 
 /**
@@ -369,5 +369,69 @@ describe('BulkQueryEngine: local-edit guard (mutation-guard.ts)', () => {
 
     expect(mutation).not.toBeNull();
     expect(view.getPropertyValue(1, 'Pset_Test', 'Prop')).toBe(42);
+  });
+});
+
+/**
+ * `select()`'s namePattern filter builds `new RegExp(criteria.namePattern, 'i')`
+ * from a UI-supplied string (`BulkPropertyEditor.tsx`'s "Name Pattern (Regex)"
+ * field) and runs `.test()` on it inside a `candidates.filter()` loop — once
+ * per candidate entity. A catastrophic-backtracking pattern must be rejected
+ * before it ever reaches `.test()`, not just eventually complete.
+ */
+function makeEngineWithNames(names: string[]) {
+  const entities = makeEntities(names.length);
+  const strings = new StringTable();
+  names.forEach((name, i) => {
+    entities.name[i] = strings.intern(name);
+  });
+  const view = new MutablePropertyView(null, 'model-1');
+  view.setOnDemandExtractor(() => []);
+  const engine = new BulkQueryEngine(entities, view, null, null, strings);
+  return engine;
+}
+
+describe('BulkQueryEngine — namePattern ReDoS guard', () => {
+  it('rejects a catastrophic-backtracking namePattern quickly instead of hanging in .test()', () => {
+    // A trailing non-'a' char forces the engine through the exponential
+    // backtracking search before it can fail the match — a string of only
+    // 'a's would match on the first greedy pass and never exhibit the
+    // worst case (measured: 28 'a's + '!' against `(a+)+$` takes >10s
+    // unguarded on this machine; a fully-matching string does not).
+    const engine = makeEngineWithNames(['a'.repeat(40) + '!']);
+
+    const start = Date.now();
+    expect(() => engine.select({ namePattern: '(a+)+$' })).toThrow(
+      /unsafe namePattern .* catastrophic-backtracking shape/
+    );
+    const elapsedMs = Date.now() - start;
+
+    // Unguarded, `(a+)+$` against 40 'a's would take well over a minute
+    // (backtracking is exponential in the run length); the guard must
+    // reject before compiling/testing at all.
+    expect(elapsedMs).toBeLessThan(1000);
+  });
+
+  it('rejects a namePattern over the length cap', () => {
+    const engine = makeEngineWithNames(['Wall-01']);
+    const longPattern = 'a'.repeat(257);
+
+    expect(() => engine.select({ namePattern: longPattern })).toThrow(/exceeds the 256-character limit/);
+  });
+
+  it('an ordinary namePattern still matches by name, case-insensitively', () => {
+    const engine = makeEngineWithNames(['Wall-01', 'Door-02', 'wall-annotation']);
+
+    const ids = engine.select({ namePattern: '^wall' });
+
+    expect(ids.sort((a, b) => a - b)).toEqual([1, 3]);
+  });
+
+  it('an absent namePattern behaves exactly as before (no filtering by name)', () => {
+    const engine = makeEngineWithNames(['Wall-01', 'Door-02']);
+
+    const ids = engine.select({});
+
+    expect(ids.sort((a, b) => a - b)).toEqual([1, 2]);
   });
 });

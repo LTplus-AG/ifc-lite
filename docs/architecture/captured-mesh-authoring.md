@@ -38,11 +38,10 @@ the removed object; Redo restores its identity and appearance.
 
 ## Input fidelity prerequisite
 
-The existing GLB path already converges through `parseGlbViewerModel`, but its
-current cache decoder only reads POSITION/NORMAL/indices and a material colour.
-It drops texture coordinates and embedded images. Its node transform support
-also needs qualification against capture files: translation and matrix support
-do not establish support for all glTF rotation/scale representations.
+The GLB path converges through `parseGlbViewerModel`. The capture decoder
+preserves source UVs, original embedded albedo PNG/JPEG images, and node matrix
+or translation/rotation/scale transforms. Unsupported PBR maps and alpha
+modes are explicitly refused; see [capture evidence](evidence/captured-glb/README.md).
 
 Extend that canonical decoder or replace it in the same path; do not hide this
 gap by requiring users to convert their captures to IFC first. Unsupported
@@ -68,3 +67,21 @@ from creation of an existing captured surface.
 F4 transfer accuracy and F9/F10 reconstruction retain their independent real-data
 and quality gates. They are not prerequisites for creating an existing textured
 mesh region.
+
+## Shared host implementation
+
+`prepareTexturedProduct` serializes the effective IFC mutation view and captures
+its allocation/revision guard once for both annotations and captured surfaces.
+`commitTexturedProduct` owns publication, containment, original-image retention,
+selection cleanup on Undo and stable identity on Redo. Drawing creation uses the
+same transaction; there is no independent scan STEP writer.
+
+`prepareCapturedRegion` binds a selected triangle region to its registered raw
+model geometry and one unambiguous retained original image. It preserves source
+sampling flags and converts GPU V coordinates once. `createIfcFromCapturedMesh`
+owns a bounded numeric snapshot before its first await, converts workspace
+coordinates into the destination model frame, and sends that snapshot to the
+native planner. It revalidates registration and target state before publication.
+
+This host layer does not itself expose a viewer creation button. The integrated
+region-selection UI and its real-browser acceptance remain part of #4380.

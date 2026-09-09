@@ -14,6 +14,8 @@ import { commitTexturedProduct } from './textured-product-command';
  * immutable snapshot in workspace IFC Z-up metres, with IFC V-up UVs. */
 export interface CapturedMeshSource {
   readonly assetId: string;
+  readonly repeatS?: boolean;
+  readonly repeatT?: boolean;
   readonly mesh: CapturedMeshRequest['mesh'];
   validate(): void;
 }
@@ -33,7 +35,7 @@ export async function createIfcFromCapturedMesh(modelId: string, containerId: nu
     positions: input.positions.map(p => [...p]), triangles: input.triangles.map(t => [...t]),
     uvs: input.uvs.map(uv => [...uv]), uvTriangles: input.uvTriangles.map(t => [...t]),
   };
-  const assetId = capture.assetId;
+  const assetId = capture.assetId, repeatS = capture.repeatS ?? false, repeatT = capture.repeatT ?? false;
   const owner = { kind: 'draft' as const, id: crypto.randomUUID() };
   appearanceAssets.retain(assetId, owner);
   let planner: AppearancePlanner | undefined;
@@ -49,7 +51,7 @@ export async function createIfcFromCapturedMesh(modelId: string, containerId: nu
       containerId, GlobalId: generateIfcGuid(), containmentGlobalId: generateIfcGuid(),
       Name: options.Name?.trim() || 'Captured surface',
       imageUri: modelAppearanceAssets.getAuthoredUri(modelId, assetId),
-      mesh: { ...mesh, positions },
+      repeatS, repeatT, mesh: { ...mesh, positions },
     }, { signal: options.signal });
     target.validate();
     return await commitTexturedProduct(modelId, assetId, native, containerId, renderer, target.source, options);

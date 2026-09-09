@@ -40,7 +40,8 @@ export type ConflictKind =
   | 'geometry-blob'
   | 'geometry-param'
   | 'relationship-target'
-  | 'concurrent-delete';
+  | 'concurrent-delete'
+  | 'concurrent-create';
 
 export interface ConflictEvent {
   kind: ConflictKind;
@@ -216,11 +217,24 @@ function classify(
 ): PathInfo | null {
   if (top === TOP.ENTITIES) {
     if (path.length === 0) {
-      // Entity create OR delete on the top-level entities map. We only
-      // surface deletes — concurrent creates are CRDT-friendly (both
-      // entities coexist if they have different paths).
-      if (isDelete && key) return { kind: 'concurrent-delete', path: key };
-      return null;
+      // Entity create OR delete on the top-level entities map.
+      //
+      // Creates are CRDT-friendly *only* when two peers pick different
+      // paths — both entities coexist and no data is lost. When two
+      // peers independently create at the SAME path (e.g. each assigns
+      // the next sequential id from its own local view), Yjs LWW keeps
+      // exactly one peer's entity and silently discards the other's
+      // class/attributes/psets. We surface that as `concurrent-create`.
+      //
+      // This can't false-positive on an ordinary, non-colliding create:
+      // `record()` below only flags once >=2 distinct clients write the
+      // same `(kind, path)` key within the window, so a create at a
+      // unique path never accumulates a second contributor and never
+      // fires.
+      if (!key) return null;
+      return isDelete
+        ? { kind: 'concurrent-delete', path: key }
+        : { kind: 'concurrent-create', path: key };
     }
     const entityPath = path[0];
     if (path.length === 1) {

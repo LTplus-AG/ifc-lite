@@ -1,8 +1,9 @@
 # Appearance workspace integration
 
-Implementation slice for ready issue #4243, under development. This connects the
-controlled Appearance dock to the existing model, renderer, history and export
-services; it is not full-feature release acceptance.
+The integrated image Appearance dock connects the existing model, renderer,
+history and export services. It is the shared foundation for the
+[image/PDF/reference/capture roadmap](appearance-roadmap.md); acceptance of one
+slice does not establish the later adapters.
 
 ## Workflow
 

@@ -122,3 +122,6 @@ requires IFC4 or IFC4X3, a rectangular calibrated plane, and a stable coordinate
 frame. Finish any active model reposition operation first. Realigned federated
 models currently require choosing the workspace anchor model until inverse
 federation registration is available; the command reports this explicitly.
+
+For implementation status, shared workflow boundaries and future scan/PDF options,
+see the [appearance roadmap](../architecture/appearance-roadmap.md).

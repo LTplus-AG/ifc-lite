@@ -1608,6 +1608,37 @@ jobs:
       - name: Clippy (csg_manifold_gate feature)
         run: cargo clippy -p ifc-lite-geometry --features csg_manifold_gate --all-targets -- -D warnings
 
+      # --all-features, and the catch-all is the point. The two steps above name
+      # one feature each, which is right for a TEST breakage. It is not enough for
+      # a COMPILE breakage, because it only covers the features someone remembered
+      # to add a step for, and the comment above already admits `csg_topology_gate`
+      # had the same gap.
+      #
+      # `csg_capture` proved it. #4182 added `Mesh.welded_in_object_frame` and
+      # missed the construction site at csg_capture.rs:169; nothing compiled that
+      # feature, so `cargo build --all-features` was broken on main with
+      # `error[E0063]: missing field` while every lane stayed green. It surfaced
+      # only when cargo-semver-checks could not build the crate and reported
+      # NO_VERDICT, days later, on the release PR.
+      #
+      # Scope, stated honestly: `-p ifc-lite-geometry` only. The other crates
+      # still have no catch-all. Measured at ~5s on top of the steps above, which
+      # is why it is a step here rather than a job. That 5s is LOCAL on a 10-core
+      # machine with warm deps; the step is per-core-throughput-bound rather than
+      # parallelism-bound, so expect roughly 8-15s on a standard runner. The
+      # conclusion holds either way.
+      - name: Clippy (all features, so an off-by-default one cannot rot)
+        run: cargo clippy -p ifc-lite-geometry --all-features --all-targets -- -D warnings
+
+      # Clippy above COMPILES `--all-targets` and executes nothing, so it proves
+      # the build and not the behaviour. `csg_capture`'s round-trip assertion has
+      # to actually run or its own doc comment is a lie. Scoped to that one
+      # feature rather than `--all-features`: the latter would newly execute the
+      # manifold and topology gate suites in COMBINATION, a pairing no lane runs
+      # today and not something to introduce in a hotfix.
+      - name: Rust tests (csg_capture feature)
+        run: cargo test -p ifc-lite-geometry --features csg_capture
+
   # Geometry watertightness / triangulation-invariance census.
   #
   # Its own job, not a step in `rust-tests`: the sweep runs the whole fixture

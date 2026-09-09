@@ -1141,3 +1141,12 @@ matching opt-in and separately bounded; broad transfer needs its own measured
 candidate-reuse work. [Raw probes and limits](../../docs/architecture/evidence/shared-atlas/native-load.json)
 record the comparison.
 
+
+The registered mesh-transfer foundation preserves that ordinary-load isolation,
+but its aggregate per-texel BVH work cap refuses the complete captured boulder.
+A bounded prefix qualifies the surface/UV and unknown-coverage behavior; it does
+not establish broad authoring capacity. The next mechanism to evaluate is
+conservative candidate reuse across target triangles/tiles, retaining nearest
+surface refusal and one atomic result, rather than enlarging the work ceiling.
+[Real-surface coverage and refusal evidence](../../docs/architecture/evidence/mesh-transfer/README.md#real-boulder-geometry-conservative-coverage-and-capacity)
+keeps that limitation separate from the ordinary-load measurements.

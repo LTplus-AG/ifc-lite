@@ -637,6 +637,13 @@ export class IfcAPI {
      */
     planCapturedMesh(content: Uint8Array, request_json: string): Uint8Array;
     /**
+     * Registered mesh observations over canonical target albedo. Host verifies
+     * original GLB identity against decoded source mesh/image and freezes frames.
+     * Run in an owned cancellable worker. IFPA output adds `transfer` coverage;
+     * `plan` is null when no sample is observed. Never infer accuracy approval.
+     */
+    planMeshTransfer(content: Uint8Array, request_json: string, rgba: Uint8Array): Uint8Array;
+    /**
      * Finite-page composition over original canonical albedo. RGBA is supplied
      * separately from the bounded JSON request. Result: IFPA magic, little-endian
      * u32 JSON byte length, metadata JSON, then PNG bytes addressed by metadata.
@@ -2074,6 +2081,7 @@ export interface InitOutput {
     readonly ifcapi_planAnnotationPlane: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planAppearance: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planCapturedMesh: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly ifcapi_planMeshTransfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_planPageAppearance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_processGeometryBatch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
     readonly ifcapi_processGeometryBatchFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;

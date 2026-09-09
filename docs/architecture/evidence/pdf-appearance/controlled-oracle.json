@@ -1,0 +1,118 @@
+{
+  "expressValidationErrors": 0,
+  "owners": [
+    {
+      "expressId": 34,
+      "GlobalId": "3mpfqvLAbPVRpwxIwYPgEV"
+    },
+    {
+      "expressId": 46,
+      "GlobalId": "2suSFkYNjHpx6ZYAWo7w_I"
+    }
+  ],
+  "samples": [
+    {
+      "owner": 34,
+      "worldPoint": [
+        0.2,
+        0,
+        0.5
+      ],
+      "outsideRGBA": [
+        15,
+        46,
+        153,
+        255
+      ],
+      "expectedOriginalRGBA": [
+        15,
+        46,
+        153,
+        255
+      ]
+    },
+    {
+      "owner": 46,
+      "worldPoint": [
+        1.8,
+        0,
+        0.5
+      ],
+      "outsideRGBA": [
+        15,
+        124,
+        34,
+        255
+      ],
+      "expectedOriginalRGBA": [
+        15,
+        124,
+        34,
+        255
+      ]
+    },
+    {
+      "owner": 34,
+      "worldPoint": [
+        0.65,
+        0,
+        0.65
+      ],
+      "insideRGBA": [
+        255,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "owner": 34,
+      "worldPoint": [
+        0.97,
+        0,
+        0.3
+      ],
+      "insideRGBA": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "owner": 46,
+      "worldPoint": [
+        1.03,
+        0,
+        0.3
+      ],
+      "insideRGBA": [
+        255,
+        255,
+        255,
+        255
+      ]
+    }
+  ],
+  "calibration": {
+    "chosenSpanMetres": 1,
+    "nativeSpan": 72.0,
+    "predictedPageX": [
+      0.5,
+      1.5
+    ],
+    "observedPageX": [
+      0.49950000000000006,
+      1.4989999999999999
+    ],
+    "toleranceMetres": 0.01
+  },
+  "undoExactOriginalMeshes": true,
+  "redoExactAppliedMeshes": true,
+  "archiveBytes": 8421,
+  "reopenExactGeometryUvColor": true,
+  "reopenOwnerPicks": [
+    34,
+    46
+  ]
+}

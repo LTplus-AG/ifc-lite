@@ -1078,3 +1078,14 @@ These APIs move workspace geometry; they do not rewrite source IFC placements
 or point records. The web viewer supplies transactions, undo, persistence and
 engineering Z-up inputs on top of them. See [Repositioning models and
 pointclouds](federation.md#repositioning-models-and-pointclouds).
+
+
+## Registered raster references
+
+`renderer.getReferenceImages()` manages image and PDF-page rasters in a separate string-ID namespace. `set({ id, bitmap, corners, visible, locked, opacity }, signal?)` uploads a raster and resolves after GPU validation. Corners are renderer Y-up coordinates, ordered top-left, top-right, bottom-right, bottom-left. The viewer derives them from immutable engineering Z-up metre registration using its existing federation offset; an RTC-only rebase preserves the registration, while an incompatible map frame reports a mismatch.
+
+Keep the bitmap's inventory lease until `set` settles. The renderer owns uploaded texture and buffer resources, and never closes the caller's bitmap. Replacement retains the previous valid image until upload succeeds. `remove(id)` and `clear()` invalidate pending publication and release resources; device loss and renderer destruction do the same. Draft controllers should remove only their own IDs, rather than clearing registered references.
+
+`await references.pick(x, y, options)` uses canvas-relative CSS pixels and the same visibility options as IFC picking. It returns `{ referenceId, point, distance }` separately from IFC selection. Hidden, locked and zero-opacity references do not select. The existing scene picker supplies occlusion depth; its CPU fallback uses the picked owner's precise raycast and conservatively refuses a reference when depth cannot be recovered. Picking uses the rectangular page footprint, including transparent pixels. References depth-test against IFC geometry without writing IFC object IDs or changing BIM bounds. Overlapping translucent planes use back-to-front ordering; intersecting translucent planes retain ordinary alpha-sorting limitations.
+
+This is a visual registration API. It does not create `IfcAnnotation`, persist image bytes, or promise arbitrary CRS reprojection. Application metadata/history and IFC authoring own those operations independently.

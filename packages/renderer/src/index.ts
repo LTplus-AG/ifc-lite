@@ -15,6 +15,8 @@ export type { SceneContents } from './scene-contents.js';
 export { expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
 export type { AppearancePreview, AppearanceOwner, AppearanceToken, AppearanceChange } from './appearance-preview.js';
 import type { AppearancePreview } from './appearance-preview.js';
+import { createReferenceImageManager } from './reference-image-host.js';
+export type { ReferenceImages, ReferenceImageInput, ReferenceImageHit, ReferenceCorners } from './reference-image-types.js';
 import { resizeRendererViewport } from './renderer-viewport.js';
 export type { ProjectionMode } from './camera-state.js';
 export type { InteractionMode } from './camera-controls.js';
@@ -277,6 +279,8 @@ export class Renderer {
         },
         requestRender: () => this.requestRender(),
     });
+    private readonly referenceImages = createReferenceImageManager(this);
+    getReferenceImages(): import('./reference-image-types.js').ReferenceImages { return this.referenceImages; }
     private postProcessor: PostProcessor | null = null;
     private readonly interactionEffects = new InteractionEffectsGovernor();
     private edlPass: EdlPass | null = null;
@@ -647,6 +651,7 @@ export class Renderer {
             this.device.getFormat(),
             this.pipeline.getSampleCount(),
         );
+        this.referenceImages.init(this.device.getDevice(), this.device.getFormat(), this.pipeline.getSampleCount());
         // PostProcessor is optional — if it fails (e.g. mobile GPU lacking
         // depth TEXTURE_BINDING), rendering still works without post-processing.
         try {
@@ -834,6 +839,7 @@ export class Renderer {
     private handleDeviceLost(info: { message: string; reason: string }): void {
         if (this.deviceLost) return;
         this.deviceLost = true;
+        this.referenceImages.destroy();
         this.deviceLostGeneration = this.initGeneration;
         this.deviceLostInfo = info;
         console.warn('[Renderer] GPU device lost — halting rendering until re-init:', info.message);
@@ -3078,6 +3084,7 @@ export class Renderer {
             // Section-plane gizmo, 2D section cap and every standalone 3D
             // overlay (annotation / alignment / grid / DXF / clash / symbolic
             // text). One draw call into the pass — see RendererOverlays.draw().
+            this.referenceImages.draw(pass, viewProj);
             this.overlays.draw(pass, {
                 options,
                 viewProj,
@@ -3676,6 +3683,7 @@ export class Renderer {
         // Section-plane gizmo, 2D section overlay and the symbolic annotation
         // pipelines — see RendererOverlays.destroy().
         this.overlays.destroy();
+        this.referenceImages.destroy();
 
         // Point cloud GPU resources
         this.pointCloudRenderer?.clear();

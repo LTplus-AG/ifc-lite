@@ -1,0 +1,267 @@
+{
+  "voxel_size_metres": 0.25,
+  "registration": null,
+  "interpretation": "Density/coverage diagnostics in source coordinates; quantiles use every64th source row, occupied cells use every examined point. Zbands are numeric, not semantic wall/floor labels.",
+  "blocks": [
+    {
+      "compressed_interval": [
+        0,
+        16777215
+      ],
+      "complete_rows_in_block": 2112397,
+      "complete_rows_cumulative": 2112397,
+      "block_bounds": [
+        [
+          0.1985,
+          -0.4335,
+          -2.0665
+        ],
+        [
+          7.8025,
+          19.6315,
+          1.6895
+        ]
+      ],
+      "sample_stride": 64,
+      "block_xyz_quantiles_05_50_95": [
+        [
+          0.2745,
+          -0.2715,
+          -1.5372
+        ],
+        [
+          2.6805,
+          2.3235,
+          -1.0085
+        ],
+        [
+          6.4235,
+          6.9735,
+          1.438199999999997
+        ]
+      ],
+      "cumulative_xyz_quantiles_05_50_95": [
+        [
+          0.2745,
+          -0.2715,
+          -1.5372
+        ],
+        [
+          2.6805,
+          2.3235,
+          -1.0085
+        ],
+        [
+          6.4235,
+          6.9735,
+          1.438199999999997
+        ]
+      ],
+      "block_occupied_25cm_voxels": 726,
+      "new_25cm_voxels": 726,
+      "block_occupied_25cm_xy_cells": 311,
+      "new_25cm_xy_cells": 311,
+      "block_sample_z_bands": {
+        "below_minus1": 16622,
+        "minus1_to0": 14255,
+        "zero_to1": 0,
+        "above1": 2130
+      }
+    },
+    {
+      "compressed_interval": [
+        16777216,
+        33554431
+      ],
+      "complete_rows_in_block": 2135691,
+      "complete_rows_cumulative": 4248088,
+      "block_bounds": [
+        [
+          0.3255,
+          0.0005,
+          -1.6965
+        ],
+        [
+          7.8275,
+          4.0955,
+          -0.0005
+        ]
+      ],
+      "sample_stride": 64,
+      "block_xyz_quantiles_05_50_95": [
+        [
+          1.3745,
+          0.1945,
+          -1.1515
+        ],
+        [
+          3.2735,
+          1.5435,
+          -1.1365
+        ],
+        [
+          7.583049999999999,
+          2.6095,
+          -0.1695
+        ]
+      ],
+      "cumulative_xyz_quantiles_05_50_95": [
+        [
+          0.2995,
+          -0.1245,
+          -1.2176999999999998
+        ],
+        [
+          2.9775,
+          1.7045,
+          -1.1045
+        ],
+        [
+          7.2645,
+          6.9395,
+          -0.09830000000000291
+        ]
+      ],
+      "block_occupied_25cm_voxels": 487,
+      "new_25cm_voxels": 444,
+      "block_occupied_25cm_xy_cells": 247,
+      "new_25cm_xy_cells": 188,
+      "block_sample_z_bands": {
+        "below_minus1": 21687,
+        "minus1_to0": 11683,
+        "zero_to1": 0,
+        "above1": 0
+      }
+    },
+    {
+      "compressed_interval": [
+        33554432,
+        67108863
+      ],
+      "complete_rows_in_block": 4181631,
+      "complete_rows_cumulative": 8429719,
+      "block_bounds": [
+        [
+          0.2515,
+          2.0485,
+          -1.8025
+        ],
+        [
+          7.9005,
+          10.2395,
+          -0.0005
+        ]
+      ],
+      "sample_stride": 64,
+      "block_xyz_quantiles_05_50_95": [
+        [
+          0.9785,
+          3.1065,
+          -1.1465
+        ],
+        [
+          3.3215,
+          8.1405,
+          -0.6935
+        ],
+        [
+          7.6475,
+          10.0375,
+          -0.0525
+        ]
+      ],
+      "cumulative_xyz_quantiles_05_50_95": [
+        [
+          0.6855,
+          0.1135,
+          -1.1505
+        ],
+        [
+          3.1305,
+          5.8405,
+          -0.8465
+        ],
+        [
+          7.5475,
+          9.8095,
+          -0.0605
+        ]
+      ],
+      "block_occupied_25cm_voxels": 951,
+      "new_25cm_voxels": 880,
+      "block_occupied_25cm_xy_cells": 388,
+      "new_25cm_xy_cells": 300,
+      "block_sample_z_bands": {
+        "below_minus1": 17739,
+        "minus1_to0": 47599,
+        "zero_to1": 0,
+        "above1": 0
+      }
+    },
+    {
+      "compressed_interval": [
+        67108864,
+        134217727
+      ],
+      "complete_rows_in_block": 8325670,
+      "complete_rows_cumulative": 16755389,
+      "block_bounds": [
+        [
+          0.2425,
+          8.1925,
+          -1.4925
+        ],
+        [
+          7.9745,
+          17.6635,
+          -0.0005
+        ]
+      ],
+      "sample_stride": 64,
+      "block_xyz_quantiles_05_50_95": [
+        [
+          0.8005,
+          9.2445,
+          -1.1475
+        ],
+        [
+          4.0975,
+          11.511,
+          -0.6735
+        ],
+        [
+          7.7885,
+          16.2855,
+          -0.0895
+        ]
+      ],
+      "cumulative_xyz_quantiles_05_50_95": [
+        [
+          0.7685,
+          0.29560000000000036,
+          -1.1495
+        ],
+        [
+          3.5225,
+          9.4235,
+          -0.7265
+        ],
+        [
+          7.6945,
+          14.9095,
+          -0.0865
+        ]
+      ],
+      "block_occupied_25cm_voxels": 1512,
+      "new_25cm_voxels": 1441,
+      "block_occupied_25cm_xy_cells": 625,
+      "new_25cm_xy_cells": 566,
+      "block_sample_z_bands": {
+        "below_minus1": 28837,
+        "minus1_to0": 101251,
+        "zero_to1": 0,
+        "above1": 0
+      }
+    }
+  ]
+}

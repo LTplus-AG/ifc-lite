@@ -1,3 +1,6 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Offline CRAS source-neighborhood diagnostic for #4381; not registration.
 
 Requires NumPy, SciPy and Matplotlib. Input: pinned cras-expanded-sample.tsv in DIRECTORY.

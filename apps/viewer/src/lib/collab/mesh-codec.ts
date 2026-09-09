@@ -19,6 +19,10 @@
  *   u32 posLen | f32×posLen
  *   u32 normLen | f32×normLen
  *   u32 idxLen  | u32×idxLen
+ *   v3: u32 uvLen | f32×uvLen | u32 texture flags | ascii hash[32]
+ *
+ * v3 retains UVs and a content-addressed texture reference. Image bytes live
+ * in a separate shared blob; v1/v2 remain readable, untextured writes use v2.
  *
  * v2 adds the per-element local-frame `origin` (world = origin + position,
  * issue #1114): without it a recipient would render local-frame vertices as
@@ -29,12 +33,27 @@
 import type { MeshData } from '@ifc-lite/geometry';
 
 const MAGIC = 0x4d434649; // 'IFCM'
-const VERSION = 2;
+const VERSION = 3;
 const FLAG_HAS_ORIGIN = 0x1;
 
 const align4 = (n: number): number => (n + 3) & ~3;
 
-export function encodeMesh(mesh: MeshData): Uint8Array {
+export interface RoomTextureRef {
+  hash: string;
+  repeatS: boolean;
+  repeatT: boolean;
+}
+
+export type DecodedRoomMesh = MeshData & { roomTexture?: RoomTextureRef };
+
+export function encodeMesh(mesh: MeshData, texture?: RoomTextureRef): Uint8Array {
+  if (texture && (!/^[a-f0-9]{32}$/.test(texture.hash) || mesh.uvs?.length !== mesh.positions.length / 3 * 2)) {
+    throw new Error('mesh-codec: invalid texture reference or UV count');
+  }
+  if (mesh.uvs && (mesh.uvs.length !== mesh.positions.length / 3 * 2 || mesh.uvs.some(value => !Number.isFinite(value)))) {
+    throw new Error('mesh-codec: invalid UV values');
+  }
+  const extended = Boolean(mesh.uvs || texture);
   const enc = new TextEncoder();
   const typeBytes = enc.encode(mesh.ifcType ?? '');
   const typePadded = align4(typeBytes.length);
@@ -46,7 +65,8 @@ export function encodeMesh(mesh: MeshData): Uint8Array {
     4 + typePadded + // ifcType
     4 + mesh.positions.length * 4 +
     4 + mesh.normals.length * 4 +
-    4 + mesh.indices.length * 4;
+    4 + mesh.indices.length * 4 +
+    (extended ? 4 + (mesh.uvs?.length ?? 0) * 4 + 36 : 0);
 
   const buf = new ArrayBuffer(size);
   const dv = new DataView(buf);
@@ -54,7 +74,7 @@ export function encodeMesh(mesh: MeshData): Uint8Array {
   let o = 0;
 
   dv.setUint32(o, MAGIC, true); o += 4;
-  dv.setUint16(o, VERSION, true); o += 2;
+  dv.setUint16(o, extended ? VERSION : 2, true); o += 2;
   dv.setUint16(o, mesh.origin ? FLAG_HAS_ORIGIN : 0, true); o += 2;
   dv.setInt32(o, mesh.expressId, true); o += 4;
   for (let i = 0; i < 4; i++) { dv.setFloat32(o, mesh.color[i] ?? 0, true); o += 4; }
@@ -70,6 +90,11 @@ export function encodeMesh(mesh: MeshData): Uint8Array {
   u8.set(new Uint8Array(mesh.indices.buffer, mesh.indices.byteOffset, mesh.indices.byteLength), o);
   o += mesh.indices.length * 4;
 
+  if (extended) {
+    o = writeFloatArray(dv, u8, o, mesh.uvs ?? new Float32Array());
+    dv.setUint32(o, texture ? 1 | (texture.repeatS ? 2 : 0) | (texture.repeatT ? 4 : 0) : 0, true); o += 4;
+    if (texture) u8.set(enc.encode(texture.hash), o);
+  }
   return u8;
 }
 
@@ -80,14 +105,14 @@ function writeFloatArray(dv: DataView, u8: Uint8Array, o: number, arr: Float32Ar
   return o + arr.length * 4;
 }
 
-export function decodeMesh(bytes: Uint8Array): MeshData {
+export function decodeMesh(bytes: Uint8Array): DecodedRoomMesh {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let o = 0;
 
   if (dv.getUint32(o, true) !== MAGIC) throw new Error('mesh-codec: bad magic');
   o += 4;
   const version = dv.getUint16(o, true); o += 2;
-  if (version !== 1 && version !== VERSION) {
+  if (version !== 1 && version !== 2 && version !== VERSION) {
     throw new Error(`mesh-codec: unsupported version ${version}`);
   }
   const flags = dv.getUint16(o, true); o += 2;
@@ -119,7 +144,25 @@ export function decodeMesh(bytes: Uint8Array): MeshData {
   const idxBytes = bytes.slice(o, o + idxLen * 4);
   const indices = new Uint32Array(idxBytes.buffer, idxBytes.byteOffset, idxLen);
 
+  o += idxLen * 4;
+  let uvs: Float32Array | undefined;
+  let roomTexture: RoomTextureRef | undefined;
+  if (version >= 3) {
+    const decodedUvs = readFloatArray(bytes, dv, o); o = decodedUvs.next;
+    if (decodedUvs.arr.length) uvs = decodedUvs.arr;
+    if (uvs && (uvs.length !== positions.arr.length / 3 * 2 || uvs.some(value => !Number.isFinite(value)))) throw new Error('mesh-codec: invalid UV count');
+    const textureFlags = dv.getUint32(o, true); o += 4;
+    if (o + 32 !== bytes.length) throw new Error('mesh-codec: invalid texture reference length');
+    if (textureFlags & ~7) throw new Error('mesh-codec: invalid texture flags');
+    if (textureFlags & 1) {
+      const hash = new TextDecoder().decode(bytes.subarray(o, o + 32));
+      if (!/^[a-f0-9]{32}$/.test(hash) || !uvs) throw new Error('mesh-codec: invalid texture reference');
+      roomTexture = { hash, repeatS: Boolean(textureFlags & 2), repeatT: Boolean(textureFlags & 4) };
+    }
+  }
   return {
+    ...(uvs ? { uvs } : {}),
+    ...(roomTexture ? { roomTexture } : {}),
     expressId,
     ifcType: ifcType || undefined,
     positions: positions.arr,

@@ -19,7 +19,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildSnapshot, diffCrate, CRATE_FLOOR } from './check-rust-api-surface.mjs';
@@ -121,4 +121,15 @@ test('diffCrate over identical surfaces reports nothing — the case that must s
   const surface = { A: 'struct (unit)', B: 'enum { X; Y }' };
   const { added, removed, changed } = diffCrate(surface, { ...surface });
   assert.deepEqual({ added, removed, changed }, { added: [], removed: [], changed: [] });
+});
+
+
+// #4233: the committed manifest is the public API compatibility contract.
+// In particular, #4193 removed OpeningDiagnostic.triangle_count while #4213
+// added StepStats.attribute_edits_refused; the old manifest described neither.
+// Compare measured exports, not strings grepped from implementation files.
+test('the committed Rust API manifest matches the current published crate surfaces (#4233)', () => {
+  const committed = JSON.parse(readFileSync(new URL('./rust-api-surface.json', import.meta.url), 'utf8'));
+  const { snapshot } = buildSnapshot();
+  assert.deepEqual(committed, snapshot, 'Regenerate the Rust API manifest after changing a published surface');
 });

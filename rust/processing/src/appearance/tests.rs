@@ -45,6 +45,7 @@ END-ISO-10303-21;
 
 fn request(products: Vec<u32>) -> AppearanceRequest {
     AppearanceRequest {
+        representation_policy: RepresentationPolicy::Preserve,
         schema: "IFC4".into(),
         source_revision: "revision-1".into(),
         next_express_id: 100,

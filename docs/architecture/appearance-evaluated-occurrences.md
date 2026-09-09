@@ -51,3 +51,13 @@ unselected meshes unchanged and the selected oriented world corners exactly,
 exercise finite-page composition, and refuse direct/inherited openings and shared
 wrappers. Independent IfcOpenShell checks compare new violations against the
 source's existing validation findings; the original model is not schema-clean.
+
+Composite output uses ascending, contiguous created IDs from `nextExpressId`.
+Private conversions rejected by the final appearance pass leave no allocator
+gaps. Generated references, replacement-item provenance and page image bindings
+are rebound together before the plan leaves Rust; host allocation checks remain
+strict.
+
+Page material names beginning with `#` are refused explicitly: the current
+authoring wire cannot distinguish those literals from reference strings. They
+are never silently rewritten or exported as a Name reference.

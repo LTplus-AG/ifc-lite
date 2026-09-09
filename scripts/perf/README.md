@@ -1120,3 +1120,15 @@ This is native load evidence, not a worker-pool speedup or conversion-latency
 claim. Preserve the opt-in boundary and measure broad authoring separately when
 its host UI lands. [Raw samples and measurement limits](../../docs/architecture/evidence/evaluated-occurrences/native-load.json)
 record the comparison.
+
+### Shared appearance atlas sampling (#4381)
+
+Factoring target appearance preservation, charts and canonical image binding into
+an internal sampler retains the finite-page operation and avoids a second atlas
+pipeline for scan observations. Interleaved native AC20 base/extraction/transfer
+probes found no resolvable ordinary-load regression, with identical geometry
+counts and ordered fingerprints. This is a load-path isolation verdict, not a
+browser worker-pool speedup or authoring-capacity claim. Keep expensive source
+matching opt-in and separately bounded; broad transfer needs its own measured
+candidate-reuse work. [Raw probes and limits](../../docs/architecture/evidence/shared-atlas/native-load.json)
+record the comparison.

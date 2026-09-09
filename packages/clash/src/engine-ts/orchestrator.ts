@@ -25,13 +25,38 @@ import type { ClashKernel } from './kernel.js';
  * changes nothing observable except speed — which is exactly what makes the two
  * engines differentially comparable.
  */
+/**
+ * Reject a non-finite numeric setting instead of letting it through.
+ *
+ * `??` substitutes only on `null`/`undefined` — a `NaN` (e.g. from
+ * `Number('abc')` on a cleared input, or a unit-conversion division by zero)
+ * sails past it unchanged. Every downstream comparison against `NaN` is
+ * false, so the BVH broad phase silently examines zero candidate pairs while
+ * `ruleCoverage.matchedA`/`matchedB` (computed from selectors, before any
+ * geometry runs) still read as full coverage — the run reports `'clean'`
+ * having checked nothing. Throwing here — rather than silently substituting
+ * the default — surfaces the caller bug instead of returning a result the
+ * caller never asked for and cannot tell apart from a real "checked, found
+ * nothing".
+ */
+function requireFinite(value: number | undefined, label: string): number | undefined {
+  if (value !== undefined && !Number.isFinite(value)) {
+    throw new Error(`${label} must be a finite number, got ${value}`);
+  }
+  return value;
+}
+
 export async function runClash(
   elements: ClashElement[],
   rules: ClashRule[],
   settings: ClashSettings,
   kernel: ClashKernel,
 ): Promise<ClashResult> {
-  const tolerance = settings.tolerance ?? DEFAULT_CLASH_SETTINGS.tolerance;
+  const tolerance = requireFinite(settings.tolerance, 'settings.tolerance') ?? DEFAULT_CLASH_SETTINGS.tolerance;
+  for (const rule of rules) {
+    requireFinite(rule.tolerance, `rule "${rule.id}".tolerance`);
+    requireFinite(rule.clearance, `rule "${rule.id}".clearance`);
+  }
   const excludeVoidsAndHosts =
     settings.excludeVoidsAndHosts ?? DEFAULT_CLASH_SETTINGS.excludeVoidsAndHosts;
   const exclusions = excludeVoidsAndHosts ? settings.exclusions : undefined;
@@ -84,7 +109,12 @@ export async function runClash(
           matchedKeysB!.add(el.key);
         }
       }
-      ruleCoverage.push({
+      // Pushed now (selector coverage is known before geometry runs) and
+      // patched in place below once the kernel reports how many candidate
+      // pairs it actually examined — one object, one array position, so a
+      // caller reading `ruleCoverage[i]` after the `await` sees both halves
+      // together rather than racing a second entry for the same rule.
+      const coverage: ClashRuleCoverage = {
         rule: rule.id,
         matchedA: groupA.length,
         matchedB: groupB ? groupB.length : null,
@@ -92,7 +122,8 @@ export async function runClash(
         matchedKeysB: matchedKeysB ? [...matchedKeysB].sort() : null,
         ...(membersA ? { fromMembersA: true } : {}),
         ...(membersB ? { fromMembersB: true } : {}),
-      });
+      };
+      ruleCoverage.push(coverage);
 
       const ruleTolerance = rule.tolerance ?? tolerance;
       settings.onProgress?.({ phase: 'broad', rule: rule.id, done: 0, total: 0 });
@@ -111,6 +142,8 @@ export async function runClash(
       );
       remaining = Math.max(0, remaining - candidatesProcessed);
       droppedPairs += candidatesDropped;
+      coverage.candidatesProcessed = candidatesProcessed;
+      coverage.candidatesDropped = candidatesDropped;
 
       for (const rec of records) {
         if (settings.signal?.aborted) {

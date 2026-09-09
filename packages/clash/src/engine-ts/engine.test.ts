@@ -570,3 +570,67 @@ describe('TsClashEngine: penetrating-pair depth is mesh-level, not AABB min-axis
     expect(-clash.distance).toBeCloseTo(0.5, 9);
   });
 });
+
+describe('TsClashEngine: non-finite tolerance is rejected, not silently substituted', () => {
+  it('throws instead of reporting a false clean for a NaN settings.tolerance', async () => {
+    // A box wholly inside a bigger box — a deep hard clash impossible to miss
+    // at any sane tolerance.
+    const small = boxElement('small', 'IfcWall', [0, 0, 0], 0.2);
+    const big = boxElement('big', 'IfcDuct', [0, 0, 0], 2);
+    await expect(engine.run([small, big], [hard()], { tolerance: Number('not-a-number') })).rejects.toThrow(
+      /settings\.tolerance/,
+    );
+  });
+
+  it('throws instead of reporting a false clean for a NaN rule.tolerance', async () => {
+    const small = boxElement('small', 'IfcWall', [0, 0, 0], 0.2);
+    const big = boxElement('big', 'IfcDuct', [0, 0, 0], 2);
+    await expect(engine.run([small, big], [hard({ tolerance: 0 / 0 })])).rejects.toThrow(/rule "r"\.tolerance/);
+  });
+
+  it('the SAME model, run with the default tolerance, DOES report the clash', async () => {
+    // Pins the real-clash case, not just the throw: a broken guard that
+    // rejected every run (or one that swallowed the clash some other way)
+    // would still make the first two tests pass.
+    const small = boxElement('small', 'IfcWall', [0, 0, 0], 0.2);
+    const big = boxElement('big', 'IfcDuct', [0, 0, 0], 2);
+    const result = await engine.run([small, big], [hard()], {});
+    expect(result.clashes).toHaveLength(1);
+    expect(result.clashes[0].status).toBe('hard');
+  });
+});
+
+describe('TsClashEngine: ClashRuleCoverage exposes the examined-pair count', () => {
+  it('reports a non-zero candidatesProcessed when geometry actually ran', async () => {
+    const small = boxElement('small', 'IfcWall', [0, 0, 0], 0.2);
+    const big = boxElement('big', 'IfcDuct', [0, 0, 0], 2);
+    const result = await engine.run([small, big], [hard()], {});
+    expect(result.ruleCoverage).toBeDefined();
+    const coverage = result.ruleCoverage!.find((c) => c.rule === 'r');
+    expect(coverage?.candidatesProcessed).toBeGreaterThan(0);
+  });
+
+  it('distinguishes a zero-examined-pair rule from a fully-covered one, when maxCandidatePairs is exhausted upstream', async () => {
+    // Two rules against the same fully-matching elements. The global
+    // `maxCandidatePairs` budget is consumed entirely by the first rule, so
+    // the second rule has full selector coverage (matchedA/matchedB both
+    // non-zero) yet examines ZERO candidate pairs — exactly the shape a
+    // non-finite tolerance produces, but reachable without a NaN input.
+    const small = boxElement('small', 'IfcWall', [0, 0, 0], 0.2);
+    const big = boxElement('big', 'IfcDuct', [0, 0, 0], 2);
+    const ruleA: ClashRule = { id: 'first', name: 'first', a: 'IfcWall', b: 'IfcDuct', mode: 'hard' };
+    const ruleB: ClashRule = { id: 'second', name: 'second', a: 'IfcWall', b: 'IfcDuct', mode: 'hard' };
+    const result = await engine.run([small, big], [ruleA, ruleB], { maxCandidatePairs: 1 });
+
+    const first = result.ruleCoverage!.find((c) => c.rule === 'first');
+    const second = result.ruleCoverage!.find((c) => c.rule === 'second');
+    expect(first?.candidatesProcessed).toBeGreaterThan(0);
+    // Full selector coverage on the second rule (matchedA/matchedB both hit)
+    // is what made this bug invisible before candidatesProcessed existed:
+    // `classifyRuleCoverage` alone cannot see the difference between this
+    // and a genuine "checked, found nothing".
+    expect(second?.matchedA).toBeGreaterThan(0);
+    expect(second?.matchedB).toBeGreaterThan(0);
+    expect(second?.candidatesProcessed).toBe(0);
+  });
+});

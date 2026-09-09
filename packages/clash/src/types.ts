@@ -259,6 +259,24 @@ export interface ClashRuleCoverage {
    */
   matchedKeysA?: readonly string[];
   matchedKeysB?: readonly string[] | null;
+  /**
+   * How many candidate pairs the geometry kernel actually examined for this
+   * rule (broad phase output, narrow-phase input) — distinct from
+   * `matchedA`/`matchedB`, which are selector-match counts computed BEFORE
+   * any geometry runs. A rule can have full selector coverage and still
+   * examine zero pairs (e.g. a non-finite tolerance collapsing the broad
+   * phase, or a `maxCandidatePairs` budget already exhausted by an earlier
+   * rule), which selector coverage alone cannot reveal. Optional and additive
+   * so existing consumers that construct or destructure `ClashRuleCoverage`
+   * keep compiling; absent on a result recorded before this existed.
+   */
+  candidatesProcessed?: number;
+  /**
+   * How many candidate pairs for this rule were dropped by the
+   * `maxCandidatePairs` budget rather than examined. Comes free off the same
+   * kernel result as `candidatesProcessed`. Optional for the same reason.
+   */
+  candidatesDropped?: number;
 }
 
 export interface ClashResult {

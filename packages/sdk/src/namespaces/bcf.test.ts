@@ -253,3 +253,55 @@ describe('sectionPlaneToClippingPlane <-> clippingPlaneToSectionPlane round-trip
     expect(roundTripped).toEqual(original);
   });
 });
+
+// ============================================================================
+// cameraToOrthogonal — viewToWorldScale argument (#4294)
+//
+// Unlike sectionPlaneToClippingPlane/clippingPlaneToSectionPlane above
+// (#4265), the library function does not dereference the dropped argument,
+// so the pre-fix wrapper did not throw — it returned a well-formed-looking
+// BCFOrthogonalCamera with viewToWorldScale silently undefined. That value
+// is a required xs:double when the camera is written (writer-camera.ts's
+// xsdDouble), so the defect only surfaced later, at write time, far from
+// the call that dropped the argument.
+// ============================================================================
+
+const ORTHO_CAMERA = {
+  position: { x: 1, y: 2, z: 3 },
+  target: { x: 4, y: 5, z: 6 },
+  up: { x: 0, y: 1, z: 0 },
+  fov: Math.PI / 4,
+};
+
+describe('BCFNamespace.cameraToOrthogonal — viewToWorldScale argument (#4294)', () => {
+  it('forwards viewToWorldScale to a real number, not silently to undefined', async () => {
+    const ns = new BCFNamespace();
+    const out = (await ns.cameraToOrthogonal(ORTHO_CAMERA, 7.25)) as { viewToWorldScale: number };
+    expect(out.viewToWorldScale).toBe(7.25);
+  });
+
+  it('the pre-fix call shape (argument omitted) leaves viewToWorldScale undefined without throwing', async () => {
+    const ns = new BCFNamespace();
+    // @ts-expect-error — exercising the pre-fix call shape (viewToWorldScale omitted)
+    const out = (await ns.cameraToOrthogonal(ORTHO_CAMERA)) as { viewToWorldScale: number };
+    // No rejection: this is the silent-corruption shape #4294 reports, distinct
+    // from #4265's siblings which throw immediately when the argument is missing.
+    expect(out.viewToWorldScale).toBeUndefined();
+  });
+
+  it('an orthogonal camera with viewToWorldScale undefined fails at write time, not at conversion time', async () => {
+    const ns = new BCFNamespace();
+    const project = await ns.createProject({ name: 'p' });
+    const topic = await ns.createTopic({ title: 't', author: 'a' });
+    await ns.addTopic(project, topic);
+    const viewpoint = (await ns.createViewpoint({
+      camera: { mode: 'perspective', position: [0, 0, 0], target: [0, 0, 1], up: [0, 1, 0] },
+    })) as Record<string, unknown>;
+    delete viewpoint.perspectiveCamera;
+    // @ts-expect-error — exercising the pre-fix call shape (viewToWorldScale omitted)
+    viewpoint.orthogonalCamera = await ns.cameraToOrthogonal(ORTHO_CAMERA);
+    await ns.addViewpoint(topic, viewpoint);
+
+    await expect(ns.write(project)).rejects.toThrow(/ViewToWorldScale/);
+  });
+});

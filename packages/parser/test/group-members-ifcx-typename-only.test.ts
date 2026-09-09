@@ -26,6 +26,7 @@ import { describe, it, expect } from 'vitest';
 import { RelationshipGraphBuilder, RelationshipType } from '@ifc-lite/data';
 import { createSyntheticDataStore } from '../src/synthetic-data-store.js';
 import { extractGroupMembersOnDemand } from '../src/on-demand-extractors.js';
+import type { EntityRef } from '../src/types.js';
 
 describe('extractGroupMembersOnDemand — IFCX-shaped store (empty entityIndex.byId)', () => {
   it('keeps a member known only via store.entities.getTypeName', () => {
@@ -44,7 +45,11 @@ describe('extractGroupMembersOnDemand — IFCX-shaped store (empty entityIndex.b
     // Simulate real IFCX ingest: entityIndex.byId carries no STEP byte spans,
     // so it stays EMPTY for the member — existence must ride the EntityTable
     // (store.entities.getTypeName) instead.
-    store.entityIndex.byId.delete(memberId);
+    // `entityIndex.byId` is typed as the read-only-shaped `EntityByIdIndex`
+    // (no `delete`), but `createSyntheticDataStore` builds it as a concrete
+    // `Map<number, EntityRef>` — cast to that, matching the same escape hatch
+    // `packages/export/src/entity-iteration.ts` uses for the real store.
+    (store.entityIndex.byId as unknown as Map<number, EntityRef>).delete(memberId);
     expect(store.entityIndex.byId.has(memberId)).toBe(false);
     // Sanity: the EntityTable still knows the type — this is what the
     // "EITHER source" branch is meant to fall back to.

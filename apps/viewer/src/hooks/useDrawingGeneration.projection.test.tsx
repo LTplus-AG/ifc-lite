@@ -156,12 +156,19 @@ const SPACES_HIDDEN: TypeVisibilityGate = { ...ALL_VISIBLE, spaces: false };
 interface HarnessOptions {
   geometryResult: GeometryResult;
   typeVisibility: TypeVisibilityGate;
+  flipped?: boolean;
   ifcDataStore: { source: IfcSourceBytes; spatialHierarchy?: SpatialHierarchy } | null;
 }
 
 /** Drive the real hook once, with construction projection ON, and return the
  *  drawing it publishes. */
 async function generate(options: HarnessOptions): Promise<Drawing2D | null> {
+  return (await generateSequence([options]))[0];
+}
+
+/** Keep the hook mounted so regeneration exercises its caches. */
+async function generateSequence(sequence: HarnessOptions[]): Promise<Array<Drawing2D | null>> {
+  let options = sequence[0];
   let drawing: Drawing2D | null = null;
   let run: (() => Promise<void>) | null = null;
 
@@ -170,7 +177,7 @@ async function generate(options: HarnessOptions): Promise<Drawing2D | null> {
       activeTool: 'select',
       geometryResult: options.geometryResult,
       ifcDataStore: options.ifcDataStore,
-      sectionPlane: { axis: 'down', position: 50, flipped: false },
+      sectionPlane: { axis: 'down', position: 50, flipped: options.flipped ?? false },
       displayOptions: {
         showHiddenLines: false,
         useSymbolicRepresentations: false,
@@ -202,10 +209,15 @@ async function generate(options: HarnessOptions): Promise<Drawing2D | null> {
   document.body.appendChild(container);
   let root: Root | null = null;
   try {
-    await act(async () => { root = createRoot(container); root.render(<Harness />); });
-    assert.ok(run, 'harness never rendered — the hook was not called');
-    await act(async () => { await run!(); });
-    return drawing;
+    root = createRoot(container);
+    const drawings: Array<Drawing2D | null> = [];
+    for (options of sequence) {
+      await act(async () => { root!.render(<Harness />); });
+      assert.ok(run, 'harness never rendered — the hook was not called');
+      await act(async () => { await run!(); });
+      drawings.push(drawing);
+    }
+    return drawings;
   } finally {
     if (root) await act(async () => { root!.unmount(); });
     container.remove();
@@ -504,4 +516,34 @@ describe('useDrawingGeneration construction projection: profile route mirrors th
       `mirror; got ${[...ids]}`,
     );
   });
+});
+
+
+for (const flipped of [false, true]) it(`keeps construction bands and lines when the model and cut move together (flipped: ${flipped}, #4332)`, async () => {
+  const source = {
+    source: contiguousSourceBytes(new TextEncoder().encode(NO_PROFILE_IFC)),
+    spatialHierarchy: spatialHierarchy(new Map([
+      [BASEMENT_SLAB, STOREY_LOWER], [CUT_WALL, STOREY_LOWER], [UPPER_SLAB, STOREY_UPPER],
+    ])),
+  };
+  // Same model/source/hierarchy for every generation. Only the displayed
+  // origins and cut bounds move; the source buffers stay in their local frame.
+  const drawings = await generateSequence([0, 100, -100, 0].map((y) => ({
+    geometryResult: geometry(STOREY_MESHES.map((mesh) => ({ ...mesh, origin: [0, y, 0] })), [0, -3 + y, 0], [4, 6 + y, 4]),
+    typeVisibility: ALL_VISIBLE, ifcDataStore: source, flipped,
+  })));
+  const first = drawings[0];
+  assert.ok(first?.lines.some((line) => line.category === 'projection'), 'real mesh projection must produce lines');
+  for (const next of drawings.slice(1)) {
+    assert.ok(next);
+    assert.equal(next.config.projectionBelowDepth, first.config.projectionBelowDepth, 'floor band follows the placed model');
+    assert.equal(next.config.projectionAboveDepth, first.config.projectionAboveDepth, 'ceiling band follows the placed model');
+    assert.equal(next.lines.length, first.lines.length);
+    for (let i = 0; i < first.lines.length; i++) {
+      const { depth: expectedDepth, ...expectedLine } = first.lines[i];
+      const { depth, ...line } = next.lines[i];
+      assert.deepEqual(line, expectedLine, 'moving along the cut normal preserves every projected endpoint and style');
+      assert.ok(Math.abs(depth - expectedDepth) < 1e-5, 'projection depth is stable within float32 rounding at 100 m');
+    }
+  }
 });

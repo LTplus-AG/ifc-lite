@@ -180,12 +180,13 @@ export function useDrawingGeneration({
   } | null>(null);
 
   // Cache for per-storey floor levels used to scope construction projection to
-  // the current floor (issue #979 follow-up). Derived from mesh-Y, so it only
-  // changes when the model/visibility set changes — keyed on the same
-  // `modelCacheKey` as the profile cache.
+  // the current floor. Unlike source profiles, these are DISPLAYED mesh-Y
+  // values: a placement or geometry edit invalidates them even if the model
+  // identity stays unchanged (#4332).
   const storeyFloorsCacheRef = useRef<{
     floors: number[];
-    sourceId: string | null;
+    geometry: GeometryResult;
+    elementToStorey: ReadonlyMap<number, number>;
   } | null>(null);
 
   // Generate drawing when panel opens
@@ -419,12 +420,10 @@ export function useDrawingGeneration({
         sh.byBuilding.size <= 1;
       if (canScopeFloor && sh) {
         const cached = storeyFloorsCacheRef.current;
-        const floors =
-          cached && cached.sourceId === modelCacheKey
-            ? cached.floors
-            : storeyFloorsFromMeshes(modelMeshes, sh.elementToStorey);
-        if (!cached || cached.sourceId !== modelCacheKey) {
-          storeyFloorsCacheRef.current = { floors, sourceId: modelCacheKey };
+        const floorsCurrent = cached?.geometry === geometryResult && cached.elementToStorey === sh.elementToStorey;
+        const floors = floorsCurrent ? cached.floors : storeyFloorsFromMeshes(modelMeshes, sh.elementToStorey);
+        if (!floorsCurrent) {
+          storeyFloorsCacheRef.current = { floors, geometry: geometryResult, elementToStorey: sh.elementToStorey };
         }
         // Need ≥2 storeys to scope: with 0/1 storey there is no "other floor"
         // to exclude, and full extent keeps an overhead roof projecting.

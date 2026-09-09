@@ -3792,22 +3792,12 @@ export class Scene {
   }
 
   /**
-   * Clear flat/batched geometry (meshes, batches, buckets, textured meshes,
-   * colour overlays, streaming state, residency bookkeeping) WITHOUT
-   * touching GPU-instanced templates (#2073). A reshape that still has at
-   * least one model present should call this instead of `clear()`, then
-   * reconcile instanced ownership with `removeInstancedTemplatesForModel`
-   * for any model that did NOT survive — that way a still-loaded model's
-   * repeated geometry (windows, doors, bolts, ...) stays resident across a
-   * visibility toggle / in-place content mutation / federated model add
-   * instead of silently vanishing (nothing re-uploads instanced shard bytes
-   * after their one-time drain).
-   *
-   * Bounding boxes are only dropped for ids with NO surviving instanced
-   * occurrence — an instanced-only id's box must outlive this call so
-   * raycast / measure / section keep working for the geometry that was
-   * just retained; a flat-only id's box is stale the moment its mesh data
-   * is gone, so it is dropped like everything else here.
+   * Clear flat/batched geometry, textures, overlays and streaming/residency
+   * state while preserving GPU-instanced templates (#2073). Reshapes use this
+   * instead of clear(), then removeInstancedTemplatesForModel for departed
+   * models: surviving shards are not uploaded again after their initial drain.
+   * Drop retained flat bounds and rebuild boxes from surviving instances so
+   * picking and sections cannot see a removed flat contribution (#4226).
    */
   clearFlatGeometry(): void {
     this.appearanceController?.forget();

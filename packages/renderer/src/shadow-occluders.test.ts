@@ -119,6 +119,51 @@ describe('collectShadowOccluders', () => {
     assert.deepEqual(kinds, ['instanced']);
   });
 
+  // Three-state check on `isolatedIds`, matching `entity-visibility.ts`'s documented
+  // rule ("an EMPTY set means isolate nothing... do not collapse the two"):
+  //   1. no isolation (undefined)        → everything casts.
+  //   2. non-empty isolation             → only the matched subset casts.
+  //   3. active-but-empty isolation      → NOTHING casts (the bug: `anyVisible`'s
+  //      `hasIsolate = isolatedIds != null && isolatedIds.size > 0` collapsed this
+  //      to "no isolation active" and let the whole batch cast a phantom shadow).
+  it('casts nothing (not everything) for a textured/individual mesh under an active-but-empty isolate set', () => {
+    const mesh: Mesh = {
+      expressId: 900,
+      vertexBuffer: buf('mesh-v'),
+      indexBuffer: buf('mesh-i'),
+      indexCount: 6,
+      color: [1, 1, 1, 1],
+      transform: { m: originModelMatrix(undefined) },
+      hydrated: false,
+    } as unknown as Mesh;
+    const draws = collectShadowOccluders(
+      { batches: [], instanced: [], textured: [texturedMesh()], meshes: [mesh] },
+      { isolatedIds: new Set<number>() },
+    );
+    assert.deepEqual(draws, [], 'isolate-to-nothing must cast nothing, not the whole scene');
+  });
+
+  it('casts everything when isolatedIds is absent (no isolation active)', () => {
+    const draws = collectShadowOccluders(
+      { batches: [], instanced: [], textured: [texturedMesh()] },
+      { isolatedIds: undefined },
+    );
+    assert.equal(draws.length, 1, 'no isolation active → the textured mesh still casts');
+  });
+
+  it('casts only the matched subset for a non-empty isolate set', () => {
+    const draws = collectShadowOccluders(
+      { batches: [], instanced: [], textured: [texturedMesh()] },
+      { isolatedIds: new Set([900]) },
+    );
+    assert.equal(draws.length, 1, 'the isolated textured mesh still casts');
+    const drawsExcluded = collectShadowOccluders(
+      { batches: [], instanced: [], textured: [texturedMesh()] },
+      { isolatedIds: new Set([12345]) },
+    );
+    assert.deepEqual(drawsExcluded, [], 'a non-matching isolate set excludes the textured mesh');
+  });
+
   it('lets a transparent (glass) batch pass light — it does not cast', () => {
     const glass: BatchedMesh = { ...flatBatch(1), color: [0.6, 0.8, 1, 0.3] };
     const draws = collectShadowOccluders({ batches: [glass], instanced: [], textured: [] });

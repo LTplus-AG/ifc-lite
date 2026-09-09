@@ -182,12 +182,12 @@ export function useDrawingGeneration({
   // Cache for per-storey floor levels used to scope construction projection to
   // the current floor. Unlike source profiles, these are DISPLAYED mesh-Y
   // values: a placement or geometry edit invalidates them even if the model
-  // identity stays unchanged (#4332).
-  const storeyFloorsCacheRef = useRef<{
+  // identity stays unchanged (#4332). Weak keys must not keep an unloaded
+  // model's mesh buffers alive while the hidden drawing panel stays mounted.
+  const storeyFloorsCacheRef = useRef(new WeakMap<GeometryResult, {
     floors: number[];
-    geometry: GeometryResult;
     elementToStorey: ReadonlyMap<number, number>;
-  } | null>(null);
+  }>());
 
   // Generate drawing when panel opens
   const computeDrawing = useCallback(async (isRegenerate = false, isCurrent: () => boolean = () => true) => {
@@ -419,11 +419,11 @@ export function useDrawingGeneration({
         sh !== undefined &&
         sh.byBuilding.size <= 1;
       if (canScopeFloor && sh) {
-        const cached = storeyFloorsCacheRef.current;
-        const floorsCurrent = cached?.geometry === geometryResult && cached.elementToStorey === sh.elementToStorey;
+        const cached = storeyFloorsCacheRef.current.get(geometryResult);
+        const floorsCurrent = cached?.elementToStorey === sh.elementToStorey;
         const floors = floorsCurrent ? cached.floors : storeyFloorsFromMeshes(modelMeshes, sh.elementToStorey);
         if (!floorsCurrent) {
-          storeyFloorsCacheRef.current = { floors, geometry: geometryResult, elementToStorey: sh.elementToStorey };
+          storeyFloorsCacheRef.current.set(geometryResult, { floors, elementToStorey: sh.elementToStorey });
         }
         // Need ≥2 storeys to scope: with 0/1 storey there is no "other floor"
         // to exclude, and full extent keeps an overhead roof projecting.

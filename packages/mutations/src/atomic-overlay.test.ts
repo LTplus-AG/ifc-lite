@@ -201,7 +201,7 @@ describe('atomic overlay editing #4243', () => {
   });
 
   it('retains detached cyclic publication and refuses rollback over escaped changes #4243', () => {
-    const { view, editor, item } = fixture();
+    const { view, item } = fixture();
     const cycle: IfcAttributeValue[] = [1];
     cycle.push(cycle);
     let escaped: MutablePropertyView | undefined;

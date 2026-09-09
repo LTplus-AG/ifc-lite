@@ -24,7 +24,7 @@ import {
   rayIntersectsBox,
 } from './scene-raycaster.js';
 import { selectBoundingBoxesInRect } from './scene-rect-select.js';
-import { mergeGeometry, splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources } from './scene-geometry.js';
+import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
@@ -2512,19 +2512,6 @@ export class Scene {
       this.sharedFrameOrigins.set(modelIndex, [result.origin[0] - offset[0], result.origin[1] - offset[1], result.origin[2] - offset[2]]);
     }
     return this.modelTranslations.registerDrawable(result, modelIndex);
-  }
-
-  /**
-   * Merge multiple mesh geometries into single vertex/index buffers.
-   * Delegates to the extracted mergeGeometry() utility.
-   */
-  private mergeGeometry(meshDataArray: MeshData[], forcedOrigin?: [number, number, number]): {
-    vertexData: Float32Array;
-    indices: Uint32Array;
-    bounds: { min: [number, number, number]; max: [number, number, number] };
-    origin: [number, number, number];
-  } {
-    return mergeGeometry(meshDataArray, forcedOrigin);
   }
 
   /**

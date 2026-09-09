@@ -25,6 +25,7 @@ import {
   isClusterGroupingIneffective,
   classifyRuleCoverage,
   ruleHadNoMatch,
+  ruleCoverageWasUnexamined,
   type Clash,
   type ClashMode,
   sortClashes,
@@ -175,7 +176,7 @@ export function formatClashRow(clash: Clash): string {
  * has exactly one hand-built rule; only `--matrix` runs the discipline
  * matrix).
  */
-function emptyRuleDescriptions(result: ClashResult): string[] {
+export function emptyRuleDescriptions(result: ClashResult): string[] {
   const rules = new Map(result.rulesRun.map((r) => [r.id, r]));
   return (result.ruleCoverage ?? [])
     .filter(ruleHadNoMatch)
@@ -188,6 +189,15 @@ function emptyRuleDescriptions(result: ClashResult): string[] {
       const sides = emptySides.length > 0 ? emptySides.join(' and ') : 'a selector';
       return `"${rule.name}": ${sides} matched 0 elements`;
     });
+}
+
+/** Rule ids that matched BOTH sides yet the kernel examined 0 candidate pairs
+ * (#4244) — a different, more alarming zero than {@link emptyRuleDescriptions}. */
+export function unexaminedRuleDescriptions(result: ClashResult): string[] {
+  const rules = new Map(result.rulesRun.map((r) => [r.id, r]));
+  return (result.ruleCoverage ?? [])
+    .filter(ruleCoverageWasUnexamined)
+    .map((c) => `"${rules.get(c.rule)?.name ?? c.rule}": matched elements on both sides, but the geometry kernel examined 0 candidate pairs`);
 }
 
 /**
@@ -204,7 +214,7 @@ function emptyRuleDescriptions(result: ClashResult): string[] {
  * still matched and no matrix was ever involved, so the message must name
  * the empty selector instead of claiming the matrix didn't run.
  */
-function printCoverageWarning(result: ClashResult, isMatrix: boolean): void {
+export function printCoverageWarning(result: ClashResult, isMatrix: boolean): void {
   const outcome = classifyRuleCoverage(result);
   if (outcome === 'no-match') {
     if (isMatrix) {
@@ -222,10 +232,17 @@ function printCoverageWarning(result: ClashResult, isMatrix: boolean): void {
       );
     }
   } else if (outcome === 'partial') {
-    process.stdout.write(
-      `\n  Note: ${emptyRuleDescriptions(result).length} of ${result.rulesRun.length} rule(s) never ran a ` +
-        `comparison: ${emptyRuleDescriptions(result).join(', ')}\n`,
-    );
+    // Two different causes fold into 'partial' — an empty selector, and an
+    // unexamined rule (#4244) — reported as separate counted lines so the
+    // alarming case never rides silently inside the mundane one.
+    const empty = emptyRuleDescriptions(result);
+    const unexamined = unexaminedRuleDescriptions(result);
+    if (empty.length > 0) {
+      process.stdout.write(`\n  Note: ${empty.length} of ${result.rulesRun.length} rule(s) never ran a comparison: ${empty.join(', ')}\n`);
+    }
+    if (unexamined.length > 0) {
+      process.stdout.write(`\n  WARNING: ${unexamined.length} of ${result.rulesRun.length} rule(s) matched elements on both sides but the geometry kernel examined 0 candidate pairs — this is NOT "checked and found nothing"; check for a non-finite tolerance/clearance or an exhausted maxCandidatePairs budget: ${unexamined.join(', ')}\n`);
+    }
   }
 }
 

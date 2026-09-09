@@ -55,6 +55,7 @@ export {
   sortClashes,
   summarizeClashes,
   ruleHadNoMatch,
+  ruleCoverageWasUnexamined,
   classifyRuleCoverage,
   describeEmptyRuleSides,
   type ClashSortBy,

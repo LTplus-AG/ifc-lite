@@ -44,6 +44,7 @@ import {
   classifyRuleCoverage,
   describeEmptyRuleSides,
   ruleHadNoMatch,
+  ruleCoverageWasUnexamined,
   DUPLICATES_RULE,
   CLASH_REVIEW_STATUSES,
   type Clash,
@@ -515,6 +516,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       .filter(ruleHadNoMatch)
       .map((c) => describeEmptyRuleSides(rules.get(c.rule), c));
   }, [result]);
+  const unexaminedRuleNames = useMemo(() => (result?.ruleCoverage ?? []).filter(ruleCoverageWasUnexamined).map((c) => result?.rulesRun.find((r) => r.id === c.rule)?.name ?? c.rule), [result]); // #4244: matched both sides, kernel examined 0 pairs — distinct wording from emptyRuleNames
   // Only a real multi-rule discipline-matrix run (`runMatrix`) can be
   // truthfully described as "the matrix didn't run" — a single ad-hoc rule
   // (`runAll`'s self-clash, or a one-off `runPreset`) never involved a
@@ -1182,11 +1184,11 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
 
         {result && total === 0 && coverageOutcome !== 'no-match' && (
           <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
-            <p className="text-sm">No clashes found for this rule set. 🎉</p>
-            {coverageOutcome === 'partial' && emptyRuleNames.length > 0 && (
-              <p className="mt-1.5 text-[11px] max-w-xs">
-                {emptyRuleNames.length} rule(s) matched no elements and never ran: {emptyRuleNames.join(', ')}
-              </p>
+            {unexaminedRuleNames.length > 0 ? (<><AlertTriangle className="h-6 w-6 mb-2 text-[#e0af68]" /><p className="text-sm font-medium text-foreground">"0 clashes" doesn't mean this model is clean — {unexaminedRuleNames.length} rule(s) matched elements but the kernel examined 0 candidate pairs: {unexaminedRuleNames.join(', ')}</p></>) : (
+              <p className="text-sm">No clashes found for this rule set. 🎉</p>
+            )}
+            {emptyRuleNames.length > 0 && (
+              <p className="mt-1.5 text-[11px] max-w-xs">{emptyRuleNames.length} rule(s) matched no elements and never ran: {emptyRuleNames.join(', ')}</p>
             )}
           </div>
         )}

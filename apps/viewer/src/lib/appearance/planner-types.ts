@@ -32,7 +32,7 @@ export interface AppearanceRequest {
 export interface AppearancePlan extends AppearanceEntityPlan {
   /** Original renderer provenance for opted-in occurrence-local Body conversions. */
   conversions?: Array<{ productId: number; representationId: number; sourceGeometryItemId: number;
-    geometryItemId: number; sourceIndices: number[] }>; 
+    geometryItemId: number; sourceIndices: number[] }>;
   nextAvailableExpressId: number;
   items: Array<{
     productId: number;

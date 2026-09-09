@@ -96,3 +96,37 @@ pub(super) fn local_points(source: &mut Source<'_>, product: &DecodedEntity,
         if point.iter().any(|v| !v.is_finite()) { Err("Evaluated coordinate exceeds numeric range".into()) } else { Ok(point) }
     }).collect()
 }
+
+/// Eligibility is a pure property of each reachable geometry node: a global
+/// visited set handles shared DAG nodes, with separate node/value work ceilings.
+/// Style definitions are inverse associations and are inspected, not traversed.
+pub(super) fn validate_style_tree(source:&mut Source<'_>, body:&DecodedEntity, leaf:u32)->Result<(),String> {
+    let mut pending=vec![body.id];
+    let mut visited=std::collections::BTreeSet::new();
+    let mut work=0usize;
+    while let Some(id)=pending.pop() {
+        if !visited.insert(id) {continue;}
+        if visited.len()>4096 {return Err("Evaluated style graph exceeds its node budget".into());}
+        if id!=leaf && source.styled_items.get(&id).is_some_and(|items|!items.is_empty()) {
+            return Err("Mapped-chain or nested geometry style overrides are unsupported for evaluated appearance".into());
+        }
+        if source.incoming.get(&id).is_some_and(|parents|parents.iter()
+            .any(|parent|source.types.get(parent)==Some(&IfcType::IfcPresentationLayerWithStyle))) {
+            return Err("Styled presentation layers on evaluated geometry are unsupported".into());
+        }
+        let entity=source.entity(id)?;
+        let mut values:Vec<&ifc_lite_core::AttributeValue>=if entity.ifc_type==IfcType::IfcShapeRepresentation {
+            entity.get(3).into_iter().collect()
+        } else {entity.attributes.iter().collect()};
+        while let Some(value)=values.pop() {
+            work+=1;
+            if work>65_536 {return Err("Evaluated style graph exceeds its reference budget".into());}
+            match value {
+                ifc_lite_core::AttributeValue::EntityRef(id)=>pending.push(*id),
+                ifc_lite_core::AttributeValue::List(items)=>values.extend(items),
+                _=>{},
+            }
+        }
+    }
+    Ok(())
+}

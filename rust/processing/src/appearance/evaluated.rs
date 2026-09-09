@@ -67,6 +67,7 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
             let mesh=meshes.remove(0);
             if mesh.texture.is_some() || mesh.uvs.is_some() { return Err("Evaluated conversion of textured source surfaces is not supported yet".into()); }
             let old_item=mesh.geometry_item_id.ok_or("Missing evaluated source item provenance")?;
+            evaluated_source::validate_style_tree(source,&body,old_item)?;
             let surface=evaluated_source::surface_styles(source,old_item)?;
             if mesh.positions.len()%3!=0 || mesh.indices.len()%3!=0 || mesh.positions.is_empty()
                 || mesh.indices.is_empty() || mesh.positions.iter().chain(&mesh.normals).any(|n|!n.is_finite())

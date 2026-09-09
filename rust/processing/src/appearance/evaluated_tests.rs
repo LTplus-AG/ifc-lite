@@ -92,3 +92,33 @@ fn issue_4404_failed_image_mapping_never_publishes_its_successful_private_conver
     assert_eq!(plan.exclusions.len(),1);assert!(plan.items.is_empty());assert!(plan.created.is_empty());
     assert!(plan.edits.is_empty());assert!(plan.conversions.is_empty());
 }
+#[test]
+fn issue_4404_same_albedo_different_roughness_on_mapped_chain_is_not_silently_lost() {
+    let Some(source)=real_source() else{return};
+    // Same Kiefer name, colour, diffuse and specular as the source; only
+    // roughness differs. RGB/name comparison alone cannot detect this override.
+    let styles="#99990=IFCSURFACESTYLERENDERING(#17389,0.,IFCNORMALISEDRATIOMEASURE(0.74),$,$,$,IFCNORMALISEDRATIOMEASURE(0.1),IFCSPECULARROUGHNESS(0.01),.NOTDEFINED.);\n#99991=IFCSURFACESTYLE('Kiefer',.BOTH.,(#99990));\n";
+    for target in [35155,35153,35139] {
+        let changed=source.replace("#35155=",&format!("{styles}#99992=IFCSTYLEDITEM(#{target},(#99991),$);\n#35155="));
+        let plan=plan_appearance(changed.as_bytes(),&request()).unwrap();
+        assert_eq!(plan.exclusions.len(),1);assert!(plan.exclusions[0].reason.contains("style overrides") || plan.exclusions[0].reason.contains("Body is shared"),"target {target}: {:?}",plan.exclusions);
+        assert!(plan.created.is_empty());assert!(plan.edits.is_empty());assert!(plan.conversions.is_empty());
+    }
+    for target in [35153,35135] {
+        let changed=source.replace("#35155=",&format!("{styles}#99992=IFCPRESENTATIONLAYERWITHSTYLE('Kiefer',$,(#{target}),$,.T.,.F.,.F.,(#99991));\n#35155="));
+        let plan=plan_appearance(changed.as_bytes(),&request()).unwrap();
+        assert_eq!(plan.exclusions.len(),1);assert!(plan.exclusions[0].reason.contains("Styled presentation layers"));
+        assert!(plan.created.is_empty());assert!(plan.edits.is_empty());
+    }
+}
+#[test]
+fn issue_4404_material_layer_slicing_refusal_precedes_mapped_evaluation() {
+    let Some(source)=real_source() else{return};
+    let layers="#99980=IFCMATERIAL('Finish',$,$);\n#99981=IFCMATERIALLAYER(#99980,0.05,$,$,$,$,$);\n#99982=IFCMATERIALLAYER(#99980,0.2,$,$,$,$,$);\n#99983=IFCMATERIALLAYERSET((#99981,#99982),$,$);\n#99984=IFCMATERIALLAYERSETUSAGE(#99983,.AXIS2.,.POSITIVE.,0.,$);\n#99985=IFCRELASSOCIATESMATERIAL('0Proxy000000000000000a',$,$,$,(#35169),#99984);\n";
+    let changed=source.replace("#35155=",&format!("{layers}#35155="));
+    let mut decoder=ifc_lite_core::EntityDecoder::new(changed.as_bytes());
+    assert!(ifc_lite_geometry::MaterialLayerIndex::from_content(changed.as_bytes(),&mut decoder).is_sliceable(35169));
+    let plan=plan_appearance(changed.as_bytes(),&request()).unwrap();
+    assert_eq!(plan.exclusions.len(),1);assert!(plan.exclusions[0].reason.contains("Material-layer slicing"));
+    assert!(plan.created.is_empty());assert!(plan.edits.is_empty());
+}

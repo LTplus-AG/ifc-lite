@@ -136,8 +136,9 @@ export class MutableOverlayState {
   protected nextAllocatedId: number = 0;
   protected mutationHistory: Mutation[] = [];
 
-  protected copyOverlayState() {
-    return structuredClone({
+  /** Borrowed only for synchronous comparison; never returned to callers. */
+  private overlayState() {
+    return {
       propertyMutations: this.propertyMutations,
       quantityMutations: this.quantityMutations,
       propertyKeysByEntity: this.propertyKeysByEntity,
@@ -157,7 +158,11 @@ export class MutableOverlayState {
       entityAliases: this.entityAliases,
       nextAllocatedId: this.nextAllocatedId,
       mutationHistory: this.mutationHistory,
-    });
+    };
+  }
+
+  protected copyOverlayState() {
+    return structuredClone(this.overlayState());
   }
 
   protected restoreOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>): void {
@@ -165,6 +170,6 @@ export class MutableOverlayState {
   }
 
   protected matchesOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>): boolean {
-    return sameOverlayValue(this.copyOverlayState(), state);
+    return sameOverlayValue(this.overlayState(), state);
   }
 }

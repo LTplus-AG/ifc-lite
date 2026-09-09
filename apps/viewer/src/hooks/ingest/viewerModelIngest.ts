@@ -4,7 +4,7 @@
 
 import { CompactEntityIndex, parseIfcx, createSyntheticDataStore, attachDataStoreAccessors, contiguousSourceBytes, type IfcDataStore, type IfcSourceBytes, type IfcStoreData, type PointCloudExtraction } from '@ifc-lite/parser';
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
-import { loadGLBToMeshData } from '@ifc-lite/cache';
+import { parseGLB, parseGLBToMeshData, parseGLBImageResources } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
 import { calculateMeshBounds, createCoordinateInfo, normalizeColor } from '../../utils/localParsingUtils.js';
 
@@ -26,6 +26,8 @@ export interface ViewerModelPayload {
   dataStore: IfcDataStore;
   geometryResult: GeometryResult;
   schemaVersion: SchemaVersion;
+  /** Encoded GLB base-colour images, retained through the canonical load owner. */
+  originalResources?: Map<string, Uint8Array>;
   /** IFCX path ↔ expressId maps (only present for IFCX-parsed models). */
   pathToId?: Map<string, number>;
   idToPath?: Map<number, string>;
@@ -240,13 +242,17 @@ export function convertIfcxPointClouds(extractions: PointCloudExtraction[]): Poi
 }
 
 export async function parseGlbViewerModel(buffer: ArrayBuffer): Promise<ViewerModelPayload> {
-  const meshes = loadGLBToMeshData(new Uint8Array(buffer));
+  const { json, bin } = parseGLB(new Uint8Array(buffer));
+  if (!bin) throw new Error('GLB has no binary buffer');
+  const meshes = parseGLBToMeshData(json, bin);
+  const originalResources = parseGLBImageResources(json, bin);
   if (meshes.length === 0) {
     throw new Error('glb-empty');
   }
 
   const { bounds, stats } = calculateMeshBounds(meshes);
   return {
+    originalResources,
     dataStore: createMinimalGlbDataStore(buffer, meshes.length),
     geometryResult: {
       meshes,

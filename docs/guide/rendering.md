@@ -560,6 +560,18 @@ renderer.render({ selectedIds });
 
 ### Raycasting
 
+Scene raycasts and magnetic snapping include regular, batched, textured and
+instanced geometry. A textured surface in front of another object participates
+in nearest-surface selection, with the same hidden/isolation filters and retained
+local origins. CPU raycasts intersect triangles; texture alpha does not cut holes
+in the picking surface.
+
+Custom `RaycastEngine` scene adapters can optionally implement
+`getTexturedMeshes()` returning owners with `expressId` and optional `modelIndex`;
+`getMeshDataPieces` supplies their retained geometry. Existing adapters without
+that capability keep their regular/batched/instanced behavior. This does not add
+texture GPU handles to the `Renderer.getScene()` interface.
+
 ```typescript
 // Full raycast with intersection details
 const result = renderer.raycastScene(x, y);

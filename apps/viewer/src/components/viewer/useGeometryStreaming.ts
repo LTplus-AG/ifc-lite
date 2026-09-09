@@ -140,10 +140,10 @@ export interface UseGeometryStreamingParams {
    * instanced buffers) and reconcile ownership against this set — any
    * modelIndex the scene still holds templates for but that is NOT in this
    * set gets torn down via `removeInstancedTemplatesForModel`, so a
-   * genuinely removed/hidden model's instanced geometry does not linger.
+   * genuinely removed model's instanced geometry does not linger.
    * `undefined` defaults to "only modelIndex 0 is present" — the
    * non-federated case, where `addInstancedShard` has always defaulted new
-   * templates to modelIndex 0.
+   * templates to modelIndex 0. Hidden models remain present and masked (#4428).
    */
   presentInstancedModelIndices?: ReadonlySet<number>;
   clearPendingMeshColorUpdates: () => void;
@@ -195,7 +195,7 @@ const DEFAULT_PRESENT_INSTANCED_MODEL_INDICES: ReadonlySet<number> = new Set([0]
  * a reshape), then reconciles instanced ownership: any modelIndex the scene
  * still holds templates for but that is missing from
  * `presentInstancedModelIndices` gets torn down via
- * `removeInstancedTemplatesForModel` so a genuinely removed/hidden model's
+ * `removeInstancedTemplatesForModel` so a genuinely removed model's
  * repeated geometry does not linger on screen. See the
  * `presentInstancedModelIndices` param doc for the full rationale.
  */

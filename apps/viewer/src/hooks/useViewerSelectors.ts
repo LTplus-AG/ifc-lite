@@ -8,6 +8,8 @@
  * Extracted from Viewport.tsx for reusability
  */
 
+import { useMemo } from 'react';
+import { modelHiddenEntities } from '../lib/visibility/model-hidden-entities.js';
 import { useViewerStore } from '../store/index.js';
 
 /**
@@ -35,7 +37,14 @@ export function useSelectionState() {
  * Visibility-related store state (hidden/isolated entities)
  */
 export function useVisibilityState() {
-  const hiddenEntities = useViewerStore((state) => state.hiddenEntities);
+  const userHiddenEntities = useViewerStore((state) => state.hiddenEntities);
+  const models = useViewerStore((state) => state.models);
+  const geometryContentVersion = useViewerStore((state) => state.geometryContentVersion);
+  const toGlobalId = useViewerStore((state) => state.toGlobalId);
+  const hiddenEntities = useMemo(
+    () => modelHiddenEntities(models, userHiddenEntities, toGlobalId),
+    [models, userHiddenEntities, toGlobalId, geometryContentVersion],
+  );
   const isolatedEntities = useViewerStore((state) => state.isolatedEntities);
   const ghostExceptEntities = useViewerStore((state) => state.ghostExceptEntities);
 

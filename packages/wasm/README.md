@@ -119,3 +119,10 @@ It shares bounded native decoding with `planAppearance`; run both in a worker an
 validate the source revision before using a catalog or applying a plan. See the
 [WASM API guide](../../docs/api/wasm.md#effective-appearance-scope-catalog) for the
 request, response and limits.
+
+`IfcAPI.planPageAppearance(content, requestJson, rgba)` adds a bounded finite-page
+compositor. It returns an `IFPA` metadata/PNG envelope with per-item digest-named
+assets and ordinary atomic IFC edits. Outside-page albedo is resampled from the
+original canonical style/texture, not a repeated or clamped page border. Run in
+a cancellable worker and retain all generated assets with the command. See the
+[WASM API guide](../../docs/api/wasm.md#finite-page-appearance-output).

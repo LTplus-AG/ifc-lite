@@ -6,6 +6,7 @@
 
 mod alignment_lines;
 mod appearance;
+mod appearance_page;
 mod appearance_calibration;
 mod bool2d;
 mod clash;

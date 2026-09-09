@@ -4,7 +4,7 @@
 use super::*;
 use ifc_lite_core::{AttributeValue as A, EntityDecoder, EntityScanner};
 
-const CONTROLLED_IFC: &str = r#"ISO-10303-21;
+pub(super) const CONTROLLED_IFC: &str = r#"ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('issue-1781 image texture fixture'),'2;1');
 FILE_NAME('imgtex.ifc','2026-07-17T00:00:00',(''),(''),'','','');
@@ -66,6 +66,8 @@ fn wire(value: &A) -> Value {
         A::Enum(s) => json!(format!(".{s}.")),
         A::Integer(n) => json!(n),
         A::Float(n) => json!(n),
+        A::List(values) if values.len() == 2 && values[0].as_string().is_some_and(|s| s.starts_with("IFC")) =>
+            json!({"typed": {"type": values[0].as_string().unwrap(), "value": wire(&values[1])}}),
         A::List(values) => Value::Array(values.iter().map(wire).collect()),
         A::Null => Value::Null,
         A::Derived => json!("*"),
@@ -73,6 +75,10 @@ fn wire(value: &A) -> Value {
 }
 fn step(value: &Value) -> String {
     match value {
+        Value::Object(value) if value.contains_key("typed") => {
+            let typed = &value["typed"];
+            format!("{}({})", typed["type"].as_str().unwrap(), step(&typed["value"]))
+        },
         Value::Null => "$".into(),
         Value::Array(values) => format!(
             "({})",
@@ -85,7 +91,7 @@ fn step(value: &Value) -> String {
 }
 /// Test-only consumer: apply typed mutations to decoded source records, then
 /// re-open the resulting actual IFC through the production geometry pipeline.
-fn apply(source: &str, plan: &AppearancePlan) -> String {
+pub(super) fn apply(source: &str, plan: &AppearancePlan) -> String {
     let mut output = source[..source.find("DATA;").unwrap() + 5].to_string();
     let mut scan = EntityScanner::new(source.as_bytes());
     let mut decoder = EntityDecoder::new(source);

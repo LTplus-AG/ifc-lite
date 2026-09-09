@@ -1,0 +1,164 @@
+{
+  "issue": 4260,
+  "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "baseSource": "74fdd10572b45a076314399beca773ffc4130720",
+  "branchSource": "68e0b071c",
+  "method": "Five interleaved fresh Chromium processes per side, identical final JS/assets with only the source-verified base versus final IFC WASM bytes replaced. No page operation invoked. Worker-model readiness, not renderer readiness. OS caches uncontrolled.",
+  "browserVersion": "151.0.7922.34",
+  "identicalNonIfcWasmAssetManifestSha256": "20d905f85907b84b54f2c9bfcec2af891313ea92dd293f3cab5725239ff343e2",
+  "harnessSha256": "66ef8f42d59c87ab2b29d624ce959c8b60cce78d02f0a8f1fc566b0ae099141e",
+  "wasm": {
+    "base": {
+      "bytes": 4725285,
+      "sha256": "4f5554bcc3442f5ac64e84a7c8781444459d56a3b8cf89155dc761560015eec7"
+    },
+    "branch": {
+      "bytes": 4842328,
+      "sha256": "e4473eb7cfa65a25d865eac8d8a71a867308ce399ba20c9d3caa71f66d80c8d2"
+    }
+  },
+  "geometry": {
+    "meshes": 275,
+    "vertices": 56698,
+    "triangles": 31986,
+    "sourceStamped": 243,
+    "validAliases": 243,
+    "identicalAllTenSamples": true,
+    "identitySha256": "c00cc8d87ef71ef24c6c3b9402e6f375a0523a122f98b79e5a4f847444d7879f"
+  },
+  "medians": {
+    "workerModelReadyMs": {
+      "baseMedian": 222.81900000000314,
+      "branchMedian": 235.25404200000048,
+      "delta": 12.435041999997338,
+      "deltaPercent": 5.5807817107145885
+    },
+    "totalWallClockMs": {
+      "baseMedian": 200,
+      "branchMedian": 200,
+      "delta": 0,
+      "deltaPercent": 0.0
+    },
+    "entityScanMs": {
+      "baseMedian": 6,
+      "branchMedian": 6,
+      "delta": 0,
+      "deltaPercent": 0.0
+    },
+    "geometryStreamingMs": {
+      "baseMedian": 162,
+      "branchMedian": 166,
+      "delta": 4,
+      "deltaPercent": 2.4691358024691468
+    },
+    "metadataCompleteMs": {
+      "baseMedian": 210,
+      "branchMedian": 213,
+      "delta": 3,
+      "deltaPercent": 1.4285714285714235
+    }
+  },
+  "samples": [
+    {
+      "side": "base",
+      "round": 1,
+      "ok": true,
+      "workerModelReadyMs": 232.12695799999983,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 166,
+      "metadataCompleteMs": 214
+    },
+    {
+      "side": "branch",
+      "round": 1,
+      "ok": true,
+      "workerModelReadyMs": 234.62458400000014,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 166,
+      "metadataCompleteMs": 214
+    },
+    {
+      "side": "base",
+      "round": 2,
+      "ok": true,
+      "workerModelReadyMs": 218.8248339999991,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 156,
+      "metadataCompleteMs": 202
+    },
+    {
+      "side": "branch",
+      "round": 2,
+      "ok": true,
+      "workerModelReadyMs": 235.57045799999833,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 165,
+      "metadataCompleteMs": 213
+    },
+    {
+      "side": "base",
+      "round": 3,
+      "ok": true,
+      "workerModelReadyMs": 222.81900000000314,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 164,
+      "metadataCompleteMs": 212
+    },
+    {
+      "side": "branch",
+      "round": 3,
+      "ok": true,
+      "workerModelReadyMs": 235.25404200000048,
+      "totalWallClockMs": 200,
+      "entityScanMs": 7,
+      "geometryStreamingMs": 166,
+      "metadataCompleteMs": 212
+    },
+    {
+      "side": "base",
+      "round": 4,
+      "ok": true,
+      "workerModelReadyMs": 210.97825000000012,
+      "totalWallClockMs": 200,
+      "entityScanMs": 7,
+      "geometryStreamingMs": 154,
+      "metadataCompleteMs": 202
+    },
+    {
+      "side": "branch",
+      "round": 4,
+      "ok": true,
+      "workerModelReadyMs": 238.1508329999997,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 168,
+      "metadataCompleteMs": 216
+    },
+    {
+      "side": "base",
+      "round": 5,
+      "ok": true,
+      "workerModelReadyMs": 224.79675000000134,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 162,
+      "metadataCompleteMs": 210
+    },
+    {
+      "side": "branch",
+      "round": 5,
+      "ok": true,
+      "workerModelReadyMs": 214.13508300000103,
+      "totalWallClockMs": 200,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 153,
+      "metadataCompleteMs": 200
+    }
+  ],
+  "verdict": "Small observed ordinary worker-readiness increase; samples overlap, no speedup or zero-cost claim. Canonical geometry and streamed provenance are byte-identical. Added PNG encoder and opt-in binding enlarge WASM; page composition latency is outside this ordinary-load check."
+}

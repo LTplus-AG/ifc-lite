@@ -39,4 +39,11 @@ unresolved; importing a manifest into a different frame is rejected. The state
 foundation does not claim portable project image packaging or IFC annotation
 creation. Those use separate, explicit authoring/export operations.
 
+`AppearanceReferenceLibrary` provides the compact list for the Appearance
+workspace; the dependent workspace UI slice mounts it. Its controls use the real registration actions for separate selection,
+visibility, locking, removal, one committed opacity edit, registration file
+import/export and exact-image relinking. Invalid files produce inline errors;
+imports are canceled on unmount and refuse to overwrite registrations changed
+while the file was being read. A host-provided edit callback restores the selected
+reference into the shared calibration controls rather than opening another panel.
 History restores the exact saved engineering frame, even when that frame is currently unresolved. Rendering remains guarded by frame compatibility; Undo never silently converts coordinates or blocks access to older commands. Value-equivalent imports and updates preserve all workspace redo branches.

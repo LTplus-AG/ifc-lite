@@ -292,11 +292,13 @@ it('retains replaced, edited and removed authored bounds across model moves (#42
   assert.deepEqual(mesh.bounds, { min: [2, -2, 4], max: [5, 6, 7] });
 });
 
-it('does not resurrect removed released geometry after a flat-scene reshape (#4226)', () => {
+for (const reshape of [false, true]) it(`does not resurrect removed released geometry (reshape: ${reshape}, #4226)`, () => {
   const scene = new Scene(), { device, pipeline } = recordingGpu();
   scene.appendToBatches([triangle(1, 7), triangle(2, 7, 10)], device, pipeline);
-  scene.releaseGeometryData(); scene.clearFlatGeometry();
-  scene.appendToBatches([triangle(2, 7, 10)], device, pipeline);
+  scene.releaseGeometryData();
+  if (reshape) {
+    scene.clearFlatGeometry(); scene.appendToBatches([triangle(2, 7, 10)], device, pipeline);
+  } else scene.removeMeshesForEntity(1);
   scene.releaseGeometryData(); scene.setModelTranslation(7, [100, 0, 0]);
   assert.equal(scene.getEntityBoundingBox(1), null);
   assert.equal(scene.raycast({ x: 100.2, y: 0.2, z: 2 }, { x: 0, y: 0, z: -1 }), null);

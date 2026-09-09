@@ -112,6 +112,8 @@ export class ModelTranslations {
 
   sourceMesh(mesh: MeshData): MeshData { return this.meshes.get(mesh)?.source ?? mesh; }
 
+  forgetEntityBounds(id: number): void { this.releasedEntities.delete(id); }
+
   clearFlatBounds(): void {
     this.releasedEntities.clear();
     this.releasedBounds = new WeakMap();

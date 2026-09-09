@@ -93,7 +93,7 @@ fn issue_4260_raster_ranges_and_atlas_density_are_bounded_before_large_allocatio
     request.page.byte_offset = 0; request.page.width = u32::MAX;
     assert!(plan_page_appearance(CONTROLLED_IFC.as_bytes(), &request, &rgba).unwrap_err().contains("dimensions"));
     request.page.width = 1; request.texels_per_metre = 16_384.;
-    assert!(plan_page_appearance(CONTROLLED_IFC.as_bytes(), &request, &rgba).unwrap_err().contains("lower texelsPerMetre"));
+    assert!(plan_page_appearance(CONTROLLED_IFC.as_bytes(), &request, &rgba).unwrap_err().contains("requested/source fidelity"));
     request.texels_per_metre = 128.; request.appearance.repeat_s = true;
     assert!(plan_page_appearance(CONTROLLED_IFC.as_bytes(), &request, &rgba).unwrap_err().contains("non-repeating"));
 }
@@ -160,4 +160,29 @@ fn issue_4260_identical_atlases_deduplicate_by_png_digest_and_aggregate_budget_n
     assert!(plan_page_appearance(CONTROLLED_IFC.as_bytes(), &request, &rgba).unwrap_err().contains("budget"));
     request.texels_per_metre = 32.;
     assert_eq!(plan_page_appearance(CONTROLLED_IFC.as_bytes(), &request, &rgba).unwrap().plan.items.len(), 2);
+}
+#[test]
+fn issue_4260_low_resolution_page_does_not_erase_high_frequency_source_checker_outside_bounds() {
+    let (mut request, mut rgba) = fixture(); request.appearance.product_ids = vec![10];
+    request.texels_per_metre = 4.;
+    rgba.truncate(4);
+    for y in 0..64 { for x in 0..64 {
+        let value = if (x / 4 + y / 4) % 2 == 0 { 255 } else { 0 };
+        rgba.extend([value, value, value, 255]);
+    } }
+    request.source_images[0].raster = AppearanceRaster { width: 64, height: 64, byte_offset: 4, byte_length: 64 * 64 * 4 };
+    let source = CONTROLLED_IFC.replace("#27=IFCCOLOURRGB($,0.5,0.4,0.3);", "#27=IFCCOLOURRGB($,1.,1.,1.);");
+    let result = plan_page_appearance(source.as_bytes(), &request, &rgba).unwrap();
+    let before = crate::process_geometry(source.as_bytes());
+    let after = crate::process_geometry(apply(&source, &result.plan).as_bytes());
+    let old = before.meshes.iter().find(|m| m.express_id == 10).unwrap();
+    let new = after.meshes.iter().find(|m| m.express_id == 10).unwrap();
+    let asset = &result.assets[0]; let pixels = decoded(asset);
+    assert!(asset.width >= 64, "requested page density must not downsample the source");
+    for x in [1.5, 5.5, 9.5] {
+        let point = [x / 64., 1.5 / 64., 0.];
+        let expected = sample(old, Raster::supplied(&request.source_images[0].raster, &rgba).unwrap(), point, [true, false]);
+        let actual = sample(new, Raster::new(asset.width, asset.height, &pixels).unwrap(), point, [false, false]);
+        assert!((actual[0] - expected[0]).abs() < 0.15, "source detail {point:?}: {actual:?} != {expected:?}");
+    }
 }

@@ -8,11 +8,12 @@ import type { StoreApi } from './types.js';
 import type { EntityRef, EntityData, PropertySetData, QuantitySetData, ExportBackendMethods } from '@ifc-lite/sdk';
 import { EntityNode, findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import { escapeCsvCell, StepExporter, type StepExportOptions } from '@ifc-lite/export';
-import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
+import { getModelForRef } from './model-compat.js';
 import { applyAttributeMutationsToEntityData, getMutationViewForModel } from './mutation-view.js';
 import { serializeScheduleToStep, type ScheduleExtraction, type IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from './export-schedule-splice.js';
 import { downloadFile, sanitizeFilename, buildExportFilename } from '../../lib/export/download.js';
+import { resolveExportVisibility } from '../../store/exportVisibility.js';
 
 /** Options for CSV export */
 interface CsvOptions {
@@ -84,25 +85,28 @@ function normalizeRefs(raw: unknown[]): EntityRef[] {
   });
 }
 
+/**
+ * Resolve `sdk.export.ifc()` visibility filters. "Full model" means coverage, not size: `selectedExpressIds` is
+ * the whole model only when size === `entityCount` and `hasEntity` confirms every id exists -- cardinality alone
+ * let nonexistent ids pass as "full", silently exporting the whole model (reproduced live). Short of that it
+ * isolates to `selectedExpressIds`; a verified full model instead routes through `resolveExportVisibility()`
+ * (ExportDialog/GLBExportDialog's resolver) so `classFilter`/`selectedStoreys`/`typeVisibility` apply too (#4328). */
 export function resolveVisibilityFilterSets(
   state: StoreApi['getState'] extends () => infer T ? T : never,
   modelId: string,
   selectedExpressIds: Set<number>,
   entityCount: number,
+  hasEntity: (expressId: number) => boolean,
 ): { visibleOnly: boolean; hiddenEntityIds: Set<number>; isolatedEntityIds: Set<number> | null } {
-  const shouldLimitToSelection = selectedExpressIds.size < entityCount;
-  const isLegacyModel = state.models.size === 0 && (modelId === LEGACY_MODEL_ID || modelId === 'legacy');
-  const modelHidden = state.hiddenEntitiesByModel.get(modelId) ?? (isLegacyModel ? state.hiddenEntities : undefined);
-  const modelIsolated = state.isolatedEntitiesByModel.get(modelId) ?? (isLegacyModel ? state.isolatedEntities : null);
+  if (selectedExpressIds.size !== entityCount || ![...selectedExpressIds].every(hasEntity)) {
+    return { visibleOnly: true, hiddenEntityIds: new Set<number>(), isolatedEntityIds: selectedExpressIds };
+  }
 
+  const visibility = resolveExportVisibility(state, modelId);
   return {
-    visibleOnly: shouldLimitToSelection,
-    hiddenEntityIds: shouldLimitToSelection
-      ? new Set<number>()
-      : new Set<number>(modelHidden ?? []),
-    isolatedEntityIds: shouldLimitToSelection
-      ? selectedExpressIds
-      : modelIsolated,
+    visibleOnly: false,
+    hiddenEntityIds: visibility.hiddenLocalIds,
+    isolatedEntityIds: visibility.isolatedLocalIds,
   };
 }
 
@@ -331,18 +335,16 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
       if (!model?.ifcDataStore) {
         throw new Error(`export.ifc: model '${modelId}' is not loaded`);
       }
-
-      if (model.ifcDataStore.schemaVersion === 'IFC5') {
+      const dataStore = model.ifcDataStore;
+      if (dataStore.schemaVersion === 'IFC5') {
         throw new Error('export.ifc: IFC5 export is not supported by STEP exporter, use IFC2X3/IFC4/IFC4X3 models');
       }
 
       const options = candidateOptions;
       const selectedExpressIds = new Set(refs.map(ref => ref.expressId));
       const visibilityFilters = resolveVisibilityFilterSets(
-        state,
-        modelId,
-        selectedExpressIds,
-        model.ifcDataStore.entityCount,
+        state, modelId, selectedExpressIds, dataStore.entityCount,
+        (expressId) => dataStore.entityIndex.byId.has(expressId),
       );
       const visibleOnly = options.visibleOnly === true || visibilityFilters.visibleOnly;
       const hiddenEntityIds = visibleOnly ? visibilityFilters.hiddenEntityIds : new Set<number>();

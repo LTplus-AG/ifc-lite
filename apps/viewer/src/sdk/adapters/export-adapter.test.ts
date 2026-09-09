@@ -3,26 +3,37 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import test from 'node:test';
+import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveVisibilityFilterSets, injectScheduleIntoStep, createExportAdapter } from './export-adapter.js';
 import { LEGACY_MODEL_ID } from './model-compat.js';
 import type { StoreApi } from './types.js';
 import type { ScheduleExtraction, IfcDataStore } from '@ifc-lite/parser';
+import { asSourceBytes } from '@ifc-lite/parser';
+import { useViewerStore } from '../../store/index.js';
 
-test('resolveVisibilityFilterSets honors legacy single-model hidden and isolated state', () => {
-  const state = {
+test('resolveVisibilityFilterSets honors legacy single-model hidden and isolated state (routed through resolveExportVisibility, #4333 follow-up)', () => {
+  useViewerStore.getState().resetViewerState();
+  useViewerStore.setState({
     models: new Map(),
     hiddenEntities: new Set([11, 12]),
     isolatedEntities: new Set([21, 22]),
     hiddenEntitiesByModel: new Map(),
     isolatedEntitiesByModel: new Map(),
-  };
+    classFilter: null,
+  });
 
-  const result = resolveVisibilityFilterSets(state as never, LEGACY_MODEL_ID, new Set([1, 2, 3]), 3);
+  const result = resolveVisibilityFilterSets(
+    useViewerStore.getState(),
+    LEGACY_MODEL_ID,
+    new Set([1, 2, 3]),
+    3,
+    (expressId) => [1, 2, 3].includes(expressId),
+  );
 
   assert.equal(result.visibleOnly, false);
-  assert.deepEqual([...result.hiddenEntityIds], [11, 12]);
-  assert.deepEqual(result.isolatedEntityIds ? [...result.isolatedEntityIds] : null, [21, 22]);
+  assert.deepEqual([...result.hiddenEntityIds].sort(), [11, 12]);
+  assert.deepEqual(result.isolatedEntityIds ? [...result.isolatedEntityIds].sort() : null, [21, 22]);
 });
 
 // ─── injectScheduleIntoStep ─────────────────────────────────────────────
@@ -567,4 +578,255 @@ test('export.csv escapeCsv quotes a value containing a newline', () => {
   const adapter = createExportAdapter(makeCsvFixtureStore({ 1: 'Line1\nLine2' }));
   const out = adapter.csv([{ modelId: LEGACY_MODEL_ID, expressId: 1 }], { columns: ['Name'] }) as string;
   assert.equal(out, 'Name\n"Line1\nLine2"');
+});
+
+// ─── sdk.export.ifc() must honor the Class-tab filter (#4328 follow-up) ──
+//
+// #4333 fixed the dialog paths (ExportDialog/GLBExportDialog) by routing
+// them through `resolveExportVisibility`, the single resolver that combines
+// hidden/isolated state with `classFilter` (Class tab), `selectedStoreys`,
+// and `typeVisibility`. This adapter's own `resolveVisibilityFilterSets`
+// was left untouched — it only ever read `hiddenEntitiesByModel` /
+// `isolatedEntitiesByModel` (plus the legacy globals) and never `classFilter`
+// at all, so `sdk.export.ifc(refs, { visibleOnly: true })` still reproduced
+// the original #4328 bug for the scripting/extension surface: filter the
+// Class tab to `IfcWallStandardCase` and the whole model still comes out.
+
+type MockEntityRef = {
+  expressId: number;
+  type: string;
+  byteOffset: number;
+  byteLength: number;
+  lineNumber: number;
+};
+
+/** Same synthetic-store shape `exportVisibility.classfilter-e2e.test.ts` uses. */
+function buildParsedStore(entries: Array<[number, string, string]>): IfcDataStore {
+  const encoder = new TextEncoder();
+  const parts: Uint8Array[] = [];
+  const byId = new Map<number, MockEntityRef>();
+  const byType = new Map<string, number[]>();
+  let offset = 0;
+
+  for (const [id, type, text] of entries) {
+    const encoded = encoder.encode(text);
+    const upper = type.toUpperCase();
+    byId.set(id, { expressId: id, type: upper, byteOffset: offset, byteLength: encoded.byteLength, lineNumber: 0 });
+    if (!byType.has(upper)) byType.set(upper, []);
+    byType.get(upper)!.push(id);
+    parts.push(encoded);
+    offset += encoded.byteLength;
+  }
+
+  const source = new Uint8Array(offset);
+  let position = 0;
+  for (const part of parts) {
+    source.set(part, position);
+    position += part.byteLength;
+  }
+
+  return {
+    fileSize: offset,
+    schemaVersion: 'IFC4',
+    entityCount: entries.length,
+    parseTime: 0,
+    source: asSourceBytes(source),
+    entityIndex: { byId, byType },
+  } as unknown as IfcDataStore;
+}
+
+const PROJECT = "#1=IFCPROJECT('0proj0000000000000000',$,'P',$,$,$,$,$,$);\n";
+const STOREY = "#2=IFCBUILDINGSTOREY('0stor0000000000000000',$,'S',$,$,$,$,$,$,0.);\n";
+const WALL = "#3=IFCWALLSTANDARDCASE('0wall0000000000000000',$,'Wall',$,$,$,$,$);\n";
+const DOOR = "#4=IFCDOOR('0door0000000000000000',$,'Door',$,$,$,$,$,$,$,$);\n";
+
+/** `adapter.ifc()` returns `string | Uint8Array` depending on caller
+ *  option — decode to a plain string for content assertions either way. */
+function decodeIfcOutput(out: string | Uint8Array): string {
+  return typeof out === 'string' ? out : new TextDecoder().decode(out);
+}
+
+function buildFourEntityStore(): IfcDataStore {
+  return buildParsedStore([
+    [1, 'IFCPROJECT', PROJECT],
+    [2, 'IFCBUILDINGSTOREY', STOREY],
+    [3, 'IFCWALLSTANDARDCASE', WALL],
+    [4, 'IFCDOOR', DOOR],
+  ]);
+}
+
+describe('sdk.export.ifc() must honor classFilter when refs cover the whole model (#4328)', () => {
+  beforeEach(() => {
+    useViewerStore.getState().resetViewerState();
+  });
+
+  it('classFilter=IfcWallStandardCase + visibleOnly + all-model refs -> only the wall (plus structural scaffolding) is exported', () => {
+    const dataStore = buildFourEntityStore();
+    useViewerStore.setState({
+      models: new Map(),
+      ifcDataStore: dataStore,
+      hiddenEntities: new Set(),
+      isolatedEntities: null,
+      classFilter: { ids: new Set([3]), label: 'IfcWallStandardCase' },
+    });
+
+    const adapter = createExportAdapter(useViewerStore as unknown as StoreApi);
+    const allRefs = [1, 2, 3, 4].map((expressId) => ({ modelId: LEGACY_MODEL_ID, expressId }));
+    const out = decodeIfcOutput(adapter.ifc(allRefs, { visibleOnly: true }));
+
+    assert.ok(out.includes('IFCPROJECT'), 'IfcProject must survive visibleOnly (structural scaffolding)');
+    assert.ok(out.includes('IFCBUILDINGSTOREY'), 'IfcBuildingStorey must survive visibleOnly (structural scaffolding)');
+    assert.ok(out.includes('IFCWALLSTANDARDCASE'), 'the class-filtered wall must be exported');
+    assert.ok(!out.includes('IFCDOOR'), '#4328: the door excluded by the class filter must NOT be exported');
+  });
+
+  it('no filter active + visibleOnly + all-model refs -> full export, unchanged (both directions)', () => {
+    const dataStore = buildFourEntityStore();
+    useViewerStore.setState({
+      models: new Map(),
+      ifcDataStore: dataStore,
+      hiddenEntities: new Set(),
+      isolatedEntities: null,
+      classFilter: null,
+    });
+
+    const adapter = createExportAdapter(useViewerStore as unknown as StoreApi);
+    const allRefs = [1, 2, 3, 4].map((expressId) => ({ modelId: LEGACY_MODEL_ID, expressId }));
+    const out = decodeIfcOutput(adapter.ifc(allRefs, { visibleOnly: true }));
+
+    assert.ok(out.includes('IFCPROJECT'));
+    assert.ok(out.includes('IFCBUILDINGSTOREY'));
+    assert.ok(out.includes('IFCWALLSTANDARDCASE'), 'no filter must not drop the wall');
+    assert.ok(out.includes('IFCDOOR'), 'no filter must not drop the door either');
+  });
+
+  it('explicit refs (a subset) win over an active classFilter — selection-limiting is unaffected', () => {
+    const dataStore = buildFourEntityStore();
+    useViewerStore.setState({
+      models: new Map(),
+      ifcDataStore: dataStore,
+      hiddenEntities: new Set(),
+      isolatedEntities: null,
+      // Class filter says "only walls" — but the caller explicitly asked
+      // for the door (id 4). An explicit selection must not be narrowed
+      // (or broadened) by a filter the caller never mentioned.
+      classFilter: { ids: new Set([3]), label: 'IfcWallStandardCase' },
+    });
+
+    const adapter = createExportAdapter(useViewerStore as unknown as StoreApi);
+    // Explicit subset: just the door. entityCount is 4, so this is < 4 and
+    // hits the "shouldLimitToSelection" branch — untouched by this fix.
+    const doorRef = [{ modelId: LEGACY_MODEL_ID, expressId: 4 }];
+    const out = decodeIfcOutput(adapter.ifc(doorRef, {}));
+
+    assert.ok(out.includes('IFCDOOR'), 'explicitly-requested door must be exported despite the class filter');
+  });
+});
+
+// ─── resolveVisibilityFilterSets: "full model" is coverage, not cardinality
+// ───────────────────────────────────────────────────────────────────────
+//
+// The bare `selectedExpressIds.size < entityCount` check that predates this
+// PR classifies ANY refs set that isn't smaller than the model as "full
+// model" — including one made entirely of ids that don't exist in the
+// model, which satisfies "not smaller" while covering none of the model.
+// That silently routed into `resolveExportVisibility()` and dumped the
+// whole model regardless of what the caller named (reproduced live:
+// nonexistent ids against a 4-entity model produced a full export).
+// Membership (`hasEntity`) is now required alongside cardinality before a
+// refs set counts as "full model".
+
+describe('resolveVisibilityFilterSets: full-model classification requires membership, not just cardinality', () => {
+  it('refs == entityCount but none of the ids exist -> isolates (not full model)', () => {
+    const hasEntity = (id: number) => [1, 2, 3, 4].includes(id);
+    const result = resolveVisibilityFilterSets(
+      useViewerStore.getState(),
+      LEGACY_MODEL_ID,
+      new Set([901, 902, 903, 904]), // 4 bogus ids, entityCount is 4
+      4,
+      hasEntity,
+    );
+    assert.equal(result.visibleOnly, true, 'must NOT be classified as full model');
+    assert.deepEqual([...(result.isolatedEntityIds ?? [])].sort(), [901, 902, 903, 904]);
+  });
+
+  it('refs == entityCount, mixed real + nonexistent ids -> isolates to exactly the named refs', () => {
+    const hasEntity = (id: number) => [1, 2, 3, 4].includes(id);
+    const result = resolveVisibilityFilterSets(
+      useViewerStore.getState(),
+      LEGACY_MODEL_ID,
+      new Set([1, 2, 3, 999]), // 3 real + 1 bogus, entityCount is 4
+      4,
+      hasEntity,
+    );
+    assert.equal(result.visibleOnly, true, 'a set with even one non-member id is not a full-model cover');
+    assert.deepEqual([...(result.isolatedEntityIds ?? [])].sort(), [1, 2, 3, 999]);
+  });
+
+  it('refs.size > entityCount (bogus ids) -> isolates (the predating `size < entityCount` check fell through to "full" here too — also fixed)', () => {
+    const hasEntity = (id: number) => [1, 2, 3, 4].includes(id);
+    const result = resolveVisibilityFilterSets(
+      useViewerStore.getState(),
+      LEGACY_MODEL_ID,
+      new Set([901, 902, 903, 904, 905]),
+      4,
+      hasEntity,
+    );
+    assert.equal(result.visibleOnly, true);
+    assert.deepEqual([...(result.isolatedEntityIds ?? [])].sort(), [901, 902, 903, 904, 905]);
+  });
+
+  it('refs a true subset of real ids -> isolates to exactly those refs', () => {
+    const hasEntity = (id: number) => [1, 2, 3, 4].includes(id);
+    const result = resolveVisibilityFilterSets(
+      useViewerStore.getState(),
+      LEGACY_MODEL_ID,
+      new Set([3]),
+      4,
+      hasEntity,
+    );
+    assert.equal(result.visibleOnly, true);
+    assert.deepEqual([...(result.isolatedEntityIds ?? [])], [3]);
+  });
+
+  it('refs exactly the real full set -> routes through resolveExportVisibility (genuine full model)', () => {
+    useViewerStore.getState().resetViewerState();
+    useViewerStore.setState({
+      models: new Map(),
+      hiddenEntities: new Set([2]),
+      isolatedEntities: null,
+      hiddenEntitiesByModel: new Map(),
+      isolatedEntitiesByModel: new Map(),
+      classFilter: null,
+    });
+    const hasEntity = (id: number) => [1, 2, 3, 4].includes(id);
+    const result = resolveVisibilityFilterSets(
+      useViewerStore.getState(),
+      LEGACY_MODEL_ID,
+      new Set([1, 2, 3, 4]),
+      4,
+      hasEntity,
+    );
+    assert.equal(result.visibleOnly, false, 'a verified full-model cover must route through resolveExportVisibility');
+    assert.deepEqual([...result.hiddenEntityIds].sort(), [2]);
+  });
+
+  it('sdk.export.ifc(): nonexistent ids sized to entityCount must NOT dump the full model (#4333 defect)', () => {
+    const dataStore = buildFourEntityStore();
+    useViewerStore.getState().resetViewerState();
+    useViewerStore.setState({
+      models: new Map(),
+      ifcDataStore: dataStore,
+      hiddenEntities: new Set(),
+      isolatedEntities: null,
+      classFilter: null,
+    });
+
+    const adapter = createExportAdapter(useViewerStore as unknown as StoreApi);
+    const bogusRefs = [901, 902, 903, 904].map((expressId) => ({ modelId: LEGACY_MODEL_ID, expressId }));
+    const out = decodeIfcOutput(adapter.ifc(bogusRefs, { visibleOnly: true }));
+
+    assert.ok(!out.includes('IFCDOOR'), 'door must not appear: it was never named and refs do not cover the model');
+    assert.ok(!out.includes('IFCWALLSTANDARDCASE'), 'wall must not appear: it was never named and refs do not cover the model');
+  });
 });

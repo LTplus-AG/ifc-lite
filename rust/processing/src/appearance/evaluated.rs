@@ -144,7 +144,7 @@ impl Normalized {
         }
         Ok(())
     }
-    pub(super) fn compose(self,mut plan:AppearancePlan)->(AppearancePlan,BTreeMap<u32,u32>) {
+    pub(super) fn compose(self,mut plan:AppearancePlan)->Result<(AppearancePlan,BTreeMap<u32,u32>),String> {
         let accepted:BTreeSet<_>=plan.items.iter().map(|item|item.product_id).collect();
         for conversion in self.conversions {
             if accepted.contains(&conversion.binding.product_id) {
@@ -163,8 +163,8 @@ impl Normalized {
         }
         plan.next_express_id=self.start;
         plan.exclusions.extend(self.exclusions);
-        let ids=super::evaluated_allocation::compact(&mut plan);
-        (plan,ids)
+        let ids=super::evaluated_allocation::compact(&mut plan)?;
+        Ok((plan,ids))
     }
 }
 

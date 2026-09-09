@@ -57,3 +57,7 @@ Private conversions rejected by the final appearance pass leave no allocator
 gaps. Generated references, replacement-item provenance and page image bindings
 are rebound together before the plan leaves Rust; host allocation checks remain
 strict.
+
+Page material names beginning with `#` are refused explicitly: the current
+authoring wire cannot distinguish those literals from reference strings. They
+are never silently rewritten or exported as a Name reference.

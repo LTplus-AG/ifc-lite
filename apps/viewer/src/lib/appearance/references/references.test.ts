@@ -15,6 +15,7 @@ import { appearanceAssets } from '../model-assets.js';
 import { placementFrameKey } from '@/lib/model-placement/persistence.js';
 import { emptyPlacementState, displayedTranslation } from '@/lib/model-placement/state.js';
 import { replayWorkspaceHistory } from '@/lib/model-placement/history.js';
+import type { PlaneCalibrationRequest } from '../plane-calibration.js';
 import { MAX_REFERENCE_HISTORY, type RegisteredAppearanceReference } from './types.js';
 import { parseReferences } from './persistence.js';
 
@@ -164,4 +165,58 @@ test('the actual Author toolbar enables reference-only Undo/Redo without an acti
   assert.equal(button('Redo').disabled, false);
   click(button('Redo'));
   assert.equal(useViewerStore.getState().appearanceReferences.get(record.id)!.assetId, record.assetId);
+});
+
+
+test('explicit reference replacement is one reversible image-and-registration command (#4308)', async () => {
+  const before = await reference();
+  useViewerStore.getState().addAppearanceReference(before);
+  const bytes = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'));
+  const asset = await appearanceAssets.add(bytes, { owner });
+  const after = { ...before, assetId: asset.id, sourceId: 'new-page',
+    cornersIfcWorld: [[0, 3, 0], [2, 3, 0], [2, 0, 0], [0, 0, 0]] as const };
+  useViewerStore.getState().replaceAppearanceReference(before.id, after);
+  assert.equal(useViewerStore.getState().referenceUndo.length, 2, 'one create and one replacement');
+  appearanceAssets.releaseOwner(owner);
+  assert.ok(appearanceAssets.get(before.assetId));
+  assert.ok(appearanceAssets.get(after.assetId));
+  replayWorkspaceHistory(useViewerStore.getState(), 'undo');
+  assert.equal(useViewerStore.getState().appearanceReferences.get(before.id)!.assetId, before.assetId);
+  assert.deepEqual(useViewerStore.getState().appearanceReferences.get(before.id)!.cornersIfcWorld, before.cornersIfcWorld);
+  replayWorkspaceHistory(useViewerStore.getState(), 'redo');
+  assert.deepEqual(useViewerStore.getState().appearanceReferences.get(before.id)!.cornersIfcWorld, after.cornersIfcWorld);
+  useViewerStore.getState().updateAppearanceReference(before.id, { locked: true });
+  assert.throws(() => useViewerStore.getState().replaceAppearanceReference(before.id, before), /Unlock/);
+  assert.equal(useViewerStore.getState().appearanceReferences.get(before.id)!.assetId, after.assetId);
+  useViewerStore.setState(state => ({ modelPlacement: { ...state.modelPlacement, frameKey: 'new-engineering-frame' } }));
+  useViewerStore.getState().updateAppearanceReference(before.id, { locked: false });
+  useViewerStore.getState().replaceAppearanceReference(before.id, { ...after, frameKey: 'new-engineering-frame' });
+  assert.equal(useViewerStore.getState().appearanceReferences.get(before.id)!.frameKey, 'new-engineering-frame',
+    'a locked unresolved reference can be explicitly unlocked and re-registered');
+});
+
+
+test('replacement Undo and manifest restore retain an owned editable calibration recipe (#4308)', async () => {
+  const recipe: PlaneCalibrationRequest = { rasterToSource: [1, 0, 0, -1, 0, 100], rasterSize: [100, 100],
+    sourcePoints: [[0, 0], [100, 0]], distanceMetres: 2, worldAnchor: [0, 0, 0], worldDirection: [1, 0, 0], planeNormal: [0, 0, 1] };
+  const before = { ...await reference(), calibration: recipe };
+  useViewerStore.getState().addAppearanceReference(before);
+  const owned = useViewerStore.getState().appearanceReferences.get(before.id)!.calibration!;
+  recipe.sourcePoints[0][0] = 50;
+  assert.equal(owned.sourcePoints[0][0], 0, 'caller cannot alter committed native landmarks');
+  useViewerStore.getState().replaceAppearanceReference(before.id, { ...before, calibration: { ...owned, distanceMetres: 4 } });
+  replayWorkspaceHistory(useViewerStore.getState(), 'undo');
+  assert.equal(useViewerStore.getState().appearanceReferences.get(before.id)!.calibration!.distanceMetres, 2);
+  const text = useViewerStore.getState().exportAppearanceReferences();
+  assert.deepEqual(parseReferences(text, before.frameKey).get(before.id)!.calibration, owned);
+  const stateBeforeInvalid = useViewerStore.getState().appearanceReferences;
+  for (const calibration of [
+    { ...owned, rasterToSource: [1, 0, 2, 0, 0, 0] }, { ...owned, sourcePoints: [[0, 0], [0, 0]] },
+    { ...owned, rasterSize: [0, 100] }, { ...owned, worldDirection: [0, 0, 1] },
+    { ...owned, planeNormal: [0, 0, 0] }, { ...owned, distanceMetres: -1 },
+  ]) {
+    const manifest = JSON.parse(text); manifest.references[0].calibration = calibration;
+    assert.throws(() => useViewerStore.getState().importAppearanceReferences(JSON.stringify(manifest)), /calibration/);
+    assert.equal(useViewerStore.getState().appearanceReferences, stateBeforeInvalid);
+  }
 });

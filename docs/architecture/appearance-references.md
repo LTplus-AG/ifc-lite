@@ -6,6 +6,13 @@ encoded image digest, original source lineage, four engineering Z-up corners in
 metres, the placement frame identity, visibility, lock and opacity. Corner order
 matches canonical PDF calibration: top-left, top-right, bottom-right, bottom-left.
 Updating or removing an uploaded source never repaints a committed reference.
+Explicit replacement swaps image and registration in one reversible command;
+Undo retains and restores the previous image and corners together. An optional
+frozen `PlaneCalibrationRequest` travels with the record and history, retaining
+native landmarks and metric world pose for explicit editing without original PDF
+bytes. Persistence validates its fixed-size vectors, invertible raster transform,
+positive dimensions/distance and orthogonal nonzero world basis; Rust remains
+the source of truth for deriving calibrated corners.
 
 `appearanceReferenceSlice` owns registration actions and independent image leases
 for live references and history. Reference commands participate in the existing

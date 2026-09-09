@@ -1,6 +1,9 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { PlaneCalibrationRequest } from '../plane-calibration.js';
+import { ownCalibrationRecipe } from './calibration-recipe.js';
+
 export type ReferencePoint = readonly [number, number, number];
 export interface RegisteredAppearanceReference {
   readonly id: string;
@@ -14,6 +17,8 @@ export interface RegisteredAppearanceReference {
   readonly visible: boolean;
   readonly locked: boolean;
   readonly opacity: number;
+  /** Frozen calibration recipe for explicit editing, independent of PDF bytes. */
+  readonly calibration?: PlaneCalibrationRequest;
 }
 export interface ReferenceCommand {
   readonly id: string;
@@ -52,5 +57,6 @@ export function ownReference(value: unknown): RegisteredAppearanceReference {
   if (!cross.every(Number.isFinite) || !cross.some(n => n !== 0)) throw new Error('Drawing reference corners are degenerate.');
   return Object.freeze({ id: v.id, sourceId: v.sourceId, assetId: v.assetId,
     frameKey: v.frameKey, visible: v.visible, locked: v.locked, opacity: v.opacity,
+    ...(v.calibration === undefined ? {} : { calibration: ownCalibrationRecipe(v.calibration) }),
     cornersIfcWorld: Object.freeze(points) as RegisteredAppearanceReference['cornersIfcWorld'] });
 }

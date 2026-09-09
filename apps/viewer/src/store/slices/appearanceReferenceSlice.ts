@@ -19,6 +19,7 @@ export interface AppearanceReferenceSlice {
   selectedAppearanceReferenceId: string | null;
   selectAppearanceReference(id: string | null): void;
   addAppearanceReference(record: RegisteredAppearanceReference): void;
+  replaceAppearanceReference(id: string, record: RegisteredAppearanceReference): void;
   updateAppearanceReference(id: string, patch: Partial<Omit<RegisteredAppearanceReference, 'id' | 'sourceId' | 'assetId'>>): void;
   removeAppearanceReference(id: string): void;
   replayAppearanceReference(direction: 'undo' | 'redo'): void;
@@ -61,6 +62,14 @@ export const createAppearanceReferenceSlice: StateCreator<ViewerState, [], [], A
       if (state.appearanceReferences.size >= MAX_REFERENCES) throw new Error('The workspace drawing reference limit was reached.');
       publish(new Map(state.appearanceReferences).set(record.id, record));
     },
+    replaceAppearanceReference(id, input) {
+      if (required(id).locked) throw new Error('Unlock the drawing reference before replacing it.');
+      const record = ownReference(input);
+      if (record.id !== id) throw new Error('A replacement must keep the drawing reference identifier.');
+      if (record.frameKey !== placementFrameKey(get())) throw new Error('The drawing reference coordinate frame differs from this workspace.');
+      if (!appearanceAssets.get(record.assetId)) throw new Error('The replacement drawing image is unavailable.');
+      publish(new Map(get().appearanceReferences).set(id, record));
+    },
     updateAppearanceReference(id, patch) {
       const before = required(id);
       // Unlock is deliberate and separate; a locked registration cannot move,
@@ -69,7 +78,8 @@ export const createAppearanceReferenceSlice: StateCreator<ViewerState, [], [], A
         throw new Error('Unlock the drawing reference before changing it.');
       }
       const record = ownReference({ ...before, ...patch, id, sourceId: before.sourceId, assetId: before.assetId });
-      if (record.frameKey !== placementFrameKey(get())) throw new Error('The drawing reference coordinate frame differs from this workspace.');
+      const unlocking = before.locked && patch.locked === false && Object.keys(patch).length === 1;
+      if (record.frameKey !== placementFrameKey(get()) && !unlocking) throw new Error('The drawing reference coordinate frame differs from this workspace.');
       publish(new Map(get().appearanceReferences).set(id, record));
     },
     removeAppearanceReference(id) {

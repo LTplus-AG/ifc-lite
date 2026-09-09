@@ -129,7 +129,7 @@ test('relinking a missing original image repaints the existing reference without
   render(<Drawing2DCanvas drawing={drawing('y')} sectionAxis="down" transform={{x:100,y:200,scale:10}}
     showHiddenLines={false} overrideEngine={new GraphicOverrideEngine()} overridesEnabled={false} entityColorMap={new Map()} useIfcMaterials={false}/>);
   await settle();assert.equal(images.length,0);
-  await act(async()=>{await useViewerStore.getState().relinkAppearanceReference(record.id,png);});await settle();
+  await act(async()=>{await useViewerStore.getState().relinkAppearanceReference(record.id,new File([png],'original.png',{type:'image/png'}));});await settle();
   assert.deepEqual(images.at(-1),cases[0].expected);
   assert.equal(useViewerStore.getState().appearanceReferences.get(record.id),record);
 });

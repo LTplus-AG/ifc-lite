@@ -171,3 +171,25 @@ rendered occurrence to its new geometry item. Product identities, placements,
 properties and shared type graphs remain intact. Opening-bearing and ambiguous
 representation/material cases are still refused. See the
 [evaluated-occurrence contract](../architecture/appearance-evaluated-occurrences.md).
+
+Renderer integrations preparing an occurrence replacement can call
+`scene.retainInstancedOccurrence(globalId, modelIndex)` after geometry is resident.
+The returned lease has `valid`, `setSuppressed(boolean)`, and `release()` members.
+Suppression removes that occurrence from drawing, picking, and CPU instance
+geometry enumeration while retaining its shared template, current placement,
+selection, and colour override state. Releasing it restores the current user
+hide/isolate state. Model removal or a scene reset invalidates the lease.
+Retained leases prevent CPU geometry release until history releases them.
+
+This resource operation does not create IFC geometry or canonical UV provenance.
+An appearance integration must separately validate the native evaluated mesh and
+its model frame, publish a replacement, and retain the lease for Undo. It must
+release the lease if preparation fails or the preview is discarded.
+
+Opted-in native occurrence plans include canonical `sourcePositions`,
+`sourceNormals`, `sourceOrigin`, `sourceColor`, and `rtcOffset` alongside
+`sourceIndices` in each `conversions` entry. Renderer integrations use that bounded
+IFC Z-up snapshot to prepare one occurrence; reconstructing a GPU instance does
+not supply equivalent source provenance. See the
+[evaluated occurrence contract](../architecture/appearance-evaluated-occurrences.md)
+for units, frame restoration, and eligibility limits.

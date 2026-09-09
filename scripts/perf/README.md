@@ -1150,3 +1150,22 @@ conservative candidate reuse across target triangles/tiles, retaining nearest
 surface refusal and one atomic result, rather than enlarging the work ceiling.
 [Real-surface coverage and refusal evidence](../../docs/architecture/evidence/mesh-transfer/README.md#real-boulder-geometry-conservative-coverage-and-capacity)
 keeps that limitation separate from the ordinary-load measurements.
+
+The emitted-texel applicability follow-up separates geometric centroid evidence
+from pixels actually sampled into a transfer atlas. Ordinary-load paired probes
+show mixed subphase differences at the probe's millisecond precision, with the
+same ordered mesh payload fingerprint; no consistently directed change or
+worker-pool speedup is claimed. The correctness result is refusing an all-old
+atlas despite positive centroid coverage while retaining byte-identical dense
+transfer output. [Samples, fingerprints and PNG evidence](../../docs/architecture/evidence/mesh-transfer-texel-gate/README.md)
+record that distinction.
+
+Canonical occurrence source snapshots reuse the mesh already evaluated by the
+opt-in appearance planner. Moving its bounded vectors into the plan avoids
+reconstructing IFC geometry from GPU instance transforms. Interleaved exact-base
+native AC20 probes found no resolvable ordinary-load change and identical geometry
+counts. This establishes load-path isolation, not a browser worker-pool speedup
+or conversion throughput claim; the additional authored payload remains governed
+by the existing aggregate geometry budget.
+[Source-mesh payload probe](../../docs/architecture/evidence/evaluated-occurrences/source-mesh-load.json)
+records source heads, precision limits and the unchanged census.

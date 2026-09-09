@@ -125,4 +125,11 @@ pub struct AppearanceConversion {
     pub source_geometry_item_id: u32,
     pub geometry_item_id: u32,
     pub source_indices: Vec<u32>,
+    /// Canonical evaluated IFC Z-up geometry, before any appearance replacement.
+    /// Coordinates are local f32 values plus source_origin and rtc_offset in metres.
+    pub source_positions: Vec<f32>,
+    pub source_normals: Vec<f32>,
+    pub source_origin: [f64; 3],
+    pub source_color: [f32; 4],
+    pub rtc_offset: [f64; 3],
 }

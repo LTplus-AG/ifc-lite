@@ -50,7 +50,9 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'hiddenEntities', 'hiddenEntitiesByModel', 'hierarchyBasketSelection', 'hoverState',
   'hoveredTaskGlobalId', 'idsActiveEntityId', 'idsActiveSpecificationId', 'idsError',
   'idsFocusVisibilityOwned', 'idsLoading', 'idsPanelVisible', 'idsProgress',
-  'interactionMode', 'isolatedEntities', 'isolatedEntitiesByModel', 'lensAppliedColors',
+  'interactionMode', 'isolatedEntities', 'isolatedEntitiesByModel',
+  'layerDiffBusy', 'layerStack', 'layerStackDiff', 'layerStackPathToId', 'layersPanelVisible',
+  'lensAppliedColors',
   'lensAppliedHiddenIds', 'lensAutoColorLegend', 'lensColorMap',
   'lensHiddenIds', 'lensPanelVisible', 'lensRuleCounts', 'lensRuleEntityIds',
   'lensRuleIsolation', 'listExecuting', 'listPanelVisible', 'listResult', 'loading',
@@ -91,6 +93,7 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
   'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'classFilter',
   'contextMenu', 'geometryResult', 'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
   'hierarchyBasketSelection', 'hoverState', 'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel',
+  'layerDiffBusy', 'layerStack', 'layerStackDiff', 'layerStackPathToId',
   'meshColorBackup', 'models', 'pinboardEntities', 'selectedEntities', 'selectedEntitiesSet',
   'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedModelId', 'selectedStoreys',
   'slabCutAnchor', 'slabCutFootprint', 'slabCutStoreyElevation', 'splitHoverAxisDirection',
@@ -139,6 +142,7 @@ const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
   'cloudAnnotation2DPoints', 'cloudAnnotations2D', 'contextMenu', 'drawing2DDisplayOptions', 'geometryResult',
   'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
   'hierarchyBasketSelection', 'hoverState', 'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel',
+  'layerDiffBusy', 'layerStack', 'layerStackDiff', 'layerStackPathToId',
   'measure2DCurrent', 'measure2DResults', 'measure2DSnapPoint', 'measure2DStart', 'meshColorBackup', 'models', 'pinboardEntities',
   'polygonArea2DPoints', 'polygonArea2DResults',
   'selectedAnnotation2D', 'selectedEntities', 'selectedEntitiesSet',
@@ -182,6 +186,13 @@ function modelRemovedFixture() {
     ifcDataStore: null,
     geometryResult: null,
     mutationViews: new Map(),
+    // #4309: a federated layer stack where entry 'A' is the model being
+    // removed (`LayerStackEntry.id` mirrors the `FederatedModel.id`
+    // `useIfcFederation.ts`'s per-layer `storeAddModel` loop assigns it).
+    layerStack: [{ id: 'A', name: 'a.ifcx' }],
+    layerStackPathToId: new Map([['wall-1', 42]]),
+    layerStackDiff: { layerId: 'A', diff: { added: [], deleted: [], modified: [] } },
+    layerDiffBusy: true,
   } as unknown as Parameters<typeof modelRemovedScope>[0];
 }
 
@@ -216,7 +227,9 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel', 'hierarchyBasketSelection',
   'hoverState', 'hoveredTaskGlobalId', 'idsActiveEntityId', 'idsActiveSpecificationId',
   'idsError', 'idsFocusVisibilityOwned', 'idsLoading', 'idsPanelVisible', 'idsProgress',
-  'ifcDataStore', 'interactionMode', 'isolatedEntities', 'isolatedEntitiesByModel', 'lensAppliedColors',
+  'ifcDataStore', 'interactionMode', 'isolatedEntities', 'isolatedEntitiesByModel',
+  'layerDiffBusy', 'layerStack', 'layerStackDiff', 'layerStackPathToId', 'layersPanelVisible',
+  'lensAppliedColors',
   'lensAppliedHiddenIds', 'lensAutoColorLegend',
   'lensColorMap', 'lensHiddenIds', 'lensPanelVisible', 'lensRuleCounts', 'lensRuleEntityIds',
   'lensRuleIsolation', 'listExecuting', 'listPanelVisible', 'listResult', 'loading',

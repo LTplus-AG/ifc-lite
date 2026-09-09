@@ -74,6 +74,7 @@ import { splitToolTeardown } from './slices/splitToolSlice.js';
 import { modelPlacementTeardown } from './slices/modelPlacementSlice.js';
 import { pointCloudTeardown } from './slices/pointCloudSlice.js';
 import { zonesTeardown } from './slices/zonesSlice.js';
+import { layerStackTeardown } from './slices/layerStackSlice.teardown.js';
 
 /**
  * Every slice teardown the viewer store knows about.
@@ -113,6 +114,7 @@ export const viewerTeardownRegistry: readonly AnySliceTeardown[] = createTeardow
   pointCloudTeardown,
   modelPlacementTeardown,
   zonesTeardown,
+  layerStackTeardown,
 ]);
 
 /**

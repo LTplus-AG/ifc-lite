@@ -11,8 +11,13 @@
 # base-vs-branch delta with one command:
 #
 #   - It builds perf_probe from BOTH a base ref and the working tree.
-#   - It runs them INTERLEAVED (base, branch, base, branch, …) so a machine that
+#   - It runs them INTERLEAVED, one round per iteration, so a machine that
 #     slows down mid-run drags BOTH sides equally instead of faking a delta.
+#     Within each round, which side runs FIRST is balanced and randomized
+#     across rounds (scripts/perf/ab-order.mjs) rather than always
+#     base-then-branch — a fixed order lets any penalty tied to position
+#     (not identity) survive interleaving and read as a confident delta on
+#     two byte-identical builds (#4221).
 #   - It reports per-phase median + spread and refuses a verdict when the base's
 #     OWN run-to-run spread is too wide (the machine is too noisy to trust).
 #   - It fingerprints mesh/vertex/triangle counts so a "faster" run that changed
@@ -124,12 +129,27 @@ if [ ! -x "$BASE_BIN" ] || [ ! -x "$BRANCH_BIN" ]; then
 fi
 
 # --- Interleaved runs -----------------------------------------------------
-# One --iters=1 probe run per side per round, alternating, so drift hits both.
+# One --iters=1 probe run per side per round, alternating, so a machine that
+# slows down over the course of the whole run does not favour one side.
+#
+# Interleaving alone does not cancel a penalty tied to POSITION within a
+# round (thermal ramp, a cache state left by the preceding process, a
+# frequency step on the first process after idle) — whichever side always
+# runs first pays that every round, and it survives the median like a real
+# regression would (#4221). ab-order.mjs decides, per invocation, which side
+# runs first each round: balanced across rounds (as close to half base-first
+# / half branch-first as ITERS allows) and randomly assigned to specific
+# rounds, so a fixed positional penalty lands on both sides roughly equally
+# often and cancels out instead of accumulating on one.
+ORDER_FILE="$TMP_ROOT/order.txt"
+node "$ROOT/scripts/perf/ab-order.mjs" "$ITERS" > "$ORDER_FILE"
 RUNS_JSONL="$TMP_ROOT/runs.jsonl"
 : > "$RUNS_JSONL"
-for i in $(seq 1 "$ITERS"); do
-  echo "ab.sh: round $i/$ITERS" >&2
-  for side in base branch; do
+i=0
+while IFS=' ' read -r first second; do
+  i=$((i + 1))
+  echo "ab.sh: round $i/$ITERS ($first first)" >&2
+  for side in "$first" "$second"; do
     bin="$BASE_BIN"; [ "$side" = branch ] && bin="$BRANCH_BIN"
     # Run from ROOT so relative fixture handling and on-disk fixtures resolve.
     out="$("$bin" "${ABS_FIXTURES[@]}" --iters 1 --json 2>/dev/null)"
@@ -138,7 +158,7 @@ for i in $(seq 1 "$ITERS"); do
       for (const p of JSON.parse(out)) console.log(JSON.stringify({ side, ...p }));
     ' "$side" "$out" >> "$RUNS_JSONL"
   done
-done
+done < "$ORDER_FILE"
 
 # --- Report ---------------------------------------------------------------
 REPORT_ARGS=("$RUNS_JSONL" "--base" "$BASE_SHA" "--branch" "$BRANCH_DESC")

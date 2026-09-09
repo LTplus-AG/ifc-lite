@@ -548,3 +548,20 @@ for (const flipped of [false, true]) it(`keeps construction bands and lines when
     }
   }
 });
+
+it('recomputes projection bands when storey membership changes on the same geometry (#4332)', async () => {
+  const geometryResult = geometry(STOREY_MESHES, [0, -3, 0], [4, 6, 4]);
+  const source = contiguousSourceBytes(new TextEncoder().encode(NO_PROFILE_IFC));
+  const drawings = await generateSequence([STOREY_UPPER, STOREY_LOWER].map((upperSlabStorey) => ({
+    geometryResult, typeVisibility: ALL_VISIBLE,
+    ifcDataStore: { source, spatialHierarchy: spatialHierarchy(new Map([
+      [BASEMENT_SLAB, STOREY_LOWER], [CUT_WALL, STOREY_LOWER], [UPPER_SLAB, upperSlabStorey],
+    ])) },
+  })));
+  const [twoStoreys, oneStorey] = drawings;
+  assert.ok(twoStoreys); assert.ok(oneStorey);
+  assert.equal(twoStoreys.config.projectionBelowDepth, 4.5);
+  assert.equal(twoStoreys.config.projectionAboveDepth, 1.5);
+  assert.equal(oneStorey.config.projectionBelowDepth, 9, 'a single storey uses the full model extent');
+  assert.equal(oneStorey.config.projectionAboveDepth, 9, 'old membership must not retain a phantom ceiling');
+});

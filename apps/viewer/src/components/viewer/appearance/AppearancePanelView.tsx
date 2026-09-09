@@ -52,7 +52,7 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
         <Eye aria-hidden="true" />{props.showingOriginal ? 'Show preview' : 'Compare original'}
       </Button>
       <div className="grid grid-cols-2 gap-2">
-        <Button type="button" variant="outline" size="sm" disabled={!props.canDiscard || applying} onClick={() => { setInputReset(value => value + 1); setInvalidFields(new Set()); props.onDiscard(); }}>Discard</Button>
+        <Button type="button" variant="outline" size="sm" disabled={!props.canDiscard} onClick={() => { setInputReset(value => value + 1); setInvalidFields(new Set()); props.onDiscard(); }}>Discard</Button>
         <Button type="button" size="sm" disabled={!!applyDisabled} onClick={props.onApply}><Check aria-hidden="true" />Apply</Button>
       </div>
     </footer>

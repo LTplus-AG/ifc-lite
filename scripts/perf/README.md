@@ -1036,3 +1036,16 @@ UVs, owner identity, Undo/Redo and the untouched federated model were checked;
 the remaining main-thread stall still fails the intended smoothness requirement.
 Do not treat fewer copies or a faster helper microbenchmark as acceptance: retain
 the paired interaction measurement and continue profiling transaction preparation.
+
+### Cooperative appearance command preparation (#4336)
+
+The appearance command now consumes owned cooperative entity operations and keeps
+its final source, dependency, resource and history checks synchronous. A fresh
+real Convento browser interaction confirms that preparation yields, but the
+final synchronous phase still produces a visible long task and rendering gaps
+remain during preparation. This is an observational integration sample, not an
+isolated speedup or smoothness-complete verdict. Do not infer responsiveness from
+an async return type or successful cancellation tests. Retain the exact fences
+while addressing remaining synchronous dependency work separately. Raw timing,
+source/runtime identity and functional Undo/Redo evidence are recorded under
+`docs/architecture/evidence/appearance/appearance-cooperative-apply-*`.

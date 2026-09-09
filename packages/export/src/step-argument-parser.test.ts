@@ -311,3 +311,49 @@ describe('replaceStepArgument still accepts every well-formed list', () => {
     );
   });
 });
+
+/**
+ * The nesting bound (`MAX_SLOT_NESTING_DEPTH`, `step-slot-grammar.ts`).
+ *
+ * The per-slot grammar is recursive descent over text this process did not
+ * write, so before the bound a deeply nested list did not return `null` — it
+ * threw a `RangeError` out of `splitTopLevelStepArguments`, a third outcome for
+ * a function documented to return parts or `null` and callers that treat `null`
+ * as "this edit cannot be made". One malformed record would abort a whole
+ * export instead of refusing one edit.
+ *
+ * Three cases, because the bound has to be right in three different ways: it
+ * must not refuse what it was set above (real files nest 3 deep at most, so 64
+ * has room to spare), it must actually refuse past itself, and — the case the
+ * bound exists for — it must turn the depth that used to blow the stack into a
+ * clean `null`. Depth 5000 was measured to throw here before the bound (fresh
+ * Node 22 and vitest alike gave out around 3765).
+ */
+describe('a slot nested past the grammar bound is refused, not thrown out of', () => {
+  /** `'g',((((…1…)))),'b'`: one nested list `depth` parens deep, between two plain slots. */
+  const nested = (depth: number): string => `'g',${'('.repeat(depth)}1${')'.repeat(depth)},'b'`;
+
+  it('accepts nesting just under the bound', () => {
+    expect(splitTopLevelStepArguments(nested(64))).toHaveLength(3);
+  });
+
+  it('returns null one level past the bound', () => {
+    expect(splitTopLevelStepArguments(nested(65))).toBeNull();
+  });
+
+  it('returns null at a depth that used to throw, rather than throwing', () => {
+    // `toBeNull` alone would be satisfied by a throw only in the sense that the
+    // test fails either way; asserting the call does not throw FIRST names which
+    // of the two regressions came back.
+    expect(() => splitTopLevelStepArguments(nested(5000))).not.toThrow();
+    expect(splitTopLevelStepArguments(nested(5000))).toBeNull();
+  });
+
+  it('a record whose argument nests past the bound refuses the by-index write', () => {
+    // The reason the bound is in this module and not left to each caller: a
+    // throw would have escaped `replaceStepArgument` too, past the `null` its
+    // own contract promises.
+    const line = `#7=IFCFOO(${'('.repeat(5000)}1${')'.repeat(5000)},$,$);`;
+    expect(replaceStepArgument(line, 1, '#33')).toBeNull();
+  });
+});

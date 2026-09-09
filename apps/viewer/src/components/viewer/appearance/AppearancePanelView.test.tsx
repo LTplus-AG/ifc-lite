@@ -4,7 +4,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { render, click, type, cleanup } from '@/test/render.js';
 import { AppearancePanelView } from './AppearancePanelView.js';
 import type { AppearancePanelViewProps, AppearanceDraftSettings } from './types.js';
@@ -152,4 +152,32 @@ it('allows cancelling cooperative Apply while preventing a second Apply (#4336)'
   assert.equal(button(ui, 'Discard').disabled, false);
   click(button(ui, 'Discard'));
   assert.equal(controller.signal.aborted, true);
+});
+
+
+it('switches source intent without replacing the source picker or requiring an IFC target for references (#4308)', () => {
+  let placements = 0;
+  function Workspace() {
+    const [intent, setIntent] = useState<'apply' | 'reference'>('apply');
+    return <AppearancePanelView {...props({ intent, onIntentChange: setIntent, modelId: null,
+      affectedCount: 0, onApply: () => { placements++; }, calibration: {
+        sourceKey: 'image', frame: { rasterSize: [512, 512], rasterToSource: [1, 0, 0, 1, 0, 0] },
+        thumbnailUrl: 'blob:image', value: { sourcePoints: [[0, 0], [512, 0]], distanceMetres: 10 }, onChange() {},
+      } })} />;
+  }
+  const ui = render(<Workspace />);
+  const picker = ui.querySelector('input[type="file"]');
+  assert.equal(button(ui, 'Apply').disabled, true, 'IFC application still needs its target');
+  click(button(ui, 'Place as reference'));
+  assert.equal(ui.querySelector('input[type="file"]'), picker, 'switching intent keeps the same source control mounted');
+  assert.equal(ui.querySelector('select[aria-label="Appearance model"]'), null);
+  const distance = ui.querySelector('input[aria-label="Distance A–B (m)"]');
+  assert.ok(distance instanceof HTMLInputElement);
+  assert.equal(distance.value, '10');
+  assert.equal(button(ui, 'Place reference').disabled, false);
+  click(button(ui, 'Place reference'));
+  assert.equal(placements, 1);
+  click(button(ui, 'Apply to IFC'));
+  assert.ok(ui.querySelector('select[aria-label="Appearance model"]'));
+  assert.equal(ui.querySelector('input[type="file"]'), picker);
 });

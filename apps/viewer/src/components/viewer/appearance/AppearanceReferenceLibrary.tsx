@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { referenceFrameStatus } from '@/lib/appearance/reference-runtime/frame.js';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Eye, EyeOff, Lock, Unlock, Trash2, Pencil, Download, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -94,7 +95,7 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
       {[...references.values()].map((reference, index) => {
         const name = sources.find(source => source.id === reference.sourceId)?.name ?? `Drawing ${index + 1}`;
         const missing = !appearanceAssets.get(reference.assetId);
-        const wrongFrame = reference.frameKey !== frame;
+        const wrongFrame = reference.frameKey !== frame && referenceFrameStatus(reference, useViewerStore.getState()) === 'frame-mismatch';
         const editsDisabled = blocked || reference.locked;
         return <li key={reference.id} aria-label={name} className={`rounded-md border p-2 ${selected === reference.id ? 'border-primary bg-primary/5' : 'border-border'}`}>
           <div className="flex items-center gap-1">

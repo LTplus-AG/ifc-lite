@@ -8,6 +8,7 @@ import { AppearancePdfFields, AppearancePdfPassword } from './AppearancePdfField
 import { AppearanceSourceFields } from './AppearanceSourceFields.js';
 import { AppearanceScopeFields } from './AppearanceScopeFields.js';
 import { AppearanceCalibrationFields } from './AppearanceCalibrationFields.js';
+import { AppearanceReferenceLibrary } from './AppearanceReferenceLibrary.js';
 import { AppearanceMappingFields } from './AppearanceMappingFields.js';
 import type { AppearancePanelViewProps } from './types.js';
 
@@ -23,10 +24,11 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
       return next;
     });
   }, []);
+  const reference = props.intent === 'reference';
   const applying = props.status === 'applying';
   const busy = applying || props.status === 'preparing' || props.sourceBusy || props.pdf?.busy || props.pdfPassword?.busy;
-  const blocked = !!props.pdfPassword || !!props.pdf?.error || !!props.unavailableReason || !props.modelId || !props.sourceId;
-  const applyDisabled = !props.canApply || !props.hasPreview || blocked || busy || invalidFields.size > 0 || props.affectedCount === 0 || props.status !== 'ready';
+  const blocked = !!props.pdfPassword || !!props.pdf?.error || !!props.unavailableReason || (!reference && !props.modelId) || !props.sourceId;
+  const applyDisabled = !props.canApply || !props.hasPreview || blocked || busy || invalidFields.size > 0 || (!reference && props.affectedCount === 0) || props.status !== 'ready';
   const message = invalidFields.size ? 'Enter valid numbers in the highlighted fields before applying.' :
     props.unavailableReason ?? props.statusMessage ?? ({
       idle: 'Choose an image and scope to preview appearance.',
@@ -42,7 +44,12 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
       <AppearanceSourceFields {...props} disabled={applying} />
       {props.pdfPassword && <AppearancePdfPassword key={props.pdfPassword.documentName} prompt={props.pdfPassword} disabled={applying} />}
       {props.pdf && <AppearancePdfFields key={`${props.pdf.documentId}:${props.pdf.pageNumber}:${props.pdf.rotation}:${inputReset}`} pdf={props.pdf} disabled={applying} onInvalid={onInvalid} />}
-      <AppearanceScopeFields {...props} disabled={applying} />
+      {props.onIntentChange && <div className="grid grid-cols-2 gap-1 rounded-md border p-1" role="group" aria-label="Source action">
+        <Button type="button" variant={!reference ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={!reference} onClick={() => props.onIntentChange?.('apply')}>Apply to IFC</Button>
+        <Button type="button" variant={reference ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={reference} onClick={() => props.onIntentChange?.('reference')}>Place as reference</Button>
+      </div>}
+      {!reference && <AppearanceScopeFields {...props} disabled={applying} />}
+      {reference && <AppearanceReferenceLibrary disabled={applying} />}
       {props.calibration && <AppearanceCalibrationFields key={`${props.sourceId}:${props.calibration.sourceKey}:${inputReset}`}
         {...props.calibration} disabled={applying || blocked || !!props.sourceBusy} onInvalid={onInvalid} />}
       <AppearanceMappingFields calibrated={!!props.calibration} key={`${props.modelId}:${props.sourceId}:${inputReset}`} settings={props.settings} onChange={props.onSettingsChange} disabled={applying || blocked} onInvalid={onInvalid} />
@@ -53,13 +60,13 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
         {busy && <Loader2 className="mt-0.5 h-3 w-3 shrink-0 animate-spin" aria-hidden="true" />}
         <span>{message}</span>
       </div>
-      <Button type="button" variant="ghost" size="sm" className="w-full" aria-pressed={props.showingOriginal}
+      {!reference && <Button type="button" variant="ghost" size="sm" className="w-full" aria-pressed={props.showingOriginal}
         disabled={!props.hasPreview || applying} onClick={() => props.onCompareChange(!props.showingOriginal)}>
         <Eye aria-hidden="true" />{props.showingOriginal ? 'Show preview' : 'Compare original'}
-      </Button>
+      </Button>}
       <div className="grid grid-cols-2 gap-2">
         <Button type="button" variant="outline" size="sm" disabled={!props.canDiscard} onClick={() => { setInputReset(value => value + 1); setInvalidFields(new Set()); props.onDiscard(); }}>Discard</Button>
-        <Button type="button" size="sm" disabled={!!applyDisabled} onClick={props.onApply}><Check aria-hidden="true" />Apply</Button>
+        <Button type="button" size="sm" disabled={!!applyDisabled} onClick={props.onApply}><Check aria-hidden="true" />{reference ? 'Place reference' : 'Apply'}</Button>
       </div>
     </footer>
   </div>;

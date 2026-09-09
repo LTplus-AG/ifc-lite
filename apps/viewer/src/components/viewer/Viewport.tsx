@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { useAppearanceReferences } from './useAppearanceReferences.js';
 import { createPlacedEntityBoundsLookup, placedBoundsExcludingTypes } from '@/lib/model-placement/selection-bounds';
 
 /**
@@ -1731,6 +1732,8 @@ export function Viewport({
     releaseGeometryAfterFinalize: releaseGeometryAfterStream,
     onGeometryReleased,
   });
+
+  useAppearanceReferences(rendererRef, isInitialized);
 
   useModelAssetsSync({
     rendererRef, isInitialized, pointClouds, geometry, modelIdToIndex,

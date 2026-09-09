@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { imageCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
+import type { AppearanceIntent } from '@/lib/appearance/draft-types.js';
 import { pdfCalibrationFrame } from '@/lib/appearance/pdf/calibration.js';
 import { usePdfAppearanceSource } from './usePdfAppearanceSource.js';
 import { preparePdfPagePreview } from '@/lib/appearance/pdf/page-preview.js';
@@ -35,7 +37,7 @@ function discardDraft(draft: Draft | null): void {
   finally { appearanceAssets.releaseOwner(draft.owner); }
 }
 
-export function useAppearancePanel(): AppearancePanelViewProps {
+export function useAppearancePanel(intent: AppearanceIntent = 'apply'): AppearancePanelViewProps {
   const models = useViewerStore(state => state.models);
   const activeModelId = useViewerStore(state => state.activeModelId);
   const mutationVersion = useViewerStore(state => state.mutationVersion);
@@ -59,6 +61,10 @@ export function useAppearancePanel(): AppearancePanelViewProps {
   const [showingOriginal, setShowingOriginal] = useState(false);
   const [counts, setCounts] = useState({ affected: 0, excluded: 0, reasons: [] as string[] });
   const [previewEnabled, setPreviewEnabled] = useState(canResumeModel && (savedDraft?.previewEnabled ?? true));
+  const previousIntent = useRef(intent);
+  useEffect(() => {
+    if (previousIntent.current !== intent) { previousIntent.current = intent; setPreviewEnabled(true); }
+  }, [intent]);
   const pendingAbort = useRef<AbortController | null>(null);
   const applyAbort = useRef<AbortController | null>(null);
   const appliedRevision = useRef<string | null>(null);
@@ -87,8 +93,8 @@ export function useAppearancePanel(): AppearancePanelViewProps {
   });
 
   useEffect(() => {
-    useViewerStore.getState().saveAppearanceDraft({ modelId, sourceId, scope, settings, previewEnabled });
-  }, [modelId, sourceId, scope, settings, previewEnabled]);
+    useViewerStore.getState().saveAppearanceDraft({ intent, modelId, sourceId, scope, settings, previewEnabled });
+  }, [intent, modelId, sourceId, scope, settings, previewEnabled]);
 
   useEffect(() => {
     mounted.current = true;
@@ -106,7 +112,7 @@ export function useAppearancePanel(): AppearancePanelViewProps {
   }, []);
 
   useEffect(() => {
-    if (!modelId || unavailableReason) {
+    if (intent !== 'apply' || !modelId || unavailableReason) {
       const previous = draft.current; draft.current = null;
       discardDraft(previous);
       snapshot.current = null; setCatalogState(null);
@@ -189,7 +195,7 @@ export function useAppearancePanel(): AppearancePanelViewProps {
       } finally { if (!adopted) appearanceAssets.releaseOwner(owner); }
     })(); }, 250);
     return () => { clearTimeout(timer); controller.abort(); applyAbort.current?.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };
-  }, [modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled]);
+  }, [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled]);
 
   async function upload(file: File): Promise<void> {
     if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) { await pdfSource.upload(file); return; }
@@ -269,8 +275,8 @@ export function useAppearancePanel(): AppearancePanelViewProps {
   }
   return {
     allowPdf: true, pdf: pdfSource.controls, pdfPassword: pdfSource.passwordPrompt,
-    calibration: selectedSource?.pdf && selectedSource.thumbnailUrl ? {
-      frame: pdfCalibrationFrame(selectedSource.pdf.recipe), sourceKey: `${selectedSource.id}:${selectedSource.pdf.recipe.page.pageNumber}`, thumbnailUrl: selectedSource.thumbnailUrl,
+    calibration: selectedSource && (selectedSource.pdf || intent === 'reference') && selectedSource.thumbnailUrl ? {
+      frame: selectedSource.pdf ? pdfCalibrationFrame(selectedSource.pdf.recipe) : imageCalibrationFrame(selectedSource.width, selectedSource.height), sourceKey: `${selectedSource.id}:${selectedSource.pdf?.recipe.page.pageNumber ?? 0}`, thumbnailUrl: selectedSource.thumbnailUrl,
       value: selectedSource.calibration, onChange: calibration => {
         const current = useViewerStore.getState().appearanceSources.find(source => source.id === selectedSource.id);
         if (current) useViewerStore.getState().updateAppearanceSource({ ...current, calibration });

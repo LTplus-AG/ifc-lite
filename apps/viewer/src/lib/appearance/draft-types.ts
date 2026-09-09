@@ -4,6 +4,8 @@
 import type { PdfRasterRecipe } from './pdf/types.js';
 import type { RasterCalibration } from './raster-calibration.js';
 
+export type AppearanceIntent = 'apply' | 'reference';
+
 export type AppearanceScope =
   | { kind: 'model' | 'selection' }
   | { kind: 'class'; ifcClass: string }
@@ -45,6 +47,7 @@ export interface AppearanceSourceOption {
 }
 /** Logical draft only. GPU resources, plans and pending jobs are never stored. */
 export interface AppearanceDraftRecipe {
+  intent?: AppearanceIntent;
   modelId: string | null;
   sourceId: string | null;
   scope: AppearanceScope;

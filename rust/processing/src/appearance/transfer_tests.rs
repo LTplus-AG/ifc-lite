@@ -285,6 +285,7 @@ fn issue_4381_insufficient_registration_checks_cannot_produce_applicable_transfe
     assert!(!result.transfer.applicable);
     assert!(result.output.is_none());
     assert!(result.transfer.registration.held_out.rms_metres.is_none());
+    assert!(!result.transfer.diagnostics.iter().any(|d|d.contains("No observed target samples")));
     assert!(result
         .transfer
         .diagnostics

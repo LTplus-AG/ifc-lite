@@ -80,6 +80,7 @@ export function checkMeshTransferContract(IfcAPI) {
     assert.ok(unapproved.transfer.coverage.observedSamples > 0);
     assert.equal(unapproved.plan, null); assert.equal(unapproved.transfer.applicable, false);
     assert.equal(unapproved.transfer.registration.heldOut.rmsMetres, null);
+    assert.ok(!unapproved.transfer.diagnostics.some(message => message.includes("No observed target samples")));
     const moved = structuredClone(request); moved.targetFromIfcWorld.targetAnchor[0] = 10;
     const unknown = run(moved);
     assert.equal(unknown.metadata.plan, null); assert.equal(unknown.png.length, 0);

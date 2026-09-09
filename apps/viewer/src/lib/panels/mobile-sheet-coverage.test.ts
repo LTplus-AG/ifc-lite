@@ -56,6 +56,16 @@ describe('workspace panel registry coverage', () => {
     assert.deepEqual(shared, [], 'these panel ids render the same component — one is showing the other\'s panel');
   });
 
+  it('keeps each panel component identity stable across host renders (#4243)', () => {
+    // A wrapper allocated inside renderPanelBody would pass distinctness but
+    // remount the active editor on every host render, discarding its local state.
+    for (const panel of WORKSPACE_PANELS) {
+      const first = renderPanelBody(panel.id, () => {}) as { type?: unknown };
+      const next = renderPanelBody(panel.id, () => {}) as { type?: unknown };
+      assert.strictEqual(first.type, next.type, `${panel.id} remounts on host render`);
+    }
+  });
+
   it('gives every registered panel a title for the sheet header', () => {
     const untitled = WORKSPACE_PANELS
       .filter((panel) => !getPanelDef(panel.id)?.title)

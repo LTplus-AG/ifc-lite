@@ -1,9 +1,14 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { AppearancePdfControls, AppearancePdfPasswordPrompt } from './pdf-controls.js';
 import type { AppearanceScope, AppearanceDraftSettings, AppearanceSourceOption } from '@/lib/appearance/draft-types.js';
 export type { AppearanceScope, AppearanceDraftSettings, AppearanceSourceOption } from '@/lib/appearance/draft-types.js';
 export interface AppearancePanelViewProps {
+  /** Advertise PDF upload only once a controller provides document ingestion. */
+  allowPdf?: boolean;
+  pdf?: AppearancePdfControls;
+  pdfPassword?: AppearancePdfPasswordPrompt;
   models: ReadonlyArray<{ id: string; name: string }>;
   modelId: string | null;
   onModelChange(id: string): void;

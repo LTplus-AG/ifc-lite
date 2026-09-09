@@ -1,0 +1,46 @@
+{
+  "before": {
+    "selected": null,
+    "models": [
+      {
+        "id": "2982bdee-03eb-4896-80ce-4665899adb9d",
+        "name": "convento.ifczip",
+        "meshes": 115,
+        "hash": 733828585,
+        "textured": 113
+      },
+      {
+        "id": "24cae0d9-23c7-452a-a692-fe977f84b39b",
+        "name": "untextured-wall.ifc",
+        "meshes": 1,
+        "hash": 788238039,
+        "textured": 0
+      }
+    ]
+  },
+  "cancelled": {
+    "selected": null,
+    "models": [
+      {
+        "id": "2982bdee-03eb-4896-80ce-4665899adb9d",
+        "name": "convento.ifczip",
+        "meshes": 115,
+        "hash": 733828585,
+        "textured": 113
+      },
+      {
+        "id": "24cae0d9-23c7-452a-a692-fe977f84b39b",
+        "name": "untextured-wall.ifc",
+        "meshes": 1,
+        "hash": 788238039,
+        "textured": 0
+      }
+    ]
+  },
+  "history": {
+    "undo": [],
+    "created": [
+      0
+    ]
+  }
+}

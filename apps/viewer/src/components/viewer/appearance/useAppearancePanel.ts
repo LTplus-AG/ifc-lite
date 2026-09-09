@@ -57,6 +57,7 @@ export function useAppearancePanel(): AppearancePanelViewProps {
   const [counts, setCounts] = useState({ affected: 0, excluded: 0, reasons: [] as string[] });
   const [previewEnabled, setPreviewEnabled] = useState(canResumeModel && (savedDraft?.previewEnabled ?? true));
   const pendingAbort = useRef<AbortController | null>(null);
+  const applyAbort = useRef<AbortController | null>(null);
   const appliedRevision = useRef<string | null>(null);
   const draft = useRef<Draft | null>(null);
   const planner = useRef<ReturnType<typeof createAppearancePlanner> | null>(null);
@@ -83,6 +84,7 @@ export function useAppearancePanel(): AppearancePanelViewProps {
     planner.current = ownedPlanner;
     return () => {
       mounted.current = false;
+      applyAbort.current?.abort();
       ownedPlanner.dispose();
       snapshot.current = null;
       if (planner.current === ownedPlanner) planner.current = null;
@@ -169,7 +171,7 @@ export function useAppearancePanel(): AppearancePanelViewProps {
         if (!controller.signal.aborted && mounted.current) { setStatus('error'); setStatusMessage(message(error)); }
       } finally { if (!adopted) appearanceAssets.releaseOwner(owner); }
     })(); }, 250);
-    return () => { clearTimeout(timer); controller.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };
+    return () => { clearTimeout(timer); controller.abort(); applyAbort.current?.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };
   }, [modelId, sourceId, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled]);
 
   async function upload(file: File): Promise<void> {
@@ -207,6 +209,7 @@ export function useAppearancePanel(): AppearancePanelViewProps {
     }
   }
   function discard(): void {
+    applyAbort.current?.abort();
     appliedRevision.current = null;
     pendingAbort.current?.abort();
     planner.current?.cancel();
@@ -225,19 +228,24 @@ export function useAppearancePanel(): AppearancePanelViewProps {
       setShowingOriginal(original);
     } catch (error) { setStatus('error'); setStatusMessage(message(error)); }
   }
-  function apply(): void {
+  async function apply(): Promise<void> {
     const current = draft.current;
     const renderer = getGlobalRenderer();
     if (!current?.session || !renderer || status !== 'ready') return;
+    const controller = new AbortController(); applyAbort.current = controller;
     setStatus('applying');
     try {
-      commitAppearance(current.modelId, current.sourceId, current.plan, renderer, current.session, current.groups, current.source);
+      await commitAppearance(current.modelId, current.sourceId, current.plan, renderer, current.session, current.groups, current.source, {
+        signal: controller.signal,
+        onProgress: phase => { if (mounted.current) setStatusMessage(phase === 'preparing' ? 'Preparing IFC changes…' : 'Saving appearance…'); },
+      });
       setPreviewEnabled(false);
       appliedRevision.current = appearanceRevision(current.modelId);
       draft.current = null;
       appearanceAssets.releaseOwner(current.owner);
       setStatus('idle'); setStatusMessage('Appearance applied. Undo is available.');
-    } catch (error) { setStatus('error'); setStatusMessage(message(error)); }
+    } catch (error) { if (mounted.current && !controller.signal.aborted) { setStatus('error'); setStatusMessage(message(error)); } }
+    finally { if (applyAbort.current === controller) applyAbort.current = null; }
   }
   return {
     models: [...models.values()].map(model => ({ id: model.id, name: model.name })), modelId,
@@ -256,6 +264,6 @@ export function useAppearancePanel(): AppearancePanelViewProps {
     settings, onSettingsChange: patch => { setSettings(current => ({ ...current, ...patch })); setPreviewEnabled(true); },
     status, statusMessage, unavailableReason, canApply: status === 'ready' && !!draft.current?.session,
     canDiscard: !!draft.current || status === 'preparing', hasPreview: !!draft.current,
-    showingOriginal, onCompareChange: compare, onApply: apply, onDiscard: discard,
+    showingOriginal, onCompareChange: compare, onApply: () => { void apply(); }, onDiscard: discard,
   };
 }

@@ -19,6 +19,7 @@ import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { appearanceAssets, modelAppearanceAssets } from './model-assets.js';
 import { AppearancePreviewSession } from './preview.js';
+import type { AppearanceCommitOptions } from './command.js';
 import { appearanceRevision, captureAppearanceSource, commitAppearance } from './command.js';
 import { createStoreAdapter } from '@/sdk/adapters/store-adapter.js';
 import type { AppearancePlan } from './planner-types.js';
@@ -60,7 +61,7 @@ async function applyNext(f: Awaited<ReturnType<typeof fixture>>, marker: number)
   const groups = [{ ...f.groups[0], parts: [{ ...f.parts()[0], color: [1, 1, 1, 1] as [number, number, number, number],
     texture: { width: 1, height: 1, repeatS: true, repeatT: true, rgba: new Uint8Array([marker, 0, 255, 255]) } }] }];
   const preview = new AppearancePreviewSession(f.renderer); preview.stage(groups);
-  commitAppearance(MODEL, asset.id, plan, f.renderer, preview, groups, captureAppearanceSource(f.view));
+  await commitAppearance(MODEL, asset.id, plan, f.renderer, preview, groups, captureAppearanceSource(f.view));
   return { asset, plan };
 }
 
@@ -171,12 +172,12 @@ END-ISO-10303-21;`);
     version: useViewerStore.getState().mutationVersion });
   return { asset, plan, view, editor, renderer, preview, groups, before, after, geometry, snapshot, assertUncommitted,
     parts: () => currentParts, failStage: (value: boolean) => { failStage = value; }, failConsume: (value: boolean) => { failConsume = value; },
-    commit: () => commitAppearance(MODEL, asset.id, plan, renderer, preview, groups, sourceCheckpoint) };
+    commit: (options?: AppearanceCommitOptions) => commitAppearance(MODEL, asset.id, plan, renderer, preview, groups, sourceCheckpoint, options) };
 }
 
 describe('appearance command atomicity #4243', () => {
   it('portable export omits history-only authored rows and images without changing Undo/Redo (#4243)', async () => {
-    const f = await fixture(); f.commit();
+    const f = await fixture(); await f.commit();
     const second = await applyNext(f, 2);
     const before = f.snapshot();
     const data = useViewerStore.getState().models.get(MODEL)!.ifcDataStore!;
@@ -206,7 +207,7 @@ describe('appearance command atomicity #4243', () => {
     assert.deepEqual(f.snapshot().exported, before.exported);
   });
   it('serialization failure preserves live IFC and rejects a different model view (#4243)', async () => {
-    const f = await fixture(); f.commit(); await applyNext(f, 2);
+    const f = await fixture(); await f.commit(); await applyNext(f, 2);
     const before = f.snapshot();
     const data = useViewerStore.getState().models.get(MODEL)!.ifcDataStore!;
     assert.throws(() => prepareAppearanceSerialization(MODEL, data, new MutablePropertyView(data.properties, MODEL)), /different model revision/);
@@ -220,19 +221,19 @@ describe('appearance command atomicity #4243', () => {
     createStoreAdapter(useViewerStore).setPositionalAttribute({ modelId: MODEL, expressId: 19 }, 1, ['#14']);
     const changed = f.snapshot();
     assert.equal(changed.version, 0, 'SDK edit bypasses the viewer version');
-    assert.throws(() => f.commit(), /overlay changed/);
+    await assert.rejects(() => f.commit(), /overlay changed/);
     f.assertUncommitted(changed);
   });
   it('rejects skip-history edits after preview even without allocator or viewer revision changes (#4243)', async () => {
     const f = await fixture();
     f.view.setPositionalAttribute(10, 0, [[0, 0, 0], [2, 0, 0], [1, 1, 0], [0, 1, 0]], true);
     const changed = f.snapshot();
-    assert.throws(() => f.commit(), /overlay changed/);
+    await assert.rejects(() => f.commit(), /overlay changed/);
     f.assertUncommitted(changed);
   });
   it('refuses stale Undo for SDK changes to authored appearance or source geometry dependencies (#4243)', async () => {
     for (const geometry of [false, true]) {
-      const f = await fixture(); f.commit();
+      const f = await fixture(); await f.commit();
       const sdk = createStoreAdapter(useViewerStore);
       sdk.setPositionalAttribute({ modelId: MODEL, expressId: geometry ? 10 : f.plan.nextExpressId }, geometry ? 0 : 5,
         geometry ? [[0, 0, 0], [2, 0, 0], [1, 1, 0], [0, 1, 0]] : 'sdk-changed.png');
@@ -243,7 +244,7 @@ describe('appearance command atomicity #4243', () => {
     }
   });
   it('rejects stale Redo after an SDK geometry edit while retaining the undone state (#4243)', async () => {
-    const f = await fixture(); f.commit();
+    const f = await fixture(); await f.commit();
     useViewerStore.getState().undo(MODEL);
     createStoreAdapter(useViewerStore).setPositionalAttribute({ modelId: MODEL, expressId: 10 }, 0,
       [[0, 0, 0], [2, 0, 0], [1, 1, 0], [0, 1, 0]]);
@@ -260,12 +261,12 @@ describe('appearance command atomicity #4243', () => {
     const changed = f.snapshot();
     assert.equal(appearanceRevision(MODEL), f.plan.sourceRevision);
     assert.equal(replacement.peekNextExpressId(), f.plan.nextExpressId);
-    assert.throws(() => f.commit(), /model was replaced/);
+    await assert.rejects(() => f.commit(), /model was replaced/);
     f.assertUncommitted(changed);
     assert.equal(replacement.getNewEntities().length, 0);
   });
   it('keeps ordinary positional edit/Undo followed by appearance Undo/Redo working (#4243)', async () => {
-    const f = await fixture(); f.commit();
+    const f = await fixture(); await f.commit();
     useViewerStore.getState().setPositionalAttribute(MODEL, 19, 1, ['#15']);
     useViewerStore.getState().undo(MODEL);
     useViewerStore.getState().undo(MODEL);
@@ -274,7 +275,7 @@ describe('appearance command atomicity #4243', () => {
     assert.ok(f.view.getNewEntity(f.plan.nextExpressId));
   });
   it('collects superseded authored IFC images after history trimming without breaking Undo or later Apply', async () => {
-    const f = await fixture(); f.commit();
+    const f = await fixture(); await f.commit();
     const b = await applyNext(f, 2);
     appearanceAssets.releaseOwner(owner);
     const stack = useViewerStore.getState().undoStacks.get(MODEL)!;
@@ -308,7 +309,7 @@ describe('appearance command atomicity #4243', () => {
   });
 
   it('keeps an independently copied image URI after deleting its original ID, then releases after its final reference disappears', async () => {
-    const f = await fixture(); f.commit();
+    const f = await fixture(); await f.commit();
     const copy = f.editor.addEntity('IfcImageTexture', [true, true, 'DIFFUSE', null, null, f.asset.exportName]);
     f.editor.setPositionalAttribute(f.plan.created[3].expressId, 0, [`#${copy.expressId}`]);
     f.editor.setPositionalAttribute(f.plan.created[2].expressId, 0, [`#${copy.expressId}`]);
@@ -332,7 +333,7 @@ describe('appearance command atomicity #4243', () => {
   });
 
   it('Undo and a failed Redo preserve a live registration needed by another image URI', async () => {
-    const f = await fixture(); f.commit();
+    const f = await fixture(); await f.commit();
     const copy = f.editor.addEntity('IfcImageTexture', [true, true, 'DIFFUSE', null, null, f.asset.exportName]);
     appearanceAssets.releaseOwner(owner);
     useViewerStore.getState().undo(MODEL);
@@ -352,7 +353,7 @@ describe('appearance command atomicity #4243', () => {
   });
 
   it('retains canonical IFC and image bytes when cleanup fails after editing its detached draft', async () => {
-    const f = await fixture(); f.commit(); const b = await applyNext(f, 4);
+    const f = await fixture(); await f.commit(); const b = await applyNext(f, 4);
     appearanceAssets.releaseOwner(owner);
     await Promise.resolve();
     const before = f.snapshot().exported;
@@ -381,7 +382,7 @@ describe('appearance command atomicity #4243', () => {
 
   it('preserves triangle totals and updates vertex totals for welded/expanded undo and redo', async () => {
     const f = await fixture(MODEL, true);
-    f.commit();
+    await f.commit();
     assert.equal(useViewerStore.getState().geometryResult?.totalTriangles, 2);
     assert.equal(useViewerStore.getState().geometryResult?.totalVertices, 6);
     useViewerStore.getState().undo(MODEL);
@@ -402,7 +403,7 @@ describe('appearance command atomicity #4243', () => {
       assert.equal(f.editor.getNewEntity(f.plan.nextExpressId)?.type, 'IfcImageTexture');
       observations.push(state.mutationVersion);
     });
-    f.commit();
+    await f.commit();
     unsubscribe();
     assert.equal(observations.length, 1);
     assert.equal(useViewerStore.getState().undoStacks.get(MODEL)?.length, 1);
@@ -418,10 +419,45 @@ describe('appearance command atomicity #4243', () => {
     assert.equal(modelAppearanceAssets.exportResources(MODEL).resources.size, 1);
   });
 
+  it('cancels cooperative preparation without IFC, history, GPU or asset publication (#4336)', async () => {
+    const f = await fixture(), initial = f.snapshot();
+    const controller = new AbortController();
+    let yields = 0;
+    await assert.rejects(f.commit({ signal: controller.signal, maxSliceMs: Number.MIN_VALUE,
+      yieldTask: async () => { yields++; controller.abort(); } }), { name: 'AbortError' });
+    assert.ok(yields > 0, 'cancellation happens during actual detached preparation');
+    f.assertUncommitted(initial);
+  });
+
+  it('rejects SDK edits made during cooperative preparation without reverting them (#4336)', async () => {
+    const f = await fixture();
+    let changed: ReturnType<typeof f.snapshot> | undefined;
+    await assert.rejects(f.commit({ maxSliceMs: Number.MIN_VALUE, yieldTask: async () => {
+      if (changed) return;
+      f.view.setPositionalAttribute(19, 1, ['#14'], true);
+      changed = f.snapshot();
+    } }), /overlay changed/);
+    assert.ok(changed);
+    f.assertUncommitted(changed);
+  });
+
+  it('cancellation from final progress runs before any live publication (#4336)', async () => {
+    const f = await fixture(), initial = f.snapshot();
+    const controller = new AbortController();
+    const phases: string[] = [];
+    await assert.rejects(f.commit({ signal: controller.signal, onProgress: phase => {
+      phases.push(phase);
+      assert.deepEqual(f.snapshot(), initial);
+      if (phase === 'publishing') controller.abort();
+    } }), { name: 'AbortError' });
+    assert.deepEqual(phases, ['preparing', 'validating', 'publishing']);
+    f.assertUncommitted(initial);
+  });
+
   it('rolls back allocator, IFC history, GPU and every image lease when GPU consumption fails', async () => {
     const f = await fixture(), initial = f.snapshot();
     f.failConsume(true);
-    assert.throws(f.commit, /GPU token invalidated/);
+    await assert.rejects(f.commit, /GPU token invalidated/);
     f.assertUncommitted(initial);
   });
 
@@ -432,20 +468,20 @@ describe('appearance command atomicity #4243', () => {
       register(...args);
       throw new Error('Asset registration refused');
     });
-    assert.throws(f.commit, /Asset registration refused/);
+    await assert.rejects(f.commit, /Asset registration refused/);
     f.assertUncommitted(initial);
   });
 
   it('does not commit IFC when its preview was already cancelled', async () => {
     const f = await fixture(), initial = f.snapshot();
     f.preview.cancel();
-    assert.throws(f.commit, /preview is no longer active/);
+    await assert.rejects(f.commit, /preview is no longer active/);
     f.assertUncommitted(initial);
   });
 
   it('does not publish detached IFC edits when history preflight rejects a foreign model view', async () => {
     const f = await fixture('foreign-model'), initial = f.snapshot();
-    assert.throws(f.commit, /applied mutations for the current model/);
+    await assert.rejects(f.commit, /applied mutations for the current model/);
     f.assertUncommitted(initial);
   });
 
@@ -456,7 +492,7 @@ describe('appearance command atomicity #4243', () => {
       register(...args);
       useViewerStore.setState({ models: new Map(), geometryResult: null });
     });
-    assert.throws(f.commit, /model changed/);
+    await assert.rejects(f.commit, /model changed/);
     assert.deepEqual(f.snapshot(), initial);
     assert.equal(useViewerStore.getState().models.has(MODEL), false);
     assert.equal(useViewerStore.getState().geometryResult, null);
@@ -467,7 +503,7 @@ describe('appearance command atomicity #4243', () => {
 
   it('failed undo and redo leave the current IFC/GPU/export resources and both stacks unchanged', async () => {
     const f = await fixture();
-    f.commit();
+    await f.commit();
     for (const direction of ['undo', 'redo'] as const) {
       const initial = f.snapshot(), parts = f.parts(), geometry = useViewerStore.getState().geometryResult;
       const resources = modelAppearanceAssets.exportResources(MODEL).resources;

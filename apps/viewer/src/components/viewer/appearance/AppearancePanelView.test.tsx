@@ -128,3 +128,12 @@ it('can reuse the remaining library image when no source is selected', () => {
   select(ui, 'Reuse an image', 'image');
   assert.deepEqual(chosen, ['image']);
 });
+
+it('allows cancelling cooperative Apply while preventing a second Apply (#4336)', () => {
+  const controller = new AbortController();
+  const ui = render(<AppearancePanelView {...props({ status: 'applying', onDiscard: () => controller.abort() })} />);
+  assert.equal(button(ui, 'Apply').disabled, true);
+  assert.equal(button(ui, 'Discard').disabled, false);
+  click(button(ui, 'Discard'));
+  assert.equal(controller.signal.aborted, true);
+});

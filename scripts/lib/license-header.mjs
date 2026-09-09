@@ -144,13 +144,13 @@ const MPL_SPDX_RE = /SPDX-License-Identifier:\s*MPL-2\.0/i;
 /**
  * How many leading lines count as "the header".
  *
- * MEASURED, not picked: across the 5318 in-scope files, the deepest a real
+ * MEASURED, not picked: across the 5323 in-scope files, the deepest a real
  * header starts is line 8 (`scripts/test-geometry-regression.mjs` and
- * `-reference.mjs`, whose notice sits at the end of a leading doc comment),
- * while the shallowest occurrence that is EMITTED DATA rather than a header is
- * line 18 (`packages/codegen/src/type-ids-generator.ts`, inside a template
- * literal). 10 is between the two: every file accepted today is still
- * accepted, and the nearest false accept is 8 lines out of reach.
+ * `-reference.mjs`, whose notice sits at the end of a leading doc comment).
+ * 10 leaves two lines of slack over that and is the SECOND of the two
+ * conditions below, not the only one — `leadingCommentText` already rejects
+ * emitted data at any depth, so this bound is what stops a long banner comment
+ * from being read as a header hundreds of lines into a file.
  */
 const HEADER_SCAN_LINES = 10;
 
@@ -166,23 +166,92 @@ function leadingLines(content) {
 }
 
 /**
- * Does this file already declare MPL-2.0, in either accepted spelling, AT THE
- * TOP?
+ * The COMMENT text of the leading comment block, with everything else dropped.
  *
- * Scoped to the leading lines rather than the whole text, because the whole
- * text says yes to a file whose only occurrence of the notice is emitted DATA
- * — a template literal, a fixture string, a docstring. `packages/codegen/src`
- * holds 4 such files today (`generator.ts:118`, `serialization-generator.ts:22`,
- * `type-ids-generator.ts:18`, `rust-generator.ts:40`), and every one of them
- * also carries a real header on line 1, so nothing in the repo relies on the
- * late match. A NEW sibling generator without a top header would have been
- * waved through by the gate meant to catch exactly that.
+ * The leading block is what you get after an optional shebang and before the
+ * first non-comment, non-blank line. Blank lines do not end it (a shebang, a
+ * blank, then the notice is a real header); the first line of actual code
+ * does.
+ *
+ * Three comment forms are recognised, which is every form the headered file
+ * types use: `/* … *\/`, `//`, and `#`. `#` is what makes the Python form a
+ * comment, and it also covers a shebang line, so there is no separate case for
+ * one. That `#` is NOT a comment marker in the JS/TS family, and opens an
+ * attribute rather than a comment in Rust, only ever widens what counts as a
+ * comment — the safe direction for a detector whose false REJECTS demand a
+ * second header on a correctly-licensed file. Measured over the whole repo:
+ * widening it this way flips nothing.
+ *
+ * @param {string} head the leading lines of a file
+ * @returns {string} the comment text of the leading block, `''` when there is none
+ */
+function leadingCommentText(head) {
+    const lines = head.split('\n');
+    const comment = [];
+    let inBlock = false;
+
+    for (const line of lines) {
+        let rest = line;
+        for (;;) {
+            if (inBlock) {
+                const close = rest.indexOf('*/');
+                if (close === -1) {
+                    comment.push(rest);
+                    break;
+                }
+                comment.push(rest.slice(0, close));
+                rest = rest.slice(close + 2);
+                inBlock = false;
+                continue;
+            }
+
+            const trimmed = rest.trim();
+            if (trimmed === '') break;               // blank line: the block continues
+            if (trimmed.startsWith('//') || trimmed.startsWith('#')) {
+                comment.push(trimmed);
+                break;
+            }
+            if (trimmed.startsWith('/*')) {
+                inBlock = true;
+                rest = trimmed.slice(2);
+                continue;
+            }
+            return comment.join('\n');              // first line of real code
+        }
+    }
+
+    return comment.join('\n');
+}
+
+/**
+ * Does this file already declare MPL-2.0, in either accepted spelling, in its
+ * LEADING COMMENT?
+ *
+ * TWO conditions, and the first is the one that matters: the notice has to sit
+ * inside the leading comment block, not merely somewhere near the top. Reading
+ * the leading lines as unparsed TEXT says yes to a file whose only occurrence
+ * of the notice is DATA — a fixture string, a template literal, a docstring —
+ * and a header gate that a string literal satisfies is not enforcing anything.
+ * Both of these were accepted by the text-only form:
+ *
+ *   export const fixture = "SPDX-License-Identifier: MPL-2.0";
+ *   const s = "This Source Code Form is subject to the terms of the Mozilla Public";
+ *
+ * ...and the same shape one line further in is what `packages/codegen/src`
+ * already holds four times over (`generator.ts:118`,
+ * `serialization-generator.ts:22`, `type-ids-generator.ts:18`,
+ * `rust-generator.ts:40`). Every one of those files also carries a real header
+ * on line 1, so nothing in the repo relies on the data match: measured over
+ * the whole scanned population, requiring a real comment flips no file's
+ * verdict.
+ *
+ * The second condition is `HEADER_SCAN_LINES`, above.
  *
  * @param {string} content the file's text; only its first 10 lines are read
  * @returns {boolean}
  */
 export function hasLicenseHeader(content) {
-    const head = leadingLines(content);
+    const head = leadingCommentText(leadingLines(content));
     return MPL_PROSE_RE.test(head) || MPL_SPDX_RE.test(head);
 }
 
@@ -248,8 +317,13 @@ export function licenseHeaderFor(relativePath) {
  * the same reason `.rs` is — `#!` is not a shebang there either. A type added
  * to `LICENSE_HEADERS` and not considered here gets the safe answer, a header
  * on line 1, which is what every non-shebang file in the repo already has.
+ *
+ * A deliberate SUBSET of `LICENSE_HEADERS`, so it cannot be derived from it
+ * the way the scan's extension list is. `license-header.test.mjs` asserts the
+ * subset instead: an entry here that is not a key there is a typo or an
+ * orphan, and it would mean "never shebang-aware" in silence.
  */
-const SHEBANG_EXTENSIONS = new Set(['js', 'mjs', 'cjs', 'ts', 'tsx', 'mts', 'cts', 'py']);
+export const SHEBANG_EXTENSIONS = new Set(['js', 'mjs', 'cjs', 'ts', 'tsx', 'mts', 'cts', 'py']);
 
 /**
  * The file's contents with a header inserted, or `null` when nothing should

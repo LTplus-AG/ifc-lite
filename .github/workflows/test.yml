@@ -182,7 +182,6 @@ jobs:
               - 'docs/**'
               - 'examples/**'
               - 'packages/**'
-              - 'playwright.config.ts'
               - 'rust/**'
               - 'server/**'
               - 'tests/**'
@@ -190,6 +189,23 @@ jobs:
               # The gate's own source and its scanned `scripts/` tree, one
               # glob covering both.
               - 'scripts/**'
+              # The REPO ROOT, scanned non-recursively by extension (it used to
+              # be one named file, `playwright.config.ts`, which is still the
+              # only root-level file any of these match today). A gate that
+              # reads a path no glob can trigger it on is a gate that does not
+              # run on the PR introducing the mistake, so these have to widen
+              # with the scan. `*` does not cross `/`, so each of these matches
+              # root-level files ONLY and costs nothing on a subtree edit.
+              - '*.ts'
+              - '*.tsx'
+              - '*.js'
+              - '*.mjs'
+              - '*.cjs'
+              - '*.mts'
+              - '*.cts'
+              - '*.css'
+              - '*.rs'
+              - '*.py'
             frontend:
               # A changeset naming a package that does not exist fails the
               # RELEASE workflow, which only runs on main - so the Lint job has

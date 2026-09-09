@@ -36,6 +36,7 @@ import {
   licenseHeaderFor,
   withLicenseHeader,
   LICENSE_HEADERS,
+  SHEBANG_EXTENSIONS,
 } from './license-header.mjs';
 
 const scratch = mkdtempSync(join(tmpdir(), 'license-header-test-'));
@@ -233,20 +234,15 @@ test('`tools/` is not a scan root that scans nothing (#4087)', () => {
 });
 
 test('Python gets the `#` comment form the repo already uses', () => {
-  const header = licenseHeaderFor('rust/python/tests/test_bindings.py');
-  assert.equal(header, LICENSE_HEADERS.py);
-  // Byte-for-byte what all 13 tracked `.py` files carry today. A `//` or `/*`
-  // header in a Python file is a syntax error, so the wrong wrapper here does
-  // not merely look wrong, it breaks the file the write path touches.
-  assert.equal(
-    header,
-    '# This Source Code Form is subject to the terms of the Mozilla Public\n' +
-    '# License, v. 2.0. If a copy of the MPL was not distributed with this\n' +
-    '# file, You can obtain one at https://mozilla.org/MPL/2.0/.\n',
-  );
+  // A `//` or `/*` header in a Python file is a syntax error, so the wrong
+  // wrapper here does not merely look wrong, it breaks the file the write path
+  // touches. The exact bytes of that form are pinned against
+  // `LICENSE_HEADER.md` by the literal oracles at the bottom of this file.
+  assert.equal(licenseHeaderFor('rust/python/tests/test_bindings.py'), LICENSE_HEADERS.py);
+  assert.ok(LICENSE_HEADERS.py.startsWith('# '));
 });
 
-test('every extension uses exactly one of the two comment forms', () => {
+test('every extension uses exactly one of the three comment forms', () => {
   // One notice, wrapped; nothing in the table is a fifth transcription that
   // could drift a word away from the others.
   const block = LICENSE_HEADERS.ts;
@@ -330,4 +326,106 @@ test('the write path prepends to each new type and a re-check accepts it', () =>
     assert.equal(updated, LICENSE_HEADERS[ext] + '\n' + UNLICENSED_FILE, `${ext}: wrong header or mangled body`);
     assert.equal(withLicenseHeader(path, updated), null, `${ext} must be idempotent`);
   }
+});
+
+// --- A HEADER IS A COMMENT, not merely early text ---------------------------
+//
+// Scoping the search to the leading lines was half the fix. It still read
+// those lines as unparsed TEXT, so the embedded-data case it was meant to stop
+// simply moved from line 18 to line 1: a fixture string or a generator's
+// template literal at the top of a file satisfied the detector, and the gate
+// waved the file through. The notice now has to sit inside the leading comment
+// block — everything after an optional shebang and before the first
+// non-comment, non-blank line.
+
+test('a notice inside a STRING LITERAL is not a header', () => {
+  const fixture = 'export const fixture = "SPDX-License-Identifier: MPL-2.0";\n';
+  const prose = 'const s = "This Source Code Form is subject to the terms of the Mozilla Public";\n';
+  assert.equal(hasLicenseHeader(fixture), false);
+  assert.equal(hasLicenseHeader(prose), false);
+  // ...so the write path gives such a file a real header, above the data.
+  assert.equal(
+    withLicenseHeader('packages/codegen/src/spdx-fixture.ts', fixture),
+    LICENSE_HEADERS.ts + '\n' + fixture,
+  );
+});
+
+test('the same SPDX text in a real leading comment IS a header', () => {
+  // The control. This must not regress: it is how all 84 `rust/export` files
+  // and every SPDX-declared file in the repo are licensed.
+  assert.equal(hasLicenseHeader('// SPDX-License-Identifier: MPL-2.0\n\nexport const x = 1;\n'), true);
+  // A blank line does not end the leading block; a line of code does.
+  assert.equal(hasLicenseHeader('#!/usr/bin/env node\n\n// SPDX-License-Identifier: MPL-2.0\n'), true);
+  assert.equal(hasLicenseHeader('export const x = 1;\n// SPDX-License-Identifier: MPL-2.0\n'), false);
+});
+
+test('the 10-line window still bounds the leading comment block', () => {
+  // The comment rule and the window are TWO conditions; this is the second one
+  // on its own — a real leading comment, with the notice 12 lines down. The
+  // deepest header measured in this repo starts on line 8, so a banner this
+  // long is not one, and without the window a long attribution preamble that
+  // quotes the notice would read as a header.
+  const banner = '/*\n' + ' * filler\n'.repeat(10) +
+    ' * This Source Code Form is subject to the terms of the Mozilla Public\n' +
+    ' * License, v. 2.0. If a copy of the MPL was not distributed with this\n' +
+    ' * file, You can obtain one at https://mozilla.org/MPL/2.0/.\n */\n';
+  assert.equal(banner.split('\n').findIndex(line => /This Source Code Form/.test(line)) + 1, 12);
+  assert.equal(hasLicenseHeader(banner), false);
+});
+
+// --- LITERAL ORACLES for the notice itself ---------------------------------
+//
+// Every other assertion in this file reads `LICENSE_HEADERS` to decide what
+// `LICENSE_HEADERS` should be, so the whole file stays green while the table
+// drifts a word away from `LICENSE_HEADER.md` — which is the AUTHORITY for
+// what the notice says, and what a contributor copies from. These three are
+// transcribed from that document and from nothing else, so a changed word in
+// the table is a failing test rather than a silent divergence.
+
+test('the block form is exactly the text LICENSE_HEADER.md documents', () => {
+  assert.equal(
+    LICENSE_HEADERS.ts,
+    '/* This Source Code Form is subject to the terms of the Mozilla Public\n' +
+    ' * License, v. 2.0. If a copy of the MPL was not distributed with this\n' +
+    ' * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n',
+  );
+});
+
+test('the `//` form is exactly the text LICENSE_HEADER.md documents', () => {
+  assert.equal(
+    LICENSE_HEADERS.rs,
+    '// This Source Code Form is subject to the terms of the Mozilla Public\n' +
+    '// License, v. 2.0. If a copy of the MPL was not distributed with this\n' +
+    '// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n',
+  );
+});
+
+test('the `#` form is exactly the text LICENSE_HEADER.md documents', () => {
+  assert.equal(
+    LICENSE_HEADERS.py,
+    '# This Source Code Form is subject to the terms of the Mozilla Public\n' +
+    '# License, v. 2.0. If a copy of the MPL was not distributed with this\n' +
+    '# file, You can obtain one at https://mozilla.org/MPL/2.0/.\n',
+  );
+});
+
+test('every shebang-aware extension is a type this repo actually headers', () => {
+  // `SHEBANG_EXTENSIONS` is a SECOND hardcoded extension list. The scan's list
+  // is derived from `LICENSE_HEADERS` precisely so it cannot drift; this one
+  // cannot be, because it is a deliberate subset — `.rs` and `.css` belong in
+  // the table and NOT here, since `#!` opens an inner attribute in Rust and
+  // nothing in CSS. So assert the relationship that does hold. An entry here
+  // that is not a key there is a typo or an orphan from a renamed extension,
+  // and its only effect would be silence: the branch it guards can never run,
+  // so the type would quietly stop being shebang-aware while the write path
+  // went on prepending headers above shebangs.
+  for (const ext of SHEBANG_EXTENSIONS) {
+    assert.ok(
+      Object.hasOwn(LICENSE_HEADERS, ext),
+      `SHEBANG_EXTENSIONS has '${ext}', which LICENSE_HEADERS does not header`,
+    );
+  }
+  // Both halves of the subset are load-bearing, so pin the exclusions too.
+  assert.equal(SHEBANG_EXTENSIONS.has('rs'), false, '`#![...]` is an inner attribute, not a shebang');
+  assert.equal(SHEBANG_EXTENSIONS.has('css'), false, 'CSS has no shebang');
 });

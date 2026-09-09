@@ -95,6 +95,10 @@ function addLicenseHeader(filePath) {
     }
 }
 
+// The scan-root entry that means "the repository root itself". `findFiles`
+// scans it non-recursively; see the comment on the `find` command below.
+const REPO_ROOT = '.';
+
 // Returns { files, missingRoots }. A missing scan root used to be a
 // console.warn that the caller could scroll past — the scan would silently
 // continue over whatever roots DID exist, "Found 0 files to process"
@@ -118,9 +122,17 @@ function findFiles(scanRoots, extensions) {
         // of it: `licenseHeaderFor` re-checks them downstream, so a divergence
         // here would not be a correctness bug — it would be a silent cost,
         // `find` walking a tree whose every hit is then discarded.
+        //
+        // The repo root is the one root scanned NON-recursively. Every other
+        // root is a subtree of it, so a recursive walk here would re-walk all
+        // of them, double-count every file, and drag in `node_modules`,
+        // `target` and every other build directory besides. `-maxdepth 1` is
+        // placed before `-type f` because BSD `find` (macOS) rejects it as an
+        // option after a primary, while GNU `find` accepts either.
+        const depthLimit = dir === REPO_ROOT ? '-maxdepth 1 ' : '';
         const extPattern = extensions.map(ext => `-name "*.${ext}"`).join(' -o ');
         const prunePattern = EXCLUDED_DIRS.map(dir => `! -path "*/${dir}/*"`).join(' ');
-        const findCmd = `find "${fullPath}" -type f \\( ${extPattern} \\) ${prunePattern}`;
+        const findCmd = `find "${fullPath}" ${depthLimit}-type f \\( ${extPattern} \\) ${prunePattern}`;
 
         try {
             const output = execSync(findCmd, { encoding: 'utf-8', cwd: rootDir });
@@ -145,7 +157,15 @@ function findFiles(scanRoots, extensions) {
 // `scripts/` — so this file uses it rather than relying on nobody importing
 // it. The classification lib next door is a module boundary, not a substitute
 // for this guard.
-if (isMainEntry(import.meta.url)) {
+//
+// The CLI is a FUNCTION and every branch `return`s after setting
+// `process.exitCode`, never `process.exit()`. `process.exit()` tears the
+// process down without draining stdout, and stdout is a PIPE in CI: writes
+// there are asynchronous, so a long "missing the MPL license header" list can
+// be cut off mid-path while the status still says 1. That list IS this gate's
+// output. Setting `exitCode` and returning lets node flush both streams and
+// leave with the same status.
+function main() {
     // --- CLI flags ---------------------------------------------------------
     // Unknown flags are a hard error, not a silent no-op: this script used to
     // ignore any flag it didn't recognize and fall straight through to the
@@ -158,7 +178,8 @@ if (isMainEntry(import.meta.url)) {
         if (!KNOWN_FLAGS.has(arg)) {
             console.error(`Unknown flag: ${arg}`);
             console.error(`Known flags: ${[...KNOWN_FLAGS].join(', ')} (or no flags at all)`);
-            process.exit(1);
+            process.exitCode = 1;
+            return;
         }
     }
     const checkMode = argv.includes('--check');
@@ -179,28 +200,34 @@ if (isMainEntry(import.meta.url)) {
     // `scripts` and `tools` unscanned — 12 headerless files at the time this
     // list was widened, and no signal at all that they were out of scope. The
     // derivation is "every top-level directory that holds first-party source of
-    // a type in `LICENSE_HEADERS`, plus the root-level configs". Re-derived
+    // a type in `LICENSE_HEADERS`, plus the repo root itself". Re-derived
     // when `.mjs`/`.cjs`/`.mts`/`.cts`/`.py` joined that table, because a root
     // list and an extension list are only right TOGETHER: `demo/` (one shell
     // script) and `patches/` (patch files) still hold nothing of any scanned
-    // type and stay out rather than being listed as no-ops, and
-    // `playwright.config.ts` is still the only scanned file at the repo root.
+    // type and stay out rather than being listed as no-ops.
+    //
+    // `REPO_ROOT` replaced a single NAMED root-level file. Naming one file made
+    // the root a list of one nobody would think to extend: a PR adding a second
+    // root-level config of a scanned type got no header check at all, which is
+    // the requirement this gate exists for. The root is scanned by EXTENSION
+    // like every other root, non-recursively so it does not re-walk the ten
+    // below it. It matches exactly the one file the named entry matched, so it
+    // widens what the gate catches tomorrow and moves nothing today.
+    //
     // `.changeset/changelog-resilient.cjs` is the one file of a scanned type
-    // that no root reaches; adding `.changeset` here would put release
-    // machinery inside a source-header gate for one file, so it is left alone
-    // knowingly rather than by omission. An entry may name a FILE as well as a
-    // directory — `find` accepts either — which is how a root-level config is
-    // covered without scanning the repo root and every build directory under it.
+    // that no root reaches (`-maxdepth 1` does not descend into it); adding
+    // `.changeset` here would put release machinery inside a source-header gate
+    // for one file, so it is left alone knowingly rather than by omission.
     //
     // Adding a root that does not exist is a hard exit 2, below, so entries here
     // are checked rather than assumed.
     const scanRoots = [
+        REPO_ROOT,
         'api',
         'apps',
         'docs',
         'examples',
         'packages',
-        'playwright.config.ts',
         'rust',
         'scripts',
         'server',
@@ -240,7 +267,8 @@ if (isMainEntry(import.meta.url)) {
             'Run it from within the repo, or update the `scanRoots` list above if the repo layout\n' +
             'changed. Refusing to run against a partial/wrong set of roots.'
         );
-        process.exit(2);
+        process.exitCode = 2;
+        return;
     }
 
     console.log(`Found ${files.length} files to process`);
@@ -258,7 +286,8 @@ if (isMainEntry(import.meta.url)) {
                 '\n❌ --check scanned 0 files. That is a failed check, not a clean repo — ' +
                 'refusing to report success for a check that verified nothing.'
             );
-            process.exit(2);
+            process.exitCode = 2;
+            return;
         }
 
         // Dry run: report files missing the header, write nothing, and fail CI
@@ -307,7 +336,8 @@ if (isMainEntry(import.meta.url)) {
                 'verified. That is a failed check, not a clean repo — refusing to report success for a check ' +
                 `that did not actually look at ${readErrors.length === 1 ? 'this file' : 'these files'}.`
             );
-            process.exit(2);
+            process.exitCode = 2;
+            return;
         }
 
         if (missing.length > 0) {
@@ -316,11 +346,13 @@ if (isMainEntry(import.meta.url)) {
                 console.log(`  ${file}`);
             }
             console.log(`\n❌ ${missing.length} file(s) missing the license header. Run without --check to add them.`);
-            process.exit(1);
+            process.exitCode = 1;
+            return;
         }
 
         console.log(`\n✅ All files have the license header.`);
-        process.exit(0);
+        process.exitCode = 0;
+        return;
     }
 
     let added = 0;
@@ -353,8 +385,13 @@ if (isMainEntry(import.meta.url)) {
         for (const file of failures) {
             console.error(`  ${file}`);
         }
-        process.exit(2);
+        process.exitCode = 2;
+        return;
     }
 
     console.log(`\nDone!`);
+}
+
+if (isMainEntry(import.meta.url)) {
+    main();
 }

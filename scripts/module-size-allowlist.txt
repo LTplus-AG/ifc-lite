@@ -330,7 +330,7 @@
   1486 packages/viewer/src/viewer-html.ts
    500 scripts/check-agents-md-size.mjs
    680 scripts/check-changeset-bump.mjs
-   523 scripts/check-ci-path-coverage.mjs
+   526 scripts/check-ci-path-coverage.mjs
    574 scripts/check-collab-room-model-target.mjs
    529 scripts/check-generated.mjs
    430 scripts/check-git-lfs.mjs

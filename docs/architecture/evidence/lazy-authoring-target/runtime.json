@@ -1,0 +1,10 @@
+{
+  "source": "c0ffe62a2db3c36521c73d9da308c41ae3aeafee",
+  "browser": "Chromium actual WebGPU, macOS, 1600x1200",
+  "sha256": {
+    "boulder-albedo.glb": "b6a0b51894427c37505632f4d4513d0424f0d84b014554755aa53eb74af6dcd6",
+    "two-coloured-seam-walls.ifc": "2d93bac91ed94c27924e5b26d3984652f7d29475f70e2daa85554ae52220d8b0",
+    "boulder-512.png": "f2be22cb22f33a21bd40eab8b3da5c2df4f537841687f58af746413a9c172203",
+    "ifc-lite_bg.wasm": "4a54742fd9b10c8f5e330b83df664fa062cfd44bbe92681edd474ef54bfce3d1"
+  }
+}

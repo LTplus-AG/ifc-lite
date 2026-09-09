@@ -223,7 +223,6 @@ export function decodeLasPoints(
 
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  let anyFinite = false;
   const offX = originOffset?.[0] ?? 0;
   const offY = originOffset?.[1] ?? 0;
   const offZ = originOffset?.[2] ?? 0;
@@ -239,17 +238,21 @@ export function decodeLasPoints(
     positions[i * 3] = x;
     positions[i * 3 + 1] = y;
     positions[i * 3 + 2] = z;
-    // Skip non-finite coords rather than letting them poison the bbox, and
-    // track whether any point was actually finite: if EVERY point in the
-    // chunk overflows (e.g. a finite-but-huge header scale that passes
-    // parseLasHeader's validation but sends `raw * scale` to ±Infinity for
-    // every record), minX/minY/minZ would otherwise be left at their
-    // ±Infinity seed values below — the same poisoning #4271 exists to
-    // prevent, just resurfacing when the whole chunk is bad instead of one
-    // point. Mirrors e57-decode.ts's / ifcx-points.ts's `computeBBox`,
-    // which both fall back to a finite zero-bbox for the same reason.
+    // Skip non-finite coords rather than letting them poison the bbox. If
+    // EVERY point in the chunk is non-finite (e.g. a finite-but-huge header
+    // scale that passes parseLasHeader's validation but sends `raw * scale`
+    // to ±Infinity for every record), minX/minY/minZ are left at their
+    // ±Infinity seed values below on purpose: unlike e57-decode.ts's /
+    // ifcx-points.ts's `computeBBox` (which decode a whole file in one pass
+    // with no aggregation above them), this chunk's bbox is unioned by
+    // streaming/host.ts's `streamPointCloud` across every chunk with plain
+    // min/max comparisons — ±Infinity is an absorbing no-op there, so a bad
+    // chunk correctly drops out of the running bbox instead of a finite
+    // [0,0,0] dragging it toward the origin. host.ts then falls back to the
+    // header's own bbox (`Number.isFinite(bboxMin[0]) ? ... : info.bbox`)
+    // when the whole file turns out non-finite, which a finite sentinel here
+    // would silently defeat.
     if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
-      anyFinite = true;
       if (x < minX) minX = x; if (x > maxX) maxX = x;
       if (y < minY) minY = y; if (y > maxY) maxY = y;
       if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
@@ -279,9 +282,7 @@ export function decodeLasPoints(
     classifications,
     intensities,
     pointCount: count,
-    bbox: anyFinite
-      ? { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] }
-      : { min: [0, 0, 0], max: [0, 0, 0] },
+    bbox: { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] },
   };
 }
 

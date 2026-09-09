@@ -7,8 +7,14 @@ import type { AppliedAppearanceEntities } from './apply-plan.js';
 import { validateAppearanceEntityPlan } from './validate-plan.js';
 
 function yieldAppearanceTask(): Promise<void> {
-  const host = globalThis as typeof globalThis & { scheduler?: { yield(): Promise<void> } };
-  return host.scheduler ? host.scheduler.yield() : new Promise(resolve => setTimeout(resolve, 0));
+  const host = globalThis as typeof globalThis & {
+    scheduler?: { postTask(callback: () => void, options: { priority: 'background' }): Promise<void> };
+  };
+  // A fresh background task lets pending interaction run ahead of preparation.
+  // scheduler.yield() continuations can retain the initiating input priority.
+  return host.scheduler?.postTask
+    ? host.scheduler.postTask(() => undefined, { priority: 'background' })
+    : new Promise(resolve => setTimeout(resolve, 0));
 }
 
 /** Only owned records leave the mutations preparer; no draft view escapes. */

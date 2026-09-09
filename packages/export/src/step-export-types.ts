@@ -239,9 +239,33 @@ export const styleEntityWithheldWarning = (expressId: number, type: string): str
  * an authoring tool emits when it forgets to double one — two of those leave
  * quote parity even and paren depth at zero, so nothing structural notices
  * (#4125).
+ *
+ * It says what was DROPPED and nothing about what was written. It used to open
+ * "was written exactly as the source file has it", which is a claim this
+ * sentence is in no position to make: the pipeline that produces it runs before
+ * `writeSourceEntityLines` hands the record to `convertStepLine`, and a
+ * cross-schema export can rename the record's type, trim or pad its attribute
+ * list, replace it with an `IFCPROXY`, or drop it from the output entirely. So
+ * on exactly the path where a caller most needs to know what became of a
+ * dropped edit, the diagnostic was false (#4213).
+ *
+ * Buffering the report until the line's fate is known — the treatment
+ * `step-source-iteration.ts` already applies to the withholding branches — does
+ * not fit here. The refusal is produced one layer below the two writers, and
+ * the other of them (`step-property-sets.ts`'s type-object rewrite) never
+ * converts at all, so a message about the output would have to be assembled
+ * differently per caller for a fact neither caller is reporting. A sentence
+ * about the refusal is true on every path, which is what a shared message needs
+ * to be. It does not replace the dropped clause with a weaker one either — "the
+ * record keeps the values the source gave it" is false on the same conversion
+ * path, for the same reason.
+ *
+ * `type` is the class the SOURCE record carries, which is the class the dropped
+ * edits were queued against; it is not a claim about the class the export
+ * writes, which on that same conversion path can differ.
  */
 export const unreadableRecordEditsDroppedWarning = (expressId: number, type: string): string =>
-  `Entity #${expressId} (${type}) was written exactly as the source file has it: its argument list could not be read as a list of attributes, so every edit queued for it (attribute, retype and positional alike) was dropped rather than applied to a slot that may not be the one meant. The usual cause is an apostrophe inside a string attribute that was not doubled.`;
+  `Entity #${expressId} (${type}): its argument list could not be read as a list of attributes, so every edit queued for it (attribute, retype and positional alike) was dropped rather than applied to a slot that may not be the one meant. The usual cause is an apostrophe inside a string attribute that was not doubled.`;
 
 /**
  * What `step-attribute-mutations.ts`'s `applySourceLineMutations` produced: the rewritten

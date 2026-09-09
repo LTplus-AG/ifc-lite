@@ -36,6 +36,8 @@ export const createAppearanceReferenceSlice: StateCreator<ViewerState, [], [], A
   });
   function publish(records: ReadonlyMap<string, RegisteredAppearanceReference>): void {
     const before = get();
+    if (records.size === before.appearanceReferences.size && [...records].every(([id, record]) =>
+      JSON.stringify(record) === JSON.stringify(before.appearanceReferences.get(id)))) return;
     const command: ReferenceCommand = Object.freeze({ id: crypto.randomUUID(), timestamp: Date.now(),
       before: before.appearanceReferences, after: records });
     const patch = { appearanceReferences: records,
@@ -90,9 +92,9 @@ export const createAppearanceReferenceSlice: StateCreator<ViewerState, [], [], A
       const state = get(), command = (direction === 'undo' ? state.referenceUndo : state.referenceRedo).at(-1);
       if (!command) return;
       const records = direction === 'undo' ? command.before : command.after;
-      if ([...records.values()].some(record => record.frameKey !== placementFrameKey(state))) {
-        throw new Error('The drawing reference coordinate frame changed. Re-register it before replaying history.');
-      }
+      // History restores registrations verbatim, including unresolved old frames.
+      // The renderer guards frame compatibility; refusing replay here strands all
+      // older workspace history after an explicit cross-frame replacement.
       const patch = { appearanceReferences: records,
         referenceUndo: direction === 'undo' ? state.referenceUndo.slice(0, -1) : [...state.referenceUndo, command],
         referenceRedo: direction === 'redo' ? state.referenceRedo.slice(0, -1) : [...state.referenceRedo, command],

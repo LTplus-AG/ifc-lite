@@ -38,3 +38,5 @@ frame must be handled by the runtime's canonical frame conversion or reported as
 unresolved; importing a manifest into a different frame is rejected. The state
 foundation does not claim portable project image packaging or IFC annotation
 creation. Those use separate, explicit authoring/export operations.
+
+History restores the exact saved engineering frame, even when that frame is currently unresolved. Rendering remains guarded by frame compatibility; Undo never silently converts coordinates or blocks access to older commands. Value-equivalent imports and updates preserve all workspace redo branches.

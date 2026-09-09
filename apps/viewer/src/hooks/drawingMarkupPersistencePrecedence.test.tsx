@@ -19,6 +19,14 @@
  * resolves first (its hash is cheap here) and writes `[]` — indistinguishable,
  * to a plain emptiness check, from "no source has run yet". The IFC restore
  * must not then resurrect the stale embedded markup on top of it.
+ *
+ * The SECOND test below covers the other ordering — the one an earlier
+ * version of this file did NOT: the WASM parse landing while `#4159`'s hash
+ * is STILL resolving. A fixture that lets the hash resolve on the very first
+ * `flush()` (before the fake WASM worker is ever released) can never put the
+ * restore through its `'pending'`-branch WAIT at all — mutating that branch
+ * away passed anyway. `fileWithHeldHash` exists to make that ordering
+ * deterministic rather than incidental.
  */
 
 import '@/test/setup-dom.js';
@@ -73,6 +81,27 @@ async function parseFixture(): Promise<IfcDataStore> {
 function fileWithBytes(seed: number, name: string): File {
   const bytes = new Uint8Array(256).map((_, i) => (i + seed) % 256);
   return new File([bytes], name, { type: 'application/octet-stream' });
+}
+
+/**
+ * A `File` whose `arrayBuffer()` — the step `computeFullSourceHashFromBlob`
+ * awaits before it can hash anything — does not resolve until `release()` is
+ * called. This is what lets a test hold #4159's hash computation at
+ * `'pending'` on purpose, independent of how many ticks anything else takes,
+ * so a scenario ("the IFC parse finishes before the hash resolves") that
+ * would otherwise depend on incidental timing between a real SHA-256 digest
+ * and a fake worker reply becomes deterministic instead. Deliberately does
+ * NOT touch either hook under test — it only ever calls the SAME `File` API
+ * (`arrayBuffer()`) `computeFullSourceHashFromBlob` already calls.
+ */
+function fileWithHeldHash(seed: number, name: string): { file: File; release: () => void } {
+  const bytes = new Uint8Array(256).map((_, i) => (i + seed) % 256);
+  const file = new File([bytes], name, { type: 'application/octet-stream' });
+  let resolveGate!: () => void;
+  const gate = new Promise<void>((resolve) => { resolveGate = resolve; });
+  const realArrayBuffer = file.arrayBuffer.bind(file);
+  file.arrayBuffer = () => gate.then(realArrayBuffer);
+  return { file, release: () => resolveGate() };
 }
 
 /** One polyline owned by the tagged annotation, in the shape the WASM worker would reply with. */
@@ -205,5 +234,58 @@ describe('localStorage (#4159) vs IFC-embedded (#4170) markup restore precedence
       [],
       'a localStorage entry that already resolved (even an empty one) must win — the IFC\'s stale embedded markup must not resurface on top of it',
     );
+  });
+
+  it('waits for localStorage\'s decision when the IFC parse finishes FIRST, then restores once localStorage resolves to no saved entry', async () => {
+    // The other ordering from the test above — and the one #4170 actually
+    // shipped without covering (see this file's header doc): the WASM parse
+    // lands while #4159's hash is STILL resolving. `held.release()` below is
+    // what makes that ordering deterministic rather than incidental.
+    const held = fileWithHeldHash(11, 'parse-before-hash.ifc');
+    const store = await parseFixture();
+    const model: FederatedModel = {
+      id: 'model-precedence-2',
+      name: 'parse-before-hash.ifc',
+      ifcDataStore: store,
+      geometryResult: null,
+      visible: true,
+      collapsed: false,
+      schemaVersion: 'IFC4',
+      loadedAt: 0,
+      fileSize: held.file.size,
+      sourceFile: held.file,
+      idOffset: 0,
+      maxExpressId: 0,
+    } as FederatedModel;
+
+    useViewerStore.setState({ models: new Map([['model-precedence-2', model]]) });
+    const release = fakeWasmReplyWith(oneMeasureFlat());
+
+    await mount();
+    await act(async () => { useViewerStore.getState().setActiveModel('model-precedence-2'); });
+
+    // Let the IFC-embedded restore's WASM parse land FIRST — the hash's
+    // `arrayBuffer()` is still gated by `held`, so `hasPersistedMarkupEntryFor`
+    // must still be reporting `'pending'` at this point.
+    await act(async () => { release(); });
+    await flush();
+    assert.deepEqual(
+      useViewerStore.getState().measure2DResults,
+      [],
+      'the WASM parse finishing must not restore the IFC-embedded markup while localStorage\'s decision is still pending — it must wait',
+    );
+
+    // NOW let localStorage's hash resolve. No entry was ever saved for this
+    // file, so the decision is "no saved entry" — the deferred IFC restore
+    // may finally proceed.
+    await act(async () => { held.release(); });
+    await flush();
+    const state = useViewerStore.getState();
+    assert.equal(
+      state.measure2DResults.length,
+      1,
+      'once localStorage resolves to "no saved entry", the deferred IFC-embedded restore must finally run',
+    );
+    assert.equal(state.measure2DResults[0].distance, 5);
   });
 });

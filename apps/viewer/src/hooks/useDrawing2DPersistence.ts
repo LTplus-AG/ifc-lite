@@ -403,6 +403,12 @@ export function useDrawing2DPersistence(): void {
     const cached = hashCache.get(activeModelId);
     if (cached !== undefined) {
       applyHash(cached);
+      // Symmetric with the branches below — a no-op today (this model's
+      // listeners already fired on the earlier mount that cached its hash;
+      // see `hasPersistedMarkupEntryFor`'s doc) but keeps "hashCache settling
+      // fires decided listeners" true by construction, not just by that
+      // function re-deriving its answer from `hashCache`.
+      notifyDecided(activeModelId);
       return;
     }
 

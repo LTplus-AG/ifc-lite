@@ -67,8 +67,46 @@ import { hasPersistedMarkupEntryFor, onLocalStorageDecidedFor } from './useDrawi
 /** Models this session has already attempted a restore for — see the module doc. */
 const restoredForModel = new Set<string>();
 
-/** Models currently waiting on #4159's localStorage precedence decision — see `tryRestoreDrawingMarkup`. Prevents piling up a redundant `onLocalStorageDecidedFor` listener per parse-cache notification while still pending. */
-const awaitingLocalStorageDecision = new Set<string>();
+/**
+ * Models currently waiting on #4159's localStorage precedence decision —
+ * see `tryRestoreDrawingMarkup`. Prevents piling up a redundant
+ * `onLocalStorageDecidedFor` listener per parse-cache notification while
+ * still pending. Keyed to the listener's OWN unsubscribe function (rather
+ * than a bare `Set`) so `cancelPendingRestoreWaitFor` below can actually
+ * remove a stale listener from `useDrawing2DPersistence.ts`'s
+ * `decidedListeners` map instead of just forgetting we registered one — see
+ * that function's doc for why a stale listener is worth removing at all.
+ */
+const awaitingLocalStorageDecision = new Map<string, () => void>();
+
+/**
+ * Cancel `modelId`'s in-flight wait on localStorage's precedence decision,
+ * if one is registered — call when it is no longer needed: the model was
+ * switched away from (its `useDrawingMarkupRestoreOnLoad` effect is
+ * cleaning up) or its `dataStore` changed out from under it. Without this,
+ * an `onLocalStorageDecidedFor` listener registered for a model that is
+ * switched away from while its hash is still resolving stays in
+ * `decidedListeners` until that promise finally settles, then fires and
+ * no-ops against `tryRestoreDrawingMarkup`'s own `activeModelId` guard — a
+ * real listener leak, just a self-clearing one bounded by however long the
+ * hash takes.
+ *
+ * Safe to drop: cancelling here never loses a legitimate pending restore.
+ * `tryRestoreDrawingMarkup` already refuses to write for any model that
+ * is not the active one, so a restore for a model that has been switched
+ * away from cannot happen anyway until that model is active again — and
+ * revisiting the model re-runs `useDrawingMarkupRestoreOnLoad`'s effect,
+ * which calls `tryRestoreDrawingMarkup(activeModelId)` again immediately,
+ * re-registering a fresh listener if the hash is still pending then. This
+ * is the same reasoning `restoredForModel` already leans on for a fully
+ * concluded restore; this just applies it to one still in flight.
+ */
+function cancelPendingRestoreWaitFor(modelId: string): void {
+  const unsubscribe = awaitingLocalStorageDecision.get(modelId);
+  if (!unsubscribe) return;
+  awaitingLocalStorageDecision.delete(modelId);
+  unsubscribe();
+}
 
 function markupFieldsEmpty(): boolean {
   const s = useViewerStore.getState();
@@ -105,11 +143,11 @@ export function tryRestoreDrawingMarkup(modelId: string): void {
   const persisted = hasPersistedMarkupEntryFor(modelId);
   if (persisted === 'pending') {
     if (!awaitingLocalStorageDecision.has(modelId)) {
-      awaitingLocalStorageDecision.add(modelId);
-      onLocalStorageDecidedFor(modelId, () => {
+      const unsubscribe = onLocalStorageDecidedFor(modelId, () => {
         awaitingLocalStorageDecision.delete(modelId);
         tryRestoreDrawingMarkup(modelId);
       });
+      awaitingLocalStorageDecision.set(modelId, unsubscribe);
     }
     return;
   }
@@ -167,6 +205,16 @@ export function useDrawingMarkupRestoreOnLoad(): void {
     if (!activeModelId || !dataStore) return;
     tryRestoreDrawingMarkup(activeModelId);
     ensureParseFor([dataStore]);
-    return subscribeToParseCache(() => tryRestoreDrawingMarkup(activeModelId));
+    const unsubscribeParseCache = subscribeToParseCache(() => tryRestoreDrawingMarkup(activeModelId));
+    return () => {
+      unsubscribeParseCache();
+      // This model is no longer the one this effect is watching (switched
+      // away from, or unmounted) — drop its in-flight localStorage-decision
+      // wait, if any. See `cancelPendingRestoreWaitFor`'s doc for why this
+      // cannot drop a restore that still needs to happen: revisiting the
+      // model re-runs this effect, which calls `tryRestoreDrawingMarkup`
+      // again immediately and re-registers a fresh wait if still pending.
+      cancelPendingRestoreWaitFor(activeModelId);
+    };
   }, [activeModelId, dataStore]);
 }

@@ -142,6 +142,23 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
   expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId)).toBe(priorSelection);
   for (let axis = 0; axis < 3; axis++) expect(anchors!.source!.point[axis] + anchors!.delta[axis]).toBeCloseTo(anchors!.target!.point[axis], 6);
   await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    const s = globalThis.__ifc_lite_viewer_store__.getState();
+    s.closeReposition(); s.setSelectedEntityId(null);
+    for (const [id, model] of s.models) if (model.pointCloudHandleId === undefined) s.setModelVisibility(id, false);
+  });
+  let selectedScan = false;
+  for (const point of candidates) {
+    await page.mouse.click(canvas!.x + point.x, canvas!.y + point.y);
+    selectedScan = await page.evaluate(() => {
+      const s = globalThis.__ifc_lite_viewer_store__.getState();
+      const scan = [...s.models.values()].find((model) => model.pointCloudHandleId !== undefined)!;
+      return s.selectedEntityId !== null && s.selectedEntityId >= scan.idOffset && s.selectedEntityId <= scan.idOffset + scan.maxExpressId;
+    });
+    if (selectedScan) break;
+  }
+  expect(selectedScan, 'normal GPU selection picks the visible translated scan').toBe(true);
+  await page.evaluate(() => { const s = globalThis.__ifc_lite_viewer_store__.getState(); for (const [id] of s.models) s.setModelVisibility(id, true); });
   await openScanMove(page);
   await page.getByRole('button', { name: 'Frame both', exact: true }).click();
   await info.attach('aligned real IFC and diagnostic scan', { body: await page.screenshot(), contentType: 'image/png' });

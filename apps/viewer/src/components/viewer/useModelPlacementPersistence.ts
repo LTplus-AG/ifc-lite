@@ -12,11 +12,15 @@ export function useModelPlacementPersistence(): void {
   // move, lock, reset or import, including an edit subsequently undone.
   const automatic = useRef(new Map<string, ModelPlacement>());
   const restoring = useRef(false);
+  const knownIdentities = useRef(new Map<string, string | undefined>());
   const models = useViewerStore((state) => state.models);
   const anchor = useViewerStore((state) => state.anchorModelIdOverride);
   useEffect(() => {
     try {
       const state = useViewerStore.getState();
+      const identityCompleted = [...state.models].some(([id, model]) => model.sourceContentHash &&
+        knownIdentities.current.get(id) !== model.sourceContentHash && state.modelPlacement.placements.has(id));
+      knownIdentities.current = new Map([...state.models].map(([id, model]) => [id, model.sourceContentHash]));
       const counts = new Map<string, number>();
       for (const model of state.models.values()) {
         if (model.sourceContentHash) counts.set(model.sourceContentHash, (counts.get(model.sourceContentHash) ?? 0) + 1);
@@ -28,7 +32,10 @@ export function useModelPlacementPersistence(): void {
         else if (counts.get(fingerprint) !== 1) { revoked.add(id); automatic.current.delete(id); }
       }
       const restored = restoreWorkspacePlacements(localStorage, state);
-      if (restored.size === 0 && revoked.size === 0) return;
+      if (restored.size === 0 && revoked.size === 0) {
+        if (identityCompleted) saveWorkspacePlacements(localStorage, state);
+        return;
+      }
       const placements = new Map([...state.modelPlacement.placements, ...restored]);
       for (const id of revoked) placements.delete(id);
       for (const [id, placement] of restored) automatic.current.set(id, placement);
@@ -41,6 +48,7 @@ export function useModelPlacementPersistence(): void {
           frameKey: placementFrameKey(state), placements, preview: cancelPreview ? null : preview,
           revision: state.modelPlacement.revision + 1 }, ...(cancelPreview ? { repositionOpen: false } : {}) });
       } finally { restoring.current = false; }
+      if (identityCompleted) saveWorkspacePlacements(localStorage, useViewerStore.getState());
     } catch (error) {
       console.warn('[Reposition] Placement restore failed:', error);
       toast.error('Saved model placements could not be restored. You can import a placement manifest.');

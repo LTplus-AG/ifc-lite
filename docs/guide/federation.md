@@ -145,7 +145,7 @@ and automatic scan registration are separate operations.
 
 Positions are saved locally by source contents and coordinate frame. Reloading
 an unambiguous source restores its committed position; previews are never
-saved. **Export placements** downloads a versioned JSON manifest. Import
+saved. Matching reads every source byte using bounded SHA-256 chunks; renaming a file keeps its identity, while changed contents require a new placement. For streamed scans, matching runs after loading completes so it does not delay the first points. Automatic restore and local saving become available once that background pass finishes; moves made meanwhile are preserved and then saved. Removing the scan stops the pass. **Export placements** downloads a versioned JSON manifest. Import
 checks units, axes, frame and source identity before applying the entire group.
 Repeated copies of one source need explicit instance bindings. Import respects
 current locks. Placement is local to this browser workspace and is not shared

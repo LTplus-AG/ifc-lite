@@ -9,7 +9,7 @@ import { render, cleanup } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { displayedTranslation, emptyPlacementState, importPlacements } from '@/lib/model-placement/state';
-import { saveWorkspacePlacements } from '@/lib/model-placement/persistence';
+import { saveWorkspacePlacements, restoreWorkspacePlacements } from '@/lib/model-placement/persistence';
 import { useModelPlacementPersistence } from './useModelPlacementPersistence';
 
 const model = (id: string) => ({ ...fixtureModel(id), sourceContentHash: 'same-source' });
@@ -57,4 +57,14 @@ it('cancels an in-flight preview before revoking its ambiguous automatic baselin
   assert.equal(ui.textContent, '0,0,0');
   act(() => useViewerStore.getState().applyModelTranslation());
   assert.equal(ui.textContent, '0,0,0', 'a delayed Apply cannot resurrect the revoked automatic offset');
+});
+
+it('saves a move made before the background scan identity finishes (#4226)', () => {
+  useViewerStore.setState({ ...fixtureModels({ ...model('first'), sourceContentHash: undefined }), modelPlacement: emptyPlacementState() });
+  const ui = render(<Harness />);
+  act(() => { const state = useViewerStore.getState(); state.openReposition(['first']); state.previewModelTranslation([42, 0, 0]); state.applyModelTranslation(); });
+  act(() => useViewerStore.getState().updateModel('first', { sourceContentHash: 'same-source' }));
+  assert.equal(ui.textContent, '42,0,0', 'late automatic restoration does not overwrite an explicit move');
+  const reloaded = { ...useViewerStore.getState(), ...fixtureModels(model('again')), modelPlacement: emptyPlacementState() };
+  assert.deepEqual(restoreWorkspacePlacements(localStorage, reloaded).get('again')?.translation, [42, 0, 0]);
 });

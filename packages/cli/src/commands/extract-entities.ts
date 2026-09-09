@@ -14,10 +14,13 @@
  *   --detect [--top N]          the N meshes a geometry-triage pass ranks most unusual
  *
  * The output carries each selected product's full forward reference closure PLUS
- * the shared context roots (IfcProject, unit assignment, geometric contexts, the
- * spatial site/building/storey skeleton) and every spatial-structure relation,
- * its related-objects SET rewritten down to the kept members (see
- * `subset-relations.ts`) — so the result parses and renders on its own.
+ * the shared context roots (IfcProject, unit assignment, geometric contexts, and
+ * the backward closure of the selection's spatial ancestors — only the
+ * site/building/storey/space chain actually reached by what was selected, not
+ * every spatial-structure instance in the model, see `spatial-ancestors.ts`) and
+ * every spatial-structure relation, its related-objects SET rewritten down to
+ * the kept members (see `subset-relations.ts`) — so the result parses and
+ * renders on its own.
  *
  * `--detect --report [--json]` prints the triage report WITHOUT extracting. The
  * report separates HARD defects (non-finite or |coord|>1e4 vertices after the
@@ -31,6 +34,7 @@ import { basename } from 'node:path';
 import { fatal, getFlag, getAllFlags, hasFlag } from '../output.js';
 import { logger } from '../logger.js';
 import { planSpatialRelations, refsOutsideStrings, type StepRecord, type Subset } from './subset-relations.js';
+import { spatialAncestors } from './spatial-ancestors.js';
 import { productsUnderPlacement, resolveStoreyPlacement } from './storey-selection.js';
 
 export interface ParsedStep {
@@ -174,25 +178,22 @@ export function forwardClosure(seeds: Iterable<number>, parsed: ParsedStep, into
 
 /**
  * Assemble the subset: the closure of `seedProducts` + context roots
- * (project/units/contexts + spatial skeleton) + spatial-structure relations,
- * each rewritten down to its kept members (so no dangling references).
+ * (project/units/contexts + the backward closure of spatial ancestors, not
+ * the whole skeleton) + spatial-structure relations, each rewritten down to
+ * its kept members (so no dangling references).
  */
 export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subset {
   const keep = new Set<number>();
   forwardClosure(seedProducts, parsed, keep);
 
-  // Context roots: the project + spatial skeleton, closed forward for units,
-  // geometric contexts, and placement chains.
-  const rootSeeds: number[] = [];
+  // Context roots: IfcProject (always — units/contexts hang off it even when
+  // nothing selected reaches it) plus every spatial ancestor of what is
+  // already kept, closed forward. Backward closure, not a type list, so an
+  // unrelated storey/space is never dragged in and a product under an
+  // IfcSpace or IFC4X3 facility class keeps its parent too (#4124).
+  const rootSeeds = spatialAncestors(keep, parsed.instances);
   for (const inst of parsed.instances.values()) {
-    if (
-      inst.type === 'IFCPROJECT' ||
-      inst.type === 'IFCSITE' ||
-      inst.type === 'IFCBUILDING' ||
-      inst.type === 'IFCBUILDINGSTOREY'
-    ) {
-      rootSeeds.push(inst.id);
-    }
+    if (inst.type === 'IFCPROJECT') rootSeeds.push(inst.id);
   }
   forwardClosure(rootSeeds, parsed, keep);
 

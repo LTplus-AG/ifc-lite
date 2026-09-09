@@ -14,7 +14,8 @@
 //! infrastructure instead of a failed assertion.
 
 use super::item_walk::{extract_symbolic_item, MAX_ITEM_DEPTH, MAX_ITEM_REVISITS};
-use super::output_cap::{SymbolicAccumulator, SymbolicTruncationReason};
+use super::output_cap::SymbolicAccumulator;
+use super::output_cap_types::SymbolicTruncationReason;
 use super::primitives::SymbolicData;
 use super::rebase::RenderFrameRebase;
 use super::transform::Transform2D;

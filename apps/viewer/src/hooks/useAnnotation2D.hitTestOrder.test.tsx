@@ -217,22 +217,38 @@ describe('useAnnotation2D hitTestAnnotations — top-most wins (#4195)', () => {
 
   it('same-type overlap: the newer (topmost) polygon is selected via edge proximity, not the older one', () => {
     // Polygon hit-testing is edge-proximity (within HIT_TEST_RADIUS_PX=10)
-    // or the centroid label box — NOT a bounding-box test. Both polygons
-    // below have a near-horizontal edge passing within 10px of the click
-    // point (10,10), so the click is a genuine edge-proximity hit on BOTH,
-    // not merely a visual overlap.
+    // or the centroid label box — NOT a bounding-box test. This must
+    // actually exercise the edge-proximity (pass 2) path, not the
+    // centroid-label box (pass 1) — pass 1 always wins over pass 2, so if
+    // a polygon's naive centroid (computePolygonCentroid: plain vertex
+    // average, not the area-weighted centroid) happens to land inside the
+    // fixed 40x20 centroid-label box around the click, pass 1 resolves the
+    // hit and pass 2's edge-proximity code never runs at all, regardless
+    // of which polygon "should" win by edge distance.
+    //
+    // Both polygons here are tall (top edge near the click, far bottom
+    // edge) specifically so their naive centroid sits far below the click
+    // (dy > 20) and cannot satisfy the pass-1 centroid box, forcing
+    // resolution through pass 2. Both have a near-horizontal top edge
+    // passing within 10px of the click point (10,10), at an EQUAL
+    // distance (2px) from each other, so the pick can only be explained by
+    // pass 2's reverse (topmost-first) iteration order — not by a distance
+    // tiebreak in either polygon's favour.
     const polys: PolygonArea2DResult[] = [
       {
         id: 'poly-old',
         // Edge (-5,8)->(25,8): nearest point to (10,10) is (10,8), dist=2 < 10.
-        points: [{ x: -5, y: 8 }, { x: 25, y: 8 }, { x: 25, y: 30 }, { x: -5, y: 30 }],
+        // Centroid (naive avg of the 4 vertices): (10, 354) — dy=344 from
+        // click, well outside the pass-1 centroid box (dy < 20 required).
+        points: [{ x: -5, y: 8 }, { x: 25, y: 8 }, { x: 25, y: 700 }, { x: -5, y: 700 }],
         area: 1,
         perimeter: 1,
       },
       {
         id: 'poly-new',
         // Edge (-5,12)->(25,12): nearest point to (10,10) is (10,12), dist=2 < 10.
-        points: [{ x: -5, y: 12 }, { x: 25, y: 12 }, { x: 25, y: 30 }, { x: -5, y: 30 }],
+        // Centroid: (10, 356) — dy=346 from click, also outside the box.
+        points: [{ x: -5, y: 12 }, { x: 25, y: 12 }, { x: 25, y: 700 }, { x: -5, y: 700 }],
         area: 1,
         perimeter: 1,
       },
@@ -323,6 +339,53 @@ describe('useAnnotation2D hitTestAnnotations — top-most wins (#4195)', () => {
       `expected the genuine text hit to win over the cloud's padding-only hit, got ${JSON.stringify(lastSelected)}`,
     );
     assert.equal(lastSelected?.id, 'text-1');
+
+    unmount();
+  });
+
+  it('pass 2 genuine cross-type competition: nearest padded candidate wins, not the first-iterated type (#4198)', () => {
+    // Every other test either never reaches pass 2 (masked by a pass-1
+    // genuine hit) or has only one type present, so "first candidate"
+    // trivially equals "nearest candidate" and a first-wins bug is
+    // invisible. This test puts two DIFFERENT types in pass 2 at
+    // deliberately unequal distances, with the FARTHER one iterated
+    // FIRST, so only genuine nearest-distance resolution can produce the
+    // expected answer.
+    //
+    // Pass-2 iteration order is cloud -> polygon -> measure (each
+    // reversed), so a cloud is always checked before a measure. Click at
+    // (10, 18):
+    //  - Cloud rect (0,0)-(10,10): the click's x=10 is inside the bbox's
+    //    x-range [0,10] (dx=0), but y=18 is 8px below the bbox's y-range
+    //    [0,10] (dy=8), so padded distance = 8 (< HIT_TEST_RADIUS_PX=10 =>
+    //    a pass-2 candidate) and it is NOT a pass-1 genuine hit (y=18 is
+    //    outside [0,10]).
+    //  - Measure segment (0,17)-(20,17): nearest point to (10,18) is
+    //    (10,17), distance = 1 (< 10 => also a pass-2 candidate).
+    // No text and no polygon are present, so pass 1 has nothing to match
+    // and cannot mask this. The measure (dist=1) is genuinely nearer than
+    // the cloud (dist=8) despite being iterated second — the correct
+    // "nearest wins" resolution must return the measure. A "first
+    // candidate wins" bug would return the cloud instead, since clouds are
+    // always checked before measures.
+    const clouds: CloudAnnotation2D[] = [
+      { id: 'cloud-far', points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], color: '#E53935', label: '' },
+    ];
+    const measures: Measure2DResult[] = [
+      { id: 'measure-near', start: { x: 0, y: 17 }, end: { x: 20, y: 17 }, distance: 20 },
+    ];
+    mount({
+      textAnnotations2D: [], cloudAnnotations2D: clouds, measure2DResults: measures,
+    });
+
+    act(() => { click(10, 18); });
+
+    assert.equal(
+      lastSelected?.type,
+      'measure',
+      `expected the genuinely nearer measure (dist=1) to beat the farther, first-iterated cloud (dist=8), got ${JSON.stringify(lastSelected)}`,
+    );
+    assert.equal(lastSelected?.id, 'measure-near');
 
     unmount();
   });

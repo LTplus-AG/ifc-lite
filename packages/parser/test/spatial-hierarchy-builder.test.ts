@@ -713,6 +713,50 @@ describe('SpatialHierarchyBuilder', () => {
       expect(hierarchy.byStorey.get(3)).toEqual([5]);
       expect(hierarchy.elementToStorey.get(5)).toBe(3);
     });
+
+    // Regression for a corruption an adversarial review caught in this PR
+    // itself (#4310): Storey A is named by the wall's first-declared
+    // ContainsElements edge but has NO IfcRelAggregates edge at all - a
+    // malformed/orphan spatial node, unreachable from IfcProject, so
+    // buildNode never visits it and its own storey-assignment branch never
+    // runs. A first-declared check that only looks at "is this edge's target
+    // THIS storey" with no reachability notion drops the element entirely
+    // (elementToStorey has no entry) instead of falling through to the
+    // reachable, later-declared Storey B - silently losing data that the
+    // pre-#4248 code assigned correctly. First-declared must mean first
+    // among VIABLE (reachable) candidates, not first globally.
+    it('falls through to the reachable later-declared storey when the first-declared one is unreachable (#4310)', () => {
+      const strings = new StringTable();
+      const entities = new EntityTableBuilder(4, strings);
+      entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+      entities.add(2, 'IFCBUILDINGSTOREY', 'st0', 'Storey A', '', ''); // orphan: no Aggregates edge from anywhere
+      entities.add(3, 'IFCBUILDINGSTOREY', 'st1', 'Storey B', '', ''); // reachable
+      entities.add(4, 'IFCWALL', 'w0', 'Wall', '', '', true);
+
+      const relationships = new RelationshipGraphBuilder();
+      // Only Storey B is ever aggregated under Project - Storey A has no
+      // IfcRelAggregates edge to anything, so it is never visited.
+      relationships.addEdge(1, 3, RelationshipType.Aggregates, 10); // Project -> Storey B
+      relationships.addEdge(2, 4, RelationshipType.ContainsElements, 20); // Storey A contains Wall (first-declared, unreachable)
+      relationships.addEdge(3, 4, RelationshipType.ContainsElements, 21); // Storey B contains Wall (second-declared, reachable)
+
+      const hierarchy = new SpatialHierarchyBuilder().build(
+        entities.build(),
+        relationships.build(),
+        strings,
+        new Uint8Array(),
+        { byId: { get: () => undefined } },
+      );
+
+      // Storey A was never visited, so it has no entry in byStorey at all.
+      expect(hierarchy.byStorey.has(2)).toBe(false);
+      // The wall must NOT be dropped - it must fall through to the reachable
+      // Storey B, matching pre-#4248 behavior for this shape and NOT
+      // matching containedIn() (see the packages/query parity test for the
+      // documented remaining divergence in this exact unreachable-storey case).
+      expect(hierarchy.byStorey.get(3)).toEqual([4]);
+      expect(hierarchy.elementToStorey.get(4)).toBe(3);
+    });
   });
 
   it('leaves longName undefined on the source-less cache-restore path', () => {

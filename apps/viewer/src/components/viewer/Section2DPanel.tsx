@@ -58,15 +58,9 @@ export function Section2DPanel({
   mergedGeometry,
   computedIsolatedIds,
 }: Section2DPanelProps = {}): React.ReactElement | null {
-  // Both mounted unconditionally, before the `!panelVisible` early return
-  // below, so each restore path runs as soon as a model loads even with the
-  // 2D panel closed. `useDrawing2DPersistence` (#4159) restores/saves this
-  // model's markup from `localStorage`, keyed by content hash;
-  // `useDrawingMarkupRestoreOnLoad` (#4153) restores markup embedded in the
-  // IFC model itself. See the latter's module doc for why running both is
-  // safe: each only ever writes when the four markup arrays are still empty,
-  // so whichever source resolves first wins and the other backs off — no
-  // double-write, no duplication.
+  // Both mounted unconditionally, before `!panelVisible` below, so each
+  // restore runs even with the panel closed — safe together, see
+  // `useDrawingMarkupRestoreOnLoad`'s module doc (#4153 vs #4159).
   useDrawing2DPersistence();
   useDrawingMarkupRestoreOnLoad();
 

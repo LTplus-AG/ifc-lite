@@ -12,6 +12,7 @@ import { extractStackState } from './component-state.js';
 import { makeLayer } from './three-way.test.js';
 
 const FIRE = 'bsi::ifc::v5a::Pset_FireSafety::FireRating';
+const COMMENTS = 'bsi::ifc::v5a::Pset_FireSafety::Comments';
 
 const base = makeLayer(
   [
@@ -27,7 +28,10 @@ const base = makeLayer(
 function conflictingPlanInputs() {
   return {
     ancestor: [base],
-    ours: [base, makeLayer([{ path: 'wall-1', attributes: { [FIRE]: 'REI90' } }], 'ours')],
+    ours: [
+      base,
+      makeLayer([{ path: 'wall-1', attributes: { [FIRE]: 'REI90', [COMMENTS]: 'recheck Q3' } }], 'ours'),
+    ],
     theirs: [base, makeLayer([{ path: 'wall-1', attributes: { [FIRE]: 'REI120' } }], 'theirs')],
   };
 }
@@ -46,6 +50,10 @@ describe('applyResolutions', () => {
       { entity: 'wall-1', componentKey: 'pset:Pset_FireSafety', choice: 'ours' },
     ]);
 
+    // Adopting theirs must null the Comments attribute that ours added to
+    // this same component: theirs never had it, and per-attribute LWW
+    // composition would otherwise let it keep shining through from the
+    // layer beneath (opsForComponentChange's oursVisible nulling).
     const theirs = applyResolutions(plan, [
       { path: 'wall-1', componentKey: 'pset:Pset_FireSafety', choice: 'theirs' },
     ]);
@@ -54,7 +62,7 @@ describe('applyResolutions', () => {
         op: 'set-component',
         path: 'wall-1',
         componentKey: 'pset:Pset_FireSafety',
-        attributes: { [FIRE]: 'REI120' },
+        attributes: { [FIRE]: 'REI120', [COMMENTS]: null },
       },
     ]);
 

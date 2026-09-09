@@ -191,3 +191,48 @@ function isJsUnicodeProperty(pOrP: string, name: string): boolean {
     return false;
   }
 }
+
+/**
+ * Shallow ReDoS defence for `xs:pattern`, mirroring
+ * `packages/extensions/src/testing/runner.ts`'s `MAX_REGEX_PATTERN_LENGTH`
+ * / `hasRedosShape` guard for extension-supplied test regexes — same
+ * length cap, same catastrophic-backtracking shape check. That module
+ * cannot be imported here (no dependency edge between `@ifc-lite/ids`
+ * and `@ifc-lite/extensions`, and adding one is out of scope for this
+ * fix); this is a deliberate duplicate, not an independent design.
+ *
+ * An `xs:pattern` compiles to a live `RegExp` (`match-family.ts`'s
+ * `buildPatternRegex`) run against every property/attribute/entity-name
+ * value a spec checks — a document a user receives from a third party,
+ * not authored code. `(a+)+b` against `'a'.repeat(30)` measured ~4s on
+ * this machine; the growth is exponential in the subject length.
+ *
+ * Like the `runner.ts` original, this is a SHAPE HEURISTIC, not a
+ * complete defence: it catches the textbook `(...+)+` / `(...+)*` /
+ * `(.*)+` / `(.*)*` forms, not every catastrophic pattern a determined
+ * author could construct. A real fix (a Worker + timeout, or
+ * `re2-wasm`) is future work — see the issue this guard was filed
+ * against.
+ */
+export const MAX_XSD_PATTERN_LENGTH = 256;
+
+/** Quantifier inside a group, immediately followed by another quantifier. */
+export function hasCatastrophicBacktrackingShape(pattern: string): boolean {
+  return /\([^()]*[+*][^()]*\)\s*[+*{]/.test(pattern);
+}
+
+/**
+ * Returns a human-readable rejection reason when `pattern` is not safe
+ * to compile into a live `RegExp`, or `undefined` when it's fine. Pure
+ * — callers decide how to surface the reason (as a parse-time authoring
+ * error, in this package's case).
+ */
+export function unsafeXsdPatternReason(pattern: string): string | undefined {
+  if (pattern.length > MAX_XSD_PATTERN_LENGTH) {
+    return `exceeds the ${MAX_XSD_PATTERN_LENGTH}-character limit (${pattern.length} characters)`;
+  }
+  if (hasCatastrophicBacktrackingShape(pattern)) {
+    return 'has a catastrophic-backtracking shape (a quantified group directly wrapped in another quantifier)';
+  }
+  return undefined;
+}

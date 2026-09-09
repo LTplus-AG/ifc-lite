@@ -1,0 +1,11 @@
+---
+"@ifc-lite/ids": patch
+---
+
+Reject an `xs:pattern` facet that isn't safe to compile into a live `RegExp` at parse time, instead of silently letting it through to a match attempt. `constraints/match-family.ts`'s `buildPatternRegex` anchors every `xs:pattern` as `^(?:${pattern})$` with the `u` flag and runs it against every property/attribute/entity-name value a specification checks — a catastrophic-backtracking pattern like `(a+)+b` measured multi-second, exponentially-growing hangs on this machine against a plain 30-character subject, on the main thread, with no timeout.
+
+The guard (`constraints/xsd-regex.ts`'s `unsafeXsdPatternReason`, applied in `parser/xml-parser.ts`'s `parseConstraintElement`) is a deliberate duplicate of the length cap + catastrophic-backtracking shape check `packages/extensions/src/testing/runner.ts` already applies to extension-supplied test regexes (`MAX_REGEX_PATTERN_LENGTH` / `hasRedosShape`) — same 256-character cap, same `(...+)+` / `(...+)*` / `(.*)+` / `(.*)*` shape check. No dependency edge exists between `@ifc-lite/ids` and `@ifc-lite/extensions` today, and adding one is out of scope here; a shared internal helper both packages import would be worth extracting in a follow-up.
+
+**This is a shape heuristic, not a complete defence** — it catches the textbook catastrophic-backtracking forms, not every pattern a determined author could construct to blow up backtracking. The precedent it follows states the same limitation for the same reason: a real fix needs to run the regex off the main thread with a timeout, or use a linear-time engine (e.g. `re2-wasm`); neither is done here.
+
+A rejected pattern throws `IDSParseError` naming the offending pattern, at parse time — before an `IDSDocument` exists for the constraint-matcher, the entity-facet type resolver (`facets/entity-facet.ts`), or the audit (`audit/ifc-schema/index.ts`) to see it, since all three compile `xs:pattern` text into a live `RegExp` from the parsed constraint independently of each other. This surfaces the same way every other malformed-facet parse failure already does (an entity/attribute/property facet missing a required child element): a thrown, actionable error rather than a boolean a caller could mistake for "this pattern legitimately matches nothing."

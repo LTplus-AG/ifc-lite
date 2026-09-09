@@ -34,6 +34,7 @@ import {
   getChildText,
 } from './dom.js';
 import { parseRestriction } from './parse-restriction.js';
+import { unsafeXsdPatternReason } from '../constraints/xsd-regex.js';
 
 const IDS_NAMESPACE = 'http://standards.buildingsmart.org/IDS';
 const XS_NAMESPACE = 'http://www.w3.org/2001/XMLSchema';
@@ -576,7 +577,9 @@ function parseConstraintElement(el: Element): IDSConstraint {
     getChildElementNS(el, 'restriction', XS_NAMESPACE) ||
     getChildElement(el, 'restriction');
   if (restrictionEl) {
-    return parseRestriction(restrictionEl);
+    const constraint = parseRestriction(restrictionEl);
+    rejectUnsafePatterns(constraint);
+    return constraint;
   }
 
   // Check direct text content (simple case)
@@ -593,5 +596,38 @@ function parseConstraintElement(el: Element): IDSConstraint {
     type: 'simpleValue',
     value: '',
   };
+}
+
+/**
+ * Reject an `xs:pattern` that isn't safe to compile into a live
+ * `RegExp` (see `unsafeXsdPatternReason` for the length cap / shape
+ * check) with a loud, actionable `IDSParseError` naming the offending
+ * pattern — at parse time, before any consumer of the parsed
+ * `IDSDocument` (matching, the entity-facet type resolver, the audit)
+ * ever sees it. A dangerous pattern makes the IDS document itself
+ * broken; the author needs to know, the same way a facet missing a
+ * required child element already fails parsing above rather than
+ * silently matching nothing.
+ *
+ * `parseRestriction` folds sibling facets from the same `<xs:restriction>`
+ * onto `constraint.and` (see its docstring); `constraint.type === 'pattern'`
+ * is never itself among `and`'s siblings for a *different* primary type,
+ * but check both so a future restriction shape that pairs a pattern with
+ * another family doesn't slip past unchecked.
+ */
+function rejectUnsafePatterns(constraint: IDSConstraint): void {
+  if (constraint.type === 'pattern') {
+    const reason = unsafeXsdPatternReason(constraint.pattern);
+    if (reason) {
+      throw new IDSParseError(
+        `xs:pattern is not safe to compile: ${reason}`,
+        `pattern: "${constraint.pattern}"`
+      );
+    }
+  }
+  const siblings = constraint.type === 'simpleValue' ? undefined : constraint.and;
+  if (siblings) {
+    for (const sibling of siblings) rejectUnsafePatterns(sibling);
+  }
 }
 

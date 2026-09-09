@@ -566,6 +566,96 @@ describe('parseIDS — error handling', () => {
 });
 
 // ============================================================================
+// xs:pattern ReDoS guard
+//
+// `(a+)+b` is the textbook catastrophic-backtracking shape: compiled and
+// anchored as `^(?:(a+)+b)$` (constraints/match-family.ts's
+// `buildPatternRegex`), testing it against `'a'.repeat(30)` measured ~4s
+// on this machine — exponential in the subject length, synchronous,
+// main-thread. A malformed spec must fail loudly at parse time, before
+// any entity's property value is ever checked against it.
+// ============================================================================
+
+describe('parseIDS — xs:pattern ReDoS guard', () => {
+  function idsWithPattern(pattern: string): string {
+    return `<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <info><title>T</title></info>
+  <specifications>
+    <specification name="Test" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property>
+          <propertySet><simpleValue>Pset_Test</simpleValue></propertySet>
+          <baseName><simpleValue>Test</simpleValue></baseName>
+          <value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="${pattern}"/>
+            </xs:restriction>
+          </value>
+        </property>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>`;
+  }
+
+  it('rejects a catastrophic-backtracking pattern as a named, actionable IDSParseError — not a silent no-match', () => {
+    const xml = idsWithPattern('(a+)+b');
+    // The rejection is a thrown, actionable authoring error — not a
+    // boolean the caller could mistake for "this spec is fine, it just
+    // doesn't match anything" (which is what a silent `false` return
+    // would look like at every call site downstream).
+    expect(() => parseIDS(xml)).toThrow(IDSParseError);
+    expect(() => parseIDS(xml)).toThrow(/catastrophic-backtracking/);
+    // Names the offending pattern so the author can find and fix it.
+    try {
+      parseIDS(xml);
+      throw new Error('expected parseIDS to throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(IDSParseError);
+      const parseErr = err as IDSParseError;
+      expect(parseErr.details).toContain('(a+)+b');
+    }
+  });
+
+  it('rejects the catastrophic pattern immediately — the guard fires before any matching is attempted', () => {
+    const xml = idsWithPattern('(a+)+b');
+    const start = performance.now();
+    expect(() => parseIDS(xml)).toThrow(IDSParseError);
+    const elapsedMs = performance.now() - start;
+    // A guard that let this pattern through to a real match attempt
+    // against a moderately long value would cost seconds (measured
+    // ~4000ms at a 30-character subject on this machine); rejecting it
+    // at parse time is a length/shape check with no such cost.
+    expect(elapsedMs).toBeLessThan(500);
+  });
+
+  it('rejects an overlength pattern (over the 256-char cap) as a named IDSParseError', () => {
+    const longPattern = `${'(a|b)'.repeat(52)}`; // 260 chars, no catastrophic shape — the length cap alone must catch it
+    expect(longPattern.length).toBeGreaterThan(256);
+    const xml = idsWithPattern(longPattern);
+    expect(() => parseIDS(xml)).toThrow(IDSParseError);
+    expect(() => parseIDS(xml)).toThrow(/256-character limit/);
+  });
+
+  it('still parses and matches a benign pattern with a quantified alternation (no catastrophic shape)', () => {
+    const xml = idsWithPattern('(A|B)+');
+    const doc = parseIDS(xml);
+    const constraint = doc.specifications[0].requirements[0];
+    expect(constraint).toBeDefined();
+    // The whole point of a shape (not a blanket "no groups") heuristic:
+    // ordinary quantified alternation is unaffected.
+    const facet = doc.specifications[0].requirements[0].facet;
+    if (facet.type === 'property' && facet.value) {
+      expect(matchConstraint(facet.value, 'ABAB')).toBe(true);
+      expect(matchConstraint(facet.value, 'C')).toBe(false);
+    } else {
+      throw new Error('expected a property facet with a value constraint');
+    }
+  });
+});
 
 // ============================================================================
 // Parser -> matcher wiring for the string-length facets (#2746 follow-up)

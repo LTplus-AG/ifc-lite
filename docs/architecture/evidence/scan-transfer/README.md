@@ -80,3 +80,47 @@ as independent surveyed accuracy.
 
 This preparation makes real source bytes available for importer work while
 keeping registration evidence as an explicit unfinished deliverable.
+
+## Bounded alternatives check
+
+Three additional primary inventories were inspected before returning to CRAS:
+
+| Candidate | Observed artifacts | Decision for this appearance gate |
+| --- | --- | --- |
+| [SUM4Re, record 19678608](https://zenodo.org/records/19678608) | API declares CC BY 4.0 and lists 20 LAZ files. Although the description mentions target IFC models, this version's file list contains no IFC or check-point file. | Promising real sensor data; cannot infer an available pair from the description. |
+| [HePIC authors' repository](https://github.com/LTTM/Scan-to-BIM) and linked public Drive | Recursive listing contains 79 `.txt`/`.md` files. The downloaded dataset README declares CC BY-SA 4.0 and specifies XYZ, class name and instance number. No RGB or IFC is listed. | Useful semantic research; selected release is not an appearance-transfer pair. |
+| [Kladno, record 14221915](https://zenodo.org/records/14221915) | CC BY 4.0; one 6,513,510,452-byte LAS file, no IFC or check-point file. | A downstream predicted IFC is not independent paired ground truth. |
+
+These findings concern the inspected releases, not an assertion that authors
+possess no additional files. No requests were sent to authors.
+
+## Bounded spatial crop now available
+
+`/tmp/ifclite-public-captures/cras-spatial-crop.tsv` contains 41,697 unchanged
+RGB points within source-metre bounds `[5,14,-1]` to `[6.7,16.4,1.7]`, with their
+zero-based original data-row index prepended. It is 2,155,293 bytes. The adjacent
+JSON records its SHA-256, compressed byte-range digest and processing bounds.
+This is a spatial filter over 2,112,397 complete rows decoded from the first
+16 MiB of the archive, **not** a complete-archive spatial query. No downsampling
+was necessary. The box was chosen in scan coordinates, without claiming a
+matching IFC room or pre-solving registration. It is usable for RGB import and
+manual correspondence exploration; completeness, normals and registration remain
+unestablished. Preserve that limitation in any derived PLY or acceptance report.
+
+The accompanying `cras-spatial-crop.ply` is a 1.66 MB ASCII RGB PLY preserving
+source coordinates and row index. It carries no guessed normals. Orthographic
+inspection of this crop shows disconnected narrow surface patches near X=6.5 m,
+Z=1.35–1.67 m, rather than reliably identifiable building corners. Consequently
+no fitting or check-point coordinates have been fabricated for it. A manual
+registration session needs a broader acquisition containing matched structural
+features before this gate can advance.
+
+For that session, reserve at least four distributed structural intersections
+(e.g. wall-wall-floor corners or well-defined jamb/lintel corners) for fitting,
+and at least four different intersections for checks, including different heights
+and separated room locations. Freeze the two feature-ID lists and tolerance before
+solving. Store scan point indices or fitted local plane neighborhoods, IFC GlobalId
+and representation-derived corner definition, chosen position and selection
+uncertainty for each. Reject a feature if clutter or an unmodeled offset prevents
+an unambiguous match. Held-out manual agreement measures consistency with those
+correspondences; it does not establish survey-grade absolute accuracy.

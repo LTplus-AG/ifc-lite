@@ -175,6 +175,10 @@ Opening-bearing products, shared Body wrappers and ambiguous representations or
 materials remain excluded. Use **Use supported objects** to explicitly narrow a
 partially supported scope, then inspect the refreshed preview before applying.
 Export **IFC + images** to retain portable appearance on reopening or sharing.
+GPU-instanced occurrences use the same workflow: preview replaces only the chosen
+occurrence, and Undo restores its original shared instance. Finish any model
+placement preview and return to stacked levels before preparing a conversion.
+Models requiring CRS reprojection are excluded from this initial conversion path.
 
 Native `planAppearance` and `planPageAppearance` requests accept
 `representationPolicy: "evaluatedOccurrence"`; the omitted policy is `"preserve"`.
@@ -207,3 +211,15 @@ IFC Z-up snapshot to prepare one occurrence; reconstructing a GPU instance does
 not supply equivalent source provenance. See the
 [evaluated occurrence contract](../architecture/appearance-evaluated-occurrences.md)
 for units, frame restoration, and eligibility limits.
+
+The viewer passes that canonical source in renderer Y-up coordinates through
+`scene.placeAppearanceSource(mesh)` and then
+`AppearancePreview.begin(owner, { materializedOriginals, geometryItemRemaps })`.
+`getParts(owner)` includes retained canonical originals when the GPU instance is
+visible. Before committing, each history command calls `retainSource(owner)` and
+keeps the returned release function until that command is disposed. Multiple
+commands share one original occurrence; disposing an older command cannot restore
+it beneath a newer edit. `scene.appearanceSourceMesh(mesh)` recovers model-local
+geometry for publication without applying the registered model translation twice.
+These methods are optional on custom renderer adapters; the viewer refuses
+instance conversion if its frame conversion API is unavailable.

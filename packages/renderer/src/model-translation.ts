@@ -110,6 +110,21 @@ export class ModelTranslations {
     entry.offset = delta;
   }
 
+  /** Adopt detached appearance geometry already expressed in the placed frame. */
+  sourceFromPlaced(mesh: MeshData): MeshData {
+    const existing = this.meshes.get(mesh);
+    if (existing) return existing.source;
+    const delta = this.get(mesh.modelIndex);
+    const source: MeshData = { ...mesh, origin: difference(mesh.origin ?? ZERO, delta) };
+    if (mesh.localToWorld) source.localToWorld = mesh.localToWorld.map((value, index) =>
+      index === 3 ? value - delta[0] : index === 7 ? value - delta[1] : index === 11 ? value - delta[2] : value);
+    if (mesh.geometryAabb) source.geometryAabb = { ...mesh.geometryAabb,
+      min: difference(mesh.geometryAabb.min, delta), max: difference(mesh.geometryAabb.max, delta) };
+    const entry = { source, placed: mesh };
+    this.meshes.set(source, entry); this.meshes.set(mesh, entry);
+    return source;
+  }
+
   sourceMesh(mesh: MeshData): MeshData { return this.meshes.get(mesh)?.source ?? mesh; }
 
   forgetEntityBounds(id: number): void { this.releasedEntities.delete(id); }

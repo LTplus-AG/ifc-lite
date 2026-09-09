@@ -14,9 +14,12 @@ import { federationRegistry, type Renderer } from '@ifc-lite/renderer';
 import type { MeshData, GeometryResult } from '@ifc-lite/geometry';
 import { AppearancePreviewController } from '../../../../../../packages/renderer/src/appearance-preview.js';
 import { render, cleanup, advance } from '@/test/render.js';
+import { AppearanceStreamingHarness } from '@/test/appearance-streaming-harness.js';
+import { appearanceInstanceScene } from '@/test/appearance-instance-scene.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { texturedProductSource, texturedProductPng as png } from '@/test/textured-product-fixture.js';
 import { useViewerStore } from '@/store';
+import { modelIndices } from '@/lib/model-placement/model-indices.js';
 import { getGlobalRenderer, setGlobalRendererRef } from '@/hooks/useBCF';
 import { appearanceAssets, modelAppearanceAssets } from '@/lib/appearance/model-assets.js';
 import { prepareAppearanceSerialization } from '@/lib/appearance/serialization.js';
@@ -53,14 +56,16 @@ const source = new TextEncoder().encode(new TextDecoder().decode(texturedProduct
 ENDSEC;\nEND-ISO`));
 const wasmUrl = new URL('../../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
 
-for (const pageSource of [false, true]) for (const federated of [false, true]) test(`mounted native ${pageSource ? 'finite page' : 'image'} occurrence conversion preserves sibling and one Undo/Redo in ${federated ? 'federation' : 'one model'} (#4404)`, {
+for (const instanced of [false, true]) for (const pageSource of [false, true]) for (const federated of [false, true]) test(`mounted ${instanced ? 'instanced' : 'resident'} native ${pageSource ? 'finite page' : 'image'} occurrence conversion preserves sibling and one Undo/Redo in ${federated ? 'federation' : 'one model'} (#4404)`, {
   skip: !existsSync(wasmUrl) && 'Run pnpm build:wasm for the native appearance contract',
 }, async () => {
   const initial = useViewerStore.getState(), previousRenderer = getGlobalRenderer();
+  modelIndices(new Map());
   const workerDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'Worker');
   const oldDecode = globalThis.createImageBitmap;
   const canvasDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'OffscreenCanvas');
   let pdfKey: string | undefined;
+  let instanceScene: ReturnType<typeof appearanceInstanceScene> | undefined;
   const { default: init, IfcAPI } = await import('@ifc-lite/wasm');
   await init({ module_or_path: await readFile(wasmUrl) });
   const requests: AppearancePlan[] = [];
@@ -104,7 +109,8 @@ for (const pageSource of [false, true]) for (const federated of [false, true]) t
     const originals = [makeMesh(25), makeMesh(35)];
     const resident = new Map(originals.map(mesh => [mesh.expressId, [mesh] as readonly MeshData[]]));
     const bounds = { min: { x: 0, y: 0, z: -1 }, max: { x: 1, y: 0, z: 0 } };
-    const geometry: GeometryResult = { meshes: originals, totalTriangles: 2, totalVertices: 6,
+    const geometry: GeometryResult = { meshes: instanced ? [] : originals, totalTriangles: instanced ? 0 : 2, totalVertices: instanced ? 0 : 6,
+      ...(instanced ? { instancedGeometryAabbs: new Map(originals.map(mesh => [mesh.expressId, { min: [0,0,-1] as [number,number,number], max: [1,0,0] as [number,number,number] }])) } : {}),
       coordinateInfo: { originShift: { x: 0,y: 0,z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } };
     const model = { ...fixtureModel('evaluated'), idOffset, maxExpressId: 54, ifcDataStore: data, geometryResult: geometry, schemaVersion: 'IFC4' as const, loadState: 'complete' as const };
     const other = fixtureModel('other');
@@ -139,9 +145,18 @@ for (const pageSource of [false, true]) for (const federated of [false, true]) t
     Object.defineProperty(globalThis, 'Worker', { configurable: true, value: NativeWorker });
     const gpu = new AppearancePreviewController<number>({ capture: owner => ({ parts: resident.get(owner.expressId)!, resources: [] }),
       stage: () => [], install: (owner, parts) => { resident.set(owner.expressId, parts); }, release() {} });
-    const renderer = { getAppearancePreview: () => gpu, getScene: () => ({ getMeshDataPieces: (id: number) => resident.get(id) }), requestRender() {} } as unknown as Renderer;
+    if (instanced) instanceScene = appearanceInstanceScene(originals);
+    const activePreview = instanceScene?.preview ?? gpu;
+    const readParts = (id: number) => instanceScene
+      ? activePreview.getParts?.({ expressId: id, modelIndex: federated ? 1 : 0 }) ?? instanceScene.scene.getInstancedMeshDataPieces(id)
+      : resident.get(id);
+    const siblingBefore = readParts(globalId(35))!;
+    const renderer = { getAppearancePreview: () => activePreview,
+      getScene: () => instanceScene?.scene ?? { getMeshDataPieces: (id: number) => resident.get(id) }, requestRender() {},
+      getGPUDevice: () => instanceScene?.device, getPipeline: () => instanceScene?.pipeline, getCanvas: () => null, clearCaches() {},
+      getCamera: () => ({ fitBoundsAdaptive: () => ({ kind: 'compact' }), getPosition: () => ({ x:0,y:0,z:0 }), getTarget: () => ({x:0,y:0,z:0}), setSceneBounds() {}, setOrbitAnchorBounds() {}, reset() {} }) } as unknown as Renderer;
     setGlobalRendererRef({ current: renderer });
-    const ui = render(<StrictMode><AppearancePanel /></StrictMode>);
+    const ui = render(<StrictMode>{instanced && <AppearanceStreamingHarness renderer={renderer} />}<AppearancePanel /></StrictMode>);
     const until = async (predicate: () => boolean) => { for (let i=0;i<200&&!predicate();i++) await advance(10); assert.ok(predicate(), ui.textContent ?? 'UI stalled'); };
     await until(() => requests.length > 0);
     assert.equal(requests[0].conversions?.length ?? 0, 0);
@@ -153,38 +168,40 @@ for (const pageSource of [false, true]) for (const federated of [false, true]) t
     assert.match(ui.textContent ?? '', /1 objects will become mesh geometry/);
     const plan = requests.at(-1)!; assert.equal(plan.conversions?.length,1);
     assert.equal(view.getNewEntities().length,0,'preview publishes no IFC conversion');
-    assert.equal(resident.get(globalId(35))![0],originals[1]);
+    assert.deepEqual(readParts(globalId(35))!, siblingBefore);
     await act(async () => button('Compare original').click());
-    assert.equal(resident.get(selection)![0].geometryItemId,globalId(11));
+    assert.equal(readParts(selection)![0].geometryItemId,globalId(11));
     await act(async () => button('Show preview').click());
-    assert.equal(resident.get(selection)![0].geometryItemId,globalId(plan.conversions![0].geometryItemId));
+    assert.equal(readParts(selection)![0].geometryItemId,globalId(plan.conversions![0].geometryItemId));
     await act(async () => button('Apply').click());
     await until(() => (useViewerStore.getState().undoStacks.get('evaluated')?.length ?? 0) === 1);
     assert.equal(useViewerStore.getState().selectedEntityId,selection);
-    assert.equal(resident.get(selection)![0].geometryItemId,globalId(plan.conversions![0].geometryItemId));
+    assert.equal(readParts(selection)![0].geometryItemId,globalId(plan.conversions![0].geometryItemId));
     const serialized = prepareAppearanceSerialization('evaluated',data,view);
     const resourceMap = serialized.resources.exportResources().resources;
     const resources = [...resourceMap.values()];
-    if (pageSource) { assert.ok(resources.length > 0); assert.equal(resident.get(selection)![0].textureRef?.repeatS,false);
-      assert.ok(resourceMap.has(resident.get(selection)![0].textureRef!.url), 'the converted item binds its portable atlas'); }
+    if (pageSource) { assert.ok(resources.length > 0); assert.equal(readParts(selection)![0].textureRef?.repeatS,false);
+      assert.ok(resourceMap.has(readParts(selection)![0].textureRef!.url), 'the converted item binds its portable atlas'); }
     else assert.deepEqual(resources[0],png);
     const output = await new StepExporter(data,serialized.view).exportAsync({ schema: 'IFC4',applyMutations: true,includeGeometry: true });
     const text = typeof output.content === 'string' ? output.content : new TextDecoder().decode(output.content);
     assert.match(text,/#33=IFCSHAPEREPRESENTATION\(#2,'Body','MappedRepresentation',\(#22\)\)/);
     await act(async () => useViewerStore.getState().undo('evaluated'));
     assert.equal(view.getNewEntities().length,0);
-    assert.equal(resident.get(selection)![0].geometryItemId,globalId(11));
+    if (instanced) { assert.equal(instanceScene!.scene.getMeshDataPieces(selection), undefined); assert.equal(useViewerStore.getState().models.get('evaluated')!.geometryResult!.meshes.length, 0); }
+    assert.equal(readParts(selection)![0].geometryItemId,globalId(11));
     await act(async () => useViewerStore.getState().redo('evaluated'));
-    assert.equal(resident.get(selection)![0].geometryItemId,globalId(plan.conversions![0].geometryItemId));
-    assert.equal(resident.get(globalId(35))![0],originals[1]);
+    assert.equal(readParts(selection)![0].geometryItemId,globalId(plan.conversions![0].geometryItemId));
+    assert.deepEqual(readParts(globalId(35))!, siblingBefore);
     if(federated) assert.equal(useViewerStore.getState().models.get('other'),other);
   } finally {
-    cleanup(); setGlobalRendererRef({ current: previousRenderer });
+    cleanup(); instanceScene?.scene.clear(); setGlobalRendererRef({ current: previousRenderer });
     if(workerDescriptor) Object.defineProperty(globalThis,'Worker',workerDescriptor); else Reflect.deleteProperty(globalThis,'Worker');
     globalThis.createImageBitmap=oldDecode;
     if(canvasDescriptor) Object.defineProperty(globalThis,'OffscreenCanvas',canvasDescriptor); else Reflect.deleteProperty(globalThis,'OffscreenCanvas');
     if(pdfKey) removePdfDocument(pdfKey);
     useViewerStore.getState().clearAllMutations(); modelAppearanceAssets.clear(); appearanceAssets.clear(); federationRegistry.clear();
     useViewerStore.setState(initial);
+    modelIndices(new Map());
   }
 });

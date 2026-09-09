@@ -81,6 +81,10 @@ export interface SceneContents {
   getMeshes(): Mesh[];
   getBatchedMeshes(): BatchedMesh[];
   getMeshDataPieces(expressId: number, modelIndex?: number): MeshData[] | undefined;
+  /** Place a canonical model-local source in the current registered model frame. */
+  placeAppearanceSource?(mesh: MeshData): MeshData;
+  /** Recover model-local geometry before publishing an appearance edit to model state. */
+  appearanceSourceMesh?(mesh: MeshData): MeshData;
   /**
    * O(1) "is this id in the flat mesh map" — the presence question, without
    * `getMeshDataPieces`' per-entity extraction out of a colour-merged batch.
@@ -162,5 +166,7 @@ export interface SceneContents {
 
   // ─── Teardown ────────────────────────────────────────────────────────
   clearFlatGeometry(): void;
+  /** Preserve only exactly matching committed appearance owners during source rebuild. */
+  clearFlatGeometryForRebuild?(geometry: readonly MeshData[], models: ReadonlySet<number>): void;
   clear(): void;
 }

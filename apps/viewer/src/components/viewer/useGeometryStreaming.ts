@@ -19,10 +19,11 @@ import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
  */
 
 import { useEffect, useRef, type MutableRefObject } from 'react';
-import type { Renderer, SceneContents } from '@ifc-lite/renderer';
+import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo, DecodedInstance } from '@ifc-lite/geometry';
 import { decodeInstancedShard, NORMAL_COORD_THRESHOLD_M } from '@ifc-lite/geometry';
 import { toast } from '../ui/toast.js';
+import { reshapeSceneKeepingPresentInstanced } from './geometry-rebuild';
 import { runGpuUpload } from './gpu-upload-guard';
 import { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
 import { useColorOverlaySync } from './useColorOverlaySync.js';
@@ -183,34 +184,6 @@ function traceGeometrySync(message: string): void {
   console.log(`[GeomSync] ${message}`);
 }
 
-// Non-federated default: only the primary model (modelIndex 0, what
-// `addInstancedShard` has always defaulted new templates to) survives a
-// reshape when the caller has no per-model presence info.
-const DEFAULT_PRESENT_INSTANCED_MODEL_INDICES: ReadonlySet<number> = new Set([0]);
-
-/**
- * Reshape the scene for a non-streaming geometry change WITHOUT destroying
- * instanced templates that belong to a model still present (#2073). Clears
- * flat/batched geometry unconditionally (that always needs a full rebuild on
- * a reshape), then reconciles instanced ownership: any modelIndex the scene
- * still holds templates for but that is missing from
- * `presentInstancedModelIndices` gets torn down via
- * `removeInstancedTemplatesForModel` so a genuinely removed/hidden model's
- * repeated geometry does not linger on screen. See the
- * `presentInstancedModelIndices` param doc for the full rationale.
- */
-function reshapeSceneKeepingPresentInstanced(
-  scene: SceneContents,
-  presentInstancedModelIndices: ReadonlySet<number> | undefined,
-): void {
-  scene.clearFlatGeometry();
-  const present = presentInstancedModelIndices ?? DEFAULT_PRESENT_INSTANCED_MODEL_INDICES;
-  for (const modelIndex of scene.getInstancedModelIndices()) {
-    if (!present.has(modelIndex)) {
-      scene.removeInstancedTemplatesForModel(modelIndex);
-    }
-  }
-}
 
 export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   const {
@@ -366,7 +339,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     const isCleared = currentLength === 0;
 
     if (isCleared) {
-      reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices);
+      reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry);
       processedMeshIdsRef.current.clear();
       lastGeometryLengthRef.current = 0;
       lastGeometryRef.current = null;
@@ -381,7 +354,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       // disguises itself as "new file" by resetting lastGeometryLengthRef to 0
       // above — retention must still apply here, not just at the bump site,
       // or this branch would immediately undo it with a blind clear().
-      reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices);
+      reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry);
       scene.setEphemeralStreamingMode(releaseGeometryAfterFinalize);
       processedMeshIdsRef.current.clear();
       cameraFittedRef.current = false;
@@ -399,7 +372,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         // #2073: reconcile instanced ownership instead of a blind clear() so
         // a model that is STILL present keeps its instanced geometry; only
         // the model(s) missing from presentInstancedModelIndices lose theirs.
-        reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices);
+        reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry);
         scene.setEphemeralStreamingMode(releaseGeometryAfterFinalize);
         processedMeshIdsRef.current.clear();
         lastGeometryLengthRef.current = 0;
@@ -407,7 +380,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       } else {
         traceGeometrySync(`geometry rebuilt after replace currentLength=${currentLength} lastLength=${lastLength} releaseAfterFinalize=${releaseGeometryAfterFinalize}`);
         // New file while another was open — full reset
-        reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices);
+        reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry);
         scene.setEphemeralStreamingMode(releaseGeometryAfterFinalize);
         processedMeshIdsRef.current.clear();
         cameraFittedRef.current = false;
@@ -442,7 +415,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     // Visibility toggle while NOT streaming — array rebuilt from scratch
     if (isIncremental && !isStreaming && !prevIsStreamingRef.current) {
-      reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices);
+      reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry);
       processedMeshIdsRef.current.clear();
       lastGeometryLengthRef.current = 0;
       lastGeometryRef.current = geometry;

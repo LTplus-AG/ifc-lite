@@ -5,6 +5,10 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { equivalentAppearanceGeometry } from '@ifc-lite/renderer';
 import type { AppearanceChange, AppearancePreview, AppearanceToken, Renderer } from '@ifc-lite/renderer';
 import type { ViewerState } from '@/store';
+import { occurrenceSourceMesh, validateOccurrenceSourceBudget } from './occurrence-source-mesh';
+import { placementFrameKey, placementFrameCoordinateInfo } from '@/lib/model-placement/persistence';
+import { totalYupOffset } from '@/hooks/ingest/federationAlign';
+import { useViewerStore } from '@/store';
 import type { AppearancePlan } from './planner-types.js';
 
 // Renderer cache keys only. These never enter IFC entities or selection lanes.
@@ -27,6 +31,9 @@ export interface AppearancePreviewParts {
   modelIndex: number;
   parts: readonly MeshData[];
   geometryItemRemaps?: AppearanceChange['geometryItemRemaps'];
+  materializedOriginals?: readonly MeshData[];
+  instanced?: boolean;
+  validate?(): void;
 }
 
 /** Resolve source IFC item identity independently of model/federation offsets. */
@@ -37,6 +44,7 @@ export function bindAppearancePreview(
     targetCornerNormals: readonly number[], targetVertexCount: number) => MeshData,
   itemImages?: ReadonlyMap<number, AppearancePreviewImage>,
 ): AppearancePreviewParts[] {
+  validateOccurrenceSourceBudget(plan.conversions ?? []);
   const plannedItems = new Map(plan.items.map(item => [item.geometryItemId, item]));
   const conversions = new Map<number, NonNullable<AppearancePlan['conversions']>[number]>();
   for (const conversion of plan.conversions ?? []) {
@@ -59,7 +67,38 @@ export function bindAppearancePreview(
   }
   return [...byProduct].map(([productId, items]) => {
     const globalId = state.toGlobalId(modelId, productId);
-    const originals = renderer.getScene().getMeshDataPieces(globalId);
+    const scene = renderer.getScene();
+    let originals = scene.getMeshDataPieces(globalId);
+    let materializedOriginals: readonly MeshData[] | undefined;
+    let validate: (() => void) | undefined;
+    if (!originals?.length && scene.isInstancedEntity(globalId)) {
+      const model = state.models.get(modelId);
+      if (state.levelDisplayMode === 'exploded' || state.modelPlacement.preview) throw new Error('Finish repositioning and return to stacked levels before converting an occurrence.');
+      if (model?.federationAlignmentStatus === 'same-crs' || model?.federationAlignmentStatus === 'reprojected') throw new Error('Occurrence conversion in a realigned model requires its source transform. Choose the workspace anchor model.');
+      const frame = placementFrameKey(state);
+      const offset = totalYupOffset(placementFrameCoordinateInfo(state));
+      validate = () => {
+        const current = useViewerStore.getState();
+        const currentOffset = totalYupOffset(placementFrameCoordinateInfo(current));
+        if (current.models.get(modelId) !== model || current.modelPlacement !== state.modelPlacement
+          || currentOffset.x !== offset.x || currentOffset.y !== offset.y || currentOffset.z !== offset.z
+          || current.levelDisplayMode === 'exploded' || placementFrameKey(current) !== frame) {
+          throw new Error('The occurrence placement changed. Refresh the appearance preview.');
+        }
+      };
+      const index = [...items.values()].map(item => conversions.get(item.geometryItemId));
+      if (index.some(conversion => !conversion)) throw new Error('Native occurrence conversion provenance is missing.');
+      const place = scene.placeAppearanceSource?.bind(scene);
+      if (!place) throw new Error('This renderer does not support occurrence appearance conversion.');
+      originals = index.map(conversion => place(occurrenceSourceMesh(state, modelId, conversion!)));
+      const retained = renderer.getAppearancePreview().getParts?.({ expressId: globalId, modelIndex: originals[0].modelIndex! });
+      if (retained) {
+        if (retained.length !== originals.length || retained.some((part, i) => part.geometryItemId !== originals![i].geometryItemId
+          || !equivalentAppearanceGeometry(part, originals![i]))) throw new Error('The retained occurrence source frame changed.');
+        originals = [...retained];
+      }
+      materializedOriginals = originals;
+    }
     if (!originals?.length) throw new Error(`Geometry for IFC object #${productId} is not available. Reload the model and try again.`);
     const represented = new Set<number>();
     const modelIndex = originals[0].modelIndex ?? 0;
@@ -83,7 +122,7 @@ export function bindAppearancePreview(
         textureRef: { textureId: textureIdentity(image.bitmap), url: image.imageUri, repeatS: image.repeatS, repeatT: image.repeatT } };
     });
     if (represented.size !== items.size) throw new Error(`Some geometry for IFC object #${productId} is still loading.`);
-    return { globalId, modelIndex, parts, ...(geometryItemRemaps.length ? { geometryItemRemaps } : {}) };
+    return { globalId, modelIndex, parts, ...(materializedOriginals ? { materializedOriginals, validate } : {}), ...(geometryItemRemaps.length ? { geometryItemRemaps } : {}) };
   });
 }
 
@@ -98,7 +137,8 @@ export class AppearancePreviewSession {
     if (this.tokens.length) throw new Error('Discard the previous appearance preview before staging another.');
     try {
       for (const group of groups) {
-        const token = this.preview.begin({ expressId: group.globalId, modelIndex: group.modelIndex }, { geometryItemRemaps: group.geometryItemRemaps });
+        group.validate?.();
+        const token = this.preview.begin({ expressId: group.globalId, modelIndex: group.modelIndex }, { geometryItemRemaps: group.geometryItemRemaps, materializedOriginals: group.materializedOriginals });
         this.tokens.push(token);
         this.preview.update(token, group.parts);
       }
@@ -119,6 +159,17 @@ export class AppearancePreviewSession {
     if (failure) throw failure;
   }
 
+  retainSources(): () => void {
+    const releases: (() => void)[] = [];
+    try {
+      for (const group of this.stagedGroups) {
+        const release = this.preview.retainSource?.({ expressId: group.globalId, modelIndex: group.modelIndex });
+        if (release) releases.push(release);
+      }
+    } catch (error) { for (const release of releases.reverse()) release(); throw error; }
+    return () => { for (const release of releases) release(); };
+  }
+
   commit(): AppearanceChange[] {
     const changes = this.prepareCommit()();
     this.renderer.requestRender();
@@ -128,6 +179,7 @@ export class AppearancePreviewSession {
   /** Validate the entire preview before publishing any IFC/history changes. */
   prepareCommit(expected?: readonly AppearancePreviewParts[]): () => AppearanceChange[] {
     if (!this.tokens.length) throw new Error('The appearance preview is no longer active. Refresh it before applying.');
+    for (const group of this.stagedGroups) group.validate?.();
     if (expected && (expected.length !== this.stagedGroups.length || expected.some((group, i) => {
       const staged = this.stagedGroups[i];
       return group.globalId !== staged.globalId || group.modelIndex !== staged.modelIndex
@@ -153,7 +205,7 @@ export function appearanceHistoryParts(renderer: Renderer, changes: readonly App
     const expectedCurrent = direction === 'undo' ? change.after : change.before;
     // Primary-model meshes can omit modelIndex. Preview capture treats that as
     // model 0; history must use the same ownership rule when resolving them.
-    const current = renderer.getScene().getMeshDataPieces(change.owner.expressId)
+    const current = (renderer.getAppearancePreview().getParts?.(change.owner) ?? renderer.getScene().getMeshDataPieces(change.owner.expressId))
       ?.filter(mesh => (mesh.modelIndex ?? 0) === change.owner.modelIndex);
     if (!current || current.length !== target.length || current.length !== expectedCurrent.length) {
       throw new Error('Cannot restore appearance because the object geometry changed.');
@@ -174,6 +226,8 @@ export function appearanceHistoryParts(renderer: Renderer, changes: readonly App
         appearanceSource: appearance.appearanceSource, color: appearance.color, shadingColor: appearance.shadingColor,
         uvs: appearance.uvs, texture: appearance.texture, textureRef: appearance.textureRef, textureBitmap: appearance.textureBitmap };
     });
-    return { globalId: change.owner.expressId, modelIndex: change.owner.modelIndex, parts, ...(geometryItemRemaps?.length ? { geometryItemRemaps } : {}) };
+    const instanced = direction === 'undo' ? change.beforeInstanced : change.afterInstanced;
+    const materializedOriginals = change.beforeInstanced ? change.before : change.afterInstanced ? change.after : undefined;
+    return { globalId: change.owner.expressId, modelIndex: change.owner.modelIndex, parts, instanced, materializedOriginals, ...(geometryItemRemaps?.length ? { geometryItemRemaps } : {}) };
   });
 }

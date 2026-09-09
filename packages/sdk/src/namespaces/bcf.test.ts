@@ -175,3 +175,81 @@ describe('BCFNamespace.extractViewpointState — read-path symmetry (#4251)', ()
     expect(state.sectionPlane).toBeUndefined();
   });
 });
+
+// ============================================================================
+// sectionPlaneToClippingPlane / clippingPlaneToSectionPlane (#4265)
+//
+// Both wrappers forward straight to @ifc-lite/bcf's own object-shaped
+// ViewerSectionPlane/BCFClippingPlane/ViewerBounds — unlike
+// createViewpoint()/extractViewpointState() above, they do not adapt the
+// SDK's tuple/x-y-z public shapes, matching #4265's own repro which called
+// them with the library's shapes directly.
+// ============================================================================
+
+const LIBRARY_BOUNDS = {
+  min: { x: -10, y: -10, z: 0 },
+  max: { x: 10, y: 10, z: 10 },
+};
+
+describe('BCFNamespace.sectionPlaneToClippingPlane — bounds argument (#4265)', () => {
+  it('forwards bounds instead of dropping it, and returns real coordinates', async () => {
+    const ns = new BCFNamespace();
+    const sectionPlane = { axis: 'front' as const, position: 50, enabled: true, flipped: false };
+
+    const out = (await ns.sectionPlaneToClippingPlane(sectionPlane, LIBRARY_BOUNDS)) as {
+      location: { x: number; y: number; z: number };
+      direction: { x: number; y: number; z: number };
+    };
+
+    // viewer 'front' (Z axis) at 50% of [0,10] -> z=5, x/y at box center (0,0)
+    // -> BCF (x, -z, y) = { x: 0, y: -5, z: 0 }
+    expect(out.location).toEqual({ x: 0, y: -5, z: 0 });
+    expect(out.direction).toEqual({ x: 0, y: 1, z: 0 });
+  });
+
+  it('without bounds, a documented call throws inside @ifc-lite/bcf reading bounds.min', async () => {
+    const ns = new BCFNamespace();
+    const sectionPlane = { axis: 'front' as const, position: 50, enabled: true, flipped: false };
+
+    // @ts-expect-error — exercising the pre-fix call shape (bounds omitted)
+    await expect(ns.sectionPlaneToClippingPlane(sectionPlane)).rejects.toThrow();
+  });
+});
+
+describe('BCFNamespace.clippingPlaneToSectionPlane — bounds argument (#4265)', () => {
+  it('forwards bounds instead of dropping it, and returns real coordinates', async () => {
+    const ns = new BCFNamespace();
+    const clippingPlane = { location: { x: 0, y: 0, z: 5 }, direction: { x: 0, y: 0, z: -1 } };
+
+    const out = (await ns.clippingPlaneToSectionPlane(clippingPlane, LIBRARY_BOUNDS)) as {
+      axis: 'down' | 'front' | 'side';
+      position: number;
+      enabled: boolean;
+      flipped: boolean;
+    };
+
+    // BCF (0,0,5) -> viewer (0,5,0); direction (0,0,-1) -> viewer (0,-1,0)
+    // -> Y axis dominant ('down'); position = (5 - (-10)) / 20 * 100 = 75
+    expect(out).toEqual({ axis: 'down', position: 75, enabled: true, flipped: false });
+  });
+
+  it('without bounds, a documented call throws inside @ifc-lite/bcf reading bounds.max', async () => {
+    const ns = new BCFNamespace();
+    const clippingPlane = { location: { x: 0, y: 0, z: 5 }, direction: { x: 0, y: 0, z: -1 } };
+
+    // @ts-expect-error — exercising the pre-fix call shape (bounds omitted)
+    await expect(ns.clippingPlaneToSectionPlane(clippingPlane)).rejects.toThrow();
+  });
+});
+
+describe('sectionPlaneToClippingPlane <-> clippingPlaneToSectionPlane round-trip (#4265)', () => {
+  it('round-trips a section plane through both converters back to itself', async () => {
+    const ns = new BCFNamespace();
+    const original = { axis: 'side' as const, position: 30, enabled: true, flipped: false };
+
+    const clippingPlane = await ns.sectionPlaneToClippingPlane(original, LIBRARY_BOUNDS);
+    const roundTripped = await ns.clippingPlaneToSectionPlane(clippingPlane, LIBRARY_BOUNDS);
+
+    expect(roundTripped).toEqual(original);
+  });
+});

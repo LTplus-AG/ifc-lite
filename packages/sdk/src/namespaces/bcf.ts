@@ -302,16 +302,18 @@ export class BCFNamespace {
   // Section plane conversion
   // --------------------------------------------------------------------------
 
-  /** Convert viewer section plane to BCF clipping plane. */
-  async sectionPlaneToClippingPlane(section: unknown): Promise<unknown> {
+  /** Convert viewer section plane to BCF clipping plane. `bounds` is required
+   * — the library needs it to place an absolute location (#4265). */
+  async sectionPlaneToClippingPlane(section: unknown, bounds: unknown): Promise<unknown> {
     const mod = await loadBCF();
-    return (mod.sectionPlaneToClippingPlane as AnyFn)(section);
+    return (mod.sectionPlaneToClippingPlane as AnyFn)(section, bounds);
   }
 
-  /** Convert BCF clipping plane to viewer section plane. */
-  async clippingPlaneToSectionPlane(clippingPlane: unknown): Promise<unknown> {
+  /** Convert BCF clipping plane to viewer section plane. `bounds` is required
+   * — the library needs it to compute a percentage position (#4265). */
+  async clippingPlaneToSectionPlane(clippingPlane: unknown, bounds: unknown): Promise<unknown> {
     const mod = await loadBCF();
-    return (mod.clippingPlaneToSectionPlane as AnyFn)(clippingPlane);
+    return (mod.clippingPlaneToSectionPlane as AnyFn)(clippingPlane, bounds);
   }
 
   // --------------------------------------------------------------------------

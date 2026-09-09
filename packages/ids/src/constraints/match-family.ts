@@ -23,7 +23,6 @@ import {
   compareBoolean,
   compareNumeric,
   compareString,
-  numericEpsilon,
   isStrictNumericLiteral,
   isBooleanLiteral,
 } from './comparators.js';

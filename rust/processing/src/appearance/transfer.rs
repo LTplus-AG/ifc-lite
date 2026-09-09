@@ -118,7 +118,7 @@ pub fn plan_mesh_transfer(
     if !sufficient_counts {
         diagnostics.push("Insufficient operational registration evidence: application acceptance requires at least 4 fit and 4 spatially distributed held-out observations; this is a calculation-only plan".into());
     }
-    if !applicable {
+    if coverage.observed_samples == 0 {
         diagnostics
             .push("No observed target samples; no applicable mutation plan was produced".into());
     }

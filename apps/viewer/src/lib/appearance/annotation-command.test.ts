@@ -110,6 +110,7 @@ for (const federated of [false, true]) test(`native annotation commit survives u
     useViewerStore.getState().undo('annotation');
     assert.equal(meshes.size, 0);
     assert.ok(!data.spatialHierarchy.byStorey.get(40)?.includes(native.annotationId));
+    assert.ok(!data.spatialHierarchy.project.children[0].elements.includes(native.annotationId), 'Undo removes the annotation from the visible spatial tree');
     assert.equal(useViewerStore.getState().models.get('annotation')!.geometryResult!.meshes.length, 0);
     useViewerStore.getState().redo('annotation');
     assert.equal(meshes.size, 1);

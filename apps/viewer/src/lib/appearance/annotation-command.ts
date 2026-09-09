@@ -53,7 +53,12 @@ export async function commitAnnotationPlane(modelId: string, assetId: string, na
     else {
       hierarchy.elementToStorey.delete(native.annotationId);
       const list = hierarchy.byStorey.get(containerId);
-      if (list) hierarchy.byStorey.set(containerId, list.filter(id => id !== native.annotationId));
+      // The builder shares this array with the container's visible tree node.
+      // Replace its contents, not the map entry, or Undo leaves a ghost row.
+      if (list) {
+        const index = list.indexOf(native.annotationId);
+        if (index !== -1) list.splice(index, 1);
+      }
     }
   };
   try {

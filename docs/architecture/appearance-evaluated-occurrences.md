@@ -32,7 +32,8 @@ into their creation records before returning the plan.
 Unsupported cases remain diagnostics: opening-bearing products (including voids
 propagated through aggregates), StandardCase subclasses, shared Body/PDS wrappers,
 shape aspects, styled presentation layers, additional renderable representations,
-multiple meshes or ambiguous/inherited styles, material-layer slicing, existing
+multiple meshes or ambiguous/inherited styles, mapped-chain and nested geometry
+style overrides (even with matching colour), material-layer slicing, existing
 textures, and ExistingUv conversion. No alternate visible Body is added. These
 are first-slice limits, not claims that IFC cannot represent the cases.
 

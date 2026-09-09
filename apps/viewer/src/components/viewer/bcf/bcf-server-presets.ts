@@ -104,6 +104,11 @@ export const BCF_SERVER_PRESETS: readonly BcfServerPreset[] = [
     label: 'BIMcollab',
     baseUrl: '',
     authMethods: ['oauth', 'token'],
+    // BIMcollab's IdentityServer rejects a scope-less authorize request with
+    // `invalid_request`; measured on playground.bimcollab.com against a valid
+    // client, two requests differing only in this parameter. These three are
+    // what the Connection API implementation guide documents.
+    oauthScope: 'openid offline_access bcf',
     note: 'Your space URL, e.g. https://myspace.bimcollab.com. The same address you give Solibri or a BCF manager.',
   },
   {

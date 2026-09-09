@@ -3357,6 +3357,13 @@ export class Renderer {
     }
 
     /** Owned, reversible appearance edits; model geometry remains unchanged. */
+    /** Stage a new textured IFC owner; dispose an uncommitted preparation on every failure. */
+    prepareTexturedOwner(mesh: import('@ifc-lite/geometry').MeshData) {
+        if (!this.device.isInitialized() || !this.pipeline) throw new Error('Renderer is not initialized.');
+        const prepared = this.scene.prepareTexturedOwner(mesh, this.device.getDevice(), this.pipeline);
+        return { commit: () => { prepared.commit(); this.refreshPlacementBounds(); this.invalidateBVHCache(); this.requestRender(); }, dispose: prepared.dispose };
+    }
+
     getAppearancePreview(): AppearancePreview {
         if (!this.pipeline) throw new Error('Renderer must be initialized before previewing appearance');
         return this.scene.appearancePreview(this.device.getDevice(), this.pipeline);

@@ -22,6 +22,7 @@ import {
   isSpatialStructureType,
   isStoreyLikeSpatialType,
   findStoreyByElevation,
+  spatialLookups,
 } from '@ifc-lite/data';
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
@@ -128,13 +129,6 @@ export class SpatialHierarchyBuilder {
 
     const { byStorey, byBuilding, bySite, bySpace, storeyElevations, elementToStorey, elementToContainer } = ctx;
 
-    // Pre-build the element -> space lookup for O(1) getContainingSpace.
-    const elementToSpace = new Map<number, number>();
-    for (const [spaceId, elementIds] of bySpace) {
-      for (const elementId of elementIds) {
-        elementToSpace.set(elementId, spaceId);
-      }
-    }
 
     return {
       project: projectNode,
@@ -160,30 +154,7 @@ export class SpatialHierarchyBuilder {
         return findStoreyByElevation(storeyElevations, z);
       },
 
-      getContainingSpace(elementId: number): number | null {
-        return elementToSpace.get(elementId) ?? null;
-      },
-
-      getPath(elementId: number): SpatialNode[] {
-        const path: SpatialNode[] = [];
-        const findPath = (node: SpatialNode, targetId: number): boolean => {
-          path.push(node);
-          // Match the node itself (so a promoted space/zone resolves) or one of
-          // its contained elements.
-          if (node.expressId === targetId || node.elements.includes(targetId)) {
-            return true;
-          }
-          for (const child of node.children) {
-            if (findPath(child, targetId)) {
-              return true;
-            }
-          }
-          path.pop();
-          return false;
-        };
-        findPath(projectNode, elementId);
-        return path;
-      },
+      ...spatialLookups(projectNode, bySpace, elementToContainer),
     };
   }
 

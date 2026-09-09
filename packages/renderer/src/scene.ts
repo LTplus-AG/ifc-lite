@@ -265,6 +265,38 @@ export class Scene {
     });
   }
 
+  /** Prepare a new textured owner without exposing a drawable or pickable object. */
+  prepareTexturedOwner(mesh: MeshData, device: GPUDevice, pipeline: RenderPipeline) {
+    if (this.meshDataMap.has(mesh.expressId) || this.instancedEntityMap.has(mesh.expressId)) {
+      throw new Error('The new geometry owner already exists.');
+    }
+    if (!Scene.hasRenderableTexture(mesh)) throw new Error('A new textured owner requires an image and UVs.');
+    const placed = this.modelTranslations.placeMesh(mesh);
+    const count = this.texturedMeshes.length;
+    this.createTexturedMesh(placed, device, pipeline);
+    if (this.texturedMeshes.length !== count + 1) throw new Error('The new textured geometry is invalid.');
+    const drawable = this.texturedMeshes.pop()!;
+    let committed = false, disposed = false;
+    return {
+      commit: () => {
+        if (disposed) throw new Error('The prepared geometry was released.');
+        if (committed) return;
+        if (this.meshDataMap.has(mesh.expressId) || this.instancedEntityMap.has(mesh.expressId)) {
+          throw new Error('The new geometry owner was claimed while preparing.');
+        }
+        this.addMeshData(placed);
+        this.texturedMeshes.push(drawable);
+        committed = true;
+      },
+      dispose: () => {
+        if (disposed || committed) return;
+        disposed = true;
+        drawable.vertexBuffer.destroy(); drawable.indexBuffer.destroy(); drawable.uniformBuffer.destroy();
+        this.releaseTexturedMeshTexture(drawable);
+      },
+    };
+  }
+
   private texturedDevice?: GPUDevice;                               // #961: cached for textured-mesh re-upload on translate
   /** GPU-instancing: unique templates + per-occurrence buffers (fed by
    *  addInstancedShard). SLOT-STABLE and therefore SPARSE: a per-model removal

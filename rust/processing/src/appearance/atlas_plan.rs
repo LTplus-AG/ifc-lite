@@ -7,7 +7,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use sha2::{Digest, Sha256};
 
 pub(super) trait AtlasSampler {
-    fn begin_item(&mut self, source: &mut Source<'_>, product: u32, item: &AppearanceItem, points: &[[f64; 3]], triangles: &[[u32; 3]]) -> Result<(), String>;
+    fn begin_item(&mut self, source: &mut Source<'_>, product: u32, item: &AppearanceItem, points: &[[f64; 3]], triangles: &[[u32; 3]], mesh: &crate::types::mesh::MeshData) -> Result<(), String>;
+    fn end_item(&mut self) -> Result<(), String> { Ok(()) }
     fn reserve_pixels(&mut self, pixels: usize) -> Result<(), String>;
     fn sample(&mut self, item: &AppearanceItem, triangle: usize, weights: [f64; 3], interior: bool, background: [f64; 4]) -> Result<[u8; 4], String>;
 }
@@ -85,13 +86,14 @@ pub(super) fn plan_sampled_appearance(bytes: &[u8], spec: &AppearanceRequest, so
                     .ok_or_else(|| format!("Missing pixels for source IFC texture #{}", old.unwrap().texture_id))?, [image.repeat_s, image.repeat_t])),
                 None => None,
             };
-            sampler.begin_item(&mut source, product, item, &points, &triangles)?;
+            sampler.begin_item(&mut source, product, item, &points, &triangles, mesh)?;
             let atlas = page_atlas::bake(AtlasInput {
                 positions: &points, triangles: &triangles,
                 old_uv: old.zip(old_indices).map(|(map, indices)| (map.tex_coords.as_slice(), indices)),
                 old_raster, color: mesh.color, metres_per_unit: scale,
                 density,
             }, &mut remaining, &mut ItemShader { item, sampler })?;
+            sampler.end_item()?;
             let png = encode_png(&atlas, 96 * 1024 * 1024 - output_bytes)?;
             let uri = format!("textures/{:x}.png", Sha256::digest(&png));
             if image_uris.insert(uri.clone()) {

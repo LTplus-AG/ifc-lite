@@ -134,10 +134,10 @@ pub(super) fn bake(input: AtlasInput<'_>, remaining: &mut usize, shader: &mut im
     let mut uv = Vec::with_capacity(charts.len() * 3);
     for (triangle, c) in charts.iter().enumerate() {
         let mut old_uv = [[0.; 2]; 3];
-        for i in 0..3 {
+        for (i, old_corner) in old_uv.iter_mut().enumerate() {
             if let Some((coords, indices)) = input.old_uv {
                 let index = indices.get(triangle).ok_or("Missing source texture triangle")?[i];
-                old_uv[i] = coords.get(index.checked_sub(1).ok_or("Zero source texture index")? as usize).ok_or("Invalid source texture corner")?.map(f64::from);
+                *old_corner = coords.get(index.checked_sub(1).ok_or("Zero source texture index")? as usize).ok_or("Invalid source texture corner")?.map(f64::from);
             }
             uv.push([(c.origin[0] as f64 + c.xy[i][0]) / width as f64,
                 1. - (c.origin[1] as f64 + c.xy[i][1]) / height as f64]);

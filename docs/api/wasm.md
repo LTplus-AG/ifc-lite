@@ -741,3 +741,89 @@ least four fitting and four independently selected, spatially distributed held-o
 features at different heights, uncertainty review, frozen tolerance, and explicit
 assessment of unknown areas and thin-wall transfer. See the
 [real CRAS evidence](../architecture/evidence/scan-transfer/README.md).
+
+### Registered textured-mesh appearance transfer
+
+`IfcAPI.planMeshTransfer(content, requestJson, rgba)` invokes canonical Rust
+`plan_mesh_transfer` and returns the same `IFPA` metadata/PNG envelope as page
+composition. It is a native/worker foundation; the call does not enable an Apply
+button, move a model, approve registration accuracy, or infer IFC objects.
+
+The typed `MeshTransferRequest` contains:
+
+- `schema`, `sourceRevision`, `nextExpressId`, and nonempty `productIds`, with the
+  same effective-snapshot/allocator contract as ordinary appearance planning.
+- The immutable `registration` request and its `registrationSha256`. Rust repeats
+  the fit-only solve and checks the report digest. The target frame's asset SHA-256
+  must match the exact supplied IFC bytes. Holding out observations remains a host
+  acceptance policy; a mathematical fit alone never authorizes transfer.
+- Explicit `targetFromIfcWorld: {rotation, sourceAnchor, targetAnchor}`. This maps
+  canonical IFC world Z-up metres into the registration's frozen target frame as
+  `targetAnchor + rotation * (point - sourceAnchor)`. It must be proper rigid even
+  for identity. The host derives it from actual model/workspace placement; never
+  assume identity for federated or repositioned models. Unsupported reprojection
+  must be refused until the exact transform is available.
+- `sourceMesh: {meshOrdinal, positions, triangles, uvs, baseColorFactor, repeatS,
+  repeatT}`. Positions are original GLB scene **Y-up metres**, with node transforms
+  and the canonical mesh origin included, before workspace/model placement.
+  Triangles use zero-based indices; per-vertex UVs retain duplicated seam vertices
+  and the canonical decoder's texture transform. UVs are GLB image-top-down; Rust
+  performs the single V conversion at its existing IFC raster-sampler boundary.
+- `sourceImage` and existing target `sourceImages` use the page API's RGBA range
+  descriptors. The first slice requires one opaque source image and neutral
+  `[1,1,1,1]` base-color factor. Tint, alpha, missing old rasters and unsupported
+  target materials are explicit refusals, never silently discarded.
+- `texelsPerMetre`, positive `maxDistanceMetres` (at most 10), `minNormalDot` in
+  `(0,1]`, and `ambiguityDistanceMetres` between zero and maximum distance. These
+  are explicit sampling criteria, not estimated registration uncertainty.
+
+The host verifies that decoded mesh, UVs, sampler and pixels belong to the pinned
+original GLB. Rust receives decoded data and **does not verify original GLB bytes**.
+Only currently supported occurrence-owned direct `IfcTriangulatedFaceSet` targets
+are used; conversion policy is fixed to preserve. Canonical geometry, placement,
+triangle winding and source-corner correspondence are checked before sampling.
+Topology repair or inadequate coordinate precision prevents guessing provenance.
+
+The sampler uses the existing geometry BVH to find geometric-nearest triangles
+before filtering oriented normals. An incompatible nearest face becomes unknown;
+a farther compatible face cannot paint through it. Near-tied separate surfaces,
+duplicate overlaps and UV seams become unknown. Exact continuous shared edges
+between consistently oriented, nonoverlapping coplanar triangles remain one
+surface. Source UVs come from closest-point barycentrics. This is local surface
+matching, not camera visibility reconstruction or confidence learned from scans.
+
+Unknown samples preserve existing target albedo through the shared atlas/material
+planner. The output adds `transfer` metadata: `preparedSha256`,
+`registrationSha256`, the full `registration` fit/check residual report,
+`applicable`, aggregate `coverage`, per-item coverage and
+explicit diagnostics. Fewer than four fit or four held-out observations carries
+an insufficient-evidence diagnostic and `plan: null`, `applicable: false`, even
+when samples are observed. Operational acceptance additionally requires that the
+host verifies spatially distributed held-out observations and
+their accepted residuals. Counts distinguish observed, distance, normal and ambiguity
+outcomes. Area values are triangle-area-weighted estimates from centroid/interior
+texel observations; chart padding is excluded. They are not exact covered-area
+integrals. Entirely unknown output has `plan: null` and no PNG assets or mutations.
+Partial coverage remains a review decision; it is never hidden behind a percent.
+
+The prepared digest binds the entire typed request, IFC and supplied RGBA bytes.
+Its input is `ifclite-mesh-transfer-v1`, a zero byte, little-endian u64 IFC length,
+IFC bytes, little-endian u64 RGBA length, RGBA bytes, then compact typed request JSON.
+Invalidate prepared results after any source, frame, target, pixel or criterion
+change. Atomically adopt all assets and edits through the existing appearance
+transaction, retaining owner leases and rechecking snapshot/allocator revisions.
+
+JSON transport is capped at 64 MiB, source vertices/triangles at 200,000 each,
+source/target RGBA at 128 MiB combined and individual images at the existing
+16-megapixel/8192-axis limits. Transfer preparation, BVH traversal/candidate tests
+and atlas sampling share 64 million work units and a conservative 256-MiB
+transfer-allocation budget. Existing canonical geometry, atlas pixel, PNG and
+IFPA output caps also apply. These are separate bounded domains, not a claim
+about exact whole-process peak memory. Run inside an owned cancellable worker;
+termination discards the pending result, and any exhausted budget returns an
+error rather than partial success. Input caps are maxima, not guaranteed capacity
+at every combination of density, overlap and geometry complexity.
+
+[Independent transfer evidence](../architecture/evidence/mesh-transfer/README.md)
+checks a controlled IFC/PNG roundtrip. No real scan-to-BIM accuracy is claimed
+without valid spatially distributed held-out correspondences.

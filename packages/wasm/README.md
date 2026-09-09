@@ -147,3 +147,10 @@ pairs and returns a proper rigid transform plus separate fitting and held-out
 residuals. Frames and asset identities are bound into the report; the call does
 not align a loaded model or approve scan accuracy. See the
 [registration contract](../../docs/api/wasm.md#scan-correspondence-registration).
+
+`IfcAPI.planMeshTransfer` composes registered opaque textured-mesh observations
+onto supported direct IFC tessellations using the shared atlas planner. Unknown
+samples retain existing target albedo; the IFPA response includes explicit
+coverage and frozen-input bindings. Entirely unknown transfer has no applicable
+plan. See the [transfer contract](../../docs/api/wasm.md#registered-textured-mesh-appearance-transfer)
+for source identity, coordinate frames, budgets and host acceptance requirements.

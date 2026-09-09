@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 
 struct PageSampler<'a> { page: Raster<'a>, triangle: Option<usize>, uv: [[f64; 2]; 3] }
 impl AtlasSampler for PageSampler<'_> {
-    fn begin_item(&mut self, _: &mut Source<'_>, _: u32, _: &AppearanceItem, _: &[[f64; 3]], _: &[[u32; 3]]) -> Result<(), String> {
+    fn begin_item(&mut self, _: &mut Source<'_>, _: u32, _: &AppearanceItem, _: &[[f64; 3]], _: &[[u32; 3]], _: &crate::types::mesh::MeshData) -> Result<(), String> {
         self.triangle = None; Ok(())
     }
     fn reserve_pixels(&mut self, _: usize) -> Result<(), String> { Ok(()) }

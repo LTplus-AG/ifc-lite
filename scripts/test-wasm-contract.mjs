@@ -9,6 +9,7 @@
  * Focus on structural invariants, not exact values.
  */
 
+import { checkMeshTransferContract } from './lib/wasm-mesh-transfer-contract.mjs';
 import { checkScanRegistrationContract } from './lib/wasm-scan-registration-contract.mjs';
 import { runColdLoadContracts } from './lib/wasm-cold-load-contracts.mjs';
 import { readFileSync, existsSync } from 'fs';
@@ -118,6 +119,7 @@ function test(name, fn) {
   }
 }
 
+test('registered mesh transfer reports unknown coverage and binds prepared assets (#4381)', () => checkMeshTransferContract(IfcAPI));
 test('proper rigid scan registration preserves held-out independence and frame binding (#4381)', () => checkScanRegistrationContract(IfcAPI));
 // ===== IfcAPI initialization =====
 console.log('📋 IfcAPI initialization');

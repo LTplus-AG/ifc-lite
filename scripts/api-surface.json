@@ -208,6 +208,7 @@
     "ExclusionSet: type",
     "GroupOptions: interface",
     "Mat4: type",
+    "NonFiniteToleranceError: class",
     "RuleCoverageOutcome: type",
     "SEVERITY_RANK: const",
     "TOUCHING_EPSILON: const",

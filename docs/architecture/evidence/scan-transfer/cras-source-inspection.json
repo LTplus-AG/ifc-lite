@@ -1,0 +1,186 @@
+{
+  "schema": "IFC2X3",
+  "unit_scale_to_metres": 1,
+  "entities": 1328372,
+  "classes": {
+    "IfcWall": 61,
+    "IfcSlab": 5,
+    "IfcDoor": 6,
+    "IfcWindow": 44,
+    "IfcBuildingStorey": 2,
+    "IfcBuildingElementProxy": 1
+  },
+  "map_conversion_count": null,
+  "spatial": [
+    {
+      "type": "IfcSite",
+      "id": 113,
+      "Name": "Default",
+      "world_placement_ifc_units": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "type": "IfcBuilding",
+      "id": 99,
+      "Name": "",
+      "world_placement_ifc_units": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "type": "IfcBuildingStorey",
+      "id": 102,
+      "Name": "Terreno",
+      "world_placement_ifc_units": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "type": "IfcBuildingStorey",
+      "id": 106,
+      "Name": "T\u00c9RREO",
+      "world_placement_ifc_units": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.1
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    }
+  ],
+  "prefix": {
+    "rows": 137887,
+    "bounds_metres": [
+      [
+        0.2245,
+        0.8245,
+        -2.0665
+      ],
+      [
+        6.6985,
+        16.3945,
+        1.6795
+      ]
+    ],
+    "rgb_range": [
+      0.0,
+      226.0
+    ],
+    "labels": [
+      0.0
+    ],
+    "sha256": "17b1487b084d51ce2e05c41a16ffb2cffa6d3c226450761e3b9f4a61b94bf103"
+  },
+  "record": "https://zenodo.org/records/7948116",
+  "license": "CC-BY-4.0",
+  "gate": "not-established-independent-registration",
+  "ifc": {
+    "bytes": 67553572,
+    "sha256": "a83e573037b0c4cbba30f1167ed96cda52eb51859091d2c7d47cec7a59e1a36b",
+    "md5_verified": "e20658f0d2d9e13c62363169b7fa3193"
+  },
+  "scan_archive": {
+    "bytes": 4267281425,
+    "published_md5_unverified": "e5ecedab8f2a1d1f91861a3aec028a72",
+    "member": "CRASLAB_annotated.asc",
+    "uncompressed_bytes": 26752658348,
+    "complete_download": false
+  },
+  "prefix_compressed_range": {
+    "first": 0,
+    "last": 1048575,
+    "sha256": "c6a66bf3df477f5a635028948951fe37a76fcc86dcf38a331e63e7150a2b1c46"
+  },
+  "inspection": "IfcOpenShell0.8.5; numpy2.2.6; source rows unchanged; incomplete final line discarded",
+  "source_to_ifc_metres": null,
+  "independent_check_points": []
+}

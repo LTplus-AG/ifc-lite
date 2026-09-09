@@ -147,3 +147,6 @@ is limited to 200,000 triangles and 200,000 position/UV rows. The source surface
 preview is also limited to 200,000 triangles. UVs must lie within `[0,1]`; tinted
 or translucent material factors must first be baked into the source image.
 Creation is available outside shared rooms; the saved IFC can then be shared.
+
+For implementation status, shared workflow boundaries and future scan/PDF options,
+see the [appearance roadmap](../architecture/appearance-roadmap.md).

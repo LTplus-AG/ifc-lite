@@ -1,3 +1,6 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 // Manual real-browser acceptance; requires a running viewer and downloaded public fixtures.
 import {chromium} from '@playwright/test';
 import fs from 'node:fs';

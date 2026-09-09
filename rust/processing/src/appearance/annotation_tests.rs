@@ -107,3 +107,24 @@ fn issue_4308_containment_accepts_spatial_elements_beyond_spatial_structure_elem
         "IFCEXTERNALSPATIALELEMENT('0Storey0000000000000000',$,'Outside',$,$,#11,$,$,.NOTDEFINED.)");
     assert!(plan_annotation_plane(source.as_bytes(),&request).is_ok());
 }
+
+#[test]
+fn issue_4308_ifc4x3_emits_predefined_type_and_point_tag_slots() {
+    let (source,mut request)=fixture();
+    let source=source.replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))");
+    request.schema="IFC4X3".into();
+    let result=plan_annotation_plane(source.as_bytes(),&request).unwrap();
+    let exported=apply(&source,&result.plan);
+    let mut decoded=Source::new(exported.as_bytes()).unwrap();
+    let annotation=decoded.entity(result.annotation_id).unwrap();
+    assert_eq!(annotation.attributes.len(),8);
+    assert!(matches!(annotation.get(7),Some(A::Enum(kind)) if kind=="USERDEFINED"));
+    let point_id=decoded.entity(result.geometry_item_id).unwrap().get_ref(0).unwrap();
+    let points=decoded.entity(point_id).unwrap();
+    assert_eq!(points.attributes.len(),2);
+    assert!(matches!(points.get(1),Some(A::Null)));
+    let restored=crate::process_geometry(exported.as_bytes());
+    let mesh=restored.meshes.iter().find(|m|m.express_id==result.annotation_id).unwrap();
+    assert_eq!(mesh.positions,result.mesh.positions);
+    assert_eq!(mesh.uvs,result.mesh.uvs);
+}

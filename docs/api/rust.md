@@ -885,3 +885,6 @@ limited to 1024 bytes, revisions to 4096 bytes, and URI validation is shared wit
 image appearance planning. The method returns no live mutations or partial result
 on failure. Its fresh containment relation targets `IfcSpatialElement`, not only
 `IfcSpatialStructureElement`, matching IFC4/IFC4X3 EXPRESS.
+
+IFC4X3 creation also emits `IfcAnnotation.PredefinedType=USERDEFINED` and the
+optional `IfcCartesianPointList3D.TagList` slot; IFC4 omits these schema additions.

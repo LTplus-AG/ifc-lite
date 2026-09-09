@@ -103,7 +103,9 @@ pub fn plan_annotation_plane(bytes: &[u8], request: &AnnotationPlaneRequest) -> 
     let direction=author.add(IfcType::IfcDirection,vec![vector(u)]);
     let axes=author.add(IfcType::IfcAxis2Placement3D,vec![A::EntityRef(point),A::EntityRef(axis),A::EntityRef(direction)]);
     let placement=author.add(IfcType::IfcLocalPlacement,vec![container.get_ref(5).map_or(A::Null,A::EntityRef),A::EntityRef(axes)]);
-    let points=author.add(IfcType::IfcCartesianPointList3D,vec![A::List([[0.,0.,0.],[size[0],0.,0.],[size[0],size[1],0.],[0.,size[1],0.]].into_iter().map(vector).collect())]);
+    let mut point_attributes=vec![A::List([[0.,0.,0.],[size[0],0.,0.],[size[0],size[1],0.],[0.,size[1],0.]].into_iter().map(vector).collect())];
+    if r.schema=="IFC4X3" { point_attributes.push(A::Null); } // TagList, IFC4X3 only.
+    let points=author.add(IfcType::IfcCartesianPointList3D,point_attributes);
     let triangles=[[1,2,3],[1,3,4]];
     let index_value=||A::List(triangles.into_iter().map(|row|A::List(row.into_iter().map(A::Integer).collect())).collect());
     let item=author.add(IfcType::IfcTriangulatedFaceSet,vec![A::EntityRef(points),A::Null,A::Enum("F".into()),index_value(),A::Null]);
@@ -119,8 +121,10 @@ pub fn plan_annotation_plane(bytes: &[u8], request: &AnnotationPlaneRequest) -> 
     let shape=author.add(IfcType::IfcShapeRepresentation,vec![A::EntityRef(contexts[0]),A::String("Annotation".into()),A::String("Tessellation".into()),refs(&[item])]);
     let product_shape=author.add(IfcType::IfcProductDefinitionShape,vec![A::Null,A::Null,refs(&[shape])]);
     let owner=project.get_ref(1).map_or(A::Null,A::EntityRef);
-    let annotation=author.add(IfcType::IfcAnnotation,vec![A::String(r.global_id.clone()),owner.clone(),A::String(r.name.clone()),A::Null,
-        A::String("IfcLite:RegisteredImage".into()),A::EntityRef(placement),A::EntityRef(product_shape)]);
+    let mut annotation_attributes=vec![A::String(r.global_id.clone()),owner.clone(),A::String(r.name.clone()),A::Null,
+        A::String("IfcLite:RegisteredImage".into()),A::EntityRef(placement),A::EntityRef(product_shape)];
+    if r.schema=="IFC4X3" { annotation_attributes.push(A::Enum("USERDEFINED".into())); }
+    let annotation=author.add(IfcType::IfcAnnotation,annotation_attributes);
     author.add(IfcType::IfcRelContainedInSpatialStructure,vec![A::String(r.containment_global_id.clone()),owner,A::Null,A::Null,refs(&[annotation]),A::EntityRef(r.container_id)]);
     source.decoder.inject_shared_cache(&author.entities);
     let mut styles=crate::prepass::ResolvedPrepass::default();

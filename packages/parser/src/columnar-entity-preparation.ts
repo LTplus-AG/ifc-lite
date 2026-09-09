@@ -7,11 +7,12 @@ import type { ScannedEntityColumns } from './entity-refs-from-index.js';
 import { compactEntityIndexFromColumns } from './compact-entity-index-transport.js';
 import { buildCompactEntityIndexAsync } from './compact-entity-index.js';
 import { selectEntityColumns } from './select-entity-columns.js';
-import { getInheritanceChain } from './ifc-schema.js';
+import { getInheritanceChain, isKnownType } from './ifc-schema.js';
 import {
   GEOMETRY_TYPES, SPATIAL_TYPES, HIERARCHY_REL_TYPES, PROPERTY_REL_TYPES,
   PROPERTY_ENTITY_TYPES, PROPERTY_CONTAINER_TYPES, ASSOCIATION_REL_TYPES, isIfcTypeLikeEntity,
 } from './columnar-parser-indexes.js';
+import { buildDropCensus, type DropCensus, type DropCategory } from './drop-census.js';
 
 export type ColumnarEntityInput = EntityRef[] | ScannedEntityColumns;
 
@@ -126,11 +127,52 @@ export async function prepareColumnarEntities(
   const otherRelevantRefs: EntityRef[] = [];
   const groupRefs: EntityRef[] = [];
 
+  // Semantic drop census (#4208) accumulators. Labels mirror the CAT_*
+  // constants above by index — keep the two in sync.
+  const CAT_LABELS: DropCategory[] = [
+    'skip', 'spatial', 'geometry', 'hierarchy-rel', 'property-rel',
+    'property-entity', 'association-rel', 'type-object', 'relevant', 'group',
+  ];
+  const censusScannedByType = new Map<string, number>();
+  const censusCategoryByType = new Map<string, DropCategory>();
+  const censusKnownByType = new Map<string, boolean>();
+  const censusRootDescendantByType = new Map<string, boolean>();
+  const censusRelSeenTypes = new Set<string>();
+  const censusRelUnindexedTypes = new Set<string>();
+
   for (let i = 0; i < count; i++) {
     if ((i & 0x3FF) === 0) await yieldIfNeeded();
     const type = refs ? refs[i].type : columns!.typeStrings[columns!.typeIndices[i]];
     const id = refs ? refs[i].expressId : columns!.expressIds[i];
     const cat = getCategory(type);
+
+    // Every scanned record is counted for the drop census regardless of
+    // deferral or CAT_SKIP — a census that only sees what survived
+    // categorisation couldn't tell "dropped" from "never scanned".
+    const censusTypeKey = getTypeUpper(type);
+    const prevScanned = censusScannedByType.get(censusTypeKey);
+    if (prevScanned === undefined) {
+      censusScannedByType.set(censusTypeKey, 1);
+      censusCategoryByType.set(censusTypeKey, CAT_LABELS[cat]);
+      censusKnownByType.set(censusTypeKey, isKnownType(censusTypeKey));
+      // Same inheritance walk `isSubtypeOfAny` uses above, reused here to
+      // tell "a resource record with no GlobalId" (never IfcRoot) apart
+      // from "an entity with its own identity that still got dropped" —
+      // see ClassCensusEntry.isRootDescendant in drop-census.ts.
+      censusRootDescendantByType.set(
+        censusTypeKey,
+        getInheritanceChain(censusTypeKey).some(ancestor => ancestor.toUpperCase() === 'IFCROOT'),
+      );
+      if (censusTypeKey.startsWith('IFCREL')) {
+        censusRelSeenTypes.add(censusTypeKey);
+        if (cat !== CAT_HIERARCHY_REL && cat !== CAT_PROPERTY_REL && cat !== CAT_ASSOCIATION_REL) {
+          censusRelUnindexedTypes.add(censusTypeKey);
+        }
+      }
+    } else {
+      censusScannedByType.set(censusTypeKey, prevScanned + 1);
+    }
+
     const atom = cat === CAT_PROPERTY_ENTITY && !PROPERTY_CONTAINER_TYPES.has(getTypeUpper(type));
     if (!deferPropertyAtomIndex || !atom) {
       const typeKey = getTypeUpper(type);
@@ -167,8 +209,17 @@ export async function prepareColumnarEntities(
   const isPrimary = (type: string) => !deferPropertyAtomIndex
     || getCategory(type) !== CAT_PROPERTY_ENTITY || PROPERTY_CONTAINER_TYPES.has(getTypeUpper(type));
   const indexedCount = count - (deferPropertyAtomIndex ? propertyAtomCount : 0);
+  const dropCensus: DropCensus = buildDropCensus({
+    scannedByType: censusScannedByType,
+    categoryByType: censusCategoryByType,
+    knownByType: censusKnownByType,
+    rootDescendantByType: censusRootDescendantByType,
+    alwaysRelevantTypes: RELEVANT_NON_PRODUCT_HELPERS,
+    relSeenTypes: censusRelSeenTypes,
+    relUnindexedTypes: censusRelUnindexedTypes,
+  });
   return {
-    byType, getTypeUpper, indexedCount, propertyAtomCount,
+    byType, getTypeUpper, indexedCount, propertyAtomCount, dropCensus,
     spatialRefs, geometryRefs, relationshipRefs, propertyRelRefs,
     propertyContainerRefs, associationRelRefs, typeObjectRefs, otherRelevantRefs, groupRefs,
     async buildPrimaryIndex() {

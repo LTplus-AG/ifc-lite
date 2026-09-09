@@ -40,7 +40,7 @@ async function setup(federated = false) {
     coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } };
   if (federated) federationRegistry.registerModel('other', 100);
   const idOffset = federationRegistry.registerModel('capture', 53);
-  const model = { ...fixtureModel('capture'), schemaVersion: 'IFC4', idOffset, maxExpressId: 53, ifcDataStore: data, geometryResult: geometry };
+  const model = { ...fixtureModel('capture'), schemaVersion: 'IFC4' as const, idOffset, maxExpressId: 53, ifcDataStore: data, geometryResult: geometry };
   const other = fixtureModel('other');
   useViewerStore.setState({ models: new Map([...(federated ? [['other', other] as const] : []), ['capture', model]]), activeModelId: 'capture',
     geometryResult: geometry, mutationViews: new Map([['capture', view]]), storeEditors: new Map([['capture', editor]]),

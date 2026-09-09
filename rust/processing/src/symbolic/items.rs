@@ -13,7 +13,7 @@ use super::primitives::{SymbolicCircle, SymbolicPolyline};
 use super::text::extract_text_literal;
 use super::transform::{
     circle_center, compose_transforms, parse_axis2_placement_2d,
-    parse_cartesian_transformation_operator, Transform2D,
+    parse_cartesian_transformation_operator, push_finite_point, Transform2D,
 };
 use super::trimmed_curve::extract_trimmed_curve;
 
@@ -162,10 +162,7 @@ pub(super) fn extract_symbolic_item_inner(
                         let (wx, wy) = transform.transform_point(local_x, local_y);
                         // Plan pair incl. the Y-flip to match section-cut handedness.
                         let (x, y) = rebase.plan(wx, wy);
-                        if x.is_finite() && y.is_finite() {
-                            points.push(x);
-                            points.push(y);
-                        }
+                        push_finite_point(&mut points, x, y);
                     }
                     if points.len() >= 4 {
                         let n = points.len();
@@ -202,10 +199,7 @@ pub(super) fn extract_symbolic_item_inner(
                 }
                 let (wx, wy) = transform.transform_point(local_x, local_y);
                 let (x, y) = rebase.plan(wx, wy);
-                if x.is_finite() && y.is_finite() {
-                    points.push(x);
-                    points.push(y);
-                }
+                push_finite_point(&mut points, x, y);
             }
             if points.len() >= 4 {
                 let n = points.len();
@@ -259,10 +253,7 @@ pub(super) fn extract_symbolic_item_inner(
                 let ly = cy_local + semi_b * t.sin();
                 let (wx, wy) = transform.transform_point(lx, ly);
                 let (x, y) = rebase.plan(wx, wy);
-                if x.is_finite() && y.is_finite() {
-                    points.push(x);
-                    points.push(y);
-                }
+                push_finite_point(&mut points, x, y);
             }
             if points.len() >= 4 {
                 out.push_polyline(SymbolicPolyline {

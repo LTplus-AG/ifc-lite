@@ -40,6 +40,7 @@ mod site_local;
 
 pub use quick_metadata::is_quick_spatial_type_ci;
 pub use site_local::convert_mesh_to_site_local;
+pub(crate) use site_local::site_local_rotation_invalidates_captured_transforms;
 
 use jobs::{build_color_updates_for_jobs, process_entity_job};
 

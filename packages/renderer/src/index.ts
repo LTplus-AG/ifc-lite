@@ -171,6 +171,8 @@ import { ShadowPass, resolveShadowMapResolution } from './shadow-pass.js';
 import { fitSunLightMatrix, cameraFrustumFocusCorners } from './shadow-light-matrix.js';
 import { collectShadowOccluders, classifyBatchVisibility, DEFAULT_MIN_CAST_ALPHA } from './shadow-occluders.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
+import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
+import { PartialBatchRequests } from './partial-batch-requests.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
@@ -478,13 +480,15 @@ export class Renderer {
     // tracker), so callers may either mutate the same Set in place or pass a
     // fresh Set per frame — see the RenderOptions.hiddenIds contract.
     // `_visibilityVersion` drives the per-batch visibility cache;
-    // `_partialBatchEpoch` additionally folds colour-override changes so the
-    // partial sub-batch cache fast path stays correct.
+    // `_partialBatchEpoch` additionally folds colour-override and X-Ray changes
+    // so the partial sub-batch cache fast path stays correct.
     private readonly _visibilityEpochs = new VisibilityEpochTracker();
+    private readonly _xrayEpochs = new XRayEpochTracker();
     private _visibilityVersion: number = 0;
     private _partialBatchEpoch: number = 0;
     private _lastColorOverrideGen: number = -1;
-    private _lastHadVisibilityFiltering: boolean = false;
+    private _xrayVersion: number = 0;
+    private _lastHadPartialSources: boolean = false;
     // Cached per-batch visibility, valid only while `_batchVisibilityEpoch`
     // matches `_visibilityVersion`. Avoids the O(total element count) recompute
     // (+ per-batch visible-id Set allocation) every frame while hide/isolate
@@ -1305,7 +1309,10 @@ export class Renderer {
      * partially-hidden OPAQUE batch casts only its visible subset via the SAME
      * cached partial sub-batch the colour pass renders (shared cache key
      * `${colorKey}:${id}` + `_partialBatchEpoch`), so no extra clone memory and no
-     * phantom shadow from an individually-hidden element in a shared batch.
+     * phantom shadow from an individually-hidden element in a shared batch. That
+     * sharing lapses while X-Ray splits the same batch further (#4129): the colour
+     * pass then draws `:x0`/`:x1` slots and this slot owns its own clone — right,
+     * since a ghosted element still casts its real shadow.
      *
      * Transparent (glass-like) partially-hidden parents are left to the collector's
      * material-alpha filter — they don't cast at all, so building a visible subset
@@ -1770,35 +1777,11 @@ export class Renderer {
         const hasIsolatedFilter = options.isolatedIds !== null && options.isolatedIds !== undefined;
         const hasVisibilityFiltering = hasHiddenFilter || hasIsolatedFilter;
 
-        // ─── Visibility / override epoch bookkeeping ────────────────────────
-        // The tracker compares hide/isolate CONTENT against a snapshot, so both
-        // in-place mutation of the caller's Set and a fresh identical Set per
-        // frame behave correctly (see RenderOptions.hiddenIds). Bumping
-        // `_visibilityVersion` invalidates the per-batch visibility cache; the
-        // partial sub-batch cache additionally depends on colour-override
-        // promotion, so its epoch bumps on either.
-        const newVisibilityVersion = this._visibilityEpochs.update(options.hiddenIds, options.isolatedIds);
-        const visibilityChanged = newVisibilityVersion !== this._visibilityVersion;
-        this._visibilityVersion = newVisibilityVersion;
-        const colorOverrideGen = this.scene.getColorOverrideGeneration();
-        if (visibilityChanged || colorOverrideGen !== this._lastColorOverrideGen) {
-            this._lastColorOverrideGen = colorOverrideGen;
-            this._partialBatchEpoch++;
-        }
-
-        // When hide/isolate turns fully OFF (back to all-visible), release the
-        // partial sub-batch clones built while filtering. They are excluded from
-        // the GPU residency budget and are otherwise only freed on clear()/
-        // finalize/evict — never here — so ~model-sized clone VRAM would stay
-        // pinned until the next model reload. Any override-promotion sub-batches
-        // dropped alongside are rebuilt on demand next frame (cache miss).
-        if (this._lastHadVisibilityFiltering && !hasVisibilityFiltering) {
-            this.scene.dropAllPartialCaches();
-        }
-        this._lastHadVisibilityFiltering = hasVisibilityFiltering;
-
         // Build the selected-id set once per frame so the X-Ray override paths
         // can keep highlighted entities at full alpha without per-site checks.
+        // Built BEFORE the epoch bookkeeping below, which consumes it: selection
+        // decides which entities are exempt from fading, so it is an input to the
+        // X-Ray split and must reach the sub-batch cache epoch.
         const selectedId = options.selectedId;
         const selectedIds = options.selectedIds;
         const selectedModelIndex = options.selectedModelIndex;
@@ -1811,7 +1794,42 @@ export class Renderer {
                 selectedExpressIds.add(id);
             }
         }
-        const hasSelected = selectedExpressIds.size > 0;
+
+        // ─── Visibility / override epoch bookkeeping ────────────────────────
+        // The tracker compares hide/isolate CONTENT against a snapshot, so both
+        // in-place mutation of the caller's Set and a fresh identical Set per
+        // frame behave correctly (see RenderOptions.hiddenIds). Bumping
+        // `_visibilityVersion` invalidates the per-batch visibility cache.
+        //
+        // The partial sub-batch epoch must carry EVERYTHING that decides a
+        // sub-batch's membership — hide/isolate, colour-override promotion, and
+        // the X-Ray split incl. selection (#4129) — because
+        // `getOrCreatePartialBatch`'s fast path returns the cached clone without
+        // ever inspecting the id set it was handed. A missing input therefore
+        // shows up as a stale subset on screen, not as an extra rebuild.
+        const newVisibilityVersion = this._visibilityEpochs.update(options.hiddenIds, options.isolatedIds);
+        const visibilityChanged = newVisibilityVersion !== this._visibilityVersion;
+        this._visibilityVersion = newVisibilityVersion;
+        const colorOverrideGen = this.scene.getColorOverrideGeneration();
+        const xrayVersion = this._xrayEpochs.update(options, selectedExpressIds);
+        const partialEpochChanged =
+            visibilityChanged || colorOverrideGen !== this._lastColorOverrideGen || xrayVersion !== this._xrayVersion;
+        if (partialEpochChanged) {
+            this._lastColorOverrideGen = colorOverrideGen;
+            this._xrayVersion = xrayVersion;
+            this._partialBatchEpoch++;
+        }
+
+        // Every source of partial sub-batches is off (all-visible AND no X-Ray)
+        // — release the clones wholesale, or ~model-sized VRAM stays pinned till
+        // the next model reload (see `partial-batch-cache.ts`). Slots orphaned
+        // WHILE X-Ray is still on are the narrower `retireUnusedAlphaSlots` case.
+        const xrayActive = (options.transparencyOverrides?.size ?? 0) > 0 || options.ghostExceptIds != null;
+        const hasPartialSources = hasVisibilityFiltering || xrayActive;
+        if (this._lastHadPartialSources && !hasPartialSources) {
+            this.scene.dropAllPartialCaches();
+        }
+        this._lastHadPartialSources = hasPartialSources;
 
         // Free hydrated (pick/selection) individual meshes whose entity is no
         // longer selected BEFORE we snapshot the mesh list, so stale glass
@@ -1835,68 +1853,21 @@ export class Renderer {
         this.scene.setInstancedVisibility(options.hiddenIds, options.isolatedIds);
 
         // Per-frame alpha overrides for X-Ray mode. See RenderOptions.transparencyOverrides.
-        // Snapshot the caller's map so mid-frame mutation can't desync classification
-        // and uniform-write decisions for the same batch/mesh.
-        const txOverridesSrc = options.transparencyOverrides;
-        const hasTxMap = txOverridesSrc != null && txOverridesSrc.size > 0;
-        const txOverrides = hasTxMap ? new Map(txOverridesSrc) : null;
-        // X-Ray *context* mode: every non-selected mesh NOT in ghostExceptIds
-        // fades to ghostAlpha. It feeds the same alpha-override machinery as
-        // transparencyOverrides (explicit per-id entries win), so it routes
-        // through the transparent pipeline with no extra call sites — and avoids
-        // building a Map over every element just to fade "the rest".
-        const ghostExceptIds = options.ghostExceptIds ?? null;
+        // XRayAlpha snapshots the caller's map so mid-frame mutation can't desync
+        // classification and uniform-write decisions for the same batch/mesh, and
+        // owns the per-entity resolution + the mixed-batch partition (#4129).
+        // X-Ray *context* mode (`ghostExceptIds`) feeds the same machinery, so it
+        // routes through the transparent pipeline with no extra call sites — and
+        // avoids building a Map over every element just to fade "the rest".
         const ghostAlpha = options.ghostAlpha ?? DEFAULT_GHOST_ALPHA;
         // X-Ray reaches the instanced pass too (#2606). Without this, ghosting
         // stopped at the flat geometry: on a model whose facade is instanced,
         // the user asked to fade the building and got a solid facade standing
         // in front of a ghosted interior.
-        this.scene.setInstancedGhosting(ghostExceptIds, selectedExpressIds, ghostAlpha);
-        const hasGhost = ghostExceptIds != null;
-        const hasTxOverrides = hasTxMap || hasGhost;
-        const alphaForMesh = (expressId: number, fallback: number): number => {
-            if (!hasTxOverrides) return fallback;
-            // Selected meshes are exempt — the highlight pass renders them last,
-            // but exempting here also keeps mesh classification + uniform writes
-            // consistent so a selected mesh never enters the transparent pipeline
-            // because of its own override entry.
-            if (hasSelected && selectedExpressIds.has(expressId)) return fallback;
-            const a = txOverrides?.get(expressId);
-            if (a !== undefined) return a;
-            if (hasGhost && !ghostExceptIds!.has(expressId)) return ghostAlpha;
-            return fallback;
-        };
-        // Cache resolved batch alpha for the frame: classification needs it
-        // (opaque vs transparent routing) and renderBatch needs it for the
-        // uniform write. Without the cache we'd walk batch.expressIds twice
-        // per batch per frame, which becomes the dominant JS cost in X-Ray.
-        const batchAlphaCache = hasTxOverrides
-            ? new WeakMap<{ expressIds: number[]; color: [number, number, number, number] }, number>()
-            : null;
-        const alphaForBatch = (
-            batch: { expressIds: number[]; color: [number, number, number, number] },
-            fallback: number,
-        ): number => {
-            if (!hasTxOverrides) return fallback;
-            const cached = batchAlphaCache!.get(batch);
-            if (cached !== undefined) return cached;
-            let minAlpha = Infinity;
-            for (const eid of batch.expressIds) {
-                // Selected ids never drag down a batch's alpha — the highlight
-                // pass redraws them on top, but excluding here also means a
-                // batch made entirely of selected entities stays opaque.
-                if (hasSelected && selectedExpressIds.has(eid)) continue;
-                const a = txOverrides?.get(eid);
-                if (a !== undefined) {
-                    if (a < minAlpha) minAlpha = a;
-                } else if (hasGhost && !ghostExceptIds!.has(eid)) {
-                    if (ghostAlpha < minAlpha) minAlpha = ghostAlpha;
-                }
-            }
-            const resolved = minAlpha === Infinity ? fallback : minAlpha;
-            batchAlphaCache!.set(batch, resolved);
-            return resolved;
-        };
+        this.scene.setInstancedGhosting(options.ghostExceptIds ?? null, selectedExpressIds, ghostAlpha);
+        const xray = new XRayAlpha(options, selectedExpressIds);
+        const alphaForMesh = (expressId: number, fallback: number): number => xray.forEntity(expressId, fallback);
+        const alphaForBatch = (batch: AlphaBatchLike, fallback: number): number => xray.forBatch(batch, fallback);
 
         // Lens / Pset color overrides: when an entity has an override, force
         // its base draw through the opaque pipeline so it writes depth. The
@@ -2431,62 +2402,17 @@ export class Renderer {
                 const transparentBatches: typeof allBatchedMeshes = [];
 
                 // PERFORMANCE FIX: Track partially visible batches for sub-batch rendering
-                // Instead of creating 10,000+ individual meshes, we create cached sub-batches
-                const partiallyVisibleBatches: Array<{
-                    sourceBatchKey: string;
-                    colorKey: string;
-                    visibleIds: Set<number>;
-                    color: [number, number, number, number];
-                }> = [];
-
-                // Push a partial sub-batch entry, splitting by promotion when needed.
-                // For transparent parent batches with mixed override membership, this
-                // emits two entries (`:promoted` and `:remaining`) so non-overridden
-                // batchmates keep their native transparent routing instead of getting
-                // dragged opaque alongside the overridden ones.
-                const pushVisibleAsPartial = (
-                    sourceBatch: typeof allBatchedMeshes[number],
-                    visibleIds: Set<number>,
-                    isTransparent: boolean,
-                ) => {
-                    const baseKey = `${sourceBatch.colorKey}:${sourceBatch.id}`;
-                    if (!isTransparent) {
-                        partiallyVisibleBatches.push({
-                            sourceBatchKey: baseKey,
-                            colorKey: sourceBatch.colorKey,
-                            visibleIds,
-                            color: sourceBatch.color,
-                        });
-                        return;
-                    }
-                    const split = splitVisibleIdsByPromotion(visibleIds, colorOverrides);
-                    // No promotion or every visible id promoted → single sub-batch,
-                    // classifier downstream routes via shouldRouteBatchTransparent.
-                    if (split == null || split.remaining.size === 0) {
-                        partiallyVisibleBatches.push({
-                            sourceBatchKey: baseKey,
-                            colorKey: sourceBatch.colorKey,
-                            visibleIds,
-                            color: sourceBatch.color,
-                        });
-                        return;
-                    }
-                    // Mixed — emit one promoted (opaque-routed) and one remaining
-                    // (transparent-routed) sub-batch. Distinct sourceBatchKeys so the
-                    // partial-batch cache can hold both simultaneously.
-                    partiallyVisibleBatches.push({
-                        sourceBatchKey: `${baseKey}:promoted`,
-                        colorKey: sourceBatch.colorKey,
-                        visibleIds: split.promoted,
-                        color: sourceBatch.color,
-                    });
-                    partiallyVisibleBatches.push({
-                        sourceBatchKey: `${baseKey}:remaining`,
-                        colorKey: sourceBatch.colorKey,
-                        visibleIds: split.remaining,
-                        color: sourceBatch.color,
-                    });
-                };
+                // Instead of creating 10,000+ individual meshes, we create cached sub-batches.
+                // The collector also owns the override-promotion split (#677) and the
+                // per-entity X-Ray alpha split (#4129) — see partial-batch-requests.ts.
+                const partialRequests = new PartialBatchRequests(
+                    colorOverrides,
+                    xray,
+                    (b) => this.scene.canPartitionBatch(b),
+                );
+                const partiallyVisibleBatches = partialRequests.items;
+                const pushVisibleAsPartial = partialRequests.pushVisible.bind(partialRequests);
+                const pushAlphaSplit = partialRequests.pushAlphaSplit.bind(partialRequests);
 
                 for (const batch of allBatchedMeshes) {
                     // Frustum culling: skip batches entirely outside the camera view
@@ -2527,7 +2453,7 @@ export class Renderer {
                             // The visible subset was computed once for this
                             // visibility epoch (cached) — reuse it, don't rebuild.
                             const visibleIds = vis.visibleIds;
-                            if (visibleIds && visibleIds.size > 0) {
+                            if (visibleIds && visibleIds.size > 0 && !pushAlphaSplit(batch, visibleIds)) {
                                 pushVisibleAsPartial(batch, visibleIds, nativelyTransparent);
                             }
                             // A COLD parent has no CPU meshData, so the partial
@@ -2553,6 +2479,11 @@ export class Renderer {
                     }
                     this.scene.recordBatchDrawn(batch);
 
+                    // X-Ray names entities, not batches: a batch whose entities
+                    // resolve to different alphas splits per alpha (#4129) rather
+                    // than fading whole to the minimum.
+                    if (pushAlphaSplit(batch, null)) continue;
+
                     // Transparent batches with mixed
                     // override membership must be split so non-overridden batchmates
                     // stay transparent — see splitVisibleIdsByPromotion / issue #677.
@@ -2571,6 +2502,16 @@ export class Renderer {
                     } else {
                         opaqueBatches.push(batch);
                     }
+                }
+
+                // Retire the alpha-split slots this frame's classification did NOT
+                // ask for (#4129 review): an X-Ray edit that makes a batch uniform
+                // again, or that shrinks its group count, orphans slots the draw
+                // loop below never revisits. Only on an epoch change — while the
+                // state holds, the split shape is stable and nothing can be
+                // orphaned, so the steady-state cost is zero.
+                if (partialEpochChanged) {
+                    this.scene.retireUnusedAlphaSlots(partialRequests.requestedKeys());
                 }
 
                 // Build a uniform template ONCE per frame — shared across all batches.
@@ -2826,6 +2767,11 @@ export class Renderer {
                 // would show open, un-capped cut holes.
                 const opaqueSubBatches: typeof allBatchedMeshes = [];
                 if (partiallyVisibleBatches.length > 0) {
+                    // Transparent sub-batches are deferred to a second pass below:
+                    // they write no depth, so an opaque sub-batch drawn after one
+                    // paints straight over it. That is routine since #4129 — an
+                    // X-Rayed batch emits a faded group AND a solid one.
+                    const transparentSubBatches: typeof allBatchedMeshes = [];
                     for (const { sourceBatchKey, colorKey, visibleIds, color } of partiallyVisibleBatches) {
                         // Get or create a cached sub-batch for this visibility state
                         const subBatch = this.scene.getOrCreatePartialBatch(
@@ -2848,19 +2794,23 @@ export class Renderer {
                                 colorOverrides,
                             );
                             if (isTransparent) {
-                                pass.setPipeline(pipeFor(subBatch, 'transparent'));
-                            } else {
-                                // Opaque (incl. material-layer slices): double-sided.
-                                // Layer slices are NOT culled — since #1311 they are
-                                // open watertight-skin bands with unreliable winding,
-                                // so culling punched holes (wall read hollow). See the
-                                // full-batch path above.
-                                pass.setPipeline(pipeFor(subBatch, 'opaque'));
-                                opaqueSubBatches.push(subBatch);
+                                transparentSubBatches.push(subBatch);
+                                continue;
                             }
+                            // Opaque (incl. material-layer slices): double-sided.
+                            // Layer slices are NOT culled — since #1311 they are
+                            // open watertight-skin bands with unreliable winding,
+                            // so culling punched holes (wall read hollow). See the
+                            // full-batch path above.
+                            pass.setPipeline(pipeFor(subBatch, 'opaque'));
+                            opaqueSubBatches.push(subBatch);
                             // Render the sub-batch as a single draw call
                             renderBatch(subBatch);
                         }
+                    }
+                    for (const subBatch of transparentSubBatches) {
+                        pass.setPipeline(pipeFor(subBatch, 'transparent'));
+                        renderBatch(subBatch);
                     }
                     // Reset to opaque pipeline for subsequent rendering
                     pass.setPipeline(this.pipeline.getPipeline());

@@ -43,6 +43,7 @@ import { useDrawingExport } from '@/hooks/useDrawingExport';
 import { useSymbolicAnnotationsForDrawing, symbolicAnnotationsOverlayEnabled } from '@/hooks/useSymbolicAnnotations';
 import { useDxfUnderlaysForDrawing, useDxfMapToWorldTransform, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
 import { useScanSectionLayer } from '@/hooks/useScanSectionLayer';
+import { useDrawing2DPersistence } from '@/hooks/useDrawing2DPersistence';
 import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { useDrawingMarkupRestoreOnLoad } from '@/hooks/useDrawingMarkupRestoreOnLoad';
 import { SaveMarkupToModelButton, SaveMarkupToModelMenuItem } from './SaveMarkupToModelButton';
@@ -57,9 +58,16 @@ export function Section2DPanel({
   mergedGeometry,
   computedIsolatedIds,
 }: Section2DPanelProps = {}): React.ReactElement | null {
-  // Mount unconditionally, before the `!panelVisible` early return below, so
-  // a model's embedded markup (#4153) restores as soon as it loads even
-  // with the 2D panel closed.
+  // Both mounted unconditionally, before the `!panelVisible` early return
+  // below, so each restore path runs as soon as a model loads even with the
+  // 2D panel closed. `useDrawing2DPersistence` (#4159) restores/saves this
+  // model's markup from `localStorage`, keyed by content hash;
+  // `useDrawingMarkupRestoreOnLoad` (#4153) restores markup embedded in the
+  // IFC model itself. See the latter's module doc for why running both is
+  // safe: each only ever writes when the four markup arrays are still empty,
+  // so whichever source resolves first wins and the other backs off — no
+  // double-write, no duplication.
+  useDrawing2DPersistence();
   useDrawingMarkupRestoreOnLoad();
 
   // ═══════════════════════════════════════════════════════════════════════════

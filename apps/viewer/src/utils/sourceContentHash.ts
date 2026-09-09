@@ -58,3 +58,21 @@ function bytesToHex(bytes: Uint8Array): string {
   }
   return out;
 }
+
+/**
+ * {@link computeFullSourceHash} from a `Blob`/`File` handle rather than an
+ * already-loaded buffer — for a caller (e.g. `useDrawing2DPersistence`) that
+ * only holds `FederatedModel.sourceFile` and needs a TRUE full-content
+ * identity, not the O(1) spread sampler in `hooks/sourceFingerprint.ts` (that
+ * sampler is a cache-lookup key backed by an mtime guard and this same
+ * full-hash as its OWN revalidation layer elsewhere; used bare as an identity
+ * key it has a provable blind spot — see `sourceFingerprint.ts`'s docs and
+ * `sourceContentHash.test.ts`'s gap-edit tests). Reads the whole blob into
+ * memory via `Blob.arrayBuffer()`; unlike the sampler this is O(file size),
+ * which is the unavoidable cost of an identity that cannot be fooled by an
+ * edit landing between sample windows.
+ */
+export async function computeFullSourceHashFromBlob(blob: Blob): Promise<string | null> {
+  const buf = await blob.arrayBuffer();
+  return computeFullSourceHash(buf);
+}

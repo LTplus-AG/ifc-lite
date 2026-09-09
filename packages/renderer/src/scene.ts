@@ -6,6 +6,7 @@
  * Scene graph and mesh management
  */
 
+import { RgbaTexturePool } from './rgba-texture-pool.js';
 import { splitMeshForStreaming } from './scene-stream-split.js';
 import type { Mesh, BatchedMesh, Vec3, PickClipState } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -234,6 +235,7 @@ export class Scene {
    *  (one `IfcImageTexture` → one upload, sampled by every face set mapping it).
    *  Refcounted: entries die when the last referencing mesh is removed / on clear(). */
   private sharedTextures = new Map<number, { texture: GPUTexture; refs: number }>();
+  private rgbaTexturePool = new RgbaTexturePool();
   private texturedDevice?: GPUDevice;                               // #961: cached for textured-mesh re-upload on translate
   /** GPU-instancing: unique templates + per-occurrence buffers (fed by
    *  addInstancedShard). SLOT-STABLE and therefore SPARSE: a per-model removal
@@ -3786,18 +3788,8 @@ export class Scene {
     let texture: GPUTexture;
     let sharedTextureKey: number | undefined;
     if (tex) {
-      // #961: upload the Rust-decoded RGBA8 verbatim — no image decoding in JS.
-      texture = device.createTexture({
-        size: { width: tex.width, height: tex.height },
-        format: 'rgba8unorm',
-        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-      });
-      device.queue.writeTexture(
-        { texture },
-        tex.rgba,
-        { bytesPerRow: tex.width * 4, rowsPerImage: tex.height },
-        { width: tex.width, height: tex.height },
-      );
+      // Share room-decoded pixels across surfaces and streaming fragments (#4232).
+      texture = this.rgbaTexturePool.acquire(tex, device);
     } else {
       // #1781: external image texture — the viewer decoded the `.ifcZIP`
       // sibling to an ImageBitmap once per textureId; upload it ONCE and share
@@ -3870,7 +3862,7 @@ export class Scene {
    *  uploads are destroyed outright. */
   private releaseTexturedMeshTexture(tm: TexturedMesh): void {
     if (tm.sharedTextureKey === undefined) {
-      tm.texture.destroy();
+      if (!this.rgbaTexturePool.release(tm.texture)) tm.texture.destroy();
       return;
     }
     const entry = this.sharedTextures.get(tm.sharedTextureKey);
@@ -3954,6 +3946,7 @@ export class Scene {
     // destroy any straggler so clear() can never leak a shared GPU texture.
     for (const entry of this.sharedTextures.values()) entry.texture.destroy();
     this.sharedTextures.clear();
+    this.rgbaTexturePool.clear();
     // Clear partial batch cache (destroys buffers + drops all cache maps)
     this.dropAllPartialCaches();
     this.colorOverrideGeneration++;

@@ -161,7 +161,7 @@ export function buildSpatialHierarchy(
   // Build project node tree
   const projectNode = buildSpatialNodeTree(dataModel.spatialHierarchy.project_id, nodesMap);
 
-  const elementToContainer = new Map<number, number>();
+  const elementToContainer = new Map<number, number>(dataModel.spatialHierarchy.element_to_space);
   for (const node of nodesMap.values()) {
     for (const id of node.element_ids) elementToContainer.set(id, node.entity_id);
   }

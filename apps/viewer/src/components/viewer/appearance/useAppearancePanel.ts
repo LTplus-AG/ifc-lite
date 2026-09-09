@@ -286,7 +286,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
       },
     } : undefined,
     models: [...models.values()].map(model => ({ id: model.id, name: model.name })), modelId,
-    onModelChange: id => { setChosenModel(id); setSettings(current => ({ ...current, representationPolicy: 'preserve' })); setPreviewEnabled(true); }, sources, sourceId,
+    onModelChange: id => { useViewerStore.getState().setActiveModel(id); setChosenModel(id); setSettings(current => ({ ...current, representationPolicy: 'preserve' })); setPreviewEnabled(true); }, sources, sourceId,
     onSourceChange: id => {
       pdfSource.cancel(); setSourceId(id);
       if (sources.find(source => source.id === id)?.pdf) setSettings(current => ({ ...current, kind: 'planar', repeatS: false, repeatT: false }));

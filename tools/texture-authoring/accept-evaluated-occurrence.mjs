@@ -43,6 +43,7 @@ try {
   await page.getByRole('tab',{name:'Author',exact:true}).click();
   await page.getByRole('button',{name:'Appearance',exact:true}).click();
   const panel=page.getByLabel('Appearance workspace');await panel.waitFor();
+  if(federated)await panel.getByLabel('Appearance model',{exact:true}).selectOption(loaded.modelId);
   await panel.locator('input[type=file]').setInputFiles(process.env.EVALUATED_IMAGE ?? '/tmp/ifclite-public-captures/derived/boulder-512.png');
   await page.waitForFunction(()=>/mapped occurrence|Only direct/.test(document.querySelector('[aria-label="Appearance workspace"]')?.textContent??''),undefined,{timeout:30000}).catch(async error=>{
     const text=await panel.innerText();if(!/support|representation|tessellat/i.test(text))throw error;

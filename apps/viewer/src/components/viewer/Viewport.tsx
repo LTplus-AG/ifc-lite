@@ -162,8 +162,7 @@ export function Viewport({
     [modelIdToIndex, models],
   );
 
-  // History owns canonical sources even while their model is hidden. Borrow
-  // geometry arrays and stamp only the stable renderer model ownership (#4404).
+  // Borrow hidden-model source arrays; stamp only stable renderer ownership (#4404).
   const appearanceSourceGeometry = useMemo(() => {
     const sources: MeshData[] = [];
     for (const [modelId, model] of models) {

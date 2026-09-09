@@ -32,6 +32,7 @@ import { controlledPdf } from '@/lib/appearance/pdf/fixtures.js';
 import type { PdfRasterRecipe } from '@/lib/appearance/pdf/types.js';
 import { runPageAppearancePlanning } from '@/workers/appearance.worker.js';
 import { AppearancePanel } from './AppearancePanel.js';
+import { AuthorTab } from '../ribbon/tabs/AuthorTab.js';
 
 // Two occurrence-owned Body wrappers share one mapped item and original style.
 // The triangle coordinates are explicit: its rendered corners must never move.
@@ -115,7 +116,7 @@ for (const instanced of [false, true]) for (const pageSource of [false, true]) f
     const model = { ...fixtureModel('evaluated'), idOffset, maxExpressId: 54, ifcDataStore: data, geometryResult: geometry, schemaVersion: 'IFC4' as const, loadState: 'complete' as const };
     const other = fixtureModel('other');
     const selection = globalId(25);
-    useViewerStore.setState({ models: new Map([...(federated ? [['other',other] as const] : []), ['evaluated', model]]), activeModelId: 'evaluated',
+    useViewerStore.setState({ models: new Map([...(federated ? [['other',other] as const] : []), ['evaluated', model]]), activeModelId: federated ? 'other' : 'evaluated',
       geometryResult: geometry, mutationViews: new Map([['evaluated',view]]), storeEditors: new Map([['evaluated',new StoreEditor(data,view)]]),
       undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null,
       appearanceSources: [], appearanceDraft: null, selectedEntityId: selection, selectedEntityIds: new Set([selection]) });
@@ -157,8 +158,13 @@ for (const instanced of [false, true]) for (const pageSource of [false, true]) f
       getGPUDevice: () => instanceScene?.device, getPipeline: () => instanceScene?.pipeline, getCanvas: () => null, clearCaches() {},
       getCamera: () => ({ fitBoundsAdaptive: () => ({ kind: 'compact' }), getPosition: () => ({ x:0,y:0,z:0 }), getTarget: () => ({x:0,y:0,z:0}), setSceneBounds() {}, setOrbitAnchorBounds() {}, reset() {} }) } as unknown as Renderer;
     setGlobalRendererRef({ current: renderer });
-    const ui = render(<StrictMode>{instanced && <AppearanceStreamingHarness renderer={renderer} />}<AppearancePanel /></StrictMode>);
+    const ui = render(<StrictMode>{instanced && <AppearanceStreamingHarness renderer={renderer} />}<AppearancePanel /><AuthorTab /></StrictMode>);
     const until = async (predicate: () => boolean) => { for (let i=0;i<200&&!predicate();i++) await advance(10); assert.ok(predicate(), ui.textContent ?? 'UI stalled'); };
+    if (federated) {
+      const target = ui.querySelector<HTMLSelectElement>('select[aria-label="Appearance model"]'); assert.ok(target);
+      await act(async () => { target.value = 'evaluated'; target.dispatchEvent(new Event('change', { bubbles: true })); });
+      assert.equal(useViewerStore.getState().activeModelId, 'evaluated', 'explicit target selection activates its toolbar history');
+    }
     await until(() => requests.length > 0);
     assert.equal(requests[0].conversions?.length ?? 0, 0);
     assert.equal(view.getNewEntities().length, 0);
@@ -194,11 +200,11 @@ for (const instanced of [false, true]) for (const pageSource of [false, true]) f
     const output = await new StepExporter(data,serialized.view).exportAsync({ schema: 'IFC4',applyMutations: true,includeGeometry: true });
     const text = typeof output.content === 'string' ? output.content : new TextDecoder().decode(output.content);
     assert.match(text,/#33=IFCSHAPEREPRESENTATION\(#2,'Body','MappedRepresentation',\(#22\)\)/);
-    await act(async () => useViewerStore.getState().undo('evaluated'));
+    await act(async () => { const undo = ui.querySelector<HTMLButtonElement>('button[aria-label="Undo"]'); assert.ok(undo && !undo.disabled); undo.click(); });
     assert.equal(view.getNewEntities().length,0);
     if (instanced) { assert.equal(instanceScene!.scene.getMeshDataPieces(selection), undefined); assert.equal(useViewerStore.getState().models.get('evaluated')!.geometryResult!.meshes.length, 0); }
     assert.equal(readParts(selection)![0].geometryItemId,globalId(11));
-    await act(async () => useViewerStore.getState().redo('evaluated'));
+    await act(async () => { const redo = ui.querySelector<HTMLButtonElement>('button[aria-label="Redo"]'); assert.ok(redo && !redo.disabled); redo.click(); });
     assert.equal(readParts(selection)![0].geometryItemId,globalId(plan.conversions![0].geometryItemId));
     if (instanced) {
       await act(async () => useViewerStore.getState().setModelVisibility('evaluated', false));
@@ -206,10 +212,10 @@ for (const instanced of [false, true]) for (const pageSource of [false, true]) f
       assert.equal(instanceScene!.scene.getInstancedMeshDataPieces(selection), undefined, 'hidden converted owner cannot expose the original instance');
       await act(async () => useViewerStore.getState().setModelVisibility('evaluated', true));
       assert.equal(readParts(selection)!.length, 1);
-      await act(async () => useViewerStore.getState().undo('evaluated'));
+      await act(async () => { const undo = ui.querySelector<HTMLButtonElement>('button[aria-label="Undo"]'); assert.ok(undo && !undo.disabled); undo.click(); });
       assert.equal(instanceScene!.scene.getMeshDataPieces(selection), undefined);
       assert.ok(instanceScene!.scene.getInstancedMeshDataPieces(selection), 'history survives hide/show and restores the original instance');
-      await act(async () => useViewerStore.getState().redo('evaluated'));
+      await act(async () => { const redo = ui.querySelector<HTMLButtonElement>('button[aria-label="Redo"]'); assert.ok(redo && !redo.disabled); redo.click(); });
       assert.equal(readParts(selection)![0].geometryItemId, globalId(plan.conversions![0].geometryItemId));
     }
     assert.deepEqual(readParts(globalId(35))!, siblingBefore);

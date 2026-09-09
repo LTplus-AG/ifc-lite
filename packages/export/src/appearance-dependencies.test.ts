@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
-import { IfcParser } from '@ifc-lite/parser';
+import { IfcParser, compressSource, compressSourceInPlace } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, type IfcAttributeValue } from '@ifc-lite/mutations';
 import { captureAppearanceDependencies } from './appearance-dependencies.js';
 
@@ -41,6 +41,22 @@ describe('effective appearance dependency replay guard #4243', () => {
     f.view.removePositionalMutation(16, 0);
     f.editor.setPositionalAttribute(12, 5, 'changed.png');
     expect(() => guard.validate(f.view)).toThrow(/IFC geometry or appearance changed/);
+  });
+  it('preserves source dependencies across compressed block boundaries (#4243)', async () => {
+    const f = await fixture(), guard = f.capture();
+    const bytes = f.store.source.slice(0, f.store.source.byteLength);
+    expect(compressSourceInPlace(f.store.source, compressSource(bytes, 17))).toBe(true);
+    expect(() => guard.validate(f.view)).not.toThrow();
+    f.editor.setPositionalAttribute(10, 0, [[0, 0, 0], [4, 0, 0], [0, 1, 0]]);
+    expect(() => guard.validate(f.view)).toThrow(/IFC geometry or appearance changed/);
+  });
+  it('keeps source-byte dependencies sensitive to deletion and named overrides (#4243)', async () => {
+    const f = await fixture(), guard = f.capture();
+    f.editor.setAttribute(19, 'Name', 'Changed source product');
+    expect(() => guard.validate(f.view)).toThrow(/IFC geometry or appearance changed/);
+    const deleted = await fixture(), beforeDelete = deleted.capture();
+    deleted.editor.removeEntity(10);
+    expect(() => beforeDelete.validate(deleted.view)).toThrow(/IFC geometry or appearance changed/);
   });
   it('follows effective SDK-created placement and point-list chains, including named overrides', async () => {
     const f = await fixture();

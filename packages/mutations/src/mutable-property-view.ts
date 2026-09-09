@@ -12,6 +12,7 @@
  * for optimal performance with large models.
  */
 
+import { registerCooperativeOverlay } from './cooperative-overlay-access.js';
 import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { findQuantityInBaseSets } from './base-qset-lookup.js';
 import { computeSetClaims, mutatedMembersForInstance } from './same-name-set-claims.js';
@@ -51,6 +52,19 @@ export class MutablePropertyView extends MutableOverlayState {
     super();
     this.baseTable = baseTable;
     this.modelId = modelId;
+    registerCooperativeOverlay(this, {
+      capture: () => this.overlayState(),
+      matches: snapshot => this.matchesOverlayState(snapshot),
+      publish: snapshot => this.restoreOverlayState(snapshot),
+      draft: snapshot => {
+        const draft = new MutablePropertyView(this.baseTable, this.modelId);
+        draft.onDemandExtractor = this.onDemandExtractor;
+        draft.quantityExtractor = this.quantityExtractor;
+        draft.attributeExtractor = this.attributeExtractor;
+        draft.restoreOverlayState(snapshot);
+        return draft;
+      },
+    });
   }
 
   /**

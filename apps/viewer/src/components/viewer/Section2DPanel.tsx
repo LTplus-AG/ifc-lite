@@ -2,16 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Section2DPanel - 2D architectural drawing viewer panel
- *
- * Displays generated 2D drawings (floor plans, sections) with:
- * - Canvas-based rendering with pan/zoom
- * - Toggle controls for hidden lines
- * - Export to SVG functionality
- */
+/** Workspace drawings with pan/zoom, hidden lines and vector export. */
 
+import { drawingAnnotationFrame } from '@/lib/model-placement/drawing-annotation-frame';
+import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
 import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
+import { placedViewGeometry } from '@/lib/model-placement/view-geometry';
 import { X, Download, FileDown, Eye, EyeOff, Maximize2, ZoomIn, ZoomOut, Loader2, Printer, GripVertical, MoreHorizontal, RefreshCw, Pin, PinOff, Palette, Ruler, Trash2, FileText, Shapes, Box, BoxSelect, PenTool, Hexagon, Type, Cloud, MousePointer2, Tag, Layers, ScanLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -35,7 +31,7 @@ import { SheetSetupPanel } from './SheetSetupPanel';
 import { TitleBlockEditor } from './TitleBlockEditor';
 import { TextAnnotationEditor } from './TextAnnotationEditor';
 import { Drawing2DCanvas } from './Drawing2DCanvas';
-import { useDrawingGeneration, AXIS_MAP, ANNOTATION_VIEW_DEPTH } from '@/hooks/useDrawingGeneration';
+import { useDrawingGeneration } from '@/hooks/useDrawingGeneration';
 import { useMeasure2D } from '@/hooks/useMeasure2D';
 import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useViewControls } from '@/hooks/useViewControls';
@@ -166,8 +162,12 @@ export function Section2DPanel({
   const models = useViewerStore((s) => s.models);
   const { geometryResult: legacyGeometryResult, ifcDataStore } = useIfc();
 
-  // Use merged geometry from props if available (multi-model), otherwise fall back to legacy single-model
-  const geometryResult = mergedGeometry ?? legacyGeometryResult;
+  const placement = useViewerStore((state) => state.modelPlacement);
+  const placedCoordinateInfo = usePlacementCoordinateInfo((mergedGeometry ?? legacyGeometryResult)?.coordinateInfo);
+  const drawingActive = panelVisible || (activeTool === 'section' && displayOptions.show3DOverlay);
+  const geometryResult = useMemo(() => { const source = mergedGeometry ?? legacyGeometryResult;
+    return source && drawingActive ? { ...placedViewGeometry(source), coordinateInfo: placedCoordinateInfo ?? source.coordinateInfo } : source;
+  }, [mergedGeometry, legacyGeometryResult, placement, placedCoordinateInfo, drawingActive]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // AUTO-SHOW PANEL EFFECT
@@ -312,28 +312,9 @@ export function Section2DPanel({
   // useDrawingGeneration uses, so the annotation filter stays in lockstep
   // with the cut. Empty/missing bounds collapse to an inert range → hook
   // returns empty, the overlay simply does nothing.
-  const ifcAnnotationsForDrawing = useMemo(() => {
-    const bounds = geometryResult?.coordinateInfo?.shiftedBounds;
-    if (!bounds) {
-      return { sectionPosWorld: 0, viewDepth: 0, fallbackY: 0 };
-    }
-    const axis = AXIS_MAP[sectionPlane.axis];
-    const axisMin = bounds.min[axis];
-    const axisMax = bounds.max[axis];
-    const sectionPosWorld = axisMin + (sectionPlane.position / 100) * (axisMax - axisMin);
-    // IFC annotations get a tight 1.2 m view-depth slab — typical plan-view
-    // convention so dimension chains from the next storey don't stack onto
-    // the cut floor. The body cutter still uses half-extent for its own
-    // projection edges; the slab is annotation-specific.
-    const viewDepth = ANNOTATION_VIEW_DEPTH;
-    // For loose annotations (no resolvable storey), fall back to mid-Y like
-    // the 3D viewport does. This lets storeyless models still surface their
-    // annotations on the relevant section.
-    const yMin = bounds.min.y;
-    const yMax = bounds.max.y;
-    const fallbackY = Number.isFinite(yMin) && Number.isFinite(yMax) ? (yMin + yMax) * 0.5 : 0;
-    return { sectionPosWorld, viewDepth, fallbackY };
-  }, [geometryResult, sectionPlane.axis, sectionPlane.position]);
+  const ifcAnnotationsForDrawing = useMemo(() => drawingAnnotationFrame(
+    geometryResult?.coordinateInfo, (mergedGeometry ?? legacyGeometryResult)?.coordinateInfo, sectionPlane,
+  ), [geometryResult, mergedGeometry, legacyGeometryResult, sectionPlane]);
 
   const ifcAnnotationData = useSymbolicAnnotationsForDrawing({
     enabled: symbolicAnnotationsOverlayEnabled(displayOptions.showIfcAnnotations, status, typeVisibility.ifcAnnotations),

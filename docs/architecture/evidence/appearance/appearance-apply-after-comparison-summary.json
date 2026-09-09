@@ -1,0 +1,246 @@
+{
+  "self": [
+    {
+      "ms": 472.6,
+      "frame": "(program) :0"
+    },
+    {
+      "ms": 197.2,
+      "frame": "(idle) :0"
+    },
+    {
+      "ms": 144.3,
+      "frame": "row http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/appearance-dependencies.ts?t=1788963330317:75"
+    },
+    {
+      "ms": 132.5,
+      "frame": "extractRefsFromBytes http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/reference-collector.ts:86"
+    },
+    {
+      "ms": 121.7,
+      "frame": "copyOverlayState http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/mutations/src/mutable-overlay-state.ts?t=1788963330317:137"
+    },
+    {
+      "ms": 117.4,
+      "frame": "prepareAtomic http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/mutations/src/mutable-property-view.ts?t=1788963330317:38"
+    },
+    {
+      "ms": 103.2,
+      "frame": "(anonymous) http://127.0.0.1:4348/src/lib/appearance/apply-plan.ts?t=1788962921929:62"
+    },
+    {
+      "ms": 96.5,
+      "frame": "(anonymous) http://127.0.0.1:4348/src/lib/appearance/apply-plan.ts?t=1788962921929:51"
+    },
+    {
+      "ms": 60.5,
+      "frame": "(garbage collector) :0"
+    },
+    {
+      "ms": 60.0,
+      "frame": "splitTopLevelArgs http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/step-argument-parser.ts:36"
+    },
+    {
+      "ms": 21.9,
+      "frame": "applyOverlayEntityOverrides http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/step-overlay-attribute-overrides.ts:26"
+    },
+    {
+      "ms": 16.1,
+      "frame": "read http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/appearance-dependencies.ts?t=1788963330317:29"
+    },
+    {
+      "ms": 15.2,
+      "frame": "inspect http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/appearance-dependencies.ts?t=1788963330317:45"
+    },
+    {
+      "ms": 15.0,
+      "frame": "formatStepReal http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/data/src/step-serializers.ts:54"
+    },
+    {
+      "ms": 13.5,
+      "frame": "serializeStepValue http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/step-serialization.ts:213"
+    },
+    {
+      "ms": 11.9,
+      "frame": "serializeStepValue http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/step-serialization.ts:213"
+    },
+    {
+      "ms": 10.0,
+      "frame": "encode :0"
+    },
+    {
+      "ms": 7.3,
+      "frame": "splitTopLevelArgs http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/step-argument-parser.ts:36"
+    },
+    {
+      "ms": 3.8,
+      "frame": "serializeStepValue http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/step-serialization.ts:213"
+    },
+    {
+      "ms": 2.5,
+      "frame": "exports.jsx http://127.0.0.1:4348/node_modules/.vite/deps/jsx-runtime-C0OBMQzR.js?v=f4ed0c53:191"
+    },
+    {
+      "ms": 2.5,
+      "frame": "encodeInto :0"
+    },
+    {
+      "ms": 2.5,
+      "frame": "exports.createElement http://127.0.0.1:4348/node_modules/.vite/deps/react-B2QpQO5a.js?v=f4ed0c53:591"
+    },
+    {
+      "ms": 1.3,
+      "frame": "performWorkUntilDeadline http://127.0.0.1:4348/node_modules/.vite/deps/react-dom_client.js?v=29067299:16"
+    },
+    {
+      "ms": 1.3,
+      "frame": "exports.jsxDEV http://127.0.0.1:4348/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=39ced292:191"
+    },
+    {
+      "ms": 1.3,
+      "frame": "validateProperty http://127.0.0.1:4348/node_modules/.vite/deps/react-dom_client.js?v=29067299:1875"
+    },
+    {
+      "ms": 1.3,
+      "frame": "get byType http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/effective-index.ts?t=1788963330317:295"
+    },
+    {
+      "ms": 1.3,
+      "frame": "isDeleted http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/mutations/src/mutable-property-view.ts?t=1788963330317:1101"
+    },
+    {
+      "ms": 1.3,
+      "frame": "exports.jsxDEV http://127.0.0.1:4348/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=39ced292:191"
+    },
+    {
+      "ms": 1.3,
+      "frame": "exports.jsxDEV http://127.0.0.1:4348/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=39ced292:191"
+    },
+    {
+      "ms": 1.3,
+      "frame": "isInstantiable http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/parser/src/ifc-schema.ts:203"
+    }
+  ],
+  "total": [
+    {
+      "ms": 1702.0,
+      "frame": "(root) :0"
+    },
+    {
+      "ms": 909.3,
+      "frame": "commitAppearance http://127.0.0.1:4348/src/lib/appearance/command.ts?t=1788963330317:81"
+    },
+    {
+      "ms": 909.3,
+      "frame": "apply http://127.0.0.1:4348/src/components/viewer/appearance/useAppearancePanel.ts?t=1788963330317:306"
+    },
+    {
+      "ms": 909.3,
+      "frame": "executeDispatch http://127.0.0.1:4348/node_modules/.vite/deps/react-dom_client.js?v=29067299:9138"
+    },
+    {
+      "ms": 909.3,
+      "frame": "run :0"
+    },
+    {
+      "ms": 909.3,
+      "frame": "runWithFiberInDEV http://127.0.0.1:4348/node_modules/.vite/deps/react-dom_client.js?v=29067299:847"
+    },
+    {
+      "ms": 909.3,
+      "frame": "processDispatchQueue http://127.0.0.1:4348/node_modules/.vite/deps/react-dom_client.js?v=29067299:9147"
+    },
+    {
+      "ms": 909.3,
+      "frame": "(anonymous) http://127.0.0.1:4348/node_modules/.vite/deps/react-dom_client.js?v=29067299:9240"
+    },
+    {
+      "ms": 909.3,
+      "frame": "batchedUpdates$1 http://127.0.0.1:4348/node_modules/.vite/deps/react-dom_client.js?v=29067299:2040"
+    },
+    {
+      "ms": 909.3,
+      "frame": "dispatchEventForPluginEventSystem http://127.0.0.1:4348/node_modules/.vite/deps/react-dom_client.js?v=29067299:9214"
+    },
+    {
+      "ms": 909.3,
+      "frame": "dispatchEvent http://127.0.0.1:4348/node_modules/.vite/deps/react-dom_client.js?v=29067299:11316"
+    },
+    {
+      "ms": 909.3,
+      "frame": "dispatchDiscreteEvent http://127.0.0.1:4348/node_modules/.vite/deps/react-dom_client.js?v=29067299:11296"
+    },
+    {
+      "ms": 472.6,
+      "frame": "(program) :0"
+    },
+    {
+      "ms": 463.0,
+      "frame": "read http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/appearance-dependencies.ts?t=1788963330317:29"
+    },
+    {
+      "ms": 463.0,
+      "frame": "captureAppearanceDependencies http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/appearance-dependencies.ts?t=1788963330317:28"
+    },
+    {
+      "ms": 443.8,
+      "frame": "prepareAtomic http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/mutations/src/mutable-property-view.ts?t=1788963330317:38"
+    },
+    {
+      "ms": 436.3,
+      "frame": "row http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/appearance-dependencies.ts?t=1788963330317:75"
+    },
+    {
+      "ms": 203.5,
+      "frame": "applyAppearanceEntitiesUsing http://127.0.0.1:4348/src/lib/appearance/apply-plan.ts?t=1788962921929:10"
+    },
+    {
+      "ms": 203.5,
+      "frame": "applyAppearanceEntitiesInDraft http://127.0.0.1:4348/src/lib/appearance/apply-plan.ts?t=1788962921929:7"
+    },
+    {
+      "ms": 203.5,
+      "frame": "(anonymous) http://127.0.0.1:4348/src/lib/appearance/command.ts?t=1788963330317:100"
+    },
+    {
+      "ms": 197.2,
+      "frame": "(idle) :0"
+    },
+    {
+      "ms": 132.6,
+      "frame": "collectRefsInByteRange http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/reference-collector.ts:128"
+    },
+    {
+      "ms": 132.5,
+      "frame": "extractRefsFromBytes http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/reference-collector.ts:86"
+    },
+    {
+      "ms": 130.8,
+      "frame": "effectiveAppearanceRecord http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/effective-appearance-record.ts:11"
+    },
+    {
+      "ms": 121.7,
+      "frame": "copyOverlayState http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/mutations/src/mutable-overlay-state.ts?t=1788963330317:137"
+    },
+    {
+      "ms": 103.2,
+      "frame": "(anonymous) http://127.0.0.1:4348/src/lib/appearance/apply-plan.ts?t=1788962921929:62"
+    },
+    {
+      "ms": 99.0,
+      "frame": "(anonymous) http://127.0.0.1:4348/src/lib/appearance/apply-plan.ts?t=1788962921929:51"
+    },
+    {
+      "ms": 99.0,
+      "frame": "(anonymous) http://127.0.0.1:4348/src/lib/appearance/apply-plan.ts?t=1788962921929:8"
+    },
+    {
+      "ms": 83.1,
+      "frame": "applyOverlayEntityOverrides http://127.0.0.1:4348/@fs/private/tmp/ifclite-appearance-single-atomic-4243/packages/export/src/step-overlay-attribute-overrides.ts:26"
+    },
+    {
+      "ms": 60.5,
+      "frame": "(garbage collector) :0"
+    }
+  ]
+}

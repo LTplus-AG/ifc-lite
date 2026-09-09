@@ -930,26 +930,6 @@ distributions directly to the TypeScript entrypoint and retain their provenance.
 current-commit build. The wrapper retains the temporary base through child exit
 and then removes it while preserving the child failure status.
 
-### Opt-in appearance planning (#4243)
-
-Appearance planning invokes canonical mesh production for the source and planned
-styles so preview topology agrees with reopening the exported IFC. It adds no
-call to the ordinary load pipeline. Interleaved base/branch native house probes
-found unchanged ordered mesh fingerprints and no observed ordinary-load timing
-regression. This is a regression verdict, not a browser speedup claim. Keep
-projection work in a cancellable worker and bound aggregate output as well as
-input: a shared coordinate list can otherwise multiply into many UV arrays.
-
-The planner must also resolve load-time RTC and material-layer context once per
-request. Comparing two equally misconfigured routers can falsely certify empty
-georeferenced triangles or an unsliced layer-bearing product; topology equality
-alone is not proof of agreement with reopening. This context work stays on the
-opt-in planner path and does not change ordinary load callers.
-
-Embedded-header preflight reads PNG dimensions directly and walks bounded JPEG
-markers through the STEP hex bytes. It neither copies the complete compressed
-image nor allocates pixels before the plan budget is checked; ordinary raster
-decoding remains unchanged.
 
 ### Appearance preview ownership and batch restoration (#4243)
 
@@ -988,3 +968,71 @@ to either change. Raw samples and artifact hashes are retained in
 `appearance-apply-paired-manifest.json`. Preserve transaction ownership and
 rollback checks while addressing the remaining work; do not remove them to
 make an incomplete commit appear faster.
+
+### Opt-in appearance planning (#4243)
+
+Appearance planning invokes canonical mesh production for the source and planned
+styles so preview topology agrees with reopening the exported IFC. It adds no
+call to the ordinary load pipeline. Interleaved base/branch native house probes
+found unchanged ordered mesh fingerprints and no observed ordinary-load timing
+regression. This is a regression verdict, not a browser speedup claim. Keep
+projection work in a cancellable worker and bound aggregate output as well as
+input: a shared coordinate list can otherwise multiply into many UV arrays.
+
+The planner must also resolve load-time RTC and material-layer context once per
+request. Comparing two equally misconfigured routers can falsely certify empty
+georeferenced triangles or an unsliced layer-bearing product; topology equality
+alone is not proof of agreement with reopening. This context work stays on the
+opt-in planner path and does not change ordinary load callers.
+
+Embedded-header preflight reads PNG dimensions directly and walks bounded JPEG
+markers through the STEP hex bytes. It neither copies the complete compressed
+image nor allocates pixels before the plan budget is checked; ordinary raster
+decoding remains unchanged.
+
+### Effective appearance scope catalog (#4243)
+
+The optional Rust catalog shares the planner's bounded effective-source decoder
+and returns canonical product classes and type identities; it does not add a
+call to ordinary model loading. Exact source-built base and branch WASM
+distributions were compared through the actual browser worker pool in fresh,
+interleaved processes. Every geometry fingerprint matched and no material
+ordinary-load regression was observed within sample variation. This is a
+regression check, not a speedup claim or a measurement of catalog latency.
+Retain the bounded decode and shared cancellation lifecycle instead of
+reimplementing IFC type relationships in the UI. Reproduction provenance and
+samples are in `appearance-catalog-load-evidence.json`; the observation ends at
+worker-model readiness, not renderer readiness.
+
+### Prepared-overlay comparison ownership (#4243)
+
+Compare a private borrowed overlay descriptor synchronously against the detached
+checkpoint. Cloning the live overlay solely to compare it adds allocation while
+providing no additional isolation; original/draft/prepared/publication snapshots
+remain deep copies. Cyclic escaped values, skip-history edits and rollback
+rejection remain covered. A fresh real Convento Apply profile with this change
+and the earlier command/dependency changes still locates substantial synchronous
+work in dependency scanning and authored-data/history construction plus retained
+snapshots. This single sampled run does not establish an isolated improvement
+for comparison-only clone removal. Keep ownership guards while investigating
+preparation outside the Apply interaction. The profile, timing, summary and
+exact source/runtime hashes are in
+`docs/architecture/evidence/appearance/appearance-apply-after-comparison-*`.
+
+### Appearance dependency validation: immutable source byte scan (#4243)
+
+The Apply CPU profile identified effective dependency capture and repeated overlay
+copies as the dominant main-thread work. Unchanged source rows already use
+immutable markers in history checkpoints; decoding, rewriting and re-encoding
+large coordinate rows only to extract references therefore adds no validation
+information. Read those non-binding rows with the canonical source-byte scanner.
+Keep edited, authored, retyped and inverse-binding rows on the effective STEP
+writer path, with unchanged byte/reference budgets and compressed-source support.
+
+Three interleaved fresh-browser Convento pairs showed a consistent end-to-end
+Apply improvement when combined with removing nested appearance transactions.
+This is a combined result, not an isolated speedup for the scanner. Geometry,
+UVs, owner identity, Undo/Redo and the untouched federated model were checked;
+the remaining main-thread stall still fails the intended smoothness requirement.
+Do not treat fewer copies or a faster helper microbenchmark as acceptance: retain
+the paired interaction measurement and continue profiling transaction preparation.

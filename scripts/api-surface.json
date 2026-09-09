@@ -2868,6 +2868,14 @@
     "serializeValue: function",
     "toStepLine: function"
   ],
+  "@ifc-lite/codegen/schema-hierarchy": [
+    "HierarchyEntity: interface",
+    "HierarchyRegistry: interface",
+    "isProperSubtypeOf: function",
+    "isProperSubtypeOfAny: function",
+    "isSubtypeOf: function",
+    "isSubtypeOfAny: function"
+  ],
   "@ifc-lite/collab": [
     "AGENT_PALETTE: const",
     "AgentIdentity: interface",
@@ -5124,6 +5132,9 @@
     "EffectiveChange: interface",
     "EffectiveChangeKind: type",
     "EntityIdentityResolver: interface",
+    "EntityOperation: type",
+    "EntityOperationEffect: type",
+    "EntityPreparationOptions: interface",
     "EntityTypeMutation: interface",
     "EntityTypeNormalizer: type",
     "FilterOperator: type",
@@ -5142,6 +5153,7 @@
     "MutationType: type",
     "NewEntity: interface",
     "OVERLAY_BYTE_OFFSET: const",
+    "PreparedEntityOperations: interface",
     "PropertyExtractor: type",
     "PropertyFilter: interface",
     "PropertyMapping: interface",

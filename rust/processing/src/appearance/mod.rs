@@ -4,7 +4,9 @@
 //! Opt-in appearance authoring over an effective IFC snapshot. No load-time
 //! geometry changes. Plans are applied atomically by the host mutation editor.
 mod budget;
+mod calibration;
 mod canonical;
+mod catalog;
 mod context;
 mod mapping;
 mod source;
@@ -15,6 +17,8 @@ use serde_json::{json, Value};
 use source::{refs, Source};
 use std::collections::BTreeSet;
 pub use types::*;
+pub use calibration::{calibrate_appearance_plane, CalibratedPlane, PlaneCalibrationRequest};
+pub use catalog::{catalog_appearance, AppearanceCatalog, AppearanceCatalogProduct, AppearanceCatalogRequest, AppearanceCatalogType};
 
 fn reference(id: u32) -> Value {
     Value::String(format!("#{id}"))

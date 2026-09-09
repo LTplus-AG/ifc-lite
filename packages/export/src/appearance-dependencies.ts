@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
+import { asSourceBytes, getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
 import type { IfcAttributeValue, MutablePropertyView } from '@ifc-lite/mutations';
 import { getEffectiveEntityIndex } from './effective-index.js';
 import { effectiveAppearanceRecord } from './effective-appearance-record.js';
@@ -34,6 +34,7 @@ export function captureAppearanceDependencies(
       throw new Error('Appearance dependency validation exceeds its entity budget. Choose a smaller IFC model.');
     }
     const index = getEffectiveEntityIndex(store, current, true);
+    const source = asSourceBytes(store.source);
     const rows = new Map<number, { line: string; refs: readonly number[] }>();
     let bytes = 0, values = 0, strings = 0, refs = 0;
     // Native planning accepts 128MiB source + 64MiB output. The effective
@@ -63,6 +64,23 @@ export function captureAppearanceDependencies(
       const record = index.get(id);
       if (!record) { result = { line: '', refs: [] }; rows.set(id, result); return result; }
       if (record.byteLength > byteLimit - bytes) refuse();
+      const type = index.typeOf(id) ?? '';
+      // Unchanged source dependencies are already represented by an immutable
+      // marker below. Scan their original bytes directly instead of decoding,
+      // rewriting and encoding large coordinate lists solely to find edges.
+      // Binding rows still need their EXPRESS target slot for inverse traversal.
+      const original = !index.isOverlayCreated(id) && !index.hasSourceMutation?.(id)
+        && !current.getEntityTypeMutation(id);
+      if (original && !BINDINGS.has(type)) {
+        const span = source.slice(record.byteOffset, record.byteOffset + record.byteLength);
+        if (span.length !== record.byteLength) throw new Error('Truncated IFC source during appearance validation.');
+        bytes += span.length;
+        for (let offset = 0; offset < span.length; offset++) {
+          if (span[offset] === 0x23 && ++refs > 2_000_000) refuse();
+        }
+        result = { line: '', refs: collectRefsInByteRange(span, 0, span.length) };
+        rows.set(id, result); return result;
+      }
       inspect(current.getNewEntity(id)?.attributes);
       for (const value of current.getPositionalMutationsForEntity(id)?.values() ?? []) inspect(value);
       for (const attribute of current.getAttributeMutationsForEntity(id)) inspect(attribute.value);
@@ -77,7 +95,7 @@ export function captureAppearanceDependencies(
       for (const char of line) if (char === '#' && ++refs > 2_000_000) refuse();
       const encoded = encoder.encode(line);
       let forward: readonly number[] = collectRefsInByteRange(encoded, 0, encoded.length);
-      const type = index.typeOf(id) ?? '', relating = RELATING.get(type);
+      const relating = RELATING.get(type);
       if (relating) {
         // Membership is validated by the complete row, but peer products sharing
         // a type/material are not dependencies of this object's appearance.

@@ -16,6 +16,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./schema-hierarchy": {
+      "types": "./dist/schema-hierarchy.d.ts",
+      "import": "./dist/schema-hierarchy.js",
+      "default": "./dist/schema-hierarchy.js"
+    },
     "./ifc4": {
       "types": "./dist/generated/ifc4/index.d.ts",
       "import": "./dist/generated/ifc4/index.js",

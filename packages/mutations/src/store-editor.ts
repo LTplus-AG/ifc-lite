@@ -17,6 +17,8 @@
  * `CompactEntityIndex` whose backing typed arrays are immutable.
  */
 
+import { prepareEntityOperations } from './prepare-entity-operations.js';
+import type { EntityOperation, EntityPreparationOptions, PreparedEntityOperations } from './cooperative-operation-types.js';
 import type { MutablePropertyView } from './mutable-property-view.js';
 import { QuantityType, PropertyValueType } from '@ifc-lite/data';
 import type {
@@ -76,6 +78,23 @@ export class StoreEditor {
    * valid after success; the draft editor is detached after this callback. */
   runAtomic<T>(edit: (draft: StoreEditor) => T): T {
     return this.view.runAtomic(draft => edit(new StoreEditor(this.store, draft)));
+  }
+
+  /** Cooperatively prepare owned entity operations without exposing a draft.
+   * Construction establishes the live allocator watermark before this action;
+   * cancellation changes no live overlay state. Final exact validation is synchronous. */
+  prepareEntityOperations(operations: readonly EntityOperation[], options: EntityPreparationOptions = {}): Promise<PreparedEntityOperations> {
+    return prepareEntityOperations(this.store, this.view, operations, options, draft => this.forkPreparedEditor(draft));
+  }
+
+  private forkPreparedEditor(view: MutablePropertyView): StoreEditor {
+    // The original editor already established its watermark. Reuse that exact
+    // facade state instead of scanning the entire immutable source index again.
+    const editor = Object.create(StoreEditor.prototype) as StoreEditor;
+    editor.store = this.store;
+    editor.view = view;
+    editor.maxExistingId = this.maxExistingId;
+    return editor;
   }
 
   /**

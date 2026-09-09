@@ -71,6 +71,27 @@ class IfcAPI {
 
 The methods below reflect the real `IfcAPI` surface (see `packages/wasm/pkg/ifc-lite.d.ts`). There is no single `parse()` call: scanning, geometry, and export are separate entry points.
 
+#### Measured Plane Calibration
+
+`IfcAPI.calibrateAppearancePlane(requestJson)` returns UTF-8 JSON containing a
+world-space planar mapping, four raster corners (top-left clockwise), and metres
+per native source unit. The request is capped at 8 KiB. This fixed-size
+calculation does not load IFC geometry, decode an image or apply an edit.
+
+Supply `rasterToSource` (the six-element pixel-edge-to-native-source affine),
+`rasterSize`, two native `sourcePoints`, their measured `distanceMetres`, and a
+`worldAnchor`, `worldDirection` and `planeNormal` in IFC Z-up metres. For PDF
+pages, use the raster recipe's `pixelToPdf` affine; paper dimensions and DPI do
+not establish drawing scale. Keep the native landmarks when recropping or
+rotating the raster. The returned mapping uses IFC's bottom-left UV origin.
+
+Zero spans, invalid directions, sheared rasters, oversized images and
+unrepresentable coordinates return errors. Each reconstructed edge and anchor
+displacement must preserve its intended vector within one part per million,
+independently of the absolute world origin. Calibrating a plane does not provide
+bounded image compositing: preserving prior appearance outside a PDF page
+requires the separate projection/bake stage.
+
 #### Appearance Planning
 
 `IfcAPI.planAppearance(content, requestJson)` accepts an effective IFC STEP
@@ -571,3 +592,27 @@ unparsed tail. Existing methods and their Rust signatures remain unchanged and d
 not compute this extra key. Feature-detect the new methods when supporting older
 WASM builds. The viewer uses these methods only when a matching parser has a fresh
 fingerprint cell; no additional file-sized buffer is created.
+
+
+### Effective appearance scope catalog
+
+`IfcAPI.catalogAppearance(content, requestJson)` accepts the same effective IFC
+STEP snapshot as planning, plus `{schema, sourceRevision, productIds}`. It returns
+UTF-8 JSON with `sourceRevision`, sorted `products` (`productId`, canonical
+PascalCase `ifcClass`, sorted `typeIds`), sorted `types` (`typeId`, `ifcClass`, exact
+IFC `Name` or null), and sorted `missingProductIds`. Missing/deleted IDs and
+non-`IfcProduct` owners are explicitly ineligible. Duplicate type names retain
+separate identities. Membership comes from effective `IfcRelDefinesByType` rows.
+
+Call from a worker. The host must serialize its current overlay first and validate
+its captured revision/checkpoint before accepting selectors; the source store's
+original relationship tables do not include SDK edits. The existing `planAppearance`
+API is unchanged. The viewer client shares cancellation, supersession, timeout and
+worker disposal across `catalog()` and `plan()` jobs, without retaining a WASM
+context or transferring caller-owned source storage.
+
+Catalog limits are 10,000 requested IDs, a 4,096-byte revision, the planner's shared
+128 MiB source/200,000 entities/eight-million-value parse bounds, 200,000 unique
+owner/type memberships and 4 MiB total type-name bytes. Request JSON is limited to
+256 KiB and output serialization uses the existing 64 MiB ceiling. A refusal throws
+instead of returning a truncated selector catalog.

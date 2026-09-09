@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import {
+  Move3D,
   ChevronRight,
   Layers,
   Eye,
@@ -12,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { openRepositionModels } from '@/lib/model-placement/commands';
 import { cn } from '@/lib/utils';
 import type { TreeNode } from './types';
 import { isSpatialContainer } from './types';
@@ -138,6 +140,10 @@ export function HierarchyNode({
             </span>
           )}
 
+          <button className="p-0.5" aria-label={`Reposition model ${node.name}`} title="Reposition model"
+            onClick={(event) => { event.stopPropagation(); openRepositionModels([modelId]); }}>
+            <Move3D className="h-3.5 w-3.5" />
+          </button>
           <Tooltip>
             <TooltipTrigger asChild>
               <button

@@ -90,6 +90,7 @@
     "lucide-react": "^1.40.0",
     "maplibre-gl": "^6.7.0",
     "parquet-wasm": "^0.7.2",
+    "pdfjs-dist": "6.3.289",
     "postcss": "^8.5.28",
     "posthog-js": "^1.426.3",
     "proj4": "^2.22.0",

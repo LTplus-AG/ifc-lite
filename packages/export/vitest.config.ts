@@ -8,6 +8,12 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   resolve: {
     alias: {
+      // Before the bare `@ifc-lite/codegen` below, as the two schema subpaths
+      // already are: these keys are matched as PREFIXES in declaration order,
+      // so the root entry would otherwise rewrite
+      // `@ifc-lite/codegen/schema-hierarchy` into the nonexistent
+      // `codegen/src/index.ts/schema-hierarchy`.
+      '@ifc-lite/codegen/schema-hierarchy': path.resolve(__dirname, '../codegen/src/schema-hierarchy.ts'),
       '@ifc-lite/codegen/ifc4': path.resolve(__dirname, '../codegen/generated/ifc4/index.ts'),
       '@ifc-lite/codegen/ifc4x3': path.resolve(__dirname, '../codegen/generated/ifc4x3/index.ts'),
       '@ifc-lite/codegen': path.resolve(__dirname, '../codegen/src/index.ts'),

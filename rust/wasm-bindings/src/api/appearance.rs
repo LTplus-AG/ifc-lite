@@ -3,17 +3,22 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Appearance edits use the same Rust planner in native and browser hosts.
 use super::IfcAPI;
-use ifc_lite_processing::appearance::{plan_appearance, AppearanceRequest};
+use ifc_lite_processing::appearance::{catalog_appearance, plan_appearance, AppearanceCatalogRequest, AppearanceRequest};
 use wasm_bindgen::prelude::*;
 
-fn plan_json(content: &[u8], request_json: &str) -> Result<Vec<u8>, String> {
+fn decode_request<T: serde::de::DeserializeOwned>(request_json: &str) -> Result<T, String> {
     if request_json.len() > 256 * 1024 {
         return Err("Appearance request exceeds the scope budget".into());
     }
-    let request: AppearanceRequest = serde_json::from_str(request_json)
-        .map_err(|error| format!("Invalid appearance request: {error}"))?;
-    let plan = plan_appearance(content, &request)?;
-    encode_bounded(&plan)
+    serde_json::from_str(request_json).map_err(|error| format!("Invalid appearance request: {error}"))
+}
+fn plan_json(content: &[u8], request_json: &str) -> Result<Vec<u8>, String> {
+    let request: AppearanceRequest = decode_request(request_json)?;
+    encode_bounded(&plan_appearance(content, &request)?)
+}
+fn catalog_json(content: &[u8], request_json: &str) -> Result<Vec<u8>, String> {
+    let request: AppearanceCatalogRequest = decode_request(request_json)?;
+    encode_bounded(&catalog_appearance(content, &request)?)
 }
 
 // A writer ceiling stops serialization before allocating an oversized JSON buffer.
@@ -31,7 +36,7 @@ fn encode_bounded(value: &impl serde::Serialize) -> Result<Vec<u8>, String> {
         fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
     }
     let mut output = Output(Vec::new());
-    serde_json::to_writer(&mut output, value).map_err(|error| format!("Cannot encode appearance plan: {error}"))?;
+    serde_json::to_writer(&mut output, value).map_err(|error| format!("Cannot encode appearance output: {error}"))?;
     Ok(output.0)
 }
 
@@ -45,11 +50,19 @@ impl IfcAPI {
     pub fn plan_appearance(&self, content: &[u8], request_json: &str) -> Result<Vec<u8>, JsError> {
         plan_json(content, request_json).map_err(|message| JsError::new(&message))
     }
+
+    /// Catalog effective IfcProduct classes and IfcRelDefinesByType membership.
+    /// JSON input is AppearanceCatalogRequest; output is AppearanceCatalog JSON.
+    /// Run in a worker and validate sourceRevision before using the selectors.
+    #[wasm_bindgen(js_name = catalogAppearance)]
+    pub fn catalog_appearance(&self, content: &[u8], request_json: &str) -> Result<Vec<u8>, JsError> {
+        catalog_json(content, request_json).map_err(|message| JsError::new(&message))
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{plan_json, encode_bounded};
+    use super::{plan_json, catalog_json, encode_bounded};
 
     #[test]
     fn issue_4243_serialization_stops_at_the_output_budget() {
@@ -64,6 +77,8 @@ mod tests {
     #[test]
     fn issue_4243_rejects_malformed_and_oversized_requests_before_source_processing() {
         assert!(plan_json(b"", "{").unwrap_err().contains("Invalid appearance request"));
+        assert!(catalog_json(b"", "{").unwrap_err().contains("Invalid appearance request"));
+        assert!(catalog_json(b"", &" ".repeat(256 * 1024 + 1)).unwrap_err().contains("scope budget"));
         assert!(plan_json(b"", &" ".repeat(256 * 1024 + 1)).unwrap_err().contains("scope budget"));
     }
 }

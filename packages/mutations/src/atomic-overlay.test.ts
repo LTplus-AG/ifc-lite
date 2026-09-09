@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import { MutablePropertyView } from './mutable-property-view.js';
 import { StoreEditor } from './store-editor.js';
+import type { IfcAttributeValue } from './types.js';
 
 function fixture() {
   const view = new MutablePropertyView(null, 'model');
@@ -182,4 +183,43 @@ describe('atomic overlay editing #4243', () => {
     await operation;
     expect(editor.getNewEntities()).toHaveLength(1);
   });
+
+  it('compares cyclic escaped values without cloning or losing nested edit detection #4243', () => {
+    const { view, editor, item } = fixture();
+    const cycle: IfcAttributeValue[] = [1];
+    cycle.push(cycle);
+    // SDK getters expose mutable values: validation must inspect the current
+    // graph, including cycles, instead of trusting history or object identity.
+    editor.getNewEntity(item)!.attributes[3] = cycle;
+    const prepared = view.prepareAtomic(draft => draft.setPositionalAttribute(item, 2, true));
+    prepared.validate();
+    cycle[0] = 2;
+    expect(() => prepared.validate()).toThrow('overlay changed');
+    expect(() => prepared.commit()).toThrow('overlay changed');
+    expect(view.getPositionalMutationsForEntity(item)).toBeNull();
+    expect(editor.getNewEntity(item)!.attributes[3]).toBe(cycle);
+  });
+
+  it('retains detached cyclic publication and refuses rollback over escaped changes #4243', () => {
+    const { view, editor, item } = fixture();
+    const cycle: IfcAttributeValue[] = [1];
+    cycle.push(cycle);
+    let escaped: MutablePropertyView | undefined;
+    const transaction = view.prepareAtomic(draft => {
+      escaped = draft;
+      draft.setPositionalAttribute(item, 3, cycle, true);
+    });
+    transaction.commit();
+    cycle[0] = 8;
+    escaped!.setPositionalAttribute(item, 2, true, true);
+    const published = view.getPositionalMutationsForEntity(item)!.get(3) as IfcAttributeValue[];
+    expect(published[0]).toBe(1);
+    expect(published[1]).toBe(published);
+    expect(view.getPositionalMutationsForEntity(item)!.has(2)).toBe(false);
+    published[0] = 9;
+    expect(() => transaction.rollback()).toThrow('changed after');
+    expect(view.getPositionalMutationsForEntity(item)!.get(3)).toBe(published);
+    expect(published[0]).toBe(9);
+  });
+
 });

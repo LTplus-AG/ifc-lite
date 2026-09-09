@@ -108,6 +108,12 @@ const pipeline = {
   createTexturedBindGroup: () => ({}),
 } as unknown as Parameters<Scene['appendToBatches']>[2];
 
+// #4243: Model translations retain placed wrappers. Preview edits must use the
+// canonical Scene pieces, as the production viewer binder does after loading.
+function residentParts(scene: Scene, sources: readonly MeshData[]): MeshData[] {
+  return [...new Set(sources.map(part => part.expressId))].flatMap(id => scene.getMeshDataPieces(id)!);
+}
+
 describe('owned appearance preview (#4243)', () => {
   function setup() {
     const scene = new Scene(),
@@ -118,7 +124,7 @@ describe('owned appearance preview (#4243)', () => {
     ];
     scene.appendToBatches(originals, state.device, pipeline);
     const api = scene.appearancePreview(state.device, pipeline);
-    return { scene, state, originals, api };
+    return { scene, state, originals: residentParts(scene, originals), api };
   }
   it('keeps all original parts alive, swaps without duplicates, and cancels without upload', () => {
     const { scene, state, originals, api } = setup();
@@ -205,19 +211,20 @@ describe('owned appearance preview (#4243)', () => {
     // Controller is created lazily: a separate scene installs the injected pipeline.
     const failedScene = new Scene();
     failedScene.appendToBatches(originals, state.device, pipeline);
+    const failedOriginals = residentParts(failedScene, originals);
     const failedGpu = [...failedScene.getTexturedMeshes()];
     const failing = failedScene.appearancePreview(
       state.device,
       failingPipeline,
     );
     const token = failing.begin({ expressId: 7, modelIndex: 0 });
-    const parts = originals.map((part) => ({
+    const parts = failedOriginals.map((part) => ({
       ...part,
       texture: { ...part.texture!, rgba: new Uint8Array(4) },
     }));
     assert.throws(() => failing.update(token, parts), /second part failed/);
     assert.deepEqual(failedScene.getTexturedMeshes(), failedGpu);
-    assert.strictEqual(failedScene.getMeshDataPieces(7)?.[0], originals[0]);
+    assert.strictEqual(failedScene.getMeshDataPieces(7)?.[0], failedOriginals[0]);
     assert.deepEqual(scene.getTexturedMeshes(), originalGpu);
     failing.cancel(token);
     failedScene.clearFlatGeometry();
@@ -299,6 +306,7 @@ describe('whole appearance command GPU commit (#4243)', () => {
       state = gpu();
     const parts = [mesh(7, new Uint8Array(4)), mesh(8, new Uint8Array(4))];
     scene.appendToBatches(parts, state.device, pipeline);
+    parts.splice(0, parts.length, ...residentParts(scene, parts));
     const api = scene.appearancePreview(state.device, pipeline);
     const a = api.begin({ expressId: 7, modelIndex: 0 }),
       b = api.begin({ expressId: 8, modelIndex: 0 });
@@ -333,8 +341,10 @@ describe('whole appearance command GPU commit (#4243)', () => {
   it('an updated prepared owner fences the entire commit; a successful commit is idempotent', () => {
     const scene = new Scene(),
       state = gpu(),
-      original = mesh(7, new Uint8Array(4));
+      source = mesh(7, new Uint8Array(4));
+    let original = source;
     scene.appendToBatches([original], state.device, pipeline);
+    original = scene.getMeshDataPieces(7)![0];
     const api = scene.appearancePreview(state.device, pipeline),
       token = api.begin({ expressId: 7, modelIndex: 0 });
     const stale = api.prepareCommit([token]);
@@ -357,6 +367,7 @@ describe('whole appearance command GPU commit (#4243)', () => {
       state = gpu();
     const parts = [mesh(7, new Uint8Array(4)), mesh(8, new Uint8Array(4))];
     scene.appendToBatches(parts, state.device, pipeline);
+    parts.splice(0, parts.length, ...residentParts(scene, parts));
     const api = scene.appearancePreview(state.device, pipeline);
     const tokens = parts.map((part) => {
       const token = api.begin({ expressId: part.expressId, modelIndex: 0 });
@@ -387,11 +398,12 @@ describe('flat batch appearance ownership (#4243)', () => {
   function setup() {
     const scene = new Scene(),
       state = gpu();
-    const parts = [7, 8, 9].map((id) => {
+    const parts: MeshData[] = [7, 8, 9].map((id) => {
       const source = mesh(id, new Uint8Array(4));
       return { ...source, texture: undefined, uvs: undefined };
     });
     scene.appendToBatches(parts, state.device, pipeline);
+    parts.splice(0, parts.length, ...residentParts(scene, parts));
     return {
       scene,
       state,
@@ -509,7 +521,7 @@ describe('flat batch appearance ownership (#4243)', () => {
     const scene = new Scene(),
       state = gpu();
     const indices = new Uint32Array([0, 1, 2, 0, 2, 3]);
-    const original: MeshData = {
+    let original: MeshData = {
       expressId: 7,
       geometryItemId: 21,
       color: [1, 1, 1, 1],
@@ -523,6 +535,7 @@ describe('flat batch appearance ownership (#4243)', () => {
       },
     };
     scene.appendToBatches([original], state.device, pipeline);
+    original = scene.getMeshDataPieces(7)![0];
     const bounds = scene.getEntityBoundingBox(7);
     const api = scene.appearancePreview(state.device, pipeline),
       token = api.begin({ expressId: 7, modelIndex: 0 });

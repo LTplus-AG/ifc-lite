@@ -49,9 +49,22 @@ export interface AppearancePlan extends AppearanceEntityPlan {
   }>;
   exclusions: Array<{ productId: number; reason: string }>;
 }
-export interface AppearanceWorkerRequest {
-  type: 'plan'; id: number; source: Uint8Array; request: AppearanceRequest;
+export interface AppearanceCatalogRequest {
+  schema: 'IFC4' | 'IFC4X3';
+  sourceRevision: string;
+  productIds: number[];
 }
+export interface AppearanceCatalog {
+  sourceRevision: string;
+  products: Array<{ productId: number; ifcClass: string; typeIds: number[] }>;
+  types: Array<{ typeId: number; ifcClass: string; Name: string | null }>;
+  missingProductIds: number[];
+}
+export type AppearanceWorkerJob =
+  | { type: 'plan'; request: AppearanceRequest }
+  | { type: 'catalog'; request: AppearanceCatalogRequest };
+export type AppearanceWorkerRequest = AppearanceWorkerJob & { id: number; source: Uint8Array };
 export type AppearanceWorkerResponse =
   | { type: 'complete'; id: number; plan: AppearancePlan }
+  | { type: 'catalog-complete'; id: number; catalog: AppearanceCatalog }
   | { type: 'error'; id: number; message: string };

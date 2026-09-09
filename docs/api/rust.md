@@ -516,6 +516,18 @@ pub use parallel_scan::build_entity_index_parallel;
 
 ### Appearance authoring
 
+`ifc_lite_processing::appearance::calibrate_appearance_plane` establishes one
+measured plane from two stable native-source landmarks and a known distance.
+`PlaneCalibrationRequest` supplies the raster-to-source affine, raster extent
+and an IFC Z-up world anchor/direction/normal. `CalibratedPlane` returns a
+world-space `Mapping::Planar`, raster corners and metres per source unit.
+Crop, page rotation and raster DPI only change the raster-to-source transform;
+they do not change the retained calibration landmarks or measured distance.
+This bounded calculation does not mutate IFC or composite pixels outside the
+page. Invalid, sheared or unrepresentable planes fail explicitly. Reconstructed
+world edges and anchor displacement must each preserve their intended vector
+within one part per million; large origins never enlarge that tolerance.
+
 `ifc_lite_processing::appearance::plan_appearance` prepares image and UV edits
 against an effective IFC STEP snapshot. It shares canonical geometry production
 with loading and returns both IFC edit operations and per-corner preview data.
@@ -784,3 +796,14 @@ This will generate detailed documentation including:
 - Source code links
 - Examples from doc comments
 - Cross-references between items
+
+
+`ifc_lite_processing::appearance::catalog_appearance(bytes, &AppearanceCatalogRequest)`
+resolves rendered owner class and type selectors from an already-effective IFC4
+or IFC4X3 snapshot. It returns sorted `AppearanceCatalog` products/types and an
+explicit missing/ineligible ID list. IFC class strings use canonical PascalCase;
+`AppearanceCatalogType.name` serializes as the exact EXPRESS attribute `Name`.
+The function reuses appearance source decoding and its budgets, performs no meshing
+or texture-image decoding, and rejects malformed relevant type assignments or oversized
+catalog metadata without partial results. Hosts retain federation and selection
+orchestration and must fence stale snapshot responses before use.

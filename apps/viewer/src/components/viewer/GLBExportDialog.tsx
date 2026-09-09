@@ -50,6 +50,7 @@ import { formatLoadError } from '@/lib/load-error-message';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
+import { displayedTranslation } from '@/lib/model-placement/state';
 
 type ColorSource = 'rendering' | 'shading';
 
@@ -231,11 +232,10 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       // the primary id space (idOffset 0) so node-extras expressIds stay
       // consistent with the from-meshes output. Everything else keeps the
       // from-meshes assembler over the meshes the viewer already holds.
-      // NOTE on fidelity: the on-screen load may skip small cuts / lower the
-      // tessellation tier; exporters deliberately re-mesh at full fidelity
-      // (the house rule - see GeometryProcessorOptions.skipSmallCuts). Only
-      // mergeLayers changes model CONTENT, so it forces the from-meshes path.
+      // Re-meshing uses full fidelity; merged layers and manual workspace
+      // placement require the current meshes to preserve their content/frame.
       const canUseSource =
+        !displayedTranslation(useViewerStore.getState().modelPlacement, selectedModelId).some((value) => value !== 0) &&
         colorSource === 'rendering' &&
         !mergeLayers &&
         idOffset === 0 &&
@@ -285,7 +285,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
         const exportGeometry = withInstancedMeshes(
           selectedModel.geometryResult,
           federatedModel
-            ? { idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0 }
+            ? { modelId: federatedModel.id, idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0 }
             : null,
         );
         const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
@@ -396,7 +396,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
             Export GLB File
           </DialogTitle>
           <DialogDescription>
-            Export the 3D model as binary glTF for use in other viewers and renderers
+            Export model geometry as binary glTF, including its current workspace placement
           </DialogDescription>
         </DialogHeader>
 

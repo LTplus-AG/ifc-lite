@@ -2,10 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * CommandPalette — Ctrl+K / Cmd+K. Raycast-style command palette for the
- * entire viewer. Keyboard-first, scored search, recent usage tracking.
- */
+/** Ctrl/Cmd+K command search with scoring and recent usage. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -74,6 +71,7 @@ import {
   ChevronsRight,
   GraduationCap,
 } from 'lucide-react';
+import { openRepositionModels } from '@/lib/model-placement/commands';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
@@ -97,7 +95,7 @@ import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { TOUR_REGISTRY } from '@/lib/tours/registry';
 import { startTour } from '@/lib/tours/controller';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
-import { exportGlbFromGeometry } from '@/lib/export/glb';
+import { exportPlacedModelGlb } from '@/lib/model-placement/quick-glb';
 import { exportCsvFromBytes } from '@/lib/export/csv';
 import { downloadFile, buildExportFilename, stripExtension } from '@/lib/export/download';
 import { GeometryProcessor } from '@ifc-lite/geometry';
@@ -268,6 +266,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().setActiveTool('select'); } },
       { id: 'tool:walk', label: 'Walk', keywords: 'first person navigate wasd', category: 'Tools', icon: PersonStanding, shortcut: 'C',
         action: () => { useViewerStore.getState().setActiveTool('walk'); } },
+      { id: 'model:reposition', label: 'Reposition models', keywords: 'move align pointcloud origin offset translate', category: 'Tools', icon: Crosshair, action: () => openRepositionModels() },
       { id: 'tool:measure', label: 'Measure', keywords: 'distance ruler dimension', category: 'Tools', icon: Ruler, shortcut: 'M',
         action: () => { useViewerStore.getState().setActiveTool('measure'); } },
       { id: 'tool:section', label: 'Section', keywords: 'clip cut plane', category: 'Tools', icon: Scissors, shortcut: 'X',
@@ -460,7 +459,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       { id: 'export:glb', label: 'Export GLB', keywords: '3d model gltf download', category: 'Export', icon: Download,
         action: async () => {
           const gr = useViewerStore.getState().geometryResult; if (!gr) return;
-          try { downloadFile(await exportGlbFromGeometry(gr, { includeMetadata: true }), 'model.glb', 'model/gltf-binary'); }
+          try { downloadFile(await exportPlacedModelGlb(gr), 'model.glb', 'model/gltf-binary'); }
           catch (e) { console.error('GLB export failed:', e); }
         } },
       { id: 'export:usd', label: 'Export USD (OpenUSD)', keywords: '3d model usd usda openusd omniverse blender usdview download', category: 'Export', icon: Box,

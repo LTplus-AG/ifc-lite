@@ -50,3 +50,5 @@ export {
   type DerivedIdentityEntry,
   type EntityIdentityResolver,
 } from './change-set-to-ops.js';
+
+export type { EntityOperation, EntityOperationEffect, EntityPreparationOptions, PreparedEntityOperations } from './cooperative-operation-types.js';

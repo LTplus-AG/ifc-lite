@@ -34,6 +34,32 @@ function setup(timeoutMs = 120_000) {
   return { workers, client };
 }
 describe('appearance worker ownership (#4243)', () => {
+  it('catalog and plan share cancellation, revision fencing and deterministic worker release (#4243)', async () => {
+    const { client, workers } = setup();
+    const first = client.catalog(new Uint8Array([1]), { schema: 'IFC4', sourceRevision: 'catalog-old', productIds: [10] });
+    const cancelled = assert.rejects(first, { name: 'AbortError' });
+    const stale = workers[0].onmessage!;
+    const next = client.plan(new Uint8Array([1]), request);
+    await cancelled;
+    stale(new MessageEvent<AppearanceWorkerResponse>('message', { data: { type: 'catalog-complete', id: 1, catalog: { sourceRevision: 'catalog-old', products: [], types: [], missingProductIds: [10] } } }));
+    assert.equal(workers[1].terminated, 0);
+    workers[1].complete(); await next;
+    const wrong = client.catalog(new Uint8Array([1]), { schema: 'IFC4', sourceRevision: 'catalog-new', productIds: [10] });
+    workers[2].emit({ type: 'catalog-complete', id: workers[2].posted!.id,
+      catalog: { sourceRevision: 'catalog-old', products: [], types: [], missingProductIds: [10] } });
+    await assert.rejects(wrong, /stale or invalid catalog/);
+    assert.equal(workers[2].terminated, 1);
+    const timeoutClient = setup(5);
+    await assert.rejects(timeoutClient.client.catalog(new Uint8Array(), { schema: 'IFC4', sourceRevision: 'timeout', productIds: [] }), /stopped responding/);
+    assert.equal(timeoutClient.workers[0].terminated, 1);
+    client.dispose();
+    await assert.rejects(client.catalog(new Uint8Array(), { schema: 'IFC4', sourceRevision: '', productIds: [] }), /disposed/);
+  });
+  it('refuses oversized catalog owner arrays before spawning or copying to a worker (#4243)', async () => {
+    const { client, workers } = setup();
+    await assert.rejects(client.catalog(new Uint8Array(), { schema: 'IFC4', sourceRevision: 'bounded', productIds: new Array(10_001).fill(10) }), /10000 owners/);
+    assert.equal(workers.length, 0);
+  });
   it('rejects an oversized source before spawning a worker or cloning its bytes', async () => {
     let attempted = 0;
     const client = createAppearancePlanner({ workerFactory: () => {

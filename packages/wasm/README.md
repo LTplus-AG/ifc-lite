@@ -111,3 +111,11 @@ See the [WASM API Reference](https://ifclite.dev/docs/api/wasm/).
 ## License
 
 [MPL-2.0](https://mozilla.org/MPL/2.0/)
+
+
+For appearance authoring, `IfcAPI.catalogAppearance` resolves current IFC product
+classes and type memberships from an effective STEP snapshot before planning.
+It shares bounded native decoding with `planAppearance`; run both in a worker and
+validate the source revision before using a catalog or applying a plan. See the
+[WASM API guide](../../docs/api/wasm.md#effective-appearance-scope-catalog) for the
+request, response and limits.

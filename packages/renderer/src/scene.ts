@@ -24,7 +24,7 @@ import {
   rayIntersectsBox,
 } from './scene-raycaster.js';
 import { selectBoundingBoxesInRect } from './scene-rect-select.js';
-import { mergeGeometry, splitMeshDataForBufferLimit, worldAabbFromPieces, destroyGpuResources } from './scene-geometry.js';
+import { mergeGeometry, splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
@@ -33,6 +33,8 @@ import { isEntityVisible } from './entity-visibility.js';
 import { planInstancedGhosting } from './instanced-ghost-plan.js';
 import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
+import { translateSceneModel, releaseInstanceVertices, refreshTexturedBounds } from './scene-model-translation.js';
+import { ModelTranslations } from './model-translation.js';
 import { extractEntityFromMergedMesh } from './merged-mesh-extract.js';
 import {
   dropAllPartialCaches as dropAllPartialCachesIn,
@@ -75,6 +77,8 @@ interface BatchBucket {
  *  bindGroup wiring all three. Drawn per-mesh in a dedicated sub-pass. */
 export interface TexturedMesh {
   expressId: number;
+  modelIndex?: number;
+  bounds?: { min: [number, number, number]; max: [number, number, number] };
   vertexBuffer: GPUBuffer;
   indexBuffer: GPUBuffer;
   indexCount: number;
@@ -229,6 +233,7 @@ export class Scene {
   private batchedMeshes: BatchedMesh[] = [];                        // flat render array (rebuilt from buckets)
   private buckets: Map<string, BatchBucket> = new Map();            // bucketKey -> consolidated bucket state
   private meshDataBucket: Map<MeshData, BatchBucket> = new Map();   // reverse lookup: MeshData -> owning bucket
+  private modelTranslations = new ModelTranslations();
   private meshDataMap: Map<number, MeshData[]> = new Map();         // Map expressId -> MeshData[] (for lazy buffer creation, accumulates multiple pieces)
   private boundingBoxes: Map<number, BoundingBox> = new Map();      // Map expressId -> bounding box (computed lazily)
   private texturedMeshes: TexturedMesh[] = [];                      // #961: IFC surface-textured meshes (own buffers/texture/bindGroup)
@@ -344,11 +349,9 @@ export class Scene {
   private finalizeInProgress = false;
   private nextSplitId: number = 0; // Monotonic counter for sub-bucket keys
   private nextBatchId: number = 0; // Monotonic counter for unique batch identifiers
-  // Shared local-frame origin for ALL batches (set from the first batch's world
-  // bbox centre). Every batch stores positions relative to it and draws with
-  // model = translate(sharedFrameOrigin), so coincident faces across batches
-  // stay bit-coincident (no seam z-fight) while f32 vertex coords stay small.
-  private sharedFrameOrigin: [number, number, number] | null = null;
+  // Per-model shared origins keep all colours and highlights bit-coincident
+  // without narrowing the distance between federated models into f32 vertices.
+  private sharedFrameOrigins = new Map<number, [number, number, number]>();
   private cachedMaxBufferSize: number = 0; // device.limits.maxBufferSize * safety factor (set on first use)
   private static readonly STREAMING_FRAGMENT_MAX_INDICES = 180_000;
   private static readonly STREAMING_FRAGMENT_MAX_VERTEX_BYTES = 8 * 1024 * 1024;
@@ -409,6 +412,7 @@ export class Scene {
    * Add mesh to scene
    */
   addMesh(mesh: Mesh): void {
+    this.modelTranslations.placeAuthoredMesh(mesh);
     this.meshes.push(mesh);
   }
 
@@ -429,8 +433,8 @@ export class Scene {
   /** The shared local-frame origin all batches relativize against (null until
    *  the first batch is built). Per-mesh highlight/picker VBOs replicate the
    *  batch's exact f32 path against this so they render bit-coincident. */
-  getSharedFrameOrigin(): [number, number, number] | null {
-    return this.sharedFrameOrigin;
+  getSharedFrameOrigin(modelIndex = 0): [number, number, number] | null {
+    return this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex) ?? null;
   }
 
   /**
@@ -719,8 +723,9 @@ export class Scene {
     const provider = this.coldProvider;
     if (!bucket || !shell || !shell.bounds || !provider) return;
 
+    const sourceBounds = this.modelTranslations.sourceDrawableBounds(shell)!;
     const promise = provider
-      .loadMeshesInBounds(shell.bounds.min, shell.bounds.max)
+      .loadMeshesInBounds(sourceBounds.min, sourceBounds.max)
       .then((meshes) => {
         // Re-validate: a clear()/finalize may have replaced the world.
         const current = this.buckets.get(key);
@@ -730,7 +735,8 @@ export class Scene {
         const members = meshes.filter(
           (m) => idSet.has(m.expressId) && this.bucketBaseKey(m) === baseKey
         );
-        for (const m of members) {
+        for (const source of members) {
+          const m = this.modelTranslations.placeMesh(source);
           bucket.meshData.push(m);
           bucket.vertexBytes += (m.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;
           this.meshDataBucket.set(m, bucket);
@@ -901,7 +907,9 @@ export class Scene {
    * recolour routing.
    */
   private bucketBaseKey(meshData: MeshData, color?: [number, number, number, number]): string {
-    return bucketBaseKeyFor(meshData, this.colorKey(color ?? meshData.color), this.spatialChunking);
+    const source = this.modelTranslations.sourceMesh(meshData);
+    const key = bucketBaseKeyFor(source, this.colorKey(color ?? meshData.color), this.spatialChunking);
+    return source.modelIndex ? `model${source.modelIndex}~${key}` : key;
   }
 
   /**
@@ -910,6 +918,7 @@ export class Scene {
    * Accumulates multiple mesh pieces per expressId (elements can have multiple geometry pieces)
    */
   addMeshData(meshData: MeshData): void {
+    meshData = this.modelTranslations.placeMesh(meshData);
     // For color-merged batches with per-vertex entityIds, register the mesh
     // under EVERY unique entity so picking/visibility/selection can find it.
     if (meshData.entityIds && meshData.entityIds.length > 0) {
@@ -1143,6 +1152,7 @@ export class Scene {
    */
   appendToBatches(meshDataArray: MeshData[], device: GPUDevice, pipeline: RenderPipeline, isStreaming: boolean = false): void {
     if (this.appearanceController) for (const part of meshDataArray) this.appearanceController.cancelFor(part.expressId);
+    meshDataArray = meshDataArray.map((mesh) => this.modelTranslations.placeMesh(mesh));
     // Cache max buffer size on first call
     if (this.cachedMaxBufferSize === 0) {
       this.cachedMaxBufferSize = this.getMaxBufferSize(device);
@@ -1290,6 +1300,7 @@ export class Scene {
    */
   removeMeshesForEntity(expressId: number): boolean {
     this.appearanceController?.forget(expressId);
+    this.modelTranslations.forgetEntityBounds(expressId);
     const meshDataList = this.meshDataMap.get(expressId);
     if (!meshDataList || meshDataList.length === 0) {
       this.boundingBoxes.delete(expressId);
@@ -1452,10 +1463,6 @@ export class Scene {
   }
 
   /**
-   * Translate every flat (non-instanced) mesh for `expressId` by `delta`. See
-   * {@link translateMeshesForEntity} for the full contract; this is the flat half.
-   */
-  /**
    * Mark a mesh's bucket for rebuild after its positions were mutated in
    * place (move/rotate), migrating it to a new bucket when spatial chunking
    * is on and the mesh crossed a grid-cell boundary. Without the migration
@@ -1543,6 +1550,7 @@ export class Scene {
           const interleaved = interleaveTexturedVertices(texturedData[i]);
           if (interleaved) {
             this.texturedDevice.queue.writeBuffer(entries[i].vertexBuffer, 0, interleaved);
+            refreshTexturedBounds(this.modelTranslations, entries[i], texturedData[i]);
           }
         }
       }
@@ -1650,14 +1658,28 @@ export class Scene {
    *  rebuilt from the entity's current geometry on the next render. Used after a
    *  translate or removal, which mutate the underlying geometry but don't touch
    *  these standalone highlight meshes. */
-  private evictHighlightMeshes(expressId: number): void {
+  private evictHighlightMeshes(expressId: number, hydratedOnly = false): void {
     if (this.meshes.length === 0) return;
     const kept: Mesh[] = [];
     for (const mesh of this.meshes) {
-      if (mesh.expressId === expressId) destroyGpuResources(mesh);
+      if (mesh.expressId === expressId && (!hydratedOnly || mesh.hydrated)) destroyGpuResources(mesh);
       else kept.push(mesh);
     }
     this.meshes = kept;
+  }
+
+  /** Absolute workspace translation, renderer Y-up metres (#4226). */
+  getModelTranslation(modelIndex: number) { return this.modelTranslations.get(modelIndex); }
+  setModelTranslation(modelIndex: number, translation: readonly [number, number, number]): boolean {
+    const batches = this.finalizeInProgress ? [...new Set([...this.batchedMeshes,
+      ...[...this.buckets.values()].flatMap((bucket) => bucket.batchedMesh ? [bucket.batchedMesh] : [])])] : this.batchedMeshes;
+    return translateSceneModel({ translations: this.modelTranslations, pieces: this.meshDataMap,
+      bounds: this.boundingBoxes, batches, meshes: this.meshes, overrides: this.overrideBatches, textured: this.texturedMeshes,
+      templates: this.instancedTemplates, cpu: this.instancedTemplateCpu, occurrences: this.instancedEntityMap,
+      device: this.instancedDevice, evictHighlight: (id) => this.evictHighlightMeshes(id, true),
+      clearPartial: () => this.dropAllPartialCaches(),
+      unionBounds: (id, view, offset, min, max) => this.unionInstancedWorldAabb(id, view, offset, ...min, ...max),
+    }, modelIndex, translation);
   }
 
   /** Bulk variant of `translateMeshesForEntity`. */
@@ -1737,6 +1759,7 @@ export class Scene {
           const interleaved = interleaveTexturedVertices(texturedData[i]);
           if (interleaved) {
             this.texturedDevice.queue.writeBuffer(entries[i].vertexBuffer, 0, interleaved);
+            refreshTexturedBounds(this.modelTranslations, entries[i], texturedData[i]);
           }
         }
       }
@@ -2079,6 +2102,8 @@ export class Scene {
     // time-sliced rebuild swaps the new batch array in.
     this.finalizeInProgress = true;
 
+    // Hoisted rollback/processChunk callbacks retain this scene across turns.
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const scene = this;
     const oldFragments = this.streamingFragments;
     const oldBatches = this.batchedMeshes;
@@ -2253,18 +2278,16 @@ export class Scene {
     // so caching the inverted-empty sentinel here would publish a geometry-less
     // entity to every CPU consumer with a garbage box (#2480).
     for (const [expressId, pieces] of this.meshDataMap) {
-      if (this.boundingBoxes.has(expressId)) continue;
-      const bbox = worldAabbFromPieces(pieces);
-      if (bbox) this.boundingBoxes.set(expressId, bbox);
+      cachedWorldAabb(expressId, pieces, this.boundingBoxes);
     }
 
+    this.modelTranslations.retainEntityBounds(this.meshDataMap);
     this.streamingFragments = [];
     this.buckets.clear();
     this.meshDataBucket = new Map();
     this.meshDataMap.clear();
-    // Free the compact instanced template geometry too; the per-occurrence world
-    // AABBs already live in boundingBoxes, so bbox-raycast still finds instanced ids.
-    this.instancedTemplateCpu = [];
+    // Keep occurrence transforms for placement; release heavy template vertices.
+    releaseInstanceVertices(this.instancedTemplateCpu);
     this.activeBucketKey.clear();
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
@@ -2310,18 +2333,14 @@ export class Scene {
     // Same rule as `finishEphemeralStreaming`: an entity with no usable vertex
     // gets no entry rather than the inverted-empty sentinel (#2480).
     for (const [expressId, pieces] of this.meshDataMap) {
-      if (this.boundingBoxes.has(expressId)) continue;
-      const bbox = worldAabbFromPieces(pieces);
-      if (bbox) this.boundingBoxes.set(expressId, bbox);
+      cachedWorldAabb(expressId, pieces, this.boundingBoxes);
     }
 
+    this.modelTranslations.retainEntityBounds(this.meshDataMap);
     // 2. Clear the heavy data structures — typed arrays become GC-eligible
     this.meshDataMap.clear();
-    // Free the compact instanced template geometry; per-occurrence world AABBs are
-    // already cached in boundingBoxes, so the released-path bbox-raycast still
-    // resolves instanced ids (exact-triangle measure/section is unavailable post-
-    // release, same as the flat path).
-    this.instancedTemplateCpu = [];
+    // Keep occurrence transforms for placement; release heavy template vertices.
+    releaseInstanceVertices(this.instancedTemplateCpu);
     // Clear meshData arrays in each bucket (typed arrays become GC-eligible)
     // but keep the bucket shells so batchedMesh references remain valid
     for (const bucket of this.buckets.values()) {
@@ -2479,14 +2498,20 @@ export class Scene {
     meshes: MeshData[], color: [number, number, number, number],
     device: GPUDevice, pipeline: RenderPipeline, bucketKey?: string,
   ): BatchedMesh {
+    // Keep main's model-local frame and translation registration while staging
+    // every GPU allocation before publishing Scene state.
+    const modelIndex = meshes[0]?.modelIndex ?? 0;
+    const offset = this.modelTranslations.get(modelIndex);
     const result = createSceneBatch(meshes, color, device, pipeline, {
       id: this.nextBatchId, colorKey: bucketKey ?? this.colorKey(color),
-      origin: this.sharedFrameOrigin ?? undefined,
+      origin: this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex),
       quantized: this.quantizedBatchesEnabled, lod: this.lodBuildsEnabled,
     }, bucketKey);
     this.nextBatchId++;
-    if (!this.sharedFrameOrigin && result.origin?.some(value => value !== 0)) this.sharedFrameOrigin = result.origin;
-    return result;
+    if (!this.sharedFrameOrigins.has(modelIndex) && result.origin) {
+      this.sharedFrameOrigins.set(modelIndex, [result.origin[0] - offset[0], result.origin[1] - offset[1], result.origin[2] - offset[2]]);
+    }
+    return this.modelTranslations.registerDrawable(result, modelIndex);
   }
 
   /**
@@ -2768,21 +2793,15 @@ export class Scene {
     // override colour directly). No-op when no instanced data is loaded.
     this.setInstancedColorOverrides(overrides);
 
-    // Group expressIds by override color
+    // An overlay batch must belong to one model so placement cannot move a
+    // different model's highlighted geometry along with its first mesh.
     const colorGroups = new Map<string, { color: [number, number, number, number]; meshData: MeshData[] }>();
-
     for (const [expressId, color] of overrides) {
-      const key = this.colorKey(color);
-      let group = colorGroups.get(key);
-      if (!group) {
-        group = { color, meshData: [] };
-        colorGroups.set(key, group);
-      }
-      const pieces = this.meshDataMap.get(expressId);
-      if (pieces) {
-        for (const piece of pieces) {
-          group.meshData.push(piece);
-        }
+      for (const piece of this.meshDataMap.get(expressId) ?? []) {
+        const key = `${piece.modelIndex ?? 0}:${this.colorKey(color)}`;
+        let group = colorGroups.get(key);
+        if (!group) { group = { color, meshData: [] }; colorGroups.set(key, group); }
+        group.meshData.push(piece);
       }
     }
 
@@ -3093,6 +3112,7 @@ export class Scene {
 
       // instanceBuffer is already the interleaved mat4 + entityId + rgba block
       // (INSTANCE_STRIDE_BYTES per occurrence) from prepareInstancedRender.
+      this.modelTranslations.placeInstances(t.instanceBuffer, modelIndex, INSTANCE_STRIDE_BYTES);
       const instSize = t.instanceCount * INSTANCE_STRIDE_BYTES;
       const instanceBuffer = device.createBuffer({
         size: instSize,
@@ -3685,8 +3705,10 @@ export class Scene {
       });
       const bindGroup = pipeline.createTexturedBindGroup(uniformBuffer, texture.createView(), sampler);
 
-      this.texturedMeshes.push({
-        expressId: meshData.expressId,
+      const box = worldAabbFromPieces([meshData]);
+      this.texturedMeshes.push(this.modelTranslations.registerDrawable({
+        expressId: meshData.expressId, modelIndex: meshData.modelIndex,
+        bounds: box ? { min: [box.min.x, box.min.y, box.min.z], max: [box.max.x, box.max.y, box.max.z] } : undefined,
         vertexBuffer,
         indexBuffer,
         indexCount: meshData.indices.length,
@@ -3701,7 +3723,7 @@ export class Scene {
           ? [meshData.origin[0], meshData.origin[1], meshData.origin[2]]
           : [0, 0, 0],
         ...(sharedTextureKey !== undefined ? { sharedTextureKey } : {}),
-      });
+      }, meshData.modelIndex ?? 0));
     } catch (error) {
       vertexBuffer?.destroy();
       indexBuffer?.destroy();
@@ -3761,6 +3783,7 @@ export class Scene {
   }
 
   clear(): void {
+    this.modelTranslations.clear();
     // GPU-instancing templates own their vertex/index/instance buffers.
     // (Freed slots are holes whose buffers are already destroyed — skip them so
     // a per-model removal followed by clear() can't double-destroy.)
@@ -3813,17 +3836,15 @@ export class Scene {
     // instanced templates are unaffected — their per-occurrence transforms are
     // already baked to absolute world coordinates at upload time, not relative
     // to this origin.
-    this.sharedFrameOrigin = null;
+    this.sharedFrameOrigins.clear();
     this.meshes = [];
     this.batchedMeshes = [];
     this.buckets.clear();
     this.meshDataBucket = new Map();
     this.meshDataMap.clear();
-    for (const eid of [...this.boundingBoxes.keys()]) {
-      if (!this.instancedEntityMap.has(eid)) {
-        this.boundingBoxes.delete(eid);
-      }
-    }
+    this.modelTranslations.clearFlatBounds();
+    this.boundingBoxes.clear();
+    for (const eid of this.instancedEntityMap.keys()) this.recomputeInstancedBounds(eid);
     this.activeBucketKey.clear();
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
@@ -3927,19 +3948,7 @@ export class Scene {
    * @returns Bounding box with min/max corners, or null if no mesh data exists
    */
   getEntityBoundingBox(expressId: number): BoundingBox | null {
-    // Check cache first
-    const cached = this.boundingBoxes.get(expressId);
-    if (cached) return cached;
-
-    // Compute from mesh data. `null` covers both "no pieces at all" and
-    // "pieces with no vertex a box can be built from" — and, critically, is
-    // NOT cached (#2480): a transient empty piece must not poison the entry
-    // for an entity that later gains real geometry, and this cache has no
-    // invalidation tied to that.
-    const bbox = worldAabbFromPieces(this.meshDataMap.get(expressId));
-    if (!bbox) return null;
-    this.boundingBoxes.set(expressId, bbox);
-    return bbox;
+    return cachedWorldAabb(expressId, this.meshDataMap.get(expressId), this.boundingBoxes);
   }
 
   /**

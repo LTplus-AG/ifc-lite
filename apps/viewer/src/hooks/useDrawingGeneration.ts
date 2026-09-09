@@ -35,6 +35,7 @@ import {
   parseProfilesFlat,
   parseSymbolicFlat,
 } from '@/lib/overlay-parse/index.js';
+import { placedConstructionProfiles } from '@/lib/model-placement/construction-profiles';
 import { buildProfileEntries, warnAboutSkippedProfiles } from '@/lib/overlay-parse/profile-entries.js';
 import {
   buildSymbolicDrawingLines,
@@ -358,6 +359,8 @@ export function useDrawingGeneration({
       // back to a plan reuses the extracted profiles.
       profileCacheRef.current = null;
     }
+
+    profiles = placedConstructionProfiles(profiles, ifcDataStore);
 
     let generator: Drawing2DGenerator | null = null;
     try {

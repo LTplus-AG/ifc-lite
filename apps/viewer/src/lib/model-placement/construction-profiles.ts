@@ -9,7 +9,7 @@ import { toRenderTranslation } from './translation';
 
 /** Keep cached IFC profiles in their source frame. Projection consumes a placed
  * matrix just like body geometry, including moves across projection bands. */
-export function placedConstructionProfiles(profiles: ProfileEntry[], source: IfcDataStore | null, state: ViewerState = useViewerStore.getState()): ProfileEntry[] {
+export function placedConstructionProfiles(profiles: ProfileEntry[], source: Pick<IfcDataStore, 'source'> | null, state: ViewerState = useViewerStore.getState()): ProfileEntry[] {
   const owner = [...state.models].find(([, model]) => model.ifcDataStore === source)?.[0];
   if (!owner || !source) return profiles;
   const delta = toRenderTranslation(displayedTranslation(state.modelPlacement, owner));

@@ -119,6 +119,36 @@ let lastSectionConfig: SectionConfig | null = null;
 let lastSectionConfigModelId: string | null = null;
 
 /**
+ * Set (to `activeModelId`) the instant `applyHash` restores an entry that
+ * actually carries a `sectionConfig` (issue #4153 gap: restore reached
+ * `lastSectionConfig` but was never fed to drawing generation, so the saved
+ * markup came back with no section cut to sit on). Consumed exactly once by
+ * {@link consumeRestoredSectionConfig} — `useDrawingGeneration.ts` reads it
+ * to re-derive the store's `sectionPlane` (percentage-of-bounds, semantic
+ * axis) from this hook's world-space `SectionConfig`, then lets the existing
+ * plane-changed auto-generate path do the rest. Reset to `null` everywhere
+ * `lastSectionConfig` itself is reset, so a model with nothing saved (or
+ * whose restore has not concluded yet) can never be "consumed" as if it had.
+ */
+let pendingSectionConfigModelId: string | null = null;
+
+/**
+ * Hand the generation bridge (`useDrawingGeneration.ts`) the `SectionConfig`
+ * this hook just restored for `modelId`, if any — one-shot: a second call for
+ * the same restore returns `null`, so a plane the user has since changed is
+ * never silently re-applied. Returns `null` for a model whose restore has not
+ * (yet) surfaced a saved plane, or for any model other than the one the
+ * pending config belongs to — the same per-model keying `restoringModelId`
+ * uses, so a caller cannot cross-apply model A's cut to model B by racing
+ * this against a switch.
+ */
+export function consumeRestoredSectionConfig(modelId: string): SectionConfig | null {
+  if (pendingSectionConfigModelId !== modelId) return null;
+  pendingSectionConfigModelId = null;
+  return lastSectionConfigModelId === modelId ? lastSectionConfig : null;
+}
+
+/**
  * Set the instant the restore effect below starts working on a model, and
  * cleared once its `applyHash` step concludes for that SAME model (#4159
  * review: cross-model `sectionConfig` contamination). `setActiveModel`'s
@@ -261,6 +291,7 @@ export function useDrawing2DPersistence(): void {
     if (!activeModelId) {
       lastSectionConfig = null;
       lastSectionConfigModelId = null;
+      pendingSectionConfigModelId = null;
       restoringModelId = null;
       return;
     }
@@ -283,6 +314,7 @@ export function useDrawing2DPersistence(): void {
     // call. Mark it again, immediately before the call that fires it.
     lastSectionConfig = null;
     lastSectionConfigModelId = null;
+    pendingSectionConfigModelId = null;
     // #4159 review (cross-model sectionConfig contamination): mark this
     // model as "restore in flight" for the SAME reason the clear above is
     // marked via `suppressNextSaveFor` — until `applyHash` runs below,
@@ -298,6 +330,7 @@ export function useDrawing2DPersistence(): void {
       if (!stillCurrent()) return;
       lastSectionConfig = null;
       lastSectionConfigModelId = null;
+      pendingSectionConfigModelId = null;
       if (restoringModelId === activeModelId) restoringModelId = null;
       if (!hash) return;
 
@@ -307,6 +340,11 @@ export function useDrawing2DPersistence(): void {
 
       lastSectionConfig = entry.sectionConfig;
       lastSectionConfigModelId = activeModelId;
+      // #4153 gap: only mark a config "pending" when there IS one to apply —
+      // an entry with markup but no saved cut (`sectionConfig: null`, e.g.
+      // saved before this fix shipped) must leave the section plane alone
+      // rather than have `useDrawingGeneration.ts` try to consume `null`.
+      if (entry.sectionConfig) pendingSectionConfigModelId = activeModelId;
       useViewerStore.setState({
         measure2DResults: entry.measure2DResults,
         polygonArea2DResults: entry.polygonArea2DResults,

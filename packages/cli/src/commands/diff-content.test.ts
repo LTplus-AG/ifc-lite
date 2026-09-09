@@ -69,7 +69,7 @@ describe('buildFileFingerprints', () => {
     expect(fingerprints.every((f) => f.components?.['attr:core'] !== undefined)).toBe(true);
   });
 
-  it('fingerprints the IfcObjectDefinitions the EntityTable does not hold', async () => {
+  it('fingerprints IfcTask and IfcActor, IfcObjectDefinitions that are not IfcProduct subtypes', async () => {
     const store = await loadIfcBytes(
       new TextEncoder().encode(scheduleModel(guid('OLDT'))),
       'base',
@@ -77,9 +77,12 @@ describe('buildFileFingerprints', () => {
     const byKey = new Map(buildFileFingerprints(store).map((f) => [f.key, f.ifcType]));
 
     // An IfcTask and an IfcActor are IfcObjectDefinitions with GlobalIds, but
-    // neither is an IfcProduct subtype, so the columnar parser leaves them out
-    // of its EntityTable and `getGlobalId` answers ''. Reading the table alone
-    // dropped them from the comparison entirely.
+    // neither is an IfcProduct subtype. Before #4204's IfcRoot-descendant
+    // retention, the columnar parser left them out of its EntityTable and
+    // `getGlobalId` answered ''; reading the table alone dropped them from the
+    // comparison entirely. Now #4204 retains every IfcRoot descendant, so the
+    // table holds them directly — this pins that they still end up correctly
+    // in the comparison either way.
     expect(byKey.get(guid('OLDT'))).toBe('IfcTask');
     expect(byKey.get(guid('ACTR'))).toBe('IfcActor');
     // And with a real class name, not the table's 'Unknown': ifcType is hashed

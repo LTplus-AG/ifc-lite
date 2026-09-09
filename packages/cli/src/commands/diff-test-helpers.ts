@@ -46,9 +46,10 @@ END-ISO-10303-21;
  * One entity from each `IfcRoot` branch, plus classes that are not `IfcRoot` at
  * all and classes no schema registry knows.
  *
- * - `IfcTask` / `IfcActor` are `IfcObjectDefinition`s the columnar parser does
- *   not put in its `EntityTable` (they are not `IfcProduct` subtypes), so their
- *   GlobalId has to come from the STEP record.
+ * - `IfcTask` / `IfcActor` are `IfcObjectDefinition`s that are not `IfcProduct`
+ *   subtypes. Before #4204's IfcRoot-descendant retention, the columnar parser
+ *   did not put them in its `EntityTable` and their GlobalId had to come from
+ *   the STEP record; now they are IfcRoot descendants the table holds directly.
  * - `IfcRelDefinesByProperties` is an `IfcRelationship` and `IfcPropertySet` is
  *   an `IfcPropertyDefinition`: both carry GlobalIds, both stay out.
  * - `IfcMaterial` has no GlobalId at all — its first attribute is a Name, which
@@ -96,7 +97,9 @@ END-ISO-10303-21;
  *
  * - `IfcMove` (an `IfcTask` subtype) and `IfcSpaceProgram` (an `IfcControl`)
  *   are `IfcObjectDefinition`s with real GlobalIds in slot 0, and are not
- *   `IfcProduct`s, so the `EntityTable` does not hold them.
+ *   `IfcProduct`s. Before #4204 the `EntityTable` did not hold them; now
+ *   #4204's IfcRoot-descendant retention reaches them through the bundled
+ *   IFC2X3 schema's inheritance chain, independent of the IFC4 codegen pin.
  * - `IfcSymbolStyle` is a *resource*: no GlobalId at all, a Name in slot 0. Its
  *   class name ends in `STYLE`, which is one of the parser's two name-based
  *   branches, so the table does hold it — with `hatch` in the GlobalId column.

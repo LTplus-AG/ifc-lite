@@ -1105,10 +1105,9 @@ export class Renderer {
     }
 
     /**
-     * Set (or clear, with `null`) a streamed point-cloud asset's per-vertex
-     * GPU model matrix (column-major, 16 floats) — issue #1804's
-     * `IfcMapConversion` alignment toggle. Cheap: takes effect on the next
-     * frame's uniform write, no GPU buffer rewrite.
+     * Set/clear a streamed cloud's column-major model matrix (16 floats) for
+     * IfcMapConversion alignment (#1804). Applied on the next frame's uniform
+     * write without rewriting vertex buffers.
      */
     setPointCloudTransform(
         handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,

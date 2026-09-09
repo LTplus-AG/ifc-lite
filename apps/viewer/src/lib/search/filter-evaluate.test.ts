@@ -613,6 +613,64 @@ describe('evaluateFilterRules — empty rules', () => {
   });
 });
 
+// #4262 / #4292: `compileNameMatcher` (packages/lists/src/name-pattern.ts)
+// now throws on a catastrophic-backtracking or over-length `/regex/`
+// literal instead of hanging (via `@ifc-lite/regex-guard`). Neither
+// `regexOpMatches` (filter-ops.ts) nor `nameMatches` (filter-match.ts) nor
+// this file catches that throw — it is meant to propagate to the caller
+// (SearchModal.filter.tsx's `runFilter`, `resolveClashSetFilter`,
+// `entitiesMatchingActiveFilter`), which is where recoverability is proven
+// (SearchModal.filter.wiring.test.tsx). These tests pin the CONTRACT this
+// module hands its callers: ONE clean, named `Error` — not a hang, not a
+// silent empty result, not an exception mid-scan — for both the sync and
+// federated entries, and that an ordinary valid pattern is unaffected.
+describe('evaluateFilterRules — unsafe /regex/ pattern (#4262 regex-guard)', () => {
+  it('sync: throws one clean Error naming the pattern, rather than hanging or matching nothing', () => {
+    const store = buildStore(rows);
+    assert.throws(
+      () => evaluateFilterRules('m1', store, [Rule.name('matches', '(a+)+$')], 'AND'),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /rejected name pattern/);
+        assert.match(err.message, /\(a\+\)\+\$/);
+        return true;
+      },
+    );
+  });
+
+  it('federated: rejects with the same clean Error, not a hang or a swallowed empty result', async () => {
+    const store = buildStore(rows);
+    await assert.rejects(
+      evaluateFilterRulesFederated([{ id: 'm1', store }], [Rule.name('matches', '(a+)+$')], 'AND'),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /rejected name pattern/);
+        return true;
+      },
+    );
+  });
+
+  it('an over-length pattern (>256 chars) is rejected the same way as a catastrophic shape', () => {
+    const store = buildStore(rows);
+    const tooLong = 'a'.repeat(300);
+    assert.throws(
+      () => evaluateFilterRules('m1', store, [Rule.name('matches', tooLong)], 'AND'),
+      /rejected name pattern/,
+    );
+  });
+
+  it('both directions: an ordinary valid pattern still filters correctly, unaffected by the guard', () => {
+    const store = buildStore(rows);
+    const byPrefix = evaluateFilterRules('m1', store, [Rule.name('matches', '^Wall-')], 'AND');
+    assert.deepStrictEqual(byPrefix.map((r) => r.expressId).sort(), [10, 20]);
+
+    const caseInsensitive = evaluateFilterRules(
+      'm1', store, [Rule.name('matches', '/door-a-201/i')], 'AND',
+    );
+    assert.deepStrictEqual(caseInsensitive.map((r) => r.expressId), [30]);
+  });
+});
+
 describe('orderRulesByCost — cheap-first reordering', () => {
   const order = __internal.orderRulesByCost;
 

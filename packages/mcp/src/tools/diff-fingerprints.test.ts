@@ -111,14 +111,13 @@ afterAll(async () => {
 
 describe('buildModelFingerprints on an IFC2X3 file', () => {
   it('fingerprints an object class the IFC4 codegen pin does not carry', () => {
-    // The parser's generated registry is pinned to IFC4_ADD2_TC1 and answers an
-    // empty chain for the 23 IFC2X3 IfcObjectDefinition classes IFC4 dropped.
-    // Judged `unknown`, every one the EntityTable does not hold left the
-    // comparison entirely — silently, on the schema most files in the wild
-    // still use.
+    // #4204 taught the parser's EntityTable to derive its IfcRoot set from the
+    // schema instead of the IFC4_ADD2_TC1 codegen pin, so IFCMOVE — one of the
+    // 23 IFC2X3-only IfcObjectDefinition classes IFC4 dropped — is now
+    // recognized as an IfcRoot descendant and keeps its real GlobalId here.
     expect(store('legacy-base').entities.getGlobalId(
       store('legacy-base').entityIndex.byType.get('IFCMOVE')![0],
-    )).toBe('');
+    )).toBe(guid('OLDM'));
 
     const byKey = keyedTypes('legacy-base');
     expect(byKey.get(guid('OLDM'))).toBe('IfcMove');

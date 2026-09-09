@@ -16,6 +16,7 @@ import { extractLengthUnitScale } from './unit-extractor.js';
 import { parsePropertyValueWithComplex } from './on-demand-extractors.js';
 import { readQuantitySet } from './quantity-collect.js';
 import { prepareColumnarEntities, type ColumnarEntityInput } from './columnar-entity-preparation.js';
+import type { DropCensus } from './drop-census.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
 import {
     StringTable,
@@ -72,6 +73,15 @@ export interface IfcDataStore extends IfcStoreBase {
     source: IfcSourceBytes;
     entityIndex: { byId: EntityByIdIndex; byType: Map<string, number[]> };
     deferredEntityIndex?: EntityByIdIndex;
+
+    /**
+     * Semantic drop census (#4208): per-class scanned/retained counts, the
+     * classes the categoriser skipped, classes unknown to the schema
+     * registry, and IFCREL* classes seen but not indexed as relationship
+     * edges. Always present after a parse — its absence (not a zero count)
+     * is what means "the census did not run".
+     */
+    dropCensus?: DropCensus;
 
     strings: StringTable;
     entities: ReturnType<EntityTableBuilder['build']>;
@@ -410,6 +420,7 @@ export async function parseColumnarInput(
             parseTime: performance.now() - startTime,
             source,
             entityIndex,
+            dropCensus: prepared.dropCensus,
             strings,
             entities: entityTable,
             properties: propertyTable,

@@ -8,13 +8,13 @@ This is known-derived self-transfer, never independent scan registration evidenc
 Requires IfcOpenShell, NumPy, SciPy, Pillow and rebuilt WASM. No network or writes.
 The deliberately narrow fixture decoder accepts only the qualified albedo GLB.
 """
+import argparse
 import base64
 import hashlib
 import io
 import json
 import struct
 import subprocess
-import sys
 import zipfile
 from pathlib import Path
 import ifcopenshell
@@ -23,8 +23,14 @@ import numpy as np
 from PIL import Image
 from scipy.spatial import cKDTree
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('source_glb')
+parser.add_argument('captured_ifczip')
+parser.add_argument('triangles', type=int, nargs='?')
+parser.add_argument('--write-input-json', type=Path, help='Write the exact offline native payload for the worker diagnostic and exit')
+args = parser.parse_args()
 root = Path(__file__).resolve().parents[2]
-glb = Path(sys.argv[1]).read_bytes()
+glb = Path(args.source_glb).read_bytes()
 assert hashlib.sha256(glb).hexdigest() == 'b6a0b51894427c37505632f4d4513d0424f0d84b014554755aa53eb74af6dcd6', 'Use documented albedo-only boulder fixture'
 size = struct.unpack_from('<I', glb, 12)[0]
 document = json.loads(glb[20:20+size])
@@ -42,13 +48,13 @@ def accessor(index):
 positions = accessor(0).astype(float)
 uvs = accessor(2).astype(float)
 triangles = accessor(3).reshape(-1, 3).astype(int)
-with zipfile.ZipFile(sys.argv[2]) as archive:
+with zipfile.ZipFile(args.captured_ifczip) as archive:
     source = archive.read(next(name for name in archive.namelist() if name.endswith('.ifc'))).decode()
 model = ifcopenshell.file.from_string(source)
 product = model.by_guid('3F8ea83w95POWKkSYP6ukU')
 item = product.Representation.Representations[0].Items[0]
 original_count = len(item.CoordIndex)
-limit = int(sys.argv[3]) if len(sys.argv) > 3 else original_count
+limit = args.triangles if args.triangles is not None else original_count
 assert 0 < limit <= original_count
 if limit < original_count:
     item.CoordIndex = item.CoordIndex[:limit]
@@ -95,8 +101,12 @@ try {
  } catch(error) { console.log(JSON.stringify({refusal:error.message})); }
 } finally {api.free();}
 """
+payload = json.dumps(dict(request=request, source=source, rgba=base64.b64encode(rgba).decode()))
+if args.write_input_json is not None:
+    args.write_input_json.write_text(payload)
+    raise SystemExit(0)
 run = subprocess.run(['node', '--input-type=module', '-e', javascript],
-    input=json.dumps(dict(request=request, source=source, rgba=base64.b64encode(rgba).decode())),
+    input=payload,
     capture_output=True, text=True, cwd=root, check=True)
 result = json.loads(run.stdout)
 result.update(sourceTriangles=len(triangles), targetTriangles=limit, originalTargetTriangles=original_count,

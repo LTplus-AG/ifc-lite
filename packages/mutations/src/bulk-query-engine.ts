@@ -3,17 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Bulk Query Engine for mass property updates
- *
- * Provides SQL-like query capabilities for selecting and modifying
- * multiple IFC entities at once.
+ * Bulk Query Engine: SQL-like selection and modification for multiple
+ * IFC entities at once.
  */
-
 import type { EntityTable, SpatialHierarchy, PropertyTable } from '@ifc-lite/data';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { MutablePropertyView } from './mutable-property-view.js';
 import type { Mutation, PropertyValue } from './types.js';
 import { checkMutationGuard, type MutationGuard } from './mutation-guard.js';
+import { compileGuardedRegex } from '@ifc-lite/regex-guard';
 
 /**
  * Filter operators for property values
@@ -271,7 +269,7 @@ export class BulkQueryEngine {
 
     // Filter by name pattern
     if (criteria.namePattern && this.strings) {
-      const regex = new RegExp(criteria.namePattern, 'i');
+      const regex = compileGuardedRegex(criteria.namePattern, 'i'); // caller-supplied: guard against ReDoS
       candidates = candidates.filter((id) => {
         const idx = this.findEntityIndex(id);
         if (idx === -1) return false;

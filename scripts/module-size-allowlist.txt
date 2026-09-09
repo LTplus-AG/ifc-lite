@@ -70,7 +70,6 @@
    534 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1709 apps/viewer/src/components/viewer/LensPanel.tsx
   1465 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
-   622 apps/viewer/src/components/viewer/lists/ListPanel.tsx
    548 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
   1139 apps/viewer/src/components/viewer/MainToolbar.tsx
    715 apps/viewer/src/components/viewer/measureHandlers.ts

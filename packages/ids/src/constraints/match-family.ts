@@ -30,6 +30,7 @@ import {
 import { isNumericXsdBase, isBooleanXsdBase } from './xsd-cast.js';
 import { translateXsdRegex } from './xsd-regex.js';
 import { matchDigitFacets } from './digit-facets.js';
+import { assertGuardedRegexPattern } from '@ifc-lite/regex-guard';
 
 /** Tolerance for the bounds matcher's exclusive comparators. */
 export const NUMERIC_TOLERANCE = 1e-6;
@@ -178,6 +179,15 @@ function buildPatternRegex(
   xsdPattern: string,
   caseInsensitive: boolean
 ): RegExp | null {
+  // Reject a catastrophic-backtracking or over-long pattern BEFORE any
+  // translation/compilation is attempted. This throws (rather than
+  // returning null like the malformed-syntax cases below) because a
+  // rejected pattern must surface as a validation failure the caller
+  // can see, not silently evaluate to "no match" — see
+  // `@ifc-lite/regex-guard`'s doc comment and this package's
+  // `validateSpecification`, which turns the thrown error into a
+  // failed specification result.
+  assertGuardedRegexPattern(xsdPattern);
   // XSD char-class subtraction `[a-z-[aeiou]]` has no JS equivalent;
   // approximate as the positive class (drop the exclusion) so the rest
   // of the pattern still evaluates, matching long-standing behaviour.

@@ -45,7 +45,19 @@ export function previewSetPattern(setField: string, setNames: Iterable<string>):
     return { isPattern: false, isInvalid: LOOKS_LIKE_PATTERN.test(set), matches: [] };
   }
 
-  const match = compileNameMatcher(set);
+  // `compileNameMatcher` throws (rather than falling back to a literal
+  // match) for a pattern with a catastrophic-backtracking shape or over the
+  // length cap — see its own docs. This runs on every keystroke via the
+  // caller's `useMemo`, with no surrounding try/catch, so an uncaught throw
+  // here would crash the column builder while the user is still typing.
+  // Route it into the same `isInvalid` signal a malformed literal already
+  // uses, instead of letting it escape.
+  let match: ReturnType<typeof compileNameMatcher>;
+  try {
+    match = compileNameMatcher(set);
+  } catch {
+    return { isPattern: false, isInvalid: true, matches: [] };
+  }
   const matches: string[] = [];
   for (const name of setNames) {
     if (match(name)) matches.push(name);

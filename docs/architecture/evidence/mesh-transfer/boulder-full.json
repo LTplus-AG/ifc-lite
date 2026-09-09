@@ -1,5 +1,5 @@
 {
-  "refusal": "BVH query work budget exhausted",
+  "refusal": "Transfer work budget exhausted; reduce source extent or atlas density",
   "sourceTriangles": 66122,
   "targetTriangles": 40087,
   "originalTargetTriangles": 40087,

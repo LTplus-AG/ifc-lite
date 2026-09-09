@@ -54,8 +54,8 @@ coverage and one final atomic Apply; raising the cap is not the acceptance gate.
 
 [The first 500 target triangles](boulder-prefix-500.json), retaining original
 coordinates and parallel UV maps, complete within the same bounds. The sampled
-area estimate is about 77% observed. Of 22,915 centroid/interior samples, 5,403
-are ambiguous and 135 fail the normal criterion. Exact coplanar UV-continuous
+area estimate is about 77% observed. Of 22,915 centroid/interior samples, 5,538
+are ambiguous; no samples fail distance or normal criteria in this measured prefix. Exact coplanar UV-continuous
 neighbors are exempt from ties; curved facets and seams remain conservative
 unknowns. This result is a bounded prefix measurement, not full-boulder coverage
 or proof of smooth-surface continuity. The preserved old boulder image supplies

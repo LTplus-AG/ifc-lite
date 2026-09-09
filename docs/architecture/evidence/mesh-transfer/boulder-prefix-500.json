@@ -5,16 +5,17 @@
       "observedAreaEstimateM2": 0.12355385352707908,
       "observedSamples": 17377,
       "samples": 22915,
-      "unknownAmbiguousSamples": 5403,
+      "unknownAmbiguousSamples": 5538,
       "unknownAreaEstimateM2": 0.03694524696751634,
       "unknownDistanceSamples": 0,
-      "unknownNormalSamples": 135
+      "unknownNormalSamples": 0
     },
     "diagnostics": [
       "Coverage is a triangle-area-weighted centroid/interior-texel estimate, not a registration accuracy approval",
       "Unknown samples preserve the existing target albedo through the shared atlas; source GLB byte-to-decoded-mesh/image identity is verified by the host",
       "Mathematical rigid fit only; no automatic registration or accuracy approval"
     ],
+    "exclusions": [],
     "items": [
       {
         "geometryItemId": 54,
@@ -22,10 +23,10 @@
         "observedSamples": 17377,
         "productId": 65,
         "samples": 22915,
-        "unknownAmbiguousSamples": 5403,
+        "unknownAmbiguousSamples": 5538,
         "unknownAreaEstimateM2": 0.03694524696751634,
         "unknownDistanceSamples": 0,
-        "unknownNormalSamples": 135
+        "unknownNormalSamples": 0
       }
     ],
     "preparedSha256": "5a7d36b785315b55a2dc8a940564898f7a89c62424b61e5783e45951608d3816",

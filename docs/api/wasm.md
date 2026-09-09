@@ -803,7 +803,8 @@ when samples are observed. Operational acceptance additionally requires that the
 host verifies spatially distributed held-out observations and
 their accepted residuals. Counts distinguish observed, distance, normal and ambiguity
 outcomes. Area values are triangle-area-weighted estimates from centroid/interior
-texel observations; chart padding is excluded. They are not exact covered-area
+texel observations over eligible planned items; chart padding is excluded and
+excluded products are reported separately, not counted as observed area. They are not exact covered-area
 integrals. Entirely unknown output has `plan: null` and no PNG assets or mutations.
 Partial coverage remains a review decision; it is never hidden behind a percent.
 

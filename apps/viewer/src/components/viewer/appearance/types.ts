@@ -33,6 +33,7 @@ export interface AppearancePanelViewProps {
   types: ReadonlyArray<{ id: number; name: string }>;
   selectionCount: number;
   affectedCount: number;
+  convertedObjects?: readonly { productId: number; name: string }[];
   excludedCount: number;
   exclusions?: readonly string[];
   onUseSupported?(): void;

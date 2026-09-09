@@ -6,6 +6,7 @@
  * Scene graph and mesh management
  */
 
+import type { InstancedTemplateGPU, InstancedOccurrence, InstancedTemplateCpu } from './scene-instance-types.js';
 import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
@@ -119,62 +120,8 @@ export interface TexturedMesh {
  * per occurrence via a per-instance buffer at slot 1 and
  * `drawIndexed(indexCount, instanceCount)`. Buffers are Scene-owned, freed in clear().
  */
-export interface InstancedTemplateGPU {
-  /** Owning model (federation index). Templates are identified by
-   *  `(modelIndex, slot)`, so one model's templates can be freed without
-   *  disturbing another's — see `removeInstancedTemplatesForModel`. Defaults to
-   *  0, the single-model / primary case. */
-  modelIndex: number;
-  vertexBuffer: GPUBuffer;
-  indexBuffer: GPUBuffer;
-  indexCount: number;
-  instanceBuffer: GPUBuffer;
-  instanceCount: number;
-  /** Union of the occurrences' world AABBs (null when no occurrence has a
-   *  finite box — such templates are never culled). Same tuple layout as
-   *  BatchedMesh.bounds so the render loop's frustum test is shared. */
-  bounds: { min: [number, number, number]; max: [number, number, number] } | null;
-  /** Largest single-occurrence bounding-sphere radius (world units). Upper
-   *  bound for the contribution cull: no occurrence can project larger than
-   *  this radius at the union box's nearest view depth. */
-  maxOccRadius: number;
-  /** Occurrences currently selected (highlight flag set). A template with a
-   *  selected occurrence is exempt from contribution culling so the highlight
-   *  can't vanish while the entity is the user's focus. */
-  selectedCount: number;
-}
-
-/** Shared empty result for getInstancedTemplates() when the instanced pass is hidden. */
+export type { InstancedTemplateGPU } from './scene-instance-types.js';
 const EMPTY_INSTANCED_TEMPLATES: readonly InstancedTemplateGPU[] = [];
-
-/** One occurrence's location in the instanced buffers, for per-instance selection
- *  + colour-override patching. originalColor restores after a lens/IDS overlay clears. */
-interface InstancedOccurrence {
-  /** STABLE slot in `instancedTemplates` / `instancedTemplateCpu` — never
-   *  reused after the slot is freed, so a stale reference resolves to a hole
-   *  rather than to another model's template. */
-  templateIndex: number;
-  byteOffset: number;
-  originalColor: [number, number, number, number];
-  /** Originating `IfcRepresentationItem` id (#2985), absent when the shard
-   *  carried none. CPU-side by design — see `InstancedRenderTemplate.itemIds`. */
-  itemId?: number;
-}
-
-/** Compact CPU-side copy of one instanced template, retained so CPU consumers
- *  (bounds / raycast / measure / section / export) can reach instanced geometry
- *  WITHOUT holding a full per-occurrence MeshData each — the occurrences share this
- *  one geometry and apply their own matrix (read from `instanceData` at the
- *  occurrence's byteOffset+0, column-major). These are references into the decoded
- *  shard, so retaining them costs the (already compact) shard size, not N copies. */
-interface InstancedTemplateCpu {
-  positions: Float32Array;
-  normals: Float32Array;
-  indices: Uint32Array;
-  instanceData: ArrayBuffer; // packed 88-byte instance records (mat4 at +0, col-major)
-  localMin: [number, number, number];
-  localMax: [number, number, number];
-}
 
 /**
  * Pure helper: compute the exclusive end index of the next flushPending()
@@ -249,8 +196,19 @@ export class Scene {
   appearancePreview(device: GPUDevice, pipeline: RenderPipeline) {
     return this.appearanceController ??= createSceneAppearancePreview({
       meshes: () => this.texturedMeshes, data: this.meshDataMap,
-      hasInstances: id => this.instancedEntityMap.has(id),
-      ready: () => !this.geometryReleased && !this.pendingBatchKeys.size && !this.streamingFragments.length,
+      instances: {
+        has: id => this.instancedEntityMap.has(id),
+        acquire: owner => this.retainInstancedOccurrence(owner.expressId, owner.modelIndex),
+        pieces: id => this.getInstancedMeshDataPieces(id), remove: id => { this.removeInstancedEntity(id); },
+        capacity: id => {
+          const occurrences = this.instancedEntityMap.get(id) ?? [];
+          return { parts: occurrences.length,
+            vertices: occurrences.reduce((sum, entry) => sum + (this.instancedTemplateCpu[entry.templateIndex]?.positions.length ?? 0) / 3, 0),
+            corners: occurrences.reduce((sum, entry) => sum + (this.instancedTemplateCpu[entry.templateIndex]?.indices.length ?? 0), 0) };
+        },
+      },
+      source: part => this.modelTranslations.sourceFromPlaced(part),
+      ready: () => !this.geometryReleased && !this.finalizeInProgress && !this.pendingBatchKeys.size && !this.streamingFragments.length,
       buckets: {
         buckets: this.buckets, reverse: () => this.meshDataBucket,
         create: (parts, key) => this.createBatchedMesh(parts, parts[0].color, device, pipeline, key),
@@ -258,14 +216,23 @@ export class Scene {
         changed: key => this.markBucketDirty(key),
         refresh: () => { this.batchedMeshes = [...this.buckets.values()].flatMap(b => b.batchedMesh ? [b.batchedMesh] : []); },
       },
+      adopt: part => this.modelTranslations.placeMesh(this.modelTranslations.sourceFromPlaced(part)),
       upload: part => this.createTexturedMesh(part, device, pipeline),
       release: mesh => {
         mesh.vertexBuffer.destroy(); mesh.indexBuffer.destroy(); mesh.uniformBuffer.destroy();
         this.releaseTexturedMeshTexture(mesh);
       },
-      invalidate: id => { this.boundingBoxes.delete(id); this.evictHighlightMeshes(id); },
+      invalidate: id => {
+        this.boundingBoxes.delete(id); this.evictHighlightMeshes(id);
+        if (!this.instanceSuppression.has(id)) this.recomputeInstancedBounds(id);
+      },
     });
   }
+
+  /** Place canonical native appearance source geometry in this model's live frame. */
+  placeAppearanceSource(mesh: MeshData): MeshData { return this.modelTranslations.placeMesh(mesh); }
+  /** Retain model-local source coordinates when publishing a placed appearance mesh. */
+  appearanceSourceMesh(mesh: MeshData): MeshData { return this.modelTranslations.sourceFromPlaced(mesh); }
 
   /** Prepare a new textured owner without exposing a drawable or pickable object. */
   prepareTexturedOwner(mesh: MeshData, device: GPUDevice, pipeline: RenderPipeline) {
@@ -1432,7 +1399,7 @@ export class Scene {
   private removeInstancedEntity(expressId: number): boolean {
     if (!this.instancedEntityMap.has(expressId)) return false;
     const device = this.instancedDevice;
-    if (device) {
+    if (device && !this.instanceSuppression.has(expressId)) {
       // Must set the flag while the occurrence locations are still in the map.
       this.instancedHidden.add(expressId);
       this.writeInstanceFlags(device, expressId);
@@ -3812,6 +3779,24 @@ export class Scene {
   clearFlatGeometry(): void {
     this.instanceSuppression.restore();
     this.appearanceController?.forget();
+    this.clearFlatBuffers();
+  }
+
+  /** Reconcile an ordinary source-geometry rebuild; exact surviving appearance
+   * owners keep their original-instance history. Full reset remains separate. */
+  clearFlatGeometryForRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>, sourceGeometry = geometry): void {
+    const retained = this.appearanceController?.prepareRebuild(sourceGeometry, models) ?? new Set<number>();
+    const discarded = this.appearanceController?.discardedForRebuild(retained) ?? [];
+    // A discarded converted owner must not resurrect its obsolete type instance.
+    // Its GPU slots are already hidden, so tombstoning after this atomic restore
+    // performs no GPU writes and cannot leave a partially restored rebuild.
+    this.instanceSuppression.restore(new Set([...retained, ...discarded]));
+    for (const id of discarded) this.removeInstancedEntity(id);
+    this.appearanceController?.finishRebuild(retained);
+    this.clearFlatBuffers();
+  }
+
+  private clearFlatBuffers(): void {
     for (const mesh of this.meshes) destroyGpuResources(mesh);
     for (const batch of this.batchedMeshes) destroyGpuResources(batch);
     for (const tm of this.texturedMeshes) {

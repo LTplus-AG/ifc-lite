@@ -46,8 +46,9 @@ export class InstanceSuppression {
       },
     });
   }
-  restore(): void {
-    const hidden = [...this.entries].filter(([, entry]) => entry.suppressed);
+  restore(retain?: ReadonlySet<number>): void {
+    const discarded = [...this.entries].filter(([id]) => !retain?.has(id));
+    const hidden = discarded.filter(([, entry]) => entry.suppressed);
     for (const [, entry] of hidden) entry.suppressed = false;
     try { for (const [id] of hidden) this.changed(id); }
     catch (error) {
@@ -59,7 +60,7 @@ export class InstanceSuppression {
       if (failures.length > 1) throw new AggregateError(failures, 'Occurrence restoration and rollback failed');
       throw error;
     }
-    this.entries.clear();
+    for (const [id] of discarded) this.entries.delete(id);
   }
   forget(id?: number): void {
     if (id === undefined) this.entries.clear();

@@ -8,7 +8,7 @@ import { appearanceSelectClass } from './AppearanceSourceFields.js';
 
 export function AppearanceScopeFields(props: Pick<AppearancePanelViewProps,
   'models' | 'modelId' | 'onModelChange' | 'scope' | 'onScopeChange' | 'classes' | 'types' |
-  'selectionCount' | 'affectedCount' | 'excludedCount' | 'exclusions' | 'onUseSupported'> & { disabled: boolean }) {
+  'settings' | 'onSettingsChange' | 'convertedObjects' | 'selectionCount' | 'affectedCount' | 'excludedCount' | 'exclusions' | 'onUseSupported'> & { disabled: boolean }) {
   const id = useId();
   return <section className="space-y-2" aria-labelledby={`${id}-heading`}>
     <h3 id={`${id}-heading`} className="text-xs font-medium">Apply to</h3>
@@ -37,9 +37,21 @@ export function AppearanceScopeFields(props: Pick<AppearancePanelViewProps,
     {props.scope.kind === 'type' && <select aria-label="Exact IFC type" className={appearanceSelectClass} value={props.scope.typeId} disabled={props.disabled} onChange={event => props.onScopeChange({ kind: 'type', typeId: Number(event.target.value) })}>
       {props.types.map(item => <option key={item.id} value={item.id}>{item.name} · #{item.id}</option>)}
     </select>}
+    <label className="flex items-start gap-2 rounded-md border p-2 text-[11px]">
+      <input type="checkbox" className="mt-0.5" checked={props.settings.representationPolicy === 'evaluatedOccurrence'}
+        disabled={props.disabled || !props.modelId || props.settings.kind === 'existingUv'}
+        onChange={event => props.onSettingsChange({ representationPolicy: event.target.checked ? 'evaluatedOccurrence' : 'preserve' })} />
+      <span><span className="font-medium">Convert supported mapped objects</span>
+        <span className="mt-1 block text-muted-foreground">Their current shape becomes mesh geometry instead of using the type’s parametric geometry. Other occurrences stay unchanged. Undo restores the original representation.</span>
+        {props.settings.kind === 'existingUv' && <span className="mt-1 block text-muted-foreground">Choose planar or box mapping to enable conversion.</span>}
+      </span>
+    </label>
     <div className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px]" aria-live="polite">
-      <span className="font-medium">{props.affectedCount.toLocaleString()} objects affected</span>
+      <span className="font-medium">{props.affectedCount.toLocaleString()} {props.affectedCount === 1 ? 'object' : 'objects'} affected</span>
       {props.excludedCount > 0 && <span className="text-muted-foreground"> · {props.excludedCount.toLocaleString()} excluded</span>}
+      {!!props.convertedObjects?.length && <details className="mt-1"><summary className="cursor-pointer font-medium">{props.convertedObjects.length} {props.convertedObjects.length === 1 ? 'object' : 'objects'} will become mesh geometry</summary>
+        <ul className="mt-1 max-h-28 space-y-1 overflow-y-auto text-muted-foreground">{props.convertedObjects.map(item => <li key={item.productId}>{item.name}</li>)}</ul>
+      </details>}
       {!!props.exclusions?.length && <details className="mt-1 text-muted-foreground"><summary className="cursor-pointer">Why some objects are excluded</summary><ul className="mt-1 space-y-1">{props.exclusions.map((reason, index) => <li key={`${index}:${reason}`}>{reason}</li>)}</ul></details>}
       {props.affectedCount > 0 && props.excludedCount > 0 && props.onUseSupported && <Button type="button" variant="outline" size="sm" className="mt-2 w-full" disabled={props.disabled} onClick={props.onUseSupported}>Use supported objects</Button>}
     </div>

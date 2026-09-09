@@ -8,29 +8,46 @@
  * `DRAWING_MARKUP_OBJECTTYPE`-tagged `IfcAnnotation` entities it contains.
  *
  * ## The double-restore question (PR #4159's own localStorage restore)
- * #4159 (a separate, in-flight branch this PR does not build on and does
- * not modify — see `useDrawing2DPersistence.ts`, `drawing2DSlice.persistence.ts`)
+ * #4159 (`useDrawing2DPersistence.ts`, `drawing2DSlice.persistence.ts`)
  * restores the SAME flat `measure2DResults`/`polygonArea2DResults`/
  * `textAnnotations2D`/`cloudAnnotations2D` fields from `localStorage`, keyed
- * by the loaded file's content hash. Once both land, a model that is BOTH
- * (a) the exact bytes of a file the browser has a saved localStorage entry
- * for, AND (b) itself carries embedded markup annotations (only possible by
- * re-opening a file this feature previously saved into and then not
- * re-exporting) would have two candidate sources for the same four arrays.
+ * by the loaded file's content hash. A model that is BOTH (a) the exact
+ * bytes of a file the browser has a saved localStorage entry for, AND (b)
+ * itself carries embedded markup annotations (only possible by re-opening a
+ * file this feature previously saved into and then not re-exporting) has
+ * two candidate sources for the same four arrays.
  *
- * The rule this module enforces: NEVER OVERWRITE. `tryRestoreDrawingMarkup`
- * only writes when all four arrays are still empty at the moment it is
- * about to write (checked once when it starts working, and AGAIN
- * immediately before the `setState`, since resolving the model's parsed
- * `ParseResult` can take a tick). Whichever source populates the fields
- * FIRST wins; the other finds non-empty arrays and backs off. Because both
- * this restore and #4159's `applyHash` write the four arrays as a single
- * full-array overwrite (never append/merge), "whichever wins" can only ever
- * produce ONE set of values on screen — duplication is structurally
- * impossible here, only which source's values show is a race. This module
- * cannot make that race deterministic without importing #4159's
- * still-being-restructured files, which the task explicitly excludes
- * touching; "never overwrite" is the defensible rule available without that.
+ * An earlier version of this module resolved that with "never overwrite":
+ * whichever source populated the (checked-empty) fields first wins. That
+ * was wrong in two ways, not just undocumented. First, it was asymmetric in
+ * fact, not just in the doc: `useDrawing2DPersistence`'s `applyHash` has
+ * never had an emptiness check, so an IFC restore that happened to finish
+ * first got silently clobbered the instant the localStorage hash resolved
+ * — the exact opposite of "first wins". Second, even a SYMMETRIC emptiness
+ * guard on both sides would still be a race: which restore's async work
+ * resolves first depends on incidental timing (a hash computation vs. a
+ * WASM parse), so the SAME code, same inputs, can pick either source
+ * depending on nothing meaningful. And an emptiness check specifically
+ * cannot even ask the right question — it cannot distinguish "no source
+ * has restored yet" from "the authoritative source restored and correctly
+ * produced an empty result" (e.g. the user deleted all their local markup
+ * and that was saved).
+ *
+ * The rule this module now enforces: LOCALSTORAGE IS AUTHORITATIVE,
+ * EXPLICITLY, NOT BY TIMING. A `localStorage` entry for this exact
+ * full-content hash can only exist because a session in this browser
+ * already had these exact bytes open — whatever that session drew (or
+ * deleted) is therefore never staler than whatever is embedded in the file,
+ * only possibly newer. `tryRestoreDrawingMarkup` below calls
+ * `useDrawing2DPersistence.ts`'s `hasPersistedMarkupEntryFor` before ever
+ * restoring the IFC's embedded markup: if that reports `'pending'` (the
+ * hash hasn't resolved yet), this module WAITS, via
+ * `onLocalStorageDecidedFor`, rather than racing it; if it reports `true`
+ * (a saved entry exists, empty or not), this restore backs off for good;
+ * only `false` (no entry — never saved for this file, or `localStorage`
+ * unavailable) lets the IFC-embedded markup through. The outcome is now a
+ * pure function of "does a localStorage entry exist", never of which
+ * promise happened to settle first.
  *
  * `restoredForModel` additionally makes each model's restore attempt
  * run-once-until-emptied: a model this session already attempted (whether
@@ -45,9 +62,13 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { restoreDrawingMarkupFromModel } from '@/lib/drawing2d-markup/drawing-markup-restore';
 import { ensureParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
+import { hasPersistedMarkupEntryFor, onLocalStorageDecidedFor } from './useDrawing2DPersistence.js';
 
 /** Models this session has already attempted a restore for — see the module doc. */
 const restoredForModel = new Set<string>();
+
+/** Models currently waiting on #4159's localStorage precedence decision — see `tryRestoreDrawingMarkup`. Prevents piling up a redundant `onLocalStorageDecidedFor` listener per parse-cache notification while still pending. */
+const awaitingLocalStorageDecision = new Set<string>();
 
 function markupFieldsEmpty(): boolean {
   const s = useViewerStore.getState();
@@ -72,8 +93,29 @@ export function tryRestoreDrawingMarkup(modelId: string): void {
   if (restoredForModel.has(modelId)) return;
   if (useViewerStore.getState().activeModelId !== modelId) return;
   if (!markupFieldsEmpty()) {
-    // Something else (a user drawing, or #4159's localStorage restore)
-    // already populated this model's fields — never overwrite it.
+    // Something else (a user drawing) already populated this model's
+    // fields — never overwrite it.
+    restoredForModel.add(modelId);
+    return;
+  }
+
+  // Explicit precedence over #4159's localStorage restore (see module
+  // doc): never guess from array emptiness alone, ask whether a saved
+  // entry exists for this exact file.
+  const persisted = hasPersistedMarkupEntryFor(modelId);
+  if (persisted === 'pending') {
+    if (!awaitingLocalStorageDecision.has(modelId)) {
+      awaitingLocalStorageDecision.add(modelId);
+      onLocalStorageDecidedFor(modelId, () => {
+        awaitingLocalStorageDecision.delete(modelId);
+        tryRestoreDrawingMarkup(modelId);
+      });
+    }
+    return;
+  }
+  if (persisted) {
+    // A localStorage entry exists (empty or not) for this exact file —
+    // it always wins over the IFC's embedded markup. Back off for good.
     restoredForModel.add(modelId);
     return;
   }
@@ -105,6 +147,7 @@ export function tryRestoreDrawingMarkup(modelId: string): void {
 /** @internal test-only reset of the module-level restore-attempt tracking. */
 export function __resetDrawingMarkupRestoreForTests(): void {
   restoredForModel.clear();
+  awaitingLocalStorageDecision.clear();
 }
 
 /**

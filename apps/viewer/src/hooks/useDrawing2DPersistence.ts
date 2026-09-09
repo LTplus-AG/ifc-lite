@@ -107,6 +107,69 @@ import {
 const hashCache = new Map<string, string | null>();
 
 /**
+ * modelId -> callbacks waiting on this model's `applyHash` to conclude.
+ * Backs {@link onLocalStorageDecidedFor}, the explicit-precedence signal
+ * `useDrawingMarkupRestoreOnLoad.ts` (#4170) waits on before restoring the
+ * SAME model's markup from the IFC — see that module's doc for why.
+ */
+const decidedListeners = new Map<string, Set<() => void>>();
+
+function notifyDecided(modelId: string): void {
+  const listeners = decidedListeners.get(modelId);
+  if (!listeners) return;
+  decidedListeners.delete(modelId);
+  for (const cb of listeners) cb();
+}
+
+/**
+ * Whether `modelId`'s `localStorage` restore has concluded, and if so,
+ * whether it found a saved entry. `'pending'` means `applyHash` has not run
+ * for this model yet (either the hash itself is still resolving, or no
+ * `useDrawing2DPersistence()` consumer has even mounted for it) — the
+ * caller should wait via {@link onLocalStorageDecidedFor} rather than
+ * proceed. This is a query over `hashCache` (the resolved hash) plus a
+ * fresh `loadDrawing2DEntry` read, not a stored decision, because
+ * `loadDrawing2DEntry` is a pure `localStorage` read — cheap, and always
+ * current even if called before `applyHash` itself has run for this exact
+ * mount (e.g. a cached hash from an earlier visit this session).
+ */
+export function hasPersistedMarkupEntryFor(modelId: string): 'pending' | boolean {
+  const hash = hashCache.get(modelId);
+  if (hash === undefined) {
+    // No `useDrawing2DPersistence()` consumer has resolved this model's
+    // hash yet — but a model with no `sourceFile` at all (a cache-restored
+    // model, or a deliberately partial stub several existing component
+    // tests seed with no persistence hook mounted for it — see
+    // `useDrawingMarkupRestoreOnLoad.test.ts`) can never produce one:
+    // `applyHash`'s own `!sourceFile` branch answers `false` synchronously
+    // for exactly this case. Mirror that here rather than waiting forever
+    // on a hook that may never mount for this model.
+    if (!useViewerStore.getState().models.get(modelId)?.sourceFile) return false;
+    return 'pending';
+  }
+  if (!hash) return false;
+  const defaults = getDefaultDrawing2DState().drawing2DDisplayOptions;
+  return loadDrawing2DEntry(hash, defaults) !== null;
+}
+
+/**
+ * Subscribe to be notified once `modelId`'s `localStorage` restore decision
+ * is known (i.e. once {@link hasPersistedMarkupEntryFor} would stop
+ * returning `'pending'`). One-shot: fires at most once, then forgets the
+ * callback. Returns an unsubscribe function for a caller that stops
+ * waiting first (e.g. the model changed again before the hash resolved).
+ */
+export function onLocalStorageDecidedFor(modelId: string, cb: () => void): () => void {
+  let listeners = decidedListeners.get(modelId);
+  if (!listeners) {
+    listeners = new Set();
+    decidedListeners.set(modelId, listeners);
+  }
+  listeners.add(cb);
+  return () => listeners!.delete(cb);
+}
+
+/**
  * The `SectionConfig` that produced the drawing currently on screen, if any.
  * Not store state — `drawing2D`/its inputs are deliberately not reactive
  * fields consumers subscribe to here, only a value this module remembers so
@@ -247,6 +310,27 @@ function ensureSaveSubscription(): void {
  * saved for the hash, or when a hash cannot be computed at all (no
  * `sourceFile` — e.g. a cache-restored model), which degrades to today's
  * non-persisted behaviour for that load rather than throwing.
+ *
+ * ## Precedence over #4170's IFC-embedded restore (`useDrawingMarkupRestoreOnLoad.ts`)
+ * `applyHash` below writes unconditionally — no emptiness check — by
+ * design: a `localStorage` entry, when one exists for this exact
+ * full-content hash, is ALWAYS authoritative over whatever markup happens
+ * to be embedded in the IFC bytes themselves, never merely "whichever
+ * source got there first". Two reasons. First, the hash is the file's true
+ * content — a `localStorage` entry keyed to it can only exist because a
+ * session in THIS browser already had these exact bytes open; anything
+ * that session then drew (or deleted) is necessarily at least as recent as
+ * whatever was embedded in the file before that session started, so it is
+ * never staler, only possibly newer. Second, and more important: a rule
+ * that instead let "whichever restore's async work resolves first" decide
+ * would make the SAME code produce different results across runs for the
+ * SAME inputs, only because of incidental timing — a hash computation or a
+ * WASM parse finishing a few milliseconds sooner or later. That is a race
+ * even when neither outcome is technically "wrong" in isolation, and
+ * `hasPersistedMarkupEntryFor`/`onLocalStorageDecidedFor` exist so the IFC
+ * restore can wait for this decision instead of guessing from current
+ * array contents (which can't tell "no source has run yet" apart from
+ * "this source ran and correctly produced empty").
  */
 export function useDrawing2DPersistence(): void {
   const activeModelId = useViewerStore((s) => s.activeModelId);
@@ -327,6 +411,7 @@ export function useDrawing2DPersistence(): void {
     if (!sourceFile) {
       hashCache.set(activeModelId, null);
       applyHash(null);
+      notifyDecided(activeModelId);
       return;
     }
 
@@ -334,12 +419,14 @@ export function useDrawing2DPersistence(): void {
       .then((hash) => {
         hashCache.set(activeModelId, hash);
         applyHash(hash);
+        notifyDecided(activeModelId);
       })
       .catch((err) => {
         // eslint-disable-next-line no-console
         console.warn('[drawing2D] failed to hash model for markup restore', err);
         hashCache.set(activeModelId, null);
         applyHash(null);
+        notifyDecided(activeModelId);
       });
   }, [activeModelId]);
 }

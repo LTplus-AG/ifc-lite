@@ -181,3 +181,25 @@ it('switches source intent without replacing the source picker or requiring an I
   assert.ok(ui.querySelector('select[aria-label="Appearance model"]'));
   assert.equal(ui.querySelector('input[type="file"]'), picker);
 });
+
+// A source can enter reference mode after a tiled/UV appearance draft (#4308).
+it('always exposes planar alignment for calibrated sources even after box or UV mapping', () => {
+  for (const kind of ['box', 'existingUv'] as const) {
+    const patches: Partial<AppearanceDraftSettings>[] = [];
+    const ui = render(<AppearancePanelView {...props({ intent: 'reference',
+      settings: { ...props().settings, kind }, onSettingsChange: patch => patches.push(patch),
+      calibration: { thumbnailUrl: 'blob:page', onChange() {},
+        value: { sourcePoints: [[0, 0], [100, 0]], distanceMetres: 1 },
+        sourceKey: 'page:1', frame: { rasterSize: [100, 100], rasterToSource: [1, 0, 0, 1, 0, 0] } },
+    })} />);
+    select(ui, 'Projection plane', 'xz');
+    assert.deepEqual(patches.at(-1), { plane: 'xz' });
+    const rotation = ui.querySelector('input[aria-label="Rotation (°)"]');
+    assert.ok(rotation instanceof HTMLInputElement);
+    type(rotation, '45');
+    assert.deepEqual(patches.at(-1), { rotationDegrees: 45 });
+    assert.equal(ui.querySelector('select[aria-label="Texture mapping"]'), null);
+    assert.equal(ui.querySelector('input[aria-label="Repeat U (×)"]'), null);
+    assert.equal(ui.querySelector('input[aria-label="Tile X (m)"]'), null);
+  }
+});

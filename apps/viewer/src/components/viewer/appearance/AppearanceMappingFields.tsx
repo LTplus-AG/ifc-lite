@@ -29,8 +29,8 @@ export function AppearanceMappingFields({ settings: s, onChange, disabled, onInv
   settings: AppearanceDraftSettings; onChange(patch: Partial<AppearanceDraftSettings>): void;
   calibrated?: boolean; disabled: boolean; onInvalid(name: string, invalid: boolean): void;
 }) {
-  const uv = s.kind === 'existingUv';
-  const box = s.kind === 'box';
+  const uv = !calibrated && s.kind === 'existingUv';
+  const box = !calibrated && s.kind === 'box';
   const field = (name: keyof AppearanceDraftSettings, label: string, positive = false) => <NumberField
     key={`${s.kind}:${name}`} name={name} label={label} value={Number(s[name])} positive={positive}
     onChange={value => onChange({ [name]: value })} onInvalid={onInvalid} />;
@@ -45,7 +45,7 @@ export function AppearanceMappingFields({ settings: s, onChange, disabled, onInv
       <option value="box">Box projection</option>
     </select>}
     <p className="text-[10px] leading-relaxed text-muted-foreground">{calibrated ? 'Place point A at the model coordinates below. Drawing scale comes from the measured span.' : uv ? 'Keep the surface’s UV layout. Repeat values are multipliers.' : 'Consistent physical tile size across objects, in IFC world coordinates.'}</p>
-    {s.kind === 'planar' && <label className="block space-y-1 text-[11px] text-muted-foreground"><span>Projection plane</span>
+    {(calibrated || s.kind === 'planar') && <label className="block space-y-1 text-[11px] text-muted-foreground"><span>Projection plane</span>
       <select aria-label="Projection plane" className={appearanceSelectClass} value={s.plane} onChange={event => {
         const plane = event.target.value;
         if (plane === 'xy' || plane === 'xz' || plane === 'yz') onChange({ plane });

@@ -1089,3 +1089,14 @@ Keep the bitmap's inventory lease until `set` settles. The renderer owns uploade
 `await references.pick(x, y, options)` uses canvas-relative CSS pixels and the same visibility options as IFC picking. It returns `{ referenceId, point, distance }` separately from IFC selection. Hidden, locked and zero-opacity references do not select. The existing scene picker supplies occlusion depth; its CPU fallback uses the picked owner's precise raycast and conservatively refuses a reference when depth cannot be recovered. Picking uses the rectangular page footprint, including transparent pixels. References depth-test against IFC geometry without writing IFC object IDs or changing BIM bounds. Overlapping translucent planes use back-to-front ordering; intersecting translucent planes retain ordinary alpha-sorting limitations.
 
 This is a visual registration API. It does not create `IfcAnnotation`, persist image bytes, or promise arbitrary CRS reprojection. Application metadata/history and IFC authoring own those operations independently.
+
+### Creating a textured owner atomically
+
+`renderer.prepareTexturedOwner(mesh)` uploads a new textured IFC owner's canonical
+`MeshData` while keeping it outside the visible scene and picking index. The owner
+must not already exist. Call the returned `commit()` after the matching IFC
+transaction is ready, then publish the model/history state in the same synchronous
+turn. Always call `dispose()` in `finally`; it releases an uncommitted upload and
+leaves a committed scene owner intact. Keep the source image retained through the
+owner's model and undo history lifetimes. This API inserts native-produced geometry;
+it does not construct IFC entities or synthesize geometry from a reference image.

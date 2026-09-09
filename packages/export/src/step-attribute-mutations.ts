@@ -16,7 +16,7 @@
  * serializers are `step-attribute-serializers.ts`.
  */
 
-import { splitTopLevelArgs } from './step-argument-parser.js';
+import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { getRealTypedSlots } from './attribute-real-slots.js';
 import { retypeStepLine } from './retype.js';
 import { attrIndex, stepSourceSchema } from './subset-entity-reader.js';
@@ -24,6 +24,7 @@ import type { IfcAttributeValue } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { serializeNamedAttribute, serializePositionalOverride } from './step-attribute-serializers.js';
+import { unreadableRecordEditsDroppedWarning } from './step-export-types.js';
 import type { SourceLineMutations } from './step-exporter.js';
 
 /**
@@ -54,8 +55,8 @@ import type { SourceLineMutations } from './step-exporter.js';
  * The expressId is unchanged by all of this, so geometry / placement /
  * representation and every IfcRel* reference (keyed by #id) carry over.
  *
- * All three flags report EFFECT, not intent — each is the answer to "did this
- * operation change the line", measured across that operation alone. The count
+ * The three delivery flags report EFFECT, not intent — each is the answer to
+ * "did this operation change the line", measured across that operation alone. The count
  * and the ledger are claims about the FILE, so an edit that resolves to the
  * text already there has delivered nothing and must not be reported: retyping
  * an entity to the class it already is, or writing a positional slot the token
@@ -69,6 +70,13 @@ import type { SourceLineMutations } from './step-exporter.js';
  * two are nominated (their edits have no earlier nomination site); named
  * attribute edits are nominated by the collection pass and `attributed` only
  * settles their delivery.
+ *
+ * `unreadable` is the fourth field and answers a different question: not what
+ * this line carries, but whether the pipeline could read it at all. Every edit
+ * kind above writes a slot BY INDEX, so all of them refuse together on a record
+ * whose argument list does not scan — and three false delivery flags cannot say
+ * that, because a discarded edit sets them too. Both call sites turn it into a
+ * warning naming the entity (#4125).
  */
 export function applySourceLineMutations(
   mutationView: MutablePropertyView | null,
@@ -129,7 +137,103 @@ export function applySourceLineMutations(
     positional = text !== beforePositionals;
   }
 
-  return { text, attributed, retyped, positional };
+  // All three edit kinds above address this line's arguments BY INDEX, so all
+  // three refuse together when the argument list does not scan into slots —
+  // and all three then look exactly like an edit that resolved to the text
+  // already there. That is the failure this whole family is about, so the
+  // refusal is stated rather than left to be inferred from three false flags
+  // (#4125). Only ever set when an edit was actually asked for: a malformed
+  // record nobody edited has refused nothing.
+  //
+  // The three delivery flags are tested FIRST because any one of them being
+  // true already answers the question, without splitting the record a second
+  // time. Each of `retypeStepLine`, `applyAttributeMutations` and
+  // `applyPositionalMutations` returns its input UNCHANGED when it refuses, so
+  // a flag that is true means that writer replaced a slot, which means it
+  // scanned the argument list — over the same substring, between the same
+  // `indexOf('(')` and `lastIndexOf(');')` bounds `argumentListScans` uses. So
+  // the added conjuncts only ever skip a call that would have returned true;
+  // they cannot turn a refusal into a readable record.
+  const requested = typeMutation !== null
+    || (attributeMutations?.size ?? 0) > 0
+    || (positionals?.size ?? 0) > 0;
+  const unreadable = requested
+    && !attributed
+    && !retyped
+    && !positional
+    && !argumentListScans(entityText);
+
+  return { text, attributed, retyped, positional, unreadable };
+}
+
+/**
+ * The pipeline as a writing pass is handed it: {@link applySourceLineMutations}
+ * with the export's `MutablePropertyView` already bound
+ * (`step-export-contexts.ts`). Derived from the function rather than restated,
+ * so the injected form cannot drift from the real one.
+ */
+type BoundSourceLineMutations = (
+  ...args: WithoutView<Parameters<typeof applySourceLineMutations>>
+) => SourceLineMutations;
+type WithoutView<T extends unknown[]> = T extends [MutablePropertyView | null, ...infer Rest]
+  ? Rest
+  : never;
+
+/**
+ * Run the pipeline for a writing pass and report BOTH ways it can decline to
+ * write, into that pass's warnings.
+ *
+ * Two passes emit a source entity's defining line — the source-iteration pass
+ * and the type-object `HasPropertySets` rewrite that REPLACES it — and each
+ * needs the same pair: the per-attribute rejection (a REAL-typed slot handed a
+ * non-number) and the whole-record refusal ({@link SourceLineMutations.unreadable}).
+ * They were two identical blocks at the two call sites, which is one block per
+ * pass too many: a third pass copying one of them gets a report that is right
+ * about one channel and silent about the other, and silence is what #4125 is
+ * about. So the call and both reports are one thing here.
+ */
+export function applySourceLineMutationsReported(
+  apply: BoundSourceLineMutations,
+  warnings: string[],
+  expressId: number,
+  entityText: string,
+  recordType: string,
+  attributeMutations: Map<string, string> | undefined,
+  sourceSchema: IfcSchemaVersion,
+  overlayActive: boolean,
+): SourceLineMutations {
+  const mutated = apply(
+    expressId,
+    entityText,
+    recordType,
+    attributeMutations,
+    sourceSchema,
+    overlayActive,
+    (attr, value) =>
+      warnings.push(
+        `entity #${expressId}: attribute ${attr} not written - ` +
+          `${JSON.stringify(value)} is not a number and the slot is REAL-typed`,
+      ),
+  );
+  if (mutated.unreadable) {
+    warnings.push(unreadableRecordEditsDroppedWarning(expressId, recordType));
+  }
+  return mutated;
+}
+
+/**
+ * Does this line's own argument list scan into slots?
+ *
+ * Scoped to the arguments deliberately. Text that is not a `#N=CLASS(...);`
+ * record at all is a different fact, and one every writer here already returns
+ * untouched without claiming anything; this answers only the question the
+ * by-index writers below actually ask.
+ */
+function argumentListScans(entityText: string): boolean {
+  const openParen = entityText.indexOf('(');
+  const closeParen = entityText.lastIndexOf(');');
+  if (openParen < 0 || closeParen < openParen) return true;
+  return splitTopLevelStepArguments(entityText.slice(openParen + 1, closeParen)) !== null;
 }
 
 /**
@@ -148,7 +252,14 @@ function applyAttributeMutations(
     return entityText;
   }
 
-  const args = splitTopLevelArgs(entityText.slice(openParen + 1, closeParen));
+  // Validating, not permissive. Every write below is BY INDEX into these
+  // parts, so parts that are not the record's slots put the value on another
+  // attribute and delete whatever was there, while `changed` still says the
+  // edit landed (#2470, #4125). A `null` refuses the whole line's named edits
+  // rather than handing back a success that did not happen; the caller reports
+  // it (see {@link applySourceLineMutations}).
+  const args = splitTopLevelStepArguments(entityText.slice(openParen + 1, closeParen));
+  if (args === null) return entityText;
   // A source line NEVER pads (unlike the overlay-created path): a short
   // argument list here means the file speaks a different schema, and growing
   // a record we did not author would corrupt it.
@@ -213,7 +324,10 @@ function applyPositionalMutations(
   const closeParen = entityText.lastIndexOf(');');
   if (openParen < 0 || closeParen < openParen) return entityText;
 
-  const args = splitTopLevelArgs(entityText.slice(openParen + 1, closeParen));
+  // Validating for the same reason as the named path above: `args[index] = …`
+  // is only an edit to attribute `index` when the parts ARE the record's slots.
+  const args = splitTopLevelStepArguments(entityText.slice(openParen + 1, closeParen));
+  if (args === null) return entityText;
   const realSlots = getRealTypedSlots(entityType, schemaVersion);
   let changed = false;
   for (const [index, value] of positionals) {

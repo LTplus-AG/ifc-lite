@@ -1,0 +1,56 @@
+{
+  "//": "Shared cross-language REFUSE vectors for the validating STEP argument-list splitters (issue #4125). Each `input` is the text BETWEEN a record's outermost parentheses, and every validating splitter pinned to this file must return null/None for it. Pinned here: the TypeScript `splitTopLevelStepArguments` (packages/export/src/step-argument-parser.ts, via packages/export/src/step-refuse.parity.test.ts) and the Rust `split_top_level_args` (rust/export/src/step_slot.rs, via rust/export/src/step_slot_tests.rs). The two cannot share code, and before this file each described the other's behaviour in prose -- the arrangement issue #3300 identifies as the cause of #3284, and the same one that let #4173 harden the TypeScript splitter while the Rust one stayed permissive for weeks. Follows rust/export/tests/fixtures/step_escape_vectors.json exactly, including living in the Rust crate so include_str! can reach it.",
+  "//accepts": "REFUSALS ONLY, on purpose. The splitters in this repo deliberately diverge on what they ACCEPT -- the export twin keeps a `/* ... */` comment's bytes inside a slot and accepts it, packages/cli/src/commands/step-args.ts refuses any slot carrying one -- because each contract is its caller's choice. Pinning an accept here would freeze a divergence as if it were agreement. What they must agree on is that none of them hands a by-index writer parts it cannot vouch for.",
+  "cases": [
+    {
+      "name": "two undoubled apostrophes across two typed values",
+      "why": "The #4125 record. The scan closes the string at the first stray apostrophe and reopens at the next, so the text between them -- including `),$,IFCLABEL(` -- folds into ONE part. Quote parity stays even and paren depth returns to zero, so every scan-state check passes on a nine-attribute record read as seven slots.",
+      "input": "'g',$,IFCLABEL('a's'),$,IFCLABEL('b's'),#5,#6,'T',.SOLIDWALL."
+    },
+    {
+      "name": "two undoubled apostrophes across two plain string attributes",
+      "why": "The same phantom without the nested parens: nine attributes read as four, so writing slot 2 deletes attributes 3 to 7 (#4174).",
+      "input": "'guid',$,'John's wall',$,$,$,$,'A's',.NOTDEFINED."
+    },
+    {
+      "name": "a slot holding only a comment",
+      "why": "A comment is not a value, so counting it as one more empty slot shifts every index after it -- five parts for four attributes.",
+      "input": "'guid',$,'Name',/* c */,$"
+    },
+    {
+      "name": "a comment-only slot with no whitespace in it",
+      "why": "Whitespace is not what gives a phantom slot away: three parts for two attributes.",
+      "input": "$,/* renamed */,$"
+    },
+    {
+      "name": "unterminated binary literal",
+      "why": "ISO 10303-21's `\"...\"` binary literal has no doubled-quote escape, so the first following `\"` ends it and a missing one leaves the slot open.",
+      "input": "'g',\"0F"
+    },
+    {
+      "name": "unterminated binary literal swallowing a comma",
+      "why": "The comma inside the literal is read as a slot boundary, so one attribute becomes two.",
+      "input": "'g',\"01,23\""
+    },
+    {
+      "name": "reversed paren pair",
+      "why": "A depth that dips negative and climbs back looks balanced at the end, while every comma in between was read as nested.",
+      "input": "'g'),$,(#5"
+    },
+    {
+      "name": "reversed paren pair between two strings",
+      "why": "The same shape with no `$` between, so nothing but the negative-depth check catches it.",
+      "input": "'a'),(  'b'"
+    },
+    {
+      "name": "unterminated string",
+      "why": "The scan never leaves the string, so every comma after the opening quote was swallowed.",
+      "input": "'g',$,'oops"
+    },
+    {
+      "name": "unbalanced nested list",
+      "why": "The list never closes, so the commas after it were read as nested.",
+      "input": "'g',(#1,#2"
+    }
+  ]
+}

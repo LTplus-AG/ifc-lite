@@ -31,6 +31,7 @@ import {
   typeOwnedPsetRewriteWarning,
 } from './type-owned-psets.js';
 import { recordSourceLineDelivery } from './delta-modification-ledger.js';
+import { applySourceLineMutationsReported } from './step-attribute-mutations.js';
 import { nominateDeliveredInPlaceEdits } from './in-place-nomination.js';
 import { type PropertySetContext, getPropertySetName } from './step-property-set-readers.js';
 import { generatePropertySetEntities, generateQuantitySetEntities } from './step-property-set-generators.js';
@@ -128,18 +129,21 @@ export function generatePropertyAndQuantitySetEntities(
       );
       // The RECORD's class is the from-type: the bytes are still the source
       // class, whatever `typeOf` now says the entity effectively is.
-      mutated = ctx.applySourceLineMutations(
+      //
+      // The reporting travels with the call (`applySourceLineMutationsReported`)
+      // because this rewrite REPLACES the source-iteration pass's line for these
+      // ids (`rewrittenEntityIds`) — a refusal reported only there would be
+      // silent for exactly the entities this branch owns, and a pass that
+      // remembered one of the two warnings would be silent about the other.
+      mutated = applySourceLineMutationsReported(
+        ctx.applySourceLineMutations,
+        pass.warnings,
         entityId,
         sourceLine,
         record.type,
         pass.modifiedAttributes.get(entityId),
         pass.sourceSchema,
         pass.overlayActive,
-        (attr, value) =>
-          pass.warnings.push(
-            `entity #${entityId}: attribute ${attr} not written - ` +
-              `${JSON.stringify(value)} is not a number and the slot is REAL-typed`,
-          ),
       );
     }
     if (mutated === null) {

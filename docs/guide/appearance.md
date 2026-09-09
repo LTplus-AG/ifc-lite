@@ -122,3 +122,28 @@ requires IFC4 or IFC4X3, a rectangular calibrated plane, and a stable coordinate
 frame. Finish any active model reposition operation first. Realigned federated
 models currently require choosing the workspace anchor model until inverse
 federation registration is available; the command reports this explicitly.
+
+## Create an IFC object from a scan surface
+
+Open or add a textured GLB, then open **Author → Appearance → Create from scan**.
+Choose its surface in **Source surface**. The preview uses the original image;
+drag to orbit and scroll to zoom without moving the main view.
+
+Use **Select region** and drag a rectangle to keep part of the surface. The
+rectangle selects whole triangles by their projected centres, through both the
+front and back of the surface. It does not cut new edges at the rectangle border.
+The preview shows exactly the retained textured region and its triangle count.
+**Entire surface** restores the complete source surface.
+
+Choose an editable IFC4 destination model, spatial container, and Name, then
+click **Create IFC object**. The resulting `IfcBuildingElementProxy` is selected
+and participates in Undo/Redo. The original scan remains available. Completed
+workspace repositioning is respected; finish an active repositioning operation
+before creating the region. Semantic classification remains future work.
+
+Export **IFC + images** to keep the original encoded image with the authored
+geometry. Source UV seams and sampler repeat flags are preserved. Each capture
+is limited to 200,000 triangles and 200,000 position/UV rows. The source surface
+preview is also limited to 200,000 triangles. UVs must lie within `[0,1]`; tinted
+or translucent material factors must first be baked into the source image.
+Creation is available outside shared rooms; the saved IFC can then be shared.

@@ -149,7 +149,9 @@ texture references, node TRS/matrices and mirrored winding. UV vertices remain
 separate across seams. Node translation stays in the double-precision `origin`.
 Use `parseGLBImageResources(parsed.json, parsed.bin)` to obtain original encoded
 PNG/JPEG images keyed by each mesh's `textureRef.url`. Decode these at the host
-boundary; this package never allocates browser image objects.
+boundary; this package never allocates browser image objects. Embedded PNG/JPEG
+magic bytes must match the declared MIME type before geometry or resources are
+returned; MIME labels cannot bypass the host opacity checks.
 
 This is opaque captured-albedo import. Embedded base-colour PNG/JPEG images and
 repeat/clamp samplers are supported. External images/buffers, other UV sets,

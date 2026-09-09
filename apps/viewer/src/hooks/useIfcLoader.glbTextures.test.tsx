@@ -8,14 +8,15 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useViewerStore } from '@/store';
 import { modelAppearanceAssets } from '@/lib/appearance/model-assets.js';
+import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
 import { useIfcLoader } from './useIfcLoader.js';
 
 // Real PNG and GLB framing; only the browser image decoder/canvas are replaced.
 const png = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==','base64'));
-function fixture(): File {
+function fixture(mimeType = 'image/png', image = png): File {
   const positions=new Float32Array([0,0,0,1,0,0,0,1,0]); const uv=new Float32Array([0,0,1,0,0,1]);
-  const data=new Uint8Array(positions.byteLength+uv.byteLength+png.length);data.set(new Uint8Array(positions.buffer));data.set(new Uint8Array(uv.buffer),positions.byteLength);data.set(png,positions.byteLength+uv.byteLength);
-  const json={asset:{version:'2.0'},nodes:[{mesh:0,extras:{expressId:42}}],meshes:[{primitives:[{attributes:{POSITION:0,TEXCOORD_0:1},material:0}]}],materials:[{pbrMetallicRoughness:{baseColorTexture:{index:0}}}],textures:[{source:0}],images:[{mimeType:'image/png',bufferView:2}],buffers:[{byteLength:data.length}],bufferViews:[{buffer:0,byteLength:positions.byteLength},{buffer:0,byteOffset:positions.byteLength,byteLength:uv.byteLength},{buffer:0,byteOffset:positions.byteLength+uv.byteLength,byteLength:png.length}],accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3'},{bufferView:1,componentType:5126,count:3,type:'VEC2'}]};
+  const data=new Uint8Array(positions.byteLength+uv.byteLength+image.length);data.set(new Uint8Array(positions.buffer));data.set(new Uint8Array(uv.buffer),positions.byteLength);data.set(image,positions.byteLength+uv.byteLength);
+  const json={asset:{version:'2.0'},nodes:[{mesh:0,extras:{expressId:42}}],meshes:[{primitives:[{attributes:{POSITION:0,TEXCOORD_0:1},material:0}]}],materials:[{pbrMetallicRoughness:{baseColorTexture:{index:0}}}],textures:[{source:0}],images:[{mimeType,bufferView:2}],buffers:[{byteLength:data.length}],bufferViews:[{buffer:0,byteLength:positions.byteLength},{buffer:0,byteOffset:positions.byteLength,byteLength:uv.byteLength},{buffer:0,byteOffset:positions.byteLength+uv.byteLength,byteLength:image.length}],accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3'},{bufferView:1,componentType:5126,count:3,type:'VEC2'}]};
   const text=new TextEncoder().encode(JSON.stringify(json));const textLength=Math.ceil(text.length/4)*4,binLength=Math.ceil(data.length/4)*4;const bytes=new Uint8Array(28+textLength+binLength);const view=new DataView(bytes.buffer);view.setUint32(0,0x46546c67,true);view.setUint32(4,2,true);view.setUint32(8,bytes.length,true);view.setUint32(12,textLength,true);view.setUint32(16,0x4e4f534a,true);bytes.fill(32,20,20+textLength);bytes.set(text,20);view.setUint32(20+textLength,binLength,true);view.setUint32(24+textLength,0x004e4942,true);bytes.set(data,28+textLength);return new File([bytes],'capture.glb');
 }
 class OpaqueCanvas {
@@ -72,4 +73,23 @@ it('#4380 a superseded pending image decode cannot replace the newer GLB or repo
     });
     const models=[...useViewerStore.getState().models.values()];assert.equal(models.length,1);assert.equal(models[0].loadState,'complete');assert.ok(models[0].geometryResult?.meshes[0].textureBitmap);assert.equal(useViewerStore.getState().error,null);assert.equal(closed,1,'only stale decoder result is closed');
   } finally {await act(async()=>root.unmount());host.remove();}
+});
+
+
+it('#4380 rejects a transparent PNG declared as JPEG before opacity fast-path or asset decode', async () => {
+  // Real one-pixel RGBA PNG with alpha=0; its GLB MIME intentionally lies.
+  const transparent = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DAAAAEAQEARwbK3gAAAABJRU5ErkJggg==', 'base64'));
+  let decodes = 0;
+  Object.defineProperty(globalThis, 'createImageBitmap', { configurable: true, writable: true, value: async () => {
+    decodes++; return { width: 1, height: 1, close() {} };
+  } });
+  Object.defineProperty(globalThis, 'OffscreenCanvas', { configurable: true, writable: true, value: class {
+    constructor() { throw new Error('A forged JPEG currently skips opacity readback'); }
+  } });
+  const lease = modelAppearanceAssets.begin('forged-jpeg');
+  try {
+    await assert.rejects(prepareGlbViewerModel(await fixture('image/jpeg', transparent).arrayBuffer(),
+      archive => lease.decode(archive), () => false), /image.*signature.*MIME/i);
+    assert.equal(decodes, 0, 'Cache boundary rejects before image resource allocation');
+  } finally { lease.cancel(); }
 });

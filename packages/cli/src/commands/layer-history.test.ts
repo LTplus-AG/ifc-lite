@@ -11,7 +11,7 @@ import { getRef, loadLayer, loadRefLayers } from './layer-store.js';
 import { publishLayer } from './layer-publish.js';
 import { diffLayerStacks } from './layer-diff.js';
 import { mergeIntoRef } from './layer-merge.js';
-import { bakeRef, logRef, revertInRef } from './layer-history.js';
+import { bakeRef, logRef, rebaseLayerOnto, revertInRef } from './layer-history.js';
 import { createRef, listRefs, protectRef } from './ref.js';
 import { CLASS, FIRE, makeDelta, setupMain, tmpStore } from './layer-test-helpers.js';
 
@@ -91,6 +91,59 @@ describe('revert', () => {
     if (kept.status !== 'reverted') throw new Error('expected revert with resolution');
     const state = extractStackState(loadRefLayers(store, 'main'));
     expect(state.get('wall-1')?.components.get('pset:Pset_FireSafety')).toEqual({ [FIRE]: 'C' });
+  });
+});
+
+describe('rebase', () => {
+  it('re-verifies a carried scope claim against the rebased writes and flags a mismatch', () => {
+    // Sibling of the publish-path test in layer.test.ts ("scope
+    // verification > flags ops outside the declared claims"), ported to
+    // `rebaseLayerOnto`: rebasing re-derives the scope ops from the
+    // rebased result and must re-run verification, not just carry forward
+    // whatever the original publish computed.
+    const store = tmpStore();
+    setupMain(store);
+    const candidate = publishLayer(store, {
+      delta: makeDelta([
+        {
+          path: 'wall-1',
+          attributes: {
+            [FIRE]: 'REI90',
+            'bsi::ifc::v5a::Pset_Acoustics::SoundRating': 42,
+          },
+        },
+      ]),
+      baseRef: 'main',
+      intent: 'Edit fire rating (and sneak in acoustics)',
+      scope: ['model.mutate:Pset_FireSafety*@IfcWall'],
+      principal: 'agent-1',
+    });
+    expect(candidate.scopeVerified).toBe(false);
+
+    const outcome = rebaseLayerOnto(store, candidate.layerId, 'main');
+    if (outcome.status !== 'rebased') throw new Error('expected rebase to succeed');
+    expect(outcome.scopeVerified).toBe(false);
+    expect(outcome.violations).toEqual([
+      { path: 'wall-1', capability: 'model.mutate:Pset_Acoustics', ifcType: 'IfcWall' },
+    ]);
+  });
+
+  it('re-verifies clean when the carried scope claim covers every rebased op', () => {
+    const store = tmpStore();
+    setupMain(store);
+    const candidate = publishLayer(store, {
+      delta: makeDelta([{ path: 'wall-1', attributes: { [FIRE]: 'REI90' } }]),
+      baseRef: 'main',
+      intent: 'Bump fire rating',
+      scope: ['model.mutate:Pset_FireSafety*@IfcWall'],
+      principal: 'agent-1',
+    });
+    expect(candidate.scopeVerified).toBe(true);
+
+    const outcome = rebaseLayerOnto(store, candidate.layerId, 'main');
+    if (outcome.status !== 'rebased') throw new Error('expected rebase to succeed');
+    expect(outcome.scopeVerified).toBe(true);
+    expect(outcome.violations).toEqual([]);
   });
 });
 

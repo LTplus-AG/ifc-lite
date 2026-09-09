@@ -1139,3 +1139,35 @@ describe('triage (--detect) WASM disposal (#1959 P2 leak)', () => {
     expect(disposeSpy).toHaveBeenCalledTimes(1);
   }, 30_000);
 });
+
+describe('extract-entities --detect: a non-numeric --top falls back to 20, not 0', () => {
+  let stdoutSpy: ReturnType<typeof vi.spyOn>;
+  let captured: string[];
+
+  afterEach(() => {
+    stdoutSpy?.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it('produces the same non-empty top-N rows for --top banana as the --top 20 default', async () => {
+    captured = [];
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: any) => {
+      captured.push(String(chunk));
+      return true;
+    });
+
+    // `Number.parseInt('banana', 10)` is NaN; without the fallback,
+    // `topN = NaN` makes every `slice(0, topN)` return an empty array
+    // regardless of how many rows exist — a non-numeric --top would
+    // silently produce zero rows rather than the documented default.
+    await extractEntitiesCommand([SAMPLE_IFC, '--detect', '--report', '--json', '--top', 'banana']);
+    const bananaOut = JSON.parse(captured.join(''));
+
+    captured = [];
+    await extractEntitiesCommand([SAMPLE_IFC, '--detect', '--report', '--json', '--top', '20']);
+    const explicit20Out = JSON.parse(captured.join(''));
+
+    expect(bananaOut.top.length).toBeGreaterThan(0);
+    expect(bananaOut.top).toEqual(explicit20Out.top);
+  }, 30_000);
+});

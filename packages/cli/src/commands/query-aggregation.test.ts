@@ -18,7 +18,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { getQuantityValue, sortEntities, STANDARD_QTO_MAP } from './query-aggregation.js';
+import { aggregateFinite, getQuantityValue, sortEntities, STANDARD_QTO_MAP } from './query-aggregation.js';
 
 interface FakeEntity {
   ref: number;
@@ -38,6 +38,29 @@ function fakeBim(
     properties: (ref: number) => properties[ref] ?? [],
   };
 }
+
+describe('aggregateFinite', () => {
+  it('returns null, not 0 or NaN, for an empty group', () => {
+    // `aggregateFinite`'s doc comment states this null is deliberate: an
+    // empty (or all-non-finite) input must be distinguishable from a real
+    // zero sum/avg by the caller. `outputGroupBy` in query-output.ts
+    // currently discards this with `?? 0`, but this function's own contract
+    // — asserted here — must still hold.
+    expect(aggregateFinite([], 'sum')).toBeNull();
+    expect(aggregateFinite([], 'avg')).toBeNull();
+    expect(aggregateFinite([], 'min')).toBeNull();
+    expect(aggregateFinite([], 'max')).toBeNull();
+  });
+
+  it('returns null for a group whose every value is non-finite', () => {
+    expect(aggregateFinite([NaN, Infinity, -Infinity], 'avg')).toBeNull();
+  });
+
+  it('still returns a real 0 (not null) when finite values sum to zero', () => {
+    expect(aggregateFinite([5, -5], 'sum')).toBe(0);
+    expect(aggregateFinite([0, 0], 'avg')).toBe(0);
+  });
+});
 
 describe('getQuantityValue', () => {
   const bim = fakeBim({

@@ -92,3 +92,5 @@ The original model, image/PDF draft controls, and main camera remain independent
 
 Actual WebGPU creation, original-image export, normal re-import, and picking are
 recorded in [captured UI acceptance](evidence/captured-ui/README.md).
+
+Destination eligibility is independent of load order or prior object selection: a loaded IFC4/IFC4X3 spatial model is offered even before its lazy mutation view exists. Creation initializes or reuses the canonical view, preserving prior edits. The created object activates its destination model so the shared Undo action targets that creation. Drawing-to-IfcAnnotation creation uses the same destination and selection helpers.

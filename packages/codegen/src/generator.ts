@@ -58,6 +58,12 @@ export function generateFromSchema(
   outputDir: string,
   options: GeneratorOptions = {}
 ): FullGeneratedCode {
+  // Normalize line endings so a CRLF (or lone-CR) source file can never leak
+  // a stray \r into a generated string literal downstream (#4220). This is
+  // the single boundary both generateFromFile and direct callers funnel
+  // through before the content reaches the parser.
+  schemaContent = schemaContent.replace(/\r\n?/g, '\n');
+
   console.log('📖 Parsing EXPRESS schema...');
   const schema = parseExpressSchema(schemaContent);
 

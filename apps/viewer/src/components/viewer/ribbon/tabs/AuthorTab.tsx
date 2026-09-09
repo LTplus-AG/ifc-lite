@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { hasWorkspaceHistory, replayWorkspaceHistory } from '@/lib/model-placement/history';
 
 /**
  * Ribbon · Author tab — the authoring surface: the global edit-mode
@@ -42,15 +43,12 @@ export function AuthorTab() {
   const canEditInSession =
     collabEditRole === null || collabEditRole === 'editor' || collabEditRole === 'admin';
 
-  const activeModelId = useViewerStore((s) => s.activeModelId);
-  const undoStacks = useViewerStore((s) => s.undoStacks);
-  const redoStacks = useViewerStore((s) => s.redoStacks);
-  const undo = useViewerStore((s) => s.undo);
-  const redo = useViewerStore((s) => s.redo);
   // Undo/redo replay authoring mutations, so they honour the same collab
   // role gate as edit mode.
-  const canUndo = canEditInSession && activeModelId !== null && (undoStacks.get(activeModelId)?.length ?? 0) > 0;
-  const canRedo = canEditInSession && activeModelId !== null && (redoStacks.get(activeModelId)?.length ?? 0) > 0;
+  const hasUndo = useViewerStore(state => hasWorkspaceHistory(state, 'undo'));
+  const canUndo = canEditInSession && hasUndo;
+  const hasRedo = useViewerStore(state => hasWorkspaceHistory(state, 'redo'));
+  const canRedo = canEditInSession && hasRedo;
 
   const { activeWorkspacePanels, handleToggleRightPanel } = useWorkspacePanelControls();
 
@@ -75,14 +73,14 @@ export function AuthorTab() {
             label="Undo"
             shortcut="⌘Z"
             disabled={!canUndo}
-            onClick={() => { if (activeModelId) undo(activeModelId); }}
+            onClick={() => { replayWorkspaceHistory(useViewerStore.getState(), 'undo'); }}
           />
           <RibbonSmallButton
             icon={Redo}
             label="Redo"
             shortcut="⌘⇧Z"
             disabled={!canRedo}
-            onClick={() => { if (activeModelId) redo(activeModelId); }}
+            onClick={() => { replayWorkspaceHistory(useViewerStore.getState(), 'redo'); }}
           />
         </RibbonSmallStack>
       </RibbonGroup>

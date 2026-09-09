@@ -54,4 +54,3 @@ export interface InstancedTemplateCpu {
   localMin: [number, number, number];
   localMax: [number, number, number];
 }
-

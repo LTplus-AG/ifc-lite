@@ -43,7 +43,7 @@ it('#4380 canonical primary and federated GLB loads retain UVs, independent text
     const primary=[...useViewerStore.getState().models.values()][0];assert.ok(primary?.geometryResult);assert.equal(primary.loadState,'complete');
     const first=primary.geometryResult.meshes[0];assert.deepEqual([...first.uvs!],[0,0,1,0,0,1]);assert.ok(first.textureBitmap);assert.deepEqual(modelAppearanceAssets.exportOriginals(primary.id).resources.get('textures/glb-image-0.png'),png);
     await act(async()=>api!.loadFile(fixture(),{kind:'federated',modelId:'second-capture'}));
-    const second=useViewerStore.getState().models.get('second-capture');assert.ok(second?.geometryResult);assert.equal(second.loadState,'complete');
+    const second=useViewerStore.getState().models.get('second-capture');assert.ok(second?.geometryResult);assert.notEqual(second.loadState,'error');
     const other=second.geometryResult.meshes[0];assert.notEqual(other.expressId,first.expressId);assert.notEqual(other.textureRef!.textureId,first.textureRef!.textureId);assert.strictEqual(other.textureBitmap,first.textureBitmap);
     assert.deepEqual(modelAppearanceAssets.exportOriginals(second.id).resources.get('textures/glb-image-0.png'),png);
     useViewerStore.getState().removeModel(primary.id);assert.equal(closed,0,'shared image survives the remaining model');

@@ -212,7 +212,7 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
     ) {
       return [...DEFAULT_COLOR];
     }
-    return [linearToSrgb(r), linearToSrgb(g), linearToSrgb(b), a];
+    return [linearToSrgb(r), linearToSrgb(g), linearToSrgb(b), material?.pbrMetallicRoughness?.baseColorTexture ? 1 : a];
   };
 
   for (let nodeIdx = 0; nodeIdx < gltf.nodes.length; nodeIdx++) {
@@ -238,7 +238,7 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
       if (posAccessorIdx === undefined) continue;
 
       // Read position data
-      const positions = readAccessorData(gltf, bin, posAccessorIdx);
+      const positions = readAccessorData(gltf, bin, posAccessorIdx, 'VEC3');
       if (!(positions instanceof Float32Array)) {
         throw new Error('Position data must be Float32');
       }
@@ -246,7 +246,7 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
       // Read normal data (optional, generate if missing)
       let normals: Float32Array;
       if (normAccessorIdx !== undefined) {
-        const normData = readAccessorData(gltf, bin, normAccessorIdx);
+        const normData = readAccessorData(gltf, bin, normAccessorIdx, 'VEC3');
         if (!(normData instanceof Float32Array)) {
           throw new Error('Normal data must be Float32');
         }
@@ -259,7 +259,7 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
       // Read index data (optional for non-indexed geometry)
       let indices: Uint32Array;
       if (idxAccessorIdx !== undefined) {
-        const idxData = readAccessorData(gltf, bin, idxAccessorIdx);
+        const idxData = readAccessorData(gltf, bin, idxAccessorIdx, 'SCALAR');
         if (idxData instanceof Float32Array) {
           throw new Error('Index data cannot be Float32');
         }

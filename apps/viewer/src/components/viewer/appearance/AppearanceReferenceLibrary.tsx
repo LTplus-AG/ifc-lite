@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { AppearanceAnnotationFields } from './AppearanceAnnotationFields';
 import { referenceFrameStatus } from '@/lib/appearance/reference-runtime/frame.js';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Eye, EyeOff, Lock, Unlock, Trash2, Pencil, Download, Upload } from 'lucide-react';
@@ -121,6 +122,7 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
           </div>
           <ReferenceOpacity name={name} value={reference.opacity} disabled={editsDisabled || wrongFrame}
             onCommit={opacity => perform(() => useViewerStore.getState().updateAppearanceReference(reference.id, { opacity }))} />
+          <AppearanceAnnotationFields referenceId={reference.id} name={name} disabled={editsDisabled || missing || wrongFrame} />
           {wrongFrame && <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">This drawing uses another coordinate frame. Unlock and edit its registration before displaying it.</p>}
           {missing && <div className="mt-1 space-y-1">
             <p className="text-[11px] text-muted-foreground">Original image needed. Choose the exact image used by this registration.</p>

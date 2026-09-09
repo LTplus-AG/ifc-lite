@@ -159,6 +159,7 @@
     "loadGLBToMeshData: function",
     "openGeometryChunksV13: function",
     "parseGLB: function",
+    "parseGLBImageResources: function",
     "parseGLBToMeshData: function",
     "readGeometryHeadV13: function",
     "readInstancedShards: function",

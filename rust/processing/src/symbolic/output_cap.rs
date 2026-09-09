@@ -11,6 +11,7 @@
 //! to find it, and a reader adding a primitive should not have to step around
 //! the bound.
 
+use super::output_cap_validate::all_finite;
 use super::primitives::{
     SymbolicCircle, SymbolicData, SymbolicFillArea, SymbolicGridAxis, SymbolicPolyline,
     SymbolicText,
@@ -306,20 +307,22 @@ impl SymbolicAccumulator {
     /// identical. Keeping it in five copies is how `push_text` came to omit
     /// `alignment` from its payload and under-count the byte bound by 13.5x, so
     /// a sixth primitive must not have to re-derive the block to get it right.
-    fn try_push<F>(&mut self, payload: usize, push: F)
+    fn try_push<F>(&mut self, payload: usize, valid: bool, push: F)
     where
         F: FnOnce(&mut SymbolicData),
     {
-        if let Some(reason) = self.exceeded_by(payload) {
-            self.record(reason);
-            self.exhausted = true;
-            #[cfg(test)]
-            {
-                self.refusals += 1;
+        if valid {
+            if let Some(reason) = self.exceeded_by(payload) {
+                self.record(reason);
+                self.exhausted = true;
+                #[cfg(test)]
+                {
+                    self.refusals += 1;
+                }
+            } else {
+                self.charge(payload);
+                push(&mut self.data);
             }
-        } else {
-            self.charge(payload);
-            push(&mut self.data);
         }
     }
 
@@ -329,7 +332,7 @@ impl SymbolicAccumulator {
         // file-bounded so it has no fan-out amplifier, but an uncharged
         // heap field is the same class of hole as `alignment` was.
         let payload = axis.tag.len();
-        self.try_push(payload, |data| data.grid_axes.push(axis));
+        self.try_push(payload, all_finite(&axis.endpoints), |data| data.grid_axes.push(axis));
     }
 
     /// Append a polyline unless the extraction has hit its cap.
@@ -337,7 +340,7 @@ impl SymbolicAccumulator {
         let payload = polyline.points.len()
             + polyline.ifc_type.len()
             + polyline.representation.len();
-        self.try_push(payload, |data| data.polylines.push(polyline));
+        self.try_push(payload, all_finite(&polyline.points), |data| data.polylines.push(polyline));
     }
 
     /// Append a circle unless the extraction has hit its cap.
@@ -347,12 +350,9 @@ impl SymbolicAccumulator {
     /// only the LOCAL center before transforming it, so a malformed ambient
     /// placement can still turn a finite local point into a non-finite one.
     pub(super) fn push_circle(&mut self, circle: SymbolicCircle) {
-        let finite = circle.center_x.is_finite() && circle.center_y.is_finite();
-        if !finite || !circle.radius.is_finite() {
-            return;
-        }
+        let valid = all_finite(&[circle.center_x, circle.center_y, circle.radius]);
         let payload = 8 + circle.ifc_type.len() + circle.representation.len();
-        self.try_push(payload, |data| data.circles.push(circle));
+        self.try_push(payload, valid, |data| data.circles.push(circle));
     }
 
     /// Append a text annotation unless the extraction has hit its cap.
@@ -367,7 +367,7 @@ impl SymbolicAccumulator {
             + text.alignment.len()
             + text.ifc_type.len()
             + text.representation.len();
-        self.try_push(payload, |data| data.texts.push(text));
+        self.try_push(payload, all_finite(&[text.x, text.y]), |data| data.texts.push(text));
     }
 
     /// Append a filled region unless the extraction has hit its cap.
@@ -376,7 +376,7 @@ impl SymbolicAccumulator {
             + fill.holes_offsets.len()
             + fill.ifc_type.len()
             + fill.representation.len();
-        self.try_push(payload, |data| data.fills.push(fill));
+        self.try_push(payload, all_finite(&fill.points), |data| data.fills.push(fill));
     }
 
     /// Finish, stamping the diagnostics field iff an append was ever refused.

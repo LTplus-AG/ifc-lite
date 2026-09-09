@@ -51,7 +51,9 @@
 //! field that says the cap was hit. Both halves are pinned here.
 //!
 use super::output_cap::{SymbolicAccumulator, SymbolicTruncationReason};
-use super::primitives::SymbolicData;
+use super::primitives::{
+    SymbolicData, SymbolicFillArea, SymbolicGridAxis, SymbolicPolyline, SymbolicText,
+};
 
 /// Test-only constructors and the refusal counter, kept HERE rather than in
 /// `output_cap.rs`.
@@ -837,4 +839,154 @@ fn the_wire_spellings_match_serde() {
             "as_wire_str disagrees with Serialize for {reason:?}"
         );
     }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// `push_*` finiteness guards (follow-up to #4189/#4190).
+//
+// `parse_axis2_placement_2d` and `parse_cartesian_transformation_operator`
+// deliberately do not refuse a non-finite ambient placement, so every
+// CONSUMER of a resolved placement must guard itself. Only `push_circle` did.
+// The four tests below call `push_grid_axis`/`push_polyline`/`push_text`/
+// `push_fill` DIRECTLY, with no caller in between, to prove the refusal lives
+// at the accumulator's own chokepoint and not merely in whichever caller
+// happened to check first. Each was run against the pre-fix accumulator (the
+// `valid` check reverted to `true`) and confirmed to fail before the fix
+// landed -- see the PR comment for the mutation diff and its RED output.
+// ────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn push_grid_axis_refuses_a_non_finite_endpoint_directly_at_the_push() {
+    let mut acc = SymbolicAccumulator::with_limits(500, 1_000_000);
+    acc.push_grid_axis(SymbolicGridAxis {
+        express_id: 1,
+        grid_express_id: 1,
+        tag: "A".to_string(),
+        endpoints: [0.0, 0.0, f32::NAN, 1.0],
+        world_y: f32::NAN,
+    });
+    acc.push_grid_axis(SymbolicGridAxis {
+        express_id: 2,
+        grid_express_id: 1,
+        tag: "B".to_string(),
+        endpoints: [0.0, 0.0, 1.0, 1.0],
+        world_y: f32::NAN,
+    });
+    let out = acc.into_data();
+    assert_eq!(
+        out.grid_axes.len(),
+        1,
+        "a non-finite endpoint must be refused at push_grid_axis while a \
+         finite one beside it is kept"
+    );
+}
+
+#[test]
+fn push_polyline_refuses_a_non_finite_point_directly_at_the_push() {
+    let mut acc = SymbolicAccumulator::with_limits(500, 1_000_000);
+    acc.push_polyline(SymbolicPolyline {
+        express_id: 1,
+        ifc_type: "IfcPolyline".to_string(),
+        points: vec![0.0, 0.0, f32::INFINITY, 1.0],
+        closed: false,
+        world_y: f32::NAN,
+        representation: "Plan".to_string(),
+    });
+    acc.push_polyline(SymbolicPolyline {
+        express_id: 2,
+        ifc_type: "IfcPolyline".to_string(),
+        points: vec![0.0, 0.0, 1.0, 1.0],
+        closed: false,
+        world_y: f32::NAN,
+        representation: "Plan".to_string(),
+    });
+    let out = acc.into_data();
+    assert_eq!(
+        out.polylines.len(),
+        1,
+        "a non-finite point must be refused at push_polyline while a finite \
+         polyline beside it is kept"
+    );
+}
+
+#[test]
+fn push_text_refuses_a_non_finite_anchor_directly_at_the_push() {
+    let mut acc = SymbolicAccumulator::with_limits(500, 1_000_000);
+    acc.push_text(SymbolicText {
+        express_id: 1,
+        ifc_type: "IfcTextLiteral".to_string(),
+        x: f32::NAN,
+        y: 0.0,
+        dir_x: 1.0,
+        dir_y: 0.0,
+        height: 1.0,
+        content: "a".to_string(),
+        alignment: String::new(),
+        world_y: f32::NAN,
+        color: [0.0, 0.0, 0.0, 1.0],
+        target_px: 0.0,
+        representation: "Plan".to_string(),
+    });
+    acc.push_text(SymbolicText {
+        express_id: 2,
+        ifc_type: "IfcTextLiteral".to_string(),
+        x: 0.0,
+        y: 0.0,
+        dir_x: 1.0,
+        dir_y: 0.0,
+        height: 1.0,
+        content: "b".to_string(),
+        alignment: String::new(),
+        world_y: f32::NAN,
+        color: [0.0, 0.0, 0.0, 1.0],
+        target_px: 0.0,
+        representation: "Plan".to_string(),
+    });
+    let out = acc.into_data();
+    assert_eq!(
+        out.texts.len(),
+        1,
+        "a non-finite x/y anchor must be refused at push_text while a finite \
+         text beside it is kept"
+    );
+}
+
+#[test]
+fn push_fill_refuses_a_non_finite_point_directly_at_the_push() {
+    let mut acc = SymbolicAccumulator::with_limits(500, 1_000_000);
+    acc.push_fill(SymbolicFillArea {
+        express_id: 1,
+        ifc_type: "IfcAnnotationFillArea".to_string(),
+        points: vec![0.0, 0.0, f32::NAN, 1.0, 1.0, 1.0],
+        holes_offsets: vec![],
+        fill_color: [0.0, 0.0, 0.0, 1.0],
+        has_hatching: false,
+        hatch_spacing: 0.0,
+        hatch_angle: 0.0,
+        hatch_angle_secondary: f32::NAN,
+        hatch_line_width: 0.0,
+        world_y: f32::NAN,
+        representation: "Plan".to_string(),
+    });
+    acc.push_fill(SymbolicFillArea {
+        express_id: 2,
+        ifc_type: "IfcAnnotationFillArea".to_string(),
+        points: vec![0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+        holes_offsets: vec![],
+        fill_color: [0.0, 0.0, 0.0, 1.0],
+        has_hatching: false,
+        hatch_spacing: 0.0,
+        hatch_angle: 0.0,
+        hatch_angle_secondary: f32::NAN,
+        hatch_line_width: 0.0,
+        world_y: f32::NAN,
+        representation: "Plan".to_string(),
+    });
+    let out = acc.into_data();
+    assert_eq!(
+        out.fills.len(),
+        1,
+        "a non-finite point must be refused at push_fill while a finite fill \
+         beside it is kept"
+    );
 }

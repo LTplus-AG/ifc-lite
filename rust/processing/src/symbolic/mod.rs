@@ -73,6 +73,7 @@ mod grid;
 mod item_walk;
 mod items;
 mod output_cap;
+mod output_cap_validate;
 #[cfg(test)]
 mod items_cycle_tests;
 #[cfg(test)]

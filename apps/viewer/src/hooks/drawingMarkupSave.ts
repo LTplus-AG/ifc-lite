@@ -110,6 +110,37 @@ let lastSectionConfig: SectionConfig | null = null;
 let lastSectionConfigModelId: string | null = null;
 
 /**
+ * Set (to the restoring model's id) the instant {@link setRestoredSectionConfig}
+ * is called with an entry that actually carries a `sectionConfig` (issue
+ * #4153 gap: restore reached `lastSectionConfig` but was never fed to drawing
+ * generation, so the saved markup came back with no section cut to sit on).
+ * Consumed exactly once by {@link consumeRestoredSectionConfig} —
+ * `useDrawingGeneration.ts` reads it to re-derive the store's `sectionPlane`
+ * (percentage-of-bounds, semantic axis) from this module's world-space
+ * `SectionConfig`, then lets the existing plane-changed auto-generate path do
+ * the rest. Reset to `null` everywhere `lastSectionConfig` itself is reset,
+ * so a model with nothing saved (or whose restore has not concluded yet) can
+ * never be "consumed" as if it had.
+ */
+let pendingSectionConfigModelId: string | null = null;
+
+/**
+ * Hand the generation bridge (`useDrawingGeneration.ts`) the `SectionConfig`
+ * this module just restored for `modelId`, if any — one-shot: a second call
+ * for the same restore returns `null`, so a plane the user has since changed
+ * is never silently re-applied. Returns `null` for a model whose restore has
+ * not (yet) surfaced a saved plane, or for any model other than the one the
+ * pending config belongs to — the same per-model keying `restoringModelId`
+ * uses, so a caller cannot cross-apply model A's cut to model B by racing
+ * this against a switch.
+ */
+export function consumeRestoredSectionConfig(modelId: string): SectionConfig | null {
+  if (pendingSectionConfigModelId !== modelId) return null;
+  pendingSectionConfigModelId = null;
+  return lastSectionConfigModelId === modelId ? lastSectionConfig : null;
+}
+
+/**
  * Set the instant `useDrawing2DPersistence.ts`'s restore effect starts
  * working on a model, and cleared once its `applyHash` step concludes for
  * that SAME model (#4159 review: cross-model `sectionConfig` contamination).
@@ -133,6 +164,7 @@ let restoringModelId: string | null = null;
 export function resetSaveState(): void {
   lastSectionConfig = null;
   lastSectionConfigModelId = null;
+  pendingSectionConfigModelId = null;
   restoringModelId = null;
 }
 
@@ -140,6 +172,7 @@ export function resetSaveState(): void {
 export function beginRestore(modelId: string): void {
   lastSectionConfig = null;
   lastSectionConfigModelId = null;
+  pendingSectionConfigModelId = null;
   restoringModelId = modelId;
 }
 
@@ -147,13 +180,22 @@ export function beginRestore(modelId: string): void {
 export function endRestore(modelId: string): void {
   lastSectionConfig = null;
   lastSectionConfigModelId = null;
+  pendingSectionConfigModelId = null;
   if (restoringModelId === modelId) restoringModelId = null;
 }
 
-/** Record the `SectionConfig` a just-concluded restore found for `modelId`, so it is folded into that model's next save. */
+/**
+ * Record the `SectionConfig` a just-concluded restore found for `modelId`, so
+ * it is folded into that model's next save. Also marks it "pending" for
+ * {@link consumeRestoredSectionConfig} — but only when there IS a config to
+ * apply (#4153 gap): an entry with markup but no saved cut (`sectionConfig:
+ * null`, e.g. saved before this fix shipped) must leave the section plane
+ * alone rather than have `useDrawingGeneration.ts` try to consume `null`.
+ */
 export function setRestoredSectionConfig(modelId: string, config: SectionConfig | null): void {
   lastSectionConfig = config;
   lastSectionConfigModelId = modelId;
+  if (config) pendingSectionConfigModelId = modelId;
 }
 
 function currentHashFor(modelId: string | null): string | null | undefined {

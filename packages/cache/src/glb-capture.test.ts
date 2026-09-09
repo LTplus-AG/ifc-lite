@@ -6,11 +6,10 @@ import { parseGLBToMeshData } from './glb.js';
 import { parseGLBImageResources } from './glb-images.js';
 import type { GLTFDocument } from './glb-types.js';
 
-function capture(): { json: GLTFDocument; bin: Uint8Array } {
+function capture(png = new Uint8Array([137,80,78,71,13,10,26,10])): { json: GLTFDocument; bin: Uint8Array } {
   // Two triangles duplicate the shared geometric corner with distinct UVs: an atlas seam.
   const positions = new Float32Array([0,0,0, 1,0,0, 0,1,1, 0,0,0, 0,1,1, -1,0,0]);
   const uvs = new Float32Array([0,0, 0.5,0, 0.5,1, 1,0, 1,1, 0.5,0]);
-  const png = new Uint8Array([137,80,78,71,13,10,26,10]);
   const bin = new Uint8Array(positions.byteLength + uvs.byteLength + png.byteLength);
   bin.set(new Uint8Array(positions.buffer)); bin.set(new Uint8Array(uvs.buffer), positions.byteLength); bin.set(png, positions.byteLength + uvs.byteLength);
   return { bin, json: {
@@ -54,6 +53,27 @@ describe('captured GLB appearance #4380', () => {
     delete json.materials![0].alphaMode; json.samplers=[{wrapS:33648}];json.textures![0].sampler=0;expect(()=>parseGLBToMeshData(json,bin)).toThrow(/mirrored/);
     delete json.textures![0].sampler;json.extensionsRequired=['KHR_draco_mesh_compression'];expect(()=>parseGLBToMeshData(json,bin)).toThrow(/required extension/);
     delete json.extensionsRequired;json.bufferViews![2].byteLength=bin.length;expect(()=>parseGLBImageResources(json,bin)).toThrow(/exceeds/);
+  });
+  it('rejects mismatched MIME/signatures before geometry or resource copying', () => {
+    const png = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DAAAAEAQEARwbK3gAAAABJRU5ErkJggg==', 'base64'));
+    const {json,bin} = capture(png);
+    expect(parseGLBImageResources(json,bin).get('textures/glb-image-0.png')).toEqual(png);
+    json.images![0].mimeType='image/jpeg';
+    expect(()=>parseGLBToMeshData(json,bin)).toThrow(/signature.*MIME/);
+    expect(()=>parseGLBImageResources(json,bin)).toThrow(/signature.*MIME/);
+    for (const bytes of [new Uint8Array([137,80,78]), new Uint8Array([255,216,0])]) {
+      const invalid=capture(bytes);
+      expect(()=>parseGLBImageResources(invalid.json,invalid.bin)).toThrow(/signature.*MIME/);
+    }
+  });
+  it('retains a genuine encoded JPEG and rejects it when declared PNG', () => {
+    const jpeg = new Uint8Array(Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAIDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDx/9k=', 'base64'));
+    const {json,bin}=capture(jpeg); json.images![0].mimeType='image/jpeg';
+    const [mesh]=parseGLBToMeshData(json,bin);
+    expect(parseGLBImageResources(json,bin).get(mesh.textureRef!.url)).toEqual(jpeg);
+    expect(mesh.textureRef!.url).toMatch(/\.jpg$/);
+    json.images![0].mimeType='image/png';
+    expect(()=>parseGLBImageResources(json,bin)).toThrow(/signature.*MIME/);
   });
   it('bounds deep scene walks without consuming the call stack', () => {
     const {json,bin}=capture(); const leaf=json.nodes![0];json.nodes=Array.from({length:12000},(_,i)=>i===11999?leaf:{children:[i+1]});json.scenes=[{nodes:[0]}];

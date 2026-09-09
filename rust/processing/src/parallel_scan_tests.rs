@@ -15,9 +15,28 @@ use ifc_lite_core::{build_entity_index, EntityScanner};
 /// This is the number the sharded path must reproduce: the target is
 /// parity with the serial scanner, not immunity to mis-parsing.
 fn serial_refusals(content: &[u8]) -> usize {
+    serial_diagnostics(content).0
+}
+
+/// Whether a SERIAL whole-file scan stops early on a malformed record.
+/// The sharded path must reproduce this too — for the same reason as
+/// `serial_refusals`, and for both directions: a fixture the serial scan
+/// clears must not acquire a stop from how the boundaries fell, and one it
+/// refuses must not lose it to a discarded speculative prefix.
+fn serial_malformed(content: &[u8]) -> bool {
+    serial_diagnostics(content).1
+}
+
+/// One serial drain, both diagnostics: `assert_parallel_matches_serial` wants
+/// each fixture's refusal count AND its malformed flag, and scanning twice for
+/// them made every fixture in this file cost two whole-file walks.
+fn serial_diagnostics(content: &[u8]) -> (usize, bool) {
     let mut scanner = EntityScanner::new(content);
     while scanner.next_entity().is_some() {}
-    scanner.skipped_oversized_ids()
+    (
+        scanner.skipped_oversized_ids(),
+        scanner.malformed_record_start().is_some(),
+    )
 }
 
 /// Assert `with_chunks_counted(content, n)` equals the serial index —
@@ -26,7 +45,7 @@ fn serial_refusals(content: &[u8]) -> usize {
 /// inside strings/comments/records across the sweep.
 fn assert_parallel_matches_serial(content: &[u8], label: &str) {
     let serial = build_entity_index(content);
-    let serial_refused = serial_refusals(content);
+    let (serial_refused, serial_stopped) = serial_diagnostics(content);
     for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
         let stitched = with_chunks_counted(content, n);
         let (par, refused, malformed) = (stitched.index, stitched.refused, stitched.malformed);
@@ -38,10 +57,10 @@ fn assert_parallel_matches_serial(content: &[u8], label: &str) {
             refused, serial_refused,
             "attributed refusals (n_chunks={n}) != serial ({serial_refused}) for {label}"
         );
-        assert!(
-            !malformed,
-            "n_chunks={n}: {label} must not report a malformed-record stop — none of \
-             this file's `assert_parallel_matches_serial` fixtures declare one"
+        assert_eq!(
+            malformed, serial_stopped,
+            "attributed malformed-record stop (n_chunks={n}) != serial \
+             ({serial_stopped}) for {label}"
         );
     }
 }
@@ -95,11 +114,18 @@ fn duplicate_ids_last_wins() {
 /// and fake `#N=IFCWALL(...)` records. A chunk boundary inside the string
 /// makes the speculative scanner emit garbage until it re-syncs; the stitch
 /// (incl. the fallback) must still reproduce the serial index exactly.
+///
+/// The fake records must be COMPLETE — `)` before the `;` — or they are not
+/// garbage the scanner will emit at all: #4179's record-boundary rules refuse
+/// a `;` that closes nothing, so the half-record `IFCWALL(fake ;` this fixture
+/// used to spell produced zero in-string records and left the sentence above
+/// describing something that no longer happened. `saw_in_string_garbage`
+/// below is the guard that makes that failure loud instead of silent.
 #[test]
 fn chunk_boundary_inside_quoted_string() {
     let mut fake = String::new();
     for k in 0..400 {
-        fake.push_str(&format!(";\\n#{}=IFCWALL(fake ; still in string ", 90000 + k));
+        fake.push_str(&format!(";\\n#{}=IFCWALL(fake); still in string ", 90000 + k));
     }
     let mut content = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
     content.push_str("#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\n");
@@ -108,7 +134,27 @@ fn chunk_boundary_inside_quoted_string() {
         content.push_str(&format!("#{id}=IFCDOOR('g{id}',$,$,$,$,$,$,$);\n"));
     }
     content.push_str("ENDSEC;\n");
-    assert_parallel_matches_serial(content.as_bytes(), "in-string-boundary");
+    let bytes = content.as_bytes();
+
+    // The premise, asserted rather than assumed: a shard starting inside the
+    // quoted value really does emit records the file never declared.
+    let string_body = content.find("#2=IFCWALL('").unwrap() + 12;
+    let string_end = content[string_body..].find("',$,").unwrap() + string_body;
+    let saw_in_string_garbage = [2usize, 3, 4, 5, 7, 8, 11, 16, 32, 64].iter().any(|&n| {
+        (0..n).any(|i| {
+            let start = i * bytes.len() / n;
+            super::scan_shard(bytes, start, range_end(i, n, bytes.len()))
+                .0
+                .iter()
+                .any(|&(_, s, _)| s > string_body && s < string_end)
+        })
+    });
+    assert!(
+        saw_in_string_garbage,
+        "no shard ever mis-parsed the quoted value — this fixture cannot \
+         exercise the stitch's speculative-prefix drop"
+    );
+    assert_parallel_matches_serial(bytes, "in-string-boundary");
 }
 
 /// Build a file with NOTHING oversized in it whose one long quoted
@@ -124,8 +170,11 @@ fn chunk_boundary_inside_quoted_string() {
 fn clean_file_with_oversized_shaped_text_in_a_string() -> String {
     let mut fake = String::new();
     for k in 0..400 {
+        // A COMPLETE record shape, `)` and all: the scanner's record-boundary
+        // guards (#4179) reject a `;` that closes nothing, so half a record no
+        // longer fools a speculative shard into refusing anything at all.
         fake.push_str(&format!(
-            "#4294967297=IFCWALL(fake {k} ; still in string "
+            "#4294967297=IFCWALL(fake {k}); still in string "
         ));
     }
     let mut content = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
@@ -343,7 +392,12 @@ fn an_oversized_id_in_a_rescanned_range_that_hits_eof_counts_once() {
 fn a_real_oversized_id_behind_an_adversarial_string_counts_once() {
     let mut fake = String::new();
     for k in 0..400 {
-        fake.push_str(&format!("#4294967297=IFCWALL(fake {k} ; still in string "));
+        // COMPLETE record shape, `)` and all: #4179's record-boundary rules
+        // refuse a `;` that closes nothing, so the half-record this used to
+        // spell made the speculative scan refuse NOTHING — leaving the
+        // assertion below with no false refusals to exclude. Measured: 0 with
+        // the old shape, 22975 across the sweep with this one.
+        fake.push_str(&format!("#4294967297=IFCWALL(fake {k}); still in string "));
     }
     let mut content = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
     content.push_str("#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\n");
@@ -357,6 +411,26 @@ fn a_real_oversized_id_behind_an_adversarial_string_counts_once() {
     let bytes = content.as_bytes();
 
     assert_eq!(serial_refusals(bytes), 1, "one real oversized declaration");
+    // Guard against the loop below being vacuous: "none of the in-string ones"
+    // says nothing unless the shards actually made some. The sibling
+    // `clean_file_with_an_oversized_shaped_string_reports_no_refusal` has had
+    // this guard from the start and failed loudly when #4179 killed its
+    // fixture; this test had none and went quietly vacuous instead.
+    let n = 8usize;
+    let speculative: usize = (0..n)
+        .map(|i| {
+            let start = i * bytes.len() / n;
+            super::scan_shard_with_refusals(bytes, start, range_end(i, n, bytes.len()))
+                .2
+                .len()
+        })
+        .sum();
+    assert!(
+        speculative > 1,
+        "the quoted value made the shards refuse {speculative} record(s); with \
+         nothing false to exclude, the assertion below cannot discriminate the \
+         fix from the bug"
+    );
     for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
         assert_eq!(
             with_chunks_counted(bytes, n).refused,
@@ -511,4 +585,136 @@ fn fixtures_byte_identical() {
             "public build_entity_index_parallel != serial for {rel}"
         );
     }
+}
+
+/// #4179: one record missing its `;` must not cost a SHARDED scan the whole
+/// tail of the file.
+///
+/// This is the measurement `close_step_record` (ifc_lite_core parser::lexical)
+/// cites for why a refusal recovers instead of stopping: a stopped shard hands
+/// back `handoff = None`, the stitch reads that as "no more real entities",
+/// and every LATER shard is dropped. Asserted through the real stitch, not the
+/// scanner alone, because the scanner alone cannot show the amplification.
+#[test]
+fn missing_terminator_does_not_cost_the_sharded_scan_its_tail_4179() {
+    let mut content = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
+    for id in 1..=40u32 {
+        // #20 loses its ';'; every other record is well-formed.
+        let terminator = if id == 20 { "" } else { ";" };
+        content.push_str(&format!("#{id}=IFCDOOR('g{id}',$,$,$,$,$,$,$){terminator}\n"));
+    }
+    content.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+    let bytes = content.as_bytes();
+
+    // Serial ground truth: exactly #20 is lost, and the stop is reported.
+    let serial = build_entity_index(bytes);
+    assert_eq!(serial.len(), 39, "serial scan must drop only the broken record");
+    assert!(!serial.contains_key(&20));
+    assert!(serial.contains_key(&40), "the tail must survive a serial scan");
+    assert!(serial_malformed(bytes), "the broken record must still be reported");
+
+    // And the sharded path must match it at every chunk count. Before the
+    // recovery, n_chunks=4 came back with 19 of the 40.
+    assert_parallel_matches_serial(bytes, "missing-terminator-mid-file");
+}
+
+/// #4179 review, finding 2: a shard can now hold BOTH a speculative malformed
+/// record and a real one, and only the real one must be reported.
+///
+/// Before recovery this could not happen: a malformed record stopped the scan,
+/// so a shard had at most one. Now the speculative prefix hits one, recovers,
+/// and carries on into the record the file really declares. `mark_malformed`
+/// kept only the FIRST, so the stitch's `>= target` filter tested the
+/// speculative offset, rejected it, and reported nothing for a file the serial
+/// scan flags.
+#[test]
+fn a_speculative_stop_does_not_mask_a_real_one_4179() {
+    let mut fake = String::new();
+    for k in 0..400 {
+        // Unbalanced, so a shard starting mid-string marks it malformed and
+        // then RECOVERS, which is what lets a second one follow.
+        // Balanced, so a shard starting mid-string RECOVERS from each of
+        // these and carries on: that is what lets it reach a second, real
+        // drop. The trailing `x` before the `;` is what makes each one a drop
+        // rather than an accepted record.
+        fake.push_str(&format!("#9000{k}=IFCWALL(fake {k}) x; still in string "));
+    }
+    let mut content = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
+    content.push_str("#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\n");
+    content.push_str(&format!("#2=IFCWALL('{fake}',$,$,$,$,$,$,$);\n"));
+    for id in 3..=60u32 {
+        content.push_str(&format!("#{id}=IFCDOOR('g{id}',$,$,$,$,$,$,$);\n"));
+    }
+    // The real one: no terminator of its own, well after the quoted value.
+    content.push_str("#900=IFCWALL('real',$,$,$,$,$,$,$)\n");
+    for id in 61..=120u32 {
+        content.push_str(&format!("#{id}=IFCDOOR('g{id}',$,$,$,$,$,$,$);\n"));
+    }
+    content.push_str("ENDSEC;\n");
+    let bytes = content.as_bytes();
+
+    assert!(serial_malformed(bytes), "the fixture must declare a real stop");
+    for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
+        assert!(
+            with_chunks_counted(bytes, n).malformed,
+            "n_chunks={n}: the real malformed record went unreported"
+        );
+    }
+}
+
+/// #4179 review finding 2: a shard must report EVERY record it dropped, not
+/// just the first.
+///
+/// Recovery made a shard able to hold two: a speculative drop parsed out of a
+/// quoted value it started inside, and a real one after it resynchronised.
+/// While the scanner kept only the first, a shard whose retained region held
+/// the real record reported the speculative offset instead, and the stitch's
+/// "is it inside my region" filter then discarded the real record's report
+/// with it. Measured before the fix at four chunks: the shard covering the
+/// real malformed record at 19443 reported 16191.
+#[test]
+fn a_shard_reports_every_record_it_dropped_not_just_the_first_4179() {
+    let mut fake = String::new();
+    for k in 0..400 {
+        // Balanced, so a shard starting mid-string RECOVERS from each of
+        // these and carries on: that is what lets it reach a second, real
+        // drop. The trailing `x` before the `;` is what makes each one a drop
+        // rather than an accepted record.
+        fake.push_str(&format!("#9000{k}=IFCWALL(fake {k}) x; still in string "));
+    }
+    let mut content = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
+    content.push_str("#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\n");
+    content.push_str(&format!("#2=IFCWALL('{fake}',$,$,$,$,$,$,$);\n"));
+    for id in 3..=60u32 {
+        content.push_str(&format!("#{id}=IFCDOOR('g{id}',$,$,$,$,$,$,$);\n"));
+    }
+    let real = content.len();
+    content.push_str("#900=IFCWALL('real',$,$,$,$,$,$,$)\n");
+    for id in 61..=120u32 {
+        content.push_str(&format!("#{id}=IFCDOOR('g{id}',$,$,$,$,$,$,$);\n"));
+    }
+    content.push_str("ENDSEC;\n");
+    let bytes = content.as_bytes();
+    assert!(serial_malformed(bytes), "the fixture must declare a real drop");
+
+    // Every shard whose range covers the real record must report THAT offset,
+    // whatever its speculative prefix also found on the way in.
+    let mut checked = 0usize;
+    for n in [2usize, 4, 8, 16] {
+        for i in 0..n {
+            let start = i * bytes.len() / n;
+            let end = range_end(i, n, bytes.len());
+            if !(start <= real && real < end) {
+                continue;
+            }
+            let (_records, _handoff, _refusals, malformed) =
+                super::scan_shard_with_diagnostics(bytes, start, end);
+            assert!(
+                malformed.contains(&real),
+                "n_chunks={n} shard {i} covers the real drop at {real} but reported {malformed:?}"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked >= 4, "fixture never put the real drop inside a shard");
 }

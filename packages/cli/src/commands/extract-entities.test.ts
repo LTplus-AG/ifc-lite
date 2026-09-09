@@ -862,9 +862,11 @@ describe('spatialAncestors: a cyclic IfcRelAggregates graph terminates', () => {
       expect(new Set(ancestors)).toEqual(new Set([200, 201]));
       expect(ancestors.length).toBe(2);
     },
-    // A regression here is an infinite synchronous loop, not a slow one: this
-    // timeout exists so the run is killed and reported as a failure rather
-    // than hanging the whole suite indefinitely.
+    // A regression here is an infinite synchronous loop. `spatialAncestors`
+    // never awaits, so a fully synchronous `while` loop starves the event
+    // loop and Vitest's own timer-based timeout cannot fire to interrupt it
+    // — this 5000ms is a documented expectation, not a guaranteed abort; an
+    // external process or CI-level timeout is what actually bounds the hang.
     5000,
   );
 });

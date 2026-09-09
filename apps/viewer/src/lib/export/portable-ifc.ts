@@ -9,6 +9,8 @@ interface Resources {
   exportResources(modelId: string): { modelPath?: string; resources: Map<string, Uint8Array> };
 }
 function safePath(path: string): string {
+  // Archive paths deliberately reject ASCII control characters as unsafe names.
+  // eslint-disable-next-line no-control-regex
   if (!path || path.startsWith('/') || /[\\\\\u0000-\u001f\u007f:]/.test(path) || path.split('/').some(part => !part || part === '..' || part === '.')) {
     throw new Error('Cannot package this texture archive: it contains an unsafe relative path. Rename its model/image entries and reload.');
   }

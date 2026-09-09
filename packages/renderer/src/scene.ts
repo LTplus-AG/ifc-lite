@@ -3099,6 +3099,9 @@ export class Scene {
    * GPU upload.
    */
   addInstancedShard(device: GPUDevice, shard: DecodedInstancedShard, modelIndex = 0): void {
+    if (shard.instances.some(instance => this.instanceSuppression.owns(instance.entityId))) {
+      throw new Error('Cannot append geometry to a retained appearance occurrence');
+    }
     this.instancedDevice = device; // cached for per-instance selection/overlay writeBuffer
     const prepared = prepareInstancedRender(shard);
     // Selected ids whose occurrences arrived in THIS shard (selection recorded

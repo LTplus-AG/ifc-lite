@@ -10,7 +10,7 @@ import { INSTANCE_COLOR_OFFSET, INSTANCE_FLAGS_OFFSET, INSTANCE_FLAG_HIDDEN, INS
 
 function fixture(modelIndex = 3) {
   const buffers = new WeakMap<GPUBuffer, ArrayBuffer>();
-  let failNext = false;
+  let failAfter = -1;
   const device = {
     limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
     createBuffer: (desc: GPUBufferDescriptor) => {
@@ -19,7 +19,8 @@ function fixture(modelIndex = 3) {
       buffers.set(buffer, data); return buffer;
     },
     queue: { writeBuffer: (buffer: GPUBuffer, offset: number, data: ArrayBufferView) => {
-      if (failNext) { failNext = false; throw new Error('simulated GPU upload failure'); }
+      if (failAfter === 0) { failAfter = -1; throw new Error('simulated GPU upload failure'); }
+      if (failAfter > 0) failAfter--;
       new Uint8Array(buffers.get(buffer)!, offset, data.byteLength).set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
     } },
   } as unknown as GPUDevice;
@@ -34,7 +35,7 @@ function fixture(modelIndex = 3) {
   const gpu = scene.getInstancedTemplates()[0];
   const flags = (index: number) => new DataView(buffers.get(gpu.instanceBuffer)!).getUint32(index * INSTANCE_STRIDE_BYTES + INSTANCE_FLAGS_OFFSET, true);
   const color = (index: number) => Array.from(new Float32Array(buffers.get(gpu.instanceBuffer)!, index * INSTANCE_STRIDE_BYTES + INSTANCE_COLOR_OFFSET, 4));
-  return { scene, gpu, flags, color, fail: () => { failNext = true; } };
+  return { scene, gpu, flags, color, shard, device, fail: (after = 0) => { failAfter = after; } };
 }
 
 describe('occurrence appearance resource lifetime (#4404)', () => {
@@ -88,6 +89,33 @@ describe('occurrence appearance resource lifetime (#4404)', () => {
     lease.release();
     const after = scene.getInstancedMeshDataPieces(41)![0].positions;
     for (let i = 0; i < before.length; i++) assert.equal(after[i], before[i] + (i % 3 === 0 ? 5 : 0));
+  });
+
+  for (const failedWrite of [0, 1]) it(`rolls back reset at GPU write ${failedWrite} and permits retry`, () => {
+    const { scene, flags, fail } = fixture();
+    const leases = [41, 42].map(id => scene.retainInstancedOccurrence(id, 3));
+    for (const lease of leases) lease.setSuppressed(true);
+    fail(failedWrite);
+    assert.throws(() => scene.clearFlatGeometry(), /GPU upload failure/);
+    assert.ok(leases.every(lease => lease.valid));
+    assert.deepEqual(scene.getAllInstancedMeshData(), []);
+    assert.deepEqual([flags(0), flags(1)], [INSTANCE_FLAG_HIDDEN, INSTANCE_FLAG_HIDDEN]);
+    scene.clearFlatGeometry();
+    assert.ok(leases.every(lease => !lease.valid));
+    assert.deepEqual([flags(0), flags(1)], [0, 0]);
+    assert.deepEqual([...scene.getInstancedEntityIds()], [41, 42]);
+  });
+
+  it('refuses a late shard changing a retained owner before upload, and permits unrelated owners', () => {
+    const { scene, device, shard, flags } = fixture();
+    const lease = scene.retainInstancedOccurrence(41, 3); lease.setSuppressed(true);
+    assert.throws(() => scene.addInstancedShard(device, shard, 3), /Cannot append/);
+    assert.equal(scene.getInstancedTemplates().length, 1);
+    assert.equal(lease.valid, true); assert.equal(flags(0), INSTANCE_FLAG_HIDDEN);
+    scene.addInstancedShard(device, { ...shard, instances: [{ ...shard.instances[0], entityId: 43 }] }, 3);
+    assert.deepEqual([...scene.getInstancedEntityIds()], [42, 43]);
+    assert.equal(lease.valid, true); lease.release();
+    assert.equal(scene.getInstancedMeshDataPieces(41)!.length, 1);
   });
 
   it('rejects another model and invalidates retained originals on removal or scene reset', () => {

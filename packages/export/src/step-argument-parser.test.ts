@@ -334,7 +334,14 @@ describe('a slot nested past the grammar bound is refused, not thrown out of', (
   const nested = (depth: number): string => `'g',${'('.repeat(depth)}1${')'.repeat(depth)},'b'`;
 
   it('accepts nesting just under the bound', () => {
-    expect(splitTopLevelStepArguments(nested(64))).toHaveLength(3);
+    // The parts, not the count. A length assertion passes even if the 64-deep
+    // middle slot comes back truncated or rewritten, which is the one payload
+    // the accept side of the bound exists to protect.
+    expect(splitTopLevelStepArguments(nested(64))).toEqual([
+      "'g'",
+      `${'('.repeat(64)}1${')'.repeat(64)}`,
+      "'b'",
+    ]);
   });
 
   it('returns null one level past the bound', () => {

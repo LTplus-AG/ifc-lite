@@ -1112,7 +1112,7 @@ export class GeometryProcessor {
     buffer: Uint8Array,
     includeMetadata = false,
     hidden: Uint32Array = new Uint32Array(),
-    isolated: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array | undefined = undefined,
     hiddenTypesCsv = '',
     lit = true,
     emissive = false,

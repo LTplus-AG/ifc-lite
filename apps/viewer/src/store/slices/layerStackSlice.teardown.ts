@@ -55,13 +55,17 @@
  */
 
 import { defineSliceTeardown } from '../teardown.js';
+import type { LayerStackSlice } from './layerStackSlice.js';
 
-const emptyStackPatch = {
+const emptyStackPatch: Pick<
+  LayerStackSlice,
+  'layerStack' | 'layerStackPathToId' | 'layerStackDiff' | 'layerDiffBusy'
+> = {
   layerStack: [],
   layerStackPathToId: null,
   layerStackDiff: null,
   layerDiffBusy: false,
-} as const;
+};
 
 export const layerStackTeardown = defineSliceTeardown(
   'layerStackSlice',

@@ -43,6 +43,17 @@ Opening the dialog puts you in the room as **admin** and starts sharing your
 model into it. You can re-copy a link at any access level, and you stay admin
 for the room.
 
+Textured models share their UV coordinates and image pixels with the geometry.
+Recipients do not need the original IFCZIP or access to its image filenames.
+Images are shared once per content hash, with each surface retaining its wrap
+settings. Each decoded image is limited to 16,777,216 pixels (4096 × 4096); an unavailable or
+oversized image is reported as a sharing failure instead of silently dropping
+its appearance.
+
+Both owner and recipient need a viewer version that supports textured room
+geometry. Older rooms that were shared without texture data cannot recover it
+from the link: load the original textured IFCZIP and create a new share.
+
 ## Joining (recipient)
 
 Open the share link — that's it, no account needed. The viewer joins the room

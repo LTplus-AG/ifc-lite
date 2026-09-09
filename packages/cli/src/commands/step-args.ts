@@ -274,27 +274,38 @@ function isTokenBreak(char: string): boolean {
     char === ',' ||
     char === '/' ||
     char === ' ' ||
-    char === '\t'
+    char === '\t' ||
+    char === '\n' ||
+    char === '\r' ||
+    char === '\x0b' ||
+    char === '\x0c'
   );
 }
 
 /**
  * How many whitespace characters run from `from`.
  *
- * Space and tab only, where every NAMED STEP whitespace set in this repo
- * (`is_step_space`, `isSpaceByte`, `isAsciiSpace`, `STEP_TRIVIA`) is the six
- * characters ` \t\n\r\x0b\x0c`. That is safe here only because the caller
- * splits on newlines before this ever runs. `\n` and `\r` are in neither this
- * set nor {@link isTokenBreak}, so a bare run spans them silently and two tokens
- * separated by a newline come back as ONE part (measured: `'$\n$'` splits to
- * `["$\n$"]`, where `'$ $'` and `'$\t$'` are refused). That is the same
- * token-ending-where-it-cannot defect this module exists to catch, unreachable only
- * because the caller pre-splits on newlines. #4163's multi-line work would
- * start feeding real multi-line argument lists through here; widen both sets then
- * rather than relying on that accident.
+ * All six characters every NAMED STEP whitespace set in this repo agrees on
+ * (`is_step_space`, `isSpaceByte`, `isAsciiSpace`, `STEP_TRIVIA`): ` \t\n\r\x0b\x0c`.
+ * This used to be space and tab only, safe only because the caller split on
+ * newlines before this ever ran; #4163's multi-line work now feeds this a raw
+ * multi-line `argsText`, so `\n` and `\r` (and `\x0b`/`\x0c`, in the set for the
+ * same reason) had to join both this and {@link isTokenBreak} or a bare run
+ * spans a line break silently and two tokens separated by one come back as ONE
+ * part (measured, before this widening: `'$\n$'` split to `["$\n$"]`, where
+ * `'$ $'` and `'$\t$'` were already refused).
  */
 function countWhitespace(text: string, from: number): number {
   let n = 0;
-  while (from + n < text.length && (text[from + n] === ' ' || text[from + n] === '\t')) n++;
+  while (
+    from + n < text.length &&
+    (text[from + n] === ' ' ||
+      text[from + n] === '\t' ||
+      text[from + n] === '\n' ||
+      text[from + n] === '\r' ||
+      text[from + n] === '\x0b' ||
+      text[from + n] === '\x0c')
+  )
+    n++;
   return n;
 }

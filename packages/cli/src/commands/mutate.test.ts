@@ -414,11 +414,15 @@ describe('applyAttributeMutations', () => {
     ).toThrow(/refusing to rewrite 1 record/);
   });
 
-  it('refuses a record that does not close on its own line instead of reporting a mutation it never made', () => {
-    // The exporter re-emits source lines verbatim, so a wrapped record from the
-    // input file arrives here split across two array entries. Measured against
-    // the real command before the fix: exit 0, "Mutated 1 entities: Name =
-    // NewName", and the wall's Name still 'Old' in the output file.
+  it('rewrites a record wrapped across lines, byte-exact record location instead of a per-line regex (LTplus-AG/ifc-lite#4163)', () => {
+    // The exporter re-emits source lines verbatim, so a record wrapped across
+    // several lines by the original file (100% of product records on some
+    // real exporters) arrives here split across array entries. The per-line
+    // regex + `lastIndexOf(')')` on main cannot see past the line break: it
+    // either refuses the whole run (a real record could not be rewritten) or,
+    // pre-#4125, silently reported success while leaving 'Old' untouched.
+    // Locating the record by its own balanced-paren span (not a line) fixes
+    // both: the edit actually happens.
     const before = [
       'ISO-10303-21;',
       'DATA;',
@@ -426,22 +430,53 @@ describe('applyAttributeMutations', () => {
       '$,$,$,$);',
       'ENDSEC;',
     ].join('\n');
-    expect(() =>
-      applyAttributeMutations(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities),
-    ).toThrow(/#2=IFCWALL/);
+    const after = applyAttributeMutations(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities);
+    expect(after).toBe(
+      ['ISO-10303-21;', 'DATA;', "#2=IFCWALL('guid',$,'NewName',$,$,", '$,$,$,$);', 'ENDSEC;'].join('\n'),
+    );
   });
 
-  it('refuses a wrapped record whose first line happens to close a nested list', () => {
-    // `lastIndexOf(')')` finds the `)` of the (#3,#4) set, so this line looks
-    // complete to a scan that only hunts for a closing paren.
+  it('rewrites a wrapped record whose first line happens to close a nested list', () => {
+    // On main, `lastIndexOf(')')` finds the `)` of the (#3,#4) set, so this
+    // line looks complete to a scan that only hunts for a closing paren --
+    // the record is misread as ending mid-argument-list and refused. Locating
+    // by the record's own balanced-paren span (its `(` closes on the `)`
+    // right before `;`, not the nested set's) reads it correctly.
     const before = [
       'DATA;',
       "#5=IFCRELDEFINESBYPROPERTIES('guid',$,'Old',$,(#3,#4),",
       '#6);',
     ].join('\n');
+    const after = applyAttributeMutations(before, [mutation(5, 'Name', 'NewName')], objectTypeEntities);
+    expect(after).toBe(
+      ['DATA;', "#5=IFCRELDEFINESBYPROPERTIES('guid',$,'NewName',$,(#3,#4),", '#6);'].join('\n'),
+    );
+  });
+
+  it('refuses a record whose line wrap drops the comma between two bare tokens (LTplus-AG/ifc-lite#4163/#4168)', () => {
+    // `step-args.ts`'s header names this exact accident: `splitTopLevelStepArgs`
+    // widened `\t`-only whitespace to space-and-tab, safe only because ITS
+    // caller used to pre-split on newlines. This PR's byte-exact record
+    // location feeds it raw, un-pre-split `argsText`, so a record wrapped
+    // across lines with the comma DROPPED at the wrap merges the two bare
+    // tokens either side of the break into one part. Before `\n`/`\r` joined
+    // `countWhitespace`/`isTokenBreak`, this was accepted as 8 parts for 9
+    // attributes -- exit 0, "Mutated 1 entities", and every attribute past
+    // the merge written to the wrong slot.
+    const before = ["#2=IFCWALL('guid',$,'Old',$", '$,$,$,$,.NOTDEFINED.);'].join('\n');
     expect(() =>
-      applyAttributeMutations(before, [mutation(5, 'Name', 'NewName')], objectTypeEntities),
-    ).toThrow(/#5=IFCRELDEFINESBYPROPERTIES/);
+      applyAttributeMutations(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities),
+    ).toThrow(/#2=IFCWALL/);
+  });
+
+  it('rewrites a well-formed record wrapped across a line break between two bare tokens, comma kept', () => {
+    // The positive control for the test above: the same shape, correctly
+    // comma-separated. This is the actual multi-line feature this PR adds,
+    // so widening the whitespace sets to refuse the malformed case above
+    // must not also refuse this one.
+    const before = ["#2=IFCWALL('guid',$,'Old',$,", '$,$,$,$,.NOTDEFINED.);'].join('\n');
+    const after = applyAttributeMutations(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities);
+    expect(after).toBe(["#2=IFCWALL('guid',$,'NewName',$,", '$,$,$,$,.NOTDEFINED.);'].join('\n'));
   });
 
   it('collects every unreadable record into one error', () => {
@@ -472,6 +507,51 @@ describe('applyAttributeMutations', () => {
     const after = applyAttributeMutations(before, [mutation(2, 'Name', 'New')], objectTypeEntities);
     expect(after.split('\n')[2]).toBe(before.split('\n')[2]);
     expect(after.split('\n')[1]).toContain("'New'");
+  });
+
+  it('rewrites a record with a comment between the class keyword and "(" (LTplus-AG/ifc-lite#4163)', () => {
+    // On main, `/^#(\d+)\s*=\s*(\w+)\s*\(/` requires the class keyword's own
+    // '(' to follow only whitespace. A comment there makes the regex not
+    // match the line at all, so the scan `continue`s past it silently: no
+    // warning, no throw, "Mutated 1 entities" still prints, and the output
+    // file carries none of the edit. Locating the record by a trivia-aware
+    // walk (the same rule `StepTokenizer` itself uses) reads past the
+    // comment instead of being fooled by it.
+    const before = "#1=IFCWALL/* edited */('guid',$,'Old','D',$,$,$,$,.NOTDEFINED.);\n";
+    const after = applyAttributeMutations(before, [mutation(1, 'Name', 'NewName')], objectTypeEntities);
+    expect(after).toBe("#1=IFCWALL/* edited */('guid',$,'NewName','D',$,$,$,$,.NOTDEFINED.);\n");
+  });
+
+  it('refuses a record whose byte-exact span was truncated by a stray unmatched ")" rather than silently splicing into the truncated slice', () => {
+    // Emergent hazard: locating a record by its own balanced-paren span (not
+    // a line) can itself be fooled. A stray ')' inside a malformed argument
+    // list -- not inside a string or comment -- brings the scan's paren depth
+    // back to 0 early, so it reports the record as ending there: shorter than
+    // the malformed text actually is. That truncated span is internally
+    // well-formed (it IS balanced), so a validating splitter given only that
+    // span cannot see the cut either, and would happily write into
+    // "'a',$,B" as if it were the whole record, leaving ",$,$,$,$,$,$);"
+    // dangling in the output as orphaned bytes. The guard: a genuine
+    // record's ')' is followed (modulo trivia) by ';'; this one is followed
+    // by ',' instead, so it is refused rather than partially rewritten.
+    const before = "#6=IFCWALL('a',$,B),$,$,$,$,$,$);\n";
+    expect(() =>
+      applyAttributeMutations(before, [mutation(6, 'Name', 'X')], objectTypeEntities),
+    ).toThrow(/#6=IFCWALL/);
+  });
+
+  it('rewrites a record whose trailing comment before ";" is longer than the truncation guard\'s lookahead window', () => {
+    // The truncation guard's tail lookahead used to be a fixed 256 bytes: a
+    // legal block comment between ')' and ';' longer than that made the
+    // regex-based trivia skip stop mid-comment, so `tail[afterTrivia]` landed
+    // on '/' rather than ';' and a genuine, readable record was false-refused.
+    // It failed safe (refused rather than corrupted), so not a correctness
+    // bug, but this pins that a long trailing comment no longer costs the
+    // rewrite.
+    const longComment = `/*${'x'.repeat(400)}*/`;
+    const before = `#1=IFCWALL('guid',$,'Old',$,$,$,$,$,$)${longComment};\n`;
+    const after = applyAttributeMutations(before, [mutation(1, 'Name', 'New')], objectTypeEntities);
+    expect(after).toBe(`#1=IFCWALL('guid',$,'New',$,$,$,$,$,$)${longComment};\n`);
   });
 
   it('rewrites a well-formed record with a # and a comma inside its Name, byte-for-byte elsewhere', () => {

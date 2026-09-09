@@ -42,7 +42,8 @@ import {
 } from '@/lib/overlay-parse/symbolic-drawing-lines.js';
 import type { SpatialHierarchy } from '@ifc-lite/data';
 import * as IfcWasm from '@ifc-lite/wasm';
-import { customPlaneCenter } from '@/store';
+import { customPlaneCenter, useViewerStore } from '@/store';
+import { notifyDrawing2DSectionConfig } from './useDrawing2DPersistence.js';
 import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
 import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
 
@@ -849,6 +850,12 @@ export function useDrawingGeneration({
       } else {
         setDrawing(result);
       }
+
+      // Remember the SectionConfig that produced this view so the markup
+      // persistence bridge (issue #4153) can save it alongside the results —
+      // `drawing2D` itself is derived output and is never persisted.
+      const generatedForModelId = useViewerStore.getState().activeModelId;
+      if (generatedForModelId) notifyDrawing2DSectionConfig(generatedForModelId, config);
 
       // Always set status to ready (whether initial generation or regeneration)
       setDrawingStatus('ready');

@@ -30,9 +30,10 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { fatal, getFlag, getAllFlags, hasFlag } from '../output.js';
 import { logger } from '../logger.js';
-import { planSpatialRelations, type StepRecord, type Subset } from './subset-relations.js';
+import { planSpatialRelations, refsOutsideStrings, type StepRecord, type Subset } from './subset-relations.js';
+import { productsUnderPlacement, resolveStoreyPlacement } from './storey-selection.js';
 
-interface ParsedStep {
+export interface ParsedStep {
   header: string;
   instances: Map<number, StepRecord>;
   /** 22-char GlobalId → expressId, for rooted entities. */
@@ -138,10 +139,25 @@ export function resolveToId(token: string, parsed: ParsedStep): number {
   return id;
 }
 
+// Used only by the voids/fills fixpoint below — a narrower, TYPE-POSITIONAL
+// read (last N refs of a known relation shape) than forwardClosure's
+// open-ended scan. `productsUnderPlacement`/`resolveStoreyPlacement` used
+// this too, until free text tripped it; see `refsOutsideStrings` there, #4148.
 const REF_RE = /#(\d+)/g;
 
-/** Forward closure over `seeds`. An id NAMED but never DEFINED is not added, or
- * a rewritten SET would emit it as a dangling `#id` (#4128). */
+/**
+ * Forward reference closure: every instance transitively referenced by
+ * `seeds`.
+ *
+ * Uses `refsOutsideStrings`, not a raw `/#(\d+)/g` scan, because a record's
+ * Name/Description is free TEXT and Revit writes `#`-shaped substrings into
+ * it (`'Chair pairs with #71'`). A raw regex reads that as a reference to
+ * entity 71 and pulls it — and its own closure — into the extraction even
+ * though it was never selected. See #4148.
+ *
+ * An id NAMED but never DEFINED is not added, or a rewritten SET would emit
+ * it as a dangling `#id` (#4128).
+ */
 export function forwardClosure(seeds: Iterable<number>, parsed: ParsedStep, into: Set<number>): void {
   const stack = [...seeds];
   while (stack.length) {
@@ -150,86 +166,10 @@ export function forwardClosure(seeds: Iterable<number>, parsed: ParsedStep, into
     const rec = parsed.instances.get(id);
     if (!rec) continue;
     into.add(id);
-    REF_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = REF_RE.exec(rec.body)) !== null) {
-      const ref = parseInt(m[1], 10);
+    for (const ref of refsOutsideStrings(rec.body)) {
       if (!into.has(ref)) stack.push(ref);
     }
   }
-}
-
-/** Map each IfcLocalPlacement to its parent placement (or null when top-level). */
-function placementParents(parsed: ParsedStep): Map<number, number | null> {
-  const parents = new Map<number, number | null>();
-  for (const inst of parsed.instances.values()) {
-    if (inst.type !== 'IFCLOCALPLACEMENT') continue;
-    const pm = /^\s*(#\d+|\$)/.exec(inst.body);
-    parents.set(inst.id, pm && pm[1].startsWith('#') ? parseInt(pm[1].slice(1), 10) : null);
-  }
-  return parents;
-}
-
-/** Every product whose ObjectPlacement chains up through `storeyPlacementId`. */
-function productsUnderPlacement(storeyPlacementId: number, parsed: ParsedStep): Set<number> {
-  const parents = placementParents(parsed);
-  const under = new Set<number>();
-  for (const pid of parents.keys()) {
-    let cur: number | null = pid;
-    let guard = 0;
-    while (cur != null && guard++ < 128) {
-      if (cur === storeyPlacementId) {
-        under.add(pid);
-        break;
-      }
-      cur = parents.get(cur) ?? null;
-    }
-  }
-  // Products referencing a selected placement.
-  const seeds = new Set<number>();
-  for (const inst of parsed.instances.values()) {
-    REF_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = REF_RE.exec(inst.body)) !== null) {
-      if (under.has(parseInt(m[1], 10))) {
-        seeds.add(inst.id);
-        break;
-      }
-    }
-  }
-  return seeds;
-}
-
-/** Resolve a --storey selector (GUID / name / expressId) to its placement id. */
-function resolveStoreyPlacement(token: string, parsed: ParsedStep): number {
-  let storeyId: number | undefined;
-  const t = token.trim();
-  if (/^#?\d+$/.test(t)) {
-    storeyId = parseInt(t.replace('#', ''), 10);
-  } else if (parsed.guidToId.has(t)) {
-    storeyId = parsed.guidToId.get(t);
-  } else {
-    // match by name (2nd-to-last-ish quoted arg); scan storeys for a Name match
-    for (const inst of parsed.instances.values()) {
-      if (inst.type !== 'IFCBUILDINGSTOREY') continue;
-      if (inst.body.includes(`'${t}'`)) {
-        storeyId = inst.id;
-        break;
-      }
-    }
-  }
-  if (storeyId === undefined) throw new Error(`Storey not found: ${token}`);
-  const storey = parsed.instances.get(storeyId);
-  if (!storey || storey.type !== 'IFCBUILDINGSTOREY') {
-    throw new Error(`#${storeyId} is ${storey?.type ?? 'missing'}, not an IfcBuildingStorey`);
-  }
-  // IfcBuildingStorey ObjectPlacement is attribute 6 (after Guid, Owner, Name,
-  // Description, ObjectType) — the last #ref before LongName/Elevation. Grab the
-  // placement ref: the storey references exactly one IfcLocalPlacement.
-  const refs = [...storey.body.matchAll(REF_RE)].map((m) => parseInt(m[1], 10));
-  const placementId = refs.find((r) => parsed.instances.get(r)?.type === 'IFCLOCALPLACEMENT');
-  if (placementId === undefined) throw new Error(`Storey #${storeyId} has no IfcLocalPlacement`);
-  return placementId;
 }
 
 /**

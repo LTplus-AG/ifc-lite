@@ -53,28 +53,23 @@ export const INTERIOR_WINDOW_BYTES = 4 * 1024;
 export const INTERIOR_WINDOWS = 8;
 
 /**
- * Compute the {@link SourceFingerprint} for a source buffer. Touches at most
- * `8 + 2*HEAD_TAIL_BYTES + INTERIOR_WINDOWS*INTERIOR_WINDOW_BYTES` (~160KB)
- * regardless of file size, so it is constant-time in the file length.
+ * Byte ranges sampled from a file of length `len`: head, tail (if it does not
+ * overlap the head) and {@link INTERIOR_WINDOWS} interior windows. Pulled out
+ * of {@link computeSourceFingerprint} so {@link computeSourceFingerprintFromBlob}
+ * — which cannot hold the whole file in memory — samples the EXACT same
+ * ranges via `Blob.slice()` instead of `Uint8Array.subarray()`. Same ranges +
+ * same length prefix + same hash function means the two functions agree
+ * bit-for-bit on the same bytes; identical to a caller either way.
  */
-export function computeSourceFingerprint(buffer: ArrayBuffer | Uint8Array): SourceFingerprint {
-  const view = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-  const len = view.length;
-
-  const parts: Uint8Array[] = [];
-
-  // 8-byte little-endian length prefix folds the exact size into the hash (it is
-  // also a distinct key component, so a length change alone always misses).
-  const lenBuf = new Uint8Array(8);
-  new DataView(lenBuf.buffer).setBigUint64(0, BigInt(len), true);
-  parts.push(lenBuf);
+function sampleWindows(len: number): Array<[start: number, end: number]> {
+  const windows: Array<[number, number]> = [];
 
   // Head window.
-  parts.push(view.subarray(0, Math.min(HEAD_TAIL_BYTES, len)));
+  windows.push([0, Math.min(HEAD_TAIL_BYTES, len)]);
 
   // Tail window (only when it does not overlap the head).
   if (len > HEAD_TAIL_BYTES) {
-    parts.push(view.subarray(Math.max(HEAD_TAIL_BYTES, len - HEAD_TAIL_BYTES), len));
+    windows.push([Math.max(HEAD_TAIL_BYTES, len - HEAD_TAIL_BYTES), len]);
   }
 
   // Interior windows at evenly spaced fractional offsets i/(N+1), clamped to
@@ -84,10 +79,20 @@ export function computeSourceFingerprint(buffer: ArrayBuffer | Uint8Array): Sour
     const center = Math.floor((len * i) / (INTERIOR_WINDOWS + 1));
     const maxStart = Math.max(0, len - INTERIOR_WINDOW_BYTES);
     const start = Math.min(Math.max(0, center - (INTERIOR_WINDOW_BYTES >> 1)), maxStart);
-    parts.push(view.subarray(start, Math.min(start + INTERIOR_WINDOW_BYTES, len)));
+    windows.push([start, Math.min(start + INTERIOR_WINDOW_BYTES, len)]);
   }
 
-  // Concatenate the windows into one contiguous sample for a single hash pass.
+  return windows;
+}
+
+/** 8-byte little-endian length prefix — folds the exact size into the hash. */
+function lengthPrefix(len: number): Uint8Array {
+  const lenBuf = new Uint8Array(8);
+  new DataView(lenBuf.buffer).setBigUint64(0, BigInt(len), true);
+  return lenBuf;
+}
+
+function hashParts(parts: Uint8Array[]): SourceFingerprint {
   let total = 0;
   for (const p of parts) total += p.length;
   const sample = new Uint8Array(total);
@@ -96,7 +101,39 @@ export function computeSourceFingerprint(buffer: ArrayBuffer | Uint8Array): Sour
     sample.set(p, off);
     off += p.length;
   }
-
   const hash = xxhash64(sample);
   return { hex: hash.toString(16), hash };
+}
+
+/**
+ * Compute the {@link SourceFingerprint} for a source buffer. Touches at most
+ * `8 + 2*HEAD_TAIL_BYTES + INTERIOR_WINDOWS*INTERIOR_WINDOW_BYTES` (~160KB)
+ * regardless of file size, so it is constant-time in the file length.
+ */
+export function computeSourceFingerprint(buffer: ArrayBuffer | Uint8Array): SourceFingerprint {
+  const view = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  const len = view.length;
+  const parts: Uint8Array[] = [lengthPrefix(len)];
+  for (const [start, end] of sampleWindows(len)) {
+    parts.push(view.subarray(start, end));
+  }
+  return hashParts(parts);
+}
+
+/**
+ * Same fingerprint as {@link computeSourceFingerprint}, computed from a
+ * `Blob`/`File` via bounded `slice().arrayBuffer()` reads instead of a
+ * fully-loaded buffer. Used where only the browser `File` handle is on hand
+ * (e.g. `FederatedModel.sourceFile`) and reading the whole file again just to
+ * key a lookup would be wasteful — this still only ever touches the same
+ * ~160KB spread {@link sampleWindows} defines, regardless of file size.
+ */
+export async function computeSourceFingerprintFromBlob(blob: Blob): Promise<SourceFingerprint> {
+  const len = blob.size;
+  const parts: Uint8Array[] = [lengthPrefix(len)];
+  for (const [start, end] of sampleWindows(len)) {
+    const buf = await blob.slice(start, end).arrayBuffer();
+    parts.push(new Uint8Array(buf));
+  }
+  return hashParts(parts);
 }

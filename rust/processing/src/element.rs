@@ -44,7 +44,7 @@ use ifc_lite_geometry::{
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
 
-use crate::processor::convert_mesh_to_site_local;
+use crate::processor::{convert_mesh_to_site_local, site_local_rotation_invalidates_captured_transforms};
 
 /// The f32-collapse degenerate backstop, its per-element tally, and the reason
 /// that tally now gates the closure verdict. A CHILD module: it exists only to
@@ -759,18 +759,16 @@ fn build_mesh_data(
         ifc_lite_geometry::mesh_weld::weld(&mut mesh, uvs)
     };
     let mesh_origin = mesh.origin;
-    // Instancing: capture before the fields are moved into MeshData. A site-local
-    // rotation (below) re-transforms positions/origin and would invalidate the
-    // captured transform, so drop instancing when one is active (rare; conservative).
-    let instance = if ctx.site_local_rotation.is_none() {
+    // #4118/#1474: drop instancing/local-bounds/local-to-world only when the site
+    // placement actually rotates something (see helper doc comment for why).
+    let site_local_rotates =
+        site_local_rotation_invalidates_captured_transforms(ctx.site_local_rotation);
+    let instance = if !site_local_rotates {
         mesh.instance_meta.take()
     } else {
         None
     };
-    // Local bounds/placement transform (issue #1474): same caveat as instancing
-    // above — a site-local rotation re-transforms positions and would invalidate
-    // the captured placement, so drop both when one is active.
-    let (local_bounds, local_to_world) = if ctx.site_local_rotation.is_none() {
+    let (local_bounds, local_to_world) = if !site_local_rotates {
         (mesh.local_bounds, mesh.local_to_world)
     } else {
         (None, None)

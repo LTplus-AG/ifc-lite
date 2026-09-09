@@ -43,6 +43,7 @@ import { useDrawingExport } from '@/hooks/useDrawingExport';
 import { useSymbolicAnnotationsForDrawing, symbolicAnnotationsOverlayEnabled } from '@/hooks/useSymbolicAnnotations';
 import { useDxfUnderlaysForDrawing, useDxfMapToWorldTransform, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
 import { useScanSectionLayer } from '@/hooks/useScanSectionLayer';
+import { useDrawing2DPersistence } from '@/hooks/useDrawing2DPersistence';
 import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 
 interface Section2DPanelProps {
@@ -55,6 +56,11 @@ export function Section2DPanel({
   mergedGeometry,
   computedIsolatedIds,
 }: Section2DPanelProps = {}): React.ReactElement | null {
+  // Restore/save this model's 2D markup (issue #4153). Mounted unconditionally,
+  // above the `!panelVisible` early return below, so restore runs as soon as a
+  // model loads even while the panel is closed.
+  useDrawing2DPersistence();
+
   // ═══════════════════════════════════════════════════════════════════════════
   // STORE SELECTORS
   // ═══════════════════════════════════════════════════════════════════════════

@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use super::color::resolve_color_via_styles;
 use super::primitives::{SymbolicFillArea};
-use super::transform::{circle_center, Transform2D};
+use super::transform::{circle_center, push_finite_point, Transform2D};
 
 // ────────────────────────────────────────────────────────────────────────────
 // Fill area extraction (IfcAnnotationFillArea).
@@ -96,8 +96,7 @@ fn extract_curve_ring(
                 let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
                 let (wx, wy) = transform.transform_point(x, y);
                 let (px, py) = rebase.plan(wx, wy);
-                out.push(px);
-                out.push(py);
+                push_finite_point(&mut out, px, py);
             }
             out
         }
@@ -113,8 +112,7 @@ fn extract_curve_ring(
                 let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
                 let (wx, wy) = transform.transform_point(x, y);
                 let (px, py) = rebase.plan(wx, wy);
-                out.push(px);
-                out.push(py);
+                push_finite_point(&mut out, px, py);
             }
             out
         }
@@ -133,8 +131,7 @@ fn extract_curve_ring(
                 let ly = cy_local + semi_b * theta.sin();
                 let (wx, wy) = transform.transform_point(lx, ly);
                 let (px, py) = rebase.plan(wx, wy);
-                out.push(px);
-                out.push(py);
+                push_finite_point(&mut out, px, py);
             }
             out
         }
@@ -153,8 +150,7 @@ fn extract_curve_ring(
                 let ly = cy_local + radius * theta.sin();
                 let (wx, wy) = transform.transform_point(lx, ly);
                 let (px, py) = rebase.plan(wx, wy);
-                out.push(px);
-                out.push(py);
+                push_finite_point(&mut out, px, py);
             }
             out
         }

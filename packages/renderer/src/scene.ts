@@ -19,7 +19,7 @@ import {
   rayIntersectsBox,
 } from './scene-raycaster.js';
 import { selectBoundingBoxesInRect } from './scene-rect-select.js';
-import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane, worldAabbFromPieces } from './scene-geometry.js';
+import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane, worldAabbFromPieces, destroyGpuResources } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES } from './lod-simplify.js';
@@ -30,6 +30,13 @@ import { isEntityVisible } from './entity-visibility.js';
 import { planInstancedGhosting } from './instanced-ghost-plan.js';
 import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
+import { extractEntityFromMergedMesh } from './merged-mesh-extract.js';
+import {
+  dropAllPartialCaches as dropAllPartialCachesIn,
+  dropPartialCacheForBatch as dropPartialCacheForBatchIn,
+  retireUnusedAlphaSlots as retireUnusedAlphaSlotsIn,
+  type PartialBatchCaches,
+} from './partial-batch-cache.js';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
 import {
   prepareInstancedRender,
@@ -95,15 +102,6 @@ export interface TexturedMesh {
    *  per `IfcImageTexture`, sampled by many meshes) — released by refcount,
    *  never destroyed per-mesh. Undefined for per-mesh #961 blob/pixel uploads. */
   sharedTextureKey?: number;
-}
-
-function destroyGpuResources(
-  m: { vertexBuffer: GPUBuffer; indexBuffer: GPUBuffer; uniformBuffer?: GPUBuffer; lod1IndexBuffer?: GPUBuffer },
-): void {
-  m.vertexBuffer.destroy();
-  m.indexBuffer.destroy();
-  if (m.uniformBuffer) m.uniformBuffer.destroy();
-  if (m.lod1IndexBuffer) m.lod1IndexBuffer.destroy();
 }
 
 /**
@@ -329,7 +327,7 @@ export class Scene {
   private static readonly STREAMING_FRAGMENT_MAX_VERTEX_BYTES = 8 * 1024 * 1024;
 
   // Sub-batch cache for partially visible batches (PERFORMANCE FIX)
-  // Key = colorKey + ":" + sorted visible expressIds hash
+  // Key = requesting slot's sourceBatchKey + ":" + sorted visible expressIds hash
   // This allows rendering partially visible batches as single draw calls instead of 10,000+ individual draws
   private partialBatchCache: Map<string, BatchedMesh> = new Map();
   private partialBatchCacheKeys: Map<string, string> = new Map(); // sourceBatchKey -> current cache key (for invalidation)
@@ -338,6 +336,14 @@ export class Scene {
   // re-sorting + re-hashing every visible id each frame while the epoch holds
   // (issue: O(elements) per-frame work under hide/isolate). See render loop.
   private partialBatchCacheVersions: Map<string, number> = new Map();
+  /** The three maps above as one record, so the eviction paths in
+   *  `partial-batch-cache.ts` can keep them consistent together. Same Map
+   *  objects, not copies — they are only ever cleared, never reassigned. */
+  private readonly partialCaches: PartialBatchCaches = {
+    batches: this.partialBatchCache,
+    keys: this.partialBatchCacheKeys,
+    versions: this.partialBatchCacheVersions,
+  };
 
   // Color overlay system for lens coloring — NEVER modifies original batches.
   // Overlay batches render on top using depthCompare 'equal', so they only
@@ -813,37 +819,21 @@ export class Scene {
    *  sourceBatchKeys embed the batch id, so they are stale once it is
    *  evicted/replaced). */
   private dropPartialCacheForBatch(batch: BatchedMesh): void {
-    const prefix = `${batch.colorKey}:${batch.id}`;
-    for (const [sourceBatchKey, cacheKey] of this.partialBatchCacheKeys) {
-      if (!sourceBatchKey.startsWith(prefix)) continue;
-      const cached = this.partialBatchCache.get(cacheKey);
-      if (cached) {
-        destroyGpuResources(cached);
-        this.partialBatchCache.delete(cacheKey);
-      }
-      this.partialBatchCacheKeys.delete(sourceBatchKey);
-      this.partialBatchCacheVersions.delete(sourceBatchKey);
-    }
+    dropPartialCacheForBatchIn(this.partialCaches, batch);
   }
 
-  /** Destroy + drop EVERY cached partial sub-batch. The clones built during
-   *  hide/isolate are deliberately excluded from the GPU residency budget and
-   *  are otherwise only freed on clear()/finalize/evict — never when filtering
-   *  ends. The render loop calls this on the transition back to fully-visible so
-   *  the ~model-sized clone VRAM is not pinned until the next model reload. Uses
-   *  the same destroy-then-clear idiom as clear(); safe to call between frames
-   *  because the previous frame is already submitted (WebGPU defers the free
-   *  past in-flight work). */
+  /** Destroy + drop EVERY cached partial sub-batch — called on the transition
+   *  back to "no filtering, no X-Ray" so their VRAM is not pinned until the
+   *  next model reload. See `partial-batch-cache.ts`. */
   dropAllPartialCaches(): void {
-    if (this.partialBatchCache.size === 0
-        && this.partialBatchCacheKeys.size === 0
-        && this.partialBatchCacheVersions.size === 0) {
-      return;
-    }
-    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
-    this.partialBatchCache.clear();
-    this.partialBatchCacheKeys.clear();
-    this.partialBatchCacheVersions.clear();
+    dropAllPartialCachesIn(this.partialCaches);
+  }
+
+  /** Free the X-Ray alpha-split slots this frame did not request, so an X-Ray
+   *  edit that un-splits a batch cannot pin its clones for the session (#4129
+   *  review). See `partial-batch-cache.ts` for why the sweep is scoped. */
+  retireUnusedAlphaSlots(inUse: ReadonlySet<string>): void {
+    retireUnusedAlphaSlotsIn(this.partialCaches, inUse);
   }
 
   /** Free the hydrated (pick / selection-highlight) individual meshes that are
@@ -940,7 +930,7 @@ export class Scene {
       // this expressId so selection highlighting is per-entity, not the
       // entire merged batch.
       if (single.entityIds) {
-        return this.extractEntityFromMergedMesh(single, expressId);
+        return extractEntityFromMergedMesh(single, expressId);
       }
       return single;
     }
@@ -951,7 +941,7 @@ export class Scene {
       const extracted: MeshData[] = [];
       for (const piece of pieces) {
         if (piece.entityIds) {
-          const ex = this.extractEntityFromMergedMesh(piece, expressId);
+          const ex = extractEntityFromMergedMesh(piece, expressId);
           if (ex) extracted.push(ex);
         } else {
           extracted.push(piece);
@@ -1032,72 +1022,6 @@ export class Scene {
    * @param expressId - The expressId to look up
    * @param modelIndex - Optional modelIndex to filter by (for multi-model support)
    */
-  /**
-   * Extract only the vertices/triangles belonging to `targetId` from a
-   * color-merged MeshData that contains many entities.  Returns a new
-   * lightweight MeshData suitable for selection highlighting.
-   */
-  private extractEntityFromMergedMesh(merged: MeshData, targetId: number): MeshData | undefined {
-    const entityIds = merged.entityIds!;
-    const positions = merged.positions;
-    const normals = merged.normals;
-    const indices = merged.indices;
-
-    // Build a vertex mask and remap table
-    const vertexCount = entityIds.length;
-    const keep = new Uint8Array(vertexCount);
-    let keptCount = 0;
-    for (let i = 0; i < vertexCount; i++) {
-      if (entityIds[i] === targetId) { keep[i] = 1; keptCount++; }
-    }
-    if (keptCount === 0) return undefined;
-
-    // Remap old vertex index → new compacted index
-    const remap = new Uint32Array(vertexCount);
-    let newIdx = 0;
-    for (let i = 0; i < vertexCount; i++) {
-      if (keep[i]) { remap[i] = newIdx++; }
-    }
-
-    // Compact positions & normals
-    const outPos = new Float32Array(keptCount * 3);
-    const outNorm = new Float32Array(keptCount * 3);
-    let outOff = 0;
-    for (let i = 0; i < vertexCount; i++) {
-      if (!keep[i]) continue;
-      const src = i * 3;
-      outPos[outOff] = positions[src];
-      outPos[outOff + 1] = positions[src + 1];
-      outPos[outOff + 2] = positions[src + 2];
-      outNorm[outOff] = normals[src];
-      outNorm[outOff + 1] = normals[src + 1];
-      outNorm[outOff + 2] = normals[src + 2];
-      outOff += 3;
-    }
-
-    // Compact indices (only triangles where ALL 3 vertices belong to target)
-    const tmpIdx: number[] = [];
-    for (let i = 0; i < indices.length; i += 3) {
-      const a = indices[i], b = indices[i + 1], c = indices[i + 2];
-      if (keep[a] && keep[b] && keep[c]) {
-        tmpIdx.push(remap[a], remap[b], remap[c]);
-      }
-    }
-    if (tmpIdx.length === 0) return undefined;
-
-    return {
-      expressId: targetId,
-      positions: outPos,
-      normals: outNorm,
-      indices: new Uint32Array(tmpIdx),
-      color: merged.color,
-      // Extracted vertices are copied verbatim from the merged mesh's local
-      // frame, so carry its origin forward (world = origin + position) — else
-      // raycast/highlight/snap would treat these local coords as world.
-      origin: merged.origin,
-    };
-  }
-
   hasMeshData(expressId: number, modelIndex?: number): boolean {
     const pieces = this.meshDataMap.get(expressId);
     if (!pieces || pieces.length === 0) return false;
@@ -1154,7 +1078,7 @@ export class Scene {
       const extracted: MeshData[] = [];
       for (const piece of pieces) {
         if (piece.entityIds) {
-          const ex = this.extractEntityFromMergedMesh(piece, expressId);
+          const ex = extractEntityFromMergedMesh(piece, expressId);
           if (ex) extracted.push(ex);
         } else {
           extracted.push(piece);
@@ -1273,6 +1197,11 @@ export class Scene {
 
       // Destroy old GPU batch if it exists
       if (bucket?.batchedMesh) {
+        // Slot keys embed the batch id and the replacement gets a fresh one, so
+        // drop this batch's cached sub-batch clones first or they are stranded
+        // with live GPU buffers. Every other batch-destroying path already
+        // clears the cache (eviction per batch; finalize/release/clear wholesale).
+        this.dropPartialCacheForBatch(bucket.batchedMesh);
         destroyGpuResources(bucket.batchedMesh);
         bucket.batchedMesh = null;
       }
@@ -2819,6 +2748,34 @@ export class Scene {
   }
 
   /**
+   * Whether this batch's entities can be drawn as separate sub-batches right
+   * now — the precondition for splitting a batch by per-entity X-Ray alpha
+   * (#4129) or by any other per-entity property.
+   *
+   * Three ways a batch is indivisible:
+   * - its CPU geometry was released (GPU-resident mode) — nothing to re-merge;
+   * - it is not the live batch of a warm bucket: an evicted (cold) bucket has
+   *   had its `meshData` dropped, and non-bucket batches (streaming fragments,
+   *   sub-batches) have no piece list keyed the way the partial builder looks
+   *   pieces up, so it would silently come back empty;
+   * - it holds a colour-merged piece, where many entities share ONE MeshData
+   *   tagged per vertex. Such a piece is registered under every contained id,
+   *   so it would land whole in more than one subset — the same geometry drawn
+   *   twice, at two different alphas.
+   *
+   * The caller must fall back to drawing the batch whole when this is false.
+   */
+  canPartitionBatch(batch: BatchedMesh): boolean {
+    if (this.geometryReleased) return false;
+    const bucket = this.buckets.get(batch.colorKey);
+    if (!bucket || bucket.batchedMesh !== batch || bucket.meshData.length === 0) return false;
+    for (const md of bucket.meshData) {
+      if (md.entityIds && md.entityIds.length > 0) return false;
+    }
+    return true;
+  }
+
+  /**
    * Get or create a partial batch for a subset of visible elements from a batch
    *
    * PERFORMANCE FIX: Instead of creating 10,000+ individual meshes for partially visible batches,
@@ -2871,7 +2828,12 @@ export class Scene {
       hash = hash >>> 0; // Convert to unsigned 32-bit
     }
     const idsHash = `${sortedIds.length}:${hash.toString(16)}`;
-    const cacheKey = `${colorKey}:${idsHash}`;
+    // Scoped to the REQUESTING slot, not just the colour: a parent batch can
+    // own several slots at once (`:promoted`/`:remaining`, and one per X-Ray
+    // alpha group), and two slots trading id sets between frames would other-
+    // wise land on each other's cache entry — the second slot's invalidation
+    // then destroys the clone the first one just built and is drawing from.
+    const cacheKey = `${sourceBatchKey}:${idsHash}`;
 
     // Check if we already have this exact partial batch cached
     const currentCacheKey = this.partialBatchCacheKeys.get(sourceBatchKey);

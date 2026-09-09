@@ -113,6 +113,10 @@ const RULE_COST: Record<FilterRule['kind'], number> = {
   // Relationship-graph walk + on-demand resolve — as costly as a pset parse.
   material:       10,
   classification: 10,
+  // One reverse-relationship lookup (IfcRelDefinesByType) + a columnar
+  // Name read on the resolved type id — no source-buffer parse, so it's
+  // cheap like `storey`/`elevation`, not `material`/`classification`.
+  type:           1,
 };
 
 export function orderRulesByCost(rules: readonly FilterRule[]): FilterRule[] {

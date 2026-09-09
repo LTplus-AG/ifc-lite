@@ -112,6 +112,11 @@ export class ModelTranslations {
 
   sourceMesh(mesh: MeshData): MeshData { return this.meshes.get(mesh)?.source ?? mesh; }
 
+  clearFlatBounds(): void {
+    this.releasedEntities.clear();
+    this.releasedBounds = new WeakMap();
+  }
+
   retainEntityBounds(pieces: ReadonlyMap<number, MeshData[]>): void {
     for (const [id, meshes] of pieces) {
       const groups = new Map<number, MeshData[]>();

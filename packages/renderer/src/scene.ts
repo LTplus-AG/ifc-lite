@@ -3985,11 +3985,9 @@ export class Scene {
     this.buckets.clear();
     this.meshDataBucket = new Map();
     this.meshDataMap.clear();
-    for (const eid of [...this.boundingBoxes.keys()]) {
-      if (!this.instancedEntityMap.has(eid)) {
-        this.boundingBoxes.delete(eid);
-      }
-    }
+    this.modelTranslations.clearFlatBounds();
+    this.boundingBoxes.clear();
+    for (const eid of this.instancedEntityMap.keys()) this.recomputeInstancedBounds(eid);
     this.activeBucketKey.clear();
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();

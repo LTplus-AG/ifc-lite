@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::output_cap::{SymbolicAccumulator, SymbolicTruncationReason};
+use super::output_cap::SymbolicAccumulator;
+use super::output_cap_types::SymbolicTruncationReason;
 use super::rebase::RenderFrameRebase;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::collections::HashMap;

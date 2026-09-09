@@ -140,6 +140,15 @@ pub(super) fn extract_trimmed_curve(
         let (wex, wey) = transform.transform_point(end_x, end_y);
         let (sx, sy) = rebase.plan(wsx, wsy);
         let (ex, ey) = rebase.plan(wex, wey);
+        // Same hazard as the arc-tessellation branch below (a poisoned
+        // AMBIENT `transform` — not `basis`, already checked above — makes
+        // an otherwise-finite local chord non-finite post-transform); that
+        // branch routes every point through `push_finite_point`, this one
+        // must reject the whole two-point chord the same way rather than
+        // push a partly-finite pair.
+        if !sx.is_finite() || !sy.is_finite() || !ex.is_finite() || !ey.is_finite() {
+            return;
+        }
         let points = vec![sx, sy, ex, ey];
         out.push_polyline(SymbolicPolyline {
             express_id,

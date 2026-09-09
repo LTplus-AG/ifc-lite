@@ -36,7 +36,7 @@ pub fn plan_captured_mesh(bytes:&[u8],request:&CapturedMeshRequest)->Result<Capt
         next_express_id:request.next_express_id,container_id:request.container_id,global_id:request.global_id.clone(),
         containment_global_id:request.containment_global_id.clone(),name:request.name.clone(),image_uri:request.image_uri.clone(),
         frame:AnnotationPlaneFrame {origin:request.mesh.positions[0],axis_u:[1.,0.,0.],axis_v:[0.,1.,0.],size_metres:[1.,1.]} };
-    let result=plan_textured_product(bytes,&r,Some(&request.mesh))?;
+    let result=plan_textured_product(bytes,&r,Some(&request.mesh),[request.repeat_s,request.repeat_t])?;
     let uvs=result.mesh.uvs.as_ref().ok_or("Captured image coordinates were lost")?;
     // Check the actual native triangle corners, including seams and image V.
     // This is a refusal boundary for float precision loss, never a silent repair.

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { IfcAttributeValue, MutablePropertyView, Mutation, NewEntity, StoreEditor } from '@ifc-lite/mutations';
+import { validateAppearanceEntityPlan } from './validate-plan.js';
 import type { AppearanceEntityPlan } from './planner-types.js';
 interface PreviousAttribute {
   expressId: number;
@@ -28,17 +29,6 @@ export function applyAppearanceEntities(
   return applyAppearanceEntitiesUsing(editor, view, plan, currentRevision, edit => editor.runAtomic(edit));
 }
 
-/** Internal command composition: caller owns a detached prepareAtomic draft.
- * Failure must escape that outer transaction; this function does not publish it. */
-export function applyAppearanceEntitiesInDraft(
-  editor: StoreEditor,
-  view: MutablePropertyView,
-  plan: AppearanceEntityPlan,
-  currentRevision: string,
-): AppliedAppearanceEntities {
-  return applyAppearanceEntitiesUsing(editor, view, plan, currentRevision, edit => edit(editor));
-}
-
 function applyAppearanceEntitiesUsing(
   editor: StoreEditor,
   view: MutablePropertyView,
@@ -46,39 +36,13 @@ function applyAppearanceEntitiesUsing(
   currentRevision: string,
   mutate: (edit: (draft: StoreEditor) => void) => void,
 ): AppliedAppearanceEntities {
-  if (plan.sourceRevision !== currentRevision || plan.nextExpressId !== view.peekNextExpressId()) {
-    throw new Error('The model changed while preparing appearance. Refresh the preview.');
-  }
-  if (!plan.created.length && !plan.edits.length && !plan.removed.length) {
-    throw new Error('The appearance plan contains no IFC edits.');
-  }
-  const createdIds = new Set<number>();
-  for (const [index, entity] of plan.created.entries()) {
-    if (!Number.isSafeInteger(entity.expressId) || entity.expressId !== plan.nextExpressId + index) {
-      throw new Error('The appearance plan has inconsistent entity allocation.');
-    }
-    createdIds.add(entity.expressId);
-  }
-  const edited = new Set<string>();
-  const removedIds = new Set(plan.removed);
-  if (removedIds.size !== plan.removed.length) throw new Error('The appearance plan repeats an entity removal.');
+  validateAppearanceEntityPlan(editor, view, plan, currentRevision);
   const before = plan.edits.map(edit => {
-    const key = `${edit.expressId}:${edit.index}`;
-    if ((!createdIds.has(edit.expressId) && !editor.hasEntity(edit.expressId))
-      || edited.has(key) || removedIds.has(edit.expressId) || !Number.isSafeInteger(edit.index) || edit.index < 0) {
-      throw new Error('The appearance plan contains conflicting attribute edits.');
-    }
-    edited.add(key);
     const values = view.getPositionalMutationsForEntity(edit.expressId);
     return { expressId: edit.expressId, index: edit.index,
       present: values?.has(edit.index) ?? false, value: structuredClone(values?.get(edit.index) ?? null) };
   });
-  const removed = plan.removed.map(expressId => {
-    if (!Number.isSafeInteger(expressId) || expressId <= 0 || createdIds.has(expressId) || view.isDeleted(expressId)) {
-      throw new Error('The appearance plan contains an invalid entity removal.');
-    }
-    return { expressId, entity: structuredClone(editor.getNewEntity(expressId)) };
-  });
+  const removed = plan.removed.map(expressId => ({ expressId, entity: structuredClone(editor.getNewEntity(expressId)) }));
   const oldHistory = new Set(view.getMutations().map(mutation => mutation.id));
   mutate(draft => {
     for (const entity of plan.created) {

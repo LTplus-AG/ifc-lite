@@ -364,3 +364,101 @@ describe('schedule roundtrip — serializer ↔ parser', () => {
     expect(schedule!.taskGlobalIds).toHaveLength(2);
   });
 });
+
+describe('schedule roundtrip — IfcWorkPlan nests IfcWorkSchedule (IfcRelNests)', () => {
+  /**
+   * Minimal, hand-authored STEP fragment (not run through our own
+   * serializer) modeled on buildingSMART's own IFC4 spec reference example
+   * for IfcTask ("IfcTask.ifc"), which groups a work schedule under a work
+   * plan via IfcRelNests:
+   *
+   *   #778=IFCWORKPLAN(...);
+   *   #784=IFCRELNESTS('...',#owner,$,$,#778,(#794));
+   *   #794=IFCWORKSCHEDULE(...);
+   *
+   * Asserting against this independently-authored STEP text (rather than
+   * only round-tripping our own writer's output) is the point: a reader
+   * that silently drops IfcRelNests whose RelatingObject is a WorkPlan
+   * would still pass a self round-trip, because our writer never emitted
+   * that relation either. See schedule-extractor.ts Pass 2's comment and
+   * the "nesting over non-task entities" history for why that mattered.
+   */
+  it('reads a real-shaped WorkPlan → WorkSchedule IfcRelNests', async () => {
+    const step = [
+      'ISO-10303-21;',
+      'HEADER;',
+      "FILE_DESCRIPTION(('workplan nests'),'2;1');",
+      "FILE_NAME('','',(''),(''),'','','');",
+      "FILE_SCHEMA(('IFC4'));",
+      'ENDSEC;',
+      'DATA;',
+      "#1=IFCPROJECT('p',#10,'P',$,$,$,$,$,$);",
+      "#10=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);",
+      "#778=IFCWORKPLAN('0eVhmaYyb3sBLb0LoNiW62',#10,'Work Plan #1',$,$,$,'2010-09-23T16:26:16',$,$,$,$,'2010-09-23T00:00:00',$,$);",
+      "#794=IFCWORKSCHEDULE('2LoWUCZHr7YvZks8lmqjcw',#10,'Sub Schedule',$,$,$,'2010-09-23T16:26:42',$,$,$,$,'2010-09-23T00:00:00',$,.PLANNED.);",
+      "#784=IFCRELNESTS('0if6u97Ln58xH$wewg0rH3',#10,$,$,#778,(#794));",
+      'ENDSEC;',
+      'END-ISO-10303-21;',
+    ].join('\n');
+
+    const store = await parseStep(step);
+    const parsed = extractScheduleOnDemand(store);
+
+    expect(parsed.hasSchedule).toBe(true);
+    expect(parsed.workSchedules).toHaveLength(2);
+
+    const plan = parsed.workSchedules.find(ws => ws.kind === 'WorkPlan')!;
+    const schedule = parsed.workSchedules.find(ws => ws.kind === 'WorkSchedule')!;
+    expect(plan).toBeDefined();
+    expect(schedule).toBeDefined();
+
+    // The grouping edge must resolve both directions.
+    expect(plan.childScheduleGlobalIds).toEqual(['2LoWUCZHr7YvZks8lmqjcw']);
+    expect(schedule.parentPlanGlobalId).toBe('0eVhmaYyb3sBLb0LoNiW62');
+  });
+
+  it('writes an IfcWorkPlan → IfcWorkSchedule IfcRelNests on export, and it re-parses', async () => {
+    const extraction: ScheduleExtraction = {
+      hasSchedule: true,
+      tasks: [],
+      sequences: [],
+      workSchedules: [
+        {
+          expressId: 0,
+          globalId: 'plan-gid',
+          kind: 'WorkPlan',
+          name: 'The Plan',
+          taskGlobalIds: [],
+          childScheduleGlobalIds: ['sched-gid'],
+        },
+        {
+          expressId: 0,
+          globalId: 'sched-gid',
+          kind: 'WorkSchedule',
+          name: 'The Schedule',
+          taskGlobalIds: [],
+          childScheduleGlobalIds: [],
+        },
+      ],
+    };
+
+    const result = serializeScheduleToStep(extraction, { nextId: 100, ownerHistoryId: 10 });
+
+    // Assert against the expected STEP shape directly — not only that our
+    // own reader agrees with our own writer.
+    const nestsLine = result.lines.find(l => l.startsWith('#') && l.includes('=IFCRELNESTS('));
+    expect(nestsLine).toBeDefined();
+    // WorkPlan (#100, emitted first) nests WorkSchedule (#101).
+    expect(nestsLine).toMatch(/=IFCRELNESTS\('[^']+',#10,\$,\$,#100,\(#101\)\);/);
+    expect(result.stats.relNests).toBe(1);
+
+    const final = splice(buildBaseStep(), result.lines);
+    const store = await parseStep(final);
+    const parsed = extractScheduleOnDemand(store);
+
+    const plan = parsed.workSchedules.find(ws => ws.kind === 'WorkPlan')!;
+    const schedule = parsed.workSchedules.find(ws => ws.kind === 'WorkSchedule')!;
+    expect(plan.childScheduleGlobalIds).toEqual(['sched-gid']);
+    expect(schedule.parentPlanGlobalId).toBe('plan-gid');
+  });
+});

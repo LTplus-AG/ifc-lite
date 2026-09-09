@@ -243,6 +243,27 @@ describe('classifyRuleCoverage', () => {
   it('is "partial" when some rules matched and others did not', () => {
     expect(classifyRuleCoverage({ ruleCoverage: [covered(3, 4), covered(0, 4)] })).toBe('partial');
   });
+
+  // #4244: matchedA/matchedB are selector counts computed BEFORE geometry
+  // runs. A NaN-poisoned tolerance/bound (or an exhausted maxCandidatePairs
+  // budget) can leave a rule with full selector coverage yet zero candidate
+  // pairs ever examined by the kernel — that is not evidence of a clean
+  // model, it's evidence nothing was checked.
+  it('is NOT "clean" when a rule matched on both sides but the kernel examined zero candidate pairs', () => {
+    const unexamined: ClashRuleCoverage = { rule: 'r', matchedA: 1, matchedB: 1, candidatesProcessed: 0 };
+    expect(classifyRuleCoverage({ ruleCoverage: [unexamined] })).not.toBe('clean');
+    expect(classifyRuleCoverage({ ruleCoverage: [unexamined] })).toBe('partial');
+  });
+
+  it('is still "clean" for an ordinary clean rule that matched on both sides and examined pairs', () => {
+    const examined: ClashRuleCoverage = { rule: 'r', matchedA: 1, matchedB: 1, candidatesProcessed: 4 };
+    expect(classifyRuleCoverage({ ruleCoverage: [examined] })).toBe('clean');
+  });
+
+  it('is still "no-match" for a rule with a genuinely empty side, regardless of candidatesProcessed', () => {
+    const emptySide: ClashRuleCoverage = { rule: 'r', matchedA: 0, matchedB: 4, candidatesProcessed: 0 };
+    expect(classifyRuleCoverage({ ruleCoverage: [emptySide] })).toBe('no-match');
+  });
 });
 
 describe('summarizeClashes', () => {

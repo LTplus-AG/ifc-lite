@@ -130,15 +130,48 @@ export function ruleHadNoMatch(coverage: ClashRuleCoverage): boolean {
 }
 
 /**
+ * Whether a rule's selectors matched elements on both sides, yet the geometry
+ * kernel examined zero candidate pairs — e.g. a NaN-poisoned tolerance or
+ * element bound that collapses the broad-phase to nothing (#4244), or a
+ * `maxCandidatePairs` budget exhausted by an earlier rule before this one got
+ * to run. `matchedA`/`matchedB` are selector counts computed *before*
+ * geometry runs, so they read as full coverage even though not a single pair
+ * was ever compared — a "clean" verdict here would be reporting on work that
+ * never happened.
+ *
+ * `matchedB === null` means a self-clash rule (no `b` side at all, not an
+ * empty one) — that still runs the geometry kernel, so it's judged the same
+ * way `matchedA` alone is.
+ *
+ * `candidatesProcessed` is optional (older results, or fixtures built without
+ * kernel data); `undefined` is treated as "no signal" rather than "zero", so
+ * a caller lacking this field keeps its prior behaviour.
+ */
+export function ruleCoverageWasUnexamined(coverage: ClashRuleCoverage): boolean {
+  return (
+    coverage.matchedA > 0 &&
+    (coverage.matchedB === null || coverage.matchedB > 0) &&
+    coverage.candidatesProcessed === 0
+  );
+}
+
+/**
  * The three outcomes a clash run can report, distinguished by rule coverage
  * rather than by clash count — zero clashes is a legitimate result (`clean`)
  * and must be told apart from zero because the matrix never had anything to
  * test (`no-match`):
  *
- * - `clean`:      every rule matched elements on both sides; zero clashes (if
- *                 any) is a real "checked and found nothing".
- * - `partial`:    at least one rule matched, but at least one other rule in
- *                 the set matched nothing on one of its sides.
+ * - `clean`:      every rule matched elements on both sides AND (where the
+ *                 kernel reports it) actually examined at least one candidate
+ *                 pair; zero clashes (if any) is a real "checked and found
+ *                 nothing".
+ * - `partial`:    at least one rule is fully clean, but at least one other
+ *                 rule in the set either matched nothing on one of its sides,
+ *                 or matched on both sides yet the kernel examined zero
+ *                 candidate pairs for it (see {@link ruleCoverageWasUnexamined}
+ *                 — a NaN-poisoned bound or an exhausted `maxCandidatePairs`
+ *                 budget can produce this without any selector being empty,
+ *                 #4244).
  * - `no-match`:   every single rule matched nothing on at least one side — the
  *                 matrix ran zero real comparisons, and any "0 clashes" is
  *                 meaningless. Distinct from `unknown` (no coverage data) so a
@@ -176,8 +209,15 @@ export function classifyRuleCoverage(result: Pick<ClashResult, 'ruleCoverage'>):
   const coverage = result.ruleCoverage;
   if (!coverage || coverage.length === 0) return 'unknown';
   const emptyCount = coverage.filter(ruleHadNoMatch).length;
-  if (emptyCount === 0) return 'clean';
   if (emptyCount === coverage.length) return 'no-match';
+  // A rule can have full selector coverage (matchedA/matchedB both > 0) and
+  // still never have run a single geometric comparison — see
+  // ruleCoverageWasUnexamined. That is never "clean": no evidence was
+  // gathered, so it cannot stand in for "checked and found nothing". It also
+  // isn't "no-match" (the selectors did match), so it folds into 'partial'
+  // alongside genuinely empty-sided rules rather than getting its own state.
+  const unexaminedCount = coverage.filter(ruleCoverageWasUnexamined).length;
+  if (emptyCount === 0 && unexaminedCount === 0) return 'clean';
   return 'partial';
 }
 

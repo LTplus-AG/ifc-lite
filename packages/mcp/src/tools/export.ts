@@ -197,7 +197,12 @@ const exportGlb: Tool = {
         await gp.init();
         let glb: Uint8Array | null;
         try {
-          glb = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
+          // `isolated` is empty-but-active only when `type` matched nothing
+          // (rejected above); no `type` must pass `undefined` to exportGlb,
+          // not an empty Uint32Array — the wasm boundary now treats an
+          // explicit empty array as "isolation active, matches nothing"
+          // (#4328), and would fail-close every unfiltered export otherwise.
+          glb = gp.exportGlb(bytes, false, new Uint32Array(), filterType ? isolated : undefined, '');
         } catch (err) {
           // The Rust boundary fails closed on an empty visible mesh set; map the
           // typed error to the tailored tool error.

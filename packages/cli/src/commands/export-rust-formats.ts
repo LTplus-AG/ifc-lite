@@ -109,7 +109,12 @@ export async function exportRustFormat(
       if (!outPath) fatal('--out is required for GLB/glTF export (binary output)');
       let out: Uint8Array | null;
       try {
-        out = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
+        // `isolated` is empty-but-active only when a filter matched nothing
+        // (rejected above); an inactive filter must pass `undefined` to
+        // exportGlb, not an empty Uint32Array — the wasm boundary now treats
+        // an explicit empty array as "isolation active, matches nothing"
+        // (#4328), and would fail-close every unfiltered export otherwise.
+        out = gp.exportGlb(bytes, false, new Uint32Array(), filterActive ? isolated : undefined, '');
       } catch (err) {
         // The Rust boundary fails closed on an empty visible mesh set; map
         // the typed error to the tailored operator hint.

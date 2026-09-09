@@ -47,3 +47,11 @@ imports are canceled on unmount and refuse to overwrite registrations changed
 while the file was being read. A host-provided edit callback restores the selected
 reference into the shared calibration controls rather than opening another panel.
 History restores the exact saved engineering frame, even when that frame is currently unresolved. Rendering remains guarded by frame compatibility; Undo never silently converts coordinates or blocks access to older commands. Value-equivalent imports and updates preserve all workspace redo branches.
+
+Normal desktop Select and touch tap share a reference-aware route. An unlocked
+visible reference nearer than IFC geometry selects its string identity without
+entering the IFC selection callback. IFC/background selection clears reference
+selection. Pending picks are discarded after camera, model, frame, geometry,
+visibility, tool or newer pointer input changes. Touch-generated compatibility
+clicks do not select a second time. The renderer remains responsible for depth
+and visibility filtering using the ordinary pick options.

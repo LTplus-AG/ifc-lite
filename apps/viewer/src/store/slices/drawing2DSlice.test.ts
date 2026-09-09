@@ -7,6 +7,7 @@ import assert from 'node:assert';
 import { createStore } from 'zustand/vanilla';
 import type { DxfUnderlay } from '@ifc-lite/drawing-2d';
 import { createDrawing2DSlice, type Drawing2DSlice } from './drawing2DSlice.js';
+import { generateCloudArcs } from '../../components/viewer/tools/cloudPathGenerator.js';
 
 const makeStore = () => createStore<Drawing2DSlice>(createDrawing2DSlice);
 
@@ -212,5 +213,30 @@ describe('drawing2DSlice: degenerate polygon/cloud rejection (issue #4197)', () 
     addCloudAnnotation2DPoint({ x: 0.05, y: 0.05 });
     completeCloudAnnotation2D('detail');
     assert.strictEqual(s.getState().cloudAnnotations2D.length, 1, 'a real small cloud must still be accepted');
+  });
+
+  // isDegenerateCloud rejects only when BOTH bounding-box dimensions are
+  // below threshold (Math.max of width/height). A 5m x 0m cloud has one
+  // zero dimension but one very real 5m dimension: cloudPathGenerator only
+  // skips the two zero-length edges, the two 5m edges still produce arcs,
+  // so this cloud is visible and must be accepted. Using Math.min instead
+  // of Math.max would falsely reject it -- nothing else in this file
+  // exercises the asymmetric (one-flat-dimension) case, so a future
+  // max-to-min edit would pass every other test here.
+  it('completeCloudAnnotation2D accepts a cloud with one zero dimension and one real dimension (5m x 0m), and it renders', () => {
+    const s = makeStore();
+    const { addCloudAnnotation2DPoint, completeCloudAnnotation2D } = s.getState();
+    addCloudAnnotation2DPoint({ x: 0, y: 0 });
+    addCloudAnnotation2DPoint({ x: 5, y: 0 });
+    completeCloudAnnotation2D('flat-edge');
+    assert.strictEqual(
+      s.getState().cloudAnnotations2D.length,
+      1,
+      'a 5m x 0m cloud has a real 5m dimension and must be accepted, not treated as degenerate'
+    );
+
+    const [p1, p2] = s.getState().cloudAnnotations2D[0]!.points;
+    const arcs = generateCloudArcs(p1!, p2!, 0.2);
+    assert.ok(arcs.length > 0, 'the two 5m edges must still produce renderable arcs even though the other two edges are zero-length');
   });
 });

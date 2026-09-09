@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! ISO 8859 code-page tables for the STEP `\S\` escape (ISO 10303-21 6.4.3).
 //!
 //! Split out of `step_encoding.rs` purely to keep that file under the repo's

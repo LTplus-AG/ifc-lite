@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! #1910 — `combined_pre_pass` must schedule a spatial container that
 //! exceptionally carries a non-null Representation.
 //!

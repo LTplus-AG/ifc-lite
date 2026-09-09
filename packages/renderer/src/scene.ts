@@ -3773,94 +3773,106 @@ export class Scene {
     if (!interleaved || !(tex || (ref && bitmap))) return;
     this.texturedDevice = device; // reused by translateMeshesForEntity re-upload
 
-    const vertexBuffer = device.createBuffer({
-      size: interleaved.byteLength,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
-    device.queue.writeBuffer(vertexBuffer, 0, interleaved);
-
-    const indexBuffer = device.createBuffer({
-      size: meshData.indices.byteLength,
-      usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-    });
-    device.queue.writeBuffer(indexBuffer, 0, meshData.indices);
-
-    let texture: GPUTexture;
+    let vertexBuffer: GPUBuffer | undefined;
+    let indexBuffer: GPUBuffer | undefined;
+    let uniformBuffer: GPUBuffer | undefined;
+    let texture: GPUTexture | undefined;
     let sharedTextureKey: number | undefined;
-    if (tex) {
-      // Share room-decoded pixels across surfaces and streaming fragments (#4232).
-      texture = this.rgbaTexturePool.acquire(tex, device);
-    } else {
-      // #1781: external image texture — the viewer decoded the `.ifcZIP`
-      // sibling to an ImageBitmap once per textureId; upload it ONCE and share
-      // the GPU texture across every mesh sampling it (real files map one
-      // 4096² image from dozens of face sets — per-mesh copies would be GBs).
-      const refKey = ref!.textureId;
-      const bmp = bitmap!;
-      let entry = this.sharedTextures.get(refKey);
-      if (!entry) {
-        const gpuTex = device.createTexture({
-          size: { width: bmp.width, height: bmp.height },
-          format: 'rgba8unorm',
-          // RENDER_ATTACHMENT is required by copyExternalImageToTexture.
-          usage:
-            GPUTextureUsage.TEXTURE_BINDING |
-            GPUTextureUsage.COPY_DST |
-            GPUTextureUsage.RENDER_ATTACHMENT,
-        });
-        device.queue.copyExternalImageToTexture(
-          { source: bmp },
-          { texture: gpuTex },
-          { width: bmp.width, height: bmp.height },
-        );
-        entry = { texture: gpuTex, refs: 0 };
-        this.sharedTextures.set(refKey, entry);
+    try {
+      vertexBuffer = device.createBuffer({
+        size: interleaved.byteLength,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+      });
+      device.queue.writeBuffer(vertexBuffer, 0, interleaved);
+
+      indexBuffer = device.createBuffer({
+        size: meshData.indices.byteLength,
+        usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+      });
+      device.queue.writeBuffer(indexBuffer, 0, meshData.indices);
+
+      if (tex) {
+        // Share room-decoded pixels across surfaces and streaming fragments (#4232).
+        texture = this.rgbaTexturePool.acquire(tex, device);
+      } else {
+        // #1781: external image texture — the viewer decoded the `.ifcZIP`
+        // sibling to an ImageBitmap once per textureId; upload it ONCE and share
+        // the GPU texture across every mesh sampling it (real files map one
+        // 4096² image from dozens of face sets — per-mesh copies would be GBs).
+        const refKey = ref!.textureId;
+        const bmp = bitmap!;
+        let entry = this.sharedTextures.get(refKey);
+        if (!entry) {
+          const gpuTex = device.createTexture({
+            size: { width: bmp.width, height: bmp.height },
+            format: 'rgba8unorm',
+            // RENDER_ATTACHMENT is required by copyExternalImageToTexture.
+            usage:
+              GPUTextureUsage.TEXTURE_BINDING |
+              GPUTextureUsage.COPY_DST |
+              GPUTextureUsage.RENDER_ATTACHMENT,
+          });
+          texture = gpuTex; // Owned locally until upload and registry insertion succeed.
+          device.queue.copyExternalImageToTexture(
+            { source: bmp },
+            { texture: gpuTex },
+            { width: bmp.width, height: bmp.height },
+          );
+          entry = { texture: gpuTex, refs: 0 };
+          this.sharedTextures.set(refKey, entry);
+        }
+        entry.refs++;
+        texture = entry.texture;
+        sharedTextureKey = refKey;
       }
-      entry.refs++;
-      texture = entry.texture;
-      sharedTextureKey = refKey;
+
+      const repeatS = tex ? tex.repeatS : ref!.repeatS;
+      const repeatT = tex ? tex.repeatT : ref!.repeatT;
+      const wrap = (repeat: boolean): GPUAddressMode => (repeat ? 'repeat' : 'clamp-to-edge');
+      const sampler = device.createSampler({
+        addressModeU: wrap(repeatS),
+        addressModeV: wrap(repeatT),
+        magFilter: 'linear',
+        minFilter: 'linear',
+        mipmapFilter: 'linear',
+      });
+
+      uniformBuffer = device.createBuffer({
+        size: pipeline.getUniformBufferSize(),
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      });
+      const bindGroup = pipeline.createTexturedBindGroup(uniformBuffer, texture.createView(), sampler);
+
+      this.texturedMeshes.push({
+        expressId: meshData.expressId,
+        vertexBuffer,
+        indexBuffer,
+        indexCount: meshData.indices.length,
+        uniformBuffer,
+        texture,
+        sampler,
+        bindGroup,
+        color: meshData.color,
+        // `world = origin + position` (#1973). Absent on the orphan
+        // type-geometry path, whose positions are already absolute.
+        origin: meshData.origin
+          ? [meshData.origin[0], meshData.origin[1], meshData.origin[2]]
+          : [0, 0, 0],
+        ...(sharedTextureKey !== undefined ? { sharedTextureKey } : {}),
+      });
+    } catch (error) {
+      vertexBuffer?.destroy();
+      indexBuffer?.destroy();
+      uniformBuffer?.destroy();
+      if (texture) this.releaseTexturedMeshTexture({ texture, sharedTextureKey });
+      throw error;
     }
-
-    const repeatS = tex ? tex.repeatS : ref!.repeatS;
-    const repeatT = tex ? tex.repeatT : ref!.repeatT;
-    const wrap = (repeat: boolean): GPUAddressMode => (repeat ? 'repeat' : 'clamp-to-edge');
-    const sampler = device.createSampler({
-      addressModeU: wrap(repeatS),
-      addressModeV: wrap(repeatT),
-      magFilter: 'linear',
-      minFilter: 'linear',
-      mipmapFilter: 'linear',
-    });
-
-    const uniformBuffer = device.createBuffer({
-      size: pipeline.getUniformBufferSize(),
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-    const bindGroup = pipeline.createTexturedBindGroup(uniformBuffer, texture.createView(), sampler);
-
-    this.texturedMeshes.push({
-      expressId: meshData.expressId,
-      vertexBuffer,
-      indexBuffer,
-      indexCount: meshData.indices.length,
-      uniformBuffer,
-      texture,
-      sampler,
-      bindGroup,
-      color: meshData.color,
-      // `world = origin + position` (#1973). Absent on the orphan
-      // type-geometry path, whose positions are already absolute.
-      origin: meshData.origin
-        ? [meshData.origin[0], meshData.origin[1], meshData.origin[2]]
-        : [0, 0, 0],
-      ...(sharedTextureKey !== undefined ? { sharedTextureKey } : {}),
-    });
   }
 
   /** Release a textured mesh's GPU texture: shared (#1781) entries decrement
-   *  the registry refcount and die with their LAST reference; per-mesh (#961)
-   *  uploads are destroyed outright. */
-  private releaseTexturedMeshTexture(tm: TexturedMesh): void {
+   *  the registry refcount and die with their LAST reference. Decoded RGBA
+   *  textures use the pixel pool; unregistered partial uploads are destroyed. */
+  private releaseTexturedMeshTexture(tm: Pick<TexturedMesh, 'texture' | 'sharedTextureKey'>): void {
     if (tm.sharedTextureKey === undefined) {
       if (!this.rgbaTexturePool.release(tm.texture)) tm.texture.destroy();
       return;

@@ -993,9 +993,9 @@ function texturedTriangle(expressId: number, origin?: [number, number, number]):
         indices: new Uint32Array([0, 1, 2]),
         color: [1, 1, 1, 1],
         uvs: new Float32Array([0, 0, 1, 0, 0, 1]),
-        texture: { width: 1, height: 1, data: new Uint8Array([255, 255, 255, 255]) },
+        texture: { width: 1, height: 1, rgba: new Uint8Array([255, 255, 255, 255]), repeatS: false, repeatT: false },
         ...(origin ? { origin } : {}),
-    } as unknown as MeshData;
+    };
 }
 
 /** The model-matrix translation column of the uniform written for `tm`. */

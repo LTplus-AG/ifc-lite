@@ -12,19 +12,28 @@ import { RgbaTexturePool } from './rgba-texture-pool.js';
 
 function gpu() {
   const textures: { destroyed: number; destroy(): void; createView(): object }[] = [];
+  const buffers: { destroyed: number; destroy(): void; size: number }[] = [];
+  const failures = { writeTexture: false };
   let writes = 0;
   const device = {
     limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
-    createBuffer: () => ({ destroy() {}, size: 0 }),
+    createBuffer: () => {
+      const buffer = { destroyed: 0, destroy() { this.destroyed++; }, size: 0 };
+      buffers.push(buffer);
+      return buffer;
+    },
     createSampler: () => ({}),
     createTexture: () => {
       const texture = { destroyed: 0, destroy() { this.destroyed++; }, createView: () => ({}) };
       textures.push(texture);
       return texture;
     },
-    queue: { writeBuffer() {}, writeTexture() { writes++; } },
+    queue: { writeBuffer() {}, writeTexture() {
+      if (failures.writeTexture) throw new Error('injected texture upload failure');
+      writes++;
+    } },
   };
-  return { device: device as unknown as GPUDevice, textures, get writes() { return writes; } };
+  return { device: device as unknown as GPUDevice, textures, buffers, failures, get writes() { return writes; } };
 }
 
 function mesh(expressId: number, rgba: Uint8Array): MeshData {
@@ -71,6 +80,48 @@ describe('shared-room pixel GPU ownership (#4228, #4232)', () => {
     const b = pool.acquire({ rgba, width: 1, height: 2, repeatS: false, repeatT: false }, state.device);
     assert.notEqual(a, b);
     pool.clear();
+    assert.deepEqual(state.textures.map(texture => texture.destroyed), [1, 1]);
+  });
+
+  it('drops a failed draw reference without destroying a surviving shared texture', () => {
+    const scene = new Scene(), state = gpu(), pixels = new Uint8Array(4);
+    scene.appendToBatches([mesh(1, pixels)], state.device, pipeline);
+    const failingPipeline = {
+      getUniformBufferSize: () => 256,
+      createTexturedBindGroup: () => { throw new Error('injected bind group failure'); },
+    } as unknown as Parameters<Scene['appendToBatches']>[2];
+    assert.throws(() => scene.appendToBatches([mesh(2, pixels)], state.device, failingPipeline), /bind group failure/);
+    assert.equal(scene.getTexturedMeshes().length, 1);
+    assert.deepEqual(state.buffers.slice(3).map(buffer => buffer.destroyed), [1, 1, 1]);
+    assert.equal(state.textures[0].destroyed, 0);
+    scene.removeMeshesForEntity(1);
+    assert.equal(state.textures[0].destroyed, 1, 'failed draw must not leave a phantom texture reference');
+    scene.clearFlatGeometry();
+    assert.equal(state.textures[0].destroyed, 1);
+  });
+
+  it('cleans up a failed upload and retries the same pixels with fresh GPU resources', () => {
+    const scene = new Scene(), state = gpu(), pixels = new Uint8Array(4);
+    state.failures.writeTexture = true;
+    assert.throws(() => scene.appendToBatches([mesh(1, pixels)], state.device, pipeline), /texture upload failure/);
+    assert.equal(scene.getTexturedMeshes().length, 0);
+    assert.deepEqual(state.buffers.map(buffer => buffer.destroyed), [1, 1]);
+    assert.equal(state.textures[0].destroyed, 1);
+    state.failures.writeTexture = false;
+    scene.appendToBatches([mesh(2, pixels)], state.device, pipeline);
+    assert.equal(state.textures.length, 2);
+    assert.equal(state.textures[1].destroyed, 0);
+    scene.clearFlatGeometry();
+    assert.deepEqual(state.textures.map(texture => texture.destroyed), [1, 1]);
+  });
+
+  it('allows the same CPU source to be acquired after pool clear without reusing a destroyed texture', () => {
+    const pool = new RgbaTexturePool(), state = gpu(), source = mesh(1, new Uint8Array(4)).texture!;
+    const first = pool.acquire(source, state.device);
+    pool.clear();
+    const second = pool.acquire(source, state.device);
+    assert.notEqual(first, second);
+    assert.equal(pool.release(second), true);
     assert.deepEqual(state.textures.map(texture => texture.destroyed), [1, 1]);
   });
 });

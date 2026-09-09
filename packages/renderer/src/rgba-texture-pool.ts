@@ -8,8 +8,9 @@ type Entry = { texture: GPUTexture; width: number; height: number; refs: number 
 /** Room recipients share decoded pixel arrays across surfaces (#4228, #4232).
  * Keep that sharing on the GPU too; sampler settings belong to each draw. */
 export class RgbaTexturePool {
-  private entries = new Map<Uint8Array, Entry[]>();
-  private owners = new Map<GPUTexture, { pixels: Uint8Array; entry: Entry }>();
+  // GPU ownership must not keep released CPU pixel arrays alive.
+  private entries = new WeakMap<Uint8Array, Entry[]>();
+  private owners = new Map<GPUTexture, { siblings: Entry[]; entry: Entry }>();
 
   acquire(source: MeshTexture, device: GPUDevice): GPUTexture {
     const { rgba, width, height } = source;
@@ -30,7 +31,7 @@ export class RgbaTexturePool {
       entry = { texture, width, height, refs: 0 };
       entries.push(entry);
       this.entries.set(rgba, entries);
-      this.owners.set(texture, { pixels: rgba, entry });
+      this.owners.set(texture, { siblings: entries, entry });
     }
     entry.refs++;
     return entry.texture;
@@ -42,9 +43,8 @@ export class RgbaTexturePool {
     if (!owner) return false;
     if (--owner.entry.refs === 0) {
       texture.destroy();
-      const siblings = this.entries.get(owner.pixels)!;
+      const siblings = owner.siblings;
       siblings.splice(siblings.indexOf(owner.entry), 1);
-      if (!siblings.length) this.entries.delete(owner.pixels);
       this.owners.delete(texture);
     }
     return true;
@@ -53,6 +53,6 @@ export class RgbaTexturePool {
   clear(): void {
     for (const texture of this.owners.keys()) texture.destroy();
     this.owners.clear();
-    this.entries.clear();
+    this.entries = new WeakMap();
   }
 }

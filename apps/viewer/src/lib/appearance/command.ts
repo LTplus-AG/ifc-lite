@@ -5,7 +5,9 @@ import { captureAppearanceDependencies, planAuthoredResourceCleanup } from '@ifc
 import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
-import { applyAppearanceEntitiesInDraft, replayAppearanceEntitiesInDraft } from './apply-plan.js';
+import { replayAppearanceEntitiesInDraft } from './apply-plan.js';
+import { prepareAppearanceEntities } from './prepare-plan.js';
+import type { EntityPreparationOptions } from '@ifc-lite/mutations';
 import { appearanceAssets, modelAppearanceAssets } from './model-assets.js';
 import { prepareAppearanceHistory } from './history.js';
 import type { AppearanceHistoryPublication } from './history.js';
@@ -74,12 +76,17 @@ function geometryPublication(modelId: string, geometryResult: ReturnType<typeof 
     ...(state.activeModelId === modelId ? { geometryResult } : {}) };
 }
 
+export interface AppearanceCommitOptions extends EntityPreparationOptions {
+  onProgress?: (phase: 'preparing' | 'validating' | 'publishing') => void;
+}
+
 /** Prepared resources become one IFC edit and one existing viewer history command. */
-export function commitAppearance(
+export async function commitAppearance(
   modelId: string, assetId: string, plan: AppearancePlan,
   renderer: Renderer, preview: AppearancePreviewSession, groups: readonly AppearancePreviewParts[],
   source: ReturnType<typeof captureAppearanceSource>,
-): void {
+  options: AppearanceCommitOptions = {},
+): Promise<void> {
   const state = useViewerStore.getState();
   const model = state.models.get(modelId);
   const view = state.mutationViews.get(modelId);
@@ -90,21 +97,44 @@ export function commitAppearance(
   const geometry = geometryWithAppearance(modelId, groups);
   const commandId = crypto.randomUUID();
   const historyOwner = { kind: 'history' as const, id: commandId };
-  // All IFC edits, history records and allocator changes stay detached until
-  // assets, history and every GPU token have passed preparation.
-  const prepared = view.prepareAtomic(draft => ({ draft,
-    applied: applyAppearanceEntitiesInDraft(new StoreEditor(model.ifcDataStore!, draft), draft, plan, appearanceRevision(modelId)),
-  }));
-  const { applied, draft } = prepared.result;
+  // Cooperative work stays detached; the final synchronous install remains
+  // reversible until all assets, history and GPU tokens pass preparation.
   const roots = new Set([...plan.items.flatMap(item => [item.productId, item.geometryItemId]),
     ...plan.edits.map(edit => edit.expressId), ...plan.removed, ...plan.created.map(entity => entity.expressId)]);
+  const sourceRevision = plan.sourceRevision;
+  const abort = () => {
+    if (options.signal?.aborted) throw new DOMException('Appearance application was cancelled.', 'AbortError');
+  };
+  let preparation: Awaited<ReturnType<typeof prepareAppearanceEntities>>;
+  try {
+    abort();
+    options.onProgress?.('preparing');
+    preparation = await prepareAppearanceEntities(state.storeEditors.get(modelId) ?? new StoreEditor(model.ifcDataStore, view), view, plan, appearanceRevision(modelId), options);
+  } catch (error) { failWithCleanup(error, [() => preview.cancel()]); }
+  const { prepared, applied } = preparation;
   // Frozen effective dependency records catch direct SDK edits that leave the
   // renderer buffers and the viewer's mutationVersion unchanged.
   const changes: ReturnType<AppearancePreviewSession['commit']> = [];
   let published = false;
   try {
+    options.onProgress?.('validating');
+    abort();
+    source.validate(view);
     const beforeGuard = captureAppearanceDependencies(model.ifcDataStore, view, roots);
-    const afterGuard = captureAppearanceDependencies(model.ifcDataStore, draft, roots);
+    // All callbacks happen before the exact fence and synchronous publication.
+    options.onProgress?.('publishing');
+    abort();
+    if (useViewerStore.getState().models.get(modelId) !== model
+      || useViewerStore.getState().mutationViews.get(modelId) !== view
+      || useViewerStore.getState().collabRoomId
+      || appearanceRevision(modelId) !== sourceRevision) {
+      throw new Error('The model changed while preparing appearance. Refresh the preview.');
+    }
+    source.validate(view);
+    prepared.commit();
+    // No await or store publication may occur between this temporary IFC install
+    // and GPU/history publication. Any guard/resource failure restores the overlay.
+    const afterGuard = captureAppearanceDependencies(model.ifcDataStore, view, roots);
     appearanceAssets.retain(assetId, historyOwner);
     modelAppearanceAssets.registerAuthored(modelId, commandId, [assetId]);
     modelAppearanceAssets.authoredLifecycle.track(modelId, commandId, {
@@ -156,15 +186,14 @@ export function commitAppearance(
         appearanceAssets.releaseOwner(historyOwner);
         modelAppearanceAssets.authoredLifecycle.retire(modelId, commandId);
       },
-    }, draft);
+    });
     if (useViewerStore.getState().models.get(modelId) !== model
       || useViewerStore.getState().mutationViews.get(modelId) !== view
-      || appearanceRevision(modelId) !== plan.sourceRevision) {
+      || appearanceRevision(modelId) !== sourceRevision) {
       throw new Error('The model changed while preparing appearance. Refresh the preview.');
     }
     const publication = geometryPublication(modelId, geometry);
     const commitGpu = preview.prepareCommit(groups);
-    prepared.commit();
     changes.push(...commitGpu());
     // IFC + GPU are ready. Publish the geometry and history entry together so
     // observers never see new IFC history paired with the old render buffers.
@@ -178,5 +207,5 @@ export function commitAppearance(
         () => appearanceAssets.releaseOwner(historyOwner), () => preview.cancel()]);
     }
     throw error;
-  }
+  } finally { prepared.dispose(); }
 }

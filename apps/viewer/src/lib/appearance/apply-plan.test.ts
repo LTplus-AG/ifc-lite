@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { EntityExtractor, IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
-import { applyAppearanceEntities, applyAppearanceEntitiesInDraft, replayAppearanceEntities, replayAppearanceEntitiesInDraft } from './apply-plan.js';
+import { applyAppearanceEntities, replayAppearanceEntities, replayAppearanceEntitiesInDraft } from './apply-plan.js';
+import { prepareAppearanceEntities } from './prepare-plan.js';
 import type { AppearanceEntityPlan } from './planner-types.js';
 
 const SOURCE = `ISO-10303-21;
@@ -121,28 +122,21 @@ describe('appearance entity transaction #4243', () => {
     assert.deepEqual(view.getMutations(), before);
   });
 
-  it('discards a composed appearance and its allocator when later outer preparation fails #4243', async () => {
-    const { store, view, editor, plan } = await fixture();
-    let escaped: StoreEditor | undefined;
-    assert.throws(() => view.prepareAtomic(draft => {
-      escaped = new StoreEditor(store, draft);
-      applyAppearanceEntitiesInDraft(escaped, draft, plan, 'revision-1');
-      throw new Error('later GPU preparation failed');
-    }), /later GPU preparation failed/);
+  it('disposes cooperative appearance without publishing allocator or IFC edits #4336', async () => {
+    const { view, editor, plan } = await fixture();
+    const { prepared, applied } = await prepareAppearanceEntities(editor, view, plan, 'revision-1', {});
+    prepared.dispose();
+    applied.created[0].attributes[5] = 'escaped.png';
     assert.equal(editor.getNewEntities().length, 0);
     assert.equal(view.getMutations().length, 0);
     assert.equal(view.peekNextExpressId(), plan.nextExpressId);
     assert.equal(view.isDeleted(15), false);
-    escaped!.addEntity('IfcColourRgb', [null, 1, 0, 0]);
-    assert.equal(editor.getNewEntities().length, 0, 'escaped draft cannot write into the live model');
+    assert.throws(() => prepared.commit(), /disposed/);
   });
 
-  it('a failed composed edit leaves the live model untouched after partial draft writes #4243', async () => {
-    const { store, view, editor, plan } = await fixture();
-    assert.throws(() => view.prepareAtomic(draft => {
-      applyAppearanceEntitiesInDraft(new StoreEditor(store, draft), draft,
-        { ...plan, removed: [999999] }, 'revision-1');
-    }), /missing IFC entity/);
+  it('failed cooperative edits leave live IFC untouched after partial draft writes #4336', async () => {
+    const { view, editor, plan } = await fixture();
+    await assert.rejects(prepareAppearanceEntities(editor, view, { ...plan, removed: [999999] }, 'revision-1', {}), /missing IFC entity/);
     assert.equal(editor.getNewEntities().length, 0);
     assert.equal(view.getPositionalMutationsForEntity(19), null);
     assert.equal(view.peekNextExpressId(), plan.nextExpressId);
@@ -151,20 +145,19 @@ describe('appearance entity transaction #4243', () => {
 
   it('composed replay rollback and escaped drafts preserve committed IFC state #4243', async () => {
     const { store, view, editor, plan, exported } = await fixture();
-    const transaction = view.prepareAtomic(draft => ({ draft,
-      applied: applyAppearanceEntitiesInDraft(new StoreEditor(store, draft), draft, plan, 'revision-1'),
-    }));
-    transaction.commit();
-    transaction.result.draft.deleteEntity(plan.nextExpressId);
-    assert.ok(editor.getNewEntity(plan.nextExpressId), 'published state is detached from its draft');
+    const { prepared, applied } = await prepareAppearanceEntities(editor, view, plan, 'revision-1', {});
+    prepared.commit();
+    prepared.dispose();
+    applied.created[0].attributes[5] = 'escaped.png';
+    assert.equal(editor.getNewEntity(plan.nextExpressId)?.attributes[5], 'textures/new.png', 'published state is detached from returned records');
     const unchanged = attributes(await exported(), plan.nextExpressId);
     assert.throws(() => view.prepareAtomic(draft => {
-      replayAppearanceEntitiesInDraft(draft, transaction.result.applied, 'undo');
+      replayAppearanceEntitiesInDraft(draft, applied, 'undo');
       throw new Error('replay GPU preparation failed');
     }), /replay GPU preparation failed/);
     assert.deepEqual(attributes(await exported(), plan.nextExpressId), unchanged);
     assert.equal(view.isDeleted(15), true);
-    const undo = view.prepareAtomic(draft => replayAppearanceEntitiesInDraft(draft, transaction.result.applied, 'undo'));
+    const undo = view.prepareAtomic(draft => replayAppearanceEntitiesInDraft(draft, applied, 'undo'));
     undo.commit();
     assert.deepEqual(attributes(await exported(), 15), attributes(store, 15));
     assert.equal(editor.getNewEntity(plan.nextExpressId), null);

@@ -220,3 +220,63 @@ test('replacement Undo and manifest restore retain an owned editable calibration
     assert.equal(useViewerStore.getState().appearanceReferences, stateBeforeInvalid);
   }
 });
+
+
+test('clearAllModels for frame reload preserves independent references and leases until session reset (#4308)', async () => {
+  const record = await reference();
+  useViewerStore.setState({ models: new Map([['model', fixtureModel('model')]]), activeModelId: 'model' });
+  useViewerStore.getState().addAppearanceReference(record);
+  useViewerStore.getState().updateAppearanceReference(record.id, { locked: true });
+  useViewerStore.getState().selectAppearanceReference(record.id);
+  const before = useViewerStore.getState();
+  const registration = before.exportAppearanceReferences();
+  appearanceAssets.releaseOwner(owner);
+  useViewerStore.getState().clearAllModels();
+  assert.equal(useViewerStore.getState().models.size, 0);
+  assert.equal(useViewerStore.getState().appearanceReferences, before.appearanceReferences);
+  assert.equal(useViewerStore.getState().referenceUndo, before.referenceUndo);
+  assert.equal(useViewerStore.getState().selectedAppearanceReferenceId, record.id);
+  assert.ok(appearanceAssets.get(record.assetId));
+  useViewerStore.setState({ models: new Map([['reloaded', fixtureModel('reloaded')]]), activeModelId: 'reloaded',
+    modelPlacement: { ...emptyPlacementState(), frameKey: 'different-engineering-frame' } });
+  assert.throws(() => useViewerStore.getState().importAppearanceReferences(registration), /coordinate frame/);
+  assert.equal(useViewerStore.getState().appearanceReferences.get(record.id)!.locked, true);
+  assert.deepEqual(useViewerStore.getState().appearanceReferences.get(record.id)!.cornersIfcWorld, record.cornersIfcWorld);
+  useViewerStore.getState().resetViewerState();
+  assert.equal(useViewerStore.getState().appearanceReferences.size, 0);
+  assert.equal(useViewerStore.getState().referenceUndo.length, 0);
+  assert.equal(appearanceAssets.get(record.assetId), undefined);
+});
+
+
+test('cross-frame replacement restores unresolved snapshots without stranding earlier history (#4359)', async () => {
+  const record = await reference();
+  useViewerStore.getState().addAppearanceReference(record);
+  useViewerStore.setState(state => ({ modelPlacement: { ...state.modelPlacement, frameKey: 'new-frame' } }));
+  useViewerStore.getState().replaceAppearanceReference(record.id, { ...record, frameKey: 'new-frame' });
+  replayWorkspaceHistory(useViewerStore.getState(), 'undo');
+  assert.equal(useViewerStore.getState().appearanceReferences.get(record.id)!.frameKey, record.frameKey);
+  assert.deepEqual(useViewerStore.getState().appearanceReferences.get(record.id)!.cornersIfcWorld, record.cornersIfcWorld);
+  replayWorkspaceHistory(useViewerStore.getState(), 'undo');
+  assert.equal(useViewerStore.getState().appearanceReferences.size, 0);
+  replayWorkspaceHistory(useViewerStore.getState(), 'redo');
+  replayWorkspaceHistory(useViewerStore.getState(), 'redo');
+  assert.equal(useViewerStore.getState().appearanceReferences.get(record.id)!.frameKey, 'new-frame');
+});
+
+test('equivalent registration import and update preserve workspace redo (#4359)', async () => {
+  const record = await reference();
+  useViewerStore.setState({ models: new Map([['model', fixtureModel('model')]]), activeModelId: 'model' });
+  useViewerStore.getState().addAppearanceReference(record);
+  useViewerStore.getState().openReposition(['model']);
+  useViewerStore.getState().previewModelTranslation([2, 0, 0]);
+  useViewerStore.getState().applyModelTranslation();
+  replayWorkspaceHistory(useViewerStore.getState(), 'undo');
+  const before = useViewerStore.getState();
+  before.importAppearanceReferences(before.exportAppearanceReferences());
+  before.updateAppearanceReference(record.id, { opacity: record.opacity });
+  assert.equal(useViewerStore.getState().referenceUndo, before.referenceUndo);
+  assert.equal(useViewerStore.getState().referenceRevision, before.referenceRevision);
+  replayWorkspaceHistory(useViewerStore.getState(), 'redo');
+  assert.equal(displayedTranslation(useViewerStore.getState().modelPlacement, 'model')[0], 2);
+});

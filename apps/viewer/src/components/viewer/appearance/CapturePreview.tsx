@@ -95,8 +95,9 @@ export function CapturePreview({ mesh, assetId, triangles, disabled, onRegion, o
           current.last = p;
         }}
         onPointerUp={event => {
-          const current = gesture.current, view = renderer.current; gesture.current = null; setBox(null);
+          const current = gesture.current, view = renderer.current;
           if (!current || current.pointer !== event.pointerId || !view || disabled) return;
+          gesture.current = null; setBox(null);
           if (selecting) { const size = event.currentTarget; onRegion(capturedScreenRegion(mesh,current.start,point(event), p => view.getCamera().projectToScreen(p,size.clientWidth,size.clientHeight))); setSelecting(false); }
         }} onPointerCancel={() => { gesture.current = null; setBox(null); }}
  />

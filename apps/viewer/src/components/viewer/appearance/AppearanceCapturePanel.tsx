@@ -22,7 +22,8 @@ export function AppearanceCapturePanel() {
     .flatMap((mesh, index) => mesh.textureRef ? [{ id: `${model.id}:${index}`, modelId: model.id, mesh,
       label: `${model.name} · Surface ${index + 1} · ${(mesh.indices.length / 3).toLocaleString()} triangles` }] : [])), [models]);
   const [chosen, setChosen] = useState('');
-  const candidate = candidates.find(item => item.id === chosen) ?? candidates.find(item => item.mesh.expressId === selected) ?? candidates[0];
+  const candidate = chosen ? candidates.find(item => item.id === chosen)
+    : candidates.find(item => item.mesh.expressId === selected) ?? candidates[0];
   const [triangles, setTriangles] = useState<number[]>([]);
   const [prepared, setPrepared] = useState<CapturedMeshSource | null>(null);
   const [assetId, setAssetId] = useState<string | null>(null);
@@ -68,7 +69,7 @@ export function AppearanceCapturePanel() {
     <h2 className="text-sm font-semibold">Create from scan</h2>
     <p className="text-[11px] text-muted-foreground">Turn a selected scan surface into a textured IFC object. Open or add a textured GLB to begin.</p>
     <label className="block text-[11px]">Source surface<select className={appearanceSelectClass} aria-label="Captured source surface" value={candidate?.id ?? ''} disabled={busy}
-      onChange={event => setChosen(event.target.value)}>{!candidates.length && <option value="">Open or add a textured model</option>}
+      onChange={event => setChosen(event.target.value)}>{!candidate && <option value="">{candidates.length ? 'Choose a source surface' : 'Open or add a textured model'}</option>}
       {candidates.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
     </select></label>
     {candidate && assetId && <CapturePreview key={candidate.id} mesh={candidate.mesh} assetId={assetId} triangles={triangles} disabled={busy}

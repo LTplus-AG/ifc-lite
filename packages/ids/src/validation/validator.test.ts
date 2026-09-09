@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { validateIDS } from './validator.js';
+import { parseIDS } from '../parser/xml-parser.js';
 import { createMockAccessor } from '../facets/test-helpers.js';
 import type {
   IDSDocument,
@@ -639,5 +640,76 @@ describe('validateIDS — report structure', () => {
     expect(entityResult.entityName).toBe('Wall_001');
     expect(entityResult.globalId).toBe('abc123');
     expect(entityResult.passed).toBe(true);
+  });
+});
+
+// ============================================================================
+// Unparseable bounds facet — the real user-visible message
+//
+// A present-but-unparseable `xs:restriction` facet (e.g.
+// `<xs:minInclusive value="not-a-number"/>`) fails closed everywhere,
+// but the ORIGINAL fix only routed the clear "this xs:restriction is
+// malformed" message through `getConstraintMismatchReason`, which
+// nothing in the real `validateIDS` path ever calls. The actual
+// `attribute-facet.ts` path builds `failureReason`/`expectedValue` via
+// `formatFailureReason` → `facet.expected` → `formatConstraint` →
+// `formatBounds`, which used to fall through to its `'any value'`
+// default whenever every numeric field was `undefined` — producing the
+// self-contradictory "does not match expected any value" for a
+// restriction that is rejecting every value. These tests exercise that
+// exact path (XML → `parseIDS` → `validateIDS`), not
+// `getConstraintMismatchReason` directly.
+// ============================================================================
+describe('validateIDS — unparseable bounds facet (issue #4231)', () => {
+  const malformedXml = `<ids xmlns="http://standards.buildingsmart.org/IDS"
+     xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <info><title>T</title></info>
+  <specifications>
+    <specification name="Test" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <attribute>
+          <name><simpleValue>Name</simpleValue></name>
+          <value>
+            <xs:restriction>
+              <xs:minInclusive value="not-a-number"/>
+            </xs:restriction>
+          </value>
+        </attribute>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>`;
+
+  const wellFormedXml = malformedXml
+    .replace('<xs:minInclusive value="not-a-number"/>', '<xs:minInclusive value="10"/>\n              <xs:maxInclusive value="20"/>');
+
+  it('names the broken facet in failureReason/expectedValue instead of claiming "any value"', async () => {
+    const doc = parseIDS(malformedXml);
+    const accessor = createMockAccessor([{ expressId: 1, type: 'IfcWall', name: '0' }]);
+    const report = await validateIDS(doc, accessor, modelInfo);
+    const result = report.specificationResults[0].entityResults[0].requirementResults[0];
+
+    expect(result.status).toBe('fail');
+    expect(result.failureReason).not.toContain('any value');
+    expect(result.expectedValue).not.toBe('any value');
+    expect(result.expectedValue).toContain('xs:minInclusive="not-a-number"');
+    expect(result.expectedValue).toContain('did not parse as a number');
+    expect(result.failureReason).toContain('xs:minInclusive="not-a-number"');
+  });
+
+  it('leaves a well-formed restriction failure message unchanged', async () => {
+    const doc = parseIDS(wellFormedXml);
+    const accessor = createMockAccessor([{ expressId: 1, type: 'IfcWall', name: '0' }]);
+    const report = await validateIDS(doc, accessor, modelInfo);
+    const result = report.specificationResults[0].entityResults[0].requirementResults[0];
+
+    expect(result.status).toBe('fail');
+    expect(result.expectedValue).toBe('between 10 and 20');
+    expect(result.failureReason).toBe(
+      'Attribute "Name" value "0" does not match expected between 10 and 20'
+    );
   });
 });

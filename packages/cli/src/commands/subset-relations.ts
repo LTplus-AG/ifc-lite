@@ -122,20 +122,19 @@ export interface SpatialRelationPlan {
 }
 
 /**
- * Spatial-structure relations, as `[relatingAttributeIndex,
- * relatedAttributeIndex]`. `IfcRelAggregates` names the whole
- * (`RelatingObject`) first; the two containment relations name the parts
- * (`RelatedElements`) first. Same table as `STRUCTURE_RELATIONS` in
- * `@ifc-lite/export`'s `merged-empty-containers.ts`, which reads the same three
+ * Spatial-structure relations, as `[relatingAttributeIndex, relatedAttributeIndex]`.
+ * `IfcRelAggregates` names the whole (`RelatingObject`) first; the two containment
+ * relations name the parts (`RelatedElements`) first. Same table as `STRUCTURE_RELATIONS`
+ * in `@ifc-lite/export`'s `merged-empty-containers.ts`, which reads the same three
  * records, copied rather than imported because that module is internal to
  * `@ifc-lite/export` and exporting it would widen a published API surface for a
  * three-line constant.
  *
- * `IfcRelReferencedInSpatialStructure` is here for the same reason the other
- * two are: same shape (one relating parent, one related SET), same
- * one-per-storey authoring, same claim in the command's own docs that the
- * output "parses and renders on its own". It used to be missing entirely, so a
- * referenced-but-not-contained product was always orphaned.
+ * `IfcRelReferencedInSpatialStructure` is here for the same reason the other two are:
+ * same shape (one relating parent, one related SET), same one-per-storey authoring,
+ * same claim in the command's own docs that the output "parses and renders on its
+ * own". It used to be missing entirely, so a referenced-but-not-contained product was
+ * always orphaned.
  */
 export const STRUCTURE_RELATIONS: Record<string, [number, number]> = {
   IFCRELAGGREGATES: [4, 5],
@@ -144,19 +143,18 @@ export const STRUCTURE_RELATIONS: Record<string, [number, number]> = {
 };
 
 /**
- * All three are `GlobalId, OwnerHistory, Name, Description` plus the
- * relating/related pair: exactly 6 attributes in every schema that defines
- * them. A record that does not split into 6 was mis-scanned (or is not the
- * entity the type name claims), so it falls back to keep-whole-or-drop-whole
- * rather than having a slot index written into whatever it did split into.
+ * All three are `GlobalId, OwnerHistory, Name, Description` plus the relating/related
+ * pair: exactly 6 attributes in every schema that defines them. A record that does not
+ * split into 6 was mis-scanned (or is not the entity the type name claims), so it falls
+ * back to keep-whole-or-drop-whole rather than having a slot index written into
+ * whatever it did split into.
  *
- * A relation type with a different attribute COUNT (`IfcRelAssignsToGroup` has
- * 7) therefore cannot simply be added as a row above: it would fail this check
- * on every record and fall silently back to keep-whole-or-drop-whole, which is
- * the bug this module exists to fix. Such a type needs the count moved into the
- * table value first, or the whole table derived from the schema registry, which
- * returns 7 for that entity and would make row four safe rather than forbidden.
- * Filed as #4123.
+ * A relation type with a different attribute COUNT (`IfcRelAssignsToGroup` has 7)
+ * therefore cannot simply be added as a row above: it would fail this check on every
+ * record and fall silently back to keep-whole-or-drop-whole, which is the bug this
+ * module exists to fix. Such a type needs the count moved into the table value first,
+ * or the whole table derived from the schema registry, which returns 7 for that entity
+ * and would make row four safe rather than forbidden. Filed as #4123.
  */
 export const STRUCTURE_RELATION_ATTRS = 6;
 
@@ -265,8 +263,14 @@ function relationLine(
  * the six-attribute shape this module rewrites, so its boundaries are not
  * established in general. There, over-counting references (drop the record) is
  * the safe error, while under-counting (emit a dangling `#id`) is not.
+ *
+ * Exported for `extract-entities.ts`'s `forwardClosure`, which has the same
+ * hazard scanning a whole record body for its reference closure: nothing here
+ * assumes `arg` is one split ARGUMENT rather than a whole body, since a comma
+ * or `)` outside a string does not affect the in-string/out-of-string state
+ * this walks.
  */
-function refsOutsideStrings(arg: string): number[] {
+export function refsOutsideStrings(arg: string): number[] {
   const ids: number[] = [];
   let inString = false;
   for (let i = 0; i < arg.length; i++) {

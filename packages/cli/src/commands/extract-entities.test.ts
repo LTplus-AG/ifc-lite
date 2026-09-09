@@ -142,6 +142,58 @@ describe('forwardClosure', () => {
     // it must NOT drag in the unrelated wall #90
     expect(keep.has(90)).toBe(false);
   });
+
+  // #4148: a Name/Description literal containing `#<digits>` that happens to
+  // match a REAL id in the model must not be read as a reference. Regression
+  // for `forwardClosure` reading `/#(\d+)/g` over raw record text: unlike
+  // `MODEL`'s `#north` above (not digits, never matched even the naive scan),
+  // this fixture names an actual other entity's id inside a string.
+  const LOOKALIKE_MODEL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2024',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#70= IFCFURNISHINGELEMENT('CHAIR000000000000000X',$,'Chair pairs with #71',$,$,#50,$,'tag');
+#50= IFCLOCALPLACEMENT($,$);
+#71= IFCFURNISHINGELEMENT('CHAIR100000000000000X',$,'Other chair',$,$,#51,$,'tag2');
+#51= IFCLOCALPLACEMENT($,$);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+  it('does not pull in an id that only appears inside a Name/Description string literal', () => {
+    const p = parseStep(LOOKALIKE_MODEL);
+    const keep = new Set<number>();
+    forwardClosure([70], p, keep);
+    expect(keep.has(70)).toBe(true);
+    expect(keep.has(50)).toBe(true);
+    // #71 is only mentioned inside #70's Name TEXT, never referenced as an
+    // attribute — it and its own placement #51 must not be pulled in.
+    expect(keep.has(71)).toBe(false);
+    expect(keep.has(51)).toBe(false);
+  });
+
+  // CLI-level counterpart of the unit test above: `forwardClosure` is an
+  // internal helper `--product` runs through (see `extractEntitiesCommand`),
+  // so a regression there could pass the helper-level test above while the
+  // command itself still emits the wrong bytes. Exercise the actual command
+  // and assert on its output file, not just the in-memory `keep` set.
+  it('extracting --product #70 does not emit the lookalike id pulled in only by string text', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-lookalike-'));
+    const src = join(dir, 'in.ifc');
+    const out = join(dir, 'sub.ifc');
+    await writeFile(src, LOOKALIKE_MODEL, 'latin1');
+    await extractEntitiesCommand([src, '--product', '#70', '--out', out]);
+    const text = await readFile(out, 'latin1');
+    expect(text).toContain('#70=');
+    expect(text).toContain('#50=');
+    // #71 and its own placement #51 are only mentioned inside #70's Name
+    // TEXT, never referenced as an attribute — they must not be emitted.
+    expect(text).not.toContain('#71=');
+    expect(text).not.toContain('#51=');
+  });
 });
 
 describe('buildSubset + serializeSubset', () => {
@@ -858,6 +910,93 @@ describe('buildSubset — void/fill relations close over their own refs', () => 
   it('serializes with zero dangling references', () => {
     const out = serializeSubset({ keep, rewritten }, p);
     expectNoDanglingRefs(out);
+  });
+});
+
+// Two storeys, each with its own placement chain and its own genuine wall —
+// L01's storey record carries a Description that is free TEXT naming L02's
+// REAL IfcLocalPlacement (`'dup of #44'`), and L01's own furniture Name
+// mentions L02's placement id too (`'see also #44'`). Neither is a reference;
+// both are `#id`-shaped substrings a raw `/#(\d+)/g` scan cannot tell apart
+// from one. #4166.
+const TWO_STOREY_MODEL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2024',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1= IFCPROJECT('PROJ000000000000000002',#5,'Proj',$,$,$,$,(#20),#30);
+#5= IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);
+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
+#21= IFCAXIS2PLACEMENT3D(#22,$,$);
+#22= IFCCARTESIANPOINT((0.,0.,0.));
+#30= IFCUNITASSIGNMENT((#31));
+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#33= IFCLOCALPLACEMENT($,#21);
+#34= IFCSITE('SITE000000000000000002',#5,'Site',$,$,#33,$,$,.ELEMENT.,$,$,$,$,$);
+#35= IFCLOCALPLACEMENT(#33,#21);
+#36= IFCBUILDING('BLDG000000000000000002',#5,'Bldg',$,$,#35,$,$,.ELEMENT.,$,$,$);
+#40= IFCLOCALPLACEMENT(#35,#21);
+#41= IFCBUILDINGSTOREY('STOR000000000000000003',#5,'L01','dup of #44',$,#40,$,$,.ELEMENT.,0.);
+#44= IFCLOCALPLACEMENT(#35,#21);
+#45= IFCBUILDINGSTOREY('STOR000000000000000004',#5,'L02',$,$,#44,$,$,.ELEMENT.,3.);
+#50= IFCLOCALPLACEMENT(#40,#21);
+#54= IFCLOCALPLACEMENT(#44,#21);
+#60= IFCRECTANGLEPROFILEDEF(.AREA.,$,#21,2.,0.2);
+#61= IFCEXTRUDEDAREASOLID(#60,#21,#62,3.);
+#62= IFCDIRECTION((0.,0.,1.));
+#63= IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#61));
+#64= IFCPRODUCTDEFINITIONSHAPE($,$,(#63));
+#70= IFCWALLSTANDARDCASE('WALL000000000000000001',#5,'Wall L01',$,$,#50,#64,'w1');
+#90= IFCWALLSTANDARDCASE('WALL000000000000000002',#5,'Wall L02',$,$,#54,#64,'w2');
+#95= IFCFURNISHINGELEMENT('FURN000000000000000007',#5,'see also #44',$,$,#50,#64,'f1');
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+describe('extract-entities --storey: a free-text `#id` naming a real unrelated entity (#4166)', () => {
+  it('picks the storey genuine placement, not the id its Description text names', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-storey-'));
+    const src = join(dir, 'in.ifc');
+    const out = join(dir, 'sub.ifc');
+    await writeFile(src, TWO_STOREY_MODEL, 'latin1');
+    await extractEntitiesCommand([src, '--storey', 'L01', '--out', out]);
+    const text = await readFile(out, 'latin1');
+    // The genuine L01 wall is present …
+    expect(text).toContain('#70=');
+    // … the impostor pulled in only because #44 sits in L01's Description text
+    // (a real placement, but L02's) must not be.
+    expect(text).not.toContain('#90=');
+  });
+
+  it('does not seed a product into a storey extraction because its Name mentions that storey placement id', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-storey-'));
+    const src = join(dir, 'in.ifc');
+    const out = join(dir, 'sub.ifc');
+    await writeFile(src, TWO_STOREY_MODEL, 'latin1');
+    // #95 is genuinely placed under L01 (#50 chains to #40), and its Name text
+    // mentions L02's placement id #44. Extracting L02 must not pull it in.
+    await extractEntitiesCommand([src, '--storey', 'L02', '--out', out]);
+    const text = await readFile(out, 'latin1');
+    expect(text).toContain('#90=');
+    expect(text).not.toContain('#95=');
+  });
+
+  it('a storey/product with no string-borne ids extracts exactly as before (regression guard)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-storey-'));
+    const src = join(dir, 'in.ifc');
+    const out = join(dir, 'sub.ifc');
+    // Same shape, no poison text in Description/Name.
+    const clean = TWO_STOREY_MODEL.replace("'dup of #44'", '$').replace("'see also #44'", "'Chair'");
+    await writeFile(src, clean, 'latin1');
+    await extractEntitiesCommand([src, '--storey', 'L01', '--out', out]);
+    const text = await readFile(out, 'latin1');
+    // #70 and #95 are both genuinely placed under L01 and belong in the
+    // extraction; #90 is genuinely under L02 and does not.
+    expect(text).toContain('#70=');
+    expect(text).toContain('#95=');
+    expect(text).not.toContain('#90=');
   });
 });
 

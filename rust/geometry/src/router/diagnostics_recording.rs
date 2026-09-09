@@ -79,9 +79,15 @@ pub struct OpeningDiagnostic {
     pub opening_id: u32,
     /// Branch the classifier took for this opening.
     pub kind: OpeningKindDiag,
-    /// Vertex count of the opening's mesh — high counts (>100) force the
-    /// non-rectangular path regardless of extrusion direction.
+    /// Vertex count of the opening's mesh, for diagnostics only. NOT what
+    /// the classifier gates on — see `triangle_count` (issue #4119: the raw
+    /// position-buffer length includes per-`IfcFace` vertex duplication and
+    /// moves under welding without the underlying geometry changing).
     pub vertex_count: usize,
+    /// Triangle count of the opening's mesh — high counts (>100) force the
+    /// non-rectangular path regardless of extrusion direction. Invariant to
+    /// vertex duplication/welding, unlike `vertex_count`.
+    pub triangle_count: usize,
 }
 
 /// Discriminator for [`OpeningDiagnostic::kind`]. Mirrors `OpeningType`

@@ -10,7 +10,7 @@ use super::rebase::RenderFrameRebase;
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 use super::primitives::{SymbolicPolyline};
-use super::transform::{parse_axis2_placement_2d, Transform2D};
+use super::transform::{parse_axis2_placement_2d, push_finite_point, Transform2D};
 
 /// Tessellate an `IfcTrimmedCurve` whose `BasisCurve` is an `IfcCircle`.
 /// Honours `PLANEANGLEUNIT` scaling, `SenseAgreement`, and wrap-around so
@@ -159,10 +159,7 @@ pub(super) fn extract_trimmed_curve(
             let (local_x, local_y) = point_at(angle);
             let (wx, wy) = transform.transform_point(local_x, local_y);
             let (x, y) = rebase.plan(wx, wy);
-            if x.is_finite() && y.is_finite() {
-                points.push(x);
-                points.push(y);
-            }
+            push_finite_point(&mut points, x, y);
         }
         if points.len() >= 4 {
             out.push_polyline(SymbolicPolyline {

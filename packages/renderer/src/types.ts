@@ -259,9 +259,12 @@ export interface RenderOptions {
    * pipeline. Selected meshes (`selectedId` / `selectedIds`) are exempt at
    * every site, so highlights always paint with their own alpha.
    *
-   * Mixed batches (some entries overridden, some not) take the minimum
-   * override alpha across non-selected ids; selected meshes in the batch
-   * are then redrawn on top by the highlight pass.
+   * The alpha applies to THOSE ENTITIES, not to their colour batch (#4129):
+   * a batch whose entities no longer share one alpha is drawn as one
+   * sub-batch per distinct alpha. A batch that cannot be partitioned — its
+   * CPU geometry was released or evicted, it is colour-merged, or it carries
+   * more than 8 distinct alphas — falls back to the minimum override alpha
+   * across its non-selected ids, so degrading fades too much, never too little.
    *
    * The renderer snapshots this map at frame start, so callers may freely
    * mutate or recycle their copy after `render()` returns.
@@ -280,12 +283,10 @@ export interface RenderOptions {
    * are always exempt, and explicit {@link transparencyOverrides} entries win
    * over the ghost alpha. Same id space as `isolatedIds` (federated global id).
    *
-   * Mixed colour batches resolve to the minimum alpha among their non-selected
-   * entities (same as {@link transparencyOverrides}), so an excepted id that
-   * shares a batch with ghosted ids fades with the batch unless it is also in
-   * `selectedIds` — the selection highlight pass then repaints it opaque. To
-   * guarantee a focused entity stays fully solid, include it in `selectedIds`
-   * (the clash viewer co-selects the focused pair for exactly this reason).
+   * Resolution is per entity, with the same batch partition and the same
+   * whole-batch fallback documented on {@link transparencyOverrides}: an
+   * excepted id sharing a colour batch with ghosted ids stays solid on its own,
+   * without having to be in `selectedIds` as well.
    */
   ghostExceptIds?: Set<number> | null;
   /** Alpha (0..1) for ghosted meshes under {@link ghostExceptIds}. Default 0.12. */

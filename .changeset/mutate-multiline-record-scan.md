@@ -1,0 +1,5 @@
+---
+'@ifc-lite/cli': patch
+---
+
+`mutate --set`'s attribute rewrite located a target entity's STEP record with a regex anchored to one line, plus `indexOf('(')` / `lastIndexOf(')')`. A record an exporter wrapped across several lines, or one whose class keyword was followed by a comment before its `(`, did not match the regex at all: the line was skipped in silence, and the run still reported the mutation as done. Record location now uses the parser's own balanced-parenthesis, string- and comment-aware entity scan to get each target record's exact byte span, and the argument list inside it is split with the same validating splitter `mutate --set` already refuses a mis-scanned record with, so a record this rewrite cannot read safely is still refused rather than guessed at. A record whose located span turns out not to be followed by the STEP record terminator `;` — the sign that a stray, unmatched `)` inside a malformed record fooled the byte scan into stopping early — is refused for the same reason, instead of being partially rewritten with corrupted bytes left trailing it.

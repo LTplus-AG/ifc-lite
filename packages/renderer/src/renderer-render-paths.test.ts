@@ -9,6 +9,7 @@ import { Picker } from './picker.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { RenderOptions, BatchedMesh, Mesh } from './types.js';
 import type { Scene } from './scene.js';
+import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 
 /**
  * Drives the REAL render() loop against a stub GPU so the frame-lifecycle
@@ -1055,6 +1056,255 @@ describe('textured sub-pass carries the per-element origin (#1973)', () => {
 
         assert.deepStrictEqual(translationFor(h, textured[0].uniformBuffer), ORIGIN);
         assert.deepStrictEqual(translationFor(h, textured[1].uniformBuffer), other);
+    });
+});
+
+describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
+    /**
+     * The alpha (uniform float 35) of the LAST write aimed at `uniformBuffer`,
+     * compared against the f32 the GPU actually receives.
+     */
+    function assertAlpha(h: Harness, uniformBuffer: unknown, expected: number, message?: string): void {
+        let actual: number | null = null;
+        for (let i = h.stats.writes.length - 1; i >= 0 && actual === null; i--) {
+            const w = h.stats.writes[i];
+            if (w.buffer === uniformBuffer && w.floats.length > 35) actual = w.floats[35];
+        }
+        assert.strictEqual(actual, Math.fround(expected), message ?? `expected alpha ${expected}`);
+    }
+
+    /** The cached sub-batch whose id set is exactly `ids`. */
+    function subBatchFor(h: Harness, ids: number[]): BatchedMesh {
+        const found = [...sceneOf(h)['partialBatchCache'].values()].filter(
+            (b) => b.expressIds.length === ids.length && ids.every((id) => b.expressIds.includes(id)),
+        );
+        assert.strictEqual(found.length, 1, `expected exactly one sub-batch for {${ids}}`);
+        return found[0];
+    }
+
+    it('draws the named entity faded and its batchmate solid, in one frame', () => {
+        const h = makeHarness();
+        const { grey, red } = seedBatches(h);
+
+        // The reported case: one id in the caller's X-Ray set, and the grey
+        // batch holds a second, unrelated entity at the same colour.
+        h.render({ transparencyOverrides: new Map([[1, 0.18]]) });
+
+        assert.ok(!h.stats.draws.includes(grey.vertexBuffer),
+            'the mixed batch must not draw whole — that is what faded the batchmate');
+        const faded = subBatchFor(h, [1]);
+        const solid = subBatchFor(h, [2]);
+        assert.ok(h.stats.draws.includes(faded.vertexBuffer), 'the X-Rayed entity draws');
+        assert.ok(h.stats.draws.includes(solid.vertexBuffer), 'so does the entity nobody asked to fade');
+        assertAlpha(h, faded.uniformBuffer, 0.18);
+        assertAlpha(h, solid.uniformBuffer, 1, 'batchmate keeps the batch colour alpha');
+        assert.ok(h.stats.draws.includes(red.vertexBuffer), 'an untouched batch still draws whole');
+    });
+
+    it('leaves a batch alone when every entity in it is X-Rayed alike', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+
+        h.render({ transparencyOverrides: new Map([[1, 0.18], [2, 0.18]]) });
+
+        assert.strictEqual(sceneOf(h)['partialBatchCache'].size, 0, 'no sub-batch worth building');
+        assert.ok(h.stats.draws.includes(grey.vertexBuffer));
+        assertAlpha(h, grey.uniformBuffer, 0.18);
+    });
+
+    it('keeps a ghost-excepted entity solid without co-selecting it', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+
+        h.render({ ghostExceptIds: new Set([2]) });
+
+        assert.ok(!h.stats.draws.includes(grey.vertexBuffer));
+        assertAlpha(h, subBatchFor(h, [1]).uniformBuffer, DEFAULT_GHOST_ALPHA);
+        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 1);
+    });
+
+    it('re-splits when the X-Ray set changes and frees the clones when it clears', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+
+        h.render({ transparencyOverrides: new Map([[1, 0.18]]) });
+        const firstFaded = subBatchFor(h, [1]);
+        const firstVb = firstFaded.vertexBuffer as unknown as FakeBuffer;
+
+        // Same content, fresh Map: the epoch must NOT bump, so no rebuild.
+        const buffersAfterFirst = h.stats.createdBuffers.length;
+        h.render({ transparencyOverrides: new Map([[1, 0.18]]) });
+        assert.strictEqual(h.stats.createdBuffers.length, buffersAfterFirst, 'identical content rebuilt the split');
+        assert.strictEqual(subBatchFor(h, [1]), firstFaded);
+
+        // Move the X-Ray to the other entity: both slots re-key by content.
+        h.stats.draws.length = 0;
+        h.render({ transparencyOverrides: new Map([[2, 0.18]]) });
+        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 0.18);
+        assertAlpha(h, subBatchFor(h, [1]).uniformBuffer, 1);
+        assert.strictEqual(firstVb.destroyed, 1, 'the superseded clone is freed exactly once');
+
+        // X-Ray off: the batch draws whole again and the clones are released.
+        h.stats.draws.length = 0;
+        h.render({});
+        assert.strictEqual(scene['partialBatchCache'].size, 0, 'X-Ray clones leaked past the last X-Ray frame');
+        assert.ok(h.stats.draws.includes(grey.vertexBuffer));
+        assertAlpha(h, grey.uniformBuffer, 1);
+        for (const buf of h.stats.createdBuffers) {
+            assert.ok(buf.destroyed <= 1, 'a VRAM-tracked buffer was destroyed more than once');
+        }
+    });
+
+    it('splits only the VISIBLE subset when hide/isolate is also active', () => {
+        const h = makeHarness();
+        const scene = sceneOf(h);
+        const device = h.renderer['device'].getDevice();
+        const pipeline = h.renderer['pipeline'] as never;
+        scene.appendToBatches([triangle(1, GREY), triangle(2, GREY), triangle(3, GREY)], device, pipeline, false);
+        for (const b of scene.getBatchedMeshes()) b.bounds = undefined;
+
+        h.render({ hiddenIds: new Set([3]), transparencyOverrides: new Map([[1, 0.18]]) });
+
+        assertAlpha(h, subBatchFor(h, [1]).uniformBuffer, 0.18);
+        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 1);
+        assert.strictEqual(scene['partialBatchCache'].size, 2, 'the hidden id must not reach either sub-batch');
+    });
+
+    it('draws every faded sub-batch after every solid one, so no ghost is painted over', () => {
+        // A ghost writes no depth, so an opaque draw that lands after it covers
+        // it completely. With two split batches in one frame the naive order
+        // (per parent) interleaves them; the pass has to be split by routing.
+        const h = makeHarness();
+        const scene = sceneOf(h);
+        const device = h.renderer['device'].getDevice();
+        const pipeline = h.renderer['pipeline'] as never;
+        scene.appendToBatches(
+            [triangle(1, GREY), triangle(2, GREY), triangle(3, RED), triangle(4, RED)],
+            device, pipeline, false,
+        );
+        for (const b of scene.getBatchedMeshes()) b.bounds = undefined;
+
+        h.render({ transparencyOverrides: new Map([[1, 0.18], [3, 0.18]]) });
+
+        // "No solid draw lands after any ghost" = max(every solid index) <
+        // min(every faded index). The solid side therefore has to measure its
+        // LAST draw: with indexOf, a solid buffer recorded twice (early and
+        // late) would report the early index and the assertion would pass while
+        // a late opaque draw erased the ghost — failing open.
+        const first = (ids: number[]) => h.stats.draws.indexOf(subBatchFor(h, ids).vertexBuffer);
+        const last = (ids: number[]) => h.stats.draws.lastIndexOf(subBatchFor(h, ids).vertexBuffer);
+        const lastSolid = Math.max(last([2]), last([4]));
+        const firstFaded = Math.min(first([1]), first([3]));
+        assert.ok(firstFaded >= 0 && lastSolid >= 0, 'every sub-batch drew');
+        assert.ok(lastSolid < firstFaded, 'a solid sub-batch drew after a ghost and would erase it');
+    });
+
+    it('re-splits when SELECTION changes, since selection exempts an entity from fading', () => {
+        // Selection is an input to the split (a selected entity is exempt), so it
+        // has to reach the sub-batch cache epoch. It did not: the epoch fast path
+        // returns a cached clone without ever looking at the id set it was asked
+        // for, so the slots kept their old membership. User-visible as: X-Ray an
+        // element, select it, deselect it — and it stays solid.
+        const h = makeHarness();
+        const scene = sceneOf(h);
+        const device = h.renderer['device'].getDevice();
+        const pipeline = h.renderer['pipeline'] as never;
+        scene.appendToBatches(
+            [triangle(1, GREY), triangle(2, GREY), triangle(3, GREY)], device, pipeline, false,
+        );
+        for (const b of scene.getBatchedMeshes()) b.bounds = undefined;
+        const overrides = () => new Map([[1, 0.18], [2, 0.18]]);
+
+        // Entity 1 selected → exempt → it belongs to the SOLID group.
+        h.render({ transparencyOverrides: overrides(), selectedIds: new Set([1]) });
+        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 0.18);
+        assertAlpha(h, subBatchFor(h, [1, 3]).uniformBuffer, 1);
+
+        // Deselect: entity 1 is X-Rayed again and must rejoin the faded group.
+        h.render({ transparencyOverrides: overrides() });
+        assertAlpha(h, subBatchFor(h, [1, 2]).uniformBuffer, 0.18);
+        assertAlpha(h, subBatchFor(h, [3]).uniformBuffer, 1);
+    });
+
+    it('frees the sub-batch slots of a batch that stops splitting while X-Ray stays on', () => {
+        // The clones live outside the GPU residency budget, and the wholesale
+        // drop only fires once hide/isolate AND X-Ray are all off — so a batch
+        // that stops needing a split mid-session used to pin its slots for the
+        // rest of that session.
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+
+        h.render({ transparencyOverrides: new Map([[1, 0.18]]) });
+        const faded = subBatchFor(h, [1]);
+        const solid = subBatchFor(h, [2]);
+        assert.strictEqual(scene['partialBatchCache'].size, 2);
+
+        // Move the X-Ray onto the OTHER batch: grey is uniform again and draws
+        // whole, so neither of its slots can ever be revisited.
+        h.render({ transparencyOverrides: new Map([[3, 0.18]]) });
+
+        assert.ok(h.stats.draws.includes(grey.vertexBuffer), 'the un-split batch draws whole again');
+        assert.strictEqual((faded.vertexBuffer as unknown as FakeBuffer).destroyed, 1, 'orphaned slot leaked');
+        assert.strictEqual((solid.vertexBuffer as unknown as FakeBuffer).destroyed, 1, 'orphaned slot leaked');
+        assert.ok(
+            ![...scene['partialBatchCache'].values()].some((b) => b === faded || b === solid),
+            'a retired clone must not stay reachable in the cache',
+        );
+    });
+
+    it('frees a batch\'s sub-batch clones when the batch itself is rebuilt', () => {
+        // Every other path that destroys a parent batch clears the partial cache
+        // (residency eviction drops that batch's slots; finalize/release/clear
+        // drop all of them). A bucket rebuild did not, and a rebuilt batch gets a
+        // NEW id — which is baked into its slot keys — so the old slots became
+        // unreachable with their GPU buffers still alive. Reachable whenever more
+        // geometry lands in a bucket while hide/isolate is on: a federated model
+        // add, or a late chunk of the same one.
+        const h = makeHarness();
+        const scene = sceneOf(h);
+        const device = h.renderer['device'].getDevice();
+        const pipeline = h.renderer['pipeline'] as never;
+        scene.appendToBatches([triangle(1, GREY), triangle(2, GREY)], device, pipeline, false);
+        for (const b of scene.getBatchedMeshes()) b.bounds = undefined;
+
+        h.render({ hiddenIds: new Set([2]) });
+        assert.strictEqual(scene['partialBatchCache'].size, 1, 'setup: a clone exists for the visible subset');
+        const clone = [...scene['partialBatchCache'].values()][0] as BatchedMesh;
+        const cloneVb = clone.vertexBuffer as unknown as FakeBuffer;
+
+        // More geometry into the SAME bucket → the parent batch is rebuilt.
+        scene.appendToBatches([triangle(3, GREY)], device, pipeline, false);
+
+        assert.strictEqual(cloneVb.destroyed, 1, 'the rebuilt parent left its sub-batch clone pinned');
+        assert.ok(
+            ![...scene['partialBatchCache'].values()].some((b) => b === clone),
+            'a freed clone must not stay reachable in the cache',
+        );
+    });
+
+    it('falls back to the whole batch when its geometry cannot be partitioned', () => {
+        // A colour-merged piece carries many entities in ONE MeshData tagged per
+        // vertex, so it cannot be handed to one subset without handing it to the
+        // other too. The documented degradation is the pre-#4129 fade, never
+        // missing or double-drawn geometry.
+        const h = makeHarness();
+        const scene = sceneOf(h);
+        const device = h.renderer['device'].getDevice();
+        const pipeline = h.renderer['pipeline'] as never;
+        const merged = triangle(1, GREY) as MeshData & { entityIds: Uint32Array };
+        merged.entityIds = new Uint32Array([1, 1, 1]);
+        scene.appendToBatches([merged, triangle(2, GREY)], device, pipeline, false);
+        const batch = scene.getBatchedMeshes()[0];
+        batch.bounds = undefined;
+        assert.strictEqual(scene.canPartitionBatch(batch), false);
+
+        h.render({ transparencyOverrides: new Map([[1, 0.18]]) });
+
+        assert.strictEqual(scene['partialBatchCache'].size, 0);
+        assert.ok(h.stats.draws.includes(batch.vertexBuffer), 'geometry must not go missing');
+        assertAlpha(h, batch.uniformBuffer, 0.18, 'batch-wide minimum, as documented');
     });
 });
 

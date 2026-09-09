@@ -62,8 +62,13 @@ export interface SpatialAnchor {
  * Convert a metre value to the anchor's native length unit for STEP emit.
  * Rounded to 9 decimals to absorb the float noise the division introduces
  * (2.8 / 0.001 = 2799.9999999999995 → 2800).
+ *
+ * Takes only `{ lengthUnitScale }` rather than a full `SpatialAnchor` so
+ * narrower anchor shapes (e.g. `drawing-markup.ts`'s `MarkupAnchor`, which
+ * has no `bodyContextId`/`axisContextId`/`storeyId` — markup geometry has no
+ * use for them) can share this one conversion instead of re-implementing it.
  */
-export function toNativeLength(anchor: SpatialAnchor, metres: number): number {
+export function toNativeLength(anchor: Pick<SpatialAnchor, 'lengthUnitScale'>, metres: number): number {
   const scale = anchor.lengthUnitScale;
   if (!scale || !Number.isFinite(scale) || scale <= 0 || scale === 1) return metres;
   return Math.round((metres / scale) * 1e9) / 1e9;

@@ -88,6 +88,7 @@ import {
 } from './lib/revert-oracle.mjs';
 import { isDependabotDependencyOnly } from './lib/revert-oracle-dependabot.mjs';
 import { isVersionOnlyManifestDiff } from './lib/revert-oracle-version-bump.mjs';
+import { isCommentOnlyDiff } from './lib/revert-oracle-comment-only.mjs';
 import { requiredFeaturePlanOrDie, EXIT_UNHANDLED_CFG_SHAPE } from './lib/revert-oracle-rust-features.mjs';
 import { ciExitCode } from './lib/revert-oracle-ci.mjs';
 import { planRuns } from './lib/revert-oracle-plan-runs.mjs';
@@ -282,6 +283,25 @@ if (
   console.log(
     '  NOT APPLICABLE: every production file is a package.json/Cargo.toml version-only bump ' +
       '(release PR shape); nothing a test could observe.',
+  );
+  process.exit(0);
+}
+
+// A diff whose every changed line is a JS/TS comment changes no runtime
+// behaviour, so no test can ever observe it -- reverting a comment cannot
+// make any test go red, by construction (#4165: a paragraph added above
+// INERT_SUFFIXES documenting the .svg exception, nothing else, was
+// UNOBSERVED even after a test file was added to the branch). See
+// revert-oracle-comment-only.mjs for the full rationale and the
+// must-not-regress case (a real line change in the same diff still counts).
+if (
+  opts.ci &&
+  production.length > 0 &&
+  production.every((e) => isCommentOnlyDiff(e.path, gitOrDie(['diff', '-U0', mergeBase, headSha, '--', e.path])))
+) {
+  console.log(
+    '  NOT APPLICABLE: every production file\'s diff is comment-only (no code changed); ' +
+      'nothing a test could observe.',
   );
   process.exit(0);
 }

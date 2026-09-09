@@ -57,6 +57,7 @@
 import { getAllAttributesForEntity, STEP_TRIVIA } from '@ifc-lite/parser';
 import { formatStepReal } from '@ifc-lite/data';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
+import { findOuterArgs } from './step-outer-args.js';
 
 /** IFC defined types whose values are lengths (STEP writes them as bare reals). */
 const LENGTH_MEASURE_TYPES = new Set([
@@ -279,36 +280,6 @@ function scaleScalarArg(arg: string, factor: number): string {
 }
 
 /**
- * Locate the outer STEP argument list of one entity line: the first `(` (nothing
- * is quoted before the type name) and its matching `)`, honouring quoted strings
- * (with the `''` escape) so a literal `)` inside a string never closes early.
- * Returns `null` for a line without arguments.
- */
-function findOuterArgs(line: string): { open: number; close: number } | null {
-  const open = line.indexOf('(');
-  if (open === -1) return null;
-  let depth = 0;
-  let inString = false;
-  for (let i = open; i < line.length; i++) {
-    const ch = line[i];
-    if (inString) {
-      if (ch === "'") {
-        if (line[i + 1] === "'") i++; // escaped quote
-        else inString = false;
-      }
-      continue;
-    }
-    if (ch === "'") { inString = true; continue; }
-    if (ch === '(') depth++;
-    else if (ch === ')') {
-      depth--;
-      if (depth === 0) return { open, close: i };
-    }
-  }
-  return null;
-}
-
-/**
  * Rescale every length/area/volume-valued datum of one STEP entity line.
  *
  * `typeUpper` is the entity's uppercase STEP type (used for the schema-derived
@@ -341,17 +312,19 @@ export function rescaleEntityLengths(
   let skipValues = false;
   if (hasStructural || plan.unitGuardIdx.length > 0) {
     const args = splitTopLevelStepArguments(inner);
-    // An INVARIANT here, not a reachable branch, and deliberately kept as code
-    // rather than an assertion: `findOuterArgs` returns the span between a `(`
-    // and the `)` that closes it, tracking quotes and depth to get there — so
-    // by construction `inner` has balanced parens, never dips below depth zero,
-    // and cannot end inside a string. Those are exactly the three ways
-    // `splitTopLevelStepArguments` refuses, so a malformed line never reaches
-    // this call: it has already returned at `if (!bounds) return line` above.
-    // The guard is what makes that reasoning explicit (and what the
-    // `string[] | null` type requires); leaving the line untouched is the right
-    // answer if it ever stops holding.
-    if (args === null) return line;
+    // NOT an unreachable invariant: `findOuterArgs` only guarantees SCAN-state
+    // (balanced parens/quotes), while #4173 made `splitTopLevelStepArguments`
+    // also reject a per-slot malformed VALUE, which a scan-clean span can
+    // still fail. Unlike this module's siblings (`merged-context.ts`,
+    // `merged-subcontext.ts`), which fall back to "unknown, don't unify" —
+    // safe for a comparison — there is no permissive fallback for a unit
+    // conversion: fail loudly rather than leave the data in the wrong unit.
+    if (args === null) {
+      throw new Error(
+        `rescaleEntityLengths: cannot split "${typeUpper}"'s slots to rescale — refusing `
+        + `to silently leave its length/area/volume data in the wrong unit: ${line}`,
+      );
+    }
 
     // A live unit-override reference means the value is already in its own unit.
     skipValues = plan.unitGuardIdx.some((idx) => {

@@ -70,7 +70,21 @@ function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null
   return asSourceBytes(source).decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
 }
 
-/** Extract one 0-based STEP attribute of `expressId`'s entity, or null if unreadable. */
+/**
+ * Extract one 0-based STEP attribute of `expressId`'s entity, or null if
+ * unreadable.
+ *
+ * `splitTopLevelStepArguments` returning null (a malformed record, OR — since
+ * #4162's per-slot check — a well-formed record whose split it cannot vouch
+ * for) is one more way to land here, same as no source bytes or no regex
+ * match: every caller of this function already reads null as "unresolvable,
+ * treat permissively" (see {@link resolveContextWcsMetres}'s and
+ * {@link parseVector}'s doc comments) and falls back to NOT unifying rather
+ * than acting on a guess — the safe direction for a WCS/frame comparison,
+ * unlike a unit conversion (`unit-normalize.ts`'s `rescaleEntityLengths`,
+ * which throws instead: there is no permissive fallback for "this length is
+ * in the wrong unit").
+ */
 function getStepAttr(dataStore: IfcDataStore, expressId: number, index: number): string | null {
   const text = decodeEntity(dataStore, expressId);
   const match = text?.match(RECORD_RE);

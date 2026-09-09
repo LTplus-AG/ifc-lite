@@ -85,3 +85,59 @@ describe('BCFNamespace.createViewpoint — sectionPlane fails loud without bound
     expect(viewpoint.clippingPlanes).toBeUndefined();
   });
 });
+
+/**
+ * `toLibraryCamera` set `isOrthographic` correctly but never set
+ * `orthoScale`. `@ifc-lite/bcf`'s `createViewpoint` only emits
+ * `orthogonalCamera` when `camera.isOrthographic && camera.orthoScale !==
+ * undefined` (`packages/bcf/src/viewpoint.ts`), so an orthographic camera
+ * fell into the `perspectiveCamera` branch silently -- the SDK's
+ * `CameraState` has no field an `orthoScale` could come from, so this
+ * throws instead of inventing one.
+ */
+describe('BCFNamespace.createViewpoint — orthographic camera has no orthoScale source', () => {
+  it('throws for camera.mode "orthographic" instead of silently emitting a perspectiveCamera', async () => {
+    const bcf = new BCFNamespace();
+    await expect(
+      bcf.createViewpoint({
+        camera: { mode: 'orthographic', position: [1, 2, 3], target: [0, 0, 0], up: [0, 1, 0] },
+      })
+    ).rejects.toThrow(/camera\.mode is "orthographic"/);
+  });
+
+  it('leaves camera.mode "perspective" unaffected', async () => {
+    const bcf = new BCFNamespace();
+    const viewpoint = (await bcf.createViewpoint({
+      camera: { mode: 'perspective', position: [1, 2, 3], target: [4, 5, 6], up: [0, 1, 0] },
+    })) as Viewpoint;
+    expect(viewpoint.perspectiveCamera).toBeDefined();
+    expect(viewpoint.perspectiveCamera!.cameraViewPoint.x).toBe(1);
+  });
+});
+
+/**
+ * `sectionPlaneToClippingPlane` forwarded only `section` to the library,
+ * dropping `bounds` -- which `createViewpoint`'s own error message tells
+ * callers to pass as a second argument. The library function requires
+ * `bounds` (it reads `bounds.min.x` unconditionally in `viewerToBcfCoords`),
+ * so the recommended escape hatch threw `TypeError: Cannot read properties
+ * of undefined (reading 'x')` instead of producing a clipping plane.
+ */
+describe('BCFNamespace.sectionPlaneToClippingPlane — forwards bounds', () => {
+  it('produces a real clipping plane when bounds are supplied', async () => {
+    const bcf = new BCFNamespace();
+    // NOTE: this wrapper forwards both args untyped to the library, whose
+    // `ViewerSectionPlane.axis` is `'down'|'front'|'side'` (not the SDK's
+    // `ViewpointOptions.sectionPlane.axis` of `'x'|'y'|'z'` -- a documented,
+    // separate, non-blocking asymmetry). Use the library's own axis values
+    // here so this test isolates the `bounds`-forwarding fix.
+    const plane = (await bcf.sectionPlaneToClippingPlane(
+      { axis: 'down', position: 50, enabled: true, flipped: false },
+      { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 10, z: 10 } }
+    )) as { location: { x: number; y: number; z: number }; direction: { x: number; y: number; z: number } };
+    expect(plane).not.toBeNull();
+    expect(Number.isFinite(plane.location.x)).toBe(true);
+    expect(Number.isFinite(plane.location.y)).toBe(true);
+    expect(Number.isFinite(plane.location.z)).toBe(true);
+  });
+});

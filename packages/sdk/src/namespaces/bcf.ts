@@ -82,24 +82,26 @@ export interface IDSBCFOptions {
  * Translate the SDK's flat, tuple-based `ViewpointOptions.camera` (the shape
  * documented as coming from `bim.viewer.getCamera()`) into `@ifc-lite/bcf`'s
  * `ViewerCameraState`, which uses `{x,y,z}` objects and requires a numeric
- * `fov`.
+ * `fov`. Without this, the library read `camera.position.x/.y/.z` off a
+ * `[x,y,z]` array (all undefined), so every viewpoint silently got a
+ * `null`/`NaN` camera. `ViewpointOptions.camera` carries no `fov`, so this
+ * synthesizes the library's own ortho default of 45° (`Math.PI / 4`) rather
+ * than asserting a value nobody supplied; missing `position`/`target`/`up`
+ * default to a camera looking down -Z from the origin.
  *
- * Without this, `createViewpoint` forwarded the SDK shape byte-for-byte and
- * the library read `camera.position.x/.y/.z` off a `[x,y,z]` array — all
- * three undefined, so every viewpoint came back with a
- * `perspectiveCamera.cameraViewPoint` of `{y: null}` (the JSON encoding of
- * an object with only a NaN-turned-null `y`; `x`/`z` collapse to nothing)
- * and a `fieldOfView` of `null`, silently, with no error anywhere.
- *
- * `ViewpointOptions.camera` carries no `fov` at all (the SDK's documented
- * shape never tracked it), so this synthesizes the library's own ortho
- * default of 45° (`Math.PI / 4`, see `orthogonalToCamera`) rather than
- * asserting a value nobody supplied. `position`/`target`/`up` are optional
- * on `ViewpointOptions.camera`; missing ones default to a camera looking
- * down -Z from the origin so the library always receives a well-formed,
- * non-degenerate state.
+ * `mode: 'orthographic'` throws rather than being translated: the library
+ * only emits `orthogonalCamera` when `orthoScale` (the ortho frustum's
+ * view-to-world scale) is also set, and the SDK's `CameraState` has no
+ * field to derive one from (the real `getCamera()` backend returns only
+ * `{mode}`). Omitting it used to fall through to the perspective branch
+ * with no error -- fail loud instead, as below for `sectionPlane`.
  */
 function toLibraryCamera(camera: NonNullable<ViewpointOptions['camera']>): ViewerCameraState {
+  if (camera.mode === 'orthographic') {
+    throw new Error(
+      'bim.bcf.createViewpoint: camera.mode is "orthographic", but this SDK\'s CameraState has no orthographic scale to derive @ifc-lite/bcf\'s required `orthoScale` from -- translating it anyway would silently produce a perspectiveCamera instead. Capture a perspective camera instead, or build a ViewerCameraState yourself (with a real orthoScale) and call @ifc-lite/bcf directly.'
+    );
+  }
   const [px, py, pz] = camera.position ?? [0, 0, 0];
   const [tx, ty, tz] = camera.target ?? [0, 0, -1];
   const [ux, uy, uz] = camera.up ?? [0, 1, 0];
@@ -108,7 +110,7 @@ function toLibraryCamera(camera: NonNullable<ViewpointOptions['camera']>): Viewe
     target: { x: tx, y: ty, z: tz },
     up: { x: ux, y: uy, z: uz },
     fov: Math.PI / 4,
-    isOrthographic: camera.mode === 'orthographic',
+    isOrthographic: false,
   };
 }
 
@@ -296,10 +298,16 @@ export class BCFNamespace {
   // Section plane conversion
   // --------------------------------------------------------------------------
 
-  /** Convert viewer section plane to BCF clipping plane. */
-  async sectionPlaneToClippingPlane(section: unknown): Promise<unknown> {
+  /**
+   * Convert viewer section plane to BCF clipping plane. The library needs
+   * `bounds` (world-space AABB) to turn a percentage position into an
+   * absolute location/direction; this used to forward only `section`, so
+   * the workaround `createViewpoint`'s own error message recommends hit a
+   * raw `TypeError` instead of a clipping plane. `bounds` is now forwarded.
+   */
+  async sectionPlaneToClippingPlane(section: unknown, bounds: unknown): Promise<unknown> {
     const mod = await loadBCF();
-    return (mod.sectionPlaneToClippingPlane as AnyFn)(section);
+    return (mod.sectionPlaneToClippingPlane as AnyFn)(section, bounds);
   }
 
   /** Convert BCF clipping plane to viewer section plane. */

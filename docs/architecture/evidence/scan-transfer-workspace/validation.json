@@ -1,0 +1,68 @@
+{
+  "node22ChangedTests": [
+    {
+      "file": "src/components/viewer/appearance/useScanTransfer.test.tsx",
+      "shard": 64479,
+      "exitCode": 0,
+      "tests": 4,
+      "passed": 4
+    },
+    {
+      "file": "src/components/viewer/appearance/AppearanceScanPanel.test.tsx",
+      "shard": 197117,
+      "exitCode": 0,
+      "tests": 7,
+      "passed": 7
+    },
+    {
+      "file": "src/lib/appearance/scan/transfer.test.ts",
+      "shard": 171321,
+      "exitCode": 0,
+      "tests": 3,
+      "passed": 3
+    },
+    {
+      "file": "src/lib/appearance/page-plan-wasm.test.ts",
+      "shard": 404649,
+      "exitCode": 0,
+      "tests": 2,
+      "passed": 2
+    },
+    {
+      "file": "src/lib/appearance/planner-worker-client.test.ts",
+      "shard": 36106,
+      "exitCode": 0,
+      "tests": 12,
+      "passed": 12
+    },
+    {
+      "file": "src/lib/appearance/snapshot.test.ts",
+      "shard": 641135,
+      "exitCode": 0,
+      "tests": 3,
+      "passed": 3
+    }
+  ],
+  "fullNode26Viewer": {
+    "tests": 7681,
+    "passed": 7668,
+    "skipped": 12,
+    "failed": 1,
+    "existingFailure": "layerStackSlice is both registered and exempt; tracked separately as #4424"
+  },
+  "typecheck": {
+    "tasks": 94,
+    "testFiles": 1905
+  },
+  "buildTasks": 51,
+  "api": {
+    "packages": 45,
+    "exports": 8006
+  },
+  "inputSha256": {
+    "native-request.json": "04eb4e9cd9857b5d798fcb3f107243042f2e4bb203f6e739a5c0a72058fc95a8",
+    "native-source.ifc": "631f7d84e8d7b151caf906e0e6c68d681238cd93d440be011d0a4c42ab6192ab",
+    "native-rgba.bin": "b10c189ab07af7d47a1dd92f3e9f9f818ab54c89baec6c36b912e119d7371b08",
+    "transferred.ifczip": "2d6a3f4d2f675df85903c906fafeaa1a06bdad739ce742f4810bcd29d8b81db9"
+  }
+}

@@ -99,7 +99,7 @@ The planner retains its work and memory limits. A capacity refusal is actionable
 and does not authorize reducing the chosen scope. The public boulder control
 uses an explicitly created 350-triangle region from the full 66,122-triangle
 source, with real image transfer, unknown retention and fresh IFCZIP import.
-This same-source control proves the workflow; it is not evidence of independent
+The [committed browser and independent IFC evidence](evidence/scan-transfer-workspace/README.md) records the original/transfer comparison and normal reimport. This same-source control proves the workflow; it is not evidence of independent
 scan-to-BIM accuracy or full-model transfer capacity. Independent scan/model
 registration, RGB-point adapters and broader transfer acceptance remain #4381
 work.

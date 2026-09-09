@@ -10,6 +10,8 @@
  * converting between IDS reports and BCF topics.
  */
 
+import type { ViewerCameraState } from '@ifc-lite/bcf';
+
 // ============================================================================
 // Option types for the namespace API
 // ============================================================================
@@ -70,6 +72,44 @@ export interface IDSBCFOptions {
   version?: '2.1' | '3.0';
   /** Bounding boxes per entity for viewpoint generation */
   entityBounds?: Map<string, { min: [number, number, number]; max: [number, number, number] }>;
+}
+
+// ============================================================================
+// Viewpoint shape adapters
+// ============================================================================
+
+/**
+ * Translate the SDK's flat, tuple-based `ViewpointOptions.camera` (the shape
+ * documented as coming from `bim.viewer.getCamera()`) into `@ifc-lite/bcf`'s
+ * `ViewerCameraState`, which uses `{x,y,z}` objects and requires a numeric
+ * `fov`.
+ *
+ * Without this, `createViewpoint` forwarded the SDK shape byte-for-byte and
+ * the library read `camera.position.x/.y/.z` off a `[x,y,z]` array — all
+ * three undefined, so every viewpoint came back with a
+ * `perspectiveCamera.cameraViewPoint` of `{y: null}` (the JSON encoding of
+ * an object with only a NaN-turned-null `y`; `x`/`z` collapse to nothing)
+ * and a `fieldOfView` of `null`, silently, with no error anywhere.
+ *
+ * `ViewpointOptions.camera` carries no `fov` at all (the SDK's documented
+ * shape never tracked it), so this synthesizes the library's own ortho
+ * default of 45° (`Math.PI / 4`, see `orthogonalToCamera`) rather than
+ * asserting a value nobody supplied. `position`/`target`/`up` are optional
+ * on `ViewpointOptions.camera`; missing ones default to a camera looking
+ * down -Z from the origin so the library always receives a well-formed,
+ * non-degenerate state.
+ */
+function toLibraryCamera(camera: NonNullable<ViewpointOptions['camera']>): ViewerCameraState {
+  const [px, py, pz] = camera.position ?? [0, 0, 0];
+  const [tx, ty, tz] = camera.target ?? [0, 0, -1];
+  const [ux, uy, uz] = camera.up ?? [0, 1, 0];
+  return {
+    position: { x: px, y: py, z: pz },
+    target: { x: tx, y: ty, z: tz },
+    up: { x: ux, y: uy, z: uz },
+    fov: Math.PI / 4,
+    isOrthographic: camera.mode === 'orthographic',
+  };
 }
 
 // ============================================================================
@@ -160,8 +200,35 @@ export class BCFNamespace {
     // Map SDK's GlobalId (IFC convention) to BCF library's guid-based lists
     const comps = options.components;
     const bcfOptions: Record<string, unknown> = {};
-    if (options.camera) bcfOptions.camera = options.camera;
-    if (options.sectionPlane) bcfOptions.sectionPlane = options.sectionPlane;
+
+    // The library requires a `ViewerCameraState`; default to a plain
+    // perspective camera rather than forwarding `undefined` and letting
+    // `cameraToPerspective` throw on `camera.isOrthographic`.
+    bcfOptions.camera = toLibraryCamera(options.camera ?? { mode: 'perspective' });
+
+    // The library only produces a clipping plane when BOTH `sectionPlane`
+    // and `bounds` (the model's world-space AABB) are supplied
+    // (`createViewpoint` in @ifc-lite/bcf: `if (sectionPlane?.enabled &&
+    // bounds)`). `ViewpointOptions` has no `bounds` field and nothing in the
+    // SDK's documented API surface can produce one — there is no
+    // `bim.viewer`/`bim.spatial` method that returns a model's overall
+    // bounding box, only `bim.spatial.queryBounds`, which does the reverse
+    // (finds entities inside an already-known box). Forwarding an enabled
+    // section plane without bounds used to resolve successfully with the
+    // clipping plane silently absent from the result. Fail loud instead:
+    // a caller that actually has bounds (e.g. from its own geometry access)
+    // can call `bim.bcf.sectionPlaneToClippingPlane` directly and attach the
+    // clipping plane itself.
+    if (options.sectionPlane?.enabled) {
+      throw new Error(
+        'bim.bcf.createViewpoint: sectionPlane.enabled is true, but this SDK has no ' +
+        'model bounds to convert it into a BCF clipping plane (ViewpointOptions has no ' +
+        '`bounds` field, and no bim.* method returns a model\'s overall bounding box). ' +
+        'Either omit sectionPlane to create a camera-only viewpoint, or compute the ' +
+        'clipping plane yourself and call bim.bcf.sectionPlaneToClippingPlane(sectionPlane, ' +
+        'bounds) with your own model bounds, then attach the result to the viewpoint.'
+      );
+    }
 
     if (comps?.selection) {
       bcfOptions.selectedGuids = comps.selection.map(c => c.GlobalId);

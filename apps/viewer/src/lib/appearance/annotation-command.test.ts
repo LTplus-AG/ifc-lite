@@ -84,7 +84,7 @@ for (const federated of [false, true]) test(`native annotation commit survives u
       return { commit() { meshes.set(mesh.expressId, mesh); }, dispose() {} };
     }, getScene: () => ({ getMeshDataPieces(id: number) { const mesh = meshes.get(id); return mesh ? [mesh] : undefined; }, removeMeshesForEntities(ids: Iterable<number>) { for (const id of ids) meshes.delete(id); } }), requestRender() {}, invalidateBVHCache() {} } as unknown as Renderer;
     const allocationBefore = view.peekNextExpressId();
-    const failingRenderer = { ...renderer, prepareTexturedOwner() { throw new Error('injected GPU preparation failure'); } } as Renderer;
+    const failingRenderer = { ...renderer, prepareTexturedOwner() { throw new Error('injected GPU preparation failure'); } } as unknown as Renderer;
     await assert.rejects(commitAnnotationPlane('annotation', asset.id, native, 40, failingRenderer, captureAppearanceSource(view)), /injected GPU/);
     assert.equal(view.getNewEntities().length, 0);
     assert.equal(view.peekNextExpressId(), allocationBefore);

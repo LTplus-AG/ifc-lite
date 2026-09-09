@@ -220,6 +220,13 @@ describe('prepared textured owner insertion (#4308)', () => {
   it('releases cancelled resources exactly once and rejects a late commit', () => {
     const scene = new Scene(), { device } = fakeDevice();
     const destroyed: number[] = [];
+    let texturesDestroyed = 0;
+    const createTexture = device.createTexture;
+    device.createTexture = descriptor => {
+      const texture = createTexture(descriptor);
+      texture.destroy = () => { texturesDestroyed++; };
+      return texture;
+    };
     device.createBuffer = (() => {
       const id = destroyed.push(0) - 1;
       return { destroy() { destroyed[id]++; }, size: 0 };
@@ -227,6 +234,7 @@ describe('prepared textured owner insertion (#4308)', () => {
     const prepared = scene.prepareTexturedOwner(meshData(56, ORIGIN, true), device, fakePipeline);
     prepared.dispose(); prepared.dispose();
     assert.deepEqual(destroyed, [1, 1, 1]);
+    assert.equal(texturesDestroyed, 1);
     assert.equal(scene.getMeshDataPieces(56), undefined);
     assert.equal(scene.getTexturedMeshes().length, 0);
     assert.throws(() => prepared.commit(), /released/);

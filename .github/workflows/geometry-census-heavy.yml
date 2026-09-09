@@ -261,10 +261,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # The two-level timeout is an invariant, so CHECK it instead of
-          # asserting it in a log line: a dispatch can pass `90m` under a
-          # 60-minute job, handing the deadline back to GitHub and restoring
-          # the `cancelled` outcome this wrapper exists to prevent.
           # Clear the per-fixture reports FIRST, before any validation can exit, so the
           # count the "Assert the census actually wrote rows" step makes is a count of
           # what THIS run wrote, and so a run that exits early cannot have last week's
@@ -278,97 +274,17 @@ jobs:
           # where nothing cleans `target/` between runs.
           rm -f target/watertightness_census.heavy.*.tsv
 
-          if [[ ! "$CENSUS_TIMEOUT" =~ ^([0-9]+(\.[0-9]+)?)([smhd]?)$ ]]; then
-            echo "::error::census timeout '$CENSUS_TIMEOUT' is not a coreutils interval."
-            echo "::error::Use a positive number with an optional s, m, h or d suffix, such as 10s or 50m."
-            exit 1
-          fi
-          case "${BASH_REMATCH[3]}" in
-            ''|s) unit_seconds=1 ;;
-            m) unit_seconds=60 ;;
-            h) unit_seconds=3600 ;;
-            d) unit_seconds=86400 ;;
-          esac
-          census_seconds=$(awk -v n="${BASH_REMATCH[1]}" -v u="$unit_seconds" \
-            'BEGIN { printf "%d", n * u }')
-
-          # BOUND BOTH ENDS, because ZERO IS A DISABLE SWITCH RATHER THAN A
-          # TIGHT BOUND. In coreutils a DURATION of 0 means "no time limit":
-          # `timeout 0 sleep 4` sleeps the whole 4 s and exits 0 (measured on
-          # coreutils 9.11). So `0`, `0s` and `0m` sail through an upper-bound
-          # check, remove the deadline entirely, hand the job back to
-          # `timeout-minutes` and restore the exact `cancelled` outcome this
-          # wrapper exists to prevent, while the log line below claims the
-          # constraint holds. Sub-second intervals truncate to 0 here and are
-          # refused alongside them, which costs nothing for a sweep measured in
-          # minutes.
-          if [ "$census_seconds" -le 0 ]; then
-            echo "::error::census timeout '$CENSUS_TIMEOUT' resolves to ${census_seconds}s."
-            echo "::error::coreutils reads a duration of 0 as NO limit, so this REMOVES the deadline"
-            echo "::error::instead of tightening it, and GitHub would cancel the job. A cancelled job"
-            echo "::error::reports to nobody, which is #4127. Pass a positive interval such as 10s."
-            exit 1
-          fi
-
-          # CENSUS_JOB_TIMEOUT_MINUTES is a hand copy of the job's
-          # `timeout-minutes`, which cannot read the `env` context. A copy
-          # nobody checks goes stale in silence: lower `timeout-minutes` to 30
-          # and the default 50m still validates against a 3300 s budget, then
-          # GitHub cancels at 30 minutes. So the budget is taken from the
-          # workflow file itself, which this job checked out, and the copy is
-          # cross-checked against it rather than believed.
-          workflow_file=.github/workflows/geometry-census-heavy.yml
-          if [ ! -r "$workflow_file" ]; then
-            echo "::error::cannot read $workflow_file, so the job's real timeout-minutes is unknown"
-            echo "::error::and the two-level timeout cannot be checked (#4127)."
-            exit 1
-          fi
-          # Job-level `timeout-minutes` only: indented, bare integer, nothing
-          # else on the line. More than one match means this check cannot tell
-          # which line bounds this job, so it says so instead of guessing.
-          mapfile -t declared_minutes < <(sed -nE \
-            's/^[[:space:]]+timeout-minutes:[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' "$workflow_file")
-          if [ "${#declared_minutes[@]}" -ne 1 ]; then
-            echo "::error::found ${#declared_minutes[@]} timeout-minutes lines in $workflow_file, expected exactly 1."
-            echo "::error::This step reads the job budget out of that file; it cannot pick between several."
-            exit 1
-          fi
-          job_timeout_minutes="${declared_minutes[0]}"
-          if [ "$job_timeout_minutes" -ne "$CENSUS_JOB_TIMEOUT_MINUTES" ]; then
-            echo "::error::CENSUS_JOB_TIMEOUT_MINUTES is ${CENSUS_JOB_TIMEOUT_MINUTES}, but $workflow_file"
-            echo "::error::declares timeout-minutes: ${job_timeout_minutes}. The copy has gone stale, and a"
-            echo "::error::stale copy validates this census against a budget the job does not have (#4127)."
-            echo "::error::Change both together."
-            exit 1
-          fi
-          # 300 s of headroom for what the wrapper does not cover: checkout, the
-          # toolchain, the filter assertion and the fixture fetch.
-          #
-          # THE 47-66 s THOSE STEPS MEASURED IS A WARM-CACHE FIGURE, and it does
-          # not cover this job's worst case. It cannot be anything else, from its
-          # own size: the filter assertion runs `cargo test --list`, which on a
-          # cold crate graph is minutes rather than seconds, and a fixture-cache
-          # miss downloads 223 MiB. Neither fits inside 66 s. This job's header
-          # says a cold cargo build is what it does, and the weekly cadence sits
-          # exactly on GitHub's 7-day eviction boundary for an untouched cache,
-          # so a Monday landing the wrong side of it can exceed 300 s.
-          #
-          # Kept at 300 rather than widened because no cold run of this lane has
-          # been timed, and a larger invented number is the same unproven
-          # justification further out. What it costs when it is wrong is bounded
-          # and still reported: the job ends `cancelled` instead of `failure`,
-          # and the report step below fires on `job.status != 'success'` for
-          # exactly that case, which cause 4 in the issue body names. Time a cold
-          # run, then widen this and `timeout-minutes` together.
-          budget_seconds=$(( job_timeout_minutes * 60 - 300 ))
-          if [ "$census_seconds" -gt "$budget_seconds" ]; then
-            echo "::error::census timeout '$CENSUS_TIMEOUT' is ${census_seconds}s, over the ${budget_seconds}s"
-            echo "::error::left by the job's ${job_timeout_minutes}-minute timeout-minutes."
-            echo "::error::GitHub would cancel the job first, and a cancelled job reports to nobody (#4127)."
-            echo "::error::Raise timeout-minutes and CENSUS_JOB_TIMEOUT_MINUTES together, or lower this value."
-            exit 1
-          fi
-          echo "census timeout: $CENSUS_TIMEOUT (${census_seconds}s), within the ${budget_seconds}s left by timeout-minutes: ${job_timeout_minutes}"
+          # The whole accept/reject table this used to spell out inline lives in
+          # scripts/check-census-timeout.mjs, with one assertion per row in its
+          # sibling test (#4156). What it refuses and why is documented there;
+          # what matters here is that the two-level timeout is CHECKED rather
+          # than asserted in a log line, because a dispatch can pass `90m` under
+          # a 60-minute job, hand the deadline back to GitHub and restore the
+          # `cancelled` outcome this wrapper exists to prevent. It reads the two
+          # env values above and the real `timeout-minutes` out of this file,
+          # and prints the accepted value with the budget it was checked
+          # against.
+          node scripts/check-census-timeout.mjs
 
           # `|| status=$?` rather than a bare call: `set -e` would abort the step
           # here and the exit-code message below would never print. Nothing is

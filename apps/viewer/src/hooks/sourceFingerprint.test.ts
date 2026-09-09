@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { computeSourceFingerprint } from './sourceFingerprint.js';
+import { computeSourceFingerprint, computeSourceFingerprintFromBlob } from './sourceFingerprint.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 
 /**
@@ -168,5 +168,45 @@ describe('computeSourceFingerprint', () => {
       computeSourceFingerprint(b).hex,
       'a gap edit is invisible to the fingerprint (the documented limitation)',
     );
+  });
+});
+
+describe('computeSourceFingerprintFromBlob', () => {
+  it('agrees bit-for-bit with the buffer version for the same bytes (reused hash, not reinvented)', async () => {
+    const buf = fill(1_000_000, 11);
+    const fromBuffer = computeSourceFingerprint(buf);
+    const fromBlob = await computeSourceFingerprintFromBlob(new Blob([buf]));
+    assert.equal(fromBlob.hex, fromBuffer.hex);
+    assert.equal(fromBlob.hash, fromBuffer.hash);
+  });
+
+  it('agrees for a small file (all windows overlap head/tail)', async () => {
+    const buf = fill(500, 3);
+    const fromBuffer = computeSourceFingerprint(buf);
+    const fromBlob = await computeSourceFingerprintFromBlob(new Blob([buf]));
+    assert.equal(fromBlob.hex, fromBuffer.hex);
+  });
+
+  it('agrees for an empty file', async () => {
+    const fromBuffer = computeSourceFingerprint(new ArrayBuffer(0));
+    const fromBlob = await computeSourceFingerprintFromBlob(new Blob([]));
+    assert.equal(fromBlob.hex, fromBuffer.hex);
+  });
+
+  it('still distinguishes a HEAD change without reading the whole file into memory', async () => {
+    const a = fill(1_048_576, 42);
+    const b = a.slice(0);
+    new Uint8Array(b)[32 * 1024] ^= 0xff;
+    const fpA = await computeSourceFingerprintFromBlob(new Blob([a]));
+    const fpB = await computeSourceFingerprintFromBlob(new Blob([b]));
+    assert.notEqual(fpA.hex, fpB.hex);
+  });
+
+  it('accepts a File (the type FederatedModel.sourceFile actually holds)', async () => {
+    const buf = fill(10_000, 5);
+    const file = new File([buf], 'model.ifc', { type: 'application/octet-stream' });
+    const fromBuffer = computeSourceFingerprint(buf);
+    const fromFile = await computeSourceFingerprintFromBlob(file);
+    assert.equal(fromFile.hex, fromBuffer.hex);
   });
 });

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { splitTopLevelArgs } from './step-argument-parser.js';
+
 /**
  * Attribute-list reconciliation for a genuine cross-schema entity RENAME
  * whose lists fail `schema-converter.ts`'s strict-prefix test (neither list
@@ -9,46 +11,34 @@
  * `schema-converter.ts`'s line budget (`scripts/module-size-allowlist.txt`).
  */
 
-/** Split a raw STEP attribute list into its top-level (comma-separated)
- *  value strings, respecting nested parentheses and single-quoted strings.
- *  Mirrors `schema-converter.ts`'s `trimAttributes` scanner but returns
- *  every value instead of stopping at a budget. Empty list → []. */
+/**
+ * Split a raw STEP attribute list into its top-level (comma-separated)
+ * value strings, respecting nested parentheses and single-quoted strings.
+ * Empty list → [].
+ *
+ * A thin wrapper over `step-argument-parser.ts`'s `splitTopLevelArgs` — the
+ * same package's general-purpose top-level-comma splitter, already used by
+ * seven other read paths in this package (`retype.ts`, `reference-collector.ts`,
+ * `merged-empty-containers.ts`, etc). This module used to carry its own
+ * near-identical scan; kept here as `remapRenamedAttributesByName`'s only
+ * caller expects, but no longer a fourth copy of the same rule
+ * (LTplus-AG/ifc-lite#4125). `trimAttributes` in `schema-converter.ts` is
+ * NOT folded in here: it stops early at a positional budget, which is a
+ * genuinely different rule, not a copy of this one.
+ *
+ * `splitTopLevelArgs` behaves differently from the old local scanner in two
+ * ways: it drops a trailing empty argument (`"a,"` → `['a']`) rather than
+ * keeping it as `['a', '']`, and it trims each token
+ * (`"a, b,c"` → `['a','b','c']` instead of `['a',' b','c']`). Both are safe
+ * for `remapRenamedAttributesByName`'s real inputs: neither `IFCDOORTYPE`
+ * nor `IFCWINDOWTYPE`'s fixed-arity attribute list has a trailing comma in
+ * well-formed STEP, so the first difference never fires; and STEP has no
+ * semantic significance to whitespace between top-level tokens, so a trimmed
+ * token is the same value either way. Pinned by
+ * `schema-converter-attr-remap.test.ts`.
+ */
 export function splitTopLevelAttributes(attrsRaw: string): string[] {
-  if (!attrsRaw.trim()) return [];
-  const attrs: string[] = [];
-  let depth = 0;
-  let inString = false;
-  let current = '';
-  for (let i = 0; i < attrsRaw.length; i++) {
-    const ch = attrsRaw[i];
-    if (ch === "'" && !inString) {
-      inString = true;
-      current += ch;
-    } else if (ch === "'" && inString) {
-      if (i + 1 < attrsRaw.length && attrsRaw[i + 1] === "'") {
-        current += "''";
-        i++;
-        continue;
-      }
-      inString = false;
-      current += ch;
-    } else if (inString) {
-      current += ch;
-    } else if (ch === '(') {
-      depth++;
-      current += ch;
-    } else if (ch === ')') {
-      depth--;
-      current += ch;
-    } else if (ch === ',' && depth === 0) {
-      attrs.push(current);
-      current = '';
-    } else {
-      current += ch;
-    }
-  }
-  attrs.push(current);
-  return attrs;
+  return splitTopLevelArgs(attrsRaw);
 }
 
 /**

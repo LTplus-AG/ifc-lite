@@ -207,7 +207,7 @@ function adaptFilter(filter: SelectorFilter): FilterRule | string {
     case 'location':
       return adaptLocation(filter.op, filter.value, filter.text);
     case 'type':
-      return `${quote(filter.text)}: matching an element's type by name is not supported yet (#4094)`;
+      return adaptTypeName(filter.op, filter.value, filter.text);
     case 'parent':
       return `${quote(filter.text)}: "parent=" is not supported`;
     case 'query':
@@ -363,5 +363,25 @@ function adaptLocation(op: SelectorOp, value: SelectorValue, text: string): Filt
   // inside a space on that storey does NOT match, which is where this differs
   // from IfcOpenShell's "directly or indirectly" (#4094).
   return Rule.storey([value.text], setOp);
+}
+
+/**
+ * `type=WT01` — matches the RELATING TYPE's Name via `IfcRelDefinesByType`
+ * (`Rule.typeName` / `filter-evaluate.ts`'s `relatingTypeNameOf`), not the
+ * element's own IFC class (that's `IfcTypeRule`, built from a bare class
+ * term like `IfcWall`). Mirrors `adaptMaterial`: NULL is rejected (a type
+ * name is either the string on the relating type or the term reports
+ * nothing, the same "cannot be compared to NULL" the material dimension
+ * uses, rather than reusing the property-rule NULL→isSet/isNotSet
+ * convention, since a bare `type=` filter — unlike a pset property — is
+ * about a single positive string, not an optional field).
+ */
+function adaptTypeName(op: SelectorOp, value: SelectorValue, text: string): FilterRule | string {
+  if (value.kind === 'null') return `${quote(text)}: "type=" cannot be compared to NULL`;
+  const stringOp = stringOpFor(op, value);
+  if (!stringOp) return unsupportedOp(text, op, value);
+  const invalid = regexProblem(value);
+  if (invalid) return `${quote(text)}: ${invalid}`;
+  return Rule.typeName(stringOp, literalOf(value), regexValueKind(value));
 }
 

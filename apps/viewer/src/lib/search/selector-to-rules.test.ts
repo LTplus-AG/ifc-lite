@@ -173,11 +173,14 @@ describe('selectorToFilterRules — the documented examples', () => {
     );
   });
 
-  it('12. location becomes a storey rule; type= is reported', () => {
+  it('12. location becomes a storey rule; type= becomes a relating-type-Name rule (#4094)', () => {
     const out = adapt('IfcWall, type=WT01, location="Level 3"');
-    assert.deepEqual(out.rules, [Rule.ifcType(WALLS, 'in'), Rule.storey(['Level 3'], 'in')]);
-    assert.equal(out.unsupported.length, 1);
-    assert.ok(out.unsupported[0]?.includes('type=WT01'), out.unsupported[0]);
+    assert.deepEqual(out.rules, [
+      Rule.ifcType(WALLS, 'in'),
+      Rule.typeName('eq', 'WT01'),
+      Rule.storey(['Level 3'], 'in'),
+    ]);
+    assert.equal(out.unsupported.length, 0);
   });
 
   it('13. a classification matched by a regular expression', () => {
@@ -418,11 +421,11 @@ describe('selectorToFilterRules — nothing is dropped in silence', () => {
   });
 
   it('every unsupported entry quotes the text the user typed', () => {
-    // Only `type=WT01`, `parent=Foo` and the dropped "+ IfcDoor" group remain
-    // unsupported here — the GlobalId subtraction and Description=x now both
+    // Only `parent=Foo` and the dropped "+ IfcDoor" group remain unsupported
+    // here — the GlobalId subtraction, Description=x and type=WT01 now all
     // become rules (#4094).
     const out = adapt(`IfcWall, ! ${GUID}, type=WT01, parent=Foo, Description=x + IfcDoor`);
-    assert.equal(out.unsupported.length, 3);
+    assert.equal(out.unsupported.length, 2);
     for (const entry of out.unsupported) {
       assert.match(entry, /^"/, `entry does not start with the quoted source: ${entry}`);
     }

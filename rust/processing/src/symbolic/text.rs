@@ -69,6 +69,17 @@ pub(super) fn extract_text_literal(
 
     let (wx, wy) = composed.transform_point(0.0, 0.0);
     let plan = rebase.plan(wx, wy);
+    // Same finiteness hazard as items.rs's polyline/curve paths and fill.rs's
+    // boundary rings: a malformed STEP REAL (e.g. `1.E400`) in the placement
+    // chain reaches here as Infinity/NaN. Unlike `tz` (which legitimately
+    // carries `f32::NAN` as the "unresolved placement" sentinel via
+    // `Transform2D::unresolved()`), `tx`/`ty` never do — identity leaves them
+    // at 0.0 — so a non-finite (x, y) here is genuine malformed data, not a
+    // sentinel, and the whole text item is dropped rather than emitted with
+    // a corrupt position.
+    if !plan.0.is_finite() || !plan.1.is_finite() {
+        return;
+    }
     let raw_scale = composed.scale();
     // Height keeps a ZERO scale (the glyph collapses exactly as the symbol does);
     // only a non-finite scale falls back. The direction below needs the stricter

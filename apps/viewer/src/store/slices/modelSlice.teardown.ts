@@ -18,13 +18,28 @@
  * the entry point, in today's order.
  */
 
-import { defineSliceTeardown, notApplicable } from '../teardown.js';
+import { defineSliceTeardown } from '../teardown.js';
 
 export const modelTeardown = defineSliceTeardown('modelSlice', ['models', 'activeModelId'], {
-  // `resetViewerState` deliberately does NOT clear models — "use
+  // `resetViewerState` deliberately does NOT clear `models` — "use
   // clearAllModels() for that" (store/index.ts). A file load swaps the
   // ACTIVE model; the federation itself survives it.
-  'session-reset': notApplicable,
+  //
+  // `activeModelId` DOES null here (#4159 fix), unlike `models`. Every
+  // production call site pairs `resetViewerState()` with an immediate
+  // `clearAllModels()` in the same synchronous tick — which already nulls
+  // `activeModelId` a moment later — so this is not a behaviour change for
+  // any of them, only a removal of the moment in between. That moment in
+  // between was a real bug: the composed 'session-reset' patch wipes several
+  // slices' fields (e.g. drawing2DSlice's `measure2DResults`) to their
+  // defaults in this SAME `set()` call, and with `activeModelId` left
+  // pointing at the OUTGOING model, any code subscribed to the store —
+  // `useDrawing2DPersistence.ts`'s save subscription, concretely — reads a
+  // state that looks like "the still-active model's markup was just cleared
+  // by the user" and persists the wipe over that model's saved data. Nulling
+  // it here closes that window instead of asking every subscriber to guess
+  // whether a field change was a reset.
+  'session-reset': () => ({ activeModelId: null }),
   'all-models-cleared': () => ({ models: new Map(), activeModelId: null }),
   'model-removed': (scope, state) => {
     const models = state.models;

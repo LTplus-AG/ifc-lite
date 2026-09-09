@@ -199,6 +199,22 @@ export function splitTopLevelStepArguments(input: string): string[] | null {
   for (let i = 0; i < input.length; i++) {
     const char = input[i];
 
+    // A `/* ... */` comment's content is unrestricted ISO-10303-21 text — a
+    // comma, an unbalanced paren, or an odd number of `'` inside one would
+    // otherwise corrupt this scan's comma/paren/quote state, even though the
+    // comment is not itself an argument boundary. Skip the whole region
+    // (open marker through the matching `*/`, or to the end of the text when
+    // unterminated) as one atomic unit so its content cannot be read as
+    // structure; the per-part `isWellFormedStepSlot` check below still
+    // rejects an unterminated comment via `skipTrivia`.
+    if (!inString && char === '/' && input[i + 1] === '*') {
+      const end = input.indexOf('*/', i + 2);
+      const stop = end === -1 ? input.length : end + 2;
+      current += input.slice(i, stop);
+      i = stop - 1;
+      continue;
+    }
+
     if (char === "'") {
       current += char;
       if (inString && i + 1 < input.length && input[i + 1] === "'") {
@@ -229,5 +245,151 @@ export function splitTopLevelStepArguments(input: string): string[] | null {
 
   if (inString || depth !== 0) return null;
   parts.push(current);
+
+  // The three checks above (quote/paren/final-depth) track SCAN state, not
+  // slot content. A phantom string can swallow a real boundary — an
+  // undoubled `'` inside two different string-typed arguments reads as one
+  // string spanning both, so the text between them (`),$,IFCLABEL(` and
+  // similar) gets folded into a single part while quote parity and paren
+  // depth both stay clean — and a comment sitting alone between two commas
+  // (no value of its own) becomes its own phantom slot, shifting every index
+  // after it. Both leave every check above satisfied on a slot list that is
+  // not the record's actual arguments (#4162). Reject the whole split rather
+  // than hand back parts whose boundaries do not correspond to real slots —
+  // a null here is what lets `replaceStepArgument`'s by-index write refuse
+  // instead of landing on the wrong attribute.
+  for (const part of parts) {
+    if (!isWellFormedStepSlot(part)) return null;
+  }
   return parts;
+}
+
+/**
+ * Whether `part` — one slot `splitTopLevelStepArguments` already separated on
+ * a top-level comma, raw text including any surrounding whitespace/comments —
+ * is a single well-formed STEP value (a string literal, a binary literal
+ * (`"..."`), `$`, `*`, a bare keyword / enumeration / number / `#`-reference
+ * token, or a typed value or list `NAME(...)` / `(...)`), or is empty.
+ *
+ * Empty is deliberately accepted, matching the docstring above: `a,,b` is one
+ * empty part, not a rejection, so slot indices after it stay aligned with what
+ * the entity parser counts. A part that is ONLY a comment (no value) is NOT
+ * given that same pass — a lone `/* c *​/` between two commas is not a
+ * value at all, so treating it as one more empty slot is exactly the index
+ * shift that produces a phantom slot; rejecting the whole split is the
+ * correct answer there, same as any other malformed argument list.
+ *
+ * A `/` that is not opening a comment cannot be swallowed into a bare token:
+ * it is outside every token's character set, so it stops the scan and the
+ * top-of-function "consumed to the end" check then fails the whole part.
+ */
+function isWellFormedStepSlot(part: string): boolean {
+  if (part.trim() === '') return true;
+
+  let i = 0;
+  const n = part.length;
+
+  const skipTrivia = (): void => {
+    for (;;) {
+      while (i < n && /\s/.test(part[i])) i++;
+      if (part[i] === '/' && part[i + 1] === '*') {
+        const end = part.indexOf('*/', i + 2);
+        if (end === -1) {
+          i = n; // unterminated: leave content unconsumed so parseValue fails
+          return;
+        }
+        i = end + 2;
+        continue;
+      }
+      break;
+    }
+  };
+
+  const parseParenList = (): boolean => {
+    // Caller has already consumed the opening '('.
+    skipTrivia();
+    if (part[i] === ')') {
+      i++;
+      return true;
+    }
+    for (;;) {
+      if (!parseValue()) return false;
+      skipTrivia();
+      if (part[i] === ',') {
+        i++;
+        skipTrivia();
+        continue;
+      }
+      if (part[i] === ')') {
+        i++;
+        return true;
+      }
+      return false;
+    }
+  };
+
+  const parseValue = (): boolean => {
+    skipTrivia();
+    if (i >= n) return false;
+    const c = part[i];
+
+    if (c === "'") {
+      i++;
+      while (i < n) {
+        if (part[i] === "'") {
+          if (part[i + 1] === "'") {
+            i += 2;
+            continue;
+          }
+          i++;
+          return true;
+        }
+        i++;
+      }
+      return false; // unterminated string
+    }
+
+    if (c === '(') {
+      i++;
+      return parseParenList();
+    }
+
+    // Binary literal (ISO 10303-21 `"..."`, e.g. `"0123ABC"` — an
+    // IfcBinary-typed value, distinct from the `'...'` string literal above.
+    // Unlike a string, `"` has no doubled-quote escape in STEP: ifcopenshell's
+    // tokenizer (`IfcParse.cpp`, `GeneralTokenPtr`/`IfcSpfLexer::Next`)
+    // classifies a token as binary purely by its leading `"` and does not
+    // decode escapes inside it, so the first following `"` ends the literal.
+    if (c === '"') {
+      i++;
+      while (i < n && part[i] !== '"') i++;
+      if (i >= n) return false; // unterminated binary literal
+      i++;
+      return true;
+    }
+
+    if (c === '$' || c === '*') {
+      i++;
+      return true;
+    }
+
+    // Bare token: keyword, enumeration (`.NOTDEFINED.`), number (incl.
+    // exponent), or an `#`-prefixed entity reference.
+    const start = i;
+    while (i < n && /[A-Za-z0-9_.+\-#]/.test(part[i])) i++;
+    if (i === start) return false;
+
+    // A typed value: NAME(...), trivia tolerated before '(' the same way
+    // `RECORD_PREFIX_RE` above tolerates it before a record's own '('.
+    skipTrivia();
+    if (part[i] === '(') {
+      i++;
+      return parseParenList();
+    }
+    return true;
+  };
+
+  if (!parseValue()) return false;
+  skipTrivia();
+  return i === n;
 }

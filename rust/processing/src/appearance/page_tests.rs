@@ -10,7 +10,7 @@ fn fixture() -> (PageAppearanceRequest, Vec<u8>) {
     let mut rgba = page;
     rgba.extend([20, 80, 160, 255, 80, 160, 240, 255, 160, 40, 80, 255, 240, 80, 20, 255]);
     (PageAppearanceRequest {
-        appearance: AppearanceRequest { schema: "IFC4".into(), source_revision: "page-fixture".into(),
+        appearance: AppearanceRequest { representation_policy: RepresentationPolicy::Preserve, schema: "IFC4".into(), source_revision: "page-fixture".into(),
             next_express_id: 100, product_ids: vec![10, 30], image_uri: "appearance/page.png".into(),
             repeat_s: false, repeat_t: false, mapping: Mapping::Planar { frame: MappingFrame::World,
                 origin: [0.2, 0.2, 0.], axis_u: [1., 0., 0.], axis_v: [0., 1., 0.], metres_per_tile: [0.4, 0.4] } },

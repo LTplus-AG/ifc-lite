@@ -14,6 +14,7 @@ mod page_atlas;
 mod page_raster;
 mod page_types;
 mod page_source;
+mod page_material;
 mod source;
 mod texture_budget;
 mod types;

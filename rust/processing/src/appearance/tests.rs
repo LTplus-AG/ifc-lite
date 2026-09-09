@@ -66,6 +66,8 @@ fn wire(value: &A) -> Value {
         A::Enum(s) => json!(format!(".{s}.")),
         A::Integer(n) => json!(n),
         A::Float(n) => json!(n),
+        A::List(values) if values.len() == 2 && values[0].as_string().is_some_and(|s| s.starts_with("IFC")) =>
+            json!({"typed": {"type": values[0].as_string().unwrap(), "value": wire(&values[1])}}),
         A::List(values) => Value::Array(values.iter().map(wire).collect()),
         A::Null => Value::Null,
         A::Derived => json!("*"),
@@ -73,6 +75,10 @@ fn wire(value: &A) -> Value {
 }
 fn step(value: &Value) -> String {
     match value {
+        Value::Object(value) if value.contains_key("typed") => {
+            let typed = &value["typed"];
+            format!("{}({})", typed["type"].as_str().unwrap(), step(&typed["value"]))
+        },
         Value::Null => "$".into(),
         Value::Array(values) => format!(
             "({})",

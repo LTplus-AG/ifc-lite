@@ -23,13 +23,13 @@ export async function preparePdfPagePreview(options: {
 }) {
   const { snapshot, productIds, source, settings, planner, owner, signal } = options;
   const pdf = source.pdf;
-  if (!pdf?.calibration || !source.assetId) throw new Error('Choose two page points and enter their measured distance.');
+  if (!pdf || !source.calibration || !source.assetId) throw new Error('Choose two page points and enter their measured distance.');
   const orientation = appearanceMapping({ ...settings, kind: 'planar' });
   if (orientation.kind !== 'planar') throw new Error('PDF pages need planar placement.');
   const normals: Record<AppearanceDraftSettings['plane'], [number, number, number]> = {
     xy: [0, 0, 1], xz: [0, -1, 0], yz: [1, 0, 0],
   };
-  const calibration = await calibratePdfAppearance(pdf.recipe, pdf.calibration, {
+  const calibration = await calibratePdfAppearance(pdf.recipe, source.calibration, {
     worldAnchor: orientation.origin, worldDirection: orientation.axisU, planeNormal: normals[settings.plane],
   });
   abort(signal); snapshot.validate();

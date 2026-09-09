@@ -271,9 +271,9 @@ export function useAppearancePanel(): AppearancePanelViewProps {
     allowPdf: true, pdf: pdfSource.controls, pdfPassword: pdfSource.passwordPrompt,
     calibration: selectedSource?.pdf && selectedSource.thumbnailUrl ? {
       frame: pdfCalibrationFrame(selectedSource.pdf.recipe), sourceKey: `${selectedSource.id}:${selectedSource.pdf.recipe.page.pageNumber}`, thumbnailUrl: selectedSource.thumbnailUrl,
-      value: selectedSource.pdf.calibration, onChange: calibration => {
+      value: selectedSource.calibration, onChange: calibration => {
         const current = useViewerStore.getState().appearanceSources.find(source => source.id === selectedSource.id);
-        if (current?.pdf) useViewerStore.getState().updateAppearanceSource({ ...current, pdf: { ...current.pdf, calibration } });
+        if (current) useViewerStore.getState().updateAppearanceSource({ ...current, calibration });
         setPreviewEnabled(true);
       },
     } : undefined,

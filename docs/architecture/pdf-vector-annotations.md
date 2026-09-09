@@ -22,7 +22,9 @@ Reuse its entity and drawing-context conventions. Its comments currently
 identify it as write-side support; its presence does not prove that imported
 annotations render in 3D.
 
-The current Rust router has no standalone processor for those three primitives.
+The Rust router has no standalone registry processor for those three primitives.
+Product-scoped polygonal fill support is described in [the fill controls](evidence/annotation-fills/README.md);
+curves and text remain separate future geometry slices.
 It also deliberately omits type-level annotation/footprint geometry from the
 building body's 3D mesh. Do not globally enable every `Curve2D` or `FootPrint`
 representation to make PDF output appear: that would also draw representations

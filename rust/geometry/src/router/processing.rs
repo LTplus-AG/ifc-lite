@@ -122,7 +122,7 @@ impl GeometryRouter {
                 }
 
                 // Only process solid/surface geometry representations
-                if !super::is_body_representation(rep_type) {
+                if !super::is_body_representation(rep_type) && !super::annotation::accepts(element, rep_type) {
                     continue; // Skip non-solid representations like 'Axis', 'Curve2D', etc.
                 }
             }
@@ -136,7 +136,9 @@ impl GeometryRouter {
 
             // Process each representation item
             for item in items {
-                let mesh = self.process_representation_item(&item, decoder)?;
+                let mesh = if element.ifc_type == IfcType::IfcAnnotation && item.ifc_type == IfcType::IfcAnnotationFillArea {
+                    self.process_annotation_fill(&item, decoder)?
+                } else { self.process_representation_item(&item, decoder)? };
                 if instancing_enabled() && !mesh.positions.is_empty() {
                     instanceable_item_count += 1;
                     single_instance_meta = if instanceable_item_count == 1 {
@@ -263,7 +265,7 @@ impl GeometryRouter {
                 }
 
                 // Only process solid/surface geometry representations
-                if !super::is_body_representation(rep_type) {
+                if !super::is_body_representation(rep_type) && !super::annotation::accepts(element, rep_type) {
                     continue;
                 }
             }
@@ -277,6 +279,10 @@ impl GeometryRouter {
 
             // Process each representation item, preserving geometry IDs
             for item in items {
+                if element.ifc_type == IfcType::IfcAnnotation && item.ifc_type == IfcType::IfcAnnotationFillArea {
+                    sub_meshes.add(item.id, self.process_annotation_fill(&item, decoder)?);
+                    continue;
+                }
                 self.collect_submeshes_from_item(
                     &item,
                     decoder,

@@ -61,7 +61,7 @@ const fakePipeline = {
 
 /** A unit triangle at the model origin, offset into world space by `origin`. */
 function meshData(expressId: number, origin: [number, number, number], textured: boolean): MeshData {
-  const base: Record<string, unknown> = {
+  const base: MeshData = {
     expressId,
     positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
     normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
@@ -71,9 +71,9 @@ function meshData(expressId: number, origin: [number, number, number], textured:
   };
   if (textured) {
     base.uvs = new Float32Array([0, 0, 1, 0, 0, 1]);
-    base.texture = { width: 1, height: 1, data: new Uint8Array([255, 255, 255, 255]) };
+    base.texture = { width: 1, height: 1, rgba: new Uint8Array([255, 255, 255, 255]), repeatS: false, repeatT: false };
   }
-  return base as unknown as MeshData;
+  return base;
 }
 
 /** World-space AABB of `positions` once `origin` is folded back in. */

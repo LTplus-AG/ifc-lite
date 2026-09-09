@@ -24,6 +24,7 @@
 
 import type { CollabSession } from '@ifc-lite/collab';
 import type { SeedGeometryReport } from './geometry-sync';
+import { TextureSharingError } from './room-texture';
 
 /** Key under the doc's top-level `meta` map (schema `TOP.META`). */
 export const GEOMETRY_SEED_META_KEY = 'geometrySeed';
@@ -113,6 +114,9 @@ export function classifySeed(report: SeedGeometryReport | null | undefined): See
 export function seedFailureMessage(report: SeedGeometryReport | null | undefined): string | null {
   const outcome = classifySeed(report);
   if (!report || outcome === 'nothing-to-seed' || outcome === 'seeded') return null;
+  if (report.error instanceof TextureSharingError) {
+    return `${report.error.message} ${report.failed} surface(s) were not shared.`;
+  }
   if (outcome === 'partial') {
     const missing = report.offered - report.seeded;
     if (report.failed > 0) {

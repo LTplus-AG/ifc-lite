@@ -152,7 +152,7 @@
    452 apps/viewer/src/lib/slab-edit.ts
    412 apps/viewer/src/lib/sources/persistence.ts
    426 apps/viewer/src/lib/tours/controller.ts
-   810 apps/viewer/src/sdk/adapters/export-adapter.ts
+   812 apps/viewer/src/sdk/adapters/export-adapter.ts
    638 apps/viewer/src/services/extensions/host.ts
    561 apps/viewer/src/services/ifc-cache.ts
    581 apps/viewer/src/store/basketVisibleSet.ts
@@ -215,7 +215,7 @@
   1106 packages/data/scripts/generate-ifc-schema.ts
    432 packages/data/src/property-table.ts
    459 packages/data/src/step-serializers.ts
-   507 packages/data/src/types.ts
+   508 packages/data/src/types.ts
    439 packages/diff/src/fingerprint.ts
    550 packages/drawing-2d/src/drawing-generator.ts
    507 packages/drawing-2d/src/dxf/convert.ts
@@ -279,9 +279,9 @@
    558 packages/mutations/src/csv-connector.ts
   1914 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
-   770 packages/parser/src/columnar-parser.ts
+   920 packages/parser/src/columnar-parser.ts
    467 packages/parser/src/compact-entity-index.ts
-   492 packages/parser/src/data-store-transport.ts
+   530 packages/parser/src/data-store-transport.ts
    827 packages/parser/src/material-resolver.ts
    796 packages/parser/src/on-demand-extractors.ts
    594 packages/parser/src/schedule-extractor.ts

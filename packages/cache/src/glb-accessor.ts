@@ -60,13 +60,15 @@ function getComponentCount(type: string): number {
 export function readAccessorData(
   gltf: GLTFDocument,
   bin: Uint8Array,
-  accessorIdx: number
+  accessorIdx: number,
+  expectedType?: string
 ): Float32Array | Uint32Array | Uint16Array | Uint8Array {
   const accessor = gltf.accessors?.[accessorIdx];
   if (!accessor) {
     throw new Error(`Accessor ${accessorIdx} not found`);
   }
 
+  if (expectedType && accessor.type !== expectedType) throw new Error(`GLB: accessor ${accessorIdx} must be ${expectedType}`);
   if (accessor.sparse) throw new Error('GLB: sparse accessors are not supported');
   const bufferView = gltf.bufferViews?.[accessor.bufferView];
   if (!bufferView) {

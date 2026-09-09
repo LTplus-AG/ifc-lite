@@ -40,7 +40,7 @@ async function setup(federated = false) {
     coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } };
   if (federated) federationRegistry.registerModel('other', 100);
   const idOffset = federationRegistry.registerModel('capture', 53);
-  const model = { ...fixtureModel('capture'), schemaVersion: 'IFC4', idOffset, maxExpressId: 53, ifcDataStore: data, geometryResult: geometry };
+  const model = { ...fixtureModel('capture'), schemaVersion: 'IFC4' as const, idOffset, maxExpressId: 53, ifcDataStore: data, geometryResult: geometry };
   const other = fixtureModel('other');
   useViewerStore.setState({ models: new Map([...(federated ? [['other', other] as const] : []), ['capture', model]]), activeModelId: 'capture',
     geometryResult: geometry, mutationViews: new Map([['capture', view]]), storeEditors: new Map([['capture', editor]]),
@@ -126,4 +126,19 @@ for (const failure of ['source', 'model', 'cancel'] as const) test(`capture ${fa
     assert.equal(useViewerStore.getState().undoStacks.get('capture')?.length ?? 0, 0);
     assert.equal(modelAppearanceAssets.exportResources('capture').resources.size, 0);
   } finally { native.planner.dispose(); }
+});
+
+
+test('capture snapshot bounds row width and respects prior cancellation before resource allocation #4380', async () => {
+  // Runtime caller input need not honor TypeScript tuple width. Oversized rows
+  // must be refused before copying; otherwise the outer 200000-row cap is hollow.
+  const mesh = geometryMesh();
+  mesh.positions[0].push(...Array<number>(10000).fill(1));
+  await assert.rejects(createIfcFromCapturedMesh('absent', 40, {
+    assetId: 'unretained', mesh, validate() {},
+  }, {} as Renderer), /exactly three/);
+  const aborted = new AbortController(); aborted.abort();
+  await assert.rejects(createIfcFromCapturedMesh('absent', 40, {
+    assetId: 'unretained', mesh: geometryMesh(), validate() { throw new Error('Source should not be inspected after cancellation'); },
+  }, {} as Renderer, { signal: aborted.signal }), { name: 'AbortError' });
 });

@@ -9,7 +9,7 @@ export async function prepareGlbViewerModel(buffer: ArrayBuffer, decode: (archiv
   const result = await parseGlbViewerModel(buffer);
   const bitmaps = await decode({ originalResources: result.originalResources ?? new Map() });
   if (isStale()) return null;
-  validateOpaqueGlbImages(bitmaps);
+  if (!await validateOpaqueGlbImages(bitmaps, isStale)) return null;
   attachTextureBitmaps(result.geometryResult.meshes, bitmaps);
   for (const mesh of result.geometryResult.meshes) {
     if (mesh.textureRef && !mesh.textureBitmap) throw new Error('GLB: embedded texture could not be decoded');
@@ -18,20 +18,33 @@ export async function prepareGlbViewerModel(buffer: ArrayBuffer, decode: (archiv
 }
 
 /** The current textured renderer only supports opaque captured surfaces. */
-export function validateOpaqueGlbImages(bitmaps: TextureBitmapStore | null): void {
-  for (const bitmap of new Set(bitmaps?.values())) {
-    // Scan a row at a time: no second full-image RGBA allocation for large scans.
-    const canvas = new OffscreenCanvas(bitmap.width, 1);
+export async function validateOpaqueGlbImages(bitmaps: TextureBitmapStore | null, isStale: () => boolean): Promise<boolean> {
+  const seen = new Set<ImageBitmap>();
+  for (const [path, bitmap] of bitmaps ?? []) {
+    if (seen.has(bitmap) || /\.jpe?g$/i.test(path)) continue; // JPEG has no alpha channel.
+    seen.add(bitmap);
+    // Bounded readback strips, rather than a second full-image RGBA allocation.
+    const stripHeight = Math.min(64, bitmap.height);
+    const canvas = new OffscreenCanvas(bitmap.width, stripHeight);
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) throw new Error('GLB: cannot validate texture opacity');
-    for (let y = 0; y < bitmap.height; y++) {
-      context.clearRect(0, 0, bitmap.width, 1);
-      context.drawImage(bitmap, 0, y, bitmap.width, 1, 0, 0, bitmap.width, 1);
-      const rgba = context.getImageData(0, 0, bitmap.width, 1).data;
-      for (let i = 3; i < rgba.length; i += 4) {
-        if (rgba[i] !== 255) throw new Error('GLB: images with transparent pixels require unsupported material alpha semantics');
+    let lastYield = performance.now();
+    try {
+      for (let y = 0; y < bitmap.height; y += stripHeight) {
+        if (isStale()) return false;
+        const height = Math.min(stripHeight, bitmap.height - y);
+        context.clearRect(0, 0, bitmap.width, stripHeight);
+        context.drawImage(bitmap, 0, y, bitmap.width, height, 0, 0, bitmap.width, height);
+        const rgba = context.getImageData(0, 0, bitmap.width, height).data;
+        for (let i = 3; i < rgba.length; i += 4) {
+          if (rgba[i] !== 255) throw new Error('GLB: images with transparent pixels require unsupported material alpha semantics');
+        }
+        if (performance.now() - lastYield > 16) {
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          lastYield = performance.now();
+        }
       }
-    }
-    canvas.width = 0;
+    } finally { canvas.width = 0; }
   }
+  return !isStale();
 }

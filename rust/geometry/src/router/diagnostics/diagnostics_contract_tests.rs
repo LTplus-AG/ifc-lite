@@ -417,3 +417,43 @@ fn zero_unsupported_items_stays_empty() {
     );
     assert!(d.is_empty());
 }
+
+/// The runtime half of `OpeningDiagnostic`'s field-list guard.
+///
+/// The compile-time half is the destructuring pattern beside the struct in
+/// `diagnostics_recording.rs`. This half exists because the revert-oracle reverts
+/// production files WHOLESALE: that takes the pattern with it, so a compile guard
+/// alone leaves nothing to observe and the oracle scores INCONCLUSIVE instead of
+/// RED. The rule is that the revert must remove the guard and leave an assertion
+/// STANDING.
+///
+/// That rule is why this asserts on `size_of` and never CONSTRUCTS an
+/// `OpeningDiagnostic`. A `format!("{d:?}")` assertion would be strictly
+/// stronger — it sees renames, reorders and zero-sized fields, which this does
+/// not — but building the value needs an exhaustive struct literal, and under
+/// revert that literal is `error[E0063]: missing field`, which puts the whole
+/// test file back into load-failure and the verdict back to INCONCLUSIVE.
+/// Measured, not assumed: the `Debug` variant scored INCONCLUSIVE where this one
+/// scores OBSERVED. A guard that cannot be scored protects nothing.
+///
+/// THIS IS NOT THE PRIMARY GUARD, and it is weaker than it looks: it is blind to
+/// a zero-sized field, to one that fits the struct's 3 bytes of padding, to a
+/// rename and to a same-width type swap. The destructuring pattern catches all
+/// of those, and it is what makes someone stop and read. Do not update the
+/// mirror to make a failure go away: drop the field, or raise `majorOffset` in
+/// `rust-major-offset.json` and update both halves in the same commit.
+#[test]
+fn opening_diagnostic_field_list_is_pinned() {
+    struct ExpectedShape {
+        _opening_id: u32,
+        _kind: OpeningKindDiag,
+        _vertex_count: usize,
+    }
+    assert_eq!(
+        core::mem::size_of::<OpeningDiagnostic>(),
+        core::mem::size_of::<ExpectedShape>(),
+        "OpeningDiagnostic changed size, so its field list moved. A new field of \
+         any visibility is a MAJOR semver break on a crate-root re-exported struct \
+         that is not #[non_exhaustive] (#4192)."
+    );
+}

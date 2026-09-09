@@ -67,11 +67,27 @@ export function checkMeshTransferContract(IfcAPI) {
     const coverage = metadata.transfer.coverage;
     assert.ok(coverage.observedAreaEstimateM2 > 0.075 && coverage.observedAreaEstimateM2 < 0.11);
     assert.ok(coverage.unknownDistanceSamples > 0);
+    assert.equal(coverage.samples, coverage.centroidSamples + coverage.rasterInteriorTexels);
+    assert.equal(coverage.observedSamples, coverage.observedCentroidSamples + coverage.observedRasterInteriorTexels);
+    assert.ok(coverage.observedRasterInteriorTexels > 0);
     assert.ok(Math.abs(coverage.observedAreaEstimateM2 + coverage.unknownAreaEstimateM2 - 0.5) < 1e-12);
     assert.equal(coverage.samples, coverage.observedSamples + coverage.unknownDistanceSamples + coverage.unknownNormalSamples + coverage.unknownAmbiguousSamples);
     assert.equal(metadata.assets.length, 1);
     assert.equal(metadata.assets[0].byteLength, png.length);
     assert.equal(metadata.assets[0].imageUri, `textures/${createHash('sha256').update(png).digest('hex')}.png`);
+    // A tiny source patch observes the centroid but misses every sparse pixel center.
+    const sparse = structuredClone(request), c = 1 / 3;
+    sparse.sourceMesh.positions = [[c-.002,c-.002,0],[c+.004,c-.002,0],[c-.002,c+.004,0]];
+    sparse.maxDistanceMetres = .00001; sparse.ambiguityDistanceMetres = 0; sparse.texelsPerMetre = 1;
+    const noPixels = run(sparse);
+    assert.equal(noPixels.metadata.transfer.coverage.observedCentroidSamples, 1);
+    assert.equal(noPixels.metadata.transfer.coverage.observedRasterInteriorTexels, 0);
+    assert.equal(noPixels.metadata.transfer.applicable, false);
+    assert.equal(noPixels.metadata.plan, null); assert.equal(noPixels.png.length, 0);
+    assert.ok(noPixels.metadata.transfer.diagnostics.some(message => message.includes('No observed interior raster texels')));
+    const dense = run({...sparse, texelsPerMetre: 512});
+    assert.ok(dense.metadata.transfer.coverage.observedRasterInteriorTexels > 0);
+    assert.equal(dense.metadata.transfer.applicable, true); assert.ok(dense.png.length > 0);
     const unsupported = run({ ...request, productIds: [1] }).metadata;
     assert.equal(unsupported.plan, null); assert.equal(unsupported.transfer.exclusions[0].productId, 1);
     const insufficient = structuredClone(request); insufficient.registration.heldOut = [];

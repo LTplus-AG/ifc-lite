@@ -285,7 +285,11 @@ fn issue_4381_insufficient_registration_checks_cannot_produce_applicable_transfe
     assert!(!result.transfer.applicable);
     assert!(result.output.is_none());
     assert!(result.transfer.registration.held_out.rms_metres.is_none());
-    assert!(!result.transfer.diagnostics.iter().any(|d|d.contains("No observed target samples")));
+    assert!(!result
+        .transfer
+        .diagnostics
+        .iter()
+        .any(|d| d.contains("No observed target samples")));
     assert!(result
         .transfer
         .diagnostics
@@ -334,4 +338,99 @@ fn issue_4381_target_exclusions_remain_visible_without_applicable_output() {
     assert_eq!(result.transfer.exclusions.len(), 1);
     assert_eq!(result.transfer.exclusions[0].product_id, 1);
     assert!(!result.transfer.exclusions[0].reason.is_empty());
+}
+
+#[test]
+fn issue_4381_centroid_only_observation_cannot_apply_an_all_old_raster() {
+    let (mut request, mut rgba) = fixture();
+    let c = 1. / 3.;
+    request.source_mesh.positions = vec![
+        [c - 0.002, c - 0.002, 5.],
+        [c + 0.004, c - 0.002, 5.],
+        [c - 0.002, c + 0.004, 5.],
+    ];
+    request.max_distance_metres = 0.00001;
+    request.ambiguity_distance_metres = 0.;
+    request.texels_per_metre = 1.;
+    for pixel in rgba[4..].chunks_exact_mut(4) {
+        pixel.copy_from_slice(&[0, 0, 255, 255]);
+    }
+    let result = plan_mesh_transfer(CONTROLLED_IFC.as_bytes(), &request, &rgba).unwrap();
+    let coverage = &result.transfer.coverage;
+    assert_eq!(coverage.centroid_samples, 1);
+    assert_eq!(coverage.observed_centroid_samples, 1);
+    assert_eq!(coverage.observed_raster_interior_texels, 0, "{coverage:?}");
+    assert!(coverage.raster_interior_texels > 0);
+    assert_eq!(
+        coverage.samples,
+        coverage.centroid_samples + coverage.raster_interior_texels
+    );
+    assert_eq!(coverage.observed_samples, 1);
+    assert!(coverage.observed_area_estimate_m2 > 0.);
+    assert!(!result.transfer.applicable);
+    assert!(result.output.is_none());
+    assert!(result
+        .transfer
+        .diagnostics
+        .iter()
+        .any(|d| d.contains("No observed interior raster texels")));
+
+    // Inspect the actual shared atlas that the old centroid-only gate accepted.
+    // The IFC fixture's old image is solid blue; the source patch is solid red.
+    let frame = identity();
+    let mut budget = TransferBudget::new();
+    let surface = Surface::new(&request, &frame, &mut budget).unwrap();
+    let image = Raster::supplied(&request.source_image, &rgba).unwrap();
+    let mut sampler = TransferSampler::new(surface, budget, image, &frame, [false, false]);
+    let spec = AppearanceRequest {
+        representation_policy: RepresentationPolicy::Preserve,
+        schema: request.schema.clone(),
+        source_revision: request.source_revision.clone(),
+        next_express_id: request.next_express_id,
+        product_ids: request.product_ids.clone(),
+        image_uri: "textures/control.png".into(),
+        repeat_s: false,
+        repeat_t: false,
+        mapping: Mapping::Box {
+            frame: MappingFrame::Item,
+            origin: [0.; 3],
+            metres_per_tile: [1.; 3],
+        },
+    };
+    let old_gate_output = atlas_plan::plan_sampled_appearance(
+        CONTROLLED_IFC.as_bytes(),
+        &spec,
+        &request.source_images,
+        &rgba,
+        request.texels_per_metre,
+        &mut sampler,
+    )
+    .unwrap();
+    let decode = |asset: &super::super::AppearanceGeneratedImage| {
+        let mut reader = png::Decoder::new(std::io::Cursor::new(&asset.png))
+            .read_info()
+            .unwrap();
+        let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+        reader.next_frame(&mut pixels).unwrap();
+        pixels
+    };
+    let sparse = decode(&old_gate_output.assets[0]);
+    assert!(sparse.chunks_exact(4).any(|p| p[2] > 0 && p[3] > 0));
+    assert!(sparse
+        .chunks_exact(4)
+        .filter(|p| p[3] > 0)
+        .all(|p| p[0] == 0 && p[1] == 0));
+
+    request.texels_per_metre = 512.;
+    let dense = plan_mesh_transfer(CONTROLLED_IFC.as_bytes(), &request, &rgba).unwrap();
+    assert!(dense.transfer.applicable);
+    assert!(dense.transfer.coverage.observed_raster_interior_texels > 0);
+    let output = dense.output.unwrap();
+    let pixels = decode(&output.assets[0]);
+    assert!(pixels
+        .chunks_exact(4)
+        .any(|p| p[0] > 200 && p[2] < 10 && p[3] > 0));
+    assert!(pixels
+        .chunks_exact(4)
+        .any(|p| p[2] > 0 && p[0] == 0 && p[3] > 0));
 }

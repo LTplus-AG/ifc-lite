@@ -95,6 +95,20 @@ export function parseLasHeader(buffer: ArrayBuffer | Uint8Array): LasHeader {
     view.getFloat64(163, true),
     view.getFloat64(171, true),
   ];
+  // `scale`/`offset` feed every point-record read that follows: a zero or
+  // non-finite scale collapses every point on that axis to the constant
+  // `offset` (or NaN), and decodeLasPoints's bbox fold would silently
+  // report success — pointCount unchanged — with no diagnostic. Reject at
+  // parse time rather than let a corrupt or truncated header pass through.
+  const AXIS_NAME = ['X', 'Y', 'Z'] as const;
+  for (let i = 0; i < 3; i++) {
+    if (!Number.isFinite(scale[i]) || scale[i] === 0) {
+      throw new Error(`LAS: invalid ${AXIS_NAME[i]} scale (${scale[i]})`);
+    }
+    if (!Number.isFinite(offset[i])) {
+      throw new Error(`LAS: invalid ${AXIS_NAME[i]} offset (${offset[i]})`);
+    }
+  }
   const maxX = view.getFloat64(179, true);
   const minX = view.getFloat64(187, true);
   const maxY = view.getFloat64(195, true);
@@ -224,9 +238,15 @@ export function decodeLasPoints(
     positions[i * 3] = x;
     positions[i * 3 + 1] = y;
     positions[i * 3 + 2] = z;
-    if (x < minX) minX = x; if (x > maxX) maxX = x;
-    if (y < minY) minY = y; if (y > maxY) maxY = y;
-    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    // Skip non-finite coords rather than letting them poison the bbox.
+    // A single NaN/Infinity from a corrupt header or an originOffset that
+    // itself is non-finite would otherwise propagate — see
+    // e57-decode.ts's / ifcx-points.ts's `computeBBox` for the same guard.
+    if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    }
 
     intensities[i] = view.getUint16(base + 12, true);
     // LAS 1.4 (formats 6+) stores classification in a dedicated byte.

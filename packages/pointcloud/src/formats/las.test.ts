@@ -190,6 +190,25 @@ describe('parseLasHeader', () => {
     expect(() => parseLasHeader(header)).toThrow();
   });
 
+  it('rejects a zero X/Y/Z scale factor', () => {
+    // A scale of 0 on any axis collapses every point on that axis to the
+    // constant `offset` — decodeLasPoints has no way to detect this after
+    // the fact (pointCount still reports correctly), so the header must
+    // reject it up front, the same way pointCount is validated above.
+    const { header } = buildHeader({ scale: [0, 0.01, 0.01] });
+    expect(() => parseLasHeader(header)).toThrow(/LAS: invalid X scale/);
+  });
+
+  it('rejects a NaN scale factor', () => {
+    const { header } = buildHeader({ scale: [0.01, NaN, 0.01] });
+    expect(() => parseLasHeader(header)).toThrow(/LAS: invalid Y scale/);
+  });
+
+  it('rejects a non-finite offset', () => {
+    const { header } = buildHeader({ offset: [0, Infinity, 0] });
+    expect(() => parseLasHeader(header)).toThrow(/LAS: invalid Y offset/);
+  });
+
   it('uses the LAS 1.4 extended 64-bit point count when the legacy field is 0', () => {
     // Strict LAS 1.4 producers write 0 into the legacy 32-bit count (offset
     // 107) and put the real count in the extended 64-bit field at offset
@@ -265,6 +284,31 @@ describe('decodeLasPoints', () => {
     expect(Array.from(chunk.classifications!)).toEqual([2, 6, 1]);
     expect(chunk.colors).toBeUndefined();
     expect(chunk.bbox).toEqual({ min: [9, 18, 25], max: [11, 22, 35] });
+  });
+
+  it('skips a non-finite coordinate in the bbox fold instead of poisoning it', () => {
+    // parseLasHeader now rejects a non-finite/zero scale outright, so the
+    // only way decodeLasPoints itself can still see a non-finite coordinate
+    // is legitimate-looking raw data that overflows f64 once multiplied by
+    // an (individually valid) huge scale factor. Mirrors e57-decode.ts's /
+    // ifcx-points.ts's `computeBBox`, which both skip non-finite coords
+    // rather than let a single bad point collapse the bbox to ±Infinity.
+    const { header } = buildHeader({
+      pointDataFormatId: 0,
+      pointRecordLength: 20,
+      pointCount: 2,
+      scale: [1e300, 1, 1],
+      offset: [0, 0, 0],
+    });
+    const h = parseLasHeader(header);
+    const records = buildFormat0Records([
+      { x: 2_000_000_000, y: 1, z: 1 }, // x*scale overflows to +Infinity
+      { x: 0, y: 2, z: 2 },
+    ]);
+    const chunk = decodeLasPoints(records, h, 2, 20);
+    expect(Number.isFinite(chunk.positions[0])).toBe(false);
+    // The second, fully-finite point is the only one folded into the bbox.
+    expect(chunk.bbox).toEqual({ min: [0, 2, 2], max: [0, 2, 2] });
   });
 
   it('subtracts originOffset in f64 before narrowing to f32 (issue #1804)', () => {

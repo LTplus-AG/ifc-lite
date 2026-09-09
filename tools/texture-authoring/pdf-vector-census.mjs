@@ -9,7 +9,8 @@
  * not establish a bounded browser import path or bound native decoder memory.
  */
 import { createHash } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { open } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
@@ -19,10 +20,23 @@ const expectedVersion = '6.3.289';
 const requireViewer = createRequire(new URL('../../apps/viewer/package.json', import.meta.url));
 
 async function inspect(input, pageNumber) {
-  const size = (await stat(input)).size;
-  if (size > limits.bytes) throw new Error('PDF exceeds the evidence-tool byte budget');
-  const bytes = new Uint8Array(await readFile(input));
-  if (bytes.length > limits.bytes) throw new Error('PDF changed beyond byte budget while reading');
+  const file = await open(input, constants.O_RDONLY | constants.O_NONBLOCK);
+  let bytes;
+  try {
+    const info = await file.stat();
+    if (!info.isFile() || info.size > limits.bytes) throw new Error('Choose a regular PDF within the evidence-tool byte budget');
+    // One extra byte detects growth without readFile allocating an unbounded
+    // replacement. Reading through this handle also avoids a path-swap race.
+    const buffer = new Uint8Array(info.size + 1);
+    let count = 0;
+    while (count < buffer.length) {
+      const { bytesRead } = await file.read(buffer, count, buffer.length - count, count);
+      if (!bytesRead) break;
+      count += bytesRead;
+    }
+    if (count > info.size) throw new Error('PDF grew while reading; retry on an immutable input');
+    bytes = buffer.subarray(0, count);
+  } finally { await file.close(); }
   const sourceBytes = bytes.length;
   const sourceSha256 = createHash('sha256').update(bytes).digest('hex');
   const { getDocument, OPS, version } = await import(pathToFileURL(requireViewer.resolve('pdfjs-dist/legacy/build/pdf.mjs')).href);

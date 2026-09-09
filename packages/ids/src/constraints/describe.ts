@@ -85,6 +85,17 @@ function getBoundsMismatchReason(
   constraint: IDSBoundsConstraint,
   actualValue: string | number | boolean
 ): string {
+  if (constraint.unparseableFacets !== undefined && constraint.unparseableFacets.length > 0) {
+    const facets = constraint.unparseableFacets
+      .map((f) => `xs:${f.facet}="${f.rawValue}"`)
+      .join(', ');
+    return (
+      `this xs:restriction is malformed and cannot be evaluated: ` +
+      `${facets} did not parse as a number — fix the IDS specification ` +
+      `(every value is being rejected until it is corrected, not just "${actualValue}")`
+    );
+  }
+
   const num =
     typeof actualValue === 'number'
       ? actualValue

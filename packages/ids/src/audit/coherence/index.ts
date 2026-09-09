@@ -248,7 +248,24 @@ function checkBounds(
       facetType,
     });
   }
+  if (c.unparseableFacets !== undefined && c.unparseableFacets.length > 0) {
+    for (const f of c.unparseableFacets) {
+      issues.push({
+        severity: 'error',
+        code: 'E_RESTRICTION_FACET_UNPARSEABLE',
+        message: `xs:${f.facet} @value="${f.rawValue}" could not be parsed as a number — this facet is dropped and, until fixed, the whole restriction rejects every value (it does not fall back to unbounded)`,
+        path,
+        facetType,
+        detail: { facet: f.facet, rawValue: f.rawValue },
+      });
+    }
+  }
+  // A facet that failed to parse already produced the more precise
+  // `E_RESTRICTION_FACET_UNPARSEABLE` above; don't also report the
+  // constraint as merely "empty" (misleading — something WAS
+  // authored, it just didn't parse).
   const empty =
+    (c.unparseableFacets === undefined || c.unparseableFacets.length === 0) &&
     c.minInclusive === undefined &&
     c.minExclusive === undefined &&
     c.maxInclusive === undefined &&

@@ -281,6 +281,21 @@ function matchBounds(
   constraint: IDSBoundsConstraint,
   actualValue: string | number | boolean
 ): boolean {
+  // A facet element was present in the source `<xs:restriction>` but
+  // its `@value` could not be parsed (typo, wrong decimal separator, a
+  // negative digit-count facet, …). `parseRestriction` dropped it to
+  // `undefined` the same as a facet that was never present at all —
+  // which would otherwise make this an unconditional pass (an
+  // all-`undefined` bounds constraint satisfies every numeric value).
+  // Fail closed instead: we cannot verify compliance against a
+  // restriction we could not fully parse, so no value passes until the
+  // IDS is corrected. See `getBoundsMismatchReason` for the
+  // author-facing explanation and `audit/coherence` for the
+  // corresponding lint diagnostic.
+  if (constraint.unparseableFacets !== undefined && constraint.unparseableFacets.length > 0) {
+    return false;
+  }
+
   // String-length facets (xs:length / xs:minLength / xs:maxLength)
   // operate on the textual length, not on numeric magnitude. When any
   // of them are present, evaluate the length constraints first.

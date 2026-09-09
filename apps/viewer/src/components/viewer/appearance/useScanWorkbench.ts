@@ -123,7 +123,7 @@ export function useScanWorkbench() {
       if (operation.current === controller) { operation.current = null; setBusy(false); }
     }
   }
-  function cancel() { if (!session) setStale(true); operation.current?.abort(); planner.current?.cancel(); setPending(null); setBusy(false); setStatus('Alignment operation cancelled. Existing pairs are retained.'); }
+  function cancel() { if (!session) setStale(true); operation.current?.abort(); planner.current?.cancel(); setPending(null); if (!ownAppearance.current) setBusy(false); setStatus(ownAppearance.current ? 'Cancelling appearance operation…' : 'Alignment operation cancelled. Existing pairs are retained.'); }
   return { sources, targets, sourceId, targetId, setSourceId, setTargetId, session, pairs, partition, setPartition, pending, result,
     busy, stale, applyAppearance, revalidateAppearance, canRevalidateAppearance: stale && recovery.current !== null, previewReady, setPreviewReady, status, error, aligned, setAligned, pickSource, calculate, cancel,
     restart() { setRestart(value => value + 1); },

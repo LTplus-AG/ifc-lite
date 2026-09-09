@@ -137,3 +137,5 @@ export { createLogger, logger, type LogLevel, type LogContext } from './logger.j
 // Spectre-class timing-attack mitigation; this helper transparently
 // routes those calls through a thread-local scratch buffer.
 export { safeUtf8Decode, textDecoderAcceptsSab } from './utf8-decode.js';
+
+export { spatialLookups } from './spatial-lookups.js';

@@ -740,3 +740,7 @@ When working with multiple IFC files (e.g., architectural, structural, and MEP m
 `CompactEntityIndex.getColumns()` exposes the four numeric backing arrays (`expressIds`, `byteOffsets`, `byteLengths`, `typeIndices`) and a copy of the `typeStrings` list. This supports column-aware consumers such as binary cache serialization without creating a reference object for every entity.
 
 The numeric arrays are borrowed and must not be mutated. They remain valid until their owner detaches them. A transport may transfer the arrays when retiring the owning index; cache consumers must not detach them. Changing the returned string list does not change the index. Generic map-compatible indexes remain supported by the parser and cache interfaces.
+
+Parsed, worker-hydrated and server-loaded spatial hierarchies use the shared
+`spatialLookups` helper from `@ifc-lite/data`. `getPath` accepts both a spatial
+node and a contained object; containing-space queries follow live membership.

@@ -31,6 +31,7 @@ import {
   relationshipGraphFromColumns,
   relationshipGraphToColumns,
   findStoreyByElevation,
+  spatialLookups,
 } from '@ifc-lite/data';
 
 import { CompactEntityIndex } from './compact-entity-index.js';
@@ -134,16 +135,6 @@ export function spatialHierarchyFromColumns(columns: SpatialHierarchyColumns): S
     : undefined;
   const ambiguousStorey = columns.ambiguousStorey ? new Set<number>(columns.ambiguousStorey) : undefined; // #4311
 
-  // elementToSpace is the inverse of bySpace and is what `getContainingSpace`
-  // queries. Only this direction is shipped over the wire because it is
-  // O(unique-spaces) and trivially derivable from `bySpace`.
-  const elementToSpace = new Map<number, number>();
-  for (const [spaceId, elementIds] of bySpace) {
-    for (const elementId of elementIds) {
-      elementToSpace.set(elementId, spaceId);
-    }
-  }
-
   return {
     project,
     byStorey,
@@ -166,23 +157,7 @@ export function spatialHierarchyFromColumns(columns: SpatialHierarchyColumns): S
       // worker boundary.
       return findStoreyByElevation(storeyElevations, z);
     },
-    getContainingSpace(elementId: number): number | null {
-      return elementToSpace.get(elementId) ?? null;
-    },
-    getPath(elementId: number): SpatialNode[] {
-      const path: SpatialNode[] = [];
-      const walk = (node: SpatialNode): boolean => {
-        path.push(node);
-        if (node.elements.includes(elementId)) return true;
-        for (const child of node.children) {
-          if (walk(child)) return true;
-        }
-        path.pop();
-        return false;
-      };
-      walk(project);
-      return path;
-    },
+    ...spatialLookups(project, bySpace, elementToContainer),
   };
 }
 

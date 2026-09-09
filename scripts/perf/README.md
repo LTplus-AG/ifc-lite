@@ -1079,3 +1079,15 @@ capture authoring and normal import: valid canonical welding may change vertex
 layout while preserving the surface and seams. [Raw source-matched samples and
 limitations](../../docs/architecture/evidence/captured-mesh/native-load.json)
 record the experiment; capture-creation and integrated UI timing remain separate.
+
+### Appearance preparation input scheduling (#4336)
+
+Fresh background tasks allow trusted viewport and Discard input to run during broad
+Apply preparation. In the paired real Convento viewer workflow, scheduler.yield
+continuations painted frames but delayed trusted input until completion. This is
+a different mechanism from timer-clamping or microbenchmark speedups: it trades
+slightly longer elapsed preparation for earlier user interaction. The exact final
+transaction fence is unchanged and still blocks. Identical runtime and canonical
+owner/mesh output were verified across paired runs; cancellation published no IFC
+or history changes. Raw evidence, memory caveats and methodology live in
+`docs/architecture/evidence/appearance/apply-responsiveness/README.md`.

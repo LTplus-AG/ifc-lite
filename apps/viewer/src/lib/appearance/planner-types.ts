@@ -78,12 +78,44 @@ export interface PageAppearancePlan {
   assets: Array<{ imageUri: string; width: number; height: number; png: Uint8Array }>;
   texelsPerMetre: number;
 }
+/** Generic registered-image frame. IFC Z-up metres, bottom-left origin. */
+export interface AnnotationPlaneFrame {
+  origin: [number, number, number];
+  axisU: [number, number, number];
+  axisV: [number, number, number];
+  sizeMetres: [number, number];
+}
+export interface AnnotationPlaneRequest {
+  schema: 'IFC4' | 'IFC4X3'; sourceRevision: string; nextExpressId: number;
+  containerId: number; GlobalId: string; containmentGlobalId: string;
+  Name: string; imageUri: string; frame: AnnotationPlaneFrame;
+}
+export interface AnnotationPlanePlan {
+  plan: AppearancePlan;
+  annotationId: number;
+  geometryItemId: number;
+  coordinateSpace: 'ifc-z-up';
+  rtcOffset: [number, number, number];
+  frame: AnnotationPlaneFrame;
+  /** Native canonical MeshData: geometry is Z-up, UVs already top-down for GPU.
+   * Convert axes once; never flip these UVs again. */
+  mesh: {
+    express_id: number; ifc_type: string; global_id?: string; name?: string;
+    geometry_item_id: number; positions: number[]; normals: number[];
+    indices: number[]; uvs: number[]; color: [number, number, number, number];
+    origin?: [number, number, number];
+    texture: { texture_id: number; url: string; width: number; height: number;
+      repeat_s: boolean; repeat_t: boolean };
+  };
+}
 export type AppearanceWorkerJob =
+  | { type: 'annotation-plan'; request: AnnotationPlaneRequest }
   | { type: 'plan'; request: AppearanceRequest }
   | { type: 'catalog'; request: AppearanceCatalogRequest }
   | { type: 'page-plan'; request: PageAppearanceRequest; rgba: Uint8Array };
 export type AppearanceWorkerRequest = AppearanceWorkerJob & { id: number; source: Uint8Array };
 export type AppearanceWorkerResponse =
+  | { type: 'annotation-complete'; id: number; result: AnnotationPlanePlan }
   | { type: 'complete'; id: number; plan: AppearancePlan }
   | { type: 'catalog-complete'; id: number; catalog: AppearanceCatalog }
   | { type: 'page-complete'; id: number; result: PageAppearancePlan }

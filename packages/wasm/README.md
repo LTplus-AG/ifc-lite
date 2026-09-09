@@ -126,3 +126,9 @@ assets and ordinary atomic IFC edits. Outside-page albedo is resampled from the
 original canonical style/texture, not a repeated or clamped page border. Run in
 a cancellable worker and retain all generated assets with the command. See the
 [WASM API guide](../../docs/api/wasm.md#finite-page-appearance-output).
+
+`IfcAPI.planAnnotationPlane` creates a bounded calibrated image `IfcAnnotation`
+plan for an explicit spatial container, reusing canonical native geometry. Run it
+in a worker and publish its typed entities, source-image lease and returned mesh
+as one existing model/history transaction. See the [WASM API guide](../../docs/api/wasm.md#calibrated-annotation-creation)
+for the Z-up geometry/top-down UV and allocator/source validation contract.

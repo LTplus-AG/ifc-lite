@@ -4,6 +4,8 @@
 //! Opt-in appearance authoring over an effective IFC snapshot. No load-time
 //! geometry changes. Plans are applied atomically by the host mutation editor.
 mod budget;
+mod annotation;
+mod annotation_types;
 mod calibration;
 mod canonical;
 mod catalog;
@@ -23,6 +25,8 @@ use serde_json::{json, Value};
 use source::{refs, Source};
 use std::collections::BTreeSet;
 pub use types::*;
+pub use annotation::plan_annotation_plane;
+pub use annotation_types::{AnnotationPlaneFrame, AnnotationPlaneRequest, AnnotationPlanePlan};
 pub use page::plan_page_appearance;
 pub use page_types::*;
 pub use calibration::{calibrate_appearance_plane, CalibratedPlane, PlaneCalibrationRequest};
@@ -42,6 +46,22 @@ fn add(plan: &mut AppearancePlan, name: &str, attributes: Vec<Value>) -> u32 {
     id
 }
 
+fn validate_image_uri(uri: &str) -> Result<(), String> {
+    if uri.is_empty()
+        || uri.len() > 240
+        || !uri.is_ascii()
+        || uri.starts_with('/')
+        || uri.contains(['\\', ':', '?', '#', '%', '\''])
+        || uri.chars().any(char::is_control)
+        || uri
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err("Image URI must be a safe relative asset path".into());
+    }
+    Ok(())
+}
+
 /// `schema` must come from the host's validated parser; `nextExpressId` is its
 /// reserved allocator watermark, strictly greater than every effective-source id.
 /// Images must already have a model-owned, collision-free relative filename.
@@ -58,18 +78,7 @@ pub fn plan_appearance(
         return Err("Appearance scope must contain 1..10000 products".into());
     }
     let uri = &request.image_uri;
-    if uri.is_empty()
-        || uri.len() > 240
-        || !uri.is_ascii()
-        || uri.starts_with('/')
-        || uri.contains(['\\', ':', '?', '#', '%', '\''])
-        || uri.chars().any(char::is_control)
-        || uri
-            .split('/')
-            .any(|part| part.is_empty() || part == "." || part == "..")
-    {
-        return Err("Image URI must be a safe relative asset path".into());
-    }
+    validate_image_uri(uri)?;
     mapping::validate(&request.mapping)?;
     let mut source = Source::new(bytes)?;
     texture_budget::preflight(&mut source)?;

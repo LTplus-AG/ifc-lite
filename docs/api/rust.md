@@ -849,3 +849,42 @@ already baked into the atlas are neutralized to prevent double multiplication.
 Inherited material/representation metadata currently refuses page composition
 rather than silently discarding rendering properties. Original shared styles
 remain untouched.
+
+### Calibrated image annotations
+
+`appearance::plan_annotation_plane(source, &AnnotationPlaneRequest)` creates one
+textured `IfcAnnotation` in an explicitly selected effective `IfcSpatialElement`
+(`containerId`). It accepts IFC4/IFC4X3, an allocator watermark/revision, distinct
+host-generated `GlobalId`/`containmentGlobalId`, `Name`, a registered relative
+`imageUri`, and a generic frame `{origin, axisU, axisV, sizeMetres}`. The origin is
+the image's bottom-left in IFC world Z-up metres; U/V must be orthonormal. It works
+for any registered raster source, without decoding or resampling that image.
+
+The plan appends an `Annotation`/`Tessellation` representation, textured two-triangle
+face set, relative 3D placement and a fresh containment relation. Source entities
+and existing containment sets stay untouched. The `IfcLite:RegisteredImage`
+ObjectType identifies this annotation separately from drawing-markup sweep tags.
+Container rotation/native units are resolved canonically; ambiguous project/3D
+contexts, invalid/cyclic placements, stale/overlapping IDs, duplicate GlobalIds,
+nonrigid frames and geometry precision loss refuse the operation.
+
+`AnnotationPlanePlan` carries the ordinary typed mutation `plan`, `annotationId`,
+`geometryItemId`, original `frame`, `rtcOffset` and canonical native `mesh`.
+`coordinateSpace` is `ifc-z-up`; the mesh retains native snake-case metadata fields.
+Positions/normals require the ordinary host Z-up→Y-up conversion exactly once.
+Mesh UVs are already top-down for bitmap upload: do **not** flip them again.
+World reconstruction before axis conversion is position + mesh origin + rtcOffset.
+The mesh is produced by `produce_element_meshes`, and normal IFC reparse is the
+round-trip oracle. The host atomically registers the source asset, applies the
+entities and publishes this new owner through its existing model/history path;
+calling the replacement-only appearance preview API cannot create a missing owner.
+
+Source/entity bounds match the appearance planner. Creation reserves 32 IDs,
+produces fewer than 32 entities and exactly four vertices/two triangles. Names are
+limited to 1024 bytes, revisions to 4096 bytes, and URI validation is shared with
+image appearance planning. The method returns no live mutations or partial result
+on failure. Its fresh containment relation targets `IfcSpatialElement`, not only
+`IfcSpatialStructureElement`, matching IFC4/IFC4X3 EXPRESS.
+
+IFC4X3 creation also emits `IfcAnnotation.PredefinedType=USERDEFINED` and the
+optional `IfcCartesianPointList3D.TagList` slot; IFC4 omits these schema additions.

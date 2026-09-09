@@ -961,11 +961,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
             const geomCount = session.doc.getMap('geometry').size;
             if (geomCount !== lastGeomCount) {
               lastGeomCount = geomCount;
-              // Re-key meshes into the reconstructed id space (pathToId) so 3D
-              // selection resolves to the right inspector entry. Blobs are
-              // fetched in parallel (cached by geomId) and rendered incrementally
-              // via onProgress so a large model fills in progressively instead of
-              // staying blank until every blob arrives.
+              // Re-key for selection; cache and stream room geometry incrementally.
               const meshes = await hydrateGeometryFromRoom(
                 geomApi,
                 session,
@@ -973,6 +969,9 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
                 payload.pathToId,
                 {
                   cache: geomCache,
+                  onFailure: (message) => {
+                    if (get().collabRoomId === roomId) set({ collabGeometryNotice: message });
+                  },
                   onProgress: (soFar) => {
                     if (get().collabRoomId === roomId && soFar.length > 0) {
                       applyRoomModelData(get(), roomModelId, {

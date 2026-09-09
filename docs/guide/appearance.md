@@ -199,3 +199,11 @@ This resource operation does not create IFC geometry or canonical UV provenance.
 An appearance integration must separately validate the native evaluated mesh and
 its model frame, publish a replacement, and retain the lease for Undo. It must
 release the lease if preparation fails or the preview is discarded.
+
+Opted-in native occurrence plans include canonical `sourcePositions`,
+`sourceNormals`, `sourceOrigin`, `sourceColor`, and `rtcOffset` alongside
+`sourceIndices` in each `conversions` entry. Renderer integrations use that bounded
+IFC Z-up snapshot to prepare one occurrence; reconstructing a GPU instance does
+not supply equivalent source provenance. See the
+[evaluated occurrence contract](../architecture/appearance-evaluated-occurrences.md)
+for units, frame restoration, and eligibility limits.

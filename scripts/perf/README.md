@@ -1150,3 +1150,13 @@ conservative candidate reuse across target triangles/tiles, retaining nearest
 surface refusal and one atomic result, rather than enlarging the work ceiling.
 [Real-surface coverage and refusal evidence](../../docs/architecture/evidence/mesh-transfer/README.md#real-boulder-geometry-conservative-coverage-and-capacity)
 keeps that limitation separate from the ordinary-load measurements.
+
+Canonical occurrence source snapshots reuse the mesh already evaluated by the
+opt-in appearance planner. Moving its bounded vectors into the plan avoids
+reconstructing IFC geometry from GPU instance transforms. Interleaved exact-base
+native AC20 probes found no resolvable ordinary-load change and identical geometry
+counts. This establishes load-path isolation, not a browser worker-pool speedup
+or conversion throughput claim; the additional authored payload remains governed
+by the existing aggregate geometry budget.
+[Source-mesh payload probe](../../docs/architecture/evidence/evaluated-occurrences/source-mesh-load.json)
+records source heads, precision limits and the unchanged census.

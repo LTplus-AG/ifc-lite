@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { ScanRegistrationRequest, ScanRegistrationReport } from '../lib/appearance/scan/types';
+
 import init, { IfcAPI } from '@ifc-lite/wasm';
 import { decodePagePlan } from '../lib/appearance/page-plan-output.js';
 import type { CapturedMeshPlan, CapturedMeshRequest, AnnotationPlanePlan, AnnotationPlaneRequest, PageAppearancePlan, PageAppearanceRequest, AppearanceCatalog, AppearanceCatalogRequest, AppearancePlan, AppearanceRequest, AppearanceWorkerRequest, AppearanceWorkerResponse } from '../lib/appearance/planner-types.js';
@@ -13,6 +15,9 @@ async function runAppearanceJob<T>(invoke: (api: IfcAPI) => Uint8Array, decode: 
   const api = new IfcAPI();
   try { return decode(invoke(api)); }
   finally { api.free(); }
+}
+export function runScanRegistration(request: ScanRegistrationRequest): Promise<ScanRegistrationReport> {
+  return runAppearanceJob(api => api.registerScanCorrespondences(JSON.stringify(request)));
 }
 export function runAppearancePlanning(source: Uint8Array, request: AppearanceRequest): Promise<AppearancePlan> {
   return runAppearanceJob(api => api.planAppearance(source, JSON.stringify(request)));
@@ -39,9 +44,11 @@ const isWorkerScope = typeof self !== 'undefined' &&
 if (isWorkerScope) {
   self.onmessage = async (event: MessageEvent<AppearanceWorkerRequest>) => {
     const job = event.data;
-    if (!job || (job.type !== 'plan' && job.type !== 'catalog' && job.type !== 'page-plan' && job.type !== 'annotation-plan' && job.type !== 'captured-mesh-plan')) return;
+    if (!job || (job.type !== 'scan-registration' && job.type !== 'plan' && job.type !== 'catalog' && job.type !== 'page-plan' && job.type !== 'annotation-plan' && job.type !== 'captured-mesh-plan')) return;
     try {
-      const response: AppearanceWorkerResponse = job.type === 'plan'
+      const response: AppearanceWorkerResponse = job.type === 'scan-registration'
+        ? { type: 'scan-registration-complete', id: job.id, result: await runScanRegistration(job.request) }
+        : job.type === 'plan'
         ? { type: 'complete', id: job.id, plan: await runAppearancePlanning(job.source, job.request) }
         : job.type === 'catalog'
           ? { type: 'catalog-complete', id: job.id, catalog: await runAppearanceCatalog(job.source, job.request) }

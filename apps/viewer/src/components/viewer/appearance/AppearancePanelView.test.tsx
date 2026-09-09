@@ -158,7 +158,7 @@ it('allows cancelling cooperative Apply while preventing a second Apply (#4336)'
 it('switches source intent without replacing the source picker or requiring an IFC target for references (#4308)', () => {
   let placements = 0;
   function Workspace() {
-    const [intent, setIntent] = useState<'apply' | 'reference' | 'capture'>('apply');
+    const [intent, setIntent] = useState<'apply' | 'reference' | 'capture' | 'scan'>('apply');
     return <AppearancePanelView {...props({ intent, onIntentChange: setIntent, modelId: null,
       affectedCount: 0, onApply: () => { placements++; }, calibration: {
         sourceKey: 'image', frame: { rasterSize: [512, 512], rasterToSource: [1, 0, 0, 1, 0, 0] },

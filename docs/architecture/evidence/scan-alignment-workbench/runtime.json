@@ -1,0 +1,20 @@
+{
+  "viewerCheckpoint": "dd59c1c42",
+  "rendererPrerequisite": "f7ee2a165",
+  "wasmSource": "215f75859",
+  "wasmSha256": "b7d0001766663a3589d820cf16900e7a2e7a9cbbd393afea74ad891130b8ed20",
+  "fixtures": {
+    "captured.ifczip": "e04dcf6e01518d7cca1415f49775e4d430130ede1370e4d4bb0e7cfcde1ba6c4",
+    "boulder-albedo.glb": "b6a0b51894427c37505632f4d4513d0424f0d84b014554755aa53eb74af6dcd6"
+  },
+  "viewport": [
+    1600,
+    1200
+  ],
+  "browser": "Chromium with actual WebGPU on macOS; local Playwright fallback",
+  "conditions": "No Turbo builds or source edits during accepted browser run. Four fit and four check pairs chosen by actual preview/main canvas clicks. Cameras arranged against the known same-source fixture; no correspondence state injected.",
+  "loadOrders": [
+    "IFCZIP first, GLB added",
+    "GLB first, IFCZIP added"
+  ]
+}

@@ -65,3 +65,18 @@ versioned appearance extension described in the [export guide](exporting.md).
 PDF projection changes surface appearance. It does not create a reference plane,
 extract vector annotations, recognize text, or create building geometry. Those
 are separate operations in the implementation roadmap.
+
+### Saving a registered reference into IFC
+
+The viewer command `createAnnotationFromReference` creates a textured
+`IfcAnnotation` from a registered image or PDF-page raster. It takes the target
+model and spatial container, preserves the original encoded image, and plans IFC
+rows and geometry through the native annotation planner. The new owner participates
+in the model's existing undo/redo history and portable IFC texture export.
+
+The registration remains a separate workspace reference. Its raster is captured
+by digest; later source edits cannot silently repaint the IFC annotation. Saving
+requires IFC4 or IFC4X3, a rectangular calibrated plane, and a stable coordinate
+frame. Finish any active model reposition operation first. Realigned federated
+models currently require choosing the workspace anchor model until inverse
+federation registration is available; the command reports this explicitly.

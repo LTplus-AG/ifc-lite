@@ -2,15 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Measure tool panel UI (measurement list, point coordinates, quantities).
- *
- * Rendered by `ToolOverlays` off `activeTool === 'measure'` alone, so it is the
- * same panel whichever toolbar is in use — the classic strip and the ribbon
- * both do nothing but set that tool.
- */
+/** Measurement panel shared by the ribbon and classic toolbar through activeTool. */
 
 import React, { useCallback, useState, useEffect } from 'react';
+import { StaleMeasurementBadge } from '../reposition/StaleMeasurementBadge';
 import { X, Trash2, Ruler, GripVertical, Globe, List, Crosshair, Boxes } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore, type Measurement } from '@/store';
@@ -287,8 +282,8 @@ export function MeasureOverlay() {
     [deleteRadiusMeasurement],
   );
 
-  // Calculate total distance
-  const totalDistance = measurements.reduce((sum, m) => sum + m.distance, 0);
+  const stale = useViewerStore((state) => state.placementStaleMeasurements);
+  const totalDistance = measurements.reduce((sum, m) => sum + (stale.has(m.id) ? 0 : m.distance), 0);
   const totalItemCount =
     measurements.length + polylineMeasurements.length + angleMeasurements.length + radiusMeasurements.length;
 
@@ -480,7 +475,7 @@ export function MeasureOverlay() {
                   ))}
                   {measurements.length > 1 && (
                     <div className="flex items-center justify-between border-t pt-1 mt-1 text-xs font-medium">
-                      <span>Total</span>
+                      <span>Total (current)</span>
                       <span className="font-mono">{formatDistance(totalDistance, unitDisplayOverrides)}</span>
                     </div>
                   )}
@@ -512,7 +507,7 @@ export function MeasureOverlay() {
                     <div key={pl.id} className="bg-muted/50 rounded px-2 py-0.5 text-xs">
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground text-xs">
-                          Poly #{i + 1} · {polylineBasisLabel(pl.closed)}
+                          Poly #{i + 1} · {polylineBasisLabel(pl.closed)}<StaleMeasurementBadge id={pl.id} />
                         </span>
                         <span className="font-mono font-medium">{formatDistance(pl.length, unitDisplayOverrides)}</span>
                         <Button
@@ -533,7 +528,7 @@ export function MeasureOverlay() {
                   {angleMeasurements.map((a, i) => (
                     <div key={a.id} className="bg-muted/50 rounded px-2 py-0.5 text-xs">
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground text-xs">Angle #{i + 1}</span>
+                        <span className="text-muted-foreground text-xs">Angle #{i + 1}<StaleMeasurementBadge id={a.id} /></span>
                         <span className="font-mono font-medium">
                           {/* Derived on render, never stored: a correction to
                               the maths retroactively fixes every measurement
@@ -575,7 +570,7 @@ export function MeasureOverlay() {
                   {radiusMeasurements.map((r, i) => (
                     <div key={r.id} className="bg-muted/50 rounded px-2 py-0.5 text-xs">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-muted-foreground text-xs shrink-0">Radius #{i + 1}</span>
+                        <span className="text-muted-foreground text-xs shrink-0">Radius #{i + 1}<StaleMeasurementBadge id={r.id} /></span>
                         <span className="font-mono font-medium text-right">
                           {/* Derived on render, never stored — a correction to
                               the fit retroactively fixes every measurement
@@ -726,7 +721,7 @@ function MeasurementItem({ measurement, index, onDelete, geoAnchor, unitDisplayO
   return (
     <div className="bg-muted/50 rounded px-2 py-0.5 text-xs">
       <div className="flex items-center justify-between">
-        <span className="text-muted-foreground text-xs">#{index + 1}</span>
+        <span className="text-muted-foreground text-xs">#{index + 1}<StaleMeasurementBadge id={measurement.id} /></span>
         <span className="font-mono font-medium">{formatDistance(measurement.distance, unitDisplayOverrides)}</span>
         <Button
           variant="ghost"

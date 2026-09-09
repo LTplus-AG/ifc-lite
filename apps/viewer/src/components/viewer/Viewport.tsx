@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { createPlacedEntityBoundsLookup, placedBoundsExcludingTypes } from '@/lib/model-placement/selection-bounds';
 
 /**
  * 3D viewport component
@@ -9,7 +10,7 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Renderer, type VisualEnhancementOptions, type LightingEnvironment } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo, PointCloudAsset } from '@ifc-lite/geometry';
-import { useViewerStore, resolveEntityRef, type CameraViewpoint, type MeasurePoint, type SnapVisualization } from '@/store';
+import { useViewerStore, resolveEntityRef, type CameraViewpoint } from '@/store';
 import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
 import { presetViewRotation } from '@/lib/preset-view-orientation';
 import { isGeometryLoadStreaming } from '@/lib/pick-gating';
@@ -37,13 +38,10 @@ import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../u
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import {
-  createEntityBoundsLookup,
   unionEntityBounds,
   getThemeClearColor,
-  accumulateBoundsExcludingTypes,
   hasPendingMeasurementState,
   type BoundingBox3D,
-  type ViewportStateRefs,
 } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 import { expandToGeometryBearingIds } from '../../utils/aggregation.js';
@@ -57,8 +55,7 @@ import { useKeyboardControls } from './useKeyboardControls.js';
 import { useSpaceMouseControls } from './useSpaceMouseControls.js';
 import { useAnimationLoop, type SunShadowSettings } from './useAnimationLoop.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
-import { usePointCloudSync } from './usePointCloudSync.js';
-import { usePointCloudLifecycle } from './usePointCloudLifecycle.js';
+import { useModelAssetsSync } from './useModelAssetsSync.js';
 import { useRenderUpdates } from './useRenderUpdates.js';
 import {
   useSymbolicAnnotations,
@@ -136,16 +133,6 @@ export function Viewport({
 
   // Sync selectedEntityId with model-aware selectedEntity for PropertiesPanel
   useModelSelection();
-
-  // Create reverse mapping from modelIndex to modelId for selection
-  const modelIndexToId = useMemo(() => {
-    if (!modelIdToIndex) return new Map<number, string>();
-    const reverse = new Map<number, string>();
-    for (const [modelId, index] of modelIdToIndex) {
-      reverse.set(index, modelId);
-    }
-    return reverse;
-  }, [modelIdToIndex]);
 
   // Compute selectedModelIndex for renderer (multi-model selection highlighting)
   const selectedModelIndex = models.size > 1 && selectedEntity && modelIdToIndex
@@ -311,11 +298,7 @@ export function Viewport({
 
   // Measurement state
   const {
-    measurements,
-    pendingMeasurePoint,
     activeMeasurement,
-    addMeasurePoint,
-    completeMeasurement,
     startMeasurement,
     updateMeasurement,
     finalizeMeasurement,
@@ -653,7 +636,6 @@ export function Viewport({
     }
   }, [clashSelectedId, clashSolidMesh, clashSolidStatus, isInitialized]);
   const activeToolRef = useRef<string>(activeTool);
-  const pendingMeasurePointRef = useLatestRef(pendingMeasurePoint);
   const activeMeasurementRef = useLatestRef(activeMeasurement);
   const snapEnabledRef = useLatestRef(snapEnabled);
   const edgeLockStateRef = useLatestRef(edgeLockState);
@@ -991,7 +973,7 @@ export function Viewport({
       // on top memoises the COMBINED answer, so a repeated id costs nothing
       // and the instanced fallback is queried at most once per id.
       const createRenderableBoundsLookup = () => {
-        const meshBounds = createEntityBoundsLookup(geometryRef.current ?? null);
+        const meshBounds = createPlacedEntityBoundsLookup(geometryRef.current ?? null);
         const scene = rendererRef.current?.getScene();
         const cache = new Map<number, BoundingBox3D | null>();
         return (id: number): BoundingBox3D | null => {
@@ -1189,9 +1171,7 @@ export function Viewport({
           // bounds left, and returning early here would have made the instanced
           // fallback below unreachable in exactly that case.
           if (ids.length === 0) return;
-          const geom = geometryRef.current;
-          const scene = rendererRef.current?.getScene();
-          const bounds = unionEntityBounds(geom, ids, (id) => scene?.getInstancedEntityBounds(id));
+          const bounds = unionEntityBounds(null, ids, createRenderableBoundsLookup());
           const min = bounds?.min ?? null;
           const max = bounds?.max ?? null;
           if (min && max) {
@@ -1214,7 +1194,7 @@ export function Viewport({
           const geom = geometryRef.current;
           const scene = rendererRef.current?.getScene();
           const EXCLUDE = new Set(['IfcSite', 'IfcSpace']);
-          let bounds = geom ? accumulateBoundsExcludingTypes(geom, EXCLUDE) : null;
+          let bounds = geom ? placedBoundsExcludingTypes(geom, EXCLUDE) : null;
           // Merge in instanced occurrences (not present in flat meshes), skipping
           // excluded types via each id's OWN model store — instanced ids are
           // federated global ids, so resolve them through the registry instead
@@ -1239,7 +1219,7 @@ export function Viewport({
               }
             }
           }
-          const target = bounds ?? geometryBoundsRef.current;
+          const target = bounds ?? rendererRef.current?.getModelBounds() ?? geometryBoundsRef.current;
           // Same sanity gate `frameEntities` applies: a degenerate or corrupted
           // bound here would fling the camera off-model with no way back. The
           // instanced-occurrence merge above unions bounds from the scene, so a
@@ -1751,16 +1731,9 @@ export function Viewport({
     onGeometryReleased,
   });
 
-  usePointCloudSync({
-    rendererRef,
-    isInitialized,
-    pointClouds,
+  useModelAssetsSync({
+    rendererRef, isInitialized, pointClouds, geometry, modelIdToIndex,
     hasMeshes: (geometry?.length ?? 0) > 0,
-  });
-
-  usePointCloudLifecycle({
-    rendererRef,
-    isInitialized,
   });
 
   useRenderUpdates({

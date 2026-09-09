@@ -7,6 +7,16 @@ import { isEntityVisible, DEFAULT_GHOST_ALPHA } from '@ifc-lite/renderer';
 import { getGlobalRenderer } from '../../hooks/useBCF.js';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { buildMergedGLB } from './cesium-glb.js';
+import { displayedTranslation, type PlacementState } from '../model-placement/state';
+
+/** Locks, anchor picks and no-op previews do not alter the world-view GLB. */
+export function cesiumPlacementKey(state: PlacementState): string {
+  const ids = new Set([...state.placements.keys(), ...(state.preview?.modelIds ?? [])]);
+  return JSON.stringify([...ids].sort().flatMap((id) => {
+    const delta = displayedTranslation(state, id);
+    return delta.some((value) => value !== 0) ? [[id, delta]] : [];
+  }));
+}
 
 /** Everything the world-view GLB is a function of. */
 export interface CesiumModelGLBInput {
@@ -14,6 +24,7 @@ export interface CesiumModelGLBInput {
   /** Store counter for in-place mesh mutation (a gizmo move rewrites positions
    *  in the SAME arrays, moving no count). */
   geometryContentVersion: number;
+  placementKey?: string;
   /** Hide/isolate exactly as the renderer receives them, in federated global
    *  id space — the same space flat and instanced mesh ids use (#1912). */
   hiddenIds: ReadonlySet<number> | null | undefined;
@@ -41,7 +52,8 @@ export interface CesiumModelGLBInput {
  * instanced-entity census, and the visibility epoch.
  *
  * The overlay caches the built GLB and must not rebuild it on every camera or
- * placement change, but counts alone are not enough of a key. Three changes
+ * globe-anchor change, but counts alone are not enough of a key. Manual model
+ * placement is part of the GLB; its displayed-position key changes on moves. Three changes
  * slip past them:
  *
  *  - A geometry batch whose occurrences are ALL instanced adds no flat meshes,
@@ -56,6 +68,7 @@ export function cesiumModelGLBKey(input: CesiumModelGLBInput): string {
   const instancedEntities = getGlobalRenderer()?.getScene()?.getInstancedEntityCount() ?? 0;
   return [
     input.geometryContentVersion,
+    input.placementKey ?? '[]',
     input.geometryResult.meshes.length,
     instancedEntities,
     input.visibilityVersion,

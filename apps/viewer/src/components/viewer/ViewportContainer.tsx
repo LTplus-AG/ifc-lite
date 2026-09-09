@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { modelIndices, geometryWithModelIndex } from '@/lib/model-placement/model-indices';
 import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
 import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
@@ -137,8 +138,6 @@ export function ViewportContainer() {
     geometryResult,
     ifcDataStore,
     models,
-    boundedGeometryMode,
-    geometryUpdateTick,
     geometryContentVersion,
   } = viewportStoreState;
   const storeModels = models;
@@ -148,14 +147,7 @@ export function ViewportContainer() {
   const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
 
   // Multi-model: create mapping from modelId to modelIndex (stable order)
-  const modelIdToIndex = useMemo(() => {
-    const map = new Map<string, number>();
-    let index = 0;
-    for (const modelId of storeModels.keys()) {
-      map.set(modelId, index++);
-    }
-    return map;
-  }, [storeModels]);
+  const modelIdToIndex = useMemo(() => modelIndices(storeModels), [storeModels]);
 
   const mergedCacheRef = useRef<MeshData[]>([]);
   const mergedLengthsRef = useRef<Map<string, number>>(new Map());
@@ -173,7 +165,7 @@ export function ViewportContainer() {
           coordinateInfo: DEFAULT_COORDINATE_INFO,
         } satisfies GeometryResult;
       }
-      return firstModel.geometryResult ?? geometryResult;
+      return geometryWithModelIndex(firstModel.geometryResult ?? geometryResult, modelIdToIndex.get(firstModel.id) ?? 0);
     }
 
     if (storeModels.size > 1) {
@@ -781,7 +773,6 @@ export function ViewportContainer() {
     }
   }, [loadFile]);
 
-  const hasGeometry = mergedGeometryResult?.meshes && mergedGeometryResult.meshes.length > 0;
 
   // Check if any models are loaded (even if hidden) - used to show empty 3D vs starting UI
   const hasLoadedModels = storeModels.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);

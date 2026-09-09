@@ -26,7 +26,9 @@ import type { GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import type { FederatedModel, SectionPlane } from '@/store/types';
 import { customPlaneCenter, useViewerStore } from '@/store';
 import { getPointCloudScanSample } from './ingest/pointCloudScanCache.js';
-import { getPointCloudAlignmentMatrix } from './ingest/pointCloudAlignment.js';
+import { getGlobalRenderer } from './useBCF';
+import { displayedTranslation } from '@/lib/model-placement/state';
+import { toRenderTranslation } from '@/lib/model-placement/translation';
 import {
   selectScanBand,
   mergeScanBandSelections,
@@ -80,31 +82,32 @@ const EMPTY_SELECTION: ScanBandSelection = {
  * Gather every currently-loaded point cloud, each paired with the GPU
  * transform it is currently drawn through (#1804) so the 2D overlay can
  * place raw cached points where the 3D view actually shows them. Inline
- * (non-streamed) assets have no renderer handle and therefore no
- * alignment registration, so they carry no matrix.
+ * assets are already in the viewer frame and receive their model placement.
  */
 type ScanSource = ScanPointSample & { model?: Float32Array; modelOutputsRenderFrame?: boolean };
 
 function collectScanSources(
   models: ReadonlyMap<string, FederatedModel>,
   legacyPointClouds: readonly PointCloudAsset[] | undefined,
-  alignmentEnabled: boolean,
 ): ScanSource[] {
   const sources: ScanSource[] = [];
 
-  const pushInlineAsset = (asset: PointCloudAsset) => {
+  const pushInlineAsset = (asset: PointCloudAsset, modelId?: string) => {
+    const translation = modelId ? toRenderTranslation(displayedTranslation(useViewerStore.getState().modelPlacement, modelId)) : [0, 0, 0];
     if (asset.chunk.pointCount > 0 && asset.chunk.positions.length > 0) {
       sources.push({
         positions: asset.chunk.positions,
         colors: asset.chunk.colors,
         classifications: asset.chunk.classifications,
         count: asset.chunk.pointCount,
+        model: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, ...translation, 1]),
+        modelOutputsRenderFrame: true,
       });
     }
   };
 
   if (models.size > 0) {
-    for (const model of models.values()) {
+    for (const [modelId, model] of models) {
       if (!model.visible) continue;
       if (typeof model.pointCloudHandleId === 'number') {
         const cached = getPointCloudScanSample(model.pointCloudHandleId);
@@ -115,14 +118,14 @@ function collectScanSources(
             classifications: cached.classifications ?? undefined,
             count: cached.count,
             ...(() => {
-              const t = getPointCloudAlignmentMatrix(model.pointCloudHandleId, alignmentEnabled);
-              return t ? { model: t.matrix, modelOutputsRenderFrame: t.outputsRenderFrame } : {};
+              const matrix = getGlobalRenderer()?.getPointCloudTransform({ id: model.pointCloudHandleId });
+              return { model: matrix, modelOutputsRenderFrame: true };
             })(),
           });
         }
       }
       for (const asset of model.geometryResult?.pointClouds ?? []) {
-        pushInlineAsset(asset);
+        pushInlineAsset(asset, modelId);
       }
     }
   } else {
@@ -174,6 +177,7 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
   // Flipping the toggle must move the 2D overlay with the 3D view, so this
   // is a real dependency of the recompute below, not a one-shot read.
   const alignmentEnabled = useViewerStore((st) => st.pointCloudAlignmentEnabled);
+  const placementRevision = useViewerStore((st) => st.modelPlacement.revision);
 
   // Fold every dependency the computation reads into one key so the
   // debounce timer restarts exactly when something relevant changed —
@@ -192,7 +196,7 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
   // Cheap presence check (map lookups, no O(n) point scan) — independent of
   // `enabled` so the UI can report "a scan is loaded, just hidden".
   const hasPointCloud = useMemo(
-    () => collectScanSources(models, legacyPointClouds, alignmentEnabled).length > 0,
+    () => collectScanSources(models, legacyPointClouds).length > 0,
     // Keyed on `modelsKey` (a stable string), not `models` identity, since
     // the Map reference can change without any visible-content change.
     [modelsKey, legacyPointClouds, alignmentEnabled],
@@ -207,7 +211,7 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
     }
 
     timerRef.current = setTimeout(() => {
-      const sources = collectScanSources(models, legacyPointClouds, alignmentEnabled);
+      const sources = collectScanSources(models, legacyPointClouds);
       if (sources.length === 0) {
         setSelection(EMPTY_SELECTION);
         return;
@@ -240,6 +244,7 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
     legacyPointClouds,
     maxRendered,
     alignmentEnabled,
+    placementRevision,
   ]);
 
   // Stable result identity: consumers put this object in dependency arrays

@@ -6,6 +6,8 @@
  * Tool-specific overlays for measure and section tools
  */
 
+import { useEffect } from 'react';
+import { RepositionPanel } from './reposition/RepositionPanel';
 import { useViewerStore } from '@/store';
 import { MeasureOverlay } from './tools/MeasurePanel';
 import { SectionOverlay } from './tools/SectionPanel';
@@ -18,6 +20,11 @@ import { SpaceSketchOverlay } from './tools/SpaceSketchOverlay';
 
 export function ToolOverlays() {
   const activeTool = useViewerStore((s) => s.activeTool);
+  const repositionOpen = useViewerStore((s) => s.repositionOpen);
+  useEffect(() => {
+    if (repositionOpen && activeTool !== 'select') useViewerStore.getState().closeReposition();
+  }, [repositionOpen, activeTool]);
+  if (repositionOpen && activeTool === 'select') return <RepositionPanel />;
 
   if (activeTool === 'spaceSketch') {
     return <SpaceSketchOverlay />;

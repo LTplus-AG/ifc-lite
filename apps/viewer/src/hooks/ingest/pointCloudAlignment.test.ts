@@ -6,14 +6,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 import {
-  applyMapConversion,
+  applyMapConversion, applyPointCloudAlignmentToggle, registerPointCloudAlignment,
+  unregisterPointCloudAlignment, retargetPointCloudDecodeOrigin,
   computePointCloudAlignment,
-  getPointCloudAlignmentMatrix,
   invertMapConversion,
-  registerPointCloudAlignment,
-  unregisterPointCloudAlignment,
   type MapConversionParams,
 } from './pointCloudAlignment.js';
+import { rebasePointCloudDecodeOrigin } from './pointCloudDecodeOrigin.js';
 import type { ModelGeoref } from './federationAlign.js';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import {
@@ -351,60 +350,6 @@ describe('computePointCloudAlignment (issue #1804)', () => {
   });
 });
 
-/**
- * `getPointCloudAlignmentMatrix` feeds CPU consumers (the 2D scan overlay)
- * the matrix the GPU is currently drawing through, so they place raw
- * cached points where the user actually sees them.
- */
-describe('getPointCloudAlignmentMatrix', () => {
-  const georef: ModelGeoref = {
-    mapConversion: {
-      eastings: 2_600_000, northings: 1_200_000, orthogonalHeight: 450,
-      xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1,
-    } as MapConversion,
-    projectedCRS: {} as ProjectedCRS,
-    coordinateInfo: undefined,
-  } as unknown as ModelGeoref;
-
-  it('returns undefined for a handle with no alignment registered', () => {
-    assert.strictEqual(getPointCloudAlignmentMatrix(4242, true), undefined);
-  });
-
-  it('returns the UNALIGNED matrix when the toggle is off — not undefined', () => {
-    // Regression guard for a CodeRabbit suggestion on PR #1889 (issue
-    // #1804 follow-up) that would have broken this: it proposed returning
-    // undefined here so callers could take the no-matrix fast path.
-    // `unalignedMatrix` is NOT identity: it restores the f64 decode-time
-    // origin subtraction, a translation of map magnitude (~2.6e6). Handing
-    // callers `undefined` here would leave them on raw decode coordinates
-    // while the GPU renders with that offset restored — reintroducing, for
-    // the toggle-off case, exactly the frame mismatch this API exists to
-    // remove.
-    const transform = computePointCloudAlignment(georef);
-    assert.ok(transform, 'fixture must produce an alignment');
-    registerPointCloudAlignment({ id: 91 }, transform!);
-    try {
-      const off = getPointCloudAlignmentMatrix(91, false);
-      assert.ok(off, 'a registered asset must still report a matrix when unaligned');
-      assert.strictEqual(off!.matrix, transform!.unalignedMatrix);
-      const isIdentity = off!.matrix[12] === 0 && off!.matrix[13] === 0 && off!.matrix[14] === 0;
-      assert.ok(!isIdentity, 'unalignedMatrix carries the decode offset; it is not a no-op');
-      // It restores ABSOLUTE native coordinates, so the caller must still
-      // apply the world -> render-frame shift.
-      assert.strictEqual(off!.outputsRenderFrame, false);
-
-      const on = getPointCloudAlignmentMatrix(91, true);
-      assert.strictEqual(on!.matrix, transform!.alignedMatrix);
-      // The aligned matrix folds the whole viewer shift into its decode
-      // offset (zero translation column), so it is ALREADY render-frame —
-      // shifting it again would displace the overlay by the full offset.
-      assert.strictEqual(on!.outputsRenderFrame, true);
-    } finally {
-      unregisterPointCloudAlignment(91);
-    }
-  });
-});
-
 describe('computePointCloudAlignment with map-absolute geometry (#2526)', () => {
   // Vectorworks-style reference model: geometry authored at the ABSOLUTE
   // projected coordinates (rebased into wasmRtcOffset), IfcMapConversion
@@ -669,5 +614,39 @@ describe('format-native decode unit for the origin offset (PR #2623 review)', ()
       const decodedRight = decodeAsciiPoints(bytes, format, right.decodeOriginOffset);
       assertClose(residual(decodedRight.positions), 0, 1e-3, `GREEN (${format}, metre offset)`);
     }
+  });
+});
+
+
+describe('scan-local decode frame (#4226)', () => {
+  it('preserves inverse-map placement after choosing a distant scan origin, including rotation and feet', () => {
+    const angle = Math.PI / 7;
+    const georef = makeGeoref({ mapConversion: { xAxisAbscissa: Math.cos(angle), xAxisOrdinate: Math.sin(angle) },
+      projectedCRS: { mapUnitScale: 0.3048 } });
+    const initial = computePointCloudAlignment(georef);
+    assert.ok(initial);
+    const origin = [10_000_000, 20_000_000, 300] as const;
+    const rebased = rebasePointCloudDecodeOrigin(initial, origin);
+    for (const raw of [origin, [origin[0] + 0.001, origin[1] - 0.002, origin[2] + 0.003]] as const) {
+      const before = runAlignmentChain(initial, raw), after = runAlignmentChain(rebased, raw);
+      assertClose(after.x, before.x, 1e-7); assertClose(after.y, before.y, 1e-7); assertClose(after.z, before.z, 1e-7);
+    }
+    assert.ok(rebased.alignedMatrix instanceof Float64Array, 'do not round the coarse offset before manual correction');
+    const decoded = decodeAsciiPoints(new TextEncoder().encode('10000000 20000000 300\n10000000.001 20000000 300\n'), 'xyz', origin);
+    assertClose(decoded.positions[3] - decoded.positions[0], 0.001, 1e-8);
+  });
+
+  it('retargets an opening stream using the latest alignment toggle and restores native coordinates when off', () => {
+    const transform = computePointCloudAlignment(makeGeoref()); assert.ok(transform);
+    const handle = { id: 4226 }, writes: Array<Float32Array | Float64Array | null> = [];
+    const renderer = { setPointCloudTransform: (_handle: { id: number }, matrix: Float32Array | Float64Array | null) => { writes.push(matrix); } };
+    registerPointCloudAlignment(handle, transform);
+    try {
+      applyPointCloudAlignmentToggle(renderer, false);
+      retargetPointCloudDecodeOrigin(renderer, handle, [10_000_000, 20_000_000, 300]);
+      assert.deepEqual(Array.from(writes.at(-1)!.slice(12, 15)), [10_000_000, 300, -20_000_000]);
+      applyPointCloudAlignmentToggle(renderer, true);
+      assert.deepEqual(Array.from(writes.at(-1)!.slice(12, 15)), [9_500_000, 200, -15_000_000]);
+    } finally { unregisterPointCloudAlignment(handle.id); }
   });
 });

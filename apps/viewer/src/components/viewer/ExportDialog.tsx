@@ -634,7 +634,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
             Export IFC File
           </DialogTitle>
           <DialogDescription>
-            Export your model with property modifications applied
+            {isIfc5 && !changesOnly ? 'Export model data and geometry, including current workspace placement' : 'Export authored model coordinates and property modifications. Workspace repositioning is saved separately.'}
           </DialogDescription>
         </DialogHeader>
 

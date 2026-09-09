@@ -8,7 +8,7 @@
  * and secondary actions in an overflow menu.
  */
 
-import React, { useRef, useCallback, useMemo } from 'react';
+import React, { useRef, useCallback } from 'react';
 import {
   FolderOpen,
   MousePointer2,
@@ -43,7 +43,7 @@ import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeVi
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { exportGlbFromGeometry } from '@/lib/export/glb';
+import { exportPlacedModelGlb } from '@/lib/model-placement/quick-glb';
 import { downloadBlob } from '@/lib/export/download';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { toast } from '@/components/ui/toast';
@@ -62,7 +62,6 @@ export function MobileToolbar() {
     geometryResult,
     models,
     loadFilesSequentially,
-    addModel,
   } = useIfc();
 
   const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
@@ -134,7 +133,7 @@ export function MobileToolbar() {
   const handleExportGLB = useCallback(async () => {
     if (!geometryResult) return;
     try {
-      const glb = await exportGlbFromGeometry(geometryResult, { includeMetadata: true });
+      const glb = await exportPlacedModelGlb(geometryResult);
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
       downloadBlob(blob, 'model.glb');
       toast.success(`Exported GLB (${(blob.size / 1024).toFixed(0)} KB)`);

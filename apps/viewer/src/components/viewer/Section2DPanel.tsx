@@ -2,16 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Section2DPanel - 2D architectural drawing viewer panel
- *
- * Displays generated 2D drawings (floor plans, sections) with:
- * - Canvas-based rendering with pan/zoom
- * - Toggle controls for hidden lines
- * - Export to SVG functionality
- */
+/** Workspace drawings with pan/zoom, hidden lines and vector export. */
 
 import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
+import { placedViewGeometry } from '@/lib/model-placement/view-geometry';
 import { X, Download, FileDown, Eye, EyeOff, Maximize2, ZoomIn, ZoomOut, Loader2, Printer, GripVertical, MoreHorizontal, RefreshCw, Pin, PinOff, Palette, Ruler, Trash2, FileText, Shapes, Box, BoxSelect, PenTool, Hexagon, Type, Cloud, MousePointer2, Tag, Layers, ScanLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -166,8 +160,9 @@ export function Section2DPanel({
   const models = useViewerStore((s) => s.models);
   const { geometryResult: legacyGeometryResult, ifcDataStore } = useIfc();
 
-  // Use merged geometry from props if available (multi-model), otherwise fall back to legacy single-model
-  const geometryResult = mergedGeometry ?? legacyGeometryResult;
+  const placement = useViewerStore((state) => state.modelPlacement);
+  const geometryResult = useMemo(() => { const source = mergedGeometry ?? legacyGeometryResult;
+    return source ? placedViewGeometry(source) : source; }, [mergedGeometry, legacyGeometryResult, placement]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // AUTO-SHOW PANEL EFFECT

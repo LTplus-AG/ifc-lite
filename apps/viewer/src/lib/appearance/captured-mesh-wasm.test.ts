@@ -115,3 +115,22 @@ test('real WASM authors the public boulder without losing a triangle or UV seam 
     });
   } finally { api.free(); }
 });
+
+
+test('oversized capture refuses before allocating a worker or cloning mesh rows (#4380)', async () => {
+  let workers = 0;
+  const planner = createAppearancePlanner({ workerFactory: () => {
+    workers++;
+    throw new Error('A rejected capture must never allocate a worker');
+  } });
+  try {
+    for (const field of ['positions', 'triangles', 'uvs'] as const) {
+      const mesh = { ...request.mesh, [field]: Array(200_001).fill(request.mesh[field][0]) };
+      await assert.rejects(planner.capturedMeshPlan(source, { ...request, mesh }), /1..200000/);
+    }
+    await assert.rejects(planner.capturedMeshPlan(source, {
+      ...request, mesh: { ...request.mesh, uvTriangles: [] },
+    }), /one UV triangle per face/);
+    assert.equal(workers, 0);
+  } finally { planner.dispose(); }
+});

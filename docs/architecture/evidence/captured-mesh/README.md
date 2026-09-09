@@ -44,3 +44,9 @@ Input fingerprints:
 and branch source on AC20-FZK-Haus. Counts are unchanged; quantization, noise and
 lack of an exclusive idle-machine window make timing inconclusive. This is not a
 browser worker-pool or capture-creation performance claim.
+
+Adversarial review also runs the required four in-tree IfcOpenShell parity
+comparisons with a wheel rebuilt from this branch: all four match (the existing
+triangle-density advisory remains). The worker client refuses oversized capture
+row arrays before worker allocation or structured cloning; the native planner
+independently validates geometry, indices, numeric bounds and image coordinates.

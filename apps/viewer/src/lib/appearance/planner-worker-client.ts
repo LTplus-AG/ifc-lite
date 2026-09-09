@@ -50,6 +50,15 @@ export function createAppearancePlanner(options: {
     if (job.type === 'page-plan' && job.rgba.byteLength > 128 * 1024 * 1024) {
       return Promise.reject(new Error('Page raster payload exceeds 128 MiB. Use a smaller source.'));
     }
+    // Refuse oversized capture arrays before structured clone and JSON encoding
+    // allocate copies; semantic geometry validation remains canonical Rust.
+    if (job.type === 'captured-mesh-plan') {
+      const mesh = job.request.mesh;
+      if ([mesh.positions.length, mesh.triangles.length, mesh.uvs.length].some(n => n === 0 || n > 200_000)
+        || mesh.uvTriangles.length !== mesh.triangles.length) {
+        return Promise.reject(new Error('Captured mesh needs 1..200000 position, triangle and UV rows, with one UV triangle per face'));
+      }
+    }
     if ('productIds' in request && request.productIds.length > 10_000) {
       return Promise.reject(new Error('Appearance scope exceeds 10000 owners. Choose a smaller scope.'));
     }

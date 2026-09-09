@@ -63,3 +63,36 @@ Raw snapshots, the executable temporary harness and downloaded IFCX remain under
 `/tmp/capture-room-acceptance`. Large model/mesh/pixel fixtures are not committed.
 This acceptance concerns existing captured-mesh IFC creation and portable sharing;
 it does not establish scan-to-BIM semantic inference or scan registration accuracy.
+
+## Selected-subset IFCZIP
+
+The selected-only exit was verified using the existing ordinary UI: actual mouse
+selection of the captured proxy, **Isolate**, then the export dialog's **Export
+Visible Only** switch. There is no “Selected objects only” option in this dialog;
+the evidence describes the controls actually exercised. No hidden store mutation
+or alternate export API produced the subset.
+
+[Subset results](subset-result.json) record a fresh-context ordinary reopen with
+exactly one textured mesh and 40,087 triangles. All oriented world/UV corners match
+the full input with zero error; repeat S/T and decoded image identity remain.
+A normal mouse click selects that imported `IfcBuildingElementProxy` again.
+
+[Independent IfcOpenShell 0.8.2 reopening](subset-independent-oracle.json) finds
+41 IFC entities: one building element, zero walls, and the necessary project,
+site, building and storey. The proxy retains its GlobalId and Name `Captured
+surface`, `ObjectType=IfcLite:CapturedSurface` and `PredefinedType=USERDEFINED`.
+Its single containment relationship contains only that proxy and targets storey
+`Level 0`. Independent world-coordinate tessellation also produces 40,087 triangles.
+This is a targeted subset/containment check, not blanket EXPRESS-rule validation.
+
+The subset packages exactly one image. All 987,467 original JPEG bytes match the
+full input IFCZIP directly; the digest remains
+`c38f0e918f6dc16b8d386ba3cdd89805c78320c119a1ceec85856f82b09a65b8`.
+The artifact `/tmp/capture-subset-acceptance/captured-proxy-subset.ifczip` is kept
+separate from the ordinary full export. All temporary contexts and the port-4369
+viewer were stopped after the run.
+
+![Selected subset freshly reopened, without the original walls](subset-unselected.png)
+
+Screenshots also show the [ordinary export options](subset-export-options.png)
+and [actual imported proxy selection](subset-selected.png).

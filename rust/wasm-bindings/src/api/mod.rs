@@ -10,6 +10,7 @@ mod appearance_page;
 mod annotation_plane;
 mod captured_mesh;
 mod appearance_calibration;
+mod scan_registration;
 mod bool2d;
 mod clash;
 mod clash_solid;

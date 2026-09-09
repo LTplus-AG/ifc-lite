@@ -687,3 +687,57 @@ Captured mesh requests accept optional `repeatS` and `repeatT` booleans to retai
 an imported image sampler on the authored `IfcImageTexture` and canonical mesh.
 Both default to `false` when omitted. This does not extend the current supported
 UV range: capture coordinates must still lie within `[0, 1]`.
+
+### Scan correspondence registration
+
+`IfcAPI.registerScanCorrespondences(requestJson)` returns UTF-8 JSON from the
+canonical Rust `register_scan_correspondences` solver. It computes a proper rigid
+rotation and anchored translation from manually identified point pairs; it does
+not load, align or mark a scan as registered, estimate scale, run ICP, or transfer
+appearance. Use the existing model/point-cloud alignment path when applying an
+explicitly accepted result, preserving decode origins and federation transforms.
+
+The request is `{sourceFrame, targetFrame, fit, heldOut}`. Each frame contains a
+lowercase `assetSha256` for the exact source asset/effective IFC snapshot and a
+`frameKey` identifying its coordinate frame and placement revision. Source points
+are orthonormal native-source **metres**; target points are destination IFC world
+**Z-up metres**, before viewer axis conversion or offsets. Convert known units
+before creating the request; the solver never guesses them.
+
+Each point pair has `id`, `sourceObservation`, `targetFeature`, `source: [x,y,z]`
+and `target: [x,y,z]`. Hosts resolve target features through the normal model/entity
+resolver and retain model identity, `GlobalId` and the geometric feature definition.
+Source observations identify original points or reviewed neighborhoods. IDs,
+source observations, target features and exact coordinates must be distinct across
+both sets. Hosts must additionally ensure that differently named neighborhoods do
+not reuse the same underlying observation; the solver cannot infer that from IDs.
+
+The fit accepts 3–256 non-collinear points; held-out accepts 0–256. Planar
+non-collinear point sets are mathematically valid. Each ID/frame key is at most
+256 bytes; coordinates are finite and bounded to ±1e12 m; JSON is bounded to
+512 KiB. Nearly collinear source/target scatter or correspondence covariance is
+rejected at a second/first singular-value ratio below `1e-10`. Decompositions have
+a finite iteration budget. Bounds and ratios are numerical refusal criteria,
+not accepted scan accuracy tolerances.
+
+The report contains both frame identities, `algorithm`, `requestSha256`, a
+row-major `rotation`, `sourceAnchor`, `targetAnchor`, source/target scatter spectra,
+and separate `fit`/`heldOut` residual lists with RMS and maximum in metres.
+Apply the transform as `targetAnchor + rotation * (sourcePoint - sourceAnchor)`.
+Each residual vector is predicted target minus observed target. Empty checks
+produce null summary values, not zero error. No observations are automatically
+removed as outliers. Reflections and scale changes remain visible as mismatch;
+the emitted rotation is proper and has unit scale.
+
+`requestSha256` hashes the algorithm ID `ifclite-rigid-correspondence-v1`, one
+zero byte, and compact typed request JSON in Rust field order. It binds all frame
+identities, coordinates, observation identities and the ordered fit/check partition.
+Hosts retain the frozen request with the report and invalidate it after any source,
+frame, feature or partition change. This digest binds declared inputs; it does not
+verify the asset bytes or validate a user's correspondence claim.
+
+A successful solve is not an accuracy verdict. F4 acceptance still requires at
+least four fitting and four independently selected, spatially distributed held-out
+features at different heights, uncertainty review, frozen tolerance, and explicit
+assessment of unknown areas and thin-wall transfer. See the
+[real CRAS evidence](../architecture/evidence/scan-transfer/README.md).

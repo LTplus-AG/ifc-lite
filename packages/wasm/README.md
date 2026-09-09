@@ -141,3 +141,9 @@ for coordinate, budget and atomic host-commit requirements.
 
 Captured-mesh planning preserves optional `repeatS`/`repeatT` image sampler flags
 (default `false`); UVs remain bounded to `[0, 1]`.
+
+`IfcAPI.registerScanCorrespondences` fits bounded manual source-scan/IFC point
+pairs and returns a proper rigid transform plus separate fitting and held-out
+residuals. Frames and asset identities are bound into the report; the call does
+not align a loaded model or approve scan accuracy. See the
+[registration contract](../../docs/api/wasm.md#scan-correspondence-registration).

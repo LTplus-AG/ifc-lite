@@ -30,6 +30,7 @@ import { useRef } from 'react';
 import { useAnnotation2D } from './useAnnotation2D.js';
 import type {
   SelectedAnnotation2D, TextAnnotation2D, CloudAnnotation2D,
+  Measure2DResult, PolygonArea2DResult,
 } from '@/store/slices/drawing2DSlice.js';
 
 let handleMouseDown: ((e: React.MouseEvent) => boolean) | null = null;
@@ -38,9 +39,14 @@ let lastSelected: SelectedAnnotation2D | null | undefined;
 interface ProbeProps {
   textAnnotations2D: TextAnnotation2D[];
   cloudAnnotations2D: CloudAnnotation2D[];
+  measure2DResults?: Measure2DResult[];
+  polygonArea2DResults?: PolygonArea2DResult[];
 }
 
-function Probe({ textAnnotations2D, cloudAnnotations2D }: ProbeProps) {
+function Probe({
+  textAnnotations2D, cloudAnnotations2D,
+  measure2DResults = [], polygonArea2DResults = [],
+}: ProbeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const result = useAnnotation2D({
     drawing: null,
@@ -61,8 +67,8 @@ function Probe({ textAnnotations2D, cloudAnnotations2D }: ProbeProps) {
     addCloudAnnotation2DPoint: () => {},
     completeCloudAnnotation2D: () => {},
     cancelCloudAnnotation2D: () => {},
-    measure2DResults: [],
-    polygonArea2DResults: [],
+    measure2DResults,
+    polygonArea2DResults,
     selectedAnnotation2D: null,
     setSelectedAnnotation2D: (sel) => { lastSelected = sel; },
     deleteSelectedAnnotation2D: () => {},
@@ -161,6 +167,125 @@ describe('useAnnotation2D hitTestAnnotations — top-most wins (#4195)', () => {
       `expected the topmost cloud to win over the hidden text, got ${JSON.stringify(lastSelected)}`,
     );
     assert.equal(lastSelected?.id, 'cloud-over-text');
+
+    unmount();
+  });
+
+  it('same-type overlap: the newer (topmost) text box is selected, not the older one', () => {
+    // Text bounding box is computed from position (top-left), fontSize and
+    // text length. "old" sits at (0,0), "new" is drawn after and its box
+    // overlaps "old"'s box, so a click inside the overlap must hit "new"
+    // first when the text array is walked backwards.
+    const texts: TextAnnotation2D[] = [
+      {
+        id: 'text-old',
+        position: { x: 0, y: 0 },
+        text: 'A',
+        fontSize: 14,
+        color: '#000000',
+        backgroundColor: 'rgba(255,255,255,0.9)',
+        borderColor: '#333333',
+      },
+      {
+        id: 'text-new',
+        position: { x: 2, y: 2 },
+        text: 'B',
+        fontSize: 14,
+        color: '#000000',
+        backgroundColor: 'rgba(255,255,255,0.9)',
+        borderColor: '#333333',
+      },
+    ];
+    mount({ textAnnotations2D: texts, cloudAnnotations2D: [] });
+
+    // Sanity: the click point must genuinely fall inside BOTH boxes, or
+    // this would pass vacuously regardless of iteration order.
+    // old box (fontSize 14, 1-char line): x:[-2,22.4] y:[-2,32.2]
+    // new box: x:[0,24.4] y:[0,34.2]
+    // (10,10) is inside both.
+    act(() => { click(10, 10); });
+
+    assert.equal(lastSelected?.type, 'text');
+    assert.equal(
+      lastSelected?.id,
+      'text-new',
+      `expected the topmost (newer) text box to be selected, got ${JSON.stringify(lastSelected)}`,
+    );
+
+    unmount();
+  });
+
+  it('same-type overlap: the newer (topmost) polygon is selected via edge proximity, not the older one', () => {
+    // Polygon hit-testing is edge-proximity (within HIT_TEST_RADIUS_PX=10)
+    // or the centroid label box — NOT a bounding-box test. Both polygons
+    // below have a near-horizontal edge passing within 10px of the click
+    // point (10,10), so the click is a genuine edge-proximity hit on BOTH,
+    // not merely a visual overlap.
+    const polys: PolygonArea2DResult[] = [
+      {
+        id: 'poly-old',
+        // Edge (-5,8)->(25,8): nearest point to (10,10) is (10,8), dist=2 < 10.
+        points: [{ x: -5, y: 8 }, { x: 25, y: 8 }, { x: 25, y: 30 }, { x: -5, y: 30 }],
+        area: 1,
+        perimeter: 1,
+      },
+      {
+        id: 'poly-new',
+        // Edge (-5,12)->(25,12): nearest point to (10,10) is (10,12), dist=2 < 10.
+        points: [{ x: -5, y: 12 }, { x: 25, y: 12 }, { x: 25, y: 30 }, { x: -5, y: 30 }],
+        area: 1,
+        perimeter: 1,
+      },
+    ];
+    mount({
+      textAnnotations2D: [], cloudAnnotations2D: [], polygonArea2DResults: polys,
+    });
+
+    act(() => { click(10, 10); });
+
+    assert.equal(lastSelected?.type, 'polygon');
+    assert.equal(
+      lastSelected?.id,
+      'poly-new',
+      `expected the topmost (newer) polygon to be selected via edge proximity, got ${JSON.stringify(lastSelected)}`,
+    );
+
+    unmount();
+  });
+
+  it('same-type overlap: the newer (topmost) measure is selected via line proximity, not the older one', () => {
+    // Measure hit-testing is line-segment proximity (within
+    // HIT_TEST_RADIUS_PX=10), not a bounding-box test. Both segments below
+    // pass within 10px of the click point (10,5), a genuine proximity hit
+    // on BOTH, not merely a visual overlap.
+    const measures: Measure2DResult[] = [
+      {
+        id: 'measure-old',
+        // Horizontal segment at y=0: nearest point to (10,5) is (10,0), dist=5 < 10.
+        start: { x: 0, y: 0 },
+        end: { x: 20, y: 0 },
+        distance: 20,
+      },
+      {
+        id: 'measure-new',
+        // Horizontal segment at y=8: nearest point to (10,5) is (10,8), dist=3 < 10.
+        start: { x: 0, y: 8 },
+        end: { x: 20, y: 8 },
+        distance: 20,
+      },
+    ];
+    mount({
+      textAnnotations2D: [], cloudAnnotations2D: [], measure2DResults: measures,
+    });
+
+    act(() => { click(10, 5); });
+
+    assert.equal(lastSelected?.type, 'measure');
+    assert.equal(
+      lastSelected?.id,
+      'measure-new',
+      `expected the topmost (newer) measure to be selected via line proximity, got ${JSON.stringify(lastSelected)}`,
+    );
 
     unmount();
   });

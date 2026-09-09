@@ -16,7 +16,7 @@ const DEFAULT_PRESENT_INSTANCED_MODEL_INDICES: ReadonlySet<number> = new Set([0]
  * a reshape), then reconciles instanced ownership: any modelIndex the scene
  * still holds templates for but that is missing from
  * `presentInstancedModelIndices` gets torn down via
- * `removeInstancedTemplatesForModel` so a genuinely removed/hidden model's
+ * `removeInstancedTemplatesForModel` so a genuinely removed model's
  * repeated geometry does not linger on screen. See the
  * `presentInstancedModelIndices` param doc for the full rationale.
  */

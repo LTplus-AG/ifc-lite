@@ -87,7 +87,7 @@ pub fn plan_appearance(
     if request.representation_policy==RepresentationPolicy::EvaluatedOccurrence {
         let normalized=evaluated::prepare(bytes,request,&mut source)?;
         let plan=plan_with_source(bytes,normalized.request(),&mut source)?;
-        return Ok(normalized.compose(plan).0);
+        return Ok(normalized.compose(plan)?.0);
     }
     plan_with_source(bytes,request,&mut source)
 }

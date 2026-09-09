@@ -137,7 +137,7 @@ fn issue_4404_filtered_private_conversion_prefix_compacts_to_host_allocation_ord
     // private IDs must not leave a gap before the accepted occurrence's rows.
     normalized.request.product_ids.retain(|id|*id==35304);
     let mapped=super::super::plan_with_source(text.as_bytes(),&normalized.request,&mut source).unwrap();
-    let (plan,ids)=normalized.compose(mapped);
+    let (plan,ids)=normalized.compose(mapped).unwrap();
     assert_eq!(plan.conversions.len(),1);
     assert_eq!(plan.conversions[0].product_id,35304);
     assert!(ids.iter().any(|(old,new)|old!=new));
@@ -151,4 +151,32 @@ fn issue_4404_filtered_private_conversion_prefix_compacts_to_host_allocation_ord
         if id==35169 {assert_eq!(serde_json::to_value(original).unwrap(),serde_json::to_value(replacement).unwrap());}
         else {assert_eq!(replacement.geometry_item_id,Some(plan.conversions[0].geometry_item_id));assert!(replacement.texture.is_some());}
     }
+}
+
+#[test]
+fn issue_4404_real_page_material_name_that_looks_like_generated_reference_is_literal() {
+    let Some(source)=real_source() else{return};
+    let ambiguous_source=source.replace("'Kiefer'","'#100001'");
+    let mut appearance=request(); appearance.repeat_s=false;appearance.repeat_t=false;
+    appearance.mapping=Mapping::Planar {frame:MappingFrame::World,origin:[1.,6.,3.],axis_u:[0.,1.,0.],axis_v:[0.,0.,1.],metres_per_tile:[2.,2.]};
+    let request=PageAppearanceRequest {appearance,page:AppearanceRaster {width:1,height:1,byte_offset:0,byte_length:4},source_images:vec![],texels_per_metre:32.};
+    let error=plan_page_appearance(ambiguous_source.as_bytes(),&request,&[255,0,0,255]).unwrap_err();
+    assert!(error.contains("names beginning with '#'"),"{error}");
+    // The public path refuses the ambiguous Name instead of emitting invalid
+    // STEP. Also protect the finalizer itself against treating literal slots as
+    // references, independently of the page writer's current restriction.
+    let mut result=plan_page_appearance(source.as_bytes(),&request,&[255,0,0,255]).unwrap();
+    for row in &mut result.plan.created {
+        if row.r#type=="IfcSurfaceStyle" {row.attributes[0]=json!("#100001");}
+    }
+    let names=|plan:&AppearancePlan|plan.created.iter().filter(|row|row.r#type=="IfcSurfaceStyle")
+        .map(|row|row.attributes[0].clone()).collect::<Vec<_>>();
+    let original_names=names(&result.plan);assert!(original_names.contains(&json!("#100001")));
+    // Force the same remapping that an omitted private prefix requires, using
+    // the actual native page plan with its preserved exporter material label.
+    result.plan.next_express_id-=1;
+    let ids=super::super::evaluated_allocation::compact(&mut result.plan).unwrap();
+    assert_ne!(ids[&100001],100001);
+    assert_eq!(names(&result.plan),original_names);
+    assert_eq!(result.plan.created[0].express_id,result.plan.next_express_id);
 }

@@ -105,7 +105,7 @@ pub fn plan_page_appearance(bytes: &[u8], request: &PageAppearanceRequest, rgba:
     bind_images(&mut plan, &item_images, &mut source, &styles)?;
     let plan=match normalization {
         Some(n)=> {
-            let (plan,ids)=n.compose(plan);
+            let (plan,ids)=n.compose(plan)?;
             for image in &mut item_images {
                 if let Some(&id)=ids.get(&image.geometry_item_id) {image.geometry_item_id=id;}
             }

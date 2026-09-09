@@ -51,3 +51,17 @@ retained under `/tmp/transfer-texel-real-input`; they are not shipped as fixture
 The comparison's input hashes prevent substituting a different request or model.
 The canonical load path, geometry, nearest-surface predicates, work cap and
 texture sampling are unchanged by this fix.
+
+## Ordinary-load performance
+
+`native-load.json` contains exact-base/branch/base/branch probes, five iterations
+each, on the qualified AC20 fixture. Base source is `22f3f0d0d`; branch source is
+`fd88626ad`. Binaries were built separately, copied immutably, and measured while
+all collaborating agents held heavy work. The first pair's parse/geometry/total
+changes were +1/+1/+1 ms; the second pair's changes were 0/-1/0 ms. These mixed
+phase differences provide no consistently directed change. All runs retain 285
+meshes, 35,940 vertices and 19,456 triangles. Separate untimed-for-this-comparison
+checks retain ordered mesh FNV `25ac885b6ff4ad00` on both builds. That fingerprint
+covers mesh payloads, not textures; dense transfer PNG identity is independently
+recorded in `comparison.json`. No browser worker speedup or expanded transfer
+capacity is claimed.

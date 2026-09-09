@@ -153,3 +153,20 @@ test('Discard closes a PDF password prompt and preserves the existing source (#4
   assert.equal(useViewerStore.getState().appearanceSources.find(item => item.id === f.key), before);
   assert.ok(appearanceAssets.get(before.assetId!));
 });
+
+
+test('source calibration survives same-page quality changes and is cleared for another page (#4308)', async () => {
+  const f = await fixture();
+  const state = useViewerStore.getState();
+  const source = state.appearanceSources.find(item => item.id === f.key)!;
+  const calibration = { sourcePoints: [[0, 72], [72, 72]] as [[number, number], [number, number]], distanceMetres: 12 };
+  act(() => state.updateAppearanceSource({ ...source, calibration }));
+  act(() => f.current.controls!.onDpiChange(300));
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 260)); });
+  assert.deepEqual(useViewerStore.getState().appearanceSources.find(item => item.id === f.key)?.calibration, calibration);
+  act(() => f.current.controls!.onPageChange(2));
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 260)); });
+  const next = useViewerStore.getState().appearanceSources.find(item => item.id === f.key)!;
+  assert.equal(next.pdf!.recipe.page.pageNumber, 2);
+  assert.equal(next.calibration, undefined, 'a different drawing needs its own measured span');
+});

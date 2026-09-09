@@ -3,19 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
-import { pdfLandmarkAt, pdfLandmarkFraction, type PdfCalibration } from '@/lib/appearance/pdf/calibration.js';
-import type { PdfRasterRecipe } from '@/lib/appearance/pdf/types.js';
+import { rasterLandmarkAt, rasterLandmarkFraction, type RasterCalibration, type RasterCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
 
 type Point = [number, number];
 export interface AppearanceCalibrationProps {
-  recipe: PdfRasterRecipe;
+  frame: RasterCalibrationFrame;
+  sourceKey: string;
   thumbnailUrl: string;
-  value?: PdfCalibration;
-  onChange(value: PdfCalibration): void;
+  value?: RasterCalibration;
+  onChange(value: RasterCalibration): void;
   disabled: boolean;
   onInvalid(name: string, invalid: boolean): void;
 }
-export function AppearanceCalibrationFields({ recipe, thumbnailUrl, value, onChange, disabled, onInvalid }: AppearanceCalibrationProps) {
+export function AppearanceCalibrationFields({ frame, thumbnailUrl, value, onChange, disabled, onInvalid }: AppearanceCalibrationProps) {
   const [points, setPoints] = useState<Array<Point | undefined>>(() => value?.sourcePoints ?? []);
   const [active, setActive] = useState<0 | 1>(0);
   const [cursor, setCursor] = useState<Point>([0.5, 0.5]);
@@ -23,8 +23,8 @@ export function AppearanceCalibrationFields({ recipe, thumbnailUrl, value, onCha
   const metres = Number(distance);
   const a = points[0], b = points[1];
   const invalid = !a || !b || (a[0] === b[0] && a[1] === b[1]) || !distance.trim() || !Number.isFinite(metres) || metres <= 0;
-  useEffect(() => { onInvalid('pdf-calibration', !!invalid); }, [invalid, onInvalid]);
-  useEffect(() => () => onInvalid('pdf-calibration', false), [onInvalid]);
+  useEffect(() => { onInvalid('source-calibration', !!invalid); }, [invalid, onInvalid]);
+  useEffect(() => () => onInvalid('source-calibration', false), [onInvalid]);
 
   function publish(next: Array<Point | undefined>, text: string): void {
     const first = next[0], second = next[1], span = Number(text);
@@ -34,7 +34,7 @@ export function AppearanceCalibrationFields({ recipe, thumbnailUrl, value, onCha
   }
   function choose(fraction: Point): void {
     const next = [...points];
-    next[active] = pdfLandmarkAt(recipe, fraction);
+    next[active] = rasterLandmarkAt(frame, fraction);
     setPoints(next); setCursor(fraction); setActive(active === 0 ? 1 : 0);
     publish(next, distance);
   }
@@ -62,10 +62,10 @@ export function AppearanceCalibrationFields({ recipe, thumbnailUrl, value, onCha
         setCursor(previous => [Math.max(0, Math.min(1, previous[0] + delta[0] * step)),
           Math.max(0, Math.min(1, previous[1] + delta[1] * step))]);
       }}>
-      <img src={thumbnailUrl} alt="PDF page to calibrate" className="block h-auto w-full" draggable={false} />
+      <img src={thumbnailUrl} alt="Source image to calibrate" className="block h-auto w-full" draggable={false} />
       {points.map((point, index) => {
         if (!point) return null;
-        const [x, y] = pdfLandmarkFraction(recipe, point);
+        const [x, y] = rasterLandmarkFraction(frame, point);
         if (x < 0 || x > 1 || y < 0 || y > 1) return null;
         return <span key={index} aria-hidden="true" className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground"
           style={{ left: `${x * 100}%`, top: `${y * 100}%` }}>{index === 0 ? 'A' : 'B'}</span>;

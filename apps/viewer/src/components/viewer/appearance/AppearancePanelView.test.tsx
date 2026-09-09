@@ -4,7 +4,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { render, click, type, cleanup } from '@/test/render.js';
 import { AppearancePanelView } from './AppearancePanelView.js';
 import type { AppearancePanelViewProps, AppearanceDraftSettings } from './types.js';
@@ -132,10 +132,7 @@ it('can reuse the remaining library image when no source is selected', () => {
 it('Discard restores the last valid PDF calibration instead of clearing its error around an empty distance (#4260)', () => {
   const ui = render(<AppearancePanelView {...props({ calibration: {
     thumbnailUrl: 'blob:page', onChange() {}, value: { sourcePoints: [[0, 0], [100, 0]], distanceMetres: 1 },
-    recipe: { page: { pageNumber: 1, viewBox: [0, 0, 100, 100], userUnit: 1, intrinsicRotation: 0,
-      widthPoints: 100, heightPoints: 100, pdfToPage: [1, 0, 0, -1, 0, 100] },
-      rotation: 0, cropPoints: [0, 0, 100, 100], requestedDpi: 72, effectiveDpi: 72,
-      pixelWidth: 100, pixelHeight: 100, paperSizeMetres: [0.035, 0.035], pixelToPdf: [1, 0, 0, -1, 0, 100] },
+    sourceKey: 'page:1', frame: { rasterSize: [100, 100], rasterToSource: [1, 0, 0, -1, 0, 100] },
   } })} />);
   const distance = ui.querySelector('input[aria-label="Distance A–B (m)"]');
   assert.ok(distance instanceof HTMLInputElement);
@@ -155,4 +152,54 @@ it('allows cancelling cooperative Apply while preventing a second Apply (#4336)'
   assert.equal(button(ui, 'Discard').disabled, false);
   click(button(ui, 'Discard'));
   assert.equal(controller.signal.aborted, true);
+});
+
+
+it('switches source intent without replacing the source picker or requiring an IFC target for references (#4308)', () => {
+  let placements = 0;
+  function Workspace() {
+    const [intent, setIntent] = useState<'apply' | 'reference'>('apply');
+    return <AppearancePanelView {...props({ intent, onIntentChange: setIntent, modelId: null,
+      affectedCount: 0, onApply: () => { placements++; }, calibration: {
+        sourceKey: 'image', frame: { rasterSize: [512, 512], rasterToSource: [1, 0, 0, 1, 0, 0] },
+        thumbnailUrl: 'blob:image', value: { sourcePoints: [[0, 0], [512, 0]], distanceMetres: 10 }, onChange() {},
+      } })} />;
+  }
+  const ui = render(<Workspace />);
+  const picker = ui.querySelector('input[type="file"]');
+  assert.equal(button(ui, 'Apply').disabled, true, 'IFC application still needs its target');
+  click(button(ui, 'Place as reference'));
+  assert.equal(ui.querySelector('input[type="file"]'), picker, 'switching intent keeps the same source control mounted');
+  assert.equal(ui.querySelector('select[aria-label="Appearance model"]'), null);
+  const distance = ui.querySelector('input[aria-label="Distance A–B (m)"]');
+  assert.ok(distance instanceof HTMLInputElement);
+  assert.equal(distance.value, '10');
+  assert.equal(button(ui, 'Place reference').disabled, false);
+  click(button(ui, 'Place reference'));
+  assert.equal(placements, 1);
+  click(button(ui, 'Apply to IFC'));
+  assert.ok(ui.querySelector('select[aria-label="Appearance model"]'));
+  assert.equal(ui.querySelector('input[type="file"]'), picker);
+});
+
+// A source can enter reference mode after a tiled/UV appearance draft (#4308).
+it('always exposes planar alignment for calibrated sources even after box or UV mapping', () => {
+  for (const kind of ['box', 'existingUv'] as const) {
+    const patches: Partial<AppearanceDraftSettings>[] = [];
+    const ui = render(<AppearancePanelView {...props({ intent: 'reference',
+      settings: { ...props().settings, kind }, onSettingsChange: patch => patches.push(patch),
+      calibration: { thumbnailUrl: 'blob:page', onChange() {},
+        value: { sourcePoints: [[0, 0], [100, 0]], distanceMetres: 1 },
+        sourceKey: 'page:1', frame: { rasterSize: [100, 100], rasterToSource: [1, 0, 0, 1, 0, 0] } },
+    })} />);
+    select(ui, 'Projection plane', 'xz');
+    assert.deepEqual(patches.at(-1), { plane: 'xz' });
+    const rotation = ui.querySelector('input[aria-label="Rotation (°)"]');
+    assert.ok(rotation instanceof HTMLInputElement);
+    type(rotation, '45');
+    assert.deepEqual(patches.at(-1), { rotationDegrees: 45 });
+    assert.equal(ui.querySelector('select[aria-label="Texture mapping"]'), null);
+    assert.equal(ui.querySelector('input[aria-label="Repeat U (×)"]'), null);
+    assert.equal(ui.querySelector('input[aria-label="Tile X (m)"]'), null);
+  }
 });

@@ -22,9 +22,9 @@ export function publishPdfRaster(documentKey: string, raster: PdfDerivedAppearan
     const source: AppearanceSourceOption = {
       id: documentKey, assetId, name: `${document.name} · page ${raster.recipe.page.pageNumber}`,
       width: raster.asset.width, height: raster.asset.height, thumbnailUrl: url,
-      pdf: { documentKey, recipe: raster.recipe,
-        calibration: previous?.pdf?.recipe.page.pageNumber === raster.recipe.page.pageNumber
-          ? previous.pdf.calibration : undefined },
+      calibration: previous?.pdf?.recipe.page.pageNumber === raster.recipe.page.pageNumber
+        ? previous.calibration : undefined,
+      pdf: { documentKey, recipe: raster.recipe },
     };
     if (previous) useViewerStore.getState().updateAppearanceSource(source);
     else useViewerStore.getState().addAppearanceSource(source);

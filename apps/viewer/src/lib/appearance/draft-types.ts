@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { PdfRasterRecipe } from './pdf/types.js';
-import type { PdfCalibration } from './pdf/calibration.js';
+import type { RasterCalibration } from './raster-calibration.js';
+
+export type AppearanceIntent = 'apply' | 'reference';
 
 export type AppearanceScope =
   | { kind: 'model' | 'selection' }
@@ -31,10 +33,11 @@ export interface AppearanceSourceOption {
   id: string;
   /** Encoded derivative identity; independent from the source's page/calibration recipe. */
   assetId?: string;
+  /** Measured landmarks in the source native frame, shared across placement intents. */
+  calibration?: RasterCalibration;
   pdf?: {
     documentKey: string;
     recipe: PdfRasterRecipe;
-    calibration?: PdfCalibration;
   };
   name: string;
   width: number;
@@ -44,6 +47,7 @@ export interface AppearanceSourceOption {
 }
 /** Logical draft only. GPU resources, plans and pending jobs are never stored. */
 export interface AppearanceDraftRecipe {
+  intent?: AppearanceIntent;
   modelId: string | null;
   sourceId: string | null;
   scope: AppearanceScope;

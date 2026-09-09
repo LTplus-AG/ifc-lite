@@ -62,17 +62,40 @@ inside an active shared room; leave the room to edit and share the finished
 result. IFCX export from a shared model preserves textured fragments through the
 versioned appearance extension described in the [export guide](exporting.md).
 
-PDF projection changes surface appearance. It does not create a reference plane,
-extract vector annotations, recognize text, or create building geometry. Those
-are separate operations in the implementation roadmap.
+PDF projection changes surface appearance. Vector extraction, text recognition,
+and scan-derived building geometry remain separate operations in the implementation roadmap.
+
+## Drawing references in 3D
+
+Choose **Place as reference** in the same Appearance panel to place an image or
+PDF-page raster independently of IFC surfaces. Calibrate two image points and
+enter their measured distance, then choose the projection plane and point A’s
+IFC world coordinates. **Place reference** adds the drawing to the workspace and
+its Undo/Redo history; an IFC target is not required.
+
+Registered drawings stay visible when the panel closes. Select an unlocked
+drawing in the viewport or its library row. The library provides visibility,
+lock, opacity, and removal controls. A changed source does not repaint an already
+placed drawing. Coordinate-frame mismatches leave the registration unavailable
+until it is registered for that frame; renderer origin rebasing preserves its
+engineering position.
+
+**Export drawing registration** saves positions, image digests, and calibration
+recipes as JSON. Keep the original raster images alongside it: registration JSON
+does not embed images. **Import drawing registration** restores the records;
+**Relink original image** verifies the exact image digest for any missing raster.
+Independent references are currently local to the workspace, not room content.
 
 ### Saving a registered reference into IFC
 
-The viewer command `createAnnotationFromReference` creates a textured
-`IfcAnnotation` from a registered image or PDF-page raster. It takes the target
-model and spatial container, preserves the original encoded image, and plans IFC
-rows and geometry through the native annotation planner. The new owner participates
-in the model's existing undo/redo history and portable IFC texture export.
+Expand **Save into model** on a registered drawing. Choose an editable model,
+its spatial container, and the annotation’s **Name**, then choose **Create annotation**.
+The new textured `IfcAnnotation` is selected in the viewer. **Cancel creation**
+cancels preparation before publication. Use normal Undo/Redo and IFC + images
+export for the created object.
+
+The viewer command `createAnnotationFromReference` preserves the original encoded
+image and plans IFC rows and geometry through the native annotation planner.
 Storey, building and space targets retain their actual spatial containment through
 creation, Undo, Redo and export; a space or building is never treated as a storey.
 

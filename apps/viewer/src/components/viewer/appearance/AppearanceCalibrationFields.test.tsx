@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { render, click, type, cleanup } from '@/test/render.js';
 import { AppearanceCalibrationFields } from './AppearanceCalibrationFields.js';
-import type { PdfCalibration } from '@/lib/appearance/pdf/calibration.js';
+import { pdfCalibrationFrame, type PdfCalibration } from '@/lib/appearance/pdf/calibration.js';
+import { imageCalibrationFrame, type RasterCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
 import type { PdfRasterRecipe } from '@/lib/appearance/pdf/types.js';
 afterEach(cleanup);
 const recipe: PdfRasterRecipe = {
@@ -17,9 +18,9 @@ const recipe: PdfRasterRecipe = {
   pixelWidth: 200, pixelHeight: 100, paperSizeMetres: [0.07, 0.035],
   pixelToPdf: [0, 0.5, 0.5, 0, 30, 40],
 };
-function mount() {
+function mount(frame: RasterCalibrationFrame = pdfCalibrationFrame(recipe)) {
   const changes: PdfCalibration[] = [], invalid: boolean[] = [];
-  const ui = render(<AppearanceCalibrationFields recipe={recipe} thumbnailUrl="blob:page" disabled={false}
+  const ui = render(<AppearanceCalibrationFields frame={frame} sourceKey="page:1" thumbnailUrl="blob:page" disabled={false}
     onChange={value => changes.push(value)} onInvalid={(_name, value) => invalid.push(value)} />);
   const page = ui.querySelector('button[aria-label="Choose calibration landmarks on page"]');
   const distance = ui.querySelector('input');
@@ -62,4 +63,14 @@ test('keyboard users can place two distinct landmarks and repeated points remain
   click(page);
   assert.equal(invalid.at(-1), false);
   assert.deepEqual(changes.at(-1), { sourcePoints: [[55, 100], [55, 90]], distanceMetres: 2 });
+});
+
+
+test('image reference calibration uses original image pixels without document metadata (#4308)', () => {
+  const { page, distance, changes, invalid } = mount(imageCalibrationFrame(1600, 800));
+  type(distance, '12');
+  point(page, 110, 70);
+  point(page, 310, 70);
+  assert.equal(invalid.at(-1), false);
+  assert.deepEqual(changes, [{ sourcePoints: [[400, 200], [1200, 200]], distanceMetres: 12 }]);
 });

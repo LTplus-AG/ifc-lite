@@ -1,0 +1,30 @@
+{
+  "before": {
+    "id": 35169,
+    "model": "ff56c6bf-ca9f-48ab-a5eb-bb8003c736dc",
+    "hasGeometry": true,
+    "siblingHasGeometry": true,
+    "parts": [
+      {
+        "item": 79109,
+        "textured": true,
+        "triangles": 12
+      }
+    ],
+    "instance": false,
+    "sibling": true
+  },
+  "hidden": {
+    "flat": 0,
+    "instance": false,
+    "sibling": true
+  },
+  "shown": {
+    "flat": 1,
+    "instance": false,
+    "sibling": true
+  },
+  "hiddenClickSelection": null,
+  "shownClickSelection": 35169,
+  "actualViewportSelection": true
+}

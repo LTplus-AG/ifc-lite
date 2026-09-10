@@ -29,3 +29,11 @@ Verified source: `8a39083d09ddff0298d006ea942f9723b4ada95c`.
 WASM SHA-256: `0ce999541e528f3b7593941f501f483bf87d9d444340328eb37ef8a7ea83d545`.
 The final run explicitly asserts Undo clears selection, then exports and freshly
 reopens the resulting archive before the ordinary annotation pick.
+
+An additional independent IfcOpenShell 0.8.2 check is recorded in
+`independent-ifc-reader.json`. `verify-export.py` validates the actual exported
+IFCZIP using full EXPRESS rules, its native geometry engine, independent IFC
+placement/unit resolution, indexed UV-to-world-corner association, and archived
+image digest. This artifact passed with zero schema errors and zero corner error.
+The rotated/cropped PDF and fresh-room extension is documented in
+[reference PDF acceptance](../reference-pdf/README.md).

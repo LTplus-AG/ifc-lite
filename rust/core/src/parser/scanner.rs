@@ -11,6 +11,15 @@
 mod scanner_header;
 use scanner_header::data_section_start;
 
+// `has_non_null_attribute` lives next door, per this file's own split pattern
+// (see `scanner_attributes.rs`'s doc comment).
+#[path = "scanner_attributes.rs"]
+mod scanner_attributes;
+
+// The refusal/drop reporting surface, likewise (see its doc comment).
+#[path = "scanner_diagnostics.rs"]
+mod scanner_diagnostics;
+
 /// Fast entity scanner over raw IFC bytes without full parsing.
 /// O(n) performance for finding entities by type
 /// Uses memchr for SIMD-accelerated byte searching
@@ -24,8 +33,8 @@ pub struct EntityScanner<'a> {
     /// [`Self::skipped_oversized_id_starts`]. It never allocates on a file
     /// with nothing to refuse, which is every real file.
     skipped_oversized_id_starts: Vec<usize>,
-    /// See [`Self::malformed_record_start`] for what this points at.
-    malformed_record_start: Option<usize>,
+    /// See [`Self::malformed_record_starts`] for what these point at.
+    malformed_record_starts: Vec<usize>,
 }
 
 impl<'a> EntityScanner<'a> {
@@ -44,7 +53,7 @@ impl<'a> EntityScanner<'a> {
             bytes,
             position: data_section_start(bytes),
             skipped_oversized_id_starts: Vec::new(),
-            malformed_record_start: None,
+            malformed_record_starts: Vec::new(),
         }
     }
 
@@ -68,7 +77,7 @@ impl<'a> EntityScanner<'a> {
             bytes,
             position: clamped,
             skipped_oversized_id_starts: Vec::new(),
-            malformed_record_start: None,
+            malformed_record_starts: Vec::new(),
         }
     }
 
@@ -77,50 +86,11 @@ impl<'a> EntityScanner<'a> {
         self.position
     }
 
-    /// How many records this scanner has skipped because their instance name
-    /// does not fit `u32` (issue #3395).
-    ///
-    /// ISO 10303-21 puts no upper bound on `#<digits>`, but every express-id
-    /// column in this workspace is `u32` (`ColumnarIndex::ids`,
-    /// `MeshData::express_id`, the wasm `express_ids` buffers), so a wider id
-    /// cannot be represented — it used to wrap, making `#4294967297`
-    /// indistinguishable from `#1`. The record is dropped instead, and this
-    /// counter is the other half of that guard: callers report it rather than
-    /// letting the model come back quietly short.
-    pub fn skipped_oversized_ids(&self) -> usize {
-        self.skipped_oversized_id_starts.len()
-    }
-
-    /// The `line_start` byte offset of every record this scanner refused,
-    /// strictly increasing.
-    ///
-    /// A whole-file scan only needs the count above. A SHARDED scan needs the
-    /// offsets, and the difference is not cosmetic: shard `i > 0` starts at an
-    /// arbitrary byte, so it can begin inside a quoted value and parse a
-    /// string literal such as `'…#4294967297=IFCWALL(…'` as a record — and
-    /// refuse it. That refusal is an artefact of where the shard started, not
-    /// a record the file declares, so a count alone would let a file with
-    /// NOTHING oversized in it be reported as incomplete. The offset lets the
-    /// stitch keep only the refusals inside the byte region it actually
-    /// retained from that shard (issue #3395/#3430).
-    pub fn skipped_oversized_id_starts(&self) -> &[usize] {
-        &self.skipped_oversized_id_starts
-    }
-
-    /// The byte offset that stopped this scan because no terminator was
-    /// found, or `None` otherwise: a record's `line_start` (its `#`) when
-    /// [`find_entity_end`](Self::find_entity_end) fails, or the `/` of an
-    /// unterminated comment found BETWEEN records (no record to name yet).
-    /// A whole-file scan needs only `is_some()`; a SHARDED scan needs the
-    /// offset, for the reason [`Self::skipped_oversized_id_starts`] does.
-    pub fn malformed_record_start(&self) -> Option<usize> {
-        self.malformed_record_start
-    }
-
-    /// Record `at` as this scan's stop point, the first time only.
+    /// Record `at` as a dropped record. Offsets only advance, so the list
+    /// stays strictly increasing.
     fn mark_malformed(&mut self, at: usize) {
-        if self.malformed_record_start.is_none() {
-            self.malformed_record_start = Some(at);
+        if self.malformed_record_starts.last() != Some(&at) {
+            self.malformed_record_starts.push(at);
         }
     }
 
@@ -227,10 +197,23 @@ impl<'a> EntityScanner<'a> {
             let end_offset = match self.find_entity_end(line_content) {
                 Some(o) => o,
                 None => {
-                    // No terminator found (see `find_entity_end`'s doc
-                    // comment) — record and stop, per `tokenizer.ts`.
+                    // Report it, then drop just THIS record rather than the
+                    // rest of the file: the `)` balancing its `(` is a real
+                    // 10303-21 boundary (#4179), the same per-record skip the
+                    // oversized id below takes. An unterminated string or
+                    // comment has no balancing `)` either, so #3695's
+                    // "nothing to resume from" stop is unchanged.
                     self.mark_malformed(line_start);
-                    return None;
+                    self.position = match super::lexical::close_step_record(line_content) {
+                        super::lexical::RecordClose::At(o) => body_start + o,
+                        // No balancing ')', but the bytes after are readable:
+                        // re-hunt from past this record's '#' so the NEXT
+                        // declaration is still found. Stopping here cost the
+                        // whole tail for a missing ')' (#4179 review).
+                        super::lexical::RecordClose::Unbalanced => line_start + 1,
+                        super::lexical::RecordClose::Unreadable => return None,
+                    };
+                    continue;
                 }
             };
             let line_end = body_start + end_offset + 1;
@@ -288,59 +271,71 @@ impl<'a> EntityScanner<'a> {
         }
     }
 
-    /// Find the terminating semicolon of an entity, skipping over quoted strings.
-    /// IFC strings are enclosed in single quotes ('...') and can contain semicolons.
-    /// Returns the offset of the semicolon from the start of the slice.
+    /// Offset of the record's terminating `;` from the start of the slice.
     ///
-    /// A `/* ... */` comment is skipped whole, so a `;` written inside one does
-    /// not end the record — `#1=IFCWALL('a', /* pending; revise */ $);` is
-    /// legal 10303-21 and used to come back truncated at that inner `;`. The
-    /// two skips compose in one direction only, and the order below is what
-    /// fixes it: a quote is tested first, so a `/*` inside a string literal is
-    /// text; the comment is then consumed as a region, so a quote inside a
-    /// comment is text and cannot open a literal.
+    /// `memchr3` jumps straight to the next quote, comment opener or
+    /// semicolon, so a string-free geometry primitive
+    /// (`#7=IFCCARTESIANPOINT((1.,2.,3.));`), the overwhelming majority of
+    /// records, resolves in one vectorized hop rather than a per-byte loop.
+    /// A quote is tested before a comment opener and a comment is then
+    /// consumed whole, which is what makes a `/*` inside a literal text and a
+    /// `;` or quote inside a comment text: `#1=IFCWALL('a', /* p; q */ $);` is
+    /// legal 10303-21 and used to come back truncated at that inner `;`.
     ///
-    /// SIMD scan: instead of inspecting every byte, `memchr3` jumps straight to
-    /// the next quote, comment opener or semicolon. The overwhelming majority
-    /// of records are string-free geometry primitives
-    /// (`#7=IFCCARTESIANPOINT((1.,2.,3.));`), so the common case resolves the
-    /// terminator in a single vectorized hop rather than a per-byte loop.
-    /// Widening `memchr2` to `memchr3` costs one more comparison per SIMD
-    /// block; on a comment-free file the only extra work beyond that is one
-    /// byte test per `'/'` that is not followed by `'*'` (STEP division), which
-    /// records essentially never contain. Semantics are otherwise unchanged:
-    /// the first `;` outside a quoted string and outside a comment, with
-    /// doubled `''` treated as an escaped in-string quote per STEP
-    /// (ISO 10303-21). This is the single hottest structural-scan function and
-    /// runs on every entity of every model (native and wasm), through both
-    /// `build_entity_index` and the processor scan loop, which share this
-    /// scanner.
+    /// Returns the first `;` outside a string and outside a comment, doubled
+    /// `''` being an escaped in-string quote per STEP (ISO 10303-21), and
+    /// `None` unless that `;` is preceded by the `)` closing the parameter
+    /// list with no `=` before it, which bounds the search to the record's OWN
+    /// body (#4179). [`close_step_record`](super::lexical::close_step_record)
+    /// argues both rules, the general property they approximate, and why a
+    /// refusal recovers rather than stops; the TypeScript halves are
+    /// `step-record-boundary.ts` and `scan-worker-source.ts`. This is the
+    /// single hottest structural-scan function: every entity of every model,
+    /// native and wasm, through `build_entity_index` and the processor scan
+    /// loop alike.
     #[inline]
     fn find_entity_end(&self, content: &[u8]) -> Option<usize> {
         let mut pos = 0;
+        // Only the two arms that can make it true compute it (#4179).
+        let mut closes_paren = false;
 
         loop {
             // Outside a quoted string: jump to the next quote, comment opener
-            // or terminating semicolon in one SIMD pass.
-            pos += memchr::memchr3(b'\'', b';', b'/', &content[pos..])?;
-            if content[pos] == b';' {
-                return Some(pos);
+            // or terminating semicolon in one SIMD pass. Slicing `rest` once
+            // spares the arms below a repeated bounds check on `content[pos]`.
+            let rest = &content[pos..];
+            let hit = memchr::memchr3(b'\'', b';', b'/', rest)?;
+            let plain = &rest[..hit];
+            // An '=' out here is the NEXT declaration's: this record never ended.
+            if memchr::memchr(b'=', plain).is_some() {
+                return None;
             }
-            if content[pos] == b'/' {
+            let found = rest[hit];
+            pos += hit;
+
+            if found == b';' {
+                // A ';' closing nothing belongs to what FOLLOWS the record.
+                return super::lexical::closes_with_paren(plain, closes_paren).then_some(pos);
+            }
+            if found == b'/' {
                 if content.get(pos + 1) == Some(&b'*') {
+                    // A comment is trivia, so a ')' before it still counts:
+                    // `#1=IFCWALL($) /* c */ ;` closes at that ')'.
+                    closes_paren = super::lexical::closes_with_paren(plain, closes_paren);
                     // Unterminated: the rest of the input is inside the
                     // comment, so this record has no terminator. `None` drops
                     // it and ends the scan rather than inventing an end.
                     pos = super::lexical::skip_step_comment(content, pos)?;
                 } else {
                     // A lone '/' is STEP division inside a value list.
+                    closes_paren = false;
                     pos += 1;
                 }
                 continue;
             }
 
-            // content[pos] == b'\'' : entered a quoted string. Scan to the
-            // closing quote, treating a doubled '' as an escaped quote.
+            // found == b'\'' : entered a quoted string. Scan to the closing
+            // quote, treating a doubled '' as an escaped quote.
             pos += 1;
             loop {
                 pos += memchr::memchr(b'\'', &content[pos..])?;
@@ -353,6 +348,7 @@ impl<'a> EntityScanner<'a> {
                 pos += 1;
                 break;
             }
+            closes_paren = false; // A literal is a parameter, not a close.
         }
     }
 
@@ -401,117 +397,7 @@ impl<'a> EntityScanner<'a> {
     pub fn reset(&mut self) {
         self.position = data_section_start(self.bytes);
         self.skipped_oversized_id_starts.clear();
-        self.malformed_record_start = None;
-    }
-
-    /// Fast check if attribute at given index is non-null (not '$')
-    /// This is used to filter building elements that don't have representation
-    /// without full entity decode. Index 0 is first attribute after '('.
-    ///
-    /// Returns true if attribute exists and is not '$', false otherwise.
-    #[inline]
-    pub fn has_non_null_attribute(&self, start: usize, end: usize, attr_index: usize) -> bool {
-        let content = &self.bytes[start..end];
-
-        // Find the opening parenthesis
-        let paren_pos = match memchr::memchr(b'(', content) {
-            Some(p) => p + 1,
-            None => return false,
-        };
-
-        let mut pos = paren_pos;
-        let mut current_attr = 0;
-        let mut depth = 0; // Track nested parentheses
-        let mut in_string = false;
-
-        // Helper to check if we're at target attribute and return result
-        let check_target = |pos: usize, current_attr: usize, depth: usize| -> Option<bool> {
-            if current_attr == attr_index && depth == 0 {
-                // Skip whitespace AND comments (`skip_step_trivia`, shared with
-                // the scanner's other trivia points): `/* c1 */ $` is still the
-                // null slot, not a non-null value starting with '/'. An
-                // unterminated comment leaves nothing certain after it, so
-                // treat the slot as absent rather than reading into the void.
-                return Some(match super::lexical::skip_step_trivia(content, pos) {
-                    Some(p) if p < content.len() => content[p] != b'$',
-                    _ => false,
-                });
-            }
-            None
-        };
-
-        // Check if target is first attribute (index 0)
-        if let Some(result) = check_target(pos, current_attr, depth) {
-            return result;
-        }
-
-        while pos < content.len() {
-            let b = content[pos];
-
-            if in_string {
-                if b == b'\'' {
-                    // Check for escaped quote ('')
-                    if pos + 1 < content.len() && content[pos + 1] == b'\'' {
-                        pos += 2;
-                        continue;
-                    }
-                    in_string = false;
-                }
-                pos += 1;
-                continue;
-            }
-
-            match b {
-                b'\'' => {
-                    in_string = true;
-                    pos += 1;
-                }
-                b'/' if content.get(pos + 1) == Some(&b'*') => {
-                    // A comment is consumed as a region -- the other half of
-                    // the rule the quote branch above gives in the opposite
-                    // direction. A ',', '(' or ')' inside it must not move
-                    // current_attr or depth, or `#1=IFCWALL($, /* a, b */ 'x');`
-                    // would count the comment's comma as an attribute
-                    // separator. Unterminated: nothing after it is certain, so
-                    // give up rather than guess.
-                    match super::lexical::skip_step_comment(content, pos) {
-                        Some(next) => pos = next,
-                        None => return false,
-                    }
-                }
-                b'(' => {
-                    depth += 1;
-                    pos += 1;
-                }
-                b')' => {
-                    if depth == 0 {
-                        // End of entity - attribute not found
-                        return false;
-                    }
-                    depth -= 1;
-                    pos += 1;
-                }
-                b',' if depth == 0 => {
-                    current_attr += 1;
-                    pos += 1;
-                    // Skip whitespace and comments after the comma (same rule
-                    // as check_target's leading skip).
-                    match super::lexical::skip_step_trivia(content, pos) {
-                        Some(p) => pos = p,
-                        None => return false,
-                    }
-                    // Check if we're now at target attribute
-                    if let Some(result) = check_target(pos, current_attr, depth) {
-                        return result;
-                    }
-                }
-                _ => {
-                    pos += 1;
-                }
-            }
-        }
-
-        false
+        self.malformed_record_starts.clear();
     }
 }
 

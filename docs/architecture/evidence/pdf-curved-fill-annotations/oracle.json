@@ -1,0 +1,89 @@
+{
+  "sourcePdfSha256": "5791eb490f70e1e55f9a62febe52bf322500384f072a79f821884b67f6b5e670",
+  "mupdfVersion": "1.26.5",
+  "ifcopenshellVersion": "0.8.2",
+  "calibration": "declared synthetic control: 30 PDF units per model metre",
+  "reports": [
+    {
+      "pageNumber": 1,
+      "sourceCurveSamples": 1024,
+      "sourceToNativeMaxMetres": 0.0019112799594840897,
+      "nativeVertexToSourceMaxMetres": 8.208697978653084e-05,
+      "referenceLinearizationBoundMetres": 1.0403425317293298e-05,
+      "pixelsCompared": 57600,
+      "supportMismatchPixels": 0,
+      "mismatchDistanceToSourceBoundaryMetres": 0.0,
+      "sourceRgb": [
+        0.800000011920929,
+        0.10000000149011612,
+        0.20000000298023224
+      ],
+      "nativeRgb": [
+        0.8,
+        0.10196078431372547,
+        0.2
+      ],
+      "holeCount": 0,
+      "independentAreaSquareMetres": 9.4214857421875,
+      "independentTriangleCount": 114,
+      "nativeTriangleCount": 114,
+      "declaredToleranceMetres": 0.02,
+      "geometryWork": 973331,
+      "exportSha256": "73a9d1ed3e63f6c6097de1ba13adbe1883e5bf5c82b800e959d75c2a9d453c1c"
+    },
+    {
+      "pageNumber": 2,
+      "sourceCurveSamples": 2048,
+      "sourceToNativeMaxMetres": 0.0012937479617618317,
+      "nativeVertexToSourceMaxMetres": 0.00010600728256481725,
+      "referenceLinearizationBoundMetres": 1.2277058600870324e-05,
+      "pixelsCompared": 57600,
+      "supportMismatchPixels": 0,
+      "mismatchDistanceToSourceBoundaryMetres": 0.0,
+      "sourceRgb": [
+        0.10000000149011612,
+        0.30000001192092896,
+        0.800000011920929
+      ],
+      "nativeRgb": [
+        0.10196078431372547,
+        0.2980392156862745,
+        0.8
+      ],
+      "holeCount": 1,
+      "independentAreaSquareMetres": 13.964581250000002,
+      "independentTriangleCount": 192,
+      "nativeTriangleCount": 192,
+      "declaredToleranceMetres": 0.02,
+      "geometryWork": 2641422,
+      "exportSha256": "e0eb57440255effb5ad45c5ac7abf5125273010f11dcad2a6783ee38874e27e1"
+    },
+    {
+      "pageNumber": 3,
+      "sourceCurveSamples": 1024,
+      "sourceToNativeMaxMetres": 0.0018428337419306477,
+      "nativeVertexToSourceMaxMetres": 0.00013702134100634388,
+      "referenceLinearizationBoundMetres": 7.848398037121946e-06,
+      "pixelsCompared": 57600,
+      "supportMismatchPixels": 14,
+      "mismatchDistanceToSourceBoundaryMetres": 0.0013297893712768429,
+      "sourceRgb": [
+        0.10000000149011612,
+        0.699999988079071,
+        0.30000001192092896
+      ],
+      "nativeRgb": [
+        0.10196078431372547,
+        0.6980392156862745,
+        0.2980392156862745
+      ],
+      "holeCount": 0,
+      "independentAreaSquareMetres": 4.071667944335938,
+      "independentTriangleCount": 62,
+      "nativeTriangleCount": 62,
+      "declaredToleranceMetres": 0.02,
+      "geometryWork": 306067,
+      "exportSha256": "02b589cdb9f78ec91cafd497f7946e381205ce85725a498c5f28db222d92149d"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "cases": 40,
+  "seed": 4381,
+  "fit_counts": [
+    3,
+    4,
+    8,
+    64
+  ],
+  "check_count": 4,
+  "oracle": "NumPy SVD, synthetic known rigid transformations with optional 5mm noise and million-metre offsets; not CRAS registration",
+  "max_rotation_component_delta": 2.2093438190040615e-14,
+  "max_residual_component_delta_metres": 4.6566128730773926e-09,
+  "numpy": "1.26.4"
+}

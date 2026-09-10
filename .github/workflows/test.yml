@@ -95,6 +95,11 @@ jobs:
     # standard runner so routine CI remains within the Depot Developer tier.
     # See scripts/README-vercel-cost.md for the full runner-cost rationale.
     runs-on: ubuntu-latest
+    # A path filter over one checkout. Anything past a minute is a hung API call,
+    # not work. Capped because the default is SIX HOURS and a job killed by its own
+    # timeout does NOT cancel the run: the aggregate would still run, every lane
+    # would read `skipped`, and before the map entry above that was a green gate.
+    timeout-minutes: 5
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -1150,6 +1155,17 @@ jobs:
       # block / zero derived inputs must FAIL rather than report clean.
       - name: Check CI path-coverage gate regressions
         run: node --test scripts/check-ci-path-coverage.test.mjs
+      # The neighbouring class, and the one the comment above names in passing:
+      # a skipped job counts as success in the aggregate `test` gate, so a job
+      # that is in its `needs:` but MISSING from its results map is unjudged --
+      # its failure skips every dependent, every skip reads as a pass, and a
+      # required context on main reports green. `changes` was exactly that.
+      - name: Check the aggregate gate judges every job it depends on
+        run: node scripts/check-ci-aggregate-coverage.mjs
+      # Executable proof it cannot pass vacuously: an unfindable or empty
+      # `test:` job must FAIL rather than report "0 unjudged of 0".
+      - name: Check aggregate-coverage gate regressions
+        run: node --test scripts/check-ci-aggregate-coverage.test.mjs
       # Same class as the gate above (#3452), for a case it cannot see: its
       # own scan only recognises gates invoked as a literal `node
       # scripts/*.mjs` in a `run:` step, and sdk-canary.yml's job is `pnpm
@@ -2081,6 +2097,12 @@ jobs:
       - name: Gate on dependencies
         run: |
           declare -A results=(
+            # `changes` is judged like any other lane, and it matters most: every
+            # other job here `needs` it, so if it fails they all SKIP, and `skipped`
+            # counts as a pass below. Unjudged, one failure took the whole matrix
+            # green on a required context. scripts/check-ci-aggregate-coverage.mjs
+            # keeps this map and the `needs:` list above in step.
+            [changes]="${{ needs.changes.result }}"
             [build]="${{ needs.build.result }}"
             [revert-oracle]="${{ needs.revert-oracle.result }}"
             [typecheck]="${{ needs.typecheck.result }}"

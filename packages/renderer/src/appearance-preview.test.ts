@@ -25,7 +25,7 @@ function gpu() {
     createView(): object;
   }[] = [];
   const buffers: { destroyed: number; destroy(): void; size: number }[] = [];
-  const failures = { writeTexture: false, batchBindGroupAt: 0 };
+  const failures = { writeTexture: false, writeBufferOnce: false, batchBindGroupAt: 0 };
   let batchBindGroups = 0;
   let writes = 0;
   const device = {
@@ -62,7 +62,9 @@ function gpu() {
       return texture;
     },
     queue: {
-      writeBuffer() {},
+      writeBuffer() {
+        if (failures.writeBufferOnce) { failures.writeBufferOnce = false; throw new Error('injected buffer upload failure'); }
+      },
       writeTexture() {
         if (failures.writeTexture)
           throw new Error('injected texture upload failure');
@@ -610,5 +612,266 @@ describe('flat batch appearance ownership (#4243)', () => {
     scene.clearFlatGeometry();
     assert.ok(state.buffers.every((buffer) => buffer.destroyed === 1));
     assert.ok(state.textures.every((texture) => texture.destroyed === 1));
+  });
+});
+
+it('occurrence remaps are explicit, immutable, geometry-preserving and cancellable (#4404)', () => {
+  const scene = new Scene(), state = gpu();
+  const source = { ...mesh(7, new Uint8Array([255, 0, 0, 255])), geometryItemId: 21 };
+  scene.appendToBatches([source], state.device, pipeline);
+  const original = scene.getMeshDataPieces(7)![0];
+  const api = scene.appearancePreview(state.device, pipeline);
+  const replacement = { ...original, geometryItemId: 31 };
+  const ordinary = api.begin({ expressId: 7, modelIndex: 0 });
+  assert.throws(() => api.update(ordinary, [replacement]), /geometry or ownership/);
+  api.cancel(ordinary);
+  assert.throws(() => api.begin({ expressId: 7, modelIndex: 0 }, { geometryItemRemaps: [{ from: 99, to: 31 }] }), /remap/);
+  const pairs = [{ from: 21, to: 31 }];
+  const token = api.begin({ expressId: 7, modelIndex: 0 }, { geometryItemRemaps: pairs });
+  pairs[0].to = 999;
+  assert.throws(() => api.update(token, [{ ...replacement, geometryItemId: 999 }]), /geometry or ownership/);
+  assert.throws(() => api.update(token, [{ ...replacement, expressId: 8 }]), /geometry or ownership/);
+  assert.throws(() => api.update(token, [{ ...replacement, positions: replacement.positions.map(value => value + 1) }]), /geometry or ownership/);
+  api.update(token, [replacement]);
+  assert.equal(scene.getMeshDataPieces(7)![0].geometryItemId, 31);
+  api.cancel(token);
+  assert.equal(scene.getMeshDataPieces(7)![0].geometryItemId, 21);
+  const committed = api.begin({ expressId: 7, modelIndex: 0 }, { geometryItemRemaps: [{ from: 21, to: 31 }] });
+  api.update(committed, [replacement]);
+  const change = api.commit(committed);
+  assert.deepEqual(change.geometryItemRemaps, [{ from: 21, to: 31 }]);
+  assert.equal(change.before[0].geometryItemId, 21);
+  assert.equal(change.after[0].geometryItemId, 31);
+  assert.equal(scene.getMeshDataPieces(7)!.length, 1);
+  scene.clear();
+});
+
+// #4404: real Scene adapter, shared template, canonical occurrence source and
+// history references. GPU calls alone are stubbed; scene ownership is real.
+describe('instanced occurrence appearance history (#4404)', () => {
+  function setup() {
+    const scene = new Scene(), state = gpu();
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const normals = new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]);
+    const indices = new Uint32Array([0, 1, 2]);
+    scene.addInstancedShard(state.device, { carriesItemIds: true,
+      templates: [{ positions, normals, indices, origin: [0, 0, 0] }],
+      instances: [7, 8].map((entityId, index) => ({ entityId, itemId: 21, templateIndex: 0,
+        color: [1, 1, 1, 1], transform: new Float32Array([1, 0, 0, index * 5, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) })),
+    }, 3);
+    const original: MeshData = { expressId: 7, modelIndex: 3, geometryItemId: 21,
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, -1]),
+      normals: new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0]), indices,
+      origin: [0, 0, 0],
+      color: [1, 1, 1, 1], appearanceSource: { kind: 'canonical-item', indices, sourceIndices: indices } };
+    const replacement = { ...original, geometryItemId: 31, uvs: new Float32Array([0, 0, 1, 0, 0, 1]),
+      texture: { rgba: new Uint8Array([255, 0, 0, 255]), width: 1, height: 1, repeatS: false, repeatT: false } };
+    const owner = { expressId: 7, modelIndex: 3 };
+    const api = scene.appearancePreview(state.device, pipeline);
+    const start = () => api.begin(owner, { materializedOriginals: [original], geometryItemRemaps: [{ from: 21, to: 31 }] });
+    return { scene, state, original, replacement, owner, api, start };
+  }
+  it('cancels a remapped preview and abandons invalid remaps without retaining a lease', () => {
+    const { scene, original, replacement, owner, api, start } = setup();
+    assert.throws(() => api.begin(owner, { materializedOriginals: [original], geometryItemRemaps: [{ from: 99, to: 31 }] }), /remap/);
+    const token = start(); api.update(token, [replacement]);
+    assert.deepEqual([...scene.getInstancedEntityIds()], [8]);
+    assert.equal(scene.getMeshDataPieces(7)!.length, 1);
+    api.cancel(token);
+    assert.deepEqual([...scene.getInstancedEntityIds()], [7, 8]);
+    assert.equal(scene.getMeshDataPieces(7), undefined);
+    assert.equal(scene.getEntityBoundingBox(7)?.max.x, 1);
+    const lease = scene.retainInstancedOccurrence(7, 3); lease.release();
+    scene.clear();
+  });
+  it('keeps a failed GPU restoration cancellable and disposes already hidden originals without GPU writes', () => {
+    const { scene, state, replacement, owner, api, start } = setup();
+    const token = start(); api.update(token, [replacement]);
+    state.failures.writeBufferOnce = true;
+    assert.throws(() => api.cancel(token), /buffer upload failure/);
+    assert.deepEqual([...scene.getInstancedEntityIds()], [8]);
+    assert.equal(scene.getMeshDataPieces(7)!.length, 1);
+    api.cancel(token);
+    assert.deepEqual([...scene.getInstancedEntityIds()], [7, 8]);
+    const next = start(); api.update(next, [replacement]);
+    const release = api.retainSource(owner); api.commit(next);
+    state.failures.writeBufferOnce = true;
+    release(); release();
+    assert.equal(state.failures.writeBufferOnce, true, 'the already suppressed original requires no disposal upload');
+    assert.equal(scene.isInstancedEntity(7), false);
+    assert.equal(scene.getMeshDataPieces(7)!.length, 1);
+    scene.clear();
+  });
+  it('validates a source rebuild before disposal and preserves surviving history across unrelated geometry', () => {
+    const { scene, state, replacement, owner, api, start } = setup();
+    const token = start(); api.update(token, [replacement]);
+    const release = api.retainSource(owner); api.commit(token);
+    const sources = scene.getMeshDataPieces(7)!.map(part => scene.appearanceSourceMesh(part));
+    const external = scene.retainInstancedOccurrence(8, 3); external.setSuppressed(true);
+    const destroyed = state.buffers.map(buffer => buffer.destroyed);
+    state.failures.writeBufferOnce = true;
+    assert.throws(() => scene.clearFlatGeometryForRebuild(sources, new Set([3])), /buffer upload failure/);
+    assert.deepEqual(state.buffers.map(buffer => buffer.destroyed), destroyed);
+    assert.equal(external.valid, true);
+    assert.deepEqual([...scene.getInstancedEntityIds()], []);
+    scene.clearFlatGeometryForRebuild(sources, new Set([3]));
+    assert.equal(external.valid, false);
+    scene.appendToBatches(sources, state.device, pipeline);
+    assert.deepEqual([...scene.getInstancedEntityIds()], [8]);
+    assert.equal(api.getParts(owner)![0].geometryItemId, 31);
+    const undo = api.begin(owner, { geometryItemRemaps: [{ from: 31, to: 21 }] });
+    const original = { ...sources[0], geometryItemId: 21, texture: undefined, uvs: undefined };
+    api.update(undo, [original]); api.commit(undo);
+    scene.clearFlatGeometryForRebuild([], new Set([3]));
+    assert.deepEqual([...scene.getInstancedEntityIds()], [7, 8]);
+    release();
+    const fresh = scene.retainInstancedOccurrence(7, 3); fresh.release();
+    scene.clear();
+  });
+  it('never resurrects a discarded converted original on a later source rebuild', () => {
+    const { scene, state, replacement, owner, api, start } = setup();
+    const token = start(); api.update(token, [replacement]);
+    const release = api.retainSource(owner); api.commit(token);
+    const sources = scene.getMeshDataPieces(7)!.map(part => scene.appearanceSourceMesh(part));
+    scene.clearFlatGeometryForRebuild([], new Set([3]));
+    assert.equal(scene.isInstancedEntity(7), false);
+    scene.clearFlatGeometryForRebuild(sources, new Set([3]));
+    scene.appendToBatches(sources, state.device, pipeline);
+    assert.deepEqual([...scene.getInstancedEntityIds()], [8]);
+    assert.equal(scene.getMeshDataPieces(7)!.length, 1);
+    release(); scene.clear();
+  });
+  for (const undone of [false, true]) it(`retains originals across second Apply and history disposal, undone=${undone}`, () => {
+    const { scene, original, replacement, owner, api, start } = setup();
+    const sibling = scene.getInstancedMeshDataPieces(8)![0];
+    const first = start(); api.update(first, [replacement]);
+    const releaseFirst = api.retainSource(owner), change = api.commit(first);
+    assert.equal(change.beforeInstanced, true);
+    const second = api.begin(owner);
+    const next = { ...api.getParts(owner)![0], texture: { ...replacement.texture, rgba: new Uint8Array([0, 255, 0, 255]) } };
+    api.update(second, [next]); const releaseSecond = api.retainSource(owner); api.commit(second);
+    releaseFirst();
+    assert.deepEqual([...scene.getInstancedEntityIds()], [8], 'disposing first command cannot restore the original beneath the second edit');
+    if (undone) {
+      const undo = api.begin(owner, { geometryItemRemaps: [{ from: 31, to: 21 }] });
+      api.update(undo, [original]);
+      assert.equal(api.commit(undo).afterInstanced, true);
+      assert.equal(scene.getEntityBoundingBox(7)?.max.x, 1);
+      assert.equal(scene.getMeshDataPieces(7), undefined);
+    }
+    releaseSecond(); releaseSecond();
+    assert.deepEqual([...scene.getInstancedEntityIds()], undone ? [7, 8] : [8]);
+    assert.equal(scene.isInstancedEntity(7), undone);
+    assert.deepEqual(scene.getInstancedMeshDataPieces(8)![0].positions, sibling.positions);
+    if (undone) { const lease = scene.retainInstancedOccurrence(7, 3); lease.release(); }
+    else assert.equal(scene.getMeshDataPieces(7)!.length, 1);
+    scene.clear();
+  });
+});
+
+describe('opening companion presence transaction (#4404)', () => {
+  function setup() {
+    const scene = new Scene(), state = gpu();
+    const sources: MeshData[] = [7, 8].map(id => ({ ...mesh(id, new Uint8Array(4)),
+      geometryItemId: id + 100, modelIndex: 2, texture: undefined, uvs: undefined }));
+    scene.appendToBatches(sources, state.device, pipeline);
+    return { scene, state, originals: scene.getMeshDataPieces(7)!, api: scene.appearancePreview(state.device, pipeline),
+      owner: { expressId: 7, modelIndex: 2 } };
+  }
+  const ids = (scene: Scene) => scene.getBatchedMeshes().flatMap(batch => batch.expressIds);
+  it('removes only its owner, cancels, commits, and restores exact geometry through history', () => {
+    const { scene, api, originals, owner } = setup();
+    const first = api.begin(owner, { companionOriginals: originals });
+    api.update(first, []);
+    assert.ok(!ids(scene).includes(7)); assert.ok(ids(scene).includes(8));
+    assert.equal(api.getParts!(owner)?.length, 0);
+    api.cancel(first);
+    assert.ok(ids(scene).includes(7));
+    assert.deepEqual(scene.getMeshDataPieces(7)![0].positions, originals[0].positions);
+    const second = api.begin(owner, { companionOriginals: originals });
+    api.update(second, []);
+    const release = api.retainSource!(owner);
+    const change = api.commit(second);
+    assert.equal(change.before.length, 1); assert.equal(change.after.length, 0);
+    const undo = api.begin(owner, { companionOriginals: change.companionOriginals });
+    api.update(undo, change.before); api.commit(undo);
+    assert.ok(ids(scene).includes(7));
+    const redo = api.begin(owner, { companionOriginals: change.companionOriginals });
+    api.update(redo, []); api.commit(redo);
+    assert.ok(!ids(scene).includes(7));
+    release();
+    assert.throws(() => api.begin(owner, { companionOriginals: originals }), /missing or changed/);
+    scene.clearFlatGeometry();
+  });
+  it('keeps proven hidden originals detached through cancellation and hidden Undo, then restores after Show', () => {
+    const { scene, state, api, originals, owner } = setup();
+    const sibling = scene.getMeshDataPieces(8)!;
+    scene.clearFlatGeometry();scene.appendToBatches(sibling, state.device, pipeline);
+    assert.throws(() => api.begin(owner, { companionOriginals: originals }), /missing or changed/);
+    const allocated = state.buffers.length;
+    const first = api.begin(owner, { companionOriginals: originals, companionHidden: true });
+    api.update(first, []); api.cancel(first);
+    assert.equal(scene.getMeshDataPieces(owner.expressId), undefined);
+    assert.equal(state.buffers.length, allocated, 'hidden preparation/cancel must never allocate visible GPU geometry');
+    const second = api.begin(owner, { companionOriginals: originals, companionHidden: true });
+    api.update(second, []); const release = api.retainSource!(owner), change = api.commit(second);
+    const hiddenUndo = api.begin(owner, { companionOriginals: change.companionOriginals, companionHidden: true });
+    api.update(hiddenUndo, change.before); api.commit(hiddenUndo);
+    assert.equal(scene.getMeshDataPieces(owner.expressId), undefined);
+    assert.equal(api.getParts!(owner)?.length, 1, 'logical history restores the canonical inventory while residency stays hidden');
+    assert.equal(state.buffers.length, allocated);
+    const hiddenRedo = api.begin(owner, { companionOriginals: change.companionOriginals, companionHidden: true });
+    api.update(hiddenRedo, []); api.commit(hiddenRedo);
+    const shownUndo = api.begin(owner, { companionOriginals: change.companionOriginals });
+    api.update(shownUndo, change.before); api.commit(shownUndo);
+    assert.equal(scene.getMeshDataPieces(owner.expressId)?.length, 1);
+    assert.ok(ids(scene).includes(owner.expressId));
+    release(); scene.clear();
+  });
+  it('keeps an immutable restoration baseline and refuses in-place current buffer mutation', () => {
+    const { scene, api, originals, owner } = setup();
+    const token = api.begin(owner, { companionOriginals: originals });
+    const old = originals[0].positions[0];
+    originals[0].positions[0] = old + 10;
+    assert.throws(() => api.update(token, []), /changed during/);
+    assert.throws(() => api.cancel(token), /changed during/);
+    originals[0].positions[0] = old;
+    api.update(token, []);
+    const release = api.retainSource!(owner), change = api.commit(token);
+    originals[0].positions[0] = old + 20;
+    assert.equal(change.before[0].positions[0], old);
+    const undo = api.begin(owner, { companionOriginals: change.companionOriginals });
+    api.update(undo, change.before); api.commit(undo);
+    assert.equal(scene.getMeshDataPieces(7)![0].positions[0], old);
+    release(); scene.clear();
+  });
+  it('retains absent history through a loaded-model rebuild and retires it on model removal', () => {
+    const { scene, api, originals, owner } = setup();
+    const token = api.begin(owner, { companionOriginals: originals });
+    api.update(token, []); const release = api.retainSource!(owner); api.commit(token);
+    scene.clearFlatGeometryForRebuild([], new Set([2]));
+    const undo = api.begin(owner, { companionOriginals: originals });
+    api.update(undo, originals); api.cancel(undo);
+    scene.clearFlatGeometryForRebuild([], new Set());
+    assert.throws(() => api.begin(owner, { companionOriginals: originals }), /missing|resident/);
+    release(); scene.clear();
+  });
+  it('rejects changed originals, wrong models and reset tombstones; failed restore stays retryable', () => {
+    const { scene, state, api, originals, owner } = setup();
+    const token = api.begin(owner, { companionOriginals: originals });
+    assert.throws(() => api.update(token, [{ ...originals[0], color: [0, 0, 0, 1] }]), /exact original/);
+    api.update(token, []);
+    const release = api.retainSource!(owner);
+    const change = api.commit(token);
+    assert.throws(() => api.begin({ ...owner, modelIndex: 3 }, { companionOriginals: originals }), /ownership/);
+    const undo = api.begin(owner, { companionOriginals: originals });
+    state.failures.batchBindGroupAt = state.batchBindGroups + 1;
+    assert.throws(() => api.update(undo, change.before), /injected/);
+    assert.equal(api.getParts!(owner)?.length, 0);
+    api.update(undo, change.before); api.cancel(undo);
+    assert.equal(api.getParts!(owner)?.length, 0);
+    scene.clearFlatGeometry();
+    assert.throws(() => api.begin(owner, { companionOriginals: originals }), /missing|resident/);
+    release();
   });
 });

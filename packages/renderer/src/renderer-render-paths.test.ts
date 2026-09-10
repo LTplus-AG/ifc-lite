@@ -1365,3 +1365,26 @@ describe('sun shadow pass (#2670 review)', () => {
         );
     });
 });
+
+describe('rendered clipping query for exact correspondence picking (#4381)', () => {
+    it('reports actual section, terrain and box clipping and clears on an unclipped frame', async () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.render();
+        assert.equal(h.renderer.hasActiveClipping(), false);
+        h.render({ sectionPlane: { enabled: true, axis: 'down', position: 50 } });
+        assert.equal(h.renderer.hasActiveClipping(), true);
+        h.render({ sectionPlane: { enabled: false, axis: 'down', position: 50 } });
+        assert.equal(h.renderer.hasActiveClipping(), false);
+        h.render({ terrainClipY: 0 });
+        assert.equal(h.renderer.hasActiveClipping(), true, 'zero is an active terrain elevation');
+        const clipBox = { enabled: true, min: [0,0,0] as [number,number,number], max: [1,1,1] as [number,number,number] };
+        h.render({ clipBox });
+        clipBox.enabled = false;
+        assert.equal(h.renderer.hasActiveClipping(), true, 'query describes the rendered snapshot, not mutated options');
+        h.render({ clipBox });
+        assert.equal(h.renderer.hasActiveClipping(), false);
+        await h.settle();
+        h.renderer.destroy();
+    });
+});

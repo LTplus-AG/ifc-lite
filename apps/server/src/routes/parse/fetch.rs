@@ -5,7 +5,7 @@
 //! GET cache fetch / check endpoints.
 
 use super::cache_keys::{
-    cache_key_from_parts, data_model_cache_key, has_current_data_model, parquet_cache_key,
+    cache_key_from_parts, data_model_cache_key, has_current_data_model, has_cached_symbolic, parquet_cache_key,
     parquet_metadata_cache_key, symbolic_cache_key,
 };
 use super::ParseQuery;
@@ -145,7 +145,8 @@ pub async fn check_cache(
     // hit, so a data model at the current payload version has to exist too, or
     // nothing will ever write one (issue #3869).
     let seed_cache_key = cache_key_from_parts(&hash, query.opening_filter, quality);
-    let data_model_is_current = has_current_data_model(&state.cache, &seed_cache_key).await;
+    let data_model_is_current = has_current_data_model(&state.cache, &seed_cache_key).await
+        && has_cached_symbolic(&state.cache, &seed_cache_key).await;
 
     match state.cache.get_bytes(&parquet_cache_key).await? {
         Some(_) if data_model_is_current => {

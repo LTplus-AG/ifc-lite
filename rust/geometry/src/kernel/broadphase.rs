@@ -30,6 +30,8 @@
 //! both tests passing). Predicate correctness needs its own fixture, derived
 //! independently of these functions.
 
+mod bounded;
+
 type Tri = [[f64; 3]; 3];
 pub(crate) type Aabb = ([f64; 3], [f64; 3]);
 
@@ -373,3 +375,5 @@ mod tests {
         assert!(candidate_pairs(&a, &far).is_empty());
     }
 }
+
+mod nearest;

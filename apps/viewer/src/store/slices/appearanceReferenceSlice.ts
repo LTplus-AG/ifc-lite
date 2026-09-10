@@ -20,7 +20,7 @@ export interface AppearanceReferenceSlice {
   selectAppearanceReference(id: string | null): void;
   addAppearanceReference(record: RegisteredAppearanceReference): void;
   replaceAppearanceReference(id: string, record: RegisteredAppearanceReference): void;
-  updateAppearanceReference(id: string, patch: Partial<Omit<RegisteredAppearanceReference, 'id' | 'sourceId' | 'assetId'>>): void;
+  updateAppearanceReference(id: string, patch: Partial<Omit<RegisteredAppearanceReference, 'id' | 'sourceId' | 'assetId' | 'pdf'>>): void;
   removeAppearanceReference(id: string): void;
   replayAppearanceReference(direction: 'undo' | 'redo'): void;
   exportAppearanceReferences(): string;
@@ -32,7 +32,7 @@ export const createAppearanceReferenceSlice: StateCreator<ViewerState, [], [], A
   const leases = createReferenceLeases();
   api.subscribe((state, previous) => {
     if (state.appearanceReferences !== previous.appearanceReferences || state.referenceUndo !== previous.referenceUndo
-      || state.referenceRedo !== previous.referenceRedo) leases.sync(state);
+      || state.referenceRedo !== previous.referenceRedo || state.appearanceSources !== previous.appearanceSources) leases.sync(state);
   });
   function publish(records: ReadonlyMap<string, RegisteredAppearanceReference>): void {
     const before = get();
@@ -45,7 +45,7 @@ export const createAppearanceReferenceSlice: StateCreator<ViewerState, [], [], A
       referenceRevision: before.referenceRevision + 1,
       selectedAppearanceReferenceId: before.selectedAppearanceReferenceId && records.has(before.selectedAppearanceReferenceId)
         ? before.selectedAppearanceReferenceId : null };
-    leases.sync(patch);
+    leases.sync({ ...patch, appearanceSources: get().appearanceSources });
     set(patch);
   }
   function required(id: string): RegisteredAppearanceReference {
@@ -79,7 +79,7 @@ export const createAppearanceReferenceSlice: StateCreator<ViewerState, [], [], A
       if (before.locked && (Object.keys(patch).length !== 1 || patch.locked !== false)) {
         throw new Error('Unlock the drawing reference before changing it.');
       }
-      const record = ownReference({ ...before, ...patch, id, sourceId: before.sourceId, assetId: before.assetId });
+      const record = ownReference({ ...before, ...patch, id, sourceId: before.sourceId, assetId: before.assetId, pdf: before.pdf });
       const unlocking = before.locked && patch.locked === false && Object.keys(patch).length === 1;
       if (record.frameKey !== placementFrameKey(get()) && !unlocking) throw new Error('The drawing reference coordinate frame differs from this workspace.');
       publish(new Map(get().appearanceReferences).set(id, record));
@@ -101,7 +101,7 @@ export const createAppearanceReferenceSlice: StateCreator<ViewerState, [], [], A
         referenceRevision: state.referenceRevision + 1,
         selectedAppearanceReferenceId: state.selectedAppearanceReferenceId && records.has(state.selectedAppearanceReferenceId)
           ? state.selectedAppearanceReferenceId : null };
-      leases.sync(patch); set(patch);
+      leases.sync({ ...patch, appearanceSources: get().appearanceSources }); set(patch);
     },
     exportAppearanceReferences: () => serializeReferences(get().appearanceReferences, placementFrameKey(get())),
     importAppearanceReferences(text) {

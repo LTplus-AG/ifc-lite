@@ -1,0 +1,116 @@
+{
+  "manifest": {
+    "sourceCommit": "946e60f0d",
+    "baseline": "Exact main946e60f0d, scheduler.yield",
+    "branch": "Same source with only prepare-plan.ts scheduling changed to scheduler.postTask background; command.test budget regression does not run in browser",
+    "order": [
+      "continuation-a",
+      "background-a",
+      "continuation-b",
+      "background-b",
+      "continuation-c",
+      "background-c"
+    ],
+    "files": {
+      "fixture": "ad03679f51e28162790cecc83ad89be77cbe568249a161570802dee0a7bbff80",
+      "image": "c38f0e918f6dc16b8d386ba3cdd89805c78320c119a1ceec85856f82b09a65b8",
+      "wasm": "b16e848b442a80ee3a5136a1b7e252044ee8f0fdc373578d9c9bfbe9a17aecf6",
+      "branchPreparation": "c5bb70e75617d8420a52bc2483b598471cc04973962c802d3b76432d82d1b2aa",
+      "basePreparation": "71fdb7bd8f1105b6eb628402685916400bfd7f90281889f400cbe01c67b4b301"
+    },
+    "measuredBranchCheckpoint": "5a2248d58",
+    "finalGuardNote": "After measurement, feature detection was tightened from truthiness to typeof postTask === function; the measured native scheduler path is unchanged."
+  },
+  "runs": [
+    {
+      "kind": "continuation",
+      "run": "a",
+      "applyMs": 3883.375,
+      "trustedInputRoundtripMs": 3800,
+      "inputDeliveredBeforeApplyCompleted": false,
+      "longestTaskMs": 808,
+      "longestFrameGapMs": 840.8949999999986,
+      "afterGcHeap": {
+        "usedSize": 271360960,
+        "totalSize": 292601856,
+        "embedderHeapUsedSize": 8370936,
+        "backingStorageSize": 235479261
+      }
+    },
+    {
+      "kind": "continuation",
+      "run": "b",
+      "applyMs": 3909.7799999713898,
+      "trustedInputRoundtripMs": 3833,
+      "inputDeliveredBeforeApplyCompleted": false,
+      "longestTaskMs": 815,
+      "longestFrameGapMs": 866.5150000000012,
+      "afterGcHeap": {
+        "usedSize": 267663396,
+        "totalSize": 288440320,
+        "embedderHeapUsedSize": 8287104,
+        "backingStorageSize": 235479262
+      }
+    },
+    {
+      "kind": "continuation",
+      "run": "c",
+      "applyMs": 3881.570000052452,
+      "trustedInputRoundtripMs": 3805,
+      "inputDeliveredBeforeApplyCompleted": false,
+      "longestTaskMs": 781,
+      "longestFrameGapMs": 832.869999999999,
+      "afterGcHeap": {
+        "usedSize": 268644892,
+        "totalSize": 290013184,
+        "embedderHeapUsedSize": 8505584,
+        "backingStorageSize": 235479632
+      }
+    },
+    {
+      "kind": "background",
+      "run": "a",
+      "applyMs": 4183.310000061989,
+      "trustedInputRoundtripMs": 17,
+      "inputDeliveredBeforeApplyCompleted": true,
+      "longestTaskMs": 797,
+      "longestFrameGapMs": 791.4349999999995,
+      "afterGcHeap": {
+        "usedSize": 265600152,
+        "totalSize": 278659072,
+        "embedderHeapUsedSize": 8370360,
+        "backingStorageSize": 318190784
+      }
+    },
+    {
+      "kind": "background",
+      "run": "b",
+      "applyMs": 4261.785000085831,
+      "trustedInputRoundtripMs": 17,
+      "inputDeliveredBeforeApplyCompleted": true,
+      "longestTaskMs": 812,
+      "longestFrameGapMs": 808.3999999999996,
+      "afterGcHeap": {
+        "usedSize": 268030004,
+        "totalSize": 291848192,
+        "embedderHeapUsedSize": 8342424,
+        "backingStorageSize": 318190780
+      }
+    },
+    {
+      "kind": "background",
+      "run": "c",
+      "applyMs": 4237.149999976158,
+      "trustedInputRoundtripMs": 12,
+      "inputDeliveredBeforeApplyCompleted": true,
+      "longestTaskMs": 829,
+      "longestFrameGapMs": 824.7000000000007,
+      "afterGcHeap": {
+        "usedSize": 265577784,
+        "totalSize": 275251200,
+        "embedderHeapUsedSize": 8422800,
+        "backingStorageSize": 318190780
+      }
+    }
+  ]
+}

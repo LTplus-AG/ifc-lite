@@ -1,0 +1,17 @@
+{
+  "oracle": "IfcOpenShell independent IFC/geometry + Pillow PNG + NumPy bilinear reference",
+  "fixture": "controlled partial triangle observation; not real scan registration accuracy",
+  "triangles": 1,
+  "sampled_points": 5,
+  "max_channel_error": 0.0012481774424997205,
+  "ifcopenshell": "0.8.2",
+  "coverage": {
+    "observedAreaEstimateM2": 0.0928579959393288,
+    "observedSamples": 1555,
+    "samples": 8373,
+    "unknownAmbiguousSamples": 0,
+    "unknownAreaEstimateM2": 0.4071420040606712,
+    "unknownDistanceSamples": 6818,
+    "unknownNormalSamples": 0
+  }
+}

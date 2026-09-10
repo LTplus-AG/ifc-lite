@@ -356,11 +356,11 @@ async fn streaming_complete_event_carries_symbolic_data() {
         .expect("stream should emit a Complete event");
 
     assert!(
-        !symbolic.grid_axes.is_empty(),
+        !symbolic.data().grid_axes.is_empty(),
         "streaming Complete should include IfcGrid axes"
     );
     assert!(
-        !symbolic.circles.is_empty(),
+        !symbolic.data().circles.is_empty(),
         "streaming Complete should include IfcAnnotation circle"
     );
 }
@@ -388,4 +388,51 @@ async fn streaming_zero_batch_sizes_still_complete() {
             .any(|event| matches!(event, StreamEvent::Complete { .. })),
         "stream should emit a Complete event"
     );
+}
+
+#[tokio::test]
+async fn issue_4459_old_symbolic_cache_cannot_keep_binary_routes_stale() {
+    use crate::routes::parse::cache_keys::{request_cache_key, symbolic_cache_key};
+    for endpoint in ["/api/v1/parse/parquet", "/api/v1/parse/parquet/optimized"] {
+        let state = test_state(&format!("4459-{}", endpoint.replace('/', "-"))).await;
+        let key = request_cache_key(FIXTURE.as_bytes(), &Default::default(), Default::default());
+        let current = symbolic_cache_key(&key);
+        let first = post_fixture(&state, endpoint).await;
+        assert_eq!(first.status(), StatusCode::OK);
+        let first_body = to_bytes(first.into_body(), usize::MAX).await.unwrap();
+        let symbols = state.cache.get_bytes(&current).await.unwrap().unwrap();
+        state.cache.set_bytes(&format!("{key}-symbolic-v1"), &symbols).await.unwrap();
+        state.cache.remove(&current).await.unwrap();
+        let second = post_fixture(&state, endpoint).await;
+        assert_eq!(second.status(), StatusCode::OK);
+        let second_body = to_bytes(second.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(first_body, second_body, "symbolic freshness must preserve geometry bytes");
+        assert!(state.cache.get_bytes(&current).await.unwrap().is_some(),
+            "old sidecar must trigger a parse that writes the current schema");
+    }
+}
+
+#[tokio::test]
+async fn issue_4459_old_json_response_is_reparsed_without_changing_request_identity() {
+    use crate::routes::parse::cache_keys::{request_cache_key, json_response_cache_key};
+    let state = test_state("4459-old-json").await;
+    let key = request_cache_key(FIXTURE.as_bytes(), &Default::default(), Default::default());
+    let current = json_response_cache_key(&key);
+    let first = post_fixture(&state, "/api/v1/parse").await;
+    assert_eq!(first.status(), StatusCode::OK);
+    let bytes = to_bytes(first.into_body(), usize::MAX).await.unwrap();
+    state.cache.set_bytes(&format!("{key}-json-v2"), &bytes).await.unwrap();
+    // The route writes in a spawned cache task; wait until that original write
+    // is visible before removing it, so it cannot race the stale-cache control.
+    for _ in 0..100 {
+        if state.cache.get_bytes(&current).await.unwrap().is_some() { break; }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert!(state.cache.get_bytes(&current).await.unwrap().is_some());
+    state.cache.remove(&current).await.unwrap();
+    let second = post_fixture(&state, "/api/v1/parse").await;
+    assert_eq!(second.status(), StatusCode::OK);
+    let body: Value = serde_json::from_slice(&to_bytes(second.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(body["cache_key"], key);
+    assert_eq!(body["stats"]["from_cache"], false, "must not replay schema-v2 symbols");
 }

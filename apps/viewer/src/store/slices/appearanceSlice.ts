@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { AppearanceAssignmentRecipe } from '@/lib/appearance/assignments/types.js';
 import type { StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
 import type { AppearanceDraftRecipe, AppearanceSourceOption } from '@/lib/appearance/draft-types.js';
@@ -13,6 +14,9 @@ export interface AppearanceSlice extends AppearanceReferenceSlice {
   /** Session source metadata only; original bytes and decoded images stay in the inventory. */
   appearanceSources: readonly AppearanceSourceOption[];
   appearanceDraft: AppearanceDraftRecipe | null;
+  /** Logical recipe only; every restored row requires explicit current-model review. */
+  appearanceAssignments: AppearanceAssignmentRecipe | null;
+  saveAppearanceAssignments(recipe: AppearanceAssignmentRecipe | null): void;
   saveAppearanceDraft(draft: AppearanceDraftRecipe): void;
   addAppearanceSource(source: AppearanceSourceOption): void;
   updateAppearanceSource(source: AppearanceSourceOption): void;
@@ -22,6 +26,8 @@ export const createAppearanceSlice: StateCreator<ViewerState, [], [], Appearance
   ...createAppearanceReferenceSlice(set, get, api),
   appearanceSources: [],
   appearanceDraft: null,
+  appearanceAssignments: null,
+  saveAppearanceAssignments(recipe) { set({ appearanceAssignments: structuredClone(recipe) }); },
   saveAppearanceDraft(draft) {
     set({ appearanceDraft: { ...draft, scope: { ...draft.scope }, settings: { ...draft.settings } } });
   },

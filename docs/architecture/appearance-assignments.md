@@ -1,12 +1,10 @@
 # Coordinated appearance assignments
 
 F7 is being implemented as a stack under [#4420](https://github.com/LTplus-AG/ifc-lite/issues/4420).
-The first slices supply internal scope, recipe, native preparation and coordinated
-publication/history components.
-**The existing viewer Apply action is still single-model.** The assignment list
-is mounted in behavior tests; its workspace controller is the immediate consumer
-in the next stack slice. No new public package API
-or alternate IFC writer is introduced.
+The existing Appearance workspace now captures several scopes, previews them
+together, and publishes one coordinated Apply/Undo/Redo across their models.
+No new public package API or alternate IFC writer is introduced. See the
+[real two-copy AC20 browser and portability evidence](evidence/coordinated-appearance/README.md).
 
 ## Reviewed scope and source identity
 
@@ -32,8 +30,12 @@ Saved recipes are bounded, versioned JSON. Restoring requires an explicitly
 chosen loaded model for each saved slot and the original source derivative.
 There is no automatic matching by file name or numeric object ID. Restore
 proposes new membership and reports added, removed and renumbered GlobalIds,
-removed exclusions and changed model-source hashes. The next controller must
-require review of that proposal before preparing a new application. Deserializing
+removed exclusions and changed model-source hashes. The workspace requires explicit review of that proposal before preparing a new
+application. Multiple original source choices can be staged before all rows in
+one saved model slot are reviewed together. PDF originals are identified by
+content SHA-256, not their transient document registry keys; the derivative,
+page recipe and calibration must also match. Proven unchanged scopes can resume
+within the same loaded session, including after switching workspace intent. Deserializing
 never restores a live preview, native plan or committed history entry.
 
 ## Detached native preparation
@@ -69,8 +71,9 @@ already prepared, including draft image-owner cleanup.
 Pure membership tests cover colliding IDs, ordered exceptions, inconsistent
 revisions and reload differences. Mounted list tests exercise reordering,
 exclusion and removal and lock editing during publication. Real two-model mapped
-browser, coordinated failure/Undo and portable export/share evidence belong to
-the following integrated slice; they are not claimed by this foundation.
+browser, coordinated failure/Undo and portable export/share evidence are recorded
+in the integrated acceptance linked above. Rooms currently share each active
+model separately, not the complete coordinated federation.
 
 
 ## Coordinated publication and history
@@ -96,5 +99,23 @@ controller. They cover a failure during the second model's asset registration,
 an observer exception after renderer installation, an observer exception after
 complete store publication, dependency changes before Undo, participant reload,
 and exact repeated-attribute/intermediate-entity Undo/Redo. Only GPU allocation is
-substituted in these host tests. The following UI slice supplies the native-worker
+substituted in these host tests. The integrated workspace adds the native-worker
 mounted workflow and real federated browser/export/share evidence.
+
+
+## Workspace flow
+
+Choose a loaded model, source image or PDF page, scope and mapping, then use
+**Add this scope**. The assignment captures those values; editing the next input
+form does not alter already-captured rows. Review exceptions, order overlapping
+rows, and select **Preview all assignments**. **Compare original** restores the
+original display across all targets; **Apply** saves the complete reviewed result.
+Duplicate model filenames carry a Model 1 / Model 2 cue in the target and export
+selectors. Saved scopes retain their original query intent in the review list.
+
+**Save recipe** downloads bounded logical JSON through the canonical download
+helper. **Restore recipe** stages loaded model/source choices and presents added,
+removed and renumbered IFC GlobalIds before accepting new membership. A stale
+model or source cancels its live preview. Apply remains disabled until the full
+assignment set has been reviewed and prepared; source or settings errors do not
+silently narrow the operation.

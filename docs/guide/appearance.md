@@ -50,6 +50,28 @@ Selecting a different page clears its calibration. A PDF source keeps its
 original document during the session; replacing its page releases unused raster
 images while committed results and Undo/Redo retain the images they need.
 
+## Several scopes and models together
+
+Use **Add this scope** to capture the current model, image or PDF page, object
+scope and mapping. Add further assignments with different sources or settings.
+The list shows each saved scope; reorder rows to choose which wins on overlapping
+objects. **Review objects and exceptions** lets you search by name or IFC GlobalId
+and exclude individual members. An exclusion leaves any earlier assignment in
+place for that object.
+
+Choose **Preview all assignments**, compare the originals, then **Apply**. The
+whole operation is saved together. One Undo from any participating model restores
+all targets; Redo reapplies them. If another model has a newer edit, undo that
+edit first before undoing the grouped appearance change. Identical model filenames
+show a Model 1 / Model 2 cue in target and export selectors.
+
+**Save recipe** retains the logical scopes and mappings. After **Restore recipe**,
+choose the loaded models and original sources, review membership changes, and
+accept the new scope before previewing. Source choices for several rows in one
+model can be staged together. The recipe does not include source images or PDF
+files; load those separately. Unchanged scopes can resume without repeated
+confirmation while their original models and sources remain loaded.
+
 ## Export and sharing
 
 Use the normal IFC export. A model with retained images exports as **IFC + images**

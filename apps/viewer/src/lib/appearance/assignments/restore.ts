@@ -10,7 +10,7 @@ import { ownAssignmentSource } from './source.js';
 function sourceIdentity(source: AppearanceAssignment['source']): string {
   source = ownAssignmentSource(source);
   return JSON.stringify({ assetId: source.assetId ?? source.id, width: source.width, height: source.height,
-    pdf: source.pdf, calibration: source.calibration, calibrationFrame: source.calibrationFrame });
+    pdf: source.pdf ? { document: source.pdf.documentSha256 ?? source.pdf.documentKey, recipe: source.pdf.recipe } : undefined, calibration: source.calibration, calibrationFrame: source.calibrationFrame });
 }
 
 /** A saved slot is rebound only to the model explicitly selected by the user.

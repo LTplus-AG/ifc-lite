@@ -1243,3 +1243,15 @@ worker-pool speedup claim; small overhead below run-to-run variation remains
 unresolved. [Exact revisions, probe results and limits](../../docs/architecture/evidence/evaluated-openings/reference-textures.json)
 are recorded with the fixture evidence. Do not infer that a nonempty void-index
 entry implies actual subtraction: the opening representation identifier matters.
+
+## Shared authored source context (#4406)
+
+Extracting common creator setup resolved no normal-load timing difference in
+interleaved exact-source native probes, with identical ordered mesh fingerprints
+and counts. Independently rebuilt WASM modules also returned byte-identical
+complete plans for the checked annotation/captured controls. This is a reuse
+prerequisite, not an optimization or an authoring-throughput claim. Reuse the
+canonical source, placement and row author when adding non-image geometry; do
+not introduce a dummy texture to access shared setup. See the [raw native
+measurements](../../docs/architecture/evidence/authored-context/native-load.json)
+and adjacent plan identity evidence.

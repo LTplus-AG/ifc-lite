@@ -174,7 +174,7 @@ PDF.js decoding. It must not claim arbitrary malformed-PDF extraction fidelity.
 ## Complete straight-edge fill page planning
 
 `planPdfFillAnnotation` advances state-qualified pages through a bounded native
-geometry path. It accepts only complete opaque RGB straight-edge fill pages,
+geometry path. Its initial straight-fill slice accepts complete opaque RGB pages,
 resolves fill rule and the implicit CropBox, and subtracts later paint before
 creating colored annotation fill areas. It reuses canonical authored source,
 placement, allocation and mesh production; no separate STEP writer is involved.
@@ -189,8 +189,8 @@ tolerance; this transport check is distinct from original-path fidelity.
 The [two actual decoded PDF controls](evidence/pdf-fill-annotations/README.md)
 exercise winding, holes, clipping and paint order with independent source raster
 and exported IFC checks. They do not establish universal conversion fidelity.
-Shared UI transaction integration and curved/stroked page conversion remain
-separate required work. Outlined strokes will represent visual filled geometry,
+The later qualified curve and solid-stroke slices below extend this same path;
+shared UI integration remains separate work. Outlined strokes represent visual filled geometry,
 not preserved editable centreline or font semantics.
 
 ## Qualified curved fills
@@ -224,3 +224,21 @@ source-IFC digest against the exact frozen bytes, and enforce the PDF transport
 limits before requesting publication. The image-based annotation workflow remains
 the active UI until the representation choice and its native qualification review
 are integrated.
+
+## Qualified solid straight strokes
+
+The same `planPdfFillAnnotation` route also accepts positive-width solid straight
+strokes with butt/square caps, bevel/miter joins and PDF miter-limit fallback.
+Offset contours are constructed in path coordinates before the entire affine
+transform, preserving nonuniform scale and shear of stroke width. Combined
+fill/stroke operators expand to fill then stroke, retain their source operator
+ordinal and distinct colours, and share the existing clipping, paint-order,
+work, topology and canonical IFC creation bounds.
+
+Reversals, degenerate segments, offset segment collapse and offset contour
+self-contact/crossings refuse the whole page. This first sufficient qualifier
+does not repair wide/self-overlapping stroke arrangements. Hairlines, round
+caps/joins, dash patterns and curved strokes remain unsupported. Outlining
+produces visual filled vector geometry, not editable centreline/text semantics.
+Original-PDF raster and independent IFC evidence lives in
+[evidence/pdf-straight-stroke-annotations](evidence/pdf-straight-stroke-annotations/README.md).

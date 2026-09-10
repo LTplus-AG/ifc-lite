@@ -125,12 +125,12 @@ fn issue_4406_fill_page_preserves_evenodd_hole_crop_paint_order_and_native_reope
     }
 }
 #[test]
-fn issue_4406_fill_page_refuses_all_output_for_stroke_curve_or_unsupported_state() {
+fn issue_4406_fill_page_refuses_all_output_for_curved_stroke_or_unsupported_state() {
     let (source, request) = fixture();
     for operation in [
         PdfVectorOperator::Path {
             paint: PdfVectorPaint::Stroke,
-            commands: rectangle(0., 0., 1., 1.),
+            commands: vec![0., 0., 0., 2., 0., 1., 1., 1., 1., 0.],
         },
         PdfVectorOperator::Path {
             paint: PdfVectorPaint::Fill,
@@ -307,3 +307,6 @@ fn issue_4406_actual_decoded_ellipse_hole_and_shear_controls_produce_complete_pl
         assert!(area(&plan.meshes[0])>1.);
     }
 }
+
+#[path = "pdf_stroke_tests.rs"]
+mod stroke_tests;

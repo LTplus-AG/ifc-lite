@@ -874,8 +874,12 @@ containment GlobalId, `Name` and plane frame, plus a canonical decoded
 `frame.sizeMetres` is descriptive page extent, not a second scale.
 
 The geometry scope accepts complete opaque RGB pages made of straight fill
-edges and qualified quadratic/cubic curved rings. It resolves nonzero/even-odd winding, holes, islands, implicit CropBox
-clipping and paint order. Painted strokes, text, images, explicit clips,
+edges, qualified quadratic/cubic curved rings, and qualified solid straight
+strokes. Strokes support positive width, butt/square caps, bevel/miter joins and
+miter-limit fallback, outlined before the full affine transform. It resolves
+nonzero/even-odd winding, holes, islands, implicit CropBox clipping and paint
+order, including fill then stroke in combined operators. Hairlines, round/dashed
+or curved strokes, text, images, explicit clips,
 patterns, transparency and unsupported state refuse the entire page. Quantization
 collapse, uncertain near contacts and exhausted work/size budgets also refuse.
 No supported subset is silently exported from an unsupported page.

@@ -1306,3 +1306,16 @@ or browser worker-pool timing claim is made. See the
 [measured source revisions and results](../../docs/architecture/evidence/evaluated-openings/authoring-performance.json).
 This changes the authoring path, not the normal-load mesh evaluator; future
 optimization should measure the explicit conversion workload independently.
+
+## Qualified solid straight PDF strokes (#4406)
+
+Exact-source native A/B/A/B normal-load controls resolve no regression, with
+identical phase minima in each pair and identical ordered mesh fingerprints and
+counts. This does not measure PDF authoring or worker-pool throughput. The new
+path remains opt-in through the existing PDF annotation planner. A draft union
+of segment rectangles and join wedges was rejected by existing conservative
+contact/intersection guards even on ordinary joins; direct offset contours
+retain the same guards and avoid manufacturing those internal boundaries.
+Collapsed/reversing offsets and unresolved joins refuse rather than repairing
+an unqualified stroke arrangement. See the [source-specific raw controls](../../docs/architecture/evidence/pdf-straight-stroke-annotations/native-load.json)
+and original PDF/independent IFC evidence alongside them.

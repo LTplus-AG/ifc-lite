@@ -54,7 +54,9 @@ mod geom2d;
 mod tests;
 
 use arrangement::Arrangement;
-use geom2d::{is_simple_polygon, line_intersection, perp_distance, point_in_quad, polygon_area};
+use geom2d::{is_simple_polygon, line_intersection, perp_distance, point_in_quad, polygon_area, representative_point};
+#[cfg(test)]
+use geom2d::point_in_polygon;
 
 /// Stable handle to a vertex. Survives edits; never reused after tombstoning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -1073,13 +1075,20 @@ impl SpacePlate {
         if outline.len() < 3 {
             return false;
         }
-        let (mut cx, mut cy) = (0.0, 0.0);
-        for p in &outline {
-            cx += p[0];
-            cy += p[1];
-        }
-        let c = [cx / outline.len() as f64, cy / outline.len() as f64];
-        !self.wall_rects.iter().any(|r| point_in_quad(c, r))
+        // A face of this arrangement lies wholly inside one wall rectangle or
+        // wholly outside every one — the rectangle edges are all in the
+        // arrangement, so no face straddles a wall boundary. One point of the
+        // face therefore decides it, PROVIDED the point is in the face.
+        //
+        // It used to be the average of the corners, which is not. On a concave
+        // ring that average leaves the face: an L-shaped corridor was judged by
+        // a point in the wall capping its long arm, and a room with a stub wall
+        // standing in it by a point inside that stub. Both read as "wall
+        // interior", so the room was dropped and the plan came back missing it.
+        let Some(inside) = representative_point(&outline) else {
+            return false;
+        };
+        !self.wall_rects.iter().any(|r| point_in_quad(inside, r))
     }
 
     /// CCW outline of a face (no repeated closing vertex).
@@ -1141,19 +1150,44 @@ impl SpacePlate {
             // Inward normal of a CCW outline is to the left of a→b: (-uy, ux).
             lines.push(([a[0] - uy * off, a[1] + ux * off], [ux, uy]));
         }
-        let mut verts: Vec<[f64; 2]> = Vec::with_capacity(n);
+        /// Foot of the perpendicular from `q` onto the line `(p, d)` (`d` unit).
+        fn project(q: [f64; 2], p: [f64; 2], d: [f64; 2]) -> [f64; 2] {
+            let t = (q[0] - p[0]) * d[0] + (q[1] - p[1]) * d[1];
+            [p[0] + t * d[0], p[1] + t * d[1]]
+        }
+        let mut verts: Vec<[f64; 2]> = Vec::with_capacity(n + 2);
         for i in 0..n {
-            let (pp, pd) = lines[(i + n - 1) % n];
+            let pj = (i + n - 1) % n;
+            let (pp, pd) = lines[pj];
             let (cp, cd) = lines[i];
+            // A wall that ends free inside a room is a SPUR: the face walks out
+            // along its axis and back, so the two edges meeting at the tip are
+            // antiparallel and their offset lines are parallel — one on each
+            // flank, a wall thickness apart. There is no corner to intersect
+            // here; there is an END to cap, and it needs two vertices where
+            // every other corner needs one. Emitting one collapsed the tip onto
+            // a single flank and the outline cut diagonally across the wall
+            // from the far flank's base — the "diagonally sliced wall end".
+            //
+            // The cap sits at the wall's real end, `half` beyond the axis tip
+            // (the axis stops half a thickness short so the end squares off),
+            // which for the gross outline means half short of it instead —
+            // hence `sign`.
+            if pd[0] * cd[0] + pd[1] * cd[1] < -1.0 + 1e-9 {
+                let half = self.half_edges[cycle[pj].0 as usize]
+                    .half_thickness
+                    .max(self.half_edges[cycle[i].0 as usize].half_thickness);
+                let tip = [centre[i][0] + sign * half * pd[0], centre[i][1] + sign * half * pd[1]];
+                verts.push(project(tip, pp, pd));
+                verts.push(project(tip, cp, cd));
+                continue;
+            }
             let hit = line_intersection(pp, [pp[0] + pd[0], pp[1] + pd[1]], cp, [cp[0] + cd[0], cp[1] + cd[1]]);
             // Parallel offset lines (a collinear node, e.g. a mid-wall split, or
             // two edges of equal thickness in a straight run) don't intersect —
             // drop the corner onto the current offset line so it sits flush on
             // the inset boundary instead of poking back to the centreline.
-            verts.push(hit.unwrap_or_else(|| {
-                let t = (centre[i][0] - cp[0]) * cd[0] + (centre[i][1] - cp[1]) * cd[1];
-                [cp[0] + t * cd[0], cp[1] + t * cd[1]]
-            }));
+            verts.push(hit.unwrap_or_else(|| project(centre[i], cp, cd)));
         }
         if verts.iter().any(|v| !v[0].is_finite() || !v[1].is_finite()) {
             return centre;
@@ -1164,6 +1198,15 @@ impl SpacePlate {
         }
         if inset && got > polygon_area(&centre).abs() + 1e-6 {
             return centre; // the inset inverted the polygon — keep the centreline
+        }
+        // A ring that crosses itself passes every test above: it is finite, it
+        // has area, and folding one lobe back over another only makes that area
+        // SMALLER, so the inset guard reads it as a healthy shrink. It is not a
+        // polygon any consumer can use — an area, a bake, a fill all take it
+        // differently — so hand back the centreline rather than a shape whose
+        // meaning depends on who measures it.
+        if !is_simple_polygon(&verts) {
+            return centre;
         }
         verts
     }

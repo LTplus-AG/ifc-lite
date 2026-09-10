@@ -71,6 +71,10 @@ describe('captured GLB appearance #4380', () => {
     delete json.textures![0].sampler;json.extensionsRequired=['KHR_draco_mesh_compression'];expect(()=>parseGLBToMeshData(json,bin)).toThrow(/Draco-compressed.*uncompressed/);
     delete json.extensionsRequired;json.bufferViews![2].byteLength=bin.length;expect(()=>parseGLBImageResources(json,bin)).toThrow(/exceeds/);
   });
+  it('rejects required legacy specular-glossiness instead of inventing a base colour', () => {
+    const {json,bin}=capture(); json.extensionsRequired=['KHR_materials_pbrSpecularGlossiness'];
+    expect(()=>parseGLBToMeshData(json,bin)).toThrow(/specular-glossiness.*base-colour/);
+  });
   it('rejects mismatched MIME/signatures before geometry or resource copying', () => {
     const png = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DAAAAEAQEARwbK3gAAAABJRU5ErkJggg==', 'base64'));
     const {json,bin} = capture(png);

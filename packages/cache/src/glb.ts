@@ -152,6 +152,7 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
   const meshes: MeshData[] = [];
   for (const extension of gltf.extensionsRequired ?? []) {
     if (extension === 'KHR_draco_mesh_compression') throw new Error('GLB: Draco-compressed geometry is not yet supported; export an uncompressed GLB or glTF bundle.');
+    if (extension === 'KHR_materials_pbrSpecularGlossiness') throw new Error('GLB: required specular-glossiness materials do not expose a supported base-colour texture.');
     if (!extension.startsWith('KHR_materials_') && extension !== 'KHR_texture_transform') throw new Error(`GLB: unsupported required extension ${extension}`);
   }
   validateGLBImages(gltf, bin);

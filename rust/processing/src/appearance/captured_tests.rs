@@ -126,3 +126,21 @@ fn issue_4380_capture_retains_each_original_sampler_combination_on_reimport() {
         assert_eq!(mesh.uvs,plan.mesh.uvs);
     } }
 }
+
+#[test]
+fn issue_4441_authored_metadata_refuses_wire_tokens_and_preserves_ordinary_names() {
+    let (source, mut request) = fixture();
+    for token in ["*", "$", "#123", ".ENUM.", " .lower_1. ", "\u{feff}#123\u{feff}"] {
+        request.name = token.into();
+        assert!(plan_captured_mesh(source.as_bytes(), &request).unwrap_err().contains("Authored product Name is a reserved appearance wire token"));
+    }
+    for name in ["Ordinary name", "O'Brien – 墙", "#not_a_ref", ".not-an-enum.", "* label", "\u{85}#123\u{85}"] {
+        request.name = name.into();
+        let result = plan_captured_mesh(source.as_bytes(), &request).unwrap();
+        assert_eq!(result.plan.created.iter().find(|e| e.express_id == result.object_id).unwrap().attributes[2], serde_json::json!(name));
+    }
+    for token in ["*", "$", ".ENUM.", " .lower_1. "] {
+        request.image_uri = token.into();
+        assert!(plan_captured_mesh(source.as_bytes(), &request).unwrap_err().contains("Image URI is a reserved appearance wire token"));
+    }
+}

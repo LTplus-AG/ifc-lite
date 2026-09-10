@@ -253,6 +253,18 @@ fn scan_spans(content: &str) -> Vec<(u32, String, String)> {
     out
 }
 
+/// `scan_spans` without the type name, plus where the scan stopped. Separate
+/// only because the #4179 tests assert on spans and the stop TOGETHER, and
+/// borrowing `&str` out of `content` keeps their expectations literal.
+fn scan_spans_and_stop(content: &str) -> (Vec<(u32, &str)>, Option<usize>) {
+    let mut scanner = EntityScanner::new(content);
+    let mut spans = Vec::new();
+    while let Some((id, _type_name, start, end)) = scanner.next_entity() {
+        spans.push((id, &content[start..end]));
+    }
+    (spans, scanner.malformed_record_start())
+}
+
 const DATA_PREAMBLE: &str = "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n";
 
 fn data_file(records: &[&str]) -> String {
@@ -645,4 +657,100 @@ fn fused_id_prefix_retains_refusal_and_malformed_order_3987() {
     let mut scanner = EntityScanner::new(source);
     assert_eq!(scanner.next_entity().map(|x| x.0), Some(8));
     assert!(scanner.skipped_oversized_id_starts().is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// #4179: a record with no `;` of its own must not latch onto a LATER `;`.
+// The already-fixed cluster above covers "nothing left to find at all"; these
+// cover the opposite case, where something IS left to find and the scan runs
+// past its own record boundary to reach it — swallowing the next record and
+// reporting success.
+// ---------------------------------------------------------------------------
+
+/// RED, pre-fix: `[1, 2, 4]` — #3 is gone, #2's span covers #3's bytes, and
+/// `malformed_record_start()` is `None`.
+///
+/// The broken record is DROPPED, not the rest of the file: #3 and #4 both
+/// survive. `close_step_record` (parser::lexical) argues why recovery beats
+/// stopping; `missing_terminator_does_not_cost_the_sharded_scan_its_tail_4179`
+/// is the measurement.
+#[test]
+fn unterminated_record_does_not_swallow_the_next_record_4179() {
+    let content = "#1=IFCA(1);\n#2=IFCB(2)\n#3=IFCC(3);\n#4=IFCD(4);\n";
+    let (spans, stop) = scan_spans_and_stop(content);
+    assert_eq!(spans, vec![(1, "#1=IFCA(1);"), (3, "#3=IFCC(3);"), (4, "#4=IFCD(4);")]);
+    assert_eq!(
+        stop,
+        content.find("#2"),
+        "a record whose own ';' is missing must be reported, not completed \
+         with the next record's ';'"
+    );
+}
+
+/// RED, pre-fix: #2's span swallows `ENDSEC;` and nothing is reported — the
+/// file parses as fully successful having lost the footer's structural marker.
+#[test]
+fn unterminated_last_record_does_not_swallow_the_footer_4179() {
+    let content = "#1=IFCPROJECT('a');\n#2=IFCWALL('b')\nENDSEC;\nEND-ISO-10303-21;\n";
+    let (spans, stop) = scan_spans_and_stop(content);
+    assert_eq!(spans, vec![(1, "#1=IFCPROJECT('a');")]);
+    assert_eq!(stop, content.find("#2"));
+}
+
+/// Recovery is bounded by the SAME "no resume point" rule the #3695 cluster
+/// set: `close_step_record` walks strings and comments whole, so an
+/// unterminated one leaves no balancing `)` to resume at and the scan still
+/// stops there. Without this the recovery would quietly widen #3695's
+/// contract while every one of its own tests stayed green.
+#[test]
+fn recovery_does_not_resume_past_an_unclosed_string_or_comment_4179() {
+    for body in ["IFCWALL('never closes,$)", "IFCWALL(/* never closes $)"] {
+        let content = format!("#1=IFCA(1);\n#2={body}\n#3=IFCC(3);\n");
+        let (spans, stop) = scan_spans_and_stop(&content);
+        assert_eq!(spans, vec![(1, "#1=IFCA(1);")], "body: {body}");
+        assert_eq!(stop, content.find("#2"), "body: {body}");
+    }
+}
+
+/// The guards must not FALSELY refuse a legal record — the direction a
+/// per-guard mutation check cannot answer, and the dangerous one, since a
+/// refusal now drops a record.
+///
+/// Every shape here is hand-constructed because a sweep of this repo's IFC
+/// corpus contains NONE of them, so a clean sweep over it is not evidence
+/// about these cases. `LEGAL_BODIES` in
+/// `packages/parser/src/step-record-boundary.vectors.ts` carries the counts
+/// and holds the matching TypeScript vectors.
+#[test]
+fn record_boundary_guards_accept_legal_records_4179() {
+    let mut bodies = vec![
+        // '=' outside a declaration, in every place it can legally appear.
+        "IFCWALL('a=b',$);".to_string(),
+        "IFCWALL($ /* a=b */);".to_string(),
+        "IFCDOCUMENTREFERENCE('http://h/q?a=b&c=d',$);".to_string(),
+        // Trivia between the closing ')' and the ';'.
+        "IFCWALL($)/* trailing */;".to_string(),
+        "IFCWALL($)/* one *//* two */;".to_string(),
+        "IFCWALL($) /* spaced */ \t /* twice */ ;".to_string(),
+        "IFCWALL($)/* multi\nline */;".to_string(),
+        // Shapes the corpus does cover, kept as the control.
+        "IFCWALL(('a'),(1.,2.));".to_string(),
+        "IFCWALL(\n  'a',\n  $\n);".to_string(),
+        "(IFCA(1)IFCB(2));".to_string(),
+    ];
+    // Each STEP space byte on its own: `is_step_space` includes vertical tab
+    // and form feed, and a form feed silently dropping an entity is exactly
+    // what #3733 was.
+    for space in [" ", "\t", "\r", "\n", "\x0b", "\x0c"] {
+        bodies.push(format!("IFCWALL($){space};"));
+        bodies.push(format!("IFCWALL($){space}/* c */{space};"));
+    }
+    for body in &bodies {
+        let body = body.as_str();
+        let content = format!("#1={body}\n#2=IFCDOOR($);\n");
+        let (spans, stop) = scan_spans_and_stop(&content);
+        let record = format!("#1={body}");
+        assert_eq!(spans, vec![(1, record.as_str()), (2, "#2=IFCDOOR($);")], "body: {body}");
+        assert_eq!(stop, None, "body: {body}");
+    }
 }

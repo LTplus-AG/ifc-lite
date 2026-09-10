@@ -60,7 +60,7 @@ describe('scanIfcEntities: unterminated string literal', () => {
     // #3 is not recovered — asserting that honestly, so a future resync
     // attempt has to update this test rather than silently regress it.
     expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
-    expect(diagnostics.some((m) => m.includes('stopped early') && m.includes('a record had'))).toBe(true);
+    expect(diagnostics.some((m) => m.includes('dropped a record'))).toBe(true);
   });
 
   it('does not report malformedRecordCount, or emit its diagnostic, for a well-formed file', async () => {
@@ -78,7 +78,7 @@ describe('scanIfcEntities: unterminated string literal', () => {
 
     expect(result.malformedRecordCount).toBe(0);
     expect(result.entityRefs.map((r) => r.expressId)).toEqual([1, 2, 3]);
-    expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(false);
+    expect(diagnostics.some((m) => m.includes('dropped a record'))).toBe(false);
   });
 });
 
@@ -106,7 +106,7 @@ describe('scanIfcEntities: unterminated comment inside a record', () => {
     expect(result.scanPath).toBe('tokenizer');
     expect(result.malformedRecordCount).toBe(1);
     expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
-    expect(diagnostics.some((m) => m.includes('stopped early') && m.includes('a record had'))).toBe(true);
+    expect(diagnostics.some((m) => m.includes('dropped a record'))).toBe(true);
   });
 });
 
@@ -131,11 +131,15 @@ describe('scanIfcEntities: unterminated comment before the record body opens', (
     expect(result.scanPath).toBe('tokenizer');
     expect(result.malformedRecordCount).toBe(1);
     expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
-    expect(diagnostics.some((m) => m.includes('stopped early') && m.includes('a record had'))).toBe(true);
+    expect(diagnostics.some((m) => m.includes('dropped a record'))).toBe(true);
     // The message must not claim the construct was a string literal when it
     // was actually a comment -- the whole point of #3695's remaining
     // review finding.
-    expect(diagnostics.some((m) => m.includes('string literal or comment'))).toBe(true);
+    // Both shapes named, not just one. The wording moved with #4179 (the scan
+    // now DROPS the record and resumes rather than stopping), so this asserts
+    // the two nouns rather than the old phrase.
+    expect(diagnostics.some((m) => m.includes('quoted string'))).toBe(true);
+    expect(diagnostics.some((m) => m.includes('comment'))).toBe(true);
   });
 });
 
@@ -165,7 +169,7 @@ describe('scanIfcEntities: shapes the per-site increments missed (round 2)', () 
     expect(result.scanPath).toBe('tokenizer');
     expect(result.malformedRecordCount).toBe(1);
     expect(result.entityRefs).toEqual([]);
-    expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(true);
+    expect(diagnostics.some((m) => m.includes('dropped a record'))).toBe(true);
   });
 
   it('reports malformedRecordCount for a stray unclosed comment between two DATA records', async () => {
@@ -181,7 +185,7 @@ describe('scanIfcEntities: shapes the per-site increments missed (round 2)', () 
     expect(result.scanPath).toBe('tokenizer');
     expect(result.malformedRecordCount).toBe(1);
     expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
-    expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(true);
+    expect(diagnostics.some((m) => m.includes('dropped a record'))).toBe(true);
   });
 
   it.each([
@@ -201,7 +205,7 @@ describe('scanIfcEntities: shapes the per-site increments missed (round 2)', () 
     expect(result.scanPath).toBe('tokenizer');
     expect(result.malformedRecordCount).toBe(1);
     expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
-    expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(true);
+    expect(diagnostics.some((m) => m.includes('dropped a record'))).toBe(true);
   });
 });
 
@@ -231,7 +235,7 @@ describe('scanIfcEntities: declOpen false positive from a reference inside an ab
     expect(result.oversizedIdCount).toBe(1);
     expect(result.malformedRecordCount).toBe(0);
     expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
-    expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(false);
+    expect(diagnostics.some((m) => m.includes('dropped a record'))).toBe(false);
   });
 
   it('control: a declaration genuinely cut off at EOF still reports malformedRecordCount 1', async () => {

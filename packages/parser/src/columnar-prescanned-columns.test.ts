@@ -113,7 +113,7 @@ describe('issue #3985 pre-scanned column preparation', () => {
     expect(result.oversizedIdCount).toBe(2);
     expect(result.malformedRecordCount).toBe(1);
     expect(diagnostics.some(message => message.includes('skipped 2 record(s)'))).toBe(true);
-    expect(diagnostics.some(message => message.includes('stopped early'))).toBe(true);
+    expect(diagnostics.some(message => message.includes('dropped a record'))).toBe(true);
     const unknown: string[] = [];
     await scanColumnarEntities(bytes.buffer, {
       preScannedEntityIndex: { ...columns(true), oversizedIdCount: undefined },

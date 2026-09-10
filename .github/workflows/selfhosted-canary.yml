@@ -90,3 +90,38 @@ jobs:
     steps:
       - name: Docker socket must be reachable here
         run: docker version --format 'server {{.Server.Version}}'
+
+  # End-to-end Part B: the review runner runs PR-Agent as a container and
+  # reaches Ollama on the host. Reviews an already-merged PR with
+  # publish_output=false, so nothing is ever posted to GitHub.
+  pr-agent:
+    runs-on: [self-hosted, linux, x64, review]
+    timeout-minutes: 20
+    steps:
+      - name: Reach Ollama from the review runner
+        run: |
+          curl -sf --max-time 10 http://100.73.83.14:11434/api/tags \
+            | head -c 200 || { echo "FAIL: cannot reach Ollama"; exit 1; }
+          echo
+      - name: PR-Agent review (dry run, nothing published)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker run --rm \
+            -e CONFIG.GIT_PROVIDER=github \
+            -e GITHUB.USER_TOKEN="$GH_TOKEN" \
+            -e CONFIG.PUBLISH_OUTPUT=false \
+            -e CONFIG.MODEL="ollama_chat/qwen2.5-coder:14b" \
+            -e CONFIG.FALLBACK_MODELS='["ollama_chat/qwen2.5-coder:14b"]' \
+            -e CONFIG.CUSTOM_MODEL_MAX_TOKENS=32000 \
+            -e CONFIG.MAX_MODEL_TOKENS=22000 \
+            -e CONFIG.DUPLICATE_EXAMPLES=true \
+            -e CONFIG.AI_TIMEOUT=900 \
+            -e CONFIG.VERBOSITY_LEVEL=2 \
+            -e OLLAMA.API_BASE=http://100.73.83.14:11434 \
+            pragent/pr-agent:0.45.0 \
+            --pr_url=https://github.com/LTplus-AG/ifc-lite/pull/4467 review 2>&1 \
+            | tee /tmp/pr-agent.log | tail -5
+          grep -q "AI response" /tmp/pr-agent.log \
+            || { echo "FAIL: model produced no response"; exit 1; }
+          echo "OK: PR-Agent produced a review via local Ollama"

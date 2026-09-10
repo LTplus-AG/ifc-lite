@@ -62,7 +62,7 @@ it('native sequential assignment plans preserve prior allocations and shared sty
   const { default: init } = await import('@ifc-lite/wasm'); await init({ module_or_path: await readFile(wasm) });
   const { runAppearancePlanning } = await import('../../../workers/appearance.worker.js');
   const planner: AppearancePlanner = { plan: runAppearancePlanning, pagePlan: unused, catalog: unused,
-    registerScan: unused, meshTransfer: unused, capturedMeshPlan: unused, annotationPlan: unused, cancel() {}, dispose() {} };
+    pdfFillPlan: unused, registerScan: unused, meshTransfer: unused, capturedMeshPlan: unused, annotationPlan: unused, cancel() {}, dispose() {} };
   const sourceOwner = { kind: 'source' as const, id: 'assignment-test' }, owner = { kind: 'draft' as const, id: 'assignment-test' };
   const asset = await appearanceAssets.add(png, { owner: sourceOwner });
   t.mock.method(appearanceAssets, 'decode', async () => ({ width: 1, height: 1, close() {} } as ImageBitmap));

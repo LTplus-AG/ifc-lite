@@ -170,3 +170,42 @@ conforming decoder defect: pinned PDF.js fuses its coordinates with paint-time
 state, and independent Poppler rendered the tested reordered pair identically.
 The adapter does not independently certify raw content-stream conformance after
 PDF.js decoding. It must not claim arbitrary malformed-PDF extraction fidelity.
+
+## Complete straight-edge fill page planning
+
+`planPdfFillAnnotation` advances state-qualified pages through a bounded native
+geometry path. It accepts only complete opaque RGB straight-edge fill pages,
+resolves fill rule and the implicit CropBox, and subtracts later paint before
+creating colored annotation fill areas. It reuses canonical authored source,
+placement, allocation and mesh production; no separate STEP writer is involved.
+
+A fixed-grid overlay guard refuses distinct endpoint collapse, changed edge
+orientation classifications and uncertain near contacts/intersections. Its first
+bounded scope also refuses edges with multiple proper crossings. The guard is
+conservative: valid complex or tiny features may be refused. Final canonical mesh
+coordinates must agree with the quantized contours within the requested metric
+tolerance; this transport check is distinct from original-path fidelity.
+
+The [two actual decoded PDF controls](evidence/pdf-fill-annotations/README.md)
+exercise winding, holes, clipping and paint order with independent source raster
+and exported IFC checks. They do not establish universal conversion fidelity.
+Shared UI transaction integration and curved/stroked page conversion remain
+separate required work. Outlined strokes will represent visual filled geometry,
+not preserved editable centreline or font semantics.
+
+## Shared authored-owner publication
+
+Native PDF fill plans use the same authored-product transaction as image references
+and captured meshes. `commitAuthoredProduct` accepts all canonical parts for one
+IFC owner and an explicit retained-image list (empty for solid fills). It stages
+all colour buckets and textures before committing IFC rows, publishes every part
+together, and records one Undo/Redo entry. Replay checks every part so a later edit
+to one colour cannot partially rewind the annotation. The renderer's
+`prepareAuthoredOwner` rejects changed scene or placement state before publication.
+
+This transaction does not qualify PDF content or establish source identity. Its
+caller must retain the original PDF, page and calibration, verify the native
+source-IFC digest against the exact frozen bytes, and enforce the PDF transport
+limits before requesting publication. The image-based annotation workflow remains
+the active UI until the representation choice and its native qualification review
+are integrated.

@@ -1268,3 +1268,14 @@ quota increase alone retroactively turns them into wins. Scan-owned memory is
 still bounded, including padding scratch, and overlapping/dense cases refuse
 before publication. This is measured capacity acceptance, not a throughput
 speedup. [Worker, independent-reader and refusal evidence](../../docs/architecture/evidence/mesh-transfer-full-target/README.md).
+
+## Qualified PDF fill composition (#4406)
+
+The new explicit creation API leaves ordinary model loading on the existing
+path. Interleaved exact-source native probes showed a slower first candidate
+pair and matching second-pair timings, with identical ordered mesh fingerprints
+and counts. This resolves no consistent normal-load regression and does not
+establish zero overhead or browser-worker throughput. The composition budget
+precharges pairwise overlay work and separately limits generated contours and
+transport; do not tune those caps using unrelated normal-load timings. See
+[raw samples and source identity](../../docs/architecture/evidence/pdf-fill-annotations/native-load.json).

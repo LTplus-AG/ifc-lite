@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { PdfFillAnnotationRequest, PdfFillAnnotationPlan } from './pdf/fill-plan-types';
 import type { MeshTransferRequest, MeshTransferPlan } from './scan/transfer-types';
 import type { ScanRegistrationRequest, ScanRegistrationReport } from './scan/types';
 import type { CapturedMeshPlan, CapturedMeshRequest, AnnotationPlanePlan, AnnotationPlaneRequest, PageAppearancePlan, PageAppearanceRequest, AppearanceCatalog, AppearanceCatalogRequest, AppearancePlan, AppearanceRequest, AppearanceWorkerJob, AppearanceWorkerRequest, AppearanceWorkerResponse } from './planner-types.js';
@@ -13,6 +14,7 @@ export interface AppearanceWorker {
   terminate(): void;
 }
 export interface AppearancePlanner {
+  pdfFillPlan(source: Uint8Array, request: PdfFillAnnotationRequest, options?: { signal?: AbortSignal }): Promise<PdfFillAnnotationPlan>;
   meshTransfer(source: Uint8Array, request: MeshTransferRequest, rgba: Uint8Array, options?: { signal?: AbortSignal }): Promise<MeshTransferPlan>;
   registerScan(request: ScanRegistrationRequest, options?: { signal?: AbortSignal }): Promise<ScanRegistrationReport>;
   capturedMeshPlan(source: Uint8Array, request: CapturedMeshRequest, options?: { signal?: AbortSignal }): Promise<CapturedMeshPlan>;
@@ -138,6 +140,30 @@ export function createAppearancePlanner(options: {
         if (message.type !== 'complete' || !message.plan || message.plan.sourceRevision !== revision
           || message.plan.nextExpressId !== allocationStart) throw new Error('Appearance worker returned a stale model revision');
         return message.plan;
+      }, options);
+    },
+    pdfFillPlan(source, request, options) {
+      if (request.page.operations.length > 100_000 || request.page.operations.reduce((n, row) =>
+        n + (row.operation.kind === 'path' ? row.operation.commands.length : 0), 0) > 2_000_000
+        || new TextEncoder().encode(JSON.stringify(request)).byteLength > 32 * 1024 * 1024) {
+        return Promise.reject(new Error('PDF fill request exceeds its bounded display-list budget'));
+      }
+      const frozen = structuredClone(request);
+      return run(source, { type: 'pdf-fill-plan', request: frozen }, message => {
+        if (message.type !== 'pdf-fill-complete' || !message.result
+          || message.result.plan?.sourceRevision !== frozen.sourceRevision || message.result.plan.nextExpressId !== frozen.nextExpressId
+          || message.result.algorithm !== 'ifclite-pdf-fill-annotation-v1'
+          || message.result.coordinateSpace !== 'ifc-z-up' || message.result.sourcePdfSha256 !== frozen.page.pdfSha256
+          || message.result.pageNumber !== frozen.page.pageNumber || message.result.calibrationKey !== frozen.page.calibrationKey
+          || message.result.toleranceMetres !== frozen.page.toleranceMetres
+          || JSON.stringify([message.result.frame.origin, message.result.frame.axisU, message.result.frame.axisV, message.result.frame.sizeMetres])
+            !== JSON.stringify([frozen.frame.origin, frozen.frame.axisU, frozen.frame.axisV, frozen.frame.sizeMetres])
+          || !/^[a-f0-9]{64}$/.test(message.result.requestSha256) || !/^[a-f0-9]{64}$/.test(message.result.sourceIfcSha256)
+          || !message.result.meshes?.length || message.result.meshes.some(mesh => mesh.express_id !== message.result.annotationId
+            || mesh.texture !== undefined || mesh.uvs !== undefined)) {
+          throw new Error('Appearance worker returned a stale or invalid PDF fill annotation plan');
+        }
+        return message.result;
       }, options);
     },
     capturedMeshPlan(source, request, options) {

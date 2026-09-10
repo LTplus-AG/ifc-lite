@@ -74,7 +74,7 @@ Native f32 cut triangles can be retriangulated differently by an independent
 reader. Later conversion acceptance must compare world surfaces and volume;
 face-mask identity stays tied to the canonical native triangle snapshot.
 
-Fresh WASM reopening uses the canonical prepass/batch API and reports one slab
+[Fresh WASM reopening](wasm-reference.json) uses the canonical prepass/batch API and reports one slab
 with 32 triangles and finite coordinates. Run `node docs/architecture/evidence/evaluated-openings/reopen-reference.mjs /tmp/reference-opening/reference-opening.ifc` after regenerating WASM.
 [Controlled native performance](performance.json) compares exact source revisions
 on AC20 and ISSUE_129; no material normal-load regression was resolved. These

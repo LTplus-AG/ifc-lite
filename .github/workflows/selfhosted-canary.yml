@@ -1,0 +1,70 @@
+# Temporary canary: proves the self-hosted fleet can run real ifc-lite work.
+# Scoped to the ci/self-hosted-canary branch and workflow_dispatch, so it can
+# never fire on main, on a PR, or on anyone else's branch. Delete after Phase 1.
+name: Self-hosted canary
+
+on:
+  push:
+    branches: [ci/self-hosted-canary]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Does a job land on our runners at all, and what is baked into them?
+  smoke:
+    runs-on: [self-hosted, linux, x64, ifclite]
+    timeout-minutes: 10
+    steps:
+      - name: Who am I
+        run: |
+          echo "runner name : $RUNNER_NAME"
+          echo "os/arch     : $RUNNER_OS/$RUNNER_ARCH"
+          echo "user        : $(id -un)"
+          echo "cpus        : $(nproc)"
+          echo "docker sock : $([ -S /var/run/docker.sock ] && echo PRESENT || echo absent-as-intended)"
+      - name: Baked toolchain
+        run: |
+          node --version
+          pnpm --version
+          rustc --version
+          cargo --version
+          wasm-pack --version
+          google-chrome-stable --version
+
+  # The real thing: check out ifc-lite and run the actual gates.
+  build:
+    runs-on: [self-hosted, linux, x64, ifclite]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: pnpm install --frozen-lockfile
+      - name: Build WASM
+        run: bash scripts/build-wasm.sh
+      - name: Verify committed wasm types are in sync
+        run: git diff --exit-code -- packages/wasm/pkg/ifc-lite.d.ts
+      - run: pnpm build
+      - run: pnpm typecheck
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # Confirms the socket-less build class really cannot reach the daemon.
+  isolation:
+    runs-on: [self-hosted, linux, x64, ifclite]
+    timeout-minutes: 5
+    steps:
+      - name: Docker socket must NOT be reachable here
+        run: |
+          if docker info >/dev/null 2>&1; then
+            echo "FAIL: build runner can reach the Docker daemon"; exit 1
+          fi
+          echo "OK: no Docker daemon access from the build class"
+
+  # The dkr class is the one that may talk to the daemon.
+  docker-class:
+    runs-on: [self-hosted, linux, x64, ifclite, dkr]
+    timeout-minutes: 10
+    steps:
+      - name: Docker socket must be reachable here
+        run: docker version --format 'server {{.Server.Version}}'

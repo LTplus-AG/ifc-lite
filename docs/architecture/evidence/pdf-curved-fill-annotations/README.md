@@ -53,3 +53,10 @@ and an independently installed PyO3 wheel against all four committed quick-lane
 parity references. The existing halfspace density advisory remains. Raw native
 load samples and identical mesh fingerprints are in `native-load.json`; they do
 not measure curved-page throughput or establish zero overhead.
+
+After integrating main `ae8533851` (including full-target transfer capacity),
+combined source `3c4f8c738` passed 21 PDF and 10 transfer native tests, a freshly
+built WASM contract run (88 passed, three existing optional skips), and all five
+straight/curved PDF export and independent-reader controls. IFC DATA sections
+remain byte-identical to the prior runs; only export timestamps differ.
+`combined-validation.json` records the exact source and resulting export hashes.

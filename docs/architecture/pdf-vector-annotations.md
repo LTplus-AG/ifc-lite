@@ -190,7 +190,7 @@ The [two actual decoded PDF controls](evidence/pdf-fill-annotations/README.md)
 exercise winding, holes, clipping and paint order with independent source raster
 and exported IFC checks. They do not establish universal conversion fidelity.
 The later qualified curve and solid-stroke slices below extend this same path;
-shared UI integration remains separate work. Outlined strokes represent visual filled geometry,
+the shared workspace offers an explicit PDF vectors representation. Outlined strokes represent visual filled geometry,
 not preserved editable centreline or font semantics.
 
 ## Qualified curved fills
@@ -221,9 +221,7 @@ to one colour cannot partially rewind the annotation. The renderer's
 This transaction does not qualify PDF content or establish source identity. Its
 caller must retain the original PDF, page and calibration, verify the native
 source-IFC digest against the exact frozen bytes, and enforce the PDF transport
-limits before requesting publication. The image-based annotation workflow remains
-the active UI until the representation choice and its native qualification review
-are integrated.
+limits before requesting publication. Image remains the default representation. The PDF vectors choice runs this qualification before enabling creation.
 
 ## Qualified solid straight strokes
 
@@ -253,3 +251,35 @@ roundtrip from inventing a tiny gap at an originally identical page boundary.
 The planner precharges initial pairwise qualification as well as every overlay;
 original page contours are capped at 1,024 vertices, with unchanged shared work
 and cumulative output bounds. See [registered original-page evidence](evidence/pdf-composition-lattice/README.md).
+
+## Registered PDF annotation workflow
+
+In Appearance, register a whole PDF page using Place reference and its metric
+calibration, then expand Save into model for that drawing. Choose the editable
+IFC model, spatial container and Name. Image preserves the page raster; PDF
+vectors prepares the supported opaque fill and straight-stroke subset as coloured
+`IfcAnnotation` geometry. Original document identity is required: a legacy
+image-only registration cannot acquire vector provenance from a mutable source
+slot. Re-uploading the original document can restore its retained provider.
+
+Prepare vector preview reads the registration's original page and calibration,
+not the currently selected page in the source catalog. The isolated, face-on
+preview displays every canonical native mesh part and its colour. Orbit and zoom
+inspect geometry before Create annotation publishes it through the shared
+transaction. No IFC rows or main-scene meshes exist during preview. Creation
+selects the new owner and records one ordinary Undo/Redo entry; the registered
+drawing remains independently available.
+
+Changing the target, container, Name or metric tolerance discards the prepared
+result. Cancellation, closing the controls, source replacement and stale model
+state release the pending worker, preview and retained PDF lease. The operation
+checks the exact effective IFC SHA-256 and original PDF/page/calibration identities
+before publication. The existing coordinate adapter preserves saved placement,
+page rotation, UserUnit and native CropBox while converting the raster vertical
+axis once; it does not solve another calibration.
+
+User-cropped raster registrations are explicitly refused for vectors because their
+extra crop has not been qualified by the native geometry planner. Use Image for
+those pages, text, image content or unsupported paint effects. Native refusals do
+not create partial annotations. Tolerance bounds geometric approximation; it is
+not a claim that arbitrary PDF typography or graphics have been preserved.

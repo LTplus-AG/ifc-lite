@@ -9,8 +9,8 @@ import { placementFor } from '@/lib/model-placement/state';
 import { appearanceRevision, captureAppearanceSource } from './command';
 import { prepareAppearanceSerialization } from './serialization';
 
-/** One effective IFC snapshot and allocation guard for every textured product. */
-export async function prepareTexturedProduct(modelId: string, signal?: AbortSignal, validateSource: () => void = () => {}) {
+/** One effective IFC snapshot and allocation guard for every authored product. */
+export async function prepareAuthoredProduct(modelId: string, signal?: AbortSignal, validateSource: () => void = () => {}) {
   const state = useViewerStore.getState(), model = state.models.get(modelId);
   if (!model?.ifcDataStore || /\.glb$/i.test(model.sourceFile?.name ?? '') || !model.schemaVersion.startsWith('IFC4')) throw new Error('Choose an editable IFC4 or IFC4X3 model.');
   if (state.modelPlacement.preview) throw new Error('Finish repositioning the model before creating an object.');

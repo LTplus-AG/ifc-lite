@@ -4,7 +4,7 @@
 import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { alignedScanPreview, scanPreviewPoint } from '@/lib/appearance/scan/preview';
-import { CapturePreview } from './CapturePreview';
+import { AppearanceMeshPreview } from './AppearanceMeshPreview';
 import { ScanTransferFields } from './ScanTransferFields';
 import { useScanTransfer } from './useScanTransfer';
 import { useScanWorkbench } from './useScanWorkbench';
@@ -31,7 +31,7 @@ export function AppearanceScanPanel() {
     <fieldset className="space-y-3" disabled={transfer.busy || transfer.ready}><div><h2 className="text-sm font-semibold">Align scan</h2><p className="mt-1 text-xs text-muted-foreground">Match scan landmarks to IFC surfaces, then review the alignment and independent checks.</p></div>
     <label className="block text-xs">Scan surface<select className="mt-1 w-full rounded border bg-background p-2" value={work.sourceId} disabled={work.busy} onChange={event => work.setSourceId(event.target.value)}><option value="">Choose a textured GLB surface</option>{work.sources.map(source => <option key={source.id} value={source.id}>{source.label}</option>)}</select></label>
     <label className="block text-xs">IFC model<select className="mt-1 w-full rounded border bg-background p-2" value={work.targetId} disabled={work.busy} onChange={event => work.setTargetId(event.target.value)}><option value="">Choose an IFC model</option>{work.targets.map(target => <option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
-    {mesh && work.session && <CapturePreview mesh={mesh} assetId={work.session.assetId} triangles={triangles} disabled={work.busy || work.stale || transfer.busy || transfer.ready} regionControls={false} onRegion={ignoreRegion} onReady={work.setPreviewReady} onError={work.previewError} onLandmark={work.pickSource} markers={markers} canvasLabel="Scan landmark preview" instruction={work.aligned ? 'Aligned preview. P marks scan landmarks; IFC marks their target positions.' : 'Click a scan landmark, then its matching point in the main IFC view. Drag to orbit; scroll to zoom.'} />}
+    {mesh && work.session && <AppearanceMeshPreview mesh={mesh} assetId={work.session.assetId} triangles={triangles} disabled={work.busy || work.stale || transfer.busy || transfer.ready} regionControls={false} onRegion={ignoreRegion} onReady={work.setPreviewReady} onError={work.previewError} onLandmark={work.pickSource} markers={markers} canvasLabel="Scan landmark preview" instruction={work.aligned ? 'Aligned preview. P marks scan landmarks; IFC marks their target positions.' : 'Click a scan landmark, then its matching point in the main IFC view. Drag to orbit; scroll to zoom.'} />}
     <div role="group" aria-label="Landmark purpose" className="grid grid-cols-2 gap-2">
       <Button size="sm" variant={work.partition === 'fit' ? 'secondary' : 'outline'} aria-pressed={work.partition === 'fit'} disabled={work.busy || work.aligned} onClick={() => work.setPartition('fit')}>Fit · {fit}</Button>
       <Button size="sm" variant={work.partition === 'check' ? 'secondary' : 'outline'} aria-pressed={work.partition === 'check'} disabled={work.busy || work.aligned} onClick={() => work.setPartition('check')}>Check · {checks}</Button>

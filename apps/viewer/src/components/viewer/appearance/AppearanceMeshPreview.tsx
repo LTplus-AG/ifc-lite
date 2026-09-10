@@ -8,14 +8,16 @@ import { appearanceAssets } from '@/lib/appearance/model-assets';
 import { Button } from '@/components/ui/button';
 import { capturedScreenRegion } from './capture-screen-region';
 
+const NO_PARTS: readonly MeshData[] = [];
 const NO_MARKERS: { id: string; point: { x: number; y: number; z: number }; check?: boolean }[] = [];
 
 /** A local renderer borrows the retained image. It never installs a global
  * renderer, changes the main camera, or publishes a model/IFC owner. */
-export function CapturePreview({ mesh, assetId, triangles, disabled, onRegion, onReady, onError, onLandmark, markers = NO_MARKERS, regionControls = true, instruction, canvasLabel }: {
-  mesh: MeshData; assetId: string; triangles: readonly number[]; disabled: boolean;
+export function AppearanceMeshPreview({ mesh, assetId, additionalMeshes = NO_PARTS, initialPlane, triangles, disabled, onRegion, onReady, onError, onLandmark, markers = NO_MARKERS, regionControls = true, instruction, canvasLabel }: {
+  mesh: MeshData; assetId?: string; additionalMeshes?: readonly MeshData[]; triangles: readonly number[]; disabled: boolean;
   onRegion(ids: number[]): void; onReady(ready: boolean): void; onError(message: string): void;
   onLandmark?(hit: Intersection): void; markers?: { id: string; point: { x: number; y: number; z: number }; check?: boolean }[];
+  initialPlane?: { normal: readonly [number, number, number]; up: readonly [number, number, number] };
   regionControls?: boolean; instruction?: string; canvasLabel?: string;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null), renderer = useRef<Renderer | null>(null);
@@ -37,12 +39,16 @@ export function CapturePreview({ mesh, assetId, triangles, disabled, onRegion, o
   const gesture = useRef<{ start: { x: number; y: number }; last: { x: number; y: number }; pointer: number } | null>(null);
   function draw() {
     const view = renderer.current, image = bitmap.current;
-    if (!view || !image) return false;
+    if (!view || (assetId && !image)) return false;
     try {
     view.getScene().clear();
     const visible = selecting ? Array.from({ length: mesh.indices.length / 3 }, (_, i) => i) : region.current;
-    if (visible.length) view.loadGeometry([{ ...mesh, origin: [0,0,0], textureBitmap: image,
-      indices: Uint32Array.from(visible.flatMap(id => [mesh.indices[id * 3], mesh.indices[id * 3 + 1], mesh.indices[id * 3 + 2]])) }]);
+    const base = mesh.origin ?? [0, 0, 0];
+    const parts: MeshData[] = visible.length ? [{ ...mesh, origin: [0,0,0], textureBitmap: image ?? undefined,
+      indices: Uint32Array.from(visible.flatMap(id => [mesh.indices[id * 3], mesh.indices[id * 3 + 1], mesh.indices[id * 3 + 2]])) }] : [];
+    for (const part of additionalMeshes) parts.push({ ...part, origin: [
+      (part.origin?.[0] ?? 0) - base[0], (part.origin?.[1] ?? 0) - base[1], (part.origin?.[2] ?? 0) - base[2]] });
+    if (parts.length) view.loadGeometry(parts);
     view.render(); projectMarkers(view); return true;
     } catch (error) { failure.current?.(error instanceof Error ? error.message : String(error)); return false; }
   }
@@ -65,13 +71,20 @@ export function CapturePreview({ mesh, assetId, triangles, disabled, onRegion, o
     const unsubscribeLoss = view.onDeviceLost(() => fail('The preview graphics connection was lost. Reload the preview to continue.'));
     void (async () => {
       try {
-        appearanceAssets.retain(assetId, owner);
-        const image = await appearanceAssets.decode(assetId, owner, controller.signal);
+        if ((!assetId && mesh.textureRef) || additionalMeshes.some(part => part.textureRef)) throw new Error('The preview is missing a retained image for its textured geometry.');
+        if (assetId) appearanceAssets.retain(assetId, owner);
+        const image = assetId ? await appearanceAssets.decode(assetId, owner, controller.signal) : null;
         await view.init(); controller.signal.throwIfAborted();
         renderer.current = view; bitmap.current = image;
         const resize = () => { view.resize(element.clientWidth, element.clientHeight); view.requestRender(); };
         observer = new ResizeObserver(resize); observer.observe(element); resize();
-        if (!draw()) { view.destroy(); appearanceAssets.releaseOwner(owner); return; } view.fitToView(); view.requestRender();
+        if (!draw()) { view.destroy(); appearanceAssets.releaseOwner(owner); return; } view.fitToView();
+        if (initialPlane) {
+          const camera = view.getCamera(), target = camera.getTarget(), distance = camera.getDistance();
+          camera.setUp(...initialPlane.up);
+          camera.setPosition(target.x + initialPlane.normal[0] * distance, target.y + initialPlane.normal[1] * distance, target.z + initialPlane.normal[2] * distance);
+        }
+        view.requestRender();
         const tick = () => { if (controller.signal.aborted) return; try { if (view.consumeRenderRequest()) { view.render(); projectMarkers(view); } frame = requestAnimationFrame(tick); } catch (error) { fail(error instanceof Error ? error.message : String(error)); } };
         frame = requestAnimationFrame(tick); callbacks.current.onReady(true);
       } catch (error) {
@@ -85,7 +98,7 @@ export function CapturePreview({ mesh, assetId, triangles, disabled, onRegion, o
       view.destroy(); if (renderer.current === view) { renderer.current = null; bitmap.current = null; }
       appearanceAssets.releaseOwner(owner); callbacks.current.onReady(false);
     };
-  }, [mesh, assetId, generation]);
+  }, [mesh, assetId, additionalMeshes, initialPlane, generation]);
   useEffect(() => { draw(); }, [triangles, selecting]);
   useEffect(() => { renderer.current?.requestRender(); }, [markers]);
   function point(event: React.PointerEvent<HTMLCanvasElement>) {

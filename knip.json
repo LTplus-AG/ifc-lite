@@ -21,7 +21,8 @@
       "entry": [
         "api/*.ts",
         "scripts/dev-chat-api.ts",
-        "scripts/add-license-headers.mjs"
+        "scripts/add-license-headers.mjs",
+        "docs/architecture/evidence/pdf-annotation-ui/browser-proof.mjs"
       ]
     },
     "packages/ids": {

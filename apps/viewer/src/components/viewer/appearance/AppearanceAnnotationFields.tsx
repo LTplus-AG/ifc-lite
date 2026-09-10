@@ -10,6 +10,7 @@ import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { createAnnotationFromReference } from '@/lib/appearance/create-annotation';
 import { appearanceSelectClass } from './AppearanceSourceFields';
+import { PdfAnnotationFields } from './PdfAnnotationFields';
 
 /** Explicit IFC creation, next to the independent drawing it captures. */
 export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
@@ -18,6 +19,9 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
   const { modelId, containerId, eligible, containers, setChosenModel, setChosenContainer } = useIfcAuthoringTarget();
   const room = useViewerStore(state => state.collabRoomId);
   const [Name, setName] = useState(name);
+  const [expanded, setExpanded] = useState(false);
+  const [representation, setRepresentation] = useState<'image' | 'fills'>('image');
+  const pdf = useViewerStore(state => state.appearanceReferences.get(referenceId)?.pdf);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState(false);
@@ -45,11 +49,15 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
       if (operation.current === controller) { operation.current = null; setBusy(false); }
     }
   }
-  return <details className="mt-2 border-t pt-2">
+  return <details className="mt-2 border-t pt-2" onToggle={event => { setExpanded(event.currentTarget.open); if (!event.currentTarget.open) operation.current?.abort(); }}>
     <summary className="cursor-pointer text-[11px] font-medium">Save into model</summary>
     <div className="mt-2 space-y-2" aria-busy={busy}>
-      <p className="text-[11px] text-muted-foreground">Create a textured IfcAnnotation at this drawing’s position. The workspace reference remains available.</p>
+      <p className="text-[11px] text-muted-foreground">Save an IfcAnnotation at this drawing’s position. The workspace reference remains available.</p>
       <fieldset disabled={disabled || busy || !!room} className="space-y-2">
+        <label className="block text-[11px]">Representation<select aria-label="Annotation representation" className={appearanceSelectClass} value={representation}
+          onChange={event => setRepresentation(event.target.value === 'fills' ? 'fills' : 'image')}>
+          <option value="image">Image</option><option value="fills" disabled={!pdf}>PDF vectors</option>
+        </select></label>
         <label className="block text-[11px]">Model<select aria-label="Annotation model" className={appearanceSelectClass} value={modelId}
           onChange={event => { setChosenModel(event.target.value); setChosenContainer(undefined); setMessage(''); }}>
           {!eligible.length && <option value="">Load an editable IFC4 model</option>}
@@ -61,8 +69,9 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
           {containers.map(node => <option key={node.expressId} value={node.expressId}>{node.name || `#${node.expressId}`}</option>)}
         </select></label>
         <label className="block text-[11px]">Name<Input aria-label="Annotation Name" value={Name} onChange={event => setName(event.target.value)} className="h-8 text-xs" /></label>
-        <Button type="button" variant="outline" size="sm" disabled={!modelId || containerId === undefined || !Name.trim()} onClick={() => { void save(); }}>Create annotation</Button>
+        {representation === 'image' && <Button type="button" variant="outline" size="sm" disabled={!modelId || containerId === undefined || !Name.trim()} onClick={() => { void save(); }}>Create annotation</Button>}
       </fieldset>
+      {expanded && representation === 'fills' && <PdfAnnotationFields referenceId={referenceId} modelId={modelId} containerId={containerId} Name={Name} disabled={disabled || busy || !!room} />}
       {room && <p className="text-[11px] text-muted-foreground">Leave the shared room to create an annotation, then share the saved model.</p>}
       {busy && <Button type="button" variant="ghost" size="sm" onClick={() => { operation.current?.abort(); setMessage('Annotation creation cancelled.'); }}>Cancel creation</Button>}
       {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{message}</p>}

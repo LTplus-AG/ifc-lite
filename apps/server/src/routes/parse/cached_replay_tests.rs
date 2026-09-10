@@ -354,7 +354,7 @@ async fn issue_4064_cached_complete_preserves_georeferencing_bits() {
     let cold = serde_json::to_string(&ParquetStreamEvent::Complete {
         stats: header.stats.clone(),
         metadata: header.metadata.clone(),
-        symbolic_data: SymbolicData::default(),
+        symbolic_data: SymbolicData::default().into(),
     }).unwrap();
     let triangle = crate::types::MeshData::new(
         42, "IfcWall".to_string(),

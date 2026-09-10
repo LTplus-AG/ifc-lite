@@ -1624,6 +1624,7 @@ export class SymbolicFillArea {
     readonly fillB: number;
     readonly fillG: number;
     readonly fillR: number;
+    readonly geometryItemId: number | undefined;
     readonly hasHatching: boolean;
     readonly hatchAngle: number;
     readonly hatchAngleSecondary: number;
@@ -2231,10 +2232,12 @@ export interface InitOutput {
     readonly symboliccircle_repIdentifier: (a: number, b: number) => void;
     readonly symboliccircle_startAngle: (a: number) => number;
     readonly symboliccircle_worldY: (a: number) => number;
+    readonly symbolicfillarea_expressId: (a: number) => number;
     readonly symbolicfillarea_fillA: (a: number) => number;
     readonly symbolicfillarea_fillB: (a: number) => number;
     readonly symbolicfillarea_fillG: (a: number) => number;
     readonly symbolicfillarea_fillR: (a: number) => number;
+    readonly symbolicfillarea_geometryItemId: (a: number) => number;
     readonly symbolicfillarea_hasHatching: (a: number) => number;
     readonly symbolicfillarea_hatchAngle: (a: number) => number;
     readonly symbolicfillarea_hatchAngleSecondary: (a: number) => number;
@@ -2250,6 +2253,7 @@ export interface InitOutput {
     readonly symbolicpolyline_expressId: (a: number) => number;
     readonly symbolicpolyline_ifcType: (a: number, b: number) => void;
     readonly symbolicpolyline_isClosed: (a: number) => number;
+    readonly symbolicpolyline_pointCount: (a: number) => number;
     readonly symbolicpolyline_points: (a: number) => number;
     readonly symbolicpolyline_repIdentifier: (a: number, b: number) => void;
     readonly symbolicrepresentationcollection_circleCount: (a: number) => number;
@@ -2267,11 +2271,11 @@ export interface InitOutput {
     readonly symbolicrepresentationcollection_truncatedLimit: (a: number) => number;
     readonly symbolicrepresentationcollection_truncatedReason: (a: number, b: number) => void;
     readonly symbolictext_alignment: (a: number, b: number) => void;
-    readonly symbolictext_colorA: (a: number) => number;
     readonly symbolictext_content: (a: number, b: number) => void;
     readonly symbolictext_ifcType: (a: number, b: number) => void;
     readonly symbolictext_repIdentifier: (a: number, b: number) => void;
-    readonly symbolictext_targetPx: (a: number) => number;
+    readonly symbolictext_x: (a: number) => number;
+    readonly symbolictext_y: (a: number) => number;
     readonly union2d: (a: number, b: number) => number;
     readonly version: (a: number) => void;
     readonly zonepiecejs_indices: (a: number) => number;
@@ -2281,10 +2285,9 @@ export interface InitOutput {
     readonly zonesplitjs_pieceCount: (a: number) => number;
     readonly zonesplitjs_remainderFailed: (a: number) => number;
     readonly meshoutlinejs_contourCount: (a: number) => number;
-    readonly symbolicpolyline_pointCount: (a: number) => number;
     readonly get_memory: () => number;
-    readonly symbolicfillarea_expressId: (a: number) => number;
     readonly symbolicpolyline_worldY: (a: number) => number;
+    readonly symbolictext_colorA: (a: number) => number;
     readonly symbolictext_colorB: (a: number) => number;
     readonly symbolictext_colorG: (a: number) => number;
     readonly symbolictext_colorR: (a: number) => number;
@@ -2292,9 +2295,8 @@ export interface InitOutput {
     readonly symbolictext_dirY: (a: number) => number;
     readonly symbolictext_expressId: (a: number) => number;
     readonly symbolictext_height: (a: number) => number;
+    readonly symbolictext_targetPx: (a: number) => number;
     readonly symbolictext_worldY: (a: number) => number;
-    readonly symbolictext_x: (a: number) => number;
-    readonly symbolictext_y: (a: number) => number;
     readonly zonepiecejs_volume: (a: number) => number;
     readonly zonesplitjs_sumErrorRel: (a: number) => number;
     readonly zonesplitjs_wholeVolume: (a: number) => number;

@@ -7,7 +7,7 @@
 use super::ParseQuery;
 use crate::services::cache::DiskCache;
 use crate::services::{OpeningFilterMode, ParquetLayout};
-use ifc_lite_processing::{SymbolicData, TessellationQuality};
+use ifc_lite_processing::{SymbolicDataWithProvenance, TessellationQuality};
 
 /// Cache-key segment for a tessellation level. Empty for the default level so
 /// every pre-existing cache entry (all written at implicit `medium`) stays
@@ -249,7 +249,7 @@ pub(crate) fn symbolic_cache_key(cache_key: &str) -> String {
 ///
 /// Always stores the JSON (even when empty) so the fetch endpoint can return a
 /// definitive `200` with empty arrays rather than looping on `202`.
-pub(crate) async fn cache_symbolic_data(cache: &DiskCache, cache_key: &str, symbolic: &SymbolicData) {
+pub(crate) async fn cache_symbolic_data(cache: &DiskCache, cache_key: &str, symbolic: &impl serde::Serialize) {
     match serde_json::to_vec(symbolic) {
         Ok(bytes) => {
             let key = symbolic_cache_key(cache_key);
@@ -273,7 +273,7 @@ pub(crate) async fn cache_symbolic_data(cache: &DiskCache, cache_key: &str, symb
 /// `GET /api/v1/parse/symbolic/{cache_key}` answers `202` to a key nobody
 /// writes -- the same shape as the geometry/data-model trap in #3869.
 ///
-/// [`load_cached_symbolic`] cannot stand in: it answers `SymbolicData::default()`
+/// [`load_cached_symbolic`] cannot stand in: it answers `SymbolicDataWithProvenance::default()`
 /// for an absent entry and for a model with no 2D symbols alike, so absence
 /// there is indistinguishable from success.
 pub(crate) async fn has_cached_symbolic(cache: &DiskCache, cache_key: &str) -> bool {
@@ -282,17 +282,17 @@ pub(crate) async fn has_cached_symbolic(cache: &DiskCache, cache_key: &str) -> b
 
 /// Load cached symbolic data for `cache_key`, defaulting to empty when the
 /// entry is absent or unreadable.
-pub(crate) async fn load_cached_symbolic(cache: &DiskCache, cache_key: &str) -> SymbolicData {
+pub(crate) async fn load_cached_symbolic(cache: &DiskCache, cache_key: &str) -> SymbolicDataWithProvenance {
     let key = symbolic_cache_key(cache_key);
     match cache.get_bytes(&key).await {
         Ok(Some(bytes)) => serde_json::from_slice(&bytes).unwrap_or_else(|e| {
             tracing::error!(error = %e, cache_key = %cache_key, "Failed to parse cached symbolic data");
-            SymbolicData::default()
+            SymbolicDataWithProvenance::default()
         }),
-        Ok(None) => SymbolicData::default(),
+        Ok(None) => SymbolicDataWithProvenance::default(),
         Err(e) => {
             tracing::error!(error = %e, cache_key = %cache_key, "Failed to read cached symbolic data");
-            SymbolicData::default()
+            SymbolicDataWithProvenance::default()
         }
     }
 }

@@ -35,7 +35,7 @@ use axum::{
     http::{header, StatusCode},
     response::Response,
 };
-use ifc_lite_processing::{extract_symbolic_data, process_geometry_filtered_with_quality};
+use ifc_lite_processing::{extract_symbolic_data_with_provenance, process_geometry_filtered_with_quality};
 use serde::{Deserialize, Serialize};
 
 /// Response header containing metadata for Parquet response.
@@ -160,7 +160,7 @@ pub async fn parse_parquet(
                         || extract_data_model(&content),
                     )
                 },
-                || extract_symbolic_data(&content),
+                || extract_symbolic_data_with_provenance(&content),
             );
 
             // Capture stats before moving data_model

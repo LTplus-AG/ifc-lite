@@ -952,3 +952,17 @@ fit the exact diagnostic range of ±2^50. Original endpoint collapse/uncertain
 contacts and per-stage unresolved intersections refuse. Shared integer storage
 avoids introducing a new quantization phase between classification, clipping
 and paint-order composition.
+### Symbolic fill provenance
+
+`extract_symbolic_data_with_provenance(&source)` returns an opaque
+`SymbolicDataWithProvenance`. Its `data()` accessor exposes the unchanged
+`SymbolicData`; `fill_items()` supplies one optional direct representation-item
+ID per fill ordinal. `into_parts()` consumes both together. Unknown, repeated,
+or mapped occurrences have no item identity. The legacy `extract_symbolic_data`
+and publicly constructible primitive/aggregate structs remain compatible.
+
+Serializing the enriched result adds optional `geometry_item_id` to each known
+fill while retaining the existing symbol JSON shape. Deserialization accepts
+older symbol JSON and leaves missing provenance unknown. WASM and the server
+consume the enriched extraction; callers that only need 2D data can keep using
+the legacy API.

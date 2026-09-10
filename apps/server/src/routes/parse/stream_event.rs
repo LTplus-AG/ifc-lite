@@ -9,7 +9,7 @@
 //! whose whole contract is that a hit is indistinguishable from a miss.
 
 use crate::types::{ModelMetadata, ProcessingStats};
-use ifc_lite_processing::SymbolicData;
+use ifc_lite_processing::SymbolicDataWithProvenance;
 use serde::Serialize;
 
 /// SSE event types for Parquet streaming.
@@ -41,8 +41,8 @@ pub enum ParquetStreamEvent {
         metadata: ModelMetadata,
         /// 2D symbol data extracted from `IfcAnnotation` and `IfcGrid`
         /// entities — parity with `POST /api/v1/parse` (issue #900).
-        #[serde(default, skip_serializing_if = "SymbolicData::is_empty")]
-        symbolic_data: SymbolicData,
+        #[serde(default, skip_serializing_if = "SymbolicDataWithProvenance::is_empty")]
+        symbolic_data: SymbolicDataWithProvenance,
     },
     /// Error occurred.
     Error { message: String },

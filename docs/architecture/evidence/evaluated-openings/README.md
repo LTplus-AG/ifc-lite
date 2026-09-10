@@ -79,3 +79,20 @@ with 32 triangles and finite coordinates. Run `node docs/architecture/evidence/e
 [Controlled native performance](performance.json) compares exact source revisions
 on AC20 and ISSUE_129; no material normal-load regression was resolved. These
 numbers do not claim browser worker-pool performance.
+
+## Textured Reference host routing
+
+Reference-only openings also leave the host on the canonical textured submesh
+path. A retained void relationship alone must not select the untextured cutter
+path. `GeometryRouter::opening_requires_subtraction` conservatively inspects the
+opening's bounded representation list using the shared element-aware policy;
+unknown or malformed data retains ordinary cutter/error handling. Mixed
+Body/Reference openings still subtract their Body geometry. This loader behavior
+does not itself enable post-opening appearance conversion.
+
+[Reference host texture evidence](reference-textures.json) records the exact
+source revisions, fresh native/WASM contracts, and controlled normal-load probes.
+The [buildingSMART opening definition](https://ifc43-docs.standards.buildingsmart.org/IFC/RELEASE/IFC4x3/HTML/lexical/IfcOpeningElement.htm)
+specifies that Reference geometry accompanies an existing hole without another
+subtraction. The native and WASM regressions use a closed textured cube, including
+Reference plus BoundingBox, mixed Body/Reference, and malformed-list controls.

@@ -154,3 +154,9 @@ samples retain existing target albedo; the IFPA response includes explicit
 coverage and frozen-input bindings. Entirely unknown transfer has no applicable
 plan. See the [transfer contract](../../docs/api/wasm.md#registered-textured-mesh-appearance-transfer)
 for source identity, coordinate frames, budgets and host acceptance requirements.
+
+`IfcAPI.preparePdfVectorPage` validates bounded ordered PDF vector graphics states
+and preserves source operator identity, calibrated transforms and paint state.
+Unsupported content remains an explicit blocker. It emits no IFC entities and
+makes no flattened-geometry fidelity claim; see the
+[preparation contract](../../docs/api/wasm.md#pdf-vector-graphics-state-preparation).

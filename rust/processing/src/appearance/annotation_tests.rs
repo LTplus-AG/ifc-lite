@@ -128,3 +128,21 @@ fn issue_4308_ifc4x3_emits_predefined_type_and_point_tag_slots() {
     assert_eq!(mesh.positions,result.mesh.positions);
     assert_eq!(mesh.uvs,result.mesh.uvs);
 }
+
+#[test]
+fn issue_4441_authored_metadata_refuses_wire_tokens_and_preserves_ordinary_names() {
+    let (source, mut request) = fixture();
+    for token in ["*", "$", "#123", ".ENUM.", " .lower_1. ", "\u{feff}#123\u{feff}"] {
+        request.name = token.into();
+        assert!(plan_annotation_plane(source.as_bytes(), &request).unwrap_err().contains("Authored product Name is a reserved appearance wire token"));
+    }
+    for name in ["Ordinary name", "O'Brien – 墙", "#not_a_ref", ".not-an-enum.", "* label", "\u{85}#123\u{85}"] {
+        request.name = name.into();
+        let result = plan_annotation_plane(source.as_bytes(), &request).unwrap();
+        assert_eq!(result.plan.created.iter().find(|e| e.express_id == result.annotation_id).unwrap().attributes[2], serde_json::json!(name));
+    }
+    for token in ["*", "$", ".ENUM.", " .lower_1. "] {
+        request.image_uri = token.into();
+        assert!(plan_annotation_plane(source.as_bytes(), &request).unwrap_err().contains("Image URI is a reserved appearance wire token"));
+    }
+}

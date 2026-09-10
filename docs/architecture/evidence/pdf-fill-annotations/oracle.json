@@ -1,0 +1,93 @@
+{
+  "sourcePdfSha256": "926f9c6229913f0fde6e0c732f37edc3c17b4125e52118b63108f0b718541f92",
+  "mupdfVersion": "1.26.5",
+  "calibration": "declared synthetic control:30PDFunits per model metre; not a measured building scale",
+  "reports": [
+    {
+      "pageNumber": 1,
+      "pixelsCompared": 57600,
+      "rasterMismatchPixels": 0,
+      "rasterBoundary": "all pixel centres at 72dpi, no edge exclusions; independent MuPDF source vs native triangle support/color",
+      "ifcopenshellVersion": "0.8.2",
+      "independentAreaSquareMetres": 63.0,
+      "independentTriangleCount": 16,
+      "nativeTriangleCount": 16,
+      "independentBounds": [
+        [
+          2.0,
+          3.0,
+          4.0
+        ],
+        [
+          10.0,
+          3.0,
+          12.0
+        ]
+      ],
+      "fillStylesReadFromIfc": [
+        {
+          "itemId": 64,
+          "rgb": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "holeCount": 0
+        },
+        {
+          "itemId": 83,
+          "rgb": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "holeCount": 2
+        }
+      ],
+      "exportSha256": "a2fd2af7941d31cccdc4028567332c155d86c2de56e7d98c5a9517b420910709"
+    },
+    {
+      "pageNumber": 2,
+      "pixelsCompared": 57600,
+      "rasterMismatchPixels": 0,
+      "rasterBoundary": "all pixel centres at 72dpi, no edge exclusions; independent MuPDF source vs native triangle support/color",
+      "ifcopenshellVersion": "0.8.2",
+      "independentAreaSquareMetres": 64.0,
+      "independentTriangleCount": 10,
+      "nativeTriangleCount": 10,
+      "independentBounds": [
+        [
+          2.0,
+          3.0,
+          4.0
+        ],
+        [
+          10.0,
+          3.0,
+          12.0
+        ]
+      ],
+      "fillStylesReadFromIfc": [
+        {
+          "itemId": 64,
+          "rgb": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "holeCount": 0
+        },
+        {
+          "itemId": 78,
+          "rgb": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "holeCount": 1
+        }
+      ],
+      "exportSha256": "734cc7667a346ed6f658b764321f7e570137f784b13303d5be14706e061aedc1"
+    }
+  ]
+}

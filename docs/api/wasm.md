@@ -863,3 +863,35 @@ Keep the immutable request paired with its report. Native code does not parse th
 PDF bytes; the host verifies original source ownership and decoder provenance.
 See [the full preparation contract](../architecture/pdf-vector-annotations.md#bounded-graphics-state-preparation)
 for limits, unsupported operations and the subsequent geometry/creation stages.
+
+### PDF fill annotation planning
+
+`IfcAPI.planPdfFillAnnotation(content, requestJson)` returns UTF-8 JSON bytes for
+one colored `IfcAnnotation` in an effective IFC4/IFC4X3 source. The request uses
+the existing annotation source revision, allocator, container, `GlobalId`,
+containment GlobalId, `Name` and plane frame, plus a canonical decoded
+`PdfVectorPage`. Its calibrated PDF-to-plane affine determines model scale;
+`frame.sizeMetres` is descriptive page extent, not a second scale.
+
+This initial geometry scope accepts complete opaque RGB pages made of straight
+fill edges. It resolves nonzero/even-odd winding, holes, islands, implicit CropBox
+clipping and paint order. Painted strokes, curves, text, images, explicit clips,
+patterns, transparency and unsupported state refuse the entire page. Quantization
+collapse, uncertain near contacts and exhausted work/size budgets also refuse.
+No supported subset is silently exported from an unsupported page.
+
+The result contains the canonical `plan`, `annotationId`, multiple untextured
+colored `meshes`, `coordinateSpace: 'ifc-z-up'`, `rtcOffset`, `frame`, source IFC
+and PDF digests, `requestSha256`, page/calibration identity, declared tolerance,
+actual grid size/work count and per-region source operator/RGB provenance.
+Mesh positions are relative to the returned RTC offset. The host must bind the
+decoded operations to the retained original PDF and validate the effective IFC
+revision, frame and allocator before committing the plan. Native receives decoded
+operations, so the supplied PDF digest is not independently authenticated.
+
+The planner limits input to 128 painted paths, each with 4,096 commands, and
+charges conservative overlay/precision work against a shared bounded budget.
+The boundary caps effective IFC input at 128 MiB and request JSON at 32 MiB.
+The existing worker owns timeout and cancellation. The declared tolerance and
+quantized-contour transport checks are not a claim of arbitrary original PDF
+topology fidelity; only qualified inputs produce a plan.

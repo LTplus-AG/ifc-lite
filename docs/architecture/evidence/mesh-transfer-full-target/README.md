@@ -42,8 +42,8 @@ triangle corner and UV against the fresh viewer import. IFC coordinates, indices
 and placement are unchanged. The decoded atlas pixels match the fresh browser
 exactly. [Preview](preview.png) and [fresh selection](reopened-selected.png)
 show the actual generated result. Browser/source identifiers are recorded in
-[browser-runtime.json](browser-runtime.json); its checkpoint identifies the base
-before the candidate runtime diff, not an assertion that the base contains it.
+[browser-runtime.json](browser-runtime.json); its checkpoint includes the candidate runtime integrated with the reviewed
+PDF-fill and authored-owner prerequisites.
 
 ## Shared-room portability
 

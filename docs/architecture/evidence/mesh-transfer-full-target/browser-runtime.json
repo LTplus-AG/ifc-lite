@@ -1,9 +1,9 @@
 {
-  "sourceCheckpoint": "8198c44e0297657f7775a3ee6bd10855bd23c132",
+  "sourceCheckpoint": "027d04d0b7fb6d0f187967a6737af2aeb96c6725",
   "nodeVersion": "v22.23.2",
   "nodeExecutable": "/Users/louistrue/.nvm/versions/node/v22.23.2/bin/node",
   "browserVersion": "151.0.7922.34",
-  "wasmSha256": "245ee1b24867c98938e1570acbeb45ad8aef88a903632f72f1291176dde4ff9e",
+  "wasmSha256": "9bbd092bf4fa3407b663fffa19092d3986ec712e7ec6383054f4e47ba4cc2f61",
   "sourceGlbSha256": "b6a0b51894427c37505632f4d4513d0424f0d84b014554755aa53eb74af6dcd6",
   "targetIfcZipSha256": "2cdfd462fee480c5bab0c5f90696ef46e098c87b2ae090570212f09a73148d32",
   "viewport": {

@@ -40,13 +40,14 @@ import { isTypeVisible } from '@/store/typeVisibilityFilter';
 import type { AggregationRelationships } from '@/utils/aggregation';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
-import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRecentFiles, type RecentFileEntry } from '@/lib/recent-files';
+import { formatFileSize, getCachedFile, type RecentFileEntry } from '@/lib/recent-files';
 import {
   supportsFileSystemAccess,
   openIfcFilesWithHandles,
   handlesFromDataTransfer,
 } from '@/services/file-system-access';
-import { FILE_ACCEPT, isSupportedModelFile } from '@/services/supported-model-files';
+import { FILE_ACCEPT, isGltfBundleFile, isSupportedModelFile } from '@/services/supported-model-files';
+import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
 import {
   SOURCE_DOWNLOAD_EVENT,
   type SourceDownloadEvent,
@@ -359,6 +360,8 @@ export function ViewportContainer() {
     }
   }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, hasModelsLoaded]);
 
+  const prepareAndRoute = usePreparedModelFileRoute(routeLoad, setRecentFiles);
+
   // Cloud source providers (Dalux Build, etc.) download bytes outside the
   // viewer and hand them off via this event rather than calling addModel()
   // directly — keeps the sources UI decoupled from viewer internals.
@@ -470,8 +473,8 @@ export function ViewportContainer() {
     if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
     if (allDropped.length === 0) return;
 
-    // Filter to supported files (IFC, IFCX, GLB, point clouds)
-    const supportedFiles = allDropped.filter(isSupportedFile);
+    // Keep glTF sidecars beside the document until they are packed into GLB.
+    const supportedFiles = allDropped.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
 
     if (supportedFiles.length === 0) {
       // Tell the user *why* — common case is a Recap project / SketchUp
@@ -487,18 +490,14 @@ export function ViewportContainer() {
       // Prefer the handle-paired files (Chromium): each file + handle comes from
       // the same dropped item, so no filename matching is needed. Fall back to
       // the plain dropped files when no handles were captured (Firefox/Safari).
-      const supportedOpened = (opened ?? []).filter((o) => isSupportedFile(o.file));
+      const supportedOpened = (opened ?? []).filter((o) => isSupportedFile(o.file) || isGltfBundleFile(o.file));
       const useHandles = supportedOpened.length > 0;
       const files = useHandles ? supportedOpened.map((o) => o.file) : supportedFiles;
       const handles = useHandles ? supportedOpened.map((o) => o.handle) : undefined;
 
-      recordRecentFiles(files.map((file) => ({ name: file.name, size: file.size })));
-      void cacheFileBlobs(files);
-      setRecentFiles(getRecentFiles().slice(0, 3));
-
-      routeLoad(files, handles);
+      void prepareAndRoute(files, handles);
     });
-  }, [routeLoad, applyDragEvent, isSupportedFile, webgpu.supported]);
+  }, [prepareAndRoute, applyDragEvent, isSupportedFile, webgpu.supported]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     // Block file loading if WebGPU not supported
@@ -515,22 +514,18 @@ export function ViewportContainer() {
 
     // Filter to supported files (IFC, IFCX, GLB). The <input> path yields no
     // live handle, so these models are not refreshable.
-    const supportedFiles = modelFiles.filter(isSupportedFile);
+    const supportedFiles = modelFiles.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
 
     if (supportedFiles.length === 0) {
       e.target.value = '';
       return;
     }
 
-    recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
-    void cacheFileBlobs(supportedFiles);
-    setRecentFiles(getRecentFiles().slice(0, 3));
-
-    routeLoad(supportedFiles);
+    void prepareAndRoute(supportedFiles);
 
     // Reset input so same file can be selected again
     e.target.value = '';
-  }, [routeLoad, isSupportedFile, webgpu.supported]);
+  }, [prepareAndRoute, isSupportedFile, webgpu.supported]);
 
   // Preferred open path: the File System Access picker (Chromium) captures a
   // live handle per file so the model can be refreshed from disk. Falls back to
@@ -546,16 +541,12 @@ export function ViewportContainer() {
     // DXF reference underlays split off before model routing (issue #1782).
     const dxfPicked = opened.filter((o) => o.file.name.toLowerCase().endsWith('.dxf'));
     if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map((o) => o.file));
-    const supported = opened.filter((o) => isSupportedFile(o.file));
+    const supported = opened.filter((o) => isSupportedFile(o.file) || isGltfBundleFile(o.file));
     if (supported.length === 0) return;
 
     const files = supported.map((o) => o.file);
-    recordRecentFiles(files.map((f) => ({ name: f.name, size: f.size })));
-    void cacheFileBlobs(files);
-    setRecentFiles(getRecentFiles().slice(0, 3));
-
-    routeLoad(files, supported.map((o) => o.handle));
-  }, [routeLoad, isSupportedFile, webgpu.supported]);
+    prepareAndRoute(files, supported.map((o) => o.handle));
+  }, [prepareAndRoute, isSupportedFile, webgpu.supported]);
 
   const handleStartBlank = useCallback(async () => {
     if (!webgpu.supported) return;

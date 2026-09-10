@@ -23,10 +23,11 @@ import {
 import { toast } from '@/components/ui/toast';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
+import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
 import { ShareDialog } from '../ShareDialog';
 import { FederationSetupControls } from '../FederationSetupControls';
 
-import { FILE_ACCEPT, isSupportedModelFile } from '@/services/supported-model-files';
+import { FILE_ACCEPT, isGltfBundleFile, isSupportedModelFile } from '@/services/supported-model-files';
 
 // FILE_ACCEPT offers `.dxf` while `isSupportedModelFile` rejects it: DXF
 // files are 2D reference underlays, not models, and split off to the DXF
@@ -139,6 +140,20 @@ export function useFileCommands(): FileCommands {
 
   const hasModelsLoaded = models.size > 0 || Boolean(geometryResult?.meshes && geometryResult.meshes.length > 0);
 
+  const routeOpenedFiles = useCallback((supportedFiles: File[], handles?: (FileSystemFileHandle | undefined)[]) => {
+    if (supportedFiles.length === 1) {
+      void loadFile(supportedFiles[0], { kind: 'primary' }, { sourceHandle: handles?.[0] });
+      return;
+    }
+    const allIfcx = supportedFiles.every(isIfcxModelFile);
+    resetViewerState();
+    clearAllModels();
+    if (allIfcx) void loadFederatedIfcx(supportedFiles);
+    else void loadFilesSequentially(supportedFiles, handles);
+  }, [loadFile, loadFilesSequentially, loadFederatedIfcx, resetViewerState, clearAllModels]);
+
+  const prepareAndOpen = usePreparedModelFileRoute(routeOpenedFiles);
+
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -148,41 +163,18 @@ export function useFileCommands(): FileCommands {
     if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
 
     // Filter to supported files (IFC, IFCX, GLB, point clouds)
-    const supportedFiles = modelFiles.filter(isSupportedModelFile);
+    const supportedFiles = modelFiles.filter(file => isSupportedModelFile(file) || isGltfBundleFile(file));
 
     if (supportedFiles.length === 0) {
       e.target.value = '';
       return;
     }
 
-    // Track recently opened files (metadata + blob cache for instant reload)
-    recordRecentFiles(supportedFiles.map(f => ({ name: f.name, size: f.size })));
-    cacheFileBlobs(supportedFiles);
-
-    if (supportedFiles.length === 1) {
-      // Single file - use loadFile (simpler single-model path)
-      loadFile(supportedFiles[0]);
-    } else {
-      // Multiple files - check if ALL are IFCX (use federated loading for layer composition)
-      const allIfcx = supportedFiles.every(isIfcxModelFile);
-
-      resetViewerState();
-      clearAllModels();
-
-      if (allIfcx) {
-        // IFCX files use federated loading (layer composition - later files override earlier ones)
-        // This handles overlay files that add properties without geometry
-        console.log(`[toolbar] Loading ${supportedFiles.length} IFCX files with federated composition`);
-        loadFederatedIfcx(supportedFiles);
-      } else {
-        // Mixed or all IFC4/GLB files - load sequentially as independent models
-        loadFilesSequentially(supportedFiles);
-      }
-    }
+    prepareAndOpen(supportedFiles);
 
     // Reset input so same files can be selected again
     e.target.value = '';
-  }, [loadFile, loadFilesSequentially, loadFederatedIfcx, resetViewerState, clearAllModels]);
+  }, [prepareAndOpen]);
 
   // Shared Add-Model routing. `handles` is positionally aligned with
   // `supportedFiles`, carrying a live FS Access handle per file (Chromium) so
@@ -209,6 +201,8 @@ export function useFileCommands(): FileCommands {
     }
   }, [loadFilesSequentially, addIfcxOverlays, ifcDataStore]);
 
+  const prepareAndAdd = usePreparedModelFileRoute(addSupportedFiles);
+
   const handleAddModelSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -216,11 +210,11 @@ export function useFileCommands(): FileCommands {
     const { dxfFiles, modelFiles } = splitDxfFiles(Array.from(files));
     if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
     // <input> yields no live handle, so models added this way aren't refreshable.
-    const supportedFiles = modelFiles.filter(isSupportedModelFile);
-    addSupportedFiles(supportedFiles);
+    const supportedFiles = modelFiles.filter(file => isSupportedModelFile(file) || isGltfBundleFile(file));
+    prepareAndAdd(supportedFiles);
     // Reset input so same files can be selected again
     e.target.value = '';
-  }, [addSupportedFiles]);
+  }, [prepareAndAdd]);
 
   // Preferred Add-Model path: the picker captures a handle per file so the
   // resulting federation can be refreshed. Falls back to the hidden <input>.
@@ -234,9 +228,9 @@ export function useFileCommands(): FileCommands {
     // DXF reference underlays split off before model routing (issue #1782).
     const dxfPicked = opened.filter(o => o.file.name.toLowerCase().endsWith('.dxf'));
     if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map(o => o.file));
-    const supported = opened.filter(o => isSupportedModelFile(o.file));
-    addSupportedFiles(supported.map(o => o.file), supported.map(o => o.handle));
-  }, [addSupportedFiles]);
+    const supported = opened.filter(o => isSupportedModelFile(o.file) || isGltfBundleFile(o.file));
+    prepareAndAdd(supported.map(o => o.file), supported.map(o => o.handle));
+  }, [prepareAndAdd]);
 
   // Open via the File System Access API when available (Chromium) so we capture
   // a live FileSystemFileHandle for each file — that handle is what lets the
@@ -254,30 +248,11 @@ export function useFileCommands(): FileCommands {
     if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map(o => o.file));
     // The picker keeps an "all files" option, so drop anything unsupported
     // before it reaches the load pipeline (matches the <input> + Add Model paths).
-    const opened = picked.filter(o => isSupportedModelFile(o.file));
+    const opened = picked.filter(o => isSupportedModelFile(o.file) || isGltfBundleFile(o.file));
     if (opened.length === 0) return;
 
-    const files = opened.map(o => o.file);
-    recordRecentFiles(files.map(f => ({ name: f.name, size: f.size })));
-    void cacheFileBlobs(files);
-
-    if (opened.length === 1) {
-      // Single model: keep the handle so Refresh can re-read it from disk.
-      void loadFile(opened[0].file, { kind: 'primary' }, { sourceHandle: opened[0].handle });
-    } else {
-      // Multiple files mirror handleFileSelect's branching.
-      const allIfcx = files.every(isIfcxModelFile);
-      resetViewerState();
-      clearAllModels();
-      if (allIfcx) {
-        // IFCX layers compose into one shared store — no per-file handle.
-        void loadFederatedIfcx(files);
-      } else {
-        // Carry each file's handle so the whole federation stays refreshable.
-        void loadFilesSequentially(files, opened.map(o => o.handle));
-      }
-    }
-  }, [loadFile, loadFilesSequentially, loadFederatedIfcx, resetViewerState, clearAllModels]);
+    prepareAndOpen(opened.map(o => o.file), opened.map(o => o.handle));
+  }, [prepareAndOpen]);
 
   // Refresh re-reads files from disk and re-parses them. Offered when EVERY
   // loaded model has a live FS Access handle (a single model, or a federation

@@ -173,6 +173,13 @@ pub fn plan_pdf_fill_annotation(
             "Canonical PDF annotation geometry lost or combined a visible fill region".into(),
         );
     }
+    // Explicit transport limits, independent of contour and work budgets. The
+    // host mirrors these before staging a multi-part annotation owner.
+    if meshes.iter().map(|m| m.positions.len() / 3).sum::<usize>() > 65_536
+        || meshes.iter().map(|m| m.indices.len() / 3).sum::<usize>() > 131_072
+    {
+        return Err("PDF annotation exceeds emitted mesh transport budget".into());
+    }
     let mut geometry_work = geometry.work;
     for (shape, region) in geometry.shapes.iter().zip(&regions) {
         let mesh = meshes

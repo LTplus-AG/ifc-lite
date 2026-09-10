@@ -25,3 +25,12 @@ containment, original Name, fill styles and area. The large generated PDF/IFC
 files are retained as local artifacts rather than committed fixtures. The actual
 WASM host regression consumes these requests and verifies canonical export and
 reopen, stale worker-result refusal and cancellation.
+
+Reproduce from a built checkout with fresh WASM and Python dependencies listed
+above (the evidence runner uses the normal PDF decoder and host authoring path):
+
+```sh
+python tools/texture-authoring/pdf-fill-controls.py /tmp/pdf-fill-control.pdf
+TSX_TSCONFIG_PATH=apps/viewer/tsconfig.json node --import tsx --import ./apps/viewer/src/test/vite-module-hooks.mjs tools/texture-authoring/pdf-fill-evidence.mjs /tmp/pdf-fill-control.pdf /tmp/pdf-fill-proof
+python tools/texture-authoring/pdf-fill-oracle.py /tmp/pdf-fill-proof /tmp/pdf-fill-control.pdf
+```

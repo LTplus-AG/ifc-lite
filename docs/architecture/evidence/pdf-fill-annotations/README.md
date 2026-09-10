@@ -34,3 +34,9 @@ python tools/texture-authoring/pdf-fill-controls.py /tmp/pdf-fill-control.pdf
 TSX_TSCONFIG_PATH=apps/viewer/tsconfig.json node --import tsx --import ./apps/viewer/src/test/vite-module-hooks.mjs tools/texture-authoring/pdf-fill-evidence.mjs /tmp/pdf-fill-control.pdf /tmp/pdf-fill-proof
 python tools/texture-authoring/pdf-fill-oracle.py /tmp/pdf-fill-proof /tmp/pdf-fill-control.pdf
 ```
+
+Final verification includes the full native workspace, strict all-target clippy,
+fresh WASM contracts and an independently installed PyO3 wheel matching the four
+committed parity fixtures (with the existing halfspace density advisory).
+`native-load.json` records exact-source normal-load A/B/A/B samples and identical
+ordered mesh fingerprints. It does not measure vector-page worker throughput.

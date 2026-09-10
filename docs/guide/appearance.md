@@ -230,3 +230,10 @@ full loaded source geometry before disposing GPU buffers. Pass hidden models in
 that source inventory to retain their appearance history across hide/show.
 Changed or removed owners lose their old instance lease; ordinary
 `clearFlatGeometry()` and full scene reset still invalidate all such leases.
+
+Authored annotation/captured-object `Name` values and appearance image paths
+must not consist of a reserved mutation wire token (`$`, `*`, `#123`, or
+`.ENUM.`, including surrounding whitespace). Native planners refuse these
+values before returning a plan because the current STEP mutation protocol has
+no unqualified literal-string marker. Ordinary names, including Unicode and
+punctuation, remain unchanged. Preserved page material names use the same rule.

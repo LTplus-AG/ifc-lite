@@ -40,6 +40,7 @@ async function fixture(recipe: PdfRasterRecipe = baseRecipe, panel = false) {
     async run(_bytes, job) {
       if (disposed) throw new Error('Document worker disposed');
       if (job.kind === 'inspect') return { kind: 'inspect', pageCount: 3, page: recipe.page };
+      if (job.kind !== 'raster') throw new Error('Unexpected non-raster PDF job in raster fixture');
       requests.push(job.request);
       await waitForRaster;
       return { kind: 'raster', png, recipe: { ...recipe, page: { ...recipe.page, pageNumber: job.request.pageNumber },

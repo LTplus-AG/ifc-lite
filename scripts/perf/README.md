@@ -46,6 +46,17 @@ a baseline first-load viewport initialization race. Those failed samples were
 retained and excluded, not treated as successful loads. The lesson is to name
 and qualify the measured boundary before interpreting small load-time deltas.
 
+## Authored metadata wire validation (#4441)
+
+A shared early authoring guard now refuses free-text spellings that the host
+mutation writer interprets as structural tokens. The source-matched idle native
+AC20 A/B/A/B probe found matching normal-load geometry/total values and mesh
+fingerprints, with quantized parse variation. This is a correctness fix, not a
+worker-pool optimization. The lesson is to validate text at the shared authored
+boundary using the consumer's exact whitespace/token rules; broad trimming can
+both miss reserved inputs and reject ordinary Unicode names.
+Evidence: `docs/architecture/evidence/authored-wire-tokens/native-load.json`.
+
 ## Manual scan registration foundation (#4381)
 
 The correspondence solver is opt-in, bounded to 256 fitting and 256 held-out
@@ -1199,6 +1210,16 @@ check, not annotation throughput or worker-pool speedup evidence. Keep style
 lookup failures cached and diagnostic, and keep auxiliary type maps excluded.
 [Exact inputs and paired runs](../../docs/architecture/evidence/annotation-fills/native-load.json).
 
+### PDF vector graphics-state preparation (#4406)
+
+The opt-in decoded-state preparation API adds no ordinary IFC geometry processing
+step. An idle source-matched native A/B/A/B probe showed small millisecond timing
+variation with identical ordered mesh fingerprints and counts. It does not
+establish zero overhead, a worker-pool speedup or vector-page preparation
+throughput. Keep page operator/path/stack limits distinct from PDF.js decoder
+allocation limits; post-decode counting cannot bound the decoder's earlier work.
+See [exact source IDs, five-iteration samples and identity evidence](../../docs/architecture/evidence/pdf-vector-state/native-load.json).
+
 ## Reference opening semantics (#4433)
 
 An element-aware representation predicate excludes non-subtractive Reference
@@ -1209,3 +1230,16 @@ The lesson is to preserve the existing type-based rendering predicate for
 ordinary products while applying opening-specific semantics consistently to
 mesh production and fast void probes. Numeric evidence and source revisions are
 in `docs/architecture/evidence/evaluated-openings/performance.json`.
+
+### Reference-only opening host routing (#4440)
+
+A retained Reference-only opening must keep its host on the textured submesh
+path. The new predicate inspects representation membership without producing
+cutter meshes; unknown or over-budget data retains the existing cutter path.
+Two interleaved base/branch native probe pairs on AC20 and ISSUE_129 resolved no
+consistent material normal-load regression, with unchanged mesh/vertex/triangle
+counts and existing CSG diagnostics. This is a correctness fix, not a browser
+worker-pool speedup claim; small overhead below run-to-run variation remains
+unresolved. [Exact revisions, probe results and limits](../../docs/architecture/evidence/evaluated-openings/reference-textures.json)
+are recorded with the fixture evidence. Do not infer that a nonempty void-index
+entry implies actual subtraction: the opening representation identifier matters.

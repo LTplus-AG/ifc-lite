@@ -50,6 +50,7 @@ pub(super) fn plan_textured_product(bytes:&[u8], request:&AnnotationPlaneRequest
         || !valid_guid(&r.global_id) || !valid_guid(&r.containment_global_id) || r.global_id==r.containment_global_id {
         return Err("Annotation needs IFC4/IFC4X3, bounded metadata and distinct valid IFC GlobalIds".into());
     }
+    super::wire_text::validate(&r.name, "Authored product Name")?;
     validate_image_uri(&r.image_uri)?;
     let f=&r.frame;
     mapping::validate(&Mapping::Planar { frame: MappingFrame::World, origin:f.origin, axis_u:f.axis_u,

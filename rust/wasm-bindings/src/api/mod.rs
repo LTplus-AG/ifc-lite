@@ -13,6 +13,7 @@ mod annotation_plane;
 mod captured_mesh;
 mod appearance_calibration;
 mod scan_registration;
+mod pdf_vector;
 mod bool2d;
 mod clash;
 mod clash_solid;

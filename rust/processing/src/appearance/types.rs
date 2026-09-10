@@ -132,4 +132,9 @@ pub struct AppearanceConversion {
     pub source_origin: [f64; 3],
     pub source_color: [f32; 4],
     pub rtc_offset: [f64; 3],
+    /// Canonical opening meshes removed when their Body becomes Reference.
+    /// Inner fields use the shared MeshData wire contract; origin + rtc_offset
+    /// restores IFC Z-up metres. These owners are companion dependency roots.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub source_removed_meshes: Vec<crate::types::mesh::MeshData>,
 }

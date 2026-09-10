@@ -34,7 +34,7 @@ export function geometryWithAppearance(modelId: string, groups: readonly Appeara
   });
   for (const group of groups) {
     if (found.has(group.globalId)) continue;
-    if (!group.materializedOriginals?.length) throw new Error('Some target geometry is no longer in the model. Refresh the appearance preview.');
+    if (!group.materializedOriginals?.length && !group.companionOriginals?.length) throw new Error('Some target geometry is no longer in the model. Refresh the appearance preview.');
     // The loader's totals count its retained flat mesh list, not instance templates.
     // Materialization inserts one flat occurrence; Undo removes it again.
     for (const part of sourceParts(group)) {

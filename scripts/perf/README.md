@@ -1294,3 +1294,15 @@ hull separation admitted that control without snapping or ignoring features.
 Keep finite-chord error bounds: infinite-line flatness incorrectly collapses
 backtracking curves. See [source-matched samples](../../docs/architecture/evidence/pdf-curved-fill-annotations/native-load.json)
 and the adjacent independently decoded PDF evidence.
+
+### Evaluated post-opening appearance and companion history (#4404)
+
+The authoring evaluator now consumes canonical post-opening source geometry and
+carries bounded opening companion meshes for one preview/history transaction.
+Controlled native normal-load A/B probes retained equal geometry counts. The
+small AC20 fixture showed a slight absolute increase at coarse phase resolution;
+the opening-heavy control stayed close across both interleaved pairs. No speedup
+or browser worker-pool timing claim is made. See the
+[measured source revisions and results](../../docs/architecture/evidence/evaluated-openings/authoring-performance.json).
+This changes the authoring path, not the normal-load mesh evaluator; future
+optimization should measure the explicit conversion workload independently.

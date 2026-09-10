@@ -181,10 +181,11 @@ Creation is available outside shared rooms; the saved IFC can then be shared.
 For implementation status, shared workflow boundaries and future scan/PDF options,
 see the [appearance roadmap](../architecture/appearance-roadmap.md).
 
-## Appearance on mapped occurrences
+## Appearance on evaluated occurrences
 
 Select an image or PDF page, choose the IFC scope, and enable **Convert supported
-mapped objects** when the chosen objects use mapped type geometry. The option is
+objects to mesh** when the chosen objects use mapped type geometry or supported
+swept geometry with openings. The option is
 off by default and requires planar or box mapping. The preview lists the objects
 whose current shape will become mesh geometry instead of using their type's
 parametric geometry. **Compare original** temporarily restores the original;
@@ -193,14 +194,22 @@ in one operation, and Undo restores both together.
 
 Conversion preserves each product's identity, placement, properties and semantic
 relationships. Shared type geometry and sibling occurrences stay unchanged.
-Opening-bearing products, shared Body wrappers and ambiguous representations or
-materials remain excluded. Use **Use supported objects** to explicitly narrow a
+Supported metre-unit opening hosts retain their already-cut shape. Their opening
+relationships remain, while the opening Body becomes a Reference representation
+and stops rendering or cutting again. Preview, Discard and Undo include these
+opening objects, even when their type is hidden. Shared type geometry is preserved
+by replacing only the occurrence Body; ambiguous ownership, layered slicing and
+unsupported materials remain excluded. Use **Use supported objects** to explicitly narrow a
 partially supported scope, then inspect the refreshed preview before applying.
 Export **IFC + images** to retain portable appearance on reopening or sharing.
 GPU-instanced occurrences use the same workflow: preview replaces only the chosen
 occurrence, and Undo restores its original shared instance. Finish any model
 placement preview and return to stacked levels before preparing a conversion.
 Models requiring CRS reprojection are excluded from this initial conversion path.
+
+Some readers, including IfcOpenShell 0.8.2 with its default subtraction setting,
+incorrectly subtract Reference openings again; see the
+[independent interoperability evidence](../architecture/evidence/evaluated-openings/README.md).
 
 Native `planAppearance` and `planPageAppearance` requests accept
 `representationPolicy: "evaluatedOccurrence"`; the omitted policy is `"preserve"`.
@@ -209,7 +218,16 @@ replacement item. Renderer integrations pass validated global original/replaceme
 IDs in `AppearancePreview.begin(owner, { geometryItemRemaps })`; each pair has
 `from` and `to` fields. The renderer freezes these explicit pairs, retains exact
 triangle-corner and ownership checks, and records the pairs in `AppearanceChange`
-for reversible history. Unlisted item-ID changes remain invalid. See the
+for reversible history. Unlisted item-ID changes remain invalid. Opening conversions
+also carry bounded `sourceRemovedMeshes` in canonical native `MeshData` form.
+After validating product/item identity and placement, renderer integrations pass
+`companionOriginals` to `AppearancePreview.begin`; the only permitted transitions
+are those exact untextured originals and an empty mesh list. `sameCompanionParts`
+compares that restoration contract. `companionHidden: true` additionally requires
+the host to prove current hidden visibility and exact canonical source inventory;
+it preserves nonresident originals without uploading or exposing them during
+preparation. Retain the source resources through command history and release them
+when that history is disposed. See the
 [evaluated-occurrence contract](../architecture/appearance-evaluated-occurrences.md).
 
 Renderer integrations preparing an occurrence replacement can call

@@ -18,7 +18,7 @@ function fixture() {
   // The canonical target supplies that shading; triangle positions stay exact.
   const after = { ...before, normals: new Float32Array([0.0004, 0, 0.99999994, 0, 0, 1, 0, 0, 1]) };
   const change: AppearanceChange = { owner: { expressId: 19, modelIndex: 0 }, before: [before], after: [after] };
-  const renderer = (current: MeshData) => ({ getScene: () => ({ getMeshDataPieces: () => [current] }) }) as unknown as Renderer;
+  const renderer = (current: MeshData) => ({ getScene: () => ({ getMeshDataPieces: () => [current] }), getAppearancePreview: () => ({}) }) as unknown as Renderer;
   return { before, after, change, renderer };
 }
 describe('appearance history preserves canonical target shading (#4243)', () => {

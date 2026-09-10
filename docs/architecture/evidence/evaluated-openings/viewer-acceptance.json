@@ -1,0 +1,365 @@
+{
+  "nativePolicySource": "fc4fb29eb",
+  "integratedSource": "0053926b1",
+  "integratedWasmSha256": "858c07a9b678b5b87f333cfecc9808bb83178644083d56bd58fedf007f37f635",
+  "runtimeNote": "Federated journey/reopen used the integrated runtime. Single-model journey/reopen used the preceding fc4fb29eb native policy build; its runtime bytes were subsequently regenerated during main integration. Both actual IFC exports are checked independently.",
+  "cases": {
+    "shown": {
+      "shown": true,
+      "federated": false,
+      "loaded": {
+        "model": "98cae2b0-b306-4ff3-8f96-47ab21c88105",
+        "host": 59290,
+        "opening": 59365
+      },
+      "openingClick": 59365,
+      "reopen": {
+        "before": {
+          "id": 59290,
+          "model": "22d8c4e2-a052-47ac-af3d-15228c87fef1",
+          "hasGeometry": true,
+          "siblingHasGeometry": true,
+          "parts": [
+            {
+              "item": 79109,
+              "textured": true,
+              "triangles": 32
+            }
+          ],
+          "instance": false,
+          "sibling": true
+        },
+        "hidden": {
+          "flat": 0,
+          "instance": false,
+          "sibling": true
+        },
+        "shown": {
+          "flat": 1,
+          "instance": false,
+          "sibling": true
+        },
+        "referenceOpening": {
+          "id": 59365,
+          "type": "IfcOpeningElement",
+          "typeShown": true,
+          "parts": 0
+        },
+        "hiddenClickSelection": null,
+        "shownClickSelection": 59290,
+        "actualViewportSelection": true
+      },
+      "stages": {
+        "before": {
+          "selected": 59290,
+          "openingsShown": true,
+          "undo": 0,
+          "redo": 0,
+          "modelOpening": 1,
+          "host": [
+            {
+              "item": 59274,
+              "triangles": 32,
+              "textured": false,
+              "geometrySha256": "f79b0d4d3a1f0dd9221af94c8b9e1b603cc57099e8144ec9a2f0ceeb3486330b"
+            }
+          ],
+          "opening": [
+            {
+              "item": 59353,
+              "triangles": 12,
+              "textured": false,
+              "geometrySha256": "fe2fcbc7c7fe0661f4c25689c73c6c1fec87712fb364797db94c77b69edffd96"
+            }
+          ]
+        },
+        "preview": {
+          "selected": 59290,
+          "openingsShown": true,
+          "undo": 0,
+          "redo": 0,
+          "modelOpening": 1,
+          "host": [
+            {
+              "item": 79109,
+              "triangles": 32,
+              "textured": true,
+              "geometrySha256": "05ae5ac8d566799da3e20ac1fa83bdbec15805f13779818eaed9ac55c4ac54d6"
+            }
+          ],
+          "opening": []
+        },
+        "compared": {
+          "selected": 59290,
+          "openingsShown": true,
+          "undo": 0,
+          "redo": 0,
+          "modelOpening": 1,
+          "host": [
+            {
+              "item": 59274,
+              "triangles": 32,
+              "textured": false,
+              "geometrySha256": "f79b0d4d3a1f0dd9221af94c8b9e1b603cc57099e8144ec9a2f0ceeb3486330b"
+            }
+          ],
+          "opening": [
+            {
+              "item": 59353,
+              "triangles": 12,
+              "textured": false,
+              "geometrySha256": "fe2fcbc7c7fe0661f4c25689c73c6c1fec87712fb364797db94c77b69edffd96"
+            }
+          ]
+        },
+        "applied": {
+          "selected": 59290,
+          "openingsShown": true,
+          "undo": 1,
+          "redo": 0,
+          "modelOpening": 0,
+          "host": [
+            {
+              "item": 79109,
+              "triangles": 32,
+              "textured": true,
+              "geometrySha256": "05ae5ac8d566799da3e20ac1fa83bdbec15805f13779818eaed9ac55c4ac54d6"
+            }
+          ],
+          "opening": []
+        },
+        "undone": {
+          "selected": 59290,
+          "openingsShown": true,
+          "undo": 0,
+          "redo": 1,
+          "modelOpening": 1,
+          "host": [
+            {
+              "item": 59274,
+              "triangles": 32,
+              "textured": false,
+              "geometrySha256": "f79b0d4d3a1f0dd9221af94c8b9e1b603cc57099e8144ec9a2f0ceeb3486330b"
+            }
+          ],
+          "opening": [
+            {
+              "item": 59353,
+              "triangles": 12,
+              "textured": false,
+              "geometrySha256": "fe2fcbc7c7fe0661f4c25689c73c6c1fec87712fb364797db94c77b69edffd96"
+            }
+          ]
+        },
+        "shownUndo": {
+          "selected": 59290,
+          "openingsShown": true,
+          "undo": 0,
+          "redo": 1,
+          "modelOpening": 1,
+          "host": [
+            {
+              "item": 59274,
+              "triangles": 32,
+              "textured": false,
+              "geometrySha256": "f79b0d4d3a1f0dd9221af94c8b9e1b603cc57099e8144ec9a2f0ceeb3486330b"
+            }
+          ],
+          "opening": [
+            {
+              "item": 59353,
+              "triangles": 12,
+              "textured": false,
+              "geometrySha256": "fe2fcbc7c7fe0661f4c25689c73c6c1fec87712fb364797db94c77b69edffd96"
+            }
+          ]
+        },
+        "redone": {
+          "selected": 59290,
+          "openingsShown": true,
+          "undo": 1,
+          "redo": 0,
+          "modelOpening": 0,
+          "host": [
+            {
+              "item": 79109,
+              "triangles": 32,
+              "textured": true,
+              "geometrySha256": "05ae5ac8d566799da3e20ac1fa83bdbec15805f13779818eaed9ac55c4ac54d6"
+            }
+          ],
+          "opening": []
+        }
+      },
+      "archiveSha256": "ebe1e6e749a7684a6c80232f270f4e607ceda442d2281a22b13145c95b66e19c"
+    },
+    "federated": {
+      "shown": false,
+      "federated": true,
+      "loaded": {
+        "model": "0ab3d9a8-d7fb-4996-8ab3-0aff9177eb69",
+        "host": 1138398,
+        "opening": 1138473
+      },
+      "openingClick": 1138473,
+      "reopen": {
+        "before": {
+          "id": 1138398,
+          "model": "6f0b828e-7a37-4358-8fa0-17f96ca674e6",
+          "hasGeometry": true,
+          "siblingHasGeometry": true,
+          "parts": [
+            {
+              "item": 1158217,
+              "textured": true,
+              "triangles": 32
+            }
+          ],
+          "instance": false,
+          "sibling": true
+        },
+        "hidden": {
+          "flat": 0,
+          "instance": false,
+          "sibling": true
+        },
+        "shown": {
+          "flat": 1,
+          "instance": false,
+          "sibling": true
+        },
+        "referenceOpening": {
+          "id": 1138473,
+          "type": "IfcOpeningElement",
+          "typeShown": true,
+          "parts": 0
+        },
+        "hiddenClickSelection": null,
+        "shownClickSelection": 1138398,
+        "actualViewportSelection": true
+      },
+      "stages": {
+        "before": {
+          "selected": 1138398,
+          "openingsShown": false,
+          "undo": 0,
+          "redo": 0,
+          "modelOpening": 1,
+          "host": [
+            {
+              "item": 1138382,
+              "triangles": 32,
+              "textured": false,
+              "geometrySha256": "f79b0d4d3a1f0dd9221af94c8b9e1b603cc57099e8144ec9a2f0ceeb3486330b"
+            }
+          ],
+          "opening": []
+        },
+        "preview": {
+          "selected": 1138398,
+          "openingsShown": false,
+          "undo": 0,
+          "redo": 0,
+          "modelOpening": 1,
+          "host": [
+            {
+              "item": 1158217,
+              "triangles": 32,
+              "textured": true,
+              "geometrySha256": "05ae5ac8d566799da3e20ac1fa83bdbec15805f13779818eaed9ac55c4ac54d6"
+            }
+          ],
+          "opening": []
+        },
+        "compared": {
+          "selected": 1138398,
+          "openingsShown": false,
+          "undo": 0,
+          "redo": 0,
+          "modelOpening": 1,
+          "host": [
+            {
+              "item": 1138382,
+              "triangles": 32,
+              "textured": false,
+              "geometrySha256": "f79b0d4d3a1f0dd9221af94c8b9e1b603cc57099e8144ec9a2f0ceeb3486330b"
+            }
+          ],
+          "opening": []
+        },
+        "applied": {
+          "selected": 1138398,
+          "openingsShown": false,
+          "undo": 1,
+          "redo": 0,
+          "modelOpening": 0,
+          "host": [
+            {
+              "item": 1158217,
+              "triangles": 32,
+              "textured": true,
+              "geometrySha256": "05ae5ac8d566799da3e20ac1fa83bdbec15805f13779818eaed9ac55c4ac54d6"
+            }
+          ],
+          "opening": []
+        },
+        "undone": {
+          "selected": 1138398,
+          "openingsShown": false,
+          "undo": 0,
+          "redo": 1,
+          "modelOpening": 1,
+          "host": [
+            {
+              "item": 1138382,
+              "triangles": 32,
+              "textured": false,
+              "geometrySha256": "f79b0d4d3a1f0dd9221af94c8b9e1b603cc57099e8144ec9a2f0ceeb3486330b"
+            }
+          ],
+          "opening": []
+        },
+        "shownUndo": {
+          "selected": 1138398,
+          "openingsShown": true,
+          "undo": 0,
+          "redo": 1,
+          "modelOpening": 1,
+          "host": [
+            {
+              "item": 1138382,
+              "triangles": 32,
+              "textured": false,
+              "geometrySha256": "f79b0d4d3a1f0dd9221af94c8b9e1b603cc57099e8144ec9a2f0ceeb3486330b"
+            }
+          ],
+          "opening": [
+            {
+              "item": 1138461,
+              "triangles": 12,
+              "textured": false,
+              "geometrySha256": "fe2fcbc7c7fe0661f4c25689c73c6c1fec87712fb364797db94c77b69edffd96"
+            }
+          ]
+        },
+        "redone": {
+          "selected": 1138398,
+          "openingsShown": false,
+          "undo": 1,
+          "redo": 0,
+          "modelOpening": 0,
+          "host": [
+            {
+              "item": 1158217,
+              "triangles": 32,
+              "textured": true,
+              "geometrySha256": "05ae5ac8d566799da3e20ac1fa83bdbec15805f13779818eaed9ac55c4ac54d6"
+            }
+          ],
+          "opening": []
+        }
+      },
+      "archiveSha256": "aea7cfaadd8cc20f9d5a353b18827a37185dd9c934675deca0c72a616a1355c7"
+    }
+  }
+}

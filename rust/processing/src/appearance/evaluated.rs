@@ -30,7 +30,7 @@ fn wire(value: &A) -> Value {
         _ => unreachable!("fixed authored values"),
     }
 }
-fn authored(plan: &mut AppearancePlan, entities: &mut FxHashMap<u32, Arc<DecodedEntity>>,
+pub(super) fn authored(plan: &mut AppearancePlan, entities: &mut FxHashMap<u32, Arc<DecodedEntity>>,
     ty: IfcType, attributes: Vec<A>) -> u32 {
     let id = add(plan,ty.name(),attributes.iter().map(wire).collect());
     entities.insert(id,Arc::new(DecodedEntity::new(id,ty,attributes))); id
@@ -49,6 +49,11 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
     }
     let mut styles = page_source::appearance(bytes,source);
     let textures = ifc_lite_geometry::build_texture_index(bytes,&mut source.decoder);
+    let mut consumers=BTreeMap::<u32,BTreeSet<u32>>::new();
+    for (&host,openings) in &styles.void_index {
+        for &opening in openings {consumers.entry(opening).or_default().insert(host);}
+    }
+    let exclusive:BTreeSet<_>=consumers.into_iter().filter_map(|(id,hosts)|(hosts.len()==1).then_some(id)).collect();
     let mut normalized = Normalized { request:request.clone(), conversions:Vec::new(), exclusions:Vec::new(), start:request.next_express_id };
     normalized.request.representation_policy=RepresentationPolicy::Preserve;
     normalized.request.product_ids.clear();
@@ -60,9 +65,11 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
             normalized.request.product_ids.push(product_id); continue;
         }
         let candidate=(|| {
-            if styles.void_index.contains_key(&product_id) { return Err("Evaluated conversion of opening-bearing products is not supported yet".into()); }
+            let opening_edits=super::evaluated_openings::prepare(source,product_id,
+                styles.void_index.get(&product_id).map_or(&[],Vec::as_slice),&exclusive)?;
             if matches!(request.mapping,Mapping::ExistingUv {..}) { return Err("Evaluated occurrence conversion requires a new planar or box mapping".into()); }
-            let (product, body)=evaluated_source::body(source,product_id)?;
+            let (product, body)=evaluated_source::body(source,product_id,!opening_edits.is_empty())?;
+            let layers=super::evaluated_replacement::layers(source,body.id)?;
             let mut meshes=canonical::produce(source,product_id,&textures,Some(&styles))?;
             if meshes.len()!=1 { return Err("Evaluated appearance currently requires one unambiguous source surface".into()); }
             let mesh=meshes.remove(0);
@@ -77,17 +84,23 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
                 return Err("Canonical source geometry is invalid".into());
             }
             budget.reserve(mesh.positions.len()/3,mesh.indices.len()/3,0)?;
+            let removed=super::evaluated_openings::removed_meshes(source,
+                styles.void_index.get(&product_id).map_or(&[],Vec::as_slice),
+                &opening_edits,&textures,&styles,&mut budget)?;
             let points=evaluated_source::local_points(source,&product,&mesh)?;
-            Ok((body.clone(),points,mesh,old_item,surface,source::refs(body.get(3))?))
+            let rounding_bounds=if opening_edits.is_empty() {None} else {
+                Some(super::evaluated_precision::local_cast_bounds(&points,source.decoder.length_unit_scale())?)
+            };
+            Ok((body.clone(),points,mesh,old_item,surface,source::refs(body.get(3))?,opening_edits,layers,rounding_bounds,removed))
         })();
-        let (mut body,points,mesh,old_item,surface,old_items)=match candidate {
+        let (mut body,points,mesh,old_item,surface,old_items,opening_edits,layers,rounding_bounds,removed)=match candidate {
             Ok(value)=>value,
             Err(reason)=> {
                 if budget.exhausted { return Err(budget::BUDGET_ERROR.into()); }
                 normalized.exclusions.push(Exclusion {product_id,reason}); continue;
             }
         };
-        if u64::from(normalized.request.next_express_id)+3>=u64::from(u32::MAX) || source.types.len()+3>200_000 {
+        if u64::from(normalized.request.next_express_id)+4+layers.len() as u64>=u64::from(u32::MAX) || source.types.len()+4+layers.len()>200_000 {
             return Err("Evaluated appearance entity capacity exceeded".into());
         }
         let mut plan=AppearancePlan {next_express_id:normalized.request.next_express_id,
@@ -101,9 +114,12 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
         let item=authored(&mut plan,&mut entities,IfcType::IfcTriangulatedFaceSet,
             vec![A::EntityRef(coordinates),A::Null,A::Null,indices,A::Null]);
         let styled=authored(&mut plan,&mut entities,IfcType::IfcStyledItem,vec![A::EntityRef(item),list(&surface),A::Null]);
-        Arc::make_mut(&mut body.attributes)[2]=A::String("Tessellation".into()); Arc::make_mut(&mut body.attributes)[3]=list(&[item]);
-        plan.edits.extend([PositionalEdit {express_id:body.id,index:2,value:json!("Tessellation")},
-            PositionalEdit {express_id:body.id,index:3,value:json!([reference(item)])}]);
+        super::evaluated_replacement::replace(source,product_id,&mut body,item,layers,&mut plan,&mut entities)?;
+        for mut opening in opening_edits {
+            Arc::make_mut(&mut opening.attributes)[1]=A::String("Reference".into());
+            plan.edits.push(PositionalEdit {express_id:opening.id,index:1,value:json!("Reference")});
+            entities.insert(opening.id,Arc::new(opening));
+        }
         let body_id=body.id;
         entities.insert(body.id,Arc::new(body));
         source.decoder.inject_shared_cache(&entities);
@@ -115,6 +131,11 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
         let (_,style)=crate::prepass::surface_style_from_styled_item(&entities[&styled],&mut source.decoder)
             .ok_or("Converted surface style failed canonical resolution")?;
         styles.geometry_style_index.insert(item,style);
+        for owner in removed.iter().map(|mesh|mesh.express_id).collect::<BTreeSet<_>>() {
+            if !canonical::produce(source,owner,&textures,Some(&styles))?.is_empty() {
+                return Err("Converted Reference opening still produces canonical geometry".into());
+            }
+        }
         let target=canonical::produce(source,product_id,&textures,Some(&styles))?;
         if target.len()!=1 { return Err("Evaluated replacement changed canonical submesh count".into()); }
         let target=&target[0];
@@ -124,9 +145,10 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
         for (&a,&b) in mesh.indices.iter().zip(&target.indices) {
             let before=canonical::corner_position(&mesh.positions,a)?;
             let after=canonical::corner_position(&target.positions,b)?;
-            if (0..3).any(|axis|f64::from(before[axis])+mesh.origin[axis]!=f64::from(after[axis])+target.origin[axis]) {
-                return Err("Evaluated replacement cannot preserve canonical triangle corners exactly".into());
-            }
+            let equivalent=if let Some(bounds)=&rounding_bounds {
+                super::evaluated_precision::same_corner(before,mesh.origin,after,target.origin,bounds[a as usize])
+            } else {(0..3).all(|axis|f64::from(before[axis])+mesh.origin[axis]==f64::from(after[axis])+target.origin[axis])};
+            if !equivalent {return Err("Evaluated replacement exceeds its canonical coordinate precision contract".into());}
         }
         normalized.request.next_express_id=plan.next_available_express_id;
         normalized.request.product_ids.push(product_id);
@@ -136,7 +158,7 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
         normalized.conversions.push(Conversion {plan,styled_id:styled,binding:AppearanceConversion {
             product_id,representation_id:body_id,source_geometry_item_id:old_item,geometry_item_id:item,
             source_indices:mesh.indices,source_positions:mesh.positions,source_normals:mesh.normals,
-            source_origin:mesh.origin,source_color:mesh.color,rtc_offset }});
+            source_origin:mesh.origin,source_color:mesh.color,rtc_offset,source_removed_meshes:removed }});
     }
     Ok(normalized)
 }
@@ -150,7 +172,7 @@ impl Normalized {
         }
         Ok(())
     }
-    pub(super) fn compose(self,mut plan:AppearancePlan)->Result<(AppearancePlan,BTreeMap<u32,u32>),String> {
+    pub(super) fn compose(self,mut plan:AppearancePlan, source:&Source<'_>)->Result<(AppearancePlan,BTreeMap<u32,u32>),String> {
         let accepted:BTreeSet<_>=plan.items.iter().map(|item|item.product_id).collect();
         for conversion in self.conversions {
             if accepted.contains(&conversion.binding.product_id) {
@@ -169,7 +191,7 @@ impl Normalized {
         }
         plan.next_express_id=self.start;
         plan.exclusions.extend(self.exclusions);
-        let ids=super::evaluated_allocation::compact(&mut plan)?;
+        let ids=super::evaluated_allocation::compact(&mut plan,&source.types)?;
         Ok((plan,ids))
     }
 }

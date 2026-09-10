@@ -1,0 +1,31 @@
+{
+  "baseSource": "c638bdca7",
+  "branchSource": "e81472165",
+  "measurement": "Exact full UTF8 JSON byte equality from independently built actual WASM modules; includes canonical meshes, IFC entity rows, texture/sampler metadata and placement.",
+  "results": [
+    {"schema":"IFC4","millimetres":false,"kind":"annotation","vertical":true,"bytes":2631,"sha256":"2a8dcb79f1f888397c79bfa59ecc4f65f3a3219f6de0ff692fc6581fcef9a699"},
+    {"schema":"IFC4","millimetres":false,"kind":"annotation","vertical":false,"bytes":2626,"sha256":"3a508e1fe7f8dc11530f77600734bc9318fd73c49dede99ad53a6250458ed3a2"},
+    {"schema":"IFC4","millimetres":false,"kind":"captured","repeatS":true,"repeatT":true,"bytes":2702,"sha256":"9d52268533bd0c931f69bdca1f8a54faeb05fa740a2ca2d173b4dbc972ca32a3"},
+    {"schema":"IFC4","millimetres":false,"kind":"captured","repeatS":true,"repeatT":false,"bytes":2703,"sha256":"ce23b824653ba5e8a8831dda819fb145c34a2dfa63027867d29679de587b0e8d"},
+    {"schema":"IFC4","millimetres":false,"kind":"captured","repeatS":false,"repeatT":true,"bytes":2703,"sha256":"2062831d6c86fab3403adad7ee8bd4628ba96aeba1cd923b1e0056e76eeae743"},
+    {"schema":"IFC4","millimetres":false,"kind":"captured","repeatS":false,"repeatT":false,"bytes":2704,"sha256":"09cea502cc0e102986debf9a354126d465d14564773c7edef8e8a423cb8d35ba"},
+    {"schema":"IFC4","millimetres":true,"kind":"annotation","vertical":true,"bytes":2652,"sha256":"19f0f4ed5644771a0c1e3e8785183a54f94dc30fe6dd850abfb9a02a5f963a07"},
+    {"schema":"IFC4","millimetres":true,"kind":"annotation","vertical":false,"bytes":2647,"sha256":"4801f30dc93d9e0264c42d3e79b829404595cdd85d3942f44fbf5890fab18100"},
+    {"schema":"IFC4","millimetres":true,"kind":"captured","repeatS":true,"repeatT":true,"bytes":2726,"sha256":"99ef6d35a30944cd2ed952dee0a1343ed22aa2acefe857d1511d6761e30c0cdd"},
+    {"schema":"IFC4","millimetres":true,"kind":"captured","repeatS":true,"repeatT":false,"bytes":2727,"sha256":"c298ed8fde9b937846a6e419a8db761e1462327a22ec23c70b6e864ea4e7d109"},
+    {"schema":"IFC4","millimetres":true,"kind":"captured","repeatS":false,"repeatT":true,"bytes":2727,"sha256":"56f9322b039793c35136484d736a9398f1a0530a274ecb19a5a5c7da48f1a0e2"},
+    {"schema":"IFC4","millimetres":true,"kind":"captured","repeatS":false,"repeatT":false,"bytes":2728,"sha256":"f922051b25dba216bc4080d79b64120bc615f38c24f3f5d2e6af01c06b24d751"},
+    {"schema":"IFC4X3","millimetres":false,"kind":"annotation","vertical":true,"bytes":2652,"sha256":"f374fffb8b68585e8e9f517b1f0ff6ff17252a08cd7c8ab75f60d86da1ffd980"},
+    {"schema":"IFC4X3","millimetres":false,"kind":"annotation","vertical":false,"bytes":2647,"sha256":"36f4e9844f4d4bd21dd93fb69de517e006d9301e4103ab48278becc53b7ffbd0"},
+    {"schema":"IFC4X3","millimetres":false,"kind":"captured","repeatS":true,"repeatT":true,"bytes":2707,"sha256":"385a1a9c796eaeff8efee6ff5c17d7bf56dd810be41eda5bbc20eaf2b4fd9de8"},
+    {"schema":"IFC4X3","millimetres":false,"kind":"captured","repeatS":true,"repeatT":false,"bytes":2708,"sha256":"4aee0558497c8d38af6ef3af00683698a168e84e3cc6bdb7de00bbe0f8eb7577"},
+    {"schema":"IFC4X3","millimetres":false,"kind":"captured","repeatS":false,"repeatT":true,"bytes":2708,"sha256":"6714940aaad77887ba0409483373b676f3e2aeb82ab80f0d753826012aa83437"},
+    {"schema":"IFC4X3","millimetres":false,"kind":"captured","repeatS":false,"repeatT":false,"bytes":2709,"sha256":"73728b600fd6ed7579f89272bb05056d8bcaa3b66ca918479f4c78ed4df2e523"},
+    {"schema":"IFC4X3","millimetres":true,"kind":"annotation","vertical":true,"bytes":2673,"sha256":"29427e3c7c29d5cbd84aa9fbfe1caca61d1b80baedf8e232b693af60a51f617c"},
+    {"schema":"IFC4X3","millimetres":true,"kind":"annotation","vertical":false,"bytes":2668,"sha256":"eddf481ca6ce4eb9f0a73b9c532b34736d7ef29c7217fe2a2a9efc3906957398"},
+    {"schema":"IFC4X3","millimetres":true,"kind":"captured","repeatS":true,"repeatT":true,"bytes":2731,"sha256":"bf9a78f6437802bb760a53e4aeac949a3c4064bdb3b15ba482192ec9b5e6725f"},
+    {"schema":"IFC4X3","millimetres":true,"kind":"captured","repeatS":true,"repeatT":false,"bytes":2732,"sha256":"c11f2b8892234b21aeb8a3de7c76f02a6e62b2f7ad1225a1dd14c705afdaa025"},
+    {"schema":"IFC4X3","millimetres":true,"kind":"captured","repeatS":false,"repeatT":true,"bytes":2732,"sha256":"966993d0fa64067ad1c39398e5651d676cd3f1b16611140e143ba09c85e5b8c5"},
+    {"schema":"IFC4X3","millimetres":true,"kind":"captured","repeatS":false,"repeatT":false,"bytes":2733,"sha256":"e861bc5582221d2d80c5e28d6b71bcad9a5cf040608dd80070ff289a5a2fc3d6"}
+  ]
+}

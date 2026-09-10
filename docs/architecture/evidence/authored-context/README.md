@@ -19,3 +19,8 @@ appearance tests passed, the root build passed, and actual WASM contracts
 passed with their existing optional fixture skips. A fresh independently
 installed PyO3 wheel matched all four committed quick-lane IFC references;
 the existing halfspace triangle-density advisory remains.
+
+The exact-source native A/B/A/B normal-load probe in `native-load.json` resolved
+no difference at its timing precision; ordered mesh fingerprints and all counts
+matched. Each run uses five iterations, with probe timings reported as best of
+five. This does not measure browser worker performance or creation throughput.

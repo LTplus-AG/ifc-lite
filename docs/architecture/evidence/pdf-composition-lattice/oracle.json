@@ -1,0 +1,14 @@
+{
+  "sourcePdfSha256": "67fe4a0c1e9a826c84643a67f535bc2efca92505386dc619fb5c90364dd49e54",
+  "sourceIfcSha256": "9546882152ce6ffefcd4f8f443a49753ed6523f41d6483086d7374f56fe80425",
+  "exportSha256": "b068a0c11302a3e4d2129ee67cb97e0532ed73a9adfa3c36d508134b6f8ddaf3",
+  "mupdfVersion": "1.26.5",
+  "ifcopenshellVersion": "0.8.2",
+  "pixelsCompared": 28800,
+  "rasterMismatchPixels": 0,
+  "independentAreaSquareMetres": 2.4,
+  "independentTriangleCount": 4,
+  "geometryWork": 7514,
+  "gridSizeMetres": 5.208333333333333e-06,
+  "registration": "Frozen actual host calibration; CropBox [10,20,110,92], UserUnit 2, intrinsic rotation 90; displayed page plane 2.88 by 4 metres"
+}

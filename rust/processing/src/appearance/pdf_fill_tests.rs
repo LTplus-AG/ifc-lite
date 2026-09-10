@@ -310,3 +310,18 @@ fn issue_4406_actual_decoded_ellipse_hole_and_shear_controls_produce_complete_pl
 
 #[path = "pdf_stroke_tests.rs"]
 mod stroke_tests;
+
+#[test]
+fn issue_4458_registered_cropbox_contacts_survive_classify_clip_and_paint_order() {
+    let (source,_) = fixture();
+    let request:PdfFillAnnotationRequest=serde_json::from_str(include_str!("../../../../docs/architecture/evidence/pdf-composition-lattice/registered-request.json")).unwrap();
+    for tolerance in [0.001,0.0001,0.00001,0.000001,0.0000001] {
+        let mut request=request.clone();request.page.tolerance_metres=tolerance;
+        let result=plan_pdf_fill_annotation(source.as_bytes(),&request).unwrap();
+        assert!((result.meshes.iter().map(area).sum::<f64>()-2.4).abs()<0.00001);
+        assert_eq!(result.regions.len(),2);
+        let reopened=crate::process_geometry(apply(&source,&result.plan).as_bytes());
+        let total:f64=reopened.meshes.iter().filter(|m|m.express_id==result.annotation_id).map(area).sum();
+        assert!((total-2.4).abs()<0.00001);
+    }
+}

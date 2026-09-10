@@ -107,6 +107,7 @@
     "FACETED_BREP_DEDUP_FACE_LIMIT": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "FaceBasedSurfaceModelProcessor": "struct (unit)",
     "FacetedBrepProcessor": "struct (unit)",
+    "FixedGridComposition": "struct {  }",
     "GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "GeometryClosure": "struct { all_closed: bool; all_orientable: bool; all_single_component: bool; segments: u32 }",
     "GeometryDiagnostics": "struct { classification: ClassificationSummary; failures_by_reason: Vec<ReasonCount>; hosts_with_openings: u64; oversized_ref_drops: u64; products_with_failures: u64; rect_fast: RectFastSummary; schema_version: u32; silent_no_ops: u64; total_csg_failures: u64; total_unsupported_items: u64; unsupported_items_by_type: Vec<ReasonCount>; worst_hosts: Vec<WorstHost> }",

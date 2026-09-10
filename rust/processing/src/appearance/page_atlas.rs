@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::page_raster::Raster;
+#[path = "page_atlas_guards.rs"]
+mod guards;
 
 pub(super) const MAX_PIXELS: usize = 16_777_216;
 const AXIS: usize = 4096;
@@ -114,6 +116,7 @@ pub(super) fn interpolate(uv: [[f64; 2]; 3], w: [f64; 3]) -> [f64; 2] {
     std::array::from_fn(|axis| (0..3).map(|i| uv[i][axis] * w[i]).sum())
 }
 pub(super) trait Shader {
+    fn raster_guards(&self) -> bool { false }
     fn reserve_pixels(&mut self, pixels: usize) -> Result<(), String>;
     fn sample(&mut self, triangle: usize, weights: [f64; 3], interior: bool, background: [f64; 4]) -> Result<[u8; 4], String>;
 }
@@ -149,10 +152,15 @@ pub(super) fn bake(input: AtlasInput<'_>, remaining: &mut usize, shader: &mut im
                 let sample = raster.sample(interpolate(old_uv, w), repeat);
                 for i in 0..4 { background[i] *= sample[i]; }
             }
-            let pixel = shader.sample(triangle, w, interior, background)?;
+            let pixel = if shader.raster_guards() && !interior {
+                background.map(|value| (value.clamp(0., 1.) * 255.).round() as u8)
+            } else { shader.sample(triangle, w, interior, background)? };
             let offset = ((c.origin[1] + y) * width + c.origin[0] + x) * 4;
             rgba[offset..offset + 4].copy_from_slice(&pixel);
         } }
+        if shader.raster_guards() {
+            guards::dilate(c, width, &mut rgba);
+        }
     }
     Ok(Atlas { width: width as u32, height: height as u32, rgba, uv })
 }

@@ -1,8 +1,9 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-//! Bounded opaque straight-edge fills. Unsupported paint refuses the whole page.
+//! Bounded opaque straight and qualified curved fills. Unsupported paint refuses the whole page.
 use super::{PdfVectorPaint, PreparedPdfVectorPage};
+use super::fill_paths::{point, rings, qualify};
 use ifc_lite_geometry::{boolean_2d_fixed_grid, BooleanOp2D, ContourFillRule, ContourSet, Ring2D};
 
 pub(crate) struct FillShape {
@@ -55,49 +56,6 @@ impl Budget {
         Ok(result)
     }
 }
-fn point(m: [f64; 6], p: [f64; 2]) -> Result<[f64; 2], String> {
-    let q = [
-        m[0] * p[0] + m[2] * p[1] + m[4],
-        m[1] * p[0] + m[3] * p[1] + m[5],
-    ];
-    if q.iter().any(|v| !v.is_finite() || v.abs() > 1e8) {
-        return Err("PDF fill coordinate exceeds finite metric range".into());
-    }
-    Ok(q)
-}
-fn rings(commands: &[f64], m: [f64; 6]) -> Result<Vec<Ring2D>, String> {
-    let mut rings = vec![];
-    let mut ring = vec![];
-    let mut cursor = 0;
-    while cursor < commands.len() {
-        let op = commands[cursor];
-        cursor += 1;
-        match op as u8 {
-            0 => {
-                if !ring.is_empty() {
-                    rings.push(std::mem::take(&mut ring));
-                }
-                ring.push(point(m, [commands[cursor], commands[cursor + 1]])?);
-                cursor += 2;
-            }
-            1 => {
-                ring.push(point(m, [commands[cursor], commands[cursor + 1]])?);
-                cursor += 2;
-            }
-            4 => {
-                if let Some(first) = ring.first().copied() {
-                    rings.push(std::mem::take(&mut ring));
-                    ring.push(first);
-                }
-            }
-            _ => return Err("PDF fill-page creation does not yet support painted curves".into()),
-        }
-    }
-    if !ring.is_empty() {
-        rings.push(ring);
-    }
-    Ok(rings)
-}
 /// The fixed-grid output is a declared approximation. Grid error accumulates
 /// through classification, clipping and paint-order booleans; reserve a grid
 /// substantially finer than the requested tolerance for every possible pass.
@@ -134,20 +92,24 @@ pub(crate) fn compose(
         point(model_metres_from_pdf, [x1, y1])?,
         point(model_metres_from_pdf, [x0, y1])?,
     ]];
+    let flatten_error = prepared.tolerance_metres / 8.;
+    let mut paths = Vec::with_capacity(prepared.paths.len());
+    for path in &prepared.paths {
+        budget.charge(path.commands.len() as u64)?;
+        if path.commands.len() > 4096 { return Err("PDF fill path exceeds command budget".into()); }
+        paths.push(rings(&path.commands, path.state.model_metres_from_path,
+            flatten_error, &mut budget.remaining)?);
+    }
+    qualify(&paths, &clip, flatten_error, &mut budget.remaining)?;
     let mut occluded = ContourSet::default();
     let mut shapes = vec![];
-    for path in prepared.paths.iter().rev() {
-        budget.charge(path.commands.len() as u64)?;
-        if path.commands.len() > 4096 {
-            return Err("PDF fill path exceeds command budget".into());
-        }
-        let input = rings(&path.commands, path.state.model_metres_from_path)?;
+    for (path, input) in prepared.paths.iter().zip(&paths).rev() {
         let rule = if path.paint == PdfVectorPaint::EvenOddFill {
             ContourFillRule::EvenOdd
         } else {
             ContourFillRule::NonZero
         };
-        let classified = budget.overlay(&input, &[], BooleanOp2D::Union, rule, grid)?;
+        let classified = budget.overlay(&input.rings, &[], BooleanOp2D::Union, rule, grid)?;
         let clipped = budget.overlay(
             &classified.rings,
             &clip,

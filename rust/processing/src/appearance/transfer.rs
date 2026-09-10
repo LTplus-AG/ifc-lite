@@ -153,7 +153,7 @@ fn digest(bytes: &[u8], request: &MeshTransferRequest, rgba: &[u8]) -> Result<St
         }
     }
     let mut hash = Writer(Sha256::new());
-    hash.0.update(b"ifclite-mesh-transfer-v1\0");
+    hash.0.update(b"ifclite-mesh-transfer-v2-raster-guards\0");
     // Length-prefix binary portions; JSON is last and streamed without a duplicate allocation.
     hash.0.update((bytes.len() as u64).to_le_bytes());
     hash.0.update(bytes);

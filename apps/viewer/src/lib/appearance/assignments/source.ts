@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { AppearanceAssignment } from './types.js';
-import type { PdfRasterRecipe } from '../pdf/types.js';
+import { ownPdfRasterRecipe } from '../pdf/own-raster-recipe.js';
 import { rasterLandmarkAt } from '../raster-calibration.js';
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid assignment source.');
@@ -26,16 +26,6 @@ function pair(value: unknown): [number, number] { const a = array(value, 2); ret
 function affine(value: unknown): [number, number, number, number, number, number] {
   const a = array(value, 6); return [a[0], a[1], a[2], a[3], a[4], a[5]];
 }
-function rect(value: unknown): [number, number, number, number] { const a = array(value, 4); return [a[0], a[1], a[2], a[3]]; }
-function pdfRecipe(value: unknown): PdfRasterRecipe {
-  const v = record(value), p = record(v.page);
-  if (v.rotation !== 0 && v.rotation !== 90 && v.rotation !== 180 && v.rotation !== 270) throw new Error('Unsupported PDF rotation.');
-  return { page: { pageNumber: number(p.pageNumber, true, true), viewBox: rect(p.viewBox), userUnit: number(p.userUnit, true),
-    intrinsicRotation: number(p.intrinsicRotation), widthPoints: number(p.widthPoints, true), heightPoints: number(p.heightPoints, true), pdfToPage: affine(p.pdfToPage) },
-    rotation: v.rotation, cropPoints: rect(v.cropPoints), requestedDpi: number(v.requestedDpi, true), effectiveDpi: number(v.effectiveDpi, true),
-    pixelWidth: number(v.pixelWidth, true, true), pixelHeight: number(v.pixelHeight, true, true),
-    paperSizeMetres: pair(v.paperSizeMetres), pixelToPdf: affine(v.pixelToPdf) };
-}
 /** Copy validated source metadata, excluding ephemeral thumbnail URLs and live bytes. */
 export function ownAssignmentSource(value: unknown): AppearanceAssignment['source'] {
   const v = record(value);
@@ -57,7 +47,7 @@ export function ownAssignmentSource(value: unknown): AppearanceAssignment['sourc
   }
   if (v.pdf !== undefined) {
     const p = record(v.pdf);
-    source.pdf = { documentKey: string(p.documentKey), recipe: pdfRecipe(p.recipe) };
+    source.pdf = { documentKey: string(p.documentKey), recipe: ownPdfRasterRecipe(p.recipe) };
     if (p.documentSha256 !== undefined) {
       const digest = string(p.documentSha256);
       if (!/^[a-f0-9]{64}$/.test(digest)) throw new Error('Invalid original PDF source digest.');

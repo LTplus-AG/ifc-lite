@@ -1,0 +1,22 @@
+{
+  "source": "027d04d0b plus test-only large-coordinate invariant",
+  "rootBuildTasks": 51,
+  "rootTypecheckTasks": 94,
+  "typecheckedTestFiles": 1919,
+  "nativeWorkspace": {
+    "passed": 3037,
+    "failed": 0,
+    "ignored": 37
+  },
+  "wasmContract": {
+    "passed": 88,
+    "failed": 0,
+    "skipped": 3
+  },
+  "largeCoordinateInvariant": "passed",
+  "strictClippy": "passed exact workspace/all-targets -D warnings",
+  "hostedCI": "Not represented as green; local validation used.",
+  "nativeLargeCoordinateInvariant": "additional focused test passed",
+  "pythonWheelParity": "4 MATCH, existing halfspace triangle-density advisory",
+  "review": "Independent runtime review found no blocker. Exact-current-helper large-coordinate consistency sweep and focused native BVH/primitive test pass."
+}

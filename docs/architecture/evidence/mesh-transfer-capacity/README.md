@@ -1,8 +1,12 @@
 # Candidate-reuse capacity investigation (#4381)
 
-**Negative result: no candidate-cache implementation was merged.** The full
+**Historical negative result: no candidate-cache implementation was merged.** The full
 qualified boulder still exceeds the existing 64-million work budget. Keep that
 refusal visible; a smaller target is a separate scope, not full-model acceptance.
+
+A later [full selected-target implementation](../mesh-transfer-full-target/README.md)
+combines nearest-first traversal and raster padding with a separately reviewed
+work allowance. It does not change the results below at the original allowance.
 
 ## What was measured
 

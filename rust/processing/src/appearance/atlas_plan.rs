@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use sha2::{Digest, Sha256};
 
 pub(super) trait AtlasSampler {
+    fn raster_guards(&self) -> bool { false }
     fn begin_item(&mut self, source: &mut Source<'_>, product: u32, item: &AppearanceItem, points: &[[f64; 3]], triangles: &[[u32; 3]], mesh: &crate::types::mesh::MeshData) -> Result<(), String>;
     fn end_item(&mut self) -> Result<(), String> { Ok(()) }
     fn reserve_pixels(&mut self, pixels: usize) -> Result<(), String>;
@@ -14,6 +15,7 @@ pub(super) trait AtlasSampler {
 }
 struct ItemShader<'a, S> { item: &'a AppearanceItem, sampler: &'a mut S }
 impl<S: AtlasSampler> page_atlas::Shader for ItemShader<'_, S> {
+    fn raster_guards(&self) -> bool { self.sampler.raster_guards() }
     fn reserve_pixels(&mut self, pixels: usize) -> Result<(), String> { self.sampler.reserve_pixels(pixels) }
     fn sample(&mut self, triangle: usize, weights: [f64; 3], interior: bool, background: [f64; 4]) -> Result<[u8; 4], String> {
         self.sampler.sample(self.item, triangle, weights, interior, background)

@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { captureReferencePdfLineage } from '@/lib/appearance/references/pdf-lineage';
 import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
@@ -61,7 +62,7 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
         const [a, b, c, d] = result.rasterCorners;
         const record: RegisteredAppearanceReference = { id: editing?.id ?? crypto.randomUUID(), sourceId: source.id,
           assetId: source.assetId ?? source.id, cornersIfcWorld: [a, b, c, d], frameKey,
-          visible: editing?.visible ?? true, locked: false, opacity: editing?.opacity ?? 1, calibration };
+          visible: editing?.visible ?? true, locked: false, opacity: editing?.opacity ?? 1, calibration, pdf: captureReferencePdfLineage(source, calibration) };
         const corners = referenceRenderCorners(record, useViewerStore.getState());
         if (!corners) throw new Error('The workspace frame changed. Refresh reference placement.');
         appearanceAssets.retain(record.assetId, owner);

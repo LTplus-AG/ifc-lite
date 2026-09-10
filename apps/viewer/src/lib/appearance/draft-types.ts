@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { ReferencePdfLineage } from './references/pdf-lineage.js';
 import type { PdfRasterRecipe } from './pdf/types.js';
 import type { RasterCalibration, RasterCalibrationFrame } from './raster-calibration.js';
 
@@ -39,6 +40,8 @@ export interface AppearanceSourceOption {
   calibration?: RasterCalibration;
   /** Frozen derivative frame when restoring a registered raster without its document. */
   calibrationFrame?: RasterCalibrationFrame;
+  /** Exact original PDF provenance when editing a committed raster snapshot. */
+  pdfLineage?: ReferencePdfLineage;
   pdf?: {
     documentKey: string;
     recipe: PdfRasterRecipe;

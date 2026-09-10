@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { ownReferencePdfLineage, type ReferencePdfLineage } from './pdf-lineage.js';
 import type { PlaneCalibrationRequest } from '../plane-calibration.js';
 import { ownCalibrationRecipe } from './calibration-recipe.js';
 
@@ -19,6 +20,7 @@ export interface RegisteredAppearanceReference {
   readonly opacity: number;
   /** Frozen calibration recipe for explicit editing, independent of PDF bytes. */
   readonly calibration?: PlaneCalibrationRequest;
+  readonly pdf?: ReferencePdfLineage;
 }
 export interface ReferenceCommand {
   readonly id: string;
@@ -55,8 +57,10 @@ export function ownReference(value: unknown): RegisteredAppearanceReference {
   const u = b.map((n, i) => n - a[i]), w = d.map((n, i) => n - a[i]);
   const cross = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
   if (!cross.every(Number.isFinite) || !cross.some(n => n !== 0)) throw new Error('Drawing reference corners are degenerate.');
+  const calibration = v.calibration === undefined ? undefined : ownCalibrationRecipe(v.calibration);
   return Object.freeze({ id: v.id, sourceId: v.sourceId, assetId: v.assetId,
     frameKey: v.frameKey, visible: v.visible, locked: v.locked, opacity: v.opacity,
-    ...(v.calibration === undefined ? {} : { calibration: ownCalibrationRecipe(v.calibration) }),
+    ...(calibration ? { calibration } : {}),
+    ...(v.pdf === undefined ? {} : { pdf: ownReferencePdfLineage(v.pdf, calibration) }),
     cornersIfcWorld: Object.freeze(points) as RegisteredAppearanceReference['cornersIfcWorld'] });
 }

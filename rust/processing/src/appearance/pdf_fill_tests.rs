@@ -248,3 +248,62 @@ fn issue_4406_fill_plan_binds_source_page_frame_and_allocator_and_refuses_bad_me
         .unwrap_err()
         .contains("allocator"));
 }
+
+#[test]
+fn issue_4406_convex_bezier_fills_preserve_analytic_area_under_nonuniform_affine() {
+    let (source, mut request)=fixture();
+    request.page.tolerance_metres=0.01;
+    for (commands, exact_area) in [
+        (vec![0.,2.,2.,2.,2.,5.,5.,5.,5.,2.,4.],5.4),
+        (vec![0.,2.,2.,3.,2.,5.,5.,5.,1.,5.,2.,4.],7.5),
+    ] {
+        for affine in [[1.,0.,0.,1.,0.,0.],[2.,0.3,0.5,1.,0.,0.],[-1.,0.,0.,1.,8.,0.]] {
+            request.page.model_metres_from_pdf=affine;
+            request.page.operations=vec![PdfVectorOperation{ordinal:0,operation:PdfVectorOperator::Path{
+                paint:PdfVectorPaint::Fill,commands:commands.clone()}}];
+            let plan=plan_pdf_fill_annotation(source.as_bytes(),&request).unwrap();
+            assert_eq!(plan.meshes.len(),1);
+            let expected=exact_area*(affine[0]*affine[3]-affine[1]*affine[2]).abs();
+            assert!((area(&plan.meshes[0])-expected).abs()<0.015);
+            let reopened=crate::process_geometry(apply(&source,&plan.plan).as_bytes());
+            let mesh=reopened.meshes.iter().find(|m|m.express_id==plan.annotation_id).unwrap();
+            assert_eq!(mesh.positions,plan.meshes[0].positions);
+            assert_eq!(mesh.indices,plan.meshes[0].indices);
+        }
+    }
+}
+
+#[test]
+fn issue_4406_curved_fill_refuses_unresolved_concavity_contacts_and_tiny_precision() {
+    let (source,mut request)=fixture();
+    request.page.tolerance_metres=0.01;
+    request.page.operations=vec![PdfVectorOperation{ordinal:0,operation:PdfVectorOperator::Path{
+        paint:PdfVectorPaint::Fill,commands:vec![0.,2.,2.,2.,2.,5.,5.,5.,5.,2.,4.]}}];
+    let mut touching=request.clone();
+    touching.page.operations.push(PdfVectorOperation{ordinal:1,operation:PdfVectorOperator::Path{
+        paint:PdfVectorPaint::Fill,commands:rectangle(3.,2.,1.,1.)}});
+    assert!(plan_pdf_fill_annotation(source.as_bytes(),&touching).unwrap_err().contains("error envelope"));
+    let mut concave=request.clone();
+    concave.page.operations[0].operation=PdfVectorOperator::Path{paint:PdfVectorPaint::Fill,
+        commands:vec![0.,2.,2.,2.,2.,5.,5.,5.,5.,2.,1.,3.5,3.,4.]};
+    assert!(plan_pdf_fill_annotation(source.as_bytes(),&concave).unwrap_err().contains("control hulls"));
+    request.page.tolerance_metres=1e-9;
+    assert!(plan_pdf_fill_annotation(source.as_bytes(),&request).is_err());
+}
+
+#[test]
+fn issue_4406_actual_decoded_ellipse_hole_and_shear_controls_produce_complete_plans() {
+    let (source, _)=fixture();
+    for data in [
+        include_str!("../../../../docs/architecture/evidence/pdf-curved-fill-annotations/page-1-request.json"),
+        include_str!("../../../../docs/architecture/evidence/pdf-curved-fill-annotations/page-2-request.json"),
+        include_str!("../../../../docs/architecture/evidence/pdf-curved-fill-annotations/page-3-request.json"),
+    ] {
+        let request:PdfFillAnnotationRequest=serde_json::from_str(data).unwrap();
+        let plan=plan_pdf_fill_annotation(source.as_bytes(),&request).unwrap();
+        assert_eq!(plan.regions.len(),1);
+        assert_eq!(plan.meshes.len(),1);
+        assert!(plan.geometry_work<=4_000_000);
+        assert!(area(&plan.meshes[0])>1.);
+    }
+}

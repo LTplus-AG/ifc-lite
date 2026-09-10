@@ -1256,6 +1256,21 @@ not introduce a dummy texture to access shared setup. See the [raw native
 measurements](../../docs/architecture/evidence/authored-context/native-load.json)
 and adjacent plan identity evidence.
 
+### Complete selected-target mesh transfer (#4381)
+
+Nearest-first traversal plus same-chart raster padding avoids source queries
+for unobserved padding while retaining exact nearest/ambiguity checks and all
+interior unknown appearance. Combined with an explicit aggregate work allowance
+increase, the full selected boulder now returns identical applicable plans in
+fresh workers and passes the normal viewer transaction/export/reopen journey.
+The original quota experiments remain negative; neither this result nor the
+quota increase alone retroactively turns them into wins. Scan-owned memory is
+still bounded, including padding scratch, and overlapping/dense cases refuse
+before publication. Ordinary-load paired probes had a slower first candidate
+pair and matching second pair with identical ordered geometry; no consistent
+regression or zero-overhead claim follows. This is measured capacity acceptance, not a throughput
+speedup. [Worker, independent-reader and refusal evidence](../../docs/architecture/evidence/mesh-transfer-full-target/README.md).
+
 ## Qualified PDF fill composition (#4406)
 
 The new explicit creation API leaves ordinary model loading on the existing
@@ -1266,3 +1281,16 @@ establish zero overhead or browser-worker throughput. The composition budget
 precharges pairwise overlay work and separately limits generated contours and
 transport; do not tune those caps using unrelated normal-load timings. See
 [raw samples and source identity](../../docs/architecture/evidence/pdf-fill-annotations/native-load.json).
+
+## Qualified curved PDF fill boundaries (#4406)
+
+Native normal-load A/B/A/B resolved no consistent regression, with identical
+ordered mesh fingerprints and counts. This does not measure curved-page worker
+throughput. Subdivision and original-piece hull qualification share the existing
+creation budget; finely tessellated holes can still refuse its overlay work cap.
+Do not silently coarsen to fit it. A global exact convex-control-polygon check
+rejected a real sheared control on tiny near-collinear turns; exact per-piece
+hull separation admitted that control without snapping or ignoring features.
+Keep finite-chord error bounds: infinite-line flatness incorrectly collapses
+backtracking curves. See [source-matched samples](../../docs/architecture/evidence/pdf-curved-fill-annotations/native-load.json)
+and the adjacent independently decoded PDF evidence.

@@ -1,0 +1,30 @@
+{
+  "reader": "IfcOpenShell",
+  "version": "0.8.2",
+  "schema": "IFC4",
+  "originalBody": {
+    "triangles": 24,
+    "volumeCubicMetres": 0.992
+  },
+  "originalNoSubtraction": {
+    "triangles": 12,
+    "volumeCubicMetres": 1.0
+  },
+  "referenceUncutControlDefault": {
+    "triangles": 24,
+    "volumeCubicMetres": 0.992
+  },
+  "referenceUncutControlNoSubtraction": {
+    "triangles": 12,
+    "volumeCubicMetres": 1.0
+  },
+  "precutReferenceDefault": {
+    "triangles": 24,
+    "volumeCubicMetres": 0.992
+  },
+  "precutReferenceNoSubtraction": {
+    "triangles": 24,
+    "volumeCubicMetres": 0.992
+  },
+  "meaning": "Reference-only subtraction is forbidden by IFC semantics. The uncut control isolates routing; matching precut geometry alone cannot prove the reader skipped subtraction."
+}

@@ -140,7 +140,7 @@ impl<'a> Source<'a> {
     /// Fixed-depth direct product -> PDS -> Body representation -> face set.
     /// Shared/mapped graphs are refused, rather than accidentally editing another owner.
     pub fn product_items(&mut self, product: u32) -> Result<Vec<u32>, String> {
-        if self.voided.contains(&product) {
+        if self.voided.contains(&product) && !super::evaluated_openings::reference_only(self, product)? {
             return Err("CSG/opening-cut geometry is unsupported".into());
         }
         let entity = self.entity(product)?;

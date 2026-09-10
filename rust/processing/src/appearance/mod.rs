@@ -67,7 +67,10 @@ fn add(plan: &mut AppearancePlan, name: &str, attributes: Vec<Value>) -> u32 {
     id
 }
 
+mod wire_text;
+
 fn validate_image_uri(uri: &str) -> Result<(), String> {
+    wire_text::validate(uri, "Image URI")?;
     if uri.is_empty()
         || uri.len() > 240
         || !uri.is_ascii()

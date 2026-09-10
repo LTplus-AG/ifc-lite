@@ -242,3 +242,13 @@ fn png_budget_refuses_truncated_final_chunk_4260() {
     decoder.next_frame(&mut pixels).unwrap();
     assert_eq!(pixels, atlas.rgba);
 }
+
+#[test]
+fn issue_4441_page_style_preservation_uses_shared_exact_wire_token_guard() {
+    let (request, rgba) = fixture();
+    for name in ["*", "$", "#123", ".ENUM.", "\u{feff}#123\u{feff}"] {
+        let source = CONTROLLED_IFC.replace("'Wood'", &format!("'{name}'"));
+        assert!(plan_page_appearance(source.as_bytes(), &request, &rgba).unwrap_err()
+            .contains("Page material name is a reserved appearance wire token"));
+    }
+}

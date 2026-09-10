@@ -46,6 +46,17 @@ a baseline first-load viewport initialization race. Those failed samples were
 retained and excluded, not treated as successful loads. The lesson is to name
 and qualify the measured boundary before interpreting small load-time deltas.
 
+## Authored metadata wire validation (#4441)
+
+A shared early authoring guard now refuses free-text spellings that the host
+mutation writer interprets as structural tokens. The source-matched idle native
+AC20 A/B/A/B probe found matching normal-load geometry/total values and mesh
+fingerprints, with quantized parse variation. This is a correctness fix, not a
+worker-pool optimization. The lesson is to validate text at the shared authored
+boundary using the consumer's exact whitespace/token rules; broad trimming can
+both miss reserved inputs and reject ordinary Unicode names.
+Evidence: `docs/architecture/evidence/authored-wire-tokens/native-load.json`.
+
 ## Manual scan registration foundation (#4381)
 
 The correspondence solver is opt-in, bounded to 256 fitting and 256 held-out

@@ -81,6 +81,20 @@ export interface SceneContents {
   getMeshes(): Mesh[];
   getBatchedMeshes(): BatchedMesh[];
   getMeshDataPieces(expressId: number, modelIndex?: number): MeshData[] | undefined;
+  /**
+   * The single-mesh accessor: the FIRST mesh piece carrying an entity's
+   * placement, or `undefined` when the entity has no flat mesh data.
+   * `getMeshDataPieces` returns every piece; reach for this one when a
+   * caller is written against one representative mesh per entity (#4357).
+   */
+  getMeshData(expressId: number, modelIndex?: number): MeshData | undefined;
+  /**
+   * Visits every flat mesh piece in the scene. `getAllMeshDataExpressIds`
+   * gives only the id set; this is the accessor for consumers that need the
+   * mesh data itself while walking it, such as feeding a whole-scene
+   * geometry pass (#4357).
+   */
+  forEachMeshData(visit: (md: MeshData) => void): void;
   /** Place a canonical model-local source in the current registered model frame. */
   placeAppearanceSource?(mesh: MeshData): MeshData;
   /** Recover model-local geometry before publishing an appearance edit to model state. */
@@ -98,6 +112,23 @@ export interface SceneContents {
     max: { x: number; y: number; z: number };
   } | null;
   getEntityBoundingBox(expressId: number): BoundingBox | null;
+  /**
+   * The resolved local→world placement transform for one entity: row-major
+   * 4×4 (16 numbers), `Float64Array` for full georeferenced precision.
+   * Pairs with {@link getEntityLocalBounds} to reconstruct an entity's true
+   * oriented world box — `getEntityBoundingBox` above is post-transform and
+   * world-axis-aligned instead (#4357).
+   */
+  getEntityTransform(expressId: number): Float64Array | null;
+  /**
+   * An entity's bounds in its OWN local (pre-transform) frame, unioned across
+   * every occurrence sharing the `expressId` — unlike `getEntityBoundingBox`,
+   * which is a post-transform, world-axis-aligned box and cannot be unioned
+   * meaningfully across differently-placed occurrences (#4357).
+   */
+  getEntityLocalBounds(
+    expressId: number,
+  ): { min: [number, number, number]; max: [number, number, number] } | null;
 
   // ─── Instanced geometry ──────────────────────────────────────────────
   addInstancedShard(

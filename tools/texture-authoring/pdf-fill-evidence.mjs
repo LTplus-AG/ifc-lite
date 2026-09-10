@@ -14,17 +14,20 @@ const pdf=await import(require.resolve('pdfjs-dist/legacy/build/pdf.mjs'));
 initSync({module:await readFile(new URL('../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url))});
 const api=new IfcAPI();
 const backend={getDocument:pdf.getDocument,vectorDecoder:{version:pdf.version,ops:pdf.OPS},options:{disableFontFace:true,useSystemFonts:false},surface(){throw new Error('No raster in vector decode');}};
-const [pdfPath, output] = process.argv.slice(2);
+const [pdfPath, output, pageCountText = '2', toleranceText = '0.0001'] = process.argv.slice(2);
+const pageCount = Number(pageCountText), toleranceMetres = Number(toleranceText);
+if (!Number.isInteger(pageCount) || pageCount < 1 || pageCount > 128 || !Number.isFinite(toleranceMetres) || toleranceMetres <= 0) throw new Error('Invalid evidence page count or metric tolerance');
 if (!pdfPath || !output) throw new Error('Usage: pdf-fill-evidence.mjs control.pdf output-directory');
 await mkdir(output, {recursive:true});
 const source=new Uint8Array(await readFile(pdfPath));
 try {
- for(const pageNumber of [1,2]){
-  const decoded=await runPdfJob(backend,source,{kind:'vectors',request:{pageNumber,modelMetresFromPdf:[1/30,0,0,1/30,0,0],calibrationKey:'synthetic-control-30-pdf-units-per-metre',toleranceMetres:.0001}});
+ for(let pageNumber = 1; pageNumber <= pageCount; pageNumber++){
+  const decoded=await runPdfJob(backend,source,{kind:'vectors',request:{pageNumber,modelMetresFromPdf:[1/30,0,0,1/30,0,0],calibrationKey:'synthetic-control-30-pdf-units-per-metre',toleranceMetres}});
   if(decoded.kind!=='vectors')throw new Error('Wrong decoder response');
   const data=await new IfcParser().parseColumnar(texturedProductSource.slice().buffer,{disableWorkerScan:true});
   const view=new MutablePropertyView(data.properties,'pdf-fill'),editor=new StoreEditor(data,view);
   const request={schema:'IFC4',sourceRevision:'actual-pdf-control',nextExpressId:view.peekNextExpressId(),containerId:40,GlobalId:'0aaaaaaaaaaaaaaaaaaaaa',containmentGlobalId:'0bbbbbbbbbbbbbbbbbbbbb',Name:'Actual PDF fill control',frame:{origin:[2,3,4],axisU:[1,0,0],axisV:[0,0,1],sizeMetres:[8,8]},page:decoded.page};
+  await writeFile(`${output}/page-${pageNumber}-request.json`,JSON.stringify(request,null,2));
   const result=JSON.parse(new TextDecoder().decode(api.planPdfFillAnnotation(texturedProductSource,JSON.stringify(request))));
   for(const row of result.plan.created){const actual=editor.addEntity(row.type,row.attributes);if(actual.expressId!==row.expressId)throw new Error('Allocation mismatch');}
   const step=await new StepExporter(data,view).exportAsync({schema:'IFC4',applyMutations:true,includeGeometry:true});

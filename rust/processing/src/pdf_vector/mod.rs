@@ -2,8 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Bounded graphics-state preparation for the pinned PDF.js adapter. This does
-//! not flatten curves, classify fills, outline strokes, or author IFC entities.
+//! not authorize geometry. The explicit annotation planner separately composes
+//! qualified fills; stroke outlining remains unsupported.
 pub(crate) mod fills;
+mod fill_paths;
+mod curve_hulls;
+mod flatten;
 mod types;
 use sha2::{Digest, Sha256};
 pub use types::*;

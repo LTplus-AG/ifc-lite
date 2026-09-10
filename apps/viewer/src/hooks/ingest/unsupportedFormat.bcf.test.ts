@@ -38,3 +38,9 @@ describe('describeUnsupportedFormat for BCF archives (#4099)', () => {
     assert.doesNotMatch(message!, /extract first/i);
   });
 });
+
+it('scan archives explain the supported extraction/export path (#4477)', () => {
+  assert.match(describeUnsupportedFormat('capture.blend.zip')!, /Blender archive/);
+  assert.match(describeUnsupportedFormat('capture.blend.zip')!, /GLB|\.gltf/);
+  assert.match(describeUnsupportedFormat('capture.zip')!, /glTF bundles/);
+});

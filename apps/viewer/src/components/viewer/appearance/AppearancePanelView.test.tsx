@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import { act, useState } from 'react';
 import { render, click, type, cleanup } from '@/test/render.js';
 import { AppearancePanelView } from './AppearancePanelView.js';
+import { AppearanceAssignments } from './AppearanceAssignments.js';
+import { useAppearanceAssignments } from './useAppearanceAssignments.js';
 import type { AppearancePanelViewProps, AppearanceDraftSettings } from './types.js';
 
 afterEach(cleanup);
@@ -72,6 +74,26 @@ it('uses numeric physical units, blocks invalid local input and forwards valid c
   click(button(ui, 'Discard'));
   assert.equal(button(ui, 'Apply').disabled, false);
   assert.equal((ui.querySelector('input[aria-label="Tile width (m)"]') as HTMLInputElement).value, '1');
+});
+
+it('an unfinished draft number blocks Add this scope without blocking a frozen assignment Apply #4420', () => {
+  let added = 0, applied = 0;
+  function Workbench() {
+    const base = props({ assignmentMode: true, onApply: () => applied++ });
+    const controller = useAppearanceAssignments(base, true);
+    return <AppearancePanelView {...base} renderAssignments={valid => <AppearanceAssignments base={base}
+      controller={{ ...controller, add() { added++; controller.add(); } }} formValid={valid} />} />;
+  }
+  const ui = render(<Workbench />);
+  const width = ui.querySelector('input[aria-label="Tile width (m)"]');
+  assert.ok(width instanceof HTMLInputElement);
+  type(width, '');
+  assert.equal(button(ui, 'Add this scope').disabled, true);
+  click(button(ui, 'Add this scope')); assert.equal(added, 0);
+  assert.equal(button(ui, 'Apply').disabled, false);
+  click(button(ui, 'Apply')); assert.equal(applied, 1);
+  type(width, '2.5');
+  assert.equal(button(ui, 'Add this scope').disabled, false);
 });
 
 it('keeps UV repeat labels dimensionless and forwards exact type scope identifiers', () => {

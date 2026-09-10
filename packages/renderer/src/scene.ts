@@ -10,7 +10,9 @@ import type { InstancedTemplateGPU, InstancedOccurrence, InstancedTemplateCpu } 
 import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
-import { createSceneAppearancePreview } from './scene-appearance-preview.js';
+import { createSceneAppearancePreview, type SceneAppearanceAccess } from './scene-appearance-preview.js';
+import { AppearanceBuckets } from './scene-appearance-buckets.js';
+import { prepareSceneAuthoredOwner } from './scene-authored-owner.js';
 import { interleaveTexturedVertices } from './textured-vertices.js';
 import { RgbaTexturePool } from './rgba-texture-pool.js';
 import { splitMeshForStreaming } from './scene-stream-split.js';
@@ -193,8 +195,10 @@ export class Scene {
   private rgbaTexturePool = new RgbaTexturePool();
   private appearanceController?: ReturnType<typeof createSceneAppearancePreview>;
 
-  appearancePreview(device: GPUDevice, pipeline: RenderPipeline) {
-    return this.appearanceController ??= createSceneAppearancePreview({
+  private appearanceBuckets?: AppearanceBuckets;
+  private authoredGeneration = 0;
+  private appearanceAccess(device: GPUDevice, pipeline: RenderPipeline): SceneAppearanceAccess {
+    return {
       meshes: () => this.texturedMeshes, data: this.meshDataMap,
       instances: {
         has: id => this.instancedEntityMap.has(id),
@@ -226,7 +230,15 @@ export class Scene {
         this.boundingBoxes.delete(id); this.evictHighlightMeshes(id);
         if (!this.instanceSuppression.has(id)) this.recomputeInstancedBounds(id);
       },
-    });
+    };
+  }
+
+  private sharedAppearanceBuckets(access: SceneAppearanceAccess) {
+    return this.appearanceBuckets ??= new AppearanceBuckets(access.buckets, id => this.meshDataMap.get(id));
+  }
+  appearancePreview(device: GPUDevice, pipeline: RenderPipeline) {
+    const access = this.appearanceAccess(device, pipeline);
+    return this.appearanceController ??= createSceneAppearancePreview(access, this.sharedAppearanceBuckets(access));
   }
 
   /** Place canonical native appearance source geometry in this model's live frame. */
@@ -234,36 +246,17 @@ export class Scene {
   /** Retain model-local source coordinates when publishing a placed appearance mesh. */
   appearanceSourceMesh(mesh: MeshData): MeshData { return this.modelTranslations.sourceFromPlaced(mesh); }
 
-  /** Prepare a new textured owner without exposing a drawable or pickable object. */
+  /** Stage one new IFC owner with all its coloured or textured geometry parts. */
+  prepareAuthoredOwner(parts: readonly MeshData[], device: GPUDevice, pipeline: RenderPipeline) {
+    const access = this.appearanceAccess(device, pipeline), generation = this.authoredGeneration;
+    return prepareSceneAuthoredOwner(access, this.sharedAppearanceBuckets(access), parts, () => {
+      if (generation !== this.authoredGeneration) throw new Error('The scene changed while preparing the object.');
+    });
+  }
+  /** Compatibility entry point for an image-backed single-part owner. */
   prepareTexturedOwner(mesh: MeshData, device: GPUDevice, pipeline: RenderPipeline) {
-    if (this.meshDataMap.has(mesh.expressId) || this.instancedEntityMap.has(mesh.expressId)) {
-      throw new Error('The new geometry owner already exists.');
-    }
     if (!Scene.hasRenderableTexture(mesh)) throw new Error('A new textured owner requires an image and UVs.');
-    const placed = this.modelTranslations.placeMesh(mesh);
-    const count = this.texturedMeshes.length;
-    this.createTexturedMesh(placed, device, pipeline);
-    if (this.texturedMeshes.length !== count + 1) throw new Error('The new textured geometry is invalid.');
-    const drawable = this.texturedMeshes.pop()!;
-    let committed = false, disposed = false;
-    return {
-      commit: () => {
-        if (disposed) throw new Error('The prepared geometry was released.');
-        if (committed) return;
-        if (this.meshDataMap.has(mesh.expressId) || this.instancedEntityMap.has(mesh.expressId)) {
-          throw new Error('The new geometry owner was claimed while preparing.');
-        }
-        this.addMeshData(placed);
-        this.texturedMeshes.push(drawable);
-        committed = true;
-      },
-      dispose: () => {
-        if (disposed || committed) return;
-        disposed = true;
-        drawable.vertexBuffer.destroy(); drawable.indexBuffer.destroy(); drawable.uniformBuffer.destroy();
-        this.releaseTexturedMeshTexture(drawable);
-      },
-    };
+    return this.prepareAuthoredOwner([mesh], device, pipeline);
   }
 
   private texturedDevice?: GPUDevice;                               // #961: cached for textured-mesh re-upload on translate
@@ -2326,6 +2319,7 @@ export class Scene {
    * Call this after finalizeStreaming() when all color updates have been applied.
    */
   releaseGeometryData(): void {
+    this.authoredGeneration++;
     if (this.geometryReleased) return;
     if (this.instanceSuppression.retained) {
       console.warn('[Appearance] Retained occurrence history still needs CPU geometry');
@@ -3777,6 +3771,7 @@ export class Scene {
    * picking and sections cannot see a removed flat contribution (#4226).
    */
   clearFlatGeometry(): void {
+    this.authoredGeneration++;
     this.instanceSuppression.restore();
     this.appearanceController?.forget();
     this.clearFlatBuffers();
@@ -3785,6 +3780,7 @@ export class Scene {
   /** Reconcile an ordinary source-geometry rebuild; exact surviving appearance
    * owners keep their original-instance history. Full reset remains separate. */
   clearFlatGeometryForRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>, sourceGeometry = geometry): void {
+    this.authoredGeneration++;
     const retained = this.appearanceController?.prepareRebuild(sourceGeometry, models) ?? new Set<number>();
     const discarded = this.appearanceController?.discardedForRebuild(retained) ?? [];
     // A discarded converted owner must not resurrect its obsolete type instance.

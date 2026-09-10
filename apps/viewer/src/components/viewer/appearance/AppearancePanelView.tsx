@@ -28,8 +28,8 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
   const applying = props.status === 'applying';
   const busy = applying || props.status === 'preparing' || props.sourceBusy || props.pdf?.busy || props.pdfPassword?.busy;
   const blocked = !!props.pdfPassword || !!props.pdf?.error || !!props.unavailableReason || (!reference && !props.modelId) || !props.sourceId;
-  const applyDisabled = !props.canApply || !props.hasPreview || blocked || busy || invalidFields.size > 0 || (!reference && props.affectedCount === 0) || props.status !== 'ready';
-  const message = invalidFields.size ? 'Enter valid numbers in the highlighted fields before applying.' :
+  const applyDisabled = !props.canApply || !props.hasPreview || (!props.assignmentMode && blocked) || busy || (!props.assignmentMode && invalidFields.size > 0) || (!reference && props.affectedCount === 0) || props.status !== 'ready';
+  const message = !props.assignmentMode && invalidFields.size ? 'Enter valid numbers in the highlighted fields before applying.' :
     props.unavailableReason ?? props.statusMessage ?? ({
       idle: 'Choose an image and scope to preview appearance.',
       preparing: 'Preparing preview… You can keep adjusting the controls.',
@@ -60,6 +60,7 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
       {props.calibration && <AppearanceCalibrationFields key={`${props.sourceId}:${props.calibration.sourceKey}:${inputReset}`}
         {...props.calibration} disabled={applying || blocked || !!props.sourceBusy} onInvalid={onInvalid} />}
       <AppearanceMappingFields calibrated={!!props.calibration} key={`${props.modelId}:${props.sourceId}:${inputReset}`} settings={props.settings} onChange={props.onSettingsChange} disabled={applying || blocked} onInvalid={onInvalid} />
+      {!reference && props.renderAssignments?.(invalidFields.size === 0)}
     </div>
     <footer className="shrink-0 space-y-2 border-t bg-background p-3">
       <div role={props.status === 'error' || invalidFields.size ? 'alert' : 'status'} aria-live="polite"

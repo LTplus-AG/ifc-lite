@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { getPdfDocument } from '../pdf/documents.js';
+import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { useViewerStore } from '@/store';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view.js';
 import { computeFullSourceHash } from '@/utils/sourceContentHash.js';
@@ -14,7 +16,12 @@ import { resolveAppearanceAssignments } from './resolve.js';
 import { ownAssignmentSource } from './source.js';
 
 function logicalSource(source: AppearanceSourceOption): AppearanceAssignment['source'] {
-  return ownAssignmentSource(source);
+  const frozen = ownAssignmentSource(source);
+  if (frozen.pdf) {
+    const document = getPdfDocument(frozen.pdf.documentKey);
+    if (document) frozen.pdf.documentSha256 = document.id;
+  }
+  return frozen;
 }
 
 /** Use effective IFC identity, including overlay-created objects and GUID edits.
@@ -73,7 +80,7 @@ export async function captureAppearanceAssignment(options: {
   validate();
   if (!sourceSha256) throw new Error('The model source identity could not be verified. Try preparing the assignment again.');
   const assignment: AppearanceAssignment = { id: crypto.randomUUID(),
-    model: { slotId: options.slotId, modelId, name: model.name, sourceSha256, revision: snapshot.revision },
+    model: { slotId: options.slotId, modelId, name: modelDisplayLabels(initial.models).get(modelId) ?? model.name, sourceSha256, revision: snapshot.revision },
     source: frozenSource, settings, query, members, excludedGlobalIds: [] };
   resolveAppearanceAssignments([assignment]);
   return { assignment, snapshot, validate };

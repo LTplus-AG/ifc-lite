@@ -1,41 +1,12 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-use super::{annotation_types::*, canonical, mapping, reference, source::Source, validate_image_uri, AppearancePlan, Mapping, MappingFrame};
-use ifc_lite_core::{AttributeValue as A, DecodedEntity, IfcType};
+use super::{annotation_types::*, authored::{vector, refs}, canonical, validate_image_uri, AppearancePlan};
+use ifc_lite_core::{AttributeValue as A, IfcType};
 use ifc_lite_geometry::{ImageTextureRef, ResolvedTextureMap, TextureSource};
 use rustc_hash::FxHashMap;
-use serde_json::{json, Value};
-use std::sync::Arc;
-
-fn dot(a: [f64; 3], b: [f64; 3]) -> f64 { a.iter().zip(b).map(|(a,b)| a*b).sum() }
-fn cross(a: [f64;3], b: [f64;3]) -> [f64;3] { [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]] }
-fn vector(v: [f64;3]) -> A { A::List(v.into_iter().map(A::Float).collect()) }
-fn refs(ids: &[u32]) -> A { A::List(ids.iter().copied().map(A::EntityRef).collect()) }
-fn valid_guid(value: &str) -> bool {
-    value.len()==22 && value.as_bytes()[0]<=b'3' && value.as_bytes()[0]>=b'0'
-        && value.bytes().all(|c| c.is_ascii_alphanumeric() || c==b'_' || c==b'$')
-}
-// Only our fixed authored schema rows reach this conversion: file-supplied
-// aggregate values are never recursively cloned or reinterpreted here.
-fn wire(value: &A) -> Value {
-    match value {
-        A::EntityRef(id) => reference(*id), A::Null => Value::Null,
-        A::Derived => json!("*"), A::Enum(s) => json!(format!(".{s}.")),
-        A::String(s) => json!(s), A::Integer(n) => json!(n), A::Float(n) => json!(n),
-        A::List(v) => json!(v.iter().map(wire).collect::<Vec<_>>()),
-    }
-}
-struct Author {
-    plan: AppearancePlan,
-    entities: FxHashMap<u32, Arc<DecodedEntity>>,
-}
-impl Author {
-    fn add(&mut self, ty: IfcType, attributes: Vec<A>) -> u32 {
-        let id = super::add(&mut self.plan, ty.name(), attributes.iter().map(wire).collect());
-        self.entities.insert(id, Arc::new(DecodedEntity::new(id, ty, attributes))); id
-    }
-}
+#[cfg(test)]
+use super::source::Source;
 
 pub(super) struct AuthoredProductPlan {
     pub plan: AppearancePlan,
@@ -46,68 +17,15 @@ pub(super) struct AuthoredProductPlan {
 }
 pub(super) fn plan_textured_product(bytes:&[u8], request:&AnnotationPlaneRequest, captured:Option<&super::captured_types::CapturedMesh>, repeat:[bool;2]) -> Result<AuthoredProductPlan,String> {
     let r=request;
-    if !matches!(r.schema.as_str(), "IFC4"|"IFC4X3") || r.source_revision.len()>4096 || r.name.len()>1024
-        || !valid_guid(&r.global_id) || !valid_guid(&r.containment_global_id) || r.global_id==r.containment_global_id {
-        return Err("Annotation needs IFC4/IFC4X3, bounded metadata and distinct valid IFC GlobalIds".into());
-    }
-    super::wire_text::validate(&r.name, "Authored product Name")?;
-    validate_image_uri(&r.image_uri)?;
     let f=&r.frame;
-    mapping::validate(&Mapping::Planar { frame: MappingFrame::World, origin:f.origin, axis_u:f.axis_u,
-        axis_v:f.axis_v, metres_per_tile:f.size_metres })?;
-    if (dot(f.axis_u,f.axis_u)-1.).abs()>1e-10 || (dot(f.axis_v,f.axis_v)-1.).abs()>1e-10 || dot(f.axis_u,f.axis_v).abs()>1e-10 {
-        return Err("Annotation image frame must have orthonormal axes".into());
-    }
-    let mut source=Source::new(bytes)?;
-    if source.types.len()+32>200_000 || r.next_express_id<=source.types.last_key_value().map_or(0,|(id,_)| *id)
-        || r.next_express_id.checked_add(32).is_none() {
-        return Err("Annotation allocator or entity budget is exhausted/stale".into());
-    }
-    let ids:Vec<_>=source.types.iter().filter(|(_,t)|t.is_subtype_of(IfcType::IfcRoot)).map(|(id,_)|*id).collect();
-    for id in ids {
-        let entity=source.entity(id)?;
-        if entity.get_string(0).is_some_and(|guid|guid==r.global_id || guid==r.containment_global_id) {
-            return Err("Annotation GlobalId already exists in the effective model".into());
-        }
-    }
-    let container=source.entity(r.container_id)?;
-    if !container.ifc_type.is_subtype_of(IfcType::IfcSpatialElement) {
-        return Err("Choose an effective IfcSpatialElement as annotation container".into());
-    }
-    source.validate_world_placement(&container)?;
-    let projects:Vec<_>=source.types.iter().filter(|(_,t)|**t==IfcType::IfcProject).map(|(id,_)|*id).collect();
-    if projects.len()!=1 { return Err("Annotation creation needs one unambiguous IfcProject".into()); }
-    let project=source.entity(projects[0])?;
-    let mut contexts=Vec::new();
-    for id in super::source::refs(project.get(7))? {
-        let context=source.entity(id)?;
-        if context.ifc_type==IfcType::IfcGeometricRepresentationContext && context.get(2).and_then(A::as_int)==Some(3) {
-            contexts.push(id);
-        }
-    }
-    if contexts.len()!=1 { return Err("Choose a model with one unambiguous root 3D representation context".into()); }
-    let scale=source.decoder.length_unit_scale();
-    if !scale.is_finite() || scale<=0. { return Err("Invalid model length unit".into()); }
-    let context=source.context.as_ref().ok_or("Missing canonical load context")?;
-    let rtc_offset=if context.meta.needs_shift { context.meta.rtc_offset.into() } else { [0.;3] };
-    let transform=context.router().resolve_scaled_placement(&container,&mut source.decoder).map_err(|e|e.to_string())?;
-    let columns:[[f64;3];3]=std::array::from_fn(|i|std::array::from_fn(|j|transform[i*4+j]));
-    if transform.iter().any(|v|!v.is_finite()) || (0..3).any(|i| (0..3).any(|j|
-        (dot(columns[i],columns[j])-if i==j {1.} else {0.}).abs()>1e-10)) || dot(cross(columns[0],columns[1]),columns[2])<0.999999 {
-        return Err("Annotation container placement must be a finite right-handed rigid frame".into());
-    }
-    let inverse=|v:[f64;3]|columns.map(|c|dot(c,v));
-    let origin=inverse(std::array::from_fn(|i|f.origin[i]-transform[12+i])).map(|v|v/scale);
-    let u=inverse(f.axis_u); let normal=inverse(cross(f.axis_u,f.axis_v));
+    let metadata=super::authored::Metadata {schema:&r.schema,source_revision:&r.source_revision,
+        next_express_id:r.next_express_id,container_id:r.container_id,global_id:&r.global_id,
+        containment_global_id:&r.containment_global_id,name:&r.name};
+    super::authored::validate_metadata(&metadata)?;
+    validate_image_uri(&r.image_uri)?;
+    let super::authored::Authoring {mut author,mut source,placement,context_id,owner,scale,rtc_offset} =
+        super::authored::prepare(bytes,&metadata,f,32)?;
     let size=f.size_metres.map(|v|v/scale);
-    if origin.iter().chain(&size).any(|v|!v.is_finite()) { return Err("Annotation placement exceeds numeric range".into()); }
-    let mut author=Author { plan:AppearancePlan { source_revision:r.source_revision.clone(), next_express_id:r.next_express_id,
-        next_available_express_id:r.next_express_id, ..Default::default() }, entities:FxHashMap::default() };
-    let point=author.add(IfcType::IfcCartesianPoint,vec![vector(origin)]);
-    let axis=author.add(IfcType::IfcDirection,vec![vector(normal)]);
-    let direction=author.add(IfcType::IfcDirection,vec![vector(u)]);
-    let axes=author.add(IfcType::IfcAxis2Placement3D,vec![A::EntityRef(point),A::EntityRef(axis),A::EntityRef(direction)]);
-    let placement=author.add(IfcType::IfcLocalPlacement,vec![container.get_ref(5).map_or(A::Null,A::EntityRef),A::EntityRef(axes)]);
     let vertices = captured.map_or_else(|| vec![[0.,0.,0.],[size[0],0.,0.],[size[0],size[1],0.],[0.,size[1],0.]], |m| m.positions.iter().map(|p| std::array::from_fn(|i| (p[i]-f.origin[i])/scale)).collect());
     let mut point_attributes=vec![A::List(vertices.into_iter().map(vector).collect())];
     if r.schema=="IFC4X3" { point_attributes.push(A::Null); } // TagList, IFC4X3 only.
@@ -125,9 +43,8 @@ pub(super) fn plan_textured_product(bytes:&[u8], request:&AnnotationPlaneRequest
     let texture=author.add(IfcType::IfcSurfaceStyleWithTextures,vec![refs(&[image])]);
     let style=author.add(IfcType::IfcSurfaceStyle,vec![A::String("Registered image".into()),A::Enum("BOTH".into()),refs(&[shading,texture])]);
     let styled=author.add(IfcType::IfcStyledItem,vec![A::EntityRef(item),refs(&[style]),A::Null]);
-    let shape=author.add(IfcType::IfcShapeRepresentation,vec![A::EntityRef(contexts[0]),A::String(if captured.is_some() {"Body"} else {"Annotation"}.into()),A::String("Tessellation".into()),refs(&[item])]);
+    let shape=author.add(IfcType::IfcShapeRepresentation,vec![A::EntityRef(context_id),A::String(if captured.is_some() {"Body"} else {"Annotation"}.into()),A::String("Tessellation".into()),refs(&[item])]);
     let product_shape=author.add(IfcType::IfcProductDefinitionShape,vec![A::Null,A::Null,refs(&[shape])]);
-    let owner=project.get_ref(1).map_or(A::Null,A::EntityRef);
     let mut annotation_attributes=vec![A::String(r.global_id.clone()),owner.clone(),A::String(r.name.clone()),A::Null,
         A::String(if captured.is_some() {"IfcLite:CapturedSurface"} else {"IfcLite:RegisteredImage"}.into()),A::EntityRef(placement),A::EntityRef(product_shape)];
     if captured.is_some() { annotation_attributes.extend([A::Null,A::Enum("USERDEFINED".into())]); }

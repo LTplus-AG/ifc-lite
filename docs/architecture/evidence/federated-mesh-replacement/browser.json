@@ -1,0 +1,136 @@
+{
+  "shown": false,
+  "federated": true,
+  "loaded": {
+    "model": "d77a0ead-db65-4ce1-b04b-2eef344c8f64",
+    "host": 1138398,
+    "opening": 1138473
+  },
+  "openingClick": 1138473,
+  "source": {
+    "pr": "8c99fd99b",
+    "integration": "f47daad98",
+    "f6PolicyCheckpoint": "4a43bc06e",
+    "modelSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+    "wasmSha256": "7bf16e6133e3c79992ede4fa14eac6a5426f7fa2ecef7f78282d36691208429c"
+  },
+  "before": {
+    "selected": 1138398,
+    "openingsShown": false,
+    "undo": 0,
+    "redo": 0,
+    "modelOpening": 1,
+    "host": [
+      {
+        "item": 1138382,
+        "triangles": 32,
+        "textured": false,
+        "geometrySha256": "f79b0d4d3a1f0dd9221af94c8b9e1b603cc57099e8144ec9a2f0ceeb3486330b"
+      }
+    ],
+    "opening": []
+  },
+  "preview": {
+    "selected": 1138398,
+    "openingsShown": false,
+    "undo": 0,
+    "redo": 0,
+    "modelOpening": 1,
+    "host": [
+      {
+        "item": 1158217,
+        "triangles": 32,
+        "textured": true,
+        "geometrySha256": "05ae5ac8d566799da3e20ac1fa83bdbec15805f13779818eaed9ac55c4ac54d6"
+      }
+    ],
+    "opening": []
+  },
+  "compared": {
+    "selected": 1138398,
+    "openingsShown": false,
+    "undo": 0,
+    "redo": 0,
+    "modelOpening": 1,
+    "host": [
+      {
+        "item": 1138382,
+        "triangles": 32,
+        "textured": false,
+        "geometrySha256": "f79b0d4d3a1f0dd9221af94c8b9e1b603cc57099e8144ec9a2f0ceeb3486330b"
+      }
+    ],
+    "opening": []
+  },
+  "applied": {
+    "selected": 1138398,
+    "openingsShown": false,
+    "undo": 1,
+    "redo": 0,
+    "modelOpening": 0,
+    "host": [
+      {
+        "item": 1158217,
+        "triangles": 32,
+        "textured": true,
+        "geometrySha256": "05ae5ac8d566799da3e20ac1fa83bdbec15805f13779818eaed9ac55c4ac54d6"
+      }
+    ],
+    "opening": []
+  },
+  "undone": {
+    "selected": 1138398,
+    "openingsShown": false,
+    "undo": 0,
+    "redo": 1,
+    "modelOpening": 1,
+    "host": [
+      {
+        "item": 1138382,
+        "triangles": 32,
+        "textured": false,
+        "geometrySha256": "f79b0d4d3a1f0dd9221af94c8b9e1b603cc57099e8144ec9a2f0ceeb3486330b"
+      }
+    ],
+    "opening": []
+  },
+  "shownUndo": {
+    "selected": 1138398,
+    "openingsShown": true,
+    "undo": 0,
+    "redo": 1,
+    "modelOpening": 1,
+    "host": [
+      {
+        "item": 1138382,
+        "triangles": 32,
+        "textured": false,
+        "geometrySha256": "f79b0d4d3a1f0dd9221af94c8b9e1b603cc57099e8144ec9a2f0ceeb3486330b"
+      }
+    ],
+    "opening": [
+      {
+        "item": 1138461,
+        "triangles": 12,
+        "textured": false,
+        "geometrySha256": "fe2fcbc7c7fe0661f4c25689c73c6c1fec87712fb364797db94c77b69edffd96"
+      }
+    ]
+  },
+  "redone": {
+    "selected": 1138398,
+    "openingsShown": false,
+    "undo": 1,
+    "redo": 0,
+    "modelOpening": 0,
+    "host": [
+      {
+        "item": 1158217,
+        "triangles": 32,
+        "textured": true,
+        "geometrySha256": "05ae5ac8d566799da3e20ac1fa83bdbec15805f13779818eaed9ac55c4ac54d6"
+      }
+    ],
+    "opening": []
+  }
+}

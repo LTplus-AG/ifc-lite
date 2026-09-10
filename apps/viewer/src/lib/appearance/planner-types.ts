@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { PdfFillAnnotationRequest, PdfFillAnnotationPlan } from './pdf/fill-plan-types';
 import type { MeshTransferRequest, MeshTransferPlan } from './scan/transfer-types';
 import type { ScanRegistrationRequest, ScanRegistrationReport } from './scan/types';
 
@@ -138,6 +139,7 @@ export interface CapturedMeshPlan extends Omit<AnnotationPlanePlan, 'annotationI
   objectId: number;
 }
 export type AppearanceWorkerJob =
+  | { type: 'pdf-fill-plan'; request: PdfFillAnnotationRequest }
   | { type: 'mesh-transfer'; request: MeshTransferRequest; rgba: Uint8Array }
   | { type: 'scan-registration'; request: ScanRegistrationRequest }
   | { type: 'captured-mesh-plan'; request: CapturedMeshRequest }
@@ -147,6 +149,7 @@ export type AppearanceWorkerJob =
   | { type: 'page-plan'; request: PageAppearanceRequest; rgba: Uint8Array };
 export type AppearanceWorkerRequest = AppearanceWorkerJob & { id: number; source: Uint8Array };
 export type AppearanceWorkerResponse =
+  | { type: 'pdf-fill-complete'; id: number; result: PdfFillAnnotationPlan }
   | { type: 'mesh-transfer-complete'; id: number; result: MeshTransferPlan }
   | { type: 'scan-registration-complete'; id: number; result: ScanRegistrationReport }
   | { type: 'captured-mesh-complete'; id: number; result: CapturedMeshPlan }

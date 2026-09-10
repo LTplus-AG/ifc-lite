@@ -58,6 +58,11 @@ export function ownAssignmentSource(value: unknown): AppearanceAssignment['sourc
   if (v.pdf !== undefined) {
     const p = record(v.pdf);
     source.pdf = { documentKey: string(p.documentKey), recipe: pdfRecipe(p.recipe) };
+    if (p.documentSha256 !== undefined) {
+      const digest = string(p.documentSha256);
+      if (!/^[a-f0-9]{64}$/.test(digest)) throw new Error('Invalid original PDF source digest.');
+      source.pdf.documentSha256 = digest;
+    }
     if (source.pdf.recipe.pixelWidth !== source.width || source.pdf.recipe.pixelHeight !== source.height) {
       throw new Error('The PDF derivative dimensions differ from the saved source.');
     }

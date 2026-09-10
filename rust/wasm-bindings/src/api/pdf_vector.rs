@@ -4,6 +4,7 @@
 use super::IfcAPI;
 use ifc_lite_processing::pdf_vector::{prepare_pdf_vector_page, PdfVectorPage};
 use wasm_bindgen::prelude::*;
+use ifc_lite_processing::appearance::{plan_pdf_fill_annotation, PdfFillAnnotationRequest};
 fn prepare_json(input: &str) -> Result<Vec<u8>, String> {
     if input.len() > 32 * 1024 * 1024 {
         return Err("PDF vector request exceeds 32 MiB".into());
@@ -13,8 +14,20 @@ fn prepare_json(input: &str) -> Result<Vec<u8>, String> {
     let report = prepare_pdf_vector_page(&page)?;
     serde_json::to_vec(&report).map_err(|e| format!("Cannot encode PDF vector report: {e}"))
 }
+fn plan_json(source:&[u8],input:&str)->Result<Vec<u8>,String> {
+    if source.len()>128*1024*1024 || input.len()>32*1024*1024 {return Err("PDF annotation source/request exceeds byte budget".into());}
+    let request:PdfFillAnnotationRequest=serde_json::from_str(input).map_err(|e|format!("Invalid PDF fill annotation request: {e}"))?;
+    serde_json::to_vec(&plan_pdf_fill_annotation(source,&request)?).map_err(|e|format!("Cannot encode PDF fill annotation: {e}"))
+}
 #[wasm_bindgen]
 impl IfcAPI {
+    /// Plan a complete opaque polygonal PDF fill page as canonical IfcAnnotation
+    /// geometry. Painted strokes, curves and unsupported states refuse atomically.
+    #[wasm_bindgen(js_name = planPdfFillAnnotation)]
+    pub fn plan_pdf_fill_annotation(&self, source:&[u8], request_json:&str)->Result<Vec<u8>,JsError> {
+        plan_json(source,request_json).map_err(|message|JsError::new(&message))
+    }
+
     /// Prepare bounded ordered PDF vector graphics states. No IFC entities or
     /// flattened geometry are produced; unsupported content prevents qualification.
     #[wasm_bindgen(js_name = preparePdfVectorPage)]

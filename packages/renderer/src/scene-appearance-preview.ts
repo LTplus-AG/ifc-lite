@@ -4,6 +4,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import { AppearanceInstances, type InstanceAppearanceAccess, type InstanceAppearanceRecord } from './scene-appearance-instances.js';
 import type { TexturedMesh } from './scene.js';
+import { stageAppearanceResources, releaseAppearanceResources, textured } from './scene-appearance-resources.js';
 import { AppearancePreviewController } from './appearance-preview.js';
 import { AppearanceCompanions } from './appearance-companions.js';
 import { equivalentAppearanceGeometry } from './appearance-uvs.js';
@@ -17,7 +18,7 @@ type Resource =
   | { kind: 'textured'; mesh: TexturedMesh }
   | { kind: 'flat'; flat: FlatAppearanceResource }
   | { kind: 'instance'; record: InstanceAppearanceRecord };
-interface SceneAppearanceAccess {
+export interface SceneAppearanceAccess {
   meshes(): TexturedMesh[];
   data: Map<number, MeshData[]>;
   instances: InstanceAppearanceAccess;
@@ -29,26 +30,15 @@ interface SceneAppearanceAccess {
   release(mesh: TexturedMesh): void;
   invalidate(id: number): void;
 }
-const textured = (part: MeshData) =>
-  !!(part.uvs && (part.texture || (part.textureRef && part.textureBitmap)));
+
 export function createSceneAppearancePreview(
   access: SceneAppearanceAccess,
+  buckets = new AppearanceBuckets(access.buckets, id => access.data.get(id)),
 ): AppearancePreviewController<Resource> {
   const instances = new AppearanceInstances(access.instances);
   const companions = new AppearanceCompanions();
-  const buckets = new AppearanceBuckets(access.buckets, (id) =>
-    access.data.get(id),
-  );
-  function release(resources: readonly Resource[]) {
-    for (const resource of resources) {
-      try {
-        if (resource.kind === 'textured') access.release(resource.mesh);
-        else if (resource.kind === 'flat') buckets.release(resource.flat);
-      } catch (error) {
-        console.warn('[Appearance] resource disposal failed', error);
-      }
-    }
-  }
+  const release = (resources: readonly Resource[]) =>
+    releaseAppearanceResources(access, buckets, resources.filter(resource => resource.kind !== 'instance'));
   return new AppearancePreviewController({
     validate: owner => companions.validate(owner, access.data.get(owner.expressId)),
     prepareRebuild(geometry, models) {
@@ -132,35 +122,7 @@ export function createSceneAppearancePreview(
       if (!parts.length || companions.get({ expressId: parts[0].expressId, modelIndex: parts[0].modelIndex ?? 0 })?.hidden) return [];
       const record = instances.get({ expressId: parts[0].expressId, modelIndex: parts[0].modelIndex ?? 0 });
       if (record && instances.isOriginal(record, parts)) return [{ kind: 'instance', record }];
-      const meshes = access.meshes(),
-        start = meshes.length;
-      const resources: Resource[] = [];
-      try {
-        const flatIndices: number[] = [];
-        parts.forEach((part, index) => {
-          if (textured(part)) access.upload(part);
-          else flatIndices.push(index);
-        });
-        resources.push(
-          ...meshes
-            .splice(start)
-            .map((mesh) => ({ kind: 'textured' as const, mesh })),
-        );
-        resources.push(
-          ...buckets
-            .stage(parts, flatIndices)
-            .map((flat) => ({ kind: 'flat' as const, flat })),
-        );
-        return resources;
-      } catch (error) {
-        resources.push(
-          ...meshes
-            .splice(start)
-            .map((mesh) => ({ kind: 'textured' as const, mesh })),
-        );
-        release(resources);
-        throw error;
-      }
+      return stageAppearanceResources(access, buckets, parts);
     },
     install(owner, parts, resources) {
       const meshes = access.meshes();

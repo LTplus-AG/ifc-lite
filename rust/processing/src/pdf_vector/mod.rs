@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Bounded graphics-state preparation for the pinned PDF.js adapter. This does
 //! not flatten curves, classify fills, outline strokes, or author IFC entities.
+pub(crate) mod fills;
 mod types;
 use sha2::{Digest, Sha256};
 pub use types::*;

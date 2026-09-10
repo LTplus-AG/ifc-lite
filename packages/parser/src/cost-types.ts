@@ -12,6 +12,31 @@ import type { CollectedQuantity } from './quantity-collect.js';
 export type { CollectedQuantity };
 
 /**
+ * `UnitBasis` resolved (`IfcAppliedValue.UnitBasis : OPTIONAL
+ * IfcMeasureWithUnit`, schema slot 3 in `IFC4_ADD2_TC1.exp` / `IFC4X3.exp` /
+ * `IFC2X3_TC1.exp` alike). Present exactly when the source declared a
+ * `UnitBasis` that resolves to an `IFCMEASUREWITHUNIT` entity — that presence
+ * alone is what marks this `CostValueInfo` as a RATE ("$85 per hour") rather
+ * than a flat total ("$5,000"), even when `valueComponent`/`unitSymbol` below
+ * could not themselves be resolved (e.g. `UnitComponent` selects an
+ * `IfcContextDependentUnit`, which carries no SI conversion and
+ * `resolveUnitByRef` does not resolve). `undefined` on `CostValueInfo` when
+ * `UnitBasis` itself is absent or its reference is broken — matching this
+ * module's absent-vs-unresolved convention for `costValues`/`parentGlobalId`.
+ */
+export interface CostValueUnitBasis {
+  /** `ValueComponent`, e.g. `1` in "per 1 hour". `undefined` when the
+   *  `IfcValue` select member is not a plain numeric measure this reader
+   *  resolves (same resolution `appliedValue` below uses). */
+  valueComponent?: number;
+  /** `UnitComponent`'s display symbol, e.g. `"h"`, `"m²"`. `undefined` when
+   *  `resolveUnitByRef` does not resolve the referenced `IfcUnit` member. */
+  unitSymbol?: string;
+  /** SI scale factor for `unitSymbol`, when resolved. */
+  unitSiScale?: number;
+}
+
+/**
  * One `IfcCostValue` (a subtype of `IfcAppliedValue` that adds no attributes
  * of its own — `packages/codegen/schemas/IFC4_ADD2_TC1.exp` /
  * `IFC4X3.exp`: `ENTITY IfcCostValue SUBTYPE OF (IfcAppliedValue); END_ENTITY;`).
@@ -28,6 +53,8 @@ export interface CostValueInfo {
    * `IfcMeasureWithUnit` reference) this extractor does not resolve.
    */
   appliedValue?: number;
+  /** See {@link CostValueUnitBasis} — distinguishes a rate from a flat total. */
+  unitBasis?: CostValueUnitBasis;
   applicableDate?: string;
   fixedUntilDate?: string;
   category?: string;

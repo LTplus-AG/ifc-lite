@@ -198,6 +198,82 @@ describe('extractCostOnDemand', () => {
     expect(item.productGlobalIds).toEqual(['wall-A-gid', 'wall-B-gid']);
   });
 
+  describe('UnitBasis (rate vs. flat total)', () => {
+    // Shared unit chain: "hour" = an IfcConversionBasedUnit whose
+    // ConversionFactor (#51) is 3600 IFCSIUNIT SECONDs (#50) — same fixture
+    // shape as `unit-extractor.test.ts`'s FOOT case, so this exercises the
+    // real `resolveUnitByRef` chain (IFCMEASUREWITHUNIT -> IFCCONVERSIONBASEDUNIT
+    // -> IFCMEASUREWITHUNIT -> IFCSIUNIT), not a stub.
+    const HOUR_UNIT_LINES = [
+      "#50=IFCSIUNIT(*,.TIMEUNIT.,$,.SECOND.);",
+      "#51=IFCMEASUREWITHUNIT(IFCTIMEMEASURE(3600.),#50);",
+      "#52=IFCCONVERSIONBASEDUNIT($,.TIMEUNIT.,'HOUR',#51);",
+      // The UnitBasis instance itself: "per 1 hour".
+      "#60=IFCMEASUREWITHUNIT(IFCTIMEMEASURE(1.),#52);",
+    ];
+
+    it('a CostValue WITH UnitBasis surfaces valueComponent + resolved unit symbol/scale', () => {
+      const lines = [
+        ...HOUR_UNIT_LINES,
+        "#40=IFCCOSTVALUE('Labour rate',$,IFCMONETARYMEASURE(85.),#60,$,$,$,$,$,$);",
+        "#10=IFCCOSTITEM('ci-gid',$,'Excavation','desc','obj','ID1',.USERDEFINED.,(#40),$);",
+      ];
+      const store = buildStoreFromStep(lines);
+      const result = extractCostOnDemand(store);
+      const value = result.costItems[0].costValues?.[0];
+      expect(value?.appliedValue).toBe(85);
+      expect(value?.unitBasis).toBeDefined();
+      expect(value?.unitBasis?.valueComponent).toBe(1);
+      expect(value?.unitBasis?.unitSymbol).toBe('h');
+      expect(value?.unitBasis?.unitSiScale).toBeCloseTo(3600, 10);
+    });
+
+    it('a CostValue WITHOUT UnitBasis yields the absent form (undefined), not a fabricated default', () => {
+      const lines = [
+        "#40=IFCCOSTVALUE('Flat total',$,IFCMONETARYMEASURE(85.),$,$,$,$,$,$,$);",
+        "#10=IFCCOSTITEM('ci-gid',$,'Excavation','desc','obj','ID1',.USERDEFINED.,(#40),$);",
+      ];
+      const store = buildStoreFromStep(lines);
+      const result = extractCostOnDemand(store);
+      const value = result.costItems[0].costValues?.[0];
+      expect(value?.appliedValue).toBe(85);
+      expect(value?.unitBasis).toBeUndefined();
+    });
+
+    it('DECISIVE: a rate and a flat total with numerically identical AppliedValue are distinguishable only via unitBasis', () => {
+      const lines = [
+        ...HOUR_UNIT_LINES,
+        // Both carry AppliedValue = 85. Only #40 has a UnitBasis.
+        "#40=IFCCOSTVALUE('Labour rate',$,IFCMONETARYMEASURE(85.),#60,$,$,$,$,$,$);",
+        "#41=IFCCOSTVALUE('Flat total',$,IFCMONETARYMEASURE(85.),$,$,$,$,$,$,$);",
+        "#10=IFCCOSTITEM('ci-gid',$,'Excavation','desc','obj','ID1',.USERDEFINED.,(#40,#41),$);",
+      ];
+      const store = buildStoreFromStep(lines);
+      const result = extractCostOnDemand(store);
+      const [rate, total] = result.costItems[0].costValues ?? [];
+
+      // Identical in AppliedValue — a consumer summing on appliedValue alone
+      // cannot tell them apart, which is exactly the bug this fix closes.
+      expect(rate.appliedValue).toBe(total.appliedValue);
+      expect(rate.appliedValue).toBe(85);
+
+      // Distinguishable via unitBasis: rate is defined, total is undefined.
+      expect(rate.unitBasis).toBeDefined();
+      expect(total.unitBasis).toBeUndefined();
+    });
+
+    it('a CostValue whose UnitBasis references a non-existent entity yields undefined, not a crash', () => {
+      const lines = [
+        "#40=IFCCOSTVALUE('Bad ref',$,IFCMONETARYMEASURE(85.),#999,$,$,$,$,$,$);",
+        "#10=IFCCOSTITEM('ci-gid',$,'Excavation','desc','obj','ID1',.USERDEFINED.,(#40),$);",
+      ];
+      const store = buildStoreFromStep(lines);
+      const result = extractCostOnDemand(store);
+      const value = result.costItems[0].costValues?.[0];
+      expect(value?.unitBasis).toBeUndefined();
+    });
+  });
+
   describe('IFC2X3', () => {
     it('handles an IfcCostItem with no attributes explicitly, without crashing or misreading', () => {
       // IFC2X3's IfcCostItem is `SUBTYPE OF (IfcControl); END_ENTITY;` — no

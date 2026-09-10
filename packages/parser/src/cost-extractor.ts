@@ -40,7 +40,14 @@
 import { EntityExtractor } from './entity-extractor.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import { collectQuantitiesFromRefs } from './quantity-collect.js';
-import type { CostExtraction, CostItemInfo, CostScheduleInfo, CostValueInfo } from './cost-types.js';
+import { resolveUnitByRef } from './project-units.js';
+import type {
+  CostExtraction,
+  CostItemInfo,
+  CostScheduleInfo,
+  CostValueInfo,
+  CostValueUnitBasis,
+} from './cost-types.js';
 
 /** Flattened IFC4/IFC4X3 STEP attribute indices for IfcCostItem. */
 const COST_ITEM_ATTR = {
@@ -66,11 +73,17 @@ const COST_SCHEDULE_ATTR = {
   UpdateDate: 9,
 } as const;
 
-/** IfcAppliedValue attribute slots (IfcCostValue adds no attributes of its own). */
+/**
+ * IfcAppliedValue attribute slots (IfcCostValue adds no attributes of its
+ * own). Slot 3, `UnitBasis : OPTIONAL IfcMeasureWithUnit`, is what tells a
+ * RATE ("$85 per hour") apart from a flat total ("$5,000") — read via
+ * `extractUnitBasis` below, not skipped.
+ */
 const COST_VALUE_ATTR = {
   Name: 0,
   Description: 1,
   AppliedValue: 2,
+  UnitBasis: 3,
   ApplicableDate: 4,
   FixedUntilDate: 5,
   Category: 6,
@@ -129,6 +142,46 @@ function asAppliedValueNumber(v: unknown): number | undefined {
   return undefined;
 }
 
+/**
+ * Resolve `IfcAppliedValue.UnitBasis` (slot 3, `OPTIONAL IfcMeasureWithUnit`)
+ * into the minimal shape that answers "is this a rate or a total?" —
+ * `undefined` when `UnitBasis` is absent or its reference is broken;
+ * otherwise an object whose mere presence marks the owning `CostValueInfo` as
+ * a rate, with `valueComponent`/`unitSymbol` individually `undefined` when
+ * that half of `IfcMeasureWithUnit` could not itself be resolved (see
+ * {@link CostValueUnitBasis}'s doc comment in `cost-types.ts`).
+ *
+ * `IfcMeasureWithUnit` (`ValueComponent : IfcValue`, `UnitComponent :
+ * IfcUnit`) — both SELECT types, so each is resolved independently:
+ *  - `ValueComponent` reuses `asAppliedValueNumber`, the same resolution
+ *    `AppliedValue` above uses for its own `IfcAppliedValueSelect`.
+ *  - `UnitComponent` reuses `resolveUnitByRef` (shared with
+ *    `IfcPhysicalSimpleQuantity.Unit` in `quantity-collect.ts`), NOT
+ *    `quantitySiScale`'s project-unit-fallback machinery: `IfcMeasureWithUnit`
+ *    is not an `IfcPhysicalQuantity`, `UnitComponent` is not `OPTIONAL`
+ *    within it, and there is no containing project unit to fall back to — the
+ *    reference resolves or it does not.
+ */
+function extractUnitBasis(
+  extractor: EntityExtractor,
+  store: IfcDataStore,
+  unitBasisRef: number | undefined,
+): CostValueUnitBasis | undefined {
+  if (unitBasisRef === undefined) return undefined;
+  const ref = store.entityIndex.byId.get(unitBasisRef);
+  if (!ref) return undefined;
+  const entity = extractor.extractEntity(ref);
+  if (!entity || entity.type.toUpperCase() !== 'IFCMEASUREWITHUNIT') return undefined;
+  const a = entity.attributes || [];
+  const unitRef = asRef(a[1]);
+  const unit = unitRef !== undefined ? resolveUnitByRef(extractor, store.entityIndex, unitRef) : null;
+  return {
+    valueComponent: asAppliedValueNumber(a[0]),
+    unitSymbol: unit?.resolved.symbol,
+    unitSiScale: unit?.resolved.siScale,
+  };
+}
+
 const MAX_COST_VALUE_DEPTH = 20;
 
 function extractCostValue(
@@ -159,6 +212,7 @@ function extractCostValue(
     name: asString(a[COST_VALUE_ATTR.Name]),
     description: asString(a[COST_VALUE_ATTR.Description]),
     appliedValue: asAppliedValueNumber(a[COST_VALUE_ATTR.AppliedValue]),
+    unitBasis: extractUnitBasis(extractor, store, asRef(a[COST_VALUE_ATTR.UnitBasis])),
     applicableDate: asString(a[COST_VALUE_ATTR.ApplicableDate]),
     fixedUntilDate: asString(a[COST_VALUE_ATTR.FixedUntilDate]),
     category: asString(a[COST_VALUE_ATTR.Category]),

@@ -58,6 +58,7 @@ describe('RelationshipGraph', () => {
     const expected: Record<RelationshipType, string> = {
       [RelationshipType.ContainsElements]: 'IfcRelContainedInSpatialStructure',
       [RelationshipType.Aggregates]: 'IfcRelAggregates',
+      [RelationshipType.Nests]: 'IfcRelNests',
       [RelationshipType.DefinesByProperties]: 'IfcRelDefinesByProperties',
       [RelationshipType.DefinesByType]: 'IfcRelDefinesByType',
       [RelationshipType.AssociatesMaterial]: 'IfcRelAssociatesMaterial',
@@ -71,6 +72,7 @@ describe('RelationshipGraph', () => {
       [RelationshipType.ConnectsPorts]: 'IfcRelConnectsPorts',
       [RelationshipType.SpaceBoundary]: 'IfcRelSpaceBoundary',
       [RelationshipType.AssignsToGroup]: 'IfcRelAssignsToGroup',
+      [RelationshipType.AssignsToGroupByFactor]: 'IfcRelAssignsToGroupByFactor',
       [RelationshipType.AssignsToProduct]: 'IfcRelAssignsToProduct',
       [RelationshipType.ReferencedInSpatialStructure]: 'IfcRelReferencedInSpatialStructure',
     };

@@ -332,7 +332,7 @@ fn produce_inner(
     let has_openings = ctx
         .void_index
         .get(&job.id)
-        .is_some_and(|openings| !openings.is_empty());
+        .is_some_and(|openings| openings.iter().any(|&id| router.opening_requires_subtraction(id, decoder)));
 
     // Material-layer wall: tag its per-layer slices GEOM_CLASS_LAYER_SLICE so the
     // 2D/section cut can split the cut into per-layer fills (one sub-mesh = one

@@ -187,6 +187,44 @@ describe('flat-path item-level highlighting (#4382)', () => {
     const remaining = scene.getMeshes().filter((m) => m.hydrated).map((m) => m.expressId);
     assert.deepEqual(remaining.sort((a, b) => a - b), [9, 20]);
   });
+
+  it('OVERLAP: when the item-filtered product is ALSO present in the multi-select set, it is still narrowed to the item — the item filter tracks selectedId, not membership in the keep set', () => {
+    // Mirrors a caller whose selectedIds includes its own primary selection
+    // (`selectedIds ⊇ {selectedId}`), which index.ts's selectedExpressIds
+    // union produces for every ordinary "extend the multi-select from the
+    // current pick" gesture. Product 9 is simultaneously: the item-filtered
+    // selectedId, AND a member of the keep set alongside product 20.
+    const scene = new Scene();
+    scene.addMeshData(triangle(9, ITEM_A, GREY));
+    scene.addMeshData(triangle(9, ITEM_B, GREY));
+    scene.addMeshData(triangle(20, undefined, GREY));
+    const device = fakeDevice().device;
+    const hydrate = (piece: MeshData) => scene.addMesh({
+      expressId: piece.expressId,
+      geometryItemId: piece.geometryItemId,
+      vertexBuffer: device.createBuffer({ size: 64, usage: 32 } as GPUBufferDescriptor),
+      indexBuffer: device.createBuffer({ size: 12, usage: 16 } as GPUBufferDescriptor),
+      indexCount: 3,
+      transform: { m: new Float32Array(16) },
+      color: piece.color,
+      hydrated: true,
+    });
+    for (const piece of scene.getMeshDataPieces(9)!) hydrate(piece);
+    hydrate(scene.getMeshDataPieces(20)![0]);
+
+    // keep = {9, 20} — product 9 is in the keep set (as selectedIds would
+    // put it) AND is itemFilterExpressId (as selectedId would). The item
+    // filter still narrows it: only ITEM_A survives, ITEM_B is freed, even
+    // though 9 is "multi-selected" too.
+    const disposed = scene.disposeHydratedMeshesExcept(new Set([9, 20]), undefined, 9, ITEM_A);
+    assert.equal(disposed, 1, 'ITEM_B piece of the overlapping product is freed, not kept whole');
+    const remainingItemIds = scene.getMeshes()
+      .filter((m) => m.hydrated && m.expressId === 9)
+      .map((m) => m.geometryItemId);
+    assert.deepEqual(remainingItemIds, [ITEM_A], 'product 9 narrows to ITEM_A despite being in the multi-select set');
+    const product20 = scene.getMeshes().filter((m) => m.hydrated && m.expressId === 20);
+    assert.equal(product20.length, 1, 'the OTHER multi-selected product (20) is untouched, whole-product');
+  });
 });
 
 describe('GPU-instanced item-level highlighting (#4382)', () => {
@@ -265,5 +303,24 @@ describe('GPU-instanced item-level highlighting (#4382)', () => {
     assert.equal(flags(0) & INSTANCE_FLAG_SELECTED, INSTANCE_FLAG_SELECTED, 'product 9 item A selected');
     assert.equal(flags(1) & INSTANCE_FLAG_SELECTED, 0, 'product 9 item B not selected');
     assert.equal(flags(2) & INSTANCE_FLAG_SELECTED, INSTANCE_FLAG_SELECTED, 'product 20 (multi-selected, no item filter) stays whole-product selected');
+  });
+
+  it('OVERLAP: when the item-filtered product is ALSO present in the multi-select set, its occurrences are still narrowed to the item', () => {
+    // Same overlap as the flat-path OVERLAP test: expressIds = {9, 20} (as
+    // index.ts's selectedExpressIds union produces when selectedId's product
+    // is also a member of selectedIds), and itemFilterExpressId = 9 = the
+    // SAME product that is also in the multi-select set.
+    const { device, buffers } = fakeDevice();
+    const scene = new Scene();
+    const shard = itemSplitShard();
+    shard.instances.push({ templateIndex: 0, entityId: 20, color: [0.1, 0.1, 0.1, 1], transform: new Float32Array([1, 0, 0, 9, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) });
+    scene.addInstancedShard(device, shard, 3);
+    const gpu = scene.getInstancedTemplates()[0];
+    const flags = (i: number) => new DataView(buffers.get(gpu.instanceBuffer)!).getUint32(i * INSTANCE_STRIDE_BYTES + INSTANCE_FLAGS_OFFSET, true);
+
+    scene.setInstancedSelection(new Set([9, 20]), 9, ITEM_A);
+    assert.equal(flags(0) & INSTANCE_FLAG_SELECTED, INSTANCE_FLAG_SELECTED, 'product 9 item A occurrence selected despite 9 also being multi-selected');
+    assert.equal(flags(1) & INSTANCE_FLAG_SELECTED, 0, 'product 9 item B occurrence NOT selected, even though product 9 is in expressIds');
+    assert.equal(flags(2) & INSTANCE_FLAG_SELECTED, INSTANCE_FLAG_SELECTED, 'product 20, the other multi-selected product, stays whole-product (untouched by the item filter)');
   });
 });

@@ -175,9 +175,10 @@ export function serializeScheduleToStep(
 
   // ── 4b. Work-plan → work-schedule grouping (IfcRelNests) ──────────
   for (const plan of data.workSchedules) {
-    // Absent is equivalent to empty here — a producer that doesn't know
-    // about IfcRelNests grouping (e.g. the viewer's standalone-IfcWorkPlan
-    // builder) omits the field entirely rather than setting `[]`.
+    // `?.length` treats `undefined` and `[]` the same — both mean "emit no
+    // relation for this plan" — so any producer is free to use either for
+    // "no schedules grouped", whether that's "deliberately none" or a field
+    // it doesn't populate at all.
     if (plan.kind !== 'WorkPlan' || !plan.childScheduleGlobalIds?.length) continue;
     const parentId = scheduleExpressIdByGlobalId.get(plan.globalId);
     if (parentId === undefined) continue;

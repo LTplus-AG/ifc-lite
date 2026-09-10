@@ -1230,3 +1230,16 @@ The lesson is to preserve the existing type-based rendering predicate for
 ordinary products while applying opening-specific semantics consistently to
 mesh production and fast void probes. Numeric evidence and source revisions are
 in `docs/architecture/evidence/evaluated-openings/performance.json`.
+
+### Reference-only opening host routing (#4440)
+
+A retained Reference-only opening must keep its host on the textured submesh
+path. The new predicate inspects representation membership without producing
+cutter meshes; unknown or over-budget data retains the existing cutter path.
+Two interleaved base/branch native probe pairs on AC20 and ISSUE_129 resolved no
+consistent material normal-load regression, with unchanged mesh/vertex/triangle
+counts and existing CSG diagnostics. This is a correctness fix, not a browser
+worker-pool speedup claim; small overhead below run-to-run variation remains
+unresolved. [Exact revisions, probe results and limits](../../docs/architecture/evidence/evaluated-openings/reference-textures.json)
+are recorded with the fixture evidence. Do not infer that a nonempty void-index
+entry implies actual subtraction: the opening representation identifier matters.

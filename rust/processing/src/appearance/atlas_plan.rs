@@ -110,7 +110,7 @@ pub(super) fn plan_sampled_appearance(bytes: &[u8], spec: &AppearanceRequest, so
     bind_images(&mut plan, &item_images, &mut source, &styles)?;
     let plan=match normalization {
         Some(n)=> {
-            let (plan,ids)=n.compose(plan)?;
+            let (plan,ids)=n.compose(plan,&source)?;
             for image in &mut item_images {
                 if let Some(&id)=ids.get(&image.geometry_item_id) {image.geometry_item_id=id;}
             }

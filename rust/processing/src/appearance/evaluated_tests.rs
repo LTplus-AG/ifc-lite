@@ -59,11 +59,11 @@ fn issue_4404_real_mapped_member_is_opt_in_and_preserves_every_sibling_and_world
     }
 }
 #[test]
-fn issue_4404_opening_hosts_and_shared_body_wrappers_never_receive_conversion_mutations() {
+fn issue_4404_unsupported_classes_and_shared_mapped_wrappers_remain_refused() {
     let Some(source)=real_source() else{return};let mut request=request();
-    request.product_ids=vec![59290,21966];
+    request.product_ids=vec![21966];
     let plan=plan_appearance(source.as_bytes(),&request).unwrap();
-    assert_eq!(plan.exclusions.len(),2);assert!(plan.created.is_empty());assert!(plan.edits.is_empty());assert!(plan.conversions.is_empty());
+    assert_eq!(plan.exclusions.len(),1);assert!(plan.created.is_empty());assert!(plan.edits.is_empty());assert!(plan.conversions.is_empty());
     let shared=source.replace("#35155=", "#99999=IFCREPRESENTATIONMAP(#5,#35155);\n#35155=");
     request.product_ids=vec![35169];
     let plan=plan_appearance(shared.as_bytes(),&request).unwrap();
@@ -144,7 +144,7 @@ fn issue_4404_filtered_private_conversion_prefix_compacts_to_host_allocation_ord
     // private IDs must not leave a gap before the accepted occurrence's rows.
     normalized.request.product_ids.retain(|id|*id==35304);
     let mapped=super::super::plan_with_source(text.as_bytes(),&normalized.request,&mut source).unwrap();
-    let (plan,ids)=normalized.compose(mapped).unwrap();
+    let (plan,ids)=normalized.compose(mapped,&source).unwrap();
     assert_eq!(plan.conversions.len(),1);
     assert_eq!(plan.conversions[0].product_id,35304);
     assert!(ids.iter().any(|(old,new)|old!=new));
@@ -192,7 +192,7 @@ fn issue_4404_real_page_material_name_that_looks_like_generated_reference_is_lit
     // Force the same remapping that an omitted private prefix requires, using
     // the actual native page plan with its preserved exporter material label.
     result.plan.next_express_id-=1;
-    let ids=super::super::evaluated_allocation::compact(&mut result.plan).unwrap();
+    let ids=super::super::evaluated_allocation::compact(&mut result.plan,&Source::new(source.as_bytes()).unwrap().types).unwrap();
     assert_ne!(ids[&100001],100001);
     assert_eq!(names(&result.plan),original_names);
     assert_eq!(result.plan.created[0].express_id,result.plan.next_express_id);
@@ -285,4 +285,54 @@ fn issue_4404_opening_policy_freezes_only_exclusively_owned_body_identifiers() {
     assert!(inspect(&shared,BTreeSet::from([59365])).unwrap_err().contains("shared"));
     let shared_pds=bytes.replace("#59361=", "#99999=IFCOPENINGELEMENT('0000000000000000000001',$,$,$,$,$,#59361,$,.OPENING.);\n#59361=");
     assert!(inspect(&shared_pds,BTreeSet::from([59365])).unwrap_err().contains("ProductDefinitionShape is shared"));
+}
+
+#[test]
+fn issue_4404_real_cut_slab_preserves_type_semantics_and_accepts_second_appearance() {
+    let Some(bytes)=real_source() else{return};
+    let mut request=request();request.product_ids=vec![59290];
+    let plan=plan_appearance(bytes.as_bytes(),&request).unwrap();
+    assert!(plan.exclusions.is_empty(),"{:?}",plan.exclusions);
+    assert_eq!(plan.items.len(),1);assert_eq!(plan.conversions.len(),1);
+    assert_eq!(plan.created.iter().map(|row|row.express_id).collect::<Vec<_>>(),(plan.next_express_id..plan.next_available_express_id).collect::<Vec<_>>());
+    assert_eq!(plan.edits.iter().map(|edit|edit.express_id).collect::<BTreeSet<_>>(),BTreeSet::from([59286,59354]));
+    assert_ne!(plan.conversions[0].representation_id,59278);
+    let output=apply(&bytes,&plan);
+    let mut reopened=Source::new(output.as_bytes()).unwrap();
+    assert_eq!(reopened.entity(59354).unwrap().get_string(1),Some("Reference"));
+    assert_eq!(reopened.entity(59290).unwrap().get_ref(6),Some(59286));
+    assert_eq!(reopened.entity(59492).unwrap().get_ref(1),Some(59278));
+    assert_eq!(reopened.entity(59278).unwrap().get_string(2),Some("SweptSolid"));
+    assert_eq!(reopened.entity(59368).unwrap().get_ref(4),Some(59290));
+    assert_eq!(reopened.entity(59368).unwrap().get_ref(5),Some(59365));
+    let before=crate::process_geometry(bytes.as_bytes());let after=crate::process_geometry(output.as_bytes());
+    if let Ok(directory)=std::env::var("IFCLITE_EVALUATED_EVIDENCE_DIR") {
+        std::fs::write(std::path::Path::new(&directory).join("native-opening-planned.ifc"),&output).unwrap();
+        std::fs::write(std::path::Path::new(&directory).join("native-opening-plan.json"),serde_json::to_vec_pretty(&plan).unwrap()).unwrap();
+    }
+    assert_eq!(before.meshes.len(),after.meshes.len()+1);
+    assert!(!after.meshes.iter().any(|mesh|mesh.express_id==59365),"Reference opening must no longer produce subtractive render geometry");
+    let mut max_world_error=0f64;
+    for mesh in before.meshes.iter().filter(|mesh|mesh.express_id!=59365) {
+        let other=after.meshes.iter().find(|m|m.express_id==mesh.express_id && (m.express_id==59290 || m.geometry_item_id==mesh.geometry_item_id)).unwrap();
+        if mesh.express_id==59290 {
+            assert_eq!(mesh.indices.len()/3,32);assert_eq!(other.indices.len()/3,32);
+            assert!(other.uvs.is_some());assert!(other.texture.is_some());
+            assert_eq!(mesh.global_id,other.global_id);
+            for (a,b) in corners(mesh).iter().zip(corners(other)) {
+                for axis in 0..3 {max_world_error=max_world_error.max((a[axis]-b[axis]).abs());}
+            }
+        } else {assert_eq!(serde_json::to_value(mesh).unwrap(),serde_json::to_value(other).unwrap());}
+    }
+    request.next_express_id=plan.next_available_express_id;
+    request.image_uri="textures/second.png".into();
+    let second=plan_appearance(output.as_bytes(),&request).unwrap();
+    assert!(second.exclusions.is_empty(),"{:?}",second.exclusions);
+    assert!(second.conversions.is_empty());assert_eq!(second.items.len(),1);
+    if let Ok(directory)=std::env::var("IFCLITE_EVALUATED_EVIDENCE_DIR") {
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(std::path::Path::new(&directory).join("native-opening-planned.ifc"),output).unwrap();
+        std::fs::write(std::path::Path::new(&directory).join("native-opening-plan.json"),serde_json::to_vec_pretty(&plan).unwrap()).unwrap();
+        std::fs::write(std::path::Path::new(&directory).join("native-opening-metrics.json"),serde_json::to_vec_pretty(&json!({"maxWorldCoordinateErrorMetres":max_world_error,"triangles":32,"secondAppearance":true})).unwrap()).unwrap();
+    }
 }

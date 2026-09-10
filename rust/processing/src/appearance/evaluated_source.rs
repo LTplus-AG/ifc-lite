@@ -5,7 +5,7 @@
 use super::{source::{refs, Source}, *};
 use ifc_lite_core::DecodedEntity;
 
-pub(super) fn body(source: &mut Source<'_>, product_id: u32) -> Result<(DecodedEntity, DecodedEntity), String> {
+pub(super) fn body(source: &mut Source<'_>, product_id: u32, post_opening: bool) -> Result<(DecodedEntity, DecodedEntity), String> {
     let product = source.entity(product_id)?;
     if !product.ifc_type.is_subtype_of(IfcType::IfcElement)
         || product.ifc_type.name().ends_with("StandardCase")
@@ -30,14 +30,15 @@ pub(super) fn body(source: &mut Source<'_>, product_id: u32) -> Result<(DecodedE
         }
         if found.is_some() { return Err("Evaluated appearance requires exactly one Body representation".into()); }
         if !source.incoming.get(&id).is_some_and(|incoming| incoming.contains(&pds_id)
-            && incoming.iter().all(|parent| *parent == pds_id || source.types.get(parent) == Some(&IfcType::IfcPresentationLayerAssignment))) {
+            && incoming.iter().all(|parent| *parent == pds_id || (source.types.get(parent) == Some(&IfcType::IfcPresentationLayerAssignment)
+                || post_opening && source.types.get(parent)==Some(&IfcType::IfcRepresentationMap)))) {
             return Err("Body is shared or has unsupported layer/aspect associations".into());
         }
-        if rep.get_string(2) != Some("MappedRepresentation") {
+        if rep.get_string(2) != Some("MappedRepresentation") && !(post_opening && rep.get_string(2)==Some("SweptSolid")) {
             return Err("Evaluated appearance currently supports mapped occurrence bodies only".into());
         }
         let items=refs(rep.get(3))?;
-        if items.len()!=1 || source.types.get(&items[0])!=Some(&IfcType::IfcMappedItem) {
+        if items.len()!=1 || (rep.get_string(2)==Some("MappedRepresentation") && source.types.get(&items[0])!=Some(&IfcType::IfcMappedItem)) {
             return Err("Evaluated appearance requires one mapped occurrence item".into());
         }
         found = Some(rep);

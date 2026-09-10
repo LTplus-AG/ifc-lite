@@ -26,7 +26,7 @@
  * way and would not have caught this class of bug.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -69,12 +69,16 @@ vi.mock('@ifc-lite/geometry', () => ({
     err instanceof Error && err.message === 'NO_RENDER_GEOMETRY',
 }));
 
-// `countGlbMeshes` runs on the real bytes `gp.exportGlb` returns (a
-// defense-in-depth check independent of what this module passed in), so it
-// is mocked separately to keep the GLB success path deterministic without
-// needing a byte-for-byte real GLB.
+// `countGlbMeshes`/`countObjVertices` run on the real bytes `gp.exportGlb`/
+// `gp.exportObj` return (a defense-in-depth check independent of what this
+// module passed in), so they are mocked separately to keep the success paths
+// deterministic without needing byte-for-byte real GLB/OBJ output. Both
+// default to a non-zero count so the argument-passing tests below (the
+// actual point of this file) exercise the success path; the zero-vertex
+// guard itself gets its own test that overrides `countObjVertices` to 0.
 const countGlbMeshes = vi.hoisted(() => vi.fn(() => 1));
-vi.mock('@ifc-lite/export', () => ({ countGlbMeshes }));
+const countObjVertices = vi.hoisted(() => vi.fn(() => 1));
+vi.mock('@ifc-lite/export', () => ({ countGlbMeshes, countObjVertices }));
 
 import { exportRustFormat } from './export-rust-formats.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -196,6 +200,25 @@ describe('exportRustFormat: `isolated` argument passed to gp.exportObj (the OBJ 
       expect.stringContaining('Filter matched 0 entities'),
     );
     expect(gp.exportObj).not.toHaveBeenCalled();
+  });
+
+  it('fails loudly (never writes the file) when countObjVertices reports 0 vertices (#4386)', async () => {
+    stubExit();
+    // `gp.exportObj` "succeeds" with header-only bytes (no real geometry
+    // pipeline here to produce zero output on its own), so drive the guard
+    // directly through its actual signal: `countObjVertices` returning 0.
+    gp.exportObj.mockReturnValue(new TextEncoder().encode('o Empty\n'));
+    countObjVertices.mockReturnValueOnce(0);
+    const out = outFile('zero-vertices.obj');
+
+    await expect(
+      exportRustFormat('obj', ['--out', out], FAKE_STORE, SAMPLE_IFC, [], false, false),
+    ).rejects.toThrow(ProcessExited);
+
+    expect(process.stderr.write).toHaveBeenCalledWith(
+      expect.stringContaining('OBJ export produced 0 vertices'),
+    );
+    expect(existsSync(out)).toBe(false);
   });
 });
 

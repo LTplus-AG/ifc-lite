@@ -407,7 +407,10 @@ function nonFiniteIfcxFile() {
       {
         path: 'Project',
         attributes: { 'bsi::ifc::class': ifcClass('IfcProject') },
-        children: { WallBad: 'Project/WallBad' },
+        children: {
+          WallBad: 'Project/WallBad',
+          WallGood: 'Project/WallGood',
+        },
       },
       {
         path: 'Project/WallBad',
@@ -433,6 +436,15 @@ function nonFiniteIfcxFile() {
           },
         },
       },
+      {
+        path: 'Project/WallGood',
+        attributes: { 'bsi::ifc::class': ifcClass('IfcWall') },
+        children: { Body: 'Project/WallGood/Body' },
+      },
+      {
+        path: 'Project/WallGood/Body',
+        attributes: { 'usd::usdgeom::mesh': cubeMesh(10, 0, 0, 1) },
+      },
     ],
   };
 }
@@ -452,7 +464,9 @@ describe('elementsFromIfcx - drops an entity with a non-finite axis (#4254)', ()
       });
       // The corrupt entity never becomes a ClashElement — never an inverted
       // box that would silently vanish from every spatial query.
-      expect(elements).toHaveLength(0);
+      expect(elements).toHaveLength(1);
+      expect(elements[0].key).toBe('Project/WallGood');
+      expect(elements[0].tag).toBe('IfcWall');
       expect(warn).toHaveBeenCalledTimes(1);
       const msg = warn.mock.calls[0].join(' ');
       expect(msg).toContain('[clash/ifcx]');
@@ -463,18 +477,4 @@ describe('elementsFromIfcx - drops an entity with a non-finite axis (#4254)', ()
     }
   });
 
-  it('still returns a good entity elsewhere in the same file', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      const { elements } = await elementsFromIfcx({
-        buffer: ifcxBuffer(),
-        modelId: 'ifcx-mixed',
-      });
-      // The baseline fixture has no corrupt geometry: no warning, full set.
-      expect(elements.length).toBeGreaterThan(0);
-      expect(warn).not.toHaveBeenCalled();
-    } finally {
-      warn.mockRestore();
-    }
-  });
 });

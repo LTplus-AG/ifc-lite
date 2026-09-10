@@ -292,8 +292,6 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     // onto one review/exclusion key. Flat meshes are unaffected (occurrenceKey
     // absent, one bucket per expressId as before).
     const key = occurrenceKey ? `${baseKey}:${occurrenceKey}` : baseKey;
-    if (!storedGlobalId) missingGlobalIds += 1;
-
     // A corrupt mesh (every vertex non-finite on one axis, e.g. a NaN'd
     // transform or a malformed source file) has no usable AABB — see
     // `NonFiniteAxisError`. Skip just this occurrence rather than letting it
@@ -310,6 +308,9 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
       }
       throw err;
     }
+
+    // Count only occurrences that survive bounds validation and are returned.
+    if (!storedGlobalId) missingGlobalIds += 1;
 
     const element: ClashElement = {
       key,

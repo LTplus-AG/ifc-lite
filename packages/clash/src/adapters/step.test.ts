@@ -613,19 +613,25 @@ describe('elementsFromStep - drops an occurrence with a non-finite axis (#4254)'
     const store = await new IfcParser().parseColumnar(
       new TextEncoder().encode(STOREY_WITH_GEOMETRY_IFC).buffer as ArrayBuffer,
     );
-    const slabId = (store.entityIndex.byType.get('IFCSLAB') ?? [])[0];
     const wallId = (store.entityIndex.byType.get('IFCWALL') ?? [])[0];
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       const { elements } = elementsFromStep({
         store,
-        meshes: [nonFiniteAxisMesh(slabId), solidBoxMesh(wallId, 0.5)],
+        // The corrupt occurrence deliberately does not exist in the store and
+        // therefore has no GlobalId. It must not contribute to the accounting
+        // for the one valid element that is actually returned.
+        meshes: [nonFiniteAxisMesh(999_999), solidBoxMesh(wallId, 0.5)],
         modelId: 'model-4254-mixed',
       });
       expect(elements).toHaveLength(1);
       expect(elements[0].tag).toBe('IfcWall');
       expect(warn).toHaveBeenCalledTimes(1);
-      expect(warn.mock.calls[0].join(' ')).toContain('skipped 1');
+      const msg = warn.mock.calls[0].join(' ');
+      expect(msg).toContain('[clash/step]');
+      expect(msg).toContain('model-4254-mixed');
+      expect(msg).toContain('skipped 1');
+      expect(msg).not.toContain('every element');
     } finally {
       warn.mockRestore();
     }

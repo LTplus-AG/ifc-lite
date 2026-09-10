@@ -1,0 +1,23 @@
+{
+  "productionSource": "8868894e3",
+  "finalTestSource": "035c4fdaf",
+  "fullRustWorkspace": {
+    "passed": 3065,
+    "ignored": 37
+  },
+  "finalGeometryRegressions": 5,
+  "nativePdfRegressions": 27,
+  "strictClippy": "workspace all-targets passed",
+  "rootBuildTasks": 51,
+  "rootTypecheckTasks": 94,
+  "typecheckedTestSources": 1921,
+  "freshWasmContract": {
+    "passed": 88,
+    "existingOptionalSkips": 3
+  },
+  "wasmSha256": "6e467c1a313e821c4abc6040369b5d2478a9142990128c049a89d07d22d4574b",
+  "independentWheelQuicklane": "fresh886 wheel installed in separate venv:4MATCH, existing halfspace triangle-density advisory",
+  "registeredOriginalPdf": "28,800exactpixels;2.4m\u00b2;4triangles;Name/container/styles checked",
+  "priorControlReplays": "5straightstroke +3curved originalPDF controls pass independentMuPDF/IfcOpenShell; raster differences reported by existing control oracles",
+  "perf": "Exact-source idle A/B/A/B: phase minima identical in both pairs;3/5/8ms and2/4/7ms;285meshes/35940vertices/19456triangles/FNV25ac885b6ff4ad00 unchanged. No resolved normal-load regression or authoring throughput claim."
+}

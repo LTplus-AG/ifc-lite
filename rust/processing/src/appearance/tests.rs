@@ -45,6 +45,7 @@ END-ISO-10303-21;
 
 fn request(products: Vec<u32>) -> AppearanceRequest {
     AppearanceRequest {
+        representation_policy: RepresentationPolicy::Preserve,
         schema: "IFC4".into(),
         source_revision: "revision-1".into(),
         next_express_id: 100,
@@ -84,7 +85,12 @@ fn step(value: &Value) -> String {
             "({})",
             values.iter().map(step).collect::<Vec<_>>().join(",")
         ),
-        Value::String(s) if s.starts_with('#') || s.starts_with('.') || s == "*" => s.clone(),
+        Value::String(s) if {
+            let token=s.trim();
+            matches!(token,"$"|"*")
+                || token.strip_prefix('#').is_some_and(|id|!id.is_empty() && id.bytes().all(|c|c.is_ascii_digit()))
+                || token.strip_prefix('.').and_then(|s|s.strip_suffix('.')).is_some_and(|s|!s.is_empty() && s.bytes().all(|c|c.is_ascii_alphanumeric() || c==b'_'))
+        } => s.trim().into(),
         Value::String(s) => format!("'{}'", s.replace('\'', "''")),
         other => other.to_string(),
     }
@@ -600,4 +606,14 @@ fn issue_4243_target_vertex_pool_can_exceed_surviving_triangle_corner_count() {
     assert!(item.target_vertex_count > *item.target_indices.iter().max().unwrap() as usize + 1, "unused trailing vertices must also count");
     assert_eq!(item.target_indices, mesh.indices);
     assert!(item.target_indices.iter().all(|&i| (i as usize) < item.target_vertex_count));
+}
+
+#[test]
+fn issue_4441_image_appearance_refuses_structural_image_uri_tokens() {
+    for token in ["*", "$", "#123", ".ENUM.", " .lower_1. "] {
+        let mut request = request(vec![10]);
+        request.image_uri = token.into();
+        assert!(plan_appearance(CONTROLLED_IFC.as_bytes(), &request).unwrap_err()
+            .contains("Image URI is a reserved appearance wire token"));
+    }
 }

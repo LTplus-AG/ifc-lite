@@ -8,6 +8,7 @@
 import type { Mutation, MutablePropertyView } from '@ifc-lite/mutations';
 import type { StoreApi } from 'zustand';
 import type { ViewerState } from '@/store/index.js';
+import { replayCoordinatedAppearanceHistory } from './coordinated-history.js';
 
 export interface AppearanceHistoryCommand {
   readonly mutations: readonly Mutation[];
@@ -124,6 +125,7 @@ export function prepareAppearanceHistory(
 export function replayAppearanceHistory(
   store: StoreApi<ViewerState>, modelId: string, direction: 'undo' | 'redo',
 ): boolean {
+  if (replayCoordinatedAppearanceHistory(store, modelId, direction)) return true;
   const registry = registries.get(store.getState);
   if (!registry) return false;
   const source = direction === 'undo' ? 'undoStacks' : 'redoStacks';

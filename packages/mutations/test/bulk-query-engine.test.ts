@@ -307,6 +307,73 @@ describe('BulkQueryEngine property filter operators', () => {
 });
 
 /**
+ * Regression: github.com/LTplus-AG/ifc-lite/issues/4238
+ *
+ * `select()` must fail closed (throw) when a globalIds/namePattern
+ * restriction is requested but the string table (`strings`) is
+ * unavailable, rather than silently dropping the filter and returning the
+ * full unfiltered candidate set — which would let a caller's bulk edit
+ * (e.g. SET_PROPERTY) apply to every entity in the model instead of the
+ * intended narrow subset.
+ */
+describe('BulkQueryEngine: fail-closed globalIds/namePattern guard (#4238)', () => {
+  function makeEngineNoStrings(count: number) {
+    const entities = makeEntities(count);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    return new BulkQueryEngine(entities, view, null, null, null);
+  }
+
+  it('select() throws when a globalIds filter is requested without a string table', () => {
+    const engine = makeEngineNoStrings(3);
+    expect(() => engine.select({ globalIds: ['1234-guid'] })).toThrow(/globalIds/);
+    expect(() => engine.select({ globalIds: ['1234-guid'] })).toThrow(
+      /refusing to run an unscoped bulk selection/
+    );
+  });
+
+  it('select() throws when a namePattern filter is requested without a string table', () => {
+    const engine = makeEngineNoStrings(3);
+    expect(() => engine.select({ namePattern: 'Wall.*' })).toThrow(/namePattern/);
+    expect(() => engine.select({ namePattern: 'Wall.*' })).toThrow(
+      /refusing to run an unscoped bulk selection/
+    );
+  });
+
+  it('select() narrows correctly (does not throw) when a string table IS available', () => {
+    const entities = makeEntities(3);
+    // entity 1/2/3 -> globalId + name string indices 0/1/2, resolved via
+    // the string table below.
+    entities.globalId[0] = 0;
+    entities.globalId[1] = 1;
+    entities.globalId[2] = 2;
+    entities.name[0] = 0;
+    entities.name[1] = 1;
+    entities.name[2] = 2;
+    const strTable = ['GUID-Alpha', 'GUID-Beta', 'GUID-Gamma'];
+    const strings = { get: (idx: number) => strTable[idx] };
+
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const engine = new BulkQueryEngine(entities, view, null, null, strings);
+
+    // Guard doesn't fire (a string table is present), and the ordinary
+    // narrowing behavior further down in select() still works: the
+    // returned selection is a strict subset of the full candidate set,
+    // not "reject/pass everything unconditionally".
+    expect(() => engine.select({ globalIds: ['GUID-Beta'] })).not.toThrow();
+    const byGlobalId = engine.select({ globalIds: ['GUID-Beta'] });
+    expect(byGlobalId).toEqual([2]);
+    expect(byGlobalId.length).toBeLessThan(3);
+
+    expect(() => engine.select({ namePattern: 'Alpha' })).not.toThrow();
+    const byName = engine.select({ namePattern: 'Alpha' });
+    expect(byName).toEqual([1]);
+    expect(byName.length).toBeLessThan(3);
+  });
+});
+
+/**
  * `BulkQueryEngine.applyAction` writes straight to
  * `MutablePropertyView.setProperty`/`setEntityType`, bypassing the viewer
  * store's own actions and `canCollabEdit()` entirely (BulkPropertyEditor.tsx

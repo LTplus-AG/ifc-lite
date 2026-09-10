@@ -168,7 +168,7 @@ impl GeometryRouter {
         };
         reps.iter().any(|sr| {
             sr.ifc_type == IfcType::IfcShapeRepresentation
-                && super::effective_rep_type(sr)
+                && super::effective_element_rep_type(entity, sr)
                     .map(is_rtc_votable_representation)
                     .unwrap_or(false)
         })

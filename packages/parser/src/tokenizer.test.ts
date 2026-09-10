@@ -4,6 +4,14 @@
 
 import { describe, expect, it } from 'vitest';
 import { StepTokenizer } from './tokenizer.js';
+import {
+  LEGAL_BODIES,
+  LINE_NUMBER_CASE,
+  SWALLOW_CASES,
+  UNBALANCED_CASE,
+  UNRESUMABLE_BODIES,
+  type ScanDriver,
+} from './step-record-boundary.vectors.js';
 
 describe('StepTokenizer.scanEntitiesFast', () => {
   it('finds entities and reports correct expressId/type/line', () => {
@@ -168,5 +176,57 @@ describe('StepTokenizer.scanEntities (balanced-parenthesis path)', () => {
 
     expect(tokenizer.malformedRecordCount).toBe(1);
     expect(refs.map((r) => r.expressId)).toEqual([1]);
+  });
+});
+
+
+describe('StepTokenizer.scanEntitiesFast: record-boundary guards (#4179)', () => {
+  const scan: ScanDriver = (text) => (() => {
+    const tokenizer = new StepTokenizer(new TextEncoder().encode(text));
+    const spans = Array.from(tokenizer.scanEntitiesFast()).map(
+      (r) => [r.expressId, text.slice(r.offset, r.offset + r.length)] as const,
+    );
+    return { spans, malformed: tokenizer.malformedRecordCount };
+  })();
+
+  it.each(SWALLOW_CASES.map((c) => [c[0], c[1], c[2]] as const))(
+    '%s',
+    (_label, text, expected) => {
+      const { spans, malformed } = scan(text);
+      expect(spans).toEqual(expected);
+      expect(malformed).toBe(1);
+    },
+  );
+
+  it('reports the line numbers the worker copy must match', () => {
+    const tokenizer = new StepTokenizer(new TextEncoder().encode(LINE_NUMBER_CASE.text));
+    expect(Array.from(tokenizer.scanEntitiesFast()).map((r) => r.line))
+      .toEqual([...LINE_NUMBER_CASE.lines]);
+  });
+
+  it('drops ONE record, not the tail, when a record has no closing ")"', () => {
+    const { spans, malformed } = scan(UNBALANCED_CASE.text);
+    expect(spans).toEqual(UNBALANCED_CASE.spans);
+    expect(malformed).toBe(1);
+  });
+
+  it('stops instead of resuming when there is no balancing ")" to resume at', () => {
+    // Recovery is bounded by the SAME "no resume point" rule the #3695 cluster
+    // set: the balance walks strings and comments whole, so an unterminated one
+    // leaves no ')' and the scan still stops there.
+    for (const body of UNRESUMABLE_BODIES) {
+      const { spans, malformed } = scan(`#1=IFCA(1);\n#2=${body}\n#3=IFCC(3);\n`);
+      expect(spans, body).toEqual([[1, '#1=IFCA(1);']]);
+      expect(malformed, body).toBe(1);
+    }
+  });
+
+  it('never falsely refuses a legal record', () => {
+    for (const body of LEGAL_BODIES) {
+      const text = `#1=${body}\n#2=IFCDOOR($);\n`;
+      const { spans, malformed } = scan(text);
+      expect(spans, body).toEqual([[1, `#1=${body}`], [2, '#2=IFCDOOR($);']]);
+      expect(malformed, body).toBe(0);
+    }
   });
 });

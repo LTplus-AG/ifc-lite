@@ -19,8 +19,8 @@ pub(crate) mod geom;
 mod malformed_opening_repair;
 pub(crate) mod prism_cut;
 mod probe;
+mod representation;
 mod synthesis;
-
 pub use bool2d_path::take_bool2d_stats;
 pub use prism_cut::{take_prism_defers, take_prism_stats};
 #[cfg(test)]

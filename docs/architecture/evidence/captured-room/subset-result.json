@@ -1,0 +1,58 @@
+{
+  "completed": true,
+  "input": "/tmp/capture-ui-browser/captured.ifczip",
+  "output": "/tmp/capture-subset-acceptance/captured-proxy-subset.ifczip",
+  "workflow": "Actual proxy mouse selection, Isolate, Export Visible Only; the dialog has no Selected objects only option",
+  "proof": {
+    "label": "selected subset fresh reopen",
+    "triangles": 40087,
+    "sourceGuid": "3F8ea83w95POWKkSYP6ukU",
+    "targetGuid": "3F8ea83w95POWKkSYP6ukU",
+    "allOrientedTriangleCornersCompared": true,
+    "worldToleranceMetres": 0.00001,
+    "uvTolerance": 0.000001,
+    "maxWorldError": 0,
+    "maxUvError": 0,
+    "decodedImage": {
+      "width": 1024,
+      "height": 1024,
+      "rgba": "f98e6d8d"
+    },
+    "sampler": {
+      "repeatS": true,
+      "repeatT": true
+    }
+  },
+  "mousePicks": {
+    "initialPick": {
+      "x": 552.56962525632,
+      "y": 749.6240294913283,
+      "id": 65,
+      "selected": {
+        "modelId": "7efd974a-a717-49d6-99ce-5326903b7154",
+        "expressId": 65
+      },
+      "ifcType": "IfcBuildingElementProxy",
+      "texturedTriangles": 40087
+    },
+    "reopenedPick": {
+      "x": 635.6902500335219,
+      "y": 919.8699764726346,
+      "id": 65,
+      "selected": {
+        "modelId": "f6eb08e3-fecb-40d4-96f6-e2a0d7eaaf11",
+        "expressId": 65
+      },
+      "ifcType": "IfcBuildingElementProxy",
+      "texturedTriangles": 40087
+    }
+  },
+  "runtime": {
+    "sourceCommit": "39e9fdfd3585a1e7b9f5f14c42ad0ead62cb3956",
+    "wasmSha256": "d0c858b37461766f5aca755703e8809e2f03b65a43e28bd2e2e60da27f6b9f3f"
+  },
+  "resourcesClosed": {
+    "allBrowserContexts": true,
+    "localViewerPort4369": true
+  }
+}

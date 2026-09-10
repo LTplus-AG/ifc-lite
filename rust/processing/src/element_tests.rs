@@ -423,3 +423,6 @@ fn a_shared_item_resolves_via_the_shallow_branch() {
         "the shallow branch reaches the styled leaf well inside the cap"
     );
 }
+
+#[path = "element_reference_opening_tests.rs"]
+mod reference_openings;

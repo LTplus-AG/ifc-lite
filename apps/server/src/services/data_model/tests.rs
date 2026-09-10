@@ -1783,3 +1783,116 @@ fn unknown_type_metadata_falls_back_to_ifcelement_layout_positions() {
     assert_eq!(e.object_type.as_deref(), Some("ObjType95"));
     assert_eq!(e.tag.as_deref(), Some("Tag95"));
 }
+
+/// Issue #3972: `IfcComplexProperty` nesting past `MAX_COMPLEX_PROPERTY_DEPTH`
+/// (8) used to stop silently, so a truncated value was indistinguishable from
+/// a complete one. Four members on one wall, each probing a different shape:
+///
+/// - `C0`: a 9-level chain (`C0`..`C8`) whose deepest node carries a
+///   `UsageName` and one unread `Leaf` sub-property.
+/// - `D0`: the same 9-level chain but with the deepest node's `UsageName`
+///   absent (`$`) — the worse pre-fix shape, where the whole `D8` member
+///   vanished and `D7`'s own `UsageName` was shown in its place.
+/// - `Cyc`: a self-referencing complex property; the cap is what makes this
+///   terminate at all, which is why the fix marks the cut instead of
+///   removing the cap.
+/// - `E0`: an 8-level control (`E0`..`E7`, deepest at depth 7) whose `Leaf`
+///   IS read — the marker must not fire one level early.
+const COMPLEX_PROPERTY_DEPTH_CAP_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000003972',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall0000000000000003972',$,'W',$,$,$,$,$,$);
+#200=IFCPROPERTYSINGLEVALUE('Leaf',$,IFCLABEL('LeafVal'),$);
+#209=IFCCOMPLEXPROPERTY('C8',$,'U8',(#200));
+#208=IFCCOMPLEXPROPERTY('C7',$,'U7',(#209));
+#207=IFCCOMPLEXPROPERTY('C6',$,'U6',(#208));
+#206=IFCCOMPLEXPROPERTY('C5',$,'U5',(#207));
+#205=IFCCOMPLEXPROPERTY('C4',$,'U4',(#206));
+#204=IFCCOMPLEXPROPERTY('C3',$,'U3',(#205));
+#203=IFCCOMPLEXPROPERTY('C2',$,'U2',(#204));
+#202=IFCCOMPLEXPROPERTY('C1',$,'U1',(#203));
+#201=IFCCOMPLEXPROPERTY('C0',$,'U0',(#202));
+#219=IFCCOMPLEXPROPERTY('D8',$,$,(#200));
+#218=IFCCOMPLEXPROPERTY('D7',$,'V7',(#219));
+#217=IFCCOMPLEXPROPERTY('D6',$,'V6',(#218));
+#216=IFCCOMPLEXPROPERTY('D5',$,'V5',(#217));
+#215=IFCCOMPLEXPROPERTY('D4',$,'V4',(#216));
+#214=IFCCOMPLEXPROPERTY('D3',$,'V3',(#215));
+#213=IFCCOMPLEXPROPERTY('D2',$,'V2',(#214));
+#212=IFCCOMPLEXPROPERTY('D1',$,'V1',(#213));
+#211=IFCCOMPLEXPROPERTY('D0',$,'V0',(#212));
+#220=IFCCOMPLEXPROPERTY('Cyc',$,'CycUsage',(#220));
+#228=IFCCOMPLEXPROPERTY('E7',$,'W7',(#200));
+#227=IFCCOMPLEXPROPERTY('E6',$,'W6',(#228));
+#226=IFCCOMPLEXPROPERTY('E5',$,'W5',(#227));
+#225=IFCCOMPLEXPROPERTY('E4',$,'W4',(#226));
+#224=IFCCOMPLEXPROPERTY('E3',$,'W3',(#225));
+#223=IFCCOMPLEXPROPERTY('E2',$,'W2',(#224));
+#222=IFCCOMPLEXPROPERTY('E1',$,'W1',(#223));
+#221=IFCCOMPLEXPROPERTY('E0',$,'W0',(#222));
+#229=IFCCOMPLEXPROPERTY('Empty',$,'EmptyUsage',());
+#230=IFCPROPERTYSET('Pst0000000000000003972',$,'Pset_Deep',$,(#201,#211,#220,#221,#229));
+#231=IFCRELDEFINESBYPROPERTIES('Rel0000000000000003972',$,$,$,(#28),#230);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+fn depth_cap_property_value(dm: &DataModel, name: &str) -> String {
+    dm.property_sets
+        .iter()
+        .find(|p| p.pset_id == 230)
+        .expect("Pset_Deep must be extracted")
+        .properties
+        .iter()
+        .find(|p| p.property_name == name)
+        .unwrap_or_else(|| panic!("{name} entry missing"))
+        .property_value
+        .clone()
+}
+
+#[test]
+fn complex_property_nesting_past_the_depth_cap_says_it_was_truncated() {
+    let dm = extract_data_model(COMPLEX_PROPERTY_DEPTH_CAP_IFC);
+
+    // Pre-#3972 this was "C1: C2: C3: C4: C5: C6: C7: C8: U8" — the unread
+    // "Leaf: LeafVal" gone with no trace, and "U8" reading as C8's content.
+    assert_eq!(
+        depth_cap_property_value(&dm, "C0"),
+        "C1: C2: C3: C4: C5: C6: C7: C8: U8 (truncated: nesting deeper than 8 levels)"
+    );
+
+    // Pre-#3972 this was "D1: D2: D3: D4: D5: D6: D7: V7": D8's empty display
+    // made the parent skip it entirely, so D7 fell back to its OWN UsageName
+    // and the reader saw a genuine value at the wrong nesting level. The
+    // marker is non-empty, so D8 now survives as a member.
+    assert_eq!(
+        depth_cap_property_value(&dm, "D0"),
+        "D1: D2: D3: D4: D5: D6: D7: D8: (truncated: nesting deeper than 8 levels)"
+    );
+
+    // The cap is load-bearing: without it this self-reference never returns.
+    // Keeping it and marking the cut is the fix, not raising it.
+    assert_eq!(
+        depth_cap_property_value(&dm, "Cyc"),
+        "Cyc: Cyc: Cyc: Cyc: Cyc: Cyc: Cyc: Cyc: CycUsage (truncated: nesting deeper than 8 levels)"
+    );
+}
+
+#[test]
+fn complex_property_nesting_within_the_depth_cap_is_not_marked_truncated() {
+    let dm = extract_data_model(COMPLEX_PROPERTY_DEPTH_CAP_IFC);
+
+    // E7 sits at depth 7, one below the cap, so its Leaf IS read. The marker
+    // must not fire one level early.
+    assert_eq!(
+        depth_cap_property_value(&dm, "E0"),
+        "E1: E2: E3: E4: E5: E6: E7: Leaf: LeafVal"
+    );
+
+    // An EMPTY HasProperties is a genuinely empty complex property, not a
+    // truncation — it keeps its bare UsageName at any depth.
+    assert_eq!(depth_cap_property_value(&dm, "Empty"), "EmptyUsage");
+}

@@ -1,8 +1,9 @@
 # Appearance workspace integration
 
-Implementation slice for ready issue #4243, under development. This connects the
-controlled Appearance dock to the existing model, renderer, history and export
-services; it is not full-feature release acceptance.
+The integrated image Appearance dock connects the existing model, renderer,
+history and export services. It is the shared foundation for the
+[image/PDF/reference/capture roadmap](appearance-roadmap.md); acceptance of one
+slice does not establish the later adapters.
 
 ## Workflow
 
@@ -30,7 +31,7 @@ IFCZIP. The export dialog reports **IFC + images** when resources are present.
 Appearance editing in an active room remains unavailable until collaborative
 compound authoring is supported; users can share a completed model for viewing.
 
-## Evidence and remaining acceptance
+## Acceptance and limitations
 
 The real WebGPU viewer has exercised the initially untextured IFCOpenShell wall
 and public Convento model through preview, Apply, Undo/Redo, normal IFCZIP
@@ -48,8 +49,18 @@ edits invalidate cached scopes even without a viewer revision increment. Tests
 cover retyping, stale catalog responses and cancellation without allocator or
 history changes.
 
-Remaining follow-ups: Apply has a measured main-thread stall; transaction and
-dependency optimizations reduce it, while cooperative preparation continues
-separately. Fresh room viewing preserves appearance; the offered IFCX
-export/reopen texture defect is tracked in #4325. These limitations do not block
-shipping the image authoring workflow.
+The [trusted-input acceptance](evidence/appearance/apply-responsiveness/README.md)
+completes #4336: cooperative preparation lets input and Discard run during Apply,
+with unchanged geometry/history behavior. The final synchronous transaction fence
+still pauses rendering; this is not a claim of uninterrupted frame delivery.
+
+[Fresh-room and IFCX acceptance](evidence/ifcx-texture-roundtrip/README.md)
+completes #4325. The authored Convento model survives normal Share, fresh join,
+fresh rejoin, room export, ordinary IFCX import and viewport picking with matched
+owner/triangle/UV/image associations. Room transport preserves decoded image
+pixels; it does not promise the original compressed image bytes.
+
+This completes the scoped direct-tessellated image workflow in #4243. Evaluated
+surfaces and mapped occurrences remain in #4404; coordinated multi-model
+assignment and history remain in #4420. The scoped image workflow does not imply
+those later capabilities are available.

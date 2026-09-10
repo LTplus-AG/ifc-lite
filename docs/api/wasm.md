@@ -895,6 +895,9 @@ operations, so the supplied PDF digest is not independently authenticated.
 
 The planner limits input to 128 painted paths, each with 4,096 commands, and
 charges conservative overlay/precision work against a shared bounded budget.
+All original page contours and CropBox share one integer lattice (at most 1,024
+source vertices), retained through classification, clipping and paint ordering;
+there is no intermediate floating re-quantization.
 Emitted output is capped at 256 meshes, 65,536 vertices and 131,072 triangles.
 The boundary caps effective IFC input at 128 MiB and request JSON at 32 MiB.
 The existing worker owns timeout and cancellation. The declared tolerance and

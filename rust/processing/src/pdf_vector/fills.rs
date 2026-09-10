@@ -4,7 +4,7 @@
 //! Bounded opaque straight and qualified curved fills. Unsupported paint refuses the whole page.
 use super::{PdfVectorPaint, PreparedPdfVectorPage};
 use super::fill_paths::{point, rings, qualify};
-use ifc_lite_geometry::{boolean_2d_fixed_grid, BooleanOp2D, ContourFillRule, ContourSet, Ring2D};
+use ifc_lite_geometry::{BooleanOp2D, ContourFillRule, FixedGridComposition, Ring2D};
 
 pub(crate) struct FillShape {
     pub ordinal: u32,
@@ -18,7 +18,6 @@ pub(crate) struct FillGeometry {
 }
 struct Budget {
     remaining: u64,
-    vertices: usize,
 }
 impl Budget {
     fn charge(&mut self, count: u64) -> Result<(), String> {
@@ -29,32 +28,15 @@ impl Budget {
         Ok(())
     }
     fn overlay(
-        &mut self,
-        a: &[Ring2D],
-        b: &[Ring2D],
-        op: BooleanOp2D,
-        rule: ContourFillRule,
-        grid: f64,
-    ) -> Result<ContourSet, String> {
-        let n = a.iter().chain(b).map(Vec::len).sum::<usize>() as u64;
-        // Precharge the worst pairwise edge intersections, not only observed
-        // output; each uninterruptible native overlay has its own edge cap too.
-        self.charge(
-            n.checked_mul(n)
-                .and_then(|n| n.checked_mul(16))
-                .ok_or("PDF fill edge budget overflow")?
-                .max(1),
-        )?;
-        let result = boolean_2d_fixed_grid(a, b, op, rule, grid)?;
-        self.vertices = self
-            .vertices
-            .checked_add(result.rings.iter().map(Vec::len).sum::<usize>())
-            .ok_or("PDF fill vertex budget overflow")?;
-        if self.vertices > 16_384 {
-            return Err("PDF fill composition exceeds cumulative vertex budget".into());
-        }
-        Ok(result)
+        &mut self, context: &mut FixedGridComposition, a: usize, b: usize,
+        op: BooleanOp2D, rule: ContourFillRule,
+    ) -> Result<usize, String> {
+        let n = (context.vertex_count(a)? + context.vertex_count(b)?) as u64;
+        self.charge(n.checked_mul(n).and_then(|n|n.checked_mul(16))
+            .ok_or("PDF fill edge budget overflow")?.max(1))?;
+        context.overlay(a,b,op,rule)
     }
+
 }
 /// The fixed-grid output is a declared approximation. Grid error accumulates
 /// through classification, clipping and paint-order booleans; reserve a grid
@@ -73,7 +55,6 @@ pub(crate) fn compose(
     let grid = prepared.tolerance_metres / ((paint_count * 4 + 4) as f64 * 16.);
     let mut budget = Budget {
         remaining: 4_000_000,
-        vertices: 0,
     };
     let [x0, y0, x1, y1] = prepared.page_clip_pdf;
     let clip = vec![vec![
@@ -106,29 +87,34 @@ pub(crate) fn compose(
         }
     }
     qualify(&paths, &clip, flatten_error, &mut budget.remaining)?;
-    let mut occluded = ContourSet::default();
+    let count=paths.iter().map(|p|p.rings.iter().map(Vec::len).sum::<usize>()).sum::<usize>()
+        + clip.iter().map(Vec::len).sum::<usize>();
+    budget.charge((count as u64).checked_mul(count as u64).and_then(|n|n.checked_mul(16))
+        .ok_or("PDF page lattice work overflow")?)?;
+    let mut groups:Vec<_>=paths.into_iter().map(|p|p.rings).collect();
+    let clip_id=groups.len(); groups.push(clip);
+    let empty_id=groups.len();
+    let mut context=FixedGridComposition::new(&groups,grid)?;
+    let mut occluded = empty_id;
     let mut shapes = vec![];
-    for ((ordinal, rgb, even_odd), input) in paints.iter().zip(&paths).rev() {
+    for (input, (ordinal, rgb, even_odd)) in paints.iter().enumerate().rev() {
         let rule = if *even_odd {
             ContourFillRule::EvenOdd
         } else {
             ContourFillRule::NonZero
         };
-        let classified = budget.overlay(&input.rings, &[], BooleanOp2D::Union, rule, grid)?;
+        let classified = budget.overlay(&mut context, input, empty_id, BooleanOp2D::Union, rule)?;
         let clipped = budget.overlay(
-            &classified.rings,
-            &clip,
+            &mut context, classified, clip_id,
             BooleanOp2D::Intersection,
             ContourFillRule::NonZero,
-            grid,
         )?;
         let visible = budget.overlay(
-            &clipped.rings,
-            &occluded.rings,
+            &mut context, clipped, occluded,
             BooleanOp2D::Difference,
             ContourFillRule::NonZero,
-            grid,
         )?;
+        let visible=context.contours(visible)?;
         for i in 0..visible.shape_count() {
             let rings = visible.shape(i).ok_or("Missing PDF fill shape")?;
             if rings.len() > 64 || rings.iter().map(|r| r.len() + 1).sum::<usize>() > 2048 {
@@ -144,11 +130,9 @@ pub(crate) fn compose(
             }
         }
         occluded = budget.overlay(
-            &occluded.rings,
-            &clipped.rings,
+            &mut context, occluded, clipped,
             BooleanOp2D::Union,
             ContourFillRule::NonZero,
-            grid,
         )?;
     }
     if shapes.is_empty() {

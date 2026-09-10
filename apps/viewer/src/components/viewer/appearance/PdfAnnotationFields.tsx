@@ -63,7 +63,7 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
       const created = await result.create(renderer, { signal: controller.signal });
       if (controller.signal.aborted || operation.current !== controller) return;
       selectCreatedAppearanceObject(modelId, created); drop();
-      setMessage('PDF IfcAnnotation created and selected. Undo is available.');
+      setMessage('PDF IfcAnnotation created and selected. Hide the drawing above to inspect it. Undo is available.');
     } catch (failure) {
       if (!controller.signal.aborted && operation.current === controller) { drop(); setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); }
     } finally { if (operation.current === controller) { operation.current = null; setBusy(false); } }

@@ -270,6 +270,12 @@ readonly is_ready: boolean; // true once the API is initialized
 
 Beyond `IfcAPI` and the mesh types below, the module exports `ClashSession` / `ClashRunResult` (native clash detection over ingested mesh buffers), `GridAxisCollection` / `GridAxisJs` (parsed grid axes), `ProfileCollection` / `ProfileEntryJs`, `PartitionedBatch`, `MeshOutlineJs`, `SpacePlateHandle` (interactive space-sketch topology), `Contours2D` (see below), and the `Symbolic*` classes (`SymbolicRepresentationCollection`, `SymbolicPolyline`, `SymbolicCircle`, `SymbolicText`, `SymbolicFillArea`). See `packages/wasm/pkg/ifc-lite.d.ts` for their full definitions.
 
+`SymbolicFillArea.geometryItemId` optionally identifies an unambiguous direct
+fill item in a single flat representation. Match it together with the owning
+`expressId` and model identity when avoiding duplicate 3D mesh/symbolic rendering.
+Nested, mapped, repeated or otherwise unqualified item occurrences leave it
+undefined. The symbolic primitive remains available for 2D drawing generation.
+
 ### 2D Boolean Operations (contour sets)
 
 General union / difference / intersection over 2D contour sets, backed by the same `i_overlay` engine the void/CSG paths use. This is the general form of `meshOutline2d`: where that unions one mesh's projected triangles into a silhouette, these combine two silhouettes. Use them for analytic hidden-surface removal (subtract an accumulated occluder from each element's outline), screen tiling, or any downstream 2D CSG.

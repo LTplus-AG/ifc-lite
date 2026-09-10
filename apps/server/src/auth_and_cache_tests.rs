@@ -197,3 +197,29 @@ async fn get_cached_returns_the_stored_response_and_sets_from_cache() {
     // beyond a plain cache lookup.
     assert_eq!(json["stats"]["from_cache"], true);
 }
+
+#[test]
+fn issue_4459_legacy_cached_response_decodes_without_duplicate_symbolic_keys() {
+    let old = minimal_parse_response("legacy-symbolic-cache");
+    let bytes = serde_json::to_vec(&old).unwrap();
+    let parsed: crate::types::SymbolicParseResponse = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(parsed.cache_key, "legacy-symbolic-cache");
+    assert!(parsed.symbolic_data.is_empty());
+    assert_eq!(serde_json::to_value(&parsed).unwrap(), serde_json::to_value(&old).unwrap());
+}
+
+#[test]
+fn issue_4459_server_extension_has_one_symbolic_key_and_reads_old_nonempty_cache() {
+    let mut old = minimal_parse_response("nonempty-symbolic-cache");
+    old.symbolic_data.circles.push(ifc_lite_processing::SymbolicCircle::full(
+        42, "IfcAnnotation".into(), 1.0, 2.0, 3.0, f32::NAN, "Annotation".into()));
+    let before: serde_json::Value = serde_json::from_slice(&serde_json::to_vec(&old).unwrap()).unwrap();
+    let cached: crate::types::SymbolicParseResponse = serde_json::from_value(before.clone()).unwrap();
+    assert_eq!(cached.symbolic_data.data().circles.len(), 1);
+    assert!(cached.symbolic_data.data().circles[0].world_y.is_nan());
+    let enriched = old.symbolic_data.clone().into();
+    let response = crate::types::SymbolicParseResponse::new(old, enriched);
+    let wire = serde_json::to_string(&response).unwrap();
+    assert_eq!(wire.matches("\"symbolic_data\":").count(), 1);
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&wire).unwrap(), before);
+}

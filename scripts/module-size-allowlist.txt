@@ -144,7 +144,6 @@
   1141 apps/viewer/src/lib/llm/script-preflight.ts
    410 apps/viewer/src/lib/llm/stream-client.ts
    809 apps/viewer/src/lib/llm/system-prompt.ts
-   403 apps/viewer/src/lib/overlay-parse/symbolic-flat.ts
    491 apps/viewer/src/lib/scripts/templates/create-building.ts
    598 apps/viewer/src/lib/search/filter-evaluate.ts
    450 apps/viewer/src/lib/search/tier1-index.ts

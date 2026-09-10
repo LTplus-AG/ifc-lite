@@ -9,6 +9,8 @@ import { placedSymbols } from '@/lib/model-placement/placed-symbols';
 import { displayedTranslation } from '@/lib/model-placement/state';
 import type { Translation } from '@/lib/model-placement/translation';
 import { useEffect, useMemo, useState } from 'react';
+import type { MeshData } from '@ifc-lite/geometry';
+import { meshedFillItems } from './symbolic-meshed-fills.js';
 import type { DrawingLine2D } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
@@ -35,9 +37,6 @@ import {
   type SymbolicRichChannelsEntry,
 } from './symbolic-rich-channels.js';
 
-// The parse walk itself lives in `lib/overlay-parse/symbolic-parse.ts` so a
-// worker can import it (a worker module cannot import this React hook file).
-// Re-exported here so existing consumers keep their import paths.
 export type { AnnotationsForStorey, AnnotationText2D, AnnotationFill2D };
 export { polylineToSegments, circleToSegments } from '../lib/overlay-parse/symbolic-parse.js';
 
@@ -86,6 +85,7 @@ const EMPTY_F32 = new Float32Array(0);
  *  primitive's LOCAL express id to the federated global id the visibility
  *  sets are keyed by. `idOffset` is 0 for the legacy single-model path. */
 interface ActiveStore {
+  meshes?: readonly MeshData[];
   translation: Translation;
   store: IfcDataStore;
   modelId: string;
@@ -94,20 +94,20 @@ interface ActiveStore {
 
 /** Read the active store set from the viewer store. Federation-aware. */
 function useActiveStores(): ActiveStore[] {
-  const { models, ifcDataStore, placement } = useViewerStore(
-    useShallow((s) => ({ models: s.models, ifcDataStore: s.ifcDataStore, placement: s.modelPlacement })),
+  const { models, ifcDataStore, placement, geometryResult } = useViewerStore(
+    useShallow((s) => ({ models: s.models, ifcDataStore: s.ifcDataStore, placement: s.modelPlacement, geometryResult: s.geometryResult })),
   );
   return useMemo(() => {
     const out: ActiveStore[] = [];
     if (models.size > 0) {
       for (const [modelId, m] of models) {
-        if (m.ifcDataStore) out.push({ store: m.ifcDataStore, modelId, idOffset: m.idOffset ?? 0, translation: displayedTranslation(placement, modelId) });
+        if (m.ifcDataStore) out.push({ meshes: m.geometryResult?.meshes, store: m.ifcDataStore, modelId, idOffset: m.idOffset ?? 0, translation: displayedTranslation(placement, modelId) });
       }
     } else if (ifcDataStore) {
-      out.push({ store: ifcDataStore, modelId: 'legacy', idOffset: 0, translation: [0, 0, 0] });
+      out.push({ meshes: geometryResult?.meshes, store: ifcDataStore, modelId: 'legacy', idOffset: 0, translation: [0, 0, 0] });
     }
     return out;
-  }, [models, ifcDataStore, placement]);
+  }, [models, ifcDataStore, placement, geometryResult]);
 }
 
 /** Trigger parse for the active stores when `enabled`, tick on completion. */
@@ -478,7 +478,7 @@ export function useSymbolicAnnotationsRichData(params: {
     const entries: SymbolicRichChannelsEntry[] = [];
     for (const entry of stores) {
       const cached = placedSymbols(getParseFor(entry.store), entry.translation, fallbackY);
-      if (cached) entries.push({ cached, isHidden: makeHiddenOwnerPredicate(entry, hiddenSets) });
+      if (cached) entries.push({ cached, isHidden: makeHiddenOwnerPredicate(entry, hiddenSets), isMeshedFill: meshedFillItems(entry.meshes, id => entry.idOffset === 0 ? id : useViewerStore.getState().toGlobalId(entry.modelId, id)) });
     }
 
     return buildSymbolicRichChannels(entries, {

@@ -84,6 +84,21 @@ fn area(mesh: &crate::types::mesh::MeshData) -> f64 {
         .sum()
 }
 #[test]
+fn issue_4459_direct_pdf_fill_provenance_matches_mesh_without_removing_2d_symbols() {
+    let (source, request) = fixture();
+    let plan = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
+    let exported = apply(&source, &plan.plan);
+    let geometry = crate::process_geometry(exported.as_bytes());
+    let (symbols, items) = crate::symbolic::extract_symbolic_data_with_provenance(exported.as_bytes()).into_parts();
+    let fills: Vec<_> = symbols.fills.iter().enumerate().filter(|(_, f)| f.express_id == plan.annotation_id).collect();
+    assert_eq!(fills.len(), 2, "2D drawing primitives must remain available");
+    for (ordinal, fill) in fills {
+        let item = items[ordinal].expect("direct fill must identify its source item");
+        assert!(geometry.meshes.iter().any(|m| m.express_id == fill.express_id
+            && m.geometry_item_id == Some(item) && !m.indices.is_empty()));
+    }
+}
+#[test]
 fn issue_4406_fill_page_preserves_evenodd_hole_crop_paint_order_and_native_reopen() {
     let (source, request) = fixture();
     let plan = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();

@@ -23,7 +23,7 @@ use axum::{
     http::{header, StatusCode},
     response::Response,
 };
-use ifc_lite_processing::{extract_symbolic_data, process_geometry_filtered_with_quality};
+use ifc_lite_processing::{extract_symbolic_data_with_provenance, process_geometry_filtered_with_quality};
 use serde::Serialize;
 
 /// Response header containing metadata for optimized Parquet response.
@@ -192,7 +192,7 @@ pub async fn parse_parquet_optimized(
         (
             rayon::join(
                 || process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality),
-                || extract_symbolic_data(&content),
+                || extract_symbolic_data_with_provenance(&content),
             ),
             admission_guard,
         )

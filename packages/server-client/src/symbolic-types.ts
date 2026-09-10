@@ -101,6 +101,8 @@ export interface SymbolicText {
  * where hole `i` begins.
  */
 export interface SymbolicFillArea {
+  /** Direct source item; absent for nested or unknown occurrence provenance. */
+  geometry_item_id?: number;
   express_id: number;
   ifc_type: string;
   points: number[];

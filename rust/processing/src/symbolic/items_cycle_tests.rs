@@ -40,6 +40,7 @@ fn run(step: &str, start_id: u32) -> SymbolicData {
         RenderFrameRebase::default(),
         &styled,
         &mut out,
+        None,
     );
     out.into_data()
 }
@@ -66,6 +67,7 @@ fn run_with_budget(step: &str, start_id: u32, budget: u32) -> SymbolicData {
         RenderFrameRebase::default(),
         &styled,
         &mut out,
+        None,
     );
     out.into_data()
 }

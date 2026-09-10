@@ -356,11 +356,11 @@ async fn streaming_complete_event_carries_symbolic_data() {
         .expect("stream should emit a Complete event");
 
     assert!(
-        !symbolic.grid_axes.is_empty(),
+        !symbolic.data().grid_axes.is_empty(),
         "streaming Complete should include IfcGrid axes"
     );
     assert!(
-        !symbolic.circles.is_empty(),
+        !symbolic.data().circles.is_empty(),
         "streaming Complete should include IfcAnnotation circle"
     );
 }

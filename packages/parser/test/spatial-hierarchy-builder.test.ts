@@ -938,4 +938,54 @@ describe('SpatialHierarchyBuilder', () => {
       expect(storeyBFirst.ambiguousStorey!.has(4)).toBe(true);
     });
   });
+
+  // ONE fixture, byte-identical in shape to the apps/server Rust fixture
+  // added for parity verification (Project #1 -> Building #2 -> [Storey A
+  // #3, Storey B #4], Wall #5 declared contained in both storeys). Proves
+  // the TS parser path and the Rust server path agree: first-declared wins
+  // on both sides, independent of which order the two containment edges
+  // appear in.
+  describe('cross-language parity with apps/server Rust fixture (#4310 investigation)', () => {
+    function buildFixture(firstStorey: 3 | 4) {
+      const secondStorey = firstStorey === 3 ? 4 : 3;
+      const strings = new StringTable();
+      const entities = new EntityTableBuilder(5, strings);
+      entities.add(1, 'IFCPROJECT', 'p0', 'MyProject', '', '');
+      entities.add(2, 'IFCBUILDING', 'b0', 'MyBuilding', '', '');
+      entities.add(3, 'IFCBUILDINGSTOREY', 'st0', 'StoreyA', '', '');
+      entities.add(4, 'IFCBUILDINGSTOREY', 'st1', 'StoreyB', '', '');
+      entities.add(5, 'IFCWALL', 'w0', 'W1', '', '', true);
+
+      const relationships = new RelationshipGraphBuilder();
+      relationships.addEdge(1, 2, RelationshipType.Aggregates, 100); // Project -> Building
+      relationships.addEdge(2, 3, RelationshipType.Aggregates, 101); // Building -> Storey A
+      relationships.addEdge(2, 4, RelationshipType.Aggregates, 102); // Building -> Storey B
+      relationships.addEdge(firstStorey, 5, RelationshipType.ContainsElements, 110);
+      relationships.addEdge(secondStorey, 5, RelationshipType.ContainsElements, 111);
+
+      return new SpatialHierarchyBuilder().build(
+        entities.build(),
+        relationships.build(),
+        strings,
+        new Uint8Array(),
+        { byId: { get: () => undefined } },
+      );
+    }
+
+    it('order A (Storey A #3 declared first): wall resolves to #3, matching the Rust fixture', () => {
+      const hierarchy = buildFixture(3);
+      // Rust: apps/server duplicate_storey_containment_resolves_first_declared_order_a
+      // asserts sh.element_to_storey resolves element 5 to storey 3. Same
+      // fixture, same winner.
+      expect(hierarchy.elementToStorey.get(5)).toBe(3);
+    });
+
+    it('order B (Storey B #4 declared first): wall resolves to #4, matching the Rust fixture', () => {
+      const hierarchy = buildFixture(4);
+      // Rust: apps/server duplicate_storey_containment_resolves_first_declared_order_b
+      // asserts sh.element_to_storey resolves element 5 to storey 4. Same
+      // fixture, same winner.
+      expect(hierarchy.elementToStorey.get(5)).toBe(4);
+    });
+  });
 });

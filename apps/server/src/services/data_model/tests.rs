@@ -717,6 +717,88 @@ fn buckets_contained_elements_by_the_correct_spatial_container_kind() {
     assert_eq!(sh.element_to_space.len(), 1);
 }
 
+/// #4310 (mirroring the TS-side fix `elementToStorey.get(id)` in
+/// `spatial-hierarchy-builder.ts`): a wall duplicate-contained by two
+/// storeys must resolve to the FIRST-declared `IFCRELCONTAINEDINSPATIALSTRUCTURE`
+/// edge, independent of which order the two relations appear in the file.
+/// Two mirror-image fixtures (not one fixture that happens to commute) pin
+/// this: swapping which relation is declared first must swap which storey
+/// wins.
+const DUPLICATE_STOREY_ORDER_A_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#5=IFCWALL('Wall0000000000000000001',$,'W1',$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3,#4));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#3);
+#111=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#5),#4);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+const DUPLICATE_STOREY_ORDER_B_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#5=IFCWALL('Wall0000000000000000001',$,'W1',$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3,#4));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#4);
+#111=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#5),#3);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn duplicate_storey_containment_resolves_first_declared_order_a() {
+    let dm = extract_data_model_checked(DUPLICATE_STOREY_ORDER_A_IFC);
+    let sh = &dm.spatial_hierarchy;
+    // Order A declares StoreyA (#3) first: the wall must resolve to #3, and
+    // there must be exactly one entry for the wall, not two competing ones.
+    assert_eq!(
+        sh.element_to_storey.iter().filter(|(e, _)| *e == 5).count(),
+        1,
+        "duplicate containment must collapse to a single first-declared entry, not both: {:?}",
+        sh.element_to_storey
+    );
+    assert_eq!(
+        sh.element_to_storey.iter().find(|(e, _)| *e == 5).map(|(_, s)| *s),
+        Some(3),
+        "first-declared edge (Storey A, #3) must win"
+    );
+}
+
+#[test]
+fn duplicate_storey_containment_resolves_first_declared_order_b() {
+    let dm = extract_data_model_checked(DUPLICATE_STOREY_ORDER_B_IFC);
+    let sh = &dm.spatial_hierarchy;
+    // Order B swaps which relation is declared first: the wall must now
+    // resolve to Storey B (#4) - the winner tracks declaration order, not a
+    // fixed storey.
+    assert_eq!(
+        sh.element_to_storey.iter().filter(|(e, _)| *e == 5).count(),
+        1,
+        "duplicate containment must collapse to a single first-declared entry, not both: {:?}",
+        sh.element_to_storey
+    );
+    assert_eq!(
+        sh.element_to_storey.iter().find(|(e, _)| *e == 5).map(|(_, s)| *s),
+        Some(4),
+        "first-declared edge (Storey B, #4) must win"
+    );
+}
+
 /// Every relationship row must carry the express id of the `IfcRel*` entity it
 /// came from (issue #3860). Without it the viewer's server path fed the
 /// relationship graph id 0 and a Parquet/DuckDB export wrote `RelId = 0` on

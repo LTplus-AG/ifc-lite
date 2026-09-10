@@ -642,3 +642,19 @@ are documented in [Browser Worker Mode](./parsing.md#browser-worker-mode). Only 
 parallel prepass produces this key. Other geometry paths and older WASM builds
 leave the cell unavailable, and the parser computes its ordinary source key without
 waiting. Geometry streaming and parser index-handoff deadlines remain unchanged.
+
+### Polygonal annotation fills
+
+Ordinary native and WASM geometry processing supports direct
+`IfcAnnotationFillArea` items on `IfcAnnotation` products in `Annotation2D` and
+`Surface2D` representations. Closed `IfcPolyline` boundaries can contain holes;
+object placement and model units use the normal geometry pipeline. Auxiliary
+building-type footprints remain excluded.
+
+This initial subset accepts unstyled fills or one solid `IfcFillAreaStyle` RGB
+paint, including an IFC2x3 `IfcPresentationStyleAssignment` wrapper. Mixed paint,
+hatching/tiling, invalid RGB, unsupported boundaries and exhausted validation
+budgets refuse the fill and report an unsupported item. Limits are 64 rings and
+2,048 input vertices per fill, with a source-scoped style lookup bounded to
+256 MiB of source, one million attached-style edges, 16 KiB per styled record,
+and 64 styled items per geometry item. This does not enable PDF vector conversion.

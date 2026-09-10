@@ -369,9 +369,11 @@ fn produce_inner(
         // one unsupported representation item no longer blanks the whole
         // element (`process_element` aborts with `?`). #858 palette split
         // happens per item inside `emit_sub_meshes`.
-        if let Ok(sub_meshes) =
-            router.process_element_with_submeshes_textured(job.entity, decoder, ctx.texture_index)
-        {
+        let submeshes = router.process_element_with_submeshes_textured(job.entity, decoder, ctx.texture_index);
+        // Annotation validation failures are terminal, not another meshing strategy.
+        // Retrying the fallback chain would count one refused fill three times.
+        if job.ifc_type == IfcType::IfcAnnotation && submeshes.is_err() { return (Vec::new(), Vec::new()); }
+        if let Ok(sub_meshes) = submeshes {
             if !sub_meshes.is_empty() {
                 let (out, occ) =
                     emit_sub_meshes(job, sub_meshes, element_color, ctx, decoder, hasher, layer_class);

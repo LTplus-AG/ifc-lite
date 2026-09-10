@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "6.4.0",
+  "version": "6.5.0",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -32,6 +32,7 @@
     "test:snap-edges": "node scripts/test-snap-edges.mjs",
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
     "check:ci-path-coverage": "node scripts/check-ci-path-coverage.mjs",
+    "check:ci-aggregate-coverage": "node scripts/check-ci-aggregate-coverage.mjs",
     "check:test-glob-coverage": "node scripts/check-test-glob-coverage.mjs",
     "check:source-text-assertions": "node scripts/check-source-text-assertions.mjs",
     "check:rust-source-text-assertions": "node scripts/check-rust-source-text-assertions.mjs",

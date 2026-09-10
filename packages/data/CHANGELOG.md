@@ -1,5 +1,20 @@
 # @ifc-lite/data
 
+## 4.1.0
+
+### Minor Changes
+
+- [#4356](https://github.com/LTplus-AG/ifc-lite/pull/4356) [`ced8bb4`](https://github.com/LTplus-AG/ifc-lite/commit/ced8bb46c368648bd54a1bab716d049143faa036) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Surface ambiguous direct storey containment as a detectable signal ([#4311](https://github.com/LTplus-AG/ifc-lite/issues/4311)), a follow-up to the first-declared-wins tie-break from [#4248](https://github.com/LTplus-AG/ifc-lite/issues/4248)/[#4310](https://github.com/LTplus-AG/ifc-lite/issues/4310).
+  
+  An element can be named by more than one `IfcRelContainedInSpatialStructure` edge pointing at different storeys — a malformed-but-real shape both `elementToStorey` and `containedIn()` silently resolved to a single answer, with no way for a caller to tell the containment was contested in the source file.
+  
+  - `SpatialHierarchy` (`@ifc-lite/data`) gains an optional `ambiguousStorey: Set<number>` field: the element ids whose direct storey containment named more than one distinct storey. `SpatialHierarchyBuilder.build()` / `buildFromCache()` (`@ifc-lite/parser`) always populate it (empty when nothing was ambiguous); it also round-trips through the parser worker transport.
+  - `EntityNode.containedInAmbiguous()` (`@ifc-lite/query`) answers the same question per-call, for callers using `containedIn()` instead of the parser's aggregate hierarchy.
+  
+  Neither `elementToStorey`'s nor `containedIn()`'s existing resolution changes — both still return a single winner. Detection reuses the direct-containment lists (`byStorey` / inverse `ContainsElements` edges) each already builds, so it costs no extra graph traversal.
+
+- [#4376](https://github.com/LTplus-AG/ifc-lite/pull/4376) [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb) Thanks [@louistrue](https://github.com/louistrue)! - Add shared live spatial lookups so worker and server hydration retain spatial-node identity and authored containment changes.
+
 ## 4.0.0
 
 ### Major Changes

@@ -227,27 +227,20 @@ pub fn boolean_2d_fixed_grid(
     subject: &[Ring2D], clip: &[Ring2D], op: BooleanOp2D,
     fill: ContourFillRule, grid_size: f64,
 ) -> std::result::Result<ContourSet, String> {
-    use i_overlay::float::scale::FixedScaleFloatOverlay;
-    let count = subject.iter().chain(clip).try_fold(0usize, |n, ring| n.checked_add(ring.len()))
-        .ok_or("Fixed-grid contour edge budget overflow")?;
-    if count > 1024 { return Err("Fixed-grid contour overlay exceeds 1024 edges".into()); }
-    if !grid_size.is_finite() || grid_size <= 0. || !(1. / grid_size).is_finite()
-        || subject.iter().chain(clip).flatten().flatten().any(|v| !v.is_finite()) {
-        return Err("Fixed-grid contour overlay requires finite coordinates and a positive grid".into());
-    }
-    crate::contour_grid_guard::validate(subject,clip,grid_size)?;
-    for ring in subject.iter().chain(clip).filter(|r| r.len() >= 3) {
+    let count=subject.iter().chain(clip).try_fold(0usize,|n,r|n.checked_add(r.len())).ok_or("Fixed-grid contour edge budget overflow")?;
+    if count>1024 { return Err("Fixed-grid contour overlay exceeds 1024 edges".into()); }
+    let mut composition = crate::FixedGridComposition::new(&[subject.to_vec(),clip.to_vec()],grid_size)?;
+    let result=composition.overlay(0,1,op,fill)?;
+    composition.contours(result)
+}
+
+pub(crate) fn sanitize_fixed_grid(rings: &[Ring2D]) -> Result<Vec<Ring2D>, String> {
+    for ring in rings.iter().filter(|r| r.len() >= 3) {
         if is_collinear(ring) && ring.windows(2).any(|p| geometry_predicates::orient2d(ring[0],p[0],p[1]) != 0.) {
             return Err("Fixed-grid contour collinearity is numerically ambiguous".into());
         }
     }
-    let subject = sanitize(subject); let clip = sanitize(clip);
-    let rule = match op { BooleanOp2D::Union=>OverlayRule::Union,
-        BooleanOp2D::Difference=>OverlayRule::Difference, BooleanOp2D::Intersection=>OverlayRule::Intersect };
-    let fill = match fill { ContourFillRule::NonZero=>FillRule::NonZero, ContourFillRule::EvenOdd=>FillRule::EvenOdd };
-    let shapes = subject.overlay_with_fixed_scale_as::<i64>(&clip, rule, fill, 1. / grid_size)
-        .map_err(|e| format!("Fixed-grid contour numeric range refused: {e:?}"))?;
-    Ok(collect(shapes))
+    Ok(sanitize(rings))
 }
 
 /// Self-union: overlay against an empty clip so overlapping subject rings

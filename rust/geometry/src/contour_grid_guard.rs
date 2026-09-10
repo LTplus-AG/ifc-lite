@@ -35,13 +35,11 @@ fn distance(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
 /// Inputs already have a bounded total edge count. These checks are quadratic;
 /// the caller charges them along with overlay work. Uncertain cases refuse,
 /// rather than claiming arbitrary path topology survives quantization.
-pub(crate) fn validate(subject: &[Ring2D], clip: &[Ring2D], grid: f64) -> Result<(), String> {
+pub(crate) fn validate_with_adapter(
+    subject: &[Ring2D], clip: &[Ring2D], grid: f64,
+    adapter: &FloatPointAdapter<[f64;2], i64>,
+) -> Result<(), String> {
     let rings: Vec<_> = subject.iter().chain(clip).collect();
-    let adapter = FloatPointAdapter::<[f64; 2], i64>::with_iter_and_scale_checked(
-        rings.iter().flat_map(|r| r.iter()),
-        1. / grid,
-    )
-    .map_err(|e| format!("Fixed-grid contour numeric range refused: {e:?}"))?;
     let mut seen = BTreeMap::new();
     let mut edges = Vec::new();
     let mut magnitude = 1_f64;
@@ -74,6 +72,17 @@ pub(crate) fn validate(subject: &[Ring2D], clip: &[Ring2D], grid: f64) -> Result
         for j in i + 1..edges.len() {
             let (a, b, qa, qb) = edges[i];
             let (c, d, qc, qd) = edges[j];
+            // A side change relative to an infinite line is not a finite-edge
+            // topology change when an axis still separates both endpoint boxes
+            // before AND after quantization, beyond the existing error margin.
+            let separated = (0..2).any(|axis| {
+                let gap = a[axis].min(b[axis]).max(c[axis].min(d[axis]))
+                    - a[axis].max(b[axis]).min(c[axis].max(d[axis]));
+                let qgap = i128::from(qa[axis].min(qb[axis]).max(qc[axis].min(qd[axis])))
+                    - i128::from(qa[axis].max(qb[axis]).min(qc[axis].max(qd[axis])));
+                gap > margin && qgap as f64 * grid > margin
+            });
+            if separated { continue; }
             let original = [
                 orient(a, b, c),
                 orient(a, b, d),

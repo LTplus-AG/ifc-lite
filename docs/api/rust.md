@@ -933,3 +933,22 @@ immutable page/calibration/operations request. It does not parse PDF bytes,
 flatten curves or create IFC entities. `state_qualified` is deliberately separate
 from geometry fidelity or Apply readiness. See the [WASM contract](wasm.md#pdf-vector-graphics-state-preparation)
 and [annotation implementation boundary](../architecture/pdf-vector-annotations.md#bounded-graphics-state-preparation).
+
+### Sequential fixed-grid contour composition
+
+`ifc_lite_geometry::FixedGridComposition` qualifies source contour groups against
+one bounded lattice and keeps intermediate booleans in integer coordinates.
+`new(groups, grid)` assigns input IDs by index and an empty-set ID at
+`groups.len()`. `overlay(a, b, operation, fill_rule)` returns a new local group ID;
+`vertex_count(id)` lets the caller precharge work, and `contours(id)` exports only
+a classified result to model coordinates. IDs belong to their creating context.
+`boolean_2d_fixed_grid` uses this same implementation for a single operation.
+
+The PDF planner charges construction and each stage against its shared work
+budget. Independent native caps are 257 input groups, 1,024 original vertices,
+1,024 vertices per stage, 2,048 retained groups and 16,384 cumulative vertices.
+Coordinates must be finite within 1e12 model units; quantized coordinates must
+fit the exact diagnostic range of ±2^50. Original endpoint collapse/uncertain
+contacts and per-stage unresolved intersections refuse. Shared integer storage
+avoids introducing a new quantization phase between classification, clipping
+and paint-order composition.

@@ -29,7 +29,7 @@
       "nativeTriangleCount": 114,
       "declaredToleranceMetres": 0.02,
       "geometryWork": 973331,
-      "exportSha256": "23d1c53d637eebf9b1042bdcc99b2c0ebf085b9f1995e317ead7e242a75594f7"
+      "exportSha256": "73a9d1ed3e63f6c6097de1ba13adbe1883e5bf5c82b800e959d75c2a9d453c1c"
     },
     {
       "pageNumber": 2,
@@ -56,7 +56,7 @@
       "nativeTriangleCount": 192,
       "declaredToleranceMetres": 0.02,
       "geometryWork": 2641422,
-      "exportSha256": "c9e82b5d219ee8c912b7a9be0de7b47a9a0a185b4f03f350a86999118bf0a5c4"
+      "exportSha256": "e0eb57440255effb5ad45c5ac7abf5125273010f11dcad2a6783ee38874e27e1"
     },
     {
       "pageNumber": 3,
@@ -83,7 +83,7 @@
       "nativeTriangleCount": 62,
       "declaredToleranceMetres": 0.02,
       "geometryWork": 306067,
-      "exportSha256": "77c4b9d8699547b61bb56b68c98368e85b914b133b8eb228c69828aae3659e16"
+      "exportSha256": "02b589cdb9f78ec91cafd497f7946e381205ce85725a498c5f28db222d92149d"
     }
   ]
 }

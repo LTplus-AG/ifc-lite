@@ -46,3 +46,10 @@ hulls must be provably separated, with explicit shared endpoint/chord cases.
 Other rings, paint boundaries and the CropBox must remain outside the flattening
 error envelope. Unresolved hull overlap, crossings, contacts or precision refuse
 the entire page. No points are snapped to make the qualification pass.
+
+Final validation passed the full native workspace and strict all-target clippy,
+root typecheck/build, fresh WASM contracts (with their existing optional skips),
+and an independently installed PyO3 wheel against all four committed quick-lane
+parity references. The existing halfspace density advisory remains. Raw native
+load samples and identical mesh fingerprints are in `native-load.json`; they do
+not measure curved-page throughput or establish zero overhead.

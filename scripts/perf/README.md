@@ -1266,3 +1266,16 @@ establish zero overhead or browser-worker throughput. The composition budget
 precharges pairwise overlay work and separately limits generated contours and
 transport; do not tune those caps using unrelated normal-load timings. See
 [raw samples and source identity](../../docs/architecture/evidence/pdf-fill-annotations/native-load.json).
+
+## Qualified curved PDF fill boundaries (#4406)
+
+Native normal-load A/B/A/B resolved no consistent regression, with identical
+ordered mesh fingerprints and counts. This does not measure curved-page worker
+throughput. Subdivision and original-piece hull qualification share the existing
+creation budget; finely tessellated holes can still refuse its overlay work cap.
+Do not silently coarsen to fit it. A global exact convex-control-polygon check
+rejected a real sheared control on tiny near-collinear turns; exact per-piece
+hull separation admitted that control without snapping or ignoring features.
+Keep finite-chord error bounds: infinite-line flatness incorrectly collapses
+backtracking curves. See [source-matched samples](../../docs/architecture/evidence/pdf-curved-fill-annotations/native-load.json)
+and the adjacent independently decoded PDF evidence.

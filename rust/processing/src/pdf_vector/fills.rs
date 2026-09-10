@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-//! Bounded opaque straight-edge fills. Unsupported paint refuses the whole page.
+//! Bounded opaque straight and qualified curved fills. Unsupported paint refuses the whole page.
 use super::{PdfVectorPaint, PreparedPdfVectorPage};
 use super::fill_paths::{point, rings, qualify};
 use ifc_lite_geometry::{boolean_2d_fixed_grid, BooleanOp2D, ContourFillRule, ContourSet, Ring2D};

@@ -874,7 +874,7 @@ containment GlobalId, `Name` and plane frame, plus a canonical decoded
 `frame.sizeMetres` is descriptive page extent, not a second scale.
 
 The geometry scope accepts complete opaque RGB pages made of straight fill
-edges and qualified convex quadratic/cubic curved rings. It resolves nonzero/even-odd winding, holes, islands, implicit CropBox
+edges and qualified quadratic/cubic curved rings. It resolves nonzero/even-odd winding, holes, islands, implicit CropBox
 clipping and paint order. Painted strokes, text, images, explicit clips,
 patterns, transparency and unsupported state refuse the entire page. Quantization
 collapse, uncertain near contacts and exhausted work/size budgets also refuse.
@@ -900,10 +900,12 @@ topology fidelity; only qualified inputs produce a plan.
 Curved fills use iterative de Casteljau subdivision after transforming controls
 into calibrated model-plane metres. One eighth of the declared metric tolerance
 is reserved for flattening; finite-chord control-hull distance bounds each
-accepted segment. The initial topology scope requires convex ordered control
-polygons and separation from other ring, paint and CropBox boundaries. Curved
-crossings, near contacts and concave control polygons refuse, even when a fuller
-curve-arrangement implementation could handle them. Holes with separated curved
+accepted segment. The initial topology scope requires convex control polygons for each Bezier
+piece, provably separated control hulls within each ring, and separation from
+other ring, paint and CropBox boundaries. Adjacent pieces may share their endpoint;
+a two-piece lens or curve with its closing chord has an explicit sidedness proof.
+Unresolved curved crossings, near contacts and overlapping control hulls refuse,
+even when a fuller curve-arrangement implementation could handle them. Holes with separated curved
 boundaries are supported. This is visual filled geometry, not editable Bezier
 entities. Depth, vertex and shared work limits may refuse finely tessellated
 curves; the implementation never silently increases tolerance to fit a budget.

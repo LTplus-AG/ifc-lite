@@ -1,11 +1,9 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
+use super::curve_hulls::{convex, qualify as qualify_hulls, sign};
 use super::flatten::{bezier, charge, distance};
-use ifc_lite_geometry::{
-    kernel::{predicates::orient2d, DropAxis, ImplicitPoint, Sign},
-    Ring2D,
-};
+use ifc_lite_geometry::Ring2D;
 
 pub(super) struct PathRings {
     pub rings: Vec<Ring2D>,
@@ -21,45 +19,19 @@ pub(super) fn point(m: [f64; 6], p: [f64; 2]) -> Result<[f64; 2], String> {
     }
     Ok(q)
 }
-fn sign(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> Sign {
-    let explicit = |p: [f64; 2]| ImplicitPoint::Explicit([p[0], p[1], 0.]);
-    orient2d(&explicit(a), &explicit(b), &explicit(c), DropAxis::Z)
-}
-fn convex(controls: &Ring2D, remaining: &mut u64) -> Result<(), String> {
-    charge(remaining, (controls.len() as u64).pow(2))?;
-    let mut winding = Sign::Zero;
-    for i in 0..controls.len() {
-        let a = controls[i];
-        let b = controls[(i + 1) % controls.len()];
-        if a == b {
-            continue;
-        }
-        for &p in controls {
-            let s = sign(a, b, p);
-            if s == Sign::Zero {
-                continue;
-            }
-            if winding != Sign::Zero && winding != s {
-                return Err("PDF curved fill requires a convex control polygon; unresolved curved topology is not exported".into());
-            }
-            winding = s;
-        }
-    }
-    if winding == Sign::Zero {
-        return Err("PDF curved fill control polygon has no area".into());
-    }
-    Ok(())
-}
 fn finish(
     result: &mut PathRings,
     ring: &mut Ring2D,
-    controls: &mut Ring2D,
+    controls: &mut Vec<Ring2D>,
     curved: &mut bool,
     remaining: &mut u64,
 ) -> Result<(), String> {
     if ring.len() >= 3 {
         if *curved {
-            convex(controls, remaining)?;
+            if ring.last() != ring.first() {
+                controls.push(vec![*ring.last().unwrap(), ring[0]]);
+            }
+            qualify_hulls(controls, remaining)?;
         }
         result.rings.push(std::mem::take(ring));
         result.curved.push(*curved);
@@ -100,13 +72,16 @@ pub(super) fn rings(
                 let p = point(m, [commands[cursor], commands[cursor + 1]])?;
                 cursor += 2;
                 ring.push(p);
-                controls.push(p);
             }
             1 => {
                 let p = point(m, [commands[cursor], commands[cursor + 1]])?;
                 cursor += 2;
+                if let Some(&last) = ring.last() {
+                    if last != p {
+                        controls.push(vec![last, p]);
+                    }
+                }
                 ring.push(p);
-                controls.push(p);
             }
             2 | 3 => {
                 let a = *ring.last().ok_or("PDF curve has no current point")?;
@@ -114,12 +89,14 @@ pub(super) fn rings(
                 let q = point(m, [commands[cursor + 2], commands[cursor + 3]])?;
                 if op == 2 {
                     let end = point(m, [commands[cursor + 4], commands[cursor + 5]])?;
+                    convex(&[a, p, q, end], remaining)?;
                     bezier([a, p, q, end], tolerance, remaining, &mut ring)?;
-                    controls.extend([p, q, end]);
+                    controls.push(vec![a, p, q, end]);
                     cursor += 6;
                 } else {
+                    convex(&[a, p, q], remaining)?;
                     bezier([a, p, q], tolerance, remaining, &mut ring)?;
-                    controls.extend([p, q]);
+                    controls.push(vec![a, p, q]);
                     cursor += 4;
                 }
                 curved = true;
@@ -135,7 +112,6 @@ pub(super) fn rings(
                 )?;
                 if let Some(p) = first {
                     ring.push(p);
-                    controls.push(p);
                 }
             }
             _ => return Err("Unknown PDF fill command".into()),

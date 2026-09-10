@@ -6,6 +6,7 @@
 //! qualified fills; stroke outlining remains unsupported.
 pub(crate) mod fills;
 mod fill_paths;
+mod curve_hulls;
 mod flatten;
 mod types;
 use sha2::{Digest, Sha256};

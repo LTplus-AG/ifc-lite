@@ -286,7 +286,24 @@ fn issue_4406_curved_fill_refuses_unresolved_concavity_contacts_and_tiny_precisi
     let mut concave=request.clone();
     concave.page.operations[0].operation=PdfVectorOperator::Path{paint:PdfVectorPaint::Fill,
         commands:vec![0.,2.,2.,2.,2.,5.,5.,5.,5.,2.,1.,3.5,3.,4.]};
-    assert!(plan_pdf_fill_annotation(source.as_bytes(),&concave).unwrap_err().contains("convex"));
+    assert!(plan_pdf_fill_annotation(source.as_bytes(),&concave).unwrap_err().contains("control hulls"));
     request.page.tolerance_metres=1e-9;
     assert!(plan_pdf_fill_annotation(source.as_bytes(),&request).is_err());
+}
+
+#[test]
+fn issue_4406_actual_decoded_ellipse_hole_and_shear_controls_produce_complete_plans() {
+    let (source, _)=fixture();
+    for data in [
+        include_str!("../../../../docs/architecture/evidence/pdf-curved-fill-annotations/page-1-request.json"),
+        include_str!("../../../../docs/architecture/evidence/pdf-curved-fill-annotations/page-2-request.json"),
+        include_str!("../../../../docs/architecture/evidence/pdf-curved-fill-annotations/page-3-request.json"),
+    ] {
+        let request:PdfFillAnnotationRequest=serde_json::from_str(data).unwrap();
+        let plan=plan_pdf_fill_annotation(source.as_bytes(),&request).unwrap();
+        assert_eq!(plan.regions.len(),1);
+        assert_eq!(plan.meshes.len(),1);
+        assert!(plan.geometry_work<=4_000_000);
+        assert!(area(&plan.meshes[0])>1.);
+    }
 }

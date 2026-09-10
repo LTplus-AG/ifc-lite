@@ -11,8 +11,8 @@
       "iteration": 0,
       "browserVersion": "151.0.7922.34",
       "phase": "complete",
-      "nativeMilliseconds": 1341.5699999332428,
-      "workerMilliseconds": 1511.3550000190735,
+      "nativeMilliseconds": 1356,
+      "workerMilliseconds": 1529.5200001001358,
       "initialMemory": 8781824,
       "finalMemory": 207880192,
       "outputBytes": 21629704,
@@ -40,17 +40,17 @@
         }
       ],
       "exclusions": [],
-      "roundtripMilliseconds": 1523.844999909401,
-      "maxHeartbeatGap": 12.02999997138977,
-      "browserTreeBaselineRssBytes": 260538368,
-      "browserTreeSampledPeakRssBytes": 827080704
+      "roundtripMilliseconds": 1543.0049999952316,
+      "maxHeartbeatGap": 12.039999961853027,
+      "browserTreeBaselineRssBytes": 260341760,
+      "browserTreeSampledPeakRssBytes": 814235648
     },
     {
       "iteration": 1,
       "browserVersion": "151.0.7922.34",
       "phase": "complete",
-      "nativeMilliseconds": 1347.5500000715256,
-      "workerMilliseconds": 1520.6399999856949,
+      "nativeMilliseconds": 1378.2350000143051,
+      "workerMilliseconds": 1550.4349999427795,
       "initialMemory": 8781824,
       "finalMemory": 207880192,
       "outputBytes": 21629704,
@@ -78,17 +78,17 @@
         }
       ],
       "exclusions": [],
-      "roundtripMilliseconds": 1534.1749999523163,
-      "maxHeartbeatGap": 12.28000009059906,
-      "browserTreeBaselineRssBytes": 260489216,
-      "browserTreeSampledPeakRssBytes": 813416448
+      "roundtripMilliseconds": 1563.4250000715256,
+      "maxHeartbeatGap": 12.044999957084656,
+      "browserTreeBaselineRssBytes": 260751360,
+      "browserTreeSampledPeakRssBytes": 806518784
     },
     {
       "iteration": 2,
       "browserVersion": "151.0.7922.34",
       "phase": "complete",
-      "nativeMilliseconds": 1337.9700000286102,
-      "workerMilliseconds": 1512.1200000047684,
+      "nativeMilliseconds": 1357.7399998903275,
+      "workerMilliseconds": 1530.9850000143051,
       "initialMemory": 8781824,
       "finalMemory": 207880192,
       "outputBytes": 21629704,
@@ -116,17 +116,17 @@
         }
       ],
       "exclusions": [],
-      "roundtripMilliseconds": 1524.1100000143051,
-      "maxHeartbeatGap": 12.02999997138977,
-      "browserTreeBaselineRssBytes": 260521984,
-      "browserTreeSampledPeakRssBytes": 852492288
+      "roundtripMilliseconds": 1544.4599999189377,
+      "maxHeartbeatGap": 12.565000057220459,
+      "browserTreeBaselineRssBytes": 260587520,
+      "browserTreeSampledPeakRssBytes": 820527104
     },
     {
       "iteration": 3,
       "browserVersion": "151.0.7922.34",
       "phase": "complete",
-      "nativeMilliseconds": 1361.5800000429153,
-      "workerMilliseconds": 1533.6200000047684,
+      "nativeMilliseconds": 1379,
+      "workerMilliseconds": 1552.1150000095367,
       "initialMemory": 8781824,
       "finalMemory": 207880192,
       "outputBytes": 21629704,
@@ -154,17 +154,17 @@
         }
       ],
       "exclusions": [],
-      "roundtripMilliseconds": 1545.8700000047684,
-      "maxHeartbeatGap": 12.024999976158142,
+      "roundtripMilliseconds": 1564.625,
+      "maxHeartbeatGap": 12.049999952316284,
       "browserTreeBaselineRssBytes": 260636672,
-      "browserTreeSampledPeakRssBytes": 813924352
+      "browserTreeSampledPeakRssBytes": 802865152
     },
     {
       "iteration": 4,
       "browserVersion": "151.0.7922.34",
       "phase": "complete",
-      "nativeMilliseconds": 1356.0099999904633,
-      "workerMilliseconds": 1527.1399999856949,
+      "nativeMilliseconds": 1378.6000000238419,
+      "workerMilliseconds": 1551.4900000095367,
       "initialMemory": 8781824,
       "finalMemory": 207880192,
       "outputBytes": 21629704,
@@ -192,21 +192,21 @@
         }
       ],
       "exclusions": [],
-      "roundtripMilliseconds": 1540.054999947548,
-      "maxHeartbeatGap": 12.02999997138977,
-      "browserTreeBaselineRssBytes": 260653056,
-      "browserTreeSampledPeakRssBytes": 811171840
+      "roundtripMilliseconds": 1564.1650000810623,
+      "maxHeartbeatGap": 12.045000076293945,
+      "browserTreeBaselineRssBytes": 260718592,
+      "browserTreeSampledPeakRssBytes": 796950528
     },
     {
       "iteration": 5,
       "browserVersion": "151.0.7922.34",
       "cancelled": true,
       "cancelRequestedAfterNativeMilliseconds": 100,
-      "terminateCallMilliseconds": 0.009999990463256836,
-      "roundtripMilliseconds": 252.21000003814697,
-      "maxHeartbeatGap": 12.025000095367432,
-      "browserTreeBaselineRssBytes": 260603904,
-      "browserTreeSampledPeakRssBytes": 670629888
+      "terminateCallMilliseconds": 0.02499997615814209,
+      "roundtripMilliseconds": 262.2649999856949,
+      "maxHeartbeatGap": 12.019999980926514,
+      "browserTreeBaselineRssBytes": 260653056,
+      "browserTreeSampledPeakRssBytes": 668909568
     }
   ]
 }

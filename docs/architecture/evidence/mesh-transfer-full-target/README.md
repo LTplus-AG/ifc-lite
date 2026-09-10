@@ -73,6 +73,24 @@ throughput speedup or full Apply/export latency claim.
 The [overlap refusal](overlap-refusal.json) is an actual WASM invocation. Its
 elapsed time was collected during other work and is not a performance result.
 
+## Ordinary-load regression check
+
+[Interleaved base/branch native samples](native-load.json) compare the exact
+current-main native source with this candidate on AC20. The first candidate pair
+is slower and the second pair matches the baseline's reported phase timings;
+ordered mesh fingerprints and counts are identical. This establishes no
+consistent regression in these paired controls, not zero overhead. The transfer
+worker measurement above is separate and makes no worker-pool speedup claim.
+
+## Validation
+
+[Validation summary](validation.json): root build/typecheck, complete native
+workspace, strict Clippy, real WASM contracts and fresh Python wheel parity.
+The focused large-coordinate primitive/BVH invariant protects the anchored
+closest-distance calculation against a false nearest/ambiguity classification.
+Independent review found no remaining blocking runtime finding. The normal
+image/page path retains its existing shader behavior.
+
 ## Reproduction
 
 Use the qualified CC0 input and captured target described in

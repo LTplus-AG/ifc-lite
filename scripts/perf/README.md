@@ -1266,7 +1266,9 @@ fresh workers and passes the normal viewer transaction/export/reopen journey.
 The original quota experiments remain negative; neither this result nor the
 quota increase alone retroactively turns them into wins. Scan-owned memory is
 still bounded, including padding scratch, and overlapping/dense cases refuse
-before publication. This is measured capacity acceptance, not a throughput
+before publication. Ordinary-load paired probes had a slower first candidate
+pair and matching second pair with identical ordered geometry; no consistent
+regression or zero-overhead claim follows. This is measured capacity acceptance, not a throughput
 speedup. [Worker, independent-reader and refusal evidence](../../docs/architecture/evidence/mesh-transfer-full-target/README.md).
 
 ## Qualified PDF fill composition (#4406)

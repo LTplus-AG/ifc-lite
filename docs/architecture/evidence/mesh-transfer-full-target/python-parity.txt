@@ -1,0 +1,9 @@
+fixture: bath_csg_solid.ifc (ifcopenshell 0.8.2 vs ifclite_geom unknown)
+  MATCH           1
+fixture: issue_1155_halfspace_flyaway.ifc (ifcopenshell 0.8.2 vs ifclite_geom unknown)
+  MATCH           1
+  advisory        1 (tri_count density; see report)
+fixture: swept_disk_composite_arc_crankbar.ifc (ifcopenshell 0.8.2 vs ifclite_geom unknown)
+  MATCH           1
+fixture: swept_disk_trimmed_line.ifc (ifcopenshell 0.8.2 vs ifclite_geom unknown)
+  MATCH           1

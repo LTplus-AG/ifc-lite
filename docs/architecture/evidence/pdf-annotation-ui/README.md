@@ -64,3 +64,8 @@ viewer (default port 4390); `PROOF_OUT` selects an untracked output directory.
 The harness uses real UI actions for calibration, preview, creation, history and
 export, canonical store/camera helpers for framing, and actual pointer input for
 selection. It closes its browser in `finally`. No viewer geometry is fabricated.
+
+The manual browser harness is registered as a Knip entry point. Knip remains
+non-green on repository-wide unused/unresolved reports; none of this change's
+production modules or the renamed helpers is listed. No unrelated cleanup sweep
+is included.

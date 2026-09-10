@@ -31,8 +31,33 @@
 //! This test pins both halves of the finding so any future regression of
 //! the unit-scale pathway or the per-element placement chain is caught.
 
+mod support;
+
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
+
+/// `true` when the fixture at `path` is readable; `false` only for a
+/// genuinely absent file (`NotFound`), which is a legitimate skip unless
+/// `IFC_LITE_REQUIRE_FIXTURES=1`, in which case it panics naming the path.
+/// Any other `io::Error` (permission denied, corrupt read, ...) means the
+/// environment is broken rather than merely missing an optional download,
+/// so it panics unconditionally. This attempts the read (rather than
+/// `Path::exists()`) because `exists()` collapses a permission error into
+/// `false` just like a genuinely absent file, and is a TOCTOU check besides
+/// — each caller performs the real read moments later.
+fn fixture_present(path: &str) -> bool {
+    match std::fs::read_to_string(path) {
+        Ok(_) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture {path} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
+            false
+        }
+        Err(e) => panic!("fixture {path} exists but could not be read: {e}"),
+    }
+}
 
 fn bbox(positions: &[f32]) -> Option<((f32, f32, f32), (f32, f32, f32))> {
     if positions.is_empty() {
@@ -64,7 +89,7 @@ fn approx(a: f32, b: f32, tol: f32) -> bool {
 #[test]
 fn advanced_model_door_world_bbox_matches_ios_in_metres() {
     let path = "../../tests/models/ara3d/advanced_model.ifc";
-    if !std::path::Path::new(path).exists() {
+    if !fixture_present(path) {
         eprintln!("skipping: fixture missing at {path}");
         return;
     }
@@ -110,7 +135,7 @@ fn advanced_model_door_world_bbox_matches_ios_in_metres() {
 #[test]
 fn duplex_m_fixed_window_world_bbox_matches_ios() {
     let path = "../../tests/models/ara3d/duplex.ifc";
-    if !std::path::Path::new(path).exists() {
+    if !fixture_present(path) {
         eprintln!("skipping: fixture missing at {path}");
         return;
     }

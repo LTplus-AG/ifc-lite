@@ -216,10 +216,17 @@ export interface WorkScheduleInfo {
   parentPlanGlobalId?: string;
   /**
    * Child IfcWorkSchedule globalIds nested under this work plan via
-   * IfcRelNests (this record as the RelatingObject). Empty for a plain
-   * WorkSchedule, or a WorkPlan with no nested schedules.
+   * IfcRelNests (this record as the RelatingObject). Empty (or absent) for
+   * a plain WorkSchedule, or a WorkPlan with no nested schedules.
+   *
+   * Optional so a `WorkScheduleInfo` built without knowledge of
+   * `IfcRelNests` grouping (e.g. the viewer's standalone-`IfcWorkPlan`
+   * builder) doesn't have to populate a field it has no opinion on.
+   * Absent and `[]` are equivalent everywhere this field is read — neither
+   * the extractor nor the serializer distinguishes "unknown/legacy" from
+   * "known and empty"; both mean "no nested schedules to write or report".
    */
-  childScheduleGlobalIds: string[];
+  childScheduleGlobalIds?: string[];
 }
 
 export interface ScheduleExtraction {

@@ -1198,3 +1198,14 @@ best-of-five phase timings and identical mesh fingerprints/counts; this is a nor
 check, not annotation throughput or worker-pool speedup evidence. Keep style
 lookup failures cached and diagnostic, and keep auxiliary type maps excluded.
 [Exact inputs and paired runs](../../docs/architecture/evidence/annotation-fills/native-load.json).
+
+## Reference opening semantics (#4433)
+
+An element-aware representation predicate excludes non-subtractive Reference
+shapes only for opening elements. Controlled native base/branch probes on AC20
+and ISSUE_129 resolved no material normal-load regression; mesh, vertex and
+triangle counts stayed identical. This is a correctness change, not a speedup.
+The lesson is to preserve the existing type-based rendering predicate for
+ordinary products while applying opening-specific semantics consistently to
+mesh production and fast void probes. Numeric evidence and source revisions are
+in `docs/architecture/evidence/evaluated-openings/performance.json`.

@@ -1,0 +1,12 @@
+{
+  "before": {
+    "triangles": 64,
+    "vertices": 64
+  },
+  "after": {
+    "triangles": 32,
+    "vertices": 48
+  },
+  "baseSource": "b6d65a9885b2f8e7a4b5d8c6cd2c572a405dda58",
+  "sourceFixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d"
+}

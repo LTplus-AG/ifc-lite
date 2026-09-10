@@ -1,9 +1,11 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
+import { useId, useState } from 'react';
+import { ArrowDown, ArrowUp, ChevronRight, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ResolvedAssignment } from '@/lib/appearance/assignments/types.js';
+import { AppearanceAssignmentMembers } from './AppearanceAssignmentMembers.js';
 
 export interface AppearanceAssignmentListProps {
   rows: readonly ResolvedAssignment[];
@@ -16,6 +18,8 @@ export interface AppearanceAssignmentListProps {
 
 /** Ordered recipe review; the controller alone prepares and publishes changes. */
 export function AppearanceAssignmentList(props: AppearanceAssignmentListProps) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const reviewId = useId();
   if (!props.rows.length) return null;
   return <section className="space-y-2" aria-label="Appearance assignments">
     <div><h3 className="text-xs font-semibold">Assignments</h3>
@@ -34,13 +38,14 @@ export function AppearanceAssignmentList(props: AppearanceAssignmentListProps) {
             aria-label={`Remove assignment ${index + 1}`} onClick={() => props.onRemove(item.id)}><Trash2 className="h-3 w-3" /></Button>
         </div>
         <p className="mt-1 text-[11px]">{row.productIds.length} objects · {row.excluded} excluded · {row.overridden} replaced by later assignments</p>
-        <details className="mt-1 text-[11px]"><summary className="cursor-pointer">Review objects and exceptions</summary>
-          <div className="mt-1 max-h-40 space-y-1 overflow-y-auto">{item.members.map(product => <label key={product.GlobalId} className="flex items-center gap-2">
-            <input type="checkbox" disabled={props.disabled} checked={!item.excludedGlobalIds.includes(product.GlobalId)}
-              onChange={event => props.onExclude(item.id, product.GlobalId, !event.currentTarget.checked)} />
-            <span className="truncate">{props.objectName(item.model.modelId, product.expressId)}</span>
-          </label>)}</div>
-        </details>
+        <Button type="button" variant="ghost" size="sm" className="mt-1 h-6 px-0 text-[11px]" disabled={props.disabled}
+          aria-label={`Review objects for assignment ${index + 1}`} aria-expanded={expandedId === item.id}
+          aria-controls={`${reviewId}-${index}`} onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}>
+          <ChevronRight className={`h-3 w-3 ${expandedId === item.id ? 'rotate-90' : ''}`} />Review objects and exceptions
+        </Button>
+        <div id={`${reviewId}-${index}`}>
+          {expandedId === item.id && <AppearanceAssignmentMembers assignment={item} disabled={props.disabled} objectName={props.objectName} onExclude={props.onExclude} />}
+        </div>
       </li>;
     })}</ol>
   </section>;

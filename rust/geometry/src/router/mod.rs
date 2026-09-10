@@ -6,6 +6,9 @@
 //!
 //! Routes IFC representation entities to appropriate processors based on type.
 
+mod annotation;
+mod annotation_polygon;
+mod annotation_style;
 mod caching;
 mod brep_signatures;
 mod rep_filter;
@@ -695,3 +698,5 @@ impl Default for GeometryRouter {
 
 #[cfg(test)]
 mod reference_opening_tests;
+#[cfg(test)]
+mod annotation_tests;

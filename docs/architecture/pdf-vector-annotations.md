@@ -242,3 +242,14 @@ caps/joins, dash patterns and curved strokes remain unsupported. Outlining
 produces visual filled vector geometry, not editable centreline/text semantics.
 Original-PDF raster and independent IFC evidence lives in
 [evidence/pdf-straight-stroke-annotations](evidence/pdf-straight-stroke-annotations/README.md).
+
+## One lattice for the complete page
+
+Sequential classification, CropBox clipping and opaque paint composition use
+one canonical `FixedGridComposition`. Original path groups and CropBox are
+qualified and quantized together once; intermediate results retain integer
+coordinates until final model-coordinate export. This prevents a floating
+roundtrip from inventing a tiny gap at an originally identical page boundary.
+The planner precharges initial pairwise qualification as well as every overlay;
+original page contours are capped at 1,024 vertices, with unchanged shared work
+and cumulative output bounds. See [registered original-page evidence](evidence/pdf-composition-lattice/README.md).

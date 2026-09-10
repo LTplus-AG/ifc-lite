@@ -1329,3 +1329,17 @@ isolation, not a symbolic-extraction or browser worker-pool performance claim.
 The lesson is to carry qualified item provenance once, then filter the 3D
 overlay output; deleting the shared drawing primitives would hide the duplicate
 at the cost of 2D content. See the [raw runs and immutable binary identities](../../docs/architecture/evidence/annotation-fill-routing/native-load.json).
+
+## One integer lattice for registered PDF composition (#4458)
+
+Exact-source interleaved normal-load probes resolve no regression; both paired
+phase minima and all ordered mesh fingerprints/counts are identical. This does
+not measure PDF authoring or worker throughput. The useful mechanism is retaining
+integer groups through classification, clipping and paint ordering: repeatedly
+creating floating adapters had shifted a shared CropBox edge enough to trigger
+a false topology refusal. Source qualification now happens once, and every stage
+still checks finite-edge topology. A separate finite-segment separation
+certificate avoids treating an unrelated infinite-line side change as an edge
+intersection. No tolerance/endpoint guard was replaced by epsilon snapping.
+[Source-matched raw samples and original PDF evidence](../../docs/architecture/evidence/pdf-composition-lattice/README.md)
+record the control and prevent repeating the float-roundtrip approach.

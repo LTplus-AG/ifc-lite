@@ -45,6 +45,7 @@ export function appearanceScope(catalog: AppearanceCatalog | null, selectedIds: 
   const products = catalog?.products ?? [];
   const productIds = products.filter(product => {
     switch (scope.kind) {
+      case 'filter': return false; // Effective-snapshot query evaluation is asynchronous.
       case 'model': return true;
       case 'selection': return selected.has(product.productId);
       case 'class': return product.ifcClass === scope.ifcClass;

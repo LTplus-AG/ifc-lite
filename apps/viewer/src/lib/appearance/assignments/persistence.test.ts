@@ -34,3 +34,16 @@ it('untrusted assignment recipes refuse unsupported versions, nonfinite mappings
   assert.throws(() => serializeAppearanceAssignments([a]), /dimensions differ/);
   assert.throws(() => parseAppearanceAssignments(' '.repeat(4_000_001)), /4 MB/);
 });
+
+it('portable saved-filter queries keep frozen membership and refuse partial malformed predicates #4404', () => {
+  const assignment = row();
+  assignment.query = { kind: 'filter', query: { name: 'Fire walls', combinator: 'AND', rules: [
+    { kind: 'ifcType', op: 'in', values: ['IfcWall'] },
+    { kind: 'property', setName: 'Pset_WallCommon', propertyName: 'FireRating', op: 'eq', value: '120' },
+  ] } };
+  const json = serializeAppearanceAssignments([assignment]);
+  const restored = parseAppearanceAssignments(json);
+  assert.deepEqual(restored.assignments[0].query, assignment.query);
+  assert.deepEqual(resolveAppearanceAssignments(restored.assignments)[0].productIds, [10]);
+  assert.throws(() => parseAppearanceAssignments(json.replace('"propertyName":"FireRating"', '"unknownField":"FireRating"')), /unsupported rule fields/);
+});

@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { AppearanceQueryDefinition } from './query-definition.js';
 import type { ReferencePdfLineage } from './references/pdf-lineage.js';
 import type { PdfRasterRecipe } from './pdf/types.js';
 import type { RasterCalibration, RasterCalibrationFrame } from './raster-calibration.js';
@@ -10,7 +11,8 @@ export type AppearanceIntent = 'apply' | 'reference' | 'capture' | 'scan';
 export type AppearanceScope =
   | { kind: 'model' | 'selection' }
   | { kind: 'class'; ifcClass: string }
-  | { kind: 'type'; typeId: number };
+  | { kind: 'type'; typeId: number }
+  | { kind: 'filter'; query: AppearanceQueryDefinition };
 
 /** Editable display values; the controller converts degrees/axes to canonical requests. */
 export interface AppearanceDraftSettings {

@@ -282,7 +282,13 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
     for (const childId of children) {
       const childSchedule = scheduleByExpressId.get(childId);
       if (!childSchedule || childSchedule.kind !== 'WorkSchedule') continue;
-      parentPlan.childScheduleGlobalIds.push(childSchedule.globalId);
+      // This extractor is the sole producer of `parentPlan`: every
+      // WorkScheduleInfo it builds above sets `childScheduleGlobalIds: []`,
+      // so the field is never actually absent here. `??=` makes that
+      // invariant visible to the checker without a non-null assertion, and
+      // without treating "absent" any differently from "empty" — both still
+      // mean "no nested schedules yet" everywhere else that reads it.
+      (parentPlan.childScheduleGlobalIds ??= []).push(childSchedule.globalId);
       if (!childSchedule.parentPlanGlobalId) {
         childSchedule.parentPlanGlobalId = parentPlan.globalId;
       }

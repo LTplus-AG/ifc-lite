@@ -1,5 +1,19 @@
 # @ifc-lite/collab
 
+## 0.7.0
+
+### Minor Changes
+
+- [#4352](https://github.com/LTplus-AG/ifc-lite/pull/4352) [`dbf513b`](https://github.com/LTplus-AG/ifc-lite/commit/dbf513b785f1dbc2f2dce5c173d28fd5ab65aa0c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add `MergeReport.droppedDeletions` so a caller of `mergeBranch(parent, branch, 'layer')` can detect when a branch-side deletion did not propagate to the parent — a documented limitation of the IFCX snapshot wire format, which cannot distinguish "removed" from "no opinion". Pin the deletion-drop behaviour itself with a regression test in `test/branch-merge-layer-overlay.test.ts`.
+
+### Patch Changes
+
+- [#4355](https://github.com/LTplus-AG/ifc-lite/pull/4355) [`7179a9c`](https://github.com/LTplus-AG/ifc-lite/commit/7179a9c6c2d0620f6bd3260e37b80c771697ce85) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `createConflictDetector`'s `classify()` returned `null` for every entity create on the top-level entities map, on the documented reasoning that concurrent creates are CRDT-friendly since both entities coexist — true only when the two peers pick different paths. When two offline peers independently create at the same path (e.g. each assigns the next sequential id from its own local view), Yjs LWW keeps exactly one peer's entity and silently discards the other's class/attributes/psets, and no `ConflictEvent` ever fired for it. `classify()` now surfaces this as a new `concurrent-create` `ConflictKind`; a create at a non-colliding path still raises nothing, since the detector only flags once two distinct clients write the same `(kind, path)` key within the window. Merge semantics (LWW) are unchanged — this is detection only. `test/conflict-scenarios.test.ts` and `test/convergence-property.test.ts` gain regression coverage for the same-path collision, the different-path false-positive guard, and a survival assertion so a lost write is visible to the randomized convergence test instead of only checked for agreement. Delete-vs-edit remains an undetected, documented gap — it does not fall out of this change since a top-level delete and a nested attribute edit classify under different `ConflictKind`s and never share a detector key.
+- Updated dependencies [[`ced8bb4`](https://github.com/LTplus-AG/ifc-lite/commit/ced8bb46c368648bd54a1bab716d049143faa036), [`e119819`](https://github.com/LTplus-AG/ifc-lite/commit/e1198197556375019c5a7820cc7c99da55e5c639), [`b0700f2`](https://github.com/LTplus-AG/ifc-lite/commit/b0700f25434d1cf1ec5f7438a8e27c09188208ec), [`8620be3`](https://github.com/LTplus-AG/ifc-lite/commit/8620be38be0162b7cbdbe23ae7bc924763b83612), [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb), [`5a01e5a`](https://github.com/LTplus-AG/ifc-lite/commit/5a01e5abe220f21ae5233045c6e9cfc5aa37a4e3), [`b9c3aa1`](https://github.com/LTplus-AG/ifc-lite/commit/b9c3aa1b7da9b0c26742bacb6eb3c7c4b44ca80b), [`591c593`](https://github.com/LTplus-AG/ifc-lite/commit/591c5938bdc4e8210c3b3158f22ecd78552bcdc2)]:
+  - @ifc-lite/data@4.1.0
+  - @ifc-lite/mutations@2.2.0
+  - @ifc-lite/ifcx@4.1.0
+
 ## 0.6.1
 
 ### Patch Changes

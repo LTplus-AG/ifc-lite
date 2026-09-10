@@ -1,5 +1,18 @@
 # @ifc-lite/ifcx
 
+## 4.1.0
+
+### Minor Changes
+
+- [#4337](https://github.com/LTplus-AG/ifc-lite/pull/4337) [`b0700f2`](https://github.com/LTplus-AG/ifc-lite/commit/b0700f25434d1cf1ec5f7438a8e27c09188208ec) Thanks [@louistrue](https://github.com/louistrue)! - Preserve textured IFCX mesh fragments, UVs, shared pixels and optional original images through a declared versioned appearance transport extension.
+
+### Patch Changes
+
+- Updated dependencies [[`ced8bb4`](https://github.com/LTplus-AG/ifc-lite/commit/ced8bb46c368648bd54a1bab716d049143faa036), [`bc26223`](https://github.com/LTplus-AG/ifc-lite/commit/bc26223b5b7e09c8bafcdf7f95afafe033622867), [`e119819`](https://github.com/LTplus-AG/ifc-lite/commit/e1198197556375019c5a7820cc7c99da55e5c639), [`8620be3`](https://github.com/LTplus-AG/ifc-lite/commit/8620be38be0162b7cbdbe23ae7bc924763b83612), [`8369d06`](https://github.com/LTplus-AG/ifc-lite/commit/8369d067dba22a7ca69b0420d49bf94bd698edd5), [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb), [`5a01e5a`](https://github.com/LTplus-AG/ifc-lite/commit/5a01e5abe220f21ae5233045c6e9cfc5aa37a4e3), [`b9c3aa1`](https://github.com/LTplus-AG/ifc-lite/commit/b9c3aa1b7da9b0c26742bacb6eb3c7c4b44ca80b), [`591c593`](https://github.com/LTplus-AG/ifc-lite/commit/591c5938bdc4e8210c3b3158f22ecd78552bcdc2)]:
+  - @ifc-lite/data@4.1.0
+  - @ifc-lite/pointcloud@0.8.0
+  - @ifc-lite/mutations@2.2.0
+
 ## 4.0.0
 
 ### Major Changes

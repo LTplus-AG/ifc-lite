@@ -66,6 +66,23 @@ jobs:
           fi
           echo "OK: docker CLI present, no socket, no daemon access"
 
+  # Exercises the exact routing expression from docs/ops/local-ci-migration.md
+  # so it is proven here before it is applied to any real workflow.
+  # SELF_HOSTED_CI=false -> ubuntu-latest;  =true -> the ifclite fleet.
+  routing:
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - name: Where did this land
+        run: |
+          echo "SELF_HOSTED_CI = '${{ vars.SELF_HOSTED_CI }}'"
+          echo "event          = ${{ github.event_name }}"
+          echo "runner name    = $RUNNER_NAME"
+          case "$RUNNER_NAME" in
+            ifclite-*) echo "RESULT: self-hosted" ;;
+            *)         echo "RESULT: github-hosted" ;;
+          esac
+
   # The dkr class is the one that may talk to the daemon.
   docker-class:
     runs-on: [self-hosted, linux, x64, ifclite, dkr]

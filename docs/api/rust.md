@@ -910,3 +910,16 @@ The [WASM contract](wasm.md#scan-correspondence-registration) documents bounds,
 coordinate conventions, disjoint observations, request digest and reporting.
 This opt-in computation never runs during parsing or geometry generation and
 never mutates source points, IFC placement or renderer alignment state.
+
+#### Source-bound annotation style references
+
+`EntityDecoder::styled_item_ids(item_id)` returns file-ordered `IfcStyledItem`
+ids attached through `Item`, or an explicit lookup error. It does not resolve
+colour. The lazy inverse index is owned by the shared `ColumnarEntityIndex`, so
+native element decoders and WASM batch decoders reuse the same result or cached
+refusal. Standalone decoders retain their own lookup. As with entity offsets,
+a shared index must belong to the decoder's exact immutable source bytes.
+
+The lookup refuses sources over 256 MiB, more than one million styled-item edges,
+records over 16 KiB, more than 64 styled items attached to one geometry item, or
+malformed source records. Failure never means that an item has no style.

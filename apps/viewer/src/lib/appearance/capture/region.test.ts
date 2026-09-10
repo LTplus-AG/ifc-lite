@@ -53,6 +53,15 @@ test('capture registration uses stable federation anchor, independent of active 
   assert.deepEqual(after, before);
 });
 
+test('adding an editable destination does not invalidate a prepared scan region (#4477)', () => {
+  const f = fixture(), registration = captureRegistration('capture', f.mesh, f.getState);
+  const first = f.getState(), destination = fixtureModel('destination');
+  f.update({ ...first, models: new Map([...first.models, ['destination', destination]]),
+    mutationVersion: first.mutationVersion + 1 });
+  assert.doesNotThrow(() => registration.validate());
+  assert.equal(captureRegion(f.mesh, [0], registration).mesh.triangles.length, 1);
+});
+
 test('capture refuses placement copies and stale sources or workspace movement (#4380)', () => {
   const f = fixture();
   assert.throws(() => captureRegistration('capture', { ...f.mesh }, f.getState), /raw loaded/);
@@ -90,7 +99,7 @@ test('capture bounds compact output rows while allowing a small region of a larg
   f.mesh.indices = Uint32Array.from({ length: count }, (_, i) => i);
   const registration = captureRegistration('capture', f.mesh, f.getState);
   assert.equal(captureRegion(f.mesh, [0], registration).mesh.positions.length, 3);
-  assert.throws(() => captureRegion(f.mesh, Array.from({ length: count / 3 }, (_, i) => i), registration), /200000 position/);
+  assert.throws(() => captureRegion(f.mesh, Array.from({ length: count / 3 }, (_, i) => i), registration), /200,000 vertices/);
 });
 
 

@@ -5,7 +5,7 @@
 //! Binary Parquet parse endpoints.
 
 use super::cache_keys::{
-    cache_symbolic_data, data_model_cache_key, has_current_data_model, parquet_geometry_key,
+    cache_symbolic_data, data_model_cache_key, has_current_data_model, has_cached_symbolic, parquet_geometry_key,
     parquet_metadata_key, request_cache_key,
 };
 use super::{extract_file, ParseQuery};
@@ -99,10 +99,12 @@ pub async fn parse_parquet(
     // The cached-geometry short-circuit skips the parse, and the parse is what
     // writes the data model. A geometry entry that outlived a data-model
     // version bump must fall through so both get rewritten (issue #3869).
-    if let (Some(cached_parquet), Some(cached_metadata_json), true) = (
+    // The same rule applies to symbolic schema freshness (#4459).
+    if let (Some(cached_parquet), Some(cached_metadata_json), true, true) = (
         state.cache.get_bytes(&parquet_cache_key).await?,
         state.cache.get_bytes(&metadata_cache_key).await?,
         has_current_data_model(&state.cache, &cache_key).await,
+        has_cached_symbolic(&state.cache, &cache_key).await,
     ) {
         tracing::info!(
             cache_key = %cache_key,

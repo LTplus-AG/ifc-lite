@@ -74,9 +74,11 @@ pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: Tessel
 /// like every other transport, so the pre-existing (unversioned) entries hold
 /// raw IFC Z-up meshes and would silently serve a ROTATED model to a client
 /// that rightly expects the uniform wire frame. A new suffix retires them.
+/// v3 adds direct symbolic fill provenance (#4459), retiring otherwise valid
+/// JSON responses that cannot suppress duplicate 3D fills.
 /// Bump again on any change to what `ParseResponse` means on the wire.
 pub(crate) fn json_response_cache_key(cache_key: &str) -> String {
-    format!("{cache_key}-json-v2")
+    format!("{cache_key}-json-v3")
 }
 
 /// The flat Parquet geometry entry for a request cache key, under the LAYOUT
@@ -234,6 +236,8 @@ async fn has_entry(cache: &DiskCache, key: &str) -> bool {
 }
 
 /// Build the symbolic-data cache key for a given file cache key.
+/// v2 requires direct fill provenance (#4459); v1 remains decodable but is
+/// not a fresh extraction for 3D routing. Geometry namespaces stay unchanged.
 ///
 /// The 2D symbol stream (`IfcAnnotation` + `IfcGrid`) is cached separately
 /// from geometry so binary-transport endpoints (Parquet, optimized Parquet,
@@ -242,10 +246,10 @@ async fn has_entry(cache: &DiskCache, key: &str) -> bool {
 /// is the full `{hash}-{opening_filter}` key, matching the value embedded in
 /// each response's metadata header.
 pub(crate) fn symbolic_cache_key(cache_key: &str) -> String {
-    format!("{}-symbolic-v1", cache_key)
+    format!("{}-symbolic-v2", cache_key)
 }
 
-/// Serialize symbolic data and write it to the cache under `{cache_key}-symbolic-v1`.
+/// Serialize symbolic data and write it to the cache under `{cache_key}-symbolic-v2`.
 ///
 /// Always stores the JSON (even when empty) so the fetch endpoint can return a
 /// definitive `200` with empty arrays rather than looping on `202`.

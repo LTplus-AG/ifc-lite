@@ -46,5 +46,24 @@ a drawing; changing a recorded owner or item invalidates the certificate.
 The native planner control independently checks that retained 2D fill items
 match the ordinary canonical geometry output.
 
+The additive native result preserves the publicly constructible legacy
+`SymbolicFillArea`, `SymbolicData` and `ParseResponse` shapes. Existing JSON
+decoders can ignore the optional property. Old cache JSON still decodes, while
+current server response/sidecar keys require refreshed provenance before
+replaying a cached response; the geometry cache namespace is unchanged.
+
+At checkpoint `d15270bcb`, full Rust workspace tests pass (3,066 passed,
+37 ignored), as does strict workspace clippy. The fresh WASM contracts pass
+88 tests with three existing optional skips. Root build passes all 51 tasks;
+typecheck passes all 94 tasks and includes all 1,922 test sources. Viewer
+owner/item regressions pass four tests; server-client passes 91 tests. The
+separate cache freshness follow-up adds route-level legacy-cache controls.
+
+`native-load.json` records exact-source A/B/A/B normal-load controls with five
+iterations per run. All 20 mesh fingerprints and geometry counts agree. The
+first candidate launch has slightly higher phase minima; the second pair
+matches. These measurements do not isolate symbolic extraction or establish a
+worker-pool speedup.
+
 These controls cover duplicate routing. They do not certify arbitrary PDF
 features or replace the separate PDF authoring and independent-reader checks.

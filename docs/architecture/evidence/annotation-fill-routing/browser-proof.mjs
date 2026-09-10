@@ -20,7 +20,8 @@ try{
  const proof={created:{expressId:Number(process.env.PROOF_OWNER ?? 92)}};
  await page.evaluate(id=>{const s=window.__pdfStore.getState(),m=[...s.models.values()][0];window.__pdfObject=s.toGlobalId(m.id,id);s.clearEntitySelection();},proof.created.expressId);
  await frame();
- await page.waitForFunction(async()=>{const m=[...window.__pdfStore.getState().models.values()][0];const c=(await import('/src/hooks/symbolic-parse-cache.ts')).getParseFor(m.ifcDataStore);return c&&[...c.byStorey.values()].reduce((n,b)=>n+b.fills.length, c.looseFills.length)>=2;});
+ await page.evaluate(async()=>{window.__getSymbolicParse=(await import('/src/hooks/symbolic-parse-cache.ts')).getParseFor;});
+ await page.waitForFunction(()=>{const m=[...window.__pdfStore.getState().models.values()][0];const c=window.__getSymbolicParse(m.ifcDataStore);return c&&[...c.byStorey.values()].reduce((n,b)=>n+b.fills.length, c.looseFills.length)>=2;});
  await page.waitForTimeout(500);
  const result=await page.evaluate(async()=>{const s=window.__pdfStore.getState(),m=[...s.models.values()][0],c=(await import('/src/hooks/symbolic-parse-cache.ts')).getParseFor(m.ifcDataStore);return {overlayHasGeometry:window.__pdfRenderer.overlays.symbolic.fillPipeline.hasGeometry(),uploads:window.__fillUploads,drawings:[...c.byStorey.values()].flatMap(b=>b.fills).concat(c.looseFills).map(f=>({owner:f.ownerId,item:f.geometryItemId})),meshes:m.geometryResult.meshes.filter(p=>p.expressId===window.__pdfObject).map(p=>({owner:p.expressId,item:p.geometryItemId,triangles:p.indices.length/3}))};});
  assert.equal(result.drawings.length,2);assert.equal(result.meshes.length,2);assert.equal(result.overlayHasGeometry,false);assert.ok(result.uploads.every(n=>n===0));

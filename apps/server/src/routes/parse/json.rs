@@ -98,7 +98,7 @@ pub async fn parse_full(
     }, symbolic_data);
 
     // Cache result (background). Also mirror the symbolic stream into the
-    // dedicated `{cache_key}-symbolic-v1` entry so it's reachable through
+    // dedicated `{cache_key}-symbolic-v2` entry so it's reachable through
     // `GET /api/v1/parse/symbolic/{cache_key}` regardless of which endpoint
     // first processed the file (issue #900).
     let cache = state.cache.clone();

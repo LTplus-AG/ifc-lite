@@ -77,3 +77,10 @@ orientation markers, PNG-only export resources, retention after PDF removal
 while a model owner remains, and final release after that model owner leaves.
 This is service-level browser evidence; the integrated F2 calibration and
 projection journey is not yet established by these runs.
+
+The same worker also accepts a `vectors` job. Its pinned PDF.js adapter produces
+ordered decoded operations for `IfcAPI.preparePdfVectorPage`; it neither writes
+IFC nor independently interprets geometry. It never rasterizes a vector job.
+Original source bytes remain attached to their owner, and document/page cleanup
+uses the same `finally` path as inspect/raster jobs. See the
+[canonical preparation contract](../../../../../../docs/architecture/pdf-vector-annotations.md#bounded-graphics-state-preparation).

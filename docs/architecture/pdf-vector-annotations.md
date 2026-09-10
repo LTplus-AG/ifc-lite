@@ -113,3 +113,60 @@ should be created implicitly.
 
 Each step can land as a reviewable stack against #4406. The issue stays open
 until the complete supported journey has visual and independent-reader evidence.
+
+## Bounded graphics-state preparation
+
+`ifc_lite_processing::pdf_vector::prepare_pdf_vector_page` (WASM
+`IfcAPI.preparePdfVectorPage`) consumes the immutable decoded page DTO produced by
+an additional `vectors` job in the existing PDF engine/worker. The decoder is
+pinned to PDF.js 6.3.289. Native preparation validates save/restore, concatenated
+transforms, solid RGB paints, line width/caps/joins/miter/dash state, packed
+DrawOPS command arities and original operator order. It retains cubic/quadratic
+commands unchanged and snapshots complete affine state for each painted path.
+
+`stateQualified` means only that this graphics-state subset was understood. The
+report contains **no IFC plan**, flattened geometry, contour classification,
+paint-order composition or exact-conversion permission. `paths` in an
+unqualified report are diagnostic input only, not a supported partial export.
+Unsupported forms, groups, clipping, graphics-state dictionaries, optional
+content, images, patterns and painted text retain original operator indices as
+blocking diagnostics. Device-dependent painted hairlines also block qualification.
+Unused font/text-position setup is nonpainting and does not alone block a page.
+Unknown operations are never ignored.
+
+The request binds the exact retained PDF SHA-256, pinned decoder, one-based page,
+effective native CropBox, UserUnit, intrinsic rotation, host calibration identity,
+explicit native-PDF-to-model-plane affine and declared metric flattening tolerance.
+The host supplies that affine from the existing page recipe and measured model
+calibration; native preparation does not infer model scale from physical paper
+size. A request digest binds all typed operations, metadata and policy values.
+Native code receives decoded data, so the host must verify this data against the
+retained PDF; a caller-provided source digest alone is not authentication.
+
+The WASM boundary limits JSON to 32 MiB; preparation limits operations to 100,000,
+path numbers to two million, painted paths to 20,000, save depth to 64 and dash
+arrays to 128 entries. Malformed structure, unbalanced state and exhausted budgets
+refuse atomically. The existing PDF worker owns its timeout/cancellation and
+releases the document/page. PDF.js allocates its operator list before the adapter
+can count it, so these post-decode limits are not a claim about a strict decoder
+native-allocation ceiling. Unsupported or over-budget input creates no entities.
+
+Next, canonical Rust must flatten curves to the declared model-metre tolerance,
+outline strokes in construction space **before** nonuniform transforms, classify
+nonzero/even-odd fills, and resolve ordered overlap. Stroke outlining preserves
+visual vector geometry, not editable centreline or text semantics. Only then can
+the shared annotation creation transaction expose 2D/3D Compare and Apply.
+
+The report also fixes `geometryReady=false`, returns `pageClipPdf` and enumerates
+pending geometry stages. The implicit page clip must be resolved even when no
+explicit `clip` operator appears; paths crossing the effective CropBox cannot be
+published merely because their state was understood.
+
+This construction-space contract applies to well-formed PDF path objects. In
+[ISO 32000-1 §8.2, Figure 9 and its following note](https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf),
+graphics-state changes are outside path-object construction. A malformed control
+placing `cm` or `q/Q` between path construction and painting is not evidence of a
+conforming decoder defect: pinned PDF.js fuses its coordinates with paint-time
+state, and independent Poppler rendered the tested reordered pair identically.
+The adapter does not independently certify raw content-stream conformance after
+PDF.js decoding. It must not claim arbitrary malformed-PDF extraction fidelity.

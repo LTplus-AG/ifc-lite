@@ -8,6 +8,7 @@
 //! the HTTP server and the native FFI library.
 
 pub mod appearance;
+pub mod pdf_vector;
 pub mod determinism;
 pub(crate) mod parallel_scan;
 mod shard_classes;

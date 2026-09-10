@@ -5,6 +5,7 @@ import { useViewerStore } from '@/store';
 /** A newly authored object replaces all prior single/multi-model selections. */
 export function selectCreatedAppearanceObject(modelId: string, result: { globalId: number; expressId: number }): void {
   const state = useViewerStore.getState(), ref = { modelId, expressId: result.expressId };
+  state.setActiveModel(modelId);
   state.selectAppearanceReference(null); state.clearEntitySelection();
   state.setSelectedEntityIds([result.globalId]); state.addEntityToSelection(ref); state.setSelectedEntity(ref);
 }

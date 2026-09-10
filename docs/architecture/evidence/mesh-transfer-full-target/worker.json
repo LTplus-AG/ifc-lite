@@ -1,0 +1,212 @@
+{
+  "platform": "darwin",
+  "arch": "arm64",
+  "cpu": "Apple M5 Pro",
+  "logicalCpus": 15,
+  "totalMemoryBytes": 51539607552,
+  "browser": "Playwright Chromium fresh browser/context/module worker each run",
+  "rssSamplingMilliseconds": 50,
+  "results": [
+    {
+      "iteration": 0,
+      "browserVersion": "151.0.7922.34",
+      "phase": "complete",
+      "nativeMilliseconds": 1356,
+      "workerMilliseconds": 1529.5200001001358,
+      "initialMemory": 8781824,
+      "finalMemory": 207880192,
+      "outputBytes": 21629704,
+      "sha256": "60717943ea8adf699b6c6298a765d5d876824ff1f12b77ebefd3c4cf3d910b9b",
+      "coverage": {
+        "centroidSamples": 40087,
+        "observedAreaEstimateM2": 2.4630354926447025,
+        "observedCentroidSamples": 40085,
+        "observedRasterInteriorTexels": 380958,
+        "observedSamples": 421043,
+        "rasterInteriorTexels": 679947,
+        "samples": 720034,
+        "unknownAmbiguousSamples": 298991,
+        "unknownAreaEstimateM2": 1.494240547969997,
+        "unknownDistanceSamples": 0,
+        "unknownNormalSamples": 0
+      },
+      "assets": [
+        {
+          "imageUri": "textures/5475c42cacdabef861cad9ac079fb0213ee6e67489b9d355fd108ae0a555aebd.png",
+          "width": 4096,
+          "height": 2328,
+          "byteOffset": 0,
+          "byteLength": 2543887
+        }
+      ],
+      "exclusions": [],
+      "roundtripMilliseconds": 1543.0049999952316,
+      "maxHeartbeatGap": 12.039999961853027,
+      "browserTreeBaselineRssBytes": 260341760,
+      "browserTreeSampledPeakRssBytes": 814235648
+    },
+    {
+      "iteration": 1,
+      "browserVersion": "151.0.7922.34",
+      "phase": "complete",
+      "nativeMilliseconds": 1378.2350000143051,
+      "workerMilliseconds": 1550.4349999427795,
+      "initialMemory": 8781824,
+      "finalMemory": 207880192,
+      "outputBytes": 21629704,
+      "sha256": "60717943ea8adf699b6c6298a765d5d876824ff1f12b77ebefd3c4cf3d910b9b",
+      "coverage": {
+        "centroidSamples": 40087,
+        "observedAreaEstimateM2": 2.4630354926447025,
+        "observedCentroidSamples": 40085,
+        "observedRasterInteriorTexels": 380958,
+        "observedSamples": 421043,
+        "rasterInteriorTexels": 679947,
+        "samples": 720034,
+        "unknownAmbiguousSamples": 298991,
+        "unknownAreaEstimateM2": 1.494240547969997,
+        "unknownDistanceSamples": 0,
+        "unknownNormalSamples": 0
+      },
+      "assets": [
+        {
+          "imageUri": "textures/5475c42cacdabef861cad9ac079fb0213ee6e67489b9d355fd108ae0a555aebd.png",
+          "width": 4096,
+          "height": 2328,
+          "byteOffset": 0,
+          "byteLength": 2543887
+        }
+      ],
+      "exclusions": [],
+      "roundtripMilliseconds": 1563.4250000715256,
+      "maxHeartbeatGap": 12.044999957084656,
+      "browserTreeBaselineRssBytes": 260751360,
+      "browserTreeSampledPeakRssBytes": 806518784
+    },
+    {
+      "iteration": 2,
+      "browserVersion": "151.0.7922.34",
+      "phase": "complete",
+      "nativeMilliseconds": 1357.7399998903275,
+      "workerMilliseconds": 1530.9850000143051,
+      "initialMemory": 8781824,
+      "finalMemory": 207880192,
+      "outputBytes": 21629704,
+      "sha256": "60717943ea8adf699b6c6298a765d5d876824ff1f12b77ebefd3c4cf3d910b9b",
+      "coverage": {
+        "centroidSamples": 40087,
+        "observedAreaEstimateM2": 2.4630354926447025,
+        "observedCentroidSamples": 40085,
+        "observedRasterInteriorTexels": 380958,
+        "observedSamples": 421043,
+        "rasterInteriorTexels": 679947,
+        "samples": 720034,
+        "unknownAmbiguousSamples": 298991,
+        "unknownAreaEstimateM2": 1.494240547969997,
+        "unknownDistanceSamples": 0,
+        "unknownNormalSamples": 0
+      },
+      "assets": [
+        {
+          "imageUri": "textures/5475c42cacdabef861cad9ac079fb0213ee6e67489b9d355fd108ae0a555aebd.png",
+          "width": 4096,
+          "height": 2328,
+          "byteOffset": 0,
+          "byteLength": 2543887
+        }
+      ],
+      "exclusions": [],
+      "roundtripMilliseconds": 1544.4599999189377,
+      "maxHeartbeatGap": 12.565000057220459,
+      "browserTreeBaselineRssBytes": 260587520,
+      "browserTreeSampledPeakRssBytes": 820527104
+    },
+    {
+      "iteration": 3,
+      "browserVersion": "151.0.7922.34",
+      "phase": "complete",
+      "nativeMilliseconds": 1379,
+      "workerMilliseconds": 1552.1150000095367,
+      "initialMemory": 8781824,
+      "finalMemory": 207880192,
+      "outputBytes": 21629704,
+      "sha256": "60717943ea8adf699b6c6298a765d5d876824ff1f12b77ebefd3c4cf3d910b9b",
+      "coverage": {
+        "centroidSamples": 40087,
+        "observedAreaEstimateM2": 2.4630354926447025,
+        "observedCentroidSamples": 40085,
+        "observedRasterInteriorTexels": 380958,
+        "observedSamples": 421043,
+        "rasterInteriorTexels": 679947,
+        "samples": 720034,
+        "unknownAmbiguousSamples": 298991,
+        "unknownAreaEstimateM2": 1.494240547969997,
+        "unknownDistanceSamples": 0,
+        "unknownNormalSamples": 0
+      },
+      "assets": [
+        {
+          "imageUri": "textures/5475c42cacdabef861cad9ac079fb0213ee6e67489b9d355fd108ae0a555aebd.png",
+          "width": 4096,
+          "height": 2328,
+          "byteOffset": 0,
+          "byteLength": 2543887
+        }
+      ],
+      "exclusions": [],
+      "roundtripMilliseconds": 1564.625,
+      "maxHeartbeatGap": 12.049999952316284,
+      "browserTreeBaselineRssBytes": 260636672,
+      "browserTreeSampledPeakRssBytes": 802865152
+    },
+    {
+      "iteration": 4,
+      "browserVersion": "151.0.7922.34",
+      "phase": "complete",
+      "nativeMilliseconds": 1378.6000000238419,
+      "workerMilliseconds": 1551.4900000095367,
+      "initialMemory": 8781824,
+      "finalMemory": 207880192,
+      "outputBytes": 21629704,
+      "sha256": "60717943ea8adf699b6c6298a765d5d876824ff1f12b77ebefd3c4cf3d910b9b",
+      "coverage": {
+        "centroidSamples": 40087,
+        "observedAreaEstimateM2": 2.4630354926447025,
+        "observedCentroidSamples": 40085,
+        "observedRasterInteriorTexels": 380958,
+        "observedSamples": 421043,
+        "rasterInteriorTexels": 679947,
+        "samples": 720034,
+        "unknownAmbiguousSamples": 298991,
+        "unknownAreaEstimateM2": 1.494240547969997,
+        "unknownDistanceSamples": 0,
+        "unknownNormalSamples": 0
+      },
+      "assets": [
+        {
+          "imageUri": "textures/5475c42cacdabef861cad9ac079fb0213ee6e67489b9d355fd108ae0a555aebd.png",
+          "width": 4096,
+          "height": 2328,
+          "byteOffset": 0,
+          "byteLength": 2543887
+        }
+      ],
+      "exclusions": [],
+      "roundtripMilliseconds": 1564.1650000810623,
+      "maxHeartbeatGap": 12.045000076293945,
+      "browserTreeBaselineRssBytes": 260718592,
+      "browserTreeSampledPeakRssBytes": 796950528
+    },
+    {
+      "iteration": 5,
+      "browserVersion": "151.0.7922.34",
+      "cancelled": true,
+      "cancelRequestedAfterNativeMilliseconds": 100,
+      "terminateCallMilliseconds": 0.02499997615814209,
+      "roundtripMilliseconds": 262.2649999856949,
+      "maxHeartbeatGap": 12.019999980926514,
+      "browserTreeBaselineRssBytes": 260653056,
+      "browserTreeSampledPeakRssBytes": 668909568
+    }
+  ]
+}

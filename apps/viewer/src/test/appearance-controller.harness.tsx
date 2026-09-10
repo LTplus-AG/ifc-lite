@@ -57,7 +57,7 @@ class ControlledWorker implements AppearanceWorker {
       }).catch(error => this.onerror?.({ message: String(error) } as ErrorEvent));
       return;
     }
-    if (message.type === 'page-plan' || message.type === 'annotation-plan' || message.type === 'captured-mesh-plan') throw new Error('Image-only controller fixture received a page plan');
+    if (message.type === 'pdf-fill-plan' || message.type === 'mesh-transfer' || message.type === 'scan-registration' || message.type === 'page-plan' || message.type === 'annotation-plan' || message.type === 'captured-mesh-plan') throw new Error('Image-only controller fixture received a page plan');
     this.message = structuredClone(message);
     this.lateMessage = this.onmessage;
   }

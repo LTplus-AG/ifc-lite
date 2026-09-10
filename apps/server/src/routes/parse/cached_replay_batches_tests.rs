@@ -58,6 +58,8 @@ fn sample_metadata_header(cache_key: &str, total_meshes: usize) -> ParquetMetada
 }
 
 async fn seed_current_data_model(state: &AppState, cache_key: &str) {
+    super::cache_keys::cache_symbolic_data(&state.cache, cache_key,
+        &ifc_lite_processing::SymbolicDataWithProvenance::default()).await;
     state
         .cache
         .set_bytes(

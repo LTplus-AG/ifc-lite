@@ -70,7 +70,7 @@ mesh region.
 
 ## Shared host implementation
 
-`prepareTexturedProduct` serializes the effective IFC mutation view and captures
+`prepareAuthoredProduct` serializes the effective IFC mutation view and captures
 its allocation/revision guard once for both annotations and captured surfaces.
 `commitTexturedProduct` owns publication, containment, original-image retention,
 selection cleanup on Undo and stable identity on Redo. Drawing creation uses the
@@ -92,3 +92,11 @@ The original model, image/PDF draft controls, and main camera remain independent
 
 Actual WebGPU creation, original-image export, normal re-import, and picking are
 recorded in [captured UI acceptance](evidence/captured-ui/README.md).
+
+Destination eligibility is independent of load order or prior object selection: a loaded IFC4/IFC4X3 spatial model is offered even before its lazy mutation view exists. Creation initializes or reuses the canonical view, preserving prior edits. The created object activates its destination model so the shared Undo action targets that creation. Drawing-to-IfcAnnotation creation uses the same destination and selection helpers.
+
+The native shared creator obtains metadata validation, the effective source
+context, allocation preflight and container-relative placement from
+`appearance/authored.rs`. Texture-specific row construction and canonical mesh
+production remain in the existing annotation/captured planner. This extraction
+does not change the public creator APIs or enable additional representations.

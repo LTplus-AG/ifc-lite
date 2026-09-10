@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
+import { getDocument, GlobalWorkerOptions, OPS, version } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { PDF_LIMITS, PdfAppearanceError } from './types.js';
 import type { PdfEngineBackend } from './engine.js';
@@ -125,6 +125,7 @@ export function browserPdfBackend(): PdfEngineBackend {
   GlobalWorkerOptions.workerSrc = workerUrl;
   return {
     getDocument,
+    vectorDecoder: { version, ops: OPS },
     options: {
       CanvasFactory,
       BinaryDataFactory,

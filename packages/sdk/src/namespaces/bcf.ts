@@ -25,6 +25,8 @@ import {
   SDK_AXIS_TO_BCF_AXIS,
   BCF_AXIS_TO_SDK_AXIS,
 } from './bcf-viewpoint.js';
+import { loadBCF, type AnyFn } from './bcf-load.js';
+import { bcfGuidColorMethods, type BCFGuidColorMixin } from './bcf-guid-color.js';
 
 export type { ViewpointOptions, ExtractedViewpointState };
 export { IncompleteCameraStateError, MissingSectionBoundsError };
@@ -63,19 +65,14 @@ export interface IDSBCFOptions {
 }
 
 // ============================================================================
-// Dynamic import
-// ============================================================================
-
-async function loadBCF(): Promise<Record<string, unknown>> {
-  const name = '@ifc-lite/bcf';
-  return import(/* webpackIgnore: true */ name) as Promise<Record<string, unknown>>;
-}
-
-type AnyFn = (...args: unknown[]) => unknown;
-
-// ============================================================================
 // BCFNamespace
 // ============================================================================
+
+/**
+ * `bim.bcf`'s GUID and color utility methods live in `bcf-guid-color.ts`
+ * and are mixed into the prototype below (module-size split, #4294).
+ */
+export interface BCFNamespace extends BCFGuidColorMixin {}
 
 /** bim.bcf — BIM Collaboration Format (topics, viewpoints, comments, I/O) */
 export class BCFNamespace {
@@ -280,10 +277,11 @@ export class BCFNamespace {
     return (mod.cameraToPerspective as AnyFn)(camera);
   }
 
-  /** Convert viewer camera state to BCF orthogonal camera. */
-  async cameraToOrthogonal(camera: unknown): Promise<unknown> {
+  /** Convert viewer camera state to BCF orthogonal camera. `viewToWorldScale`
+   * is required — it is the view extent the library returns verbatim (#4294). */
+  async cameraToOrthogonal(camera: unknown, viewToWorldScale: unknown): Promise<unknown> {
     const mod = await loadBCF();
-    return (mod.cameraToOrthogonal as AnyFn)(camera);
+    return (mod.cameraToOrthogonal as AnyFn)(camera, viewToWorldScale);
   }
 
   /** Convert BCF perspective camera to viewer camera state. */
@@ -342,59 +340,9 @@ export class BCFNamespace {
     return (mod.createBCFFromIDSReport as AnyFn)(report, options);
   }
 
-  // --------------------------------------------------------------------------
-  // GUID utilities
-  // --------------------------------------------------------------------------
-
-  /** Generate a new IFC GUID (22-char base64). */
-  async generateIfcGuid(): Promise<string> {
-    const mod = await loadBCF();
-    return (mod.generateIfcGuid as () => string)();
-  }
-
-  /** Generate a new UUID (36-char). */
-  async generateUuid(): Promise<string> {
-    const mod = await loadBCF();
-    return (mod.generateUuid as () => string)();
-  }
-
-  /** Convert UUID to IFC GUID. */
-  async uuidToIfcGuid(uuid: string): Promise<string> {
-    const mod = await loadBCF();
-    return (mod.uuidToIfcGuid as (u: string) => string)(uuid);
-  }
-
-  /** Convert IFC GUID to UUID. */
-  async ifcGuidToUuid(guid: string): Promise<string> {
-    const mod = await loadBCF();
-    return (mod.ifcGuidToUuid as (g: string) => string)(guid);
-  }
-
-  /** Validate whether a string is a valid IFC GUID. */
-  async isValidIfcGuid(guid: string): Promise<boolean> {
-    const mod = await loadBCF();
-    return (mod.isValidIfcGuid as (g: string) => boolean)(guid);
-  }
-
-  /** Validate whether a string is a valid UUID. */
-  async isValidUuid(uuid: string): Promise<boolean> {
-    const mod = await loadBCF();
-    return (mod.isValidUuid as (u: string) => boolean)(uuid);
-  }
-
-  // --------------------------------------------------------------------------
-  // Color utilities
-  // --------------------------------------------------------------------------
-
-  /** Parse ARGB hex color string (BCF format) to RGBA values. */
-  async parseARGBColor(argb: string): Promise<{ r: number; g: number; b: number; a: number }> {
-    const mod = await loadBCF();
-    return (mod.parseARGBColor as (c: string) => { r: number; g: number; b: number; a: number })(argb);
-  }
-
-  /** Create ARGB hex color string (BCF format) from RGBA values. */
-  async toARGBColor(r: number, g: number, b: number, a?: number): Promise<string> {
-    const mod = await loadBCF();
-    return (mod.toARGBColor as (r: number, g: number, b: number, a?: number) => string)(r, g, b, a);
-  }
 }
+
+// GUID and color utility methods (generateIfcGuid, generateUuid,
+// uuidToIfcGuid, ifcGuidToUuid, isValidIfcGuid, isValidUuid, parseARGBColor,
+// toARGBColor) are defined in bcf-guid-color.ts and mixed in here.
+Object.assign(BCFNamespace.prototype, bcfGuidColorMethods);

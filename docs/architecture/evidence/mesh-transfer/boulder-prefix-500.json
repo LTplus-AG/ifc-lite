@@ -1,0 +1,199 @@
+{
+  "transfer": {
+    "applicable": true,
+    "coverage": {
+      "observedAreaEstimateM2": 0.12355385352707908,
+      "observedSamples": 17377,
+      "samples": 22915,
+      "unknownAmbiguousSamples": 5538,
+      "unknownAreaEstimateM2": 0.03694524696751634,
+      "unknownDistanceSamples": 0,
+      "unknownNormalSamples": 0
+    },
+    "diagnostics": [
+      "Coverage is a triangle-area-weighted centroid/interior-texel estimate, not a registration accuracy approval",
+      "Unknown samples preserve the existing target albedo through the shared atlas; source GLB byte-to-decoded-mesh/image identity is verified by the host",
+      "Mathematical rigid fit only; no automatic registration or accuracy approval"
+    ],
+    "exclusions": [],
+    "items": [
+      {
+        "geometryItemId": 54,
+        "observedAreaEstimateM2": 0.12355385352707908,
+        "observedSamples": 17377,
+        "productId": 65,
+        "samples": 22915,
+        "unknownAmbiguousSamples": 5538,
+        "unknownAreaEstimateM2": 0.03694524696751634,
+        "unknownDistanceSamples": 0,
+        "unknownNormalSamples": 0
+      }
+    ],
+    "preparedSha256": "5a7d36b785315b55a2dc8a940564898f7a89c62424b61e5783e45951608d3816",
+    "registration": {
+      "algorithm": "ifclite-rigid-correspondence-v1",
+      "diagnostics": [
+        "Mathematical rigid fit only; no automatic registration or accuracy approval"
+      ],
+      "fit": {
+        "maxMetres": 4.0125770192081414e-16,
+        "points": [
+          {
+            "distanceMetres": 4.0125770192081414e-16,
+            "id": "p0",
+            "vectorMetres": [
+              -1.942890293094024e-16,
+              -1.1102230246251565e-16,
+              -3.3306690738754696e-16
+            ]
+          },
+          {
+            "distanceMetres": 2.482534153247273e-16,
+            "id": "p1",
+            "vectorMetres": [
+              0,
+              1.1102230246251565e-16,
+              2.220446049250313e-16
+            ]
+          },
+          {
+            "distanceMetres": 1.594436429147036e-16,
+            "id": "p2",
+            "vectorMetres": [
+              1.1102230246251565e-16,
+              2.7755575615628914e-17,
+              1.1102230246251565e-16
+            ]
+          },
+          {
+            "distanceMetres": 1.2412670766236366e-16,
+            "id": "p3",
+            "vectorMetres": [
+              5.551115123125783e-17,
+              0,
+              1.1102230246251565e-16
+            ]
+          }
+        ],
+        "rmsMetres": 2.5664528847817076e-16
+      },
+      "heldOut": {
+        "maxMetres": 2.618455766672135e-16,
+        "points": [
+          {
+            "distanceMetres": 1.1102230246251565e-16,
+            "id": "p4",
+            "vectorMetres": [
+              0,
+              1.1102230246251565e-16,
+              0
+            ]
+          },
+          {
+            "distanceMetres": 2.482534153247273e-16,
+            "id": "p5",
+            "vectorMetres": [
+              -2.220446049250313e-16,
+              0,
+              -1.1102230246251565e-16
+            ]
+          },
+          {
+            "distanceMetres": 1.1102230246251565e-16,
+            "id": "p6",
+            "vectorMetres": [
+              0,
+              0,
+              -1.1102230246251565e-16
+            ]
+          },
+          {
+            "distanceMetres": 2.618455766672135e-16,
+            "id": "p7",
+            "vectorMetres": [
+              8.326672684688674e-17,
+              1.1102230246251565e-16,
+              2.220446049250313e-16
+            ]
+          }
+        ],
+        "rmsMetres": 1.9675159943996247e-16
+      },
+      "requestSha256": "cdb5159c0e88459be6abd2145219c22be06148baf43156d0d52c5b37789c840b",
+      "rotation": [
+        [
+          0.9999999999999999,
+          2.636779683484747e-16,
+          -1.0408340855860843e-16
+        ],
+        [
+          8.673617379884035e-17,
+          3.3306690738754696e-16,
+          -1
+        ],
+        [
+          7.632783294297951e-17,
+          1.0000000000000004,
+          -2.220446049250313e-16
+        ]
+      ],
+      "sourceAnchor": [
+        -0.09959283098578453,
+        0.3757637282833457,
+        -0.17139963433146477
+      ],
+      "sourceFrame": {
+        "assetSha256": "b6a0b51894427c37505632f4d4513d0424f0d84b014554755aa53eb74af6dcd6",
+        "frameKey": "original-glb-y-up"
+      },
+      "sourceSpread": {
+        "nonCollinearityRatio": 0.21674761164682568,
+        "nonPlanarityRatio": 0.139047146484633,
+        "singularValues": [
+          1.0538300399478862,
+          0.22841514424038323,
+          0.14653205993454038
+        ]
+      },
+      "targetAnchor": [
+        -0.09959283098578453,
+        0.17139963433146477,
+        0.3757637282833457
+      ],
+      "targetFrame": {
+        "assetSha256": "d07b7af05906c98b87406d1827d5378530d66b500d43b3da66a10b0291fdce40",
+        "frameKey": "known-derived-ifc-z-up"
+      },
+      "targetSpread": {
+        "nonCollinearityRatio": 0.21674761164682568,
+        "nonPlanarityRatio": 0.13904714648463304,
+        "singularValues": [
+          1.0538300399478862,
+          0.22841514424038323,
+          0.1465320599345404
+        ]
+      }
+    },
+    "registrationSha256": "cdb5159c0e88459be6abd2145219c22be06148baf43156d0d52c5b37789c840b"
+  },
+  "assets": [
+    {
+      "imageUri": "textures/d08ebe66a9b235ca2ab847f3fd66df385027b3bf62905452b5b472e13d376cf9.png",
+      "width": 512,
+      "height": 339,
+      "byteOffset": 0,
+      "byteLength": 161581
+    }
+  ],
+  "pngBytes": 161581,
+  "sourceTriangles": 66122,
+  "targetTriangles": 500,
+  "originalTargetTriangles": 40087,
+  "targetTriangleOrdinals": [
+    0,
+    499
+  ],
+  "sourceGlbSha256": "b6a0b51894427c37505632f4d4513d0424f0d84b014554755aa53eb74af6dcd6",
+  "ifcSha256": "d07b7af05906c98b87406d1827d5378530d66b500d43b3da66a10b0291fdce40",
+  "knownDerivedCoordinateMaxDelta": 1.2412670766236366e-16
+}

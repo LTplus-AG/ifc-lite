@@ -1,0 +1,46 @@
+{
+  "before": {
+    "id": 1114277,
+    "model": "d60fa8fa-77f7-4eb3-9bb5-4cd159239aed",
+    "hasGeometry": true,
+    "siblingHasGeometry": true,
+    "instance": true,
+    "sibling": true
+  },
+  "hidden": {
+    "flat": 0,
+    "instance": true,
+    "sibling": true
+  },
+  "shown": {
+    "flat": 0,
+    "instance": true,
+    "sibling": true
+  },
+  "hiddenClickSelection": null,
+  "shownClickSelection": 1114277,
+  "actualViewportSelection": true,
+  "sourceHead": "c377eeb6f",
+  "wasmSha256": "89a2ed43603c541252ed42de25ea134aab2b8305f0c8221ad496566fa58706d4",
+  "baselineSourceHead": "c4627e7d26874ae6199ac375f9566eb244e9f2be",
+  "baselineWasmSha256": "df690ce2cc5ce0a914bd6000a81fb5da35f9bcd7917570737d4c31a896b5f529",
+  "baseline": {
+    "before": {
+      "id": 1114277,
+      "model": "d7e638af-7d85-4773-b0c0-a1d245c22639",
+      "instance": true,
+      "sibling": true
+    },
+    "hidden": {
+      "flat": 0,
+      "instance": false,
+      "sibling": false
+    },
+    "shown": {
+      "flat": 0,
+      "instance": false,
+      "sibling": false
+    },
+    "actualViewportSelection": true
+  }
+}

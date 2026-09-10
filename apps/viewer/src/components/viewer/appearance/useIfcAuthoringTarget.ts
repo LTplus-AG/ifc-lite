@@ -8,10 +8,9 @@ import { useViewerStore } from '@/store';
 /** Shared destination defaults for drawings and captured surfaces. */
 export function useIfcAuthoringTarget() {
   const models = useViewerStore(state => state.models);
-  const mutationViews = useViewerStore(state => state.mutationViews);
   const activeModel = useViewerStore(state => state.activeModelId);
   const activeStorey = useViewerStore(state => state.activeStorey);
-  const eligible = [...models.values()].filter(model => model.ifcDataStore?.spatialHierarchy?.project && mutationViews.has(model.id) && model.schemaVersion.startsWith('IFC4'));
+  const eligible = [...models.values()].filter(model => model.ifcDataStore?.spatialHierarchy?.project && !/\.glb$/i.test(model.sourceFile?.name ?? '') && model.schemaVersion.startsWith('IFC4'));
   const [chosenModel, setChosenModel] = useState(activeModel ?? '');
   const modelId = eligible.some(model => model.id === chosenModel) ? chosenModel : eligible[0]?.id ?? '';
   const model = models.get(modelId);

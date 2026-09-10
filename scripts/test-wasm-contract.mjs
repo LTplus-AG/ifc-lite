@@ -9,7 +9,7 @@
  * Focus on structural invariants, not exact values.
  */
 
-import { checkScanRegistrationContract } from './lib/wasm-scan-registration-contract.mjs';
+import { runAppearanceContracts } from './lib/wasm-appearance-contracts.mjs';
 import { runColdLoadContracts } from './lib/wasm-cold-load-contracts.mjs';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
@@ -118,7 +118,7 @@ function test(name, fn) {
   }
 }
 
-test('proper rigid scan registration preserves held-out independence and frame binding (#4381)', () => checkScanRegistrationContract(IfcAPI));
+runAppearanceContracts(IfcAPI, test);
 // ===== IfcAPI initialization =====
 console.log('📋 IfcAPI initialization');
 

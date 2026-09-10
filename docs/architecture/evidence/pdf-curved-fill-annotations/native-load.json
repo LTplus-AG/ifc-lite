@@ -1,0 +1,106 @@
+{
+  "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+  "baseSource": "198aa828e (merged straight-fill native source)",
+  "branchSource": "8bfcf7317 (53126afe0 changes tests only)",
+  "measurement": "Interleaved native five-iteration normal-load A/B/A/B on an explicitly idle machine. Probe parse/geometry/total values are best-of-five, not medians. Separate fingerprints are not timed evidence. No worker-pool or authoring throughput claim.",
+  "runs": [
+    {
+      "version": "base",
+      "parseMs": 2,
+      "geometryMs": 4,
+      "totalMs": 7,
+      "allTotalsMs": [
+        9,
+        8,
+        8,
+        7,
+        7
+      ],
+      "allWallMs": [
+        10.026458,
+        8.815583,
+        8.308667,
+        8.144250000000001,
+        7.9285
+      ]
+    },
+    {
+      "version": "branch",
+      "parseMs": 3,
+      "geometryMs": 5,
+      "totalMs": 8,
+      "allTotalsMs": [
+        17,
+        13,
+        10,
+        9,
+        8
+      ],
+      "allWallMs": [
+        17.775333,
+        13.996666,
+        10.572291,
+        9.698833,
+        8.987625000000001
+      ]
+    },
+    {
+      "version": "base",
+      "parseMs": 3,
+      "geometryMs": 4,
+      "totalMs": 7,
+      "allTotalsMs": [
+        12,
+        8,
+        7,
+        7,
+        9
+      ],
+      "allWallMs": [
+        12.3335,
+        8.664667,
+        8.213292000000001,
+        7.832541999999999,
+        9.809208
+      ]
+    },
+    {
+      "version": "branch",
+      "parseMs": 2,
+      "geometryMs": 4,
+      "totalMs": 7,
+      "allTotalsMs": [
+        9,
+        8,
+        7,
+        7,
+        7
+      ],
+      "allWallMs": [
+        9.739417,
+        8.369042,
+        8.018958,
+        8.019958,
+        8.121583
+      ]
+    }
+  ],
+  "identity": {
+    "base": {
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    "branch": {
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    }
+  }
+}

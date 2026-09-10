@@ -18,7 +18,7 @@
 //! still monotonic and still ends at its own stated total.
 
 use super::cache_keys::{
-    cache_key_from_parts, has_current_data_model, has_parquet_metadata, is_file_digest,
+    cache_key_from_parts, has_current_data_model, has_cached_symbolic, has_parquet_metadata, is_file_digest,
     load_cached_symbolic, parquet_geometry_key, parquet_metadata_key,
 };
 use super::ParseQuery;
@@ -84,6 +84,7 @@ pub(super) async fn replay_by_client_hash(
 
     let replay = if has_parquet_metadata(&state.cache, &cache_key).await
         && has_current_data_model(&state.cache, &cache_key).await
+        && has_cached_symbolic(&state.cache, &cache_key).await
     {
         let admission_guard = state
             .admission
@@ -147,10 +148,11 @@ pub(super) async fn try_cached_replay(
     // Replaying skips the parse, and the parse is what writes the data model.
     // A geometry entry that outlived a data-model version bump must therefore
     // re-parse rather than replay (issue #3869).
-    if !has_current_data_model(&state.cache, cache_key).await {
+    if !has_current_data_model(&state.cache, cache_key).await
+        || !has_cached_symbolic(&state.cache, cache_key).await {
         tracing::info!(
             cache_key = %cache_key,
-            "Geometry cached but the data model predates the current payload; re-parsing"
+            "Geometry cached but a required sidecar predates the current payload; re-parsing"
         );
         return Ok(None);
     }

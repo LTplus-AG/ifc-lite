@@ -58,6 +58,9 @@ pub(super) fn preserve(plan: &mut AppearancePlan, source: &mut Source<'_>, item:
     if original.get_string(0).is_some_and(|name| name.len() > 4096) {
         return Err("Source material name exceeds 4096-byte budget".into());
     }
+    if let Some(name) = original.get_string(0) {
+        super::wire_text::validate(name, "Page material name")?;
+    }
     let members = original.get_list(2).ok_or("Missing source surface style elements")?;
     if members.len() > 5 { return Err("Source surface style exceeds five-element schema limit".into()); }
     let mut extras = Vec::new();

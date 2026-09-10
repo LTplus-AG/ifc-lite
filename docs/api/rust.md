@@ -910,3 +910,60 @@ The [WASM contract](wasm.md#scan-correspondence-registration) documents bounds,
 coordinate conventions, disjoint observations, request digest and reporting.
 This opt-in computation never runs during parsing or geometry generation and
 never mutates source points, IFC placement or renderer alignment state.
+
+#### Source-bound annotation style references
+
+`EntityDecoder::styled_item_ids(item_id)` returns file-ordered `IfcStyledItem`
+ids attached through `Item`, or an explicit lookup error. It does not resolve
+colour. The lazy inverse index is owned by the shared `ColumnarEntityIndex`, so
+native element decoders and WASM batch decoders reuse the same result or cached
+refusal. Standalone decoders retain their own lookup. As with entity offsets,
+a shared index must belong to the decoder's exact immutable source bytes.
+
+The lookup refuses sources over 256 MiB, more than one million styled-item edges,
+records over 16 KiB, more than 64 styled items attached to one geometry item, or
+malformed source records. Failure never means that an item has no style.
+
+### PDF vector graphics-state preparation
+
+`ifc_lite_processing::pdf_vector::prepare_pdf_vector_page(&PdfVectorPage)` returns
+a `PreparedPdfVectorPage` containing ordered source paths and complete graphics
+state snapshots. Canonical Rust validates bounded decoded input and binds the
+immutable page/calibration/operations request. It does not parse PDF bytes,
+flatten curves or create IFC entities. `state_qualified` is deliberately separate
+from geometry fidelity or Apply readiness. See the [WASM contract](wasm.md#pdf-vector-graphics-state-preparation)
+and [annotation implementation boundary](../architecture/pdf-vector-annotations.md#bounded-graphics-state-preparation).
+
+### Sequential fixed-grid contour composition
+
+`ifc_lite_geometry::FixedGridComposition` qualifies source contour groups against
+one bounded lattice and keeps intermediate booleans in integer coordinates.
+`new(groups, grid)` assigns input IDs by index and an empty-set ID at
+`groups.len()`. `overlay(a, b, operation, fill_rule)` returns a new local group ID;
+`vertex_count(id)` lets the caller precharge work, and `contours(id)` exports only
+a classified result to model coordinates. IDs belong to their creating context.
+`boolean_2d_fixed_grid` uses this same implementation for a single operation.
+
+The PDF planner charges construction and each stage against its shared work
+budget. Independent native caps are 257 input groups, 1,024 original vertices,
+1,024 vertices per stage, 2,048 retained groups and 16,384 cumulative vertices.
+Coordinates must be finite within 1e12 model units; quantized coordinates must
+fit the exact diagnostic range of ±2^50. Original endpoint collapse/uncertain
+contacts and per-stage unresolved intersections refuse. Shared integer storage
+avoids introducing a new quantization phase between classification, clipping
+and paint-order composition.
+
+### Symbolic fill provenance
+
+`extract_symbolic_data_with_provenance(&source)` returns an opaque
+`SymbolicDataWithProvenance`. Its `data()` accessor exposes the unchanged
+`SymbolicData`; `fill_items()` supplies one optional direct representation-item
+ID per fill ordinal. `into_parts()` consumes both together. Unknown, repeated,
+or mapped occurrences have no item identity. The legacy `extract_symbolic_data`
+and publicly constructible primitive/aggregate structs remain compatible.
+
+Serializing the enriched result adds optional `geometry_item_id` to each known
+fill while retaining the existing symbol JSON shape. Deserialization accepts
+older symbol JSON and leaves missing provenance unknown. WASM and the server
+consume the enriched extraction; callers that only need 2D data can keep using
+the legacy API.

@@ -1,0 +1,15 @@
+{
+  "oracle": "IfcOpenShell 0.8.2",
+  "triangles": 350,
+  "GlobalId": "1zFrTePNnFePNVvm3iz58R",
+  "unchangedIfcCoordinatesIndicesAndPlacement": true,
+  "allReopenedCornersMatchIfcWorldAndVFlippedUv": true,
+  "maxWorldErrorMetres": 7.300048299977713e-08,
+  "maxUvError": 4.449884272172966e-08,
+  "atlasUri": "textures/c156dae2b082a95ad85112cec41d33b5f4ca737f2be23c82120ae266cfa7e200.png",
+  "atlasSha256": "c156dae2b082a95ad85112cec41d33b5f4ca737f2be23c82120ae266cfa7e200",
+  "decodedRgbaSha256": "7c4af00dedec4304d849edf3c6d6fb50935e66600ed732dfc9abd77f0613ddf4",
+  "pixelsMatchFreshBrowserExactly": true,
+  "width": 256,
+  "height": 271
+}

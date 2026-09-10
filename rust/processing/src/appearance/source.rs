@@ -13,6 +13,7 @@ pub(super) struct Source<'a> {
     pub texture_maps: BTreeMap<u32, Vec<u32>>,
     pub styled_items: BTreeMap<u32, Vec<u32>>,
     pub voided: BTreeSet<u32>,
+    pub style_assignments: BTreeSet<u32>,
 }
 impl<'a> Source<'a> {
     pub fn new(bytes: &'a [u8]) -> Result<Self, String> {
@@ -27,10 +28,11 @@ impl<'a> Source<'a> {
             texture_maps: BTreeMap::new(),
             styled_items: BTreeMap::new(),
             voided: BTreeSet::new(),
+            style_assignments: BTreeSet::new(),
         };
         let mut scanner = EntityScanner::new(bytes);
         let mut work = 0;
-        while let Some((id, _, start, end)) = scanner.next_entity() {
+        while let Some((id, name, start, end)) = scanner.next_entity() {
             if source.types.len() >= 200_000 {
                 return Err("Appearance entity budget exceeded".into());
             }
@@ -56,6 +58,7 @@ impl<'a> Source<'a> {
                     _ => {}
                 }
             }
+            if name == "IFCPRESENTATIONSTYLEASSIGNMENT" { source.style_assignments.insert(id); }
             match entity.ifc_type {
                 IfcType::IfcIndexedTriangleTextureMap => {
                     if let Some(item) = entity.get_ref(1) {
@@ -137,7 +140,7 @@ impl<'a> Source<'a> {
     /// Fixed-depth direct product -> PDS -> Body representation -> face set.
     /// Shared/mapped graphs are refused, rather than accidentally editing another owner.
     pub fn product_items(&mut self, product: u32) -> Result<Vec<u32>, String> {
-        if self.voided.contains(&product) {
+        if self.voided.contains(&product) && !super::evaluated_openings::reference_only(self, product)? {
             return Err("CSG/opening-cut geometry is unsupported".into());
         }
         let entity = self.entity(product)?;

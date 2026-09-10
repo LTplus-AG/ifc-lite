@@ -162,3 +162,26 @@ describe('appearance worker ownership (#4243)', () => {
     assert.equal(workers[0].terminated, 1);
   });
 });
+
+it('scan registration cancels its worker and ignores a late result from the abandoned request (#4381)', async () => {
+  const { client, workers } = setup();
+  const request = { sourceFrame: { assetSha256: 'a'.repeat(64), frameKey: 'source' }, targetFrame: { assetSha256: 'b'.repeat(64), frameKey: 'target' }, fit: [], heldOut: [] };
+  const abort = new AbortController();
+  const first = client.registerScan(request, { signal: abort.signal });
+  const rejected = assert.rejects(first, { name: 'AbortError' });
+  const late = workers[0].onmessage!;
+  abort.abort(); await rejected;
+  assert.equal(workers[0].terminated, 1);
+  const second = client.catalog(new Uint8Array(), { schema: 'IFC4', sourceRevision: 'current', productIds: [] });
+  late({ data: { type: 'error', id: workers[0].posted!.id, message: 'abandoned error' } } as MessageEvent<AppearanceWorkerResponse>);
+  assert.equal(workers[1].terminated, 0, 'late scan response cannot settle another appearance job');
+  workers[1].emit({ type: 'catalog-complete', id: workers[1].posted!.id, catalog: { sourceRevision: 'current', products: [], types: [], missingProductIds: [] } });
+  await second; client.dispose();
+});
+
+it('scan registration refuses oversized correspondence sets before creating a worker (#4381)', async () => {
+  const { client, workers } = setup();
+  const point = { id: 'p', sourceObservation: 's', targetFeature: 't', source: [0,0,0] as [number,number,number], target: [0,0,0] as [number,number,number] };
+  await assert.rejects(client.registerScan({ sourceFrame: { assetSha256: 'a'.repeat(64), frameKey: 'source' }, targetFrame: { assetSha256: 'b'.repeat(64), frameKey: 'target' }, fit: new Array(257).fill(point), heldOut: [] }), /budget/);
+  assert.equal(workers.length, 0); client.dispose();
+});

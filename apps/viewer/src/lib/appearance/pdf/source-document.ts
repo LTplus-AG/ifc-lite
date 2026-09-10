@@ -17,6 +17,7 @@ import {
   type PdfRasterRecipe,
   type PdfRasterRequest,
 } from './types.js';
+import type { PdfVectorPage, PdfVectorRequest } from './vector-types.js';
 const documentBytes = new WeakMap<object, number>();
 const maxDocumentBytes = 128 * 1024 * 1024;
 export interface PdfDerivedAppearance {
@@ -170,6 +171,23 @@ export class PdfAppearanceSource<B extends AppearanceBitmap = ImageBitmap> {
     } finally {
       this.inventory.release(asset.id, owner);
     }
+  }
+  /** Decode the original PDF bytes through the existing owned worker. */
+  async vectors(request: PdfVectorRequest, options: { signal?: AbortSignal } = {}): Promise<PdfVectorPage> {
+    this.check();
+    const revision = ++this.revision;
+    const expected: PdfVectorRequest = { ...request, modelMetresFromPdf: [...request.modelMetresFromPdf] };
+    const result = await this.worker.run(this.bytes, { kind: 'vectors', request: expected }, { ...options, password: this.password });
+    this.check();
+    if (revision !== this.revision) throw new PdfAppearanceError('cancelled', 'PDF source operation changed.');
+    if (result.kind !== 'vectors' || result.page.pdfSha256 !== this.id || result.page.pageNumber !== expected.pageNumber
+      || result.page.calibrationKey !== expected.calibrationKey
+      || result.page.toleranceMetres !== expected.toleranceMetres
+      || result.page.modelMetresFromPdf.length !== 6
+      || result.page.modelMetresFromPdf.some((value, index) => value !== expected.modelMetresFromPdf[index])) {
+      throw new PdfAppearanceError('invalid-pdf', 'PDF vector result does not match its retained source and calibration.');
+    }
+    return result.page;
   }
   /** Drop the document's temporary raster lease after a catalog/model owner adopts it. */
   releaseRaster(assetId: string): void {

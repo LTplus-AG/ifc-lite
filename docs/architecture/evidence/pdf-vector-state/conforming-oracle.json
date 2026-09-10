@@ -1,0 +1,57 @@
+{
+  "engine": [
+    "1.26.5",
+    "1.26.10",
+    null
+  ],
+  "sourceSha256": "27f3f1fd9c27e252ae64ac5252997ba41b4c77e26aba35f20fb40d7cb68cddfe",
+  "comparison": "line endpoints and cubic control points in MuPDF unrotated CropBox physical-point frame; no stroke-outline or full-raster claim",
+  "pdfToOracle": [2, 0, 0, -2, -20, 440],
+  "paths": [
+    {
+      "pathIndex": 0,
+      "operatorOrdinal": 9,
+      "nativeInOracleFrame": [
+        [20.0, 400.0],
+        [164.00000000000003, 400.0]
+      ],
+      "oraclePoints": [
+        [20.0, 400.0],
+        [164.0, 400.0]
+      ],
+      "maxPointDeltaPhysicalPoints": 2.842170943040401e-14
+    },
+    {
+      "pathIndex": 2,
+      "operatorOrdinal": 14,
+      "nativeInOracleFrame": [
+        [220.00000000000003, 400.0],
+        [220.00000000000003, 240.0],
+        [420.0, 240.0],
+        [420.0, 400.0]
+      ],
+      "oraclePoints": [
+        [220.0, 400.0],
+        [220.0, 240.0],
+        [420.0, 240.0],
+        [420.0, 400.0]
+      ],
+      "maxPointDeltaPhysicalPoints": 2.842170943040401e-14
+    },
+    {
+      "pathIndex": 3,
+      "operatorOrdinal": 19,
+      "nativeInOracleFrame": [
+        [340.0, 160.0],
+        [478.564, 80.0]
+      ],
+      "oraclePoints": [
+        [340.0, 160.0],
+        [478.5639953613281, 80.0]
+      ],
+      "maxPointDeltaPhysicalPoints": 4.6386718963731255e-06
+    }
+  ],
+  "maxPointDeltaPhysicalPoints": 4.6386718963731255e-06,
+  "maxPointDeltaPaperMetres": 1.6364203634427414e-09
+}

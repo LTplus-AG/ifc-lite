@@ -28,6 +28,16 @@ impl SymbolicRepresentationCollection {
     /// to cross — a field this function forgets is a field the browser silently
     /// never sees, while the server's JSON for the same file still carries it.
     pub fn from_data(data: ifc_lite_processing::SymbolicData) -> Self {
+        Self::from_data_and_items(data, &[])
+    }
+
+    /// Convert canonical symbols with the extraction-bound fill sidecar.
+    pub fn from_data_with_provenance(data: ifc_lite_processing::SymbolicDataWithProvenance) -> Self {
+        let (data, items) = data.into_parts();
+        Self::from_data_and_items(data, &items)
+    }
+
+    fn from_data_and_items(data: ifc_lite_processing::SymbolicData, items: &[Option<u32>]) -> Self {
         let mut collection = Self::with_capacity(data.polylines.len(), data.circles.len());
         collection.truncated = data.truncated.clone();
         for p in data.polylines {
@@ -70,7 +80,7 @@ impl SymbolicRepresentationCollection {
                 t.representation,
             ));
         }
-        for f in data.fills {
+        for (ordinal, f) in data.fills.into_iter().enumerate() {
             let fill = SymbolicFillArea::new(
                 f.express_id,
                 f.ifc_type,
@@ -79,7 +89,7 @@ impl SymbolicRepresentationCollection {
                 f.fill_color,
                 f.world_y,
                 f.representation,
-            );
+            ).with_geometry_item_id(items.get(ordinal).copied().flatten());
             // `SymbolicFillArea::new` defaults to unhatched, so the hatching
             // style has to be applied explicitly. The viewer reads these five
             // fields straight off this object

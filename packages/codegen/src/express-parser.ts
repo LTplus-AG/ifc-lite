@@ -227,49 +227,13 @@ function parseAttribute(name: string, typeStr: string, optional: boolean): Attri
   // Also handle nested collections: LIST [2:?] OF LIST [2:?] OF IfcCartesianPoint
   if (typeStr.includes('LIST')) {
     attr.isList = true;
-    const listMatch = typeStr.match(/LIST\s+\[(\d+|\?):(\d+|\?)\]\s+OF\s+(.*)/);
-    if (listMatch) {
-      attr.arrayBounds = [
-        listMatch[1] === '?' ? Infinity : parseInt(listMatch[1]),
-        listMatch[2] === '?' ? Infinity : parseInt(listMatch[2])
-      ];
-      const innerType = listMatch[3].trim();
-      // Recursively parse nested collection
-      attr.type = parseNestedCollection(innerType);
-    } else {
-      // Fallback if regex doesn't match
-      attr.type = typeStr.replace(/LIST\s+\[.*?\]\s+OF\s+/, '').trim();
-    }
+    applyAggregate(attr, typeStr, 'LIST');
   } else if (typeStr.includes('ARRAY')) {
     attr.isArray = true;
-    const arrayMatch = typeStr.match(/ARRAY\s+\[(\d+|\?):(\d+|\?)\]\s+OF\s+(.*)/);
-    if (arrayMatch) {
-      attr.arrayBounds = [
-        arrayMatch[1] === '?' ? Infinity : parseInt(arrayMatch[1]),
-        arrayMatch[2] === '?' ? Infinity : parseInt(arrayMatch[2])
-      ];
-      const innerType = arrayMatch[3].trim();
-      // Recursively parse nested collection
-      attr.type = parseNestedCollection(innerType);
-    } else {
-      // Fallback if regex doesn't match
-      attr.type = typeStr.replace(/ARRAY\s+\[.*?\]\s+OF\s+/, '').trim();
-    }
+    applyAggregate(attr, typeStr, 'ARRAY');
   } else if (typeStr.includes('SET')) {
     attr.isSet = true;
-    const setMatch = typeStr.match(/SET\s+\[(\d+|\?):(\d+|\?)\]\s+OF\s+(.*)/);
-    if (setMatch) {
-      attr.arrayBounds = [
-        setMatch[1] === '?' ? Infinity : parseInt(setMatch[1]),
-        setMatch[2] === '?' ? Infinity : parseInt(setMatch[2])
-      ];
-      const innerType = setMatch[3].trim();
-      // Recursively parse nested collection
-      attr.type = parseNestedCollection(innerType);
-    } else {
-      // Fallback if regex doesn't match
-      attr.type = typeStr.replace(/SET\s+\[.*?\]\s+OF\s+/, '').trim();
-    }
+    applyAggregate(attr, typeStr, 'SET');
   } else {
     attr.type = typeStr;
   }
@@ -277,20 +241,56 @@ function parseAttribute(name: string, typeStr: string, optional: boolean): Attri
   return attr;
 }
 
+type AggregateKeyword = 'LIST' | 'ARRAY' | 'SET';
+
+/**
+ * The tail of an EXPRESS aggregate declaration: optional bounds, then OF and
+ * the element type. Bounds may be absent ("LIST OF UNIQUE IfcGridAxis") and
+ * need not be numeric ("ARRAY [0:UUpper] OF ..."), so they are matched loosely
+ * and only become arrayBounds when both ends turn out to be numeric. One
+ * pattern shared by every caller, so no aggregate shape can reach the element
+ * type by a route that skips parseNestedCollection, where qualifiers drop.
+ */
+const AGGREGATE_TAIL = String.raw`\s*(?:\[([^\]]*)\])?\s+OF\s+([\s\S]*)`;
+const AGGREGATE_RE: Record<AggregateKeyword, RegExp> = {
+  LIST: new RegExp(`LIST${AGGREGATE_TAIL}`),
+  ARRAY: new RegExp(`ARRAY${AGGREGATE_TAIL}`),
+  SET: new RegExp(`SET${AGGREGATE_TAIL}`),
+};
+const NESTED_AGGREGATE_RE = new RegExp(`^(?:LIST|ARRAY|SET)${AGGREGATE_TAIL}`);
+const NUMERIC_BOUNDS = /^\s*(\d+|\?)\s*:\s*(\d+|\?)\s*$/;
+
+/** Record an aggregate's bounds and element type on `attr`. */
+function applyAggregate(attr: AttributeDefinition, typeStr: string, keyword: AggregateKeyword): void {
+  const match = typeStr.match(AGGREGATE_RE[keyword]);
+  if (!match) {
+    // Not an aggregate declaration despite containing the keyword.
+    attr.type = typeStr;
+    return;
+  }
+
+  const numeric = match[1]?.match(NUMERIC_BOUNDS);
+  if (numeric) {
+    attr.arrayBounds = [
+      numeric[1] === '?' ? Infinity : parseInt(numeric[1]),
+      numeric[2] === '?' ? Infinity : parseInt(numeric[2]),
+    ];
+  }
+  attr.type = parseNestedCollection(match[2].trim());
+}
+
 /**
  * Parse nested collection types, e.g. "LIST [2:?] OF IfcCartesianPoint" ->
- * "IfcCartesianPoint[]". A leading "UNIQUE" (e.g. "LIST [1:?] OF UNIQUE
- * IfcGridAxis") constrains the elements, not the element type — strip it.
+ * "IfcCartesianPoint[]". A leading "OPTIONAL" and/or "UNIQUE" (e.g. "LIST [1:?]
+ * OF UNIQUE IfcGridAxis") qualifies the elements, it is not part of the element
+ * type name, so strip it. Neither has a TypeScript type equivalent.
  */
 function parseNestedCollection(typeStr: string): string {
-  const stripped = typeStr.replace(/^UNIQUE\s+/, '');
+  const stripped = typeStr.replace(/^(?:OPTIONAL\s+)?(?:UNIQUE\s+)?/, '');
   // Check if this is another collection: LIST|ARRAY|SET [min:max] OF <innerType>
-  if (stripped.match(/^(LIST|ARRAY|SET)\s+\[/)) {
-    const match = stripped.match(/^(?:LIST|ARRAY|SET)\s+\[(?:\d+|\?):(?:\d+|\?)\]\s+OF\s+(.*)/);
-    if (match) {
-      const innerType = match[1].trim();
-      return `${parseNestedCollection(innerType)}[]`; // recursively parse and wrap in array
-    }
+  const match = stripped.match(NESTED_AGGREGATE_RE);
+  if (match) {
+    return `${parseNestedCollection(match[2].trim())}[]`; // recursively parse and wrap in array
   }
 
   // Base case: return the type as-is

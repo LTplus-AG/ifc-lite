@@ -9,7 +9,7 @@ pub(super) struct TransferBudget {
 impl TransferBudget {
     pub fn new() -> Self {
         Self {
-            work: 64_000_000,
+            work: 128_000_000,
             memory: 256 * 1024 * 1024,
         }
     }

@@ -1,0 +1,106 @@
+{
+  "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+  "baseSource": "198aa828e (Rust/Cargo identical to main5580d5a6f)",
+  "branchSource": "dad83c86f",
+  "measurement": "Interleaved native five-iteration normal-load A/B/A/B on an explicitly idle machine. Probe parse/geometry/total values are best-of-five, not medians. Separate fingerprints are not timed evidence. No worker-pool or authoring throughput claim.",
+  "runs": [
+    {
+      "version": "base",
+      "parseMs": 2,
+      "geometryMs": 4,
+      "totalMs": 7,
+      "allTotalsMs": [
+        13,
+        7,
+        7,
+        7,
+        7
+      ],
+      "allWallMs": [
+        14.175333,
+        8.171332999999999,
+        8.174292,
+        7.964,
+        8.002334
+      ]
+    },
+    {
+      "version": "branch",
+      "parseMs": 3,
+      "geometryMs": 5,
+      "totalMs": 8,
+      "allTotalsMs": [
+        15,
+        10,
+        10,
+        9,
+        8
+      ],
+      "allWallMs": [
+        16.37825,
+        11.3635,
+        10.588958,
+        9.652000000000001,
+        9.045791
+      ]
+    },
+    {
+      "version": "base",
+      "parseMs": 2,
+      "geometryMs": 4,
+      "totalMs": 7,
+      "allTotalsMs": [
+        9,
+        8,
+        8,
+        7,
+        7
+      ],
+      "allWallMs": [
+        10.127958,
+        8.699,
+        8.523833,
+        8.262375,
+        8.014667
+      ]
+    },
+    {
+      "version": "branch",
+      "parseMs": 2,
+      "geometryMs": 4,
+      "totalMs": 7,
+      "allTotalsMs": [
+        10,
+        9,
+        7,
+        7,
+        8
+      ],
+      "allWallMs": [
+        10.938459,
+        10.007834,
+        8.25775,
+        8.183208,
+        8.559333
+      ]
+    }
+  ],
+  "identity": {
+    "base": {
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    "branch": {
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    }
+  }
+}

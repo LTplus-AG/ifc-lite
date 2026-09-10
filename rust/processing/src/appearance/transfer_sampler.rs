@@ -88,6 +88,7 @@ impl<'a> TransferSampler<'a> {
     }
 }
 impl AtlasSampler for TransferSampler<'_> {
+    fn raster_guards(&self) -> bool { true }
     fn begin_item(
         &mut self,
         source: &mut Source<'_>,
@@ -132,10 +133,12 @@ impl AtlasSampler for TransferSampler<'_> {
     fn reserve_pixels(&mut self, pixels: usize) -> Result<(), String> {
         self.budget.reserve(
             pixels
-                .checked_mul(12)
+                .checked_mul(17)
                 .ok_or("Transfer atlas allocation overflow")?,
         )?;
-        self.budget.charge(pixels)
+        // Each bounded pixel visit is one unit, as in the existing atlas: paint,
+        // seed classification, then one four-neighbor propagation visit.
+        self.budget.charge(pixels.checked_mul(3).ok_or("Transfer guard work overflow")?)
     }
     fn sample(
         &mut self,

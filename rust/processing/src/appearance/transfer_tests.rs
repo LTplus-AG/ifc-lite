@@ -434,3 +434,26 @@ fn issue_4381_centroid_only_observation_cannot_apply_an_all_old_raster() {
         .chunks_exact(4)
         .any(|p| p[2] > 0 && p[0] == 0 && p[3] > 0));
 }
+
+#[test]
+fn issue_4381_nearest_pruning_preserves_large_coordinate_distance_and_band() {
+    use ifc_lite_geometry::kernel::broadphase::Bvh;
+    let anchor = 999_999_999_990.;
+    let query = [999_999_999_990.212_6, 999_999_999_990.359_7, anchor];
+    let near = [[anchor, anchor, anchor], [999_999_999_991.787_7, anchor, anchor],
+        [anchor, 999_999_999_991.647_6, anchor]];
+    let far = near.map(|p| [p[0], p[1], 999_999_999_990.000_1]);
+    let separation = far[0][2] - anchor;
+    // A weighted sum of absolute coordinates can falsely collapse this distance.
+    // The actual anchored primitive callback must agree with the BVH lower bound.
+    assert_eq!(closest(far, query).1, separation * separation);
+    let triangles = [near, far];
+    let tree = Bvh::build(&triangles);
+    for (ambiguity, expected_count) in [(0., 1), (2. * separation, 2)] {
+        let mut candidates = Vec::new();
+        let result = tree.nearest_point_bounded(query, 4. * separation, &mut 100,
+            ambiguity, &mut candidates, |id| closest(triangles[id as usize], query).1).unwrap();
+        assert_eq!(result, Some((0, 0.)));
+        assert_eq!(candidates.len(), expected_count);
+    }
+}

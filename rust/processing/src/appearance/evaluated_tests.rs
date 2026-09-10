@@ -250,3 +250,39 @@ fn issue_4404_post_opening_source_matches_canonical_load() {
     assert_eq!(expected.indices.len()/3,32);
     assert_eq!(corners(&produced[0]),corners(expected));
 }
+
+#[test]
+fn issue_4404_reference_only_openings_allow_later_direct_appearance_but_mixed_body_does_not() {
+    let source=crate::appearance::tests::CONTROLLED_IFC.replace("ENDSEC;\nEND-ISO-10303-21;", "#80=IFCOPENINGELEMENT('0000000000000000000001',$,$,$,$,#11,#81,$,.OPENING.);\n#81=IFCPRODUCTDEFINITIONSHAPE($,$,(#82));\n#82=IFCSHAPEREPRESENTATION(#2,'Reference','SweptSolid',(#84));\n#83=IFCRELVOIDSELEMENT('0000000000000000000002',$,$,$,#10,#80);\n#84=IFCBLOCK(#5,0.2,0.2,0.2);\nENDSEC;\nEND-ISO-10303-21;");
+    let mut request=request();request.product_ids=vec![10];request.next_express_id=100;
+    request.representation_policy=RepresentationPolicy::Preserve;
+    let plan=plan_appearance(source.as_bytes(),&request).unwrap();
+    assert!(plan.exclusions.is_empty(),"{:?}",plan.exclusions);
+    assert_eq!(plan.items.len(),1);assert!(plan.conversions.is_empty());
+    let output=apply(&source,&plan);
+    let before=crate::process_geometry(source.as_bytes());
+    let after=crate::process_geometry(output.as_bytes());
+    let host=|meshes:Vec<crate::types::mesh::MeshData>|meshes.into_iter().find(|m|m.express_id==10).unwrap();
+    assert_eq!(corners(&host(before.meshes)),corners(&host(after.meshes)));
+    for changed in [source.replace("'Reference'","'Body'"),source.replace("(#82));","(#82,#85));").replace("#83=", "#85=IFCSHAPEREPRESENTATION(#2,'Body','CSG',(#84));\n#83=")] {
+        let refused=plan_appearance(changed.as_bytes(),&request).unwrap();
+        assert!(refused.items.is_empty());assert!(refused.created.is_empty());assert!(refused.edits.is_empty());
+    }
+}
+
+#[test]
+fn issue_4404_opening_policy_freezes_only_exclusively_owned_body_identifiers() {
+    let Some(bytes)=real_source() else{return};
+    let inspect=|bytes:&str,exclusive:BTreeSet<u32>| {
+        let mut source=source::Source::new(bytes.as_bytes()).unwrap();
+        super::super::evaluated_openings::prepare(&mut source,59290,&[59365],&exclusive)
+    };
+    let edits=inspect(&bytes,BTreeSet::from([59365])).unwrap();
+    assert_eq!(edits.iter().map(|entity|entity.id).collect::<Vec<_>>(),vec![59354]);
+    assert_eq!(edits[0].get_string(1),Some("Body"));
+    assert!(inspect(&bytes,BTreeSet::new()).unwrap_err().contains("another canonical host"));
+    let shared=bytes.replace("#59354=", "#99999=IFCREPRESENTATIONMAP(#5,#59354);\n#59354=");
+    assert!(inspect(&shared,BTreeSet::from([59365])).unwrap_err().contains("shared"));
+    let shared_pds=bytes.replace("#59361=", "#99999=IFCOPENINGELEMENT('0000000000000000000001',$,$,$,$,$,#59361,$,.OPENING.);\n#59361=");
+    assert!(inspect(&shared_pds,BTreeSet::from([59365])).unwrap_err().contains("ProductDefinitionShape is shared"));
+}

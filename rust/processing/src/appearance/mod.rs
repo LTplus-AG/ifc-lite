@@ -6,6 +6,7 @@
 mod budget;
 mod evaluated;
 mod evaluated_source;
+mod evaluated_openings;
 mod evaluated_allocation;
 mod annotation;
 mod captured;

@@ -49,6 +49,11 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
     }
     let mut styles = page_source::appearance(bytes,source);
     let textures = ifc_lite_geometry::build_texture_index(bytes,&mut source.decoder);
+    let mut consumers=BTreeMap::<u32,BTreeSet<u32>>::new();
+    for (&host,openings) in &styles.void_index {
+        for &opening in openings {consumers.entry(opening).or_default().insert(host);}
+    }
+    let exclusive:BTreeSet<_>=consumers.into_iter().filter_map(|(id,hosts)|(hosts.len()==1).then_some(id)).collect();
     let mut normalized = Normalized { request:request.clone(), conversions:Vec::new(), exclusions:Vec::new(), start:request.next_express_id };
     normalized.request.representation_policy=RepresentationPolicy::Preserve;
     normalized.request.product_ids.clear();
@@ -60,7 +65,9 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
             normalized.request.product_ids.push(product_id); continue;
         }
         let candidate=(|| {
-            if styles.void_index.contains_key(&product_id) { return Err("Evaluated conversion of opening-bearing products is not supported yet".into()); }
+            let opening_edits=super::evaluated_openings::prepare(source,product_id,
+                styles.void_index.get(&product_id).map_or(&[],Vec::as_slice),&exclusive)?;
+            if !opening_edits.is_empty() { return Err("Evaluated conversion of opening-bearing products is not supported yet".into()); }
             if matches!(request.mapping,Mapping::ExistingUv {..}) { return Err("Evaluated occurrence conversion requires a new planar or box mapping".into()); }
             let (product, body)=evaluated_source::body(source,product_id)?;
             let mut meshes=canonical::produce(source,product_id,&textures,Some(&styles))?;

@@ -533,7 +533,7 @@ export class ParquetExporter {
                 vertexCount: this.geometryResult ? this.geometryResult.totalVertices : 0,
                 triangleCount: this.geometryResult ? this.geometryResult.totalTriangles : 0,
                 propertyCount: this.store.properties.count,
-                relationshipCount: this.store.relationships.forward.edgeTargets.length,
+                relationshipCount: new Set([...this.store.relationships.forward.edgeRelIds, ...(this.store.relationships.forward.shadowedRelIds ?? [])]).size, // distinct IfcRel* records, not raw edges (#3760/#4205)
             },
         };
 

@@ -28,8 +28,10 @@ const IFC = `#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);
 #10=IFCWALL('wall-1',#1,'Wall A',$,$,$,$,$);
 #11=IFCWALL('wall-2',#1,'Wall B',$,$,$,$,$);
 #12=IFCWALL('wall-3',#1,'Wall C',$,$,$,$,$);
+#13=IFCWALL('wall-4',#1,'Wall D',$,$,$,$,$);
 #30=IFCSYSTEM('sys-1',#1,'HVAC System',$,'HVAC');
 #31=IFCZONE('zone-1',#1,'Thermal Zone',$,$,$);
+#32=IFCZONE('zone-2',#1,'Zero Factor Zone',$,$,$);
 // wall-1 -> sys-1 via the plain (non-factor) relationship: control.
 #40=IFCRELASSIGNSTOGROUP('rel-plain',#1,$,$,(#10),$,#30);
 // wall-2 -> sys-1 EXCLUSIVELY via IfcRelAssignsToGroupByFactor.
@@ -37,7 +39,12 @@ const IFC = `#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);
 // wall-3 -> zone-1 via factor AND independently assigned into sys-1 via the
 // plain relationship (multiple membership across both relationship kinds).
 #42=IFCRELASSIGNSTOGROUPBYFACTOR('rel-factor-2',#1,$,$,(#12),$,#31,0.75);
-#43=IFCRELASSIGNSTOGROUP('rel-plain-2',#1,$,$,(#12),$,#30);`;
+#43=IFCRELASSIGNSTOGROUP('rel-plain-2',#1,$,$,(#12),$,#30);
+// wall-4 -> zone-2 with a LEGITIMATE zero Factor: 0 is a valid proportional
+// share, not "no Factor attribute" — must read back as 0, not undefined.
+// A fresh entity (not wall-1/2/3) so this fixture doesn't perturb the
+// group-membership assertions above, which pin exact member/group lists.
+#44=IFCRELASSIGNSTOGROUPBYFACTOR('rel-factor-zero',#1,$,$,(#13),$,#32,0.0);`;
 
 async function parse() {
   const source = new TextEncoder().encode(IFC.split('\n').filter(l => !l.trim().startsWith('//')).join('\n'));
@@ -134,5 +141,15 @@ describe('IfcRelAssignsToGroupByFactor membership', () => {
   it('returns undefined for a (group, member) pair with no assignment at all', async () => {
     const store = await parse();
     expect(extractGroupAssignmentFactorOnDemand(store, 31, 10)).toBeUndefined();
+  });
+
+  // `extractGroupAssignmentFactorOnDemand` guards with
+  // `typeof factorAttr.value === 'number'`, not a truthiness check — correct,
+  // since a truthy check (`if (factor)`) would swallow a legitimate `0` and
+  // silently report it as "no Factor attribute" (undefined). This pins that
+  // behaviour so a future edit can't reintroduce the truthy-check bug.
+  it('returns 0, not undefined, for a legitimate zero Factor', async () => {
+    const store = await parse();
+    expect(extractGroupAssignmentFactorOnDemand(store, 32, 13)).toBe(0);
   });
 });

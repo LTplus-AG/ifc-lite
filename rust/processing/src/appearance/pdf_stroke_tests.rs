@@ -125,6 +125,7 @@ fn issue_4406_strokes_refuse_collapsed_offsets_reversals_crossings_and_exhaustio
         vec![0., 0., 0., 1., 4., 0., 1., 0., 0.],
         vec![0., 0., 0., 1., 4., 4., 1., 0., 4., 1., 4., 0.],
         vec![0., 0., 0., 1., 0., 0.],
+        vec![0., 0., 0., 1., 4., 0., 1., 8., 1e-10],
     ] {
         let (source, request) = stroke(commands, 0, 0, 10., [1., 0., 0., 1., 0., 0.]);
         assert!(plan_pdf_fill_annotation(source.as_bytes(), &request).is_err());

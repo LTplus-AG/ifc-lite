@@ -9,7 +9,7 @@ use super::{
     flatten::charge,
     PdfVectorGraphicsState,
 };
-use ifc_lite_geometry::Ring2D;
+use ifc_lite_geometry::{kernel::Sign, Ring2D};
 type Point = [f64; 2];
 fn add(a: Point, b: Point) -> Point {
     [a[0] + b[0], a[1] + b[1]]
@@ -121,6 +121,24 @@ fn outline(
         .map(|i| direction(points[i], points[(i + 1) % points.len()]))
         .collect::<Result<_, _>>()?;
     charge(remaining, (count * 32) as u64)?;
+    for i in usize::from(!closed)..count {
+        let exact = super::curve_hulls::sign(
+            points[(i + points.len() - 1) % points.len()],
+            points[i],
+            points[(i + 1) % points.len()],
+        );
+        let turn = cross(directions[(i + count - 1) % count], directions[i]);
+        let computed = if turn > 0. {
+            Sign::Positive
+        } else if turn < 0. {
+            Sign::Negative
+        } else {
+            Sign::Zero
+        };
+        if computed != exact || (turn != 0. && turn.abs() < 1e-8) {
+            return Err("PDF stroke join is numerically unresolved".into());
+        }
+    }
     let mut sides = Vec::with_capacity(2);
     for side in [1., -1.] {
         let mut edge = vec![];

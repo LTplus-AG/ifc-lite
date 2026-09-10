@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { resolveAppearanceScope } from '@/lib/appearance/query-scope.js';
 import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { imageCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
@@ -154,7 +155,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
             : 'Preview discarded. Adjust the mapping to preview again.');
           return;
         }
-        const currentScope = appearanceScope(currentSnapshot.catalog, owners.selectedProductIds, scope);
+        const currentScope = await resolveAppearanceScope(currentSnapshot, owners.selectedProductIds, scope, controller.signal);
         if (!currentScope.productIds.length) throw new Error('Choose a scope containing model surfaces.');
         const renderer = getGlobalRenderer();
         if (!renderer) throw new Error('The renderer is not ready to preview appearance.');

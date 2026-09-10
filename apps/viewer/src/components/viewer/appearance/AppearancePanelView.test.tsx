@@ -6,6 +6,8 @@ import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useState } from 'react';
 import { render, click, type, cleanup } from '@/test/render.js';
+import { saveFilter, clearSavedFilters } from '@/lib/search/saved-filters.js';
+import { Rule } from '@/lib/search/filter-rules.js';
 import { AppearancePanelView } from './AppearancePanelView.js';
 import { AppearanceAssignments } from './AppearanceAssignments.js';
 import { useAppearanceAssignments } from './useAppearanceAssignments.js';
@@ -224,4 +226,24 @@ it('always exposes planar alignment for calibrated sources even after box or UV 
     assert.equal(ui.querySelector('input[aria-label="Repeat U (×)"]'), null);
     assert.equal(ui.querySelector('input[aria-label="Tile X (m)"]'), null);
   }
+});
+
+it('copies a saved filter and requires an explicit update after its Search definition changes #4404', () => {
+  clearSavedFilters();
+  saveFilter('Fire walls', 'AND', [Rule.name('eq', 'Rated')]);
+  function Workbench() {
+    const [scope, setScope] = useState<AppearancePanelViewProps['scope']>({ kind: 'model' });
+    return <><AppearancePanelView {...props({ scope, onScopeChange: setScope })} />
+      <output aria-label="Captured filter">{scope.kind === 'filter' ? JSON.stringify(scope.query.rules) : ''}</output></>;
+  }
+  try {
+    const ui = render(<Workbench />);
+    select(ui, 'Appearance scope', 'filter');
+    assert.match(ui.querySelector('output')?.textContent ?? '', /Rated/);
+    saveFilter('Fire walls', 'AND', [Rule.name('eq', 'Revised')]);
+    click(button(ui, 'Refresh filters'));
+    assert.match(ui.querySelector('output')?.textContent ?? '', /Rated/);
+    click(button(ui, 'Use updated filter'));
+    assert.match(ui.querySelector('output')?.textContent ?? '', /Revised/);
+  } finally { clearSavedFilters(); }
 });

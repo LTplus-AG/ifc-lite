@@ -159,10 +159,11 @@ Creation is available outside shared rooms; the saved IFC can then be shared.
 For implementation status, shared workflow boundaries and future scan/PDF options,
 see the [appearance roadmap](../architecture/appearance-roadmap.md).
 
-## Appearance on mapped occurrences
+## Appearance on evaluated occurrences
 
 Select an image or PDF page, choose the IFC scope, and enable **Convert supported
-mapped objects** when the chosen objects use mapped type geometry. The option is
+objects to mesh** when the chosen objects use mapped type geometry or supported
+swept geometry with openings. The option is
 off by default and requires planar or box mapping. The preview lists the objects
 whose current shape will become mesh geometry instead of using their type's
 parametric geometry. **Compare original** temporarily restores the original;
@@ -171,14 +172,22 @@ in one operation, and Undo restores both together.
 
 Conversion preserves each product's identity, placement, properties and semantic
 relationships. Shared type geometry and sibling occurrences stay unchanged.
-Opening-bearing products, shared Body wrappers and ambiguous representations or
-materials remain excluded. Use **Use supported objects** to explicitly narrow a
+Supported metre-unit opening hosts retain their already-cut shape. Their opening
+relationships remain, while the opening Body becomes a Reference representation
+and stops rendering or cutting again. Preview, Discard and Undo include these
+opening objects, even when their type is hidden. Shared type geometry is preserved
+by replacing only the occurrence Body; ambiguous ownership, layered slicing and
+unsupported materials remain excluded. Use **Use supported objects** to explicitly narrow a
 partially supported scope, then inspect the refreshed preview before applying.
 Export **IFC + images** to retain portable appearance on reopening or sharing.
 GPU-instanced occurrences use the same workflow: preview replaces only the chosen
 occurrence, and Undo restores its original shared instance. Finish any model
 placement preview and return to stacked levels before preparing a conversion.
 Models requiring CRS reprojection are excluded from this initial conversion path.
+
+Some readers, including IfcOpenShell 0.8.2 with its default subtraction setting,
+incorrectly subtract Reference openings again; see the
+[independent interoperability evidence](../architecture/evidence/evaluated-openings/README.md).
 
 Native `planAppearance` and `planPageAppearance` requests accept
 `representationPolicy: "evaluatedOccurrence"`; the omitted policy is `"preserve"`.

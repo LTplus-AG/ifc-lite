@@ -39,7 +39,8 @@ export interface AppearancePlan extends AppearanceEntityPlan {
     /** Native canonical Z-up source mesh; older runtimes cannot materialize instances. */
     sourcePositions?: number[]; sourceNormals?: number[];
     sourceOrigin?: [number, number, number]; sourceColor?: [number, number, number, number];
-    rtcOffset?: [number, number, number] }>;
+    rtcOffset?: [number, number, number];
+    sourceRemovedMeshes?: Array<Omit<AnnotationPlanePlan['mesh'], 'uvs' | 'texture'>> }>;
   nextAvailableExpressId: number;
   items: Array<{
     productId: number;

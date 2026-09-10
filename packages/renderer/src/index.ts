@@ -13,6 +13,7 @@ export { Camera } from './camera.js';
 // The MEASURED surface `getScene()` publishes — see its docs.
 export type { SceneContents } from './scene-contents.js';
 export { expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
+export { sameCompanionParts } from './appearance-companions.js';
 export type { AppearancePreview, AppearanceOwner, AppearanceToken, AppearanceChange } from './appearance-preview.js';
 import type { AppearancePreview } from './appearance-preview.js';
 import { createReferenceImageManager } from './reference-image-host.js';

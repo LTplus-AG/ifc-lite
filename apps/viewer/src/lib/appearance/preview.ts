@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MeshData } from '@ifc-lite/geometry';
-import { equivalentAppearanceGeometry } from '@ifc-lite/renderer';
+import { equivalentAppearanceGeometry, sameCompanionParts } from '@ifc-lite/renderer';
 import type { AppearanceChange, AppearancePreview, AppearanceToken, Renderer } from '@ifc-lite/renderer';
 import type { ViewerState } from '@/store';
 import { occurrenceSourceMesh, validateOccurrenceSourceBudget } from './occurrence-source-mesh';
@@ -10,6 +10,7 @@ import { placementFrameKey, placementFrameCoordinateInfo } from '@/lib/model-pla
 import { totalYupOffset } from '@/hooks/ingest/federationAlign';
 import { useViewerStore } from '@/store';
 import type { AppearancePlan } from './planner-types.js';
+import { bindCompanionPreview, companionHiddenNow } from './companion-preview';
 
 // Renderer cache keys only. These never enter IFC entities or selection lanes.
 let nextTextureIdentity = -1;
@@ -32,6 +33,8 @@ export interface AppearancePreviewParts {
   parts: readonly MeshData[];
   geometryItemRemaps?: AppearanceChange['geometryItemRemaps'];
   materializedOriginals?: readonly MeshData[];
+  companionOriginals?: readonly MeshData[];
+  companionHidden?: true;
   instanced?: boolean;
   validate?(): void;
 }
@@ -65,7 +68,7 @@ export function bindAppearancePreview(
     if (items.has(sourceItem)) throw new Error('Ambiguous occurrence conversion provenance.');
     items.set(sourceItem, item);
   }
-  return [...byProduct].map(([productId, items]) => {
+  const groups: AppearancePreviewParts[] = [...byProduct].map(([productId, items]) => {
     const globalId = state.toGlobalId(modelId, productId);
     const scene = renderer.getScene();
     let originals = scene.getMeshDataPieces(globalId);
@@ -124,6 +127,7 @@ export function bindAppearancePreview(
     if (represented.size !== items.size) throw new Error(`Some geometry for IFC object #${productId} is still loading.`);
     return { globalId, modelIndex, parts, ...(materializedOriginals ? { materializedOriginals, validate } : {}), ...(geometryItemRemaps.length ? { geometryItemRemaps } : {}) };
   });
+  return [...groups, ...bindCompanionPreview(state, renderer, modelId, plan)];
 }
 
 /** Keep every owner's original resources until the complete draft is accepted. */
@@ -138,7 +142,7 @@ export class AppearancePreviewSession {
     try {
       for (const group of groups) {
         group.validate?.();
-        const token = this.preview.begin({ expressId: group.globalId, modelIndex: group.modelIndex }, { geometryItemRemaps: group.geometryItemRemaps, materializedOriginals: group.materializedOriginals });
+        const token = this.preview.begin({ expressId: group.globalId, modelIndex: group.modelIndex }, { geometryItemRemaps: group.geometryItemRemaps, materializedOriginals: group.materializedOriginals, companionOriginals: group.companionOriginals, companionHidden: group.companionHidden });
         this.tokens.push(token);
         this.preview.update(token, group.parts);
       }
@@ -219,6 +223,12 @@ export function appearanceHistoryParts(renderer: Renderer, changes: readonly App
     // model 0; history must use the same ownership rule when resolving them.
     const current = (renderer.getAppearancePreview().getParts?.(change.owner) ?? renderer.getScene().getMeshDataPieces(change.owner.expressId))
       ?.filter(mesh => (mesh.modelIndex ?? 0) === change.owner.modelIndex);
+    if (change.companionOriginals) {
+      if (!current || !sameCompanionParts(current, expectedCurrent)) {
+        throw new Error('Cannot restore the opening because companion geometry changed.');
+      }
+      return { globalId: change.owner.expressId, modelIndex: change.owner.modelIndex, parts: target, companionOriginals: change.companionOriginals, companionHidden: companionHiddenNow(change.owner.expressId) ? true : undefined };
+    }
     if (!current || current.length !== target.length || current.length !== expectedCurrent.length) {
       throw new Error('Cannot restore appearance because the object geometry changed.');
     }

@@ -74,6 +74,7 @@ export async function commitAppearance(
   // Cooperative work stays detached; the final synchronous install remains
   // reversible until all assets, history and GPU tokens pass preparation.
   const roots = new Set([...plan.items.flatMap(item => [item.productId, item.geometryItemId]),
+    ...((plan.conversions ?? []).flatMap(conversion => (conversion.sourceRemovedMeshes ?? []).flatMap(mesh => [mesh.express_id, mesh.geometry_item_id]))),
     ...plan.edits.map(edit => edit.expressId), ...plan.removed, ...plan.created.map(entity => entity.expressId)]);
   const sourceRevision = plan.sourceRevision;
   const abort = () => {

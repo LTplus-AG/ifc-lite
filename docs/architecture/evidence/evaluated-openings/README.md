@@ -116,3 +116,23 @@ The [buildingSMART opening definition](https://ifc43-docs.standards.buildingsmar
 specifies that Reference geometry accompanies an existing hole without another
 subtraction. The native and WASM regressions use a closed textured cube, including
 Reference plus BoundingBox, mixed Body/Reference, and malformed-list controls.
+
+## Independent surface oracle and reader interoperability
+
+`verify-native-opening.py` compares the canonical native source snapshot with
+its authored IFC triangle surface and an independent IfcOpenShell 0.8.2 read.
+It reconstructs serialized f32 positions as f32 before adding the f64 origin;
+otherwise shortest f32-roundtrip JSON decimals introduce a false comparison error.
+The native source and authored raw surface have equal oriented volume and zero
+bidirectional sampled distance at vertices, edge midpoints and triangle centroids.
+This is a sampled surface check, not a complete Hausdorff proof.
+
+The original IfcOpenShell CSG surface differs slightly from the original native
+CSG surface. That difference predates conversion and is reported separately.
+IfcOpenShell 0.8.2 also subtracts Reference openings under its default settings;
+`reproduce-reader-reference.py` isolates that behavior using uncut and already-cut
+controls. An idempotent second cut can conceal the defect in a precut control.
+The exported-surface oracle therefore reports both the default result and a read
+with opening subtraction disabled, consistent with the retained Reference semantics.
+The production authoring policy does not change IFC semantics to accommodate that
+reader behavior.

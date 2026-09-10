@@ -5,6 +5,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { AppearanceInstances, type InstanceAppearanceAccess, type InstanceAppearanceRecord } from './scene-appearance-instances.js';
 import type { TexturedMesh } from './scene.js';
 import { AppearancePreviewController } from './appearance-preview.js';
+import { AppearanceCompanions } from './appearance-companions.js';
 import { equivalentAppearanceGeometry } from './appearance-uvs.js';
 import {
   AppearanceBuckets,
@@ -34,6 +35,7 @@ export function createSceneAppearancePreview(
   access: SceneAppearanceAccess,
 ): AppearancePreviewController<Resource> {
   const instances = new AppearanceInstances(access.instances);
+  const companions = new AppearanceCompanions();
   const buckets = new AppearanceBuckets(access.buckets, (id) =>
     access.data.get(id),
   );
@@ -48,10 +50,11 @@ export function createSceneAppearancePreview(
     }
   }
   return new AppearancePreviewController({
+    validate: owner => companions.validate(owner, access.data.get(owner.expressId)),
     prepareRebuild(geometry, models) {
       const byOwner = new Map<number, MeshData[]>();
       for (const part of geometry) { const list = byOwner.get(part.expressId) ?? []; list.push(part); byOwner.set(part.expressId, list); }
-      return instances.retainedOwners(record => {
+      const retained = instances.retainedOwners(record => {
         if (!models.has(record.owner.modelIndex)) return false;
         const incoming = byOwner.get(record.owner.expressId) ?? [];
         if (record.active) return incoming.length === 0;
@@ -64,8 +67,10 @@ export function createSceneAppearancePreview(
             && next.uvs === part.uvs && next.shadingColor === part.shadingColor;
         });
       });
+      for (const id of companions.retained(geometry, models)) retained.add(id);
+      return retained;
     },
-    finishRebuild(retained) { instances.forgetExcept(retained); buckets.forget(); },
+    finishRebuild(retained) { instances.forgetExcept(retained); companions.forgetExcept(retained); buckets.forget(); },
     discardedForRebuild: retained => instances.discardedFlatOwners(retained),
     instanced(owner, parts) {
       const record = instances.get(owner);
@@ -73,11 +78,17 @@ export function createSceneAppearancePreview(
     },
     parts(owner) {
       const record = instances.get(owner);
-      return access.data.get(owner.expressId) ?? (record?.active ? record.originals : undefined);
+      return access.data.get(owner.expressId) ?? (record?.active ? record.originals : companions.get(owner) ? (companions.get(owner)!.absent ? [] : companions.get(owner)!.originals) : undefined);
     },
-    retainSource: owner => instances.retain(owner),
-    capture(owner, originals) {
+    retainSource: owner => {
+      const instance = instances.retain(owner), companion = companions.retain(owner);
+      return () => { instance(); companion(); };
+    },
+    capture(owner, originals, companionOriginals, companionHidden) {
       if (!access.ready()) throw new Error('Appearance requires finalized resident geometry.');
+      if (companionOriginals && (originals || access.instances.has(owner.expressId))) throw new Error('Instanced companions are not supported.');
+      const companion = companionOriginals ? companions.capture(owner, companionOriginals, access.data.get(owner.expressId), part => access.source(part), companionHidden) : undefined;
+      if (companion && (companion.absent || companion.hidden)) return { parts: companion.absent ? [] : companion.originals, resources: [], companionOriginals: companion.originals, abandon: () => companions.finish(owner, companion) };
       const record = instances.capture(owner, originals);
       if (record?.active) return { parts: record.originals, resources: [{ kind: 'instance' as const, record }],
         abandon: () => instances.finish(owner, record) };
@@ -114,10 +125,11 @@ export function createSceneAppearancePreview(
             .map((flat) => ({ kind: 'flat' as const, flat })),
         );
         buckets.begin(owner);
-        return { parts, resources, abandon: () => { buckets.finish(owner); instances.finish(owner, record); } };
-      } catch (error) { instances.finish(owner, record); throw error; }
+        return { parts: companion?.originals ?? parts, resources, companionOriginals: companion?.originals, abandon: () => { buckets.finish(owner); instances.finish(owner, record); companions.finish(owner, companion); } };
+      } catch (error) { instances.finish(owner, record); companions.finish(owner, companion); throw error; }
     },
     stage(parts) {
+      if (!parts.length || companions.get({ expressId: parts[0].expressId, modelIndex: parts[0].modelIndex ?? 0 })?.hidden) return [];
       const record = instances.get({ expressId: parts[0].expressId, modelIndex: parts[0].modelIndex ?? 0 });
       if (record && instances.isOriginal(record, parts)) return [{ kind: 'instance', record }];
       const meshes = access.meshes(),
@@ -172,13 +184,14 @@ export function createSceneAppearancePreview(
         else if (resource.kind === 'flat') buckets.attach(resource.flat, flatParts[index]!);
       });
       buckets.refresh();
-      if (original) access.data.delete(owner.expressId);
+      if (original || companions.get(owner)?.hidden) access.data.delete(owner.expressId);
       else access.data.set(owner.expressId, installed);
       if (record) record.flatSources = sources;
+      companions.install(owner, parts);
       access.invalidate(owner.expressId);
     },
-    finished(owner) { try { buckets.finish(owner); } finally { instances.finish(owner); } },
-    forget(id) { instances.forget(id); buckets.forget(id); },
+    finished(owner) { try { buckets.finish(owner); } finally { instances.finish(owner); companions.finish(owner); } },
+    forget(id) { instances.forget(id); companions.forget(id); buckets.forget(id); },
     release,
   });
 }

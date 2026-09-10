@@ -50,7 +50,7 @@ try {
   });
   fs.writeFileSync(path.join(out,'preserve.txt'),await panel.innerText());
   await page.screenshot({path:path.join(out,'preserve.png')});
-  await page.getByRole('checkbox',{name:/Convert supported mapped objects/}).check();
+  await page.getByRole('checkbox',{name:/Convert supported objects to mesh/}).check();
   await page.waitForFunction(()=>document.querySelector('[aria-label="Appearance workspace"]')?.textContent.includes('Preview ready'),undefined,{timeout:120000});
   await page.screenshot({path:path.join(out,'preview.png')});
   fs.writeFileSync(path.join(out,'preview.txt'),await panel.innerText());

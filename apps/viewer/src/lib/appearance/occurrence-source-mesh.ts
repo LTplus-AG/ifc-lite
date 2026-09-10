@@ -12,16 +12,19 @@ type Conversion = NonNullable<AppearancePlan['conversions']>[number];
 export function validateOccurrenceSourceBudget(conversions: readonly Conversion[]): void {
   if (conversions.length > 10_000) throw new Error('Occurrence source geometry exceeds the appearance budget.');
   let vertices = 0, corners = 0;
+  const reserve = (positions: readonly number[], indices: readonly number[]) => {
+    const count = positions.length / 3;
+    vertices += count; corners += indices.length;
+    if (!Number.isSafeInteger(count) || count <= 0 || count > 1_000_000
+      || vertices > 2_000_000 || corners > 1_500_000) throw new Error('Occurrence source geometry exceeds the appearance budget.');
+  };
   for (const conversion of conversions) {
+    if ((conversion.sourceRemovedMeshes?.length ?? 0) > 10_000) throw new Error('Companion source count exceeds the appearance budget.');
+    for (const mesh of conversion.sourceRemovedMeshes ?? []) reserve(mesh.positions, mesh.indices);
     // Old planners still support existing resident flat geometry, but cannot
     // supply canonical materialization for an instanced occurrence.
     if (conversion.sourcePositions === undefined) continue;
-    const count = conversion.sourcePositions.length / 3;
-    vertices += count; corners += conversion.sourceIndices.length;
-    if (!Number.isSafeInteger(count) || count <= 0 || count > 1_000_000
-      || vertices > 2_000_000 || corners > 1_500_000) {
-      throw new Error('Occurrence source geometry exceeds the appearance budget.');
-    }
+    reserve(conversion.sourcePositions, conversion.sourceIndices);
   }
 }
 

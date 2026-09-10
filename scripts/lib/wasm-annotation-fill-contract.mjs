@@ -24,7 +24,14 @@ export function checkAnnotationFillContract(IfcAPI) {
         const color = mesh.color;
         for (const [k, value] of [0.2, 0.6, 0.8, 1].entries())
           assert.ok(Math.abs(color[k] - value) <= 1/255 + 1e-6, 'canonical fill colour survives RGBA8 transport');
-        const positions = mesh.positions, indices = mesh.indices;
+        const positions = mesh.positions, indices = mesh.indices, origin = mesh.origin;
+        const rtc = pre.needsShift ? [pre.rtcOffset[0],pre.rtcOffset[2],-pre.rtcOffset[1]] : [0,0,0];
+        const expected = mesh.expressId === 40 ? [[0,0,-4],[4,0,0]] : [[10,26,-20],[14,30,-20]];
+        for (let k=0;k<3;k++) {
+          const values=Array.from({length:positions.length/3},(_,i)=>positions[i*3+k]+origin[k]+rtc[k]);
+          assert.ok(Math.abs(Math.min(...values)-expected[0][k])<1e-5, 'reconstructed IFC-world Y-up lower bound, including RTC');
+          assert.ok(Math.abs(Math.max(...values)-expected[1][k])<1e-5, 'reconstructed IFC-world Y-up upper bound, including RTC');
+        }
         let area = 0;
         for (let j = 0; j < indices.length; j += 3) {
           const p = Array.from({length: 3}, (_, k) => Array.from(positions.slice(indices[j+k]*3, indices[j+k]*3+3)));

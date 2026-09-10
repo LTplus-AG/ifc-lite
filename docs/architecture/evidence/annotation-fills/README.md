@@ -9,7 +9,8 @@ auxiliary footprint map remains absent from its body geometry.
 The initial boundary subset is explicitly closed `IfcPolyline` rings of finite
 2D/3D Cartesian points. At most 64 rings and 2,048 input vertices per fill are
 accepted. Nonplanar, touching, crossing, open, outside or nested-hole boundaries
-are refused before triangulation. The existing canonical triangulator produces
+are refused before triangulation (planarity uses a relative tolerance of
+`1e-10` times the largest boundary extent). The existing canonical triangulator produces
 the triangles; existing router scaling and placement produce world coordinates.
 Indexed/curved boundaries and text are outside this slice. Mixed RGB+hatch/tile
 paint, invalid/out-of-range RGB and exhausted style-reference budgets explicitly

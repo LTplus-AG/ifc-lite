@@ -51,3 +51,14 @@ and excluded from conformance claims. ISO 32000-1 §8.2 disallows those graphics
 operators inside a path object. Poppler also rendered the reordered malformed pair
 identically; it is not evidence of a conforming PDF.js frame-loss defect. See the
 [scope contract](../../pdf-vector-annotations.md#bounded-graphics-state-preparation).
+
+## Ordinary load isolation
+
+`native-load.json` records interleaved base/branch five-iteration AC20 probes on an
+explicitly idle machine. The immutable base executable was built from 48e9e634a,
+whose Rust/Cargo sources are identical to base c5e583e3c. The branch executable was
+built after the native source in 6dd7b35a5. The normal probe reported best-of-five
+parse/geometry/total values, not medians; all total/wall samples remain included.
+Mesh counts and ordered geometry fingerprints agree. Fingerprint collection ran
+separately after timing. This is not vector-preparation or end-to-end browser-worker
+throughput evidence, and small millisecond differences are not reported as a win.

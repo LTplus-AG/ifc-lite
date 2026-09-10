@@ -1189,3 +1189,13 @@ best-of-five phase timings and identical mesh fingerprints/counts; this is a nor
 check, not annotation throughput or worker-pool speedup evidence. Keep style
 lookup failures cached and diagnostic, and keep auxiliary type maps excluded.
 [Exact inputs and paired runs](../../docs/architecture/evidence/annotation-fills/native-load.json).
+
+### PDF vector graphics-state preparation (#4406)
+
+The opt-in decoded-state preparation API adds no ordinary IFC geometry processing
+step. An idle source-matched native A/B/A/B probe showed small millisecond timing
+variation with identical ordered mesh fingerprints and counts. It does not
+establish zero overhead, a worker-pool speedup or vector-page preparation
+throughput. Keep page operator/path/stack limits distinct from PDF.js decoder
+allocation limits; post-decode counting cannot bound the decoder's earlier work.
+See [exact source IDs, five-iteration samples and identity evidence](../../docs/architecture/evidence/pdf-vector-state/native-load.json).

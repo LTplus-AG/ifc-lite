@@ -1179,3 +1179,13 @@ proxy, without authorizing a larger quota or producing an applicable plan.
 Do not repeat those cache mechanisms unchanged or infer broad capacity from a
 small target prefix. [Recorded experiments and worker evidence](../../docs/architecture/evidence/mesh-transfer-capacity/README.md)
 state the remaining gate and the limits of the measurement.
+
+### Product-scoped polygonal annotation fills (#4406)
+
+Direct annotation fills reuse canonical placement/triangulation and a lazy
+source-owned inverse style index shared across recreated native/batch decoders.
+The ordinary AC20 source-matched A/B/A/B probe found identical paired reported
+best-of-five phase timings and identical mesh fingerprints/counts; this is a normal-load regression
+check, not annotation throughput or worker-pool speedup evidence. Keep style
+lookup failures cached and diagnostic, and keep auxiliary type maps excluded.
+[Exact inputs and paired runs](../../docs/architecture/evidence/annotation-fills/native-load.json).

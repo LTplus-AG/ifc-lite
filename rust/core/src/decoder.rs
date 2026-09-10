@@ -308,7 +308,14 @@ impl<'a> EntityDecoder<'a> {
         let mut scanner = crate::parser::EntityScanner::new(self.content);
         let mut project_id: Option<u32> = None;
         while let Some((id, type_name, _, _)) = scanner.next_entity() {
-            if type_name == "IFCPROJECT" {
+            // #4497: STEP keyword case is not significant (ISO 10303-21);
+            // `type_name` is the raw, unnormalised scanner slice, so compare
+            // ASCII-case-insensitively rather than requiring upstream
+            // uppercase. Zero-alloc: `eq_ignore_ascii_case` against a fixed
+            // literal, unlike `schema_helpers::normalise_uppercase` which
+            // allocates a canonical owned copy — not needed here since there
+            // is nothing downstream to reuse the normalised form for.
+            if type_name.eq_ignore_ascii_case("IFCPROJECT") {
                 project_id = Some(id);
                 break;
             }
@@ -338,7 +345,9 @@ impl<'a> EntityDecoder<'a> {
         let mut scanner = crate::parser::EntityScanner::new(self.content);
         let mut project_id: Option<u32> = None;
         while let Some((id, type_name, _, _)) = scanner.next_entity() {
-            if type_name == "IFCPROJECT" {
+            // #4497: see the matching comment in `plane_angle_to_radians`
+            // above — same case-insensitivity fix, same rationale.
+            if type_name.eq_ignore_ascii_case("IFCPROJECT") {
                 project_id = Some(id);
                 break;
             }

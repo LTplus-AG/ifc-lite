@@ -374,6 +374,29 @@ pub fn find_ifcproject_id(content: &[u8]) -> Option<u32> {
     result
 }
 
+/// Case-insensitive byte-level search for the literal keyword `IFCPROJECT(`
+/// (issue #4497 — STEP keyword case is not significant, so a lowercase or
+/// CamelCase exporter's `ifcproject(`/`IfcProject(` must resolve exactly like
+/// the uppercase form). `memchr::memmem` has no case-insensitive mode, so
+/// this scans for the 'I'/'i' lead byte with `memchr::memchr2` (still
+/// SIMD-accelerated) and verifies the rest of the keyword with an explicit
+/// ASCII case-insensitive byte compare — the least invasive way to keep this
+/// hot path SIMD-driven without a new dependency or an allocating uppercase
+/// pass over the whole file.
+fn find_ifcproject_keyword(content: &[u8], from: usize) -> Option<usize> {
+    const KEYWORD: &[u8] = b"IFCPROJECT(";
+    let mut search_from = from;
+    while let Some(rel) = memchr::memchr2(b'I', b'i', &content[search_from..]) {
+        let candidate = search_from + rel;
+        let end = candidate + KEYWORD.len();
+        if end <= content.len() && content[candidate..end].eq_ignore_ascii_case(KEYWORD) {
+            return Some(candidate);
+        }
+        search_from = candidate + 1;
+    }
+    None
+}
+
 fn find_ifcproject_id_inner(content: &[u8], refused: &mut usize) -> Option<u32> {
     let mut from = 0usize;
     // Search for the keyword+paren only; the `=` and `#<id>` are reconstructed by
@@ -383,8 +406,7 @@ fn find_ifcproject_id_inner(content: &[u8], refused: &mut usize) -> Option<u32> 
     // on a mm model, plane-angle → radians on a degree model, making arched
     // openings render as full circles — issue #1367). `IFCPROJECT(` cannot
     // collide with `IFCPROJECTEDCRS(` because the `(` must immediately follow.
-    while let Some(rel) = memchr::memmem::find(&content[from..], b"IFCPROJECT(") {
-        let kw = from + rel;
+    while let Some(kw) = find_ifcproject_keyword(content, from) {
         // Backtrack over optional whitespace, then require '='.
         let mut i = kw;
         while i > 0 && content[i - 1].is_ascii_whitespace() {

@@ -59,6 +59,80 @@ fn find_ifcproject_id_accepts_a_ref_at_exactly_u32_max() {
     assert_eq!(find_ifcproject_id(ifc), Some(u32::MAX));
 }
 
+/// Issue #4497: `find_ifcproject_id_inner`'s `memchr::memmem::find` against
+/// the literal `b"IFCPROJECT("` was case-sensitive, so this — this exact
+/// resolver, the fallback `resolve_unit_scales` falls back to when no
+/// project-id hint is available — silently returned `None` on a lowercase
+/// STEP file, which is the exact "no project" branch that then defaults
+/// length/angle scale to 1.0.
+#[test]
+fn find_ifcproject_id_lowercase_keyword() {
+    let ifc = b"DATA;\n#1=ifcwall('x',$,$,$,$,$,$,$,$);\n#7=ifcproject('g',$,'P',$,$,$,$,$,$);\n";
+    assert_eq!(find_ifcproject_id(ifc), Some(7));
+}
+
+/// The realistic case per #4497: CamelCase keywords from some exporters.
+#[test]
+fn find_ifcproject_id_mixed_case_keyword() {
+    let ifc = b"DATA;\n#7=IfcProject('g',$,'P',$,$,$,$,$,$);\n";
+    assert_eq!(find_ifcproject_id(ifc), Some(7));
+}
+
+/// Lowercase must still respect whitespace-around-`=` and the
+/// IFCPROJECTEDCRS non-collision, exactly like the uppercase cases above.
+#[test]
+fn find_ifcproject_id_lowercase_handles_whitespace_and_crs_collision() {
+    let space_after = b"DATA;\n#1=ifcwall('x',$);\n#1593796= ifcproject('g',$,'P',$,$,$,$,$,$);\n";
+    assert_eq!(find_ifcproject_id(space_after), Some(1593796));
+
+    let crs_only = b"DATA;\n#9= ifcprojectedcrs('EPSG:32632',$,'WGS84',$,'UTM','32N',$);\n";
+    assert_eq!(find_ifcproject_id(crs_only), None);
+}
+
+/// End-to-end: `resolve_unit_scales` with no hint (forcing the
+/// `find_ifcproject_id` fallback path) resolves a lowercase-keyword,
+/// millimetre + degree file exactly like its uppercase equivalent
+/// (`resolve_unit_scales_resolves_degrees_and_millimetres` below).
+#[test]
+fn resolve_unit_scales_fallback_path_lowercase_keywords() {
+    const IFC: &[u8] = b"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Test'),'2;1');
+FILE_NAME('test.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=ifcproject('guid',$,'Test',$,$,$,$,(#2),#3);
+#2=ifcgeometricrepresentationcontext($,'Model',3,1.E-5,#4,$);
+#3=ifcunitassignment((#5,#10));
+#4=ifcaxis2placement3d(#7,$,$);
+#5=ifcsiunit(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#7=ifccartesianpoint((0.,0.,0.));
+#8=ifcsiunit(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+#9=ifcmeasurewithunit(ifcratiomeasure(0.0174532925199433),#8);
+#10=ifcconversionbasedunit(#11,.PLANEANGLEUNIT.,'DEGREE',#9);
+#11=ifcdimensionalexponents(0,0,0,0,0,0,0);
+ENDSEC;
+END-ISO-10303-21;
+";
+    let index = ifc_lite_core::build_entity_index(IFC);
+    let mut decoder = EntityDecoder::with_index(IFC, index);
+
+    // No hint: forces resolve_unit_scales to call find_ifcproject_id.
+    let scales = resolve_unit_scales(IFC, None, &mut decoder);
+    assert_eq!(scales.project_id, Some(1));
+    assert!(
+        (scales.length_unit_scale - 0.001).abs() < 1e-12,
+        "expected 0.001 (mm), got {}",
+        scales.length_unit_scale
+    );
+    assert!(
+        (scales.plane_angle_to_radians - 0.0174532925199433).abs() < 1e-9,
+        "expected 0.01745… (degree), got {}",
+        scales.plane_angle_to_radians
+    );
+}
+
 /// RED for issue #3421: `find_ifcproject_id` used to accumulate the express
 /// id with `wrapping_mul`/`wrapping_add`, so `#4294967297=IFCPROJECT(...)`
 /// wrapped onto id 1 instead of refusing. A real `#1=IFCWALL(...)` earlier in

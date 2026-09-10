@@ -151,7 +151,8 @@ import { type Mat4, MAT4_IDENTITY, mat4Mul, nodeLocalMat4, linearIsIdentity, nor
 export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshData[] {
   const meshes: MeshData[] = [];
   for (const extension of gltf.extensionsRequired ?? []) {
-    if (!['KHR_texture_transform', 'KHR_materials_unlit'].includes(extension)) throw new Error(`GLB: unsupported required extension ${extension}`);
+    if (extension === 'KHR_draco_mesh_compression') throw new Error('GLB: Draco-compressed geometry is not yet supported; export an uncompressed GLB or glTF bundle.');
+    if (!extension.startsWith('KHR_materials_') && extension !== 'KHR_texture_transform') throw new Error(`GLB: unsupported required extension ${extension}`);
   }
   validateGLBImages(gltf, bin);
   const mapping = extractGLBMapping(gltf);

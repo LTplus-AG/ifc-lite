@@ -43,21 +43,16 @@ function imageResources(gltf: GLTFDocument, bin: Uint8Array, copy: boolean): Map
 }
 
 export function primitiveTexture(gltf: GLTFDocument, bin: Uint8Array, primitive: GLTFPrimitive, vertexCount: number): Pick<MeshData, 'uvs' | 'textureRef'> {
-  if (primitive.targets?.length || primitive.extensions?.KHR_draco_mesh_compression || primitive.attributes.COLOR_0 !== undefined) {
-    throw new Error('GLB: morph targets, Draco compression and vertex colours are not supported for capture appearance');
-  }
   const material = primitive.material === undefined ? undefined : gltf.materials?.[primitive.material];
   if (primitive.material !== undefined && !material) throw new Error('GLB: material index does not exist');
-  if (material?.normalTexture || material?.emissiveTexture || material?.occlusionTexture || material?.pbrMetallicRoughness?.metallicRoughnessTexture || Object.keys(material?.extensions ?? {}).some(key => key !== 'KHR_materials_unlit')) {
-    throw new Error('GLB: material maps/extensions beyond base colour are not supported for capture appearance');
-  }
   const reference = material?.pbrMetallicRoughness?.baseColorTexture;
   if (!reference) return {};
-  if (material?.alphaMode && material.alphaMode !== 'OPAQUE') throw new Error('GLB: textured MASK/BLEND materials are not supported');
   const transform = reference.extensions?.KHR_texture_transform;
-  if ((transform?.texCoord ?? reference.texCoord ?? 0) !== 0) throw new Error('GLB: only TEXCOORD_0 is supported');
-  const accessor = primitive.attributes.TEXCOORD_0;
-  if (accessor === undefined || gltf.accessors?.[accessor]?.type !== 'VEC2') throw new Error('GLB: textured primitive requires TEXCOORD_0 VEC2');
+  const texCoord = transform?.texCoord ?? reference.texCoord ?? 0;
+  if (!Number.isSafeInteger(texCoord) || texCoord < 0) throw new Error('GLB: invalid base-colour texture coordinate set');
+  const attribute = `TEXCOORD_${texCoord}`;
+  const accessor = primitive.attributes[attribute];
+  if (accessor === undefined || gltf.accessors?.[accessor]?.type !== 'VEC2') throw new Error(`GLB: textured primitive requires ${attribute} VEC2`);
   const raw = readAccessorData(gltf, bin, accessor);
   const declaration = gltf.accessors![accessor];
   const divisor = raw instanceof Float32Array ? 1 : declaration.normalized && raw instanceof Uint16Array ? 65535 : declaration.normalized && raw instanceof Uint8Array ? 255 : 0;

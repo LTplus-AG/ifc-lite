@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { ownAppearanceQuery } from '../query-definition.js';
 import type { AppearanceAssignment, AppearanceAssignmentRecipe, AssignmentQuery } from './types.js';
 import type { AppearanceDraftSettings } from '../draft-types.js';
 import { ASSIGNMENT_LIMITS, resolveAppearanceAssignments } from './resolve.js';
@@ -23,6 +24,7 @@ function query(value: unknown): AssignmentQuery {
   if (v.kind === 'model') return { kind: 'model' };
   if (v.kind === 'selection') return { kind: 'selection', GlobalIds: strings(v.GlobalIds) };
   if (v.kind === 'class') return { kind: 'class', ifcClass: text(v.ifcClass) };
+  if (v.kind === 'filter') return { kind: 'filter', query: ownAppearanceQuery(v.query) };
   if (v.kind === 'type') return { kind: 'type', GlobalId: text(v.GlobalId) };
   throw new Error('Unknown appearance assignment scope.');
 }

@@ -7,7 +7,8 @@ import { useViewerStore } from '@/store';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view.js';
 import { computeFullSourceHash } from '@/utils/sourceContentHash.js';
 import { appearanceAssets } from '../model-assets.js';
-import { appearanceOwners, appearanceScope } from '../scope.js';
+import { resolveAppearanceScope } from '../query-scope.js';
+import { appearanceOwners } from '../scope.js';
 import { prepareAppearanceSnapshot, type AppearanceSnapshot } from '../snapshot.js';
 import type { AppearancePlanner } from '../planner-worker-client.js';
 import type { AppearanceDraftSettings, AppearanceScope, AppearanceSourceOption } from '../draft-types.js';
@@ -70,12 +71,13 @@ export async function captureAppearanceAssignment(options: {
       || !appearanceAssets.get(frozenSource.assetId ?? frozenSource.id)) throw new Error('The assignment source changed. Review its image and mapping again.');
   };
   validate();
-  const ids = appearanceScope(snapshot.catalog, owners.selectedProductIds, scope).productIds;
+  const ids = (await resolveAppearanceScope(snapshot, owners.selectedProductIds, scope, signal)).productIds;
+  validate();
   if (!ids.length) throw new Error('Choose a scope containing IFC objects.');
   const members = ids.map(expressId => ({ expressId, GlobalId: assignmentProductGlobalId(snapshot, expressId) }));
   const query: AssignmentQuery = scope.kind === 'selection' ? { kind: 'selection', GlobalIds: members.map(product => product.GlobalId) }
     : scope.kind === 'type' ? { kind: 'type', GlobalId: assignmentProductGlobalId(snapshot, scope.typeId) }
-      : scope.kind === 'class' ? scope : { kind: 'model' };
+      : scope.kind === 'class' || scope.kind === 'filter' ? scope : { kind: 'model' };
   const sourceSha256 = await model.ifcDataStore.source.withMaterializedAsync(computeFullSourceHash);
   validate();
   if (!sourceSha256) throw new Error('The model source identity could not be verified. Try preparing the assignment again.');

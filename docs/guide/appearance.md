@@ -5,9 +5,28 @@ loaded IFC4 or IFC4X3 model. The panel is also available from the activity rail
 and command palette.
 
 Choose the target model, then choose the whole model, selected objects, an IFC
-class, or an exact type. Types with the same name remain separate. If some
+class, an exact type, or a saved Search filter. Types with the same name remain separate. If some
 objects are unsupported, the panel explains the exclusions and offers an
 explicit supported-objects selection.
+
+## Saved-filter scopes
+
+Save a named filter in Search, then choose **Saved filter** in Appearance. Use
+**Refresh filters** to refresh the catalog. Selecting a filter copies its rules
+into the draft; changing the Search preset later does not alter that draft.
+**Use updated filter** explicitly adopts a changed definition.
+
+Rules run against the effective IFC, including unsaved property and attribute
+edits, and only the chosen model's captured surface owners. Preview and Apply
+share that snapshot and exact membership. An intervening IFC edit invalidates
+the preview. Saved assignment recipes retain the filter definition and reviewed
+GlobalIds; restoring them re-evaluates the definition and reports membership
+changes before use.
+
+Queries support at most 32 rules and 10,000 candidate objects. Invalid predicates
+are refused as a whole query. Exact hierarchy storey selections contain session
+IDs and are unavailable here; save a filter using storey names instead. Named
+storey filters retain Search's name-matching semantics, including duplicate names.
 
 ## Image appearance
 

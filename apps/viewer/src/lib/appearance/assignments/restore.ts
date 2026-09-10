@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { resolveAppearanceScope } from '../query-scope.js';
 import type { AppearancePlanner } from '../planner-worker-client.js';
 import { captureAppearanceAssignment, assignmentProductGlobalId, type CapturedAssignment } from './capture.js';
 import type { AppearanceAssignment } from './types.js';
@@ -29,7 +30,11 @@ export async function reviewRestoredAssignment(options: {
   const catalog = captured.snapshot.catalog, query = saved.query;
   const current = captured.assignment.members;
   const localIds = new Set<number>();
-  if (query.kind === 'class') {
+  if (query.kind === 'filter') {
+    const resolved = await resolveAppearanceScope(captured.snapshot, [], query, options.signal);
+    captured.validate();
+    for (const id of resolved.productIds) localIds.add(id);
+  } else if (query.kind === 'class') {
     for (const product of catalog.products) if (product.ifcClass === query.ifcClass) localIds.add(product.productId);
   } else if (query.kind === 'type') {
     const type = catalog.types.find(item => assignmentProductGlobalId(captured.snapshot, item.typeId) === query.GlobalId);

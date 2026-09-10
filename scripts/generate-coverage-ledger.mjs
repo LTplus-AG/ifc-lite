@@ -229,6 +229,7 @@ const RENAME = {
 // only the direct hops with substantial curation are guarded.
 assertNonEmpty('convertible(IFC2X3_TO_IFC4)', RENAME['IFC2X3->IFC4']);
 assertNonEmpty('convertible(IFC4_TO_IFC2X3)', RENAME['IFC4->IFC2X3']);
+assertNonEmpty('convertible(IFC4X3_TO_IFC4)', RENAME['IFC4X3->IFC4']);
 
 // registry tables key by PascalCase entity name (from parseEntityTable), but
 // every extractor above works in UPPERCASE STEP keywords. Build an
@@ -321,6 +322,12 @@ function render() {
   lines.push('- **geometry** — the geometry router has a processor registered for this type. Scoped to *representation items* the router dispatches on directly (e.g. `IfcExtrudedAreaSolid`), not every product that eventually contains one — a wall\'s solid is `IfcExtrudedAreaSolid`, so `IfcWall` itself reads `❌` here while its representation item reads `✅`; that is the router\'s real dispatch surface, not a gap in this row.');
   lines.push('- **creatable** — `@ifc-lite/create` (`IfcCreator` or an in-store builder) can emit this entity.');
   lines.push('- **convertible** — for each direct one-hop schema conversion FROM this row\'s version, whether the (possibly renamed) entity exists in the target schema\'s registry.');
+  lines.push('');
+  lines.push(
+    '**Deferred columns** (not in this ledger, on purpose): `writable` — no per-type dispatch in ' +
+      'the STEP/merge writer yields a non-vacuous per-class signal; `fixture` — the model-fixture-to-class ' +
+      'census depends on #4208, not yet merged. Follow-up scope, not an oversight.',
+  );
   lines.push('');
   for (const schema of SCHEMAS) {
     const rows = sections.get(schema);

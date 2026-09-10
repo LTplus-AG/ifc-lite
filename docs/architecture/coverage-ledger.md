@@ -15,6 +15,8 @@ Columns:
 - **creatable** — `@ifc-lite/create` (`IfcCreator` or an in-store builder) can emit this entity.
 - **convertible** — for each direct one-hop schema conversion FROM this row's version, whether the (possibly renamed) entity exists in the target schema's registry.
 
+**Deferred columns** (not in this ledger, on purpose): `writable` — no per-type dispatch in the STEP/merge writer yields a non-vacuous per-class signal; `fixture` — the model-fixture-to-class census depends on #4208, not yet merged. Follow-up scope, not an oversight.
+
 ## IFC2X3
 
 674 concrete entities.

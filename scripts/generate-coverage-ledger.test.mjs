@@ -122,6 +122,117 @@ test('vacuity guard: emptied relationship-graph.ts names map fails loudly', () =
   assert.match(log, /relationships\(RelationshipTypeToString\)/);
 });
 
+test('vacuity guard: emptied entities-ifc2x3.ts registry table fails loudly', () => {
+  const rel = 'packages/data/src/ifc-schema/generated/entities-ifc2x3.ts';
+  const { status, log, ledger } = runOn({ [rel]: '// no rows' });
+  assert.equal(status, 1);
+  assert.match(log, /registry\(IFC2X3\)/);
+  assert.equal(ledger, null, 'a vacuity failure must not leave a written ledger behind');
+});
+
+test('vacuity guard: emptied entities-ifc4.ts registry table fails loudly', () => {
+  const rel = 'packages/data/src/ifc-schema/generated/entities-ifc4.ts';
+  const { status, log } = runOn({ [rel]: '// no rows' });
+  assert.equal(status, 1);
+  assert.match(log, /registry\(IFC4\)/);
+});
+
+test('vacuity guard: emptied entities-ifc4x3.ts registry table fails loudly', () => {
+  const rel = 'packages/data/src/ifc-schema/generated/entities-ifc4x3.ts';
+  const { status, log } = runOn({ [rel]: '// no rows' });
+  assert.equal(status, 1);
+  assert.match(log, /registry\(IFC4X3\)/);
+});
+
+test('vacuity guard: emptied schema.rs from_str arms fails loudly', () => {
+  const rel = 'rust/core/src/generated/schema.rs';
+  const src = real.get(rel);
+  assert.ok(src.includes('pub fn from_str'), 'test anchor drifted — real source no longer has `pub fn from_str`');
+  const { status, log } = runOn({ [rel]: '// no from_str fn here' });
+  assert.equal(status, 1);
+  assert.match(log, /retained\(IFC4X3 from_str arms\)/);
+});
+
+test('vacuity guard: emptied legacy_entities.rs match arms fails loudly', () => {
+  const rel = 'rust/core/src/legacy_entities.rs';
+  const src = real.get(rel);
+  assert.ok(/"(IFC[A-Z0-9]+)"\s*=>\s*Some\(/.test(src), 'test anchor drifted — no legacy match arms found');
+  const { status, log } = runOn({ [rel]: '// no match arms here' });
+  assert.equal(status, 1);
+  assert.match(log, /retained\(legacy_entities\.rs arms\)/);
+});
+
+test('vacuity guard: emptied ifc-creator.ts this.line calls fails loudly', () => {
+  const rel = 'packages/create/src/ifc-creator.ts';
+  const src = real.get(rel);
+  assert.ok(/this\.line\(/.test(src), 'test anchor drifted — no this.line( calls found');
+  const { status, log } = runOn({ [rel]: '// no this.line() calls here' });
+  assert.equal(status, 1);
+  assert.match(log, /creatable\(IfcCreator\.this\.line\)/);
+});
+
+test('vacuity guard: emptied in-store editor.addEntity calls fails loudly', () => {
+  const rel = `${IN_STORE_DIR}/wall.ts`;
+  const src = readFileSync(join(ROOT, rel), 'utf8');
+  assert.ok(/editor\.addEntity\(/.test(src), 'test anchor drifted — no editor.addEntity( calls in wall.ts');
+  const { status, log } = runOn({ [rel]: '// no editor.addEntity() calls here' });
+  assert.equal(status, 1);
+  assert.match(log, /creatable\(in-store editor\.addEntity\)/);
+});
+
+test('vacuity guard: emptied IFC2X3_TO_IFC4 rename map fails loudly', () => {
+  const rel = 'packages/export/src/schema-converter.ts';
+  const src = real.get(rel);
+  const start = src.indexOf('const IFC2X3_TO_IFC4');
+  assert.notEqual(start, -1, 'test anchor drifted — const IFC2X3_TO_IFC4 not found');
+  const open = src.indexOf('[', src.indexOf('=', start));
+  const close = src.indexOf(']);', open);
+  assert.ok(open !== -1 && close !== -1, 'test anchor drifted — IFC2X3_TO_IFC4 not bounded');
+  const mutated = src.slice(0, open + 1) + src.slice(close);
+  assert.notEqual(mutated, src);
+  const { status, log } = runOn({ [rel]: mutated });
+  assert.equal(status, 1);
+  assert.match(log, /convertible\(IFC2X3_TO_IFC4\)/);
+});
+
+test('vacuity guard: emptied IFC4_TO_IFC2X3 rename map fails loudly', () => {
+  const rel = 'packages/export/src/schema-converter.ts';
+  const src = real.get(rel);
+  const start = src.indexOf('const IFC4_TO_IFC2X3');
+  assert.notEqual(start, -1, 'test anchor drifted — const IFC4_TO_IFC2X3 not found');
+  const open = src.indexOf('[', src.indexOf('=', start));
+  const close = src.indexOf(']);', open);
+  assert.ok(open !== -1 && close !== -1, 'test anchor drifted — IFC4_TO_IFC2X3 not bounded');
+  const mutated = src.slice(0, open + 1) + src.slice(close);
+  assert.notEqual(mutated, src);
+  const { status, log } = runOn({ [rel]: mutated });
+  assert.equal(status, 1);
+  assert.match(log, /convertible\(IFC4_TO_IFC2X3\)/);
+});
+
+test('vacuity guard: emptied IFC4X3_TO_IFC4 rename map fails loudly (#4474 review finding)', () => {
+  const rel = 'packages/export/src/schema-converter.ts';
+  const src = real.get(rel);
+  const start = src.indexOf('const IFC4X3_TO_IFC4');
+  assert.notEqual(start, -1, 'test anchor drifted — const IFC4X3_TO_IFC4 not found');
+  const open = src.indexOf('[', src.indexOf('=', start));
+  const close = src.indexOf(']);', open);
+  assert.ok(open !== -1 && close !== -1, 'test anchor drifted — IFC4X3_TO_IFC4 not bounded');
+  const mutated = src.slice(0, open + 1) + src.slice(close);
+  assert.notEqual(mutated, src);
+  const { status, log, ledger } = runOn({ [rel]: mutated });
+  assert.equal(status, 1);
+  assert.match(log, /convertible\(IFC4X3_TO_IFC4\)/);
+  assert.equal(ledger, null, 'a vacuity failure must not leave a written ledger behind');
+});
+
+test('rendered ledger names the deferred writable/fixture columns', () => {
+  const { ledger } = runOn();
+  assert.match(ledger, /\bwritable\b/);
+  assert.match(ledger, /\bfixture\b/);
+  assert.match(ledger, /#4208/);
+});
+
 test('mutation sensitivity: removing IfcSphere from the geometry TYPES table flips its row', () => {
   const src = real.get('rust/geometry/src/router/processor_registry.rs');
   assert.ok(src.includes('&[IfcType::IfcSphere],'), 'test anchor drifted — IfcSphere line not found verbatim');

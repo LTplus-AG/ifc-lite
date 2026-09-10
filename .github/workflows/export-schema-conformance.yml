@@ -48,13 +48,14 @@ on:
     paths:
       - "packages/export/**"
       - "packages/parser/**"
-      # The rest of the suite's workspace import closure, each one aliased to
-      # src in packages/export/vitest.config.ts because this job runs vitest
-      # with nothing built. Without these the lane cannot see the change that
-      # breaks it: `@ifc-lite/regex-guard` was added under `mutations`, and the
-      # resulting resolve failure only surfaced on the weekly cron, on a
-      # non-required check, detached from the PR that caused it.
-      - "packages/codegen/**"
+      # The rest of the workspace closure of the ONE file this job runs,
+      # src/ifcopenshell-schema-conformance.test.ts — measured, not the full
+      # alias list in packages/export/vitest.config.ts (which also carries
+      # codegen and geometry for the rest of the export suite, neither
+      # reachable from this test). Without these the lane cannot see the
+      # change that breaks it: `@ifc-lite/regex-guard` was added under
+      # `mutations`, and the resulting resolve failure surfaced only on the
+      # weekly cron, on a non-required check, detached from its own PR.
       - "packages/data/**"
       - "packages/encoding/**"
       - "packages/ifcx/**"

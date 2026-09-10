@@ -1320,6 +1320,16 @@ Collapsed/reversing offsets and unresolved joins refuse rather than repairing
 an unqualified stroke arrangement. See the [source-specific raw controls](../../docs/architecture/evidence/pdf-straight-stroke-annotations/native-load.json)
 and original PDF/independent IFC evidence alongside them.
 
+## Symbolic fill routing for native annotation meshes (#4459)
+
+Source-specific native A/B/A/B controls retain identical ordered geometry
+fingerprints and counts. The candidate's first launch is slightly slower at
+coarse phase resolution; the second pair matches. This is normal-load
+isolation, not a symbolic-extraction or browser worker-pool performance claim.
+The lesson is to carry qualified item provenance once, then filter the 3D
+overlay output; deleting the shared drawing primitives would hide the duplicate
+at the cost of 2D content. See the [raw runs and immutable binary identities](../../docs/architecture/evidence/annotation-fill-routing/native-load.json).
+
 ## One integer lattice for registered PDF composition (#4458)
 
 Exact-source interleaved normal-load probes resolve no regression; both paired

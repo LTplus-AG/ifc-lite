@@ -37,7 +37,7 @@ export function AppearanceAssignmentList(props: AppearanceAssignmentListProps) {
           <Button type="button" size="icon" variant="ghost" className="h-6 w-6" disabled={props.disabled}
             aria-label={`Remove assignment ${index + 1}`} onClick={() => props.onRemove(item.id)}><Trash2 className="h-3 w-3" /></Button>
         </div>
-        <p className="mt-1 text-[11px]">{row.productIds.length} objects · {row.excluded} excluded · {row.overridden} replaced by later assignments</p>
+        <p className="mt-1 text-[11px]">{row.productIds.length} {row.productIds.length === 1 ? 'object' : 'objects'} · {row.excluded} excluded · {row.overridden} replaced by later assignments</p>
         <Button type="button" variant="ghost" size="sm" className="mt-1 h-6 px-0 text-[11px]" disabled={props.disabled}
           aria-label={`Review objects for assignment ${index + 1}`} aria-expanded={expandedId === item.id}
           aria-controls={`${reviewId}-${index}`} onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}>

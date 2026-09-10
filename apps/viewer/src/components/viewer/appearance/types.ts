@@ -8,6 +8,8 @@ export type { AppearanceScope, AppearanceDraftSettings, AppearanceSourceOption }
 export interface AppearancePanelViewProps {
   intent?: 'apply' | 'reference' | 'capture' | 'scan';
   capture?: React.ReactNode;
+  renderAssignments?(formValid: boolean): React.ReactNode;
+  assignmentMode?: boolean;
   scan?: React.ReactNode;
   onIntentChange?(intent: 'apply' | 'reference' | 'capture' | 'scan'): void;
   /** Advertise PDF upload only once a controller provides document ingestion. */

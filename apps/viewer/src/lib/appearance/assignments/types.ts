@@ -24,7 +24,9 @@ export interface AppearanceAssignment {
   id: string;
   model: AssignmentModel;
   /** Original document/page/calibration and exact image derivative are frozen together. */
-  source: Omit<AppearanceSourceOption, 'thumbnailUrl'>;
+  source: Omit<AppearanceSourceOption, 'thumbnailUrl' | 'pdf'> & {
+    pdf?: NonNullable<AppearanceSourceOption['pdf']> & { documentSha256?: string };
+  };
   settings: AppearanceDraftSettings;
   query: AssignmentQuery;
   /** Reviewed query result, before explicit row exclusions and later-row overrides. */

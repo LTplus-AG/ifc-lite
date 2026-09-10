@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { stepExportProgress } from '@/lib/export/step-progress.js';
 import { prepareAppearanceSerialization } from '@/lib/appearance/serialization.js';
 import { packagePortableIfcAsync, assertPortableMergeSupported } from '@/lib/export/portable-ifc';
@@ -148,6 +149,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   // Derived: is this an IFC5/IFCX export?
   const isIfc5 = schema === 'IFC5';
 
+  const exportModelLabels = useMemo(() => modelDisplayLabels(models, 32), [models]);
   // Get list of models with data stores - includes both federated models and legacy single-model
   const modelList = useMemo(() => {
     const list = Array.from(models.values()).map((m) => ({
@@ -655,8 +657,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
               </SelectTrigger>
               <SelectContent>
                 {modelList.map((m) => {
-                  const maxLen = 32;
-                  const displayName = m.name.length > maxLen ? m.name.slice(0, maxLen) + '\u2026' : m.name;
+                  const displayName = exportModelLabels.get(m.id) ?? m.name;
                   return (
                   <SelectItem key={m.id} value={m.id} title={m.name}>
                     {displayName}{m.isDirty ? ' *' : ''}{m.schemaVersion ? ` (${m.schemaVersion})` : ''}

@@ -56,7 +56,8 @@ export async function commitAppearanceAssignments(
         view, plans, snapshot.revision, options);
       sequences.push({ modelId, value }); validate();
       const roots = new Set(plans.flatMap(plan => [...plan.items.flatMap(item => [item.productId, item.geometryItemId]),
-        ...plan.edits.map(edit => edit.expressId), ...plan.removed, ...plan.created.map(entity => entity.expressId)]));
+        ...((plan.conversions ?? []).flatMap(conversion => (conversion.sourceRemovedMeshes ?? []).flatMap(mesh => [mesh.express_id, mesh.geometry_item_id]))),
+    ...plan.edits.map(edit => edit.expressId), ...plan.removed, ...plan.created.map(entity => entity.expressId)]));
       const beforeGuard = captureAppearanceDependencies(model.ifcDataStore, view, roots);
       records.push({ modelId, view, dataStore: model.ifcDataStore, assetIds: [...new Set(steps.flatMap(step => step.assetIds))],
         mutations: value.mutations, replayIfc: value.replay, beforeGuard, afterGuard: beforeGuard });
@@ -72,7 +73,8 @@ export async function commitAppearanceAssignments(
     for (const record of records) {
       const plans = preparation.steps.filter(step => step.modelId === record.modelId).map(step => step.plan);
       const roots = new Set(plans.flatMap(plan => [...plan.items.flatMap(item => [item.productId, item.geometryItemId]),
-        ...plan.edits.map(edit => edit.expressId), ...plan.removed, ...plan.created.map(entity => entity.expressId)]));
+        ...((plan.conversions ?? []).flatMap(conversion => (conversion.sourceRemovedMeshes ?? []).flatMap(mesh => [mesh.express_id, mesh.geometry_item_id]))),
+    ...plan.edits.map(edit => edit.expressId), ...plan.removed, ...plan.created.map(entity => entity.expressId)]));
       record.afterGuard = captureAppearanceDependencies(record.dataStore, record.view, roots);
       for (const id of record.assetIds) appearanceAssets.retain(id, historyOwner);
       modelAppearanceAssets.registerAuthored(record.modelId, commandId, record.assetIds);

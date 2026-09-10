@@ -6,6 +6,9 @@
 mod budget;
 mod evaluated;
 mod evaluated_source;
+mod evaluated_openings;
+mod evaluated_replacement;
+mod evaluated_precision;
 mod evaluated_allocation;
 mod annotation;
 mod authored;
@@ -105,7 +108,7 @@ pub fn plan_appearance(
     if request.representation_policy==RepresentationPolicy::EvaluatedOccurrence {
         let normalized=evaluated::prepare(bytes,request,&mut source)?;
         let plan=plan_with_source(bytes,normalized.request(),&mut source)?;
-        return Ok(normalized.compose(plan)?.0);
+        return Ok(normalized.compose(plan,&source)?.0);
     }
     plan_with_source(bytes,request,&mut source)
 }

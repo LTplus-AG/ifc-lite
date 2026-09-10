@@ -29,6 +29,8 @@ fn issue_4404_real_mapped_member_is_opt_in_and_preserves_every_sibling_and_world
     request.representation_policy=RepresentationPolicy::EvaluatedOccurrence;
     let plan=plan_appearance(source.as_bytes(),&request).unwrap();
     assert!(plan.exclusions.is_empty(),"{:?}",plan.exclusions);
+    assert!(plan.conversions.iter().all(|conversion|conversion.source_removed_meshes.is_empty()));
+    assert!(!serde_json::to_value(&plan).unwrap()["conversions"][0].as_object().unwrap().contains_key("sourceRemovedMeshes"));
     assert_eq!(plan.created.iter().map(|row|row.express_id).collect::<Vec<_>>(),(plan.next_express_id..plan.next_available_express_id).collect::<Vec<_>>());
     assert_eq!(plan.conversions.len(),1);assert_eq!(plan.items.len(),1);
     assert_eq!(plan.conversions[0].representation_id,35155);
@@ -59,11 +61,11 @@ fn issue_4404_real_mapped_member_is_opt_in_and_preserves_every_sibling_and_world
     }
 }
 #[test]
-fn issue_4404_opening_hosts_and_shared_body_wrappers_never_receive_conversion_mutations() {
+fn issue_4404_unsupported_classes_and_shared_mapped_wrappers_remain_refused() {
     let Some(source)=real_source() else{return};let mut request=request();
-    request.product_ids=vec![59290,21966];
+    request.product_ids=vec![21966];
     let plan=plan_appearance(source.as_bytes(),&request).unwrap();
-    assert_eq!(plan.exclusions.len(),2);assert!(plan.created.is_empty());assert!(plan.edits.is_empty());assert!(plan.conversions.is_empty());
+    assert_eq!(plan.exclusions.len(),1);assert!(plan.created.is_empty());assert!(plan.edits.is_empty());assert!(plan.conversions.is_empty());
     let shared=source.replace("#35155=", "#99999=IFCREPRESENTATIONMAP(#5,#35155);\n#35155=");
     request.product_ids=vec![35169];
     let plan=plan_appearance(shared.as_bytes(),&request).unwrap();
@@ -144,7 +146,7 @@ fn issue_4404_filtered_private_conversion_prefix_compacts_to_host_allocation_ord
     // private IDs must not leave a gap before the accepted occurrence's rows.
     normalized.request.product_ids.retain(|id|*id==35304);
     let mapped=super::super::plan_with_source(text.as_bytes(),&normalized.request,&mut source).unwrap();
-    let (plan,ids)=normalized.compose(mapped).unwrap();
+    let (plan,ids)=normalized.compose(mapped,&source).unwrap();
     assert_eq!(plan.conversions.len(),1);
     assert_eq!(plan.conversions[0].product_id,35304);
     assert!(ids.iter().any(|(old,new)|old!=new));
@@ -192,7 +194,7 @@ fn issue_4404_real_page_material_name_that_looks_like_generated_reference_is_lit
     // Force the same remapping that an omitted private prefix requires, using
     // the actual native page plan with its preserved exporter material label.
     result.plan.next_express_id-=1;
-    let ids=super::super::evaluated_allocation::compact(&mut result.plan).unwrap();
+    let ids=super::super::evaluated_allocation::compact(&mut result.plan,&Source::new(source.as_bytes()).unwrap().types).unwrap();
     assert_ne!(ids[&100001],100001);
     assert_eq!(names(&result.plan),original_names);
     assert_eq!(result.plan.created[0].express_id,result.plan.next_express_id);
@@ -234,4 +236,131 @@ fn issue_4404_materialization_payload_restores_georeferenced_native_frame_once()
     for key in ["sourcePositions","sourceNormals","sourceOrigin","sourceColor","rtcOffset"] {
         assert!(json["conversions"][0][key].as_array().unwrap().iter().all(|v|v.as_f64().is_some_and(f64::is_finite)), "{key}");
     }
+}
+
+#[test]
+fn issue_4404_post_opening_source_matches_canonical_load() {
+    let Some(bytes)=real_source() else{return};
+    let mut source=super::super::source::Source::new(bytes.as_bytes()).unwrap();
+    assert!(!source.context.as_ref().unwrap().layers.is_sliceable(59290), "real slab requires unsupported material slicing");
+    let appearance=super::super::page_source::appearance(bytes.as_bytes(), &mut source);
+    assert_eq!(appearance.void_index.get(&59290),Some(&vec![59365]));
+    let produced=super::super::canonical::produce(&mut source,59290,&rustc_hash::FxHashMap::default(),Some(&appearance)).unwrap();
+    let loaded=crate::process_geometry(bytes.as_bytes());
+    let expected=loaded.meshes.iter().find(|m|m.express_id==59290).unwrap();
+    assert_eq!(produced.len(),1);
+    assert_eq!(expected.indices.len()/3,32);
+    assert_eq!(corners(&produced[0]),corners(expected));
+}
+
+#[test]
+fn issue_4404_reference_only_openings_allow_later_direct_appearance_but_mixed_body_does_not() {
+    let source=crate::appearance::tests::CONTROLLED_IFC.replace("ENDSEC;\nEND-ISO-10303-21;", "#80=IFCOPENINGELEMENT('0000000000000000000001',$,$,$,$,#11,#81,$,.OPENING.);\n#81=IFCPRODUCTDEFINITIONSHAPE($,$,(#82));\n#82=IFCSHAPEREPRESENTATION(#2,'Reference','SweptSolid',(#84));\n#83=IFCRELVOIDSELEMENT('0000000000000000000002',$,$,$,#10,#80);\n#84=IFCBLOCK(#5,0.2,0.2,0.2);\nENDSEC;\nEND-ISO-10303-21;");
+    let mut request=request();request.product_ids=vec![10];request.next_express_id=100;
+    request.representation_policy=RepresentationPolicy::Preserve;
+    let plan=plan_appearance(source.as_bytes(),&request).unwrap();
+    assert!(plan.exclusions.is_empty(),"{:?}",plan.exclusions);
+    assert_eq!(plan.items.len(),1);assert!(plan.conversions.is_empty());
+    let output=apply(&source,&plan);
+    let before=crate::process_geometry(source.as_bytes());
+    let after=crate::process_geometry(output.as_bytes());
+    let host=|meshes:Vec<crate::types::mesh::MeshData>|meshes.into_iter().find(|m|m.express_id==10).unwrap();
+    assert_eq!(corners(&host(before.meshes)),corners(&host(after.meshes)));
+    for changed in [source.replace("'Reference'","'Body'"),source.replace("(#82));","(#82,#85));").replace("#83=", "#85=IFCSHAPEREPRESENTATION(#2,'Body','CSG',(#84));\n#83=")] {
+        let refused=plan_appearance(changed.as_bytes(),&request).unwrap();
+        assert!(refused.items.is_empty());assert!(refused.created.is_empty());assert!(refused.edits.is_empty());
+    }
+}
+
+#[test]
+fn issue_4404_opening_policy_freezes_only_exclusively_owned_body_identifiers() {
+    let Some(bytes)=real_source() else{return};
+    let inspect=|bytes:&str,exclusive:BTreeSet<u32>| {
+        let mut source=source::Source::new(bytes.as_bytes()).unwrap();
+        super::super::evaluated_openings::prepare(&mut source,59290,&[59365],&exclusive)
+    };
+    let edits=inspect(&bytes,BTreeSet::from([59365])).unwrap();
+    assert_eq!(edits.iter().map(|entity|entity.id).collect::<Vec<_>>(),vec![59354]);
+    assert_eq!(edits[0].get_string(1),Some("Body"));
+    assert!(inspect(&bytes,BTreeSet::new()).unwrap_err().contains("another canonical host"));
+    let shared=bytes.replace("#59354=", "#99999=IFCREPRESENTATIONMAP(#5,#59354);\n#59354=");
+    assert!(inspect(&shared,BTreeSet::from([59365])).unwrap_err().contains("shared"));
+    let shared_pds=bytes.replace("#59361=", "#99999=IFCOPENINGELEMENT('0000000000000000000001',$,$,$,$,$,#59361,$,.OPENING.);\n#59361=");
+    assert!(inspect(&shared_pds,BTreeSet::from([59365])).unwrap_err().contains("ProductDefinitionShape is shared"));
+}
+
+#[test]
+fn issue_4404_real_cut_slab_preserves_type_semantics_and_accepts_second_appearance() {
+    let Some(bytes)=real_source() else{return};
+    let mut request=request();request.product_ids=vec![59290];
+    let plan=plan_appearance(bytes.as_bytes(),&request).unwrap();
+    assert!(plan.exclusions.is_empty(),"{:?}",plan.exclusions);
+    assert_eq!(plan.items.len(),1);assert_eq!(plan.conversions.len(),1);
+    assert_eq!(plan.created.iter().map(|row|row.express_id).collect::<Vec<_>>(),(plan.next_express_id..plan.next_available_express_id).collect::<Vec<_>>());
+    assert_eq!(plan.edits.iter().map(|edit|edit.express_id).collect::<BTreeSet<_>>(),BTreeSet::from([59286,59354]));
+    assert_ne!(plan.conversions[0].representation_id,59278);
+    let output=apply(&bytes,&plan);
+    let mut reopened=Source::new(output.as_bytes()).unwrap();
+    assert_eq!(reopened.entity(59354).unwrap().get_string(1),Some("Reference"));
+    assert_eq!(reopened.entity(59290).unwrap().get_ref(6),Some(59286));
+    assert_eq!(reopened.entity(59492).unwrap().get_ref(1),Some(59278));
+    assert_eq!(reopened.entity(59278).unwrap().get_string(2),Some("SweptSolid"));
+    assert_eq!(reopened.entity(59368).unwrap().get_ref(4),Some(59290));
+    assert_eq!(reopened.entity(59368).unwrap().get_ref(5),Some(59365));
+    let before=crate::process_geometry(bytes.as_bytes());let after=crate::process_geometry(output.as_bytes());
+    assert_eq!(plan.conversions[0].source_removed_meshes.len(),1);
+    let companion=&plan.conversions[0].source_removed_meshes[0];
+    assert_eq!(companion.express_id,59365);
+    let original_opening=before.meshes.iter().find(|mesh|mesh.express_id==59365).unwrap();
+    // The orchestrator additionally attaches entity labels; geometry/style and
+    // provenance come from the shared per-element evaluator without that pass.
+    assert_eq!(companion.geometry_item_id,original_opening.geometry_item_id);
+    assert_eq!(companion.positions,original_opening.positions);
+    assert_eq!(companion.normals,original_opening.normals);
+    assert_eq!(companion.indices,original_opening.indices);
+    assert_eq!(companion.origin,original_opening.origin);
+    assert_eq!(companion.color,original_opening.color);
+    assert_eq!(before.meshes.len(),after.meshes.len()+1);
+    assert!(!after.meshes.iter().any(|mesh|mesh.express_id==59365),"Reference opening must no longer produce subtractive render geometry");
+    let mut max_world_error=0f64;
+    for mesh in before.meshes.iter().filter(|mesh|mesh.express_id!=59365) {
+        let other=after.meshes.iter().find(|m|m.express_id==mesh.express_id && (m.express_id==59290 || m.geometry_item_id==mesh.geometry_item_id)).unwrap();
+        if mesh.express_id==59290 {
+            assert_eq!(plan.conversions[0].source_positions,mesh.positions);
+            assert_eq!(plan.conversions[0].source_indices,mesh.indices);
+            assert_eq!(plan.conversions[0].source_origin,mesh.origin);
+            assert_eq!(mesh.indices.len()/3,32);assert_eq!(other.indices.len()/3,32);
+            assert!(other.uvs.is_some());assert!(other.texture.is_some());
+            assert_eq!(mesh.global_id,other.global_id);
+            for (a,b) in corners(mesh).iter().zip(corners(other)) {
+                for axis in 0..3 {max_world_error=max_world_error.max((a[axis]-b[axis]).abs());}
+            }
+        } else {assert_eq!(serde_json::to_value(mesh).unwrap(),serde_json::to_value(other).unwrap());}
+    }
+    request.next_express_id=plan.next_available_express_id;
+    request.image_uri="textures/second.png".into();
+    let second=plan_appearance(output.as_bytes(),&request).unwrap();
+    assert!(second.exclusions.is_empty(),"{:?}",second.exclusions);
+    assert!(second.conversions.is_empty());assert_eq!(second.items.len(),1);
+    if let Ok(directory)=std::env::var("IFCLITE_EVALUATED_EVIDENCE_DIR") {
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(std::path::Path::new(&directory).join("native-opening-planned.ifc"),output).unwrap();
+        std::fs::write(std::path::Path::new(&directory).join("native-opening-plan.json"),serde_json::to_vec_pretty(&plan).unwrap()).unwrap();
+        std::fs::write(std::path::Path::new(&directory).join("native-opening-metrics.json"),serde_json::to_vec_pretty(&json!({"maxWorldCoordinateErrorMetres":max_world_error,"triangles":32,"secondAppearance":true})).unwrap()).unwrap();
+    }
+}
+
+#[test]
+fn issue_4404_opening_companions_share_the_aggregate_geometry_budget() {
+    let Some(bytes)=real_source() else{return};
+    let mut source=Source::new(bytes.as_bytes()).unwrap();
+    let styles=page_source::appearance(bytes.as_bytes(),&mut source);
+    let textures=ifc_lite_geometry::build_texture_index(bytes.as_bytes(),&mut source.decoder);
+    let edits=super::super::evaluated_openings::prepare(&mut source,59290,&[59365],&BTreeSet::from([59365])).unwrap();
+    let mut budget=budget::PlanBudget::default();
+    budget.reserve(1_000_000,0,0).unwrap();
+    budget.reserve(1_000_000,0,0).unwrap();
+    let error=super::super::evaluated_openings::removed_meshes(&mut source,&[59365],&edits,&textures,&styles,&mut budget).unwrap_err();
+    assert_eq!(error,budget::BUDGET_ERROR);
+    assert!(budget.exhausted);
 }

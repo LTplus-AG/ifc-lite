@@ -41,8 +41,8 @@ export function AppearanceScopeFields(props: Pick<AppearancePanelViewProps,
       <input type="checkbox" className="mt-0.5" checked={props.settings.representationPolicy === 'evaluatedOccurrence'}
         disabled={props.disabled || !props.modelId || props.settings.kind === 'existingUv'}
         onChange={event => props.onSettingsChange({ representationPolicy: event.target.checked ? 'evaluatedOccurrence' : 'preserve' })} />
-      <span><span className="font-medium">Convert supported mapped objects</span>
-        <span className="mt-1 block text-muted-foreground">Their current shape becomes mesh geometry instead of using the type’s parametric geometry. Other occurrences stay unchanged. Undo restores the original representation.</span>
+      <span><span className="font-medium">Convert supported objects to mesh</span>
+        <span className="mt-1 block text-muted-foreground">Their current shape, including existing openings, becomes fixed mesh geometry. Opening relationships remain, but their reference shapes no longer render or cut the mesh. Other occurrences stay unchanged. Undo restores the original geometry.</span>
         {props.settings.kind === 'existingUv' && <span className="mt-1 block text-muted-foreground">Choose planar or box mapping to enable conversion.</span>}
       </span>
     </label>

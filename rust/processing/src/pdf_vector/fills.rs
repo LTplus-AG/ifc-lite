@@ -69,18 +69,8 @@ pub(crate) fn compose(
     if prepared.paths.is_empty() || prepared.paths.len() > 128 {
         return Err("PDF fill-page creation requires 1..128 painted paths".into());
     }
-    for path in &prepared.paths {
-        if !matches!(
-            path.paint,
-            PdfVectorPaint::Fill | PdfVectorPaint::EvenOddFill
-        ) {
-            return Err(format!(
-                "PDF operator {} paints a stroke; fill-page creation cannot publish partial output",
-                path.operator_ordinal
-            ));
-        }
-    }
-    let grid = prepared.tolerance_metres / ((prepared.paths.len() * 4 + 4) as f64 * 16.);
+    let paint_count: usize = prepared.paths.iter().map(|p| usize::from(!matches!(p.paint, PdfVectorPaint::Stroke | PdfVectorPaint::CloseStroke)) + usize::from(p.paint.strokes())).sum();
+    let grid = prepared.tolerance_metres / ((paint_count * 4 + 4) as f64 * 16.);
     let mut budget = Budget {
         remaining: 4_000_000,
         vertices: 0,
@@ -93,18 +83,33 @@ pub(crate) fn compose(
         point(model_metres_from_pdf, [x0, y1])?,
     ]];
     let flatten_error = prepared.tolerance_metres / 8.;
-    let mut paths = Vec::with_capacity(prepared.paths.len());
+    let mut paths = Vec::with_capacity(prepared.paths.len() * 2);
+    let mut paints = Vec::with_capacity(prepared.paths.len() * 2);
     for path in &prepared.paths {
         budget.charge(path.commands.len() as u64)?;
         if path.commands.len() > 4096 { return Err("PDF fill path exceeds command budget".into()); }
-        paths.push(rings(&path.commands, path.state.model_metres_from_path,
-            flatten_error, &mut budget.remaining)?);
+        if !matches!(path.paint, PdfVectorPaint::Stroke | PdfVectorPaint::CloseStroke) {
+            paths.push(rings(&path.commands, path.state.model_metres_from_path,
+                flatten_error, &mut budget.remaining)?);
+            let even_odd = matches!(path.paint, PdfVectorPaint::EvenOddFill |
+                PdfVectorPaint::EvenOddFillStroke | PdfVectorPaint::CloseEvenOddFillStroke);
+            paints.push((path.operator_ordinal, path.state.fill_rgb, even_odd));
+        }
+        if path.paint.strokes() {
+            let close = matches!(path.paint, PdfVectorPaint::CloseStroke |
+                PdfVectorPaint::CloseFillStroke | PdfVectorPaint::CloseEvenOddFillStroke);
+            paths.push(super::strokes::rings(&path.commands, close, &path.state,
+                &mut budget.remaining).map_err(|e| format!("PDF operator {}: {e}", path.operator_ordinal))?);
+            // A combined operator fills first, then strokes. Expansion retains
+            // its original operator identity and distinct fill/stroke colours.
+            paints.push((path.operator_ordinal, path.state.stroke_rgb, false));
+        }
     }
     qualify(&paths, &clip, flatten_error, &mut budget.remaining)?;
     let mut occluded = ContourSet::default();
     let mut shapes = vec![];
-    for (path, input) in prepared.paths.iter().zip(&paths).rev() {
-        let rule = if path.paint == PdfVectorPaint::EvenOddFill {
+    for ((ordinal, rgb, even_odd), input) in paints.iter().zip(&paths).rev() {
+        let rule = if *even_odd {
             ContourFillRule::EvenOdd
         } else {
             ContourFillRule::NonZero
@@ -130,8 +135,8 @@ pub(crate) fn compose(
                 return Err("PDF fill shape exceeds canonical annotation boundary budget".into());
             }
             shapes.push(FillShape {
-                ordinal: path.operator_ordinal,
-                rgb: path.state.fill_rgb,
+                ordinal: *ordinal,
+                rgb: *rgb,
                 rings: rings.to_vec(),
             });
             if shapes.len() > 256 {

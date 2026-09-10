@@ -1,0 +1,46 @@
+{
+  "combinedSource": "c54aafc7d",
+  "integratedMain": "d4648adb7",
+  "nativeAppearanceTests": 109,
+  "nativePdfTests": 26,
+  "typecheckTasks": 94,
+  "typecheckedTestSources": 1921,
+  "freshWasmContracts": {
+    "passed": 88,
+    "existingOptionalSkips": 3
+  },
+  "strictWorkspaceClippy": "passed",
+  "readerReplays": [
+    {
+      "page": 1,
+      "exportSha256": "65785078e0585d2df1f053b1295c2f1dcfaea9205e175afe5239fc8c4fef2240",
+      "dataSectionByteIdentical": true
+    },
+    {
+      "page": 2,
+      "exportSha256": "87b6842f5587bbc2ed2a6035bbc3c88e7b6eb3e0dc08e4cd002812b7133e059a",
+      "dataSectionByteIdentical": true
+    },
+    {
+      "page": 3,
+      "exportSha256": "c5dbc152ec7700bcc37b519d920db189499aeaeea3dfc40b9e098b894d6ecdeb",
+      "dataSectionByteIdentical": true
+    },
+    {
+      "page": 4,
+      "exportSha256": "e9586115a84779f9364b2b82a98372505c969028e5784deb49c5294be8719f41",
+      "dataSectionByteIdentical": true
+    },
+    {
+      "page": 5,
+      "exportSha256": "5523de19039151c78b184ce36788b823814c1faf2917834a9538b75bae59c217",
+      "dataSectionByteIdentical": true
+    }
+  ],
+  "priorFullWorkspace": {
+    "source": "f411378e5",
+    "passed": 3053,
+    "ignored": 37
+  },
+  "independentWheelQuicklane": "f411378e5 freshly built/installed: four MATCH; existing halfspace triangle-density advisory"
+}

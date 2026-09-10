@@ -7696,6 +7696,7 @@
     "quantizeInterleaved: function",
     "resolveContributionThresholdPx: function",
     "resolveEnvironment: function",
+    "sameCompanionParts: function",
     "selectEvictions: function",
     "simplifyIndicesByClustering: function",
     "sumResidentGpuBytes: function",

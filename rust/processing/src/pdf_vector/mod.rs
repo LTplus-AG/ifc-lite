@@ -3,11 +3,13 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Bounded graphics-state preparation for the pinned PDF.js adapter. This does
 //! not authorize geometry. The explicit annotation planner separately composes
-//! qualified fills; stroke outlining remains unsupported.
+//! qualified fills and bounded solid straight stroke outlines.
 pub(crate) mod fills;
 mod fill_paths;
 mod curve_hulls;
 mod flatten;
+mod strokes;
+mod stroke_topology;
 mod types;
 use sha2::{Digest, Sha256};
 pub use types::*;

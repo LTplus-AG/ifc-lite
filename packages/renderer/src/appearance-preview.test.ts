@@ -768,3 +768,110 @@ describe('instanced occurrence appearance history (#4404)', () => {
     scene.clear();
   });
 });
+
+describe('opening companion presence transaction (#4404)', () => {
+  function setup() {
+    const scene = new Scene(), state = gpu();
+    const sources: MeshData[] = [7, 8].map(id => ({ ...mesh(id, new Uint8Array(4)),
+      geometryItemId: id + 100, modelIndex: 2, texture: undefined, uvs: undefined }));
+    scene.appendToBatches(sources, state.device, pipeline);
+    return { scene, state, originals: scene.getMeshDataPieces(7)!, api: scene.appearancePreview(state.device, pipeline),
+      owner: { expressId: 7, modelIndex: 2 } };
+  }
+  const ids = (scene: Scene) => scene.getBatchedMeshes().flatMap(batch => batch.expressIds);
+  it('removes only its owner, cancels, commits, and restores exact geometry through history', () => {
+    const { scene, api, originals, owner } = setup();
+    const first = api.begin(owner, { companionOriginals: originals });
+    api.update(first, []);
+    assert.ok(!ids(scene).includes(7)); assert.ok(ids(scene).includes(8));
+    assert.equal(api.getParts!(owner)?.length, 0);
+    api.cancel(first);
+    assert.ok(ids(scene).includes(7));
+    assert.deepEqual(scene.getMeshDataPieces(7)![0].positions, originals[0].positions);
+    const second = api.begin(owner, { companionOriginals: originals });
+    api.update(second, []);
+    const release = api.retainSource!(owner);
+    const change = api.commit(second);
+    assert.equal(change.before.length, 1); assert.equal(change.after.length, 0);
+    const undo = api.begin(owner, { companionOriginals: change.companionOriginals });
+    api.update(undo, change.before); api.commit(undo);
+    assert.ok(ids(scene).includes(7));
+    const redo = api.begin(owner, { companionOriginals: change.companionOriginals });
+    api.update(redo, []); api.commit(redo);
+    assert.ok(!ids(scene).includes(7));
+    release();
+    assert.throws(() => api.begin(owner, { companionOriginals: originals }), /missing or changed/);
+    scene.clearFlatGeometry();
+  });
+  it('keeps proven hidden originals detached through cancellation and hidden Undo, then restores after Show', () => {
+    const { scene, state, api, originals, owner } = setup();
+    const sibling = scene.getMeshDataPieces(8)!;
+    scene.clearFlatGeometry();scene.appendToBatches(sibling, state.device, pipeline);
+    assert.throws(() => api.begin(owner, { companionOriginals: originals }), /missing or changed/);
+    const allocated = state.buffers.length;
+    const first = api.begin(owner, { companionOriginals: originals, companionHidden: true });
+    api.update(first, []); api.cancel(first);
+    assert.equal(scene.getMeshDataPieces(owner.expressId), undefined);
+    assert.equal(state.buffers.length, allocated, 'hidden preparation/cancel must never allocate visible GPU geometry');
+    const second = api.begin(owner, { companionOriginals: originals, companionHidden: true });
+    api.update(second, []); const release = api.retainSource!(owner), change = api.commit(second);
+    const hiddenUndo = api.begin(owner, { companionOriginals: change.companionOriginals, companionHidden: true });
+    api.update(hiddenUndo, change.before); api.commit(hiddenUndo);
+    assert.equal(scene.getMeshDataPieces(owner.expressId), undefined);
+    assert.equal(api.getParts!(owner)?.length, 1, 'logical history restores the canonical inventory while residency stays hidden');
+    assert.equal(state.buffers.length, allocated);
+    const hiddenRedo = api.begin(owner, { companionOriginals: change.companionOriginals, companionHidden: true });
+    api.update(hiddenRedo, []); api.commit(hiddenRedo);
+    const shownUndo = api.begin(owner, { companionOriginals: change.companionOriginals });
+    api.update(shownUndo, change.before); api.commit(shownUndo);
+    assert.equal(scene.getMeshDataPieces(owner.expressId)?.length, 1);
+    assert.ok(ids(scene).includes(owner.expressId));
+    release(); scene.clear();
+  });
+  it('keeps an immutable restoration baseline and refuses in-place current buffer mutation', () => {
+    const { scene, api, originals, owner } = setup();
+    const token = api.begin(owner, { companionOriginals: originals });
+    const old = originals[0].positions[0];
+    originals[0].positions[0] = old + 10;
+    assert.throws(() => api.update(token, []), /changed during/);
+    assert.throws(() => api.cancel(token), /changed during/);
+    originals[0].positions[0] = old;
+    api.update(token, []);
+    const release = api.retainSource!(owner), change = api.commit(token);
+    originals[0].positions[0] = old + 20;
+    assert.equal(change.before[0].positions[0], old);
+    const undo = api.begin(owner, { companionOriginals: change.companionOriginals });
+    api.update(undo, change.before); api.commit(undo);
+    assert.equal(scene.getMeshDataPieces(7)![0].positions[0], old);
+    release(); scene.clear();
+  });
+  it('retains absent history through a loaded-model rebuild and retires it on model removal', () => {
+    const { scene, api, originals, owner } = setup();
+    const token = api.begin(owner, { companionOriginals: originals });
+    api.update(token, []); const release = api.retainSource!(owner); api.commit(token);
+    scene.clearFlatGeometryForRebuild([], new Set([2]));
+    const undo = api.begin(owner, { companionOriginals: originals });
+    api.update(undo, originals); api.cancel(undo);
+    scene.clearFlatGeometryForRebuild([], new Set());
+    assert.throws(() => api.begin(owner, { companionOriginals: originals }), /missing|resident/);
+    release(); scene.clear();
+  });
+  it('rejects changed originals, wrong models and reset tombstones; failed restore stays retryable', () => {
+    const { scene, state, api, originals, owner } = setup();
+    const token = api.begin(owner, { companionOriginals: originals });
+    assert.throws(() => api.update(token, [{ ...originals[0], color: [0, 0, 0, 1] }]), /exact original/);
+    api.update(token, []);
+    const release = api.retainSource!(owner);
+    const change = api.commit(token);
+    assert.throws(() => api.begin({ ...owner, modelIndex: 3 }, { companionOriginals: originals }), /ownership/);
+    const undo = api.begin(owner, { companionOriginals: originals });
+    state.failures.batchBindGroupAt = state.batchBindGroups + 1;
+    assert.throws(() => api.update(undo, change.before), /injected/);
+    assert.equal(api.getParts!(owner)?.length, 0);
+    api.update(undo, change.before); api.cancel(undo);
+    assert.equal(api.getParts!(owner)?.length, 0);
+    scene.clearFlatGeometry();
+    assert.throws(() => api.begin(owner, { companionOriginals: originals }), /missing|resident/);
+    release();
+  });
+});

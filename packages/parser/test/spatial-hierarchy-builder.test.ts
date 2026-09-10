@@ -892,14 +892,14 @@ describe('SpatialHierarchyBuilder', () => {
     it('flags the same element as ambiguous regardless of which storey elementToStorey resolves to', () => {
       // spatial-hierarchy-ambiguity.ts's doc claims computeAmbiguousStorey() is
       // agnostic to the elementToStorey tie-break. Prove it: two fixtures with
-      // IDENTICAL IfcRelContainedInSpatialStructure declaration order (storey A's
-      // edge #200 always declared before storey B's edge #201) but REVERSED
-      // IfcRelAggregates order flip which storey elementToStorey resolves the
-      // wall to (last storey visited in the aggregation-driven tree walk wins,
-      // since the direct-containment loop assigns unconditionally - see
-      // spatial-hierarchy-ambiguity.ts). ambiguousStorey must report `true` for
-      // the wall in BOTH fixtures even though the winner differs between them.
-      const build = (aggregatesOrder: readonly [number, number]) => {
+      // IDENTICAL IfcRelAggregates order but REVERSED IfcRelContainedInSpatialStructure
+      // declaration order. Post-#4310, declaration order (not aggregation order)
+      // is what elementToStorey's tie-break follows - first-declared reachable
+      // container wins, matching containedIn() (#4248) - so reversing which
+      // storey's containment edge is declared first is what now flips the
+      // winner. ambiguousStorey must report `true` for the wall in BOTH
+      // fixtures even though the winner differs between them.
+      const build = (containsOrder: readonly [number, number]) => {
         const strings = new StringTable();
         const entities = new EntityTableBuilder(4, strings);
         entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
@@ -908,13 +908,13 @@ describe('SpatialHierarchyBuilder', () => {
         entities.add(4, 'IFCWALL', 'w0', 'Wall', '', '', true);
 
         const relationships = new RelationshipGraphBuilder();
-        const [first, second] = aggregatesOrder;
-        relationships.addEdge(1, first, RelationshipType.Aggregates, 100);
-        relationships.addEdge(1, second, RelationshipType.Aggregates, 101);
-        // Containment declaration order held constant across both fixtures:
-        // storey A's edge is always declared first, storey B's second.
-        relationships.addEdge(2, 4, RelationshipType.ContainsElements, 200);
-        relationships.addEdge(3, 4, RelationshipType.ContainsElements, 201);
+        // Aggregation order held constant across both fixtures: post-#4310 it
+        // no longer determines the elementToStorey winner.
+        relationships.addEdge(1, 2, RelationshipType.Aggregates, 100);
+        relationships.addEdge(1, 3, RelationshipType.Aggregates, 101);
+        const [first, second] = containsOrder;
+        relationships.addEdge(first, 4, RelationshipType.ContainsElements, 200);
+        relationships.addEdge(second, 4, RelationshipType.ContainsElements, 201);
 
         return new SpatialHierarchyBuilder().build(
           entities.build(),
@@ -925,17 +925,17 @@ describe('SpatialHierarchyBuilder', () => {
         );
       };
 
-      const aggregatesAThenB = build([2, 3]);
-      const aggregatesBThenA = build([3, 2]);
+      const storeyAFirst = build([2, 3]);
+      const storeyBFirst = build([3, 2]);
 
       // The winner differs between the two fixtures (proving the tie-break is
-      // aggregation-order dependent, not declaration-order dependent)...
-      expect(aggregatesAThenB.elementToStorey.get(4)).not.toBe(
-        aggregatesBThenA.elementToStorey.get(4),
+      // declaration-order dependent, per #4248/#4310)...
+      expect(storeyAFirst.elementToStorey.get(4)).not.toBe(
+        storeyBFirst.elementToStorey.get(4),
       );
       // ...but the ambiguity signal itself does not.
-      expect(aggregatesAThenB.ambiguousStorey!.has(4)).toBe(true);
-      expect(aggregatesBThenA.ambiguousStorey!.has(4)).toBe(true);
+      expect(storeyAFirst.ambiguousStorey!.has(4)).toBe(true);
+      expect(storeyBFirst.ambiguousStorey!.has(4)).toBe(true);
     });
   });
 });

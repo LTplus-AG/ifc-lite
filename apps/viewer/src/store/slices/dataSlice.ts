@@ -2,11 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Data state slice (IFC data and geometry)
- */
-
 import type { StateCreator } from 'zustand';
+import { retainReleasedMeshProvenance } from '@/lib/released-mesh-provenance';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, CoordinateInfo } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../types.js';
@@ -302,6 +299,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
 
     const meshes = state.geometryResult.meshes;
     for (let i = 0; i < meshes.length; i++) {
+      retainReleasedMeshProvenance(meshes[i]);
       meshes[i].positions = EMPTY_POSITIONS;
       meshes[i].normals = EMPTY_NORMALS;
       meshes[i].indices = EMPTY_INDICES;

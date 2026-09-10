@@ -49,9 +49,11 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/merge`](https://www.npmjs.com/package/@ifc-lite/merge) | Three-way merge engine for IFCX layers — MergePlan with auto-merged ops and explicit conflict records, merge-layer emission, rebase, and revert. |
 | [`@ifc-lite/oauth-pkce`](https://www.npmjs.com/package/@ifc-lite/oauth-pkce) | Browser OAuth 2.0 Authorization Code + PKCE flow, shared by ifc-lite's file-source providers |
 | [`@ifc-lite/plugin-api`](https://www.npmjs.com/package/@ifc-lite/plugin-api) | Dependency-free type surface for ifc-lite file-source plugins |
+| [`@ifc-lite/regex-guard`](https://www.npmjs.com/package/@ifc-lite/regex-guard) | A shared, dependency-free guard against catastrophic-backtracking (ReDoS) regex patterns compiled from untrusted input |
 | [`@ifc-lite/source-dalux`](https://www.npmjs.com/package/@ifc-lite/source-dalux) | Dalux Build (Box) file-source provider for ifc-lite |
 | [`@ifc-lite/source-dropbox`](https://www.npmjs.com/package/@ifc-lite/source-dropbox) | Dropbox file-source provider for ifc-lite |
 | [`@ifc-lite/source-msgraph`](https://www.npmjs.com/package/@ifc-lite/source-msgraph) | Microsoft Graph (OneDrive/SharePoint) file-source provider for ifc-lite |
+| [`@ifc-lite/wasm-lifecycle`](https://www.npmjs.com/package/@ifc-lite/wasm-lifecycle) | Shared WASM engine load-retry classification and cross-realm panic-forwarding, used by @ifc-lite/geometry and @ifc-lite/parser |
 <!-- END GENERATED: package-index -->
 
 ---
@@ -460,6 +462,8 @@ Visibility is passed via `render()` options (`hiddenIds`, `isolatedIds`); frustu
 `PickResult` carries `expressId` (the product) plus the optional `modelIndex`, `worldXYZ` and `geometryItemId`. The last is the `IfcRepresentationItem` the clicked surface was built from, and the key is absent, never `0`, where the renderer has no item identity for that hit. See [Which representation item was picked](../guide/rendering.md#which-representation-item-was-picked).
 
 Other exports: `Camera`, `Picker`, `Raycaster`, `SnapDetector`, `BVH`, `RaycastEngine`, `SectionPlaneRenderer`, `PointCloudRenderer`, `FederationRegistry` (multi-model id ranges), and the section-cap / plane-basis helpers.
+
+`Renderer.hasActiveClipping()` reports section, terrain or box clipping from the last rendered frame. `raycastScene()` does not clip triangle hits; exact correspondence tools can use this query to refuse clipped views.
 
 `Scene` and `Section2DOverlayRenderer` are package-internal from 2.0: reach the scene through `getScene(): SceneContents`, and the 3D line overlays through `Renderer.setLineOverlay`. `PickingManager` is package-internal from 2.0 as well: its constructor takes the now-internal `Scene`, so an exported class nobody could construct would have been worse than no export. Pick through `Renderer.pick` / `Renderer.pickRect`.
 

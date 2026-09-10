@@ -1,0 +1,98 @@
+{
+  "source_sha256": "a83e573037b0c4cbba30f1167ed96cda52eb51859091d2c7d47cec7a59e1a36b",
+  "derived_sha256": "817b91828efd242c3e76a94e6ce550c8d84c5a66af75b4694876babf93b491cc",
+  "derived_bytes": 66261284,
+  "source_schema": "IFC2X3",
+  "derived_schema": "IFC4",
+  "migration": "IfcOpenShell0.8.5 util.schema.Migrator; every sourceentity",
+  "GlobalIds_equal": true,
+  "root_count": 2414,
+  "geometry_checks": {
+    "scope": "every represented IfcBuildingElement in source, world coordinates, same IfcOpenShell0.8.5 settings, both shape handles retained",
+    "count": 136,
+    "total_source_vertices": 590643,
+    "all_nonempty": true,
+    "all_vertices_exact": false,
+    "all_faces_exact": false,
+    "max_delta_metres": 18.000001742085658,
+    "array_delta_interpretation": "134 exact vertex/index arrays;2 reordered walls, see oriented triangle comparison",
+    "reordered_comparison": {
+      "method": "cyclic corner rotation preserving winding; sort triangle list lexicographically, no rounding",
+      "results": [
+        {
+          "GlobalId": "3XP_HdJcfD9xJPuaOu_1Uv",
+          "source_id": 274,
+          "triangle_counts": [
+            292,
+            292
+          ],
+          "canonical_exact": true,
+          "bounds_original": [
+            [
+              -9.915754403207806,
+              -0.9409052948732277,
+              0.1
+            ],
+            [
+              -9.615754403207806,
+              19.751515729834512,
+              2.9999999999999996
+            ]
+          ],
+          "bounds_derived": [
+            [
+              -9.915754403207806,
+              -0.9409052948732277,
+              0.1
+            ],
+            [
+              -9.615754403207806,
+              19.751515729834512,
+              2.9999999999999996
+            ]
+          ],
+          "canonical_max_delta": 0.0
+        },
+        {
+          "GlobalId": "0FDABnXCHCUR8gI54b$Kx2",
+          "source_id": 383,
+          "triangle_counts": [
+            332,
+            332
+          ],
+          "canonical_exact": true,
+          "bounds_original": [
+            [
+              7.986239344287008,
+              -4.309927043730632,
+              0.1
+            ],
+            [
+              8.286239344287008,
+              19.751515729834452,
+              3.0000000000000004
+            ]
+          ],
+          "bounds_derived": [
+            [
+              7.986239344287008,
+              -4.309927043730632,
+              0.1
+            ],
+            [
+              8.286239344287008,
+              19.751515729834452,
+              3.0000000000000004
+            ]
+          ],
+          "canonical_max_delta": 0.0
+        }
+      ]
+    }
+  },
+  "validation": {
+    "mode": "IfcOpenShell0.8.5 schema/cardinality; EXPRESS rules not run",
+    "count": 0,
+    "sample": []
+  }
+}

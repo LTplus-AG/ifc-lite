@@ -346,6 +346,11 @@ if (dataModel) {
 
 #### Fetching Symbolic Data
 
+Symbolic fill records may include `geometry_item_id` for an unambiguous direct
+fill item. Combine it with `express_id` and model identity to match a mesh;
+absence means the occurrence is not qualified for that match. This provenance
+supports 3D overlay routing without removing fills from 2D drawing output.
+
 The JSON (`parse`) and streaming endpoints return the 2D symbol stream
 (`IfcAnnotation` + `IfcGrid`) inline as `symbolic_data`. The binary Parquet
 endpoints (`parseParquet`, `parseParquetOptimized`) can't carry it inline —
@@ -935,3 +940,8 @@ try {
 - [Rendering Guide](rendering.md) - WebGPU rendering features
 - [API Reference](../api/typescript.md) - Complete API documentation
 - [Architecture](../architecture/overview.md) - System design details
+
+Symbolic sidecars use schema-v2 cache entries and full JSON responses use v3
+to refresh direct fill provenance. Existing Parquet geometry keys stay valid;
+a replay needs current symbolic metadata, so stale sidecars trigger a reparse.
+Older symbol JSON remains decodable with unknown item provenance.

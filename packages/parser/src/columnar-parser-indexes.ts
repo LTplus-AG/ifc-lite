@@ -56,26 +56,6 @@ export const GEOMETRY_TYPES = new Set([
     'IFCSITE', 'IFCBUILDING', 'IFCBUILDINGSTOREY', 'IFCCOVERING',
 ]);
 
-// IMPORTANT: This set MUST include ALL RelationshipType enum values to prevent semantic loss
-// Missing types will be skipped during parsing, causing incomplete relationship graphs
-export const RELATIONSHIP_TYPES = new Set([
-    'IFCRELCONTAINEDINSPATIALSTRUCTURE', 'IFCRELAGGREGATES',
-    'IFCRELDEFINESBYPROPERTIES', 'IFCRELDEFINESBYTYPE',
-    'IFCRELASSOCIATESMATERIAL', 'IFCRELASSOCIATESCLASSIFICATION',
-    'IFCRELASSOCIATESDOCUMENT',
-    'IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT',
-    'IFCRELCONNECTSPATHELEMENTS', 'IFCRELCONNECTSELEMENTS',
-    'IFCRELCONNECTSPORTTOELEMENT', 'IFCRELCONNECTSPORTS',
-    'IFCRELSPACEBOUNDARY',
-    // IfcRelAssignsToGroupByFactor is a subtype of IfcRelAssignsToGroup
-    // (adds a proportional Factor attribute, e.g. zone occupancy share) and
-    // is written to STEP with its own distinct entity keyword — it does not
-    // match the 'IFCRELASSIGNSTOGROUP' string, so it needs its own entry or
-    // every membership assigned through it is silently invisible.
-    'IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOGROUPBYFACTOR', 'IFCRELASSIGNSTOPRODUCT',
-    'IFCRELREFERENCEDINSPATIALSTRUCTURE',
-]);
-
 // Map IFC relationship type strings to RelationshipType enum
 // MUST cover ALL RelationshipType enum values (15 types total)
 export const REL_TYPE_MAP: Record<string, RelationshipType> = {

@@ -1,0 +1,78 @@
+{
+  "purpose": "operator inventory only; no conversion or fidelity verdict",
+  "sourceSha256": "27f3f1fd9c27e252ae64ac5252997ba41b4c77e26aba35f20fb40d7cb68cddfe",
+  "sourceBytes": 1773,
+  "pdfjs": "6.3.289",
+  "pageNumber": 1,
+  "pageCount": 2,
+  "page": {
+    "viewBox": [
+      10,
+      10,
+      340,
+      220
+    ],
+    "userUnit": 2,
+    "rotation": 90,
+    "pdfToPage": [
+      0,
+      2,
+      2,
+      0,
+      -20,
+      -20
+    ]
+  },
+  "operationCount": 21,
+  "operators": {
+    "transform": 2,
+    "beginText": 1,
+    "dependency": 1,
+    "setFont": 1,
+    "setLeading": 1,
+    "endText": 1,
+    "setLineWidth": 1,
+    "setStrokeRGBColor": 1,
+    "constructPath": 8,
+    "setFillRGBColor": 1,
+    "save": 1,
+    "setDash": 1,
+    "restore": 1
+  },
+  "paints": {
+    "endPath": 4,
+    "stroke": 3,
+    "eoFill": 1
+  },
+  "pathCommands": {
+    "moveTo": 4,
+    "lineTo": 5,
+    "closePath": 1,
+    "curveTo": 1
+  },
+  "totalPathNumbers": 35,
+  "maxExplicitSaveDepth": 1,
+  "fidelityWork": {
+    "clipping": 0,
+    "text": 0,
+    "groups": 0,
+    "forms": 0,
+    "optionalContent": 0,
+    "graphicsState": 0,
+    "rasterImages": 0,
+    "shading": 0
+  },
+  "limits": {
+    "bytes": 67108864,
+    "operations": 100000,
+    "pathNumbers": 2000000,
+    "deadlineMs": 60000
+  },
+  "caveats": [
+    "Paint counts do not measure visible area; clipping/optional content/groups need full interpretation.",
+    "Operator indices are not render-operation filter indices.",
+    "PDF.js may normalize or repair input; original PDF syntax is not inventoried.",
+    "Fonts, ICC colors, transparency, paint order and line semantics have not been converted or compared.",
+    "Page paper units do not establish architectural drawing scale."
+  ]
+}

@@ -229,10 +229,13 @@ describe('model_diff by_content', () => {
     // pair, and the check is inert unless BOTH sides supply them.
     expect(fingerprints.every((f) => f.components?.['attr:core'] !== undefined)).toBe(true);
 
-    // The IfcTask is an IfcObjectDefinition the columnar parser does not put in
-    // its EntityTable (it is not an IfcProduct subtype), so `getGlobalId`
-    // answers ''. Reading the table alone drops it from the comparison
-    // entirely; the chain check sends it to its STEP record instead.
+    // The IfcTask is an IfcObjectDefinition that is not an IfcProduct subtype.
+    // Before #4204's IfcRoot-descendant retention, the columnar parser did not
+    // put it in its EntityTable and `getGlobalId` answered '', so reading the
+    // table alone dropped it from the comparison entirely and the chain check
+    // had to send it to its STEP record instead. Now #4204 retains every
+    // IfcRoot descendant, so the table holds it directly — this pins that it
+    // still ends up correctly in the comparison either way.
     expect(byKey.get(guid('OLDT'))).toBe('IfcTask');
     // And with a real class name, not the table's 'Unknown': ifcType is hashed
     // into the fingerprint and cross-checked on every content match, so

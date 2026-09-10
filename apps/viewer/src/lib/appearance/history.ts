@@ -1,9 +1,14 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 /* This Source Code Form is subject to the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { Mutation, MutablePropertyView } from '@ifc-lite/mutations';
 import type { StoreApi } from 'zustand';
 import type { ViewerState } from '@/store/index.js';
+import { replayCoordinatedAppearanceHistory } from './coordinated-history.js';
 
 export interface AppearanceHistoryCommand {
   readonly mutations: readonly Mutation[];
@@ -12,7 +17,7 @@ export interface AppearanceHistoryCommand {
   /** Release this history owner's resource leases, never the live model's owner. */
   dispose(): void;
 }
-export type AppearanceHistoryPublication = Partial<Pick<ViewerState, 'models' | 'geometryResult'>>;
+export type AppearanceHistoryPublication = Partial<Pick<ViewerState, 'models' | 'geometryResult' | 'selectedEntityId' | 'selectedEntityIds' | 'selectedEntity' | 'selectedEntitiesSet' | 'selectedEntities'>>;
 interface Entry {
   modelId: string;
   view: MutablePropertyView;
@@ -120,6 +125,7 @@ export function prepareAppearanceHistory(
 export function replayAppearanceHistory(
   store: StoreApi<ViewerState>, modelId: string, direction: 'undo' | 'redo',
 ): boolean {
+  if (replayCoordinatedAppearanceHistory(store, modelId, direction)) return true;
   const registry = registries.get(store.getState);
   if (!registry) return false;
   const source = direction === 'undo' ? 'undoStacks' : 'redoStacks';

@@ -11,6 +11,7 @@ import { useEffect, type MutableRefObject, type RefObject } from 'react';
 import type { Renderer, PickResult } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
+import { invalidateSelectionPick, markTouchSelection, selectViewportTarget } from './referenceSelection.js';
 import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
 
 /** Locked gesture mode for 2-finger interactions */
@@ -60,12 +61,6 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     activeToolRef,
     hiddenEntitiesRef,
     isolatedEntitiesRef,
-    selectedEntityIdRef,
-    selectedModelIndexRef,
-    clearColorRef,
-    sectionPlaneRef,
-    sectionRangeRef,
-    geometryRef,
     isInteractingRef,
     handlePickForSelection,
     getPickOptions,
@@ -142,6 +137,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     };
 
     const handleTouchStart = async (e: TouchEvent) => {
+      invalidateSelectionPick(canvas);
       e.preventDefault();
       touchState.touches = Array.from(e.touches);
 
@@ -299,8 +295,13 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           const x = touchState.tapStartPos.x - rect.left;
           const y = touchState.tapStartPos.y - rect.top;
 
-          const pickResult = await renderer.pick(x, y, getPickOptions());
-          handlePickForSelection(pickResult);
+          if (tool === 'select') {
+            markTouchSelection(canvas, x, y);
+            await selectViewportTarget({ canvas, renderer, x, y, getTool: () => activeToolRef.current,
+              getPickOptions, onIfc: handlePickForSelection });
+          } else {
+            handlePickForSelection(await renderer.pick(x, y, getPickOptions()));
+          }
         }
 
         // Reset multi-touch and gesture lock when all touches end
@@ -314,6 +315,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     // Also reset interaction on touchcancel — mobile browsers can cancel
     // gestures (system gestures, tab switch, lost focus) without touchend.
     const handleTouchCancel = () => {
+      invalidateSelectionPick(canvas);
       if (isInteractingRef.current) {
         isInteractingRef.current = false;
         renderer.requestRender();
@@ -338,6 +340,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     document.addEventListener('touchmove', preventOverscroll, { passive: false });
 
     return () => {
+      invalidateSelectionPick(canvas);
       canvas.removeEventListener('touchstart', handleTouchStart);
       canvas.removeEventListener('touchmove', handleTouchMove);
       canvas.removeEventListener('touchend', handleTouchEnd);

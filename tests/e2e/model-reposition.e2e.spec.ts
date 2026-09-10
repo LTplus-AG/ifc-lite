@@ -274,3 +274,44 @@ test('sectioning follows a real IFC moved above its original extent (#4226)', as
   await info.attach('Real IFC section after 100 m elevation move', { body: await page.screenshot(), contentType: 'image/png' });
   expect(await page.evaluate(() => [...globalThis.__ifc_lite_viewer_store__.getState().modelPlacement.placements.values()][0].translation)).toEqual([0, 0, 100]);
 });
+
+test('construction projection is invariant when the model and cut move together (#4332)', async ({ page }, info) => {
+  test.skip(!existsSync(IFC), 'Real IFC fixture missing — run pnpm fixtures');
+  const errors: string[] = [];
+  page.on('console', (message) => { if (message.text().includes('Profile extraction failed')) errors.push(message.text()); });
+  await page.goto('/'); await load(page, IFC, 1);
+  await page.evaluate(() => {
+    const s = globalThis.__ifc_lite_viewer_store__.getState();
+    s.updateDrawing2DDisplayOptions({ showConstructionProjection: true });
+    s.setSectionPlaneAxis('down'); s.setSectionPlanePosition(50); s.setSectionPlaneEnabled(true); s.setActiveTool('section');
+  });
+  await page.waitForFunction(() => {
+    const s = globalThis.__ifc_lite_viewer_store__.getState();
+    return s.drawing2DStatus === 'ready' && s.drawing2D?.lines.some((line) => line.category === 'projection');
+  });
+  const snapshot = () => page.evaluate(() => {
+    const drawing = globalThis.__ifc_lite_viewer_store__.getState().drawing2D!;
+    const lines = drawing.lines.filter((line) => line.category === 'projection').map((line) =>
+      [line.entityId, line.line.start.x, line.line.start.y, line.line.end.x, line.line.end.y]);
+    lines.sort((a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; });
+    return { position: drawing.config.plane.position, bands: [drawing.config.projectionBelowDepth, drawing.config.projectionAboveDepth], lines };
+  });
+  const before = await snapshot();
+  await page.evaluate(() => {
+    const s = globalThis.__ifc_lite_viewer_store__.getState();
+    s.openReposition([...s.models.keys()]); s.previewModelTranslation([0, 0, 100]); s.applyModelTranslation(); s.closeReposition(); s.setActiveTool('section');
+  });
+  await page.waitForFunction((expected) => {
+    const s = globalThis.__ifc_lite_viewer_store__.getState();
+    return s.drawing2DStatus === 'ready' && Math.abs((s.drawing2D?.config.plane.position ?? 0) - expected) < 0.0001;
+  }, before.position + 100);
+  const after = await snapshot();
+  expect(errors).toEqual([]);
+  expect(after.lines).toHaveLength(before.lines.length);
+  for (let i = 0; i < before.bands.length; i++) expect(after.bands[i]).toBeCloseTo(before.bands[i]!, 5);
+  await info.attach('Construction projection before and after 100 m move', { body: JSON.stringify({ before, after }), contentType: 'application/json' });
+  for (let i = 0; i < before.lines.length; i++) {
+    expect(after.lines[i][0]).toBe(before.lines[i][0]);
+    for (let axis = 1; axis < 5; axis++) expect(Math.abs(after.lines[i][axis] - before.lines[i][axis])).toBeLessThan(0.005);
+  }
+});

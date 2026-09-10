@@ -34,6 +34,25 @@ function setup(timeoutMs = 120_000) {
   return { workers, client };
 }
 describe('appearance worker ownership (#4243)', () => {
+  it('finite page jobs share supersession and reject stale allocator output without detaching pixels (#4260)', async () => {
+    const { client, workers } = setup();
+    const rgba = new Uint8Array([255, 0, 0, 255]);
+    const page = { appearance: request, page: { width: 1, height: 1, byteOffset: 0, byteLength: 4 }, sourceImages: [], texelsPerMetre: 64 };
+    const first = client.pagePlan(new Uint8Array([1]), page, rgba);
+    const rejected = assert.rejects(first, { name: 'AbortError' });
+    const second = client.catalog(new Uint8Array([1]), { schema: 'IFC4', sourceRevision: 'new', productIds: [10] });
+    await rejected;
+    assert.equal(workers[0].terminated, 1); assert.equal(rgba.byteLength, 4);
+    const wrongCatalog = assert.rejects(second, /stale/);
+    workers[1].emit({ type: 'page-complete', id: workers[1].posted!.id,
+      result: { plan: plan(), itemImages: [], assets: [], texelsPerMetre: 64 } });
+    await wrongCatalog;
+    const stale = client.pagePlan(new Uint8Array([1]), page, rgba);
+    workers[2].emit({ type: 'page-complete', id: workers[2].posted!.id,
+      result: { plan: { ...plan(), nextExpressId: 101 }, itemImages: [], assets: [], texelsPerMetre: 64 } });
+    await assert.rejects(stale, /stale/); assert.equal(workers[2].terminated, 1);
+    client.dispose();
+  });
   it('catalog and plan share cancellation, revision fencing and deterministic worker release (#4243)', async () => {
     const { client, workers } = setup();
     const first = client.catalog(new Uint8Array([1]), { schema: 'IFC4', sourceRevision: 'catalog-old', productIds: [10] });
@@ -142,4 +161,27 @@ describe('appearance worker ownership (#4243)', () => {
     await assert.rejects(pending, /Invalid appearance mapping/);
     assert.equal(workers[0].terminated, 1);
   });
+});
+
+it('scan registration cancels its worker and ignores a late result from the abandoned request (#4381)', async () => {
+  const { client, workers } = setup();
+  const request = { sourceFrame: { assetSha256: 'a'.repeat(64), frameKey: 'source' }, targetFrame: { assetSha256: 'b'.repeat(64), frameKey: 'target' }, fit: [], heldOut: [] };
+  const abort = new AbortController();
+  const first = client.registerScan(request, { signal: abort.signal });
+  const rejected = assert.rejects(first, { name: 'AbortError' });
+  const late = workers[0].onmessage!;
+  abort.abort(); await rejected;
+  assert.equal(workers[0].terminated, 1);
+  const second = client.catalog(new Uint8Array(), { schema: 'IFC4', sourceRevision: 'current', productIds: [] });
+  late({ data: { type: 'error', id: workers[0].posted!.id, message: 'abandoned error' } } as MessageEvent<AppearanceWorkerResponse>);
+  assert.equal(workers[1].terminated, 0, 'late scan response cannot settle another appearance job');
+  workers[1].emit({ type: 'catalog-complete', id: workers[1].posted!.id, catalog: { sourceRevision: 'current', products: [], types: [], missingProductIds: [] } });
+  await second; client.dispose();
+});
+
+it('scan registration refuses oversized correspondence sets before creating a worker (#4381)', async () => {
+  const { client, workers } = setup();
+  const point = { id: 'p', sourceObservation: 's', targetFeature: 't', source: [0,0,0] as [number,number,number], target: [0,0,0] as [number,number,number] };
+  await assert.rejects(client.registerScan({ sourceFrame: { assetSha256: 'a'.repeat(64), frameKey: 'source' }, targetFrame: { assetSha256: 'b'.repeat(64), frameKey: 'target' }, fit: new Array(257).fill(point), heldOut: [] }), /budget/);
+  assert.equal(workers.length, 0); client.dispose();
 });

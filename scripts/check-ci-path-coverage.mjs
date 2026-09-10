@@ -109,6 +109,9 @@ const REQUIRED_COVERAGE = [
   ['scripts/docs/generate-docs-sections.mjs', 'tests/benchmark/baseline.json'],
   ['scripts/docs/generate-docs-sections.mjs', 'apps/landing/app.jsx'],
   ['scripts/docs/generate-docs-sections.mjs', 'apps/landing/bench-data.json'],
+  // The license-header gate scans the repo ROOT by extension, and the
+  // derivation cannot see that: the root literal '.' is NOT_AN_INPUT.
+  ['scripts/add-license-headers.mjs', 'playwright.config.ts'],
 ];
 
 const failures = [];

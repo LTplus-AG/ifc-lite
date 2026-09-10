@@ -1,14 +1,24 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { AppearanceQueryDefinition } from './query-definition.js';
+import type { ReferencePdfLineage } from './references/pdf-lineage.js';
+import type { PdfRasterRecipe } from './pdf/types.js';
+import type { RasterCalibration, RasterCalibrationFrame } from './raster-calibration.js';
+
+export type AppearanceIntent = 'apply' | 'reference' | 'capture' | 'scan';
+
 export type AppearanceScope =
   | { kind: 'model' | 'selection' }
   | { kind: 'class'; ifcClass: string }
-  | { kind: 'type'; typeId: number };
+  | { kind: 'type'; typeId: number }
+  | { kind: 'filter'; query: AppearanceQueryDefinition };
 
 /** Editable display values; the controller converts degrees/axes to canonical requests. */
 export interface AppearanceDraftSettings {
   kind: 'existingUv' | 'planar' | 'box';
+  /** Explicit opt-in; omitted drafts preserve the original representation. */
+  representationPolicy?: 'preserve' | 'evaluatedOccurrence';
   plane: 'xy' | 'xz' | 'yz';
   repeatU: number;
   repeatV: number;
@@ -24,7 +34,20 @@ export interface AppearanceDraftSettings {
   repeatT: boolean;
 }
 export interface AppearanceSourceOption {
+  /** Session source identity. Images use their digest; PDFs keep document identity. */
   id: string;
+  /** Encoded derivative identity; independent from the source's page/calibration recipe. */
+  assetId?: string;
+  /** Measured landmarks in the source native frame, shared across placement intents. */
+  calibration?: RasterCalibration;
+  /** Frozen derivative frame when restoring a registered raster without its document. */
+  calibrationFrame?: RasterCalibrationFrame;
+  /** Exact original PDF provenance when editing a committed raster snapshot. */
+  pdfLineage?: ReferencePdfLineage;
+  pdf?: {
+    documentKey: string;
+    recipe: PdfRasterRecipe;
+  };
   name: string;
   width: number;
   height: number;
@@ -33,6 +56,7 @@ export interface AppearanceSourceOption {
 }
 /** Logical draft only. GPU resources, plans and pending jobs are never stored. */
 export interface AppearanceDraftRecipe {
+  intent?: AppearanceIntent;
   modelId: string | null;
   sourceId: string | null;
   scope: AppearanceScope;

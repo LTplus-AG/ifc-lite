@@ -114,6 +114,7 @@
     "@types/react-dom": "^19.2.7",
     "@types/three": "^0.185.4",
     "@vitejs/plugin-react": "^6.1.1",
+    "@webgpu/types": "^0.1.72",
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.14.0",
     "svgo": "^4.1.0",

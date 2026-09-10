@@ -24,7 +24,7 @@ import assert from 'node:assert';
 
 import { RaycastEngine } from './raycast-engine.js';
 import { Camera } from './camera.js';
-import { Scene } from './scene.js';
+import { Scene, type TexturedMesh } from './scene.js';
 import type { Mesh, BatchedMesh, PickOptions } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
@@ -535,5 +535,54 @@ describe('RaycastEngine.raycastScene', () => {
         `instead of model 1's own batch entry (distance ~40); got ${hit2!.intersection.distance}`,
       );
     });
+  });
+});
+
+/** Same real Scene CPU path as textured upload; GPU-only handles are inert. */
+function addTexturedQuad(scene: Scene, quad: MeshData): void {
+  scene.addMeshData(quad);
+  const drawable: TexturedMesh = {
+    expressId: quad.expressId, modelIndex: quad.modelIndex,
+    vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer,
+    indexCount: quad.indices.length, uniformBuffer: {} as GPUBuffer,
+    texture: {} as GPUTexture, sampler: {} as GPUSampler, bindGroup: {} as GPUBindGroup,
+    color: quad.color, origin: quad.origin ?? [0, 0, 0],
+  };
+  (scene as unknown as { texturedMeshes: TexturedMesh[] }).texturedMeshes.push(drawable);
+}
+
+describe('textured scene raycasts (#4407)', () => {
+  it('hits a textured-only owner and respects its retained origin', () => {
+    const scene = new Scene();
+    const quad = makeQuad({ expressId: 77 });
+    quad.origin = [1000, 2000, 20];
+    addTexturedQuad(scene, quad);
+    const engine = engineFor(scene, orthoCameraLookingDownZ([1000, 2000, 0], 50));
+    const hit = engine.raycastScene(400, 300)?.intersection;
+    assert.ok(hit);
+    assert.equal(hit.expressId, 77);
+    assert.ok(Math.abs(hit.point.x - 1000) < 1e-4);
+    assert.ok(Math.abs(hit.point.y - 2000) < 1e-4);
+    assert.ok(Math.abs(hit.point.z - 20) < 1e-4);
+  });
+  it('textured front occludes a regular rear, while hide/isolate excludes it', () => {
+    const scene = new Scene();
+    addRegularQuad(scene, makeQuad({ expressId: 1 }));
+    addTexturedQuad(scene, makeQuad({ expressId: 2, translate: [0, 0, 20] }));
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 2);
+    assert.equal(engine.raycastScene(400, 300, { hiddenIds: new Set([2]) })?.intersection.expressId, 1);
+    assert.equal(engine.raycastScene(400, 300, { isolatedIds: new Set([1]) })?.intersection.expressId, 1);
+    assert.equal(engine.raycastScene(400, 300, { isolatedIds: new Set([2]) })?.intersection.expressId, 2);
+    assert.equal(engine.raycastScene(400, 300, { hiddenIds: new Set([1, 2]) }), null);
+  });
+  it('never pulls a nearer retained same-ID piece from a model absent from the textured pass', () => {
+    const scene = new Scene();
+    scene.addMeshData(makeQuad({ expressId: 99, modelIndex: 0, translate: [0, 0, 30] }));
+    addTexturedQuad(scene, makeQuad({ expressId: 99, modelIndex: 1, translate: [0, 0, 10] }));
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    const hit = engine.raycastScene(400, 300)?.intersection;
+    assert.ok(hit);
+    assert.ok(Math.abs(hit.point.z - 10) < 1e-4, 'modelIndex must scope the visible owner');
   });
 });

@@ -1,0 +1,49 @@
+{
+  "combinedSourceHead": "3c4f8c738",
+  "integratedMain": "ae8533851",
+  "nativePdfTests": 21,
+  "nativeTransferTests": 10,
+  "freshWasmContract": {
+    "passed": 88,
+    "failed": 0,
+    "existingOptionalSkips": 3
+  },
+  "readerControls": [
+    {
+      "control": "curved-1",
+      "sha256": "81234123aa6f6dae17ca17a314a69242c4ca7106c1f761d100d5f5609937653b",
+      "priorExportByteIdentical": false,
+      "onlyDifferenceIsExportTimestamp": true,
+      "dataSectionByteIdentical": true
+    },
+    {
+      "control": "curved-2",
+      "sha256": "e1717527bf2454a0ae4ee5fc4745706dee14359b549f35926f2ec8703b9f7cf8",
+      "priorExportByteIdentical": false,
+      "onlyDifferenceIsExportTimestamp": true,
+      "dataSectionByteIdentical": true
+    },
+    {
+      "control": "curved-3",
+      "sha256": "4d3ad5f929f08ddbde630f7d787249e065884c49d6a09e63f0d475f6de8cf564",
+      "priorExportByteIdentical": false,
+      "onlyDifferenceIsExportTimestamp": true,
+      "dataSectionByteIdentical": true
+    },
+    {
+      "control": "straight-1",
+      "sha256": "39f7bc1ea8a31aca3db466571973c26aa998e927ccbe0e84e9f3c2d72fc307fd",
+      "priorExportByteIdentical": false,
+      "onlyDifferenceIsExportTimestamp": true,
+      "dataSectionByteIdentical": true
+    },
+    {
+      "control": "straight-2",
+      "sha256": "5a9e5bbe69212b8be77fc862abc533dcdd20f5cbc3dd846de6f246b2ab08818d",
+      "priorExportByteIdentical": false,
+      "onlyDifferenceIsExportTimestamp": true,
+      "dataSectionByteIdentical": true
+    }
+  ],
+  "independentReaders": "MuPDF and IfcOpenShell 0.8.2; original PDF operations and exported IFC checked"
+}

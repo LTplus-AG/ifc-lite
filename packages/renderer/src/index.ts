@@ -13,8 +13,11 @@ export { Camera } from './camera.js';
 // The MEASURED surface `getScene()` publishes — see its docs.
 export type { SceneContents } from './scene-contents.js';
 export { expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
+export { sameCompanionParts } from './appearance-companions.js';
 export type { AppearancePreview, AppearanceOwner, AppearanceToken, AppearanceChange } from './appearance-preview.js';
 import type { AppearancePreview } from './appearance-preview.js';
+import { createReferenceImageManager } from './reference-image-host.js';
+export type { ReferenceImages, ReferenceImageInput, ReferenceImageHit, ReferenceCorners } from './reference-image-types.js';
 import { resizeRendererViewport } from './renderer-viewport.js';
 export type { ProjectionMode } from './camera-state.js';
 export type { InteractionMode } from './camera-controls.js';
@@ -277,6 +280,8 @@ export class Renderer {
         },
         requestRender: () => this.requestRender(),
     });
+    private readonly referenceImages = createReferenceImageManager(this);
+    getReferenceImages(): import('./reference-image-types.js').ReferenceImages { return this.referenceImages; }
     private postProcessor: PostProcessor | null = null;
     private readonly interactionEffects = new InteractionEffectsGovernor();
     private edlPass: EdlPass | null = null;
@@ -647,6 +652,7 @@ export class Renderer {
             this.device.getFormat(),
             this.pipeline.getSampleCount(),
         );
+        this.referenceImages.init(this.device.getDevice(), this.device.getFormat(), this.pipeline.getSampleCount());
         // PostProcessor is optional — if it fails (e.g. mobile GPU lacking
         // depth TEXTURE_BINDING), rendering still works without post-processing.
         try {
@@ -834,6 +840,7 @@ export class Renderer {
     private handleDeviceLost(info: { message: string; reason: string }): void {
         if (this.deviceLost) return;
         this.deviceLost = true;
+        this.referenceImages.destroy();
         this.deviceLostGeneration = this.initGeneration;
         this.deviceLostInfo = info;
         console.warn('[Renderer] GPU device lost — halting rendering until re-init:', info.message);
@@ -1105,10 +1112,9 @@ export class Renderer {
     }
 
     /**
-     * Set (or clear, with `null`) a streamed point-cloud asset's per-vertex
-     * GPU model matrix (column-major, 16 floats) — issue #1804's
-     * `IfcMapConversion` alignment toggle. Cheap: takes effect on the next
-     * frame's uniform write, no GPU buffer rewrite.
+     * Set/clear a streamed cloud's column-major model matrix (16 floats) for
+     * IfcMapConversion alignment (#1804). Applied on the next frame's uniform
+     * write without rewriting vertex buffers.
      */
     setPointCloudTransform(
         handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
@@ -3079,6 +3085,7 @@ export class Renderer {
             // Section-plane gizmo, 2D section cap and every standalone 3D
             // overlay (annotation / alignment / grid / DXF / clash / symbolic
             // text). One draw call into the pass — see RendererOverlays.draw().
+            this.referenceImages.draw(pass, viewProj);
             this.overlays.draw(pass, {
                 options,
                 viewProj,
@@ -3264,13 +3271,12 @@ export class Renderer {
         return this.pickingManager.pickRect(x0, y0, x1, y1, options, this.activePickClip());
     }
 
-    /**
-     * Raycast into the scene to get precise 3D intersection point
-     * This is more accurate than pick() as it returns the exact surface point
-     *
-     * Note: x, y are CSS pixel coordinates relative to the canvas element.
-     * These are scaled internally to match the actual canvas pixel dimensions.
-     */
+    /** Whether the last rendered frame clipped surfaces (section, terrain or box). */
+    hasActiveClipping(): boolean {
+        return this._activePickSection !== null || this._activePickClipBox !== null;
+    }
+
+    /** Exact surface raycast in CSS canvas coordinates; does not apply clipping. */
     raycastScene(
         x: number,
         y: number,
@@ -3350,7 +3356,14 @@ export class Renderer {
         resizeRendererViewport(this.canvas, this.camera, width, height);
     }
 
-    /** Owned, reversible appearance edits; model geometry remains unchanged. */
+    /** Stage one new owner; borrowed mesh buffers must remain immutable until disposal. */
+    prepareAuthoredOwner(parts: readonly MeshData[]) {
+        if (!this.device.isInitialized() || !this.pipeline) throw new Error('Renderer is not initialized.');
+        const prepared = this.scene.prepareAuthoredOwner(parts, this.device.getDevice(), this.pipeline);
+        return { commit: () => { prepared.commit(); this.refreshPlacementBounds(); this.invalidateBVHCache(); this.requestRender(); }, dispose: prepared.dispose };
+    }
+    prepareTexturedOwner(mesh: MeshData) { if (!mesh.uvs || !(mesh.texture || (mesh.textureRef && mesh.textureBitmap))) throw new Error('A new textured owner requires an image and UVs.'); return this.prepareAuthoredOwner([mesh]); }
+
     getAppearancePreview(): AppearancePreview {
         if (!this.pipeline) throw new Error('Renderer must be initialized before previewing appearance');
         return this.scene.appearancePreview(this.device.getDevice(), this.pipeline);
@@ -3677,6 +3690,7 @@ export class Renderer {
         // Section-plane gizmo, 2D section overlay and the symbolic annotation
         // pipelines — see RendererOverlays.destroy().
         this.overlays.destroy();
+        this.referenceImages.destroy();
 
         // Point cloud GPU resources
         this.pointCloudRenderer?.clear();

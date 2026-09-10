@@ -577,26 +577,26 @@ pub(crate) fn extract_style_info_from_styled_item(
     styled_item: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Option<GeometryStyleInfo> {
-    let style_refs = refs_from_list(styled_item, 1)?;
+    surface_style_from_styled_item(styled_item, decoder).map(|(_, info)| info)
+        .or_else(|| crate::style::fill::fill_style_from_styled_item(styled_item, decoder))
+}
 
-    for style_id in style_refs {
+/// Canonical first valid rendering style, also used when authoring clones its
+/// non-albedo properties instead of discarding them (#4260).
+pub(crate) fn surface_style_from_styled_item(
+    styled_item: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> Option<(u32, GeometryStyleInfo)> {
+    for style_id in refs_from_list(styled_item, 1)? {
         if let Ok(style) = decoder.decode_by_id(style_id) {
-            // IfcPresentationStyleAssignment has nested style refs at attr 0.
             if let Some(inner_refs) = refs_from_list(&style, 0) {
                 for inner_id in inner_refs {
-                    if let Some(info) = extract_surface_style_info(inner_id, decoder) {
-                        return Some(info);
-                    }
+                    if let Some(info) = extract_surface_style_info(inner_id, decoder) { return Some((inner_id, info)); }
                 }
             }
-
-            // Or the style ref points directly to IfcSurfaceStyle.
-            if let Some(info) = extract_surface_style_info(style_id, decoder) {
-                return Some(info);
-            }
+            if let Some(info) = extract_surface_style_info(style_id, decoder) { return Some((style_id, info)); }
         }
     }
-
     None
 }
 

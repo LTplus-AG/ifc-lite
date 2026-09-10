@@ -20,7 +20,17 @@
 # bring this file back under budget after a merge combined two independent
 # feature additions to it (#3673's four-scanner comment-trivia work and
 # #3699's unterminated-record reporting) past the recorded 601; 606 -> 557.
-     557 rust/core/src/parser/scanner.rs
+# -105: same move again for the same reason. has_non_null_attribute (one
+# per-ATTRIBUTE walk over an already-located span, sharing no state with the
+# record scan) split out to scanner_attributes.rs (125 lines, under budget, no
+# row) to make room for #4179's record-boundary rules and their recovery;
+# 557 -> 453.
+# -31: and once more. The four refusal/drop accessors, which are a reporting
+# surface with no control flow shared with the record hunt, split out to
+# scanner_diagnostics.rs (67 lines, under budget, no row) to make room for
+# #4179 review finding 2, which needed every dropped offset kept rather than
+# only the first; 453 -> 422.
+     422 rust/core/src/parser/scanner.rs
 # +3: Arc<Vec<AttributeValue>> so DecodedEntity clone is a refcount bump not a deep attribute-tree clone (perf/decode-churn).
     553 rust/core/src/schema_gen.rs
 # schema_helpers.rs row removed: the merged upstream #1969 split its tests into

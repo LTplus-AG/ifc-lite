@@ -204,7 +204,7 @@ function stubWebKitCanvas(maxArea: number): CanvasStub {
     // here would make the production `if (!ctx) throw` look like a guard it
     // is not.
     if (type === '2d') return { fillStyle: '', fillRect() {}, drawImage() {} };
-    return originalGetContext.call(this, type as '2d');
+    return (originalGetContext as (contextId: string) => RenderingContext | null).call(this, type);
   };
 
   const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;

@@ -5,10 +5,13 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { IfcTypeEnum, spatialLookups, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
 import { IfcParser } from '../src/index.js';
 import {
   collectTransferables,
   fromTransport,
+  spatialHierarchyFromColumns,
+  spatialHierarchyToColumns,
   toTransport,
   transportByteSize,
 } from '../src/data-store-transport.js';
@@ -318,4 +321,72 @@ describe('fromTransport source identity (#2183)', () => {
     expect(one.source.contentKey).toBe(two.source.contentKey);
     expect(one.source.byteLength).toBe(bytes.byteLength);
   });
+});
+
+describe('spatialHierarchyToColumns / spatialHierarchyFromColumns: ambiguousStorey (#4311)', () => {
+  function minimalHierarchy(ambiguousStorey: Set<number>): SpatialHierarchy {
+    const project: SpatialNode = {
+      expressId: 1,
+      type: IfcTypeEnum.IfcProject,
+      name: 'Project',
+      longName: undefined,
+      elevation: undefined,
+      children: [],
+      elements: [],
+    };
+    return {
+      project,
+      byStorey: new Map(),
+      byBuilding: new Map(),
+      bySite: new Map(),
+      bySpace: new Map(),
+      storeyElevations: new Map(),
+      storeyHeights: new Map(),
+      elementToStorey: new Map(),
+      ambiguousStorey,
+      getStoreyElements: () => [],
+      getStoreyByElevation: () => null,
+      getContainingSpace: () => null,
+      getPath: () => [],
+    };
+  }
+
+  it('carries a non-empty ambiguousStorey across the worker transport, not just elementToStorey', () => {
+    const hierarchy = minimalHierarchy(new Set([4]));
+    const columns = spatialHierarchyToColumns(hierarchy);
+    const rebuilt = spatialHierarchyFromColumns(columns);
+    expect(rebuilt.ambiguousStorey).toBeDefined();
+    expect(rebuilt.ambiguousStorey!.has(4)).toBe(true);
+  });
+
+  it('round-trips an empty ambiguousStorey as empty, not absent', () => {
+    const hierarchy = minimalHierarchy(new Set());
+    const columns = spatialHierarchyToColumns(hierarchy);
+    const rebuilt = spatialHierarchyFromColumns(columns);
+    expect(rebuilt.ambiguousStorey).toBeDefined();
+    expect(rebuilt.ambiguousStorey!.size).toBe(0);
+  });
+});
+
+
+it('worker hydration resolves spatial nodes and live authored space membership (#4308)', () => {
+  const room: SpatialNode = { expressId: 3, type: IfcTypeEnum.IfcSpace, name: 'Room', children: [], elements: [4] };
+  const project: SpatialNode = { expressId: 1, type: IfcTypeEnum.IfcProject, name: 'Project', children: [room], elements: [] };
+  const original = { project, bySpace: new Map([[3, room.elements]]), byStorey: new Map(), byBuilding: new Map(),
+    bySite: new Map(), storeyElevations: new Map(), storeyHeights: new Map(), elementToStorey: new Map(),
+    elementToContainer: new Map([[4, 3]]), getStoreyElements: () => [], getStoreyByElevation: () => null,
+    ...spatialLookups(project, new Map([[3, room.elements]]), new Map([[4, 3]])) } satisfies SpatialHierarchy;
+  const hydrated = spatialHierarchyFromColumns(structuredClone(spatialHierarchyToColumns(original)));
+  expect(hydrated.getPath(3).map(node => node.expressId)).toEqual([1, 3]);
+  expect(hydrated.getPath(4).map(node => node.expressId)).toEqual([1, 3]);
+  hydrated.project.children[0].elements.push(5);
+  hydrated.bySpace.get(3)!.push(5);
+  hydrated.elementToContainer!.set(5, 3);
+  expect(hydrated.getPath(5).map(node => node.expressId)).toEqual([1, 3]);
+  expect(hydrated.getContainingSpace(5)).toBe(3);
+  hydrated.project.children[0].elements.splice(1, 1);
+  hydrated.bySpace.get(3)!.splice(1, 1);
+  hydrated.elementToContainer!.delete(5);
+  expect(hydrated.getPath(5)).toEqual([]);
+  expect(hydrated.getContainingSpace(5)).toBeNull();
 });

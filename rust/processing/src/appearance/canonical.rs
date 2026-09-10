@@ -20,7 +20,7 @@ pub(super) fn align_source_corners(
     textures: &FxHashMap<u32, ResolvedTextureMap>,
     request: &AppearanceRequest,
 ) -> Result<(), String> {
-    let before = produce(source, product_id, textures)?;
+    let before = produce(source, product_id, textures, None)?;
     // Clone only selected items' maps; direct eligibility guarantees these are
     // the product's complete Body and no mapped sibling may contribute geometry.
     let replacements = items
@@ -45,7 +45,7 @@ pub(super) fn align_source_corners(
             )
         })
         .collect();
-    let after = produce(source, product_id, &replacements)?;
+    let after = produce(source, product_id, &replacements, None)?;
     if before.len() != items.len() || after.len() != items.len() {
         return Err("Canonical representation was split, combined, or rejected".into());
     }
@@ -113,10 +113,11 @@ fn one_item(meshes: &[MeshData], id: u32) -> Result<&MeshData, String> {
     Ok(mesh)
 }
 
-fn produce(
+pub(super) fn produce(
     source: &mut Source<'_>,
     product_id: u32,
     textures: &FxHashMap<u32, ResolvedTextureMap>,
+    appearance: Option<&crate::prepass::ResolvedPrepass>,
 ) -> Result<Vec<MeshData>, String> {
     let product = source.entity(product_id)?;
     source.validate_world_placement(&product)?;
@@ -124,6 +125,11 @@ fn produce(
     if !scale.is_finite() || scale <= 0. {
         return Err("Invalid model length unit scale".into());
     }
+    let element_color = appearance.and_then(|styles| {
+        product.get_ref(6).and_then(|pds| crate::processor::resolve_element_color_for_product_definition_shape(
+            pds, &styles.geometry_style_index, &mut source.decoder))
+            .or_else(|| styles.element_material_colors.get(&product_id).and_then(|colors| crate::style::pick_opaque_first(colors)))
+    });
     let context = source.context.as_ref().ok_or("Missing canonical load context")?;
     if context.layers.is_sliceable(product_id) {
         return Err("Material-layer slicing is unsupported for appearance authoring".into());
@@ -134,10 +140,10 @@ fn produce(
     let colours = FxHashMap::default();
     let materials = FxHashMap::default();
     let context = MeshProductionContext {
-        void_index: &voids,
-        geometry_style_index: &styles,
-        indexed_colour_full: &colours,
-        element_material_colors: &materials,
+        void_index: appearance.map_or(&voids, |a| &a.void_index),
+        geometry_style_index: appearance.map_or(&styles, |a| &a.geometry_style_index),
+        indexed_colour_full: appearance.map_or(&colours, |a| &a.indexed_colour_full),
+        element_material_colors: appearance.map_or(&materials, |a| &a.element_material_colors),
         texture_index: textures,
         site_local_rotation: None,
     };
@@ -147,7 +153,7 @@ fn produce(
             ifc_type: product.ifc_type,
             entity: &product,
             kind: ElementJobKind::Product,
-            element_color: None,
+            element_color,
             metadata: None,
         },
         &context,

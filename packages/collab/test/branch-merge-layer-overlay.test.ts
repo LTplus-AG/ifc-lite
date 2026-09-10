@@ -19,7 +19,14 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { createCollabSession } from '../src/session.js';
 import { forkSession, mergeBranch } from '../src/branch/branch.js';
-import { createEntity, getAttribute, getEntity, setAttribute, setChild } from '../src/doc/entity.js';
+import {
+  createEntity,
+  deleteEntity,
+  getAttribute,
+  getEntity,
+  setAttribute,
+  setChild,
+} from '../src/doc/entity.js';
 import { ENTITY_KEY, GEOMETRY_KEY, entitiesMap } from '../src/doc/schema.js';
 import { createGeometry, getGeometry, setGeometryBlobHash } from '../src/doc/geometry.js';
 
@@ -207,6 +214,147 @@ describe("mergeBranch('layer') overlays edits onto pre-existing GEOMETRY", () =>
     // discarded, because `createGeometry` returns an existing record untouched.
     expect(getGeometry(parent.doc, 'g2')?.get(GEOMETRY_KEY.BLOB_HASH)).toBe('FRESH');
     expect(getGeometry(parent.doc, 'g1')?.get(GEOMETRY_KEY.BLOB_HASH)).toBe('NEW');
+
+    branch.session.dispose();
+    parent.dispose();
+  });
+});
+
+// Regression coverage for #4242: an IFCX snapshot of the branch emits only
+// what an entity has, so a branch-side deletion is indistinguishable on the
+// wire from "no opinion" — `applyIfcxOverlay` cannot remove what it never
+// sees. This is documented, maintainer-confirmed behaviour (see the code
+// comment above `mergeBranch`'s 'layer' branch and the issue thread), not a
+// bug to fix here. What was missing before this test/field existed: nothing
+// pinned the behaviour, and `MergeReport` gave the caller no way to detect
+// it happened.
+describe("mergeBranch('layer') cannot propagate branch deletions (documented limitation)", () => {
+  it('resurrects an entity the branch deleted, and reports the drop', async () => {
+    const parent = await createCollabSession({
+      roomId: 'deletion-drop-repro',
+      user: { id: 'louis', name: 'Louis' },
+      provider: 'memory',
+    });
+    parent.transact(() => createEntity(parent.doc, 'wall', { ifcClass: 'IfcWall' }));
+
+    const branch = await forkSession(parent, { name: 'remove-wall' });
+    branch.session.transact(() => deleteEntity(branch.session.doc, 'wall'));
+
+    const report = mergeBranch(parent, branch, 'layer');
+
+    // The known limitation, pinned: the wall is back.
+    expect(entitiesMap(parent.doc).has('wall')).toBe(true);
+    // The diagnostic this issue asked for: the caller can now tell.
+    expect(report.droppedDeletions).toBe(1);
+
+    branch.session.dispose();
+    parent.dispose();
+  });
+
+  it('does not count an entity the parent created after the fork as a dropped deletion', async () => {
+    // Load-bearing negative case: an entity absent from the branch doc is
+    // not necessarily one the branch deleted — it may simply not exist yet
+    // because the parent created it *after* the fork. Both look identical
+    // as "missing from branch.session.doc"; only the fork-time snapshot
+    // tells them apart. Miscounting this as a dropped deletion would be a
+    // false alarm telling a caller data was lost when nothing happened.
+    const parent = await createCollabSession({
+      roomId: 'deletion-drop-false-positive',
+      user: { id: 'louis', name: 'Louis' },
+      provider: 'memory',
+    });
+    parent.transact(() => createEntity(parent.doc, 'wall', { ifcClass: 'IfcWall' }));
+
+    const branch = await forkSession(parent, { name: 'unrelated-edit' });
+    // Parent creates a *new* entity after the fork; the branch never had it
+    // and never deleted it.
+    parent.transact(() => createEntity(parent.doc, 'door', { ifcClass: 'IfcDoor' }));
+    // Branch makes an unrelated edit so the merge is not a no-op.
+    branch.session.transact(() =>
+      setAttribute(branch.session.doc, 'wall', 'ifclite::name', 'renamed'),
+    );
+
+    const report = mergeBranch(parent, branch, 'layer');
+
+    expect(report.droppedDeletions).toBe(0);
+    expect(entitiesMap(parent.doc).has('door')).toBe(true);
+    expect(getAttribute(parent.doc, 'wall', 'ifclite::name')).toBe('renamed');
+
+    branch.session.dispose();
+    parent.dispose();
+  });
+
+  it('reports droppedDeletions: 0 and still carries branch edits through on an ordinary merge', async () => {
+    // Both directions matter: the diagnostic must not fire on a normal
+    // merge, and a normal merge's edits must still land. A "fix" that
+    // makes ordinary merges look like they dropped something (or that
+    // stops carrying real edits through) would be worse than the bug.
+    const parent = await createCollabSession({
+      roomId: 'deletion-drop-ordinary-merge',
+      user: { id: 'louis', name: 'Louis' },
+      provider: 'memory',
+    });
+    parent.transact(() => createEntity(parent.doc, 'wall', { ifcClass: 'IfcWall' }));
+
+    const branch = await forkSession(parent, { name: 'rename-only' });
+    branch.session.transact(() =>
+      setAttribute(branch.session.doc, 'wall', 'ifclite::name', 'Wall A'),
+    );
+
+    const report = mergeBranch(parent, branch, 'layer');
+
+    expect(report.droppedDeletions).toBe(0);
+    expect(getAttribute(parent.doc, 'wall', 'ifclite::name')).toBe('Wall A');
+
+    branch.session.dispose();
+    parent.dispose();
+  });
+
+  it("reports droppedDeletions: 0 for the 'ops' strategy, which propagates deletions natively", async () => {
+    const parent = await createCollabSession({
+      roomId: 'deletion-drop-ops-strategy',
+      user: { id: 'louis', name: 'Louis' },
+      provider: 'memory',
+    });
+    parent.transact(() => createEntity(parent.doc, 'wall', { ifcClass: 'IfcWall' }));
+
+    const branch = await forkSession(parent, { name: 'remove-wall-ops' });
+    branch.session.transact(() => deleteEntity(branch.session.doc, 'wall'));
+
+    const report = mergeBranch(parent, branch, 'ops');
+
+    expect(report.droppedDeletions).toBe(0);
+    expect(entitiesMap(parent.doc).has('wall')).toBe(false);
+
+    branch.session.dispose();
+    parent.dispose();
+  });
+
+  it('does not count an entity as a dropped deletion when the parent also deleted it', async () => {
+    // Load-bearing negative case for the other half of the guard: an
+    // entity present at fork time, deleted on the branch, AND also gone
+    // from the parent by merge time (here because the parent independently
+    // deleted it too) is not a dropped deletion — there is nothing left on
+    // the parent for the branch's deletion to fail to remove. Miscounting
+    // this would over-count `droppedDeletions` for a deletion both sides
+    // agreed on, the same false-alarm failure mode as the fork-time guard
+    // above, just on the parent side of the check.
+    const parent = await createCollabSession({
+      roomId: 'deletion-drop-both-sides-deleted',
+      user: { id: 'louis', name: 'Louis' },
+      provider: 'memory',
+    });
+    parent.transact(() => createEntity(parent.doc, 'wall', { ifcClass: 'IfcWall' }));
+
+    const branch = await forkSession(parent, { name: 'remove-wall-both-sides' });
+    branch.session.transact(() => deleteEntity(branch.session.doc, 'wall'));
+    // Parent independently deletes the same entity before the merge lands.
+    parent.transact(() => deleteEntity(parent.doc, 'wall'));
+
+    const report = mergeBranch(parent, branch, 'layer');
+
+    expect(report.droppedDeletions).toBe(0);
+    expect(entitiesMap(parent.doc).has('wall')).toBe(false);
 
     branch.session.dispose();
     parent.dispose();

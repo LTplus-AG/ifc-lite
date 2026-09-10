@@ -60,9 +60,9 @@ struct ChunkScan {
     /// Every refusal this chunk's scan produced, real or speculative. The
     /// stitch decides which; the chunk cannot.
     refusals: super::ShardRefusals,
-    /// Where this chunk's scan stopped on a malformed record, real or
+    /// Where this chunk's scan dropped a malformed record, real or
     /// speculative — same caveat as `refusals`.
-    malformed_start: Option<usize>,
+    malformed_starts: Vec<usize>,
 }
 
 #[inline]
@@ -81,13 +81,13 @@ fn scan_chunk(content: &[u8], i: usize, n_chunks: usize) -> ChunkScan {
     // semantics (`scan_shard` selects it on `range_start == 0`); every other
     // chunk starts speculatively at its byte offset. Same shard primitive the
     // wasm sharded pre-pass calls per worker, so the merge cannot drift.
-    let (records, handoff, refusals, malformed_start) =
+    let (records, handoff, refusals, malformed_starts) =
         super::scan_shard_with_diagnostics(content, start, end);
     ChunkScan {
         records,
         handoff,
         refusals,
-        malformed_start,
+        malformed_starts,
     }
 }
 
@@ -170,20 +170,25 @@ pub(super) fn with_chunks_counted(content: &[u8], n_chunks: usize) -> StitchResu
 /// serial path, which is the target — not immunity to mis-parsing, which
 /// would mean giving the scanner quote context (#3395/#3430).
 ///
-/// ## The malformed-record stop (#3695) is not "one more refusal count"
+/// ## The malformed-record report is a REPORT, never a control signal
 ///
-/// An oversized-id refusal SKIPS one record and scanning continues. A
-/// malformed record (unterminated `'` string / `/* … */` comment) has no
-/// byte to resume from, so the SERIAL scanner stops PERMANENTLY — nothing
-/// past that byte is ever in the serial index. Byte-identity means the
-/// parallel path must match: the first chunk (file order) whose
-/// ATTRIBUTED region contains a malformed stop drops every chunk after
-/// it, the same way `expected_start: None` already does when a chunk runs
-/// out of real entities. The returned bool is `true` in exactly that
-/// case; callers report it once, stitched, never per shard.
+/// A malformed record comes in two shapes and only one of them stops the
+/// scan (see `close_step_record` in ifc_lite_core's parser::lexical).
+/// `malformed_start` is set for BOTH, so it cannot say which happened, and
+/// this stitch used to read it as if it always meant the permanent one,
+/// dropping every chunk after it. Once a missing `;` became recoverable that
+/// turned one lost record into the whole tail of the file.
+///
+/// `handoff` is the signal that actually distinguishes them, and it always
+/// did: a chunk whose scanner stopped runs out of records before
+/// `range_end` and hands back `None`, which the `expected_start: None`
+/// break below already drops every later chunk on. So byte-identity with
+/// the serial scan is carried by the handoff alone, and `malformed_start`
+/// is only ever accumulated into the returned bool, which callers report
+/// once, stitched, never per shard.
 ///
 /// "Attributed" carries the same speculative-prefix caveat as a refusal —
-/// `chunk.malformed_start >= target` is that filter, mirroring the `<
+/// `chunk.malformed_starts` filtered by `>= target` is that, mirroring the `<
 /// target` split `refusals.partition_point` already makes.
 fn stitch(content: &[u8], chunks: &[ChunkScan], n_chunks: usize) -> StitchResult {
     let len = content.len();
@@ -199,63 +204,61 @@ fn stitch(content: &[u8], chunks: &[ChunkScan], n_chunks: usize) -> StitchResult
     }
     let mut expected_start = chunks[0].handoff;
     let mut refused = chunks[0].refusals.len();
-    let mut malformed = chunks[0].malformed_start.is_some();
+    let mut malformed = !chunks[0].malformed_starts.is_empty();
 
-    if !malformed {
-        for (i, chunk) in chunks.iter().enumerate().skip(1) {
-            // `expected_start` is the real entity start where chunk `i`
-            // begins, validated by chunk `i-1`. `None` => no more real
-            // entities, so every later chunk is speculative from end to
-            // end — records and refusals alike are dropped by breaking
-            // here.
-            let target = match expected_start {
-                Some(t) => t,
-                None => break,
-            };
-            let end = range_end(i, n_chunks, len);
-            let recs = &chunk.records;
-            // `records` is strictly increasing in `start`, so a binary
-            // search locates the real boundary (or proves the chunk
-            // never re-synced).
-            match recs.binary_search_by(|&(_, start, _)| start.cmp(&target)) {
-                Ok(p) => {
-                    for &(id, start, e) in &recs[p..] {
-                        index.insert(id, (start, e));
-                    }
-                    // `refusals` is strictly increasing, so the split
-                    // point is the first refusal inside the retained
-                    // region.
-                    let from = chunk.refusals.partition_point(|&o| o < target);
-                    refused += chunk.refusals.len() - from;
-                    // A malformed stop at/after `target` sits inside the
-                    // region this chunk just proved it resynchronised
-                    // over, so it is real — the same filter the refusal
-                    // count above just applied. Before `target` it is an
-                    // artefact of the discarded speculative prefix.
-                    if chunk.malformed_start.is_some_and(|m| m >= target) {
-                        malformed = true;
-                        break;
-                    }
-                    expected_start = chunk.handoff;
+    for (i, chunk) in chunks.iter().enumerate().skip(1) {
+        // `expected_start` is the real entity start where chunk `i`
+        // begins, validated by chunk `i-1`. `None` => no more real
+        // entities, so every later chunk is speculative from end to
+        // end — records and refusals alike are dropped by breaking
+        // here.
+        let target = match expected_start {
+            Some(t) => t,
+            None => break,
+        };
+        let end = range_end(i, n_chunks, len);
+        let recs = &chunk.records;
+        // `records` is strictly increasing in `start`, so a binary
+        // search locates the real boundary (or proves the chunk
+        // never re-synced).
+        match recs.binary_search_by(|&(_, start, _)| start.cmp(&target)) {
+            Ok(p) => {
+                for &(id, start, e) in &recs[p..] {
+                    index.insert(id, (start, e));
                 }
-                Err(_) => {
-                    // Rare: the speculative scan overshot the real boundary, or a
-                    // single record spans the whole chunk. Serially rescan this
-                    // range from the known-real `target` — byte-identical to the
-                    // serial builder for these bytes — and recompute the handoff.
-                    // The chunk's own refusals go with its records: unusable.
-                    //
-                    // This rescan starts at a validated real boundary, not
-                    // speculatively, so ANY malformed stop it hits is real —
-                    // no `>= target` filter needed, unlike the `Ok` arm.
-                    let rescanned = rescan_range(content, target, end, &mut index);
-                    refused += rescanned.refused;
-                    if rescanned.malformed_start.is_some() {
-                        malformed = true;
-                        break;
-                    }
-                    expected_start = rescanned.handoff;
-                }
+                // `refusals` is strictly increasing, so the split
+                // point is the first refusal inside the retained
+                // region.
+                let from = chunk.refusals.partition_point(|&o| o < target);
+                refused += chunk.refusals.len() - from;
+                // A drop at/after `target` sits inside the region this
+                // chunk just proved it resynchronised over, so it is
+                // real — the same filter the refusal count above just
+                // applied. Before `target` it is an artefact of the
+                // discarded speculative prefix. ALL of the offsets are
+                // tested, not just the first: a chunk can carry both.
+                //
+                // NOT `break`: a dropped record is not a stopped scan.
+                // A chunk that really stopped has no handoff, which the
+                // `None` arm above breaks on at the next iteration.
+                malformed |= chunk.malformed_starts.iter().any(|&m| m >= target);
+                expected_start = chunk.handoff;
+            }
+            Err(_) => {
+                // Rare: the speculative scan overshot the real boundary, or a
+                // single record spans the whole chunk. Serially rescan this
+                // range from the known-real `target` — byte-identical to the
+                // serial builder for these bytes — and recompute the handoff.
+                // The chunk's own refusals go with its records: unusable.
+                //
+                // This rescan starts at a validated real boundary, not
+                // speculatively, so ANY drop it hits is real — no
+                // `>= target` filter needed, unlike the `Ok` arm.
+                let rescanned = rescan_range(content, target, end, &mut index);
+                refused += rescanned.refused;
+                // Report, don't stop — see the `Ok` arm's note.
+                malformed |= !rescanned.malformed_starts.is_empty();
+                expected_start = rescanned.handoff;
             }
         }
     }
@@ -273,7 +276,7 @@ fn stitch(content: &[u8], chunks: &[ChunkScan], n_chunks: usize) -> StitchResult
 struct RescanResult {
     handoff: Option<usize>,
     refused: usize,
-    malformed_start: Option<usize>,
+    malformed_starts: Vec<usize>,
 }
 
 /// Serial rescan from a known-real entity start `target` up to `end`,
@@ -294,7 +297,7 @@ fn rescan_range(
             return RescanResult {
                 handoff: Some(start),
                 refused: scanner.skipped_oversized_ids(),
-                malformed_start: scanner.malformed_record_start(),
+                malformed_starts: scanner.malformed_record_starts().to_vec(),
             };
         }
         index.insert(id, (start, entity_end));
@@ -302,6 +305,6 @@ fn rescan_range(
     RescanResult {
         handoff: None,
         refused: scanner.skipped_oversized_ids(),
-        malformed_start: scanner.malformed_record_start(),
+        malformed_starts: scanner.malformed_record_starts().to_vec(),
     }
 }

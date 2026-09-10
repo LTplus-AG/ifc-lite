@@ -1,0 +1,24 @@
+{
+  "featherston": {
+    "title": "Floor Plan.pdf (Featherston House ground floor)",
+    "author": "Zaidaudi",
+    "date": "2012-04-18",
+    "descriptionPage": "https://commons.wikimedia.org/wiki/File:Floor_Plan.pdf",
+    "download": "https://upload.wikimedia.org/wikipedia/commons/2/25/Floor_Plan.pdf",
+    "license": "CC-BY-SA-3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+    "sha256": "c8c923759a412dc0f108ed77e54edc76203592f4befb25b3779550c7bb287d66",
+    "previewChange": "Rendered PDF page to PNG with Poppler; same CC-BY-SA-3.0 license applies to featherston-poppler.png."
+  },
+  "controls": {
+    "generator": "tools/texture-authoring/pdf-vector-controls.py",
+    "contentLicense": "CC0-1.0",
+    "generatorLicense": "MPL-2.0",
+    "reportlab": "4.4.3",
+    "pypdf": "6.0.0"
+  },
+  "habs": {
+    "existingSourceMetadata": "../pdf-appearance/habs-source.json",
+    "note": "Same existing public-domain HABS PA-6709 sheet 4; this census confirms raster-only drawing content."
+  }
+}

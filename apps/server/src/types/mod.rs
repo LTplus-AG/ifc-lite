@@ -6,6 +6,8 @@
 
 mod mesh;
 mod response;
+mod symbolic_response;
+pub use symbolic_response::SymbolicParseResponse;
 
 pub use mesh::MeshData;
 pub use response::{

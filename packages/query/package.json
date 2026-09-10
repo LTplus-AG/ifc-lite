@@ -22,7 +22,8 @@
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/spatial": "workspace:^",
-    "@ifc-lite/geometry": "workspace:^"
+    "@ifc-lite/geometry": "workspace:^",
+    "@ifc-lite/regex-guard": "workspace:^"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

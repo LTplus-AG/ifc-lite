@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { stepExportProgress } from '@/lib/export/step-progress.js';
 import { prepareAppearanceSerialization } from '@/lib/appearance/serialization.js';
 import { packagePortableIfcAsync, assertPortableMergeSupported } from '@/lib/export/portable-ifc';
@@ -54,6 +55,7 @@ import {
 } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore, countGeneratedTasks } from '@/store';
+import { resolveExportVisibility } from '@/store/exportVisibility';
 import { posthog } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { configureMutationView } from '@/utils/configureMutationView';
@@ -93,6 +95,15 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
   const isolatedEntitiesByModel = useViewerStore((s) => s.isolatedEntitiesByModel);
+  // Not read directly below — `resolveExportVisibility` reads the live store
+  // snapshot at export time — but subscribed so the dialog re-renders (and the
+  // memoized visibility getters below get fresh identities) when the Class
+  // tab filter, storey selection, or a type-visibility toggle changes while
+  // the dialog is open (#4328).
+  const classFilter = useViewerStore((s) => s.classFilter);
+  const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
+  const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const lensHiddenIds = useViewerStore((s) => s.lensHiddenIds);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
@@ -138,6 +149,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   // Derived: is this an IFC5/IFCX export?
   const isIfc5 = schema === 'IFC5';
 
+  const exportModelLabels = useMemo(() => modelDisplayLabels(models, 32), [models]);
   // Get list of models with data stores - includes both federated models and legacy single-model
   const modelList = useMemo(() => {
     const list = Array.from(models.values()).map((m) => ({
@@ -261,63 +273,30 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   }, [exportScope, selectedModelId, getModifiedEntityCount, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId, georefMutations]);
 
   /**
-   * Convert global visibility state IDs to local expressIds for a given model.
-   * The store uses global IDs (localId + idOffset), but the exporter needs local IDs.
+   * Resolve local (per-model) hidden/isolated expressIds for `modelId` from
+   * EVERY active visibility channel — hidden/isolated entities, the Class
+   * tab filter, storey selection, and type-visibility toggles — through the
+   * single shared resolver (`resolveExportVisibility`) every export path
+   * routes through, not a per-dialog restatement of a subset of them
+   * (#4328: the class filter and storey isolation used to be invisible to
+   * every exporter). Reads `useViewerStore.getState()` directly so the
+   * export always sees the state at click time, not a stale render.
    */
-  const getLocalHiddenIds = useCallback((modelId: string): Set<number> => {
-    // Legacy single-model path: no federation offset, global IDs = local IDs
-    if (modelId === '__legacy__') {
-      return hiddenEntities;
-    }
+  const getExportVisibility = useCallback(
+    (modelId: string) => resolveExportVisibility(useViewerStore.getState(), modelId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [models, hiddenEntities, isolatedEntities, hiddenEntitiesByModel, isolatedEntitiesByModel, classFilter, selectedStoreys, typeVisibility, lensHiddenIds],
+  );
 
-    const model = models.get(modelId);
-    if (!model) return new Set();
-    const offset = model.idOffset ?? 0;
+  const getLocalHiddenIds = useCallback(
+    (modelId: string): Set<number> => getExportVisibility(modelId).hiddenLocalIds,
+    [getExportVisibility],
+  );
 
-    // Prefer per-model visibility state, fall back to legacy global state
-    const modelHidden = hiddenEntitiesByModel.get(modelId);
-    if (modelHidden && modelHidden.size > 0) {
-      return modelHidden; // Already local expressIds
-    }
-
-    // Federated model: convert global IDs to local
-    const localIds = new Set<number>();
-    for (const globalId of hiddenEntities) {
-      const localId = globalId - offset;
-      if (localId > 0 && localId <= model.maxExpressId) {
-        localIds.add(localId);
-      }
-    }
-    return localIds;
-  }, [models, hiddenEntities, hiddenEntitiesByModel]);
-
-  const getLocalIsolatedIds = useCallback((modelId: string): Set<number> | null => {
-    // Legacy single-model path: no federation offset, global IDs = local IDs
-    if (modelId === '__legacy__') {
-      return isolatedEntities;
-    }
-
-    const model = models.get(modelId);
-    if (!model) return null;
-    const offset = model.idOffset ?? 0;
-
-    // Prefer per-model isolation state
-    const modelIsolated = isolatedEntitiesByModel.get(modelId);
-    if (modelIsolated && modelIsolated.size > 0) {
-      return modelIsolated; // Already local expressIds
-    }
-
-    // Federated model: convert global IDs to local
-    if (!isolatedEntities) return null;
-    const localIds = new Set<number>();
-    for (const globalId of isolatedEntities) {
-      const localId = globalId - offset;
-      if (localId > 0 && localId <= model.maxExpressId) {
-        localIds.add(localId);
-      }
-    }
-    return localIds.size > 0 ? localIds : null;
-  }, [models, isolatedEntities, isolatedEntitiesByModel]);
+  const getLocalIsolatedIds = useCallback(
+    (modelId: string): Set<number> | null => getExportVisibility(modelId).isolatedLocalIds,
+    [getExportVisibility],
+  );
 
   const hasFilterableProperties = useMemo(() => {
     if (!isIfc5 || !selectedModel?.ifcDataStore) return false;
@@ -678,8 +657,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
               </SelectTrigger>
               <SelectContent>
                 {modelList.map((m) => {
-                  const maxLen = 32;
-                  const displayName = m.name.length > maxLen ? m.name.slice(0, maxLen) + '\u2026' : m.name;
+                  const displayName = exportModelLabels.get(m.id) ?? m.name;
                   return (
                   <SelectItem key={m.id} value={m.id} title={m.name}>
                     {displayName}{m.isDirty ? ' *' : ''}{m.schemaVersion ? ` (${m.schemaVersion})` : ''}

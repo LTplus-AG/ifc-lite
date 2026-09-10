@@ -1,6 +1,6 @@
 {
-  "apps/viewer": 301,
-  "apps/viewer-embed": 303,
+  "apps/viewer": 266,
+  "apps/viewer-embed": 268,
   "examples/babylonjs-viewer": 1,
   "examples/collab-demo": 1,
   "examples/threejs-collab": 1,
@@ -24,8 +24,8 @@
   "packages/export": 2,
   "packages/extensions": 4,
   "packages/geometry": 7,
-  "packages/ids": 10,
-  "packages/ifcx": 16,
+  "packages/ids": 9,
+  "packages/ifcx": 7,
   "packages/lens": 0,
   "packages/lists": 0,
   "packages/mcp": 4,
@@ -37,6 +37,7 @@
   "packages/pointcloud": 1,
   "packages/provenance": 0,
   "packages/query": 2,
+  "packages/regex-guard": 0,
   "packages/renderer": 1,
   "packages/sandbox": 1,
   "packages/sdk": 11,
@@ -50,5 +51,6 @@
   "packages/spatial": 0,
   "packages/timing-ladder": 0,
   "packages/viewer": 0,
+  "packages/wasm-lifecycle": 0,
   "packages/world-frame-fixtures": 0
 }

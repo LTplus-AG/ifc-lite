@@ -326,3 +326,22 @@ it('filtered serialization preserves imported bytes and live authored leases (#4
   models.remove('filtered');
   assert.equal(bitmap.closes, 1);
 });
+
+// #4380: creation must bind the retained original, never recover pixels from GPU.
+it('resolves capture originals across URI spelling and rejects ambiguous or removed sources', async () => {
+  const inventory = new AppearanceAssetInventory({ decode: async () => image() });
+  const models = new ModelAppearanceAssets(inventory);
+  const load = models.begin('capture');
+  assert.throws(() => models.resolveImageAsset('capture', 'wood.png'), /still loading/);
+  await load.decode(archive()); load.finish(true);
+  const id = models.resolveImageAsset('capture', './Textures/Wood%2EPNG');
+  assert.deepEqual(inventory.encoded(id), png());
+  const distinct = png(); distinct[distinct.length - 1] ^= 1;
+  const replacement = models.begin('capture');
+  await replacement.decode({ originalResources: new Map([['a/wood.png', png()], ['b/wood.png', distinct]]) });
+  replacement.finish(true);
+  assert.throws(() => models.resolveImageAsset('capture', 'a/wood.png'), /different original images/);
+  models.remove('capture');
+  assert.throws(() => models.resolveImageAsset('capture', 'wood.png'), /missing/);
+  assert.equal(inventory.get(id), undefined);
+});

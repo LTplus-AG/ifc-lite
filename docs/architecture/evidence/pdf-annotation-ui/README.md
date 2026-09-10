@@ -39,11 +39,28 @@ actual pointer locations, browser version and export/reimport results. The
 measured maximum world-corner difference is zero for this control.
 
 
-The UI validation currently passes Node 22.23.2 root Turbo typecheck across all
-1,925 test files. Focused tests cover original-PDF/IFC binding and no-publication
+The UI validation passes Node 22.23.2 root Turbo typecheck across all
+1,926 test files. Focused tests cover original-PDF/IFC binding and no-publication
 preview, late cancellation/input changes/model removal, shared target selection,
 existing image creation controls and shared textured/untextured GPU preview.
-Final visual reimport acceptance depends on the separately reviewed item-level
-3D annotation routing fix tracked by #4459; the initial normal reimport exposed
-duplicated symbolic fills despite correct canonical meshes. No screenshot here
-claims that separate renderer defect is already resolved.
+The final combined browser run includes the separately reviewed item-level
+3D routing fix. [Unselected fresh import](reopened-colours.png) displays exactly
+the two intended coloured regions. [Pointer selection](reopened-selected.png)
+selects the imported IfcAnnotation. The actual GPU symbolic fill pipeline is
+empty while the 2D cache retains both fills: owner 92, items 77 and 86, matching
+the two native mesh parts. The harness binds the cache getter once and waits
+with a synchronous predicate before inspecting either pipeline.
+
+The combined root build passes all 51 tasks. Its freshly generated WASM digest,
+source checkpoint, output IFCZIP digest and browser/runtime identity are recorded
+in `journey.json`. This control establishes the integrated workflow; the broader
+PDF fidelity work remains tracked by #4406.
+
+
+To repeat the full UI journey, run `browser-proof.mjs` from the repository root
+with `PROOF_TARGET_IFCZIP` pointing at the same F5 target and `PROOF_PDF` at the
+original `controlledPdf()` bytes. `PROOF_URL` selects the local development
+viewer (default port 4390); `PROOF_OUT` selects an untracked output directory.
+The harness uses real UI actions for calibration, preview, creation, history and
+export, canonical store/camera helpers for framing, and actual pointer input for
+selection. It closes its browser in `finally`. No viewer geometry is fabricated.

@@ -1,0 +1,12 @@
+{
+  "rust/geometry/src/kernel/broadphase.rs": "16bb805b288129cd64594dd028eab745980a1d8c215018d0733d8d894cc2fffd",
+  "rust/geometry/src/kernel/broadphase/nearest.rs": "10d9eff6752c96b0b75bea8cc89abe754785d2c8a8564672a0d6e889d99e726f",
+  "rust/processing/src/appearance/atlas_plan.rs": "99f30116b1253b47116137d535ed2214a03fc6970e4326dc290b6219a8433375",
+  "rust/processing/src/appearance/page_atlas.rs": "7a193febfee25dd291a2d5bac1caa214e0ca3332fc6caa74777af6e7b2c5b150",
+  "rust/processing/src/appearance/page_atlas_guards.rs": "902ea02f5efe238188ce897b10ed8f1bfdfc3d6c7dd89ce210de122849b6a42b",
+  "rust/processing/src/appearance/transfer.rs": "997144de36cd5dd5c49d945443a255c0a8e11099f1c8a09d90f262be1cae4ac4",
+  "rust/processing/src/appearance/transfer_budget.rs": "233c1f3cc82aa34a200d26261bf936d5b10f2096693f0dd50b7bfcdc5ce32273",
+  "rust/processing/src/appearance/transfer_sampler.rs": "f13bbd6a2a240c0b99c515c24d7a95bedf5b4b4cbcc03ca0f0eb95d2eed9bd24",
+  "rust/processing/src/appearance/transfer_surface.rs": "c12a76add1e5c91ce5cb423215c11dae6370df90a51ea7bb256e255f1ea57ece",
+  "rust/processing/src/appearance/transfer_math.rs": "5189ac599cbed6579b126cf946ad633bdfc54214a958c01836095d0d12595cbb"
+}

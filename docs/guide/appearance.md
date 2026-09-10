@@ -259,3 +259,18 @@ must not consist of a reserved mutation wire token (`$`, `*`, `#123`, or
 values before returning a plan because the current STEP mutation protocol has
 no unqualified literal-string marker. Ordinary names, including Unicode and
 punctuation, remain unchanged. Preserved page material names use the same rule.
+
+### Scan transfer capacity
+
+Registered mesh transfer keeps the entire selected IFC object as its target.
+Preview reports observed and unknown coverage; unreliable observations keep the
+object’s previous appearance. Increasing atlas density can improve visible
+detail but also increases memory use. If a request exceeds the bounded memory
+or work allowance, reduce the chosen density or explicitly narrow the source
+extent, then preview again. The viewer never silently removes target triangles.
+
+The complete selected boulder capture is covered by the
+[full-target acceptance evidence](../architecture/evidence/mesh-transfer-full-target/README.md),
+including export, fresh import, selection and an independent IFC reader. This
+known-derived control does not establish automatic alignment of unrelated scans
+and BIM models.

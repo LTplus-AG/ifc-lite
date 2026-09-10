@@ -48,7 +48,8 @@ async function setup(federated = false) {
     modelPlacement: { ...emptyPlacementState(), placements: new Map([['capture', { translation: [10,20,30], locked: false }]]) } });
   const asset = await appearanceAssets.add(png, { owner: { kind: 'draft', id: 'capture-test' } });
   const meshes = new Map<number, MeshData>();
-  const renderer = { prepareTexturedOwner(mesh: MeshData) {
+  const renderer = { prepareAuthoredOwner(parts: readonly MeshData[]) {
+      const mesh = parts[0];
     return { commit() { meshes.set(mesh.expressId, mesh); }, dispose() {} };
   }, getScene: () => ({ getMeshDataPieces(id: number) { const mesh = meshes.get(id); return mesh ? [mesh] : undefined; },
     removeMeshesForEntities(ids: Iterable<number>) { for (const id of ids) meshes.delete(id); } }), requestRender() {}, invalidateBVHCache() {} } as unknown as Renderer;

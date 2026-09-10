@@ -207,3 +207,20 @@ an elliptical hole and a sheared ellipse, independent source-curve comparison,
 reported raster-support differences and exported IFC checks. Unsupported stroke,
 text, image, clipping and transparency semantics still refuse the whole page.
 This is visual vector geometry; source Bezier editing semantics are not retained.
+
+## Shared authored-owner publication
+
+Native PDF fill plans use the same authored-product transaction as image references
+and captured meshes. `commitAuthoredProduct` accepts all canonical parts for one
+IFC owner and an explicit retained-image list (empty for solid fills). It stages
+all colour buckets and textures before committing IFC rows, publishes every part
+together, and records one Undo/Redo entry. Replay checks every part so a later edit
+to one colour cannot partially rewind the annotation. The renderer's
+`prepareAuthoredOwner` rejects changed scene or placement state before publication.
+
+This transaction does not qualify PDF content or establish source identity. Its
+caller must retain the original PDF, page and calibration, verify the native
+source-IFC digest against the exact frozen bytes, and enforce the PDF transport
+limits before requesting publication. The image-based annotation workflow remains
+the active UI until the representation choice and its native qualification review
+are integrated.

@@ -375,3 +375,5 @@ mod tests {
         assert!(candidate_pairs(&a, &far).is_empty());
     }
 }
+
+mod nearest;

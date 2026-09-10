@@ -62,12 +62,13 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     })))) as AnnotationPlanePlan;
     const meshes = new Map<number, MeshData>();
     // GPU transport only is substituted; native rows, mutation history and export are real.
-    const renderer = { prepareTexturedOwner(mesh: MeshData) {
+    const renderer = { prepareAuthoredOwner(parts: readonly MeshData[]) {
+      const mesh = parts[0];
       if (meshes.has(mesh.expressId)) throw new Error('duplicate owner');
       return { commit() { meshes.set(mesh.expressId, mesh); }, dispose() {} };
     }, getScene: () => ({ getMeshDataPieces(id: number) { const mesh = meshes.get(id); return mesh ? [mesh] : undefined; }, removeMeshesForEntities(ids: Iterable<number>) { for (const id of ids) meshes.delete(id); } }), requestRender() {}, invalidateBVHCache() {} } as unknown as Renderer;
     const allocationBefore = view.peekNextExpressId();
-    const failingRenderer = { ...renderer, prepareTexturedOwner() { throw new Error('injected GPU preparation failure'); } } as unknown as Renderer;
+    const failingRenderer = { ...renderer, prepareAuthoredOwner() { throw new Error('injected GPU preparation failure'); } } as unknown as Renderer;
     await assert.rejects(commitTexturedProduct('annotation', asset.id, { ...native, objectId: native.annotationId }, containerId, failingRenderer, captureAppearanceSource(view)), /injected GPU/);
     assert.equal(view.getNewEntities().length, 0);
     assert.equal(view.peekNextExpressId(), allocationBefore);

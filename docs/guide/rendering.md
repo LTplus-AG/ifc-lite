@@ -1102,11 +1102,14 @@ Keep the bitmap's inventory lease until `set` settles. The renderer owns uploade
 
 This is a visual registration API. It does not create `IfcAnnotation`, persist image bytes, or promise arbitrary CRS reprojection. Application metadata/history and IFC authoring own those operations independently.
 
-### Creating a textured owner atomically
+### Creating an authored owner atomically
 
-`renderer.prepareTexturedOwner(mesh)` uploads a new textured IFC owner's canonical
-`MeshData` while keeping it outside the visible scene and picking index. The owner
-must not already exist. Call the returned `commit()` after the matching IFC
+`renderer.prepareAuthoredOwner(parts)` uploads all canonical `MeshData` parts for one
+new IFC owner, including separate colours and optional retained textures, while keeping it outside the visible scene and picking index. The owner
+must not already exist, and every part must have the same object and model identity.
+`prepareTexturedOwner(mesh)` remains the single textured-part convenience entry point.
+Keep the borrowed mesh buffers immutable until disposal. Clear/rebuild or placement
+changes invalidate an outstanding preparation. Call the returned `commit()` after the matching IFC
 transaction is ready, then publish the model/history state in the same synchronous
 turn. Always call `dispose()` in `finally`; it releases an uncommitted upload and
 leaves a committed scene owner intact. Keep the source image retained through the

@@ -289,7 +289,7 @@ function applyExpectations(value: unknown, expect: ManifestTestExpect): SingleRe
     if (text === undefined) {
       reasons.push(`regex: result has no text representation`);
     } else if (expect.regex.length > MAX_GUARDED_REGEX_PATTERN_LENGTH) {
-      // Length cap is a shallow defence (`(a+)+$` is 7 chars and
+      // Length cap is a shallow defence (`(a+)+$` is 6 chars and
       // catastrophic). The real boundary is drag-drop side-loading
       // (ExtensionsPanel.tsx), not a future registry (deferred
       // Phase-5, see 10-registry-and-signing.md): "Run tests" or

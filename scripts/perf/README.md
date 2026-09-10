@@ -1209,4 +1209,3 @@ The lesson is to preserve the existing type-based rendering predicate for
 ordinary products while applying opening-specific semantics consistently to
 mesh production and fast void probes. Numeric evidence and source revisions are
 in `docs/architecture/evidence/evaluated-openings/performance.json`.
-

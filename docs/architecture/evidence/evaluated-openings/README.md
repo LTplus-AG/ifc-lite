@@ -159,3 +159,25 @@ The exported-surface oracle therefore reports both the default result and a read
 with opening subtraction disabled, consistent with the retained Reference semantics.
 The production authoring policy does not change IFC semantics to accommodate that
 reader behavior.
+
+## Final viewer and exported-file acceptance
+
+[Viewer evidence](viewer-acceptance.json) records the shown single-model and hidden
+federated journeys, runtime/source identity, exact restored geometry hashes and
+actual viewport selection IDs. The final federated run also uses the merged
+immutable-array cache fix. The exported models reopen textured and selectable;
+model hide/show preserves them, and explicitly showing opening types does not
+render the retained Reference opening.
+
+The [single-model exported IFC](viewer-shown-reader.json) and
+[federated exported IFC](viewer-federated-reader.json) each preserve the canonical
+native surface and volume exactly under the reader setting honoring Reference
+semantics. The verifier resolves the actual exported Body item rather than
+assuming the viewer and native evidence allocator assigned the same new ID. It
+uses the native plan only for its canonical source snapshot and expected edits to
+existing rows; it does not claim that plan is the browser's exact wire request.
+Schema findings remain baseline-relative, with no new findings.
+
+[Normal-load profiling](authoring-performance.json) records the controlled
+pre-integration source checkpoints and the small AC20 timing increase; no speedup
+or browser-worker timing claim is made.

@@ -94,7 +94,13 @@ reader_default=read_mesh(exported)
 # It is an oracle workaround, not an instruction to disable ordinary openings.
 reader_reference=read_mesh(exported,True)
 actual=compare(canonical,reader_reference)
-item=exported.by_id(conversion['geometryItemId'])
+# Resolve the real exported Body, since the viewer allocator can assign different
+# new IDs from the native evidence planner. The plan supplies the canonical source
+# snapshot and expected edits to existing rows; it is not claimed as the browser plan.
+bodies=[rep for rep in exported.by_id(product).Representation.Representations if rep.RepresentationIdentifier=='Body']
+assert len(bodies)==1 and len(bodies[0].Items)==1
+item=bodies[0].Items[0]
+assert item.is_a('IfcTriangulatedFaceSet')
 local=np.asarray(item.Coordinates.CoordList)
 placement=ifcopenshell.util.placement.get_local_placement(exported.by_id(product).ObjectPlacement)
 raw_points=(np.column_stack([local,np.ones(len(local))])@placement.T)[:,:3]*ifcopenshell.util.unit.calculate_unit_scale(exported)
@@ -106,6 +112,7 @@ assert changed==sorted(set(edit['expressId'] for edit in plan['edits'])),changed
 assert original.by_id(product).GlobalId==exported.by_id(product).GlobalId
 report={'reader':'IfcOpenShell','version':ifcopenshell.version,'product':product,
         'canonicalNativeVsExportedReference':actual,
+        'sourceSnapshotPlannedItem':conversion['geometryItemId'],'actualExportedItem':item.id(),
         'canonicalNativeVsAuthoredRawTfs':compare(canonical,raw),
         'originalReaderVsCanonicalNative':compare(reader_original,canonical),
         'exportedDefaultReader':{'triangles':len(reader_default[1]),'volumeCubicMetres':volume(reader_default)},

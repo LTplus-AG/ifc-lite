@@ -218,7 +218,16 @@ replacement item. Renderer integrations pass validated global original/replaceme
 IDs in `AppearancePreview.begin(owner, { geometryItemRemaps })`; each pair has
 `from` and `to` fields. The renderer freezes these explicit pairs, retains exact
 triangle-corner and ownership checks, and records the pairs in `AppearanceChange`
-for reversible history. Unlisted item-ID changes remain invalid. See the
+for reversible history. Unlisted item-ID changes remain invalid. Opening conversions
+also carry bounded `sourceRemovedMeshes` in canonical native `MeshData` form.
+After validating product/item identity and placement, renderer integrations pass
+`companionOriginals` to `AppearancePreview.begin`; the only permitted transitions
+are those exact untextured originals and an empty mesh list. `sameCompanionParts`
+compares that restoration contract. `companionHidden: true` additionally requires
+the host to prove current hidden visibility and exact canonical source inventory;
+it preserves nonresident originals without uploading or exposing them during
+preparation. Retain the source resources through command history and release them
+when that history is disposed. See the
 [evaluated-occurrence contract](../architecture/appearance-evaluated-occurrences.md).
 
 Renderer integrations preparing an occurrence replacement can call

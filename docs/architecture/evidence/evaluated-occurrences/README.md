@@ -1,5 +1,8 @@
 # Mapped occurrence conversion evidence (#4404)
 
+[Integrated viewer acceptance](viewer-acceptance.md) records real image/PDF
+preview, repeated Apply/Undo/Redo, federated visibility and export/reopen picking.
+
 The real IFC4 AC20-FZK-Haus fixture comes from `tests/models/manifest.json`.
 The test selects IfcMember 35169, one of 42 type-related members, and applies
 image appearance through the native evaluated-occurrence policy. The only

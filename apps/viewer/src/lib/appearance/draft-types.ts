@@ -14,6 +14,8 @@ export type AppearanceScope =
 /** Editable display values; the controller converts degrees/axes to canonical requests. */
 export interface AppearanceDraftSettings {
   kind: 'existingUv' | 'planar' | 'box';
+  /** Explicit opt-in; omitted drafts preserve the original representation. */
+  representationPolicy?: 'preserve' | 'evaluatedOccurrence';
   plane: 'xy' | 'xz' | 'yz';
   repeatU: number;
   repeatV: number;

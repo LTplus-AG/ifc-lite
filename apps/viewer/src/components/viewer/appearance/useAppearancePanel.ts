@@ -60,6 +60,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
   const [sourceBusy, setSourceBusy] = useState(false);
   const [showingOriginal, setShowingOriginal] = useState(false);
   const [counts, setCounts] = useState({ affected: 0, excluded: 0, reasons: [] as string[] });
+  const [convertedObjects, setConvertedObjects] = useState<NonNullable<AppearancePanelViewProps['convertedObjects']>>([]);
   const [previewEnabled, setPreviewEnabled] = useState(canResumeModel && (savedDraft?.previewEnabled ?? true));
   const previousIntent = useRef(intent);
   useEffect(() => {
@@ -115,7 +116,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
     if (intent !== 'apply' || !modelId || unavailableReason) {
       const previous = draft.current; draft.current = null;
       discardDraft(previous);
-      snapshot.current = null; setCatalogState(null);
+      snapshot.current = null; setCatalogState(null); setConvertedObjects([]);
       setStatus('idle');
       setCounts({ affected: 0, excluded: 0, reasons: [] });
       setStatusMessage(undefined);
@@ -132,7 +133,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
     }
     const owner: AppearanceAssetOwner = { kind: 'draft', id: crypto.randomUUID() };
     let adopted = false;
-    supported.current = [];
+    supported.current = []; setConvertedObjects([]);
     setCounts({ affected: 0, excluded: 0, reasons: [] });
     setStatus('preparing'); setStatusMessage(previewEnabled && sourceId ? 'Preparing appearance preview…' : 'Preparing model scope…');
     const timer = setTimeout(() => { void (async () => {
@@ -167,7 +168,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
         currentSnapshot.validate();
         const plan = page?.plan ?? await worker.plan(bytes, { schema, sourceRevision: currentSnapshot.revision, nextExpressId,
           productIds: currentScope.productIds, imageUri, repeatS: settings.repeatS,
-          repeatT: settings.repeatT, mapping: appearanceMapping(settings) }, { signal: controller.signal });
+          repeatT: settings.repeatT, representationPolicy: settings.representationPolicy ?? 'preserve', mapping: appearanceMapping(settings) }, { signal: controller.signal });
         if (controller.signal.aborted || !mounted.current) return;
         currentSnapshot.validate();
         const state = useViewerStore.getState();
@@ -189,6 +190,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
         draft.current = { modelId, assetIds: page?.assetIds ?? [assetId], plan, groups, session, owner, source };
         adopted = true;
         setCounts({ affected: groups.length, excluded: 0, reasons: [] });
+        setConvertedObjects((plan.conversions ?? []).map(item => ({ productId: item.productId, name: `IFC object #${item.productId}` })));
         setShowingOriginal(false); setStatus('ready'); setStatusMessage('Preview ready. Apply to save this appearance in the IFC model.');
       } catch (error) {
         if (!controller.signal.aborted && mounted.current) { setStatus('error'); setStatusMessage(message(error)); }
@@ -242,7 +244,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
     setPreviewEnabled(false);
     const previous = draft.current; draft.current = null;
     discardDraft(previous);
-    setShowingOriginal(false); setStatus('idle'); setStatusMessage('Preview discarded.');
+    setConvertedObjects([]); setShowingOriginal(false); setStatus('idle'); setStatusMessage('Preview discarded.');
   }
   function compare(original: boolean): void {
     const current = draft.current;
@@ -265,7 +267,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
         signal: controller.signal,
         onProgress: phase => { if (mounted.current) setStatusMessage(phase === 'preparing' ? 'Preparing IFC changes…' : 'Saving appearance…'); },
       });
-      setPreviewEnabled(false);
+      setPreviewEnabled(false); setConvertedObjects([]);
       appliedRevision.current = appearanceRevision(current.modelId);
       draft.current = null;
       appearanceAssets.releaseOwner(current.owner);
@@ -284,7 +286,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
       },
     } : undefined,
     models: [...models.values()].map(model => ({ id: model.id, name: model.name })), modelId,
-    onModelChange: id => { setChosenModel(id); setPreviewEnabled(true); }, sources, sourceId,
+    onModelChange: id => { useViewerStore.getState().setActiveModel(id); setChosenModel(id); setSettings(current => ({ ...current, representationPolicy: 'preserve' })); setPreviewEnabled(true); }, sources, sourceId,
     onSourceChange: id => {
       pdfSource.cancel(); setSourceId(id);
       if (sources.find(source => source.id === id)?.pdf) setSettings(current => ({ ...current, kind: 'planar', repeatS: false, repeatT: false }));
@@ -299,7 +301,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
       state.setSelectedEntityIds(supported.current.map(id => state.toGlobalId(modelId, id)));
       setScope({ kind: 'selection' }); setPreviewEnabled(true);
     },
-    affectedCount: counts.affected, excludedCount: counts.excluded, exclusions: counts.reasons,
+    affectedCount: counts.affected, convertedObjects, excludedCount: counts.excluded, exclusions: counts.reasons,
     settings, onSettingsChange: patch => { setSettings(current => ({ ...current, ...patch })); setPreviewEnabled(true); },
     status, statusMessage, unavailableReason, canApply: status === 'ready' && !!draft.current?.session,
     canDiscard: !!draft.current || status === 'preparing' || pdfSource.busy || !!pdfSource.passwordPrompt, hasPreview: !!draft.current,

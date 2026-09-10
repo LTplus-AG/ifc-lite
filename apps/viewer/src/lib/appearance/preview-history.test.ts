@@ -42,3 +42,16 @@ describe('appearance history preserves canonical target shading (#4243)', () => 
     assert.throws(() => appearanceHistoryParts(f.renderer(moved), [f.change], 'undo'), /geometry|topology/);
   });
 });
+
+it('history reverses only the recorded occurrence item remap (#4404)', () => {
+  const f = fixture();
+  const after = { ...f.after, geometryItemId: 31 };
+  const change = { ...f.change, after: [after], geometryItemRemaps: [{ from: 21, to: 31 }] };
+  const undo = appearanceHistoryParts(f.renderer(after), [change], 'undo')[0];
+  assert.equal(undo.parts[0].geometryItemId, 21);
+  assert.deepEqual(undo.geometryItemRemaps, [{ from: 31, to: 21 }]);
+  const redo = appearanceHistoryParts(f.renderer(f.before), [change], 'redo')[0];
+  assert.equal(redo.parts[0].geometryItemId, 31);
+  assert.throws(() => appearanceHistoryParts(f.renderer(after), [{ ...change, geometryItemRemaps: [] }], 'undo'), /topology/);
+  assert.throws(() => appearanceHistoryParts(f.renderer({ ...after, geometryItemId: 99 }), [change], 'undo'), /geometry/);
+});

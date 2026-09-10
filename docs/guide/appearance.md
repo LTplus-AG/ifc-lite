@@ -159,17 +159,35 @@ Creation is available outside shared rooms; the saved IFC can then be shared.
 For implementation status, shared workflow boundaries and future scan/PDF options,
 see the [appearance roadmap](../architecture/appearance-roadmap.md).
 
-## Native evaluated-occurrence policy
+## Appearance on mapped occurrences
+
+Select an image or PDF page, choose the IFC scope, and enable **Convert supported
+mapped objects** when the chosen objects use mapped type geometry. The option is
+off by default and requires planar or box mapping. The preview lists the objects
+whose current shape will become mesh geometry instead of using their type's
+parametric geometry. **Compare original** temporarily restores the original;
+**Discard** publishes no IFC changes. **Apply** saves the texture and conversion
+in one operation, and Undo restores both together.
+
+Conversion preserves each product's identity, placement, properties and semantic
+relationships. Shared type geometry and sibling occurrences stay unchanged.
+Opening-bearing products, shared Body wrappers and ambiguous representations or
+materials remain excluded. Use **Use supported objects** to explicitly narrow a
+partially supported scope, then inspect the refreshed preview before applying.
+Export **IFC + images** to retain portable appearance on reopening or sharing.
+GPU-instanced occurrences use the same workflow: preview replaces only the chosen
+occurrence, and Undo restores its original shared instance. Finish any model
+placement preview and return to stacked levels before preparing a conversion.
+Models requiring CRS reprojection are excluded from this initial conversion path.
 
 Native `planAppearance` and `planPageAppearance` requests accept
-`representationPolicy: "evaluatedOccurrence"` to convert supported mapped
-occurrences to tessellation as part of the same appearance plan. The omitted
-policy remains `"preserve"`. This backend option is not yet exposed by the
-Appearance panel. Hosts must explain the loss of parametric Body geometry before
-opting in and use the returned `conversions` provenance to bind the existing
-rendered occurrence to its new geometry item. Product identities, placements,
-properties and shared type graphs remain intact. Opening-bearing and ambiguous
-representation/material cases are still refused. See the
+`representationPolicy: "evaluatedOccurrence"`; the omitted policy is `"preserve"`.
+Returned `conversions` identify the original item and corner provenance and the
+replacement item. Renderer integrations pass validated global original/replacement
+IDs in `AppearancePreview.begin(owner, { geometryItemRemaps })`; each pair has
+`from` and `to` fields. The renderer freezes these explicit pairs, retains exact
+triangle-corner and ownership checks, and records the pairs in `AppearanceChange`
+for reversible history. Unlisted item-ID changes remain invalid. See the
 [evaluated-occurrence contract](../architecture/appearance-evaluated-occurrences.md).
 
 Renderer integrations preparing an occurrence replacement can call
@@ -193,3 +211,22 @@ IFC Z-up snapshot to prepare one occurrence; reconstructing a GPU instance does
 not supply equivalent source provenance. See the
 [evaluated occurrence contract](../architecture/appearance-evaluated-occurrences.md)
 for units, frame restoration, and eligibility limits.
+
+The viewer passes that canonical source in renderer Y-up coordinates through
+`scene.placeAppearanceSource(mesh)` and then
+`AppearancePreview.begin(owner, { materializedOriginals, geometryItemRemaps })`.
+`getParts(owner)` includes retained canonical originals when the GPU instance is
+visible. Before committing, each history command calls `retainSource(owner)` and
+keeps the returned release function until that command is disposed. Multiple
+commands share one original occurrence; disposing an older command cannot restore
+it beneath a newer edit. `scene.appearanceSourceMesh(mesh)` recovers model-local
+geometry for publication without applying the registered model translation twice.
+These methods are optional on custom renderer adapters; the viewer refuses
+instance conversion if its frame conversion API is unavailable.
+
+For a flat-geometry rebuild, `scene.clearFlatGeometryForRebuild(visibleGeometry,
+loadedModelIndices, sourceGeometry)` validates every retained owner against the
+full loaded source geometry before disposing GPU buffers. Pass hidden models in
+that source inventory to retain their appearance history across hide/show.
+Changed or removed owners lose their old instance lease; ordinary
+`clearFlatGeometry()` and full scene reset still invalidate all such leases.

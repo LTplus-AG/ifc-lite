@@ -59,3 +59,40 @@ test('real WASM preserves mapped occurrences unless explicitly opted in and comp
     assert.deepEqual(converted[field], original[field], 'image and page reuse the same canonical original');
   }
 });
+
+test('real WASM image and page conversion preserve cut slab and opening companion provenance (#4404)', async t => {
+  const wasmUrl = new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+  const sourceUrl = new URL('../../../../../tests/models/ara3d/AC20-FZK-Haus.ifc', import.meta.url);
+  try { await Promise.all([access(wasmUrl), access(sourceUrl)]); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    t.skip('Run pnpm fixtures and pnpm build:wasm for the real opening appearance contract'); return;
+  }
+  const source = await readFile(sourceUrl);
+  const { default: init, IfcAPI } = await import('@ifc-lite/wasm');
+  await init({ module_or_path: await readFile(wasmUrl) });
+  const api = new IfcAPI();
+  const request: AppearanceRequest = { schema: 'IFC4', sourceRevision: 'AC20-opening-wasm', nextExpressId: 100_000,
+    productIds: [59290], imageUri: 'textures/opening.png', repeatS: false, repeatT: false,
+    representationPolicy: 'evaluatedOccurrence',
+    mapping: { kind: 'planar', frame: 'world', origin: [0, 0, 2.6], axisU: [1, 0, 0], axisV: [0, 1, 0], metresPerTile: [12, 10] } };
+  let image: AppearancePlan;
+  try { image = JSON.parse(new TextDecoder().decode(api.planAppearance(source, JSON.stringify(request)))) as AppearancePlan; }
+  finally { api.free(); }
+  assert.equal(image.items.length, 1); assert.deepEqual(image.exclusions, []);
+  const conversion = image.conversions![0];
+  assert.equal(conversion.sourceIndices.length / 3, 32);
+  assert.equal(conversion.sourceRemovedMeshes?.length, 1);
+  const opening = conversion.sourceRemovedMeshes![0];
+  assert.equal(opening.express_id, 59365); assert.equal(opening.geometry_item_id, 59353);
+  assert.ok(opening.indices.length > 0 && opening.positions.length === opening.normals.length);
+  assert.ok(opening.positions.every(Number.isFinite));
+  assert.ok(opening.indices.every(i => Number.isSafeInteger(i) && i >= 0 && i < opening.positions.length / 3));
+  assert.deepEqual(new Set(image.edits.map(row => row.expressId)), new Set([59286, 59354]));
+  const { runPageAppearancePlanning } = await import('../../workers/appearance.worker.js');
+  const page = await runPageAppearancePlanning(source, { appearance: request,
+    page: { width: 1, height: 1, byteOffset: 0, byteLength: 4 }, sourceImages: [], texelsPerMetre: 16,
+  }, new Uint8Array([255, 0, 0, 255]));
+  assert.deepEqual(page.plan.exclusions, []); assert.ok(page.assets.length > 0);
+  assert.deepEqual(page.plan.conversions![0].sourceRemovedMeshes, conversion.sourceRemovedMeshes);
+  assert.deepEqual(page.plan.conversions![0].sourceIndices, conversion.sourceIndices);
+});

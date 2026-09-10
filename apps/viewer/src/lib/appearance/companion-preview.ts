@@ -22,6 +22,7 @@ export function companionHiddenNow(globalId: number, state = useViewerStore.getS
 export function bindCompanionPreview(state: ViewerState, renderer: Renderer, modelId: string,
   plan: AppearancePlan): AppearancePreviewParts[] {
   const scene = renderer.getScene();
+  const place = scene.placeAppearanceSource?.bind(scene);
   const owners = new Map<number, NonNullable<AppearancePlan['conversions']>[number]>();
   const model = state.models.get(modelId), frame = placementFrameKey(state);
   const validate = () => {
@@ -45,16 +46,16 @@ export function bindCompanionPreview(state: ViewerState, renderer: Renderer, mod
       sourceColor: [Math.fround(mesh.color[0]), Math.fround(mesh.color[1]), Math.fround(mesh.color[2]), Math.fround(mesh.color[3])], sourceOrigin: mesh.origin ?? [0, 0, 0], sourceRemovedMeshes: undefined });
     const list = parts.get(mesh.express_id) ?? [];
     if (list.some(part => part.geometryItemId === native.geometryItemId)) throw new Error('Duplicate companion item provenance.');
-    const place = scene.placeAppearanceSource?.bind(scene);
     if (!place) throw new Error('The renderer does not support canonical companion geometry.');
     list.push(place(native)); parts.set(mesh.express_id, list);
   }
   return [...parts].map(([owner, expected]) => {
+    if (!place) throw new Error('The renderer does not support canonical companion geometry.');
     const globalId = state.toGlobalId(modelId, owner);
     const resident = scene.getMeshDataPieces(globalId);
     const hidden = companionHiddenNow(globalId, state);
     const originals = resident ?? (hidden ? model?.geometryResult?.meshes.filter(part => part.expressId === globalId)
-      .map(part => scene.placeAppearanceSource({ ...part, modelIndex: expected[0].modelIndex })) : undefined);
+      .map(part => place({ ...part, modelIndex: expected[0].modelIndex })) : undefined);
     if (scene.isInstancedEntity(globalId) || !originals || !sameCompanionParts(originals, expected.map((part, index) => ({
       ...part,
       // Native MeshData JSON omits this pre-placement metadata. Both compared

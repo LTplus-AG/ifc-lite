@@ -22,6 +22,10 @@ Rows run in displayed order. A later included row replaces earlier assignments
 on overlapping objects in the same model. Excluding an object from a row exposes
 any earlier assignment for that object; exclusions do not affect another model.
 The review reports affected, excluded and overridden counts separately.
+Object review opens one assignment at a time and mounts at most 50 members.
+Search covers the full reviewed membership by display name or GlobalId; paging
+and closing the review do not discard exceptions. Closed scopes mount no object
+checkboxes, so a model-sized membership does not become a model-sized DOM tree.
 
 Saved recipes are bounded, versioned JSON. Restoring requires an explicitly
 chosen loaded model for each saved slot and the original source derivative.

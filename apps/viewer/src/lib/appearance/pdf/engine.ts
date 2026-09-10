@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { getDocument, RenderTask } from 'pdfjs-dist';
 import type { DocumentInitParameters } from 'pdfjs-dist/types/src/display/api.js';
+import { decodePdfVectorPage, type PdfVectorDecoder } from './vector-adapter.js';
 import { pageInfo, rasterRecipe } from './raster-recipe.js';
 import {
   PDF_LIMITS,
@@ -18,6 +19,7 @@ export interface PdfRasterSurface {
 }
 export interface PdfEngineBackend {
   getDocument: typeof getDocument;
+  vectorDecoder?: PdfVectorDecoder;
   options?: Partial<DocumentInitParameters>;
   surface(width: number, height: number): PdfRasterSurface;
 }
@@ -103,6 +105,10 @@ export async function runPdfJob(
           pageCount: document.numPages,
           page: pageInfo(page),
         };
+      if (job.kind === 'vectors') {
+        if (!backend.vectorDecoder) throw new PdfAppearanceError('unsupported', 'PDF vector decoding is unavailable.');
+        return { kind: 'vectors', page: await decodePdfVectorPage(page, source, job.request, backend.vectorDecoder, options.signal) };
+      }
       const recipe = rasterRecipe(page, job.request),
         scale = recipe.effectiveDpi / 72;
       const scaleX = recipe.pixelWidth / recipe.cropPoints[2],

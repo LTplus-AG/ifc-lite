@@ -839,3 +839,27 @@ at every combination of density, overlap and geometry complexity.
 [Independent transfer evidence](../architecture/evidence/mesh-transfer/README.md)
 checks a controlled IFC/PNG roundtrip. No real scan-to-BIM accuracy is claimed
 without valid spatially distributed held-out correspondences.
+
+### PDF vector graphics-state preparation
+
+`IfcAPI.preparePdfVectorPage(requestJson)` returns UTF-8 JSON bytes for a bounded
+`PreparedPdfVectorPage` report. The strict request is the decoder-neutral
+`PdfVectorPage` defined in `rust/processing/src/pdf_vector/types.rs`; the viewer's
+existing PDF worker produces it through its `vectors` job using pinned PDF.js
+6.3.289. It retains original operator indices, page/source identity and the host's
+explicit calibrated native-PDF-to-model-plane affine.
+
+`stateQualified` is a graphics-state preparation result only. This call does not
+flatten curves, outline strokes, classify/compose fills, create IFC entities or
+approve exact/partial conversion. Unsupported paint semantics and painted
+hairlines leave diagnostics and `stateQualified=false`; returned paths then serve
+diagnostic inspection only. No Apply plan exists in this response. Malformed
+structure and exceeded work/JSON limits throw before any report is published.
+
+The request digest is SHA-256 of the UTF-8 algorithm ID concatenated directly with
+compact typed Rust serde JSON. JSON number spelling and field order follow the
+Rust types; a JavaScript JSON reserialization is not that canonical byte stream.
+Keep the immutable request paired with its report. Native code does not parse the
+PDF bytes; the host verifies original source ownership and decoder provenance.
+See [the full preparation contract](../architecture/pdf-vector-annotations.md#bounded-graphics-state-preparation)
+for limits, unsupported operations and the subsequent geometry/creation stages.

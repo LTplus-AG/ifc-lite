@@ -923,3 +923,13 @@ a shared index must belong to the decoder's exact immutable source bytes.
 The lookup refuses sources over 256 MiB, more than one million styled-item edges,
 records over 16 KiB, more than 64 styled items attached to one geometry item, or
 malformed source records. Failure never means that an item has no style.
+
+### PDF vector graphics-state preparation
+
+`ifc_lite_processing::pdf_vector::prepare_pdf_vector_page(&PdfVectorPage)` returns
+a `PreparedPdfVectorPage` containing ordered source paths and complete graphics
+state snapshots. Canonical Rust validates bounded decoded input and binds the
+immutable page/calibration/operations request. It does not parse PDF bytes,
+flatten curves or create IFC entities. `state_qualified` is deliberately separate
+from geometry fidelity or Apply readiness. See the [WASM contract](wasm.md#pdf-vector-graphics-state-preparation)
+and [annotation implementation boundary](../architecture/pdf-vector-annotations.md#bounded-graphics-state-preparation).

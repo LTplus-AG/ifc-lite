@@ -20,14 +20,14 @@ import type { AppearancePanelViewProps } from './types.js';
 import { installAssignmentWorker } from './assignment-worker.fixture.js';
 const wasm = new URL('../../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
 
-function Harness({ initialEnabled = true }: { initialEnabled?: boolean }) {
+function Harness({ initialEnabled = true, queryScope = false }: { initialEnabled?: boolean; queryScope?: boolean }) {
   const [enabled, setEnabled] = useState(initialEnabled);
   const [modelId, setModelId] = useState('a');
   const sources = useViewerStore(state => state.appearanceSources);
   const models = useViewerStore(state => state.models);
   const base: AppearancePanelViewProps = { models: [...models].map(([id]) => ({id,name:id})), modelId,
     onModelChange: setModelId, sources, sourceId: sources[0]?.id ?? null, onSourceChange() {}, onUpload() {},
-    scope: {kind:'model'}, onScopeChange() {}, classes: [], types: [], selectionCount: 0, affectedCount: 1, excludedCount: 0,
+    scope: queryScope ? { kind:'filter', query:{name:'Named surfaces',combinator:'AND',rules:[{kind:'name',op:'eq',value:'Surface'}]} } : {kind:'model'}, onScopeChange() {}, classes: [], types: [], selectionCount: 0, affectedCount: 1, excludedCount: 0,
     settings: {...DEFAULT_APPEARANCE_SETTINGS, kind:'planar', plane:'xy', tileWidth: modelId === 'a' ? 2 : 4}, onSettingsChange() {},
     status:'idle', canApply:false, canDiscard:false, hasPreview:false, showingOriginal:false, onCompareChange() {}, onApply() {}, onDiscard() {},
   };
@@ -47,7 +47,7 @@ async function until(predicate: () => boolean) {
   for (let i = 0; i < 100 && !predicate(); i++) await advance(10);
   assert.ok(predicate(), `Mounted operation did not reach its expected state: ${document.body.textContent}`);
 }
-for (const scenario of ['apply', 'cancel', 'stale', 'room'] as const) test(`mounted native multi-model assignments ${scenario} preserve complete transaction scope #4420`, {
+for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query'] as const) test(`mounted native multi-model assignments ${scenario} preserve complete transaction scope #4420`, {
   skip: !existsSync(wasm) && 'Run pnpm build:wasm for native assignment tests',
 }, async t => {
   const initial = useViewerStore.getState(), previousRenderer = getGlobalRenderer();
@@ -58,12 +58,13 @@ for (const scenario of ['apply', 'cancel', 'stale', 'room'] as const) test(`moun
   t.mock.method(appearanceAssets, 'decode', async () => ({width:1,height:1,close(){}} as ImageBitmap));
   useViewerStore.setState({ appearanceAssignments:null, appearanceSources:[{id:f.asset.id,name:'Texture',width:1,height:1}] });
   try {
-    let ui = render(<StrictMode><Harness /></StrictMode>);
+    let ui = render(<StrictMode><Harness queryScope={scenario === 'query'} /></StrictMode>);
     click(button(ui, 'Add this scope'));
     await until(() => useViewerStore.getState().appearanceAssignments?.assignments.length === 1);
     click(button(ui, 'Choose model b')); click(button(ui, 'Add this scope'));
     await until(() => useViewerStore.getState().appearanceAssignments?.assignments.length === 2);
     assert.equal(useViewerStore.getState().undoStacks.size, 0);
+    if (scenario === 'query') assert.ok(useViewerStore.getState().appearanceAssignments?.assignments.every(row => row.query.kind === 'filter'), 'frozen query survives coordinated preparation (#4404)');
     if (scenario === 'apply') {
       cleanup(); ui = render(<StrictMode><Harness initialEnabled={false} /></StrictMode>);
       click(button(ui, 'Use image appearance'));

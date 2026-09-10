@@ -13,7 +13,7 @@ type Controller = ReturnType<typeof useAppearanceAssignments>;
 function queryLabel(row: AppearanceAssignment): string {
   const query = row.query;
   return query.kind === 'model' ? 'Whole model' : query.kind === 'selection' ? 'Selected objects'
-    : query.kind === 'class' ? query.ifcClass : `IFC type ${query.GlobalId}`;
+    : query.kind === 'class' ? query.ifcClass : query.kind === 'filter' ? `Filter: ${query.query.name}` : `IFC type ${query.GlobalId}`;
 }
 function ReviewBinding({ row, controller, base }: { row: AppearanceAssignment; controller: Controller; base: AppearancePanelViewProps }) {
   const { modelId, sourceId } = controller.binding(row);

@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { AppearanceQueryDefinition } from '../query-definition.js';
 import type { AppearanceDraftSettings, AppearanceSourceOption } from '../draft-types.js';
 
 /** Model slots remain explicit even when two loaded files have identical bytes. */
@@ -19,7 +20,8 @@ export type AssignmentQuery =
   | { kind: 'model' }
   | { kind: 'selection'; GlobalIds: string[] }
   | { kind: 'class'; ifcClass: string }
-  | { kind: 'type'; GlobalId: string };
+  | { kind: 'type'; GlobalId: string }
+  | { kind: 'filter'; query: AppearanceQueryDefinition };
 export interface AppearanceAssignment {
   id: string;
   model: AssignmentModel;

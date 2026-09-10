@@ -1319,3 +1319,17 @@ retain the same guards and avoid manufacturing those internal boundaries.
 Collapsed/reversing offsets and unresolved joins refuse rather than repairing
 an unqualified stroke arrangement. See the [source-specific raw controls](../../docs/architecture/evidence/pdf-straight-stroke-annotations/native-load.json)
 and original PDF/independent IFC evidence alongside them.
+
+## One integer lattice for registered PDF composition (#4458)
+
+Exact-source interleaved normal-load probes resolve no regression; both paired
+phase minima and all ordered mesh fingerprints/counts are identical. This does
+not measure PDF authoring or worker throughput. The useful mechanism is retaining
+integer groups through classification, clipping and paint ordering: repeatedly
+creating floating adapters had shifted a shared CropBox edge enough to trigger
+a false topology refusal. Source qualification now happens once, and every stage
+still checks finite-edge topology. A separate finite-segment separation
+certificate avoids treating an unrelated infinite-line side change as an edge
+intersection. No tolerance/endpoint guard was replaced by epsilon snapping.
+[Source-matched raw samples and original PDF evidence](../../docs/architecture/evidence/pdf-composition-lattice/README.md)
+record the control and prevent repeating the float-roundtrip approach.

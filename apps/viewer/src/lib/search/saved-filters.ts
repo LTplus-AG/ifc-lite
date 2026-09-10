@@ -74,7 +74,7 @@ function safeStorage(): StorageLike | null {
  */
 let catalogUnwritable = false;
 
-function readRaw(): SavedFilterPreset[] {
+function readRaw(validate?: (preset: unknown) => unknown): SavedFilterPreset[] {
   const ls = safeStorage();
   if (!ls) return [];
   catalogUnwritable = false;
@@ -104,6 +104,13 @@ function readRaw(): SavedFilterPreset[] {
       const o = item as Record<string, unknown>;
       const name = typeof o.name === 'string' ? o.name.trim() : '';
       if (!name || name.length > MAX_NAME_LEN) continue;
+      if (validate) {
+        try { validate(o); }
+        catch (error) {
+          console.warn(`[ifc-lite] Saved filter "${name}" is unavailable for this operation.`, error);
+          continue;
+        }
+      }
       const combinator: Combinator = o.combinator === 'OR' ? 'OR' : 'AND';
       const rules = parseFilterRules(o.rules);
       const updatedAt = typeof o.updatedAt === 'number' ? o.updatedAt : Date.now();
@@ -150,8 +157,8 @@ function writeRaw(list: SavedFilterPreset[]): boolean {
 }
 
 /** All saved presets, sorted by name (A→Z) for stable UI ordering. */
-export function loadSavedFilters(): SavedFilterPreset[] {
-  const list = readRaw();
+export function loadSavedFilters(validate?: (preset: unknown) => unknown): SavedFilterPreset[] {
+  const list = readRaw(validate);
   list.sort((a, b) => a.name.localeCompare(b.name));
   return list;
 }

@@ -50,6 +50,7 @@ export {
 export { generateLod0 } from './lod0-generator.js';
 export { generateLod1, type GenerateLod1Options } from './lod1-generator.js';
 export { parseGLB, extractGlbMapping, parseGLBToMeshData, countGlbMeshes } from './glb.js';
+export { countObjVertices } from './obj.js';
 
 export { columnsToParquet, isParquet } from './columns-to-parquet.js';
 // THE CSV cell escaper for this repo's TypeScript — RFC 4180 quoting plus the

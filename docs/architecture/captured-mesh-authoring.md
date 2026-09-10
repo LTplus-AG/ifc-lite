@@ -70,7 +70,7 @@ mesh region.
 
 ## Shared host implementation
 
-`prepareTexturedProduct` serializes the effective IFC mutation view and captures
+`prepareAuthoredProduct` serializes the effective IFC mutation view and captures
 its allocation/revision guard once for both annotations and captured surfaces.
 `commitTexturedProduct` owns publication, containment, original-image retention,
 selection cleanup on Undo and stable identity on Redo. Drawing creation uses the

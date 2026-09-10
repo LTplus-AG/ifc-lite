@@ -7,7 +7,7 @@ import type { AppearanceCommitOptions } from './command';
 import { appearanceAssets, modelAppearanceAssets } from './model-assets';
 import { createAppearancePlanner, type AppearancePlanner } from './planner-worker-client';
 import type { CapturedMeshRequest } from './planner-types';
-import { prepareTexturedProduct } from './prepare-textured-product';
+import { prepareAuthoredProduct } from './prepare-authored-product';
 import { commitTexturedProduct } from './textured-product-command';
 
 /** Region preparation owns the registration/selection guard. The mesh is an
@@ -45,7 +45,7 @@ export async function createIfcFromCapturedMesh(modelId: string, containerId: nu
   appearanceAssets.retain(assetId, owner);
   let planner: AppearancePlanner | undefined;
   try {
-    const target = await prepareTexturedProduct(modelId, options.signal, () => capture.validate());
+    const target = await prepareAuthoredProduct(modelId, options.signal, () => capture.validate());
     // Native planning receives target-source coordinates. Workspace translation
     // is applied by the renderer through its existing model placement transform.
     const [x, y, z] = target.translation;

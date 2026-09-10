@@ -8,7 +8,7 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 import { prepareCapturedRegion } from '@/lib/appearance/capture/source';
 import { createIfcFromCapturedMesh, type CapturedMeshSource } from '@/lib/appearance/create-captured-mesh';
 import { useIfcAuthoringTarget } from './useIfcAuthoringTarget';
-import { CapturePreview } from './CapturePreview';
+import { AppearanceMeshPreview } from './AppearanceMeshPreview';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { appearanceSelectClass } from './AppearanceSourceFields';
@@ -72,7 +72,7 @@ export function AppearanceCapturePanel() {
       onChange={event => setChosen(event.target.value)}>{!candidate && <option value="">{candidates.length ? 'Choose a source surface' : 'Open or add a textured model'}</option>}
       {candidates.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
     </select></label>
-    {candidate && assetId && <CapturePreview key={candidate.id} mesh={candidate.mesh} assetId={assetId} triangles={triangles} disabled={busy}
+    {candidate && assetId && <AppearanceMeshPreview key={candidate.id} mesh={candidate.mesh} assetId={assetId} triangles={triangles} disabled={busy}
       onRegion={setTriangles} onReady={value => { setReady(value); if (value) { setError(false); setMessage('Review the textured region, then choose where to create it.'); } }} onError={text => { setReady(false); setError(true); setMessage(text); }} />}
     {!!assetId && <p className="text-[11px]" role="status">{triangles.length.toLocaleString()} triangles in this region</p>}
     <fieldset disabled={busy || !!room} className="space-y-2">

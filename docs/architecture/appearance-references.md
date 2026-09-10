@@ -75,8 +75,9 @@ Registration JSON carries this optional provenance, but still excludes PDF bytes
 and passwords. Restoring metadata never substitutes another PDF with the same
 raster image: only re-uploading the exact document digest can restore its original
 provider. Older image-only registrations remain images and are never automatically
-promoted to PDF-backed records. This is the source-ownership prerequisite for
-vector annotation creation, not a new vector creation button.
+promoted to PDF-backed records. This source ownership is used by the explicit PDF vectors option in Save into
+model. Its native preview and creation guards are described in the
+[PDF annotation workflow](pdf-vector-annotations.md#registered-pdf-annotation-workflow).
 
 [Browser and lifetime evidence](evidence/pdf-reference-lineage/README.md) covers
 catalog page changes, removal, retained original decoding, editing, history and

@@ -940,3 +940,8 @@ try {
 - [Rendering Guide](rendering.md) - WebGPU rendering features
 - [API Reference](../api/typescript.md) - Complete API documentation
 - [Architecture](../architecture/overview.md) - System design details
+
+Symbolic sidecars use schema-v2 cache entries and full JSON responses use v3
+to refresh direct fill provenance. Existing Parquet geometry keys stay valid;
+a replay needs current symbolic metadata, so stale sidecars trigger a reparse.
+Older symbol JSON remains decodable with unknown item provenance.

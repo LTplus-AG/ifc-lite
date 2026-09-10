@@ -201,6 +201,7 @@ fn from_data_carries_every_fill_field() {
 
     let f = collection.get_fill(0).expect("fill 0");
     assert_eq!(f.express_id(), 404);
+    assert_eq!(f.geometry_item_id(), None, "legacy data has no provenance");
     assert_eq!(f.ifc_type(), "IfcAnnotationFillArea");
     assert_eq!(f.point_count(), 7, "14 floats are 7 vertices");
     assert_eq!(f.hole_count(), 1);
@@ -416,4 +417,17 @@ fn is_full_circle_tests_the_sweep_not_an_endpoint() {
     assert!(mk(1.0, 1.0 + std::f32::consts::TAU).is_full_circle());
     // The reversed sweep is not: dropping the sign makes this pass.
     assert!(!mk(std::f32::consts::TAU, 0.0).is_full_circle());
+}
+
+#[test]
+fn issue_4459_provenance_wire_survives_wasm_conversion_and_getter_clone() {
+    let data = proc_types::SymbolicData { fills: vec![hatched_fill(404)], ..Default::default() };
+    let mut wire = serde_json::to_value(&data).unwrap();
+    wire["fills"][0]["geometry_item_id"] = serde_json::json!(777);
+    let enriched: proc_types::SymbolicDataWithProvenance = serde_json::from_value(wire).unwrap();
+    let collection = SymbolicRepresentationCollection::from_data_with_provenance(enriched);
+    let fill = collection.get_fill(0).unwrap();
+    assert_eq!(fill.geometry_item_id(), Some(777));
+    assert_eq!(fill.express_id(), 404);
+    assert!(fill.has_hatching());
 }

@@ -578,6 +578,7 @@ pub(crate) fn extract_style_info_from_styled_item(
     decoder: &mut EntityDecoder,
 ) -> Option<GeometryStyleInfo> {
     surface_style_from_styled_item(styled_item, decoder).map(|(_, info)| info)
+        .or_else(|| crate::style::fill::fill_style_from_styled_item(styled_item, decoder))
 }
 
 /// Canonical first valid rendering style, also used when authoring clones its

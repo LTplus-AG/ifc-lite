@@ -5,9 +5,28 @@ loaded IFC4 or IFC4X3 model. The panel is also available from the activity rail
 and command palette.
 
 Choose the target model, then choose the whole model, selected objects, an IFC
-class, or an exact type. Types with the same name remain separate. If some
+class, an exact type, or a saved Search filter. Types with the same name remain separate. If some
 objects are unsupported, the panel explains the exclusions and offers an
 explicit supported-objects selection.
+
+## Saved-filter scopes
+
+Save a named filter in Search, then choose **Saved filter** in Appearance. Use
+**Refresh filters** to refresh the catalog. Selecting a filter copies its rules
+into the draft; changing the Search preset later does not alter that draft.
+**Use updated filter** explicitly adopts a changed definition.
+
+Rules run against the effective IFC, including unsaved property and attribute
+edits, and only the chosen model's captured surface owners. Preview and Apply
+share that snapshot and exact membership. An intervening IFC edit invalidates
+the preview. Saved assignment recipes retain the filter definition and reviewed
+GlobalIds; restoring them re-evaluates the definition and reports membership
+changes before use.
+
+Queries support at most 32 rules and 10,000 candidate objects. Invalid predicates
+are refused as a whole query. Exact hierarchy storey selections contain session
+IDs and are unavailable here; save a filter using storey names instead. Named
+storey filters retain Search's name-matching semantics, including duplicate names.
 
 ## Image appearance
 
@@ -49,6 +68,28 @@ Landmarks stay in native page coordinates when crop, rotation or quality changes
 Selecting a different page clears its calibration. A PDF source keeps its
 original document during the session; replacing its page releases unused raster
 images while committed results and Undo/Redo retain the images they need.
+
+## Several scopes and models together
+
+Use **Add this scope** to capture the current model, image or PDF page, object
+scope and mapping. Add further assignments with different sources or settings.
+The list shows each saved scope; reorder rows to choose which wins on overlapping
+objects. **Review objects and exceptions** lets you search by name or IFC GlobalId
+and exclude individual members. An exclusion leaves any earlier assignment in
+place for that object.
+
+Choose **Preview all assignments**, compare the originals, then **Apply**. The
+whole operation is saved together. One Undo from any participating model restores
+all targets; Redo reapplies them. If another model has a newer edit, undo that
+edit first before undoing the grouped appearance change. Identical model filenames
+show a Model 1 / Model 2 cue in target and export selectors.
+
+**Save recipe** retains the logical scopes and mappings. After **Restore recipe**,
+choose the loaded models and original sources, review membership changes, and
+accept the new scope before previewing. Source choices for several rows in one
+model can be staged together. The recipe does not include source images or PDF
+files; load those separately. Unchanged scopes can resume without repeated
+confirmation while their original models and sources remain loaded.
 
 ## Export and sharing
 
@@ -158,3 +199,115 @@ Creation is available outside shared rooms; the saved IFC can then be shared.
 
 For implementation status, shared workflow boundaries and future scan/PDF options,
 see the [appearance roadmap](../architecture/appearance-roadmap.md).
+
+## Appearance on evaluated occurrences
+
+Select an image or PDF page, choose the IFC scope, and enable **Convert supported
+objects to mesh** when the chosen objects use mapped type geometry or supported
+swept geometry with openings. The option is
+off by default and requires planar or box mapping. The preview lists the objects
+whose current shape will become mesh geometry instead of using their type's
+parametric geometry. **Compare original** temporarily restores the original;
+**Discard** publishes no IFC changes. **Apply** saves the texture and conversion
+in one operation, and Undo restores both together.
+
+Conversion preserves each product's identity, placement, properties and semantic
+relationships. Shared type geometry and sibling occurrences stay unchanged.
+Supported metre-unit opening hosts retain their already-cut shape. Their opening
+relationships remain, while the opening Body becomes a Reference representation
+and stops rendering or cutting again. Preview, Discard and Undo include these
+opening objects, even when their type is hidden. Shared type geometry is preserved
+by replacing only the occurrence Body; ambiguous ownership, layered slicing and
+unsupported materials remain excluded. Use **Use supported objects** to explicitly narrow a
+partially supported scope, then inspect the refreshed preview before applying.
+Export **IFC + images** to retain portable appearance on reopening or sharing.
+GPU-instanced occurrences use the same workflow: preview replaces only the chosen
+occurrence, and Undo restores its original shared instance. Finish any model
+placement preview and return to stacked levels before preparing a conversion.
+Models requiring CRS reprojection are excluded from this initial conversion path.
+
+Some readers, including IfcOpenShell 0.8.2 with its default subtraction setting,
+incorrectly subtract Reference openings again; see the
+[independent interoperability evidence](../architecture/evidence/evaluated-openings/README.md).
+
+Native `planAppearance` and `planPageAppearance` requests accept
+`representationPolicy: "evaluatedOccurrence"`; the omitted policy is `"preserve"`.
+Returned `conversions` identify the original item and corner provenance and the
+replacement item. Renderer integrations pass validated global original/replacement
+IDs in `AppearancePreview.begin(owner, { geometryItemRemaps })`; each pair has
+`from` and `to` fields. The renderer freezes these explicit pairs, retains exact
+triangle-corner and ownership checks, and records the pairs in `AppearanceChange`
+for reversible history. Unlisted item-ID changes remain invalid. Opening conversions
+also carry bounded `sourceRemovedMeshes` in canonical native `MeshData` form.
+After validating product/item identity and placement, renderer integrations pass
+`companionOriginals` to `AppearancePreview.begin`; the only permitted transitions
+are those exact untextured originals and an empty mesh list. `sameCompanionParts`
+compares that restoration contract. `companionHidden: true` additionally requires
+the host to prove current hidden visibility and exact canonical source inventory;
+it preserves nonresident originals without uploading or exposing them during
+preparation. Retain the source resources through command history and release them
+when that history is disposed. See the
+[evaluated-occurrence contract](../architecture/appearance-evaluated-occurrences.md).
+
+Renderer integrations preparing an occurrence replacement can call
+`scene.retainInstancedOccurrence(globalId, modelIndex)` after geometry is resident.
+The returned lease has `valid`, `setSuppressed(boolean)`, and `release()` members.
+Suppression removes that occurrence from drawing, picking, and CPU instance
+geometry enumeration while retaining its shared template, current placement,
+selection, and colour override state. Releasing it restores the current user
+hide/isolate state. Model removal or a scene reset invalidates the lease.
+Retained leases prevent CPU geometry release until history releases them.
+
+This resource operation does not create IFC geometry or canonical UV provenance.
+An appearance integration must separately validate the native evaluated mesh and
+its model frame, publish a replacement, and retain the lease for Undo. It must
+release the lease if preparation fails or the preview is discarded.
+
+Opted-in native occurrence plans include canonical `sourcePositions`,
+`sourceNormals`, `sourceOrigin`, `sourceColor`, and `rtcOffset` alongside
+`sourceIndices` in each `conversions` entry. Renderer integrations use that bounded
+IFC Z-up snapshot to prepare one occurrence; reconstructing a GPU instance does
+not supply equivalent source provenance. See the
+[evaluated occurrence contract](../architecture/appearance-evaluated-occurrences.md)
+for units, frame restoration, and eligibility limits.
+
+The viewer passes that canonical source in renderer Y-up coordinates through
+`scene.placeAppearanceSource(mesh)` and then
+`AppearancePreview.begin(owner, { materializedOriginals, geometryItemRemaps })`.
+`getParts(owner)` includes retained canonical originals when the GPU instance is
+visible. Before committing, each history command calls `retainSource(owner)` and
+keeps the returned release function until that command is disposed. Multiple
+commands share one original occurrence; disposing an older command cannot restore
+it beneath a newer edit. `scene.appearanceSourceMesh(mesh)` recovers model-local
+geometry for publication without applying the registered model translation twice.
+These methods are optional on custom renderer adapters; the viewer refuses
+instance conversion if its frame conversion API is unavailable.
+
+For a flat-geometry rebuild, `scene.clearFlatGeometryForRebuild(visibleGeometry,
+loadedModelIndices, sourceGeometry)` validates every retained owner against the
+full loaded source geometry before disposing GPU buffers. Pass hidden models in
+that source inventory to retain their appearance history across hide/show.
+Changed or removed owners lose their old instance lease; ordinary
+`clearFlatGeometry()` and full scene reset still invalidate all such leases.
+
+Authored annotation/captured-object `Name` values and appearance image paths
+must not consist of a reserved mutation wire token (`$`, `*`, `#123`, or
+`.ENUM.`, including surrounding whitespace). Native planners refuse these
+values before returning a plan because the current STEP mutation protocol has
+no unqualified literal-string marker. Ordinary names, including Unicode and
+punctuation, remain unchanged. Preserved page material names use the same rule.
+
+### Scan transfer capacity
+
+Registered mesh transfer keeps the entire selected IFC object as its target.
+Preview reports observed and unknown coverage; unreliable observations keep the
+object’s previous appearance. Increasing atlas density can improve visible
+detail but also increases memory use. If a request exceeds the bounded memory
+or work allowance, reduce the chosen density or explicitly narrow the source
+extent, then preview again. The viewer never silently removes target triangles.
+
+The complete selected boulder capture is covered by the
+[full-target acceptance evidence](../architecture/evidence/mesh-transfer-full-target/README.md),
+including export, fresh import, selection and an independent IFC reader. This
+known-derived control does not establish automatic alignment of unrelated scans
+and BIM models.

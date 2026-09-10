@@ -1,0 +1,43 @@
+{
+  "reader": "IfcOpenShell",
+  "version": "0.8.2",
+  "product": 59290,
+  "canonicalNativeVsExportedReference": {
+    "aToBSampledSurfaceDistanceMetres": 0.0,
+    "bToASampledSurfaceDistanceMetres": 0.0,
+    "aVolumeCubicMetres": 19.96825731316872,
+    "bVolumeCubicMetres": 19.96825731316872,
+    "volumeDifferenceCubicMetres": 0.0
+  },
+  "canonicalNativeVsAuthoredRawTfs": {
+    "aToBSampledSurfaceDistanceMetres": 0.0,
+    "bToASampledSurfaceDistanceMetres": 0.0,
+    "aVolumeCubicMetres": 19.96825731316872,
+    "bVolumeCubicMetres": 19.96825731316872,
+    "volumeDifferenceCubicMetres": 0.0
+  },
+  "originalReaderVsCanonicalNative": {
+    "aToBSampledSurfaceDistanceMetres": 7.054037656217815e-05,
+    "bToASampledSurfaceDistanceMetres": 0.0001252296254604303,
+    "aVolumeCubicMetres": 19.967154915720993,
+    "bVolumeCubicMetres": 19.96825731316872,
+    "volumeDifferenceCubicMetres": 0.0011023974477275544
+  },
+  "exportedDefaultReader": {
+    "triangles": 46,
+    "volumeCubicMetres": 19.060408644552933
+  },
+  "exportedReferenceSemanticsReader": {
+    "triangles": 32,
+    "volumeCubicMetres": 19.96825731316872
+  },
+  "changedExistingEntities": [
+    59286,
+    59354
+  ],
+  "sourceSchemaFindings": 170,
+  "exportSchemaFindings": 169,
+  "newSchemaFindings": [],
+  "surfaceSampling": "Bidirectional exact point-to-triangle distances for all vertices, triangle centroids and edge midpoints; this is a sampled surface comparison, not a full Hausdorff proof.",
+  "referenceCaveat": "Default IfcOpenShell 0.8.2 incorrectly subtracts Reference openings; default-reader roundtrip equivalence is not claimed."
+}

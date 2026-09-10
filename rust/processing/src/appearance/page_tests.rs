@@ -10,7 +10,7 @@ fn fixture() -> (PageAppearanceRequest, Vec<u8>) {
     let mut rgba = page;
     rgba.extend([20, 80, 160, 255, 80, 160, 240, 255, 160, 40, 80, 255, 240, 80, 20, 255]);
     (PageAppearanceRequest {
-        appearance: AppearanceRequest { schema: "IFC4".into(), source_revision: "page-fixture".into(),
+        appearance: AppearanceRequest { representation_policy: RepresentationPolicy::Preserve, schema: "IFC4".into(), source_revision: "page-fixture".into(),
             next_express_id: 100, product_ids: vec![10, 30], image_uri: "appearance/page.png".into(),
             repeat_s: false, repeat_t: false, mapping: Mapping::Planar { frame: MappingFrame::World,
                 origin: [0.2, 0.2, 0.], axis_u: [1., 0., 0.], axis_v: [0., 1., 0.], metres_per_tile: [0.4, 0.4] } },
@@ -241,4 +241,14 @@ fn png_budget_refuses_truncated_final_chunk_4260() {
     let mut pixels = vec![0; decoder.output_buffer_size().unwrap()];
     decoder.next_frame(&mut pixels).unwrap();
     assert_eq!(pixels, atlas.rgba);
+}
+
+#[test]
+fn issue_4441_page_style_preservation_uses_shared_exact_wire_token_guard() {
+    let (request, rgba) = fixture();
+    for name in ["*", "$", "#123", ".ENUM.", "\u{feff}#123\u{feff}"] {
+        let source = CONTROLLED_IFC.replace("'Wood'", &format!("'{name}'"));
+        assert!(plan_page_appearance(source.as_bytes(), &request, &rgba).unwrap_err()
+            .contains("Page material name is a reserved appearance wire token"));
+    }
 }

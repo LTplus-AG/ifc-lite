@@ -108,7 +108,7 @@
    946 apps/viewer/src/components/viewer/useMouseControls.ts
    782 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1819 apps/viewer/src/components/viewer/Viewport.tsx
-  1530 apps/viewer/src/components/viewer/ViewportContainer.tsx
+  1382 apps/viewer/src/components/viewer/ViewportContainer.tsx
    511 apps/viewer/src/components/viewer/ZonesPanel.tsx
    862 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
@@ -144,7 +144,6 @@
   1141 apps/viewer/src/lib/llm/script-preflight.ts
    410 apps/viewer/src/lib/llm/stream-client.ts
    809 apps/viewer/src/lib/llm/system-prompt.ts
-   403 apps/viewer/src/lib/overlay-parse/symbolic-flat.ts
    491 apps/viewer/src/lib/scripts/templates/create-building.ts
    598 apps/viewer/src/lib/search/filter-evaluate.ts
    450 apps/viewer/src/lib/search/tier1-index.ts
@@ -361,6 +360,6 @@
    591 scripts/review/run-reviewer.mjs
    688 scripts/source-text-assertion-detect.mjs
    504 scripts/test-geometry-regression.mjs
-  2178 scripts/test-wasm-contract.mjs
+  2180 scripts/test-wasm-contract.mjs
    678 scripts/typecheck-tests.mjs
    467 scripts/xmatch/score.mjs

@@ -36,6 +36,19 @@ describe('BCF_SERVER_PRESETS invariants', () => {
     }
   });
 
+  it('BIMcollab carries the scope its IdentityServer requires', () => {
+    // createAuthorizationRequest writes `scope` only `if (config.scope)`, so a
+    // missing field and an empty string both send no scope at all, and
+    // BIMcollab answers a scope-less authorize request with `invalid_request`.
+    // Both halves are asserted because both are silent failures.
+    const bimcollab = findBcfServerPreset('bimcollab');
+    assert.ok(
+      bimcollab.oauthScope,
+      'bimcollab needs a truthy oauthScope; a missing or empty one omits the parameter',
+    );
+    assert.equal(bimcollab.oauthScope, 'openid offline_access bcf');
+  });
+
   it('resolves saved connections back to their preset, and unknown ones to custom', () => {
     assert.equal(presetForServerUrl('https://app.streambim.com/bcf').id, 'streambim');
     assert.equal(presetForServerUrl('https://my-own-server.example/bcf').id, CUSTOM_PRESET_ID);

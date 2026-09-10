@@ -140,7 +140,7 @@ pub(super) fn produce(
     let colours = FxHashMap::default();
     let materials = FxHashMap::default();
     let context = MeshProductionContext {
-        void_index: &voids,
+        void_index: appearance.map_or(&voids, |a| &a.void_index),
         geometry_style_index: appearance.map_or(&styles, |a| &a.geometry_style_index),
         indexed_colour_full: appearance.map_or(&colours, |a| &a.indexed_colour_full),
         element_material_colors: appearance.map_or(&materials, |a| &a.element_material_colors),

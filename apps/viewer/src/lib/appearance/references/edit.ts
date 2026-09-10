@@ -49,6 +49,7 @@ export function restoreReferenceSource(record: RegisteredAppearanceReference): A
   const owner = { kind: 'source' as const, id: `appearance:${id}` };
   const source: AppearanceSourceOption = { id, assetId: asset.id, name: previous?.name ?? `${name} (registered image)`,
     width: asset.width, height: asset.height, thumbnailUrl,
+    ...(record.pdf ? { pdfLineage: record.pdf } : {}),
     calibrationFrame: { rasterToSource: [...recipe.rasterToSource], rasterSize: [...recipe.rasterSize] },
     calibration: { sourcePoints: [[...recipe.sourcePoints[0]], [...recipe.sourcePoints[1]]], distanceMetres: recipe.distanceMetres } };
   appearanceAssets.retain(asset.id, owner);

@@ -13,6 +13,9 @@ pub(super) fn appearance(bytes: &[u8], source: &mut Source<'_>) -> ResolvedPrepa
     while let Some((id, name, start, end)) = scan.next_entity() {
         let target = match name {
             "IFCSTYLEDITEM" => &mut spans.styled_items,
+            "IFCRELVOIDSELEMENT" => &mut spans.void_rels,
+            "IFCRELFILLSELEMENT" => &mut spans.fills_rels,
+            "IFCRELAGGREGATES" => &mut spans.aggregate_rels,
             "IFCINDEXEDCOLOURMAP" => &mut spans.indexed_colour_maps,
             "IFCMATERIALDEFINITIONREPRESENTATION" => &mut spans.material_def_reprs,
             "IFCRELASSOCIATESMATERIAL" => &mut spans.rel_associates_material,

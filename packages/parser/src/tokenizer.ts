@@ -11,12 +11,21 @@ import { isIndexableExpressId } from './express-id.js';
 import { BalancedEntityScan, type ScannedEntityRef } from './scan-entities-balanced.js';
 import {
   countNewlines,
+  isSpaceByte,
   opensComment,
   opensLiteralOrComment,
   skipComment,
   skipLexical,
   skipTrivia,
 } from './step-lexing.js';
+import {
+  recordCloseOffset,
+  semicolonClosesRecord,
+  UNBALANCED_RECORD,
+} from './step-record-boundary.js';
+
+/** `recordClose` before anything has computed it (both real failures are negative). */
+const NOT_COMPUTED = -3;
 
 export class StepTokenizer {
   private buffer: Uint8Array;
@@ -31,11 +40,17 @@ export class StepTokenizer {
    *  (express-id.ts, #3395). Reset per scan; the caller reports it. */
   get oversizedIdCount(): number { return this.oversizedIds; }
 
-  /** 0 or 1: whether the last `scanEntitiesFast`/`scanEntities` run stopped
-   *  early on an unclosed `'` string, an unclosed block comment, or a
-   *  declaration cut off before its own '(' -- never a count of how many,
-   *  since the scan has no reliable way to resume past the first one it
-   *  hits. Reset at the start of every scan; the caller reports it. */
+  /** 0 or 1: whether the last run DROPPED a record for having no terminator
+   *  of its own. Never a count of how many: the first is reported and later
+   *  ones are not accumulated. Nor does it say the scan STOPPED.
+   *
+   *  The two scans DISAGREE about which records exist, and this is where that
+   *  shows. `scanEntitiesFast` applies the #4179 record-boundary rules, so
+   *  `#1=IFCA(1);\n#2=IFCB(2)\n#3=IFCC(3);` gives ids [1, 3] and a count of
+   *  1: it drops the unterminated #2 and recovers. `scanEntities`
+   *  (BalancedEntityScan) closes every record on the ')' balancing its '(' and
+   *  never looks at the ';' at all, so the same input gives [1, 2, 3] and a
+   *  count of 0. Reset at the start of every scan; the caller reports it. */
   get malformedRecordCount(): number { return this.malformedRecords; }
 
   /**
@@ -71,6 +86,7 @@ export class StepTokenizer {
     const HASH = 0x23;      // '#'
     const EQUALS = 0x3D;    // '='
     const LPAREN = 0x28;    // '('
+    const RPAREN = 0x29;    // ')'
     const SEMICOLON = 0x3B; // ';'
     const QUOTE = 0x27;     // '\''
     const NEWLINE = 0x0A;   // '\n'
@@ -253,9 +269,21 @@ export class StepTokenizer {
         if (buf[pos] !== LPAREN) { declOpen = false; continue; }
         declOpen = false; // Header complete: '(' found.
 
-        // FAST: Skip to semicolon (handling strings)
+        // FAST: Skip to semicolon (handling strings), bounded to THIS
+        // record's own body so one missing its ';' cannot latch onto a later
+        // one and swallow what lies between (#4179). close_step_record in
+        // rust/core/src/parser/lexical.rs argues both rules and the
+        // recovery; step-record-boundary.ts is this file's TS half of them.
+        // Only the hot part is inline here, because it must be:
+        // '=' is one more test on a branch chain this loop already walks, and
+        // the ')' rule is settled ONCE per record, at the ';'.
+        const parenPos = pos;
         let inString = false;
         let foundTerminator = false;
+        // Memoised across the two places that need the record's own close: the
+        // exact ';' check and the recovery below would otherwise balance the
+        // same record twice.
+        let recordClose = NOT_COMPUTED;
         while (pos < len) {
           const c = buf[pos];
           if (c === QUOTE) {
@@ -270,22 +298,27 @@ export class StepTokenizer {
             // quotes and parens inside it text, the other half of the rule the
             // literal skip above provides in the opposite direction.
             const end = skipComment(buf, pos, len);
-            if (end < 0) {
-              // Unterminated: this record has no terminator, and neither has
-              // anything after it. Drop it and stop, which is the None Rust's
-              // find_entity_end returns on the same input.
-              pos = len;
-              break;
-            }
+            if (end < 0) break; // Unterminated: recovery below finds no ')'.
             line += countNewlines(buf, pos, end);
             pos = end;
             continue;
           } else if (c === SEMICOLON && !inString) {
+            // ')' modulo whitespace settles it for every record a real file
+            // holds; anything else defers to the cold, exact check.
+            let i = pos;
+            while (i > parenPos && isSpaceByte(buf[i - 1])) i--;
+            if (buf[i - 1] !== RPAREN) {
+              recordClose = recordCloseOffset(buf, parenPos, startOffset);
+              if (!semicolonClosesRecord(buf, recordClose, pos)) break;
+            }
             // Found end of entity
             const entityLength = pos - startOffset + 1; // Include semicolon
             yield { expressId, type, offset: startOffset, length: entityLength, line: startLine };
             pos++;
             foundTerminator = true;
+            break;
+          } else if (c === EQUALS && !inString) {
+            // The next declaration started before this record was terminated.
             break;
           } else if (c === NEWLINE) {
             line++;
@@ -293,13 +326,35 @@ export class StepTokenizer {
           pos++;
         }
 
-        // Ran off the end without an unquoted ';' — usually an unescaped `'`
-        // left open, or the unterminated-comment break above; `pos` is
-        // already `len`, ending the scan here. Not resynced: with no known
-        // terminator, guessing a resume point risks fabricating entities from
-        // misaligned bytes. Recorded in `stopped`, not incremented here --
-        // see the post-loop check below.
-        if (!foundTerminator) stopped = true;
+        // No ';' of this record's own -- it ran off the end (an unescaped `'`
+        // left open, an unterminated comment), or one of the two #4179
+        // boundary rules refused the ';' it found. EVERY such exit lands here,
+        // so the recovery lives here once rather than at each `break`.
+        //
+        // Resume at the ')' balancing this record's own '(' when there is one,
+        // dropping just this record; otherwise run to `len`, ending the scan
+        // un-resynced rather than guessing a resume point from misaligned
+        // bytes. The pre-existing exits reach the second case, which is the
+        // `pos = len` they used to set for themselves.
+        if (!foundTerminator) {
+          stopped = true;
+          if (recordClose === NOT_COMPUTED) {
+            recordClose = recordCloseOffset(buf, parenPos, startOffset);
+          }
+          if (recordClose > 0) {
+            pos = recordClose;
+            line = startLine + countNewlines(buf, startOffset, pos);
+          } else if (recordClose === UNBALANCED_RECORD) {
+            // No balancing ')', but the bytes after are readable: re-hunt from
+            // past this record's '#' so the NEXT declaration is still found.
+            pos = startOffset + 1;
+            line = startLine;
+          } else {
+            // UNREADABLE_RECORD: a literal or comment swallowed the rest of
+            // the input, so there is nothing to resume from (#3695).
+            pos = len;
+          }
+        }
       } else if (char === NEWLINE) {
         line++;
         pos++;

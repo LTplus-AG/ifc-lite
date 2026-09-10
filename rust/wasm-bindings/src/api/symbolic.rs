@@ -38,7 +38,7 @@ impl IfcAPI {
         &self,
         content: String,
     ) -> crate::zero_copy::SymbolicRepresentationCollection {
-        let data = ifc_lite_processing::extract_symbolic_data(&content);
-        crate::zero_copy::SymbolicRepresentationCollection::from_data(data)
+        let data = ifc_lite_processing::extract_symbolic_data_with_provenance(&content);
+        crate::zero_copy::SymbolicRepresentationCollection::from_data_with_provenance(data)
     }
 }

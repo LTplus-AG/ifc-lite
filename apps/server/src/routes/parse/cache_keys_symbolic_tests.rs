@@ -66,9 +66,9 @@ async fn unresolved_world_y_survives_the_symbolic_cache_round_trip() {
         "one unresolved world_y must not wipe the whole cached blob"
     );
     assert!(
-        loaded.circles[0].world_y.is_nan(),
+        loaded.data().circles[0].world_y.is_nan(),
         "unresolved world_y must come back unresolved, got {}",
-        loaded.circles[0].world_y
+        loaded.data().circles[0].world_y
     );
 }
 
@@ -84,9 +84,9 @@ async fn a_genuine_zero_elevation_survives_the_cache_and_is_not_unresolved() {
     let loaded = load_cached_symbolic(&cache, "zero-key").await;
 
     assert!(!loaded.is_empty());
-    assert_eq!(loaded.circles[0].world_y, 0.0);
+    assert_eq!(loaded.data().circles[0].world_y, 0.0);
     assert!(
-        !loaded.circles[0].world_y.is_nan(),
+        !loaded.data().circles[0].world_y.is_nan(),
         "a real 0.0 elevation must never read as unresolved"
     );
 }
@@ -100,8 +100,8 @@ async fn zero_and_unresolved_stay_distinct_through_the_cache() {
     cache_symbolic_data(&cache, "zero", &one_circle(0.0)).await;
     cache_symbolic_data(&cache, "nan", &one_circle(f32::NAN)).await;
 
-    let zero = load_cached_symbolic(&cache, "zero").await.circles[0].world_y;
-    let unresolved = load_cached_symbolic(&cache, "nan").await.circles[0].world_y;
+    let zero = load_cached_symbolic(&cache, "zero").await.data().circles[0].world_y;
+    let unresolved = load_cached_symbolic(&cache, "nan").await.data().circles[0].world_y;
 
     assert!(!zero.is_nan() && zero == 0.0);
     assert!(unresolved.is_nan());

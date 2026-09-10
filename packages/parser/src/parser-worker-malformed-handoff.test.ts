@@ -180,7 +180,7 @@ describe('parser.worker.ts and the #3790 set-entity-index handoff', () => {
     await settle();
 
     assertParsed();
-    expect(diagnostics().some((m) => m.includes('stopped early'))).toBe(true);
+    expect(diagnostics().some((m) => m.includes('dropped a record'))).toBe(true);
   }, 30_000);
 
   it('stays silent when the host reported no stop', async () => {
@@ -196,7 +196,7 @@ describe('parser.worker.ts and the #3790 set-entity-index handoff', () => {
     await settle();
 
     assertParsed();
-    expect(diagnostics().some((m) => m.includes('stopped early'))).toBe(false);
+    expect(diagnostics().some((m) => m.includes('dropped a record'))).toBe(false);
   }, 30_000);
 
   it('stays silent when the host sent no such field at all', async () => {
@@ -211,7 +211,7 @@ describe('parser.worker.ts and the #3790 set-entity-index handoff', () => {
     await settle();
 
     assertParsed();
-    expect(diagnostics().some((m) => m.includes('stopped early'))).toBe(false);
+    expect(diagnostics().some((m) => m.includes('dropped a record'))).toBe(false);
   }, 30_000);
 });
 

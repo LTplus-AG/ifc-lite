@@ -10,7 +10,7 @@ use crate::error::ApiError;
 use crate::services::axis::mesh_to_yup_in_place;
 use crate::services::streaming::detect_schema_version;
 use crate::services::process_streaming;
-use crate::types::{MetadataResponse, ParseResponse, StreamEvent};
+use crate::types::{MetadataResponse, ParseResponse, SymbolicParseResponse, StreamEvent};
 use crate::AppState;
 use axum::{
     extract::{Multipart, Query, State},
@@ -27,7 +27,7 @@ pub async fn parse_full(
     State(state): State<AppState>,
     Query(query): Query<ParseQuery>,
     mut multipart: Multipart,
-) -> Result<Json<ParseResponse>, ApiError> {
+) -> Result<Json<SymbolicParseResponse>, ApiError> {
     // Extract file from multipart
     // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
     // upload is buffered, reserving the max upload size since multipart rarely
@@ -48,9 +48,9 @@ pub async fn parse_full(
     let response_cache_key = json_response_cache_key(&cache_key);
 
     // Check cache first
-    if let Some(mut cached) = state.cache.get::<ParseResponse>(&response_cache_key).await? {
+    if let Some(mut cached) = state.cache.get::<SymbolicParseResponse>(&response_cache_key).await? {
         tracing::info!(cache_key = %cache_key, "Cache HIT");
-        cached.stats.from_cache = true;
+        cached.mark_from_cache();
         return Ok(Json(cached));
     }
 
@@ -71,7 +71,7 @@ pub async fn parse_full(
     let ((result, symbolic_data), _admission) = tokio::task::spawn_blocking(move || {
         let result =
             process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality);
-        let symbolic = ifc_lite_processing::extract_symbolic_data(&content);
+        let symbolic = ifc_lite_processing::extract_symbolic_data_with_provenance(&content);
         ((result, symbolic), admission_guard)
     })
     .await?;
@@ -86,7 +86,7 @@ pub async fn parse_full(
         mesh_to_yup_in_place(mesh);
     }
 
-    let response = ParseResponse {
+    let response = SymbolicParseResponse::new(ParseResponse {
         cache_key: cache_key.clone(),
         meshes,
         mesh_coordinate_space: result.mesh_coordinate_space,
@@ -94,11 +94,11 @@ pub async fn parse_full(
         building_transform: result.building_transform,
         metadata: result.metadata,
         stats: result.stats,
-        symbolic_data,
-    };
+        symbolic_data: Default::default(),
+    }, symbolic_data);
 
     // Cache result (background). Also mirror the symbolic stream into the
-    // dedicated `{cache_key}-symbolic-v1` entry so it's reachable through
+    // dedicated `{cache_key}-symbolic-v2` entry so it's reachable through
     // `GET /api/v1/parse/symbolic/{cache_key}` regardless of which endpoint
     // first processed the file (issue #900).
     let cache = state.cache.clone();

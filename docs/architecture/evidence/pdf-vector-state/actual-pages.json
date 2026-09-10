@@ -1,0 +1,103 @@
+{
+  "decoderVersion": "6.3.289",
+  "calibration": "physical paper only; not measured model scale",
+  "pages": [
+    {
+      "name": "control",
+      "pdfSha256": "27f3f1fd9c27e252ae64ac5252997ba41b4c77e26aba35f20fb40d7cb68cddfe",
+      "pageNumber": 1,
+      "viewBox": [10, 10, 340, 220],
+      "userUnit": 2,
+      "rotation": 90,
+      "stateQualified": true,
+      "geometryReady": false,
+      "pendingGeometry": [
+        "pageClip",
+        "curveFlattening",
+        "strokeOutlining",
+        "fillClassification",
+        "paintOrder"
+      ],
+      "pathCount": 4,
+      "diagnostics": {},
+      "requestSha256": "8fb01fd06bf9b77bcaee3eced8aa021d2c2bb416ffc55d113c5dda431972ce6f"
+    },
+    {
+      "name": "control-unsupported",
+      "pdfSha256": "27f3f1fd9c27e252ae64ac5252997ba41b4c77e26aba35f20fb40d7cb68cddfe",
+      "pageNumber": 2,
+      "viewBox": [0, 0, 360, 240],
+      "userUnit": 1,
+      "rotation": 0,
+      "stateQualified": false,
+      "geometryReady": false,
+      "pendingGeometry": [
+        "pageClip",
+        "curveFlattening",
+        "strokeOutlining",
+        "fillClassification",
+        "paintOrder"
+      ],
+      "pathCount": 2,
+      "diagnostics": {
+        "unsupported:eoClip": 1,
+        "unsupported:setGState": 1,
+        "unsupported:showText": 1
+      },
+      "requestSha256": "a987fa49c0f8b527b21fa310579d8dc70750834a9f50b3df4b5073b6e4622d14"
+    },
+    {
+      "name": "featherston",
+      "pdfSha256": "c8c923759a412dc0f108ed77e54edc76203592f4befb25b3779550c7bb287d66",
+      "pageNumber": 1,
+      "viewBox": [0, 0, 841.89, 595.28],
+      "userUnit": 1,
+      "rotation": 0,
+      "stateQualified": false,
+      "geometryReady": false,
+      "pendingGeometry": [
+        "pageClip",
+        "curveFlattening",
+        "strokeOutlining",
+        "fillClassification",
+        "paintOrder"
+      ],
+      "pathCount": 3166,
+      "diagnostics": {
+        "unsupported:beginMarkedContentProps": 1,
+        "unsupported:clip": 1,
+        "unsupported:setGState": 3,
+        "unsupported:beginGroup": 1,
+        "unsupported:paintFormXObjectBegin": 1,
+        "unsupported:paintFormXObjectEnd": 1,
+        "unsupported:endGroup": 1,
+        "device-dependent-hairline": 556,
+        "unsupported:showText": 11,
+        "unsupported:endMarkedContent": 1
+      },
+      "requestSha256": "195373cce40ce47874728228621d4c9b9845a1ccb891aa533415cd4f4591155d"
+    },
+    {
+      "name": "habs",
+      "pdfSha256": "f75301c338d80bc2f428dede7c54d4799def2c2726cea8bed50c3e85d5f6305a",
+      "pageNumber": 1,
+      "viewBox": [0, 487.700012, 596, 1224],
+      "userUnit": 1,
+      "rotation": 0,
+      "stateQualified": false,
+      "geometryReady": false,
+      "pendingGeometry": [
+        "pageClip",
+        "curveFlattening",
+        "strokeOutlining",
+        "fillClassification",
+        "paintOrder"
+      ],
+      "pathCount": 0,
+      "diagnostics": {
+        "unsupported:paintImageXObject": 3
+      },
+      "requestSha256": "51ce42de49b0bd385c274a35c7567b82faee83a1467e02577befdbf4a4acb228"
+    }
+  ]
+}

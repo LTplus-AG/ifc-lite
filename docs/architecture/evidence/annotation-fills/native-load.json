@@ -1,0 +1,176 @@
+{
+  "baseSource": "8a962988e",
+  "branchSource": "48e9e634a",
+  "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+  "runs": [
+    {
+      "label": "base",
+      "result": [
+        {
+          "path": "/tmp/ifclite-annotation-fills-4406/tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "fileMb": 2.41,
+          "entities": 44249,
+          "meshes": 285,
+          "vertices": 35940,
+          "triangles": 19456,
+          "indexBuildMs": 2.44,
+          "parseMs": 3,
+          "entityScanMs": 2,
+          "lookupMs": 0,
+          "preprocessMs": 0,
+          "geometryMs": 5,
+          "facetedBrepMs": 0,
+          "totalMs": 8,
+          "allTotalsMs": [
+            16,
+            10,
+            10,
+            9,
+            8
+          ],
+          "allWallMs": [
+            16.97925,
+            11.27225,
+            10.458708000000001,
+            9.673459000000001,
+            9.081708
+          ],
+          "pointCacheHits": 51820,
+          "pointCacheMisses": 9132,
+          "csgFailures": 0,
+          "degenerateDropped": 0
+        }
+      ]
+    },
+    {
+      "label": "branch",
+      "result": [
+        {
+          "path": "/tmp/ifclite-annotation-fills-4406/tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "fileMb": 2.41,
+          "entities": 44249,
+          "meshes": 285,
+          "vertices": 35940,
+          "triangles": 19456,
+          "indexBuildMs": 1.54,
+          "parseMs": 3,
+          "entityScanMs": 2,
+          "lookupMs": 0,
+          "preprocessMs": 0,
+          "geometryMs": 5,
+          "facetedBrepMs": 0,
+          "totalMs": 8,
+          "allTotalsMs": [
+            16,
+            11,
+            9,
+            9,
+            8
+          ],
+          "allWallMs": [
+            16.547124999999998,
+            11.445291999999998,
+            10.356375,
+            9.683292,
+            9.269
+          ],
+          "pointCacheHits": 52204,
+          "pointCacheMisses": 9228,
+          "csgFailures": 0,
+          "degenerateDropped": 0
+        }
+      ]
+    },
+    {
+      "label": "base",
+      "result": [
+        {
+          "path": "/tmp/ifclite-annotation-fills-4406/tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "fileMb": 2.41,
+          "entities": 44249,
+          "meshes": 285,
+          "vertices": 35940,
+          "triangles": 19456,
+          "indexBuildMs": 1.16,
+          "parseMs": 2,
+          "entityScanMs": 1,
+          "lookupMs": 0,
+          "preprocessMs": 0,
+          "geometryMs": 4,
+          "facetedBrepMs": 0,
+          "totalMs": 7,
+          "allTotalsMs": [
+            9,
+            8,
+            8,
+            7,
+            7
+          ],
+          "allWallMs": [
+            9.913167000000001,
+            8.638625000000001,
+            8.357,
+            8.177416,
+            8.152375
+          ],
+          "pointCacheHits": 52012,
+          "pointCacheMisses": 9180,
+          "csgFailures": 0,
+          "degenerateDropped": 0
+        }
+      ]
+    },
+    {
+      "label": "branch",
+      "result": [
+        {
+          "path": "/tmp/ifclite-annotation-fills-4406/tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "fileMb": 2.41,
+          "entities": 44249,
+          "meshes": 285,
+          "vertices": 35940,
+          "triangles": 19456,
+          "indexBuildMs": 1.03,
+          "parseMs": 2,
+          "entityScanMs": 1,
+          "lookupMs": 0,
+          "preprocessMs": 0,
+          "geometryMs": 4,
+          "facetedBrepMs": 0,
+          "totalMs": 7,
+          "allTotalsMs": [
+            9,
+            7,
+            7,
+            7,
+            7
+          ],
+          "allWallMs": [
+            9.587333,
+            8.340125,
+            8.245709,
+            8.426708,
+            8.20225
+          ],
+          "pointCacheHits": 52076,
+          "pointCacheMisses": 9212,
+          "csgFailures": 0,
+          "degenerateDropped": 0
+        }
+      ]
+    }
+  ],
+  "fingerprints": {
+    "base": [
+      "25ac885b6ff4ad00"
+    ],
+    "branch": [
+      "25ac885b6ff4ad00"
+    ]
+  },
+  "fingerprintTimingIncluded": false,
+  "binarySha256": {
+    "base": "83978f9bd18011c3ac115c5465d3cf6e7935c592e8debae39e6bbaed0fc0cb39",
+    "branch": "d001e7376191258aa8ce4816f0cae91debd283e0c6fb22cd31e85e3c70fcc033"
+  }
+}

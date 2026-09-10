@@ -28,8 +28,8 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
   const applying = props.status === 'applying';
   const busy = applying || props.status === 'preparing' || props.sourceBusy || props.pdf?.busy || props.pdfPassword?.busy;
   const blocked = !!props.pdfPassword || !!props.pdf?.error || !!props.unavailableReason || (!reference && !props.modelId) || !props.sourceId;
-  const applyDisabled = !props.canApply || !props.hasPreview || blocked || busy || invalidFields.size > 0 || (!reference && props.affectedCount === 0) || props.status !== 'ready';
-  const message = invalidFields.size ? 'Enter valid numbers in the highlighted fields before applying.' :
+  const applyDisabled = !props.canApply || !props.hasPreview || (!props.assignmentMode && blocked) || busy || (!props.assignmentMode && invalidFields.size > 0) || (!reference && props.affectedCount === 0) || props.status !== 'ready';
+  const message = !props.assignmentMode && invalidFields.size ? 'Enter valid numbers in the highlighted fields before applying.' :
     props.unavailableReason ?? props.statusMessage ?? ({
       idle: 'Choose an image and scope to preview appearance.',
       preparing: 'Preparing preview… You can keep adjusting the controls.',
@@ -43,8 +43,10 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
         <Button type="button" variant={props.intent === 'apply' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'apply'} onClick={() => props.onIntentChange?.('apply')}>Apply to IFC</Button>
         <Button type="button" variant={reference ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={reference} onClick={() => props.onIntentChange?.('reference')}>Place as reference</Button>
         <Button type="button" variant={props.intent === 'capture' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'capture'} onClick={() => props.onIntentChange?.('capture')}>Create from scan</Button>
+        <Button type="button" variant={props.intent === 'scan' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'scan'} onClick={() => props.onIntentChange?.('scan')}>Align scan</Button>
       </div>}
   </>;
+  if (props.intent === 'scan') return <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background p-3" aria-label="Appearance workspace">{sourceActions}{props.scan}</div>;
   if (props.intent === 'capture') return <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background p-3" aria-label="Appearance workspace">{sourceActions}{props.capture}</div>;
   return <div className="flex h-full min-h-0 flex-col bg-background" aria-label="Appearance workspace" aria-busy={!!busy}>
     <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-3">
@@ -58,6 +60,7 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
       {props.calibration && <AppearanceCalibrationFields key={`${props.sourceId}:${props.calibration.sourceKey}:${inputReset}`}
         {...props.calibration} disabled={applying || blocked || !!props.sourceBusy} onInvalid={onInvalid} />}
       <AppearanceMappingFields calibrated={!!props.calibration} key={`${props.modelId}:${props.sourceId}:${inputReset}`} settings={props.settings} onChange={props.onSettingsChange} disabled={applying || blocked} onInvalid={onInvalid} />
+      {!reference && props.renderAssignments?.(invalidFields.size === 0)}
     </div>
     <footer className="shrink-0 space-y-2 border-t bg-background p-3">
       <div role={props.status === 'error' || invalidFields.size ? 'alert' : 'status'} aria-live="polite"

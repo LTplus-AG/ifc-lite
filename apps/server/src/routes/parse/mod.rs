@@ -4,7 +4,7 @@
 
 //! Parse endpoints for IFC file processing.
 
-mod cache_keys;
+pub(crate) mod cache_keys;
 mod cached_replay;
 mod stream_event;
 mod stream_progress;

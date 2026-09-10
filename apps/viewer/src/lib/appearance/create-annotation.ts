@@ -6,7 +6,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { referenceFrameStatus } from './reference-runtime/frame';
 import type { AppearanceCommitOptions } from './command';
-import { prepareTexturedProduct } from './prepare-textured-product';
+import { prepareAuthoredProduct } from './prepare-authored-product';
 import { modelAppearanceAssets } from './model-assets';
 import { createAppearancePlanner, type AppearancePlanner } from './planner-worker-client';
 import { commitTexturedProduct } from './textured-product-command';
@@ -39,7 +39,7 @@ export async function createAnnotationFromReference(modelId: string, containerId
   };
   validateReference();
   if (!reference) throw new Error('Choose a registered reference.');
-  const target = await prepareTexturedProduct(modelId, options.signal, validateReference);
+  const target = await prepareAuthoredProduct(modelId, options.signal, validateReference);
   const planner = options.planner ?? createAppearancePlanner();
   try {
     const frame = annotationFrame(reference);

@@ -8,6 +8,7 @@ mod evaluated;
 mod evaluated_source;
 mod evaluated_allocation;
 mod annotation;
+mod authored;
 mod captured;
 mod captured_types;
 pub use captured::plan_captured_mesh;

@@ -2180,6 +2180,7 @@ fn the_heavy_golden_pins_the_known_3435_tear_population() {
 /// `Path::exists()`) because `exists()` collapses a permission error into
 /// `false` just like a genuinely absent file, and is a TOCTOU check besides
 /// — each caller performs the real read moments later.
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
 fn oracle_fixture_present(path: &std::path::Path) -> bool {
     match std::fs::read_to_string(path) {
         Ok(_) => true,

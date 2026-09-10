@@ -433,6 +433,14 @@ describe('appearance command atomicity #4243', () => {
     f.assertUncommitted(initial);
   });
 
+  it('rejects exhausted allocation and work budgets without publishing IFC, history or image ownership (#4336)', async () => {
+    for (const budget of [{ maxBytes: 64 }, { maxWork: 8 }]) {
+      const f = await fixture(), initial = f.snapshot();
+      await assert.rejects(f.commit(budget), /work or allocation budget/);
+      f.assertUncommitted(initial);
+    }
+  });
+
   it('rejects SDK edits made during cooperative preparation without reverting them (#4336)', async () => {
     const f = await fixture();
     let changed: ReturnType<typeof f.snapshot> | undefined;

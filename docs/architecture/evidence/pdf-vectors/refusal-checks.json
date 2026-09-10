@@ -1,0 +1,22 @@
+[
+  {
+    "case": "invalid-page",
+    "exitCode": 1,
+    "noSuccessReport": true
+  },
+  {
+    "case": "missing-file",
+    "exitCode": 1,
+    "noSuccessReport": true
+  },
+  {
+    "case": "malformed-pdf",
+    "exitCode": 1,
+    "noSuccessReport": true
+  },
+  {
+    "case": "oversize-file",
+    "exitCode": 1,
+    "noSuccessReport": true
+  }
+]

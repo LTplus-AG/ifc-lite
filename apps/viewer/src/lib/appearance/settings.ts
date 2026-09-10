@@ -5,7 +5,7 @@ import type { AppearanceDraftSettings } from '@/components/viewer/appearance/typ
 import type { AppearanceMapping } from './planner-types.js';
 
 export const DEFAULT_APPEARANCE_SETTINGS: AppearanceDraftSettings = {
-  kind: 'planar', plane: 'xz', repeatU: 1, repeatV: 1,
+  representationPolicy: 'preserve', kind: 'planar', plane: 'xz', repeatU: 1, repeatV: 1,
   tileWidth: 1, tileHeight: 1, tileDepth: 1, rotationDegrees: 0,
   offsetU: 0, offsetV: 0, offsetW: 0, repeatS: true, repeatT: true,
 };

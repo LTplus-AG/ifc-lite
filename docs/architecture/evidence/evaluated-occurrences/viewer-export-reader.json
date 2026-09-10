@@ -1,0 +1,15 @@
+{
+  "reader": "IfcOpenShell",
+  "version": "0.8.2",
+  "sourceSchemaErrors": 170,
+  "targetSchemaErrors": 170,
+  "newSchemaViolations": [],
+  "changedExistingEntities": [
+    35155
+  ],
+  "triangles": 12,
+  "GlobalId": "0oTQ6V1VbChulreA_hfmUa",
+  "materialPolicy": "original style retained by internal normalization; final requested image replaces albedo",
+  "normalSelectionIdentityPreserved": true,
+  "maxOriginalCornerDistanceMetres": 1.4240740167604914e-07
+}

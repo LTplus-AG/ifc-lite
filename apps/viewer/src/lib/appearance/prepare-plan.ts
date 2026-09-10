@@ -7,8 +7,14 @@ import type { AppliedAppearanceEntities } from './apply-plan.js';
 import { validateAppearanceEntityPlan } from './validate-plan.js';
 
 function yieldAppearanceTask(): Promise<void> {
-  const host = globalThis as typeof globalThis & { scheduler?: { yield(): Promise<void> } };
-  return host.scheduler ? host.scheduler.yield() : new Promise(resolve => setTimeout(resolve, 0));
+  const host = globalThis as typeof globalThis & {
+    scheduler?: { postTask(callback: () => void, options: { priority: 'background' }): Promise<void> };
+  };
+  // A fresh background task lets pending interaction run ahead of preparation.
+  // scheduler.yield() continuations can retain the initiating input priority.
+  return typeof host.scheduler?.postTask === 'function'
+    ? host.scheduler.postTask(() => undefined, { priority: 'background' })
+    : new Promise(resolve => setTimeout(resolve, 0));
 }
 
 /** Only owned records leave the mutations preparer; no draft view escapes. */
@@ -22,14 +28,7 @@ export async function prepareAppearanceEntities(
     ...plan.edits.map(edit => ({ kind: 'setPositionalAttribute' as const, ...edit })),
     ...plan.removed.map(expressId => ({ kind: 'remove' as const, expressId })),
   ];
-  const prepared = await editor.prepareEntityOperations(operations, {
-    // Cumulative allocation accounting includes every private checkpoint and
-    // detached result, rather than measuring simultaneously live JS heap.
-    maxBytes: 2 * 1024 * 1024 * 1024,
-    maxWork: 32_000_000,
-    yieldTask: yieldAppearanceTask,
-    ...options,
-  });
+  const prepared = await prepareAppearanceOperationSequence(editor, operations, options);
   const applied: AppliedAppearanceEntities = {
     created: prepared.effects.flatMap(effect => effect.kind === 'create' ? [effect.entity] : []),
     removed: prepared.effects.flatMap(effect => effect.kind === 'remove' ? [{ expressId: effect.expressId, entity: effect.entity }] : []),
@@ -41,4 +40,12 @@ export async function prepareAppearanceEntities(
     mutations: prepared.mutations,
   };
   return { prepared, applied };
+}
+
+/** Shared cooperative preparation budget for single and coordinated commands. */
+export function prepareAppearanceOperationSequence(editor: StoreEditor, operations: readonly EntityOperation[], options: EntityPreparationOptions) {
+  return editor.prepareEntityOperations(operations, {
+    maxBytes: 2 * 1024 * 1024 * 1024, maxWork: 32_000_000,
+    yieldTask: yieldAppearanceTask, ...options,
+  });
 }

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MeshData } from '@ifc-lite/geometry';
 import { equivalentAppearanceGeometry } from './appearance-uvs.js';
+import { sameCompanionParts } from './appearance-companions.js';
 
 /** expressId is already federation-resolved; modelIndex is the renderer model. */
 export interface AppearanceOwner {
@@ -16,23 +17,47 @@ export interface AppearanceChange {
   readonly owner: AppearanceOwner;
   readonly before: readonly MeshData[];
   readonly after: readonly MeshData[];
+  /** Exact original geometry for a companion presence-only transition. */
+  readonly companionOriginals?: readonly MeshData[];
+  readonly beforeInstanced?: true;
+  readonly afterInstanced?: true;
+  /** Explicit occurrence-local representation changes, captured before preview. */
+  readonly geometryItemRemaps?: readonly { readonly from: number; readonly to: number }[];
+}
+export interface AppearancePreviewOptions extends Pick<AppearanceChange, 'geometryItemRemaps' | 'companionOriginals'> {
+  /** Canonical native originals for an occurrence absent from flat scene geometry. */
+  readonly materializedOriginals?: readonly MeshData[];
+  /** Host proved canonical originals exist but current visibility omits residency. */
+  readonly companionHidden?: true;
 }
 export interface AppearancePreview {
-  /** Requires retained, non-instanced CPU geometry in finalized resident batches. */
-  begin(owner: AppearanceOwner): AppearanceToken;
+  /** Requires finalized resident geometry, or canonical materializedOriginals
+   * for one retained GPU occurrence. */
+  begin(owner: AppearanceOwner, options?: AppearancePreviewOptions): AppearanceToken;
   /** Full part list in source order. Geometry must preserve exact triangle corners.
    * Mesh arrays are borrowed immutable data, including image pixels and UVs. */
   update(token: AppearanceToken, parts: readonly MeshData[]): void;
+  /** Current canonical parts, including retained originals when an instance is active. */
+  getParts?(owner: AppearanceOwner): readonly MeshData[] | undefined;
+  /** Retain an original occurrence for one host history command; release on disposal. */
+  retainSource?(owner: AppearanceOwner): () => void;
   cancel(token: AppearanceToken): void;
+  /** Discard an uncommitted owner draft before replaying its committed history. */
   commit(token: AppearanceToken): AppearanceChange;
   /** Validate a whole command before consuming any owner; returned commit is idempotent. */
   prepareCommit(tokens: readonly AppearanceToken[]): () => AppearanceChange[];
 }
 export interface AppearanceAdapter<Resource> {
-  capture(owner: AppearanceOwner): {
+  capture(owner: AppearanceOwner, originals?: readonly MeshData[], companions?: readonly MeshData[], companionHidden?: true): {
     parts: readonly MeshData[];
     resources: readonly Resource[];
+    abandon?(): void;
+    companionOriginals?: readonly MeshData[];
   };
+  validate?(owner: AppearanceOwner): void;
+  instanced?(owner: AppearanceOwner, parts: readonly MeshData[]): boolean;
+  parts?(owner: AppearanceOwner): readonly MeshData[] | undefined;
+  retainSource?(owner: AppearanceOwner): () => void;
   stage(parts: readonly MeshData[]): readonly Resource[];
   install(
     owner: AppearanceOwner,
@@ -42,6 +67,9 @@ export interface AppearanceAdapter<Resource> {
   release(resources: readonly Resource[]): void;
   finished?(owner: AppearanceOwner): void;
   forget?(expressId?: number): void;
+  prepareRebuild?(geometry: readonly MeshData[], models: ReadonlySet<number>): Set<number>;
+  finishRebuild?(retained: ReadonlySet<number>): void;
+  discardedForRebuild?(retained: ReadonlySet<number>): readonly number[];
 }
 interface Draft<Resource> {
   token: AppearanceToken;
@@ -49,6 +77,8 @@ interface Draft<Resource> {
   original: readonly Resource[];
   after: readonly MeshData[];
   current: readonly Resource[];
+  geometryItemRemaps: NonNullable<AppearanceChange['geometryItemRemaps']>;
+  companionOriginals?: readonly MeshData[];
 }
 
 /** Owns detached GPU originals until cancellation/commit; never exports GPU handles. */
@@ -59,24 +89,49 @@ export class AppearancePreviewController<Resource>
   private issued = new WeakSet<AppearanceToken>();
   constructor(private readonly adapter: AppearanceAdapter<Resource>) {}
 
-  begin(owner: AppearanceOwner): AppearanceToken {
+  begin(owner: AppearanceOwner, options?: AppearancePreviewOptions): AppearanceToken {
     if (this.drafts.has(owner.expressId))
       throw new Error('An appearance preview already owns this entity');
-    const captured = this.adapter.capture(owner);
-    const token = Object.freeze({ owner: Object.freeze({ ...owner }) });
-    const before = Object.freeze(
-      captured.parts.map((part) => Object.freeze({ ...part })),
-    );
-    this.issued.add(token);
-    this.drafts.set(owner.expressId, {
-      token,
-      before,
-      original: captured.resources,
-      after: before,
-      current: captured.resources,
-    });
-    return token;
+    if (options?.companionHidden && !options.companionOriginals) throw new Error('Hidden companion preparation requires canonical originals');
+    const captured = this.adapter.capture(owner, options?.materializedOriginals, options?.companionOriginals, options?.companionHidden);
+    try {
+      const remaps = options?.geometryItemRemaps ?? [];
+      const companions = captured.companionOriginals ?? options?.companionOriginals;
+      if (companions && (!companions.length || remaps.length || options?.materializedOriginals
+        || (captured.parts.length && !sameCompanionParts(captured.parts, companions)))) {
+        throw new Error('Invalid companion presence transition');
+      }
+      if (remaps.length > captured.parts.length) throw new Error('Appearance item remap exceeds the original part count');
+      const originals = new Set(captured.parts.map(part => part.geometryItemId));
+      const from = new Set<number>(), to = new Set<number>();
+      for (const pair of remaps) {
+        if (!Number.isSafeInteger(pair.from) || !Number.isSafeInteger(pair.to)
+          || pair.from <= 0 || pair.to <= 0 || pair.from === pair.to
+          || !originals.has(pair.from) || from.has(pair.from) || to.has(pair.to)
+          || originals.has(pair.to)) throw new Error('Invalid occurrence geometry item remap');
+        from.add(pair.from); to.add(pair.to);
+      }
+      const geometryItemRemaps = Object.freeze(remaps.map(pair => Object.freeze({ ...pair })));
+      const token = Object.freeze({ owner: Object.freeze({ ...owner }) });
+      const before = Object.freeze(
+        captured.parts.map((part) => Object.freeze({ ...part })),
+      );
+      this.issued.add(token);
+      this.drafts.set(owner.expressId, {
+        token,
+        before,
+        original: captured.resources,
+        after: before,
+        current: captured.resources,
+        geometryItemRemaps,
+        companionOriginals: companions && Object.freeze(companions.map(part => Object.freeze({ ...part }))),
+      });
+      return token;
+    } catch (error) { captured.abandon?.(); throw error; }
   }
+
+  getParts(owner: AppearanceOwner): readonly MeshData[] | undefined { return this.adapter.parts?.(owner); }
+  retainSource(owner: AppearanceOwner): () => void { return this.adapter.retainSource?.(owner) ?? (() => {}); }
 
   private draft(token: AppearanceToken): Draft<Resource> {
     const draft = this.drafts.get(token.owner.expressId);
@@ -87,6 +142,13 @@ export class AppearancePreviewController<Resource>
 
   update(token: AppearanceToken, parts: readonly MeshData[]): void {
     const draft = this.draft(token);
+    this.adapter.validate?.(token.owner);
+    if (draft.companionOriginals) {
+      if (parts.length && !sameCompanionParts(parts, draft.companionOriginals)) throw new Error('Companion preview can only restore exact original geometry');
+      const after = Object.freeze(parts.map(part => Object.freeze({ ...part })));
+      this.installDraft(draft, after);
+      return;
+    }
     if (parts.length !== draft.before.length)
       throw new Error('Appearance preview requires every original mesh part');
     const bitmapIds = new Map<number, ImageBitmap | undefined>();
@@ -103,9 +165,8 @@ export class AppearancePreviewController<Resource>
         p.expressId !== b.expressId ||
         p.modelIndex !== b.modelIndex ||
         !equivalentAppearanceGeometry(p, b, { allowNormalChanges: true }) ||
-        p.origin !== b.origin ||
         p.entityIds !== b.entityIds ||
-        p.geometryItemId !== b.geometryItemId ||
+        p.geometryItemId !== (draft.geometryItemRemaps.find(pair => pair.from === b.geometryItemId)?.to ?? b.geometryItemId) ||
         p.normals.length !== p.positions.length ||
         !p.normals.every(Number.isFinite)
       ) {
@@ -139,6 +200,7 @@ export class AppearancePreviewController<Resource>
       parts.map((part, index) =>
         Object.freeze({
           ...draft.before[index],
+          geometryItemId: part.geometryItemId,
           positions: part.positions,
           normals: part.normals,
           indices: part.indices,
@@ -152,10 +214,14 @@ export class AppearancePreviewController<Resource>
         }),
       ),
     );
+    this.installDraft(draft, after);
+  }
+
+  private installDraft(draft: Draft<Resource>, after: readonly MeshData[]): void {
     // Stage may throw: no scene state has changed and originals remain alive.
     const resources = this.adapter.stage(after);
     try {
-      this.adapter.install(token.owner, after, resources);
+      this.adapter.install(draft.token.owner, after, resources);
     } catch (error) {
       this.adapter.release(resources);
       throw error;
@@ -170,6 +236,7 @@ export class AppearancePreviewController<Resource>
       throw new Error('Foreign appearance preview token');
     if (this.drafts.get(token.owner.expressId)?.token !== token) return;
     const draft = this.draft(token);
+    this.adapter.validate?.(token.owner);
     this.adapter.install(token.owner, draft.before, draft.original);
     if (draft.current !== draft.original) this.adapter.release(draft.current);
     this.drafts.delete(token.owner.expressId);
@@ -185,6 +252,7 @@ export class AppearancePreviewController<Resource>
       throw new Error('Appearance commit repeats a token');
     const prepared = tokens.map((token) => {
       const draft = this.draft(token);
+      this.adapter.validate?.(token.owner);
       return { draft, current: draft.current, after: draft.after };
     });
     const changes = prepared.map(({ draft, after }) =>
@@ -192,6 +260,10 @@ export class AppearancePreviewController<Resource>
         owner: draft.token.owner,
         before: draft.before,
         after,
+        ...(draft.companionOriginals ? { companionOriginals: draft.companionOriginals } : {}),
+        ...(this.adapter.instanced?.(draft.token.owner, draft.before) ? { beforeInstanced: true as const } : {}),
+        ...(this.adapter.instanced?.(draft.token.owner, after) ? { afterInstanced: true as const } : {}),
+        ...(draft.geometryItemRemaps.length ? { geometryItemRemaps: draft.geometryItemRemaps } : {}),
       }),
     );
     let committed = false;
@@ -199,6 +271,7 @@ export class AppearancePreviewController<Resource>
       if (committed) return changes;
       // Every stale/reentrant change is rejected BEFORE consuming any token.
       for (const { draft, current, after } of prepared) {
+        this.adapter.validate?.(draft.token.owner);
         if (
           this.draft(draft.token) !== draft ||
           draft.current !== current ||
@@ -242,6 +315,14 @@ export class AppearancePreviewController<Resource>
   owns(expressId: number): boolean {
     return this.drafts.has(expressId);
   }
+
+  /** End drafts, then validate every surviving history owner before GPU reset. */
+  prepareRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>): Set<number> {
+    for (const draft of [...this.drafts.values()]) this.cancel(draft.token);
+    return this.adapter.prepareRebuild?.(geometry, models) ?? new Set();
+  }
+  finishRebuild(retained: ReadonlySet<number>): void { this.adapter.finishRebuild?.(retained); }
+  discardedForRebuild(retained: ReadonlySet<number>): readonly number[] { return this.adapter.discardedForRebuild?.(retained) ?? []; }
 
   /** Geometry edits supersede an uncommitted appearance draft. */
   cancelFor(expressId: number): void {

@@ -1119,7 +1119,7 @@ test('REASONS covers EVERY raise site in this file, and names nothing that is no
   assert.deepEqual(phantom, [], 'these are in REASONS but are never raised');
 });
 
-test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED, VALIDATION_EMPTY, CLASS_PASS_INCOMPLETE, FINDINGS_INVALID} (#3777, #3775, #3831, #3919)', () => {
+test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED, VALIDATION_EMPTY, CLASS_PASS_INCOMPLETE, FINDINGS_INVALID, RAW_UNPARSEABLE} (#3777, #3775, #3831, #3919)', () => {
   // Mutation-tested shape: this must fail if the set grows to include a fourth
   // reason (e.g. a genuine VERDICT_CONTRADICTS_FINDINGS "papers over a real
   // failure with a retry"), and must fail if it shrinks. Exact-set comparison,
@@ -1143,9 +1143,29 @@ test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TR
   // second attempt cannot be a quieter one. The throw is unchanged: a retry that
   // again claims clean without the walk still fails loudly, and no path
   // anywhere turns it into a posted verdict.
+  // RAW_UNPARSEABLE belongs here for the same reason and with the same limit.
+  // It fires on the SHAPE of the response and never on the code: the answer did
+  // not parse, so it carries no verdict at all and there is nothing for a retry
+  // to paper over. Observed live, a reviewer read 12 files and returned 6427
+  // characters, then prefixed the object with prose, and the entire review was
+  // discarded with no second attempt while every other transient shape got one.
+  // The throw is unchanged: a second unparseable answer still fails loudly and
+  // no path turns it into a posted verdict.
+  //
+  // Not to be confused with the REMEDY the validator names, which forbids a
+  // REPAIR PASS ("a repairer that guesses is a second unreviewed model"). A
+  // retry is a different mechanism: it re-runs the reviewer and the fresh
+  // response faces every original check unchanged. Nothing is repaired and
+  // nothing is loosened.
+  //
+  // Its retry prose deliberately covers the UNION of the shapes that reach this
+  // reason (prose before the fence, two fenced blocks, text that never parsed
+  // including a hard truncation) rather than naming one. Naming a single shape
+  // would be false in the others, which is the same argument retry-prompt.mjs
+  // already makes about the five above.
   assert.deepEqual(
     [...RETRYABLE_VALIDATION_REASONS].sort(),
-    ['CLASS_PASS_INCOMPLETE', 'FINDINGS_INVALID', 'PROOF_OF_WORK_FAILED', 'RESPONSE_TRUNCATED', 'VALIDATION_EMPTY'],
+    ['CLASS_PASS_INCOMPLETE', 'FINDINGS_INVALID', 'PROOF_OF_WORK_FAILED', 'RAW_UNPARSEABLE', 'RESPONSE_TRUNCATED', 'VALIDATION_EMPTY'],
   );
   // Every retryable reason must be a real one -- catches a typo'd string that
   // would silently never match anything real REASONS raises.

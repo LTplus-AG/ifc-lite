@@ -1,0 +1,81 @@
+{
+  "source_sha256": "a83e573037b0c4cbba30f1167ed96cda52eb51859091d2c7d47cec7a59e1a36b",
+  "derived_ifc4_sha256": "817b91828efd242c3e76a94e6ce550c8d84c5a66af75b4694876babf93b491cc",
+  "coordinate_space": "IFC world metres from original independent tessellation; derivative geometry equivalence checked separately",
+  "registration": null,
+  "correspondences": [],
+  "candidates": [
+    {
+      "GlobalId": "0FDABnXCHCUR8gI54b$Kx2",
+      "type": "IfcWallStandardCase",
+      "Name": "Basic Wall:(35cm) Tijolo cer\u00e2mico acabamento pintura branca:919433",
+      "min": [
+        7.986239344287008,
+        -4.309927043730632,
+        0.1
+      ],
+      "max": [
+        8.286239344287008,
+        19.751515729834452,
+        3.0000000000000004
+      ],
+      "source_express_id": 383,
+      "derived_ifc4_express_id": 1179339,
+      "status": "reference owner candidate; scan neighborhoods and matching feature coordinates not accepted"
+    },
+    {
+      "GlobalId": "1gsZ4XbYD0qRhfvwOUEI1z",
+      "type": "IfcWallStandardCase",
+      "Name": "Basic Wall:(10cm) Drywall:961571",
+      "min": [
+        1.1806894894021782,
+        2.908515201371181,
+        0.1
+      ],
+      "max": [
+        7.9862393442870205,
+        3.0085152013711807,
+        2.9999999999999996
+      ],
+      "source_express_id": 703,
+      "derived_ifc4_express_id": 863714,
+      "status": "reference owner candidate; scan neighborhoods and matching feature coordinates not accepted"
+    },
+    {
+      "GlobalId": "3qeiF73TD1uOeHIcNGcTy8",
+      "type": "IfcWallStandardCase",
+      "Name": "Basic Wall:(10cm) Drywall:973242",
+      "min": [
+        1.1806893394299927,
+        10.861515201350679,
+        0.1
+      ],
+      "max": [
+        7.986239344287033,
+        10.961515201350677,
+        2.9999999999999996
+      ],
+      "source_express_id": 1273,
+      "derived_ifc4_express_id": 575796,
+      "status": "reference owner candidate; scan neighborhoods and matching feature coordinates not accepted"
+    },
+    {
+      "GlobalId": "3XP_HdJcfD9xJPuaOu_0Jb",
+      "type": "IfcSlab",
+      "Name": "Floor:(15cm) Piso + Porcelanato cinza claro 60 X 60:911079",
+      "min": [
+        -9.915754403207783,
+        -4.533520020041771,
+        -0.04999999999999999
+      ],
+      "max": [
+        8.286239344287045,
+        19.95151572983451,
+        0.1
+      ],
+      "source_express_id": 159,
+      "derived_ifc4_express_id": 1299372,
+      "status": "reference owner candidate; scan neighborhoods and matching feature coordinates not accepted"
+    }
+  ]
+}

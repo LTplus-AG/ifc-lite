@@ -30,6 +30,7 @@
 
 use ifc_lite_core::IfcType;
 
+pub(crate) mod fill;
 mod indexed_colour;
 mod material;
 mod surface;

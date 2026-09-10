@@ -9,6 +9,7 @@
  * Focus on structural invariants, not exact values.
  */
 
+import { runAppearanceContracts } from './lib/wasm-appearance-contracts.mjs';
 import { runColdLoadContracts } from './lib/wasm-cold-load-contracts.mjs';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
@@ -117,6 +118,7 @@ function test(name, fn) {
   }
 }
 
+runAppearanceContracts(IfcAPI, test);
 // ===== IfcAPI initialization =====
 console.log('📋 IfcAPI initialization');
 

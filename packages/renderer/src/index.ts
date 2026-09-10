@@ -13,6 +13,7 @@ export { Camera } from './camera.js';
 // The MEASURED surface `getScene()` publishes — see its docs.
 export type { SceneContents } from './scene-contents.js';
 export { expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
+export { sameCompanionParts } from './appearance-companions.js';
 export type { AppearancePreview, AppearanceOwner, AppearanceToken, AppearanceChange } from './appearance-preview.js';
 import type { AppearancePreview } from './appearance-preview.js';
 import { createReferenceImageManager } from './reference-image-host.js';
@@ -3270,13 +3271,12 @@ export class Renderer {
         return this.pickingManager.pickRect(x0, y0, x1, y1, options, this.activePickClip());
     }
 
-    /**
-     * Raycast into the scene to get precise 3D intersection point
-     * This is more accurate than pick() as it returns the exact surface point
-     *
-     * Note: x, y are CSS pixel coordinates relative to the canvas element.
-     * These are scaled internally to match the actual canvas pixel dimensions.
-     */
+    /** Whether the last rendered frame clipped surfaces (section, terrain or box). */
+    hasActiveClipping(): boolean {
+        return this._activePickSection !== null || this._activePickClipBox !== null;
+    }
+
+    /** Exact surface raycast in CSS canvas coordinates; does not apply clipping. */
     raycastScene(
         x: number,
         y: number,
@@ -3356,13 +3356,13 @@ export class Renderer {
         resizeRendererViewport(this.canvas, this.camera, width, height);
     }
 
-    /** Owned, reversible appearance edits; model geometry remains unchanged. */
-    /** Stage a new textured IFC owner; dispose an uncommitted preparation on every failure. */
-    prepareTexturedOwner(mesh: import('@ifc-lite/geometry').MeshData) {
+    /** Stage one new owner; borrowed mesh buffers must remain immutable until disposal. */
+    prepareAuthoredOwner(parts: readonly MeshData[]) {
         if (!this.device.isInitialized() || !this.pipeline) throw new Error('Renderer is not initialized.');
-        const prepared = this.scene.prepareTexturedOwner(mesh, this.device.getDevice(), this.pipeline);
+        const prepared = this.scene.prepareAuthoredOwner(parts, this.device.getDevice(), this.pipeline);
         return { commit: () => { prepared.commit(); this.refreshPlacementBounds(); this.invalidateBVHCache(); this.requestRender(); }, dispose: prepared.dispose };
     }
+    prepareTexturedOwner(mesh: MeshData) { if (!mesh.uvs || !(mesh.texture || (mesh.textureRef && mesh.textureBitmap))) throw new Error('A new textured owner requires an image and UVs.'); return this.prepareAuthoredOwner([mesh]); }
 
     getAppearancePreview(): AppearancePreview {
         if (!this.pipeline) throw new Error('Renderer must be initialized before previewing appearance');

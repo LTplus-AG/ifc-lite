@@ -264,7 +264,7 @@ impl GeometryRouter {
         // is skipped only when the element ALSO carries direct body geometry.
         let has_direct_geometry = reps.iter().any(|sr| {
             sr.ifc_type == IfcType::IfcShapeRepresentation
-                && crate::router::effective_rep_type(sr)
+                && crate::router::effective_element_rep_type(element, sr)
                     .map(crate::router::is_direct_body_representation)
                     .unwrap_or(false)
         });
@@ -273,7 +273,7 @@ impl GeometryRouter {
             if sr.ifc_type != IfcType::IfcShapeRepresentation {
                 continue;
             }
-            let Some(rt) = crate::router::effective_rep_type(&sr) else {
+            let Some(rt) = crate::router::effective_element_rep_type(element, &sr) else {
                 continue;
             };
             if rt == "MappedRepresentation" && has_direct_geometry {
@@ -493,7 +493,7 @@ impl GeometryRouter {
             if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
                 continue;
             }
-            if let Some(rep_type) = crate::router::effective_rep_type(&shape_rep) {
+            if let Some(rep_type) = crate::router::effective_element_rep_type(element, &shape_rep) {
                 if !is_body_representation(rep_type) {
                     continue;
                 }
@@ -568,7 +568,7 @@ impl GeometryRouter {
             }
 
             // Check representation type
-            if let Some(rep_type) = crate::router::effective_rep_type(&shape_rep) {
+            if let Some(rep_type) = crate::router::effective_element_rep_type(element, &shape_rep) {
                 if !is_body_representation(rep_type) {
                     continue;
                 }

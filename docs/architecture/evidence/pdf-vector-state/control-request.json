@@ -1,0 +1,132 @@
+{
+  "pageNumber": 1,
+  "modelMetresFromPdf": [0.0007055555555555555, 0, 0, 0.0007055555555555555, 0, 0],
+  "calibrationKey": "physical-paper-control-only",
+  "toleranceMetres": 1e-05,
+  "pdfSha256": "27f3f1fd9c27e252ae64ac5252997ba41b4c77e26aba35f20fb40d7cb68cddfe",
+  "decoderVersion": "6.3.289",
+  "viewBox": [10, 10, 340, 220],
+  "userUnit": 2,
+  "intrinsicRotation": 90,
+  "operations": [
+    {
+      "ordinal": 0,
+      "operation": {
+        "kind": "transform",
+        "matrix": [1, 0, 0, 1, 0, 0]
+      }
+    },
+    {
+      "ordinal": 6,
+      "operation": {
+        "kind": "lineWidth",
+        "width": 2
+      }
+    },
+    {
+      "ordinal": 7,
+      "operation": {
+        "kind": "strokeColor",
+        "rgb": [0, 0, 1]
+      }
+    },
+    {
+      "ordinal": 8,
+      "operation": {
+        "kind": "path",
+        "paint": "endPath",
+        "commands": []
+      }
+    },
+    {
+      "ordinal": 9,
+      "operation": {
+        "kind": "path",
+        "paint": "stroke",
+        "commands": [0, 20, 20, 1, 92, 20]
+      }
+    },
+    {
+      "ordinal": 10,
+      "operation": {
+        "kind": "fillColor",
+        "rgb": [1, 0, 0]
+      }
+    },
+    {
+      "ordinal": 11,
+      "operation": {
+        "kind": "path",
+        "paint": "endPath",
+        "commands": []
+      }
+    },
+    {
+      "ordinal": 12,
+      "operation": {
+        "kind": "path",
+        "paint": "evenOddFill",
+        "commands": [0, 20, 50, 1, 92, 50, 1, 92, 86, 1, 20, 86, 4]
+      }
+    },
+    {
+      "ordinal": 13,
+      "operation": {
+        "kind": "path",
+        "paint": "endPath",
+        "commands": []
+      }
+    },
+    {
+      "ordinal": 14,
+      "operation": {
+        "kind": "path",
+        "paint": "stroke",
+        "commands": [0, 120, 20, 2, 120, 100, 220, 100, 220, 20]
+      }
+    },
+    {
+      "ordinal": 15,
+      "operation": {
+        "kind": "save"
+      }
+    },
+    {
+      "ordinal": 16,
+      "operation": {
+        "kind": "transform",
+        "matrix": [1.73205, 1, -0.25, 0.433013, 180, 140]
+      }
+    },
+    {
+      "ordinal": 17,
+      "operation": {
+        "kind": "dash",
+        "lengths": [6, 3],
+        "phase": 0
+      }
+    },
+    {
+      "ordinal": 18,
+      "operation": {
+        "kind": "path",
+        "paint": "endPath",
+        "commands": []
+      }
+    },
+    {
+      "ordinal": 19,
+      "operation": {
+        "kind": "path",
+        "paint": "stroke",
+        "commands": [0, 0, 0, 1, 40, 0]
+      }
+    },
+    {
+      "ordinal": 20,
+      "operation": {
+        "kind": "restore"
+      }
+    }
+  ]
+}

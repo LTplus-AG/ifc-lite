@@ -1,0 +1,13 @@
+{
+  "modelId": "04d4acf8-4968-4d95-b5a8-fe6f6828cad8",
+  "productId": 35169,
+  "parts": [
+    {
+      "itemId": 79109,
+      "textured": true,
+      "triangles": 12
+    }
+  ],
+  "instanceVisible": false,
+  "undo": 1
+}

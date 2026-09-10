@@ -4,7 +4,7 @@
 
 /**
  * RaycastEngine - raycasting, BVH management and snap detection, composed into `Renderer`.
- * Reads the scene through the published `SceneContents`, not the package-internal `Scene`: it uses six of its members.
+ * Textured enumeration is optional for existing custom SceneContents adapters.
  */
 
 import { Camera } from './camera.js';
@@ -42,9 +42,14 @@ function computeMeshSetSignature(meshData: readonly MeshData[]): number {
     return sig;
 }
 
+/** Raycast-only capability; does not widen Renderer.getScene()'s public surface. */
+type RaycastScene = SceneContents & {
+    getTexturedMeshes?(): readonly Pick<MeshData, 'expressId' | 'modelIndex'>[];
+};
+
 export class RaycastEngine {
     private camera: Camera;
-    private scene: SceneContents;
+    private scene: RaycastScene;
     private canvas: HTMLCanvasElement;
     private raycaster: Raycaster;
     private snapDetector: SnapDetector;
@@ -66,7 +71,7 @@ export class RaycastEngine {
     // Performance constants
     private readonly BVH_THRESHOLD = 100;
 
-    constructor(camera: Camera, scene: SceneContents, canvas: HTMLCanvasElement) {
+    constructor(camera: Camera, scene: RaycastScene, canvas: HTMLCanvasElement) {
         this.camera = camera;
         this.scene = scene;
         this.canvas = canvas;
@@ -75,9 +80,6 @@ export class RaycastEngine {
         this.bvh = new BVH();
     }
 
-    /**
-     * Collect all visible mesh data from the scene, applying visibility filters.
-     */
     /** Slab ray-AABB test, used to cull instanced occurrences before materializing
      *  their (lazy) triangles. */
     private rayHitsBounds(ray: Ray, b: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }): boolean {
@@ -137,8 +139,9 @@ export class RaycastEngine {
             }
         };
 
-        // Collect mesh data from regular meshes
-        for (const mesh of meshes) {
+        // All flat drawable passes share retained geometry, visibility and model scoping.
+        for (const mesh of meshes) pushVisiblePieces(mesh.expressId, mesh.modelIndex);
+        for (const mesh of this.scene.getTexturedMeshes?.() ?? []) {
             pushVisiblePieces(mesh.expressId, mesh.modelIndex);
         }
 
@@ -442,16 +445,12 @@ export class RaycastEngine {
         this.bvhCache = null;
     }
 
-    /**
-     * Get the raycaster instance (for advanced usage)
-     */
+    /** Get the raycaster for advanced usage. */
     getRaycaster(): Raycaster {
         return this.raycaster;
     }
 
-    /**
-     * Get the snap detector instance (for advanced usage)
-     */
+    /** Get the snap detector for advanced usage. */
     getSnapDetector(): SnapDetector {
         return this.snapDetector;
     }

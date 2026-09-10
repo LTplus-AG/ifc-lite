@@ -1,7 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import type { AnnotationPlanePlan, AnnotationPlaneRequest, PageAppearancePlan, PageAppearanceRequest, AppearanceCatalog, AppearanceCatalogRequest, AppearancePlan, AppearanceRequest, AppearanceWorkerJob, AppearanceWorkerRequest, AppearanceWorkerResponse } from './planner-types.js';
+import type { PdfFillAnnotationRequest, PdfFillAnnotationPlan } from './pdf/fill-plan-types';
+import type { MeshTransferRequest, MeshTransferPlan } from './scan/transfer-types';
+import type { ScanRegistrationRequest, ScanRegistrationReport } from './scan/types';
+import type { CapturedMeshPlan, CapturedMeshRequest, AnnotationPlanePlan, AnnotationPlaneRequest, PageAppearancePlan, PageAppearanceRequest, AppearanceCatalog, AppearanceCatalogRequest, AppearancePlan, AppearanceRequest, AppearanceWorkerJob, AppearanceWorkerRequest, AppearanceWorkerResponse } from './planner-types.js';
 
 export interface AppearanceWorker {
   onmessage: ((event: MessageEvent<AppearanceWorkerResponse>) => void) | null;
@@ -11,6 +14,10 @@ export interface AppearanceWorker {
   terminate(): void;
 }
 export interface AppearancePlanner {
+  pdfFillPlan(source: Uint8Array, request: PdfFillAnnotationRequest, options?: { signal?: AbortSignal }): Promise<PdfFillAnnotationPlan>;
+  meshTransfer(source: Uint8Array, request: MeshTransferRequest, rgba: Uint8Array, options?: { signal?: AbortSignal }): Promise<MeshTransferPlan>;
+  registerScan(request: ScanRegistrationRequest, options?: { signal?: AbortSignal }): Promise<ScanRegistrationReport>;
+  capturedMeshPlan(source: Uint8Array, request: CapturedMeshRequest, options?: { signal?: AbortSignal }): Promise<CapturedMeshPlan>;
   annotationPlan(source: Uint8Array, request: AnnotationPlaneRequest, options?: { signal?: AbortSignal }): Promise<AnnotationPlanePlan>;
   plan(source: Uint8Array, request: AppearanceRequest, options?: { signal?: AbortSignal }): Promise<AppearancePlan>;
   pagePlan(source: Uint8Array, request: PageAppearanceRequest, rgba: Uint8Array, options?: { signal?: AbortSignal }): Promise<PageAppearancePlan>;
@@ -46,8 +53,17 @@ export function createAppearancePlanner(options: {
       return Promise.reject(new Error('Appearance source exceeds 128 MiB. Use a smaller IFC model.'));
     }
     const request = job.type === 'page-plan' ? job.request.appearance : job.request;
-    if (job.type === 'page-plan' && job.rgba.byteLength > 128 * 1024 * 1024) {
+    if ((job.type === 'page-plan' || job.type === 'mesh-transfer') && job.rgba.byteLength > 128 * 1024 * 1024) {
       return Promise.reject(new Error('Page raster payload exceeds 128 MiB. Use a smaller source.'));
+    }
+    // Refuse oversized capture arrays before structured clone and JSON encoding
+    // allocate copies; semantic geometry validation remains canonical Rust.
+    if (job.type === 'captured-mesh-plan') {
+      const mesh = job.request.mesh;
+      if ([mesh.positions.length, mesh.triangles.length, mesh.uvs.length].some(n => n === 0 || n > 200_000)
+        || mesh.uvTriangles.length !== mesh.triangles.length) {
+        return Promise.reject(new Error('Captured mesh needs 1..200000 position, triangle and UV rows, with one UV triangle per face'));
+      }
     }
     if ('productIds' in request && request.productIds.length > 10_000) {
       return Promise.reject(new Error('Appearance scope exceeds 10000 owners. Choose a smaller scope.'));
@@ -94,12 +110,74 @@ export function createAppearancePlanner(options: {
   return {
     cancel,
     dispose() { disposed = true; cancel(); },
+    meshTransfer(source, request, rgba, options) {
+      const mesh = request.sourceMesh;
+      if ([mesh.positions.length, mesh.triangles.length, mesh.uvs.length].some(n => n === 0 || n > 200_000)
+        || request.registration.fit.length > 256 || request.registration.heldOut.length > 256) return Promise.reject(new Error('Scan transfer exceeds its source or landmark budget. Choose a smaller source.'));
+      return run(source, { type: 'mesh-transfer', request, rgba }, message => {
+        if (message.type !== 'mesh-transfer-complete' || !message.result.transfer
+          || message.result.transfer.registrationSha256 !== request.registrationSha256
+          || message.result.transfer.registration.requestSha256 !== request.registrationSha256
+          || !/^[a-f0-9]{64}$/.test(message.result.transfer.preparedSha256)
+          || (message.result.plan && (message.result.plan.sourceRevision !== request.sourceRevision || message.result.plan.nextExpressId !== request.nextExpressId))) throw new Error('Scan worker returned a stale transfer');
+        return message.result;
+      }, options);
+    },
+    registerScan(request, options) {
+      if (request.fit.length > 256 || request.heldOut.length > 256 || new TextEncoder().encode(JSON.stringify(request)).byteLength > 512 * 1024) return Promise.reject(new Error('Scan registration exceeds its request budget'));
+      const frozen = structuredClone(request);
+      return run(new Uint8Array(), { type: 'scan-registration', request: frozen }, message => {
+        if (message.type !== 'scan-registration-complete' || !message.result
+          || JSON.stringify(message.result.sourceFrame) !== JSON.stringify(frozen.sourceFrame)
+          || JSON.stringify(message.result.targetFrame) !== JSON.stringify(frozen.targetFrame)
+          || message.result.algorithm !== 'ifclite-rigid-correspondence-v1') throw new Error('Scan worker returned a stale registration');
+        return message.result;
+      }, options);
+    },
     plan(source, request, options) {
       const revision = request.sourceRevision, allocationStart = request.nextExpressId;
       return run(source, { type: 'plan', request }, message => {
         if (message.type !== 'complete' || !message.plan || message.plan.sourceRevision !== revision
           || message.plan.nextExpressId !== allocationStart) throw new Error('Appearance worker returned a stale model revision');
         return message.plan;
+      }, options);
+    },
+    pdfFillPlan(source, request, options) {
+      if (request.page.operations.length > 100_000 || request.page.operations.reduce((n, row) =>
+        n + (row.operation.kind === 'path' ? row.operation.commands.length : 0), 0) > 2_000_000
+        || new TextEncoder().encode(JSON.stringify(request)).byteLength > 32 * 1024 * 1024) {
+        return Promise.reject(new Error('PDF fill request exceeds its bounded display-list budget'));
+      }
+      const frozen = structuredClone(request);
+      return run(source, { type: 'pdf-fill-plan', request: frozen }, message => {
+        if (message.type !== 'pdf-fill-complete' || !message.result
+          || message.result.plan?.sourceRevision !== frozen.sourceRevision || message.result.plan.nextExpressId !== frozen.nextExpressId
+          || message.result.algorithm !== 'ifclite-pdf-fill-annotation-v1'
+          || message.result.coordinateSpace !== 'ifc-z-up' || message.result.sourcePdfSha256 !== frozen.page.pdfSha256
+          || message.result.pageNumber !== frozen.page.pageNumber || message.result.calibrationKey !== frozen.page.calibrationKey
+          || message.result.toleranceMetres !== frozen.page.toleranceMetres
+          || JSON.stringify([message.result.frame.origin, message.result.frame.axisU, message.result.frame.axisV, message.result.frame.sizeMetres])
+            !== JSON.stringify([frozen.frame.origin, frozen.frame.axisU, frozen.frame.axisV, frozen.frame.sizeMetres])
+          || !/^[a-f0-9]{64}$/.test(message.result.requestSha256) || !/^[a-f0-9]{64}$/.test(message.result.sourceIfcSha256)
+          || !message.result.meshes?.length || message.result.meshes.some(mesh => mesh.express_id !== message.result.annotationId
+            || mesh.texture !== undefined || mesh.uvs !== undefined)) {
+          throw new Error('Appearance worker returned a stale or invalid PDF fill annotation plan');
+        }
+        return message.result;
+      }, options);
+    },
+    capturedMeshPlan(source, request, options) {
+      const revision = request.sourceRevision, allocationStart = request.nextExpressId;
+      return run(source, { type: 'captured-mesh-plan', request }, message => {
+        if (message.type !== 'captured-mesh-complete' || !message.result
+          || message.result.plan?.sourceRevision !== revision || message.result.plan.nextExpressId !== allocationStart
+          || message.result.coordinateSpace !== 'ifc-z-up'
+          || message.result.mesh?.express_id !== message.result.objectId
+          || message.result.mesh.geometry_item_id !== message.result.geometryItemId
+          || message.result.mesh.texture?.url !== request.imageUri) {
+          throw new Error('Appearance worker returned a stale or invalid captured mesh plan');
+        }
+        return message.result;
       }, options);
     },
     annotationPlan(source, request, options) {

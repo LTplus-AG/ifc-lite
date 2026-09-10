@@ -81,3 +81,56 @@ test('real WASM finite-page output binds PNG atlas assets and rejects corrupt bi
   assert.equal((await runPageAppearancePlanning(source, request, rgba)).assets.length, 1);
   assert.equal(rgba.byteLength, 4); assert.ok(source.byteLength > 0);
 });
+
+test('real transfer WASM envelope supports observed output and an explicit wholly unknown no-plan result #4381', async t => {
+  const wasmUrl = new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+  try { await access(wasmUrl); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    t.skip('Build WASM with pnpm build:wasm to run the actual transfer contract'); return;
+  }
+  const { default: init, IfcAPI } = await import('@ifc-lite/wasm');
+  const { decodeAtlasOutput } = await import('./page-plan-output');
+  await init({ module_or_path: await readFile(wasmUrl) });
+  const api = new IfcAPI();
+  const points: import('./scan/types').ScanPoint[] = [[0,0,0],[1,0,0],[0,1,0],[0,0,1],[1,1,1],[2,1,0],[1,2,0],[0,1,2]];
+  const pairs = points.map((point, i) => ({ id: `p${i}`, sourceObservation: `s${i}`, targetFeature: `t${i}`, source: point, target: point }));
+  const registration = { sourceFrame: { assetSha256: 'a'.repeat(64), frameKey: 'controlled-source' }, targetFrame: { assetSha256: createHash('sha256').update(source).digest('hex'), frameKey: 'controlled-target' }, fit: pairs.slice(0,4), heldOut: pairs.slice(4) };
+  try {
+    const report = JSON.parse(new TextDecoder().decode(api.registerScanCorrespondences(JSON.stringify(registration)))) as import('./scan/types').ScanRegistrationReport;
+    const transfer: import('./scan/transfer-types').MeshTransferRequest = {
+      schema: 'IFC4', sourceRevision: 'transfer-wasm', nextExpressId: 100, productIds: [10], registration, registrationSha256: report.requestSha256,
+      targetFromIfcWorld: { rotation: [[1,0,0],[0,1,0],[0,0,1]], sourceAnchor: [0,0,0], targetAnchor: [0,0,0] },
+      sourceMesh: { meshOrdinal: 0, positions: [[0.2,0.2,0],[0.6,0.2,0],[0.2,0.6,0]], triangles: [[0,1,2]], uvs: [[0,0],[1,0],[0,1]], baseColorFactor: [1,1,1,1], repeatS: false, repeatT: false },
+      sourceImage: { width: 1, height: 1, byteOffset: 0, byteLength: 4 }, sourceImages: [], texelsPerMetre: 32,
+      maxDistanceMetres: 0.01, minNormalDot: 0.9, ambiguityDistanceMetres: 0.001,
+    };
+    const pixels = new Uint8Array([255,0,0,255]);
+    const result = decodeAtlasOutput<import('./scan/transfer-types').MeshTransferPlan>(api.planMeshTransfer(source, JSON.stringify(transfer), pixels));
+    assert.ok(result.plan && result.transfer.applicable);
+    assert.ok(result.transfer.coverage.observedSamples > 0);
+    assert.ok(result.transfer.coverage.unknownDistanceSamples > 0);
+    assert.equal(result.assets.length, 1);
+    assert.equal(result.transfer.registrationSha256, report.requestSha256);
+    // A real rotated IFC placement is already part of native world geometry.
+    // Unequal viewer rebases add translation only; applying buildingRotation
+    // again would miss this registered patch entirely (#4381).
+    const rotatedSource = new TextEncoder().encode(new TextDecoder().decode(source)
+      .replace('#5=IFCAXIS2PLACEMENT3D(#4,$,$);', '#5=IFCAXIS2PLACEMENT3D(#4,$,#7);\n#7=IFCDIRECTION((0.,1.,0.));'));
+    const rotatedRegistration = { ...registration, targetFrame: { ...registration.targetFrame,
+      assetSha256: createHash('sha256').update(rotatedSource).digest('hex') } };
+    const rotatedReport = JSON.parse(new TextDecoder().decode(api.registerScanCorrespondences(JSON.stringify(rotatedRegistration)))) as import('./scan/types').ScanRegistrationReport;
+    const translated: import('./scan/transfer-types').MeshTransferRequest = { ...transfer,
+      registration: rotatedRegistration, registrationSha256: rotatedReport.requestSha256,
+      targetFromIfcWorld: { ...transfer.targetFromIfcWorld, targetAnchor: [91,-268,183] },
+      sourceMesh: { ...transfer.sourceMesh, positions: transfer.sourceMesh.positions.map(([x,y,z]) => [91-y,-268+x,183+z]) } };
+    const rotated = decodeAtlasOutput<import('./scan/transfer-types').MeshTransferPlan>(api.planMeshTransfer(rotatedSource, JSON.stringify(translated), pixels));
+    assert.ok(rotated.plan && rotated.transfer.applicable, 'rotated IFC parent plus explicit federation translation still observes the source patch');
+    assert.ok(Math.abs(rotated.transfer.coverage.observedAreaEstimateM2 - result.transfer.coverage.observedAreaEstimateM2) < 0.01);
+    transfer.sourceMesh.positions = transfer.sourceMesh.positions.map(([x,y]) => [x,y,10]);
+    const unknown = decodeAtlasOutput<import('./scan/transfer-types').MeshTransferPlan>(api.planMeshTransfer(source, JSON.stringify(transfer), pixels));
+    assert.equal(unknown.plan, null);
+    assert.equal(unknown.transfer.applicable, false);
+    assert.equal(unknown.transfer.coverage.observedSamples, 0);
+    assert.deepEqual(unknown.assets, []);
+  } finally { api.free(); }
+});

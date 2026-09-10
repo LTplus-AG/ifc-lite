@@ -91,6 +91,7 @@ export interface SymbolicRichChannels {
 export interface SymbolicRichChannelsEntry {
   cached: ParseResult;
   isHidden?: (ownerId: number) => boolean;
+  isMeshedFill?: (ownerId: number, geometryItemId: number) => boolean;
 }
 
 interface SymbolicRichChannelsParams {
@@ -125,7 +126,7 @@ export function buildSymbolicRichChannels(
   const texts: AnnotationText3D[] = [];
   const fills: AnnotationFill3D[] = [];
 
-  for (const { cached, isHidden } of entries) {
+  for (const { cached, isHidden, isMeshedFill } of entries) {
     // `definesExtent`: see [`AnnotationText3D.definesExtent`] for why the
     // channel routing does not reach bubbles (#3359).
     const pushText = (t: AnnotationText2D, y: number, definesExtent: boolean) => {
@@ -149,6 +150,9 @@ export function buildSymbolicRichChannels(
     };
     const pushFill = (f: AnnotationFill2D, y: number, definesExtent: boolean) => {
       if (isHidden && isHidden(f.ownerId)) return;
+      // Keep the cached 2D drawing intact. Only the redundant 3D lift is
+      // omitted, and only for an exact owner/item match in this model.
+      if (f.geometryItemId !== undefined && isMeshedFill?.(f.ownerId, f.geometryItemId)) return;
       fills.push({
         points: f.points,
         holesOffsets: f.holesOffsets,

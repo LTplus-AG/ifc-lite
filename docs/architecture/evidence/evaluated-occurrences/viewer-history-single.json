@@ -1,0 +1,152 @@
+{
+  "sourceHead": "c377eeb6f",
+  "wasmSha256": "89a2ed43603c541252ed42de25ea134aab2b8305f0c8221ad496566fa58706d4",
+  "models": 1,
+  "states": {
+    "original": {
+      "selected": 35169,
+      "instanceVisible": true,
+      "modelParts": [],
+      "undo": 0,
+      "redo": 0,
+      "siblingUnchanged": true
+    },
+    "applied": {
+      "selected": 35169,
+      "flat": [
+        {
+          "item": 79109,
+          "triangles": 12,
+          "textured": true
+        }
+      ],
+      "instanceVisible": false,
+      "modelParts": [
+        {
+          "item": 79109,
+          "triangles": 12
+        }
+      ],
+      "undo": 1,
+      "redo": 0,
+      "siblingUnchanged": true
+    },
+    "undone": {
+      "selected": 35169,
+      "instanceVisible": true,
+      "modelParts": [],
+      "undo": 0,
+      "redo": 1,
+      "siblingUnchanged": true
+    },
+    "redone": {
+      "selected": 35169,
+      "flat": [
+        {
+          "item": 79109,
+          "triangles": 12,
+          "textured": true
+        }
+      ],
+      "instanceVisible": false,
+      "modelParts": [
+        {
+          "item": 79109,
+          "triangles": 12
+        }
+      ],
+      "undo": 1,
+      "redo": 0,
+      "siblingUnchanged": true
+    },
+    "secondApplied": {
+      "selected": 35169,
+      "flat": [
+        {
+          "item": 79109,
+          "triangles": 12,
+          "textured": true
+        }
+      ],
+      "instanceVisible": false,
+      "modelParts": [
+        {
+          "item": 79109,
+          "triangles": 12
+        }
+      ],
+      "undo": 2,
+      "redo": 0,
+      "siblingUnchanged": true
+    },
+    "shown": {
+      "selected": 35169,
+      "flat": [
+        {
+          "item": 79109,
+          "triangles": 12,
+          "textured": true
+        }
+      ],
+      "instanceVisible": false,
+      "modelParts": [
+        {
+          "item": 79109,
+          "triangles": 12
+        }
+      ],
+      "undo": 2,
+      "redo": 0,
+      "siblingUnchanged": true
+    },
+    "firstAgain": {
+      "selected": 35169,
+      "flat": [
+        {
+          "item": 79109,
+          "triangles": 12,
+          "textured": true
+        }
+      ],
+      "instanceVisible": false,
+      "modelParts": [
+        {
+          "item": 79109,
+          "triangles": 12
+        }
+      ],
+      "undo": 1,
+      "redo": 1,
+      "siblingUnchanged": true
+    },
+    "originalAgain": {
+      "selected": 35169,
+      "instanceVisible": true,
+      "modelParts": [],
+      "undo": 0,
+      "redo": 2,
+      "siblingUnchanged": true
+    },
+    "final": {
+      "selected": 35169,
+      "flat": [
+        {
+          "item": 79109,
+          "triangles": 12,
+          "textured": true
+        }
+      ],
+      "instanceVisible": false,
+      "modelParts": [
+        {
+          "item": 79109,
+          "triangles": 12
+        }
+      ],
+      "undo": 2,
+      "redo": 0,
+      "siblingUnchanged": true
+    }
+  },
+  "portablePngSha256": "f2be22cb22f33a21bd40eab8b3da5c2df4f537841687f58af746413a9c172203"
+}

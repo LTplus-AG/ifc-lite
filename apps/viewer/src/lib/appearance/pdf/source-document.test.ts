@@ -133,3 +133,32 @@ test('replaced PDF rasters release temporary leases while the document and commi
   assert.equal(images.get(second.asset.id), undefined);
   document.dispose();
 });
+
+test('vector decoding binds original bytes and frozen request, and rejects stale or foreign worker results (#4406)', async () => {
+  const images = inventory(), client = worker(), bytes = controlledPdf();
+  const inspect = client.run;
+  let finish: ((result: PdfJobResult) => void) | undefined;
+  client.run = (source, job, options) => {
+    if (job.kind !== 'vectors') return inspect(source, job, options);
+    assert.deepEqual(source, bytes, 'vectors use the retained original PDF bytes');
+    return new Promise(resolve => { finish = resolve; });
+  };
+  const document = await PdfAppearanceSource.open(new File([bytes], 'drawing.pdf'), images, { worker: client });
+  const request = { pageNumber: 1, modelMetresFromPdf: [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number], calibrationKey: 'frozen', toleranceMetres: 0.001 };
+  const page = { ...structuredClone(request), pdfSha256: document.id, decoderVersion: '6.3.289',
+    viewBox: [0, 0, 144, 144] as [number, number, number, number], userUnit: 1, intrinsicRotation: 0, operations: [] };
+  try {
+    const pending = document.vectors(request);
+    request.modelMetresFromPdf[0] = 9;
+    finish!({ kind: 'vectors', page });
+    assert.deepEqual((await pending).modelMetresFromPdf, [1, 0, 0, 1, 0, 0]);
+    request.modelMetresFromPdf[0] = 1;
+    const foreign = document.vectors(request);
+    finish!({ kind: 'vectors', page: { ...page, pdfSha256: '0'.repeat(64) } });
+    await assert.rejects(foreign, /retained source/);
+    const stale = document.vectors(request); document.cancel();
+    finish!({ kind: 'vectors', page }); await assert.rejects(stale, /operation changed/);
+    const removed = document.vectors(request); document.dispose();
+    finish!({ kind: 'vectors', page }); await assert.rejects(removed, /removed/);
+  } finally { document.dispose(); }
+});

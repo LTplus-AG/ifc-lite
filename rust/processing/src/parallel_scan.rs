@@ -93,7 +93,7 @@ pub fn scan_shard_with_refusals(
     range_start: usize,
     range_end: usize,
 ) -> (ShardRecords, Option<usize>, ShardRefusals) {
-    let (records, handoff, refusals, _malformed_start) =
+    let (records, handoff, refusals, _malformed_starts) =
         scan_shard_with_diagnostics(content, range_start, range_end);
     (records, handoff, refusals)
 }
@@ -134,18 +134,20 @@ pub fn scan_shard_with_refusals(
 /// counts. Only the stitch knows which bytes of a shard were kept, so only the
 /// stitch can attribute a refusal — see [`native::stitch`].
 ///
-/// The malformed-record stop offset is the byte offset of the record — if
-/// any — that made [`ifc_lite_core::EntityScanner::find_entity_end`] fail
-/// (an unterminated `'` string or `/* … */` comment). Unlike an oversized-id
-/// refusal, the scanner STOPS ENTIRELY when this happens, so `records`/
-/// `handoff` above already reflect it; this offset is only the "why", for
-/// [`native::stitch`] to attribute — same speculative-prefix caveat as a
-/// refusal, so it is not reported here either.
+/// The malformed-record offsets are the `line_start` of every record
+/// [`ifc_lite_core::EntityScanner::find_entity_end`] refused. Most are
+/// RECOVERABLE: a record missing its `;` is dropped and the scan carries on
+/// (#4179), so `records`/`handoff` above continue past it. Only a record with
+/// nothing to resume from stops the scan, and that shows in `handoff` being
+/// `None` before `range_end`. All of them, not just the first: a shard can
+/// hold a speculative drop inside a quoted value AND a real one after it, and
+/// [`native::stitch`] must be able to find the real one. Same
+/// speculative-prefix caveat as a refusal, so it is not reported here either.
 pub fn scan_shard_with_diagnostics(
     content: &[u8],
     range_start: usize,
     range_end: usize,
-) -> (ShardRecords, Option<usize>, ShardRefusals, Option<usize>) {
+) -> (ShardRecords, Option<usize>, ShardRefusals, Vec<usize>) {
     // Deliberately NOT delegating to `scan_shard_classified`: index-only
     // callers (native exporters / georeferencing via
     // `build_entity_index_parallel`) would pay a per-entity keyword
@@ -169,7 +171,7 @@ pub fn scan_shard_with_diagnostics(
         records,
         handoff,
         scanner.skipped_oversized_id_starts().to_vec(),
-        scanner.malformed_record_start(),
+        scanner.malformed_record_starts().to_vec(),
     )
 }
 

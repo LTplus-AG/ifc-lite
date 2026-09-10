@@ -1,0 +1,33 @@
+{
+  "compressed_range": [
+    0,
+    16777215
+  ],
+  "compressed_sha256": "be789205019f8b38bbd9fa6fac84353dca14d4105be00d7b50c65c4d83a2eb3e",
+  "complete_source_rows_examined": 2112397,
+  "crop_bounds_metres": [
+    [
+      5.0,
+      14.0,
+      -1.0
+    ],
+    [
+      6.7,
+      16.4,
+      1.7
+    ]
+  ],
+  "in_bounds_points": 41697,
+  "source_order_stride": 1,
+  "output_points": 41697,
+  "output_sha256": "2ded07b54ad6071937f3fab296e366777d9958e1485e337daacdd630f15bef29",
+  "output_bytes": 2155293,
+  "coverage": "spatial crop of bounded prefix, not full archive spatial query",
+  "registration": null,
+  "ply": {
+    "bytes": 1655213,
+    "sha256": "b2914c96daee380e7ea258b68615f409f1705b0f8693c9821c4c61b6c7b97584",
+    "normals": false,
+    "coordinates": "source metres, unregistered"
+  }
+}

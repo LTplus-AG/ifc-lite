@@ -1,7 +1,9 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-use super::page_raster::{composite, Raster};
+use super::page_raster::Raster;
+#[path = "page_atlas_guards.rs"]
+mod guards;
 
 pub(super) const MAX_PIXELS: usize = 16_777_216;
 const AXIS: usize = 4096;
@@ -18,14 +20,11 @@ pub(super) struct Atlas {
 pub(super) struct AtlasInput<'a> {
     pub positions: &'a [[f64; 3]],
     pub triangles: &'a [[u32; 3]],
-    pub page_uv: &'a [[f64; 2]],
-    pub page_indices: &'a [[u32; 3]],
     pub old_uv: Option<TextureCoordinates<'a>>,
     pub old_raster: Option<(Raster<'a>, [bool; 2])>,
     pub color: [f32; 4],
     pub metres_per_unit: f64,
     pub density: f64,
-    pub page: Raster<'a>,
 }
 fn coordinates(points: [[f64; 3]; 3]) -> [[f64; 2]; 3] {
     let delta = |a: usize, b: usize| std::array::from_fn::<_, 3, _>(|i| points[b][i] - points[a][i]);
@@ -102,21 +101,26 @@ fn layout(charts: &mut [Chart], budget: usize) -> Result<[usize; 2], String> {
         width = (width * 2).min(AXIS);
     }
 }
-fn weights(xy: [[f64; 2]; 3], point: [f64; 2]) -> [f64; 3] {
+fn weights(xy: [[f64; 2]; 3], point: [f64; 2]) -> ([f64; 3], bool) {
     let [a, b, c] = xy;
     let denominator = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
-    if denominator.abs() < 1e-16 { return [1., 0., 0.]; }
+    if denominator.abs() < 1e-16 { return ([1., 0., 0.], false); }
     let u = ((b[1] - c[1]) * (point[0] - c[0]) + (c[0] - b[0]) * (point[1] - c[1])) / denominator;
     let v = ((c[1] - a[1]) * (point[0] - c[0]) + (a[0] - c[0]) * (point[1] - c[1])) / denominator;
     // Fill guard pixels from the closest barycentric edge, avoiding seams under
     // bilinear sampling. We never sample a neighboring triangle's chart.
     let mut w = [u.max(0.), v.max(0.), (1. - u - v).max(0.)];
-    let sum: f64 = w.iter().sum(); for v in &mut w { *v /= sum; } w
+    let sum: f64 = w.iter().sum(); for v in &mut w { *v /= sum; } (w, u >= 0. && v >= 0. && u + v <= 1.)
 }
-fn interpolate(uv: [[f64; 2]; 3], w: [f64; 3]) -> [f64; 2] {
+pub(super) fn interpolate(uv: [[f64; 2]; 3], w: [f64; 3]) -> [f64; 2] {
     std::array::from_fn(|axis| (0..3).map(|i| uv[i][axis] * w[i]).sum())
 }
-pub(super) fn bake(input: AtlasInput<'_>, remaining: &mut usize) -> Result<Atlas, String> {
+pub(super) trait Shader {
+    fn raster_guards(&self) -> bool { false }
+    fn reserve_pixels(&mut self, pixels: usize) -> Result<(), String>;
+    fn sample(&mut self, triangle: usize, weights: [f64; 3], interior: bool, background: [f64; 4]) -> Result<[u8; 4], String>;
+}
+pub(super) fn bake(input: AtlasInput<'_>, remaining: &mut usize, shader: &mut impl Shader) -> Result<Atlas, String> {
     let mut charts = Vec::with_capacity(input.triangles.len());
     for (triangle, indices) in input.triangles.iter().enumerate() {
         let mut points = [[0.; 3]; 3];
@@ -127,33 +131,36 @@ pub(super) fn bake(input: AtlasInput<'_>, remaining: &mut usize) -> Result<Atlas
         charts.push(chart(points, input.metres_per_unit * density)?);
     }
     let [width, height] = layout(&mut charts, *remaining)?;
+    shader.reserve_pixels(width * height)?;
     *remaining -= width * height;
     let mut rgba = vec![0; width * height * 4];
     let mut uv = Vec::with_capacity(charts.len() * 3);
     for (triangle, c) in charts.iter().enumerate() {
-        let page_indices = input.page_indices.get(triangle).ok_or("Missing projected triangle")?;
-        let mut page_uv = [[0.; 2]; 3];
         let mut old_uv = [[0.; 2]; 3];
-        for i in 0..3 {
-            page_uv[i] = *input.page_uv.get(page_indices[i].checked_sub(1).ok_or("Zero projected index")? as usize).ok_or("Invalid projected corner")?;
+        for (i, old_corner) in old_uv.iter_mut().enumerate() {
             if let Some((coords, indices)) = input.old_uv {
                 let index = indices.get(triangle).ok_or("Missing source texture triangle")?[i];
-                old_uv[i] = coords.get(index.checked_sub(1).ok_or("Zero source texture index")? as usize).ok_or("Invalid source texture corner")?.map(f64::from);
+                *old_corner = coords.get(index.checked_sub(1).ok_or("Zero source texture index")? as usize).ok_or("Invalid source texture corner")?.map(f64::from);
             }
             uv.push([(c.origin[0] as f64 + c.xy[i][0]) / width as f64,
                 1. - (c.origin[1] as f64 + c.xy[i][1]) / height as f64]);
         }
         for y in 0..c.size[1] { for x in 0..c.size[0] {
-            let w = weights(c.xy, [x as f64 + 0.5, y as f64 + 0.5]);
+            let (w, interior) = weights(c.xy, [x as f64 + 0.5, y as f64 + 0.5]);
             let mut background = input.color.map(f64::from);
             if let Some((raster, repeat)) = input.old_raster {
                 let sample = raster.sample(interpolate(old_uv, w), repeat);
                 for i in 0..4 { background[i] *= sample[i]; }
             }
-            let pixel = composite(input.page, interpolate(page_uv, w), background);
+            let pixel = if shader.raster_guards() && !interior {
+                background.map(|value| (value.clamp(0., 1.) * 255.).round() as u8)
+            } else { shader.sample(triangle, w, interior, background)? };
             let offset = ((c.origin[1] + y) * width + c.origin[0] + x) * 4;
             rgba[offset..offset + 4].copy_from_slice(&pixel);
         } }
+        if shader.raster_guards() {
+            guards::dilate(c, width, &mut rgba);
+        }
     }
     Ok(Atlas { width: width as u32, height: height as u32, rgba, uv })
 }

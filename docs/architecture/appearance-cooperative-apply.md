@@ -8,7 +8,7 @@ The command retains its earlier source checkpoint and checks it again after asyn
 
 The appearance consumer uses a bounded cumulative allocation allowance of 2 GiB and 32 million work steps. This counts all private copies over the job; it is not a measured live-heap limit or an allocation reservation. The mutations API's smaller defaults remain unchanged. The actual public Convento regression exercises the first and second entire-model planar applications within this allowance; exceeding a bound reports failure and preserves the prior model. It does not fall back to blocking synchronous preparation.
 
-When available, the browser's `scheduler.yield()` provides host-task scheduling without chained timer clamping. The fallback is a host timer. Neither path replaces exact synchronous comparison of escaped SDK values: source/dependency guards, final installation and history/GPU publication still perform synchronous work. This slice therefore requires actual interaction measurement and does not claim a universal frame-time bound or completion of the responsiveness issue.
+When available, the browser's `scheduler.postTask` schedules fresh background tasks, allowing pending user interaction to run ahead of preparation. The fallback is a host timer. This replaces `scheduler.yield()` continuations: the paired browser acceptance found that frames continued while trusted input could remain queued until Apply completed. Neither path replaces exact synchronous comparison of escaped SDK values: source/dependency guards, final installation and history/GPU publication still perform synchronous work. This slice therefore requires actual interaction measurement and does not claim a universal frame-time bound or completion of the responsiveness issue.
 
 Actual browser evidence is under `evidence/appearance/appearance-cooperative-apply-*`.
 The fresh measurement reached successful whole-model Apply; a separate functional
@@ -27,3 +27,5 @@ entities or Undo entries published. A later protocol-driven click can arrive
 after the final synchronous phase; cancellation cannot interrupt that phase or
 undo an already completed command. The deterministic phase-triggered run proves
 the live UI cancellation path, not arbitrary input latency during the final fence.
+
+The follow-up [paired trusted-input acceptance](evidence/appearance/apply-responsiveness/README.md) compares the scheduling change with otherwise identical main sources and runtime. It covers viewport wheel input, real Discard input, retained model identity and sampled JavaScript memory. The final synchronous fence remains a visible limitation; preparation responsiveness is not a universal frame-time guarantee.

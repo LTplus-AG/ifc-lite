@@ -1,10 +1,11 @@
 # Coordinated appearance assignments
 
 F7 is being implemented as a stack under [#4420](https://github.com/LTplus-AG/ifc-lite/issues/4420).
-The first slice supplies internal scope, recipe and native preparation components.
+The first slices supply internal scope, recipe, native preparation and coordinated
+publication/history components.
 **The existing viewer Apply action is still single-model.** The assignment list
-is mounted in behavior tests; its workspace controller and atomic multi-model
-publication/history consumer follow in the next slice. No new public package API
+is mounted in behavior tests; its workspace controller is the immediate consumer
+in the next stack slice. No new public package API
 or alternate IFC writer is introduced.
 
 ## Reviewed scope and source identity
@@ -47,8 +48,8 @@ STEP writer or ID-remapping implementation.
 Preparation checks every captured source/model guard across asynchronous steps,
 and rejects changes to the assignment list itself. A failure or cancellation
 releases its draft image owner and publishes no IFC, renderer or history changes.
-The forthcoming coordinator must retain this property through GPU publication
-and provide one ordered Undo/Redo across all destinations.
+The coordinator retains this property through GPU publication and supplies one
+ordered Undo/Redo across all destinations.
 
 Limits are 64 rows, 8 models, 10,000 included objects per model, 128 MiB per native
 IFC input and 256 MiB of retained original snapshots across models. Detached
@@ -70,3 +71,30 @@ revisions and reload differences. Mounted list tests exercise reordering,
 exclusion and removal and lock editing during publication. Real two-model mapped
 browser, coordinated failure/Undo and portable export/share evidence belong to
 the following integrated slice; they are not claimed by this foundation.
+
+
+## Coordinated publication and history
+
+All participants are validated before any live mutation. Each model receives one
+prepared operation sequence in its original order, including repeated edits to
+shared styles and intermediate allocations. The coordinator prepares every IFC
+transaction, asset registration and combined renderer preview before committing.
+A prepublication failure rolls back all committed participants and releases every
+staged resource; no model gets an independent partial history entry.
+
+One store publication installs every model's geometry and a linked history marker
+in every participating model. Toolbar Undo from any participant restores all of
+them; Redo reapplies all of them. A newer ordinary edit in any participant refuses
+the grouped rewind until that edit is undone. Model removal/reload retires the
+whole group and releases its retained image sources, rather than replaying a
+partial transaction against another model. A subscriber that throws after the
+complete publication is reported as committed with an observer error, so the UI
+can clear the draft and keep Undo available without offering duplicate Apply.
+
+Behavior tests use real parsed IFC stores and the actual appearance preview
+controller. They cover a failure during the second model's asset registration,
+an observer exception after renderer installation, an observer exception after
+complete store publication, dependency changes before Undo, participant reload,
+and exact repeated-attribute/intermediate-entity Undo/Redo. Only GPU allocation is
+substituted in these host tests. The following UI slice supplies the native-worker
+mounted workflow and real federated browser/export/share evidence.

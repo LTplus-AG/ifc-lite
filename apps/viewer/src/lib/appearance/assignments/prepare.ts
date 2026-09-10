@@ -6,6 +6,7 @@ import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import type { AppearancePlanner } from '../planner-worker-client.js';
 import type { AppearanceAssetOwner } from '../assets.js';
+import type { AppearancePreviewImage } from '../preview.js';
 import type { AppearancePlan } from '../planner-types.js';
 import type { AppearanceSnapshot } from '../snapshot.js';
 import { appearanceAssets, modelAppearanceAssets } from '../model-assets.js';
@@ -22,7 +23,7 @@ export interface PreparedAssignmentStep {
   assetIds: string[];
   imageUri: string;
   bitmap: ImageBitmap;
-  itemImages?: Map<number, { imageUri: string; bitmap: ImageBitmap }>;
+  itemImages?: Map<number, AppearancePreviewImage>;
 }
 
 /** Plan rows against successive detached effective IFC states. The native planner

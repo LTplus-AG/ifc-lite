@@ -79,3 +79,23 @@ with 32 triangles and finite coordinates. Run `node docs/architecture/evidence/e
 [Controlled native performance](performance.json) compares exact source revisions
 on AC20 and ISSUE_129; no material normal-load regression was resolved. These
 numbers do not claim browser worker-pool performance.
+
+## Authoring source evaluation checkpoint
+
+The actual AC20 slab #59290 is not sliceable according to the canonical
+MaterialLayerIndex. Its material relationship can remain untouched without
+weakening the existing refusal for products requiring material-layer slicing.
+The appearance evaluator previously passed an empty void map even when supplied
+with resolved prepass metadata; a fixture regression produces the uncut slab
+instead of the canonical 32-triangle result. Passing the resolved void map into
+the existing element funnel restores exact oriented world-corner equality.
+This checkpoint alone does not enable opening-bearing appearance authoring.
+
+The supported first conversion must retain the unique occurrence PDS. Because
+this slab's Body is also referenced by a type representation map, its replacement
+needs a new Body wrapper and a PDS representation-list edit; mutating the old
+Body would alter the shared type. Plain layer membership must follow the new
+Body without changing its existing members. Opening representation edits require
+unique opening/PDS ownership and a proof that no unconverted host or aggregate
+child consumes that opening. Existing source identities, non-Body wrappers,
+material associations and semantic relationships remain in place.

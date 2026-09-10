@@ -235,3 +235,18 @@ fn issue_4404_materialization_payload_restores_georeferenced_native_frame_once()
         assert!(json["conversions"][0][key].as_array().unwrap().iter().all(|v|v.as_f64().is_some_and(f64::is_finite)), "{key}");
     }
 }
+
+#[test]
+fn issue_4404_post_opening_source_matches_canonical_load() {
+    let Some(bytes)=real_source() else{return};
+    let mut source=super::super::source::Source::new(bytes.as_bytes()).unwrap();
+    assert!(!source.context.as_ref().unwrap().layers.is_sliceable(59290), "real slab requires unsupported material slicing");
+    let appearance=super::super::page_source::appearance(bytes.as_bytes(), &mut source);
+    assert_eq!(appearance.void_index.get(&59290),Some(&vec![59365]));
+    let produced=super::super::canonical::produce(&mut source,59290,&rustc_hash::FxHashMap::default(),Some(&appearance)).unwrap();
+    let loaded=crate::process_geometry(bytes.as_bytes());
+    let expected=loaded.meshes.iter().find(|m|m.express_id==59290).unwrap();
+    assert_eq!(produced.len(),1);
+    assert_eq!(expected.indices.len()/3,32);
+    assert_eq!(corners(&produced[0]),corners(expected));
+}

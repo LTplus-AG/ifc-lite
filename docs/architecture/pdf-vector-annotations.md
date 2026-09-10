@@ -193,6 +193,21 @@ Shared UI transaction integration and curved/stroked page conversion remain
 separate required work. Outlined strokes will represent visual filled geometry,
 not preserved editable centreline or font semantics.
 
+## Qualified curved fills
+
+The same native annotation plan now accepts bounded quadratic/cubic pieces after
+model-plane de Casteljau subdivision. Control-hull and boundary-separation proofs
+qualify a conservative subset without using sampled chords as evidence of
+original curve topology. A shared endpoint is allowed only with an explicit
+separating-line proof; a two-piece lens/closing chord has a separate sidedness
+proof. Exact monotone collinear controls may become their identical line.
+
+The [curved PDF evidence](evidence/pdf-curved-fill-annotations/README.md) includes
+an elliptical hole and a sheared ellipse, independent source-curve comparison,
+reported raster-support differences and exported IFC checks. Unsupported stroke,
+text, image, clipping and transparency semantics still refuse the whole page.
+This is visual vector geometry; source Bezier editing semantics are not retained.
+
 ## Shared authored-owner publication
 
 Native PDF fill plans use the same authored-product transaction as image references

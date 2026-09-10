@@ -218,13 +218,25 @@ pub fn get_legacy_entity_info(entity_name: &str) -> Option<LegacyEntityInfo> {
 /// generated `IfcType` enum already resolves, which should call
 /// [`IfcType::attribute_names`] instead).
 pub fn legacy_attribute_names(entity_name: &str) -> Option<&'static [&'static str]> {
+    // Case-insensitive, same as `legacy_aware_ifc_type` (and every other
+    // legacy lookup in `schema_helpers.rs`): a STEP keyword is not guaranteed
+    // to arrive uppercase, and this table's caller (`render_attributes`)
+    // passes the raw keyword as written in the file, unnormalised. Reuses the
+    // SAME `normalise_uppercase` helper `legacy_aware_ifc_type` uses (rather
+    // than a second, divergent normalisation) so this and the DISPLAY-type
+    // resolver cannot disagree on case handling again — that disagreement
+    // used to make a lowercase legacy entity (`ifcproxy`) fall through to
+    // `IfcType::attribute_names()` on its resolved BASE type, silently
+    // relabelling its own attribute values under the base type's names
+    // instead of just dropping them (#4203 follow-up).
+    let entity_name = crate::schema_helpers::normalise_uppercase(entity_name);
     // Linear scan, not `binary_search`: the table is sorted by the
     // generator's JS `localeCompare`, which this crate has no obligation to
     // match byte-for-byte, and a 285-row scan is not on any hot path (it
     // fires once per legacy entity occurrence, not per attribute).
     LEGACY_ATTRIBUTE_NAMES
         .iter()
-        .find(|(k, _)| *k == entity_name)
+        .find(|(k, _)| *k == entity_name.as_ref())
         .map(|(_, v)| *v)
 }
 

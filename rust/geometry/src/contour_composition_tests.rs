@@ -75,3 +75,39 @@ fn issue_4458_near_contact_and_incompatible_source_range_still_refuse() {
         FixedGridComposition::new(&[vec![vec![[0., 0.], [1e8, 0.], [0., 1e8]]]], 1e-12).is_err()
     );
 }
+
+#[test]
+fn issue_4458_single_overlay_retains_empty_and_identity_semantics() {
+    let ring = vec![[0., 0.], [2., 0.], [2., 2.], [0., 2.]];
+    let shape = vec![ring];
+    for op in [
+        BooleanOp2D::Union,
+        BooleanOp2D::Intersection,
+        BooleanOp2D::Difference,
+    ] {
+        let empty =
+            crate::boolean_2d_fixed_grid(&[], &[], op, ContourFillRule::NonZero, 0.001).unwrap();
+        assert_eq!(empty.shape_count(), 0);
+        for (subject, clip, expected) in [
+            (
+                shape.as_slice(),
+                &[][..],
+                !matches!(op, BooleanOp2D::Intersection),
+            ),
+            (&[][..], shape.as_slice(), matches!(op, BooleanOp2D::Union)),
+        ] {
+            let result =
+                crate::boolean_2d_fixed_grid(subject, clip, op, ContourFillRule::NonZero, 0.001)
+                    .unwrap();
+            assert_eq!(result.shape_count(), usize::from(expected));
+            if expected {
+                assert_eq!(result.bounds(), Some([0., 0., 2., 2.]));
+            }
+        }
+    }
+    let context = FixedGridComposition::new(&[], 0.001).unwrap();
+    assert_eq!(context.vertex_count(0).unwrap(), 0);
+    assert!(context.vertex_count(1).is_err());
+    let context = FixedGridComposition::new(&[shape], 0.001).unwrap();
+    assert!(context.contours(0).is_err());
+}

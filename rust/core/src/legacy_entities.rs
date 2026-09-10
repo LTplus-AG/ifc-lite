@@ -7,6 +7,7 @@
 //! Maps deprecated IFC2x3/IFC4 entities (removed in IFC4x3) to their IFC4x3 equivalents.
 //! This allows parsing older IFC files without maintaining full multi-schema support.
 
+use crate::generated::legacy_attribute_names::LEGACY_ATTRIBUTE_NAMES;
 use crate::generated::IfcType;
 
 /// Information about a legacy entity
@@ -198,6 +199,33 @@ pub fn get_legacy_entity_info(entity_name: &str) -> Option<LegacyEntityInfo> {
 
         _ => None,
     }
+}
+
+/// Own positional attribute names for a legacy (IFC2X3/IFC4, removed by
+/// IFC4X3) entity, read from `generated::legacy_attribute_names` — a table
+/// generated per schema version from the same EXPRESS-derived tables the
+/// TypeScript side reads (#4203) — rather than approximated from the entity's
+/// resolved [`get_legacy_entity_info`] base type.
+///
+/// The base type is NOT a safe substitute here: `IFCDOORSTYLE` (IFC2X3/IFC4)
+/// ends `[…, "OperationType", "ConstructionType", "ParameterTakesPrecedence",
+/// "Sizeable"]` while its resolved base type `IfcDoorType` (IFC4X3) ends
+/// `[…, "PredefinedType", "OperationType", "ParameterTakesPrecedence",
+/// "UserDefinedOperationType"]` — same length, different names from index 8
+/// on, so reusing the base type's names would rename `Sizeable`'s value to
+/// `UserDefinedOperationType` rather than merely drop it. `None` means the
+/// name is not a recognised legacy entity (including: it is a modern name the
+/// generated `IfcType` enum already resolves, which should call
+/// [`IfcType::attribute_names`] instead).
+pub fn legacy_attribute_names(entity_name: &str) -> Option<&'static [&'static str]> {
+    // Linear scan, not `binary_search`: the table is sorted by the
+    // generator's JS `localeCompare`, which this crate has no obligation to
+    // match byte-for-byte, and a 285-row scan is not on any hot path (it
+    // fires once per legacy entity occurrence, not per attribute).
+    LEGACY_ATTRIBUTE_NAMES
+        .iter()
+        .find(|(k, _)| *k == entity_name)
+        .map(|(_, v)| *v)
 }
 
 /// Check if an entity name is a known legacy entity

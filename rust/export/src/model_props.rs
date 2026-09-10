@@ -74,12 +74,26 @@ const COMMON_ATTRIBUTES: [&str; 7] = [
 /// like are declared directly on the entity, so a consumer reading only psets
 /// cannot see them however inheritance is configured.
 ///
+/// `raw_type_name` is the STEP keyword as written in the file (e.g.
+/// `"IFCDOORSTYLE"`), used ONLY to look up a legacy (IFC2X3/IFC4,
+/// removed-by-IFC4X3) entity's own attribute names (#4203) — `entity`'s own
+/// `ifc_type` field is decoded via a bare `IfcType::from_str` and is
+/// `Unknown` for exactly those entities, which used to make this function
+/// return an empty `Vec` for every legacy class, silently (the class still
+/// got a row — `model.rs` resolves the DISPLAY type legacy-aware — it just
+/// lost its own-class attributes). `ifc_type` is the caller's already
+/// legacy-aware-resolved type (`model.rs`'s `ty` / `cand.ifc_type`), used for
+/// every name the generated enum recognises, unchanged from before.
+///
 /// Values reuse [`render_value`], so a rendered attribute reads the same as a
 /// property with the same underlying type, and anything it declines (entity
 /// references, `$`, derived `*`) is omitted rather than emitted as a dangling
 /// `#123`. Order follows the schema's attribute order, which is stable.
-pub(super) fn render_attributes(entity: &DecodedEntity) -> Vec<PropValue> {
-    let names = entity.ifc_type.attribute_names();
+pub(super) fn render_attributes(
+    entity: &DecodedEntity, raw_type_name: &str, ifc_type: IfcType,
+) -> Vec<PropValue> {
+    let names: &[&str] = ifc_lite_core::legacy_attribute_names(raw_type_name)
+        .unwrap_or_else(|| ifc_type.attribute_names());
     let mut out = Vec::new();
     for (i, name) in names.iter().enumerate() {
         if COMMON_ATTRIBUTES.contains(name) {

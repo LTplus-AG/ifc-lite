@@ -772,3 +772,85 @@ END-ISO-10303-21;
     assert_eq!(row.global_id.as_deref(), Some("2n5ASfQfT84eP9h$zLLJ4A"));
     assert_eq!(row.name.as_deref(), Some("Door"));
 }
+
+/// #4203: an `IfcType`-resolvable-only attribute export left legacy
+/// (IFC2X3/IFC4, removed-by-IFC4X3) entities with an EMPTY `attributes` list,
+/// even for names `legacy_entities.rs` already resolves to a base type for
+/// geometry/rootedness purposes — `entity.ifc_type` is decoded via a bare
+/// `IfcType::from_str`, which is `Unknown` for these, and
+/// `Unknown::attribute_names()` is `&[]`.
+///
+/// `IFCDOORSTYLE`'s OWN declared attributes end `…, OperationType,
+/// ConstructionType, ParameterTakesPrecedence, Sizeable` — different names,
+/// same length, from its resolved base type `IfcDoorType`'s `…,
+/// PredefinedType, OperationType, ParameterTakesPrecedence,
+/// UserDefinedOperationType` past index 8. This also pins that the fix reads
+/// the entity's OWN schema-version attribute names rather than the base
+/// type's (which would exist, but rename `Sizeable`'s value to
+/// `UserDefinedOperationType` — wrong, not merely empty).
+#[test]
+fn a_legacy_type_products_own_attributes_use_its_own_schema_names_not_the_base_types() {
+    let ifc = "ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('issue-4203'),'2;1');
+FILE_NAME('t.ifc','2026-09-10',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#43=IFCDOORSTYLE('2n5ASfQfT84eP9h$zLLJ4A',$,'Door',$,$,$,(#44),$,.SINGLE_SWING_LEFT.,.PANEL_TYPE.,.F.,.T.);
+#44=IFCREPRESENTATIONMAP(#45,#46);
+#45=IFCAXIS2PLACEMENT3D(#4,$,$);
+#46=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#48));
+#48=IFCTRIANGULATEDFACESET(#49,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#49=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
+ENDSEC;
+END-ISO-10303-21;
+";
+    let opts = ModelOptions::default().with_attributes(true);
+    let rows = rows_with(ifc, &opts);
+    let row = rows
+        .iter()
+        .find(|r| r.express_id == 43)
+        .expect("the meshed IfcDoorStyle must get an attribute row");
+    assert_eq!(row.ifc_type, "IfcDoorType");
+
+    let names: Vec<&str> = row.attributes.iter().map(|p| p.name.as_str()).collect();
+    assert!(
+        !names.is_empty(),
+        "IFCDOORSTYLE's own attributes must not be dropped just because \
+         IfcType::from_str(\"IFCDOORSTYLE\") is Unknown"
+    );
+    assert!(
+        names.contains(&"OperationType"),
+        "got {names:?}; OperationType is IFCDOORSTYLE's own 9th attribute"
+    );
+    assert!(
+        names.contains(&"Sizeable"),
+        "got {names:?}; Sizeable is IFCDOORSTYLE's own last attribute — its \
+         resolved base type IfcDoorType has no Sizeable attribute at all, so \
+         this fails if attribute names were ever borrowed from the base type"
+    );
+    assert!(
+        !names.contains(&"PredefinedType") && !names.contains(&"UserDefinedOperationType"),
+        "got {names:?}; both are IfcDoorType-only names IFCDOORSTYLE does not \
+         declare — their presence would mean the base type's attribute list \
+         leaked in instead of IFCDOORSTYLE's own"
+    );
+
+    let sizeable = row
+        .attributes
+        .iter()
+        .find(|p| p.name == "Sizeable")
+        .expect("Sizeable attribute present");
+    assert_eq!(
+        sizeable.value, "true",
+        "Sizeable is IFCDOORSTYLE's 12th positional attribute (.T. in the fixture); \
+         a value at the wrong index would surface as a wrong value here first"
+    );
+}

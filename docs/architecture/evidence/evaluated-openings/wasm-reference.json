@@ -1,0 +1,14 @@
+{
+  "product": 59290,
+  "triangles": 32,
+  "vertices": 48,
+  "finite": true,
+  "wasmSha256": "32370a6986753927fef2f17389a9ceafc93e588eaddedb617b26559308bdf94d",
+  "sourceHead": "3547047ae",
+  "contract": {
+    "passed": 88,
+    "failed": 0,
+    "skipped": 1,
+    "skipReason": "optional matched historical fingerprint baseline not supplied"
+  }
+}

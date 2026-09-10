@@ -1180,6 +1180,15 @@ Do not repeat those cache mechanisms unchanged or infer broad capacity from a
 small target prefix. [Recorded experiments and worker evidence](../../docs/architecture/evidence/mesh-transfer-capacity/README.md)
 state the remaining gate and the limits of the measurement.
 
+
+The follow-up nearest-first BVH experiment shrank an exact per-sample search
+bound, retained the near-tie band in one traversal, and combined it with bounded
+exact observation memoization. It still refused the full selected boulder under
+the existing work cap, so the runtime experiment remains unmerged. A tighter
+candidate search alone did not establish complete-target capacity; do not
+reintroduce this variant as a shipped optimization without new end-to-end
+acceptance. [Reproducible refusal](../../docs/architecture/evidence/mesh-transfer-capacity/README.md#nearest-first-traversal-follow-up).
+
 ### Product-scoped polygonal annotation fills (#4406)
 
 Direct annotation fills reuse canonical placement/triangulation and a lazy
@@ -1199,3 +1208,14 @@ establish zero overhead, a worker-pool speedup or vector-page preparation
 throughput. Keep page operator/path/stack limits distinct from PDF.js decoder
 allocation limits; post-decode counting cannot bound the decoder's earlier work.
 See [exact source IDs, five-iteration samples and identity evidence](../../docs/architecture/evidence/pdf-vector-state/native-load.json).
+
+## Reference opening semantics (#4433)
+
+An element-aware representation predicate excludes non-subtractive Reference
+shapes only for opening elements. Controlled native base/branch probes on AC20
+and ISSUE_129 resolved no material normal-load regression; mesh, vertex and
+triangle counts stayed identical. This is a correctness change, not a speedup.
+The lesson is to preserve the existing type-based rendering predicate for
+ordinary products while applying opening-specific semantics consistently to
+mesh production and fast void probes. Numeric evidence and source revisions are
+in `docs/architecture/evidence/evaluated-openings/performance.json`.

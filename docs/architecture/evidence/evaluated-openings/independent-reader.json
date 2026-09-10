@@ -1,0 +1,21 @@
+{
+  "reader": "IfcOpenShell",
+  "version": "0.8.2",
+  "product": 59290,
+  "GlobalId": "2RGlQk4xH47RHK93zcTzUL",
+  "source": {
+    "triangles": 32,
+    "volumeCubicMetres": 19.96715491572098
+  },
+  "reference": {
+    "triangles": 32,
+    "volumeCubicMetres": 19.96715491572098
+  },
+  "changedExistingEntities": [
+    59286,
+    59354
+  ],
+  "sourceSchemaFindings": 170,
+  "referenceSchemaFindings": 169,
+  "newSchemaFindings": []
+}

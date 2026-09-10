@@ -38,7 +38,7 @@ pub use diagnostics::{
     GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
 };
 pub(crate) use diagnostics::ClassificationKind;
-pub(super) use rep_filter::{effective_rep_type, is_body_representation, is_direct_body_representation};
+pub(super) use rep_filter::{effective_element_rep_type, effective_rep_type, is_body_representation, is_direct_body_representation};
 pub use content_hash::FACETED_BREP_DEDUP_FACE_LIMIT;
 
 #[cfg(test)]
@@ -696,5 +696,7 @@ impl Default for GeometryRouter {
     }
 }
 
+#[cfg(test)]
+mod reference_opening_tests;
 #[cfg(test)]
 mod annotation_tests;

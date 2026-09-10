@@ -86,3 +86,35 @@ ephemeral loopback port, accepts only fixed resource routes, creates fresh brows
 contexts, terminates every worker and closes its own browser/server handles.
 Input reads are bounded. The recorded payload hash distinguishes this full-model
 fixture from another generated capture. No large scan/IFC inputs are committed.
+
+## Nearest-first traversal follow-up
+
+A separate [unmerged nearest-band experiment](https://github.com/LTplus-AG/ifc-lite/commit/e74b81ee6)
+tried a different mechanism: visit the nearer BVH child first, shrink the search
+radius after each exact primitive distance, and retain all candidates inside
+the final nearest-distance plus ambiguity band in that same traversal. Exact
+point/normal memoization is capped at 1,024 entries. It preserves nearest-surface
+selection before normal checks and does not increase the aggregate work limit.
+
+The full selected 40,087-triangle boulder target against all 66,122 source
+triangles still returns `BVH query work budget exhausted`; no applicable plan is
+produced. [Pinned input hashes and refusal](nearest-band.json) identify the
+control. Native tests cover thin opposite faces, overlapping/UV-seam ambiguity,
+unknown albedo and emitted texel applicability, plus independent nearest/band
+point-distance checks and explicit budget failures. This is a capacity refusal,
+not a performance improvement or full-model acceptance. Timing was deliberately
+not compared while other builds were active. No nearest-query or memo-cache code
+from this experiment is merged into the product.
+
+For native reproduction, use the existing input generator above, split its
+`source`, `request`, and base64-decoded `rgba` into `source.ifc`, `request.json`,
+and `rgba.bin`, then run from the pinned experimental checkout:
+
+```sh
+cargo run -p ifc-lite-processing --example transfer_nearest_probe \
+  --profile server-release -- /path/to/input-directory
+```
+
+The example only reports planner metadata or refusal; it never publishes a
+mutation. The selected product is #65, whose geometry item #54 retains all
+40,087 triangles. Other products in the IFC are outside this explicit target.

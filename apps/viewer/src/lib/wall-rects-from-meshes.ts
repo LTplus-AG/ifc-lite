@@ -20,12 +20,27 @@
  *
  * Frame: the rendered meshes are WebGL Y-up (`world = origin + position`). The
  * plan footprint is render XZ; we map it to the same "room frame" the underlay
- * uses (`useConstructionUnderlay`): `ifcX = renderX + cx`, `ifcY = cy − renderZ`,
- * with `cx = rtc.x + shift.x`, `cy = rtc.y − shift.z` — the canonical
- * `toWorld`/`totalYupOffset` sign convention. For models with no large
- * coordinate shift (rtc = shift = 0) this is `(renderX, −renderZ)` — identity to
- * IFC X/Y. Storey scoping is a render-Y (height) band overlap, so a full-height
- * wall correctly bounds rooms on every storey it passes through.
+ * uses (`useConstructionUnderlay`), which is the model's OWN IFC frame —
+ * `ifcX = renderX + shift.x`, `ifcY = −renderZ − shift.z`.
+ *
+ * NOT the georeferenced world frame. `wasmRtcOffset` is the offset the WASM
+ * mesh path subtracted when it resolved a site placement that anchors the
+ * building to a survey grid; adding it back here yields survey coordinates,
+ * and those are wrong for every consumer downstream. `addSpace` writes the
+ * outline into a storey whose placement chain ALREADY carries that anchor, so
+ * survey coordinates get the offset applied twice; the 3D ghost
+ * (`buildElementMesh`) reads render-frame corners; and the storey band below
+ * compares against render-frame mesh heights. Measured on a 6-storey LV95
+ * model (rtc = 2665510 / 1259339 / 381.3 m, geometry local to ~360 m): the
+ * band landed 381 m under the building so NO storey found a wall, and once it
+ * did, the baked rooms were written 2.66 million metres off. rtc is null for
+ * any model within 10 km of the origin, which is why neither showed up until
+ * a georeferenced file arrived.
+ *
+ * Storey scoping is a render-Y (height) band overlap, so a full-height wall
+ * correctly bounds rooms on every storey it passes through. `floorElevation`
+ * is the storey's own `IfcBuildingStorey.Elevation` — local to the building,
+ * the same frame the rendered geometry is in.
  */
 
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
@@ -127,21 +142,15 @@ export function wallRectsFromMeshes(
   floorElevation: number,
   floorToFloor: number,
 ): WallRect[] {
-  const rtc = coord?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 };
   const shift = coord?.originShift ?? { x: 0, y: 0, z: 0 };
-  // Canonical reconstruction (coordinate-handler `toWorld`, mirrored in
-  // PropertiesPanel + lib/geo `totalYupOffset`): worldYup = renderLocal + shift
-  // + rtcYup, with rtcYup = { x: rtc.x, y: rtc.z, z: -rtc.y }; then
-  // ifcX = worldYup.x, ifcY = -worldYup.z, ifcZ = worldYup.y. Solving:
-  //   ifcX = renderX + (rtc.x + shift.x)   → cx = rtc.x + shift.x
-  //   ifcY = (rtc.y - shift.z) - renderZ   → cy = rtc.y - shift.z
-  // The shift terms were previously inverted (worked only because shift is
-  // usually 0 for non-georeferenced models).
-  const cx = rtc.x + shift.x;
-  const cy = rtc.y - shift.z;
-  // Storey band in render-Y (height). renderY = ifcZ − rtc.z − shift.y.
-  const lo = floorElevation - rtc.z - shift.y;
-  const hi = floorElevation + floorToFloor - rtc.z - shift.y;
+  // Render → the model's own IFC frame: ifcLocal = renderLocal + shift, with
+  // the Y-up→Z-up swap (ifcX = x, ifcY = -z, ifcZ = y). The rtc term is
+  // deliberately absent — see the frame note in the module docstring.
+  const cx = shift.x;
+  const cy = -shift.z;
+  // Storey band in render-Y (height). renderY = ifcZ − shift.y.
+  const lo = floorElevation - shift.y;
+  const hi = floorElevation + floorToFloor - shift.y;
 
   const walls = new Map<number, { pts: Pt[]; ymin: number; ymax: number }>();
   for (const m of meshes) {

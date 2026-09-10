@@ -223,6 +223,9 @@ function main() {
         missing.map((m) => `      - ${m}`).join('\n') +
         '\n   A failed job also SKIPS everything that needs it, and `skipped` counts as a\n' +
         '   pass here, so an unjudged failure can take the whole matrix green.\n' +
+        // A literal GitHub Actions expression for the user to paste, not JS
+        // interpolation.
+        // eslint-disable-next-line no-template-curly-in-string
         '   REMEDY: add `[<job>]="${{ needs.<job>.result }}"` to the map in test.yml.'
     );
   }

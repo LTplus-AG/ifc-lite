@@ -6,6 +6,9 @@
  * so every case here is a positive control: a synthetic workflow carrying the
  * defect, asserted to be reported. The last case pins the real file.
  */
+/* eslint-disable no-template-curly-in-string -- the strings under test ARE
+ * GitHub Actions expressions (`${{ needs.<job>.result }}`); they must stay
+ * literal, and a template literal would interpolate them away. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

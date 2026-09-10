@@ -84,13 +84,16 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
                 return Err("Canonical source geometry is invalid".into());
             }
             budget.reserve(mesh.positions.len()/3,mesh.indices.len()/3,0)?;
+            let removed=super::evaluated_openings::removed_meshes(source,
+                styles.void_index.get(&product_id).map_or(&[],Vec::as_slice),
+                &opening_edits,&textures,&styles,&mut budget)?;
             let points=evaluated_source::local_points(source,&product,&mesh)?;
             let rounding_bounds=if opening_edits.is_empty() {None} else {
                 Some(super::evaluated_precision::local_cast_bounds(&points,source.decoder.length_unit_scale())?)
             };
-            Ok((body.clone(),points,mesh,old_item,surface,source::refs(body.get(3))?,opening_edits,layers,rounding_bounds))
+            Ok((body.clone(),points,mesh,old_item,surface,source::refs(body.get(3))?,opening_edits,layers,rounding_bounds,removed))
         })();
-        let (mut body,points,mesh,old_item,surface,old_items,opening_edits,layers,rounding_bounds)=match candidate {
+        let (mut body,points,mesh,old_item,surface,old_items,opening_edits,layers,rounding_bounds,removed)=match candidate {
             Ok(value)=>value,
             Err(reason)=> {
                 if budget.exhausted { return Err(budget::BUDGET_ERROR.into()); }
@@ -128,6 +131,11 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
         let (_,style)=crate::prepass::surface_style_from_styled_item(&entities[&styled],&mut source.decoder)
             .ok_or("Converted surface style failed canonical resolution")?;
         styles.geometry_style_index.insert(item,style);
+        for owner in removed.iter().map(|mesh|mesh.express_id).collect::<BTreeSet<_>>() {
+            if !canonical::produce(source,owner,&textures,Some(&styles))?.is_empty() {
+                return Err("Converted Reference opening still produces canonical geometry".into());
+            }
+        }
         let target=canonical::produce(source,product_id,&textures,Some(&styles))?;
         if target.len()!=1 { return Err("Evaluated replacement changed canonical submesh count".into()); }
         let target=&target[0];
@@ -150,7 +158,7 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
         normalized.conversions.push(Conversion {plan,styled_id:styled,binding:AppearanceConversion {
             product_id,representation_id:body_id,source_geometry_item_id:old_item,geometry_item_id:item,
             source_indices:mesh.indices,source_positions:mesh.positions,source_normals:mesh.normals,
-            source_origin:mesh.origin,source_color:mesh.color,rtc_offset }});
+            source_origin:mesh.origin,source_color:mesh.color,rtc_offset,source_removed_meshes:removed }});
     }
     Ok(normalized)
 }

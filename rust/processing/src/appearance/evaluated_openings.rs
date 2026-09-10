@@ -26,25 +26,9 @@ pub(super) fn reference_only(source: &mut Source<'_>, product: u32) -> Result<bo
         }
     }
     if openings.is_empty() { return Ok(false); }
+    let router=source.context.as_ref().ok_or("Missing canonical context")?.router();
     for opening in openings {
-        let element = source.entity(opening)?;
-        if !element.ifc_type.is_subtype_of(IfcType::IfcOpeningElement) { return Ok(false); }
-        let pds = source.entity(element.get_ref(6).ok_or("Opening has no representation")?)?;
-        if pds.ifc_type != IfcType::IfcProductDefinitionShape { return Ok(false); }
-        let representations = refs(pds.get(2))?;
-        if representations.is_empty() || representations.len() > 8 { return Ok(false); }
-        let mut reference = false;
-        for id in representations {
-            let representation = source.entity(id)?;
-            if representation.ifc_type != IfcType::IfcShapeRepresentation { return Ok(false); }
-            if representation.get_string(1).is_some_and(|name| name.eq_ignore_ascii_case("Reference")) {
-                reference = true;
-            } else if representation.get_string(2) != Some("BoundingBox") {
-                // Unknown/mixed Body geometry remains subtractive or ambiguous.
-                return Ok(false);
-            }
-        }
-        if !reference { return Ok(false); }
+        if router.opening_requires_subtraction(opening,&mut source.decoder) {return Ok(false);}
     }
     Ok(true)
 }
@@ -89,6 +73,39 @@ pub(super) fn prepare(
             }
         }
         if !found { return Err("Opening has no supported Body or Reference geometry".into()); }
+    }
+    Ok(result)
+}
+
+/// Capture companion geometry through the same evaluator before its rows change.
+/// Textured companions remain refused until publication can retain their assets.
+pub(super) fn removed_meshes(
+    source: &mut Source<'_>, opening_ids: &[u32], edits: &[ifc_lite_core::DecodedEntity],
+    textures: &rustc_hash::FxHashMap<u32, ifc_lite_geometry::ResolvedTextureMap>,
+    styles: &crate::prepass::ResolvedPrepass, budget: &mut super::budget::PlanBudget,
+) -> Result<Vec<crate::types::mesh::MeshData>, String> {
+    let edited: std::collections::BTreeSet<_> = edits.iter().map(|row| row.id).collect();
+    let mut result = Vec::new();
+    for &owner in opening_ids {
+        let opening = source.entity(owner)?;
+        let pds = source.entity(opening.get_ref(6).ok_or("Missing opening representation")?)?;
+        if !refs(pds.get(2))?.iter().any(|id| edited.contains(id)) { continue; }
+        for mesh in super::canonical::produce(source, owner, textures, Some(styles))? {
+            if mesh.express_id != owner || mesh.geometry_item_id.is_none()
+                || mesh.positions.is_empty() || mesh.positions.len() % 3 != 0
+                || mesh.normals.len() != mesh.positions.len()
+                || mesh.indices.is_empty() || mesh.indices.len() % 3 != 0
+                || mesh.positions.iter().chain(&mesh.normals).chain(&mesh.color).any(|v| !v.is_finite())
+                || mesh.origin.iter().any(|v| !v.is_finite())
+                || mesh.indices.iter().any(|&i| i as usize >= mesh.positions.len() / 3) {
+                return Err("Canonical opening companion geometry is invalid".into());
+            }
+            if mesh.texture.is_some() || mesh.uvs.is_some() {
+                return Err("Conversion of textured opening companions is unsupported".into());
+            }
+            budget.reserve(mesh.positions.len() / 3, mesh.indices.len() / 3, 0)?;
+            result.push(mesh);
+        }
     }
     Ok(result)
 }

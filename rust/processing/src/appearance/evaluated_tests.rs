@@ -29,6 +29,8 @@ fn issue_4404_real_mapped_member_is_opt_in_and_preserves_every_sibling_and_world
     request.representation_policy=RepresentationPolicy::EvaluatedOccurrence;
     let plan=plan_appearance(source.as_bytes(),&request).unwrap();
     assert!(plan.exclusions.is_empty(),"{:?}",plan.exclusions);
+    assert!(plan.conversions.iter().all(|conversion|conversion.source_removed_meshes.is_empty()));
+    assert!(!serde_json::to_value(&plan).unwrap()["conversions"][0].as_object().unwrap().contains_key("sourceRemovedMeshes"));
     assert_eq!(plan.created.iter().map(|row|row.express_id).collect::<Vec<_>>(),(plan.next_express_id..plan.next_available_express_id).collect::<Vec<_>>());
     assert_eq!(plan.conversions.len(),1);assert_eq!(plan.items.len(),1);
     assert_eq!(plan.conversions[0].representation_id,35155);
@@ -306,16 +308,27 @@ fn issue_4404_real_cut_slab_preserves_type_semantics_and_accepts_second_appearan
     assert_eq!(reopened.entity(59368).unwrap().get_ref(4),Some(59290));
     assert_eq!(reopened.entity(59368).unwrap().get_ref(5),Some(59365));
     let before=crate::process_geometry(bytes.as_bytes());let after=crate::process_geometry(output.as_bytes());
-    if let Ok(directory)=std::env::var("IFCLITE_EVALUATED_EVIDENCE_DIR") {
-        std::fs::write(std::path::Path::new(&directory).join("native-opening-planned.ifc"),&output).unwrap();
-        std::fs::write(std::path::Path::new(&directory).join("native-opening-plan.json"),serde_json::to_vec_pretty(&plan).unwrap()).unwrap();
-    }
+    assert_eq!(plan.conversions[0].source_removed_meshes.len(),1);
+    let companion=&plan.conversions[0].source_removed_meshes[0];
+    assert_eq!(companion.express_id,59365);
+    let original_opening=before.meshes.iter().find(|mesh|mesh.express_id==59365).unwrap();
+    // The orchestrator additionally attaches entity labels; geometry/style and
+    // provenance come from the shared per-element evaluator without that pass.
+    assert_eq!(companion.geometry_item_id,original_opening.geometry_item_id);
+    assert_eq!(companion.positions,original_opening.positions);
+    assert_eq!(companion.normals,original_opening.normals);
+    assert_eq!(companion.indices,original_opening.indices);
+    assert_eq!(companion.origin,original_opening.origin);
+    assert_eq!(companion.color,original_opening.color);
     assert_eq!(before.meshes.len(),after.meshes.len()+1);
     assert!(!after.meshes.iter().any(|mesh|mesh.express_id==59365),"Reference opening must no longer produce subtractive render geometry");
     let mut max_world_error=0f64;
     for mesh in before.meshes.iter().filter(|mesh|mesh.express_id!=59365) {
         let other=after.meshes.iter().find(|m|m.express_id==mesh.express_id && (m.express_id==59290 || m.geometry_item_id==mesh.geometry_item_id)).unwrap();
         if mesh.express_id==59290 {
+            assert_eq!(plan.conversions[0].source_positions,mesh.positions);
+            assert_eq!(plan.conversions[0].source_indices,mesh.indices);
+            assert_eq!(plan.conversions[0].source_origin,mesh.origin);
             assert_eq!(mesh.indices.len()/3,32);assert_eq!(other.indices.len()/3,32);
             assert!(other.uvs.is_some());assert!(other.texture.is_some());
             assert_eq!(mesh.global_id,other.global_id);
@@ -335,4 +348,19 @@ fn issue_4404_real_cut_slab_preserves_type_semantics_and_accepts_second_appearan
         std::fs::write(std::path::Path::new(&directory).join("native-opening-plan.json"),serde_json::to_vec_pretty(&plan).unwrap()).unwrap();
         std::fs::write(std::path::Path::new(&directory).join("native-opening-metrics.json"),serde_json::to_vec_pretty(&json!({"maxWorldCoordinateErrorMetres":max_world_error,"triangles":32,"secondAppearance":true})).unwrap()).unwrap();
     }
+}
+
+#[test]
+fn issue_4404_opening_companions_share_the_aggregate_geometry_budget() {
+    let Some(bytes)=real_source() else{return};
+    let mut source=Source::new(bytes.as_bytes()).unwrap();
+    let styles=page_source::appearance(bytes.as_bytes(),&mut source);
+    let textures=ifc_lite_geometry::build_texture_index(bytes.as_bytes(),&mut source.decoder);
+    let edits=super::super::evaluated_openings::prepare(&mut source,59290,&[59365],&BTreeSet::from([59365])).unwrap();
+    let mut budget=budget::PlanBudget::default();
+    budget.reserve(1_000_000,0,0).unwrap();
+    budget.reserve(1_000_000,0,0).unwrap();
+    let error=super::super::evaluated_openings::removed_meshes(&mut source,&[59365],&edits,&textures,&styles,&mut budget).unwrap_err();
+    assert_eq!(error,budget::BUDGET_ERROR);
+    assert!(budget.exhausted);
 }

@@ -38,3 +38,30 @@ pub(super) fn same_corner(
         old.is_finite() && new.is_finite() && bound.is_finite() && (old-new).abs()<=bound
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn issue_4404_frame_bound_accepts_rounding_but_refuses_one_ulp_deformation() {
+        let origin=[6.,5.,2.6];
+        let before=[0.1f32,0.2,0.3];
+        let world: [f64;3]=std::array::from_fn(|axis|f64::from(before[axis])+origin[axis]);
+        let after=world.map(|value|value as f32);
+        assert!(same_corner(&before,origin,&after,[0.;3],0.));
+        let mut changed=after;
+        changed[0]=changed[0].next_up().next_up();
+        assert!(!same_corner(&before,origin,&changed,[0.;3],0.));
+        let bounds=local_cast_bounds(&[world],1.).unwrap();
+        assert_eq!(bounds[0],world.iter().zip(after).map(|(a,b)|(a-f64::from(b)).abs()).sum::<f64>());
+    }
+
+    #[test]
+    fn issue_4404_frame_bound_refuses_unaccounted_scale_and_nonfinite_coordinates() {
+        assert!(local_cast_bounds(&[[1.,2.,3.]],0.001).is_err());
+        assert!(local_cast_bounds(&[[f64::MAX,0.,0.]],1.).is_err());
+        assert!(local_cast_bounds(&[[f64::NAN,0.,0.]],1.).is_err());
+        assert!(!same_corner(&[0.;3],[0.;3],&[f32::INFINITY,0.,0.],[0.;3],0.));
+    }
+}

@@ -8,6 +8,10 @@ use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
 pub(super) fn layers(source: &mut Source<'_>, body: u32) -> Result<Vec<DecodedEntity>,String> {
+    if !source.incoming.get(&body).is_some_and(|parents| parents.iter()
+        .any(|id| source.types.get(id)==Some(&IfcType::IfcRepresentationMap))) {
+        return Ok(Vec::new());
+    }
     let mut result=Vec::new();
     for id in source.incoming.get(&body).cloned().unwrap_or_default() {
         if source.types.get(&id)!=Some(&IfcType::IfcPresentationLayerAssignment) {continue;}

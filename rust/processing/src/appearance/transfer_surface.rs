@@ -19,10 +19,11 @@ pub(super) enum Observation {
 pub(super) struct Surface {
     pub triangles: Vec<Triangle>,
     tree: Bvh,
-    candidates: Vec<u32>,
+    candidates: Vec<(u32, f64)>,
     distance: f64,
     normal_dot: f64,
     ambiguity: f64,
+    memo: std::collections::HashMap<[u64; 6], (Observation, [f64; 2])>,
 }
 impl Surface {
     pub fn new(
@@ -56,7 +57,7 @@ impl Surface {
         {
             return Err("Transfer source coordinates/UVs exceed their finite bounds".into());
         }
-        budget.reserve(mesh.triangles.len() * 512 + mesh.positions.len() * 40)?;
+        budget.reserve(mesh.triangles.len() * 512 + mesh.positions.len() * 40 + 1024 * 160)?;
         // Balanced median BVH build: conservatively charge input sorting at every level.
         let levels = usize::BITS as usize - mesh.triangles.len().leading_zeros() as usize;
         budget.charge(mesh.triangles.len() * levels * levels + mesh.positions.len())?;
@@ -87,6 +88,7 @@ impl Surface {
             distance: request.max_distance_metres,
             normal_dot: request.min_normal_dot,
             ambiguity: request.ambiguity_distance_metres,
+            memo: std::collections::HashMap::with_capacity(1024),
         })
     }
     pub fn observe(
@@ -96,36 +98,34 @@ impl Surface {
         budget: &mut TransferBudget,
     ) -> Result<(Observation, [f64; 2]), String> {
         budget.charge(1)?;
-        self.candidates.clear();
-        self.tree.point_candidates_bounded(
-            point,
-            self.distance + self.ambiguity,
-            &mut self.candidates,
-            &mut budget.work,
+        let key = [point[0].to_bits(), point[1].to_bits(), point[2].to_bits(),
+            target_normal[0].to_bits(), target_normal[1].to_bits(), target_normal[2].to_bits()];
+        if let Some(result) = self.memo.get(&key) { return Ok(*result); }
+        let result = self.observe_uncached(point, target_normal, budget)?;
+        if self.memo.len() == 1024 { budget.charge(self.memo.len())?; self.memo.clear(); }
+        budget.charge(1)?;
+        self.memo.insert(key, result);
+        Ok(result)
+    }
+    fn observe_uncached(&mut self, point: Point, target_normal: Point, budget: &mut TransferBudget)
+        -> Result<(Observation, [f64; 2]), String> {
+        let nearest = self.tree.nearest_point_bounded(
+            point, self.distance, &mut budget.work, self.ambiguity, &mut self.candidates,
+            |i| closest(self.triangles[i as usize].points, point).1,
         )?;
-        let mut nearest = None;
-        for &i in &self.candidates {
-            budget.charge(1)?;
-            let (weights, d2) = closest(self.triangles[i as usize].points, point);
-            if nearest.as_ref().is_none_or(|(_, _, best)| d2 < *best) {
-                nearest = Some((i, weights, d2));
-            }
-        }
-        let Some((index, weights, d2)) = nearest else {
+        let Some((index, d2)) = nearest else {
             return Ok((Observation::Distance, [0.; 2]));
         };
         let distance = d2.sqrt();
-        if distance > self.distance {
-            return Ok((Observation::Distance, [0.; 2]));
-        }
+        budget.charge(1)?;
+        let (weights, _) = closest(self.triangles[index as usize].points, point);
         let nearest = &self.triangles[index as usize];
-        for &i in &self.candidates {
+        for &(i, other_distance) in &self.candidates {
             if i == index {
                 continue;
             }
             budget.charge(1)?;
             let other = &self.triangles[i as usize];
-            let (_, other_distance) = closest(other.points, point);
             if other_distance.sqrt() <= distance + self.ambiguity
                 && !continuous_neighbor(nearest, other)
             {

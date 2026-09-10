@@ -31,6 +31,7 @@
 //! independently of these functions.
 
 mod bounded;
+mod nearest;
 
 type Tri = [[f64; 3]; 3];
 pub(crate) type Aabb = ([f64; 3], [f64; 3]);

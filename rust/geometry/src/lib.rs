@@ -81,6 +81,7 @@ pub(crate) mod bool2d;
 /// fixed single-`Profile2D` void-subtraction path. Reached through the
 /// root-level re-exports below, so it stays `pub(crate)` per #C3.2.
 pub(crate) mod contour_bool2d;
+mod contour_grid_guard;
 /// Deterministic Constrained Delaunay Triangulation + bounded Ruppert
 /// min-angle refinement. Backs the quality triangulators in `triangulation`.
 mod cdt;
@@ -178,7 +179,7 @@ pub use bool2d::{
     subtract_multiple_2d, subtract_multiple_2d_counted,
 };
 pub use contour_bool2d::{
-    boolean_2d, resolve_2d, sanitize as sanitize_contours, BooleanOp2D, ContourSet, Ring2D,
+    boolean_2d, boolean_2d_fixed_grid, ContourFillRule, resolve_2d, sanitize as sanitize_contours, BooleanOp2D, ContourSet, Ring2D,
 };
 pub use clash_solid::{intersection_solid, DegenerateReason, IntersectionSolid};
 pub use csg::{calculate_normals, ClippingProcessor, Plane, Triangle};

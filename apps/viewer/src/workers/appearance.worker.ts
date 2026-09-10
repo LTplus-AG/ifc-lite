@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { PdfFillAnnotationRequest, PdfFillAnnotationPlan } from '../lib/appearance/pdf/fill-plan-types';
 import type { ScanRegistrationRequest, ScanRegistrationReport } from '../lib/appearance/scan/types';
 
 import type { MeshTransferRequest, MeshTransferPlan } from '../lib/appearance/scan/transfer-types';
@@ -16,6 +17,9 @@ async function runAppearanceJob<T>(invoke: (api: IfcAPI) => Uint8Array, decode: 
   const api = new IfcAPI();
   try { return decode(invoke(api)); }
   finally { api.free(); }
+}
+export function runPdfFillAnnotationPlanning(source: Uint8Array, request: PdfFillAnnotationRequest): Promise<PdfFillAnnotationPlan> {
+  return runAppearanceJob(api => api.planPdfFillAnnotation(source, JSON.stringify(request)));
 }
 export function runMeshTransfer(source: Uint8Array, request: MeshTransferRequest, rgba: Uint8Array): Promise<MeshTransferPlan> {
   return runAppearanceJob(api => api.planMeshTransfer(source, JSON.stringify(request), rgba), bytes => decodeAtlasOutput<MeshTransferPlan>(bytes));
@@ -48,9 +52,11 @@ const isWorkerScope = typeof self !== 'undefined' &&
 if (isWorkerScope) {
   self.onmessage = async (event: MessageEvent<AppearanceWorkerRequest>) => {
     const job = event.data;
-    if (!job || (job.type !== 'mesh-transfer' && job.type !== 'scan-registration' && job.type !== 'plan' && job.type !== 'catalog' && job.type !== 'page-plan' && job.type !== 'annotation-plan' && job.type !== 'captured-mesh-plan')) return;
+    if (!job || (job.type !== 'pdf-fill-plan' && job.type !== 'mesh-transfer' && job.type !== 'scan-registration' && job.type !== 'plan' && job.type !== 'catalog' && job.type !== 'page-plan' && job.type !== 'annotation-plan' && job.type !== 'captured-mesh-plan')) return;
     try {
-      const response: AppearanceWorkerResponse = job.type === 'mesh-transfer'
+      const response: AppearanceWorkerResponse = job.type === 'pdf-fill-plan'
+        ? { type: 'pdf-fill-complete', id: job.id, result: await runPdfFillAnnotationPlanning(job.source, job.request) }
+        : job.type === 'mesh-transfer'
         ? { type: 'mesh-transfer-complete', id: job.id, result: await runMeshTransfer(job.source, job.request, job.rgba) }
         : job.type === 'scan-registration'
         ? { type: 'scan-registration-complete', id: job.id, result: await runScanRegistration(job.request) }

@@ -295,7 +295,17 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
     }
   }
 
-  // Pass 5: IfcRelAssignsToControl — map schedules to tasks.
+  // Pass 5: IfcRelAssignsToControl — map schedules to tasks, and (a second,
+  // distinct grouping path from Pass 4b's IfcRelNests) IfcWorkPlan grouping
+  // IfcWorkSchedule. The SDK's scripting bridge
+  // (`assignSchedulesToWorkPlan` in packages/create/src/ifc-creator.ts)
+  // emits exactly this relation — RelatingControl the plan, RelatedObjects
+  // the schedules — not IfcRelNests, so a plan grouped through that bridge
+  // must resolve here too or the SDK-authored grouping never reads back.
+  // If a source file expresses the same WorkPlan->WorkSchedule pair through
+  // *both* relations, Pass 4b (IfcRelNests) runs first and wins:
+  // `parentPlanGlobalId` is set-once (guarded below and in Pass 4b), and
+  // `childScheduleGlobalIds` is deduped so the pair is not double-counted.
   for (const relId of relAssignsControlIds) {
     const ref = store.entityIndex.byId.get(relId);
     if (!ref) continue;
@@ -309,9 +319,23 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
     if (!schedule) continue;
     for (const objId of objects) {
       const task = taskByExpressId.get(objId);
-      if (!task) continue;
-      schedule.taskGlobalIds.push(task.globalId);
-      task.controllingScheduleGlobalIds.push(schedule.globalId);
+      if (task) {
+        schedule.taskGlobalIds.push(task.globalId);
+        task.controllingScheduleGlobalIds.push(schedule.globalId);
+        continue;
+      }
+      // Not a task — check whether this is a WorkPlan grouping a
+      // WorkSchedule via IfcRelAssignsToControl instead of IfcRelNests.
+      if (schedule.kind !== 'WorkPlan') continue;
+      const childSchedule = scheduleByExpressId.get(objId);
+      if (!childSchedule || childSchedule.kind !== 'WorkSchedule') continue;
+      const siblings = (schedule.childScheduleGlobalIds ??= []);
+      if (!siblings.includes(childSchedule.globalId)) {
+        siblings.push(childSchedule.globalId);
+      }
+      if (!childSchedule.parentPlanGlobalId) {
+        childSchedule.parentPlanGlobalId = schedule.globalId;
+      }
     }
   }
 

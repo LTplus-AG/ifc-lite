@@ -462,3 +462,164 @@ describe('schedule roundtrip — IfcWorkPlan nests IfcWorkSchedule (IfcRelNests)
     expect(schedule.parentPlanGlobalId).toBe('plan-gid');
   });
 });
+
+describe('schedule roundtrip — IfcWorkPlan groups IfcWorkSchedule via IfcRelAssignsToControl', () => {
+  /**
+   * `packages/create/src/ifc-creator.ts`'s `assignSchedulesToWorkPlan` (the
+   * SDK's scripting bridge) groups schedules under a work plan by emitting
+   * exactly `IFCRELASSIGNSTOCONTROL('gid',#owner,$,$,(refs),$,#planId)` —
+   * RelatingControl the plan, RelatedObjects the schedules — never
+   * IfcRelNests. Before Pass 5's fix, `schedule-extractor.ts` only resolved
+   * a `RelatedObjects` entry through `taskByExpressId`, so a work schedule
+   * there (not a task) fell through the `if (!task) continue;` unnoticed —
+   * the grouping was dropped without a trace, symmetrically with the
+   * IfcRelNests gap #4329/#4330 fixed above.
+   */
+  it('reads a WorkPlan grouping a WorkSchedule via IfcRelAssignsToControl (the SDK bridge shape)', async () => {
+    const step = [
+      'ISO-10303-21;',
+      'HEADER;',
+      "FILE_DESCRIPTION(('workplan assigns-to-control'),'2;1');",
+      "FILE_NAME('','',(''),(''),'','','');",
+      "FILE_SCHEMA(('IFC4'));",
+      'ENDSEC;',
+      'DATA;',
+      "#1=IFCPROJECT('p',#10,'P',$,$,$,$,$,$);",
+      "#10=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);",
+      "#778=IFCWORKPLAN('0eVhmaYyb3sBLb0LoNiW62',#10,'Work Plan #1',$,$,$,$,$,$,$,$,$,$,$);",
+      "#794=IFCWORKSCHEDULE('2LoWUCZHr7YvZks8lmqjcw',#10,'Sub Schedule',$,$,$,$,$,$,$,$,$,$,.PLANNED.);",
+      // Exactly the shape addIfcRelAssignsToControl emits: RelatedObjects
+      // then RelatingControl, RelatingControl is the WorkPlan.
+      "#784=IFCRELASSIGNSTOCONTROL('rel-gid-1',#10,$,$,(#794),$,#778);",
+      'ENDSEC;',
+      'END-ISO-10303-21;',
+    ].join('\n');
+
+    const store = await parseStep(step);
+    const parsed = extractScheduleOnDemand(store);
+
+    expect(parsed.hasSchedule).toBe(true);
+    expect(parsed.workSchedules).toHaveLength(2);
+
+    const plan = parsed.workSchedules.find(ws => ws.kind === 'WorkPlan')!;
+    const schedule = parsed.workSchedules.find(ws => ws.kind === 'WorkSchedule')!;
+    expect(plan).toBeDefined();
+    expect(schedule).toBeDefined();
+
+    // The grouping edge must resolve both directions, same contract as the
+    // IfcRelNests path above.
+    expect(plan.childScheduleGlobalIds).toEqual(['2LoWUCZHr7YvZks8lmqjcw']);
+    expect(schedule.parentPlanGlobalId).toBe('0eVhmaYyb3sBLb0LoNiW62');
+    // And it must not be mistaken for a task assignment.
+    expect(plan.taskGlobalIds).toHaveLength(0);
+  });
+
+  it('a WorkPlan with an unresolved IfcRelAssignsToControl stays distinguishable from one with no grouping at all', async () => {
+    // RelatedObjects references an expressId that resolves to nothing (no
+    // such entity) — the plan must come back with childScheduleGlobalIds
+    // empty/absent, not a spurious entry, and this must not be conflated
+    // with "absent = never checked".
+    const step = [
+      'ISO-10303-21;',
+      'HEADER;',
+      "FILE_DESCRIPTION(('workplan assigns-to-control unresolved'),'2;1');",
+      "FILE_NAME('','',(''),(''),'','','');",
+      "FILE_SCHEMA(('IFC4'));",
+      'ENDSEC;',
+      'DATA;',
+      "#1=IFCPROJECT('p',#10,'P',$,$,$,$,$,$);",
+      "#10=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);",
+      "#778=IFCWORKPLAN('plan-unresolved',#10,'Work Plan #1',$,$,$,$,$,$,$,$,$,$,$);",
+      "#784=IFCRELASSIGNSTOCONTROL('rel-gid-2',#10,$,$,(#999),$,#778);",
+      'ENDSEC;',
+      'END-ISO-10303-21;',
+    ].join('\n');
+
+    const store = await parseStep(step);
+    const parsed = extractScheduleOnDemand(store);
+
+    const plan = parsed.workSchedules.find(ws => ws.kind === 'WorkPlan')!;
+    expect(plan).toBeDefined();
+    expect(plan.childScheduleGlobalIds ?? []).toHaveLength(0);
+  });
+
+  it('the regenerate path: extraction sourced from IfcRelAssignsToControl survives serialize + reparse (canonicalized to IfcRelNests)', async () => {
+    // Simulates the edit-triggered strip-and-regenerate path
+    // (apps/viewer/src/sdk/adapters/export-adapter.ts): a file authored via
+    // the SDK bridge (IfcRelAssignsToControl) is opened, a task edit
+    // triggers extractScheduleOnDemand + serializeScheduleToStep instead of
+    // byte-preservation, and the plan/schedule grouping must survive.
+    const step = [
+      'ISO-10303-21;',
+      'HEADER;',
+      "FILE_DESCRIPTION(('regenerate path'),'2;1');",
+      "FILE_NAME('','',(''),(''),'','','');",
+      "FILE_SCHEMA(('IFC4'));",
+      'ENDSEC;',
+      'DATA;',
+      "#1=IFCPROJECT('p',#10,'P',$,$,$,$,$,$);",
+      "#10=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);",
+      "#778=IFCWORKPLAN('plan-regen',#10,'Work Plan',$,$,$,$,$,$,$,$,$,$,$);",
+      "#794=IFCWORKSCHEDULE('sched-regen',#10,'Sub Schedule',$,$,$,$,$,$,$,$,$,$,.PLANNED.);",
+      "#784=IFCRELASSIGNSTOCONTROL('rel-gid-3',#10,$,$,(#794),$,#778);",
+      'ENDSEC;',
+      'END-ISO-10303-21;',
+    ].join('\n');
+
+    const store = await parseStep(step);
+    const opened = extractScheduleOnDemand(store);
+    const openedPlan = opened.workSchedules.find(ws => ws.kind === 'WorkPlan')!;
+    expect(openedPlan.childScheduleGlobalIds).toEqual(['sched-regen']);
+
+    // Regenerate — this is the serializer path a task edit triggers.
+    const result = serializeScheduleToStep(opened, { nextId: 900, ownerHistoryId: 10 });
+
+    // The serializer canonicalizes work-plan grouping to IfcRelNests on
+    // write (its only emission path for `childScheduleGlobalIds`, added by
+    // #4330) regardless of which relation the source used — it does not
+    // (and structurally cannot, since there is one write section) emit a
+    // second IfcRelAssignsToControl for the same pair.
+    const nestsLines = result.lines.filter(l => l.includes('=IFCRELNESTS('));
+    expect(nestsLines).toHaveLength(1);
+    const controlLines = result.lines.filter(l => l.includes('=IFCRELASSIGNSTOCONTROL('));
+    expect(controlLines).toHaveLength(0);
+
+    const final = splice(buildBaseStep(), result.lines);
+    const store2 = await parseStep(final);
+    const reparsed = extractScheduleOnDemand(store2);
+
+    const plan = reparsed.workSchedules.find(ws => ws.kind === 'WorkPlan')!;
+    const schedule = reparsed.workSchedules.find(ws => ws.kind === 'WorkSchedule')!;
+    expect(plan.childScheduleGlobalIds).toEqual(['sched-regen']);
+    expect(schedule.parentPlanGlobalId).toBe('plan-regen');
+  });
+
+  it('when a file groups the same pair via BOTH IfcRelNests and IfcRelAssignsToControl, the pair is not double-counted and IfcRelNests (Pass 4b, which runs first) wins the parentPlanGlobalId', async () => {
+    const step = [
+      'ISO-10303-21;',
+      'HEADER;',
+      "FILE_DESCRIPTION(('workplan both relations'),'2;1');",
+      "FILE_NAME('','',(''),(''),'','','');",
+      "FILE_SCHEMA(('IFC4'));",
+      'ENDSEC;',
+      'DATA;',
+      "#1=IFCPROJECT('p',#10,'P',$,$,$,$,$,$);",
+      "#10=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);",
+      "#778=IFCWORKPLAN('plan-both',#10,'Work Plan',$,$,$,$,$,$,$,$,$,$,$);",
+      "#794=IFCWORKSCHEDULE('sched-both',#10,'Sub Schedule',$,$,$,$,$,$,$,$,$,$,.PLANNED.);",
+      "#784=IFCRELNESTS('rel-nests-both',#10,$,$,#778,(#794));",
+      "#785=IFCRELASSIGNSTOCONTROL('rel-control-both',#10,$,$,(#794),$,#778);",
+      'ENDSEC;',
+      'END-ISO-10303-21;',
+    ].join('\n');
+
+    const store = await parseStep(step);
+    const parsed = extractScheduleOnDemand(store);
+
+    const plan = parsed.workSchedules.find(ws => ws.kind === 'WorkPlan')!;
+    const schedule = parsed.workSchedules.find(ws => ws.kind === 'WorkSchedule')!;
+    // Not duplicated: one entry, not two.
+    expect(plan.childScheduleGlobalIds).toEqual(['sched-both']);
+    expect(schedule.parentPlanGlobalId).toBe('plan-both');
+  });
+});

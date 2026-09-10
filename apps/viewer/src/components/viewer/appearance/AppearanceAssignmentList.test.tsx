@@ -32,15 +32,15 @@ it('mounted assignment order and explicit exceptions change the reviewed winner 
   assert.match(rows()[0].textContent!, /0 objects.*1 replaced/);
   click(ui.querySelector('[aria-label="Review objects for assignment 2"]')!);
   click(rows()[1].querySelector('input[type="checkbox"]')!);
-  assert.match(rows()[0].textContent!, /1 objects/);
+  assert.match(rows()[0].textContent!, /1 object\b/);
   assert.match(rows()[1].textContent!, /0 objects · 1 excluded/);
   click(rows()[1].querySelector('input[type="checkbox"]')!);
   click(ui.querySelector('[aria-label="Move assignment 2 earlier"]')!);
   assert.match(rows()[0].textContent!, /Paint.*0 objects/);
-  assert.match(rows()[1].textContent!, /Brick.*1 objects/);
+  assert.match(rows()[1].textContent!, /Brick.*1 object\b/);
   click(ui.querySelector('[aria-label="Remove assignment 2"]')!);
   assert.equal(rows().length, 1);
-  assert.match(rows()[0].textContent!, /Paint.*1 objects/);
+  assert.match(rows()[0].textContent!, /Paint.*1 object\b/);
 });
 it('large assignment review mounts one bounded page and finds/excludes objects beyond it #4420', () => {
   const ui = render(<Harness count={10000} />);

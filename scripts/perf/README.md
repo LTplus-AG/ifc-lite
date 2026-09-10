@@ -1255,3 +1255,16 @@ canonical source, placement and row author when adding non-image geometry; do
 not introduce a dummy texture to access shared setup. See the [raw native
 measurements](../../docs/architecture/evidence/authored-context/native-load.json)
 and adjacent plan identity evidence.
+
+### Complete selected-target mesh transfer (#4381)
+
+Nearest-first traversal plus same-chart raster padding avoids source queries
+for unobserved padding while retaining exact nearest/ambiguity checks and all
+interior unknown appearance. Combined with an explicit aggregate work allowance
+increase, the full selected boulder now returns identical applicable plans in
+fresh workers and passes the normal viewer transaction/export/reopen journey.
+The original quota experiments remain negative; neither this result nor the
+quota increase alone retroactively turns them into wins. Scan-owned memory is
+still bounded, including padding scratch, and overlapping/dense cases refuse
+before publication. This is measured capacity acceptance, not a throughput
+speedup. [Worker, independent-reader and refusal evidence](../../docs/architecture/evidence/mesh-transfer-full-target/README.md).

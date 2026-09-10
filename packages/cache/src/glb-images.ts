@@ -46,7 +46,12 @@ export function primitiveTexture(gltf: GLTFDocument, bin: Uint8Array, primitive:
   const material = primitive.material === undefined ? undefined : gltf.materials?.[primitive.material];
   if (primitive.material !== undefined && !material) throw new Error('GLB: material index does not exist');
   const reference = material?.pbrMetallicRoughness?.baseColorTexture;
-  if (!reference) return {};
+  if (!reference) {
+    if (primitive.attributes.COLOR_0 !== undefined) {
+      throw new Error('GLB: vertex-colour-only appearance is unavailable; export a base-colour texture.');
+    }
+    return {};
+  }
   const transform = reference.extensions?.KHR_texture_transform;
   const texCoord = transform?.texCoord ?? reference.texCoord ?? 0;
   if (!Number.isSafeInteger(texCoord) || texCoord < 0) throw new Error('GLB: invalid base-colour texture coordinate set');

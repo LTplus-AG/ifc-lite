@@ -59,6 +59,12 @@ describe('captured GLB appearance #4380', () => {
     json.extensionsRequired=['KHR_materials_specular'];
     expect(parseGLBToMeshData(json,bin)[0].textureRef?.url).toBe('textures/glb-image-0.png');
   });
+  it('reports vertex-colour-only appearance as unavailable', () => {
+    const {json,bin}=capture();
+    delete json.materials![0].pbrMetallicRoughness!.baseColorTexture;
+    json.meshes![0].primitives[0].attributes.COLOR_0=5;
+    expect(()=>parseGLBToMeshData(json,bin)).toThrow(/vertex-colour-only appearance is unavailable.*base-colour texture/);
+  });
   it('reads the base colour texture coordinate set selected by the material', () => {
     const {json,bin}=capture();
     json.meshes![0].primitives[0].attributes.TEXCOORD_1=json.meshes![0].primitives[0].attributes.TEXCOORD_0;

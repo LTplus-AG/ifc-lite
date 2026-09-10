@@ -103,19 +103,10 @@ export const TEARDOWN_EXEMPTIONS: Readonly<Record<string, string>> = {
     'WebHID device connection state and sensitivity — no field references a modelId or ' +
     'expressId.',
 
-  layerStackSlice:
-    'The IFCX layer composition (layerStack / layerStackPathToId / layerStackDiff) is only ' +
-    'ever populated by a full federated (re-)load, which always calls `setLayerStack(...)` ' +
-    'right after `clearAllModels()` in the same synchronous flow, and a non-federated load ' +
-    'calls `clearLayerStack()` explicitly (`useIfcLoader.ts`). KNOWN GAP, not covered by this ' +
-    'exemption\'s reasoning: `useFileCommands.tsx`\'s multi-file, non-all-IFCX branch calls ' +
-    '`clearAllModels()` then `loadFilesSequentially()` without ever touching layerStack, so a ' +
-    'PRIOR IFCX composition\'s entries can survive into a session that loaded plain IFC files ' +
-    '— `LayersPanel.tsx` renders `layerStack` with no membership guard. Left for a follow-up ' +
-    '(same shape as the splitToolSlice fix this branch makes, but in call-site wiring, not ' +
-    'the teardown seam) rather than fixed here to keep this PR scoped to the registration gap.',
-
   appearanceSlice:
+    'The assignment recipe contains only saved logical membership, never live plans or views. ' +
+    'useAppearanceAssignments refuses every restored row until explicit model/source rebinding and membership review; ' +
+    'live captured rows validate model/view/source identity and cannot apply after removal or reload. ' +
     'Verified 2026-09-09 field by field against `AppearanceDraftRecipe` (lib/appearance/draft-' +
     'types.ts): `sourceId`, `settings` and `previewEnabled` name no modelId or expressId; only ' +
     '`appearanceDraft.modelId` is per-model, and it has exactly ONE read site across the repo. ' +

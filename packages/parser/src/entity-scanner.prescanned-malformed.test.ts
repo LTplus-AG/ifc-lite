@@ -71,7 +71,7 @@ describe('scanIfcEntities: a pre-scanned index that stopped at a malformed recor
     // issue is that the caller is TOLD, not that the record comes back.
     expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
     expect(
-      diagnostics.some((m) => m.includes('stopped early') && m.includes('a record had')),
+      diagnostics.some((m) => m.includes('dropped a record')),
     ).toBe(true);
   });
 
@@ -88,7 +88,7 @@ describe('scanIfcEntities: a pre-scanned index that stopped at a malformed recor
     });
 
     expect(result.malformedRecordCount).toBe(0);
-    expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(false);
+    expect(diagnostics.some((m) => m.includes('dropped a record'))).toBe(false);
   });
 
   it('reports BOTH when the stop and an unreported refusal count apply', async () => {
@@ -105,7 +105,7 @@ describe('scanIfcEntities: a pre-scanned index that stopped at a malformed recor
       onDiagnostic: (m) => diagnostics.push(m),
     });
 
-    expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(true);
+    expect(diagnostics.some((m) => m.includes('dropped a record'))).toBe(true);
     expect(diagnostics.some((m) => m.includes('does not report refused'))).toBe(true);
   });
 
@@ -130,6 +130,6 @@ describe('scanIfcEntities: a pre-scanned index that stopped at a malformed recor
     });
 
     expect(result.malformedRecordCount).toBe(0);
-    expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(false);
+    expect(diagnostics.some((m) => m.includes('dropped a record'))).toBe(false);
   });
 });

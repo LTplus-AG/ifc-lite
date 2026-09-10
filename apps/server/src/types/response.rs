@@ -8,7 +8,7 @@
 //! re-exported from the `ifc-lite-processing` crate. Server-only types remain here.
 
 use super::MeshData;
-use ifc_lite_processing::SymbolicData;
+use ifc_lite_processing::SymbolicDataWithProvenance;
 use serde::{Deserialize, Serialize};
 
 // Re-export shared types from the processing crate
@@ -89,8 +89,8 @@ pub enum StreamEvent {
         /// 2D symbol data extracted from `IfcAnnotation` and `IfcGrid`
         /// entities — mirrors the inline field on `POST /api/v1/parse`
         /// (issue #843) so the streaming paths reach parity (issue #900).
-        #[serde(default, skip_serializing_if = "SymbolicData::is_empty")]
-        symbolic_data: SymbolicData,
+        #[serde(default, skip_serializing_if = "SymbolicDataWithProvenance::is_empty")]
+        symbolic_data: SymbolicDataWithProvenance,
     },
 
     /// Error occurred.
@@ -117,7 +117,7 @@ mod tests {
             mesh_coordinate_space: None,
             site_transform: None,
             building_transform: None,
-            symbolic_data: SymbolicData::default(),
+            symbolic_data: SymbolicDataWithProvenance::default(),
         };
         let json = serde_json::to_value(&event).unwrap();
         let obj = json.as_object().unwrap();
@@ -151,7 +151,7 @@ mod tests {
             mesh_coordinate_space: Some("site_local".to_string()),
             site_transform: Some(vec![1.0; 16]),
             building_transform: Some(vec![2.0; 16]),
-            symbolic_data: SymbolicData::default(),
+            symbolic_data: SymbolicDataWithProvenance::default(),
         };
         let json = serde_json::to_value(&event).unwrap();
         assert_eq!(json["mesh_coordinate_space"], "site_local");

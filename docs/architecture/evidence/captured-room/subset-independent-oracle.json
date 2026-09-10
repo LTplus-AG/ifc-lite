@@ -1,0 +1,37 @@
+{
+  "reader": "0.8.2",
+  "schema": "IFC4",
+  "artifactSha256": "b720da00aa141b59fc90adf304e736f022b7f83915244dbb337d6e753964b0c3",
+  "artifactBytes": 2871546,
+  "ifcEntry": "model.ifc",
+  "entities": 41,
+  "buildingElements": 1,
+  "walls": 0,
+  "proxy": {
+    "GlobalId": "3F8ea83w95POWKkSYP6ukU",
+    "Name": "Captured surface",
+    "ObjectType": "IfcLite:CapturedSurface",
+    "PredefinedType": "USERDEFINED",
+    "expressId": 65
+  },
+  "container": {
+    "GlobalId": "01Sc4ZCv1TQRjTvtTOWPag",
+    "Name": "Level 0",
+    "type": "IfcBuildingStorey"
+  },
+  "singleContainmentContainsOnlyProxy": true,
+  "spatial": {
+    "IfcProject": 1,
+    "IfcSite": 1,
+    "IfcBuilding": 1,
+    "IfcBuildingStorey": 1
+  },
+  "independentTriangles": 40087,
+  "image": {
+    "path": "textures/c38f0e918f6dc16b8d386ba3cdd89805c78320c119a1ceec85856f82b09a65b8.jpg",
+    "bytes": 987467,
+    "sha256": "c38f0e918f6dc16b8d386ba3cdd89805c78320c119a1ceec85856f82b09a65b8",
+    "originalJpegByteIdentity": true,
+    "comparison": "Direct byte-for-byte comparison against the JPEG in the original full IFCZIP"
+  }
+}

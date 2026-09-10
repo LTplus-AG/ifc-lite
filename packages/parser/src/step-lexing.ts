@@ -21,8 +21,6 @@ const SLASH = 0x2f; // '/'
 const STAR = 0x2a; // '*'
 const NEWLINE = 0x0a; // '\n'
 const QUOTE = 0x27; // '\''
-const LPAREN = 0x28; // '('
-const RPAREN = 0x29; // ')'
 
 // Whether a comment opens at `pos`.
 export function opensComment(buf: Uint8Array, pos: number, len: number): boolean {
@@ -136,7 +134,7 @@ export function opensLiteralOrComment(buf: Uint8Array, pos: number, len: number)
 // definition and excludes vertical tab, so reaching for it on either side
 // reintroduces the exact FF/VT divergence issue #3733 reported (dropped
 // entity on a leading form feed) rather than closing it.
-function isSpaceByte(b: number): boolean {
+export function isSpaceByte(b: number): boolean {
   return (
     b === 0x20 || b === 0x09 || b === 0x0d || b === NEWLINE || b === 0x0c || b === 0x0b
   );
@@ -187,56 +185,6 @@ export function countNewlines(buf: Uint8Array, from: number, to: number): number
     if (buf[p] === NEWLINE) n++;
   }
   return n;
-}
-
-// Byte length of the record that starts at `startOffset` and whose argument
-// list opens at `pos`: the span up to and including the ')' balancing that '(',
-// or 0 when the input runs out first.
-//
-// A string literal is jumped over by skipStringLiteral above rather than
-// counted, so the '(' in 'Storey (Level 1)' is text and not depth, and STEP's
-// doubled-quote escape ('') stays inside the literal instead of closing it.
-// Sharing that helper is what keeps the escape rule in one place: an
-// open-coded `inString` flag here would be a second copy of it, free to drift
-// from the one every other scanner in this file uses.
-//
-// A comment is jumped over for the same reason, in the same order: the literal
-// test comes first, so a '/*' inside a value is text; the comment is then taken
-// whole, so a '(' or a quote inside it is text. Without that, the comment in
-// `#1=IFCWALL('a', /* see IFCWALL( */ $);` opened a paren depth that never
-// closed and the record came back with length 0.
-export function findEntityLength(buf: Uint8Array, pos: number, startOffset: number): number {
-  const len = buf.length;
-  let depth = 0;
-
-  while (pos < len) {
-    const char = buf[pos];
-
-    if (char === QUOTE) {
-      // Returns `-1` on an unterminated literal (see skipStringLiteral's own
-      // doc): no balancing ')' can follow, same 0 as running off the end.
-      const next = skipStringLiteral(buf, pos, len);
-      if (next < 0) return 0;
-      pos = next;
-    } else if (opensComment(buf, pos, len)) {
-      const end = skipComment(buf, pos, len);
-      // Unterminated: the rest of the input is inside the comment, so no
-      // balancing ')' can follow. Same 0 as running off the end.
-      if (end < 0) return 0;
-      pos = end;
-    } else if (char === LPAREN) {
-      depth++;
-      pos++;
-    } else if (char === RPAREN) {
-      depth--;
-      pos++;
-      if (depth === 0) return pos - startOffset;
-    } else {
-      pos++;
-    }
-  }
-
-  return 0; // no matching ')'
 }
 
 // ---------------------------------------------------------------------------

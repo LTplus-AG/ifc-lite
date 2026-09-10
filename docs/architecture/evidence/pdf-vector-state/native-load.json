@@ -1,0 +1,58 @@
+{
+  "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+  "baseSource": "48e9e634a (Rust-source equivalent to c5e583e3c)",
+  "branchSource": "6dd7b35a5",
+  "measurement": "Interleaved five-iteration native normal-load probes; explicit root/F6/F7 idle confirmation. Reported parse/geometry/total are best-of-five, not medians. Fingerprints collected separately after timing. No worker-pool speedup or vector-preparation throughput claim.",
+  "runs": [
+    {
+      "version": "base",
+      "parseMs": 3,
+      "geometryMs": 5,
+      "totalMs": 8,
+      "allTotalsMs": [17, 11, 10, 9, 8],
+      "allWallMs": [17.765709, 11.479458, 10.613249999999999, 9.767, 9.282792]
+    },
+    {
+      "version": "branch",
+      "parseMs": 3,
+      "geometryMs": 5,
+      "totalMs": 9,
+      "allTotalsMs": [17, 11, 10, 9, 9],
+      "allWallMs": [17.574875, 11.797125000000001, 10.385458999999999, 10.001249999999999, 9.364459]
+    },
+    {
+      "version": "base",
+      "parseMs": 2,
+      "geometryMs": 4,
+      "totalMs": 7,
+      "allTotalsMs": [10, 8, 8, 7, 7],
+      "allWallMs": [10.404458, 9.029041999999999, 8.378417, 8.057041, 7.975792]
+    },
+    {
+      "version": "branch",
+      "parseMs": 2,
+      "geometryMs": 5,
+      "totalMs": 7,
+      "allTotalsMs": [9, 8, 7, 7, 7],
+      "allWallMs": [9.495415999999999, 8.389125, 7.888625, 8.180458, 8.215042]
+    }
+  ],
+  "identity": {
+    "base": {
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    "branch": {
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    }
+  }
+}

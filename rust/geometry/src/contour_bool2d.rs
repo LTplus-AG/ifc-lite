@@ -214,6 +214,35 @@ fn collect(shapes: Vec<Vec<Vec<[f64; 2]>>>) -> ContourSet {
     out
 }
 
+/// Explicit winding rule for quantized planar authoring.
+#[derive(Clone, Copy, Debug)]
+pub enum ContourFillRule { NonZero, EvenOdd }
+
+/// Fixed-grid contour overlay using the same canonical engine and complete
+/// island/hole collector as `boolean_2d`. Coordinates are quantized; callers
+/// must include `grid_size` in their declared approximation and charge repeated
+/// operations against a shared budget. The per-call edge cap also bounds the
+/// uninterruptible overlay's worst-case intersection expansion.
+pub fn boolean_2d_fixed_grid(
+    subject: &[Ring2D], clip: &[Ring2D], op: BooleanOp2D,
+    fill: ContourFillRule, grid_size: f64,
+) -> std::result::Result<ContourSet, String> {
+    let count=subject.iter().chain(clip).try_fold(0usize,|n,r|n.checked_add(r.len())).ok_or("Fixed-grid contour edge budget overflow")?;
+    if count>1024 { return Err("Fixed-grid contour overlay exceeds 1024 edges".into()); }
+    let mut composition = crate::FixedGridComposition::new(&[subject.to_vec(),clip.to_vec()],grid_size)?;
+    let result=composition.overlay(0,1,op,fill)?;
+    composition.contours(result)
+}
+
+pub(crate) fn sanitize_fixed_grid(rings: &[Ring2D]) -> Result<Vec<Ring2D>, String> {
+    for ring in rings.iter().filter(|r| r.len() >= 3) {
+        if is_collinear(ring) && ring.windows(2).any(|p| geometry_predicates::orient2d(ring[0],p[0],p[1]) != 0.) {
+            return Err("Fixed-grid contour collinearity is numerically ambiguous".into());
+        }
+    }
+    Ok(sanitize(rings))
+}
+
 /// Self-union: overlay against an empty clip so overlapping subject rings
 /// dissolve into disjoint shapes without changing the covered area.
 fn resolve(subject: &[Vec<[f64; 2]>]) -> ContourSet {

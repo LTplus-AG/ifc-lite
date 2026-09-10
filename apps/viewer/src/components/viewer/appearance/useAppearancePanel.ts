@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { resolveAppearanceScope } from '@/lib/appearance/query-scope.js';
+import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { imageCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
 import type { AppearanceIntent } from '@/lib/appearance/draft-types.js';
@@ -37,7 +39,7 @@ function discardDraft(draft: Draft | null): void {
   finally { appearanceAssets.releaseOwner(draft.owner); }
 }
 
-export function useAppearancePanel(intent: AppearanceIntent = 'apply'): AppearancePanelViewProps {
+export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPreview = false): AppearancePanelViewProps {
   const models = useViewerStore(state => state.models);
   const activeModelId = useViewerStore(state => state.activeModelId);
   const mutationVersion = useViewerStore(state => state.mutationVersion);
@@ -60,6 +62,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
   const [sourceBusy, setSourceBusy] = useState(false);
   const [showingOriginal, setShowingOriginal] = useState(false);
   const [counts, setCounts] = useState({ affected: 0, excluded: 0, reasons: [] as string[] });
+  const [convertedObjects, setConvertedObjects] = useState<NonNullable<AppearancePanelViewProps['convertedObjects']>>([]);
   const [previewEnabled, setPreviewEnabled] = useState(canResumeModel && (savedDraft?.previewEnabled ?? true));
   const previousIntent = useRef(intent);
   useEffect(() => {
@@ -115,13 +118,13 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
     if (intent !== 'apply' || !modelId || unavailableReason) {
       const previous = draft.current; draft.current = null;
       discardDraft(previous);
-      snapshot.current = null; setCatalogState(null);
+      snapshot.current = null; setCatalogState(null); setConvertedObjects([]);
       setStatus('idle');
       setCounts({ affected: 0, excluded: 0, reasons: [] });
       setStatusMessage(undefined);
       return;
     }
-    if (!previewEnabled || !sourceId) {
+    if (suspendPreview || !previewEnabled || !sourceId) {
       const previous = draft.current; draft.current = null; discardDraft(previous);
     }
     const controller = new AbortController();
@@ -132,7 +135,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
     }
     const owner: AppearanceAssetOwner = { kind: 'draft', id: crypto.randomUUID() };
     let adopted = false;
-    supported.current = [];
+    supported.current = []; setConvertedObjects([]);
     setCounts({ affected: 0, excluded: 0, reasons: [] });
     setStatus('preparing'); setStatusMessage(previewEnabled && sourceId ? 'Preparing appearance preview…' : 'Preparing model scope…');
     const timer = setTimeout(() => { void (async () => {
@@ -143,7 +146,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
         if (controller.signal.aborted || !mounted.current) return;
         snapshot.current = currentSnapshot;
         setCatalogState({ modelId, catalog: currentSnapshot.catalog });
-        if (!previewEnabled || !sourceId) {
+        if (suspendPreview || !previewEnabled || !sourceId) {
           setCounts({ affected: 0, excluded: 0, reasons: [] });
           setStatus('idle');
           setStatusMessage(!sourceId ? undefined : appliedRevision.current
@@ -152,7 +155,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
             : 'Preview discarded. Adjust the mapping to preview again.');
           return;
         }
-        const currentScope = appearanceScope(currentSnapshot.catalog, owners.selectedProductIds, scope);
+        const currentScope = await resolveAppearanceScope(currentSnapshot, owners.selectedProductIds, scope, controller.signal);
         if (!currentScope.productIds.length) throw new Error('Choose a scope containing model surfaces.');
         const renderer = getGlobalRenderer();
         if (!renderer) throw new Error('The renderer is not ready to preview appearance.');
@@ -167,7 +170,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
         currentSnapshot.validate();
         const plan = page?.plan ?? await worker.plan(bytes, { schema, sourceRevision: currentSnapshot.revision, nextExpressId,
           productIds: currentScope.productIds, imageUri, repeatS: settings.repeatS,
-          repeatT: settings.repeatT, mapping: appearanceMapping(settings) }, { signal: controller.signal });
+          repeatT: settings.repeatT, representationPolicy: settings.representationPolicy ?? 'preserve', mapping: appearanceMapping(settings) }, { signal: controller.signal });
         if (controller.signal.aborted || !mounted.current) return;
         currentSnapshot.validate();
         const state = useViewerStore.getState();
@@ -189,13 +192,14 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
         draft.current = { modelId, assetIds: page?.assetIds ?? [assetId], plan, groups, session, owner, source };
         adopted = true;
         setCounts({ affected: groups.length, excluded: 0, reasons: [] });
+        setConvertedObjects((plan.conversions ?? []).map(item => ({ productId: item.productId, name: `IFC object #${item.productId}` })));
         setShowingOriginal(false); setStatus('ready'); setStatusMessage('Preview ready. Apply to save this appearance in the IFC model.');
       } catch (error) {
         if (!controller.signal.aborted && mounted.current) { setStatus('error'); setStatusMessage(message(error)); }
       } finally { if (!adopted) appearanceAssets.releaseOwner(owner); }
     })(); }, 250);
     return () => { clearTimeout(timer); controller.abort(); applyAbort.current?.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };
-  }, [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled]);
+  }, [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled, suspendPreview]);
 
   async function upload(file: File): Promise<void> {
     if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) { await pdfSource.upload(file); return; }
@@ -242,7 +246,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
     setPreviewEnabled(false);
     const previous = draft.current; draft.current = null;
     discardDraft(previous);
-    setShowingOriginal(false); setStatus('idle'); setStatusMessage('Preview discarded.');
+    setConvertedObjects([]); setShowingOriginal(false); setStatus('idle'); setStatusMessage('Preview discarded.');
   }
   function compare(original: boolean): void {
     const current = draft.current;
@@ -265,7 +269,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
         signal: controller.signal,
         onProgress: phase => { if (mounted.current) setStatusMessage(phase === 'preparing' ? 'Preparing IFC changes…' : 'Saving appearance…'); },
       });
-      setPreviewEnabled(false);
+      setPreviewEnabled(false); setConvertedObjects([]);
       appliedRevision.current = appearanceRevision(current.modelId);
       draft.current = null;
       appearanceAssets.releaseOwner(current.owner);
@@ -276,15 +280,15 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
   return {
     allowPdf: true, pdf: pdfSource.controls, pdfPassword: pdfSource.passwordPrompt,
     calibration: selectedSource && (selectedSource.pdf || intent === 'reference') && selectedSource.thumbnailUrl ? {
-      frame: selectedSource.pdf ? pdfCalibrationFrame(selectedSource.pdf.recipe) : imageCalibrationFrame(selectedSource.width, selectedSource.height), sourceKey: `${selectedSource.id}:${selectedSource.pdf?.recipe.page.pageNumber ?? 0}`, thumbnailUrl: selectedSource.thumbnailUrl,
+      frame: selectedSource.calibrationFrame ?? (selectedSource.pdf ? pdfCalibrationFrame(selectedSource.pdf.recipe) : imageCalibrationFrame(selectedSource.width, selectedSource.height)), sourceKey: `${selectedSource.id}:${selectedSource.pdf?.recipe.page.pageNumber ?? 0}`, thumbnailUrl: selectedSource.thumbnailUrl,
       value: selectedSource.calibration, onChange: calibration => {
         const current = useViewerStore.getState().appearanceSources.find(source => source.id === selectedSource.id);
         if (current) useViewerStore.getState().updateAppearanceSource({ ...current, calibration });
         setPreviewEnabled(true);
       },
     } : undefined,
-    models: [...models.values()].map(model => ({ id: model.id, name: model.name })), modelId,
-    onModelChange: id => { setChosenModel(id); setPreviewEnabled(true); }, sources, sourceId,
+    models: [...modelDisplayLabels(models)].map(([id, name]) => ({ id, name })), modelId,
+    onModelChange: id => { useViewerStore.getState().setActiveModel(id); setChosenModel(id); setSettings(current => ({ ...current, representationPolicy: 'preserve' })); setPreviewEnabled(true); }, sources, sourceId,
     onSourceChange: id => {
       pdfSource.cancel(); setSourceId(id);
       if (sources.find(source => source.id === id)?.pdf) setSettings(current => ({ ...current, kind: 'planar', repeatS: false, repeatT: false }));
@@ -299,7 +303,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
       state.setSelectedEntityIds(supported.current.map(id => state.toGlobalId(modelId, id)));
       setScope({ kind: 'selection' }); setPreviewEnabled(true);
     },
-    affectedCount: counts.affected, excludedCount: counts.excluded, exclusions: counts.reasons,
+    affectedCount: counts.affected, convertedObjects, excludedCount: counts.excluded, exclusions: counts.reasons,
     settings, onSettingsChange: patch => { setSettings(current => ({ ...current, ...patch })); setPreviewEnabled(true); },
     status, statusMessage, unavailableReason, canApply: status === 'ready' && !!draft.current?.session,
     canDiscard: !!draft.current || status === 'preparing' || pdfSource.busy || !!pdfSource.passwordPrompt, hasPreview: !!draft.current,

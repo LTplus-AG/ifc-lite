@@ -15,10 +15,21 @@
 
 import { describe, expect, it } from 'vitest';
 import { WORKER_CODE } from './scan-worker-source.js';
+import {
+  LEGAL_BODIES,
+  LINE_NUMBER_CASE,
+  SWALLOW_CASES,
+  UNBALANCED_CASE,
+  UNRESUMABLE_BODIES,
+  type ScanDriver,
+} from './step-record-boundary.vectors.js';
 import { MAX_EXPRESS_ID } from './express-id.js';
 
 interface WorkerScanMessage {
   ids: ArrayBuffer;
+  offsets: ArrayBuffer;
+  lengths: ArrayBuffer;
+  lines: ArrayBuffer;
   count: number;
   oversizedIds: number;
   malformedRecords: number;
@@ -165,5 +176,65 @@ describe('scan-worker-source WORKER_CODE: unterminated string literal', () => {
     const result = runWorkerCode(text);
     expect(result.malformedRecords).toBe(1);
     expect(result.count).toBe(1);
+  });
+});
+
+
+describe('scan-worker-source WORKER_CODE: record-boundary guards (#4179)', () => {
+  const scan: ScanDriver = (text) => (() => {
+    const result = runWorkerCode(text);
+    const ids = new Uint32Array(result.ids);
+    const offsets = new Uint32Array(result.offsets);
+    const lengths = new Uint32Array(result.lengths);
+    const spans: (readonly [number, string])[] = [];
+    for (let i = 0; i < result.count; i++) {
+      spans.push([ids[i], text.slice(offsets[i], offsets[i] + lengths[i])] as const);
+    }
+    return { spans, malformed: result.malformedRecords };
+  })();
+
+  it.each(SWALLOW_CASES.map((c) => [c[0], c[1], c[2]] as const))(
+    '%s',
+    (_label, text, expected) => {
+      const { spans, malformed } = scan(text);
+      expect(spans).toEqual(expected);
+      expect(malformed).toBe(1);
+    },
+  );
+
+  it('does not inflate line numbers when the cold check re-walks the record', () => {
+    // skipCommentAt advances the worker's line counter as a side effect, so
+    // balancing the record again to settle the ')' rule used to count the
+    // interior comment's newlines twice. tokenizer.ts is unaffected because
+    // its findEntityLength is pure, which makes it the oracle here.
+    const result = runWorkerCode(LINE_NUMBER_CASE.text);
+    expect(Array.from(new Uint32Array(result.lines)).slice(0, result.count))
+      .toEqual([...LINE_NUMBER_CASE.lines]);
+  });
+
+  it('drops ONE record, not the tail, when a record has no closing ")"', () => {
+    const { spans, malformed } = scan(UNBALANCED_CASE.text);
+    expect(spans).toEqual(UNBALANCED_CASE.spans);
+    expect(malformed).toBe(1);
+  });
+
+  it('stops instead of resuming when there is no balancing ")" to resume at', () => {
+    // Recovery is bounded by the SAME "no resume point" rule the #3695 cluster
+    // set: the balance walks strings and comments whole, so an unterminated one
+    // leaves no ')' and the scan still stops there.
+    for (const body of UNRESUMABLE_BODIES) {
+      const { spans, malformed } = scan(`#1=IFCA(1);\n#2=${body}\n#3=IFCC(3);\n`);
+      expect(spans, body).toEqual([[1, '#1=IFCA(1);']]);
+      expect(malformed, body).toBe(1);
+    }
+  });
+
+  it('never falsely refuses a legal record', () => {
+    for (const body of LEGAL_BODIES) {
+      const text = `#1=${body}\n#2=IFCDOOR($);\n`;
+      const { spans, malformed } = scan(text);
+      expect(spans, body).toEqual([[1, `#1=${body}`], [2, '#2=IFCDOOR($);']]);
+      expect(malformed, body).toBe(0);
+    }
   });
 });

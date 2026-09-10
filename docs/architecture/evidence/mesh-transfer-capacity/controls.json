@@ -1,0 +1,64 @@
+{
+  "sourceGlbSha256": "b6a0b51894427c37505632f4d4513d0424f0d84b014554755aa53eb74af6dcd6",
+  "sourceTriangles": 66122,
+  "boundedControl": {
+    "targetTriangles": 500,
+    "ifcSha256": "d07b7af05906c98b87406d1827d5378530d66b500d43b3da66a10b0291fdce40",
+    "ifpaSha256Before": "d15745b487686ed5bf7e1f5c86d6dd91448ad97a58e371f6a3b3a41e3b71fe8e",
+    "ifpaSha256After": "d15745b487686ed5bf7e1f5c86d6dd91448ad97a58e371f6a3b3a41e3b71fe8e",
+    "pngSha256Before": "d08ebe66a9b235ca2ab847f3fd66df385027b3bf62905452b5b472e13d376cf9",
+    "pngSha256After": "d08ebe66a9b235ca2ab847f3fd66df385027b3bf62905452b5b472e13d376cf9",
+    "coverageBefore": {
+      "observedAreaEstimateM2": 0.12355385352707908,
+      "observedSamples": 17377,
+      "samples": 22915,
+      "unknownAmbiguousSamples": 5538,
+      "unknownAreaEstimateM2": 0.03694524696751634,
+      "unknownDistanceSamples": 0,
+      "unknownNormalSamples": 0
+    },
+    "coverageAfter": {
+      "observedAreaEstimateM2": 0.12355385352707908,
+      "observedSamples": 17377,
+      "samples": 22915,
+      "unknownAmbiguousSamples": 5538,
+      "unknownAreaEstimateM2": 0.03694524696751634,
+      "unknownDistanceSamples": 0,
+      "unknownNormalSamples": 0
+    },
+    "beforeSourceCommit": "79a62364c",
+    "afterSourceCommit": "cdffd6763"
+  },
+  "fullFixedRegionRefusal": {
+    "refusal": "Transfer work budget exhausted; reduce source extent or atlas density",
+    "sourceTriangles": 66122,
+    "targetTriangles": 40087,
+    "originalTargetTriangles": 40087,
+    "targetTriangleOrdinals": [
+      0,
+      40086
+    ],
+    "sourceGlbSha256": "b6a0b51894427c37505632f4d4513d0424f0d84b014554755aa53eb74af6dcd6",
+    "ifcSha256": "0efc7987670ddb1287cb88fe1b9a239da754f41170e9420bf04293c0c54f34e3",
+    "knownDerivedCoordinateMaxDelta": 1.2412670766236366e-16
+  },
+  "fullSeededRegionRefusal": {
+    "refusal": "Transfer work budget exhausted; reduce source extent or atlas density",
+    "sourceTriangles": 66122,
+    "targetTriangles": 40087,
+    "originalTargetTriangles": 40087,
+    "targetTriangleOrdinals": [
+      0,
+      40086
+    ],
+    "sourceGlbSha256": "b6a0b51894427c37505632f4d4513d0424f0d84b014554755aa53eb74af6dcd6",
+    "ifcSha256": "0efc7987670ddb1287cb88fe1b9a239da754f41170e9420bf04293c0c54f34e3",
+    "knownDerivedCoordinateMaxDelta": 1.2412670766236366e-16
+  },
+  "seededSourceCommit": "cdffd6763",
+  "nativeSeededControls": {
+    "passed": 10,
+    "failed": 0,
+    "cases": "baseline query comparison across triangle-order permutations, alternate nearest faces, UV seams, thin opposite faces and 1e8 coordinate offsets"
+  }
+}

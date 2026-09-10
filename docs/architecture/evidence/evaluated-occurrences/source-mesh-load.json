@@ -1,0 +1,158 @@
+{
+  "base": "22f3f0d0d6e5088908107a183a883b87c35c4ddf",
+  "branch": "aca75527cbff93799b40f0c67f515825e735c1e1",
+  "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+  "method": "Exact-source immutable profiling binaries, A/B/A/B with five iterations each on an otherwise-idle machine. Other agents paused builds/browser runs. Same perf_probe executable as scripts/perf/probe.sh. Native ordinary load only, not authoring or browser worker-pool latency.",
+  "identity": "Every run has identical mesh, vertex and triangle counts. The timed probe did not request optional ordered payload fingerprints.",
+  "verdict": "All four probes report parse 3ms, geometry 5ms and total 8ms at integer-millisecond precision. No resolvable ordinary-load regression or speedup.",
+  "runs": [
+    {
+      "variant": "base",
+      "probe": {
+        "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "fileMb": 2.41,
+        "entities": 44249,
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 19456,
+        "indexBuildMs": 2.49,
+        "parseMs": 3,
+        "entityScanMs": 2,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 5,
+        "facetedBrepMs": 0,
+        "totalMs": 8,
+        "allTotalsMs": [
+          16,
+          13,
+          9,
+          9,
+          8
+        ],
+        "allWallMs": [
+          17.368000000000002,
+          13.75575,
+          10.243749999999999,
+          9.571584,
+          8.979
+        ],
+        "pointCacheHits": 51972,
+        "pointCacheMisses": 9148,
+        "csgFailures": 0,
+        "degenerateDropped": 0
+      }
+    },
+    {
+      "variant": "branch",
+      "probe": {
+        "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "fileMb": 2.41,
+        "entities": 44249,
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 19456,
+        "indexBuildMs": 1.17,
+        "parseMs": 3,
+        "entityScanMs": 1,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 5,
+        "facetedBrepMs": 0,
+        "totalMs": 8,
+        "allTotalsMs": [
+          12,
+          8,
+          10,
+          8,
+          8
+        ],
+        "allWallMs": [
+          13.012958,
+          8.731124999999999,
+          10.616875,
+          8.685583,
+          8.80125
+        ],
+        "pointCacheHits": 52044,
+        "pointCacheMisses": 9196,
+        "csgFailures": 0,
+        "degenerateDropped": 0
+      }
+    },
+    {
+      "variant": "base",
+      "probe": {
+        "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "fileMb": 2.41,
+        "entities": 44249,
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 19456,
+        "indexBuildMs": 1.08,
+        "parseMs": 3,
+        "entityScanMs": 1,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 5,
+        "facetedBrepMs": 0,
+        "totalMs": 8,
+        "allTotalsMs": [
+          9,
+          8,
+          8,
+          8,
+          8
+        ],
+        "allWallMs": [
+          9.779917000000001,
+          8.631625,
+          8.4945,
+          8.687292,
+          8.421875
+        ],
+        "pointCacheHits": 52116,
+        "pointCacheMisses": 9220,
+        "csgFailures": 0,
+        "degenerateDropped": 0
+      }
+    },
+    {
+      "variant": "branch",
+      "probe": {
+        "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "fileMb": 2.41,
+        "entities": 44249,
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 19456,
+        "indexBuildMs": 1.09,
+        "parseMs": 3,
+        "entityScanMs": 1,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 5,
+        "facetedBrepMs": 0,
+        "totalMs": 8,
+        "allTotalsMs": [
+          9,
+          8,
+          8,
+          9,
+          8
+        ],
+        "allWallMs": [
+          9.939625000000001,
+          8.527667,
+          8.701583000000001,
+          9.499,
+          8.654250000000001
+        ],
+        "pointCacheHits": 51724,
+        "pointCacheMisses": 9084,
+        "csgFailures": 0,
+        "degenerateDropped": 0
+      }
+    }
+  ]
+}

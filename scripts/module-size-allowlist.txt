@@ -56,7 +56,7 @@
    751 apps/viewer/src/components/viewer/CommandPalette.tsx
    410 apps/viewer/src/components/viewer/ComparePanel.tsx
   1059 apps/viewer/src/components/viewer/DataConnector.tsx
-  1842 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
+  1752 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
    536 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
    426 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
    583 apps/viewer/src/components/viewer/EntityContextMenu.tsx
@@ -108,7 +108,7 @@
    946 apps/viewer/src/components/viewer/useMouseControls.ts
    782 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1819 apps/viewer/src/components/viewer/Viewport.tsx
-  1530 apps/viewer/src/components/viewer/ViewportContainer.tsx
+  1382 apps/viewer/src/components/viewer/ViewportContainer.tsx
    511 apps/viewer/src/components/viewer/ZonesPanel.tsx
    862 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
@@ -122,7 +122,7 @@
   1226 apps/viewer/src/hooks/useIDS.ts
    586 apps/viewer/src/hooks/useIfcCache.ts
    667 apps/viewer/src/hooks/useIfcFederation.ts
-  2240 apps/viewer/src/hooks/useIfcLoader.ts
+  2245 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    483 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    493 apps/viewer/src/hooks/useSymbolicAnnotations.ts
@@ -144,7 +144,6 @@
   1141 apps/viewer/src/lib/llm/script-preflight.ts
    410 apps/viewer/src/lib/llm/stream-client.ts
    809 apps/viewer/src/lib/llm/system-prompt.ts
-   403 apps/viewer/src/lib/overlay-parse/symbolic-flat.ts
    491 apps/viewer/src/lib/scripts/templates/create-building.ts
    598 apps/viewer/src/lib/search/filter-evaluate.ts
    450 apps/viewer/src/lib/search/tier1-index.ts
@@ -185,7 +184,6 @@
    801 packages/bcf/src/reader.ts
    595 packages/bcf/src/viewpoint.ts
    753 packages/bcf/src/writer.ts
-   605 packages/cache/src/glb.ts
    414 packages/clash/src/adapters/step.ts
    441 packages/clash/src/bcf-bridge.ts
    433 packages/clash/src/duplicates.ts
@@ -362,6 +360,6 @@
    591 scripts/review/run-reviewer.mjs
    688 scripts/source-text-assertion-detect.mjs
    504 scripts/test-geometry-regression.mjs
-  2176 scripts/test-wasm-contract.mjs
+  2180 scripts/test-wasm-contract.mjs
    678 scripts/typecheck-tests.mjs
    467 scripts/xmatch/score.mjs

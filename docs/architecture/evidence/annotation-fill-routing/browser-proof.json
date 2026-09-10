@@ -1,0 +1,30 @@
+{
+  "overlayHasGeometry": false,
+  "uploads": [],
+  "drawings": [
+    {
+      "owner": 92,
+      "item": 77
+    },
+    {
+      "owner": 92,
+      "item": 86
+    }
+  ],
+  "meshes": [
+    {
+      "owner": 92,
+      "item": 77,
+      "triangles": 2
+    },
+    {
+      "owner": 92,
+      "item": 86,
+      "triangles": 2
+    }
+  ],
+  "pick": {
+    "x": 835.8572674363576,
+    "y": 957.1945186023403
+  }
+}

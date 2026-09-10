@@ -2,6 +2,10 @@
 
 IFClite can generate 2D architectural drawings from 3D IFC models, including section cuts, floor plans, and elevations. The `@ifc-lite/drawing-2d` package produces vector SVG output with proper architectural conventions.
 
+Direct annotation fills with a matching 3D mesh render once in the viewer's
+registered plane. Their symbolic fill data remains available to 2D drawings;
+the 3D overlay routing does not delete or flatten the authored geometry.
+
 ## What It Generates
 
 From any 3D IFC model, you can produce:

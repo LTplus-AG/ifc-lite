@@ -100,6 +100,7 @@ const BYTES_PER_COORD: usize = 8;
 /// then harmless, since nothing is emitting through them.
 pub(super) struct SymbolicAccumulator {
     data: SymbolicData,
+    fill_items: Vec<Option<u32>>,
     /// Cap for this extraction. Injectable so a test can use 500 rather than
     /// building a fixture that emits two million primitives.
     pub(super) limit: usize,
@@ -129,6 +130,7 @@ impl SymbolicAccumulator {
     pub(super) fn new() -> Self {
         Self {
             data: SymbolicData::default(),
+            fill_items: Vec::new(),
             limit: MAX_SYMBOLIC_ELEMENTS,
             bytes: 0,
             byte_limit: MAX_SYMBOLIC_BYTES,
@@ -291,14 +293,26 @@ impl SymbolicAccumulator {
     }
 
     /// Append a filled region unless the extraction has hit its cap.
+    #[cfg(test)]
     pub(super) fn push_fill(&mut self, fill: SymbolicFillArea) {
-        let payload = fill.points.len()
+        self.push_fill_with_provenance(fill, None);
+    }
+
+    pub(super) fn push_fill_with_provenance(&mut self, fill: SymbolicFillArea, item: Option<u32>) {
+        let before = self.data.fills.len();
+        let payload = std::mem::size_of::<Option<u32>>() + fill.points.len()
             + fill.holes_offsets.len()
             + fill.ifc_type.len()
             + fill.representation.len();
         self.try_push(payload, all_finite(&fill.points), |data| {
             data.fills.push(fill)
         });
+        if self.data.fills.len() > before { self.fill_items.push(item); }
+    }
+
+    pub(super) fn into_provenance(mut self) -> super::SymbolicDataWithProvenance {
+        let items = std::mem::take(&mut self.fill_items);
+        super::SymbolicDataWithProvenance::new(self.into_data(), items)
     }
 
     /// Finish, stamping the diagnostics field iff an append was ever refused.

@@ -75,6 +75,8 @@ export interface AnnotationText2D {
  * IfcFillAreaStyleHatching. When absent the fill is solid (color only).
  */
 export interface AnnotationFill2D {
+  /** Direct source fill item, retained for precise 3D mesh/overlay routing. */
+  geometryItemId?: number;
   points: Float32Array;
   holesOffsets: Uint32Array;
   color: [number, number, number, number];

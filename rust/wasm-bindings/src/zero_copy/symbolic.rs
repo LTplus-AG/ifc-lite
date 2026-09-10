@@ -382,6 +382,7 @@ impl SymbolicText {
 #[wasm_bindgen]
 pub struct SymbolicFillArea {
     express_id: u32,
+    geometry_item_id: Option<u32>,
     ifc_type: String,
     /// All ring vertices: outer ring, then each hole back-to-back. Format:
     /// [x1, y1, x2, y2, …]
@@ -412,6 +413,8 @@ pub struct SymbolicFillArea {
 
 #[wasm_bindgen]
 impl SymbolicFillArea {
+    #[wasm_bindgen(getter, js_name = geometryItemId)]
+    pub fn geometry_item_id(&self) -> Option<u32> { self.geometry_item_id }
     #[wasm_bindgen(getter, js_name = expressId)]
     pub fn express_id(&self) -> u32 { self.express_id }
     #[wasm_bindgen(getter, js_name = ifcType)]
@@ -455,6 +458,11 @@ impl SymbolicFillArea {
 }
 
 impl SymbolicFillArea {
+    pub(super) fn with_geometry_item_id(mut self, id: Option<u32>) -> Self {
+        self.geometry_item_id = id;
+        self
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         express_id: u32,
@@ -467,6 +475,7 @@ impl SymbolicFillArea {
     ) -> Self {
         Self {
             express_id,
+            geometry_item_id: None,
             ifc_type,
             points,
             holes_offsets,
@@ -630,6 +639,7 @@ impl SymbolicRepresentationCollection {
     pub fn get_fill(&self, index: usize) -> Option<SymbolicFillArea> {
         self.fills.get(index).map(|f| SymbolicFillArea {
             express_id: f.express_id,
+            geometry_item_id: f.geometry_item_id,
             ifc_type: f.ifc_type.clone(),
             points: f.points.clone(),
             holes_offsets: f.holes_offsets.clone(),

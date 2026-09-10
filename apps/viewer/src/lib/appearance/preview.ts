@@ -166,8 +166,20 @@ export class AppearancePreviewSession {
         const release = this.preview.retainSource?.({ expressId: group.globalId, modelIndex: group.modelIndex });
         if (release) releases.push(release);
       }
-    } catch (error) { for (const release of releases.reverse()) release(); throw error; }
-    return () => { for (const release of releases) release(); };
+    } catch (error) {
+      const errors = [error];
+      for (const release of releases.reverse()) { try { release(); } catch (failure) { errors.push(failure); } }
+      if (errors.length > 1) throw new AggregateError(errors, 'Could not retain or release appearance sources.');
+      throw error;
+    }
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const errors: unknown[] = [];
+      for (const release of releases) { try { release(); } catch (error) { errors.push(error); } }
+      if (errors.length) throw new AggregateError(errors, 'Could not release all appearance sources.');
+    };
   }
 
   commit(): AppearanceChange[] {

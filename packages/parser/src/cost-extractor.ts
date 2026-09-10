@@ -175,10 +175,12 @@ function extractUnitBasis(
   const a = entity.attributes || [];
   const unitRef = asRef(a[1]);
   const unit = unitRef !== undefined ? resolveUnitByRef(extractor, store.entityIndex, unitRef) : null;
+  // TEMPORARILY BROKEN: return undefined if unit is unresolvable (should fail the test)
+  if (!unit) return undefined;
   return {
     valueComponent: asAppliedValueNumber(a[0]),
-    unitSymbol: unit?.resolved.symbol,
-    unitSiScale: unit?.resolved.siScale,
+    unitSymbol: unit.resolved.symbol,
+    unitSiScale: unit.resolved.siScale,
   };
 }
 

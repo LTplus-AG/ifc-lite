@@ -272,6 +272,30 @@ describe('extractCostOnDemand', () => {
       const value = result.costItems[0].costValues?.[0];
       expect(value?.unitBasis).toBeUndefined();
     });
+
+    it('a CostValue whose UnitBasis points to an unresolvable unit (IfcContextDependentUnit) keeps the rate signal but loses unit details', () => {
+      // This is the critical test that stops a rate collapsing into a flat total
+      // when a unit cannot be resolved. The UnitBasis object is defined (rate
+      // signal), but unitSymbol and unitSiScale are undefined because
+      // IfcContextDependentUnit has no case in resolveUnitByRef.
+      const lines = [
+        "#50=IFCCONTEXTDEPENDENTUNIT($,.LENGTHUNIT.,'custom-unit');",
+        "#60=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(1.),#50);",
+        "#40=IFCCOSTVALUE('Labour rate',$,IFCMONETARYMEASURE(85.),#60,$,$,$,$,$,$);",
+        "#10=IFCCOSTITEM('ci-gid',$,'Excavation','desc','obj','ID1',.USERDEFINED.,(#40),$);",
+      ];
+      const store = buildStoreFromStep(lines);
+      const result = extractCostOnDemand(store);
+      const value = result.costItems[0].costValues?.[0];
+
+      // The rate signal survives: unitBasis is defined, not undefined.
+      expect(value?.unitBasis).toBeDefined();
+      // The valueComponent is resolved (the numeric part of IfcMeasureWithUnit).
+      expect(value?.unitBasis?.valueComponent).toBe(1);
+      // But the unit part is unresolvable, so symbol and scale degrade individually.
+      expect(value?.unitBasis?.unitSymbol).toBeUndefined();
+      expect(value?.unitBasis?.unitSiScale).toBeUndefined();
+    });
   });
 
   describe('IFC2X3', () => {

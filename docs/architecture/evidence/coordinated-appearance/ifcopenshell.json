@@ -1,0 +1,73 @@
+{
+  "oracle": "IfcOpenShell 0.8.2",
+  "proofs": [
+    {
+      "modelOrdinal": 1,
+      "kind": "model",
+      "IfcMemberGlobalId": "0oTQ6V1VbChulreA_hfmUa",
+      "IfcMemberCount": 42,
+      "IfcWallCount": 13,
+      "nativeMappedFaceSet": 79109,
+      "triangles": 12,
+      "nativeProductPlacementApplied": true,
+      "unitScale": 1,
+      "allOrientedWorldAndUvCornersCompared": true,
+      "maxWorldErrorMetres": 0.0,
+      "maxUvError": 1.1920928955078125e-07,
+      "packagedPngSha256": "f2be22cb22f33a21bd40eab8b3da5c2df4f537841687f58af746413a9c172203",
+      "repeatS": true,
+      "repeatT": true
+    },
+    {
+      "modelOrdinal": 1,
+      "kind": "subset",
+      "IfcMemberGlobalId": "0oTQ6V1VbChulreA_hfmUa",
+      "IfcMemberCount": 1,
+      "IfcWallCount": 0,
+      "nativeMappedFaceSet": 79109,
+      "triangles": 12,
+      "nativeProductPlacementApplied": true,
+      "unitScale": 1,
+      "allOrientedWorldAndUvCornersCompared": true,
+      "maxWorldErrorMetres": 0.0,
+      "maxUvError": 1.1920928955078125e-07,
+      "packagedPngSha256": "f2be22cb22f33a21bd40eab8b3da5c2df4f537841687f58af746413a9c172203",
+      "repeatS": true,
+      "repeatT": true
+    },
+    {
+      "modelOrdinal": 2,
+      "kind": "model",
+      "IfcMemberGlobalId": "0oTQ6V1VbChulreA_hfmUa",
+      "IfcMemberCount": 42,
+      "IfcWallCount": 13,
+      "nativeMappedFaceSet": 79109,
+      "triangles": 12,
+      "nativeProductPlacementApplied": true,
+      "unitScale": 1,
+      "allOrientedWorldAndUvCornersCompared": true,
+      "maxWorldErrorMetres": 0.0,
+      "maxUvError": 1.1920928955078125e-07,
+      "packagedPngSha256": "0788ad60dd0716e10ff1e03771596f7d5973974a62a42ff6b2ddc6b3beec3618",
+      "repeatS": true,
+      "repeatT": true
+    },
+    {
+      "modelOrdinal": 2,
+      "kind": "subset",
+      "IfcMemberGlobalId": "0oTQ6V1VbChulreA_hfmUa",
+      "IfcMemberCount": 1,
+      "IfcWallCount": 0,
+      "nativeMappedFaceSet": 79109,
+      "triangles": 12,
+      "nativeProductPlacementApplied": true,
+      "unitScale": 1,
+      "allOrientedWorldAndUvCornersCompared": true,
+      "maxWorldErrorMetres": 0.0,
+      "maxUvError": 1.1920928955078125e-07,
+      "packagedPngSha256": "0788ad60dd0716e10ff1e03771596f7d5973974a62a42ff6b2ddc6b3beec3618",
+      "repeatS": true,
+      "repeatT": true
+    }
+  ]
+}

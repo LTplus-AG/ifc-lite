@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { imageCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
 import type { AppearanceIntent } from '@/lib/appearance/draft-types.js';
@@ -37,7 +38,7 @@ function discardDraft(draft: Draft | null): void {
   finally { appearanceAssets.releaseOwner(draft.owner); }
 }
 
-export function useAppearancePanel(intent: AppearanceIntent = 'apply'): AppearancePanelViewProps {
+export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPreview = false): AppearancePanelViewProps {
   const models = useViewerStore(state => state.models);
   const activeModelId = useViewerStore(state => state.activeModelId);
   const mutationVersion = useViewerStore(state => state.mutationVersion);
@@ -122,7 +123,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
       setStatusMessage(undefined);
       return;
     }
-    if (!previewEnabled || !sourceId) {
+    if (suspendPreview || !previewEnabled || !sourceId) {
       const previous = draft.current; draft.current = null; discardDraft(previous);
     }
     const controller = new AbortController();
@@ -144,7 +145,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
         if (controller.signal.aborted || !mounted.current) return;
         snapshot.current = currentSnapshot;
         setCatalogState({ modelId, catalog: currentSnapshot.catalog });
-        if (!previewEnabled || !sourceId) {
+        if (suspendPreview || !previewEnabled || !sourceId) {
           setCounts({ affected: 0, excluded: 0, reasons: [] });
           setStatus('idle');
           setStatusMessage(!sourceId ? undefined : appliedRevision.current
@@ -197,7 +198,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
       } finally { if (!adopted) appearanceAssets.releaseOwner(owner); }
     })(); }, 250);
     return () => { clearTimeout(timer); controller.abort(); applyAbort.current?.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };
-  }, [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled]);
+  }, [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled, suspendPreview]);
 
   async function upload(file: File): Promise<void> {
     if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) { await pdfSource.upload(file); return; }
@@ -285,7 +286,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply'): Appearan
         setPreviewEnabled(true);
       },
     } : undefined,
-    models: [...models.values()].map(model => ({ id: model.id, name: model.name })), modelId,
+    models: [...modelDisplayLabels(models)].map(([id, name]) => ({ id, name })), modelId,
     onModelChange: id => { useViewerStore.getState().setActiveModel(id); setChosenModel(id); setSettings(current => ({ ...current, representationPolicy: 'preserve' })); setPreviewEnabled(true); }, sources, sourceId,
     onSourceChange: id => {
       pdfSource.cancel(); setSourceId(id);

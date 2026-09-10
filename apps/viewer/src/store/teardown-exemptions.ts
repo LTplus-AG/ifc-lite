@@ -104,6 +104,9 @@ export const TEARDOWN_EXEMPTIONS: Readonly<Record<string, string>> = {
     'expressId.',
 
   appearanceSlice:
+    'The assignment recipe contains only saved logical membership, never live plans or views. ' +
+    'useAppearanceAssignments refuses every restored row until explicit model/source rebinding and membership review; ' +
+    'live captured rows validate model/view/source identity and cannot apply after removal or reload. ' +
     'Verified 2026-09-09 field by field against `AppearanceDraftRecipe` (lib/appearance/draft-' +
     'types.ts): `sourceId`, `settings` and `previewEnabled` name no modelId or expressId; only ' +
     '`appearanceDraft.modelId` is per-model, and it has exactly ONE read site across the repo. ' +

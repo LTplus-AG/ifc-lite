@@ -38,7 +38,8 @@ jobs:
     runs-on: [self-hosted, linux, x64, ifclite]
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      # SHA-pinned: the repo enforces sha_pinning_required, so @v4 is rejected.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: pnpm install --frozen-lockfile
       - name: Build WASM
         run: bash scripts/build-wasm.sh
@@ -56,10 +57,14 @@ jobs:
     steps:
       - name: Docker socket must NOT be reachable here
         run: |
+          # Assert the CLI exists first, otherwise this test would pass simply
+          # because `docker` is missing rather than because access is denied.
+          command -v docker >/dev/null || { echo "FAIL: docker CLI absent, test is meaningless"; exit 1; }
+          [ -S /var/run/docker.sock ] && { echo "FAIL: socket is mounted on a build runner"; exit 1; }
           if docker info >/dev/null 2>&1; then
             echo "FAIL: build runner can reach the Docker daemon"; exit 1
           fi
-          echo "OK: no Docker daemon access from the build class"
+          echo "OK: docker CLI present, no socket, no daemon access"
 
   # The dkr class is the one that may talk to the daemon.
   docker-class:

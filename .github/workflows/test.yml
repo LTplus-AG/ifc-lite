@@ -1471,6 +1471,10 @@ jobs:
         run: node scripts/docs/check-doc-samples.mjs
       - name: Check generated doc sections
         run: node scripts/docs/generate-docs-sections.mjs --check
+      - name: Check generated coverage ledger
+        run: node scripts/generate-coverage-ledger.mjs --check
+      - name: Check coverage ledger gate regressions
+        run: node --test scripts/generate-coverage-ledger.test.mjs
       # The viewer suite runs in its OWN job (`viewer-tests`) rather than here.
       # One job was running all 47 packages' tests in sequence, and the viewer
       # alone needs more than the remainder of the budget: on the run that

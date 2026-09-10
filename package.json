@@ -78,6 +78,8 @@
     "docs:check-samples": "node scripts/docs/check-doc-samples.mjs",
     "docs:generate": "node scripts/docs/generate-docs-sections.mjs",
     "docs:check-generated": "node scripts/docs/generate-docs-sections.mjs --check",
+    "generate:coverage-ledger": "node scripts/generate-coverage-ledger.mjs",
+    "check:coverage-ledger": "node scripts/generate-coverage-ledger.mjs --check",
     "docs:check-readmes": "node scripts/docs/check-package-readmes.mjs",
     "changeset": "changeset",
     "version": "changeset version && node scripts/sync-versions.js",

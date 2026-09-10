@@ -19,7 +19,7 @@ pub(super) enum Observation {
 pub(super) struct Surface {
     pub triangles: Vec<Triangle>,
     tree: Bvh,
-    candidates: Vec<u32>,
+    candidates: Vec<(u32, f64)>,
     distance: f64,
     normal_dot: f64,
     ambiguity: f64,
@@ -96,36 +96,23 @@ impl Surface {
         budget: &mut TransferBudget,
     ) -> Result<(Observation, [f64; 2]), String> {
         budget.charge(1)?;
-        self.candidates.clear();
-        self.tree.point_candidates_bounded(
-            point,
-            self.distance + self.ambiguity,
-            &mut self.candidates,
-            &mut budget.work,
+        let nearest = self.tree.nearest_point_bounded(
+            point, self.distance, &mut budget.work, self.ambiguity, &mut self.candidates,
+            |i| closest(self.triangles[i as usize].points, point).1,
         )?;
-        let mut nearest = None;
-        for &i in &self.candidates {
-            budget.charge(1)?;
-            let (weights, d2) = closest(self.triangles[i as usize].points, point);
-            if nearest.as_ref().is_none_or(|(_, _, best)| d2 < *best) {
-                nearest = Some((i, weights, d2));
-            }
-        }
-        let Some((index, weights, d2)) = nearest else {
+        let Some((index, d2)) = nearest else {
             return Ok((Observation::Distance, [0.; 2]));
         };
         let distance = d2.sqrt();
-        if distance > self.distance {
-            return Ok((Observation::Distance, [0.; 2]));
-        }
+        budget.charge(1)?;
+        let (weights, _) = closest(self.triangles[index as usize].points, point);
         let nearest = &self.triangles[index as usize];
-        for &i in &self.candidates {
+        for &(i, other_distance) in &self.candidates {
             if i == index {
                 continue;
             }
             budget.charge(1)?;
             let other = &self.triangles[i as usize];
-            let (_, other_distance) = closest(other.points, point);
             if other_distance.sqrt() <= distance + self.ambiguity
                 && !continuous_neighbor(nearest, other)
             {

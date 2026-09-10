@@ -257,13 +257,13 @@ fn issue_4406_convex_bezier_fills_preserve_analytic_area_under_nonuniform_affine
         (vec![0.,2.,2.,2.,2.,5.,5.,5.,5.,2.,4.],5.4),
         (vec![0.,2.,2.,3.,2.,5.,5.,5.,1.,5.,2.,4.],7.5),
     ] {
-        for affine in [[1.,0.,0.,1.,0.,0.],[2.,0.3,0.5,1.,0.,0.]] {
+        for affine in [[1.,0.,0.,1.,0.,0.],[2.,0.3,0.5,1.,0.,0.],[-1.,0.,0.,1.,8.,0.]] {
             request.page.model_metres_from_pdf=affine;
             request.page.operations=vec![PdfVectorOperation{ordinal:0,operation:PdfVectorOperator::Path{
                 paint:PdfVectorPaint::Fill,commands:commands.clone()}}];
             let plan=plan_pdf_fill_annotation(source.as_bytes(),&request).unwrap();
             assert_eq!(plan.meshes.len(),1);
-            let expected=exact_area*(affine[0]*affine[3]-affine[1]*affine[2]);
+            let expected=exact_area*(affine[0]*affine[3]-affine[1]*affine[2]).abs();
             assert!((area(&plan.meshes[0])-expected).abs()<0.015);
             let reopened=crate::process_geometry(apply(&source,&plan.plan).as_bytes());
             let mesh=reopened.meshes.iter().find(|m|m.express_id==plan.annotation_id).unwrap();

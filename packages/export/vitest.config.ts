@@ -23,6 +23,11 @@ export default defineConfig({
       '@ifc-lite/ifcx': path.resolve(__dirname, '../ifcx/src/index.ts'),
       '@ifc-lite/mutations': path.resolve(__dirname, '../mutations/src/index.ts'),
       '@ifc-lite/parser': path.resolve(__dirname, '../parser/src/index.ts'),
+      // `@ifc-lite/mutations` imports this; it publishes only `./dist`, and the
+      // schema-conformance workflow runs this suite straight after
+      // `pnpm install --ignore-scripts` with nothing built, so the bare
+      // specifier fails to resolve there. Dependency-free, so src is safe.
+      '@ifc-lite/regex-guard': path.resolve(__dirname, '../regex-guard/src/index.ts'),
       // ifcx's entity-extractor imports @ifc-lite/pointcloud; alias it to src so
       // the suite resolves on a clean checkout without built dists. pointcloud's
       // src pulls in no further workspace deps (only laz-perf + node builtins).

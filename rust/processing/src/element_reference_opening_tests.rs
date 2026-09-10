@@ -19,10 +19,10 @@ DATA;
 #11=IFCLOCALPLACEMENT($,#5);
 #12=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
 #13=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#14));
-#14=IFCTRIANGULATEDFACESET(#15,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
-#15=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
+#14=IFCTRIANGULATEDFACESET(#15,$,.T.,((1,3,2),(1,4,3),(5,6,7),(5,7,8),(1,2,6),(1,6,5),(2,3,7),(2,7,6),(3,4,8),(3,8,7),(4,1,5),(4,5,8)),$);
+#15=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(1.,1.,0.),(0.,1.,0.),(0.,0.,1.),(1.,0.,1.),(1.,1.,1.),(0.,1.,1.)));
 #20=IFCIMAGETEXTURE(.T.,.F.,$,$,$,'textures/rock.png');
-#21=IFCTEXTUREVERTEXLIST(((0.,0.),(1.,0.),(0.,1.),(1.,1.)));
+#21=IFCTEXTUREVERTEXLIST(((0.,0.),(1.,0.),(1.,1.),(0.,1.),(0.,0.),(1.,0.),(1.,1.),(0.,1.)));
 #22=IFCINDEXEDTRIANGLETEXTUREMAP((#20),#14,#21,$);
 #23=IFCSTYLEDITEM(#14,(#24),$);
 #24=IFCSURFACESTYLE('Rock',.BOTH.,(#25,#26));
@@ -46,6 +46,8 @@ fn issue_4440_reference_only_opening_keeps_exact_host_texture_and_triangle_bindi
     assert!(control.texture.is_some());assert!(control.uvs.is_some());
     let reference=host(IFC);
     assert_eq!(serde_json::to_value(&reference).unwrap(),serde_json::to_value(&control).unwrap());
+    let with_box=IFC.replace("(#82));","(#82,#86));").replace("#83=", "#86=IFCSHAPEREPRESENTATION(#2,'Box','BoundingBox',(#87));\n#87=IFCBOUNDINGBOX(#4,1.,1.,1.);\n#83=");
+    assert_eq!(serde_json::to_value(host(&with_box)).unwrap(),serde_json::to_value(&control).unwrap());
     let mixed=IFC.replace("(#82));","(#82,#85));").replace("#83=", "#85=IFCSHAPEREPRESENTATION(#2,'Body','CSG',(#84));\n#83=");
     let body=host(&IFC.replace("'Reference'","'Body'"));
     let mixed=host(&mixed);
@@ -59,7 +61,7 @@ fn issue_4440_reference_only_opening_keeps_exact_host_texture_and_triangle_bindi
 #[test]
 fn issue_4440_unknown_and_over_budget_openings_retain_cutter_routing() {
     let router=ifc_lite_geometry::GeometryRouter::new();
-    for source in [IFC.replace("'Reference'","'Unknown'"),IFC.replace("(#82));","(#9999));"),
+    for source in [IFC.replace("(#82));","());"),IFC.replace("'Reference'","'Unknown'"),IFC.replace("(#82));","(#9999));"),
         IFC.replace("(#82));", &format!("({}));",vec!["#82";65].join(","))),
         IFC.replace("IFCOPENINGELEMENT(","IFCBUILDINGELEMENTPROXY(")] {
         let mut decoder=ifc_lite_core::EntityDecoder::new(source.as_bytes());

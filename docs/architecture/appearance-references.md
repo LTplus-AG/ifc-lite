@@ -44,9 +44,8 @@ placing references. Its controls use the real registration actions for separate 
 visibility, locking, removal, one committed opacity edit, registration file
 import/export and exact-image relinking. Invalid files produce inline errors;
 imports are canceled on unmount and refuse to overwrite registrations changed
-while the file was being read. Restoring a registered reference into the shared
-calibration editor remains a follow-up; replacing a source does not edit placed
-references.
+while the file was being read. Editing a registered reference restores its frozen image and calibration into
+the shared editor; replacing a catalog source does not edit placed references.
 History restores the exact saved engineering frame, even when that frame is currently unresolved. Rendering remains guarded by frame compatibility; Undo never silently converts coordinates or blocks access to older commands. Value-equivalent imports and updates preserve all workspace redo branches.
 
 Normal desktop Select and touch tap share a reference-aware route. An unlocked
@@ -56,3 +55,29 @@ selection. Pending picks are discarded after camera, model, frame, geometry,
 visibility, tool or newer pointer input changes. Touch-generated compatibility
 clicks do not select a second time. The renderer remains responsible for depth
 and visibility filtering using the ordinary pick options.
+
+## Original PDF ownership
+
+New PDF registrations also retain the original document SHA-256 and an immutable
+page/raster recipe: page number, CropBox/view box, UserUnit, intrinsic and requested
+rotation, crop, pixel dimensions, DPI and PDF-to-raster transforms. The recipe must
+match the frozen calibration. Editing and replacement carry this provenance with
+the image; changing the catalog page cannot change a committed reference.
+
+The existing PDF provider is independently retained by live references, Undo/Redo
+history and registered-image editing snapshots. Removing its catalog entry does
+not close the original document while one of those owners still needs it. The
+last owner releases its bytes and worker. Vector decoding uses that same provider,
+original bytes and password, with cancellation and exact document/page/calibration
+response checks; it does not reopen a different mutable source slot.
+
+Registration JSON carries this optional provenance, but still excludes PDF bytes
+and passwords. Restoring metadata never substitutes another PDF with the same
+raster image: only re-uploading the exact document digest can restore its original
+provider. Older image-only registrations remain images and are never automatically
+promoted to PDF-backed records. This is the source-ownership prerequisite for
+vector annotation creation, not a new vector creation button.
+
+[Browser and lifetime evidence](evidence/pdf-reference-lineage/README.md) covers
+catalog page changes, removal, retained original decoding, editing, history and
+registration export.

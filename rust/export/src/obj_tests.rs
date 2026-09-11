@@ -29,6 +29,15 @@ fn duplex_exports_well_formed_obj() {
     }
 }
 
+/// Express ids of every `o` group in an OBJ text (`o <IfcType>_<express_id>`).
+fn exported_express_ids(obj: &str) -> Vec<u32> {
+    obj.lines()
+        .filter_map(|line| line.strip_prefix("o "))
+        .filter_map(|group| group.rsplit('_').next())
+        .filter_map(|id| id.parse::<u32>().ok())
+        .collect()
+}
+
 #[test]
 fn isolation_filter_limits_output() {
     let all = export_obj_with_stats(&fixture_or_skip!("ara3d/duplex.ifc"), &ObjOptions::default()).1;
@@ -41,13 +50,21 @@ fn isolation_filter_limits_output() {
         .map(|m| m.express_id)
         .expect("at least one visible mesh");
 
-    let isolated = export_obj_with_stats(
+    let (obj, isolated) = export_obj_with_stats(
         &fixture_or_skip!("ara3d/duplex.ifc"),
         &ObjOptions { isolated: Some(vec![some_id]), ..ObjOptions::default() },
-    )
-    .1;
+    );
     assert!(isolated.meshes >= 1);
     assert!(isolated.meshes <= all.meshes);
+    // Not just "fewer meshes": every exported object must BE the allowlisted
+    // id - an inverted predicate exporting the complement would also be a
+    // proper nonzero subset.
+    let ids = exported_express_ids(&obj);
+    assert!(!ids.is_empty());
+    assert!(
+        ids.iter().all(|&id| id == some_id),
+        "allowlist {{{some_id}}} exported express ids {ids:?}"
+    );
 }
 
 /// The OBJ twin of the #4328/#4364 GLB fix
@@ -112,14 +129,18 @@ fn isolation_three_states_over_a_real_fixture() {
         .find(|m| super::mesh_visible(m, &None, &[]))
         .map(|m| m.express_id)
         .expect("at least one visible mesh");
-    let one_match = export_obj_with_stats(
+    let (one_match_obj, one_match) = export_obj_with_stats(
         &bytes,
         &ObjOptions { isolated: Some(vec![some_id]), ..ObjOptions::default() },
-    )
-    .1;
+    );
     assert!(
         one_match.meshes >= 1 && one_match.meshes < no_filter.meshes,
         "a non-empty allowlist must still export exactly its matches, not everything and not nothing"
+    );
+    let ids = exported_express_ids(&one_match_obj);
+    assert!(
+        !ids.is_empty() && ids.iter().all(|&id| id == some_id),
+        "allowlist {{{some_id}}} exported express ids {ids:?}"
     );
 }
 

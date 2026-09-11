@@ -196,21 +196,12 @@ export class BCFNamespace {
       bcfOptions.selectedGuids = comps.selection.map(c => c.GlobalId);
     }
     if (comps?.visibility) {
-      // BCF's `DefaultVisibility` attribute is optional and defaults to TRUE,
-      // so an absent flag means "everything visible, exceptions are hidden".
-      // A truthiness test maps absent onto the `false` (isolation) arm, which
-      // inverts the spec -- and, with no exceptions to isolate, turns a
-      // caller who said nothing about visibility into a blank viewport.
-      // Only an EXPLICIT `false` selects isolation.
+      // Both halves are spelled out on `ViewpointOptions.components
+      // .visibility`: `DefaultVisibility` is optional and TRUE by default, and
+      // `?? []` (not `?.map`) preserves an isolation that matches nothing.
       if (comps.visibility.defaultVisibility ?? true) {
-        // Default visible → exceptions are hidden
         bcfOptions.hiddenGuids = comps.visibility.exceptions?.map(c => c.GlobalId);
       } else {
-        // Default hidden → exceptions are visible (isolation mode). `?? []`
-        // (not `?.map`, which would leave this `undefined`) so an isolation
-        // that matches nothing still reaches `createViewpoint()` as an
-        // active-but-empty array -- `@ifc-lite/bcf`'s `hasVisible` treats
-        // `undefined` as "no isolation channel at all" (see its own comment).
         bcfOptions.visibleGuids = comps.visibility.exceptions?.map(c => c.GlobalId) ?? [];
       }
     }

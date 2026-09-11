@@ -130,8 +130,10 @@ impl Surface {
         }
         // A same-facing surface deeper than the behind bound is beyond this face,
         // not its own capture: the far side of a thin wall stays unknown. A
-        // coplanar capture rounds to either side, so tolerate f64 rounding at
-        // this coordinate magnitude even under a zero bound.
+        // coplanar capture rounds to either side, so tolerate f64 rounding even
+        // under a zero bound. The slack is 16 ulp of the largest coordinate, so
+        // it scales linearly with coordinate magnitude: ~1e-9 m at georeferenced
+        // 1e6 m and negligible below ~1e9 m.
         let closest_point = interpolate(nearest.points, weights);
         let depth = dot(sub(closest_point, point), target_normal);
         let rounding = 16. * f64::EPSILON

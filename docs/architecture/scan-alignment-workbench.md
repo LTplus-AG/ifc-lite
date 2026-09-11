@@ -84,8 +84,10 @@ Distance, normal agreement, ambiguity and behind-surface settings determine
 which samples are observed. Unknown samples retain the prior IFC appearance.
 The behind-surface limit refuses a same-facing scan surface that lies deeper
 than that distance behind the IFC face, so the far side of a thin wall, or
-furniture beyond it, never paints the near face; its default of 5 mm should be
-raised only to the accepted registration error plus modelling tolerance. The coverage report
+furniture beyond it, never paints the near face. Its default equals the default
+project tolerance (10 mm), so a registration accepted at that residual is not
+refused on one side of the face only; raise it only to the accepted
+registration error plus modelling tolerance. The coverage report
 separates actual transferred interior image texels from centroid-inclusive
 sample/area estimates. Padding is excluded from interior texel counts. No Apply
 is offered when no interior texel receives scan appearance or chosen objects

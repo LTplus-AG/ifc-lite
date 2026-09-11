@@ -331,6 +331,23 @@ test('gatingFilters reads positive terms only', () => {
   assert.equal(gatingFilters('    runs-on: x'), null);
 });
 
+test('gatingFilters: the no-op `edited` probe output is not a path filter', () => {
+  // `rust-semver` has no path filter and is gated on the probe alone; reading
+  // `noop` as a filter term would turn "runs on every path" into "reaches no
+  // path" (an empty glob set) and flag every input of check-rust-semver.mjs.
+  assert.equal(gatingFilters("    if: needs.changes.outputs.noop != 'true'"), null);
+  assert.deepEqual(
+    gatingFilters("    if: needs.changes.outputs.noop != 'true' && needs.changes.outputs.plato == 'true'"),
+    ['plato'],
+    'a real filter beside the probe term still gates the job',
+  );
+  assert.deepEqual(
+    gatingFilters("    if: needs.changes.outputs.noop == 'true'"),
+    null,
+    'the probe term never counts as a positive filter either',
+  );
+});
+
 test('parseWorkflowPrPaths distinguishes no-paths from a paths list', () => {
   assert.deepEqual(
     parseWorkflowPrPaths("on:\n  pull_request:\n    branches: [main]\n    paths:\n      - 'a/**'\n"),

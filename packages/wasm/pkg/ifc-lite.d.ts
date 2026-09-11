@@ -505,14 +505,14 @@ export class IfcAPI {
      * currently matches nothing" (every mesh is excluded). Collapsing the two — as a
      * bare `Uint32Array` parameter would force a caller to do — silently exports the
      * whole model when a filter matches nothing (the OBJ twin of #4328/#4364, fixed
-     * for GLB in `exportGlb`). A non-empty `Uint32Array` is the ordinary allowlist.
+     * for GLB in `export_glb`). A non-empty `Uint32Array` is the ordinary allowlist.
      * Instanced type-library shapes are skipped regardless of the filter.
      *
      * ```javascript
      * const obj = api.exportObj(ifcContent, true, new Uint32Array(), undefined);
      * ```
      */
-    exportObj(content: Uint8Array, include_normals: boolean, hidden: Uint32Array, isolated: Uint32Array | null | undefined): Uint8Array;
+    exportObj(content: Uint8Array, include_normals: boolean, hidden: Uint32Array, isolated?: Uint32Array | null): Uint8Array;
     /**
      * Re-serialize the model in `content` to STEP/IFC UTF-8 bytes.
      *

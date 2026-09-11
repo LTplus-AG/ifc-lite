@@ -11,6 +11,7 @@ import {
   StringTable,
 } from '@ifc-lite/data';
 import { SpatialHierarchyBuilder } from '../src/spatial-hierarchy-builder.js';
+import { computeCanonicalParent } from '../src/spatial-hierarchy-canonical-parent.js';
 import type { EntityRef } from '../src/types.js';
 
 /** Assemble a STEP source buffer + byId index from raw records, so the builder
@@ -452,6 +453,127 @@ describe('SpatialHierarchyBuilder', () => {
 
       expect(storeyA.children.map((n) => n.expressId)).toContain(5);
       expect(storeyB.children.map((n) => n.expressId)).not.toContain(5);
+    });
+  });
+
+  describe('spurious mutual aggregation back-edge (#4246)', () => {
+    // Authoring-tool mistake: a parent/child aggregation pair declared in
+    // BOTH directions. #1 Project, #2 Building, #3 Storey, #4 Wall (contained
+    // in the storey). #2<->#3 is the mutual pair (#2->#3 real, #3->#2
+    // spurious); #1->#2 is the real anchor to IfcProject. Order controls
+    // whether the spurious back-edge is declared before or after the real
+    // anchor edge - only declaration order should ever matter for a TIE, and
+    // ties must never let a back-edge win.
+    function buildFixture(order: 'spurious-first' | 'legit-first') {
+      const strings = new StringTable();
+      const entities = new EntityTableBuilder(4, strings);
+      entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+      entities.add(2, 'IFCBUILDING', 'b0', 'Building', '', '');
+      entities.add(3, 'IFCBUILDINGSTOREY', 'st0', 'Storey', '', '');
+      entities.add(4, 'IFCWALL', 'w0', 'Wall', '', '', true);
+
+      const relationships = new RelationshipGraphBuilder();
+      if (order === 'spurious-first') {
+        relationships.addEdge(2, 3, RelationshipType.Aggregates, 10); // Building -> Storey (real)
+        relationships.addEdge(3, 2, RelationshipType.Aggregates, 11); // Storey -> Building (spurious back-edge)
+        relationships.addEdge(1, 2, RelationshipType.Aggregates, 12); // Project -> Building (real anchor, declared LAST)
+      } else {
+        relationships.addEdge(1, 2, RelationshipType.Aggregates, 10); // Project -> Building (real anchor, declared FIRST)
+        relationships.addEdge(2, 3, RelationshipType.Aggregates, 11); // Building -> Storey (real)
+        relationships.addEdge(3, 2, RelationshipType.Aggregates, 12); // Storey -> Building (spurious back-edge)
+      }
+      relationships.addEdge(3, 4, RelationshipType.ContainsElements, 20); // Storey contains Wall
+
+      return new SpatialHierarchyBuilder().build(
+        entities.build(),
+        relationships.build(),
+        strings,
+        new Uint8Array(),
+        { byId: { get: () => undefined } },
+      );
+    }
+
+    it('survives the subtree and keeps the wall reachable when the back-edge is declared FIRST', () => {
+      const hierarchy = buildFixture('spurious-first');
+
+      expect(hierarchy.project.children.map((n) => n.expressId)).toEqual([2]);
+      const building = hierarchy.project.children[0];
+      expect(building.type).toBe(IfcTypeEnum.IfcBuilding);
+      expect(building.children.map((n) => n.expressId)).toEqual([3]);
+      expect(hierarchy.byStorey.get(3)).toEqual([4]);
+      expect(hierarchy.byBuilding.size).toBeGreaterThan(0);
+      expect(hierarchy.elementToStorey.get(4)).toBe(3);
+    });
+
+    it('is unchanged when the real anchor edge is declared first (self-healing baseline)', () => {
+      const hierarchy = buildFixture('legit-first');
+
+      expect(hierarchy.project.children.map((n) => n.expressId)).toEqual([2]);
+      expect(hierarchy.byStorey.get(3)).toEqual([4]);
+      expect(hierarchy.elementToStorey.get(4)).toBe(3);
+    });
+
+    it('produces an identical hierarchy shape regardless of back-edge declaration order', () => {
+      const shape = (h: ReturnType<typeof buildFixture>) => ({
+        projectChildren: h.project.children.map((n) => n.expressId),
+        byStorey: [...h.byStorey.entries()],
+        elementToStorey4: h.elementToStorey.get(4) ?? null,
+      });
+      expect(shape(buildFixture('spurious-first'))).toEqual(shape(buildFixture('legit-first')));
+    });
+
+    it('breaks a longer indirect aggregation back-edge cycle (A -> B -> C -> A) the same way', () => {
+      // Same defect shape, one hop longer: #2 -> #3 -> #4 -> #2 forms a
+      // 3-node cycle instead of a direct mutual pair. The direct "does the
+      // child forward-aggregate this candidate" check would miss this; the
+      // fix must walk the raw aggregation graph, not just direct children.
+      const strings = new StringTable();
+      const entities = new EntityTableBuilder(5, strings);
+      entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+      entities.add(2, 'IFCBUILDING', 'b0', 'Building', '', '');
+      entities.add(3, 'IFCBUILDINGSTOREY', 'st0', 'Storey', '', '');
+      entities.add(4, 'IFCBUILDINGSTOREY', 'st1', 'Mezzanine', '', '');
+      entities.add(5, 'IFCWALL', 'w0', 'Wall', '', '', true);
+
+      const relationships = new RelationshipGraphBuilder();
+      relationships.addEdge(2, 3, RelationshipType.Aggregates, 10); // Building -> Storey (real)
+      relationships.addEdge(3, 4, RelationshipType.Aggregates, 11); // Storey -> Mezzanine (real)
+      relationships.addEdge(4, 2, RelationshipType.Aggregates, 12); // Mezzanine -> Building (spurious, closes the cycle)
+      relationships.addEdge(1, 2, RelationshipType.Aggregates, 13); // Project -> Building (real anchor, declared LAST)
+      relationships.addEdge(4, 5, RelationshipType.ContainsElements, 20); // Mezzanine contains Wall
+
+      const hierarchy = new SpatialHierarchyBuilder().build(
+        entities.build(),
+        relationships.build(),
+        strings,
+        new Uint8Array(),
+        { byId: { get: () => undefined } },
+      );
+
+      expect(hierarchy.project.children.map((n) => n.expressId)).toEqual([2]);
+      expect(hierarchy.elementToStorey.get(5)).toBe(4);
+      expect(hierarchy.byStorey.get(4)).toEqual([5]);
+    });
+
+    it('falls back to first-declared once the cycle-check visit budget is spent, instead of stalling', () => {
+      // Same 2-node back-edge as above, declared first. With a budget the
+      // walk cannot finish, the resolver must not use a partial descendant
+      // set (that reads as "no cycle" for the unreached part): it stops
+      // checking and takes the first-declared edge, the pre-#4285 answer.
+      const strings = new StringTable();
+      const entities = new EntityTableBuilder(3, strings);
+      entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+      entities.add(2, 'IFCBUILDING', 'b0', 'Building', '', '');
+      entities.add(3, 'IFCBUILDINGSTOREY', 'st0', 'Storey', '', '');
+      const relationships = new RelationshipGraphBuilder();
+      relationships.addEdge(3, 2, RelationshipType.Aggregates, 10); // Storey -> Building (spurious back-edge, FIRST)
+      relationships.addEdge(1, 2, RelationshipType.Aggregates, 11); // Project -> Building (real)
+      relationships.addEdge(2, 3, RelationshipType.Aggregates, 12); // Building -> Storey (real)
+      const graph = relationships.build();
+      const table = entities.build();
+
+      expect(computeCanonicalParent(table, graph).get(2)).toBe(1); // default budget: cycle broken
+      expect(computeCanonicalParent(table, graph, { cycleCheckVisitBudget: 0 }).get(2)).toBe(3); // exhausted: first-declared
     });
   });
 

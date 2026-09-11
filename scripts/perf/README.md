@@ -1271,6 +1271,24 @@ pair and matching second pair with identical ordered geometry; no consistent
 regression or zero-overhead claim follows. This is measured capacity acceptance, not a throughput
 speedup. [Worker, independent-reader and refusal evidence](../../docs/architecture/evidence/mesh-transfer-full-target/README.md).
 
+### Behind-surface refusal for thin-wall transfer (#4381)
+
+Registered mesh transfer now refuses a same-facing nearest scan surface that
+lies deeper than an explicit `maxBehindMetres` behind the IFC face. The
+controlled 4 mm partition showed the gap the symmetric distance bound left
+open: with a 20 mm bound, a surface 10 mm beyond the wall painted the near face
+although both faces were classified correctly against each other. The check is
+one closest-point dot product after the existing nearest/ambiguity/normal
+refusals, so it adds no BVH work; a coplanar capture is tolerated within f64
+rounding under a zero bound because the centroid-only control runs exactly
+there. Interleaved native AC20 A/B/A/B probes on a shared host found equal
+best totals within run spread and identical ordered geometry fingerprints and
+counts; the sampler is not on the load path, so this is only a no-regression
+control, not a transfer-throughput claim. The lesson is that nearest-first
+matching needs a signed depth bound, not a larger symmetric one: relaxing the
+distance bound to reach the opposite face reintroduces every far-side bleed.
+See the [controls and raw probe samples](../../docs/architecture/evidence/mesh-transfer-surfaces/README.md).
+
 ## Qualified PDF fill composition (#4406)
 
 The new explicit creation API leaves ordinary model loading on the existing

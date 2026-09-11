@@ -780,8 +780,13 @@ The typed `MeshTransferRequest` contains:
   `[1,1,1,1]` base-color factor. Tint, alpha, missing old rasters and unsupported
   target materials are explicit refusals, never silently discarded.
 - `texelsPerMetre`, positive `maxDistanceMetres` (at most 10), `minNormalDot` in
-  `(0,1]`, and `ambiguityDistanceMetres` between zero and maximum distance. These
-  are explicit sampling criteria, not estimated registration uncertainty.
+  `(0,1]`, `ambiguityDistanceMetres` and `maxBehindMetres`, each between zero and
+  the maximum distance. These are explicit sampling criteria, not estimated
+  registration uncertainty. `maxBehindMetres` bounds how far a same-facing
+  nearest surface may lie behind the IFC face (along its outward normal) before
+  it is unknown: the far side of a thin wall, or a cabinet standing beyond it,
+  is never painted onto the near face. A coplanar capture is tolerated under a
+  zero bound within f64 rounding at the coordinate magnitude.
 
 The host verifies that decoded mesh, UVs, sampler and pixels belong to the pinned
 original GLB. Rust receives decoded data and **does not verify original GLB bytes**.
@@ -793,10 +798,17 @@ Topology repair or inadequate coordinate precision prevents guessing provenance.
 The sampler uses the existing geometry BVH to find geometric-nearest triangles
 before filtering oriented normals. An incompatible nearest face becomes unknown;
 a farther compatible face cannot paint through it. Near-tied separate surfaces,
-duplicate overlaps and UV seams become unknown. Exact continuous shared edges
-between consistently oriented, nonoverlapping coplanar triangles remain one
-surface. Source UVs come from closest-point barycentrics. This is local surface
-matching, not camera visibility reconstruction or confidence learned from scans.
+duplicate overlaps and UV seams become unknown. A compatible nearest surface
+deeper than `maxBehindMetres` behind the face is unknown too. Exact continuous
+shared edges between consistently oriented, nonoverlapping coplanar triangles
+remain one surface. Source UVs come from closest-point barycentrics. Because the
+observation is always the geometric-nearest surface, no other source surface can
+lie between a target sample and its observation; occlusion therefore reduces to
+these nearest-first refusals. A same-facing surface within the distance bound in
+front of the face (a poster, a sheet) is the visible surface there and cannot be
+told from the wall without scanner viewpoints, which belong to F9. This is local
+surface matching, not camera visibility reconstruction or confidence learned
+from scans.
 
 Unknown samples preserve existing target albedo through the shared atlas/material
 planner. The output adds `transfer` metadata: `preparedSha256`,
@@ -807,8 +819,8 @@ explicit diagnostics. Fewer than four fit or four held-out observations carries
 an insufficient-evidence diagnostic and `plan: null`, `applicable: false`, even
 when samples are observed. Operational acceptance additionally requires that the
 host verifies spatially distributed held-out observations and
-their accepted residuals. Counts distinguish observed, distance, normal and ambiguity
-outcomes. `centroidSamples` / `observedCentroidSamples` describe the mandatory
+their accepted residuals. Counts distinguish observed, distance, normal, ambiguity
+and behind-surface outcomes (`unknownBehindSamples`). `centroidSamples` / `observedCentroidSamples` describe the mandatory
 per-triangle geometric observations; `rasterInteriorTexels` /
 `observedRasterInteriorTexels` count actual interior raster pixel evaluations.
 The existing `samples` and `observedSamples` include both sets. Application also
@@ -824,7 +836,7 @@ integrals. Entirely unknown output has `plan: null` and no PNG assets or mutatio
 Partial coverage remains a review decision; it is never hidden behind a percent.
 
 The prepared digest binds the entire typed request, IFC and supplied RGBA bytes.
-Its input is `ifclite-mesh-transfer-v1`, a zero byte, little-endian u64 IFC length,
+Its input is `ifclite-mesh-transfer-v3-behind-bound`, a zero byte, little-endian u64 IFC length,
 IFC bytes, little-endian u64 RGBA length, RGBA bytes, then compact typed request JSON.
 Invalidate prepared results after any source, frame, target, pixel or criterion
 change. Atomically adopt all assets and edits through the existing appearance

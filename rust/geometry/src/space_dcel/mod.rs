@@ -1175,7 +1175,14 @@ impl SpacePlate {
             // (the axis stops half a thickness short so the end squares off),
             // which for the gross outline means half short of it instead —
             // hence `sign`.
-            if pd[0] * cd[0] + pd[1] * cd[1] < -1.0 + 1e-9 {
+            //
+            // The topology says which corners are ends: the face walks OUT along
+            // a half-edge and BACK along its twin, so the two cycle entries
+            // meeting at the tip are twins. That is exact; an angle threshold
+            // alone would also fire on a genuinely sharp (near-antiparallel)
+            // corner between two different walls and cap what is a corner.
+            let is_spur = self.half_edges[cycle[pj].0 as usize].twin == cycle[i];
+            if is_spur {
                 let half = self.half_edges[cycle[pj].0 as usize]
                     .half_thickness
                     .max(self.half_edges[cycle[i].0 as usize].half_thickness);

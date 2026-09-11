@@ -29,6 +29,7 @@ import {
   RelationshipGraphBuilder,
   PropertyValueType,
   QuantityType,
+  RelationshipType,
 } from '@ifc-lite/data';
 
 /**
@@ -419,5 +420,40 @@ describe('ParquetExporter Metadata.json', () => {
     expect(metadata.statistics.vertexCount).toBe(0);
     expect(metadata.statistics.triangleCount).toBe(0);
     expect(zip.file('VertexBuffer.parquet')).toBeNull();
+  });
+
+  it('counts distinct relationships, not raw edges, when a secondary #4205 edge is present', async () => {
+    // One IfcRelNests (recorded under both Aggregates and the distinct
+    // secondary Nests type — same relationshipId, two edges) plus one
+    // plain IfcRelAggregates: 2 distinct `IfcRel*` records, 3 raw edges.
+    // `relationshipCount` must report 2 — the previous implementation
+    // (`edgeTargets.length`) reported the raw edge count, 3.
+    const relBuilder = new RelationshipGraphBuilder();
+    relBuilder.addEdge(10, 1, RelationshipType.Aggregates, 100); // IfcRelNests primary edge
+    relBuilder.addEdge(10, 1, RelationshipType.Nests, 100); // IfcRelNests secondary edge, same rel id
+    relBuilder.addEdge(10, 2, RelationshipType.Aggregates, 101); // plain IfcRelAggregates
+
+    const store = { ...buildTypedStore(), relationships: relBuilder.build() };
+    const zipBytes = await new ParquetExporter(store).exportBOS();
+    const zip = await JSZip.loadAsync(zipBytes);
+    const metadata = JSON.parse(await zip.file('Metadata.json')!.async('string'));
+
+    expect(metadata.statistics.relationshipCount).toBe(2);
+  });
+
+  it('counts relationships correctly with no secondary-edge types present (no #4205 relationships in the model)', async () => {
+    // Baseline: relationshipCount must still equal the raw edge count when
+    // every relationship has exactly one edge (no Nests/AssignsToGroupByFactor).
+    const relBuilder = new RelationshipGraphBuilder();
+    relBuilder.addEdge(10, 1, RelationshipType.Aggregates, 100);
+    relBuilder.addEdge(10, 2, RelationshipType.ContainsElements, 101);
+    relBuilder.addEdge(10, 3, RelationshipType.DefinesByProperties, 102);
+
+    const store = { ...buildTypedStore(), relationships: relBuilder.build() };
+    const zipBytes = await new ParquetExporter(store).exportBOS();
+    const zip = await JSZip.loadAsync(zipBytes);
+    const metadata = JSON.parse(await zip.file('Metadata.json')!.async('string'));
+
+    expect(metadata.statistics.relationshipCount).toBe(3);
   });
 });

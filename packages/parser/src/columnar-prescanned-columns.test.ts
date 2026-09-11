@@ -137,7 +137,7 @@ describe('issue #3985 pre-scanned column preparation', () => {
     const prepared = await prepareColumnarEntities(scanned, false, async () => {});
     expect(prepared.geometryRefs.map(ref => [ref.expressId, ref.type])).toEqual([[65537, 'IFCWALL']]);
     expect(prepared.byType.get('IFCWALL')).toEqual([65537]);
-  });
+  }, 30_000); // 65536-name fixture: ~5 s on a loaded CI runner, past vitest's 5 s default
 
   it('retains empty pre-pass fallback and complete tokenizer reference access', async () => {
     const store = await new IfcParser().parseColumnar(bytes.buffer, {

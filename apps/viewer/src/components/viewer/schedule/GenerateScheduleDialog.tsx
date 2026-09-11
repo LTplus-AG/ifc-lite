@@ -137,7 +137,14 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
           ...preview.extraction,
           workSchedules: [
             ...preview.extraction.workSchedules,
-            buildWorkPlanInfo(preview.extraction.workSchedules[0]?.globalId ?? 'workplan', workPlanName),
+            buildWorkPlanInfo(
+              preview.extraction.workSchedules[0]?.globalId ?? 'workplan',
+              workPlanName,
+              // Group the generated IfcWorkSchedule(s) under this plan so
+              // the relation round-trips (see buildWorkPlanInfo's doc
+              // comment) instead of shipping a decorative orphan.
+              preview.extraction.workSchedules.map(s => s.globalId),
+            ),
           ],
         }
       : preview.extraction;

@@ -281,7 +281,6 @@
    530 packages/parser/src/data-store-transport.ts
    827 packages/parser/src/material-resolver.ts
    796 packages/parser/src/on-demand-extractors.ts
-   594 packages/parser/src/schedule-extractor.ts
    494 packages/parser/src/source-bytes.ts
    513 packages/plugin-api/src/types.ts
    678 packages/pointcloud/src/formats/e57-decode.ts
@@ -341,7 +340,7 @@
    855 scripts/check-review-posted.mjs
    446 scripts/check-source-text-assertions.mjs
    423 scripts/check-test-glob-coverage.mjs
-   607 scripts/check-test-revert-oracle.mjs
+   640 scripts/check-test-revert-oracle.mjs
    703 scripts/check-test-wiring.mjs
    488 scripts/check-wasm-disposal.mjs
    499 scripts/docs/check-doc-samples.mjs

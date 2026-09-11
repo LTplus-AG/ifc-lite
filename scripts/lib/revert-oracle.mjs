@@ -36,7 +36,7 @@
 
 import { parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs';
 import { ALL_SKIPPED, classifyExecuted, severityCandidates } from './revert-oracle-all-skipped.mjs';
-import { isInertPath } from './revert-oracle-inert.mjs';
+import { isInertPath, isTestSupportPath } from './revert-oracle-inert.mjs';
 // ---------------------------------------------------------------------------
 // Diff classification
 // ---------------------------------------------------------------------------
@@ -61,7 +61,6 @@ const TEST_FILE_RE = /(^|\/)(?:[^/]*\.(?:test|spec)\.(?:ts|tsx|mts|cts|js|jsx|mj
 const TEST_DIR_RE = /(^|\/)(__corpus__|__fixtures__|__snapshots__|__test__|__tests__|corpus|test-data|test-fixtures|testdata)(\/|$)/;
 /** `tests/` and `test/` as a directory segment (but not `src/test-utils.ts`). */
 const TEST_SEGMENT_RE = /(^|\/)tests?(\/)/;
-
 /**
  * Rust puts unit tests INSIDE the production file behind `#[cfg(test)]`. Such a
  * file is production, but reverting it takes its tests with it — the Rust form
@@ -79,6 +78,7 @@ export function classifyPath(path) {
   if (TEST_FILE_RE.test(path) || /(^|\/)(?:[^/]+_tests|tests)\.rs$/.test(path)) return 'test';
   if (TEST_DIR_RE.test(path)) return 'test';
   if (TEST_SEGMENT_RE.test(path)) return 'test';
+  if (isTestSupportPath(path)) return 'test';
   return isInertPath(path) ? 'inert' : 'production';
 }
 

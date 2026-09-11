@@ -391,7 +391,7 @@ describe('a plainly-exported archive validates entry by entry', () => {
         }
       }
       expect(failures).toEqual([]);
-    });
+    }, 30_000); // XSD validation of every archive entry: ~5 s on a loaded CI runner, past vitest's 5 s default
   }
 });
 

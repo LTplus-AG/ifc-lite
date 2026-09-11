@@ -415,7 +415,14 @@ export function useDrawingGeneration({
         !sectionPlane.custom &&
         models.size <= 1 &&
         combinedIsolatedIds === null &&
-        !(computedIsolatedIds && computedIsolatedIds.size > 0) &&
+        // `computedIsolatedIds` is meaningfully nullable: null/undefined means
+        // no isolation channel is active, while a non-null Set — EMPTY
+        // included — means one is (matching the convention
+        // `packages/renderer/src/entity-visibility.ts`'s `isEntityVisible`
+        // uses). A `.size > 0` check here would read an active-but-empty
+        // isolate as "no isolation" and let floor auto-scoping run over the
+        // isolated-to-nothing set.
+        computedIsolatedIds == null &&
         sh !== undefined &&
         sh.byBuilding.size <= 1;
       if (canScopeFloor && sh) {
@@ -526,8 +533,14 @@ export function useDrawingGeneration({
         );
       }
 
-      // Also filter by computedIsolatedIds (storey selection)
-      if (computedIsolatedIds !== null && computedIsolatedIds !== undefined && computedIsolatedIds.size > 0) {
+      // Also filter by computedIsolatedIds (storey selection). Meaningfully
+      // nullable, same convention as `combinedIsolatedIds` above and
+      // `packages/renderer/src/entity-visibility.ts`'s `isEntityVisible`:
+      // null/undefined means no isolation channel is active, while a
+      // non-null Set — EMPTY included — means one is and matches nothing. A
+      // `.size > 0` check here would read an active-but-empty isolate as "no
+      // isolation" and redraw the whole model instead of nothing.
+      if (computedIsolatedIds != null) {
         const isolatedSet = computedIsolatedIds;
         meshesToProcess = meshesToProcess.filter(
           mesh => isolatedSet.has(mesh.expressId)
@@ -570,7 +583,8 @@ export function useDrawingGeneration({
         if (combinedIsolatedIds !== null) {
           projectionProfiles = projectionProfiles.filter((p) => combinedIsolatedIds.has(p.expressId));
         }
-        if (computedIsolatedIds !== null && computedIsolatedIds !== undefined && computedIsolatedIds.size > 0) {
+        // Meaningfully nullable, same convention as the mesh filter above.
+        if (computedIsolatedIds != null) {
           const isolatedSet = computedIsolatedIds;
           projectionProfiles = projectionProfiles.filter((p) => isolatedSet.has(p.expressId));
         }

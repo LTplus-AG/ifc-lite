@@ -412,6 +412,34 @@ describe('useDrawingGeneration latest inputs (#3921)', () => {
       assert.deepEqual(entityIds(h.drawing), new Set([101]));
     } finally { await h.dispose(); }
   });
+
+  it('an active-but-empty computedIsolatedIds isolates nothing, not the whole model', async () => {
+    // `computedIsolatedIds` (ViewportContainer's storey/class/manual-isolation
+    // intersection) is meaningfully nullable: `null`/`undefined` means no
+    // isolation channel is active, while a non-null EMPTY Set means an
+    // isolation channel IS active and matches nothing — the same convention
+    // `packages/renderer/src/entity-visibility.ts`'s `isEntityVisible` and
+    // `shadow-occluders.ts`'s `anyVisible` already enforce. A production
+    // writer of the underlying `isolatedEntities` store channel can reach
+    // exactly this shape: `pinboardSlice.ts`'s `removeFromBasket` derives the
+    // isolate set incrementally, and two EntityRefs that alias the same
+    // globalId (e.g. the `legacy`/`default` federation sentinels collapsing
+    // to the same expressId) can leave a non-null, zero-size Set behind while
+    // the basket itself is still non-empty.
+    const h = await drawingActivityHarness();
+    try {
+      await h.update({ geometryResult: activityGeometry(), panelVisible: true });
+      await h.update({ combinedIsolatedIds: null, computedIsolatedIds: new Set([101]) });
+      assert.deepEqual(entityIds(h.drawing), new Set([101]));
+
+      await h.update({ computedIsolatedIds: new Set() });
+      assert.deepEqual(
+        entityIds(h.drawing),
+        new Set(),
+        'an active empty isolate set must draw nothing, not fall back to the whole model',
+      );
+    } finally { await h.dispose(); }
+  });
 });
 
 // Hold a REAL cutter result at its async boundary, rather than fabricating meshes.

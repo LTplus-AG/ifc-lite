@@ -21,7 +21,7 @@ verify the texture and occurrence ownership directly.
 
 [The evidence record](viewer-acceptance.json) pins source, runtime, fixture and
 asserted states. The manual harness is
-[`accept-query-scope.mjs`](../../../../tools/texture-authoring/accept-query-scope.mjs);
+[`accept-query-scope.mjs`](https://github.com/LTplus-AG/ifc-lite/blob/main/tools/texture-authoring/accept-query-scope.mjs);
 run it against an isolated local viewer with `EVALUATED_URL` and `EVALUATED_OUT`.
 It closes its browser in `finally`. This is behavior evidence, not a performance
 measurement or a new IFC export interoperability claim.

@@ -21,6 +21,8 @@ import {
   DEFAULT_VIEWPOINT_FOV,
   toVec3,
   toTuple,
+  toLibraryBounds,
+  type BcfViewerBounds,
   collectMissingCameraFields,
   SDK_AXIS_TO_BCF_AXIS,
   BCF_AXIS_TO_SDK_AXIS,
@@ -301,17 +303,19 @@ export class BCFNamespace {
   // --------------------------------------------------------------------------
 
   /** Convert viewer section plane to BCF clipping plane. `bounds` is required
-   * — the library needs it to place an absolute location (#4265). */
-  async sectionPlaneToClippingPlane(section: unknown, bounds: unknown): Promise<unknown> {
+   * — the library needs it to place an absolute location (#4265). Accepts the
+   * SDK's tuple `AABB` or the library's object-shaped bounds. */
+  async sectionPlaneToClippingPlane(section: unknown, bounds: AABB | BcfViewerBounds): Promise<unknown> {
     const mod = await loadBCF();
-    return (mod.sectionPlaneToClippingPlane as AnyFn)(section, bounds);
+    return (mod.sectionPlaneToClippingPlane as AnyFn)(section, toLibraryBounds(bounds));
   }
 
   /** Convert BCF clipping plane to viewer section plane. `bounds` is required
-   * — the library needs it to compute a percentage position (#4265). */
-  async clippingPlaneToSectionPlane(clippingPlane: unknown, bounds: unknown): Promise<unknown> {
+   * — the library needs it to compute a percentage position (#4265). Accepts
+   * the SDK's tuple `AABB` or the library's object-shaped bounds. */
+  async clippingPlaneToSectionPlane(clippingPlane: unknown, bounds: AABB | BcfViewerBounds): Promise<unknown> {
     const mod = await loadBCF();
-    return (mod.clippingPlaneToSectionPlane as AnyFn)(clippingPlane, bounds);
+    return (mod.clippingPlaneToSectionPlane as AnyFn)(clippingPlane, toLibraryBounds(bounds));
   }
 
   // --------------------------------------------------------------------------

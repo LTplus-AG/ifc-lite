@@ -151,6 +151,14 @@ describe('BCFNamespace.extractViewpointState — read-path symmetry (#4251)', ()
       // which are preserved exactly.
       expect(Array.isArray(state.camera?.position)).toBe(true);
       expect(state.camera?.up).toEqual([0, 1, 0]);
+      // BCF stores view direction, not the target point, so the target is
+      // reconstructed too — but the recovered position->target direction
+      // must be the original (4,5,6)-(1,2,3) = (3,3,3) normalised.
+      const pos = state.camera!.position as [number, number, number];
+      const tgt = state.camera!.target as [number, number, number];
+      const dir = [tgt[0] - pos[0], tgt[1] - pos[1], tgt[2] - pos[2]];
+      const len = Math.hypot(...dir);
+      for (const c of dir) expect(c / len).toBeCloseTo(1 / Math.sqrt(3), 6);
 
       // The load-bearing assertion: BCF_AXIS_TO_SDK_AXIS[bcfAxis] must recover
       // the exact SDK axis that was sent in, not some other axis. A swap
@@ -180,10 +188,11 @@ describe('BCFNamespace.extractViewpointState — read-path symmetry (#4251)', ()
 // sectionPlaneToClippingPlane / clippingPlaneToSectionPlane (#4265)
 //
 // Both wrappers forward straight to @ifc-lite/bcf's own object-shaped
-// ViewerSectionPlane/BCFClippingPlane/ViewerBounds — unlike
+// ViewerSectionPlane/BCFClippingPlane — unlike
 // createViewpoint()/extractViewpointState() above, they do not adapt the
-// SDK's tuple/x-y-z public shapes, matching #4265's own repro which called
-// them with the library's shapes directly.
+// SDK's tuple/x-y-z plane shapes, matching #4265's own repro which called
+// them with the library's shapes directly. `bounds` is the exception: the
+// SDK's tuple AABB is accepted as well as the library's object shape.
 // ============================================================================
 
 const LIBRARY_BOUNDS = {
@@ -214,6 +223,17 @@ describe('BCFNamespace.sectionPlaneToClippingPlane — bounds argument (#4265)',
     // @ts-expect-error — exercising the pre-fix call shape (bounds omitted)
     await expect(ns.sectionPlaneToClippingPlane(sectionPlane)).rejects.toThrow();
   });
+
+  it('accepts the SDK tuple AABB shape for bounds (not NaN locations)', async () => {
+    const ns = new BCFNamespace();
+    const sectionPlane = { axis: 'front' as const, position: 50, enabled: true, flipped: false };
+    const tupleBounds = { min: [-10, -10, 0] as [number, number, number], max: [10, 10, 10] as [number, number, number] };
+
+    const out = (await ns.sectionPlaneToClippingPlane(sectionPlane, tupleBounds)) as {
+      location: { x: number; y: number; z: number };
+    };
+    expect(out.location).toEqual({ x: 0, y: -5, z: 0 });
+  });
 });
 
 describe('BCFNamespace.clippingPlaneToSectionPlane — bounds argument (#4265)', () => {
@@ -239,6 +259,15 @@ describe('BCFNamespace.clippingPlaneToSectionPlane — bounds argument (#4265)',
 
     // @ts-expect-error — exercising the pre-fix call shape (bounds omitted)
     await expect(ns.clippingPlaneToSectionPlane(clippingPlane)).rejects.toThrow();
+  });
+
+  it('accepts the SDK tuple AABB shape for bounds (not the 50% fallback)', async () => {
+    const ns = new BCFNamespace();
+    const clippingPlane = { location: { x: 0, y: 0, z: 5 }, direction: { x: 0, y: 0, z: -1 } };
+    const tupleBounds = { min: [-10, -10, 0] as [number, number, number], max: [10, 10, 10] as [number, number, number] };
+
+    const out = (await ns.clippingPlaneToSectionPlane(clippingPlane, tupleBounds)) as { axis: string; position: number };
+    expect(out).toMatchObject({ axis: 'down', position: 75 });
   });
 });
 

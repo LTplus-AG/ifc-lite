@@ -199,3 +199,44 @@ export function computeCanonicalParent(
 
   return canonicalParent;
 }
+
+/**
+ * Which spatial-structure nodes will `SpatialHierarchyBuilder.buildNode`
+ * actually visit, starting from `projectId`? Mirrors `addSpatialChild`
+ * exactly: a node is visited iff it is `projectId` itself, or its
+ * `canonicalParent` entry points to an already-visited node - the same
+ * check `addSpatialChild` makes before recursing (`canonicalParent.get
+ * (childId) === expressId`). Computed as one forward walk over
+ * `canonicalParent` (childId -> parentId) up front, so a storey's
+ * reachability never depends on where in the traversal it happens to sit
+ * (#4310): a node named only by an unreachable storey - one with no path
+ * back to `projectId`, e.g. a malformed file where a storey has no
+ * `IfcRelAggregates` edge at all - is never in this set, exactly as
+ * `buildNode` would never recurse into it.
+ */
+export function computeReachableSpatialNodes(
+  projectId: number,
+  canonicalParent: Map<number, number>,
+): Set<number> {
+  const childrenOf = new Map<number, number[]>();
+  for (const [childId, parentId] of canonicalParent) {
+    let siblings = childrenOf.get(parentId);
+    if (!siblings) {
+      siblings = [];
+      childrenOf.set(parentId, siblings);
+    }
+    siblings.push(childId);
+  }
+
+  const reachable = new Set<number>([projectId]);
+  const stack: number[] = [projectId];
+  while (stack.length > 0) {
+    const current = stack.pop() as number;
+    for (const childId of childrenOf.get(current) ?? []) {
+      if (reachable.has(childId)) continue; // also guards a canonicalParent cycle from looping forever
+      reachable.add(childId);
+      stack.push(childId);
+    }
+  }
+  return reachable;
+}

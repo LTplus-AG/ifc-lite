@@ -488,7 +488,7 @@ export function SpaceSketchOverlay() {
   // Confirm-on-close: turn every storey's draft into real IfcSpace. Owns the
   // ids it authored, so confirming twice replaces rather than duplicates.
   const { createAllSpaces, createdIds } = useSpaceBake({
-    sketchModelId, ifcDataStore, boundaryMode, sessionsRef, floorToFloor,
+    sketchModelId, ifcDataStore, boundaryMode, sessionsRef, floorToFloor, coordinateInfo: geometryResult?.coordinateInfo,
   });
 
   /**

@@ -14,6 +14,16 @@
  * from the export, and a partial failure closing the tool and discarding the
  * remaining drafts. The decisions live in `space-bake.ts`; this hook is the
  * store-facing plumbing around them.
+ *
+ * It also owns the ONE frame change in the tool. Everything upstream — the
+ * plate, the 2D drawing, the 3D ghost, the areas — works in the room frame
+ * `wall-rects-from-meshes.ts` defines, which is the model's own world frame
+ * because the outlines are derived from rendered geometry. `addSpace` writes
+ * into a storey-local slot, and `existingSpaceFootprintsByStorey` reads out of
+ * one, so both directions cross the storey's placement chain here and nowhere
+ * else. Skipping either crossing is not a small error: the chain carries the
+ * site anchor, so a room lands a whole site offset away and turned by the site
+ * rotation, and the dedup stops recognising the rooms already in the file.
  */
 
 import { useCallback, useRef } from 'react';
@@ -21,9 +31,15 @@ import { useViewerStore } from '@/store';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   existingSpaceFootprintsByStorey,
+  fromStoreyLocal,
+  storeyPlanFrame,
+  toStoreyLocal,
   GENERATED_SPACE_OBJECTTYPE,
   type BoundaryMode,
+  type StoreyPlanFrame,
 } from '@ifc-lite/create';
+import type { CoordinateInfo } from '@ifc-lite/geometry';
+import { roomFrameToModelWorld } from '@/lib/wall-rects-from-meshes';
 import type { SpacePlateSession } from '@/lib/space-plate-session';
 import type { Pt } from '@/lib/space-sketch-geometry';
 import { planStoreySpaces, type DraftRoom } from './space-bake';
@@ -43,6 +59,12 @@ export interface UseSpaceBakeOptions {
   /** Every storey's draft plate, keyed by storey expressId. */
   sessionsRef: React.RefObject<Map<number, SpacePlateSession>>;
   floorToFloor: (sid: number) => number;
+  /**
+   * The loaded model's coordinate info, as `wallRectsFromMeshes` was given it.
+   * Read only to place the room frame relative to the model's own world frame
+   * — see `roomFrameToModelWorld`.
+   */
+  coordinateInfo: CoordinateInfo | undefined;
 }
 
 export interface UseSpaceBake {
@@ -58,6 +80,7 @@ export function useSpaceBake({
   boundaryMode,
   sessionsRef,
   floorToFloor,
+  coordinateInfo,
 }: UseSpaceBakeOptions): UseSpaceBake {
   const addSpace = useViewerStore((s) => s.addSpace);
   const removeEntity = useViewerStore((s) => s.removeEntity);
@@ -88,11 +111,14 @@ export function useSpaceBake({
     sid: number,
     rooms: DraftRoom[],
     authored: Pt[][],
+    frame: StoreyPlanFrame,
   ): { emitted: number; skipped: number; error: string | null } => {
     if (!sketchModelId) return { emitted: 0, skipped: 0, error: 'no model to create spaces in' };
     for (const id of generatedRef.current.get(sid) ?? []) removeEntity(sketchModelId, id);
     generatedRef.current.delete(sid);
     const { planned, skipped } = planStoreySpaces(rooms, authored, floorToFloor(sid));
+    const { dx, dy } = roomFrameToModelWorld(coordinateInfo);
+    const roomToWorld = (p: Pt): Pt => [p[0] + dx, p[1] + dy];
     const newIds: number[] = [];
     // An addSpace failure (anchor resolution, missing mutation view, …) is
     // NOT an "already a space" skip — keep the first error so the status
@@ -107,19 +133,31 @@ export function useSpaceBake({
       // a gap in the numbering the user can see.
       const res = addSpace(sketchModelId, sid, {
         Profile: 'polygon',
-        OuterCurve: space.OuterCurve,
+        // `addSpace` anchors the profile to the storey's own placement, so the
+        // reader applies the storey's whole chain (storey axis ∘ building ∘
+        // site) to these points. Handing it the room frame — which already has
+        // that chain baked in, because it comes from rendered geometry — would
+        // have the chain applied a second time. Divide it out here. Areas are
+        // measured in `space-bake.ts` and are invariant under a rigid motion,
+        // so only the curve moves.
+        OuterCurve: space.OuterCurve.map((p) => toStoreyLocal(frame, roomToWorld(p))),
         Height: space.Height,
         Name: `Space ${newIds.length + 1}`,
         ObjectType: GENERATED_SPACE_OBJECTTYPE,
         grossFloorArea: space.grossFloorArea,
         netFloorArea: space.netFloorArea,
-      });
+      },
+      // Draw the immediate 3D mirror where the user drew the room. The profile
+      // above has the storey chain divided out; `buildElementMesh` does not put
+      // it back, so without this the room would jump by the whole chain the
+      // moment it is confirmed and come back on reload.
+      space.OuterCurve);
       if (res && 'expressId' in res) newIds.push(res.expressId);
       else error ??= (res && 'error' in res ? res.error : 'unknown error');
     }
     generatedRef.current.set(sid, newIds);
     return { emitted: newIds.length, skipped, error };
-  }, [sketchModelId, removeEntity, addSpace, floorToFloor]);
+  }, [sketchModelId, removeEntity, addSpace, floorToFloor, coordinateInfo]);
 
   /**
    * Confirm: turn EVERY storey's collected draft into IfcSpace at once — the
@@ -139,10 +177,21 @@ export function useSpaceBake({
       return { emitted: 0, floors: 0, error: 'Model data is still loading — confirm again in a moment.' };
     }
     const authoredMap = existingSpaceFootprintsByStorey(ifcDataStore);
+    const { dx, dy } = roomFrameToModelWorld(coordinateInfo);
     let emitted = 0, floors = 0;
     let firstError: string | null = null;
     for (const [sid, session] of sessionsRef.current) {
       if (!session.alive || session.roomCount === 0) continue;
+      // The one frame this storey's rooms are written through, and read back
+      // through. Refusing is the whole point of a null here: a storey whose
+      // chain will not resolve, or that tips out of plan, has no honest planar
+      // inverse, and a room authored without one is turned rather than
+      // visibly broken — nobody notices until it is quoted in a schedule.
+      const frame = storeyPlanFrame(ifcDataStore, sid);
+      if (!frame) {
+        firstError ??= `Storey #${sid}: placement not resolvable in plan — its rooms were not created.`;
+        continue;
+      }
       const rooms = session.rooms().map((r) => ({
         outline: r.outline,
         boundary: session.boundaryOutline(r.face, boundaryMode),
@@ -151,14 +200,23 @@ export function useSpaceBake({
         // room's OuterCurve.
         inner: session.boundaryOutline(r.face, 'inner'),
       }));
-      const res = createSpacesForStorey(sid, rooms, authoredMap.get(sid) ?? []);
+      // `existingSpaceFootprintsByStorey` returns STOREY-LOCAL footprints, and
+      // `planStoreySpaces` compares them against drafts in the room frame. Fold
+      // them the other way so the dedup compares like with like; left as they
+      // are, the overlap test matches nothing on a placed storey and confirm
+      // lays a second room on top of every one already in the file.
+      const authored = (authoredMap.get(sid) ?? []).map((ring) => ring.map((p): Pt => {
+        const w = fromStoreyLocal(frame, p);
+        return [w[0] - dx, w[1] - dy];
+      }));
+      const res = createSpacesForStorey(sid, rooms, authored, frame);
       emitted += res.emitted;
       if (res.emitted) floors++;
       firstError ??= res.error;
     }
     if (emitted > 0) revealSpaces();
     return { emitted, floors, error: firstError };
-  }, [sketchModelId, ifcDataStore, boundaryMode, sessionsRef, createSpacesForStorey, revealSpaces]);
+  }, [sketchModelId, ifcDataStore, boundaryMode, sessionsRef, createSpacesForStorey, revealSpaces, coordinateInfo]);
 
   const createdIds = useCallback((): number[] => {
     const out: number[] = [];

@@ -148,10 +148,12 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
           },
         });
         // `startCollab` resolves without a live room when the session never
-        // came up (it logs why) or the user left mid-join. Say so instead of
-        // sitting on "Creating room…" forever.
+        // came up (it logs why) or the user left mid-join (RoomPanel's Leave).
+        // Neither is a connection failure this dialog can tell apart, and the
+        // attempt ref blocks a retry until it is re-opened — so say exactly
+        // that instead of sitting on "Creating room…" forever.
         if (useViewerStore.getState().collabRoomId !== roomId) {
-          setNotice('Could not create the room. Check the connection and try again.');
+          setNotice('No room was created. Close and reopen this dialog to try again.');
         }
       } catch (err) {
         // eslint-disable-next-line no-console
@@ -306,7 +308,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
             {seedInFlight && seedLabel && (
               <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
-                <span>Uploading model to the room — {seedLabel}</span>
+                <span>{seedLabel}</span>
               </p>
             )}
             {notice && <p className="text-xs text-muted-foreground">{notice}</p>}

@@ -133,8 +133,6 @@ export interface StartCollabOptions {
   seed?: () => CollabSeedInput | null;
 }
 
-export type { CollabSeedInput };
-
 export interface CollabSlice {
   // ── State ────────────────────────────────────────────────────────────────
   /** The live session, or `null` when not in a shared room. */

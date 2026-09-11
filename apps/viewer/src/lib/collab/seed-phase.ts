@@ -54,15 +54,19 @@ export function seedPhaseFromOutcome(outcome: SeedOutcome): 'ready' | 'partial' 
   return 'ready';
 }
 
-/** Short user-facing label for an in-flight phase, or `null` once settled. */
+/**
+ * User-facing sentence for an in-flight phase, or `null` once settled. A
+ * complete sentence so each surface renders it as-is, under its own heading,
+ * without doubling the verb.
+ */
 export function describeSeedPhase(phase: CollabSeedPhase, progress: CollabSeedProgress | null): string | null {
   switch (phase) {
     case 'syncing':
-      return 'connecting to the room';
+      return 'Connecting to the room…';
     case 'structure':
-      return 'uploading model structure';
+      return 'Uploading model structure…';
     case 'geometry':
-      return progress ? `uploading geometry ${progress.uploaded}/${progress.total}` : 'uploading geometry';
+      return progress ? `Uploading geometry ${progress.uploaded}/${progress.total}…` : 'Uploading geometry…';
     default:
       return null;
   }

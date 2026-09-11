@@ -81,7 +81,7 @@ describe('RoomPanel: a connected room is not "Live" until the seed is in (#4446)
     renderPanel();
     assert.match(document.body.textContent ?? '', /Uploading model/);
     assert.doesNotMatch(document.body.textContent ?? '', /Live room/, "'connected' alone does not make the room Live");
-    assert.match(statusText(), /uploading geometry 120\/272/);
+    assert.match(statusText(), /Uploading geometry 120\/272/);
     assert.equal(button(/^Copy invite link$/).disabled, true, 'no invite until the model is in the room');
     assert.match(button(/^Leave/).textContent ?? '', /abandons upload/, 'Leave says what it would abandon');
   });
@@ -95,6 +95,19 @@ describe('RoomPanel: a connected room is not "Live" until the seed is in (#4446)
     assert.equal(statusText().trim(), '', 'the progress row is gone');
     assert.equal(button(/^Copy invite link$/).disabled, false);
     assert.equal(button(/^Leave/).textContent?.trim(), 'Leave room');
+  });
+
+  it('a dropped socket mid-seed reads Offline, not Uploading, but still withholds the invite', () => {
+    // The provider lost the socket before whenSynced resolved: the seed is
+    // stalled, not progressing. 'disconnected' must win over the upload badge
+    // so the owner knows to reconnect; the upload is still pending, so the
+    // copy link stays withheld and Leave still says what it abandons.
+    useViewerStore.setState({ collabStatus: 'disconnected', collabSeedPhase: 'syncing', collabSeedProgress: null });
+    renderPanel();
+    assert.match(document.body.textContent ?? '', /Offline room/);
+    assert.doesNotMatch(document.body.textContent ?? '', /Uploading model/, 'a stalled seed is not "uploading"');
+    assert.equal(button(/^Copy invite link$/).disabled, true, 'the room still does not hold the model');
+    assert.match(button(/^Leave/).textContent ?? '', /abandons upload/);
   });
 
   it('a recipient never seeds, so its panel is Live as soon as it is connected', () => {

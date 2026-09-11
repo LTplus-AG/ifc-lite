@@ -172,7 +172,13 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
   const [revoked, setRevoked] = useState(false);
 
   const seeding = isCollabSeedInFlight(seedPhase);
-  const status = seeding ? SEEDING_META : (STATUS_META[collabStatus] ?? STATUS_META.disconnected);
+  // A seed whose socket dropped is stalled, not progressing: the provider's
+  // 'disconnected' wins over the upload badge so the user sees "Offline" and
+  // knows to reconnect — while the copy link stays withheld and Leave still
+  // says what it abandons, because the upload IS still pending.
+  const stalled = seeding && collabStatus === 'disconnected';
+  const uploading = seeding && !stalled;
+  const status = uploading ? SEEDING_META : (STATUS_META[collabStatus] ?? STATUS_META.disconnected);
   const seedLabel = seeding ? describeSeedPhase(seedPhase, seedProgress) : null;
   const selfRole: CollabRole = collabRole ?? 'admin';
   const isAdmin = collabRole === 'admin';
@@ -290,7 +296,7 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-xs font-semibold leading-tight">
-            {seeding ? 'Uploading model' : `${status.label} room`}
+            {uploading ? 'Uploading model' : `${status.label} room`}
           </div>
           {seedLabel && (
             <div role="status" className="truncate text-[10px] text-muted-foreground">

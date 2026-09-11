@@ -118,7 +118,7 @@ describe('ShareDialog: invite waits for the initial seed (#4446)', () => {
   it('shows upload progress instead of a link while geometry is still going into the room', async () => {
     renderDialog();
     await settle();
-    assert.match(statusText(), /uploading geometry 120\/272/);
+    assert.match(statusText(), /Uploading geometry 120\/272/);
     assert.doesNotMatch(linkField().value, /room=/, 'no invite URL while the seed is in flight');
     assert.equal(copyButton().disabled, true, 'Copy stays disabled');
   });
@@ -127,7 +127,7 @@ describe('ShareDialog: invite waits for the initial seed (#4446)', () => {
     useViewerStore.setState({ collabSeedPhase: 'syncing', collabSeedProgress: null });
     renderDialog();
     await settle();
-    assert.match(statusText(), /connecting to the room/);
+    assert.match(statusText(), /Connecting to the room/);
     assert.equal(copyButton().disabled, true);
   });
 

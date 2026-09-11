@@ -128,18 +128,22 @@ describe('showAllInAllModels ends every claim on the channels it clears', () => 
 describe('every pinboard write of the isolate channel ends the claims it invalidates', () => {
   const REFS = [{ modelId: 'A', expressId: 3 }];
 
-  it('clearPinboard', () => {
+  // The clear paths are ownership-aware (#4527): a channel another owner
+  // installed is not the basket's to close, so they write nothing to it and
+  // invalidate nothing; a channel the basket opened is closed as before.
+  it('clearPinboard leaves a foreign-owned isolation and its record alone', () => {
     idsOwns('isolate', [9]);
     store().clearPinboard();
-    assert.equal(isolated(), null, 'setup: the basket clear nulls the isolation');
-    assert.equal(store().idsFocusVisibilityOwned, null);
+    assert.deepEqual(isolated(), [9]);
+    assert.deepEqual(store().idsFocusVisibilityOwned, { channel: 'isolate', ids: new Set([9]) });
   });
 
-  it('clearBasket', () => {
-    idsOwns('isolate', [9]);
+  it('clearBasket closes a basket-opened isolation and ends a stale foreign record', () => {
+    store().setBasket(REFS);
+    store().setClashVisibilityOwned({ channel: 'isolate', ids: new Set([3]) }); // value-matched foreign record
     store().clearBasket();
-    assert.equal(isolated(), null, 'setup');
-    assert.equal(store().idsFocusVisibilityOwned, null);
+    assert.equal(isolated(), null, 'the basket opened this channel, so it closes it');
+    assert.equal(store().clashVisibilityOwned, null);
   });
 
   it('showPinboard', () => {
@@ -157,11 +161,11 @@ describe('every pinboard write of the isolate channel ends the claims it invalid
     assert.equal(store().idsFocusVisibilityOwned, null);
   });
 
-  it('setBasket (empty — the early-return branch)', () => {
+  it('setBasket (empty — the early-return branch) is a clear: foreign-owned isolation is left alone', () => {
     idsOwns('isolate', [9]);
     store().setBasket([]);
-    assert.equal(isolated(), null, 'setup');
-    assert.equal(store().idsFocusVisibilityOwned, null);
+    assert.deepEqual(isolated(), [9]);
+    assert.deepEqual(store().idsFocusVisibilityOwned, { channel: 'isolate', ids: new Set([9]) });
   });
 
   it('addToBasket', () => {
@@ -230,9 +234,10 @@ describe('every pinboard write of the isolate channel ends the claims it invalid
   it("the destruction chain: a stranded record wipes the user's own hand-made isolation", () => {
     // 1. An IDS row focus isolates element 3 and records `{isolate, {3}}`.
     idsOwns('isolate', [3]);
-    // 2. The user clears the basket. `clearPinboard` nulls the isolate channel,
-    //    so the IDS presentation is gone from the screen.
-    store().clearPinboard();
+    // 2. The user clears the isolation directly (the basket's own clear is
+    //    ownership-aware since #4527 and would leave an IDS-owned channel
+    //    alone), so the IDS presentation is gone from the screen.
+    store().clearIsolation();
     assert.equal(isolated(), null, 'setup: the IDS isolation is off screen');
     // 3. The user isolates element 3 BY HAND ("Isolate in 3D" / the model tree).
     //    Equal content to what IDS once installed — and IDS installed none of it.

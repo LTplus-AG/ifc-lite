@@ -551,14 +551,8 @@ export function getSmartBasketInputFromStore(): { refs: EntityRef[]; source: Bas
   return { refs: [], source: 'empty' };
 }
 
-/**
- * "Is the basket shown?" — every basket element is in the active isolation.
- * A subset test, not equality: the basket may have WIDENED an isolation
- * another feature opened (#4527), and then every basket element is visible
- * even though the channel holds more. Reading that as "not active" would
- * offer "Show active basket", whose wholesale `showPinboard` evicts exactly
- * the foreign ids `removeFromBasket` is careful to keep.
- */
+/** "Is the basket shown?" — every basket element is isolated. A subset test, not equality: a basket that
+ *  WIDENED a foreign isolation (#4527) is shown too, and "Show active basket" would evict the foreign ids. */
 export function isBasketIsolationActiveFromStore(): boolean {
   const state = useViewerStore.getState();
   if (state.pinboardEntities.size === 0 || state.isolatedEntities === null) return false;

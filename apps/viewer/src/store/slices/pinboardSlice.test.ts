@@ -282,6 +282,23 @@ describe('PinboardSlice', () => {
       assert.deepStrictEqual(state.isolatedEntities, new Set(), 'active-but-empty, not null');
     });
 
+    it('clearBasket closes an isolation the basket opened, keeps one it only widened, leaves one it lost', () => {
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }]);
+      state.clearBasket();
+      assert.strictEqual(state.isolatedEntities, null, 'opened by the basket: closed');
+
+      setState({ isolatedEntities: new Set([500]) });
+      state.addToBasket([{ modelId: 'legacy', expressId: 100 }]);
+      state.clearBasket();
+      assert.deepStrictEqual(state.isolatedEntities, new Set([500]), 'widened only: the remainder is handed back');
+
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }]);
+      foreignReplace([100, 900]);
+      state.clearBasket();
+      assert.deepStrictEqual(state.isolatedEntities, new Set([100, 900]), "lost to another writer: not the basket's to close");
+      assert.strictEqual(state.pinboardEntities.size, 0);
+    });
+
     it('adding with the channel closed and a pre-existing basket claims the union', () => {
       state.setBasket([{ modelId: 'legacy', expressId: 100 }]);
       setState({ isolatedEntities: null, basketVisibilityOwned: null });

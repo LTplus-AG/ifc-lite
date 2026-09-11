@@ -23,6 +23,7 @@ import type { CameraCallbacks, CameraViewpoint, EntityRef, SectionPlane } from '
 import { entityRefToString } from '../types.js';
 import {
   basketAddIsolation,
+  basketReleaseIsolation,
   basketRemoveIsolation,
   basketToGlobalIds,
   computeBasketVisibility,
@@ -195,7 +196,7 @@ export const createPinboardSlice: StateCreator<
   // (the ownership middleware resets records absent from a channel-writing
   // patch), and the incremental steps re-check ownership by value first.
   clearPinboard: () =>
-    set({ pinboardEntities: new Set(), isolatedEntities: null, basketVisibilityOwned: null, activeBasketViewId: null }),
+    set((state) => ({ pinboardEntities: new Set(), ...basketReleaseIsolation(state), activeBasketViewId: null })),
 
   showPinboard: () => {
     const state = get();
@@ -212,7 +213,7 @@ export const createPinboardSlice: StateCreator<
   /** = Set basket to exactly these entities and isolate them */
   setBasket: (refs) => {
     if (refs.length === 0) {
-      set({ pinboardEntities: new Set(), isolatedEntities: null, basketVisibilityOwned: null, activeBasketViewId: null });
+      set((state) => ({ pinboardEntities: new Set(), ...basketReleaseIsolation(state), activeBasketViewId: null }));
       return;
     }
     get().clearEntitySelection();
@@ -249,8 +250,10 @@ export const createPinboardSlice: StateCreator<
   },
 
   /** Clear basket and clear isolation */
+  // Ownership-aware like removeFromBasket: a foreign isolation the basket
+  // only widened (or lost) is not the basket's to close.
   clearBasket: () =>
-    set({ pinboardEntities: new Set(), isolatedEntities: null, basketVisibilityOwned: null, activeBasketViewId: null }),
+    set((state) => ({ pinboardEntities: new Set(), ...basketReleaseIsolation(state), activeBasketViewId: null })),
 
   setHierarchyBasketSelection: (refs) => set({ hierarchyBasketSelection: refsToEntityKeySet(refs) }),
   clearHierarchyBasketSelection: () => set({ hierarchyBasketSelection: new Set() }),

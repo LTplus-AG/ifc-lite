@@ -146,6 +146,16 @@ export function basketAddIsolation(
 }
 
 /**
+ * Clearing the basket (`clearBasket`, `clearPinboard`, `setBasket([])`): the
+ * same release rule as emptying it by removal — close the channel only if the
+ * basket opened it, hand back the remainder if it only widened someone else's,
+ * leave a channel it lost untouched.
+ */
+export function basketReleaseIsolation(state: IsolationState): { isolatedEntities?: Set<number> | null; basketVisibilityOwned: BasketIsolationOwnership } {
+  return basketRemoveIsolation(state, new Set(), []);
+}
+
+/**
  * `removeFromBasket`: narrow the isolation by the removed refs' ids — only the
  * ids the basket claimed and no surviving basket entry still needs. A channel
  * the basket does not own (replaced by another writer) is left untouched; a

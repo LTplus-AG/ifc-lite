@@ -243,9 +243,9 @@ function loadAllowlist() {
 
 /**
  * This worktree's merge base with origin/main, falling back to local main --
- * identical derivation to scripts/check-module-size.mjs's `changedFiles()`,
- * reused rather than reinvented so the two gates degrade the same way under
- * the same shallow-clone and no-remote conditions.
+ * identical derivation to `resolveBase()` in scripts/lib/module-size-git.mjs
+ * (the module-size ratchet's), kept in step so the two gates degrade the same
+ * way under the same shallow-clone and no-remote conditions.
  *
  * Returns `{ ref, sha }` or `null` if neither ref has a merge base with HEAD
  * (no `origin` remote, or a clone too shallow to share history).

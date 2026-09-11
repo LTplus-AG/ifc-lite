@@ -16,7 +16,11 @@
  * not that the number is right. Only rowed paths are measured on the Rust
  * side, so there is no walk and no exemption rule there: a row for a file
  * that moved under `tests/` still measures, and the cargo test reports that
- * one as its own advisory note.
+ * one as its own advisory note. The two allowlists also get different
+ * remedies: `--update` rewrites only the TypeScript one, while the Rust rows
+ * are edited by hand and their digest pin re-pinned from the cargo test's
+ * own output -- printing the TypeScript command for a Rust row would send
+ * the reader to a command that leaves the failing file untouched.
  */
 
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
@@ -27,6 +31,27 @@ import { auditAgainstBase, summarizeAudit } from './module-size-base-audit.mjs';
 
 /** The Rust twin's allowlist, repo-relative. */
 export const RUST_ALLOWLIST = 'rust/processing/tests/module_size_allowlist.txt';
+
+// What to do about a failing row, per allowlist. Each failure line already
+// says "delete it" or "restore it"; the remedy says how, and which tool (if
+// any) writes the number. The two-sided diff comes first on purpose: a row
+// is only "this change's" once the merge base says so.
+const TS_REMEDY = `Then do what each line above says -- DELETE a row it says
+needs no row, RESTORE a row it says was deleted -- for every file this change
+did not touch (a scoped \`--update\` leaves those alone); rebase or merge main
+so the count CI measures is the count you measure (CI judges the merge commit
+against origin/main, so a row exact on a stale branch can carry headroom
+there); then re-run \`pnpm lint:module-size-baseline\` (\`--allow-raise\` only
+for growth this change justifies in the PR) for the rest and commit what it
+writes (#4388).`;
+
+const RUST_REMEDY = `This file has no update mode: do what each line above
+says by hand -- set a row to the file's measured line count (\`wc -l\`, the
+same count \`str::lines()\` gives), DELETE a row it says needs no row, RESTORE
+a row it says was deleted -- then re-pin ALLOWLIST_DIGESTS in
+rust/processing/tests/module_size_ratchet.rs: \`cargo test -p
+ifc-lite-processing --test module_size_ratchet\` prints the new figures
+(#4388).`;
 
 /**
  * Run both audits. `headRows` is the parsed TS allowlist, `measured` a
@@ -78,8 +103,9 @@ and an origin/main ref, or pass --base <ref> to name the base by hand.
     return text === null ? null : countLines(text);
   };
 
-  // Audit one allowlist (`rel`, repo-relative) whose HEAD rows are `rows`.
-  const auditOne = (rel, rows, measure) => {
+  // Audit one allowlist (`rel`, repo-relative) whose HEAD rows are `rows`;
+  // `remedy` is that allowlist's own after-the-diff instruction.
+  const auditOne = (rel, rows, measure, remedy) => {
     const baseText = readBlobAt(root, scope.base.sha, rel);
     if (baseText === null) return unavailable(`${rel} is not readable at merge-base ${sha9}`);
     let baseRows;
@@ -98,15 +124,9 @@ measurement does not justify (vs merge-base ${describeBase(scope.base)}):\n
 ${audit.failures.join('\n')}
 
 A row that differs from the merge base is this change's row, and the only
-number it may carry is the one \`--update\` writes: the file's measured count.
-After a merge conflict, never resolve by picking a side -- diff BOTH sides
-against the merge base. Then: DELETE every row named above for a file this
-change did not touch (a scoped \`--update\` leaves those alone); rebase or
-merge main so the count CI measures is the count you measure (CI judges the
-merge commit against origin/main, so a row exact on a stale branch can carry
-headroom there); then re-run \`pnpm lint:module-size-baseline\`
-(\`--allow-raise\` only for growth this change justifies in the PR) for the
-rest and commit what it writes (#4388).
+number it may carry is the file's measured line count. After a merge
+conflict, never resolve by picking a side -- diff BOTH sides against the
+merge base. ${remedy}
 `);
     }
     return audit;
@@ -124,7 +144,7 @@ rest and commit what it writes (#4388).
   if (allowlistRel === null || allowlistRel.startsWith('..') || isAbsolute(allowlistRel)) {
     unavailable(`allowlist ${allowlistPath} is not inside the worktree ${scope.top}`);
   } else {
-    state.tsAudit = auditOne(allowlistRel, headRows, (rel) => measured.get(rel) ?? null);
+    state.tsAudit = auditOne(allowlistRel, headRows, (rel) => measured.get(rel) ?? null, TS_REMEDY);
   }
 
   // The Rust allowlist, when the tree has one.
@@ -153,6 +173,6 @@ rest and commit what it writes (#4388).
       throw new Error(`cannot read ${rel}: ${err.message}`);
     }
   };
-  auditOne(RUST_ALLOWLIST, rustRows, measureRust);
+  auditOne(RUST_ALLOWLIST, rustRows, measureRust, RUST_REMEDY);
   return state;
 }

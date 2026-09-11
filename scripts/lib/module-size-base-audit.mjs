@@ -106,9 +106,12 @@ export function auditAgainstBase({ baseRows, headRows, measure, measureAtBase, c
         // this: it loosened nothing, and main shrinking the file a little
         // further while the branch sat in review must stay a note (the
         // pull_request merge commit is measured against the branch's row).
+        // It IS still failed, by the two branches above, when main's shrink
+        // took the file under the limit or removed it: that row is stale,
+        // and the same rebase + `--update` drops it.
         failures.push(
           `  ${rel}: row ${edit}, but the file measures ${lines}: ${budget - lines} line(s) of headroom ` +
-            `nothing measured; re-run --update so the row says what the file says`,
+            `the file does not have; re-run --update so the row says what the file says`,
         );
       }
       // lines > budget is growth past the budget, and the existing `grew`

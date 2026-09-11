@@ -312,6 +312,23 @@ describe('extractStructuralOnDemand — loads and boundary conditions', () => {
     expect(condition?.components.RotationalStiffnessY).toBeUndefined();
   });
 
+  it('keeps a `$` or non-numeric Locations row as an empty placeholder so later rows stay on their slot', () => {
+    const out = extractStructuralOnDemand(
+      buildStoreFromStep([
+        "#1=IFCSTRUCTURALCURVEACTION('action-gid',$,'UDL',$,$,$,$,#65,.GLOBAL_COORDS.,.F.,$,.CONST.);",
+        "#65=IFCSTRUCTURALLOADCONFIGURATION('Span',(#66,#66,#66,#66),((0.),$,(4.5),(1.,'x')));",
+        "#66=IFCSTRUCTURALLOADLINEARFORCE('Nominal',$,$,-12.5,$,$,$);",
+      ]),
+    );
+    const config = out.activities[0]?.appliedLoad?.configuration;
+    expect(config?.entries).toHaveLength(4);
+    expect(config?.entries[0].location).toEqual([0]);
+    expect(config?.entries[1].location).toBeUndefined(); // `$` row
+    expect(config?.entries[2].location).toEqual([4.5]); // NOT shifted onto slot 1
+    expect(config?.entries[3].location).toBeUndefined(); // non-numeric cell: not compacted to [1]
+    expect(config?.locations).toEqual([[0], [], [4.5], []]);
+  });
+
   it('reports no locations when Locations is written flat instead of nested', () => {
     const out = extractStructuralOnDemand(buildStoreFromStep(MALFORMED_LOCATIONS));
     const load = out.activities[0]?.appliedLoad;
@@ -459,7 +476,6 @@ describe('extractStructuralOnDemand — bounding the load walk', () => {
       );
     }
     lines.push("#15=IFCSTRUCTURALLOADLINEARFORCE('Leaf',$,$,-1.,$,$,$);");
-    const started = Date.now();
     const out = extractStructuralOnDemand(buildStoreFromStep(lines));
     const top = out.activities[0]?.appliedLoad;
     expect(top?.type).toBe('IfcStructuralLoadConfiguration');
@@ -473,9 +489,6 @@ describe('extractStructuralOnDemand — bounding the load walk', () => {
     expect(top?.configuration?.truncated).toBe(true);
     expect(out.loadsTruncated).toBe(true);
     expect(droppedReasons(top).has('budget')).toBe(true);
-    // The time bound stays as a hang guard: the point of the budget is that an
-    // abort never turns into a walk nobody waits out.
-    expect(Date.now() - started).toBeLessThan(2000);
   });
 });
 

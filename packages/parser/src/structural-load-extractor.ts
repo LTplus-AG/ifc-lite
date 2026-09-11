@@ -88,8 +88,9 @@ export interface StructuralLoadConfigurationEntry {
   dropped?: StructuralLoadDropReason;
   /**
    * The `Locations` row at this same slot, when the file carries one. Absent
-   * when the file omits the optional `Locations`, or lists fewer rows than
-   * `Values` has slots.
+   * when the file omits the optional `Locations`, lists fewer rows than
+   * `Values` has slots, or writes this row as `$` / with a non-numeric cell
+   * (the row keeps its position as an empty placeholder in `locations`).
    */
   location?: number[];
 }
@@ -147,17 +148,17 @@ export interface BoundaryConditionInfo {
  */
 function readLocations(value: unknown): number[][] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const rows: number[][] = [];
-  for (const row of value) {
-    if (!Array.isArray(row)) continue;
-    const nums: number[] = [];
-    for (const cell of row) {
-      const n = asNumber(cell);
-      if (n !== undefined) nums.push(n);
-    }
-    rows.push(nums);
-  }
-  return rows.length > 0 ? rows : undefined;
+  // A flat scalar list (`(0.,4.5)` instead of `((0.),(4.5))`) is unusable as
+  // a whole. Otherwise keep one row per slot so `Values[i]` still pairs with
+  // `Locations[i]`: a `$` row or a row with a non-numeric cell becomes an
+  // EMPTY placeholder rather than being dropped (which would shift every
+  // later row onto the wrong slot) or compacted.
+  if (!value.some((row) => Array.isArray(row))) return undefined;
+  return value.map((row) => {
+    if (!Array.isArray(row)) return [];
+    const nums = row.map(asNumber);
+    return nums.every((n) => n !== undefined) ? (nums as number[]) : [];
+  });
 }
 
 /** Longest chain of nested configurations followed before giving up. */
@@ -241,7 +242,8 @@ function readLoad(
       path.add(expressId);
       for (let i = 0; i < values.length; i++) {
         const v = values[i];
-        const location = locations?.[i];
+        const row = locations?.[i];
+        const location = row && row.length > 0 ? row : undefined; // empty = placeholder for an unusable row
         const slot: LoadReadResult =
           typeof v === 'number' && Number.isInteger(v) && v > 0
             ? readLoad(extractor, store, v, path, budget, depth + 1)

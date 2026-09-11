@@ -1032,6 +1032,172 @@ fn a_space_aggregated_under_one_storey_and_contained_under_another_picks_one_can
     );
 }
 
+/// #4246 (Rust counterpart): authoring-tool mistake - a parent/child
+/// aggregation pair declared in BOTH directions. #1 Project, #2 Building, #3
+/// Storey, #4 Wall (contained in the storey). #2<->#3 is the mutual pair
+/// (#2->#3 real, #3->#2 spurious); #1->#2 is the real anchor to IfcProject.
+/// When the spurious back-edge is declared before the real anchor edge,
+/// `canonical_parent`'s bare first-occurrence-wins should NOT let it win the
+/// tie for Building's parent - the whole Building subtree must stay
+/// reachable from Project.
+fn spurious_back_edge_ifc(order: &str) -> String {
+    let (edge1, edge2, edge3) = if order == "spurious-first" {
+        (
+            "#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#2,(#3));", // Building -> Storey (real)
+            "#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#3,(#2));", // Storey -> Building (spurious back-edge)
+            "#102=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#1,(#2));", // Project -> Building (real anchor, LAST)
+        )
+    } else {
+        (
+            "#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));", // Project -> Building (real anchor, FIRST)
+            "#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3));", // Building -> Storey (real)
+            "#102=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#3,(#2));", // Storey -> Building (spurious back-edge, LAST)
+        )
+    };
+    format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+         #1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);\n\
+         #2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);\n\
+         #3=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);\n\
+         #4=IFCWALL('Wall0000000000000000001',$,'W1',$,$,$,$,$,$);\n\
+         {edge1}\n{edge2}\n{edge3}\n\
+         #110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#4),#3);\n\
+         ENDSEC;\nEND-ISO-10303-21;\n"
+    )
+}
+
+/// #4285 review: the back-edge check is bounded by an upload-wide visit
+/// budget. Once spent, contested children resolve plain first-declared (the
+/// pre-#4285 answer) instead of the parse stalling on a crafted graph - and a
+/// partial descendant walk is never used as "no cycle".
+#[test]
+fn back_edge_cycle_check_falls_back_to_first_declared_once_budget_is_spent() {
+    let rel = |rel_id: u32, relating_id: u32, related_id: u32| Relationship {
+        rel_type: "IfcRelAggregates".to_string(),
+        rel_id,
+        relating_id,
+        related_id,
+    };
+    // Storey(#3) -> Building(#2) spurious back-edge declared FIRST, then the
+    // real Project(#1) -> Building(#2) and Building(#2) -> Storey(#3).
+    let relationships = vec![rel(10, 3, 2), rel(11, 1, 2), rel(12, 2, 3)];
+
+    let resolved = spatial::resolve_aggregate_canonical_parents_for_tests(&relationships);
+    assert_eq!(resolved.get(&2), Some(&1), "default budget: the cycle is broken");
+
+    let starved = spatial::resolve_aggregate_canonical_parents_with_budget(&relationships, 0);
+    assert_eq!(starved.get(&2), Some(&3), "budget spent: first-declared edge wins");
+    assert_eq!(starved.get(&3), Some(&2));
+}
+
+#[test]
+fn spurious_aggregation_back_edge_declared_first_keeps_building_reachable_from_project() {
+    let ifc = spurious_back_edge_ifc("spurious-first");
+    let dm = extract_data_model_checked(&ifc);
+    let sh = &dm.spatial_hierarchy;
+
+    let project = sh.nodes.iter().find(|n| n.entity_id == 1).expect("project node");
+    assert!(
+        project.children_ids.contains(&2),
+        "Project must still list Building as a child when the spurious back-edge \
+         (Storey -> Building) was declared before the real anchor edge (Project -> Building); \
+         project.children_ids = {:?}",
+        project.children_ids
+    );
+
+    let building = sh.nodes.iter().find(|n| n.entity_id == 2);
+    assert!(
+        building.is_some(),
+        "Building must have a SpatialNode reachable from Project, not be orphaned by the back-edge"
+    );
+    assert_eq!(
+        building.unwrap().parent_id,
+        1,
+        "Building's canonical parent must be Project (the real anchor), not Storey (the spurious back-edge)"
+    );
+
+    let storey = sh.nodes.iter().find(|n| n.entity_id == 3).expect("storey node");
+    assert_eq!(
+        storey.element_ids,
+        vec![4],
+        "the Wall must still be reachable under Storey even though Storey lost the tie for Building's parent"
+    );
+}
+
+#[test]
+fn spurious_aggregation_back_edge_declared_last_is_self_healing_baseline() {
+    let ifc = spurious_back_edge_ifc("legit-first");
+    let dm = extract_data_model_checked(&ifc);
+    let sh = &dm.spatial_hierarchy;
+
+    let project = sh.nodes.iter().find(|n| n.entity_id == 1).expect("project node");
+    assert!(project.children_ids.contains(&2));
+    let building = sh.nodes.iter().find(|n| n.entity_id == 2).expect("building node");
+    assert_eq!(building.parent_id, 1);
+}
+
+#[test]
+fn spurious_aggregation_back_edge_produces_identical_shape_regardless_of_order() {
+    let shape_of = |order: &str| {
+        let ifc = spurious_back_edge_ifc(order);
+        let dm = extract_data_model_checked(&ifc);
+        let sh = dm.spatial_hierarchy;
+        let mut project_children = sh
+            .nodes
+            .iter()
+            .find(|n| n.entity_id == 1)
+            .map(|n| n.children_ids.clone())
+            .unwrap_or_default();
+        project_children.sort();
+        let building_parent = sh.nodes.iter().find(|n| n.entity_id == 2).map(|n| n.parent_id);
+        (project_children, building_parent)
+    };
+    assert_eq!(shape_of("spurious-first"), shape_of("legit-first"));
+}
+
+/// #4246: same defect shape, one hop longer - #2 -> #3 -> #4 -> #2 forms a
+/// 3-node cycle instead of a direct mutual pair. A direct "does the child
+/// forward-aggregate this candidate" check would miss this; the fix must
+/// walk the raw aggregation graph, not just direct children.
+#[test]
+fn breaks_a_longer_indirect_aggregation_back_edge_cycle() {
+    const INDIRECT_CYCLE_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorB00000000000000001',$,'Mezzanine',$,$,$,$,$,$,$);
+#5=IFCWALL('Wall0000000000000000001',$,'W1',$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#2,(#3));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#3,(#4));
+#102=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#4,(#2));
+#103=IFCRELAGGREGATES('Agg00000000000000000004',$,$,$,#1,(#2));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#4);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+    let dm = extract_data_model_checked(INDIRECT_CYCLE_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    let project = sh.nodes.iter().find(|n| n.entity_id == 1).expect("project node");
+    assert!(
+        project.children_ids.contains(&2),
+        "Project must still list Building as a child through a 3-node indirect \
+         back-edge cycle (Building -> StoreyA -> Mezzanine -> Building); \
+         project.children_ids = {:?}",
+        project.children_ids
+    );
+    assert_eq!(
+        sh.element_to_storey.iter().find(|(e, _)| *e == 5).map(|(_, s)| *s),
+        Some(4),
+        "the Wall must still resolve to Mezzanine even though Mezzanine lost \
+         the tie for Building's parent"
+    );
+}
+
 /// #3973: `Storey A` aggregates `Storey B` via `IfcRelAggregates`, and `Storey B`
 /// "contains" `Storey A` via `IfcRelContainedInSpatialStructure` (this PR's own
 /// promotion puts a contained spatial-structure target into

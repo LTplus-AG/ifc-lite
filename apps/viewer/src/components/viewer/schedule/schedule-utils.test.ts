@@ -5,6 +5,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
+import {
+  serializeScheduleToStep,
+  extractScheduleOnDemand,
+  StepTokenizer,
+  ColumnarParser,
+} from '@ifc-lite/parser';
 import { flattenTaskTree, buildWorkPlanInfo } from './schedule-utils.js';
 
 function task(
@@ -105,5 +111,129 @@ describe('buildWorkPlanInfo', () => {
     assert.equal(a1.globalId, a2.globalId);
     // Different seed -> different globalId.
     assert.notEqual(a1.globalId, b.globalId);
+  });
+
+  it('groups the given schedule globalIds into childScheduleGlobalIds, deduped', () => {
+    const plan = buildWorkPlanInfo('seed-2', 'Project plan', ['ws-a', 'ws-b', 'ws-a']);
+
+    assert.deepEqual(plan.childScheduleGlobalIds, ['ws-a', 'ws-b']);
+  });
+
+  it('defaults childScheduleGlobalIds to an empty array, not undefined, when no schedules are given', () => {
+    // A plan generated with no schedules must still carry a defined-but-empty
+    // array: this function always knows the full answer (it's the sole
+    // producer of the plan), so there is no "not checked yet" state to
+    // preserve here the way the extractor's unresolved-reference case has.
+    const plan = buildWorkPlanInfo('seed-3', 'Empty plan');
+
+    assert.deepEqual(plan.childScheduleGlobalIds, []);
+  });
+});
+
+/** Run the real worker-free parser on a STEP buffer (no wasm involved). */
+async function parseStep(stepText: string) {
+  const buffer = new TextEncoder().encode(stepText).buffer.slice(0) as ArrayBuffer;
+  const source = new Uint8Array(buffer);
+  const tokenizer = new StepTokenizer(source);
+  const entityRefs: Array<{
+    expressId: number;
+    type: string;
+    byteOffset: number;
+    byteLength: number;
+    lineNumber: number;
+  }> = [];
+  for (const ref of tokenizer.scanEntitiesFast()) {
+    entityRefs.push({
+      expressId: ref.expressId,
+      type: ref.type,
+      byteOffset: ref.offset,
+      byteLength: ref.length,
+      lineNumber: ref.line,
+    });
+  }
+  const parser = new ColumnarParser();
+  return parser.parseLite(buffer, entityRefs, {});
+}
+
+function buildBaseStep(): string {
+  return [
+    'ISO-10303-21;',
+    'HEADER;',
+    "FILE_DESCRIPTION(('test workplan roundtrip'),'2;1');",
+    "FILE_NAME('','',(''),(''),'','','');",
+    "FILE_SCHEMA(('IFC4'));",
+    'ENDSEC;',
+    'DATA;',
+    "#1=IFCPROJECT('proj-gid',#10,'RoundTripProject',$,$,$,$,$,$);",
+    "#10=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);",
+    'ENDSEC;',
+    'END-ISO-10303-21;',
+    '',
+  ].join('\n');
+}
+
+function splice(stepText: string, lines: string[]): string {
+  const endSec = stepText.lastIndexOf('ENDSEC;');
+  return stepText.slice(0, endSec) + lines.join('\n') + '\n' + stepText.slice(endSec);
+}
+
+describe('buildWorkPlanInfo — regenerate round-trip through the real parser', () => {
+  it('a plan built WITH a schedule groups it, and the grouping survives parse -> serialize -> reparse', async () => {
+    const schedule = {
+      expressId: 0,
+      globalId: 'ws-generated',
+      kind: 'WorkSchedule',
+      name: 'Generated Schedule',
+      taskGlobalIds: [],
+    } as unknown as ScheduleExtraction['workSchedules'][number];
+    const plan = buildWorkPlanInfo('ws-generated', 'Project plan', ['ws-generated']);
+    const extraction: ScheduleExtraction = {
+      hasSchedule: true,
+      workSchedules: [schedule, plan],
+      tasks: [],
+      sequences: [],
+    } as unknown as ScheduleExtraction;
+
+    const result = serializeScheduleToStep(extraction, { nextId: 100, ownerHistoryId: 10 });
+    // Regenerate path: this must be the STEP text a fresh export produces,
+    // not source bytes copied through unchanged.
+    assert.ok(result.lines.some(l => l.includes('IFCRELNESTS')));
+    assert.equal(result.stats.relNests, 1);
+
+    const final = splice(buildBaseStep(), result.lines);
+    const store = await parseStep(final);
+    const parsed = extractScheduleOnDemand(store);
+
+    const reparsedPlan = parsed.workSchedules.find(w => w.kind === 'WorkPlan');
+    const reparsedSchedule = parsed.workSchedules.find(w => w.kind === 'WorkSchedule');
+    assert.ok(reparsedPlan, 'reparsed WorkPlan should exist');
+    assert.ok(reparsedSchedule, 'reparsed WorkSchedule should exist');
+    // Direction: plan -> schedule, not the reverse.
+    assert.deepEqual(reparsedPlan!.childScheduleGlobalIds, ['ws-generated']);
+    assert.equal(reparsedSchedule!.parentPlanGlobalId, plan.globalId);
+    // Cardinality: exactly one relation, one child.
+    assert.equal(reparsedPlan!.childScheduleGlobalIds!.length, 1);
+  });
+
+  it('a plan built WITHOUT any schedules produces no spurious IFCRELNESTS relation', async () => {
+    const plan = buildWorkPlanInfo('empty-plan-seed', 'Empty plan');
+    const extraction: ScheduleExtraction = {
+      hasSchedule: true,
+      workSchedules: [plan],
+      tasks: [],
+      sequences: [],
+    } as unknown as ScheduleExtraction;
+
+    const result = serializeScheduleToStep(extraction, { nextId: 100, ownerHistoryId: 10 });
+    assert.ok(!result.lines.some(l => l.includes('IFCRELNESTS')));
+    assert.equal(result.stats.relNests, 0);
+
+    const final = splice(buildBaseStep(), result.lines);
+    const store = await parseStep(final);
+    const parsed = extractScheduleOnDemand(store);
+
+    const reparsedPlan = parsed.workSchedules.find(w => w.kind === 'WorkPlan');
+    assert.ok(reparsedPlan, 'reparsed WorkPlan should exist');
+    assert.deepEqual(reparsedPlan!.childScheduleGlobalIds, []);
   });
 });

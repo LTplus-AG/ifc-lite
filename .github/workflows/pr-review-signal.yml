@@ -55,6 +55,8 @@ name: PR review signal
 #
 # `ready_for_review` covers the draft->ready transition for the same reason.
 on:
+  merge_group:
+    types: [checks_requested]
   pull_request:
     types: [opened, synchronize, reopened, edited, ready_for_review]
 
@@ -80,6 +82,7 @@ jobs:
     # lane from the rollup. It is `in_progress` for as long as it is asking the
     # question, and leaving it in would mean the rollup never reads as settled.
     name: PR review signal
+    if: github.event_name == 'pull_request'
     # Free runner: two API reads and a poll, not compute-bound.
     runs-on: ubuntu-latest
     # Above the poll budget below, so a run that exhausts the budget still gets
@@ -187,3 +190,14 @@ jobs:
             --self-name 'PR review signal' \
             --timeout-seconds 2400 \
             --poll-seconds 30
+
+  # Merge-queue batches have no PR to inspect; the PR-level run already gated
+  # entry to the queue. This reports the required 'PR review signal' check so a
+  # batch can complete, instead of waiting forever on a check that never runs.
+  review-signal-merge-group:
+    name: PR review signal
+    if: github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo 'PR review signal - satisfied at PR level; nothing to check on a merge-queue batch'

@@ -1,6 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+// Routing caches the resolved blobs for the recent-files list; without an
+// IndexedDB the cache logs a ReferenceError that CI's observe-production lane
+// classifies as a load failure.
+import 'fake-indexeddb/auto';
 import '../../test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';

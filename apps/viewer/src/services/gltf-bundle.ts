@@ -52,11 +52,21 @@ function decodeDataUri(uri: string): { bytes: Uint8Array; mimeType?: string } | 
     try { binary = atob(payload); } catch { throw new Error('glTF data URI contains invalid base64'); }
     bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
   } else {
-    let text: string;
-    try { text = decodeURIComponent(payload); } catch { throw new Error('glTF data URI contains invalid escaping'); }
-    bytes = new TextEncoder().encode(text);
+    bytes = percentDecodedBytes(payload);
   }
   return { bytes, mimeType };
+}
+
+/** RFC 2397 payload without base64: every `%XX` is one octet, so `%00%FF` must not go through a UTF-8 round trip. */
+function percentDecodedBytes(payload: string): Uint8Array {
+  const encoder = new TextEncoder(), characters = Array.from(payload), bytes: number[] = [];
+  for (let index = 0; index < characters.length; index++) {
+    if (characters[index] !== '%') { bytes.push(...encoder.encode(characters[index])); continue; }
+    const octet = `${characters[index + 1] ?? ''}${characters[index + 2] ?? ''}`;
+    if (!/^[0-9a-f]{2}$/i.test(octet)) throw new Error('glTF data URI contains invalid escaping');
+    bytes.push(parseInt(octet, 16)); index += 2;
+  }
+  return Uint8Array.from(bytes);
 }
 
 function resourceIndex(files: readonly File[]): Map<string, File[]> {
@@ -136,10 +146,15 @@ export async function packGltfBundle(documentFile: File, selectedFiles: readonly
     bufferOffsets[index] = append(bytes.subarray(0, buffer.byteLength));
   }
   const bufferViews = document.bufferViews ?? [];
-  for (const view of bufferViews) {
-    if (!Number.isSafeInteger(view.buffer) || bufferOffsets[view.buffer] === undefined) throw new Error('glTF buffer view references a missing buffer.');
-    view.byteOffset = bufferOffsets[view.buffer] + (view.byteOffset ?? 0); view.buffer = 0;
-  }
+  bufferViews.forEach((view, index) => {
+    if (!Number.isSafeInteger(view.buffer) || bufferOffsets[view.buffer] === undefined) throw new Error(`glTF buffer view ${index} references a missing buffer.`);
+    // Rebasing moves every view into one BIN chunk, so a view that overran its own buffer would land in the next resource's bytes.
+    const offset = view.byteOffset ?? 0;
+    if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(view.byteLength) || view.byteLength < 0 || offset + view.byteLength > buffers[view.buffer].byteLength) {
+      throw new Error(`glTF buffer view ${index} lies outside buffer ${view.buffer}.`);
+    }
+    view.byteOffset = bufferOffsets[view.buffer] + offset; view.buffer = 0;
+  });
   for (const image of images) {
     if (!image.uri) continue;
     const uri = image.uri, resource = await externalBytes(uri, files, budget);

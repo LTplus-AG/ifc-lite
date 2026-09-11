@@ -34,6 +34,23 @@ function scanBundle() {
   };
 }
 
+const pad4 = (value: number) => (value + 3) & ~3;
+
+/**
+ * The GLB the glTF 2.0 binary container spec says this bundle packs to, worked
+ * out from the fixture alone: a 28-byte frame (12-byte header + two 8-byte
+ * chunk headers), the rewritten JSON padded to 4 bytes, then one BIN chunk
+ * holding the geometry followed by the texture as an extra buffer view.
+ */
+async function expectedGlbSize(fixture: ReturnType<typeof scanBundle>): Promise<number> {
+  const json = JSON.parse(await fixture.document.text());
+  const binLength = pad4(fixture.geometry.size) + pad4(fixture.texture.size);
+  json.buffers = [{ byteLength: binLength }];
+  json.bufferViews.push({ buffer: 0, byteOffset: pad4(fixture.geometry.size), byteLength: fixture.texture.size });
+  json.images = [{ bufferView: 2, mimeType: 'image/jpeg' }];
+  return 28 + pad4(new TextEncoder().encode(JSON.stringify(json)).byteLength) + binLength;
+}
+
 describe('glTF bundle ingestion #4476', () => {
   it('packs external geometry and a nested texture into the canonical GLB reader without changing image bytes', async () => {
     const fixture = scanBundle();
@@ -71,16 +88,32 @@ describe('glTF bundle ingestion #4476', () => {
       override arrayBuffer(): Promise<ArrayBuffer> { return Promise.reject(new Error('texture was read after the budget was spent')); }
     }
     const texture = new UnreadableTexture([fixture.textureBytes], 'boulder.jpg', { type: 'image/jpeg' });
-    const exact = (await packGltfBundle(fixture.document, [fixture.document, fixture.geometry, fixture.texture])).size;
+    const expected = await expectedGlbSize(fixture);
     // Before a read the budget is the 28-byte GLB frame + the document + what is packed so far (4-byte aligned):
     // geometry fills it exactly, so the texture would tip the total over and is never read.
-    const pad4 = (value: number) => (value + 3) & ~3;
     const limits = { ...DEFAULT_GLTF_BUNDLE_LIMITS, maxBundleBytes: 28 + pad4(fixture.document.size) + pad4(fixture.geometry.size) };
     await assert.rejects(packGltfBundle(fixture.document, [fixture.document, fixture.geometry, texture], limits), /limit at “textures\/boulder\.jpg”/);
     // The limit is the finished GLB size: one byte short is refused, exactly enough is packed.
-    await assert.rejects(packGltfBundle(fixture.document, [fixture.document, fixture.geometry, fixture.texture], { ...limits, maxBundleBytes: exact - 1 }), /limit at “boulder\.gltf”/);
-    const packed = await packGltfBundle(fixture.document, [fixture.document, fixture.geometry, fixture.texture], { ...limits, maxBundleBytes: exact });
-    assert.equal(packed.size, exact);
+    await assert.rejects(packGltfBundle(fixture.document, [fixture.document, fixture.geometry, fixture.texture], { ...limits, maxBundleBytes: expected - 1 }), /limit at “boulder\.gltf”/);
+    const packed = await packGltfBundle(fixture.document, [fixture.document, fixture.geometry, fixture.texture], { ...limits, maxBundleBytes: expected });
+    assert.equal(packed.size, expected);
+  });
+
+  it('rejects a buffer view that reaches past its buffer instead of rebasing it onto the next resource', async () => {
+    const fixture = scanBundle();
+    for (const view of [{ buffer: 0, byteOffset: fixture.geometry.size - 4, byteLength: 24 }, { buffer: 0, byteOffset: -4, byteLength: 24 }, { buffer: 0, byteOffset: 0, byteLength: 1.5 }]) {
+      const json = JSON.parse(await fixture.document.text()); json.bufferViews[1] = view;
+      await assert.rejects(packGltfBundle(new File([JSON.stringify(json)], 'boulder.gltf'), [fixture.geometry, fixture.texture]), /buffer view 1 lies outside buffer 0/);
+    }
+  });
+
+  it('decodes a percent-encoded data URI as octets rather than as UTF-8 text', async () => {
+    const document = { asset: { version: '2.0' }, buffers: [{ uri: 'data:application/octet-stream,%00%FF%01A', byteLength: 4 }] };
+    const packed = await packGltfBundle(new File([JSON.stringify(document)], 'octets.gltf'), []);
+    const { bin } = parseGLB(new Uint8Array(await packed.arrayBuffer()));
+    assert.deepEqual([...bin!.subarray(0, 4)], [0x00, 0xff, 0x01, 0x41]);
+    const malformed = { ...document, buffers: [{ uri: 'data:application/octet-stream,%0', byteLength: 1 }] };
+    await assert.rejects(packGltfBundle(new File([JSON.stringify(malformed)], 'octets.gltf'), []), /invalid escaping/);
   });
 
   it('accepts data URI resources and removes selected sidecars from the model list', async () => {

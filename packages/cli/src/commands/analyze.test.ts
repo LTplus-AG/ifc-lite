@@ -16,7 +16,7 @@ import { mkdtemp, readFile, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { analyzeCommand } from './analyze.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -74,7 +74,7 @@ describe('analyzeCommand --out', () => {
  */
 describe('analyzeCommand --isolate on a zero-match rule', () => {
   let stderrSpy: ReturnType<typeof vi.spyOn>;
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  let fetchSpy: MockInstance<typeof fetch>;
 
   afterEach(() => {
     stderrSpy?.mockRestore();

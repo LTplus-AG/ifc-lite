@@ -70,8 +70,14 @@ use matrix::{
 pub struct GltfOptions {
     /// Attach `asset.extras` (counts) and per-node `extras.expressId`.
     pub include_metadata: bool,
-    /// Restrict to these express ids (isolation allowlist). Empty ⇒ all visible.
-    pub isolated: Vec<u32>,
+    /// Restrict to these express ids (isolation allowlist). `None` ⇒ no filter,
+    /// every mesh is a candidate; `Some(empty)` ⇒ the filter is ACTIVE and
+    /// matched nothing, so every mesh is excluded. Do not collapse the two —
+    /// an active isolation that matches zero elements must export nothing, not
+    /// silently fall back to the whole model (matches the null-vs-empty
+    /// convention already used by `packages/export/src/reference-collector.ts`
+    /// and `packages/renderer/src/entity-visibility.ts` on the TS side).
+    pub isolated: Option<Vec<u32>>,
     /// Exclude these express ids (hidden in the viewer).
     pub hidden: Vec<u32>,
     /// Exclude meshes whose IFC type is in this set (class-level visibility toggle).
@@ -109,7 +115,7 @@ impl Default for GltfOptions {
     fn default() -> Self {
         Self {
             include_metadata: false,
-            isolated: Vec::new(),
+            isolated: None,
             hidden: Vec::new(),
             hidden_types: Vec::new(),
             lit: true,
@@ -129,9 +135,11 @@ impl GltfOptions {
         self
     }
 
-    /// See [`GltfOptions::isolated`].
+    /// See [`GltfOptions::isolated`]. `None` ⇒ no filter; `Some(ids)` (empty or
+    /// not) ⇒ an active allowlist — pass `Some(vec![])` deliberately to export
+    /// nothing, never as a stand-in for "no filter".
     #[must_use]
-    pub fn with_isolated(mut self, ids: Vec<u32>) -> Self {
+    pub fn with_isolated(mut self, ids: Option<Vec<u32>>) -> Self {
         self.isolated = ids;
         self
     }
@@ -396,8 +404,8 @@ impl VisibilityFilter {
     fn new(opts: &GltfOptions) -> Self {
         Self {
             hidden: opts.hidden.iter().copied().collect(),
-            isolated: opts.isolated.iter().copied().collect(),
-            isolated_active: !opts.isolated.is_empty(),
+            isolated: opts.isolated.iter().flatten().copied().collect(),
+            isolated_active: opts.isolated.is_some(),
             hidden_types: opts.hidden_types.iter().cloned().collect(),
         }
     }

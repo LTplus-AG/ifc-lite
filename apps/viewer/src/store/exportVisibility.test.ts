@@ -119,8 +119,11 @@ describe('resolveExportVisibility', () => {
 
   describe('ghostExceptEntities is excluded (X-Ray ghosting is not hiding)', () => {
     it('an entity outside ghostExceptEntities is still exported', () => {
+      // Seed the entity source: without it entity 2 is never a candidate for
+      // hiddenLocalIds and the assertion below would pass vacuously.
       useViewerStore.setState({
         models: new Map(),
+        ifcDataStore: createDataStore({ IFCWALL: [1, 2] }),
         hiddenEntities: new Set(),
         classFilter: null,
         // Only entity 1 is "in focus"; 2 renders ghosted/translucent, not hidden.

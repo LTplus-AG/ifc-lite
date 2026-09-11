@@ -5201,6 +5201,7 @@
     "convertEntityType: function",
     "convertStepLine: function",
     "countGlbMeshes: function",
+    "countObjVertices: function",
     "describeConversion: function",
     "escapeCsvCell: function",
     "exportAnonymizedSubset: function",

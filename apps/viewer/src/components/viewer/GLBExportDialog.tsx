@@ -225,8 +225,11 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       let glb: Uint8Array;
       if (canUseSource) {
         const bytes = new Uint8Array(await sourceFile.arrayBuffer());
-        const toLocal = (set: Set<number> | null | undefined): Uint32Array => {
-          if (!set || set.size === 0) return new Uint32Array();
+        // `null`/`undefined` (no filter) must stay distinct from an empty-but-active
+        // filter all the way to the wasm boundary — collapsing them here silently
+        // exported the whole model when isolation matched nothing (#4328 follow-up).
+        const toLocal = (set: Set<number> | null | undefined): Uint32Array | undefined => {
+          if (set == null) return undefined;
           const out: number[] = [];
           for (const g of set) {
             const local = g - idOffset;
@@ -234,8 +237,8 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
           }
           return new Uint32Array(out);
         };
-        const hidden = visibleOnly ? toLocal(getGlobalHiddenIds(selectedModelId)) : new Uint32Array();
-        const isolated = visibleOnly ? toLocal(getGlobalIsolatedIds(selectedModelId)) : new Uint32Array();
+        const hidden = visibleOnly ? (toLocal(getGlobalHiddenIds(selectedModelId)) ?? new Uint32Array()) : new Uint32Array();
+        const isolated = visibleOnly ? toLocal(getGlobalIsolatedIds(selectedModelId)) : undefined;
         const hiddenTypesCsv = visibleOnly
           ? [...buildHiddenIfcTypes(typeVisibility)].join(',')
           : '';
@@ -269,7 +272,12 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
         const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
         const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;
         const hiddenIfcTypes = visibleOnly ? buildHiddenIfcTypes(typeVisibility) : undefined;
-        const hasIsolation = !!globalIsolated && globalIsolated.size > 0;
+        // `globalIsolated` is `null` for "no filter" vs an empty-but-non-null `Set`
+        // for "isolation active, matches nothing" (`resolveExportVisibility`) — a
+        // `.size > 0` check here would collapse the two and export the whole model
+        // when isolation matched nothing (#4328 follow-up). `!= null` catches both
+        // `null` (no filter) and `undefined` (`!visibleOnly`).
+        const hasIsolation = globalIsolated != null;
 
         const meshes = (exportGeometry.meshes as MeshData[])
           .filter((m) => {

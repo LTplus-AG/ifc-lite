@@ -347,7 +347,7 @@
     "MergedStats": "struct { dropped_container_count: usize; federated_model_count: usize; models: usize; unit_rescale_required: bool; unmerged_model_count: usize; warnings: Vec<String>; written: usize }",
     "Model": "ambiguous",
     "ModelOptions": "struct (non_exhaustive)",
-    "ObjOptions": "struct { hidden: Vec<u32>; include_normals: bool; isolated: Vec<u32> }",
+    "ObjOptions": "struct { hidden: Vec<u32>; include_normals: bool; isolated: Option<Vec<u32>> }",
     "ObjStats": "struct { meshes: usize; triangles: usize; vertices: usize }",
     "ParquetBosOptions": "struct { include_geometry: bool }",
     "Placement": "struct { matrix: [f64; 16] }",

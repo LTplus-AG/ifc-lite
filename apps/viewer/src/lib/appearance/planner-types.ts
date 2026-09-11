@@ -32,6 +32,16 @@ export interface AppearanceRequest {
   repeatS: boolean;
   repeatT: boolean;
   mapping: AppearanceMapping;
+  /** Reviewable surface targeting; only valid with `evaluatedOccurrence`. Each
+   * mask binds to the `surfaceFingerprint` an earlier plan reported for that
+   * product. A changed surface is an explicit exclusion, never a reused index. */
+  faceMasks?: AppearanceFaceMask[];
+}
+export interface AppearanceFaceMask {
+  productId: number;
+  surfaceFingerprint: string;
+  /** Source triangle ordinals of the product's evaluated surface. */
+  triangles: number[];
 }
 export interface AppearancePlan extends AppearanceEntityPlan {
   /** Original renderer provenance for opted-in occurrence-local Body conversions. */
@@ -41,6 +51,12 @@ export interface AppearancePlan extends AppearanceEntityPlan {
     sourcePositions?: number[]; sourceNormals?: number[];
     sourceOrigin?: [number, number, number]; sourceColor?: [number, number, number, number];
     rtcOffset?: [number, number, number];
+    /** Hex SHA-256 identity of the evaluated local surface; older runtimes omit it. */
+    surfaceFingerprint?: string;
+    /** Accepted ascending source triangle ordinals; absent for a whole-surface conversion. */
+    maskedTriangles?: number[];
+    /** The unmasked face set that keeps the source style under the same Body wrapper. */
+    retainedGeometryItemId?: number;
     sourceRemovedMeshes?: Array<Omit<AnnotationPlanePlan['mesh'], 'uvs' | 'texture'>> }>;
   nextAvailableExpressId: number;
   items: Array<{

@@ -42,6 +42,30 @@ test('real WASM preserves mapped occurrences unless explicitly opted in and comp
     assert.ok(result.edits.every(edit => edit.expressId === 35155));
     assert.equal(result.items[0].geometryItemId, result.conversions?.[0].geometryItemId);
     assert.throws(() => api.planAppearance(source, JSON.stringify({ ...request, representationPolicy: 'silentlyFlatten' })), /unknown variant/);
+    // Face masks bind to the reported surface identity and split the authored
+    // Body into a textured and a retained face set; a stale identity is refused.
+    const fingerprint = original.surfaceFingerprint;
+    assert.match(fingerprint ?? '', /^[0-9a-f]{64}$/);
+    assert.equal(original.maskedTriangles, undefined); assert.equal(original.retainedGeometryItemId, undefined);
+    const masked = JSON.parse(new TextDecoder().decode(api.planAppearance(source, JSON.stringify({ ...request,
+      faceMasks: [{ productId: 35169, surfaceFingerprint: fingerprint, triangles: [3, 0, 1, 2] }] })))) as AppearancePlan;
+    assert.deepEqual(masked.exclusions, []);
+    const conversion = masked.conversions![0];
+    assert.equal(conversion.surfaceFingerprint, fingerprint);
+    assert.deepEqual(conversion.maskedTriangles, [0, 1, 2, 3]);
+    assert.deepEqual(conversion.sourceIndices, original.sourceIndices, 'the whole source surface stays the preview/history original');
+    assert.equal(masked.items.length, 1); assert.equal(masked.items[0].geometryItemId, conversion.geometryItemId);
+    assert.equal(masked.items[0].sourceIndices.length, 12);
+    const faceSets = masked.created.filter(row => row.type === 'IfcTriangulatedFaceSet').map(row => row.expressId);
+    assert.deepEqual(faceSets, [conversion.geometryItemId, conversion.retainedGeometryItemId]);
+    assert.deepEqual(masked.created.map(row => row.expressId), Array.from({ length: masked.created.length }, (_, index) => masked.nextExpressId + index));
+    assert.deepEqual(masked.edits.find(edit => edit.expressId === 35155 && edit.index === 3)?.value, faceSets.map(id => `#${id}`));
+    const stale = JSON.parse(new TextDecoder().decode(api.planAppearance(source, JSON.stringify({ ...request,
+      faceMasks: [{ productId: 35169, surfaceFingerprint: fingerprint!.replace(/^./, c => c === '0' ? '1' : '0'), triangles: [0] }] })))) as AppearancePlan;
+    assert.equal(stale.items.length, 0); assert.equal(stale.created.length, 0);
+    assert.match(stale.exclusions[0]?.reason ?? '', /stale/);
+    assert.throws(() => api.planAppearance(source, JSON.stringify({ ...request, representationPolicy: 'preserve',
+      faceMasks: [{ productId: 35169, surfaceFingerprint: fingerprint, triangles: [0] }] })), /evaluatedOccurrence/);
   } finally { api.free(); }
   const { runPageAppearancePlanning } = await import('../../workers/appearance.worker.js');
   const page = await runPageAppearancePlanning(source, {

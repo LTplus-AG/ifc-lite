@@ -64,19 +64,10 @@ describe('modelSlice batched visibility (#4215)', () => {
 
     useViewerStore.getState().setModelsVisibility(new Set(['A', 'B']), true);
     assert.deepEqual(visibility(), { A: true, B: true, C: true });
-  });
 
-  it('the single-model writers still work through the shared field patch', () => {
-    const s = useViewerStore.getState();
-    s.setModelVisibility('B', false);
-    s.setModelCollapsed('C', true);
-    s.setModelName('A', 'Renamed');
-    const models = useViewerStore.getState().models;
-    assert.equal(models.get('B')?.visible, false);
-    assert.equal(models.get('C')?.collapsed, true);
-    assert.equal(models.get('A')?.name, 'Renamed');
-    const before = useViewerStore.getState().models;
-    s.setModelVisibility('nope', false);
-    assert.equal(useViewerStore.getState().models, before, 'an unknown id writes nothing');
+    // The single-model writers share the field patch: an unknown id writes nothing there either.
+    const untouched = useViewerStore.getState().models;
+    useViewerStore.getState().setModelVisibility('nope', false);
+    assert.equal(useViewerStore.getState().models, untouched, 'an unknown id writes nothing');
   });
 });

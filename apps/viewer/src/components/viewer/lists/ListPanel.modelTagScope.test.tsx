@@ -103,7 +103,7 @@ describe('ListPanel — model tag scope (#4215)', () => {
     assert.deepEqual(listResult?.rows.map((r) => r.modelId).sort(), ['model-a', 'model-b']);
   });
 
-  it('"tagged any of Structure" runs over the tagged model only', async () => {
+  it('"has any of Structure" runs over the tagged model only', async () => {
     await run(definition({ op: 'hasAny', tagIds: [STRUCTURE] }));
     const { listResult, listError } = useViewerStore.getState();
     assert.equal(listError, null);

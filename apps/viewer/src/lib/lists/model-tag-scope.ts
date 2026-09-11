@@ -85,10 +85,14 @@ export function scopeModelPairs<T extends { modelId: string }>(
   return scoped;
 }
 
-/** "models tagged any of Structure, MEP" — for the scope hint and the empty-scope message. */
+/**
+ * "models that have any of Structure, MEP" — the scope hint under the
+ * builder's select, and the empty-scope message. Same words as the advanced
+ * filter's operator labels (has any of / has all of / has none of / is untagged).
+ */
 export function describeListModelTagScope(scope: ListModelTagScope, tags: ReadonlyMap<string, ModelTag>): string {
   if (scope.op === 'untagged') return 'untagged models';
   const names = scope.tagIds.map((id) => tags.get(id)?.name ?? 'unknown tag').join(', ');
   const verb = scope.op === 'hasAny' ? 'any of' : scope.op === 'hasAll' ? 'all of' : 'none of';
-  return `models tagged ${verb} ${names || '—'}`;
+  return `models that have ${verb} ${names || '—'}`;
 }

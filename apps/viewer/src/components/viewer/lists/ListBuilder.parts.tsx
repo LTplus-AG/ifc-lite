@@ -46,13 +46,11 @@ export function Chip({
   onClick,
   trailing,
   children,
-  className,
 }: {
   selected: boolean;
   onClick: () => void;
   trailing?: React.ReactNode;
   children: React.ReactNode;
-  className?: string;
 }) {
   return (
     <button
@@ -64,7 +62,6 @@ export function Chip({
         selected
           ? 'border-primary bg-primary text-primary-foreground shadow-sm'
           : 'border-border bg-background hover:bg-muted',
-        className,
       )}
     >
       {children}

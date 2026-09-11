@@ -6,7 +6,8 @@
  * The list builder's MODEL scope by tag (#4215): which federated models the
  * list runs over, in the same four words search and clash use. Sits inside
  * the builder's Scope section, under the entity-type chips those models are
- * then filtered by.
+ * then filtered by. The operator labels are the advanced filter's own
+ * (`OP_LABEL`), so "has any of" reads the same in a list as in a search rule.
  *
  * A tag id the scope names but that no longer exists is drawn as an amber
  * "Unknown tag" chip, not hidden — the run refuses such a scope
@@ -19,15 +20,10 @@ import { useShallow } from 'zustand/react/shallow';
 import type { ListModelTagScope } from '@ifc-lite/lists';
 import { useViewerStore } from '@/store';
 import { MODEL_TAG_OPS, unresolvedModelTagIds, type ModelTagOp } from '@/lib/model-tags/types';
+import { describeListModelTagScope } from '@/lib/lists/model-tag-scope';
 import { ModelTagChip } from '@/components/viewer/hierarchy/ModelTagChip';
+import { OP_LABEL } from '../SearchModal.filter.editors.shared';
 import { Chip } from './ListBuilder.parts';
-
-const OP_LABEL: Record<ModelTagOp, string> = {
-  hasAny: 'tagged any of',
-  hasAll: 'tagged all of',
-  hasNone: 'tagged none of',
-  untagged: 'untagged',
-};
 
 export interface ListModelTagScopeEditorProps {
   value: ListModelTagScope | undefined;
@@ -83,8 +79,12 @@ export function ListModelTagScopeEditor({ value, onChange }: ListModelTagScopeEd
           ))}
         </div>
       )}
-      {value && value.op !== 'untagged' && value.tagIds.length === 0 && (
+      {value && value.op !== 'untagged' && value.tagIds.length === 0 ? (
         <p className="text-[10px] text-muted-foreground">Pick at least one tag, or the list runs over no model.</p>
+      ) : value && (
+        <p className="text-[10px] text-muted-foreground" data-list-model-tag-scope-hint>
+          Runs over {describeListModelTagScope(value, tags)}.
+        </p>
       )}
       {unresolved.length > 0 && (
         <p role="alert" className="text-[10px] text-amber-700 dark:text-amber-400">

@@ -67,9 +67,9 @@ describe('list model tag scope (#4215)', () => {
     const empty = new Map([['m3', {}]]);
     assert.throws(
       () => scopeModelPairs({ modelTagScope: { op: 'hasAny', tagIds: [A.id] } }, [{ modelId: 'm3' }], { ...state, models: empty }),
-      /No loaded model matches.*models tagged any of Architecture.*Nothing was run/s,
+      /No loaded model matches.*models that have any of Architecture.*Nothing was run/s,
     );
-    assert.equal(describeListModelTagScope({ op: 'hasAll', tagIds: [S.id, A.id] }, state.modelTags), 'models tagged all of Structure, Architecture');
+    assert.equal(describeListModelTagScope({ op: 'hasAll', tagIds: [S.id, A.id] }, state.modelTags), 'models that have all of Structure, Architecture');
     assert.equal(describeListModelTagScope({ op: 'untagged', tagIds: [] }, state.modelTags), 'untagged models');
   });
 

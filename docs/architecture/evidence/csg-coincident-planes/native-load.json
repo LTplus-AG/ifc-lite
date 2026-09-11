@@ -4,7 +4,7 @@
   "baseSource": "531194cdcf6b2ffdcdcfb2b9682aee2a41a158ec",
   "branchSource": "79b3e2671be5c32cec1101782170fa05d23e88dd",
   "host": "Windows 11 x86_64, cargo profile `profiling`, otherwise idle; both probes built from the exact sources named above (base in a throwaway worktree with its own CARGO_TARGET_DIR)",
-  "procedure": "scripts/perf/ab.sh procedure replicated by hand because the scripts/perf/ab-order.mjs CLI guard (import.meta.url vs process.argv[1]) never matches on Windows and ab.sh then runs zero rounds; same roundOrder() (balanced, randomised within-round order), same ab-report.mjs, --iters 1 --json --fingerprint per side per round, 5 rounds.",
+  "procedure": "scripts/perf/ab.sh procedure replicated by hand because, at the time of measurement, the scripts/perf/ab-order.mjs CLI guard (import.meta.url vs process.argv[1]) never matched on Windows and ab.sh ran zero rounds (fixed in the same PR); same roundOrder() (balanced, randomised within-round order), same ab-report.mjs, --iters 1 --json --fingerprint per side per round, 5 rounds.",
   "withinRoundOrder": [
     "base then branch",
     "branch then base",

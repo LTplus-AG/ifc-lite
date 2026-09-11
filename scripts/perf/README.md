@@ -1362,6 +1362,9 @@ agree with, and a `dot > 0` verdict there is a coin flip that can override an
 exact ray-cast. Add the angle premise per candidate face rather than gating on
 a parent flag (the parent-flag gate was measured to cost 20+ census hosts).
 [Raw interleaved runs and fingerprints](../../docs/architecture/evidence/csg-coincident-planes/native-load.json).
-Note for Windows hosts: `ab.sh` runs zero rounds there because `ab-order.mjs`'s
-CLI guard compares `import.meta.url` with a backslash `argv[1]`; the recorded
-runs replicate its procedure by hand.
+Found while measuring: on Windows `ab.sh` ran ZERO rounds and still printed a
+"within noise, counts matched" verdict, because `ab-order.mjs`'s CLI guard
+compared `import.meta.url` with a backslash `argv[1]` and never fired. Fixed in
+the same PR (`pathToFileURL`, a CLI test, and `ab.sh` now refuses an order file
+with fewer lines than `--iters`); the recorded runs replicate the procedure by
+hand with the same `roundOrder()` and reporter.

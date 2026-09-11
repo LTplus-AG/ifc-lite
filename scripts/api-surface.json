@@ -7343,6 +7343,7 @@
     "extractEntityAttributesOnDemand: function",
     "extractGeoreferencing: function",
     "extractGeoreferencingOnDemand: function",
+    "extractGroupAssignmentFactorOnDemand: function",
     "extractGroupMembersOnDemand: function",
     "extractLengthUnitScale: function",
     "extractMaterialPropertiesForMaterialId: function",

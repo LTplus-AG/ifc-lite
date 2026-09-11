@@ -11,13 +11,54 @@ declare global {
 const IFC = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
 const OFFSET = [10_000, 20_000, 30_000];
 
+/** The viewer's own point-cloud error when the GPU device died mid-load
+ * (apps/viewer/src/hooks/useIfcLoader.ts). */
+const DEVICE_LOST_ERROR = /graphics device was lost during the load/;
+
 async function load(page: Page, file: string | { name: string; mimeType: string; buffer: Buffer }, count: number) {
   await page.locator('input[type=file]').nth(count === 1 ? 0 : 1).setInputFiles(file);
-  await page.waitForFunction((n) => {
+  let outcome: 'ok' | 'device-lost' | 'timeout';
+  try {
+    const handle = await page.waitForFunction(({ n, deviceLost }) => {
+      const state = globalThis.__ifc_lite_viewer_store__?.getState();
+      if (!state) return false;
+      // The loader gives up (models.size never reaches n) when the GPU device
+      // was lost mid-load; surface that instead of waiting out the timeout.
+      if (new RegExp(deviceLost).test(String((state as { error?: unknown }).error ?? ''))) return 'device-lost';
+      const settled = !state.loading && !state.geometryStreamingActive && state.models.size === n && [...state.models.values()].every((m) => m.pointCloudHandleId !== undefined || m.geometryResult?.meshes.length > 0);
+      return settled ? 'ok' : false;
+    }, { n: count, deviceLost: DEVICE_LOST_ERROR.source }, { timeout: 120_000 });
+    outcome = (await handle.jsonValue()) as 'ok' | 'device-lost';
+  } catch {
+    outcome = 'timeout';
+  }
+  if (outcome === 'ok') return;
+  const snapshot = await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__?.getState();
-    return state && !state.loading && !state.geometryStreamingActive && state.models.size === n && [...state.models.values()].every((m) => m.pointCloudHandleId !== undefined || m.geometryResult?.meshes.length > 0);
-  }, count, { timeout: 120_000 });
+    if (!state) return { store: 'missing' };
+    return {
+      loading: state.loading, geometryStreamingActive: state.geometryStreamingActive, models: state.models.size,
+      perModel: [...state.models.values()].map((m) => ({ pointCloud: m.pointCloudHandleId !== undefined, meshes: m.geometryResult?.meshes.length ?? null })),
+      error: (state as { error?: unknown }).error ?? null,
+    };
+  }).catch((e) => ({ evaluateFailed: String(e) }));
+  const name = typeof file === 'string' ? file : file.name;
+  const detail = `${JSON.stringify(snapshot)}\nconsole: ${consoleLines.slice(-40).join('\n')}`;
+  // Hosted runners' SwiftShader WebGPU device drops under load (the IFC upload
+  // that precedes the scan drop); the viewer then refuses the point-cloud
+  // stream by design. That is the documented software-GPU limitation the
+  // E2E_GPU_STRICT=0 mode already skips GPU assertions for — not a viewer
+  // regression — so skip with the evidence attached rather than fail. A
+  // strict run (real GPU) still fails here.
+  if (outcome === 'device-lost' && process.env.E2E_GPU_STRICT === '0') {
+    console.warn(`[e2e] E2E_GPU_STRICT=0 — skipping: software-GPU device lost during load(${name}, ${count})`);
+    test.skip(true, `hosted software-GPU device lost during load(${name}, ${count}): ${detail}`);
+  }
+  throw new Error(`load(${name}, ${count}) ${outcome === 'device-lost' ? 'aborted: GPU device lost' : 'did not settle'}: ${detail}`);
 }
+
+/** Page console (warnings/errors) for the current test, attached to the load() timeout diagnostic. */
+let consoleLines: string[] = [];
 
 /** Synthetic diagnostic scan, explicitly derived from a real authoring fixture.
  * The known translation is the oracle; this does not pretend to be a field scan. */
@@ -52,6 +93,8 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
   test.skip(!existsSync(IFC), 'Real IFC fixture missing — run pnpm fixtures');
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(String(error)));
+  consoleLines = [];
+  page.on('console', (message) => { if (message.type() === 'error' || message.type() === 'warning') consoleLines.push(`[${message.type()}] ${message.text().slice(0, 300)}`); });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/');
   await load(page, IFC, 1);

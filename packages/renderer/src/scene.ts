@@ -279,6 +279,7 @@ export class Scene {
   private instancedTemplateCpu: (InstancedTemplateCpu | undefined)[] = [];
   private instancedDevice?: GPUDevice;                              // cached for per-instance flag/colour writeBuffer updates
   private instancedSelected: Set<number> = new Set();              // currently flag-selected instanced express_ids
+  private instancedSelectedItemExpressId?: number; private instancedSelectedItemId?: number;  // #4382: RenderOptions.selectedItemId
   private readonly instanceSuppression = new InstanceSuppression((id) => {
     if (this.instancedDevice) this.writeInstanceFlags(this.instancedDevice, id);
     this.boundingBoxes.delete(id);
@@ -879,14 +880,18 @@ export class Scene {
    *  express ids, and an id-only check would strand the OTHER model's hydrated
    *  mesh resident and drawing when selection moves across models. Only meshes
    *  flagged `hydrated` are touched — authored geometry added via addMesh()
-   *  and batch geometry are left untouched. Returns how many were freed. */
-  disposeHydratedMeshesExcept(keep: ReadonlySet<number>, keepModelIndex?: number): number {
+   *  and batch geometry are left untouched. Returns how many were freed.
+   *  #4382: a hydrated mesh of `itemFilterExpressId` must ALSO match
+   *  `itemFilterItemId`'s `geometryItemId` to survive (frees a stale item on
+   *  an in-product item switch); other kept expressIds are unaffected. */
+  disposeHydratedMeshesExcept(keep: ReadonlySet<number>, keepModelIndex?: number, itemFilterExpressId?: number, itemFilterItemId?: number): number {
     if (this.meshes.length === 0) return 0;
     const kept: Mesh[] = [];
     let disposed = 0;
     for (const mesh of this.meshes) {
       const keepMesh = keep.has(mesh.expressId)
-        && (keepModelIndex === undefined || mesh.modelIndex === keepModelIndex);
+        && (keepModelIndex === undefined || mesh.modelIndex === keepModelIndex)
+        && (itemFilterExpressId === undefined || mesh.expressId !== itemFilterExpressId || mesh.geometryItemId === itemFilterItemId);
       if (mesh.hydrated && !keepMesh) {
         destroyGpuResources(mesh);
         disposed++;
@@ -1102,13 +1107,17 @@ export class Scene {
     }
   }
 
-  getMeshDataPieces(expressId: number, modelIndex?: number): MeshData[] | undefined {
+  /** #4382: `itemId`, when given, narrows the returned pieces to those whose
+   *  `geometryItemId` matches (undefined never matches, so no silent fallback). */
+  getMeshDataPieces(expressId: number, modelIndex?: number, itemId?: number): MeshData[] | undefined {
     let pieces = this.meshDataMap.get(expressId);
     if (!pieces || pieces.length === 0) return undefined;
     if (modelIndex !== undefined) {
       pieces = pieces.filter((p) => p.modelIndex === modelIndex);
       if (pieces.length === 0) return undefined;
     }
+    if (itemId !== undefined) pieces = pieces.filter((p) => p.geometryItemId === itemId);
+    if (pieces.length === 0) return undefined;
     // For color-merged batches, extract only this entity's vertices so
     // selection highlighting is per-entity, not the entire merged batch.
     if (pieces.some(p => p.entityIds)) {
@@ -3334,14 +3343,15 @@ export class Scene {
    * their flag byte (bit 0) and clearing the previously-selected ones. The shader
    * (vs_instanced -> fs_main) applies the blue highlight per occurrence, so no
    * re-draw is needed. No-op until a shard has been uploaded.
-   */
-  setInstancedSelection(expressIds: ReadonlySet<number>): void {
+   * #4382: when the item filter is set, only that expressId's matching-itemId
+   * occurrences get the selected bit; every other selected id stays whole-product. */
+  setInstancedSelection(expressIds: ReadonlySet<number>, itemFilterExpressId?: number, itemFilterItemId?: number): void {
     const device = this.instancedDevice;
     if (!device || this.instancedTemplates.length === 0) return;
     // Called every render frame from the renderer. Fast-path an UNCHANGED selection
     // (the common orbit case, especially the empty set) so we skip both the per-frame
     // writeBuffer loops AND the `new Set(...)` allocation — equal sizes + full
-    // containment ⇒ set equality.
+    // containment ⇒ set equality. The item filter is cheap to compare directly.
     let changed = expressIds.size !== this.instancedSelected.size;
     if (!changed) {
       for (const eid of expressIds) {
@@ -3351,11 +3361,15 @@ export class Scene {
         }
       }
     }
-    if (!changed) return;
+    const itemFilterChanged = itemFilterExpressId !== this.instancedSelectedItemExpressId || itemFilterItemId !== this.instancedSelectedItemId;
+    if (!changed && !itemFilterChanged) return;
     // Re-derive the combined flag lane (selected | hidden) for every occurrence whose
     // selected-membership flips, so we never clobber the hidden bit.
     const prev = this.instancedSelected;
     this.instancedSelected = new Set(expressIds);
+    const prevItemFilterExpressId = this.instancedSelectedItemExpressId;
+    this.instancedSelectedItemExpressId = itemFilterExpressId;
+    this.instancedSelectedItemId = itemFilterItemId;
     for (const eid of prev) {
       if (!expressIds.has(eid)) {
         this.writeInstanceFlags(device, eid);
@@ -3366,6 +3380,14 @@ export class Scene {
       if (!prev.has(eid)) {
         this.writeInstanceFlags(device, eid);
         this.bumpTemplateSelectedCount(eid, +1);
+      }
+    }
+    // Item filter moved without a membership change (in-product item switch) —
+    // the diffs above never touch that eid; membership-flip eids are done already.
+    if (itemFilterChanged) {
+      const affected = [prevItemFilterExpressId, itemFilterExpressId].filter((e): e is number => e !== undefined);
+      for (const eid of new Set(affected)) {
+        if (prev.has(eid) === expressIds.has(eid) && expressIds.has(eid)) this.writeInstanceFlags(device, eid);
       }
     }
   }
@@ -3541,19 +3563,22 @@ export class Scene {
     return first ? first.originalColor : null;
   }
 
-  /** Write the combined flag lane (selected | hidden) for every occurrence of `eid`.
-   *  Folding both bits here means selection and visibility updates never clobber each
-   *  other (they share the one u32 flags lane at INSTANCE_FLAGS_OFFSET). */
+  /** Write the combined flag lane (selected | hidden) for every occurrence of `eid`
+   *  (shares one u32 lane at INSTANCE_FLAGS_OFFSET, so both bits are folded here).
+   *  #4382: for the item-filtered eid, selected narrows per-occurrence to
+   *  `loc.itemId === instancedSelectedItemId` instead of one shared word. */
   private writeInstanceFlags(device: GPUDevice, eid: number): void {
     const locs = this.instancedEntityMap.get(eid);
     if (!locs) return;
-    const flags =
-      (this.instancedSelected.has(eid) ? INSTANCE_FLAG_SELECTED : 0) |
-      (this.instancedHidden.has(eid) || this.instanceSuppression.has(eid) ? INSTANCE_FLAG_HIDDEN : 0);
-    const data = new Uint32Array([flags >>> 0]);
+    const hiddenBit = this.instancedHidden.has(eid) || this.instanceSuppression.has(eid) ? INSTANCE_FLAG_HIDDEN : 0;
+    const eidSelected = this.instancedSelected.has(eid);
+    const itemRestricted = eidSelected && eid === this.instancedSelectedItemExpressId;
     for (const loc of locs) {
+      const selectedBit = itemRestricted
+        ? (loc.itemId === this.instancedSelectedItemId ? INSTANCE_FLAG_SELECTED : 0)
+        : (eidSelected ? INSTANCE_FLAG_SELECTED : 0);
       const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
-      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_FLAGS_OFFSET, data);
+      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_FLAGS_OFFSET, new Uint32Array([(selectedBit | hiddenBit) >>> 0]));
     }
   }
 
@@ -3740,6 +3765,7 @@ export class Scene {
     this.instanceSuppression.forget();
     this.instancedEntityMap.clear();
     this.instancedSelected.clear();
+    this.instancedSelectedItemExpressId = this.instancedSelectedItemId = undefined;
     this.instancedHidden.clear();
     this.instancedOverridden.clear();
     this.instancedGhosted.clear();

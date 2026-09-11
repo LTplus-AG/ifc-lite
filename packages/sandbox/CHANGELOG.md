@@ -1,5 +1,12 @@
 # @ifc-lite/sandbox
 
+## 2.2.4
+
+### Patch Changes
+
+- Updated dependencies [[`9a271dc`](https://github.com/LTplus-AG/ifc-lite/commit/9a271dcb19dff2f9bca72fc3505ce5a71b3e800b), [`4c9a88d`](https://github.com/LTplus-AG/ifc-lite/commit/4c9a88d80b9ba9631be97050d896b5f5834d3628), [`4c9a88d`](https://github.com/LTplus-AG/ifc-lite/commit/4c9a88d80b9ba9631be97050d896b5f5834d3628)]:
+  - @ifc-lite/sdk@5.0.0
+
 ## 2.2.3
 
 ### Patch Changes

@@ -1,5 +1,26 @@
 # @ifc-lite/renderer
 
+## 2.2.0
+
+### Minor Changes
+
+- [#4473](https://github.com/LTplus-AG/ifc-lite/pull/4473) [`bbec5c1`](https://github.com/LTplus-AG/ifc-lite/commit/bbec5c1a3d5c581c157f27946bf4b416470818de) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add `RenderOptions.selectedItemId` ([#4382](https://github.com/LTplus-AG/ifc-lite/issues/4382), a follow-up to [#2985](https://github.com/LTplus-AG/ifc-lite/issues/2985)/[#3526](https://github.com/LTplus-AG/ifc-lite/issues/3526)/[#3528](https://github.com/LTplus-AG/ifc-lite/issues/3528)): narrows `selectedId`'s highlight to a single representation item within the product, instead of the whole product.
+  
+  The renderer hydrates and highlights only the flat or GPU-instanced mesh pieces whose `geometryItemId` matches — the same id a pick already reports via `PickResult.geometryItemId`. Switching `selectedItemId` while `selectedId` stays the same (choosing another item within one still-selected product) disposes the stale item's hydrated piece and instanced selected flag before applying the new one, so the highlight replaces cleanly instead of accumulating. `selectedItemId` has no effect without `selectedId`, and only ever narrows `selectedId`'s own product: every OTHER product in `selectedIds` stays whole-product, matching rect/marquee select. If `selectedId`'s product also happens to be a member of `selectedIds` (e.g. it is the anchor of an extended multi-select), that one product is narrowed too — the filter tracks `selectedId`, not membership in `selectedIds`.
+
+- [#4472](https://github.com/LTplus-AG/ifc-lite/pull/4472) [`bb1c705`](https://github.com/LTplus-AG/ifc-lite/commit/bb1c705c56754e13b197c266e44f6ed715737432) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `SceneContents` (the scene surface `Renderer.getScene()` publishes) now exposes four `Scene` members an external consumer reported reaching for: `getMeshData`, `forEachMeshData`, `getEntityTransform`, `getEntityLocalBounds` ([#4357](https://github.com/LTplus-AG/ifc-lite/issues/4357)).
+  
+  All four were already public on the `Scene` class and reachable at runtime through the narrowed `getScene()` return type only by a cast; this is a type-only widening, and `SceneContents` still declares nothing `Scene` does not itself implement, so nothing about the existing published members changes.
+  
+  `getMeshData` is the single-mesh accessor `getMeshDataPieces` does not directly give (the first mesh piece carrying an entity's placement). `forEachMeshData` visits every flat mesh piece, for a consumer that needs the mesh data itself rather than only the id set `getAllMeshDataExpressIds` returns. `getEntityTransform` is the resolved local-to-world placement (row-major 4x4, `Float64Array`) for one entity. `getEntityLocalBounds` is an entity's bounds in its own pre-transform frame, unioned across occurrences — unlike `getEntityBoundingBox`, which is post-transform and world-axis-aligned and cannot be unioned meaningfully across differently-placed occurrences of the same entity.
+
+### Patch Changes
+
+- [#4391](https://github.com/LTplus-AG/ifc-lite/pull/4391) [`473ad56`](https://github.com/LTplus-AG/ifc-lite/commit/473ad56dbe17e958cf31cd9d6cb9bf6c08875649) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix sun shadow occluder collection treating an active-but-empty isolation set the same as no isolation, which let a fully isolated-out textured mesh or standalone mesh keep casting a phantom shadow instead of casting nothing.
+- Updated dependencies [[`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b), [`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b)]:
+  - @ifc-lite/geometry@5.0.0
+  - @ifc-lite/spatial@1.14.17
+
 ## 2.1.0
 
 ### Minor Changes

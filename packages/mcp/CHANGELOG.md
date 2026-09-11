@@ -1,5 +1,38 @@
 # @ifc-lite/mcp
 
+## 0.14.1
+
+### Patch Changes
+
+- [#4364](https://github.com/LTplus-AG/ifc-lite/pull/4364) [`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix GLB export silently exporting the whole model when an active isolation filter matches zero elements (reachable through "Export Visible Only" after filtering the hierarchy panel's Class tab to a type present only in a federated model's other member — the [#4328](https://github.com/LTplus-AG/ifc-lite/issues/4328) scenario, for the GLB exporter specifically).
+  
+  `GltfOptions::isolated` (Rust) and `GeometryProcessor.exportGlb`'s `isolated` parameter (TS, across the wasm boundary) collapsed "no isolation filter" and "isolation active, zero matches" into the same empty value, so both read as "export everything". They now distinguish the two the way `packages/export/src/reference-collector.ts` and `packages/renderer/src/entity-visibility.ts` already do: `isolated: Option<Vec<u32>>` on the Rust side (`None` = no filter, `Some(ids)` = an active allowlist, empty or not), `Uint32Array | undefined` on the TS side (`undefined` = no filter, an empty array = active but matching nothing). `GLBExportDialog.tsx`'s two assemblers (from-meshes and the from-bytes/wasm fast path) both preserve this distinction end to end instead of collapsing it back to a boolean.
+  
+  Same-PR follow-up: `ifc-lite export --format glb`/`gltf` (`packages/cli/src/commands/export-rust-formats.ts`) and the MCP `export_glb` tool (`packages/mcp/src/tools/export.ts`) both pass an explicit empty `Uint32Array` to `exportGlb` whenever no `--type`/`type` filter is requested — under the new convention that reads as "isolation active, matches nothing" and made every unfiltered GLB export fail closed with a misleading "0 meshes" error. Both now pass `undefined` when their filter is inactive.
+
+- [#4364](https://github.com/LTplus-AG/ifc-lite/pull/4364) [`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix OBJ export silently exporting the whole model when an active isolation filter matches zero elements — the OBJ twin of the GLB fix in [#4364](https://github.com/LTplus-AG/ifc-lite/issues/4364) (itself the [#4328](https://github.com/LTplus-AG/ifc-lite/issues/4328) scenario: filtering the hierarchy panel's Class tab to a type present only in a federated model's other member, then exporting "Visible Only").
+  
+  `ObjOptions::isolated` (Rust, `rust/export/src/obj.rs`) and the wasm `exportObj` binding (`rust/wasm-bindings/src/api/export_obj.rs`) collapsed "no isolation filter" and "isolation active, zero matches" into the same empty value via `Vec::is_empty()`, so both read as "export everything". They now distinguish the two the same way `GltfOptions::isolated` does after [#4364](https://github.com/LTplus-AG/ifc-lite/issues/4364): `isolated: Option<Vec<u32>>` on the Rust side (`None` = no filter, `Some(ids)` = an active allowlist, empty or not), `Uint32Array | undefined` on the TS side (`undefined` = no filter, an empty array = active but matching nothing) — `GeometryProcessor.exportObj` / `IfcLiteBridge.exportObj` in `packages/geometry/src`.
+  
+  Same-PR follow-up, mirroring the one [#4364](https://github.com/LTplus-AG/ifc-lite/issues/4364) needed for GLB: `ifc-lite export --format obj` (`packages/cli/src/commands/export-rust-formats.ts`) and the MCP `export_obj` tool (`packages/mcp/src/tools/export.ts`) both used to pass an explicit empty `Uint32Array` to `exportObj` whenever no `--type`/`type` filter was requested — under the new convention that reads as "isolation active, matches nothing" and would have made every unfiltered OBJ export fail closed with a misleading "0 meshes" error. Both now pass `undefined` when their filter is inactive.
+  
+  Also adds a zero-output guard to the CLI's OBJ export path, closing the asymmetry with GLB's `countGlbMeshes` defense-in-depth check: unlike `exportGlb`, the Rust OBJ exporter has no "no render geometry" error signal — it always returns a string, even a header-only one with zero vertices. `@ifc-lite/export` gains `countObjVertices` (`packages/export/src/obj.ts`), and `export-rust-formats.ts`'s OBJ branch now `fatal()`s when it comes back 0 rather than writing that small-but-non-zero-byte file as a reported success.
+  
+  `packages/geometry/src/index.ts`'s two isolation-semantics doc comments (added for `exportObj`, already present for `exportGlb`-adjacent code) are folded into the existing exporter docblock rather than left as a second block, to stay under `check-module-size.mjs`'s ratchet once `main`'s current budget for this file applies — no information lost, just consolidated.
+- Updated dependencies [[`9a271dc`](https://github.com/LTplus-AG/ifc-lite/commit/9a271dcb19dff2f9bca72fc3505ce5a71b3e800b), [`3fdbc2b`](https://github.com/LTplus-AG/ifc-lite/commit/3fdbc2b599fad2b1c43ffe014d2bab5f8b8c576c), [`39d5158`](https://github.com/LTplus-AG/ifc-lite/commit/39d5158fd5192a14fc2552d73a531b1334831e5a), [`3a1a322`](https://github.com/LTplus-AG/ifc-lite/commit/3a1a3229412b7822438fa5dba653f6c4e1bd239f), [`7f80d53`](https://github.com/LTplus-AG/ifc-lite/commit/7f80d53d2a2c158a322ec541ce064365f3f3ca8a), [`4c9a88d`](https://github.com/LTplus-AG/ifc-lite/commit/4c9a88d80b9ba9631be97050d896b5f5834d3628), [`4c9a88d`](https://github.com/LTplus-AG/ifc-lite/commit/4c9a88d80b9ba9631be97050d896b5f5834d3628), [`dee75d8`](https://github.com/LTplus-AG/ifc-lite/commit/dee75d86d404e5a5ae15e71910704d970d2426a2), [`a53bd7f`](https://github.com/LTplus-AG/ifc-lite/commit/a53bd7fd4510b8d5c992eab26234084c5bb2387e), [`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b), [`5e94b1a`](https://github.com/LTplus-AG/ifc-lite/commit/5e94b1a646d7e02c909b8835f3adf8e0bf4feb5f), [`1878436`](https://github.com/LTplus-AG/ifc-lite/commit/1878436f58d4b11b8cd69ea4d544373ca375b9eb), [`abda2d8`](https://github.com/LTplus-AG/ifc-lite/commit/abda2d8114ad17b0366f448100953d6e1972164c), [`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b), [`511e488`](https://github.com/LTplus-AG/ifc-lite/commit/511e488a8de2b90f7d5f7663911873a92b3427c7), [`53c65fe`](https://github.com/LTplus-AG/ifc-lite/commit/53c65fecdac95b4c19a661be923c225d104a7be8), [`a53bd7f`](https://github.com/LTplus-AG/ifc-lite/commit/a53bd7fd4510b8d5c992eab26234084c5bb2387e)]:
+  - @ifc-lite/bcf@4.0.0
+  - @ifc-lite/sdk@5.0.0
+  - @ifc-lite/parser@6.1.0
+  - @ifc-lite/export@4.2.0
+  - @ifc-lite/clash@2.1.2
+  - @ifc-lite/geometry@5.0.0
+  - @ifc-lite/create@2.4.0
+  - @ifc-lite/extensions@0.7.0
+  - @ifc-lite/data@4.2.0
+  - @ifc-lite/query@2.3.1
+  - @ifc-lite/viewer-core@0.2.16
+  - @ifc-lite/ids@1.16.2
+
 ## 0.14.0
 
 ### Minor Changes

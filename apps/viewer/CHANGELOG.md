@@ -1,5 +1,63 @@
 # @ifc-lite/viewer
 
+## 1.42.1
+
+### Patch Changes
+
+- [#4330](https://github.com/LTplus-AG/ifc-lite/pull/4330) [`a53bd7f`](https://github.com/LTplus-AG/ifc-lite/commit/a53bd7fd4510b8d5c992eab26234084c5bb2387e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a crash in `serializeScheduleToStep` when exporting a `WorkScheduleInfo`
+  built without `childScheduleGlobalIds` — the field the `IfcWorkPlan` ->
+  `IfcWorkSchedule` `IfcRelNests` grouping fix added. The viewer's standalone
+  `IfcWorkPlan` builder (`buildWorkPlanInfo` in `apps/viewer`) constructs a
+  `WorkScheduleInfo` with `kind: 'WorkPlan'` and no `childScheduleGlobalIds`,
+  which threw `TypeError: Cannot read properties of undefined (reading
+  'length')` on export.
+  
+  `childScheduleGlobalIds` is now optional on `WorkScheduleInfo`; the
+  serializer treats an absent field the same as an empty array (both mean "no
+  nested schedules to write"), so a producer that has no opinion on
+  `IfcRelNests` grouping doesn't have to populate it.
+  
+  Now that both relations round-trip, the viewer's "Generate schedule" dialog
+  also composes the grouping instead of shipping an orphan: `buildWorkPlanInfo`
+  takes the generated `IfcWorkSchedule`(s) globalIds and sets
+  `childScheduleGlobalIds` on the plan it builds, so a plan created through the
+  dialog groups its schedule on export and survives a
+  parse -> serialize -> reparse round trip. A plan generated with no schedules
+  still emits no `IfcRelNests` relation.
+
+- [#4364](https://github.com/LTplus-AG/ifc-lite/pull/4364) [`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix GLB export silently exporting the whole model when an active isolation filter matches zero elements (reachable through "Export Visible Only" after filtering the hierarchy panel's Class tab to a type present only in a federated model's other member — the [#4328](https://github.com/LTplus-AG/ifc-lite/issues/4328) scenario, for the GLB exporter specifically).
+  
+  `GltfOptions::isolated` (Rust) and `GeometryProcessor.exportGlb`'s `isolated` parameter (TS, across the wasm boundary) collapsed "no isolation filter" and "isolation active, zero matches" into the same empty value, so both read as "export everything". They now distinguish the two the way `packages/export/src/reference-collector.ts` and `packages/renderer/src/entity-visibility.ts` already do: `isolated: Option<Vec<u32>>` on the Rust side (`None` = no filter, `Some(ids)` = an active allowlist, empty or not), `Uint32Array | undefined` on the TS side (`undefined` = no filter, an empty array = active but matching nothing). `GLBExportDialog.tsx`'s two assemblers (from-meshes and the from-bytes/wasm fast path) both preserve this distinction end to end instead of collapsing it back to a boolean.
+  
+  Same-PR follow-up: `ifc-lite export --format glb`/`gltf` (`packages/cli/src/commands/export-rust-formats.ts`) and the MCP `export_glb` tool (`packages/mcp/src/tools/export.ts`) both pass an explicit empty `Uint32Array` to `exportGlb` whenever no `--type`/`type` filter is requested — under the new convention that reads as "isolation active, matches nothing" and made every unfiltered GLB export fail closed with a misleading "0 meshes" error. Both now pass `undefined` when their filter is inactive.
+
+- [#4505](https://github.com/LTplus-AG/ifc-lite/pull/4505) [`1878436`](https://github.com/LTplus-AG/ifc-lite/commit/1878436f58d4b11b8cd69ea4d544373ca375b9eb) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Bound how long a bundle test's `expect.regex` matcher can run instead of leaving it unbounded on whatever thread calls it. `runBundleTests` now accepts an optional `evaluateRegex` hook; the viewer wires it to a Worker with a timeout so a pathological pattern that slips past the existing length-cap and shape-heuristic guards terminates instead of hanging the main UI thread, reachable via "Run tests" and the repair queue's "Run check". CLI and other existing callers are unaffected — omitting the hook keeps the prior synchronous, in-process check.
+  
+  A rejection that isn't a genuine invalid-pattern `SyntaxError` (a worker timeout, a disposed client, a worker that failed to start) now reports as "regex: evaluation failed", distinct from "regex: invalid pattern" — previously every such rejection was mislabeled as the author's pattern being malformed. In the viewer, if the regex worker itself can't be started (a CSP blocking module workers, or no `Worker` at all), `expect.regex` checks now fall back to the same synchronous in-process evaluation used before [#4482](https://github.com/LTplus-AG/ifc-lite/issues/4482), rather than failing every check; the pattern length cap and catastrophic-backtracking shape heuristic still run unconditionally before either evaluator, so that fallback loses only the timeout bound and main-thread eviction, not those guards.
+
+- [#4347](https://github.com/LTplus-AG/ifc-lite/pull/4347) [`05dbfcd`](https://github.com/LTplus-AG/ifc-lite/commit/05dbfcde308d11a8361308c055ac951e4d174333) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Diagnose why WebGPU is unavailable instead of blaming the device for every case: distinguish an insecure origin (plain HTTP on a hostname/IP, where `navigator.gpu` is undefined regardless of hardware) from a browser that never exposes the API (embedded webview, enterprise policy, old version) from a genuine adapter/driver failure, and show only the troubleshooting steps that apply to each. Point the WebGPU-unavailable banner and the disabled empty-state card at the CLI and MCP server, which run on the CPU with no browser or GPU required.
+- Updated dependencies [[`9a271dc`](https://github.com/LTplus-AG/ifc-lite/commit/9a271dcb19dff2f9bca72fc3505ce5a71b3e800b), [`6fe4fc8`](https://github.com/LTplus-AG/ifc-lite/commit/6fe4fc8ddac8cbc18f3556fa7bfa778bf6115928), [`3fdbc2b`](https://github.com/LTplus-AG/ifc-lite/commit/3fdbc2b599fad2b1c43ffe014d2bab5f8b8c576c), [`39d5158`](https://github.com/LTplus-AG/ifc-lite/commit/39d5158fd5192a14fc2552d73a531b1334831e5a), [`3a1a322`](https://github.com/LTplus-AG/ifc-lite/commit/3a1a3229412b7822438fa5dba653f6c4e1bd239f), [`7f80d53`](https://github.com/LTplus-AG/ifc-lite/commit/7f80d53d2a2c158a322ec541ce064365f3f3ca8a), [`4c9a88d`](https://github.com/LTplus-AG/ifc-lite/commit/4c9a88d80b9ba9631be97050d896b5f5834d3628), [`4c9a88d`](https://github.com/LTplus-AG/ifc-lite/commit/4c9a88d80b9ba9631be97050d896b5f5834d3628), [`dee75d8`](https://github.com/LTplus-AG/ifc-lite/commit/dee75d86d404e5a5ae15e71910704d970d2426a2), [`a53bd7f`](https://github.com/LTplus-AG/ifc-lite/commit/a53bd7fd4510b8d5c992eab26234084c5bb2387e), [`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b), [`5e94b1a`](https://github.com/LTplus-AG/ifc-lite/commit/5e94b1a646d7e02c909b8835f3adf8e0bf4feb5f), [`341f41f`](https://github.com/LTplus-AG/ifc-lite/commit/341f41fd1725e8551d9bae4a3478ea3fa5b2698f), [`1878436`](https://github.com/LTplus-AG/ifc-lite/commit/1878436f58d4b11b8cd69ea4d544373ca375b9eb), [`bbec5c1`](https://github.com/LTplus-AG/ifc-lite/commit/bbec5c1a3d5c581c157f27946bf4b416470818de), [`abda2d8`](https://github.com/LTplus-AG/ifc-lite/commit/abda2d8114ad17b0366f448100953d6e1972164c), [`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b), [`511e488`](https://github.com/LTplus-AG/ifc-lite/commit/511e488a8de2b90f7d5f7663911873a92b3427c7), [`bb1c705`](https://github.com/LTplus-AG/ifc-lite/commit/bb1c705c56754e13b197c266e44f6ed715737432), [`473ad56`](https://github.com/LTplus-AG/ifc-lite/commit/473ad56dbe17e958cf31cd9d6cb9bf6c08875649), [`53c65fe`](https://github.com/LTplus-AG/ifc-lite/commit/53c65fecdac95b4c19a661be923c225d104a7be8), [`a53bd7f`](https://github.com/LTplus-AG/ifc-lite/commit/a53bd7fd4510b8d5c992eab26234084c5bb2387e)]:
+  - @ifc-lite/bcf@4.0.0
+  - @ifc-lite/sdk@5.0.0
+  - @ifc-lite/wasm@7.0.0
+  - @ifc-lite/parser@6.1.0
+  - @ifc-lite/export@4.2.0
+  - @ifc-lite/clash@2.1.2
+  - @ifc-lite/geometry@5.0.0
+  - @ifc-lite/mcp@0.14.1
+  - @ifc-lite/create@2.4.0
+  - @ifc-lite/cache@3.4.1
+  - @ifc-lite/extensions@0.7.0
+  - @ifc-lite/renderer@2.2.0
+  - @ifc-lite/data@4.2.0
+  - @ifc-lite/query@2.3.1
+  - @ifc-lite/bcf-api@0.2.2
+  - @ifc-lite/sandbox@2.2.4
+  - @ifc-lite/ids@1.16.2
+  - @ifc-lite/drawing-2d@4.0.1
+  - @ifc-lite/spatial@1.14.17
+  - @ifc-lite/lists@2.1.2
+
 ## 1.42.0
 
 ### Minor Changes

@@ -61,9 +61,15 @@ const REFUSING_BYTES = encode(
  * that starts at 0 walks the record from its `#` to the terminating `;` and
  * never looks inside. Both facts are asserted below.
  */
+// Each in-string pseudo-record CLOSES its `(` (#4005). The scanner reports a
+// malformed body BEFORE an oversized-id refusal, so an unbalanced
+// `IFCWALL(fake k ; ...` is skipped as malformed and never reaches the
+// refusal path this test exists to exercise — which is how #4005 turned the
+// #3395 contract red. Closing the record keeps the text well-formed so the
+// only thing wrong with it is the u32-overflowing id, which is the point.
 const IN_STRING_TEXT = Array.from(
   { length: 40 },
-  (_, k) => `#${ABOVE_U32}=IFCWALL(fake ${k} ; still in string `,
+  (_, k) => `#${ABOVE_U32}=IFCWALL(fake ${k}); still in string `,
 ).join('');
 const CLEAN_TEXT = `${HEADER}#1=IFCWALL('${IN_STRING_TEXT}',$,$,$,$,$,$,$);\n#2=IFCDOOR('g',$,$,$,$,$,$,$);\nENDSEC;\n`;
 const CLEAN_BYTES = encode(CLEAN_TEXT);

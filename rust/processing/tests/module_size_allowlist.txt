@@ -6,6 +6,12 @@
 # The rule: shrink or split. When you split a file below 400, delete its row
 # (the total must trend DOWN). Only ADD a row with a written justification.
 # Regenerated against the branch's merge base; refresh on rebase if a listed
+# file's count moved under you. After a merge conflict HERE, never pick a side:
+# diff both sides against the merge base, row by row (the rule and the two git
+# commands are in scripts/module-size-allowlist.txt). scripts/check-module-size.mjs
+# judges every row of this file that differs from the merge base against the
+# file's measured count and fails a hand-picked number; a duplicate row fails
+# in module_size_ratchet.rs (#4388).
      756 apps/server/src/services/parquet_data_model.rs
      581 apps/server/src/services/parquet_optimized.rs
 # +8: add set_entity_index setter so the processor can install its inline-built index (perf/single-scan).

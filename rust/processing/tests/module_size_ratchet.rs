@@ -163,8 +163,20 @@ fn is_exempt(rel: &str) -> bool {
 /// Parse the committed allowlist into (relpath -> budget). Skips comment/blank
 /// lines. A malformed data line is a hard error (the file is a contract).
 fn parse_allowlist() -> std::collections::HashMap<String, usize> {
+    parse_allowlist_text(ALLOWLIST)
+}
+
+/// `parse_allowlist` over any text, so the firing paths are unit-testable.
+///
+/// A DUPLICATE path is a hard error too (#4388). `HashMap::insert` used to
+/// last-wins it silently, and a duplicate row is exactly what a merge
+/// conflict resolved by keeping both sides leaves behind: two budgets for one
+/// file, with the one that survives decided by line order. The TypeScript
+/// twin (`parseAllowlist` in scripts/lib/module-size-ratchet.mjs) has
+/// refused this since it was written; this side now agrees.
+fn parse_allowlist_text(text: &str) -> std::collections::HashMap<String, usize> {
     let mut map = std::collections::HashMap::new();
-    for line in ALLOWLIST.lines() {
+    for line in text.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
@@ -176,7 +188,14 @@ fn parse_allowlist() -> std::collections::HashMap<String, usize> {
             .trim()
             .parse()
             .unwrap_or_else(|_| panic!("module_size_allowlist.txt: bad budget in: {line:?}"));
-        map.insert(path.trim().to_string(), budget);
+        let path = path.trim().to_string();
+        if let Some(previous) = map.insert(path.clone(), budget) {
+            panic!(
+                "module_size_allowlist.txt: duplicate row for {path} (budgets {previous} and \
+                 {budget}). Two rows for one file is what a conflict resolved by keeping \
+                 both sides leaves behind; keep the one the file's measured count justifies."
+            );
+        }
     }
     map
 }
@@ -324,6 +343,31 @@ fn evaluate_is_clean_when_within_budget() {
     ];
     let (new_offenders, grew) = evaluate(&files, &allowlist);
     assert!(new_offenders.is_empty() && grew.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "duplicate row for rust/a/big.rs (budgets 500 and 520)")]
+fn parse_allowlist_refuses_a_duplicate_row() {
+    // The residue of a conflict resolved by keeping both sides (#4388). Before
+    // this, the second row silently won and the digest pin only proved that
+    // SOMETHING in the scope moved, not that the surviving number was right.
+    parse_allowlist_text("# header
+   500 rust/a/big.rs
+   520 rust/a/big.rs
+");
+}
+
+#[test]
+fn parse_allowlist_text_reads_rows_past_comments_and_blanks() {
+    let map = parse_allowlist_text("# h
+
+   500 rust/a/big.rs
+# +3: why
+   620 rust/b/c.rs
+");
+    assert_eq!(map.len(), 2);
+    assert_eq!(map["rust/a/big.rs"], 500);
+    assert_eq!(map["rust/b/c.rs"], 620);
 }
 
 #[test]

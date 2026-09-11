@@ -63,14 +63,23 @@ function makeTree(files) {
   return dir;
 }
 
-function run(dir, allowlistText, { allowlistPath, extra = [] } = {}) {
+/**
+ * `CI` is stripped from the child's environment: a synthetic tree outside any
+ * repository has no merge base, and under CI the checker fails closed on that
+ * (#4388) -- correctly for the real gate, wrongly for a fixture that exists to
+ * test something else. The merge-base cases below set `env` themselves.
+ */
+function run(dir, allowlistText, { allowlistPath, extra = [], env = {} } = {}) {
   let path = allowlistPath;
   if (path === undefined) {
     path = join(dir, 'allowlist.txt');
     writeFileSync(path, allowlistText ?? '');
   }
+  const childEnv = { ...process.env, ...env };
+  if (!Object.hasOwn(env, 'CI')) delete childEnv.CI;
   const res = spawnSync(process.execPath, [CHECKER, '--root', dir, '--allowlist', path, ...extra], {
     encoding: 'utf8',
+    env: childEnv,
   });
   return { code: res.status, out: `${res.stdout}${res.stderr}`, allowlistPath: path };
 }
@@ -94,7 +103,7 @@ function tree(files) {
  * `tmpdir()` has no enclosing repository (asserted below), which is what keeps
  * the derivation hermetic rather than reading this checkout's own diff.
  */
-function gitTree(files) {
+function gitTree(files, { allowlist, extraFiles = {} } = {}) {
   const dir = tree(files);
   const git = (...argv) => {
     const res = spawnSync('git', ['-C', dir, ...argv], { encoding: 'utf8' });
@@ -104,9 +113,22 @@ function gitTree(files) {
   git('init', '-q', '-b', 'main');
   git('config', 'user.email', 'ratchet@example.invalid');
   git('config', 'user.name', 'ratchet test');
-  git('add', '--', ...Object.keys(files));
+  const committed = Object.keys(files);
+  // The merge-base audit (#4388) reads the allowlist AS IT WAS AT THE BASE,
+  // so the cases for it commit one on main and edit the working copy after.
+  if (allowlist !== undefined) {
+    writeFileSync(join(dir, 'allowlist.txt'), allowlist);
+    committed.push('allowlist.txt');
+  }
+  for (const [rel, text] of Object.entries(extraFiles)) {
+    const full = join(dir, rel);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, text);
+    committed.push(rel);
+  }
+  git('add', '--', ...committed);
   git('commit', '-qm', 'base');
-  return { dir, git };
+  return { dir, git, allowlistPath: join(dir, 'allowlist.txt') };
 }
 
 test('clean tree passes and says how much it measured', () => {
@@ -199,12 +221,23 @@ test('a stale row at or under the limit fails', () => {
   assert.match(out, /rows at or under the 400-line limit/);
 });
 
-test('a shrunk or vanished row is advisory, not a failure', () => {
-  const dir = tree({ 'packages/a/big.ts': 300 });
-  const { code, out } = run(dir, '500 packages/a/big.ts\n700 packages/a/gone.ts\n');
+test('a shrunk or vanished row is advisory when the shrink is not this change\'s', () => {
+  // Committed on main already shrunk and already gone, rows kept: the
+  // branch touches neither file nor row, so the notes stay notes (#4388
+  // keeps the L535 rationale -- a shrink landing elsewhere cannot redden
+  // this PR). The A/B where the branch DID the shrinking is below.
+  const { dir, git, allowlistPath } = gitTree(
+    { 'packages/a/big.ts': 300 },
+    { allowlist: '500 packages/a/big.ts\n700 packages/a/gone.ts\n' },
+  );
+  git('update-ref', 'refs/remotes/origin/main', 'main');
+  git('checkout', '-q', '-b', 'feature');
+  writeSource(dir, 'packages/c/unrelated.ts', 10);
+  const { code, out } = run(dir, null, { allowlistPath });
   assert.equal(code, 0, out);
   assert.match(out, /note: packages\/a\/big\.ts: now 300 lines <= 400; delete its allowlist row/);
   assert.match(out, /note:\s+packages\/a\/gone\.ts \(budget 700\) no longer matches a tracked file/);
+  assert.match(out, /vs merge-base origin\/main \([0-9a-f]{9}\): \+0 added, \^0 raised, v0 lowered, -0 deleted/);
 });
 
 // ---------------------------------------------------------------------------
@@ -403,7 +436,14 @@ test('the committed gate runs green against the real repo', () => {
   const res = spawnSync(process.execPath, [CHECKER], { encoding: 'utf8', cwd: ROOT });
   const out = `${res.stdout}${res.stderr}`;
   assert.equal(res.status, 0, out);
-  assert.match(out, /check-module-size: OK \(\d+ files measured, \d+ allowlisted, 0 new over 400\)/);
+  // The OK line carries the merge-base audit (#4388): the real repo has an
+  // origin/main (or main) to diff against, so a SKIPPED here means the gate
+  // certified this branch's allowlist edits without judging them.
+  assert.match(
+    out,
+    /check-module-size: OK \(\d+ files measured, \d+ allowlisted, 0 new over 400; vs merge-base [0-9a-f]{9}: \+\d+ \^\d+ v\d+ -\d+\)/,
+  );
+  assert.doesNotMatch(out, /SKIPPED/);
 });
 
 // ---------------------------------------------------------------------------
@@ -633,3 +673,161 @@ test('a scoped regenerate that leaves the gate red exits 1 and names the sweep',
 // --update writes is what the gate then accepts' and by the scoped --update
 // cases.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// The merge-base audit (#4388). A conflict resolution in the allowlist that
+// resurrected a deleted row (file 268 lines), kept the row of a file a split
+// had taken to 348, and carried 766 for a 765-line file printed three notes
+// and OK. Every row that differs from the merge base is this change's row and
+// must equal the measurement; a kept row fails only when THIS change shrank or
+// removed the file. Each case commits the allowlist on main and edits the
+// working copy, exactly as a resolution would.
+// ---------------------------------------------------------------------------
+
+const AUDIT_BASE = `${HEADER}   500 packages/a/big.ts\n`;
+
+/** main with `files` and `allowlist` committed, origin/main pointing at it, on a feature branch. */
+function auditTree(files, allowlist, extraFiles = {}) {
+  const made = gitTree(files, { allowlist, extraFiles });
+  made.git('update-ref', 'refs/remotes/origin/main', 'main');
+  made.git('checkout', '-q', '-b', 'feature');
+  return made;
+}
+
+test('a resurrected row for a file under the limit fails (#4388, the project-units case)', () => {
+  const { dir, allowlistPath } = auditTree({ 'packages/a/big.ts': 500, 'packages/p/units.ts': 268 }, AUDIT_BASE);
+  writeFileSync(allowlistPath, `${AUDIT_BASE}   523 packages/p/units.ts\n`);
+  const { code, out } = run(dir, null, { allowlistPath });
+  assert.equal(code, 1, out);
+  assert.match(out, /packages\/p\/units\.ts: row added at 523, but the file measures 268 <= 400 and needs no row/);
+  assert.match(out, /\+1 added, \^0 raised, v0 lowered, -0 deleted/);
+  assert.match(out, /never resolve by picking a side/);
+});
+
+test('a raise the file did not grow into fails (#4388, the 766-for-765 case)', () => {
+  const { dir, allowlistPath } = auditTree(
+    { 'packages/a/big.ts': 500, 'packages/x/x.ts': 765 },
+    `${AUDIT_BASE}   765 packages/x/x.ts\n`,
+  );
+  writeFileSync(allowlistPath, `${AUDIT_BASE}   766 packages/x/x.ts\n`);
+  const { code, out } = run(dir, null, { allowlistPath });
+  assert.equal(code, 1, out);
+  assert.match(out, /packages\/x\/x\.ts: row raised 765 -> 766, but the file measures 765: 1 line\(s\) of headroom/);
+});
+
+test('a split PR that keeps its row fails; the same shrink landed elsewhere does not (#4388)', () => {
+  const before = `${AUDIT_BASE}   594 packages/s/extractor.ts\n`;
+  // The branch takes extractor.ts from 594 to 348 and keeps the row.
+  const mine = auditTree({ 'packages/a/big.ts': 500, 'packages/s/extractor.ts': 594 }, before);
+  writeSource(mine.dir, 'packages/s/extractor.ts', 348);
+  const red = run(mine.dir, null, { allowlistPath: mine.allowlistPath });
+  assert.equal(red.code, 1, red.out);
+  assert.match(
+    red.out,
+    /packages\/s\/extractor\.ts: this change took the file from 594 to 348 <= 400 but kept its row \(budget 594\)/,
+  );
+  // Same allowlist, but main already holds the file at 348 and the branch
+  // never touches it: advisory, exactly as before.
+  const theirs = auditTree({ 'packages/a/big.ts': 500, 'packages/s/extractor.ts': 348 }, before);
+  writeSource(theirs.dir, 'packages/c/unrelated.ts', 10);
+  const green = run(theirs.dir, null, { allowlistPath: theirs.allowlistPath });
+  assert.equal(green.code, 0, green.out);
+  assert.match(green.out, /note: packages\/s\/extractor\.ts: now 348 lines <= 400/);
+});
+
+test('a kept row for a file this change deleted fails (#4388)', () => {
+  const { dir, git, allowlistPath } = auditTree(
+    { 'packages/a/big.ts': 500, 'packages/b/gone.ts': 450 },
+    `${AUDIT_BASE}   450 packages/b/gone.ts\n`,
+  );
+  git('rm', '-q', 'packages/b/gone.ts');
+  const { code, out } = run(dir, null, { allowlistPath });
+  assert.equal(code, 1, out);
+  assert.match(
+    out,
+    /packages\/b\/gone\.ts: this change removed or renamed the file \(450 lines at the merge base\) but kept its row \(budget 450\)/,
+  );
+});
+
+test('a row deleted relative to the base for a file still over the limit says so (#4388)', () => {
+  // main's deletion taken for the other side's addition, in reverse: the
+  // resolution dropped a row main still needs. newOffenders fires (as it
+  // always did); the audit adds the WHY.
+  const { dir, allowlistPath } = auditTree(
+    { 'packages/a/big.ts': 500, 'packages/b/kept.ts': 450 },
+    `${AUDIT_BASE}   450 packages/b/kept.ts\n`,
+  );
+  writeFileSync(allowlistPath, AUDIT_BASE);
+  const { code, out } = run(dir, null, { allowlistPath });
+  assert.equal(code, 1, out);
+  assert.match(out, /New source file\(s\) over 400 lines with no allowlist row/);
+  assert.match(
+    out,
+    /packages\/b\/kept\.ts: row \(budget 450\) deleted relative to the merge base, but the file measures 450 > 400/,
+  );
+  assert.match(out, /-1 deleted/);
+});
+
+test('what --update writes on a grown file is what the audit then accepts (#4388)', () => {
+  const { dir, allowlistPath } = auditTree({ 'packages/a/big.ts': 500 }, AUDIT_BASE);
+  writeSource(dir, 'packages/a/big.ts', 520);
+  const updated = run(dir, null, { allowlistPath, extra: ['--update', '--allow-raise'] });
+  assert.equal(updated.code, 0, updated.out);
+  const { code, out } = run(dir, null, { allowlistPath });
+  assert.equal(code, 0, out);
+  assert.match(out, /\+0 added, \^1 raised, v0 lowered, -0 deleted/);
+  assert.match(out, /OK \(1 files measured, 1 allowlisted, 0 new over 400; vs merge-base [0-9a-f]{9}: \+0 \^1 v0 -0\)/);
+});
+
+test('no merge base: CI fails closed, a developer gets a loud skip, --base names one by hand (#4388)', () => {
+  // A plain directory has no repository, so nothing to diff against.
+  const plain = tree({ 'packages/a/big.ts': 500 });
+  const ci = run(plain, '500 packages/a/big.ts\n', { env: { CI: 'true' } });
+  assert.equal(ci.code, 1, ci.out);
+  assert.match(ci.out, /merge-base audit could not run: .*is not inside a git worktree/);
+  assert.match(ci.out, /CI is set, so this is a failure, not a skip/);
+  const local = run(plain, '500 packages/a/big.ts\n');
+  assert.equal(local.code, 0, local.out);
+  assert.match(local.out, /WARNING -- merge-base audit SKIPPED/);
+  assert.match(local.out, /OK \(1 files measured, 1 allowlisted, 0 new over 400; merge-base audit SKIPPED\)/);
+
+  // A repository whose upstream is not called origin: `--base` says which ref.
+  const { dir, git, allowlistPath } = gitTree({ 'packages/a/big.ts': 500 }, { allowlist: AUDIT_BASE });
+  git('update-ref', 'refs/remotes/upstream/main', 'main');
+  git('checkout', '-q', '-b', 'feature');
+  const fellBack = run(dir, null, { allowlistPath });
+  assert.equal(fellBack.code, 0, fellBack.out);
+  assert.match(fellBack.out, /WARNING -- no merge base with origin\/main; fell back to local 'main'/);
+  const named = run(dir, null, { allowlistPath, extra: ['--base', 'upstream/main'] });
+  assert.equal(named.code, 0, named.out);
+  assert.doesNotMatch(named.out, /WARNING/);
+  assert.match(named.out, /vs merge-base upstream\/main \([0-9a-f]{9}\)/);
+  const bogus = run(dir, null, { allowlistPath, extra: ['--base', 'no-such-ref'], env: { CI: '1' } });
+  assert.equal(bogus.code, 1, bogus.out);
+  assert.match(bogus.out, /no merge base with no-such-ref/);
+});
+
+test('the Rust allowlist is audited by the same rules from here (#4388)', () => {
+  // The cargo test has no git, so a hand-picked Rust row is judged here.
+  const rustAllowlist = 'rust/processing/tests/module_size_allowlist.txt';
+  const rustRows = (budget) => `# rust rows\n${String(budget).padStart(8)} rust/core/src/big.rs\n`;
+  const { dir, git, allowlistPath } = gitTree(
+    { 'packages/a/big.ts': 500 },
+    { allowlist: AUDIT_BASE, extraFiles: { [rustAllowlist]: rustRows(500), 'rust/core/src/big.rs': source(500) } },
+  );
+  git('update-ref', 'refs/remotes/origin/main', 'main');
+  git('checkout', '-q', '-b', 'feature');
+  writeFileSync(join(dir, rustAllowlist), rustRows(520));
+  const { code, out } = run(dir, null, { allowlistPath });
+  assert.equal(code, 1, out);
+  assert.match(
+    out,
+    /rust\/processing\/tests\/module_size_allowlist\.txt vs merge-base origin\/main \([0-9a-f]{9}\): \+0 added, \^1 raised/,
+  );
+  assert.match(out, /rust\/core\/src\/big\.rs: row raised 500 -> 520, but the file measures 500: 20 line\(s\) of headroom/);
+  // A duplicate row -- the classic conflict residue -- fails outright.
+  writeFileSync(join(dir, rustAllowlist), `${rustRows(500)}     500 rust/core/src/big.rs\n`);
+  const dup = run(dir, null, { allowlistPath });
+  assert.equal(dup.code, 1, dup.out);
+  assert.match(dup.out, /module_size_allowlist\.txt: duplicate row for rust\/core\/src\/big\.rs/);
+});

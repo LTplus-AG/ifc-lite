@@ -181,7 +181,9 @@ export function allowlistDigests(map) {
  *  - `grew` (FAILS): allowlisted and over its recorded budget.
  *  - `shrunk` / `missing` / `slack` (ADVISORY): rows that should be deleted or
  *    lowered. Advisory only, so that a merge landing a shrink elsewhere cannot
- *    turn an unrelated PR red — the same choice the Rust gate makes.
+ *    turn an unrelated PR red — the same choice the Rust gate makes. When
+ *    the shrink is the change's OWN, check mode's merge-base audit fails the
+ *    kept row instead (#4388, `module-size-base-audit.mjs`).
  *
  * `slack` is the one this gate could not previously see at all. A row whose
  * budget sits ABOVE the file's current size is headroom the file may grow into

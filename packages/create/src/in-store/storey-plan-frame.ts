@@ -70,7 +70,9 @@ const IDENTITY_FRAME: StoreyPlanFrame = { origin: [0, 0], axisX: [1, 0] };
  *    composed and a partial chain moves the geometry by the wrong amount;
  *  - any link tips out of plan — an `IfcAxis2Placement3D.Axis` that is not
  *    +Z — because a tilted chain has no planar inverse, and projecting it
- *    yields a room that is turned rather than one that is obviously wrong.
+ *    yields a room that is turned rather than one that is obviously wrong;
+ *  - the chain closes on itself, so composing every link of it reaches no
+ *    world frame to express the result in.
  */
 export function storeyPlanFrame(
   store: IfcDataStore,
@@ -87,8 +89,14 @@ export function storeyPlanFrame(
     if (!placementIsInPlan(store, extractor, placementId)) return null;
   }
   // `hops === chain.size` composes every link, so the result is expressed in
-  // the frame the topmost link's parent would be in — the world frame, since
-  // that link has no `PlacementRelTo`.
+  // the frame the topmost link's parent would be in — the world frame, PROVIDED
+  // the topmost link has no `PlacementRelTo`. `storeyPlacementChain` also stops
+  // on a `PlacementRelTo` it has already visited, so a self-referential chain in
+  // malformed IFC ends with a link that still has a parent, and composing every
+  // link then lands in no frame at all rather than the world. Refuse.
+  const last = [...chain.keys()][chain.size - 1];
+  const lastPlacement = readEntity(store, extractor, undefined, last);
+  if (lastPlacement && numericAttr(lastPlacement.attributes[0]) !== null) return null;
   const frame = storeyFrameAboveBy(store, extractor, undefined, chain, chain.size);
   if (!frame) return null;
   let scale = 1;

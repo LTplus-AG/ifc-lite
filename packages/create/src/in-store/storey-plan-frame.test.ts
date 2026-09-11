@@ -151,6 +151,15 @@ describe('storeyPlanFrame', () => {
     expect(storeyPlanFrame(await parse(upright), 4)).not.toBeNull();
   });
 
+  it('refuses a chain that closes on itself', async () => {
+    // The site placement points back at the storey's own, so the walk stops on
+    // a link that still has a parent. Composing every link then lands in no
+    // world frame at all — and the length of the walk is bounded by the
+    // visited set, so this is a wrong answer rather than a hang.
+    const cyclic = fixture().replace('#11=IFCLOCALPLACEMENT($,#12);', '#11=IFCLOCALPLACEMENT(#10,#12);');
+    expect(storeyPlanFrame(await parse(cyclic), 4)).toBeNull();
+  });
+
   it('refuses an unknown storey id rather than reporting the identity', async () => {
     expect(storeyPlanFrame(await parse(fixture()), 999)).toBeNull();
   });

@@ -75,7 +75,7 @@ test('first-user path: a glTF scan bundle uploaded in the panel reaches the cano
   Object.defineProperty(picker, 'files', { configurable: true, value: transfer.files });
   await act(async () => picker.dispatchEvent(new window.Event('change', { bubbles: true })));
   // The scan is listed the moment the loader publishes it; the region follows once its images settle.
-  await until(() => /1 triangles in this region/.test(ui.textContent ?? ''), 'the packed scan to load and its region to be prepared');
+  await until(() => /1 triangle in this region/.test(ui.textContent ?? ''), 'the packed scan to load and its region to be prepared');
   const [scan] = [...useViewerStore.getState().models.values()];
   assert.equal(scan.name, 'scan.glb', 'the bundle was packed into one GLB and loaded as a model');
   assert.equal(scan.loadState, 'complete');
@@ -90,6 +90,6 @@ test('first-user path: a glTF scan bundle uploaded in the panel reaches the cano
   assert.ok(created && created.id !== scan.id, 'the destination is the model created in-flow');
   assert.equal(useViewerStore.getState().models.size, 2, 'the scan stays loaded beside its destination');
   assert.equal(source.value, `${scan.id}:0`, 'the chosen source survives adding the destination');
-  assert.match(ui.textContent ?? '', /1 triangles in this region/);
+  assert.match(ui.textContent ?? '', /1 triangle in this region/);
   assert.match(ui.textContent ?? '', /selected scan region is still ready/);
 });

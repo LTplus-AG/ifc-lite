@@ -35,6 +35,8 @@ export function AppearanceCapturePanel() {
   const candidate = chosen ? candidates.find(item => item.id === chosen)
     : candidates.find(item => item.mesh.expressId === selected) ?? candidates[0];
   const [triangles, setTriangles] = useState<number[]>([]);
+  // An over-limit surface starts with a single placeholder triangle; a user's own one-triangle region looks the same by length.
+  const [placeholder, setPlaceholder] = useState(false);
   const [prepared, setPrepared] = useState<CapturedMeshSource | null>(null);
   const [assetId, setAssetId] = useState<string | null>(null);
   const [Name, setName] = useState('Captured surface');
@@ -55,6 +57,7 @@ export function AppearanceCapturePanel() {
   const [imagesSettled, setImagesSettled] = useState(0);
   useEffect(() => {
     operation.current?.abort(); setReady(false); setPrepared(null); setAssetId(null); setMessage(''); setError(false);
+    setPlaceholder(false);
     if (!candidate) { setTriangles([]); return; }
     setChosen(candidate.id);
     try {
@@ -62,6 +65,7 @@ export function AppearanceCapturePanel() {
       const count = candidate.mesh.indices.length / 3;
       setAssetId(first.assetId);
       setTriangles(count <= MAX_CAPTURE_ROWS ? Array.from({ length: count }, (_, i) => i) : [0]);
+      setPlaceholder(count > MAX_CAPTURE_ROWS);
       if (count > MAX_CAPTURE_ROWS) setMessage(`This surface has ${count.toLocaleString()} triangles. Select a region with at most 200,000 triangles and vertices.`);
     } catch (failure) {
       setTriangles([]); setMessage(failure instanceof Error ? failure.message : String(failure));
@@ -80,11 +84,11 @@ export function AppearanceCapturePanel() {
     setPrepared(null); if (!candidate || !assetId) return;
     if (placement.preview) { setMessage('Finish repositioning the model to create this region.'); return; }
     if (!triangles.length) { setMessage('The rectangle contains no triangle centres. Choose another region or Entire surface.'); return; }
-    try { setPrepared(prepareCapturedRegion(candidate.modelId,candidate.mesh,triangles)); setError(false); setMessage(candidate.mesh.indices.length / 3 > MAX_CAPTURE_ROWS && triangles.length === 1
-      ? `This surface is larger than the capture limit. Use Select region to keep at most 200,000 triangles and vertices.`
+    try { setPrepared(prepareCapturedRegion(candidate.modelId,candidate.mesh,triangles)); setError(false); setMessage(placeholder
+      ? 'This surface is larger than the capture limit. Use Select region to keep at most 200,000 triangles and vertices.'
       : 'Review the textured region, then choose where to create it.'); }
     catch (failure) { setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); }
-  }, [candidate?.modelId, candidate?.mesh, assetId, triangles, placement, created]);
+  }, [candidate?.modelId, candidate?.mesh, assetId, triangles, placeholder, placement, created]);
   async function createDestination() {
     if (loading || busy) return;
     setMessage('Creating an editable IFC4 model…'); setError(false);
@@ -121,11 +125,11 @@ export function AppearanceCapturePanel() {
       {candidates.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
     </select></label>
     {!candidate && <p className="text-[11px] text-muted-foreground">Choose a GLB, a glTF bundle (.gltf + .bin + textures), or an IFC with a supported base-colour texture.</p>}
-    {!candidate && excludedSurfaces > 0 && <p className="text-[11px] text-muted-foreground">{excludedSurfaces.toLocaleString()} loaded {excludedSurfaces === 1 ? 'surface is' : 'surfaces are'} unavailable because no supported base-colour texture and UV mapping was found.</p>}
+    {!candidate && excludedSurfaces > 0 && <p className="text-[11px] text-muted-foreground">None of the {excludedSurfaces.toLocaleString()} loaded {excludedSurfaces === 1 ? 'surface has' : 'surfaces have'} a supported base-colour texture with UV mapping.</p>}
     {candidate && assetId && <AppearanceMeshPreview key={candidate.id} mesh={candidate.mesh} assetId={assetId} triangles={triangles} disabled={busy || loading}
-      onRegion={ids => { if (ids.length > MAX_CAPTURE_ROWS) { setError(true); setMessage('Select a smaller region with at most 200,000 triangles and vertices.'); return; } setTriangles(ids); }}
+      onRegion={ids => { if (ids.length > MAX_CAPTURE_ROWS) { setError(true); setMessage('Select a smaller region with at most 200,000 triangles and vertices.'); return; } setPlaceholder(false); setTriangles(ids); }}
       onReady={value => { setReady(value); if (value && !message) { setError(false); setMessage('Review the textured region, then choose where to create it.'); } }} onError={text => { setReady(false); setError(true); setMessage(text); }} />}
-    {!!assetId && <p className="text-[11px]" role="status">{triangles.length.toLocaleString()} triangles in this region</p>}
+    {!!assetId && <p className="text-[11px]" role="status">{triangles.length.toLocaleString()} {triangles.length === 1 ? 'triangle' : 'triangles'} in this region</p>}
     </div>
     <fieldset disabled={busy || loading || !!room} className="space-y-2 rounded-md border bg-muted/20 p-3">
       <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-medium">2. Choose a destination</h3>

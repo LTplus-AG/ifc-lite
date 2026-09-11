@@ -659,7 +659,7 @@ jobs:
       - name: Check changeset-bump gate regressions
         run: node --test scripts/check-changeset-bump.test.mjs
 
-  # The viewer's own suite, split out of `node-tests` AND sharded four ways.
+  # The viewer's own suite, split out of `node-tests` AND sharded eight ways.
   #
   # Measured, not guessed. Splitting it out of node-tests took that lane from
   # a 25:00 timeout to 5:32 SUCCESS, so everything except the viewer costs five
@@ -669,7 +669,13 @@ jobs:
   #
   # Healthy shard timings, recorded so the next person seeing this lane creep
   # knows what good looks like rather than only what broken looked like:
-  # 2:29, 2:01, 1:50 against a 25 minute cap.
+  # 2:29, 2:01, 1:50 against a 25 minute cap, at FOUR shards over 521 files.
+  # The suite had grown to 803 files by 2026-09-11 and the four shards were
+  # measured at 5.6-8.2 min on hosted runners, on the frontend PR's critical
+  # path; EIGHT shards (CI redesign, step 4) halves the per-shard file count
+  # back to roughly the size the timings above were recorded at. Membership
+  # is a hash of the path (below), so going 4 -> 8 reassigns files exactly
+  # once and then stays stable.
   #
   # Shard membership is a hash of the file PATH, not its index in the sorted
   # list. With `NR % n` every file after an added or removed test moves to a
@@ -736,7 +742,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -776,20 +782,21 @@ jobs:
       #    in turbo.json is an explicit allowlist and does not include these,
       #    and the `test` task declares no `env`/`passThroughEnv`. Routed
       #    through turbo, TEST_SHARD never reached the script and all four
-      #    shards ran the full 521 files, taking an identical 25:15 each. That
+      #    shards (then) ran the full 521 files, taking an identical 25:15 each. That
       #    identical timing is what exposed it: quartering the input cannot
       #    leave the duration unchanged.
       # 2. `test` dependsOn `build`, so turbo also ran the viewer's Vite app
       #    build (53s of "✓ built in 53.43s") which its tests do not need. The
       #    sibling dists the tests DO need come from the downloaded artifact.
       #
-      # `TEST_SHARDS`/`TEST_SHARD` select every Nth file (see apps/viewer's
-      # test script). Unset, the script takes all 521, so a local `pnpm test`
-      # is unchanged. The split is exact: 130+131+130+130 = 521 files, 521
-      # distinct paths, so nothing is dropped or run twice.
+      # `TEST_SHARDS`/`TEST_SHARD` select the files whose path hash lands in
+      # this shard (see apps/viewer's test script). Unset, the script takes
+      # every file, so a local `pnpm test` is unchanged. The split is exact:
+      # every path hashes to exactly one of the eight residues, so nothing is
+      # dropped or run twice (521 files split 130+131+130+130 at four).
       - run: pnpm --filter @ifc-lite/viewer run test
         env:
-          TEST_SHARDS: '4'
+          TEST_SHARDS: '8'
           TEST_SHARD: ${{ matrix.shard }}
 
   node-tests:
@@ -1496,7 +1503,18 @@ jobs:
       # finished 7m55s in, and the viewer then had 17 minutes and did not
       # finish. Splitting it out runs the two halves CONCURRENTLY, so each gets
       # a whole budget instead of a leftover.
-      - run: pnpm exec turbo test --filter=!@ifc-lite/viewer
+      #
+      # `@ifc-lite/provenance` runs in its own job too (`provenance-tests`,
+      # CI redesign step 4): measured on a 9.0 min Node tests run, `turbo test`
+      # was 6.05 min and ONE file, packages/provenance/test/merge-battery.test.ts,
+      # was 353 s of it -- more than every other package's suite combined.
+      #
+      # `--only`: the `test` task `dependsOn: ["build"]` in turbo.json, so
+      # without it turbo rebuilt all 46 packages here first -- work the
+      # `build` job already did and shipped in the artifact downloaded above.
+      # Every test runs against that artifact's dist/ exactly as before; only
+      # the redundant rebuild is gone.
+      - run: pnpm exec turbo test --only --filter=!@ifc-lite/viewer --filter=!@ifc-lite/provenance
       - name: Integration tests (parse → quantities → export)
         # Step-scoped timeout: a hung harness must fail fast here, not
         # silently consume the whole job budget.
@@ -1520,6 +1538,41 @@ jobs:
       # emission order does -- the #2388 failure class). Issue #2199.
       - name: Snap edge reconstruction (real wasm pipeline)
         run: pnpm test:snap-edges
+
+  # `@ifc-lite/provenance` alone. Measured (CI redesign, step 4): its
+  # merge-battery.test.ts is 353 s on a hosted runner, which on the shared
+  # Node tests lane was more than every other package's suite together and
+  # put that one file on the frontend PR's critical path. Its own job runs it
+  # CONCURRENTLY with the rest of node-tests, the same move that took the
+  # viewer suite out of that lane. Run directly, not through turbo, for the
+  # reasons viewer-tests spells out (no rebuild; the sibling dists it imports
+  # come from the artifact). No fixtures: the suite reads only its own
+  # committed golden vectors under packages/provenance/test/golden.
+  provenance-tests:
+    name: Provenance tests
+    needs: [changes, build]
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    # 353 s for the one file, ~6.5 min for the package on a hosted runner; 15
+    # leaves headroom without hiding a hang for long.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: build-output
+          path: packages
+      - run: pnpm --filter @ifc-lite/provenance --fail-if-no-match run test
 
   # Functional smoke of the real viewer: real WASM pipeline + WebGPU
   # renderer (swiftshader) + pick pass + section plane, asserted through
@@ -2124,7 +2177,7 @@ jobs:
 
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, revert-oracle, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks, agents-md, license-headers]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks, agents-md, license-headers]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
@@ -2143,6 +2196,7 @@ jobs:
             [typecheck]="${{ needs.typecheck.result }}"
             [lint]="${{ needs.lint.result }}"
             [node-tests]="${{ needs.node-tests.result }}"
+            [provenance-tests]="${{ needs.provenance-tests.result }}"
             [viewer-tests]="${{ needs.viewer-tests.result }}"
             [viewer-e2e]="${{ needs.viewer-e2e.result }}"
             [rust-tests]="${{ needs.rust-tests.result }}"

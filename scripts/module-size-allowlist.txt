@@ -341,7 +341,7 @@
    855 scripts/check-review-posted.mjs
    446 scripts/check-source-text-assertions.mjs
    423 scripts/check-test-glob-coverage.mjs
-   607 scripts/check-test-revert-oracle.mjs
+   640 scripts/check-test-revert-oracle.mjs
    703 scripts/check-test-wiring.mjs
    488 scripts/check-wasm-disposal.mjs
    499 scripts/docs/check-doc-samples.mjs

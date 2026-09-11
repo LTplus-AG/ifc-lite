@@ -300,6 +300,16 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
     [models, ifcDataStore]
   );
 
+  /** A registered model whose metadata has not hydrated yet cannot name its entities YET (#4529). */
+  const isEntityPending = useCallback(
+    (globalId: number): boolean => {
+      const resolved = fromGlobalIdFromModels(models, globalId);
+      const model = resolved && resolved.modelId !== 'legacy' ? models.get(resolved.modelId) : undefined;
+      return !!model && !model.ifcDataStore && model.loadState !== 'error';
+    },
+    [models]
+  );
+
   /**
    * Convert IFC GlobalId string to expressId (with model offset for federation)
    * Returns { expressId, modelId } or null if not found
@@ -379,11 +389,15 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       let hiddenGuids: string[] | undefined;
       let visibleGuids: string[] | undefined;
       if (includeHidden) {
-        const capture = captureVisibility(isolatedEntities, hiddenEntities, expressIdToGlobalId);
+        const capture = captureVisibility(isolatedEntities, hiddenEntities, expressIdToGlobalId, isEntityPending);
         ({ visibleGuids, hiddenGuids } = capture);
         if (capture.notice) {
-          console.warn(`[useBCF] ${capture.notice.unnameable} of ${capture.notice.total} ${capture.notice.kind} entities have no resolvable IFC GlobalId; ${capture.notice.omitted ? 'omitting the viewpoint visibility component' : 'recording the rest'}.`);
-          toast.info(describeVisibilityNotice(capture.notice));
+          const { unnameable, total, kind, omitted, pending, ids } = capture.notice;
+          console.warn(
+            `[useBCF] ${unnameable} of ${total} ${kind} entities have no resolvable IFC GlobalId${pending ? ' (model metadata still loading)' : ''}; ${omitted ? 'omitting the viewpoint visibility component' : 'recording the rest'}. Global ids: ${ids.join(', ')}`,
+          );
+          const message = describeVisibilityNotice(capture.notice);
+          if (message) toast.info(message);
         }
       }
 

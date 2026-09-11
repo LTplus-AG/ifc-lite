@@ -195,6 +195,6 @@ describe('useBCF — createViewpointFromState with an unresolvable isolate', () 
       'exactly the nameable entity is the allowlist',
     );
     assert.equal(seen.length, 1, 'the author is told what was not recorded');
-    assert.match(seen[0], /1 of 2 isolated elements/);
+    assert.match(seen[0], /1 of 2 isolated element has no IFC GlobalId and will appear hidden/);
   });
 });

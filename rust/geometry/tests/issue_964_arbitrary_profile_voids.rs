@@ -22,6 +22,8 @@
 //! holes. The buggy AABB fallback removed ~3% more material (each round/hex
 //! hole grew to its bounding box), which this tolerance rejects.
 
+mod support;
+
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
@@ -90,12 +92,17 @@ fn bottom_cap_area(mesh: &Mesh) -> f64 {
 fn redundant_openings_do_not_rectangularize_profile_voids() {
     let content = match std::fs::read_to_string(fixture_path()) {
         Ok(s) => s,
-        Err(_) => {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture missing at {FIXTURE} and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
             eprintln!(
                 "skipping issue-964 regression: fixture missing at {FIXTURE}; run `pnpm fixtures`"
             );
             return;
         }
+        Err(e) => panic!("fixture {FIXTURE} exists but could not be read: {e}"),
     };
 
     let void_index = build_void_index_like_production(&content);

@@ -11,7 +11,7 @@ import { getRef, loadLayer, loadRefLayers } from './layer-store.js';
 import { publishLayer } from './layer-publish.js';
 import { diffLayerStacks } from './layer-diff.js';
 import { mergeIntoRef } from './layer-merge.js';
-import { bakeRef, logRef, revertInRef } from './layer-history.js';
+import { bakeRef, logRef, rebaseLayerOnto, revertInRef } from './layer-history.js';
 import { createRef, listRefs, protectRef } from './ref.js';
 import { CLASS, FIRE, makeDelta, setupMain, tmpStore } from './layer-test-helpers.js';
 
@@ -130,6 +130,86 @@ describe('diff', () => {
     // it, so its concurrent pset edit is no longer a "modified" entry.
     expect(result.deleted).toEqual(['storey-eg', 'wall-1']);
     expect(result.modified).toEqual([]);
+  });
+});
+
+describe('rebase', () => {
+  it('re-verifies a carried scope claim against the rebased delta and flags a violation', () => {
+    const store = tmpStore();
+    setupMain(store);
+    // Candidate touches FireRating (covered by its claim) AND sneaks in an
+    // acoustics edit (not covered) — same shape as the publish-path
+    // 'flags ops outside the declared claims' test, but authored so the
+    // candidate's base goes stale before it is rebased.
+    const candidate = publishLayer(store, {
+      delta: makeDelta([
+        {
+          path: 'wall-1',
+          attributes: {
+            [FIRE]: 'REI90',
+            'bsi::ifc::v5a::Pset_Acoustics::SoundRating': 42,
+          },
+        },
+      ]),
+      baseRef: 'main',
+      intent: 'Edit fire rating (and sneak in acoustics)',
+      scope: ['model.mutate:Pset_FireSafety*@IfcWall'],
+      principal: 'agent-1',
+      kind: 'agent',
+    });
+    expect(candidate.scopeVerified).toBe(false);
+
+    // Advance the ref past the candidate's base so a real rebase is needed.
+    const advance = publishLayer(store, {
+      delta: makeDelta([
+        { path: 'storey-eg', children: { Wall: 'wall-1', Wall2: 'wall-2' } },
+        { path: 'wall-2', attributes: { [CLASS]: { code: 'IfcWall', uri: 'u' } } },
+      ]),
+      baseRef: 'main',
+      intent: 'Add wall-2',
+      principal: 'carol',
+    });
+    mergeIntoRef(store, { candidateId: advance.layerId, into: 'main' });
+
+    const outcome = rebaseLayerOnto(store, candidate.layerId, 'main');
+    expect(outcome.status).toBe('rebased');
+    if (outcome.status !== 'rebased') throw new Error('expected rebased');
+    expect(outcome.scopeVerified).toBe(false);
+    expect(outcome.violations).toEqual([
+      { path: 'wall-1', capability: 'model.mutate:Pset_Acoustics', ifcType: 'IfcWall' },
+    ]);
+  });
+
+  it('verifies cleanly when the carried claim still covers the rebased delta', () => {
+    const store = tmpStore();
+    setupMain(store);
+    const candidate = publishLayer(store, {
+      delta: makeDelta([{ path: 'wall-1', attributes: { [FIRE]: 'REI90' } }]),
+      baseRef: 'main',
+      intent: 'Bump fire rating',
+      scope: ['model.mutate:Pset_FireSafety*@IfcWall'],
+      principal: 'agent-1',
+      kind: 'agent',
+    });
+    expect(candidate.scopeVerified).toBe(true);
+
+    // Advance the ref past the candidate's base so a real rebase is needed.
+    const advance = publishLayer(store, {
+      delta: makeDelta([
+        { path: 'storey-eg', children: { Wall: 'wall-1', Wall2: 'wall-2' } },
+        { path: 'wall-2', attributes: { [CLASS]: { code: 'IfcWall', uri: 'u' } } },
+      ]),
+      baseRef: 'main',
+      intent: 'Add wall-2',
+      principal: 'carol',
+    });
+    mergeIntoRef(store, { candidateId: advance.layerId, into: 'main' });
+
+    const outcome = rebaseLayerOnto(store, candidate.layerId, 'main');
+    expect(outcome.status).toBe('rebased');
+    if (outcome.status !== 'rebased') throw new Error('expected rebased');
+    expect(outcome.scopeVerified).toBe(true);
+    expect(outcome.violations).toEqual([]);
   });
 });
 

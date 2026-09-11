@@ -78,8 +78,8 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
 
       {unreadable > 0 && (
         <p role="alert" data-clash-filter-unreadable className="text-[10px] leading-snug text-amber-700 dark:text-amber-400">
-          {unreadable === 1 ? 'One rule in this filter was' : `${unreadable} rules in this filter were`} saved by a newer
-          version and cannot be read here. Runs using it are refused; editing the filter discards
+          {unreadable === 1 ? 'One rule in this filter' : `${unreadable} rules in this filter`} cannot be read by this
+          version (saved by a newer version, or malformed). Runs using it are refused; any edit here discards
           {unreadable === 1 ? ' that rule' : ' those rules'}.
         </p>
       )}

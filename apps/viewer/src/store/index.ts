@@ -273,7 +273,8 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createSpaceMouseSlice(...args),
   ...createZonesSlice(...args),
   ...createModelTagsSlice(...args),
-  ...createExtensionsSlice(...args), ...createSourcesSlice(...args),
+  ...createExtensionsSlice(...args),
+  ...createSourcesSlice(...args),
   ...createAppearanceSlice(...args),
 
   // Reset all viewer state when loading new file

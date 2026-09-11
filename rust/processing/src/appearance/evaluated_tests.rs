@@ -7,9 +7,9 @@ fn request() -> AppearanceRequest {
     AppearanceRequest { representation_policy:RepresentationPolicy::EvaluatedOccurrence,
         schema:"IFC4".into(),source_revision:"real-AC20".into(),next_express_id:100_000,product_ids:vec![35169],
         image_uri:"textures/evaluated.png".into(),repeat_s:true,repeat_t:true,
-        mapping:Mapping::Box {frame:MappingFrame::World,origin:[0.;3],metres_per_tile:[1.;3]} }
+        mapping:Mapping::Box {frame:MappingFrame::World,origin:[0.;3],metres_per_tile:[1.;3]},face_masks:Vec::new() }
 }
-fn real_source()->Option<String> {
+pub(crate) fn real_source()->Option<String> {
     let path=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/models/ara3d/AC20-FZK-Haus.ifc");
     match std::fs::read_to_string(path) {
         Ok(source)=>Some(source),
@@ -17,7 +17,7 @@ fn real_source()->Option<String> {
         Err(error)=>panic!("read fixture: {error}"),
     }
 }
-fn corners(mesh:&crate::types::mesh::MeshData)->Vec<[f64;3]> {
+pub(crate) fn corners(mesh:&crate::types::mesh::MeshData)->Vec<[f64;3]> {
     mesh.indices.iter().map(|&i|std::array::from_fn(|axis|f64::from(mesh.positions[i as usize*3+axis])+mesh.origin[axis])).collect()
 }
 #[test]

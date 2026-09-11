@@ -398,6 +398,7 @@ fn issue_4381_centroid_only_observation_cannot_apply_an_all_old_raster() {
             origin: [0.; 3],
             metres_per_tile: [1.; 3],
         },
+        face_masks: Vec::new(),
     };
     let old_gate_output = atlas_plan::plan_sampled_appearance(
         CONTROLLED_IFC.as_bytes(),

@@ -5,6 +5,7 @@
 //! geometry changes. Plans are applied atomically by the host mutation editor.
 mod budget;
 mod evaluated;
+mod evaluated_mask;
 mod evaluated_source;
 mod evaluated_openings;
 mod evaluated_replacement;
@@ -119,6 +120,11 @@ fn plan_with_source(bytes:&[u8], request:&AppearanceRequest, source:&mut Source<
     }
     if request.product_ids.len() > 10_000 {
         return Err("Appearance scope must contain 1..10000 products".into());
+    }
+    // Normalization consumes its masks and clears them; a mask reaching the
+    // direct pass means the caller never permitted conversion.
+    if !request.face_masks.is_empty() {
+        return Err("Face masks require the evaluatedOccurrence representation policy".into());
     }
     let uri = &request.image_uri;
     validate_image_uri(uri)?;

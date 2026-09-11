@@ -46,8 +46,19 @@ pub(super) fn align_source_corners(
         })
         .collect();
     let after = produce(source, product_id, &replacements, None)?;
-    if before.len() != items.len() || after.len() != items.len() {
+    // A face-masked conversion leaves one retained face set unmapped; it must
+    // survive both passes with identical geometry and no texture binding.
+    let retained = source.evaluated_splits.get(&product_id).map(|split| split.retained);
+    let expected = items.len() + usize::from(retained.is_some());
+    if before.len() != expected || after.len() != expected {
         return Err("Canonical representation was split, combined, or rejected".into());
+    }
+    if let Some(id) = retained {
+        let (old, new) = (one_item(&before, id)?, one_item(&after, id)?);
+        if old.positions != new.positions || old.indices != new.indices || old.normals != new.normals
+            || old.origin != new.origin || old.uvs.is_some() || new.uvs.is_some() || old.texture.is_some() || new.texture.is_some() {
+            return Err("The unmasked face set must keep its source geometry without a texture".into());
+        }
     }
     for item in items {
         let old = one_item(&before, item.geometry_item_id)?;

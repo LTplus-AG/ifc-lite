@@ -155,8 +155,11 @@ describe('wallRectsFromMeshes', () => {
       (near(a[0], endA.ifcX, 1e-3) && near(a[1], endA.ifcY, 1e-3) && near(b[0], endB.ifcX, 1e-3) && near(b[1], endB.ifcY, 1e-3)) ||
       (near(a[0], endB.ifcX, 1e-3) && near(a[1], endB.ifcY, 1e-3) && near(b[0], endA.ifcX, 1e-3) && near(b[1], endA.ifcY, 1e-3));
     assert.ok(matches, `centreline ${JSON.stringify([a, b])} vs local A=${JSON.stringify(endA)} B=${JSON.stringify(endB)}`);
-    // Concretely: cx = shift.x = 100, cy = -shift.z = -20,
-    // mid-thickness ifcY = -20 - 0.4 = -20.4.
+    // Literal oracle, independent of any transform helper: cx = shift.x = 100,
+    // cy = -shift.z = -20, so the endpoints are (100, -20.4) and (104, -20.4)
+    // — an X-shift sign shared with `localIfc` would not hide itself here.
+    const xs = [a[0], b[0]].sort((p, q) => p - q);
+    assert.ok(near(xs[0], 100, 1e-3) && near(xs[1], 104, 1e-3), `centreline x ${xs}`);
     assert.ok(near(a[1], -20.4, 1e-3) && near(b[1], -20.4, 1e-3), `centreline y ${a[1]},${b[1]}`);
   });
 

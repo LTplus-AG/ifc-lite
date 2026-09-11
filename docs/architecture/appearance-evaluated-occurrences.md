@@ -6,16 +6,27 @@ parametric Body to become evaluated tessellation. A viewer must explain this
 tradeoff and show the converted products before Apply. Discard publishes nothing;
 conversion and appearance belong to one mutation/history operation.
 
-The first supported path is a mapped `IfcElement` occurrence with a uniquely
-owned `IfcProductDefinitionShape` and one uniquely owned Body shape wrapper.
-The wrapper may have ordinary presentation-layer membership. Its Items and
-RepresentationType change in place; its identity, context, layer membership,
-product placement, product identity, properties and semantic relationships stay
-intact. Non-Body curve and bounding-box wrappers remain untouched. Shared mapped
-items, representation maps, type products, source styles and sibling occurrences
-are never edited. Retaining the occurrence wrapper avoids creating orphaned
+A supported occurrence is an `IfcElement` (not a `StandardCase` subclass or a
+feature element) with a uniquely owned `IfcProductDefinitionShape` and one
+Body shape wrapper holding one item whose RepresentationType permits
+tessellation: `MappedRepresentation`, `SweptSolid`, `AdvancedSweptSolid`,
+`Brep`, `AdvancedBrep`, `CSG`, `Clipping`, `SolidModel`, `SurfaceModel`,
+`Tessellation` or `SectionedSpine`. Curve, point, annotation and bounding-box
+Body types are refused explicitly. The wrapper may have ordinary
+presentation-layer membership. A solid Body wrapper that a type's
+`IfcRepresentationMap` also references is supported: the occurrence receives a
+cloned wrapper with cloned plain layer assignments and its
+ProductDefinitionShape list is rewired, while the original wrapper stays with
+the map. A map of a `MappedRepresentation` wrapper is a chain and stays refused.
+Otherwise the wrapper's Items and RepresentationType change in place. Its
+identity, context, layer membership, product placement, product identity,
+properties and semantic relationships stay intact. Non-Body curve and
+bounding-box wrappers remain untouched. Shared mapped items, representation
+maps, type products, source styles and sibling occurrences are never edited.
+Retaining the occurrence wrapper avoids creating orphaned
 ProductDefinitionShapes or accidentally sharing shape wrappers contrary to
-IfcShapeModel.WR11.
+IfcShapeModel.WR11. The first merged slice accepted mapped occurrences only;
+the same funnel, exact corner check and refusals now cover the other types.
 
 The canonical element-production funnel evaluates the original occurrence.
 The first slice requires one unambiguous mesh and one explicit source surface
@@ -29,8 +40,8 @@ typed source overlay and return one composite mutation plan, with original-item
 provenance in `conversions`. Edits targeting private newly created rows are folded
 into their creation records before returning the plan.
 
-Unsupported cases remain diagnostics: opening-bearing products (including voids
-propagated through aggregates), StandardCase subclasses, shared Body/PDS wrappers,
+Unsupported cases remain diagnostics: aggregate-propagated voids and openings
+another host consumes, StandardCase subclasses, shared Body/PDS wrappers,
 shape aspects, styled presentation layers, additional renderable representations,
 multiple meshes or ambiguous/inherited styles, mapped-chain and nested geometry
 style overrides (even with matching colour), material-layer slicing, existing
@@ -72,3 +83,38 @@ replacement, not reconstructed from the renderer's rounded instance matrices.
 The existing aggregate plan geometry budget also bounds these retained arrays.
 The host must resolve the model index and registered placement frame explicitly;
 this payload does not make renderer instance expansion canonical UV provenance.
+
+## Face masks
+
+A face mask restricts one occurrence's appearance to a reviewed subset of its
+evaluated surface. Masks exist only under `representationPolicy:
+"evaluatedOccurrence"`; a request that carries `faceMasks` with the preserve
+policy is refused as a whole. Each accepted conversion reports a
+`surfaceFingerprint`: the hex SHA-256 of the product GlobalId, the authored
+product-local coordinates quantised to one micrometre, and the triangle
+topology. Express ids are deliberately excluded, so a renumbered export or a
+rigid placement edit keeps a mask, while any change to the evaluated surface
+(an edited opening, a different profile, another tessellator) changes the
+fingerprint. A mask is `{ productId, surfaceFingerprint, triangles }` with
+source triangle ordinals in the same order as `sourceIndices`.
+
+The planner never reuses triangle ordinals by position. A mask whose fingerprint
+differs from the surface it is about to author is the explicit exclusion
+`Face selection is stale: the evaluated surface geometry changed`; an empty
+mask, an ordinal beyond the surface, a mask on a product that already has a
+direct tessellated Body, a duplicate mask, or a mask outside the scope are
+refused with their own reasons. A mask covering every triangle is an ordinary
+whole-surface conversion and reports no split.
+
+A partial mask authors one shared `IfcCartesianPointList3D` and two
+`IfcTriangulatedFaceSet` items under the same Body wrapper: the masked face set
+receives the image or page atlas, the retained face set keeps the complementary
+triangles and a new `IfcStyledItem` pointing at the original source surface
+style entity. Both keep the source colour and material name through the
+canonical funnel, and each must reproduce its share of the source corners
+exactly before the plan leaves Rust. The conversion reports `maskedTriangles`
+(ascending) and `retainedGeometryItemId`; `sourceIndices` remains the complete
+source surface so preview and history keep one original. Face masks do not yet
+apply to direct tessellated bodies, which would require replacing a file-owned
+item, and the viewer's renderer preview still replaces owner parts one-to-one:
+its binder refuses a masked plan explicitly until the split preview lands.

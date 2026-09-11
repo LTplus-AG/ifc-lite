@@ -1,0 +1,36 @@
+{
+  "reader": "IfcOpenShell",
+  "version": "0.8.3.post2",
+  "product": 35169,
+  "GlobalId": "0oTQ6V1VbChulreA_hfmUa",
+  "maskedTriangles": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "surfaceFingerprint": "6fb4ffdfa4e2266120a241c6ced3318cc8839a287362efef100d30968988367e",
+  "texturedFaceSet": {
+    "id": 100001,
+    "triangles": 4,
+    "style": 100009,
+    "maxAuthoredCornerErrorMetres": 0.0
+  },
+  "retainedFaceSet": {
+    "id": 100003,
+    "triangles": 8,
+    "style": 17391,
+    "sourceStyle": true,
+    "maxAuthoredCornerErrorMetres": 0.0
+  },
+  "readerTriangles": 12,
+  "maxReaderCornerDistanceMetres": 0.0,
+  "changedExistingEntities": [
+    35155
+  ],
+  "unchangedSiblingMembers": 41,
+  "sourceSchemaFindings": 170,
+  "exportSchemaFindings": 170,
+  "newSchemaFindings": [],
+  "note": "Sampled corner comparison against the canonical native source snapshot; not a Hausdorff proof and not a browser claim."
+}

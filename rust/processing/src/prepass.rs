@@ -378,23 +378,41 @@ pub fn find_ifcproject_id(content: &[u8]) -> Option<u32> {
 /// (issue #4497 — STEP keyword case is not significant, so a lowercase or
 /// CamelCase exporter's `ifcproject(`/`IfcProject(` must resolve exactly like
 /// the uppercase form). `memchr::memmem` has no case-insensitive mode, so
-/// this scans for the 'I'/'i' lead byte with `memchr::memchr2` (still
-/// SIMD-accelerated) and verifies the rest of the keyword with an explicit
-/// ASCII case-insensitive byte compare — the least invasive way to keep this
-/// hot path SIMD-driven without a new dependency or an allocating uppercase
-/// pass over the whole file.
+/// this prefilters one byte of the keyword with `memchr::memchr2` (still
+/// SIMD-accelerated) and verifies the rest with an ASCII case-insensitive
+/// compare — no new dependency, and no allocating uppercase pass over the
+/// whole file.
+///
+/// The prefilter byte is `J`, not the lead `I`. `I` is the WORST choice in
+/// this alphabet: every IFC keyword starts with it and IFC GUIDs are full of
+/// `I`/`i`, so a 20 MB project-less file hits on nearly every record and the
+/// verify loop dominates — measured in release on such a file, leading on
+/// `I`/`i` costs 7.6–13.1 ms against 0.8–1.0 ms for the case-SENSITIVE
+/// `memmem` this replaced. `J` occurs in almost nothing else, which brings
+/// the same scan to 0.33–0.36 ms — below the `memmem` it replaces. `J` sits
+/// at `J_OFFSET` in the keyword, so a hit at `j` means a candidate start of
+/// `j - J_OFFSET`; a `J` in the first `J_OFFSET` bytes cannot start one.
 fn find_ifcproject_keyword(content: &[u8], from: usize) -> Option<usize> {
     const KEYWORD: &[u8] = b"IFCPROJECT(";
+    /// Index of `J` within `IFCPROJECT(`.
+    const J_OFFSET: usize = 6;
     let mut search_from = from;
-    while let Some(rel) = memchr::memchr2(b'I', b'i', &content[search_from..]) {
-        let candidate = search_from + rel;
+    loop {
+        let rel = memchr::memchr2(b'J', b'j', content.get(search_from..)?)?;
+        let j = search_from + rel;
+        search_from = j + 1;
+        // Below `J_OFFSET` bytes in, or behind `from`: either way this `J`
+        // cannot open a keyword at or after `from`. The second case matters
+        // because the caller resumes at `previous_hit + 1`, so without it the
+        // same hit would be returned forever.
+        let Some(candidate) = j.checked_sub(J_OFFSET).filter(|&c| c >= from) else {
+            continue;
+        };
         let end = candidate + KEYWORD.len();
         if end <= content.len() && content[candidate..end].eq_ignore_ascii_case(KEYWORD) {
             return Some(candidate);
         }
-        search_from = candidate + 1;
     }
-    None
 }
 
 fn find_ifcproject_id_inner(content: &[u8], refused: &mut usize) -> Option<u32> {
@@ -423,7 +441,8 @@ fn find_ifcproject_id_inner(content: &[u8], refused: &mut usize) -> Option<u32> 
             while i > 0 && content[i - 1].is_ascii_digit() {
                 i -= 1;
             }
-            if i > 0 && content[i - 1] == b'#' && i < digits_end {
+            if i > 0 && content[i - 1] == b'#' && i < digits_end && starts_a_record(content, i - 1)
+            {
                 // Refuse (not wrap) above u32::MAX (#3421); None here just
                 // keeps searching, same as the "not found" case below.
                 // Counted (issue #3752) so the caller can report it via the
@@ -434,11 +453,54 @@ fn find_ifcproject_id_inner(content: &[u8], refused: &mut usize) -> Option<u32> 
                 }
             }
         }
-        // `IFCPROJECT(` not preceded by `#<digits>=` (e.g. inside a string)
-        // — keep searching.
+        // `IFCPROJECT(` not preceded by a record-starting `#<digits>=` (e.g.
+        // the whole thing quoted inside a string) — keep searching.
         from = kw + 1;
     }
     None
+}
+
+/// Does the `#` at `hash` begin a record, rather than sit inside a quoted
+/// string or a comment?
+///
+/// 10303-21 terminates every entity instance with `;`, so a declaration's
+/// `#` is preceded — across trivia only — by that `;` or by the start of
+/// input. Without this check a description or comment containing a
+/// record-shaped decoy such as `'note: #9=ifcproject( …'` is accepted, and
+/// the scan returns a WRONG express id AND stops, so the real project is
+/// never reached: `extract_length_unit_scale` then rejects that id on its
+/// `IFCPROJECT` type guard and the caller's `unwrap_or(1.0)` restores the
+/// 1000×-oversized millimetre default issue #4497 exists to remove. The
+/// hazard predates case-insensitive matching, which only widens it from
+/// uppercase decoys to ordinary lowercase prose.
+///
+/// Validating instead that the id decodes to an `IFCPROJECT` would be
+/// stricter, but it needs an entity index per candidate — the
+/// O(file)-scan-per-decoder cost [`resolve_unit_scales`] exists to keep
+/// dead. This stays a single linear byte scan.
+///
+/// "Trivia", not whitespace: a `/* … */` comment is legal wherever
+/// whitespace is, so `#1=IFCWALL(…); /* note */ #7=IFCPROJECT(…)` is a real
+/// declaration and must not be refused (the entity scanner's `skip_step_trivia`
+/// makes the same allowance in the forward direction).
+fn starts_a_record(content: &[u8], hash: usize) -> bool {
+    let mut i = hash;
+    loop {
+        while i > 0 && content[i - 1].is_ascii_whitespace() {
+            i -= 1;
+        }
+        // A closing `*/` here means a comment sits between the boundary and
+        // the `#`; skip back over it and re-test. An unopened `*/` is not
+        // trivia, so refuse rather than loop.
+        if i >= 2 && content[i - 1] == b'/' && content[i - 2] == b'*' {
+            match memchr::memmem::rfind(&content[..i - 2], b"/*") {
+                Some(open) => i = open,
+                None => return false,
+            }
+            continue;
+        }
+        return i == 0 || content[i - 1] == b';';
+    }
 }
 
 /// Flat wire encodings of the resolved styles for the browser's

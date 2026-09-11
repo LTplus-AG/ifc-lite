@@ -269,3 +269,115 @@ END-ISO-10303-21;
     assert!((scales.length_unit_scale - 0.001).abs() < 1e-12);
     assert!((scales.plane_angle_to_radians - 0.017_453_292_519_943_295).abs() < 1e-12);
 }
+
+/// A `#<id>=IFCPROJECT(` sequence embedded in a STEP string literal is not a
+/// record definition, so the scan must not return its id and must not stop:
+/// the real project follows it. The old case-sensitive scan could only be
+/// fooled by an uppercase decoy; matching `ifcproject(` too widens the
+/// hazard to ordinary lowercase prose in a comment or a description.
+///
+/// The consequence of a false positive is the exact symptom issue #4497
+/// exists to remove: `extract_length_unit_scale` rejects the wrong id on its
+/// `IFCPROJECT` type guard and the caller's `unwrap_or(1.0)` defaults a
+/// millimetre model to metres.
+#[test]
+fn find_ifcproject_id_skips_a_full_record_decoy_inside_a_string() {
+    let ifc = b"DATA;\n#5=IFCWALL('note: #9=ifcproject( in the source',$);\n#7=IFCPROJECT('g',$);\n";
+    assert_eq!(find_ifcproject_id(ifc), Some(7));
+
+    let upper = b"DATA;\n#5=IFCWALL('note: #9=IFCPROJECT( in the source',$);\n#7=IFCPROJECT('g',$);\n";
+    assert_eq!(find_ifcproject_id(upper), Some(7));
+}
+
+/// The record-start guard must not refuse a real declaration that a
+/// 10303-21 comment separates from the previous record's `;` — a comment is
+/// legal wherever whitespace is, and the entity scanner accepts it (see
+/// `skip_step_trivia` in `rust/core/src/parser/lexical.rs`). A false
+/// negative here is the same silent 1.0 default as a miss.
+#[test]
+fn find_ifcproject_id_accepts_a_record_behind_a_step_comment() {
+    let ifc = b"DATA;\n#1=IFCWALL('x',$); /* was #9 */ #7=IFCPROJECT('g',$);\n";
+    assert_eq!(find_ifcproject_id(ifc), Some(7));
+
+    let two = b"DATA;\n#1=IFCWALL('x',$);/**//* b */#7=IFCPROJECT('g',$);\n";
+    assert_eq!(find_ifcproject_id(two), Some(7));
+}
+
+/// A project declared at byte 0, with no preceding `;` at all, is still a
+/// record start.
+#[test]
+fn find_ifcproject_id_accepts_a_record_at_the_start_of_input() {
+    assert_eq!(find_ifcproject_id(b"#7=IFCPROJECT('g',$);\n"), Some(7));
+}
+
+/// `find_ifcproject_keyword` prefilters on `J` rather than the lead `I` (a
+/// ~20x scan win on a project-less file, since every IFC keyword starts with
+/// `I`). The offset arithmetic that buys it — candidate start is `j - 6`,
+/// with the first six bytes and any hit behind `from` skipped — is exactly
+/// where such a rewrite goes wrong, so pin it against a naive reference over
+/// every offset of adversarial and pseudo-random buffers.
+#[test]
+fn find_ifcproject_keyword_matches_a_naive_reference_at_every_offset() {
+    const KEYWORD: &[u8] = b"IFCPROJECT(";
+    fn naive(content: &[u8], from: usize) -> Option<usize> {
+        if content.len() < KEYWORD.len() {
+            return None;
+        }
+        (from..=content.len() - KEYWORD.len())
+            .find(|&i| content[i..i + KEYWORD.len()].eq_ignore_ascii_case(KEYWORD))
+    }
+
+    let mut cases: Vec<Vec<u8>> = vec![
+        b"".to_vec(),
+        b"J".to_vec(),
+        b"j(".to_vec(),
+        b"IFCPROJECT(".to_vec(),
+        b"ifcproject(".to_vec(),
+        b"IfcProject(".to_vec(),
+        b"IFCPROJECTEDCRS(".to_vec(),
+        b"IFCPROJECT".to_vec(),
+        b"XXXXXXIFCPROJECT(".to_vec(),
+        b"IFCPROJECT(IFCPROJECT(".to_vec(),
+        b"ifcprojectIFCPROJECT(".to_vec(),
+        b"JIFCPROJECT(".to_vec(),
+        b"#9=ifcproject( #7=IFCPROJECT(".to_vec(),
+        b"AAJAA".to_vec(),
+    ];
+
+    // xorshift64 over an alphabet dense in the keyword's own bytes, so near
+    // misses are common rather than astronomically rare.
+    let alphabet = b"IiFfCcPpRrOoJjEeTt(#=; \n'";
+    let mut state = 0x2545_F491_4F6C_DD1Du64;
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    for _ in 0..400 {
+        let len = (next() % 48) as usize;
+        cases.push(
+            (0..len)
+                .map(|_| alphabet[(next() as usize) % alphabet.len()])
+                .collect(),
+        );
+    }
+
+    let mut checked = 0usize;
+    for case in &cases {
+        for from in 0..=case.len() {
+            assert_eq!(
+                find_ifcproject_keyword(case, from),
+                naive(case, from),
+                "from={from} in {:?}",
+                String::from_utf8_lossy(case)
+            );
+            checked += 1;
+        }
+    }
+    // Anti-vacuity: an empty or tiny case list would pass silently.
+    assert!(
+        checked > 5_000,
+        "only {checked} (buffer, offset) pairs checked"
+    );
+}

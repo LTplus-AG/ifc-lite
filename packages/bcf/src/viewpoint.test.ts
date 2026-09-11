@@ -270,6 +270,34 @@ describe('BCF Viewpoint Coordinate Conversion', () => {
       expect(noIsolation.components?.visibility).toBeUndefined();
     });
 
+    // BCF's `<Visibility>` carries ONE `DefaultVisibility` flag, so an
+    // allowlist and a blocklist cannot both be written. Passing both is
+    // therefore not a lossy choice but a subsumption: an isolation allowlist
+    // already hides everything outside it, `hiddenGuids` included. Pinned
+    // because the drop is otherwise invisible at the call site, and because
+    // the `visibleGuids: []` case makes it look like a bug -- "isolate
+    // nothing, and by the way hide these" is a redundant instruction, not a
+    // lost one.
+    it('lets an isolation allowlist subsume hiddenGuids, which it already hides', () => {
+      const both = createViewpoint({
+        camera,
+        visibleGuids: ['KEEPVISIBLE00000000001'],
+        hiddenGuids: ['HIDEME0000000000000001'],
+      });
+      expect(both.components?.visibility?.defaultVisibility).toBe(false);
+      expect(both.components?.visibility?.exceptions).toEqual([{ ifcGuid: 'KEEPVISIBLE00000000001' }]);
+
+      // The degenerate end of the same rule: isolate-to-nothing hides the
+      // whole model, so the blocklist is satisfied by the allowlist alone.
+      const isolateNothing = createViewpoint({
+        camera,
+        visibleGuids: [],
+        hiddenGuids: ['HIDEME0000000000000001'],
+      });
+      expect(isolateNothing.components?.visibility?.defaultVisibility).toBe(false);
+      expect(isolateNothing.components?.visibility?.exceptions).toEqual([]);
+    });
+
     it('round-trips isolation and hiding back into the right bucket', () => {
       const isolate = extractViewpointState(createViewpoint({ camera, visibleGuids: ['A000000000000000000001'] }));
       expect(isolate.visibleGuids).toEqual(['A000000000000000000001']);

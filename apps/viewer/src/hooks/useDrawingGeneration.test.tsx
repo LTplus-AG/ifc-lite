@@ -419,13 +419,18 @@ describe('useDrawingGeneration latest inputs (#3921)', () => {
     // isolation channel is active, while a non-null EMPTY Set means an
     // isolation channel IS active and matches nothing — the same convention
     // `packages/renderer/src/entity-visibility.ts`'s `isEntityVisible` and
-    // `shadow-occluders.ts`'s `anyVisible` already enforce. A production
-    // writer of the underlying `isolatedEntities` store channel can reach
-    // exactly this shape: `pinboardSlice.ts`'s `removeFromBasket` derives the
-    // isolate set incrementally, and two EntityRefs that alias the same
-    // globalId (e.g. the `legacy`/`default` federation sentinels collapsing
-    // to the same expressId) can leave a non-null, zero-size Set behind while
-    // the basket itself is still non-empty.
+    // `shadow-occluders.ts`'s `anyVisible` already enforce.
+    //
+    // Two production routes still reach exactly this shape. `computedIsolatedIds`
+    // is itself an INTERSECTION of every active filter (`ViewportContainer.tsx`
+    // intersects the storey isolation, the Class-tab `classFilter`, and the
+    // `isolatedEntities` store channel), and two non-empty filters that share
+    // no element intersect to a non-null, zero-size Set — a class filter for
+    // doors while a storey containing none of them is selected. Separately,
+    // applying a BCF viewpoint captured with `DefaultVisibility="false"` and no
+    // exceptions installs an active-but-empty `isolatedEntities` through
+    // `useBCF.ts`'s `applyViewpoint` (pinned by
+    // `useBCF.viewpoint-isolation.test.tsx`).
     const h = await drawingActivityHarness();
     try {
       await h.update({ geometryResult: activityGeometry(), panelVisible: true });

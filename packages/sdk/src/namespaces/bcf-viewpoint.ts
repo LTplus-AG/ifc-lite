@@ -70,7 +70,16 @@ export interface ViewpointOptions {
   components?: {
     selection?: Array<{ GlobalId: string }>;
     visibility?: {
-      defaultVisibility: boolean;
+      /**
+       * BCF's `<Visibility DefaultVisibility>` attribute, which is OPTIONAL
+       * in the schema and defaults to **true**. Omitting it therefore means
+       * "everything is visible, and `exceptions` names what is HIDDEN" -- it
+       * is NOT a shorthand for isolation. Pass `false` explicitly to isolate,
+       * in which case `exceptions` is the visible allowlist and an empty or
+       * absent list means an active isolation matching nothing (a blank
+       * viewport), not "no visibility channel".
+       */
+      defaultVisibility?: boolean;
       exceptions?: Array<{ GlobalId: string }>;
     };
     coloring?: Array<{

@@ -196,7 +196,13 @@ export class BCFNamespace {
       bcfOptions.selectedGuids = comps.selection.map(c => c.GlobalId);
     }
     if (comps?.visibility) {
-      if (comps.visibility.defaultVisibility) {
+      // BCF's `DefaultVisibility` attribute is optional and defaults to TRUE,
+      // so an absent flag means "everything visible, exceptions are hidden".
+      // A truthiness test maps absent onto the `false` (isolation) arm, which
+      // inverts the spec -- and, with no exceptions to isolate, turns a
+      // caller who said nothing about visibility into a blank viewport.
+      // Only an EXPLICIT `false` selects isolation.
+      if (comps.visibility.defaultVisibility ?? true) {
         // Default visible → exceptions are hidden
         bcfOptions.hiddenGuids = comps.visibility.exceptions?.map(c => c.GlobalId);
       } else {

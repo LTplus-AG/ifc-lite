@@ -14,7 +14,6 @@ import type {
   BCFPerspectiveCamera,
   BCFOrthogonalCamera,
   BCFClippingPlane,
-  BCFPoint,
   BCFDirection,
 } from './types.js';
 import { generateUuid } from '@ifc-lite/encoding';
@@ -481,6 +480,14 @@ export function createViewpoint(options: {
   // in `packages/renderer/src/entity-visibility.ts` draws for `isolatedIds`.
   // `hiddenGuids` below is a BLOCKLIST, where empty and absent both correctly
   // mean "hide nothing", so it keeps its length test.
+  //
+  // When BOTH are supplied the allowlist wins and the blocklist is not
+  // written. That is deliberate and lossless, not a dropped input: BCF's
+  // `<Visibility>` carries a single `DefaultVisibility` flag, so only one of
+  // the two modes can be expressed at all -- and an allowlist already hides
+  // everything outside itself, `hiddenGuids` included. `visibleGuids: []`
+  // (isolate nothing) hides the whole model, which likewise satisfies any
+  // blocklist. Pinned by "lets an isolation allowlist subsume hiddenGuids".
   const hasVisible = visibleGuids != null;
   const hasColoring = coloredGuids && coloredGuids.length > 0;
 

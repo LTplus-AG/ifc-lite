@@ -255,11 +255,11 @@ function parseArgs(argv) {
       fail(`unknown argument: ${flag}`);
     }
   }
-  // `--allow-raise` alone reads as "budgets may go up" and does nothing, which
-  // is the worst way for a safety flag to behave. Refuse it instead, and refuse
-  // a bare `--all` for the same reason: it reads as "check everything".
+  // A safety flag that does nothing is the worst kind: refuse `--allow-raise` alone
+  // ("budgets may go up"), a bare `--all` ("check everything"), and `--base` beside `--all`.
   if (out.allowRaise && !out.update) fail('--allow-raise only means something with --update');
   if (out.all && !out.update) fail('--all only means something with --update');
+  if (out.base !== null && out.all) fail('--base names the merge base; --all skips the derivation, so pass one or the other');
   if (out.allowlist === null) out.allowlist = join(out.root, 'scripts', 'module-size-allowlist.txt');
   return out;
 }

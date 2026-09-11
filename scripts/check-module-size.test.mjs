@@ -805,6 +805,11 @@ test('no merge base: CI fails closed, a developer gets a loud skip, --base names
   const bogus = run(dir, null, { allowlistPath, extra: ['--base', 'no-such-ref'], env: { CI: '1' } });
   assert.equal(bogus.code, 1, bogus.out);
   assert.match(bogus.out, /no merge base with no-such-ref/);
+  // `--update --all` derives no merge base, so a `--base` beside it would be
+  // silently ignored -- the do-nothing safety flag the CLI already refuses.
+  const both = run(dir, null, { allowlistPath, extra: ['--update', '--all', '--base', 'upstream/main'] });
+  assert.equal(both.code, 1, both.out);
+  assert.match(both.out, /--base names the merge base; --all skips the derivation/);
 });
 
 test('the Rust allowlist is audited by the same rules from here (#4388)', () => {
@@ -825,6 +830,10 @@ test('the Rust allowlist is audited by the same rules from here (#4388)', () => 
     /rust\/processing\/tests\/module_size_allowlist\.txt vs merge-base origin\/main \([0-9a-f]{9}\): \+0 added, \^1 raised/,
   );
   assert.match(out, /rust\/core\/src\/big\.rs: row raised 500 -> 520, but the file measures 500: 20 line\(s\) of headroom/);
+  // The remedy is the Rust file's own: `--update` rewrites only the TS
+  // allowlist, so pointing a Rust row at it would leave the gate red.
+  assert.doesNotMatch(out, /lint:module-size-baseline/);
+  assert.match(out, /re-pin ALLOWLIST_DIGESTS in\s+rust\/processing\/tests\/module_size_ratchet\.rs/);
   // A duplicate row -- the classic conflict residue -- fails outright.
   writeFileSync(join(dir, rustAllowlist), `${rustRows(500)}     500 rust/core/src/big.rs\n`);
   const dup = run(dir, null, { allowlistPath });

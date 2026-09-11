@@ -173,6 +173,9 @@ test('a lowered row with slack is a note, not a failure; lowered onto a file und
   // Lowering cannot loosen the ratchet. Failing headroom on a lowered row
   // would redden the branch whose file main shrank a little further while
   // the PR sat in review (CI measures the merge commit against the row).
+  // A lowered row IS still failed when that shrink took the file under the
+  // limit or removed it (second case): the row is stale, and the same
+  // rebase + --update drops it.
   const slack = auditAgainstBase({
     baseRows: rows({ 'a.ts': 800 }),
     headRows: rows({ 'a.ts': 700 }),

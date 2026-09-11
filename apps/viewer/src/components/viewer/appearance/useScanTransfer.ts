@@ -24,7 +24,7 @@ type ScanTransferWorkbench = Pick<ReturnType<typeof useScanWorkbench>, 'targetId
 export function useScanTransfer(work: ScanTransferWorkbench) {
   const [productIds, setProductIds] = useState<number[]>([]);
   const [settings, setSettings] = useState<ScanTransferSettings>({ toleranceMetres: 0.01, reviewed: false,
-    texelsPerMetre: 256, maxDistanceMetres: 0.02, minNormalDot: 0.8, ambiguityDistanceMetres: 0.001, maxBehindMetres: 0.005 });
+    texelsPerMetre: 256, maxDistanceMetres: 0.02, minNormalDot: 0.8, ambiguityDistanceMetres: 0.001, maxBehindMetres: 0.01 });
   const [coverage, setCoverage] = useState<MeshTransferPlan['transfer'] | null>(null);
   const [busy, setBusy] = useState(false), [ready, setReady] = useState(false), [original, setOriginal] = useState(false);
   const [status, setStatus] = useState('Choose the IFC objects that should receive scan appearance.'), [error, setError] = useState(false);

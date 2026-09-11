@@ -300,6 +300,14 @@ jobs:
               - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
               - '.github/workflows/test.yml'
+              # scripts/generate-coverage-ledger.mjs and its test read these
+              # two paths directly (the sample fixture set and the generated
+              # ledger doc it checks for freshness). apps/landing/** is
+              # deliberately excluded from `frontend` above, so this names the
+              # one subtree the ledger generator actually reads rather than
+              # widening that exclusion.
+              - 'apps/landing/samples/**'
+              - 'docs/architecture/coverage-ledger.md'
             geometry:
               - 'rust/geometry/**'
               - 'rust/core/**'

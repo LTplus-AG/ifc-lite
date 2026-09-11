@@ -21,6 +21,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useViewerStore } from '@/store';
 import type { CollabRole } from '@/store/slices/collabSlice';
 import { buildShareUrl, mintRoomToken } from '@/lib/collab/share-link';
+import { describeSeedPhase, isCollabSeedInFlight } from '@/lib/collab/seed-phase';
 
 interface RoomPanelProps {
   onClose: () => void;
@@ -35,6 +36,12 @@ const STATUS_META: Record<string, { tone: string; label: string; pulse: boolean 
   memory: { tone: 'bg-sky-500', label: 'Local', pulse: false },
   disconnected: { tone: 'bg-muted-foreground/50', label: 'Offline', pulse: false },
 };
+/**
+ * Overrides the connection status while the owner's initial seed is still
+ * going in (#4446): the socket IS connected, but a room that does not yet
+ * hold the model is not "Live" to anyone who would join it.
+ */
+const SEEDING_META = { tone: 'bg-amber-500', label: 'Uploading', pulse: true };
 
 /** Role → badge accent. Subtle, role-tinted, dark-mode aware. */
 const ROLE_META: Record<CollabRole, { label: string; cls: string }> = {
@@ -155,6 +162,8 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
   const collabRole = useViewerStore((s) => s.collabRole);
   const collabIdentity = useViewerStore((s) => s.collabIdentity);
   const collabPeers = useViewerStore((s) => s.collabPeers);
+  const seedPhase = useViewerStore((s) => s.collabSeedPhase);
+  const seedProgress = useViewerStore((s) => s.collabSeedProgress);
   const stopCollab = useViewerStore((s) => s.stopCollab);
   const kickPeer = useViewerStore((s) => s.kickPeer);
   const revokeCollabLink = useViewerStore((s) => s.revokeCollabLink);
@@ -162,7 +171,9 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
   const [copied, setCopied] = useState(false);
   const [revoked, setRevoked] = useState(false);
 
-  const status = STATUS_META[collabStatus] ?? STATUS_META.disconnected;
+  const seeding = isCollabSeedInFlight(seedPhase);
+  const status = seeding ? SEEDING_META : (STATUS_META[collabStatus] ?? STATUS_META.disconnected);
+  const seedLabel = seeding ? describeSeedPhase(seedPhase, seedProgress) : null;
   const selfRole: CollabRole = collabRole ?? 'admin';
   const isAdmin = collabRole === 'admin';
   const peerCount = collabPeers.length + 1;
@@ -278,7 +289,14 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
           <span className={`relative inline-flex size-2 rounded-full ${status.tone}`} />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-xs font-semibold leading-tight">{status.label} room</div>
+          <div className="text-xs font-semibold leading-tight">
+            {seeding ? 'Uploading model' : `${status.label} room`}
+          </div>
+          {seedLabel && (
+            <div role="status" className="truncate text-[10px] text-muted-foreground">
+              {seedLabel}
+            </div>
+          )}
           <div className="truncate font-mono text-[10px] text-muted-foreground">{collabRoomId}</div>
         </div>
         <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
@@ -312,6 +330,9 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
           size="sm"
           className="h-8 w-full justify-start gap-2"
           onClick={handleCopyLink}
+          // Same rule as the Share dialog: no invite until the model is in the room.
+          disabled={seeding}
+          title={seeding ? 'Available once the upload finishes' : undefined}
         >
           {copied ? <Check className="size-3.5" /> : <Link2 className="size-3.5" />}
           {copied ? 'Link copied' : 'Copy invite link'}
@@ -340,7 +361,7 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
             onClick={handleLeave}
           >
             <LogOut className="size-3.5" />
-            Leave room
+            {seeding ? 'Leave (abandons upload)' : 'Leave room'}
           </Button>
         </div>
       </div>

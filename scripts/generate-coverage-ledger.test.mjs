@@ -43,9 +43,11 @@ const SOURCE_RELS = [
 ];
 
 const IN_STORE_DIR = 'packages/create/src/in-store';
+const FIXTURE_REL = 'apps/landing/samples/hello-wall.ifc';
 
 const real = new Map();
 for (const rel of SOURCE_RELS) real.set(rel, readFileSync(join(ROOT, rel), 'utf8'));
+const realFixture = readFileSync(join(ROOT, FIXTURE_REL), 'utf8');
 
 /** Writes a (possibly mutated) tree to a temp dir, including the helper
  * script the generator imports, and runs the generator on it. */
@@ -63,6 +65,19 @@ function runOn(overrides = {}) {
     mkdirSync(inStoreAbs, { recursive: true });
     const wallSrc = readFileSync(join(ROOT, IN_STORE_DIR, 'wall.ts'), 'utf8');
     writeFileSync(join(inStoreAbs, 'wall.ts'), overrides[`${IN_STORE_DIR}/wall.ts`] ?? wallSrc);
+
+    // fixture corpus: copy one real committed sample into the FIRST fixture
+    // directory the generator scans, so its own vacuity guard on the corpus
+    // resolves at least one class. `overrides[FIXTURE_REL] === null` omits
+    // the file entirely (for the vacuity-guard test below).
+    const fixtureOverride = Object.prototype.hasOwnProperty.call(overrides, FIXTURE_REL)
+      ? overrides[FIXTURE_REL]
+      : realFixture;
+    if (fixtureOverride !== null) {
+      const fixtureAbs = join(dir, FIXTURE_REL);
+      mkdirSync(dirname(fixtureAbs), { recursive: true });
+      writeFileSync(fixtureAbs, fixtureOverride);
+    }
 
     // the generator imports its sibling helper by relative path — copy it in
     // next to a copy of the generator itself so `--root` doesn't have to
@@ -96,6 +111,80 @@ test('real sources: generator succeeds and produces a non-empty, multi-section l
   assert.match(ledger, /## IFC2X3/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
   assert.match(ledger, /## IFC4X3/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
   assert.match(ledger, /\| IfcWall \|/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
+});
+
+test('writable and fixture columns: known types carry correct, non-vacuous values (#4207)', () => {
+  const { status, ledger } = runOn();
+  assert.equal(status, 0);
+  const header = ledger.split('\n').find((l) => l.startsWith('| Entity |')); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
+  assert.match(header, /\| Writable \|/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
+  assert.match(header, /\| Fixture \|/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
+
+  const wallRow = ledger.split('\n').find((l) => l.startsWith('| IfcWall |')); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
+  assert.ok(wallRow, 'test anchor drifted — no IfcWall row in the rendered ledger');
+  const wallCols = wallRow.split('|').map((c) => c.trim());
+  // Entity|Registry|Retained|Relationships|Geometry|Creatable|Writable|Convertible|Fixture
+  assert.equal(wallCols[7], '✅', 'IfcWall is written by IfcCreator.this.line("IFCWALL", ...) — writable must be ✅');
+  assert.equal(wallCols[9], FIXTURE_REL, 'IfcWall must resolve to the committed fixture that actually contains an IFCWALL record');
+
+  // Not every writable/fixture value is the SAME as its default — the vacuity trap this test
+  // guards against. IfcTable has no dedicated `this.line('IFCTABLE', ...)` writer and never
+  // appears in the copied fixture corpus.
+  const tableRow = ledger.split('\n').find((l) => l.startsWith('| IfcTable |')); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
+  assert.ok(tableRow, 'test anchor drifted — no IfcTable row in the rendered ledger');
+  const tableCols = tableRow.split('|').map((c) => c.trim());
+  assert.equal(tableCols[7], '❌');
+  assert.equal(tableCols[9], '—');
+});
+
+test('vacuity guard: no committed fixture in any scanned directory fails loudly', () => {
+  const { status, log, ledger } = runOn({ [FIXTURE_REL]: null });
+  assert.equal(status, 1);
+  assert.match(log, /fixture\(committed \.ifc corpus\)/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
+  assert.equal(ledger, null, 'a vacuity failure must not leave a written ledger behind');
+});
+
+test('mutation sensitivity: dropping the IFCWALL this.line() writer flips writable, not creatable (#4207)', () => {
+  const src = real.get('packages/create/src/ifc-creator.ts');
+  assert.ok(src.includes("this.line(wallId, 'IFCWALL',"), 'test anchor drifted — IFCWALL writer line not found verbatim'); // @source-text-assertion-ok mutation anchor guard, not a subject assertion
+  const mutated = src.replace("this.line(wallId, 'IFCWALL',", "this.line(wallId, 'IFCWALLMUTATEDPROBE',");
+  assert.notEqual(mutated, src);
+
+  const before = runOn();
+  const after = runOn({ 'packages/create/src/ifc-creator.ts': mutated });
+  assert.equal(before.status, 0);
+  assert.equal(after.status, 0);
+
+  const beforeRow = before.ledger.split('\n').find((l) => l.startsWith('| IfcWall |')); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
+  const afterRow = after.ledger.split('\n').find((l) => l.startsWith('| IfcWall |')); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
+  assert.notEqual(beforeRow, afterRow, 'the mutated line did not actually change the rendered output');
+  const beforeCols = beforeRow.split('|').map((c) => c.trim());
+  const afterCols = afterRow.split('|').map((c) => c.trim());
+  assert.equal(beforeCols[7], '✅');
+  assert.equal(afterCols[7], '❌', 'writable must flip once IfcCreator no longer writes an IFCWALL line');
+  // IfcWall is still emitted by the in-store wall.ts `editor.addEntity('IfcWall', ...)` builder
+  // copied into every run, so creatable must NOT move — proves the probe changed only writable.
+  assert.equal(beforeCols[6], '✅');
+  assert.equal(afterCols[6], '✅', 'creatable must stay ✅ — the mutation only removed the DEDICATED writer, not every creation path');
+});
+
+test('mutation sensitivity: removing the IFCWALL record from the fixture corpus flips fixture (#4207)', () => {
+  assert.ok(realFixture.includes('=IFCWALL('), 'test anchor drifted — no IFCWALL record in apps/landing/samples/hello-wall.ifc'); // @source-text-assertion-ok mutation anchor guard, not a subject assertion
+  const mutated = realFixture.replace(/=IFCWALL\(/, '=IFCWALLMUTATEDPROBE(');
+  assert.notEqual(mutated, realFixture);
+
+  const before = runOn();
+  const after = runOn({ [FIXTURE_REL]: mutated });
+  assert.equal(before.status, 0);
+  assert.equal(after.status, 0);
+
+  const beforeRow = before.ledger.split('\n').find((l) => l.startsWith('| IfcWall |')); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
+  const afterRow = after.ledger.split('\n').find((l) => l.startsWith('| IfcWall |')); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
+  assert.notEqual(beforeRow, afterRow, 'the mutated record did not actually change the rendered output');
+  const beforeCols = beforeRow.split('|').map((c) => c.trim());
+  const afterCols = afterRow.split('|').map((c) => c.trim());
+  assert.equal(beforeCols[9], FIXTURE_REL);
+  assert.equal(afterCols[9], '—', 'fixture must fall back to — once no scanned corpus file carries an IFCWALL record');
 });
 
 test('vacuity guard: emptied processor_registry.rs TYPES array fails loudly, not silently', () => {
@@ -226,10 +315,10 @@ test('vacuity guard: emptied IFC4X3_TO_IFC4 rename map fails loudly (#4474 revie
   assert.equal(ledger, null, 'a vacuity failure must not leave a written ledger behind');
 });
 
-test('rendered ledger names the deferred writable/fixture columns', () => {
+test('rendered ledger documents the writable and fixture columns, crediting #4208', () => {
   const { ledger } = runOn();
-  assert.match(ledger, /\bwritable\b/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
-  assert.match(ledger, /\bfixture\b/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
+  assert.match(ledger, /\*\*writable\*\*/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
+  assert.match(ledger, /\*\*fixture\*\*/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
   assert.match(ledger, /#4208/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
 });
 

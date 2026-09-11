@@ -62,13 +62,29 @@
  *                    `IFC4_TO_IFC2X3` / `IFC4_TO_IFC4X3` / `IFC4X3_TO_IFC4`
  *                    Maps), parsed from that file's source rather than a
  *                    restated copy.
- *
- * NOT YET DERIVED, deliberately left out of this first version rather than
- * guessed: "writable" (no per-type dispatch was found in the STEP/merge
- * writer to derive a non-vacuous per-class signal from — see the PR
- * description) and "fixture" (the model-fixture-to-class census depends on
- * #4208, not yet merged at the time this generator was written). Both are
- * follow-up scope, not silently dropped: this file's own header says so.
+ *   writable      — the entity's uppercase STEP keyword appears in a
+ *                    dedicated `this.line(id, 'IFCXXX', ...)` call inside
+ *                    `packages/create/src/ifc-creator.ts` — `IfcCreator`'s
+ *                    own STEP-line-emission primitive, captured BEFORE the
+ *                    in-store merge below folds in the broader `creatable`
+ *                    set. Narrower than `creatable` on purpose: `creatable`
+ *                    also counts entities reachable only through the
+ *                    generic in-store `editor.addEntity()` overlay escape
+ *                    hatch, which stages a mutation rather than writing a
+ *                    STEP line itself.
+ *   fixture       — a committed `.ifc` sample under the repo's own fixture
+ *                    corpus (`FIXTURE_DIRS` below) carries a STEP record of
+ *                    this class. Builds on #4208
+ *                    (`packages/parser/src/drop-census.ts`'s
+ *                    `buildDropCensus`), which established "does a record of
+ *                    this class reach the loader at all" as the signal worth
+ *                    reporting per class. This generator has no build step
+ *                    and cannot invoke the TypeScript parser, so it answers
+ *                    the same presence question directly against the STEP
+ *                    records the census itself counts (`#<n>=IFCXXX(...)`),
+ *                    rather than reproducing #4208's retained/skipped
+ *                    classification, which needs the parser's schema
+ *                    resolution.
  *
  * VACUITY GUARD: every extractor below throws if it returns an empty set —
  * a parser broken by a refactor must fail loudly, not silently emit a ledger
@@ -80,7 +96,7 @@
  *   node scripts/generate-coverage-ledger.mjs --check     # CI: fail if stale
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { legacyKeys, generatedNames, parseEntityTable } from './check-legacy-entity-coverage.mjs';
@@ -182,6 +198,11 @@ function extractCreatorTypes(src) {
 }
 const creatorTypes = extractCreatorTypes(creatorSrc);
 assertNonEmpty('creatable(IfcCreator.this.line)', creatorTypes);
+// "writable" (#4207): IfcCreator's OWN this.line() STEP-emission set, frozen
+// here BEFORE the in-store merge below widens `creatorTypes` into the
+// broader `creatable` set. See the DERIVATION comment at the top of this
+// file for why the two differ.
+const writableTypes = new Set(creatorTypes);
 
 const IN_STORE_FILES = [
   'anchor.ts', 'apply-style.ts', 'beam.ts', 'column.ts', 'door.ts', 'drawing-markup-geometry.ts',
@@ -231,6 +252,53 @@ assertNonEmpty('convertible(IFC2X3_TO_IFC4)', RENAME['IFC2X3->IFC4']);
 assertNonEmpty('convertible(IFC4_TO_IFC2X3)', RENAME['IFC4->IFC2X3']);
 assertNonEmpty('convertible(IFC4X3_TO_IFC4)', RENAME['IFC4X3->IFC4']);
 
+// ─── Fixture (committed .ifc corpus, per #4208 — see DERIVATION above) ──
+
+// Fixed set of DIRECTORIES (not entity types — same pattern as
+// `IN_STORE_FILES` above) holding committed `.ifc` samples. Self-updating:
+// a file added under one of these is picked up on the next generate without
+// touching this list. A directory going missing isn't a parse failure (the
+// catalogue drifts, same rationale as `IN_STORE_FILES`); the vacuity guard
+// below still requires the CORPUS as a whole to be non-empty.
+const FIXTURE_DIRS = [
+  'apps/landing/samples',
+  'apps/viewer/public/samples',
+  'packages/cli/examples/delivery',
+  'rust/geometry/tests/fixtures',
+  'rust/processing/tests/fixtures',
+];
+
+function walkIfcFiles(absDir) {
+  const out = [];
+  if (!existsSync(absDir)) return out;
+  for (const entry of readdirSync(absDir, { withFileTypes: true })) {
+    const abs = join(absDir, entry.name);
+    if (entry.isDirectory()) out.push(...walkIfcFiles(abs));
+    else if (entry.isFile() && entry.name.toLowerCase().endsWith('.ifc')) out.push(abs);
+  }
+  return out;
+}
+
+// UPPER STEP keyword -> path (relative to ROOT) of the first fixture, in
+// sorted-path order, whose STEP records include that class. First-found
+// only (the ledger names ONE example, not every fixture that qualifies).
+const fixtureTypeToPath = new Map();
+{
+  const files = [];
+  for (const dir of FIXTURE_DIRS) files.push(...walkIfcFiles(join(ROOT, dir)));
+  files.sort();
+  const recordRe = /^#\d+\s*=\s*([A-Z][A-Z0-9]*)\s*\(/gm;
+  for (const abs of files) {
+    const rel = abs.slice(ROOT.length + 1);
+    const text = readFileSync(abs, 'utf8');
+    for (const m of text.matchAll(recordRe)) {
+      const type = m[1];
+      if (!fixtureTypeToPath.has(type)) fixtureTypeToPath.set(type, rel);
+    }
+  }
+}
+assertNonEmpty('fixture(committed .ifc corpus)', fixtureTypeToPath);
+
 // registry tables key by PascalCase entity name (from parseEntityTable), but
 // every extractor above works in UPPERCASE STEP keywords. Build an
 // upper->pascal index per schema once, so `convertible` can check target-schema
@@ -261,6 +329,8 @@ function buildSection(schema) {
     const relStatus = isRel ? (relationshipClassesUpper.has(upper) ? '✅' : '❌') : '—';
     const geometry = geometryTypes.has(upper) ? '✅' : '❌';
     const creatable = creatorTypes.has(upper) ? '✅' : '❌';
+    const writable = writableTypes.has(upper) ? '✅' : '❌';
+    const fixture = fixtureTypeToPath.get(upper) ?? '—';
     const convertParts = [];
     for (const hop of DIRECT_HOPS) {
       const [from] = hop.split('->');
@@ -279,6 +349,8 @@ function buildSection(schema) {
       relationships: relStatus,
       geometry,
       creatable,
+      writable,
+      fixture,
       convertible: convertParts.join(' '),
     });
   }
@@ -321,13 +393,9 @@ function render() {
   lines.push('- **relationships** — for `IfcRel*` entities only: the relationship graph builder models this relationship class. `—` for non-relationship entities.');
   lines.push('- **geometry** — the geometry router has a processor registered for this type. Scoped to *representation items* the router dispatches on directly (e.g. `IfcExtrudedAreaSolid`), not every product that eventually contains one — a wall\'s solid is `IfcExtrudedAreaSolid`, so `IfcWall` itself reads `❌` here while its representation item reads `✅`; that is the router\'s real dispatch surface, not a gap in this row.');
   lines.push('- **creatable** — `@ifc-lite/create` (`IfcCreator` or an in-store builder) can emit this entity.');
+  lines.push('- **writable** — narrower than creatable: `IfcCreator` itself writes this entity via a dedicated `this.line()` STEP-emission call, rather than only through the generic in-store `editor.addEntity()` overlay escape hatch.');
   lines.push('- **convertible** — for each direct one-hop schema conversion FROM this row\'s version, whether the (possibly renamed) entity exists in the target schema\'s registry.');
-  lines.push('');
-  lines.push(
-    '**Deferred columns** (not in this ledger, on purpose): `writable` — no per-type dispatch in ' +
-      'the STEP/merge writer yields a non-vacuous per-class signal; `fixture` — the model-fixture-to-class ' +
-      'census depends on #4208, not yet merged. Follow-up scope, not an oversight.',
-  );
+  lines.push('- **fixture** — a committed `.ifc` sample in the repo\'s own fixture corpus that carries a STEP record of this class (path relative to repo root), or `—` if none of the scanned corpus directories do. Builds on #4208 (`packages/parser/src/drop-census.ts`): the same STEP-record presence the drop census counts, answered directly since this generator has no build step and cannot invoke the parser.');
   lines.push('');
   for (const schema of SCHEMAS) {
     const rows = sections.get(schema);
@@ -335,10 +403,10 @@ function render() {
     lines.push('');
     lines.push(`${rows.length} concrete entities.`);
     lines.push('');
-    lines.push('| Entity | Registry | Retained | Relationships | Geometry | Creatable | Convertible |');
-    lines.push('|---|---|---|---|---|---|---|');
+    lines.push('| Entity | Registry | Retained | Relationships | Geometry | Creatable | Writable | Convertible | Fixture |');
+    lines.push('|---|---|---|---|---|---|---|---|---|');
     for (const r of rows) {
-      lines.push(`| ${r.name} | ${r.registry} | ${r.retained} | ${r.relationships} | ${r.geometry} | ${r.creatable} | ${r.convertible} |`);
+      lines.push(`| ${r.name} | ${r.registry} | ${r.retained} | ${r.relationships} | ${r.geometry} | ${r.creatable} | ${r.writable} | ${r.convertible} | ${r.fixture} |`);
     }
     lines.push('');
   }

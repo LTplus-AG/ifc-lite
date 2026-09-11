@@ -10,7 +10,7 @@
 
 import type { IfcTypeEnum } from '@ifc-lite/data';
 import type { ListDataProvider, DiscoveredColumns } from './types.js';
-import { ENTITY_ATTRIBUTES } from './types.js';
+import { ENTITY_ATTRIBUTES } from './entity-attributes.js';
 
 /** Max entities to sample per type per provider for column discovery */
 const SAMPLE_SIZE = 50;

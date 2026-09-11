@@ -28,6 +28,7 @@ export type NodeType =
   | 'material-group'      // Material grouping (e.g., "Concrete (47)") from the Materials tab
   | 'group'               // IfcGroup/IfcSystem/IfcZone entity row from the Groups tab (#1622)
   | 'group-member'        // Member row under an expanded group (#1622)
+  | 'model-tag-group'     // Model-tag group header in the Models section's "By tag" view (#4215)
   | 'element';            // Individual element
 
 export interface TreeNode {

@@ -5881,6 +5881,7 @@
     "ListDefinition: interface",
     "ListGroup: interface",
     "ListGrouping: interface",
+    "ListModelTagScope: interface",
     "ListResult: interface",
     "ListRow: interface",
     "ListScheduleRow: interface",

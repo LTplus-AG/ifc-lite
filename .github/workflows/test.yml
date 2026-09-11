@@ -1996,8 +1996,13 @@ jobs:
   plato-check:
     name: Plato clash-math freshness
     needs: changes
-    # PR-only — see viewer-e2e.
-    if: needs.changes.outputs.plato == 'true' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
+    # On plato-path PRs and merge-queue batches, and on EVERY push to main
+    # (CI redesign, step 1): the push run is what seeds the shared toolchain
+    # cache below (`plato-toolchain-*`, ~635 MB), so a PR that does touch
+    # tools/plato restores it instead of rebuilding Plato.CLI cold. The
+    # `plato` filter is `true` on push only when the push touched those
+    # paths, hence the event check comes first.
+    if: github.event_name == 'push' || (needs.changes.outputs.plato == 'true' && (github.event_name == 'pull_request' || github.event_name == 'merge_group'))
     # Free runner - the generator clones + builds Plato.CLI with dotnet; no
     # Depot cores needed.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}

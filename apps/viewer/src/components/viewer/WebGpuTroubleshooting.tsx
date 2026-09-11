@@ -17,6 +17,14 @@ export function WebGpuDisabledCaption() {
         className="text-primary hover:underline"
       >
         CLI
+      </a>{" or the "}
+      <a
+        href="https://ifclite.dev/docs/guide/mcp/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary hover:underline"
+      >
+        MCP server
       </a>
     </>
   );

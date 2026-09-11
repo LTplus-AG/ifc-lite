@@ -82,8 +82,11 @@ export interface SceneContents {
   getBatchedMeshes(): BatchedMesh[];
   getMeshDataPieces(expressId: number, modelIndex?: number): MeshData[] | undefined;
   /**
-   * The single-mesh accessor: the FIRST mesh piece carrying an entity's
-   * placement, or `undefined` when the entity has no flat mesh data.
+   * The single-mesh accessor: one representative mesh per entity, or
+   * `undefined` when the entity has no flat mesh data. When an entity's
+   * pieces share a colour their geometry is MERGED into that one mesh; when
+   * colours differ, the first piece is returned so per-piece colours stay
+   * correct (mirrors `Scene.getMeshData`).
    * `getMeshDataPieces` returns every piece; reach for this one when a
    * caller is written against one representative mesh per entity (#4357).
    */

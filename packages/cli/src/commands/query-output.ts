@@ -228,6 +228,12 @@ export function outputGroupBy(entities: any[], groupByKey: string, sumQuantity: 
   // Compute per-group aggregation if a quantity is specified alongside --group-by
   const mode = aggMode ?? 'sum';
   const groupAgg = new Map<string, number>();
+  // #4252: how many of the group's entities actually carried `sumQuantity`
+  // (getQuantityValue returned non-null). A group where this is 0 has NO
+  // data for the quantity — its aggregated value below is a fabricated 0,
+  // not a real sum/avg/min/max, and must be told apart from a group whose
+  // real aggregate genuinely computes to 0.
+  const groupMatched = new Map<string, number>();
   if (sumQuantity) {
     for (const [key, groupEntities] of groups) {
       const vals: number[] = [];
@@ -235,8 +241,10 @@ export function outputGroupBy(entities: any[], groupByKey: string, sumQuantity: 
         const val = getQuantityValue(bim, e.ref, sumQuantity);
         if (val !== null) vals.push(val);
       }
-      // Shared finite-guarded reduction; an empty group stays 0 here.
+      // Shared finite-guarded reduction; an empty group stays 0 here, but
+      // groupMatched (below) records that it is a fabricated 0.
       groupAgg.set(key, aggregateFinite(vals, mode) ?? 0);
+      groupMatched.set(key, vals.length);
     }
   }
 
@@ -249,7 +257,15 @@ export function outputGroupBy(entities: any[], groupByKey: string, sumQuantity: 
     if (groupLimit) entries = entries.slice(0, groupLimit);
     for (const [key, groupEntities] of entries) {
       const entry: Record<string, unknown> = { count: groupEntities.length };
-      if (sumQuantity) entry[sumQuantity] = groupAgg.get(key) ?? 0;
+      if (sumQuantity) {
+        entry[sumQuantity] = groupAgg.get(key) ?? 0;
+        // #4252: always present alongside sumQuantity (all four aggregation
+        // modes share the same "0 matched" ambiguity, not just avg) so a
+        // JSON consumer can tell a real 0 from a group with no quantity
+        // data at all: matchedEntities === 0 means the number above is
+        // fabricated, not measured.
+        entry.matchedEntities = groupMatched.get(key) ?? 0;
+      }
       if (sumQuantity && mode !== 'sum') entry.aggregation = mode;
       result[key] = entry;
     }
@@ -262,16 +278,28 @@ export function outputGroupBy(entities: any[], groupByKey: string, sumQuantity: 
     for (const [key, groupEntities] of sorted) {
       if (sumQuantity) {
         const agg = groupAgg.get(key) ?? 0;
-        process.stdout.write(`  ${key}:  ${groupEntities.length} elements,  ${sumQuantity} ${modeLabel}: ${mode === 'avg' ? agg.toFixed(4) : agg}\n`);
+        const matchedCount = groupMatched.get(key) ?? 0;
+        // #4252: annotate a group whose aggregate is fabricated (no entity
+        // in the group carried this quantity at all) so the text rendering
+        // agrees with the --json matchedEntities field, instead of printing
+        // a bare 0 indistinguishable from a real zero aggregate.
+        const noData = matchedCount === 0 ? '  (no data)' : '';
+        process.stdout.write(`  ${key}:  ${groupEntities.length} elements,  ${sumQuantity} ${modeLabel}: ${mode === 'avg' ? agg.toFixed(4) : agg}${noData}\n`);
       } else {
         process.stdout.write(`  ${key}: ${groupEntities.length}\n`);
       }
     }
     if (sumQuantity) {
-      const grandTotal = [...groupAgg.values()].reduce((a, b) => a + b, 0);
+      const totalMatched = [...groupMatched.values()].reduce((a, b) => a + b, 0);
       process.stdout.write(`\n  Total: ${entities.length} entities in ${groups.size} groups\n`);
-      if (grandTotal === 0 && entities.length > 0) {
-        process.stderr.write(`\n  Warning: All ${sumQuantity} values are 0. The file may not contain quantity data for this property.\n`);
+      // #4252: warn only when NO group in the result matched any quantity
+      // data — the prior check compared the grand total to 0, which both
+      // missed a mix of real-data and no-data groups (the ones with data
+      // could sum to nonzero and mask a same-run no-data group) and
+      // false-flagged a real aggregate that legitimately cancels to 0
+      // (e.g. sum of [-5, 5]).
+      if (totalMatched === 0 && entities.length > 0) {
+        process.stderr.write(`\n  Warning: No ${sumQuantity} quantity data found for any entity. The values above are 0 because none was found, not because the property genuinely measures 0.\n`);
       }
       process.stdout.write('\n');
     } else {

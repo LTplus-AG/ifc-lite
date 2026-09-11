@@ -127,6 +127,8 @@ mod census_golden;
 #[path = "census_rtc/mod.rs"]
 mod census_rtc;
 
+mod support;
+
 use census_golden::{is_closed_solid, totals, Delta, HostRow, PreVoid};
 use census_rtc::ModelFrame;
 use ifc_lite_core::{EntityDecoder, EntityScanner};
@@ -2169,6 +2171,35 @@ fn the_heavy_golden_pins_the_known_3435_tear_population() {
     }
 }
 
+/// `true` when the fixture at `path` is readable; `false` only for a
+/// genuinely absent file (`NotFound`), which is a legitimate skip unless
+/// `IFC_LITE_REQUIRE_FIXTURES=1`, in which case it panics naming the path.
+/// Any other `io::Error` (permission denied, corrupt read, ...) means the
+/// environment is broken rather than merely missing an optional download,
+/// so it panics unconditionally. This attempts the read (rather than
+/// `Path::exists()`) because `exists()` collapses a permission error into
+/// `false` just like a genuinely absent file, and is a TOCTOU check besides
+/// — each caller performs the real read moments later.
+// Unused under `csg_topology_gate` / `csg_manifold_gate`: both callers are
+// cfg-gated off in those builds, which made this a hard `never used` error.
+// Allowed rather than cfg-gated to match the callers, because revert-oracle
+// cannot parse a `not(...)` cfg shape and aborts on it.
+#[allow(dead_code)]
+fn oracle_fixture_present(path: &std::path::Path) -> bool {
+    match std::fs::read_to_string(path) {
+        Ok(_) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture {} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
+                path.display()
+            );
+            false
+        }
+        Err(e) => panic!("fixture {} exists but could not be read: {e}", path.display()),
+    }
+}
+
 // #3925: independent IfcOpenShell 0.8.2 volume is 0.03938 m³. The old
 // unre-based census collapsed corners and pinned approximately 0.03844 m³.
 #[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
@@ -2177,7 +2208,7 @@ fn census_rebases_real_covering_before_f32_geometry_3925() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     set_alt(false);
     let path = crate_dir().join("../../tests/models/various/rvt01.ifc");
-    if !path.exists() {
+    if !oracle_fixture_present(&path) {
         eprintln!("Skipping #3925 covering oracle: run pnpm fixtures");
         return;
     }
@@ -2198,7 +2229,7 @@ fn repaired_office_covering_matches_independent_solid_3925() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     set_alt(false);
     let path = crate_dir().join("../../tests/models/ara3d/S_Office_Integrated Design Archi.ifc");
-    if !path.exists() {
+    if !oracle_fixture_present(&path) {
         eprintln!("Skipping #3925 office oracle: run pnpm fixtures");
         return;
     }

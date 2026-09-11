@@ -33,6 +33,18 @@
 //! belong in dedicated regression test files once their behaviour has
 //! been visually verified.
 //!
+//! That soft-pass is conditioned on `IFC_LITE_REQUIRE_FIXTURES` (see
+//! `tests/support::require_fixtures`): unset/`0` (local dev, fresh
+//! clone) skips a missing fixture exactly as before; `1` (the
+//! `csg-accept-gates` CI job) turns a missing fixture into a named
+//! `panic!` instead, so this 25-fixture census can't report `ok` having
+//! examined nothing — the failure mode issue #2802 named for the
+//! per-fixture skip-shaped tests applies just as much to a census that
+//! silently shrinks to zero. A non-`NotFound` I/O error (permission
+//! denied, a truncated download, …) always panics unconditionally,
+//! flag or not — that is a broken environment, not an absent optional
+//! download.
+//!
 //! **Snapshot baseline (insta):** every *present* fixture additionally
 //! pins its stable stats (mesh count, vertex/triangle totals, rounded
 //! bbox + surface area, per-type counts) as a named `insta` snapshot in
@@ -47,6 +59,8 @@
 //! Snapshots are pinned to the pure-Rust exact CSG kernel — the only
 //! kernel on every target since #1024, so they are asserted
 //! unconditionally.
+
+mod support;
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
@@ -387,13 +401,20 @@ fn run_fixture(fx: &Fixture) -> FixtureReport {
         ..Default::default()
     };
     let p = fixture_path(fx.path);
-    if !p.exists() {
-        return report;
-    }
-    report.fixture_found = true;
-    let Ok(content) = std::fs::read_to_string(&p) else {
-        return report;
+    let content = match std::fs::read_to_string(&p) {
+        Ok(content) => content,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1: {} \
+                 — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
+                p.display()
+            );
+            return report;
+        }
+        Err(err) => panic!("failed to read fixture {}: {err}", p.display()),
     };
+    report.fixture_found = true;
     let entity_index = build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
     let router = GeometryRouter::with_units(&content, &mut decoder);

@@ -18,9 +18,9 @@ export type {
   ListSummary,
   ListScheduleRow,
   DiscoveredColumns,
-  EntityAttribute,
 } from './types.js';
-export { ENTITY_ATTRIBUTES } from './types.js';
+export type { ListModelTagScope } from './model-tag-scope.js';
+export { ENTITY_ATTRIBUTES, type EntityAttribute } from './entity-attributes.js';
 
 // Engine
 export {

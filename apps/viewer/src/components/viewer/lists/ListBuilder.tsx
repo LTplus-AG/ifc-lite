@@ -18,7 +18,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ComboInput } from '@/components/ui/combo-input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import { collectSpatialContainerNames } from '@/utils/spatialHierarchy';
@@ -31,6 +30,7 @@ import {
 import type {
   ListDataProvider,
   ListDefinition,
+  ListModelTagScope,
   ColumnDefinition,
   DiscoveredColumns,
   PropertyCondition,
@@ -48,6 +48,8 @@ import { useViewerStore } from '@/store';
 import type { ZoneSet } from '@/lib/zones';
 import { collectScopeTypes } from '@/lib/lists/scope-types';
 import { rebuildGrouping } from './list-table-utils';
+import { Section, Chip } from './ListBuilder.parts';
+import { ListModelTagScopeEditor } from './ListModelTagScopeEditor';
 import {
   isEditableColumn,
   draftFromColumn,
@@ -182,6 +184,8 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
   );
   const [columns, setColumns] = useState<ColumnDefinition[]>(initial?.columns ?? []);
   const [conditions, setConditions] = useState<PropertyCondition[]>(initial?.conditions ?? []);
+  // Which federated models the list runs over, by model tag (#4215).
+  const [modelTagScope, setModelTagScope] = useState<ListModelTagScope | undefined>(initial?.modelTagScope);
   // Lazily-discovered distinct values for condition suggestions. This is the
   // EXPENSIVE sampling pass, so only run it when a property / material /
   // classification condition exists — storey-only filters never trigger it.
@@ -395,11 +399,12 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
       entityTypes: Array.from(selectedTypes),
       // Preserve a filter-snapshot scope (set at creation; not edited here).
       expressIdsByModel: initial?.expressIdsByModel,
+      modelTagScope,
       conditions,
       columns,
       grouping,
     };
-  }, [initial, name, description, selectedTypes, conditions, columns, groupByColumnIds, sumColumnIds]);
+  }, [initial, name, description, selectedTypes, modelTagScope, conditions, columns, groupByColumnIds, sumColumnIds]);
 
   const handleSave = useCallback(() => onSave(buildDefinition()), [buildDefinition, onSave]);
   const handleRun = useCallback(() => onExecute(buildDefinition()), [buildDefinition, onExecute]);
@@ -477,6 +482,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
                 )}
               </>
             )}
+            <ListModelTagScopeEditor value={modelTagScope} onChange={setModelTagScope} />
           </Section>
 
           {/* Filters */}
@@ -545,66 +551,6 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
         </Button>
       </div>
     </div>
-  );
-}
-
-// ============================================================================
-// Section shell — consistent header with an accent rule
-// ============================================================================
-
-function Section({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="h-3 w-1 rounded-full bg-primary/70" aria-hidden />
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {label}
-        </span>
-        {hint !== undefined && (
-          <Badge variant="secondary" className="h-4 px-1.5 text-[10px] font-normal">{hint}</Badge>
-        )}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function Chip({
-  selected,
-  onClick,
-  trailing,
-  children,
-}: {
-  selected: boolean;
-  onClick: () => void;
-  trailing?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={selected}
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
-        selected
-          ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-          : 'border-border bg-background hover:bg-muted',
-      )}
-    >
-      {children}
-      {trailing !== undefined && (
-        <span className={cn('tabular-nums', selected ? 'opacity-80' : 'text-muted-foreground')}>{trailing}</span>
-      )}
-    </button>
   );
 }
 

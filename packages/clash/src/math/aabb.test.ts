@@ -19,6 +19,7 @@ import {
   fromPositions,
   inflate,
   intersects,
+  NonFiniteAxisError,
   overlapBounds,
   signedGap,
 } from './aabb.js';
@@ -188,6 +189,30 @@ describe('fromPositions', () => {
     expect(r).toEqual(box(0, 0, 0, 1, 2, 1));
     expect(r.min.every(Number.isFinite)).toBe(true);
     expect(r.max.every(Number.isFinite)).toBe(true);
+  });
+
+  it('throws NonFiniteAxisError naming the axis when NO vertex is finite on it, instead of returning an inverted box', () => {
+    // #4254: every vertex NaN on x, y/z fine. The old behaviour returned the
+    // box inverted on x (min +Infinity, max -Infinity) — sound-looking, but
+    // invisible to `@ifc-lite/spatial`'s `BVH.build`/`queryAABB`, which has
+    // no `min <= max` check on the path `engine-ts/broad.ts` reaches.
+    const p = new Float32Array([NaN, 1, 1, NaN, 2, 2]);
+    expect(() => fromPositions(p)).toThrow(NonFiniteAxisError);
+    expect(() => fromPositions(p)).toThrow(/axis x/);
+    expect(() => fromPositions(p)).toThrow(/2 vertices scanned/);
+  });
+
+  it('names every bad axis when all three are non-finite on every vertex', () => {
+    const p = new Float32Array([NaN, NaN, NaN, NaN, NaN, NaN]);
+    expect(() => fromPositions(p)).toThrow(/axis x, y, z/);
+  });
+
+  it('does NOT throw when every axis still has at least one finite vertex (partial poisoning survives)', () => {
+    // Companion to "drops non-finite coordinates..." above: the throw is
+    // scoped to an axis with ZERO finite contributions, not triggered by any
+    // non-finite coordinate appearing anywhere in the buffer.
+    const p = new Float32Array([0, 0, 0, 1, 1, 1, -Infinity, 2, Infinity]);
+    expect(() => fromPositions(p)).not.toThrow();
   });
 
   it('drops a coordinate the transform sends to ±Infinity', () => {

@@ -92,6 +92,7 @@ import { isCommentOnlyDiff } from './lib/revert-oracle-comment-only.mjs';
 import { requiredFeaturePlanOrDie, EXIT_UNHANDLED_CFG_SHAPE } from './lib/revert-oracle-rust-features.mjs';
 import { ciExitCode } from './lib/revert-oracle-ci.mjs';
 import { planRuns } from './lib/revert-oracle-plan-runs.mjs';
+import { loadTypeScript, typeOnlyProduction, typecheckPlans, runTypecheckPlan, gitShow } from './lib/revert-oracle-type-only.mjs';
 
 const SELF_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const rootFlag = process.argv.indexOf('--root');
@@ -191,6 +192,16 @@ function resolveBin(bin, pkgDir) {
 }
 
 function runPlan(plan, label) {
+  const started = Date.now();
+  // #4472: a type-only branch is judged by tsc, not by running tests. Same
+  // result shape, same aggregate/verdict path -- see revert-oracle-type-only.mjs.
+  if (plan.typecheck) {
+    const parsed = runTypecheckPlan(plan, ROOT, label);
+    parsed.durationMs = Date.now() - started;
+    parsed.tail = parsed.evidence.join('\n');
+    logRun(plan, label, parsed, parsed.kind === 'runner-missing' ? '?' : parsed.kind === 'pass' ? 0 : 1);
+    return parsed;
+  }
   const cwd = plan.crate ? ROOT : plan.dir;
   const binPath = resolveBin(plan.runner.bin, plan.dir);
   if (!binPath) {
@@ -202,7 +213,6 @@ function runPlan(plan, label) {
       evidence: [`runner binary "${plan.runner.bin}" not found from ${relative(ROOT, plan.dir) || '.'} — run pnpm install`],
     };
   }
-  const started = Date.now();
   const r = spawnSync(binPath, plan.runner.args, {
     cwd,
     encoding: 'utf8',
@@ -219,11 +229,15 @@ function runPlan(plan, label) {
   parsed.rawExitCode = r.status;
   parsed.durationMs = Date.now() - started;
   parsed.tail = `${r.stdout ?? ''}\n${r.stderr ?? ''}`.trim().split('\n').slice(-25).join('\n');
+  logRun(plan, label, parsed, r.status);
+  return parsed;
+}
+
+function logRun(plan, label, parsed, exit) {
   console.log(
     `  [${label}] ${relative(ROOT, plan.dir) || '.'} (${plan.runner.family}) -> ${parsed.kind}` +
-      ` (pass ${parsed.passed ?? '?'}, fail ${parsed.failed ?? '?'}, total ${parsed.total ?? '?'}, exit ${r.status}, ${parsed.durationMs}ms)`,
+      ` (pass ${parsed.passed ?? '?'}, fail ${parsed.failed ?? '?'}, total ${parsed.total ?? '?'}, exit ${exit}, ${parsed.durationMs}ms)`,
   );
-  return parsed;
 }
 
 // ---------------------------------------------------------------------------
@@ -337,7 +351,24 @@ if (testPaths.length === 0) {
   );
 }
 
-const { plans, unassigned } = requiredFeaturePlanOrDie((tp) => planRuns(tp, ROOT), testPaths, opts.json, baseSha, headSha, prodPaths, die, EXIT_UNHANDLED_CFG_SHAPE);
+// #4472: when every production file erases to the same JavaScript, no test
+// RUN can observe the change -- only the type-checker can. Decided on the
+// revert set (after --only), at base vs head, with the repo's own typescript.
+const typeOnly = typeOnlyProduction(loadTypeScript(ROOT), prodPaths, (side, p) => gitShow(ROOT, side === 'base' ? mergeBase : headSha, p));
+const observer = typeOnly.typeOnly ? 'typecheck' : 'tests';
+console.log(`  observer: ${observer} (${typeOnly.reason})`);
+let plans;
+let unassigned;
+if (observer === 'typecheck') {
+  const t = typecheckPlans(testPaths, ROOT);
+  for (const s of t.skipped) console.log(`  skipped: ${s} is not TypeScript, so it cannot observe a type-only change`);
+  if (t.plans.length === 0 && t.unassigned.length === 0) {
+    die(opts.ci ? EXIT_UNOBSERVED : EXIT_NOTHING_CHECKED, 'type-only production change, and none of the changed test files is TypeScript: nothing can observe it.', prodPaths.map((p) => `changed: ${p}`));
+  }
+  ({ plans, unassigned } = t);
+} else {
+  ({ plans, unassigned } = requiredFeaturePlanOrDie((tp) => planRuns(tp, ROOT), testPaths, opts.json, baseSha, headSha, prodPaths, die, EXIT_UNHANDLED_CFG_SHAPE));
+}
 if (unassigned.length > 0) {
   die(EXIT_NOTHING_CHECKED, 'could not find an owning package for some test files', unassigned);
 }
@@ -481,6 +512,7 @@ const banner = {
 console.log('\n' + '='.repeat(78));
 console.log(banner);
 console.log('='.repeat(78));
+console.log(`  observer:  ${observer}`);
 console.log(`  reverted:  ${result.prodPaths.join('\n             ')}`);
 console.log(`  tests run: ${result.testPaths.join('\n             ')}`);
 console.log(`  baseline:  ${result.baseline.kind} — ${result.baseline.passed ?? '?'} passed / ${result.baseline.total ?? '?'} collected`);
@@ -505,6 +537,7 @@ if (opts.json) {
     JSON.stringify(
       {
         verdict: result.verdict,
+        observer,
         reason: result.reason,
         base: baseSha,
         head: headSha,

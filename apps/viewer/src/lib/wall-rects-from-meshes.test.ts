@@ -32,6 +32,17 @@ function canonicalIfc(
   return { ifcX: wx, ifcY: -wz, ifcZ: wy };
 }
 
+// Render→IFC reconstruction for the model's OWN frame, independent of the code
+// under test: coordinate-handler `toWorld` with no survey anchor in play.
+// worldYup = renderLocal + originShift; then ifcX = worldYup.x,
+// ifcY = -worldYup.z, ifcZ = worldYup.y.
+function localIfc(
+  rx: number, ry: number, rz: number,
+  shift: { x: number; y: number; z: number },
+): { ifcX: number; ifcY: number; ifcZ: number } {
+  return { ifcX: rx + shift.x, ifcY: -(rz + shift.z), ifcZ: ry + shift.y };
+}
+
 // A render-frame box for one wall: plan footprint is XZ, height is Y. A wall
 // 4 m long (X) × `thick` (Z), `h0..h1` tall (Y).
 function wallBox(expressId: number, x0: number, x1: number, z0: number, z1: number, y0: number, y1: number): MeshData {
@@ -114,15 +125,13 @@ describe('wallRectsFromMeshes', () => {
     assert.strictEqual(rects.length, 1);
   });
 
-  it('reconstructs the footprint + elevation under a NON-ZERO originShift/rtc, matching the canonical handler', () => {
-    // Georeferenced model: non-zero originShift (viewer Y-up frame) AND
-    // wasmRtcOffset (IFC Z-up). Regression guard for the inverted shift signs —
-    // with a zero shift this test would pass even with the old (wrong) code.
+  it('reconstructs the footprint + elevation under a NON-ZERO originShift', () => {
+    // The room frame is the model's OWN IFC frame: render + originShift, with
+    // the Y-up→Z-up swap. Regression guard for the inverted shift signs — with
+    // a zero shift this test would pass even with the old (wrong) code.
     const shift = { x: 100, y: 5, z: 20 };
-    const rtc = { x: 1000, y: 2000, z: 3000 };
     const coord = {
       originShift: shift,
-      wasmRtcOffset: rtc,
       hasLargeCoordinates: true,
       // shiftedBounds = originalBounds - originShift (createCoordinateInfo's
       // invariant); wallRectsFromMeshes never reads either bounds field, but
@@ -132,44 +141,66 @@ describe('wallRectsFromMeshes', () => {
     } as unknown as CoordinateInfo;
 
     // Wall render box: renderX[0..4], renderZ[0..0.8], renderY[0..3].
-    // Its render-Y band maps to ifcZ = renderY + shift.y + rtc.z = renderY + 3005,
-    // so the wall occupies ifcZ ∈ [3005, 3008]. Storey band [3005, 3008].
-    const floorElevation = 3005;
-    const floorToFloor = 3;
-    const rects = wallRectsFromMeshes([wallBox(1, 0, 4, 0, 0.8, 0, 3)], coord, floorElevation, floorToFloor);
+    // ifcZ = renderY + shift.y, so the wall occupies ifcZ ∈ [5, 8].
+    const rects = wallRectsFromMeshes([wallBox(1, 0, 4, 0, 0.8, 0, 3)], coord, 5, 3);
     assert.strictEqual(rects.length, 1, 'wall should fall on the shifted storey band');
     assert.ok(near(rects[0].thickness, 0.8, 1e-3), `thickness ${rects[0].thickness}`);
 
-    // The centreline runs along X at mid-thickness (renderZ = 0.4). Compare the
-    // wall-rects output to the canonical reconstruction of that render point.
+    // The centreline runs along X at mid-thickness (renderZ = 0.4).
     const [a, b] = rects[0].centreline;
-    const endA = canonicalIfc(0, 1.5, 0.4, shift, rtc); // renderX 0
-    const endB = canonicalIfc(4, 1.5, 0.4, shift, rtc); // renderX 4
+    const endA = localIfc(0, 1.5, 0.4, shift); // renderX 0
+    const endB = localIfc(4, 1.5, 0.4, shift); // renderX 4
     // endpoints may be in either order — match as an unordered pair
     const matches =
       (near(a[0], endA.ifcX, 1e-3) && near(a[1], endA.ifcY, 1e-3) && near(b[0], endB.ifcX, 1e-3) && near(b[1], endB.ifcY, 1e-3)) ||
       (near(a[0], endB.ifcX, 1e-3) && near(a[1], endB.ifcY, 1e-3) && near(b[0], endA.ifcX, 1e-3) && near(b[1], endA.ifcY, 1e-3));
-    assert.ok(matches, `centreline ${JSON.stringify([a, b])} vs canonical A=${JSON.stringify(endA)} B=${JSON.stringify(endB)}`);
-    // Concretely: cx = rtc.x + shift.x = 1100, cy = rtc.y - shift.z = 1980,
-    // mid-thickness ifcY = 1980 - 0.4 = 1979.6.
-    assert.ok(near(a[1], 1979.6, 1e-3) && near(b[1], 1979.6, 1e-3), `centreline y ${a[1]},${b[1]}`);
+    assert.ok(matches, `centreline ${JSON.stringify([a, b])} vs local A=${JSON.stringify(endA)} B=${JSON.stringify(endB)}`);
+    // Literal oracle, independent of any transform helper: cx = shift.x = 100,
+    // cy = -shift.z = -20, so the endpoints are (100, -20.4) and (104, -20.4)
+    // — an X-shift sign shared with `localIfc` would not hide itself here.
+    const xs = [a[0], b[0]].sort((p, q) => p - q);
+    assert.ok(near(xs[0], 100, 1e-3) && near(xs[1], 104, 1e-3), `centreline x ${xs}`);
+    assert.ok(near(a[1], -20.4, 1e-3) && near(b[1], -20.4, 1e-3), `centreline y ${a[1]},${b[1]}`);
   });
 
   it('excludes a wall whose SHIFTED elevation leaves the storey band', () => {
-    // Same shift/rtc, but a storey band that (after the shift) the wall misses.
     const coord = {
       originShift: { x: 100, y: 5, z: 20 },
-      wasmRtcOffset: { x: 1000, y: 2000, z: 3000 },
       hasLargeCoordinates: true,
-      // shiftedBounds = originalBounds - originShift (createCoordinateInfo's
-      // invariant); wallRectsFromMeshes never reads either bounds field, but
-      // a fixture no producer could emit is still worth avoiding.
       originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
       shiftedBounds: { min: { x: -100, y: -5, z: -20 }, max: { x: -100, y: -5, z: -20 } },
     } as unknown as CoordinateInfo;
-    // Wall ifcZ ∈ [3005, 3008]; a band at ifcZ [0, 3] does NOT overlap it.
-    const rects = wallRectsFromMeshes([wallBox(1, 0, 4, 0, 0.8, 0, 3)], coord, 0, 3);
+    // Wall ifcZ ∈ [5, 8]; a band at ifcZ [20, 23] does NOT overlap it.
+    const rects = wallRectsFromMeshes([wallBox(1, 0, 4, 0, 0.8, 0, 3)], coord, 20, 3);
     assert.strictEqual(rects.length, 0);
+  });
+
+  it('IGNORES wasmRtcOffset — a georeferenced model reads like an unplaced one', () => {
+    // The defect this file exists to prevent, from a real 6-storey LV95 model.
+    // `wasmRtcOffset` is what the WASM subtracted to undo a site placement that
+    // anchors the building to the survey grid; it is NOT part of the frame the
+    // storey elevation, `addSpace` or the 3D ghost speak. Folding it in put the
+    // band 381 m below the building — every storey reported "no walls found" —
+    // and adding it to the corners wrote baked rooms 2.66 million metres out.
+    const rtc = { x: 2665510.36, y: 1259339.34, z: 381.3 };
+    const coord = {
+      originShift: { x: 0, y: 0, z: 0 },
+      wasmRtcOffset: rtc,
+      hasLargeCoordinates: false,
+      originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+      shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+    } as unknown as CoordinateInfo;
+    // Storey elevation as IfcBuildingStorey carries it: local, 0 for the lowest
+    // floor — NOT 381.3. The wall stands on it, render-Y [0..3].
+    const rects = wallRectsFromMeshes([wallBox(1, 0, 4, 0, 0.8, 0, 3)], coord, 0, 3);
+    assert.strictEqual(rects.length, 1, 'the storey band must not be displaced by rtc');
+    // Corners stay local: an rtc-tainted frame would put them at ~2.67e6.
+    for (const [x, y] of rects[0].corners) {
+      assert.ok(Math.abs(x) < 1e3 && Math.abs(y) < 1e3, `corner (${x}, ${y}) carries the survey offset`);
+    }
+    // Same wall, same answer, with rtc absent entirely.
+    const bare = wallRectsFromMeshes([wallBox(1, 0, 4, 0, 0.8, 0, 3)], undefined, 0, 3);
+    assert.deepEqual(rects[0].corners, bare[0].corners);
   });
 
   it('room frame + roomFrameToModelWorld IS the model\'s own world frame', () => {

@@ -9,10 +9,18 @@
  * while editing rooms.
  *
  * The construction projection (the same one the sections canvas uses) runs on
- * render-frame meshes (Y-up, RTC-shifted). For a plan (down = `'y'`) cut,
- * `projectTo2D` yields `(renderX, renderZ)`, and `renderX = ifcX − rtc.x +
- * shift.x`, `renderZ = −ifcY + rtc.y + shift.z`. We invert that back to the
- * room frame `(ifcX, ifcY)` so the underlay overlays the rooms directly.
+ * render-frame meshes (Y-up). For a plan (down = `'y'`) cut, `projectTo2D`
+ * yields `(renderX, renderZ)`, and `renderX = ifcX − shift.x`,
+ * `renderZ = −ifcY − shift.z` (render = ifc − originShift, the
+ * `createCoordinateInfo` invariant). We invert that back to the room frame
+ * `(ifcX, ifcY)` so the underlay overlays the rooms directly.
+ *
+ * The room frame is the model's OWN IFC frame, not the georeferenced one: a
+ * `wasmRtcOffset` term here put the cut plane 381 m below a georeferenced
+ * building, so the underlay came back empty on every storey — and an empty
+ * underlay is indistinguishable from a storey that genuinely has no walls.
+ * See the frame note in `lib/wall-rects-from-meshes.ts`, which this must stay
+ * in step with or the underlay slides off the rooms it is drawn under.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -20,6 +28,7 @@ import { Drawing2DGenerator, createSectionConfig } from '@ifc-lite/drawing-2d';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { selectModelMeshes } from '@/lib/type-view-visibility';
+import { roomFramePlanOffsets } from '@/lib/wall-rects-from-meshes';
 
 export interface UnderlayLine {
   a: [number, number];
@@ -49,13 +58,13 @@ export function useConstructionUnderlay(
     setLoading(true);
 
     const coord = geometryResult?.coordinateInfo as CoordinateInfo | undefined;
-    const rtc = coord?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 };
     const shift = coord?.originShift ?? { x: 0, y: 0, z: 0 };
-    // Plan cut at floor + 1.2 m, in render-frame Y.
-    const cutY = floorElevation + 1.2 - rtc.z + shift.y;
-    // Inverse of the plan projection → room (ifcX, ifcY) frame.
-    const cx = rtc.x - shift.x;
-    const cy = rtc.y + shift.z;
+    // Plan cut at floor + 1.2 m, in render-frame Y: renderY = ifcZ − shift.y
+    // (the same band arithmetic as `wallRectsFromMeshes`).
+    const cutY = floorElevation + 1.2 - shift.y;
+    // Inverse of the plan projection → room (ifcX, ifcY) frame, taken from
+    // the one place the room frame is defined so the two cannot drift.
+    const { cx, cy } = roomFramePlanOffsets(coord);
 
     const config = createSectionConfig('y', cutY, {
       projectionDepth: 1.5,

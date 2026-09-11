@@ -31,12 +31,7 @@
  * express IDs cross-reference each other.
  */
 
-import type {
-  ScheduleExtraction,
-  ScheduleTaskInfo,
-  ScheduleSequenceInfo,
-  WorkScheduleInfo,
-} from './schedule-extractor.js';
+import type { ScheduleExtraction, ScheduleSequenceInfo } from './schedule-extractor.js';
 import { secondsToIso8601Duration } from './iso8601-duration.js';
 import { deterministicGlobalId } from './deterministic-global-id.js';
 import {

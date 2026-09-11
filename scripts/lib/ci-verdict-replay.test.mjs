@@ -142,56 +142,56 @@ const RED = [run(AGGREGATE_CHECK_NAME, 100, 'completed', 'failure', '2026-09-11T
 test('--probe: a body edit of a head with a verdict is noop=true', () => {
   const r = cli(['--probe', '--run-id', '300'], { event: prEvent('edited', { body: { from: 'x' } }), checkRuns: GREEN });
   assert.equal(r.code, 0, r.out);
-  assert.match(r.outputs, /^noop=true$/m);
-  assert.match(r.out, /already exists \(success, run 100/);
+  assert.match(r.outputs, /^noop=true$/m); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
+  assert.match(r.out, /already exists \(success, run 100/); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
 });
 
 test('--probe: a body edit of a head with a RED verdict is still noop=true (the replay will be red)', () => {
   const r = cli(['--probe', '--run-id', '300'], { event: prEvent('edited', { body: { from: 'x' } }), checkRuns: RED });
   assert.equal(r.code, 0, r.out);
-  assert.match(r.outputs, /^noop=true$/m);
+  assert.match(r.outputs, /^noop=true$/m); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
 });
 
 test('--probe: a retarget is noop=false, whatever verdicts the head carries', () => {
   const r = cli(['--probe', '--run-id', '300'], { event: prEvent('edited', { base: { ref: { from: 'f' } } }), checkRuns: GREEN });
   assert.equal(r.code, 0, r.out);
-  assert.match(r.outputs, /^noop=false$/m);
-  assert.match(r.out, /not a no-op edit/);
+  assert.match(r.outputs, /^noop=false$/m); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
+  assert.match(r.out, /not a no-op edit/); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
 });
 
 test('--probe: a synchronize, and a body edit with NO verdict yet, both run the full lane set', () => {
   const sync = cli(['--probe', '--run-id', '300'], { event: prEvent('synchronize', {}), checkRuns: GREEN });
-  assert.match(sync.outputs, /^noop=false$/m);
+  assert.match(sync.outputs, /^noop=false$/m); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
   const none = cli(['--probe', '--run-id', '300'], { event: prEvent('edited', { body: { from: 'x' } }), checkRuns: [] });
   assert.equal(none.code, 0, none.out);
-  assert.match(none.outputs, /^noop=false$/m);
-  assert.match(none.out, /no completed/);
+  assert.match(none.outputs, /^noop=false$/m); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
+  assert.match(none.out, /no completed/); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
   // Only this run's own aggregate exists (still in progress): nothing to replay.
   const own = cli(['--probe', '--run-id', '300'], { event: prEvent('edited', { body: { from: 'x' } }), checkRuns: [run(AGGREGATE_CHECK_NAME, 300, 'in_progress', null, null)] });
-  assert.match(own.outputs, /^noop=false$/m);
+  assert.match(own.outputs, /^noop=false$/m); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
 });
 
 test('--probe: a push or merge_group payload is noop=false without touching the API', () => {
   const r = cli(['--probe', '--event-name', 'push'], { event: { ref: 'refs/heads/main' } });
   assert.equal(r.code, 0, r.out);
-  assert.match(r.outputs, /^noop=false$/m);
+  assert.match(r.outputs, /^noop=false$/m); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
 });
 
 test('--replay: exit 0 on a recorded success, 1 on anything else, 2 when nothing is there', () => {
   const green = cli(['--replay', '--run-id', '300'], { event: prEvent('edited', { body: { from: 'x' } }), checkRuns: GREEN });
   assert.equal(green.code, 0, green.out);
-  assert.match(green.out, /replaying .* = success from run 100/);
+  assert.match(green.out, /replaying .* = success from run 100/); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
 
   const red = cli(['--replay', '--run-id', '300'], { event: prEvent('edited', { body: { from: 'x' } }), checkRuns: RED });
   assert.equal(red.code, 1, red.out);
-  assert.match(red.out, /recorded verdict is "failure"/);
+  assert.match(red.out, /recorded verdict is "failure"/); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
 
   const cancelled = cli(['--replay', '--run-id', '300'], { event: prEvent('edited', {}), checkRuns: [run(AGGREGATE_CHECK_NAME, 100, 'completed', 'cancelled', '2026-09-11T11:00:00Z')] });
   assert.equal(cancelled.code, 1, cancelled.out);
 
   const none = cli(['--replay', '--run-id', '300'], { event: prEvent('edited', {}), checkRuns: [] });
   assert.equal(none.code, 2, none.out);
-  assert.match(none.out, /REFUSING/);
+  assert.match(none.out, /REFUSING/); // @source-text-assertion-ok not source text: the CLI is spawned over fixture files and its stdout/GITHUB_OUTPUT is what is asserted
 });
 
 test('--replay ignores this run\'s own in-progress aggregate and replays the earlier one', () => {
@@ -212,37 +212,37 @@ test('the CLI refuses an unknown flag and a missing mode instead of doing nothin
 /** A job's text from test.yml (2-space job key to the next), comments dropped. */
 function job(id) {
   const text = readFileSync(TEST_YML, 'utf8');
-  const m = new RegExp(`^  ${id}:\\n([\\s\\S]*?)(?=\\n  [A-Za-z_][A-Za-z0-9_-]*:|(?![\\s\\S]))`, 'm').exec(text);
+  const m = new RegExp(`^  ${id}:\\n([\\s\\S]*?)(?=\\n  [A-Za-z_][A-Za-z0-9_-]*:|(?![\\s\\S]))`, 'm').exec(text); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
   assert.ok(m, `test.yml must carry a job with id \`${id}\``);
-  return m[1].split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  return m[1].split('\n').filter((l) => !/^\s*#/.test(l)).join('\n'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
 }
 
 test('WIRING: `changes` probes, the aggregate replays on noop and judges otherwise, and nothing skips silently', () => {
   const changes = job('changes');
-  assert.match(changes, /^\s+noop: \$\{\{ steps\.noop\.outputs\.noop/m, '`changes` must expose a `noop` output');
-  assert.match(changes, /node scripts\/ci-verdict-replay\.mjs --probe/, '`changes` must run the probe');
+  assert.match(changes, /^\s+noop: \$\{\{ steps\.noop\.outputs\.noop/m, '`changes` must expose a `noop` output'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
+  assert.match(changes, /node scripts\/ci-verdict-replay\.mjs --probe/, '`changes` must run the probe'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
   // The paths filter is what makes every lane's `== 'true'` false on a no-op:
   // it must not run then, or the lanes would run on a head that has a verdict.
-  assert.match(changes, /if: steps\.noop\.outputs\.noop != 'true'/, 'the filter steps must be skipped on a no-op');
+  assert.match(changes, /if: steps\.noop\.outputs\.noop != 'true'/, 'the filter steps must be skipped on a no-op'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
 
   const agg = job('test');
-  assert.match(agg, /if: needs\.changes\.outputs\.noop == 'true'[\s\S]*node scripts\/ci-verdict-replay\.mjs --replay/, 'the aggregate must replay on noop');
-  assert.match(agg, /if: needs\.changes\.outputs\.noop != 'true'[\s\S]*declare -A results/, 'the aggregate must still judge every lane when not a no-op');
+  assert.match(agg, /if: needs\.changes\.outputs\.noop == 'true'[\s\S]*node scripts\/ci-verdict-replay\.mjs --replay/, 'the aggregate must replay on noop'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
+  assert.match(agg, /if: needs\.changes\.outputs\.noop != 'true'[\s\S]*declare -A results/, 'the aggregate must still judge every lane when not a no-op'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
 
   // The one lane with no path filter of its own would otherwise run on every
   // body edit; it is gated on the probe like the filtered lanes effectively are.
-  assert.match(job('rust-semver'), /^\s{4}if: needs\.changes\.outputs\.noop != 'true'/m, 'rust-semver must skip on a no-op');
+  assert.match(job('rust-semver'), /^\s{4}if: needs\.changes\.outputs\.noop != 'true'/m, 'rust-semver must skip on a no-op'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
 
   // The gate needs to read check runs. Without this scope the probe fails
   // closed (noop=false, full run) and the saving silently never happens.
   const text = readFileSync(TEST_YML, 'utf8');
-  assert.match(text, /^permissions:\n(?:  [a-z-]+: read\n|  #[^\n]*\n)*  checks: read/m, 'the workflow must hold `checks: read`');
+  assert.match(text, /^permissions:\n(?:  [a-z-]+: read\n|  #[^\n]*\n)*  checks: read/m, 'the workflow must hold `checks: read`'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
 });
 
 test('WIRING: no job gates on `github.event.changes.base`; the decision lives in the probe', () => {
   // The workflow comment on the `edited` trigger explains why: a skipped job
   // reads as a pass to the required-check evaluation. The probe reads the
   // event payload instead and the aggregate REPLAYS rather than skips.
-  const code = readFileSync(TEST_YML, 'utf8').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
-  assert.ok(!/github\.event\.changes\.base/.test(code));
+  const code = readFileSync(TEST_YML, 'utf8').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
+  assert.ok(!/github\.event\.changes\.base/.test(code)); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML text; there is no runtime to drive instead
 });

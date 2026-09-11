@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { STEP_TRIVIA } from '@ifc-lite/parser';
+import { skipStepComment } from './step-comment-skip.js';
 import { isWellFormedStepSlot } from './step-slot-grammar.js';
 
 /**
@@ -33,10 +34,9 @@ const RECORD_PREFIX_RE = new RegExp(`^(#\\d+\\s*=\\s*\\w+${STEP_TRIVIA}\\()([\\s
  * parts, and writing a slot by index into those parts lands on the wrong
  * argument while reporting success (LTplus-AG/ifc-lite#2470).
  */
-
 /**
  * Split a STEP argument list on top-level commas, respecting nested
- * parentheses and quoted strings. Used by `applyAttributeMutations`.
+ * parens, quoted strings, and comments (#4227). Used by `applyAttributeMutations`.
  */
 export function splitTopLevelArgs(text: string): string[] {
   const parts: string[] = [];
@@ -46,6 +46,12 @@ export function splitTopLevelArgs(text: string): string[] {
 
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
+    if (!inString && char === '/' && text[i + 1] === '*') {
+      const stop = skipStepComment(text, i); // see skipStepComment's docstring
+      current += text.slice(i, stop);
+      i = stop - 1;
+      continue;
+    }
     current += char;
 
     if (inString) {
@@ -207,17 +213,10 @@ export function splitTopLevelStepArguments(input: string): string[] | null {
   for (let i = 0; i < input.length; i++) {
     const char = input[i];
 
-    // A `/* ... */` comment's content is unrestricted ISO-10303-21 text — a
-    // comma, an unbalanced paren, or an odd number of `'` inside one would
-    // otherwise corrupt this scan's comma/paren/quote state, even though the
-    // comment is not itself an argument boundary. Skip the whole region
-    // (open marker through the matching `*/`, or to the end of the text when
-    // unterminated) as one atomic unit so its content cannot be read as
-    // structure; the per-part `isWellFormedStepSlot` check below still
-    // rejects an unterminated comment via `skipTrivia`.
+    // See skipStepComment's docstring; isWellFormedStepSlot below still
+    // rejects an unterminated comment via skipTrivia.
     if (!inString && char === '/' && input[i + 1] === '*') {
-      const end = input.indexOf('*/', i + 2);
-      const stop = end === -1 ? input.length : end + 2;
+      const stop = skipStepComment(input, i);
       current += input.slice(i, stop);
       i = stop - 1;
       continue;

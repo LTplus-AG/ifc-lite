@@ -73,8 +73,8 @@
  *     picks which lines it sees. Widening the type set is the separate decision,
  *     and that is the one that changes which relations survive an extraction.
  *     Consolidation follow-up: #4125.
- *   - `splitTopLevelStepArguments` (`step-argument-parser.ts`): see
- *     {@link splitTopLevelArgs}.
+ *   - `splitTopLevelStepArguments` (`step-argument-parser.ts`) and
+ *     `skipStepComment` (`step-comment-skip.ts`): see {@link splitTopLevelArgs}.
  *   - `STRUCTURE_RELATIONS` (`merged-empty-containers.ts`): three lines, see
  *     below.
  */
@@ -330,37 +330,33 @@ function spliceArgument(
 }
 
 /**
- * Split a STEP argument list on top-level commas, respecting nested
- * parentheses, quoted strings and doubled-quote escapes. Returns null when the
- * text is not a well-formed argument list.
+ * Skip a `/* ... *\/` comment atomically: index of `/` in, index past its
+ * close marker (or end-of-text when unterminated) out. Byte-identical copy of
+ * `@ifc-lite/export`'s `skipStepComment` (not imported, see the module
+ * header): #4227's third copy of the same missing logic.
+ */
+function skipStepComment(text: string, i: number): number {
+  const end = text.indexOf('*/', i + 2);
+  return end === -1 ? text.length : end + 2;
+}
+
+/**
+ * Split a STEP argument list on top-level commas, respecting nested parens,
+ * quoted strings, doubled-quote escapes, and `/* ... *\/` comments (#4227).
+ * Returns null on an unterminated string, an unbalanced paren depth, or a
+ * depth that ever goes negative -- {@link relationLine} writes a slot by
+ * index (#2470), so a mis-scanned list must not hand back parts that look
+ * like success. A comma/paren/quote inside a comment is skipped with it (see
+ * {@link skipStepComment}): unskipped, its comma shifts every later slot
+ * boundary and `relationLine` either mis-splices a member or falls back to
+ * {@link keepWhole}, dropping a relation that should have survived -- the
+ * orphaned-storey symptom (#4126) this module exists to fix, by a different
+ * route. An EMPTY INTERIOR slot (`a,,b`) is one part, not rejected.
  *
- * It VALIDATES rather than accepting whatever it accumulated, because
- * {@link relationLine} reads `RelatingStructure` by index and writes
- * `RelatedElements` by index, the situation #2470 names, where a mis-scanned
- * list still produces parts and a slot written into those parts lands on the
- * wrong argument while reporting success.
- *
- * Rejected, because after any of these the parts are no longer the record's
- * attributes: commas were swallowed and everything past them shifted:
- *   - a quote still open at the end (unterminated string);
- *   - a paren depth that does not return to zero at the end (unbalanced list);
- *   - a depth that ever goes NEGATIVE (stray closing paren). Both ends matter:
- *     a depth that dips below zero and climbs back looks balanced at the end
- *     while every comma in between was read as nested.
- *
- * An EMPTY INTERIOR slot (`a,,b`) is deliberately NOT rejected: it is one part,
- * exactly as an entity parser counts it, so every later index still names the
- * attribute it is meant to.
- *
- * Near-twin, not a copy, of `@ifc-lite/export`'s `splitTopLevelStepArguments`
- * (see the module header for why it is not imported). Two MEASURED differences,
- * both wanted here and neither shared with that function:
- *   - each part is `trim`med, because {@link SINGLE_REF_RE} is anchored;
- *   - a TRAILING empty slot (`a,b,`) yields 2 parts, not 3. So a SIX-attribute
- *     record with a stray trailing comma still counts as six, is rewritten, and
- *     loses that comma in the output; a five-attribute one is rejected by the
- *     attribute-count check instead. Invalid STEP in, valid STEP out, and the
- *     slot indices are the ones the record meant either way.
+ * Near-twin of `@ifc-lite/export`'s `splitTopLevelStepArguments` (see the
+ * module header). Two differences: each part is `trim`med (because
+ * {@link SINGLE_REF_RE} is anchored), and a TRAILING empty slot (`a,b,`)
+ * yields 2 parts, not 3.
  */
 export function splitTopLevelArgs(text: string): string[] | null {
   const parts: string[] = [];
@@ -380,7 +376,11 @@ export function splitTopLevelArgs(text: string): string[] | null {
       continue;
     }
 
-    if (char === "'") {
+    if (char === '/' && text[i + 1] === '*') {
+      // See skipStepComment's docstring: its content is skipped as one unit,
+      // not read as argument-list structure.
+      i = skipStepComment(text, i) - 1;
+    } else if (char === "'") {
       inString = true;
     } else if (char === '(') {
       depth++;

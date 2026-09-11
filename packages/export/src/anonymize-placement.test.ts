@@ -141,6 +141,31 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;`;
 
+/**
+ * Regression fixture for the adversarial-review gap: #2's `ObjectPlacement`
+ * slot is the same root chain as {@link FIXTURE}, but the reference itself is
+ * wrapped in a STEP comment (legal ISO-10303-21 trivia, #4227) rather than a
+ * bare `#20`. `zeroRootPlacements`'s `parseRef` used to be the one caller
+ * still on the narrow `/^#(\d+)$/` regex, so this slot failed to match and
+ * `if (placementId === null) continue;` silently skipped the product — its
+ * real-world coordinates would survive untouched in an "anonymized" export.
+ */
+const FIXTURE_COMMENTED_PLACEMENT = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('placement-fixture-commented.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('${guid(1)}',$,'Project',$,$,$,$,$,$);
+#20=IFCLOCALPLACEMENT($,#21);
+#21=IFCAXIS2PLACEMENT3D(#22,$,#23);
+#22=IFCCARTESIANPOINT((1000.,2000.,30.));
+#23=IFCDIRECTION((0.7071067811865476,0.7071067811865475,0.));
+#2=IFCSITE('${guid(2)}',$,'Site',$,$,/* void */#20,$,$,.ELEMENT.,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;`;
+
 /** Anonymize the fixture in-place on a private overlay, then re-export the
  *  same `includedIds` subset so the test reads what the FILE actually says. */
 async function anonymizeAndExport() {
@@ -292,6 +317,36 @@ describe('applyPlacementAnonymization (anonymized isolated export, #2934)', () =
     expect(content).not.toMatch(/^#25=/m);
     expect(content).not.toContain('1 Real Street');
     expect(content).not.toContain('2 Real Avenue');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('zeroes a root placement whose ObjectPlacement slot is comment-wrapped (privacy gap)', async () => {
+    const store = await parse(FIXTURE_COMMENTED_PLACEMENT);
+    const view = new MutablePropertyView(null, 'anonymize');
+    const editor = new StoreEditor(store, view);
+    const index = getEffectiveEntityIndex(store, view, true);
+    const includedIds = new Set([1, 2]);
+
+    const result = applyPlacementAnonymization(store, index, includedIds, editor, view);
+
+    // The failure mode this pins: without `parseRef` recognizing the
+    // comment-wrapped ref, `zeroRootPlacements` silently `continue`s past #2
+    // and `zeroedPlacements` stays empty — the real coordinates (1000,2000,30)
+    // would then still be reachable in the export.
+    expect(result.zeroedPlacements).toHaveLength(1);
+    expect(result.zeroedPlacements[0]).toEqual({ expressId: 20, translation: [1000, 2000, 30] });
+
+    const exported = new StepExporter(store, view).export({
+      schema: store.schemaVersion,
+      subsetEntityIds: includedIds,
+      applyMutations: true,
+    });
+    const content = decode(exported.content);
+
+    // The original point is gone from the file: clone-and-repoint, not
+    // rewrite-in-place, and nothing else in this fixture still names it.
+    expect(content).not.toContain('1000.');
+    expect(content).not.toContain('2000.');
     expect(findDanglingRefs(content)).toEqual([]);
   });
 });

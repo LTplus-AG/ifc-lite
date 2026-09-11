@@ -34,6 +34,21 @@
 # says what changed) while making any two PRs touching the same scope collide
 # on that single pinned line, even when their row edits were disjoint. See
 # scripts/check-module-size.mjs for the two teeth this gate still has.
+#
+# AFTER A MERGE CONFLICT IN THIS FILE (#4388): never resolve by picking a side.
+# The two sides usually change DIFFERENT rows for DIFFERENT reasons, so "take
+# main's" and "take theirs" are both wrong at once. Diff BOTH sides against
+# the MERGE BASE and ask, per row, who changed it and why:
+#
+#   git diff $(git merge-base main BRANCH) main   -- scripts/module-size-allowlist.txt
+#   git diff $(git merge-base main BRANCH) BRANCH -- scripts/module-size-allowlist.txt
+#
+# then re-run `pnpm lint:module-size-baseline` and commit what it writes. The
+# gate diffs this file against the merge base on every run and FAILS a row
+# that differs from it when the file's measured count does not justify it: a
+# row added or raised above the file's size, a row resurrected for a file
+# under 400, or a row kept for a file this change shrank under 400 or removed.
+# A hand-picked number fails; a shrink that landed in another PR stays a note.
    524 apps/viewer-embed/src/bridge/handler.ts
    481 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
    431 apps/viewer/src/components/extensions/FlavorDialog.tsx
@@ -334,7 +349,7 @@
    957 scripts/check-issue-queue.mjs
    448 scripts/check-legacy-entity-coverage.mjs
   1145 scripts/check-loader-hook-specifier-match.mjs
-   554 scripts/check-module-size.mjs
+   512 scripts/check-module-size.mjs
   1066 scripts/check-pr-review-signal.mjs
    855 scripts/check-review-posted.mjs
    446 scripts/check-source-text-assertions.mjs

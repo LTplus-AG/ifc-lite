@@ -89,8 +89,24 @@
  *
  * What the step breaks on afterwards, by design: any PR adding a TS/TSX/MJS/
  * CJS file over 400 lines, or any PR growing a listed file past its recorded
- * budget. It does NOT break on a file shrinking or disappearing; those are
- * advisory notes.
+ * budget. It does NOT break on a file shrinking or disappearing in a PR that
+ * never touched the file or its row; those stay advisory notes.
+ *
+ * THE MERGE-BASE AUDIT (#4388) is the third thing check mode fails on: an
+ * allowlist ROW that this change wrote and the measurement does not justify.
+ * The two teeth judge files against rows; neither judged the row, so a
+ * conflict resolution that resurrected a deleted row for a 268-line file,
+ * kept the row of a file a split had taken to 348, and carried 766 for a
+ * 765-line file printed three notes and OK (#4330). Check mode now diffs the
+ * allowlist against `git merge-base origin/main HEAD` and holds every row
+ * that differs -- added, raised or lowered -- to the count `--update` would
+ * have written, and fails a row kept unchanged when this change's own diff
+ * took the file under the limit or removed it. The Rust twin's allowlist is
+ * audited by the same rules from here (the cargo test has no git). Rows this
+ * change did not write and files it did not touch stay advisory, which is
+ * the advisory rationale below preserved rather than dropped. No base (no
+ * `origin/main`, no `main`, or --root not a worktree top) is a hard failure
+ * under CI and a loud skip elsewhere; `--base <ref>` names a base by hand.
  *
  * WHAT THIS GATE CANNOT SEE: it counts lines, nothing else. A 400-line file
  * doing five jobs passes; a cohesive 900-line table fails. It does not look at
@@ -159,10 +175,11 @@
  *   --allow-raise      with --update, permit budget raises and new exemptions
  *   --all              with --update, re-record EVERY row in the tree, not
  *                      only the changed ones (and skip the git derivation)
+ *   --base <ref>       merge base against this ref instead of origin/main
+ *                      (then main); for odd clones and the test harness
  */
 
-import { readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -175,6 +192,9 @@ import {
   planUpdate,
   renderAllowlist,
 } from './lib/module-size-ratchet.mjs';
+import { changedFilesWarned, describeBase } from './lib/module-size-git.mjs';
+import { compactAudit } from './lib/module-size-base-audit.mjs';
+import { runMergeBaseAudits } from './lib/module-size-audit-run.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPTS_DIR, '..');
@@ -208,11 +228,12 @@ function parseArgs(argv) {
     update: false,
     allowRaise: false,
     all: false,
+    base: null,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i];
     const value = argv[i + 1];
-    if (flag === '--root' || flag === '--allowlist') {
+    if (flag === '--root' || flag === '--allowlist' || flag === '--base') {
       if (value === undefined) fail(`${flag} needs a value`);
       out[flag.slice(2)] = value;
       i += 1;
@@ -280,86 +301,6 @@ function safeIsDir(path) {
   }
 }
 
-function safeRealpath(path) {
-  try {
-    return realpathSync(path);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The paths this worktree changed relative to its merge base with main:
- * committed, staged, unstaged and untracked, all relative to the repo top.
- * `{ changed: Set, base: string }` on success, `{ error }` on failure.
- *
- * Git is the only honest discriminator between slack THIS change created and
- * slack inherited from main, which is why `--update` derives the scope instead
- * of taking a `--scope` flag: a flag nobody passes is the annexation with extra
- * steps.
- *
- * It FAILS CLOSED rather than falling back to repo-wide. A silent fallback is
- * the annexation again, in the one context — a shallow clone, a detached
- * checkout, a script — where nobody is reading the output, and "absence read as
- * success" is the shape this family of gates exists to avoid.
- */
-function changedFiles(root) {
-  const git = (...argv) => spawnSync('git', ['-C', root, ...argv], { encoding: 'utf8' });
-  const top = git('rev-parse', '--show-toplevel');
-  if (top.status !== 0) return { error: `${root} is not inside a git worktree` };
-  // Compare resolved paths: `git` answers with the physical path, while --root
-  // may arrive through a symlink (macOS /var -> /private/var). Requiring the
-  // top to BE the scanned root stops a synthetic tree nested inside some other
-  // repository from silently inheriting that repository's diff.
-  const toplevel = top.stdout.trim();
-  // Either side unresolvable is a REFUSAL, not a pass. `safeRealpath` answers
-  // null on failure, so a bare `!==` compares null to null and lets the guard
-  // through in exactly the case where it knows least about the two paths.
-  // Fail-closed is this function's whole contract; a guard that opens when its
-  // input is unreadable is the "absence read as success" shape again.
-  const resolvedTop = safeRealpath(toplevel);
-  const resolvedRoot = safeRealpath(root);
-  if (resolvedTop === null || resolvedRoot === null || resolvedTop !== resolvedRoot) {
-    return { error: `${root} is not the top of its git worktree (that is ${toplevel})` };
-  }
-  let base = null;
-  for (const ref of ['origin/main', 'main']) {
-    const merged = git('merge-base', ref, 'HEAD');
-    const sha = merged.stdout.trim();
-    if (merged.status === 0 && sha !== '') {
-      base = { ref, sha };
-      break;
-    }
-  }
-  if (base === null) return { error: 'no merge base with origin/main or main' };
-  // `main` can be arbitrarily far behind `origin/main` (measured here: 147
-  // commits, widening scope from 0 files to 381, 49 of them allowlisted), which
-  // is the annexation this scoping exists to prevent. The fallback is still the
-  // right behaviour -- not every clone names its upstream `origin` -- but it
-  // must not be a routine log line.
-  if (base.ref !== 'origin/main') {
-    console.warn(
-      `check-module-size: WARNING -- no merge base with origin/main; fell back to ` +
-        `local '${base.ref}' (${base.sha.slice(0, 9)}). If that ref is stale, the scope ` +
-        `is WIDER than your change and this regenerate may annex rows you did not touch. ` +
-        `Fetch origin/main and re-run.`,
-    );
-  }
-  const nulSeparated = (res) => (res.status === 0 ? res.stdout.split('\0').filter(Boolean) : null);
-  // `--no-renames` so a renamed module reports BOTH paths. Rename detection
-  // reports only the destination, and the source's row is exactly the one that
-  // has to be dropped.
-  const diffed = nulSeparated(git('diff', '--name-only', '--no-renames', '-z', base.sha));
-  // Untracked too: a god file written but not yet committed is the single most
-  // likely thing a contributor is running this for.
-  const untracked = nulSeparated(git('ls-files', '--others', '--exclude-standard', '-z'));
-  if (diffed === null || untracked === null) return { error: 'git could not list the changed files' };
-  return {
-    changed: new Set([...diffed, ...untracked]),
-    base: `${base.ref} (${base.sha.slice(0, 9)})`,
-  };
-}
-
 const args = parseArgs(process.argv.slice(2));
 
 let allowlistText;
@@ -405,7 +346,7 @@ if (args.update) {
     'check-module-size: --all: re-recording EVERY row in the tree, ' +
     'including rows this change never touched.';
   if (!args.all) {
-    const derived = changedFiles(args.root);
+    const derived = changedFilesWarned(args.root, args.base);
     if (derived.error !== undefined) {
       fail(
         `--update re-records only the files your change touched, and deriving those needs git.\n\n` +
@@ -426,7 +367,7 @@ if (args.update) {
     ).length;
     scopeNote =
       `check-module-size: scoped to ${actionable} changed module(s) ` +
-      `(of ${changed.size} changed path(s)) vs ${derived.base}; ` +
+      `(of ${changed.size} changed path(s)) vs ${describeBase(derived.base)}; ` +
       `pass --all to re-record every row.`;
   }
   console.log(scopeNote);
@@ -532,8 +473,9 @@ ${grew.join('\n')}
 `);
 }
 
-// Advisory: never fails the build, so a shrink landing in another PR cannot
-// turn this one red. Mirrors the Rust gate's advisory notes.
+// Advisory when the shrink is somebody else's: a shrink landing in another
+// PR cannot turn this one red. Mirrors the Rust gate's advisory notes. When
+// the shrink is THIS change's, the merge-base audit below fails it (#4388).
 for (const row of shrunk) {
   console.log(`note: ${row.trim()} <= ${LIMIT}; delete its allowlist row (the total must trend down)`);
 }
@@ -543,12 +485,28 @@ for (const row of missing) {
 // Advisory: headroom a file can grow into with nothing firing. Not a failure,
 // because a shrink landing in another PR would otherwise turn this one red —
 // but it must be VISIBLE, or the ratchet quietly stops being one for that row.
+// A row THIS change wrote with headroom in it is a different thing, and the
+// audit below fails that one.
 for (const row of slack) {
   console.log(`note:${row}; lower the budget to the measured count`);
 }
 
+// The merge-base audit (#4388): rows that differ from the base were written by
+// this change, and each must say what the file says. Rules in
+// lib/module-size-base-audit.mjs, the run in lib/module-size-audit-run.mjs.
+const { failed: auditFailed, tsAudit, scope } = runMergeBaseAudits({
+  root: args.root,
+  allowlistPath: args.allowlist,
+  headRows: allowlist,
+  measured: new Map(files.map((f) => [f.rel, f.lines])),
+  baseRef: args.base,
+});
+if (auditFailed) failed = true;
+
 if (failed) process.exit(1);
 
+const auditNote =
+  tsAudit === null ? 'merge-base audit SKIPPED' : `vs merge-base ${scope.base.sha.slice(0, 9)}: ${compactAudit(tsAudit)}`;
 console.log(
-  `check-module-size: OK (${files.length} files measured, ${allowlist.size} allowlisted, 0 new over ${LIMIT})`,
+  `check-module-size: OK (${files.length} files measured, ${allowlist.size} allowlisted, 0 new over ${LIMIT}; ${auditNote})`,
 );

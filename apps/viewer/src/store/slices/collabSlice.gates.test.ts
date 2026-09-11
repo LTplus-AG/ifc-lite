@@ -188,6 +188,8 @@ describe('collabSlice: stopCollab returns the room state to rest', () => {
       collabSelfToken: 'tok',
       collabLastShareToken: 'share-tok',
       collabSeedFailure: 'geometry upload failed',
+      collabSeedPhase: 'geometry',
+      collabSeedProgress: { uploaded: 12, total: 40 },
       collabGeometryNotice: 'stale notice',
       collabPanelVisible: true,
       collabPeersSinceBaseline: true,
@@ -201,6 +203,11 @@ describe('collabSlice: stopCollab returns the room state to rest', () => {
     assert.equal(after.collabSelfToken, null);
     assert.equal(after.collabLastShareToken, null);
     assert.equal(after.collabSeedFailure, null, 'a seed failure must not survive into the next room');
+    // #4446: a stale in-flight phase would hold the NEXT room's invite back
+    // forever (the Share dialog waits on it), and a stale progress row would
+    // report the previous room's upload.
+    assert.equal(after.collabSeedPhase, 'none', 'a seed phase must not survive into the next room');
+    assert.equal(after.collabSeedProgress, null);
     assert.equal(after.collabGeometryNotice, null);
     assert.equal(after.collabStatus, 'disconnected');
     assert.deepEqual(after.collabPeers, []);

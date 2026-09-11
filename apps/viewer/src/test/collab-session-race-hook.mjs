@@ -58,6 +58,10 @@ export * from ${JSON.stringify(realUrl)};
 import { createCollabSession as __realCreateCollabSession } from ${JSON.stringify(realUrl)};
 export async function createCollabSession(opts) {
   const session = await __realCreateCollabSession(opts);
+  // Hand the REAL session to the test so it can inspect the doc the seed
+  // wrote (collabSlice.seed-phase.test.ts): \`collabSession\` is only committed
+  // at the very end of \`startCollab\`, after the phases under test.
+  globalThis.__collabSessionCreated?.(session);
   const gate = globalThis.__collabSyncGate;
   if (gate) {
     const original = session.whenSynced;

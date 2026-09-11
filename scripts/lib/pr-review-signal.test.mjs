@@ -98,6 +98,9 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Typecheck',
     'Lint',
     'Node tests',
+    // CI redesign step 5: the feature legs of the Rust lane, off the PR and
+    // judged in the merge queue. On a PR its check run is `skipped`.
+    'Rust tests (feature builds)',
     // CI redesign step 4: provenance's 353 s merge battery in its own job,
     // and the viewer suite at eight shards instead of four.
     'Provenance tests',
@@ -116,7 +119,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 25);
+  assert.equal(names.length, 26);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

@@ -4548,6 +4548,7 @@
     "StairParams: interface",
     "StoreyInfo: interface",
     "StoreyParams: interface",
+    "StoreyPlanFrame: interface",
     "StyleBatch: interface",
     "SurfaceStyleColor: interface",
     "TShapeProfile: interface",
@@ -4592,6 +4593,7 @@
     "existingSpaceFootprintsByStorey: function",
     "extractWallSegmentsForStorey: function",
     "fromNativeLength: function",
+    "fromStoreyLocal: function",
     "generateSpaces: function",
     "generateSpacesFromWalls: function",
     "listStoreys: function",
@@ -4599,7 +4601,9 @@
     "resolveDuplicateSource: function",
     "resolveSpatialAnchor: function",
     "spatialZonesSupported: function",
-    "toNativeLength: function"
+    "storeyPlanFrame: function",
+    "toNativeLength: function",
+    "toStoreyLocal: function"
   ],
   "@ifc-lite/data": [
     "BUILDING_LIKE_SPATIAL_TYPE_ENUMS: const",

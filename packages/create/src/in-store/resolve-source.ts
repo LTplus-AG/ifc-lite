@@ -13,9 +13,10 @@
  * backend layer can call it without needing parser internals.
  */
 
-import { EntityExtractor, extractLengthUnitScale, type IfcDataStore } from '@ifc-lite/parser';
+import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
 import type { SourceAttributes, SourceAssociation, Vec3 } from './duplicate.js';
+import { safeLengthUnitScale } from './length-unit-scale.js';
 
 /**
  * Rel types whose `RelatedObjects` list is replayed against a
@@ -151,13 +152,7 @@ export function resolveDuplicateSource(
   // Metres per native unit (0.001 for a millimetre file) — lets the
   // duplicate flow convert its metre offset onto the native-unit
   // sourceLocation. Falls back to 1 (metres) on extraction failure.
-  let lengthUnitScale = 1.0;
-  try {
-    const s = extractLengthUnitScale(store.source, store.entityIndex);
-    if (Number.isFinite(s) && s > 0) lengthUnitScale = s;
-  } catch (error) {
-    console.warn('resolveDuplicateSource: failed to extract length unit scale; defaulting to metres', error);
-  }
+  const lengthUnitScale = safeLengthUnitScale(store.source, store.entityIndex, 'resolveDuplicateSource') ?? 1.0;
 
   return {
     // Canonical PascalCase (e.g. "IfcWall"); falls back to the raw

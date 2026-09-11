@@ -50,6 +50,47 @@ const MAX_THICK = 2.5;
 /** A wall is "on" a storey when its height range overlaps the band interior. */
 const BAND_MARGIN = 0.2;
 
+/**
+ * The render → room-frame plan offsets: `ifcX = renderX + cx`,
+ * `ifcY = cy − renderZ`.
+ *
+ * Canonical reconstruction (coordinate-handler `toWorld`, mirrored in
+ * PropertiesPanel + lib/geo `totalYupOffset`): worldYup = renderLocal + shift
+ * + rtcYup, with rtcYup = { x: rtc.x, y: rtc.z, z: -rtc.y }; then
+ * ifcX = worldYup.x, ifcY = -worldYup.z, ifcZ = worldYup.y. Solving:
+ *   ifcX = renderX + (rtc.x + shift.x)   → cx = rtc.x + shift.x
+ *   ifcY = (rtc.y - shift.z) - renderZ   → cy = rtc.y - shift.z
+ * The shift terms were once inverted (which worked only because shift is
+ * usually 0 for non-georeferenced models).
+ *
+ * Exported because this is where the room frame is DEFINED, and the bake needs
+ * to know which frame that is — see {@link roomFrameToModelWorld}.
+ */
+export function roomFramePlanOffsets(coord: CoordinateInfo | undefined): { cx: number; cy: number } {
+  const rtc = coord?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 };
+  const shift = coord?.originShift ?? { x: 0, y: 0, z: 0 };
+  return { cx: rtc.x + shift.x, cy: rtc.y - shift.z };
+}
+
+/**
+ * The plan offset that takes a room-frame point into the MODEL'S OWN WORLD
+ * FRAME — the coordinates the STEP file's placement chains resolve to, which
+ * is the frame `storeyPlanFrame` reads the storey out of.
+ *
+ * Zero today, because {@link roomFramePlanOffsets} folds `wasmRtcOffset` back
+ * in and the room frame therefore already IS the model's world frame. It is a
+ * function rather than nothing at all because that is a property of the room
+ * frame, not a fact about arithmetic: `wasmRtcOffset` is what the WASM mesh
+ * path subtracted to keep a surveyed model's vertices inside f32, so a room
+ * frame that dropped the term would sit a whole survey offset away from the
+ * file's own coordinates and the bake's storey fold would be wrong by exactly
+ * that much. Anything that changes which terms `roomFramePlanOffsets` carries
+ * changes this one too; `wall-rects-from-meshes.test.ts` pins the two together.
+ */
+export function roomFrameToModelWorld(_coord: CoordinateInfo | undefined): { dx: number; dy: number } {
+  return { dx: 0, dy: 0 };
+}
+
 /** Convex hull (Andrew's monotone chain), CCW, of a plan point cloud. */
 export function convexHull(pts: Pt[]): Pt[] {
   const uniq = [...new Map(pts.map((p) => [`${p[0].toFixed(5)},${p[1].toFixed(5)}`, p])).values()]
@@ -129,16 +170,7 @@ export function wallRectsFromMeshes(
 ): WallRect[] {
   const rtc = coord?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 };
   const shift = coord?.originShift ?? { x: 0, y: 0, z: 0 };
-  // Canonical reconstruction (coordinate-handler `toWorld`, mirrored in
-  // PropertiesPanel + lib/geo `totalYupOffset`): worldYup = renderLocal + shift
-  // + rtcYup, with rtcYup = { x: rtc.x, y: rtc.z, z: -rtc.y }; then
-  // ifcX = worldYup.x, ifcY = -worldYup.z, ifcZ = worldYup.y. Solving:
-  //   ifcX = renderX + (rtc.x + shift.x)   → cx = rtc.x + shift.x
-  //   ifcY = (rtc.y - shift.z) - renderZ   → cy = rtc.y - shift.z
-  // The shift terms were previously inverted (worked only because shift is
-  // usually 0 for non-georeferenced models).
-  const cx = rtc.x + shift.x;
-  const cy = rtc.y - shift.z;
+  const { cx, cy } = roomFramePlanOffsets(coord);
   // Storey band in render-Y (height). renderY = ifcZ − rtc.z − shift.y.
   const lo = floorElevation - rtc.z - shift.y;
   const hi = floorElevation + floorToFloor - rtc.z - shift.y;

@@ -772,3 +772,165 @@ END-ISO-10303-21;
     assert_eq!(row.global_id.as_deref(), Some("2n5ASfQfT84eP9h$zLLJ4A"));
     assert_eq!(row.name.as_deref(), Some("Door"));
 }
+
+/// #4203: an `IfcType`-resolvable-only attribute export left legacy
+/// (IFC2X3/IFC4, removed-by-IFC4X3) entities with an EMPTY `attributes` list,
+/// even for names `legacy_entities.rs` already resolves to a base type for
+/// geometry/rootedness purposes — `entity.ifc_type` is decoded via a bare
+/// `IfcType::from_str`, which is `Unknown` for these, and
+/// `Unknown::attribute_names()` is `&[]`.
+///
+/// `IFCDOORSTYLE`'s OWN declared attributes end `…, OperationType,
+/// ConstructionType, ParameterTakesPrecedence, Sizeable` — different names,
+/// same length, from its resolved base type `IfcDoorType`'s `…,
+/// PredefinedType, OperationType, ParameterTakesPrecedence,
+/// UserDefinedOperationType` past index 8. This also pins that the fix reads
+/// the entity's OWN schema-version attribute names rather than the base
+/// type's (which would exist, but rename `Sizeable`'s value to
+/// `UserDefinedOperationType` — wrong, not merely empty).
+#[test]
+fn a_legacy_type_products_own_attributes_use_its_own_schema_names_not_the_base_types() {
+    let ifc = "ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('issue-4203'),'2;1');
+FILE_NAME('t.ifc','2026-09-10',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#43=IFCDOORSTYLE('2n5ASfQfT84eP9h$zLLJ4A',$,'Door',$,$,$,(#44),$,.SINGLE_SWING_LEFT.,.PANEL_TYPE.,.F.,.T.);
+#44=IFCREPRESENTATIONMAP(#45,#46);
+#45=IFCAXIS2PLACEMENT3D(#4,$,$);
+#46=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#48));
+#48=IFCTRIANGULATEDFACESET(#49,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#49=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
+ENDSEC;
+END-ISO-10303-21;
+";
+    let opts = ModelOptions::default().with_attributes(true);
+    let rows = rows_with(ifc, &opts);
+    let row = rows
+        .iter()
+        .find(|r| r.express_id == 43)
+        .expect("the meshed IfcDoorStyle must get an attribute row");
+    assert_eq!(row.ifc_type, "IfcDoorType");
+
+    let names: Vec<&str> = row.attributes.iter().map(|p| p.name.as_str()).collect();
+    assert!(
+        !names.is_empty(),
+        "IFCDOORSTYLE's own attributes must not be dropped just because \
+         IfcType::from_str(\"IFCDOORSTYLE\") is Unknown"
+    );
+    assert!(
+        names.contains(&"OperationType"),
+        "got {names:?}; OperationType is IFCDOORSTYLE's own 9th attribute"
+    );
+    assert!(
+        names.contains(&"Sizeable"),
+        "got {names:?}; Sizeable is IFCDOORSTYLE's own last attribute — its \
+         resolved base type IfcDoorType has no Sizeable attribute at all, so \
+         this fails if attribute names were ever borrowed from the base type"
+    );
+    assert!(
+        !names.contains(&"PredefinedType") && !names.contains(&"UserDefinedOperationType"),
+        "got {names:?}; both are IfcDoorType-only names IFCDOORSTYLE does not \
+         declare — their presence would mean the base type's attribute list \
+         leaked in instead of IFCDOORSTYLE's own"
+    );
+
+    let sizeable = row
+        .attributes
+        .iter()
+        .find(|p| p.name == "Sizeable")
+        .expect("Sizeable attribute present");
+    assert_eq!(
+        sizeable.value, "true",
+        "Sizeable is IFCDOORSTYLE's 12th positional attribute (.T. in the fixture); \
+         a value at the wrong index would surface as a wrong value here first"
+    );
+}
+
+/// A lowercase STEP keyword must resolve the same legacy attribute names as
+/// its uppercase form. `legacy_attribute_names` used to do a case-sensitive
+/// exact match while `legacy_aware_ifc_type` (used for the row's DISPLAY
+/// type, via `model.rs`'s `ty`) normalises case first -- so a lowercase-typed
+/// row's DISPLAY type matched its uppercase sibling while its OWN ATTRIBUTE
+/// VALUES were silently relabelled with the resolved BASE type's names
+/// instead of just being dropped: `ifcproxy`'s `ProxyType`/`Tag` came back
+/// tagged `Tag`/`PredefinedType` (`IfcBuildingElementProxy`'s own names),
+/// worse than the pre-#4203 empty-list behaviour the doc comments on
+/// `render_attributes`/`legacy_attribute_names` warn against.
+#[test]
+fn a_lowercase_legacy_keyword_gets_the_same_attribute_names_as_its_uppercase_form() {
+    fn fixture(keyword: &str, id: u32) -> String {
+        format!(
+            "#{id}={keyword}('2n5ASfQfT84eP9h$zLLJ4A',$,'Proxy{id}',$,$,$,$,.USERDEFINED.,'TAG{id}');\n"
+        )
+    }
+    let ifc = format!(
+        "ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('issue-4203'),'2;1');
+FILE_NAME('t.ifc','2026-09-10',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+{}{}ENDSEC;
+END-ISO-10303-21;
+",
+        fixture("IFCPROXY", 10),
+        fixture("ifcproxy", 20),
+    );
+    let opts = ModelOptions::default().with_attributes(true);
+    let rows = rows_with(&ifc, &opts);
+
+    let upper = rows.iter().find(|r| r.express_id == 10).expect("uppercase row");
+    let lower = rows.iter().find(|r| r.express_id == 20).expect("lowercase row");
+
+    // The DISPLAY type already normalised before this fix -- pin that it
+    // still does, so this test isolates the ATTRIBUTE-NAME divergence.
+    assert_eq!(upper.ifc_type, "IfcBuildingElementProxy");
+    assert_eq!(lower.ifc_type, "IfcBuildingElementProxy", "display type already normalises case");
+
+    let upper_names: Vec<&str> = upper.attributes.iter().map(|p| p.name.as_str()).collect();
+    let lower_names: Vec<&str> = lower.attributes.iter().map(|p| p.name.as_str()).collect();
+
+    assert_eq!(
+        lower_names, upper_names,
+        "a lowercase-typed legacy entity must produce the SAME attribute \
+         names as its uppercase form; got upper={upper_names:?} lower={lower_names:?}"
+    );
+    assert_eq!(
+        upper_names,
+        vec!["ProxyType", "Tag"],
+        "IFCPROXY's own legacy names, not IfcBuildingElementProxy's \
+         resolved base-type names (Tag, PredefinedType)"
+    );
+
+    let upper_tag = upper.attributes.iter().find(|p| p.name == "Tag").expect("Tag present");
+    let lower_tag = lower.attributes.iter().find(|p| p.name == "Tag").expect("Tag present");
+    assert_eq!(upper_tag.value, "TAG10");
+    assert_eq!(
+        lower_tag.value, "TAG20",
+        "Tag is IFCPROXY's own last positional attribute (index 8); under the \
+         bug this position was mislabelled PredefinedType instead for the \
+         lowercase row, not merely dropped"
+    );
+}
+
+/// Non-legacy entities are unaffected by the case normalisation added to
+/// `legacy_attribute_names`: a modern name is never a key in the generated
+/// `LEGACY_ATTRIBUTE_NAMES` table (any case), so the lookup returns `None`
+/// either way and `render_attributes` falls back to `ifc_type.attribute_names()`
+/// exactly as before this fix.
+#[test]
+fn a_non_legacy_entity_is_unaffected_by_legacy_name_case_normalisation() {
+    assert_eq!(ifc_lite_core::legacy_attribute_names("IFCWALL"), None);
+    assert_eq!(ifc_lite_core::legacy_attribute_names("ifcwall"), None);
+    assert_eq!(ifc_lite_core::legacy_attribute_names("IfcWall"), None);
+}

@@ -82,6 +82,7 @@ impl<'a> TransferSampler<'a> {
                 Observation::Distance => coverage.unknown_distance_samples += 1,
                 Observation::Normal => coverage.unknown_normal_samples += 1,
                 Observation::Ambiguous => coverage.unknown_ambiguous_samples += 1,
+                Observation::Behind => coverage.unknown_behind_samples += 1,
             }
         }
         Ok(result)
@@ -176,6 +177,7 @@ pub(super) fn accumulate(total: &mut TransferCoverage, item: &TransferCoverage) 
     total.unknown_distance_samples += item.unknown_distance_samples;
     total.unknown_normal_samples += item.unknown_normal_samples;
     total.unknown_ambiguous_samples += item.unknown_ambiguous_samples;
+    total.unknown_behind_samples += item.unknown_behind_samples;
     total.observed_area_estimate_m2 += item.observed_area_estimate_m2;
     total.unknown_area_estimate_m2 += item.unknown_area_estimate_m2;
 }

@@ -50,6 +50,10 @@ pub struct MeshTransferRequest {
     pub max_distance_metres: f64,
     pub min_normal_dot: f64,
     pub ambiguity_distance_metres: f64,
+    /// How far a same-facing observation may lie behind the IFC face before it
+    /// is rejected as beyond the surface (thin-wall far side, oversized IFC).
+    /// Bounded by `max_distance_metres`; never a registration accuracy estimate.
+    pub max_behind_metres: f64,
 }
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,6 +69,8 @@ pub struct TransferCoverage {
     pub unknown_distance_samples: u64,
     pub unknown_normal_samples: u64,
     pub unknown_ambiguous_samples: u64,
+    /// Same-facing nearest surface deeper than `max_behind_metres` behind the target face.
+    pub unknown_behind_samples: u64,
     /// Triangle-area-weighted fraction of centroid/interior-texel samples, not an exact area integral.
     pub observed_area_estimate_m2: f64,
     pub unknown_area_estimate_m2: f64,

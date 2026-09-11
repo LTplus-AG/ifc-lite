@@ -1361,3 +1361,28 @@ certificate avoids treating an unrelated infinite-line side change as an edge
 intersection. No tolerance/endpoint guard was replaced by epsilon snapping.
 [Source-matched raw samples and original PDF evidence](../../docs/architecture/evidence/pdf-composition-lattice/README.md)
 record the control and prevent repeating the float-roundtrip approach.
+
+## Regime-1 coincidence requires near-parallel planes (#4439)
+
+The exact boolean classifier's "sub-triangle lies ON a coincident shared face"
+regime now also requires the sub-triangle's own plane to be within 45° of the
+candidate face (`coincident_planes`, a sqrt-free `2·d² ≥ |n₁|²|n₂|²` test on
+products the classifier already forms). Interleaved native A/B/A/B on AC20 and
+ISSUE_129 resolved no phase delta beyond the base's own noise floor; AC20's
+ordered mesh fingerprint is identical on every run. ISSUE_129's output changes
+on purpose: host #9094 is one of the 17 census hosts the gate reclassifies
+(triangle delta of the whole run equals that row's census delta), so its timing
+is not a like-for-like comparison and is not claimed either way. This is a
+correctness fix, not a speedup. The lesson: a centroid-in-band test locates a
+face, it does not establish coincidence — a needle hugging the intersection
+line of two transversal faces sits in both planes' bands with no orientation to
+agree with, and a `dot > 0` verdict there is a coin flip that can override an
+exact ray-cast. Add the angle premise per candidate face rather than gating on
+a parent flag (the parent-flag gate was measured to cost 20+ census hosts).
+[Raw interleaved runs and fingerprints](../../docs/architecture/evidence/csg-coincident-planes/native-load.json).
+Found while measuring: on Windows `ab.sh` ran ZERO rounds and still printed a
+"within noise, counts matched" verdict, because `ab-order.mjs`'s CLI guard
+compared `import.meta.url` with a backslash `argv[1]` and never fired. Fixed in
+the same PR (`pathToFileURL`, a CLI test, and `ab.sh` now refuses an order file
+with fewer lines than `--iters`); the recorded runs replicate the procedure by
+hand with the same `roundOrder()` and reporter.

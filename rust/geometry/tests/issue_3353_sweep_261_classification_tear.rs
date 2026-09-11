@@ -93,14 +93,19 @@
 //!
 //! ## Status
 //!
-//! `#[ignore]`d: this documents a KNOWN, OPEN defect, not a passing
-//! invariant. Do not un-ignore it without first fixing the classification
-//! disagreement referenced above and re-validating with the full
-//! `triangulation_invariance` census (see AGENTS.md). Verified to fail
-//! for the stated reason (3 unmatched directed edges) when run with
-//! `--ignored`.
+//! Fixed by #4439 (`kernel::arrangement::coincident::coincident_planes`):
+//! regime 1 of the classifier now requires the sub-triangle's OWN plane to be
+//! within 45° of the face its centroid was found near, so the 84 µm needle on
+//! the A/B plane-intersection line — 58° off the B face it was being taken
+//! for a coincident copy of — falls through to the ray cast, which already
+//! classified it as inside B. Un-ignored with that change; this test is the
+//! end-to-end reading of the case and
+//! `kernel/arrangement/issue_3353_vid_census_tests.rs` the Vid-space one.
+//! It failed for the stated reason (3 unmatched directed edges) when run with
+//! `--ignored` immediately before this change. The consolidation-level half of #3353
+//! (`issue_3353_boolean_tear.rs`) is unaffected and still `#[ignore]`d.
 //!
-//! Refs #3353
+//! Refs #3353, #4439
 
 use ifc_lite_geometry::{ClippingProcessor, Mesh};
 use nalgebra::{Point3, Rotation3, Unit, Vector3};
@@ -175,13 +180,9 @@ fn open_edges(m: &Mesh) -> Result<usize, String> {
     Ok(edges.values().filter(|&&(f, r)| f != 1 || r != 1).count())
 }
 
-/// `sweep_261`, recovered verbatim from PR #3373's closed branch.
+/// `sweep_261`, recovered verbatim from PR #3373's closed branch. Closed by
+/// the #4439 `coincident_planes` gate (see the module doc's Status).
 #[test]
-#[ignore = "known-open #3353 defect: classification-level tear, consolidate_coplanar \
-            is a byte-identical no-op on this input. NOT the near-coplanar half fixed \
-            by issue_3353_near_coplanar_rotated_overlap.rs — with that weld in place \
-            this is still 3 unmatched edges, from an 84 um IN-PLANE vertex split \
-            (see module doc)"]
 fn sweep_261_overlapping_rotated_union_never_tears() {
     let a_min = [-1.72371594746207, -0.35246108913603935, -1.2204342720208154];
     let a_size = [2.8534163464770894, 3.0795194627753784, 2.858202766048261];

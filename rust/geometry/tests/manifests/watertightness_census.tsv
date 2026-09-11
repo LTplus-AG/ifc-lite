@@ -176,7 +176,7 @@ ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	6891	Clipping	0	
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	7526	SweptSolid	0	2210	0	0	0	-	0	1028308685
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	8434	Clipping	0	52	0	0	0	-	0	7955440
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	8756	Clipping	5	51	0	0	5	7	5	-
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	9094	SweptSolid	104	664	0	0	104	0	104	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	9094	SweptSolid	96	647	1	0	96	0	96	-
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	11115	Clipping	0	126	0	0	0	-	0	6419464
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	12381	SweptSolid	25	7565	1	0	25	0	26	-
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	32810	SweptSolid	3	2005	0	0	3	0	3	-
@@ -421,8 +421,8 @@ ara3d/S_Office_Integrated Design Archi.ifc	415490	unknown	0	0	0	0	0	-	0	0
 ara3d/S_Office_Integrated Design Archi.ifc	426329	CSG	0	496	0	0	6	-	0	128252029
 ara3d/S_Office_Integrated Design Archi.ifc	437170	CSG	6	380	0	0	0	6	6	-
 ara3d/S_Office_Integrated Design Archi.ifc	448019	CSG	90	1034	0	0	89	164	90	-
-ara3d/S_Office_Integrated Design Archi.ifc	458857	CSG	78	1062	0	0	80	78	78	-
-ara3d/S_Office_Integrated Design Archi.ifc	469706	CSG	51	1077	0	0	61	51	51	-
+ara3d/S_Office_Integrated Design Archi.ifc	458857	CSG	77	1061	0	0	80	78	77	-
+ara3d/S_Office_Integrated Design Archi.ifc	469706	CSG	50	1076	0	0	61	51	50	-
 ara3d/S_Office_Integrated Design Archi.ifc	489748	SweptSolid	0	40	0	0	0	-	0	5896872
 ara3d/S_Office_Integrated Design Archi.ifc	495955	SweptSolid	0	36	0	0	0	-	0	6031243
 ara3d/S_Office_Integrated Design Archi.ifc	496628	SweptSolid	0	52	0	0	0	-	0	68368125
@@ -639,7 +639,7 @@ ara3d/dental_clinic.ifc	202	SweptSolid	0	28	0	0	0	-	0	3726179
 ara3d/dental_clinic.ifc	203	SweptSolid	0	76	0	0	0	-	0	6285996
 ara3d/dental_clinic.ifc	205	SweptSolid	0	76	0	0	0	-	0	5407859
 ara3d/dental_clinic.ifc	206	SweptSolid	0	32	0	0	0	-	0	24013649
-ara3d/dental_clinic.ifc	207	Clipping	8	278	0	0	8	0	8	-
+ara3d/dental_clinic.ifc	207	Clipping	21	237	0	0	21	0	21	-
 ara3d/dental_clinic.ifc	212	SweptSolid	0	76	0	0	0	-	0	6076059
 ara3d/dental_clinic.ifc	213	SweptSolid	0	44	0	0	0	-	0	4086273
 ara3d/dental_clinic.ifc	214	SweptSolid	0	76	0	0	0	-	0	6479706
@@ -819,7 +819,7 @@ ara3d/dental_clinic.ifc	1242	SweptSolid	0	28	0	0	0	-	0	1945789
 ara3d/dental_clinic.ifc	1252	SweptSolid	0	28	0	0	0	-	0	2018855
 ara3d/dental_clinic.ifc	1253	SweptSolid	0	28	0	0	0	-	0	2018853
 ara3d/dental_clinic.ifc	1310	SweptSolid	0	164	0	0	0	-	0	315746
-ara3d/dental_clinic.ifc	1311	Clipping	10	80	0	0	10	0	10	-
+ara3d/dental_clinic.ifc	1311	Clipping	15	92	1	0	15	0	16	-
 ara3d/dental_clinic.ifc	1314	SweptSolid	0	58	0	0	0	-	0	409703
 ara3d/dental_clinic.ifc	1331	SweptSolid	0	28	0	0	0	-	0	137144
 ara3d/dental_clinic.ifc	1643	Clipping	0	30	0	0	0	-	0	1739830
@@ -843,7 +843,7 @@ ara3d/dental_clinic.ifc	2288	SweptSolid	0	44	0	0	0	-	0	32317
 ara3d/dental_clinic.ifc	2289	SweptSolid	0	44	0	0	0	-	0	32317
 ara3d/dental_clinic.ifc	2290	SweptSolid	0	44	0	0	0	-	0	32317
 ara3d/dental_clinic.ifc	2291	SweptSolid	0	44	0	0	0	-	0	32317
-ara3d/dental_clinic.ifc	2292	SweptSolid	19	305	1	0	6	0	19	-
+ara3d/dental_clinic.ifc	2292	SweptSolid	0	310	1	0	0	-	0	59640
 ara3d/dental_clinic.ifc	2293	SweptSolid	0	44	0	0	0	-	0	32319
 ara3d/dental_clinic.ifc	2294	SweptSolid	0	44	0	0	0	-	0	32319
 ara3d/dental_clinic.ifc	2295	SweptSolid	0	44	0	0	0	-	0	32317
@@ -853,7 +853,7 @@ ara3d/dental_clinic.ifc	2298	SweptSolid	0	44	0	0	0	-	0	32317
 ara3d/dental_clinic.ifc	2299	SweptSolid	0	44	0	0	0	-	0	32317
 ara3d/dental_clinic.ifc	2300	SweptSolid	0	64	0	0	0	-	0	67331
 ara3d/dental_clinic.ifc	2301	SweptSolid	6	634	0	0	6	0	6	-
-ara3d/dental_clinic.ifc	2302	SweptSolid	7	366	1	0	7	0	7	-
+ara3d/dental_clinic.ifc	2302	SweptSolid	0	312	1	0	0	-	0	61018
 ara3d/dental_clinic.ifc	2304	SweptSolid	0	56	0	0	0	-	0	56842
 ara3d/dental_clinic.ifc	2305	SweptSolid	0	56	0	0	0	-	0	56845
 ara3d/dental_clinic.ifc	2306	SweptSolid	0	56	0	0	0	-	0	56842
@@ -1111,7 +1111,7 @@ various/rvt01.ifc	6810	SweptSolid	28	232	0	0	28	42	46	-
 various/rvt01.ifc	6934	SweptSolid	0	356	1	0	0	-	10	3552955
 various/rvt01.ifc	7013	SweptSolid	8	64	0	0	8	8	24	-
 various/rvt01.ifc	7075	SweptSolid	18	100	0	0	12	13	40	-
-various/rvt01.ifc	7137	SweptSolid	39	181	1	0	36	0	45	-
+various/rvt01.ifc	7137	SweptSolid	52	170	1	0	33	0	57	-
 various/rvt01.ifc	7216	SweptSolid	0	180	0	0	0	-	7	1047958
 various/rvt01.ifc	7295	SweptSolid	0	188	0	0	0	-	4	180758
 various/rvt01.ifc	7403	Tessellation	0	172	1	0	0	-	6	1309071
@@ -1127,17 +1127,17 @@ various/rvt01.ifc	9730	SweptSolid	24	192	0	0	24	8	32	-
 various/rvt01.ifc	9901	SweptSolid	14	158	0	0	14	8	27	-
 various/rvt01.ifc	10191	Tessellation	0	172	0	0	0	-	0	7452
 various/rvt01.ifc	10335	Tessellation	0	116	0	0	0	-	0	28455
-various/rvt01.ifc	10526	Tessellation	6	140	0	0	6	0	6	-
+various/rvt01.ifc	10526	Tessellation	0	112	0	0	0	-	0	25761
 various/rvt01.ifc	10632	Tessellation	6	166	0	0	7	0	6	-
 various/rvt01.ifc	11110	Tessellation	0	120	0	0	0	-	0	20862
 various/rvt01.ifc	11168	Tessellation	6	110	0	0	0	0	6	-
 various/rvt01.ifc	11232	Tessellation	0	144	0	0	0	-	0	39336
-various/rvt01.ifc	11304	Tessellation	12	150	0	0	3	0	12	-
+various/rvt01.ifc	11304	Tessellation	0	128	0	0	0	-	0	9525
 various/rvt01.ifc	11477	Tessellation	33	159	1	0	18	3	33	-
-various/rvt01.ifc	11563	Tessellation	32	140	0	0	15	0	32	-
+various/rvt01.ifc	11563	Tessellation	12	156	1	0	15	0	12	-
 various/rvt01.ifc	11627	Tessellation	9	163	0	0	13	6	9	-
-various/rvt01.ifc	11690	Tessellation	14	140	0	0	14	6	14	-
-various/rvt01.ifc	11753	Tessellation	26	142	1	0	13	0	34	-
+various/rvt01.ifc	11690	Tessellation	19	139	1	0	19	6	19	-
+various/rvt01.ifc	11753	Tessellation	28	140	1	0	13	0	36	-
 various/rvt01.ifc	11803	SweptSolid	0	104	0	0	0	-	0	451981
 various/rvt01.ifc	12235	SweptSolid	0	24	0	0	0	-	0	723933
 various/rvt01.ifc	12345	SweptSolid	0	172	0	0	0	-	8	702236
@@ -1145,7 +1145,7 @@ various/rvt01.ifc	12449	Tessellation	27	235	1	0	21	9	36	-
 various/rvt01.ifc	13735	SweptSolid	8	72	0	0	8	24	24	-
 various/rvt01.ifc	13797	Tessellation	88	398	1	0	105	45	148	-
 various/rvt01.ifc	14014	SweptSolid	8	72	0	0	8	8	24	-
-various/rvt01.ifc	14132	SweptSolid	45	138	1	0	45	8	61	-
+various/rvt01.ifc	14132	SweptSolid	50	140	1	0	50	8	66	-
 various/rvt01.ifc	14194	SweptSolid	8	72	0	0	8	8	24	-
 various/rvt01.ifc	14256	SweptSolid	0	96	0	0	0	-	12	1086658
 various/rvt01.ifc	14447	SweptSolid	0	180	0	0	0	-	13	847248
@@ -1169,8 +1169,8 @@ various/rvt01.ifc	25914	SweptSolid	28	84	0	0	28	0	31	-
 various/rvt01.ifc	26166	Tessellation	0	172	0	0	0	-	8	147558
 various/rvt01.ifc	26300	Tessellation	0	172	0	0	0	-	8	147894
 various/rvt01.ifc	26610	Tessellation	0	84	0	0	0	-	0	8668
-various/rvt01.ifc	26681	Tessellation	38	190	1	0	37	0	39	-
-various/rvt01.ifc	26832	Tessellation	37	132	1	0	25	0	37	-
+various/rvt01.ifc	26681	Tessellation	35	191	1	0	33	0	35	-
+various/rvt01.ifc	26832	Tessellation	11	162	1	0	11	0	11	-
 various/rvt01.ifc	30054	Tessellation	0	160	0	0	0	-	0	61257
 various/rvt01.ifc	30125	Tessellation	0	206	0	0	0	-	0	80813
 various/rvt01.ifc	30518	Tessellation	0	244	0	0	0	-	0	156363
@@ -1184,7 +1184,7 @@ various/rvt01.ifc	32081	SweptSolid	0	220	0	0	0	-	17	131568
 various/rvt01.ifc	33639	SweptSolid	24	200	0	0	24	24	54	-
 various/rvt01.ifc	37278	Tessellation	0	110	0	0	0	-	0	3923
 various/rvt01.ifc	37347	Tessellation	6	182	0	0	6	0	6	-
-various/rvt01.ifc	37455	Tessellation	13	273	1	0	40	3	21	-
+various/rvt01.ifc	37455	Tessellation	13	274	1	0	39	3	21	-
 various/rvt01.ifc	37570	SweptSolid	0	112	0	0	0	-	16	40318
 various/rvt01.ifc	38680	Tessellation	20	186	0	0	20	0	24	-
 various/rvt01.ifc	38745	SweptSolid	0	24	0	0	0	-	2	121740

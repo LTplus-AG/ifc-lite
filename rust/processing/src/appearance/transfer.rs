@@ -34,8 +34,11 @@ pub fn plan_mesh_transfer(
         || !request.ambiguity_distance_metres.is_finite()
         || request.ambiguity_distance_metres < 0.
         || request.ambiguity_distance_metres > request.max_distance_metres
+        || !request.max_behind_metres.is_finite()
+        || request.max_behind_metres < 0.
+        || request.max_behind_metres > request.max_distance_metres
     {
-        return Err("Transfer requires bounded positive distance, oriented normal threshold, and nonnegative ambiguity distance".into());
+        return Err("Transfer requires bounded positive distance, oriented normal threshold, and nonnegative ambiguity and behind-surface distances within it".into());
     }
     if !matches!(request.schema.as_str(), "IFC4" | "IFC4X3")
         || request.source_revision.len() > 256
@@ -153,7 +156,7 @@ fn digest(bytes: &[u8], request: &MeshTransferRequest, rgba: &[u8]) -> Result<St
         }
     }
     let mut hash = Writer(Sha256::new());
-    hash.0.update(b"ifclite-mesh-transfer-v2-raster-guards\0");
+    hash.0.update(b"ifclite-mesh-transfer-v3-behind-bound\0");
     // Length-prefix binary portions; JSON is last and streamed without a duplicate allocation.
     hash.0.update((bytes.len() as u64).to_le_bytes());
     hash.0.update(bytes);
@@ -165,3 +168,6 @@ fn digest(bytes: &[u8], request: &MeshTransferRequest, rgba: &[u8]) -> Result<St
 #[cfg(test)]
 #[path = "transfer_tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "transfer_acceptance_tests.rs"]
+mod acceptance_tests;

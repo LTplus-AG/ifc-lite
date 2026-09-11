@@ -13,7 +13,7 @@ import { targetTransferFrame } from './transfer-frame';
 
 export interface ScanTransferSettings {
   toleranceMetres: number; reviewed: boolean; texelsPerMetre: number;
-  maxDistanceMetres: number; minNormalDot: number; ambiguityDistanceMetres: number;
+  maxDistanceMetres: number; minNormalDot: number; ambiguityDistanceMetres: number; maxBehindMetres: number;
 }
 export function validateTransferReview(result: { request: ScanRegistrationRequest; report: ScanRegistrationReport }, settings: ScanTransferSettings): void {
   if (result.request.fit.length < 4 || result.request.heldOut.length < 4) throw new Error('Choose at least four fit and four independent check points before transfer.');
@@ -54,7 +54,7 @@ export async function prepareMeshTransfer(session: ScanSession,
     targetFromIfcWorld: targetTransferFrame(useViewerStore.getState(), session.targetModelId), sourceMesh,
     sourceImage: pixels.sourceImage, sourceImages: pixels.sourceImages,
     texelsPerMetre: settings.texelsPerMetre, maxDistanceMetres: settings.maxDistanceMetres,
-    minNormalDot: settings.minNormalDot, ambiguityDistanceMetres: settings.ambiguityDistanceMetres,
+    minNormalDot: settings.minNormalDot, ambiguityDistanceMetres: settings.ambiguityDistanceMetres, maxBehindMetres: settings.maxBehindMetres,
   }, pixels.rgba, { signal });
   session.validate(); signal.throwIfAborted();
   const images = await adoptBakedImages(session.targetModelId, output, owner, signal);

@@ -81,6 +81,25 @@ as independent surveyed accuracy.
 This preparation makes real source bytes available for importer work while
 keeping registration evidence as an explicit unfinished deliverable.
 
+## Bounded reachability re-check (2026-09-11)
+
+The earlier acquisition note recorded HTTP 504 timeouts from the public
+archive. A bounded re-check from this host at 2026-09-11T17:46:03Z–17:46:04Z
+found the record reachable again: `HEAD` on
+`https://zenodo.org/api/records/7948116/files/craslabbim.ifc/content` and
+`.../craslabannotated.zip/content` both returned HTTP 200 after redirects, and
+a ranged `GET` of archive bytes `0–1048575` returned HTTP 206 with 1,048,576
+bytes in 0.43 s (SHA-256
+`c6a66bf3df477f5a635028948951fe37a76fcc86dcf38a331e63e7150a2b1c46`, kept
+outside Git); a second ranged `GET` of the same bytes at 2026-09-11T19:41:39Z
+returned HTTP 206 with 1,048,576 bytes in 0.54 s and an identical SHA-256.
+No further bytes were fetched: the earlier 128 MiB prefix already
+showed that file-order prefixes add no upper-wall coverage, so a full-archive
+spatial query (4.27 GB compressed, 26.7 GB decoded) is the next acquisition
+step, and it only becomes useful once the workbench can take an RGB point cloud
+as a transfer source with oriented normals and point landmarks. The independent
+check-point gate therefore remains open; reachability is not evidence.
+
 ## Bounded alternatives check
 
 Three additional primary inventories were inspected before returning to CRAS:

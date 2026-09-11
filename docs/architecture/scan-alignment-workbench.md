@@ -80,8 +80,14 @@ Both fit and check maximum errors must meet that tolerance before planning.
 
 **Preview transfer** runs the native registered-mesh planner in the existing
 appearance worker. The source is one opaque, untinted GLB base-color image.
-Distance, normal agreement and ambiguity settings determine which samples are
-observed. Unknown samples retain the prior IFC appearance. The coverage report
+Distance, normal agreement, ambiguity and behind-surface settings determine
+which samples are observed. Unknown samples retain the prior IFC appearance.
+The behind-surface limit refuses a same-facing scan surface that lies deeper
+than that distance behind the IFC face, so the far side of a thin wall, or
+furniture beyond it, never paints the near face. Its default equals the default
+project tolerance (10 mm), so a registration accepted at that residual is not
+refused on one side of the face only; raise it only to the accepted
+registration error plus modelling tolerance. The coverage report
 separates actual transferred interior image texels from centroid-inclusive
 sample/area estimates. Padding is excluded from interior texel counts. No Apply
 is offered when no interior texel receives scan appearance or chosen objects
@@ -103,3 +109,39 @@ The [committed browser and independent IFC evidence](evidence/scan-transfer-work
 scan-to-BIM accuracy or full-model transfer capacity. Independent scan/model
 registration, RGB-point adapters and broader transfer acceptance remain #4381
 work.
+
+## What counts as validated
+
+Three kinds of evidence exist, and they answer different questions:
+
+1. **Controlled surface behaviour** (native tests in
+   `rust/processing/src/appearance/transfer_acceptance_tests.rs`, mirrored over
+   the real WASM boundary by `scripts/lib/wasm-mesh-transfer-surfaces-contract.mjs`,
+   summarised in [mesh-transfer-surfaces](evidence/mesh-transfer-surfaces/README.md)).
+   A 4 mm two-sided partition observes each side only from its own capture; a
+   gap in one capture stays unknown instead of receiving the opposite side; a
+   slab in front of an uncaptured region is refused by its wall-facing normal,
+   and its same-facing side beyond the wall by the behind-surface limit. These
+   are stated invariants over synthetic fixtures with an identity registration.
+   They prove the classification rules, not registration accuracy.
+2. **Same-source workflow controls** in the browser
+   ([workspace](evidence/scan-transfer-workspace/README.md),
+   [room portability](evidence/scan-transfer-room/README.md),
+   [full selected target](evidence/mesh-transfer-full-target/README.md)) prove
+   Preview, Compare, Apply, Undo/Redo, IFCZIP export, fresh import and shared
+   rooms with retained unknown pixels. The GLB and IFC derive from one surface,
+   so residuals there say nothing about aligning independent captures.
+3. **Independent real-pair registration** is the open gate. It requires a
+   licensed scan/IFC pair, reviewed fit landmarks and spatially distributed
+   held-out check landmarks at several heights, frozen before solving, with the
+   held-out residuals published before any bake tolerance is chosen. The
+   [CRAS candidate](evidence/scan-transfer/README.md) has real bytes and a
+   protocol but no such landmark lists; its scan is an RGB point cloud, which the
+   workbench cannot yet use as a transfer source. Until an RGB-point source path
+   and that reviewed list exist, no accuracy tolerance is validated and the
+   tolerance the user enters remains a project decision, not a measured one.
+
+A one-sided surface facing the same way as the IFC face within the distance
+bound (a poster on a wall) is observed as the wall's appearance: local nearest
+surface matching cannot separate it from the wall without scanner viewpoints.
+The distance bound is the explicit control for such fixtures.

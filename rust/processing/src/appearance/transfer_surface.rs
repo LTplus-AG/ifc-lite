@@ -15,6 +15,9 @@ pub(super) enum Observation {
     Distance,
     Normal,
     Ambiguous,
+    /// Same-facing nearest surface lies beyond the target face: the far side of
+    /// a thin element or an oversized IFC solid, never painted through.
+    Behind,
 }
 pub(super) struct Surface {
     pub triangles: Vec<Triangle>,
@@ -23,6 +26,7 @@ pub(super) struct Surface {
     distance: f64,
     normal_dot: f64,
     ambiguity: f64,
+    behind: f64,
 }
 impl Surface {
     pub fn new(
@@ -87,6 +91,7 @@ impl Surface {
             distance: request.max_distance_metres,
             normal_dot: request.min_normal_dot,
             ambiguity: request.ambiguity_distance_metres,
+            behind: request.max_behind_metres,
         })
     }
     pub fn observe(
@@ -122,6 +127,19 @@ impl Surface {
         // Never look through an incompatible nearest face for a farther matching normal.
         if dot(nearest.normal, target_normal) < self.normal_dot {
             return Ok((Observation::Normal, [0.; 2]));
+        }
+        // A same-facing surface deeper than the behind bound is beyond this face,
+        // not its own capture: the far side of a thin wall stays unknown. A
+        // coplanar capture rounds to either side, so tolerate f64 rounding even
+        // under a zero bound. The slack is 16 ulp of the largest coordinate, so
+        // it scales linearly with coordinate magnitude: ~1e-9 m at georeferenced
+        // 1e6 m and negligible below ~1e9 m.
+        let closest_point = interpolate(nearest.points, weights);
+        let depth = dot(sub(closest_point, point), target_normal);
+        let rounding = 16. * f64::EPSILON
+            * point.iter().chain(&closest_point).fold(1_f64, |m, v| m.max(v.abs()));
+        if depth < -(self.behind + rounding) {
+            return Ok((Observation::Behind, [0.; 2]));
         }
         Ok((
             Observation::Observed,

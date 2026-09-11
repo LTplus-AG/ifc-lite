@@ -102,7 +102,7 @@ test('real transfer WASM envelope supports observed output and an explicit wholl
       targetFromIfcWorld: { rotation: [[1,0,0],[0,1,0],[0,0,1]], sourceAnchor: [0,0,0], targetAnchor: [0,0,0] },
       sourceMesh: { meshOrdinal: 0, positions: [[0.2,0.2,0],[0.6,0.2,0],[0.2,0.6,0]], triangles: [[0,1,2]], uvs: [[0,0],[1,0],[0,1]], baseColorFactor: [1,1,1,1], repeatS: false, repeatT: false },
       sourceImage: { width: 1, height: 1, byteOffset: 0, byteLength: 4 }, sourceImages: [], texelsPerMetre: 32,
-      maxDistanceMetres: 0.01, minNormalDot: 0.9, ambiguityDistanceMetres: 0.001,
+      maxDistanceMetres: 0.01, minNormalDot: 0.9, ambiguityDistanceMetres: 0.001, maxBehindMetres: 0.005,
     };
     const pixels = new Uint8Array([255,0,0,255]);
     const result = decodeAtlasOutput<import('./scan/transfer-types').MeshTransferPlan>(api.planMeshTransfer(source, JSON.stringify(transfer), pixels));

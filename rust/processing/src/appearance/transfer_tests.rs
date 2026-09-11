@@ -4,7 +4,7 @@
 use super::super::{transfer_math::*, transfer_surface::Observation};
 use super::*;
 use crate::appearance::tests::{apply, CONTROLLED_IFC};
-fn identity() -> TransferFrame {
+pub(super) fn identity() -> TransferFrame {
     TransferFrame {
         rotation: [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
         source_anchor: [0.; 3],
@@ -88,11 +88,12 @@ fn fixture() -> (MeshTransferRequest, Vec<u8>) {
             max_distance_metres: 0.01,
             min_normal_dot: 0.9,
             ambiguity_distance_metres: 0.001,
+            max_behind_metres: 0.005,
         },
         rgba,
     )
 }
-fn color(
+pub(super) fn color(
     mesh: &crate::types::mesh::MeshData,
     raster: Raster<'_>,
     point: Point,
@@ -351,6 +352,7 @@ fn issue_4381_centroid_only_observation_cannot_apply_an_all_old_raster() {
     ];
     request.max_distance_metres = 0.00001;
     request.ambiguity_distance_metres = 0.;
+    request.max_behind_metres = 0.;
     request.texels_per_metre = 1.;
     for pixel in rgba[4..].chunks_exact_mut(4) {
         pixel.copy_from_slice(&[0, 0, 255, 255]);

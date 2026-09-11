@@ -301,7 +301,12 @@ punctuation, remain unchanged. Preserved page material names use the same rule.
 
 Registered mesh transfer keeps the entire selected IFC object as its target.
 Preview reports observed and unknown coverage; unreliable observations keep the
-object’s previous appearance. Increasing atlas density can improve visible
+object’s previous appearance. Unknown counts name the reason: too far, an
+incompatible normal, an ambiguous near-tie, or a same-facing scan surface deeper
+than the **Maximum depth behind the IFC surface** limit. That limit keeps the far
+side of a thin wall, or objects beyond it, from painting the near face. Its
+default equals the default project tolerance (10 mm); raise it only to the
+accepted registration error plus modelling tolerance. Increasing atlas density can improve visible
 detail but also increases memory use. If a request exceeds the bounded memory
 or work allowance, reduce the chosen density or explicitly narrow the source
 extent, then preview again. The viewer never silently removes target triangles.

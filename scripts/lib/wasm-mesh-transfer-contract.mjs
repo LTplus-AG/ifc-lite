@@ -46,7 +46,7 @@ export function transferFixture(api) {
     sourceMesh: { meshOrdinal: 0, positions: [[0.2, 0.2, 0], [0.6, 0.2, 0], [0.2, 0.6, 0]], triangles: [[0, 1, 2]],
       uvs: [[0, 0], [1, 0], [0, 1]], baseColorFactor: [1, 1, 1, 1], repeatS: false, repeatT: false },
     sourceImage: { width: 2, height: 2, byteOffset: 0, byteLength: 16 }, sourceImages: [],
-    texelsPerMetre: 128, maxDistanceMetres: 0.01, minNormalDot: 0.9, ambiguityDistanceMetres: 0.001,
+    texelsPerMetre: 128, maxDistanceMetres: 0.01, minNormalDot: 0.9, ambiguityDistanceMetres: 0.001, maxBehindMetres: 0.005,
   };
 }
 export const transferPixels = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]);
@@ -71,14 +71,14 @@ export function checkMeshTransferContract(IfcAPI) {
     assert.equal(coverage.observedSamples, coverage.observedCentroidSamples + coverage.observedRasterInteriorTexels);
     assert.ok(coverage.observedRasterInteriorTexels > 0);
     assert.ok(Math.abs(coverage.observedAreaEstimateM2 + coverage.unknownAreaEstimateM2 - 0.5) < 1e-12);
-    assert.equal(coverage.samples, coverage.observedSamples + coverage.unknownDistanceSamples + coverage.unknownNormalSamples + coverage.unknownAmbiguousSamples);
+    assert.equal(coverage.samples, coverage.observedSamples + coverage.unknownDistanceSamples + coverage.unknownNormalSamples + coverage.unknownAmbiguousSamples + coverage.unknownBehindSamples);
     assert.equal(metadata.assets.length, 1);
     assert.equal(metadata.assets[0].byteLength, png.length);
     assert.equal(metadata.assets[0].imageUri, `textures/${createHash('sha256').update(png).digest('hex')}.png`);
     // A tiny source patch observes the centroid but misses every sparse pixel center.
     const sparse = structuredClone(request), c = 1 / 3;
     sparse.sourceMesh.positions = [[c-.002,c-.002,0],[c+.004,c-.002,0],[c-.002,c+.004,0]];
-    sparse.maxDistanceMetres = .00001; sparse.ambiguityDistanceMetres = 0; sparse.texelsPerMetre = 1;
+    sparse.maxDistanceMetres = .00001; sparse.ambiguityDistanceMetres = 0; sparse.maxBehindMetres = 0; sparse.texelsPerMetre = 1;
     const noPixels = run(sparse);
     assert.equal(noPixels.metadata.transfer.coverage.observedCentroidSamples, 1);
     assert.equal(noPixels.metadata.transfer.coverage.observedRasterInteriorTexels, 0);

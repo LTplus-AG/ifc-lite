@@ -86,7 +86,7 @@ request = dict(schema='IFC4', sourceRevision='controlled-boulder-derived-self-tr
     sourceMesh=dict(meshOrdinal=0, positions=positions.tolist(), triangles=triangles.tolist(), uvs=uvs.tolist(),
         baseColorFactor=[1, 1, 1, 1], repeatS=True, repeatT=True),
     sourceImage=raster, sourceImages=[dict(imageUri=uri, raster=raster)], texelsPerMetre=16,
-    maxDistanceMetres=0.001, minNormalDot=0.9, ambiguityDistanceMetres=0.0001)
+    maxDistanceMetres=0.001, minNormalDot=0.9, ambiguityDistanceMetres=0.0001, maxBehindMetres=0.0005)
 javascript = """
 import {readFileSync} from 'node:fs';
 import {initSync,IfcAPI} from './packages/wasm/pkg/ifc-lite.js';

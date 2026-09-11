@@ -74,7 +74,15 @@ export interface StructuralActivityInfo {
   appliedLoad?: StructuralLoadInfo;
   /** The member or connection it acts on, via IfcRelConnectsStructuralActivity. */
   appliesToGlobalId?: string;
-  /** Load groups / result groups it is assigned into, via IfcRelAssignsToGroup. */
+  /**
+   * Every structural group this activity is assigned into via
+   * IfcRelAssignsToGroup — load groups, result groups **and** analysis models.
+   * Unlike a member's `analysisModelGlobalIds`, this one is not narrowed to a
+   * single role, because an activity legitimately belongs to several: a load
+   * case that owns it and an analysis model it was assigned straight into.
+   * Consumers wanting one role must filter by looking the globalId up in the
+   * matching collection.
+   */
   groupGlobalIds: string[];
 }
 

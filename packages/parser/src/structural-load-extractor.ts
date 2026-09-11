@@ -100,29 +100,52 @@ function readLocations(value: unknown): number[][] | undefined {
   return rows.length > 0 ? rows : undefined;
 }
 
+/** Longest chain of nested configurations followed before giving up. */
+const MAX_LOAD_DEPTH = 4;
+/** Ceiling on entities expanded by one top-level load read. */
+const MAX_LOAD_NODES = 256;
+
 /**
- * Read one `IfcStructuralLoad` (or `IfcBoundaryCondition`) entity by expressId.
+ * Read one `IfcStructuralLoad` entity by expressId, resolving an
+ * `IfcStructuralLoadConfiguration` down through the loads its `Values` name.
  *
- * `depth` bounds the one recursive edge that exists here — an
- * `IfcStructuralLoadConfiguration` whose `Values` name further loads. Entity
- * references come from the file, so that edge is exporter-controlled and a
- * self-referential configuration would otherwise recurse without end; the
- * `visited` set bounds the cycle and the depth cap bounds a long acyclic chain.
+ * The `Values` edge is the only recursive one here, and it is
+ * exporter-controlled, so it is bounded three ways — none of which is
+ * redundant:
+ *
+ * - a **path-local** cycle set stops a configuration that reaches itself. It
+ *   has to be path-local rather than shared across siblings, because `Values`
+ *   is a LIST and may legitimately name one load twice; a shared set would
+ *   drop the repeat and misalign `values[i]` against `locations[i]`.
+ * - a **depth cap** bounds one chain's length, which the cycle set alone does
+ *   not for a long acyclic chain.
+ * - a **node budget** bounds total work. The first two still admit `k`
+ *   children each recursing `k` deep, which is O(k^depth) — an abort turned
+ *   into a hang, and a hang reports nothing.
  */
 export function extractStructuralLoad(
   extractor: EntityExtractor,
   store: IfcDataStore,
   expressId: number,
-  visited: Set<number> = new Set(),
-  depth = 0,
 ): StructuralLoadInfo | undefined {
-  if (depth > 4 || visited.has(expressId)) return undefined;
+  return readLoad(extractor, store, expressId, new Set(), { remaining: MAX_LOAD_NODES }, 0);
+}
+
+function readLoad(
+  extractor: EntityExtractor,
+  store: IfcDataStore,
+  expressId: number,
+  path: Set<number>,
+  budget: { remaining: number },
+  depth: number,
+): StructuralLoadInfo | undefined {
+  if (depth > MAX_LOAD_DEPTH || path.has(expressId) || budget.remaining <= 0) return undefined;
   const ref = store.entityIndex.byId.get(expressId);
   if (!ref) return undefined;
   const entity = extractor.extractEntity(ref);
   if (!entity) return undefined;
 
-  visited.add(expressId);
+  budget.remaining--;
   const type = normalizeIfcTypeName(entity.type);
   const attrs = entity.attributes || [];
 
@@ -130,11 +153,15 @@ export function extractStructuralLoad(
     const nested: StructuralLoadInfo[] = [];
     const values = attrs[LOAD_CONFIGURATION_ATTR.Values];
     if (Array.isArray(values)) {
+      // On this node's path only — removed again below so a sibling that
+      // names the same load still reads it.
+      path.add(expressId);
       for (const v of values) {
         if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) continue;
-        const load = extractStructuralLoad(extractor, store, v, visited, depth + 1);
+        const load = readLoad(extractor, store, v, path, budget, depth + 1);
         if (load) nested.push(load);
       }
+      path.delete(expressId);
     }
     return {
       expressId,

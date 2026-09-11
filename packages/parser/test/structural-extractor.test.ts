@@ -320,3 +320,103 @@ describe('extractStructuralOnDemand — loads and boundary conditions', () => {
     expect(out.connections.find((c) => c.globalId === 'conn-free')?.appliedCondition).toBeUndefined();
   });
 });
+
+describe('extractStructuralOnDemand — bounding the load walk', () => {
+  it('keeps a Values entry that repeats the same load reference', () => {
+    // IfcStructuralLoadConfiguration.Values is a LIST, so the same leaf may
+    // legitimately appear twice — one load applied at two locations. Cycle
+    // detection therefore has to be path-local: a set shared across siblings
+    // drops the second occurrence and silently misaligns values[i] against
+    // locations[i], which the schema requires to be the same length.
+    const out = extractStructuralOnDemand(
+      buildStoreFromStep([
+        "#1=IFCSTRUCTURALCURVEACTION('a',$,'UDL',$,$,$,$,#65,.GLOBAL_COORDS.,.F.,$,.CONST.);",
+        "#65=IFCSTRUCTURALLOADCONFIGURATION('Span',(#66,#66),((0.),(4.5)));",
+        "#66=IFCSTRUCTURALLOADLINEARFORCE('Nominal',$,$,-12.5,$,$,$);",
+      ]),
+    );
+    const config = out.activities[0]?.appliedLoad?.configuration;
+    expect(config?.locations).toEqual([[0], [4.5]]);
+    expect(config?.values).toHaveLength(2);
+    expect(config?.values.map((v) => v.components)).toEqual([
+      { LinearForceZ: -12.5 },
+      { LinearForceZ: -12.5 },
+    ]);
+  });
+
+  it('drops a self-referential configuration instead of recursing forever', () => {
+    // A configuration naming itself is exporter- (or attacker-) controlled.
+    const out = extractStructuralOnDemand(
+      buildStoreFromStep([
+        "#1=IFCSTRUCTURALCURVEACTION('a',$,'UDL',$,$,$,$,#65,.GLOBAL_COORDS.,.F.,$,.CONST.);",
+        "#65=IFCSTRUCTURALLOADCONFIGURATION('Loop',(#65,#66),((0.),(4.5)));",
+        "#66=IFCSTRUCTURALLOADLINEARFORCE('Nominal',$,$,-12.5,$,$,$);",
+      ]),
+    );
+    const config = out.activities[0]?.appliedLoad?.configuration;
+    // The cycle is dropped; the sound sibling survives.
+    expect(config?.values).toHaveLength(1);
+    expect(config?.values[0].components).toEqual({ LinearForceZ: -12.5 });
+  });
+
+  it('reads a configuration that appears twice among its siblings', () => {
+    // The repeat case above uses a leaf, which never joins the path set. This
+    // one repeats a nested CONFIGURATION, which does — so it fails unless the
+    // path entry is removed again when its subtree is done.
+    const out = extractStructuralOnDemand(
+      buildStoreFromStep([
+        "#1=IFCSTRUCTURALCURVEACTION('a',$,'UDL',$,$,$,$,#60,.GLOBAL_COORDS.,.F.,$,.CONST.);",
+        '#60=IFCSTRUCTURALLOADCONFIGURATION(\'Outer\',(#65,#65),$);',
+        "#65=IFCSTRUCTURALLOADCONFIGURATION('Inner',(#66),((0.)));",
+        "#66=IFCSTRUCTURALLOADLINEARFORCE('Nominal',$,$,-12.5,$,$,$);",
+      ]),
+    );
+    const outer = out.activities[0]?.appliedLoad?.configuration;
+    expect(outer?.values).toHaveLength(2);
+    for (const inner of outer?.values ?? []) {
+      expect(inner.type).toBe('IfcStructuralLoadConfiguration');
+      expect(inner.configuration?.values[0].components).toEqual({ LinearForceZ: -12.5 });
+    }
+  });
+
+  it('truncates a nesting chain longer than the depth cap', () => {
+    // Ten configurations chained one deep each. The cap admits the top plus
+    // four levels below it; the rest is dropped rather than read.
+    const lines = ["#1=IFCSTRUCTURALCURVEACTION('a',$,'UDL',$,$,$,$,#10,.GLOBAL_COORDS.,.F.,$,.CONST.);"];
+    for (let i = 10; i < 20; i++) {
+      lines.push(`#${i}=IFCSTRUCTURALLOADCONFIGURATION('C${i}',(#${i + 1}),$);`);
+    }
+    lines.push("#20=IFCSTRUCTURALLOADLINEARFORCE('Leaf',$,$,-1.,$,$,$);");
+    const out = extractStructuralOnDemand(buildStoreFromStep(lines));
+
+    let node = out.activities[0]?.appliedLoad;
+    let levels = 0;
+    while (node?.configuration && node.configuration.values.length > 0) {
+      node = node.configuration.values[0];
+      levels++;
+    }
+    // depth 0 is the top configuration, and recursion stops once depth > 4.
+    expect(levels).toBe(4);
+  });
+
+  it('bounds total work when a configuration fans out at every level', () => {
+    // A depth cap bounds one path's LENGTH, not its breadth: k children each
+    // recursing to the cap costs O(k^depth), which turns an abort into a hang,
+    // and a hang reports nothing. Only a node budget bounds the product.
+    const K = 40;
+    const lines = ["#1=IFCSTRUCTURALCURVEACTION('a',$,'UDL',$,$,$,$,#10,.GLOBAL_COORDS.,.F.,$,.CONST.);"];
+    for (let i = 10; i < 15; i++) {
+      const child = `#${i + 1}`;
+      lines.push(
+        `#${i}=IFCSTRUCTURALLOADCONFIGURATION('C${i}',(${Array(K).fill(child).join(',')}),$);`,
+      );
+    }
+    lines.push("#15=IFCSTRUCTURALLOADLINEARFORCE('Leaf',$,$,-1.,$,$,$);");
+    const started = Date.now();
+    const out = extractStructuralOnDemand(buildStoreFromStep(lines));
+    expect(out.activities[0]?.appliedLoad?.type).toBe('IfcStructuralLoadConfiguration');
+    // Unbounded this is 40^4 = 2,560,000 entity reads. The budget caps it at
+    // 256, so the whole walk stays in the millisecond range.
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+});

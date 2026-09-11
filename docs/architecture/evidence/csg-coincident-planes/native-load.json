@@ -1,0 +1,643 @@
+{
+  "issue": 4439,
+  "what": "Interleaved native perf_probe A/B/A/B for the regime-1 coincident_planes gate in the exact boolean classifier (rust/geometry/src/kernel/arrangement/{classify,coincident}.rs).",
+  "baseSource": "531194cdcf6b2ffdcdcfb2b9682aee2a41a158ec",
+  "branchSource": "79b3e2671be5c32cec1101782170fa05d23e88dd",
+  "host": "Windows 11 x86_64, cargo profile `profiling`, otherwise idle; both probes built from the exact sources named above (base in a throwaway worktree with its own CARGO_TARGET_DIR)",
+  "procedure": "scripts/perf/ab.sh procedure replicated by hand because the scripts/perf/ab-order.mjs CLI guard (import.meta.url vs process.argv[1]) never matches on Windows and ab.sh then runs zero rounds; same roundOrder() (balanced, randomised within-round order), same ab-report.mjs, --iters 1 --json --fingerprint per side per round, 5 rounds.",
+  "withinRoundOrder": [
+    "base then branch",
+    "branch then base",
+    "branch then base",
+    "base then branch",
+    "base then branch"
+  ],
+  "reportVerdict": {
+    "fingerprintDrift": true,
+    "tooNoisy": false,
+    "realChange": false
+  },
+  "reportFixtures": [
+    {
+      "fixture": "AC20-FZK-Haus.ifc",
+      "phases": [
+        {
+          "phase": "parse",
+          "baseMedianMs": 6,
+          "branchMedianMs": 6,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false
+        },
+        {
+          "phase": "entity-scan",
+          "baseMedianMs": 4,
+          "branchMedianMs": 4,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false
+        },
+        {
+          "phase": "lookup/styles",
+          "baseMedianMs": 1,
+          "branchMedianMs": 1,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false
+        },
+        {
+          "phase": "preprocess",
+          "baseMedianMs": 0,
+          "branchMedianMs": 0,
+          "deltaPct": null,
+          "noisePct": 0,
+          "real": false
+        },
+        {
+          "phase": "geometry",
+          "baseMedianMs": 10,
+          "branchMedianMs": 10,
+          "deltaPct": 0,
+          "noisePct": 10,
+          "real": false
+        },
+        {
+          "phase": "TOTAL",
+          "baseMedianMs": 16,
+          "branchMedianMs": 17,
+          "deltaPct": 6.25,
+          "noisePct": 12.5,
+          "real": false
+        }
+      ],
+      "fingerprint": {
+        "meshes": {
+          "base": [
+            285
+          ],
+          "branch": [
+            285
+          ]
+        },
+        "vertices": {
+          "base": [
+            35940
+          ],
+          "branch": [
+            35940
+          ]
+        },
+        "triangles": {
+          "base": [
+            19456
+          ],
+          "branch": [
+            19456
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "phases": [
+        {
+          "phase": "parse",
+          "baseMedianMs": 22,
+          "branchMedianMs": 21,
+          "deltaPct": -4.545454545454546,
+          "noisePct": 18.181818181818183,
+          "real": false
+        },
+        {
+          "phase": "entity-scan",
+          "baseMedianMs": 22,
+          "branchMedianMs": 20,
+          "deltaPct": -9.090909090909092,
+          "noisePct": 18.181818181818183,
+          "real": false
+        },
+        {
+          "phase": "lookup/styles",
+          "baseMedianMs": 0,
+          "branchMedianMs": 0,
+          "deltaPct": null,
+          "noisePct": 0,
+          "real": false
+        },
+        {
+          "phase": "preprocess",
+          "baseMedianMs": 0,
+          "branchMedianMs": 0,
+          "deltaPct": null,
+          "noisePct": 0,
+          "real": false
+        },
+        {
+          "phase": "geometry",
+          "baseMedianMs": 907,
+          "branchMedianMs": 908,
+          "deltaPct": 0.11025358324145534,
+          "noisePct": 2.535832414553473,
+          "real": false
+        },
+        {
+          "phase": "TOTAL",
+          "baseMedianMs": 930,
+          "branchMedianMs": 930,
+          "deltaPct": 0,
+          "noisePct": 2.3655913978494625,
+          "real": false
+        }
+      ],
+      "fingerprint": {
+        "meshes": {
+          "base": [
+            1402
+          ],
+          "branch": [
+            1402
+          ]
+        },
+        "vertices": {
+          "base": [
+            218255
+          ],
+          "branch": [
+            218365
+          ]
+        },
+        "triangles": {
+          "base": [
+            132674
+          ],
+          "branch": [
+            132657
+          ]
+        }
+      }
+    }
+  ],
+  "fingerprintNote": "perf_probe --fingerprint yields one FNV-1a 64 hash per run over the ordered mesh payload (geometry, colours, transforms, bounds; not text/materials/UVs/instancing). AC20: identical on all 10 runs. ISSUE_129: stable within each side, differs between sides; the run-level triangle delta (132674 -> 132657, i.e. -17) equals the census delta of host #9094 (664 -> 647), the only ISSUE_129 row of the 73 in tests/manifests/watertightness_census.tsv that moves. Per-mesh attribution is not available from the probe.",
+  "runs": [
+    {
+      "round": 1,
+      "positionInRound": "first",
+      "fixture": "ac20",
+      "side": "base",
+      "parseMs": 6,
+      "entityScanMs": 4,
+      "lookupMs": 1,
+      "preprocessMs": 0,
+      "geometryMs": 10,
+      "totalMs": 17,
+      "allWallMs": [
+        18.9961
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "round": 1,
+      "positionInRound": "first",
+      "fixture": "issue129",
+      "side": "base",
+      "parseMs": 24,
+      "entityScanMs": 23,
+      "lookupMs": 0,
+      "preprocessMs": 0,
+      "geometryMs": 907,
+      "totalMs": 931,
+      "allWallMs": [
+        940.8201
+      ],
+      "meshes": 1402,
+      "vertices": 218255,
+      "triangles": 132674,
+      "csgFailures": 43,
+      "degenerateDropped": 6,
+      "meshFingerprintFnv1a64": [
+        "b0e46a1242771291"
+      ]
+    },
+    {
+      "round": 1,
+      "positionInRound": "second",
+      "fixture": "ac20",
+      "side": "branch",
+      "parseMs": 6,
+      "entityScanMs": 4,
+      "lookupMs": 1,
+      "preprocessMs": 0,
+      "geometryMs": 11,
+      "totalMs": 18,
+      "allWallMs": [
+        19.6234
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "round": 1,
+      "positionInRound": "second",
+      "fixture": "issue129",
+      "side": "branch",
+      "parseMs": 23,
+      "entityScanMs": 23,
+      "lookupMs": 0,
+      "preprocessMs": 0,
+      "geometryMs": 933,
+      "totalMs": 957,
+      "allWallMs": [
+        966.9254000000001
+      ],
+      "meshes": 1402,
+      "vertices": 218365,
+      "triangles": 132657,
+      "csgFailures": 41,
+      "degenerateDropped": 6,
+      "meshFingerprintFnv1a64": [
+        "1e5aed5f285ec9c2"
+      ]
+    },
+    {
+      "round": 2,
+      "positionInRound": "first",
+      "fixture": "ac20",
+      "side": "branch",
+      "parseMs": 6,
+      "entityScanMs": 4,
+      "lookupMs": 1,
+      "preprocessMs": 0,
+      "geometryMs": 10,
+      "totalMs": 17,
+      "allWallMs": [
+        18.9431
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "round": 2,
+      "positionInRound": "first",
+      "fixture": "issue129",
+      "side": "branch",
+      "parseMs": 21,
+      "entityScanMs": 20,
+      "lookupMs": 0,
+      "preprocessMs": 0,
+      "geometryMs": 908,
+      "totalMs": 930,
+      "allWallMs": [
+        939.8482
+      ],
+      "meshes": 1402,
+      "vertices": 218365,
+      "triangles": 132657,
+      "csgFailures": 41,
+      "degenerateDropped": 6,
+      "meshFingerprintFnv1a64": [
+        "1e5aed5f285ec9c2"
+      ]
+    },
+    {
+      "round": 2,
+      "positionInRound": "second",
+      "fixture": "ac20",
+      "side": "base",
+      "parseMs": 6,
+      "entityScanMs": 4,
+      "lookupMs": 1,
+      "preprocessMs": 0,
+      "geometryMs": 10,
+      "totalMs": 16,
+      "allWallMs": [
+        18.1777
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "round": 2,
+      "positionInRound": "second",
+      "fixture": "issue129",
+      "side": "base",
+      "parseMs": 22,
+      "entityScanMs": 22,
+      "lookupMs": 0,
+      "preprocessMs": 0,
+      "geometryMs": 892,
+      "totalMs": 915,
+      "allWallMs": [
+        924.9395000000001
+      ],
+      "meshes": 1402,
+      "vertices": 218255,
+      "triangles": 132674,
+      "csgFailures": 43,
+      "degenerateDropped": 6,
+      "meshFingerprintFnv1a64": [
+        "b0e46a1242771291"
+      ]
+    },
+    {
+      "round": 3,
+      "positionInRound": "first",
+      "fixture": "ac20",
+      "side": "branch",
+      "parseMs": 6,
+      "entityScanMs": 4,
+      "lookupMs": 1,
+      "preprocessMs": 0,
+      "geometryMs": 10,
+      "totalMs": 17,
+      "allWallMs": [
+        18.3963
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "round": 3,
+      "positionInRound": "first",
+      "fixture": "issue129",
+      "side": "branch",
+      "parseMs": 21,
+      "entityScanMs": 20,
+      "lookupMs": 0,
+      "preprocessMs": 0,
+      "geometryMs": 886,
+      "totalMs": 907,
+      "allWallMs": [
+        916.2314
+      ],
+      "meshes": 1402,
+      "vertices": 218365,
+      "triangles": 132657,
+      "csgFailures": 41,
+      "degenerateDropped": 6,
+      "meshFingerprintFnv1a64": [
+        "1e5aed5f285ec9c2"
+      ]
+    },
+    {
+      "round": 3,
+      "positionInRound": "second",
+      "fixture": "ac20",
+      "side": "base",
+      "parseMs": 6,
+      "entityScanMs": 4,
+      "lookupMs": 1,
+      "preprocessMs": 0,
+      "geometryMs": 9,
+      "totalMs": 16,
+      "allWallMs": [
+        17.282700000000002
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "round": 3,
+      "positionInRound": "second",
+      "fixture": "issue129",
+      "side": "base",
+      "parseMs": 21,
+      "entityScanMs": 20,
+      "lookupMs": 0,
+      "preprocessMs": 0,
+      "geometryMs": 909,
+      "totalMs": 930,
+      "allWallMs": [
+        940.2937999999999
+      ],
+      "meshes": 1402,
+      "vertices": 218255,
+      "triangles": 132674,
+      "csgFailures": 43,
+      "degenerateDropped": 6,
+      "meshFingerprintFnv1a64": [
+        "b0e46a1242771291"
+      ]
+    },
+    {
+      "round": 4,
+      "positionInRound": "first",
+      "fixture": "ac20",
+      "side": "base",
+      "parseMs": 6,
+      "entityScanMs": 4,
+      "lookupMs": 1,
+      "preprocessMs": 0,
+      "geometryMs": 10,
+      "totalMs": 16,
+      "allWallMs": [
+        18.1314
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "round": 4,
+      "positionInRound": "first",
+      "fixture": "issue129",
+      "side": "base",
+      "parseMs": 22,
+      "entityScanMs": 22,
+      "lookupMs": 0,
+      "preprocessMs": 0,
+      "geometryMs": 892,
+      "totalMs": 914,
+      "allWallMs": [
+        923.5394
+      ],
+      "meshes": 1402,
+      "vertices": 218255,
+      "triangles": 132674,
+      "csgFailures": 43,
+      "degenerateDropped": 6,
+      "meshFingerprintFnv1a64": [
+        "b0e46a1242771291"
+      ]
+    },
+    {
+      "round": 4,
+      "positionInRound": "second",
+      "fixture": "ac20",
+      "side": "branch",
+      "parseMs": 6,
+      "entityScanMs": 4,
+      "lookupMs": 1,
+      "preprocessMs": 0,
+      "geometryMs": 9,
+      "totalMs": 16,
+      "allWallMs": [
+        17.6601
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "round": 4,
+      "positionInRound": "second",
+      "fixture": "issue129",
+      "side": "branch",
+      "parseMs": 21,
+      "entityScanMs": 21,
+      "lookupMs": 0,
+      "preprocessMs": 0,
+      "geometryMs": 895,
+      "totalMs": 917,
+      "allWallMs": [
+        926.2672
+      ],
+      "meshes": 1402,
+      "vertices": 218365,
+      "triangles": 132657,
+      "csgFailures": 41,
+      "degenerateDropped": 6,
+      "meshFingerprintFnv1a64": [
+        "1e5aed5f285ec9c2"
+      ]
+    },
+    {
+      "round": 5,
+      "positionInRound": "first",
+      "fixture": "ac20",
+      "side": "base",
+      "parseMs": 6,
+      "entityScanMs": 4,
+      "lookupMs": 1,
+      "preprocessMs": 0,
+      "geometryMs": 9,
+      "totalMs": 15,
+      "allWallMs": [
+        16.8787
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "round": 5,
+      "positionInRound": "first",
+      "fixture": "issue129",
+      "side": "base",
+      "parseMs": 20,
+      "entityScanMs": 19,
+      "lookupMs": 0,
+      "preprocessMs": 0,
+      "geometryMs": 915,
+      "totalMs": 936,
+      "allWallMs": [
+        944.8942999999999
+      ],
+      "meshes": 1402,
+      "vertices": 218255,
+      "triangles": 132674,
+      "csgFailures": 43,
+      "degenerateDropped": 6,
+      "meshFingerprintFnv1a64": [
+        "b0e46a1242771291"
+      ]
+    },
+    {
+      "round": 5,
+      "positionInRound": "second",
+      "fixture": "ac20",
+      "side": "branch",
+      "parseMs": 6,
+      "entityScanMs": 4,
+      "lookupMs": 1,
+      "preprocessMs": 0,
+      "geometryMs": 9,
+      "totalMs": 16,
+      "allWallMs": [
+        18.3046
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "round": 5,
+      "positionInRound": "second",
+      "fixture": "issue129",
+      "side": "branch",
+      "parseMs": 21,
+      "entityScanMs": 20,
+      "lookupMs": 0,
+      "preprocessMs": 0,
+      "geometryMs": 909,
+      "totalMs": 931,
+      "allWallMs": [
+        940.353
+      ],
+      "meshes": 1402,
+      "vertices": 218365,
+      "triangles": 132657,
+      "csgFailures": 41,
+      "degenerateDropped": 6,
+      "meshFingerprintFnv1a64": [
+        "1e5aed5f285ec9c2"
+      ]
+    }
+  ]
+}

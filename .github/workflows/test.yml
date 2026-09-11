@@ -1681,6 +1681,16 @@ jobs:
           persist-credentials: false
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
+      - name: Use lld for host links
+        # ~200 integration-test binaries in the workspace make link time a
+        # real share of `cargo test`; lld links several times faster than
+        # bfd. Scoped to the x86_64 Linux host target via env, not
+        # .cargo/config.toml, so local builds and the wasm target are
+        # untouched. Hosted images ship clang but not lld.
+        run: |
+          command -v ld.lld >/dev/null 2>&1 || sudo apt-get install -y --no-install-recommends lld
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
       - name: Cargo cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
@@ -1842,6 +1852,16 @@ jobs:
           persist-credentials: false
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
+      - name: Use lld for host links
+        # ~200 integration-test binaries in the workspace make link time a
+        # real share of `cargo test`; lld links several times faster than
+        # bfd. Scoped to the x86_64 Linux host target via env, not
+        # .cargo/config.toml, so local builds and the wasm target are
+        # untouched. Hosted images ship clang but not lld.
+        run: |
+          command -v ld.lld >/dev/null 2>&1 || sudo apt-get install -y --no-install-recommends lld
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
       - name: Cargo cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
@@ -1925,6 +1945,16 @@ jobs:
           persist-credentials: false
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
+      - name: Use lld for host links
+        # ~200 integration-test binaries in the workspace make link time a
+        # real share of `cargo test`; lld links several times faster than
+        # bfd. Scoped to the x86_64 Linux host target via env, not
+        # .cargo/config.toml, so local builds and the wasm target are
+        # untouched. Hosted images ship clang but not lld.
+        run: |
+          command -v ld.lld >/dev/null 2>&1 || sudo apt-get install -y --no-install-recommends lld
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
       - name: Cargo cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:

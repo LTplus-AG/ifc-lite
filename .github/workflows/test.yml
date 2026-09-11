@@ -32,6 +32,13 @@ on:
   # NO `ready_for_review` EITHER, and for the plainer reason: nothing in this
   # workflow gates on `draft`, so every job already runs on a draft PR. Adding
   # the type would buy a second run of a head that has already been judged.
+  #
+  # NO `labeled` EITHER. The `ci:hosted` routing label (and `draft`) is read
+  # by every `runs-on` expression when a run is CREATED, so applying it does
+  # not move a run already queued for the fleet; it takes effect on the next
+  # run — a push, or close-and-reopen (`reopened`), the documented way to
+  # re-run this workflow on the same head. Triggering on `labeled` would buy
+  # a full 16-lane run for every label the risk/review bots apply to a PR.
   pull_request:
     types: [opened, synchronize, reopened, edited]
     branches: [main]

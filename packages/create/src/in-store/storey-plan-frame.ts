@@ -25,8 +25,9 @@
  * schedule.
  */
 
-import { EntityExtractor, extractLengthUnitScale, type IfcDataStore } from '@ifc-lite/parser';
+import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import type { Vec2 } from './auto-space-detect.js';
+import { safeLengthUnitScale } from './length-unit-scale.js';
 import {
   numericAttr,
   readEntity,
@@ -99,17 +100,12 @@ export function storeyPlanFrame(
   if (lastPlacement && numericAttr(lastPlacement.attributes[0]) !== null) return null;
   const frame = storeyFrameAboveBy(store, extractor, undefined, chain, chain.size);
   if (!frame) return null;
-  let scale = 1;
-  try {
-    const raw = extractLengthUnitScale(store.source, store.entityIndex);
-    if (Number.isFinite(raw) && raw > 0) scale = raw;
-  } catch (error) {
-    // A thrown unit lookup is not a reason to author a space a thousand times
-    // too far out: the origin below is a translation in file units, so a
-    // millimetre model read as metres moves the room by kilometres. Refuse.
-    console.warn('storeyPlanFrame: failed to extract length unit scale', error);
-    return null;
-  }
+  // A thrown or degenerate unit lookup is not a reason to author a space a
+  // thousand times too far out: the origin below is a translation in file
+  // units, so a millimetre model read as metres moves the room by
+  // kilometres. Refuse.
+  const scale = safeLengthUnitScale(store.source, store.entityIndex, 'storeyPlanFrame');
+  if (scale === null) return null;
   return { origin: [frame.origin[0] * scale, frame.origin[1] * scale], axisX: frame.axisX };
 }
 

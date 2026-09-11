@@ -32,12 +32,12 @@
 
 import {
   EntityExtractor,
-  extractLengthUnitScale,
   extractMaterialsOnDemand,
   type IfcDataStore,
   type IfcAttributeValue,
 } from '@ifc-lite/parser';
 import type { Segment, Vec2 } from './auto-space-detect.js';
+import { safeLengthUnitScale } from './length-unit-scale.js';
 import {
   AXIS_EPS,
   applyFrame,
@@ -140,32 +140,18 @@ export function extractWallSegmentsForStorey(
   // detector are always in METRES — without this a millimetre model
   // would produce coords like (31614, 23345) and the panel's
   // metre-based snap tolerance would be effectively zero.
-  let lengthUnitScale = 1.0;
-  if (store.source) {
-    try {
-      lengthUnitScale = extractLengthUnitScale(store.source, store.entityIndex);
-      if (!Number.isFinite(lengthUnitScale) || lengthUnitScale <= 0) lengthUnitScale = 1.0;
-    } catch (error) {
-      // Keep the metre fallback, but don't hide a THROWN failure — a wrong
-      // scale silently mis-scales every extracted segment (a millimetre model
-      // read as metres yields coords like 31614, collapsing the snap
-      // tolerance). Mirrors resolve-anchor.ts / resolve-source.ts.
-      //
-      // Deliberately NOT claiming the case is covered: extractLengthUnitScale
-      // returns 1.0 in band rather than throwing, so a missing IFCPROJECT or
-      // UnitsInContext, or a malformed unit declaration, never reaches this
-      // catch — it sees only a THROWN failure. Those paths are no longer silent
-      // (#2104: `warnUnknownUnit` in parser/src/unit-extractor.ts warns once
-      // per model). Still NOT supported: telling "unknown" from "genuinely
-      // metres" here — both arrive as 1.0, and a warning is not branchable.
-      // That needs null from a function with 7+ callers; not done, anywhere.
-      console.warn(
-        'extractWallSegmentsForStorey: failed to extract length unit scale; defaulting to metres',
-        error,
-      );
-      lengthUnitScale = 1.0;
-    }
-  }
+  // Deliberately NOT claiming the case is covered: extractLengthUnitScale
+  // returns 1.0 in band rather than throwing, so a missing IFCPROJECT or
+  // UnitsInContext, or a malformed unit declaration, never reaches
+  // `safeLengthUnitScale`'s catch — it sees only a THROWN failure or a
+  // non-finite/non-positive return. Those paths are no longer silent
+  // (#2104: `warnUnknownUnit` in parser/src/unit-extractor.ts warns once
+  // per model). Still NOT supported: telling "unknown" from "genuinely
+  // metres" here — both arrive as 1.0, and a warning is not branchable.
+  // That needs null from a function with 7+ callers; not done, anywhere.
+  const lengthUnitScale = store.source
+    ? safeLengthUnitScale(store.source, store.entityIndex, 'extractWallSegmentsForStorey') ?? 1.0
+    : 1.0;
   log(`length unit scale = ${lengthUnitScale} (raw → metres)`);
 
   if (!store.source) {
@@ -339,12 +325,26 @@ function collectDividerIdsOnStorey(
  * the new rooms that overlap an already-present space (per-space dedup), while
  * still adding rooms an empty part of the floor lacks. Keyed by storey
  * expressId; storeys with no resolvable space footprints are omitted.
+ *
+ * If the model's length-unit scale itself can't be trusted, this refuses
+ * for the WHOLE store (empty map) rather than dividing every footprint by a
+ * wrong factor: `storeyPlanFrame` — the write side of the same round-trip
+ * (`useSpaceBake.ts` folds a new room through it, then reads existing
+ * footprints back through this function to dedup against) — refuses the
+ * same way per storey. A silent `?? 1` here on a genuinely degenerate scale
+ * would have scaled every existing footprint to a value the write side had
+ * already refused to trust, so the dedup compare would run on stale
+ * coordinates with no warning that anything was wrong. An empty map means
+ * dedup is skipped, matching the existing `--force` behaviour of this same
+ * call site (`generateSpaces` in `generate-spaces-all.ts`) rather than
+ * emitting mis-scaled polygons.
  */
 export function existingSpaceFootprintsByStorey(store: IfcDataStore): Map<number, Vec2[][]> {
   const out = new Map<number, Vec2[][]>();
   if (!store.source) return out;
   const extractor = new EntityExtractor(store.source);
-  const scale = extractLengthUnitScale(store.source, store.entityIndex) ?? 1;
+  const scale = safeLengthUnitScale(store.source, store.entityIndex, 'existingSpaceFootprintsByStorey');
+  if (scale === null) return out;
   const aggregated = buildRelatingChildrenIndex(store, extractor, 'IFCRELAGGREGATES', 4, 5);
   const contained = buildRelatingChildrenIndex(store, extractor, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', 5, 4);
   for (const st of store.getEntitiesByType('IfcBuildingStorey')) {

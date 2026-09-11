@@ -11,8 +11,9 @@
  * IfcLocalPlacement.
  */
 
-import { EntityExtractor, extractLengthUnitScale, getAttributeNames, type IfcDataStore } from '@ifc-lite/parser';
+import { EntityExtractor, getAttributeNames, type IfcDataStore } from '@ifc-lite/parser';
 import type { SpatialAnchor, SpatialAnchorSchema } from './anchor.js';
+import { safeLengthUnitScale } from './length-unit-scale.js';
 
 export function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: number): SpatialAnchor {
   // OwnerHistory is OPTIONAL from IFC4 onward — minimal files (including
@@ -54,17 +55,11 @@ export function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: numbe
   // exports). Resolve the length-unit scale here so builders can emit
   // coordinates in the file's native unit — mirrors the read-side
   // conversion in extract-walls.ts.
-  let lengthUnitScale = 1.0;
-  try {
-    if (store.source.byteLength > 0) {
-      const s = extractLengthUnitScale(store.source, store.entityIndex);
-      if (Number.isFinite(s) && s > 0) lengthUnitScale = s;
-    }
-  } catch (error) {
-    // Keep the metre fallback, but don't hide the failure — a wrong scale
-    // emits silently mis-sized geometry.
-    console.warn('resolveSpatialAnchor: failed to extract length unit scale; defaulting to metres', error);
-  }
+  // Keep the metre fallback on a failed lookup, but don't hide it — a wrong
+  // scale emits silently mis-sized geometry. `safeLengthUnitScale` warns.
+  const lengthUnitScale = store.source.byteLength > 0
+    ? safeLengthUnitScale(store.source, store.entityIndex, 'resolveSpatialAnchor') ?? 1.0
+    : 1.0;
 
   return { ownerHistoryId, bodyContextId, axisContextId, storeyId: storeyExpressId, storeyPlacementId, schema, lengthUnitScale };
 }

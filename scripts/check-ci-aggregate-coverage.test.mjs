@@ -135,6 +135,24 @@ jobs:
   assert.deepEqual(prJobs(text), ['real']);
 });
 
+test('CI redesign step 5: the CSG accept gates are JUDGED, not exempt, and the exemption list is empty', () => {
+  // The one entry `UNJUDGED_BY_DESIGN` ever had was `csg-accept-gates`, an
+  // advisory PR lane. It moved off the PR lane and into the aggregate's
+  // `needs:` + results map (blocking in the merge queue and on push to main);
+  // an exemption left behind would let a later edit drop it from `needs:`
+  // again with this gate silent. Pinned against the REAL test.yml so the
+  // three facts cannot drift apart: in `needs:`, judged in the map, not
+  // exempt -- and the list empty, so the default is "blocking" for everything.
+  const text = readFileSync(join(ROOT, '.github/workflows/test.yml'), 'utf8');
+  const agg = readAggregate(text);
+  assert.ok(agg.needs.includes('csg-accept-gates'), 'csg-accept-gates must be a dependency of the aggregate');
+  assert.ok(agg.judged.includes('csg-accept-gates'), 'csg-accept-gates must be judged by the results map');
+  assert.ok(agg.needs.includes('rust-full'), 'rust-full (the moved feature legs) must be a dependency of the aggregate');
+  assert.ok(agg.judged.includes('rust-full'), 'rust-full must be judged by the results map');
+  assert.ok(!('csg-accept-gates' in UNJUDGED_BY_DESIGN), 'a judged job must not also be exempt');
+  assert.deepEqual(Object.keys(UNJUDGED_BY_DESIGN), [], 'no lane is advisory by design any more');
+});
+
 test('every exemption carries a stated reason', () => {
   // An exemption is a decision. One with no reason is an oversight wearing a
   // decision's clothes, and this list is meant to ratchet down.

@@ -30,6 +30,11 @@ import {
 } from '@ifc-lite/ids';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 
+import {
+  overlayResolverFromSnapshot,
+  type PropertyOverlaySnapshot,
+} from '@/lib/ids/property-overlay-snapshot';
+
 export interface IdsWorkerRequest {
   type: 'validate';
   id: number;
@@ -41,6 +46,21 @@ export interface IdsWorkerRequest {
   modelId: string;
   locale: 'en' | 'de' | 'fr';
   includePassingEntities: boolean;
+  /**
+   * The model's pending, not-yet-exported property edits, as plain clonable
+   * data (#3946).
+   *
+   * The worker re-parses `source`, so it sees the model as it was written
+   * to disk. Before this field existed, a model with ANY pending edit was
+   * refused the worker entirely and validated on the main thread — a cost
+   * of O(entities x specifications) charged for a single corrected
+   * property, and charged again on every re-run until the edits were
+   * exported or cleared.
+   *
+   * Absent/empty means "no overlay", which is the byte-identical
+   * no-overlay path this worker always took.
+   */
+  propertyOverlay?: PropertyOverlaySnapshot;
 }
 
 export type IdsWorkerResponse =
@@ -75,7 +95,16 @@ self.onmessage = async (event: MessageEvent<IdsWorkerRequest>) => {
     store.schemaVersion =
       (req.schemaVersion as typeof store.schemaVersion) || store.schemaVersion;
 
-    const accessor = createDataAccessor(store);
+    // The SAME resolver the main-thread fallback builds, from the SAME
+    // snapshot — see `@/lib/ids/property-overlay-snapshot` (#3946). The two
+    // realms therefore apply identical overrides on top of identical
+    // parsed bytes, which is what makes routing an edited model here
+    // equivalent to validating it on the main thread rather than merely
+    // similar.
+    const accessor = createDataAccessor(
+      store,
+      overlayResolverFromSnapshot(req.propertyOverlay)
+    );
     const translator = createTranslationService(req.locale);
 
     const report = await validateIDS(

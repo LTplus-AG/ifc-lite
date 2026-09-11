@@ -48,11 +48,38 @@ describe('captured GLB appearance #4380', () => {
     const {json,bin}=capture(); json.nodes![0].scale=[-1,1,1];
     const [mesh]=parseGLBToMeshData(json,bin); expect([...mesh.indices]).toEqual([0,2,1,3,5,4]); expect(mesh.uvs![6]).toBe(1);
   });
-  it('rejects unsupported alpha, wrap, required compression, and image ranges explicitly', () => {
-    const {json,bin}=capture(); json.materials![0].alphaMode='BLEND'; expect(()=>parseGLBToMeshData(json,bin)).toThrow(/MASK\/BLEND/);
-    delete json.materials![0].alphaMode; json.samplers=[{wrapS:33648}];json.textures![0].sampler=0;expect(()=>parseGLBToMeshData(json,bin)).toThrow(/mirrored/);
-    delete json.textures![0].sampler;json.extensionsRequired=['KHR_draco_mesh_compression'];expect(()=>parseGLBToMeshData(json,bin)).toThrow(/required extension/);
+  it('retains the supported base colour from a typical photogrammetry material', () => {
+    const {json,bin}=capture();
+    const material=json.materials![0];
+    material.alphaMode='BLEND'; material.normalTexture={index:1}; material.occlusionTexture={index:2};
+    material.emissiveTexture={index:3}; material.pbrMetallicRoughness!.metallicRoughnessTexture={index:4};
+    material.extensions={KHR_materials_specular:{specularFactor:0.5}};
+    json.meshes![0].primitives[0].targets=[{POSITION:4}];
+    json.meshes![0].primitives[0].attributes.COLOR_0=5;
+    json.extensionsRequired=['KHR_materials_specular'];
+    expect(parseGLBToMeshData(json,bin)[0].textureRef?.url).toBe('textures/glb-image-0.png');
+  });
+  it('reports vertex-colour-only appearance as unavailable', () => {
+    const {json,bin}=capture();
+    delete json.materials![0].pbrMetallicRoughness!.baseColorTexture;
+    json.meshes![0].primitives[0].attributes.COLOR_0=5;
+    expect(()=>parseGLBToMeshData(json,bin)).toThrow(/vertex-colour-only appearance is unavailable.*base-colour texture/);
+  });
+  it('reads the base colour texture coordinate set selected by the material', () => {
+    const {json,bin}=capture();
+    json.meshes![0].primitives[0].attributes.TEXCOORD_1=json.meshes![0].primitives[0].attributes.TEXCOORD_0;
+    delete json.meshes![0].primitives[0].attributes.TEXCOORD_0;
+    json.materials![0].pbrMetallicRoughness!.baseColorTexture!.texCoord=1;
+    expect([...parseGLBToMeshData(json,bin)[0].uvs!]).toEqual([0,0,0.5,0,0.5,1,1,0,1,1,0.5,0]);
+  });
+  it('rejects unsupported wrap, required compression, and image ranges explicitly', () => {
+    const {json,bin}=capture(); json.samplers=[{wrapS:33648}];json.textures![0].sampler=0;expect(()=>parseGLBToMeshData(json,bin)).toThrow(/mirrored/);
+    delete json.textures![0].sampler;json.extensionsRequired=['KHR_draco_mesh_compression'];expect(()=>parseGLBToMeshData(json,bin)).toThrow(/Draco-compressed.*uncompressed/);
     delete json.extensionsRequired;json.bufferViews![2].byteLength=bin.length;expect(()=>parseGLBImageResources(json,bin)).toThrow(/exceeds/);
+  });
+  it('rejects required legacy specular-glossiness instead of inventing a base colour', () => {
+    const {json,bin}=capture(); json.extensionsRequired=['KHR_materials_pbrSpecularGlossiness'];
+    expect(()=>parseGLBToMeshData(json,bin)).toThrow(/specular-glossiness.*base-colour/);
   });
   it('rejects mismatched MIME/signatures before geometry or resource copying', () => {
     const png = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DAAAAEAQEARwbK3gAAAABJRU5ErkJggg==', 'base64'));

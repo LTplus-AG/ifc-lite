@@ -1,8 +1,9 @@
 ---
-"@ifc-lite/geometry": patch
+"@ifc-lite/geometry": major
 "@ifc-lite/viewer": patch
 "@ifc-lite/cli": patch
 "@ifc-lite/mcp": patch
+"@ifc-lite/wasm": major
 ---
 
 Fix GLB export silently exporting the whole model when an active isolation filter matches zero elements (reachable through "Export Visible Only" after filtering the hierarchy panel's Class tab to a type present only in a federated model's other member — the #4328 scenario, for the GLB exporter specifically).

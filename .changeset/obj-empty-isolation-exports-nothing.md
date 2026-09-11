@@ -1,8 +1,8 @@
 ---
-"@ifc-lite/geometry": patch
+"@ifc-lite/geometry": major
 "@ifc-lite/cli": patch
 "@ifc-lite/mcp": patch
-"@ifc-lite/wasm": patch
+"@ifc-lite/wasm": major
 "@ifc-lite/export": patch
 ---
 

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/codegen",
-  "version": "1.16.0",
+  "version": "1.17.0",
   "description": "TypeScript code generator from IFC EXPRESS schemas",
   "type": "module",
   "repository": {

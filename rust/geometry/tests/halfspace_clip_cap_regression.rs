@@ -19,18 +19,38 @@
 //! 14 tris / −8.4 m³ / 16 open edges; with the section capped they are
 //! 20 tris / +2.06 m³ / 0 open edges.
 
+mod support;
+
 use ifc_lite_core::{build_entity_index, EntityDecoder};
 use ifc_lite_geometry::{GeometryRouter, Mesh};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+/// Load a fixture, distinguishing a genuinely absent file from a broken
+/// read. `NotFound` is the fresh-clone case (`pnpm fixtures` not run yet):
+/// skip unless `IFC_LITE_REQUIRE_FIXTURES=1`, in which case panic naming
+/// the path, matching every other skip-on-missing test in this crate. Any
+/// other `io::Error` (permission denied, corrupt read, ...) means the
+/// environment is broken rather than merely missing an optional download,
+/// so it panics unconditionally regardless of the flag.
 fn fixture(rel: &str) -> Option<String> {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .join(rel);
-    fs::read_to_string(p).ok()
+    match fs::read_to_string(&p) {
+        Ok(content) => Some(content),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture {} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
+                p.display()
+            );
+            None
+        }
+        Err(e) => panic!("fixture {} exists but could not be read: {e}", p.display()),
+    }
 }
 
 fn process_element_only(content: &str, host_id: u32) -> Option<Mesh> {

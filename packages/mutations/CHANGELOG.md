@@ -1,5 +1,30 @@
 # @ifc-lite/mutations
 
+## 2.2.0
+
+### Minor Changes
+
+- [#4267](https://github.com/LTplus-AG/ifc-lite/pull/4267) [`e119819`](https://github.com/LTplus-AG/ifc-lite/commit/e1198197556375019c5a7820cc7c99da55e5c639) Thanks [@louistrue](https://github.com/louistrue)! - Add synchronous atomic overlay transactions with guarded publication and rollback, plus live entity lookup on StoreEditor.
+
+- [#4334](https://github.com/LTplus-AG/ifc-lite/pull/4334) [`591c593`](https://github.com/LTplus-AG/ifc-lite/commit/591c5938bdc4e8210c3b3158f22ecd78552bcdc2) Thanks [@louistrue](https://github.com/louistrue)! - Add cooperative preparation of owned entity-operation batches with cancellable bounded copying, detached effects, exact input/SDK validation and atomic publication/rollback. Existing synchronous transaction APIs are unchanged.
+
+### Patch Changes
+
+- [#4335](https://github.com/LTplus-AG/ifc-lite/pull/4335) [`8620be3`](https://github.com/LTplus-AG/ifc-lite/commit/8620be38be0162b7cbdbe23ae7bc924763b83612) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Guard every place a caller-supplied regex pattern is compiled and run against untrusted input, closing a ReDoS (catastrophic-backtracking) hole: an IDS document's `xs:pattern` facet (four sites — the constraint matcher, the entity-type resolver, and two schema-audit sites in `@ifc-lite/ids`) and the viewer's bulk-edit "Name Pattern (Regex)" field (`@ifc-lite/mutations`'s `BulkQueryEngine.select`).
+  
+  New `@ifc-lite/regex-guard` package: a single shared guard (`assertGuardedRegexPattern`, `compileGuardedRegex`, `hasCatastrophicBacktrackingShape`) rejects a pattern over 256 characters or shaped like a known catastrophic-backtracking construct (`(a+)+`, `(.*)*`, …) before it is ever compiled. `@ifc-lite/extensions`'s bundle-test runner, which already had its own copy of this exact check, now imports the shared implementation instead of carrying a second one.
+  
+  A rejected pattern surfaces as a visible failure, not a silent non-match: an IDS specification whose pattern is rejected reports `status: 'fail'` with an `error` message (new optional field on `IDSSpecificationResult`) instead of reading as passing or not-applicable; the schema audit reports a new `E_REGEX_UNSAFE` issue; `BulkQueryEngine.select` and the entity-type resolver throw `UnsafeRegexPatternError`.
+  
+  This is a heuristic, not a complete defence — see the package's doc comment for what it does not catch.
+
+- [#4340](https://github.com/LTplus-AG/ifc-lite/pull/4340) [`5a01e5a`](https://github.com/LTplus-AG/ifc-lite/commit/5a01e5abe220f21ae5233045c6e9cfc5aa37a4e3) Thanks [@louistrue](https://github.com/louistrue)! - Keep construction projection scoped to the same floor after repositioning a model. Remove unused declarations left after the atomic-overlay and batch-upload refactors, and clarify the renderer contract for rebuilding surviving instance bounds during a flat-geometry reset.
+
+- [#4324](https://github.com/LTplus-AG/ifc-lite/pull/4324) [`b9c3aa1`](https://github.com/LTplus-AG/ifc-lite/commit/b9c3aa1b7da9b0c26742bacb6eb3c7c4b44ca80b) Thanks [@louistrue](https://github.com/louistrue)! - Compare prepared transaction checkpoints directly against current overlay values, avoiding a comparison-only deep copy while retaining detached snapshots, publications and rollback guards.
+- Updated dependencies [[`ced8bb4`](https://github.com/LTplus-AG/ifc-lite/commit/ced8bb46c368648bd54a1bab716d049143faa036), [`de30321`](https://github.com/LTplus-AG/ifc-lite/commit/de303215ad631d54069067682f443ef33d7d37f3), [`8620be3`](https://github.com/LTplus-AG/ifc-lite/commit/8620be38be0162b7cbdbe23ae7bc924763b83612), [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb)]:
+  - @ifc-lite/data@4.1.0
+  - @ifc-lite/regex-guard@0.2.0
+
 ## 2.1.0
 
 ### Minor Changes

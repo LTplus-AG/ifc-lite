@@ -13,6 +13,8 @@
 // box-minus-opening volume, and the #1112 roof host against a self-consistency
 // volume + watertight + rim-tear check.
 
+mod support;
+
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
@@ -35,12 +37,30 @@ fn build_void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
     void_index
 }
 
-fn process(path: &str, host_id: u32) -> Option<Mesh> {
-    if !std::path::Path::new(path).exists() {
-        eprintln!("skipping: fixture {path} not present");
-        return None;
+/// Load a fixture, distinguishing a genuinely absent file from a broken
+/// read. `NotFound` is the fresh-clone case (`pnpm fixtures` not run yet):
+/// skip unless `IFC_LITE_REQUIRE_FIXTURES=1`, in which case panic naming
+/// the path, matching every other skip-on-missing test in this crate. Any
+/// other `io::Error` (permission denied, corrupt read, ...) means the
+/// environment is broken rather than merely missing an optional download,
+/// so it panics unconditionally.
+fn read_fixture(path: &str) -> Option<String> {
+    match std::fs::read_to_string(path) {
+        Ok(content) => Some(content),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture {path} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
+            eprintln!("skipping: fixture {path} not present");
+            None
+        }
+        Err(e) => panic!("fixture {path} exists but could not be read: {e}"),
     }
-    let content = std::fs::read_to_string(path).ok()?;
+}
+
+fn process(path: &str, host_id: u32) -> Option<Mesh> {
+    let content = read_fixture(path)?;
     let entity_index = build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
     let router = GeometryRouter::with_units(&content, &mut decoder);

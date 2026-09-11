@@ -55,7 +55,7 @@ concurrency:
 jobs:
   review-posted:
     name: Review posted
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     # ABOVE the gate's poll budget (REVIEW_POSTED_POLL_SECONDS in
     # scripts/review-lane-budget.mjs), deliberately, so a run that exhausts
     # the budget still gets to PRINT its verdict rather than being killed

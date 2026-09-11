@@ -1,5 +1,20 @@
 # @ifc-lite/cache
 
+## 3.4.0
+
+### Minor Changes
+
+- [#4389](https://github.com/LTplus-AG/ifc-lite/pull/4389) [`33194e5`](https://github.com/LTplus-AG/ifc-lite/commit/33194e5db6a17763e8fad5f5a6d2fea130d8dc84) Thanks [@louistrue](https://github.com/louistrue)! - Retain embedded GLB base-colour image bytes and UV coordinates, including texture transforms and node rotation/scale. Expose encoded image resources for host-owned decoding; reject unsupported capture appearance instead of silently dropping it.
+
+- [#4275](https://github.com/LTplus-AG/ifc-lite/pull/4275) [`576369b`](https://github.com/LTplus-AG/ifc-lite/commit/576369b2168ee1277fab3cfbc42d54c356aec0ef) Thanks [@louistrue](https://github.com/louistrue)! - Preserve canonical appearance provenance in cache format v19, with shared source topology across chunks and validated restored index identities.
+
+### Patch Changes
+
+- [#4397](https://github.com/LTplus-AG/ifc-lite/pull/4397) [`9c7062f`](https://github.com/LTplus-AG/ifc-lite/commit/9c7062f1f28a2f9d8a46db65225b772af4666cde) Thanks [@louistrue](https://github.com/louistrue)! - Reject embedded GLB images whose PNG/JPEG signature disagrees with their declared MIME type, preventing transparent PNG data from bypassing JPEG opacity handling.
+- Updated dependencies [[`ced8bb4`](https://github.com/LTplus-AG/ifc-lite/commit/ced8bb46c368648bd54a1bab716d049143faa036), [`f33ac74`](https://github.com/LTplus-AG/ifc-lite/commit/f33ac74dd0578792327f684ba5ca59f050458c65), [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb), [`7427343`](https://github.com/LTplus-AG/ifc-lite/commit/742734300487f78df8192dc6fd4126615b63b966), [`a6976b9`](https://github.com/LTplus-AG/ifc-lite/commit/a6976b9da44d13157533372a8def23995fcfb93f)]:
+  - @ifc-lite/data@4.1.0
+  - @ifc-lite/geometry@4.4.0
+
 ## 3.3.0
 
 ### Minor Changes

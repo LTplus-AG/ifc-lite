@@ -1,5 +1,15 @@
 # @ifc-lite/pointcloud
 
+## 0.8.0
+
+### Minor Changes
+
+- [#4255](https://github.com/LTplus-AG/ifc-lite/pull/4255) [`bc26223`](https://github.com/LTplus-AG/ifc-lite/commit/bc26223b5b7e09c8bafcdf7f95afafe033622867) Thanks [@louistrue](https://github.com/louistrue)! - Support absolute model and pointcloud translations without rewriting mesh or scan vertices. Keep model draw origins independent, compose scan alignment and manual offsets in double precision, and retain placement bounds after CPU geometry release. Streaming pointcloud callers can choose a nearby decode origin before narrowing coordinates to float32.
+
+### Patch Changes
+
+- [#4348](https://github.com/LTplus-AG/ifc-lite/pull/4348) [`8369d06`](https://github.com/LTplus-AG/ifc-lite/commit/8369d067dba22a7ca69b0420d49bf94bd698edd5) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Reject a zero or non-finite X/Y/Z scale factor and a non-finite offset in a LAS/LAZ header instead of silently collapsing every point to the header offset (or NaN). `decodeLasPoints`'s bbox fold now also skips a non-finite coordinate rather than letting one bad point poison the whole chunk's box. When every coordinate in a chunk is non-finite (e.g. a finite-but-huge scale that overflows on multiplication), the chunk's bbox is left at its `±Infinity` seed — an absorbing no-op in the multi-chunk union `streaming/host.ts` does across a streamed file — so the bad chunk drops out of the aggregate instead of a finite fallback value pulling it toward the origin, and a wholly non-finite file still falls back to the header's own bbox.
+
 ## 0.7.2
 
 ### Patch Changes

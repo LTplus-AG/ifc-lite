@@ -151,6 +151,15 @@ export function splitJobs(text) {
 }
 
 /**
+ * `changes` outputs that are NOT path filters. `noop` is the no-op `edited`
+ * probe (scripts/ci-verdict-replay.mjs): `true` means "this head already has
+ * a verdict, skip every lane and replay it", which says nothing about which
+ * paths reach a job. A job gated on it alone still runs on every path, so it
+ * must read as `null` (full coverage) here and not as an empty glob set.
+ */
+const NON_FILTER_OUTPUTS = new Set(['noop']);
+
+/**
  * The filter outputs that must be `true` for a job to run, read off its `if:`.
  *
  * POSITIVE terms only: `needs.changes.outputs.docs == 'true'` gates the job on
@@ -162,12 +171,12 @@ export function gatingFilters(jobText) {
   const ifLine = jobText.match(/^\s{4}if:\s*(.*)$/m);
   if (!ifLine) return null;
   const expr = ifLine[1];
-  const positives = [...expr.matchAll(/needs\.changes\.outputs\.([A-Za-z0-9_]+)\s*==\s*'true'/g)].map(
-    (m) => m[1],
-  );
-  const negatives = [...expr.matchAll(/needs\.changes\.outputs\.([A-Za-z0-9_]+)\s*!=\s*'true'/g)].map(
-    (m) => m[1],
-  );
+  const positives = [...expr.matchAll(/needs\.changes\.outputs\.([A-Za-z0-9_]+)\s*==\s*'true'/g)]
+    .map((m) => m[1])
+    .filter((n) => !NON_FILTER_OUTPUTS.has(n));
+  const negatives = [...expr.matchAll(/needs\.changes\.outputs\.([A-Za-z0-9_]+)\s*!=\s*'true'/g)]
+    .map((m) => m[1])
+    .filter((n) => !NON_FILTER_OUTPUTS.has(n));
   if (positives.length === 0) {
     // An `if:` that never mentions a filter output (e.g. `always()`, or an
     // event-name guard) does not path-gate the job.

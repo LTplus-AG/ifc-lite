@@ -21,16 +21,26 @@
 
 import type { ClashSetFilters } from './set-filter.js';
 
-/** For each tag id the run's filters named: the ids of the models that carried it. */
+/**
+ * For each tag id the run's filters named: the ids of the models that carried
+ * it. An `untagged` rule names no tag but still has an input — which models
+ * carry ANY tag (the federation is fixed for a result, so that set moving is
+ * exactly the untagged set moving) — recorded under {@link UNTAGGED_INPUT}.
+ */
 export type ClashModelTagInputs = ReadonlyMap<string, ReadonlySet<string>>;
 
-/** The tag ids every `modelTag` rule across `presets` refers to (empty when none does). */
+/** Key of the "models carrying any tag" input an `untagged` rule depends on. Never a tag id (those are UUIDs). */
+export const UNTAGGED_INPUT = 'untagged';
+
+/** The tag ids every `modelTag` rule across `presets` refers to, plus {@link UNTAGGED_INPUT} when one is `untagged` (empty when none does). */
 export function referencedModelTagIds(presets: readonly ClashSetFilters[]): Set<string> {
   const ids = new Set<string>();
   for (const p of presets) {
     for (const filter of [p.filterA, p.filterB]) {
       for (const rule of filter?.rules ?? []) {
-        if (rule.kind === 'modelTag') for (const id of rule.tagIds) ids.add(id);
+        if (rule.kind !== 'modelTag') continue;
+        if (rule.op === 'untagged') ids.add(UNTAGGED_INPUT);
+        else for (const id of rule.tagIds) ids.add(id);
       }
     }
   }
@@ -58,7 +68,7 @@ function membershipOf(
   const out = new Map<string, Set<string>>();
   for (const id of tagIds) out.set(id, new Set());
   for (const [modelId, tags] of assignments) {
-    for (const id of tagIds) if (tags.has(id)) out.get(id)!.add(modelId);
+    for (const id of tagIds) if (id === UNTAGGED_INPUT ? tags.size > 0 : tags.has(id)) out.get(id)!.add(modelId);
   }
   return out;
 }

@@ -20,7 +20,9 @@ import { clashModelTagInputsChanged } from '@/lib/clash/model-tag-inputs';
 
 export function ClashModelTagNotice() {
   const stale = useViewerStore(
-    useShallow((s) => clashModelTagInputsChanged(s.clashResult, s.modelTagAssignments)),
+    // `clashRawResult` is the object the run bound its inputs to; `clashResult`
+    // is re-derived (a new object) whenever an exclusion suppresses a clash.
+    useShallow((s) => clashModelTagInputsChanged(s.clashRawResult, s.modelTagAssignments)),
   );
   if (!stale) return null;
   return (

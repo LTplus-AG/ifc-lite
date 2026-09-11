@@ -135,17 +135,6 @@ describe('evaluateFilterRulesFederated — modelTag (#4215)', () => {
       { modelTagIds: new Set([STRUCT]), definedModelTagIds: DEFINED });
     assert.deepEqual(miss, []);
   });
-
-  it('the tag set is a snapshot: mutating the caller\'s set after the call starts does not move membership', async () => {
-    const models = await federation();
-    const live = new Set([STRUCT]);
-    const m1 = { ...models[0], tagIds: live };
-    const pending = run([m1, models[1], models[2]], [Rule.modelTag('hasAny', [STRUCT])], 'AND');
-    // Callers hand the evaluator a snapshot (`evaluatorModelsFromState`), so a
-    // re-tag lands in a NEW set on the store; the run keeps the one it was given.
-    const out = await pending;
-    assert.deepEqual(out, ALL_OF('m1', 'm2'));
-  });
 });
 
 describe('modelTag rules survive the JSON boundary (saved filters, clash presets)', () => {

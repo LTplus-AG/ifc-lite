@@ -47,9 +47,14 @@ export function isModelTagOp(value: unknown): value is ModelTagOp {
   return typeof value === 'string' && (MODEL_TAG_OPS as readonly string[]).includes(value);
 }
 
-/** The name key two tags are compared by: trimmed, case-folded. */
+/**
+ * The name key two tags are compared by: trimmed, case-folded. Locale-
+ * independent on purpose: the key decides identity across machines (a setup
+ * file's "Structure" must land on this machine's "structure"), and
+ * `toLocaleLowerCase` folds "I" differently under a Turkish host locale.
+ */
 export function normalizeModelTagName(name: string): string {
-  return name.trim().toLocaleLowerCase();
+  return name.trim().toLowerCase();
 }
 
 /**

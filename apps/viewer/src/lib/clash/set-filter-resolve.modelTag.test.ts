@@ -86,8 +86,11 @@ describe('clash set filters with modelTag rules (#4215)', () => {
     const untagged = await resolveClashSetFilter(models, { combinator: 'AND', rules: [Rule.modelTag('untagged', [])] }, toGlobalId, opts);
     assert.deepEqual([...untagged].sort(), [clashMemberKey('m3', 2001), clashMemberKey('m3', 2100), clashMemberKey('m3', 2120)].sort());
     const notStruct = await resolveClashSetFilter(models, { combinator: 'AND', rules: [Rule.modelTag('hasNone', [STRUCT])] }, toGlobalId, opts);
-    assert.equal(notStruct.length, 6, 'm2 and m3, three entities each');
-    assert.ok(!notStruct.includes(clashMemberKey('m1', 100)));
+    assert.deepEqual(
+      [...notStruct].sort(),
+      ['m2', 'm3'].flatMap((m) => [1, 100, 120].map((e) => clashMemberKey(m, OFFSET[m] + e))).sort(),
+      'm2 and m3, three entities each, and nothing of m1',
+    );
   });
 
   it('REFUSES a filter naming a deleted tag with a named error, instead of resolving that side to nothing', async () => {

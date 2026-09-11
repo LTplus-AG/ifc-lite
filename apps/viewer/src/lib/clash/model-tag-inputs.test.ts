@@ -16,6 +16,7 @@ import {
   clashModelTagInputsChanged,
   referencedModelTagIds,
   rememberModelTagInputs,
+  UNTAGGED_INPUT,
 } from './model-tag-inputs.js';
 import type { ClashSetFilters } from './set-filter.js';
 
@@ -43,6 +44,17 @@ describe('clash model-tag inputs (#4215)', () => {
     assert.equal(clashModelTagInputsChanged(result, assignments([], [STRUCT])), true, 'Structure moved from A to B');
     assert.equal(clashModelTagInputsChanged(result, assignments([STRUCT], [STRUCT])), true, 'Structure gained a model');
     assert.equal(clashModelTagInputsChanged(result, new Map()), true, 'every model gone or untagged');
+  });
+
+  it('an `untagged` rule depends on which models carry any tag: tagging a previously untagged model is a change', () => {
+    const untaggedPreset: ClashSetFilters[] = [{ filterA: { combinator: 'AND', rules: [Rule.modelTag('untagged', [])] } }];
+    assert.deepEqual([...referencedModelTagIds(untaggedPreset)], [UNTAGGED_INPUT]);
+    const result = {};
+    rememberModelTagInputs(result, captureModelTagInputs(untaggedPreset, assignments([STRUCT], [])));
+    assert.equal(clashModelTagInputsChanged(result, assignments([STRUCT], [])), false, 'nothing moved');
+    assert.equal(clashModelTagInputsChanged(result, assignments([REVIEW], [])), false, 'A is still tagged, B still untagged: the untagged set did not move');
+    assert.equal(clashModelTagInputsChanged(result, assignments([STRUCT], [REVIEW])), true, 'B was untagged and is not any more');
+    assert.equal(clashModelTagInputsChanged(result, assignments([], [])), true, 'A lost its last tag');
   });
 
   it('a result with no recorded inputs — no tag rules, a fixture — is never stale', () => {

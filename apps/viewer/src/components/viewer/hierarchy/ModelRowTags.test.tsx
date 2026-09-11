@@ -95,9 +95,13 @@ describe('ModelRowTags (#4215)', () => {
     assert.deepEqual(tagsOf('A'), ['Structure']);
     assert.equal(container.querySelectorAll('[data-model-tag-chip]').length, 1, 'the row chip appears');
 
+    const existing = [...useViewerStore.getState().modelTags.keys()][0]!;
+    useViewerStore.getState().unassignModelTags(['A'], [existing]);
+    assert.deepEqual(tagsOf('A'), []);
     typeInto(input, ' structure ');
     pressEnter(input);
     assert.equal(useViewerStore.getState().modelTags.size, 1, 'same name (case/space-insensitive) → the existing tag');
+    assert.deepEqual(tagsOf('A'), ['Structure'], 'and it is ASSIGNED, not merely found');
   });
 
   it('toggles assignment, renames by id (chip follows, assignment survives), refuses a taken name, and deletes', () => {

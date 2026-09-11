@@ -91,18 +91,13 @@ export function useFederationSetup() {
       const summary = summarizeFederationSetupMatches(matches);
       const loadable = matches.filter((m) => m.file !== null);
 
-      // Tag definitions first, so the assignments below resolve. A live tag
-      // already under an id wins; a live tag that already carries a saved
-      // tag's NAME under another id absorbs it, and the slot's ids are mapped
-      // through `remap` so no assignment is dropped for a spelling both
-      // machines typed (#4215).
-      const { upsertModelTagDefinitions, assignModelTags } = useViewerStore.getState();
-      const remap = upsertModelTagDefinitions(setup.tags);
-      const liveTagIds = (saved: readonly string[]) => saved.map((id) => remap.get(id) ?? id);
-
       let restoredCount = 0;
       let restoredAnchorModelId: string | null = null;
       const hadAnchorSlot = matches.some((m) => m.slot.anchor);
+      // Tags are applied after the loads, and only for the slots that came
+      // back: the vocabulary is persisted per browser, and a reopen that
+      // restored nothing must not leave the file's tags behind in it (#4215).
+      const restoredTagged: Array<{ modelId: string; tagIds: readonly string[] }> = [];
 
       // Sequential, in saved order — mirrors loadFilesSequentially (the WASM
       // parser isn't thread-safe) and preserves the saved federation's
@@ -118,8 +113,20 @@ export function useFederationSetup() {
           restoredCount += 1;
           if (match.slot.anchor) restoredAnchorModelId = modelId;
           // After `addModel` returns: the runtime id is fresh, the tags are not (#4215).
-          if (match.slot.tagIds.length > 0) assignModelTags([modelId], liveTagIds(match.slot.tagIds));
+          if (match.slot.tagIds.length > 0) restoredTagged.push({ modelId, tagIds: match.slot.tagIds });
         }
+      }
+
+      if (restoredTagged.length > 0) {
+        // Definitions the restored slots reference, by id, so the assignments
+        // resolve. A live tag already under an id wins; a live tag that already
+        // carries a saved tag's NAME under another id absorbs it, and the
+        // slot's ids are mapped through `remap` so no assignment is dropped
+        // for a spelling both machines typed.
+        const { upsertModelTagDefinitions, assignModelTags } = useViewerStore.getState();
+        const referenced = new Set(restoredTagged.flatMap((r) => r.tagIds));
+        const remap = upsertModelTagDefinitions(setup.tags.filter((t) => referenced.has(t.id)));
+        for (const { modelId, tagIds } of restoredTagged) assignModelTags([modelId], tagIds.map((id) => remap.get(id) ?? id));
       }
 
       let anchorRestored = false;

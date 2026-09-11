@@ -109,9 +109,12 @@ describe('per-side filters round trip through storage', () => {
 
   it('an unreadable rule survives a save/load round trip untouched (#4215)', () => {
     write([{ ...LEGACY_CUSTOM, filterA: { combinator: 'AND', rules: [{ kind: 'nope' }, FILTER.rules[0]] } }]);
-    const loaded = loadCustom('custom-legacy');
+    const presets = buildInitialPresets();
+    const loaded = presets.find((p) => p.id === 'custom-legacy');
     assert.ok(loaded);
-    savePresets(buildInitialPresets());
+    (g.localStorage as MemoryStorage).removeItem(PRESETS_KEY);
+    assert.equal(loadCustom('custom-legacy'), undefined, 'fixture sanity: nothing stored until savePresets writes');
+    assert.equal(savePresets(presets).ok, true);
     const again = loadCustom('custom-legacy');
     assert.deepStrictEqual(again?.filterA, loaded.filterA);
     assert.deepStrictEqual(again?.filterA?.unreadableRules, [{ kind: 'nope' }]);

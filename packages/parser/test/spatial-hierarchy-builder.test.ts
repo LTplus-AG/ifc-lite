@@ -757,6 +757,37 @@ describe('SpatialHierarchyBuilder', () => {
       expect(hierarchy.byStorey.get(3)).toEqual([4]);
       expect(hierarchy.elementToStorey.get(4)).toBe(3);
     });
+
+    // A reachable IfcSpace is a viable spatial node but not a storey answer:
+    // if its ContainsElements edge is declared before the storey's, the
+    // first-viable pick must skip it, or the storey `continue`s and the
+    // element ends up with no elementToStorey entry at all (#4310 review).
+    it('ignores an earlier-declared reachable IfcSpace containment when picking the first-declared storey (#4310)', () => {
+      const strings = new StringTable();
+      const entities = new EntityTableBuilder(5, strings);
+      entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+      entities.add(2, 'IFCBUILDINGSTOREY', 'st0', 'Storey', '', '');
+      entities.add(3, 'IFCSPACE', 'sp0', 'Space', '', '');
+      entities.add(4, 'IFCWALL', 'w0', 'Wall', '', '', true);
+
+      const relationships = new RelationshipGraphBuilder();
+      relationships.addEdge(1, 2, RelationshipType.Aggregates, 10); // Project -> Storey
+      relationships.addEdge(2, 3, RelationshipType.Aggregates, 11); // Storey -> Space (both reachable)
+      relationships.addEdge(3, 4, RelationshipType.ContainsElements, 20); // Space contains Wall (first-declared)
+      relationships.addEdge(2, 4, RelationshipType.ContainsElements, 21); // Storey contains Wall (second-declared)
+
+      const hierarchy = new SpatialHierarchyBuilder().build(
+        entities.build(),
+        relationships.build(),
+        strings,
+        new Uint8Array(),
+        { byId: { get: () => undefined } },
+      );
+
+      expect(hierarchy.bySpace.get(3)).toEqual([4]);
+      expect(hierarchy.byStorey.get(2)).toEqual([4]);
+      expect(hierarchy.elementToStorey.get(4)).toBe(2);
+    });
   });
 
   it('leaves longName undefined on the source-less cache-restore path', () => {

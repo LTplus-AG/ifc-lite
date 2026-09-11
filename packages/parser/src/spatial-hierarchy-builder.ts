@@ -277,8 +277,13 @@ export class SpatialHierarchyBuilder {
         // branch, so nothing would ever claim the element there, and the
         // element must not be dropped just because a later-declared but
         // VIABLE storey lost a tie to a candidate that can't win (#4310).
+        // Only storey-like containers compete: a reachable IfcSpace edge
+        // declared first is not a storey answer, and letting it win here
+        // would leave the element with no elementToStorey entry at all
+        // (spaces never run this branch).
         const containerEdges = relationships.inverse.getEdges(elementId, RelationshipType.ContainsElements);
-        const firstViableContainer = containerEdges.find((edge) => ctx.reachableSpatialNodes.has(edge.target));
+        const firstViableContainer = containerEdges.find((edge) =>
+          ctx.reachableSpatialNodes.has(edge.target) && isStoreyLikeSpatialType(entities.getTypeEnum(edge.target)));
         // expressId is always reachable here (buildNode only runs on reachable
         // nodes) and always has an edge to elementId (elementId came from THIS
         // storey's own containedElements), so firstViableContainer is always

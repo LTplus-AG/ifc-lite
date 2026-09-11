@@ -230,6 +230,11 @@ pub(super) fn build_spatial_hierarchy(
     // 0, level: 0) while its real parent's children_ids either still names it
     // as a child, or the parent chain above it was intentionally truncated -
     // two representations of the same entity's place in the tree disagreeing.
+    // Snapshot the project-reachable node set before rescuing orphans: the
+    // first-declared storey ruling below (#4310) only competes among these,
+    // matching packages/parser, which never visits an orphan storey.
+    let project_reachable: FxHashSet<u32> = nodes_map.keys().copied().collect();
+
     for &entity_id in &spatial_entity_ids {
         if visited.contains(&entity_id) || canonical_parent.contains_key(&entity_id) {
             continue;
@@ -327,7 +332,16 @@ pub(super) fn build_spatial_hierarchy(
     // first-declared row here, before serialization, makes that flattening
     // step correct regardless of its own iteration order and keeps this one
     // lookup table consistent with the wasm/parser path's `elementToStorey`.
+    //
+    // Only storeys reachable from IfcProject compete for the first-declared
+    // slot - packages/parser never visits a rescued orphan storey, so an
+    // orphan declared before a reachable storey must not claim the element
+    // there either. An element contained ONLY in orphan storeys still keeps
+    // its first-declared orphan row (the orphan is a rescued root here, and
+    // dropping the row would lose data the parser has no equivalent for).
     let mut storey_claimed: FxHashSet<u32> = FxHashSet::default();
+    let mut orphan_storey_claimed: FxHashSet<u32> = FxHashSet::default();
+    let mut element_to_orphan_storey: Vec<(u32, u32)> = Vec::new();
 
     for rel in relationships {
         if rel.rel_type.to_uppercase() == "IFCRELCONTAINEDINSPATIALSTRUCTURE" {
@@ -354,7 +368,11 @@ pub(super) fn build_spatial_hierarchy(
                 if type_upper == "IFCBUILDINGSTOREY" {
                     // First-declared wins: an element already claimed by an
                     // earlier-declared storey ignores every later-declared one.
-                    if storey_claimed.insert(element_id) {
+                    if !project_reachable.contains(&spatial_id) {
+                        if orphan_storey_claimed.insert(element_id) {
+                            element_to_orphan_storey.push((element_id, spatial_id));
+                        }
+                    } else if storey_claimed.insert(element_id) {
                         element_to_storey.push((element_id, spatial_id));
                     }
                 } else if is_building_like_spatial_type(&type_upper) {
@@ -365,6 +383,13 @@ pub(super) fn build_spatial_hierarchy(
                     element_to_space.push((element_id, spatial_id));
                 }
             }
+        }
+    }
+
+    // Orphan-only elements keep their first-declared orphan storey.
+    for (element_id, spatial_id) in element_to_orphan_storey {
+        if !storey_claimed.contains(&element_id) {
+            element_to_storey.push((element_id, spatial_id));
         }
     }
 

@@ -779,6 +779,59 @@ fn duplicate_storey_containment_resolves_first_declared_order_a() {
     );
 }
 
+/// #4310 review: an orphan storey (no IfcRelAggregates edge anywhere, so it is
+/// rescued as a root by the orphan-fill pass) declared BEFORE a project-
+/// reachable storey must not win the first-declared ruling. packages/parser
+/// only considers storeys reachable from IfcProject (see
+/// `falls through to the reachable later-declared storey when the
+/// first-declared one is unreachable` in spatial-hierarchy-builder.test.ts).
+const ORPHAN_STOREY_FIRST_DECLARED_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorA00000000000000001',$,'OrphanStoreyA',$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#5=IFCWALL('Wall0000000000000000001',$,'W1',$,$,$,$,$,$);
+#6=IFCWALL('Wall0000000000000000002',$,'W2',$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#4));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5,#6),#3);
+#111=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#5),#4);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn orphan_storey_declared_first_does_not_win_over_reachable_storey() {
+    let dm = extract_data_model_checked(ORPHAN_STOREY_FIRST_DECLARED_IFC);
+    let sh = &dm.spatial_hierarchy;
+    // The orphan Storey A (#3) is rescued as a root, so it is present.
+    assert!(sh.nodes.iter().any(|n| n.entity_id == 3 && n.parent_id == 0));
+    // W1 is named first by the orphan, then by reachable Storey B: the
+    // reachable storey wins, matching packages/parser.
+    assert_eq!(
+        sh.element_to_storey.iter().filter(|(e, _)| *e == 5).count(),
+        1,
+        "exactly one storey row for W1: {:?}",
+        sh.element_to_storey
+    );
+    assert_eq!(
+        sh.element_to_storey.iter().find(|(e, _)| *e == 5).map(|(_, s)| *s),
+        Some(4),
+        "project-reachable Storey B (#4) must win over the earlier-declared orphan"
+    );
+    // W2 is contained ONLY in the orphan storey: it keeps that row rather
+    // than vanishing from the lookup table.
+    assert_eq!(
+        sh.element_to_storey.iter().find(|(e, _)| *e == 6).map(|(_, s)| *s),
+        Some(3),
+        "orphan-only containment is retained"
+    );
+}
+
 #[test]
 fn duplicate_storey_containment_resolves_first_declared_order_b() {
     let dm = extract_data_model_checked(DUPLICATE_STOREY_ORDER_B_IFC);

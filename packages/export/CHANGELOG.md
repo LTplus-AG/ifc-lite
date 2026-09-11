@@ -1,5 +1,132 @@
 # @ifc-lite/export
 
+## 4.1.0
+
+### Minor Changes
+
+- [#4337](https://github.com/LTplus-AG/ifc-lite/pull/4337) [`b0700f2`](https://github.com/LTplus-AG/ifc-lite/commit/b0700f25434d1cf1ec5f7438a8e27c09188208ec) Thanks [@louistrue](https://github.com/louistrue)! - Preserve textured IFCX mesh fragments, UVs, shared pixels and optional original images through a declared versioned appearance transport extension.
+
+- [#4313](https://github.com/LTplus-AG/ifc-lite/pull/4313) [`fc4b6ab`](https://github.com/LTplus-AG/ifc-lite/commit/fc4b6ab4a80a3bcd1a30027b45f30e25ebf2434f) Thanks [@louistrue](https://github.com/louistrue)! - Add bounded effective appearance dependency guards for stale-safe geometry and material replay.
+
+- [#4303](https://github.com/LTplus-AG/ifc-lite/pull/4303) [`8fbd804`](https://github.com/LTplus-AG/ifc-lite/commit/8fbd8045272e5cfdfa86518d8eeb92e8be1b1220) Thanks [@louistrue](https://github.com/louistrue)! - Add a conservative authored appearance cleanup plan that preserves effective IFC references and surviving image URLs.
+
+### Patch Changes
+
+- [#4211](https://github.com/LTplus-AG/ifc-lite/pull/4211) [`098e241`](https://github.com/LTplus-AG/ifc-lite/commit/098e2419cac5bd72f5524c7cddfa1b4da7971696) Thanks [@mpancera](https://github.com/mpancera)! - Expose the runtime hierarchy helpers as their own subpath,
+  `@ifc-lite/codegen/schema-hierarchy`, and import them from there in the two
+  runtime call sites (`lod0-generator`, the IDS classification bridge).
+  
+  The package root exports two things with different audiences: the generator,
+  which imports `node:fs` and `node:path` because it reads `.exp` files and
+  writes source, and the `isSubtypeOf` family, which is pure and is meant to be
+  called at runtime against a generated `SCHEMA_REGISTRY`. Importing the second
+  therefore dragged the first along. In a bundler that tree-shakes, the generator
+  falls away and nothing is wrong. In a dev server that does not, it is fetched
+  and evaluated, the `node:fs` stub throws at import, and the viewer never
+  mounts — it cycles through boot-self-heal reloads on a blank page.
+  
+  `schema-hierarchy.ts` has no imports at all, so the subpath is browser-safe by
+  construction rather than by convention, and the existing build already emits
+  `dist/schema-hierarchy.js` and its declarations. The root entry keeps every
+  export it had, so nothing that imports it today has to change.
+
+- [#4213](https://github.com/LTplus-AG/ifc-lite/pull/4213) [`92e5903`](https://github.com/LTplus-AG/ifc-lite/commit/92e59033708882e9d40eaad0cddc7aab1468d2b4) Thanks [@louistrue](https://github.com/louistrue)! - Refuse a STEP attribute edit rather than land it on the wrong attribute, in the three writers that set a slot by index ([#4125](https://github.com/LTplus-AG/ifc-lite/issues/4125)).
+  
+  `step-attribute-mutations.ts` (named and positional edits) and `retype.ts` split a record's argument list with the PERMISSIVE `splitTopLevelArgs` and then wrote `args[index]`. A permissive split still produces parts when the scan went wrong, and those parts are not the record's slots. On a record with two undoubled apostrophes, which is what an authoring tool emits when it forgets to double one, quote parity stays even and paren depth returns to zero, so nothing structural notices: `[#1](https://github.com/LTplus-AG/ifc-lite/issues/1)=IFCWALL('g',$,IFCLABEL('a's'),$,IFCLABEL('b's'),[#5](https://github.com/LTplus-AG/ifc-lite/issues/5),[#6](https://github.com/LTplus-AG/ifc-lite/issues/6),'T',.SOLIDWALL.);` split into seven parts for a nine-attribute class. Editing `Description` then overwrote `ObjectPlacement`, deleting the `[#5](https://github.com/LTplus-AG/ifc-lite/issues/5)` reference that was there, and reported `attributed: true`; retyping it to `IfcWallStandardCase` emitted eleven top-level arguments for a nine-attribute class.
+  
+  All three now use `splitTopLevelStepArguments`, which carries a per-slot grammar check, and drop the edit when it refuses. The refusal is reported rather than left to look like a no-op: `SourceLineMutations` gains `unreadable`, and both passes that write a source line push a warning naming the entity.
+  
+  Measured on 122 real IFC files (19,461,436 records): zero records change verdict, so no file that previously mutated stops mutating. That sweep found no argument list carrying a `/* ... */` comment, which is why it did not catch the Rust splitter refusing one; that was caught in review and fixed afterwards, and the fix only widens what is accepted, so the conclusion is unaffected.
+  
+  The Rust exporter had the same shape (`step_text.rs`'s `apply_attr_mutations_counted`). Its splitter now validates too and lives in `step_slot.rs`, and each refusal is counted into `StepStats::attribute_edits_refused`, which callers of `export_step_with_stats` can read. The wasm JSON path does not surface that count today: `export_step` discards the stats, so nothing reaches `export_step_json`. Wiring it through is a separate change. The inputs both languages must refuse are pinned to one shared fixture, `rust/export/tests/fixtures/step_refuse_vectors.json`, following the `step_escape_vectors.json` precedent.
+  
+  Two follow-ups from review of that change, both about the same contract.
+  
+  The per-slot grammar is recursive descent, and this PR is what routes `retype.ts`, `applyAttributeMutations` and `applyPositionalMutations` into it. Deep enough nesting in a record therefore threw a `RangeError` out of a function documented to return parts or `null`, a third outcome no caller handles, so one adversarial record aborted a whole export instead of refusing one edit. Nesting is now bounded at 64 and refused past that, which makes the contract total. The bound sits between two measurements: the deepest nesting inside any slot of any record in the 122-file corpus is 3, and the shallowest depth measured to exhaust the stack in a fresh Node 22 process is 3763. The Rust twin's `is_well_formed_step_slot` is an iterative loop with an explicit depth counter, so it has no such exposure and is unchanged.
+  
+  The refusal warning no longer says the record "was written exactly as the source file has it". It is produced before `convertStepLine` runs, and a cross-schema export can rename the record's type, adjust its attribute list, replace it with a proxy, or drop it from the output. On that path the sentence was false in exactly the case a caller reads it for. It now describes only what was dropped.
+
+- [#4169](https://github.com/LTplus-AG/ifc-lite/pull/4169) [`0581b28`](https://github.com/LTplus-AG/ifc-lite/commit/0581b28ff4cebf20de2d973b7a9b2f81dcf47275) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `schema-converter-attr-remap.ts`'s `splitTopLevelAttributes` no longer carries its own copy of the top-level-STEP-comma-split rule; it now delegates to `step-argument-parser.ts`'s `splitTopLevelArgs`, the same package's general-purpose splitter already used by seven other read paths. No observable output change for `remapRenamedAttributesByName`'s real (IFCDOORTYPE/IFCWINDOWTYPE) inputs.
+
+- [#4263](https://github.com/LTplus-AG/ifc-lite/pull/4263) [`1e09d1c`](https://github.com/LTplus-AG/ifc-lite/commit/1e09d1cec57a5c26e82b721a6451185c83c34eb2) Thanks [@louistrue](https://github.com/louistrue)! - Preserve inverse texture maps and their UV resources when exporting a visible or isolated subset. Resolve maps through their effective MappedTo geometry so shared images cannot restore hidden surfaces and pending retargets/deletions are respected.
+
+- [#4319](https://github.com/LTplus-AG/ifc-lite/pull/4319) [`f3efce7`](https://github.com/LTplus-AG/ifc-lite/commit/f3efce7382d9018a70740909a18ee87b043e5901) Thanks [@louistrue](https://github.com/louistrue)! - Scan unchanged appearance dependencies directly from source bytes while preserving edit validation and compressed-source support.
+
+- [#4316](https://github.com/LTplus-AG/ifc-lite/pull/4316) [`49763b4`](https://github.com/LTplus-AG/ifc-lite/commit/49763b48cbc9a18d7bc8f090a3dcc1ca0dc718a2) Thanks [@louistrue](https://github.com/louistrue)! - Inspect only reachable authored candidate payloads when planning resource cleanup, so history-only UV data can be omitted from detached exports without exhausting live-reference budgets.
+
+- [#4173](https://github.com/LTplus-AG/ifc-lite/pull/4173) [`6af5d45`](https://github.com/LTplus-AG/ifc-lite/commit/6af5d455fec7cc5467fa565babd82be611242e02) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `splitTopLevelStepArguments`'s outer comma/paren/quote scan is now
+  comment-aware, and `rescaleEntityLengths`'s `findOuterArgs` span-finder
+  (moved to its own module, `step-outer-args.ts`) is too.
+  
+  ISO-10303-21 comment (`/* ... */`) content is unrestricted text: a comma, an
+  unbalanced paren, or an odd number of `'` inside one is legal and occurs in
+  real files, but neither scan previously skipped a comment as a unit — each
+  read the comment's raw characters as argument-list structure. A comma inside
+  a comment was read as a top-level separator, producing a phantom fragment
+  that begins with `/` (outside every STEP token's character set), which the
+  per-part well-formedness check added for [#4162](https://github.com/LTplus-AG/ifc-lite/issues/4162) then rejected — turning a
+  fully legal line into a `null` split. Separately, an apostrophe or unbalanced
+  paren inside a comment could make `findOuterArgs` miss a record's own closing
+  `)` entirely.
+  
+  Previously both failure modes were silent: `rescaleEntityLengths` read the
+  `null`/missing span as "nothing to rescale" and returned the line's
+  length/area/volume data unscaled. A follow-up in this same series made the
+  `splitTopLevelStepArguments` case throw instead (correct for a function with
+  no safe permissive fallback for a unit conversion) — which meant a legal
+  comment could abort an otherwise-legal export. Both scans now skip a
+  `/* ... */` region wholesale, so a comment's content can no longer be
+  misread as structure in either direction.
+  
+  The [#4162](https://github.com/LTplus-AG/ifc-lite/issues/4162) per-part rejection itself is unchanged: a comment standing alone as
+  its own slot (no value) is still rejected, and a phantom string swallowing a
+  real argument boundary is still rejected.
+
+- [#4173](https://github.com/LTplus-AG/ifc-lite/pull/4173) [`6af5d45`](https://github.com/LTplus-AG/ifc-lite/commit/6af5d455fec7cc5467fa565babd82be611242e02) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `splitTopLevelStepArguments` — the validating splitter `replaceStepArgument`
+  uses to write a STEP attribute by index — now rejects an argument list whose
+  parts do not each parse back as one well-formed STEP value (a string, `$`,
+  `*`, a bare keyword/number/`#`-reference token, or a typed value/list).
+  
+  The three checks it already had (quote parity, paren depth, final depth)
+  track scan state, not slot content, and can all pass on a slot list that is
+  not the record's actual arguments: an undoubled `'` inside one string-typed
+  argument can read as a string spanning into the next one, swallowing a real
+  `),NAME(` boundary, and a comment sitting alone between two commas becomes a
+  phantom slot that shifts every index after it. Either way,
+  `replaceStepArgument` would write a value into the wrong slot and report
+  success on a record it had actually corrupted.
+  
+  `replaceStepArgument`'s one caller (`rewriteTypeOwnedPsetLine`) already
+  treats a `null` result as "could not repoint" — it keeps the line unrewritten
+  for that slot and surfaces a warning rather than dropping the record, so this
+  newly-reachable rejection degrades the same way an unparseable record already
+  did.
+  
+  Two follow-ups, since `splitTopLevelStepArguments` has five call sites total
+  and the per-part check reaches every one of them, not only
+  `replaceStepArgument`:
+  
+  - The per-part check did not recognize the ISO 10303-21 binary literal
+    (`"..."`, e.g. `"0123ABC"`) as a value, so a perfectly legal line
+    containing one was rejected outright. `isWellFormedStepSlot`/`parseValue`
+    now accept it.
+  - `unit-normalize.ts`'s `rescaleEntityLengths` — reached through
+    `MergedExporter`'s cross-unit merge path — treated that `null` as "nothing
+    to do" and returned the line's length/area/volume data UNSCALED, silently:
+    the one call site among the five where "unknown, don't act" is not a safe
+    fallback. It now throws instead. The other three call sites
+    (`merged-context.ts`, `merged-subcontext.ts`) already read `null`
+    permissively as "unresolvable, don't unify" — audited and left as-is, since
+    falling back to not merging is the safe direction for a WCS/kind
+    comparison.
+- Updated dependencies [[`ced8bb4`](https://github.com/LTplus-AG/ifc-lite/commit/ced8bb46c368648bd54a1bab716d049143faa036), [`b5cb19a`](https://github.com/LTplus-AG/ifc-lite/commit/b5cb19ae80610107f7b3b3914efa7234dfbe4999), [`098e241`](https://github.com/LTplus-AG/ifc-lite/commit/098e2419cac5bd72f5524c7cddfa1b4da7971696), [`e69c9b5`](https://github.com/LTplus-AG/ifc-lite/commit/e69c9b5ac993e672ebd1e736c2b7d3997a7ac8bc), [`e119819`](https://github.com/LTplus-AG/ifc-lite/commit/e1198197556375019c5a7820cc7c99da55e5c639), [`b0700f2`](https://github.com/LTplus-AG/ifc-lite/commit/b0700f25434d1cf1ec5f7438a8e27c09188208ec), [`12e69fe`](https://github.com/LTplus-AG/ifc-lite/commit/12e69feb363ea31fb2c3513436366b01c54251e9), [`83fb539`](https://github.com/LTplus-AG/ifc-lite/commit/83fb539395e3638eb4c72a5c0fb2c508a8746adb), [`f33ac74`](https://github.com/LTplus-AG/ifc-lite/commit/f33ac74dd0578792327f684ba5ca59f050458c65), [`85e0351`](https://github.com/LTplus-AG/ifc-lite/commit/85e0351c6bcbc350c404176e484320baa08a1366), [`6f0078b`](https://github.com/LTplus-AG/ifc-lite/commit/6f0078bc8ae697c9e6f91ae5b36546476b0fee5b), [`04d7b3b`](https://github.com/LTplus-AG/ifc-lite/commit/04d7b3ba0ab64ae9e97420aa8d5c56a536272724), [`78905e6`](https://github.com/LTplus-AG/ifc-lite/commit/78905e6866c33d97f6ee7e39e35c3f86d9121ae2), [`8620be3`](https://github.com/LTplus-AG/ifc-lite/commit/8620be38be0162b7cbdbe23ae7bc924763b83612), [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb), [`5a01e5a`](https://github.com/LTplus-AG/ifc-lite/commit/5a01e5abe220f21ae5233045c6e9cfc5aa37a4e3), [`7427343`](https://github.com/LTplus-AG/ifc-lite/commit/742734300487f78df8192dc6fd4126615b63b966), [`6110c0d`](https://github.com/LTplus-AG/ifc-lite/commit/6110c0d6bb0c1a96c4da4c056389ebc4dfe26631), [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb), [`b9c3aa1`](https://github.com/LTplus-AG/ifc-lite/commit/b9c3aa1b7da9b0c26742bacb6eb3c7c4b44ca80b), [`a6976b9`](https://github.com/LTplus-AG/ifc-lite/commit/a6976b9da44d13157533372a8def23995fcfb93f), [`591c593`](https://github.com/LTplus-AG/ifc-lite/commit/591c5938bdc4e8210c3b3158f22ecd78552bcdc2)]:
+  - @ifc-lite/data@4.1.0
+  - @ifc-lite/parser@6.0.0
+  - @ifc-lite/codegen@1.17.0
+  - @ifc-lite/mutations@2.2.0
+  - @ifc-lite/ifcx@4.1.0
+  - @ifc-lite/geometry@4.4.0
+
 ## 4.0.1
 
 ### Patch Changes

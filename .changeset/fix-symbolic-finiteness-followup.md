@@ -1,5 +1,0 @@
----
-"@ifc-lite/wasm": patch
----
-
-Fix five gaps where a malformed STEP REAL (e.g. `1.E400`, which parses to `f32::INFINITY`) could survive as non-finite coordinates into the symbolic 2D extraction paths used for drawing/section views, rather than being dropped as unrenderable: `IfcAnnotationFillArea` boundary-ring extraction (`fill.rs`), `IfcGridAxis` endpoint sampling (`grid.rs`, drops the whole axis rather than a single point), `IfcTextLiteral` placement (`text.rs`, drops the whole text item), a circle push after ambient-placement transform (`push_circle` in `output_cap.rs`, which re-checks finiteness post-transform even though `items.rs` already validates the local center) and an `IfcTrimmedCurve` near-collinear-chord fallback (`trimmed_curve.rs`, guarded the same way its sibling arc-tessellation branch already was). All five now route through the same finite-or-drop convention as the already-guarded `items.rs` polyline/curve paths, so a malformed file can no longer push `Infinity`/`NaN` through the WASM boundary into `Drawing2DState`.

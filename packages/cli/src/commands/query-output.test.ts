@@ -370,6 +370,135 @@ describe('outputGroupBy', () => {
     maxJson.spy.mockRestore();
     expect(JSON.parse(maxJson.chunks.join(''))['IfcWall'].NetVolume).toBe(10);
   });
+
+  /**
+   * #4252: a group with NO NetVolume quantity data at all must be
+   * distinguishable in --json from a group whose real aggregate genuinely
+   * computes to 0. Discriminating fixture: `noDataBim` has doors that carry
+   * no NetVolume quantity anywhere (fabricated 0, matchedEntities 0);
+   * `zeroBim` has doors whose NetVolume values are -5 and 5, so the real
+   * average/sum genuinely is 0 (matchedEntities 2, the same numeric 0 but
+   * NOT fabricated). If both rendered identically on matchedEntities, this
+   * test would be vacuous — it asserts they diverge on that field despite
+   * an identical `NetVolume: 0`.
+   *
+   * Kills reverting `entry.matchedEntities = groupMatched.get(key) ?? 0`
+   * (or dropping it): with it gone, both cases collapse back to
+   * `{count, NetVolume: 0}` and cannot be told apart, which is #4252 itself.
+   */
+  it('distinguishes a group with no quantity data from a group whose real value is 0 (avg, json)', () => {
+    const noDataBim = fakeBim({ quantities: {} });
+    const doors = [{ ref: 1, type: 'IfcDoor' }, { ref: 2, type: 'IfcDoor' }] as FakeEntity[];
+
+    const noData = captureStdout();
+    outputGroupBy(doors, 'type', 'NetVolume', noDataBim, true, undefined, 'avg');
+    noData.spy.mockRestore();
+    const noDataEntry = JSON.parse(noData.chunks.join(''))['IfcDoor'];
+    expect(noDataEntry.NetVolume).toBe(0);
+    expect(noDataEntry.matchedEntities).toBe(0);
+
+    const zeroBim = fakeBim({
+      quantities: {
+        1: [{ name: 'Qto_DoorBaseQuantities', quantities: [{ name: 'NetVolume', value: -5 }] }],
+        2: [{ name: 'Qto_DoorBaseQuantities', quantities: [{ name: 'NetVolume', value: 5 }] }],
+      },
+    });
+    const zero = captureStdout();
+    outputGroupBy(doors, 'type', 'NetVolume', zeroBim, true, undefined, 'avg');
+    zero.spy.mockRestore();
+    const zeroEntry = JSON.parse(zero.chunks.join(''))['IfcDoor'];
+    expect(zeroEntry.NetVolume).toBe(0);
+    expect(zeroEntry.matchedEntities).toBe(2);
+  });
+
+  /**
+   * Same discriminating pair as above, but for --sum: an empty group's
+   * fabricated 0 total must carry matchedEntities: 0, while a real sum that
+   * cancels to 0 (values -5 and 5) must carry matchedEntities: 2. Confirms
+   * the fix is not avg-only — sum shares the exact same ambiguity.
+   */
+  it('distinguishes a group with no quantity data from a real cancelling-to-0 sum (json)', () => {
+    const noDataBim = fakeBim({ quantities: {} });
+    const doors = [{ ref: 1, type: 'IfcDoor' }, { ref: 2, type: 'IfcDoor' }] as FakeEntity[];
+
+    const noData = captureStdout();
+    outputGroupBy(doors, 'type', 'NetVolume', noDataBim, true, undefined, 'sum');
+    noData.spy.mockRestore();
+    const noDataEntry = JSON.parse(noData.chunks.join(''))['IfcDoor'];
+    expect(noDataEntry.NetVolume).toBe(0);
+    expect(noDataEntry.matchedEntities).toBe(0);
+
+    const zeroBim = fakeBim({
+      quantities: {
+        1: [{ name: 'Qto_DoorBaseQuantities', quantities: [{ name: 'NetVolume', value: -5 }] }],
+        2: [{ name: 'Qto_DoorBaseQuantities', quantities: [{ name: 'NetVolume', value: 5 }] }],
+      },
+    });
+    const zero = captureStdout();
+    outputGroupBy(doors, 'type', 'NetVolume', zeroBim, true, undefined, 'sum');
+    zero.spy.mockRestore();
+    const zeroEntry = JSON.parse(zero.chunks.join(''))['IfcDoor'];
+    expect(zeroEntry.NetVolume).toBe(0);
+    expect(zeroEntry.matchedEntities).toBe(2);
+  });
+
+  /**
+   * min/max share the same ambiguity: an empty group fabricates 0 (there is
+   * no real min/max), while a group with actual values of 0 (e.g. [0, 0])
+   * is a genuine min/max of 0. matchedEntities must tell them apart.
+   */
+  it('distinguishes a group with no quantity data from a real min/max of 0 (json)', () => {
+    const noDataBim = fakeBim({ quantities: {} });
+    const doors = [{ ref: 1, type: 'IfcDoor' }, { ref: 2, type: 'IfcDoor' }] as FakeEntity[];
+
+    const noDataMin = captureStdout();
+    outputGroupBy(doors, 'type', 'NetVolume', noDataBim, true, undefined, 'min');
+    noDataMin.spy.mockRestore();
+    const noDataEntry = JSON.parse(noDataMin.chunks.join(''))['IfcDoor'];
+    expect(noDataEntry.NetVolume).toBe(0);
+    expect(noDataEntry.matchedEntities).toBe(0);
+
+    const realZeroBim = fakeBim({
+      quantities: {
+        1: [{ name: 'Qto_DoorBaseQuantities', quantities: [{ name: 'NetVolume', value: 0 }] }],
+        2: [{ name: 'Qto_DoorBaseQuantities', quantities: [{ name: 'NetVolume', value: 0 }] }],
+      },
+    });
+    const realZeroMin = captureStdout();
+    outputGroupBy(doors, 'type', 'NetVolume', realZeroBim, true, undefined, 'min');
+    realZeroMin.spy.mockRestore();
+    const realZeroEntry = JSON.parse(realZeroMin.chunks.join(''))['IfcDoor'];
+    expect(realZeroEntry.NetVolume).toBe(0);
+    expect(realZeroEntry.matchedEntities).toBe(2);
+  });
+
+  /**
+   * Text-mode counterpart: a no-data group's line is annotated "(no data)"
+   * while a group whose real average genuinely is 0 prints the plain
+   * number with no annotation — the two paths (json / text) must agree
+   * on the same underlying signal (#4252 noted they previously diverged:
+   * text already had a signal, json had none).
+   */
+  it('annotates only the no-data group with "(no data)" in text mode, not a real-zero group', () => {
+    const doors = [{ ref: 1, type: 'IfcDoor' }, { ref: 2, type: 'IfcDoor' }] as FakeEntity[];
+    const noDataBim = fakeBim({ quantities: {} });
+
+    const noData = captureStdout();
+    outputGroupBy(doors, 'type', 'NetVolume', noDataBim, false, undefined, 'avg');
+    noData.spy.mockRestore();
+    expect(noData.chunks.join('')).toContain('(no data)');
+
+    const zeroBim = fakeBim({
+      quantities: {
+        1: [{ name: 'Qto_DoorBaseQuantities', quantities: [{ name: 'NetVolume', value: -5 }] }],
+        2: [{ name: 'Qto_DoorBaseQuantities', quantities: [{ name: 'NetVolume', value: 5 }] }],
+      },
+    });
+    const zero = captureStdout();
+    outputGroupBy(doors, 'type', 'NetVolume', zeroBim, false, undefined, 'avg');
+    zero.spy.mockRestore();
+    expect(zero.chunks.join('')).not.toContain('(no data)');
+  });
 });
 
 describe('computeUniqueValues', () => {

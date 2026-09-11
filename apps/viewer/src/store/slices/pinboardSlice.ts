@@ -355,9 +355,7 @@ export const createPinboardSlice: StateCreator<
     if (refs.length === 0) return;
     set((state) => {
       const next = new Set<string>(state.pinboardEntities);
-      // Only refs that were actually IN the basket may touch the isolation
-      // below: a ref that was never pinned has no basket claim on its global
-      // id, so deleting it would evict an externally-owned isolation entry.
+      // Only refs that were IN the basket may touch the isolation below (a never-pinned ref has no claim on its global id).
       const removed = refs.filter((ref) => next.delete(entityRefToString(ref)));
       if (removed.length === 0) return {};
       if (next.size === 0) {

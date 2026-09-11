@@ -197,6 +197,15 @@ export function useSpaceBake({
       // visibly broken — nobody notices until it is quoted in a schedule.
       const frame = storeyPlanFrame(ifcDataStore, sid);
       if (!frame) {
+        // Skips `createSpacesForStorey` entirely — the only place that walks
+        // `generatedRef` and removes what a PRIOR successful confirm created
+        // on this storey. That is deliberate, not an oversight: this storey's
+        // ids stay in `generatedRef` exactly as they were, matching the
+        // spaces that are still in the model, so (a) a resolution failure
+        // here never deletes real, previously-confirmed geometry, and (b) the
+        // ledger is not left stale — a later confirm, once the frame resolves
+        // again, still finds the right ids to remove before authoring the
+        // replacement. Neither replaced nor duplicated: left alone.
         firstError ??= `Storey #${sid}: placement not resolvable in plan — its rooms were not created.`;
         continue;
       }

@@ -142,11 +142,13 @@
       "picomatch@>=4": "^4.0.4",
       "uuid@<11.1.1": "^11.1.1",
       "@babel/core": "^7.29.6",
-      "js-yaml@4": "^4.3.1",
+      "js-yaml@4": "^4.3.2",
       "read-yaml-file": "^2.1.0",
       "brace-expansion": "^5.0.9",
       "minimatch": "^10.2.5",
-      "@zip.js/zip.js": "2.8.26"
+      "@zip.js/zip.js": "2.8.26",
+      "browserslist": "^4.28.7",
+      "baseline-browser-mapping": "^2.11.0"
     },
     "patchedDependencies": {
       "vite-plugin-top-level-await@1.6.0": "patches/vite-plugin-top-level-await@1.6.0.patch",

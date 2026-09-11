@@ -141,8 +141,42 @@ export class EntityNode {
   }
   
   containedIn(): EntityNode | null {
-    const nodes = this.getRelated(RelationshipType.ContainsElements, 'inverse');
-    return nodes[0] ?? null;
+    const candidates = this.getRelated(RelationshipType.ContainsElements, 'inverse');
+    if (candidates.length === 0) return null;
+    if (candidates.length === 1) return candidates[0];
+    // #4314: more than one candidate (a malformed file naming this element in
+    // more than one IfcRelContainedInSpatialStructure edge, #4311) - prefer
+    // the first-declared candidate that is actually reachable from
+    // IfcProject over one that is not, instead of blindly taking `[0]`. A
+    // storey with no IfcRelAggregates edge at all (an orphan/malformed
+    // spatial node) is a dangling answer no caller can walk anywhere from;
+    // falling through to a reachable later-declared candidate keeps this
+    // aligned with `SpatialHierarchyBuilder.elementToStorey`'s tie-break
+    // (#4310), which already skips an unreachable first-declared storey the
+    // same way. Falls back to the first-declared candidate when NONE are
+    // reachable, so this never returns null just because the whole file's
+    // spatial tree is disconnected from IfcProject.
+    const reachable = candidates.find((candidate) => candidate.isReachableFromProject());
+    return reachable ?? candidates[0];
+  }
+
+  /**
+   * Is this entity reachable from an `IfcProject` by walking forward
+   * `IfcRelAggregates` parent edges (`decomposedBy()`)? Used by
+   * `containedIn()` (#4314) to disqualify a duplicate-declared container
+   * that is itself an orphan spatial node. Cycle-safe: a loop that never
+   * reaches an `IfcProject` answers `false` rather than looping forever.
+   */
+  private isReachableFromProject(): boolean {
+    const visited = new Set<number>();
+    let current: EntityNode | null = this;
+    while (current) {
+      if (visited.has(current.expressId)) return false;
+      visited.add(current.expressId);
+      if (current.type === 'IfcProject') return true;
+      current = current.decomposedBy();
+    }
+    return false;
   }
 
   /**

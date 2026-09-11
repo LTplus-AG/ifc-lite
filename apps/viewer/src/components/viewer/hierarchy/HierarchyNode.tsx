@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import type { TreeNode } from './types';
 import { isSpatialContainer } from './types';
 import { IFC_ICON_CODEPOINTS, IFC_ICON_DEFAULT } from './ifc-icons';
+import { ModelRowTags } from './ModelRowTags';
 
 /**
  * Resolve the Material Symbols code point for a given IFC type string.
@@ -139,6 +140,7 @@ export function HierarchyNode({
               {node.elementCount.toLocaleString()}
             </span>
           )}
+          <ModelRowTags modelId={modelId} modelName={node.name} />
 
           <button className="p-0.5" aria-label={`Reposition model ${node.name}`} title="Reposition model"
             onClick={(event) => { event.stopPropagation(); openRepositionModels([modelId]); }}>

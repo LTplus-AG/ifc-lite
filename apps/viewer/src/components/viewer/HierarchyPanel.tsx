@@ -4,16 +4,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import {
-  Search,
-  Building2,
-  Layers,
-  LayoutTemplate,
-  FileBox,
-  GripHorizontal,
-  Palette,
-  Network,
-} from 'lucide-react';
+import { Search, Building2, Layers, LayoutTemplate, FileBox, GripHorizontal, Palette, Network } from 'lucide-react';
 import { extractGroupMembersOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -33,6 +24,7 @@ import { useHierarchyTree } from './hierarchy/useHierarchyTree';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
 import { SectionHeader } from './hierarchy/SectionHeader';
+import { useModelRowSize } from './hierarchy/ModelRowTags';
 import { StoreyDisplayControls } from './hierarchy/StoreyDisplayControls';
 import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
@@ -209,7 +201,7 @@ export function HierarchyPanel() {
   const modelsVirtualizer = useVirtualizer({
     count: modelsNodes.length,
     getScrollElement: () => modelsRef.current,
-    estimateSize: () => 36,
+    estimateSize: useModelRowSize(modelsNodes, () => modelsVirtualizer.measure()), // #4215: a tagged model row carries a chips line
     overscan: 10,
   });
 

@@ -28,6 +28,7 @@ import { ShareDialog } from '../ShareDialog';
 import { FederationSetupControls } from '../FederationSetupControls';
 
 import { FILE_ACCEPT, isGltfBundleFile, isSupportedModelFile } from '@/services/supported-model-files';
+import { captureModelTags, restoreModelTags } from '@/lib/model-tags/carry-over';
 
 // FILE_ACCEPT offers `.dxf` while `isSupportedModelFile` rejects it: DXF
 // files are 2D reference underlays, not models, and split off to the DXF
@@ -292,12 +293,16 @@ export function useFileCommands(): FileCommands {
       return;
     }
 
+    // Model tags die with the model; an explicit reload must keep them (#4215).
+    const carry = captureModelTags(useViewerStore.getState());
     recordRecentFiles(ok.map((r) => ({ name: r.fresh.name, size: r.fresh.size })));
     void cacheFileBlobs(ok.map((r) => r.fresh));
 
     if (targets.length === 1) {
       // Await so the success toast only fires once the reload has completed.
       await loadFile(ok[0].fresh, { kind: 'primary' }, { sourceHandle: ok[0].model.sourceHandle });
+      const reloadedId = useViewerStore.getState().activeModelId;
+      if (reloadedId) restoreModelTags(useViewerStore.getState(), carry, ok[0].model.id, reloadedId);
     } else {
       // Rebuild the federation from fresh bytes, preserving id + order + state.
       clearAllModels();
@@ -310,6 +315,7 @@ export function useFileCommands(): FileCommands {
           collapsed: r.model.collapsed,
           sourceHandle: r.model.sourceHandle,
         });
+        if (reloadedId) restoreModelTags(useViewerStore.getState(), carry, r.model.id, reloadedId);
         if (reloadedId && r.model.visible === false) {
           useViewerStore.getState().setModelVisibility(r.model.id, false);
         }

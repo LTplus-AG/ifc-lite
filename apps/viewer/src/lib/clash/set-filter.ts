@@ -22,12 +22,22 @@
  * did.
  */
 
-import { parseFilterRules, type Combinator, type FilterRule } from '../search/filter-rules.js';
+import { isFilterRule, type Combinator, type FilterRule } from '../search/filter-rules.js';
 
 /** One side of a clash rule, expressed the way the advanced filter is. */
 export interface ClashSetFilter {
   combinator: Combinator;
   rules: FilterRule[];
+  /**
+   * Persisted rules THIS build could not read — a rule kind or operator from
+   * a newer build, or a corrupt entry (#4215). Carried verbatim rather than
+   * dropped: dropping one rule out of an AND filter would silently WIDEN the
+   * set (fewer conditions, more members), and a re-save would then make the
+   * widening permanent. While any are present the resolver refuses the run
+   * (`set-filter-resolve.ts`), the editor says so, and a later build that
+   * understands them reads them back out of here.
+   */
+  unreadableRules?: unknown[];
 }
 
 /**
@@ -48,34 +58,55 @@ export const CLASH_SET_FILTER_LIMIT = 250_000;
  * The filter if it has anything to say, otherwise undefined — a filter with no
  * rules is not a filter, and the side's selector still decides. The ONE
  * spelling of "does this side have a filter", used by the resolver and by
- * anything that displays one.
+ * anything that displays one. A filter whose only rules are unreadable still
+ * has something to say — "refuse" — so it is active.
  */
 export function activeClashSetFilter(
   filter: ClashSetFilter | undefined,
 ): ClashSetFilter | undefined {
-  return filter && filter.rules.length > 0 ? filter : undefined;
+  return filter && (filter.rules.length > 0 || unreadableRuleCount(filter) > 0) ? filter : undefined;
 }
 
-/** One-line summary for the rule list ("2 rules · OR"). */
+/** How many persisted rules of `filter` this build cannot read. */
+export function unreadableRuleCount(filter: ClashSetFilter | undefined): number {
+  return filter?.unreadableRules?.length ?? 0;
+}
+
+/** One-line summary for the rule list ("2 rules · OR", "2 rules · OR · 1 unreadable"). */
 export function describeClashSetFilter(filter: ClashSetFilter): string {
   const n = filter.rules.length;
   const count = `${n} rule${n === 1 ? '' : 's'}`;
   // The combinator only says something once there are two rules to combine.
-  return n > 1 ? `${count} · ${filter.combinator}` : count;
+  const base = n > 1 ? `${count} · ${filter.combinator}` : count;
+  const bad = unreadableRuleCount(filter);
+  return bad > 0 ? `${base} · ${bad} unreadable` : base;
 }
 
 /**
  * Read a persisted filter. Returns undefined for anything that is not one —
- * including a preset stored before #3902 (no such field), a rule list that
- * survived nothing recognisable, and a blob from a newer/other app.
+ * including a preset stored before #3902 (no such field) and a blob from a
+ * newer/other app that has no rule list at all.
+ *
+ * A rule this build does not recognise is NOT dropped (#4215): it is kept in
+ * `unreadableRules`, and a filter with nothing but unreadable rules is still
+ * a filter (one the resolver will refuse). Entries a previous build parked in
+ * `unreadableRules` are re-tried, so a filter that round-tripped through an
+ * older build comes back whole in one that understands it.
  */
 export function parseClashSetFilter(raw: unknown): ClashSetFilter | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
-  const r = raw as { combinator?: unknown; rules?: unknown };
+  const r = raw as { combinator?: unknown; rules?: unknown; unreadableRules?: unknown };
   if (!Array.isArray(r.rules)) return undefined;
-  const rules = parseFilterRules(r.rules);
-  if (rules.length === 0) return undefined;
-  return { combinator: r.combinator === 'OR' ? 'OR' : 'AND', rules };
+  const candidates = [...r.rules, ...(Array.isArray(r.unreadableRules) ? r.unreadableRules : [])];
+  const rules: FilterRule[] = [];
+  const unreadable: unknown[] = [];
+  for (const entry of candidates) (isFilterRule(entry) ? rules : unreadable).push(entry);
+  if (rules.length === 0 && unreadable.length === 0) return undefined;
+  return {
+    combinator: r.combinator === 'OR' ? 'OR' : 'AND',
+    rules,
+    ...(unreadable.length > 0 ? { unreadableRules: unreadable } : {}),
+  };
 }
 
 /**

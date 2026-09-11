@@ -15,12 +15,13 @@
  * on the boot path.
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
 import { clashMemberKey, type ClashRule } from '@ifc-lite/clash';
-import { evaluateFilterRulesFederated } from '../search/filter-evaluate.js';
+import { evaluateFilterRulesFederated, type EvaluatorModel } from '../search/filter-evaluate.js';
+import { unresolvedModelTagIds } from '../model-tags/types.js';
 import {
   CLASH_SET_FILTER_LIMIT,
   activeClashSetFilter,
+  unreadableRuleCount,
   type ClashSetFilter,
   type ClashSetFilters,
 } from './set-filter.js';
@@ -29,14 +30,16 @@ export interface ResolveClashSetFilterOptions {
   signal?: AbortSignal;
   /** Largest set that may resolve; defaults to {@link CLASH_SET_FILTER_LIMIT}. */
   limit?: number;
+  /** Every model tag that exists (#4215). A filter naming any other tag id is
+   *  REFUSED — see `resolveClashSetFilter`. Absent means no tags exist. */
+  definedModelTagIds?: ReadonlySet<string>;
 }
 
-/** The subset of a loaded model this module needs. */
-export interface ClashFilterModel {
-  id: string;
-  filterIdentity?: string;
-  store: IfcDataStore | null;
-}
+/** The subset of a loaded model this module needs — exactly what the evaluator
+ *  reads, including the model's tag set as of the call (#4215). Built by
+ *  `evaluatorModelsFromState` from ONE state snapshot, so every side of every
+ *  rule in a run resolves against the same memberships. */
+export type ClashFilterModel = EvaluatorModel;
 
 /**
  * Resolve one filter to `ClashRule` member keys.
@@ -54,11 +57,33 @@ export async function resolveClashSetFilter(
   options: ResolveClashSetFilterOptions = {},
 ): Promise<string[]> {
   const limit = options.limit ?? CLASH_SET_FILTER_LIMIT;
+  // A persisted rule this build cannot read was kept, not dropped (#4215):
+  // running on the readable remainder could widen the set. Refuse.
+  const unreadable = unreadableRuleCount(filter);
+  if (unreadable > 0) {
+    throw new Error(
+      `A clash set filter has ${unreadable === 1 ? 'a rule' : `${unreadable} rules`} this version cannot read. ` +
+        'Open the rule and fix or remove the filter — the run was refused rather than run on the readable rules alone.',
+    );
+  }
+  // A rule naming a tag that no longer exists is unresolved. The evaluator
+  // would match it against nothing, which for a clash run is the WRONG kind of
+  // safe: a side that quietly resolves to zero members reports zero clashes
+  // with nothing on screen to say the rule was broken. Refuse instead (#4215).
+  const defined = options.definedModelTagIds ?? new Set<string>();
+  const unresolved = filter.rules.flatMap((r) => (r.kind === 'modelTag' ? unresolvedModelTagIds(r, defined) : []));
+  if (unresolved.length > 0) {
+    throw new Error(
+      `A clash set filter refers to ${unresolved.length === 1 ? 'a model tag' : `${unresolved.length} model tags`} that no longer exist${unresolved.length === 1 ? 's' : ''}. ` +
+        'Fix or remove that rule — the run was refused rather than widened to models the rule never named.',
+    );
+  }
   // Ask for one past the cap so a set that lands EXACTLY on it is told apart
   // from one the evaluator stopped short of.
   const matched = await evaluateFilterRulesFederated(models, filter.rules, filter.combinator, {
     limit: limit + 1,
     signal: options.signal,
+    definedModelTagIds: options.definedModelTagIds,
   });
   if (matched.length > limit) {
     throw new Error(

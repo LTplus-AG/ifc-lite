@@ -66,6 +66,14 @@ import {
   toNumericIterable,
 } from './filter-iteration.js';
 import { selectIterationSource, orderRulesByCost } from './filter-iteration-source.js';
+import { throwAbort, yieldToEventLoop } from './filter-evaluate-yield.js';
+import {
+  modelPrunedUnderAnd,
+  modelScopedRuleMatches,
+  isModelScopedRule,
+  NO_MODEL_TAGS,
+  type ModelScope,
+} from './filter-evaluate-model-tag.js';
 
 import {
   flattenPsets,
@@ -109,6 +117,12 @@ export interface EvaluateOptions {
   predefinedTypeOf?: (expressId: number) => string;
   /** Stable identity used by persisted model rules; defaults to `modelId`. */
   modelFilterIdentity?: string;
+  /** This model's tag ids (`modelTag` rules, #4215); absent = untagged. */
+  modelTagIds?: ReadonlySet<string>;
+  /** Every tag id that exists. A `modelTag` rule naming any other id is
+   *  UNRESOLVED and matches nothing — absent means "no tags exist", so every
+   *  rule naming a tag is unresolved, never silently broad. */
+  definedModelTagIds?: ReadonlySet<string>;
 }
 
 const DEFAULT_LIMIT = 5_000;
@@ -140,7 +154,11 @@ export function evaluateFilterRules(
   const ctx: EvalContext = {
     store,
     modelId,
-    modelFilterIdentity: options.modelFilterIdentity ?? modelId,
+    scope: {
+      filterIdentity: options.modelFilterIdentity ?? modelId,
+      tagIds: options.modelTagIds,
+      definedModelTagIds: options.definedModelTagIds ?? NO_MODEL_TAGS,
+    },
     table: store.entities,
     options,
     hasPropertyRule: orderedRules.some((r) => r.kind === 'property'),
@@ -188,8 +206,18 @@ export interface FederatedEvaluateOptions extends Omit<EvaluateOptions, 'candida
  * Evaluate `rules` across multiple federated models, producing a single
  * sorted result list. Async chunked + cancellable + progress-reporting.
  */
+/** One federated model as the evaluator sees it. `tagIds` is the model's tag
+ *  set at call time — a SNAPSHOT: re-tagging while a run is in flight does not
+ *  change what the run matches (the clash resolver relies on this, #4215). */
+export interface EvaluatorModel {
+  id: string;
+  filterIdentity?: string;
+  tagIds?: ReadonlySet<string>;
+  store: IfcDataStore | null;
+}
+
 export async function evaluateFilterRulesFederated(
-  models: ReadonlyArray<{ id: string; filterIdentity?: string; store: IfcDataStore | null }>,
+  models: ReadonlyArray<EvaluatorModel>,
   rules: readonly FilterRule[],
   combinator: Combinator,
   options: FederatedEvaluateOptions = {},
@@ -204,9 +232,10 @@ export async function evaluateFilterRulesFederated(
 
   // Pre-compute per-model iteration plans + a global total so the
   // progress callback can render a single bar across the federation.
+  const definedModelTagIds = options.definedModelTagIds ?? NO_MODEL_TAGS;
   interface Plan {
     modelId: string;
-    modelFilterIdentity: string;
+    scope: ModelScope;
     store: IfcDataStore;
     iter: ArrayLike<number> | Iterable<number>;
     total: number;
@@ -216,17 +245,10 @@ export async function evaluateFilterRulesFederated(
   let totalKnown = true;
   for (const m of models) {
     if (!m.store) continue;
-    const modelFilterIdentity = m.filterIdentity ?? m.id;
-    if (
-      combinator === 'AND'
-      && orderedRules.some((rule) => {
-        if (rule.kind !== 'model') return false;
-        const matchesModel = setOpMatches(rule.op, modelFilterIdentity, rule.values);
-        return !matchesModel;
-      })
-    ) {
-      continue;
-    }
+    const scope: ModelScope = { filterIdentity: m.filterIdentity ?? m.id, tagIds: m.tagIds, definedModelTagIds };
+    // Whole-model prune, AND only: under OR a model failing its model-scoped
+    // rules still contributes entities the other rules admit (#4215).
+    if (combinator === 'AND' && modelPrunedUnderAnd(orderedRules, scope)) continue;
     const candidates = options.candidateExpressIdsByModel?.get(m.id);
     const source = candidates ?? selectIterationSource(m.store, rules, combinator, undefined, m.id);
     const arr = materialiseNumericIterable(source);
@@ -237,7 +259,7 @@ export async function evaluateFilterRulesFederated(
     }
     plans.push({
       modelId: m.id,
-      modelFilterIdentity,
+      scope,
       store: m.store,
       iter: arr ?? source,
       total: arr ? arr.length : -1,
@@ -254,7 +276,7 @@ export async function evaluateFilterRulesFederated(
     const ctx: EvalContext = {
       store: plan.store,
       modelId: plan.modelId,
-      modelFilterIdentity: plan.modelFilterIdentity,
+      scope: plan.scope,
       table: plan.store.entities,
       options,
       hasPropertyRule: orderedRules.some((r) => r.kind === 'property'),
@@ -320,8 +342,8 @@ interface EvalContext {
   store: IfcDataStore;
   /** Scopes a `StoreyRule.refs` exact match to this store's own model. */
   modelId: string;
-  /** Stable source identity compared by `ModelRule`. */
-  modelFilterIdentity: string;
+  /** What the model-scoped rules (`model`, `modelTag`) read. */
+  scope: ModelScope;
   table: IfcDataStore['entities'];
   options: EvaluateOptions;
   hasPropertyRule: boolean;
@@ -456,10 +478,8 @@ function evaluateRule(
   classFor: (() => readonly ClassificationInfo[]) | null,
   attrsFor: (() => AttrRows) | null,
 ): boolean {
+  if (isModelScopedRule(rule)) return modelScopedRuleMatches(rule, ctx.scope);
   switch (rule.kind) {
-    case 'model': {
-      return setOpMatches(rule.op, ctx.modelFilterIdentity, rule.values);
-    }
     case 'storey': {
       // Exact-identity mode (refs present): Name isn't unique.
       if (rule.refs) {
@@ -544,41 +564,6 @@ function buildResult(modelId: string, ctx: EvalContext, expressId: number): Filt
     name: ctx.table.getName(expressId),
     globalId: ctx.table.getGlobalId(expressId),
   };
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function throwAbort(signal: AbortSignal): never {
-  // Match the shape DOM throws on AbortController.signal.aborted reads —
-  // callers can `instanceof DOMException && err.name === 'AbortError'`.
-  throw new DOMException(
-    signal.reason instanceof Error ? signal.reason.message : 'evaluateFilterRules aborted',
-    'AbortError',
-  );
-}
-
-/** Yield control to the event loop. Mirrors `tier1-index.ts` so we
- *  don't pin the Node test runner — `scheduler.yield` (browsers /
- *  Node 22+) and `setImmediate` (Node fallback) are preferred over
- *  the MessageChannel trick because the latter requires explicit
- *  port closure to release the loop reference. */
-function yieldToEventLoop(): Promise<void> {
-  const maybeScheduler = (globalThis as typeof globalThis & {
-    scheduler?: { yield?: () => Promise<void> };
-  }).scheduler;
-  if (typeof maybeScheduler?.yield === 'function') return maybeScheduler.yield();
-  if (typeof setImmediate === 'function') {
-    return new Promise<void>((resolve) => { setImmediate(() => resolve()); });
-  }
-  return new Promise<void>((resolve) => {
-    const channel = new MessageChannel();
-    channel.port1.onmessage = () => {
-      channel.port1.close();
-      channel.port2.close();
-      resolve();
-    };
-    channel.port2.postMessage(null);
-  });
 }
 
 // ── Exposed for tests ────────────────────────────────────────────────────────

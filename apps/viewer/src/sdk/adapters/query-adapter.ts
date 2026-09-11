@@ -32,6 +32,7 @@ import {
 } from '@ifc-lite/parser';
 import { applyAttributeMutationsToEntityData, mergeAttributeMutations } from './mutation-view.js';
 import { evaluateFilterRules } from '../../lib/search/filter-evaluate.js';
+import { definedModelTagIdsOf } from '../../lib/model-tags/evaluator-models.js';
 
 /**
  * Check if a type name represents a product/spatial entity.
@@ -311,7 +312,11 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
         model.ifcDataStore,
         filter.rules,
         filter.combinator,
-        { limit: Number.MAX_SAFE_INTEGER },
+        {
+          limit: Number.MAX_SAFE_INTEGER,
+          modelTagIds: state.modelTagAssignments.get(modelId),
+          definedModelTagIds: definedModelTagIdsOf(state),
+        },
       );
       for (const m of matched) {
         if (m.expressId === 0) continue;

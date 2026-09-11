@@ -141,6 +141,29 @@ describe('HierarchyPanel — federated unified-storey selection', () => {
     assert.doesNotMatch(container.textContent ?? '', /Building the hierarchy/);
   });
 
+  it('a tagged model row is taller and carries its chips on a second line; an untagged row keeps the base height (#4215)', () => {
+    // At the panel's default width the name, count and actions already fill a
+    // model row (seen in a real two-model session): chips beside them squeezed
+    // the name to nothing. The Models virtualizer sizes tagged rows for a chips line.
+    useViewerStore.setState({
+      models: new Map([['m1', federatedModel('m1', makeStore(5, 0, 'Level 1'))], ['m2', federatedModel('m2', makeStore(5, 10, 'Level 2'))]]),
+      modelTags: new Map(),
+      modelTagAssignments: new Map(),
+    });
+    const s = useViewerStore.getState();
+    const structure = s.createModelTag('Structure')!;
+    const tender = s.createModelTag('Tender')!;
+    s.assignModelTags(['m1'], [structure, tender]);
+    const container = renderPanel();
+    const rowHeight = (modelId: string) =>
+      container.querySelector<HTMLElement>(`button[aria-label="Edit tags for model ${modelId}.ifc"]`)!.closest<HTMLElement>('div[style*="translateY"]')!.style.height;
+    assert.equal(rowHeight('m1'), '54px');
+    assert.equal(rowHeight('m2'), '36px');
+    assert.equal(container.querySelector('[data-model-row-tags="m1"]')?.getAttribute('title'), 'Structure, Tender');
+    act(() => { useViewerStore.getState().unassignModelTags(['m1'], [structure, tender]); });
+    assert.equal(rowHeight('m1'), '36px', 'losing its tags gives the row its base height back');
+  });
+
   it('selecting Level 1 (model m1, local id 5) does not cross-highlight Level 2 (model m2, same local id 5)', () => {
     const m1 = federatedModel('m1', makeStore(5, 0, 'Level 1'));
     const m2 = federatedModel('m2', makeStore(5, 10, 'Level 2'));

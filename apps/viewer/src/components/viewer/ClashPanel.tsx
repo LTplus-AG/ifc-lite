@@ -38,8 +38,7 @@ import { ClashRevisionCompareDialog } from '@/components/viewer/ClashRevisionCom
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { duplicateSetSections } from '@/lib/clash/duplicate-set-sections';
 import {
-  isTouching,
-  penetrationDepth,
+  isTouching, penetrationDepth,
   sortClashes,
   classifyRuleCoverage,
   describeEmptyRuleSides,
@@ -52,6 +51,7 @@ import {
   type ClashSeverity,
   type ClashSortBy,
 } from '@ifc-lite/clash';
+import { ClashModelTagNotice } from './ClashModelTagNotice';
 
 interface ClashPanelProps {
   onClose?: () => void;
@@ -877,13 +877,13 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         );
       })()}
 
-      {/* Error */}
       {error && (
         <div className="flex items-start gap-2 m-3 p-2 rounded-md bg-[#f7768e]/10 text-[#f7768e] text-xs">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
       )}
+      <ClashModelTagNotice />
 
       {/* Summary */}
       {result && (

@@ -28,6 +28,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * field on every file swap.
  */
 const PINNED_SESSION_RESET_KEYS: readonly string[] = [
+  'modelTagAssignments', // #4215 model tags: assignments die with the model, definitions survive
   'appearanceReferences', 'referenceUndo', 'referenceRedo', 'referenceRevision', 'selectedAppearanceReferenceId', // #4308 drawing workspace lifecycle
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle
   'activeBasketViewId', 'activeChangeSetId', 'activeLensId', 'activeListId', 'activeModelId',
@@ -90,6 +91,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
 
 /** The same, for `all-models-cleared`. */
 const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
+  'modelTagAssignments', // #4215 model tags: assignments die with the model, definitions survive
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle
   'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'basketVisibilityOwned', 'classFilter',
   'contextMenu', 'geometryResult', 'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
@@ -139,6 +141,7 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
  * like this one a compile error.
  */
 const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
+  'modelTagAssignments', // #4215 model tags: assignments die with the model, definitions survive
   'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'annotation2DCursorPos', 'classFilter',
   'cloudAnnotation2DPoints', 'cloudAnnotations2D', 'contextMenu', 'drawing2DDisplayOptions', 'geometryResult',
   'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
@@ -194,6 +197,8 @@ function modelRemovedFixture() {
     layerStackPathToId: new Map([['wall-1', 42]]),
     layerStackDiff: { layerId: 'A', diff: { added: [], deleted: [], modified: [] } },
     layerDiffBusy: true,
+    // #4215: model 'A' carries a tag, so its assignment is what the removal drops.
+    modelTagAssignments: new Map([['A', new Set(['tag-1'])]]),
   } as unknown as Parameters<typeof modelRemovedScope>[0];
 }
 
@@ -206,6 +211,7 @@ function modelRemovedFixture() {
  * `owns` list fails even when no scope emits it under an empty state.
  */
 const PINNED_OWNED_KEYS: readonly string[] = [
+  'modelTagAssignments', // #4215 model tags: assignments die with the model, definitions survive
   'appearanceReferences', 'referenceUndo', 'referenceRedo', 'referenceRevision', 'selectedAppearanceReferenceId', // #4308 drawing workspace lifecycle
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle
   'activeBasketViewId', 'activeChangeSetId', 'activeLensId', 'activeListId', 'activeModelId',

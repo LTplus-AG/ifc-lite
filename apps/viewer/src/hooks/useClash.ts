@@ -58,6 +58,8 @@ import {
   rememberFederationIdentity,
   type ClashFederationIdentity,
 } from '@/lib/clash/federation-identity';
+import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
+import { captureModelTagInputs, rememberModelTagInputs, type ClashModelTagInputs } from '@/lib/clash/model-tag-inputs';
 import { posthog } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
 import { downloadBlob, dataUrlToBytes } from '@/lib/export/download';
@@ -461,7 +463,7 @@ export function useClash() {
   }, [releaseClashVisibility]);
 
   const run = useCallback(
-    async (rules: ClashRule[]): Promise<void> => {
+    async (rules: ClashRule[], tagInputs: ClashModelTagInputs | null = null): Promise<void> => {
       // Captured before anything else so a call issued while this one is
       // already in flight (`runAll` again, a duplicate scan, a preset) makes
       // every write below — including this call's own error/finally, once
@@ -501,6 +503,7 @@ export function useClash() {
         // federation it examined is gone, or if a newer call has started —
         // see `publishClashResult`.
         if (!publishClashResult(federationIdentity, res, myEpoch)) return;
+        rememberModelTagInputs(res, tagInputs);
         state.setClashSelectedId(null);
         posthog.capture('clash_detection_run', {
           clash_count: res.clashes.length,
@@ -528,15 +531,12 @@ export function useClash() {
   /** Run rules built from PRESETS, resolving each side's optional advanced
    *  filter (#3902) against the loaded models first. A side with no filter is
    *  left to its type selector, so a rule set from before filters existed runs
-   *  through here exactly as it did. */
+   *  through here exactly as it did. Models + tag inputs: ONE `getState()` snapshot (#4215). */
   const runPresets = useCallback(
     async (presets: ClashPreset[]): Promise<void> => {
       const state = useViewerStore.getState();
-      const models = [...state.models].map(([id, m]) => ({
-        id,
-        filterIdentity: m.sourceFingerprint,
-        store: m.ifcDataStore,
-      }));
+      const models = evaluatorModelsFromState(state);
+      const tagInputs = captureModelTagInputs(presets, state.modelTagAssignments);
       const rules = rulesFromPresets(presets, mode, mode === 'clearance' ? clearance : undefined, reportTouch);
       // Resolving the filters is a federation scan that happens BEFORE `run()`
       // takes over the epoch and the running/error state. Take an epoch here
@@ -550,7 +550,7 @@ export function useClash() {
       state.setClashRunning(true);
       let resolved: ClashRule[];
       try {
-        resolved = await withResolvedClashSetFilters(rules, presets, models, state.toGlobalId);
+        resolved = await withResolvedClashSetFilters(rules, presets, models, state.toGlobalId, { definedModelTagIds: definedModelTagIdsOf(state) });
       } catch (err) {
         // A refused filter reports itself here or nothing on screen changes.
         if (!stillWanted(myEpoch)) return;
@@ -559,7 +559,7 @@ export function useClash() {
         return;
       }
       if (!stillWanted(myEpoch)) return;
-      return run(resolved);
+      return run(resolved, tagInputs);
     },
     [run, mode, clearance, reportTouch, stillWanted],
   );

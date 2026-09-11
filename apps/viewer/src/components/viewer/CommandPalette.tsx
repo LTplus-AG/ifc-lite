@@ -5,10 +5,7 @@
 /** Ctrl/Cmd+K command search with scoring and recent usage. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import {
   Search,
   Play,
@@ -53,6 +50,7 @@ import {
   FolderOpen,
   Clock,
   Save,
+  Tag,
   CalendarClock,
   CalendarPlus,
   Sparkles,
@@ -189,6 +187,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       // #3930 portable federation setup — handlers live in `FederationSetupControls` (mounted from `useFileCommands`, ShareDialog's pattern).
       { id: 'file:save-federation-setup', label: 'Save Federation Setup', keywords: 'federation setup save export portable models order alignment anchor', category: 'File', icon: Save, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:save-federation-setup')); } },
       { id: 'file:open-federation-setup', label: 'Open Federation Setup', keywords: 'federation setup restore reopen import portable models order alignment anchor', category: 'File', icon: FolderOpen, immediate: true, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:open-federation-setup')); } },
+      // #4215 model tags: the editor for the active model, the only entry point in a one-model session (`ModelTagsCommand`).
+      { id: 'file:model-tags', label: 'Model Tags', keywords: 'model tags label discipline federation organise organize', category: 'File', icon: Tag, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:edit-model-tags')); } },
     );
     for (const rf of recentFiles) {
       const fileName = rf.name;

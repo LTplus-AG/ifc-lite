@@ -52,80 +52,7 @@ import assert from 'node:assert/strict';
 
 register('../../test/collab-session-race-hook.mjs', import.meta.url);
 
-import { createModelSlice, type ModelSlice } from './modelSlice.js';
-import { createDataSlice, type DataSlice, type DataCrossSliceState } from './dataSlice.js';
-import { createCollabSlice, type CollabSlice } from './collabSlice.js';
-import type { ViewerState } from '../index.js';
-
-type TestState = ModelSlice &
-  DataSlice &
-  DataCrossSliceState &
-  CollabSlice & {
-    setEditEnabled: (enabled: boolean) => void;
-    mutationViews: Map<string, unknown>;
-  };
-
-function buildState() {
-  let state: TestState;
-  const setState = (partial: unknown) => {
-    const updates =
-      typeof partial === 'function'
-        ? (partial as (s: TestState) => Partial<TestState>)(state)
-        : (partial as Partial<TestState>);
-    state = { ...state, ...updates };
-  };
-  const getState = () => state as unknown as ViewerState;
-
-  const modelSlice = createModelSlice(
-    setState as Parameters<typeof createModelSlice>[0],
-    getState as Parameters<typeof createModelSlice>[1],
-    undefined as unknown as Parameters<typeof createModelSlice>[2],
-  );
-  const dataSlice = createDataSlice(
-    setState as Parameters<typeof createDataSlice>[0],
-    getState as Parameters<typeof createDataSlice>[1],
-    undefined as unknown as Parameters<typeof createDataSlice>[2],
-  );
-  const collabSlice = createCollabSlice(
-    setState as Parameters<typeof createCollabSlice>[0],
-    getState as Parameters<typeof createCollabSlice>[1],
-    undefined as unknown as Parameters<typeof createCollabSlice>[2],
-  );
-
-  state = {
-    ...modelSlice,
-    ...dataSlice,
-    ...collabSlice,
-    // uiSlice's real action is not under test; `startCollab` only calls it
-    // when `canCollabEdit()` is false, which is not this test's path
-    // (role: 'admin'), but it must exist to type-check the call site.
-    setEditEnabled: () => {},
-    mutationViews: new Map(),
-    // Fields other slices own that the teardown `removeModel` dispatches
-    // reads off this stub state (`store/teardown-registry.ts`). Every
-    // contribution falls back to its own initial value when a field is
-    // absent, so these are here to make the harness store-shaped rather than
-    // to satisfy a type. Same enumeration as the sibling
-    // `collabSlice.entry-race.test.ts`; keep the two in step.
-    addElementModelId: null,
-    addElementStoreyId: null,
-    selectedEntityId: null,
-    selectedEntityIds: new Set(),
-    selectedStoreys: new Set(),
-    hiddenEntities: new Set(),
-    isolatedEntities: null,
-    ghostExceptEntities: null,
-    classFilter: null,
-    hiddenEntitiesByModel: new Map(),
-    isolatedEntitiesByModel: new Map(),
-    pinboardEntities: new Set(),
-    hierarchyBasketSelection: new Set(),
-  } as TestState;
-
-  return {
-    get: () => state,
-  };
-}
+import { buildCollabTestState } from '../../test/collab-slice-state.js';
 
 /**
  * Await `p`, or fail with a message naming what did not happen.
@@ -200,7 +127,7 @@ describe('collabSlice — stopCollab() racing an in-flight startCollab()', () =>
     });
     (globalThis as { __collabSessionGated?: () => void }).__collabSessionGated = sessionGated;
 
-    const s = buildState();
+    const s = buildCollabTestState();
 
     // Owner path, `seed: () => null` — a legitimate "nothing to seed" share
     // (matches ShareDialog's real usage) that skips the heavy

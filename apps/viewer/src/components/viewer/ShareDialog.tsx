@@ -8,10 +8,17 @@
  * Accountless, link-based sharing: pick an access level, mint a room token,
  * copy the link. The role is baked into the token and enforced on the
  * collab-server (plan §3). "Live now" reflects `session.presence`.
+ *
+ * Two independent effects (#4446): one creates the room (mints the admin
+ * token, starts the seeding join), the other mints the invite — and only once
+ * `collabSeedPhase` says the seed has settled. `startCollab` sets
+ * `collabRoomId` synchronously, long before the model is in the room, and a
+ * single effect keyed on it used to re-run for the new room and hand out a
+ * link to an empty one; whoever opened it reconstructed nothing.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Check, Copy, Link2, Users } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, Check, Copy, Link2, Loader2, Users } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -27,6 +34,7 @@ import { toast } from '@/components/ui/toast';
 import type { CollabRole } from '@/store/slices/collabSlice';
 import { buildShareUrl, mintRoomId, mintRoomToken, parseRoleFromToken } from '@/lib/collab/share-link';
 import { buildStepSeedSource } from '@/lib/collab/step-seed';
+import { describeSeedPhase, isCollabSeedInFlight } from '@/lib/collab/seed-phase';
 
 interface ShareDialogProps {
   open: boolean;
@@ -52,12 +60,20 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   // viewer KNOWS is missing its geometry must not be presented as a plain
   // success: the recipient would open it and see an empty scene.
   const seedFailure = useViewerStore((s) => s.collabSeedFailure);
+  const seedPhase = useViewerStore((s) => s.collabSeedPhase);
+  const seedProgress = useViewerStore((s) => s.collabSeedProgress);
 
   const [role, setRole] = useState<CollabRole>('editor');
   const [link, setLink] = useState<string>('');
-  const [busy, setBusy] = useState(false);
+  // Room creation in flight (no room yet) / invite mint in flight.
+  const [creating, setCreating] = useState(false);
+  const [minting, setMinting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // One room-creation attempt per opening. A join whose session never comes up
+  // resets `collabRoomId` to null, which would otherwise re-trigger creation
+  // in a loop; the notice tells the user, and re-opening the dialog retries.
+  const roomAttemptRef = useRef<Promise<void> | null>(null);
 
   /**
    * Non-admins cannot mint role-scoped tokens (no escalation by design),
@@ -89,62 +105,95 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   }, [models, activeModelId]);
 
   const hasModel = models.size > 0;
+  const isJoiner = Boolean(collabRoomId && collabRole && collabRole !== 'admin');
+  // The room exists but the model is still going in: no invite until it has.
+  const seedInFlight = Boolean(collabRoomId) && isCollabSeedInFlight(seedPhase);
 
-  // Re-mint the link whenever the dialog opens or the role changes, joining the
-  // room as owner (admin) so presence is live while the dialog is open.
+  // 1. Ensure a room: the creator mints an admin token (first-touch) and joins
+  // with it, seeding the model, so it's authorized to mint role-scoped share
+  // links thereafter. Deliberately NOT re-run by `collabRoomId` flipping to
+  // the new room — the attempt ref carries this promise across re-renders.
   useEffect(() => {
-    if (!open || !hasModel) return;
-    let cancelled = false;
-    setBusy(true);
+    if (!open) {
+      roomAttemptRef.current = null;
+      return;
+    }
+    if (!hasModel || collabRoomId || roomAttemptRef.current) return;
+    const roomId = mintRoomId();
+    setCreating(true);
+    setLink('');
     setCopied(false);
     setNotice(null);
-    (async () => {
-      const roomId = collabRoomId ?? mintRoomId();
-      // A joined non-admin can't mint: don't fire a doomed request, reuse
-      // the invite we hold and say so.
-      if (collabRoomId && collabRole && collabRole !== 'admin') {
-        const fallback = fallbackShareLink(roomId);
-        if (!cancelled) {
-          if (fallback) {
-            setLink(fallback.url);
-            if (fallback.role) setRole(fallback.role);
-            setNotice('You joined via an invite - sharing it forwards the same access. Only the room admin can mint new links.');
-          } else {
-            setLink('');
-            setNotice('Only the room admin can create invite links for this room.');
-          }
-          setBusy(false);
-        }
-        return;
-      }
+    roomAttemptRef.current = (async () => {
       try {
-        if (!collabRoomId) {
-          // The creator mints an admin token (first-touch) and joins with it,
-          // so it's authorized to mint role-scoped share links thereafter.
-          const adminToken = await mintRoomToken({ roomId, role: 'admin' });
-          await startCollab({
-            roomId,
-            role: 'admin',
-            token: adminToken,
-            // Owner seeds the model so recipients hydrate from the room.
-            // IFC5/IFCX seeds natively from the model's own bytes; legacy STEP
-            // seeds the IFCX-shaped StepSeedSource. (Seeding IFCX via the STEP
-            // path produces an empty room — it can't read an IFCX-origin store.)
-            seed: () => {
-              const store = ifcDataStore;
-              if (!store) return null;
-              const model = activeModelId ? models.get(activeModelId) : undefined;
-              const isIfcx = (model?.schemaVersion ?? store.schemaVersion) === 'IFC5';
-              return {
-                store,
-                isIfcx,
-                stepSource: isIfcx ? null : buildStepSeedSource(store, modelName),
-              };
-            },
-          });
+        const adminToken = await mintRoomToken({ roomId, role: 'admin' });
+        await startCollab({
+          roomId,
+          role: 'admin',
+          token: adminToken,
+          // Owner seeds the model so recipients hydrate from the room.
+          // IFC5/IFCX seeds natively from the model's own bytes; legacy STEP
+          // seeds the IFCX-shaped StepSeedSource. (Seeding IFCX via the STEP
+          // path produces an empty room — it can't read an IFCX-origin store.)
+          seed: () => {
+            const store = ifcDataStore;
+            if (!store) return null;
+            const model = activeModelId ? models.get(activeModelId) : undefined;
+            const isIfcx = (model?.schemaVersion ?? store.schemaVersion) === 'IFC5';
+            return {
+              store,
+              isIfcx,
+              stepSource: isIfcx ? null : buildStepSeedSource(store, modelName),
+            };
+          },
+        });
+        // `startCollab` resolves without a live room when the session never
+        // came up (it logs why) or the user left mid-join (RoomPanel's Leave).
+        // Neither is a connection failure this dialog can tell apart, and the
+        // attempt ref blocks a retry until it is re-opened — so say exactly
+        // that instead of sitting on "Creating room…" forever.
+        if (useViewerStore.getState().collabRoomId !== roomId) {
+          setNotice('No room was created. Close and reopen this dialog to try again.');
         }
-        // Mint the role-scoped share link (server requires the owner's admin
-        // bearer once the room exists; ignored in local-only mode).
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[collab] room creation failed:', err);
+        setNotice('Link creation failed. Check the connection and try again.');
+      } finally {
+        setCreating(false);
+      }
+    })();
+  }, [open, hasModel, collabRoomId, startCollab, ifcDataStore, activeModelId, models, modelName]);
+
+  // 2. Mint the invite — re-minted when the dialog opens or the role changes,
+  // and only once the seed has settled (`seedInFlight` false). Until then the
+  // progress row below stands in for the link.
+  useEffect(() => {
+    if (!open || !hasModel || !collabRoomId) return;
+    setCopied(false);
+    // A joined non-admin can't mint: don't fire a doomed request, reuse the
+    // invite we hold and say so.
+    if (isJoiner) {
+      const fallback = fallbackShareLink(collabRoomId);
+      if (fallback) {
+        setLink(fallback.url);
+        if (fallback.role) setRole(fallback.role);
+        setNotice('You joined via an invite - sharing it forwards the same access. Only the room admin can mint new links.');
+      } else {
+        setLink('');
+        setNotice('Only the room admin can create invite links for this room.');
+      }
+      return;
+    }
+    if (seedInFlight) return;
+    let cancelled = false;
+    setMinting(true);
+    setNotice(null);
+    (async () => {
+      const roomId = collabRoomId;
+      try {
+        // Server requires the owner's admin bearer once the room exists;
+        // ignored in local-only mode.
         const adminBearer = useViewerStore.getState().collabSelfToken ?? undefined;
         const token = await mintRoomToken({ roomId, role, bearer: adminBearer });
         if (!cancelled) {
@@ -166,13 +215,13 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
           }
         }
       } finally {
-        if (!cancelled) setBusy(false);
+        if (!cancelled) setMinting(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [open, hasModel, role, collabRoomId, collabRole, startCollab, ifcDataStore, modelName, fallbackShareLink]);
+  }, [open, hasModel, collabRoomId, isJoiner, seedInFlight, role, fallbackShareLink]);
 
   useEffect(() => {
     if (open && seedFailure) toast.error(seedFailure);
@@ -188,6 +237,14 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
       // clipboard may be blocked; the input is selectable as a fallback
     }
   }, [link]);
+
+  const waiting = (creating && !collabRoomId) || seedInFlight || minting;
+  const seedLabel = describeSeedPhase(seedPhase, seedProgress);
+  const linkFieldText = seedInFlight
+    ? 'Link is ready once the upload finishes…'
+    : creating && !collabRoomId
+      ? 'Creating room…'
+      : 'Generating link…';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -221,7 +278,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
                     size="sm"
                     // Only the room admin mints role-scoped links; a joiner
                     // forwards the invite they hold, so the role is fixed.
-                    disabled={Boolean(collabRoomId && collabRole && collabRole !== 'admin')}
+                    disabled={isJoiner}
                     onClick={() => setRole(opt.role)}
                   >
                     {opt.label}
@@ -239,15 +296,21 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
                 <Input
                   id="share-link"
                   readOnly
-                  value={busy ? 'Generating link…' : link}
+                  value={waiting ? linkFieldText : link}
                   onFocus={(e) => e.currentTarget.select()}
                 />
               </div>
-              <Button type="button" onClick={handleCopy} disabled={busy || !link} className="gap-1.5">
+              <Button type="button" onClick={handleCopy} disabled={waiting || !link} className="gap-1.5">
                 {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
                 {copied ? 'Copied' : 'Copy'}
               </Button>
             </div>
+            {seedInFlight && seedLabel && (
+              <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
+                <span>{seedLabel}</span>
+              </p>
+            )}
             {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
             {seedFailure && (
               <div

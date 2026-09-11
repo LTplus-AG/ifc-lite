@@ -32,7 +32,6 @@ import type {
   LocalPlacement,
   PresenceState,
   ProviderKind,
-  StepSeedSource,
   UserIdentity,
   WebSocketStatus,
 } from '@ifc-lite/collab';
@@ -63,16 +62,10 @@ import {
   hydrateGeometryFromRoom,
   seedGeometryToRoom,
   type CollabGeomApi,
-  type SeedGeometryReport,
 } from '@/lib/collab/geometry-sync';
-import {
-  interruptedSeedMarker,
-  markerFromReport,
-  missingRoomGeometryMessage,
-  readGeometrySeedMarker,
-  seedFailureMessage,
-  writeGeometrySeedMarker,
-} from '@/lib/collab/geometry-seed-signal';
+import { missingRoomGeometryMessage, readGeometrySeedMarker } from '@/lib/collab/geometry-seed-signal';
+import { runOwnerSeed, type CollabSeedInput } from '@/lib/collab/owner-seed';
+import type { CollabSeedPhase, CollabSeedProgress } from '@/lib/collab/seed-phase';
 import { highestExpressId, raisedMaxExpressId } from '@/lib/collab/express-id-bounds';
 import { createSharedBlobStore } from '@/lib/collab/blob-store';
 import { applyRoomModelData } from '@/lib/collab/room-model-apply';
@@ -138,24 +131,6 @@ export interface StartCollabOptions {
    * re-seeding. Recipients (deep-link join) omit this.
    */
   seed?: () => CollabSeedInput | null;
-}
-
-/**
- * Model-share payload the owner hands to `startCollab`. Carries the parsed
- * store plus enough context to seed both schema families:
- *   - IFC5/IFCX → seed natively from the store's own IFCX bytes (`store.source`)
- *     and key geometry by IFCX path (`idToPath`), since an IFCX-origin store has
- *     no STEP `entityIndex.byId`/GUIDs to drive `buildStepSeedSource`.
- *   - legacy STEP → seed the pre-built IFCX-shaped `stepSource`, key geometry by
- *     `pathForEntity` (GUID path).
- */
-export interface CollabSeedInput {
-  /** The active model's parsed store. For IFC5, `store.source` holds the IFCX bytes. */
-  store: IfcDataStore;
-  /** True when the model is IFC5/IFCX (seed natively from `store.source`). */
-  isIfcx: boolean;
-  /** Pre-built STEP seed source for legacy rooms; `null` for IFC5. */
-  stepSource: StepSeedSource | null;
 }
 
 export interface CollabSlice {
@@ -230,6 +205,17 @@ export interface CollabSlice {
    * knows is missing its geometry and still call that success.
    */
   collabSeedFailure: string | null;
+  /**
+   * Where the owner's initial seed-into-room stands (#4446). A connected
+   * websocket is NOT a seeded room: `collabStatus` reads 'connected' while
+   * structure and geometry are still uploading, and `collabRoomId` is set
+   * before either begins. The Share dialog holds the invite back until this
+   * settles; RoomPanel says "uploading" rather than "live". `'none'` off a
+   * session and for recipients, who never seed. Reset by `stopCollab`.
+   */
+  collabSeedPhase: CollabSeedPhase;
+  /** Geometry blob uploads so far while `collabSeedPhase === 'geometry'`, else `null`. */
+  collabSeedProgress: CollabSeedProgress | null;
   /**
    * One-shot message for the toast channel: a joined room that hydrated with
    * entities but no meshes, or a local edit whose mesh never reached the room.
@@ -380,13 +366,6 @@ function remotePeers(peers: Record<number, PresenceState>, selfClientId: number)
     out.push({ ...state, clientId: Number(clientId) } as PresenceState);
   }
   return out;
-}
-
-/** View a `Uint8Array` as an `ArrayBuffer` (copying only when it's a sub-view). */
-function toArrayBuffer(u8: Uint8Array): ArrayBuffer {
-  return u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength
-    ? (u8.buffer as ArrayBuffer)
-    : (u8.slice().buffer as ArrayBuffer);
 }
 
 // Collab doc helpers captured from the lazy-loaded runtime (see startCollab),
@@ -548,6 +527,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   collabLastShareToken: null,
   collabPanelVisible: false,
   collabSeedFailure: null,
+  collabSeedPhase: 'none',
+  collabSeedProgress: null,
   collabGeometryNotice: null,
 
   setCollabPanelVisible: (collabPanelVisible) => set({ collabPanelVisible }),
@@ -596,6 +577,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       collabRoomModelId: roomModelId,
       collabRole: role,
       collabSelfToken: token ?? null,
+      // An owner's seed is in flight from this very moment, before the session
+      // even exists: set in the SAME synchronous set() as `collabRoomId` so no
+      // subscriber can observe a room with nothing pending and mint an invite.
+      collabSeedPhase: seed ? 'syncing' : 'none',
+      collabSeedProgress: null,
     });
 
     // Role gate: joining as viewer/commenter must drop any edit mode the
@@ -610,13 +596,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     const user: UserIdentity = { id: identity.id, name: identity.name, color: identity.color };
 
     let session: CollabSession;
-    let seedFromStep: typeof import('@ifc-lite/collab')['seedFromStep'];
     let collabMod: typeof import('@ifc-lite/collab');
     try {
       // Lazy-load the collab runtime (code-split) — see the import note above.
       const collab = await import('@ifc-lite/collab');
       collabMod = collab;
-      seedFromStep = collab.seedFromStep;
       // Capture the doc helpers the synchronous mutation mirror needs.
       docApi = {
         hasEntity: collab.hasEntity,
@@ -676,6 +660,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
           collabRoomId: null,
           collabRole: null,
           collabSelfToken: null,
+          collabSeedPhase: 'none',
         });
       } else {
         set({ collabConnecting: false, collabStatus: 'disconnected' });
@@ -739,119 +724,42 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // Owner seeds the model into the Y.Doc (plan §4.6 seed-into-room) once the
     // room has synced — but only if it's still empty, so we don't re-seed a
     // populated room or clobber a peer's edits. Recipients pass no `seed` and
-    // hydrate from the doc instead.
+    // hydrate from the doc instead. The seed's phases are mirrored into
+    // `collabSeedPhase` (#4446): `collabStatus` says 'connected' long before
+    // the room holds the model, and the Share dialog must key off THIS, not
+    // that. Every write is guarded on the join still being current, so a
+    // Leave landing mid-seed cannot have a stale continuation re-stamp it.
     if (seed) {
-      try {
-        await session.whenSynced;
-        if (get().collabRoomId === roomId) {
-          const seedData = seed();
-          if (seedData) {
-            const { store } = seedData;
-            // Structure seed — once; never clobber a populated room or peer edits.
-            if (session.doc.getMap('entities').size === 0) {
-              if (seedData.isIfcx) {
-                // IFC5: seed natively from the model's own IFCX bytes. The STEP
-                // path (buildStepSeedSource) can't read an IFCX-origin store (no
-                // entityIndex.byId / GUIDs) and would seed zero entities.
-                // Whole-file consumer: the IFCX seed re-parses the source.
-                const bytes = store.source;
-                if (bytes.length > 0) {
-                  collabMod.seedFromIfcx(session.doc, bytes.materialize());
-                }
-              } else if (seedData.stepSource) {
-                seedFromStep(session.doc, seedData.stepSource);
-              }
-            }
-            // Geometry seed — whenever the room has none yet (DECOUPLED from the
-            // entity guard, so a partially-seeded room backfills). Blobs are
-            // content-addressed, so re-seeding the same model dedupes.
-            if (session.doc.getMap('geometry').size === 0) {
-              const blobStore = await createSharedBlobStore(collabMod, collabServerUrl(), token);
-              // Record the placement each entity's blob is baked at, so every
-              // client (incl. late joiners) can render `blob + (current
-              // usd::xformop − baseline)`. The blob is baked at whatever
-              // placement the doc holds now: the seeded `usd::xformop` for IFCX
-              // models, identity for legacy STEP (geometry baked world-absolute).
-              const stampBaseline = (path: string | null): string | null => {
-                if (path && placementApi) {
-                  const current = placementApi.getEntityPlacement(session.doc, path);
-                  placementApi.setPlacementBaseline(session.doc, path, current ?? { location: [0, 0, 0] });
-                }
-                return path;
-              };
-              // `null` means no seed ran at all: the model had nothing to
-              // offer. That is a legitimate share (structure-only or empty
-              // model) and is NOT the same as a seed that ran and landed
-              // nothing, which is a broken share. Only here, on the owner, is
-              // that difference still knowable.
-              let report: SeedGeometryReport | null = null;
-              if (seedData.isIfcx && store.source && store.source.length > 0) {
-                // IFCX geometry is explicit in the file: re-parse the source for
-                // COMPLETE meshes + the id->path map to key them. (The owner's
-                // render buffers may be memory-released for large models, so we
-                // never read those for seeding, plan Fix 2.)
-                const { parseIfcxViewerModel } = await import('@/hooks/ingest/viewerModelIngest');
-                const parsed = await parseIfcxViewerModel(toArrayBuffer(store.source.materialize()), undefined, {
-                  allowEmptyGeometry: true,
-                });
-                if (parsed.idToPath && parsed.pathToId) {
-                  // Let the owner's outbound mirror resolve paths on this IFCX store.
-                  registerEntityMaps(store, parsed.idToPath, parsed.pathToId);
-                }
-                const meshes = parsed.geometryResult.meshes;
-                if (meshes.length > 0) {
-                  report = await seedGeometryToRoom(geomApi, session, blobStore, meshes, (id) =>
-                    stampBaseline(parsed.idToPath?.get(id) ?? null),
-                  );
-                }
-              } else {
-                const meshes = get().geometryResult?.meshes;
-                if (meshes && meshes.length > 0) {
-                  report = await seedGeometryToRoom(geomApi, session, blobStore, meshes, (id) =>
-                    stampBaseline(pathForEntity(store, id)),
-                  );
-                }
-              }
-              // Stamp intent vs outcome into the room. Without it a joiner sees
-              // the same empty `geometry` map either way and cannot tell a
-              // geometry-less model from a failed upload.
-              session.transact(() => {
-                writeGeometrySeedMarker(session.doc, markerFromReport(report, new Date().toISOString()));
-              });
-              const failure = seedFailureMessage(report);
-              if (failure) {
-                // eslint-disable-next-line no-console
-                console.error('[collab] geometry seed incomplete:', failure, report);
-                set({ collabSeedFailure: failure });
-              }
-            }
+      const current = () => get().collabRoomId === roomId;
+      const outcome = await runOwnerSeed({
+        session,
+        seed,
+        collab: collabMod,
+        geomApi,
+        makeBlobStore: () => createSharedBlobStore(collabMod, collabServerUrl(), token),
+        stepMeshes: () => get().geometryResult?.meshes,
+        // Record the placement each entity's blob is baked at, so every
+        // client (incl. late joiners) can render `blob + (current
+        // usd::xformop − baseline)`. The blob is baked at whatever
+        // placement the doc holds now: the seeded `usd::xformop` for IFCX
+        // models, identity for legacy STEP (geometry baked world-absolute).
+        stampBaseline: (path) => {
+          if (path && placementApi) {
+            const currentPlacement = placementApi.getEntityPlacement(session.doc, path);
+            placementApi.setPlacementBaseline(session.doc, path, currentPlacement ?? { location: [0, 0, 0] });
           }
-        }
-      } catch (err) {
-        // A throw here means the seed did not complete: the room may hold a
-        // partial model or none at all. Never let the Share dialog call that a
-        // success (this catch swallowing it is how a weeks-long geometry
-        // outage went unnoticed).
-        // eslint-disable-next-line no-console
-        console.error('[collab] model seeding failed:', err);
-        set({
-          collabSeedFailure:
-            'Sharing this model did not complete. People joining this link may see an incomplete model.',
-        });
-        // Tell joiners too. This path never learned how much geometry the model
-        // had, so the marker records "interrupted" rather than "expected: 0",
-        // which would read as the legitimate nothing-to-seed case and silence
-        // the very warning this room needs.
-        if (get().collabRoomId === roomId) {
-          try {
-            session.transact(() => {
-              writeGeometrySeedMarker(session.doc, interruptedSeedMarker(new Date().toISOString()));
-            });
-          } catch (markerErr) {
-            // eslint-disable-next-line no-console
-            console.error('[collab] could not record the interrupted seed:', markerErr);
-          }
-        }
+          return path;
+        },
+        isCurrent: current,
+        onPhase: (phase) => {
+          if (current()) set({ collabSeedPhase: phase });
+        },
+        onProgress: (uploaded, total) => {
+          if (current()) set({ collabSeedProgress: { uploaded, total } });
+        },
+      });
+      if (outcome && current()) {
+        set({ collabSeedPhase: outcome.phase, collabSeedFailure: outcome.failure });
       }
     } else {
       // Recipient (deep-link join, no local model): reconstruct the full model
@@ -1310,6 +1218,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       collabLastShareToken: null,
       collabPanelVisible: false,
       collabSeedFailure: null,
+      collabSeedPhase: 'none',
+      collabSeedProgress: null,
       collabGeometryNotice: null,
     });
   },

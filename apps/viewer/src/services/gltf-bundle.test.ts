@@ -5,7 +5,7 @@ import '../test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { parseGLB, parseGLBImageResources, parseGLBToMeshData } from '@ifc-lite/cache';
-import { packGltfBundle, resolveGltfModelFiles } from './gltf-bundle.js';
+import { DEFAULT_GLTF_BUNDLE_LIMITS, packGltfBundle, resolveGltfModelFiles } from './gltf-bundle.js';
 
 function scanBundle() {
   const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
@@ -53,6 +53,34 @@ describe('glTF bundle ingestion #4476', () => {
       await assert.rejects(packGltfBundle(new File([JSON.stringify(json)], 'unsafe.gltf'), []), /local relative file/);
     }
     await assert.rejects(packGltfBundle(fixture.document, [fixture.document, fixture.geometry, new File(['other'], 'boulder.bin'), fixture.texture]), /more than one possible “boulder\.bin”/);
+  });
+
+  it('refuses an oversized sidecar by its size alone, before reading it', async () => {
+    const fixture = scanBundle();
+    class UnreadableHugeFile extends File {
+      override get size(): number { return DEFAULT_GLTF_BUNDLE_LIMITS.maxBundleBytes + 1; }
+      override arrayBuffer(): Promise<ArrayBuffer> { return Promise.reject(new Error('oversized sidecar was read into memory')); }
+    }
+    const huge = new UnreadableHugeFile([new Uint8Array(36)], 'boulder.bin');
+    await assert.rejects(packGltfBundle(fixture.document, [fixture.document, huge, fixture.texture]), /exceeds the 512 MiB limit at “boulder\.bin”/);
+  });
+
+  it('applies one cumulative limit across the document, geometry and textures', async () => {
+    const fixture = scanBundle();
+    class UnreadableTexture extends File {
+      override arrayBuffer(): Promise<ArrayBuffer> { return Promise.reject(new Error('texture was read after the budget was spent')); }
+    }
+    const texture = new UnreadableTexture([fixture.textureBytes], 'boulder.jpg', { type: 'image/jpeg' });
+    const exact = (await packGltfBundle(fixture.document, [fixture.document, fixture.geometry, fixture.texture])).size;
+    // Before a read the budget is the 28-byte GLB frame + the document + what is packed so far (4-byte aligned):
+    // geometry fills it exactly, so the texture would tip the total over and is never read.
+    const pad4 = (value: number) => (value + 3) & ~3;
+    const limits = { ...DEFAULT_GLTF_BUNDLE_LIMITS, maxBundleBytes: 28 + pad4(fixture.document.size) + pad4(fixture.geometry.size) };
+    await assert.rejects(packGltfBundle(fixture.document, [fixture.document, fixture.geometry, texture], limits), /limit at “textures\/boulder\.jpg”/);
+    // The limit is the finished GLB size: one byte short is refused, exactly enough is packed.
+    await assert.rejects(packGltfBundle(fixture.document, [fixture.document, fixture.geometry, fixture.texture], { ...limits, maxBundleBytes: exact - 1 }), /limit at “boulder\.gltf”/);
+    const packed = await packGltfBundle(fixture.document, [fixture.document, fixture.geometry, fixture.texture], { ...limits, maxBundleBytes: exact });
+    assert.equal(packed.size, exact);
   });
 
   it('accepts data URI resources and removes selected sidecars from the model list', async () => {

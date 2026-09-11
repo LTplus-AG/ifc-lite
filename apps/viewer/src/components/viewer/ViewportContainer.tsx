@@ -118,9 +118,6 @@ export function ViewportContainer() {
   } = viewportStoreState;
   const storeModels = models;
 
-  // Check if we have models loaded (for determining add vs replace behavior)
-  const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
-
   // Multi-model: create mapping from modelId to modelIndex (stable order)
   const modelIdToIndex = useMemo(() => modelIndices(storeModels), [storeModels]);
 
@@ -346,6 +343,11 @@ export function ViewportContainer() {
     files: File[],
     handles?: (FileSystemFileHandle | undefined)[],
   ) => {
+    // Read the loaded state now, not at render: bundle preparation awaits
+    // before routing, and a model that arrived meanwhile must be added to,
+    // not replaced (#4476 review).
+    const current = viewerStoreApi.getState();
+    const hasModelsLoaded = current.models.size > 0 || (current.geometryResult?.meshes?.length ?? 0) > 0;
     if (hasModelsLoaded) {
       // Models already loaded - add new files sequentially (federate).
       void loadFilesSequentially(files, handles);
@@ -358,7 +360,7 @@ export function ViewportContainer() {
       clearAllModels();
       void loadFilesSequentially(files, handles);
     }
-  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, hasModelsLoaded]);
+  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, viewerStoreApi]);
 
   const prepareAndRoute = usePreparedModelFileRoute(routeLoad, setRecentFiles);
 

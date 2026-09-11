@@ -2,8 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-const MAX_RESOURCE_COUNT = 256;
-const MAX_BUNDLE_BYTES = 512 * 1024 * 1024;
+/** 12-byte GLB header plus the JSON and BIN chunk headers. */
+const GLB_FRAME_BYTES = 28;
+
+/** Bounds for one packed bundle; the viewer ships the defaults. */
+export interface GltfBundleLimits {
+  readonly maxResourceCount: number;
+  /** Cap on the finished GLB, so also on every byte read to build it. */
+  readonly maxBundleBytes: number;
+}
+
+export const DEFAULT_GLTF_BUNDLE_LIMITS: GltfBundleLimits = { maxResourceCount: 256, maxBundleBytes: 512 * 1024 * 1024 };
 
 interface GltfBuffer { byteLength: number; uri?: string }
 interface GltfBufferView { buffer: number; byteOffset?: number; byteLength: number }
@@ -17,6 +26,10 @@ interface GltfDocument {
 }
 
 function pad4(value: number): number { return (value + 3) & ~3; }
+
+function formatLimit(bytes: number): string {
+  return bytes % (1024 * 1024) === 0 ? `${bytes / (1024 * 1024)} MiB` : `${bytes} bytes`;
+}
 
 function safeUriPath(uri: string): string {
   let decoded: string;
@@ -58,14 +71,41 @@ function resourceIndex(files: readonly File[]): Map<string, File[]> {
   return index;
 }
 
-async function externalBytes(uri: string, files: Map<string, File[]>): Promise<{ bytes: Uint8Array; mimeType?: string }> {
+/**
+ * Cumulative size guard over the GLB being built. `reserve` runs before a
+ * sidecar is read, so an oversized file is refused by its `size` alone and
+ * never reaches memory; the JSON chunk is estimated from the document file
+ * until the exact chunk exists.
+ */
+class BundleBudget {
+  private packed = 0;
+  constructor(private readonly limit: number, private readonly documentBytes: number) {}
+  reserve(bytes: number, what: string): void {
+    if (GLB_FRAME_BYTES + pad4(this.documentBytes) + this.packed + pad4(bytes) > this.limit) {
+      throw new Error(`glTF bundle exceeds the ${formatLimit(this.limit)} limit at “${what}”.`);
+    }
+  }
+  /** Record appended BIN bytes and return their padded offset. */
+  commit(bytes: number): number {
+    const offset = this.packed;
+    this.packed = pad4(offset + bytes);
+    return offset;
+  }
+  /** Padded length of everything committed so far: the BIN chunk length. */
+  get length(): number { return this.packed; }
+  fitsExactly(glbBytes: number): boolean { return glbBytes <= this.limit; }
+}
+
+async function externalBytes(uri: string, files: Map<string, File[]>, budget: BundleBudget): Promise<{ bytes: Uint8Array; mimeType?: string }> {
   const embedded = decodeDataUri(uri);
-  if (embedded) return embedded;
+  if (embedded) { budget.reserve(embedded.bytes.byteLength, uri.slice(0, 32)); return embedded; }
   const path = safeUriPath(uri), exact = files.get(path);
   const matches = exact?.length ? exact : files.get(path.split('/').pop() ?? '');
   if (!matches?.length) throw new Error(`glTF bundle is missing “${path}”. Select the .gltf, .bin and texture files together.`);
   if (matches.length !== 1) throw new Error(`glTF bundle contains more than one possible “${path}” resource.`);
-  return { bytes: new Uint8Array(await matches[0].arrayBuffer()), mimeType: matches[0].type || undefined };
+  const [match] = matches;
+  budget.reserve(match.size, path);
+  return { bytes: new Uint8Array(await match.arrayBuffer()), mimeType: match.type || undefined };
 }
 
 function imageMime(image: GltfImage, uri: string, supplied?: string): string {
@@ -75,28 +115,23 @@ function imageMime(image: GltfImage, uri: string, supplied?: string): string {
 }
 
 /** Resolve a user-selected .gltf + local resources into the GLB consumed by the canonical loader. */
-export async function packGltfBundle(documentFile: File, selectedFiles: readonly File[]): Promise<File> {
-  if (documentFile.size > MAX_BUNDLE_BYTES) throw new Error('glTF document exceeds the 512 MiB bundle limit.');
+export async function packGltfBundle(documentFile: File, selectedFiles: readonly File[], limits: GltfBundleLimits = DEFAULT_GLTF_BUNDLE_LIMITS): Promise<File> {
+  const budget = new BundleBudget(limits.maxBundleBytes, documentFile.size);
+  budget.reserve(0, documentFile.name);
   let document: GltfDocument;
   try { document = JSON.parse(await documentFile.text()) as GltfDocument; } catch { throw new Error(`${documentFile.name}: invalid glTF JSON.`); }
   if (document.asset?.version !== '2.0') throw new Error(`${documentFile.name}: only glTF 2.0 is supported.`);
   const buffers = document.buffers ?? [];
   const images = document.images ?? [];
-  if (buffers.length + images.filter(image => image.uri).length > MAX_RESOURCE_COUNT) throw new Error('glTF bundle exceeds the 256-resource limit.');
+  if (buffers.length + images.filter(image => image.uri).length > limits.maxResourceCount) throw new Error(`glTF bundle exceeds the ${limits.maxResourceCount}-resource limit.`);
   const files = resourceIndex(selectedFiles.filter(file => file !== documentFile));
   const chunks: Uint8Array[] = [];
-  let byteLength = 0;
-  const append = (bytes: Uint8Array): number => {
-    const offset = byteLength;
-    byteLength = pad4(byteLength + bytes.byteLength);
-    if (byteLength > MAX_BUNDLE_BYTES) throw new Error('glTF bundle exceeds the 512 MiB limit.');
-    chunks.push(bytes); return offset;
-  };
+  const append = (bytes: Uint8Array): number => { chunks.push(bytes); return budget.commit(bytes.byteLength); };
   const bufferOffsets: number[] = [];
   for (let index = 0; index < buffers.length; index++) {
     const buffer = buffers[index];
     if (!Number.isSafeInteger(buffer.byteLength) || buffer.byteLength < 0 || !buffer.uri) throw new Error(`glTF buffer ${index} must name a bounded local or data URI resource.`);
-    const { bytes } = await externalBytes(buffer.uri, files);
+    const { bytes } = await externalBytes(buffer.uri, files, budget);
     if (bytes.byteLength < buffer.byteLength) throw new Error(`glTF buffer “${buffer.uri}” is shorter than its declared byteLength.`);
     bufferOffsets[index] = append(bytes.subarray(0, buffer.byteLength));
   }
@@ -107,21 +142,24 @@ export async function packGltfBundle(documentFile: File, selectedFiles: readonly
   }
   for (const image of images) {
     if (!image.uri) continue;
-    const uri = image.uri, resource = await externalBytes(uri, files);
+    const uri = image.uri, resource = await externalBytes(uri, files, budget);
     image.bufferView = bufferViews.length;
     image.mimeType = imageMime(image, uri, resource.mimeType);
     bufferViews.push({ buffer: 0, byteOffset: append(resource.bytes), byteLength: resource.bytes.byteLength });
     delete image.uri;
   }
-  const bin = new Uint8Array(byteLength);
-  let cursor = 0;
-  for (const chunk of chunks) { bin.set(chunk, cursor); cursor = pad4(cursor + chunk.byteLength); }
-  document.buffers = [{ byteLength: bin.byteLength }]; document.bufferViews = bufferViews;
+  const binLength = budget.length;
+  document.buffers = [{ byteLength: binLength }]; document.bufferViews = bufferViews;
   const json = new TextEncoder().encode(JSON.stringify(document)), jsonLength = pad4(json.byteLength);
-  const output = new Uint8Array(28 + jsonLength + bin.byteLength), view = new DataView(output.buffer);
-  view.setUint32(0, 0x46546c67, true); view.setUint32(4, 2, true); view.setUint32(8, output.byteLength, true);
+  const glbLength = GLB_FRAME_BYTES + jsonLength + binLength;
+  // The rewritten JSON can outgrow the document it was estimated from; settle the exact size before allocating.
+  if (!budget.fitsExactly(glbLength)) throw new Error(`glTF bundle exceeds the ${formatLimit(limits.maxBundleBytes)} limit at “${documentFile.name}”.`);
+  const output = new Uint8Array(glbLength), view = new DataView(output.buffer);
+  view.setUint32(0, 0x46546c67, true); view.setUint32(4, 2, true); view.setUint32(8, glbLength, true);
   view.setUint32(12, jsonLength, true); view.setUint32(16, 0x4e4f534a, true); output.fill(0x20, 20, 20 + jsonLength); output.set(json, 20);
-  view.setUint32(20 + jsonLength, bin.byteLength, true); view.setUint32(24 + jsonLength, 0x004e4942, true); output.set(bin, 28 + jsonLength);
+  view.setUint32(20 + jsonLength, binLength, true); view.setUint32(24 + jsonLength, 0x004e4942, true);
+  let cursor = GLB_FRAME_BYTES + jsonLength;
+  for (const chunk of chunks) { output.set(chunk, cursor); cursor = pad4(cursor + chunk.byteLength); }
   return new File([output], documentFile.name.replace(/\.gltf$/i, '.glb'), { type: 'model/gltf-binary', lastModified: documentFile.lastModified });
 }
 

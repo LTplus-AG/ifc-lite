@@ -31,6 +31,7 @@ use std::cmp::Ordering;
 
 mod boolean;
 mod classify;
+mod coincident;
 mod ray_parity;
 #[cfg(test)]
 mod tests;
@@ -93,11 +94,6 @@ struct RawSeg {
     cutter: Tri,
 }
 
-#[inline]
-fn tri_plane(t: &Tri) -> [[f64; 3]; 3] {
-    *t
-}
-
 /// A segment endpoint paired with its CACHED interval lambda, so `orient2d` can run
 /// the f64-interval determinant straight from the lambda (the >95%-resolving fast
 /// tier) without re-deriving the degree-4/7 LPI/TPI lambda on every call. The raw
@@ -150,7 +146,7 @@ fn split_crossings(t: &Tri, raws: &[RawSeg]) -> Vec<Constraint> {
             let (la, lb) = ((&iv[l].0, &raws[l].a), (&iv[l].1, &raws[l].b));
             if segments_cross(ka, kb, la, lb, axis) {
                 let x = ImplicitPoint::Tpi(Tpi {
-                    planes: [tri_plane(t), tri_plane(&raws[k].cutter), tri_plane(&raws[l].cutter)],
+                    planes: [*t, raws[k].cutter, raws[l].cutter],
                 });
                 splits[k].push(x.clone());
                 splits[l].push(x);

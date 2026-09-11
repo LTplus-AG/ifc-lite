@@ -1,0 +1,43 @@
+{
+  "models": [
+    {
+      "id": "d4b17b32-8d31-4f3f-80de-34ea524c6731",
+      "meshes": [
+        {
+          "id": 34,
+          "type": "IfcWall",
+          "uvs": null
+        },
+        {
+          "id": 46,
+          "type": "IfcWall",
+          "uvs": null
+        },
+        {
+          "id": 65,
+          "type": "IfcAnnotation",
+          "uvs": [
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ],
+          "textureRef": {
+            "textureId": 55,
+            "url": "textures/f2be22cb22f33a21bd40eab8b3da5c2df4f537841687f58af746413a9c172203.png",
+            "repeatS": false,
+            "repeatT": false
+          }
+        }
+      ]
+    }
+  ],
+  "selected": {
+    "modelId": "d4b17b32-8d31-4f3f-80de-34ea524c6731",
+    "expressId": 65
+  }
+}

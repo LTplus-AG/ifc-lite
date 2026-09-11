@@ -41,8 +41,8 @@
  *     and dropping there was the orphaned-storey symptom again (#4126). This
  *     function still takes no `parsed`, so it cannot close over such a
  *     reference; it REPORTS it in {@link SpatialRelationPlan.blockedOn} and the
- *     caller, which does have `parsed`, keeps it and replans. Purity is intact:
- *     `blockedOn` is a finding, not a mutation.
+ *     caller, which does have `parsed`, decides whether to keep it and replan.
+ *     Purity is intact: `blockedOn` is a finding, not a mutation.
  *
  * A KNOWN gap: {@link keepWhole}, the fallback for a record this module could
  * not read as its six attributes, still drops on the same private
@@ -73,8 +73,8 @@
  *     picks which lines it sees. Widening the type set is the separate decision,
  *     and that is the one that changes which relations survive an extraction.
  *     Consolidation follow-up: #4125.
- *   - `splitTopLevelStepArguments` (`step-argument-parser.ts`): see
- *     {@link splitTopLevelArgs}.
+ *   - `splitTopLevelStepArguments` (`step-argument-parser.ts`) and
+ *     `skipStepComment` (`step-comment-skip.ts`): see {@link splitTopLevelArgs}.
  *   - `STRUCTURE_RELATIONS` (`merged-empty-containers.ts`): three lines, see
  *     below.
  */
@@ -111,57 +111,55 @@ export interface SpatialRelationPlan {
   /** Relation id → rewritten record text, for the ones that lost a member. */
   rewritten: Map<number, string>;
   /**
-   * Unkept non-SET references, in practice a relation-private `OwnerHistory`,
-   * of the relations that this plan dropped for THAT reason alone: their
-   * relating parent is kept and their member intersection is non-empty, so
-   * keeping these ids is all that stands between them and surviving. A caller
-   * holding the parsed model can close over them and replan (#4126). Every
-   * other drop is final and reports nothing here.
+   * One entry per relation this plan dropped for ONE reason alone: unkept non-SET references,
+   * in practice a relation-private `OwnerHistory`. Its relating parent is kept and its member
+   * intersection is non-empty, so keeping EVERY id in the entry is all that stands between it
+   * and surviving. Grouped per relation, because keeping only SOME of one relation's blockers
+   * leaves it dropped and those ids orphaned (#4150). A caller with the parsed model closes
+   * over a group and replans (#4126). Every other drop is final and reports nothing here.
    */
-  blockedOn: number[];
+  blockedOn: number[][];
 }
 
 /**
- * Spatial-structure relations, as `[relatingAttributeIndex,
- * relatedAttributeIndex]`. `IfcRelAggregates` names the whole
- * (`RelatingObject`) first; the two containment relations name the parts
- * (`RelatedElements`) first. Same table as `STRUCTURE_RELATIONS` in
- * `@ifc-lite/export`'s `merged-empty-containers.ts`, which reads the same three
+ * Spatial-structure relations, as `[relatingAttributeIndex, relatedAttributeIndex]`.
+ * `IfcRelAggregates` names the whole (`RelatingObject`) first; the two containment
+ * relations name the parts (`RelatedElements`) first. Same table as `STRUCTURE_RELATIONS`
+ * in `@ifc-lite/export`'s `merged-empty-containers.ts`, which reads the same three
  * records, copied rather than imported because that module is internal to
  * `@ifc-lite/export` and exporting it would widen a published API surface for a
  * three-line constant.
  *
- * `IfcRelReferencedInSpatialStructure` is here for the same reason the other
- * two are: same shape (one relating parent, one related SET), same
- * one-per-storey authoring, same claim in the command's own docs that the
- * output "parses and renders on its own". It used to be missing entirely, so a
- * referenced-but-not-contained product was always orphaned.
+ * `IfcRelReferencedInSpatialStructure` is here for the same reason the other two are:
+ * same shape (one relating parent, one related SET), same one-per-storey authoring,
+ * same claim in the command's own docs that the output "parses and renders on its
+ * own". It used to be missing entirely, so a referenced-but-not-contained product was
+ * always orphaned.
  */
-const STRUCTURE_RELATIONS: Record<string, [number, number]> = {
+export const STRUCTURE_RELATIONS: Record<string, [number, number]> = {
   IFCRELAGGREGATES: [4, 5],
   IFCRELCONTAINEDINSPATIALSTRUCTURE: [5, 4],
   IFCRELREFERENCEDINSPATIALSTRUCTURE: [5, 4],
 };
 
 /**
- * All three are `GlobalId, OwnerHistory, Name, Description` plus the
- * relating/related pair: exactly 6 attributes in every schema that defines
- * them. A record that does not split into 6 was mis-scanned (or is not the
- * entity the type name claims), so it falls back to keep-whole-or-drop-whole
- * rather than having a slot index written into whatever it did split into.
+ * All three are `GlobalId, OwnerHistory, Name, Description` plus the relating/related
+ * pair: exactly 6 attributes in every schema that defines them. A record that does not
+ * split into 6 was mis-scanned (or is not the entity the type name claims), so it falls
+ * back to keep-whole-or-drop-whole rather than having a slot index written into
+ * whatever it did split into.
  *
- * A relation type with a different attribute COUNT (`IfcRelAssignsToGroup` has
- * 7) therefore cannot simply be added as a row above: it would fail this check
- * on every record and fall silently back to keep-whole-or-drop-whole, which is
- * the bug this module exists to fix. Such a type needs the count moved into the
- * table value first, or the whole table derived from the schema registry, which
- * returns 7 for that entity and would make row four safe rather than forbidden.
- * Filed as #4123.
+ * A relation type with a different attribute COUNT (`IfcRelAssignsToGroup` has 7)
+ * therefore cannot simply be added as a row above: it would fail this check on every
+ * record and fall silently back to keep-whole-or-drop-whole, which is the bug this
+ * module exists to fix. Such a type needs the count moved into the table value first,
+ * or the whole table derived from the schema registry, which returns 7 for that entity
+ * and would make row four safe rather than forbidden. Filed as #4123.
  */
-const STRUCTURE_RELATION_ATTRS = 6;
+export const STRUCTURE_RELATION_ATTRS = 6;
 
 /** A single `#id` and nothing else: an object reference in one slot. */
-const SINGLE_REF_RE = /^#(\d+)$/;
+export const SINGLE_REF_RE = /^#(\d+)$/;
 
 /**
  * Decide every spatial-structure relation against a kept-id set.
@@ -176,7 +174,7 @@ export function planSpatialRelations(
 ): SpatialRelationPlan {
   const add: number[] = [];
   const rewritten = new Map<number, string>();
-  const blockedOn: number[] = [];
+  const blockedOn: number[][] = [];
   for (const inst of instances) {
     const slots = STRUCTURE_RELATIONS[inst.type];
     if (slots === undefined) continue;
@@ -190,15 +188,15 @@ export function planSpatialRelations(
 
 /**
  * The record text this relation contributes to the subset, or null to drop it.
- * Returns `inst.full` unchanged when nothing was filtered out. Appends to
- * `blocked` when the ONLY thing standing in the way is an unkept non-SET
- * reference; see {@link SpatialRelationPlan.blockedOn}.
+ * Returns `inst.full` unchanged when nothing was filtered out. Appends ONE entry
+ * to `blocked` when the ONLY thing standing in the way is unkept non-SET
+ * references; see {@link SpatialRelationPlan.blockedOn}.
  */
 function relationLine(
   inst: StepRecord,
   [relatingIdx, relatedIdx]: [number, number],
   keep: ReadonlySet<number>,
-  blocked: number[],
+  blocked: number[][],
 ): string | null {
   // A null is a REJECTED scan, not an empty list: its parts are wherever the
   // scanner happened to be, so reading `args[relatingIdx]` or writing
@@ -240,7 +238,7 @@ function relationLine(
     }
   }
   if (unkept.length > 0) {
-    blocked.push(...unkept);
+    blocked.push(unkept);
     return null;
   }
 
@@ -265,8 +263,14 @@ function relationLine(
  * the six-attribute shape this module rewrites, so its boundaries are not
  * established in general. There, over-counting references (drop the record) is
  * the safe error, while under-counting (emit a dangling `#id`) is not.
+ *
+ * Exported for `extract-entities.ts`'s `forwardClosure`, which has the same
+ * hazard scanning a whole record body for its reference closure: nothing here
+ * assumes `arg` is one split ARGUMENT rather than a whole body, since a comma
+ * or `)` outside a string does not affect the in-string/out-of-string state
+ * this walks.
  */
-function refsOutsideStrings(arg: string): number[] {
+export function refsOutsideStrings(arg: string): number[] {
   const ids: number[] = [];
   let inString = false;
   for (let i = 0; i < arg.length; i++) {
@@ -326,39 +330,35 @@ function spliceArgument(
 }
 
 /**
- * Split a STEP argument list on top-level commas, respecting nested
- * parentheses, quoted strings and doubled-quote escapes. Returns null when the
- * text is not a well-formed argument list.
- *
- * It VALIDATES rather than accepting whatever it accumulated, because
- * {@link relationLine} reads `RelatingStructure` by index and writes
- * `RelatedElements` by index, the situation #2470 names, where a mis-scanned
- * list still produces parts and a slot written into those parts lands on the
- * wrong argument while reporting success.
- *
- * Rejected, because after any of these the parts are no longer the record's
- * attributes: commas were swallowed and everything past them shifted:
- *   - a quote still open at the end (unterminated string);
- *   - a paren depth that does not return to zero at the end (unbalanced list);
- *   - a depth that ever goes NEGATIVE (stray closing paren). Both ends matter:
- *     a depth that dips below zero and climbs back looks balanced at the end
- *     while every comma in between was read as nested.
- *
- * An EMPTY INTERIOR slot (`a,,b`) is deliberately NOT rejected: it is one part,
- * exactly as an entity parser counts it, so every later index still names the
- * attribute it is meant to.
- *
- * Near-twin, not a copy, of `@ifc-lite/export`'s `splitTopLevelStepArguments`
- * (see the module header for why it is not imported). Two MEASURED differences,
- * both wanted here and neither shared with that function:
- *   - each part is `trim`med, because {@link SINGLE_REF_RE} is anchored;
- *   - a TRAILING empty slot (`a,b,`) yields 2 parts, not 3. So a SIX-attribute
- *     record with a stray trailing comma still counts as six, is rewritten, and
- *     loses that comma in the output; a five-attribute one is rejected by the
- *     attribute-count check instead. Invalid STEP in, valid STEP out, and the
- *     slot indices are the ones the record meant either way.
+ * Skip a `/* ... *\/` comment atomically: index of `/` in, index past its
+ * close marker (or end-of-text when unterminated) out. Byte-identical copy of
+ * `@ifc-lite/export`'s `skipStepComment` (not imported, see the module
+ * header): #4227's third copy of the same missing logic.
  */
-function splitTopLevelArgs(text: string): string[] | null {
+function skipStepComment(text: string, i: number): number {
+  const end = text.indexOf('*/', i + 2);
+  return end === -1 ? text.length : end + 2;
+}
+
+/**
+ * Split a STEP argument list on top-level commas, respecting nested parens,
+ * quoted strings, doubled-quote escapes, and `/* ... *\/` comments (#4227).
+ * Returns null on an unterminated string, an unbalanced paren depth, or a
+ * depth that ever goes negative -- {@link relationLine} writes a slot by
+ * index (#2470), so a mis-scanned list must not hand back parts that look
+ * like success. A comma/paren/quote inside a comment is skipped with it (see
+ * {@link skipStepComment}): unskipped, its comma shifts every later slot
+ * boundary and `relationLine` either mis-splices a member or falls back to
+ * {@link keepWhole}, dropping a relation that should have survived -- the
+ * orphaned-storey symptom (#4126) this module exists to fix, by a different
+ * route. An EMPTY INTERIOR slot (`a,,b`) is one part, not rejected.
+ *
+ * Near-twin of `@ifc-lite/export`'s `splitTopLevelStepArguments` (see the
+ * module header). Two differences: each part is `trim`med (because
+ * {@link SINGLE_REF_RE} is anchored), and a TRAILING empty slot (`a,b,`)
+ * yields 2 parts, not 3.
+ */
+export function splitTopLevelArgs(text: string): string[] | null {
   const parts: string[] = [];
   let start = 0;
   let depth = 0;
@@ -376,7 +376,11 @@ function splitTopLevelArgs(text: string): string[] | null {
       continue;
     }
 
-    if (char === "'") {
+    if (char === '/' && text[i + 1] === '*') {
+      // See skipStepComment's docstring: its content is skipped as one unit,
+      // not read as argument-list structure.
+      i = skipStepComment(text, i) - 1;
+    } else if (char === "'") {
       inString = true;
     } else if (char === '(') {
       depth++;

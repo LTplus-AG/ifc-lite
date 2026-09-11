@@ -78,6 +78,8 @@ name: Issue queue
 # `ready_for_review` covers the draft->ready transition, same as
 # pr-review-signal.yml.
 on:
+  merge_group:
+    types: [checks_requested]
   pull_request:
     types:
       [opened, synchronize, reopened, edited, labeled, unlabeled, ready_for_review]
@@ -107,6 +109,7 @@ env:
 jobs:
   issue-queue:
     name: Issue queue
+    if: github.event_name == 'pull_request'
     # Free runner: one GraphQL round trip and a pure evaluation, not
     # compute-bound. No poll, so no budget to measure -- unlike
     # pr-review-signal.yml this gate asks a question that is already answered
@@ -135,12 +138,61 @@ jobs:
       # that decides whether work was requested should not be able to fail
       # because a registry was slow.
       - name: Unit-test the gate itself
-        run: node --test scripts/check-issue-queue.test.mjs scripts/lib/issue-refs.test.mjs
+        run: |
+          node --test scripts/check-issue-queue.test.mjs scripts/lib/issue-refs.test.mjs \
+            scripts/lib/ref-issues-fetch.test.mjs \
+            scripts/check-partial-close-admission.test.mjs scripts/lib/partial-close-admission.test.mjs
 
+      # `--dump` writes the exact GraphQL payload this job read (`body` and
+      # `closingIssuesReferences` included) to $RUNNER_TEMP so the next step
+      # can reuse it instead of asking GitHub the same question again (#4180
+      # finding B). It is written as soon as the read succeeds, before this
+      # script's own pass/fail verdict is computed, so the file exists even
+      # on an ENFORCING-mode failure below -- moot in practice, because a
+      # non-zero exit here skips every later step by GitHub Actions' own
+      # default (no step in this job sets `continue-on-error` or
+      # `if: always()`), so the next step never runs without it regardless.
       - name: Check this PR closes a queued issue
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           node scripts/check-issue-queue.mjs \
-            --pr "${{ github.event.pull_request.number }}"
+            --pr "${{ github.event.pull_request.number }}" \
+            --dump "${RUNNER_TEMP}/issue-queue-pr.json"
+
+      # #4154: a WARNING, not a gate -- it never fails this job on its own
+      # finding (only a refusal, e.g. a malformed payload, could, and see
+      # below for why even that no longer applies here). Kept in the same
+      # job/workflow as check-issue-queue.mjs because it reads the same
+      # `body` and `closingIssuesReferences` fields off the same PR event;
+      # see scripts/check-partial-close-admission.mjs's header for why this
+      # has no enforcing mode to graduate to.
+      #
+      # `--shared-state-file`, NOT `--pr` (#4180 finding B): reads the exact
+      # payload the previous step already fetched and dumped, rather than
+      # spending a second `gh api graphql` round trip on the same two
+      # fields. `Issue queue` is a REQUIRED status check on `main`
+      # (scripts/issue-queue.config.json documents the ruleset), and this
+      # step previously had no `continue-on-error`, so a transient failure
+      # in an independent second fetch could have blocked a merge -- exactly
+      # what a warn-only gate must never do. `--shared-state-file` cannot
+      # cause that: a missing or malformed dump degrades to a silent
+      # `SKIPPED` and exit 0, never a refusal (see the script's header and
+      # its own tests). No `GH_TOKEN`/`GITHUB_REPOSITORY` needed here
+      # anymore -- this step makes no GitHub API call of its own.
+      - name: Warn on a Closes/Fixes/Resolves keyword whose own body admits partial coverage
+        run: |
+          node scripts/check-partial-close-admission.mjs \
+            --shared-state-file "${RUNNER_TEMP}/issue-queue-pr.json"
+
+  # Merge-queue batches have no PR to inspect; the PR-level run already gated
+  # entry to the queue. This reports the required 'Issue queue' check so a batch
+  # can complete, instead of waiting forever on a check that never runs.
+  issue-queue-merge-group:
+    name: Issue queue
+    if: github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo 'Issue queue - satisfied at PR level; nothing to check on a merge-queue batch'

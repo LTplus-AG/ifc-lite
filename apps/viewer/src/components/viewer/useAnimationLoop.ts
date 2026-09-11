@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
+import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
 /**
  * THE render loop for the 3D viewport.
  *
@@ -180,7 +180,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
           // Contained like the residency drain below: an uncaught throw here
           // skips the tail-position requestAnimationFrame(animate) that re-arms
           // this loop, so rendering would stop permanently.
-          queueFlushed = runGpuUpload('flushPending:raf', () => scene.flushPending(device, pipeline)) ?? false;
+          queueFlushed = runGpuUpload('flushPending:raf', () => flushPlacementGeometry(scene, device, pipeline)) ?? false;
           if (queueFlushed) {
             renderer.clearCaches();
           }

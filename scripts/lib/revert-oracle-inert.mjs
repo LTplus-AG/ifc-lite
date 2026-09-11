@@ -21,7 +21,17 @@
  * listed here.
  */
 const INERT_SUFFIXES = [
-  // images
+  // images. `.svg` is the one exception to "no runner in this repo compiles
+  // or executes it": apps/viewer/vite.config.ts DOES transform real SVG bytes
+  // (string-replace theming, then `svgo.optimize()`) for the icons under
+  // apps/viewer/src/icons/ — verified #4137 follow-up. It stays inert anyway
+  // because no test observes that output today: node --test's
+  // apps/viewer/src/test/vite-module-hooks-impl.mjs collapses every `~icons/*`
+  // import onto one stub component before a test ever sees it, so the real
+  // svgo/theming pipeline runs only under `vite build`/`vite dev`, which the
+  // revert-oracle never invokes. If a test ever imports icon output through a
+  // path that isn't stubbed, `.svg` needs to come back off this list — don't
+  // delete this paragraph without re-checking that first.
   '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.webp', '.avif', '.bmp', '.tiff', '.tif',
   // fonts
   '.woff', '.woff2', '.ttf', '.otf', '.eot',
@@ -33,4 +43,22 @@ const INERT_SUFFIXES = [
 export function isInertPath(path) {
   const lower = path.toLowerCase();
   return INERT_SUFFIXES.some((s) => lower.endsWith(s));
+}
+
+/**
+ * Test-support modules outside any test directory and not named `*.test.*`,
+ * which exist only to register assertions for a test entrypoint
+ * (`scripts/test-wasm-contract.mjs` imports the one below; nothing else does).
+ * Editing one changes what a test asserts. Classifying it as production tripped
+ * the "changes production code and adds/changes NO test file" ABORT on #4501 —
+ * the same classifier false-positive shape the inert list above fixed for
+ * binary assets. Kept exact, not a pattern: `scripts/lib/` is otherwise real
+ * production tooling and must keep reading as such.
+ */
+const TEST_SUPPORT_EXACT = new Set([
+  'scripts/lib/shard-refusal-boundary.mjs',
+]);
+
+export function isTestSupportPath(path) {
+  return TEST_SUPPORT_EXACT.has(path);
 }

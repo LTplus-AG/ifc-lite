@@ -121,7 +121,7 @@ export class ModelBoundsTracker {
     }
 
     /** Fold newly loaded mesh geometry into the tracked AABB. */
-    updateFromMeshes(meshes: import('@ifc-lite/geometry').MeshData[]): void {
+    updateFromMeshes(meshes: import('@ifc-lite/geometry').MeshData[], translationForModel?: (modelIndex: number) => readonly [number, number, number]): void {
         if (!this.bounds) {
             this.bounds = {
                 min: { x: Infinity, y: Infinity, z: Infinity },
@@ -135,7 +135,8 @@ export class ModelBoundsTracker {
             // Model bounds are world-space, so fold the per-mesh origin. No-op when
             // origin is absent/[0,0,0]. Mirrors coordinate-handler.ts.
             const o = mesh.origin;
-            const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
+            const delta = translationForModel?.(mesh.modelIndex ?? 0);
+            const ox = (o?.[0] ?? 0) + (delta?.[0] ?? 0), oy = (o?.[1] ?? 0) + (delta?.[1] ?? 0), oz = (o?.[2] ?? 0) + (delta?.[2] ?? 0);
             for (let i = 0; i < positions.length; i += 3) {
                 const x = positions[i] + ox;
                 const y = positions[i + 1] + oy;

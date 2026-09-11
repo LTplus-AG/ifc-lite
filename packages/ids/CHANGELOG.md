@@ -1,5 +1,54 @@
 # @ifc-lite/ids
 
+## 1.16.2
+
+### Patch Changes
+
+- Updated dependencies [[`3fdbc2b`](https://github.com/LTplus-AG/ifc-lite/commit/3fdbc2b599fad2b1c43ffe014d2bab5f8b8c576c), [`3a1a322`](https://github.com/LTplus-AG/ifc-lite/commit/3a1a3229412b7822438fa5dba653f6c4e1bd239f), [`7f80d53`](https://github.com/LTplus-AG/ifc-lite/commit/7f80d53d2a2c158a322ec541ce064365f3f3ca8a), [`a53bd7f`](https://github.com/LTplus-AG/ifc-lite/commit/a53bd7fd4510b8d5c992eab26234084c5bb2387e), [`abda2d8`](https://github.com/LTplus-AG/ifc-lite/commit/abda2d8114ad17b0366f448100953d6e1972164c), [`511e488`](https://github.com/LTplus-AG/ifc-lite/commit/511e488a8de2b90f7d5f7663911873a92b3427c7), [`53c65fe`](https://github.com/LTplus-AG/ifc-lite/commit/53c65fecdac95b4c19a661be923c225d104a7be8), [`a53bd7f`](https://github.com/LTplus-AG/ifc-lite/commit/a53bd7fd4510b8d5c992eab26234084c5bb2387e)]:
+  - @ifc-lite/parser@6.1.0
+  - @ifc-lite/data@4.2.0
+
+## 1.16.1
+
+### Patch Changes
+
+- [#4211](https://github.com/LTplus-AG/ifc-lite/pull/4211) [`098e241`](https://github.com/LTplus-AG/ifc-lite/commit/098e2419cac5bd72f5524c7cddfa1b4da7971696) Thanks [@mpancera](https://github.com/mpancera)! - Expose the runtime hierarchy helpers as their own subpath,
+  `@ifc-lite/codegen/schema-hierarchy`, and import them from there in the two
+  runtime call sites (`lod0-generator`, the IDS classification bridge).
+  
+  The package root exports two things with different audiences: the generator,
+  which imports `node:fs` and `node:path` because it reads `.exp` files and
+  writes source, and the `isSubtypeOf` family, which is pure and is meant to be
+  called at runtime against a generated `SCHEMA_REGISTRY`. Importing the second
+  therefore dragged the first along. In a bundler that tree-shakes, the generator
+  falls away and nothing is wrong. In a dev server that does not, it is fetched
+  and evaluated, the `node:fs` stub throws at import, and the viewer never
+  mounts — it cycles through boot-self-heal reloads on a blank page.
+  
+  `schema-hierarchy.ts` has no imports at all, so the subpath is browser-safe by
+  construction rather than by convention, and the existing build already emits
+  `dist/schema-hierarchy.js` and its declarations. The root entry keeps every
+  export it had, so nothing that imports it today has to change.
+
+- [#4290](https://github.com/LTplus-AG/ifc-lite/pull/4290) [`ed2a067`](https://github.com/LTplus-AG/ifc-lite/commit/ed2a067ca713b14cf0d9b658789d22f4c78c7731) Thanks [@BIMvoice](https://github.com/BIMvoice)! - An IDS bounds restriction (`xs:minInclusive`/`maxInclusive`/`minExclusive`/`maxExclusive`/`totalDigits`/`fractionDigits`) whose `@value` couldn't be parsed — a value with no parseable leading number (e.g. `"not-a-number"`), or a negative digit-count facet — used to be silently dropped and treated as absent, so the restriction fell back to unbounded and matched every value instead of rejecting the ones it was meant to reject. `parseRestriction` now records which facet failed to parse, `matchBounds` fails closed (rejects every value) whenever that happened instead of silently passing everything, and the failure reason and the `xs:restriction` coherence audit both call out the malformed facet by name so the cause is visible rather than looking like an ordinary value mismatch. A legitimately absent facet, and a well-formed restriction, are unaffected.
+  
+  The clear "malformed and cannot be evaluated" explanation initially only reached `getConstraintMismatchReason`, a function the real validation report never calls — every actual `validateIDS` failure for a malformed restriction instead read the self-contradictory "does not match expected any value" (via `formatConstraint`/`formatBounds` falling through to its default). `formatBounds` now renders the same broken-facet explanation whenever `unparseableFacets` is set, so `failureReason` and `expectedValue` in the actual validation report both name the offending facet and its raw value instead of claiming "any value". A well-formed restriction's message is unchanged.
+
+- [#4349](https://github.com/LTplus-AG/ifc-lite/pull/4349) [`aa73bb7`](https://github.com/LTplus-AG/ifc-lite/commit/aa73bb777ada7cec655621496401e4f8cf693a2f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `resolveEffectivePropertySets` (the IDS bridge's write overlay, used when an in-session IDS correction is applied) used to look up a property's property set with `result.find(p => p.name === psetName)`, stopping at the first same-named set. An entity carrying two distinct `IfcPropertySet`s sharing a name (e.g. one via the type, one via the occurrence) could have a correction silently land on the wrong set — a value update pushed a duplicate property onto the wrong set while the real one stayed stale, and a delete against the wrong set left the real property fully intact with no error. Every same-named set is now scanned: an update lands on whichever same-named set actually carries the property, a delete removes it from every same-named set that carries it, and a brand-new property (no same-named set has it yet) is created on the first same-named set, matching this function's pre-existing single-pset behaviour.
+
+- [#4335](https://github.com/LTplus-AG/ifc-lite/pull/4335) [`8620be3`](https://github.com/LTplus-AG/ifc-lite/commit/8620be38be0162b7cbdbe23ae7bc924763b83612) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Guard every place a caller-supplied regex pattern is compiled and run against untrusted input, closing a ReDoS (catastrophic-backtracking) hole: an IDS document's `xs:pattern` facet (four sites — the constraint matcher, the entity-type resolver, and two schema-audit sites in `@ifc-lite/ids`) and the viewer's bulk-edit "Name Pattern (Regex)" field (`@ifc-lite/mutations`'s `BulkQueryEngine.select`).
+  
+  New `@ifc-lite/regex-guard` package: a single shared guard (`assertGuardedRegexPattern`, `compileGuardedRegex`, `hasCatastrophicBacktrackingShape`) rejects a pattern over 256 characters or shaped like a known catastrophic-backtracking construct (`(a+)+`, `(.*)*`, …) before it is ever compiled. `@ifc-lite/extensions`'s bundle-test runner, which already had its own copy of this exact check, now imports the shared implementation instead of carrying a second one.
+  
+  A rejected pattern surfaces as a visible failure, not a silent non-match: an IDS specification whose pattern is rejected reports `status: 'fail'` with an `error` message (new optional field on `IDSSpecificationResult`) instead of reading as passing or not-applicable; the schema audit reports a new `E_REGEX_UNSAFE` issue; `BulkQueryEngine.select` and the entity-type resolver throw `UnsafeRegexPatternError`.
+  
+  This is a heuristic, not a complete defence — see the package's doc comment for what it does not catch.
+- Updated dependencies [[`ced8bb4`](https://github.com/LTplus-AG/ifc-lite/commit/ced8bb46c368648bd54a1bab716d049143faa036), [`de30321`](https://github.com/LTplus-AG/ifc-lite/commit/de303215ad631d54069067682f443ef33d7d37f3), [`b5cb19a`](https://github.com/LTplus-AG/ifc-lite/commit/b5cb19ae80610107f7b3b3914efa7234dfbe4999), [`098e241`](https://github.com/LTplus-AG/ifc-lite/commit/098e2419cac5bd72f5524c7cddfa1b4da7971696), [`e69c9b5`](https://github.com/LTplus-AG/ifc-lite/commit/e69c9b5ac993e672ebd1e736c2b7d3997a7ac8bc), [`12e69fe`](https://github.com/LTplus-AG/ifc-lite/commit/12e69feb363ea31fb2c3513436366b01c54251e9), [`83fb539`](https://github.com/LTplus-AG/ifc-lite/commit/83fb539395e3638eb4c72a5c0fb2c508a8746adb), [`f33ac74`](https://github.com/LTplus-AG/ifc-lite/commit/f33ac74dd0578792327f684ba5ca59f050458c65), [`85e0351`](https://github.com/LTplus-AG/ifc-lite/commit/85e0351c6bcbc350c404176e484320baa08a1366), [`6f0078b`](https://github.com/LTplus-AG/ifc-lite/commit/6f0078bc8ae697c9e6f91ae5b36546476b0fee5b), [`04d7b3b`](https://github.com/LTplus-AG/ifc-lite/commit/04d7b3ba0ab64ae9e97420aa8d5c56a536272724), [`78905e6`](https://github.com/LTplus-AG/ifc-lite/commit/78905e6866c33d97f6ee7e39e35c3f86d9121ae2), [`8620be3`](https://github.com/LTplus-AG/ifc-lite/commit/8620be38be0162b7cbdbe23ae7bc924763b83612), [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb), [`6110c0d`](https://github.com/LTplus-AG/ifc-lite/commit/6110c0d6bb0c1a96c4da4c056389ebc4dfe26631), [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb), [`a6976b9`](https://github.com/LTplus-AG/ifc-lite/commit/a6976b9da44d13157533372a8def23995fcfb93f)]:
+  - @ifc-lite/data@4.1.0
+  - @ifc-lite/parser@6.0.0
+  - @ifc-lite/regex-guard@0.2.0
+  - @ifc-lite/codegen@1.17.0
+
 ## 1.16.0
 
 ### Minor Changes

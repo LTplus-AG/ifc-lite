@@ -31,6 +31,19 @@ import { addRoofToStore } from './roof.js';
 import { addPlateToStore } from './plate.js';
 import { addMemberToStore } from './member.js';
 import { duplicateInStore } from './duplicate.js';
+import {
+  addMeasureMarkupToStore,
+  addPolygonAreaMarkupToStore,
+  addTextMarkupToStore,
+  addCloudMarkupToStore,
+  DRAWING_MARKUP_QSET_NAME,
+  type MarkupAnchor,
+} from './drawing-markup.js';
+
+const namedQ = (view: MutablePropertyView, id: number): Record<string, number> => {
+  const qto = view.getQuantitiesForEntity(id).find((s) => s.name === DRAWING_MARKUP_QSET_NAME);
+  return Object.fromEntries((qto?.quantities ?? []).map((q) => [q.name, q.value]));
+};
 
 function makeStore(maxId: number): MutationStoreShape {
   const byId = new Map<number, MutationEntityRef>();
@@ -151,6 +164,78 @@ describe('in-store builders emit native length units (mm model)', () => {
     const ents = byId();
     expect(ents.get(r.profileId)?.attributes[3]).toBeCloseTo(100, 6);
     expect(ents.get(r.solidId)?.attributes[3]).toBeCloseTo(2500, 6);
+  });
+
+  // Markup builders (`drawing-markup.ts`) take the narrower `MarkupAnchor`
+  // shape (no bodyContextId/axisContextId/storeyId) — MM_ANCHOR still
+  // satisfies it structurally. A fresh markup subcontext expressId (any
+  // pre-existing id from makeStore's harness) stands in for the
+  // Annotation subcontext addDrawingMarkupToStore would normally create.
+  const MARKUP_ANCHOR: MarkupAnchor = MM_ANCHOR;
+  const MARKUP_CONTEXT_ID = 14;
+
+  it('measure markup: endpoints in mm, Distance quantity in mm', () => {
+    const { view, editor, byId } = harness();
+    const r = addMeasureMarkupToStore(editor, MARKUP_ANCHOR, MARKUP_CONTEXT_ID, {
+      start: { x: 1, y: 2 },
+      end: { x: 5, y: 5 },
+      distance: 5,
+    });
+    const ents = byId();
+    const polyline = ents.get(r.polylineId);
+    const pointRefs = polyline?.attributes[0] as string[];
+    const points = pointRefs.map((ref) => ents.get(Number(ref.slice(1)))?.attributes[0]);
+    expect(points[0]).toEqual([1000, 2000]);
+    expect(points[1]).toEqual([5000, 5000]);
+    expect(namedQ(view, r.annotationId)['Distance']).toBeCloseTo(5000, 6);
+  });
+
+  it('polygon-area markup: outline points in mm, Area left un-scaled (SI m²), Perimeter in mm', () => {
+    const { view, editor, byId } = harness();
+    const r = addPolygonAreaMarkupToStore(editor, MARKUP_ANCHOR, MARKUP_CONTEXT_ID, {
+      points: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
+      area: 12,
+      perimeter: 14,
+    });
+    const ents = byId();
+    const polyline = ents.get(r.polylineId);
+    const pointRefs = polyline?.attributes[0] as string[];
+    const second = ents.get(Number(pointRefs[1].slice(1)))?.attributes[0];
+    expect(second).toEqual([4000, 0]);
+    const q = namedQ(view, r.annotationId);
+    // Area is deliberately NOT unit-scaled — same convention space.ts uses.
+    expect(q['Area']).toBeCloseTo(12, 6);
+    expect(q['Perimeter']).toBeCloseTo(14000, 6);
+  });
+
+  it('text markup: placement point and extent in mm', () => {
+    const { editor, byId } = harness();
+    const r = addTextMarkupToStore(editor, MARKUP_ANCHOR, MARKUP_CONTEXT_ID, {
+      position: { x: 2, y: 3 },
+      text: 'Check this detail',
+    });
+    const ents = byId();
+    const literal = ents.get(r.textLiteralId);
+    const placementRef = literal?.attributes[1] as string;
+    const placement = ents.get(Number(placementRef.slice(1)));
+    const origin = ents.get(Number((placement?.attributes[0] as string).slice(1)));
+    expect(origin?.attributes[0]).toEqual([2000, 3000]);
+  });
+
+  it('cloud markup: rectangle corners in mm', () => {
+    const { editor, byId } = harness();
+    const r = addCloudMarkupToStore(editor, MARKUP_ANCHOR, MARKUP_CONTEXT_ID, {
+      points: [{ x: 0, y: 0 }, { x: 2, y: 1 }],
+      label: 'Revise wall type',
+    });
+    const ents = byId();
+    const polyline = ents.get(r.polylineId);
+    const pointRefs = polyline?.attributes[0] as string[];
+    const corners = pointRefs.map((ref) => ents.get(Number(ref.slice(1)))?.attributes[0]);
+    expect(corners[0]).toEqual([0, 0]);
+    expect(corners[1]).toEqual([2000, 0]);
+    expect(corners[2]).toEqual([2000, 1000]);
+    expect(corners[3]).toEqual([0, 1000]);
   });
 
   it('metre models (no lengthUnitScale) emit params verbatim', () => {

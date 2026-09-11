@@ -10,7 +10,8 @@
 //! allowed to do; nothing here knows about any IFC type.
 
 use super::items::extract_symbolic_item_inner;
-use super::output_cap::{SymbolicAccumulator, SymbolicTruncationReason};
+use super::output_cap::SymbolicAccumulator;
+use super::output_cap_types::SymbolicTruncationReason;
 use super::rebase::RenderFrameRebase;
 use super::transform::Transform2D;
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
@@ -80,6 +81,7 @@ pub(super) const MAX_ITEM_REVISITS: u32 = 200_000;
 /// State threaded through the walk: the ancestors on the current path, and the
 /// remaining emit budget.
 pub(super) struct ItemWalk {
+    pub(super) direct_item_id: Option<u32>,
     /// Every node on the CURRENT path -- inserted on entry, removed on exit.
     ///
     /// Holds items AND the non-item nodes the walk re-enters through. Express
@@ -158,8 +160,10 @@ pub(super) fn extract_symbolic_item(
     rebase: RenderFrameRebase,
     styled_items: &HashMap<u32, Vec<u32>>,
     out: &mut SymbolicAccumulator,
+    direct_item_id: Option<u32>,
 ) {
     let mut walk = ItemWalk {
+        direct_item_id,
         path: FxHashSet::default(),
         seen: FxHashSet::default(),
     };
@@ -224,4 +228,3 @@ pub(super) fn extract_symbolic_item_at(
     );
     walk.exit_node(item.id);
 }
-

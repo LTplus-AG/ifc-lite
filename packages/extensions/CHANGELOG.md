@@ -1,5 +1,27 @@
 # @ifc-lite/extensions
 
+## 0.7.0
+
+### Minor Changes
+
+- [#4505](https://github.com/LTplus-AG/ifc-lite/pull/4505) [`1878436`](https://github.com/LTplus-AG/ifc-lite/commit/1878436f58d4b11b8cd69ea4d544373ca375b9eb) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Bound how long a bundle test's `expect.regex` matcher can run instead of leaving it unbounded on whatever thread calls it. `runBundleTests` now accepts an optional `evaluateRegex` hook; the viewer wires it to a Worker with a timeout so a pathological pattern that slips past the existing length-cap and shape-heuristic guards terminates instead of hanging the main UI thread, reachable via "Run tests" and the repair queue's "Run check". CLI and other existing callers are unaffected — omitting the hook keeps the prior synchronous, in-process check.
+  
+  A rejection that isn't a genuine invalid-pattern `SyntaxError` (a worker timeout, a disposed client, a worker that failed to start) now reports as "regex: evaluation failed", distinct from "regex: invalid pattern" — previously every such rejection was mislabeled as the author's pattern being malformed. In the viewer, if the regex worker itself can't be started (a CSP blocking module workers, or no `Worker` at all), `expect.regex` checks now fall back to the same synchronous in-process evaluation used before [#4482](https://github.com/LTplus-AG/ifc-lite/issues/4482), rather than failing every check; the pattern length cap and catastrophic-backtracking shape heuristic still run unconditionally before either evaluator, so that fallback loses only the timeout bound and main-thread eviction, not those guards.
+
+## 0.6.1
+
+### Patch Changes
+
+- [#4335](https://github.com/LTplus-AG/ifc-lite/pull/4335) [`8620be3`](https://github.com/LTplus-AG/ifc-lite/commit/8620be38be0162b7cbdbe23ae7bc924763b83612) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Guard every place a caller-supplied regex pattern is compiled and run against untrusted input, closing a ReDoS (catastrophic-backtracking) hole: an IDS document's `xs:pattern` facet (four sites — the constraint matcher, the entity-type resolver, and two schema-audit sites in `@ifc-lite/ids`) and the viewer's bulk-edit "Name Pattern (Regex)" field (`@ifc-lite/mutations`'s `BulkQueryEngine.select`).
+  
+  New `@ifc-lite/regex-guard` package: a single shared guard (`assertGuardedRegexPattern`, `compileGuardedRegex`, `hasCatastrophicBacktrackingShape`) rejects a pattern over 256 characters or shaped like a known catastrophic-backtracking construct (`(a+)+`, `(.*)*`, …) before it is ever compiled. `@ifc-lite/extensions`'s bundle-test runner, which already had its own copy of this exact check, now imports the shared implementation instead of carrying a second one.
+  
+  A rejected pattern surfaces as a visible failure, not a silent non-match: an IDS specification whose pattern is rejected reports `status: 'fail'` with an `error` message (new optional field on `IDSSpecificationResult`) instead of reading as passing or not-applicable; the schema audit reports a new `E_REGEX_UNSAFE` issue; `BulkQueryEngine.select` and the entity-type resolver throw `UnsafeRegexPatternError`.
+  
+  This is a heuristic, not a complete defence — see the package's doc comment for what it does not catch.
+- Updated dependencies [[`de30321`](https://github.com/LTplus-AG/ifc-lite/commit/de303215ad631d54069067682f443ef33d7d37f3), [`8620be3`](https://github.com/LTplus-AG/ifc-lite/commit/8620be38be0162b7cbdbe23ae7bc924763b83612)]:
+  - @ifc-lite/regex-guard@0.2.0
+
 ## 0.6.0
 
 ### Minor Changes

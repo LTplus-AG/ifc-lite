@@ -56,6 +56,7 @@
  *   7. cargo metadata --locked   (rust-tests job, before Clippy/`cargo test`)
  *   8. plato clash-math freshness (plato-check job)          -- INFO only, see below
  *   9. committed wasm .d.ts vs Rust source (build job)        -- INFO only, see below
+ *   10. generate-coverage-ledger.mjs --check (node-tests, alongside gate 4; #4207)
  *
  * Steps deliberately NOT treated as a generated-artifact gate here, and why:
  *   - `pnpm fixtures:check` (build job) compares downloaded test-fixture
@@ -116,22 +117,18 @@
  *     setup, cargo + fixture caches, `rustup show`, artifact upload/download):
  *     no artifact comparison in any of them.
  *
- * (1)-(7) each need only a lockfile resolve (frozen-lockfile), a
- * single-package `turbo build` (bim-globals -> @ifc-lite/sandbox,
- * server-attr-indices -> @ifc-lite/parser), an already-built `dist/` across
- * all published packages (api-surface, unused-locals), or nothing at all
- * (docs-sections, cargo metadata), and run in well under two minutes total,
- * so they run unconditionally here — (7) is SKIPPED rather than run when
- * `cargo` isn't on PATH, since a frontend-only contributor's machine may not
- * have the Rust toolchain installed at all, and an absent binary is not
- * evidence of a stale lockfile. (2)-(4) are likewise SKIPPED on a tree with
- * no node_modules: they shell out through `pnpm run`, and without an install
- * they fail with `Command "turbo" not found`, which this script used to
- * report under the headline "Stale generated file(s) — regenerate and
- * commit". That named the wrong cause and offered a fix that could not
- * possibly work (#2664 review). (1) deliberately has no such precondition —
- * it is exactly the gate that still works, and still matters, on an
- * uninstalled tree.
+ * (1)-(7) each need only a lockfile resolve (frozen-lockfile), a single-package `turbo build`
+ * (bim-globals -> @ifc-lite/sandbox, server-attr-indices -> @ifc-lite/parser), an already-built
+ * `dist/` across all published packages (api-surface, unused-locals), or nothing at all
+ * (docs-sections, cargo metadata), and run in well under two minutes total, so they run
+ * unconditionally here — (7) is SKIPPED rather than run when `cargo` isn't on PATH, since a
+ * frontend-only contributor's machine may not have the Rust toolchain installed at all, and an
+ * absent binary is not evidence of a stale lockfile. (2)-(4) are likewise SKIPPED on a tree with
+ * no node_modules: they shell out through `pnpm run`, and without an install they fail with
+ * `Command "turbo" not found`, which this script used to report under the headline "Stale
+ * generated file(s) — regenerate and commit". That named the wrong cause and offered a fix that
+ * could not possibly work (#2664 review). (1) deliberately has no such precondition — it is
+ * exactly the gate that still works, and still matters, on an uninstalled tree.
  *
  * (8) and (9) are deliberately NOT run by default:
  *   - Plato clones `plato` + `ara3d-sdk` at pinned SHAs and does a `dotnet
@@ -504,6 +501,13 @@ if (FULL) {
   );
 }
 
+// 10. Coverage ledger (docs/architecture/coverage-ledger.md, #4207) — no build needed.
+// The generator names its own failure: "❌ ... is stale" wants a regenerate;
+// a thrown "missing source file" / "extractor found ZERO entries" wants the
+// named source or extractor fixed FIRST — regenerating cannot repair those.
+runGate('check:coverage-ledger', 'node', ['scripts/generate-coverage-ledger.mjs', '--check'],
+  'if the output says "is stale": node scripts/generate-coverage-ledger.mjs   (then commit docs/architecture/coverage-ledger.md); ' +
+    'if it names a missing source file or an extractor that found ZERO entries, fix that file/extractor first — regenerating cannot');
 hr();
 const failed = results.filter((r) => r.status === 'fail');
 const skipped = results.filter((r) => r.status === 'skip');

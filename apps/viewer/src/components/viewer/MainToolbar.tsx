@@ -1,7 +1,9 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { hasWorkspaceHistory, replayWorkspaceHistory } from '@/lib/model-placement/history';
 
+import { AuthorPanelMenuItems } from './toolbar/AuthorPanelMenuItems.js';
 import React, { useCallback, useMemo } from 'react';
 import {
   FolderOpen,
@@ -21,13 +23,10 @@ import {
   Grid3x3,
   HelpCircle,
   Loader2,
-  Camera,
   Info,
   Plus,
-  PackagePlus,
   MessageSquare,
   ClipboardCheck,
-  Puzzle,
   Palette,
   Orbit,
   Layout,
@@ -58,9 +57,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore } from '@/store';
@@ -68,7 +64,7 @@ import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeVi
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass, Box, Cloud } from 'lucide-react';
+import { FileSpreadsheet, Filter, Upload, Pencil, DraftingCompass, Box, Cloud } from 'lucide-react';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
@@ -151,18 +147,15 @@ function ToolButton({
  * in `useKeyboardShortcuts`.
  */
 function UndoRedoButtons() {
-  const activeModelId = useViewerStore((s) => s.activeModelId);
-  const undoStacks = useViewerStore((s) => s.undoStacks);
-  const redoStacks = useViewerStore((s) => s.redoStacks);
-  const undo = useViewerStore((s) => s.undo);
-  const redo = useViewerStore((s) => s.redo);
   // Undo/redo replay authoring mutations, so they honour the same collab
   // role gate as edit mode (null role = single-user, always editable).
   const collabRole = useViewerStore((s) => s.collabRole);
   const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
 
-  const canUndo = canEditInSession && activeModelId !== null && (undoStacks.get(activeModelId)?.length ?? 0) > 0;
-  const canRedo = canEditInSession && activeModelId !== null && (redoStacks.get(activeModelId)?.length ?? 0) > 0;
+  const hasUndo = useViewerStore(state => hasWorkspaceHistory(state, 'undo'));
+  const canUndo = canEditInSession && hasUndo;
+  const hasRedo = useViewerStore(state => hasWorkspaceHistory(state, 'redo'));
+  const canRedo = canEditInSession && hasRedo;
 
   return (
     <>
@@ -174,7 +167,7 @@ function UndoRedoButtons() {
             disabled={!canUndo}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
-              if (activeModelId) undo(activeModelId);
+              replayWorkspaceHistory(useViewerStore.getState(), 'undo');
             }}
             aria-label="Undo"
           >
@@ -193,7 +186,7 @@ function UndoRedoButtons() {
             disabled={!canRedo}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
-              if (activeModelId) redo(activeModelId);
+              replayWorkspaceHistory(useViewerStore.getState(), 'redo');
             }}
             aria-label="Redo"
           >
@@ -654,28 +647,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             </DropdownMenuCheckboxItem>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Author
-          </DropdownMenuLabel>
-          {/* Disabled for viewer/commenter roles, matching the ribbon. The
-              store rejects the tool change for them (`uiSlice`'s AUTHORING_TOOLS
-              gate), so an always-enabled item was a control that did nothing at
-              all when clicked, with nothing said about why. */}
-          <DropdownMenuCheckboxItem
-            checked={activeWorkspacePanels.has('addElement')}
-            disabled={!canEditInSession}
-            onCheckedChange={() => handleToggleRightPanel('addElement')}
-          >
-            <PackagePlus className="h-4 w-4 mr-2" />
-            Add Element
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem
-            checked={activeWorkspacePanels.has('extensions')}
-            onCheckedChange={() => handleToggleRightPanel('extensions')}
-          >
-            <Puzzle className="h-4 w-4 mr-2" />
-            Extensions
-          </DropdownMenuCheckboxItem>
+          <AuthorPanelMenuItems active={activeWorkspacePanels} canEdit={canEditInSession} onToggle={handleToggleRightPanel} />
           {(rightAnalysisExtensions.length > 0 || bottomAnalysisExtensions.length > 0) && (
             <>
               <DropdownMenuSeparator />

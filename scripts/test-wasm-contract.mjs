@@ -9,6 +9,7 @@
  * Focus on structural invariants, not exact values.
  */
 
+import { runAppearanceContracts } from './lib/wasm-appearance-contracts.mjs';
 import { runColdLoadContracts } from './lib/wasm-cold-load-contracts.mjs';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
@@ -117,6 +118,7 @@ function test(name, fn) {
   }
 }
 
+runAppearanceContracts(IfcAPI, test);
 // ===== IfcAPI initialization =====
 console.log('📋 IfcAPI initialization');
 
@@ -777,8 +779,10 @@ test('should handle truncated IFC content gracefully', () => {
 // ===== export boundary (Rust ifc-lite-export) =====
 console.log('\n📋 export (exportGlb / exportKmz)');
 
-// A real GLB from the column fixture — also the input the KMZ packer consumes.
-const glbBytes = api.exportGlb(new TextEncoder().encode(columnContent), false, new Uint32Array(), new Uint32Array(), '');
+// A real GLB from the column fixture (also the KMZ packer's input). `isolated` undefined = no filter (#4328).
+const glbBytes = api.exportGlb(new TextEncoder().encode(columnContent), false, new Uint32Array(), undefined, '');
+test('exportGlb: an empty isolation array is an ACTIVE filter and fails closed (NO_RENDER_GEOMETRY), not "no filter"', () =>
+  assert.throws(() => api.exportGlb(new TextEncoder().encode(columnContent), false, new Uint32Array(), new Uint32Array(), ''), /NO_RENDER_GEOMETRY/));
 
 test('exportGlb returns a binary glTF (GLB magic "glTF") with real meshes', () => {
   assert.ok(glbBytes instanceof Uint8Array, 'GLB should be a Uint8Array');

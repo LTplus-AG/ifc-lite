@@ -153,8 +153,10 @@ async fn corrupt_metadata_json_is_an_error_not_a_miss() {
     assert!(result.is_err(), "unparseable cached metadata must be an error");
 }
 
-/// Seed a data-model entry at the CURRENT payload version.
+/// Seed current data-model and symbolic entries for a replayable cache.
 async fn seed_current_data_model(state: &AppState, cache_key: &str) {
+    crate::routes::parse::cache_keys::cache_symbolic_data(&state.cache, cache_key,
+        &ifc_lite_processing::SymbolicDataWithProvenance::default()).await;
     state
         .cache
         .set_bytes(
@@ -354,7 +356,7 @@ async fn issue_4064_cached_complete_preserves_georeferencing_bits() {
     let cold = serde_json::to_string(&ParquetStreamEvent::Complete {
         stats: header.stats.clone(),
         metadata: header.metadata.clone(),
-        symbolic_data: SymbolicData::default(),
+        symbolic_data: SymbolicData::default().into(),
     }).unwrap();
     let triangle = crate::types::MeshData::new(
         42, "IfcWall".to_string(),
@@ -383,4 +385,21 @@ async fn issue_4064_cached_complete_preserves_georeferencing_bits() {
         assert_eq!(metadata.length_unit_scale.unwrap().to_bits(), 0.001_f64.to_bits());
     }
     assert_eq!(cold["metadata"], complete[0]["metadata"]);
+}
+
+#[tokio::test]
+async fn issue_4459_stale_symbolic_sidecar_refuses_stream_replay_until_refreshed() {
+    use super::cache_keys::{data_model_cache_key, symbolic_cache_key, cache_symbolic_data};
+    let state = test_state("4459-stale-symbolic").await;
+    let key = "4459-stale";
+    state.cache.set_bytes(&format!("{key}-parquet-v5"), &well_framed_blob(&[1,2,3])).await.unwrap();
+    state.cache.set_bytes(&format!("{key}-parquet-metadata-v4"),
+        &serde_json::to_vec(&sample_metadata_header(key, 1)).unwrap()).await.unwrap();
+    state.cache.set_bytes(&data_model_cache_key(key), b"current data model").await.unwrap();
+    state.cache.set_bytes(&format!("{key}-symbolic-v1"),
+        &serde_json::to_vec(&ifc_lite_processing::SymbolicData::default()).unwrap()).await.unwrap();
+    assert!(state.cache.get_bytes(&symbolic_cache_key(key)).await.unwrap().is_none());
+    assert!(try_cached_replay(&state, key, ParquetLayout::Flat).await.unwrap().is_none());
+    cache_symbolic_data(&state.cache, key, &ifc_lite_processing::SymbolicDataWithProvenance::default()).await;
+    assert!(try_cached_replay(&state, key, ParquetLayout::Flat).await.unwrap().is_some());
 }

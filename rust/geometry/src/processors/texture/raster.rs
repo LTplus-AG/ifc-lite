@@ -46,7 +46,7 @@ fn hex_val(b: u8) -> Option<u8> {
 /// hostile/garbage image header claiming larger dimensions is rejected BEFORE
 /// any pixel buffer is allocated, so a crafted file can't drive an OOM. Matches
 /// the `IfcPixelTexture` bound.
-pub(super) const MAX_TEX_DIM: u32 = 16384;
+pub const MAX_TEX_DIM: u32 = 16384;
 
 /// Decode a PNG byte buffer to RGBA8. Returns `(rgba, width, height)`.
 fn decode_png(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
@@ -150,3 +150,23 @@ pub(super) fn decode_raster_image(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
     }
     None
 }
+
+/// Inspect supported raster headers without decoding pixel buffers. Hosts that
+/// aggregate many embedded images can budget their allocations before decoding.
+/// A successful header read does not certify the compressed pixel stream.
+pub fn embedded_raster_dimensions(step_binary: &str) -> Option<(u32, u32)> {
+    let hex = step_binary.trim().trim_matches('"').as_bytes();
+    if hex.first() != Some(&b'0') { return None; }
+    super::raster_header::dimensions(hex.len().saturating_sub(1) / 2, |i| {
+        Some((hex_val(*hex.get(1 + i * 2)?)? << 4) | hex_val(*hex.get(2 + i * 2)?)?)
+    })
+}
+
+#[cfg(test)]
+fn raster_image_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    super::raster_header::dimensions(bytes.len(), |i| bytes.get(i).copied())
+}
+
+#[cfg(test)]
+#[path = "raster_budget_tests.rs"]
+mod budget_tests;

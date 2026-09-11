@@ -40,11 +40,13 @@ mod site_local;
 
 pub use quick_metadata::is_quick_spatial_type_ci;
 pub use site_local::convert_mesh_to_site_local;
+pub(crate) use site_local::site_local_rotation_invalidates_captured_transforms;
 
 use jobs::{build_color_updates_for_jobs, process_entity_job};
 
+pub(crate) use color_layer::resolve_element_color_for_product_definition_shape;
 use color_layer::{
-    collect_presentation_layer_assignments, resolve_element_color_for_product_definition_shape,
+    collect_presentation_layer_assignments,
     resolve_presentation_layer_for_product_definition_shape,
 };
 use opening_filter::apply_opening_filter;

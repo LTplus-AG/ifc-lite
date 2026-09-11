@@ -314,8 +314,14 @@ pub fn weld(mesh: &mut crate::Mesh, uvs: Option<Vec<f32>>) -> Option<Vec<f32>> {
 /// Weld a `Mesh`'s source vertices in place, from `apply_placement`, where the
 /// vertices are still in the object frame. See the module doc for why that is
 /// the frame that matters.
+///
+/// Stamps `welded_in_object_frame` regardless of whether `weld` actually
+/// merged anything: "already welded" and "nothing collided" both leave the
+/// buffers valid for `build_mesh_data`'s guard (#4122), and `weld_indexed`'s
+/// `None` is exactly the "no merge needed" signal, not a refusal to run.
 pub(crate) fn weld_mesh(mesh: &mut crate::Mesh) {
     weld(mesh, None);
+    mesh.welded_in_object_frame = true;
 }
 
 /// [`weld_mesh`] for a `SubMesh`, carrying its UVs through the same remap so they
@@ -323,6 +329,7 @@ pub(crate) fn weld_mesh(mesh: &mut crate::Mesh) {
 /// texture seam's coincident corners stay split (#961).
 pub(crate) fn weld_sub_mesh(sub: &mut crate::SubMesh) {
     sub.uvs = weld(&mut sub.mesh, sub.uvs.take());
+    sub.mesh.welded_in_object_frame = true;
 }
 
 #[cfg(test)]

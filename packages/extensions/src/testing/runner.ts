@@ -31,6 +31,11 @@ import type {
 } from '../types.js';
 import type { ActivationRecord, ExtensionRuntime } from '../host/runtime.js';
 import { wrapEntrySource } from '../host/source-wrap.js';
+import { checkRegexExpectation, defaultRegexEvaluator, type RegexEvaluator } from './regex-evaluator.js';
+
+// The `expect.regex` evaluator contract (#4482) lives in regex-evaluator.ts;
+// re-exported here so existing `./runner.js` importers keep working.
+export { defaultRegexEvaluator, type RegexEvalResult, type RegexEvaluator } from './regex-evaluator.js';
 
 export interface TestRunResult {
   name: string;
@@ -69,10 +74,18 @@ export interface RunBundleTestsOptions {
    * resolve it from an in-memory fixture map shipped with the app.
    */
   loadFixture?: (name: string) => Promise<unknown>;
+  /**
+   * Evaluate an `expect.regex` matcher. Defaults to `defaultRegexEvaluator`
+   * (synchronous, in-process `new RegExp(...).test(...)`), which is
+   * identical to the runner's behaviour before this option existed. A
+   * host that can run the check somewhere isolated (a Worker with a
+   * timeout, for instance) supplies its own evaluator here — see the
+   * module doc on `RegexEvaluator`.
+   */
+  evaluateRegex?: RegexEvaluator;
 }
 
 const DECODER = new TextDecoder();
-const MAX_REGEX_PATTERN_LENGTH = 256;
 
 /**
  * Preamble inlined into the wrapper IIFE when the fixture is a
@@ -129,7 +142,13 @@ export async function runBundleTests(
     const startedAt = performance.now();
     try {
       const record = await opts.runtime.activate(opts.bundle.manifest.id, opts.grants, opts.bundle);
-      const result = await runSingleTest(record, opts.bundle, test, opts.loadFixture);
+      const result = await runSingleTest(
+        record,
+        opts.bundle,
+        test,
+        opts.loadFixture,
+        opts.evaluateRegex ?? defaultRegexEvaluator,
+      );
       results.push({
         name: test.name,
         passed: result.passed,
@@ -167,7 +186,8 @@ async function runSingleTest(
   record: ActivationRecord,
   bundle: Bundle,
   test: ManifestTest,
-  loadFixture?: (name: string) => Promise<unknown>,
+  loadFixture: ((name: string) => Promise<unknown>) | undefined,
+  evaluateRegex: RegexEvaluator,
 ): Promise<SingleResult> {
   const entry = bundle.manifest.entry.commands?.[test.command];
   const declared = bundle.manifest.contributes?.commands?.some((c) => c.id === test.command);
@@ -242,7 +262,7 @@ async function runSingleTest(
 
   const runResult = await record.sandbox.run(wrapped.value, { filename: entry });
   const value = await Promise.resolve(runResult.value);
-  const matcher = applyExpectations(value, test.expect);
+  const matcher = await applyExpectations(value, test.expect, evaluateRegex);
   return {
     passed: matcher.passed,
     error: matcher.error,
@@ -255,7 +275,11 @@ async function runSingleTest(
  * Expectations accumulate — every failed matcher is reported in the
  * error string so authors don't have to fix-and-rerun for each one.
  */
-function applyExpectations(value: unknown, expect: ManifestTestExpect): SingleResult {
+async function applyExpectations(
+  value: unknown,
+  expect: ManifestTestExpect,
+  evaluateRegex: RegexEvaluator,
+): Promise<SingleResult> {
   const reasons: string[] = [];
 
   if (expect.mimeType !== undefined) {
@@ -282,32 +306,10 @@ function applyExpectations(value: unknown, expect: ManifestTestExpect): SingleRe
   }
 
   if (expect.regex !== undefined) {
-    const text = readText(value);
-    if (text === undefined) {
-      reasons.push(`regex: result has no text representation`);
-    } else if (expect.regex.length > MAX_REGEX_PATTERN_LENGTH) {
-      // Length cap is a shallow defence — pathological short patterns
-      // (`(a+)+$` is 7 chars and catastrophic) still get through. For
-      // registry-distributed extensions a real defence would run the
-      // regex in a Worker with a timeout, or use re2-wasm. v1 assumes
-      // manifest tests are author-trusted; harden this when remote
-      // bundles can land via the registry (RFC §10).
-      reasons.push(`regex: pattern exceeds ${MAX_REGEX_PATTERN_LENGTH}-char limit`);
-    } else if (hasRedosShape(expect.regex)) {
-      // Cheap shape check for the well-known catastrophic-backtracking
-      // patterns: `(...+)+`, `(...+)*`, `(.*)+`, `(.*)*` and their
-      // siblings. Surfaces obvious ReDoS in the test runner.
-      reasons.push(`regex: pattern has catastrophic-backtracking shape`);
-    } else {
-      try {
-        const re = new RegExp(expect.regex);
-        if (!re.test(text)) {
-          reasons.push(`regex: pattern ${expect.regex} did not match`);
-        }
-      } catch (err) {
-        reasons.push(`regex: invalid pattern ${expect.regex}: ${err instanceof Error ? err.message : err}`);
-      }
-    }
+    // Guards (length cap, catastrophic-backtracking shape) and the
+    // evaluator call live in regex-evaluator.ts.
+    const reason = await checkRegexExpectation(expect.regex, readText(value), evaluateRegex);
+    if (reason !== undefined) reasons.push(reason);
   }
 
   if (expect.jsonShape !== undefined) {
@@ -413,18 +415,6 @@ function jsonTypeOf(value: unknown): string {
   if (value === null) return 'null';
   if (Array.isArray(value)) return 'array';
   return typeof value;
-}
-
-/**
- * Cheap shape check for catastrophic-backtracking patterns. Catches
- * the textbook `(a+)+`, `(a*)*`, `(.+)+`, `(.+)*` shapes — a quantifier
- * directly wrapping a quantifier inside a group. Not exhaustive (a
- * determined adversary can still craft ReDoS), but rejects the
- * obvious ones at no runtime cost.
- */
-function hasRedosShape(pattern: string): boolean {
-  // Quantifier (+, *, {n,}) inside a group followed by another quantifier.
-  return /\([^()]*[+*][^()]*\)\s*[+*{]/.test(pattern);
 }
 
 function formatValue(value: unknown): string {

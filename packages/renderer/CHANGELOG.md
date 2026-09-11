@@ -1,5 +1,84 @@
 # @ifc-lite/renderer
 
+## 2.2.0
+
+### Minor Changes
+
+- [#4473](https://github.com/LTplus-AG/ifc-lite/pull/4473) [`bbec5c1`](https://github.com/LTplus-AG/ifc-lite/commit/bbec5c1a3d5c581c157f27946bf4b416470818de) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add `RenderOptions.selectedItemId` ([#4382](https://github.com/LTplus-AG/ifc-lite/issues/4382), a follow-up to [#2985](https://github.com/LTplus-AG/ifc-lite/issues/2985)/[#3526](https://github.com/LTplus-AG/ifc-lite/issues/3526)/[#3528](https://github.com/LTplus-AG/ifc-lite/issues/3528)): narrows `selectedId`'s highlight to a single representation item within the product, instead of the whole product.
+  
+  The renderer hydrates and highlights only the flat or GPU-instanced mesh pieces whose `geometryItemId` matches — the same id a pick already reports via `PickResult.geometryItemId`. Switching `selectedItemId` while `selectedId` stays the same (choosing another item within one still-selected product) disposes the stale item's hydrated piece and instanced selected flag before applying the new one, so the highlight replaces cleanly instead of accumulating. `selectedItemId` has no effect without `selectedId`, and only ever narrows `selectedId`'s own product: every OTHER product in `selectedIds` stays whole-product, matching rect/marquee select. If `selectedId`'s product also happens to be a member of `selectedIds` (e.g. it is the anchor of an extended multi-select), that one product is narrowed too — the filter tracks `selectedId`, not membership in `selectedIds`.
+
+- [#4472](https://github.com/LTplus-AG/ifc-lite/pull/4472) [`bb1c705`](https://github.com/LTplus-AG/ifc-lite/commit/bb1c705c56754e13b197c266e44f6ed715737432) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `SceneContents` (the scene surface `Renderer.getScene()` publishes) now exposes four `Scene` members an external consumer reported reaching for: `getMeshData`, `forEachMeshData`, `getEntityTransform`, `getEntityLocalBounds` ([#4357](https://github.com/LTplus-AG/ifc-lite/issues/4357)).
+  
+  All four were already public on the `Scene` class and reachable at runtime through the narrowed `getScene()` return type only by a cast; this is a type-only widening, and `SceneContents` still declares nothing `Scene` does not itself implement, so nothing about the existing published members changes.
+  
+  `getMeshData` is the single-mesh accessor `getMeshDataPieces` does not directly give (the first mesh piece carrying an entity's placement). `forEachMeshData` visits every flat mesh piece, for a consumer that needs the mesh data itself rather than only the id set `getAllMeshDataExpressIds` returns. `getEntityTransform` is the resolved local-to-world placement (row-major 4x4, `Float64Array`) for one entity. `getEntityLocalBounds` is an entity's bounds in its own pre-transform frame, unioned across occurrences — unlike `getEntityBoundingBox`, which is post-transform and world-axis-aligned and cannot be unioned meaningfully across differently-placed occurrences of the same entity.
+
+### Patch Changes
+
+- [#4391](https://github.com/LTplus-AG/ifc-lite/pull/4391) [`473ad56`](https://github.com/LTplus-AG/ifc-lite/commit/473ad56dbe17e958cf31cd9d6cb9bf6c08875649) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix sun shadow occluder collection treating an active-but-empty isolation set the same as no isolation, which let a fully isolated-out textured mesh or standalone mesh keep casting a phantom shadow instead of casting nothing.
+- Updated dependencies [[`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b), [`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b)]:
+  - @ifc-lite/geometry@5.0.0
+  - @ifc-lite/spatial@1.14.17
+
+## 2.1.0
+
+### Minor Changes
+
+- [#4450](https://github.com/LTplus-AG/ifc-lite/pull/4450) [`5580d5a`](https://github.com/LTplus-AG/ifc-lite/commit/5580d5a6fda38b88af3fe64bda19f9b6c995749e) Thanks [@louistrue](https://github.com/louistrue)! - Add detached multi-part authored-owner staging for native IFC geometry, preserving separate colours and optional textures in one scene publication. Reuse appearance GPU resource allocation and reject stale scene/placement publication.
+
+- [#4408](https://github.com/LTplus-AG/ifc-lite/pull/4408) [`dd91eb1`](https://github.com/LTplus-AG/ifc-lite/commit/dd91eb1580c117f15bc019275a669437c401ae15) Thanks [@louistrue](https://github.com/louistrue)! - Include textured surfaces in scene raycasts and magnetic snapping, preserving nearest-hit occlusion, model scoping, visibility and local origins. RaycastEngine accepts an optional textured-owner enumeration on custom scene adapters; existing SceneContents-only adapters remain compatible.
+
+- [#4283](https://github.com/LTplus-AG/ifc-lite/pull/4283) [`c4b7bc2`](https://github.com/LTplus-AG/ifc-lite/commit/c4b7bc2d9e1ecd84efaa02eafff705a46a2f4323) Thanks [@louistrue](https://github.com/louistrue)! - Add owned reversible appearance previews for finalized textured and untextured geometry, including shared batches. Preserve originals for cancellation, validate grouped commits before consumption, and return CPU-only before/after snapshots for application history.
+
+- [#4415](https://github.com/LTplus-AG/ifc-lite/pull/4415) [`e695110`](https://github.com/LTplus-AG/ifc-lite/commit/e695110acf4bb3e0b3a00324d0c819ccf8886097) Thanks [@louistrue](https://github.com/louistrue)! - Expose whether the last rendered frame applied section, terrain or box clipping so exact correspondence tools can refuse unsupported clipped raycasts.
+
+- [#4255](https://github.com/LTplus-AG/ifc-lite/pull/4255) [`bc26223`](https://github.com/LTplus-AG/ifc-lite/commit/bc26223b5b7e09c8bafcdf7f95afafe033622867) Thanks [@louistrue](https://github.com/louistrue)! - Support absolute model and pointcloud translations without rewriting mesh or scan vertices. Keep model draw origins independent, compose scan alignment and manual offsets in double precision, and retain placement bounds after CPU geometry release. Streaming pointcloud callers can choose a nearby decode origin before narrowing coordinates to float32.
+
+- [#4431](https://github.com/LTplus-AG/ifc-lite/pull/4431) [`b6d65a9`](https://github.com/LTplus-AG/ifc-lite/commit/b6d65a9885b2f8e7a4b5d8c6cd2c572a405dda58) Thanks [@louistrue](https://github.com/louistrue)! - Allow explicitly declared geometry-item remaps in appearance previews while preserving exact geometry and ownership checks. Integrate opt-in mapped-occurrence conversion into image/PDF appearance with conversion disclosure, portable textures and one reversible Apply transaction.
+
+- [#4456](https://github.com/LTplus-AG/ifc-lite/pull/4456) [`d4648ad`](https://github.com/LTplus-AG/ifc-lite/commit/d4648adb76466633733236087e527ff3e3780d81) Thanks [@louistrue](https://github.com/louistrue)! - Allow explicitly opted-in occurrence appearance conversion to preserve evaluated opening cuts, with bounded original opening geometry in the native plan. Add reversible companion presence transitions to renderer appearance transactions so preview, cancellation and history restore exact original geometry.
+
+- [#4281](https://github.com/LTplus-AG/ifc-lite/pull/4281) [`e9f7ee8`](https://github.com/LTplus-AG/ifc-lite/commit/e9f7ee83bd2e537a8ece4e80c4440a3c615d4359) Thanks [@louistrue](https://github.com/louistrue)! - Map authored UVs to canonical triangle corners while preserving streaming provenance and welded-vertex seams. Stage batch GPU allocations with complete cleanup before publishing a replacement.
+
+- [#4376](https://github.com/LTplus-AG/ifc-lite/pull/4376) [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb) Thanks [@louistrue](https://github.com/louistrue)! - Add prepared textured-owner insertion so native annotation creation can upload GPU resources before publishing IFC and history, with deterministic cancellation cleanup.
+
+- [#4418](https://github.com/LTplus-AG/ifc-lite/pull/4418) [`22f3f0d`](https://github.com/LTplus-AG/ifc-lite/commit/22f3f0d0d6e5088908107a183a883b87c35c4ddf) Thanks [@louistrue](https://github.com/louistrue)! - Add reversible, model-owned instance retention for occurrence appearance replacement. Suppressed originals retain their shared geometry and selection state while CPU geometry enumeration and picking exclude them; releasing the lease restores ordinary visibility.
+
+- [#4375](https://github.com/LTplus-AG/ifc-lite/pull/4375) [`fedb41a`](https://github.com/LTplus-AG/ifc-lite/commit/fedb41aeec7d84ab54bb39625c4056ff95264269) Thanks [@louistrue](https://github.com/louistrue)! - Add registered raster references with separate string identity, scene-depth rendering, cancellable GPU uploads and independent picking.
+
+- [#4175](https://github.com/LTplus-AG/ifc-lite/pull/4175) [`ef70500`](https://github.com/LTplus-AG/ifc-lite/commit/ef70500d316a454b3e668d943ae95430c2cfe53c) Thanks [@Blogbotana](https://github.com/Blogbotana)! - X-Ray now fades the entities named in `RenderOptions.transparencyOverrides` / `ghostExceptIds`, not their whole colour batch ([#4129](https://github.com/LTplus-AG/ifc-lite/issues/4129)).
+  
+  Flat geometry is drawn as merged colour batches with one uniform alpha per draw, so an override on a single entity used to fade every batchmate that happened to share its colour — a consumer asking to X-Ray one roof slab got the whole roof, and anything keyed on its own X-Ray set (picking, counts, exports) then disagreed with what was on screen. That was the documented contract; this changes it.
+  
+  A batch whose entities no longer resolve to one alpha is now partitioned into one cached sub-batch per distinct alpha, reusing the same partial sub-batch machinery that already draws a subset of a batch under hide/isolate and colour-override promotion. No vertex format, shader, or pipeline change, and a batch that needs no split still draws exactly as before.
+  
+  Where a batch cannot be partitioned — its CPU geometry was released or evicted, it is colour-merged (many entities per `MeshData`, tagged per vertex), or it carries more than 8 distinct alphas — the renderer falls back to the previous whole-batch minimum alpha, so degrading fades too widely, never drops geometry. `ghostExceptIds` gains the same granularity: an excepted entity sharing a batch with ghosted ones now stays solid on its own, without having to be co-selected.
+  
+  Two ordering fixes come with it, both reachable before this change: partial sub-batches are cached per requesting slot rather than per colour, so two slots trading id sets between frames can no longer destroy a clone the other is drawing from; and transparent sub-batches are drawn after every opaque one in that pass, since a ghost writes no depth and an opaque draw landing after it painted straight over it.
+  
+  The sub-batch cache epoch now also carries the SELECTION set, because selection exempts an entity from fading and therefore decides which subset it lands in. The cache's fast path returns a cached clone without re-reading the id set it was handed, so an input missing from the epoch surfaced as a stale subset on screen rather than an extra rebuild. Selection only counts while X-Ray is active, so ordinary clicks still cost nothing.
+  
+  Alpha-split slots orphaned by an X-Ray edit — a batch that stops needing a split, or a group count that shrinks — are now retired on the frame the state changes, instead of being pinned until hide/isolate and X-Ray are all switched off. These clones sit outside the GPU residency budget, so nothing else would have reclaimed them during a long X-Ray session.
+  
+  Rebuilding a colour batch now releases its cached sub-batches too. A slot key embeds the batch id and the replacement gets a fresh one, so the old clones were stranded with live GPU buffers — reachable whenever more geometry landed in a bucket while hide/isolate was on, such as a federated model add. Every other batch-destroying path already cleared the cache; this one did not.
+
+### Patch Changes
+
+- [#4230](https://github.com/LTplus-AG/ifc-lite/pull/4230) [`5e66c93`](https://github.com/LTplus-AG/ifc-lite/commit/5e66c93d98ddb3ec75ebe7e819d6ea15aa2b03c1) Thanks [@louistrue](https://github.com/louistrue)! - Preserve UVs and shared texture resources when large meshes are split for streaming, fixing white rendering of textured captured objects above the fragment limit.
+  
+  Hydrate picking geometry for models containing only textured meshes, making captured objects selectable by click and rectangle selection.
+  
+  Share decoded RGBA textures across surfaces and streaming fragments with reference-counted GPU ownership.
+
+- [#4217](https://github.com/LTplus-AG/ifc-lite/pull/4217) [`f33ac74`](https://github.com/LTplus-AG/ifc-lite/commit/f33ac74dd0578792327f684ba5ca59f050458c65) Thanks [@louistrue](https://github.com/louistrue)! - Add the missing MPL-2.0 file headers these packages ship without ([#4087](https://github.com/LTplus-AG/ifc-lite/issues/4087)).
+  
+  `packages/renderer/src/{bvh,raycaster,snap-detector}.ts`, `packages/geometry/src/huge-file-error.ts` and three test files carried no license notice at all. `scripts/add-license-headers.mjs --check` now runs in CI, so the omission cannot recur. No behaviour, API surface or output changes: every edit is a four-line comment at the top of a file.
+
+- [#4340](https://github.com/LTplus-AG/ifc-lite/pull/4340) [`5a01e5a`](https://github.com/LTplus-AG/ifc-lite/commit/5a01e5abe220f21ae5233045c6e9cfc5aa37a4e3) Thanks [@louistrue](https://github.com/louistrue)! - Keep construction projection scoped to the same floor after repositioning a model. Remove unused declarations left after the atomic-overlay and batch-upload refactors, and clarify the renderer contract for rebuilding surviving instance bounds during a flat-geometry reset.
+- Updated dependencies [[`f33ac74`](https://github.com/LTplus-AG/ifc-lite/commit/f33ac74dd0578792327f684ba5ca59f050458c65), [`7427343`](https://github.com/LTplus-AG/ifc-lite/commit/742734300487f78df8192dc6fd4126615b63b966), [`a6976b9`](https://github.com/LTplus-AG/ifc-lite/commit/a6976b9da44d13157533372a8def23995fcfb93f)]:
+  - @ifc-lite/geometry@4.4.0
+
 ## 2.0.1
 
 ### Patch Changes

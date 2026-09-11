@@ -136,6 +136,9 @@ describe('runClash: rule membership', () => {
       matchedKeysB: [],
       fromMembersA: true,
       fromMembersB: true,
+      // EmptyKernel reports 0 candidatesProcessed; runClash threads it onto
+      // the coverage entry regardless (#4244).
+      candidatesExamined: 0,
     });
   });
 
@@ -147,6 +150,9 @@ describe('runClash: rule membership', () => {
       matchedB: 2,
       matchedKeysA: ['wall-1', 'wall-2'],
       matchedKeysB: ['duct-1', 'duct-2'],
+      // EmptyKernel reports 0 candidatesProcessed; runClash threads it onto
+      // the coverage entry regardless (#4244).
+      candidatesExamined: 0,
     });
   });
 

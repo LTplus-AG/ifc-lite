@@ -430,13 +430,13 @@ export class IfcLiteBridge {
 
   /**
    * Export the render geometry in `content` as a Wavefront OBJ string.
-   * `hidden` / `isolated` are express-id visibility filters (empty `isolated` ⇒ all).
+   * `isolated`: `undefined` ⇒ no filter; empty `Uint32Array` ⇒ active but matching nothing.
    */
   exportObj(
     content: Uint8Array,
     includeNormals = true,
     hidden: Uint32Array = new Uint32Array(),
-    isolated: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array | undefined = undefined,
   ): Uint8Array {
     return this.runExport('exportObj', content, (api) =>
       api.exportObj(content, includeNormals, hidden, isolated),
@@ -466,16 +466,16 @@ export class IfcLiteBridge {
   }
 
   /**
-   * Export the render geometry in `content` as a binary glTF (GLB).
-   * `hiddenTypesCsv` is a comma-separated IFC-type visibility filter. `emissive`
-   * self-illuminates each material at its base colour for renderers without
-   * ambient/IBL (Google Earth) — see #1427.
+   * Export the render geometry in `content` as a binary glTF (GLB). `emissive`
+   * self-illuminates each material for renderers without ambient/IBL (#1427).
+   * `isolated`: `undefined` ⇒ no filter; empty `Uint32Array` ⇒ active but
+   * matching nothing, i.e. hide every mesh — don't collapse the two (#4328).
    */
   exportGlb(
     content: Uint8Array,
     includeMetadata = false,
     hidden: Uint32Array = new Uint32Array(),
-    isolated: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array | undefined = undefined,
     hiddenTypesCsv = '',
     lit = true,
     emissive = false,

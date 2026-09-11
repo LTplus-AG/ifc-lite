@@ -28,8 +28,17 @@ impl IfcAPI {
     ///
     /// `hidden` / `isolated` are express-id visibility filters; `hidden_types_csv` is a
     /// comma-separated list of IFC type names whose class toggle is off (e.g.
-    /// `"IfcOpeningElement,IfcSpace"`). `include_metadata` attaches counts + per-node
-    /// `expressId`. Per-mesh RTC origin rides the node translation (precision-safe).
+    /// `"IfcOpeningElement,IfcSpace"`). `isolated` carries the isolation allowlist's
+    /// null-vs-empty distinction across the wasm boundary: omit it (`undefined`) for
+    /// "no isolation filter" (every mesh is a candidate); pass an empty `Uint32Array`
+    /// for "isolation is ACTIVE and currently matches nothing" (every mesh is
+    /// excluded). Collapsing the two — as a bare `Uint32Array` parameter would force a
+    /// caller to do — silently exports the whole model when a filter matches nothing
+    /// (#4328 follow-up: reachable by filtering the Class tab to a type present only
+    /// in a federated model's secondary member, then exporting "Visible Only"). A
+    /// non-empty `Uint32Array` is the ordinary allowlist. `include_metadata` attaches
+    /// counts + per-node `expressId`. Per-mesh RTC origin rides the node translation
+    /// (precision-safe).
     /// `lit` emits standard PBR materials that shade from normals; omitted or
     /// `true` ⇒ lit (the default), `false` ⇒ flat `KHR_materials_unlit` (the
     /// historical look — #1321). Optional at the boundary so older 5-arg callers
@@ -50,7 +59,7 @@ impl IfcAPI {
         content: &[u8],
         include_metadata: bool,
         hidden: &[u32],
-        isolated: &[u32],
+        isolated: Option<Vec<u32>>,
         hidden_types_csv: String,
         lit: Option<bool>,
         emissive: Option<bool>,
@@ -63,7 +72,7 @@ impl IfcAPI {
         let opts = ifc_lite_export::GltfOptions::default()
             .with_include_metadata(include_metadata)
             .with_hidden(hidden.to_vec())
-            .with_isolated(isolated.to_vec())
+            .with_isolated(isolated)
             .with_hidden_types(hidden_types)
             .with_lit(lit.unwrap_or(true))
             .with_emissive(emissive.unwrap_or(false))

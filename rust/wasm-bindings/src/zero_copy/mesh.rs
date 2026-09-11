@@ -439,6 +439,7 @@ impl MeshDataJs {
             // `new` applies the same Z-up→Y-up swap it applies to positions/origin.
             local_bounds: m.local_bounds,
             local_to_world: m.local_to_world,
+            welded_in_object_frame: false,
         };
         let mut js = Self::new(m.express_id, m.ifc_type, mesh, m.color);
         js.set_geometry_class(m.geometry_class);

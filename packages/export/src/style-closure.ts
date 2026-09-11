@@ -20,9 +20,11 @@
 import type { IfcSourceBytes } from '@ifc-lite/parser';
 import { collectRefsInByteRange } from './reference-collector.js';
 import { isGeometryEntity } from './step-geometry-types.js';
+import { TEXTURE_MAP_TYPES, textureMapTarget } from './texture-map-closure.js';
+import type { EffectiveEntityIndex } from './effective-index.js';
 
 /**
- * The four entity classes `collectStyleEntities` rescues. Exported so
+ * The inverse presentation entity classes `collectStyleEntities` rescues. Exported so
  * `step-source-iteration.ts` can apply the SAME dangling-ref-safe line
  * filter (`filterHiddenRefsFromRelationshipLine`) to a rescued entity's own
  * output line as it already does for `IFCREL*` — a rescued
@@ -35,6 +37,7 @@ export const STYLE_RESCUE_TYPES: ReadonlySet<string> = new Set([
   'IFCSTYLEDREPRESENTATION',
   'IFCPRESENTATIONLAYERASSIGNMENT',
   'IFCPRESENTATIONLAYERWITHSTYLE',
+  ...TEXTURE_MAP_TYPES,
 ]);
 
 /**
@@ -119,6 +122,7 @@ export function collectStyleEntities(
       get(expressId: number): { type: string; byteOffset: number; byteLength: number } | undefined;
       has(expressId: number): boolean;
       refsOf?(expressId: number): readonly number[] | undefined;
+      refGroupsOf?: EffectiveEntityIndex['refGroupsOf'];
     };
     byType: Map<string, number[]>;
   },
@@ -162,6 +166,16 @@ export function collectStyleEntities(
         closure.add(expressId);
         queue.push(expressId);
       }
+    }
+  }
+
+  // Texture maps are inverse attachments too, but sharing an image never
+  // proves that their MappedTo geometry is visible (#4243).
+  for (const type of TEXTURE_MAP_TYPES) {
+    for (const id of entityIndex.byType.get(type) ?? []) {
+      if (closure.has(id) || excludeIds?.has(id) || !entityIndex.byId.has(id)) continue;
+      const target = textureMapTarget(source, entityIndex.byId, id);
+      if (target !== undefined && closure.has(target)) { closure.add(id); queue.push(id); }
     }
   }
 

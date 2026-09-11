@@ -5,9 +5,23 @@
 name: Server Binaries
 
 on:
-  # push:main intentionally dropped — branch-protected PR runs already
-  # validate the same SHA, and the release event re-validates before
-  # uploading binaries. See PR that introduced this change.
+  # TWO LANES (CI redesign, step 8). A pull request validates the ONE leg a
+  # merge most plausibly breaks (linux-x64, native); the cross legs
+  # (linux-arm64, linux-x64-musl) validate on push to `main`, where
+  # `report-red-on-main` opens or updates an issue if they fail. push:main
+  # was once dropped because PR runs validated the same SHA; it is back
+  # precisely because PR runs no longer validate the whole matrix.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/server-binaries.yml'
+      - '.github/workflows/release.yml'
+      - '.cargo/**'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - 'apps/server/**'
+      - 'rust/**'
+      - 'rust-toolchain.toml'
   pull_request:
     paths:
       - '.github/workflows/server-binaries.yml'
@@ -51,11 +65,111 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # The PR lane: the native leg only. scripts/check-server-bin-targets.mjs
+        # reads this list as the deliberate cost-saving SUBSET of the release
+        # matrix; the cross legs are `validate-server-binaries-cross` below.
         include:
           - target: linux-x64
             os: ubuntu-latest
             rust-target: x86_64-unknown-linux-gnu
             archive: tar.gz
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Setup Rust
+        # Pin to a master-branch SHA + explicit `toolchain: stable`;
+        # see docs.yml note for rationale on the pinning strategy.
+        #
+        # `toolchain: stable` here names what gets INSTALLED (and what
+        # `targets:` below adds the target std for) — it is NOT what actually
+        # compiles this crate. The repo's `rust-toolchain.toml` pins nightly,
+        # and rustup's per-directory toolchain file always wins over
+        # `rustup default` (which is all this action sets); every `cargo`
+        # invocation below runs on the pinned nightly regardless of this
+        # `stable` input. Confirmed locally: `rustup default stable` followed
+        # by `rustc --version` inside a checkout of this repo still reports
+        # the nightly pinned in rust-toolchain.toml, with rustup noting the
+        # override. See the CARGO_UNSTABLE_BUILD_STD env var on the "Build
+        # Server Binary" step below for the consequence: the aarch64/cross-arch
+        # target std was only ever installed for `stable`, never for the
+        # nightly that actually runs, so those targets need std rebuilt from
+        # source instead of relying on a prebuilt one that was never fetched.
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-05
+        with:
+          toolchain: stable
+          targets: ${{ matrix.rust-target }}
+
+      - name: Install cross
+        if: matrix.target == 'linux-x64-musl'
+        uses: taiki-e/install-action@b47b3b9ab771927700bcf4ef8a4f79e1d7c9a8cd # cross (snapshot pinned 2026-05)
+
+      - name: Install Linux Cross-Compilation Tools
+        if: matrix.cross == true && runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Install musl Tools
+        if: matrix.target == 'linux-x64-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools musl-dev
+
+      - name: Build Server Binary
+        # Force bash so the if/else runs under Git Bash on Windows runners too
+        # (default shell there is PowerShell, which choked on the POSIX test →
+        # win32-x64 release build failed with a ParserError).
+        shell: bash
+        run: |
+          if [ "${{ matrix.target }}" = "linux-x64-musl" ]; then
+            cross build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
+          else
+            # See the "Setup Rust" step above: this actually runs on the
+            # nightly pinned by rust-toolchain.toml, not the `stable` named
+            # there, so cross-arch legs (linux-arm64, darwin-x64 on the
+            # arm64 macos-14 runner) need their target's std rebuilt from
+            # source — it was never installed for nightly. Was previously
+            # papered over by a global `[unstable] build-std` in
+            # .cargo/config.toml (removed — see scripts/build-wasm.sh);
+            # scoped here instead. It rebuilds std from source on every
+            # non-`cross` leg, including the host-matching ones
+            # (linux-x64, darwin-arm64, win32-x64) — build-std doesn't
+            # check for a prebuilt std first, so it's redundant there, not
+            # a no-op. That matches what `main`'s global build-std already
+            # did for all of them; narrowing it to just the cross-arch legs
+            # is deliberate follow-up work, not done here. Deliberately NOT
+            # set for the `cross build` branch above: that runs inside
+            # `cross`'s own Docker image with its own toolchain setup,
+            # wasn't reported broken, and forwarding host env vars into
+            # that container isn't verified here.
+            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
+          fi
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+      # The `cargo build` step above is the validation — it fails the job
+      # if the binary doesn't compile. We deliberately don't archive or
+      # upload the binary here: nothing downloads a PR-run server binary,
+      # and 90-day-retained artifacts on every Rust PR were burning Actions
+      # storage credits for no benefit.
+
+  # The cross legs, OFF the PR lane (push to main, release, dispatch). Same
+  # steps as `validate-server-binaries`, kept verbatim: workflow YAML has no
+  # include, and the PR job's matrix has to stay a literal list for the
+  # server-bin targets gate to read.
+  validate-server-binaries-cross:
+    name: Validate Server Binary (${{ matrix.target }})
+    if: github.event_name != 'pull_request'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           - target: linux-arm64
             os: ubuntu-latest
             rust-target: aarch64-unknown-linux-gnu
@@ -149,6 +263,35 @@ jobs:
       # upload the binary here: nothing downloads a PR-run server binary,
       # and 90-day-retained artifacts on every Rust PR were burning Actions
       # storage credits for no benefit.
+
+  # A red push to main must not scroll by. One issue per workflow, updated
+  # rather than duplicated while it is open; closed by whoever fixes it.
+  report-red-on-main:
+    name: Open an issue when main is red
+    needs: [validate-server-binaries, validate-server-binaries-cross]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.validate-server-binaries.result == 'failure' || needs.validate-server-binaries-cross.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          title="ci: server-binaries is red on main"
+          body="The server binary validation failed on push to main at ${SHA} (only the linux-x64 leg runs on pull requests, so this is the first build of the cross legs for this change). Run: ${RUN_URL}"
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number,title --jq "[.[] | select(.title == \"$title\") | .number] | first // empty")
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+            echo "updated #$existing"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
 
   release-server-binaries:
     name: Release Server Binary (${{ matrix.target }})

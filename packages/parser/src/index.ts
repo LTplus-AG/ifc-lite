@@ -51,7 +51,7 @@ export type { IfcSourceBytes, IfcSourceTransfer } from './source-bytes.js';
 export { CompactEntityIndex, CompactEntityIndexBuilder, buildCompactEntityIndex } from './compact-entity-index.js';
 export { scanIfcEntities } from './entity-scanner.js';
 export type { EntityScanPath, EntityScanResult, PreScannedEntityIndex, WasmScanApi } from './entity-scanner.js';
-export { REL_TYPE_MAP, RELATIONSHIP_TYPES, isIfcTypeLikeEntity } from './columnar-parser-indexes.js';
+export { REL_TYPE_MAP, isIfcTypeLikeEntity } from './columnar-parser-indexes.js';
 export { IFC_SUBTYPES, expandTypes, QUERY_REL_TYPE_MAP } from './query-backend-maps.js';
 export { PropertyExtractor } from './property-extractor.js';
 export { QuantityExtractor } from './quantity-extractor.js';
@@ -71,10 +71,11 @@ export {
 } from './project-units.js';
 export { quantitySiScale } from './quantity-collect.js';
 export { scaleMeasureValue, scaledPropertyValue, roundToScale } from './measure-unit-scale.js';
-export { ColumnarParser, type IfcDataStore, type EntityByIdIndex, extractPropertiesOnDemand, extractQuantitiesOnDemand, extractEntityAttributesOnDemand, extractAllEntityAttributes, getRawNamedAttributes, extractRootAttributesFromEntity, extractClassificationsOnDemand, extractClassificationSystemsOnDemand, extractMaterialsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractMaterialPropertiesForMaterialId, resolveMaterialDefId, resolveAllMaterialDefIds, collectMaterialLeaves, buildMaterialUsageIndex, getMaterialDisplay, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractTypeQuantitiesOnDemand, mergeInheritedPropertySets, mergeInheritedQuantitySets, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGroupMembersOnDemand, extractGeoreferencingOnDemand, type ClassificationInfo, type ClassificationSystemNames, type MaterialInfo, type MaterialLayerInfo, type MaterialProfileInfo, type MaterialConstituentInfo, type MaterialPsetGroup, type MaterialLeaf, type MaterialUsage, type TypePropertyInfo, type TypeQuantityInfo, type DocumentInfo, type EntityRelationships, type GroupMember } from './columnar-parser.js';
+export { ColumnarParser, type IfcDataStore, type EntityByIdIndex, extractPropertiesOnDemand, extractQuantitiesOnDemand, extractEntityAttributesOnDemand, extractAllEntityAttributes, getRawNamedAttributes, extractRootAttributesFromEntity, extractClassificationsOnDemand, extractClassificationSystemsOnDemand, extractMaterialsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractMaterialPropertiesForMaterialId, resolveMaterialDefId, resolveAllMaterialDefIds, collectMaterialLeaves, buildMaterialUsageIndex, getMaterialDisplay, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractTypeQuantitiesOnDemand, mergeInheritedPropertySets, mergeInheritedQuantitySets, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGroupMembersOnDemand, extractGroupAssignmentFactorOnDemand, extractGeoreferencingOnDemand, type ClassificationInfo, type ClassificationSystemNames, type MaterialInfo, type MaterialLayerInfo, type MaterialProfileInfo, type MaterialConstituentInfo, type MaterialPsetGroup, type MaterialLeaf, type MaterialUsage, type TypePropertyInfo, type TypeQuantityInfo, type DocumentInfo, type EntityRelationships, type GroupMember } from './columnar-parser.js';
 export type { IfcStoreBase, IfcSourceHeader, SpatialHierarchy, EntityTable } from '@ifc-lite/data';
 export { parseSourceHeader } from './source-header.js';
 export { attachDataStoreAccessors, type IfcStoreData } from './data-store-accessors.js';
+export { buildDropCensus, type DropCensus, type DropCensusInput, type ClassCensusEntry, type DropCategory } from './drop-census.js';
 export { createSyntheticDataStore, type SyntheticDataStoreOptions, type SyntheticEntity } from './synthetic-data-store.js';
 // WorkerParser is browser-only due to Vite worker imports
 // Import from '@ifc-lite/parser/browser' instead
@@ -124,6 +125,27 @@ export {
   type TaskDurationType,
 } from './schedule-extractor.js';
 
+// Structural analysis extractor — IfcStructuralAnalysisModel, the
+// IfcStructuralMember / IfcStructuralConnection / IfcStructuralActivity
+// branches, IfcStructuralLoadGroup / IfcStructuralLoadCase,
+// IfcStructuralResultGroup, IfcBoundaryCondition, and the two structural
+// connects-relationships.
+export {
+  extractStructuralOnDemand,
+  type StructuralExtraction,
+  type StructuralAnalysisModelInfo,
+  type StructuralMemberInfo,
+  type StructuralConnectionInfo,
+  type StructuralActivityInfo,
+  type StructuralLoadGroupInfo,
+  type StructuralResultGroupInfo,
+  type StructuralLoadInfo,
+  type StructuralLoadConfigurationInfo,
+  type StructuralLoadConfigurationEntry,
+  type StructuralLoadDropReason,
+  type BoundaryConditionInfo,
+} from './structural-extractor.js';
+
 // IFC4 STEP serializer for schedule entities — produces ready-to-splice
 // `#N=IFC...(...)` lines from a `ScheduleExtraction`.
 export {
@@ -131,6 +153,19 @@ export {
   type SerializeScheduleOptions,
   type SerializeScheduleResult,
 } from './schedule-serializer.js';
+
+// Cost (5D) extractor — IfcCostItem, IfcCostValue, IfcCostSchedule, IfcRelNests,
+// IfcRelAssignsToControl. Read model + extraction only (#4322).
+export {
+  extractCostOnDemand,
+} from './cost-extractor.js';
+export type {
+  CostExtraction,
+  CostItemInfo,
+  CostScheduleInfo,
+  CostValueInfo,
+  CostValueUnitBasis,
+} from './cost-types.js';
 
 // Signed ISO 8601 duration codec — shared by the schedule extractor (decode)
 // and serializer (encode), and by any other schedule consumer that needs to
@@ -146,6 +181,11 @@ export { deterministicGlobalId } from './deterministic-global-id.js';
 
 // Generated IFC4 schema (100% coverage - 776 entities, 397 types, 207 enums)
 export { SCHEMA_REGISTRY, getEntityMetadata, getAllAttributesForEntity, getInheritanceChainForEntity, isKnownEntity } from './generated/schema-registry.js';
+export {
+  getSchemaRegistryForVersion,
+  type SchemaVersionWithRegistry,
+  type SchemaRegistry,
+} from './generated/schema-registry-by-version.js';
 export type * from './generated/entities.js';
 export * from './generated/enums.js';
 

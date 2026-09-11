@@ -22,9 +22,22 @@ pub fn fixture_path(relative: &str) -> PathBuf {
 }
 
 /// Load a fixture if present; return `None` so callers can skip gracefully.
+///
+/// Distinguishes a genuinely absent file from a broken read. `NotFound` is
+/// the fresh-clone case (`pnpm fixtures` not run yet) and is the only case
+/// callers should treat as skippable; any other `io::Error` (permission
+/// denied, corrupt read, ...) means the environment is broken rather than
+/// merely missing an optional download, so it panics unconditionally. This
+/// helper does not itself consult `IFC_LITE_REQUIRE_FIXTURES` — each caller
+/// asserts `!support::require_fixtures()` before treating `None` as a skip,
+/// matching the pattern the rest of this crate's fixture-backed tests use.
 pub fn load_fixture(relative: &str) -> Option<String> {
     let path = fixture_path(relative);
-    fs::read_to_string(&path).ok()
+    match fs::read_to_string(&path) {
+        Ok(content) => Some(content),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => panic!("fixture {} exists but could not be read: {e}", path.display()),
+    }
 }
 
 /// Find the express ID of an entity by GUID (attribute index 0).

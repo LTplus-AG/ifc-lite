@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { assertModelTranslation } from '../model-translation.js';
 
 /**
  * Manages point cloud assets in the renderer.
@@ -16,12 +17,12 @@
  */
 
 import type { PointCloudAsset } from '@ifc-lite/geometry';
+import { PointCloudPlacements, unionPointCloudBounds } from './point-cloud-placement.js';
 import { PointRenderPipeline, POINT_QUAD_VERTS, POINT_UNIFORM_SIZE } from './point-pipeline.js';
 import {
   appendChunkToNode,
   createNode,
-  destroyNode,
-  transformAabb,
+  destroyNode, clearOwnedPointCloudNodes,
   uploadAssetToGpu,
   type PointCloudChunkInput,
   type PointCloudNode,
@@ -132,6 +133,8 @@ type NodeOwner = 'ifcx' | 'streamed';
 export class PointCloudRenderer {
   private device: GPUDevice;
   private pipeline: PointRenderPipeline;
+  private placements = new PointCloudPlacements();
+  private modelTranslations = new Map<number, readonly [number, number, number]>();
   private nodes = new Map<number, PointCloudNode>();
   private nodeOwners = new Map<number, NodeOwner>();
   private nextHandleId = 1;
@@ -186,9 +189,7 @@ export class PointCloudRenderer {
   }
 
   getOptions(): Readonly<ResolvedPointCloudRenderOptions> {
-    // Snapshot the mask — handing out the live Uint32Array would let
-    // callers mutate renderer visibility without going through
-    // setOptions.
+    // Snapshot the mask so callers cannot mutate visibility outside setOptions.
     return { ...this.options, classMask: this.options.classMask.slice() };
   }
 
@@ -201,6 +202,7 @@ export class PointCloudRenderer {
   setAssets(assets: ReadonlyArray<PointCloudAsset>): void {
     this.clearOwner('ifcx');
     for (const asset of assets) {
+      if (asset.chunk.pointCount === 0) continue; // streamed identity descriptors carry no geometry
       this.addAsset(asset);
     }
   }
@@ -210,6 +212,7 @@ export class PointCloudRenderer {
     const id = this.nextHandleId++;
     this.nodes.set(id, node);
     this.nodeOwners.set(id, 'ifcx');
+    this.placements.translate(node, this.modelTranslations.get(asset.modelIndex ?? 0) ?? [0, 0, 0]);
     return { id };
   }
 
@@ -260,37 +263,56 @@ export class PointCloudRenderer {
     node.meta.expressId = newExpressId >>> 0;
   }
 
-  /**
-   * Set (or clear) a streamed asset's per-vertex GPU model matrix
-   * (issue #1804: point-cloud ↔ `IfcMapConversion` alignment). Pass
-   * `null` to reset to identity. Takes effect on the next frame's
-   * uniform write — no GPU buffer rewrite needed, so toggling alignment
-   * on/off is cheap.
-   */
-  setAssetTransform(handle: PointCloudAssetHandle, matrix: Float32Array | null): void {
+  /** Import alignment composes with manual placement without reuploading points. */
+  setAssetTransform(handle: PointCloudAssetHandle, matrix: Float32Array | Float64Array | null): void {
     const node = this.nodes.get(handle.id);
     if (!node) return;
-    node.model = matrix ?? undefined;
+    this.placements.align(node, matrix);
+  }
+
+  setAssetTranslation(handle: PointCloudAssetHandle, translation: readonly [number, number, number]): void {
+    const node = this.nodes.get(handle.id);
+    if (node) this.placements.translate(node, translation);
+  }
+
+  validateModelTranslation(modelIndex: number, translation: readonly [number, number, number]): void {
+    assertModelTranslation(modelIndex, translation);
+    for (const [id, node] of this.nodes) if (this.nodeOwners.get(id) === 'ifcx' && (node.meta.modelIndex ?? 0) === modelIndex) {
+      this.placements.validateTranslation(node, translation);
+    }
+  }
+
+  setModelTranslation(modelIndex: number, translation: readonly [number, number, number]): void {
+    this.validateModelTranslation(modelIndex, translation);
+    this.modelTranslations.set(modelIndex, [...translation]);
+    for (const [id, node] of this.nodes) {
+      if (this.nodeOwners.get(id) === 'ifcx' && (node.meta.modelIndex ?? 0) === modelIndex) {
+        this.placements.translate(node, translation);
+      }
+    }
+  }
+
+  getAssetTransform(handle: PointCloudAssetHandle): Float32Array | undefined {
+    const matrix = this.nodes.get(handle.id)?.model;
+    return matrix ? new Float32Array(matrix) : undefined;
+  }
+
+  getPlacementBounds(modelIndex: number, handle?: PointCloudAssetHandle) {
+    const nodes = handle ? [this.nodes.get(handle.id)] : [...this.nodes].filter(([id, node]) =>
+      this.nodeOwners.get(id) === 'ifcx' && (node.meta.modelIndex ?? 0) === modelIndex).map(([, node]) => node);
+    return unionPointCloudBounds(nodes);
   }
 
   // ─── lifecycle / queries ─────────────────────────────────────────────────
 
   clear(): void {
-    for (const node of this.nodes.values()) {
-      destroyNode(node);
-    }
-    this.nodes.clear();
-    this.nodeOwners.clear();
+    // Clearing assets is independent of model placement. Full renderer teardown
+    // discards this renderer instance and its offset map together.
+    clearOwnedPointCloudNodes(this.nodes, this.nodeOwners);
   }
 
   private clearOwner(owner: NodeOwner): void {
-    for (const [id, ownerKind] of this.nodeOwners.entries()) {
-      if (ownerKind !== owner) continue;
-      const node = this.nodes.get(id);
-      if (node) destroyNode(node);
-      this.nodes.delete(id);
-      this.nodeOwners.delete(id);
-    }
+    clearOwnedPointCloudNodes(this.nodes, this.nodeOwners, owner);
   }
 
   hasAssets(): boolean {
@@ -320,28 +342,7 @@ export class PointCloudRenderer {
   }
 
   getBounds(): { min: [number, number, number]; max: [number, number, number] } | null {
-    if (this.nodes.size === 0) return null;
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    let any = false;
-    for (const node of this.nodes.values()) {
-      if (!Number.isFinite(node.bounds.min[0])) continue;
-      any = true;
-      // Report WORLD-space extents: fold the per-asset model matrix
-      // (issue #1804 IfcMapConversion alignment) into the chunk-space
-      // bounds, so the height-ramp min/max and the viewer's scene
-      // bounds/framing agree with where the vertex shader actually
-      // places the points. Identity/no-matrix nodes pass through as-is.
-      const b = transformAabb(node.bounds, node.model);
-      if (b.min[0] < minX) minX = b.min[0];
-      if (b.min[1] < minY) minY = b.min[1];
-      if (b.min[2] < minZ) minZ = b.min[2];
-      if (b.max[0] > maxX) maxX = b.max[0];
-      if (b.max[1] > maxY) maxY = b.max[1];
-      if (b.max[2] > maxZ) maxZ = b.max[2];
-    }
-    if (!any) return null;
-    return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
+    return unionPointCloudBounds(this.nodes.values());
   }
 
   /**
@@ -432,23 +433,20 @@ export class PointCloudRenderer {
     return null;
   }
 
-  /**
-   * Snapshot of nodes shaped for the picker — only the data the GPU
-   * picking pass actually needs (expressId, modelIndex, chunk vertex
-   * buffers + counts). Returns a fresh array; callers may iterate
-   * freely without worrying about mutation during a pick.
-   */
+  /** Picker snapshot includes the exact model matrix used by visible splats. */
   getPickNodes(): Array<{
     expressId: number;
     modelIndex?: number;
+    model?: Float32Array;
     chunks: Array<{ vertexBuffer: GPUBuffer; pointCount: number }>;
   }> {
-    const out: Array<{ expressId: number; modelIndex?: number; chunks: Array<{ vertexBuffer: GPUBuffer; pointCount: number }> }> = [];
+    const out: Array<{ expressId: number; modelIndex?: number; model?: Float32Array; chunks: Array<{ vertexBuffer: GPUBuffer; pointCount: number }> }> = [];
     for (const node of this.nodes.values()) {
       if (node.pointCount === 0) continue;
       out.push({
         expressId: node.meta.expressId,
         modelIndex: node.meta.modelIndex,
+        model: node.model,
         chunks: node.chunks.map((c) => ({ vertexBuffer: c.vertexBuffer, pointCount: c.pointCount })),
       });
     }

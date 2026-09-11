@@ -1,0 +1,201 @@
+{
+  "inputs": {
+    "native-request.json": "d39a809e10f9123aefc8cd30a50c8d0c22400baf1bcedf2558440715940559df",
+    "native-source.ifc": "0e67e9b27a2aed936884bacfa3e6e57c150c31534be6492829850e28fcd8ce33",
+    "native-rgba.bin": "b10c189ab07af7d47a1dd92f3e9f9f818ab54c89baec6c36b912e119d7371b08"
+  },
+  "sourceTriangles": 66122,
+  "targetTriangles": 350,
+  "runs": [
+    {
+      "name": "before-64",
+      "wasmSha256": "0c51266ef8cde2f51d89e06705376b92eff8c03c8996690fa0e4186c74755693",
+      "planPresent": true,
+      "pngBytes": 500,
+      "pngSha256": "cb8b60d0df387cf09274025a5cfb675596c43f2ee2d8606908a0b8a5ec145b02",
+      "coverage": {
+        "observedAreaEstimateM2": 0.00863184610126302,
+        "observedSamples": 324,
+        "samples": 890,
+        "unknownAmbiguousSamples": 566,
+        "unknownAreaEstimateM2": 0.015025837917120395,
+        "unknownDistanceSamples": 0,
+        "unknownNormalSamples": 0
+      },
+      "applicable": true,
+      "diagnostics": [
+        "Coverage is a triangle-area-weighted centroid/interior-texel estimate, not a registration accuracy approval",
+        "Unknown samples preserve the existing target albedo through the shared atlas; source GLB byte-to-decoded-mesh/image identity is verified by the host",
+        "Mathematical rigid fit only; no automatic registration or accuracy approval"
+      ],
+      "imageSize": [
+        128,
+        121
+      ],
+      "uniqueRgbaColors": 2,
+      "mostFrequentRgbaColors": [
+        {
+          "rgba": [
+            23,
+            70,
+            223,
+            255
+          ],
+          "pixels": 13816
+        },
+        {
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "pixels": 1672
+        }
+      ]
+    },
+    {
+      "name": "before-512",
+      "wasmSha256": "0c51266ef8cde2f51d89e06705376b92eff8c03c8996690fa0e4186c74755693",
+      "planPresent": true,
+      "pngBytes": 52742,
+      "pngSha256": "c156dae2b082a95ad85112cec41d33b5f4ca737f2be23c82120ae266cfa7e200",
+      "coverage": {
+        "observedAreaEstimateM2": 0.018853647334299135,
+        "observedSamples": 6467,
+        "samples": 8313,
+        "unknownAmbiguousSamples": 1813,
+        "unknownAreaEstimateM2": 0.004804036684084304,
+        "unknownDistanceSamples": 0,
+        "unknownNormalSamples": 33
+      },
+      "applicable": true,
+      "diagnostics": [
+        "Coverage is a triangle-area-weighted centroid/interior-texel estimate, not a registration accuracy approval",
+        "Unknown samples preserve the existing target albedo through the shared atlas; source GLB byte-to-decoded-mesh/image identity is verified by the host",
+        "Mathematical rigid fit only; no automatic registration or accuracy approval"
+      ],
+      "imageSize": [
+        256,
+        271
+      ],
+      "uniqueRgbaColors": 8151,
+      "mostFrequentRgbaColors": [
+        {
+          "rgba": [
+            23,
+            70,
+            223,
+            255
+          ],
+          "pixels": 25230
+        },
+        {
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "pixels": 22176
+        },
+        {
+          "rgba": [
+            93,
+            68,
+            48,
+            255
+          ],
+          "pixels": 66
+        }
+      ]
+    },
+    {
+      "name": "after-64",
+      "wasmSha256": "a9d9ed2450808b45c5ed13791c6b2612d028de38f64d762adaf778004356fca4",
+      "planPresent": false,
+      "pngBytes": 0,
+      "pngSha256": null,
+      "coverage": {
+        "centroidSamples": 350,
+        "observedAreaEstimateM2": 0.00863184610126302,
+        "observedCentroidSamples": 324,
+        "observedRasterInteriorTexels": 0,
+        "observedSamples": 324,
+        "rasterInteriorTexels": 540,
+        "samples": 890,
+        "unknownAmbiguousSamples": 566,
+        "unknownAreaEstimateM2": 0.015025837917120395,
+        "unknownDistanceSamples": 0,
+        "unknownNormalSamples": 0
+      },
+      "applicable": false,
+      "diagnostics": [
+        "Coverage is a triangle-area-weighted centroid/interior-texel estimate, not a registration accuracy approval",
+        "Unknown samples preserve the existing target albedo through the shared atlas; source GLB byte-to-decoded-mesh/image identity is verified by the host",
+        "Mathematical rigid fit only; no automatic registration or accuracy approval",
+        "No observed interior raster texels; centroid observations alone do not establish emitted scan appearance, so no applicable mutation plan was produced"
+      ]
+    },
+    {
+      "name": "after-512",
+      "wasmSha256": "a9d9ed2450808b45c5ed13791c6b2612d028de38f64d762adaf778004356fca4",
+      "planPresent": true,
+      "pngBytes": 52742,
+      "pngSha256": "c156dae2b082a95ad85112cec41d33b5f4ca737f2be23c82120ae266cfa7e200",
+      "coverage": {
+        "centroidSamples": 350,
+        "observedAreaEstimateM2": 0.018853647334299135,
+        "observedCentroidSamples": 350,
+        "observedRasterInteriorTexels": 6117,
+        "observedSamples": 6467,
+        "rasterInteriorTexels": 7963,
+        "samples": 8313,
+        "unknownAmbiguousSamples": 1813,
+        "unknownAreaEstimateM2": 0.004804036684084304,
+        "unknownDistanceSamples": 0,
+        "unknownNormalSamples": 33
+      },
+      "applicable": true,
+      "diagnostics": [
+        "Coverage is a triangle-area-weighted centroid/interior-texel estimate, not a registration accuracy approval",
+        "Unknown samples preserve the existing target albedo through the shared atlas; source GLB byte-to-decoded-mesh/image identity is verified by the host",
+        "Mathematical rigid fit only; no automatic registration or accuracy approval"
+      ],
+      "imageSize": [
+        256,
+        271
+      ],
+      "uniqueRgbaColors": 8151,
+      "mostFrequentRgbaColors": [
+        {
+          "rgba": [
+            23,
+            70,
+            223,
+            255
+          ],
+          "pixels": 25230
+        },
+        {
+          "rgba": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "pixels": 22176
+        },
+        {
+          "rgba": [
+            93,
+            68,
+            48,
+            255
+          ],
+          "pixels": 66
+        }
+      ]
+    }
+  ]
+}

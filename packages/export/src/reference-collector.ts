@@ -53,7 +53,7 @@ export { INFRASTRUCTURE_TYPES, PRODUCT_TYPES, collectDescendantNames };
  * line instead of becoming `$`. `.trim()` hides the whitespace-only form.
  */
 const RECORD_PREFIX_RE = new RegExp(`^(#\\d+\\s*=\\s*(\\w+)${STEP_TRIVIA}\\()([\\s\\S]*)(\\)\\s*;)\\s*$`);
-
+export const BARE_REF_RE = new RegExp(`^${STEP_TRIVIA}#(\\d+)${STEP_TRIVIA}$`); // bare `#N` ref, trivia-tolerant (#4227), exported for reuse
 /**
  * UTF-8 decode of `[start, end)` of the source. Mirrors `step-exporter.ts` /
  * `merged-exporter.ts`'s local `decodeRange` (SAB-safe via the accessor);
@@ -568,7 +568,7 @@ export function filterHiddenRefsFromRelationshipLine(
       const inner = attr.slice(1, -1);
       const items = inner.trim() === '' ? [] : splitTopLevelArgs(inner);
       const survivors = items.filter((item) => {
-        const refMatch = item.match(/^#(\d+)$/);
+        const refMatch = item.match(BARE_REF_RE);
         return !(refMatch && isExcluded(Number(refMatch[1])));
       });
       if (survivors.length !== items.length) {
@@ -581,7 +581,7 @@ export function filterHiddenRefsFromRelationshipLine(
       continue;
     }
 
-    const refMatch = attr.match(/^#(\d+)$/);
+    const refMatch = attr.match(BARE_REF_RE);
     if (refMatch && isExcluded(Number(refMatch[1]))) {
       if (isOptionalTrailingRef(entityType, attrs.length, index)) {
         changed = true;
@@ -723,13 +723,13 @@ export function refGroupFromArg(attr: string): number | number[] | undefined {
     const ids: number[] = [];
     let hasNonRefItem = false;
     for (const item of items) {
-      const refMatch = item.match(/^#(\d+)$/);
+      const refMatch = item.match(BARE_REF_RE);
       if (refMatch) ids.push(Number(refMatch[1]));
       else hasNonRefItem = true;
     }
     return hasNonRefItem ? undefined : ids;
   }
-  const refMatch = attr.match(/^#(\d+)$/);
+  const refMatch = attr.match(BARE_REF_RE);
   return refMatch ? Number(refMatch[1]) : undefined;
 }
 

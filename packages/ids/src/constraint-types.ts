@@ -123,4 +123,18 @@ export interface IDSBoundsConstraint {
    * inverted bound in a sibling is not linted.
    */
   and?: readonly IDSConstraint[];
+  /**
+   * Facets whose `<xs:*Inclusive|Exclusive|Digits>` element was PRESENT
+   * in the source `<xs:restriction>` but whose `@value` could not be
+   * parsed as the expected number (`parseFloat`/`parseInt` failed, or a
+   * digit-count facet came out negative) — e.g. a typo'd `"6O"` (letter
+   * O) or the European decimal `"6,5"`. Distinct from a facet that was
+   * never present at all: the corresponding numeric field above is
+   * `undefined` in BOTH cases, but only this list distinguishes "no
+   * such constraint" from "the author tried to constrain this and
+   * failed." `matchBounds` fails closed (rejects every value) when this
+   * is non-empty, rather than silently treating a botched restriction
+   * as unbounded.
+   */
+  unparseableFacets?: readonly { readonly facet: string; readonly rawValue: string }[];
 }

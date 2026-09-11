@@ -17,6 +17,8 @@
  * `CompactEntityIndex` whose backing typed arrays are immutable.
  */
 
+import { prepareEntityOperations } from './prepare-entity-operations.js';
+import type { EntityOperation, EntityPreparationOptions, PreparedEntityOperations } from './cooperative-operation-types.js';
 import type { MutablePropertyView } from './mutable-property-view.js';
 import { QuantityType, PropertyValueType } from '@ifc-lite/data';
 import type {
@@ -69,6 +71,30 @@ export class StoreEditor {
     this.view = view;
     this.maxExistingId = this.computeMaxExistingId();
     this.view.setExpressIdWatermark(this.maxExistingId);
+  }
+
+  /** Stage one synchronous IFC edit; failure publishes no partial overlay (#4243).
+   * Prepare image/worker resources before calling this. Returned entity IDs are
+   * valid after success; the draft editor is detached after this callback. */
+  runAtomic<T>(edit: (draft: StoreEditor) => T): T {
+    return this.view.runAtomic(draft => edit(new StoreEditor(this.store, draft)));
+  }
+
+  /** Cooperatively prepare owned entity operations without exposing a draft.
+   * Construction establishes the live allocator watermark before this action;
+   * cancellation changes no live overlay state. Final exact validation is synchronous. */
+  prepareEntityOperations(operations: readonly EntityOperation[], options: EntityPreparationOptions = {}): Promise<PreparedEntityOperations> {
+    return prepareEntityOperations(this.store, this.view, operations, options, draft => this.forkPreparedEditor(draft));
+  }
+
+  private forkPreparedEditor(view: MutablePropertyView): StoreEditor {
+    // The original editor already established its watermark. Reuse that exact
+    // facade state instead of scanning the entire immutable source index again.
+    const editor = Object.create(StoreEditor.prototype) as StoreEditor;
+    editor.store = this.store;
+    editor.view = view;
+    editor.maxExistingId = this.maxExistingId;
+    return editor;
   }
 
   /**
@@ -257,6 +283,13 @@ export class StoreEditor {
   /** Look up the overlay record for a freshly-added entity. */
   getNewEntity(expressId: number): NewEntity | null {
     return this.view.getNewEntity(expressId);
+  }
+
+  /** Whether an id resolves to a live source or overlay entity. */
+  hasEntity(expressId: number): boolean {
+    return Number.isSafeInteger(expressId) && expressId > 0 && !this.view.isDeleted(expressId)
+      && (this.view.getNewEntity(expressId) !== null || this.store.entityIndex.byId.has(expressId)
+        || this.store.deferredEntityIndex?.has(expressId) === true);
   }
 
   /** All overlay-created entities, in insertion order. */

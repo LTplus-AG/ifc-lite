@@ -14,7 +14,7 @@
 import { writeFile, readFile } from 'node:fs/promises';
 import type { EntityRef } from '@ifc-lite/sdk';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
-import { countGlbMeshes } from '@ifc-lite/export';
+import { countGlbMeshes, countObjVertices } from '@ifc-lite/export';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -197,7 +197,12 @@ const exportGlb: Tool = {
         await gp.init();
         let glb: Uint8Array | null;
         try {
-          glb = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
+          // `isolated` is empty-but-active only when `type` matched nothing
+          // (rejected above); no `type` must pass `undefined` to exportGlb,
+          // not an empty Uint32Array — the wasm boundary now treats an
+          // explicit empty array as "isolation active, matches nothing"
+          // (#4328), and would fail-close every unfiltered export otherwise.
+          glb = gp.exportGlb(bytes, false, new Uint32Array(), filterType ? isolated : undefined, '');
         } catch (err) {
           // The Rust boundary fails closed on an empty visible mesh set; map the
           // typed error to the tailored tool error.
@@ -267,9 +272,26 @@ const exportObj: Tool = {
       const gp = new GeometryProcessor();
       try {
         await gp.init();
-        const obj = gp.exportObj(bytes, true, new Uint32Array(), isolated);
+        // `isolated` is empty-but-active only when `type` matched nothing
+        // (rejected above); no `type` must pass `undefined` to exportObj,
+        // not an empty Uint32Array — the wasm boundary now treats an
+        // explicit empty array as "isolation active, matches nothing"
+        // (the OBJ twin of #4328/#4364), and would fail-close every
+        // unfiltered export otherwise.
+        const obj = gp.exportObj(bytes, true, new Uint32Array(), filterType ? isolated : undefined);
         if (obj == null) {
           throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'OBJ export produced no output.' });
+        }
+        // The Rust OBJ path has no "no render geometry" signal: a `type` that
+        // matched only non-rendered entities (e.g. IfcProject) yields a
+        // header-only file. Vertex count is the content signal, as in the CLI.
+        if (countObjVertices(obj) === 0) {
+          throw new ToolExecutionError({
+            code: ToolErrorCode.INTERNAL_ERROR,
+            message: filterType
+              ? `OBJ export produced 0 vertices - the matched ${filterType} entities have no exportable render geometry.`
+              : 'OBJ export produced 0 vertices - the model has no exportable render geometry.',
+          });
         }
         await writeFile(filePath, obj);
         return okResult(`Wrote ${obj.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: obj.length });

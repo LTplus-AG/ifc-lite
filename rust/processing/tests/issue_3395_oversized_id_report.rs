@@ -72,7 +72,10 @@ fn clean_file_with_oversized_shaped_string(pad_records: u32, repeats: usize) -> 
     let string_starts_at = content.len();
     let mut fake = String::new();
     for k in 0..repeats {
-        fake.push_str(&format!("#4294967297=IFCWALL(fake {k} ; still in string "));
+        // A COMPLETE record shape, `)` and all: the scanner's record-boundary
+        // guards (#4179) reject a `;` that closes nothing, so half a record no
+        // longer fools a speculative shard into refusing anything at all.
+        fake.push_str(&format!("#4294967297=IFCWALL(fake {k}); still in string "));
     }
     content.push_str(&format!(
         "#{}=IFCWALL('{fake}',$,$,$,$,$,$,$);\n",
@@ -328,8 +331,8 @@ fn parallel_index_and_processor_scan_report_the_refusal() {
         "exactly one report for the malformed stop, got {reports:?}"
     );
     assert!(
-        reports[0].contains("stopped early"),
-        "the report must name the malformed-record stop: {}",
+        reports[0].contains("dropped a record with no terminating"),
+        "the report must name the dropped record: {}",
         reports[0]
     );
 }

@@ -1,5 +1,12 @@
 # @ifc-lite/world-frame-fixtures
 
+## 0.1.2
+
+### Patch Changes
+
+- Updated dependencies [[`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b), [`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b)]:
+  - @ifc-lite/geometry@5.0.0
+
 ## 0.1.1
 
 ### Patch Changes

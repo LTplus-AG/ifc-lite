@@ -241,8 +241,13 @@ async function scanEntities(
   // Before this diagnostic existed, that stop was entirely silent: fewer
   // entities came back, and nothing said the file might be incomplete.
   //
-  // Deliberately singular and generic, not "N record(s)": the scan always
-  // stops at the first one it hits (there is no reliable place to resume),
+  // Deliberately generic: the flag covers three shapes collapsed into one, so a
+  // message naming only one of them would misdescribe the others. It no longer
+  // says the scan STOPS: since #4179 a record missing its ';' is DROPPED and the
+  // scan resumes at the balancing ')', so the common case loses one record from a
+  // file otherwise read to completion. The Rust twin
+  // (rust/core/src/parser/malformed_records.rs:34) carries the same wording and
+  // these two halves must not diverge.
   // so malformedRecordCount is 0 or 1, never a density, and it covers three
   // shapes -- an unterminated string, an unterminated comment, and a
   // declaration cut off before its own '(' -- collapsed into one flag, so a
@@ -250,9 +255,9 @@ async function scanEntities(
   // time it fires.
   if (malformedRecordCount > 0) {
     const message =
-      'scan: stopped early, a record had a string literal or comment that never closed, or ' +
-      'was cut off, before end of input, so scanning could not continue past it; the entities ' +
-      'returned may be an incomplete view of this file';
+      "scan: dropped a record with no terminating ';' (an unterminated quoted string, " +
+      'comment, or truncated file); the entities returned may be an incomplete view of ' +
+      'this file (#3695)';
     console.warn(`[IfcParser] ${message}`);
     options.onDiagnostic?.(message);
   }

@@ -1,0 +1,17 @@
+{
+  "contract": "actual finite-page IFPA metadata plus PNG bytes identical before/after shared sampler extraction",
+  "outputs": [
+    {
+      "root": "/tmp/ifclite-appearance-evaluated-4404",
+      "wasmSha256": "ce6987cf79d94e70ac2ffeaf63121672a3f9a805facf897d1a82ae961661ffd5",
+      "outputSha256": "188d26e2dff85e01012c16bb516919e56c9729293960e3202b24b77d4147f8fc",
+      "bytes": 2547
+    },
+    {
+      "root": "/tmp/ifclite-mesh-transfer-4381",
+      "wasmSha256": "3f027d243eb0e53a0e40b52ac608a32c9f1c509d5c6fe0e4a21105e507901507",
+      "outputSha256": "188d26e2dff85e01012c16bb516919e56c9729293960e3202b24b77d4147f8fc",
+      "bytes": 2547
+    }
+  ]
+}

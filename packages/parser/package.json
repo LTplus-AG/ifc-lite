@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/parser",
-  "version": "5.2.0",
+  "version": "6.1.0",
   "description": "IFC/STEP parser for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -27,6 +27,7 @@
     "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/wasm": "workspace:^",
+    "@ifc-lite/wasm-lifecycle": "workspace:^",
     "fflate": "^0.8.3",
     "jszip": "^3.10.0"
   },

@@ -2,6 +2,29 @@
 
 Guide to exporting IFC data in various formats.
 
+## Textured IFC in the web viewer
+
+Normal IFC exports, visible subsets, and Export Changes package retained image
+resources into `.ifczip` automatically. The archive preserves original PNG/JPEG
+bytes, the IFC entry directory, and relative texture paths; authored images use
+content-addressed filenames. Untextured models continue to download as `.ifc`.
+SDK IFC exports and Export Changes omit unreachable appearance resources
+created by tracked commands, while the original session keeps those rows and
+images for Undo/Redo. Imported resources are preserved; this is not general
+cleanup of orphan entities from another authoring session.
+The serialization helper prepares an uncommitted atomic view and preserves the
+live allocator watermark. It still copies overlay/history arrays temporarily;
+compact output does not imply lower peak memory. Reopened formerly active image
+rows become imported source and remain outside authored-only cleanup.
+Export is unavailable while images load and refuses missing or budget-omitted resources
+rather than producing an apparently complete textureless file.
+
+Merged textured-model export currently requires texture URL remapping and is
+unavailable. Export each model separately to preserve its appearance. Subset
+archives may retain unused images from their source model. The STEP subset
+closure retains inverse texture maps for included faces, including maps created
+or retargeted through pending edits.
+
 ## Quick Start: CDN Export (No Build Required)
 
 Export IFC to GLB directly in the browser with zero setup:
@@ -114,7 +137,7 @@ const glb = gp.exportGlb(
   bytes,                 // Uint8Array of the .ifc
   true,                  // includeMetadata: expressId/ifcType/GlobalId in node extras
   new Uint32Array(),     // hidden  express-ids (empty = none hidden)
-  new Uint32Array(),     // isolated express-ids (empty = all visible)
+  undefined,             // isolated: undefined = no filter; a Uint32Array = keep ONLY these (empty = keep nothing)
   '',                    // hidden IFC-type CSV (e.g. 'IfcSpace,IfcOpeningElement')
   true,                  // lit: PBR materials; false = flat KHR_materials_unlit
 );
@@ -134,7 +157,7 @@ RTC origins ride a glTF node translation so large-coordinate models stay precise
 |-----------|---------|
 | `includeMetadata` | Write `expressId` / `ifcType` / `GlobalId` (plus `modelId` for federated exports) into each node's `extras` |
 | `hidden` | Express-ids to omit (mirrors the viewer's hide set) |
-| `isolated` | Express-ids to keep; empty = all visible |
+| `isolated` | `undefined` = no isolation filter (everything not hidden exports). A `Uint32Array` = an **active** allowlist: only these express-ids export, and an **empty** array exports nothing (`NO_RENDER_GEOMETRY`). Pass `undefined`, not `new Uint32Array()`, when your filter is inactive — `exportObj` follows the same contract (`isolated?`); on the Rust side this is `GltfOptions::isolated` / `ObjOptions::isolated: Option<Vec<u32>>` (`None` vs `Some(ids)`) |
 | hidden-types CSV | IFC class names to drop wholesale, e.g. `IfcSpace,IfcOpeningElement` |
 | `lit` | `true` (default) emits standard PBR materials that shade from normals; `false` emits flat `KHR_materials_unlit` materials |
 
@@ -789,3 +812,65 @@ await saveFile('entities.csv', csv);
 
 - [Query Guide](querying.md) - Filter data before export
 - [API Reference](../api/typescript.md) - Complete API docs
+
+STEP exports from an IFCXML archive keep the model entry’s directory but use an
+`.ifc` suffix, so archive filenames agree with the serialized format.
+
+### Cleaning up authored appearance resources
+
+`planAuthoredResourceCleanup(dataStore, mutationView, candidateIds, protectedValues)` returns `{ entityIds, retainedImageUris }`: a deletion plan for explicitly owned, overlay-created appearance resource entities plus the effective image URLs that survive it. It follows the same effective positional and named reference overrides as STEP export. Source-backed resources, entities outside the candidate set, and live inverse style/texture bindings are retained. The URI set includes independent/source image entities that copy an authored URL, even after its original image entity is removed. Values and references use the existing STEP serializers, retype and attribute-override helpers, with positional overrides taking precedence as they do in the exported file. The optional `protectedValues` iterable carries entity references and saved attribute values needed by Undo/Redo; these references keep the corresponding resource graph alive.
+
+The helper is pure: apply `entityIds` through an atomic mutation transaction, then release image bytes only after that transaction succeeds. Reconcile outside history publication and advance the model revision after deletion. It refuses oversized candidate/reference walks without returning a partial plan. This is authored-resource housekeeping, not a general imported-model cleanup pass. Non-candidate entities establish roots first; only reachable candidate payloads are read. Thus a large unreachable history-only UV array can be omitted without consuming the live-reference budget. A reached payload still receives the same depth, value, reference and byte checks. For serialization, callers can omit history protection and apply the resulting deletions to a detached atomic view without committing it; image packaging must preserve originals and include authored URLs from `retainedImageUris`, without releasing any live leases.
+
+### Validating appearance dependencies before replay
+
+`captureAppearanceDependencies(dataStore, mutationView, rootEntityIds)` returns a guard with `validate(currentMutationView)`. Capture the before/after views while preparing an appearance command, then validate the corresponding expected state before Undo/Redo changes IFC or GPU resources. The guard compares effective STEP records reached through geometry, placement and appearance references, including overlay-created chains and inverse `IfcStyledItem`/texture-map attachments. It uses the existing STEP writers and reference scanner, so positional overrides retain the same precedence as export. Unrelated property-set edits do not invalidate the command.
+
+Validation is synchronous, bounded and conservative: a changed record, dependency set, or exceeded work/byte budget throws before replay. Formatting-equivalent rewrites may also require refreshing the command. Source data is assumed immutable within a model; replacement models require new guards. Capture once per command state, not during rendering. Viewer preview planning additionally needs a snapshot-time overlay checkpoint across its asynchronous export/worker interval; a replay dependency guard is not a replacement for that checkpoint.
+
+The guard caps the source index at 200,000 entities before constructing its effective index, authored overlay entities at 100,000, traversed records at 100,000, references at two million and authored values at eight million. Exact UTF-8 accounting uses a fixed scratch buffer before allocating each encoded row. Its 192 MiB effective-row budget covers the planner's bounded 128 MiB source plus 64 MiB output, including higher-precision newly authored UVs. Immutable source records retain identity markers rather than duplicate large source strings in every history checkpoint. Material/type inheritance and material-definition representations are included; sharing a type or material does not pull peer products' geometry into the guard.
+
+### IFCX texture portability
+
+`Ifc5Exporter` preserves textured mesh fragments using the declared, versioned
+`ifclite::appearance::v1` and `ifclite::image::v1` extension. Each fragment remains
+an ordinary `usd::usdgeom::mesh` child of its original IFC owner. The extension
+carries per-vertex UVs, sampler repeats, and shared top-down straight-alpha RGBA8
+pixels. It does not change geometry, evaluate IFC materials, or generate UVs.
+
+This is an IFClite extension, not an official OpenUSD material binding. The
+[current buildingSMART USD schema](https://github.com/buildingSMART/ifcx.dev/blob/main/%40openusd.org/usd%40v1.ifcx)
+defines mesh points and face indices but no texture binding. Readers that ignore
+the extension retain standard geometry and fragment colors; they do not recover
+textures. Native Rust IFCX export currently exports structural data without
+geometry and is outside this mesh-transport path.
+
+The synchronous exporter accepts decoded `MeshData.texture` pixels in headless
+applications. Browser `textureBitmap` inputs are read through `OffscreenCanvas`;
+unresolved images or invalid UVs raise an actionable error. Optional
+`textureSources` maps exact `MeshTextureRef.url` values to `{ mimeType, bytes }`
+for original PNG/JPEG assets. Originals are preserved without recompression,
+separately from the decoded pixels needed for rendering; decoded IFCX originals
+survive subsequent IFCX exports. The caller must supply available originals;
+the exporter does not fetch external URLs. Images are deduplicated by content
+and dimensions. The file budget is 512 MiB of unique pixel/resource bytes, with
+16,384 pixels per dimension and 64 MiB per optional encoded original.
+
+The current RGBA wire favors exact, wasm-free roundtrips over compressed file
+size. It can make IFCX substantially larger than IFCZIP. Original source images
+are archival alongside pixels, rather than a second mandatory decoder pipeline.
+
+## Importing textured GLB captures
+
+Use **Open** or **Add model** for an opaque textured GLB. Embedded base-colour
+PNG/JPEG images and their UV seams now follow the same model load path for
+primary and federated models. Original encoded images remain available to
+capture authoring while the model is loaded. Node translation, rotation and
+scale are applied once; UV texture transforms and repeat/clamp are preserved.
+
+This capture slice supports albedo, not a complete glTF material renderer.
+Unsupported texture alpha modes, transparent pixels, additional material maps,
+compression, external resources, mirrored repeat and UV sets beyond
+`TEXCOORD_0` stop import with a diagnostic rather than produce an untextured
+success. Images use the existing inventory limits (32 MiB per encoded image,
+8192 px maximum edge, 16 megapixels per image).

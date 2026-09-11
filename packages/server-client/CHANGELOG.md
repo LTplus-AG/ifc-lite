@@ -1,5 +1,11 @@
 # @ifc-lite/server-client
 
+## 2.1.0
+
+### Minor Changes
+
+- [#4463](https://github.com/LTplus-AG/ifc-lite/pull/4463) [`069020f`](https://github.com/LTplus-AG/ifc-lite/commit/069020f0ef51e8908c6fe86e6c3da011418d42d8) Thanks [@louistrue](https://github.com/louistrue)! - Carry qualified direct representation-item provenance on symbolic fills. The viewer uses matching mesh owner and item identities through the canonical federation mapping to omit duplicate 3D fill overlays while retaining the original 2D drawing primitives.
+
 ## 2.0.0
 
 ### Major Changes

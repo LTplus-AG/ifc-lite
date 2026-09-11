@@ -113,7 +113,7 @@ function canAlignInSameProjectedCrs(a: ModelGeoref, b: ModelGeoref): boolean {
   return crsKey(a.projectedCRS) === crsKey(b.projectedCRS);
 }
 
-function totalYupOffset(coordinateInfo?: CoordinateInfo): { x: number; y: number; z: number } {
+export function totalYupOffset(coordinateInfo?: CoordinateInfo): { x: number; y: number; z: number } {
   const shift = coordinateInfo?.originShift ?? { x: 0, y: 0, z: 0 };
   const rtc = coordinateInfo?.wasmRtcOffset;
   const rtcYup = rtc ? { x: rtc.x, y: rtc.z, z: -rtc.y } : { x: 0, y: 0, z: 0 };

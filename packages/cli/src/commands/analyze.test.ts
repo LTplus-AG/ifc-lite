@@ -16,7 +16,7 @@ import { mkdtemp, readFile, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { analyzeCommand } from './analyze.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -58,5 +58,56 @@ describe('analyzeCommand --out', () => {
 
     const stdoutCalls = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
     expect(stdoutCalls).toContain('"rule"');
+  });
+});
+
+/**
+ * `--isolate` only sent the `isolateEntities` viewer command when the rule
+ * matched at least one entity (`rule.isolate && matchedIds.length > 0`).
+ * `viewer-html.ts`'s `isolateEntities` handler fades every entity NOT named
+ * in `ids`, so an empty `ids` array is how "isolate to nothing" is spelled
+ * -- exactly what a zero-match rule should show. Gating on `matchedIds.length
+ * > 0` skipped the command entirely instead, silently leaving whatever the
+ * viewer had on screen before the rule ran. These tests pin: the command is
+ * sent (with an empty `ids`) when the rule matches nothing, and is NOT sent
+ * at all when `--isolate` is absent.
+ */
+describe('analyzeCommand --isolate on a zero-match rule', () => {
+  let stderrSpy: ReturnType<typeof vi.spyOn>;
+  let fetchSpy: MockInstance<typeof fetch>;
+
+  afterEach(() => {
+    stderrSpy?.mockRestore();
+    fetchSpy?.mockRestore();
+  });
+
+  it('still sends isolateEntities with an empty ids array when the rule matches nothing', async () => {
+    stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+
+    // IfcFurnishingElement does not occur in the sample model: the rule
+    // matches zero entities, but --isolate is still requested.
+    await analyzeCommand([SAMPLE_IFC, '--viewer', '3456', '--type', 'IfcFurnishingElement', '--isolate', '--json']);
+
+    const isolateCalls = fetchSpy.mock.calls.filter(([, init]) => {
+      const body = typeof init?.body === 'string' ? init.body : '';
+      return body.includes('"isolateEntities"');
+    });
+    expect(isolateCalls).toHaveLength(1);
+    const body = JSON.parse(String(isolateCalls[0][1]?.body));
+    expect(body).toEqual({ action: 'isolateEntities', ids: [] });
+  });
+
+  it('does not send isolateEntities at all when --isolate is absent', async () => {
+    stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+
+    await analyzeCommand([SAMPLE_IFC, '--viewer', '3456', '--type', 'IfcFurnishingElement', '--json']);
+
+    const isolateCalls = fetchSpy.mock.calls.filter(([, init]) => {
+      const body = typeof init?.body === 'string' ? init.body : '';
+      return body.includes('"isolateEntities"');
+    });
+    expect(isolateCalls).toHaveLength(0);
   });
 });

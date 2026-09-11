@@ -33,7 +33,13 @@ use crate::legacy_entities::get_legacy_entity_info;
 
 /// Normalise to uppercase ASCII without allocating when the input is already
 /// uppercase (the common case — STEP type tokens are emitted uppercase).
-fn normalise_uppercase(type_name: &str) -> std::borrow::Cow<'_, str> {
+///
+/// `pub(crate)`, not private: [`crate::legacy_entities::legacy_attribute_names`]
+/// reuses this exact helper (rather than a second normalisation) so it cannot
+/// diverge on case handling from [`legacy_aware_ifc_type`] again (#4203
+/// follow-up: a lowercase keyword used to match this file's resolver but miss
+/// that lookup's case-sensitive scan, mislabeling attributes under the base type's names).
+pub(crate) fn normalise_uppercase(type_name: &str) -> std::borrow::Cow<'_, str> {
     if type_name.bytes().any(|b| b.is_ascii_lowercase()) {
         std::borrow::Cow::Owned(type_name.to_ascii_uppercase())
     } else {

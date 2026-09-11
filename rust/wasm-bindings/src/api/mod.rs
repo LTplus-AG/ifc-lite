@@ -2,10 +2,18 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! JavaScript API for IFC-Lite: modern async/await parsing. Kept short: this
-//! file is AT its `module_size_ratchet` budget, so a new `mod` costs a line.
+//! JavaScript API for IFC-Lite; feature methods live in focused child modules.
 
 mod alignment_lines;
+mod appearance;
+mod appearance_page;
+mod appearance_atlas;
+mod appearance_transfer;
+mod annotation_plane;
+mod captured_mesh;
+mod appearance_calibration;
+mod scan_registration;
+mod pdf_vector;
 mod bool2d;
 mod clash;
 mod clash_solid;

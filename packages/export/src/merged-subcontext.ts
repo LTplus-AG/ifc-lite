@@ -58,7 +58,25 @@ function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null
   return asSourceBytes(source).decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
 }
 
-/** Extract one 0-based STEP attribute of `expressId`'s entity, or null if unreadable. */
+/**
+ * Extract one 0-based STEP attribute of `expressId`'s entity, or null if
+ * unreadable.
+ *
+ * `splitTopLevelStepArguments` returning null (a malformed record, OR —
+ * since #4162's per-slot check — a well-formed record whose split it cannot
+ * vouch for) is one more way to land here, same as no source bytes or no
+ * regex match. `normalizeLabel` already turns a null attribute into `''`,
+ * the same key an actually-blank `ContextIdentifier`/`TargetView` gets, so a
+ * subcontext this can't read falls back to grouping with other blank-keyed
+ * subcontexts rather than being matched on a guessed kind — the failure mode
+ * this file's own docstring already treats as acceptable ("left un-remapped
+ * — kept as its own entity"). `ContextIdentifier`/`TargetView` are IFC label/
+ * enumeration attributes, not binary-typed ones, so #4162's per-slot check
+ * gaining binary-literal support does not change what is reachable here in
+ * practice — audited alongside the four other `splitTopLevelStepArguments`
+ * call sites, unlike `rescaleEntityLengths` (`unit-normalize.ts`), which
+ * throws: a length has no safe permissive fallback.
+ */
 function getStepAttr(dataStore: IfcDataStore, expressId: number, index: number): string | null {
   const text = decodeEntity(dataStore, expressId);
   const match = text?.match(RECORD_RE);

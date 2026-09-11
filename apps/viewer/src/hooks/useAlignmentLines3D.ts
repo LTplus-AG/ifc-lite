@@ -18,6 +18,8 @@
  * and is cached module-globally, so federated views share one parse per source.
  */
 
+import { displayedTranslation } from '@/lib/model-placement/state';
+import { toRenderTranslation } from '@/lib/model-placement/translation';
 import { useEffect, useMemo, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
@@ -80,16 +82,16 @@ function ensureParseFor(stores: IfcDataStore[]): void {
 }
 
 /** Read the active store set from the viewer store. Federation-aware. */
-function useActiveStores(): IfcDataStore[] {
+function useActiveStores(): { id: string; store: IfcDataStore }[] {
   const { models, ifcDataStore } = useViewerStore(
     useShallow((s) => ({ models: s.models, ifcDataStore: s.ifcDataStore })),
   );
   return useMemo(() => {
-    const out: IfcDataStore[] = [];
+    const out: { id: string; store: IfcDataStore }[] = [];
     if (models.size > 0) {
-      for (const [, m] of models) if (m.ifcDataStore) out.push(m.ifcDataStore);
+      for (const [id, m] of models) if (m.ifcDataStore) out.push({ id, store: m.ifcDataStore });
     } else if (ifcDataStore) {
-      out.push(ifcDataStore);
+      out.push({ id: '', store: ifcDataStore });
     }
     return out;
   }, [models, ifcDataStore]);
@@ -103,10 +105,11 @@ function useActiveStores(): IfcDataStore[] {
  */
 export function useAlignmentLines3D(): Float32Array {
   const stores = useActiveStores();
+  const placement = useViewerStore((state) => state.modelPlacement);
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
-    ensureParseFor(stores);
+    ensureParseFor(stores.map(({ store }) => store));
     const listener: CacheListener = () => setVersion((v) => v + 1);
     CACHE_LISTENERS.add(listener);
     return () => {
@@ -118,12 +121,13 @@ export function useAlignmentLines3D(): Float32Array {
     void version; // depend on parse-completion ticks
     const arrays: Float32Array[] = [];
     let total = 0;
-    for (const store of stores) {
+    for (const { id, store } of stores) {
       const key = sourceKey(store);
       if (!key) continue;
       const cached = PARSE_CACHE.get(key);
       if (cached && cached.length > 0) {
-        arrays.push(cached);
+        const delta = toRenderTranslation(displayedTranslation(placement, id));
+        arrays.push(delta.some((value) => value !== 0) ? cached.map((value, index) => value + delta[index % 3]) : cached);
         total += cached.length;
       }
     }
@@ -136,5 +140,5 @@ export function useAlignmentLines3D(): Float32Array {
       offset += a.length;
     }
     return merged;
-  }, [stores, version]);
+  }, [stores, version, placement]);
 }

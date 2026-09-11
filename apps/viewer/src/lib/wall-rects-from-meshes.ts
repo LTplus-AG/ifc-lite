@@ -41,6 +41,12 @@
  * correctly bounds rooms on every storey it passes through. `floorElevation`
  * is the storey's own `IfcBuildingStorey.Elevation` — local to the building,
  * the same frame the rendered geometry is in.
+ *
+ * The one consumer that DOES need the file's own placement-chain coordinates
+ * — the Space Sketch bake, which divides the storey chain out of the outline
+ * before `addSpace` (#4503) — gets the survey anchor back explicitly through
+ * `roomFrameToModelWorld`, so the room frame stays local here and the bake
+ * still folds through the right frame.
  */
 
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
@@ -64,6 +70,46 @@ const MIN_THICK = 0.02;
 const MAX_THICK = 2.5;
 /** A wall is "on" a storey when its height range overlaps the band interior. */
 const BAND_MARGIN = 0.2;
+
+/**
+ * The render → room-frame plan offsets: `ifcX = renderX + cx`,
+ * `ifcY = cy − renderZ`.
+ *
+ * The room frame is the MODEL'S OWN IFC frame — `ifcLocal = renderLocal +
+ * shift` with the Y-up→Z-up swap — NOT the georeferenced survey frame.
+ * `wasmRtcOffset` is what the WASM mesh path subtracted when it resolved a
+ * site placement that anchors the building to a survey grid; folding it back
+ * in here would put the room frame a whole survey offset away from the
+ * rendered walls and from the storey band below (see the module docstring
+ * for the LV95 measurement that showed this). The anchor is carried by
+ * {@link roomFrameToModelWorld} instead, for the one consumer that needs the
+ * file's own placement-chain coordinates.
+ *
+ * Exported because this is where the room frame is DEFINED, and the bake needs
+ * to know which frame that is — see {@link roomFrameToModelWorld}.
+ */
+export function roomFramePlanOffsets(coord: CoordinateInfo | undefined): { cx: number; cy: number } {
+  const shift = coord?.originShift ?? { x: 0, y: 0, z: 0 };
+  return { cx: shift.x, cy: -shift.z };
+}
+
+/**
+ * The plan offset that takes a room-frame point into the MODEL'S OWN WORLD
+ * FRAME — the coordinates the STEP file's placement chains resolve to, which
+ * is the frame `storeyPlanFrame` reads the storey out of.
+ *
+ * Exactly the survey anchor {@link roomFramePlanOffsets} leaves out: the
+ * canonical reconstruction is worldYup = renderLocal + shift + rtcYup with
+ * rtcYup = { x: rtc.x, y: rtc.z, z: -rtc.y }, so ifcX gains `rtc.x` and
+ * ifcY gains `rtc.y` on top of the room frame. Zero for any model within
+ * ~10 km of the origin (rtc is null there). Anything that changes which
+ * terms `roomFramePlanOffsets` carries changes this one too;
+ * `wall-rects-from-meshes.test.ts` pins the two together.
+ */
+export function roomFrameToModelWorld(coord: CoordinateInfo | undefined): { dx: number; dy: number } {
+  const rtc = coord?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 };
+  return { dx: rtc.x, dy: rtc.y };
+}
 
 /** Convex hull (Andrew's monotone chain), CCW, of a plan point cloud. */
 export function convexHull(pts: Pt[]): Pt[] {
@@ -143,12 +189,10 @@ export function wallRectsFromMeshes(
   floorToFloor: number,
 ): WallRect[] {
   const shift = coord?.originShift ?? { x: 0, y: 0, z: 0 };
-  // Render → the model's own IFC frame: ifcLocal = renderLocal + shift, with
-  // the Y-up→Z-up swap (ifcX = x, ifcY = -z, ifcZ = y). The rtc term is
-  // deliberately absent — see the frame note in the module docstring.
-  const cx = shift.x;
-  const cy = -shift.z;
-  // Storey band in render-Y (height). renderY = ifcZ − shift.y.
+  // Render → the model's own IFC frame (no rtc term — see roomFramePlanOffsets).
+  const { cx, cy } = roomFramePlanOffsets(coord);
+  // Storey band in render-Y (height): renderY = ifcZ − shift.y. `floorElevation`
+  // is the storey's own local Elevation, the frame the rendered geometry is in.
   const lo = floorElevation - shift.y;
   const hi = floorElevation + floorToFloor - shift.y;
 

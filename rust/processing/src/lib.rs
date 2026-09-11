@@ -7,6 +7,8 @@
 //! This crate extracts the core processing logic so it can be used by both
 //! the HTTP server and the native FFI library.
 
+pub mod appearance;
+pub mod pdf_vector;
 pub mod determinism;
 pub(crate) mod parallel_scan;
 mod shard_classes;
@@ -81,7 +83,7 @@ pub use processor::{
 pub use simplify_session::{simplify_element, SimplifiedElement, SimplifyRecordInput, SimplifySkip};
 pub use style::{default_color_for_type, Rgba, TRANSPARENCY_ALPHA_THRESHOLD};
 pub use symbolic::{
-    extract_symbolic_data, SymbolicCircle, SymbolicData, SymbolicFillArea, SymbolicGridAxis,
+    extract_symbolic_data, extract_symbolic_data_with_provenance, SymbolicDataWithProvenance, SymbolicCircle, SymbolicData, SymbolicFillArea, SymbolicGridAxis,
     SymbolicPolyline, SymbolicText, SymbolicTruncation, SymbolicTruncationReason,
 };
 // `MeshTextureData` is the type of `MeshData::texture`, a public field: without

@@ -165,7 +165,7 @@ test('END TO END: a wholesale-skipped matrix job passes the REAL required set', 
   assert.match(r.output, /All \d+ required lane\(s\)/);
   // Reported, never absorbed: the skip is named along with how many lanes it covered.
   assert.match(r.output, /was SKIPPED as a whole job/);
-  assert.match(r.output, /its 4 lane\(s\)/);
+  assert.match(r.output, /its 8 lane\(s\)/);
 });
 
 test('a fixture alias with a NON-STRING template is BAD_STATE_FILE, not MISSING_LANES', () => {
@@ -189,7 +189,7 @@ test('a fixture alias with a NON-STRING template is BAD_STATE_FILE, not MISSING_
   }
 });
 
-test('END TO END: the same rollup WITHOUT the template still fails, naming all four shards', () => {
+test('END TO END: the same rollup WITHOUT the template still fails, naming all eight shards', () => {
   // The anti-vacuity pair. If the test above passed for any reason other than
   // the alias map -- a required set that never contained the shards, say -- this
   // one would pass too, and it must not.
@@ -200,8 +200,8 @@ test('END TO END: the same rollup WITHOUT the template still fails, naming all f
 
   const r = run({ lanes, reviewChecks: [] });
   assert.equal(r.code, 1, r.output);
-  assert.match(r.output, /MISSING_LANES: 4 of/);
-  for (const shard of [0, 1, 2, 3]) {
+  assert.match(r.output, /MISSING_LANES: 8 of/);
+  for (const shard of [0, 1, 2, 3, 4, 5, 6, 7]) {
     assert.ok(r.output.includes(`Viewer tests (shard ${shard})`), `must name shard ${shard}`);
   }
 });
@@ -215,7 +215,7 @@ test('END TO END: the template at SUCCESS is not a skip, and does not cover the 
 
   const r = run({ lanes, reviewChecks: [] });
   assert.equal(r.code, 1, r.output);
-  assert.match(r.output, /MISSING_LANES: 4 of/);
+  assert.match(r.output, /MISSING_LANES: 8 of/);
 });
 
 /**
@@ -508,7 +508,42 @@ test('the gate workflow carries NO `paths:` filter, so its own config cannot dod
   // same defect one level up.
   const own = readFileSync(join(REPO_ROOT, '.github/workflows/pr-review-signal.yml'), 'utf8');
   assert.ok(!/^\s*paths(-ignore)?:/m.test(own), 'pr-review-signal.yml must have no path filter');
-  assert.match(own, /types:\s*\[[^\]]*edited/, 'it must fire on `edited`, which is the retarget event');
+});
+
+test('the gate workflow does NOT fire on `edited`: no run beats a skipped run, and a re-poll beats nothing', () => {
+  // This used to assert the opposite -- `edited` is the retarget event, and
+  // before #3429 it was the only way a PR moved onto `main` re-fired this
+  // gate. Since #3429 the gate runs on every base, so a stacked PR is already
+  // red (MISSING_LANES) before it is retargeted, and dropping `edited` leaves
+  // that fail-closed verdict standing until the next push or a manual re-run.
+  //
+  // What it buys (CI redesign, step 3): 40% of Test runs were same-SHA
+  // re-runs from `edited` waves, and this workflow was 116 runs/day at 5.2 min
+  // average, re-polling heads that already had a verdict.
+  //
+  // What it must NOT become: an `if:` that skips the job on a non-retarget
+  // edit. A skipped job still publishes a check run, GitHub's required-check
+  // evaluation takes the LATEST run per name, and `skipped` reads as a pass --
+  // a body edit on a red PR would go green. The type has to be absent.
+  const own = readFileSync(join(REPO_ROOT, '.github/workflows/pr-review-signal.yml'), 'utf8');
+  // THE `pull_request:` BLOCK, not the first `types:` in the file: #4511 put a
+  // `merge_group: types: [checks_requested]` above it, and the unanchored
+  // version of this pin read THAT list, failed on "must still fire on
+  // opened", and turned the required check red on every PR at once.
+  const prBlock = /^  pull_request:\n((?:    [^\n]*\n)+)/m.exec(own);
+  assert.ok(prBlock, 'the workflow must declare a `pull_request` trigger');
+  const types = /^\s{4}types:\s*\[([^\]]*)\]/m.exec(prBlock[1]);
+  assert.ok(types, 'the workflow must declare explicit `pull_request` activity types');
+  const declared = types[1].split(',').map((t) => t.trim());
+  assert.ok(!declared.includes('edited'), `\`edited\` must not be a trigger; declared: ${declared.join(', ')}`);
+  for (const t of ['opened', 'synchronize', 'reopened', 'ready_for_review']) {
+    assert.ok(declared.includes(t), `the gate must still fire on \`${t}\`; declared: ${declared.join(', ')}`);
+  }
+  const code = own.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.ok(
+    !/github\.event\.action\s*[!=]=\s*'edited'|github\.event\.changes\.base/.test(code),
+    'no job may gate on the edited action or changes.base: the skipped run would report as a pass',
+  );
 });
 
 test('test.yml fires on `edited` too, so a retargeted PR gets the lanes this gate requires', () => {

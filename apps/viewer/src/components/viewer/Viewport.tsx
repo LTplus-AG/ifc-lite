@@ -1,6 +1,9 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { loadedInstancedModelIndices } from '@/lib/visibility/model-hidden-entities.js';
+import { useAppearanceReferences } from './useAppearanceReferences.js';
+import { createPlacedEntityBoundsLookup, placedBoundsExcludingTypes } from '@/lib/model-placement/selection-bounds';
 
 /**
  * 3D viewport component
@@ -9,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Renderer, type VisualEnhancementOptions, type LightingEnvironment } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo, PointCloudAsset } from '@ifc-lite/geometry';
-import { useViewerStore, resolveEntityRef, type CameraViewpoint, type MeasurePoint, type SnapVisualization } from '@/store';
+import { useViewerStore, resolveEntityRef, type CameraViewpoint } from '@/store';
 import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
 import { presetViewRotation } from '@/lib/preset-view-orientation';
 import { isGeometryLoadStreaming } from '@/lib/pick-gating';
@@ -37,13 +40,10 @@ import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../u
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import {
-  createEntityBoundsLookup,
   unionEntityBounds,
   getThemeClearColor,
-  accumulateBoundsExcludingTypes,
   hasPendingMeasurementState,
   type BoundingBox3D,
-  type ViewportStateRefs,
 } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 import { expandToGeometryBearingIds } from '../../utils/aggregation.js';
@@ -57,8 +57,7 @@ import { useKeyboardControls } from './useKeyboardControls.js';
 import { useSpaceMouseControls } from './useSpaceMouseControls.js';
 import { useAnimationLoop, type SunShadowSettings } from './useAnimationLoop.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
-import { usePointCloudSync } from './usePointCloudSync.js';
-import { usePointCloudLifecycle } from './usePointCloudLifecycle.js';
+import { useModelAssetsSync } from './useModelAssetsSync.js';
 import { useRenderUpdates } from './useRenderUpdates.js';
 import {
   useSymbolicAnnotations,
@@ -81,6 +80,7 @@ interface ViewportProps {
   /** Point cloud assets aggregated across visible federated models. */
   pointClouds?: ReadonlyArray<PointCloudAsset> | null;
   coordinateInfo?: CoordinateInfo;
+  sectionCoordinateInfo?: CoordinateInfo;
   computedIsolatedIds?: Set<number> | null;
   modelIdToIndex?: Map<string, number>;
   /** When true, the WebGPU canvas uses a transparent clear color so the
@@ -96,6 +96,7 @@ export function Viewport({
   geometryContentVersion,
   pointClouds,
   coordinateInfo,
+  sectionCoordinateInfo,
   computedIsolatedIds,
   modelIdToIndex,
   cesiumActive,
@@ -137,16 +138,6 @@ export function Viewport({
   // Sync selectedEntityId with model-aware selectedEntity for PropertiesPanel
   useModelSelection();
 
-  // Create reverse mapping from modelIndex to modelId for selection
-  const modelIndexToId = useMemo(() => {
-    if (!modelIdToIndex) return new Map<number, string>();
-    const reverse = new Map<number, string>();
-    for (const [modelId, index] of modelIdToIndex) {
-      reverse.set(index, modelId);
-    }
-    return reverse;
-  }, [modelIdToIndex]);
-
   // Compute selectedModelIndex for renderer (multi-model selection highlighting)
   const selectedModelIndex = models.size > 1 && selectedEntity && modelIdToIndex
     ? modelIdToIndex.get(selectedEntity.modelId) ?? undefined
@@ -164,26 +155,24 @@ export function Viewport({
     return map;
   }, [models]);
 
-  // Model indices whose GPU-instanced templates should survive a reshape
-  // (#2073) — every federated model that is still loaded AND visible.
-  // `undefined` (no federation info yet) falls back to useGeometryStreaming's
-  // own "modelIndex 0 only" default, the non-federated case.
-  const presentInstancedModelIndices = useMemo(() => {
-    if (!modelIdToIndex || modelIdToIndex.size === 0) return undefined;
-    // Index 0 is unconditionally present: the shard drain resolves ownership
-    // as `modelIdToIndex.get(modelId) ?? 0`, so a shard whose modelId is not
-    // in the map lands on 0. Deriving this set from the map alone would then
-    // tear down templates the drain had just uploaded there — the two must
-    // agree on the FALLBACK, not only on the mapped entries. That mismatch
-    // between a producer and a consumer of the same key is exactly the shape
-    // behind #2272 and #2278.
-    const present = new Set<number>([0]);
-    for (const [modelId, index] of modelIdToIndex) {
-      const model = models.get(modelId);
-      if (!model || model.visible) present.add(index);
+  // Hidden models retain their one-time instance uploads; useVisibilityState
+  // masks them without changing user hides or isolation (#4428).
+  const presentInstancedModelIndices = useMemo(
+    () => loadedInstancedModelIndices(models, modelIdToIndex),
+    [modelIdToIndex, models],
+  );
+
+  // Borrow hidden-model source arrays; stamp only stable renderer ownership (#4404).
+  const appearanceSourceGeometry = useMemo(() => {
+    const sources: MeshData[] = [];
+    for (const [modelId, model] of models) {
+      const modelIndex = modelIdToIndex?.get(modelId) ?? 0;
+      for (const mesh of model.geometryResult?.meshes ?? []) {
+        sources.push(mesh.modelIndex === modelIndex ? mesh : { ...mesh, modelIndex });
+      }
     }
-    return present;
-  }, [modelIdToIndex, models]);
+    return sources;
+  }, [models, modelIdToIndex, geometryContentVersion]);
 
   // Helper to handle pick result and set selection properly
   // IMPORTANT: pickResult.expressId is now a globalId (transformed at load time)
@@ -311,11 +300,7 @@ export function Viewport({
 
   // Measurement state
   const {
-    measurements,
-    pendingMeasurePoint,
     activeMeasurement,
-    addMeasurePoint,
-    completeMeasurement,
     startMeasurement,
     updateMeasurement,
     finalizeMeasurement,
@@ -355,9 +340,8 @@ export function Viewport({
 
   // Calculate section plane range based on actual geometry bounds for current axis
   const sectionRange = useMemo(() => {
-    if (!coordinateInfo?.shiftedBounds) return null;
-
-    const bounds = coordinateInfo.shiftedBounds;
+    const bounds = (sectionCoordinateInfo ?? coordinateInfo)?.shiftedBounds;
+    if (!bounds) return null;
 
     // Map semantic axis to coordinate axis
     const axisKey = sectionPlane.axis === 'side' ? 'x' : sectionPlane.axis === 'down' ? 'y' : 'z';
@@ -366,7 +350,7 @@ export function Viewport({
     const max = bounds.max[axisKey];
 
     return Number.isFinite(min) && Number.isFinite(max) ? { min, max } : null;
-  }, [coordinateInfo, sectionPlane.axis]);
+  }, [coordinateInfo, sectionCoordinateInfo, sectionPlane.axis]);
 
   // Theme-aware clear color ref (updated when theme changes)
   // Tokyo Night storm: #1a1b26 = rgb(26, 27, 38)
@@ -653,7 +637,6 @@ export function Viewport({
     }
   }, [clashSelectedId, clashSolidMesh, clashSolidStatus, isInitialized]);
   const activeToolRef = useRef<string>(activeTool);
-  const pendingMeasurePointRef = useLatestRef(pendingMeasurePoint);
   const activeMeasurementRef = useLatestRef(activeMeasurement);
   const snapEnabledRef = useLatestRef(snapEnabled);
   const edgeLockStateRef = useLatestRef(edgeLockState);
@@ -991,7 +974,7 @@ export function Viewport({
       // on top memoises the COMBINED answer, so a repeated id costs nothing
       // and the instanced fallback is queried at most once per id.
       const createRenderableBoundsLookup = () => {
-        const meshBounds = createEntityBoundsLookup(geometryRef.current ?? null);
+        const meshBounds = createPlacedEntityBoundsLookup(geometryRef.current ?? null);
         const scene = rendererRef.current?.getScene();
         const cache = new Map<number, BoundingBox3D | null>();
         return (id: number): BoundingBox3D | null => {
@@ -1189,9 +1172,7 @@ export function Viewport({
           // bounds left, and returning early here would have made the instanced
           // fallback below unreachable in exactly that case.
           if (ids.length === 0) return;
-          const geom = geometryRef.current;
-          const scene = rendererRef.current?.getScene();
-          const bounds = unionEntityBounds(geom, ids, (id) => scene?.getInstancedEntityBounds(id));
+          const bounds = unionEntityBounds(null, ids, createRenderableBoundsLookup());
           const min = bounds?.min ?? null;
           const max = bounds?.max ?? null;
           if (min && max) {
@@ -1214,7 +1195,7 @@ export function Viewport({
           const geom = geometryRef.current;
           const scene = rendererRef.current?.getScene();
           const EXCLUDE = new Set(['IfcSite', 'IfcSpace']);
-          let bounds = geom ? accumulateBoundsExcludingTypes(geom, EXCLUDE) : null;
+          let bounds = geom ? placedBoundsExcludingTypes(geom, EXCLUDE) : null;
           // Merge in instanced occurrences (not present in flat meshes), skipping
           // excluded types via each id's OWN model store — instanced ids are
           // federated global ids, so resolve them through the registry instead
@@ -1239,7 +1220,7 @@ export function Viewport({
               }
             }
           }
-          const target = bounds ?? geometryBoundsRef.current;
+          const target = bounds ?? rendererRef.current?.getModelBounds() ?? geometryBoundsRef.current;
           // Same sanity gate `frameEntities` applies: a degenerate or corrupted
           // bound here would fling the camera off-model with no way back. The
           // instanced-occurrence merge above unions bounds from the scene, so a
@@ -1727,6 +1708,7 @@ export function Viewport({
     geometry,
     geometryVersion,
     geometryContentVersion,
+    appearanceSourceGeometry,
     coordinateInfo,
     isStreaming,
     modelCount: modelIdToIndex?.size ?? 0,
@@ -1751,16 +1733,11 @@ export function Viewport({
     onGeometryReleased,
   });
 
-  usePointCloudSync({
-    rendererRef,
-    isInitialized,
-    pointClouds,
-    hasMeshes: (geometry?.length ?? 0) > 0,
-  });
+  useAppearanceReferences(rendererRef, isInitialized);
 
-  usePointCloudLifecycle({
-    rendererRef,
-    isInitialized,
+  useModelAssetsSync({
+    rendererRef, isInitialized, pointClouds, geometry, modelIdToIndex,
+    hasMeshes: (geometry?.length ?? 0) > 0,
   });
 
   useRenderUpdates({

@@ -17,15 +17,41 @@ use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder};
 /// `IfcComplexProperty` at most a couple of levels deep.
 pub(super) const MAX_COMPLEX_PROPERTY_DEPTH: u8 = 8;
 
+/// The suffix minted into a complex property's display value when the depth
+/// cap stops the walk with `HasProperties` members still unread (issue
+/// #3972). Byte-identical to `complexPropertyTruncationMarker()` in
+/// `packages/parser/src/property-value-parser.ts` — the two paths feed the
+/// same property panel, CSV/parquet export and compare fingerprints, so a
+/// divergence here reads as a data difference between server and browser.
+///
+/// A suffix rather than a `truncated` flag on `Property`: a flag would have
+/// to be carried through the Rust struct + serde, the per-field parquet
+/// columns, the TS `Property` type, the `serverDataModel` adapter and the
+/// panel renderer, and is silently lost at any one of them — a signal that
+/// never fires, which is the same shape this issue is about. The value
+/// string reaches every reader by construction.
+fn complex_property_truncation_marker() -> String {
+    format!("(truncated: nesting deeper than {MAX_COMPLEX_PROPERTY_DEPTH} levels)")
+}
+
 /// Resolve an `IfcComplexProperty`'s nested `HasProperties` (EXPRESS:
 /// `[Name, Description, UsageName, HasProperties]`, index 3) into a display
 /// value plus a flat `values` candidate list, recursing into any further
 /// nested `IfcComplexProperty` — mirrors `resolveComplexPropertyValue`
 /// (`packages/parser/src/property-value-parser.ts`) member-for-member:
 ///
-/// - Not a list, or the depth cap is hit: return the bare `UsageName` (or the
-///   "null" kind when it's absent/empty) with NO truncation flag — the TS
-///   side is silent about hitting the cap too, it just stops recursing.
+/// - Not a list, or an empty list: return the bare `UsageName` (or the "null"
+///   kind when it's absent/empty) — there was nothing nested to lose.
+/// - The depth cap is hit with a NON-EMPTY `HasProperties` still unread:
+///   return `UsageName` suffixed with
+///   `complex_property_truncation_marker()`, or the bare marker when there is
+///   no `UsageName`. Never the bare `UsageName`: that is a plausible,
+///   well-formed value indistinguishable from a complex property that
+///   genuinely has no nested content (issue #3972). The empty-`UsageName`
+///   case matters most — before #3972 it produced an empty display, the
+///   parent `continue`d past it, and the whole nested member vanished while
+///   the parent fell back to showing its OWN `UsageName`, so the reader saw
+///   a real value attributed to the wrong nesting level.
 /// - Each nested member that resolves to a non-empty display becomes one
 ///   `"Name: value"` part (or bare `value` when the nested member has no
 ///   Name); a member that fails to resolve, or resolves to an empty display,
@@ -42,21 +68,32 @@ pub(super) fn resolve_complex_property_value(
     depth: u8,
 ) -> (String, String, Option<String>, Option<Vec<String>>) {
     let usage_name = entity.get_string(2).map(|s| s.to_string());
-    let has_properties_list = if depth < MAX_COMPLEX_PROPERTY_DEPTH {
-        entity.get_list(3)
-    } else {
-        None
+    let bare = |usage_name: Option<String>| match usage_name {
+        Some(u) if !u.is_empty() => (u, "string".to_string(), None, None),
+        _ => (String::new(), "null".to_string(), None, None),
     };
 
-    let refs: Vec<u32> = match has_properties_list {
-        Some(list) => list.iter().filter_map(|v| v.as_entity_ref()).collect(),
-        None => {
-            return match usage_name {
-                Some(u) if !u.is_empty() => (u, "string".into(), None, None),
-                _ => (String::new(), "null".into(), None, None),
-            };
-        }
+    let has_properties = match entity.get_list(3) {
+        Some(list) if !list.is_empty() => list,
+        // Absent, not a list, or empty: nothing nested exists, so stopping
+        // here loses nothing and must NOT be marked as a truncation.
+        _ => return bare(usage_name),
     };
+
+    if depth >= MAX_COMPLEX_PROPERTY_DEPTH {
+        // Members were present and we declined to read them. Say so.
+        let marker = complex_property_truncation_marker();
+        let value = match usage_name {
+            Some(u) if !u.is_empty() => format!("{u} {marker}"),
+            _ => marker,
+        };
+        return (value, "string".into(), None, None);
+    }
+
+    let refs: Vec<u32> = has_properties
+        .iter()
+        .filter_map(|v| v.as_entity_ref())
+        .collect();
 
     let mut parts: Vec<String> = Vec::new();
     let mut values: Vec<String> = Vec::new();

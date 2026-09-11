@@ -19,6 +19,26 @@ pub(super) use operator::parse_cartesian_transformation_operator;
 // its storey elevation forward via `world_y`.
 // ────────────────────────────────────────────────────────────────────────────
 
+/// Push a plan-space `(x, y)` pair onto a point buffer, but only if BOTH
+/// components are finite. STEP REALs are not guaranteed finite — a
+/// hand-edited or malformed file can carry `1.E400`, which parses to
+/// `f32::INFINITY` and then propagates through `transform_point` /
+/// `RenderFrameRebase::plan` into NaN/Inf. This is the single chokepoint for
+/// that guard: `items.rs`'s polyline/indexed-poly-curve/ellipse extraction
+/// and `fill.rs`'s boundary-ring extraction both call this instead of
+/// pushing directly, so the two paths cannot drift apart the way they did
+/// before (fill.rs pushed unguarded coordinates while items.rs did not).
+/// Returns `true` if the point was kept.
+pub(super) fn push_finite_point(points: &mut Vec<f32>, x: f32, y: f32) -> bool {
+    if x.is_finite() && y.is_finite() {
+        points.push(x);
+        points.push(y);
+        true
+    } else {
+        false
+    }
+}
+
 /// A full 2D AFFINE transform: an arbitrary 2x2 linear block (`m00, m01, m10,
 /// m11`) plus translation. Unlike the `(cos_theta, sin_theta)` similarity this
 /// replaced, the 2x2 CAN carry a reflection, so a mirroring `IfcMappedItem`

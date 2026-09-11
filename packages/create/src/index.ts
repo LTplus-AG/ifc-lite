@@ -57,6 +57,7 @@ export { addRoofToStore, type RoofInStoreParams, type RoofRectangleParams, type 
 export { addPlateToStore, type PlateInStoreParams, type PlateRectangleParams, type PlatePolygonParams, type PlateBuildResult } from './in-store/plate.js';
 export { addMemberToStore, type MemberInStoreParams, type MemberBuildResult } from './in-store/member.js';
 export { resolveSpatialAnchor } from './in-store/resolve-anchor.js';
+export { toNativeLength, fromNativeLength } from './in-store/anchor.js';
 export type { SpatialAnchor } from './in-store/anchor.js';
 export {
   duplicateInStore,
@@ -80,6 +81,12 @@ export {
   type WallExtractionResult,
 } from './in-store/extract-walls.js';
 export {
+  storeyPlanFrame,
+  toStoreyLocal,
+  fromStoreyLocal,
+  type StoreyPlanFrame,
+} from './in-store/storey-plan-frame.js';
+export {
   generateSpacesFromWalls,
   offsetRoomFootprint,
   GENERATED_SPACE_OBJECTTYPE,
@@ -95,6 +102,29 @@ export {
   type GenerateSpacesStoreyResult,
   type StoreyInfo,
 } from './in-store/generate-spaces-all.js';
+export {
+  addDrawingMarkupToStore,
+  addMeasureMarkupToStore,
+  addPolygonAreaMarkupToStore,
+  addTextMarkupToStore,
+  addCloudMarkupToStore,
+  DRAWING_MARKUP_OBJECTTYPE,
+  DRAWING_MARKUP_PSET_NAME,
+  DRAWING_MARKUP_QSET_NAME,
+  type DrawingMarkupObjectType,
+  type MarkupAnchor,
+  type MarkupPoint2D,
+  type MeasureMarkupParams,
+  type MeasureMarkupResult,
+  type PolygonAreaMarkupParams,
+  type PolygonAreaMarkupResult,
+  type TextMarkupParams,
+  type TextMarkupResult,
+  type CloudMarkupParams,
+  type CloudMarkupResult,
+  type DrawingMarkupBatchInput,
+  type DrawingMarkupBatchResult,
+} from './in-store/drawing-markup.js';
 
 export type {
   // Geometry primitives

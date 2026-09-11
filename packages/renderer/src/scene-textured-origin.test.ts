@@ -20,6 +20,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { modelPlacementBounds, sceneMeshBounds } from './model-placement-bounds.js';
 import { Scene } from './scene.js';
 import { mergeGeometry } from './scene-geometry.js';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -39,7 +40,8 @@ function fakeDevice(): { device: GPUDevice; writes: ArrayBuffer[] } {
   const writes: ArrayBuffer[] = [];
   const device = {
     limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
-    createBuffer: () => ({ destroy() {}, size: 0 }),
+    createBuffer: (desc: GPUBufferDescriptor) => ({ destroy() {}, size: desc.size, getMappedRange: () => new ArrayBuffer(desc.size), unmap() {} }),
+    createBindGroup: () => ({}),
     createTexture: () => ({ destroy() {}, createView: () => ({}) }),
     createSampler: () => ({}),
     queue: {
@@ -57,11 +59,12 @@ const fakePipeline = {
   createTexturedBindGroup: () => ({}),
   createBindGroup: () => ({}),
   getUniformBufferSize: () => 256,
+  getBindGroupLayout: () => ({}),
 } as unknown as Parameters<Scene['appendToBatches']>[2];
 
 /** A unit triangle at the model origin, offset into world space by `origin`. */
 function meshData(expressId: number, origin: [number, number, number], textured: boolean): MeshData {
-  const base: Record<string, unknown> = {
+  const base: MeshData = {
     expressId,
     positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
     normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
@@ -71,9 +74,9 @@ function meshData(expressId: number, origin: [number, number, number], textured:
   };
   if (textured) {
     base.uvs = new Float32Array([0, 0, 1, 0, 0, 1]);
-    base.texture = { width: 1, height: 1, data: new Uint8Array([255, 255, 255, 255]) };
+    base.texture = { width: 1, height: 1, rgba: new Uint8Array([255, 255, 255, 255]), repeatS: false, repeatT: false };
   }
-  return base as unknown as MeshData;
+  return base;
 }
 
 /** World-space AABB of `positions` once `origin` is folded back in. */
@@ -153,4 +156,167 @@ describe('textured meshes carry their per-element origin (#1973)', () => {
 
     assert.deepStrictEqual([...scene.getTexturedMeshes()[0].origin], [0, 0, 0]);
   });
+});
+
+
+it('moves only the owning textured model and keeps texture uploads stable (#4226)', () => {
+  const scene = new Scene(), { device, writes } = fakeDevice();
+  const moving = { ...meshData(1, ORIGIN, true), modelIndex: 7 };
+  const fixed = { ...meshData(2, [0, 0, 0], true), modelIndex: 0 };
+  scene.appendToBatches([moving, fixed], device, fakePipeline);
+  const uploads = writes.length;
+  scene.setModelTranslation(7, [100, 200, 300]);
+  const meshes = scene.getTexturedMeshes();
+  assert.deepStrictEqual(meshes.find((m) => m.expressId === 1)!.origin, [112.5, 210.5, 296.75]);
+  assert.deepStrictEqual(meshes.find((m) => m.expressId === 2)!.origin, [0, 0, 0]);
+  assert.strictEqual(writes.length, uploads, 'moving a textured model does not re-upload its vertices or texture');
+  assert.deepStrictEqual(moving.origin, ORIGIN, 'the source placement remains unchanged');
+  scene.setModelTranslation(7, [0, 0, 0]);
+  assert.deepStrictEqual(meshes.find((m) => m.expressId === 1)!.origin, ORIGIN);
+  scene.clear();
+});
+
+it('frames textured pieces by model even when entity ids coincide (#4226)', () => {
+  const scene = new Scene(), { device } = fakeDevice();
+  scene.appendToBatches([{ ...meshData(1, ORIGIN, true), modelIndex: 7 },
+    { ...meshData(1, [0, 0, 0], true), modelIndex: 0 }], device, fakePipeline);
+  scene.releaseGeometryData(); scene.setModelTranslation(7, [100, 0, 0]);
+  assert.deepStrictEqual(modelPlacementBounds(scene, null, 0), { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } });
+  assert.strictEqual(modelPlacementBounds(scene, null, 7)!.min.x, 112.5);
+  assert.deepStrictEqual(sceneMeshBounds(scene), { min: { x: 0, y: 0, z: -3.25 }, max: { x: 113.5, y: 11.5, z: 0 } });
+  scene.clear();
+});
+
+for (const edit of ['translate', 'rotate'] as const) it(`refreshes textured bounds after ${edit} and subsequent model placement (#4226)`, () => {
+  const scene = new Scene(), { device, writes } = fakeDevice();
+  scene.appendToBatches([{ ...meshData(1, [0, 0, 0], true), modelIndex: 7 }], device, fakePipeline);
+  scene.setModelTranslation(7, [100, 0, 0]);
+  if (edit === 'translate') scene.translateMeshesForEntity(1, [2, 3, 4]);
+  else scene.rotateMeshesForEntity(1, Math.PI / 2, [100, 0, 0]);
+  const drawable = scene.getTexturedMeshes()[0];
+  const expected = worldBounds(texturedPositions(writes.at(-1)!, 3), [...drawable.origin]);
+  assert.deepStrictEqual(drawable.bounds, expected, 'bounds enclose the actual uploaded vertices');
+  scene.setModelTranslation(7, [110, 0, 0]);
+  const moved = { min: [...expected.min], max: [...expected.max] };
+  moved.min[0] += 10; moved.max[0] += 10;
+  assert.deepStrictEqual(drawable.bounds, moved, 'the next preview retains the geometry edit');
+  scene.setModelTranslation(7, [0, 0, 0]);
+  assert.strictEqual(drawable.bounds!.min[0], expected.min[0] - 100);
+  scene.clear();
+});
+
+// #4308: insertion is invisible until commit, and cancellation frees every allocation.
+describe('prepared textured owner insertion (#4308)', () => {
+  it('keeps prepared geometry outside rendering and picking until commit', () => {
+    const scene = new Scene(), { device } = fakeDevice();
+    const prepared = scene.prepareTexturedOwner(meshData(55, ORIGIN, true), device, fakePipeline);
+    assert.equal(scene.getMeshDataPieces(55), undefined);
+    assert.equal(scene.getTexturedMeshes().length, 0);
+    prepared.commit(); prepared.commit(); prepared.dispose();
+    assert.equal(scene.getMeshDataPieces(55)?.length, 1);
+    assert.equal(scene.getTexturedMeshes().length, 1);
+    assert.throws(() => scene.prepareTexturedOwner(meshData(55, ORIGIN, true), device, fakePipeline), /already exists/);
+    scene.removeMeshesForEntity(55);
+    assert.equal(scene.getTexturedMeshes().length, 0);
+  });
+  it('releases cancelled resources exactly once and rejects a late commit', () => {
+    const scene = new Scene(), { device } = fakeDevice();
+    const destroyed: number[] = [];
+    let texturesDestroyed = 0;
+    const createTexture = device.createTexture;
+    device.createTexture = descriptor => {
+      const texture = createTexture(descriptor);
+      texture.destroy = () => { texturesDestroyed++; };
+      return texture;
+    };
+    device.createBuffer = (() => {
+      const id = destroyed.push(0) - 1;
+      return { destroy() { destroyed[id]++; }, size: 0 };
+    }) as unknown as GPUDevice['createBuffer'];
+    const prepared = scene.prepareTexturedOwner(meshData(56, ORIGIN, true), device, fakePipeline);
+    prepared.dispose(); prepared.dispose();
+    assert.deepEqual(destroyed, [1, 1, 1]);
+    assert.equal(texturesDestroyed, 1);
+    assert.equal(scene.getMeshDataPieces(56), undefined);
+    assert.equal(scene.getTexturedMeshes().length, 0);
+    assert.throws(() => prepared.commit(), /released/);
+  });
+  it('unwinds an allocation failure without registering a partial owner', () => {
+    const scene = new Scene(), { device } = fakeDevice();
+    let released = 0, allocations = 0;
+    device.createBuffer = (() => {
+      if (++allocations === 2) throw new Error('injected allocation failure');
+      return { destroy() { released++; }, size: 0 };
+    }) as unknown as GPUDevice['createBuffer'];
+    assert.throws(() => scene.prepareTexturedOwner(meshData(57, ORIGIN, true), device, fakePipeline), /injected/);
+    assert.equal(released, 1);
+    assert.equal(scene.getMeshDataPieces(57), undefined);
+    assert.equal(scene.getTexturedMeshes().length, 0);
+  });
+});
+
+describe('#4406 multi-part authored owner staging', () => {
+  it('publishes all colour parts together and keeps concurrent detached owners distinct', () => {
+    const scene = new Scene(), { device } = fakeDevice();
+    const red = { ...meshData(81, ORIGIN, false), color: [1, 0, 0, 1] as [number, number, number, number] };
+    const blue = { ...meshData(81, [ORIGIN[0] + 2, ORIGIN[1], ORIGIN[2]], false), color: [0, 0, 1, 1] as [number, number, number, number] };
+    const first = scene.prepareAuthoredOwner([red, blue], device, fakePipeline);
+    const second = scene.prepareAuthoredOwner([meshData(82, ORIGIN, false)], device, fakePipeline);
+    assert.equal(scene.getMeshDataPieces(81), undefined);
+    assert.equal(scene.getBatchedMeshes().length, 0);
+    first.commit(); second.commit(); first.dispose(); second.dispose();
+    assert.equal(scene.getMeshDataPieces(81)?.length, 2);
+    assert.equal(scene.getMeshDataPieces(82)?.length, 1);
+    assert.equal(scene.getBatchedMeshes().length, 3);
+    assert.deepEqual(scene.getMeshDataPieces(81)?.map(part => part.color), [red.color, blue.color]);
+    assert.deepEqual(scene.getMeshDataPieces(81)?.map(part => part.origin), [red.origin, blue.origin]);
+    scene.removeMeshesForEntity(81);
+    assert.equal(scene.getMeshDataPieces(81), undefined);
+    assert.equal(scene.getMeshDataPieces(82)?.length, 1);
+    scene.clear();
+  });
+  it('publishes mixed image and coloured parts without synthetic textures', () => {
+    const scene = new Scene(), { device } = fakeDevice();
+    const prepared = scene.prepareAuthoredOwner([meshData(83, ORIGIN, true), meshData(83, ORIGIN, false)], device, fakePipeline);
+    assert.equal(scene.getTexturedMeshes().length, 0);
+    assert.equal(scene.getBatchedMeshes().length, 0);
+    prepared.commit();
+    assert.equal(scene.getTexturedMeshes().length, 1);
+    assert.equal(scene.getBatchedMeshes().length, 1);
+    assert.equal(scene.getMeshDataPieces(83)?.length, 2);
+    scene.clear();
+  });
+  it('releases earlier allocations after a later colour fails and leaves no owner', () => {
+    const scene = new Scene(), { device } = fakeDevice();
+    let allocations = 0, releases = 0;
+    device.createBuffer = ((desc: GPUBufferDescriptor) => {
+      if (++allocations === 4) throw new Error('second colour allocation failed');
+      return { destroy() { releases++; }, size: desc.size, getMappedRange: () => new ArrayBuffer(desc.size), unmap() {} };
+    }) as GPUDevice['createBuffer'];
+    const first = meshData(84, ORIGIN, false), second = { ...first, color: [0, 0, 1, 1] as [number, number, number, number] };
+    assert.throws(() => scene.prepareAuthoredOwner([first, second], device, fakePipeline), /second colour/);
+    assert.equal(releases, allocations - 1);
+    assert.equal(scene.getMeshDataPieces(84), undefined);
+    assert.equal(scene.getBatchedMeshes().length, 0);
+  });
+  it('refuses stale scenes, foreign owners and malformed geometry before publication', () => {
+    const scene = new Scene(), { device } = fakeDevice();
+    assert.throws(() => scene.prepareAuthoredOwner([meshData(85, ORIGIN, false), meshData(86, ORIGIN, false)], device, fakePipeline), /identity/);
+    assert.throws(() => scene.prepareAuthoredOwner([{ ...meshData(85, ORIGIN, false), indices: new Uint32Array([0, 1, 99]) }], device, fakePipeline), /valid geometry/);
+    const prepared = scene.prepareAuthoredOwner([meshData(85, ORIGIN, false)], device, fakePipeline);
+    scene.clear();
+    assert.throws(() => prepared.commit(), /scene changed/);
+    prepared.dispose(); prepared.dispose();
+    assert.equal(scene.getMeshDataPieces(85), undefined);
+  });
+  it('refuses placement changes between detached allocation and publication', () => {
+    const scene = new Scene(), { device } = fakeDevice();
+    const prepared = scene.prepareAuthoredOwner([{ ...meshData(87, ORIGIN, false), modelIndex: 2 }], device, fakePipeline);
+    scene.setModelTranslation(2, [7, 8, 9]);
+    assert.throws(() => prepared.commit(), /placement changed/);
+    prepared.dispose();
+    assert.equal(scene.getMeshDataPieces(87), undefined);
+    assert.equal(scene.getBatchedMeshes().length, 0);
+  });
+
 });

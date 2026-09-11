@@ -18,6 +18,7 @@ import {
   extractEntitiesCommand,
 } from './extract-entities.js';
 import { planSpatialRelations } from './subset-relations.js';
+import { spatialAncestors } from './spatial-ancestors.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Committed viewer demo sample with real render geometry, needed for the
@@ -140,6 +141,58 @@ describe('forwardClosure', () => {
     }
     // it must NOT drag in the unrelated wall #90
     expect(keep.has(90)).toBe(false);
+  });
+
+  // #4148: a Name/Description literal containing `#<digits>` that happens to
+  // match a REAL id in the model must not be read as a reference. Regression
+  // for `forwardClosure` reading `/#(\d+)/g` over raw record text: unlike
+  // `MODEL`'s `#north` above (not digits, never matched even the naive scan),
+  // this fixture names an actual other entity's id inside a string.
+  const LOOKALIKE_MODEL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2024',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#70= IFCFURNISHINGELEMENT('CHAIR000000000000000X',$,'Chair pairs with #71',$,$,#50,$,'tag');
+#50= IFCLOCALPLACEMENT($,$);
+#71= IFCFURNISHINGELEMENT('CHAIR100000000000000X',$,'Other chair',$,$,#51,$,'tag2');
+#51= IFCLOCALPLACEMENT($,$);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+  it('does not pull in an id that only appears inside a Name/Description string literal', () => {
+    const p = parseStep(LOOKALIKE_MODEL);
+    const keep = new Set<number>();
+    forwardClosure([70], p, keep);
+    expect(keep.has(70)).toBe(true);
+    expect(keep.has(50)).toBe(true);
+    // #71 is only mentioned inside #70's Name TEXT, never referenced as an
+    // attribute — it and its own placement #51 must not be pulled in.
+    expect(keep.has(71)).toBe(false);
+    expect(keep.has(51)).toBe(false);
+  });
+
+  // CLI-level counterpart of the unit test above: `forwardClosure` is an
+  // internal helper `--product` runs through (see `extractEntitiesCommand`),
+  // so a regression there could pass the helper-level test above while the
+  // command itself still emits the wrong bytes. Exercise the actual command
+  // and assert on its output file, not just the in-memory `keep` set.
+  it('extracting --product #70 does not emit the lookalike id pulled in only by string text', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-lookalike-'));
+    const src = join(dir, 'in.ifc');
+    const out = join(dir, 'sub.ifc');
+    await writeFile(src, LOOKALIKE_MODEL, 'latin1');
+    await extractEntitiesCommand([src, '--product', '#70', '--out', out]);
+    const text = await readFile(out, 'latin1');
+    expect(text).toContain('#70=');
+    expect(text).toContain('#50=');
+    // #71 and its own placement #51 are only mentioned inside #70's Name
+    // TEXT, never referenced as an attribute — they must not be emitted.
+    expect(text).not.toContain('#71=');
+    expect(text).not.toContain('#51=');
   });
 });
 
@@ -286,11 +339,25 @@ describe('buildSubset: one containment relation per storey (the real exporter sh
     expect(keep.has(76)).toBe(false);
   });
 
-  it('leaves the spatial IfcRelAggregates chain byte-identical (nothing filtered)', () => {
-    for (const id of [94, 95, 96]) {
+  it('leaves the aggregates whose whole membership is kept byte-identical', () => {
+    // #94 (Project->Site) and #95 (Site->Building) each name only ancestors of
+    // the selected products, so both members are kept and nothing is filtered.
+    for (const id of [94, 95]) {
       expect(keep.has(id)).toBe(true);
       expect(rewritten.has(id)).toBe(false);
     }
+  });
+
+  it('does not force-keep the unrelated storey L02, and rewrites #96 without it (#4124)', () => {
+    // #96 (Building->Storeys) names BOTH storeys, but nothing selected sits
+    // under L02 (#45), so backward closure from the selection never reaches
+    // it and it is not force-kept the way a hardcoded root-type list would.
+    // #96 survives (RelatingObject #36 is kept and the intersection is
+    // non-empty) with its SET rewritten down to L01 alone.
+    expect(keep.has(45)).toBe(false);
+    expect(keep.has(96)).toBe(true);
+    expect(rewritten.get(96)).toContain('(#41)');
+    expect(rewritten.get(96)).not.toContain('#45');
   });
 
   it('serializes with zero dangling references, including the rewritten relations', () => {
@@ -304,13 +371,12 @@ describe('buildSubset: one containment relation per storey (the real exporter sh
   });
 });
 
-// The IfcRelAggregates REWRITE path needs the whole kept AND a strict subset of
-// its parts kept, and no selection above produces that shape: the spatial chain's
-// parts (#34, #36, #41, #45) are force-kept context roots, so #94/#95/#96 never
-// lose a member, and #93's whole #76 is never selected, so #93 is always dropped
-// on its parent instead. Without this case the `IFCRELAGGREGATES: [4, 5]` row
-// could be written backwards and every assertion above would still pass
-// (measured: reversing that one row changes no verdict in the block above).
+// #96 above already exercises the IFCRELAGGREGATES rewrite path (#4124's
+// backward closure keeps #36 as a spatial ancestor of L01 but not L02, so its
+// SET loses a member). This block exercises the OTHER shape: a selection whose
+// whole AND a strict subset of its parts are both explicitly selected — #93's
+// whole #76 (an IfcElementAssembly, never a spatial ancestor of anything) is
+// never kept by backward closure, so this is the only case that pins it.
 describe('buildSubset: an IfcRelAggregates keeping its whole and a strict subset of its parts', () => {
   const p = parseStep(STOREY_MODEL);
   // The assembly #76 AND one of its two parts. #71 is left out.
@@ -454,9 +520,10 @@ describe('buildSubset: a private OwnerHistory that owns a subtree', () => {
 });
 
 // The OTHER storey's containment carries the private OwnerHistory, and the
-// selection touches neither of its products. #82's relating parent #45 IS kept
-// (every storey is a force-kept context root), so only the empty member
-// intersection stands between #82 and the blocked path.
+// selection touches neither of its products. #82's relating parent #45 is not
+// kept either (nothing selected sits under L02, so backward closure never
+// reaches it), so #82 is dropped on the relating-parent check before the
+// OwnerHistory loop — and either way it never reports #7 as blocking.
 const STOREY_MODEL_UNRELATED_REL_OWNED = STOREY_MODEL.replace(
   "#82= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000002',#5,",
   "#7= IFCOWNERHISTORY($,$,$,.ADDED.,$,$,$,0);\n" +
@@ -500,6 +567,170 @@ describe('buildSubset: a relation whose OwnerHistory is never defined', () => {
     const out = serializeSubset({ keep, rewritten }, p);
     expectNoDanglingRefs(out);
     expect(out).not.toContain('#80=');
+  });
+});
+
+// STOREY_MODEL plus a room (#47, an IfcSpace) aggregated under L01 (#41) and
+// one product (#77) contained in the room rather than directly under the
+// storey. `IfcSpace` was never in `buildSubset`'s hardcoded root-type list, so
+// its `RelatingStructure` was never a kept reference and #83 (the room's
+// containment) was always dropped whole, even on a strict selection under a
+// real spatial container (#4124).
+const STOREY_MODEL_WITH_SPACE = STOREY_MODEL.replace(
+  'ENDSEC;\nEND-ISO-10303-21;\n',
+  "#46= IFCLOCALPLACEMENT(#40,#21);\n" +
+    "#47= IFCSPACE('SPAC000000000000000001',#5,'Room 101',$,$,#46,$,$,.ELEMENT.,$);\n" +
+    "#48= IFCRELAGGREGATES('RAGG000000000000000005',#5,$,$,#41,(#47));\n" +
+    "#77= IFCFURNISHINGELEMENT('FURN000000000000000007',#5,'Chair 7',$,$,#46,#64,'c7');\n" +
+    "#83= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000003',#5,'Room contents',$,(#77),#47);\n" +
+    'ENDSEC;\nEND-ISO-10303-21;\n',
+);
+
+describe('buildSubset: containment under an IfcSpace, not a storey (#4124)', () => {
+  const p = parseStep(STOREY_MODEL_WITH_SPACE);
+  const { keep, rewritten } = buildSubset(new Set([77]), p);
+
+  it('keeps the space as a spatial ancestor and its containment relation', () => {
+    expect(keep.has(47)).toBe(true); // IfcSpace
+    expect(keep.has(83)).toBe(true); // containment into the space
+    expect(rewritten.has(83)).toBe(false); // sole member kept → byte-identical
+  });
+
+  it('climbs the space up through its storey/building/site to the project', () => {
+    for (const id of [41, 36, 34, 1]) expect(keep.has(id)).toBe(true);
+  });
+
+  it('does not force-keep the other storey (L02) nothing selected sits under', () => {
+    expect(keep.has(45)).toBe(false);
+  });
+
+  it('serializes with zero dangling references', () => {
+    expectNoDanglingRefs(serializeSubset({ keep, rewritten }, p));
+  });
+});
+
+// A product whose ONLY path into the spatial tree is IfcRelReferencedInSpatialStructure:
+// storey L03 (#43) is aggregated under the building but carries no
+// IfcRelContainedInSpatialStructure at all, and #78 is named by nothing else in
+// the model. Unlike #81 above (also a REFERENCED relation, but #70's RelatingStructure
+// #34 is independently reached through #80's storey #41 -> #96 -> #36 -> #95 -> #34),
+// this fixture makes the REFERENCED-climbing branch of `structureParents` the ONLY
+// way #43 (and everything above it) gets kept — skipping that branch entirely still
+// leaves every other test in this file green.
+const STOREY_MODEL_REFERENCED_ONLY = STOREY_MODEL.replace(
+  'ENDSEC;\nEND-ISO-10303-21;\n',
+  "#42= IFCLOCALPLACEMENT(#35,#21);\n" +
+    "#43= IFCBUILDINGSTOREY('STOR000000000000000003',#5,'L03',$,$,#42,$,$,.ELEMENT.,6.);\n" +
+    "#97= IFCRELAGGREGATES('RAGG000000000000000006',#5,$,$,#36,(#43));\n" +
+    "#78= IFCFURNISHINGELEMENT('FURN000000000000000008',#5,'Chair 8',$,$,#42,#64,'c8');\n" +
+    "#84= IFCRELREFERENCEDINSPATIALSTRUCTURE('RREF000000000000000002',#5,$,$,(#78),#43);\n" +
+    'ENDSEC;\nEND-ISO-10303-21;\n',
+);
+
+describe('buildSubset: a product reachable ONLY via IfcRelReferencedInSpatialStructure (#4124)', () => {
+  const p = parseStep(STOREY_MODEL_REFERENCED_ONLY);
+  const { keep, rewritten } = buildSubset(new Set([78]), p);
+
+  it('keeps the storey reached only through the REFERENCED relation, and the relation itself', () => {
+    expect(keep.has(43)).toBe(true); // IfcBuildingStorey L03
+    expect(keep.has(84)).toBe(true); // the IfcRelReferencedInSpatialStructure
+    expect(rewritten.has(84)).toBe(false); // sole member kept -> byte-identical
+  });
+
+  it('climbs from the storey through the building/site to the project', () => {
+    for (const id of [97, 36, 34, 1]) expect(keep.has(id)).toBe(true);
+  });
+
+  it('does not force-keep the unrelated storeys L01/L02', () => {
+    expect(keep.has(41)).toBe(false);
+    expect(keep.has(45)).toBe(false);
+  });
+
+  it('serializes with zero dangling references', () => {
+    expectNoDanglingRefs(serializeSubset({ keep, rewritten }, p));
+  });
+});
+
+// #80 is blocked on TWO ids: a real private IfcOwnerHistory #6 (owning a
+// four-record subtree) and a phantom #999 in its Description slot. #81 is
+// blocked on a clean private IfcOwnerHistory #7 and nothing else. The replan
+// can only rescue #81, so #6's subtree must stay out: force-keeping it emits
+// five records nothing in the file references (#4150).
+const STOREY_MODEL_MIXED_BLOCKERS = STOREY_MODEL.replace(
+  "#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000001',#5,'L01 contents',$,",
+  "#6= IFCOWNERHISTORY(#16,#17,$,.ADDED.,$,$,$,0);\n" +
+    '#16= IFCPERSONANDORGANIZATION(#18,#19,$);\n' +
+    "#18= IFCPERSON($,'p',$,$,$,$,$,$);\n" +
+    "#19= IFCORGANIZATION($,'o',$,$,$);\n" +
+    "#17= IFCAPPLICATION(#19,'1','app','app');\n" +
+    "#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000001',#6,'L01 contents',#999,",
+).replace(
+  "#81= IFCRELREFERENCEDINSPATIALSTRUCTURE('RREF000000000000000001',#5,",
+  "#7= IFCOWNERHISTORY($,$,$,.ADDED.,$,$,$,0);\n" +
+    "#81= IFCRELREFERENCEDINSPATIALSTRUCTURE('RREF000000000000000001',#7,",
+);
+
+describe('buildSubset: a relation blocked on a private OwnerHistory AND a phantom (#4150)', () => {
+  const p = parseStep(STOREY_MODEL_MIXED_BLOCKERS);
+  const { keep, rewritten } = buildSubset(new Set([70, 72]), p);
+
+  it('leaves the OwnerHistory subtree out when the replan still drops the relation', () => {
+    // The phantom #999 blocks #80 in round two exactly as it did in round one,
+    // so keeping #6 buys nothing and costs five orphaned records.
+    expect(keep.has(80)).toBe(false);
+    for (const id of [6, 16, 17, 18, 19]) expect(keep.has(id)).toBe(false);
+  });
+
+  it('still rescues a relation whose blockers are ALL a defined OwnerHistory (#4126)', () => {
+    // The blockers are grouped per relation for this: #80's unresolvable group
+    // must not suppress #81's resolvable one.
+    expect(keep.has(81)).toBe(true);
+    expect(keep.has(7)).toBe(true);
+    expect(rewritten.get(81)).toContain('(#70)');
+  });
+
+  it('serializes with zero dangling references', () => {
+    const out = serializeSubset({ keep, rewritten }, p);
+    expectNoDanglingRefs(out);
+    expect(out).not.toContain('#6=');
+    expect(out).toContain('#81=');
+  });
+});
+
+// #80's Description slot holds a bare `#74`, an L02 chair that no selector
+// picked. Unlike the `'Chair pairs with #71'` case above it is a bare argument,
+// not text, so it IS a reference and the plan reports it as blocking #80. But it
+// is a PRODUCT, and closing over it drags a second storey's contents into a
+// first-storey selection (#4150).
+const STOREY_MODEL_PRODUCT_BLOCKER = STOREY_MODEL.replace(
+  "#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000001',#5,'L01 contents',$,",
+  "#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000001',#5,'L01 contents',#74,",
+);
+
+describe('buildSubset: a blocker that is a product, not an OwnerHistory (#4150)', () => {
+  const p = parseStep(STOREY_MODEL_PRODUCT_BLOCKER);
+  const { keep, rewritten } = buildSubset(new Set([70, 72]), p);
+
+  it('does not extract the unselected product the blocker names', () => {
+    expect(keep.has(74)).toBe(false);
+  });
+
+  it('does not resurrect the other storey containment on the second round', () => {
+    // #82's member intersection with the selection is empty, so round one drops
+    // it. Keeping #74 makes it non-empty, and #82 comes back rewritten to
+    // `(#74)`: one selected pair of chairs, two extra records in the output.
+    expect(keep.has(82)).toBe(false);
+    expect(rewritten.has(82)).toBe(false);
+  });
+
+  it('drops the relation the unresolvable blocker belongs to', () => {
+    expect(keep.has(80)).toBe(false);
+  });
+
+  it('serializes with zero dangling references', () => {
+    const out = serializeSubset({ keep, rewritten }, p);
+    expectNoDanglingRefs(out);
+    expect(out).not.toContain('#74=');
   });
 });
 
@@ -588,6 +819,87 @@ describe('planSpatialRelations: a record it cannot scan, or cannot read as six a
       expect(emit(record(body), new Set([5, 41]))).not.toContain('#80=');
     });
   }
+});
+
+// Two `IfcBuildingStorey`s aggregating EACH OTHER (A aggregates B, B aggregates
+// A — malformed/hostile STEP, `IfcRelAggregates` has no acyclicity guarantee in
+// the schema itself), with a product contained in B. `structureParents` builds a
+// child→parent edge for BOTH directions here, because both #200 and #201 are
+// spatial-structure types, so the parent graph itself is cyclic before
+// `spatialAncestors` ever walks it. Pins the
+// `if (visited.has(parentId)) continue;` guard in `spatial-ancestors.ts`:
+// without it, `stack.push(parentId)` re-enqueues #200/#201 forever and the walk
+// never returns. The 55-test suite passes with that guard deleted (nothing else
+// in it makes an aggregation graph cyclic), so this is the only pin.
+const CYCLE_MODEL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2024',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#5= IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);
+#200= IFCBUILDINGSTOREY('STOR000000000000000010',#5,'A',$,$,$,$,$,.ELEMENT.,0.);
+#201= IFCBUILDINGSTOREY('STOR000000000000000011',#5,'B',$,$,$,$,$,.ELEMENT.,3.);
+#202= IFCFURNISHINGELEMENT('FURN000000000000000010',#5,'Chair',$,$,$,$,'c');
+#210= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000010',#5,$,$,(#202),#201);
+#211= IFCRELAGGREGATES('RAGG000000000000000010',#5,$,$,#200,(#201));
+#212= IFCRELAGGREGATES('RAGG000000000000000011',#5,$,$,#201,(#200));
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+describe('spatialAncestors: a cyclic IfcRelAggregates graph terminates', () => {
+  it(
+    'climbs #202 -> storey B -> storey A and stops, instead of looping forever on the A<->B cycle',
+    () => {
+      const p = parseStep(CYCLE_MODEL);
+      const ancestors = spatialAncestors([202], p.instances);
+      // Correct keep-set: exactly the two storeys, each visited once. An
+      // unguarded walk never reaches `return` at all (this assertion is
+      // unreachable in that case); the test's own completion inside the
+      // timeout below is what proves the closure terminated.
+      expect(new Set(ancestors)).toEqual(new Set([200, 201]));
+      expect(ancestors.length).toBe(2);
+    },
+    // A regression here is an infinite synchronous loop. `spatialAncestors`
+    // never awaits, so a fully synchronous `while` loop starves the event
+    // loop and Vitest's own timer-based timeout cannot fire to interrupt it
+    // — this 5000ms is a documented expectation, not a guaranteed abort; an
+    // external process or CI-level timeout is what actually bounds the hang.
+    5000,
+  );
+});
+
+// The empty-intersection guard in `subset-relations.ts`'s `relationLine`
+// (`if (kept.length === 0) return null;`) is reached only when the RELATING
+// object is kept but EVERY member of the related SET is dropped. The existing
+// "drops a relation whose kept intersection is empty" test above (#82, the L02
+// storey) never reaches it: #82's relating parent #45 is itself unkept, so the
+// EARLIER `!keep.has(Number(relating[1]))` check returns null first. This one
+// selects only #72 (Chair 3): backward closure keeps #72's containment chain
+// (#41 -> #36 -> #34 -> #1), which keeps #34 — the RelatingStructure of
+// IfcRelReferencedInSpatialStructure #81 — WITHOUT keeping any of #81's
+// RelatedElements (#70, #71, #73, none selected). So #81's relating parent is
+// kept and its member intersection is empty: exactly the guarded branch.
+describe('buildSubset: RelatingStructure kept, every SET member dropped (#4124 review)', () => {
+  const p = parseStep(STOREY_MODEL);
+  const { keep, rewritten } = buildSubset(new Set([72]), p);
+
+  it('keeps the relating structure #34 via backward closure', () => {
+    expect(keep.has(34)).toBe(true);
+  });
+
+  it('drops #81 rather than emit a schema-invalid empty RelatedElements SET', () => {
+    expect(keep.has(81)).toBe(false);
+    expect(rewritten.has(81)).toBe(false);
+  });
+
+  it('serializes with zero dangling references and no #81 line', () => {
+    const out = serializeSubset({ keep, rewritten }, p);
+    expectNoDanglingRefs(out);
+    expect(out).not.toContain('#81=');
+  });
 });
 
 // A wall with a window opening: IfcRelVoidsElement (rel → wall) points BACKWARD
@@ -686,6 +998,93 @@ describe('buildSubset — void/fill relations close over their own refs', () => 
   });
 });
 
+// Two storeys, each with its own placement chain and its own genuine wall —
+// L01's storey record carries a Description that is free TEXT naming L02's
+// REAL IfcLocalPlacement (`'dup of #44'`), and L01's own furniture Name
+// mentions L02's placement id too (`'see also #44'`). Neither is a reference;
+// both are `#id`-shaped substrings a raw `/#(\d+)/g` scan cannot tell apart
+// from one. #4166.
+const TWO_STOREY_MODEL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2024',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1= IFCPROJECT('PROJ000000000000000002',#5,'Proj',$,$,$,$,(#20),#30);
+#5= IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);
+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
+#21= IFCAXIS2PLACEMENT3D(#22,$,$);
+#22= IFCCARTESIANPOINT((0.,0.,0.));
+#30= IFCUNITASSIGNMENT((#31));
+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#33= IFCLOCALPLACEMENT($,#21);
+#34= IFCSITE('SITE000000000000000002',#5,'Site',$,$,#33,$,$,.ELEMENT.,$,$,$,$,$);
+#35= IFCLOCALPLACEMENT(#33,#21);
+#36= IFCBUILDING('BLDG000000000000000002',#5,'Bldg',$,$,#35,$,$,.ELEMENT.,$,$,$);
+#40= IFCLOCALPLACEMENT(#35,#21);
+#41= IFCBUILDINGSTOREY('STOR000000000000000003',#5,'L01','dup of #44',$,#40,$,$,.ELEMENT.,0.);
+#44= IFCLOCALPLACEMENT(#35,#21);
+#45= IFCBUILDINGSTOREY('STOR000000000000000004',#5,'L02',$,$,#44,$,$,.ELEMENT.,3.);
+#50= IFCLOCALPLACEMENT(#40,#21);
+#54= IFCLOCALPLACEMENT(#44,#21);
+#60= IFCRECTANGLEPROFILEDEF(.AREA.,$,#21,2.,0.2);
+#61= IFCEXTRUDEDAREASOLID(#60,#21,#62,3.);
+#62= IFCDIRECTION((0.,0.,1.));
+#63= IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#61));
+#64= IFCPRODUCTDEFINITIONSHAPE($,$,(#63));
+#70= IFCWALLSTANDARDCASE('WALL000000000000000001',#5,'Wall L01',$,$,#50,#64,'w1');
+#90= IFCWALLSTANDARDCASE('WALL000000000000000002',#5,'Wall L02',$,$,#54,#64,'w2');
+#95= IFCFURNISHINGELEMENT('FURN000000000000000007',#5,'see also #44',$,$,#50,#64,'f1');
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+describe('extract-entities --storey: a free-text `#id` naming a real unrelated entity (#4166)', () => {
+  it('picks the storey genuine placement, not the id its Description text names', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-storey-'));
+    const src = join(dir, 'in.ifc');
+    const out = join(dir, 'sub.ifc');
+    await writeFile(src, TWO_STOREY_MODEL, 'latin1');
+    await extractEntitiesCommand([src, '--storey', 'L01', '--out', out]);
+    const text = await readFile(out, 'latin1');
+    // The genuine L01 wall is present …
+    expect(text).toContain('#70=');
+    // … the impostor pulled in only because #44 sits in L01's Description text
+    // (a real placement, but L02's) must not be.
+    expect(text).not.toContain('#90=');
+  });
+
+  it('does not seed a product into a storey extraction because its Name mentions that storey placement id', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-storey-'));
+    const src = join(dir, 'in.ifc');
+    const out = join(dir, 'sub.ifc');
+    await writeFile(src, TWO_STOREY_MODEL, 'latin1');
+    // #95 is genuinely placed under L01 (#50 chains to #40), and its Name text
+    // mentions L02's placement id #44. Extracting L02 must not pull it in.
+    await extractEntitiesCommand([src, '--storey', 'L02', '--out', out]);
+    const text = await readFile(out, 'latin1');
+    expect(text).toContain('#90=');
+    expect(text).not.toContain('#95=');
+  });
+
+  it('a storey/product with no string-borne ids extracts exactly as before (regression guard)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-storey-'));
+    const src = join(dir, 'in.ifc');
+    const out = join(dir, 'sub.ifc');
+    // Same shape, no poison text in Description/Name.
+    const clean = TWO_STOREY_MODEL.replace("'dup of #44'", '$').replace("'see also #44'", "'Chair'");
+    await writeFile(src, clean, 'latin1');
+    await extractEntitiesCommand([src, '--storey', 'L01', '--out', out]);
+    const text = await readFile(out, 'latin1');
+    // #70 and #95 are both genuinely placed under L01 and belong in the
+    // extraction; #90 is genuinely under L02 and does not.
+    expect(text).toContain('#70=');
+    expect(text).toContain('#95=');
+    expect(text).not.toContain('#90=');
+  });
+});
+
 describe('extract-entities byte fidelity', () => {
   it('round-trips raw Latin-1 high bytes unchanged (no U+FFFD mangling)', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-'));
@@ -738,5 +1137,63 @@ describe('triage (--detect) WASM disposal (#1959 P2 leak)', () => {
     ).rejects.toThrow('forced meshing failure');
 
     expect(disposeSpy).toHaveBeenCalledTimes(1);
+  }, 30_000);
+});
+
+describe('extract-entities --detect --report --json: --top', () => {
+  let stdoutSpy: ReturnType<typeof vi.spyOn>;
+
+  afterEach(() => {
+    stdoutSpy?.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  /** Runs the triage JSON path and returns the parsed `top` array. */
+  async function runTriage(extraArgs: string[]): Promise<unknown[]> {
+    const writes: string[] = [];
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      writes.push(String(chunk));
+      return true;
+    });
+    await extractEntitiesCommand([SAMPLE_IFC, '--detect', '--report', '--json', ...extraArgs]);
+    const parsed = JSON.parse(writes.join(''));
+    return parsed.top;
+  }
+
+  it('falls back to the default 20-row --top on a non-numeric value, not an empty array', async () => {
+    const processGeometry = GeometryProcessor.prototype.process;
+    vi.spyOn(GeometryProcessor.prototype, 'process').mockImplementation(async function (
+      this: GeometryProcessor,
+      ...args
+    ) {
+      const result = await processGeometry.apply(this, args);
+      const seed = result.meshes[0];
+      if (seed === undefined) throw new Error('fixture must produce at least one mesh');
+      return {
+        ...result,
+        meshes: Array.from({ length: 25 }, (_, index) => ({
+          ...seed,
+          expressId: index + 1,
+        })),
+      };
+    });
+    const withBadTop = await runTriage(['--top', 'banana']);
+
+    // Pin the documented default itself. Deriving this expectation from an
+    // omitted --top invocation would let both paths regress to the same value.
+    expect(withBadTop).toHaveLength(20);
+    expect(withBadTop.map((row) => (row as { expressId: number }).expressId)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+      11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+    ]);
+  }, 30_000);
+
+  it('still honors an ordinary numeric --top', async () => {
+    const baseline = await runTriage([]);
+    stdoutSpy.mockRestore();
+    const withTopOne = await runTriage(['--top', '1']);
+
+    expect(baseline.length).toBeGreaterThan(1);
+    expect(withTopOne).toEqual(baseline.slice(0, 1));
   }, 30_000);
 });

@@ -76,7 +76,8 @@ describe('writeHeader', () => {
     // `qsetGlobalId` column, 17 -> 18 with the Relationships section's
     // shadowed-rel-ids trailer (#3782); update this literal only alongside a
     // types.ts ledger entry.
-    expect(view.getUint16(4, true)).toBe(18);
+    // v19 adds canonical appearance provenance and a shared source-index pool.
+    expect(view.getUint16(4, true)).toBe(19);
   });
 
   it('writes each section-table entry field at its documented byte offset within the 16-byte entry', () => {

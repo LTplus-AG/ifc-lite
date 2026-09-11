@@ -95,6 +95,20 @@ export function parseLasHeader(buffer: ArrayBuffer | Uint8Array): LasHeader {
     view.getFloat64(163, true),
     view.getFloat64(171, true),
   ];
+  // `scale`/`offset` feed every point-record read that follows: a zero or
+  // non-finite scale collapses every point on that axis to the constant
+  // `offset` (or NaN), and decodeLasPoints's bbox fold would silently
+  // report success — pointCount unchanged — with no diagnostic. Reject at
+  // parse time rather than let a corrupt or truncated header pass through.
+  const AXIS_NAME = ['X', 'Y', 'Z'] as const;
+  for (let i = 0; i < 3; i++) {
+    if (!Number.isFinite(scale[i]) || scale[i] === 0) {
+      throw new Error(`LAS: invalid ${AXIS_NAME[i]} scale (${scale[i]})`);
+    }
+    if (!Number.isFinite(offset[i])) {
+      throw new Error(`LAS: invalid ${AXIS_NAME[i]} offset (${offset[i]})`);
+    }
+  }
   const maxX = view.getFloat64(179, true);
   const minX = view.getFloat64(187, true);
   const maxY = view.getFloat64(195, true);
@@ -224,9 +238,25 @@ export function decodeLasPoints(
     positions[i * 3] = x;
     positions[i * 3 + 1] = y;
     positions[i * 3 + 2] = z;
-    if (x < minX) minX = x; if (x > maxX) maxX = x;
-    if (y < minY) minY = y; if (y > maxY) maxY = y;
-    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    // Skip non-finite coords rather than letting them poison the bbox. If
+    // EVERY point in the chunk is non-finite (e.g. a finite-but-huge header
+    // scale that passes parseLasHeader's validation but sends `raw * scale`
+    // to ±Infinity for every record), minX/minY/minZ are left at their
+    // ±Infinity seed values below on purpose: unlike e57-decode.ts's /
+    // ifcx-points.ts's `computeBBox` (which decode a whole file in one pass
+    // with no aggregation above them), this chunk's bbox is unioned by
+    // streaming/host.ts's `streamPointCloud` across every chunk with plain
+    // min/max comparisons — ±Infinity is an absorbing no-op there, so a bad
+    // chunk correctly drops out of the running bbox instead of a finite
+    // [0,0,0] dragging it toward the origin. host.ts then falls back to the
+    // header's own bbox (`Number.isFinite(bboxMin[0]) ? ... : info.bbox`)
+    // when the whole file turns out non-finite, which a finite sentinel here
+    // would silently defeat.
+    if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    }
 
     intensities[i] = view.getUint16(base + 12, true);
     // LAS 1.4 (formats 6+) stores classification in a dedicated byte.

@@ -18,7 +18,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { getQuantityValue, sortEntities, STANDARD_QTO_MAP } from './query-aggregation.js';
+import { aggregateFinite, getQuantityValue, sortEntities, STANDARD_QTO_MAP } from './query-aggregation.js';
 
 interface FakeEntity {
   ref: number;
@@ -231,6 +231,24 @@ describe('sortEntities — dotted Pset.Prop sort', () => {
         (e) => e.ref,
       ),
     ).toEqual([2, 3, 1]);
+  });
+});
+
+describe('aggregateFinite empty group', () => {
+  it('returns null, not NaN or Infinity, when no finite value was seen', () => {
+    expect(aggregateFinite([], 'avg')).toBe(null);
+    expect(aggregateFinite([], 'min')).toBe(null);
+    expect(aggregateFinite([], 'max')).toBe(null);
+    expect(aggregateFinite([], 'sum')).toBe(null);
+    // An empty list, and one that is entirely non-finite, both count as
+    // "no finite value was seen" per the function's own doc comment.
+    expect(aggregateFinite([Number.NaN, Infinity, -Infinity], 'avg')).toBe(null);
+  });
+
+  it('still reduces normally once at least one finite value is present', () => {
+    expect(aggregateFinite([2, 4], 'avg')).toBe(3);
+    expect(aggregateFinite([2, 4], 'min')).toBe(2);
+    expect(aggregateFinite([2, 4], 'max')).toBe(4);
   });
 });
 

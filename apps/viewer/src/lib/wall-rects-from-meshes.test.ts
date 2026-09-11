@@ -4,11 +4,33 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { footprintOBB, wallRectsFromMeshes } from './wall-rects-from-meshes.js';
+import {
+  footprintOBB,
+  roomFramePlanOffsets,
+  roomFrameToModelWorld,
+  wallRectsFromMeshes,
+} from './wall-rects-from-meshes.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 
 type Pt = [number, number];
 const near = (a: number, b: number, eps = 1e-6) => Math.abs(a - b) < eps;
+
+// Canonical render→IFC reconstruction, independent of the code under test:
+// coordinate-handler `toWorld` (mirrored in PropertiesPanel + lib/geo
+// `totalYupOffset`). worldYup = renderLocal + originShift + rtcYup, with
+// rtcYup = { x: rtc.x, y: rtc.z, z: -rtc.y }; then ifcX = worldYup.x,
+// ifcY = -worldYup.z, ifcZ = worldYup.y.
+function canonicalIfc(
+  rx: number, ry: number, rz: number,
+  shift: { x: number; y: number; z: number },
+  rtc: { x: number; y: number; z: number },
+): { ifcX: number; ifcY: number; ifcZ: number } {
+  const rtcYup = { x: rtc.x, y: rtc.z, z: -rtc.y };
+  const wx = rx + shift.x + rtcYup.x;
+  const wy = ry + shift.y + rtcYup.y;
+  const wz = rz + shift.z + rtcYup.z;
+  return { ifcX: wx, ifcY: -wz, ifcZ: wy };
+}
 
 // Render→IFC reconstruction for the model's OWN frame, independent of the code
 // under test: coordinate-handler `toWorld` with no survey anchor in play.
@@ -176,6 +198,33 @@ describe('wallRectsFromMeshes', () => {
     // Same wall, same answer, with rtc absent entirely.
     const bare = wallRectsFromMeshes([wallBox(1, 0, 4, 0, 0.8, 0, 3)], undefined, 0, 3);
     assert.deepEqual(rects[0].corners, bare[0].corners);
+  });
+
+  it('room frame + roomFrameToModelWorld IS the model\'s own world frame', () => {
+    // The contract the Space Sketch bake rests on (#4500). It folds the outline
+    // through the storey's placement chain, which it reads out of the STEP
+    // file, so the outline has to be in the frame those placements resolve in.
+    // `roomFrameToModelWorld` is what states the room frame's relation to that
+    // frame, and this pins the two together: change which terms
+    // `roomFramePlanOffsets` carries and this fails until the other one follows.
+    const shift = { x: 100, y: 5, z: 20 };
+    const rtc = { x: 2665510.36, y: 1259339.34, z: 381.3 };
+    const coord = {
+      originShift: shift,
+      wasmRtcOffset: rtc,
+      hasLargeCoordinates: true,
+      originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+      shiftedBounds: { min: { x: -100, y: -5, z: -20 }, max: { x: -100, y: -5, z: -20 } },
+    } as unknown as CoordinateInfo;
+    const { cx, cy } = roomFramePlanOffsets(coord);
+    const { dx, dy } = roomFrameToModelWorld(coord);
+    // Take one render-frame point through the room frame and on to the world,
+    // and compare against the canonical reconstruction of the same point.
+    const [rx, ry, rz] = [3, 1.5, 0.4];
+    const world = canonicalIfc(rx, ry, rz, shift, rtc);
+    const room: Pt = [rx + cx, cy - rz];
+    assert.ok(near(room[0] + dx, world.ifcX, 1e-6), `world X ${room[0] + dx} vs ${world.ifcX}`);
+    assert.ok(near(room[1] + dy, world.ifcY, 1e-6), `world Y ${room[1] + dy} vs ${world.ifcY}`);
   });
 
   it('ignores non-wall meshes', () => {

@@ -86,7 +86,17 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     }
     return count;
   }, [selectedEntityId, selectedEntityIds]);
-  const hasIsolation = isolatedEntities !== null && isolatedEntities.size > 0;
+  // `isolatedEntities` is meaningfully nullable (`Set<number> | null`):
+  // `null` means no isolation channel is active, while a non-null Set --
+  // EMPTY included -- means one is and currently matches nothing (the
+  // convention `packages/renderer/src/entity-visibility.ts`'s
+  // `isEntityVisible` already enforces). A `.size > 0` check would read an
+  // active-but-empty isolate (reachable via `pinboardSlice.ts`'s
+  // `addToBasket`/`removeFromBasket` aliasing two `EntityRef`s onto one
+  // globalId, #4509) as "no isolation" and show "Hidden objects" -- or
+  // nothing at all -- instead of correctly reflecting that isolation is
+  // active. `useBCF.ts`'s `createViewpointFromState` has the same guard.
+  const hasIsolation = isolatedEntities !== null;
   const hasHiddenEntities = hiddenEntities.size > 0;
   const setBcfError = useViewerStore((s) => s.setBcfError);
   const models = useViewerStore((s) => s.models);

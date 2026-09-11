@@ -12,6 +12,13 @@ export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
 // The MEASURED surface `getScene()` publishes — see its docs.
 export type { SceneContents } from './scene-contents.js';
+export { expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
+export { sameCompanionParts } from './appearance-companions.js';
+export type { AppearancePreview, AppearanceOwner, AppearanceToken, AppearanceChange } from './appearance-preview.js';
+import type { AppearancePreview } from './appearance-preview.js';
+import { createReferenceImageManager } from './reference-image-host.js';
+export type { ReferenceImages, ReferenceImageInput, ReferenceImageHit, ReferenceCorners } from './reference-image-types.js';
+import { resizeRendererViewport } from './renderer-viewport.js';
 export type { ProjectionMode } from './camera-state.js';
 export type { InteractionMode } from './camera-controls.js';
 export { pickFitPolicy } from './camera-fit-policy.js';
@@ -122,6 +129,7 @@ export type {
     PointCloudNodeMeta,
 } from './pointcloud/point-cloud-node.js';
 
+import { modelPlacementBounds, sceneMeshBounds } from './model-placement-bounds.js';
 import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
@@ -171,6 +179,8 @@ import { ShadowPass, resolveShadowMapResolution } from './shadow-pass.js';
 import { fitSunLightMatrix, cameraFrustumFocusCorners } from './shadow-light-matrix.js';
 import { collectShadowOccluders, classifyBatchVisibility, DEFAULT_MIN_CAST_ALPHA } from './shadow-occluders.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
+import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
+import { PartialBatchRequests } from './partial-batch-requests.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
@@ -270,6 +280,8 @@ export class Renderer {
         },
         requestRender: () => this.requestRender(),
     });
+    private readonly referenceImages = createReferenceImageManager(this);
+    getReferenceImages(): import('./reference-image-types.js').ReferenceImages { return this.referenceImages; }
     private postProcessor: PostProcessor | null = null;
     private readonly interactionEffects = new InteractionEffectsGovernor();
     private edlPass: EdlPass | null = null;
@@ -478,13 +490,15 @@ export class Renderer {
     // tracker), so callers may either mutate the same Set in place or pass a
     // fresh Set per frame — see the RenderOptions.hiddenIds contract.
     // `_visibilityVersion` drives the per-batch visibility cache;
-    // `_partialBatchEpoch` additionally folds colour-override changes so the
-    // partial sub-batch cache fast path stays correct.
+    // `_partialBatchEpoch` additionally folds colour-override and X-Ray changes
+    // so the partial sub-batch cache fast path stays correct.
     private readonly _visibilityEpochs = new VisibilityEpochTracker();
+    private readonly _xrayEpochs = new XRayEpochTracker();
     private _visibilityVersion: number = 0;
     private _partialBatchEpoch: number = 0;
     private _lastColorOverrideGen: number = -1;
-    private _lastHadVisibilityFiltering: boolean = false;
+    private _xrayVersion: number = 0;
+    private _lastHadPartialSources: boolean = false;
     // Cached per-batch visibility, valid only while `_batchVisibilityEpoch`
     // matches `_visibilityVersion`. Avoids the O(total element count) recompute
     // (+ per-batch visible-id Set allocation) every frame while hide/isolate
@@ -504,7 +518,7 @@ export class Renderer {
     // same-id selection in ANOTHER model is still a change that must free the
     // old model's hydrated mesh.
     private _prevHydratedSelection: Set<number> = new Set();
-    private _prevHydratedSelectionModelIndex: number | undefined = undefined;
+    private _prevHydratedSelectionModelIndex: number | undefined = undefined; private _prevHydratedSelectionItemExpressId: number | undefined; private _prevHydratedSelectionItemId: number | undefined;
 
     // One-shot log guard — prints Y-up clip bounds on first section-enable so
     // users can confirm the slider is operating on the intended range.
@@ -638,6 +652,7 @@ export class Renderer {
             this.device.getFormat(),
             this.pipeline.getSampleCount(),
         );
+        this.referenceImages.init(this.device.getDevice(), this.device.getFormat(), this.pipeline.getSampleCount());
         // PostProcessor is optional — if it fails (e.g. mobile GPU lacking
         // depth TEXTURE_BINDING), rendering still works without post-processing.
         try {
@@ -825,6 +840,7 @@ export class Renderer {
     private handleDeviceLost(info: { message: string; reason: string }): void {
         if (this.deviceLost) return;
         this.deviceLost = true;
+        this.referenceImages.destroy();
         this.deviceLostGeneration = this.initGeneration;
         this.deviceLostInfo = info;
         console.warn('[Renderer] GPU device lost — halting rendering until re-init:', info.message);
@@ -969,14 +985,9 @@ export class Renderer {
         if (!this.pointCloudRenderer) {
             throw new Error('Renderer not initialized. Call init() first.');
         }
+        for (const asset of assets) this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
         this.pointCloudRenderer.setAssets(assets);
-        // Replace, not append — bounds may have shrunk (e.g. an IFCx
-        // reload with a smaller scan). `expandForPointClouds`
-        // alone only grows; recompute from scratch to keep
-        // fit-to-view + section-plane sliders accurate.
-        this.modelBoundsTracker.recompute();
-        this.camera.setSceneBounds(this.modelBounds);
-        this.requestRender();
+        this.refreshPlacementBounds();
     }
 
     /** Append additional point clouds without clearing existing ones. */
@@ -985,6 +996,7 @@ export class Renderer {
             throw new Error('Renderer not initialized. Call init() first.');
         }
         for (const asset of assets) {
+            this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
             this.pointCloudRenderer.addAsset(asset);
         }
         this.modelBoundsTracker.expandForPointClouds();
@@ -1005,9 +1017,7 @@ export class Renderer {
     /** Drop all point cloud GPU resources. */
     clearPointClouds(): void {
         this.pointCloudRenderer?.clear();
-        this.modelBoundsTracker.recompute();
-        this.camera.setSceneBounds(this.modelBounds);
-        this.requestRender();
+        this.refreshPlacementBounds();
     }
 
     /**
@@ -1042,9 +1052,7 @@ export class Renderer {
         this.pointCloudRenderer?.removeAsset(handle);
         // Bounds may have shrunk — recompute from scratch so fit-to-view
         // and section-plane sliders see fresh extents.
-        this.modelBoundsTracker.recompute();
-        this.camera.setSceneBounds(this.modelBounds);
-        this.requestRender();
+        this.refreshPlacementBounds();
     }
 
     /**
@@ -1062,24 +1070,9 @@ export class Renderer {
         this.requestRender();
     }
 
-    /** Aggregate bounds across all batched + individual meshes. Returns
-     *  null if the scene has no mesh geometry. */
-    private computeMeshBounds(): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
-        let minX = Infinity, minY = Infinity, minZ = Infinity;
-        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-        let any = false;
-        for (const batch of this.scene.getBatchedMeshes()) {
-            if (!batch.bounds) continue;
-            any = true;
-            if (batch.bounds.min[0] < minX) minX = batch.bounds.min[0];
-            if (batch.bounds.min[1] < minY) minY = batch.bounds.min[1];
-            if (batch.bounds.min[2] < minZ) minZ = batch.bounds.min[2];
-            if (batch.bounds.max[0] > maxX) maxX = batch.bounds.max[0];
-            if (batch.bounds.max[1] > maxY) maxY = batch.bounds.max[1];
-            if (batch.bounds.max[2] > maxZ) maxZ = batch.bounds.max[2];
-        }
-        if (!any) return null;
-        return { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } };
+    /** Bounds across flat draw batches. */
+    private computeMeshBounds() {
+        return sceneMeshBounds(this.scene);
     }
 
     /** Apply rendering options (color mode, fixed override, point size). */
@@ -1088,25 +1081,47 @@ export class Renderer {
         this.requestRender();
     }
 
-    /**
-     * Set (or clear, with `null`) a streamed point-cloud asset's per-vertex
-     * GPU model matrix (column-major, 16 floats) — issue #1804's
-     * `IfcMapConversion` alignment toggle. Cheap: takes effect on the next
-     * frame's uniform write, no GPU buffer rewrite.
-     */
-    setPointCloudTransform(
-        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
-        matrix: Float32Array | null,
-    ): void {
-        this.pointCloudRenderer?.setAssetTransform(handle, matrix);
-        // The asset's world-space extents just moved: re-fold the (now
-        // matrix-aware) point-cloud bounds into the scene bounds and push
-        // them to the camera (matching every other bounds-mutating
-        // point-cloud method) so framing / zoom-to-fit targets where the
-        // points actually render.
+    getModelPlacementBounds(modelIndex: number, pointCloudHandle?: { id: number }) {
+        return modelPlacementBounds(this.scene, this.pointCloudRenderer, modelIndex, pointCloudHandle);
+    }
+
+    /** Absolute workspace translation in renderer Y-up metres (#4226). */
+    setModelTranslation(modelIndex: number, translation: readonly [number, number, number]): void {
+        this.pointCloudRenderer?.validateModelTranslation(modelIndex, translation);
+        this.scene.setModelTranslation(modelIndex, translation);
+        this.pointCloudRenderer?.setModelTranslation(modelIndex, translation);
+        this.clearCaches();
+        this.refreshPlacementBounds();
+    }
+
+    /** Streamed clouds are addressed by durable asset handle. */
+    setPointCloudTranslation(handle: { id: number }, translation: readonly [number, number, number]): void {
+        this.pointCloudRenderer?.setAssetTranslation(handle, translation);
+        this.clearCaches();
+        this.refreshPlacementBounds();
+    }
+
+    private refreshPlacementBounds(): void {
         this.modelBoundsTracker.recompute();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
+    }
+
+    getPointCloudTransform(handle: { id: number }): Float32Array | undefined {
+        return this.pointCloudRenderer?.getAssetTransform(handle);
+    }
+
+    /**
+     * Set/clear a streamed cloud's column-major model matrix (16 floats) for
+     * IfcMapConversion alignment (#1804). Applied on the next frame's uniform
+     * write without rewriting vertex buffers.
+     */
+    setPointCloudTransform(
+        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
+        matrix: Float32Array | Float64Array | null,
+    ): void {
+        this.pointCloudRenderer?.setAssetTransform(handle, matrix);
+        this.refreshPlacementBounds();
     }
 
     /**
@@ -1164,7 +1179,7 @@ export class Renderer {
         this.scene.appendToBatches(meshes, device, this.pipeline, false);
 
         // Calculate and store model bounds for fitToView
-        this.modelBoundsTracker.updateFromMeshes(meshes);
+        this.modelBoundsTracker.updateFromMeshes(meshes, (index) => this.scene.getModelTranslation(index));
 
         console.log(`[Renderer] Loaded ${meshes.length} meshes`);
 
@@ -1189,7 +1204,7 @@ export class Renderer {
         this.scene.appendToBatches(meshes, device, this.pipeline, isStreaming);
 
         // Update model bounds incrementally
-        this.modelBoundsTracker.updateFromMeshes(meshes);
+        this.modelBoundsTracker.updateFromMeshes(meshes, (index) => this.scene.getModelTranslation(index));
 
         // Update camera scene bounds for tight orthographic near/far planes
         this.camera.setSceneBounds(this.modelBounds);
@@ -1305,7 +1320,10 @@ export class Renderer {
      * partially-hidden OPAQUE batch casts only its visible subset via the SAME
      * cached partial sub-batch the colour pass renders (shared cache key
      * `${colorKey}:${id}` + `_partialBatchEpoch`), so no extra clone memory and no
-     * phantom shadow from an individually-hidden element in a shared batch.
+     * phantom shadow from an individually-hidden element in a shared batch. That
+     * sharing lapses while X-Ray splits the same batch further (#4129): the colour
+     * pass then draws `:x0`/`:x1` slots and this slot owns its own clone — right,
+     * since a ghosted element still casts its real shadow.
      *
      * Transparent (glass-like) partially-hidden parents are left to the collector's
      * material-alpha filter — they don't cast at all, so building a visible subset
@@ -1403,7 +1421,7 @@ export class Renderer {
         // We compute the same `world` here. When there's no shared origin yet
         // (legacy / pre-batch), fall back to a plain f64 fold (local + origin).
         const o = meshData.origin;
-        const so = this.scene.getSharedFrameOrigin();
+        const so = this.scene.getSharedFrameOrigin(meshData.modelIndex);
         const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
         const fr = Math.fround;
         const sox = so ? fr(so[0]) : null, soy = so ? fr(so[1]) : 0, soz = so ? fr(so[2]) : 0;
@@ -1493,13 +1511,10 @@ export class Renderer {
      * must still free the previous model's hydrated mesh (it would otherwise
      * stay resident and keep drawing unhighlighted).
      */
-    private syncHydratedSelectionMeshes(
-        selected: ReadonlySet<number>,
-        selectedModelIndex: number | undefined,
-    ): void {
+    private syncHydratedSelectionMeshes(selected: ReadonlySet<number>, selectedModelIndex: number | undefined, itemFilterExpressId: number | undefined, itemFilterItemId: number | undefined): void {
         const prev = this._prevHydratedSelection;
-        let changed = selected.size !== prev.size
-            || selectedModelIndex !== this._prevHydratedSelectionModelIndex;
+        let changed = selected.size !== prev.size || selectedModelIndex !== this._prevHydratedSelectionModelIndex
+            || itemFilterExpressId !== this._prevHydratedSelectionItemExpressId || itemFilterItemId !== this._prevHydratedSelectionItemId;
         if (!changed) {
             for (const id of selected) {
                 if (!prev.has(id)) { changed = true; break; }
@@ -1507,8 +1522,8 @@ export class Renderer {
         }
         if (!changed) return;
         this._prevHydratedSelection = new Set(selected);
-        this._prevHydratedSelectionModelIndex = selectedModelIndex;
-        this.scene.disposeHydratedMeshesExcept(selected, selectedModelIndex);
+        this._prevHydratedSelectionModelIndex = selectedModelIndex; this._prevHydratedSelectionItemExpressId = itemFilterExpressId; this._prevHydratedSelectionItemId = itemFilterItemId;
+        this.scene.disposeHydratedMeshesExcept(selected, selectedModelIndex, itemFilterExpressId, itemFilterItemId);
     }
 
     /**
@@ -1770,35 +1785,11 @@ export class Renderer {
         const hasIsolatedFilter = options.isolatedIds !== null && options.isolatedIds !== undefined;
         const hasVisibilityFiltering = hasHiddenFilter || hasIsolatedFilter;
 
-        // ─── Visibility / override epoch bookkeeping ────────────────────────
-        // The tracker compares hide/isolate CONTENT against a snapshot, so both
-        // in-place mutation of the caller's Set and a fresh identical Set per
-        // frame behave correctly (see RenderOptions.hiddenIds). Bumping
-        // `_visibilityVersion` invalidates the per-batch visibility cache; the
-        // partial sub-batch cache additionally depends on colour-override
-        // promotion, so its epoch bumps on either.
-        const newVisibilityVersion = this._visibilityEpochs.update(options.hiddenIds, options.isolatedIds);
-        const visibilityChanged = newVisibilityVersion !== this._visibilityVersion;
-        this._visibilityVersion = newVisibilityVersion;
-        const colorOverrideGen = this.scene.getColorOverrideGeneration();
-        if (visibilityChanged || colorOverrideGen !== this._lastColorOverrideGen) {
-            this._lastColorOverrideGen = colorOverrideGen;
-            this._partialBatchEpoch++;
-        }
-
-        // When hide/isolate turns fully OFF (back to all-visible), release the
-        // partial sub-batch clones built while filtering. They are excluded from
-        // the GPU residency budget and are otherwise only freed on clear()/
-        // finalize/evict — never here — so ~model-sized clone VRAM would stay
-        // pinned until the next model reload. Any override-promotion sub-batches
-        // dropped alongside are rebuilt on demand next frame (cache miss).
-        if (this._lastHadVisibilityFiltering && !hasVisibilityFiltering) {
-            this.scene.dropAllPartialCaches();
-        }
-        this._lastHadVisibilityFiltering = hasVisibilityFiltering;
-
         // Build the selected-id set once per frame so the X-Ray override paths
         // can keep highlighted entities at full alpha without per-site checks.
+        // Built BEFORE the epoch bookkeeping below, which consumes it: selection
+        // decides which entities are exempt from fading, so it is an input to the
+        // X-Ray split and must reach the sub-batch cache epoch.
         const selectedId = options.selectedId;
         const selectedIds = options.selectedIds;
         const selectedModelIndex = options.selectedModelIndex;
@@ -1811,14 +1802,50 @@ export class Renderer {
                 selectedExpressIds.add(id);
             }
         }
-        const hasSelected = selectedExpressIds.size > 0;
+        const itemFilterExpressId = (options.selectedItemId !== undefined && selectedId !== undefined && selectedId !== null) ? selectedId : undefined; const itemFilterItemId = itemFilterExpressId !== undefined ? options.selectedItemId : undefined; // #4382
+
+        // ─── Visibility / override epoch bookkeeping ────────────────────────
+        // The tracker compares hide/isolate CONTENT against a snapshot, so both
+        // in-place mutation of the caller's Set and a fresh identical Set per
+        // frame behave correctly (see RenderOptions.hiddenIds). Bumping
+        // `_visibilityVersion` invalidates the per-batch visibility cache.
+        //
+        // The partial sub-batch epoch must carry EVERYTHING that decides a
+        // sub-batch's membership — hide/isolate, colour-override promotion, and
+        // the X-Ray split incl. selection (#4129) — because
+        // `getOrCreatePartialBatch`'s fast path returns the cached clone without
+        // ever inspecting the id set it was handed. A missing input therefore
+        // shows up as a stale subset on screen, not as an extra rebuild.
+        const newVisibilityVersion = this._visibilityEpochs.update(options.hiddenIds, options.isolatedIds);
+        const visibilityChanged = newVisibilityVersion !== this._visibilityVersion;
+        this._visibilityVersion = newVisibilityVersion;
+        const colorOverrideGen = this.scene.getColorOverrideGeneration();
+        const xrayVersion = this._xrayEpochs.update(options, selectedExpressIds);
+        const partialEpochChanged =
+            visibilityChanged || colorOverrideGen !== this._lastColorOverrideGen || xrayVersion !== this._xrayVersion;
+        if (partialEpochChanged) {
+            this._lastColorOverrideGen = colorOverrideGen;
+            this._xrayVersion = xrayVersion;
+            this._partialBatchEpoch++;
+        }
+
+        // Every source of partial sub-batches is off (all-visible AND no X-Ray)
+        // — release the clones wholesale, or ~model-sized VRAM stays pinned till
+        // the next model reload (see `partial-batch-cache.ts`). Slots orphaned
+        // WHILE X-Ray is still on are the narrower `retireUnusedAlphaSlots` case.
+        const xrayActive = (options.transparencyOverrides?.size ?? 0) > 0 || options.ghostExceptIds != null;
+        const hasPartialSources = hasVisibilityFiltering || xrayActive;
+        if (this._lastHadPartialSources && !hasPartialSources) {
+            this.scene.dropAllPartialCaches();
+        }
+        this._lastHadPartialSources = hasPartialSources;
 
         // Free hydrated (pick/selection) individual meshes whose entity is no
         // longer selected BEFORE we snapshot the mesh list, so stale glass
         // doesn't double-draw over its batch copy or accumulate until clear().
         // Only acts on a selection change (avoids per-frame buffer churn) and
         // never touches authored (non-hydrated) or batch geometry.
-        this.syncHydratedSelectionMeshes(selectedExpressIds, selectedModelIndex);
+        this.syncHydratedSelectionMeshes(selectedExpressIds, selectedModelIndex, itemFilterExpressId, itemFilterItemId);
 
         let meshes = this.scene.getMeshes();
 
@@ -1827,7 +1854,7 @@ export class Renderer {
         // unchanged, so calling it every frame is cheap; it no-ops entirely when
         // no instanced data is loaded. The flat path handles selection inline
         // below via `selectedExpressIds`.
-        this.scene.setInstancedSelection(selectedExpressIds);
+        this.scene.setInstancedSelection(selectedExpressIds, itemFilterExpressId, itemFilterItemId);
         // Mirror hide/isolate onto the instanced occurrences (the flat path filters
         // its mesh list by hiddenIds/isolatedIds below; the instanced pass can't, so
         // it carries a per-instance hidden flag the shader discards on). Diffed → a
@@ -1835,68 +1862,21 @@ export class Renderer {
         this.scene.setInstancedVisibility(options.hiddenIds, options.isolatedIds);
 
         // Per-frame alpha overrides for X-Ray mode. See RenderOptions.transparencyOverrides.
-        // Snapshot the caller's map so mid-frame mutation can't desync classification
-        // and uniform-write decisions for the same batch/mesh.
-        const txOverridesSrc = options.transparencyOverrides;
-        const hasTxMap = txOverridesSrc != null && txOverridesSrc.size > 0;
-        const txOverrides = hasTxMap ? new Map(txOverridesSrc) : null;
-        // X-Ray *context* mode: every non-selected mesh NOT in ghostExceptIds
-        // fades to ghostAlpha. It feeds the same alpha-override machinery as
-        // transparencyOverrides (explicit per-id entries win), so it routes
-        // through the transparent pipeline with no extra call sites — and avoids
-        // building a Map over every element just to fade "the rest".
-        const ghostExceptIds = options.ghostExceptIds ?? null;
+        // XRayAlpha snapshots the caller's map so mid-frame mutation can't desync
+        // classification and uniform-write decisions for the same batch/mesh, and
+        // owns the per-entity resolution + the mixed-batch partition (#4129).
+        // X-Ray *context* mode (`ghostExceptIds`) feeds the same machinery, so it
+        // routes through the transparent pipeline with no extra call sites — and
+        // avoids building a Map over every element just to fade "the rest".
         const ghostAlpha = options.ghostAlpha ?? DEFAULT_GHOST_ALPHA;
         // X-Ray reaches the instanced pass too (#2606). Without this, ghosting
         // stopped at the flat geometry: on a model whose facade is instanced,
         // the user asked to fade the building and got a solid facade standing
         // in front of a ghosted interior.
-        this.scene.setInstancedGhosting(ghostExceptIds, selectedExpressIds, ghostAlpha);
-        const hasGhost = ghostExceptIds != null;
-        const hasTxOverrides = hasTxMap || hasGhost;
-        const alphaForMesh = (expressId: number, fallback: number): number => {
-            if (!hasTxOverrides) return fallback;
-            // Selected meshes are exempt — the highlight pass renders them last,
-            // but exempting here also keeps mesh classification + uniform writes
-            // consistent so a selected mesh never enters the transparent pipeline
-            // because of its own override entry.
-            if (hasSelected && selectedExpressIds.has(expressId)) return fallback;
-            const a = txOverrides?.get(expressId);
-            if (a !== undefined) return a;
-            if (hasGhost && !ghostExceptIds!.has(expressId)) return ghostAlpha;
-            return fallback;
-        };
-        // Cache resolved batch alpha for the frame: classification needs it
-        // (opaque vs transparent routing) and renderBatch needs it for the
-        // uniform write. Without the cache we'd walk batch.expressIds twice
-        // per batch per frame, which becomes the dominant JS cost in X-Ray.
-        const batchAlphaCache = hasTxOverrides
-            ? new WeakMap<{ expressIds: number[]; color: [number, number, number, number] }, number>()
-            : null;
-        const alphaForBatch = (
-            batch: { expressIds: number[]; color: [number, number, number, number] },
-            fallback: number,
-        ): number => {
-            if (!hasTxOverrides) return fallback;
-            const cached = batchAlphaCache!.get(batch);
-            if (cached !== undefined) return cached;
-            let minAlpha = Infinity;
-            for (const eid of batch.expressIds) {
-                // Selected ids never drag down a batch's alpha — the highlight
-                // pass redraws them on top, but excluding here also means a
-                // batch made entirely of selected entities stays opaque.
-                if (hasSelected && selectedExpressIds.has(eid)) continue;
-                const a = txOverrides?.get(eid);
-                if (a !== undefined) {
-                    if (a < minAlpha) minAlpha = a;
-                } else if (hasGhost && !ghostExceptIds!.has(eid)) {
-                    if (ghostAlpha < minAlpha) minAlpha = ghostAlpha;
-                }
-            }
-            const resolved = minAlpha === Infinity ? fallback : minAlpha;
-            batchAlphaCache!.set(batch, resolved);
-            return resolved;
-        };
+        this.scene.setInstancedGhosting(options.ghostExceptIds ?? null, selectedExpressIds, ghostAlpha);
+        const xray = new XRayAlpha(options, selectedExpressIds);
+        const alphaForMesh = (expressId: number, fallback: number): number => xray.forEntity(expressId, fallback);
+        const alphaForBatch = (batch: AlphaBatchLike, fallback: number): number => xray.forBatch(batch, fallback);
 
         // Lens / Pset color overrides: when an entity has an override, force
         // its base draw through the opaque pipeline so it writes depth. The
@@ -2431,62 +2411,17 @@ export class Renderer {
                 const transparentBatches: typeof allBatchedMeshes = [];
 
                 // PERFORMANCE FIX: Track partially visible batches for sub-batch rendering
-                // Instead of creating 10,000+ individual meshes, we create cached sub-batches
-                const partiallyVisibleBatches: Array<{
-                    sourceBatchKey: string;
-                    colorKey: string;
-                    visibleIds: Set<number>;
-                    color: [number, number, number, number];
-                }> = [];
-
-                // Push a partial sub-batch entry, splitting by promotion when needed.
-                // For transparent parent batches with mixed override membership, this
-                // emits two entries (`:promoted` and `:remaining`) so non-overridden
-                // batchmates keep their native transparent routing instead of getting
-                // dragged opaque alongside the overridden ones.
-                const pushVisibleAsPartial = (
-                    sourceBatch: typeof allBatchedMeshes[number],
-                    visibleIds: Set<number>,
-                    isTransparent: boolean,
-                ) => {
-                    const baseKey = `${sourceBatch.colorKey}:${sourceBatch.id}`;
-                    if (!isTransparent) {
-                        partiallyVisibleBatches.push({
-                            sourceBatchKey: baseKey,
-                            colorKey: sourceBatch.colorKey,
-                            visibleIds,
-                            color: sourceBatch.color,
-                        });
-                        return;
-                    }
-                    const split = splitVisibleIdsByPromotion(visibleIds, colorOverrides);
-                    // No promotion or every visible id promoted → single sub-batch,
-                    // classifier downstream routes via shouldRouteBatchTransparent.
-                    if (split == null || split.remaining.size === 0) {
-                        partiallyVisibleBatches.push({
-                            sourceBatchKey: baseKey,
-                            colorKey: sourceBatch.colorKey,
-                            visibleIds,
-                            color: sourceBatch.color,
-                        });
-                        return;
-                    }
-                    // Mixed — emit one promoted (opaque-routed) and one remaining
-                    // (transparent-routed) sub-batch. Distinct sourceBatchKeys so the
-                    // partial-batch cache can hold both simultaneously.
-                    partiallyVisibleBatches.push({
-                        sourceBatchKey: `${baseKey}:promoted`,
-                        colorKey: sourceBatch.colorKey,
-                        visibleIds: split.promoted,
-                        color: sourceBatch.color,
-                    });
-                    partiallyVisibleBatches.push({
-                        sourceBatchKey: `${baseKey}:remaining`,
-                        colorKey: sourceBatch.colorKey,
-                        visibleIds: split.remaining,
-                        color: sourceBatch.color,
-                    });
-                };
+                // Instead of creating 10,000+ individual meshes, we create cached sub-batches.
+                // The collector also owns the override-promotion split (#677) and the
+                // per-entity X-Ray alpha split (#4129) — see partial-batch-requests.ts.
+                const partialRequests = new PartialBatchRequests(
+                    colorOverrides,
+                    xray,
+                    (b) => this.scene.canPartitionBatch(b),
+                );
+                const partiallyVisibleBatches = partialRequests.items;
+                const pushVisibleAsPartial = partialRequests.pushVisible.bind(partialRequests);
+                const pushAlphaSplit = partialRequests.pushAlphaSplit.bind(partialRequests);
 
                 for (const batch of allBatchedMeshes) {
                     // Frustum culling: skip batches entirely outside the camera view
@@ -2527,7 +2462,7 @@ export class Renderer {
                             // The visible subset was computed once for this
                             // visibility epoch (cached) — reuse it, don't rebuild.
                             const visibleIds = vis.visibleIds;
-                            if (visibleIds && visibleIds.size > 0) {
+                            if (visibleIds && visibleIds.size > 0 && !pushAlphaSplit(batch, visibleIds)) {
                                 pushVisibleAsPartial(batch, visibleIds, nativelyTransparent);
                             }
                             // A COLD parent has no CPU meshData, so the partial
@@ -2553,6 +2488,11 @@ export class Renderer {
                     }
                     this.scene.recordBatchDrawn(batch);
 
+                    // X-Ray names entities, not batches: a batch whose entities
+                    // resolve to different alphas splits per alpha (#4129) rather
+                    // than fading whole to the minimum.
+                    if (pushAlphaSplit(batch, null)) continue;
+
                     // Transparent batches with mixed
                     // override membership must be split so non-overridden batchmates
                     // stay transparent — see splitVisibleIdsByPromotion / issue #677.
@@ -2571,6 +2511,16 @@ export class Renderer {
                     } else {
                         opaqueBatches.push(batch);
                     }
+                }
+
+                // Retire the alpha-split slots this frame's classification did NOT
+                // ask for (#4129 review): an X-Ray edit that makes a batch uniform
+                // again, or that shrinks its group count, orphans slots the draw
+                // loop below never revisits. Only on an epoch change — while the
+                // state holds, the split shape is stable and nothing can be
+                // orphaned, so the steady-state cost is zero.
+                if (partialEpochChanged) {
+                    this.scene.retireUnusedAlphaSlots(partialRequests.requestedKeys());
                 }
 
                 // Build a uniform template ONCE per frame — shared across all batches.
@@ -2826,6 +2776,11 @@ export class Renderer {
                 // would show open, un-capped cut holes.
                 const opaqueSubBatches: typeof allBatchedMeshes = [];
                 if (partiallyVisibleBatches.length > 0) {
+                    // Transparent sub-batches are deferred to a second pass below:
+                    // they write no depth, so an opaque sub-batch drawn after one
+                    // paints straight over it. That is routine since #4129 — an
+                    // X-Rayed batch emits a faded group AND a solid one.
+                    const transparentSubBatches: typeof allBatchedMeshes = [];
                     for (const { sourceBatchKey, colorKey, visibleIds, color } of partiallyVisibleBatches) {
                         // Get or create a cached sub-batch for this visibility state
                         const subBatch = this.scene.getOrCreatePartialBatch(
@@ -2848,19 +2803,23 @@ export class Renderer {
                                 colorOverrides,
                             );
                             if (isTransparent) {
-                                pass.setPipeline(pipeFor(subBatch, 'transparent'));
-                            } else {
-                                // Opaque (incl. material-layer slices): double-sided.
-                                // Layer slices are NOT culled — since #1311 they are
-                                // open watertight-skin bands with unreliable winding,
-                                // so culling punched holes (wall read hollow). See the
-                                // full-batch path above.
-                                pass.setPipeline(pipeFor(subBatch, 'opaque'));
-                                opaqueSubBatches.push(subBatch);
+                                transparentSubBatches.push(subBatch);
+                                continue;
                             }
+                            // Opaque (incl. material-layer slices): double-sided.
+                            // Layer slices are NOT culled — since #1311 they are
+                            // open watertight-skin bands with unreliable winding,
+                            // so culling punched holes (wall read hollow). See the
+                            // full-batch path above.
+                            pass.setPipeline(pipeFor(subBatch, 'opaque'));
+                            opaqueSubBatches.push(subBatch);
                             // Render the sub-batch as a single draw call
                             renderBatch(subBatch);
                         }
+                    }
+                    for (const subBatch of transparentSubBatches) {
+                        pass.setPipeline(pipeFor(subBatch, 'transparent'));
+                        renderBatch(subBatch);
                     }
                     // Reset to opaque pipeline for subsequent rendering
                     pass.setPipeline(this.pipeline.getPipeline());
@@ -2920,7 +2879,8 @@ export class Renderer {
                     }
 
                     for (const selId of visibleSelectedIds) {
-                        const pieces = this.scene.getMeshDataPieces(selId, selectedModelIndex);
+                        const pieceItemId = selId === itemFilterExpressId ? itemFilterItemId : undefined; // #4382
+                        const pieces = this.scene.getMeshDataPieces(selId, selectedModelIndex, pieceItemId);
                         if (!pieces || pieces.length === 0) continue;
 
                         const seenOrdinalsByKey = new Map<string, number>();
@@ -2939,6 +2899,7 @@ export class Renderer {
                     ? this.scene.getMeshes().filter(mesh => {
                         if (!visibleSelectedIds.has(mesh.expressId)) return false;
                         if (selectedModelIndex !== undefined && mesh.modelIndex !== selectedModelIndex) return false;
+                        if (mesh.expressId === itemFilterExpressId && mesh.geometryItemId !== itemFilterItemId) return false; // #4382
                         return true;
                     })
                     : [];
@@ -3124,6 +3085,7 @@ export class Renderer {
             // Section-plane gizmo, 2D section cap and every standalone 3D
             // overlay (annotation / alignment / grid / DXF / clash / symbolic
             // text). One draw call into the pass — see RendererOverlays.draw().
+            this.referenceImages.draw(pass, viewProj);
             this.overlays.draw(pass, {
                 options,
                 viewProj,
@@ -3309,13 +3271,12 @@ export class Renderer {
         return this.pickingManager.pickRect(x0, y0, x1, y1, options, this.activePickClip());
     }
 
-    /**
-     * Raycast into the scene to get precise 3D intersection point
-     * This is more accurate than pick() as it returns the exact surface point
-     *
-     * Note: x, y are CSS pixel coordinates relative to the canvas element.
-     * These are scaled internally to match the actual canvas pixel dimensions.
-     */
+    /** Whether the last rendered frame clipped surfaces (section, terrain or box). */
+    hasActiveClipping(): boolean {
+        return this._activePickSection !== null || this._activePickClipBox !== null;
+    }
+
+    /** Exact surface raycast in CSS canvas coordinates; does not apply clipping. */
     raycastScene(
         x: number,
         y: number,
@@ -3392,19 +3353,20 @@ export class Renderer {
      * Resize canvas
      */
     resize(width: number, height: number): void {
-        // `canvas.width` is an IDL `unsigned long`, so it silently coerces a
-        // non-finite or negative argument to **0** — a zero drawing buffer
-        // that every pick guard in this package misses, because they all
-        // check the bounding rect rather than the buffer. `unprojectToRay`
-        // then divides by it. This is documented public API of a published
-        // package (`docs/api/typescript.md`), so an external caller wiring a
-        // ResizeObserver to it is the reachable route; both in-repo callers
-        // already floor their own values. Keep the last usable size, the same
-        // policy `setAspect` uses for the ratio it derives (#2473).
-        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
-        this.canvas.width = width;
-        this.canvas.height = height;
-        this.camera.setAspect(width / height);
+        resizeRendererViewport(this.canvas, this.camera, width, height);
+    }
+
+    /** Stage one new owner; borrowed mesh buffers must remain immutable until disposal. */
+    prepareAuthoredOwner(parts: readonly MeshData[]) {
+        if (!this.device.isInitialized() || !this.pipeline) throw new Error('Renderer is not initialized.');
+        const prepared = this.scene.prepareAuthoredOwner(parts, this.device.getDevice(), this.pipeline);
+        return { commit: () => { prepared.commit(); this.refreshPlacementBounds(); this.invalidateBVHCache(); this.requestRender(); }, dispose: prepared.dispose };
+    }
+    prepareTexturedOwner(mesh: MeshData) { if (!mesh.uvs || !(mesh.texture || (mesh.textureRef && mesh.textureBitmap))) throw new Error('A new textured owner requires an image and UVs.'); return this.prepareAuthoredOwner([mesh]); }
+
+    getAppearancePreview(): AppearancePreview {
+        if (!this.pipeline) throw new Error('Renderer must be initialized before previewing appearance');
+        return this.scene.appearancePreview(this.device.getDevice(), this.pipeline);
     }
 
     getCamera(): Camera {
@@ -3728,6 +3690,7 @@ export class Renderer {
         // Section-plane gizmo, 2D section overlay and the symbolic annotation
         // pipelines — see RendererOverlays.destroy().
         this.overlays.destroy();
+        this.referenceImages.destroy();
 
         // Point cloud GPU resources
         this.pointCloudRenderer?.clear();

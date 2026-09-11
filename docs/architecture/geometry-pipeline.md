@@ -112,14 +112,21 @@ classDiagram
 
 ### Coverage by Type
 
-| Geometry Type | Coverage | Notes |
-|---------------|----------|-------|
-| IfcExtrudedAreaSolid | Full | Most common |
-| IfcFacetedBrep | Full | Face triangulation + source weld |
-| IfcBooleanClippingResult | Full | Exact pure-Rust CSG kernel |
-| IfcMappedItem | Full | GPU instancing |
-| IfcSurfaceModel | Partial | Surface meshes |
-| IfcTriangulatedFaceSet | Full | IFC4 triangles, zero-alloc fast parse |
+The router's processor registry (`rust/geometry/src/router/processor_registry.rs`)
+currently covers 23 distinct `IfcType` representation items across 18
+processor structs — including `IfcExtrudedAreaSolid`, `IfcFacetedBrep`,
+`IfcBooleanClippingResult`/`IfcBooleanResult`, `IfcTriangulatedFaceSet`,
+`IfcShellBasedSurfaceModel`, `IfcFaceBasedSurfaceModel` (the two concrete
+`IfcSurfaceModel` subtypes), `IfcAlignment` and more — not the six this
+section used to list by hand, which had drifted from source. `IfcMappedItem`
+is handled separately, via GPU instancing (`rust/geometry/src/router/instancing.rs`),
+not through this processor table, so it is out of scope for the per-entity
+ledger below.
+
+The full, generated, per-entity table (which processor is registered for
+which representation item, per schema version — the "Geometry" column) is
+the [coverage ledger](coverage-ledger.md) — regenerated from
+this same source file, so it cannot go stale the way the table above did.
 
 ## Extrusion Processing
 

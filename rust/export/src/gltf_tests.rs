@@ -1491,10 +1491,51 @@ fn metadata_and_isolation() {
         .unwrap();
     let iso = export_glb_with_stats(
         &fixture_or_skip!("ara3d/duplex.ifc"),
-        &GltfOptions { isolated: vec![some_id], ..GltfOptions::default() },
+        &GltfOptions { isolated: Some(vec![some_id]), ..GltfOptions::default() },
     )
     .1;
     assert!(iso.meshes >= 1 && iso.meshes <= full.meshes);
+}
+
+/// #4328 follow-up, three states over a real fixture: `None` (no filter) keeps
+/// the full model, an active filter matching zero express ids exports NOTHING
+/// (not the whole model), and an active filter matching one id exports exactly
+/// that id's mesh(es) — the middle case is the one a careless fix breaks in
+/// either direction (over-hiding a normal allowlist, or falling back to
+/// "export everything" on an empty one).
+#[test]
+fn isolation_three_states_over_a_real_fixture() {
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
+
+    let no_filter = export_glb_with_stats(&bytes, &GltfOptions::default()).1;
+    assert!(no_filter.meshes > 1, "fixture must have more than one visible mesh to discriminate");
+
+    let empty_active = export_glb_with_stats(
+        &bytes,
+        &GltfOptions { isolated: Some(vec![]), ..GltfOptions::default() },
+    )
+    .1;
+    assert_eq!(
+        empty_active.meshes, 0,
+        "an ACTIVE isolation filter matching zero express ids must export zero meshes, \
+         not silently fall back to the whole model"
+    );
+
+    let some_id = process_geometry(&bytes[..])
+        .meshes
+        .iter()
+        .find(|m| super::mesh_visible(m, &GltfOptions::default()))
+        .map(|m| m.express_id)
+        .unwrap();
+    let one_match = export_glb_with_stats(
+        &bytes,
+        &GltfOptions { isolated: Some(vec![some_id]), ..GltfOptions::default() },
+    )
+    .1;
+    assert!(
+        one_match.meshes >= 1 && one_match.meshes < no_filter.meshes,
+        "a non-empty allowlist must still export exactly its matches, not everything and not nothing"
+    );
 }
 
 /// A minimal but valid triangulated mesh (one triangle, matching normals),
@@ -2510,5 +2551,27 @@ fn the_bounded_path_counts_identities_not_colour_buckets() {
         stats.unverified_instance_groups, 1,
         "four occurrences of one representation map are ONE unverified identity, \
          whatever the colours split them into"
+    );
+}
+
+#[test]
+fn mesh_visible_empty_isolated_set_is_indistinguishable_from_no_filter_bug_repro() {
+    // #4328 follow-up: an ACTIVE isolation filter that matches nothing must hide
+    // every mesh, not export the whole model. `GltfOptions::isolated` today is a
+    // bare `Vec<u32>`, so "no filter" and "filter active, zero matches" both
+    // arrive as an empty vec and collapse to the same `isolated_active = false`.
+    // This test pins that collapse; it must go RED before the fix (isolated_active
+    // becomes `Option<Vec<u32>>`-driven) and GREEN after.
+    let mesh = synthetic_mesh(99, "IfcWall");
+
+    let no_filter = GltfOptions::default();
+    let empty_active_filter = GltfOptions { isolated: Some(vec![]), ..GltfOptions::default() };
+
+    assert!(mesh_visible(&mesh, &no_filter), "no isolation filter: mesh stays visible");
+    assert!(
+        !mesh_visible(&mesh, &empty_active_filter),
+        "an isolation filter active with zero matches must hide every mesh, not export everything \
+         (currently BOTH read as `isolated_active = false` because `Vec::is_empty()` can't tell \
+         'no filter' from 'filter matched nothing')"
     );
 }

@@ -68,6 +68,60 @@ function animate() {
 animate();
 ```
 
+## Appearance triangle mapping
+
+`expandAppearanceCorners(mesh, sourceIndices, cornerUvs, targetIndices, targetCornerNormals, targetVertexCount)` binds
+canonical authored UVs to a mesh or streamed fragment. It validates the source
+topology against `mesh.appearanceSource`, preserves exact triangle positions, installs canonical target corner normals in renderer Y-up,
+and expands welded vertices when individual corners need different UVs. The
+returned mesh records the target canonical topology for a subsequent edit.
+The canonical target vertex count bounds index references; retained unused vertices
+mean that triangle-corner count is not a valid vertex-pool bound.
+Missing or stale provenance throws; matching array lengths alone are insufficient.
+
+`equivalentAppearanceGeometry(before, after)` checks exact triangle-corner
+equivalence, including compressed-to-expanded undo/redo. Its default also checks
+normal equality; `{ allowNormalChanges: true }` permits canonical shading changes
+while still requiring exact positions and corner order. Validate the current
+history state with the strict default before applying such a transition. Both functions consume
+canonical planner data; they do not calculate IFC mapping rules. Callers retain
+ownership of the input arrays and must treat shared geometry/provenance arrays
+as immutable. Expansion allocates one vertex per triangle corner and is an
+explicit authoring operation, outside ordinary model loading.
+
+## Reversible appearance previews
+
+After model streaming and GPU uploads finish, call
+`renderer.getAppearancePreview()` to obtain the scene's owned preview API.
+`begin({ expressId, modelIndex })` claims one renderer entity and returns a
+token. Resolve federation IDs before calling it. The model index is checked
+against every part so another model cannot be edited through the token.
+
+`update(token, parts)` takes every original mesh part in order. It preserves
+exact triangle positions/normals and ownership; corner expansion through
+`expandAppearanceCorners` may represent the same triangles with UV seams.
+New bitmap content requires a new texture identity. Input geometry, image and
+UV arrays are borrowed immutable data. Textured and ordinary untextured parts
+are supported, including owners sharing a flat GPU batch. Instanced geometry,
+per-vertex mixed-owner data, released CPU geometry and unfinished uploads are
+explicitly rejected.
+
+Replacement GPU resources are staged before replacing the current preview.
+Original resources remain owned by the token until `cancel(token)` restores
+them or `commit(token)` keeps the result and releases the originals. A cancelled
+or scene-invalidated issued token can be cancelled again safely; updates and
+commits with stale/foreign tokens fail. Model removal and scene teardown release
+hidden originals as well as active previews.
+
+For a multi-object command, `prepareCommit(tokens)` validates the entire group
+and returns an idempotent commit function. Changing any prepared draft fences
+that commit before it consumes an owner. The caller must coordinate this with
+its IFC/entity transaction and image leases; the renderer does not publish IFC
+changes or manage application history. Returned `AppearanceChange` records hold
+frozen CPU mesh wrappers for before/after history, never GPU handles. Retain
+the images and arrays as long as history needs them, and request a render after
+the application publishes the completed command.
+
 ## Camera Controls
 
 ### Configuration
@@ -505,6 +559,18 @@ renderer.render({ selectedIds });
 ```
 
 ### Raycasting
+
+Scene raycasts and magnetic snapping include regular, batched, textured and
+instanced geometry. A textured surface in front of another object participates
+in nearest-surface selection, with the same hidden/isolation filters and retained
+local origins. CPU raycasts intersect triangles; texture alpha does not cut holes
+in the picking surface.
+
+Custom `RaycastEngine` scene adapters can optionally implement
+`getTexturedMeshes()` returning owners with `expressId` and optional `modelIndex`;
+`getMeshDataPieces` supplies their retained geometry. Existing adapters without
+that capability keep their regular/batched/instanced behavior. This does not add
+texture GPU handles to the `Renderer.getScene()` interface.
 
 ```typescript
 // Full raycast with intersection details
@@ -991,3 +1057,61 @@ async function createViewer() {
 - [Server Guide](server.md) - Server-based rendering
 - [2D Drawing Guide](drawing-2d.md) - Generate 2D plans and elevations
 - [API Reference](../api/typescript.md) - Complete API docs
+
+Preview cancellation rejoins only partitions of the same original flat batch,
+after every related draft closes. Committed textured owners remain separate;
+undoing them can rejoin their original cohort. Restoration respects original
+vertex/index allocation bounds and current colors. If replacement allocation
+fails, split batches remain drawable and the renderer reports a warning.
+Cohort metadata is cleared when its entities or scene are removed.
+
+## Model workspace translations
+
+`Renderer.setModelTranslation(modelIndex, [x, y, z])` sets an absolute manual
+translation in **renderer Y-up metres**. It applies to flat, textured, instanced
+and embedded pointcloud geometry assigned that model index, including later
+uploads. Pass `[0, 0, 0]` to reset. Keep each loaded model's index stable until
+it is removed; do not compact indices while its geometry remains on the GPU.
+`renderer.getScene().getModelTranslation(modelIndex)` reads the current offset
+in the same Y-up metre frame. It defaults to zero before a placement is set.
+The scene retains occurrence records and bounds after releasing CPU vertices,
+so whole-model movement remains available in GPU-resident mode.
+
+For a separately streamed scan, call
+`Renderer.setPointCloudTranslation(handle, [x, y, z])`. Its manual translation
+composes after the matrix passed to `setPointCloudTransform`, which accepts
+`Float64Array` as well as `Float32Array`. Pass coarse alignment matrices in
+float64 so cancellation with a manual correction happens before GPU rounding.
+`getPointCloudTransform(handle)` returns the final draw matrix for CPU spatial
+consumers. `getModelPlacementBounds(modelIndex, handle?)` returns placed bounds
+for framing a model and its streamed scan.
+
+These APIs move workspace geometry; they do not rewrite source IFC placements
+or point records. The web viewer supplies transactions, undo, persistence and
+engineering Z-up inputs on top of them. See [Repositioning models and
+pointclouds](federation.md#repositioning-models-and-pointclouds).
+
+
+## Registered raster references
+
+`renderer.getReferenceImages()` manages image and PDF-page rasters in a separate string-ID namespace. `set({ id, bitmap, corners, visible, locked, opacity }, signal?)` uploads a raster and resolves after GPU validation. Corners are renderer Y-up coordinates, ordered top-left, top-right, bottom-right, bottom-left. The viewer derives them from immutable engineering Z-up metre registration using its existing federation offset; an RTC-only rebase preserves the registration, while an incompatible map frame reports a mismatch.
+
+Keep the bitmap's inventory lease until `set` settles. The renderer owns uploaded texture and buffer resources, and never closes the caller's bitmap. Replacement retains the previous valid image until upload succeeds. `remove(id)` and `clear()` invalidate pending publication and release resources; device loss and renderer destruction do the same. Draft controllers should remove only their own IDs, rather than clearing registered references.
+
+`await references.pick(x, y, options)` uses canvas-relative CSS pixels and the same visibility options as IFC picking. It returns `{ referenceId, point, distance }` separately from IFC selection. Hidden, locked and zero-opacity references do not select. The existing scene picker supplies occlusion depth; its CPU fallback uses the picked owner's precise raycast and conservatively refuses a reference when depth cannot be recovered. Picking uses the rectangular page footprint, including transparent pixels. References depth-test against IFC geometry without writing IFC object IDs or changing BIM bounds. Overlapping translucent planes use back-to-front ordering; intersecting translucent planes retain ordinary alpha-sorting limitations.
+
+This is a visual registration API. It does not create `IfcAnnotation`, persist image bytes, or promise arbitrary CRS reprojection. Application metadata/history and IFC authoring own those operations independently.
+
+### Creating an authored owner atomically
+
+`renderer.prepareAuthoredOwner(parts)` uploads all canonical `MeshData` parts for one
+new IFC owner, including separate colours and optional retained textures, while keeping it outside the visible scene and picking index. The owner
+must not already exist, and every part must have the same object and model identity.
+`prepareTexturedOwner(mesh)` remains the single textured-part convenience entry point.
+Keep the borrowed mesh buffers immutable until disposal. Clear/rebuild or placement
+changes invalidate an outstanding preparation. Call the returned `commit()` after the matching IFC
+transaction is ready, then publish the model/history state in the same synchronous
+turn. Always call `dispose()` in `finally`; it releases an uncommitted upload and
+leaves a committed scene owner intact. Keep the source image retained through the
+owner's model and undo history lifetimes. This API inserts native-produced geometry;
+it does not construct IFC entities or synthesize geometry from a reference image.

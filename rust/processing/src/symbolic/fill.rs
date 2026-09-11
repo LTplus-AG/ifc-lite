@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use super::color::resolve_color_via_styles;
 use super::primitives::{SymbolicFillArea};
-use super::transform::{circle_center, Transform2D};
+use super::transform::{circle_center, push_finite_point, Transform2D};
 
 // ────────────────────────────────────────────────────────────────────────────
 // Fill area extraction (IfcAnnotationFillArea).
@@ -27,6 +27,7 @@ pub(super) fn extract_annotation_fill_area(
     rebase: RenderFrameRebase,
     styled_items: &HashMap<u32, Vec<u32>>,
     out: &mut SymbolicAccumulator,
+    geometry_item_id: Option<u32>,
 ) {
     let Some(outer_ref) = item.get_ref(0) else { return };
     let mut points = extract_curve_ring(outer_ref, decoder, unit_scale, transform, rebase);
@@ -52,7 +53,7 @@ pub(super) fn extract_annotation_fill_area(
         .unwrap_or([0.0, 0.0, 0.0, 1.0]);
     let world_y = rebase.elevation(sample_curve_world_y(outer_ref, decoder, unit_scale) + transform.tz);
 
-    out.push_fill(SymbolicFillArea {
+    out.push_fill_with_provenance(SymbolicFillArea {
         express_id,
         ifc_type: ifc_type.to_string(),
         points,
@@ -65,7 +66,7 @@ pub(super) fn extract_annotation_fill_area(
         hatch_line_width: 0.0,
         world_y,
         representation: rep_identifier.to_string(),
-    });
+    }, geometry_item_id);
 }
 
 /// Extract one ring of `(x, y)` points from any supported boundary curve.
@@ -96,8 +97,7 @@ fn extract_curve_ring(
                 let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
                 let (wx, wy) = transform.transform_point(x, y);
                 let (px, py) = rebase.plan(wx, wy);
-                out.push(px);
-                out.push(py);
+                push_finite_point(&mut out, px, py);
             }
             out
         }
@@ -113,8 +113,7 @@ fn extract_curve_ring(
                 let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
                 let (wx, wy) = transform.transform_point(x, y);
                 let (px, py) = rebase.plan(wx, wy);
-                out.push(px);
-                out.push(py);
+                push_finite_point(&mut out, px, py);
             }
             out
         }
@@ -133,8 +132,7 @@ fn extract_curve_ring(
                 let ly = cy_local + semi_b * theta.sin();
                 let (wx, wy) = transform.transform_point(lx, ly);
                 let (px, py) = rebase.plan(wx, wy);
-                out.push(px);
-                out.push(py);
+                push_finite_point(&mut out, px, py);
             }
             out
         }
@@ -153,8 +151,7 @@ fn extract_curve_ring(
                 let ly = cy_local + radius * theta.sin();
                 let (wx, wy) = transform.transform_point(lx, ly);
                 let (px, py) = rebase.plan(wx, wy);
-                out.push(px);
-                out.push(py);
+                push_finite_point(&mut out, px, py);
             }
             out
         }

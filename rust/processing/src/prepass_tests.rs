@@ -59,6 +59,80 @@ fn find_ifcproject_id_accepts_a_ref_at_exactly_u32_max() {
     assert_eq!(find_ifcproject_id(ifc), Some(u32::MAX));
 }
 
+/// Issue #4497: `find_ifcproject_id_inner`'s `memchr::memmem::find` against
+/// the literal `b"IFCPROJECT("` was case-sensitive, so this — this exact
+/// resolver, the fallback `resolve_unit_scales` falls back to when no
+/// project-id hint is available — silently returned `None` on a lowercase
+/// STEP file, which is the exact "no project" branch that then defaults
+/// length/angle scale to 1.0.
+#[test]
+fn find_ifcproject_id_lowercase_keyword() {
+    let ifc = b"DATA;\n#1=ifcwall('x',$,$,$,$,$,$,$,$);\n#7=ifcproject('g',$,'P',$,$,$,$,$,$);\n";
+    assert_eq!(find_ifcproject_id(ifc), Some(7));
+}
+
+/// The realistic case per #4497: CamelCase keywords from some exporters.
+#[test]
+fn find_ifcproject_id_mixed_case_keyword() {
+    let ifc = b"DATA;\n#7=IfcProject('g',$,'P',$,$,$,$,$,$);\n";
+    assert_eq!(find_ifcproject_id(ifc), Some(7));
+}
+
+/// Lowercase must still respect whitespace-around-`=` and the
+/// IFCPROJECTEDCRS non-collision, exactly like the uppercase cases above.
+#[test]
+fn find_ifcproject_id_lowercase_handles_whitespace_and_crs_collision() {
+    let space_after = b"DATA;\n#1=ifcwall('x',$);\n#1593796= ifcproject('g',$,'P',$,$,$,$,$,$);\n";
+    assert_eq!(find_ifcproject_id(space_after), Some(1593796));
+
+    let crs_only = b"DATA;\n#9= ifcprojectedcrs('EPSG:32632',$,'WGS84',$,'UTM','32N',$);\n";
+    assert_eq!(find_ifcproject_id(crs_only), None);
+}
+
+/// End-to-end: `resolve_unit_scales` with no hint (forcing the
+/// `find_ifcproject_id` fallback path) resolves a lowercase-keyword,
+/// millimetre + degree file exactly like its uppercase equivalent
+/// (`resolve_unit_scales_resolves_degrees_and_millimetres` below).
+#[test]
+fn resolve_unit_scales_fallback_path_lowercase_keywords() {
+    const IFC: &[u8] = b"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Test'),'2;1');
+FILE_NAME('test.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=ifcproject('guid',$,'Test',$,$,$,$,(#2),#3);
+#2=ifcgeometricrepresentationcontext($,'Model',3,1.E-5,#4,$);
+#3=ifcunitassignment((#5,#10));
+#4=ifcaxis2placement3d(#7,$,$);
+#5=ifcsiunit(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#7=ifccartesianpoint((0.,0.,0.));
+#8=ifcsiunit(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+#9=ifcmeasurewithunit(ifcratiomeasure(0.0174532925199433),#8);
+#10=ifcconversionbasedunit(#11,.PLANEANGLEUNIT.,'DEGREE',#9);
+#11=ifcdimensionalexponents(0,0,0,0,0,0,0);
+ENDSEC;
+END-ISO-10303-21;
+";
+    let index = ifc_lite_core::build_entity_index(IFC);
+    let mut decoder = EntityDecoder::with_index(IFC, index);
+
+    // No hint: forces resolve_unit_scales to call find_ifcproject_id.
+    let scales = resolve_unit_scales(IFC, None, &mut decoder);
+    assert_eq!(scales.project_id, Some(1));
+    assert!(
+        (scales.length_unit_scale - 0.001).abs() < 1e-12,
+        "expected 0.001 (mm), got {}",
+        scales.length_unit_scale
+    );
+    assert!(
+        (scales.plane_angle_to_radians - 0.0174532925199433).abs() < 1e-9,
+        "expected 0.01745… (degree), got {}",
+        scales.plane_angle_to_radians
+    );
+}
+
 /// RED for issue #3421: `find_ifcproject_id` used to accumulate the express
 /// id with `wrapping_mul`/`wrapping_add`, so `#4294967297=IFCPROJECT(...)`
 /// wrapped onto id 1 instead of refusing. A real `#1=IFCWALL(...)` earlier in
@@ -194,4 +268,116 @@ END-ISO-10303-21;
     assert_eq!(scales.project_id, Some(10));
     assert!((scales.length_unit_scale - 0.001).abs() < 1e-12);
     assert!((scales.plane_angle_to_radians - 0.017_453_292_519_943_295).abs() < 1e-12);
+}
+
+/// A `#<id>=IFCPROJECT(` sequence embedded in a STEP string literal is not a
+/// record definition, so the scan must not return its id and must not stop:
+/// the real project follows it. The old case-sensitive scan could only be
+/// fooled by an uppercase decoy; matching `ifcproject(` too widens the
+/// hazard to ordinary lowercase prose in a comment or a description.
+///
+/// The consequence of a false positive is the exact symptom issue #4497
+/// exists to remove: `extract_length_unit_scale` rejects the wrong id on its
+/// `IFCPROJECT` type guard and the caller's `unwrap_or(1.0)` defaults a
+/// millimetre model to metres.
+#[test]
+fn find_ifcproject_id_skips_a_full_record_decoy_inside_a_string() {
+    let ifc = b"DATA;\n#5=IFCWALL('note: #9=ifcproject( in the source',$);\n#7=IFCPROJECT('g',$);\n";
+    assert_eq!(find_ifcproject_id(ifc), Some(7));
+
+    let upper = b"DATA;\n#5=IFCWALL('note: #9=IFCPROJECT( in the source',$);\n#7=IFCPROJECT('g',$);\n";
+    assert_eq!(find_ifcproject_id(upper), Some(7));
+}
+
+/// The record-start guard must not refuse a real declaration that a
+/// 10303-21 comment separates from the previous record's `;` — a comment is
+/// legal wherever whitespace is, and the entity scanner accepts it (see
+/// `skip_step_trivia` in `rust/core/src/parser/lexical.rs`). A false
+/// negative here is the same silent 1.0 default as a miss.
+#[test]
+fn find_ifcproject_id_accepts_a_record_behind_a_step_comment() {
+    let ifc = b"DATA;\n#1=IFCWALL('x',$); /* was #9 */ #7=IFCPROJECT('g',$);\n";
+    assert_eq!(find_ifcproject_id(ifc), Some(7));
+
+    let two = b"DATA;\n#1=IFCWALL('x',$);/**//* b */#7=IFCPROJECT('g',$);\n";
+    assert_eq!(find_ifcproject_id(two), Some(7));
+}
+
+/// A project declared at byte 0, with no preceding `;` at all, is still a
+/// record start.
+#[test]
+fn find_ifcproject_id_accepts_a_record_at_the_start_of_input() {
+    assert_eq!(find_ifcproject_id(b"#7=IFCPROJECT('g',$);\n"), Some(7));
+}
+
+/// `find_ifcproject_keyword` prefilters on `J` rather than the lead `I` (a
+/// ~20x scan win on a project-less file, since every IFC keyword starts with
+/// `I`). The offset arithmetic that buys it — candidate start is `j - 6`,
+/// with the first six bytes and any hit behind `from` skipped — is exactly
+/// where such a rewrite goes wrong, so pin it against a naive reference over
+/// every offset of adversarial and pseudo-random buffers.
+#[test]
+fn find_ifcproject_keyword_matches_a_naive_reference_at_every_offset() {
+    const KEYWORD: &[u8] = b"IFCPROJECT(";
+    fn naive(content: &[u8], from: usize) -> Option<usize> {
+        if content.len() < KEYWORD.len() {
+            return None;
+        }
+        (from..=content.len() - KEYWORD.len())
+            .find(|&i| content[i..i + KEYWORD.len()].eq_ignore_ascii_case(KEYWORD))
+    }
+
+    let mut cases: Vec<Vec<u8>> = vec![
+        b"".to_vec(),
+        b"J".to_vec(),
+        b"j(".to_vec(),
+        b"IFCPROJECT(".to_vec(),
+        b"ifcproject(".to_vec(),
+        b"IfcProject(".to_vec(),
+        b"IFCPROJECTEDCRS(".to_vec(),
+        b"IFCPROJECT".to_vec(),
+        b"XXXXXXIFCPROJECT(".to_vec(),
+        b"IFCPROJECT(IFCPROJECT(".to_vec(),
+        b"ifcprojectIFCPROJECT(".to_vec(),
+        b"JIFCPROJECT(".to_vec(),
+        b"#9=ifcproject( #7=IFCPROJECT(".to_vec(),
+        b"AAJAA".to_vec(),
+    ];
+
+    // xorshift64 over an alphabet dense in the keyword's own bytes, so near
+    // misses are common rather than astronomically rare.
+    let alphabet = b"IiFfCcPpRrOoJjEeTt(#=; \n'";
+    let mut state = 0x2545_F491_4F6C_DD1Du64;
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    for _ in 0..400 {
+        let len = (next() % 48) as usize;
+        cases.push(
+            (0..len)
+                .map(|_| alphabet[(next() as usize) % alphabet.len()])
+                .collect(),
+        );
+    }
+
+    let mut checked = 0usize;
+    for case in &cases {
+        for from in 0..=case.len() {
+            assert_eq!(
+                find_ifcproject_keyword(case, from),
+                naive(case, from),
+                "from={from} in {:?}",
+                String::from_utf8_lossy(case)
+            );
+            checked += 1;
+        }
+    }
+    // Anti-vacuity: an empty or tiny case list would pass silently.
+    assert!(
+        checked > 5_000,
+        "only {checked} (buffer, offset) pairs checked"
+    );
 }

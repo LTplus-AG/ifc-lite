@@ -1,0 +1,113 @@
+{
+  "oracle": "0.8.2",
+  "schema": "IFC4",
+  "archiveBytes": 41838491,
+  "ifcBytes": 75484967,
+  "authoredImages": 1,
+  "authoredTriangleMaps": 115,
+  "mappedTriangles": 120862,
+  "products": [
+    [
+      745,
+      "IfcBuildingElementProxy",
+      "building element"
+    ],
+    [
+      405,
+      "IfcDoor",
+      "door 01"
+    ],
+    [
+      506,
+      "IfcRoof",
+      "roof 01"
+    ],
+    [
+      547,
+      "IfcRoof",
+      "Roof 02"
+    ],
+    [
+      587,
+      "IfcRoof",
+      "Roof 03"
+    ],
+    [
+      792,
+      "IfcRoof",
+      "Roof 05"
+    ],
+    [
+      23,
+      "IfcWall",
+      "outer wall 01"
+    ],
+    [
+      201,
+      "IfcWall",
+      "outer wall 02"
+    ],
+    [
+      667,
+      "IfcWall",
+      "main building walls"
+    ],
+    [
+      833,
+      "IfcWall",
+      "other walls"
+    ],
+    [
+      248,
+      "IfcWindow",
+      "window 07"
+    ],
+    [
+      280,
+      "IfcWindow",
+      "window 05"
+    ],
+    [
+      305,
+      "IfcWindow",
+      "window 04"
+    ],
+    [
+      340,
+      "IfcWindow",
+      "window 08"
+    ],
+    [
+      365,
+      "IfcWindow",
+      "window 02"
+    ],
+    [
+      446,
+      "IfcWindow",
+      "window 06"
+    ],
+    [
+      471,
+      "IfcWindow",
+      "window 03"
+    ],
+    [
+      627,
+      "IfcWindow",
+      "window 01"
+    ],
+    [
+      151,
+      "IfcGeographicElement",
+      "terrain"
+    ],
+    [
+      706,
+      "IfcBuilding",
+      "porch"
+    ]
+  ],
+  "jpegBytes": 987467,
+  "imageDigestMatches": true
+}

@@ -1,0 +1,58 @@
+{
+  "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+  "baseSource": "f55a14ec02d5a08e22bbd06dd960edc057aa9877",
+  "branchSource": "aad7def981713dd299bf2d3db152f9a2b8f1fe2a",
+  "measurement": "Interleaved native five-iteration normal-load A/B/A/B on an explicitly idle machine. Probe parse/geometry/total values are best-of-five, not medians. Separate fingerprints are not timed evidence. No worker-pool or authoring throughput claim.",
+  "runs": [
+    {
+      "version": "base",
+      "parseMs": 2,
+      "geometryMs": 4,
+      "totalMs": 7,
+      "allTotalsMs": [9, 8, 8, 8, 7],
+      "allWallMs": [10.095, 8.962417, 8.488334, 8.507000000000001, 8.00325]
+    },
+    {
+      "version": "branch",
+      "parseMs": 3,
+      "geometryMs": 4,
+      "totalMs": 7,
+      "allTotalsMs": [11, 9, 9, 8, 7],
+      "allWallMs": [12.47125, 9.501707999999999, 9.907582999999999, 8.867917, 8.093]
+    },
+    {
+      "version": "base",
+      "parseMs": 3,
+      "geometryMs": 4,
+      "totalMs": 7,
+      "allTotalsMs": [9, 7, 7, 7, 7],
+      "allWallMs": [9.391791, 8.137375, 7.989916, 8.24675, 8.203999999999999]
+    },
+    {
+      "version": "branch",
+      "parseMs": 3,
+      "geometryMs": 4,
+      "totalMs": 7,
+      "allTotalsMs": [9, 8, 8, 7, 7],
+      "allWallMs": [9.404124999999999, 8.408291, 8.354208, 8.25775, 8.214625]
+    }
+  ],
+  "identity": {
+    "base": {
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    "branch": {
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    }
+  }
+}

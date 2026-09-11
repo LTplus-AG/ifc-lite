@@ -35,6 +35,7 @@ import {
   parseProfilesFlat,
   parseSymbolicFlat,
 } from '@/lib/overlay-parse/index.js';
+import { placedConstructionProfiles } from '@/lib/model-placement/construction-profiles';
 import { buildProfileEntries, warnAboutSkippedProfiles } from '@/lib/overlay-parse/profile-entries.js';
 import {
   buildSymbolicDrawingLines,
@@ -42,7 +43,8 @@ import {
 } from '@/lib/overlay-parse/symbolic-drawing-lines.js';
 import type { SpatialHierarchy } from '@ifc-lite/data';
 import * as IfcWasm from '@ifc-lite/wasm';
-import { customPlaneCenter } from '@/store';
+import { customPlaneCenter, useViewerStore } from '@/store';
+import { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './useDrawing2DPersistence.js';
 import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
 import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
 
@@ -58,6 +60,15 @@ export const AXIS_MAP: Record<'down' | 'front' | 'side', 'x' | 'y' | 'z'> = {
   down: 'y',
   front: 'z',
   side: 'x',
+};
+
+/** Inverse of {@link AXIS_MAP} — restoring a persisted `SectionConfig`
+ * (world-space `x`/`y`/`z`) back into the store's semantic `sectionPlane`
+ * (issue #4153 gap) needs the reverse lookup. */
+const AXIS_MAP_REVERSE: Record<'x' | 'y' | 'z', 'down' | 'front' | 'side'> = {
+  y: 'down',
+  z: 'front',
+  x: 'side',
 };
 
 // Depth of the slab IN FRONT of the section plane (in shifted-world
@@ -169,13 +180,14 @@ export function useDrawingGeneration({
   } | null>(null);
 
   // Cache for per-storey floor levels used to scope construction projection to
-  // the current floor (issue #979 follow-up). Derived from mesh-Y, so it only
-  // changes when the model/visibility set changes — keyed on the same
-  // `modelCacheKey` as the profile cache.
-  const storeyFloorsCacheRef = useRef<{
+  // the current floor. Unlike source profiles, these are DISPLAYED mesh-Y
+  // values: a placement or geometry edit invalidates them even if the model
+  // identity stays unchanged (#4332). Weak keys must not keep an unloaded
+  // model's mesh buffers alive while the hidden drawing panel stays mounted.
+  const storeyFloorsCacheRef = useRef(new WeakMap<GeometryResult, {
     floors: number[];
-    sourceId: string | null;
-  } | null>(null);
+    elementToStorey: ReadonlyMap<number, number>;
+  }>());
 
   // Generate drawing when panel opens
   const computeDrawing = useCallback(async (isRegenerate = false, isCurrent: () => boolean = () => true) => {
@@ -349,6 +361,8 @@ export function useDrawingGeneration({
       profileCacheRef.current = null;
     }
 
+    profiles = placedConstructionProfiles(profiles, ifcDataStore);
+
     let generator: Drawing2DGenerator | null = null;
     try {
       generator = new Drawing2DGenerator();
@@ -401,17 +415,22 @@ export function useDrawingGeneration({
         !sectionPlane.custom &&
         models.size <= 1 &&
         combinedIsolatedIds === null &&
-        !(computedIsolatedIds && computedIsolatedIds.size > 0) &&
+        // `computedIsolatedIds` is meaningfully nullable: null/undefined means
+        // no isolation channel is active, while a non-null Set — EMPTY
+        // included — means one is (matching the convention
+        // `packages/renderer/src/entity-visibility.ts`'s `isEntityVisible`
+        // uses). A `.size > 0` check here would read an active-but-empty
+        // isolate as "no isolation" and let floor auto-scoping run over the
+        // isolated-to-nothing set.
+        computedIsolatedIds == null &&
         sh !== undefined &&
         sh.byBuilding.size <= 1;
       if (canScopeFloor && sh) {
-        const cached = storeyFloorsCacheRef.current;
-        const floors =
-          cached && cached.sourceId === modelCacheKey
-            ? cached.floors
-            : storeyFloorsFromMeshes(modelMeshes, sh.elementToStorey);
-        if (!cached || cached.sourceId !== modelCacheKey) {
-          storeyFloorsCacheRef.current = { floors, sourceId: modelCacheKey };
+        const cached = storeyFloorsCacheRef.current.get(geometryResult);
+        const floorsCurrent = cached?.elementToStorey === sh.elementToStorey;
+        const floors = floorsCurrent ? cached.floors : storeyFloorsFromMeshes(modelMeshes, sh.elementToStorey);
+        if (!floorsCurrent) {
+          storeyFloorsCacheRef.current.set(geometryResult, { floors, elementToStorey: sh.elementToStorey });
         }
         // Need ≥2 storeys to scope: with 0/1 storey there is no "other floor"
         // to exclude, and full extent keeps an overhead roof projecting.
@@ -514,8 +533,14 @@ export function useDrawingGeneration({
         );
       }
 
-      // Also filter by computedIsolatedIds (storey selection)
-      if (computedIsolatedIds !== null && computedIsolatedIds !== undefined && computedIsolatedIds.size > 0) {
+      // Also filter by computedIsolatedIds (storey selection). Meaningfully
+      // nullable, same convention as `combinedIsolatedIds` above and
+      // `packages/renderer/src/entity-visibility.ts`'s `isEntityVisible`:
+      // null/undefined means no isolation channel is active, while a
+      // non-null Set — EMPTY included — means one is and matches nothing. A
+      // `.size > 0` check here would read an active-but-empty isolate as "no
+      // isolation" and redraw the whole model instead of nothing.
+      if (computedIsolatedIds != null) {
         const isolatedSet = computedIsolatedIds;
         meshesToProcess = meshesToProcess.filter(
           mesh => isolatedSet.has(mesh.expressId)
@@ -558,7 +583,8 @@ export function useDrawingGeneration({
         if (combinedIsolatedIds !== null) {
           projectionProfiles = projectionProfiles.filter((p) => combinedIsolatedIds.has(p.expressId));
         }
-        if (computedIsolatedIds !== null && computedIsolatedIds !== undefined && computedIsolatedIds.size > 0) {
+        // Meaningfully nullable, same convention as the mesh filter above.
+        if (computedIsolatedIds != null) {
           const isolatedSet = computedIsolatedIds;
           projectionProfiles = projectionProfiles.filter((p) => isolatedSet.has(p.expressId));
         }
@@ -850,6 +876,12 @@ export function useDrawingGeneration({
         setDrawing(result);
       }
 
+      // Remember the SectionConfig that produced this view so the markup
+      // persistence bridge (issue #4153) can save it alongside the results —
+      // `drawing2D` itself is derived output and is never persisted.
+      const generatedForModelId = useViewerStore.getState().activeModelId;
+      if (generatedForModelId) notifyDrawing2DSectionConfig(generatedForModelId, config);
+
       // Always set status to ready (whether initial generation or regeneration)
       setDrawingStatus('ready');
     } catch (error) {
@@ -887,6 +919,79 @@ export function useDrawingGeneration({
     finally { setIsRegenerating(false); }
   }), [computeDrawing, queue]);
   const doRegenerate = useCallback(() => generateDrawing(true), [generateDrawing]);
+
+  // Restore the persisted section cut on reload (issue #4153 gap):
+  // `useDrawing2DPersistence.ts`'s restore path loaded a saved model's
+  // `SectionConfig` only into its own module-local variable, used solely to
+  // re-save it — never fed back into the store's `sectionPlane`, so the
+  // section that produced the restored markup was never regenerated; the
+  // measurements/annotations came back floating over whatever cut
+  // `sectionPlane` already held (the default, or the last cardinal mode from
+  // a PREVIOUS, unrelated session — see `sectionSlice.ts`'s
+  // `loadLastSectionMode`). `consumeRestoredSectionConfig` hands this effect
+  // that saved `SectionConfig` exactly once per restore; converting it back
+  // into `sectionPlane`'s semantic axis + 0-100 percent (the inverse of the
+  // `axis`/`position` math in `computeDrawing` above) and writing it to the
+  // store lets the existing plane-changed auto-generate effect below do the
+  // actual regeneration — no new generation path, no bypass of the
+  // `restoringModelId` guard (`consumeRestoredSectionConfig` only returns a
+  // hit for the model whose restore already concluded, matching that guard's
+  // own per-model keying).
+  //
+  // Depends on BOTH `geometryResult` (bounds must be ready to convert a
+  // world-space position to a percentage) and `displayOptions` (a proxy for
+  // "the restore just concluded" — `applyHash` always assigns a fresh
+  // `drawing2DDisplayOptions` object when it restores an entry, restored
+  // `sectionConfig` or not) so this fires regardless of which of the two
+  // becomes ready last: a cache-loaded model has bounds before the async
+  // content hash resolves; a fresh load can resolve the hash first and wait
+  // on WASM meshing for bounds. `consumeRestoredSectionConfig` is one-shot,
+  // so an extra, premature firing (bounds ready, restore not concluded yet)
+  // is a harmless no-op, not a second consumption.
+  useEffect(() => {
+    const bounds = geometryResult?.coordinateInfo?.shiftedBounds;
+    if (!bounds) return;
+    const modelId = useViewerStore.getState().activeModelId;
+    if (!modelId) return;
+    const restored = consumeRestoredSectionConfig(modelId);
+    if (!restored) return;
+
+    const axis = restored.plane.axis;
+    const axisMin = bounds.min[axis];
+    const axisMax = bounds.max[axis];
+    const span = axisMax - axisMin;
+    // A degenerate (zero-extent) bounding box has no meaningful percentage —
+    // fall back to the slider's own default centre rather than divide by ~0.
+    const position = span > 1e-9
+      ? Math.min(100, Math.max(0, ((restored.plane.position - axisMin) / span) * 100))
+      : 50;
+
+    const customPlane = restored.plane.customPlane;
+    useViewerStore.setState((state) => ({
+      sectionPlane: {
+        ...state.sectionPlane,
+        axis: AXIS_MAP_REVERSE[axis],
+        position,
+        flipped: restored.plane.flipped,
+        enabled: true,
+        custom: customPlane
+          ? {
+              normal: [customPlane.normal.x, customPlane.normal.y, customPlane.normal.z],
+              distance: customPlane.distance,
+              // `origin` is already the projected pick point ON the plane
+              // (`dot(origin, normal) === distance`), so using it as
+              // `pickedAt` satisfies `customPlaneCenter`'s round-trip
+              // invariant exactly (see that function's own doc in
+              // `sectionSlice.ts`) — no original pick point survives the
+              // world-space `SectionConfig` this was restored from.
+              pickedAt: [customPlane.origin.x, customPlane.origin.y, customPlane.origin.z],
+              tangent: [customPlane.tangent.x, customPlane.tangent.y, customPlane.tangent.z],
+              bitangent: [customPlane.bitangent.x, customPlane.bitangent.y, customPlane.bitangent.z],
+            }
+          : undefined,
+      },
+    }));
+  }, [geometryResult, displayOptions]);
 
   // Match useRenderUpdates: a saved overlay preference needs the section tool.
   // Compare actual inputs, not callback identities or the drawing we publish.

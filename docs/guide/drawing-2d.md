@@ -2,6 +2,10 @@
 
 IFClite can generate 2D architectural drawings from 3D IFC models, including section cuts, floor plans, and elevations. The `@ifc-lite/drawing-2d` package produces vector SVG output with proper architectural conventions.
 
+Direct annotation fills with a matching 3D mesh render once in the viewer's
+registered plane. Their symbolic fill data remains available to 2D drawings;
+the 3D overlay routing does not delete or flatten the authored geometry.
+
 ## What It Generates
 
 From any 3D IFC model, you can produce:
@@ -20,6 +24,23 @@ Each drawing includes:
 | **Hatching** | Material-based fill patterns (concrete, masonry, insulation, etc.) |
 | **Architectural symbols** | Door swings, window frames, stair arrows |
 | **Annotations** | Dimensions and labels |
+
+## Drawings After Repositioning
+
+In the viewer, section cuts and construction projection use the model's current
+workspace placement. After [repositioning a model](federation.md#repositioning-models-and-pointclouds),
+the floor and ceiling limits used for construction projection refresh with its
+displayed geometry and storey membership.
+
+To compare the same floor plan before and after a vertical move, move the
+section plane by the same amount, or use the same section percentage for the
+same model bounds. Once drawing generation finishes, the equivalent cut keeps
+the same projection geometry and floor/ceiling bands. Moving only the model
+while keeping an absolute section elevation fixed produces a different cut.
+
+This is a viewer workspace adjustment: it does not rewrite the source IFC
+placements. Existing measurements retain their recorded workspace points and
+are marked stale after movement; remeasure them in the new arrangement.
 
 ## Quick Start
 

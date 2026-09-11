@@ -717,6 +717,141 @@ fn buckets_contained_elements_by_the_correct_spatial_container_kind() {
     assert_eq!(sh.element_to_space.len(), 1);
 }
 
+/// #4310 (mirroring the TS-side fix `elementToStorey.get(id)` in
+/// `spatial-hierarchy-builder.ts`): a wall duplicate-contained by two
+/// storeys must resolve to the FIRST-declared `IFCRELCONTAINEDINSPATIALSTRUCTURE`
+/// edge, independent of which order the two relations appear in the file.
+/// Two mirror-image fixtures (not one fixture that happens to commute) pin
+/// this: swapping which relation is declared first must swap which storey
+/// wins.
+const DUPLICATE_STOREY_ORDER_A_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#5=IFCWALL('Wall0000000000000000001',$,'W1',$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3,#4));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#3);
+#111=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#5),#4);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+const DUPLICATE_STOREY_ORDER_B_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#5=IFCWALL('Wall0000000000000000001',$,'W1',$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3,#4));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#4);
+#111=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#5),#3);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn duplicate_storey_containment_resolves_first_declared_order_a() {
+    let dm = extract_data_model_checked(DUPLICATE_STOREY_ORDER_A_IFC);
+    let sh = &dm.spatial_hierarchy;
+    // Order A declares StoreyA (#3) first: the wall must resolve to #3, and
+    // there must be exactly one entry for the wall, not two competing ones.
+    assert_eq!(
+        sh.element_to_storey.iter().filter(|(e, _)| *e == 5).count(),
+        1,
+        "duplicate containment must collapse to a single first-declared entry, not both: {:?}",
+        sh.element_to_storey
+    );
+    assert_eq!(
+        sh.element_to_storey.iter().find(|(e, _)| *e == 5).map(|(_, s)| *s),
+        Some(3),
+        "first-declared edge (Storey A, #3) must win"
+    );
+}
+
+/// #4310 review: an orphan storey (no IfcRelAggregates edge anywhere, so it is
+/// rescued as a root by the orphan-fill pass) declared BEFORE a project-
+/// reachable storey must not win the first-declared ruling. packages/parser
+/// only considers storeys reachable from IfcProject (see
+/// `falls through to the reachable later-declared storey when the
+/// first-declared one is unreachable` in spatial-hierarchy-builder.test.ts).
+const ORPHAN_STOREY_FIRST_DECLARED_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorA00000000000000001',$,'OrphanStoreyA',$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#5=IFCWALL('Wall0000000000000000001',$,'W1',$,$,$,$,$,$);
+#6=IFCWALL('Wall0000000000000000002',$,'W2',$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#4));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5,#6),#3);
+#111=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#5),#4);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn orphan_storey_declared_first_does_not_win_over_reachable_storey() {
+    let dm = extract_data_model_checked(ORPHAN_STOREY_FIRST_DECLARED_IFC);
+    let sh = &dm.spatial_hierarchy;
+    // The orphan Storey A (#3) is rescued as a root, so it is present.
+    assert!(sh.nodes.iter().any(|n| n.entity_id == 3 && n.parent_id == 0));
+    // W1 is named first by the orphan, then by reachable Storey B: the
+    // reachable storey wins, matching packages/parser.
+    assert_eq!(
+        sh.element_to_storey.iter().filter(|(e, _)| *e == 5).count(),
+        1,
+        "exactly one storey row for W1: {:?}",
+        sh.element_to_storey
+    );
+    assert_eq!(
+        sh.element_to_storey.iter().find(|(e, _)| *e == 5).map(|(_, s)| *s),
+        Some(4),
+        "project-reachable Storey B (#4) must win over the earlier-declared orphan"
+    );
+    // W2 is contained ONLY in the orphan storey: it keeps that row rather
+    // than vanishing from the lookup table.
+    assert_eq!(
+        sh.element_to_storey.iter().find(|(e, _)| *e == 6).map(|(_, s)| *s),
+        Some(3),
+        "orphan-only containment is retained"
+    );
+}
+
+#[test]
+fn duplicate_storey_containment_resolves_first_declared_order_b() {
+    let dm = extract_data_model_checked(DUPLICATE_STOREY_ORDER_B_IFC);
+    let sh = &dm.spatial_hierarchy;
+    // Order B swaps which relation is declared first: the wall must now
+    // resolve to Storey B (#4) - the winner tracks declaration order, not a
+    // fixed storey.
+    assert_eq!(
+        sh.element_to_storey.iter().filter(|(e, _)| *e == 5).count(),
+        1,
+        "duplicate containment must collapse to a single first-declared entry, not both: {:?}",
+        sh.element_to_storey
+    );
+    assert_eq!(
+        sh.element_to_storey.iter().find(|(e, _)| *e == 5).map(|(_, s)| *s),
+        Some(4),
+        "first-declared edge (Storey B, #4) must win"
+    );
+}
+
 /// Every relationship row must carry the express id of the `IfcRel*` entity it
 /// came from (issue #3860). Without it the viewer's server path fed the
 /// relationship graph id 0 and a Parquet/DuckDB export wrote `RelId = 0` on
@@ -1029,6 +1164,172 @@ fn a_space_aggregated_under_one_storey_and_contained_under_another_picks_one_can
         !storey_b.children_ids.contains(&5),
         "Storey B must not reference a node that is not actually its child - \
          a dangling children_ids entry lets a client render the space with the wrong parent's data"
+    );
+}
+
+/// #4246 (Rust counterpart): authoring-tool mistake - a parent/child
+/// aggregation pair declared in BOTH directions. #1 Project, #2 Building, #3
+/// Storey, #4 Wall (contained in the storey). #2<->#3 is the mutual pair
+/// (#2->#3 real, #3->#2 spurious); #1->#2 is the real anchor to IfcProject.
+/// When the spurious back-edge is declared before the real anchor edge,
+/// `canonical_parent`'s bare first-occurrence-wins should NOT let it win the
+/// tie for Building's parent - the whole Building subtree must stay
+/// reachable from Project.
+fn spurious_back_edge_ifc(order: &str) -> String {
+    let (edge1, edge2, edge3) = if order == "spurious-first" {
+        (
+            "#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#2,(#3));", // Building -> Storey (real)
+            "#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#3,(#2));", // Storey -> Building (spurious back-edge)
+            "#102=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#1,(#2));", // Project -> Building (real anchor, LAST)
+        )
+    } else {
+        (
+            "#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));", // Project -> Building (real anchor, FIRST)
+            "#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3));", // Building -> Storey (real)
+            "#102=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#3,(#2));", // Storey -> Building (spurious back-edge, LAST)
+        )
+    };
+    format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+         #1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);\n\
+         #2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);\n\
+         #3=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);\n\
+         #4=IFCWALL('Wall0000000000000000001',$,'W1',$,$,$,$,$,$);\n\
+         {edge1}\n{edge2}\n{edge3}\n\
+         #110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#4),#3);\n\
+         ENDSEC;\nEND-ISO-10303-21;\n"
+    )
+}
+
+/// #4285 review: the back-edge check is bounded by an upload-wide visit
+/// budget. Once spent, contested children resolve plain first-declared (the
+/// pre-#4285 answer) instead of the parse stalling on a crafted graph - and a
+/// partial descendant walk is never used as "no cycle".
+#[test]
+fn back_edge_cycle_check_falls_back_to_first_declared_once_budget_is_spent() {
+    let rel = |rel_id: u32, relating_id: u32, related_id: u32| Relationship {
+        rel_type: "IfcRelAggregates".to_string(),
+        rel_id,
+        relating_id,
+        related_id,
+    };
+    // Storey(#3) -> Building(#2) spurious back-edge declared FIRST, then the
+    // real Project(#1) -> Building(#2) and Building(#2) -> Storey(#3).
+    let relationships = vec![rel(10, 3, 2), rel(11, 1, 2), rel(12, 2, 3)];
+
+    let resolved = spatial::resolve_aggregate_canonical_parents_for_tests(&relationships);
+    assert_eq!(resolved.get(&2), Some(&1), "default budget: the cycle is broken");
+
+    let starved = spatial::resolve_aggregate_canonical_parents_with_budget(&relationships, 0);
+    assert_eq!(starved.get(&2), Some(&3), "budget spent: first-declared edge wins");
+    assert_eq!(starved.get(&3), Some(&2));
+}
+
+#[test]
+fn spurious_aggregation_back_edge_declared_first_keeps_building_reachable_from_project() {
+    let ifc = spurious_back_edge_ifc("spurious-first");
+    let dm = extract_data_model_checked(&ifc);
+    let sh = &dm.spatial_hierarchy;
+
+    let project = sh.nodes.iter().find(|n| n.entity_id == 1).expect("project node");
+    assert!(
+        project.children_ids.contains(&2),
+        "Project must still list Building as a child when the spurious back-edge \
+         (Storey -> Building) was declared before the real anchor edge (Project -> Building); \
+         project.children_ids = {:?}",
+        project.children_ids
+    );
+
+    let building = sh.nodes.iter().find(|n| n.entity_id == 2);
+    assert!(
+        building.is_some(),
+        "Building must have a SpatialNode reachable from Project, not be orphaned by the back-edge"
+    );
+    assert_eq!(
+        building.unwrap().parent_id,
+        1,
+        "Building's canonical parent must be Project (the real anchor), not Storey (the spurious back-edge)"
+    );
+
+    let storey = sh.nodes.iter().find(|n| n.entity_id == 3).expect("storey node");
+    assert_eq!(
+        storey.element_ids,
+        vec![4],
+        "the Wall must still be reachable under Storey even though Storey lost the tie for Building's parent"
+    );
+}
+
+#[test]
+fn spurious_aggregation_back_edge_declared_last_is_self_healing_baseline() {
+    let ifc = spurious_back_edge_ifc("legit-first");
+    let dm = extract_data_model_checked(&ifc);
+    let sh = &dm.spatial_hierarchy;
+
+    let project = sh.nodes.iter().find(|n| n.entity_id == 1).expect("project node");
+    assert!(project.children_ids.contains(&2));
+    let building = sh.nodes.iter().find(|n| n.entity_id == 2).expect("building node");
+    assert_eq!(building.parent_id, 1);
+}
+
+#[test]
+fn spurious_aggregation_back_edge_produces_identical_shape_regardless_of_order() {
+    let shape_of = |order: &str| {
+        let ifc = spurious_back_edge_ifc(order);
+        let dm = extract_data_model_checked(&ifc);
+        let sh = dm.spatial_hierarchy;
+        let mut project_children = sh
+            .nodes
+            .iter()
+            .find(|n| n.entity_id == 1)
+            .map(|n| n.children_ids.clone())
+            .unwrap_or_default();
+        project_children.sort();
+        let building_parent = sh.nodes.iter().find(|n| n.entity_id == 2).map(|n| n.parent_id);
+        (project_children, building_parent)
+    };
+    assert_eq!(shape_of("spurious-first"), shape_of("legit-first"));
+}
+
+/// #4246: same defect shape, one hop longer - #2 -> #3 -> #4 -> #2 forms a
+/// 3-node cycle instead of a direct mutual pair. A direct "does the child
+/// forward-aggregate this candidate" check would miss this; the fix must
+/// walk the raw aggregation graph, not just direct children.
+#[test]
+fn breaks_a_longer_indirect_aggregation_back_edge_cycle() {
+    const INDIRECT_CYCLE_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorB00000000000000001',$,'Mezzanine',$,$,$,$,$,$,$);
+#5=IFCWALL('Wall0000000000000000001',$,'W1',$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#2,(#3));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#3,(#4));
+#102=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#4,(#2));
+#103=IFCRELAGGREGATES('Agg00000000000000000004',$,$,$,#1,(#2));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#4);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+    let dm = extract_data_model_checked(INDIRECT_CYCLE_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    let project = sh.nodes.iter().find(|n| n.entity_id == 1).expect("project node");
+    assert!(
+        project.children_ids.contains(&2),
+        "Project must still list Building as a child through a 3-node indirect \
+         back-edge cycle (Building -> StoreyA -> Mezzanine -> Building); \
+         project.children_ids = {:?}",
+        project.children_ids
+    );
+    assert_eq!(
+        sh.element_to_storey.iter().find(|(e, _)| *e == 5).map(|(_, s)| *s),
+        Some(4),
+        "the Wall must still resolve to Mezzanine even though Mezzanine lost \
+         the tie for Building's parent"
     );
 }
 
@@ -1640,4 +1941,117 @@ fn unknown_type_metadata_falls_back_to_ifcelement_layout_positions() {
     assert_eq!(e.description.as_deref(), Some("Desc95"));
     assert_eq!(e.object_type.as_deref(), Some("ObjType95"));
     assert_eq!(e.tag.as_deref(), Some("Tag95"));
+}
+
+/// Issue #3972: `IfcComplexProperty` nesting past `MAX_COMPLEX_PROPERTY_DEPTH`
+/// (8) used to stop silently, so a truncated value was indistinguishable from
+/// a complete one. Four members on one wall, each probing a different shape:
+///
+/// - `C0`: a 9-level chain (`C0`..`C8`) whose deepest node carries a
+///   `UsageName` and one unread `Leaf` sub-property.
+/// - `D0`: the same 9-level chain but with the deepest node's `UsageName`
+///   absent (`$`) — the worse pre-fix shape, where the whole `D8` member
+///   vanished and `D7`'s own `UsageName` was shown in its place.
+/// - `Cyc`: a self-referencing complex property; the cap is what makes this
+///   terminate at all, which is why the fix marks the cut instead of
+///   removing the cap.
+/// - `E0`: an 8-level control (`E0`..`E7`, deepest at depth 7) whose `Leaf`
+///   IS read — the marker must not fire one level early.
+const COMPLEX_PROPERTY_DEPTH_CAP_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000003972',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall0000000000000003972',$,'W',$,$,$,$,$,$);
+#200=IFCPROPERTYSINGLEVALUE('Leaf',$,IFCLABEL('LeafVal'),$);
+#209=IFCCOMPLEXPROPERTY('C8',$,'U8',(#200));
+#208=IFCCOMPLEXPROPERTY('C7',$,'U7',(#209));
+#207=IFCCOMPLEXPROPERTY('C6',$,'U6',(#208));
+#206=IFCCOMPLEXPROPERTY('C5',$,'U5',(#207));
+#205=IFCCOMPLEXPROPERTY('C4',$,'U4',(#206));
+#204=IFCCOMPLEXPROPERTY('C3',$,'U3',(#205));
+#203=IFCCOMPLEXPROPERTY('C2',$,'U2',(#204));
+#202=IFCCOMPLEXPROPERTY('C1',$,'U1',(#203));
+#201=IFCCOMPLEXPROPERTY('C0',$,'U0',(#202));
+#219=IFCCOMPLEXPROPERTY('D8',$,$,(#200));
+#218=IFCCOMPLEXPROPERTY('D7',$,'V7',(#219));
+#217=IFCCOMPLEXPROPERTY('D6',$,'V6',(#218));
+#216=IFCCOMPLEXPROPERTY('D5',$,'V5',(#217));
+#215=IFCCOMPLEXPROPERTY('D4',$,'V4',(#216));
+#214=IFCCOMPLEXPROPERTY('D3',$,'V3',(#215));
+#213=IFCCOMPLEXPROPERTY('D2',$,'V2',(#214));
+#212=IFCCOMPLEXPROPERTY('D1',$,'V1',(#213));
+#211=IFCCOMPLEXPROPERTY('D0',$,'V0',(#212));
+#220=IFCCOMPLEXPROPERTY('Cyc',$,'CycUsage',(#220));
+#228=IFCCOMPLEXPROPERTY('E7',$,'W7',(#200));
+#227=IFCCOMPLEXPROPERTY('E6',$,'W6',(#228));
+#226=IFCCOMPLEXPROPERTY('E5',$,'W5',(#227));
+#225=IFCCOMPLEXPROPERTY('E4',$,'W4',(#226));
+#224=IFCCOMPLEXPROPERTY('E3',$,'W3',(#225));
+#223=IFCCOMPLEXPROPERTY('E2',$,'W2',(#224));
+#222=IFCCOMPLEXPROPERTY('E1',$,'W1',(#223));
+#221=IFCCOMPLEXPROPERTY('E0',$,'W0',(#222));
+#229=IFCCOMPLEXPROPERTY('Empty',$,'EmptyUsage',());
+#230=IFCPROPERTYSET('Pst0000000000000003972',$,'Pset_Deep',$,(#201,#211,#220,#221,#229));
+#231=IFCRELDEFINESBYPROPERTIES('Rel0000000000000003972',$,$,$,(#28),#230);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+fn depth_cap_property_value(dm: &DataModel, name: &str) -> String {
+    dm.property_sets
+        .iter()
+        .find(|p| p.pset_id == 230)
+        .expect("Pset_Deep must be extracted")
+        .properties
+        .iter()
+        .find(|p| p.property_name == name)
+        .unwrap_or_else(|| panic!("{name} entry missing"))
+        .property_value
+        .clone()
+}
+
+#[test]
+fn complex_property_nesting_past_the_depth_cap_says_it_was_truncated() {
+    let dm = extract_data_model(COMPLEX_PROPERTY_DEPTH_CAP_IFC);
+
+    // Pre-#3972 this was "C1: C2: C3: C4: C5: C6: C7: C8: U8" — the unread
+    // "Leaf: LeafVal" gone with no trace, and "U8" reading as C8's content.
+    assert_eq!(
+        depth_cap_property_value(&dm, "C0"),
+        "C1: C2: C3: C4: C5: C6: C7: C8: U8 (truncated: nesting deeper than 8 levels)"
+    );
+
+    // Pre-#3972 this was "D1: D2: D3: D4: D5: D6: D7: V7": D8's empty display
+    // made the parent skip it entirely, so D7 fell back to its OWN UsageName
+    // and the reader saw a genuine value at the wrong nesting level. The
+    // marker is non-empty, so D8 now survives as a member.
+    assert_eq!(
+        depth_cap_property_value(&dm, "D0"),
+        "D1: D2: D3: D4: D5: D6: D7: D8: (truncated: nesting deeper than 8 levels)"
+    );
+
+    // The cap is load-bearing: without it this self-reference never returns.
+    // Keeping it and marking the cut is the fix, not raising it.
+    assert_eq!(
+        depth_cap_property_value(&dm, "Cyc"),
+        "Cyc: Cyc: Cyc: Cyc: Cyc: Cyc: Cyc: Cyc: CycUsage (truncated: nesting deeper than 8 levels)"
+    );
+}
+
+#[test]
+fn complex_property_nesting_within_the_depth_cap_is_not_marked_truncated() {
+    let dm = extract_data_model(COMPLEX_PROPERTY_DEPTH_CAP_IFC);
+
+    // E7 sits at depth 7, one below the cap, so its Leaf IS read. The marker
+    // must not fire one level early.
+    assert_eq!(
+        depth_cap_property_value(&dm, "E0"),
+        "E1: E2: E3: E4: E5: E6: E7: Leaf: LeafVal"
+    );
+
+    // An EMPTY HasProperties is a genuinely empty complex property, not a
+    // truncation — it keeps its bare UsageName at any depth.
+    assert_eq!(depth_cap_property_value(&dm, "Empty"), "EmptyUsage");
 }

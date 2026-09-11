@@ -1,5 +1,80 @@
 # @ifc-lite/sdk
 
+## 5.0.0
+
+### Major Changes
+
+- [#4509](https://github.com/LTplus-AG/ifc-lite/pull/4509) [`9a271dc`](https://github.com/LTplus-AG/ifc-lite/commit/9a271dcb19dff2f9bca72fc3505ce5a71b3e800b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `createViewpoint`/`extractViewpointState` reading an active-but-empty isolation (the viewer isolated to a set that currently matches nothing — an empty viewport) the same as no isolation at all.
+  
+  - `createViewpoint({ visibleGuids: [] })` (isolation active, zero entities) previously wrote no `components.visibility` at all, so the resulting BCF viewpoint claimed the whole model was visible. It now correctly writes `defaultVisibility: false` with no exceptions. This was reachable via `@ifc-lite/sdk`'s `bim.bcf.createViewpoint()`, which already produced `visibleGuids: []` for `{ defaultVisibility: false, exceptions: [] }` input — a real caller shape, not a hypothetical.
+  - `extractViewpointState()`'s `visibleGuids` field is now `string[] | null` (was `string[]`): `null` means the read viewpoint carried no isolation channel, while a non-null array — empty included — means isolation was active in the captured viewpoint, down to "matched nothing". A BCF viewpoint from any conformant tool with `<Visibility DefaultVisibility="false"/>` and no `<Exceptions>` is spec-valid and previously round-tripped back as "no isolation" instead of "isolated to nothing". `@ifc-lite/sdk`'s `ExtractedViewpointState.visibleGuids` carries the same type change.
+  
+  - `bim.bcf.createViewpoint()`'s `components.visibility.defaultVisibility` is now **optional**, and an absent value is read as `true`, per BCF's schema default ("everything is visible, the exceptions are HIDDEN"). It was previously truthy-tested, which mapped an absent value onto the isolation arm — inverting the spec's default, and, with no exceptions to isolate, turning a caller who said nothing about visibility into a viewpoint asserting a blank viewport. Pass `defaultVisibility: false` explicitly to isolate.
+  
+  `hiddenGuids` is unaffected: it is a blocklist, where an absent and an empty set both correctly mean "hide nothing" (matching `packages/renderer/src/entity-visibility.ts`'s `isEntityVisible` convention), so it keeps its `.length > 0` check.
+  
+  When both `visibleGuids` and `hiddenGuids` are supplied, the isolation allowlist wins and the blocklist is not written. That is deliberate and lossless rather than a dropped input: BCF's `<Visibility>` carries a single `DefaultVisibility` flag, so only one of the two modes is expressible at all, and an allowlist already hides everything outside itself.
+
+### Minor Changes
+
+- [#4293](https://github.com/LTplus-AG/ifc-lite/pull/4293) [`4c9a88d`](https://github.com/LTplus-AG/ifc-lite/commit/4c9a88d80b9ba9631be97050d896b5f5834d3628) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `bim.bcf.sectionPlaneToClippingPlane()` and `bim.bcf.clippingPlaneToSectionPlane()` each accepted only their first argument and silently dropped the `bounds` argument `@ifc-lite/bcf`'s underlying functions require to place an absolute location or compute a percentage position. A documented call — passing a section plane or clipping plane plus the model's bounds, exactly as `createViewpoint()`'s own error message recommends — threw a raw, unhandled `TypeError` reading `bounds.min`/`bounds.max` from inside the library instead of forwarding it or returning a usable result.
+  
+  Both wrappers now accept and forward `bounds`, matching their `@ifc-lite/bcf` signatures.
+
+- [#4293](https://github.com/LTplus-AG/ifc-lite/pull/4293) [`4c9a88d`](https://github.com/LTplus-AG/ifc-lite/commit/4c9a88d80b9ba9631be97050d896b5f5834d3628) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `bim.bcf.cameraToOrthogonal()` accepted only the `camera` argument and silently dropped `viewToWorldScale`, the second, required argument `@ifc-lite/bcf`'s underlying `cameraToOrthogonal()` needs to compute the camera's view extent. Unlike the `sectionPlaneToClippingPlane`/`clippingPlaneToSectionPlane` converters fixed for the same reason, the underlying function does not dereference the dropped argument, so the call did not throw: it returned a well-formed-looking `BCFOrthogonalCamera` with `viewToWorldScale: undefined`. `ViewToWorldScale` is a required element when the camera is written to a BCF archive, so a viewpoint built this way failed later, at `bim.bcf.write()`, far from the call that dropped the argument.
+  
+  `cameraToOrthogonal()` now accepts and forwards `viewToWorldScale`, matching its `@ifc-lite/bcf` signature.
+
+### Patch Changes
+
+- Updated dependencies [[`9a271dc`](https://github.com/LTplus-AG/ifc-lite/commit/9a271dcb19dff2f9bca72fc3505ce5a71b3e800b), [`3fdbc2b`](https://github.com/LTplus-AG/ifc-lite/commit/3fdbc2b599fad2b1c43ffe014d2bab5f8b8c576c), [`39d5158`](https://github.com/LTplus-AG/ifc-lite/commit/39d5158fd5192a14fc2552d73a531b1334831e5a), [`3a1a322`](https://github.com/LTplus-AG/ifc-lite/commit/3a1a3229412b7822438fa5dba653f6c4e1bd239f), [`7f80d53`](https://github.com/LTplus-AG/ifc-lite/commit/7f80d53d2a2c158a322ec541ce064365f3f3ca8a), [`dee75d8`](https://github.com/LTplus-AG/ifc-lite/commit/dee75d86d404e5a5ae15e71910704d970d2426a2), [`a53bd7f`](https://github.com/LTplus-AG/ifc-lite/commit/a53bd7fd4510b8d5c992eab26234084c5bb2387e), [`5e94b1a`](https://github.com/LTplus-AG/ifc-lite/commit/5e94b1a646d7e02c909b8835f3adf8e0bf4feb5f), [`abda2d8`](https://github.com/LTplus-AG/ifc-lite/commit/abda2d8114ad17b0366f448100953d6e1972164c), [`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b), [`511e488`](https://github.com/LTplus-AG/ifc-lite/commit/511e488a8de2b90f7d5f7663911873a92b3427c7), [`53c65fe`](https://github.com/LTplus-AG/ifc-lite/commit/53c65fecdac95b4c19a661be923c225d104a7be8), [`a53bd7f`](https://github.com/LTplus-AG/ifc-lite/commit/a53bd7fd4510b8d5c992eab26234084c5bb2387e)]:
+  - @ifc-lite/bcf@4.0.0
+  - @ifc-lite/parser@6.1.0
+  - @ifc-lite/export@4.2.0
+  - @ifc-lite/clash@2.1.2
+  - @ifc-lite/create@2.4.0
+  - @ifc-lite/data@4.2.0
+  - @ifc-lite/query@2.3.1
+  - @ifc-lite/ids@1.16.2
+  - @ifc-lite/drawing-2d@4.0.1
+  - @ifc-lite/spatial@1.14.17
+  - @ifc-lite/lists@2.1.2
+
+## 4.1.0
+
+### Minor Changes
+
+- [#4250](https://github.com/LTplus-AG/ifc-lite/pull/4250) [`cabfd37`](https://github.com/LTplus-AG/ifc-lite/commit/cabfd3752d8dc221042990187669a5670be88df8) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Added `matches` (regex) to the shared property/quantity comparison operator ([#4094](https://github.com/LTplus-AG/ifc-lite/issues/4094), follow-up to [#4091](https://github.com/LTplus-AG/ifc-lite/issues/4091)). This is one of the three prerequisites [#4094](https://github.com/LTplus-AG/ifc-lite/issues/4094) names for honouring `/regex/` selector text end to end (GlobalId and `+` group support remain open); it now works everywhere `compareFilterValue` already backs `bim.query().where(...)` -- the CLI `HeadlessBackend`, the MCP backend, and the viewer's SDK adapter -- with no further plumbing, since all three already delegated to it.
+  
+  `expected` is a bare regex source with no `/.../ ` delimiters (the same shape `parseSelector`'s regex literal already carries), tested against `String(actual)`. It is case-sensitive and does not boolean-normalize its operands (unlike every other operator here).
+  
+  `expected` is caller-supplied and, via the MCP `query_entities` tool, can be agent/LLM-influenced -- `new RegExp(source).test(actual)` is not safe to run on untrusted input: a pattern like `^(a+)+$` is exponential in subject length in V8's backtracking engine (measured: a 35-character non-matching subject already exceeded 30s on a single synchronous call, which on the MCP server blocks every connected client, not just the offending query). Before compiling, a pattern is now rejected -- loudly, by throwing, not by silently returning `false` -- if it is over 200 characters, or if it contains a quantified group with another quantifier inside it (e.g. `(a+)+`), the shape this was measured against. This is a heuristic input constraint, not a proof of linear-time execution: it will reject some patterns that would in fact run fine, and it will not catch every ReDoS-capable shape (e.g. overlapping alternation like `(a|a)*`). A linear-time engine (e.g. RE2) was ruled out -- this environment cannot add a new dependency; a true wall-clock timeout was ruled out too -- `.test()` cannot be interrupted synchronously, and moving the match off the main thread is a much larger, separate change. Residual ReDoS risk from a pattern shape the heuristic does not recognise remains.
+  
+  A rejected or syntactically-invalid pattern now throws rather than returning `false` -- fixing an inconsistency with this repo's existing fail-loud precedent for caller-supplied input (`--limit`/`--offset` validate up front with `fatal()`). A pattern is also now compiled once and cached by its source string, rather than recompiled for every candidate entity a `where`/`--where` query evaluates.
+  
+  Reachable from:
+  - `bim.query().where(pset, prop, 'matches', pattern)` (SDK, and every backend built on it).
+  - The MCP `query_entities` tool's `property.op`.
+  - `ifc-lite query --where "Pset.Prop~=pattern"` and `ifc-lite export --where "Pset.Prop~=pattern"` (new `~=` token; plain `~` still means `contains`).
+  
+  Not included here: `ifc-lite mutate --where` has its own separate, non-delegating comparator (`matchesFilter` in `mutate.ts`) and was left untouched; the CLI `--select`/selector flag, the MCP `selector` parameter, `bim.query().select()`, and the viewer's remaining unsupported selector constructs (`parent=`, `query:`, `+` group unions, material `Category`, GlobalId as a comparison, quantity rows through a property term) are all still open, tracked on [#4094](https://github.com/LTplus-AG/ifc-lite/issues/4094).
+
+### Patch Changes
+
+- [#4286](https://github.com/LTplus-AG/ifc-lite/pull/4286) [`637048a`](https://github.com/LTplus-AG/ifc-lite/commit/637048ad9a36c634670210bdf222c1764a2a2386) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `bim.bcf.createViewpoint()` forwarded `camera`/`sectionPlane` to `@ifc-lite/bcf` unchanged, but the two packages use incompatible shapes: a tuple-based, mode/fov-less `camera` versus `@ifc-lite/bcf`'s `{x,y,z}` `ViewerCameraState`, and an `'x'|'y'|'z'` section-plane axis versus its `'down'|'front'|'side'` vocabulary. Following the documented `createViewpoint({ camera: bim.viewer.getCamera(), sectionPlane: bim.viewer.getSection() })` pattern silently produced a camera with `null`/`NaN` coordinates and dropped an enabled section plane's clipping plane entirely, with no error.
+  
+  `createViewpoint()` now converts both shapes correctly (reusing the same x/y/z ⟷ down/front/side axis convention `apps/viewer/src/sdk/adapters/viewer-adapter.ts` already applies to `getSection()`/`setSection()`), and throws `IncompleteCameraStateError` for a camera missing position/target/up or `MissingSectionBoundsError` for an enabled section plane with no `bounds` (a new, required-when-enabled `ViewpointOptions.bounds: AABB` field — nothing in the SDK's public surface can compute a model's overall bounds, so callers must supply it) instead of silently building a corrupted viewpoint. `extractViewpointState()` gets the equivalent read-side fix, converting `@ifc-lite/bcf`'s object/down-front-side shapes back into the SDK's tuple/x-y-z shapes so a captured viewpoint round-trips straight into `bim.viewer.setCamera()`/`setSection()`.
+- Updated dependencies [[`ced8bb4`](https://github.com/LTplus-AG/ifc-lite/commit/ced8bb46c368648bd54a1bab716d049143faa036), [`b5cb19a`](https://github.com/LTplus-AG/ifc-lite/commit/b5cb19ae80610107f7b3b3914efa7234dfbe4999), [`098e241`](https://github.com/LTplus-AG/ifc-lite/commit/098e2419cac5bd72f5524c7cddfa1b4da7971696), [`f794750`](https://github.com/LTplus-AG/ifc-lite/commit/f79475055e9cfe0c7ee19a7732ded546c5a7796a), [`4c58993`](https://github.com/LTplus-AG/ifc-lite/commit/4c5899307dc1e9da62f7a827298d2eb8bb8ada47), [`e119819`](https://github.com/LTplus-AG/ifc-lite/commit/e1198197556375019c5a7820cc7c99da55e5c639), [`b0700f2`](https://github.com/LTplus-AG/ifc-lite/commit/b0700f25434d1cf1ec5f7438a8e27c09188208ec), [`12e69fe`](https://github.com/LTplus-AG/ifc-lite/commit/12e69feb363ea31fb2c3513436366b01c54251e9), [`83fb539`](https://github.com/LTplus-AG/ifc-lite/commit/83fb539395e3638eb4c72a5c0fb2c508a8746adb), [`f33ac74`](https://github.com/LTplus-AG/ifc-lite/commit/f33ac74dd0578792327f684ba5ca59f050458c65), [`92e5903`](https://github.com/LTplus-AG/ifc-lite/commit/92e59033708882e9d40eaad0cddc7aab1468d2b4), [`0581b28`](https://github.com/LTplus-AG/ifc-lite/commit/0581b28ff4cebf20de2d973b7a9b2f81dcf47275), [`85e0351`](https://github.com/LTplus-AG/ifc-lite/commit/85e0351c6bcbc350c404176e484320baa08a1366), [`6f0078b`](https://github.com/LTplus-AG/ifc-lite/commit/6f0078bc8ae697c9e6f91ae5b36546476b0fee5b), [`04d7b3b`](https://github.com/LTplus-AG/ifc-lite/commit/04d7b3ba0ab64ae9e97420aa8d5c56a536272724), [`997ba26`](https://github.com/LTplus-AG/ifc-lite/commit/997ba26adcbc170666fc086289fd21edb78813b1), [`fc4b6ab`](https://github.com/LTplus-AG/ifc-lite/commit/fc4b6ab4a80a3bcd1a30027b45f30e25ebf2434f), [`8fbd804`](https://github.com/LTplus-AG/ifc-lite/commit/8fbd8045272e5cfdfa86518d8eeb92e8be1b1220), [`ed2a067`](https://github.com/LTplus-AG/ifc-lite/commit/ed2a067ca713b14cf0d9b658789d22f4c78c7731), [`aa73bb7`](https://github.com/LTplus-AG/ifc-lite/commit/aa73bb777ada7cec655621496401e4f8cf693a2f), [`8620be3`](https://github.com/LTplus-AG/ifc-lite/commit/8620be38be0162b7cbdbe23ae7bc924763b83612), [`1e09d1c`](https://github.com/LTplus-AG/ifc-lite/commit/1e09d1cec57a5c26e82b721a6451185c83c34eb2), [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb), [`f3efce7`](https://github.com/LTplus-AG/ifc-lite/commit/f3efce7382d9018a70740909a18ee87b043e5901), [`cabfd37`](https://github.com/LTplus-AG/ifc-lite/commit/cabfd3752d8dc221042990187669a5670be88df8), [`5a01e5a`](https://github.com/LTplus-AG/ifc-lite/commit/5a01e5abe220f21ae5233045c6e9cfc5aa37a4e3), [`49763b4`](https://github.com/LTplus-AG/ifc-lite/commit/49763b48cbc9a18d7bc8f090a3dcc1ca0dc718a2), [`8620be3`](https://github.com/LTplus-AG/ifc-lite/commit/8620be38be0162b7cbdbe23ae7bc924763b83612), [`6110c0d`](https://github.com/LTplus-AG/ifc-lite/commit/6110c0d6bb0c1a96c4da4c056389ebc4dfe26631), [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb), [`b9c3aa1`](https://github.com/LTplus-AG/ifc-lite/commit/b9c3aa1b7da9b0c26742bacb6eb3c7c4b44ca80b), [`6af5d45`](https://github.com/LTplus-AG/ifc-lite/commit/6af5d455fec7cc5467fa565babd82be611242e02), [`6af5d45`](https://github.com/LTplus-AG/ifc-lite/commit/6af5d455fec7cc5467fa565babd82be611242e02), [`a6976b9`](https://github.com/LTplus-AG/ifc-lite/commit/a6976b9da44d13157533372a8def23995fcfb93f), [`591c593`](https://github.com/LTplus-AG/ifc-lite/commit/591c5938bdc4e8210c3b3158f22ecd78552bcdc2)]:
+  - @ifc-lite/data@4.1.0
+  - @ifc-lite/parser@6.0.0
+  - @ifc-lite/query@2.3.0
+  - @ifc-lite/export@4.1.0
+  - @ifc-lite/ids@1.16.1
+  - @ifc-lite/create@2.3.0
+  - @ifc-lite/mutations@2.2.0
+  - @ifc-lite/clash@2.1.1
+  - @ifc-lite/lists@2.1.1
+
 ## 4.0.2
 
 ### Patch Changes

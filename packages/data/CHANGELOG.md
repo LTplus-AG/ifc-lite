@@ -1,5 +1,36 @@
 # @ifc-lite/data
 
+## 4.2.0
+
+### Minor Changes
+
+- [#4496](https://github.com/LTplus-AG/ifc-lite/pull/4496) [`511e488`](https://github.com/LTplus-AG/ifc-lite/commit/511e488a8de2b90f7d5f7663911873a92b3427c7) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix two of the relationship-graph folds named in [#4205](https://github.com/LTplus-AG/ifc-lite/issues/4205) that lost information at parse time:
+  
+  - `IfcRelNests` was indexed onto the exact same `RelationshipType.Aggregates` edge as `IfcRelAggregates`, with no way to tell a nesting edge apart from a real decomposition edge once indexed. It now also lands on a distinct `RelationshipType.Nests` edge (in addition to the existing `Aggregates` edge, so every current consumer — spatial hierarchy, decomposition, the IDS `partOf`/ancestors bridge — is unaffected).
+  - `IfcRelAssignsToGroupByFactor` was indexed onto the same `RelationshipType.AssignsToGroup` edge as a plain `IfcRelAssignsToGroup`, and its `Factor` attribute was unreachable from the relationship graph. It now also lands on a distinct `RelationshipType.AssignsToGroupByFactor` edge, and `extractGroupAssignmentFactorOnDemand(store, groupId, memberId)` resolves the `Factor` value (`undefined`, not `0`, when the assignment is plain or absent).
+  
+  This is a narrow fix for the two folds the issue calls out as live defects, not the full schema-derived relationship-edge migration [#4205](https://github.com/LTplus-AG/ifc-lite/issues/4205) also scopes — the hand-written 17-value `RelationshipType` enum and the hand-written relating/related attribute slots are unchanged.
+  
+  Two follow-up fixes for consumers that don't filter by relationship type and so double-counted or mislabeled the new secondary edges:
+  
+  - `ParquetExporter`'s `Metadata.json` `statistics.relationshipCount` counted raw graph edges, so a model with `IfcRelNests`/`IfcRelAssignsToGroupByFactor` relationships reported one extra per such relationship (the new secondary edge counted alongside its broad-bucket edge). It now counts distinct `IfcRel*` records instead.
+  - The DuckDB-backed `relationships` SQL table (`@ifc-lite/query`) rendered `rel_type` as `'Unknown'` for both new types — its type→string map was missed when the other three were updated. Added, with the same display strings as those three maps.
+
+## 4.1.0
+
+### Minor Changes
+
+- [#4356](https://github.com/LTplus-AG/ifc-lite/pull/4356) [`ced8bb4`](https://github.com/LTplus-AG/ifc-lite/commit/ced8bb46c368648bd54a1bab716d049143faa036) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Surface ambiguous direct storey containment as a detectable signal ([#4311](https://github.com/LTplus-AG/ifc-lite/issues/4311)), a follow-up to the first-declared-wins tie-break from [#4248](https://github.com/LTplus-AG/ifc-lite/issues/4248)/[#4310](https://github.com/LTplus-AG/ifc-lite/issues/4310).
+  
+  An element can be named by more than one `IfcRelContainedInSpatialStructure` edge pointing at different storeys — a malformed-but-real shape both `elementToStorey` and `containedIn()` silently resolved to a single answer, with no way for a caller to tell the containment was contested in the source file.
+  
+  - `SpatialHierarchy` (`@ifc-lite/data`) gains an optional `ambiguousStorey: Set<number>` field: the element ids whose direct storey containment named more than one distinct storey. `SpatialHierarchyBuilder.build()` / `buildFromCache()` (`@ifc-lite/parser`) always populate it (empty when nothing was ambiguous); it also round-trips through the parser worker transport.
+  - `EntityNode.containedInAmbiguous()` (`@ifc-lite/query`) answers the same question per-call, for callers using `containedIn()` instead of the parser's aggregate hierarchy.
+  
+  Neither `elementToStorey`'s nor `containedIn()`'s existing resolution changes — both still return a single winner. Detection reuses the direct-containment lists (`byStorey` / inverse `ContainsElements` edges) each already builds, so it costs no extra graph traversal.
+
+- [#4376](https://github.com/LTplus-AG/ifc-lite/pull/4376) [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb) Thanks [@louistrue](https://github.com/louistrue)! - Add shared live spatial lookups so worker and server hydration retain spatial-node identity and authored containment changes.
+
 ## 4.0.0
 
 ### Major Changes

@@ -89,6 +89,8 @@ async fn parquet_cache_hit_does_not_swap_body_and_metadata() {
         .set_bytes(&data_model_cache_key(&cache_key), b"DATA-MODEL-PAYLOAD")
         .await
         .expect("seed data model cache entry");
+    super::cache_keys::cache_symbolic_data(&state.cache, &cache_key,
+        &ifc_lite_processing::SymbolicDataWithProvenance::default()).await;
 
     let (content_type, body) = multipart_body(content);
     let request = Request::builder()

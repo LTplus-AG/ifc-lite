@@ -14,6 +14,7 @@ import {
   UnhandledCfgShapeError,
   stripComments,
 } from './revert-oracle-rust-features.mjs';
+import { requiresDefaultRun } from './revert-oracle-plan-runs.mjs';
 
 test('parseCfgExpr: any(...) -> one combo per name, each alone suffices', () => {
   assert.deepEqual(
@@ -124,9 +125,13 @@ test('#4085 defect 1: not(any(...)) directly above #[test] fails loudly, never s
     '#[test]',
     'fn census_rebases_real_covering_before_f32_geometry_3925() {}',
   ].join('\n');
+  // Called without a crate default-feature set: the shape stays unresolvable,
+  // so it still fails loudly rather than silently dropping the gate. With a
+  // known default set that excludes both names it resolves to the default run
+  // instead — see the parseCfgExpr not(...) tests below.
   assert.throws(() => detectRequiredFeatureCombos(text, 'triangulation_invariance.rs'), (err) => {
     assert.ok(err instanceof UnhandledCfgShapeError);
-    assert.equal(err.shape, 'not(...)');
+    assert.equal(err.shape, 'not(...) with unknown crate defaults');
     assert.equal(err.line, 1);
     assert.match(err.message, /triangulation_invariance\.rs:1/);
     return true;
@@ -257,4 +262,54 @@ test('stripComments preserves line numbers exactly when a real comment follows a
   const text = ['fn a() {}', 'let s = "x"; // #[cfg(feature = "ghost")]', '#[cfg(feature = "real_gate")]', '#[test]', 'fn t() {}', ''].join('\n');
   const combos = detectRequiredFeatureCombos(text, 'line_numbers.rs');
   assert.deepEqual(combos, [['real_gate']]);
+});
+
+test('parseCfgExpr: a whole-expression not(...) over NON-default features needs no combo', () => {
+  // The gate holds exactly when those features are off — the default build —
+  // so it names no feature to turn ON. planRuns() runs the default alongside.
+  assert.deepEqual(
+    parseCfgExpr('not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate"))', {}, new Set()),
+    [],
+  );
+  assert.deepEqual(parseCfgExpr('not(feature = "gate_a")', {}, new Set(['other'])), []);
+});
+
+test('parseCfgExpr: not(...) over a DEFAULT-on feature still fails loudly', () => {
+  // The default build turns the feature ON, so the gated test never compiles
+  // there — resolving it to the default run would be the silent miss.
+  assert.throws(
+    () => parseCfgExpr('not(feature = "gate_a")', {}, new Set(['gate_a'])),
+    UnhandledCfgShapeError,
+  );
+});
+
+test('parseCfgExpr: not(...) with unknown crate defaults still fails loudly', () => {
+  assert.throws(() => parseCfgExpr('not(feature = "gate_a")', {}, null), UnhandledCfgShapeError);
+});
+
+test('parseCfgExpr: a not(...) nested inside any()/all() is still unhandled', () => {
+  assert.throws(
+    () => parseCfgExpr('any(not(feature = "a"), feature = "b")', {}, new Set()),
+    UnhandledCfgShapeError,
+  );
+});
+
+test('requiresDefaultRun: true only when a not()-gated #[test] is present', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oracle-needs-default-'));
+  try {
+    mkdirSync(join(root, 'tests'));
+    const alt = ['#[cfg(feature = "alt")]', '#[test]', 'fn a() {}', ''].join('\n');
+    const notGated = [
+      '#[cfg(not(any(feature = "g1", feature = "g2")))]',
+      '#[test]',
+      'fn b() {}',
+      '',
+    ].join('\n');
+    writeFileSync(join(root, 'tests/mixed.rs'), alt + notGated);
+    writeFileSync(join(root, 'tests/plain.rs'), alt);
+    assert.equal(requiresDefaultRun(root, ['tests/mixed.rs']), true);
+    assert.equal(requiresDefaultRun(root, ['tests/plain.rs']), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

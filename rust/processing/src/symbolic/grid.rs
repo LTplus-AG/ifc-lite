@@ -48,6 +48,16 @@ pub(super) fn extract_grid(
 
             let a = rebase.plan(p0.0, p0.1);
             let b = rebase.plan(p1.0, p1.1);
+            // Same finiteness hazard as items.rs's polyline/curve paths and
+            // fill.rs's boundary rings (a non-finite STEP REAL survives
+            // unsanitized to here): unlike a multi-point polyline, an axis is
+            // exactly two points defining a segment, so there is no partial
+            // point to drop — a non-finite endpoint drops the whole axis
+            // (grid_express_id, bubbles included), matching items.rs's
+            // whole-item IfcCircle convention rather than the per-point one.
+            if !a.0.is_finite() || !a.1.is_finite() || !b.0.is_finite() || !b.1.is_finite() {
+                continue;
+            }
             let world_y = rebase.elevation(transform.tz);
 
             // Compact server-friendly entry — keeps the existing endpoint-pair shape.

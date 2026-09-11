@@ -118,6 +118,23 @@ export function packEntityLane(rawId: number, saltByte: number): number {
 }
 
 /**
+ * Release every GPU buffer a batch (or sub-batch clone) owns.
+ *
+ * Lives here rather than in `scene.ts` so the partial sub-batch cache can free
+ * clones without importing back into the Scene that owns it. Structurally
+ * typed on the buffer fields, so it serves `BatchedMesh`, individual `Mesh`
+ * and the sub-batch clones alike.
+ */
+export function destroyGpuResources(
+  m: { vertexBuffer: GPUBuffer; indexBuffer: GPUBuffer; uniformBuffer?: GPUBuffer; lod1IndexBuffer?: GPUBuffer },
+): void {
+  m.vertexBuffer.destroy();
+  m.indexBuffer.destroy();
+  if (m.uniformBuffer) m.uniformBuffer.destroy();
+  if (m.lod1IndexBuffer) m.lod1IndexBuffer.destroy();
+}
+
+/**
  * Merge multiple mesh geometries into single interleaved vertex/index buffers.
  *
  * Layout per vertex: position (3f) + normal (3f) + entityId (1u32) = 7 × 4 bytes.
@@ -299,4 +316,15 @@ export function splitMeshDataForBufferLimit(meshDataArray: MeshData[], maxBuffer
   }
 
   return chunks;
+}
+
+/** Never cache an empty sentinel: a later streaming fragment may add vertices. */
+export function cachedWorldAabb(
+  id: number, pieces: readonly AabbPiece[] | undefined, cache: Map<number, BoundingBox>,
+): BoundingBox | null {
+  const cached = cache.get(id);
+  if (cached) return cached;
+  const box = worldAabbFromPieces(pieces);
+  if (box) cache.set(id, box);
+  return box;
 }

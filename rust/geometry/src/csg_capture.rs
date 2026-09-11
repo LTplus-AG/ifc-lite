@@ -166,7 +166,30 @@ impl<'a> Reader<'a> {
         let indices: Vec<u32> = (0..n).map(|_| self.u32()).collect::<Option<_>>()?;
         let rtc_applied = self.u8()? != 0;
         let origin = [self.f64()?, self.f64()?, self.f64()?];
-        Some(Mesh { positions, normals, indices, rtc_applied, origin, instance_meta: None, local_bounds: None, local_to_world: None })
+        // `welded_in_object_frame: false`, and the blob deliberately does not
+        // carry the bit. The field's only non-test reader in the tree is the
+        // `debug_assert!` at rust/processing/src/element_mesh_build.rs:61
+        // (`instance_meta.is_none() || welded_in_object_frame`), and a
+        // deserialized job always has `instance_meta: None`, so the assert holds
+        // trivially and nothing branches on the value here. It is inert on this
+        // path, and `false` is the conservative reading of a blob whose format
+        // (line 92) predates #4122.
+        //
+        // The round trip therefore DROPS the bit, with no format version that
+        // would notice. If a reader ever branches on it, `push_mesh` must learn to
+        // write it and the format must gain a version. Pinned by
+        // `deserialize_defaults_welded_in_object_frame_to_false`.
+        Some(Mesh {
+            positions,
+            normals,
+            indices,
+            rtc_applied,
+            origin,
+            instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
+            welded_in_object_frame: false,
+        })
     }
 }
 
@@ -201,3 +224,7 @@ pub fn deserialize(blob: &[u8]) -> Result<Vec<CapturedCsgJob>, &'static str> {
     }
     Ok(jobs)
 }
+
+#[cfg(test)]
+#[path = "csg_capture_tests.rs"]
+mod tests;

@@ -236,7 +236,7 @@ test('WIRING: `changes` probes, the aggregate replays on noop and judges otherwi
   // The gate needs to read check runs. Without this scope the probe fails
   // closed (noop=false, full run) and the saving silently never happens.
   const text = readFileSync(TEST_YML, 'utf8');
-  assert.match(text, /^permissions:\n(?:  [a-z-]+: read\n)*  checks: read/m, 'the workflow must hold `checks: read`');
+  assert.match(text, /^permissions:\n(?:  [a-z-]+: read\n|  #[^\n]*\n)*  checks: read/m, 'the workflow must hold `checks: read`');
 });
 
 test('WIRING: no job gates on `github.event.changes.base`; the decision lives in the probe', () => {

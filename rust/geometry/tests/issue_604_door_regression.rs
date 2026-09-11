@@ -25,7 +25,6 @@ mod voids_common;
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
 use rustc_hash::FxHashMap;
-use std::path::Path;
 use voids_common::production::fold_origin;
 
 const FIXTURE: &str = "../../tests/models/various/issue-604-door.ifc";
@@ -44,20 +43,32 @@ const WALL_ID: u32 = 55;
 const OPENING_ID: u32 = 2438;
 const DOOR_ID: u32 = 2390;
 
+/// Load the fixture, distinguishing a genuinely absent file from a broken
+/// read. `NotFound` is the fresh-clone case (`pnpm fixtures` not run yet):
+/// skip unless `IFC_LITE_REQUIRE_FIXTURES=1`, in which case panic naming
+/// the path. Any other `io::Error` (permission denied, corrupt read, ...)
+/// means the environment is broken rather than merely missing an optional
+/// download, so it panics unconditionally. This attempts the read directly
+/// (rather than checking `Path::exists()` first) because `exists()`
+/// collapses a permission error into `false` just like a genuinely absent
+/// file, and a separate check-then-read is a TOCTOU race besides.
 fn read_fixture() -> Option<String> {
-    if !Path::new(FIXTURE).exists() {
-        assert!(
-            !support::require_fixtures(),
-            "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
-             run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
-        );
-        eprintln!(
-            "skipping issue-604 regression: fixture missing at {FIXTURE} — \
-             run `pnpm fixtures` from the repo root to download it",
-        );
-        return None;
+    match std::fs::read_to_string(FIXTURE) {
+        Ok(content) => Some(content),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
+            eprintln!(
+                "skipping issue-604 regression: fixture missing at {FIXTURE} — \
+                 run `pnpm fixtures` from the repo root to download it",
+            );
+            None
+        }
+        Err(e) => panic!("fixture {FIXTURE} exists but could not be read: {e}"),
     }
-    std::fs::read_to_string(FIXTURE).ok()
 }
 
 /// Half (b) + (c) of #604 — verify door handle (`IfcSurfaceOfRevolution` +

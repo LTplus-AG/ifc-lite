@@ -1139,3 +1139,61 @@ describe('triage (--detect) WASM disposal (#1959 P2 leak)', () => {
     expect(disposeSpy).toHaveBeenCalledTimes(1);
   }, 30_000);
 });
+
+describe('extract-entities --detect --report --json: --top', () => {
+  let stdoutSpy: ReturnType<typeof vi.spyOn>;
+
+  afterEach(() => {
+    stdoutSpy?.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  /** Runs the triage JSON path and returns the parsed `top` array. */
+  async function runTriage(extraArgs: string[]): Promise<unknown[]> {
+    const writes: string[] = [];
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      writes.push(String(chunk));
+      return true;
+    });
+    await extractEntitiesCommand([SAMPLE_IFC, '--detect', '--report', '--json', ...extraArgs]);
+    const parsed = JSON.parse(writes.join(''));
+    return parsed.top;
+  }
+
+  it('falls back to the default 20-row --top on a non-numeric value, not an empty array', async () => {
+    const processGeometry = GeometryProcessor.prototype.process;
+    vi.spyOn(GeometryProcessor.prototype, 'process').mockImplementation(async function (
+      this: GeometryProcessor,
+      ...args
+    ) {
+      const result = await processGeometry.apply(this, args);
+      const seed = result.meshes[0];
+      if (seed === undefined) throw new Error('fixture must produce at least one mesh');
+      return {
+        ...result,
+        meshes: Array.from({ length: 25 }, (_, index) => ({
+          ...seed,
+          expressId: index + 1,
+        })),
+      };
+    });
+    const withBadTop = await runTriage(['--top', 'banana']);
+
+    // Pin the documented default itself. Deriving this expectation from an
+    // omitted --top invocation would let both paths regress to the same value.
+    expect(withBadTop).toHaveLength(20);
+    expect(withBadTop.map((row) => (row as { expressId: number }).expressId)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+      11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+    ]);
+  }, 30_000);
+
+  it('still honors an ordinary numeric --top', async () => {
+    const baseline = await runTriage([]);
+    stdoutSpy.mockRestore();
+    const withTopOne = await runTriage(['--top', '1']);
+
+    expect(baseline.length).toBeGreaterThan(1);
+    expect(withTopOne).toEqual(baseline.slice(0, 1));
+  }, 30_000);
+});

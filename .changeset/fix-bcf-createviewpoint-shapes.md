@@ -1,7 +1,0 @@
----
-"@ifc-lite/sdk": patch
----
-
-`bim.bcf.createViewpoint()` forwarded `camera`/`sectionPlane` to `@ifc-lite/bcf` unchanged, but the two packages use incompatible shapes: a tuple-based, mode/fov-less `camera` versus `@ifc-lite/bcf`'s `{x,y,z}` `ViewerCameraState`, and an `'x'|'y'|'z'` section-plane axis versus its `'down'|'front'|'side'` vocabulary. Following the documented `createViewpoint({ camera: bim.viewer.getCamera(), sectionPlane: bim.viewer.getSection() })` pattern silently produced a camera with `null`/`NaN` coordinates and dropped an enabled section plane's clipping plane entirely, with no error.
-
-`createViewpoint()` now converts both shapes correctly (reusing the same x/y/z ⟷ down/front/side axis convention `apps/viewer/src/sdk/adapters/viewer-adapter.ts` already applies to `getSection()`/`setSection()`), and throws `IncompleteCameraStateError` for a camera missing position/target/up or `MissingSectionBoundsError` for an enabled section plane with no `bounds` (a new, required-when-enabled `ViewpointOptions.bounds: AABB` field — nothing in the SDK's public surface can compute a model's overall bounds, so callers must supply it) instead of silently building a corrupted viewpoint. `extractViewpointState()` gets the equivalent read-side fix, converting `@ifc-lite/bcf`'s object/down-front-side shapes back into the SDK's tuple/x-y-z shapes so a captured viewpoint round-trips straight into `bim.viewer.setCamera()`/`setSection()`.

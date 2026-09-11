@@ -724,7 +724,7 @@ test('a split PR that keeps its row fails; the same shrink landed elsewhere does
   assert.equal(red.code, 1, red.out);
   assert.match(
     red.out,
-    /packages\/s\/extractor\.ts: this change took the file to 348 <= 400 but kept its row \(budget 594\)/,
+    /packages\/s\/extractor\.ts: this change took the file from 594 to 348 <= 400 but kept its row \(budget 594\)/,
   );
   // Same allowlist, but main already holds the file at 348 and the branch
   // never touches it: advisory, exactly as before.
@@ -743,7 +743,10 @@ test('a kept row for a file this change deleted fails (#4388)', () => {
   git('rm', '-q', 'packages/b/gone.ts');
   const { code, out } = run(dir, null, { allowlistPath });
   assert.equal(code, 1, out);
-  assert.match(out, /packages\/b\/gone\.ts: this change removed or renamed the file but kept its row \(budget 450\)/);
+  assert.match(
+    out,
+    /packages\/b\/gone\.ts: this change removed or renamed the file \(450 lines at the merge base\) but kept its row \(budget 450\)/,
+  );
 });
 
 test('a row deleted relative to the base for a file still over the limit says so (#4388)', () => {

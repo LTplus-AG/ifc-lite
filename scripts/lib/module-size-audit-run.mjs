@@ -69,6 +69,15 @@ and an origin/main ref, or pass --base <ref> to name the base by hand.
   }
   const sha9 = scope.base.sha.slice(0, 9);
 
+  // The same path as it was at the merge base. Consulted only for a kept row
+  // whose file this change touched and which is now under the limit or gone
+  // (a handful of blobs at most), to tell this change's shrink from a stale
+  // row main already carried.
+  const measureAtBase = (rel) => {
+    const text = readBlobAt(root, scope.base.sha, rel);
+    return text === null ? null : countLines(text);
+  };
+
   // Audit one allowlist (`rel`, repo-relative) whose HEAD rows are `rows`.
   const auditOne = (rel, rows, measure) => {
     const baseText = readBlobAt(root, scope.base.sha, rel);
@@ -79,7 +88,7 @@ and an origin/main ref, or pass --base <ref> to name the base by hand.
     } catch (err) {
       return unavailable(err.message);
     }
-    const audit = auditAgainstBase({ baseRows, headRows: rows, measure, changed: scope.changed });
+    const audit = auditAgainstBase({ baseRows, headRows: rows, measure, measureAtBase, changed: scope.changed });
     console.log(`check-module-size: ${rel} vs merge-base ${describeBase(scope.base)}: ${summarizeAudit(audit)}`);
     if (audit.failures.length > 0) {
       state.failed = true;
@@ -91,9 +100,13 @@ ${audit.failures.join('\n')}
 A row that differs from the merge base is this change's row, and the only
 number it may carry is the one \`--update\` writes: the file's measured count.
 After a merge conflict, never resolve by picking a side -- diff BOTH sides
-against the merge base, then re-run \`pnpm lint:module-size-baseline\`
-(\`--allow-raise\` only for growth this change justifies in the PR) and commit
-what it writes (#4388).
+against the merge base. Then: DELETE every row named above for a file this
+change did not touch (a scoped \`--update\` leaves those alone); rebase or
+merge main so the count CI measures is the count you measure (CI judges the
+merge commit against origin/main, so a row exact on a stale branch can carry
+headroom there); then re-run \`pnpm lint:module-size-baseline\`
+(\`--allow-raise\` only for growth this change justifies in the PR) for the
+rest and commit what it writes (#4388).
 `);
     }
     return audit;

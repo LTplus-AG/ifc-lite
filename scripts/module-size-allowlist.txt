@@ -43,12 +43,16 @@
 #   git diff $(git merge-base main BRANCH) main   -- scripts/module-size-allowlist.txt
 #   git diff $(git merge-base main BRANCH) BRANCH -- scripts/module-size-allowlist.txt
 #
-# then re-run `pnpm lint:module-size-baseline` and commit what it writes. The
+# Then DELETE every row for a file your change did not touch that the gate
+# names (a scoped `--update` leaves those alone), rebase or merge main so the
+# count CI measures is the count you measure, and re-run
+# `pnpm lint:module-size-baseline` for the rest and commit what it writes. The
 # gate diffs this file against the merge base on every run and FAILS a row
 # that differs from it when the file's measured count does not justify it: a
-# row added or raised above the file's size, a row resurrected for a file
-# under 400, or a row kept for a file this change shrank under 400 or removed.
-# A hand-picked number fails; a shrink that landed in another PR stays a note.
+# row added or raised above the file's size, a row edited for a file under
+# 400 (or gone), or a row kept for a file this change shrank under 400 or
+# removed. A hand-picked number fails; a shrink that landed in another PR
+# stays a note, and so does slack left on a row this change only lowered.
    524 apps/viewer-embed/src/bridge/handler.ts
    481 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
    431 apps/viewer/src/components/extensions/FlavorDialog.tsx

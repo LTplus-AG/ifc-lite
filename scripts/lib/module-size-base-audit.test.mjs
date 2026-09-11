@@ -17,6 +17,8 @@ import { auditAgainstBase, compactAudit, summarizeAudit } from './module-size-ba
 
 const rows = (obj) => new Map(Object.entries(obj));
 const measureFrom = (obj) => (rel) => (Object.hasOwn(obj, rel) ? obj[rel] : null);
+/** Base-side counts: every rowed file was over the limit there unless a case says otherwise. */
+const overAtBase = () => 500;
 
 test('the #4330 resolution fails on all three rows, each for its own reason (#4388)', () => {
   // main deleted project-units.ts's row (the file is 268 lines); the PR
@@ -35,6 +37,11 @@ test('the #4330 resolution fails on all three rows, each for its own reason (#43
       'packages/parser/src/schedule-extractor.ts': 348,
       'packages/parser/src/x.ts': 765,
     }),
+    measureAtBase: measureFrom({
+      'packages/parser/src/project-units.ts': 268,
+      'packages/parser/src/schedule-extractor.ts': 594,
+      'packages/parser/src/x.ts': 765,
+    }),
     changed: new Set(['packages/parser/src/schedule-extractor.ts', 'packages/parser/src/x.ts']),
   });
   assert.deepEqual(audit.added, ['  packages/parser/src/project-units.ts: added at 523']);
@@ -44,7 +51,7 @@ test('the #4330 resolution fails on all three rows, each for its own reason (#43
   assert.equal(audit.kept, 1);
   assert.equal(audit.failures.length, 3, audit.failures.join('\n'));
   assert.match(audit.failures[0], /project-units\.ts: row added at 523, but the file measures 268 <= 400 and needs no row/);
-  assert.match(audit.failures[1], /schedule-extractor\.ts: this change took the file to 348 <= 400 but kept its row \(budget 594\)/);
+  assert.match(audit.failures[1], /schedule-extractor\.ts: this change took the file from 594 to 348 <= 400 but kept its row \(budget 594\)/);
   assert.match(audit.failures[2], /x\.ts: row raised 765 -> 766, but the file measures 765: 1 line\(s\) of headroom/);
   assert.equal(summarizeAudit(audit), '+1 added, ^1 raised, v0 lowered, -0 deleted');
   assert.equal(compactAudit(audit), '+1 ^1 v0 -0');
@@ -55,6 +62,7 @@ test('what --update writes passes: every edited row equals its measurement', () 
     baseRows: rows({ 'a.ts': 500, 'b.ts': 600, 'c.ts': 450 }),
     headRows: rows({ 'a.ts': 520, 'b.ts': 580, 'd.ts': 401 }),
     measure: measureFrom({ 'a.ts': 520, 'b.ts': 580, 'c.ts': 300, 'd.ts': 401 }),
+    measureAtBase: measureFrom({ 'a.ts': 500, 'b.ts': 600, 'c.ts': 450, 'd.ts': 380 }),
     changed: new Set(['a.ts', 'b.ts', 'c.ts', 'd.ts']),
   });
   assert.deepEqual(audit.failures, []);
@@ -66,13 +74,39 @@ test('a kept row is advisory when the shrink landed elsewhere, a failure when it
     baseRows: rows({ 'a.ts': 500 }),
     headRows: rows({ 'a.ts': 500 }),
     measure: measureFrom({ 'a.ts': 300 }),
+    measureAtBase: overAtBase,
   };
   const elsewhere = auditAgainstBase({ ...input, changed: new Set(['unrelated.ts']) });
   assert.deepEqual(elsewhere.failures, []);
   assert.equal(elsewhere.kept, 1);
   const mine = auditAgainstBase({ ...input, changed: new Set(['a.ts']) });
   assert.equal(mine.failures.length, 1);
-  assert.match(mine.failures[0], /this change took the file to 300 <= 400 but kept its row/);
+  assert.match(mine.failures[0], /this change took the file from 500 to 300 <= 400 but kept its row/);
+});
+
+test("a kept row main already carried for a file under the limit is not this change's shrink", () => {
+  // main tolerates a stale row (the `shrunk` note is advisory and staleRows
+  // judges the budget, not the file). A PR that merely edits that file did
+  // not do the shrinking, and must not be told it resolved a conflict badly;
+  // the note (and a scoped --update, which drops the row) still apply.
+  const audit = auditAgainstBase({
+    baseRows: rows({ 'a.ts': 500 }),
+    headRows: rows({ 'a.ts': 500 }),
+    measure: measureFrom({ 'a.ts': 290 }),
+    measureAtBase: measureFrom({ 'a.ts': 300 }),
+    changed: new Set(['a.ts']),
+  });
+  assert.deepEqual(audit.failures, []);
+  assert.equal(audit.kept, 1);
+  // The same for a file that did not exist at the base at all.
+  const ghost = auditAgainstBase({
+    baseRows: rows({ 'a.ts': 500 }),
+    headRows: rows({ 'a.ts': 500 }),
+    measure: measureFrom({ 'a.ts': 290 }),
+    measureAtBase: () => null,
+    changed: new Set(['a.ts']),
+  });
+  assert.deepEqual(ghost.failures, []);
 });
 
 test('a kept row with slack on a file this change touched stays advisory', () => {
@@ -82,16 +116,22 @@ test('a kept row with slack on a file this change touched stays advisory', () =>
     baseRows: rows({ 'a.ts': 500 }),
     headRows: rows({ 'a.ts': 500 }),
     measure: measureFrom({ 'a.ts': 480 }),
+    measureAtBase: overAtBase,
     changed: new Set(['a.ts']),
   });
   assert.deepEqual(audit.failures, []);
 });
 
 test('a kept row for a file this change removed fails; removed elsewhere, it does not', () => {
-  const input = { baseRows: rows({ 'a.ts': 500 }), headRows: rows({ 'a.ts': 500 }), measure: () => null };
+  const input = {
+    baseRows: rows({ 'a.ts': 500 }),
+    headRows: rows({ 'a.ts': 500 }),
+    measure: () => null,
+    measureAtBase: overAtBase,
+  };
   assert.deepEqual(auditAgainstBase({ ...input, changed: new Set() }).failures, []);
   const mine = auditAgainstBase({ ...input, changed: new Set(['a.ts']) });
-  assert.match(mine.failures[0], /removed or renamed the file but kept its row \(budget 500\)/);
+  assert.match(mine.failures[0], /removed or renamed the file \(500 lines at the merge base\) but kept its row \(budget 500\)/);
 });
 
 test('an edited row for a module that was not measured fails', () => {
@@ -99,6 +139,7 @@ test('an edited row for a module that was not measured fails', () => {
     baseRows: rows({ 'a.ts': 500 }),
     headRows: rows({ 'a.ts': 500, 'ghost.ts': 450 }),
     measure: measureFrom({ 'a.ts': 500 }),
+    measureAtBase: overAtBase,
     changed: new Set(),
   });
   assert.match(audit.failures[0], /ghost\.ts: row added at 450, but no such module was measured/);
@@ -109,6 +150,7 @@ test('a deleted row whose file is still over the limit names the merge base', ()
     baseRows: rows({ 'a.ts': 500, 'b.ts': 450 }),
     headRows: rows({ 'a.ts': 500 }),
     measure: measureFrom({ 'a.ts': 500, 'b.ts': 450 }),
+    measureAtBase: overAtBase,
     changed: new Set(),
   });
   assert.deepEqual(audit.deleted, ['  b.ts: deleted (was 450)']);
@@ -120,20 +162,34 @@ test('growth past an edited budget is left to the grew tooth, not double-reporte
     baseRows: rows({ 'a.ts': 500 }),
     headRows: rows({ 'a.ts': 510 }),
     measure: measureFrom({ 'a.ts': 530 }),
+    measureAtBase: overAtBase,
     changed: new Set(['a.ts']),
   });
   assert.deepEqual(audit.failures, []);
   assert.deepEqual(audit.raised, ['  a.ts: raised 500 -> 510']);
 });
 
-test('a lowered row must still equal the measurement', () => {
-  const audit = auditAgainstBase({
+test('a lowered row with slack is a note, not a failure; lowered onto a file under the limit fails', () => {
+  // Lowering cannot loosen the ratchet. Failing headroom on a lowered row
+  // would redden the branch whose file main shrank a little further while
+  // the PR sat in review (CI measures the merge commit against the row).
+  const slack = auditAgainstBase({
     baseRows: rows({ 'a.ts': 800 }),
     headRows: rows({ 'a.ts': 700 }),
     measure: measureFrom({ 'a.ts': 650 }),
+    measureAtBase: overAtBase,
     changed: new Set(['a.ts']),
   });
-  assert.match(audit.failures[0], /row lowered 800 -> 700, but the file measures 650: 50 line\(s\) of headroom/);
+  assert.deepEqual(slack.failures, []);
+  assert.deepEqual(slack.lowered, ['  a.ts: lowered 800 -> 700']);
+  const under = auditAgainstBase({
+    baseRows: rows({ 'a.ts': 800 }),
+    headRows: rows({ 'a.ts': 420 }),
+    measure: measureFrom({ 'a.ts': 380 }),
+    measureAtBase: overAtBase,
+    changed: new Set(['a.ts']),
+  });
+  assert.match(under.failures[0], /row lowered 800 -> 420, but the file measures 380 <= 400 and needs no row/);
 });
 
 test('an identical allowlist produces zero counts and zero failures', () => {
@@ -141,6 +197,7 @@ test('an identical allowlist produces zero counts and zero failures', () => {
     baseRows: rows({ 'a.ts': 500 }),
     headRows: rows({ 'a.ts': 500 }),
     measure: measureFrom({ 'a.ts': 500 }),
+    measureAtBase: overAtBase,
     changed: new Set(['a.ts']),
   });
   assert.deepEqual(audit.failures, []);

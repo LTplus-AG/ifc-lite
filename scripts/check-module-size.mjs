@@ -92,21 +92,21 @@
  * budget. It does NOT break on a file shrinking or disappearing in a PR that
  * never touched the file or its row; those stay advisory notes.
  *
- * THE MERGE-BASE AUDIT (#4388) is the third thing check mode fails on: an
- * allowlist ROW that this change wrote and the measurement does not justify.
- * The two teeth judge files against rows; neither judged the row, so a
- * conflict resolution that resurrected a deleted row for a 268-line file,
- * kept the row of a file a split had taken to 348, and carried 766 for a
- * 765-line file printed three notes and OK (#4330). Check mode now diffs the
- * allowlist against `git merge-base origin/main HEAD` and holds every row
- * that differs -- added, raised or lowered -- to the count `--update` would
- * have written, and fails a row kept unchanged when this change's own diff
- * took the file under the limit or removed it. The Rust twin's allowlist is
- * audited by the same rules from here (the cargo test has no git). Rows this
- * change did not write and files it did not touch stay advisory, which is
- * the advisory rationale below preserved rather than dropped. No base (no
- * `origin/main`, no `main`, or --root not a worktree top) is a hard failure
- * under CI and a loud skip elsewhere; `--base <ref>` names a base by hand.
+ * THE MERGE-BASE AUDIT (#4388) is one more thing check mode fails on, beside
+ * the two teeth and the stale-row check: an allowlist ROW this change wrote
+ * that the measurement does not justify. The teeth judge files against rows;
+ * neither judged the row, so a resolution that resurrected a deleted row for
+ * a 268-line file, kept the row of a file a split took to 348, and carried
+ * 766 for a 765-line file printed three notes and OK (#4330). Check mode now
+ * diffs the allowlist against `git merge-base origin/main HEAD`: a row added
+ * or raised must equal the count `--update` would have written; a lowered
+ * row must still name a file over 400 (slack on it is a note: lowering
+ * loosens nothing); a kept row fails when this change's own diff took a file
+ * over 400 at the base under it, or removed it. The Rust twin's allowlist is
+ * audited by the same rules from here. Rows this change did not write and
+ * files it did not touch stay advisory (the rationale below, preserved). No
+ * base (no `origin/main`, no `main`, --root not a worktree top) fails under
+ * CI, skips loudly elsewhere; `--base <ref>` names one by hand.
  *
  * WHAT THIS GATE CANNOT SEE: it counts lines, nothing else. A 400-line file
  * doing five jobs passes; a cohesive 900-line table fails. It does not look at

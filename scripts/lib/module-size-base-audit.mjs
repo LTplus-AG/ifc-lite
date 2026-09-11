@@ -19,14 +19,21 @@
  * The merge base is what separates the two. A row that differs from its
  * base-side twin was written by this change (or by its conflict resolution),
  * and `--update` writes exactly the measured count, so the discipline is
- * already "the row equals the measurement" -- this makes the gate say so. A
- * row that is byte-identical to the base was written by someone else, and
- * stays advisory UNLESS this change also touched the file: then the shrink
- * is this change's, and keeping the old budget is the re-growth headroom the
- * split PR in #4388 left behind.
+ * already "the row equals the measurement" -- this makes the gate say so for
+ * a row ADDED or RAISED. A row LOWERED with slack left is held only to "the
+ * file is still over the limit": lowering cannot loosen the ratchet, and
+ * failing it on headroom would redden the branch whose file main shrank a
+ * little further while the PR sat in review -- the one shape the advisory
+ * notes exist to keep green. A row that is byte-identical to the base was
+ * written by someone else, and stays advisory UNLESS this change also
+ * touched the file AND the file was over the limit at the base: then the
+ * shrink is this change's, and keeping the old budget is the re-growth
+ * headroom the split PR in #4388 left behind. (A row main already carried
+ * for a file under the limit is main's stale row, whoever edits the file
+ * next; the `shrunk` note reports it, and a scoped `--update` drops it.)
  *
- * Pure: takes parsed rows, a measurement function and the changed-path set,
- * returns strings. The CLI resolves the base and reads the blobs.
+ * Pure: takes parsed rows, two measurement functions and the changed-path
+ * set, returns strings. The CLI resolves the base and reads the blobs.
  */
 
 import { LIMIT } from './module-size-ratchet.mjs';
@@ -38,6 +45,12 @@ import { LIMIT } from './module-size-ratchet.mjs';
  * @param {(rel: string) => number | null} input.measure  line count of a
  *        module at HEAD, or null when it was not measured (gone, renamed or
  *        exempt)
+ * @param {(rel: string) => number | null} input.measureAtBase  line count
+ *        of the same path at the merge base, or null when it had none there.
+ *        Consulted only for a kept row whose file this change touched and
+ *        which now measures under the limit or not at all: it decides whether
+ *        the shrink is this change's (the file was over the limit at the
+ *        base) or main's stale row.
  * @param {Set<string>} input.changed   repo-relative paths this change
  *        touched, from `changedFiles()`
  * @returns {{ added: string[], raised: string[], lowered: string[],
@@ -46,7 +59,7 @@ import { LIMIT } from './module-size-ratchet.mjs';
  *   so the resolution is visible on every run); `failures` are the rows a
  *   measurement does not justify, each a `  <path>: <why>` line.
  */
-export function auditAgainstBase({ baseRows, headRows, measure, changed }) {
+export function auditAgainstBase({ baseRows, headRows, measure, measureAtBase, changed }) {
   const added = [];
   const raised = [];
   const lowered = [];
@@ -58,11 +71,14 @@ export function auditAgainstBase({ baseRows, headRows, measure, changed }) {
     const before = baseRows.get(rel);
     const lines = measure(rel);
     let edit = null;
+    let loosened = false;
     if (before === undefined) {
       edit = `added at ${budget}`;
+      loosened = true;
       added.push(`  ${rel}: ${edit}`);
     } else if (budget > before) {
       edit = `raised ${before} -> ${budget}`;
+      loosened = true;
       raised.push(`  ${rel}: ${edit}`);
     } else if (budget < before) {
       edit = `lowered ${before} -> ${budget}`;
@@ -72,10 +88,9 @@ export function auditAgainstBase({ baseRows, headRows, measure, changed }) {
     }
 
     if (edit !== null) {
-      // A row this change wrote. `--update` writes the measured count, so
-      // anything else is a hand-picked number: a resurrected row (file under
-      // the limit), annexed headroom (budget above the file), or a row for a
-      // file that is not there.
+      // A row this change wrote. It must describe a file that is there and
+      // over the limit, whichever way it was edited: a resurrected row for a
+      // 268-line file is the #4330 case however the number compares.
       if (lines === null) {
         failures.push(
           `  ${rel}: row ${edit}, but no such module was measured (gone, renamed or exempt); delete the row`,
@@ -84,7 +99,13 @@ export function auditAgainstBase({ baseRows, headRows, measure, changed }) {
         failures.push(
           `  ${rel}: row ${edit}, but the file measures ${lines} <= ${LIMIT} and needs no row; delete it`,
         );
-      } else if (lines < budget) {
+      } else if (loosened && lines < budget) {
+        // Added or raised above the file: annexed headroom (the 766-for-765
+        // case). `--update` writes the measured count, so anything above it
+        // is a hand-picked number. A LOWERED row with slack is not held to
+        // this: it loosened nothing, and main shrinking the file a little
+        // further while the branch sat in review must stay a note (the
+        // pull_request merge commit is measured against the branch's row).
         failures.push(
           `  ${rel}: row ${edit}, but the file measures ${lines}: ${budget - lines} line(s) of headroom ` +
             `nothing measured; re-run --update so the row says what the file says`,
@@ -96,17 +117,26 @@ export function auditAgainstBase({ baseRows, headRows, measure, changed }) {
     }
 
     // Kept byte-for-byte from the base: somebody else's row, UNLESS this
-    // change touched the file. Then the shrink (or the delete) is this
-    // change's, and the row it left behind is exactly what #4388's split PR
-    // lost in its conflict resolution.
+    // change touched the file AND the file was over the limit at the base.
+    // Then the shrink (or the delete) is this change's, and the row it left
+    // behind is exactly what #4388's split PR lost in its conflict
+    // resolution. A file already under the limit at the base means main was
+    // carrying a stale row before this change existed; that is the `shrunk`
+    // note's job, and blaming it on whoever edits the file next would send
+    // them to a conflict resolution that never happened.
     if (!changed.has(rel)) continue;
+    if (lines !== null && lines > LIMIT) continue;
+    const atBase = measureAtBase(rel);
+    if (atBase === null || atBase <= LIMIT) continue;
     if (lines === null) {
       failures.push(
-        `  ${rel}: this change removed or renamed the file but kept its row (budget ${budget}); delete the row`,
+        `  ${rel}: this change removed or renamed the file (${atBase} lines at the merge base) but kept ` +
+          `its row (budget ${budget}); delete the row`,
       );
-    } else if (lines <= LIMIT) {
+    } else {
       failures.push(
-        `  ${rel}: this change took the file to ${lines} <= ${LIMIT} but kept its row (budget ${budget}); delete the row`,
+        `  ${rel}: this change took the file from ${atBase} to ${lines} <= ${LIMIT} but kept its row ` +
+          `(budget ${budget}); delete the row`,
       );
     }
   }

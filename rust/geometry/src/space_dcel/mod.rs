@@ -50,10 +50,12 @@
 
 mod arrangement;
 mod geom2d;
+mod walk;
 #[cfg(test)]
 mod tests;
 
 use arrangement::Arrangement;
+use walk::{FaceWalk, VertexFan};
 use geom2d::{is_simple_polygon, line_intersection, perp_distance, point_in_quad, polygon_area, representative_point};
 #[cfg(test)]
 use geom2d::point_in_polygon;
@@ -1436,80 +1438,3 @@ impl SpacePlate {
         FacePatch { face, outline, area, simple }
     }
 }
-
-/// Iterator over the half-edges of one face cycle.
-struct FaceWalk<'a> {
-    plate: &'a SpacePlate,
-    start: Option<HalfEdgeId>,
-    cur: Option<HalfEdgeId>,
-}
-
-impl Iterator for FaceWalk<'_> {
-    type Item = HalfEdgeId;
-    fn next(&mut self) -> Option<HalfEdgeId> {
-        let start = self.start?;
-        let cur = match self.cur {
-            None => start,
-            Some(c) => {
-                let n = self.plate.half_edges[c.0 as usize].next;
-                if n == start {
-                    return None;
-                }
-                n
-            }
-        };
-        self.cur = Some(cur);
-        Some(cur)
-    }
-}
-
-/// Iterator over the outgoing half-edges around a vertex (twin → next).
-struct VertexFan<'a> {
-    plate: &'a SpacePlate,
-    start: Option<HalfEdgeId>,
-    cur: Option<HalfEdgeId>,
-}
-
-impl Iterator for VertexFan<'_> {
-    type Item = HalfEdgeId;
-    fn next(&mut self) -> Option<HalfEdgeId> {
-        let start = self.start?;
-        loop {
-            let cur = match self.cur {
-                None => start,
-                Some(c) => {
-                    // Around a vertex: twin (incoming) then its next (outgoing).
-                    let twin = self.plate.half_edges[c.0 as usize].twin;
-                    let n = self.plate.half_edges[twin.0 as usize].next;
-                    if n == start {
-                        return None;
-                    }
-                    n
-                }
-            };
-            self.cur = Some(cur);
-            if self.plate.half_edges[cur.0 as usize].alive {
-                return Some(cur);
-            }
-            if cur == start {
-                return None;
-            }
-        }
-    }
-}
-
-// TODO(space-dcel, follow-ups for the real feature):
-//  - Robust predicates: `segment_intersection_param` is naive f64. Share the
-//    adaptive-orientation floor being built for the pure-Rust CSG kernel
-//    (csg-predicate-floor worktree) so dense national-grid wall sets don't
-//    accumulate snap error.
-//  - Holes / nested faces: a CW cycle is treated as exterior, so a room
-//    enclosing a courtyard is mishandled. Add containment nesting.
-//  - Net vs gross area: faces are centreline. Net area = inset each bounding
-//    edge by half its source wall's thickness at quantity time; thickness must
-//    ride `InputSegment` (extend with a `half_thickness` field).
-//  - Leak diagnostics: detect open half-edges (a boundary that fails to close)
-//    and surface them as per-face repair markers (§2.4 of the RFC).
-//  - WASM seam: wrap `SpacePlate` in a stateful handle on `IfcAPI` with
-//    explicit create/free — long-lived handles share the dlmalloc-GC hazard
-//    from the cache-load crash fix; do NOT rely on JS GC to drop it.

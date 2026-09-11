@@ -49,4 +49,13 @@ describe('prepared model file routing #4476', () => {
     await next;
     assert.deepEqual(routed, ['model.ifc']);
   });
+
+  it('rejects sidecars picked without their .gltf by name instead of loading nothing', async () => {
+    // .bin and images pass the entry-point filters so they can travel beside a
+    // document; alone they used to resolve to [] and return silently.
+    let routed = false;
+    const sidecars = [new File([new Uint8Array(4)], 'scan.bin'), new File([new Uint8Array(8)], 'scan.png', { type: 'image/png' })];
+    await assert.rejects(prepareModelFiles(sidecars, undefined, () => { routed = true; }), /\.gltf document together with its \.bin and texture files/);
+    assert.equal(routed, false);
+  });
 });

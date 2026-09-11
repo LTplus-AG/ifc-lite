@@ -27,7 +27,12 @@ function alignHandles(files: readonly File[], handles: Handles | undefined, reso
 export function prepareModelFiles(files: readonly File[], handles: Handles | undefined, route: RouteFiles, setRecentFiles?: (files: RecentFileEntry[]) => void): Promise<void> {
   const turn = queue.then(async () => {
     const resolved = await resolveGltfModelFiles(files);
-    if (!resolved.length) return;
+    // Sidecars pass every entry-point filter so they can travel beside a .gltf;
+    // picked on their own they resolve to nothing, which must be said, not swallowed.
+    if (!resolved.length) {
+      if (files.length) throw new Error('Select the .gltf document together with its .bin and texture files.');
+      return;
+    }
     recordRecentFiles(resolved.map(file => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(resolved);
     setRecentFiles?.(getRecentFiles().slice(0, 3));

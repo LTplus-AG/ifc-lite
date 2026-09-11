@@ -184,8 +184,9 @@ const MAX_LOAD_NODES = 256;
  *   children each recursing `k` deep, which is O(k^depth) — an abort turned
  *   into a hang, and a hang reports nothing.
  *
- * All three, and an unreadable reference besides, keep the `Values` slot they
- * gave up on: it becomes an entry with no `value` and a `dropped` reason, so
+ * All three bounds, and every reference this reader cannot follow for the
+ * file's own reasons, keep the `Values` slot they gave up on: the slot becomes
+ * an entry with no `value` and a `dropped` reason naming which it was, so
  * the station a `Locations` row names still belongs to the load the file put
  * there. Only the three bounds set `truncated`, since only they mean the file
  * holds more than this reader agreed to walk.

@@ -608,8 +608,17 @@ test('the poll treats an EMPTY rollup as "nothing has appeared yet", never as se
  * re-measure does NOT read it -- it is a different population and carries its
  * own array, which is the whole reason the two disagree about 900 s.
  */
-/** The budget the workflow ships; asserted against the YAML below, not restated. */
-const BUDGET_SECONDS = 2400;
+/**
+ * The budget the workflow ships; asserted against the YAML below, not restated.
+ *
+ * 900 s AGAIN, after 2400 s (CI redesign, step 3). The 2026-08-31 re-measure
+ * below still stands -- eight of 56 runs breach 900 s -- but what a breach
+ * MEANS changed with #3810: a deadline that expires while the rollup is still
+ * moving is the LANE_PUBLICATION_TIMEOUT advisory (`ok` stays true), not a
+ * MISSING_LANES failure. So the extra 1500 s bought no verdict, only a runner
+ * slot held for 25 more minutes on every busy-day run, at 116 runs a day.
+ */
+const BUDGET_SECONDS = 900;
 
 const LANE_APPEARED_SECONDS = [
   161, 162, 162, 162, 163, 164, 164, 165, 165, 165, 166, 166, 167, 167, 167, 167, 167, 169, 169,
@@ -654,7 +663,7 @@ test('MEASURED on 2026-08-25/26: 900 s covered every lane APPEARANCE in THAT pop
   assert.equal(Number((900 / max).toFixed(2)), 1.07, 'tail margin, stated honestly');
 });
 
-test('RE-MEASURED 2026-08-31: 900 s BREACHED, and the budget is now 2400 s', () => {
+test('RE-MEASURED 2026-08-31: 900 s BREACHED, and a breach is an advisory, not a verdict', () => {
   // A 1.07x margin is one busy afternoon from being wrong, and this was that
   // afternoon.
   //
@@ -692,26 +701,30 @@ test('RE-MEASURED 2026-08-31: 900 s BREACHED, and the budget is now 2400 s', () 
   // their last lane may yet appear later; so far they stand at 304..1145 s, and
   // the budget would have to be wrong by more than 1255 s for one to breach.
   const STILL_QUEUED_SO_FAR = [304, 306, 324, 374, 378, 397, 435, 446, 467, 485, 1102, 1145];
-  assert.ok(Math.max(...STILL_QUEUED_SO_FAR) < BUDGET_SECONDS, 'none of the unmeasurable runs is near the cap');
+  assert.ok(Math.max(...STILL_QUEUED_SO_FAR) < 2400, 'none of the unmeasurable runs was near the 2400 s cap');
+  // Under the shipped 900 s two of them had ALREADY crossed the budget while
+  // still queued; both are the advisory timeout shape below, not a failure.
+  assert.deepEqual(STILL_QUEUED_SO_FAR.filter((t) => t > BUDGET_SECONDS), [1102, 1145]);
 
   // EIGHT breach 900 s, not the seven an earlier censored draft claimed.
-  assert.deepEqual(
-    RE_MEASURED.filter((t) => t > 900),
-    [906, 1172, 1276, 1387, 1503, 1527, 1786, 2028],
-    '900 s breaches eight of 56',
-  );
+  const BREACHES = [906, 1172, 1276, 1387, 1503, 1527, 1786, 2028];
+  assert.deepEqual(RE_MEASURED.filter((t) => t > 900), BREACHES, '900 s breaches eight of 56');
   assert.deepEqual(RE_MEASURED.filter((t) => t > 1800), [2028], '1800 s still breaches the max');
-  assert.deepEqual(RE_MEASURED.filter((t) => t > BUDGET_SECONDS), [], 'the shipped budget covers all 56');
+  // 2400 s covered all 56; that is the budget this file shipped between
+  // 2026-08-31 and the CI redesign, and it is kept as a measured fact.
+  assert.deepEqual(RE_MEASURED.filter((t) => t > 2400), [], '2400 s covered all 56');
 
-  // THE COVERING DIRECTION.
+  // THE SHIPPED BUDGET IS 900 s AND THOSE EIGHT RUNS TIME OUT UNDER IT. This is
+  // asserted, not hidden, because the reason it is acceptable is a property of
+  // the VERDICT and not of the number: at the deadline the rollup is still
+  // moving, and `evaluate` (check-pr-review-signal.test.mjs, the
+  // LANE_PUBLICATION_TIMEOUT case) reports that as an advisory with `ok: true`
+  // and a re-run remedy. What the eight runs cost under 2400 s was a runner
+  // slot held for up to 25 more minutes each; what they cost under 900 s is a
+  // re-run on the tail. The 48 that fit still get an immediate answer.
   for (const t of RE_MEASURED) {
-    assert.equal(poll(driver(completesAt(t * 1000)), { deadline: BUDGET_SECONDS * 1000 }).timedOut, false, `${t}s`);
-  }
-  // THE FAILING DIRECTION, because a budget that covers everything proves
-  // nothing on its own: the two superseded budgets genuinely time out on the
-  // runs they are claimed to.
-  for (const t of [906, 2028]) {
-    assert.equal(poll(driver(completesAt(t * 1000)), { deadline: 900_000 }).timedOut, true, `${t}s vs 900 s`);
+    const r = poll(driver(completesAt(t * 1000)), { deadline: BUDGET_SECONDS * 1000 });
+    assert.equal(r.timedOut, t > BUDGET_SECONDS, `${t}s vs the shipped ${BUDGET_SECONDS} s`);
   }
   assert.equal(poll(driver(completesAt(2028_000)), { deadline: 1800_000 }).timedOut, true, '2028s vs 1800 s');
 });
@@ -739,12 +752,14 @@ test('RE-MEASURED 2026-08-31: 900 s BREACHED, and the budget is now 2400 s', () 
  * exist -- correct, because nothing failed.
  */
 test('the budget the WORKFLOW ships is the budget this file tested', () => {
-  // WITHOUT THIS, REVERTING THE SHIPPED VALUE LEAVES THE SUITE GREEN. Measured:
-  // putting `--timeout-seconds 900` and `timeout-minutes: 20` back -- the exact
-  // regression this work exists to fix -- passed the whole suite, because the only
-  // budget any test named was a literal inside itself. Third instance today of
-  // the same shape: a value tested in one place and shipped from another. See
-  // the WIRING test in check-pr-review-signal.test.mjs.
+  // WITHOUT THIS, CHANGING THE SHIPPED VALUE LEAVES THE SUITE GREEN. Measured
+  // when the budget first moved to 2400 s: putting `--timeout-seconds 900` and
+  // `timeout-minutes: 20` back passed the whole suite, because the only budget
+  // any test named was a literal inside itself. Third instance that day of the
+  // same shape: a value tested in one place and shipped from another. See the
+  // WIRING test in check-pr-review-signal.test.mjs. (The budget has since gone
+  // back to 900 s deliberately -- see BUDGET_SECONDS -- and this pin is what
+  // makes that a one-line, reviewable change rather than a silent one.)
   const wf = readFileSync(join(REPO_ROOT, '.github/workflows/pr-review-signal.yml'), 'utf8');
   // ANCHORED, and that is load-bearing rather than tidy. Unanchored, these
   // matched the FIRST occurrence anywhere in a comment-dense file whose comments
@@ -789,14 +804,12 @@ test('the budget the WORKFLOW ships is the budget this file tested', () => {
 });
 
 test('MEASURED: excluding the aggregate matters more than any budget, and 420 s false-failed 8', () => {
-  // THE AGGREGATE EXCLUSION IS MORE LOAD-BEARING THAN ANY BUDGET EVER WAS, and
-  // the 900 s figure below no longer argues that, because 900 s is not the
-  // budget any more: at 2400 s, 0 of those 68 would breach and the evidence
-  // would be vacuous. Re-measured on the same 56 runs of 2026-08-31 as the
-  // budget above, the aggregate appeared at min 213 / median 1175 / MAX 3364 s,
-  // with TWELVE past 2400 s. So the exclusion still carries the fix at the
-  // budget actually in force, and the 68-run figure below is kept as the
-  // original finding rather than restated as a current one.
+  // THE AGGREGATE EXCLUSION IS MORE LOAD-BEARING THAN ANY BUDGET EVER WAS.
+  // Re-measured on the same 56 runs of 2026-08-31 as the budget above, the
+  // aggregate appeared at min 213 / median 1175 / MAX 3364 s, with TWELVE
+  // past 2400 s and 33 past 900 s. So the exclusion carries the fix at the
+  // budget actually in force (900 s again), and the 68-run figure below is
+  // kept as the original finding rather than restated as a current one.
   //
   // Same 68 runs, when `Build + WASM + Rust + Node` itself appeared: min 509,
   // median 894, max 2067 s. Requiring it would false-fail 33 of the 68 at a

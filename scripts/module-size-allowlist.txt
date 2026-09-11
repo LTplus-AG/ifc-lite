@@ -166,7 +166,6 @@
    820 apps/viewer/src/store/slices/measurementSlice.ts
    651 apps/viewer/src/store/slices/modelSlice.ts
   3277 apps/viewer/src/store/slices/mutationSlice.ts
-   492 apps/viewer/src/store/slices/pinboardSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts
    536 apps/viewer/src/store/slices/scriptSlice.ts
    574 apps/viewer/src/store/slices/sectionSlice.ts

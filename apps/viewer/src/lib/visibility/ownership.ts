@@ -131,11 +131,14 @@ export function releaseOwnedVisibility(
 export interface OwnedVisibilityRecords {
   idsFocusVisibilityOwned?: VisibilityOwnership;
   clashVisibilityOwned?: VisibilityOwnership;
+  /** The basket's claim on the isolate channel (`store/slices/pinboard-isolation.ts`, #4527). */
+  basketIsolationOwned?: VisibilityOwnership;
 }
 
 const OWNERSHIP_RECORD_FIELDS = [
   'idsFocusVisibilityOwned',
   'clashVisibilityOwned',
+  'basketIsolationOwned',
 ] as const satisfies readonly (keyof OwnedVisibilityRecords)[];
 
 /**

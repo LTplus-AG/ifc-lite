@@ -60,4 +60,26 @@ describe('removeModel purges pinboard basket state pointing at a removed model',
       'only the surviving basket entry (B:5 -> global id 1005) should be isolated',
     );
   });
+  it("drops the basket's isolation-ownership record when it names an id of the removed model (#4527)", () => {
+    useViewerStore.setState({
+      models: new Map([
+        ['A', model('A', 0, 100)],
+        ['B', model('B', 1000, 1100)],
+      ]),
+      activeModelId: 'A',
+    });
+    useViewerStore.getState().setBasket([
+      { modelId: 'A', expressId: 42 },
+      { modelId: 'B', expressId: 5 },
+    ]);
+    assert.ok(useViewerStore.getState().basketIsolationOwned?.ids.has(42), 'setup: the record claims A:42');
+
+    useViewerStore.getState().removeModel('A');
+
+    assert.strictEqual(
+      useViewerStore.getState().basketIsolationOwned,
+      null,
+      "a claim on the removed model's raw id would collide with a surviving idOffset-0 model — the record must go",
+    );
+  });
 });

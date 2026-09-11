@@ -24,6 +24,7 @@ export const pinboardTeardown = defineSliceTeardown(
     'basketViews',
     'activeBasketViewId',
     'basketPresentationVisible',
+    'basketIsolationOwned',
   ],
   {
     'session-reset': () => ({
@@ -33,6 +34,7 @@ export const pinboardTeardown = defineSliceTeardown(
       activeBasketViewId: null,
       basketPresentationVisible: false,
       hierarchyBasketSelection: new Set<string>(),
+      basketIsolationOwned: null,
     }),
     // Same dangling-ref shape as the 'model-removed' purge below, for the
     // full-teardown path: with every model gone, every basket ref is stale by
@@ -43,6 +45,7 @@ export const pinboardTeardown = defineSliceTeardown(
     'all-models-cleared': () => ({
       pinboardEntities: new Set<string>(),
       hierarchyBasketSelection: new Set<string>(),
+      basketIsolationOwned: null,
     }),
     'model-removed': (scope, state) => {
       // Pinboard/basket state is keyed the same way as `selectedEntitiesSet` --
@@ -70,14 +73,26 @@ export const pinboardTeardown = defineSliceTeardown(
       // equal-but-new Sets. `syncSourceModel` runs this same scope again
       // straight after `removeModel`, and a fresh reference there would re-notify
       // every basket subscriber for a set that did not move.
+      // The ownership record names global ids; one that belonged to the
+      // removed model is stale, and a stale raw-expressId claim would collide
+      // with a surviving idOffset-0 model — drop the whole record, the basket
+      // re-records on its next write.
+      const owned = state.basketIsolationOwned ?? null;
+      const ownedStale =
+        owned !== null && ([...owned.ids].some(scope.isStale) || [...owned.claims].some(scope.isStale));
       if (
         keptPinboard.size === priorPinboard.size &&
-        keptHierarchyBasket.size === priorHierarchyBasket.size
+        keptHierarchyBasket.size === priorHierarchyBasket.size &&
+        !ownedStale
       ) {
         return {};
       }
 
-      return { pinboardEntities: keptPinboard, hierarchyBasketSelection: keptHierarchyBasket };
+      return {
+        pinboardEntities: keptPinboard,
+        hierarchyBasketSelection: keptHierarchyBasket,
+        ...(ownedStale ? { basketIsolationOwned: null } : {}),
+      };
     },
   },
 );

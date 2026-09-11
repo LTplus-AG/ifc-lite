@@ -19,8 +19,17 @@
 import type { StateCreator } from 'zustand';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { CameraCallbacks, CameraViewpoint, EntityRef, SectionPlane } from '../types.js';
-import { entityRefToString, stringToEntityRef } from '../types.js';
-import { toGlobalIdForRef } from '../globalId.js';
+import { entityRefToString } from '../types.js';
+import {
+  basketAddIsolation,
+  basketRemoveIsolation,
+  basketToGlobalIds,
+  computeBasketVisibility,
+  entityKeysToRefs,
+  ownedWholesale,
+  refsToEntityKeySet,
+  type BasketIsolationOwnership,
+} from './pinboard-isolation.js';
 
 export type BasketSource = 'selection' | 'visible' | 'hierarchy' | 'manual';
 
@@ -90,23 +99,18 @@ export interface PinboardSlice {
   /** Last hierarchy-derived set used for "Hierarchy" basket source */
   hierarchyBasketSelection: Set<string>;
 
+  /**
+   * The basket's claim on `isolatedEntities` — which ids it inserted and
+   * whether it opened the channel. Nulled by the ownership middleware the
+   * moment another writer replaces the channel. See pinboard-isolation.ts.
+   */
+  basketIsolationOwned: BasketIsolationOwnership;
+
   // Actions
-  /** Add entities to pinboard/basket */
-  addToPinboard: (refs: EntityRef[]) => void;
-  /** Remove entities from pinboard/basket */
-  removeFromPinboard: (refs: EntityRef[]) => void;
-  /** Replace pinboard/basket contents (= operation) */
-  setPinboard: (refs: EntityRef[]) => void;
   /** Clear pinboard/basket and isolation */
   clearPinboard: () => void;
   /** Isolate pinboard entities (sync basket → isolatedEntities) */
   showPinboard: () => void;
-  /** Check if entity is in basket */
-  isInPinboard: (ref: EntityRef) => boolean;
-  /** Get basket count */
-  getPinboardCount: () => number;
-  /** Get all basket entities as EntityRef array */
-  getPinboardEntities: () => EntityRef[];
 
   // Basket actions (semantic aliases that also sync isolation)
   /** = Set basket to exactly these entities and isolate them */
@@ -139,63 +143,6 @@ export interface PinboardSlice {
   refreshBasketViewThumbnail: (viewId: string, thumbnailDataUrl: string | null, viewpoint?: CameraViewpoint | null) => void;
   /** Set optional transition duration for a saved basket view (ms). */
   setBasketViewTransitionMs: (viewId: string, transitionMs: number | null) => void;
-}
-
-/** Convert basket EntityRefs to global IDs using model offsets */
-function basketToGlobalIds(
-  basketEntities: Set<string>,
-  models: Map<string, { idOffset: number }>,
-): Set<number> {
-  const globalIds = new Set<number>();
-  for (const str of basketEntities) {
-    const ref = stringToEntityRef(str);
-    globalIds.add(toGlobalIdForRef(models, ref));
-  }
-  return globalIds;
-}
-
-/** Compute a single EntityRef's global ID */
-function refToGlobalId(ref: EntityRef, models: Map<string, { idOffset: number }>): number {
-  return toGlobalIdForRef(models, ref);
-}
-
-function refsToEntityKeySet(refs: EntityRef[]): Set<string> {
-  const keys = new Set<string>();
-  for (const ref of refs) keys.add(entityRefToString(ref));
-  return keys;
-}
-
-function entityKeysToRefs(keys: Iterable<string>): EntityRef[] {
-  const refs: EntityRef[] = [];
-  for (const key of keys) refs.push(stringToEntityRef(key));
-  return refs;
-}
-
-/**
- * Compute isolation + hidden state from basket entities, unhiding any newly added refs.
- *
- * This is the single source of truth for the "basket → visibility" sync that
- * several pinboard actions need.  The incremental add/remove methods bypass
- * this for performance and maintain their own logic.
- */
-function computeBasketVisibility(
-  nextBasket: Set<string>,
-  models: Map<string, { idOffset: number }>,
-  currentHidden: Set<number>,
-  unhideRefs?: EntityRef[],
-): { isolatedEntities: Set<number> | null; hiddenEntities: Set<number> } {
-  if (nextBasket.size === 0) {
-    return { isolatedEntities: null, hiddenEntities: currentHidden };
-  }
-  const isolatedEntities = basketToGlobalIds(nextBasket, models);
-  if (!unhideRefs || unhideRefs.length === 0) {
-    return { isolatedEntities, hiddenEntities: currentHidden };
-  }
-  const hiddenEntities = new Set<number>(currentHidden);
-  for (const ref of unhideRefs) {
-    hiddenEntities.delete(toGlobalIdForRef(models, ref));
-  }
-  return { isolatedEntities, hiddenEntities };
 }
 
 function createViewId(): string {
@@ -235,76 +182,24 @@ export const createPinboardSlice: StateCreator<
 > = (set, get) => ({
   // Initial state
   pinboardEntities: new Set(),
+  basketIsolationOwned: null,
   basketViews: [],
   activeBasketViewId: null,
   basketPresentationVisible: false,
   hierarchyBasketSelection: new Set(),
 
-  // Legacy actions (kept for backward compat, but now they also sync isolation)
-  addToPinboard: (refs) => {
-    if (refs.length > 0) {
-      get().clearEntitySelection();
-    }
-    set((state) => {
-      const next = new Set<string>(state.pinboardEntities);
-      for (const ref of refs) {
-        next.add(entityRefToString(ref));
-      }
-      const visibility = computeBasketVisibility(next, state.models, state.hiddenEntities, refs);
-      return {
-        pinboardEntities: next,
-        ...visibility,
-        activeBasketViewId: null,
-      };
-    });
-  },
-
-  removeFromPinboard: (refs) => {
-    set((state) => {
-      const next = new Set<string>(state.pinboardEntities);
-      for (const ref of refs) {
-        next.delete(entityRefToString(ref));
-      }
-      if (next.size === 0) {
-        return { pinboardEntities: next, isolatedEntities: null, activeBasketViewId: null };
-      }
-      const isolatedEntities = basketToGlobalIds(next, state.models);
-      return { pinboardEntities: next, isolatedEntities, activeBasketViewId: null };
-    });
-  },
-
-  setPinboard: (refs) => {
-    if (refs.length > 0) {
-      get().clearEntitySelection();
-    }
-    const next = new Set<string>();
-    for (const ref of refs) {
-      next.add(entityRefToString(ref));
-    }
-    const s = get();
-    const visibility = computeBasketVisibility(next, s.models, s.hiddenEntities, refs);
-    set({ pinboardEntities: next, ...visibility, activeBasketViewId: null });
-  },
-
-  clearPinboard: () => set({ pinboardEntities: new Set(), isolatedEntities: null, activeBasketViewId: null }),
+  // The basket is the isolation mechanism when non-empty. Every write of
+  // `isolatedEntities` below carries `basketIsolationOwned` in the SAME patch
+  // (the ownership middleware resets records absent from a channel-writing
+  // patch), and the incremental steps re-check ownership by value first.
+  clearPinboard: () =>
+    set({ pinboardEntities: new Set(), isolatedEntities: null, basketIsolationOwned: null, activeBasketViewId: null }),
 
   showPinboard: () => {
     const state = get();
     if (state.pinboardEntities.size === 0) return;
     const isolatedEntities = basketToGlobalIds(state.pinboardEntities, state.models);
-    set({ isolatedEntities });
-  },
-
-  isInPinboard: (ref) => get().pinboardEntities.has(entityRefToString(ref)),
-
-  getPinboardCount: () => get().pinboardEntities.size,
-
-  getPinboardEntities: () => {
-    const result: EntityRef[] = [];
-    for (const str of get().pinboardEntities) {
-      result.push(stringToEntityRef(str));
-    }
-    return result;
+    set({ isolatedEntities, basketIsolationOwned: ownedWholesale(isolatedEntities) });
   },
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -315,7 +210,7 @@ export const createPinboardSlice: StateCreator<
   /** = Set basket to exactly these entities and isolate them */
   setBasket: (refs) => {
     if (refs.length === 0) {
-      set({ pinboardEntities: new Set(), isolatedEntities: null, activeBasketViewId: null });
+      set({ pinboardEntities: new Set(), isolatedEntities: null, basketIsolationOwned: null, activeBasketViewId: null });
       return;
     }
     get().clearEntitySelection();
@@ -334,19 +229,8 @@ export const createPinboardSlice: StateCreator<
     get().clearEntitySelection();
     set((state) => {
       const next = new Set<string>(state.pinboardEntities);
-      for (const ref of refs) {
-        next.add(entityRefToString(ref));
-      }
-      const hiddenEntities = new Set<number>(state.hiddenEntities);
-      // Incrementally add new globalIds to existing isolation set instead of re-parsing all
-      const prevIsolated = state.isolatedEntities;
-      const isolatedEntities = prevIsolated ? new Set<number>(prevIsolated) : basketToGlobalIds(state.pinboardEntities, state.models);
-      for (const ref of refs) {
-        const gid = refToGlobalId(ref, state.models);
-        isolatedEntities.add(gid);
-        hiddenEntities.delete(gid);
-      }
-      return { pinboardEntities: next, isolatedEntities, hiddenEntities, activeBasketViewId: null };
+      for (const ref of refs) next.add(entityRefToString(ref));
+      return { pinboardEntities: next, ...basketAddIsolation(state, next, refs), activeBasketViewId: null };
     });
   },
 
@@ -355,43 +239,16 @@ export const createPinboardSlice: StateCreator<
     if (refs.length === 0) return;
     set((state) => {
       const next = new Set<string>(state.pinboardEntities);
-      // Only refs that were IN the basket may touch the isolation below (a never-pinned ref has no claim on its global id).
+      // Only refs that were IN the basket may touch the isolation (a never-pinned ref has no claim on its global id).
       const removed = refs.filter((ref) => next.delete(entityRefToString(ref)));
       if (removed.length === 0) return {};
-      if (next.size === 0) {
-        return { pinboardEntities: next, isolatedEntities: null, activeBasketViewId: null };
-      }
-      // Two distinct EntityRefs can derive the SAME global id
-      // (`toGlobalIdForRef` falls back to the raw expressId for the
-      // 'legacy'/'default'/'__legacy__' sentinels and for any modelId not yet
-      // registered in `models`), so deleting each removed ref's global id
-      // outright could evict one that a surviving basket entry still
-      // requires. Recompute the surviving basket's own global ids and delete
-      // only ids that set no longer contains.
-      //
-      // The deletion is applied to the PREVIOUS isolation rather than
-      // replacing it with the recomputed set, to stay symmetric with
-      // `addToBasket`, which seeds from `state.isolatedEntities` and so
-      // preserves ids this slice did not author (a restored BCF viewpoint, a
-      // lens rule, a search isolate). A wholesale recompute would let pinning
-      // one element and unpinning another quietly destroy the isolation the
-      // user was working inside.
-      const surviving = basketToGlobalIds(next, state.models);
-      const prevIsolated = state.isolatedEntities;
-      if (prevIsolated === null) {
-        return { pinboardEntities: next, isolatedEntities: surviving, activeBasketViewId: null };
-      }
-      const isolatedEntities = new Set<number>(prevIsolated);
-      for (const ref of removed) {
-        const gid = refToGlobalId(ref, state.models);
-        if (!surviving.has(gid)) isolatedEntities.delete(gid);
-      }
-      return { pinboardEntities: next, isolatedEntities, activeBasketViewId: null };
+      return { pinboardEntities: next, ...basketRemoveIsolation(state, next, removed), activeBasketViewId: null };
     });
   },
 
   /** Clear basket and clear isolation */
-  clearBasket: () => set({ pinboardEntities: new Set(), isolatedEntities: null, activeBasketViewId: null }),
+  clearBasket: () =>
+    set({ pinboardEntities: new Set(), isolatedEntities: null, basketIsolationOwned: null, activeBasketViewId: null }),
 
   setHierarchyBasketSelection: (refs) => set({ hierarchyBasketSelection: refsToEntityKeySet(refs) }),
   clearHierarchyBasketSelection: () => set({ hierarchyBasketSelection: new Set() }),

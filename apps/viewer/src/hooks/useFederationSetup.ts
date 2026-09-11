@@ -40,6 +40,8 @@ export interface FederationSetupApplyResult {
   anchorRestored: boolean;
   /** True when the setup had a saved anchor but that model could not be restored. */
   anchorMissing: boolean;
+  /** Slots that carried tags but had no local file, so their tags stayed unassigned (#4215). */
+  taggedSlotsMissing: string[];
 }
 
 export function useFederationSetup() {
@@ -61,7 +63,7 @@ export function useFederationSetup() {
     const reference = findReferenceGeorefModel();
     const anchorModelId = reference?.modelId ?? anchorModelIdOverride ?? null;
 
-    const setup = await buildFederationSetupFile(models, anchorModelId);
+    const setup = await buildFederationSetupFile(models, anchorModelId, state);
     const json = serializeFederationSetupFile(setup);
     const stem = models.length === 1
       ? sanitizeFilename(models[0].name, { fallback: 'federation' })
@@ -85,9 +87,14 @@ export function useFederationSetup() {
    * the anchor could be restored.
    */
   const applyFederationSetup = useCallback(
-    async (matches: readonly FederationSetupSlotMatch[]): Promise<FederationSetupApplyResult> => {
+    async (setup: FederationSetupFile, matches: readonly FederationSetupSlotMatch[]): Promise<FederationSetupApplyResult> => {
       const summary = summarizeFederationSetupMatches(matches);
       const loadable = matches.filter((m) => m.file !== null);
+
+      // Tag definitions first, by id, so the assignments below (and any saved
+      // filter naming these ids) resolve. A live tag already under an id wins.
+      const { upsertModelTagDefinitions, assignModelTags } = useViewerStore.getState();
+      upsertModelTagDefinitions(setup.tags);
 
       let restoredCount = 0;
       let restoredAnchorModelId: string | null = null;
@@ -106,6 +113,8 @@ export function useFederationSetup() {
         if (modelId) {
           restoredCount += 1;
           if (match.slot.anchor) restoredAnchorModelId = modelId;
+          // After `addModel` returns: the runtime id is fresh, the tags are not (#4215).
+          if (match.slot.tagIds.length > 0) assignModelTags([modelId], match.slot.tagIds);
         }
       }
 
@@ -127,6 +136,7 @@ export function useFederationSetup() {
         mismatchedSlots: summary.mismatched.map((m) => m.slot.name),
         anchorRestored,
         anchorMissing: hadAnchorSlot && !anchorRestored,
+        taggedSlotsMissing: summary.missing.filter((m) => m.slot.tagIds.length > 0).map((m) => m.slot.name),
       };
     },
     [addModel, realignFederation, setAnchorModelIdOverride],

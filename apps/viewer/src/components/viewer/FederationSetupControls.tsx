@@ -107,9 +107,9 @@ export function FederationSetupControls() {
   }, []);
 
   const handleApply = useCallback(() => {
-    if (!matches) return;
+    if (!matches || !pendingSetup) return;
     setApplying(true);
-    void applyFederationSetup(matches).then((result) => {
+    void applyFederationSetup(pendingSetup, matches).then((result) => {
       setApplying(false);
       closeReview();
       if (result.outcome === 'failed') {
@@ -120,11 +120,12 @@ export function FederationSetupControls() {
       if (result.missingSlots.length > 0) parts.push(`missing: ${result.missingSlots.join(', ')}`);
       if (result.mismatchedSlots.length > 0) parts.push(`same name, different content: ${result.mismatchedSlots.join(', ')}`);
       if (result.anchorMissing) parts.push('alignment anchor could not be restored');
+      if (result.taggedSlotsMissing.length > 0) parts.push(`tags not restored for: ${result.taggedSlotsMissing.join(', ')}`);
       const message = parts.join(' — ');
       if (result.outcome === 'restored' && !result.anchorMissing) toast.success(message);
       else toast.error(message);
     });
-  }, [matches, applyFederationSetup, closeReview]);
+  }, [matches, pendingSetup, applyFederationSetup, closeReview]);
 
   return (
     <>

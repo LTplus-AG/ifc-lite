@@ -36,13 +36,25 @@
  * construction (never a spread of an arbitrary object), so saving the same
  * federation state twice produces byte-identical output — no hash-map
  * iteration ordering and no embedded timestamp to make two saves differ.
+ *
+ * ## Model tags (format 2, issue #4215)
+ * Format 2 adds the user's model tags: `tags` declares the definitions the
+ * slots use (id, name, colour — ONLY tags some slot carries, sorted by id, so
+ * the file describes this federation and not the whole browser vocabulary),
+ * and each slot lists its `tagIds`. Ids are kept verbatim so a saved advanced
+ * filter or clash preset that names a tag id still resolves after a reopen on
+ * another machine. Format 1 files read as format 2 with no tags.
  */
 
 import { computeSourceFingerprint } from '../../hooks/sourceFingerprint.js';
 import type { FederatedModel } from '../../store/types.js';
+import type { ModelTag } from '../model-tags/types.js';
+import { parseModelTag } from '../model-tags/persistence.js';
 
 /** Current on-disk format version. Bump on any breaking shape change. */
-export const FEDERATION_SETUP_FORMAT_VERSION = 1;
+export const FEDERATION_SETUP_FORMAT_VERSION = 2;
+/** Every version `parseFederationSetupFile` still reads. */
+const READABLE_FORMAT_VERSIONS: readonly number[] = [1, FEDERATION_SETUP_FORMAT_VERSION];
 
 /** One saved model slot: what is needed to find the file again and restore its state. */
 export interface FederationSetupSlot {
@@ -63,13 +75,23 @@ export interface FederationSetupSlot {
   collapsed: boolean;
   /** True for exactly one slot: the federation's alignment anchor. */
   anchor: boolean;
+  /** Model tag ids on this model (#4215); each is declared in `FederationSetupFile.tags`. */
+  tagIds: string[];
 }
 
 /** A complete, versioned, portable federation setup. */
 export interface FederationSetupFile {
-  formatVersion: 1;
+  formatVersion: typeof FEDERATION_SETUP_FORMAT_VERSION;
+  /** Tag definitions the slots reference, sorted by id (#4215). */
+  tags: ModelTag[];
   /** Slots in federation load order. */
   slots: FederationSetupSlot[];
+}
+
+/** The live tag state `buildFederationSetupFile` reads (structural: the slice's two maps). */
+export interface FederationSetupTagState {
+  modelTags: ReadonlyMap<string, ModelTag>;
+  modelTagAssignments: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 /** Compute the content fingerprint of a `File`'s current bytes. */
@@ -85,16 +107,28 @@ export async function computeFileFingerprint(file: File): Promise<string> {
  * @param anchorModelId - The id of the model currently acting as the
  *   alignment anchor (the "effective anchor", not necessarily the pinned
  *   override — see `findReferenceGeorefModel`), or `null` if none.
+ * @param tagState - Tag definitions + assignments; omit for a tagless file.
  */
 export async function buildFederationSetupFile(
   models: readonly FederatedModel[],
   anchorModelId: string | null,
+  tagState?: FederationSetupTagState,
 ): Promise<FederationSetupFile> {
+  const used = new Map<string, ModelTag>();
   const slots: FederationSetupSlot[] = await Promise.all(
     models.map(async (model) => {
       const fingerprintHex = model.sourceFile
         ? await computeFileFingerprint(model.sourceFile)
         : null;
+      // Only ids with a live definition: an assignment whose tag was deleted
+      // has nothing to declare, and a reader would (rightly) refuse it.
+      const tagIds: string[] = [];
+      for (const id of [...(tagState?.modelTagAssignments.get(model.id) ?? [])].sort()) {
+        const tag = tagState?.modelTags.get(id);
+        if (!tag) continue;
+        tagIds.push(id);
+        used.set(id, tag);
+      }
       return {
         name: model.name,
         fileSize: model.fileSize,
@@ -102,16 +136,24 @@ export async function buildFederationSetupFile(
         visible: model.visible,
         collapsed: model.collapsed,
         anchor: model.id === anchorModelId,
+        tagIds,
       };
     }),
   );
-  return { formatVersion: FEDERATION_SETUP_FORMAT_VERSION, slots };
+  const tags = [...used.keys()].sort().map((id) => canonicalTag(used.get(id) as ModelTag));
+  return { formatVersion: FEDERATION_SETUP_FORMAT_VERSION, tags, slots };
+}
+
+/** Fixed key order, no stray fields — what makes two saves byte-identical. */
+function canonicalTag(tag: ModelTag): ModelTag {
+  return { id: tag.id, name: tag.name, ...(tag.color ? { color: tag.color } : {}) };
 }
 
 /** Serialize a setup to its canonical on-disk JSON text (stable key order, 2-space indent). */
 export function serializeFederationSetupFile(setup: FederationSetupFile): string {
   const canonical: FederationSetupFile = {
     formatVersion: setup.formatVersion,
+    tags: setup.tags.map(canonicalTag),
     slots: setup.slots.map((slot) => ({
       name: slot.name,
       fileSize: slot.fileSize,
@@ -119,6 +161,7 @@ export function serializeFederationSetupFile(setup: FederationSetupFile): string
       visible: slot.visible,
       collapsed: slot.collapsed,
       anchor: slot.anchor,
+      tagIds: [...slot.tagIds],
     })),
   };
   return JSON.stringify(canonical, null, 2);
@@ -146,12 +189,16 @@ export function parseFederationSetupFile(raw: string): FederationSetupParseResul
   }
   const obj = json as Record<string, unknown>;
 
-  if (obj.formatVersion !== FEDERATION_SETUP_FORMAT_VERSION) {
+  if (typeof obj.formatVersion !== 'number' || !READABLE_FORMAT_VERSIONS.includes(obj.formatVersion)) {
     return {
       ok: false,
-      error: `Unsupported federation setup version: ${JSON.stringify(obj.formatVersion)} (expected ${FEDERATION_SETUP_FORMAT_VERSION}).`,
+      error: `Unsupported federation setup version: ${JSON.stringify(obj.formatVersion)} (expected ${READABLE_FORMAT_VERSIONS.join(' or ')}).`,
     };
   }
+  const tagsResult = parseSetupTags(obj.formatVersion, obj.tags);
+  if (!tagsResult.ok) return tagsResult;
+  const tags = tagsResult.tags;
+  const declaredTagIds = new Set(tags.map((t) => t.id));
   if (!Array.isArray(obj.slots)) {
     return { ok: false, error: '"slots" must be an array.' };
   }
@@ -186,6 +233,8 @@ export function parseFederationSetupFile(raw: string): FederationSetupParseResul
       return { ok: false, error: `slots[${i}].anchor must be a boolean.` };
     }
     if (s.anchor) anchorCount += 1;
+    const tagIds = parseSlotTagIds(obj.formatVersion, s.tagIds, declaredTagIds);
+    if (typeof tagIds === 'string') return { ok: false, error: `slots[${i}].tagIds ${tagIds}` };
     slots.push({
       name: s.name,
       fileSize: s.fileSize,
@@ -193,13 +242,39 @@ export function parseFederationSetupFile(raw: string): FederationSetupParseResul
       visible: s.visible,
       collapsed: s.collapsed,
       anchor: s.anchor,
+      tagIds,
     });
   }
   if (anchorCount > 1) {
     return { ok: false, error: `Exactly one slot may be the anchor; found ${anchorCount}.` };
   }
 
-  return { ok: true, setup: { formatVersion: FEDERATION_SETUP_FORMAT_VERSION, slots } };
+  return { ok: true, setup: { formatVersion: FEDERATION_SETUP_FORMAT_VERSION, tags, slots } };
+}
+
+/** Format 1 has no tags; format 2 must declare a well-formed, id-unique list. */
+function parseSetupTags(formatVersion: number, raw: unknown): { ok: true; tags: ModelTag[] } | { ok: false; error: string } {
+  if (formatVersion === 1) return { ok: true, tags: [] };
+  if (!Array.isArray(raw)) return { ok: false, error: '"tags" must be an array.' };
+  const tags: ModelTag[] = [];
+  const ids = new Set<string>();
+  for (let i = 0; i < raw.length; i++) {
+    const tag = parseModelTag(raw[i]);
+    if (!tag) return { ok: false, error: `tags[${i}] must be { id, name, color? } with non-empty id and name.` };
+    if (ids.has(tag.id)) return { ok: false, error: `tags[${i}] repeats the id ${JSON.stringify(tag.id)}.` };
+    ids.add(tag.id);
+    tags.push(tag);
+  }
+  return { ok: true, tags };
+}
+
+/** A slot's tag ids, or the reason (as a string) they are unreadable. Every id must be declared. */
+function parseSlotTagIds(formatVersion: number, raw: unknown, declared: ReadonlySet<string>): string[] | string {
+  if (formatVersion === 1) return [];
+  if (!Array.isArray(raw) || !raw.every((t) => typeof t === 'string')) return 'must be an array of strings.';
+  const undeclared = (raw as string[]).find((t) => !declared.has(t));
+  if (undeclared !== undefined) return `references an undeclared tag ${JSON.stringify(undeclared)}.`;
+  return [...new Set(raw as string[])];
 }
 
 /** How confidently a local file was matched back to a saved slot. */

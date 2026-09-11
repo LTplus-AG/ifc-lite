@@ -323,6 +323,19 @@ describe('BCF Viewpoint Coordinate Conversion', () => {
       expect(noIsolation.visibleGuids).toBeNull();
     });
 
+    // Independent oracle: `createViewpoint` always writes `exceptions: []`, so
+    // the round-trip above cannot tell whether the extractor also handles a
+    // viewpoint from another BCF tool that omits `<Exceptions>` entirely.
+    it('reads defaultVisibility=false with no exceptions element as an active-but-empty isolation', () => {
+      const foreign = {
+        guid: '11111111-2222-3333-4444-555555555555',
+        components: { visibility: { defaultVisibility: false } },
+      } as unknown as Parameters<typeof extractViewpointState>[0];
+      const state = extractViewpointState(foreign);
+      expect(state.visibleGuids).toEqual([]);
+      expect(state.hiddenGuids).toEqual([]);
+    });
+
     it('omits components entirely when nothing is selected, hidden or coloured', () => {
       const bare = createViewpoint({ camera });
       expect(bare.components).toBeUndefined();

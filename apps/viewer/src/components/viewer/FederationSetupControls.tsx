@@ -12,6 +12,9 @@
  * match against it); the review step never applies anything silently — every
  * slot is shown as matched, mismatched (same name, different content/size),
  * or missing before the user confirms.
+ *
+ * Also mounts `ModelTagsCommand` (#4215): the palette's "Model Tags" entry,
+ * the tag editor for a one-model session - the tags travel in this file.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -32,6 +35,7 @@ import {
   type FederationSetupFile,
   type FederationSetupSlotMatch,
 } from '@/lib/federation/federationSetupFile';
+import { ModelTagsCommand } from './ModelTagsCommand';
 
 const EVENT_SAVE = 'ifc-lite:save-federation-setup';
 const EVENT_OPEN = 'ifc-lite:open-federation-setup';
@@ -129,6 +133,7 @@ export function FederationSetupControls() {
 
   return (
     <>
+      <ModelTagsCommand />
       <input
         ref={setupFileInputRef}
         type="file"

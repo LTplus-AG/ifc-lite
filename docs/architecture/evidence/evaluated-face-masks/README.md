@@ -63,9 +63,16 @@ comparison, not a Hausdorff proof.
 
 ## Performance
 
-[`native-load.json`](native-load.json) is the interleaved base-versus-branch
-native normal-load probe (`scripts/perf/ab.sh`, five rounds per side, AC20).
-The verdict and its limits are recorded in the ledger row
-"Evaluated face masks and tessellatable-body policy (#4404)" in
-`scripts/perf/README.md`. Face masks and the widened policy run only inside an
-explicit appearance plan; ordinary loading does not touch them.
+[`native-load.json`](native-load.json) is the interleaved, order-balanced
+base-versus-branch native normal-load probe on AC20 (nine rounds per side,
+prebuilt `profiling` binaries, the `ab.sh` method driven through
+`scripts/perf/ab-order.mjs` with seed 4404 because its CLI guard prints
+nothing on Windows). Every phase median is equal or within two milliseconds and
+inside the reporter's noise band; the reporter withheld a verdict because the
+base's own spread exceeded its 15% threshold on a machine shared with other
+builds. [`native-fingerprints.json`](native-fingerprints.json) compares a
+`--fingerprint` run of both binaries: identical mesh, vertex and triangle
+counts and identical ordered geometry fingerprints. The ledger row "Evaluated
+face masks and tessellatable-body policy (#4404)" in `scripts/perf/README.md`
+records the verdict and its limits. Face masks and the widened policy run only
+inside an explicit appearance plan; ordinary loading does not touch them.

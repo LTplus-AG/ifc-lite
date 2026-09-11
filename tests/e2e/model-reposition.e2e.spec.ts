@@ -51,6 +51,7 @@ async function load(page: Page, file: string | { name: string; mimeType: string;
   // regression — so skip with the evidence attached rather than fail. A
   // strict run (real GPU) still fails here.
   if (outcome === 'device-lost' && process.env.E2E_GPU_STRICT === '0') {
+    console.warn(`[e2e] E2E_GPU_STRICT=0 — skipping: software-GPU device lost during load(${name}, ${count})`);
     test.skip(true, `hosted software-GPU device lost during load(${name}, ${count}): ${detail}`);
   }
   throw new Error(`load(${name}, ${count}) ${outcome === 'device-lost' ? 'aborted: GPU device lost' : 'did not settle'}: ${detail}`);

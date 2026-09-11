@@ -12,7 +12,8 @@
  *   − (remove) — remove source set from basket
  *
  * When the basket is non-empty, only basket entities are visible (isolation).
- * The basket also syncs to isolatedEntities for renderer consumption.
+ * The basket also syncs to isolatedEntities for renderer consumption,
+ * claiming only the ids it inserts there (#4527).
  * Users can persist any basket as a saved "view" with a thumbnail preview.
  */
 
@@ -66,10 +67,11 @@ export interface SaveBasketViewOptions {
 /**
  * Cross-slice state that pinboard reads/writes via the combined store.
  *
- * When the basket is non-empty, pinboard owns `isolatedEntities` and
- * `hiddenEntities` — it is the isolation mechanism.  The visibility slice
- * also writes these fields for non-basket isolation (direct UI isolation).
- * They share the same state fields by design.
+ * The basket writes `isolatedEntities` and `hiddenEntities`, which it shares
+ * with every other isolation writer (direct UI isolation, BCF viewpoint
+ * restore, lens, search). Which ids the basket may take back is decided by
+ * its ownership record, `basketVisibilityOwned` — see pinboard-isolation.ts
+ * (#4527) — not by whether the basket is non-empty.
  */
 interface PinboardCrossSliceState {
   isolatedEntities: Set<number> | null;
@@ -104,7 +106,7 @@ export interface PinboardSlice {
    * whether it opened the channel. Nulled by the ownership middleware the
    * moment another writer replaces the channel. See pinboard-isolation.ts.
    */
-  basketIsolationOwned: BasketIsolationOwnership;
+  basketVisibilityOwned: BasketIsolationOwnership;
 
   // Actions
   /** Clear pinboard/basket and isolation */
@@ -182,24 +184,24 @@ export const createPinboardSlice: StateCreator<
 > = (set, get) => ({
   // Initial state
   pinboardEntities: new Set(),
-  basketIsolationOwned: null,
+  basketVisibilityOwned: null,
   basketViews: [],
   activeBasketViewId: null,
   basketPresentationVisible: false,
   hierarchyBasketSelection: new Set(),
 
   // The basket is the isolation mechanism when non-empty. Every write of
-  // `isolatedEntities` below carries `basketIsolationOwned` in the SAME patch
+  // `isolatedEntities` below carries `basketVisibilityOwned` in the SAME patch
   // (the ownership middleware resets records absent from a channel-writing
   // patch), and the incremental steps re-check ownership by value first.
   clearPinboard: () =>
-    set({ pinboardEntities: new Set(), isolatedEntities: null, basketIsolationOwned: null, activeBasketViewId: null }),
+    set({ pinboardEntities: new Set(), isolatedEntities: null, basketVisibilityOwned: null, activeBasketViewId: null }),
 
   showPinboard: () => {
     const state = get();
     if (state.pinboardEntities.size === 0) return;
     const isolatedEntities = basketToGlobalIds(state.pinboardEntities, state.models);
-    set({ isolatedEntities, basketIsolationOwned: ownedWholesale(isolatedEntities) });
+    set({ isolatedEntities, basketVisibilityOwned: ownedWholesale(isolatedEntities) });
   },
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -210,7 +212,7 @@ export const createPinboardSlice: StateCreator<
   /** = Set basket to exactly these entities and isolate them */
   setBasket: (refs) => {
     if (refs.length === 0) {
-      set({ pinboardEntities: new Set(), isolatedEntities: null, basketIsolationOwned: null, activeBasketViewId: null });
+      set({ pinboardEntities: new Set(), isolatedEntities: null, basketVisibilityOwned: null, activeBasketViewId: null });
       return;
     }
     get().clearEntitySelection();
@@ -248,7 +250,7 @@ export const createPinboardSlice: StateCreator<
 
   /** Clear basket and clear isolation */
   clearBasket: () =>
-    set({ pinboardEntities: new Set(), isolatedEntities: null, basketIsolationOwned: null, activeBasketViewId: null }),
+    set({ pinboardEntities: new Set(), isolatedEntities: null, basketVisibilityOwned: null, activeBasketViewId: null }),
 
   setHierarchyBasketSelection: (refs) => set({ hierarchyBasketSelection: refsToEntityKeySet(refs) }),
   clearHierarchyBasketSelection: () => set({ hierarchyBasketSelection: new Set() }),

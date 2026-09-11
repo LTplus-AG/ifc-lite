@@ -78,30 +78,30 @@ export function computeBasketVisibility(
   models: Models,
   currentHidden: Set<number>,
   unhideRefs?: EntityRef[],
-): { isolatedEntities: Set<number> | null; hiddenEntities: Set<number>; basketIsolationOwned: BasketIsolationOwnership } {
+): { isolatedEntities: Set<number> | null; hiddenEntities: Set<number>; basketVisibilityOwned: BasketIsolationOwnership } {
   if (nextBasket.size === 0) {
-    return { isolatedEntities: null, hiddenEntities: currentHidden, basketIsolationOwned: null };
+    return { isolatedEntities: null, hiddenEntities: currentHidden, basketVisibilityOwned: null };
   }
   const isolatedEntities = basketToGlobalIds(nextBasket, models);
-  const basketIsolationOwned = ownedWholesale(isolatedEntities);
+  const basketVisibilityOwned = ownedWholesale(isolatedEntities);
   if (!unhideRefs || unhideRefs.length === 0) {
-    return { isolatedEntities, hiddenEntities: currentHidden, basketIsolationOwned };
+    return { isolatedEntities, hiddenEntities: currentHidden, basketVisibilityOwned };
   }
   const hiddenEntities = new Set<number>(currentHidden);
   for (const ref of unhideRefs) hiddenEntities.delete(toGlobalIdForRef(models, ref));
-  return { isolatedEntities, hiddenEntities, basketIsolationOwned };
+  return { isolatedEntities, hiddenEntities, basketVisibilityOwned };
 }
 
 interface IsolationState extends VisibilityChannels {
   isolatedEntities: Set<number> | null;
   hiddenEntities: Set<number>;
   models: Models;
-  basketIsolationOwned: BasketIsolationOwnership;
+  basketVisibilityOwned: BasketIsolationOwnership;
 }
 
 /** The basket's record, but only if the channel still holds what the basket wrote. */
 function liveRecord(state: IsolationState): Exclude<BasketIsolationOwnership, null> | null {
-  const owned = state.basketIsolationOwned;
+  const owned = state.basketVisibilityOwned;
   return owned && ownsCurrentVisibility(state, owned) ? owned : null;
 }
 
@@ -113,7 +113,7 @@ export function basketAddIsolation(
   state: IsolationState,
   nextBasket: Set<string>,
   refs: EntityRef[],
-): { isolatedEntities: Set<number>; hiddenEntities: Set<number>; basketIsolationOwned: BasketIsolationOwnership } {
+): { isolatedEntities: Set<number>; hiddenEntities: Set<number>; basketVisibilityOwned: BasketIsolationOwnership } {
   const hiddenEntities = new Set<number>(state.hiddenEntities);
   const prev = state.isolatedEntities;
   let isolatedEntities: Set<number>;
@@ -141,7 +141,7 @@ export function basketAddIsolation(
   return {
     isolatedEntities,
     hiddenEntities,
-    basketIsolationOwned: { channel: 'isolate', ids: new Set(isolatedEntities), claims, seeded },
+    basketVisibilityOwned: { channel: 'isolate', ids: new Set(isolatedEntities), claims, seeded },
   };
 }
 
@@ -155,27 +155,27 @@ export function basketRemoveIsolation(
   state: IsolationState,
   nextBasket: Set<string>,
   removed: EntityRef[],
-): { isolatedEntities?: Set<number> | null; basketIsolationOwned: BasketIsolationOwnership } {
+): { isolatedEntities?: Set<number> | null; basketVisibilityOwned: BasketIsolationOwnership } {
   const prev = state.isolatedEntities;
   if (nextBasket.size === 0) {
-    if (prev === null) return { basketIsolationOwned: null };
+    if (prev === null) return { basketVisibilityOwned: null };
     const live = liveRecord(state);
-    if (!live) return { basketIsolationOwned: null }; // someone else's isolation: leave it
-    if (live.seeded) return { isolatedEntities: null, basketIsolationOwned: null };
+    if (!live) return { basketVisibilityOwned: null }; // someone else's isolation: leave it
+    if (live.seeded) return { isolatedEntities: null, basketVisibilityOwned: null };
     // The basket widened an isolation it did not open: give back the remainder
     // (possibly an empty, still-active Set — a valid state, see #4509).
     const remainder = new Set(prev);
     for (const id of live.claims) remainder.delete(id);
-    return { isolatedEntities: remainder, basketIsolationOwned: null };
+    return { isolatedEntities: remainder, basketVisibilityOwned: null };
   }
   if (prev === null) {
     // The channel was cleared externally while the basket was non-empty
     // ("hide active basket"): the surviving basket re-takes it wholesale.
     const isolatedEntities = basketToGlobalIds(nextBasket, state.models);
-    return { isolatedEntities, basketIsolationOwned: ownedWholesale(isolatedEntities) };
+    return { isolatedEntities, basketVisibilityOwned: ownedWholesale(isolatedEntities) };
   }
   const live = liveRecord(state);
-  if (!live) return { basketIsolationOwned: null }; // replaced by another writer: not ours to narrow
+  if (!live) return { basketVisibilityOwned: null }; // replaced by another writer: not ours to narrow
   const surviving = basketToGlobalIds(nextBasket, state.models);
   const isolatedEntities = new Set(prev);
   const claims = new Set(live.claims);
@@ -190,6 +190,6 @@ export function basketRemoveIsolation(
   }
   return {
     isolatedEntities,
-    basketIsolationOwned: { channel: 'isolate', ids: new Set(isolatedEntities), claims, seeded: live.seeded },
+    basketVisibilityOwned: { channel: 'isolate', ids: new Set(isolatedEntities), claims, seeded: live.seeded },
   };
 }

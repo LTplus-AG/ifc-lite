@@ -41,8 +41,8 @@
  * A record field the patch ITSELF carries is left exactly as the patch has it.
  * An installer committing the channel and its claim in one `set()` is stating
  * both at once and must not have the claim eaten by the write that created it.
- * (Today's installers write the channel first and the record second, two
- * `set()`s — this makes the atomic form safe too rather than a latent trap.)
+ * (The clash and IDS installers write the channel first and the record second,
+ * two `set()`s; the basket commits both in one patch, `basketVisibilityOwned`.)
  *
  * A patch touching NEITHER channel is returned by reference, so the common
  * case adds no keys, allocates nothing, and preserves the identity-return

@@ -182,7 +182,7 @@ describe('every pinboard write of the isolate channel ends the claims it invalid
   it('removeFromBasket (down to empty) leaves a channel another owner replaced, and its record, alone', () => {
     store().setBasket(REFS);
     idsOwns('isolate', [9]);
-    assert.equal(store().basketIsolationOwned, null, 'setup: the IDS replacement ended the basket claim');
+    assert.equal(store().basketVisibilityOwned, null, 'setup: the IDS replacement ended the basket claim');
     store().removeFromBasket(REFS);
     assert.deepEqual(isolated(), [9], "the IDS isolation is not the basket's to close");
     assert.deepEqual(store().idsFocusVisibilityOwned, { channel: 'isolate', ids: new Set([9]) });
@@ -203,7 +203,7 @@ describe('every pinboard write of the isolate channel ends the claims it invalid
     store().removeFromBasket([{ modelId: 'A', expressId: 4 }]);
     assert.deepEqual(isolated(), [3]);
     assert.equal(store().clashVisibilityOwned, null, 'the channel no longer holds exactly {3, 4}');
-    assert.deepEqual(store().basketIsolationOwned?.ids, new Set([3]), 'the basket record follows its own write');
+    assert.deepEqual(store().basketVisibilityOwned?.ids, new Set([3]), 'the basket record follows its own write');
   });
 
   it('restoreBasketEntities', () => {
@@ -284,12 +284,12 @@ describe('a write that leaves a record\'s content intact does not invalidate it'
 
   it("the basket's own record survives its own writes and dies on a foreign replacement (#4527 chain)", () => {
     store().setBasket([{ modelId: 'A', expressId: 3 }]);
-    assert.deepEqual(store().basketIsolationOwned?.ids, new Set([3]), 'setup: wholesale write records ownership');
+    assert.deepEqual(store().basketVisibilityOwned?.ids, new Set([3]), 'setup: wholesale write records ownership');
     store().addToBasket([{ modelId: 'A', expressId: 4 }]);
-    assert.deepEqual(store().basketIsolationOwned?.ids, new Set([3, 4]), 'an incremental write refreshes the record');
+    assert.deepEqual(store().basketVisibilityOwned?.ids, new Set([3, 4]), 'an incremental write refreshes the record');
     // Foreign replacement: the basket record is gone even though 3 and 4 are still in the set.
     store().setIsolatedEntities(new Set([3, 4, 9]));
-    assert.equal(store().basketIsolationOwned, null);
+    assert.equal(store().basketVisibilityOwned, null);
     // A third owner installs the same content again: still not the basket's — its record stays null.
     store().setClashVisibilityOwned({ channel: 'isolate', ids: new Set([3, 4, 9]) });
     store().removeFromBasket([{ modelId: 'A', expressId: 3 }]);

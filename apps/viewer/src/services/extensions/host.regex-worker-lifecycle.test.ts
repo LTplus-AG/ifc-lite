@@ -34,10 +34,9 @@ class TestHost extends ExtensionHostService {
       }),
     });
   }
-  /** Test-only reach into the private client — see module doc. */
+  /** Test-only reach into the private evaluator (host-regex.ts) — see module doc. */
   regexClient() {
-    return (this as unknown as { regexWorkerClient: { evaluate: (p: string, t: string) => Promise<unknown> } })
-      .regexWorkerClient;
+    return (this as unknown as { regex: { evaluate: (p: string, t: string) => Promise<unknown> } }).regex;
   }
 }
 
@@ -55,13 +54,11 @@ describe('ExtensionHostService regex worker client survives a StrictMode-shaped 
     // ExtensionHostService.
     await host.init();
 
-    // The rejection reason must have changed from "disposed" — this repo
-    // has no global `Worker`, so the un-poisoned client now genuinely
-    // attempts to start one and rejects for THAT reason instead. Any
-    // "disposed" rejection here means the reset in init() didn't run.
-    await assert.rejects(
-      host.regexClient().evaluate('a', 'a'),
-      (err: unknown) => err instanceof Error && !/disposed/i.test(err.message),
-    );
+    // No "disposed" rejection any more — this repo has no global `Worker`,
+    // so the un-poisoned client now genuinely attempts to start one, fails
+    // for THAT reason, and the host evaluator falls back to the in-process
+    // check (#4505 finding B). A "disposed" rejection here means the reset
+    // in init() didn't run.
+    assert.deepEqual(await host.regexClient().evaluate('a', 'a'), { matched: true });
   });
 });

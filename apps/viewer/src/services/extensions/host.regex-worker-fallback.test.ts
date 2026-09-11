@@ -35,14 +35,14 @@ class TestHost extends ExtensionHostService {
       }),
     });
   }
-  /** Test-only reach into the private hook — see module doc. */
+  /** Test-only reach into the private evaluator (host-regex.ts) — see module doc. */
   evaluateRegex(pattern: string, text: string) {
-    return (this as unknown as { evaluateRegexWithFallback: (p: string, t: string) => Promise<{ matched: boolean }> })
-      .evaluateRegexWithFallback(pattern, text);
+    return (this as unknown as { regex: { evaluate: (p: string, t: string) => Promise<{ matched: boolean }> } })
+      .regex.evaluate(pattern, text);
   }
 }
 
-describe('ExtensionHostService.evaluateRegexWithFallback (#4505 finding B)', () => {
+describe('ExtensionHostService regex evaluator fallback (#4505 finding B)', () => {
   it('falls back to in-process evaluation when no Worker is available, instead of rejecting every check', async () => {
     const host = new TestHost();
 

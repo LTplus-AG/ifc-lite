@@ -31,41 +31,11 @@ import type {
 } from '../types.js';
 import type { ActivationRecord, ExtensionRuntime } from '../host/runtime.js';
 import { wrapEntrySource } from '../host/source-wrap.js';
-import {
-  MAX_GUARDED_REGEX_PATTERN_LENGTH,
-  hasCatastrophicBacktrackingShape,
-} from '@ifc-lite/regex-guard';
+import { checkRegexExpectation, defaultRegexEvaluator, type RegexEvaluator } from './regex-evaluator.js';
 
-/** Outcome of evaluating one `expect.regex` matcher against the test's text. */
-export interface RegexEvalResult {
-  matched: boolean;
-}
-
-/**
- * Evaluates a regex pattern against text and resolves with the match
- * result. Throws (a rejected promise) on both an invalid pattern and a
- * timeout/failure — callers don't need a separate error variant, since
- * `applyExpectations`'s catch branch already handles a thrown
- * `new RegExp` the same way either kind of failure would need to be
- * reported.
- *
- * The default (`defaultRegexEvaluator`) runs `new RegExp(...).test(...)`
- * synchronously in-process, which is exactly what this module has always
- * done — CLI and test callers get byte-identical behaviour. A host that
- * wants the actual work to run somewhere else (e.g. the viewer running it
- * in a Worker with a timeout, off the main UI thread) supplies its own
- * evaluator via `RunBundleTestsOptions.evaluateRegex`.
- */
-export type RegexEvaluator = (pattern: string, text: string) => Promise<RegexEvalResult>;
-
-/** Synchronous, in-process default: today's `new RegExp(pattern).test(text)`. */
-export const defaultRegexEvaluator: RegexEvaluator = (pattern, text) => {
-  try {
-    return Promise.resolve({ matched: new RegExp(pattern).test(text) });
-  } catch (err) {
-    return Promise.reject(err instanceof Error ? err : new Error(String(err)));
-  }
-};
+// The `expect.regex` evaluator contract (#4482) lives in regex-evaluator.ts;
+// re-exported here so existing `./runner.js` importers keep working.
+export { defaultRegexEvaluator, type RegexEvalResult, type RegexEvaluator } from './regex-evaluator.js';
 
 export interface TestRunResult {
   name: string;
@@ -336,45 +306,10 @@ async function applyExpectations(
   }
 
   if (expect.regex !== undefined) {
-    const text = readText(value);
-    if (text === undefined) {
-      reasons.push(`regex: result has no text representation`);
-    } else if (expect.regex.length > MAX_GUARDED_REGEX_PATTERN_LENGTH) {
-      // Length cap is a shallow defence (`(a+)+$` is 6 chars and
-      // catastrophic). The real boundary is drag-drop side-loading
-      // (ExtensionsPanel.tsx), not a future registry (deferred
-      // Phase-5, see 10-registry-and-signing.md): "Run tests" or
-      // RepairQueuePanel's "Run check" reach runBundleTests. This cheap
-      // check runs unconditionally, in-process, before `evaluateRegex`
-      // is ever called — it does not depend on the evaluator bounding
-      // execution time.
-      reasons.push(`regex: pattern exceeds ${MAX_GUARDED_REGEX_PATTERN_LENGTH}-char limit`);
-    } else if (hasCatastrophicBacktrackingShape(expect.regex)) {
-      // Cheap shape check for the well-known catastrophic-backtracking
-      // patterns: `(...+)+`, `(...+)*`, `(.*)+`, `(.*)*` and their
-      // siblings. Surfaces obvious ReDoS in the test runner.
-      reasons.push(`regex: pattern has catastrophic-backtracking shape`);
-    } else {
-      try {
-        const { matched } = await evaluateRegex(expect.regex, text);
-        if (!matched) {
-          reasons.push(`regex: pattern ${expect.regex} did not match`);
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        // A genuinely malformed pattern throws `SyntaxError` — both
-        // `defaultRegexEvaluator` and `RegexWorkerClient.evaluate`
-        // (regex-worker-client.ts) preserve that; anything else an
-        // evaluator rejects with (timeout, disposed, worker failed to
-        // start) is a plain `Error` and must not read as if the
-        // author's pattern were the problem (#4505 finding A).
-        if (err instanceof SyntaxError) {
-          reasons.push(`regex: invalid pattern ${expect.regex}: ${message}`);
-        } else {
-          reasons.push(`regex: evaluation failed for pattern ${expect.regex}: ${message}`);
-        }
-      }
-    }
+    // Guards (length cap, catastrophic-backtracking shape) and the
+    // evaluator call live in regex-evaluator.ts.
+    const reason = await checkRegexExpectation(expect.regex, readText(value), evaluateRegex);
+    if (reason !== undefined) reasons.push(reason);
   }
 
   if (expect.jsonShape !== undefined) {

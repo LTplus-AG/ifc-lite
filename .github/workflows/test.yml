@@ -23,11 +23,20 @@ on:
   # A red PR would go green on a typo fix in its description. That is the exact
   # absence-reads-as-success class this trigger is being widened to close.
   #
-  # THE PRICE, STATED: every title or body edit now costs a second full 16-lane
-  # run of a head that already has a verdict -- routine on the changesets
-  # release PR, which rewrites its body after every merge. What it does NOT
-  # cost is the run already in flight; see `cancel-in-progress` below, which
-  # declines to cancel for `edited` alone.
+  # THE PRICE, AND HOW IT IS NOW PAID (CI redesign, step 2): a title or body
+  # edit used to cost a second full run of a head that already had a verdict
+  # -- 158 of 400 PR runs in 38 h, routine on the changesets release PR,
+  # which rewrites its body after every merge. `changes` now PROBES such an
+  # event (scripts/ci-verdict-replay.mjs --probe): when it is an `edited`
+  # with no `changes.base` AND the head SHA already carries a completed
+  # aggregate verdict, it emits `noop=true`, publishes no filter output, and
+  # every lane skips; the aggregate then REPLAYS that recorded verdict rather
+  # than judging the skipped lanes. A red head stays red, a green one stays
+  # green, and a retarget (`changes.base` present) or a head with no verdict
+  # yet still gets the full run. The decision lives in the script, which reads
+  # the event payload -- no job here gates on `changes.base`, for the reason
+  # the paragraph above gives. What an edit still does NOT cost is the run
+  # already in flight; see `cancel-in-progress` below.
   #
   # NO `ready_for_review` EITHER, and for the plainer reason: nothing in this
   # workflow gates on `draft`, so every job already runs on a draft PR. Adding
@@ -85,6 +94,9 @@ concurrency:
 permissions:
   contents: read
   pull-requests: read
+  # The no-op `edited` probe and replay read this head's check runs
+  # (scripts/ci-verdict-replay.mjs). Read-only.
+  checks: read
 
 # Force JavaScript actions onto Node 24. GitHub deprecated Node 20 for
 # actions in late 2025 and will flip the default in June 2026. Setting
@@ -120,6 +132,11 @@ jobs:
       docs: ${{ steps.all.outputs.docs || steps.filter.outputs.docs }}
       agents_md: ${{ steps.all.outputs.agents_md || steps.filter.outputs.agents_md }}
       license_headers: ${{ steps.all.outputs.license_headers || steps.filter.outputs.license_headers }}
+      # `true` only for a title/body `edited` of a head that already has a
+      # completed aggregate verdict. Every lane then skips (no filter output
+      # above is `true`) and the aggregate replays the verdict. See the
+      # `edited` trigger comment at the top of this file.
+      noop: ${{ steps.noop.outputs.noop || 'false' }}
       # `true` when the WASM source is byte-identical to the published release
       # tag, so `build` can fetch the prebuilt bundle instead of compiling
       # wasm32. See the `build` job and scripts/ci-wasm-prebuilt-eligible.sh.
@@ -132,6 +149,17 @@ jobs:
           # clone does not contain. PRs filter against the base ref and are
           # unaffected, so only the push path pays the extra object.
           fetch-depth: ${{ github.event_name == 'push' && 2 || 1 }}
+      # THE NO-OP EDIT PROBE. Only an `edited` event can be a no-op, so the
+      # step is skipped on every other event and costs nothing there; on an
+      # `edited` it is one check-runs read. `noop=true` requires BOTH a
+      # title/body-only edit and an existing completed verdict for this head;
+      # anything else is `noop=false` and the full run below proceeds.
+      - name: Probe for a no-op edit
+        id: noop
+        if: github.event_name == 'pull_request' && github.event.action == 'edited'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-verdict-replay.mjs --probe
       # A merge-queue batch is validated as a whole: declare every area changed
       # so all lanes run. paths-filter is a pull_request/push tool and has no
       # PR to diff on merge_group.
@@ -139,7 +167,7 @@ jobs:
         id: all
         run: for k in rust frontend geometry python plato docs agents_md license_headers; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        if: github.event_name != 'merge_group'
+        if: github.event_name != 'merge_group' && steps.noop.outputs.noop != 'true'
         id: filter
         with:
           filters: |
@@ -391,6 +419,7 @@ jobs:
       # green-light a stale bundle.
       - name: Resolve prebuilt-WASM eligibility
         id: wasm
+        if: steps.noop.outputs.noop != 'true'
         run: echo "eligible=$(bash scripts/ci-wasm-prebuilt-eligible.sh)" >> "$GITHUB_OUTPUT"
 
   # Shared install + WASM + workspace build. Uploads built dist/ for the
@@ -2022,6 +2051,12 @@ jobs:
   # and publishes.
   rust-semver:
     name: Rust crate semver
+    # No path filter of its own (see above), so it is the one lane the no-op
+    # probe has to gate explicitly; every other lane skips because no filter
+    # output is `true`. `noop` is not a path filter, and
+    # scripts/lib/ci-path-coverage.mjs knows to read it as none.
+    needs: changes
+    if: needs.changes.outputs.noop != 'true'
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
@@ -2129,7 +2164,26 @@ jobs:
     # Free runner — the gate just inspects upstream job results.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     steps:
+      # THE NO-OP EDIT REPLAY (CI redesign, step 2). When `changes` found this
+      # to be a title/body edit of a head that already has a completed
+      # verdict, every lane above skipped -- and `skipped` reads as a pass in
+      # the map below, so judging it would turn a red head green on a typo
+      # fix. Instead this run REPLAYS the recorded verdict: exit 0 only for a
+      # recorded `success`, exit 1 for any other conclusion, exit 2 (refuse)
+      # if the verdict the probe saw cannot be found again. The check name on
+      # this run therefore carries the same conclusion the head already had.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.noop == 'true'
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Replay the verdict this head already has
+        if: needs.changes.outputs.noop == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-verdict-replay.mjs --replay
       - name: Gate on dependencies
+        if: needs.changes.outputs.noop != 'true'
         run: |
           declare -A results=(
             # `changes` is judged like any other lane, and it matters most: every

@@ -61,7 +61,7 @@ jobs:
     name: Build & Push Docker Image
     # Keep recurring image builds out of Depot's metered runner pool. This is
     # a public repository, so GitHub's standard Ubuntu runner is free.
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","dkr"]') || 'ubuntu-latest' }}
     # Cap a stuck "Build and push" so it can't run to GitHub's 6h default.
     # A *cold* build — cargo-chef cooking the whole workspace after a
     # deps-cache miss — is the long pole, and a cold build that gets cancelled

@@ -32,7 +32,7 @@ vectors would be a distinct tracing/OCR operation.
 
 ## Controlled cases
 
-The [original CC0 generator](../../../../tools/texture-authoring/pdf-vector-controls.py)
+The [original CC0 generator](https://github.com/LTplus-AG/ifc-lite/blob/main/tools/texture-authoring/pdf-vector-controls.py)
 creates two pages, independently rendered below with Poppler's `-cropbox` option.
 Page one has a 72-native-unit line, one rectangle, one cubic curve, and a dashed
 line under translation, rotation and non-uniform scale. The page has a nonzero

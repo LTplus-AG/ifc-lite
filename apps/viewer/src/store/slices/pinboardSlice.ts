@@ -355,9 +355,11 @@ export const createPinboardSlice: StateCreator<
     if (refs.length === 0) return;
     set((state) => {
       const next = new Set<string>(state.pinboardEntities);
-      for (const ref of refs) {
-        next.delete(entityRefToString(ref));
-      }
+      // Only refs that were actually IN the basket may touch the isolation
+      // below: a ref that was never pinned has no basket claim on its global
+      // id, so deleting it would evict an externally-owned isolation entry.
+      const removed = refs.filter((ref) => next.delete(entityRefToString(ref)));
+      if (removed.length === 0) return {};
       if (next.size === 0) {
         return { pinboardEntities: next, isolatedEntities: null, activeBasketViewId: null };
       }
@@ -382,7 +384,7 @@ export const createPinboardSlice: StateCreator<
         return { pinboardEntities: next, isolatedEntities: surviving, activeBasketViewId: null };
       }
       const isolatedEntities = new Set<number>(prevIsolated);
-      for (const ref of refs) {
+      for (const ref of removed) {
         const gid = refToGlobalId(ref, state.models);
         if (!surviving.has(gid)) isolatedEntities.delete(gid);
       }

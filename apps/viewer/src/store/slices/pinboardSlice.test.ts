@@ -185,6 +185,20 @@ describe('PinboardSlice', () => {
       assert.ok(state.isolatedEntities!.has(200), 'surviving basket entries stay isolated');
       assert.ok(!state.isolatedEntities!.has(300), 'the unpinned entity is no longer isolated');
     });
+
+    // A ref that was never pinned has no basket claim on its global id: asking
+    // to remove it must not evict an isolation entry another writer owns.
+    it('removeFromBasket ignores refs that were not in the basket instead of evicting their isolation id', () => {
+      const FOREIGN = 500; // isolated by a BCF viewpoint, never pinned
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }]);
+      setState({ isolatedEntities: new Set([...state.isolatedEntities!, FOREIGN]) });
+
+      state.removeFromBasket([{ modelId: 'legacy', expressId: FOREIGN }]);
+
+      assert.ok(state.isolatedEntities!.has(FOREIGN), 'BUG: a never-pinned ref evicted an externally-owned isolation id');
+      assert.ok(state.isolatedEntities!.has(100));
+      assert.strictEqual(state.pinboardEntities.size, 1, 'the basket is unchanged');
+    });
   });
 
   describe('saveCurrentBasketView', () => {

@@ -1,6 +1,6 @@
 ---
 "@ifc-lite/bcf": major
-"@ifc-lite/sdk": minor
+"@ifc-lite/sdk": major
 ---
 
 Fix `createViewpoint`/`extractViewpointState` reading an active-but-empty isolation (the viewer isolated to a set that currently matches nothing — an empty viewport) the same as no isolation at all.

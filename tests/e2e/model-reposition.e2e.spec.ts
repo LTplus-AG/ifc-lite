@@ -13,11 +13,31 @@ const OFFSET = [10_000, 20_000, 30_000];
 
 async function load(page: Page, file: string | { name: string; mimeType: string; buffer: Buffer }, count: number) {
   await page.locator('input[type=file]').nth(count === 1 ? 0 : 1).setInputFiles(file);
-  await page.waitForFunction((n) => {
-    const state = globalThis.__ifc_lite_viewer_store__?.getState();
-    return state && !state.loading && !state.geometryStreamingActive && state.models.size === n && [...state.models.values()].every((m) => m.pointCloudHandleId !== undefined || m.geometryResult?.meshes.length > 0);
-  }, count, { timeout: 120_000 });
+  try {
+    await page.waitForFunction((n) => {
+      const state = globalThis.__ifc_lite_viewer_store__?.getState();
+      return state && !state.loading && !state.geometryStreamingActive && state.models.size === n && [...state.models.values()].every((m) => m.pointCloudHandleId !== undefined || m.geometryResult?.meshes.length > 0);
+    }, count, { timeout: 120_000 });
+  } catch (error) {
+    // Hosted runners intermittently never settle the FIRST IFC load of a
+    // Chrome process (the same load settles in ~2 s on the next test). Dump
+    // what the store is waiting on, so the failure is diagnosable from the
+    // job log instead of a bare waitForFunction timeout.
+    const snapshot = await page.evaluate(() => {
+      const state = globalThis.__ifc_lite_viewer_store__?.getState();
+      if (!state) return { store: 'missing' };
+      return {
+        loading: state.loading, geometryStreamingActive: state.geometryStreamingActive, models: state.models.size,
+        perModel: [...state.models.values()].map((m) => ({ pointCloud: m.pointCloudHandleId !== undefined, meshes: m.geometryResult?.meshes.length ?? null })),
+        error: (state as { error?: unknown }).error ?? null,
+      };
+    }).catch((e) => ({ evaluateFailed: String(e) }));
+    throw new Error(`load(${typeof file === 'string' ? file : file.name}, ${count}) did not settle: ${JSON.stringify(snapshot)}\nconsole: ${consoleLines.slice(-40).join('\n')}`, { cause: error });
+  }
 }
+
+/** Page console (warnings/errors) for the current test, attached to the load() timeout diagnostic. */
+let consoleLines: string[] = [];
 
 /** Synthetic diagnostic scan, explicitly derived from a real authoring fixture.
  * The known translation is the oracle; this does not pretend to be a field scan. */
@@ -52,6 +72,8 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
   test.skip(!existsSync(IFC), 'Real IFC fixture missing — run pnpm fixtures');
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(String(error)));
+  consoleLines = [];
+  page.on('console', (message) => { if (message.type() === 'error' || message.type() === 'warning') consoleLines.push(`[${message.type()}] ${message.text().slice(0, 300)}`); });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/');
   await load(page, IFC, 1);

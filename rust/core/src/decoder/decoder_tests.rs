@@ -502,3 +502,108 @@ fn get_face_bound_fast_refuses_oversized_loop_ref() {
     let mut decoder = EntityDecoder::new(content);
     assert_eq!(decoder.get_face_bound_fast(1), Some((u32::MAX, true, false)));
 }
+
+/// Issue #4497: `EntityScanner::next_entity` returns the STEP keyword as a
+/// raw, unnormalised slice, and `length_unit_scale`/`plane_angle_to_radians`
+/// compared it case-sensitively against `"IFCPROJECT"`. A file whose
+/// keywords are lowercase (a legal STEP file — case is not significant)
+/// silently defaulted to scale `1.0` instead of the declared `0.001`, a
+/// 1000x error feeding curve tessellation, appearance mapping and unit
+/// conversion.
+#[test]
+fn length_unit_scale_lowercase_keywords_repro() {
+    let content = r#"
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=ifcproject('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);
+#2=ifcunitassignment((#3));
+#3=ifcsiunit(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+    let mut decoder = EntityDecoder::new(content);
+    assert_eq!(decoder.length_unit_scale(), 0.001);
+}
+
+/// Control: uppercase keywords (the pre-existing, always-worked case) must
+/// keep resolving exactly as before the #4497 fix.
+#[test]
+fn length_unit_scale_uppercase_keywords_unchanged() {
+    let content = r#"
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);
+#2=IFCUNITASSIGNMENT((#3));
+#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+    let mut decoder = EntityDecoder::new(content);
+    assert_eq!(decoder.length_unit_scale(), 0.001);
+}
+
+/// The realistic case per #4497: some exporters emit CamelCase keywords
+/// (`IfcProject`, not all-lower or all-upper).
+#[test]
+fn length_unit_scale_mixed_case_keywords() {
+    let content = r#"
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IfcProject('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);
+#2=IfcUnitAssignment((#3));
+#3=IfcSiUnit(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+    let mut decoder = EntityDecoder::new(content);
+    assert_eq!(decoder.length_unit_scale(), 0.001);
+}
+
+/// `plane_angle_to_radians` has the same scanner-comparison bug — cover it
+/// separately rather than assuming the `length_unit_scale` fix carries over.
+/// DEGREE fixture per `units_tests::test_extract_plane_angle_degree`, with
+/// all keywords lowercased.
+#[test]
+fn plane_angle_to_radians_lowercase_keywords() {
+    let content = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Test'),'2;1');
+FILE_NAME('test.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=ifcproject('guid',$,'Test',$,$,$,$,(#2),#3);
+#2=ifcgeometricrepresentationcontext($,'Model',3,1.E-5,#4,$);
+#3=ifcunitassignment((#5,#10));
+#4=ifcaxis2placement3d(#7,$,$);
+#5=ifcsiunit(*,.LENGTHUNIT.,$,.METRE.);
+#7=ifccartesianpoint((0.,0.,0.));
+#8=ifcsiunit(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+#9=ifcmeasurewithunit(ifcratiomeasure(0.0174532925199433),#8);
+#10=ifcconversionbasedunit(#11,.PLANEANGLEUNIT.,'DEGREE',#9);
+#11=ifcdimensionalexponents(0,0,0,0,0,0,0);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+    let mut decoder = EntityDecoder::new(content);
+    let scale = decoder.plane_angle_to_radians();
+    assert!(
+        (scale - 0.0174532925199433).abs() < 1e-9,
+        "expected 0.01745… for DEGREE, got {scale}"
+    );
+}

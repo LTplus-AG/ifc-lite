@@ -1,0 +1,7 @@
+---
+"@ifc-lite/clash": patch
+---
+
+`fromPositions` (`packages/clash/src/math/aabb.ts`) — the single choke point both the STEP and IFCX clash adapters funnel through when building `ClashElement.bounds` — now throws `NonFiniteAxisError` when every vertex is non-finite on some axis, instead of returning the box inverted (`min > max`) on that axis. The inverted box looked like a safe sentinel (the function's own doc claimed it was "rejected by `boxesTouch`"), but `boxesTouch` is only reached from the duplicates pass, not from the BVH broad phase (`@ifc-lite/spatial`, via `engine-ts/broad.ts`) that hard/soft rule-based clash detection uses: there, an inverted box fails every `min <= queryMax && max >= queryMin` check, so the element silently dropped out of every spatial query it should have participated in — including the one that would have found a genuine hard clash (#4254).
+
+`elementsFromStep` (`adapters/step.ts`) and `elementsFromIfcx` (`adapters/ifcx.ts`) now catch `NonFiniteAxisError` per occurrence/entity, skip just that one (rather than aborting the whole clash run for one corrupt element among many), and emit a single `console.warn` naming the model and the count — the same shape as their existing `missingGlobalIds` warning — so a dropped element is loud and countable instead of silently invisible. Positions with only *some* non-finite coordinates are unaffected: the existing per-coordinate fold (the finite coordinate of a partly poisoned vertex still counts) is unchanged.

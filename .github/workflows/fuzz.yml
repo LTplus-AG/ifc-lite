@@ -41,7 +41,7 @@ jobs:
     # Free GitHub-hosted runner (public repo) — weekly + on-demand only, so a
     # slow cold build costs wall-clock, not money (same rationale as
     # determinism.yml).
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     strategy:
       # One crashing target must not cancel the others mid-run.

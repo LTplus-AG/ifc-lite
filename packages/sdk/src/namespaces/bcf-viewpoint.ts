@@ -164,6 +164,19 @@ export function toTuple(p: { x: number; y: number; z: number }): [number, number
   return [p.x, p.y, p.z];
 }
 
+/** @ifc-lite/bcf's object-shaped `ViewerBounds`. */
+export type BcfViewerBounds = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
+
+/** Accept either the SDK's tuple `AABB` or @ifc-lite/bcf's own object-shaped
+ * `ViewerBounds` and return the library shape. The tuple form otherwise
+ * reaches the library's `bounds.min.x` reads as `undefined` -> `NaN`. */
+export function toLibraryBounds(bounds: AABB | BcfViewerBounds): BcfViewerBounds {
+  return {
+    min: Array.isArray(bounds.min) ? toVec3(bounds.min) : bounds.min,
+    max: Array.isArray(bounds.max) ? toVec3(bounds.max) : bounds.max,
+  };
+}
+
 /** Names the fields missing from a `ViewpointOptions.camera` (or the whole
  * `camera` object) so `IncompleteCameraStateError` can say exactly what a
  * caller needs to add. Empty array means the camera is complete. */

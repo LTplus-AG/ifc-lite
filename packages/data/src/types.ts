@@ -203,6 +203,7 @@ export enum QuantityType {
 export enum RelationshipType {
   ContainsElements = 1,
   Aggregates = 2,
+  /** `IfcRelNests`; also recorded under {@link Aggregates} (#4205). */ Nests = 3,
   DefinesByProperties = 10,
   DefinesByType = 11,
   AssociatesMaterial = 20,
@@ -212,23 +213,16 @@ export enum RelationshipType {
   FillsElement = 41,
   VoidsElement = 42,
   ConnectsElements = 43,
-  /**
-   * `IfcRelConnectsPortToElement` — a port belongs to the element it sits on.
-   * Forward runs port → element, matching the EXPRESS attribute order
-   * (RelatingPort, RelatedElement).
-   */
+  /** `IfcRelConnectsPortToElement` — a port belongs to the element it sits on.
+   *  Forward runs port → element (RelatingPort, RelatedElement). */
   ConnectsPortToElement = 44,
-  /**
-   * `IfcRelConnectsPorts` — one port joined to another. Together with
-   * {@link ConnectsPortToElement} this is what makes plant topology
-   * traversable: element → its ports → the ports they connect to → those
-   * ports' elements. Without both, a distribution system in a model is a set
-   * of unrelated parts.
-   */
+  /** `IfcRelConnectsPorts` — one port joined to another; with
+   *  {@link ConnectsPortToElement} makes plant topology traversable. */
   ConnectsPorts = 45,
   SpaceBoundary = 50,
   AssignsToGroup = 60,
   AssignsToProduct = 61,
+  /** `IfcRelAssignsToGroupByFactor`; also recorded under {@link AssignsToGroup} (#4205). */ AssignsToGroupByFactor = 62,
   ReferencedInSpatialStructure = 70,
 }
 

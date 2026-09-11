@@ -18,11 +18,36 @@
 //! 0.493 m bulk. IfcOpenShell (pip 0.8.2, use-world-coords) keeps the bulk:
 //! extent (4.201, 0.493, 2.795). Pin that.
 
+mod support;
+
 use ifc_lite_core::{build_entity_index, EntityDecoder};
 use ifc_lite_geometry::{GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 
 const FIXTURE: &str = "../../tests/models/ara3d/duplex.ifc";
+
+/// `true` when the fixture is readable; `false` only for a genuinely absent
+/// file (`NotFound`), which is a legitimate skip unless
+/// `IFC_LITE_REQUIRE_FIXTURES=1`, in which case it panics naming the path.
+/// Any other `io::Error` (permission denied, corrupt read, ...) means the
+/// environment is broken rather than merely missing an optional download,
+/// so it panics unconditionally. This attempts the read (rather than
+/// `Path::exists()`) because `exists()` collapses a permission error into
+/// `false` just like a genuinely absent file, and is a TOCTOU check besides
+/// — `process` below performs the real read moments later.
+fn fixture_present() -> bool {
+    match std::fs::read_to_string(FIXTURE) {
+        Ok(_) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture {FIXTURE} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
+            false
+        }
+        Err(e) => panic!("fixture {FIXTURE} exists but could not be read: {e}"),
+    }
+}
 
 fn bbox_extent(p: &[f32]) -> (f32, f32, f32) {
     let mut mn = (f32::INFINITY, f32::INFINITY, f32::INFINITY);
@@ -58,7 +83,7 @@ fn process(id: u32) -> Mesh {
 
 #[test]
 fn party_wall_polygonal_clip_keeps_material_side() {
-    if !std::path::Path::new(FIXTURE).exists() {
+    if !fixture_present() {
         eprintln!("skipping: fixture {FIXTURE} not present — run `pnpm fixtures` to download");
         return;
     }

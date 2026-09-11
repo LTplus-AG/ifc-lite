@@ -24,6 +24,7 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { ToolContext } from '../context.js';
 import { buildIdsAccessor } from './ids-accessor.js';
+import { buildDropCensusIssues, dropCensusJson } from './drop-census-issues.js';
 
 const idsValidate: Tool = {
   name: 'ids_validate',
@@ -274,6 +275,14 @@ const modelAudit: Tool = {
       });
     }
 
+    // 4. Semantic drop census (#4208): classes the loader silently skipped.
+    // dropCensus is only absent for a store built by a path that doesn't
+    // compute one (e.g. a cache-restored store) — surface that explicitly
+    // rather than rendering it the same as "nothing was dropped". Issue
+    // construction lives in drop-census-issues.ts (module-size split).
+    const dropCensus = m.store.dropCensus;
+    issues.push(...buildDropCensusIssues(dropCensus));
+
     // Lighthouse-style category scores: % of entities that pass each category check.
     const scores = {
       structure: scoreFromIssues(issues, 'structure'),
@@ -288,6 +297,7 @@ const modelAudit: Tool = {
         scores,
         issues,
         totals: { products: totalProducts, unnamed, duplicateGlobalIds: duplicates },
+        dropCensus: dropCensusJson(dropCensus),
         ...pendingMutationsField(overlay),
       },
     );

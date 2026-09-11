@@ -74,6 +74,56 @@ describe('applyResolutions', () => {
     const applied = applyResolutions(plan, []);
     expect(applied.unresolved).toHaveLength(1);
   });
+
+  it('adopting theirs nulls an attribute ours independently added to the conflicting component', () => {
+    // Dedicated fixture (not conflictingPlanInputs(), which several other
+    // tests in this file share): ours adds Comments to the same component
+    // theirs conflicts on via FireRating. opsForComponentChange's docstring
+    // says every key visible on ancestor OR ours that `next` no longer
+    // carries must be explicitly nulled -- otherwise, under the target
+    // stack's per-attribute LWW composition, ours' Comments would keep
+    // shining through from the layer beneath even though the reviewer
+    // chose "adopt theirs entirely". The ancestor half of this nulling is
+    // already covered above (FireRating going from REI60 to REI120/REI90);
+    // this pins the oursVisible half, which no other assertion in this
+    // package references.
+    const COMMENTS = 'bsi::ifc::v5a::Pset_FireSafety::Comments';
+    const oursAddsComments = {
+      ancestor: [base],
+      ours: [
+        base,
+        makeLayer([{ path: 'wall-1', attributes: { [COMMENTS]: 'recheck Q3' } }], 'ours'),
+      ],
+      theirs: [base, makeLayer([{ path: 'wall-1', attributes: { [FIRE]: 'REI120' } }], 'theirs')],
+    };
+    const plan = planThreeWayMerge(oursAddsComments);
+    expect(plan.conflicts).toHaveLength(1);
+
+    const theirs = applyResolutions(plan, [
+      { path: 'wall-1', componentKey: 'pset:Pset_FireSafety', choice: 'theirs' },
+    ]);
+    expect(theirs.ops).toEqual([
+      {
+        op: 'set-component',
+        path: 'wall-1',
+        componentKey: 'pset:Pset_FireSafety',
+        attributes: { [FIRE]: 'REI120', [COMMENTS]: null },
+      },
+    ]);
+    const emitted = theirs.ops[0];
+    if (emitted?.op !== 'set-component') throw new Error('expected a set-component op');
+
+    // Composing ours + the emitted op must not let Comments shine through:
+    // this is what "explicitly null it" is actually for, under per-attribute
+    // last-write-wins composition of the target stack.
+    const composed = extractStackState([
+      ...oursAddsComments.ours,
+      makeLayer([{ path: 'wall-1', attributes: emitted.attributes }], 'merged'),
+    ]);
+    expect(composed.get('wall-1')?.components.get('pset:Pset_FireSafety')).toEqual({
+      [FIRE]: 'REI120',
+    });
+  });
 });
 
 describe('buildMergeLayer', () => {

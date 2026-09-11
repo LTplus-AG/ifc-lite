@@ -1,0 +1,57 @@
+{
+  "ifcopenshell": "0.8.2",
+  "sha256": "45861da9af1b389f2d2f8ed4f363d3a2ece48e6c067d6e61b76a8368b68c2000",
+  "validation": [],
+  "annotations": [
+    {
+      "id": 40,
+      "triangles": 8,
+      "area": 15.0,
+      "bounds": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          4.0,
+          4.0,
+          0.0
+        ]
+      ],
+      "materials": [
+        "style\n     name DefaultMaterial\n     diffuse\n            colour 0.7 0.7 0.7"
+      ]
+    },
+    {
+      "id": 45,
+      "triangles": 8,
+      "area": 15.0,
+      "bounds": [
+        [
+          10.0,
+          20.0,
+          26.0
+        ],
+        [
+          14.0,
+          20.0,
+          30.0
+        ]
+      ],
+      "materials": [
+        "style\n     name DefaultMaterial\n     diffuse\n            colour 0.7 0.7 0.7"
+      ]
+    }
+  ],
+  "sourceFillStyle": {
+    "entity": "IfcFillAreaStyle",
+    "Name": "Cyan fill",
+    "colourEntity": "IfcColourRgb",
+    "rgb": [
+      0.2,
+      0.6,
+      0.8
+    ]
+  }
+}

@@ -19,7 +19,7 @@ import type {
   EdgeLockState,
   SectionPlane,
 } from '@/store';
-import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/types.js';
+import type { MeasurementConstraintEdge, OrthogonalAxis } from '@/store/types.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
@@ -33,6 +33,7 @@ import {
   updateMeasureScreenCoords,
   shouldStartDragMeasurement,
 } from './measureHandlers.js';
+import { invalidateSelectionPick } from './referenceSelection.js';
 import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, handleSplitHover, finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
 import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
 import { MIN_RADIUS_POINTS } from './tools/measure-modes/radius.js';
@@ -196,10 +197,6 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     hiddenEntitiesRef,
     isolatedEntitiesRef,
     selectedEntityIdRef,
-    selectedModelIndexRef,
-    clearColorRef,
-    sectionPlaneRef,
-    sectionRangeRef,
     geometryRef,
     measureRaycastPendingRef,
     measureRaycastFrameRef,
@@ -207,8 +204,6 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     lastHoverSnapTimeRef,
     lastHoverCheckRef,
     hoverTooltipsEnabledRef,
-    lastRenderTimeRef,
-    renderPendingRef,
     isInteractingRef,
     lastClickTimeRef,
     lastClickPosRef,
@@ -241,9 +236,6 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     HOVER_SNAP_THROTTLE_MS,
     SLOW_RAYCAST_THRESHOLD_MS,
     hoverThrottleMs,
-    RENDER_THROTTLE_MS_SMALL,
-    RENDER_THROTTLE_MS_LARGE,
-    RENDER_THROTTLE_MS_HUGE,
   } = params;
 
   // ─── Section face-pick hover preview (issue #243 follow-up) ──────────
@@ -457,6 +449,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     // Uses pointer events + setPointerCapture so pointerup always fires,
     // even when the pointer leaves the canvas (e.g. dragging across panels).
     const handleMouseDown = async (e: PointerEvent) => {
+      invalidateSelectionPick(canvas);
       e.preventDefault();
       // Capture the pointer so move/up events fire even outside the canvas
       canvas.setPointerCapture(e.pointerId);
@@ -855,10 +848,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
     };
 
-    // Click handling — delegated to selectionHandlers
-    const handleClick = async (e: MouseEvent) => {
-      await handleSelectionClick(ctx, e);
-    };
+    const handleClick = (e: MouseEvent) => handleSelectionClick(ctx, e);
 
     // Double-click finishes an in-progress polyline sequence as OPEN (#2199)
     // — the same "reads the length so far, does not close the loop" outcome
@@ -914,6 +904,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     canvas.addEventListener('dblclick', handleDoubleClick);
 
     return () => {
+      invalidateSelectionPick(canvas);
       canvas.removeEventListener('pointerdown', handleMouseDown);
       canvas.removeEventListener('pointermove', handleMouseMove);
       canvas.removeEventListener('pointerup', handleMouseUp);

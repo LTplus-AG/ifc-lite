@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { PdfVectorPage, PdfVectorRequest } from './vector-types.js';
 export type PdfQuarterTurn = 0 | 90 | 180 | 270;
 export type PdfRect = [number, number, number, number];
 export interface PdfPageInfo {
@@ -56,10 +57,12 @@ export class PdfAppearanceError extends Error {
 }
 export type PdfJob =
   | { kind: 'inspect'; pageNumber?: number }
-  | { kind: 'raster'; request: PdfRasterRequest };
+  | { kind: 'raster'; request: PdfRasterRequest }
+  | { kind: 'vectors'; request: PdfVectorRequest };
 export type PdfJobResult =
   | { kind: 'inspect'; pageCount: number; page: PdfPageInfo }
-  | { kind: 'raster'; png: Uint8Array; recipe: PdfRasterRecipe };
+  | { kind: 'raster'; png: Uint8Array; recipe: PdfRasterRecipe }
+  | { kind: 'vectors'; page: PdfVectorPage };
 export interface PdfWorkerRequest {
   id: number;
   source: Uint8Array;

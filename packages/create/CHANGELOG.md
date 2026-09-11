@@ -1,5 +1,19 @@
 # @ifc-lite/create
 
+## 2.3.0
+
+### Minor Changes
+
+- [#4167](https://github.com/LTplus-AG/ifc-lite/pull/4167) [`f794750`](https://github.com/LTplus-AG/ifc-lite/commit/f79475055e9cfe0c7ee19a7732ded546c5a7796a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Export `toNativeLength` and its new inverse `fromNativeLength` (`in-store/anchor.ts`) from the package index. `fromNativeLength` converts a value stored in a model's native length unit back to metres — the counterpart a read-side translator needs to invert what `toNativeLength` scaled on write, without a second implementation of the same rounding rule. Added for issue [#4153](https://github.com/LTplus-AG/ifc-lite/issues/4153)'s read side (`apps/viewer`'s drawing-markup reader, not part of this package); no existing export changed.
+
+- [#4160](https://github.com/LTplus-AG/ifc-lite/pull/4160) [`4c58993`](https://github.com/LTplus-AG/ifc-lite/commit/4c5899307dc1e9da62f7a827298d2eb8bb8ada47) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add `addDrawingMarkupToStore` and its per-kind builders (`addMeasureMarkupToStore`, `addPolygonAreaMarkupToStore`, `addTextMarkupToStore`, `addCloudMarkupToStore`) — a pure translation from 2D drawing markup (measurements, polygon areas, text notes, revision clouds) into tagged `IfcAnnotation` entities via the additive `StoreEditor` overlay. Not wired into the viewer UI yet; see issue [#4153](https://github.com/LTplus-AG/ifc-lite/issues/4153) for the "save into model" direction this is the write half of.
+
+### Patch Changes
+
+- Updated dependencies [[`ced8bb4`](https://github.com/LTplus-AG/ifc-lite/commit/ced8bb46c368648bd54a1bab716d049143faa036), [`b5cb19a`](https://github.com/LTplus-AG/ifc-lite/commit/b5cb19ae80610107f7b3b3914efa7234dfbe4999), [`e119819`](https://github.com/LTplus-AG/ifc-lite/commit/e1198197556375019c5a7820cc7c99da55e5c639), [`12e69fe`](https://github.com/LTplus-AG/ifc-lite/commit/12e69feb363ea31fb2c3513436366b01c54251e9), [`83fb539`](https://github.com/LTplus-AG/ifc-lite/commit/83fb539395e3638eb4c72a5c0fb2c508a8746adb), [`f33ac74`](https://github.com/LTplus-AG/ifc-lite/commit/f33ac74dd0578792327f684ba5ca59f050458c65), [`85e0351`](https://github.com/LTplus-AG/ifc-lite/commit/85e0351c6bcbc350c404176e484320baa08a1366), [`6f0078b`](https://github.com/LTplus-AG/ifc-lite/commit/6f0078bc8ae697c9e6f91ae5b36546476b0fee5b), [`04d7b3b`](https://github.com/LTplus-AG/ifc-lite/commit/04d7b3ba0ab64ae9e97420aa8d5c56a536272724), [`8620be3`](https://github.com/LTplus-AG/ifc-lite/commit/8620be38be0162b7cbdbe23ae7bc924763b83612), [`5a01e5a`](https://github.com/LTplus-AG/ifc-lite/commit/5a01e5abe220f21ae5233045c6e9cfc5aa37a4e3), [`6110c0d`](https://github.com/LTplus-AG/ifc-lite/commit/6110c0d6bb0c1a96c4da4c056389ebc4dfe26631), [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb), [`b9c3aa1`](https://github.com/LTplus-AG/ifc-lite/commit/b9c3aa1b7da9b0c26742bacb6eb3c7c4b44ca80b), [`a6976b9`](https://github.com/LTplus-AG/ifc-lite/commit/a6976b9da44d13157533372a8def23995fcfb93f), [`591c593`](https://github.com/LTplus-AG/ifc-lite/commit/591c5938bdc4e8210c3b3158f22ecd78552bcdc2)]:
+  - @ifc-lite/parser@6.0.0
+  - @ifc-lite/mutations@2.2.0
+
 ## 2.2.1
 
 ### Patch Changes

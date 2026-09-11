@@ -1,0 +1,97 @@
+{
+  "baseSource": "b6d65a9885b2f8e7a4b5d8c6cd2c572a405dda58",
+  "branchSource": "98eeb8fac",
+  "iterationsPerRun": 5,
+  "order": "A/B/A/B per fixture, all agents explicitly idle",
+  "runs": [
+    {
+      "fixture": "ac20",
+      "variant": "base",
+      "pair": 1,
+      "parseMs": 3,
+      "geometryMs": 4,
+      "totalMs": 7,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456
+    },
+    {
+      "fixture": "ac20",
+      "variant": "branch",
+      "pair": 1,
+      "parseMs": 2,
+      "geometryMs": 4,
+      "totalMs": 7,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456
+    },
+    {
+      "fixture": "ac20",
+      "variant": "base",
+      "pair": 2,
+      "parseMs": 2,
+      "geometryMs": 4,
+      "totalMs": 7,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456
+    },
+    {
+      "fixture": "ac20",
+      "variant": "branch",
+      "pair": 2,
+      "parseMs": 2,
+      "geometryMs": 4,
+      "totalMs": 7,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456
+    },
+    {
+      "fixture": "issue129",
+      "variant": "base",
+      "pair": 1,
+      "parseMs": 8,
+      "geometryMs": 573,
+      "totalMs": 582,
+      "meshes": 1402,
+      "vertices": 218255,
+      "triangles": 132674
+    },
+    {
+      "fixture": "issue129",
+      "variant": "branch",
+      "pair": 1,
+      "parseMs": 8,
+      "geometryMs": 573,
+      "totalMs": 582,
+      "meshes": 1402,
+      "vertices": 218255,
+      "triangles": 132674
+    },
+    {
+      "fixture": "issue129",
+      "variant": "base",
+      "pair": 2,
+      "parseMs": 8,
+      "geometryMs": 574,
+      "totalMs": 583,
+      "meshes": 1402,
+      "vertices": 218255,
+      "triangles": 132674
+    },
+    {
+      "fixture": "issue129",
+      "variant": "branch",
+      "pair": 2,
+      "parseMs": 9,
+      "geometryMs": 575,
+      "totalMs": 585,
+      "meshes": 1402,
+      "vertices": 218255,
+      "triangles": 132674
+    }
+  ],
+  "verdict": "No material normal-load regression resolved; no speedup claim. Mesh, vertex and triangle counts are unchanged on both fixtures. Native only, not a browser worker-pool benchmark."
+}

@@ -335,6 +335,7 @@ pub(super) fn extract_symbolic_item_inner(
                 rebase,
                 styled_items,
                 out,
+                walk.direct_item_id.filter(|id| depth == 0 && *id == item.id),
             );
         }
         _ => {
@@ -342,4 +343,3 @@ pub(super) fn extract_symbolic_item_inner(
         }
     }
 }
-

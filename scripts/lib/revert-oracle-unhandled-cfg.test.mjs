@@ -52,15 +52,18 @@ function makeCrate() {
   writeFileSync(
     join(root, 'Cargo.toml'),
     '[package]\nname = "oracle-unhandled-cfg"\nversion = "0.1.0"\nedition = "2021"\n\n' +
-      '[features]\ndefault = []\ngate_a = []\n',
+      '[features]\ndefault = [\"gate_a\"]\ngate_a = []\n',
   );
   writeFileSync(join(root, 'src/lib.rs'), 'pub fn value() -> u32 { 1 }\n');
   run('cargo', ['generate-lockfile', '--offline']);
   run('git', ['add', '.']);
   run('git', ['commit', '-qm', 'control']);
   const base = run('git', ['rev-parse', 'HEAD']).trim();
-  // A `not(...)` cfg gate above a real #[test] — the shape
-  // detectRequiredFeatureCombos throws UnhandledCfgShapeError for.
+  // A `not(...)` cfg gate above a real #[test] over a feature that is
+  // default-ON: the default build enables it, so the test would never
+  // compile in and detectRequiredFeatureCombos still throws. A `not(...)`
+  // over a NON-default feature now resolves to the default run instead
+  // — see revert-oracle-rust-features.test.mjs.
   mkdirSync(join(root, 'tests'));
   writeFileSync(
     join(root, 'tests/gated.rs'),
@@ -98,7 +101,7 @@ test(
       const payload = JSON.parse(result.stdout.slice(jsonStart));
       assert.equal(payload.verdict, 'ERROR');
       assert.equal(payload.error.name, 'UnhandledCfgShapeError');
-      assert.equal(payload.error.shape, 'not(...)');
+      assert.equal(payload.error.shape, 'not(...) over default feature "gate_a"');
       assert.match(payload.reason, /not\(\.\.\.\)/);
     } finally {
       rmSync(root, { recursive: true, force: true });

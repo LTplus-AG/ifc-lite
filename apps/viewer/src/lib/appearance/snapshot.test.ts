@@ -30,11 +30,17 @@ ENDSEC;END-ISO-10303-21;`);
 
 function catalogBoundary(beforeReply?: () => Promise<void>): AppearancePlanner {
   return {
+    async pdfFillPlan() { throw new Error('Catalog tests must not create PDF geometry'); },
+    async meshTransfer() { throw new Error('Catalog tests must not transfer appearance'); },
+    async registerScan() { throw new Error('Catalog tests must not solve registration'); },
     async catalog(_bytes, request) {
       await beforeReply?.();
       return { sourceRevision: request.sourceRevision, products: [], types: [], missingProductIds: [] };
     },
     async plan() { throw new Error('This test must not create geometry'); },
+    async capturedMeshPlan() { throw new Error('This catalog test must not create captured objects'); },
+    async annotationPlan() { throw new Error('This catalog test must not create annotations'); },
+    async pagePlan() { throw new Error('This catalog test must not plan a page'); },
     cancel() {}, dispose() {},
   };
 }

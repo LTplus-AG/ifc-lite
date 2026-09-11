@@ -69,6 +69,9 @@ use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcType};
 
 mod color;
 mod fill;
+mod fill_provenance;
+mod provenance;
+pub use provenance::SymbolicDataWithProvenance;
 mod grid;
 mod item_walk;
 mod items;
@@ -109,9 +112,17 @@ pub fn extract_symbolic_data<T>(content: &T) -> SymbolicData
 where
     T: AsRef<[u8]> + ?Sized,
 {
+    extract_symbolic_data_with_provenance(content).into_parts().0
+}
+
+/// Extract symbols with ordinal-bound direct fill provenance, preserving the legacy data shape.
+pub fn extract_symbolic_data_with_provenance<T>(content: &T) -> SymbolicDataWithProvenance
+where
+    T: AsRef<[u8]> + ?Sized,
+{
     let mut out = SymbolicAccumulator::new();
     extract_symbolic_data_into(content, &mut out);
-    out.into_data()
+    out.into_provenance()
 }
 
 /// The extraction itself, writing into a caller-supplied accumulator.
@@ -204,6 +215,7 @@ where
 
         let ifc_type_name = entity.ifc_type.name().to_string();
 
+        let single_representation = representations.len() == 1;
         for shape_rep in representations {
             if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
                 continue;
@@ -276,6 +288,7 @@ where
             let Ok(items) = decoder.resolve_ref_list(items_attr) else {
                 continue;
             };
+            let direct_fill_ids = fill_provenance::direct_fill_ids(&items, single_representation);
             for item in items {
                 if out.is_exhausted() {
                     break;
@@ -291,6 +304,7 @@ where
                     rebase,
                     &styled_items,
                     out,
+                    direct_fill_ids.contains(&item.id).then_some(item.id),
                 );
             }
         }

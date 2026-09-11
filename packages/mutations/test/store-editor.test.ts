@@ -184,6 +184,60 @@ describe('StoreEditor', () => {
     expect(() => editor.addEntity('IFCRECTANGLEPROFILEDEF', [])).not.toThrow();
   });
 
+  // Regression: github.com/LTplus-AG/ifc-lite/issues/4239
+  // The watermark is seeded once at construction from a scan of
+  // store.entityIndex.byId. If the store grows afterward (lazy index
+  // hydration finishing late, or a federated merge adding entities) without
+  // StoreEditor being reconstructed, the next addEntity() must notice the
+  // collision and refresh the watermark — or it hands out an id that's
+  // already taken, producing two records with the same STEP id on export.
+  it('addEntity refreshes a stale watermark when the store grows after construction (#4239)', () => {
+    const store = makeStore(10);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+
+    // Grow the store's byId AFTER construction — this is what a late
+    // hydration or federated merge looks like. StoreEditor's watermark
+    // (seeded at 10, the max at construction time) doesn't know id 11
+    // now exists.
+    // `makeStore` builds a real Map; `MutationEntityByIdIndex` deliberately
+    // exposes only the read methods, so reach the concrete map to grow it.
+    (store.entityIndex.byId as Map<number, MutationEntityRef>).set(11, {
+      expressId: 11,
+      type: 'IFCWALL',
+      byteOffset: 0,
+      byteLength: 1,
+      lineNumber: 11,
+    });
+
+    const ref = editor.addEntity('IFCDIRECTION', [[0, 0, 1]]);
+
+    // Without the guard, addEntity would silently hand back id 11 again —
+    // a duplicate STEP entity number. The guard must notice the collision
+    // against the now-grown byId and reallocate above it.
+    expect(ref.expressId).not.toBe(11);
+    expect(ref.expressId).toBeGreaterThan(11);
+
+    // The new entity must not be recorded under the id that the
+    // pre-existing (post-hydration) store entity #11 already owns.
+    expect(editor.getNewEntity(11)).toBeNull();
+  });
+
+  // Companion ordinary-path check: when the store does NOT grow after
+  // construction, the guard's `if` is false and the watermark from
+  // construction stands untouched — addEntity must still return 11. This
+  // proves the test above discriminates the guard's specific collision
+  // condition rather than failing for any unrelated reason.
+  it('addEntity returns the expected next id when the store does not grow after construction', () => {
+    const store = makeStore(10);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+
+    const ref = editor.addEntity('IFCDIRECTION', [[0, 0, 1]]);
+
+    expect(ref.expressId).toBe(11);
+  });
+
   it('addEntity routes through a registered normalizer (canonical name + registry check)', async () => {
     const { setEntityTypeNormalizer } = await import('../src/store-editor.js');
     const store = makeStore(5);

@@ -57,6 +57,8 @@ pub struct ColumnarEntityIndex {
     ids: Vec<u32>,
     starts: Vec<u32>,
     lengths: Vec<u32>,
+    // One source-scoped inverse lookup shared by native jobs and WASM batches.
+    pub(crate) styled_item_index: std::sync::OnceLock<crate::decoder::StyledItemIndexResult>,
 }
 
 impl ColumnarEntityIndex {
@@ -78,6 +80,7 @@ impl ColumnarEntityIndex {
                 ids: Vec::new(),
                 starts: Vec::new(),
                 lengths: Vec::new(),
+                styled_item_index: std::sync::OnceLock::new(),
             };
         }
         Self::from_owned_columns(ids.to_vec(), starts.to_vec(), lengths.to_vec())
@@ -87,10 +90,10 @@ impl ColumnarEntityIndex {
     /// Validation and last-in-input-order duplicate precedence match `from_columns`.
     pub fn from_owned_columns(ids: Vec<u32>, starts: Vec<u32>, lengths: Vec<u32>) -> Self {
         if ids.is_empty() || starts.len() != ids.len() || lengths.len() != ids.len() {
-            return Self { ids: Vec::new(), starts: Vec::new(), lengths: Vec::new() };
+            return Self { ids: Vec::new(), starts: Vec::new(), lengths: Vec::new(), styled_item_index: std::sync::OnceLock::new() };
         }
         if is_strictly_ascending(&ids) {
-            return Self { ids, starts, lengths };
+            return Self { ids, starts, lengths, styled_item_index: std::sync::OnceLock::new() };
         }
         Self::from_unsorted(ids, starts, lengths)
     }
@@ -130,7 +133,7 @@ impl ColumnarEntityIndex {
             starts.push(start);
             lengths.push(len);
         }
-        Self { ids, starts, lengths }
+        Self { ids, starts, lengths, styled_item_index: std::sync::OnceLock::new() }
     }
 
     /// Build from an already-scanned [`EntityIndex`](crate::EntityIndex)
@@ -229,6 +232,7 @@ impl ColumnarEntityIndex {
             ids: out_ids,
             starts: out_starts,
             lengths: out_lengths,
+            styled_item_index: std::sync::OnceLock::new(),
         }
     }
 

@@ -135,6 +135,7 @@ nav:
     - Rendering: guide/rendering.md
     - Querying Data: guide/querying.md
     - Selector Syntax: guide/selector-syntax.md
+    - Images and PDF Appearance: guide/appearance.md
     - Exporting Data: guide/exporting.md
     - Multi-Model Federation: guide/federation.md
     - BCF Collaboration: guide/bcf.md

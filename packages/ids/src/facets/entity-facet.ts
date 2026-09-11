@@ -15,6 +15,7 @@ import type { FacetCheckResult } from './index.js';
 import { matchConstraint, formatConstraint } from '../constraints/index.js';
 import { IFC2X3_MAPPED_ALIASES, rowsForOccurrence } from './ifc2x3-type-mapping.js';
 import { matchPredefinedType } from './predefined-type-match.js';
+import { assertGuardedRegexPattern } from '@ifc-lite/regex-guard';
 
 /** IFC entity NAME comparisons are case-insensitive per IDS spec. Predefined
  *  types are NOT — see `predefined-type-match.ts`. */
@@ -292,6 +293,12 @@ export function getMatchingEntityTypes(
         )
       );
     case 'pattern':
+      // Reject a catastrophic-backtracking or over-long pattern before
+      // compiling — this throws (`UnsafeRegexPatternError`), unlike the
+      // ordinary-malformed-pattern case below, because a rejected
+      // pattern must surface as an error to the caller, not silently
+      // resolve to "matches nothing".
+      assertGuardedRegexPattern(constraint.pattern);
       try {
         const regex = new RegExp(`^${constraint.pattern}$`, 'i');
         return allTypes.filter((t) => regex.test(t));

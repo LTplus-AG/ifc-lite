@@ -303,6 +303,7 @@ export function buildParseResult(
     if (points.length < 6) continue; // <3 vertices = no polygon
     const holesOffsets = flat.fillHoles.slice(flat.fillHoleStart[i], flat.fillHoleStart[i + 1]);
     const f2d: AnnotationFill2D = {
+      geometryItemId: flat.fillGeometryItem[i] || undefined,
       points,
       holesOffsets,
       color: [

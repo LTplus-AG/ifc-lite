@@ -1,0 +1,123 @@
+{
+  "selected": {
+    "modelId": "3121a338-5a95-434c-9ee5-764254608042",
+    "expressId": 65
+  },
+  "references": [
+    {
+      "id": "c19e003a-2fdc-4770-9038-5e7ccb4a7cea",
+      "sourceId": "f2be22cb22f33a21bd40eab8b3da5c2df4f537841687f58af746413a9c172203",
+      "assetId": "f2be22cb22f33a21bd40eab8b3da5c2df4f537841687f58af746413a9c172203",
+      "frameKey": "local-engineering:m:z-up",
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "calibration": {
+        "rasterToSource": [
+          1,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        "rasterSize": [
+          512,
+          512
+        ],
+        "sourcePoints": [
+          [
+            48.68711656441718,
+            254.62576687116564
+          ],
+          [
+            461.74233128834356,
+            254.62576687116564
+          ]
+        ],
+        "distanceMetres": 2,
+        "worldAnchor": [
+          0,
+          0,
+          0
+        ],
+        "worldDirection": [
+          1,
+          0,
+          0
+        ],
+        "planeNormal": [
+          0,
+          -1,
+          0
+        ]
+      },
+      "cornersIfcWorld": [
+        [
+          -0.2357414448669202,
+          0,
+          -1.2328897338403042
+        ],
+        [
+          2.243346007604563,
+          0,
+          -1.2328897338403042
+        ],
+        [
+          2.243346007604563,
+          0,
+          1.246197718631179
+        ],
+        [
+          -0.2357414448669202,
+          0,
+          1.246197718631179
+        ]
+      ]
+    }
+  ],
+  "models": [
+    {
+      "id": "98979a5c-c5ca-4452-9041-fe62f14a0f58",
+      "meshes": [
+        {
+          "expressId": 0,
+          "textureRef": {
+            "textureId": 1,
+            "url": "textures/glb-image-0.jpg",
+            "repeatS": true,
+            "repeatT": true
+          },
+          "uvSummary": {
+            "values": 134084,
+            "jsonSha256": "bd41293ec52fd50466b3aef53b84a40ed6219f4bab84f3d29caa644b39bdcf41"
+          }
+        }
+      ]
+    },
+    {
+      "id": "3121a338-5a95-434c-9ee5-764254608042",
+      "meshes": [
+        {
+          "expressId": 1000035
+        },
+        {
+          "expressId": 1000047
+        },
+        {
+          "expressId": 1000066,
+          "textureRef": {
+            "textureId": 1000056,
+            "url": "textures/f2be22cb22f33a21bd40eab8b3da5c2df4f537841687f58af746413a9c172203.png",
+            "repeatS": false,
+            "repeatT": false
+          },
+          "uvSummary": {
+            "values": 8,
+            "jsonSha256": "bb9eceddfdbc7cfaaa05867b0ccde6e40f68e92f2ae5532b8f9c87f00b3a19eb"
+          }
+        }
+      ]
+    }
+  ]
+}

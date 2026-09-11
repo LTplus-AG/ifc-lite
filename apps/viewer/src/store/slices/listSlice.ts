@@ -18,6 +18,11 @@ export interface ListSlice {
   listResult: ListResult | null;
   listPanelVisible: boolean;
   listExecuting: boolean;
+  /** Message from the most recent execution or import failure (e.g. a name
+   *  pattern column `compileNameMatcher` rejected as unsafe), or `null` when
+   *  there is none to show. Distinct from an empty `listResult` — a genuinely
+   *  empty result set is not an error and must never populate this field. */
+  listError: string | null;
   /** A list definition handed off from elsewhere (e.g. "Create list" in the
    *  search filter) for the ListPanel to open straight into the builder. */
   pendingListDraft: ListDefinition | null;
@@ -32,6 +37,7 @@ export interface ListSlice {
   setListPanelVisible: (visible: boolean) => void;
   toggleListPanel: () => void;
   setListExecuting: (executing: boolean) => void;
+  setListError: (error: string | null) => void;
   setPendingListDraft: (definition: ListDefinition | null) => void;
 }
 
@@ -42,6 +48,7 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
   listResult: null,
   listPanelVisible: false,
   listExecuting: false,
+  listError: null,
   pendingListDraft: null,
 
   // Actions
@@ -77,6 +84,7 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
   setListPanelVisible: (listPanelVisible) => set({ listPanelVisible }),
   toggleListPanel: () => set((state) => ({ listPanelVisible: !state.listPanelVisible })),
   setListExecuting: (listExecuting) => set({ listExecuting }),
+  setListError: (listError) => set({ listError }),
   setPendingListDraft: (pendingListDraft) => set({ pendingListDraft }),
 });
 

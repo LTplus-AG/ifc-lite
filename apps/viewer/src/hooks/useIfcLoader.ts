@@ -15,7 +15,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
 import { buildModelLoadedGeometryProps, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
-import { planCacheWrite, decideMeshOnlyCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
+import { planCacheWrite, decideMeshOnlyCacheHit, decideSourceTierCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
 import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
@@ -60,7 +60,8 @@ import { useIfcCache, getCached, deleteCached } from './useIfcCache.js';
 // Server hook
 import { useIfcServer } from './useIfcServer.js';
 
-import { getMaxExpressId, parseGlbViewerModel, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
+import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
+import { getMaxExpressId, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
 import {
   createGeometryProcessorDisposer,
@@ -271,8 +272,8 @@ export function useIfcLoader() {
   >(null);
 
   /**
-   * Background revalidation for a SERVED source-decoupled (mesh-only) cache hit:
-   * confirm the TRUE full-file hash of the fresh buffer matches what was stored
+   * Background revalidation for a SERVED cache hit (either tier, #4269):
+   * confirm the TRUE full-file hash of the FRESH buffer matches what was stored
    * at write. The mtime guard already rejected any normal on-disk edit before
    * serving; this closes the deliberate mtime-PRESERVED in-place edit (a GUID or
    * same-width coordinate patch the O(1) spread key can't see) that the mtime
@@ -280,7 +281,7 @@ export function useIfcLoader() {
    * (a full reparse) with a notice. Runs off the main thread (Web Crypto), so it
    * never blocks the instant hit it follows.
    */
-  const revalidateSourceDecoupledHit = useCallback(async (args: {
+  const revalidateServedCacheHit = useCallback(async (args: {
     file: File;
     target: LoadTarget;
     buffer: ArrayBufferLike;
@@ -1046,7 +1047,8 @@ export function useIfcLoader() {
         setGeometryStreamingActive(false);
 
         try {
-          const result = await parseGlbViewerModel(buffer);
+          const result = await prepareGlbViewerModel(buffer, appearanceLoad!.decode, () => loadSessionRef.current !== currentSession);
+          if (!result) return;
           if (target.kind === 'primary') {
             setGeometryResult(result.geometryResult);
             setIfcDataStore(null);
@@ -1059,11 +1061,14 @@ export function useIfcLoader() {
             result.geometryResult, result.schemaVersion, { loadPath: 'wasm' },
           );
 
+          if (loadSessionRef.current !== currentSession) return;
+          appearanceLoad?.finish(useViewerStore.getState().models.has(modelId));
           setProgress({ phase: 'Complete', percent: 100 });
           captureModelLoaded({ format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, result.geometryResult));
           setLoading(false);
           return;
         } catch (err: unknown) {
+          if (loadSessionRef.current !== currentSession) return;
           console.error('[useIfc] GLB parsing failed:', err);
           const message = err instanceof Error ? err.message : String(err);
           updateModel(modelId, { loadState: 'error', loadError: message });
@@ -1144,23 +1149,23 @@ export function useIfcLoader() {
         loadStage = 'cache-lookup';
         const cacheResult = await getCached(cacheKey);
         if (cacheResult) {
-          // A source-decoupled (mesh-only) entry persisted NO source, so it will
-          // hydrate cached geometry against the FRESH buffer — validate the source
-          // before serving. The O(1) spread key can't see a byte-length-preserving
-          // in-place edit that falls between its sample windows, so the mtime guard
-          // is the real gate: a changed on-disk mtime → MISS (reparse); an
-          // unvalidatable hit (no mtime AND no full hash) → MISS. The classic
-          // source-persisting tier serves cached geometry + cached source together
-          // (self-consistent), so it skips this entirely.
+          // The O(1) spread key only KEYS the lookup — it can't see a
+          // byte-length-preserving in-place edit between its sample windows —
+          // so BOTH tiers gate on the mtime guard before serving (#4269): a
+          // changed on-disk mtime → MISS (reparse). Mesh-only (no persisted
+          // source; hydrates cached geometry against the FRESH buffer →
+          // chimera risk) is strict: unvalidatable (no mtime AND no full
+          // hash) → MISS. Source-persisting is softer: unknown mtime serves
+          // (worst case stale-but-consistent; legacy entries lack the field).
+          // A served hit with a stored full hash is revalidated after finalize.
           const isSourceDecoupled = !cacheResult.sourceBuffer;
-          const mayServe = !isSourceDecoupled || decideMeshOnlyCacheHit({
-            storedMtime: cacheResult.lastModified,
-            freshMtime: file.lastModified,
-            hasFullHash: !!cacheResult.fullSourceHash,
-          }) === 'serve';
+          const mtimes = { storedMtime: cacheResult.lastModified, freshMtime: file.lastModified };
+          const mayServe = (isSourceDecoupled
+            ? decideMeshOnlyCacheHit({ ...mtimes, hasFullHash: !!cacheResult.fullSourceHash })
+            : decideSourceTierCacheHit(mtimes)) === 'serve';
 
           if (!mayServe) {
-            console.warn(`[useIfc] source-decoupled cache MISS (source changed / unvalidatable) — reparsing "${file.name}"`);
+            console.warn(`[useIfc] cache MISS (source changed / unvalidatable) — reparsing "${file.name}"`);
             await deleteCached(cacheKey);
           } else {
             // Pass the freshly read file buffer as the source fallback: the
@@ -1220,12 +1225,12 @@ export function useIfcLoader() {
                 isStale: () => loadSessionRef.current !== currentSession,
               });
               setLoading(false);
-              // Belt-and-suspenders for the source-decoupled tier: revalidate the
+              // Belt-and-suspenders for BOTH tiers (#4269): revalidate the
               // TRUE full-file hash off the main thread and, if the source changed
               // with its mtime preserved, purge + auto-reload. Fire-and-forget so
               // the instant hit above is never delayed.
-              if (isSourceDecoupled && cacheResult.fullSourceHash) {
-                void revalidateSourceDecoupledHit({
+              if (cacheResult.fullSourceHash) {
+                void revalidateServedCacheHit({
                   file,
                   target,
                   buffer,
@@ -1980,8 +1985,8 @@ export function useIfcLoader() {
                 //  - `mesh-only` (150-400MB, on by default; kill switch `?meshCache=0`):
                 //    the source is too big to persist, so cache tables + geometry
                 //    WITHOUT it; on re-open the freshly read buffer rehydrates the
-                //    accessors. The hit is validated by the strengthened cache key,
-                //    so repeat opens have no main-thread hash stall.
+                //    accessors. A hit is validated by the mtime guard + off-thread
+                //    full hash (cacheTier.ts) — the key only keys the lookup.
                 // Files above 400MB (or with the mesh-only kill switch set) are not cached.
                 // Textured models are NOT cached (#1781): the binary cache
                 // format doesn't persist UVs/textures yet, so a cache hit would
@@ -2226,7 +2231,7 @@ export function useIfcLoader() {
       try { appearanceLoad?.finishForModel(useViewerStore.getState().models.get(modelId)); }
       finally { geometryHandle?.release(); }
     }
-  }, [setLoading, setGeometryStreamingActive, setError, setProgress, setIfcDataStore, setGeometryResult, appendGeometryBatch, appendInstancedShards, updateMeshColors, updateCoordinateInfo, loadFromCache, saveToCache, loadFromServer, revalidateSourceDecoupledHit]);
+  }, [setLoading, setGeometryStreamingActive, setError, setProgress, setIfcDataStore, setGeometryResult, appendGeometryBatch, appendInstancedShards, updateMeshColors, updateCoordinateInfo, loadFromCache, saveToCache, loadFromServer, revalidateServedCacheHit]);
 
   // Keep the ref pointed at the latest loadFile so a background revalidation can
   // trigger a reparse-reload without loadFile depending on itself.

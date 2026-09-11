@@ -2,12 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /** Original controlled PDF content, dedicated to CC0. No real-project/private data. */
-export function controlledPdf(): Uint8Array<ArrayBuffer> {
-  const contents = '1 0 0 rg 10 20 30 30 re f\n0 1 0 rg 90 60 20 30 re f\n';
+export function controlledPdf(contents = '1 0 0 rg 10 20 30 30 re f\n0 1 0 rg 90 60 20 30 re f\n', resources = ''): Uint8Array<ArrayBuffer> {
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 144 144] /CropBox [10 20 110 92] /Rotate 90 /UserUnit 2 /Resources << >> /Contents 4 0 R >>',
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 144 144] /CropBox [10 20 110 92] /Rotate 90 /UserUnit 2 /Resources << ${resources} >> /Contents 4 0 R >>`,
     `<< /Length ${contents.length} >>\nstream\n${contents}endstream`,
     '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 72 144] /Resources << >> /Contents 4 0 R >>',
   ];

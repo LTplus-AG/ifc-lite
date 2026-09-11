@@ -1,0 +1,19 @@
+{
+  "before": {
+    "id": 1114277,
+    "model": "d7e638af-7d85-4773-b0c0-a1d245c22639",
+    "instance": true,
+    "sibling": true
+  },
+  "hidden": {
+    "flat": 0,
+    "instance": false,
+    "sibling": false
+  },
+  "shown": {
+    "flat": 0,
+    "instance": false,
+    "sibling": false
+  },
+  "actualViewportSelection": true
+}

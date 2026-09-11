@@ -139,6 +139,24 @@ export class ModelAppearanceAssets<B extends AppearanceBitmap = ImageBitmap> {
     for (const [path, id] of images?.paths ?? []) resources.set(path, this.inventory.encoded(id));
     return { modelPath: images?.modelPath, resources };
   }
+  /** Resolve the original image used by a loaded mesh before copying a capture.
+   * Ambiguous basename matches cannot certify which original was displayed. */
+  resolveImageAsset(modelId: string, imageUri: string): string {
+    if (this.pending.has(modelId)) throw new AppearanceAssetError('missing', 'Texture images are still loading.');
+    const basename = textureUrlBasename(imageUri);
+    const candidates = new Set<string>();
+    for (const [path, id] of this.models.get(modelId)?.paths ?? []) {
+      if (textureUrlBasename(path) === basename) candidates.add(id);
+    }
+    for (const ids of this.authored.get(modelId)?.values() ?? []) for (const id of ids) {
+      if (textureUrlBasename(this.getAuthoredUri(modelId, id)) === basename) candidates.add(id);
+    }
+    if (candidates.size !== 1) throw new AppearanceAssetError('missing', candidates.size
+      ? 'This texture filename matches different original images. Reload the capture with unique image filenames.'
+      : 'The original texture image is missing. Reload the capture with its embedded or packaged images.');
+    return candidates.values().next().value!;
+  }
+
   /** Pure preparation: the IFC URL is relative to its entry directory. */
   getAuthoredUri(modelId: string, assetId: string): string {
     const asset = this.inventory.get(assetId);

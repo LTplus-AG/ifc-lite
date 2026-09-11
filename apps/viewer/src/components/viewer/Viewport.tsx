@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { loadedInstancedModelIndices } from '@/lib/visibility/model-hidden-entities.js';
+import { useAppearanceReferences } from './useAppearanceReferences.js';
 import { createPlacedEntityBoundsLookup, placedBoundsExcludingTypes } from '@/lib/model-placement/selection-bounds';
 
 /**
@@ -153,26 +155,24 @@ export function Viewport({
     return map;
   }, [models]);
 
-  // Model indices whose GPU-instanced templates should survive a reshape
-  // (#2073) — every federated model that is still loaded AND visible.
-  // `undefined` (no federation info yet) falls back to useGeometryStreaming's
-  // own "modelIndex 0 only" default, the non-federated case.
-  const presentInstancedModelIndices = useMemo(() => {
-    if (!modelIdToIndex || modelIdToIndex.size === 0) return undefined;
-    // Index 0 is unconditionally present: the shard drain resolves ownership
-    // as `modelIdToIndex.get(modelId) ?? 0`, so a shard whose modelId is not
-    // in the map lands on 0. Deriving this set from the map alone would then
-    // tear down templates the drain had just uploaded there — the two must
-    // agree on the FALLBACK, not only on the mapped entries. That mismatch
-    // between a producer and a consumer of the same key is exactly the shape
-    // behind #2272 and #2278.
-    const present = new Set<number>([0]);
-    for (const [modelId, index] of modelIdToIndex) {
-      const model = models.get(modelId);
-      if (!model || model.visible) present.add(index);
+  // Hidden models retain their one-time instance uploads; useVisibilityState
+  // masks them without changing user hides or isolation (#4428).
+  const presentInstancedModelIndices = useMemo(
+    () => loadedInstancedModelIndices(models, modelIdToIndex),
+    [modelIdToIndex, models],
+  );
+
+  // Borrow hidden-model source arrays; stamp only stable renderer ownership (#4404).
+  const appearanceSourceGeometry = useMemo(() => {
+    const sources: MeshData[] = [];
+    for (const [modelId, model] of models) {
+      const modelIndex = modelIdToIndex?.get(modelId) ?? 0;
+      for (const mesh of model.geometryResult?.meshes ?? []) {
+        sources.push(mesh.modelIndex === modelIndex ? mesh : { ...mesh, modelIndex });
+      }
     }
-    return present;
-  }, [modelIdToIndex, models]);
+    return sources;
+  }, [models, modelIdToIndex, geometryContentVersion]);
 
   // Helper to handle pick result and set selection properly
   // IMPORTANT: pickResult.expressId is now a globalId (transformed at load time)
@@ -1708,6 +1708,7 @@ export function Viewport({
     geometry,
     geometryVersion,
     geometryContentVersion,
+    appearanceSourceGeometry,
     coordinateInfo,
     isStreaming,
     modelCount: modelIdToIndex?.size ?? 0,
@@ -1731,6 +1732,8 @@ export function Viewport({
     releaseGeometryAfterFinalize: releaseGeometryAfterStream,
     onGeometryReleased,
   });
+
+  useAppearanceReferences(rendererRef, isInitialized);
 
   useModelAssetsSync({
     rendererRef, isInitialized, pointClouds, geometry, modelIdToIndex,

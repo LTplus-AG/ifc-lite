@@ -19,11 +19,11 @@ import { safeUtf8Decode } from '@ifc-lite/data';
 import { isIndexableExpressId } from './express-id.js';
 import {
   countNewlines,
-  findEntityLength,
   opensLiteralOrComment,
   skipLexical,
   skipTrivia,
 } from './step-lexing.js';
+import { findEntityLength } from './step-record-boundary.js';
 
 export interface ScannedEntityRef {
   expressId: number;
@@ -164,11 +164,12 @@ export class BalancedEntityScan {
             line: startLine,
           };
         } else {
-          // 0 means findEntityLength ran off the end of the buffer without
-          // ever balancing the '(' -- an unterminated literal or comment
-          // inside the argument list, or no closing ')' at all. Its own loop
-          // has no other exit, so this is always the EOF case, never a
-          // mid-file syntax choice to resume past.
+          // Either classified failure (UNBALANCED_RECORD / UNREADABLE_RECORD)
+          // means findEntityLength ran off the end of the buffer without ever
+          // balancing the '('. Its own loop has no other exit, so this is
+          // always the EOF case, never a mid-file syntax choice to resume
+          // past; this scan stops on both, unlike scanEntitiesFast, which
+          // resumes past an unbalanced record (#4179).
           stopped = true;
           break;
         }

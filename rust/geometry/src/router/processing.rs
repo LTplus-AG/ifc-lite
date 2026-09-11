@@ -101,7 +101,7 @@ impl GeometryRouter {
         // This prevents duplication when both direct and MappedRepresentation exist
         let has_direct_geometry = representations.iter().any(|rep| {
             rep.ifc_type == IfcType::IfcShapeRepresentation
-                && super::effective_rep_type(rep)
+                && super::effective_element_rep_type(element, rep)
                     .map(super::is_direct_body_representation)
                     .unwrap_or(false)
         });
@@ -114,7 +114,7 @@ impl GeometryRouter {
             // Check the effective representation type (RepresentationType, falling
             // back to RepresentationIdentifier when the type is blank - #1661).
             // Skip 'Axis', 'Curve2D', 'FootPrint', etc. - only process 'Body', 'SweptSolid', 'Brep', etc.
-            if let Some(rep_type) = super::effective_rep_type(&shape_rep) {
+            if let Some(rep_type) = super::effective_element_rep_type(element, &shape_rep) {
                 // Skip MappedRepresentation if we already have direct geometry
                 // This prevents duplication when an element has both direct and mapped representations
                 if rep_type == "MappedRepresentation" && has_direct_geometry {
@@ -122,7 +122,7 @@ impl GeometryRouter {
                 }
 
                 // Only process solid/surface geometry representations
-                if !super::is_body_representation(rep_type) {
+                if !super::is_body_representation(rep_type) && !super::annotation::accepts(element, rep_type) {
                     continue; // Skip non-solid representations like 'Axis', 'Curve2D', etc.
                 }
             }
@@ -136,7 +136,9 @@ impl GeometryRouter {
 
             // Process each representation item
             for item in items {
-                let mesh = self.process_representation_item(&item, decoder)?;
+                let mesh = if element.ifc_type == IfcType::IfcAnnotation && item.ifc_type == IfcType::IfcAnnotationFillArea {
+                    self.process_annotation_fill(&item, decoder)?
+                } else { self.process_representation_item(&item, decoder)? };
                 if instancing_enabled() && !mesh.positions.is_empty() {
                     instanceable_item_count += 1;
                     single_instance_meta = if instanceable_item_count == 1 {
@@ -246,7 +248,7 @@ impl GeometryRouter {
         // Check if we have direct geometry
         let has_direct_geometry = representations.iter().any(|rep| {
             rep.ifc_type == IfcType::IfcShapeRepresentation
-                && super::effective_rep_type(rep)
+                && super::effective_element_rep_type(element, rep)
                     .map(super::is_direct_body_representation)
                     .unwrap_or(false)
         });
@@ -256,14 +258,14 @@ impl GeometryRouter {
                 continue;
             }
 
-            if let Some(rep_type) = super::effective_rep_type(&shape_rep) {
+            if let Some(rep_type) = super::effective_element_rep_type(element, &shape_rep) {
                 // Skip MappedRepresentation if we have direct geometry
                 if rep_type == "MappedRepresentation" && has_direct_geometry {
                     continue;
                 }
 
                 // Only process solid/surface geometry representations
-                if !super::is_body_representation(rep_type) {
+                if !super::is_body_representation(rep_type) && !super::annotation::accepts(element, rep_type) {
                     continue;
                 }
             }
@@ -277,6 +279,10 @@ impl GeometryRouter {
 
             // Process each representation item, preserving geometry IDs
             for item in items {
+                if element.ifc_type == IfcType::IfcAnnotation && item.ifc_type == IfcType::IfcAnnotationFillArea {
+                    sub_meshes.add(item.id, self.process_annotation_fill(&item, decoder)?);
+                    continue;
+                }
                 self.collect_submeshes_from_item(
                     &item,
                     decoder,

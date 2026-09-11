@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Smoke tests for the FFI boundary itself — pointer validation, error codes,
 //! the parse→serialize→free round trip, and the `opening_filter_mode` mapping.
 //! Geometry correctness is covered by the `geometry`/`processing` crates; here

@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 /* This Source Code Form is subject to the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
@@ -429,6 +433,14 @@ describe('appearance command atomicity #4243', () => {
     f.assertUncommitted(initial);
   });
 
+  it('rejects exhausted allocation and work budgets without publishing IFC, history or image ownership (#4336)', async () => {
+    for (const budget of [{ maxBytes: 64 }, { maxWork: 8 }]) {
+      const f = await fixture(), initial = f.snapshot();
+      await assert.rejects(f.commit(budget), /work or allocation budget/);
+      f.assertUncommitted(initial);
+    }
+  });
+
   it('rejects SDK edits made during cooperative preparation without reverting them (#4336)', async () => {
     const f = await fixture();
     let changed: ReturnType<typeof f.snapshot> | undefined;
@@ -523,4 +535,27 @@ describe('appearance command atomicity #4243', () => {
       useViewerStore.getState()[direction](MODEL);
     }
   });
+});
+
+it('retains every projected atlas through compound Apply, Undo, Redo and portable export (#4260)', async () => {
+  const f = await fixture();
+  const alternate = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==', 'base64'));
+  const second = await appearanceAssets.add(alternate, { owner });
+  const id = f.plan.nextAvailableExpressId++;
+  f.plan.created.push({ expressId: id, type: 'IfcImageTexture', attributes: [false, false, 'DIFFUSE', null, null, second.exportName] });
+  const refs = [`#${f.plan.nextExpressId}`, `#${id}`];
+  f.plan.created[2].attributes[0] = refs;
+  f.plan.created[3].attributes[0] = refs;
+  await commitAppearance(MODEL, [f.asset.id, second.id], f.plan, f.renderer, f.preview, f.groups, captureAppearanceSource(f.view));
+  appearanceAssets.releaseOwner(owner);
+  const expected = [f.asset.exportName, second.exportName].sort();
+  assert.deepEqual([...modelAppearanceAssets.exportResources(MODEL).resources.keys()].sort(), expected);
+  useViewerStore.getState().undo(MODEL);
+  assert.equal(modelAppearanceAssets.exportResources(MODEL).resources.size, 0, 'Undo removes active atlas registration');
+  assert.ok(appearanceAssets.get(f.asset.id));
+  assert.ok(appearanceAssets.get(second.id), 'Redo history retains every atlas, not only the first image');
+  useViewerStore.getState().redo(MODEL);
+  const resources = modelAppearanceAssets.exportResources(MODEL).resources;
+  assert.deepEqual([...resources.keys()].sort(), expected);
+  assert.deepEqual(resources.get(second.exportName), alternate, 'portable resource retains the exact encoded atlas');
 });

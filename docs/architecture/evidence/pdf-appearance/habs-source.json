@@ -1,0 +1,24 @@
+{
+  "title": "Cyclorama Building, Gettysburg \u2014 first and second floor plans",
+  "survey": "HABS PA-6709",
+  "sheet": "4 of 24",
+  "file": "cyclorama-floor-plans-habs-pa-6709-sheet-4.pdf",
+  "download_url": "https://www.usmodernist.org/m66/cyclorama/habs/images/habs04a.pdf",
+  "download_catalog": "https://www.usmodernist.org/m66/cyclorama/habs/index.html",
+  "primary_catalog": "https://www.loc.gov/pictures/item/pa3988/",
+  "primary_rights": "https://www.nps.gov/subjects/heritagedocumentation/collection.htm",
+  "additional_rights": "https://wwws.loc.gov/rr/print/res/114_habs.html",
+  "rights": "Public domain HABS measured drawing produced for the U.S. Government; PDF downloaded from USModernist mirror. Not a Creative Commons license.",
+  "credit": "Library of Congress, Prints & Photographs Division, HABS PA-6709, sheet 4 of 24; National Park Service, Historic American Buildings Survey.",
+  "bytes": 675723,
+  "sha256": "f75301c338d80bc2f428dede7c54d4799def2c2726cea8bed50c3e85d5f6305a",
+  "pages": 1,
+  "page_size_points": [
+    596.0,
+    736.2999877929688
+  ],
+  "pdf_rotation": 0,
+  "content": "Scanned/raster linework, 3 embedded images, no extracted vector paths. First and second floor plan, printed graphic scale and north arrow.",
+  "suggested_ui": "Rotate 90 degrees clockwise for landscape orientation; crop either floor plan. Use measured graphic scale after zooming, not PDF DPI, for model calibration.",
+  "downloaded_utc_date": "2026-09-09"
+}

@@ -1,0 +1,34 @@
+{
+  "experimentCommit": "e74b81ee6",
+  "baseCommit": "6b1baee3e1bf34e397ae90f40c740c5399a7ad10",
+  "runtimeMerged": false,
+  "workLimit": 64000000,
+  "sourceTriangles": 66122,
+  "selectedProductIds": [
+    65
+  ],
+  "targetGeometryItemId": 54,
+  "targetTriangles": 40087,
+  "refusal": "BVH query work budget exhausted",
+  "applicablePlanProduced": false,
+  "inputs": {
+    "source.ifc": {
+      "bytes": 5664029,
+      "sha256": "0efc7987670ddb1287cb88fe1b9a239da754f41170e9420bf04293c0c54f34e3"
+    },
+    "request.json": {
+      "bytes": 8645275,
+      "sha256": "f7c131751a6b8f819a04c3d437cdc5171a1c264d14389c69183db5a62fa853ff"
+    },
+    "rgba.bin": {
+      "bytes": 4194304,
+      "sha256": "2c2dc5a76bc993bfc7bb86a4ddef95baecbc46161467fd45b7f8ccf1cc6077f1"
+    }
+  },
+  "validation": {
+    "transferTestsPassed": 9,
+    "nearestQueryTestsPassed": 2,
+    "strictWorkspaceClippy": "passed"
+  },
+  "timing": "Not reported: concurrent builds, no end-to-end worker-pool comparison."
+}

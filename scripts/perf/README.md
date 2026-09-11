@@ -46,6 +46,35 @@ a baseline first-load viewport initialization race. Those failed samples were
 retained and excluded, not treated as successful loads. The lesson is to name
 and qualify the measured boundary before interpreting small load-time deltas.
 
+## Authored metadata wire validation (#4441)
+
+A shared early authoring guard now refuses free-text spellings that the host
+mutation writer interprets as structural tokens. The source-matched idle native
+AC20 A/B/A/B probe found matching normal-load geometry/total values and mesh
+fingerprints, with quantized parse variation. This is a correctness fix, not a
+worker-pool optimization. The lesson is to validate text at the shared authored
+boundary using the consumer's exact whitespace/token rules; broad trimming can
+both miss reserved inputs and reject ordinary Unicode names.
+Evidence: `docs/architecture/evidence/authored-wire-tokens/native-load.json`.
+
+## Manual scan registration foundation (#4381)
+
+The correspondence solver is opt-in, bounded to 256 fitting and 256 held-out
+points, with fixed-size matrix decompositions and explicit iteration limits.
+It is reachable through the dedicated registration API only; parse, element mesh
+production, styling and worker-load paths do not invoke it. An interleaved native
+AC20-FZK-Haus base/branch probe found equal reported parse/geometry/total phase
+medians and a full-wall median difference within the observed run spread. Every
+ordered mesh fingerprint and mesh/vertex/triangle count matched. The verdict is
+no material regression observed on that fixture, not a load optimization or a
+browser worker-pool speed claim. See the [raw measurement](../../docs/architecture/evidence/scan-registration/native-load-perf.json).
+
+Independent numerical review also ruled out the specialized small-matrix SVD:
+its squared-matrix path lost thin but valid correspondence directions. The
+bounded direct decomposition and two retained counterexamples prevent repeating
+that failure. Small point-to-plane residuals remain no substitute for spatially
+distributed check correspondences, as the CRAS evidence demonstrates.
+
 ## The native probe (`perf_probe`)
 
 `rust/processing/examples/perf_probe.rs`, wrapped by `probe.sh`. It drains the
@@ -1037,6 +1066,19 @@ the remaining main-thread stall still fails the intended smoothness requirement.
 Do not treat fewer copies or a faster helper microbenchmark as acceptance: retain
 the paired interaction measurement and continue profiling transaction preparation.
 
+### Finite page appearance composition (#4260)
+
+The opt-in page planner bakes topology-preserving PNG charts and retains source
+texture density outside the page. It adds a PNG encoder to WASM; ordinary loading
+does not invoke the new operation. Source-verified baseline and final runtimes
+were compared in fresh interleaved browser workers under identical JS/assets.
+All geometry, color, UV and provenance fingerprints matched. A small ordinary
+worker-readiness increase was observed with overlapping samples; this is neither
+a speedup nor a zero-cost claim. Retain the explicit atlas budgets and source
+fidelity floor rather than silently downsampling photos to page resolution.
+Exact runtime provenance, samples and deltas are in `pdf-page-load-evidence.json`;
+page compositing latency and renderer readiness were not measured by this check.
+
 ### Cooperative appearance command preparation (#4336)
 
 The appearance command now consumes owned cooperative entity operations and keeps
@@ -1049,3 +1091,255 @@ an async return type or successful cancellation tests. Retain the exact fences
 while addressing remaining synchronous dependency work separately. Raw timing,
 source/runtime identity and functional Undo/Redo evidence are recorded under
 `docs/architecture/evidence/appearance/appearance-cooperative-apply-*`.
+
+### Calibrated image annotation creation (#4308)
+
+The opt-in native annotation planner reuses canonical placement, schema validation and per-element geometry production. A source-matched ordinary worker-load A/B observed a small increase with overlapping samples and identical geometry/provenance; no speedup or zero-cost claim is made. Final JavaScript/assets were identical while the verified IFC WASM was swapped, so this checks runtime size/initialization effects without invoking annotation creation. See [the exact runtime hashes and paired samples](annotation-plane-load-evidence.json). Annotation creation and the downstream Save Into Model UI are outside this load measurement.
+
+### Captured mesh authoring (#4380)
+
+The opt-in captured-surface planner shares annotation authoring's canonical
+product path; it does not modify ordinary geometry loading. Interleaved native
+ordinary-load probes retained all mesh/vertex/triangle counts, but quantized and
+noisy samples were inconclusive. Exclusive machine idleness was not established,
+so these are smoke evidence only, not a speedup, regression or browser worker-pool
+latency claim. The lesson is to compare triangle-corner geometry and UVs across
+capture authoring and normal import: valid canonical welding may change vertex
+layout while preserving the surface and seams. [Raw source-matched samples and
+limitations](../../docs/architecture/evidence/captured-mesh/native-load.json)
+record the experiment; capture-creation and integrated UI timing remain separate.
+
+### Appearance preparation input scheduling (#4336)
+
+Fresh background tasks allow trusted viewport and Discard input to run during broad
+Apply preparation. In the paired real Convento viewer workflow, scheduler.yield
+continuations painted frames but delayed trusted input until completion. This is
+a different mechanism from timer-clamping or microbenchmark speedups: it trades
+slightly longer elapsed preparation for earlier user interaction. The exact final
+transaction fence is unchanged and still blocks. Identical runtime and canonical
+owner/mesh output were verified across paired runs; cancellation published no IFC
+or history changes. Raw evidence, memory caveats and methodology live in
+`docs/architecture/evidence/appearance/apply-responsiveness/README.md`.
+
+### Opt-in evaluated occurrence appearance (#4404)
+
+Occurrence-local normalization runs only during an explicit appearance plan;
+ordinary loading keeps its existing pipeline. Interleaved AC20 base/branch native
+load probes found no resolvable regression at the probe's integer-millisecond
+phase precision, with identical ordered mesh fingerprints and geometry counts.
+This is native load evidence, not a worker-pool speedup or conversion-latency
+claim. Preserve the opt-in boundary and measure broad authoring separately when
+its host UI lands. [Raw samples and measurement limits](../../docs/architecture/evidence/evaluated-occurrences/native-load.json)
+record the comparison.
+
+The F6 composite-allocation follow-up keeps compaction inside authoring only.
+Repeated base/branch AC20 load probes retained identical phase timings at the
+probe's measurement precision and identical ordered mesh fingerprints. This
+supports no resolvable native-load regression, not an authoring or worker-pool
+speedup. Preserve literal-versus-reference schema slots when compacting plans;
+never trade semantic fidelity for convenient generic string rewriting.
+[Follow-up samples and limits](../../docs/architecture/evidence/evaluated-occurrences/allocation-load.json).
+
+### Shared appearance atlas sampling (#4381)
+
+Factoring target appearance preservation, charts and canonical image binding into
+an internal sampler retains the finite-page operation and avoids a second atlas
+pipeline for scan observations. Interleaved native AC20 base/extraction/transfer
+probes found no resolvable ordinary-load regression, with identical geometry
+counts and ordered fingerprints. This is a load-path isolation verdict, not a
+browser worker-pool speedup or authoring-capacity claim. Keep expensive source
+matching opt-in and separately bounded; broad transfer needs its own measured
+candidate-reuse work. [Raw probes and limits](../../docs/architecture/evidence/shared-atlas/native-load.json)
+record the comparison.
+
+
+The registered mesh-transfer foundation preserves that ordinary-load isolation,
+but its aggregate per-texel BVH work cap refuses the complete captured boulder.
+A bounded prefix qualifies the surface/UV and unknown-coverage behavior; it does
+not establish broad authoring capacity. The next mechanism to evaluate is
+conservative candidate reuse across target triangles/tiles, retaining nearest
+surface refusal and one atomic result, rather than enlarging the work ceiling.
+[Real-surface coverage and refusal evidence](../../docs/architecture/evidence/mesh-transfer/README.md#real-boulder-geometry-conservative-coverage-and-capacity)
+keeps that limitation separate from the ordinary-load measurements.
+
+The emitted-texel applicability follow-up separates geometric centroid evidence
+from pixels actually sampled into a transfer atlas. Ordinary-load paired probes
+show mixed subphase differences at the probe's millisecond precision, with the
+same ordered mesh payload fingerprint; no consistently directed change or
+worker-pool speedup is claimed. The correctness result is refusing an all-old
+atlas despite positive centroid coverage while retaining byte-identical dense
+transfer output. [Samples, fingerprints and PNG evidence](../../docs/architecture/evidence/mesh-transfer-texel-gate/README.md)
+record that distinction.
+
+Canonical occurrence source snapshots reuse the mesh already evaluated by the
+opt-in appearance planner. Moving its bounded vectors into the plan avoids
+reconstructing IFC geometry from GPU instance transforms. Interleaved exact-base
+native AC20 probes found no resolvable ordinary-load change and identical geometry
+counts. This establishes load-path isolation, not a browser worker-pool speedup
+or conversion throughput claim; the additional authored payload remains governed
+by the existing aggregate geometry budget.
+[Source-mesh payload probe](../../docs/architecture/evidence/evaluated-occurrences/source-mesh-load.json)
+records source heads, precision limits and the unchanged census.
+
+Candidate reuse for registered transfer was tested through whole-triangle leaf
+caches, exact observation memoization, lazy spatial cells, and conservative
+centroid-witness seed bounds. These preserve bounded controls but still exceed
+the complete captured-boulder work quota; none was merged. A calculation-only
+fresh-worker diagnostic separates actual traversal latency/memory from the work
+proxy, without authorizing a larger quota or producing an applicable plan.
+Do not repeat those cache mechanisms unchanged or infer broad capacity from a
+small target prefix. [Recorded experiments and worker evidence](../../docs/architecture/evidence/mesh-transfer-capacity/README.md)
+state the remaining gate and the limits of the measurement.
+
+
+The follow-up nearest-first BVH experiment shrank an exact per-sample search
+bound, retained the near-tie band in one traversal, and combined it with bounded
+exact observation memoization. It still refused the full selected boulder under
+the existing work cap, so the runtime experiment remains unmerged. A tighter
+candidate search alone did not establish complete-target capacity; do not
+reintroduce this variant as a shipped optimization without new end-to-end
+acceptance. [Reproducible refusal](../../docs/architecture/evidence/mesh-transfer-capacity/README.md#nearest-first-traversal-follow-up).
+
+### Product-scoped polygonal annotation fills (#4406)
+
+Direct annotation fills reuse canonical placement/triangulation and a lazy
+source-owned inverse style index shared across recreated native/batch decoders.
+The ordinary AC20 source-matched A/B/A/B probe found identical paired reported
+best-of-five phase timings and identical mesh fingerprints/counts; this is a normal-load regression
+check, not annotation throughput or worker-pool speedup evidence. Keep style
+lookup failures cached and diagnostic, and keep auxiliary type maps excluded.
+[Exact inputs and paired runs](../../docs/architecture/evidence/annotation-fills/native-load.json).
+
+### PDF vector graphics-state preparation (#4406)
+
+The opt-in decoded-state preparation API adds no ordinary IFC geometry processing
+step. An idle source-matched native A/B/A/B probe showed small millisecond timing
+variation with identical ordered mesh fingerprints and counts. It does not
+establish zero overhead, a worker-pool speedup or vector-page preparation
+throughput. Keep page operator/path/stack limits distinct from PDF.js decoder
+allocation limits; post-decode counting cannot bound the decoder's earlier work.
+See [exact source IDs, five-iteration samples and identity evidence](../../docs/architecture/evidence/pdf-vector-state/native-load.json).
+
+## Reference opening semantics (#4433)
+
+An element-aware representation predicate excludes non-subtractive Reference
+shapes only for opening elements. Controlled native base/branch probes on AC20
+and ISSUE_129 resolved no material normal-load regression; mesh, vertex and
+triangle counts stayed identical. This is a correctness change, not a speedup.
+The lesson is to preserve the existing type-based rendering predicate for
+ordinary products while applying opening-specific semantics consistently to
+mesh production and fast void probes. Numeric evidence and source revisions are
+in `docs/architecture/evidence/evaluated-openings/performance.json`.
+
+### Reference-only opening host routing (#4440)
+
+A retained Reference-only opening must keep its host on the textured submesh
+path. The new predicate inspects representation membership without producing
+cutter meshes; unknown or over-budget data retains the existing cutter path.
+Two interleaved base/branch native probe pairs on AC20 and ISSUE_129 resolved no
+consistent material normal-load regression, with unchanged mesh/vertex/triangle
+counts and existing CSG diagnostics. This is a correctness fix, not a browser
+worker-pool speedup claim; small overhead below run-to-run variation remains
+unresolved. [Exact revisions, probe results and limits](../../docs/architecture/evidence/evaluated-openings/reference-textures.json)
+are recorded with the fixture evidence. Do not infer that a nonempty void-index
+entry implies actual subtraction: the opening representation identifier matters.
+
+## Shared authored source context (#4406)
+
+Extracting common creator setup resolved no normal-load timing difference in
+interleaved exact-source native probes, with identical ordered mesh fingerprints
+and counts. Independently rebuilt WASM modules also returned byte-identical
+complete plans for the checked annotation/captured controls. This is a reuse
+prerequisite, not an optimization or an authoring-throughput claim. Reuse the
+canonical source, placement and row author when adding non-image geometry; do
+not introduce a dummy texture to access shared setup. See the [raw native
+measurements](../../docs/architecture/evidence/authored-context/native-load.json)
+and adjacent plan identity evidence.
+
+### Complete selected-target mesh transfer (#4381)
+
+Nearest-first traversal plus same-chart raster padding avoids source queries
+for unobserved padding while retaining exact nearest/ambiguity checks and all
+interior unknown appearance. Combined with an explicit aggregate work allowance
+increase, the full selected boulder now returns identical applicable plans in
+fresh workers and passes the normal viewer transaction/export/reopen journey.
+The original quota experiments remain negative; neither this result nor the
+quota increase alone retroactively turns them into wins. Scan-owned memory is
+still bounded, including padding scratch, and overlapping/dense cases refuse
+before publication. Ordinary-load paired probes had a slower first candidate
+pair and matching second pair with identical ordered geometry; no consistent
+regression or zero-overhead claim follows. This is measured capacity acceptance, not a throughput
+speedup. [Worker, independent-reader and refusal evidence](../../docs/architecture/evidence/mesh-transfer-full-target/README.md).
+
+## Qualified PDF fill composition (#4406)
+
+The new explicit creation API leaves ordinary model loading on the existing
+path. Interleaved exact-source native probes showed a slower first candidate
+pair and matching second-pair timings, with identical ordered mesh fingerprints
+and counts. This resolves no consistent normal-load regression and does not
+establish zero overhead or browser-worker throughput. The composition budget
+precharges pairwise overlay work and separately limits generated contours and
+transport; do not tune those caps using unrelated normal-load timings. See
+[raw samples and source identity](../../docs/architecture/evidence/pdf-fill-annotations/native-load.json).
+
+## Qualified curved PDF fill boundaries (#4406)
+
+Native normal-load A/B/A/B resolved no consistent regression, with identical
+ordered mesh fingerprints and counts. This does not measure curved-page worker
+throughput. Subdivision and original-piece hull qualification share the existing
+creation budget; finely tessellated holes can still refuse its overlay work cap.
+Do not silently coarsen to fit it. A global exact convex-control-polygon check
+rejected a real sheared control on tiny near-collinear turns; exact per-piece
+hull separation admitted that control without snapping or ignoring features.
+Keep finite-chord error bounds: infinite-line flatness incorrectly collapses
+backtracking curves. See [source-matched samples](../../docs/architecture/evidence/pdf-curved-fill-annotations/native-load.json)
+and the adjacent independently decoded PDF evidence.
+
+### Evaluated post-opening appearance and companion history (#4404)
+
+The authoring evaluator now consumes canonical post-opening source geometry and
+carries bounded opening companion meshes for one preview/history transaction.
+Controlled native normal-load A/B probes retained equal geometry counts. The
+small AC20 fixture showed a slight absolute increase at coarse phase resolution;
+the opening-heavy control stayed close across both interleaved pairs. No speedup
+or browser worker-pool timing claim is made. See the
+[measured source revisions and results](../../docs/architecture/evidence/evaluated-openings/authoring-performance.json).
+This changes the authoring path, not the normal-load mesh evaluator; future
+optimization should measure the explicit conversion workload independently.
+
+## Qualified solid straight PDF strokes (#4406)
+
+Exact-source native A/B/A/B normal-load controls resolve no regression, with
+identical phase minima in each pair and identical ordered mesh fingerprints and
+counts. This does not measure PDF authoring or worker-pool throughput. The new
+path remains opt-in through the existing PDF annotation planner. A draft union
+of segment rectangles and join wedges was rejected by existing conservative
+contact/intersection guards even on ordinary joins; direct offset contours
+retain the same guards and avoid manufacturing those internal boundaries.
+Collapsed/reversing offsets and unresolved joins refuse rather than repairing
+an unqualified stroke arrangement. See the [source-specific raw controls](../../docs/architecture/evidence/pdf-straight-stroke-annotations/native-load.json)
+and original PDF/independent IFC evidence alongside them.
+
+## Symbolic fill routing for native annotation meshes (#4459)
+
+Source-specific native A/B/A/B controls retain identical ordered geometry
+fingerprints and counts. The candidate's first launch is slightly slower at
+coarse phase resolution; the second pair matches. This is normal-load
+isolation, not a symbolic-extraction or browser worker-pool performance claim.
+The lesson is to carry qualified item provenance once, then filter the 3D
+overlay output; deleting the shared drawing primitives would hide the duplicate
+at the cost of 2D content. See the [raw runs and immutable binary identities](../../docs/architecture/evidence/annotation-fill-routing/native-load.json).
+
+## One integer lattice for registered PDF composition (#4458)
+
+Exact-source interleaved normal-load probes resolve no regression; both paired
+phase minima and all ordered mesh fingerprints/counts are identical. This does
+not measure PDF authoring or worker throughput. The useful mechanism is retaining
+integer groups through classification, clipping and paint ordering: repeatedly
+creating floating adapters had shifted a shared CropBox edge enough to trigger
+a false topology refusal. Source qualification now happens once, and every stage
+still checks finite-edge topology. A separate finite-segment separation
+certificate avoids treating an unrelated infinite-line side change as an edge
+intersection. No tolerance/endpoint guard was replaced by epsilon snapping.
+[Source-matched raw samples and original PDF evidence](../../docs/architecture/evidence/pdf-composition-lattice/README.md)
+record the control and prevent repeating the float-roundtrip approach.

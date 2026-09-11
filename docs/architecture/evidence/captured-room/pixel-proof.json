@@ -1,0 +1,7 @@
+{
+  "method": "Independent Pillow decode of original JPEG compared byte-for-byte to IFCX room-export embedded straight RGBA8",
+  "bytes": 4194304,
+  "byteIdentical": true,
+  "sourceRgbaSha256": "2c2dc5a76bc993bfc7bb86a4ddef95baecbc46161467fd45b7f8ccf1cc6077f1",
+  "roomExportRgbaSha256": "2c2dc5a76bc993bfc7bb86a4ddef95baecbc46161467fd45b7f8ccf1cc6077f1"
+}

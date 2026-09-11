@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/viewer-embed",
-  "version": "1.15.0",
+  "version": "1.15.1",
   "private": true,
   "description": "Embeddable IFC-Lite 3D viewer for iframes (Power BI, Superset, etc.)",
   "type": "module",
@@ -50,6 +50,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
+    "@webgpu/types": "^0.1.72",
     "happy-dom": "^20.14.0",
     "typescript": "^6.0.3",
     "vite": "^8.2.2",

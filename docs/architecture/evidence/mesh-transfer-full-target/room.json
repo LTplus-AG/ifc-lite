@@ -1,0 +1,135 @@
+{
+  "completed": true,
+  "input": "/tmp/transfer-capacity-ui-256/transferred.ifczip",
+  "proofs": [
+    {
+      "label": "owner context joined shared room",
+      "triangles": 40087,
+      "sourceGuid": "3F8ea83w95POWKkSYP6ukU",
+      "targetGuid": "/3F8ea83w95POWKkSYP6ukU",
+      "allOrientedTriangleCornersCompared": true,
+      "worldToleranceMetres": 0.00001,
+      "uvTolerance": 0.000001,
+      "maxWorldError": 0,
+      "maxUvError": 0,
+      "decodedImage": {
+        "width": 2048,
+        "height": 2815,
+        "rgba": "2e2c3b9b"
+      },
+      "sampler": {
+        "repeatS": false,
+        "repeatT": false
+      }
+    },
+    {
+      "label": "fresh guest",
+      "triangles": 40087,
+      "sourceGuid": "3F8ea83w95POWKkSYP6ukU",
+      "targetGuid": "/3F8ea83w95POWKkSYP6ukU",
+      "allOrientedTriangleCornersCompared": true,
+      "worldToleranceMetres": 0.00001,
+      "uvTolerance": 0.000001,
+      "maxWorldError": 0,
+      "maxUvError": 0,
+      "decodedImage": {
+        "width": 2048,
+        "height": 2815,
+        "rgba": "2e2c3b9b"
+      },
+      "sampler": {
+        "repeatS": false,
+        "repeatT": false
+      }
+    },
+    {
+      "label": "fresh rejoin after both previous contexts closed",
+      "triangles": 40087,
+      "sourceGuid": "3F8ea83w95POWKkSYP6ukU",
+      "targetGuid": "/3F8ea83w95POWKkSYP6ukU",
+      "allOrientedTriangleCornersCompared": true,
+      "worldToleranceMetres": 0.00001,
+      "uvTolerance": 0.000001,
+      "maxWorldError": 0,
+      "maxUvError": 0,
+      "decodedImage": {
+        "width": 2048,
+        "height": 2815,
+        "rgba": "2e2c3b9b"
+      },
+      "sampler": {
+        "repeatS": false,
+        "repeatT": false
+      }
+    },
+    {
+      "label": "room export reopened",
+      "triangles": 40087,
+      "sourceGuid": "3F8ea83w95POWKkSYP6ukU",
+      "targetGuid": "/3F8ea83w95POWKkSYP6ukU",
+      "allOrientedTriangleCornersCompared": true,
+      "worldToleranceMetres": 0.00001,
+      "uvTolerance": 0.000001,
+      "maxWorldError": 2.9802322387695312e-8,
+      "maxUvError": 0,
+      "decodedImage": {
+        "width": 2048,
+        "height": 2815,
+        "rgba": "2e2c3b9b"
+      },
+      "sampler": {
+        "repeatS": false,
+        "repeatT": false
+      }
+    }
+  ],
+  "mousePicks": {
+    "ownerPick": {
+      "x": 552.56962525632,
+      "y": 749.6240294913283,
+      "id": 65,
+      "selected": {
+        "modelId": "f5faf02e-7215-48ad-8331-420179d0f8fd",
+        "expressId": 65
+      }
+    },
+    "ownerRoomPick": {
+      "x": 552.56962525632,
+      "y": 749.6240294913283,
+      "id": 4,
+      "selected": {
+        "modelId": "room:c8576e8e6863",
+        "expressId": 4
+      }
+    },
+    "guestPick": {
+      "x": 552.56962525632,
+      "y": 749.6240294913283,
+      "id": 4,
+      "selected": {
+        "modelId": "room:c8576e8e6863",
+        "expressId": 4
+      }
+    },
+    "rejoinPick": {
+      "x": 552.56962525632,
+      "y": 749.6240294913283,
+      "id": 4,
+      "selected": {
+        "modelId": "room:c8576e8e6863",
+        "expressId": 4
+      }
+    },
+    "reopenedPick": {
+      "x": 552.56962525632,
+      "y": 749.6240294913283,
+      "id": 3,
+      "selected": {
+        "modelId": "2f3f074b-d3e6-468e-b1f6-ab00add82e93",
+        "expressId": 3
+      }
+    }
+  },
+  "imageTransport": "Room decoded RGBA pixel equality; not an assertion of original JPEG byte preservation",
+  "exportName": "Shared model_export.ifcx"
+}

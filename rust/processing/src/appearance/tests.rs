@@ -4,7 +4,7 @@
 use super::*;
 use ifc_lite_core::{AttributeValue as A, EntityDecoder, EntityScanner};
 
-const CONTROLLED_IFC: &str = r#"ISO-10303-21;
+pub(super) const CONTROLLED_IFC: &str = r#"ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('issue-1781 image texture fixture'),'2;1');
 FILE_NAME('imgtex.ifc','2026-07-17T00:00:00',(''),(''),'','','');
@@ -45,6 +45,7 @@ END-ISO-10303-21;
 
 fn request(products: Vec<u32>) -> AppearanceRequest {
     AppearanceRequest {
+        representation_policy: RepresentationPolicy::Preserve,
         schema: "IFC4".into(),
         source_revision: "revision-1".into(),
         next_express_id: 100,
@@ -66,6 +67,8 @@ fn wire(value: &A) -> Value {
         A::Enum(s) => json!(format!(".{s}.")),
         A::Integer(n) => json!(n),
         A::Float(n) => json!(n),
+        A::List(values) if values.len() == 2 && values[0].as_string().is_some_and(|s| s.starts_with("IFC")) =>
+            json!({"typed": {"type": values[0].as_string().unwrap(), "value": wire(&values[1])}}),
         A::List(values) => Value::Array(values.iter().map(wire).collect()),
         A::Null => Value::Null,
         A::Derived => json!("*"),
@@ -73,19 +76,28 @@ fn wire(value: &A) -> Value {
 }
 fn step(value: &Value) -> String {
     match value {
+        Value::Object(value) if value.contains_key("typed") => {
+            let typed = &value["typed"];
+            format!("{}({})", typed["type"].as_str().unwrap(), step(&typed["value"]))
+        },
         Value::Null => "$".into(),
         Value::Array(values) => format!(
             "({})",
             values.iter().map(step).collect::<Vec<_>>().join(",")
         ),
-        Value::String(s) if s.starts_with('#') || s.starts_with('.') || s == "*" => s.clone(),
+        Value::String(s) if {
+            let token=s.trim();
+            matches!(token,"$"|"*")
+                || token.strip_prefix('#').is_some_and(|id|!id.is_empty() && id.bytes().all(|c|c.is_ascii_digit()))
+                || token.strip_prefix('.').and_then(|s|s.strip_suffix('.')).is_some_and(|s|!s.is_empty() && s.bytes().all(|c|c.is_ascii_alphanumeric() || c==b'_'))
+        } => s.trim().into(),
         Value::String(s) => format!("'{}'", s.replace('\'', "''")),
         other => other.to_string(),
     }
 }
 /// Test-only consumer: apply typed mutations to decoded source records, then
 /// re-open the resulting actual IFC through the production geometry pipeline.
-fn apply(source: &str, plan: &AppearancePlan) -> String {
+pub(super) fn apply(source: &str, plan: &AppearancePlan) -> String {
     let mut output = source[..source.find("DATA;").unwrap() + 5].to_string();
     let mut scan = EntityScanner::new(source.as_bytes());
     let mut decoder = EntityDecoder::new(source);
@@ -594,4 +606,14 @@ fn issue_4243_target_vertex_pool_can_exceed_surviving_triangle_corner_count() {
     assert!(item.target_vertex_count > *item.target_indices.iter().max().unwrap() as usize + 1, "unused trailing vertices must also count");
     assert_eq!(item.target_indices, mesh.indices);
     assert!(item.target_indices.iter().all(|&i| (i as usize) < item.target_vertex_count));
+}
+
+#[test]
+fn issue_4441_image_appearance_refuses_structural_image_uri_tokens() {
+    for token in ["*", "$", "#123", ".ENUM.", " .lower_1. "] {
+        let mut request = request(vec![10]);
+        request.image_uri = token.into();
+        assert!(plan_appearance(CONTROLLED_IFC.as_bytes(), &request).unwrap_err()
+            .contains("Image URI is a reserved appearance wire token"));
+    }
 }

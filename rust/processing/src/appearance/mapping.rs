@@ -6,7 +6,7 @@ use super::types::{AppearanceItem, AppearanceRequest, Mapping, MappingFrame};
 use ifc_lite_core::{AttributeValue as A, IfcType};
 use ifc_lite_geometry::GeometryRouter;
 
-fn rows<const N: usize>(value: Option<&A>) -> Result<Vec<[f64; N]>, String> {
+pub(super) fn rows<const N: usize>(value: Option<&A>) -> Result<Vec<[f64; N]>, String> {
     let list = value
         .and_then(A::as_list)
         .ok_or("Missing coordinate list")?;
@@ -15,7 +15,7 @@ fn rows<const N: usize>(value: Option<&A>) -> Result<Vec<[f64; N]>, String> {
     }
     list.iter().map(numbers).collect()
 }
-fn triangles(value: Option<&A>, max: usize) -> Result<Vec<[u32; 3]>, String> {
+pub(super) fn triangles(value: Option<&A>, max: usize) -> Result<Vec<[u32; 3]>, String> {
     rows::<3>(value)?
         .into_iter()
         .map(|r| {
@@ -154,37 +154,11 @@ pub(super) fn map_item(
             (uv, indices)
         }
         mapping => {
-            let scale = source.decoder.length_unit_scale();
-            if !scale.is_finite() || scale <= 0. {
-                return Err("Invalid model length unit scale".into());
-            }
             let frame = match mapping {
                 Mapping::Planar { frame, .. } | Mapping::Box { frame, .. } => frame,
                 _ => unreachable!(),
             };
-            let transform = if matches!(frame, MappingFrame::World) {
-                // Shared canonical placement resolver (translation in metres).
-                let product = source.entity(product_id)?;
-                source.validate_world_placement(&product)?;
-                Some(
-                    GeometryRouter::with_scale(scale)
-                        .resolve_scaled_placement(&product, &mut source.decoder)
-                        .map_err(|e| e.to_string())?,
-                )
-            } else {
-                None
-            };
-            for p in &mut positions {
-                *p = p.map(|v| v * scale);
-                if let Some(m) = transform {
-                    let [x, y, z] = *p;
-                    *p = [
-                        m[0] * x + m[4] * y + m[8] * z + m[12],
-                        m[1] * x + m[5] * y + m[9] * z + m[13],
-                        m[2] * x + m[6] * y + m[10] * z + m[14],
-                    ];
-                }
-            }
+            positions_in_frame(source, product_id, &mut positions, *frame)?;
             match mapping {
                 Mapping::Planar {
                     origin,
@@ -267,4 +241,36 @@ pub(super) fn map_item(
         preview_corner_uvs: Vec::new(),
         target_corner_normals: Vec::new(),
     })
+}
+
+/// Canonical IFC unit/placement conversion, shared by UV mapping and scan sampling.
+pub(super) fn positions_in_frame(source: &mut Source<'_>, product_id: u32, positions: &mut [[f64; 3]], frame: MappingFrame) -> Result<(), String> {
+    let scale = source.decoder.length_unit_scale();
+    if !scale.is_finite() || scale <= 0. {
+        return Err("Invalid model length unit scale".into());
+    }
+    let transform = if matches!(frame, MappingFrame::World) {
+        // Shared canonical placement resolver (translation in metres).
+        let product = source.entity(product_id)?;
+        source.validate_world_placement(&product)?;
+        Some(
+            GeometryRouter::with_scale(scale)
+                .resolve_scaled_placement(&product, &mut source.decoder)
+                .map_err(|e| e.to_string())?,
+        )
+    } else {
+        None
+    };
+    for p in positions {
+        *p = p.map(|v| v * scale);
+        if let Some(m) = transform {
+            let [x, y, z] = *p;
+            *p = [
+                m[0] * x + m[4] * y + m[8] * z + m[12],
+                m[1] * x + m[5] * y + m[9] * z + m[13],
+                m[2] * x + m[6] * y + m[10] * z + m[14],
+            ];
+        }
+    }
+    Ok(())
 }

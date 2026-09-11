@@ -235,11 +235,18 @@ export function writeSourceEntityLines(
       // reports the pipeline makes are about the line this iteration is about
       // to write, and the `IFCREL*` and style-rescue branches below can still
       // `continue` — withholding that line entirely and pushing their own
-      // warning for it. Reported here, the unreadable-record warning would say
-      // the entity "was written exactly as the source file has it" beside a
-      // warning saying it was not written at all: two warnings, one of them
-      // false, for one outcome. So the buffer is flushed once the withholding
-      // branches have had their say and this line is going out.
+      // warning for it. Reported here, the unreadable-record warning would name
+      // an entity whose edits were dropped beside a warning saying that entity
+      // has no line in the export at all: two warnings for one outcome, and the
+      // reader has to guess which one is about the record they asked for. So the
+      // buffer is flushed once the withholding branches have had their say and
+      // this line is going out.
+      //
+      // The flush point is the LAST branch that can withhold, not the last thing
+      // that can change the line: `convertStepLine` below still runs on the text
+      // this produces. That is deliberate, and it is why the warning itself no
+      // longer describes what was written — see
+      // `unreadableRecordEditsDroppedWarning` (#4213).
       const mutationWarnings: string[] = [];
       const mutated = applySourceLineMutationsReported(
         ctx.applySourceLineMutations,

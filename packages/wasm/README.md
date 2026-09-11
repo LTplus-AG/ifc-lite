@@ -119,3 +119,44 @@ It shares bounded native decoding with `planAppearance`; run both in a worker an
 validate the source revision before using a catalog or applying a plan. See the
 [WASM API guide](../../docs/api/wasm.md#effective-appearance-scope-catalog) for the
 request, response and limits.
+
+`IfcAPI.planPageAppearance(content, requestJson, rgba)` adds a bounded finite-page
+compositor. It returns an `IFPA` metadata/PNG envelope with per-item digest-named
+assets and ordinary atomic IFC edits. Outside-page albedo is resampled from the
+original canonical style/texture, not a repeated or clamped page border. Run in
+a cancellable worker and retain all generated assets with the command. See the
+[WASM API guide](../../docs/api/wasm.md#finite-page-appearance-output).
+
+`IfcAPI.planAnnotationPlane` creates a bounded calibrated image `IfcAnnotation`
+plan for an explicit spatial container, reusing canonical native geometry. Run it
+in a worker and publish its typed entities, source-image lease and returned mesh
+as one existing model/history transaction. See the [WASM API guide](../../docs/api/wasm.md#calibrated-annotation-creation)
+for the Z-up geometry/top-down UV and allocator/source validation contract.
+
+`IfcAPI.planCapturedMesh` creates a bounded `IfcBuildingElementProxy` plan from
+an already segmented textured triangle mesh, retaining independent UV seams and
+the original image URI. It uses the same native authoring and geometry path as
+annotation creation. See [captured surface creation](../../docs/api/wasm.md#captured-textured-surface-creation)
+for coordinate, budget and atomic host-commit requirements.
+
+Captured-mesh planning preserves optional `repeatS`/`repeatT` image sampler flags
+(default `false`); UVs remain bounded to `[0, 1]`.
+
+`IfcAPI.registerScanCorrespondences` fits bounded manual source-scan/IFC point
+pairs and returns a proper rigid transform plus separate fitting and held-out
+residuals. Frames and asset identities are bound into the report; the call does
+not align a loaded model or approve scan accuracy. See the
+[registration contract](../../docs/api/wasm.md#scan-correspondence-registration).
+
+`IfcAPI.planMeshTransfer` composes registered opaque textured-mesh observations
+onto supported direct IFC tessellations using the shared atlas planner. Unknown
+samples retain existing target albedo; the IFPA response includes explicit
+coverage and frozen-input bindings. Entirely unknown transfer has no applicable
+plan. See the [transfer contract](../../docs/api/wasm.md#registered-textured-mesh-appearance-transfer)
+for source identity, coordinate frames, budgets and host acceptance requirements.
+
+`IfcAPI.preparePdfVectorPage` validates bounded ordered PDF vector graphics states
+and preserves source operator identity, calibrated transforms and paint state.
+Unsupported content remains an explicit blocker. It emits no IFC entities and
+makes no flattened-geometry fidelity claim; see the
+[preparation contract](../../docs/api/wasm.md#pdf-vector-graphics-state-preparation).

@@ -26,6 +26,7 @@
 //! large model downloads does not flake. Preserves every assertion from
 //! the former `production_void_path_test.rs`.
 
+mod support;
 mod voids_common;
 
 use ifc_lite_core::{build_entity_index, EntityDecoder};
@@ -47,6 +48,13 @@ struct FixtureWallCase {
     host: HostLocator,
     /// When known, the exact opening IDs expected for the host.
     expected_openings: Option<&'static [u32]>,
+    /// Whether `pnpm fixtures` can ever supply this fixture (i.e. it is
+    /// listed in `tests/models/manifest.json`). `IFC_LITE_REQUIRE_FIXTURES=1`
+    /// only enforces presence for manifest-backed fixtures — a case whose
+    /// fixture the download step can never provide (see
+    /// `production_smiley_all_host_walls_have_holes` below) must stay a
+    /// permanent, silent skip or this loop would fail CI unconditionally.
+    manifest_backed: bool,
 }
 
 /// Reproducers for issues #604 (single-wall door fixture, wall #55 /
@@ -60,12 +68,16 @@ fn production_fixture_walls_have_holes() {
             fixture: "tests/models/various/issue-604-door.ifc",
             host: HostLocator::ById(55),
             expected_openings: Some(&[2438]),
+            manifest_backed: true,
         },
         FixtureWallCase {
             name: "issue_584_smiley_wall_0NQVcwUgj2fup5UuFaDTfC",
+            // NOT in tests/models/manifest.json — `pnpm fixtures` never
+            // supplies this one; see `production_smiley_all_host_walls_have_holes`.
             fixture: "tests/models/ara3d/AC-20-Smiley-West-10-Bldg.ifc",
             host: HostLocator::ByGuid("0NQVcwUgj2fup5UuFaDTfC"),
             expected_openings: None,
+            manifest_backed: false,
         },
     ];
 
@@ -73,6 +85,15 @@ fn production_fixture_walls_have_holes() {
         let content = match load_fixture(case.fixture) {
             Some(c) => c,
             None => {
+                if case.manifest_backed {
+                    assert!(
+                        !support::require_fixtures(),
+                        "[{}] fixture {} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                         run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
+                        case.name,
+                        case.fixture
+                    );
+                }
                 eprintln!(
                     "[{}] fixture {} missing — skipping production void test",
                     case.name, case.fixture

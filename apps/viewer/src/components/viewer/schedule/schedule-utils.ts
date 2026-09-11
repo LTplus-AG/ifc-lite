@@ -7,7 +7,8 @@
  * task-tree flattener that feeds the virtualized list.
  */
 
-import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
+import type { ScheduleExtraction, ScheduleTaskInfo, WorkScheduleInfo } from '@ifc-lite/parser';
+import { deterministicGlobalId, serializeScheduleToStep } from '@ifc-lite/parser';
 import type { GanttTimeScale } from '@/store';
 import { taskStartEpoch, taskFinishEpoch } from '@/store';
 
@@ -237,6 +238,69 @@ export function taskBarGeometry(
 /**
  * Produce a short "5d" / "3h" / "2w" label from an ISO 8601 duration string.
  */
+/**
+ * Build a standalone `IfcWorkPlan` container to add alongside a generated
+ * `IfcWorkSchedule`.
+ *
+ * Grouping an `IfcWorkPlan` around its `IfcWorkSchedule`s doesn't round-trip
+ * yet on either relation the schema allows: `schedule-extractor.ts`'s
+ * `IfcRelNests` pass only resolves a nesting parent through the task table
+ * (a plan nesting a schedule is dropped), and its `IfcRelAssignsToControl`
+ * pass has the same task-only blindness (a schedule assigned to a plan that
+ * way is dropped too). So this plan intentionally carries no
+ * `taskGlobalIds` and is emitted as an unrelated top-level entity — the
+ * schema-visible container the issue asked for, without a relation whose
+ * read path would silently drop it.
+ */
+export function buildWorkPlanInfo(seed: string, name: string): WorkScheduleInfo {
+  return {
+    expressId: 0,
+    globalId: deterministicGlobalId(`gen-workplan|${seed}`),
+    kind: 'WorkPlan',
+    name,
+    taskGlobalIds: [],
+  };
+}
+
+/**
+ * Debug dump of a just-generated schedule — the extraction (tasks + work
+ * schedules + sequences) *and* the STEP lines the serializer will emit when
+ * the file is exported. Called from `GenerateScheduleDialog`'s submit
+ * handler; safe to keep in production — runs only on user-initiated
+ * generation and only logs to console.
+ */
+export function logGeneratedScheduleDebug(extraction: ScheduleExtraction, options: unknown): void {
+  try {
+    const stepPreview = serializeScheduleToStep(extraction, {
+      // These IDs don't matter for inspection — the export adapter remaps
+      // them to the host file's ID space at injection time.
+      nextId: 1_000_000,
+    });
+    /* eslint-disable no-console */
+    console.groupCollapsed(
+      `%c[IfcTask] Generated schedule — ${extraction.tasks.length} task(s), ${stepPreview.lines.length} STEP line(s)`,
+      'color:#6ea2ff;font-weight:bold',
+    );
+    console.log('options', options);
+    console.log('workSchedules', extraction.workSchedules);
+    console.log('tasks', extraction.tasks);
+    console.log('sequences', extraction.sequences);
+    console.log('stats', stepPreview.stats);
+    console.log('STEP preview (first 50 lines):');
+    for (const line of stepPreview.lines.slice(0, 50)) console.log(line);
+    if (stepPreview.lines.length > 50) {
+      console.log(`… ${stepPreview.lines.length - 50} more line(s). Full STEP:`);
+      console.log(stepPreview.lines.join('\n'));
+    }
+    console.log('raw extraction (JSON)', JSON.stringify(extraction, null, 2));
+    console.groupEnd();
+    /* eslint-enable no-console */
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[IfcTask] Debug log failed (non-fatal):', err);
+  }
+}
+
 export function formatDurationShort(iso: string | undefined): string {
   if (!iso) return '—';
   const m = iso.match(/^P(?:(\d+(?:\.\d+)?)Y)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/);

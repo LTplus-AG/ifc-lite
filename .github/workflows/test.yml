@@ -94,7 +94,12 @@ jobs:
     # don't need a larger runner; Rust/WASM compilation also stays on the
     # standard runner so routine CI remains within the Depot Developer tier.
     # See scripts/README-vercel-cost.md for the full runner-cost rationale.
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    # A path filter over one checkout. Anything past a minute is a hung API call,
+    # not work. Capped because the default is SIX HOURS and a job killed by its own
+    # timeout does NOT cancel the run: the aggregate would still run, every lane
+    # would read `skipped`, and before the map entry above that was a green gate.
+    timeout-minutes: 5
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -103,6 +108,7 @@ jobs:
       plato: ${{ steps.filter.outputs.plato }}
       docs: ${{ steps.filter.outputs.docs }}
       agents_md: ${{ steps.filter.outputs.agents_md }}
+      license_headers: ${{ steps.filter.outputs.license_headers }}
       # `true` when the WASM source is byte-identical to the published release
       # tag, so `build` can fetch the prebuilt bundle instead of compiling
       # wasm32. See the `build` job and scripts/ci-wasm-prebuilt-eligible.sh.
@@ -157,6 +163,54 @@ jobs:
               # check (that allowlist's own header says so), and the cost is one
               # 5-minute free-runner job with no install and no build artifact.
               - 'scripts/**'
+            # The MPL-2.0 header gate (`add-license-headers.mjs --check`). Its
+            # own job for the same reasons agents_md has one: it needs no build
+            # artifact, no pnpm install and no Depot runner, and its INPUT is
+            # every first-party source tree in the repo -- `docs/**` (its
+            # stylesheets), `tools/**` (its `.mjs` and `.py` harnesses) and
+            # `apps/landing/**` among them, none of which is in `frontend` and
+            # none of which should drag a PR through the nine-job frontend
+            # lane just to check a comment at the top of a file. Each of those
+            # three was confirmed to hold scanned files, not assumed to: a
+            # trigger justified by a tree the gate reads nothing from is the
+            # same false comfort as the gate itself was before #4087. A gate
+            # whose trigger is narrower than its input cannot fire on the PR
+            # that introduces the very thing it guards against
+            # (scripts/check-ci-path-coverage.mjs), so this filter is the whole
+            # scanned population, deliberately over-triggering.
+            license_headers:
+              # test.yml DEFINES the license-headers job, so an edit that
+              # breaks, renames or deletes its steps must be able to run it.
+              - '.github/workflows/test.yml'
+              - 'api/**'
+              - 'apps/**'
+              - 'docs/**'
+              - 'examples/**'
+              - 'packages/**'
+              - 'rust/**'
+              - 'server/**'
+              - 'tests/**'
+              - 'tools/**'
+              # The gate's own source and its scanned `scripts/` tree, one
+              # glob covering both.
+              - 'scripts/**'
+              # The REPO ROOT, scanned non-recursively by extension (it used to
+              # be one named file, `playwright.config.ts`, which is still the
+              # only root-level file any of these match today). A gate that
+              # reads a path no glob can trigger it on is a gate that does not
+              # run on the PR introducing the mistake, so these have to widen
+              # with the scan. `*` does not cross `/`, so each of these matches
+              # root-level files ONLY and costs nothing on a subtree edit.
+              - '*.ts'
+              - '*.tsx'
+              - '*.js'
+              - '*.mjs'
+              - '*.cjs'
+              - '*.mts'
+              - '*.cts'
+              - '*.css'
+              - '*.rs'
+              - '*.py'
             frontend:
               # A changeset naming a package that does not exist fails the
               # RELEASE workflow, which only runs on main - so the Lint job has
@@ -331,7 +385,7 @@ jobs:
     # Keep all routine CI on GitHub's free standard runner. This public repo's
     # previous 4-vCPU Depot path consumed the Developer plan's included minutes
     # in a few days; the prebuilt bundle remains a speed optimization only.
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -465,7 +519,7 @@ jobs:
       github.event_name == 'pull_request' &&
       (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') &&
       !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt')
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -515,7 +569,7 @@ jobs:
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true'
     # tsc is not CPU-bound; the free 2-core runner is fine and costs nothing.
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -545,7 +599,7 @@ jobs:
     # lane ran NOTHING: the root script was `pnpm -r lint` and no package
     # defined one, so it passed in 20s having checked nothing, and dead imports
     # shipped through it.
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -659,7 +713,7 @@ jobs:
     name: Viewer tests (shard ${{ matrix.shard }})
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -746,7 +800,7 @@ jobs:
     # If this lane needs attention again, `@ifc-lite/provenance` is the next
     # target: it alone spent 396s of the run that exposed this, with single
     # tests at 87s and 38s.
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1101,6 +1155,17 @@ jobs:
       # block / zero derived inputs must FAIL rather than report clean.
       - name: Check CI path-coverage gate regressions
         run: node --test scripts/check-ci-path-coverage.test.mjs
+      # The neighbouring class, and the one the comment above names in passing:
+      # a skipped job counts as success in the aggregate `test` gate, so a job
+      # that is in its `needs:` but MISSING from its results map is unjudged --
+      # its failure skips every dependent, every skip reads as a pass, and a
+      # required context on main reports green. `changes` was exactly that.
+      - name: Check the aggregate gate judges every job it depends on
+        run: node scripts/check-ci-aggregate-coverage.mjs
+      # Executable proof it cannot pass vacuously: an unfindable or empty
+      # `test:` job must FAIL rather than report "0 unjudged of 0".
+      - name: Check aggregate-coverage gate regressions
+        run: node --test scripts/check-ci-aggregate-coverage.test.mjs
       # Same class as the gate above (#3452), for a case it cannot see: its
       # own scan only recognises gates invoked as a literal `node
       # scripts/*.mjs` in a `run:` step, and sdk-canary.yml's job is `pnpm
@@ -1344,7 +1409,7 @@ jobs:
       # scripts/docs/ joined it for the same reason in #3200 - the catch-all is
       # per-DIRECTORY, so it goes blind on the next subdirectory anyone adds.
       - name: Run every scripts/ test file (glob catch-all)
-        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs scripts/review/*.test.mjs scripts/review/lib/*.test.mjs
+        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs scripts/review/*.test.mjs scripts/review/lib/*.test.mjs scripts/perf/*.test.mjs
       # Committed codegen output (packages/codegen/generated/**,
       # packages/parser/src/generated/**, packages/data/src/ifc-schema/
       # generated/**) had no CI freshness gate at all — a generator bug fixed
@@ -1450,7 +1515,7 @@ jobs:
     # cheap unit lanes that catch cross-PR collisions, not the whole matrix.
     if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && github.event_name == 'pull_request'
     # Free runner — vite build + a ~2.4MB model; not compute-bound.
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1515,7 +1580,7 @@ jobs:
     if: needs.changes.outputs.rust == 'true'
     # Standard GitHub runners keep routine Rust validation out of Depot's
     # metered pool. The longer cap accommodates a cold GitHub cache restore.
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1674,7 +1739,7 @@ jobs:
     # PR-only — see viewer-e2e.
     if: needs.changes.outputs.geometry == 'true' && github.event_name == 'pull_request'
     # This high-volume PR gate must not consume metered runner minutes.
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1755,7 +1820,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.geometry == 'true' && github.event_name == 'pull_request'
     # This lane must not consume metered runner minutes.
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1837,7 +1902,7 @@ jobs:
     if: needs.changes.outputs.plato == 'true' && github.event_name == 'pull_request'
     # Free runner - the generator clones + builds Plato.CLI with dotnet; no
     # Depot cores needed.
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1883,7 +1948,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs == 'true' && needs.changes.outputs.frontend != 'true' && needs.changes.outputs.rust != 'true'
     # Free runner - three node scripts, not compute-bound.
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1924,7 +1989,7 @@ jobs:
   # and publishes.
   rust-semver:
     name: Rust crate semver
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1969,7 +2034,7 @@ jobs:
     name: AGENTS.md ratchet
     needs: changes
     if: needs.changes.outputs.agents_md == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1984,16 +2049,60 @@ jobs:
       - name: Check AGENTS.md ratchet regressions
         run: node --test scripts/check-agents-md-size.test.mjs
 
+  # AGENTS.md: "MPL-2.0 header on every new file". `add-license-headers.mjs`
+  # has had a `--check` mode that says whether that held, and NOTHING RAN IT
+  # (#4087) — a gate that exists and never executes is the same absence as no
+  # gate at all, and it had drifted accordingly: it exited 1 with 128 files
+  # flagged, 85 of them correctly-licensed SPDX files it could not recognise.
+  #
+  # Its own job rather than a step in node-tests, for the reason the
+  # `license_headers` filter block above states: the gate READS every
+  # first-party source tree, including `docs/**`, `tools/**` (whose `.mjs` and
+  # `.py` harnesses it scans) and `apps/landing/**`, which `frontend`
+  # deliberately does not carry. Wiring it into node-tests would either leave
+  # it unable to fire on three of the trees it scans, or drag doc-only PRs
+  # through the whole frontend lane. Here it is
+  # one checkout plus node on a free runner: no pnpm install, no build
+  # artifact, no Depot runner.
+  #
+  # The detector's own tests run FIRST, the same order the node-tests gate
+  # pairs use: this gate's entire value is in not passing over a tree it
+  # misread, so a broken detector must fail here rather than report agreement.
+  license-headers:
+    name: MPL license headers
+    needs: changes
+    if: needs.changes.outputs.license_headers == 'true'
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Check the license-header classifier's own regressions
+        run: node --test scripts/lib/license-header.test.mjs
+      - name: Check every source file declares MPL-2.0
+        run: node scripts/add-license-headers.mjs --check
+
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, revert-oracle, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks, agents-md]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks, agents-md, license-headers]
     if: always()
     # Free runner — the gate just inspects upstream job results.
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     steps:
       - name: Gate on dependencies
         run: |
           declare -A results=(
+            # `changes` is judged like any other lane, and it matters most: every
+            # other job here `needs` it, so if it fails they all SKIP, and `skipped`
+            # counts as a pass below. Unjudged, one failure took the whole matrix
+            # green on a required context. scripts/check-ci-aggregate-coverage.mjs
+            # keeps this map and the `needs:` list above in step.
+            [changes]="${{ needs.changes.result }}"
             [build]="${{ needs.build.result }}"
             [revert-oracle]="${{ needs.revert-oracle.result }}"
             [typecheck]="${{ needs.typecheck.result }}"
@@ -2007,6 +2116,7 @@ jobs:
             [plato-check]="${{ needs.plato-check.result }}"
             [docs-checks]="${{ needs.docs-checks.result }}"
             [agents-md]="${{ needs.agents-md.result }}"
+            [license-headers]="${{ needs.license-headers.result }}"
           )
           fail=0
           for j in "${!results[@]}"; do

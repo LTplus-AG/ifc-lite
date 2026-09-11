@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/extensions",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Extension manifest, capability grammar, and slot registry for ifc-lite user customization",
   "type": "module",
   "main": "./dist/index.js",
@@ -35,6 +35,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/regex-guard": "workspace:^",
     "acorn": "^8.18.0",
     "acorn-walk": "^8.3.0",
     "fflate": "^0.8.2"

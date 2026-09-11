@@ -31,6 +31,10 @@ import type {
 } from '../types.js';
 import type { ActivationRecord, ExtensionRuntime } from '../host/runtime.js';
 import { wrapEntrySource } from '../host/source-wrap.js';
+import {
+  MAX_GUARDED_REGEX_PATTERN_LENGTH,
+  hasCatastrophicBacktrackingShape,
+} from '@ifc-lite/regex-guard';
 
 export interface TestRunResult {
   name: string;
@@ -72,7 +76,6 @@ export interface RunBundleTestsOptions {
 }
 
 const DECODER = new TextDecoder();
-const MAX_REGEX_PATTERN_LENGTH = 256;
 
 /**
  * Preamble inlined into the wrapper IIFE when the fixture is a
@@ -285,15 +288,15 @@ function applyExpectations(value: unknown, expect: ManifestTestExpect): SingleRe
     const text = readText(value);
     if (text === undefined) {
       reasons.push(`regex: result has no text representation`);
-    } else if (expect.regex.length > MAX_REGEX_PATTERN_LENGTH) {
-      // Length cap is a shallow defence — pathological short patterns
-      // (`(a+)+$` is 7 chars and catastrophic) still get through. For
-      // registry-distributed extensions a real defence would run the
-      // regex in a Worker with a timeout, or use re2-wasm. v1 assumes
-      // manifest tests are author-trusted; harden this when remote
-      // bundles can land via the registry (RFC §10).
-      reasons.push(`regex: pattern exceeds ${MAX_REGEX_PATTERN_LENGTH}-char limit`);
-    } else if (hasRedosShape(expect.regex)) {
+    } else if (expect.regex.length > MAX_GUARDED_REGEX_PATTERN_LENGTH) {
+      // Length cap is a shallow defence (`(a+)+$` is 6 chars and
+      // catastrophic). The real boundary is drag-drop side-loading
+      // (ExtensionsPanel.tsx), not a future registry (deferred
+      // Phase-5, see 10-registry-and-signing.md): "Run tests" or
+      // RepairQueuePanel's "Run check" reach runBundleTests and run
+      // this regex on the viewer's main JS thread, no sandbox/Worker.
+      reasons.push(`regex: pattern exceeds ${MAX_GUARDED_REGEX_PATTERN_LENGTH}-char limit`);
+    } else if (hasCatastrophicBacktrackingShape(expect.regex)) {
       // Cheap shape check for the well-known catastrophic-backtracking
       // patterns: `(...+)+`, `(...+)*`, `(.*)+`, `(.*)*` and their
       // siblings. Surfaces obvious ReDoS in the test runner.
@@ -413,18 +416,6 @@ function jsonTypeOf(value: unknown): string {
   if (value === null) return 'null';
   if (Array.isArray(value)) return 'array';
   return typeof value;
-}
-
-/**
- * Cheap shape check for catastrophic-backtracking patterns. Catches
- * the textbook `(a+)+`, `(a*)*`, `(.+)+`, `(.+)*` shapes — a quantifier
- * directly wrapping a quantifier inside a group. Not exhaustive (a
- * determined adversary can still craft ReDoS), but rejects the
- * obvious ones at no runtime cost.
- */
-function hasRedosShape(pattern: string): boolean {
-  // Quantifier (+, *, {n,}) inside a group followed by another quantifier.
-  return /\([^()]*[+*][^()]*\)\s*[+*{]/.test(pattern);
 }
 
 function formatValue(value: unknown): string {

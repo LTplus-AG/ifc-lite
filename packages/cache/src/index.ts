@@ -96,3 +96,5 @@ export {
 } from './glb.js';
 
 export type { ParsedGLB, GLBMapping } from './glb.js';
+
+export { parseGLBImageResources } from './glb-images.js';

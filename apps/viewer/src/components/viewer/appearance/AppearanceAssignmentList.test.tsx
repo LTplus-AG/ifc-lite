@@ -1,0 +1,76 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import '@/test/setup-dom.js';
+import { afterEach, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { useState } from 'react';
+import { render, click, cleanup, type } from '@/test/render.js';
+import { DEFAULT_APPEARANCE_SETTINGS } from '@/lib/appearance/settings.js';
+import { resolveAppearanceAssignments } from '@/lib/appearance/assignments/resolve.js';
+import type { AppearanceAssignment } from '@/lib/appearance/assignments/types.js';
+import { AppearanceAssignmentList } from './AppearanceAssignmentList.js';
+afterEach(cleanup);
+function assignment(id: string, count = 1): AppearanceAssignment {
+  return { id, model: { slotId: 'model-slot', modelId: 'model', name: 'Building', sourceSha256: 'a'.repeat(64), revision: 'r' },
+    source: { id: 'b'.repeat(64), name: id, width: 2, height: 2 }, settings: { ...DEFAULT_APPEARANCE_SETTINGS },
+    query: { kind: 'model' }, members: Array.from({ length: count }, (_, i) => ({ expressId: 10 + i, GlobalId: `wall-${i}` })), excludedGlobalIds: [] };
+}
+function Harness({ disabled = false, count = 1 }: { disabled?: boolean; count?: number }) {
+  const [assignments, setAssignments] = useState([assignment('Brick', count), assignment('Paint', count)]);
+  return <AppearanceAssignmentList rows={resolveAppearanceAssignments(assignments)} disabled={disabled}
+    objectName={(_, id) => id === 10009 ? 'Final wall' : `Wall ${id}`}
+    onRemove={id => setAssignments(rows => rows.filter(row => row.id !== id))}
+    onMove={(id, direction) => setAssignments(rows => { const next = [...rows], index = next.findIndex(row => row.id === id);
+      [next[index], next[index + direction]] = [next[index + direction], next[index]]; return next; })}
+    onExclude={(id, GlobalId, excluded) => setAssignments(rows => rows.map(row => row.id === id
+      ? { ...row, excludedGlobalIds: excluded ? [...row.excludedGlobalIds, GlobalId] : row.excludedGlobalIds.filter(guid => guid !== GlobalId) } : row))} />;
+}
+it('mounted assignment order and explicit exceptions change the reviewed winner #4420', () => {
+  const ui = render(<Harness />);
+  const rows = () => [...ui.querySelectorAll('li')];
+  assert.match(rows()[0].textContent!, /0 objects.*1 replaced/);
+  click(ui.querySelector('[aria-label="Review objects for assignment 2"]')!);
+  click(rows()[1].querySelector('input[type="checkbox"]')!);
+  assert.match(rows()[0].textContent!, /1 object\b/);
+  assert.match(rows()[1].textContent!, /0 objects · 1 excluded/);
+  click(rows()[1].querySelector('input[type="checkbox"]')!);
+  click(ui.querySelector('[aria-label="Move assignment 2 earlier"]')!);
+  assert.match(rows()[0].textContent!, /Paint.*0 objects/);
+  assert.match(rows()[1].textContent!, /Brick.*1 object\b/);
+  click(ui.querySelector('[aria-label="Remove assignment 2"]')!);
+  assert.equal(rows().length, 1);
+  assert.match(rows()[0].textContent!, /Paint.*1 object\b/);
+});
+it('large assignment review mounts one bounded page and finds/excludes objects beyond it #4420', () => {
+  const ui = render(<Harness count={10000} />);
+  const checks = () => [...ui.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+  assert.equal(checks().length, 0, 'closed scopes must not eagerly mount their members');
+  click(ui.querySelector('[aria-label="Review objects for assignment 1"]')!);
+  assert.equal(checks().length, 50);
+  assert.match(ui.textContent!, /1–50 of 10000/);
+  const viewport = ui.querySelector<HTMLElement>('[aria-label="Objects in this assignment"]')!;
+  viewport.scrollTop = 100;
+  click(ui.querySelector('[aria-label="Next objects"]')!);
+  assert.equal(viewport.scrollTop, 0, 'a new page begins at its first member');
+  assert.match(ui.textContent!, /51–100 of 10000/);
+  type(ui.querySelector<HTMLInputElement>('input[type="search"]')!, 'Final wall');
+  assert.equal(checks().length, 1);
+  assert.match(checks()[0].parentElement!.textContent!, /Final wall/);
+  click(checks()[0]);
+  assert.equal(checks()[0].checked, false);
+  assert.match(ui.querySelector('li')!.textContent!, /1 excluded/);
+  click(ui.querySelector('[aria-label="Review objects for assignment 2"]')!);
+  assert.equal(checks().length, 50, 'opening another scope unmounts the previous review');
+  click(ui.querySelector('[aria-label="Review objects for assignment 1"]')!);
+  type(ui.querySelector<HTMLInputElement>('input[type="search"]')!, 'wall-9999');
+  assert.equal(checks().length, 1, 'IFC GlobalId search also reaches the last object');
+  assert.equal(checks()[0].checked, false, 'exceptions survive paging and closing the review');
+  type(ui.querySelector<HTMLInputElement>('input[type="search"]')!, 'does not exist');
+  assert.equal(checks().length, 0);
+  assert.match(ui.textContent!, /No matching objects/);
+});
+it('mounted assignment review is locked during coordinated publication #4420', () => {
+  const ui = render(<Harness disabled />);
+  assert.ok([...ui.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button,input')].every(control => control.disabled));
+});

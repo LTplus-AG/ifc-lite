@@ -560,6 +560,18 @@ renderer.render({ selectedIds });
 
 ### Raycasting
 
+Scene raycasts and magnetic snapping include regular, batched, textured and
+instanced geometry. A textured surface in front of another object participates
+in nearest-surface selection, with the same hidden/isolation filters and retained
+local origins. CPU raycasts intersect triangles; texture alpha does not cut holes
+in the picking surface.
+
+Custom `RaycastEngine` scene adapters can optionally implement
+`getTexturedMeshes()` returning owners with `expressId` and optional `modelIndex`;
+`getMeshDataPieces` supplies their retained geometry. Existing adapters without
+that capability keep their regular/batched/instanced behavior. This does not add
+texture GPU handles to the `Renderer.getScene()` interface.
+
 ```typescript
 // Full raycast with intersection details
 const result = renderer.raycastScene(x, y);
@@ -1078,3 +1090,28 @@ These APIs move workspace geometry; they do not rewrite source IFC placements
 or point records. The web viewer supplies transactions, undo, persistence and
 engineering Z-up inputs on top of them. See [Repositioning models and
 pointclouds](federation.md#repositioning-models-and-pointclouds).
+
+
+## Registered raster references
+
+`renderer.getReferenceImages()` manages image and PDF-page rasters in a separate string-ID namespace. `set({ id, bitmap, corners, visible, locked, opacity }, signal?)` uploads a raster and resolves after GPU validation. Corners are renderer Y-up coordinates, ordered top-left, top-right, bottom-right, bottom-left. The viewer derives them from immutable engineering Z-up metre registration using its existing federation offset; an RTC-only rebase preserves the registration, while an incompatible map frame reports a mismatch.
+
+Keep the bitmap's inventory lease until `set` settles. The renderer owns uploaded texture and buffer resources, and never closes the caller's bitmap. Replacement retains the previous valid image until upload succeeds. `remove(id)` and `clear()` invalidate pending publication and release resources; device loss and renderer destruction do the same. Draft controllers should remove only their own IDs, rather than clearing registered references.
+
+`await references.pick(x, y, options)` uses canvas-relative CSS pixels and the same visibility options as IFC picking. It returns `{ referenceId, point, distance }` separately from IFC selection. Hidden, locked and zero-opacity references do not select. The existing scene picker supplies occlusion depth; its CPU fallback uses the picked owner's precise raycast and conservatively refuses a reference when depth cannot be recovered. Picking uses the rectangular page footprint, including transparent pixels. References depth-test against IFC geometry without writing IFC object IDs or changing BIM bounds. Overlapping translucent planes use back-to-front ordering; intersecting translucent planes retain ordinary alpha-sorting limitations.
+
+This is a visual registration API. It does not create `IfcAnnotation`, persist image bytes, or promise arbitrary CRS reprojection. Application metadata/history and IFC authoring own those operations independently.
+
+### Creating an authored owner atomically
+
+`renderer.prepareAuthoredOwner(parts)` uploads all canonical `MeshData` parts for one
+new IFC owner, including separate colours and optional retained textures, while keeping it outside the visible scene and picking index. The owner
+must not already exist, and every part must have the same object and model identity.
+`prepareTexturedOwner(mesh)` remains the single textured-part convenience entry point.
+Keep the borrowed mesh buffers immutable until disposal. Clear/rebuild or placement
+changes invalidate an outstanding preparation. Call the returned `commit()` after the matching IFC
+transaction is ready, then publish the model/history state in the same synchronous
+turn. Always call `dispose()` in `finally`; it releases an uncommitted upload and
+leaves a committed scene owner intact. Keep the source image retained through the
+owner's model and undo history lifetimes. This API inserts native-produced geometry;
+it does not construct IFC entities or synthesize geometry from a reference image.

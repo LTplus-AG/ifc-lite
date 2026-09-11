@@ -17,6 +17,7 @@
  */
 
 import type { StateCreator } from 'zustand';
+import { defineSliceTeardown } from '../teardown.js';
 
 /**
  * Split-tool state machine:
@@ -175,3 +176,93 @@ export const createSplitToolSlice: StateCreator<SplitToolSlice, [], [], SplitToo
       slabCutStoreyElevation: null,
     }),
 });
+
+/**
+ * `splitToolSlice`'s contribution to the store-wide teardown seam
+ * (`store/teardown.ts`, composed in `store/teardown-registry.ts`).
+ *
+ * Every field here is either a pointer into a specific federated model
+ * (`splitTargetModelId` / `splitTargetExpressId`) or storey-local IFC
+ * coordinates that are meaningless once that model — or the whole
+ * federation — is gone (see the slice doc comment above). Left untended,
+ * `SplitOverlay.tsx` keeps reading `splitMode` / `splitTargetModelId` /
+ * `splitHoverAxisDirection` with no membership check against `state.models`
+ * and draws a stale cut-line preview for an element whose model no longer
+ * exists. `mutationSlice.splitWallAtDistance` itself is not at risk — its
+ * `resolveSplitContext` already refuses when the model id no longer
+ * resolves — this is purely about the tool staying visibly armed.
+ *
+ * `splitMode` is reset to `'idle'` in every arm below, not just the target
+ * fields: an `'aiming'` or `'first-anchor'` tool with its target already
+ * cleared is arguably worse than an idle one — the overlay's mode check
+ * still passes, so a null target has to be defended at every read site
+ * instead of the state simply saying "not armed". Resetting `splitMode`
+ * closes that off at the source, matching `setSplitTarget`'s existing
+ * "retarget to a different element drops the mode" behaviour above.
+ *
+ * `session-reset` (a new file load, per `store/index.ts`'s call site
+ * comment — models are NOT cleared there, `clearAllModels()` is a separate
+ * path) clears unconditionally, the same choice `hoverSlice.ts` makes for
+ * its own model-relative fields: the geometry a hover/target refers to does
+ * not survive a reload even when the model id happens to be reused.
+ */
+export const splitToolTeardown = defineSliceTeardown(
+  'splitToolSlice',
+  [
+    'splitMode',
+    'splitTargetModelId',
+    'splitTargetExpressId',
+    'splitHoverPoint',
+    'splitHoverDistance',
+    'splitHoverLength',
+    'splitHoverCutPoint',
+    'splitHoverAxisDirection',
+    'slabCutAnchor',
+    'slabCutFootprint',
+    'slabCutStoreyElevation',
+  ],
+  {
+    'session-reset': () => ({
+      splitMode: 'idle',
+      splitTargetModelId: null,
+      splitTargetExpressId: null,
+      splitHoverPoint: null,
+      splitHoverDistance: null,
+      splitHoverLength: null,
+      splitHoverCutPoint: null,
+      splitHoverAxisDirection: null,
+      slabCutAnchor: null,
+      slabCutFootprint: null,
+      slabCutStoreyElevation: null,
+    }),
+    'model-removed': (scope, state) => {
+      if (state.splitTargetModelId !== scope.modelId) return {};
+      return {
+        splitMode: 'idle',
+        splitTargetModelId: null,
+        splitTargetExpressId: null,
+        splitHoverPoint: null,
+        splitHoverDistance: null,
+        splitHoverLength: null,
+        splitHoverCutPoint: null,
+        splitHoverAxisDirection: null,
+        slabCutAnchor: null,
+        slabCutFootprint: null,
+        slabCutStoreyElevation: null,
+      };
+    },
+    'all-models-cleared': () => ({
+      splitMode: 'idle',
+      splitTargetModelId: null,
+      splitTargetExpressId: null,
+      splitHoverPoint: null,
+      splitHoverDistance: null,
+      splitHoverLength: null,
+      splitHoverCutPoint: null,
+      splitHoverAxisDirection: null,
+      slabCutAnchor: null,
+      slabCutFootprint: null,
+      slabCutStoreyElevation: null,
+    }),
+  },
+);

@@ -44,3 +44,21 @@ export function isInertPath(path) {
   const lower = path.toLowerCase();
   return INERT_SUFFIXES.some((s) => lower.endsWith(s));
 }
+
+/**
+ * Test-support modules outside any test directory and not named `*.test.*`,
+ * which exist only to register assertions for a test entrypoint
+ * (`scripts/test-wasm-contract.mjs` imports the one below; nothing else does).
+ * Editing one changes what a test asserts. Classifying it as production tripped
+ * the "changes production code and adds/changes NO test file" ABORT on #4501 —
+ * the same classifier false-positive shape the inert list above fixed for
+ * binary assets. Kept exact, not a pattern: `scripts/lib/` is otherwise real
+ * production tooling and must keep reading as such.
+ */
+const TEST_SUPPORT_EXACT = new Set([
+  'scripts/lib/shard-refusal-boundary.mjs',
+]);
+
+export function isTestSupportPath(path) {
+  return TEST_SUPPORT_EXACT.has(path);
+}

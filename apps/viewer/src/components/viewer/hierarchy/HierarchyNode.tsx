@@ -19,6 +19,7 @@ import type { TreeNode } from './types';
 import { isSpatialContainer } from './types';
 import { IFC_ICON_CODEPOINTS, IFC_ICON_DEFAULT } from './ifc-icons';
 import { ModelRowTags } from './ModelRowTags';
+import { ModelTagGroupRow } from './ModelTagGroupRow';
 
 /**
  * Resolve the Material Symbols code point for a given IFC type string.
@@ -92,6 +93,7 @@ export function HierarchyNode({
       : 'text-zinc-700 dark:text-zinc-300';
   const strikeWhenHidden = nodeHidden && 'line-through decoration-zinc-400 dark:decoration-zinc-600';
 
+  if (node.type === 'model-tag-group') return <ModelTagGroupRow node={node} virtualRow={virtualRow} />;
   // Model header nodes (for visibility control and expansion)
   if (node.type === 'model-header' && node.id.startsWith('model-')) {
     const modelId = node.modelIds[0];

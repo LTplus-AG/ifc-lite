@@ -26,9 +26,33 @@ import { loadPersistedModelTags, savePersistedModelTags } from '../../lib/model-
 
 export type ModelTagAssignments = ReadonlyMap<string, ReadonlySet<string>>;
 
+/**
+ * How the hierarchy's Models section shows the federation (#4215). Session
+ * UI state, like the hierarchy mode; lives here rather than in `uiSlice` so
+ * `deleteModelTag` can drop a deleted tag from the filter in the same write
+ * that drops its assignments — a filter naming a tag that no longer exists
+ * would list nothing and say nothing.
+ *
+ * The filter is a ROW filter: it decides which model rows are listed, never
+ * what the viewport shows. Changing viewport visibility is the separate,
+ * explicit "Isolate matching models" action (`modelSlice.isolateModels`).
+ */
+export interface ModelTagView {
+  /** Group the model rows by tag, with an explicit Untagged group. */
+  groupByTag: boolean;
+  /** List a model when it carries ANY of these tags (or, see below, none). */
+  filterTagIds: readonly string[];
+  /** Also list the models that carry no tag. */
+  filterUntagged: boolean;
+}
+
+export const DEFAULT_MODEL_TAG_VIEW: ModelTagView = { groupByTag: false, filterTagIds: [], filterUntagged: false };
+
 export interface ModelTagsSlice {
   modelTags: ReadonlyMap<string, ModelTag>;
   modelTagAssignments: ModelTagAssignments;
+  modelTagView: ModelTagView;
+  setModelTagView: (patch: Partial<ModelTagView>) => void;
 
   /** Create a tag; returns its id. Returns the EXISTING id when a tag of that
    *  name (case-insensitive) already exists, and `null` for a blank name. */
@@ -73,6 +97,8 @@ export const createModelTagsSlice: StateCreator<ModelTagsSlice, [], [], ModelTag
   return {
     modelTags: persistedDefinitions(),
     modelTagAssignments: new Map(),
+    modelTagView: DEFAULT_MODEL_TAG_VIEW,
+    setModelTagView: (patch) => set({ modelTagView: { ...get().modelTagView, ...patch } }),
 
     createModelTag: (name, color) => {
       const trimmed = name.trim();
@@ -113,7 +139,13 @@ export const createModelTagsSlice: StateCreator<ModelTagsSlice, [], [], ModelTag
         if (rest.size > 0) assignments.set(modelId, rest);
       }
       savePersistedModelTags([...nextTags.values()]);
-      set({ modelTags: nextTags, modelTagAssignments: assignments });
+      const view = get().modelTagView;
+      const filterTagIds = view.filterTagIds.filter((t) => t !== id);
+      set({
+        modelTags: nextTags,
+        modelTagAssignments: assignments,
+        ...(filterTagIds.length !== view.filterTagIds.length ? { modelTagView: { ...view, filterTagIds } } : {}),
+      });
     },
 
     upsertModelTagDefinitions: (tags) => {

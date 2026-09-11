@@ -334,5 +334,43 @@ describe('extractCostOnDemand', () => {
       expect(item.costValues).toBeUndefined();
       expect(item.costQuantities).toBeUndefined();
     });
+
+    it('reads IfcCostSchedule Status/SubmittedOn/UpdateDate/PredefinedType from their IFC2X3 slots', () => {
+      // IFC2X3 IfcCostSchedule: IfcObject(0-4) + SubmittedBy(5), PreparedBy(6),
+      // SubmittedOn(7), Status(8), TargetUsers(9), UpdateDate(10), ID(11),
+      // PredefinedType(12). SubmittedOn/UpdateDate are IfcDateTimeSelect
+      // entity references, not ISO strings.
+      const lines = [
+        '#30=IFCCALENDARDATE(14,3,2011);',
+        '#31=IFCCALENDARDATE(2,11,2012);',
+        '#32=IFCLOCALTIME(9,5,30.,$,$);',
+        '#33=IFCDATEANDTIME(#31,#32);',
+        "#40=IFCCOSTSCHEDULE('cs-2x3-gid',$,'Estimate','desc',$,$,$,#30,'DRAFT',$,#33,'CS-1',.BUDGET.);",
+      ];
+      const store = buildStoreFromStep(lines, { schemaVersion: 'IFC2X3' });
+      const result = extractCostOnDemand(store);
+      expect(result.hasCost).toBe(true);
+      expect(result.costSchedules).toHaveLength(1);
+      const schedule = result.costSchedules[0];
+      expect(schedule.globalId).toBe('cs-2x3-gid');
+      expect(schedule.name).toBe('Estimate');
+      expect(schedule.status).toBe('DRAFT');
+      expect(schedule.predefinedType).toBe('BUDGET');
+      expect(schedule.submittedOn).toBe('2011-03-14');
+      expect(schedule.updateDate).toBe('2012-11-02T09:05:30');
+    });
+
+    it('leaves an IFC2X3 schedule date undefined when its IfcDateTimeSelect target is missing or unexpected', () => {
+      const lines = [
+        '#50=IFCLOCALTIME(9,5,30.,$,$);',
+        "#40=IFCCOSTSCHEDULE('cs-2x3-gid',$,'Estimate',$,$,$,$,#999,$,$,#50,'CS-1',.UNAVAILABLE.);",
+      ];
+      const store = buildStoreFromStep(lines, { schemaVersion: 'IFC2X3' });
+      const schedule = extractCostOnDemand(store).costSchedules[0];
+      expect(schedule.submittedOn).toBeUndefined(); // dangling #999
+      expect(schedule.updateDate).toBeUndefined(); // IfcLocalTime alone is not an IfcDateTimeSelect
+      expect(schedule.status).toBeUndefined();
+      expect(schedule.predefinedType).toBe('UNAVAILABLE');
+    });
   });
 });

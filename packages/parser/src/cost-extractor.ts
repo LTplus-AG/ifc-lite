@@ -34,13 +34,16 @@
  * IFC2X3's `IfcCostItem` has NO attributes at all (`SUBTYPE OF (IfcControl)`
  * only — no PredefinedType/CostValues/CostQuantities), so those fields are
  * always `undefined` for a 2X3 file; this is schema-version-gated below, not
- * inferred from an empty read.
+ * inferred from an empty read. IFC2X3's `IfcCostSchedule` DOES carry
+ * Status/SubmittedOn/UpdateDate/PredefinedType, at different slots and with
+ * entity-valued dates — read through `cost-schedule-2x3.ts`.
  */
 
 import { EntityExtractor } from './entity-extractor.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import { collectQuantitiesFromRefs } from './quantity-collect.js';
 import { resolveUnitByRef } from './project-units.js';
+import { COST_SCHEDULE_ATTR_2X3, resolveDateTimeSelect2x3 } from './cost-schedule-2x3.js';
 import type {
   CostExtraction,
   CostItemInfo,
@@ -331,10 +334,15 @@ export function extractCostOnDemand(store: IfcDataStore): CostExtraction {
       expressId,
       globalId,
       name: asString(a[COST_SCHEDULE_ATTR.Name]) ?? '',
-      predefinedType: schemaIs2x3 ? undefined : asEnum(a[COST_SCHEDULE_ATTR.PredefinedType]),
-      status: schemaIs2x3 ? undefined : asString(a[COST_SCHEDULE_ATTR.Status]),
-      submittedOn: schemaIs2x3 ? undefined : asString(a[COST_SCHEDULE_ATTR.SubmittedOn]),
-      updateDate: schemaIs2x3 ? undefined : asString(a[COST_SCHEDULE_ATTR.UpdateDate]),
+      // IFC2X3 lays the schedule out differently (see cost-schedule-2x3.ts).
+      predefinedType: asEnum(a[schemaIs2x3 ? COST_SCHEDULE_ATTR_2X3.PredefinedType : COST_SCHEDULE_ATTR.PredefinedType]),
+      status: asString(a[schemaIs2x3 ? COST_SCHEDULE_ATTR_2X3.Status : COST_SCHEDULE_ATTR.Status]),
+      submittedOn: schemaIs2x3
+        ? resolveDateTimeSelect2x3(extractor, store, a[COST_SCHEDULE_ATTR_2X3.SubmittedOn])
+        : asString(a[COST_SCHEDULE_ATTR.SubmittedOn]),
+      updateDate: schemaIs2x3
+        ? resolveDateTimeSelect2x3(extractor, store, a[COST_SCHEDULE_ATTR_2X3.UpdateDate])
+        : asString(a[COST_SCHEDULE_ATTR.UpdateDate]),
       costItemGlobalIds: [],
     };
     costSchedules.push(info);

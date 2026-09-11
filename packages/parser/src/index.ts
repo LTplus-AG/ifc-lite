@@ -125,6 +125,27 @@ export {
   type TaskDurationType,
 } from './schedule-extractor.js';
 
+// Structural analysis extractor — IfcStructuralAnalysisModel, the
+// IfcStructuralMember / IfcStructuralConnection / IfcStructuralActivity
+// branches, IfcStructuralLoadGroup / IfcStructuralLoadCase,
+// IfcStructuralResultGroup, IfcBoundaryCondition, and the two structural
+// connects-relationships.
+export {
+  extractStructuralOnDemand,
+  type StructuralExtraction,
+  type StructuralAnalysisModelInfo,
+  type StructuralMemberInfo,
+  type StructuralConnectionInfo,
+  type StructuralActivityInfo,
+  type StructuralLoadGroupInfo,
+  type StructuralResultGroupInfo,
+  type StructuralLoadInfo,
+  type StructuralLoadConfigurationInfo,
+  type StructuralLoadConfigurationEntry,
+  type StructuralLoadDropReason,
+  type BoundaryConditionInfo,
+} from './structural-extractor.js';
+
 // IFC4 STEP serializer for schedule entities — produces ready-to-splice
 // `#N=IFC...(...)` lines from a `ScheduleExtraction`.
 export {
@@ -132,6 +153,19 @@ export {
   type SerializeScheduleOptions,
   type SerializeScheduleResult,
 } from './schedule-serializer.js';
+
+// Cost (5D) extractor — IfcCostItem, IfcCostValue, IfcCostSchedule, IfcRelNests,
+// IfcRelAssignsToControl. Read model + extraction only (#4322).
+export {
+  extractCostOnDemand,
+} from './cost-extractor.js';
+export type {
+  CostExtraction,
+  CostItemInfo,
+  CostScheduleInfo,
+  CostValueInfo,
+  CostValueUnitBasis,
+} from './cost-types.js';
 
 // Signed ISO 8601 duration codec — shared by the schedule extractor (decode)
 // and serializer (encode), and by any other schedule consumer that needs to

@@ -243,4 +243,43 @@ describe('MergedExporter dropEmptyContainers', () => {
     expect(content).toContain('=IFCBUILDING(');
     expect(danglingRefs(content)).toEqual([]);
   });
+
+  // Adversarial-review gap: `singleRef` (and the `refList` items it feeds)
+  // used to be the one caller in this file still on the narrow
+  // `/^#(\d+)$/` regex, unlike `topLevelAttrs`'s record-prefix match above.
+  //
+  // A comment-wrapped LIST MEMBER (here, the aggregation's sole
+  // `RelatedObjects` entry) failed `refList`'s `singleRef` match, so
+  // `recordEdges` read the list as having no members at all — no edge, no
+  // content. `recordBlocks`' independent `classifyRefs` pass then ALSO
+  // failed to recognize it as a direct reference and fell back to treating
+  // it as an unrewritable nested ref, force-blocking the storey from ever
+  // being dropped — masking the recordEdges bug for every OTHER shape (an
+  // over-cautious "never drop" is not itself visible as wrong output). The
+  // one case that surfaces it: an otherwise-empty storey whose ONLY mention
+  // is this corrupted list entry stays in the file instead of being dropped.
+  it('drops an otherwise-empty storey whose aggregation list member is comment-wrapped', () => {
+    const model = buildModel('m0', [
+      [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('p')}',$,'P',$,$,$,$,$,$);`],
+      [2, 'IFCBUILDING', `#2=IFCBUILDING('${guid('b')}',$,'Building',$,$,$,$,$,$,$,$,$);`],
+      [3, 'IFCBUILDINGSTOREY', `#3=IFCBUILDINGSTOREY('${guid('g')}',$,'Empty level',$,$,$,$,$,$,0.);`],
+      [4, 'IFCBUILDINGSTOREY', `#4=IFCBUILDINGSTOREY('${guid('h')}',$,'Occupied level',$,$,$,$,$,$,3.);`],
+      [5, 'IFCWALL', `#5=IFCWALL('${guid('w')}',$,'Wall',$,$,$,$,$,$);`],
+      [6, 'IFCRELAGGREGATES', `#6=IFCRELAGGREGATES('${guid('a')}',$,$,$,#1,(#2));`],
+      // The empty storey's ONLY mention is this list member -- comment-wrapped,
+      // the one under test.
+      [7, 'IFCRELAGGREGATES', `#7=IFCRELAGGREGATES('${guid('c')}',$,$,$,#2,(/* void */#3));`],
+      [8, 'IFCRELAGGREGATES', `#8=IFCRELAGGREGATES('${guid('d')}',$,$,$,#2,(#4));`],
+      [9, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', `#9=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('e')}',$,$,$,(#5),#4);`],
+    ]);
+    const merged = new MergedExporter([model] as MergeModelInput[])
+      .export({ ...OPTIONS, dropEmptyContainers: true });
+    const content = decode(merged.content);
+
+    expect(merged.stats.droppedContainerCount).toBe(1);
+    expect(content).not.toContain("'Empty level'");
+    expect(content).toContain("'Occupied level'");
+    expect(content).toContain('=IFCBUILDING(');
+    expect(danglingRefs(content)).toEqual([]);
+  });
 });

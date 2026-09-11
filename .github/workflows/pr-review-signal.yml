@@ -43,22 +43,35 @@ name: PR review signal
 #    still becomes an enforced gate the moment the PR is retargeted to main,
 #    same as before.
 #
-# `edited` IS THE POINT OF THE TYPES LIST. GitHub's default `pull_request`
-# activity types are opened/synchronize/reopened. Retargeting a PR's base branch
-# fires `edited` and nothing else. Before this job ran on all bases, that meant
-# `edited` did not re-fire the workflows that a `branches: [main]` filter had
-# excluded while the PR pointed at a feature branch -- the deterministic,
-# reproducible mechanism behind #3294 merging with 8 checks and leaving main's
-# module-size gate red. Kept now for the same retarget transition, and because
-# this job derives its required-lane list from test.yml at read time regardless
-# of which event fired it.
+# `edited` IS DELIBERATELY NOT IN THE TYPES LIST (CI redesign, step 3). It was
+# once, for the retarget transition: retargeting a PR's base fires `edited` and
+# nothing else, and before this job ran on all bases that was the mechanism
+# behind #3294 merging with 8 checks. Two things changed the trade:
 #
-# `ready_for_review` covers the draft->ready transition for the same reason.
+#   1. This job has run on EVERY base since #3429, so a stacked PR already
+#      carries a red MISSING_LANES verdict before it is retargeted. Dropping
+#      `edited` leaves that verdict standing until the next push or a manual
+#      re-run -- fail-closed, and the author sees a red row, not a green one.
+#   2. The cost was measured: 116 runs/day of this workflow at 5.2 min average
+#      (max 21.7), ~10 runner-slot-hours a day, and 40% of all Test runs were
+#      same-SHA re-runs from `edited` waves (title/body edits, the changesets
+#      release PR rewriting its body after every merge). Every one of those
+#      re-polled a head that already had a verdict.
+#
+# Why not keep the type and skip the job on a non-retarget edit? A skipped run
+# publishes a `skipped` check run, and GitHub's required-check evaluation takes
+# the LATEST run per check name and reads `skipped` as a pass -- so a body edit
+# on a red PR would turn this required check green. No run at all leaves the
+# previous verdict in place, which is the only safe shape.
+#
+# `ready_for_review` covers the draft->ready transition, and this job derives
+# its required-lane list from test.yml at read time regardless of which event
+# fired it.
 on:
   merge_group:
     types: [checks_requested]
   pull_request:
-    types: [opened, synchronize, reopened, edited, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -87,7 +100,9 @@ jobs:
     runs-on: ubuntu-latest
     # Above the poll budget below, so a run that exhausts the budget still gets
     # to PRINT its verdict rather than being killed mid-wait with no output.
-    timeout-minutes: 45
+    # 20 min against a 900 s budget leaves the >= 300 s of slack the budget
+    # tests in scripts/lib/pr-review-signal.test.mjs require.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -119,12 +134,19 @@ jobs:
       #      main's ruleset, so branch protection already blocks on it, and the
       #      #3294 total-absence shape still fails under this config naming all
       #      fifteen lanes.
-      #   2. 2400 s, and THIS NUMBER HAS MOVED TWICE. Excluding the aggregate
-      #      is not enough on its own: the last non-aggregate lane appeared at
-      #      min 161 / median 190 / p95 522 / max 845 s over those 68 runs, so
-      #      420 s would still have false-failed 8 of them. 900 s covered all
-      #      68 -- at a tail margin of 900/845 = 1.07x, which this comment
-      #      called thin, and on 2026-08-31 it broke.
+      #   2. 900 s, and THIS NUMBER HAS MOVED THREE TIMES. Excluding the
+      #      aggregate is not enough on its own: the last non-aggregate lane
+      #      appeared at min 161 / median 190 / p95 522 / max 845 s over those
+      #      68 runs, so 420 s would still have false-failed 8 of them. 900 s
+      #      covered all 68 -- at a tail margin of 900/845 = 1.07x -- and on
+      #      2026-08-31 it broke, which moved the budget to 2400 s. It is back
+      #      at 900 s (CI redesign, step 3) because of what a breach now
+      #      MEANS: since #3810 a breach while the rollup is still moving is
+      #      the LANE_PUBLICATION_TIMEOUT advisory below, not a MISSING_LANES
+      #      failure, so the only thing the extra 1500 s bought was a runner
+      #      slot held for 25 more minutes per busy-day run. At 116 runs a day
+      #      this workflow was ~10 slot-hours/day of polling; a job that gives
+      #      up early and says so costs a re-run on the tail, not a verdict.
       #
       #      THE 2026-08-31 POPULATION, ITS BREACH COUNT AND ITS MARGIN ARE
       #      NOT RESTATED HERE -- they live once, in the budget tests in
@@ -188,7 +210,7 @@ jobs:
           node scripts/check-pr-review-signal.mjs \
             --pr "${{ github.event.pull_request.number }}" \
             --self-name 'PR review signal' \
-            --timeout-seconds 2400 \
+            --timeout-seconds 900 \
             --poll-seconds 30
 
   # Merge-queue batches have no PR to inspect; the PR-level run already gated

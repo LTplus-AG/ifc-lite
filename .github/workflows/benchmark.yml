@@ -22,11 +22,14 @@
 name: Benchmark
 
 on:
-  pull_request:
+  # PUSH TO MAIN, not every PR (CI redesign, step 8). Measured: 87 runs a day,
+  # 76% of them cancelled by the next push before they reported, on a lane
+  # whose verdict is advisory. The per-merge number on main is the one that
+  # tracks the baseline; a PR that needs the number before merging asks for
+  # it with the `ci:benchmark` label (or a dispatch). Only paths that can
+  # plausibly move viewer load performance, on both triggers.
+  push:
     branches: [main]
-    # Only paths that can plausibly move viewer load performance. The job is
-    # advisory (not a required check), so skipping it entirely on unrelated
-    # PRs is safe and free.
     paths:
       - 'rust/**'
       - 'packages/**'
@@ -45,6 +48,35 @@ on:
       - 'tests/benchmark/**'
       - 'tests/models/manifest.json'
       - '.github/workflows/benchmark.yml'
+  pull_request:
+    branches: [main]
+    # `labeled` is the opt-in; `synchronize`/`reopened` keep an opted-in PR
+    # measured on every later push. The job itself gates on the label, so an
+    # unrelated label event skips in seconds.
+    types: [labeled, synchronize, reopened]
+    paths:
+      - 'rust/**'
+      - 'packages/**'
+      - 'apps/viewer/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'scripts/build-wasm.sh'
+      - 'scripts/check-benchmark-regression.js'
+      - 'scripts/update-benchmark-baseline.mjs'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - 'package.json'
+      - 'playwright.config.ts'
+      - 'tests/benchmark/**'
+      - 'tests/models/manifest.json'
+      - '.github/workflows/benchmark.yml'
+  schedule:
+    # Weekly, Thursday 04:53 UTC -- a slot no other weekly lane uses
+    # (determinism Mon 03:17, xmatch Tue 05:23, wide-arithmetic Wed 04:29,
+    # moonshot Sun 06:41). Catches baseline drift on a quiet main.
+    - cron: '53 4 * * 4'
   workflow_dispatch:
     inputs:
       record_baseline:
@@ -66,6 +98,8 @@ env:
 jobs:
   benchmark:
     name: Viewer benchmark (advisory)
+    # On a PR only when asked for by label; every other trigger runs it.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:benchmark')
     # Free GitHub-hosted runner (public repo). The benchmark measures a noisy
     # shared VM anyway; the +50% thresholds in benchmark:check absorb the
     # jitter, and the job is advisory. When Rust changed we compile wasm32

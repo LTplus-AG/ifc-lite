@@ -508,7 +508,36 @@ test('the gate workflow carries NO `paths:` filter, so its own config cannot dod
   // same defect one level up.
   const own = readFileSync(join(REPO_ROOT, '.github/workflows/pr-review-signal.yml'), 'utf8');
   assert.ok(!/^\s*paths(-ignore)?:/m.test(own), 'pr-review-signal.yml must have no path filter');
-  assert.match(own, /types:\s*\[[^\]]*edited/, 'it must fire on `edited`, which is the retarget event');
+});
+
+test('the gate workflow does NOT fire on `edited`: no run beats a skipped run, and a re-poll beats nothing', () => {
+  // This used to assert the opposite -- `edited` is the retarget event, and
+  // before #3429 it was the only way a PR moved onto `main` re-fired this
+  // gate. Since #3429 the gate runs on every base, so a stacked PR is already
+  // red (MISSING_LANES) before it is retargeted, and dropping `edited` leaves
+  // that fail-closed verdict standing until the next push or a manual re-run.
+  //
+  // What it buys (CI redesign, step 3): 40% of Test runs were same-SHA
+  // re-runs from `edited` waves, and this workflow was 116 runs/day at 5.2 min
+  // average, re-polling heads that already had a verdict.
+  //
+  // What it must NOT become: an `if:` that skips the job on a non-retarget
+  // edit. A skipped job still publishes a check run, GitHub's required-check
+  // evaluation takes the LATEST run per name, and `skipped` reads as a pass --
+  // a body edit on a red PR would go green. The type has to be absent.
+  const own = readFileSync(join(REPO_ROOT, '.github/workflows/pr-review-signal.yml'), 'utf8');
+  const types = /^\s{4}types:\s*\[([^\]]*)\]/m.exec(own);
+  assert.ok(types, 'the workflow must declare explicit `pull_request` activity types');
+  const declared = types[1].split(',').map((t) => t.trim());
+  assert.ok(!declared.includes('edited'), `\`edited\` must not be a trigger; declared: ${declared.join(', ')}`);
+  for (const t of ['opened', 'synchronize', 'reopened', 'ready_for_review']) {
+    assert.ok(declared.includes(t), `the gate must still fire on \`${t}\`; declared: ${declared.join(', ')}`);
+  }
+  const code = own.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.ok(
+    !/github\.event\.action\s*[!=]=\s*'edited'|github\.event\.changes\.base/.test(code),
+    'no job may gate on the edited action or changes.base: the skipped run would report as a pass',
+  );
 });
 
 test('test.yml fires on `edited` too, so a retargeted PR gets the lanes this gate requires', () => {

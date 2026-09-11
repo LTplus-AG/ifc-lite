@@ -206,7 +206,7 @@
   2843 packages/create/src/ifc-creator.ts
    448 packages/create/src/in-store/apply-style.ts
    535 packages/create/src/in-store/auto-space-detect.ts
-  1164 packages/create/src/in-store/extract-walls.ts
+   878 packages/create/src/in-store/extract-walls.ts
    819 packages/create/src/types.ts
   1106 packages/data/scripts/generate-ifc-schema.ts
    432 packages/data/src/property-table.ts

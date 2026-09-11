@@ -27,6 +27,7 @@
 import type { IfcSourceBytes } from '@ifc-lite/parser';
 import { asSourceBytes, STEP_TRIVIA } from '@ifc-lite/parser';
 import { splitTopLevelArgs } from './step-argument-parser.js';
+import { BARE_REF_RE } from './reference-collector.js';
 import type { CompleteEntityIndex } from './entity-iteration.js';
 
 /**
@@ -301,9 +302,9 @@ function topLevelAttrs(line: string): string[] | null {
   return splitTopLevelArgs(match[1]).map(arg => arg.trim());
 }
 
-/** Parse an argument that is exactly one reference (`"#7"` → `7`). */
+/** `"#7"` → `7` via shared, trivia-tolerant {@link BARE_REF_RE} (#4227 — a narrower regex misclassified a comment-wrapped `RelatingObject`). */
 function singleRef(arg: string): number | null {
-  const match = arg.trim().match(/^#(\d+)$/);
+  const match = BARE_REF_RE.exec(arg);
   return match ? Number(match[1]) : null;
 }
 

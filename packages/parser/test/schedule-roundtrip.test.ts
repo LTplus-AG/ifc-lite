@@ -417,6 +417,38 @@ describe('schedule roundtrip — IfcWorkPlan nests IfcWorkSchedule (IfcRelNests)
     expect(schedule.parentPlanGlobalId).toBe('0eVhmaYyb3sBLb0LoNiW62');
   });
 
+  it('dedupes when two IfcRelNests entities nest the same WorkPlan/WorkSchedule pair', async () => {
+    // Two distinct IFCRELNESTS entities (#784 and #785) both nest the same
+    // WorkPlan (#778) -> WorkSchedule (#794) pair — the duplicate is reached
+    // via two independent relation entities, not two identical iterations
+    // of the same one, so a per-relation guard can't hide the gap.
+    const step = [
+      'ISO-10303-21;',
+      'HEADER;',
+      "FILE_DESCRIPTION(('workplan nests duplicate'),'2;1');",
+      "FILE_NAME('','',(''),(''),'','','');",
+      "FILE_SCHEMA(('IFC4'));",
+      'ENDSEC;',
+      'DATA;',
+      "#1=IFCPROJECT('p',#10,'P',$,$,$,$,$,$);",
+      "#10=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);",
+      "#778=IFCWORKPLAN('0eVhmaYyb3sBLb0LoNiW62',#10,'Work Plan #1',$,$,$,'2010-09-23T16:26:16',$,$,$,$,'2010-09-23T00:00:00',$,$);",
+      "#794=IFCWORKSCHEDULE('2LoWUCZHr7YvZks8lmqjcw',#10,'Sub Schedule',$,$,$,'2010-09-23T16:26:42',$,$,$,$,'2010-09-23T00:00:00',$,.PLANNED.);",
+      "#784=IFCRELNESTS('0if6u97Ln58xH$wewg0rH3',#10,$,$,#778,(#794));",
+      "#785=IFCRELNESTS('dup-rel-nests-2222222222',#10,$,$,#778,(#794));",
+      'ENDSEC;',
+      'END-ISO-10303-21;',
+    ].join('\n');
+
+    const store = await parseStep(step);
+    const parsed = extractScheduleOnDemand(store);
+
+    const plan = parsed.workSchedules.find(ws => ws.kind === 'WorkPlan')!;
+    expect(plan).toBeDefined();
+    // A duplicated relation must not duplicate the edge.
+    expect(plan.childScheduleGlobalIds).toEqual(['2LoWUCZHr7YvZks8lmqjcw']);
+  });
+
   it('writes an IfcWorkPlan → IfcWorkSchedule IfcRelNests on export, and it re-parses', async () => {
     const extraction: ScheduleExtraction = {
       hasSchedule: true,

@@ -288,7 +288,13 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
       // invariant visible to the checker without a non-null assertion, and
       // without treating "absent" any differently from "empty" — both still
       // mean "no nested schedules yet" everywhere else that reads it.
-      (parentPlan.childScheduleGlobalIds ??= []).push(childSchedule.globalId);
+      // Two distinct IfcRelNests entities can nest the same WorkPlan/
+      // WorkSchedule pair (a source file may repeat the relation), so guard
+      // the push the same way Pass 5 below guards its own append.
+      const childGlobalIds = (parentPlan.childScheduleGlobalIds ??= []);
+      if (!childGlobalIds.includes(childSchedule.globalId)) {
+        childGlobalIds.push(childSchedule.globalId);
+      }
       if (!childSchedule.parentPlanGlobalId) {
         childSchedule.parentPlanGlobalId = parentPlan.globalId;
       }

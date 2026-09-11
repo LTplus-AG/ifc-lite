@@ -526,7 +526,13 @@ test('the gate workflow does NOT fire on `edited`: no run beats a skipped run, a
   // evaluation takes the LATEST run per name, and `skipped` reads as a pass --
   // a body edit on a red PR would go green. The type has to be absent.
   const own = readFileSync(join(REPO_ROOT, '.github/workflows/pr-review-signal.yml'), 'utf8');
-  const types = /^\s{4}types:\s*\[([^\]]*)\]/m.exec(own);
+  // THE `pull_request:` BLOCK, not the first `types:` in the file: #4511 put a
+  // `merge_group: types: [checks_requested]` above it, and the unanchored
+  // version of this pin read THAT list, failed on "must still fire on
+  // opened", and turned the required check red on every PR at once.
+  const prBlock = /^  pull_request:\n((?:    [^\n]*\n)+)/m.exec(own);
+  assert.ok(prBlock, 'the workflow must declare a `pull_request` trigger');
+  const types = /^\s{4}types:\s*\[([^\]]*)\]/m.exec(prBlock[1]);
   assert.ok(types, 'the workflow must declare explicit `pull_request` activity types');
   const declared = types[1].split(',').map((t) => t.trim());
   assert.ok(!declared.includes('edited'), `\`edited\` must not be a trigger; declared: ${declared.join(', ')}`);

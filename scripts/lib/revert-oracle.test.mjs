@@ -419,6 +419,13 @@ Error: boom
 // classifyPath / classifyDiff
 // ---------------------------------------------------------------------------
 
+test('classifyPath: a test-support module that only registers assertions for a test entrypoint is a test (#4501)', () => {
+  // scripts/test-wasm-contract.mjs imports it and nothing else does; editing it
+  // changes what that suite asserts, so it must not read as production.
+  assert.equal(classifyPath('scripts/lib/shard-refusal-boundary.mjs'), 'test');
+  // The allowlist is exact: its siblings are real tooling and stay production.
+  assert.equal(classifyPath('scripts/lib/revert-oracle.mjs'), 'production');
+});
 test('classifyPath: production sources', () => {
   assert.equal(classifyPath('packages/renderer/src/device.ts'), 'production');
   assert.equal(classifyPath('apps/viewer/src/hooks/useSymbolicAnnotations.ts'), 'production');

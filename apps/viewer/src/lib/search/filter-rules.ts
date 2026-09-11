@@ -13,6 +13,8 @@
  * collides with the IFC `type` attribute name on element rows.
  */
 
+import { isModelTagOp, type ModelTagOp } from '../model-tags/types.js';
+
 // ── Operator enums ────────────────────────────────────────────────────────────
 
 /** Set-membership: storey, ifcType, predefinedType. */
@@ -113,6 +115,14 @@ export interface ModelRule {
   kind: 'model';
   values: string[];
   op: SetOp;
+}
+
+/** Match the owning model by its user-facing MODEL TAGS (#4215). `tagIds` are ids
+ * (stable across renames); an id that no longer exists is unresolved → matches nothing. */
+export interface ModelTagRule {
+  kind: 'modelTag';
+  op: ModelTagOp;
+  tagIds: string[];
 }
 
 export interface IfcTypeRule {
@@ -247,6 +257,7 @@ export interface TypeNameRule {
 
 export type FilterRule =
   | ModelRule
+  | ModelTagRule
   | StoreyRule
   | IfcTypeRule
   | PredefinedTypeRule
@@ -309,6 +320,7 @@ export function addHierarchyStoreyToRule(
 
 export const Rule = {
   model: (values: string[], op: SetOp = 'in'): ModelRule => ({ kind: 'model', values, op }),
+  modelTag: (op: ModelTagOp, tagIds: string[]): ModelTagRule => ({ kind: 'modelTag', op, tagIds }),
   storey: (
     values: string[],
     op: SetOp = 'in',
@@ -359,6 +371,11 @@ export const Rule = {
 export function isFilterRule(value: unknown): value is FilterRule {
   if (typeof value !== 'object' || value === null) return false;
   const kind = (value as { kind?: unknown }).kind;
+  if (kind === 'modelTag') {
+    // Structural: a bad op or a non-string id must not reach the evaluator.
+    const r = value as { op?: unknown; tagIds?: unknown };
+    return isModelTagOp(r.op) && Array.isArray(r.tagIds) && r.tagIds.every((t) => typeof t === 'string');
+  }
   return (
     kind === 'model' ||
     kind === 'storey' ||

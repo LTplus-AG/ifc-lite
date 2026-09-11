@@ -35,6 +35,7 @@ export const OP_LABEL: Record<string, string> = {
   startsWith: 'starts with', matches: 'matches /regex/', notMatches: 'does not match /regex/',
   gt: '>', gte: '≥', lt: '<', lte: '≤',
   isSet: 'is set', isNotSet: 'is not set',
+  hasAny: 'has any of', hasAll: 'has all of', hasNone: 'has none of', untagged: 'is untagged',
 };
 
 export function OpDropdown<T extends string>({

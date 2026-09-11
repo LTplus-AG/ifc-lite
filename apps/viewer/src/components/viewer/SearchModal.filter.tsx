@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { evaluateFilterRulesFederated } from '@/lib/search/filter-evaluate';
+import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { runTier0Scan, type ScanModel } from '@/lib/search/tier0-scan';
 import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';
 import { downloadResult } from '@/lib/search/result-export';
@@ -138,14 +139,8 @@ export function SearchModalFilter() {
 
     const start = performance.now();
     try {
-      const modelArgs: Array<{ id: string; filterIdentity?: string; store: typeof activeStore }> = [];
-      for (const m of models.values()) {
-        if (m.ifcDataStore) modelArgs.push({
-          id: m.id,
-          filterIdentity: m.sourceFingerprint,
-          store: m.ifcDataStore,
-        });
-      }
+      // Tag sets are read here, once — the run's membership is a snapshot (#4215).
+      const modelArgs = evaluatorModelsFromState(useViewerStore.getState()).filter((m) => m.store);
 
       // Fold the inline search query in as a Tier-1/Tier-0 candidate
       // set when present. Empty query → no narrowing (full scan with
@@ -191,6 +186,7 @@ export function SearchModalFilter() {
         searchFilter.combinator,
         {
           limit,
+          definedModelTagIds: definedModelTagIdsOf(useViewerStore.getState()),
           chunkSize: FILTER_CHUNK_SIZE,
           candidateExpressIdsByModel: candidatesByModel,
           signal: controller.signal,

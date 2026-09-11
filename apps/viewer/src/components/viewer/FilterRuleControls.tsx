@@ -92,6 +92,7 @@ export function AddRuleMenu({
 export function blankRuleOfKind(kind: FilterRule['kind']): FilterRule {
   switch (kind) {
     case 'model':          return Rule.model([], 'in');
+    case 'modelTag':       return Rule.modelTag('hasAny', []);
     case 'storey':         return Rule.storey([], 'in');
     case 'ifcType':        return Rule.ifcType([], 'in');
     case 'predefinedType': return Rule.predefinedType([], 'in');

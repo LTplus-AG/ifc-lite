@@ -118,7 +118,7 @@ env:
 jobs:
   heavy-census:
     name: Heavy-fixture watertightness census (ISSUE_053 + ISSUE_068)
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     # Cold cargo build plus two sweeps over 223 MiB of IFC in a debug build.
     #
     # THE RUNNER MERGE RULE, stated once here because two steps below depend

@@ -45,7 +45,7 @@
 
 import { parseIfcx, type MeshData } from '@ifc-lite/ifcx';
 import { makeExclusionSet, qualifiedKey } from '../exclude.js';
-import { fromPositions } from '../math/aabb.js';
+import { fromPositions, NonFiniteAxisError } from '../math/aabb.js';
 import type { ClashElement, ExclusionSet } from '../types.js';
 import { isNonClashableTag, mergeMeshes } from './shared.js';
 
@@ -115,6 +115,9 @@ export async function elementsFromIfcx(options: IfcxAdapterOptions): Promise<Ifc
 
   const elements: ClashElement[] = [];
   const byExpressId = new Map<number, ClashElement>();
+  /** Entities dropped because every vertex was non-finite on some axis — see
+   *  the warning below and {@link NonFiniteAxisError}'s doc (#4254). */
+  let nonFiniteBoundsSkipped = 0;
 
   for (const [expressId, group] of groups) {
     // The prim path is the durable USD identity; skip entities we cannot key.
@@ -132,19 +135,47 @@ export async function elementsFromIfcx(options: IfcxAdapterOptions): Promise<Ifc
 
     const merged = mergeMeshes(group);
 
+    // A corrupt mesh (every vertex non-finite on one axis) has no usable
+    // AABB — see `NonFiniteAxisError`. Skip just this entity rather than
+    // letting it in with an inverted box that would silently vanish from
+    // every later spatial query (#4254), and rather than aborting the whole
+    // clash run for one corrupt entity among many.
+    let bounds;
+    try {
+      bounds = fromPositions(merged.positions);
+    } catch (err) {
+      if (err instanceof NonFiniteAxisError) {
+        nonFiniteBoundsSkipped += 1;
+        continue;
+      }
+      throw err;
+    }
+
     const element: ClashElement = {
       key,
       ref: refFromPath(key),
       model: modelId,
       tag,
       name: resolveName(entities, expressId),
-      bounds: fromPositions(merged.positions),
+      bounds,
       positions: merged.positions,
       indices: merged.indices,
     };
 
     elements.push(element);
     byExpressId.set(expressId, element);
+  }
+
+  // Loud by construction: unlike the near-silent inverted box this replaces
+  // (#4254), a dropped entity is counted and named here rather than shipping
+  // in the result set invisible to every spatial query.
+  if (nonFiniteBoundsSkipped > 0) {
+    console.warn(
+      `[clash/ifcx] skipped ${nonFiniteBoundsSkipped} entity(ies) in model "${modelId}": every ` +
+        'vertex was non-finite on at least one axis, so no usable AABB could be computed. These ' +
+        'entities are excluded from clash detection entirely rather than participating with a ' +
+        'corrupt bound.',
+    );
   }
 
   const exclusions = buildExclusions

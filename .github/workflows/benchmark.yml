@@ -71,7 +71,7 @@ jobs:
     # jitter, and the job is advisory. When Rust changed we compile wasm32
     # from source here too — slower than Depot but free, and correctness of
     # the measurement requires the PR's own WASM.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

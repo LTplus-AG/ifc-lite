@@ -32,6 +32,13 @@ on:
   # NO `ready_for_review` EITHER, and for the plainer reason: nothing in this
   # workflow gates on `draft`, so every job already runs on a draft PR. Adding
   # the type would buy a second run of a head that has already been judged.
+  #
+  # NO `labeled` EITHER. The `ci:hosted` routing label (and `draft`) is read
+  # by every `runs-on` expression when a run is CREATED, so applying it does
+  # not move a run already queued for the fleet; it takes effect on the next
+  # run — a push, or close-and-reopen (`reopened`), the documented way to
+  # re-run this workflow on the same head. Triggering on `labeled` would buy
+  # a full 16-lane run for every label the risk/review bots apply to a PR.
   pull_request:
     types: [opened, synchronize, reopened, edited]
     branches: [main]
@@ -43,6 +50,10 @@ on:
   # open PR's Node lane was red until it was fixed.
   push:
     branches: [main]
+  # Merge-queue batches. Every lane runs (no path filtering - see `changes`),
+  # so the queue is the full gate and a bad batch is dequeued, never merged.
+  merge_group:
+    types: [checks_requested]
 
 concurrency:
   # PR runs share a group per ref, so a new commit supersedes the old run — the
@@ -94,21 +105,21 @@ jobs:
     # don't need a larger runner; Rust/WASM compilation also stays on the
     # standard runner so routine CI remains within the Depot Developer tier.
     # See scripts/README-vercel-cost.md for the full runner-cost rationale.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     # A path filter over one checkout. Anything past a minute is a hung API call,
     # not work. Capped because the default is SIX HOURS and a job killed by its own
     # timeout does NOT cancel the run: the aggregate would still run, every lane
     # would read `skipped`, and before the map entry above that was a green gate.
     timeout-minutes: 5
     outputs:
-      rust: ${{ steps.filter.outputs.rust }}
-      frontend: ${{ steps.filter.outputs.frontend }}
-      geometry: ${{ steps.filter.outputs.geometry }}
-      python: ${{ steps.filter.outputs.python }}
-      plato: ${{ steps.filter.outputs.plato }}
-      docs: ${{ steps.filter.outputs.docs }}
-      agents_md: ${{ steps.filter.outputs.agents_md }}
-      license_headers: ${{ steps.filter.outputs.license_headers }}
+      rust: ${{ steps.all.outputs.rust || steps.filter.outputs.rust }}
+      frontend: ${{ steps.all.outputs.frontend || steps.filter.outputs.frontend }}
+      geometry: ${{ steps.all.outputs.geometry || steps.filter.outputs.geometry }}
+      python: ${{ steps.all.outputs.python || steps.filter.outputs.python }}
+      plato: ${{ steps.all.outputs.plato || steps.filter.outputs.plato }}
+      docs: ${{ steps.all.outputs.docs || steps.filter.outputs.docs }}
+      agents_md: ${{ steps.all.outputs.agents_md || steps.filter.outputs.agents_md }}
+      license_headers: ${{ steps.all.outputs.license_headers || steps.filter.outputs.license_headers }}
       # `true` when the WASM source is byte-identical to the published release
       # tag, so `build` can fetch the prebuilt bundle instead of compiling
       # wasm32. See the `build` job and scripts/ci-wasm-prebuilt-eligible.sh.
@@ -121,7 +132,14 @@ jobs:
           # clone does not contain. PRs filter against the base ref and are
           # unaffected, so only the push path pays the extra object.
           fetch-depth: ${{ github.event_name == 'push' && 2 || 1 }}
+      # A merge-queue batch is validated as a whole: declare every area changed
+      # so all lanes run. paths-filter is a pull_request/push tool and has no
+      # PR to diff on merge_group.
+      - if: github.event_name == 'merge_group'
+        id: all
+        run: for k in rust frontend geometry python plato docs agents_md license_headers; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        if: github.event_name != 'merge_group'
         id: filter
         with:
           filters: |
@@ -385,7 +403,7 @@ jobs:
     # Keep all routine CI on GitHub's free standard runner. This public repo's
     # previous 4-vCPU Depot path consumed the Developer plan's included minutes
     # in a few days; the prebuilt bundle remains a speed optimization only.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -519,7 +537,7 @@ jobs:
       github.event_name == 'pull_request' &&
       (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') &&
       !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt')
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -569,7 +587,7 @@ jobs:
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true'
     # tsc is not CPU-bound; the free 2-core runner is fine and costs nothing.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -599,7 +617,7 @@ jobs:
     # lane ran NOTHING: the root script was `pnpm -r lint` and no package
     # defined one, so it passed in 20s having checked nothing, and dead imports
     # shipped through it.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -713,7 +731,7 @@ jobs:
     name: Viewer tests (shard ${{ matrix.shard }})
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -800,7 +818,7 @@ jobs:
     # If this lane needs attention again, `@ifc-lite/provenance` is the next
     # target: it alone spent 396s of the run that exposed this, with single
     # tests at 87s and 38s.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1515,7 +1533,7 @@ jobs:
     # cheap unit lanes that catch cross-PR collisions, not the whole matrix.
     if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && github.event_name == 'pull_request'
     # Free runner — vite build + a ~2.4MB model; not compute-bound.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1573,6 +1591,15 @@ jobs:
         env:
           E2E_GPU_STRICT: '0'
         run: pnpm test:e2e:ci
+      - name: Upload E2E failure context
+        # Playwright's error-context.md / traces for the failed tests only.
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 3
 
   rust-tests:
     name: Rust tests
@@ -1580,7 +1607,7 @@ jobs:
     if: needs.changes.outputs.rust == 'true'
     # Standard GitHub runners keep routine Rust validation out of Depot's
     # metered pool. The longer cap accommodates a cold GitHub cache restore.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1593,6 +1620,8 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust
+          shared-key: main
+          save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
       - name: Cache test fixtures
         id: fixtures-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -1737,9 +1766,9 @@ jobs:
     name: Geometry watertightness census
     needs: changes
     # PR-only — see viewer-e2e.
-    if: needs.changes.outputs.geometry == 'true' && github.event_name == 'pull_request'
+    if: needs.changes.outputs.geometry == 'true' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
     # This high-volume PR gate must not consume metered runner minutes.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1752,6 +1781,8 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust-census
+          shared-key: main
+          save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
       - name: Cache test fixtures
         id: fixtures-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -1818,9 +1849,9 @@ jobs:
   csg-accept-gates:
     name: CSG accept gates (feature builds)
     needs: changes
-    if: needs.changes.outputs.geometry == 'true' && github.event_name == 'pull_request'
+    if: needs.changes.outputs.geometry == 'true' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
     # This lane must not consume metered runner minutes.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1833,6 +1864,8 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust-csg-gates
+          shared-key: main
+          save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
       - name: Cache test fixtures
         id: fixtures-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -1899,10 +1932,10 @@ jobs:
     name: Plato clash-math freshness
     needs: changes
     # PR-only — see viewer-e2e.
-    if: needs.changes.outputs.plato == 'true' && github.event_name == 'pull_request'
+    if: needs.changes.outputs.plato == 'true' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
     # Free runner - the generator clones + builds Plato.CLI with dotnet; no
     # Depot cores needed.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1948,7 +1981,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs == 'true' && needs.changes.outputs.frontend != 'true' && needs.changes.outputs.rust != 'true'
     # Free runner - three node scripts, not compute-bound.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1989,7 +2022,7 @@ jobs:
   # and publishes.
   rust-semver:
     name: Rust crate semver
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2015,6 +2048,8 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust-semver
+          shared-key: main
+          save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
 
       # No `pnpm install`: the gate imports only node builtins and
       # scripts/lib/crates-io.mjs, which does the same.
@@ -2034,7 +2069,7 @@ jobs:
     name: AGENTS.md ratchet
     needs: changes
     if: needs.changes.outputs.agents_md == 'true'
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2072,7 +2107,7 @@ jobs:
     name: MPL license headers
     needs: changes
     if: needs.changes.outputs.license_headers == 'true'
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2092,7 +2127,7 @@ jobs:
     needs: [changes, build, revert-oracle, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks, agents-md, license-headers]
     if: always()
     # Free runner — the gate just inspects upstream job results.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     steps:
       - name: Gate on dependencies
         run: |

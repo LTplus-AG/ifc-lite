@@ -518,7 +518,7 @@ export class Renderer {
     // same-id selection in ANOTHER model is still a change that must free the
     // old model's hydrated mesh.
     private _prevHydratedSelection: Set<number> = new Set();
-    private _prevHydratedSelectionModelIndex: number | undefined = undefined;
+    private _prevHydratedSelectionModelIndex: number | undefined = undefined; private _prevHydratedSelectionItemExpressId: number | undefined; private _prevHydratedSelectionItemId: number | undefined;
 
     // One-shot log guard — prints Y-up clip bounds on first section-enable so
     // users can confirm the slider is operating on the intended range.
@@ -1511,13 +1511,10 @@ export class Renderer {
      * must still free the previous model's hydrated mesh (it would otherwise
      * stay resident and keep drawing unhighlighted).
      */
-    private syncHydratedSelectionMeshes(
-        selected: ReadonlySet<number>,
-        selectedModelIndex: number | undefined,
-    ): void {
+    private syncHydratedSelectionMeshes(selected: ReadonlySet<number>, selectedModelIndex: number | undefined, itemFilterExpressId: number | undefined, itemFilterItemId: number | undefined): void {
         const prev = this._prevHydratedSelection;
-        let changed = selected.size !== prev.size
-            || selectedModelIndex !== this._prevHydratedSelectionModelIndex;
+        let changed = selected.size !== prev.size || selectedModelIndex !== this._prevHydratedSelectionModelIndex
+            || itemFilterExpressId !== this._prevHydratedSelectionItemExpressId || itemFilterItemId !== this._prevHydratedSelectionItemId;
         if (!changed) {
             for (const id of selected) {
                 if (!prev.has(id)) { changed = true; break; }
@@ -1525,8 +1522,8 @@ export class Renderer {
         }
         if (!changed) return;
         this._prevHydratedSelection = new Set(selected);
-        this._prevHydratedSelectionModelIndex = selectedModelIndex;
-        this.scene.disposeHydratedMeshesExcept(selected, selectedModelIndex);
+        this._prevHydratedSelectionModelIndex = selectedModelIndex; this._prevHydratedSelectionItemExpressId = itemFilterExpressId; this._prevHydratedSelectionItemId = itemFilterItemId;
+        this.scene.disposeHydratedMeshesExcept(selected, selectedModelIndex, itemFilterExpressId, itemFilterItemId);
     }
 
     /**
@@ -1805,6 +1802,7 @@ export class Renderer {
                 selectedExpressIds.add(id);
             }
         }
+        const itemFilterExpressId = (options.selectedItemId !== undefined && selectedId !== undefined && selectedId !== null) ? selectedId : undefined; const itemFilterItemId = itemFilterExpressId !== undefined ? options.selectedItemId : undefined; // #4382
 
         // ─── Visibility / override epoch bookkeeping ────────────────────────
         // The tracker compares hide/isolate CONTENT against a snapshot, so both
@@ -1847,7 +1845,7 @@ export class Renderer {
         // doesn't double-draw over its batch copy or accumulate until clear().
         // Only acts on a selection change (avoids per-frame buffer churn) and
         // never touches authored (non-hydrated) or batch geometry.
-        this.syncHydratedSelectionMeshes(selectedExpressIds, selectedModelIndex);
+        this.syncHydratedSelectionMeshes(selectedExpressIds, selectedModelIndex, itemFilterExpressId, itemFilterItemId);
 
         let meshes = this.scene.getMeshes();
 
@@ -1856,7 +1854,7 @@ export class Renderer {
         // unchanged, so calling it every frame is cheap; it no-ops entirely when
         // no instanced data is loaded. The flat path handles selection inline
         // below via `selectedExpressIds`.
-        this.scene.setInstancedSelection(selectedExpressIds);
+        this.scene.setInstancedSelection(selectedExpressIds, itemFilterExpressId, itemFilterItemId);
         // Mirror hide/isolate onto the instanced occurrences (the flat path filters
         // its mesh list by hiddenIds/isolatedIds below; the instanced pass can't, so
         // it carries a per-instance hidden flag the shader discards on). Diffed → a
@@ -2881,7 +2879,8 @@ export class Renderer {
                     }
 
                     for (const selId of visibleSelectedIds) {
-                        const pieces = this.scene.getMeshDataPieces(selId, selectedModelIndex);
+                        const pieceItemId = selId === itemFilterExpressId ? itemFilterItemId : undefined; // #4382
+                        const pieces = this.scene.getMeshDataPieces(selId, selectedModelIndex, pieceItemId);
                         if (!pieces || pieces.length === 0) continue;
 
                         const seenOrdinalsByKey = new Map<string, number>();
@@ -2900,6 +2899,7 @@ export class Renderer {
                     ? this.scene.getMeshes().filter(mesh => {
                         if (!visibleSelectedIds.has(mesh.expressId)) return false;
                         if (selectedModelIndex !== undefined && mesh.modelIndex !== selectedModelIndex) return false;
+                        if (mesh.expressId === itemFilterExpressId && mesh.geometryItemId !== itemFilterItemId) return false; // #4382
                         return true;
                     })
                     : [];

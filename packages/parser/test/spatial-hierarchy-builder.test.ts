@@ -11,6 +11,7 @@ import {
   StringTable,
 } from '@ifc-lite/data';
 import { SpatialHierarchyBuilder } from '../src/spatial-hierarchy-builder.js';
+import { computeCanonicalParent } from '../src/spatial-hierarchy-canonical-parent.js';
 import type { EntityRef } from '../src/types.js';
 
 /** Assemble a STEP source buffer + byId index from raw records, so the builder
@@ -552,6 +553,27 @@ describe('SpatialHierarchyBuilder', () => {
       expect(hierarchy.project.children.map((n) => n.expressId)).toEqual([2]);
       expect(hierarchy.elementToStorey.get(5)).toBe(4);
       expect(hierarchy.byStorey.get(4)).toEqual([5]);
+    });
+
+    it('falls back to first-declared once the cycle-check visit budget is spent, instead of stalling', () => {
+      // Same 2-node back-edge as above, declared first. With a budget the
+      // walk cannot finish, the resolver must not use a partial descendant
+      // set (that reads as "no cycle" for the unreached part): it stops
+      // checking and takes the first-declared edge, the pre-#4285 answer.
+      const strings = new StringTable();
+      const entities = new EntityTableBuilder(3, strings);
+      entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+      entities.add(2, 'IFCBUILDING', 'b0', 'Building', '', '');
+      entities.add(3, 'IFCBUILDINGSTOREY', 'st0', 'Storey', '', '');
+      const relationships = new RelationshipGraphBuilder();
+      relationships.addEdge(3, 2, RelationshipType.Aggregates, 10); // Storey -> Building (spurious back-edge, FIRST)
+      relationships.addEdge(1, 2, RelationshipType.Aggregates, 11); // Project -> Building (real)
+      relationships.addEdge(2, 3, RelationshipType.Aggregates, 12); // Building -> Storey (real)
+      const graph = relationships.build();
+      const table = entities.build();
+
+      expect(computeCanonicalParent(table, graph).get(2)).toBe(1); // default budget: cycle broken
+      expect(computeCanonicalParent(table, graph, { cycleCheckVisitBudget: 0 }).get(2)).toBe(3); // exhausted: first-declared
     });
   });
 

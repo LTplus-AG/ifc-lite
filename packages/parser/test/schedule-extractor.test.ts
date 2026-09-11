@@ -177,6 +177,23 @@ describe('extractScheduleOnDemand', () => {
     expect(b?.parentGlobalId).toBe('root-gid');
   });
 
+  it('dedupes when two IfcRelNests entities nest the same task/subtask pair', () => {
+    // Two distinct IFCRELNESTS entities (#20 and #21) both nest root (#10)
+    // over child-a (#11) — reached via two independent relation entities,
+    // not two identical iterations of the same one.
+    const lines = [
+      "#10=IFCTASK('root-gid',$,'Project',$,$,$,$,$,$,.F.,$,$,$);",
+      "#11=IFCTASK('child-a-gid',$,'Foundation',$,$,$,$,$,$,.F.,$,$,.CONSTRUCTION.);",
+      "#20=IFCRELNESTS('rel-gid',$,$,$,#10,(#11));",
+      "#21=IFCRELNESTS('rel-gid-2',$,$,$,#10,(#11));",
+    ];
+    const store = buildStoreFromStep(lines);
+    const result = extractScheduleOnDemand(store);
+    const root = result.tasks.find(t => t.globalId === 'root-gid');
+    // A duplicated relation must not duplicate the edge.
+    expect(root?.childGlobalIds).toEqual(['child-a-gid']);
+  });
+
   it('extracts IfcRelSequence dependencies with lag time', () => {
     const lines = [
       "#10=IFCTASK('pred-gid',$,'Predecessor',$,$,$,$,$,$,.F.,$,$,.CONSTRUCTION.);",
@@ -208,6 +225,25 @@ describe('extractScheduleOnDemand', () => {
     expect(result.workSchedules[0].name).toBe('Main schedule');
     expect(result.workSchedules[0].predefinedType).toBe('PLANNED');
     expect(result.workSchedules[0].taskGlobalIds).toEqual(['task-a-gid', 'task-b-gid']);
+    const t = result.tasks.find(x => x.globalId === 'task-a-gid');
+    expect(t?.controllingScheduleGlobalIds).toEqual(['sched-gid']);
+  });
+
+  it('dedupes when two IfcRelAssignsToControl entities assign the same task to the same schedule', () => {
+    // Two distinct IFCRELASSIGNSTOCONTROL entities (#40 and #41) both assign
+    // task-a (#10) to schedule (#30) — reached via two independent relation
+    // entities, not two identical iterations of the same one. The paired
+    // arrays (schedule.taskGlobalIds / task.controllingScheduleGlobalIds)
+    // must stay in lockstep: both dedupe, or neither would.
+    const lines = [
+      "#10=IFCTASK('task-a-gid',$,'Task A',$,$,$,$,$,$,.F.,$,$,.CONSTRUCTION.);",
+      "#30=IFCWORKSCHEDULE('sched-gid',$,'Main schedule','desc','Planning','S1','2024-01-01T00:00:00',$,'Construction',$,$,'2024-01-01T00:00:00','2024-06-01T00:00:00',.PLANNED.);",
+      "#40=IFCRELASSIGNSTOCONTROL('rel-gid',$,$,$,(#10),$,#30);",
+      "#41=IFCRELASSIGNSTOCONTROL('rel-gid-2',$,$,$,(#10),$,#30);",
+    ];
+    const store = buildStoreFromStep(lines);
+    const result = extractScheduleOnDemand(store);
+    expect(result.workSchedules[0].taskGlobalIds).toEqual(['task-a-gid']);
     const t = result.tasks.find(x => x.globalId === 'task-a-gid');
     expect(t?.controllingScheduleGlobalIds).toEqual(['sched-gid']);
   });

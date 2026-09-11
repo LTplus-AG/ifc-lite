@@ -1201,6 +1201,30 @@ fn spurious_back_edge_ifc(order: &str) -> String {
     )
 }
 
+/// #4285 review: the back-edge check is bounded by an upload-wide visit
+/// budget. Once spent, contested children resolve plain first-declared (the
+/// pre-#4285 answer) instead of the parse stalling on a crafted graph - and a
+/// partial descendant walk is never used as "no cycle".
+#[test]
+fn back_edge_cycle_check_falls_back_to_first_declared_once_budget_is_spent() {
+    let rel = |rel_id: u32, relating_id: u32, related_id: u32| Relationship {
+        rel_type: "IfcRelAggregates".to_string(),
+        rel_id,
+        relating_id,
+        related_id,
+    };
+    // Storey(#3) -> Building(#2) spurious back-edge declared FIRST, then the
+    // real Project(#1) -> Building(#2) and Building(#2) -> Storey(#3).
+    let relationships = vec![rel(10, 3, 2), rel(11, 1, 2), rel(12, 2, 3)];
+
+    let resolved = spatial::resolve_aggregate_canonical_parents_for_tests(&relationships);
+    assert_eq!(resolved.get(&2), Some(&1), "default budget: the cycle is broken");
+
+    let starved = spatial::resolve_aggregate_canonical_parents_with_budget(&relationships, 0);
+    assert_eq!(starved.get(&2), Some(&3), "budget spent: first-declared edge wins");
+    assert_eq!(starved.get(&3), Some(&2));
+}
+
 #[test]
 fn spurious_aggregation_back_edge_declared_first_keeps_building_reachable_from_project() {
     let ifc = spurious_back_edge_ifc("spurious-first");

@@ -1,6 +1,6 @@
 ---
-"@ifc-lite/data": patch
-"@ifc-lite/parser": patch
+"@ifc-lite/data": minor
+"@ifc-lite/parser": minor
 "@ifc-lite/export": patch
 "@ifc-lite/cache": patch
 "@ifc-lite/query": patch

@@ -91,10 +91,14 @@ export function useFederationSetup() {
       const summary = summarizeFederationSetupMatches(matches);
       const loadable = matches.filter((m) => m.file !== null);
 
-      // Tag definitions first, by id, so the assignments below (and any saved
-      // filter naming these ids) resolve. A live tag already under an id wins.
+      // Tag definitions first, so the assignments below resolve. A live tag
+      // already under an id wins; a live tag that already carries a saved
+      // tag's NAME under another id absorbs it, and the slot's ids are mapped
+      // through `remap` so no assignment is dropped for a spelling both
+      // machines typed (#4215).
       const { upsertModelTagDefinitions, assignModelTags } = useViewerStore.getState();
-      upsertModelTagDefinitions(setup.tags);
+      const remap = upsertModelTagDefinitions(setup.tags);
+      const liveTagIds = (saved: readonly string[]) => saved.map((id) => remap.get(id) ?? id);
 
       let restoredCount = 0;
       let restoredAnchorModelId: string | null = null;
@@ -114,7 +118,7 @@ export function useFederationSetup() {
           restoredCount += 1;
           if (match.slot.anchor) restoredAnchorModelId = modelId;
           // After `addModel` returns: the runtime id is fresh, the tags are not (#4215).
-          if (match.slot.tagIds.length > 0) assignModelTags([modelId], match.slot.tagIds);
+          if (match.slot.tagIds.length > 0) assignModelTags([modelId], liveTagIds(match.slot.tagIds));
         }
       }
 

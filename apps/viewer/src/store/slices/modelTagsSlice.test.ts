@@ -102,18 +102,27 @@ describe('modelTagsSlice (#4215)', () => {
     assert.deepEqual(tagsOf('B'), [tender]);
   });
 
-  it('upsertModelTagDefinitions keeps ids (so saved rules stay valid) and never duplicates a live name', () => {
+  it('upsertModelTagDefinitions keeps ids (so saved rules stay valid), never duplicates a live name, and remaps a same-named id onto the live one', () => {
     const s = useViewerStore.getState();
     const live = s.createModelTag('Structure')!;
-    s.upsertModelTagDefinitions([
+    const remap = s.upsertModelTagDefinitions([
       { id: live, name: 'Renamed elsewhere' },      // same id: live definition wins
-      { id: 'incoming-1', name: 'STRUCTURE' },      // same name, other id: skipped
+      { id: 'incoming-1', name: 'STRUCTURE' },      // same name, other id: absorbed by the live tag
       { id: 'incoming-2', name: 'Tender', color: '#abc' },
     ]);
     const tags = useViewerStore.getState().modelTags;
     assert.equal(tags.get(live)?.name, 'Structure');
     assert.equal(tags.has('incoming-1'), false);
     assert.deepEqual(tags.get('incoming-2'), { id: 'incoming-2', name: 'Tender', color: '#abc' });
+    assert.deepEqual([...remap], [[live, live], ['incoming-1', live], ['incoming-2', 'incoming-2']]);
+
+    // The setup-file reopen path (`useFederationSetup.applyFederationSetup`)
+    // assigns the slot's SAVED ids through the remap: a file written on a
+    // machine that held "Structure" as incoming-1 tags this machine's model
+    // with this machine's Structure, instead of silently dropping the id.
+    const slotTagIds = ['incoming-1', 'incoming-2'].map((id) => remap.get(id) ?? id);
+    s.assignModelTags(['A'], slotTagIds);
+    assert.deepEqual(tagsOf('A'), [live, 'incoming-2'].sort());
   });
 
   it('removeModel purges that model\'s assignments only; clearAllModels purges all; definitions survive both', () => {

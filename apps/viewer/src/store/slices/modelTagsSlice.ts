@@ -35,12 +35,16 @@ export interface ModelTagsSlice {
   createModelTag: (name: string, color?: string) => string | null;
   /** Rename; `false` (and no change) when the name is blank, or taken by another tag. */
   renameModelTag: (id: string, name: string) => boolean;
-  setModelTagColor: (id: string, color: string | undefined) => void;
   /** Remove the definition and every assignment of it. Rules keep the id and become unresolved. */
   deleteModelTag: (id: string) => void;
-  /** Re-create definitions by id (setup-file reopen). An id already present is
-   *  left as is — the live name wins — so a saved rule referencing it stays valid. */
-  upsertModelTagDefinitions: (tags: readonly ModelTag[]) => void;
+  /**
+   * Re-create definitions by id (setup-file reopen). Returns, for every
+   * incoming id, the id it lives under here: itself when inserted or already
+   * present (the live name wins), or the id of the live tag that already
+   * carries its NAME — two machines that each typed "Structure" hold it under
+   * two ids, and the file's assignments must land on this machine's one.
+   */
+  upsertModelTagDefinitions: (tags: readonly ModelTag[]) => ReadonlyMap<string, string>;
 
   assignModelTags: (modelIds: readonly string[], tagIds: readonly string[]) => void;
   unassignModelTags: (modelIds: readonly string[], tagIds: readonly string[]) => void;
@@ -96,16 +100,6 @@ export const createModelTagsSlice: StateCreator<ModelTagsSlice, [], [], ModelTag
       return true;
     },
 
-    setModelTagColor: (id, color) => {
-      const tags = get().modelTags;
-      const tag = tags.get(id);
-      if (!tag || tag.color === color) return;
-      const next = new Map(tags);
-      const { color: _dropped, ...rest } = tag;
-      next.set(id, color ? { ...rest, color } : rest);
-      commitDefinitions(next);
-    },
-
     deleteModelTag: (id) => {
       const tags = get().modelTags;
       if (!tags.has(id)) return;
@@ -123,20 +117,23 @@ export const createModelTagsSlice: StateCreator<ModelTagsSlice, [], [], ModelTag
     },
 
     upsertModelTagDefinitions: (tags) => {
-      const current = get().modelTags;
-      const next = new Map(current);
+      const next = new Map(get().modelTags);
+      const remap = new Map<string, string>();
       let changed = false;
       for (const tag of tags) {
-        if (next.has(tag.id)) continue;
+        if (next.has(tag.id)) { remap.set(tag.id, tag.id); continue; }
         // A different id carrying the same name would leave two chips the user
-        // cannot tell apart; the live definition keeps the name, the incoming
-        // one is skipped. Assignments naming the skipped id are then simply
-        // absent — `assignModelTags` drops unknown ids — not misattributed.
-        if (findModelTagByName(next, tag.name)) continue;
+        // cannot tell apart; the live definition keeps the name and the
+        // incoming id is REMAPPED onto it, so the file's assignments (and the
+        // caller's rules) still land on the tag the user can see.
+        const sameName = findModelTagByName(next, tag.name);
+        if (sameName) { remap.set(tag.id, sameName.id); continue; }
         next.set(tag.id, { ...tag });
+        remap.set(tag.id, tag.id);
         changed = true;
       }
       if (changed) commitDefinitions(next);
+      return remap;
     },
 
     assignModelTags: (modelIds, tagIds) => {

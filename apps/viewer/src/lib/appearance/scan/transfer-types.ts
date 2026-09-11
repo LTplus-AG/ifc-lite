@@ -11,10 +11,13 @@ export interface MeshTransferRequest {
     baseColorFactor: [number, number, number, number]; repeatS: boolean; repeatT: boolean };
   sourceImage: AppearanceRaster; sourceImages: Array<{ imageUri: string; raster: AppearanceRaster }>;
   texelsPerMetre: number; maxDistanceMetres: number; minNormalDot: number; ambiguityDistanceMetres: number;
+  /** Same-facing observations deeper than this behind the IFC face stay unknown (thin-wall far side). */
+  maxBehindMetres: number;
 }
 export interface TransferCoverage {
   centroidSamples: number; observedCentroidSamples: number; rasterInteriorTexels: number; observedRasterInteriorTexels: number;
   samples: number; observedSamples: number; unknownDistanceSamples: number; unknownNormalSamples: number; unknownAmbiguousSamples: number;
+  unknownBehindSamples: number;
   observedAreaEstimateM2: number; unknownAreaEstimateM2: number;
 }
 export interface MeshTransferPlan extends Omit<PageAppearancePlan, 'plan'> {

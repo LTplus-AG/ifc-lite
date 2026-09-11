@@ -3,7 +3,7 @@
 "@ifc-lite/cli": patch
 "@ifc-lite/mcp": patch
 "@ifc-lite/wasm": major
-"@ifc-lite/export": patch
+"@ifc-lite/export": minor
 ---
 
 Fix OBJ export silently exporting the whole model when an active isolation filter matches zero elements — the OBJ twin of the GLB fix in #4364 (itself the #4328 scenario: filtering the hierarchy panel's Class tab to a type present only in a federated model's other member, then exporting "Visible Only").

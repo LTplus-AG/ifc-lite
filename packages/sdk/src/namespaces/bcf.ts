@@ -200,8 +200,12 @@ export class BCFNamespace {
         // Default visible → exceptions are hidden
         bcfOptions.hiddenGuids = comps.visibility.exceptions?.map(c => c.GlobalId);
       } else {
-        // Default hidden → exceptions are visible (isolation mode)
-        bcfOptions.visibleGuids = comps.visibility.exceptions?.map(c => c.GlobalId);
+        // Default hidden → exceptions are visible (isolation mode). `?? []`
+        // (not `?.map`, which would leave this `undefined`) so an isolation
+        // that matches nothing still reaches `createViewpoint()` as an
+        // active-but-empty array -- `@ifc-lite/bcf`'s `hasVisible` treats
+        // `undefined` as "no isolation channel at all" (see its own comment).
+        bcfOptions.visibleGuids = comps.visibility.exceptions?.map(c => c.GlobalId) ?? [];
       }
     }
     if (comps?.coloring) {
@@ -242,7 +246,7 @@ export class BCFNamespace {
       sectionPlane?: BcfViewerSectionPlane;
       selectedGuids: string[];
       hiddenGuids: string[];
-      visibleGuids: string[];
+      visibleGuids: string[] | null;
       coloredGuids: Array<{ color: string; guids: string[] }>;
     };
 

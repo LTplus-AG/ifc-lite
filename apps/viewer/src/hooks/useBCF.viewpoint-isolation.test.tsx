@@ -146,4 +146,33 @@ describe('useBCF — applyViewpoint isolation', () => {
       'a viewpoint apply must install its own isolation on every apply',
     );
   });
+
+  // The read-side mirror of the write-side fix in `createViewpoint`'s
+  // `hasVisible` (packages/bcf/src/viewpoint.ts): a viewpoint captured (by
+  // this app or any other BCF tool) with `DefaultVisibility="false"` and no
+  // `<Exceptions>` records an ACTIVE isolation that matches nothing -- an
+  // empty viewport, not an unfiltered one. `extractViewpointState` returns
+  // `visibleGuids: []` (not `null`) for that shape; applying it must install
+  // an EMPTY isolation Set, not fall through to the `hiddenGuids` branch or
+  // clear isolation back to `null`.
+  it('applies an active-but-empty isolation as an empty Set, not null (#4509)', () => {
+    // First install a real isolation, so a regression to the "no isolation
+    // channel" branch is visible as `null` rather than coinciding with the
+    // hook's own initial state.
+    act(() => {
+      api!.applyViewpoint(isolationViewpoint('vp-a', 'WALL-A00000000000000000'), false);
+    });
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([WALL_A]), 'sanity: isolation installed');
+
+    act(() => {
+      api!.applyViewpoint(
+        { guid: 'vp-empty', components: { visibility: { defaultVisibility: false, exceptions: [] } } } as BCFViewpoint,
+        false,
+      );
+    });
+
+    const isolated = useViewerStore.getState().isolatedEntities;
+    assert.notEqual(isolated, null, 'BUG: an active-but-empty isolate was read as no isolation at all');
+    assert.deepEqual(isolated, new Set(), 'isolation is active and matches nothing');
+  });
 });

@@ -105,11 +105,29 @@ describe('useBCF — createViewpointFromState with an active-but-empty isolate',
     const viewpoint = captured[0];
     assert.ok(viewpoint, 'a viewpoint must be produced');
 
+    // The isolate is ACTIVE and matches nothing, so the viewer is showing an
+    // empty viewport. BCF spells that `DefaultVisibility="false"` with no
+    // exceptions. Leaving the visibility component off entirely would instead
+    // record "everything is visible" -- the same empty-read-as-absent defect
+    // one layer down, in `createViewpoint`.
     assert.equal(
-      viewpoint.components?.visibility,
-      undefined,
-      'BUG: an active-but-empty isolate was read as "no isolation" and the unrelated ' +
-        'hiddenEntities were captured as a normal-mode (defaultVisibility=true) viewpoint',
+      viewpoint.components?.visibility?.defaultVisibility,
+      false,
+      'BUG: an active-but-empty isolate produced no visibility component, so the ' +
+        'viewpoint claims the whole model is visible while the viewport is empty',
+    );
+    const exceptions = viewpoint.components?.visibility?.exceptions;
+    // `.length`, not `assert.deepEqual(exceptions, [])`: the strict-assert
+    // overloads narrow their argument's TYPE to the literal `[]` (i.e.
+    // `never[]`) after such a call, which would make the `.some()` below a
+    // type error on the same expression.
+    assert.equal(exceptions?.length, 0, 'an isolate matching nothing has no visible exceptions');
+    // The unrelated hidden entity must NOT be captured: that is the normal-mode
+    // branch, and taking it would invert what the receiving viewer shows.
+    assert.equal(
+      exceptions?.some((c) => c.ifcGuid === HIDDEN_GUID),
+      false,
+      'BUG: hiddenEntities were captured as a normal-mode viewpoint',
     );
   });
 });

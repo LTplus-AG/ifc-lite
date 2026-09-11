@@ -101,7 +101,11 @@ export interface ExtractedViewpointState {
   };
   selectedGuids: string[];
   hiddenGuids: string[];
-  visibleGuids: string[];
+  // `null` = no isolation channel in the captured viewpoint (show
+  // everything); a non-null array -- EMPTY included -- = isolation WAS
+  // active, down to "matched nothing". See `@ifc-lite/bcf`'s
+  // `extractViewpointState` for the full rationale.
+  visibleGuids: string[] | null;
   coloredGuids: Array<{ color: string; guids: string[] }>;
 }
 

@@ -393,7 +393,12 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
             const guid = expressIdToGlobalId(id);
             if (guid) guids.push(guid);
           }
-          visibleGuids = guids.length > 0 ? guids : undefined;
+          // Keep the EMPTY array: the isolation channel is active, so the
+          // viewpoint must record "nothing visible" (defaultVisibility=false
+          // with no exceptions). Collapsing it to `undefined` here would put
+          // the capture right back into the "no isolation, show everything"
+          // bucket that the branch above was fixed to avoid.
+          visibleGuids = guids;
         } else if (hiddenEntities.size > 0) {
           // Normal mode: capture hidden entities (defaultVisibility=true)
           const guids: string[] = [];
@@ -583,7 +588,17 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
 
       // Apply visibility from BCF components: isolation mode (visibleGuids
       // with defaultVisibility=false) or normal (hiddenGuids, default true).
-      if (state.visibleGuids.length > 0) {
+      // `state.visibleGuids` is meaningfully nullable (`extractViewpointState`,
+      // packages/bcf/src/viewpoint.ts): `null` means the viewpoint carries no
+      // isolation channel, while a non-null array -- EMPTY included -- means
+      // isolation WAS active when the viewpoint was captured, down to
+      // "matched nothing". A `.length > 0` check here would read a captured
+      // empty viewport (a real, spec-valid `DefaultVisibility="false"` with
+      // no exceptions) as "no isolation" and fall into the `hiddenGuids`
+      // branch below, restoring an unfiltered view instead of an empty one --
+      // the read-side mirror of the same collapse fixed on the write side
+      // above and in `createViewpoint`'s `hasVisible`.
+      if (state.visibleGuids !== null) {
         // Isolation mode: only specified entities are visible
         const isolatedExpressIds = new Set<number>();
         for (const guid of state.visibleGuids) {
@@ -591,13 +606,9 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
           if (result) isolatedExpressIds.add(result.expressId);
         }
 
-        if (isolatedExpressIds.size > 0) {
-          // #3338: a viewpoint guid may name a geometry-less assembly whose parts carry the mesh.
-          const resolver = useViewerStore.getState().cameraCallbacks.resolveHighlightIds;
-          setIsolatedEntities(new Set(resolvePresentationIds(resolver, [...isolatedExpressIds])));
-        } else {
-          setIsolatedEntities(null);
-        }
+        // #3338: a viewpoint guid may name a geometry-less assembly whose parts carry the mesh.
+        const resolver = useViewerStore.getState().cameraCallbacks.resolveHighlightIds;
+        setIsolatedEntities(new Set(resolvePresentationIds(resolver, [...isolatedExpressIds])));
       } else if (state.hiddenGuids.length > 0) {
         // Normal mode: specified entities are hidden
         const hiddenExpressIds = new Set<number>();

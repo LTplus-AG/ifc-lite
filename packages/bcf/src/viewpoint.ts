@@ -472,7 +472,16 @@ export function createViewpoint(options: {
   // Add components
   const hasSelection = selectedGuids && selectedGuids.length > 0;
   const hasHidden = hiddenGuids && hiddenGuids.length > 0;
-  const hasVisible = visibleGuids && visibleGuids.length > 0;
+  // `visibleGuids` is an ISOLATION ALLOWLIST and is meaningfully nullable:
+  // omitted means "no isolation channel is active, everything is visible",
+  // while an EMPTY array means one IS active and currently matches nothing --
+  // the viewer is showing an empty viewport, and the viewpoint has to say so.
+  // A `.length > 0` test here collapses the two and writes a viewpoint
+  // claiming the whole model is visible. Same distinction `isEntityVisible`
+  // in `packages/renderer/src/entity-visibility.ts` draws for `isolatedIds`.
+  // `hiddenGuids` below is a BLOCKLIST, where empty and absent both correctly
+  // mean "hide nothing", so it keeps its length test.
+  const hasVisible = visibleGuids != null;
   const hasColoring = coloredGuids && coloredGuids.length > 0;
 
   if (hasSelection || hasHidden || hasVisible || hasColoring) {
@@ -520,7 +529,16 @@ export function extractViewpointState(
   sectionPlane?: ViewerSectionPlane;
   selectedGuids: string[];
   hiddenGuids: string[];
-  visibleGuids: string[]; // For isolation mode (defaultVisibility=false)
+  // For isolation mode (defaultVisibility=false). `null` means the viewpoint
+  // carries no isolation channel at all (show everything); a non-null array
+  // -- EMPTY included -- means isolation WAS active in the captured
+  // viewpoint, down to "matched nothing". Collapsing an empty array from a
+  // spec-valid `<Visibility DefaultVisibility="false"/>` with no
+  // `<Exceptions>` (a real BCF viewer isolating to nothing) into the same
+  // shape as "no isolation" misreads a captured empty viewport as an
+  // unfiltered one -- the read-side half of the write-side fix in
+  // `createViewpoint`'s `hasVisible`, above.
+  visibleGuids: string[] | null;
   coloredGuids: { color: string; guids: string[] }[];
 } {
   let camera: ViewerCameraState | undefined;
@@ -550,15 +568,22 @@ export function extractViewpointState(
 
   // Extract visibility GUIDs
   const hiddenGuids: string[] = [];
-  const visibleGuids: string[] = [];
+  let visibleGuids: string[] | null = null;
   if (viewpoint.components?.visibility) {
     const { defaultVisibility, exceptions } = viewpoint.components.visibility;
+    // `defaultVisibility === false` is what the BCF schema uses to mean
+    // "isolation mode" -- set it regardless of whether `exceptions` is
+    // present, so an isolation that matches nothing (no `<Exceptions>`
+    // element, or an empty one) still comes back as `[]`, not `null`.
+    if (defaultVisibility === false) {
+      visibleGuids = [];
+    }
     if (exceptions) {
       for (const comp of exceptions) {
         if (comp.ifcGuid) {
           if (defaultVisibility === false) {
             // Isolation mode: exceptions are the visible entities
-            visibleGuids.push(comp.ifcGuid);
+            visibleGuids!.push(comp.ifcGuid);
           } else {
             // Normal mode: exceptions are the hidden entities
             hiddenGuids.push(comp.ifcGuid);

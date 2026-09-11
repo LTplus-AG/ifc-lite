@@ -1,5 +1,13 @@
 # @ifc-lite/collab-server
 
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [[`b0700f2`](https://github.com/LTplus-AG/ifc-lite/commit/b0700f25434d1cf1ec5f7438a8e27c09188208ec), [`7179a9c`](https://github.com/LTplus-AG/ifc-lite/commit/7179a9c6c2d0620f6bd3260e37b80c771697ce85), [`dbf513b`](https://github.com/LTplus-AG/ifc-lite/commit/dbf513b785f1dbc2f2dce5c173d28fd5ab65aa0c)]:
+  - @ifc-lite/ifcx@4.1.0
+  - @ifc-lite/collab@0.7.0
+
 ## 0.7.0
 
 ### Minor Changes

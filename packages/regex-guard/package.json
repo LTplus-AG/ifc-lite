@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/regex-guard",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A shared, dependency-free guard against catastrophic-backtracking (ReDoS) regex patterns compiled from untrusted input",
   "type": "module",
   "main": "./dist/index.js",

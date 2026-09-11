@@ -25,6 +25,8 @@
 //! once each defect is fixed its `#[ignore]` should be removed and the
 //! assertions tightened to match IOS.
 
+mod support;
+
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcType};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
@@ -119,6 +121,10 @@ fn fixture_present() -> bool {
     match std::path::Path::new(FIXTURE).try_exists() {
         Ok(true) => true,
         Ok(false) => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture {FIXTURE} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
             eprintln!(
                 "skipping: fixture {} not present — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
                 FIXTURE,

@@ -23,7 +23,12 @@ import { join, dirname, relative } from 'node:path';
 
 import { cargoRunner, rootScriptsRunner, detectRunner } from './revert-oracle.mjs';
 import { cargoTestOwner } from './revert-oracle-cargo.mjs';
-import { requiredFeatureCombos } from './revert-oracle-rust-features.mjs';
+import {
+  requiredFeatureCombos,
+  stripComments,
+  INNER_CFG_RE,
+  TEST_CFG_RE,
+} from './revert-oracle-rust-features.mjs';
 import { pythonTestOwner, pythonRunner } from './revert-oracle-python.mjs';
 
 /** Walk up from `startDir` looking for `filename`, stopping at `root`. */
@@ -39,6 +44,59 @@ export function findUp(startDir, filename, root) {
 }
 
 /** Group test files by the package that owns them and pick each one's runner. */
+/**
+ * True when any of `relFiles` gates a `#[test]` behind a whole-expression
+ * `not(...)` over non-default features.
+ *
+ * Such a test compiles ONLY in the default build, and `requiredFeatureCombos`
+ * contributes no combo for it (correctly — it names no feature to turn ON).
+ * But planRuns() falls back to the default run only when NO combo was found at
+ * all, so a file carrying both a `not(...)` gate and, say, a bare
+ * `#[cfg(feature = "x")]` gate would run x-only and never compile the
+ * `not(...)` test in. Callers must run the default ALONGSIDE the combos when
+ * this returns true. `parseCfgExpr` has already thrown for the unsound shapes
+ * by the time this runs, so a surviving whole-`not(...)` is one the default
+ * build provably compiles.
+ */
+export function requiresDefaultRun(root, relFiles) {
+  for (const rel of relFiles) {
+    let text;
+    try {
+      text = readFileSync(join(root, rel), 'utf8');
+    } catch {
+      continue;
+    }
+    const stripped = stripComments(text);
+    for (const re of [INNER_CFG_RE, TEST_CFG_RE]) {
+      re.lastIndex = 0;
+      let m;
+      while ((m = re.exec(stripped)) !== null) {
+        if (/^\s*not\s*\([\s\S]*\)\s*$/.test(m[1])) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * The crate's default-on feature names, from its Cargo.toml `[features]`
+ * `default = [...]` list. Returns an empty Set when the manifest is absent or
+ * declares no defaults - which is the common case and the one that makes a
+ * `not(feature = "x")` gate resolvable to the default build.
+ */
+function crateDefaultFeatures(dir) {
+  try {
+    const toml = readFileSync(join(dir, 'Cargo.toml'), 'utf8');
+    const features = toml.split(/^\s*\[features\]\s*$/m)[1];
+    if (!features) return new Set();
+    const decl = features.split(/^\s*\[/m)[0].match(/^\s*default\s*=\s*\[([\s\S]*?)\]/m);
+    if (!decl) return new Set();
+    return new Set([...decl[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]));
+  } catch {
+    return new Set();
+  }
+}
+
 export function planRuns(testPaths, root) {
   /** @type {Map<string, {dir: string, files: string[], script: string|undefined, crate: string|null}>} */
   const groups = new Map();
@@ -82,8 +140,16 @@ export function planRuns(testPaths, root) {
     // entirely, so run one cargo invocation per feature-combo the changed
     // files require; none found -> the old, single default-features run.
     if (g.crate) {
-      const combos = requiredFeatureCombos(root, g.files);
-      for (const features of combos.length > 0 ? combos : [[]]) {
+      // Crate default features: treating a `not(feature = "x")` gate as
+      // "the default build compiles it" is only sound when x is NOT default-on.
+      const defaults = crateDefaultFeatures(g.dir);
+      const combos = requiredFeatureCombos(root, g.files, defaults);
+      // A not()-gated test compiles only in the default build and contributes
+      // no combo, so the default run must happen ALONGSIDE any combos found.
+      const runs = combos.length > 0
+        ? (requiresDefaultRun(root, g.files) ? [[], ...combos] : combos)
+        : [[]];
+      for (const features of runs) {
         const label = features.length > 0 ? `${key}+${features.join('+')}` : key;
         plans.push({ key: label, dir: g.dir, files: g.files, relFiles, script: g.script, crate: g.crate, runner: cargoRunner(g.crate, features) });
       }

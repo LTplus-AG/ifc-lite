@@ -50,6 +50,10 @@ on:
   # open PR's Node lane was red until it was fixed.
   push:
     branches: [main]
+  # Merge-queue batches. Every lane runs (no path filtering - see `changes`),
+  # so the queue is the full gate and a bad batch is dequeued, never merged.
+  merge_group:
+    types: [checks_requested]
 
 concurrency:
   # PR runs share a group per ref, so a new commit supersedes the old run — the
@@ -108,14 +112,14 @@ jobs:
     # would read `skipped`, and before the map entry above that was a green gate.
     timeout-minutes: 5
     outputs:
-      rust: ${{ steps.filter.outputs.rust }}
-      frontend: ${{ steps.filter.outputs.frontend }}
-      geometry: ${{ steps.filter.outputs.geometry }}
-      python: ${{ steps.filter.outputs.python }}
-      plato: ${{ steps.filter.outputs.plato }}
-      docs: ${{ steps.filter.outputs.docs }}
-      agents_md: ${{ steps.filter.outputs.agents_md }}
-      license_headers: ${{ steps.filter.outputs.license_headers }}
+      rust: ${{ steps.all.outputs.rust || steps.filter.outputs.rust }}
+      frontend: ${{ steps.all.outputs.frontend || steps.filter.outputs.frontend }}
+      geometry: ${{ steps.all.outputs.geometry || steps.filter.outputs.geometry }}
+      python: ${{ steps.all.outputs.python || steps.filter.outputs.python }}
+      plato: ${{ steps.all.outputs.plato || steps.filter.outputs.plato }}
+      docs: ${{ steps.all.outputs.docs || steps.filter.outputs.docs }}
+      agents_md: ${{ steps.all.outputs.agents_md || steps.filter.outputs.agents_md }}
+      license_headers: ${{ steps.all.outputs.license_headers || steps.filter.outputs.license_headers }}
       # `true` when the WASM source is byte-identical to the published release
       # tag, so `build` can fetch the prebuilt bundle instead of compiling
       # wasm32. See the `build` job and scripts/ci-wasm-prebuilt-eligible.sh.
@@ -128,7 +132,14 @@ jobs:
           # clone does not contain. PRs filter against the base ref and are
           # unaffected, so only the push path pays the extra object.
           fetch-depth: ${{ github.event_name == 'push' && 2 || 1 }}
+      # A merge-queue batch is validated as a whole: declare every area changed
+      # so all lanes run. paths-filter is a pull_request/push tool and has no
+      # PR to diff on merge_group.
+      - if: github.event_name == 'merge_group'
+        id: all
+        run: for k in rust frontend geometry python plato docs agents_md license_headers; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        if: github.event_name != 'merge_group'
         id: filter
         with:
           filters: |
@@ -1609,6 +1620,8 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust
+          shared-key: main
+          save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
       - name: Cache test fixtures
         id: fixtures-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -1753,7 +1766,7 @@ jobs:
     name: Geometry watertightness census
     needs: changes
     # PR-only — see viewer-e2e.
-    if: needs.changes.outputs.geometry == 'true' && github.event_name == 'pull_request'
+    if: needs.changes.outputs.geometry == 'true' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
     # This high-volume PR gate must not consume metered runner minutes.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 60
@@ -1768,6 +1781,8 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust-census
+          shared-key: main
+          save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
       - name: Cache test fixtures
         id: fixtures-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -1834,7 +1849,7 @@ jobs:
   csg-accept-gates:
     name: CSG accept gates (feature builds)
     needs: changes
-    if: needs.changes.outputs.geometry == 'true' && github.event_name == 'pull_request'
+    if: needs.changes.outputs.geometry == 'true' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
     # This lane must not consume metered runner minutes.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 60
@@ -1849,6 +1864,8 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust-csg-gates
+          shared-key: main
+          save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
       - name: Cache test fixtures
         id: fixtures-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -1915,7 +1932,7 @@ jobs:
     name: Plato clash-math freshness
     needs: changes
     # PR-only — see viewer-e2e.
-    if: needs.changes.outputs.plato == 'true' && github.event_name == 'pull_request'
+    if: needs.changes.outputs.plato == 'true' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
     # Free runner - the generator clones + builds Plato.CLI with dotnet; no
     # Depot cores needed.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
@@ -2031,6 +2048,8 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust-semver
+          shared-key: main
+          save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
 
       # No `pnpm install`: the gate imports only node builtins and
       # scripts/lib/crates-io.mjs, which does the same.

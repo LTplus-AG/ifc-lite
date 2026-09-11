@@ -8,8 +8,10 @@
  * Both halves read ONE store field (`modelTagView`), so the chips and the
  * rows cannot disagree about what is filtered or grouped.
  *
- * Controls (only once some loaded model carries a tag — a federation with no
- * tags looks exactly as it did):
+ * Controls (once some loaded model carries a tag — a federation with no tags
+ * looks exactly as it did — and for as long as a filter or the grouping is
+ * set, so the control that clears it can never vanish with the last tagged
+ * model and strand an empty section):
  *  - **By tag** — group the rows, with an explicit Untagged group;
  *  - one chip per tag in use, plus **Untagged** — a ROW filter: it lists
  *    fewer models and hides nothing in the viewport;
@@ -65,6 +67,13 @@ export function ModelsSectionHeader({ count }: { count: number }) {
     () => (filterActive ? modelIdsMatchingTagView(models.keys(), view, assignments) : null),
     [filterActive, models, view, assignments],
   );
+  // A filter naming a tag no loaded model carries any more (the user just
+  // unassigned it) keeps its chip, so the user can see what is filtering.
+  const strayFilterTags = useMemo(
+    () => view.filterTagIds.filter((id) => tags.has(id) && !inUse.some((t) => t.id === id)).map((id) => tags.get(id)!),
+    [view.filterTagIds, tags, inUse],
+  );
+  const chips = strayFilterTags.length > 0 ? [...inUse, ...strayFilterTags].sort((a, b) => a.name.localeCompare(b.name)) : inUse;
 
   const toggleTag = (id: string) =>
     setModelTagView({
@@ -74,7 +83,7 @@ export function ModelsSectionHeader({ count }: { count: number }) {
   return (
     <>
       <SectionHeader icon={FileBox} title="Models" count={count} />
-      {inUse.length > 0 && (
+      {(inUse.length > 0 || filterActive || view.groupByTag) && (
         <div className="flex flex-wrap items-center gap-1 px-2 py-1 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950" data-model-tag-controls>
           <Button
             variant={view.groupByTag ? 'default' : 'outline'}
@@ -87,7 +96,7 @@ export function ModelsSectionHeader({ count }: { count: number }) {
             <Tag className="mr-1 h-3 w-3" /> By tag
           </Button>
           <span className="mx-1 h-3 w-px bg-zinc-300 dark:bg-zinc-700" aria-hidden />
-          {inUse.map((tag) => {
+          {chips.map((tag) => {
             const active = view.filterTagIds.includes(tag.id);
             return (
               <Button

@@ -95,7 +95,7 @@ function byText(root: ParentNode, text: string): HTMLElement {
 
 describe('HierarchyPanel — model tags in the Models section (#4215)', () => {
   beforeEach(seed);
-  afterEach(() => { cleanup(); useViewerStore.setState({ modelTagView: DEFAULT_MODEL_TAG_VIEW }); });
+  afterEach(cleanup);
 
   it('flat by default: one row per model, no group headers, and the tag controls are offered', () => {
     const c = renderPanel();
@@ -149,6 +149,28 @@ describe('HierarchyPanel — model tags in the Models section (#4215)', () => {
     assert.equal(c.querySelectorAll('button[aria-label="Show model m1.ifc"]').length, 2, 'both rows of m1 read hidden');
     click(byLabel(c, 'Show models tagged Structure'));
     assert.deepEqual(visibility(), { m1: true, m2: true, m3: true });
+  });
+
+  it('a filter outlives the last model carrying its tag: Clear is still offered and lists every model again', () => {
+    const c = renderPanel();
+    click(byLabel(c, 'List models tagged Structure'));
+    act(() => { useViewerStore.getState().unassignModelTags(['m1', 'm2'], [structure]); });
+    assert.equal(c.querySelector('[data-model-tag-filter-count]')?.textContent, '0 of 3', 'the filter now lists nothing');
+    for (const id of ['m1', 'm2', 'm3']) assert.equal(modelRowsOf(c, id), 0);
+    assert.ok(c.querySelector('[aria-label="Stop listing models tagged Structure"]'), 'the filtering chip stays visible');
+    click(byLabel(c, 'Clear model tag filter'));
+    for (const id of ['m1', 'm2', 'm3']) assert.equal(modelRowsOf(c, id), 1, `${id} listed again`);
+    assert.equal(c.querySelector('[data-model-tag-filter-count]')?.textContent ?? null, null);
+    // Cleared and no longer carried by any model: Structure has no chip; Architecture (still on m1) has.
+    assert.equal(c.querySelector('[aria-label="List models tagged Structure"]') !== null, false);
+    assert.ok(c.querySelector('[aria-label="List models tagged Architecture"]'));
+  });
+
+  it('the view is torn down with the federation, so a fresh session never opens pre-filtered', () => {
+    useViewerStore.setState({ modelTagView: { groupByTag: true, filterTagIds: [structure], filterUntagged: false } });
+    useViewerStore.getState().clearAllModels();
+    assert.deepEqual(useViewerStore.getState().modelTagView, DEFAULT_MODEL_TAG_VIEW);
+    assert.equal(useViewerStore.getState().modelTags.size, 2, 'the vocabulary survives');
   });
 
   it('deleting a tag drops it from the row filter so the list does not silently go empty', () => {

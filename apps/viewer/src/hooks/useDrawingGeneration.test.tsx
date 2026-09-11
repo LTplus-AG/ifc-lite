@@ -412,6 +412,39 @@ describe('useDrawingGeneration latest inputs (#3921)', () => {
       assert.deepEqual(entityIds(h.drawing), new Set([101]));
     } finally { await h.dispose(); }
   });
+
+  it('an active-but-empty computedIsolatedIds isolates nothing, not the whole model', async () => {
+    // `computedIsolatedIds` (ViewportContainer's storey/class/manual-isolation
+    // intersection) is meaningfully nullable: `null`/`undefined` means no
+    // isolation channel is active, while a non-null EMPTY Set means an
+    // isolation channel IS active and matches nothing — the same convention
+    // `packages/renderer/src/entity-visibility.ts`'s `isEntityVisible` and
+    // `shadow-occluders.ts`'s `anyVisible` already enforce.
+    //
+    // Two production routes still reach exactly this shape. `computedIsolatedIds`
+    // is itself an INTERSECTION of every active filter (`ViewportContainer.tsx`
+    // intersects the storey isolation, the Class-tab `classFilter`, and the
+    // `isolatedEntities` store channel), and two non-empty filters that share
+    // no element intersect to a non-null, zero-size Set — a class filter for
+    // doors while a storey containing none of them is selected. Separately,
+    // applying a BCF viewpoint captured with `DefaultVisibility="false"` and no
+    // exceptions installs an active-but-empty `isolatedEntities` through
+    // `useBCF.ts`'s `applyViewpoint` (pinned by
+    // `useBCF.viewpoint-isolation.test.tsx`).
+    const h = await drawingActivityHarness();
+    try {
+      await h.update({ geometryResult: activityGeometry(), panelVisible: true });
+      await h.update({ combinedIsolatedIds: null, computedIsolatedIds: new Set([101]) });
+      assert.deepEqual(entityIds(h.drawing), new Set([101]));
+
+      await h.update({ computedIsolatedIds: new Set() });
+      assert.deepEqual(
+        entityIds(h.drawing),
+        new Set(),
+        'an active empty isolate set must draw nothing, not fall back to the whole model',
+      );
+    } finally { await h.dispose(); }
+  });
 });
 
 // Hold a REAL cutter result at its async boundary, rather than fabricating meshes.

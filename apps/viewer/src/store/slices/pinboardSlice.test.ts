@@ -124,6 +124,81 @@ describe('PinboardSlice', () => {
       assert.ok(state.isolatedEntities!.has(5));
       assert.ok(!state.isolatedEntities!.has(1007), 'the removed entity global id must be gone');
     });
+
+    it('removeFromBasket keeps a global id isolated when a second aliased ref still holds the basket', () => {
+      // Two distinct EntityRefs can map to the SAME global id: any modelId
+      // absent from `models` (an unregistered federated model, e.g. one that
+      // failed to register before a basket restore) falls back to the raw
+      // expressId, same as the 'legacy' sentinel — see toGlobalIdFromModels
+      // in globalId.ts. 'legacy:100' and 'unregistered-model:100' therefore
+      // both derive global id 100. Removing only ONE of them must not evict
+      // 100 from isolatedEntities while the other still requires it.
+      state.setBasket([
+        { modelId: 'legacy', expressId: 100 },
+        { modelId: 'unregistered-model', expressId: 100 },
+      ]);
+      assert.strictEqual(state.pinboardEntities.size, 2);
+      assert.ok(state.isolatedEntities !== null);
+      assert.strictEqual(state.isolatedEntities!.size, 1, 'both refs alias to global id 100');
+
+      state.removeFromBasket([{ modelId: 'legacy', expressId: 100 }]);
+
+      assert.strictEqual(state.pinboardEntities.size, 1, 'unregistered-model:100 is still pinned');
+      assert.ok(state.isolatedEntities !== null, 'basket is non-empty, isolation must stay active');
+      assert.ok(
+        state.isolatedEntities!.has(100),
+        'global id 100 is still required by the surviving unregistered-model:100 entry',
+      );
+    });
+
+    // The two basket writers must stay symmetric about ids they did not
+    // author (#4509 review). `addToBasket` seeds from the EXISTING
+    // `isolatedEntities` when there is one, so an isolation installed by
+    // another writer -- a restored BCF viewpoint, a lens rule, a search
+    // isolate -- survives a pin. A `removeFromBasket` that recomputes purely
+    // from the surviving basket would silently drop those same ids, so
+    // pinning one element and unpinning another would quietly destroy the
+    // viewpoint the user was working inside. Remove only what the removed
+    // refs contributed AND nothing surviving still requires.
+    it('removeFromBasket keeps isolation ids it did not author, as addToBasket does', () => {
+      const FOREIGN = 5000; // e.g. installed by a restored BCF viewpoint
+      state.setBasket([
+        { modelId: 'legacy', expressId: 100 },
+        { modelId: 'legacy', expressId: 200 },
+      ]);
+      // Another writer widens the isolation; addToBasket would preserve this.
+      setState({ isolatedEntities: new Set([...state.isolatedEntities!, FOREIGN]) });
+
+      state.addToBasket([{ modelId: 'legacy', expressId: 300 }]);
+      assert.ok(
+        state.isolatedEntities!.has(FOREIGN),
+        'sanity: addToBasket preserves an isolation id it did not author',
+      );
+
+      state.removeFromBasket([{ modelId: 'legacy', expressId: 300 }]);
+
+      assert.ok(
+        state.isolatedEntities!.has(FOREIGN),
+        'BUG: removeFromBasket discarded an isolation id it never authored',
+      );
+      assert.ok(state.isolatedEntities!.has(100), 'surviving basket entries stay isolated');
+      assert.ok(state.isolatedEntities!.has(200), 'surviving basket entries stay isolated');
+      assert.ok(!state.isolatedEntities!.has(300), 'the unpinned entity is no longer isolated');
+    });
+
+    // A ref that was never pinned has no basket claim on its global id: asking
+    // to remove it must not evict an isolation entry another writer owns.
+    it('removeFromBasket ignores refs that were not in the basket instead of evicting their isolation id', () => {
+      const FOREIGN = 500; // isolated by a BCF viewpoint, never pinned
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }]);
+      setState({ isolatedEntities: new Set([...state.isolatedEntities!, FOREIGN]) });
+
+      state.removeFromBasket([{ modelId: 'legacy', expressId: FOREIGN }]);
+
+      assert.ok(state.isolatedEntities!.has(FOREIGN), 'BUG: a never-pinned ref evicted an externally-owned isolation id');
+      assert.ok(state.isolatedEntities!.has(100));
+      assert.strictEqual(state.pinboardEntities.size, 1, 'the basket is unchanged');
+    });
   });
 
   describe('saveCurrentBasketView', () => {

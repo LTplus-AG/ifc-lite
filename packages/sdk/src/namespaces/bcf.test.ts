@@ -128,7 +128,7 @@ describe('BCFNamespace.extractViewpointState — read-path symmetry (#4251)', ()
     ['z', 'front'],
   ] as const)(
     'round-trips camera/sectionPlane (axis %s, BCF %s) back into bim.viewer.setCamera()/setSection() shapes',
-    async (sdkAxis, bcfAxis) => {
+    async (sdkAxis, _bcfAxis) => {
       const ns = new BCFNamespace();
       const viewpoint = await ns.createViewpoint({
         camera: CAMERA,
@@ -181,6 +181,69 @@ describe('BCFNamespace.extractViewpointState — read-path symmetry (#4251)', ()
 
     const state = await ns.extractViewpointState(viewpoint);
     expect(state.sectionPlane).toBeUndefined();
+  });
+});
+
+/**
+ * `components.visibility` -> BCF `<Visibility DefaultVisibility>` (#4509 review).
+ *
+ * BCF's `DefaultVisibility` attribute is OPTIONAL and defaults to **true**:
+ * an absent flag means "everything is visible, the exceptions are HIDDEN".
+ * The adapter used to branch on the flag's truthiness, which maps absent
+ * onto `false` -- the isolation arm -- inverting the spec's default, and
+ * with an empty/absent exception list producing an isolate-to-nothing
+ * viewpoint (a blank viewport) out of a caller that asked for nothing of
+ * the sort.
+ */
+describe('BCFNamespace.createViewpoint — DefaultVisibility defaults to true (#4509)', () => {
+  type Visibility = { defaultVisibility?: boolean; exceptions?: { ifcGuid: string }[] };
+  const visibilityOf = (vp: unknown): Visibility | undefined =>
+    (vp as { components?: { visibility?: Visibility } }).components?.visibility;
+
+  it('treats an absent defaultVisibility as true, so the exceptions are HIDDEN', async () => {
+    const ns = new BCFNamespace();
+    const vp = await ns.createViewpoint({
+      camera: CAMERA,
+      // A JS caller (or a hand-built object crossing the untyped boundary)
+      // that omits the flag entirely, exactly as the BCF XML may.
+      components: { visibility: { exceptions: [{ GlobalId: 'HIDEME0000000000000001' }] } },
+    });
+    const vis = visibilityOf(vp);
+    expect(vis?.defaultVisibility).toBe(true);
+    expect(vis?.exceptions).toEqual([{ ifcGuid: 'HIDEME0000000000000001' }]);
+  });
+
+  it('does not manufacture a blank viewport from a visibility block with nothing in it', async () => {
+    const ns = new BCFNamespace();
+    const vp = await ns.createViewpoint({
+      camera: CAMERA,
+      components: { visibility: {} },
+    });
+    // `DefaultVisibility="false"` with no exceptions is a positive claim that
+    // NOTHING is visible. An absent flag and an absent exception list say the
+    // opposite: everything visible, nothing hidden.
+    expect(visibilityOf(vp)?.defaultVisibility).not.toBe(false);
+  });
+
+  it('still isolates when defaultVisibility is explicitly false, empty exceptions included', async () => {
+    const ns = new BCFNamespace();
+    const isolate = await ns.createViewpoint({
+      camera: CAMERA,
+      components: {
+        visibility: { defaultVisibility: false, exceptions: [{ GlobalId: 'KEEPME0000000000000001' }] },
+      },
+    });
+    expect(visibilityOf(isolate)?.defaultVisibility).toBe(false);
+    expect(visibilityOf(isolate)?.exceptions).toEqual([{ ifcGuid: 'KEEPME0000000000000001' }]);
+
+    // The active-but-empty allowlist this PR is about must survive the
+    // adapter as an isolation, not be normalized away.
+    const isolateNothing = await ns.createViewpoint({
+      camera: CAMERA,
+      components: { visibility: { defaultVisibility: false } },
+    });
+    expect(visibilityOf(isolateNothing)?.defaultVisibility).toBe(false);
+    expect(visibilityOf(isolateNothing)?.exceptions).toEqual([]);
   });
 });
 

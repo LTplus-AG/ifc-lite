@@ -70,7 +70,23 @@ export interface ViewpointOptions {
   components?: {
     selection?: Array<{ GlobalId: string }>;
     visibility?: {
-      defaultVisibility: boolean;
+      /**
+       * BCF's `<Visibility DefaultVisibility>` attribute, which is OPTIONAL
+       * in the schema and defaults to **true**. Omitting it therefore means
+       * "everything is visible, and `exceptions` names what is HIDDEN" -- it
+       * is NOT a shorthand for isolation. A truthiness test on this field was
+       * wrong in both directions: it read an absent flag as isolation,
+       * inverting the spec, and with no exceptions to isolate it turned a
+       * caller who said nothing about visibility into a blank viewport.
+       *
+       * Pass `false` explicitly to isolate, in which case `exceptions` is the
+       * visible allowlist and an empty or absent list means an active
+       * isolation matching nothing (a blank viewport), not "no visibility
+       * channel" -- which is why the adapter forwards `exceptions ?? []` on
+       * that arm rather than `exceptions?.map(...)`: `@ifc-lite/bcf`'s
+       * `hasVisible` reads an `undefined` allowlist as "no isolation at all".
+       */
+      defaultVisibility?: boolean;
       exceptions?: Array<{ GlobalId: string }>;
     };
     coloring?: Array<{
@@ -101,7 +117,11 @@ export interface ExtractedViewpointState {
   };
   selectedGuids: string[];
   hiddenGuids: string[];
-  visibleGuids: string[];
+  // `null` = no isolation channel in the captured viewpoint (show
+  // everything); a non-null array -- EMPTY included -- = isolation WAS
+  // active, down to "matched nothing". See `@ifc-lite/bcf`'s
+  // `extractViewpointState` for the full rationale.
+  visibleGuids: string[] | null;
   coloredGuids: Array<{ color: string; guids: string[] }>;
 }
 

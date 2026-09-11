@@ -191,12 +191,13 @@ export class BCFNamespace extends BCFGuidColorBase {
       bcfOptions.selectedGuids = comps.selection.map(c => c.GlobalId);
     }
     if (comps?.visibility) {
-      if (comps.visibility.defaultVisibility) {
-        // Default visible → exceptions are hidden
+      // Both halves are spelled out on `ViewpointOptions.components
+      // .visibility`: `DefaultVisibility` is optional and TRUE by default, and
+      // `?? []` (not `?.map`) preserves an isolation that matches nothing.
+      if (comps.visibility.defaultVisibility ?? true) {
         bcfOptions.hiddenGuids = comps.visibility.exceptions?.map(c => c.GlobalId);
       } else {
-        // Default hidden → exceptions are visible (isolation mode)
-        bcfOptions.visibleGuids = comps.visibility.exceptions?.map(c => c.GlobalId);
+        bcfOptions.visibleGuids = comps.visibility.exceptions?.map(c => c.GlobalId) ?? [];
       }
     }
     if (comps?.coloring) {
@@ -237,7 +238,7 @@ export class BCFNamespace extends BCFGuidColorBase {
       sectionPlane?: BcfViewerSectionPlane;
       selectedGuids: string[];
       hiddenGuids: string[];
-      visibleGuids: string[];
+      visibleGuids: string[] | null;
       coloredGuids: Array<{ color: string; guids: string[] }>;
     };
 

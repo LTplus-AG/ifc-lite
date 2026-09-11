@@ -72,19 +72,23 @@
  *                    generic in-store `editor.addEntity()` overlay escape
  *                    hatch, which stages a mutation rather than writing a
  *                    STEP line itself.
- *   fixture       — a committed `.ifc` sample under the repo's own fixture
- *                    corpus (`FIXTURE_DIRS` below) carries a STEP record of
- *                    this class. Builds on #4208
- *                    (`packages/parser/src/drop-census.ts`'s
- *                    `buildDropCensus`), which established "does a record of
- *                    this class reach the loader at all" as the signal worth
- *                    reporting per class. This generator has no build step
- *                    and cannot invoke the TypeScript parser, so it answers
- *                    the same presence question directly against the STEP
- *                    records the census itself counts (`#<n>=IFCXXX(...)`),
- *                    rather than reproducing #4208's retained/skipped
- *                    classification, which needs the parser's schema
- *                    resolution.
+ *   fixture       — a committed `.ifc` sample, DECLARING THIS ROW'S OWN
+ *                    SCHEMA in its own `FILE_SCHEMA` header, carries a STEP
+ *                    record of this class. Scanned across the repo's own
+ *                    fixture corpus (`FIXTURE_DIRS` below), then partitioned
+ *                    per schema by that header before matching — a fixture
+ *                    is only ever cited under the schema it actually
+ *                    declares, never pooled across schemas or used to
+ *                    stand in for a different one (#4474). A file whose
+ *                    header is missing, unparseable, or names a schema this
+ *                    ledger has no section for (e.g. `IFC4X2`) is skipped
+ *                    outright, not defaulted into any section.
+ *                    This is a regex over committed files, not a parser
+ *                    run: it does not invoke the TypeScript/Rust loader and
+ *                    is a materially different signal from #4208's drop
+ *                    census (`packages/parser/src/drop-census.ts`), which is
+ *                    per-model and resolves schema through the actual
+ *                    parser. Loosely related, not the same measurement.
  *
  * VACUITY GUARD: every extractor below throws if it returns an empty set —
  * a parser broken by a refactor must fail loudly, not silently emit a ledger
@@ -279,10 +283,35 @@ function walkIfcFiles(absDir) {
   return out;
 }
 
-// UPPER STEP keyword -> path (relative to ROOT) of the first fixture, in
-// sorted-path order, whose STEP records include that class. First-found
-// only (the ledger names ONE example, not every fixture that qualifies).
-const fixtureTypeToPath = new Map();
+// Fixture attribution MUST be scoped to the fixture file's own declared
+// schema (its HEADER's FILE_SCHEMA), never pooled across schemas — a fixture
+// is only evidence for the schema it actually declares (#4474 review
+// finding: a global map let an IFC4 sample get cited as IFC2X3 evidence).
+//
+// `IFC4X3_ADD2` / `IFC4X3_RC1..4` etc. all collapse onto the ledger's own
+// `IFC4X3` section key (the ledger doesn't track AddendumX/RC granularity
+// anywhere else either). Anything else — a header naming a schema this
+// ledger has no section for (e.g. `IFC4X2`), or a file with no parseable
+// FILE_SCHEMA header at all — is skipped outright: it is NEVER attributed to
+// any section, not bucketed into a default/"unknown" section that could
+// still leak into a row.
+const FILE_SCHEMA_RE = /FILE_SCHEMA\s*\(\s*\(\s*'([^']+)'/;
+
+function normalizeFixtureSchema(headerName) {
+  const upper = headerName.toUpperCase();
+  if (upper === 'IFC2X3') return 'IFC2X3';
+  if (upper === 'IFC4') return 'IFC4';
+  if (/^IFC4X3(_ADD\d+|_RC\d+)?$/.test(upper)) return 'IFC4X3';
+  return null; // not one of this ledger's SCHEMAS — never attributed
+}
+
+// schema -> Map<UPPER STEP keyword, path (relative to ROOT) of the first
+// fixture IN THAT SCHEMA, in sorted-path order, whose STEP records include
+// that class>. First-found only (the ledger names ONE example per schema,
+// not every fixture that qualifies).
+const fixtureTypeToPathBySchema = new Map(SCHEMAS.map((s) => [s, new Map()]));
+let fixtureFilesSkippedNoHeader = 0;
+let fixtureFilesSkippedUnknownSchema = 0;
 {
   const files = [];
   for (const dir of FIXTURE_DIRS) files.push(...walkIfcFiles(join(ROOT, dir)));
@@ -291,13 +320,27 @@ const fixtureTypeToPath = new Map();
   for (const abs of files) {
     const rel = abs.slice(ROOT.length + 1);
     const text = readFileSync(abs, 'utf8');
+    const headerMatch = text.match(FILE_SCHEMA_RE);
+    if (!headerMatch) {
+      fixtureFilesSkippedNoHeader++;
+      continue; // no parseable FILE_SCHEMA header — never attributed to any section
+    }
+    const schema = normalizeFixtureSchema(headerMatch[1]);
+    if (!schema) {
+      fixtureFilesSkippedUnknownSchema++;
+      continue; // header names a schema this ledger has no section for — never attributed
+    }
+    const map = fixtureTypeToPathBySchema.get(schema);
     for (const m of text.matchAll(recordRe)) {
       const type = m[1];
-      if (!fixtureTypeToPath.has(type)) fixtureTypeToPath.set(type, rel);
+      if (!map.has(type)) map.set(type, rel);
     }
   }
 }
-assertNonEmpty('fixture(committed .ifc corpus)', fixtureTypeToPath);
+assertNonEmpty(
+  'fixture(committed .ifc corpus, any schema)',
+  new Set([...fixtureTypeToPathBySchema.values()].flatMap((m) => [...m.keys()])),
+);
 
 // registry tables key by PascalCase entity name (from parseEntityTable), but
 // every extractor above works in UPPERCASE STEP keywords. Build an
@@ -330,7 +373,7 @@ function buildSection(schema) {
     const geometry = geometryTypes.has(upper) ? '✅' : '❌';
     const creatable = creatorTypes.has(upper) ? '✅' : '❌';
     const writable = writableTypes.has(upper) ? '✅' : '❌';
-    const fixture = fixtureTypeToPath.get(upper) ?? '—';
+    const fixture = fixtureTypeToPathBySchema.get(schema).get(upper) ?? '—';
     const convertParts = [];
     for (const hop of DIRECT_HOPS) {
       const [from] = hop.split('->');
@@ -395,7 +438,7 @@ function render() {
   lines.push('- **creatable** — `@ifc-lite/create` (`IfcCreator` or an in-store builder) can emit this entity.');
   lines.push('- **writable** — narrower than creatable: `IfcCreator` itself writes this entity via a dedicated `this.line()` STEP-emission call, rather than only through the generic in-store `editor.addEntity()` overlay escape hatch.');
   lines.push('- **convertible** — for each direct one-hop schema conversion FROM this row\'s version, whether the (possibly renamed) entity exists in the target schema\'s registry.');
-  lines.push('- **fixture** — a committed `.ifc` sample in the repo\'s own fixture corpus that carries a STEP record of this class (path relative to repo root), or `—` if none of the scanned corpus directories do. Builds on #4208 (`packages/parser/src/drop-census.ts`): the same STEP-record presence the drop census counts, answered directly since this generator has no build step and cannot invoke the parser.');
+  lines.push('- **fixture** — a committed `.ifc` sample in the repo\'s own fixture corpus, DECLARING THIS ROW\'S SCHEMA in its own `FILE_SCHEMA` header, that carries a STEP record of this class (path relative to repo root), or `—` if none of the scanned corpus directories do. A fixture is only ever cited under the schema it actually declares — never a cross-schema stand-in. This is a regex over the committed files (`#<n>=IFCXXX(...)`), not a parser run: unlike #4208\'s drop census (`packages/parser/src/drop-census.ts`), which is per-model and resolves schema through the real loader, this generator has no build step and cannot invoke it.');
   lines.push('');
   for (const schema of SCHEMAS) {
     const rows = sections.get(schema);
@@ -414,6 +457,33 @@ function render() {
 }
 
 const content = render();
+
+// Per-schema fixture-resolve counts, printed on every run: after scoping
+// `fixture` to each file's own declared schema, far fewer rows resolve a
+// path than the old (buggy, cross-schema-pooled) count — that drop is
+// expected. A schema with ZERO resolved rows would mean this generator
+// found no committed fixture anywhere declaring that schema, which is a
+// real, useful finding about the corpus and must be surfaced loudly rather
+// than rendered silently as "every row is —".
+for (const schema of SCHEMAS) {
+  const rows = sections.get(schema);
+  const resolved = rows.filter((r) => r.fixture !== '—').length;
+  console.log(`  fixture(${schema}): ${resolved}/${rows.length} rows resolve a same-schema fixture`);
+  if (resolved === 0) {
+    console.warn(
+      `⚠️  fixture(${schema}): ZERO rows resolve a fixture — no committed .ifc under FIXTURE_DIRS declares FILE_SCHEMA('${schema}...'). ` +
+        'This is a true statement about the corpus, not a bug; every row in this schema will render "—" in the fixture column.',
+    );
+  }
+}
+if (fixtureFilesSkippedNoHeader > 0) {
+  console.log(`  fixture: skipped ${fixtureFilesSkippedNoHeader} file(s) with no parseable FILE_SCHEMA header`);
+}
+if (fixtureFilesSkippedUnknownSchema > 0) {
+  console.log(
+    `  fixture: skipped ${fixtureFilesSkippedUnknownSchema} file(s) whose FILE_SCHEMA names a schema outside ${JSON.stringify(SCHEMAS)}`,
+  );
+}
 
 if (CHECK) {
   const existing = existsSync(join(ROOT, OUT_REL)) ? readFileSync(join(ROOT, OUT_REL), 'utf8') : null;

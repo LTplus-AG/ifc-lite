@@ -346,6 +346,7 @@
    488 scripts/check-wasm-disposal.mjs
    499 scripts/docs/check-doc-samples.mjs
    506 scripts/generate-bim-globals.mjs
+   500 scripts/generate-coverage-ledger.mjs
    423 scripts/generate-epsg-index.ts
    403 scripts/lib/ci-path-coverage.mjs
    460 scripts/lib/pr-green-sweep.mjs

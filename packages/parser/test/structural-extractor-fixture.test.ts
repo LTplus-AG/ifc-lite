@@ -102,10 +102,12 @@ describeMaybe('extractStructuralOnDemand — structural_analysis_curve.ifc', () 
     expect(load?.type).toBe('IfcStructuralLoadConfiguration');
     // #327/#329 = IFCSTRUCTURALLOADLINEARFORCE(.,$,$,-100.,$,$,$): the third
     // measure slot is LinearForceZ, not LinearForceY.
-    expect(load?.configuration?.locations).toEqual([[96], [192]]);
-    expect(load?.configuration?.values.map((v) => v.components)).toEqual([
-      { LinearForceZ: -100 },
-      { LinearForceZ: -100 },
+    expect(load?.configuration?.truncated).toBe(false);
+    expect(
+      load?.configuration?.entries.map((e) => [e.location, e.value?.components, e.dropped]),
+    ).toEqual([
+      [[96], { LinearForceZ: -100 }, undefined],
+      [[192], { LinearForceZ: -100 }, undefined],
     ]);
   });
 

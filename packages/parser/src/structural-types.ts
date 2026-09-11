@@ -142,4 +142,15 @@ export interface StructuralExtraction {
   resultGroups: StructuralResultGroupInfo[];
   /** True if any structural entity was found (empty-state UI). */
   hasStructural: boolean;
+  /**
+   * True when reading an activity's `AppliedLoad` hit one of the walk's own
+   * bounds — the nesting cap, the node budget, or a cycle — and so returned
+   * fewer nested loads than the file holds. A consumer showing a load
+   * configuration reads this before saying "2 loads": a truncated tree is
+   * shaped exactly like a genuinely small one, and reporting the two alike is
+   * how silent truncation becomes wrong data. The per-configuration detail is
+   * `appliedLoad.configuration.truncated` and the entry-level reason is
+   * `configuration.entries[i].dropped`.
+   */
+  loadsTruncated: boolean;
 }

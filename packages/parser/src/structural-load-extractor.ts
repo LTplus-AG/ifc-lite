@@ -53,13 +53,73 @@ export interface StructuralLoadInfo {
   components: Record<string, number>;
   /**
    * Present only for `IfcStructuralLoadConfiguration`: the nested loads and
-   * the parametric locations they apply at. `locations[i]` positions
-   * `values[i]`; it is absent when the file omits the optional `Locations`.
+   * the parametric locations they apply at, as {@link StructuralLoadConfigurationInfo}.
    */
-  configuration?: {
-    values: StructuralLoadInfo[];
-    locations?: number[][];
-  };
+  configuration?: StructuralLoadConfigurationInfo;
+}
+
+/**
+ * Why one `Values` slot carries no nested load.
+ *
+ * The first three are **our** bounds firing — the file may hold more than we
+ * agreed to read, and {@link StructuralLoadConfigurationInfo.truncated} is set.
+ * The last three are the file's own data: there is nothing further to read, so
+ * they are not truncation.
+ */
+export type StructuralLoadDropReason =
+  /** Below the nesting cap: the chain is longer than this reader follows. */
+  | 'depth'
+  /** The slot re-enters a configuration already open on this path. */
+  | 'cycle'
+  /** The node budget for this top-level load was spent before this slot. */
+  | 'budget'
+  /** The slot is not an entity reference at all (`$`, an inline value, …). */
+  | 'invalid-reference'
+  /** The referenced expressId is in no index — a dangling reference. */
+  | 'unresolved'
+  /** The referenced record is indexed but did not parse. */
+  | 'unreadable';
+
+/** One `Values` slot of an `IfcStructuralLoadConfiguration`, with its location. */
+export interface StructuralLoadConfigurationEntry {
+  /** The nested load, absent when the slot could not be read. */
+  value?: StructuralLoadInfo;
+  /** Why {@link value} is absent; absent whenever `value` is present. */
+  dropped?: StructuralLoadDropReason;
+  /**
+   * The `Locations` row at this same slot, when the file carries one. Absent
+   * when the file omits the optional `Locations`, or lists fewer rows than
+   * `Values` has slots.
+   */
+  location?: number[];
+}
+
+/** The `Values`/`Locations` pair of an `IfcStructuralLoadConfiguration`. */
+export interface StructuralLoadConfigurationInfo {
+  /**
+   * One entry per `Values` slot, in file order. The pairing the schema
+   * requires — the i-th location positions the i-th value — is carried inside
+   * the entry rather than across two arrays, so a slot this reader could not
+   * resolve keeps its place with `value` absent and `dropped` naming why. A
+   * dropped slot that instead shifted its successors left would report a later
+   * load as applied at an earlier station, which reads as real data.
+   */
+  entries: StructuralLoadConfigurationEntry[];
+  /**
+   * `Locations` as the file writes it, absent when the file omits it or writes
+   * it unusably. Kept beside {@link entries} for the malformed case where it is
+   * longer than `Values`: those extra rows belong to no slot and would
+   * otherwise be lost. Consumers pairing a load with its station read
+   * `entries[i].location`, never this list.
+   */
+  locations?: number[][];
+  /**
+   * True when a bound of this reader — the depth cap, the node budget, or the
+   * cycle guard — dropped a slot in this configuration or anywhere beneath it.
+   * It separates "the file holds no more" from "we stopped reading", which a
+   * truncated tree otherwise reports identically to a genuinely small one.
+   */
+  truncated: boolean;
 }
 
 /** An `IfcBoundaryCondition` leaf reduced to its named stiffness components. */
@@ -116,19 +176,37 @@ const MAX_LOAD_NODES = 256;
  * - a **path-local** cycle set stops a configuration that reaches itself. It
  *   has to be path-local rather than shared across siblings, because `Values`
  *   is a LIST and may legitimately name one load twice; a shared set would
- *   drop the repeat and misalign `values[i]` against `locations[i]`.
+ *   suppress the repeat as if it were a cycle and report one load where the
+ *   file applies two.
  * - a **depth cap** bounds one chain's length, which the cycle set alone does
  *   not for a long acyclic chain.
  * - a **node budget** bounds total work. The first two still admit `k`
  *   children each recursing `k` deep, which is O(k^depth) — an abort turned
  *   into a hang, and a hang reports nothing.
+ *
+ * All three, and an unreadable reference besides, keep the `Values` slot they
+ * gave up on: it becomes an entry with no `value` and a `dropped` reason, so
+ * the station a `Locations` row names still belongs to the load the file put
+ * there. Only the three bounds set `truncated`, since only they mean the file
+ * holds more than this reader agreed to walk.
  */
 export function extractStructuralLoad(
   extractor: EntityExtractor,
   store: IfcDataStore,
   expressId: number,
 ): StructuralLoadInfo | undefined {
-  return readLoad(extractor, store, expressId, new Set(), { remaining: MAX_LOAD_NODES }, 0);
+  return readLoad(extractor, store, expressId, new Set(), { remaining: MAX_LOAD_NODES }, 0).value;
+}
+
+/**
+ * One resolved slot: the load, or the reason there is none, plus whether a
+ * bound fired anywhere in the subtree rooted here. The reason is returned
+ * rather than swallowed because the caller has to keep the slot either way.
+ */
+interface LoadReadResult {
+  value?: StructuralLoadInfo;
+  dropped?: StructuralLoadDropReason;
+  truncated: boolean;
 }
 
 function readLoad(
@@ -138,48 +216,60 @@ function readLoad(
   path: Set<number>,
   budget: { remaining: number },
   depth: number,
-): StructuralLoadInfo | undefined {
-  if (depth > MAX_LOAD_DEPTH || path.has(expressId) || budget.remaining <= 0) return undefined;
+): LoadReadResult {
+  if (depth > MAX_LOAD_DEPTH) return { dropped: 'depth', truncated: true };
+  if (path.has(expressId)) return { dropped: 'cycle', truncated: true };
+  if (budget.remaining <= 0) return { dropped: 'budget', truncated: true };
   const ref = store.entityIndex.byId.get(expressId);
-  if (!ref) return undefined;
+  if (!ref) return { dropped: 'unresolved', truncated: false };
   const entity = extractor.extractEntity(ref);
-  if (!entity) return undefined;
+  if (!entity) return { dropped: 'unreadable', truncated: false };
 
   budget.remaining--;
   const type = normalizeIfcTypeName(entity.type);
   const attrs = entity.attributes || [];
 
   if (type.toUpperCase() === 'IFCSTRUCTURALLOADCONFIGURATION') {
-    const nested: StructuralLoadInfo[] = [];
+    const locations = readLocations(attrs[LOAD_CONFIGURATION_ATTR.Locations]);
+    const entries: StructuralLoadConfigurationEntry[] = [];
+    let truncated = false;
     const values = attrs[LOAD_CONFIGURATION_ATTR.Values];
     if (Array.isArray(values)) {
       // On this node's path only — removed again below so a sibling that
       // names the same load still reads it.
       path.add(expressId);
-      for (const v of values) {
-        if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) continue;
-        const load = readLoad(extractor, store, v, path, budget, depth + 1);
-        if (load) nested.push(load);
+      for (let i = 0; i < values.length; i++) {
+        const v = values[i];
+        const location = locations?.[i];
+        const slot: LoadReadResult =
+          typeof v === 'number' && Number.isInteger(v) && v > 0
+            ? readLoad(extractor, store, v, path, budget, depth + 1)
+            : { dropped: 'invalid-reference', truncated: false };
+        if (slot.truncated) truncated = true;
+        entries.push({ value: slot.value, dropped: slot.dropped, location });
       }
       path.delete(expressId);
     }
     return {
-      expressId,
-      type,
-      name: asString(attrs[LOAD_CONFIGURATION_ATTR.Name]),
-      components: {},
-      configuration: {
-        values: nested,
-        locations: readLocations(attrs[LOAD_CONFIGURATION_ATTR.Locations]),
+      value: {
+        expressId,
+        type,
+        name: asString(attrs[LOAD_CONFIGURATION_ATTR.Name]),
+        components: {},
+        configuration: { entries, locations, truncated },
       },
+      truncated,
     };
   }
 
   return {
-    expressId,
-    type,
-    name: asString(attrs[0]),
-    components: readNumericComponents(type, attrs),
+    value: {
+      expressId,
+      type,
+      name: asString(attrs[0]),
+      components: readNumericComponents(type, attrs),
+    },
+    truncated: false,
   };
 }
 

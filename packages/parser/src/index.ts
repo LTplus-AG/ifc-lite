@@ -140,6 +140,9 @@ export {
   type StructuralLoadGroupInfo,
   type StructuralResultGroupInfo,
   type StructuralLoadInfo,
+  type StructuralLoadConfigurationInfo,
+  type StructuralLoadConfigurationEntry,
+  type StructuralLoadDropReason,
   type BoundaryConditionInfo,
 } from './structural-extractor.js';
 

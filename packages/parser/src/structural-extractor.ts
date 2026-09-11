@@ -45,6 +45,9 @@ import {
   extractBoundaryCondition,
   extractStructuralLoad,
   type BoundaryConditionInfo,
+  type StructuralLoadConfigurationEntry,
+  type StructuralLoadConfigurationInfo,
+  type StructuralLoadDropReason,
   type StructuralLoadInfo,
 } from './structural-load-extractor.js';
 import {
@@ -76,6 +79,9 @@ export type {
   StructuralAnalysisModelInfo,
   StructuralConnectionInfo,
   StructuralExtraction,
+  StructuralLoadConfigurationEntry,
+  StructuralLoadConfigurationInfo,
+  StructuralLoadDropReason,
   StructuralLoadGroupInfo,
   StructuralLoadInfo,
   StructuralMemberInfo,
@@ -91,6 +97,7 @@ function emptyExtraction(): StructuralExtraction {
     loadGroups: [],
     resultGroups: [],
     hasStructural: false,
+    loadsTruncated: false,
   };
 }
 
@@ -369,5 +376,10 @@ export function extractStructuralOnDemand(store: IfcDataStore): StructuralExtrac
         loadGroups.length +
         resultGroups.length >
       0,
+    // Derived from the loads rather than tracked alongside them, so the
+    // extraction cannot claim a completeness its own tree contradicts. A
+    // nested configuration propagates its truncation to its parent, so the
+    // top-level load carries the whole subtree's answer.
+    loadsTruncated: activities.some((a) => a.appliedLoad?.configuration?.truncated === true),
   };
 }

@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { extractStructuralOnDemand } from '../src/structural-extractor.js';
 import type { IfcDataStore } from '../src/columnar-parser.js';
+import type { StructuralLoadInfo } from '../src/structural-load-extractor.js';
 import type { EntityRef } from '../src/types.js';
 
 /**
@@ -277,9 +278,14 @@ describe('extractStructuralOnDemand — loads and boundary conditions', () => {
     const load = action?.appliedLoad;
     expect(load?.type).toBe('IfcStructuralLoadConfiguration');
     expect(load?.name).toBe('Span');
+    // #65 writes one Values slot against two Locations rows. The slot pairs
+    // with the first row; the orphan second row survives on `locations` rather
+    // than being dropped or inventing a slot for it.
+    expect(load?.configuration?.entries).toHaveLength(1);
+    expect(load?.configuration?.entries[0].location).toEqual([0]);
+    expect(load?.configuration?.entries[0].value?.components).toEqual({ LinearForceZ: -12.5 });
     expect(load?.configuration?.locations).toEqual([[0], [4.5]]);
-    expect(load?.configuration?.values).toHaveLength(1);
-    expect(load?.configuration?.values[0].components).toEqual({ LinearForceZ: -12.5 });
+    expect(load?.configuration?.truncated).toBe(false);
   });
 
   it('names every load component by its EXPRESS attribute name', () => {
@@ -312,7 +318,9 @@ describe('extractStructuralOnDemand — loads and boundary conditions', () => {
     expect(load?.type).toBe('IfcStructuralLoadConfiguration');
     // The nested loads still read; only the unusable Locations is dropped, and
     // it is dropped rather than padded with one empty row per scalar.
-    expect(load?.configuration?.values).toHaveLength(1);
+    expect(load?.configuration?.entries).toHaveLength(1);
+    expect(load?.configuration?.entries[0].value?.components).toEqual({ LinearForceZ: -12.5 });
+    expect(load?.configuration?.entries[0].location).toBeUndefined();
     expect(load?.configuration?.locations).toBeUndefined();
   });
 
@@ -320,6 +328,27 @@ describe('extractStructuralOnDemand — loads and boundary conditions', () => {
     expect(out.connections.find((c) => c.globalId === 'conn-free')?.appliedCondition).toBeUndefined();
   });
 });
+
+/** Every load node the walk actually returned, the top one included. */
+function countLoads(load: StructuralLoadInfo | undefined): number {
+  if (!load) return 0;
+  let n = 1;
+  for (const entry of load.configuration?.entries ?? []) n += countLoads(entry.value);
+  return n;
+}
+
+/** Every `dropped` reason anywhere in a returned tree. */
+function droppedReasons(load: StructuralLoadInfo | undefined): Set<string> {
+  const seen = new Set<string>();
+  const visit = (node: StructuralLoadInfo | undefined): void => {
+    for (const entry of node?.configuration?.entries ?? []) {
+      if (entry.dropped) seen.add(entry.dropped);
+      visit(entry.value);
+    }
+  };
+  visit(load);
+  return seen;
+}
 
 describe('extractStructuralOnDemand — bounding the load walk', () => {
   it('keeps a Values entry that repeats the same load reference', () => {
@@ -336,12 +365,11 @@ describe('extractStructuralOnDemand — bounding the load walk', () => {
       ]),
     );
     const config = out.activities[0]?.appliedLoad?.configuration;
-    expect(config?.locations).toEqual([[0], [4.5]]);
-    expect(config?.values).toHaveLength(2);
-    expect(config?.values.map((v) => v.components)).toEqual([
-      { LinearForceZ: -12.5 },
-      { LinearForceZ: -12.5 },
+    expect(config?.entries.map((e) => [e.location, e.value?.components])).toEqual([
+      [[0], { LinearForceZ: -12.5 }],
+      [[4.5], { LinearForceZ: -12.5 }],
     ]);
+    expect(config?.truncated).toBe(false);
   });
 
   it('drops a self-referential configuration instead of recursing forever', () => {
@@ -354,9 +382,15 @@ describe('extractStructuralOnDemand — bounding the load walk', () => {
       ]),
     );
     const config = out.activities[0]?.appliedLoad?.configuration;
-    // The cycle is dropped; the sound sibling survives.
-    expect(config?.values).toHaveLength(1);
-    expect(config?.values[0].components).toEqual({ LinearForceZ: -12.5 });
+    // The cycle is dropped, but its slot stays: #66 is the SECOND Values entry
+    // and belongs at station 4.5. Compacting it into slot 0 would report it at
+    // station 0 — a wrong number, not a missing one.
+    expect(config?.entries).toHaveLength(2);
+    expect(config?.entries[0]).toEqual({ value: undefined, dropped: 'cycle', location: [0] });
+    expect(config?.entries[1].location).toEqual([4.5]);
+    expect(config?.entries[1].value?.components).toEqual({ LinearForceZ: -12.5 });
+    expect(config?.truncated).toBe(true);
+    expect(out.loadsTruncated).toBe(true);
   });
 
   it('reads a configuration that appears twice among its siblings', () => {
@@ -372,11 +406,15 @@ describe('extractStructuralOnDemand — bounding the load walk', () => {
       ]),
     );
     const outer = out.activities[0]?.appliedLoad?.configuration;
-    expect(outer?.values).toHaveLength(2);
-    for (const inner of outer?.values ?? []) {
-      expect(inner.type).toBe('IfcStructuralLoadConfiguration');
-      expect(inner.configuration?.values[0].components).toEqual({ LinearForceZ: -12.5 });
+    expect(outer?.entries).toHaveLength(2);
+    for (const entry of outer?.entries ?? []) {
+      expect(entry.value?.type).toBe('IfcStructuralLoadConfiguration');
+      expect(entry.value?.configuration?.entries[0].value?.components).toEqual({
+        LinearForceZ: -12.5,
+      });
     }
+    expect(outer?.truncated).toBe(false);
+    expect(out.loadsTruncated).toBe(false);
   });
 
   it('truncates a nesting chain longer than the depth cap', () => {
@@ -391,12 +429,21 @@ describe('extractStructuralOnDemand — bounding the load walk', () => {
 
     let node = out.activities[0]?.appliedLoad;
     let levels = 0;
-    while (node?.configuration && node.configuration.values.length > 0) {
-      node = node.configuration.values[0];
+    while (node?.configuration?.entries[0]?.value) {
+      node = node.configuration.entries[0].value;
       levels++;
     }
     // depth 0 is the top configuration, and recursion stops once depth > 4.
     expect(levels).toBe(4);
+    // The level below the cap is reported as a slot we refused to follow, not
+    // as a configuration that happened to be empty.
+    expect(node?.configuration?.entries).toEqual([
+      { value: undefined, dropped: 'depth', location: undefined },
+    ]);
+    expect(node?.configuration?.truncated).toBe(true);
+    // and it propagates all the way out to the extraction.
+    expect(out.activities[0]?.appliedLoad?.configuration?.truncated).toBe(true);
+    expect(out.loadsTruncated).toBe(true);
   });
 
   it('bounds total work when a configuration fans out at every level', () => {
@@ -414,9 +461,121 @@ describe('extractStructuralOnDemand — bounding the load walk', () => {
     lines.push("#15=IFCSTRUCTURALLOADLINEARFORCE('Leaf',$,$,-1.,$,$,$);");
     const started = Date.now();
     const out = extractStructuralOnDemand(buildStoreFromStep(lines));
-    expect(out.activities[0]?.appliedLoad?.type).toBe('IfcStructuralLoadConfiguration');
-    // Unbounded this is 40^4 = 2,560,000 entity reads. The budget caps it at
-    // 256, so the whole walk stays in the millisecond range.
+    const top = out.activities[0]?.appliedLoad;
+    expect(top?.type).toBe('IfcStructuralLoadConfiguration');
+    // Unbounded this is 40^5 entity reads. Assert the bound itself, not the
+    // wall clock: every load in the returned tree cost exactly one unit of
+    // budget, so the tree holds MAX_LOAD_NODES nodes and no more. A time
+    // bound alone would still pass with the budget raised a thousandfold.
+    expect(countLoads(top)).toBe(256);
+    // And the walk says so, instead of returning 256 nodes shaped like a
+    // configuration that genuinely had 256.
+    expect(top?.configuration?.truncated).toBe(true);
+    expect(out.loadsTruncated).toBe(true);
+    expect(droppedReasons(top).has('budget')).toBe(true);
+    // The time bound stays as a hang guard: the point of the budget is that an
+    // abort never turns into a walk nobody waits out.
     expect(Date.now() - started).toBeLessThan(2000);
+  });
+});
+
+describe('extractStructuralOnDemand — a dropped Values slot keeps its position', () => {
+  // Every one of these files writes two Values slots against two Locations
+  // rows, with only the SECOND slot readable. The readable load belongs at
+  // station 4.5; a reader that compacted the drop away would hand it back at
+  // station 0, which is a plausible wrong answer rather than a visible gap.
+  function firstSlotDropped(configLine: string, extra: string[] = []) {
+    const out = extractStructuralOnDemand(
+      buildStoreFromStep([
+        "#1=IFCSTRUCTURALCURVEACTION('a',$,'UDL',$,$,$,$,#65,.GLOBAL_COORDS.,.F.,$,.CONST.);",
+        configLine,
+        ...extra,
+        "#66=IFCSTRUCTURALLOADLINEARFORCE('Nominal',$,$,-12.5,$,$,$);",
+      ]),
+    );
+    return out;
+  }
+
+  function expectSecondSlotStillAt4point5(out: ReturnType<typeof extractStructuralOnDemand>) {
+    const config = out.activities[0]?.appliedLoad?.configuration;
+    expect(config?.entries).toHaveLength(2);
+    expect(config?.entries[1].location).toEqual([4.5]);
+    expect(config?.entries[1].value?.components).toEqual({ LinearForceZ: -12.5 });
+    return config;
+  }
+
+  it('keeps the slot of a Values element that is not a reference at all', () => {
+    const out = firstSlotDropped("#65=IFCSTRUCTURALLOADCONFIGURATION('Bad',($,#66),((0.),(4.5)));");
+    const config = expectSecondSlotStillAt4point5(out);
+    expect(config?.entries[0].dropped).toBe('invalid-reference');
+    // A malformed Values element is the file's defect, not a bound of ours:
+    // there is nothing further to read, so this is not truncation.
+    expect(config?.truncated).toBe(false);
+    expect(out.loadsTruncated).toBe(false);
+  });
+
+  it('keeps the slot of a dangling reference', () => {
+    const out = firstSlotDropped(
+      "#65=IFCSTRUCTURALLOADCONFIGURATION('Miss',(#999,#66),((0.),(4.5)));",
+    );
+    const config = expectSecondSlotStillAt4point5(out);
+    expect(config?.entries[0].dropped).toBe('unresolved');
+    expect(config?.truncated).toBe(false);
+    expect(out.loadsTruncated).toBe(false);
+  });
+
+  it('keeps the slot of a record that is indexed but does not parse', () => {
+    // #67 is indexed from its `#id=TYPE(` prefix, but the record never closes,
+    // so extractEntity returns null for it.
+    const out = firstSlotDropped(
+      "#65=IFCSTRUCTURALLOADCONFIGURATION('Torn',(#67,#66),((0.),(4.5)));",
+      ["#67=IFCSTRUCTURALLOADLINEARFORCE('Unterminated',$,$,-1.,$,$,$"],
+    );
+    const config = expectSecondSlotStillAt4point5(out);
+    expect(config?.entries[0].dropped).toBe('unreadable');
+    expect(config?.truncated).toBe(false);
+    expect(out.loadsTruncated).toBe(false);
+  });
+
+  it('keeps the slot of a child the node budget could not afford', () => {
+    // 300 readable children against 300 locations, with a 256-node budget: the
+    // tail must be reported as budget-dropped slots at their own stations, not
+    // as a configuration that only ever had 255 loads.
+    const kids = Array(300).fill('#66').join(',');
+    const locs = Array.from({ length: 300 }, (_, i) => `(${i}.)`).join(',');
+    const out = firstSlotDropped(
+      `#65=IFCSTRUCTURALLOADCONFIGURATION('Budget',(${kids}),(${locs}));`,
+    );
+    const config = out.activities[0]?.appliedLoad?.configuration;
+    expect(config?.entries).toHaveLength(300);
+    // One unit of budget went on #65 itself, so 255 children fit.
+    expect(config?.entries.filter((e) => e.value !== undefined)).toHaveLength(255);
+    expect(config?.entries[255]).toEqual({
+      value: undefined,
+      dropped: 'budget',
+      location: [255],
+    });
+    expect(config?.truncated).toBe(true);
+    expect(out.loadsTruncated).toBe(true);
+  });
+
+  it('gives every Values slot exactly one entry, whatever the drops', () => {
+    // The invariant the two-array shape could not hold: one entry per slot, in
+    // file order, however many of them failed to read.
+    const out = firstSlotDropped(
+      "#65=IFCSTRUCTURALLOADCONFIGURATION('Mixed',(#65,#999,$,#67,#66),((0.),(1.),(2.),(3.),(4.5)));",
+      ["#67=IFCSTRUCTURALLOADLINEARFORCE('Unterminated',$,$,-1.,$,$,$"],
+    );
+    const config = out.activities[0]?.appliedLoad?.configuration;
+    expect(config?.entries.map((e) => [e.location, e.dropped])).toEqual([
+      [[0], 'cycle'],
+      [[1], 'unresolved'],
+      [[2], 'invalid-reference'],
+      [[3], 'unreadable'],
+      [[4.5], undefined],
+    ]);
+    expect(config?.entries[4].value?.components).toEqual({ LinearForceZ: -12.5 });
+    // One of the five drops was a bound of ours, so the tree is truncated.
+    expect(config?.truncated).toBe(true);
   });
 });

@@ -151,7 +151,7 @@
    412 apps/viewer/src/lib/sources/persistence.ts
    426 apps/viewer/src/lib/tours/controller.ts
    812 apps/viewer/src/sdk/adapters/export-adapter.ts
-   638 apps/viewer/src/services/extensions/host.ts
+   692 apps/viewer/src/services/extensions/host.ts
    561 apps/viewer/src/services/ifc-cache.ts
    581 apps/viewer/src/store/basketVisibleSet.ts
    485 apps/viewer/src/store/constants.ts
@@ -239,7 +239,7 @@
    616 packages/export/src/parquet-exporter.ts
    976 packages/export/src/reference-collector.ts
    523 packages/export/src/schema-converter.ts
-   437 packages/extensions/src/testing/runner.ts
+   492 packages/extensions/src/testing/runner.ts
    625 packages/geometry/src/coordinate-handler.ts
   1560 packages/geometry/src/geometry-parallel.ts
   1757 packages/geometry/src/geometry.worker.ts

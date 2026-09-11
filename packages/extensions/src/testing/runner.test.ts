@@ -156,6 +156,53 @@ describe('runBundleTests', () => {
     expect(summary.failed).toBe(0);
   });
 
+  it('reports a genuine invalid pattern as "invalid pattern" (default in-process evaluator)', async () => {
+    const bundle = makeBundle({
+      source: `function run() { return 'hello world 42'; }`,
+      tests: [{
+        name: 'regex syntax error',
+        command: 'ext.runnertest.run',
+        fixture: 'x',
+        // Unterminated group — new RegExp(...) throws a genuine SyntaxError.
+        expect: { regex: '(' },
+      }],
+    });
+    const summary = await runBundleTests({
+      runtime: RUNTIME,
+      bundle,
+      grants: [],
+    });
+    expect(summary.passed).toBe(0);
+    expect(summary.results[0].error).toMatch(/regex: invalid pattern/);
+  });
+
+  it('reports a non-syntax evaluateRegex rejection as an evaluation failure, not "invalid pattern" (#4505 finding A)', async () => {
+    const bundle = makeBundle({
+      source: `function run() { return 'hello world 42'; }`,
+      tests: [{
+        name: 'regex via failing evaluator',
+        command: 'ext.runnertest.run',
+        fixture: 'x',
+        // A perfectly valid pattern — the injected evaluator below
+        // rejects for an unrelated reason (worker timeout, disposed
+        // client, etc). The reported reason must not claim the
+        // pattern itself is invalid.
+        expect: { regex: 'hello.*42' },
+      }],
+    });
+    const summary = await runBundleTests({
+      runtime: RUNTIME,
+      bundle,
+      grants: [],
+      evaluateRegex: async () => {
+        throw new Error('Regex evaluation timed out after 2000ms');
+      },
+    });
+    expect(summary.passed).toBe(0);
+    expect(summary.results[0].error).toMatch(/regex: evaluation failed/);
+    expect(summary.results[0].error).not.toMatch(/invalid pattern/);
+  });
+
   it('checks jsonShape types and rejects mismatches', async () => {
     const bundle = makeBundle({
       source: `function run() {

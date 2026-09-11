@@ -25,7 +25,16 @@ export interface ManifestRegexWorkerRequest {
 
 export type ManifestRegexWorkerResponse =
   | { id: number; matched: boolean }
-  | { id: number; error: string };
+  // `invalidPattern` distinguishes a genuine `new RegExp(...)` syntax
+  // error (author's pattern is malformed) from every other failure
+  // this worker can report. `postMessage` structured-clones the
+  // response, which drops the thrown value's prototype chain (a
+  // `SyntaxError` arrives at the client as a plain object), so the
+  // client can't recover that distinction from the error alone — it
+  // has to be carried explicitly (#4505 finding A: a caller that
+  // can't tell the two apart reports every rejection, timeouts
+  // included, as "invalid pattern").
+  | { id: number; error: string; invalidPattern: boolean };
 
 self.onmessage = (event: MessageEvent<ManifestRegexWorkerRequest>) => {
   const req = event.data;
@@ -37,6 +46,7 @@ self.onmessage = (event: MessageEvent<ManifestRegexWorkerRequest>) => {
     (self as unknown as Worker).postMessage({
       id: req.id,
       error: err instanceof Error ? err.message : String(err),
+      invalidPattern: err instanceof SyntaxError,
     } satisfies ManifestRegexWorkerResponse);
   }
 };

@@ -39,6 +39,7 @@ import {
   ExtensionRuntime,
   IdleMineScheduler,
   SlotRegistry,
+  defaultRegexEvaluator,
   filterAgainstInstalled,
   parseCapabilities,
   planFromPattern,
@@ -52,6 +53,7 @@ import {
   type LoadedExtensionStatus,
   type MinedPattern,
   type MineEvent,
+  type RegexEvalResult,
   type RevalidationSummary,
   type RuntimeRunResult,
   type SlotContribution,
@@ -131,6 +133,9 @@ export class ExtensionHostService {
    * still spawns its own worker (the client is stateless per-call).
    */
   private readonly regexWorkerClient: RegexWorkerClient = createRegexWorkerClient();
+  /** Set once evaluate() fails to start a worker at all (no CSP-blocked
+   * / Worker-less retries) — see `evaluateRegexWithFallback` (#4505 finding B). */
+  private regexWorkerUnavailable = false;
   private suggestions: MineEvent | undefined;
   private suggestionListeners = new Set<(event: MineEvent) => void>();
   readonly sdk: BimContext;
@@ -211,6 +216,11 @@ export class ExtensionHostService {
 
   async init(): Promise<LoadedExtensionStatus[]> {
     if (this.initialized) return [];
+    // Un-poison the regex worker client (#4505 finding C): StrictMode's
+    // mount/cleanup/mount re-invokes init() on this SAME service instance
+    // after dispose()'s cleanup latched it — mirrors useSpacePlateSessions.ts's
+    // disposedRef reset on its own (re)mount effect. No-op if never disposed.
+    this.regexWorkerClient.reset();
     // Only set initialized after startup succeeds — otherwise a failed
     // loadAll() / fire() leaves the service stuck and later init()
     // calls return [] without actually loading anything.
@@ -424,6 +434,39 @@ export class ExtensionHostService {
   }
 
   /**
+   * `evaluateRegex` hook for `runBundleTests`: routes to the isolated
+   * regex worker (#4482), falling back to `defaultRegexEvaluator` (the
+   * pre-#4482 synchronous, in-process check) only when the worker itself
+   * couldn't be started — CSP blocking module workers, or no `Worker`
+   * (#4505 finding B; previously every `expect.regex` matcher just
+   * failed there). Not unprotected: `runBundleTests`
+   * (packages/extensions/src/testing/runner.ts) still applies the
+   * length cap and catastrophic-backtracking shape heuristic
+   * unconditionally before calling either evaluator — the fallback only
+   * loses the timeout bound and main-thread eviction for a pattern
+   * that's merely slow, not one of those known-catastrophic shapes.
+   * Any other rejection (timeout, worker crash, disposed client) means
+   * the worker DID start, so it's surfaced as-is, not re-run in-process.
+   */
+  private evaluateRegexWithFallback = async (pattern: string, text: string): Promise<RegexEvalResult> => {
+    if (this.regexWorkerUnavailable) return defaultRegexEvaluator(pattern, text);
+    try {
+      return await this.regexWorkerClient.evaluate(pattern, text);
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith('Cannot start regex worker')) {
+        this.regexWorkerUnavailable = true;
+        console.warn(
+          '[ext-host] regex worker unavailable — falling back to synchronous, ' +
+          'in-process expect.regex evaluation (no timeout bound, runs on the main thread):',
+          err,
+        );
+        return defaultRegexEvaluator(pattern, text);
+      }
+      throw err;
+    }
+  };
+
+  /**
    * Run an installed extension's declared tests against its bundle.
    * Throws if the extension is not installed or its bundle is missing.
    */
@@ -445,7 +488,7 @@ export class ExtensionHostService {
       // that ship their own fixture loader can override via a
       // custom factory.
       loadFixture: syntheticFixtureLoader(CANONICAL_FIXTURES),
-      evaluateRegex: (pattern, text) => this.regexWorkerClient.evaluate(pattern, text),
+      evaluateRegex: this.evaluateRegexWithFallback,
     });
   }
 
@@ -593,7 +636,7 @@ export class ExtensionHostService {
       installed,
       resolveBundle: (id) => this.loader.getBundle(id),
       runtime: this.runtime,
-      evaluateRegex: (pattern, text) => this.regexWorkerClient.evaluate(pattern, text),
+      evaluateRegex: this.evaluateRegexWithFallback,
     });
   }
 

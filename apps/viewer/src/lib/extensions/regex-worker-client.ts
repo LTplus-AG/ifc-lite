@@ -23,19 +23,33 @@
  * pattern that backtracks exponentially still burns the full timeout
  * before the worker is torn down.
  *
- * Calls from `runBundleTests` are strictly sequential (each test is
- * awaited before the next starts), so unlike the PDF worker client
- * this one does not need a stale-response guard keyed on "is this the
- * latest call" — there is never more than one in-flight evaluation to
- * disambiguate. The response's `id` is still checked against the
- * request that was sent, so a response that doesn't match the
- * in-flight request (which should not happen with a correct worker,
- * but would with a buggy or malicious one) is rejected outright rather
- * than silently trusted.
+ * Calls *within one `runBundleTests` run* are strictly sequential (each
+ * test is awaited before the next starts) — but one `RegexWorkerClient`
+ * is shared across the whole `ExtensionHostService`, whose `runTests`
+ * (ExtensionsPanel) and `revalidateForSdk` (repair queue) can both call
+ * `evaluate()` on it, so two evaluations CAN be in flight on the same
+ * client at once (#4505 finding D). Each call still spawns its own
+ * worker and keeps its own `settled`/`timer` closure, so the two
+ * evaluations don't interfere with each other's result — but `id` is
+ * assigned from a counter shared by the whole client so two concurrent
+ * calls never share a value, and `dispose()`/cancellation tracks every
+ * in-flight call's abort function in a `Set` rather than a single slot,
+ * so cancelling one in-flight call (or disposing the client) can never
+ * silently drop another. The response's `id` is checked against the
+ * request that produced it, so a response that doesn't match (which
+ * should not happen with a correct worker, but would with a buggy or
+ * malicious one) is rejected outright rather than silently trusted.
  */
 
 export interface RegexWorker {
-  onmessage: ((event: MessageEvent<{ id: number; matched: boolean } | { id: number; error: string }>) => void) | null;
+  onmessage:
+    | ((
+        event: MessageEvent<
+          | { id: number; matched: boolean }
+          | { id: number; error: string; invalidPattern?: boolean }
+        >,
+      ) => void)
+    | null;
   onerror: ((event: ErrorEvent) => void) | null;
   onmessageerror: ((event: MessageEvent) => void) | null;
   postMessage(message: { id: number; pattern: string; text: string }): void;
@@ -45,6 +59,12 @@ export interface RegexWorker {
 export interface RegexWorkerClient {
   evaluate(pattern: string, text: string): Promise<{ matched: boolean }>;
   dispose(): void;
+  /**
+   * Un-poisons a disposed client so it can be reused — see the
+   * lifecycle note above `disposed` below. Idempotent; safe to call
+   * on a client that was never disposed.
+   */
+  reset(): void;
 }
 
 const DEFAULT_TIMEOUT_MS = 2000;
@@ -60,17 +80,36 @@ export function createRegexWorkerClient(
         type: 'module',
       }) as unknown as RegexWorker);
 
+  // Lifecycle note (#4505 finding C): `dispose()` used to be a one-way
+  // latch — once set, every future `evaluate()` rejected with "disposed"
+  // for the rest of the client's life. `ExtensionHostProvider.tsx` calls
+  // `dispose()` from an effect cleanup on a `service` (and therefore
+  // this client) that survives React StrictMode's simulated
+  // mount/cleanup/mount, which permanently poisoned the client in dev.
+  // `reset()` clears the flag; callers that recreate the owning service
+  // on every real mount (the common case) never need it, but a caller
+  // whose object survives a StrictMode remount — the same shape as
+  // `useSpacePlateSessions.ts`'s `disposedRef`, reset on that hook's own
+  // (re)mount effect — calls it there.
   let disposed = false;
-  let abortCurrent: (() => void) | undefined;
+  let nextId = 1;
+  const aborters = new Set<() => void>();
 
   return {
     dispose() {
       disposed = true;
-      abortCurrent?.();
+      // Safe to iterate live: each `abort()` call synchronously deletes
+      // only its OWN entry (the one currently being visited) via
+      // `finish()` — rejection handlers run as a later microtask, so
+      // nothing re-enters `aborters` during this loop.
+      for (const abort of aborters) abort();
+    },
+    reset() {
+      disposed = false;
     },
     evaluate(pattern, text) {
       if (disposed) return Promise.reject(new Error('Regex worker client disposed.'));
-      const id = 1;
+      const id = nextId++;
       return new Promise((resolve, reject) => {
         let worker: RegexWorker;
         try {
@@ -82,6 +121,7 @@ export function createRegexWorkerClient(
 
         let settled = false;
         let timer: ReturnType<typeof setTimeout> | undefined;
+        let abortSelf: () => void;
 
         const finish = (error?: Error, result?: { matched: boolean }) => {
           if (settled) return;
@@ -89,11 +129,12 @@ export function createRegexWorkerClient(
           if (timer !== undefined) clearTimeout(timer);
           worker.onmessage = worker.onerror = worker.onmessageerror = null;
           worker.terminate();
-          abortCurrent = undefined;
+          aborters.delete(abortSelf);
           if (error) reject(error);
           else resolve(result!);
         };
-        abortCurrent = () => finish(new Error('Regex evaluation cancelled.'));
+        abortSelf = () => finish(new Error('Regex evaluation cancelled.'));
+        aborters.add(abortSelf);
 
         timer = setTimeout(() => {
           finish(
@@ -107,7 +148,21 @@ export function createRegexWorkerClient(
           const response = event.data;
           if (!response || response.id !== id || settled) return;
           if ('error' in response) {
-            finish(new Error(response.error));
+            // Reconstruct the distinction the worker tagged onto the
+            // response (see `manifestRegex.worker.ts`): a `SyntaxError`
+            // means the author's pattern is genuinely malformed; any
+            // other error (timeout, worker crash, unreadable message)
+            // is a plain `Error`. `applyExpectations`
+            // (`packages/extensions/src/testing/runner.ts`) branches on
+            // `instanceof SyntaxError` to report the two differently
+            // (#4505 finding A) — postMessage's structured clone drops
+            // the original prototype, so this is the only place that
+            // distinction can be restored.
+            finish(
+              response.invalidPattern
+                ? new SyntaxError(response.error)
+                : new Error(response.error),
+            );
             return;
           }
           finish(undefined, { matched: response.matched });

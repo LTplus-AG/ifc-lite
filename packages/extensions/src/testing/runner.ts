@@ -361,7 +361,18 @@ async function applyExpectations(
           reasons.push(`regex: pattern ${expect.regex} did not match`);
         }
       } catch (err) {
-        reasons.push(`regex: invalid pattern ${expect.regex}: ${err instanceof Error ? err.message : err}`);
+        const message = err instanceof Error ? err.message : String(err);
+        // A genuinely malformed pattern throws `SyntaxError` — both
+        // `defaultRegexEvaluator` and `RegexWorkerClient.evaluate`
+        // (regex-worker-client.ts) preserve that; anything else an
+        // evaluator rejects with (timeout, disposed, worker failed to
+        // start) is a plain `Error` and must not read as if the
+        // author's pattern were the problem (#4505 finding A).
+        if (err instanceof SyntaxError) {
+          reasons.push(`regex: invalid pattern ${expect.regex}: ${message}`);
+        } else {
+          reasons.push(`regex: evaluation failed for pattern ${expect.regex}: ${message}`);
+        }
       }
     }
   }

@@ -125,6 +125,24 @@ export {
   type TaskDurationType,
 } from './schedule-extractor.js';
 
+// Structural analysis extractor — IfcStructuralAnalysisModel, the
+// IfcStructuralMember / IfcStructuralConnection / IfcStructuralActivity
+// branches, IfcStructuralLoadGroup / IfcStructuralLoadCase,
+// IfcStructuralResultGroup, IfcBoundaryCondition, and the two structural
+// connects-relationships.
+export {
+  extractStructuralOnDemand,
+  type StructuralExtraction,
+  type StructuralAnalysisModelInfo,
+  type StructuralMemberInfo,
+  type StructuralConnectionInfo,
+  type StructuralActivityInfo,
+  type StructuralLoadGroupInfo,
+  type StructuralResultGroupInfo,
+  type StructuralLoadInfo,
+  type BoundaryConditionInfo,
+} from './structural-extractor.js';
+
 // IFC4 STEP serializer for schedule entities — produces ready-to-splice
 // `#N=IFC...(...)` lines from a `ScheduleExtraction`.
 export {

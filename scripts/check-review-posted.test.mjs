@@ -768,41 +768,38 @@ test('FAIL CLOSED: the fork check REFUSES when no repository was resolved', () =
 
 // ============================ the gate must outwait the lane it is waiting FOR
 
-test('THE RACE: the shared producer/consumer budget rejects either side shrinking', () => {
-  // MEASURED, on PR #3593, with the gate already enforcing:
+test('THE RACE is closed by ORDERING now, and the budget contract says so', () => {
+  // MEASURED, on PR #3593, when the gate was its own workflow polling in
+  // parallel with the lane:
   //
   //   gate gave up after 600 s   05:12:43
   //   lane posted the marker     05:13:12   <- 29 seconds later
   //
-  // NOT_POSTED on a PR whose review was fine. And it is structural, not a tuning
-  // miss: `claude-review.yml` may legitimately run until ITS OWN
-  // `timeout-minutes`, so any gate budget below that number can expire while the
-  // producer is still working. 600 s against a 1200 s producer was a coin flip
-  // the gate was always going to lose eventually; observed lane runs that
-  // actually reviewed took 525 s and 676 s, either side of it.
-  //
-  // The shared executable contract is used by both lanes. THE COPIES below
-  // pins it to the two workflow literals it cannot read at run time.
+  // NOT_POSTED on a PR whose review was fine. The first fix was a RULE in the
+  // budget module -- the poll must outlast the lane's `timeout-minutes` --
+  // which meant a 1500 s poll holding a runner slot on every PR (~4.6
+  // slot-hours a day, CI redesign step 3). The gate is now a job of
+  // claude-review.yml with `needs: review`: it cannot start until the lane
+  // has stopped, so the race cannot occur, and the budget only covers API
+  // propagation. THE COPIES below asserts the `needs:`; this asserts the
+  // module no longer demands the long poll, and still refuses the one shape
+  // ordering does not fix (a job cap that kills the gate mid-print).
   assert.doesNotThrow(assertReviewLaneBudget);
   // THE CONCRETE NUMBER, not `String(REVIEW_POSTED_POLL_SECONDS)`: deriving the
   // expectation from the thing under test asserts only that the function
-  // returns its own input, and stays green through any constant change. 1500 s
-  // is the budget the two workflow caps below (20 min lane, 30 min job) were
-  // chosen against, so changing it must be acknowledged here.
-  const REMEDY = 'the poll budget is a contract with the two workflow caps below: restore 1500, or change the constant, this pin and both caps together';
-  assert.equal(pollSecondsArgument(), '1500', REMEDY);
-  assert.equal(REVIEW_POSTED_POLL_SECONDS, 1500, REMEDY);
+  // returns its own input, and stays green through any constant change. 60 s
+  // is the budget the gate's job cap below (10 min) was chosen against, so
+  // changing it must be acknowledged here.
+  const REMEDY = 'the poll budget is a contract with the gate job cap below: restore 60, or change the constant, this pin and the cap together';
+  assert.equal(pollSecondsArgument(), '60', REMEDY);
+  assert.equal(REVIEW_POSTED_POLL_SECONDS, 60, REMEDY);
+  assert.ok(REVIEW_POSTED_POLL_SECONDS < REVIEW_LANE_TIMEOUT_SECONDS, 'the poll is SHORTER than the lane: ordering, not budget, closes the race');
 
-  assert.throws(
-    () => assertReviewLaneBudget({ pollSeconds: REVIEW_LANE_TIMEOUT_SECONDS }),
-    /raise the poll budget above/,
-    'equal budgets reproduce the race',
+  assert.doesNotThrow(
+    () => assertReviewLaneBudget({ pollSeconds: 60 }),
+    'a poll shorter than the lane is legal now; the old rule would have thrown here',
   );
-  assert.throws(
-    () => assertReviewLaneBudget({ laneTimeoutSeconds: REVIEW_POSTED_POLL_SECONDS + 1 }),
-    /raise the poll budget above/,
-    'raising the producer cap alone reproduces the race',
-  );
+  assert.throws(() => assertReviewLaneBudget({ pollSeconds: 0 }), /positive number of seconds/, 'a zero budget reads before the post has propagated');
   assert.throws(
     () =>
       assertReviewLaneBudget({
@@ -839,7 +836,7 @@ const budgetCli = (...args) => {
 test('THE CLI: the spelling the workflow runs prints the poll budget', () => {
   const ok = budgetCli('--poll-seconds');
   assert.equal(ok.code, 0, ok.err);
-  assert.equal(ok.out, '1500', 'the workflow captures stdout; an empty capture is BAD_ARGS on every PR');
+  assert.equal(ok.out, '60', 'the workflow captures stdout; an empty capture is BAD_ARGS on every PR');
 });
 
 test('THE CLI: an argument it does not implement FAILS rather than printing nothing', () => {
@@ -930,38 +927,51 @@ test('THE COPIES: a COMMENT naming the module cannot satisfy the wiring pin', ()
   assert.equal(stepRunScript(unwired, 'a step that is not there'), null);
 });
 
-test('THE COPIES: both workflows carry the job caps the budget module assumes', () => {
+test('THE COPIES: both jobs carry the caps the budget module assumes, and the gate is ORDERED after the lane', () => {
   const workflow = (name) => readFileSync(join(HERE, '..', '.github/workflows', name), 'utf8');
-  const jobTimeoutSeconds = (name, text) => {
+  /** The text of one job: from `  <id>:` to the next 2-space-indented key. */
+  const jobBlock = (text, id) => {
+    const m = new RegExp(`^  ${id}:\\n([\\s\\S]*?)(?=\\n  [A-Za-z_][A-Za-z0-9_-]*:|(?![\\s\\S]))`, 'm').exec(text);
+    assert.ok(m, `claude-review.yml must carry a job with id \`${id}\``);
+    return m[1];
+  };
+  const jobTimeoutSeconds = (id, block) => {
     // Job keys sit at 4-space indent, step keys at 8: anchoring to the job
     // level lets a step carry its own timeout-minutes without a false red.
-    const found = [...text.matchAll(/^ {4}timeout-minutes:[ \t]*(\d+)/gm)];
+    const found = [...block.matchAll(/^ {4}timeout-minutes:[ \t]*(\d+)/gm)];
     assert.equal(
       found.length,
       1,
-      `${name} must declare exactly one JOB timeout, found ${found.length}. ` +
-        'REMEDY: keep exactly one 4-space-indented `timeout-minutes:` in that workflow. ' +
-        'A step-level cap belongs at 8-space indent and is not what the budget module reads; ' +
-        'two job-level caps make "the job timeout" ambiguous and this module would pick one ' +
-        'arbitrarily.',
+      `job ${id} must declare exactly one JOB timeout, found ${found.length}. ` +
+        'REMEDY: keep exactly one 4-space-indented `timeout-minutes:` in that job. ' +
+        'A step-level cap belongs at 8-space indent and is not what the budget module reads.',
     );
     return Number(found[0][1]) * 60;
   };
-  const gateText = workflow('review-posted.yml');
+  const gateText = workflow('claude-review.yml');
+  const lane = jobBlock(gateText, 'review');
+  const gate = jobBlock(gateText, 'review-posted');
 
   assert.equal(
-    jobTimeoutSeconds('claude-review.yml', workflow('claude-review.yml')),
+    jobTimeoutSeconds('review', lane),
     REVIEW_LANE_TIMEOUT_SECONDS,
-    'claude-review.yml timeout-minutes drifted from REVIEW_LANE_TIMEOUT_SECONDS: the gate ' +
-      'sizes its poll against that constant, so change both or the gate can give up while ' +
-      'the reviewer is still legitimately working',
+    'the review job\'s timeout-minutes drifted from REVIEW_LANE_TIMEOUT_SECONDS; change both',
   );
   assert.equal(
-    jobTimeoutSeconds('review-posted.yml', gateText),
+    jobTimeoutSeconds('review-posted', gate),
     REVIEW_POSTED_JOB_TIMEOUT_SECONDS,
-    'review-posted.yml timeout-minutes drifted from REVIEW_POSTED_JOB_TIMEOUT_SECONDS: the ' +
+    'the review-posted job\'s timeout-minutes drifted from REVIEW_POSTED_JOB_TIMEOUT_SECONDS: the ' +
       'job would be killed mid-poll and report no verdict at all, so change both',
   );
+  // THE ORDERING THAT REPLACED THE LONG POLL. `needs: review` is what makes a
+  // 60 s budget safe against a 20-minute lane; `if: always()` is what keeps
+  // the gate reporting on a lane that was skipped (fork, draft, disabled) or
+  // failed, which is the absence it exists to make visible.
+  assert.match(gate, /^ {4}needs:\s*review\s*$/m, 'the review-posted job must `needs: review`, or the #3593 race is back');
+  assert.match(gate, /^ {4}if:\s*always\(\)\s*$/m, 'the review-posted job must run `if: always()`, or a skipped lane is a silent pass');
+  assert.match(gate, /^ {4}name: Review posted\s*$/m, 'the check name `Review posted` must survive the move');
+  // The lane itself must not wait on the gate, or the workflow deadlocks.
+  assert.ok(!/^ {4}needs:/m.test(lane), 'the review job must not `needs:` anything');
 
   // The gate reads its poll budget from the module rather than from a literal.
   // Pin PRODUCER TO CONSUMER, and pin them WITHIN ONE STEP, and pin them in the
@@ -977,7 +987,7 @@ test('THE COPIES: both workflows carry the job caps the budget module assumes', 
   assert.notEqual(
     runScript,
     null,
-    `review-posted.yml must carry the step '${GATE_STEP}'. REMEDY: restore that step by name. ` +
+    `claude-review.yml must carry the step '${GATE_STEP}'. REMEDY: restore that step by name. ` +
       'The budget contract is asserted against THAT step, so renaming it silently detaches ' +
       'the contract from the thing it governs rather than failing loudly.',
   );
@@ -1091,8 +1101,10 @@ test('THE TWO OUTPUTS GO TO THE TWO CONSUMERS: `covered` dedups, `full` stands C
   // claude-review.yml gates EVERY step of its job on `steps.dedup.outputs.covered`,
   // so a partial head would have been re-reviewed on each re-trigger and posted
   // its inline comments again. Nothing failed. This is that test.
-  const labels = readFileSync(join(HERE, '..', '.github/workflows/review-posted.yml'), 'utf8');
-  const lane = readFileSync(join(HERE, '..', '.github/workflows/claude-review.yml'), 'utf8');
+  // One file now: the `review-posted` job (labels) and the `review` job (lane)
+  // both live in claude-review.yml, and the two step ids stay distinct.
+  const labels = readFileSync(join(HERE, '..', '.github/workflows/claude-review.yml'), 'utf8');
+  const lane = labels;
 
   // The label workflow reads `full` and NOTHING reads `covered` there: the
   // stand-down is a claim about the WHOLE diff.
@@ -1101,7 +1113,7 @@ test('THE TWO OUTPUTS GO TO THE TWO CONSUMERS: `covered` dedups, `full` stands C
   assert.equal(
     [...labels.matchAll(/steps\.gate\.outputs\.covered/g)].length,
     0,
-    'review-posted.yml reads `covered`, which is the dedup key, not the coverage claim',
+    'the review-posted job reads `covered`, which is the dedup key, not the coverage claim',
   );
 
   // The review lane dedups on `covered` and never on `full`: a partial head has
@@ -1118,7 +1130,7 @@ test('THE TWO OUTPUTS GO TO THE TWO CONSUMERS: `covered` dedups, `full` stands C
 });
 
 test('THE LABEL NAME IS ONE NAME: the workflow that writes it and the config that reads it agree', () => {
-  // Nothing asserted this. `review-posted.yml` creates, applies, reads back and
+  // Nothing asserted this. claude-review.yml creates, applies, reads back and
   // clears the label; `.coderabbit.yaml` is the only consumer, and no code reads
   // that file — so producer and consumer were held together by prose alone. A
   // rename touching one and not the other shipped green, which is exactly the
@@ -1126,7 +1138,7 @@ test('THE LABEL NAME IS ONE NAME: the workflow that writes it and the config tha
   //
   // Mutation-checked when written: renaming the label in the workflow alone
   // failed no test at all.
-  const wf = readFileSync(join(HERE, '..', '.github/workflows/review-posted.yml'), 'utf8');
+  const wf = readFileSync(join(HERE, '..', '.github/workflows/claude-review.yml'), 'utf8');
   const cr = readFileSync(join(HERE, '..', '.coderabbit.yaml'), 'utf8');
 
   // Every label the workflow creates or applies, taken from the commands
@@ -1148,8 +1160,9 @@ test('THE LABEL NAME IS ONE NAME: the workflow that writes it and the config tha
   // one of the two DELETE steps outright left this green, mutation-proven. That is
   // the second time this exact test has asserted less than it claims -- the first
   // was `includes` passing while a path pointed elsewhere. The workflow clears the
-  // label on a new head AND when the gate reports not-covered; losing either
-  // leaves the label stuck on a commit nothing vouches for.
+  // label on a new head (the `stand-down-clear` job) AND when the gate reports
+  // not-covered; losing either leaves the label stuck on a commit nothing
+  // vouches for.
   assert.equal(
     labelPaths.length,
     2,

@@ -1195,8 +1195,18 @@ test('THE WIRING: claude-review.yml retries on EXACTLY the reasons RETRYABLE_VAL
   // grep pattern against the same source of truth the prompt-building side
   // uses, so the two cannot silently drift apart.
   const wf = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
-  const step = wf.split('- name: Validate the findings')[1];
-  assert.ok(step, 'the validate step must exist');
+  // THE STEP, BOUNDED BY THE NEXT STEP. An earlier spelling took everything
+  // after the step's name and then sliced up to `exit "$rc"` -- a string that
+  // occurs BEFORE this step, so the slice ran to the end of the file and the
+  // loop-keyword assertion below read every later step and job as if it were
+  // the retry branch. It passed only while nothing downstream said "for";
+  // the `Review posted` job moving into this workflow (CI redesign, step 3)
+  // brought a step named "... for this head" and turned it red for a reason
+  // that had nothing to do with the retry.
+  const after = wf.split('- name: Validate the findings')[1];
+  assert.ok(after, 'the validate step must exist');
+  const nextStep = after.search(/\n {6}- [a-zA-Z_-]+:/);
+  const step = nextStep === -1 ? after : after.slice(0, nextStep);
   const m = step.match(/grep -oE '\^❌ \(([A-Z_|]+)\):'/); // @source-text-assertion-ok the retry trigger is bash in YAML; there is no runtime signal for which reasons it matches
   assert.ok(m, 'the retry-reason grep must be present');
   const wired = new Set(m[1].split('|'));
@@ -1205,7 +1215,11 @@ test('THE WIRING: claude-review.yml retries on EXACTLY the reasons RETRYABLE_VAL
   // Bounded to ONE retry: an `if`, never a loop construct, around the retry
   // block -- guards against someone turning this into an unbounded/`while`
   // retry that could hammer the model on a truly permanent failure.
-  const retryBlock = step.slice(step.indexOf('retry_reason='), step.indexOf('exit "$rc"'));
+  // From the retry decision to the end of the step: `retry_reason=` opens the
+  // branch and nothing after it in this step is outside the retry's reach.
+  const retryStart = step.indexOf('retry_reason=');
+  assert.notEqual(retryStart, -1, 'the retry branch must start with retry_reason=');
+  const retryBlock = step.slice(retryStart);
   // COMMENTS STRIPPED FIRST. The guard is about shell CONSTRUCTS, and the prose
   // around this block is English: "for it", "waited out", "the reasons for" all
   // contain a loop keyword and none of them is a loop. Leaving them in made the

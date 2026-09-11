@@ -143,6 +143,7 @@ export type {
   CostItemInfo,
   CostScheduleInfo,
   CostValueInfo,
+  CostValueUnitBasis,
 } from './cost-types.js';
 
 // Signed ISO 8601 duration codec — shared by the schedule extractor (decode)

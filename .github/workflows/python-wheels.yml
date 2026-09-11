@@ -3,9 +3,27 @@ name: python-wheels
 # Build + publish the native ifc-lite geometry wheel (ifclite-geom, the PyO3
 # binding in rust/python). abi3-py39 -> one wheel per platform covers CPython
 # >= 3.9. Tag `ifclite-geom-v*` to publish to PyPI (trusted publishing / OIDC).
+#
+# TWO LANES (CI redesign, step 8). A pull request builds and tests the ONE
+# wheel its runner can import natively (linux x86_64); the other four legs --
+# linux aarch64, both macOS targets, Windows -- run on push to `main`, on a
+# release tag and on dispatch. The binding layer under test is
+# platform-independent, so a PR gets its verdict from one leg in a fraction
+# of the runner minutes; a cross-OS breakage that the single leg cannot see
+# surfaces on the first push to main, where `report-red-on-main` opens (or
+# updates) an issue for it rather than letting a red main scroll by.
 on:
   push:
     tags: ["ifclite-geom-v*"]
+    branches: [main]
+    paths:
+      - "rust/python/**"
+      - "rust/processing/**"
+      - "rust/geometry/**"
+      - "rust/export/**"
+      - "rust/core/**"
+      - "rust-toolchain.toml"
+      - ".github/workflows/python-wheels.yml"
   pull_request:
     paths:
       - "rust/python/**"
@@ -21,6 +39,9 @@ permissions:
   contents: read
 
 jobs:
+  # The PR lane: the one leg whose wheel this runner can import and test.
+  # Also runs on push/tag/dispatch, so `build-cross` below is strictly the
+  # OTHER four legs and the two together are the full matrix.
   build:
     name: wheel ${{ matrix.os }} / ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
@@ -29,6 +50,73 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest, target: x86_64 }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
+        with:
+          python-version: "3.9"
+      # Install the pinned toolchain the way rustup honours rust-toolchain.toml's
+      # `components` list. maturin-action installs it with `rustup update
+      # <name>`, i.e. BY NAME, and a named install does not read the file's
+      # components -- so rust-src is absent and build-std fails with
+      # "lib/rustlib/src/rust/library/Cargo.lock does not exist". A file-based
+      # selection (`rustup show` inside the repo) installs the components.
+      # `before-script-linux` below only covers the manylinux container, and
+      # build-std runs on every platform.
+      - name: Setup Rust (pinned by rust-toolchain.toml, with components)
+        run: rustup show
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1
+        env:
+          # `build-std` used to live in the repo-root `.cargo/config.toml`'s
+          # `[unstable]` table, which applied to every cargo invocation in the
+          # workspace — including plain host builds with no `--target`, where
+          # it collided with `[profile.release] panic = "abort"` in the root
+          # workspace (duplicate `core` lang item; see
+          # scripts/build-wasm.sh for the wasm side of this fix). It's now
+          # scoped per-invocation via this env var instead, which
+          # maturin-action forwards into the manylinux container (it allowlists
+          # the `CARGO_` prefix — see its `ALLOWED_ENV_PREFIXES`).
+          CARGO_UNSTABLE_BUILD_STD: std,panic_abort
+        with:
+          working-directory: rust/python
+          target: ${{ matrix.target }}
+          manylinux: auto
+          # rust-toolchain.toml pins nightly; the manylinux container's
+          # toolchain needs rust-src installed to rebuild std for build-std
+          # (see the CARGO_UNSTABLE_BUILD_STD env var on this step).
+          before-script-linux: rustup component add rust-src
+          args: --release --out dist
+      # Exercise the wheel that was just built, on the one leg whose artifact is
+      # natively installable on its own runner (the aarch64/cross legs produce
+      # wheels this host cannot import). One leg is enough: the binding layer
+      # under test is platform-independent, and this reuses the existing build
+      # rather than adding a job that recompiles the workspace.
+      - name: Test wheel
+        if: matrix.os == 'ubuntu-latest' && matrix.target == 'x86_64'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+          python -m pip install --force-reinstall rust/python/dist/*.whl
+          python -m pytest rust/python/tests -q
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.target }}
+          path: rust/python/dist/*.whl
+
+  # The other four legs, OFF the PR lane. Same steps as `build` (kept
+  # verbatim rather than shared, since workflow YAML has no include); the
+  # `Test wheel` step stays gated to the linux x86_64 leg and so never runs
+  # here -- the aarch64/cross legs produce wheels their host cannot import.
+  build-cross:
+    name: wheel ${{ matrix.os }} / ${{ matrix.target }}
+    if: github.event_name != 'pull_request'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           - { os: ubuntu-latest, target: aarch64 }
           - { os: macos-14, target: aarch64 }
           # Cross-compile the Intel-mac wheel on the Apple-silicon runner: the
@@ -91,10 +179,39 @@ jobs:
           name: wheels-${{ matrix.os }}-${{ matrix.target }}
           path: rust/python/dist/*.whl
 
+  # A red push to main must not scroll by. One issue per workflow, updated
+  # rather than duplicated while it is open; closed by whoever fixes it.
+  report-red-on-main:
+    name: Open an issue when main is red
+    needs: [build, build-cross]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.build.result == 'failure' || needs.build-cross.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          title="ci: python-wheels is red on main"
+          body="The full wheel matrix failed on push to main at ${SHA} (only the linux x86_64 leg runs on pull requests, so this is the first build of the other legs for this change). Run: ${RUN_URL}"
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number,title --jq "[.[] | select(.title == \"$title\") | .number] | first // empty")
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+            echo "updated #$existing"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
+
   publish:
     name: publish to PyPI
     if: startsWith(github.ref, 'refs/tags/ifclite-geom-v')
-    needs: build
+    needs: [build, build-cross]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:

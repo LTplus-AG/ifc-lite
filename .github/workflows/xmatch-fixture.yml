@@ -41,10 +41,14 @@
 # check:
 #   - weekly `schedule` + on-demand `workflow_dispatch`, the same profile as
 #     determinism.yml / wide-arithmetic.yml;
-#   - `push`/`pull_request` ONLY on the paths that can invalidate the result:
-#     the diff engine, the geometry kernel and the wasm bundle it is measured
-#     through, the CLI adapter that builds the fingerprints, and the harness
-#     itself. A docs-only or viewer-only PR never sees this job.
+#   - `push` ONLY on the paths that can invalidate the result: the diff
+#     engine, the geometry kernel and the wasm bundle it is measured through,
+#     the CLI adapter that builds the fingerprints, and the harness itself.
+#   - `pull_request` on those same paths, but ONLY when the PR carries the
+#     `ci:benchmark` label (CI redesign, step 8): the measurement is a
+#     ~20-minute wasm build for a ~15 s result, the verdict is advisory, and
+#     the push-to-main run measures every merge anyway. A PR that wants the
+#     number before merging opts in with the label.
 #   - free `ubuntu-latest` runners, never Depot.
 # The measured work is ~15 s for three models; the wall clock is the wasm build
 # (Swatinem cache) and ~9 MB of fixtures.
@@ -94,6 +98,9 @@ on:
       # move a number in it.
   pull_request:
     branches: [main]
+    # `labeled` is the opt-in; `synchronize`/`reopened` keep an opted-in PR
+    # measured on every later push. The job gates on the label below.
+    types: [labeled, synchronize, reopened]
     # Same list as `push`. Path-filtered, non-blocking, and NOT to be added to
     # branch protection.
     paths:
@@ -122,6 +129,8 @@ env:
 jobs:
   content-matching-fixture:
     name: Content matching vs a known correspondence
+    # On a PR only when asked for by label; every other trigger runs it.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:benchmark')
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:

@@ -124,6 +124,32 @@ describe('PinboardSlice', () => {
       assert.ok(state.isolatedEntities!.has(5));
       assert.ok(!state.isolatedEntities!.has(1007), 'the removed entity global id must be gone');
     });
+
+    it('removeFromBasket keeps a global id isolated when a second aliased ref still holds the basket', () => {
+      // Two distinct EntityRefs can map to the SAME global id: any modelId
+      // absent from `models` (an unregistered federated model, e.g. one that
+      // failed to register before a basket restore) falls back to the raw
+      // expressId, same as the 'legacy' sentinel — see toGlobalIdFromModels
+      // in globalId.ts. 'legacy:100' and 'unregistered-model:100' therefore
+      // both derive global id 100. Removing only ONE of them must not evict
+      // 100 from isolatedEntities while the other still requires it.
+      state.setBasket([
+        { modelId: 'legacy', expressId: 100 },
+        { modelId: 'unregistered-model', expressId: 100 },
+      ]);
+      assert.strictEqual(state.pinboardEntities.size, 2);
+      assert.ok(state.isolatedEntities !== null);
+      assert.strictEqual(state.isolatedEntities!.size, 1, 'both refs alias to global id 100');
+
+      state.removeFromBasket([{ modelId: 'legacy', expressId: 100 }]);
+
+      assert.strictEqual(state.pinboardEntities.size, 1, 'unregistered-model:100 is still pinned');
+      assert.ok(state.isolatedEntities !== null, 'basket is non-empty, isolation must stay active');
+      assert.ok(
+        state.isolatedEntities!.has(100),
+        'global id 100 is still required by the surviving unregistered-model:100 entry',
+      );
+    });
   });
 
   describe('saveCurrentBasketView', () => {

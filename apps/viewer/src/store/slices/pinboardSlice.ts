@@ -361,16 +361,15 @@ export const createPinboardSlice: StateCreator<
       if (next.size === 0) {
         return { pinboardEntities: next, isolatedEntities: null, activeBasketViewId: null };
       }
-      // Incrementally remove globalIds from existing isolation set instead of re-parsing all
-      const prevIsolated = state.isolatedEntities;
-      if (prevIsolated) {
-        const isolatedEntities = new Set<number>(prevIsolated);
-        for (const ref of refs) {
-          isolatedEntities.delete(refToGlobalId(ref, state.models));
-        }
-        return { pinboardEntities: next, isolatedEntities, activeBasketViewId: null };
-      }
-      // Fallback: full recompute if no existing isolation set
+      // Recompute from the surviving basket rather than incrementally deleting
+      // each removed ref's global id: two distinct EntityRefs can derive the
+      // SAME global id (toGlobalIdForRef falls back to the raw expressId for
+      // the 'legacy'/'default'/'__legacy__' sentinels and for any modelId not
+      // yet registered in `models`), so deleting one ref's global id could
+      // evict a global id another surviving basket entry still requires. A
+      // set recomputed from its source can't disagree with that source; an
+      // incrementally patched copy is a second representation of the same
+      // truth and is exactly how the two came to disagree here.
       const isolatedEntities = basketToGlobalIds(next, state.models);
       return { pinboardEntities: next, isolatedEntities, activeBasketViewId: null };
     });

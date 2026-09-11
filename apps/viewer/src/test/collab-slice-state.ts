@@ -10,22 +10,27 @@
  * initial value when a field is absent, so these exist to make the harness
  * store-shaped rather than to satisfy a type.
  *
- * One copy of what `collabSlice.leave-during-join-race.test.ts` and
- * `collabSlice.entry-race.test.ts` each spell out inline; keep those in step
- * with this when the enumeration changes.
+ * Shared by the collabSlice race tests (`leave-during-join-race`,
+ * `entry-race`, `seed-phase`).
  */
 
 import { createModelSlice, type ModelSlice } from '../store/slices/modelSlice.js';
 import { createDataSlice, type DataSlice, type DataCrossSliceState } from '../store/slices/dataSlice.js';
 import { createCollabSlice, type CollabSlice } from '../store/slices/collabSlice.js';
 import type { ViewerState } from '../store/index.js';
+import type { Annotation } from '../store/slices/annotationsSlice.js';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 
 export type CollabTestState = ModelSlice &
   DataSlice &
   DataCrossSliceState &
   CollabSlice & {
+    /** uiSlice's; `startCollab` only calls it when `canCollabEdit()` is false. */
     setEditEnabled: (enabled: boolean) => void;
-    mutationViews: Map<string, unknown>;
+    /** mutationSlice's; `roomMutationView` reads it through `RoomModelTargetState`. */
+    mutationViews: Map<string, MutablePropertyView>;
+    /** annotationsSlice's; `startCollab` seeds every local pin into the room. */
+    annotations: Map<string, Annotation>;
   };
 
 export interface CollabTestHooks {
@@ -71,6 +76,7 @@ export function buildCollabTestState(hooks: CollabTestHooks = {}) {
     // exist to type-check the call site.
     setEditEnabled: () => {},
     mutationViews: new Map(),
+    annotations: new Map(),
     addElementModelId: null,
     addElementStoreyId: null,
     selectedEntityId: null,

@@ -21,6 +21,7 @@ import { unresolvedModelTagIds } from '../model-tags/types.js';
 import {
   CLASH_SET_FILTER_LIMIT,
   activeClashSetFilter,
+  unreadableRuleCount,
   type ClashSetFilter,
   type ClashSetFilters,
 } from './set-filter.js';
@@ -56,6 +57,15 @@ export async function resolveClashSetFilter(
   options: ResolveClashSetFilterOptions = {},
 ): Promise<string[]> {
   const limit = options.limit ?? CLASH_SET_FILTER_LIMIT;
+  // A persisted rule this build cannot read was kept, not dropped (#4215):
+  // running on the readable remainder could widen the set. Refuse.
+  const unreadable = unreadableRuleCount(filter);
+  if (unreadable > 0) {
+    throw new Error(
+      `A clash set filter has ${unreadable === 1 ? 'a rule' : `${unreadable} rules`} this version cannot read. ` +
+        'Open the rule and fix or remove the filter — the run was refused rather than run on the readable rules alone.',
+    );
+  }
   // A rule naming a tag that no longer exists is unresolved. The evaluator
   // would match it against nothing, which for a clash run is the WRONG kind of
   // safe: a side that quietly resolves to zero members reports zero clashes

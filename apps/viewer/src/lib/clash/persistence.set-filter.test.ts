@@ -93,15 +93,28 @@ describe('per-side filters round trip through storage', () => {
     assert.deepStrictEqual(loaded?.filterB, FILTER);
   });
 
-  it('drops a filter that is not readable, keeping the rule itself', () => {
-    // A truncated / hand-edited / newer-app entry. The rule must still load
-    // and run off its selector rather than vanish or half-load.
+  it('keeps a filter it cannot read as UNREADABLE, and drops one that is not a filter at all (#4215)', () => {
+    // A newer-app / hand-edited rule inside an otherwise well-formed filter
+    // must not vanish: before #4215 it was dropped and the side ran off its
+    // selector — with one rule of an AND filter gone, a silently wider set.
+    // Now it loads as an unreadable rule the resolver refuses. A value that is
+    // not a filter (a bare string) still reads as no filter.
     write([{ ...LEGACY_CUSTOM, filterA: { combinator: 'AND', rules: [{ kind: 'nope' }] }, filterB: 'IfcWall' }]);
     const loaded = loadCustom('custom-legacy');
     assert.ok(loaded);
-    assert.strictEqual(loaded.filterA, undefined);
+    assert.deepStrictEqual(loaded.filterA, { combinator: 'AND', rules: [], unreadableRules: [{ kind: 'nope' }] });
     assert.strictEqual(loaded.filterB, undefined);
     assert.strictEqual(loaded.selectorA, 'IfcDuct*');
+  });
+
+  it('an unreadable rule survives a save/load round trip untouched (#4215)', () => {
+    write([{ ...LEGACY_CUSTOM, filterA: { combinator: 'AND', rules: [{ kind: 'nope' }, FILTER.rules[0]] } }]);
+    const loaded = loadCustom('custom-legacy');
+    assert.ok(loaded);
+    savePresets(buildInitialPresets());
+    const again = loadCustom('custom-legacy');
+    assert.deepStrictEqual(again?.filterA, loaded.filterA);
+    assert.deepStrictEqual(again?.filterA?.unreadableRules, [{ kind: 'nope' }]);
   });
 
   it('stores a BUILT-IN that differs only by a filter', () => {

@@ -185,7 +185,10 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
     for (const childId of children) {
       const childTask = taskByExpressId.get(childId);
       if (!childTask) continue;
-      parentTask.childGlobalIds.push(childTask.globalId);
+      // A source file may repeat the relation; guard as Pass 4b/5 do below.
+      if (!parentTask.childGlobalIds.includes(childTask.globalId)) {
+        parentTask.childGlobalIds.push(childTask.globalId);
+      }
       if (!childTask.parentGlobalId) {
         childTask.parentGlobalId = parentTask.globalId;
       }
@@ -193,6 +196,12 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
   }
 
   // Pass 3: resolve IfcRelAssignsToProcess — products assigned to tasks.
+  // NOT deduped, deliberately: IfcRelAssignsToProcess carries a
+  // QuantityInProcess attribute (not extracted here, but real in the
+  // schema), so the same product can legitimately repeat across relations
+  // to the same task as separate quantity assignments. Unlike the identity
+  // lists elsewhere in this file, this pair is a multiset — dedup would
+  // silently drop a legitimate repeated assignment.
   for (const relId of relAssignsProcessIds) {
     const ref = store.entityIndex.byId.get(relId);
     if (!ref) continue;
@@ -326,8 +335,14 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
     for (const objId of objects) {
       const task = taskByExpressId.get(objId);
       if (task) {
-        schedule.taskGlobalIds.push(task.globalId);
-        task.controllingScheduleGlobalIds.push(schedule.globalId);
+        // A source file may repeat the relation; guard both paired arrays
+        // on one predicate to keep them in lockstep. IfcRelAssignsToControl
+        // carries no quantity attribute, so this pair is a pure identity
+        // edge, unlike Pass 3's productExpressIds/productGlobalIds above.
+        if (!schedule.taskGlobalIds.includes(task.globalId)) {
+          schedule.taskGlobalIds.push(task.globalId);
+          task.controllingScheduleGlobalIds.push(schedule.globalId);
+        }
         continue;
       }
       // Not a task — check whether this is a WorkPlan grouping a

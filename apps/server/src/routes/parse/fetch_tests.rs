@@ -98,6 +98,8 @@ async fn check_cache_returns_200_when_parquet_cached() {
 /// Seed a data-model entry at the CURRENT payload version for `hash`.
 async fn seed_current_data_model(state: &AppState, hash: &str, filter: OpeningFilterMode) {
     let seed = cache_key_from_parts(hash, filter, TessellationQuality::default());
+    super::cache_keys::cache_symbolic_data(&state.cache, &seed,
+        &ifc_lite_processing::SymbolicDataWithProvenance::default()).await;
     state
         .cache
         .set_bytes(&data_model_cache_key(&seed), b"data-model-bytes")
@@ -317,4 +319,19 @@ async fn get_data_model_returns_200_with_cached_bytes() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = body_bytes(response).await;
     assert_eq!(body, b"the-data-model-parquet");
+}
+
+#[tokio::test]
+async fn issue_4459_hash_check_requires_fresh_symbols_before_skipping_upload() {
+    let state = test_state("4459-check-symbols").await;
+    let hash = "4459-check";
+    let seed = cache_key_from_parts(hash, OpeningFilterMode::Default, TessellationQuality::default());
+    let geometry = parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default(), ParquetLayout::Flat);
+    state.cache.set_bytes(&geometry, b"unchanged geometry").await.unwrap();
+    state.cache.set_bytes(&data_model_cache_key(&seed), b"current data model").await.unwrap();
+    state.cache.set_bytes(&format!("{seed}-symbolic-v1"), b"{}").await.unwrap();
+    assert_eq!(get(&state, &format!("/api/v1/cache/check/{hash}")).await.status(), StatusCode::NOT_FOUND);
+    seed_current_data_model(&state, hash, OpeningFilterMode::Default).await;
+    assert_eq!(get(&state, &format!("/api/v1/cache/check/{hash}")).await.status(), StatusCode::OK);
+    assert_eq!(state.cache.get_bytes(&geometry).await.unwrap().unwrap(), b"unchanged geometry");
 }

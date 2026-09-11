@@ -1119,7 +1119,7 @@ test('REASONS covers EVERY raise site in this file, and names nothing that is no
   assert.deepEqual(phantom, [], 'these are in REASONS but are never raised');
 });
 
-test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED, VALIDATION_EMPTY, CLASS_PASS_INCOMPLETE, FINDINGS_INVALID} (#3777, #3775, #3831, #3919)', () => {
+test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED, VALIDATION_EMPTY, CLASS_PASS_INCOMPLETE, FINDINGS_INVALID, RAW_UNPARSEABLE} (#3777, #3775, #3831, #3919)', () => {
   // Mutation-tested shape: this must fail if the set grows to include a fourth
   // reason (e.g. a genuine VERDICT_CONTRADICTS_FINDINGS "papers over a real
   // failure with a retry"), and must fail if it shrinks. Exact-set comparison,
@@ -1143,9 +1143,29 @@ test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TR
   // second attempt cannot be a quieter one. The throw is unchanged: a retry that
   // again claims clean without the walk still fails loudly, and no path
   // anywhere turns it into a posted verdict.
+  // RAW_UNPARSEABLE belongs here for the same reason and with the same limit.
+  // It fires on the SHAPE of the response and never on the code: the answer did
+  // not parse, so it carries no verdict at all and there is nothing for a retry
+  // to paper over. Observed live, a reviewer read 12 files and returned 6427
+  // characters, then prefixed the object with prose, and the entire review was
+  // discarded with no second attempt while every other transient shape got one.
+  // The throw is unchanged: a second unparseable answer still fails loudly and
+  // no path turns it into a posted verdict.
+  //
+  // Not to be confused with the REMEDY the validator names, which forbids a
+  // REPAIR PASS ("a repairer that guesses is a second unreviewed model"). A
+  // retry is a different mechanism: it re-runs the reviewer and the fresh
+  // response faces every original check unchanged. Nothing is repaired and
+  // nothing is loosened.
+  //
+  // Its retry prose deliberately covers the UNION of the shapes that reach this
+  // reason (prose before the fence, two fenced blocks, text that never parsed
+  // including a hard truncation) rather than naming one. Naming a single shape
+  // would be false in the others, which is the same argument retry-prompt.mjs
+  // already makes about the five above.
   assert.deepEqual(
     [...RETRYABLE_VALIDATION_REASONS].sort(),
-    ['CLASS_PASS_INCOMPLETE', 'FINDINGS_INVALID', 'PROOF_OF_WORK_FAILED', 'RESPONSE_TRUNCATED', 'VALIDATION_EMPTY'],
+    ['CLASS_PASS_INCOMPLETE', 'FINDINGS_INVALID', 'PROOF_OF_WORK_FAILED', 'RAW_UNPARSEABLE', 'RESPONSE_TRUNCATED', 'VALIDATION_EMPTY'],
   );
   // Every retryable reason must be a real one -- catches a typo'd string that
   // would silently never match anything real REASONS raises.
@@ -1175,8 +1195,18 @@ test('THE WIRING: claude-review.yml retries on EXACTLY the reasons RETRYABLE_VAL
   // grep pattern against the same source of truth the prompt-building side
   // uses, so the two cannot silently drift apart.
   const wf = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
-  const step = wf.split('- name: Validate the findings')[1];
-  assert.ok(step, 'the validate step must exist');
+  // THE STEP, BOUNDED BY THE NEXT STEP. An earlier spelling took everything
+  // after the step's name and then sliced up to `exit "$rc"` -- a string that
+  // occurs BEFORE this step, so the slice ran to the end of the file and the
+  // loop-keyword assertion below read every later step and job as if it were
+  // the retry branch. It passed only while nothing downstream said "for";
+  // the `Review posted` job moving into this workflow (CI redesign, step 3)
+  // brought a step named "... for this head" and turned it red for a reason
+  // that had nothing to do with the retry.
+  const after = wf.split('- name: Validate the findings')[1];
+  assert.ok(after, 'the validate step must exist');
+  const nextStep = after.search(/\n {6}- [a-zA-Z_-]+:/);
+  const step = nextStep === -1 ? after : after.slice(0, nextStep);
   const m = step.match(/grep -oE '\^❌ \(([A-Z_|]+)\):'/); // @source-text-assertion-ok the retry trigger is bash in YAML; there is no runtime signal for which reasons it matches
   assert.ok(m, 'the retry-reason grep must be present');
   const wired = new Set(m[1].split('|'));
@@ -1185,7 +1215,11 @@ test('THE WIRING: claude-review.yml retries on EXACTLY the reasons RETRYABLE_VAL
   // Bounded to ONE retry: an `if`, never a loop construct, around the retry
   // block -- guards against someone turning this into an unbounded/`while`
   // retry that could hammer the model on a truly permanent failure.
-  const retryBlock = step.slice(step.indexOf('retry_reason='), step.indexOf('exit "$rc"'));
+  // From the retry decision to the end of the step: `retry_reason=` opens the
+  // branch and nothing after it in this step is outside the retry's reach.
+  const retryStart = step.indexOf('retry_reason=');
+  assert.notEqual(retryStart, -1, 'the retry branch must start with retry_reason=');
+  const retryBlock = step.slice(retryStart);
   // COMMENTS STRIPPED FIRST. The guard is about shell CONSTRUCTS, and the prose
   // around this block is English: "for it", "waited out", "the reasons for" all
   // contain a loop keyword and none of them is a loop. Leaving them in made the

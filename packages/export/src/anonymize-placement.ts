@@ -45,6 +45,7 @@ import type { AnonymizeOptions } from './anonymize-types.js';
 import { attrIndex, readEntityArgs, type EntityByteRangeIndex } from './subset-entity-reader.js';
 import { splitTopLevelArgs } from './step-argument-parser.js';
 import { entityRef, stepReal } from './step-serialization.js';
+import { BARE_REF_RE } from './reference-collector.js';
 
 /** The slice of {@link AnonymizeOptions} this module reads. */
 export type PlacementAnonymizationOptions = Pick<
@@ -371,10 +372,9 @@ function blankSiteAndBuildingAddresses(
 // Token helpers
 // ---------------------------------------------------------------------------
 
-/** `"#42"` → `42`; anything else (`$`, a literal, missing) → `null`. */
+/** `"#42"` → `42` via shared, trivia-tolerant {@link BARE_REF_RE} (#4227 — a narrower regex here skipped a comment-wrapped `ObjectPlacement`); else `null`. */
 function parseRef(token: string | undefined): number | null {
-  if (!token) return null;
-  const match = /^#(\d+)$/.exec(token.trim());
+  const match = token ? BARE_REF_RE.exec(token) : null;
   return match ? Number(match[1]) : null;
 }
 

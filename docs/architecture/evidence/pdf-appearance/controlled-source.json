@@ -1,0 +1,57 @@
+{
+  "generator": "IfcOpenShell 0.8.2",
+  "rights": "Original controlled fixture, CC0",
+  "schema": "IFC4",
+  "walls": [
+    {
+      "name": "Blue wall",
+      "expressId": 34,
+      "GlobalId": "3mpfqvLAbPVRpwxIwYPgEV",
+      "faceSetId": 24,
+      "surfaceStyleId": 27,
+      "rgb": [
+        0.08,
+        0.24,
+        0.8
+      ],
+      "bounds": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "name": "Green wall",
+      "expressId": 46,
+      "GlobalId": "2suSFkYNjHpx6ZYAWo7w_I",
+      "faceSetId": 36,
+      "surfaceStyleId": 39,
+      "rgb": [
+        0.08,
+        0.65,
+        0.18
+      ],
+      "bounds": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          1
+        ]
+      ]
+    }
+  ],
+  "expressValidationErrors": 0,
+  "sha256": "2d93bac91ed94c27924e5b26d3984652f7d29475f70e2daa85554ae52220d8b0"
+}

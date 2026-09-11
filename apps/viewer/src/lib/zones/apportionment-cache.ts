@@ -114,7 +114,7 @@ export function validEntry(
  * buffers the renderer kept. They agree to f32 rounding on a genuine solid.
  * They do NOT agree when the geometry the Scene holds is not the geometry the
  * kernel measured -- a colour-merged batch re-extracted per entity
- * (`Scene.extractEntityFromMergedMesh`) keeps only triangles whose three
+ * (`extractEntityFromMergedMesh`) keeps only triangles whose three
  * vertices all belong to the entity, and a silently short mesh is exactly the
  * confidently-wrong number the closure gate exists to refuse. 1% is far wider
  * than f32 noise (measured worst 3.4e-6 relative) and far narrower than a

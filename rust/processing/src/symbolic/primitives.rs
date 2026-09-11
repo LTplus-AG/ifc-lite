@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::output_cap::SymbolicTruncation;
+use super::output_cap_types::SymbolicTruncation;
 use serde::{Deserialize, Serialize};
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -33,9 +33,10 @@ use serde::{Deserialize, Serialize};
 /// "unresolved" sentinel to and from JSON `null`.
 ///
 /// Read back, any `null` becomes `f32::NAN`. `serde_json` also writes `±inf`
-/// as `null`, so an infinity would return as NaN — no producer in this crate
-/// emits one, and NaN is the correct reading of "not a usable elevation"
-/// either way. Consumers must test `is_nan()`, not `!is_finite()`.
+/// as `null`, so an infinity round-trips as NaN — `operator.rs`'s unchecked
+/// `as_float().unwrap_or(0.0)` on a placement's Z can make `tz`, and so
+/// `world_y`, infinite, and NaN is the correct reading of "not a usable
+/// elevation" either way. Consumers must test `is_nan()`, not `!is_finite()`.
 pub(crate) mod nan_as_null {
     use serde::{Deserialize, Deserializer, Serializer};
 

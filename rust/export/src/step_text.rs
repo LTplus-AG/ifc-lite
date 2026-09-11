@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 //! STEP text-level primitives shared by the STEP exporter (`step.rs`): string
-//! escaping, `#ref` scanning, and the attribute-list splitting used to apply
-//! root-attribute mutations.
+//! escaping, `#ref` scanning, and the by-index reads and writes of a record's
+//! root attributes.
 //!
 //! Header `FILE_SCHEMA` detection used to live here and is now `schema_detect`.
 //! It left because it is not a text EDIT: it reads one fact out of raw bytes
 //! before anything is parsed, and unlike everything here it runs on whole
 //! uncapped attacker-supplied files.
+//!
+//! The argument-list SPLIT left too, to `step_slot.rs`, when it grew a grammar
+//! check per slot (#4125). It is what the by-index writers here stand on rather
+//! than another line utility beside them, and its own header carries the rule
+//! that makes them safe.
 //!
 //! Split out of `step.rs` to keep that file under the module-size ratchet
 //! (`rust/processing/tests/module_size_ratchet.rs`). These are self-contained
@@ -17,6 +22,8 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use ifc_lite_core::express_id::parse_express_id;
+
+use crate::step_slot::split_top_level_args;
 
 /// The edits that apply to one record, where a caller's attribute mutation and
 /// a copy-on-write repointing can both land on it. The repointing wins: it was
@@ -136,75 +143,50 @@ pub(crate) fn refs_in_line_counted(line: &[u8], out: &mut Vec<u32>, refused: &mu
     }
 }
 
-/// Split a STEP attribute list into its top-level arguments (parens/strings aware).
-fn split_top_level_args(attrs: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let mut depth = 0i32;
-    let mut in_string = false;
-    let mut current = String::new();
-    // Over chars, not bytes. `bytes[i] as char` reads a UTF-8 continuation byte
-    // as a Latin-1 character and re-encodes it, so a property name like
-    // `Größe` came back as `GrÃ¶ÃŸe` in any record this rewrote. Every
-    // delimiter STEP cares about is ASCII, so iterating chars costs nothing and
-    // leaves the rest of the text alone.
-    let mut chars = attrs.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '\'' && !in_string {
-            in_string = true;
-            current.push(ch);
-        } else if ch == '\'' && in_string {
-            if chars.peek() == Some(&'\'') {
-                current.push_str("''");
-                chars.next();
-                continue;
-            }
-            in_string = false;
-            current.push(ch);
-        } else if in_string {
-            current.push(ch);
-        } else if ch == '(' {
-            depth += 1;
-            current.push(ch);
-        } else if ch == ')' {
-            depth -= 1;
-            current.push(ch);
-        } else if ch == ',' && depth == 0 {
-            out.push(std::mem::take(&mut current));
-        } else {
-            current.push(ch);
-        }
-    }
-    out.push(current);
-    out
-}
-
-/// Apply root-attribute edits to a `#id=TYPE(attrs);` line. Returns the line unchanged
-/// when it cannot be parsed.
-pub(crate) fn apply_attr_mutations(line: &str, muts: &BTreeMap<usize, String>) -> String {
+/// Apply root-attribute edits to a `#id=TYPE(attrs);` line, keeping the source
+/// line and COUNTING the refusal when they cannot be applied.
+///
+/// The edits are refused when the text is not a `#id=TYPE(...)` record at all,
+/// or when its argument list could not be scanned into slots
+/// ([`split_top_level_args`] refused it). Either way it is a refusal, not a
+/// no-op — the caller asked for an edit that is not in the output. Writing the
+/// edit anyway is the #2470 shape one level up: an undoubled apostrophe makes a
+/// nine-attribute record scan as seven slots, so writing `Description` by index
+/// lands on `ObjectPlacement`, deletes the reference that was there, and reports
+/// success (#4125).
+///
+/// One function, and `refused` rather than an `Option` the caller interprets,
+/// because both emit sites need the same PAIR — leave the record as its author
+/// wrote it, and say that an edit is missing — and a site that did the first
+/// without the second would ship a file that looks like it carried the edit.
+pub(crate) fn apply_attr_mutations_counted(
+    line: &str,
+    muts: &BTreeMap<usize, String>,
+    refused: &mut usize,
+) -> String {
     let trimmed = line.trim_end();
     let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
-    let eq = match body.find('=') {
-        Some(e) => e,
-        None => return line.to_string(),
-    };
-    let after = &body[eq + 1..];
-    let popen = match after.find('(') {
-        Some(p) => p,
-        None => return line.to_string(),
-    };
-    let aclose = match after.rfind(')') {
-        Some(c) if c > popen => c,
-        _ => return line.to_string(),
-    };
-    let prefix = &body[..=eq];
-    let type_name = &after[..popen];
-    let mut args = split_top_level_args(&after[popen + 1..aclose]);
-    for (idx, val) in muts {
-        if *idx < args.len() {
-            args[*idx] = val.clone();
+    let edited = body.find('=').and_then(|eq| {
+        let after = &body[eq + 1..];
+        let popen = after.find('(')?;
+        let aclose = after.rfind(')').filter(|c| *c > popen)?;
+        let prefix = &body[..=eq];
+        let type_name = &after[..popen];
+        let mut args = split_top_level_args(&after[popen + 1..aclose])?;
+        for (idx, val) in muts {
+            if *idx < args.len() {
+                args[*idx] = val.clone();
+            }
+        }
+        Some(format!("{prefix}{type_name}({});", args.join(",")))
+    });
+    match edited {
+        Some(text) => text,
+        None => {
+            *refused += 1;
+            line.to_string()
         }
     }
-    format!("{prefix}{type_name}({});", args.join(","))
 }
 
 #[cfg(test)]
@@ -228,6 +210,13 @@ pub(crate) fn renumber(line: &str, new_id: u32) -> String {
 /// Split from the substitution below so a caller applying two edits to the
 /// same attribute can feed the first result into the second, rather than
 /// computing both from the original and losing one.
+///
+/// `None` covers both "that slot is past the end" and "this record's argument
+/// list could not be scanned into slots at all". The caller
+/// (`step_cow::candidate`) already treats `None` as "this mutation cannot be
+/// made" and counts it into `StepStats::copies_refused`, which is the right
+/// answer for either: a slot read out of a mis-scanned list is some other
+/// attribute's text, and a copy built from it would carry the wrong value.
 pub(crate) fn attribute_of(line: &str, index: usize) -> Option<String> {
     let trimmed = line.trim_end();
     let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
@@ -235,7 +224,7 @@ pub(crate) fn attribute_of(line: &str, index: usize) -> Option<String> {
     let after = &body[eq + 1..];
     let popen = after.find('(')?;
     let aclose = after.rfind(')').filter(|c| *c > popen)?;
-    split_top_level_args(&after[popen + 1..aclose])
+    split_top_level_args(&after[popen + 1..aclose])?
         .into_iter()
         .nth(index)
 }

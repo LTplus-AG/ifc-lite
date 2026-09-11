@@ -82,7 +82,7 @@ env:
 jobs:
   wide-arithmetic-tripwire:
     name: Build + determinism check (wide-arithmetic wasm)
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     # Generous: a cold nightly + wasm-pack build plus a cargo-installed
     # wasm-tools can take a while before caches warm up. Weekly, so slow is fine.
     timeout-minutes: 45

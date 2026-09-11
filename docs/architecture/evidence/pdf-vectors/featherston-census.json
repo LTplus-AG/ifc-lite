@@ -1,0 +1,89 @@
+{
+  "purpose": "operator inventory only; no conversion or fidelity verdict",
+  "sourceSha256": "c8c923759a412dc0f108ed77e54edc76203592f4befb25b3779550c7bb287d66",
+  "sourceBytes": 515902,
+  "pdfjs": "6.3.289",
+  "pageNumber": 1,
+  "pageCount": 1,
+  "page": {
+    "viewBox": [
+      0,
+      0,
+      841.89,
+      595.28
+    ],
+    "userUnit": 1,
+    "rotation": 0,
+    "pdfToPage": [
+      1,
+      0,
+      0,
+      -1,
+      0,
+      595.28
+    ]
+  },
+  "operationCount": 12773,
+  "operators": {
+    "beginMarkedContentProps": 1,
+    "save": 3148,
+    "clip": 1,
+    "constructPath": 3167,
+    "setGState": 3,
+    "beginGroup": 1,
+    "paintFormXObjectBegin": 1,
+    "setFillRGBColor": 6,
+    "transform": 3146,
+    "restore": 3148,
+    "paintFormXObjectEnd": 1,
+    "endGroup": 1,
+    "setStrokeRGBColor": 45,
+    "setLineWidth": 49,
+    "setLineJoin": 8,
+    "setLineCap": 14,
+    "setMiterLimit": 6,
+    "beginText": 1,
+    "dependency": 1,
+    "setFont": 1,
+    "setTextMatrix": 1,
+    "showText": 11,
+    "moveText": 10,
+    "endText": 1,
+    "endMarkedContent": 1
+  },
+  "paints": {
+    "endPath": 1,
+    "fill": 33,
+    "stroke": 3133
+  },
+  "pathCommands": {
+    "moveTo": 3185,
+    "lineTo": 7402,
+    "closePath": 226
+  },
+  "totalPathNumbers": 31987,
+  "maxExplicitSaveDepth": 3,
+  "fidelityWork": {
+    "clipping": 1,
+    "text": 11,
+    "groups": 1,
+    "forms": 1,
+    "optionalContent": 1,
+    "graphicsState": 3,
+    "rasterImages": 0,
+    "shading": 0
+  },
+  "limits": {
+    "bytes": 67108864,
+    "operations": 100000,
+    "pathNumbers": 2000000,
+    "deadlineMs": 60000
+  },
+  "caveats": [
+    "Paint counts do not measure visible area; clipping/optional content/groups need full interpretation.",
+    "Operator indices are not render-operation filter indices.",
+    "PDF.js may normalize or repair input; original PDF syntax is not inventoried.",
+    "Fonts, ICC colors, transparency, paint order and line semantics have not been converted or compared.",
+    "Page paper units do not establish architectural drawing scale."
+  ]
+}

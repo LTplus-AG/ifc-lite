@@ -30,6 +30,8 @@
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
 
+mod support;
+
 const FIXTURE: &str = "../../tests/models/issues/820_RadianValuesOverPI.ifc";
 
 // `#2173 IFCEXTRUDEDAREASOLID` — the wall body. Its profile is
@@ -51,6 +53,11 @@ fn lfs_pointer_prefix() -> String {
 fn read_fixture() -> Option<String> {
     match std::fs::read_to_string(FIXTURE) {
         Ok(s) if s.starts_with(&lfs_pointer_prefix()) => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture is an LFS pointer and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download real bytes"
+            );
             // The fixture is a Git LFS pointer, not the real bytes — happens
             // on fresh clones before `pnpm fixtures` runs. Skip cleanly so
             // the misleading IFC-parse error on the pointer text never
@@ -63,6 +70,11 @@ fn read_fixture() -> Option<String> {
         }
         Ok(s) => Some(s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
             eprintln!(
                 "skipping issue-820 regression: fixture missing at {FIXTURE} — \
                  run `pnpm fixtures` from the repo root to download it",

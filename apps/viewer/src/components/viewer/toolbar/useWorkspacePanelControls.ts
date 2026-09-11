@@ -25,7 +25,7 @@ import { closePanelWindow } from '@/services/panel-windows';
  *  branch below could not simply hand the click to the store, so it re-derived
  *  the flag flips and lost the float / pop-out cleanup along the way. */
 export type BottomPanel = 'script' | 'lists' | 'gantt';
-export type RightPanel = 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions' | 'sources';
+export type RightPanel = 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions' | 'sources' | 'appearance';
 export type WorkspacePanel = BottomPanel | RightPanel | string;
 
 export function useWorkspacePanelControls() {
@@ -98,6 +98,10 @@ export function useWorkspacePanelControls() {
   const handleToggleRightPanel = useCallback((panel: RightPanel) => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
       closeActiveAnalysisExtension();
+    }
+    if (panel === 'appearance') {
+      useViewerStore.getState().toggleWorkspacePanel(panel);
+      return;
     }
 
     // "Active" means it owns the DOCKED slot right now, the same test the
@@ -247,6 +251,7 @@ export function useWorkspacePanelControls() {
     if (layersPanelVisible) panels.add('layers');
     if (collabPanelVisible) panels.add('collab');
     if (sidebarActivePanel === 'zones') panels.add('zones');
+    if (sidebarActivePanel === 'appearance') panels.add('appearance');
     if (sidebarActivePanel === 'loadReport') panels.add('loadReport');
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
     return panels;
@@ -287,6 +292,7 @@ export function useWorkspacePanelControls() {
     if (activeWorkspacePanels.has('layers')) return 'Layer Stack';
     if (activeWorkspacePanels.has('collab')) return 'Collaboration Room';
     if (activeWorkspacePanels.has('zones')) return 'Location Zones';
+    if (activeWorkspacePanels.has('appearance')) return 'Appearance';
     if (activeWorkspacePanels.has('loadReport')) return 'Load Report';
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);

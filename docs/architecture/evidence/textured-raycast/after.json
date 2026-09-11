@@ -1,0 +1,48 @@
+{
+  "x": 261.74953496750345,
+  "y": 477.56610616445073,
+  "rect": {
+    "width": 926.640625,
+    "height": 1017.5
+  },
+  "client": [
+    927,
+    1018
+  ],
+  "canvas": [
+    896,
+    1017
+  ],
+  "hit": {
+    "intersection": {
+      "point": {
+        "x": 0.18195311732487385,
+        "y": 0.7232101796531318,
+        "z": 0.6726786928126471
+      },
+      "normal": {
+        "x": 0.9759688489613128,
+        "y": -0.16474405513581525,
+        "z": 0.1426331032914096
+      },
+      "distance": 5.187405092529856,
+      "meshIndex": 1,
+      "triangleIndex": 47569,
+      "expressId": 1000067,
+      "barycentricCoord": {
+        "u": 0.10654558524335712,
+        "v": 0.8533411911346498,
+        "w": 0.0401132236219931
+      }
+    }
+  },
+  "sourceHead": "181bea46f439059c4716cfa9be88fe999a155dd8",
+  "rendererCommit": "f7ee2a165d48f169fbfc6331e8dd2726e9b1ddb4",
+  "wasmSha256": "b7d0001766663a3589d820cf16900e7a2e7a9cbbd393afea74ad891130b8ed20",
+  "fixtures": {
+    "captured.ifczip": "e04dcf6e01518d7cca1415f49775e4d430130ede1370e4d4bb0e7cfcde1ba6c4",
+    "boulder-albedo.glb": "b6a0b51894427c37505632f4d4513d0424f0d84b014554755aa53eb74af6dcd6"
+  },
+  "conditions": "Both IFC and GLB visible, same normal Open/Add sequence and 1600x1200 viewport as before-raycast-fix.png",
+  "beforeObservation": "Main-view corresponding click displayed Pick a visible IFC surface; no direct pre-fix ray-result JSON was captured."
+}

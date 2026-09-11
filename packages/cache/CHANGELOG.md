@@ -1,5 +1,41 @@
 # @ifc-lite/cache
 
+## 3.4.1
+
+### Patch Changes
+
+- [#4478](https://github.com/LTplus-AG/ifc-lite/pull/4478) [`341f41f`](https://github.com/LTplus-AG/ifc-lite/commit/341f41fd1725e8551d9bae4a3478ea3fa5b2698f) Thanks [@louistrue](https://github.com/louistrue)! - Load photogrammetry GLBs with usable base-colour textures even when they also carry auxiliary material maps, morph targets, vertex colours, alpha metadata, or alternate UV sets. Unsupported Draco compression now reports the uncompressed export workaround.
+
+- [#4496](https://github.com/LTplus-AG/ifc-lite/pull/4496) [`511e488`](https://github.com/LTplus-AG/ifc-lite/commit/511e488a8de2b90f7d5f7663911873a92b3427c7) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix two of the relationship-graph folds named in [#4205](https://github.com/LTplus-AG/ifc-lite/issues/4205) that lost information at parse time:
+  
+  - `IfcRelNests` was indexed onto the exact same `RelationshipType.Aggregates` edge as `IfcRelAggregates`, with no way to tell a nesting edge apart from a real decomposition edge once indexed. It now also lands on a distinct `RelationshipType.Nests` edge (in addition to the existing `Aggregates` edge, so every current consumer — spatial hierarchy, decomposition, the IDS `partOf`/ancestors bridge — is unaffected).
+  - `IfcRelAssignsToGroupByFactor` was indexed onto the same `RelationshipType.AssignsToGroup` edge as a plain `IfcRelAssignsToGroup`, and its `Factor` attribute was unreachable from the relationship graph. It now also lands on a distinct `RelationshipType.AssignsToGroupByFactor` edge, and `extractGroupAssignmentFactorOnDemand(store, groupId, memberId)` resolves the `Factor` value (`undefined`, not `0`, when the assignment is plain or absent).
+  
+  This is a narrow fix for the two folds the issue calls out as live defects, not the full schema-derived relationship-edge migration [#4205](https://github.com/LTplus-AG/ifc-lite/issues/4205) also scopes — the hand-written 17-value `RelationshipType` enum and the hand-written relating/related attribute slots are unchanged.
+  
+  Two follow-up fixes for consumers that don't filter by relationship type and so double-counted or mislabeled the new secondary edges:
+  
+  - `ParquetExporter`'s `Metadata.json` `statistics.relationshipCount` counted raw graph edges, so a model with `IfcRelNests`/`IfcRelAssignsToGroupByFactor` relationships reported one extra per such relationship (the new secondary edge counted alongside its broad-bucket edge). It now counts distinct `IfcRel*` records instead.
+  - The DuckDB-backed `relationships` SQL table (`@ifc-lite/query`) rendered `rel_type` as `'Unknown'` for both new types — its type→string map was missed when the other three were updated. Added, with the same display strings as those three maps.
+- Updated dependencies [[`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b), [`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b), [`511e488`](https://github.com/LTplus-AG/ifc-lite/commit/511e488a8de2b90f7d5f7663911873a92b3427c7)]:
+  - @ifc-lite/geometry@5.0.0
+  - @ifc-lite/data@4.2.0
+
+## 3.4.0
+
+### Minor Changes
+
+- [#4389](https://github.com/LTplus-AG/ifc-lite/pull/4389) [`33194e5`](https://github.com/LTplus-AG/ifc-lite/commit/33194e5db6a17763e8fad5f5a6d2fea130d8dc84) Thanks [@louistrue](https://github.com/louistrue)! - Retain embedded GLB base-colour image bytes and UV coordinates, including texture transforms and node rotation/scale. Expose encoded image resources for host-owned decoding; reject unsupported capture appearance instead of silently dropping it.
+
+- [#4275](https://github.com/LTplus-AG/ifc-lite/pull/4275) [`576369b`](https://github.com/LTplus-AG/ifc-lite/commit/576369b2168ee1277fab3cfbc42d54c356aec0ef) Thanks [@louistrue](https://github.com/louistrue)! - Preserve canonical appearance provenance in cache format v19, with shared source topology across chunks and validated restored index identities.
+
+### Patch Changes
+
+- [#4397](https://github.com/LTplus-AG/ifc-lite/pull/4397) [`9c7062f`](https://github.com/LTplus-AG/ifc-lite/commit/9c7062f1f28a2f9d8a46db65225b772af4666cde) Thanks [@louistrue](https://github.com/louistrue)! - Reject embedded GLB images whose PNG/JPEG signature disagrees with their declared MIME type, preventing transparent PNG data from bypassing JPEG opacity handling.
+- Updated dependencies [[`ced8bb4`](https://github.com/LTplus-AG/ifc-lite/commit/ced8bb46c368648bd54a1bab716d049143faa036), [`f33ac74`](https://github.com/LTplus-AG/ifc-lite/commit/f33ac74dd0578792327f684ba5ca59f050458c65), [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb), [`7427343`](https://github.com/LTplus-AG/ifc-lite/commit/742734300487f78df8192dc6fd4126615b63b966), [`a6976b9`](https://github.com/LTplus-AG/ifc-lite/commit/a6976b9da44d13157533372a8def23995fcfb93f)]:
+  - @ifc-lite/data@4.1.0
+  - @ifc-lite/geometry@4.4.0
+
 ## 3.3.0
 
 ### Minor Changes

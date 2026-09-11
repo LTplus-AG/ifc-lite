@@ -50,6 +50,7 @@ export {
 export { generateLod0 } from './lod0-generator.js';
 export { generateLod1, type GenerateLod1Options } from './lod1-generator.js';
 export { parseGLB, extractGlbMapping, parseGLBToMeshData, countGlbMeshes } from './glb.js';
+export { countObjVertices } from './obj.js';
 
 export { columnsToParquet, isParquet } from './columns-to-parquet.js';
 // THE CSV cell escaper for this repo's TypeScript — RFC 4180 quoting plus the
@@ -61,3 +62,7 @@ export { columnsToParquet, isParquet } from './columns-to-parquet.js';
 // are the guard's internals, and the parity suite imports them from the module
 // directly. Callers need the two functions and the options type.
 export { escapeCsvCell, guardSpreadsheetFormula, type CsvCellOptions } from './csv-cell.js';
+
+export { planAuthoredResourceCleanup } from './authored-resource-cleanup.js';
+
+export { captureAppearanceDependencies } from './appearance-dependencies.js';

@@ -241,6 +241,23 @@ A material-layer slice is a fourth kind of absence with a different reading: it
 carries `materialId` instead, so the identity is present but is a material's,
 not an item's.
 
+### Canonical triangle provenance
+
+Item-identified meshes extracted from WASM carry optional `appearanceSource`
+metadata. Its `indices` reference identifies the current topology, while
+`sourceIndices` identifies the canonical unsplit triangle order. At extraction,
+both reference the existing mesh index array; no geometry buffer is copied.
+Those shared references survive worker structured clone and buffer transfer.
+
+Consumers that split triangles must carry a `cornerIndices` mapping from each
+current triangle corner to its canonical triangle corner. A consumer that
+rebuilds topology without such a mapping must discard the metadata. This is
+provenance for matching authored UVs to actual geometry, not a claim that every
+item is eligible for editing. Transports and caches must explicitly preserve
+the array identities before a downstream authoring tool can rely on them.
+Keeping a fragment may retain its original unsplit index array; callers that
+release CPU geometry must release this metadata too.
+
 ## Streaming Geometry
 
 Process geometry incrementally for large files:
@@ -625,3 +642,19 @@ are documented in [Browser Worker Mode](./parsing.md#browser-worker-mode). Only 
 parallel prepass produces this key. Other geometry paths and older WASM builds
 leave the cell unavailable, and the parser computes its ordinary source key without
 waiting. Geometry streaming and parser index-handoff deadlines remain unchanged.
+
+### Polygonal annotation fills
+
+Ordinary native and WASM geometry processing supports direct
+`IfcAnnotationFillArea` items on `IfcAnnotation` products in `Annotation2D` and
+`Surface2D` representations. Closed `IfcPolyline` boundaries can contain holes;
+object placement and model units use the normal geometry pipeline. Auxiliary
+building-type footprints remain excluded.
+
+This initial subset accepts unstyled fills or one solid `IfcFillAreaStyle` RGB
+paint, including an IFC2x3 `IfcPresentationStyleAssignment` wrapper. Mixed paint,
+hatching/tiling, invalid RGB, unsupported boundaries and exhausted validation
+budgets refuse the fill and report an unsupported item. Limits are 64 rings and
+2,048 input vertices per fill, with a source-scoped style lookup bounded to
+256 MiB of source, one million attached-style edges, 16 KiB per styled record,
+and 64 styled items per geometry item. This does not enable PDF vector conversion.

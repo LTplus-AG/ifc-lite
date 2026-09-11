@@ -80,6 +80,12 @@ pub fn stream_export_model(content: &[u8], f: impl FnMut(EntityRow)) -> UnitScal
 struct TypeProductCandidate {
     express_id: u32,
     ifc_type: IfcType,
+    /// The raw STEP keyword (e.g. `"IFCDOORSTYLE"`), kept ONLY so a later
+    /// `render_attributes` call can look up a legacy entity's own attribute
+    /// names (#4203) — `ifc_type` above is already legacy-aware-resolved
+    /// (`IfcDoorType`, not `Unknown`) and is what every other consumer of
+    /// this candidate wants.
+    type_name: String,
     global_id: Option<String>,
     name: Option<String>,
     description: Option<String>,
@@ -255,6 +261,7 @@ pub fn stream_export_model_with_options(
                     type_product_candidates.push(TypeProductCandidate {
                         express_id: id,
                         ifc_type: type_ty,
+                        type_name: type_name.to_string(),
                         global_id: opt_string(t.get(0)),
                         name: opt_string(t.get(2)),
                         description: opt_string(t.get(3)),
@@ -363,7 +370,7 @@ pub fn stream_export_model_with_options(
             property_sets,
             quantity_sets,
             attributes: if opts.attributes {
-                render_attributes(&entity)
+                render_attributes(&entity, type_name, ty)
             } else {
                 Vec::new()
             },
@@ -432,7 +439,7 @@ pub fn stream_export_model_with_options(
                 decoder
                     .decode_by_id(cand.express_id)
                     .ok()
-                    .map(|t| render_attributes(&t))
+                    .map(|t| render_attributes(&t, &cand.type_name, cand.ifc_type))
                     .unwrap_or_default()
             } else {
                 Vec::new()

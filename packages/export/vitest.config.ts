@@ -8,6 +8,12 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   resolve: {
     alias: {
+      // Before the bare `@ifc-lite/codegen` below, as the two schema subpaths
+      // already are: these keys are matched as PREFIXES in declaration order,
+      // so the root entry would otherwise rewrite
+      // `@ifc-lite/codegen/schema-hierarchy` into the nonexistent
+      // `codegen/src/index.ts/schema-hierarchy`.
+      '@ifc-lite/codegen/schema-hierarchy': path.resolve(__dirname, '../codegen/src/schema-hierarchy.ts'),
       '@ifc-lite/codegen/ifc4': path.resolve(__dirname, '../codegen/generated/ifc4/index.ts'),
       '@ifc-lite/codegen/ifc4x3': path.resolve(__dirname, '../codegen/generated/ifc4x3/index.ts'),
       '@ifc-lite/codegen': path.resolve(__dirname, '../codegen/src/index.ts'),
@@ -21,6 +27,11 @@ export default defineConfig({
       // the suite resolves on a clean checkout without built dists. pointcloud's
       // src pulls in no further workspace deps (only laz-perf + node builtins).
       '@ifc-lite/pointcloud': path.resolve(__dirname, '../pointcloud/src/index.ts'),
+      // `@ifc-lite/mutations` imports this; it publishes only `./dist`, and the
+      // schema-conformance workflow runs this suite straight after
+      // `pnpm install --ignore-scripts` with nothing built, so the bare
+      // specifier fails to resolve there. Dependency-free, so src is safe.
+      '@ifc-lite/regex-guard': path.resolve(__dirname, '../regex-guard/src/index.ts'),
     },
   },
   test: {

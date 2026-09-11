@@ -1,0 +1,83 @@
+{
+  "runs": [
+    {
+      "pair": 1,
+      "variant": "base",
+      "applyMs": 1685.6399999856949,
+      "maxFrameGapMs": 1683.3099999999977,
+      "longTasks": [
+        {
+          "at": 24873.194999933243,
+          "duration": 1686
+        }
+      ]
+    },
+    {
+      "pair": 1,
+      "variant": "combined",
+      "applyMs": 988.7150000333786,
+      "maxFrameGapMs": 983.3199999999997,
+      "longTasks": [
+        {
+          "at": 24954.355000019073,
+          "duration": 989
+        }
+      ]
+    },
+    {
+      "pair": 2,
+      "variant": "base",
+      "applyMs": 1684.5649999380112,
+      "maxFrameGapMs": 1683.3149999999987,
+      "longTasks": [
+        {
+          "at": 24851.77999997139,
+          "duration": 1685
+        }
+      ]
+    },
+    {
+      "pair": 2,
+      "variant": "combined",
+      "applyMs": 1068.9199999570847,
+      "maxFrameGapMs": 1066.6549999999988,
+      "longTasks": [
+        {
+          "at": 25113.25,
+          "duration": 1069
+        }
+      ]
+    },
+    {
+      "pair": 3,
+      "variant": "base",
+      "applyMs": 1795.1000000238419,
+      "maxFrameGapMs": 1792.130000000001,
+      "longTasks": [
+        {
+          "at": 25092.705000042915,
+          "duration": 1795
+        }
+      ]
+    },
+    {
+      "pair": 3,
+      "variant": "combined",
+      "applyMs": 1086.8050000667572,
+      "maxFrameGapMs": 1084.2300000000032,
+      "longTasks": [
+        {
+          "at": 25026.554999947548,
+          "duration": 1087
+        }
+      ]
+    }
+  ],
+  "medianApplyMs": {
+    "base": 1685.6399999856949,
+    "combined": 1068.9199999570847
+  },
+  "medianChangePercent": -36.586697042894336,
+  "geometryAndUvIdentity": "all115 sorted part byte fingerprints identical across A/B and Redo; non-target model unchanged",
+  "runtime": "69773df4b6f0e2f4bfe4b3461b3cbf25fae41d6aa1b8e493fc8971238cc7ef3a"
+}

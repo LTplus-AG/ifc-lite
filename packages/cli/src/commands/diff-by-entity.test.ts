@@ -67,13 +67,19 @@ describe('comparableGlobalIds', () => {
     expect(keys.has(guid('VREL'))).toBe(false);
   }, 30_000);
 
-  it('reaches an IfcTask and an IfcActor, which the EntityTable does not hold', async () => {
+  it('reaches an IfcTask and an IfcActor, which the EntityTable now holds directly', async () => {
     const store = await scheduleStore(guid('OLDT'));
 
-    // Not a regression pin on the old flag — that path reached these too, via
-    // the on-demand fallback in EntityNode — but on the shared walk, which
-    // reads the STEP record only for the object types the table declines.
-    expect(store.entities.getGlobalId(store.entityIndex.byType.get('IFCTASK')![0])).toBe('');
+    // Pre-#4204, IfcTask fell outside the columnar parser's IfcProduct-only
+    // inclusion rule, so the table's GlobalId column answered '' for it and
+    // this walk had to fall back to reading the STEP record on demand.
+    // #4204 retains every IfcRoot descendant, not just IfcProduct subtypes,
+    // so IfcTask (IfcProcess -> IfcObject -> IfcObjectDefinition -> IfcRoot)
+    // is now in the table with its real GlobalId, and the fallback this walk
+    // still has for entities the table declines is not what reaches it here.
+    expect(store.entities.getGlobalId(store.entityIndex.byType.get('IFCTASK')![0])).toBe(
+      guid('OLDT'),
+    );
     expect(comparableGlobalIds(store).has(guid('OLDT'))).toBe(true);
     expect(comparableGlobalIds(store).has(guid('ACTR'))).toBe(true);
   }, 30_000);
@@ -103,7 +109,15 @@ describe('comparableGlobalIds', () => {
     // still use. The chain has to come from every bundled schema.
     const store = await legacyStore(guid('MOVE'));
 
-    expect(store.entities.getGlobalId(store.entityIndex.byType.get('IFCMOVE')![0])).toBe('');
+    // Pre-#4204, IfcMove fell outside the columnar parser's IfcProduct-only
+    // inclusion rule (it is an IfcTask subtype, not a product), so the
+    // table's GlobalId column answered '' for it regardless of the codegen
+    // pin. #4204 retains every IfcRoot descendant instead, and IfcMove's
+    // chain resolves to IfcRoot through the bundled IFC2X3 schema, so the
+    // table now holds it with its real GlobalId.
+    expect(store.entities.getGlobalId(store.entityIndex.byType.get('IFCMOVE')![0])).toBe(
+      guid('MOVE'),
+    );
     const keys = comparableGlobalIds(store);
     expect(keys.has(guid('MOVE'))).toBe(true);
     expect(keys.has(guid('SPGM'))).toBe(true);

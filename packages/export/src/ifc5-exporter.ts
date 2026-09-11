@@ -26,6 +26,8 @@ import {
 } from '@ifc-lite/data';
 import { convertEntityType, type IfcSchemaVersion } from './schema-converter.js';
 import { getEffectiveEntityIndex } from './effective-index.js';
+import { Ifc5AppearanceWriter } from './ifc5-appearance.js';
+import { IFCX_APPEARANCE_SCHEMAS, type IfcxEncodedImage } from '@ifc-lite/ifcx';
 import { buildMaterialAttribute } from './ifc5-material.js';
 import { collectRequiredImports, generateUuid, stepTypeToClassName } from './ifc5-export-helpers.js';
 import { addClassificationAttribute } from './ifc5-classification.js';
@@ -72,6 +74,8 @@ export const IFC5_KNOWN_PROP_NAMES = new Set([
 
 /** Options for IFC5 export */
 export interface Ifc5ExportOptions {
+  /** Original image bytes keyed by exact MeshTextureRef.url; retained in IFCX without recompression. */
+  textureSources?: ReadonlyMap<string, IfcxEncodedImage>;
   /** Author name */
   author?: string;
   /** Data version identifier */
@@ -233,6 +237,7 @@ export class Ifc5Exporter {
 
     // Build mesh lookup by expressId
     const meshByEntity = this.buildMeshLookup(options);
+    const appearance = new Ifc5AppearanceWriter(new Set(this.entityUuids.values()), options.textureSources);
 
     // Collect nodes
     const nodes: IfcxNodeOutput[] = [];
@@ -324,16 +329,21 @@ export class Ifc5Exporter {
       if (options.includeGeometry !== false) {
         const meshes = meshByEntity.get(expressId);
         if (meshes && meshes.length > 0) {
-          const usdMesh = this.convertToUsdMesh(meshes);
-          attributes['usd::usdgeom::mesh'] = usdMesh;
+          if (meshes.some((mesh) => mesh.texture || mesh.textureRef)) {
+            nodes.push(...appearance.fragments(node, meshes, (mesh) => this.convertToUsdMesh([mesh])));
+            meshCount += meshes.length;
+          } else {
+            const usdMesh = this.convertToUsdMesh(meshes);
+            attributes['usd::usdgeom::mesh'] = usdMesh;
 
-          // Color/presentation
-          const [r, g, b, a] = meshes[0].color;
-          attributes['bsi::ifc::presentation::diffuseColor'] = [r, g, b];
-          if (a < 1.0) {
-            attributes['bsi::ifc::presentation::opacity'] = a;
+            // Color/presentation
+            const [r, g, b, a] = meshes[0].color;
+            attributes['bsi::ifc::presentation::diffuseColor'] = [r, g, b];
+            if (a < 1.0) {
+              attributes['bsi::ifc::presentation::opacity'] = a;
+            }
+            meshCount++;
           }
-          meshCount++;
         }
       }
 
@@ -379,6 +389,8 @@ export class Ifc5Exporter {
       });
     }
 
+    nodes.push(...appearance.images);
+
     // Determine required imports by scanning which attribute namespaces are used
     const imports = collectRequiredImports(nodes);
 
@@ -392,7 +404,7 @@ export class Ifc5Exporter {
         timestamp: new Date().toISOString(),
       },
       imports,
-      schemas: {},
+      schemas: appearance.images.length ? IFCX_APPEARANCE_SCHEMAS : {},
       data: nodes,
     };
 

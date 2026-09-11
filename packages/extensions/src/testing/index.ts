@@ -4,9 +4,12 @@
 
 export {
   runBundleTests,
+  defaultRegexEvaluator,
   type RunBundleTestsOptions,
   type TestRunResult,
   type TestRunSummary,
+  type RegexEvalResult,
+  type RegexEvaluator,
 } from './runner.js';
 export {
   buildSyntheticBim,

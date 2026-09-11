@@ -13,15 +13,26 @@
 //! file and exercises functions from all three via `use super::*` plus the
 //! re-exports below.
 
+#[path = "spatial_canonical_parent.rs"]
+mod spatial_canonical_parent;
 #[path = "spatial_elevation.rs"]
 mod spatial_elevation;
 #[path = "spatial_invariant.rs"]
 mod spatial_invariant;
+#[path = "spatial_lookups.rs"]
+mod spatial_lookups;
 #[path = "spatial_tree.rs"]
 mod spatial_tree;
 
+use self::spatial_canonical_parent::resolve_aggregate_canonical_parents;
 use self::spatial_elevation::extract_elevation_if_storey;
+use self::spatial_lookups::build_element_lookups;
 pub(super) use self::spatial_invariant::spatial_hierarchy_consistency_violations;
+#[cfg(test)]
+pub(super) use self::spatial_canonical_parent::{
+    resolve_aggregate_canonical_parents as resolve_aggregate_canonical_parents_for_tests,
+    resolve_aggregate_canonical_parents_with_budget,
+};
 use self::spatial_tree::build_spatial_nodes_recursive;
 use super::types::{EntityMetadata, Relationship, SpatialHierarchyData, SpatialNode};
 use ifc_lite_core::EntityDecoder;
@@ -114,14 +125,16 @@ pub(super) fn build_spatial_hierarchy(
     // it always wins; ties within a kind resolve to the first occurrence in
     // file order (`relationships` preserves source/parse order), never a
     // HashMap's iteration order.
-    let mut canonical_parent: FxHashMap<u32, u32> = FxHashMap::default();
-    for rel in relationships {
-        if rel.rel_type.to_uppercase() == "IFCRELAGGREGATES" {
-            canonical_parent
-                .entry(rel.related_id)
-                .or_insert(rel.relating_id);
-        }
-    }
+    // Each spatial child's canonical IFCRELAGGREGATES parent, resolved per
+    // child in `spatial_canonical_parent.rs`: plain first-declared-wins,
+    // except a candidate that would close an aggregation cycle back through
+    // the child is skipped first (#4246 - the same rule as
+    // packages/parser/src/spatial-hierarchy-canonical-parent.ts's
+    // computeCanonicalParent). The IFCRELCONTAINEDINSPATIALSTRUCTURE
+    // promotion below (no Aggregates edge at all, #1075) is layered on top,
+    // unaffected by that rule.
+    let mut canonical_parent: FxHashMap<u32, u32> =
+        resolve_aggregate_canonical_parents(relationships);
 
     for rel in relationships {
         let rel_type_upper = rel.rel_type.to_uppercase();
@@ -225,6 +238,11 @@ pub(super) fn build_spatial_hierarchy(
     // 0, level: 0) while its real parent's children_ids either still names it
     // as a child, or the parent chain above it was intentionally truncated -
     // two representations of the same entity's place in the tree disagreeing.
+    // Snapshot the project-reachable node set before rescuing orphans: the
+    // first-declared storey ruling below (#4310) only competes among these,
+    // matching packages/parser, which never visits an orphan storey.
+    let project_reachable: FxHashSet<u32> = nodes_map.keys().copied().collect();
+
     for &entity_id in &spatial_entity_ids {
         if visited.contains(&entity_id) || canonical_parent.contains_key(&entity_id) {
             continue;
@@ -302,54 +320,23 @@ pub(super) fn build_spatial_hierarchy(
     );
 
 
-    // Build lookup maps for element containment
-    let mut element_to_storey = Vec::new();
-    let mut element_to_building = Vec::new();
-    let mut element_to_site = Vec::new();
-    let mut element_to_space = Vec::new();
-
-    for rel in relationships {
-        if rel.rel_type.to_uppercase() == "IFCRELCONTAINEDINSPATIALSTRUCTURE" {
-            let spatial_id = rel.relating_id;
-            let element_id = rel.related_id;
-
-            // Skip a target that was promoted to a spatial-structure node above: it is
-            // not a leaf element, so it has no place in these element_to_* lookups
-            // (mirrors containedElements excluding containedSpatialChildren in
-            // packages/parser/src/spatial-hierarchy-builder.ts).
-            let target_is_spatial = entity_map
-                .get(&element_id)
-                .map(|e| {
-                    let target_type_upper = e.type_name.to_uppercase();
-                    is_spatial_type(&target_type_upper) && target_type_upper != "IFCPROJECT"
-                })
-                .unwrap_or(false);
-            if target_is_spatial {
-                continue;
-            }
-
-            if let Some(spatial_node) = nodes_map.get(&spatial_id) {
-                let type_upper = spatial_node.type_name.to_uppercase();
-                if type_upper == "IFCBUILDINGSTOREY" {
-                    element_to_storey.push((element_id, spatial_id));
-                } else if is_building_like_spatial_type(&type_upper) {
-                    element_to_building.push((element_id, spatial_id));
-                } else if type_upper == "IFCSITE" {
-                    element_to_site.push((element_id, spatial_id));
-                } else if is_space_like_spatial_type(&type_upper) {
-                    element_to_space.push((element_id, spatial_id));
-                }
-            }
-        }
-    }
+    let lookups = build_element_lookups(
+        relationships,
+        &entity_map,
+        &nodes_map,
+        &project_reachable,
+        is_spatial_type,
+        is_building_like_spatial_type,
+        is_space_like_spatial_type,
+    );
 
     SpatialHierarchyData {
         nodes: nodes_map.into_values().collect(),
         project_id,
-        element_to_storey,
-        element_to_building,
-        element_to_site,
-        element_to_space,
+        element_to_storey: lookups.storey,
+        element_to_building: lookups.building,
+        element_to_site: lookups.site,
+        element_to_space: lookups.space,
     }
 }
 

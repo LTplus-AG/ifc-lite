@@ -65,6 +65,22 @@ describe('previewSetPattern', () => {
     assert.deepEqual(previewSetPattern('', SETS), { isPattern: false, isInvalid: false, matches: [] });
     assert.deepEqual(previewSetPattern('   ', SETS), { isPattern: false, isInvalid: false, matches: [] });
   });
+
+  it('flags a catastrophic-backtracking-shaped pattern as invalid instead of throwing', () => {
+    // `compileNameMatcher` THROWS for this shape (see @ifc-lite/lists, via
+    // @ifc-lite/regex-guard). This function runs on every keystroke via the
+    // caller's `useMemo` with no surrounding try/catch, so if this call
+    // site stopped catching that throw, typing `/(a+)+$/` into the column
+    // builder would crash the whole panel mid-keystroke rather than
+    // showing the existing "Invalid pattern" warning. Asserting
+    // `doesNotThrow` — not just the return value — is what catches that
+    // regression.
+    assert.doesNotThrow(() => previewSetPattern('/(a+)+$/', SETS));
+    const p = previewSetPattern('/(a+)+$/', SETS);
+    assert.equal(p.isPattern, false);
+    assert.equal(p.isInvalid, true);
+    assert.deepEqual(p.matches, []);
+  });
 });
 
 describe('formatMatchHint', () => {

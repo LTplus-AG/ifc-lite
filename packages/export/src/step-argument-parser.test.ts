@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { replaceStepArgument, splitTopLevelStepArguments } from './step-argument-parser.js';
+import { replaceStepArgument, splitTopLevelArgs, splitTopLevelStepArguments } from './step-argument-parser.js';
 
 describe('replaceStepArgument slot validation', () => {
   const LINE = "#5=IFCWALLTYPE('0OSuGGYUFyIf0LtE29OSuT',$,'WT1',$,$,(#30),$,$,$,.STANDARD.);";
@@ -167,6 +167,130 @@ describe('splitTopLevelStepArguments contract', () => {
   });
 });
 
+/**
+ * LTplus-AG/ifc-lite#4162: the three structural checks
+ * (quote-parity / paren-depth / final-depth) all pass on a slot list that is
+ * NOT the record's actual arguments, when an undoubled `'` inside one
+ * string-typed argument reads as a string spanning into the NEXT one — the
+ * phantom string swallows a real boundary (`),$,IFCLABEL(` and similar), so
+ * the text between two real slots gets folded into one part while every
+ * structural check stays clean. `replaceStepArgument` then writes a slot BY
+ * INDEX into that wrong part list, corrupting a record that still looks
+ * well-formed. A per-part check — every returned part must itself be one
+ * well-formed STEP value — catches what the structural checks cannot.
+ */
+describe('replaceStepArgument rejects a phantom-string mis-split (#4162)', () => {
+  it('returns null rather than writing a slot into a boundary a phantom string swallowed', () => {
+    // Two separate slots each hold a string with an undoubled apostrophe:
+    // 'a's' and 'b's'. The first phantom string absorbs "),$,IFCLABEL(",
+    // one ')' and one '(', so quote parity and paren depth both look fine at
+    // the end even though the split landed on the wrong boundaries.
+    const line = "#5=IFCLABEL('guid',$,IFCLABEL('a's'),$,IFCLABEL('b's'),$);";
+    expect(replaceStepArgument(line, 3, "'X'")).toBeNull();
+  });
+
+  it('splitTopLevelStepArguments itself rejects the phantom-string input, not just the caller', () => {
+    expect(splitTopLevelStepArguments("'guid',$,IFCLABEL('a's'),$,IFCLABEL('b's'),$")).toBeNull();
+  });
+
+  it('rejects a comment sitting alone between two commas as its own phantom slot', () => {
+    // A comment has no value of its own; treating it as one more empty slot
+    // (like `a,,b`) would shift the index of every real argument after it.
+    expect(splitTopLevelStepArguments("'guid',$,'Name',/* c */,$")).toBeNull();
+  });
+
+  it('still accepts a comment attached to a real value in the same slot', () => {
+    // The comment decorates the value in its own slot rather than occupying
+    // a slot of its own — no boundary is ambiguous here.
+    expect(splitTopLevelStepArguments('$,/* renamed */ $')).toEqual(['$', '/* renamed */ $']);
+  });
+
+  it('does not silently keep the pre-#4162 line: a caller reading null must not treat it as unchanged', () => {
+    // Contract check, not a caller test: null must be distinguishable from
+    // "no change requested". `rewriteTypeOwnedPsetLine` (type-owned-psets.ts)
+    // is the one production caller, and already falls back to the
+    // pre-rewrite line with `repointed: false` plus a surfaced warning on
+    // null -- verified failure is surfaced, not a silent corruption.
+    const line = "#5=IFCLABEL('guid',$,IFCLABEL('a's'),$,IFCLABEL('b's'),$);";
+    const out = replaceStepArgument(line, 3, "'X'");
+    expect(out).not.toBe(line);
+    expect(out).toBeNull();
+  });
+});
+
+/**
+ * A `/* ... *​/` comment's content is unrestricted ISO-10303-21 text — nothing
+ * stops it containing a comma, an unbalanced paren, or an odd number of `'`.
+ * The outer scan in `splitTopLevelStepArguments` (unlike `isWellFormedStepSlot`,
+ * which already skips comments via its own `skipTrivia`) had no comment
+ * awareness at all, so it read a comma inside a comment as a top-level
+ * separator, producing a phantom fragment beginning with `/` that
+ * `isWellFormedStepSlot` then rejected — turning a fully legal line into a
+ * `null` split. Previously silent (the null was swallowed as "no change");
+ * #4173 made `rescaleEntityLengths` throw on it instead, so a legal comment
+ * now crashed a legal export.
+ */
+describe('splitTopLevelStepArguments skips comment content in the outer scan', () => {
+  it('does not read a comma inside a comment as a top-level separator', () => {
+    expect(splitTopLevelStepArguments('1,/* a, b */2')).toEqual(['1', '/* a, b */2']);
+  });
+
+  it('does not let an unbalanced paren inside a comment corrupt the depth count', () => {
+    expect(splitTopLevelStepArguments('1,/* ( */2')).toEqual(['1', '/* ( */2']);
+  });
+
+  it('does not let an apostrophe inside a comment toggle string state', () => {
+    expect(splitTopLevelStepArguments("#1,/* wall's edge */5.048")).toEqual(['#1', "/* wall's edge */5.048"]);
+  });
+
+  it('still rejects a comment sitting alone as its own phantom slot (#4162 still holds)', () => {
+    expect(splitTopLevelStepArguments('#1,/* c */,#2')).toBeNull();
+  });
+
+  it('a top-level comma glued directly to the closing "*/" is still a boundary', () => {
+    // Same `skipStepComment` off-by-one hazard as `splitTopLevelArgs`: it must
+    // stop AT `*/` (`end + 2`), not past it, or the comma right after a
+    // comment attached to a real value gets swallowed into that value's slot.
+    expect(splitTopLevelStepArguments('5/* c */,#2')).toEqual(['5/* c */', '#2']);
+  });
+});
+
+/**
+ * ISO 10303-21 binary literal (`"..."`, e.g. `"0123ABC"`) — confirmed legal
+ * in any slot against ifcopenshell's own tokenizer (`IfcParse.cpp`,
+ * `GeneralTokenPtr`: `else if (first == '"') { token.type = Token_BINARY; }`).
+ * `isWellFormedStepSlot`'s `parseValue` did not recognize it as a value
+ * (only `'`, `(`, `$`, `*`, and a bare-token character class), so a
+ * perfectly legal line containing one was rejected outright by #4162's
+ * per-part check — a regression this suite pins.
+ */
+describe('replaceStepArgument accepts a binary literal in any slot (ISO 10303-21)', () => {
+  it('splits a line whose Description is a binary literal', () => {
+    expect(splitTopLevelStepArguments('\'Len\',"0123ABC",$,5000.,$')).toEqual([
+      "'Len'",
+      '"0123ABC"',
+      '$',
+      '5000.',
+      '$',
+    ]);
+  });
+
+  it('replaces a different slot on a line carrying a binary literal, leaving it byte-identical', () => {
+    const line = '#1=IFCQUANTITYLENGTH(\'Len\',"0123ABC",$,5000.,$);';
+    expect(replaceStepArgument(line, 3, '5.')).toBe(
+      '#1=IFCQUANTITYLENGTH(\'Len\',"0123ABC",$,5.,$);',
+    );
+  });
+
+  it('rejects an unterminated binary literal (opening quote never closes)', () => {
+    expect(splitTopLevelStepArguments('\'Len\',"0123ABC,$,5000.,$')).toBeNull();
+  });
+
+  it('accepts a binary literal nested inside a typed value / list', () => {
+    expect(splitTopLevelStepArguments('IFCBINARY("00FF"),$')).toEqual(['IFCBINARY("00FF")', '$']);
+  });
+});
+
 describe('replaceStepArgument still accepts every well-formed list', () => {
   it('keeps a comma inside a quoted string out of the split', () => {
     const line = "#5=IFCWALLTYPE('0OSuGGYU',$,'WT1, exterior',$,$,(#30),$,$,$,.STANDARD.);";
@@ -192,5 +316,113 @@ describe('replaceStepArgument still accepts every well-formed list', () => {
     expect(replaceStepArgument(line, 5, '(#33)')).toBe(
       "#5=IFCWALLTYPE('0OSuGGYU',\n$,\n'WT1',$,$,(#33),$,$,$,.STANDARD.);",
     );
+  });
+});
+
+/**
+ * #4227: `splitTopLevelArgs` shipped with none of `splitTopLevelStepArguments`'s
+ * comment-skip logic, so a `,` inside a `/* ... *​/` comment inside an
+ * argument list was read as a top-level argument separator — a phantom slot
+ * boundary that let a hidden/deleted `#N` reference survive
+ * `filterHiddenRefsFromRelationshipLine`'s per-slot exclusion check (that
+ * check only matches a slot that is EXACTLY `#N`; the split comment left the
+ * ref attached to a slot like `comment *​/#5`, which never matches). Both
+ * splitters now share `skipStepComment`.
+ */
+describe('splitTopLevelArgs skips comment content in the outer scan (#4227)', () => {
+  it('does not read a comma inside a comment as an argument boundary', () => {
+    // The exact adversarial argument list from #4227 (the record wrapper is
+    // exercised end-to-end in reference-collector.test.ts).
+    expect(splitTopLevelArgs("'guid',$,$,$,#1,/* void, comment */#5")).toEqual([
+      "'guid'",
+      '$',
+      '$',
+      '$',
+      '#1',
+      '/* void, comment */#5',
+    ]);
+  });
+
+  it('a commented comma inside a NESTED list still resolves to the right slot boundaries', () => {
+    expect(splitTopLevelArgs("$,(#2,/* c, with a comma */#3),#1")).toEqual([
+      '$',
+      '(#2,/* c, with a comma */#3)',
+      '#1',
+    ]);
+  });
+
+  it('a comment containing an apostrophe (odd quote count) does not flip string-scan state', () => {
+    // An undoubled `'` inside a comment must not be read as opening a string
+    // — if it were, the comma in the next real argument would be swallowed.
+    expect(splitTopLevelArgs("$,/* it's a void */#5,$")).toEqual(['$', "/* it's a void */#5", '$']);
+  });
+
+  it('a comment before the argument list even starts is untouched (no regression)', () => {
+    // splitTopLevelArgs only ever receives the text INSIDE a record's `(` and
+    // `)` — a comment before that `(` is stripped by the caller's record
+    // regex before this function ever sees it. Pinned here as a control: the
+    // comment-skip branch added for #4227 must not affect a plain list with
+    // no comment in it at all.
+    expect(splitTopLevelArgs("'guid',$,$,$,#1,#5")).toEqual(["'guid'", '$', '$', '$', '#1', '#5']);
+  });
+
+  it('a top-level comma glued directly to the closing "*/" is still a boundary', () => {
+    // `skipStepComment` must stop exactly at `*/` (`end + 2`), not one char
+    // past it. Consuming an extra char swallows a comma with zero whitespace
+    // after the comment, merging the next argument into this one.
+    expect(splitTopLevelArgs('$,/* c */,#5')).toEqual(['$', '/* c */', '#5']);
+  });
+});
+
+/**
+ * The nesting bound (`MAX_SLOT_NESTING_DEPTH`, `step-slot-grammar.ts`).
+ *
+ * The per-slot grammar is recursive descent over text this process did not
+ * write, so before the bound a deeply nested list did not return `null` — it
+ * threw a `RangeError` out of `splitTopLevelStepArguments`, a third outcome for
+ * a function documented to return parts or `null` and callers that treat `null`
+ * as "this edit cannot be made". One malformed record would abort a whole
+ * export instead of refusing one edit.
+ *
+ * Three cases, because the bound has to be right in three different ways: it
+ * must not refuse what it was set above (real files nest 3 deep at most, so 64
+ * has room to spare), it must actually refuse past itself, and — the case the
+ * bound exists for — it must turn the depth that used to blow the stack into a
+ * clean `null`. Depth 5000 was measured to throw here before the bound (fresh
+ * Node 22 and vitest alike gave out around 3765).
+ */
+describe('a slot nested past the grammar bound is refused, not thrown out of', () => {
+  /** `'g',((((…1…)))),'b'`: one nested list `depth` parens deep, between two plain slots. */
+  const nested = (depth: number): string => `'g',${'('.repeat(depth)}1${')'.repeat(depth)},'b'`;
+
+  it('accepts nesting just under the bound', () => {
+    // The parts, not the count. A length assertion passes even if the 64-deep
+    // middle slot comes back truncated or rewritten, which is the one payload
+    // the accept side of the bound exists to protect.
+    expect(splitTopLevelStepArguments(nested(64))).toEqual([
+      "'g'",
+      `${'('.repeat(64)}1${')'.repeat(64)}`,
+      "'b'",
+    ]);
+  });
+
+  it('returns null one level past the bound', () => {
+    expect(splitTopLevelStepArguments(nested(65))).toBeNull();
+  });
+
+  it('returns null at a depth that used to throw, rather than throwing', () => {
+    // `toBeNull` alone would be satisfied by a throw only in the sense that the
+    // test fails either way; asserting the call does not throw FIRST names which
+    // of the two regressions came back.
+    expect(() => splitTopLevelStepArguments(nested(5000))).not.toThrow();
+    expect(splitTopLevelStepArguments(nested(5000))).toBeNull();
+  });
+
+  it('a record whose argument nests past the bound refuses the by-index write', () => {
+    // The reason the bound is in this module and not left to each caller: a
+    // throw would have escaped `replaceStepArgument` too, past the `null` its
+    // own contract promises.
+    const line = `#7=IFCFOO(${'('.repeat(5000)}1${')'.repeat(5000)},$,$);`;
+    expect(replaceStepArgument(line, 1, '#33')).toBeNull();
   });
 });

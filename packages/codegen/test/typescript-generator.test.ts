@@ -46,6 +46,35 @@ describe('TypeScript Generator', () => {
       expect(code.entities).toMatch(/[^\n]\n$/);
     });
 
+    /**
+     * attr.type reaches two emitters: the interface property type, where tsc
+     * would reject a stray `UNIQUE`, and schema-registry.ts, where it is
+     * emitted inside a string literal that no typecheck can ever look at.
+     * Assert both, so a leak cannot hide in the quiet channel.
+     */
+    it('never emits an EXPRESS element qualifier into a type or the registry', () => {
+      const schema = parseExpressSchema(`
+        SCHEMA TEST;
+
+        ENTITY EntQualified;
+          SymbolicBound : LIST [1:Dim] OF UNIQUE IfcGridAxis;
+          Unbounded : LIST OF UNIQUE IfcGridAxis;
+          OptionalUnique : ARRAY [1:3] OF OPTIONAL UNIQUE IfcGridAxis;
+        END_ENTITY;
+
+        END_SCHEMA;
+      `);
+
+      const code = generateTypeScript(schema);
+
+      expect(code.entities).not.toMatch(/\bUNIQUE\b/);
+      expect(code.entities).toContain('SymbolicBound: IfcGridAxis[];');
+      expect(code.schemaRegistry).not.toMatch(/\bUNIQUE\b/);
+      // Paired with the negative above so an empty or attribute-less registry
+      // cannot satisfy it by having nothing to leak.
+      expect(code.schemaRegistry).toContain("name: 'SymbolicBound',\n          type: 'IfcGridAxis',");
+    });
+
     it('should generate interface with inheritance', () => {
       const schema = parseExpressSchema(`
         SCHEMA TEST;

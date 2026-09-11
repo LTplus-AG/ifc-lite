@@ -419,6 +419,13 @@ Error: boom
 // classifyPath / classifyDiff
 // ---------------------------------------------------------------------------
 
+test('classifyPath: a test-support module that only registers assertions for a test entrypoint is a test (#4501)', () => {
+  // scripts/test-wasm-contract.mjs imports it and nothing else does; editing it
+  // changes what that suite asserts, so it must not read as production.
+  assert.equal(classifyPath('scripts/lib/shard-refusal-boundary.mjs'), 'test');
+  // The allowlist is exact: its siblings are real tooling and stay production.
+  assert.equal(classifyPath('scripts/lib/revert-oracle.mjs'), 'production');
+});
 test('classifyPath: production sources', () => {
   assert.equal(classifyPath('packages/renderer/src/device.ts'), 'production');
   assert.equal(classifyPath('apps/viewer/src/hooks/useSymbolicAnnotations.ts'), 'production');
@@ -570,6 +577,22 @@ test('classifyPath: images, fonts, and other binaries are inert, not production'
   assert.equal(classifyPath('apps/viewer/public/fonts/inter.ttf'), 'inert');
   assert.equal(classifyPath('scripts/perf/evidence/report.pdf'), 'inert');
   assert.equal(classifyPath('scripts/perf/evidence/archive.zip'), 'inert');
+});
+
+test('classifyPath: .svg icon source stays inert even though vite.config.ts genuinely transforms it — the untested output is inert, the pipeline that produces it is not (#4140 follow-up)', () => {
+  // apps/viewer/vite.config.ts really does rewrite/optimize SVG bytes (string
+  // theming, then svgo.optimize()) for apps/viewer/src/icons/* — unlike every
+  // other extension on INERT_SUFFIXES, .svg is NOT inert for lack of a
+  // consumer. It stays inert only because node --test's
+  // vite-module-hooks-impl.mjs stubs every `~icons/*` import before a test
+  // observes that transform's output. Prove both halves of that claim stay
+  // true: the icon source itself classifies as inert, AND the pipeline file
+  // that actually runs the transform (vite.config.ts, under node/vite, not
+  // under the `test/` directory sweep) stays production. If vite.config.ts
+  // ever got swept into inert by a careless copy-paste of the .svg entry,
+  // this must fail.
+  assert.equal(classifyPath('apps/viewer/src/icons/menu.svg'), 'inert');
+  assert.equal(classifyPath('apps/viewer/vite.config.ts'), 'production');
 });
 
 test('classifyPath: inertness is about the file kind, not the operation — a deleted image is still inert', () => {

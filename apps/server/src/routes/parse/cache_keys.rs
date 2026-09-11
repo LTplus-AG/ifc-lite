@@ -7,7 +7,7 @@
 use super::ParseQuery;
 use crate::services::cache::DiskCache;
 use crate::services::{OpeningFilterMode, ParquetLayout};
-use ifc_lite_processing::{SymbolicData, TessellationQuality};
+use ifc_lite_processing::{SymbolicDataWithProvenance, TessellationQuality};
 
 /// Cache-key segment for a tessellation level. Empty for the default level so
 /// every pre-existing cache entry (all written at implicit `medium`) stays
@@ -74,9 +74,11 @@ pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: Tessel
 /// like every other transport, so the pre-existing (unversioned) entries hold
 /// raw IFC Z-up meshes and would silently serve a ROTATED model to a client
 /// that rightly expects the uniform wire frame. A new suffix retires them.
+/// v3 adds direct symbolic fill provenance (#4459), retiring otherwise valid
+/// JSON responses that cannot suppress duplicate 3D fills.
 /// Bump again on any change to what `ParseResponse` means on the wire.
 pub(crate) fn json_response_cache_key(cache_key: &str) -> String {
-    format!("{cache_key}-json-v2")
+    format!("{cache_key}-json-v3")
 }
 
 /// The flat Parquet geometry entry for a request cache key, under the LAYOUT
@@ -234,6 +236,8 @@ async fn has_entry(cache: &DiskCache, key: &str) -> bool {
 }
 
 /// Build the symbolic-data cache key for a given file cache key.
+/// v2 requires direct fill provenance (#4459); v1 remains decodable but is
+/// not a fresh extraction for 3D routing. Geometry namespaces stay unchanged.
 ///
 /// The 2D symbol stream (`IfcAnnotation` + `IfcGrid`) is cached separately
 /// from geometry so binary-transport endpoints (Parquet, optimized Parquet,
@@ -242,14 +246,14 @@ async fn has_entry(cache: &DiskCache, key: &str) -> bool {
 /// is the full `{hash}-{opening_filter}` key, matching the value embedded in
 /// each response's metadata header.
 pub(crate) fn symbolic_cache_key(cache_key: &str) -> String {
-    format!("{}-symbolic-v1", cache_key)
+    format!("{}-symbolic-v2", cache_key)
 }
 
-/// Serialize symbolic data and write it to the cache under `{cache_key}-symbolic-v1`.
+/// Serialize symbolic data and write it to the cache under `{cache_key}-symbolic-v2`.
 ///
 /// Always stores the JSON (even when empty) so the fetch endpoint can return a
 /// definitive `200` with empty arrays rather than looping on `202`.
-pub(crate) async fn cache_symbolic_data(cache: &DiskCache, cache_key: &str, symbolic: &SymbolicData) {
+pub(crate) async fn cache_symbolic_data(cache: &DiskCache, cache_key: &str, symbolic: &impl serde::Serialize) {
     match serde_json::to_vec(symbolic) {
         Ok(bytes) => {
             let key = symbolic_cache_key(cache_key);
@@ -273,7 +277,7 @@ pub(crate) async fn cache_symbolic_data(cache: &DiskCache, cache_key: &str, symb
 /// `GET /api/v1/parse/symbolic/{cache_key}` answers `202` to a key nobody
 /// writes -- the same shape as the geometry/data-model trap in #3869.
 ///
-/// [`load_cached_symbolic`] cannot stand in: it answers `SymbolicData::default()`
+/// [`load_cached_symbolic`] cannot stand in: it answers `SymbolicDataWithProvenance::default()`
 /// for an absent entry and for a model with no 2D symbols alike, so absence
 /// there is indistinguishable from success.
 pub(crate) async fn has_cached_symbolic(cache: &DiskCache, cache_key: &str) -> bool {
@@ -282,17 +286,17 @@ pub(crate) async fn has_cached_symbolic(cache: &DiskCache, cache_key: &str) -> b
 
 /// Load cached symbolic data for `cache_key`, defaulting to empty when the
 /// entry is absent or unreadable.
-pub(crate) async fn load_cached_symbolic(cache: &DiskCache, cache_key: &str) -> SymbolicData {
+pub(crate) async fn load_cached_symbolic(cache: &DiskCache, cache_key: &str) -> SymbolicDataWithProvenance {
     let key = symbolic_cache_key(cache_key);
     match cache.get_bytes(&key).await {
         Ok(Some(bytes)) => serde_json::from_slice(&bytes).unwrap_or_else(|e| {
             tracing::error!(error = %e, cache_key = %cache_key, "Failed to parse cached symbolic data");
-            SymbolicData::default()
+            SymbolicDataWithProvenance::default()
         }),
-        Ok(None) => SymbolicData::default(),
+        Ok(None) => SymbolicDataWithProvenance::default(),
         Err(e) => {
             tracing::error!(error = %e, cache_key = %cache_key, "Failed to read cached symbolic data");
-            SymbolicData::default()
+            SymbolicDataWithProvenance::default()
         }
     }
 }

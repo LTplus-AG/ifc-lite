@@ -355,23 +355,37 @@ export const createPinboardSlice: StateCreator<
     if (refs.length === 0) return;
     set((state) => {
       const next = new Set<string>(state.pinboardEntities);
-      for (const ref of refs) {
-        next.delete(entityRefToString(ref));
-      }
+      // Only refs that were IN the basket may touch the isolation below (a never-pinned ref has no claim on its global id).
+      const removed = refs.filter((ref) => next.delete(entityRefToString(ref)));
+      if (removed.length === 0) return {};
       if (next.size === 0) {
         return { pinboardEntities: next, isolatedEntities: null, activeBasketViewId: null };
       }
-      // Incrementally remove globalIds from existing isolation set instead of re-parsing all
+      // Two distinct EntityRefs can derive the SAME global id
+      // (`toGlobalIdForRef` falls back to the raw expressId for the
+      // 'legacy'/'default'/'__legacy__' sentinels and for any modelId not yet
+      // registered in `models`), so deleting each removed ref's global id
+      // outright could evict one that a surviving basket entry still
+      // requires. Recompute the surviving basket's own global ids and delete
+      // only ids that set no longer contains.
+      //
+      // The deletion is applied to the PREVIOUS isolation rather than
+      // replacing it with the recomputed set, to stay symmetric with
+      // `addToBasket`, which seeds from `state.isolatedEntities` and so
+      // preserves ids this slice did not author (a restored BCF viewpoint, a
+      // lens rule, a search isolate). A wholesale recompute would let pinning
+      // one element and unpinning another quietly destroy the isolation the
+      // user was working inside.
+      const surviving = basketToGlobalIds(next, state.models);
       const prevIsolated = state.isolatedEntities;
-      if (prevIsolated) {
-        const isolatedEntities = new Set<number>(prevIsolated);
-        for (const ref of refs) {
-          isolatedEntities.delete(refToGlobalId(ref, state.models));
-        }
-        return { pinboardEntities: next, isolatedEntities, activeBasketViewId: null };
+      if (prevIsolated === null) {
+        return { pinboardEntities: next, isolatedEntities: surviving, activeBasketViewId: null };
       }
-      // Fallback: full recompute if no existing isolation set
-      const isolatedEntities = basketToGlobalIds(next, state.models);
+      const isolatedEntities = new Set<number>(prevIsolated);
+      for (const ref of removed) {
+        const gid = refToGlobalId(ref, state.models);
+        if (!surviving.has(gid)) isolatedEntities.delete(gid);
+      }
       return { pinboardEntities: next, isolatedEntities, activeBasketViewId: null };
     });
   },

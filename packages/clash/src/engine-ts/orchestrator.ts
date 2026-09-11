@@ -19,6 +19,50 @@ import {
 import type { ClashKernel } from './kernel.js';
 
 /**
+ * Thrown by {@link runClash} when a `tolerance` — either the run-level
+ * `ClashSettings.tolerance` or a per-rule `ClashRule.tolerance` — is not a
+ * finite number (`NaN`, `+Infinity`, `-Infinity`).
+ *
+ * `??` (the substitution `runClash` uses for an omitted tolerance) only
+ * triggers on `null`/`undefined`, not `NaN`, so a `NaN` tolerance — e.g. from
+ * `Number('')`/`Number('abc')` on a cleared UI input, or a unit-conversion
+ * division by zero upstream — used to sail through unchanged. It then poisons
+ * `Math.max(tolerance, rule.clearance ?? 0)` (`NaN` on any `Math.max` operand
+ * is always `NaN`), which poisons the broad-phase AABB inflation
+ * (`inflate(bounds, NaN)`), which fails every BVH overlap comparison, which
+ * yields zero candidate pairs — silently, with the run still reporting
+ * `classifyRuleCoverage() === 'clean'` because `matchedA`/`matchedB` are
+ * selector-match counts taken before any geometry ran (#4244). Rejecting the
+ * non-finite value at the door, before it can reach `Math.max`, makes that
+ * whole chain structurally unreachable rather than merely harder to trigger.
+ *
+ * A NEGATIVE finite tolerance is unaffected by this check and keeps its
+ * existing, correct behaviour: `Math.max(tolerance, clearance ?? 0)` clamps
+ * it to at least the clearance (or zero), same as before.
+ */
+export class NonFiniteToleranceError extends Error {
+  readonly source: string;
+  readonly value: number;
+
+  constructor(source: string, value: number) {
+    super(
+      `runClash: ${source} is ${value} (not a finite number) — refusing to run, ` +
+        'which would silently poison the broad-phase AABB margin and report a ' +
+        'false "clean" result over zero examined geometry',
+    );
+    this.name = 'NonFiniteToleranceError';
+    this.source = source;
+    this.value = value;
+  }
+}
+
+function requireFiniteTolerance(source: string, value: number): void {
+  if (!Number.isFinite(value)) {
+    throw new NonFiniteToleranceError(source, value);
+  }
+}
+
+/**
  * Backend-agnostic clash orchestration: selection, exclusions, severity, stable
  * identity, dedup, ordering and summary. The geometry (broad + narrow phase) is
  * delegated to a `ClashKernel` (TypeScript or Rust/WASM), so swapping backends
@@ -32,6 +76,7 @@ export async function runClash(
   kernel: ClashKernel,
 ): Promise<ClashResult> {
   const tolerance = settings.tolerance ?? DEFAULT_CLASH_SETTINGS.tolerance;
+  requireFiniteTolerance('settings.tolerance', tolerance);
   const excludeVoidsAndHosts =
     settings.excludeVoidsAndHosts ?? DEFAULT_CLASH_SETTINGS.excludeVoidsAndHosts;
   const exclusions = excludeVoidsAndHosts ? settings.exclusions : undefined;
@@ -84,7 +129,7 @@ export async function runClash(
           matchedKeysB!.add(el.key);
         }
       }
-      ruleCoverage.push({
+      const coverageEntry: ClashRuleCoverage = {
         rule: rule.id,
         matchedA: groupA.length,
         matchedB: groupB ? groupB.length : null,
@@ -92,9 +137,11 @@ export async function runClash(
         matchedKeysB: matchedKeysB ? [...matchedKeysB].sort() : null,
         ...(membersA ? { fromMembersA: true } : {}),
         ...(membersB ? { fromMembersB: true } : {}),
-      });
+      };
+      ruleCoverage.push(coverageEntry);
 
       const ruleTolerance = rule.tolerance ?? tolerance;
+      requireFiniteTolerance(`rule "${rule.id}".tolerance`, ruleTolerance);
       settings.onProgress?.({ phase: 'broad', rule: rule.id, done: 0, total: 0 });
 
       const { records, candidatesProcessed, candidatesDropped } = await kernel.detectRule(
@@ -109,6 +156,10 @@ export async function runClash(
           ? (done, total) => settings.onProgress!({ phase: 'narrow', rule: rule.id, done, total })
           : undefined,
       );
+      // Threaded onto the coverage entry already pushed above — see
+      // `ClashRuleCoverage.candidatesExamined`'s doc for why this is a
+      // diagnostic, not a coverage verdict (#4244).
+      coverageEntry.candidatesExamined = candidatesProcessed;
       remaining = Math.max(0, remaining - candidatesProcessed);
       droppedPairs += candidatesDropped;
 

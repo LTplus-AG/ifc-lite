@@ -81,10 +81,30 @@ export function getConstraintMismatchReason(
   }
 }
 
+/**
+ * Render the `xs:facet="rawValue"` list for a bounds constraint's
+ * `unparseableFacets`, shared by the mismatch-reason and
+ * expected-value renderers so both name the same broken facet(s).
+ */
+function formatUnparseableFacets(
+  unparseableFacets: NonNullable<IDSBoundsConstraint['unparseableFacets']>
+): string {
+  return unparseableFacets.map((f) => `xs:${f.facet}="${f.rawValue}"`).join(', ');
+}
+
 function getBoundsMismatchReason(
   constraint: IDSBoundsConstraint,
   actualValue: string | number | boolean
 ): string {
+  if (constraint.unparseableFacets !== undefined && constraint.unparseableFacets.length > 0) {
+    const facets = formatUnparseableFacets(constraint.unparseableFacets);
+    return (
+      `this xs:restriction is malformed and cannot be evaluated: ` +
+      `${facets} did not parse as a number — fix the IDS specification ` +
+      `(every value is being rejected until it is corrected, not just "${actualValue}")`
+    );
+  }
+
   const num =
     typeof actualValue === 'number'
       ? actualValue
@@ -192,6 +212,18 @@ function formatOneFamily(constraint: IDSConstraint): string {
 }
 
 function formatBounds(constraint: IDSBoundsConstraint): string {
+  // A facet present in the XML that failed to parse leaves every
+  // numeric field on the constraint `undefined` (see
+  // `parser/parse-restriction.ts`), which would otherwise fall through
+  // to the `'any value'` default below — self-contradictory for a
+  // restriction that is rejecting everything. Name the broken facet(s)
+  // instead so the "expected" text sent to the spec author matches the
+  // fail-closed behaviour `matchBounds` actually enforces.
+  if (constraint.unparseableFacets !== undefined && constraint.unparseableFacets.length > 0) {
+    const facets = formatUnparseableFacets(constraint.unparseableFacets);
+    return `a value satisfying the xs:restriction — currently unparseable: ${facets} did not parse as a number`;
+  }
+
   const parts: string[] = [];
 
   if (

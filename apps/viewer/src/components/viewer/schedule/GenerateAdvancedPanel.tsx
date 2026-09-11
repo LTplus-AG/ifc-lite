@@ -36,6 +36,17 @@ export interface GenerateAdvancedPanelProps {
     key: K,
     value: GenerateScheduleOptions[K],
   ) => void;
+  /**
+   * Whether to add a standalone `IfcWorkPlan` container that groups the
+   * generated `IfcWorkSchedule`. Kept out of `GenerateScheduleOptions` (its
+   * own on/off + name pair here) rather than folded into the generator's
+   * options, as an optional feature (see `buildWorkPlanInfo`'s doc comment
+   * for round-trip details).
+   */
+  createWorkPlan: boolean;
+  onCreateWorkPlanChange: (next: boolean) => void;
+  workPlanName: string;
+  onWorkPlanNameChange: (next: string) => void;
 }
 
 export function GenerateAdvancedPanel({
@@ -48,6 +59,10 @@ export function GenerateAdvancedPanel({
   linkSequences,
   skipEmptyGroups,
   onChange,
+  createWorkPlan,
+  onCreateWorkPlanChange,
+  workPlanName,
+  onWorkPlanNameChange,
 }: GenerateAdvancedPanelProps) {
   return (
     <div className="rounded-md border">
@@ -121,6 +136,23 @@ export function GenerateAdvancedPanel({
             checked={skipEmptyGroups}
             onChange={(v) => onChange('skipEmptyGroups', v)}
           />
+          <ToggleRow
+            label="Add an IfcWorkPlan container"
+            description="A standalone plan entity that groups the generated schedule(s). The grouping survives export and re-import."
+            checked={createWorkPlan}
+            onChange={onCreateWorkPlanChange}
+          />
+          {createWorkPlan && (
+            <div className="grid gap-1.5">
+              <Label htmlFor="gen-plan-name">Work plan name</Label>
+              <Input
+                id="gen-plan-name"
+                value={workPlanName}
+                onChange={(e) => onWorkPlanNameChange(e.target.value)}
+                placeholder="Project plan"
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

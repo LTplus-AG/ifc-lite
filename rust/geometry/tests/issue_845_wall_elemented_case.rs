@@ -23,17 +23,29 @@
 use ifc_lite_core::EntityDecoder;
 use ifc_lite_geometry::GeometryRouter;
 
+mod support;
+
 const FIXTURE: &str = "../../tests/models/issues/845_wall_elemented_case.ifc";
 const PANEL_FORWARD_ID: u32 = 145;
 
 fn read_fixture() -> Option<String> {
     match std::fs::read_to_string(FIXTURE) {
         Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture is an LFS pointer and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download real bytes"
+            );
             eprintln!("issue-845 fixture is an LFS pointer — skipping");
             None
         }
         Ok(s) => Some(s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
             eprintln!("issue-845 fixture missing — skipping (run `pnpm fixtures`)");
             None
         }

@@ -1,0 +1,19 @@
+{
+  "initialSource": "d15270bcb16f11da292edf16e689c5cb553e3aa1",
+  "integratedSource": "be6cbd4fe31248cbb0e5c7159bbfaeca680ce430",
+  "fullRustWorkspace": { "passed": 3066, "failed": 0, "ignored": 37 },
+  "finalCacheServerSuite": { "passed": 307, "failed": 0 },
+  "integratedTypecheck": { "tasksPassed": 94, "testSources": 1923 },
+  "fullBuildTasksPassed": 51,
+  "freshWasmContracts": { "passed": 88, "failed": 0, "existingOptionalSkips": 3 },
+  "strictWorkspaceClippy": "passed on integrated source",
+  "freshPythonWheel": {
+    "source": "be6cbd4fe31248cbb0e5c7159bbfaeca680ce430",
+    "unitTestsPassed": 15,
+    "committedReferenceMatches": 4,
+    "existingAdvisory": "issue_1155_halfspace_flyaway triangle-count density"
+  },
+  "performance": "native-load.json pins measured sources and immutable binaries; not a worker-pool claim",
+  "browser": "browser-proof.json; combined PDF UI additionally verifies create/history/export/fresh import after main integration",
+  "hostedCI": "queued at local acceptance; not represented as green"
+}

@@ -17,6 +17,9 @@ use std::sync::Arc;
 mod caches;
 #[path = "decoder/fast_buffers.rs"]
 mod fast_buffers;
+#[path = "decoder/styled_items.rs"]
+mod styled_items;
+pub(crate) type StyledItemIndexResult = std::result::Result<FxHashMap<u32, Vec<u32>>, String>;
 
 /// Pre-built entity index type
 pub type EntityIndex = FxHashMap<u32, (usize, usize)>;
@@ -88,6 +91,7 @@ pub struct EntityDecoder<'a> {
     /// worker's parts exactly like `point_cache`; see
     /// [`Self::take_placement_transform_cache`].
     placement_transform_cache: FxHashMap<u32, [f64; 16]>,
+    styled_item_index: std::sync::OnceLock<StyledItemIndexResult>,
 }
 
 impl<'a> EntityDecoder<'a> {
@@ -107,6 +111,7 @@ impl<'a> EntityDecoder<'a> {
             plane_angle_to_radians_cache: None,
             length_unit_scale_cache: None,
             placement_transform_cache: FxHashMap::default(),
+            styled_item_index: std::sync::OnceLock::new(),
         }
     }
 
@@ -126,6 +131,7 @@ impl<'a> EntityDecoder<'a> {
             plane_angle_to_radians_cache: None,
             length_unit_scale_cache: None,
             placement_transform_cache: FxHashMap::default(),
+            styled_item_index: std::sync::OnceLock::new(),
         }
     }
 
@@ -145,6 +151,7 @@ impl<'a> EntityDecoder<'a> {
             plane_angle_to_radians_cache: None,
             length_unit_scale_cache: None,
             placement_transform_cache: FxHashMap::default(),
+            styled_item_index: std::sync::OnceLock::new(),
         }
     }
 
@@ -301,7 +308,14 @@ impl<'a> EntityDecoder<'a> {
         let mut scanner = crate::parser::EntityScanner::new(self.content);
         let mut project_id: Option<u32> = None;
         while let Some((id, type_name, _, _)) = scanner.next_entity() {
-            if type_name == "IFCPROJECT" {
+            // #4497: STEP keyword case is not significant (ISO 10303-21);
+            // `type_name` is the raw, unnormalised scanner slice, so compare
+            // ASCII-case-insensitively rather than requiring upstream
+            // uppercase. Zero-alloc: `eq_ignore_ascii_case` against a fixed
+            // literal, unlike `schema_helpers::normalise_uppercase` which
+            // allocates a canonical owned copy — not needed here since there
+            // is nothing downstream to reuse the normalised form for.
+            if type_name.eq_ignore_ascii_case("IFCPROJECT") {
                 project_id = Some(id);
                 break;
             }
@@ -331,7 +345,9 @@ impl<'a> EntityDecoder<'a> {
         let mut scanner = crate::parser::EntityScanner::new(self.content);
         let mut project_id: Option<u32> = None;
         while let Some((id, type_name, _, _)) = scanner.next_entity() {
-            if type_name == "IFCPROJECT" {
+            // #4497: see the matching comment in `plane_angle_to_radians`
+            // above — same case-insensitivity fix, same rationale.
+            if type_name.eq_ignore_ascii_case("IFCPROJECT") {
                 project_id = Some(id);
                 break;
             }

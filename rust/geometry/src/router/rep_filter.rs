@@ -63,3 +63,14 @@ pub(crate) fn effective_rep_type(shape_rep: &DecodedEntity) -> Option<&str> {
             .filter(|s| !s.trim().is_empty())
     })
 }
+
+/// Opening Reference geometry describes an existing hole, never a cutter.
+/// Keep ordinary products' rendering convention unchanged; only opening
+/// semantics override the otherwise type-first representation predicate (#4433).
+pub(crate) fn effective_element_rep_type<'a>(element: &DecodedEntity, shape_rep: &'a DecodedEntity) -> Option<&'a str> {
+    if element.ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcOpeningElement)
+        && shape_rep.get_string(1).is_some_and(|id| id.eq_ignore_ascii_case("Reference")) {
+        return Some("Reference");
+    }
+    effective_rep_type(shape_rep)
+}

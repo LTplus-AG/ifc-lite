@@ -1,0 +1,128 @@
+{
+  "issue": 4243,
+  "base": "ac88406ee",
+  "branch": "227a93cd166376b76c9feaa74e7f7fad27f5c941",
+  "fixture": "AC20-FZK-Haus.ifc",
+  "measurement": "Five interleaved fresh-browser pairs; production distributions, actual worker pool, cross-origin isolated, empty browser caches. Worker-model readiness is not renderer readiness. Native probe results are not used for this verdict.",
+  "browser": "151.0.7922.34",
+  "runtimeBytes": {
+    "base": 4680075,
+    "branch": 4706285
+  },
+  "runtimeSha256": {
+    "base": "cbc85b7fe58c2471b75a1be43e351090dc3c66cc2ed66420af19cd5ef17c48c0",
+    "branch": "dc6e6806395bde4028d370851f326ab39563281f2d487f6d24b78ef68c8dddcf"
+  },
+  "samples": [
+    {
+      "side": "base",
+      "round": 1,
+      "ok": true,
+      "entityScanMs": 7,
+      "geometryStreamingMs": 186,
+      "metadataCompleteMs": 224,
+      "workerModelReadyMs": 277.583083,
+      "totalMeshes": 317
+    },
+    {
+      "side": "branch",
+      "round": 1,
+      "ok": true,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 166,
+      "metadataCompleteMs": 216,
+      "workerModelReadyMs": 228.81195800000023,
+      "totalMeshes": 317
+    },
+    {
+      "side": "base",
+      "round": 2,
+      "ok": true,
+      "entityScanMs": 7,
+      "geometryStreamingMs": 163,
+      "metadataCompleteMs": 216,
+      "workerModelReadyMs": 223.7359579999993,
+      "totalMeshes": 317
+    },
+    {
+      "side": "branch",
+      "round": 2,
+      "ok": true,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 163,
+      "metadataCompleteMs": 215,
+      "workerModelReadyMs": 230.4272920000003,
+      "totalMeshes": 317
+    },
+    {
+      "side": "base",
+      "round": 3,
+      "ok": true,
+      "entityScanMs": 7,
+      "geometryStreamingMs": 163,
+      "metadataCompleteMs": 209,
+      "workerModelReadyMs": 220.5570829999997,
+      "totalMeshes": 317
+    },
+    {
+      "side": "branch",
+      "round": 3,
+      "ok": true,
+      "entityScanMs": 7,
+      "geometryStreamingMs": 173,
+      "metadataCompleteMs": 224,
+      "workerModelReadyMs": 232.80099999999948,
+      "totalMeshes": 317
+    },
+    {
+      "side": "base",
+      "round": 4,
+      "ok": true,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 172,
+      "metadataCompleteMs": 225,
+      "workerModelReadyMs": 239.89695800000118,
+      "totalMeshes": 317
+    },
+    {
+      "side": "branch",
+      "round": 4,
+      "ok": true,
+      "entityScanMs": 7,
+      "geometryStreamingMs": 182,
+      "metadataCompleteMs": 232,
+      "workerModelReadyMs": 250.99379100000078,
+      "totalMeshes": 317
+    },
+    {
+      "side": "base",
+      "round": 5,
+      "ok": true,
+      "entityScanMs": 6,
+      "geometryStreamingMs": 167,
+      "metadataCompleteMs": 218,
+      "workerModelReadyMs": 236.64279199999874,
+      "totalMeshes": 317
+    },
+    {
+      "side": "branch",
+      "round": 5,
+      "ok": true,
+      "entityScanMs": 10,
+      "geometryStreamingMs": 174,
+      "metadataCompleteMs": 227,
+      "workerModelReadyMs": 245.8856670000023,
+      "totalMeshes": 317
+    }
+  ],
+  "allGeometryIdentical": true,
+  "geometry": {
+    "meshes": 275,
+    "vertices": 56698,
+    "triangles": 31986,
+    "sourceStamped": 0,
+    "validAliases": 0
+  },
+  "geometryIdentitySha256": "c00cc8d87ef71ef24c6c3b9402e6f375a0523a122f98b79e5a4f847444d7879f",
+  "verdict": "No material ordinary-load regression observed within this small sample variability; no speedup claimed. Opt-in catalog operation latency is not measured by this ordinary-load experiment."
+}

@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::style::fill::extract_color_from_fill_area_style;
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
 use std::collections::HashMap;
 
@@ -99,31 +100,4 @@ fn extract_color_from_text_style(
     let g = colour.get(2)?.as_float()? as f32;
     let b = colour.get(3)?.as_float()? as f32;
     Some([r, g, b, 1.0])
-}
-
-fn extract_color_from_fill_area_style(
-    style: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-) -> Option<[f32; 4]> {
-    let fill_styles_attr = style.get(1)?;
-    let fill_style_refs: Vec<u32> = if let Some(list) = fill_styles_attr.as_list() {
-        list.iter().filter_map(|v| v.as_entity_ref()).collect()
-    } else if let Some(single) = fill_styles_attr.as_entity_ref() {
-        vec![single]
-    } else {
-        return None;
-    };
-    for fs_ref in fill_style_refs {
-        let Ok(fs) = decoder.decode_by_id(fs_ref) else { continue };
-        if fs.ifc_type == IfcType::IfcColourRgb {
-            if let (Some(r), Some(g), Some(b)) = (
-                fs.get(1).and_then(|v| v.as_float()),
-                fs.get(2).and_then(|v| v.as_float()),
-                fs.get(3).and_then(|v| v.as_float()),
-            ) {
-                return Some([r as f32, g as f32, b as f32, 1.0]);
-            }
-        }
-    }
-    None
 }

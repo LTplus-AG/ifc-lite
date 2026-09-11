@@ -17,6 +17,7 @@ import { federationRegistry, type GlobalIdLookup } from '@ifc-lite/renderer';
 import type { ViewerState } from '../index.js';
 import { localIdInParseRange, localIdInOverlay } from '../globalId.js';
 import { viewerTeardown } from '../teardown-registry.js';
+import { modelAppearanceAssets } from '../../lib/appearance/model-assets.js';
 import { modelRemovedScope } from '../teardown-scope.js';
 import {
   endIdsRowFocusPresentation,
@@ -26,6 +27,8 @@ import {
   endClashScenePresentation,
   type ClashSceneTeardown,
 } from '@/lib/clash/visibility-ownership';
+import { markupTransitionPatch } from './drawing2DSlice.markupTransition.js';
+import { upsertModelPatch } from './modelSlice.upsert.js';
 
 export interface ModelSlice {
   // State
@@ -157,11 +160,17 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     // If first model, make it active
     // If adding more models, collapse all existing by default
     if (state.models.size === 0) {
+      // #4159 bug 3: this branch also moves `activeModelId` (null -> model.id)
+      // and goes through the same choke point `setActiveModel` uses — see
+      // `drawing2DSlice.markupTransition.ts`'s doc. Fresh session ->
+      // `defaultMarkupPatch()`, restating the fields' own defaults: no-op.
+      const markupPatch = markupTransitionPatch(state, model.id);
       return {
         models: newModels,
         activeModelId: model.id,
         ifcDataStore: model.ifcDataStore ?? null,
         geometryResult: model.geometryResult ?? null,
+        ...markupPatch,
       };
     } else {
       // Collapse existing models when adding new ones
@@ -174,20 +183,11 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     }
   }),
 
-  upsertModel: (model) => set((state) => {
-    const newModels = new Map(state.models);
-    const existing = newModels.get(model.id);
-    newModels.set(model.id, existing ? { ...existing, ...model } : model);
-    const activeModelId = state.activeModelId ?? model.id;
-    const activeModel = newModels.get(activeModelId) ?? null;
-
-    return {
-      models: newModels,
-      activeModelId,
-      ifcDataStore: activeModel?.ifcDataStore ?? null,
-      geometryResult: activeModel?.geometryResult ?? null,
-    };
-  }),
+  // #4159 bug 6: routed through `markupTransitionPatch` — see
+  // `modelSlice.upsert.ts`'s doc for why this is a sibling module rather
+  // than inline (this slice is at its module-size budget) and for the
+  // shape of the bug this closes.
+  upsertModel: (model) => set((state) => upsertModelPatch(state, model)),
 
   updateModel: (modelId, patch) => set((state) => {
     const model = state.models.get(modelId);
@@ -377,6 +377,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     // through `withVisibilityOwnershipInvalidation`.
     const state = get();
     set(viewerTeardown(modelRemovedScope(state, modelId), state));
+    modelAppearanceAssets.remove(modelId);
   },
 
   clearAllModels: () => {
@@ -515,14 +516,27 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     // stored global id is stale by definition AND the very next model loaded
     // can be handed those exact numbers back.
     set(viewerTeardown({ kind: 'all-models-cleared' }, get()));
+    modelAppearanceAssets.clear();
   },
 
   setActiveModel: (modelId) => set((state) => {
     const activeModel = modelId ? state.models.get(modelId) : null;
+    // 2D drawing markup (#4159): `measure2DResults` and friends are flat,
+    // federation-wide fields — not scoped per model — so an `activeModelId`
+    // swap must carry them along in this SAME atomic patch. Delegated to
+    // `markupTransitionPatch` (drawing2DSlice.markupTransition.ts), the one
+    // function `drawing2DSlice.teardown.ts`'s `'model-removed'` arm ALSO
+    // calls (that arm fires when `removeModel` moves `activeModelId` via
+    // `modelSlice.teardown.ts`'s own contribution) — see that module's doc
+    // for why a second, independent implementation here is exactly what kept
+    // re-breaking this. A no-op (`{}`) when the id is not actually changing,
+    // so re-selecting the already-active model touches nothing.
+    const markupPatch = markupTransitionPatch(state, modelId);
     return {
       activeModelId: modelId,
       ifcDataStore: activeModel?.ifcDataStore ?? null,
       geometryResult: activeModel?.geometryResult ?? null,
+      ...markupPatch,
     };
   }),
 

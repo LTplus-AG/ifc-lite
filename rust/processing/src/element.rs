@@ -39,12 +39,10 @@ use crate::types::mesh::{MeshData, MeshTextureData, RawInstanceOccurrence};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use ifc_lite_geometry::{
     calculate_normals, compose_instance_world_row_major, orient_mesh_outward_verdict, BoolFailure,
-    GeometryHasher, GeometryRouter, Mesh, ResolvedTextureMap, SubMeshCollection,
+    GeometryHasher, GeometryRouter, ResolvedTextureMap, SubMeshCollection,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
-
-use crate::processor::convert_mesh_to_site_local;
 
 /// The f32-collapse degenerate backstop, its per-element tally, and the reason
 /// that tally now gates the closure verdict. A CHILD module: it exists only to
@@ -334,7 +332,7 @@ fn produce_inner(
     let has_openings = ctx
         .void_index
         .get(&job.id)
-        .is_some_and(|openings| !openings.is_empty());
+        .is_some_and(|openings| openings.iter().any(|&id| router.opening_requires_subtraction(id, decoder)));
 
     // Material-layer wall: tag its per-layer slices GEOM_CLASS_LAYER_SLICE so the
     // 2D/section cut can split the cut into per-layer fills (one sub-mesh = one
@@ -371,9 +369,11 @@ fn produce_inner(
         // one unsupported representation item no longer blanks the whole
         // element (`process_element` aborts with `?`). #858 palette split
         // happens per item inside `emit_sub_meshes`.
-        if let Ok(sub_meshes) =
-            router.process_element_with_submeshes_textured(job.entity, decoder, ctx.texture_index)
-        {
+        let submeshes = router.process_element_with_submeshes_textured(job.entity, decoder, ctx.texture_index);
+        // Annotation validation failures are terminal, not another meshing strategy.
+        // Retrying the fallback chain would count one refused fill three times.
+        if job.ifc_type == IfcType::IfcAnnotation && submeshes.is_err() { return (Vec::new(), Vec::new()); }
+        if let Ok(sub_meshes) = submeshes {
             if !sub_meshes.is_empty() {
                 let (out, occ) =
                     emit_sub_meshes(job, sub_meshes, element_color, ctx, decoder, hasher, layer_class);
@@ -709,107 +709,9 @@ fn produce_type_geometry(
     out
 }
 
-/// Construct the final [`MeshData`]: metadata stamp, style metadata,
-/// geometry-class tag, and the optional site-local rotation. ALWAYS the last
-/// step — geometry hashing happens before this (native IFC frame), which is why
-/// the degenerate drop below has to report what it removed: it edits a mesh the
-/// hasher has already ruled on.
-#[allow(clippy::too_many_arguments)] // distinct per-mesh funnel inputs
-fn build_mesh_data(
-    job: &ElementMeshJob<'_>,
-    mut mesh: Mesh,
-    color: [f32; 4],
-    material_name: Option<String>,
-    // The sub-mesh's source id, plus WHAT IT IS. Routed to `geometry_item_id`
-    // or `material_id` by `with_style_metadata`, never both (#3199).
-    source_id: Option<u32>,
-    id_is_material: bool,
-    geometry_class: u8,
-    ctx: &MeshProductionContext<'_>,
-    // Per-vertex texture coordinates (2 per vertex, 1:1 with `mesh.positions`),
-    // present only for textured type geometry (#961). Threaded through the weld
-    // so the UVs are remapped WITH the deduped positions and stay aligned; a UV
-    // difference also keeps a texture seam's coincident corners split.
-    uvs: Option<Vec<f32>>,
-) -> MeshData {
-    // Backstop for f32 vertex-storage collapse, at the single funnel for every
-    // element MeshData, tallying what it removed — `produce_element_meshes`
-    // drains that tally both into the result and into the closure retraction.
-    degenerate::clean(&mut mesh);
-    // Source vertex weld, second half (#4103). See `mesh_weld`'s module doc for
-    // why a world-frame weld must not touch shared geometry, and `mesh_weld::weld`'s
-    // for what legitimately arrives here.
-    //
-    // `instance_meta` is the discriminator: every producer that sets it
-    // (`router::mapped_item`, `stamp_direct_instance`, the don't-bake placeholder)
-    // REACHES HERE only through a placement applier, which welds in the OBJECT
-    // frame and remaps the UVs with the positions, so those arrive welded with UVs
-    // already 1:1; and every step that rebuilds vertices afterwards nulls it
-    // (`Mesh::rebuilt_like`, `voids::process_element_with_voids`). "Reaches here"
-    // is the load-bearing part, NOT "is baked anywhere":
-    // `voids::probe::get_opening_item_meshes_world` bakes with
-    // `transform_mesh_world_framed` directly and so DOES produce unwelded meshes
-    // carrying `instance_meta`, but they are cutters and volume probes, never
-    // element MeshData. So "is this shared?" and "was this already welded?" have
-    // the same answer for everything arriving HERE, with nothing asserting it
-    // across the crate boundary. #4122 tracks making that an assertion.
-    let welded_uvs = if mesh.instance_meta.is_some() {
-        uvs
-    } else {
-        ifc_lite_geometry::mesh_weld::weld(&mut mesh, uvs)
-    };
-    let mesh_origin = mesh.origin;
-    // Instancing: capture before the fields are moved into MeshData. A site-local
-    // rotation (below) re-transforms positions/origin and would invalidate the
-    // captured transform, so drop instancing when one is active (rare; conservative).
-    let instance = if ctx.site_local_rotation.is_none() {
-        mesh.instance_meta.take()
-    } else {
-        None
-    };
-    // Local bounds/placement transform (issue #1474): same caveat as instancing
-    // above — a site-local rotation re-transforms positions and would invalidate
-    // the captured placement, so drop both when one is active.
-    let (local_bounds, local_to_world) = if ctx.site_local_rotation.is_none() {
-        (mesh.local_bounds, mesh.local_to_world)
-    } else {
-        (None, None)
-    };
-    let mut mesh_data = MeshData::new(
-        job.id,
-        job.ifc_type.name().to_string(),
-        mesh.positions,
-        mesh.normals,
-        mesh.indices,
-        color,
-    )
-    .with_origin(mesh_origin)
-    .with_instance(instance)
-    .with_local_bounds(local_bounds)
-    .with_local_to_world(local_to_world);
-    if let Some(meta) = job.metadata {
-        mesh_data = mesh_data
-            .with_element_metadata(
-                meta.global_id.clone(),
-                meta.name.clone(),
-                meta.presentation_layer.clone(),
-            )
-            .with_properties(meta.space_zone_properties.clone());
-    }
-    if material_name.is_some() || source_id.is_some() {
-        mesh_data =
-            mesh_data.with_style_metadata(material_name, source_id, id_is_material);
-    }
-    if geometry_class != 0 {
-        mesh_data = mesh_data.with_geometry_class(geometry_class);
-    }
-    // Attach the welded UVs (kept 1:1 with the welded positions by the weld).
-    // The texture IMAGE is attached by the caller; here we only carry the
-    // per-vertex coordinates through the funnel so they can't desync.
-    mesh_data.uvs = welded_uvs;
-    convert_mesh_to_site_local(&mut mesh_data, ctx.site_local_rotation);
-    mesh_data
-}
+#[path = "element_mesh_build.rs"]
+mod element_mesh_build;
+use element_mesh_build::build_mesh_data;
 
 #[cfg(test)]
 #[path = "element_tests.rs"]

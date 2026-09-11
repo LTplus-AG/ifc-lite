@@ -13,6 +13,7 @@
  */
 
 import { MAX_EXPRESS_ID } from './express-id.js';
+import { WORKER_LEXING } from './scan-worker-lexing.js';
 
 /**
  * Self-contained entity scanner code (runs inside Web Worker).
@@ -39,51 +40,7 @@ self.onmessage = function(e) {
   // (#3395). The worker runs from a Blob URL and cannot import at runtime, so
   // the bound below is interpolated from express-id.ts when this template is
   // evaluated -- one home for the number, not a copy that can drift.
-  // Whether a STEP comment opens at p.
-  function opensCommentAt(p) {
-    return p + 1 < len && buf[p] === 0x2F && buf[p + 1] === 0x2A;
-  }
-
-  // Index just past the '*/' closing the comment at p, or -1 when it never
-  // closes. Counts the newlines it crosses so line numbers stay in step.
-  //
-  // Kept behaviourally identical to skipComment/skipTrivia in step-lexing.ts,
-  // which this cannot import: the worker source is a string, so this copy of
-  // the rule has to live here. Comments do not nest, per ISO 10303-21.
-  function skipCommentAt(p) {
-    var q = p + 2;
-    while (q + 1 < len) {
-      if (buf[q] === 0x2A && buf[q + 1] === 0x2F) return q + 2;
-      if (buf[q] === 0x0A) line++;
-      q++;
-    }
-    return -1;
-  }
-
-  // Skip whitespace, comments, and any run of the two -- 10303-21 allows a
-  // comment wherever whitespace is allowed, INCLUDING inside a record.
-  // Returns -1 when a comment opens and never closes: everything from there on
-  // is inside it, so there is nothing left to find.
-  //
-  // The whitespace byte set (space, tab, CR, LF, form feed, vertical tab) is
-  // kept byte-for-byte in sync with isSpaceByte in step-lexing.ts and its
-  // three inline twins in tokenizer.ts's scanEntitiesFast -- this file is a
-  // string because a Blob worker cannot import at runtime, not a reason for
-  // the rule itself to drift.
-  function skipTriviaAt(p) {
-    for (;;) {
-      while (p < len) {
-        var t = buf[p];
-        if (t === 0x20 || t === 0x09 || t === 0x0D || t === 0x0C || t === 0x0B) { p++; }
-        else if (t === 0x0A) { line++; p++; }
-        else break;
-      }
-      if (!opensCommentAt(p)) return p;
-      var e = skipCommentAt(p);
-      if (e < 0) return -1;
-      p = e;
-    }
-  }
+${WORKER_LEXING}
 
   var ids = new Uint32Array(estimatedCount);
   var offsets = new Uint32Array(estimatedCount);
@@ -257,9 +214,22 @@ self.onmessage = function(e) {
       if (buf[pos] !== 0x28) { declOpen = false; continue; }
       declOpen = false; // Header complete: '(' found.
 
-      // Skip to semicolon (handling strings)
+      // Skip to semicolon (handling strings), bounded to THIS record's own
+      // body so a record missing its ';' cannot latch onto a later one and
+      // swallow what lies between (#4179): the ';' must be preceded, modulo
+      // trivia, by the ')' closing the parameter list, and no '=' may come
+      // before it outside a string or comment. On either failure the record is
+      // DROPPED and the scan resumes at that ')' rather than abandoning the
+      // file's tail. close_step_record in rust/core/src/parser/lexical.rs
+      // argues both rules and the recovery; this is a hand-duplicated copy
+      // because a Blob worker cannot import at runtime. Change them together.
+      var parenPos = pos;
       var inString = false;
       var foundTerminator = false;
+      // Memoised across the exact ';' check and the recovery below, which
+      // would otherwise balance the same record twice. -3 = not computed;
+      // -1 = unbalanced but readable; -2 = a literal/comment never closed.
+      var recordClose = -3;
       while (pos < len) {
         var c6 = buf[pos];
         if (c6 === 0x27) { // quote
@@ -274,15 +244,26 @@ self.onmessage = function(e) {
           // and parens inside it text -- the other direction of the rule the
           // quote branch above gives for a '/*' inside a literal.
           var ce = skipCommentAt(pos);
-          if (ce < 0) {
-            // Unterminated: this record has no terminator, and neither has
-            // anything after it. Drop it and stop.
-            pos = len;
-            break;
-          }
+          if (ce < 0) break; // Unterminated: recovery below finds no ')'.
           pos = ce;
           continue;
         } else if (c6 === 0x3B && !inString) { // semicolon
+          // ')' modulo whitespace settles it for every record a real file
+          // holds. Anything else -- including the '/' of a trailing '*/',
+          // which a backwards walk cannot see through -- goes to the cold,
+          // exact balance-and-skip-trivia check.
+          var w = pos;
+          while (w > parenPos && isSpaceByteAt(w - 1)) w--;
+          if (buf[w - 1] !== 0x29) {
+            var savedBalLine = line;
+            recordClose = findEntityLengthAt(parenPos, startOffset);
+            line = savedBalLine;
+            if (recordClose <= 0) break;
+            recordClose += startOffset;
+            var after = skipTriviaAt(recordClose);
+            line = savedBalLine;
+            if (after < 0 || after !== pos) break;
+          }
           var entityLength = pos - startOffset + 1;
 
           // Grow if needed
@@ -298,19 +279,40 @@ self.onmessage = function(e) {
           pos++;
           foundTerminator = true;
           break;
+        } else if (c6 === 0x3D && !inString) {
+          break; // '=': the NEXT declaration already started.
         } else if (c6 === 0x0A) {
           line++;
         }
         pos++;
       }
 
-      // Ran off the end without an unquoted ';' -- usually an unescaped
-      // quote left open, or the unterminated-comment break above (mirrors
-      // tokenizer.ts's scanEntitiesFast). Not resynced: with no known
-      // terminator, guessing a resume point risks fabricating entities from
-      // misaligned bytes. Recorded in 'stopped', not incremented here -- see
-      // the post-loop check below.
-      if (!foundTerminator) { stopped = true; }
+      // No ';' of this record's own. EVERY such exit lands here, so the
+      // recovery lives here once rather than at each break -- mirrors
+      // tokenizer.ts's scanEntitiesFast. Resume at the ')' balancing this
+      // record's own '(' when there is one, dropping just this record;
+      // otherwise run to len, ending the scan un-resynced rather than guessing
+      // a resume point from misaligned bytes.
+      if (!foundTerminator) {
+        stopped = true;
+        if (recordClose === -3) {
+          var savedRecLine = line;
+          recordClose = findEntityLengthAt(parenPos, startOffset);
+          line = savedRecLine;
+          if (recordClose > 0) recordClose += startOffset;
+        }
+        if (recordClose > 0) {
+          pos = recordClose;
+          line = startLine;
+          for (var q = startOffset; q < pos; q++) if (buf[q] === 0x0A) line++;
+        } else if (recordClose === -1) {
+          // Unbalanced but readable: re-hunt from past this record's '#'.
+          pos = startOffset + 1;
+          line = startLine;
+        } else {
+          pos = len; // Nothing to resume from (#3695).
+        }
+      }
     } else if (ch === 0x0A) {
       line++;
       pos++;

@@ -56,6 +56,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { STYLE_RESCUE_TYPES } from './style-closure.js';
 import { styleEntityWithheldWarning } from './step-export-types.js';
+import { applySourceLineMutationsReported } from './step-attribute-mutations.js';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 import { nominateDeliveredInPlaceEdits } from './in-place-nomination.js';
 import { decodeRange } from './source-ref-bounds.js';
@@ -226,18 +227,36 @@ export function writeSourceEntityLines(
       // Shared verbatim with the type-object `HasPropertySets` rewrite in
       // `step-property-sets.ts`, which writes the line this pass would
       // otherwise have written — hence injected rather than moved here.
-      const mutated = ctx.applySourceLineMutations(
+      // Through `applySourceLineMutationsReported` rather than the injected
+      // pipeline directly, so this pass and the type-object rewrite cannot end
+      // up reporting different halves of the same refusal.
+      //
+      // Into a per-entity buffer, NOT straight into `pass.warnings`: both
+      // reports the pipeline makes are about the line this iteration is about
+      // to write, and the `IFCREL*` and style-rescue branches below can still
+      // `continue` — withholding that line entirely and pushing their own
+      // warning for it. Reported here, the unreadable-record warning would name
+      // an entity whose edits were dropped beside a warning saying that entity
+      // has no line in the export at all: two warnings for one outcome, and the
+      // reader has to guess which one is about the record they asked for. So the
+      // buffer is flushed once the withholding branches have had their say and
+      // this line is going out.
+      //
+      // The flush point is the LAST branch that can withhold, not the last thing
+      // that can change the line: `convertStepLine` below still runs on the text
+      // this produces. That is deliberate, and it is why the warning itself no
+      // longer describes what was written — see
+      // `unreadableRecordEditsDroppedWarning` (#4213).
+      const mutationWarnings: string[] = [];
+      const mutated = applySourceLineMutationsReported(
+        ctx.applySourceLineMutations,
+        mutationWarnings,
         expressId,
         entityText,
         entityRef.type,
         pass.modifiedAttributes.get(expressId),
         pass.sourceSchema,
         pass.overlayActive,
-        (attr, value) =>
-          pass.warnings.push(
-            `entity #${expressId}: attribute ${attr} not written - ` +
-              `${JSON.stringify(value)} is not a number and the slot is REAL-typed`,
-          ),
       );
       let nextEntityText = mutated.text;
 
@@ -284,6 +303,10 @@ export function writeSourceEntityLines(
         }
         nextEntityText = filtered;
       }
+
+      // Past every branch that can withhold this line, so the pipeline's own
+      // reports are now true statements about a record this pass is writing.
+      pass.warnings.push(...mutationWarnings);
 
       // A retype or a positional edit that CHANGED the line is what makes
       // this entity count; a named attribute edit was already nominated by

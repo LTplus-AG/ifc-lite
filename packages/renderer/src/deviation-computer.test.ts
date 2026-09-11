@@ -249,3 +249,34 @@ describe('DeviationComputer.compute(): releaseTransientParams on the rejection p
     assert.strictEqual(paramsBuffer.destroyed, 1, 'the transient params buffer must be released on the happy path too');
   });
 });
+
+
+describe('DeviationComputer workspace placement (#4226)', () => {
+  it('rebuilds the uploaded BVH after a model move, but reuses it for unchanged positions', async () => {
+    const created: Array<GPUBuffer & { destroyed: number }> = [];
+    const device = makeFakeGpuDevice();
+    device.createBuffer = () => { const buffer = fakeBuffer(); created.push(buffer); return buffer; };
+    const uploads = new Map<GPUBuffer, Float32Array>();
+    device.queue.writeBuffer = (buffer, _offset, data) => {
+      if (data instanceof Float32Array) uploads.set(buffer, data.slice());
+    };
+    const computer = new DeviationComputer(); computer.init(device);
+    const mesh = { ...makeMesh(1), origin: [0, 0, 0] as [number, number, number] };
+    const ctx = makeCtx(device);
+    ctx.scene = { forEachMeshData: (visit: (value: typeof mesh) => void) => visit(mesh) } as unknown as DeviationComputeContext['scene'];
+    try {
+      await computer.compute({}, ctx);
+      const firstNodes = created[0], firstTriangles = created[1];
+      await computer.compute({}, ctx);
+      assert.equal(firstNodes.destroyed, 0); assert.equal(firstTriangles.destroyed, 0);
+      mesh.origin = [100, 0, 0];
+      await computer.compute({}, ctx);
+      assert.equal(firstNodes.destroyed, 1, 'the old spatial BVH is evicted after translation');
+      assert.equal(firstTriangles.destroyed, 1);
+      const rebuilt = created.find((buffer) => buffer !== firstTriangles && uploads.get(buffer)?.length === 12)!;
+      const triangle = uploads.get(rebuilt)!;
+      assert.equal(triangle[0], 100, 'rebuilt BVH triangle starts at the moved world position');
+      assert.equal(triangle[3], 101); assert.equal(triangle[6], 100);
+    } finally { computer.destroy(); }
+  });
+});

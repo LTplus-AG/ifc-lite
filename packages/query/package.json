@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/query",
-  "version": "2.2.0",
+  "version": "2.3.1",
   "description": "Query system for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,7 +22,8 @@
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/spatial": "workspace:^",
-    "@ifc-lite/geometry": "workspace:^"
+    "@ifc-lite/geometry": "workspace:^",
+    "@ifc-lite/regex-guard": "workspace:^"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

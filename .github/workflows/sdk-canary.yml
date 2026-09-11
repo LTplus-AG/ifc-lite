@@ -50,12 +50,14 @@ on:
       - 'packages/parser/**'
       - 'packages/pointcloud/**'
       - 'packages/query/**'
+      - 'packages/regex-guard/**'
       - 'packages/sandbox/**'
       - 'packages/sdk/**'
       - 'packages/spatial/**'
       - 'packages/timing-ladder/**'
       - 'packages/viewer/**'
       - 'packages/wasm/**'
+      - 'packages/wasm-lifecycle/**'
       - 'packages/world-frame-fixtures/**'
       - 'tests/extensions/canaries/**'
       - '.github/workflows/sdk-canary.yml'
@@ -73,7 +75,7 @@ env:
 jobs:
   canary:
     name: Run canary bundles
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
 
     steps:
@@ -100,6 +102,12 @@ jobs:
         uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: sdk-canary
+          # This workflow runs on pull requests only, so nothing on main would
+          # ever seed its shared key; let the first PR write it and every later
+          # PR restore it. The write is skipped when the key already exists.
+          # Goes away when this job moves into test.yml on the build artifact
+          # (CI redesign, step 8).
+          save-if: 'true'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

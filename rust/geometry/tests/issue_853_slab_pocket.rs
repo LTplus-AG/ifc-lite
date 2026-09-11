@@ -21,12 +21,19 @@ use ifc_lite_core::{build_entity_index, EntityDecoder};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 
+mod support;
+
 const FIXTURE: &str = "../../tests/models/issues/853_slab_pocket.ifc";
 const SLAB_ID: u32 = 303;
 
 fn read_fixture() -> Option<String> {
     match std::fs::read_to_string(FIXTURE) {
         Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture is an LFS pointer and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download real bytes"
+            );
             // PR #657 removed Git LFS from this repo (fixtures live in a
             // GitHub Release now), but a contributor cloning before that
             // change can still have an LFS pointer at this path. Skip
@@ -40,6 +47,11 @@ fn read_fixture() -> Option<String> {
         }
         Ok(s) => Some(s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
             eprintln!("issue-853 fixture missing — skipping (run `pnpm fixtures`)");
             None
         }

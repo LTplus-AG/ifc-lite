@@ -93,6 +93,7 @@ describe('convertServerDataModel', () => {
     assert.deepEqual(dataStore.spatialHierarchy?.project.children[0].children[0].elements, [4]);
     assert.deepEqual(dataStore.spatialHierarchy?.getPath(4).map((node) => node.expressId), [1, 2, 3]);
     assert.deepEqual(dataStore.spatialHierarchy?.byBuilding.get(2), []);
+    assert.deepEqual(dataStore.spatialHierarchy?.getPath(3).map(node => node.expressId), [1, 2, 3], 'spatial node identity survives server hydration (#4308)');
   });
 
   it('uses the canonical parser relationship map for server relationships', () => {
@@ -687,4 +688,30 @@ describe('convertServerDataModel classification wiring (#3955)', () => {
     // Verify they are not deduplicated or merged: the objects must be distinct.
     assert.notEqual(info[0], info[1], 'classifications must be separate objects, not merged');
   });
+});
+
+
+it('server hydration uses live authored space membership (#4308)', () => {
+  const model: DataModel = {
+    entities: ServerEntityIndex.fromRows([]), propertySets: new Map(), quantitySets: new Map(),
+    relationships: [], classifications: [], materials: [], documents: [],
+    spatialHierarchy: {
+      nodes: [
+        { entity_id: 1, parent_id: 0, level: 0, path: 'P', type_name: 'IFCPROJECT', children_ids: [2], element_ids: [] },
+        { entity_id: 2, parent_id: 1, level: 1, path: 'P/Room', type_name: 'IFCSPACE', children_ids: [], element_ids: [3] },
+      ], project_id: 1, element_to_storey: new Map(), element_to_building: new Map(),
+      element_to_site: new Map(), element_to_space: new Map([[3, 2]]),
+    },
+  };
+  const hierarchy = convertServerDataModel(model, parseResult, { size: 1 }, []).spatialHierarchy!;
+  assert.deepEqual(hierarchy.getPath(2).map(node => node.expressId), [1, 2]);
+  assert.equal(hierarchy.getContainingSpace(3), 2);
+  hierarchy.project.children[0].elements.push(4);
+  hierarchy.elementToContainer!.set(4, 2);
+  assert.equal(hierarchy.getContainingSpace(4), 2);
+  assert.deepEqual(hierarchy.getPath(4).map(node => node.expressId), [1, 2]);
+  hierarchy.project.children[0].elements.pop();
+  hierarchy.elementToContainer!.delete(4);
+  assert.equal(hierarchy.getContainingSpace(4), null);
+  assert.deepEqual(hierarchy.getPath(4), []);
 });

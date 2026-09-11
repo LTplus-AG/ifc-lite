@@ -7,7 +7,8 @@
  * task-tree flattener that feeds the virtualized list.
  */
 
-import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
+import type { ScheduleExtraction, ScheduleTaskInfo, WorkScheduleInfo } from '@ifc-lite/parser';
+import { deterministicGlobalId, serializeScheduleToStep } from '@ifc-lite/parser';
 import type { GanttTimeScale } from '@/store';
 import { taskStartEpoch, taskFinishEpoch } from '@/store';
 
@@ -237,6 +238,79 @@ export function taskBarGeometry(
 /**
  * Produce a short "5d" / "3h" / "2w" label from an ISO 8601 duration string.
  */
+/**
+ * Build a standalone `IfcWorkPlan` container to add alongside a generated
+ * `IfcWorkSchedule`, grouping it via `childScheduleGlobalIds`.
+ *
+ * `schedule-extractor.ts` now resolves an `IfcWorkPlan` nesting an
+ * `IfcWorkSchedule` on both relations the schema allows (`IfcRelNests` and
+ * `IfcRelAssignsToControl`), and `schedule-serializer.ts` emits `IFCRELNESTS`
+ * for any plan whose `childScheduleGlobalIds` is non-empty — so the grouping
+ * this builds here now round-trips instead of being silently dropped.
+ *
+ * `scheduleGlobalIds` is always assigned into `childScheduleGlobalIds` as an
+ * array, never left `undefined`, matching the extractor's own convention
+ * (`schedule-extractor.ts`'s Pass 4): this function is a full producer of a
+ * `WorkScheduleInfo`, so it always knows definitively whether the plan has
+ * schedules to group, the same way the extractor always knows once a file
+ * has been walked. An empty array here means "deliberately grouped
+ * nothing", not "grouping wasn't attempted" — there is no "not checked"
+ * state for a plan this function constructs from scratch.
+ */
+export function buildWorkPlanInfo(
+  seed: string,
+  name: string,
+  scheduleGlobalIds: string[] = [],
+): WorkScheduleInfo {
+  return {
+    expressId: 0,
+    globalId: deterministicGlobalId(`gen-workplan|${seed}`),
+    kind: 'WorkPlan',
+    name,
+    taskGlobalIds: [],
+    childScheduleGlobalIds: [...new Set(scheduleGlobalIds.filter(Boolean))],
+  };
+}
+
+/**
+ * Debug dump of a just-generated schedule — the extraction (tasks + work
+ * schedules + sequences) *and* the STEP lines the serializer will emit when
+ * the file is exported. Called from `GenerateScheduleDialog`'s submit
+ * handler; safe to keep in production — runs only on user-initiated
+ * generation and only logs to console.
+ */
+export function logGeneratedScheduleDebug(extraction: ScheduleExtraction, options: unknown): void {
+  try {
+    const stepPreview = serializeScheduleToStep(extraction, {
+      // These IDs don't matter for inspection — the export adapter remaps
+      // them to the host file's ID space at injection time.
+      nextId: 1_000_000,
+    });
+    /* eslint-disable no-console */
+    console.groupCollapsed(
+      `%c[IfcTask] Generated schedule — ${extraction.tasks.length} task(s), ${stepPreview.lines.length} STEP line(s)`,
+      'color:#6ea2ff;font-weight:bold',
+    );
+    console.log('options', options);
+    console.log('workSchedules', extraction.workSchedules);
+    console.log('tasks', extraction.tasks);
+    console.log('sequences', extraction.sequences);
+    console.log('stats', stepPreview.stats);
+    console.log('STEP preview (first 50 lines):');
+    for (const line of stepPreview.lines.slice(0, 50)) console.log(line);
+    if (stepPreview.lines.length > 50) {
+      console.log(`… ${stepPreview.lines.length - 50} more line(s). Full STEP:`);
+      console.log(stepPreview.lines.join('\n'));
+    }
+    console.log('raw extraction (JSON)', JSON.stringify(extraction, null, 2));
+    console.groupEnd();
+    /* eslint-enable no-console */
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[IfcTask] Debug log failed (non-fatal):', err);
+  }
+}
+
 export function formatDurationShort(iso: string | undefined): string {
   if (!iso) return '—';
   const m = iso.match(/^P(?:(\d+(?:\.\d+)?)Y)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/);

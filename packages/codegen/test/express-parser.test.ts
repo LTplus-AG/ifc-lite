@@ -466,6 +466,78 @@ describe('EXPRESS Parser', () => {
       expect(locations.type).toBe('IfcLengthMeasure[]');
       expect(locations.type).not.toContain('UNIQUE');
     });
+
+    /**
+     * The three cases above all carry numeric aggregate bounds, which is the
+     * only shape the committed IFC4/IFC4X3 schemas use. EXPRESS (ISO 10303-11)
+     * also allows a symbolic bound, no bound at all, and an OPTIONAL qualifier
+     * in front of UNIQUE. Those forms miss the numeric bounds pattern, so the
+     * element type never reached the code that strips UNIQUE and the qualifier
+     * was carried into attr.type verbatim.
+     */
+    it('strips UNIQUE when the aggregate bound is symbolic', () => {
+      const schema = parseExpressSchema(`
+        SCHEMA TEST;
+
+        ENTITY EntSymbolicBound
+          SUBTYPE OF (IfcRoot);
+          Axes : LIST [1:Dim] OF UNIQUE IfcGridAxis;
+        END_ENTITY;
+
+        END_SCHEMA;
+      `);
+
+      const attrs = getAllAttributes(
+        schema.entities.find(e => e.name === 'EntSymbolicBound')!,
+        schema
+      );
+      const axes = attrs.find(a => a.name === 'Axes')!;
+      expect(axes.type).toBe('IfcGridAxis');
+      expect(axes.type).not.toContain('UNIQUE');
+    });
+
+    it('strips UNIQUE when the aggregate has no bounds', () => {
+      const schema = parseExpressSchema(`
+        SCHEMA TEST;
+
+        ENTITY EntUnbounded
+          SUBTYPE OF (IfcRoot);
+          Axes : LIST OF UNIQUE IfcGridAxis;
+        END_ENTITY;
+
+        END_SCHEMA;
+      `);
+
+      const attrs = getAllAttributes(
+        schema.entities.find(e => e.name === 'EntUnbounded')!,
+        schema
+      );
+      const axes = attrs.find(a => a.name === 'Axes')!;
+      expect(axes.type).toBe('IfcGridAxis');
+      expect(axes.type).not.toContain('UNIQUE');
+    });
+
+    it('strips an OPTIONAL UNIQUE element qualifier from an ARRAY', () => {
+      const schema = parseExpressSchema(`
+        SCHEMA TEST;
+
+        ENTITY EntOptionalUnique
+          SUBTYPE OF (IfcRoot);
+          Axes : ARRAY [1:3] OF OPTIONAL UNIQUE IfcGridAxis;
+        END_ENTITY;
+
+        END_SCHEMA;
+      `);
+
+      const attrs = getAllAttributes(
+        schema.entities.find(e => e.name === 'EntOptionalUnique')!,
+        schema
+      );
+      const axes = attrs.find(a => a.name === 'Axes')!;
+      expect(axes.type).toBe('IfcGridAxis');
+      expect(axes.type).not.toContain('UNIQUE');
+      expect(axes.type).not.toContain('OPTIONAL');
+    });
   });
 
   describe('Real IFC schema parsing', () => {

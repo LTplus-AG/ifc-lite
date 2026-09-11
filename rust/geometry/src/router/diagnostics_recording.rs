@@ -73,16 +73,115 @@ pub struct HostOpeningDiagnostic {
 
 /// One opening's worth of diagnostic data — what `classify_openings`
 /// observed about it.
+///
+/// A new field here of ANY visibility is a BREAKING change: re-exported from the
+/// crate root and not `#[non_exhaustive]`, so a field breaks every downstream
+/// struct literal. `cargo-semver-checks` denies both halves and demands a major
+/// for each — `constructible_struct_adds_field` for a `pub` one, and
+/// `constructible_struct_adds_private_field` for the private-field-plus-accessor
+/// move that otherwise looks like the additive way out.
+// A Rust-only major IS expressible — raise `majorOffset` in
+// `rust-major-offset.json` (with `reason` and `refs`, both mandatory) and the
+// crates publish a major while the npm packages keep their own bump; see
+// docs/contributing/release.md, "Expressing a Rust-only major". What does NOT
+// work is assuming a changeset buys it: a changeset states an npm level, and
+// `scripts/check-rust-semver.mjs` (#3216) fails the release when the crate's
+// API moved further than the version did. That is what happened to the field
+// #4178 added here, which came back out to keep 9.4.1 a patch.
+//
+// To surface a new number without any of that, give the struct
+// `#[non_exhaustive]` plus a builder as part of a deliberate major, the shape
+// `ModelOptions` uses and `gltf.rs` reuses. Do NOT move the field to
+// `HostOpeningDiagnostic`: it is a plain re-exported struct with no accessors
+// and carries the identical hazard.
 #[derive(Debug, Clone)]
 pub struct OpeningDiagnostic {
     /// Express ID of the `IfcOpeningElement` itself.
     pub opening_id: u32,
     /// Branch the classifier took for this opening.
     pub kind: OpeningKindDiag,
-    /// Vertex count of the opening's mesh — high counts (>100) force the
-    /// non-rectangular path regardless of extrusion direction.
+    /// Vertex count of the opening's mesh, for diagnostics only. NOT what the
+    /// classifier gates on — it gates on triangle count, which is invariant to
+    /// the vertex duplication and welding this number moves with (#4119). See
+    /// the gate in `router/voids/synthesis.rs`, which owns that reasoning.
     pub vertex_count: usize,
 }
+
+/// Compile-time guard on the field list above. Adding a field of ANY visibility
+/// stops this destructuring pattern compiling, which is the cheapest possible
+/// place to catch it: `cargo-semver-checks` denies both
+/// `constructible_struct_adds_field` and `constructible_struct_adds_private_field`
+/// with `required_update: Major`, but `scripts/check-rust-semver.mjs` skips any
+/// crate already published at the workspace version, so on an ordinary PR it
+/// compares nothing and the break stays invisible until a release is in flight
+/// (#4192). That is exactly how the `triangle_count` field #4178 added here
+/// reached `chore: version packages` before anyone saw it.
+///
+/// It lives in THIS file, beside the struct, rather than in a test file. The
+/// revert-oracle reverts production files wholesale, so a guard in a test file
+/// would fail to COMPILE under revert and score INCONCLUSIVE instead of RED.
+/// Here, guard and struct revert together and the size assertion in
+/// `diagnostics_contract_tests.rs` is what goes red.
+///
+/// IF THIS STOPS COMPILING, DO NOT ADD THE FIELD TO THE PATTERN. Either drop the
+/// field, or raise `majorOffset` in `rust-major-offset.json` with its mandatory
+/// `reason` and `refs` (docs/contributing/release.md, "Expressing a Rust-only
+/// major") and update this pattern in the same commit.
+const _: () = {
+    #[allow(dead_code)]
+    fn field_list_is_pinned(d: OpeningDiagnostic) {
+        let OpeningDiagnostic {
+            opening_id: _,
+            kind,
+            vertex_count: _,
+        } = d;
+        // `kind: _` would bind a new VARIANT silently. `OpeningKindDiag` is also
+        // re-exported and not `#[non_exhaustive]`, so a new variant is
+        // `enum_variant_added` — a major, and the same class already recorded in
+        // `rust-major-offset.json` as "Rust-only break #3" for `BoolFailureReason`.
+        match kind {
+            OpeningKindDiag::Rectangular
+            | OpeningKindDiag::Diagonal
+            | OpeningKindDiag::NonRectangular => {}
+        }
+    }
+};
+
+/// Same pinning as [`OpeningDiagnostic`], for the same reason. This struct is
+/// `pub`, re-exported from the crate root and not `#[non_exhaustive]`, so a new
+/// field of any visibility is a MAJOR break — and unlike `OpeningDiagnostic` it
+/// derives `Default`, so every in-crate literal uses `..Default::default()` and
+/// would NOT break. Nothing else would catch the addition until a release PR
+/// (#4192). See the note on `OpeningDiagnostic` for what to do instead.
+const _: () = {
+    #[allow(dead_code)]
+    fn host_opening_diagnostic_field_list_is_pinned(d: HostOpeningDiagnostic) {
+        let HostOpeningDiagnostic {
+            host_type: _,
+            openings: _,
+            csg_failure_count: _,
+            first_failure_label: _,
+            tris_before: _,
+            tris_after: _,
+            rect_boxes_processed: _,
+            host_bounds: _,
+        } = d;
+    }
+};
+
+/// Same pinning as [`OpeningDiagnostic`]. `pub`, re-exported, not
+/// `#[non_exhaustive]`, and `Copy + Default`, so in-crate literals would survive
+/// a new field silently.
+const _: () = {
+    #[allow(dead_code)]
+    fn classification_stats_field_list_is_pinned(d: ClassificationStats) {
+        let ClassificationStats {
+            rectangular: _,
+            diagonal: _,
+            non_rectangular: _,
+        } = d;
+    }
+};
 
 /// Discriminator for [`OpeningDiagnostic::kind`]. Mirrors `OpeningType`
 /// without dragging the geometry data along.

@@ -51,6 +51,18 @@ describe('splitTopLevelStepArgs', () => {
         "'guid',$,'50% /* not a comment',$",
         ["'guid'", '$', "'50% /* not a comment'", '$'],
       ],
+      // #4163's multi-line work feeds this a raw, un-pre-split `argsText`, so a
+      // record wrapped across a line, with the comma correctly kept BEFORE the
+      // break, must still split into the right number of parts. This is the
+      // well-formed counterpart to the malformed `$\n$` case below: same shape,
+      // comma present, and it must be ACCEPTED with the correct count (9, not
+      // 8) rather than refused as collateral damage from widening the
+      // whitespace sets.
+      [
+        'a bare token list wrapped across a newline with the comma kept',
+        "'guid',$,'Old',$,\n$,$,$,$,.NOTDEFINED.",
+        ["'guid'", '$', "'Old'", '$', '\n$', '$', '$', '$', '.NOTDEFINED.'],
+      ],
     ])('splits %s', (_label, input, expected) => {
       expect(splitTopLevelStepArgs(input)).toEqual(expected);
     });
@@ -139,6 +151,20 @@ describe('splitTopLevelStepArgs', () => {
       // The OPENER is what breaks the run, so a comment that never closes is
       // refused for the same reason rather than by luck.
       ['an unterminated STEP block comment', "'guid',/*unclosed,$"],
+      // The #4163 defect this file's header names by name: two bare tokens
+      // (`$` and `$`) separated by a raw newline with NO comma between them.
+      // Before `\n`/`\r`/`\x0b`/`\x0c` joined `isTokenBreak` and
+      // `countWhitespace`, a bare run spanned the newline silently and this
+      // came back as 8 accepted parts for 9 attributes (measured against the
+      // pre-fix source: `["'guid'","$","'Old'","$\n$","$","$","$",".NOTDEFINED."]`,
+      // non-null, i.e. treated as READABLE) rather than refused — the same
+      // phantom-slot shift as the rest of #4125/#4163, just triggered by a line
+      // wrap instead of a phantom string. Every attribute past the merged pair
+      // then mutates into the wrong slot while the CLI reports success.
+      [
+        'a bare token split across a raw newline with the comma dropped',
+        "'guid',$,'Old',$\n$,$,$,$,.NOTDEFINED.",
+      ],
     ])('refuses %s', (_label, input) => {
       expect(splitTopLevelStepArgs(input)).toBeNull();
     });

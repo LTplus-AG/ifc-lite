@@ -68,3 +68,18 @@ See the [docs site](https://ifclite.dev/docs/) for guides and the full API refer
 ## License
 
 [MPL-2.0](../../LICENSE)
+
+
+## Local origins for large-coordinate scans
+
+`streamPointCloud({ ..., autoOrigin: true })` chooses a nearby origin before
+emitting chunks when `originOffset` is absent. Header bounds choose the centre;
+formats without usable bounds probe one point and reopen the original bytes.
+The decoder subtracts that origin in float64 before writing float32 positions.
+`onOpen(info)` receives the chosen `info.originOffset` in native X/Y/Z source
+units, before the first `onChunk`. Compose that offset with your alignment and
+manual translation in double precision before sending a final matrix to the
+GPU. Explicit `originOffset` takes precedence; the default remains unchanged.
+Opening may perform an extra decode pass for formats without header bounds.
+A local origin preserves nearby detail but cannot repair a source whose
+coordinates were already quantized or an extremely large spatial extent.

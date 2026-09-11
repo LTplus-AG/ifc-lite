@@ -32,6 +32,7 @@ import {
 import { fromGlobalIdFromModels } from '@/store/globalId';
 import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import { deriveHeaderFiles } from './bcfHeaderFiles';
+import { toast } from '@/components/ui/toast';
 
 // ============================================================================
 // Types
@@ -376,14 +377,46 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       let visibleGuids: string[] | undefined;
 
       if (includeHidden) {
-        if (isolatedEntities !== null && isolatedEntities.size > 0) {
+        // `isolatedEntities` is meaningfully nullable (`Set<number> | null`):
+        // `null` means no isolation channel is active, while a non-null Set
+        // -- EMPTY included -- means one is, and currently matches nothing
+        // (the convention `packages/renderer/src/entity-visibility.ts`'s
+        // `isEntityVisible` already enforces). A `.size > 0` check here
+        // would read an active-but-empty isolate (reachable via
+        // `pinboardSlice.ts`'s `addToBasket`/`removeFromBasket` aliasing two
+        // `EntityRef`s onto one globalId, #4509) as "no isolation" and fall
+        // into the `hiddenEntities` branch below, capturing an unrelated
+        // normal-mode viewpoint instead.
+        if (isolatedEntities !== null) {
           // Isolation mode: capture visible entities (defaultVisibility=false)
           const guids: string[] = [];
           for (const id of isolatedEntities) {
             const guid = expressIdToGlobalId(id);
             if (guid) guids.push(guid);
           }
-          visibleGuids = guids.length > 0 ? guids : undefined;
+          if (isolatedEntities.size > 0 && guids.length === 0) {
+            // THIRD state, and the reason `guids.length` alone cannot decide
+            // this: the isolate names real, currently-visible entities, but
+            // none of them has an IFC GlobalId this session can resolve, so
+            // the capture cannot NAME what is on screen. Emitting the empty
+            // array here would write `DefaultVisibility="false"` with no
+            // exceptions -- a positive claim that NOTHING is visible -- into
+            // a file other tools read back as authoritative. A view that
+            // cannot be expressed is omitted, not guessed at; the author is
+            // told so the viewpoint is not silently less than it looked.
+            console.warn(
+              '[useBCF] Isolation is active but none of the isolated entities has a resolvable IFC GlobalId; omitting the viewpoint visibility component.',
+            );
+            toast.info('Viewpoint saved without its visibility: the isolated elements have no IFC GlobalId to record.');
+          } else {
+            // Keep the EMPTY array when the isolate is ITSELF empty: the
+            // channel is active and genuinely matches nothing, so the
+            // viewpoint must record "nothing visible" (defaultVisibility=false
+            // with no exceptions). Collapsing that to `undefined` would put
+            // the capture back into the "no isolation, show everything"
+            // bucket that the branch above was fixed to avoid.
+            visibleGuids = guids;
+          }
         } else if (hiddenEntities.size > 0) {
           // Normal mode: capture hidden entities (defaultVisibility=true)
           const guids: string[] = [];
@@ -573,7 +606,17 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
 
       // Apply visibility from BCF components: isolation mode (visibleGuids
       // with defaultVisibility=false) or normal (hiddenGuids, default true).
-      if (state.visibleGuids.length > 0) {
+      // `state.visibleGuids` is meaningfully nullable (`extractViewpointState`,
+      // packages/bcf/src/viewpoint.ts): `null` means the viewpoint carries no
+      // isolation channel, while a non-null array -- EMPTY included -- means
+      // isolation WAS active when the viewpoint was captured, down to
+      // "matched nothing". A `.length > 0` check here would read a captured
+      // empty viewport (a real, spec-valid `DefaultVisibility="false"` with
+      // no exceptions) as "no isolation" and fall into the `hiddenGuids`
+      // branch below, restoring an unfiltered view instead of an empty one --
+      // the read-side mirror of the same collapse fixed on the write side
+      // above and in `createViewpoint`'s `hasVisible`.
+      if (state.visibleGuids !== null) {
         // Isolation mode: only specified entities are visible
         const isolatedExpressIds = new Set<number>();
         for (const guid of state.visibleGuids) {
@@ -581,12 +624,24 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
           if (result) isolatedExpressIds.add(result.expressId);
         }
 
-        if (isolatedExpressIds.size > 0) {
+        if (state.visibleGuids.length > 0 && isolatedExpressIds.size === 0) {
+          // THIRD state. The viewpoint names elements, and NONE of them is in
+          // the model currently loaded -- the ordinary case for a BCF file
+          // authored against a different (or differently versioned) model.
+          // That is not "isolation matched nothing": the isolation could not
+          // be evaluated here at all. Applying it as an empty isolate would
+          // hide every element of a model the viewpoint never spoke about,
+          // which is indistinguishable from a broken viewer. Leave the
+          // isolation channel off and say why, so the camera and selection
+          // the viewpoint DOES carry still land on a visible model.
+          setIsolatedEntities(null);
+          toast.info(
+            "Viewpoint visibility not applied: none of its elements are in the loaded model."
+          );
+        } else {
           // #3338: a viewpoint guid may name a geometry-less assembly whose parts carry the mesh.
           const resolver = useViewerStore.getState().cameraCallbacks.resolveHighlightIds;
           setIsolatedEntities(new Set(resolvePresentationIds(resolver, [...isolatedExpressIds])));
-        } else {
-          setIsolatedEntities(null);
         }
       } else if (state.hiddenGuids.length > 0) {
         // Normal mode: specified entities are hidden

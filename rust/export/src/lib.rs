@@ -47,9 +47,11 @@ pub use schema_pad::padded_type_universe;
 mod shades;
 pub mod source_header;
 mod step;
+mod step_api;
 mod step_cow;
 mod step_header;
 mod step_json;
+mod step_slot;
 mod step_text;
 mod usd;
 

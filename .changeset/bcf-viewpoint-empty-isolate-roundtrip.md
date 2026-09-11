@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/bcf": minor
+"@ifc-lite/bcf": major
 "@ifc-lite/sdk": minor
 ---
 

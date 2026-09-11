@@ -25,14 +25,54 @@ function applyMat4(m: Mat4, x: number, y: number, z: number): Vec3 {
 }
 
 /**
+ * Thrown by {@link fromPositions} when every vertex is non-finite on at least
+ * one axis, so the axis has nothing finite to bound. Returning the box
+ * inverted (`min > max`) on that axis — as older revisions of this function
+ * did — is not a safe fallback: `boxesTouch` (`duplicate-metric.ts`) is only
+ * reached from the duplicates pass, not from the BVH broad phase
+ * (`@ifc-lite/spatial`) that `engine-ts/broad.ts` builds from `ClashElement.
+ * bounds`. There, an inverted box fails `min <= queryMax && max >= queryMin`
+ * on every query, so the element silently drops out of every spatial query —
+ * including the ones that would have found a genuine hard clash (#4254).
+ * Callers own the recovery: {@link fromPositions} cannot skip-and-report on
+ * its own (it has no element identity), so `step.ts` / `ifcx.ts` catch this,
+ * skip the one occurrence, and count+warn — the same shape as their existing
+ * `missingGlobalIds` handling — rather than aborting the whole clash run for
+ * one corrupt element among many.
+ */
+export class NonFiniteAxisError extends Error {
+  readonly axes: readonly ('x' | 'y' | 'z')[];
+  readonly vertexCount: number;
+
+  constructor(axes: readonly ('x' | 'y' | 'z')[], vertexCount: number) {
+    super(
+      `fromPositions: every vertex is non-finite on axis ${axes.join(', ')} ` +
+        `(${vertexCount} vertices scanned) — refusing to return an inverted ` +
+        `(min > max) box, which would silently drop this geometry from every ` +
+        `spatial query`,
+    );
+    this.name = 'NonFiniteAxisError';
+    this.axes = axes;
+    this.vertexCount = vertexCount;
+  }
+}
+
+/**
  * Axis-aligned bounds of a packed `[x,y,z,...]` position buffer.
  *
  * Non-finite coordinates (NaN and ±Infinity, checked after `transform` is
  * applied) never become bounds: an infinite bound makes `boxDistance` return
- * NaN, and a NaN distance passes every comparison-shaped gate downstream. If
- * NO vertex contributes a finite coordinate on an axis, the box is returned
- * inverted (`min > max`) on that axis, which is rejected by `boxesTouch`
- * rather than silently paired.
+ * NaN, and a NaN distance passes every comparison-shaped gate downstream. The
+ * finite coordinates of a partly poisoned vertex still count — the rule is
+ * per coordinate, not per vertex.
+ *
+ * If NO vertex contributes a finite coordinate on some axis, there is no
+ * finite bound to report on that axis at all: this throws
+ * {@link NonFiniteAxisError} naming the axis rather than returning the box
+ * inverted (`min > max`) on it. An inverted box is not "rejected" anywhere on
+ * the path that matters — `@ifc-lite/spatial`'s `BVH.build`/`queryAABB`
+ * (reached via `engine-ts/broad.ts`) has no such check, so it would silently
+ * make the element invisible to every spatial query instead (#4254).
  */
 export function fromPositions(positions: Float32Array, transform?: Mat4): AABB {
   if (positions.length < 3) {
@@ -68,6 +108,17 @@ export function fromPositions(positions: Float32Array, transform?: Mat4): AABB {
       if (z < minZ) minZ = z;
       if (z > maxZ) maxZ = z;
     }
+  }
+  // minX/maxX (etc.) only ever move together: the first finite coordinate
+  // seen on an axis sets both `< minX` and `> maxX` against itself, so a
+  // sentinel still sitting at ±Infinity here means NOT ONE vertex contributed
+  // a finite value on that axis — checking `min` alone is exhaustive.
+  const badAxes: ('x' | 'y' | 'z')[] = [];
+  if (minX === Infinity) badAxes.push('x');
+  if (minY === Infinity) badAxes.push('y');
+  if (minZ === Infinity) badAxes.push('z');
+  if (badAxes.length > 0) {
+    throw new NonFiniteAxisError(badAxes, Math.floor(positions.length / 3));
   }
   return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
 }

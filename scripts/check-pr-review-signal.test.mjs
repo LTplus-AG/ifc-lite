@@ -165,7 +165,7 @@ test('END TO END: a wholesale-skipped matrix job passes the REAL required set', 
   assert.match(r.output, /All \d+ required lane\(s\)/);
   // Reported, never absorbed: the skip is named along with how many lanes it covered.
   assert.match(r.output, /was SKIPPED as a whole job/);
-  assert.match(r.output, /its 4 lane\(s\)/);
+  assert.match(r.output, /its 8 lane\(s\)/);
 });
 
 test('a fixture alias with a NON-STRING template is BAD_STATE_FILE, not MISSING_LANES', () => {
@@ -189,7 +189,7 @@ test('a fixture alias with a NON-STRING template is BAD_STATE_FILE, not MISSING_
   }
 });
 
-test('END TO END: the same rollup WITHOUT the template still fails, naming all four shards', () => {
+test('END TO END: the same rollup WITHOUT the template still fails, naming all eight shards', () => {
   // The anti-vacuity pair. If the test above passed for any reason other than
   // the alias map -- a required set that never contained the shards, say -- this
   // one would pass too, and it must not.
@@ -200,8 +200,8 @@ test('END TO END: the same rollup WITHOUT the template still fails, naming all f
 
   const r = run({ lanes, reviewChecks: [] });
   assert.equal(r.code, 1, r.output);
-  assert.match(r.output, /MISSING_LANES: 4 of/);
-  for (const shard of [0, 1, 2, 3]) {
+  assert.match(r.output, /MISSING_LANES: 8 of/);
+  for (const shard of [0, 1, 2, 3, 4, 5, 6, 7]) {
     assert.ok(r.output.includes(`Viewer tests (shard ${shard})`), `must name shard ${shard}`);
   }
 });
@@ -215,7 +215,7 @@ test('END TO END: the template at SUCCESS is not a skip, and does not cover the 
 
   const r = run({ lanes, reviewChecks: [] });
   assert.equal(r.code, 1, r.output);
-  assert.match(r.output, /MISSING_LANES: 4 of/);
+  assert.match(r.output, /MISSING_LANES: 8 of/);
 });
 
 /**

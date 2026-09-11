@@ -98,11 +98,15 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Typecheck',
     'Lint',
     'Node tests',
+    // CI redesign step 4: provenance's 353 s merge battery in its own job,
+    // and the viewer suite at eight shards instead of four.
+    'Provenance tests',
     'Rust tests',
     'Rust crate semver',
     'Viewer E2E smoke',
     'Viewer tests (shard 0)',
     'Viewer tests (shard 3)',
+    'Viewer tests (shard 7)',
     'Docs checks (docs-only PRs)',
     'AGENTS.md ratchet',
     'MPL license headers',
@@ -112,7 +116,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 20);
+  assert.equal(names.length, 25);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {
@@ -251,7 +255,7 @@ test('the REAL test.yml maps every viewer shard to the template the REAL rollup 
   const aliases = matrixSkipAliases(
     readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8'),
   );
-  for (const shard of [0, 1, 2, 3]) {
+  for (const shard of [0, 1, 2, 3, 4, 5, 6, 7]) {
     assert.equal(
       aliases.get(`Viewer tests (shard ${shard})`),
       MATRIX_TEMPLATE,
@@ -286,7 +290,7 @@ test('`excludeJobKeys` must reach BOTH derivations, or the alias map stops cover
 
   // Asymmetric: excluding the job from the ALIASES only puts the shards back.
   const asymmetric = missingLanes(required, PR3581_ROLLUP, matrixSkipAliases(wf, { exclude: [...exclude, 'viewer-tests'] }));
-  for (const shard of [0, 1, 2, 3]) {
+  for (const shard of [0, 1, 2, 3, 4, 5, 6, 7]) {
     assert.ok(asymmetric.includes(`Viewer tests (shard ${shard})`), `shard ${shard} uncovered`);
   }
 });

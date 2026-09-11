@@ -13,6 +13,8 @@
 //! file and exercises functions from all three via `use super::*` plus the
 //! re-exports below.
 
+#[path = "spatial_canonical_parent.rs"]
+mod spatial_canonical_parent;
 #[path = "spatial_elevation.rs"]
 mod spatial_elevation;
 #[path = "spatial_invariant.rs"]
@@ -20,8 +22,14 @@ mod spatial_invariant;
 #[path = "spatial_tree.rs"]
 mod spatial_tree;
 
+use self::spatial_canonical_parent::resolve_aggregate_canonical_parents;
 use self::spatial_elevation::extract_elevation_if_storey;
 pub(super) use self::spatial_invariant::spatial_hierarchy_consistency_violations;
+#[cfg(test)]
+pub(super) use self::spatial_canonical_parent::{
+    resolve_aggregate_canonical_parents as resolve_aggregate_canonical_parents_for_tests,
+    resolve_aggregate_canonical_parents_with_budget,
+};
 use self::spatial_tree::build_spatial_nodes_recursive;
 use super::types::{EntityMetadata, Relationship, SpatialHierarchyData, SpatialNode};
 use ifc_lite_core::EntityDecoder;
@@ -114,14 +122,16 @@ pub(super) fn build_spatial_hierarchy(
     // it always wins; ties within a kind resolve to the first occurrence in
     // file order (`relationships` preserves source/parse order), never a
     // HashMap's iteration order.
-    let mut canonical_parent: FxHashMap<u32, u32> = FxHashMap::default();
-    for rel in relationships {
-        if rel.rel_type.to_uppercase() == "IFCRELAGGREGATES" {
-            canonical_parent
-                .entry(rel.related_id)
-                .or_insert(rel.relating_id);
-        }
-    }
+    // Each spatial child's canonical IFCRELAGGREGATES parent, resolved per
+    // child in `spatial_canonical_parent.rs`: plain first-declared-wins,
+    // except a candidate that would close an aggregation cycle back through
+    // the child is skipped first (#4246 - the same rule as
+    // packages/parser/src/spatial-hierarchy-canonical-parent.ts's
+    // computeCanonicalParent). The IFCRELCONTAINEDINSPATIALSTRUCTURE
+    // promotion below (no Aggregates edge at all, #1075) is layered on top,
+    // unaffected by that rule.
+    let mut canonical_parent: FxHashMap<u32, u32> =
+        resolve_aggregate_canonical_parents(relationships);
 
     for rel in relationships {
         let rel_type_upper = rel.rel_type.to_uppercase();

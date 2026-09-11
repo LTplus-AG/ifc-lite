@@ -11,6 +11,12 @@ validation:
   nav:
     omitted_files: warn
 
+# architecture/evidence/** are the supporting artifacts (fixtures, screenshots,
+# method notes) behind the design docs above them, not pages in their own right.
+# Declaring them here keeps `omitted_files: warn` meaningful for everything else.
+not_in_nav: |
+  architecture/evidence/**
+
 theme:
   name: material
   custom_dir: docs/overrides
@@ -164,6 +170,7 @@ nav:
     - Data Flow: architecture/data-flow.md
     - Parsing Pipeline: architecture/parsing-pipeline.md
     - Geometry Pipeline: architecture/geometry-pipeline.md
+    - Coverage Ledger: architecture/coverage-ledger.md
     - Rendering Pipeline: architecture/rendering-pipeline.md
     - Coordinate Handling: architecture/coordinate-handling.md
     - Federation: architecture/federation.md
@@ -176,6 +183,16 @@ nav:
     - N-ary Union Repair: architecture/nary-union-repair.md
     - WASM Wide Arithmetic: architecture/wasm-wide-arithmetic.md
     - Plato Code Generation: architecture/plato-codegen.md
+    - Appearance:
+        - Roadmap: architecture/appearance-roadmap.md
+        - Coordinated Assignments: architecture/appearance-assignments.md
+        - Cooperative Apply: architecture/appearance-cooperative-apply.md
+        - Evaluated Occurrences: architecture/appearance-evaluated-occurrences.md
+        - Registered Drawing References: architecture/appearance-references.md
+        - Workspace Integration: architecture/appearance-workspace.md
+    - Captured Mesh Authoring: architecture/captured-mesh-authoring.md
+    - PDF Vector Annotations: architecture/pdf-vector-annotations.md
+    - Scan Alignment Workbench: architecture/scan-alignment-workbench.md
     - Extension System:
         - Extension Model: architecture/ai-customization/01-extension-model.md
         - Security Model: architecture/ai-customization/02-security.md

@@ -201,6 +201,114 @@ describe('PinboardSlice', () => {
     });
   });
 
+  // #4527: the basket records which isolation ids it inserted and whether it
+  // opened the channel, and judges ownership of the channel BY VALUE before it
+  // narrows anything (lib/visibility/ownership.ts). The harness has no
+  // invalidation middleware, so a foreign replacement is simulated by writing
+  // the channel and nulling the record — exactly what the middleware does.
+  describe('basket-owned isolation (#4527)', () => {
+    const foreignReplace = (ids: number[]) => setState({ isolatedEntities: new Set(ids), basketVisibilityOwned: null });
+
+    it('emptying the basket by removal keeps an isolation it only widened', () => {
+      const FOREIGN = 500;
+      setState({ isolatedEntities: new Set([FOREIGN]) }); // opened by someone else
+      state.addToBasket([{ modelId: 'legacy', expressId: 100 }]);
+      assert.ok(state.basketVisibilityOwned && !state.basketVisibilityOwned.seeded, 'the basket did not open the channel');
+
+      state.removeFromBasket([{ modelId: 'legacy', expressId: 100 }]);
+
+      assert.deepStrictEqual(state.isolatedEntities, new Set([FOREIGN]), 'the external isolation survives, not null');
+      assert.strictEqual(state.basketVisibilityOwned, null);
+    });
+
+    it('emptying the basket by removal closes an isolation the basket opened', () => {
+      assert.strictEqual(state.isolatedEntities, null);
+      state.addToBasket([{ modelId: 'legacy', expressId: 100 }]);
+      assert.ok(state.basketVisibilityOwned?.seeded);
+      state.removeFromBasket([{ modelId: 'legacy', expressId: 100 }]);
+      assert.strictEqual(state.isolatedEntities, null);
+    });
+
+    it('an id that was already isolated when pinned is not claimed and survives unpinning', () => {
+      setState({ isolatedEntities: new Set([100]) });
+      state.addToBasket([{ modelId: 'legacy', expressId: 100 }, { modelId: 'legacy', expressId: 200 }]);
+      assert.deepStrictEqual(state.basketVisibilityOwned?.claims, new Set([200]));
+      state.removeFromBasket([{ modelId: 'legacy', expressId: 100 }]);
+      assert.ok(state.isolatedEntities!.has(100), '100 belonged to another writer');
+      state.removeFromBasket([{ modelId: 'legacy', expressId: 200 }]);
+      assert.deepStrictEqual(state.isolatedEntities, new Set([100]));
+    });
+
+    it('a foreign REPLACEMENT of the channel ends the basket claim: unpinning touches nothing', () => {
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }]);
+      foreignReplace([100, 900]); // e.g. search isolates a set that happens to include 100
+      state.removeFromBasket([{ modelId: 'legacy', expressId: 100 }]);
+      assert.deepStrictEqual(state.isolatedEntities, new Set([100, 900]), "the search isolation is not the basket's");
+      assert.strictEqual(state.pinboardEntities.size, 0);
+    });
+
+    it('a foreign subset replacement is not emptied either', () => {
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }, { modelId: 'legacy', expressId: 200 }]);
+      foreignReplace([100]);
+      state.removeFromBasket([{ modelId: 'legacy', expressId: 100 }]);
+      assert.deepStrictEqual(state.isolatedEntities, new Set([100]));
+    });
+
+    it('after an external clearIsolation the surviving basket re-takes the channel and records it', () => {
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }, { modelId: 'legacy', expressId: 200 }]);
+      setState({ isolatedEntities: null, basketVisibilityOwned: null }); // "hide active basket"
+      state.removeFromBasket([{ modelId: 'legacy', expressId: 100 }]);
+      assert.deepStrictEqual(state.isolatedEntities, new Set([200]));
+      assert.deepStrictEqual(state.basketVisibilityOwned?.claims, new Set([200]));
+      state.removeFromBasket([{ modelId: 'legacy', expressId: 200 }]);
+      assert.strictEqual(state.isolatedEntities, null, 'the re-take opened the channel, so emptying closes it');
+    });
+
+    it('showPinboard records ownership so a later removal narrows', () => {
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }, { modelId: 'legacy', expressId: 200 }]);
+      setState({ isolatedEntities: null, basketVisibilityOwned: null });
+      state.showPinboard();
+      assert.deepStrictEqual(state.basketVisibilityOwned?.ids, new Set([100, 200]));
+      state.removeFromBasket([{ modelId: 'legacy', expressId: 200 }]);
+      assert.deepStrictEqual(state.isolatedEntities, new Set([100]));
+    });
+
+    it('adding onto an empty-but-active foreign isolate and removing everything gives the empty Set back', () => {
+      setState({ isolatedEntities: new Set() }); // a restored BCF viewpoint isolating nothing (#4509)
+      state.addToBasket([{ modelId: 'legacy', expressId: 100 }]);
+      assert.deepStrictEqual(state.basketVisibilityOwned?.claims, new Set([100]));
+      assert.ok(!state.basketVisibilityOwned?.seeded);
+      state.removeFromBasket([{ modelId: 'legacy', expressId: 100 }]);
+      assert.deepStrictEqual(state.isolatedEntities, new Set(), 'active-but-empty, not null');
+    });
+
+    it('clearBasket closes an isolation the basket opened, keeps one it only widened, leaves one it lost', () => {
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }]);
+      state.clearBasket();
+      assert.strictEqual(state.isolatedEntities, null, 'opened by the basket: closed');
+
+      setState({ isolatedEntities: new Set([500]) });
+      state.addToBasket([{ modelId: 'legacy', expressId: 100 }]);
+      state.clearBasket();
+      assert.deepStrictEqual(state.isolatedEntities, new Set([500]), 'widened only: the remainder is handed back');
+
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }]);
+      foreignReplace([100, 900]);
+      state.clearBasket();
+      assert.deepStrictEqual(state.isolatedEntities, new Set([100, 900]), "lost to another writer: not the basket's to close");
+      assert.strictEqual(state.pinboardEntities.size, 0);
+    });
+
+    it('adding with the channel closed and a pre-existing basket claims the union', () => {
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }]);
+      setState({ isolatedEntities: null, basketVisibilityOwned: null });
+      state.addToBasket([{ modelId: 'legacy', expressId: 200 }]);
+      assert.deepStrictEqual(state.isolatedEntities, new Set([100, 200]));
+      assert.deepStrictEqual(state.basketVisibilityOwned?.claims, new Set([100, 200]));
+      assert.ok(state.basketVisibilityOwned?.seeded);
+    });
+  });
+
   describe('saveCurrentBasketView', () => {
     it('creates view with unique id and sets activeBasketViewId', () => {
       state.setBasket([{ modelId: 'legacy', expressId: 100 }]);

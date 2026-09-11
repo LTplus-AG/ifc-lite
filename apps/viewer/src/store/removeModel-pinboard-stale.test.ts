@@ -60,4 +60,27 @@ describe('removeModel purges pinboard basket state pointing at a removed model',
       'only the surviving basket entry (B:5 -> global id 1005) should be isolated',
     );
   });
+  it("filters the basket's ownership record like the channel when a model is removed (#4527)", () => {
+    useViewerStore.setState({
+      models: new Map([
+        ['A', model('A', 0, 100)],
+        ['B', model('B', 1000, 1100)],
+      ]),
+      activeModelId: 'A',
+    });
+    useViewerStore.getState().setBasket([
+      { modelId: 'A', expressId: 42 },
+      { modelId: 'B', expressId: 5 },
+    ]);
+    assert.ok(useViewerStore.getState().basketVisibilityOwned?.ids.has(42), 'setup: the record claims A:42');
+
+    useViewerStore.getState().removeModel('A');
+
+    const owned = useViewerStore.getState().basketVisibilityOwned;
+    assert.deepStrictEqual(owned?.ids, new Set([1005]), 'the record is filtered like the channel, not dropped');
+    assert.deepStrictEqual(owned?.claims, new Set([1005]));
+    // The surviving basket can still close the isolation it opened.
+    useViewerStore.getState().removeFromBasket([{ modelId: 'B', expressId: 5 }]);
+    assert.strictEqual(useViewerStore.getState().isolatedEntities, null, 'emptying the basket closes the isolation it opened');
+  });
 });

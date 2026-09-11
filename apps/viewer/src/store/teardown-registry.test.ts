@@ -34,7 +34,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'activePresetId',
   'activeSheet', 'activeStorey', 'activeTool', 'activeTopicId', 'activeViewpointId',
   'activeWorkScheduleId', 'animationEnabled', 'annotation2DActiveTool',
-  'annotation2DCursorPos', 'basketPresentationVisible', 'basketViews', 'bcfError',
+  'annotation2DCursorPos', 'basketVisibilityOwned', 'basketPresentationVisible', 'basketViews', 'bcfError',
   'bcfLoading', 'bcfPanelVisible', 'cameraRotation', 'cesiumAvailable', 'cesiumEnabled',
   'cesiumGlbLoaded', 'cesiumHeightsAreEllipsoidal', 'cesiumPlacementDraft',
   'cesiumPlacementDraftModelId', 'cesiumPlacementEditMode', 'cesiumSourceModelId',
@@ -91,7 +91,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
 /** The same, for `all-models-cleared`. */
 const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle
-  'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'classFilter',
+  'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'basketVisibilityOwned', 'classFilter',
   'contextMenu', 'geometryResult', 'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
   'hierarchyBasketSelection', 'hoverState', 'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel',
   'layerDiffBusy', 'layerStack', 'layerStackDiff', 'layerStackPathToId',
@@ -212,7 +212,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'activePresetId', 'activeSheet', 'activeStorey', 'activeTool', 'activeTopicId',
   'activeViewpointId', 'activeWorkScheduleId', 'addElementModelId', 'addElementStoreyId',
   'animationEnabled', 'annotation2DActiveTool', 'annotation2DCursorPos',
-  'basketPresentationVisible', 'basketViews', 'bcfError', 'bcfLoading', 'bcfPanelVisible',
+  'basketVisibilityOwned', 'basketPresentationVisible', 'basketViews', 'bcfError', 'bcfLoading', 'bcfPanelVisible',
   'cameraRotation', 'cesiumAvailable', 'cesiumEnabled', 'cesiumGlbLoaded',
   'cesiumHeightsAreEllipsoidal', 'cesiumPlacementDraft', 'cesiumPlacementDraftModelId',
   'cesiumPlacementEditMode', 'cesiumSourceModelId', 'cesiumTerrainClipY',

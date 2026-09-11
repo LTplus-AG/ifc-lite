@@ -131,11 +131,14 @@ export function releaseOwnedVisibility(
 export interface OwnedVisibilityRecords {
   idsFocusVisibilityOwned?: VisibilityOwnership;
   clashVisibilityOwned?: VisibilityOwnership;
+  /** The basket's claim on the isolate channel (`store/slices/pinboard-isolation.ts`, #4527). */
+  basketVisibilityOwned?: VisibilityOwnership;
 }
 
 const OWNERSHIP_RECORD_FIELDS = [
   'idsFocusVisibilityOwned',
   'clashVisibilityOwned',
+  'basketVisibilityOwned',
 ] as const satisfies readonly (keyof OwnedVisibilityRecords)[];
 
 /**
@@ -172,7 +175,8 @@ const OWNERSHIP_RECORD_FIELDS = [
  * `installClashGhost`, `useIDS.installFocusIsolation` / `installFocusGhost`),
  * so a record can never be invalidated by the very write that installed it.
  * (The middleware also leaves a record the patch itself carries alone, so an
- * installer that committed both in ONE `set()` would be safe too.)
+ * installer that commits both in ONE `set()` is safe too — the basket does,
+ * `store/slices/pinboard-isolation.ts`.)
  *
  * @returns a partial state patch — `{}` when nothing went stale, so the common
  *   case adds no keys to the `set()` and slice-level harnesses that stub `get()`

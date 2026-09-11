@@ -55,6 +55,7 @@ import { createUnitDisplaySlice, type UnitDisplaySlice } from './slices/unitDisp
 import { createSpaceMouseSlice, type SpaceMouseSlice } from './slices/spaceMouseSlice.js';
 import { createLayerStackSlice, type LayerStackSlice } from './slices/layerStackSlice.js';
 import { createZonesSlice, type ZonesSlice } from './slices/zonesSlice.js';
+import { createModelTagsSlice, type ModelTagsSlice } from './slices/modelTagsSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 import { withPlacementHistory } from './placement-history.js';
 import { withVisibilityOwnershipInvalidation } from './visibility-invalidation.js';
@@ -174,11 +175,8 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   SplitToolSlice &
   LevelDisplaySlice &
   PointCloudSlice & ModelPlacementSlice &
-  UnitDisplaySlice &
-  SpaceMouseSlice &
-  ZonesSlice &
-  ExtensionsSlice &
-  SourcesSlice & {
+  UnitDisplaySlice & SpaceMouseSlice & ZonesSlice & ModelTagsSlice &
+  ExtensionsSlice & SourcesSlice & {
     resetViewerState: () => void;
     /**
      * Open one right-side analysis panel and close the others, so the chosen
@@ -274,8 +272,8 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createUnitDisplaySlice(...args),
   ...createSpaceMouseSlice(...args),
   ...createZonesSlice(...args),
-  ...createExtensionsSlice(...args),
-  ...createSourcesSlice(...args),
+  ...createModelTagsSlice(...args),
+  ...createExtensionsSlice(...args), ...createSourcesSlice(...args),
   ...createAppearanceSlice(...args),
 
   // Reset all viewer state when loading new file

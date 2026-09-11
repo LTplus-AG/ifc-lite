@@ -1090,14 +1090,14 @@ export class GeometryProcessor {
    * the raw IFC buffer and returns the serialized output as bytes (`Uint8Array`;
    * UTF-8 for the text formats, so output is not capped by the V8 max-string
    * ceiling - decode with `TextDecoder` when a string is needed), or null if
-   * not initialized.
+   * not initialized. `isolated` below: `undefined` ⇒ no filter; empty `Uint32Array`
+   * ⇒ active but matching nothing (hides every mesh) — don't collapse the two.
    */
-
   exportObj(
     buffer: Uint8Array,
     includeNormals = true,
     hidden: Uint32Array = new Uint32Array(),
-    isolated: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array | undefined = undefined,
   ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportObj(buffer, includeNormals, hidden, isolated);

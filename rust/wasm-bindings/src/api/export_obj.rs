@@ -15,11 +15,18 @@ impl IfcAPI {
     /// V8 max-string ceiling (~512 MB); decode with `TextDecoder` when a string
     /// is genuinely needed.
     ///
-    /// `hidden` / `isolated` are express-id filters mirroring the viewer's visibility
-    /// state (empty `isolated` ⇒ all visible). Instanced type-library shapes are skipped.
+    /// `hidden` is an express-id filter mirroring the viewer's visibility state.
+    /// `isolated` carries the isolation allowlist's null-vs-empty distinction across
+    /// the wasm boundary: omit it (`undefined`) for "no isolation filter" (every mesh
+    /// is a candidate); pass an empty `Uint32Array` for "isolation is ACTIVE and
+    /// currently matches nothing" (every mesh is excluded). Collapsing the two — as a
+    /// bare `Uint32Array` parameter would force a caller to do — silently exports the
+    /// whole model when a filter matches nothing (the OBJ twin of #4328/#4364, fixed
+    /// for GLB in `export_glb`). A non-empty `Uint32Array` is the ordinary allowlist.
+    /// Instanced type-library shapes are skipped regardless of the filter.
     ///
     /// ```javascript
-    /// const obj = api.exportObj(ifcContent, true, new Uint32Array(), new Uint32Array());
+    /// const obj = api.exportObj(ifcContent, true, new Uint32Array(), undefined);
     /// ```
     #[wasm_bindgen(js_name = exportObj)]
     pub fn export_obj(
@@ -27,12 +34,12 @@ impl IfcAPI {
         content: &[u8],
         include_normals: bool,
         hidden: &[u32],
-        isolated: &[u32],
+        isolated: Option<Vec<u32>>,
     ) -> Vec<u8> {
         let opts = ifc_lite_export::ObjOptions {
             include_normals,
             hidden: hidden.to_vec(),
-            isolated: isolated.to_vec(),
+            isolated,
         };
         ifc_lite_export::export_obj(content, &opts).into_bytes()
     }

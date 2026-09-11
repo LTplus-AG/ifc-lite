@@ -12,7 +12,7 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
-import { countGlbMeshes } from '@ifc-lite/export';
+import { countGlbMeshes, countObjVertices } from '@ifc-lite/export';
 import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
 import { logger } from '../logger.js';
 import { formatGeometryReport, NO_DIAGNOSTICS_LINE } from '../geometry-report.js';
@@ -101,8 +101,29 @@ export async function exportRustFormat(
       if (out == null) fatal('JSON-LD export failed (geometry pipeline not initialized)');
       await writeOutput(out as Uint8Array, outPath);
     } else if (format === 'obj') {
-      const out = gp.exportObj(bytes, true, new Uint32Array(), isolated);
+      // `isolated` is empty-but-active only when a filter matched nothing
+      // (rejected above); an inactive filter must pass `undefined` to
+      // exportObj, not an empty Uint32Array — the wasm boundary now treats
+      // an explicit empty array as "isolation active, matches nothing"
+      // (the OBJ twin of #4328/#4364), and would fail-close every
+      // unfiltered export otherwise.
+      const out = gp.exportObj(bytes, true, new Uint32Array(), filterActive ? isolated : undefined);
       if (out == null) fatal('OBJ export failed (geometry pipeline not initialized)');
+      // Defense-in-depth mirroring the GLB guard below: the Rust OBJ path has
+      // no "no render geometry" error signal the way exportGlb does
+      // (NoRenderGeometry) — it always returns a string, so a filter/pipeline
+      // regression that drops all mesh visibility silently writes a small but
+      // still non-zero-byte, header-only OBJ as "success". Vertex count (not
+      // file size) is the actual geometry-content signal — see
+      // countObjVertices's comment.
+      if (countObjVertices(out as Uint8Array) === 0) {
+        fatal(
+          filterActive
+            ? 'OBJ export produced 0 vertices — the matched entities have no exportable render geometry. Check --type/--storey/--where/--limit.'
+            : 'OBJ export produced 0 vertices — the model has no exportable render geometry (or geometry production failed).',
+        );
+      }
+      logger.debug(`OBJ vertices: ${countObjVertices(out as Uint8Array)}`);
       await writeOutput(out as Uint8Array, outPath);
     } else {
       // gltf | glb → binary GLB

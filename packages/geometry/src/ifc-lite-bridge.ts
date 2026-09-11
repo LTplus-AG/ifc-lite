@@ -430,13 +430,13 @@ export class IfcLiteBridge {
 
   /**
    * Export the render geometry in `content` as a Wavefront OBJ string.
-   * `hidden` / `isolated` are express-id visibility filters (empty `isolated` ⇒ all).
+   * `isolated`: `undefined` ⇒ no filter; empty `Uint32Array` ⇒ active but matching nothing.
    */
   exportObj(
     content: Uint8Array,
     includeNormals = true,
     hidden: Uint32Array = new Uint32Array(),
-    isolated: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array | undefined = undefined,
   ): Uint8Array {
     return this.runExport('exportObj', content, (api) =>
       api.exportObj(content, includeNormals, hidden, isolated),

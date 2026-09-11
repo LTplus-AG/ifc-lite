@@ -254,6 +254,54 @@ describe('export_obj tool: bounding control', () => {
   });
 });
 
+describe('export_obj tool: `isolated` argument passed to gp.exportObj (the OBJ twin of the #4364 GLB follow-up)', () => {
+  // `GeometryProcessor.exportObj`'s `isolated` parameter now distinguishes
+  // "no filter" (`undefined`) from "isolation active, matches nothing" (an
+  // explicit empty `Uint32Array`) — see packages/geometry/src/index.ts. This
+  // tool must pass `undefined` when no `type` was requested; passing an empty
+  // Uint32Array there (the pre-fix shape) makes the wasm boundary fail-close
+  // every unfiltered export with a misleading "0 meshes" error, mirroring the
+  // GLB regression #4364 had to fix in a same-PR follow-up. Asserted on the
+  // actual argument the mock received, not just the return value, since a
+  // mocked `exportObj` succeeds either way and would not catch this.
+  it('passes `undefined` (not an empty Uint32Array) when no `type` filter is requested', async () => {
+    const obj = new TextEncoder().encode('o Wall A\nv 0 0 0\n');
+    gp.exportObj.mockReturnValue(obj);
+    const out = join(tmp, 'no-filter.obj');
+
+    const res = await exportObjTool.handler({ file_path: out }, ctx);
+
+    expect(res.isError).toBeUndefined();
+    expect(gp.exportObj).toHaveBeenCalledTimes(1);
+    const isolatedArg = gp.exportObj.mock.calls[0][3];
+    expect(isolatedArg).toBeUndefined();
+  });
+
+  it('passes a real Uint32Array of matched expressIds when `type` is requested and matches', async () => {
+    const obj = new TextEncoder().encode('o Wall A\nv 0 0 0\n');
+    gp.exportObj.mockReturnValue(obj);
+    const out = join(tmp, 'filtered.obj');
+
+    const res = await exportObjTool.handler({ file_path: out, type: 'IfcWall' }, ctx);
+
+    expect(res.isError).toBeUndefined();
+    expect(gp.exportObj).toHaveBeenCalledTimes(1);
+    const isolatedArg = gp.exportObj.mock.calls[0][3];
+    expect(isolatedArg).toBeInstanceOf(Uint32Array);
+    expect((isolatedArg as Uint32Array).length).toBeGreaterThan(0);
+    expect(Array.from(isolatedArg as Uint32Array)).toEqual([72]);
+  });
+
+  it('rejects before calling gp.exportObj when `type` matches nothing', async () => {
+    const out = join(tmp, 'zero-match.obj');
+
+    await expect(
+      exportObjTool.handler({ file_path: out, type: 'IfcNonExistentType' }, ctx),
+    ).rejects.toThrow(/No IfcNonExistentType entities found/);
+    expect(gp.exportObj).not.toHaveBeenCalled();
+  });
+});
+
 describe('export_ifcx tool: bounding control', () => {
   it('disposes exactly once and returns the correct result on success', async () => {
     const ifcx = new TextEncoder().encode('{"header":{}}');

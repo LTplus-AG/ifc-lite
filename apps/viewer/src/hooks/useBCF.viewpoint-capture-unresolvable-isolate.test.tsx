@@ -39,15 +39,18 @@ import { useBCF } from './useBCF.js';
 
 /** Isolated in the viewer, and carrying no GlobalId this store can answer. */
 const ISOLATED_ID = 99;
+const NAMED_ISOLATED_ID = 77;
+const NAMED_ISOLATED_GUID = 'NAMED-0000000000000000';
 const HIDDEN_ID = 22;
 const HIDDEN_GUID = 'HIDDEN-0000000000000000';
 
 const dataStore = {
   entities: {
-    // Deliberately answers for the HIDDEN entity only: the isolated one is
-    // unnameable, the way a viewer-only / freshly-authored entity is.
+    // Deliberately answers for the HIDDEN entity (and, for the mixed case,
+    // one nameable isolated entity) only: ISOLATED_ID is unnameable, the way
+    // a viewer-only / freshly-authored entity is.
     getGlobalId: (expressId: number): string | undefined =>
-      expressId === HIDDEN_ID ? HIDDEN_GUID : undefined,
+      expressId === HIDDEN_ID ? HIDDEN_GUID : expressId === NAMED_ISOLATED_ID ? NAMED_ISOLATED_GUID : undefined,
     getExpressIdByGlobalId: (): number | undefined => undefined,
   },
 } as unknown as IfcDataStore;
@@ -163,5 +166,35 @@ describe('useBCF — createViewpointFromState with an unresolvable isolate', () 
       false,
       'the unrelated hidden entity must not be captured',
     );
+  });
+  it('a partially nameable isolate records the nameable entity and tells the author about the rest (#4529)', async () => {
+    // Re-render the probe so the hook's closure sees the widened isolate.
+    await act(async () => {
+      useViewerStore.setState({ isolatedEntities: new Set<number>([ISOLATED_ID, NAMED_ISOLATED_ID]) });
+    });
+    const seen: string[] = [];
+    const originalInfo = toast.info;
+    toast.info = (message: string) => { seen.push(message); };
+    let viewpoint: BCFViewpoint | null = null;
+    try {
+      await act(async () => {
+        viewpoint = await api!.createViewpointFromState({
+          includeSnapshot: false,
+          includeSelection: false,
+          includeHidden: true,
+        });
+      });
+    } finally {
+      toast.info = originalInfo;
+    }
+    const vp: BCFViewpoint = viewpoint!;
+    assert.equal(vp.components?.visibility?.defaultVisibility, false, 'the isolation is recorded');
+    assert.deepEqual(
+      vp.components?.visibility?.exceptions?.map((e) => e.ifcGuid),
+      [NAMED_ISOLATED_GUID],
+      'exactly the nameable entity is the allowlist',
+    );
+    assert.equal(seen.length, 1, 'the author is told what was not recorded');
+    assert.match(seen[0], /1 of 2 isolated elements/);
   });
 });

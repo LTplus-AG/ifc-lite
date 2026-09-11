@@ -33,6 +33,7 @@ import { fromGlobalIdFromModels } from '@/store/globalId';
 import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import { deriveHeaderFiles } from './bcfHeaderFiles';
 import { toast } from '@/components/ui/toast';
+import { captureVisibility, describeVisibilityNotice } from './bcf/visibility-capture';
 
 // ============================================================================
 // Types
@@ -372,59 +373,17 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
           })()
         : undefined;
 
-      // Get visibility GUIDs - either hidden (normal mode) or visible (isolation mode)
+      // Visibility GUIDs — the isolate allowlist or the hide-list, whichever the
+      // viewer is in; what could not be named is reported to the author.
+      // Pure decision in hooks/bcf/visibility-capture.ts (#4509, #4529).
       let hiddenGuids: string[] | undefined;
       let visibleGuids: string[] | undefined;
-
       if (includeHidden) {
-        // `isolatedEntities` is meaningfully nullable (`Set<number> | null`):
-        // `null` means no isolation channel is active, while a non-null Set
-        // -- EMPTY included -- means one is, and currently matches nothing
-        // (the convention `packages/renderer/src/entity-visibility.ts`'s
-        // `isEntityVisible` already enforces). A `.size > 0` check here
-        // would read an active-but-empty isolate (reachable via
-        // `pinboardSlice.ts`'s `addToBasket`/`removeFromBasket` aliasing two
-        // `EntityRef`s onto one globalId, #4509) as "no isolation" and fall
-        // into the `hiddenEntities` branch below, capturing an unrelated
-        // normal-mode viewpoint instead.
-        if (isolatedEntities !== null) {
-          // Isolation mode: capture visible entities (defaultVisibility=false)
-          const guids: string[] = [];
-          for (const id of isolatedEntities) {
-            const guid = expressIdToGlobalId(id);
-            if (guid) guids.push(guid);
-          }
-          if (isolatedEntities.size > 0 && guids.length === 0) {
-            // THIRD state, and the reason `guids.length` alone cannot decide
-            // this: the isolate names real, currently-visible entities, but
-            // none of them has an IFC GlobalId this session can resolve, so
-            // the capture cannot NAME what is on screen. Emitting the empty
-            // array here would write `DefaultVisibility="false"` with no
-            // exceptions -- a positive claim that NOTHING is visible -- into
-            // a file other tools read back as authoritative. A view that
-            // cannot be expressed is omitted, not guessed at; the author is
-            // told so the viewpoint is not silently less than it looked.
-            console.warn(
-              '[useBCF] Isolation is active but none of the isolated entities has a resolvable IFC GlobalId; omitting the viewpoint visibility component.',
-            );
-            toast.info('Viewpoint saved without its visibility: the isolated elements have no IFC GlobalId to record.');
-          } else {
-            // Keep the EMPTY array when the isolate is ITSELF empty: the
-            // channel is active and genuinely matches nothing, so the
-            // viewpoint must record "nothing visible" (defaultVisibility=false
-            // with no exceptions). Collapsing that to `undefined` would put
-            // the capture back into the "no isolation, show everything"
-            // bucket that the branch above was fixed to avoid.
-            visibleGuids = guids;
-          }
-        } else if (hiddenEntities.size > 0) {
-          // Normal mode: capture hidden entities (defaultVisibility=true)
-          const guids: string[] = [];
-          for (const id of hiddenEntities) {
-            const guid = expressIdToGlobalId(id);
-            if (guid) guids.push(guid);
-          }
-          hiddenGuids = guids.length > 0 ? guids : undefined;
+        const capture = captureVisibility(isolatedEntities, hiddenEntities, expressIdToGlobalId);
+        ({ visibleGuids, hiddenGuids } = capture);
+        if (capture.notice) {
+          console.warn(`[useBCF] ${capture.notice.unnameable} of ${capture.notice.total} ${capture.notice.kind} entities have no resolvable IFC GlobalId; ${capture.notice.omitted ? 'omitting the viewpoint visibility component' : 'recording the rest'}.`);
+          toast.info(describeVisibilityNotice(capture.notice));
         }
       }
 

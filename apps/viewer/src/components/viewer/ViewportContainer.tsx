@@ -16,6 +16,7 @@ import {
   type DragOverlayState,
 } from './dragOverlayState';
 import { ViewportOverlays } from './ViewportOverlays';
+import { WebGpuDisabledCaption, WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
 import { LevelDisplayIndicator } from './LevelDisplayIndicator';
@@ -977,7 +978,7 @@ export function ViewportContainer() {
                     WebGPU Not Available
                   </h3>
                   <p className="font-mono text-sm text-[#a9b1d6] leading-relaxed">
-                    This viewer requires WebGPU which is not supported by your browser or device.
+                    {webGpuBannerBlurb(webgpu.category)}
                     {webgpu.reason && (
                       <span className="block mt-1 text-[#565f89]">
                         {webgpu.reason}
@@ -1009,54 +1010,7 @@ export function ViewportContainer() {
                   </button>
 
                   {showTroubleshooting && (
-                    <div className="mt-4 p-4 bg-[#1f2335] border border-[#3b4261] text-xs font-mono space-y-4">
-                      <div>
-                        <h4 className="font-bold text-[#ff9e64] uppercase tracking-wide mb-2">Blocklist Override</h4>
-                        <p className="text-[#a9b1d6] mb-2">
-                          WebGPU may be disabled due to GPU/driver blocklist. Try these flags:
-                        </p>
-                        <div className="space-y-1 text-[#7dcfff]">
-                          <p><code className="bg-[#16161e] px-1.5 py-0.5">chrome://flags/#enable-unsafe-webgpu</code> → Enable</p>
-                          <p><code className="bg-[#16161e] px-1.5 py-0.5">chrome://flags/#ignore-gpu-blocklist</code> → Enable</p>
-                        </div>
-                      </div>
-
-                      <div>
-                        <h4 className="font-bold text-[#bb9af7] uppercase tracking-wide mb-2">Firefox</h4>
-                        <p className="text-[#a9b1d6] mb-2">
-                          WebGPU enabled by default in Firefox 141+. For older versions:
-                        </p>
-                        <p className="text-[#7dcfff]">
-                          <code className="bg-[#16161e] px-1.5 py-0.5">about:config</code> → <code className="bg-[#16161e] px-1.5 py-0.5">dom.webgpu.enabled</code> → true
-                        </p>
-                      </div>
-
-                      <div>
-                        <h4 className="font-bold text-[#9ece6a] uppercase tracking-wide mb-2">Safari</h4>
-                        <p className="text-[#a9b1d6]">
-                          Safari → Settings → Feature Flags → Enable "WebGPU"
-                        </p>
-                      </div>
-
-                      <div>
-                        <h4 className="font-bold text-[#7aa2f7] uppercase tracking-wide mb-2">Verify Status</h4>
-                        <p className="text-[#a9b1d6] mb-2">Check your GPU status page:</p>
-                        <div className="space-y-1 text-[#7dcfff]">
-                          <p>Chrome/Edge: <code className="bg-[#16161e] px-1.5 py-0.5">chrome://gpu</code></p>
-                          <p>Firefox: <code className="bg-[#16161e] px-1.5 py-0.5">about:support</code></p>
-                        </div>
-                      </div>
-
-                      <a
-                        href="https://developer.chrome.com/docs/web-platform/webgpu/troubleshooting-tips"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-[#7aa2f7] hover:underline"
-                      >
-                        Full Troubleshooting Guide
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </div>
+                    <WebGpuTroubleshootingDetails category={webgpu.category} />
                   )}
                 </div>
               </div>
@@ -1134,7 +1088,7 @@ export function ViewportContainer() {
             </button>
 
             <p className="mt-2.5 text-[11px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
-              {webgpu.supported ? 'or drag & drop anywhere' : 'file upload disabled'}
+              {webgpu.supported ? 'or drag & drop anywhere' : <WebGpuDisabledCaption />}
             </p>
 
             {/* Subtle "or" rule — anchors the symmetry between the two tracks */}

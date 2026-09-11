@@ -25,6 +25,11 @@ mod spatial_tree;
 use self::spatial_canonical_parent::resolve_aggregate_canonical_parents;
 use self::spatial_elevation::extract_elevation_if_storey;
 pub(super) use self::spatial_invariant::spatial_hierarchy_consistency_violations;
+#[cfg(test)]
+pub(super) use self::spatial_canonical_parent::{
+    resolve_aggregate_canonical_parents as resolve_aggregate_canonical_parents_for_tests,
+    resolve_aggregate_canonical_parents_with_budget,
+};
 use self::spatial_tree::build_spatial_nodes_recursive;
 use super::types::{EntityMetadata, Relationship, SpatialHierarchyData, SpatialNode};
 use ifc_lite_core::EntityDecoder;

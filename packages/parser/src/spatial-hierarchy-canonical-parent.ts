@@ -23,24 +23,41 @@ const log = createLogger('SpatialHierarchy');
  * child has more than one candidate Aggregates parent - the common case
  * (one candidate) never calls this.
  */
-function formsCycleThroughChild(
+/**
+ * Upper bound on aggregate-graph node visits spent on back-edge cycle checks
+ * for one file. The check only runs for children named by MORE THAN ONE
+ * IfcRelAggregates (already malformed), and costs one descendant walk per
+ * such child - O(V+E) each - so a crafted file with thousands of contested
+ * children could otherwise burn O(C·(V+E)). Past the budget the resolver
+ * falls back to plain first-declared-wins (the pre-#4285 behaviour) and says
+ * so once, instead of stalling the parse.
+ */
+export const CYCLE_CHECK_VISIT_BUDGET = 2_000_000;
+
+/**
+ * Aggregated descendants of `childId` (transitive, forward `Aggregates`),
+ * charged against `budget`. Returns null when the budget ran out mid-walk
+ * (the partial set must not be used - a missing descendant reads as "no
+ * cycle", which is the wrong side to err on).
+ */
+function aggregatedDescendants(
   childId: number,
-  candidateParent: number,
   relationships: RelationshipGraph,
-): boolean {
+  budget: { visits: number },
+): Set<number> | null {
   const visited = new Set<number>([childId]);
   const stack: number[] = [childId];
   while (stack.length > 0) {
     const current = stack.pop() as number;
     for (const kid of relationships.getRelated(current, RelationshipType.Aggregates, 'forward')) {
-      if (kid === candidateParent) return true;
+      if (--budget.visits < 0) return null;
       if (!visited.has(kid)) {
         visited.add(kid);
         stack.push(kid);
       }
     }
   }
-  return false;
+  return visited;
 }
 
 /**
@@ -63,7 +80,7 @@ function formsCycleThroughChild(
  *     reordering by id. So `edges[0]` for a given child is the
  *     first-declared parent edge; no id comparison is needed or correct -
  *     EXCEPT that a candidate closing a cycle back through the child is
- *     skipped first (see `formsCycleThroughChild`, #4246): a mutual or
+ *     skipped first (see `aggregatedDescendants`, #4246): a mutual or
  *     longer aggregation back-edge cannot win a tie against a candidate that
  *     doesn't orphan the child's own subtree from itself. Each time that
  *     happens, a warning is logged (always-visible, like the existing
@@ -84,8 +101,15 @@ function formsCycleThroughChild(
  * names the child drops the edge instead of adding an empty-stub duplicate
  * (#4095).
  */
-export function computeCanonicalParent(entities: EntityTable, relationships: RelationshipGraph): Map<number, number> {
+export function computeCanonicalParent(
+  entities: EntityTable,
+  relationships: RelationshipGraph,
+  options: { cycleCheckVisitBudget?: number } = {},
+): Map<number, number> {
   const canonicalParent = new Map<number, number>();
+  const visitBudget = options.cycleCheckVisitBudget ?? CYCLE_CHECK_VISIT_BUDGET;
+  const cycleBudget = { visits: visitBudget };
+  let cycleBudgetExhausted = false;
 
   const claimFirstDeclaredParent = (
     predicate: (childId: number) => boolean,
@@ -128,13 +152,32 @@ export function computeCanonicalParent(entities: EntityTable, relationships: Rel
         // cycle (a more degenerate file than anything observed), fall
         // through to plain first-declared so the child is never left
         // without a parent.
-        const nonCyclic = edges.find((edge) => !formsCycleThroughChild(childId, edge.target, relationships));
-        if (nonCyclic && nonCyclic !== winner) {
-          log.warn(
-            `Ignored an aggregation back-edge cycle: #${childId} kept parent #${nonCyclic.target}, ` +
-              `not the first-declared #${winner.target} (which would have closed a cycle back through #${childId})`,
-          );
-          winner = nonCyclic;
+        //
+        // One descendant walk per contested child (not per candidate), under a
+        // file-wide visit budget - see CYCLE_CHECK_VISIT_BUDGET.
+        const descendants = cycleBudgetExhausted ? null : aggregatedDescendants(childId, relationships, cycleBudget);
+        if (descendants === null) {
+          if (!cycleBudgetExhausted) {
+            cycleBudgetExhausted = true;
+            log.warn(
+              `Aggregation back-edge cycle checks stopped after ${visitBudget} graph visits; ` +
+                'remaining multi-parent children resolve to their first-declared IfcRelAggregates edge',
+            );
+          }
+        } else {
+          const rejected: number[] = [];
+          const nonCyclic = edges.find((edge) => {
+            const cyclic = descendants.has(edge.target);
+            if (cyclic) rejected.push(edge.target);
+            return !cyclic;
+          });
+          if (nonCyclic && nonCyclic !== winner) {
+            log.warn(
+              `Ignored ${rejected.length} aggregation back-edge cycle(s): #${childId} kept parent #${nonCyclic.target}, ` +
+                `not ${rejected.map((id) => `#${id}`).join(', ')} (each would have closed a cycle back through #${childId})`,
+            );
+            winner = nonCyclic;
+          }
         }
       }
       // Inverse edges flip source/target, so `target` here is the original

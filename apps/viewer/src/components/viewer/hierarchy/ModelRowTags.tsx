@@ -6,21 +6,55 @@
  * The tag chips on a hierarchy MODEL row plus the button that opens the tag
  * editor for that model (#4215). Rendered inside `HierarchyNode`'s model
  * header — which is at its size budget, hence one component call there and
- * everything else here.
+ * everything else here, including the row height the chips line needs.
  *
  * Every click stops propagation: the row's own click toggles expansion.
  */
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Tag } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { TreeNode } from './types';
 import { ModelTagChip } from './ModelTagChip';
 import { ModelTagEditor } from './ModelTagEditor';
 
-/** Chips drawn inline before the row collapses the rest into "+N". */
+/** Chips drawn before the strip collapses the rest into "+N". */
 const MAX_INLINE_CHIPS = 3;
+
+/**
+ * Row heights the Models section's virtualizer uses (`useModelRowSize`).
+ * The name, the element count and the row actions already fill a model row
+ * at the panel's default ~260px width — there is no room beside them — so a
+ * tagged model's row is taller and the chips sit on a second line under
+ * the name, absolutely placed against the virtual row so the first line's
+ * flex layout is untouched.
+ */
+export const MODEL_ROW_HEIGHT = 36;
+export const TAGGED_MODEL_ROW_HEIGHT = 54;
+
+/** `estimateSize` for the Models section: tagged model rows get the chips line. Re-measures when tags change. */
+export function useModelRowSize(nodes: readonly TreeNode[], remeasure: () => void): (index: number) => number {
+  const assignments = useViewerStore((s) => s.modelTagAssignments);
+  const size = useCallback(
+    (index: number) => {
+      const node = nodes[index];
+      const tagged = node?.type === 'model-header' && node.id.startsWith('model-') && (assignments.get(node.modelIds[0])?.size ?? 0) > 0;
+      return tagged ? TAGGED_MODEL_ROW_HEIGHT : MODEL_ROW_HEIGHT;
+    },
+    [nodes, assignments],
+  );
+  // tanstack-virtual memoises measurements on its own cache version, not on
+  // `estimateSize`'s identity; a changed size function must clear that cache.
+  // The caller's closure is read through a ref so only `size` retriggers.
+  const remeasureRef = useRef(remeasure);
+  remeasureRef.current = remeasure;
+  useEffect(() => { remeasureRef.current(); }, [size]);
+  return size;
+}
+
+const STRIP_CLASS = 'absolute bottom-1 left-[54px] right-2 flex min-w-0 items-center gap-1 overflow-hidden';
 
 export function ModelRowTags({ modelId, modelName }: { modelId: string; modelName: string }) {
   const { modelTags, assigned } = useViewerStore(
@@ -35,16 +69,13 @@ export function ModelRowTags({ modelId, modelName }: { modelId: string; modelNam
     <>
       {inline.length > 0 && (
         <span
-          className="flex min-w-0 shrink items-center gap-1"
+          className={STRIP_CLASS}
           data-model-row-tags={modelId}
+          title={ids.map((id) => modelTags.get(id)?.name ?? 'Unknown tag').join(', ')}
           onClick={(e) => e.stopPropagation()}
         >
-          {inline.map((id) => <ModelTagChip key={id} tag={modelTags.get(id)} />)}
-          {overflow > 0 && (
-            <span className="text-[10px] text-zinc-500" title={ids.slice(MAX_INLINE_CHIPS).map((id) => modelTags.get(id)?.name ?? 'Unknown tag').join(', ')}>
-              +{overflow}
-            </span>
-          )}
+          {inline.map((id) => <ModelTagChip key={id} tag={modelTags.get(id)} className="min-w-0 shrink" />)}
+          {overflow > 0 && <span className="shrink-0 text-[10px] text-zinc-500">+{overflow}</span>}
         </span>
       )}
       <Tooltip>

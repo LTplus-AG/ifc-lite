@@ -170,6 +170,7 @@ nav:
     - Data Flow: architecture/data-flow.md
     - Parsing Pipeline: architecture/parsing-pipeline.md
     - Geometry Pipeline: architecture/geometry-pipeline.md
+    - Coverage Ledger: architecture/coverage-ledger.md
     - Rendering Pipeline: architecture/rendering-pipeline.md
     - Coordinate Handling: architecture/coordinate-handling.md
     - Federation: architecture/federation.md

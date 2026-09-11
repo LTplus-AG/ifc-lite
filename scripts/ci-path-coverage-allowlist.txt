@@ -27,7 +27,7 @@ scripts/fixtures/fetch-fixtures.test.mjs tests/* # `tests` fragment; the fetcher
 scripts/docs/generate-docs-sections.mjs tests/benchmark/* # `tests` prefix fragment; the one input under tests/benchmark is baseline.json, now in the docs filter and pinned by REQUIRED_COVERAGE
 scripts/docs/generate-docs-sections.mjs tests/extensions # `tests` prefix fragment; sdk-canary.yml carries tests/extensions/canaries/** in its own paths
 scripts/docs/generate-docs-sections.mjs tests/models # `tests` prefix fragment; the corpus input tests/models/manifest.json is in the rust, geometry and frontend filters
-scripts/docs/check-package-readmes.test.mjs docs # `docs` fragment; the gate reads packages/*/README.md
+scripts/docs/check-package-readmes.test.mjs docs/** # `docs` fragment; the gate reads packages/*/README.md
 scripts/docs/check-package-readmes.test.mjs README.md # root README fragment; the gate reads per-package READMEs
 scripts/check-swallowed-push.test.mjs README.md # fragment from the harness's fixture root, not an input
 scripts/typecheck-tests.test.mjs README.md # same fragment
@@ -35,6 +35,15 @@ scripts/typecheck-tests.test.mjs demo # `demo` is not a typecheck target; the ga
 scripts/generate-plato-clash.mjs tools/* # `tools` fragment; the generator reads tools/plato, which the plato filter carries
 
 # ---------------------------------------------------------------------------
+# `docs` and `apps/landing` below are `/**` globs, not bare literals, even
+# though every real hit under them still collapses to the coarse node. A
+# bare literal only matches the coarse node while the whole subtree stays
+# unreached from `frontend`; the moment one real file under it (e.g.
+# `docs/architecture/coverage-ledger.md`, `apps/landing/samples/**`, added
+# for #4207) becomes reachable, `uncoveredNodes` stops collapsing and
+# reports every remaining sibling by name -- a bare-literal exemption then
+# matches none of them. The `/**` form still matches the coarse node AND
+# every descendant, so it survives a future partial widening.
 # 2. apps/landing AND THE FOUR TREE-WALKERS. `check-module-size`,
 #    `check-wasm-disposal`, `check-source-text-assertions`,
 #    `check-loader-hook-specifier-match` and `check-test-wiring` all walk
@@ -51,17 +60,17 @@ scripts/generate-plato-clash.mjs tools/* # `tools` fragment; the generator reads
 #    TypeScript, no test file and no WASM handle. If TypeScript ever lands
 #    there, DELETE THESE LINES and pay the frontend cost.
 # ---------------------------------------------------------------------------
-scripts/check-module-size.mjs apps/landing # walks apps/ for .ts/.tsx; apps/landing has none -- see the trade above
-scripts/check-module-size.test.mjs apps/landing # same walk, in the harness
-scripts/check-wasm-disposal.mjs apps/landing # walks apps/ for WASM handles; apps/landing holds none
-scripts/check-source-text-assertions.mjs apps/landing # walks apps/ for test files; apps/landing has none
-scripts/check-source-text-assertions.test.mjs apps/landing # `apps` is a synthetic mkdtemp directory name (['packages', 'apps', 'scripts']), not a real read; the walk after mkdir hits the real apps/ tree, same walk as above
-scripts/check-source-text-assertions-identity.test.mjs apps/landing # same walk, in the harness
-scripts/check-loader-hook-specifier-match.mjs apps/landing # walks apps/ for loader hooks; apps/landing has none
-scripts/check-loader-hook-specifier-match.test.mjs apps/landing # same walk, in the harness
-scripts/check-tla-chunk-await.test.mjs apps/landing # same walk, in the harness
-scripts/check-test-wiring.mjs apps/landing # walks apps/ for test suites; apps/landing has none
-scripts/typecheck-tests.test.mjs apps/landing # apps/landing is not a tsconfig project
+scripts/check-module-size.mjs apps/landing/** # walks apps/ for .ts/.tsx; apps/landing has none -- see the trade above
+scripts/check-module-size.test.mjs apps/landing/** # same walk, in the harness
+scripts/check-wasm-disposal.mjs apps/landing/** # walks apps/ for WASM handles; apps/landing holds none
+scripts/check-source-text-assertions.mjs apps/landing/** # walks apps/ for test files; apps/landing has none
+scripts/check-source-text-assertions.test.mjs apps/landing/** # `apps` is a synthetic mkdtemp directory name (['packages', 'apps', 'scripts']), not a real read; the walk after mkdir hits the real apps/ tree, same walk as above
+scripts/check-source-text-assertions-identity.test.mjs apps/landing/** # same walk, in the harness
+scripts/check-loader-hook-specifier-match.mjs apps/landing/** # walks apps/ for loader hooks; apps/landing has none
+scripts/check-loader-hook-specifier-match.test.mjs apps/landing/** # same walk, in the harness
+scripts/check-tla-chunk-await.test.mjs apps/landing/** # same walk, in the harness
+scripts/check-test-wiring.mjs apps/landing/** # walks apps/ for test suites; apps/landing has none
+scripts/typecheck-tests.test.mjs apps/landing/** # apps/landing is not a tsconfig project
 
 # ---------------------------------------------------------------------------
 # 3. OTHER WORKFLOWS. Real holes, in workflows this change does not own.
@@ -87,8 +96,8 @@ scripts/check-ci-path-coverage.mjs tests/benchmark/baseline.json # asserted abou
 #    fixtures are synthetic trees under os.tmpdir().
 # ---------------------------------------------------------------------------
 scripts/check-ci-path-coverage.test.mjs .github/* # `.github` prefix fragment from a fixture path, not read
-scripts/check-ci-path-coverage.test.mjs apps/landing # quoted in an assertion, not read
-scripts/check-ci-path-coverage.test.mjs docs # quoted in an assertion, not read
+scripts/check-ci-path-coverage.test.mjs apps/landing/** # quoted in an assertion, not read
+scripts/check-ci-path-coverage.test.mjs docs/** # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs tests/benchmark # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs tests/extensions # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs tests/models # quoted in an assertion, not read

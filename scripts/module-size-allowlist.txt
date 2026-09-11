@@ -328,7 +328,7 @@
    680 scripts/check-changeset-bump.mjs
    526 scripts/check-ci-path-coverage.mjs
    574 scripts/check-collab-room-model-target.mjs
-   529 scripts/check-generated.mjs
+   533 scripts/check-generated.mjs
    430 scripts/check-git-lfs.mjs
    560 scripts/check-isolate-expansion-routing.mjs
    957 scripts/check-issue-queue.mjs
@@ -344,6 +344,7 @@
    488 scripts/check-wasm-disposal.mjs
    499 scripts/docs/check-doc-samples.mjs
    506 scripts/generate-bim-globals.mjs
+   506 scripts/generate-coverage-ledger.mjs
    423 scripts/generate-epsg-index.ts
    403 scripts/lib/ci-path-coverage.mjs
    460 scripts/lib/pr-green-sweep.mjs

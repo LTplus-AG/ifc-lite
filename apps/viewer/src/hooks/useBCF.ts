@@ -376,7 +376,17 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       let visibleGuids: string[] | undefined;
 
       if (includeHidden) {
-        if (isolatedEntities !== null && isolatedEntities.size > 0) {
+        // `isolatedEntities` is meaningfully nullable (`Set<number> | null`):
+        // `null` means no isolation channel is active, while a non-null Set
+        // -- EMPTY included -- means one is, and currently matches nothing
+        // (the convention `packages/renderer/src/entity-visibility.ts`'s
+        // `isEntityVisible` already enforces). A `.size > 0` check here
+        // would read an active-but-empty isolate (reachable via
+        // `pinboardSlice.ts`'s `addToBasket`/`removeFromBasket` aliasing two
+        // `EntityRef`s onto one globalId, #4509) as "no isolation" and fall
+        // into the `hiddenEntities` branch below, capturing an unrelated
+        // normal-mode viewpoint instead.
+        if (isolatedEntities !== null) {
           // Isolation mode: capture visible entities (defaultVisibility=false)
           const guids: string[] = [];
           for (const id of isolatedEntities) {

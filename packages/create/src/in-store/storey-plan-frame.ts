@@ -139,11 +139,19 @@ export function fromStoreyLocal(frame: StoreyPlanFrame, p: Vec2): Vec2 {
 
 /**
  * Whether one `IfcLocalPlacement`'s own axis keeps the chain in plan: its
- * `IfcAxis2Placement3D.Axis` is absent (the +Z default) or is +Z.
+ * `IfcAxis2Placement3D.Axis` is ABSENT — the +Z default the schema gives it —
+ * or is present and reads as +Z.
  *
- * A link that will not read at all is reported as in-plan here and caught by
- * `storeyFrameAboveBy` returning null instead, so the two checks do not
- * disagree about which failure the caller is told about.
+ * The split at `axisId` is the whole point. Everything above it (the placement,
+ * its `RelativePlacement`, that axis placement) is read again by
+ * `readOwnPlacementFrame`, which returns null for each, so reporting those as
+ * in-plan here does not let them through — the composition refuses instead, and
+ * the two checks do not disagree about which failure the caller is told about.
+ * `Axis` is the exception: NOTHING else reads it. `readOwnPlacementFrame` takes
+ * `Location` and `RefDirection` and never looks at it. So a present `Axis` that
+ * dangles, will not parse, or is the zero vector has to be refused HERE or it
+ * is silently taken for +Z — which is the guess this function exists to
+ * prevent, on the one input where the guess cannot be checked.
  */
 function placementIsInPlan(
   store: IfcDataStore,
@@ -157,13 +165,14 @@ function placementIsInPlan(
   const axisPlacement = readEntity(store, extractor, undefined, axisPlacementId);
   if (!axisPlacement) return true;
   const axisId = numericAttr(axisPlacement.attributes[1]); // Axis
-  if (axisId === null) return true;
+  if (axisId === null) return true; // absent: +Z by default, per IFC
+  // Present from here on — any failure to read it is a refusal, not a default.
   const axisDir = readEntity(store, extractor, undefined, axisId);
-  if (!axisDir) return true;
+  if (!axisDir) return false;
   const v = readVec3(axisDir.attributes[0]);
-  if (!v) return true;
+  if (!v) return false;
   const len = Math.hypot(v[0], v[1], v[2]);
-  if (len === 0) return true;
+  if (!(len > 0) || !Number.isFinite(len)) return false;
   return Math.abs(v[0] / len) < VERTICAL_EPS
     && Math.abs(v[1] / len) < VERTICAL_EPS
     && v[2] / len > 0;

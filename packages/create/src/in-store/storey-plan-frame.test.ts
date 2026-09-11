@@ -143,6 +143,28 @@ describe('storeyPlanFrame', () => {
     expect(storeyPlanFrame(await parse(fixture({ storeyAxis: '#96' })), 4)).toBeNull();
   });
 
+  it('refuses a PRESENT Axis that dangles, will not parse, or is zero-length', async () => {
+    // Nothing else in the chain reads `Axis` — `readOwnPlacementFrame` takes
+    // `Location` and `RefDirection` only — so a broken one that is reported as
+    // in-plan here is silently taken for +Z, and the storey is composed as if
+    // it were flat. An absent `Axis` is the schema's +Z default and is fine; a
+    // present one that cannot be read is not.
+    const dangling = fixture({ storeyAxis: '#998' }); // no #998 in the file
+    expect(storeyPlanFrame(await parse(dangling), 4)).toBeNull();
+
+    const zero = fixture({ storeyAxis: '#96' }).replace(
+      '#96=IFCDIRECTION((0.,0.6,0.8));',
+      '#96=IFCDIRECTION((0.,0.,0.));',
+    );
+    expect(storeyPlanFrame(await parse(zero), 4)).toBeNull();
+
+    const unparseable = fixture({ storeyAxis: '#96' }).replace(
+      '#96=IFCDIRECTION((0.,0.6,0.8));',
+      '#96=IFCDIRECTION($);',
+    );
+    expect(storeyPlanFrame(await parse(unparseable), 4)).toBeNull();
+  });
+
   it('accepts an axis that is explicitly +Z', async () => {
     const upright = fixture({ storeyAxis: '#97' }).replace(
       '#96=IFCDIRECTION((0.,0.6,0.8));',

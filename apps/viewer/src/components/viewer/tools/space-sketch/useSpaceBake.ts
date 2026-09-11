@@ -147,10 +147,18 @@ export function useSpaceBake({
         grossFloorArea: space.grossFloorArea,
         netFloorArea: space.netFloorArea,
       },
-      // Draw the immediate 3D mirror where the user drew the room. The profile
-      // above has the storey chain divided out; `buildElementMesh` does not put
-      // it back, so without this the room would jump by the whole chain the
+      // Draw the immediate 3D mirror on the room outline, which is where the
+      // ghost that previewed it is (`useSpaceGhostPreview` hands
+      // `buildElementMesh` these same coordinates). The profile above has the
+      // storey chain divided out and `buildElementMesh` does not put it back,
+      // so passing the profile would make the room jump by the whole chain the
       // moment it is confirmed and come back on reload.
+      //
+      // This keeps the mirror exactly where it was, no better: `buildElementMesh`
+      // reads no `CoordinateInfo`, so on a georeferenced model both it and the
+      // ghost sit `roomFramePlanOffsets` away from the rendered walls. That is
+      // the room frame's own question, decided in `wall-rects-from-meshes.ts`
+      // and not here — correcting it on one of the two would split them apart.
       space.OuterCurve);
       if (res && 'expressId' in res) newIds.push(res.expressId);
       else error ??= (res && 'error' in res ? res.error : 'unknown error');

@@ -81,7 +81,7 @@ jobs:
     # question, and leaving it in would mean the rollup never reads as settled.
     name: PR review signal
     # Free runner: two API reads and a poll, not compute-bound.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     # Above the poll budget below, so a run that exhausts the budget still gets
     # to PRINT its verdict rather than being killed mid-wait with no output.
     timeout-minutes: 45

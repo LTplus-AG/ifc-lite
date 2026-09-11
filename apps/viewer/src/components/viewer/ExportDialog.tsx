@@ -68,6 +68,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 import { ExtensionExportSlot } from '@/components/extensions/ExtensionExportSlot';
+import { preferredExportModelId } from './export-model-default';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -79,6 +80,7 @@ interface ExportDialogProps {
 
 export function ExportDialog({ trigger }: ExportDialogProps) {
   const models = useViewerStore((s) => s.models);
+  const activeModelId = useViewerStore((s) => s.activeModelId);
   const dirtyModels = useViewerStore((s) => s.dirtyModels);
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
@@ -172,12 +174,19 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     return list;
   }, [models, dirtyModels, legacyIfcDataStore]);
 
-  // Select first model by default
-  useMemo(() => {
-    if (modelList.length > 0 && !selectedModelId) {
-      setSelectedModelId(modelList[0].id);
+  // Keep a removed selection from stranding the dialog. The open handler below
+  // deliberately re-seeds from the active model each time: authoring commands
+  // select their destination, so Export follows the object the user just made.
+  useEffect(() => {
+    if (selectedModelId && !modelList.some(model => model.id === selectedModelId)) {
+      setSelectedModelId(modelList[0]?.id ?? '');
     }
   }, [modelList, selectedModelId]);
+
+  const handleOpenChange = useCallback((next: boolean) => {
+    if (next) setSelectedModelId(preferredExportModelId(modelList.map(model => model.id), activeModelId));
+    setOpen(next);
+  }, [modelList, activeModelId]);
 
   // Get selected model's data - supports both federated and legacy mode
   const selectedModel = useMemo(() => {
@@ -593,7 +602,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo]);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">

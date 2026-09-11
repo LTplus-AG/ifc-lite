@@ -25,3 +25,17 @@ test('removing the pinned captured surface never silently substitutes another lo
   act(()=>{select.value='other:0';select.dispatchEvent(new window.Event('change',{bubbles:true}));});
   assert.equal(select.value,'other:0','another source requires an explicit choice');
 });
+
+test('capture panel exposes source upload and blank destination actions in the flow (#4477)', () => {
+  useViewerStore.setState({models:new Map(),selectedEntityId:null,activeModelId:null,
+    modelPlacement:emptyPlacementState(),collabRoomId:null,mutationViews:new Map()});
+  const ui=render(<AppearanceCapturePanel/>);
+  assert.match(ui.textContent ?? '', /1\. Choose a source/);
+  assert.match(ui.textContent ?? '', /2\. Choose a destination/);
+  assert.match(ui.textContent ?? '', /3\. Create the IFC object/);
+  assert.ok([...ui.querySelectorAll('button')].some(button => button.textContent === 'Add scan'));
+  assert.ok([...ui.querySelectorAll('button')].some(button => button.textContent === 'New IFC4 model'));
+  assert.equal(ui.querySelector<HTMLInputElement>('input[aria-label="Add scan files"]')?.accept,
+    '.glb,.gltf,.bin,.png,.jpg,.jpeg,.ifc,.ifczip');
+  assert.match(ui.textContent ?? '', /glTF bundle/);
+});

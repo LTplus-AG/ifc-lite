@@ -14,9 +14,11 @@ works in world coordinates now has a supported way to divide the chain out
 before authoring, and to fold `existingSpaceFootprintsByStorey`'s storey-local
 rings the other way for a comparison in its own frame.
 
-`storeyPlanFrame` returns `null` rather than approximating when the storey has
-no `ObjectPlacement`, when a link in the chain will not read, or when any link's
-`Axis` tips out of plan — a tilted chain has no planar inverse.
+`storeyPlanFrame` returns `null` rather than approximating when the storey
+itself will not read, when a link in the chain will not read, or when any link's
+`Axis` tips out of plan — a tilted chain has no planar inverse. A storey with no
+`ObjectPlacement` at all gets the identity: `ObjectPlacement` is OPTIONAL on
+`IfcProduct`, and a product without one carries no transform.
 
 The placement-frame primitives these share with `extractWallSegmentsForStorey`
 move to an internal `placement-frame` module so both sides compose and invert

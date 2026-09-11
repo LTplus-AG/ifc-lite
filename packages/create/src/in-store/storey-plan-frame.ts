@@ -50,14 +50,21 @@ export interface StoreyPlanFrame {
 /** A placement `Axis` is treated as vertical within this of unit +Z. */
 const VERTICAL_EPS = 1e-6;
 
+/** The frame of a storey that carries no placement at all: no transform. */
+const IDENTITY_FRAME: StoreyPlanFrame = { origin: [0, 0], axisX: [1, 0] };
+
 /**
  * Compose the storey's whole placement chain into a world-frame plan frame, in
  * metres.
  *
+ * A storey with NO `ObjectPlacement` — it is OPTIONAL on `IfcProduct`, and real
+ * files leave it out — gets the identity, which is the answer rather than a
+ * guess: a product with no placement carries no transform, and the authoring
+ * side materialises exactly that (an `IfcLocalPlacement` at the origin with no
+ * `PlacementRelTo`) before it writes.
+ *
  * Returns `null` — refusing, never approximating — when:
- *  - the storey has no `ObjectPlacement` (it is OPTIONAL on `IfcProduct`), so
- *    there is no chain to divide out and no way to tell "already storey-local"
- *    from "world";
+ *  - the storey itself will not read, so there is nothing to say;
  *  - any link in the chain will not read (a missing `RelativePlacement`,
  *    `Location`, or a dangling reference), so only part of the chain could be
  *    composed and a partial chain moves the geometry by the wrong amount;
@@ -71,6 +78,9 @@ export function storeyPlanFrame(
 ): StoreyPlanFrame | null {
   if (!store.source) return null;
   const extractor = new EntityExtractor(store.source);
+  const storey = readEntity(store, extractor, undefined, storeyExpressId);
+  if (!storey) return null;
+  if (numericAttr(storey.attributes[5]) === null) return IDENTITY_FRAME; // ObjectPlacement
   const chain = storeyPlacementChain(store, extractor, undefined, storeyExpressId);
   if (!chain || chain.size === 0) return null;
   for (const placementId of chain.keys()) {

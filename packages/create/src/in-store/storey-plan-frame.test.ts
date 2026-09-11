@@ -115,12 +115,19 @@ describe('storeyPlanFrame', () => {
     expect(twice[0]).not.toBeCloseTo(-5, 3);
   });
 
-  it('refuses a storey with no ObjectPlacement', async () => {
+  it('gives a storey with no ObjectPlacement the identity, not a refusal', async () => {
+    // `ObjectPlacement` is OPTIONAL on `IfcProduct` and real files leave it out.
+    // A product with no placement carries no transform, and the authoring side
+    // materialises exactly that before it writes — so the identity is the
+    // answer, and refusing here would stop the bake on a file it works on.
     const noPlacement = fixture().replace(
       "#4=IFCBUILDINGSTOREY('0STOREY00000000000000',$,'Storey',$,$,#10,$,$,.ELEMENT.,0.);",
       "#4=IFCBUILDINGSTOREY('0STOREY00000000000000',$,'Storey',$,$,$,$,$,.ELEMENT.,0.);",
     );
-    expect(storeyPlanFrame(await parse(noPlacement), 4)).toBeNull();
+    const frame = storeyPlanFrame(await parse(noPlacement), 4);
+    expect(frame).toEqual({ origin: [0, 0], axisX: [1, 0] });
+    // And the fold through it is then a no-op, not a move.
+    expect(toStoreyLocal(frame!, [810, 2105])).toEqual([810, 2105]);
   });
 
   it('refuses a chain with a link that will not read', async () => {

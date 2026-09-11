@@ -88,7 +88,7 @@
    569 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
    534 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1709 apps/viewer/src/components/viewer/LensPanel.tsx
-  1465 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
+  1411 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
    548 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
   1139 apps/viewer/src/components/viewer/MainToolbar.tsx
    715 apps/viewer/src/components/viewer/measureHandlers.ts
@@ -164,7 +164,7 @@
    410 apps/viewer/src/lib/llm/stream-client.ts
    809 apps/viewer/src/lib/llm/system-prompt.ts
    491 apps/viewer/src/lib/scripts/templates/create-building.ts
-   598 apps/viewer/src/lib/search/filter-evaluate.ts
+   583 apps/viewer/src/lib/search/filter-evaluate.ts
    450 apps/viewer/src/lib/search/tier1-index.ts
    452 apps/viewer/src/lib/slab-edit.ts
    412 apps/viewer/src/lib/sources/persistence.ts
@@ -183,7 +183,7 @@
    874 apps/viewer/src/store/slices/drawing2DSlice.ts
    482 apps/viewer/src/store/slices/idsSlice.ts
    820 apps/viewer/src/store/slices/measurementSlice.ts
-   651 apps/viewer/src/store/slices/modelSlice.ts
+   635 apps/viewer/src/store/slices/modelSlice.ts
   3277 apps/viewer/src/store/slices/mutationSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts
    536 apps/viewer/src/store/slices/scriptSlice.ts
@@ -277,7 +277,7 @@
    426 packages/lens/src/matching.ts
    416 packages/lens/src/types.ts
    812 packages/lists/src/engine.ts
-   423 packages/lists/src/types.ts
+   412 packages/lists/src/types.ts
    467 packages/mcp/src/backend-query.ts
    420 packages/mcp/src/overlay.ts
    544 packages/mcp/src/server.ts

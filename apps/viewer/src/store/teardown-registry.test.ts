@@ -197,6 +197,8 @@ function modelRemovedFixture() {
     layerStackPathToId: new Map([['wall-1', 42]]),
     layerStackDiff: { layerId: 'A', diff: { added: [], deleted: [], modified: [] } },
     layerDiffBusy: true,
+    // #4215: model 'A' carries a tag, so its assignment is what the removal drops.
+    modelTagAssignments: new Map([['A', new Set(['tag-1'])]]),
   } as unknown as Parameters<typeof modelRemovedScope>[0];
 }
 

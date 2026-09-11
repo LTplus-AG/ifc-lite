@@ -1,5 +1,41 @@
 # @ifc-lite/query
 
+## 2.3.0
+
+### Minor Changes
+
+- [#4356](https://github.com/LTplus-AG/ifc-lite/pull/4356) [`ced8bb4`](https://github.com/LTplus-AG/ifc-lite/commit/ced8bb46c368648bd54a1bab716d049143faa036) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Surface ambiguous direct storey containment as a detectable signal ([#4311](https://github.com/LTplus-AG/ifc-lite/issues/4311)), a follow-up to the first-declared-wins tie-break from [#4248](https://github.com/LTplus-AG/ifc-lite/issues/4248)/[#4310](https://github.com/LTplus-AG/ifc-lite/issues/4310).
+  
+  An element can be named by more than one `IfcRelContainedInSpatialStructure` edge pointing at different storeys — a malformed-but-real shape both `elementToStorey` and `containedIn()` silently resolved to a single answer, with no way for a caller to tell the containment was contested in the source file.
+  
+  - `SpatialHierarchy` (`@ifc-lite/data`) gains an optional `ambiguousStorey: Set<number>` field: the element ids whose direct storey containment named more than one distinct storey. `SpatialHierarchyBuilder.build()` / `buildFromCache()` (`@ifc-lite/parser`) always populate it (empty when nothing was ambiguous); it also round-trips through the parser worker transport.
+  - `EntityNode.containedInAmbiguous()` (`@ifc-lite/query`) answers the same question per-call, for callers using `containedIn()` instead of the parser's aggregate hierarchy.
+  
+  Neither `elementToStorey`'s nor `containedIn()`'s existing resolution changes — both still return a single winner. Detection reuses the direct-containment lists (`byStorey` / inverse `ContainsElements` edges) each already builds, so it costs no extra graph traversal.
+
+- [#4250](https://github.com/LTplus-AG/ifc-lite/pull/4250) [`cabfd37`](https://github.com/LTplus-AG/ifc-lite/commit/cabfd3752d8dc221042990187669a5670be88df8) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Added `matches` (regex) to the shared property/quantity comparison operator ([#4094](https://github.com/LTplus-AG/ifc-lite/issues/4094), follow-up to [#4091](https://github.com/LTplus-AG/ifc-lite/issues/4091)). This is one of the three prerequisites [#4094](https://github.com/LTplus-AG/ifc-lite/issues/4094) names for honouring `/regex/` selector text end to end (GlobalId and `+` group support remain open); it now works everywhere `compareFilterValue` already backs `bim.query().where(...)` -- the CLI `HeadlessBackend`, the MCP backend, and the viewer's SDK adapter -- with no further plumbing, since all three already delegated to it.
+  
+  `expected` is a bare regex source with no `/.../ ` delimiters (the same shape `parseSelector`'s regex literal already carries), tested against `String(actual)`. It is case-sensitive and does not boolean-normalize its operands (unlike every other operator here).
+  
+  `expected` is caller-supplied and, via the MCP `query_entities` tool, can be agent/LLM-influenced -- `new RegExp(source).test(actual)` is not safe to run on untrusted input: a pattern like `^(a+)+$` is exponential in subject length in V8's backtracking engine (measured: a 35-character non-matching subject already exceeded 30s on a single synchronous call, which on the MCP server blocks every connected client, not just the offending query). Before compiling, a pattern is now rejected -- loudly, by throwing, not by silently returning `false` -- if it is over 200 characters, or if it contains a quantified group with another quantifier inside it (e.g. `(a+)+`), the shape this was measured against. This is a heuristic input constraint, not a proof of linear-time execution: it will reject some patterns that would in fact run fine, and it will not catch every ReDoS-capable shape (e.g. overlapping alternation like `(a|a)*`). A linear-time engine (e.g. RE2) was ruled out -- this environment cannot add a new dependency; a true wall-clock timeout was ruled out too -- `.test()` cannot be interrupted synchronously, and moving the match off the main thread is a much larger, separate change. Residual ReDoS risk from a pattern shape the heuristic does not recognise remains.
+  
+  A rejected or syntactically-invalid pattern now throws rather than returning `false` -- fixing an inconsistency with this repo's existing fail-loud precedent for caller-supplied input (`--limit`/`--offset` validate up front with `fatal()`). A pattern is also now compiled once and cached by its source string, rather than recompiled for every candidate entity a `where`/`--where` query evaluates.
+  
+  Reachable from:
+  - `bim.query().where(pset, prop, 'matches', pattern)` (SDK, and every backend built on it).
+  - The MCP `query_entities` tool's `property.op`.
+  - `ifc-lite query --where "Pset.Prop~=pattern"` and `ifc-lite export --where "Pset.Prop~=pattern"` (new `~=` token; plain `~` still means `contains`).
+  
+  Not included here: `ifc-lite mutate --where` has its own separate, non-delegating comparator (`matchesFilter` in `mutate.ts`) and was left untouched; the CLI `--select`/selector flag, the MCP `selector` parameter, `bim.query().select()`, and the viewer's remaining unsupported selector constructs (`parent=`, `query:`, `+` group unions, material `Category`, GlobalId as a comparison, quantity rows through a property term) are all still open, tracked on [#4094](https://github.com/LTplus-AG/ifc-lite/issues/4094).
+
+### Patch Changes
+
+- Updated dependencies [[`ced8bb4`](https://github.com/LTplus-AG/ifc-lite/commit/ced8bb46c368648bd54a1bab716d049143faa036), [`de30321`](https://github.com/LTplus-AG/ifc-lite/commit/de303215ad631d54069067682f443ef33d7d37f3), [`b5cb19a`](https://github.com/LTplus-AG/ifc-lite/commit/b5cb19ae80610107f7b3b3914efa7234dfbe4999), [`12e69fe`](https://github.com/LTplus-AG/ifc-lite/commit/12e69feb363ea31fb2c3513436366b01c54251e9), [`83fb539`](https://github.com/LTplus-AG/ifc-lite/commit/83fb539395e3638eb4c72a5c0fb2c508a8746adb), [`f33ac74`](https://github.com/LTplus-AG/ifc-lite/commit/f33ac74dd0578792327f684ba5ca59f050458c65), [`85e0351`](https://github.com/LTplus-AG/ifc-lite/commit/85e0351c6bcbc350c404176e484320baa08a1366), [`6f0078b`](https://github.com/LTplus-AG/ifc-lite/commit/6f0078bc8ae697c9e6f91ae5b36546476b0fee5b), [`04d7b3b`](https://github.com/LTplus-AG/ifc-lite/commit/04d7b3ba0ab64ae9e97420aa8d5c56a536272724), [`8620be3`](https://github.com/LTplus-AG/ifc-lite/commit/8620be38be0162b7cbdbe23ae7bc924763b83612), [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb), [`7427343`](https://github.com/LTplus-AG/ifc-lite/commit/742734300487f78df8192dc6fd4126615b63b966), [`6110c0d`](https://github.com/LTplus-AG/ifc-lite/commit/6110c0d6bb0c1a96c4da4c056389ebc4dfe26631), [`be4fdb9`](https://github.com/LTplus-AG/ifc-lite/commit/be4fdb9ffe6995c74d3629887021c98b843beadb), [`a6976b9`](https://github.com/LTplus-AG/ifc-lite/commit/a6976b9da44d13157533372a8def23995fcfb93f)]:
+  - @ifc-lite/data@4.1.0
+  - @ifc-lite/parser@6.0.0
+  - @ifc-lite/regex-guard@0.2.0
+  - @ifc-lite/geometry@4.4.0
+
 ## 2.2.0
 
 ### Minor Changes

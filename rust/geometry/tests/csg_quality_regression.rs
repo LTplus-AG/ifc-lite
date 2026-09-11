@@ -22,17 +22,37 @@
 //! regressed somewhere — most likely the coplanar consolidation or the
 //! collinear simplification in `ClippingProcessor::consolidate_coplanar`.
 
+mod support;
+
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 
+/// Load a fixture, distinguishing a genuinely absent file from a broken
+/// read. `NotFound` is the fresh-clone case (`pnpm fixtures` not run yet):
+/// skip unless `IFC_LITE_REQUIRE_FIXTURES=1`, in which case panic naming
+/// the path, matching every other skip-on-missing test in this crate. Any
+/// other `io::Error` (permission denied, corrupt read, ...) means the
+/// environment is broken rather than merely missing an optional download,
+/// so it panics unconditionally regardless of the flag.
 fn fixture(rel: &str) -> Option<String> {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .join(rel);
-    std::fs::read_to_string(p).ok()
+    match std::fs::read_to_string(&p) {
+        Ok(content) => Some(content),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture {} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
+                p.display()
+            );
+            None
+        }
+        Err(e) => panic!("fixture {} exists but could not be read: {e}", p.display()),
+    }
 }
 
 fn void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {

@@ -628,29 +628,31 @@ fn sweep_261_kept_triangles_are_manifold_in_vid_space() {
         }
     }
 
-    // Centroid-to-opposite-surface proximity. MEASUREMENT ONLY — no assertion,
-    // because no threshold is known yet and pinning an unverified one is how a
-    // diagnostic turns into a false signal.
+    // Centroid-to-opposite-surface proximity. MEASUREMENT ONLY — no assertion
+    // on the distances themselves, because no threshold is known and pinning
+    // an unverified one is how a diagnostic turns into a false signal.
     //
     // CORRECTION (measured, see this file's "Which regime decides" section):
     // this block used to claim that "no face pair is within 28 degrees of
     // parallel, so the coincident-face regime never fires and every triangle is
-    // classified by the ray cast". That is FALSE, and it is false about the one
-    // triangle that matters. `kept[16] = [17, 13, 14]` IS classified by regime 1
-    // — coincidence is established from the CENTROID, which needs no face pair
-    // to be parallel at all. Leaving the claim in place would send the next
-    // reader looking at the ray cast for a defect that is not there.
+    // classified by the ray cast". That was FALSE, and it was false about the
+    // one triangle that mattered. Before #4439, `kept[16] = [17, 13, 14]` WAS
+    // classified by regime 1 — coincidence was established from the CENTROID
+    // alone, which needs no face pair to be parallel at all. The
+    // `coincident_planes` gate now rejects it (its plane is 58° off the
+    // candidate face), so it falls to the ray cast. Leaving the old claim in
+    // place would send the next reader looking at the ray cast for a defect
+    // that was never there.
     //
     // What the distances below still say: whether a centroid sits close enough
     // to the other operand's surface for the f64 rounding in `centroid` to
-    // matter. `kept[16]`'s 1.86e-5 is the one that does.
+    // matter. `kept[16]`'s 1.86e-5 is the one that did.
     //
-    // NOTE: `cargo test --workspace` CAPTURES stdout for a passing test, and
-    // this test passes while the defect exists, so CI will not show these
-    // lines. Run it directly:
+    // NOTE: the assertion at the end of this test requires `overused` to be
+    // empty, so this block only has anything to print when a regression
+    // re-opens an edge; `cargo test` captures stdout for a passing test. On a
+    // failure, run it directly to see the census:
     //   cargo test -p ifc-lite-geometry --lib issue_3353_vid_census -- --nocapture
-    // Once the values are known they can be pinned as an assertion, which
-    // would then surface in CI on any change.
     let implicated: BTreeSet<usize> = overused
         .iter()
         .flat_map(|(_, users)| users.iter().map(|(idx, _)| *idx))

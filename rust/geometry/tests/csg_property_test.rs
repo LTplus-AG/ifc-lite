@@ -506,9 +506,10 @@ proptest! {
 /// near-coplanar band of that face — and regime 1 of the classifier
 /// (`kernel::arrangement::classify`) took them for a coincident shared face
 /// and kept them by "normal agreement" with a dot product of exactly zero: an
-/// extra directed cycle on the seam, one open edge after the 1 µm weld. The
-/// eight corners are the f32-quantized values `quantized()` produces for the
-/// shrunk input in the issue.
+/// extra directed cycle on the seam — 8 exact-coordinate open edges in the raw
+/// kernel output, 4 after the 1 µm weld (measured with the pre-#4439
+/// classifier). The eight corners are the f32-quantized values `quantized()`
+/// produces for the shrunk input in the issue.
 #[test]
 fn box_difference_thin_notch_seam_is_watertight_4439() {
     let a_min = [7.142955303192139, 3.8930258750915527, 1.7326807975769043];

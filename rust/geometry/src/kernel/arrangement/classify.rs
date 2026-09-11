@@ -166,11 +166,12 @@ fn on_surface_normal(c: [f64; 3], n_own: [f64; 3], others: &[Tri]) -> Option<[f6
 /// onto the plane under test, defined once in `near_band`.
 use super::super::near_band::{NearBand, near_band_from_extent};
 
-/// The NEAR-coplanar analogue of [`on_surface_normal`], used ONLY for a
-/// sub-triangle whose parent face had a near-coplanar overlap with the other
-/// operand (`coplanar_a/b[i]` set). Returns the covering `other` face's f64 normal
-/// when `c` sits within the snap-scatter band of that face's plane AND projects
-/// strictly inside it.
+/// The NEAR-coplanar analogue of [`on_surface_normal`], used for any
+/// sub-triangle (A side via `BComponents::surface_normal`, B side via
+/// `c_on_or_near_a`) whose centroid sits within the snap band of a face of the
+/// other operand. Returns the covering `other` face's f64 normal when `c` sits
+/// within the snap-scatter band of that face's plane AND projects strictly
+/// inside it.
 ///
 /// WHY this exists — the flush-cap defect (#1007 host #1112 openings #2150/#2154):
 /// real IFC is f32, so an opening cap authored EXACTLY flush with a TILTED roof
@@ -643,7 +644,6 @@ pub(super) fn boolean_vids_components(
     }
     out
 }
-
 
 #[inline]
 pub(super) fn rotate_min_first(t: [Vid; 3]) -> [Vid; 3] {

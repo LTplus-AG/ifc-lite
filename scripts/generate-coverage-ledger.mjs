@@ -208,18 +208,21 @@ assertNonEmpty('creatable(IfcCreator.this.line)', creatorTypes);
 // file for why the two differ.
 const writableTypes = new Set(creatorTypes);
 
-const IN_STORE_FILES = [
-  'anchor.ts', 'apply-style.ts', 'beam.ts', 'column.ts', 'door.ts', 'drawing-markup-geometry.ts',
-  'drawing-markup-tags.ts', 'drawing-markup.ts', 'duplicate.ts', 'extract-walls.ts',
-  'generate-spaces-all.ts', 'generate-spaces.ts', 'member.ts', 'plate.ts', 'resolve-anchor.ts',
-  'resolve-source.ts', 'roof.ts', 'room-footprint-offset.ts', 'slab.ts', 'space.ts',
-  'spatial-zone.ts', 'wall.ts', 'window.ts',
-];
+// Every non-test TypeScript source under the in-store builder directory is
+// scanned — enumerated from the directory, not from a hand-kept list. A list
+// silently drifts: `_emit-helpers.ts` (which emits IfcColourRgb,
+// IfcSurfaceStyle, IfcSurfaceStyleShading, ...) was missing from the first
+// version of this generator, so those rows read "not creatable" while
+// `--check` stayed green. A directory walk cannot miss a new builder.
+const IN_STORE_DIR = join(ROOT, 'packages/create/src/in-store');
+const inStoreFiles = existsSync(IN_STORE_DIR)
+  ? readdirSync(IN_STORE_DIR)
+      .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && !f.endsWith('.d.ts'))
+      .sort()
+  : [];
 const inStoreTypes = new Set();
-for (const f of IN_STORE_FILES) {
-  const p = join(ROOT, 'packages/create/src/in-store', f);
-  if (!existsSync(p)) continue; // catalogue drifts; missing files aren't a parse failure
-  const src = readFileSync(p, 'utf8');
+for (const f of inStoreFiles) {
+  const src = readFileSync(join(IN_STORE_DIR, f), 'utf8');
   for (const m of src.matchAll(/editor\.addEntity\('(Ifc[A-Za-z0-9]+)'/g)) {
     creatorTypes.add(m[1].toUpperCase());
     inStoreTypes.add(m[1].toUpperCase());
@@ -259,10 +262,10 @@ assertNonEmpty('convertible(IFC4X3_TO_IFC4)', RENAME['IFC4X3->IFC4']);
 // ─── Fixture (committed .ifc corpus, per #4208 — see DERIVATION above) ──
 
 // Fixed set of DIRECTORIES (not entity types — same pattern as
-// `IN_STORE_FILES` above) holding committed `.ifc` samples. Self-updating:
+// `inStoreFiles` above) holding committed `.ifc` samples. Self-updating:
 // a file added under one of these is picked up on the next generate without
 // touching this list. A directory going missing isn't a parse failure (the
-// catalogue drifts, same rationale as `IN_STORE_FILES`); the vacuity guard
+// catalogue drifts, same rationale as `inStoreFiles`); the vacuity guard
 // below still requires the CORPUS as a whole to be non-empty.
 const FIXTURE_DIRS = [
   'apps/landing/samples',
@@ -318,7 +321,10 @@ let fixtureFilesSkippedUnknownSchema = 0;
   files.sort();
   const recordRe = /^#\d+\s*=\s*([A-Z][A-Z0-9]*)\s*\(/gm;
   for (const abs of files) {
-    const rel = abs.slice(ROOT.length + 1);
+    // Repo-relative with forward slashes on every host: the ledger is a
+    // committed artifact, and a Windows checkout must regenerate it
+    // byte-identically to CI's Linux runner.
+    const rel = abs.slice(ROOT.length + 1).split('\\').join('/');
     const text = readFileSync(abs, 'utf8');
     const headerMatch = text.match(FILE_SCHEMA_RE);
     if (!headerMatch) {

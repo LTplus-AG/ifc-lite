@@ -502,8 +502,12 @@ if (FULL) {
 }
 
 // 10. Coverage ledger (docs/architecture/coverage-ledger.md, #4207) — no build needed.
+// The generator names its own failure: "❌ ... is stale" wants a regenerate;
+// a thrown "missing source file" / "extractor found ZERO entries" wants the
+// named source or extractor fixed FIRST — regenerating cannot repair those.
 runGate('check:coverage-ledger', 'node', ['scripts/generate-coverage-ledger.mjs', '--check'],
-  'node scripts/generate-coverage-ledger.mjs   (then commit docs/architecture/coverage-ledger.md)');
+  'if the output says "is stale": node scripts/generate-coverage-ledger.mjs   (then commit docs/architecture/coverage-ledger.md); ' +
+    'if it names a missing source file or an extractor that found ZERO entries, fix that file/extractor first — regenerating cannot');
 hr();
 const failed = results.filter((r) => r.status === 'fail');
 const skipped = results.filter((r) => r.status === 'skip');

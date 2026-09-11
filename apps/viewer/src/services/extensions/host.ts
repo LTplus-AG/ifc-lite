@@ -63,6 +63,7 @@ import type { BimContext } from '@ifc-lite/sdk';
 import { IdbExtensionStorage } from './idb-storage.js';
 import { IdbLogStorage } from './idb-log-storage.js';
 import { createBimSandboxFactory } from './sandbox-factory.js';
+import { createRegexWorkerClient, type RegexWorkerClient } from '@/lib/extensions/regex-worker-client';
 import { FlavorService } from './flavor-service.js';
 import { runExtensionCommand } from './host-commands.js';
 import { runExtensionExporter, type ExporterOutput } from './host-exporters.js';
@@ -123,6 +124,13 @@ export class ExtensionHostService {
   readonly miner: IdleMineScheduler;
   readonly runtime: ExtensionRuntime;
   readonly loader: ExtensionLoader;
+  /**
+   * Isolates manifest-test `expect.regex` evaluation from the main UI
+   * thread (#4482) — see `@/lib/extensions/regex-worker-client`. Shared
+   * across `runTests`/`revalidateForSdk` calls; each `evaluate()` call
+   * still spawns its own worker (the client is stateless per-call).
+   */
+  private readonly regexWorkerClient: RegexWorkerClient = createRegexWorkerClient();
   private suggestions: MineEvent | undefined;
   private suggestionListeners = new Set<(event: MineEvent) => void>();
   readonly sdk: BimContext;
@@ -437,6 +445,7 @@ export class ExtensionHostService {
       // that ship their own fixture loader can override via a
       // custom factory.
       loadFixture: syntheticFixtureLoader(CANONICAL_FIXTURES),
+      evaluateRegex: (pattern, text) => this.regexWorkerClient.evaluate(pattern, text),
     });
   }
 
@@ -584,12 +593,14 @@ export class ExtensionHostService {
       installed,
       resolveBundle: (id) => this.loader.getBundle(id),
       runtime: this.runtime,
+      evaluateRegex: (pattern, text) => this.regexWorkerClient.evaluate(pattern, text),
     });
   }
 
   /** Tear down everything. Called on flavor switch / sign-out. */
   async dispose(): Promise<void> {
     this.miner.dispose();
+    this.regexWorkerClient.dispose();
     this.suggestionListeners.clear();
     this.suggestions = undefined;
     // Flush debounced log writes before teardown so events from the

@@ -105,6 +105,57 @@ describe('runBundleTests', () => {
     expect(summary.passed).toBe(1);
   });
 
+  it('uses the injected evaluateRegex instead of the built-in check', async () => {
+    const bundle = makeBundle({
+      source: `function run() { return 'hello world 42'; }`,
+      tests: [{
+        name: 'regex via custom evaluator',
+        command: 'ext.runnertest.run',
+        fixture: 'x',
+        // The built-in `new RegExp('hello.*42').test(...)` would match
+        // this text — if the plumbing silently fell back to the
+        // built-in check instead of calling `evaluateRegex`, this test
+        // would report a pass. The custom evaluator below returns
+        // `matched: false` for the exact same pattern/text, so only a
+        // real call-through reports the expected failure.
+        expect: { regex: 'hello.*42' },
+      }],
+    });
+    let calledWith: { pattern: string; text: string } | undefined;
+    const summary = await runBundleTests({
+      runtime: RUNTIME,
+      bundle,
+      grants: [],
+      evaluateRegex: async (pattern, text) => {
+        calledWith = { pattern, text };
+        return { matched: false };
+      },
+    });
+    expect(calledWith).toEqual({ pattern: 'hello.*42', text: 'hello world 42' });
+    expect(summary.passed).toBe(0);
+    expect(summary.failed).toBe(1);
+    expect(summary.results[0].error).toMatch(/did not match/);
+  });
+
+  it('omitting evaluateRegex falls back to the synchronous default', async () => {
+    const bundle = makeBundle({
+      source: `function run() { return 'hello world 42'; }`,
+      tests: [{
+        name: 'regex default path',
+        command: 'ext.runnertest.run',
+        fixture: 'x',
+        expect: { regex: 'hello.*42' },
+      }],
+    });
+    const summary = await runBundleTests({
+      runtime: RUNTIME,
+      bundle,
+      grants: [],
+    });
+    expect(summary.passed).toBe(1);
+    expect(summary.failed).toBe(0);
+  });
+
   it('checks jsonShape types and rejects mismatches', async () => {
     const bundle = makeBundle({
       source: `function run() {

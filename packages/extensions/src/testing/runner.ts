@@ -36,6 +36,37 @@ import {
   hasCatastrophicBacktrackingShape,
 } from '@ifc-lite/regex-guard';
 
+/** Outcome of evaluating one `expect.regex` matcher against the test's text. */
+export interface RegexEvalResult {
+  matched: boolean;
+}
+
+/**
+ * Evaluates a regex pattern against text and resolves with the match
+ * result. Throws (a rejected promise) on both an invalid pattern and a
+ * timeout/failure — callers don't need a separate error variant, since
+ * `applyExpectations`'s catch branch already handles a thrown
+ * `new RegExp` the same way either kind of failure would need to be
+ * reported.
+ *
+ * The default (`defaultRegexEvaluator`) runs `new RegExp(...).test(...)`
+ * synchronously in-process, which is exactly what this module has always
+ * done — CLI and test callers get byte-identical behaviour. A host that
+ * wants the actual work to run somewhere else (e.g. the viewer running it
+ * in a Worker with a timeout, off the main UI thread) supplies its own
+ * evaluator via `RunBundleTestsOptions.evaluateRegex`.
+ */
+export type RegexEvaluator = (pattern: string, text: string) => Promise<RegexEvalResult>;
+
+/** Synchronous, in-process default: today's `new RegExp(pattern).test(text)`. */
+export const defaultRegexEvaluator: RegexEvaluator = (pattern, text) => {
+  try {
+    return Promise.resolve({ matched: new RegExp(pattern).test(text) });
+  } catch (err) {
+    return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+  }
+};
+
 export interface TestRunResult {
   name: string;
   passed: boolean;
@@ -73,6 +104,15 @@ export interface RunBundleTestsOptions {
    * resolve it from an in-memory fixture map shipped with the app.
    */
   loadFixture?: (name: string) => Promise<unknown>;
+  /**
+   * Evaluate an `expect.regex` matcher. Defaults to `defaultRegexEvaluator`
+   * (synchronous, in-process `new RegExp(...).test(...)`), which is
+   * identical to the runner's behaviour before this option existed. A
+   * host that can run the check somewhere isolated (a Worker with a
+   * timeout, for instance) supplies its own evaluator here — see the
+   * module doc on `RegexEvaluator`.
+   */
+  evaluateRegex?: RegexEvaluator;
 }
 
 const DECODER = new TextDecoder();
@@ -132,7 +172,13 @@ export async function runBundleTests(
     const startedAt = performance.now();
     try {
       const record = await opts.runtime.activate(opts.bundle.manifest.id, opts.grants, opts.bundle);
-      const result = await runSingleTest(record, opts.bundle, test, opts.loadFixture);
+      const result = await runSingleTest(
+        record,
+        opts.bundle,
+        test,
+        opts.loadFixture,
+        opts.evaluateRegex ?? defaultRegexEvaluator,
+      );
       results.push({
         name: test.name,
         passed: result.passed,
@@ -170,7 +216,8 @@ async function runSingleTest(
   record: ActivationRecord,
   bundle: Bundle,
   test: ManifestTest,
-  loadFixture?: (name: string) => Promise<unknown>,
+  loadFixture: ((name: string) => Promise<unknown>) | undefined,
+  evaluateRegex: RegexEvaluator,
 ): Promise<SingleResult> {
   const entry = bundle.manifest.entry.commands?.[test.command];
   const declared = bundle.manifest.contributes?.commands?.some((c) => c.id === test.command);
@@ -245,7 +292,7 @@ async function runSingleTest(
 
   const runResult = await record.sandbox.run(wrapped.value, { filename: entry });
   const value = await Promise.resolve(runResult.value);
-  const matcher = applyExpectations(value, test.expect);
+  const matcher = await applyExpectations(value, test.expect, evaluateRegex);
   return {
     passed: matcher.passed,
     error: matcher.error,
@@ -258,7 +305,11 @@ async function runSingleTest(
  * Expectations accumulate — every failed matcher is reported in the
  * error string so authors don't have to fix-and-rerun for each one.
  */
-function applyExpectations(value: unknown, expect: ManifestTestExpect): SingleResult {
+async function applyExpectations(
+  value: unknown,
+  expect: ManifestTestExpect,
+  evaluateRegex: RegexEvaluator,
+): Promise<SingleResult> {
   const reasons: string[] = [];
 
   if (expect.mimeType !== undefined) {
@@ -293,8 +344,10 @@ function applyExpectations(value: unknown, expect: ManifestTestExpect): SingleRe
       // catastrophic). The real boundary is drag-drop side-loading
       // (ExtensionsPanel.tsx), not a future registry (deferred
       // Phase-5, see 10-registry-and-signing.md): "Run tests" or
-      // RepairQueuePanel's "Run check" reach runBundleTests and run
-      // this regex on the viewer's main JS thread, no sandbox/Worker.
+      // RepairQueuePanel's "Run check" reach runBundleTests. This cheap
+      // check runs unconditionally, in-process, before `evaluateRegex`
+      // is ever called — it does not depend on the evaluator bounding
+      // execution time.
       reasons.push(`regex: pattern exceeds ${MAX_GUARDED_REGEX_PATTERN_LENGTH}-char limit`);
     } else if (hasCatastrophicBacktrackingShape(expect.regex)) {
       // Cheap shape check for the well-known catastrophic-backtracking
@@ -303,8 +356,8 @@ function applyExpectations(value: unknown, expect: ManifestTestExpect): SingleRe
       reasons.push(`regex: pattern has catastrophic-backtracking shape`);
     } else {
       try {
-        const re = new RegExp(expect.regex);
-        if (!re.test(text)) {
+        const { matched } = await evaluateRegex(expect.regex, text);
+        if (!matched) {
           reasons.push(`regex: pattern ${expect.regex} did not match`);
         }
       } catch (err) {

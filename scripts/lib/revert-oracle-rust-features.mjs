@@ -45,14 +45,23 @@
  * declarations (not, currently, directly above a `#[test]`, but the same
  * idiom).
  *
- * `not(...)` is deliberately NOT parsed into a feature combo here: a
- * `not(feature = "x")` gate names a run that must have `x` OFF, which is a
- * fundamentally different kind of requirement from every existing combo
- * (which names features to turn ON) and genuinely handling it means ensuring
- * the default no-features plan always runs ALONGSIDE any explicit combos
- * (`planRuns()` in check-test-revert-oracle.mjs currently only falls back to
- * the default plan when NO combo was found at all) — a change to that
- * caller's contract, not a parser extension. Rather than silently returning
+ * `not(...)` IS handled now, and handling it did require the caller-contract
+ * change the previous revision of this note described. A whole-expression
+ * `not(...)` names a run that must have those features OFF — the default
+ * build — so it contributes no combo (nothing to turn ON) and
+ * `parseCfgExpr` returns `[]` for it. That alone would be the old silent
+ * miss, because `planRuns()` falls back to the default only when NO combo was
+ * found at all: a file carrying both a `not(...)` gate and a bare
+ * `#[cfg(feature = "x")]` gate would run x-only. So `requiresDefaultRun()`
+ * reports that case and `planRuns()` runs the default ALONGSIDE the combos.
+ *
+ * This is sound only when none of the names inside the `not(...)` is a
+ * DEFAULT-on feature of the crate — otherwise the default build enables it
+ * and the gated test still never compiles. `planRuns()` therefore reads the
+ * crate's `[features] default = [...]` and passes it down; a `not(...)` over
+ * a default-on feature, or one evaluated with no known default set, still
+ * throws. A `not(...)` nested inside `any(...)`/`all(...)` remains unhandled.
+ * Rather than silently returning
  * `[]` for a shape it cannot correctly turn into a combo (the previous,
  * defective behavior — see `UnhandledCfgShapeError` below), this module now
  * detects `not(...)`, cfg nesting beyond one level (e.g. a hypothetical
@@ -87,9 +96,9 @@ export class UnhandledCfgShapeError extends Error {
 // silently dropped these gates.
 const NEST2 = '(?:[^()]|\\((?:[^()]|\\([^()]*\\))*\\))*';
 /** Whole-file gate: `#![cfg(feature = "x")]` at the top of a test file. */
-const INNER_CFG_RE = new RegExp(`#!\\[cfg\\((${NEST2})\\)\\]`, 'g');
+export const INNER_CFG_RE = new RegExp(`#!\\[cfg\\((${NEST2})\\)\\]`, 'g');
 /** Item-level gate: the `#[cfg(...)]` immediately guarding a `#[test]` fn. */
-const TEST_CFG_RE = new RegExp(`#\\[cfg\\((${NEST2})\\)\\]\\s*\\n\\s*#\\[test\\]`, 'g');
+export const TEST_CFG_RE = new RegExp(`#\\[cfg\\((${NEST2})\\)\\]\\s*\\n\\s*#\\[test\\]`, 'g');
 /** `#[cfg_attr(feature = "x", test)]` — a shape neither regex above matches at all. */
 const CFG_ATTR_TEST_RE = /#\[cfg_attr\(([\s\S]*?),\s*test\s*\)\]/g;
 /** A `#[cfg(...)]` separated from `#[test]` by one or more other attributes. */
@@ -231,7 +240,27 @@ function lineOf(text, index) {
  * @throws {UnhandledCfgShapeError} if `expr` contains a `not(...)` or nests
  *   `any(`/`all(` beyond one level — shapes this parser does not evaluate.
  */
-export function parseCfgExpr(expr, context = {}) {
+export function parseCfgExpr(expr, context = {}, defaultFeatures = null) {
+  // A whole-expression `not(...)` holds exactly when the features it names are
+  // OFF — which is the default build, and planRuns() always runs that when no
+  // combo is required. So it needs no extra combo: return [].
+  //
+  // That is only sound when none of those names is a DEFAULT feature of the
+  // crate. If one were, the default build would turn it ON and the gated test
+  // would never compile in — the silent miss this module exists to prevent —
+  // so that case, and an unknown default set, still fail loudly.
+  const wholeNot = expr.match(/^\s*not\s*\(([\s\S]*)\)\s*$/);
+  if (wholeNot) {
+    if (/\bnot\s*\(/.test(wholeNot[1])) throw new UnhandledCfgShapeError('nested not(...)', expr, context);
+    if (!defaultFeatures) throw new UnhandledCfgShapeError('not(...) with unknown crate defaults', expr, context);
+    const onByDefault = [...wholeNot[1].matchAll(/feature\s*=\s*"([^"]+)"/g)]
+      .map((m) => m[1])
+      .filter((n) => defaultFeatures.has(n));
+    if (onByDefault.length > 0) {
+      throw new UnhandledCfgShapeError(`not(...) over default feature "${onByDefault[0]}"`, expr, context);
+    }
+    return [];
+  }
   if (/\bnot\s*\(/.test(expr)) throw new UnhandledCfgShapeError('not(...)', expr, context);
   const outer = expr.match(/^\s*(any|all)\s*\((.*)\)\s*$/s);
   if (outer && /\b(any|all)\s*\(/.test(outer[2])) {
@@ -261,7 +290,7 @@ function dedupeCombos(combos) {
  *   and `#[test]` — see SCOPE above for why these fail loudly instead of
  *   silently contributing no combo.
  */
-export function detectRequiredFeatureCombos(text, file = '<unknown file>') {
+export function detectRequiredFeatureCombos(text, file = '<unknown file>', defaultFeatures = null) {
   const stripped = stripComments(text);
 
   CFG_ATTR_TEST_RE.lastIndex = 0;
@@ -276,14 +305,14 @@ export function detectRequiredFeatureCombos(text, file = '<unknown file>') {
   for (const re of [INNER_CFG_RE, TEST_CFG_RE]) {
     re.lastIndex = 0;
     while ((m = re.exec(stripped)) !== null) {
-      combos.push(...parseCfgExpr(m[1], { file, line: lineOf(stripped, m.index) }));
+      combos.push(...parseCfgExpr(m[1], { file, line: lineOf(stripped, m.index) }, defaultFeatures));
     }
   }
   return dedupeCombos(combos);
 }
 
 /** Union of feature-combos required across a set of repo-relative files. */
-export function requiredFeatureCombos(root, relFiles) {
+export function requiredFeatureCombos(root, relFiles, defaultFeatures = null) {
   const combos = [];
   for (const rel of relFiles) {
     let text;
@@ -292,7 +321,7 @@ export function requiredFeatureCombos(root, relFiles) {
     } catch {
       continue;
     }
-    combos.push(...detectRequiredFeatureCombos(text, rel));
+    combos.push(...detectRequiredFeatureCombos(text, rel, defaultFeatures));
   }
   return dedupeCombos(combos);
 }

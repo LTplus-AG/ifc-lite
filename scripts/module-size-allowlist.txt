@@ -281,7 +281,6 @@
    530 packages/parser/src/data-store-transport.ts
    827 packages/parser/src/material-resolver.ts
    796 packages/parser/src/on-demand-extractors.ts
-   594 packages/parser/src/schedule-extractor.ts
    494 packages/parser/src/source-bytes.ts
    513 packages/plugin-api/src/types.ts
    678 packages/pointcloud/src/formats/e57-decode.ts

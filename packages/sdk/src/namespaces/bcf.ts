@@ -28,7 +28,7 @@ import {
   BCF_AXIS_TO_SDK_AXIS,
 } from './bcf-viewpoint.js';
 import { loadBCF, type AnyFn } from './bcf-load.js';
-import { bcfGuidColorMethods, type BCFGuidColorMixin } from './bcf-guid-color.js';
+import { BCFGuidColorBase } from './bcf-guid-color.js';
 
 export type { ViewpointOptions, ExtractedViewpointState };
 export { IncompleteCameraStateError, MissingSectionBoundsError };
@@ -70,14 +70,10 @@ export interface IDSBCFOptions {
 // BCFNamespace
 // ============================================================================
 
-/**
- * `bim.bcf`'s GUID and color utility methods live in `bcf-guid-color.ts`
- * and are mixed into the prototype below (module-size split, #4294).
- */
-export interface BCFNamespace extends BCFGuidColorMixin {}
-
-/** bim.bcf — BIM Collaboration Format (topics, viewpoints, comments, I/O) */
-export class BCFNamespace {
+/** bim.bcf — BIM Collaboration Format (topics, viewpoints, comments, I/O).
+ * The GUID and color utility methods live in `bcf-guid-color.ts`'s base
+ * class (module-size split, #4294). */
+export class BCFNamespace extends BCFGuidColorBase {
 
   // --------------------------------------------------------------------------
   // Project management
@@ -345,8 +341,3 @@ export class BCFNamespace {
   }
 
 }
-
-// GUID and color utility methods (generateIfcGuid, generateUuid,
-// uuidToIfcGuid, ifcGuidToUuid, isValidIfcGuid, isValidUuid, parseARGBColor,
-// toARGBColor) are defined in bcf-guid-color.ts and mixed in here.
-Object.assign(BCFNamespace.prototype, bcfGuidColorMethods);

@@ -7763,7 +7763,7 @@
     "ApplyStyleResult: interface",
     "ArbitraryProfile: interface",
     "AxisElementParams: interface",
-    "BCFNamespace: class+interface",
+    "BCFNamespace: class",
     "BeamParams: interface",
     "BimBackend: interface",
     "BimContext: class",

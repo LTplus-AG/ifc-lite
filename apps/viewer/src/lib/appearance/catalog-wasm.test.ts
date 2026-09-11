@@ -40,7 +40,9 @@ test('actual WASM catalog matches canonical exported overlay retypes and type me
   editor.setPositionalAttribute(30, 5, `#${type.expressId}`); // Canonical positional override wins.
   editor.setPositionalAttribute(30, 4, ['#1', `#${owner.expressId}`]);
   editor.removeEntity(3);
-  const snapshot = () => new Uint8Array(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content);
+  // Pinned FILE_NAME timestamp: `snapshot()` is byte-compared against an export taken earlier in the
+  // same test, and two exports that straddle a wall-clock second differ by one header digit.
+  const snapshot = () => new Uint8Array(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true, timeStamp: '20260101T000000' }).content);
   const bytes = snapshot(), mutations = structuredClone(view.getMutations()), next = view.peekNextExpressId();
   const request = { schema: 'IFC4' as const, sourceRevision: 'effective', productIds: [owner.expressId, 3, 11, 2, 1] };
   const catalog = await runAppearanceCatalog(bytes, request);

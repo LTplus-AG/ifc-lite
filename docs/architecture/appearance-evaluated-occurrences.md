@@ -98,13 +98,17 @@ rigid placement edit keeps a mask, while any change to the evaluated surface
 fingerprint. A mask is `{ productId, surfaceFingerprint, triangles }` with
 source triangle ordinals in the same order as `sourceIndices`.
 
-The planner never reuses triangle ordinals by position. A mask whose fingerprint
-differs from the surface it is about to author is the explicit exclusion
+The planner never reuses triangle ordinals by position. Faults in one mask
+exclude only that product, in `exclusions`, and the rest of the scope still
+plans: a fingerprint that differs from the surface about to be authored is
 `Face selection is stale: the evaluated surface geometry changed`; an empty
-mask, an ordinal beyond the surface, a mask on a product that already has a
-direct tessellated Body, a duplicate mask, or a mask outside the scope are
-refused with their own reasons. A mask covering every triangle is an ordinary
-whole-surface conversion and reports no split.
+mask, an ordinal beyond the surface, and a mask on a product that already has
+a direct tessellated Body each have their own reason. Faults in the request
+shape refuse the whole plan as an error before any source work: masks under
+the preserve policy, a mask outside the scope, two masks for one product, more
+masks than products, a fingerprint that is not a hex SHA-256 digest, or a mask
+beyond the 500 000-triangle budget. A mask covering every triangle is an
+ordinary whole-surface conversion and reports no split.
 
 A partial mask authors one shared `IfcCartesianPointList3D` and two
 `IfcTriangulatedFaceSet` items under the same Body wrapper: the masked face set

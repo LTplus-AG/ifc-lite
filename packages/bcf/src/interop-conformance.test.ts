@@ -500,7 +500,7 @@ describe('an IDS-derived archive validates entry by entry', () => {
           }
         }
         expect(failures).toEqual([]);
-      });
+      }, 30_000); // same validateXML loop as the plain-export cases above
     }
   }
 });

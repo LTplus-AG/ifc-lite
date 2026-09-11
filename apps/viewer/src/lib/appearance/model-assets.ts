@@ -31,7 +31,22 @@ export class ModelAppearanceAssets<B extends AppearanceBitmap = ImageBitmap> {
     (modelId, commandId) => [...this.authored.get(modelId)?.get(commandId) ?? []].map(id => this.getAuthoredUri(modelId, id)),
   );
   private pending = new Map<string, { cancel(): void }>();
+  private settling = new Map<string, Array<() => void>>();
   constructor(readonly inventory: AppearanceAssetInventory<B>) {}
+
+  /**
+   * The in-flight source decode for a model, if any: resolves once it finishes
+   * or is cancelled. The loader publishes a model before its images settle, so
+   * a panel that saw "still loading" can retry instead of staying stuck (#4477).
+   */
+  pendingDecode(modelId: string): Promise<void> | undefined {
+    if (!this.pending.has(modelId)) return undefined;
+    return new Promise(resolve => {
+      const waiters = this.settling.get(modelId) ?? [];
+      waiters.push(resolve);
+      this.settling.set(modelId, waiters);
+    });
+  }
 
   /** Begin before decode so model removal can cancel a late decoder. */
   begin(modelId: string) {
@@ -46,7 +61,12 @@ export class ModelAppearanceAssets<B extends AppearanceBitmap = ImageBitmap> {
       finished = true;
       controller.abort();
       this.inventory.releaseOwner(owner);
-      if (this.pending.get(modelId) === lease) this.pending.delete(modelId);
+      if (this.pending.get(modelId) === lease) {
+        this.pending.delete(modelId);
+        const waiters = this.settling.get(modelId) ?? [];
+        this.settling.delete(modelId);
+        for (const resolve of waiters) resolve();
+      }
     };
     const lease = {
       cancel,

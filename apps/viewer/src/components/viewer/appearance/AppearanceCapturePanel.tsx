@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { prepareCapturedRegion } from '@/lib/appearance/capture/source';
+import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
 import { createIfcFromCapturedMesh, type CapturedMeshSource } from '@/lib/appearance/create-captured-mesh';
 import { useIfcAuthoringTarget } from './useIfcAuthoringTarget';
 import { AppearanceMeshPreview } from './AppearanceMeshPreview';
@@ -44,11 +45,14 @@ export function AppearanceCapturePanel() {
   const scanInput = useRef<HTMLInputElement>(null);
   const routeScanFiles = useCallback((files: File[]) => {
     setMessage('Loading scan source…'); setError(false);
-    if (models.size === 0 && files.length === 1) void loadFile(files[0]);
+    // Bundle preparation awaits before routing, so decide from the store now:
+    // a model loaded meanwhile is added to, not replaced.
+    if (useViewerStore.getState().models.size === 0 && files.length === 1) void loadFile(files[0]);
     else void loadFilesSequentially(files);
-  }, [models.size, loadFile, loadFilesSequentially]);
+  }, [loadFile, loadFilesSequentially]);
   const prepareAndLoadScan = usePreparedModelFileRoute(routeScanFiles);
   useEffect(() => () => { operation.current?.abort(); operation.current = null; }, []);
+  const [imagesSettled, setImagesSettled] = useState(0);
   useEffect(() => {
     operation.current?.abort(); setReady(false); setPrepared(null); setAssetId(null); setMessage(''); setError(false);
     if (!candidate) { setTriangles([]); return; }
@@ -59,8 +63,17 @@ export function AppearanceCapturePanel() {
       setAssetId(first.assetId);
       setTriangles(count <= MAX_CAPTURE_ROWS ? Array.from({ length: count }, (_, i) => i) : [0]);
       if (count > MAX_CAPTURE_ROWS) setMessage(`This surface has ${count.toLocaleString()} triangles. Select a region with at most 200,000 triangles and vertices.`);
-    } catch (failure) { setTriangles([]); setError(true); setMessage(failure instanceof Error ? failure.message : String(failure)); }
-  }, [candidate?.modelId, candidate?.mesh]);
+    } catch (failure) {
+      setTriangles([]); setMessage(failure instanceof Error ? failure.message : String(failure));
+      // A freshly loaded scan is listed before its images settle: wait for them and prepare again.
+      const decoding = modelAppearanceAssets.pendingDecode(candidate.modelId);
+      setError(!decoding);
+      if (!decoding) return;
+      let live = true;
+      void decoding.then(() => { if (live) setImagesSettled(count => count + 1); });
+      return () => { live = false; };
+    }
+  }, [candidate?.modelId, candidate?.mesh, imagesSettled]);
   useEffect(() => { setCreated(false); }, [candidate?.mesh, triangles]);
   useEffect(() => {
     if (operation.current || created) return;

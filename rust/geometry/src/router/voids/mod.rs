@@ -616,13 +616,64 @@ impl GeometryRouter {
             if let Some(holed) = self.try_bool2d_cut(&mesh, cut) {
                 // Eligible openings are now subtracted. Any residual (ineligible)
                 // openings — perpendicular sleeves, partial-depth recesses — are
-                // cut by the exact kernel on the re-extruded host (origin 0, world
+                // routed on the re-extruded host (origin 0, world
                 // frame; residual cutters are world-framed), so a single
                 // ineligible opening no longer forfeits its host's cheap ones.
-                return match self.bool2d_residual(cut) {
-                    None => holed,
-                    Some(residual) => self.apply_void_context(holed, residual, element_id),
-                };
+                match self.bool2d_residual(cut) {
+                    None => {
+                        self.record_bool2d_cut(cut);
+                        return holed;
+                    }
+                    Some(residual) => {
+                        let composed = self.apply_void_context(holed, residual, element_id);
+                        // The 2D prefix is watertight before this recursive pass,
+                        // but the residual route can tear that replacement mesh.
+                        // Validate the FINAL composition; on a material tear,
+                        // compare against unchanged full-context routing. #4610's
+                        // ISSUE_129 slab changed from 25 to 875 open edges when
+                        // overlapping eligible footprints first merged correctly,
+                        // exposing this missing half of the fast-path contract.
+                        if param_cut_watertight(&composed) {
+                            self.record_bool2d_cut(cut);
+                            return composed;
+                        }
+                        // Some routed outputs are already mildly torn on
+                        // real files. A blanket reject would replace #32810's
+                        // 3-edge hybrid result with a 36-edge full-context one
+                        // when the prism route is enabled.
+                        // Run that fallback once and keep whichever candidate
+                        // has fewer non-manifold edges under the same welded
+                        // topology rule. This makes the fallback monotonic.
+                        let composed_defects = param_cut_nonmanifold_edges(&composed);
+                        // A handful of residual-route edge defects can already
+                        // be BETTER than the full-context path, and that path's
+                        // reading can change with an equally valid cap diagonal
+                        // (#32810). Preserve those established small tears. Only
+                        // pay for and consider the fallback when at least 1% as
+                        // many edges as triangles are non-manifold — the #12381
+                        // failure is 156 / 5,880 at this 0.1 mm weld.
+                        if composed_defects.saturating_mul(100) < composed.triangle_count() {
+                            self.record_bool2d_cut(cut);
+                            return composed;
+                        }
+                        let full = VoidContext {
+                            openings: ctx.openings.clone(),
+                            merged_openings: ctx.merged_openings.clone(),
+                            param: None,
+                            bool2d: None,
+                        };
+                        let full_routed = self.apply_void_context(mesh.clone(), &full, element_id);
+                        let full_routed_defects = param_cut_nonmanifold_edges(&full_routed);
+                        // Require a material improvement, not a one-edge win.
+                        // This hysteresis keeps the route stable under tiny
+                        // triangulation changes.
+                        if full_routed_defects.saturating_mul(2) < composed_defects {
+                            return full_routed;
+                        }
+                        self.record_bool2d_cut(cut);
+                        return composed;
+                    }
+                }
             }
         }
 

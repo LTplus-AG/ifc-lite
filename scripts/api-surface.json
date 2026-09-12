@@ -5230,7 +5230,8 @@
     "needsConversion: function",
     "parseGLB: function",
     "parseGLBToMeshData: function",
-    "planAuthoredResourceCleanup: function"
+    "planAuthoredResourceCleanup: function",
+    "stripNodePathPrefix: function"
   ],
   "@ifc-lite/extensions": [
     "ACTION_INTENTS: const",

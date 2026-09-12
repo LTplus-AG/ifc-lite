@@ -105,6 +105,29 @@ export default defineConfig({
       },
     },
     {
+      // Opt-in relay acceptance (#4446, #4444): needs the built viewer, a built
+      // @ifc-lite/collab-server and the AC20 fixture. Each spec spawns its own
+      // signed relay AND its own `vite preview` of this checkout's dist, both
+      // on ephemeral ports (the shared webServer above, PLAYWRIGHT_PORT / :3000,
+      // is reused from whatever process holds it — a sibling checkout's preview
+      // would test the wrong build — so this project sets no baseURL), and enables collab
+      // through the viewer's localStorage overrides. Real Google Chrome
+      // (`channel: 'chrome'`) is required for WebGPU. Not in CI's default lanes
+      // (no relay there) — `pnpm test:e2e:collab`, see
+      // docs/contributing/collaboration-testing.md.
+      name: 'viewer-collab-e2e',
+      testMatch: /collab-(share-seed|federation-scope)\.e2e\.spec\.ts/,
+      timeout: 600000,
+      use: {
+        actionTimeout: 60000,
+        headless: true,
+        channel: 'chrome',
+        launchOptions: {
+          args: ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--enable-gpu'],
+        },
+      },
+    },
+    {
       name: 'viewer-benchmark',
       testMatch: /viewer-benchmark\.spec\.ts/,
       timeout: 600000, // 10 min for very large files (327MB)

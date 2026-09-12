@@ -26,6 +26,7 @@
     "test:collab": "pnpm --filter @ifc-lite/collab --filter @ifc-lite/collab-server test",
     "test:e2e": "playwright test --project=viewer-e2e",
     "test:e2e:ci": "playwright test --project=viewer-e2e-ci",
+    "test:e2e:collab": "playwright test --project=viewer-collab-e2e",
     "test:api": "tsx --tsconfig tests/tsconfig.json --test \"tests/api/**/*.test.ts\"",
     "test:integration": "tsx --tsconfig tests/tsconfig.json tests/integration.test.ts",
     "test:wasm-contract": "node scripts/test-wasm-contract.mjs",

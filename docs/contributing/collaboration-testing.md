@@ -211,16 +211,60 @@ copies of one file, so that every IFC identity collides on purpose:
 3. Rejoin: close the recipient, open the link again — still two models.
 4. Export on the recipient: the Export dialog lists both `room:*` models
    like any federation. Room models are IFC5, and merged export is STEP-only,
-   so export each to its own `.ifcx`; the entity paths inside carry the slot
-   (`/m0/<GlobalId>`, `/m1/<GlobalId>`).
+   so export each to its own `.ifcx`. Inside, the entity paths are the model's
+   own `/<GlobalId>` paths — the room's slot (`/m0/…`, `/m1/…`) is stripped on
+   export, so either copy's file reads like a single-model room export and
+   diffs against the other where the copies actually differ (here: the
+   member's texture).
 
 What to look for in the doc (DevTools, `session.doc`): the `models` map holds
 `m0` and `m1`, and every entity path is `/m0/<GlobalId>` or `/m1/<GlobalId>`.
+The recipient's own store keys entities by that room path too (the inspector
+shows `/m1/<GlobalId>` as the GlobalId); only the exported file is un-homed.
+
+Known limit: an IFCX seed re-homes `children` / `inherits` references under
+the slot, but not path-valued *attributes* of a custom schema — the runtime
+cannot tell a path-typed attribute from a string. Such an attribute keeps the
+file's unqualified path and dangles on a recipient. STEP seeds are unaffected.
+
+The same journey is automated, in real Chrome against a disposable signed
+relay and a private `vite preview` of this checkout's build, both started by
+the spec (`tests/e2e/collab/relay.ts`, `preview.ts` — the harness shared with
+the #4446 relay acceptance):
+
+```sh
+pnpm fixtures                                        # AC20-FZK-Haus.ifc
+pnpm turbo build --filter=@ifc-lite/collab-server    # the relay (dist/bin.js)
+pnpm --filter @ifc-lite/viewer build                 # the ordinary build, no collab env needed
+pnpm test:e2e:collab                                 # Playwright project viewer-collab-e2e
+```
+
+The project runs real Google Chrome (`channel: 'chrome'`, headless, WebGPU);
+a host with only Playwright's bundled Chromium fails at launch with "chrome
+distribution not found" — install Chrome, the spec cannot detect that ahead
+of time the way it skips on a missing fixture or build.
+
+`tests/e2e/collab-federation-scope.e2e.spec.ts` loads the fixture twice, paints
+the same IfcMember red in copy 1 and blue in copy 2 through the Appearance
+workspace, shares "All 2 loaded models", closes the owner, and checks a fresh
+guest and a rejoin: two models, each with its own texture, the member picked by
+a real canvas click in each copy, no geometry notice, and one slot-free `.ifcx`
+per model from the Export dialog. A second test shares "Active model only" and
+checks the single-slot guest keeps `globalId === expressId`. The built viewer
+is pointed at the relay through the `ifc-lite:collab:server-url` /
+`ifc-lite:collab:enabled` `localStorage` overrides, so an unmodified build is
+what runs. Set `E2E_EVIDENCE_DIR` to also write the run's JSON and screenshots
+to a directory; the recorded run lives in
+`docs/architecture/evidence/federation-scope/`. The project is opt-in (CI's
+required lanes select `viewer-e2e-ci` by name).
+
+Headless equivalents:
 `pnpm --filter viewer exec tsx --import ./src/test/vite-module-hooks.mjs --test src/lib/collab/room-reconstruct.test.ts`
-runs the same owner → recipient → rejoin sequence headlessly on a synthetic
-two-entity model, and `room-two-copies.ac20.test.ts` beside it runs it on the
-real fixture (skipped until `pnpm fixtures` has run); the numbers of one such
-run are recorded in `docs/architecture/evidence/federation-scope/`.
+runs the owner → recipient → rejoin sequence on a synthetic two-entity model,
+`room-two-copies.ac20.test.ts` beside it on the real fixture (skipped until
+`pnpm fixtures` has run), and `owner-seed.frames.test.ts` pins the seed to a
+handful of doc updates — the relay's per-connection write budget dropped a
+per-entity burst and lost the second copy's geometry before that.
 
 ### The 3D variant
 

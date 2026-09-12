@@ -34,6 +34,9 @@ import {
   putBlobWithRetry,
   uploadCountOption,
 } from './blob-upload';
+import type { SeedGeometryOptions, SeedGeometryReport } from './geometry-seed-types';
+
+export type { SeedGeometryOptions, SeedGeometryReport } from './geometry-seed-types';
 
 /** The collab doc + geometry helpers this module needs (injected). */
 export interface CollabGeomApi {
@@ -62,62 +65,6 @@ export interface CollabGeomApi {
  * upload, because "the room got no geometry" is a fact the caller has to be
  * able to act on rather than a rejection it can swallow.
  */
-export interface SeedGeometryOptions {
-  /** Max blob uploads in parallel. Default 16. */
-  concurrency?: number;
-  /** Upload progress (every ~50 blobs + once at the end), for a share UI. */
-  onProgress?: (uploaded: number, total: number) => void;
-  /**
-   * Replace each entity's geometry refs with the seeded geomIds (via
-   * `setGeometryRef`) instead of appending. Used by resize, which swaps a
-   * wall's mesh for a freshly-tessellated one: the old blob is left orphaned
-   * (no entity refs it) and so isn't hydrated.
-   */
-  replace?: boolean;
-  /** Extra attempts per blob after the first one fails. Default 2. */
-  retries?: number;
-  /** Backoff before each retry, in ms. Default `[150, 600]` (index = attempt). */
-  retryDelaysMs?: readonly number[];
-  /**
-   * Stop uploading after this many blobs have failed outright. A store that
-   * refuses every write (the collab-server volume running out of inodes did
-   * exactly this) would otherwise take `meshes x (1 + retries)` doomed requests
-   * before the caller learns anything: 300k+ for a real model. Default 10.
-   */
-  maxFailures?: number;
-}
-
-/**
- * What a seed actually put in the room. The counts are the whole point: only
- * the owner knows how many meshes it *had*, so only the owner can tell "this
- * model has no geometry to share" (`offered === 0`, legitimate) apart from
- * "this model's geometry never made it into the room" (`offered > 0 &&
- * seeded === 0`, broken). Nothing downstream can recover that distinction.
- */
-export interface SeedGeometryReport {
-  /** Meshes handed to the seed by the caller. */
-  offered: number;
-  /** Meshes that passed the pre-flight checks and had an upload attempted. */
-  attempted: number;
-  /** Meshes whose blob landed AND whose ref was recorded in the doc. */
-  seeded: number;
-  /** Uploads that failed after every retry. */
-  failed: number;
-  /** Pre-flight skips. Deterministic, so never retried. */
-  skipped: {
-    /** Mesh's expressId has no entity path. */
-    noPath: number;
-    /** Owning entity isn't in the doc (structure seed missed it). */
-    noEntity: number;
-    /** Mesh carries no triangles (CPU data released in bounded-geometry mode). */
-    empty: number;
-  };
-  /** True when the upload phase stopped early on `maxFailures`. */
-  abandoned: boolean;
-  /** First upload error, for the log. */
-  error?: unknown;
-}
-
 export async function seedGeometryToRoom(
   api: CollabGeomApi,
   session: CollabSession,
@@ -136,30 +83,38 @@ export async function seedGeometryToRoom(
   let skippedNoPath = 0;
   let skippedEmpty = 0;
   let skippedNoEntity = 0;
-  for (const mesh of meshes) {
-    // A mesh whose CPU data was released (bounded-geometry mode) carries no
-    // triangles. Skip it so we don't seed an empty blob that renders nothing.
-    // On a large model this can skip EVERY mesh while the owner's own viewport
-    // still renders from its GPU copy, so the caller has to be told (see the
-    // report's `skipped.empty`), not just the console.
-    if (mesh.positions.length === 0 || mesh.indices.length === 0) {
-      skippedEmpty++;
-      continue;
+  // One transaction for the whole resolve: `pathFor` writes to the doc per
+  // entity (the owner stamps each entity's placement baseline), and unbatched
+  // that is one websocket frame per entity. A burst of hundreds trips the
+  // relay's per-connection write budget, the relay drops frames, and Yjs
+  // holds every later frame from this client pending behind the gap — two
+  // copies of one file lost the second copy's geometry that way (#4444).
+  session.transact(() => {
+    for (const mesh of meshes) {
+      // A mesh whose CPU data was released (bounded-geometry mode) carries no
+      // triangles. Skip it so we don't seed an empty blob that renders nothing.
+      // On a large model this can skip EVERY mesh while the owner's own viewport
+      // still renders from its GPU copy, so the caller has to be told (see the
+      // report's `skipped.empty`), not just the console.
+      if (mesh.positions.length === 0 || mesh.indices.length === 0) {
+        skippedEmpty++;
+        continue;
+      }
+      const path = pathFor(mesh.expressId);
+      if (!path) {
+        skippedNoPath++;
+        continue;
+      }
+      // The owning entity must already be in the doc (the structure seed creates
+      // it). Skip rather than let addGeometryRef throw and abort the whole seed:
+      // a non-zero count here means structure seeding missed some products.
+      if (!api.hasEntity(session.doc, path)) {
+        skippedNoEntity++;
+        continue;
+      }
+      jobs.push({ mesh, path });
     }
-    const path = pathFor(mesh.expressId);
-    if (!path) {
-      skippedNoPath++;
-      continue;
-    }
-    // The owning entity must already be in the doc (the structure seed creates
-    // it). Skip rather than let addGeometryRef throw and abort the whole seed:
-    // a non-zero count here means structure seeding missed some products.
-    if (!api.hasEntity(session.doc, path)) {
-      skippedNoEntity++;
-      continue;
-    }
-    jobs.push({ mesh, path });
-  }
+  });
 
   // 2. Upload blobs with bounded concurrency. This was one-at-a-time, which took
   //    *minutes* for a large model (thousands of serial network PUTs) and was the

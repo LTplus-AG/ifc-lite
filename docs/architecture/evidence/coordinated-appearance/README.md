@@ -53,8 +53,9 @@ viewer servers and relays were stopped afterward.
 
 ![Second model's room export selected after reopening](room-export-reopened.png)
 
-Current rooms share the active model, not the whole federation; #4444 tracks
-explicit federation sharing separately. These runs waited for the initial room
+At the time of this run rooms shared the active model, not the whole
+federation; explicit federation sharing landed with #4444 (see
+[federation-scope](../federation-scope/README.md) for the two-copy room run). These runs waited for the initial room
 seed to finish before navigating the owner away. #4446 records the existing
 premature-link timing defect; this evidence does not claim immediate owner
 closure after the link first appears is safe.

@@ -44,12 +44,20 @@ export function modelsInShareScope(
   return active ? [active, ...rest] : rest;
 }
 
-/** Build the seed `startCollab` consumes, or `null` when nothing is seedable. */
+/**
+ * Build the seed `startCollab` consumes. ALWAYS a seed, even an empty one:
+ * `startCollab` tells an owner from a recipient by the presence of `seed`,
+ * so an owner with nothing seedable (the only model still loading, a GLB or
+ * point-cloud workspace, the last model removed mid-mint) must still take
+ * the owner path — an empty scope settles 'ready' and every room-model
+ * resolver fails closed — rather than reconstruct its own empty room as a
+ * ghost 'Shared model' and count itself a joiner of it.
+ */
 export function buildShareSeed(
   models: ReadonlyMap<string, FederatedModel>,
   activeModelId: string | null,
   scope: ShareScope,
-): CollabSeedInput | null {
+): CollabSeedInput {
   const seedModels: CollabSeedModel[] = [];
   for (const m of modelsInShareScope(models, activeModelId, scope)) {
     const store = m.ifcDataStore;
@@ -69,5 +77,5 @@ export function buildShareSeed(
       sourceFingerprint: m.sourceFingerprint,
     });
   }
-  return seedModels.length > 0 ? { models: seedModels } : null;
+  return { models: seedModels };
 }

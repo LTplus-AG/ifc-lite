@@ -22,11 +22,11 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ModelSlotRef } from '@ifc-lite/collab';
+import { LEGACY_ROOM_SLOT, roomSlotPath } from './model-slot-ref';
 
 // ── model slot per store (#4444) ─────────────────────────────────────────────
 
-/** The implicit slot of a single-model room: unqualified `/<guid>` paths. */
-const LEGACY_SLOT: ModelSlotRef = { slotId: 'm0', pathPrefix: '' };
+/** Unregistered stores use the implicit slot of a single-model room: unqualified `/<guid>` paths. */
 const slotCache = new WeakMap<IfcDataStore, ModelSlotRef>();
 
 /**
@@ -45,8 +45,7 @@ export function registerStoreSlot(store: IfcDataStore, slot: ModelSlotRef): void
 
 /** The room path of a GUID-keyed entity of `store`, in the store's slot. */
 export function pathForGuid(store: IfcDataStore, guid: string): string {
-  const slot = slotCache.get(store) ?? LEGACY_SLOT;
-  return `${slot.pathPrefix}/${guid}`;
+  return roomSlotPath(slotCache.get(store) ?? LEGACY_ROOM_SLOT, guid);
 }
 
 // ── expressId ↔ GUID-path maps (cached per store) ───────────────────────────

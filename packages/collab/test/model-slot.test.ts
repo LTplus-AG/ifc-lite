@@ -180,4 +180,46 @@ describe('two copies of one file (#4444)', () => {
     seedFromIfcx(fresh, JSON.stringify(snapshotToIfcx(doc, { slot: m1 })));
     expect(Array.from(entitiesMap(fresh).keys()).sort()).toEqual(['/m1/site', '/m1/wall', '/m1/wallType']);
   });
+
+  it('IFCX: each slot keeps its own header / imports / schemas; a per-slot snapshot emits only those', () => {
+    const fileFor = (tag: string) =>
+      JSON.stringify({
+        header: { id: `file-${tag}`, ifcxVersion: 'ifcx_alpha', dataVersion: '1', author: tag, timestamp: 't' },
+        imports: [{ uri: `https://example.test/${tag}.ifcx` }],
+        schemas: { [`${tag}::schema`]: { value: { dataType: 'String' } } },
+        data: [{ path: 'site', attributes: { 'bsi::ifc::class': { code: 'IfcSite' } } }],
+      });
+    const doc = createCollabDoc();
+    const m0 = modelSlotRef('m0');
+    const m1 = modelSlotRef('m1');
+    seedFromIfcx(doc, fileFor('a'), { slot: m0 });
+    seedFromIfcx(doc, fileFor('b'), { slot: m1 });
+
+    // The second seed did not overwrite the first's file metadata.
+    const snapA = snapshotToIfcx(doc, { slot: m0 });
+    const snapB = snapshotToIfcx(doc, { slot: m1 });
+    expect(snapA.header.id).toBe('file-a');
+    expect(snapB.header.id).toBe('file-b');
+    expect(Object.keys(snapA.schemas)).toEqual(['a::schema']);
+    expect(Object.keys(snapB.schemas)).toEqual(['b::schema']);
+    expect(snapA.imports).toEqual([{ uri: 'https://example.test/a.ifcx' }]);
+    expect(snapB.imports).toEqual([{ uri: 'https://example.test/b.ifcx' }]);
+    // Per-slot seeds never touch the room-wide keys a legacy room reads.
+    expect(metaMap(doc).get('schemas')).toBeUndefined();
+
+    // A whole-room snapshot merges every slot's file metadata, in slot order.
+    const whole = snapshotToIfcx(doc);
+    expect(Object.keys(whole.schemas).sort()).toEqual(['a::schema', 'b::schema']);
+    expect(whole.imports).toEqual([
+      { uri: 'https://example.test/a.ifcx' },
+      { uri: 'https://example.test/b.ifcx' },
+    ]);
+    expect(whole.header.id).toBe('file-a');
+
+    // A slot-less (legacy) seed still writes and reads the room-wide keys.
+    const legacy = createCollabDoc();
+    seedFromIfcx(legacy, fileFor('c'));
+    expect(Object.keys(snapshotToIfcx(legacy).schemas)).toEqual(['c::schema']);
+    expect(Object.keys(snapshotToIfcx(legacy, { slot: legacyModelSlot() }).schemas)).toEqual(['c::schema']);
+  });
 });

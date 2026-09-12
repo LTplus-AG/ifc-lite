@@ -26,6 +26,12 @@ interface ShareScopeFieldProps {
   onConfirm: () => void;
   /** Number of models loaded in the workspace. */
   loadedCount: number;
+  /**
+   * How many of them a share of every model would carry: a GLB, a point cloud
+   * or a model still loading has no parsed store and nothing to seed, so the
+   * option must not promise more models than the room will hold.
+   */
+  seedableCount: number;
   /** Name of the active model (the "active only" option's subject). */
   activeModelName: string;
   /** Number of models the room carries once it exists, else `null`. */
@@ -38,14 +44,21 @@ export function ShareScopeField({
   editable,
   onConfirm,
   loadedCount,
+  seedableCount,
   activeModelName,
   roomModelCount,
 }: ShareScopeFieldProps) {
+  const partial = seedableCount !== loadedCount;
+  const allLabel = partial
+    ? `All ${seedableCount} of ${loadedCount} loaded models`
+    : `All ${loadedCount} loaded models`;
   const caption =
     roomModelCount !== null
       ? `This room carries ${roomModelCount} model${roomModelCount === 1 ? '' : 's'}.`
       : scope === 'all'
-        ? 'Every loaded model is shared as its own model, so recipients see the whole workspace.'
+        ? partial
+          ? `${seedableCount} of ${loadedCount} loaded models can be shared, each as its own model; a GLB, a point cloud or a model still loading has nothing to put in a room.`
+          : 'Every loaded model is shared as its own model, so recipients see the whole workspace.'
         : `Only “${activeModelName}” is shared; the other loaded models stay private.`;
   return (
     <div className="flex flex-col gap-2">
@@ -72,7 +85,7 @@ export function ShareScopeField({
           disabled={!editable}
           onClick={() => onScopeChange('all')}
         >
-          All {loadedCount} loaded models
+          {allLabel}
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">{caption}</p>

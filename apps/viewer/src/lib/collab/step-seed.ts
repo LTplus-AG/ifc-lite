@@ -26,7 +26,7 @@ import {
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import type { ModelSlotRef, StepSeedEntity, StepSeedSource } from '@ifc-lite/collab';
-import { LEGACY_ROOM_SLOT } from './model-slot-ref';
+import { LEGACY_ROOM_SLOT, roomSlotPath } from './model-slot-ref';
 
 const IFC_CLASS_URI = (code: string) =>
   `https://identifier.buildingsmart.org/uri/buildingsmart/ifc/5/class/${code}`;
@@ -87,7 +87,7 @@ export function buildStepSeedSource(
 ): StepSeedSource {
   const guidPathFor = (expressId: number): string | null => {
     const guid = store.entities.getGlobalId(expressId);
-    return guid ? `${slot.pathPrefix}/${guid}` : null;
+    return guid ? roomSlotPath(slot, guid) : null;
   };
   const childrenByPath = buildChildrenByPath(store, guidPathFor);
   const storeyElevations = store.spatialHierarchy?.storeyElevations;
@@ -161,7 +161,7 @@ export function buildStepSeedSource(
         guid,
         ifcClass,
         attributes,
-        children: childrenByPath.get(`${slot.pathPrefix}/${guid}`),
+        children: childrenByPath.get(roomSlotPath(slot, guid)),
       };
     }
   }

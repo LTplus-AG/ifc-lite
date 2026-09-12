@@ -143,6 +143,8 @@ export function recipientState(roomId: string): { get: () => RoomTestState; stat
 export function joiner(doc: RoomDoc, blobStore: collab.MemoryBlobStore, roomId: string) {
   const store = recipientState(roomId);
   const notices: string[] = [];
+  /** How many times the reconstruct published `collabRoomModels`. */
+  const publishes = { count: 0 };
   const deps: RoomReconstructDeps = {
     roomId,
     session: fakeSession(doc),
@@ -153,13 +155,14 @@ export function joiner(doc: RoomDoc, blobStore: collab.MemoryBlobStore, roomId: 
     parseIfcx: (buffer) => parseIfcxViewerModel(buffer, undefined, { allowEmptyGeometry: true }),
     get: () => store.get() as unknown as RoomReconstructState,
     setRoomModels: (models) => {
+      publishes.count += 1;
       store.get().collabRoomModels = models;
     },
     notify: (m) => notices.push(m),
     applied: () => ({ loc: new Map(), yaw: new Map() }),
     reconcile: () => {},
   };
-  return { reconstructor: createRoomReconstructor(deps), store, notices };
+  return { reconstructor: createRoomReconstructor(deps), store, notices, publishes };
 }
 
 /**

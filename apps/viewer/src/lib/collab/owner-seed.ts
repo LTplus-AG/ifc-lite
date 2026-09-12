@@ -47,6 +47,7 @@ import {
 } from './geometry-seed-signal';
 import { buildStepSeedSource } from './step-seed';
 import { pathForEntity, registerEntityMaps, registerStoreSlot } from './entity-paths';
+import { pathInRoomSlot } from './model-slot-ref';
 import { seedPhaseFromOutcome, type CollabSeedProgress } from './seed-phase';
 
 /**
@@ -87,7 +88,13 @@ export interface CollabSeedInput {
 /** The slice of the collab runtime this needs, off the lazy-loaded `@ifc-lite/collab`. */
 export type OwnerSeedRuntime = Pick<
   typeof import('@ifc-lite/collab'),
-  'seedFromIfcx' | 'seedFromStep' | 'createModelSlot' | 'getModelSlot' | 'iterEntities' | 'getGeometryRef'
+  | 'seedFromIfcx'
+  | 'seedFromStep'
+  | 'createModelSlot'
+  | 'getModelSlot'
+  | 'iterEntities'
+  | 'getGeometryRef'
+  | 'prefixPathForSlot'
 >;
 
 export interface OwnerSeedDeps {
@@ -155,7 +162,7 @@ function mergeSeedReports(reports: readonly SeedGeometryReport[]): SeedGeometryR
 function slotHasGeometry(deps: OwnerSeedDeps, slot: ModelSlotRef): boolean {
   const doc = deps.session.doc;
   for (const [path] of deps.collab.iterEntities(doc)) {
-    if (slot.pathPrefix !== '' && !path.startsWith(`${slot.pathPrefix}/`)) continue;
+    if (!pathInRoomSlot(slot, path)) continue;
     const ref = deps.collab.getGeometryRef(doc, path);
     if (ref && ref.geomIds.length > 0) return true;
   }
@@ -218,14 +225,14 @@ async function seedModel(
     // IFCX geometry is explicit in the file: re-parse the source for COMPLETE
     // meshes + the id->path map to key them. (The owner's render buffers may
     // be memory-released for large models, so we never read those for
-    // seeding, plan Fix 2.) The file's paths are re-homed under the slot,
-    // exactly as `seedFromIfcx` re-homed the entities.
+    // seeding, plan Fix 2.) The file's paths are re-homed under the slot by
+    // the runtime's own rule, exactly as `seedFromIfcx` re-homed the entities.
     const parsed = await deps.parseIfcx(toArrayBuffer(store.source.materialize()));
     const idToPath = new Map<number, string>();
     const pathToId = new Map<string, number>();
     if (parsed.idToPath) {
       for (const [id, path] of parsed.idToPath) {
-        const qualified = slot.pathPrefix === '' ? path : `${slot.pathPrefix}${path.startsWith('/') ? '' : '/'}${path}`;
+        const qualified = collab.prefixPathForSlot(slot, path);
         idToPath.set(id, qualified);
         pathToId.set(qualified, id);
       }

@@ -26,11 +26,17 @@ import type { FederatedModel } from '@/store/types.js';
 import type { StartCollabOptions } from '@/store/slices/collabSlice.js';
 import { ShareDialog } from './ShareDialog.js';
 
-function makeModel(id: string, name: string, idOffset: number): FederatedModel {
+function makeModel(id: string, name: string, idOffset: number, opts: { store?: boolean } = {}): FederatedModel {
   return {
     id,
     name,
-    ifcDataStore: { schemaVersion: 'IFC4', __tag: id } as unknown as FederatedModel['ifcDataStore'],
+    // `store: false` is a model with nothing to seed — a load still in flight
+    // (`useIfcLoader` upserts the record with a null store first), a GLB or a
+    // point cloud.
+    ifcDataStore:
+      opts.store === false
+        ? null
+        : ({ schemaVersion: 'IFC4', __tag: id } as unknown as FederatedModel['ifcDataStore']),
     geometryResult: null,
     visible: true,
     collapsed: false,
@@ -105,6 +111,46 @@ describe('ShareDialog: explicit federation scope (#4444)', () => {
     assert.deepEqual(starts[0].seed?.models.map((m) => m.modelId), ['a']);
   });
 
+  it('an owner with nothing seedable still takes the OWNER path: an empty seed, never none', async () => {
+    // The Share button is enabled on `models.size > 0`, and a primary load
+    // upserts its record before the store exists. `startCollab` keys owner vs
+    // recipient on `seed` presence, so `undefined` here would send the admin
+    // down the recipient path: reconstruct their own empty room as a ghost
+    // 'Shared model' and count themselves a joiner of it.
+    useViewerStore.setState({
+      models: new Map([['a', makeModel('a', 'tower.ifc', 0, { store: false })]]),
+      activeModelId: 'a',
+    });
+    render(<ShareDialog open onOpenChange={() => {}} />);
+    await settle();
+    assert.equal(starts.length, 1);
+    assert.notEqual(starts[0].seed, undefined, 'the owner always passes a seed');
+    assert.deepEqual(starts[0].seed, { models: [] });
+  });
+
+  it('"All loaded models" counts what can be shared, not what is loaded', async () => {
+    useViewerStore.setState({
+      models: new Map([
+        ['a', makeModel('a', 'AC20-FZK-Haus.ifc', 0)],
+        ['b', makeModel('b', 'site.glb', 1_000_000, { store: false })],
+        ['c', makeModel('c', 'AC20-FZK-Haus.ifc', 2_000_000)],
+      ]),
+      activeModelId: 'a',
+    });
+    render(<ShareDialog open onOpenChange={() => {}} />);
+    await settle();
+    const radios = scopeRadios();
+    assert.equal(radios[1].textContent?.trim(), 'All 2 of 3 loaded models');
+    assert.match(document.body.textContent ?? '', /2 of 3 loaded models can be shared/);
+    assert.match(document.body.textContent ?? '', /Share 2 models/);
+    const create = createLinkButton();
+    assert.ok(create);
+    click(create);
+    await settle();
+    assert.deepEqual(starts[0].seed?.models.map((m) => m.modelId), ['a', 'c']);
+    assert.match(document.body.textContent ?? '', /This room carries 2 models/);
+  });
+
   it('with two copies loaded, asks first: no room until "Create link", then shares both — active first', async () => {
     useViewerStore.setState({
       models: new Map([
@@ -117,6 +163,7 @@ describe('ShareDialog: explicit federation scope (#4444)', () => {
     await settle();
     const radios = scopeRadios();
     assert.equal(radios.length, 2);
+    assert.equal(radios[1].textContent?.trim(), 'All 2 loaded models');
     assert.equal(radios[1].getAttribute('aria-checked'), 'true', '"all loaded models" is the default');
     for (const radio of radios) assert.equal((radio as HTMLButtonElement).disabled, false, 'the choice is live');
     assert.match(document.body.textContent ?? '', /Share 2 models/);

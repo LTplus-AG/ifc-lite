@@ -120,6 +120,9 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   }, [models, activeModelId]);
 
   const hasModel = models.size > 0;
+  // What "all loaded models" can put in a room: a GLB, a point cloud or a
+  // model still loading has no parsed store and is left out of the seed.
+  const seedableCount = useMemo(() => buildShareSeed(models, activeModelId, 'all').models.length, [models, activeModelId]);
   const isJoiner = Boolean(collabRoomId && collabRole && collabRole !== 'admin');
   // The room exists but the model is still going in: no invite until it has.
   const seedInFlight = Boolean(collabRoomId) && isCollabSeedInFlight(seedPhase);
@@ -129,7 +132,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   const awaitingScope = scopeIsChoice && !collabRoomId && !scopeConfirmed;
   // Once the room exists its contents are what the seed put there: show that
   // count, not the radio's current value.
-  const sharedModelCount = collabRoomId ? collabRoomModels.size : scope === 'all' ? models.size : 1;
+  const sharedModelCount = collabRoomId ? collabRoomModels.size : scope === 'all' ? seedableCount : 1;
   const title = scopeIsChoice && sharedModelCount > 1 ? `Share ${sharedModelCount} models` : `Share “${modelName}”`;
 
   // 1. Ensure a room: the creator mints an admin token (first-touch) and joins
@@ -157,13 +160,13 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
         // owner-seed.ts). Read fresh off the store, not the render that ran
         // this effect: `mintRoomToken` awaited above, and a model added or
         // removed during that round-trip belongs to (or leaves) the share.
+        // Always a seed, even empty: `startCollab` keys owner/recipient on it.
         const st = useViewerStore.getState();
-        const seed = buildShareSeed(st.models, st.activeModelId, scope);
         await startCollab({
           roomId,
           role: 'admin',
           token: adminToken,
-          seed: seed ?? undefined,
+          seed: buildShareSeed(st.models, st.activeModelId, scope),
         });
         // `startCollab` resolves without a live room when the session never
         // came up (it logs why) or the user left mid-join (RoomPanel's Leave).
@@ -292,6 +295,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
                 editable={awaitingScope}
                 onConfirm={() => setScopeConfirmed(true)}
                 loadedCount={models.size}
+                seedableCount={seedableCount}
                 activeModelName={modelName}
                 roomModelCount={collabRoomId ? sharedModelCount : null}
               />

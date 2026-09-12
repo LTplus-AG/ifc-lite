@@ -140,8 +140,11 @@ describe('room seed + reconstruct: two copies of one file (#4444)', () => {
     assert.deepEqual(Array.from(s.collabRoomModels.keys()), ['room:r1:m0', 'room:r1:m1']);
     const a = s.models.get('room:r1:m0')!;
     const b = s.models.get('room:r1:m1')!;
+    // Two copies of one file are told apart by name on the recipient (the
+    // hierarchy and the Export dialog list both); the slot keeps the owner's.
     assert.equal(a.name, 'AC20-FZK-Haus.ifc');
-    assert.equal(b.name, 'AC20-FZK-Haus.ifc');
+    assert.equal(b.name, 'AC20-FZK-Haus.ifc (2)');
+    assert.deepEqual(collab.listModelSlots(doc).map((s) => s.name), ['AC20-FZK-Haus.ifc', 'AC20-FZK-Haus.ifc']);
     assert.ok(b.idOffset > a.idOffset + a.maxExpressId, 'copy B sits above copy A in the global id space');
 
     // Same GlobalId (bar the slot prefix) and the same local express id in
@@ -187,13 +190,17 @@ describe('room seed + reconstruct: two copies of one file (#4444)', () => {
   });
 
   it('a second reconstruct (peer edit) refreshes both models in place without re-registering', async () => {
-    const { reconstructor, store } = joiner(doc, blobStore, 'r1');
+    const { reconstructor, store, publishes } = joiner(doc, blobStore, 'r1');
     await reconstructor.reconstruct();
+    assert.equal(publishes.count, 1);
     const before = new Map(Array.from(store.state().models, ([id, m]) => [id, m.idOffset]));
     collab.setAttribute(doc, `/m1/${WALL_GUID}`, 'bsi::ifc::prop::Name', 'Renamed in copy B');
     await reconstructor.reconstruct();
     const s = store.state();
     assert.equal(s.models.size, 2);
+    // The slot set did not change, so `collabRoomModels` was not re-published
+    // (a fresh Map per peer edit would re-render every store subscriber).
+    assert.equal(publishes.count, 1, 'an unchanged slot set is not re-published');
     for (const [id, offset] of before) assert.equal(s.models.get(id)?.idOffset, offset, `${id} keeps its range`);
     const b = s.models.get('room:r1:m1')!;
     assert.equal(b.ifcDataStore?.entities.getName(localIdOf(b, `/m1/${WALL_GUID}`)), 'Renamed in copy B');

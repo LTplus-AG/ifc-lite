@@ -16,10 +16,18 @@
  * seed in share order (`m0`, `m1`, …) and never derived from a filename,
  * source bytes or a GlobalId, so identical inputs still get distinct slots.
  * Entity paths are qualified by slot: `/<slotId>/<GlobalId>` for STEP seeds,
- * `/<slotId>` prepended to the file's own path for IFCX seeds. `geometry`
- * stays content-hash keyed: identical meshes dedupe across copies, which is
- * fine because the `geometryRef` that points at them is per entity path, i.e.
- * per slot.
+ * `/<slotId>` prepended to the file's own path for IFCX seeds (whose own
+ * header / imports / schemas are recorded per slot too, see
+ * `snapshot/slot-ifcx.ts`). `geometry` stays content-hash keyed, and
+ * the `geometryRef` that points at it is per entity path, i.e. per slot:
+ * byte-identical blobs would dedupe across copies, but STEP mesh blobs
+ * encode the federation-global expressId, so two copies of one file carry
+ * two blob sets.
+ *
+ * Known limit: an IFCX seed re-homes `children` / `inherits` references
+ * under the slot but not path-valued ATTRIBUTES of a custom schema — the
+ * runtime cannot tell those from strings, so they keep the file's
+ * unqualified path (see `qualifyNode` in `snapshot/slot-ifcx.ts`).
  *
  * Rooms seeded before slots existed have an empty `models` map and
  * unqualified paths. They are read as ONE implicit slot whose path prefix is

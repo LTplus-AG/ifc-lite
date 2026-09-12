@@ -43,7 +43,7 @@ import { buildGeometryResultFromMeshes, hydrateGeometryFromRoom, type CollabGeom
 import { missingRoomGeometryMessage, readGeometrySeedMarker } from './geometry-seed-signal';
 import { highestExpressId, raisedMaxExpressId } from './express-id-bounds';
 import { clearAppliedPlacements, sweepPlacements, type PlacementSweepApi } from './placement-sweep';
-import { pathInRoomSlot, roomModelIdFor } from './model-slot-ref';
+import { pathInRoomSlot, roomModelIdFor, roomModelNameFor } from './model-slot-ref';
 
 /** The slice of the collab runtime the reconstruct needs (injected). */
 export type RoomReconstructRuntime = Pick<typeof import('@ifc-lite/collab'), 'snapshotToIfcx' | 'listModelSlots'>;
@@ -122,7 +122,14 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
     return meshes.slice();
   };
 
+  // Published only when the slot set changes: the store compares by
+  // reference, and a fresh Map per reconstruct would re-render every
+  // subscriber (Share dialog, room panel) on each debounced peer edit.
+  let publishedSlots = '';
   const publishRoomModels = (listed: ModelSlotRef[]): void => {
+    const signature = listed.map((s) => `${s.slotId}=${s.pathPrefix}`).join(',');
+    if (signature === publishedSlots) return;
+    publishedSlots = signature;
     const next = new Map<string, ModelSlotRef>();
     for (const slot of listed) next.set(roomModelIdFor(roomId, slot.slotId), slot);
     deps.setRoomModels(next);
@@ -145,7 +152,8 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
 
   /** One slot: snapshot → parse → register/refresh the model, then geometry. */
   const reconstructSlot = async (
-    slot: ModelSlotRef & { name: string },
+    slot: ModelSlotRef,
+    name: string,
     geometryChanged: boolean,
   ): Promise<{ payload: ViewerModelPayload; state: SlotState } | null> => {
     const ifcxFile = collab.snapshotToIfcx(session.doc, { slot });
@@ -183,7 +191,7 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
       for (const m of payload.geometryResult.meshes) applyFederationOffsetToMesh(m, idOffset);
       deps.get().upsertModel({
         id: modelId,
-        name: slot.name,
+        name,
         ifcDataStore: payload.dataStore,
         geometryResult: payload.geometryResult,
         visible: true,
@@ -265,7 +273,7 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
       }
       const built: Array<{ payload: ViewerModelPayload; state: SlotState }> = [];
       for (const slot of listed) {
-        const result = await reconstructSlot(slot, geometryChanged);
+        const result = await reconstructSlot(slot, roomModelNameFor(listed, slot.slotId), geometryChanged);
         if (!result) return;
         built.push(result);
       }

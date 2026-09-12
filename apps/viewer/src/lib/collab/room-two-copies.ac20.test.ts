@@ -27,6 +27,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as collab from '@ifc-lite/collab';
+import { Ifc5Exporter } from '@ifc-lite/export';
+import { IFCX_APPEARANCE } from '@ifc-lite/ifcx';
 import type { ModelSlotRef } from '@ifc-lite/collab';
 import { ColumnarParser, StepTokenizer, type IfcDataStore } from '@ifc-lite/parser';
 import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
@@ -172,10 +174,44 @@ describe('two copies of AC20-FZK-Haus.ifc in one room (#4444)', () => {
       // Picking: the mesh's global id names its own model, never the other copy.
       assert.deepEqual(s.resolveGlobalIdFromModels(meshA.expressId), { modelId: 'room:ac20:m0', expressId: wallA });
       assert.deepEqual(s.resolveGlobalIdFromModels(meshB.expressId), { modelId: 'room:ac20:m1', expressId: wallB });
-      // What the Export dialog lists: every room model, each with its own store.
-      for (const m of [a, b]) {
+      // Room export, as the Export dialog's IFC5 branch runs it per selected
+      // model (merged export is STEP-only): both room models export, each
+      // carrying only its own copy's meshes, the painted member's texture
+      // included, under the slot-qualified path the recipient keys it by.
+      const exportedWall: string[] = [];
+      const exportedMeshCounts: number[] = [];
+      for (const [m, wallLocal] of [[a, wallA], [b, wallB]] as const) {
         assert.ok(m.ifcDataStore && m.schemaVersion, `${label}: ${m.id} is exportable on its own`);
+        const result = new Ifc5Exporter(m.ifcDataStore, m.geometryResult, undefined, m.idOffset).export({
+          includeGeometry: true,
+          includeProperties: true,
+          applyMutations: true,
+          visibleOnly: false,
+          onlyKnownProperties: false,
+          author: 'ifc-lite',
+        });
+        // The exporter's spatial-tree filter (the dialog's default) keeps
+        // contained elements only, so this is fewer than the hydrated refs —
+        // the same for both copies, and the same as the owner's own export.
+        assert.ok(result.stats.meshCount > 0, `${label}: ${m.id} exports geometry`);
+        exportedMeshCounts.push(result.stats.meshCount);
+        const file = JSON.parse(result.content) as {
+          data: { path: string; children?: Record<string, string>; attributes?: Record<string, unknown> }[];
+        };
+        const wallPath = m.ifcDataStore.entities.getGlobalId(wallLocal);
+        const wallNode = file.data.find((n) => n.path === wallPath);
+        assert.ok(wallNode, `${label}: ${m.id} exports the painted member at ${wallPath}`);
+        // A textured member is written as appearance fragments under the node.
+        const fragmentPaths = new Set(Object.values(wallNode.children ?? {}));
+        const fragments = file.data.filter((n) => fragmentPaths.has(n.path));
+        assert.ok(
+          fragments.some((n) => n.attributes?.[IFCX_APPEARANCE] !== undefined),
+          `${label}: ${m.id} exports the painted member's texture`,
+        );
+        exportedWall.push(wallPath);
       }
+      assert.deepEqual(exportedWall, [`/m0/${paintedGuid}`, `/m1/${paintedGuid}`], `${label}: one export path per copy`);
+      assert.equal(exportedMeshCounts[0], exportedMeshCounts[1], `${label}: both copies export the same mesh set`);
     };
     check('fresh guest', guest.store.state());
     assert.deepEqual(guest.notices, [], 'no missing-geometry warning');

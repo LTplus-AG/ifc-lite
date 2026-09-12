@@ -35,15 +35,22 @@ store slices. Numbers reported by the test's diagnostic line:
 
 Assertions that passed, for the fresh guest and again after leave → rejoin:
 
-- the guest holds exactly `room:ac20:m0` and `room:ac20:m1`, both named
-  `AC20-FZK-Haus.ifc`, in disjoint global-id ranges;
+- the guest holds exactly `room:ac20:m0` and `room:ac20:m1`, named
+  `AC20-FZK-Haus.ifc` and `AC20-FZK-Haus.ifc (2)` (the slot records keep the
+  owner's name verbatim), in disjoint global-id ranges;
 - each model hydrated all 313 of its slot's refs, and the painted wall carries
   red pixels in copy A and blue in copy B;
 - the painted wall's global id resolves (`resolveGlobalIdFromModels`) to its
   own model and local express id in each copy — a pick lands on the right copy;
 - both models carry their own `ifcDataStore` and `schemaVersion`, which is what
-  the Export dialog enumerates, so each is exportable on its own and the
-  federated merge sees two models;
+  the Export dialog enumerates; the Export dialog's IFC5 branch
+  (`new Ifc5Exporter(store, geometryResult, undefined, idOffset).export(...)`
+  with the dialog's options) runs on each room model and emits 90 meshes per
+  copy (the exporter's spatial-tree filter keeps contained elements only; the
+  count is the same for both copies), the painted wall at `/m0/<GlobalId>` in
+  copy A and `/m1/<GlobalId>` in copy B — the recipient's store keys entities
+  by their slot-qualified room path — with its texture written as an
+  `ifclite::appearance::v1` fragment in both;
 - leaving drops both room models; rejoining rebuilds both.
 
 ## What this evidence does not claim
@@ -53,4 +60,6 @@ This is a Node run, not a browser one. The two-profile browser flow of
 File → Share with two loaded copies, **Create link**, a fresh guest profile
 opening the link, rejoin, and the Export dialog on the guest — was not run for
 this change. The rendered picking and the room IFCX export through the dialog
-are therefore covered by the store-level assertions above, not by screenshots.
+are therefore covered by the store-level and exporter-level assertions above,
+not by screenshots. Merged (federated) export is STEP-only in the dialog, so a
+recipient exports each room model to its own `.ifcx`.

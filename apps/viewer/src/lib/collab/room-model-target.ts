@@ -54,6 +54,7 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ModelSlotRef } from '@ifc-lite/collab';
 import type { FederatedModel } from '@/store/types';
 import type { RoomEntityTarget } from './mutation-bridge';
+import { pathInRoomSlot } from './model-slot-ref';
 
 /** The slice fields this resolution needs (a narrow view of the viewer store). */
 export interface RoomModelTargetState {
@@ -176,8 +177,7 @@ export function roomEntityTargetForPath(
     return modelId !== null && state.ifcDataStore ? { modelId, store: state.ifcDataStore } : null;
   }
   for (const [modelId, slot] of state.collabRoomModels) {
-    const inSlot = slot.pathPrefix === '' || entityPath.startsWith(`${slot.pathPrefix}/`);
-    if (!inSlot) continue;
+    if (!pathInRoomSlot(slot, entityPath)) continue;
     const store = state.models.get(modelId)?.ifcDataStore ?? null;
     return store ? { modelId, store } : null;
   }

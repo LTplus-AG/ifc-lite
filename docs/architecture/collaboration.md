@@ -21,12 +21,15 @@ A room carries one or more *model slots* (`models` map, `slotId → record`).
 Slot ids are minted in share order (`m0`, `m1`, …), never derived from a file
 name, its bytes or its GlobalIds, and every entity path is qualified by its
 slot: `/<slotId>/<GlobalId>` for STEP-seeded entities, `/<slotId>` prepended to
-the file's own path for IFCX seeds. Two copies of one file are therefore two
-disjoint entity sets that can point at the same content-addressed geometry.
-Rooms shared before slots existed have an empty `models` map and unqualified
-paths; readers treat them as a single implicit slot with an empty prefix, so
-nothing on disk is rewritten. A recipient reconstructs one federated viewer
-model per slot, registered in its own global-id range like any added file.
+the file's own path for IFCX seeds, whose header, imports and schemas are
+recorded per slot as well. Two copies of one file are therefore two disjoint
+entity sets, each with its own geometry references (STEP mesh blobs encode the
+federation-global express id, so the copies do not share blobs). Rooms shared
+before slots existed have an empty `models` map and unqualified paths; readers
+treat them as a single implicit slot with an empty prefix, so nothing on disk
+is rewritten. A recipient reconstructs one federated viewer model per slot,
+registered in its own global-id range like any added file, and suffixes a
+model name that another slot also carries (`AC20-FZK-Haus.ifc (2)`).
 
 ## Synchronization
 

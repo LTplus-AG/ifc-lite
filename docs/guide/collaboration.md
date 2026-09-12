@@ -50,7 +50,7 @@ carry, and creates the room only when you press **Create link**:
 
 | Scope | The room holds… |
 | --- | --- |
-| **All N loaded models** (default) | Every loaded model, each as its own model. Recipients see the whole workspace and can pick, edit and export each model separately. |
+| **All N loaded models** (default) | Every loaded model, each as its own model. Recipients see the whole workspace and can pick, edit and export each model separately (a second copy of a file is listed as "name (2)"). N counts the models that can be shared: a GLB, a point cloud or a model still loading has nothing to put in a room, and the option says "All 2 of 3 loaded models" when one is left out. |
 | **Active model only** | The model that is active in the hierarchy. The others stay private. |
 
 Each shared model gets its own *slot* in the room, so two copies of the same

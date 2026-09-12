@@ -44,7 +44,7 @@ export interface RoomModelApplyState {
  * Apply reconstructed room data to the room's model.
  *
  * @param state    current store snapshot (actions are read off it)
- * @param roomModelId  id of the reconstructed room model (`room:<roomId>`)
+ * @param roomModelId  id of the reconstructed room model (`room:<roomId>:<slotId>`)
  * @param patch    the fields to write; omitted fields are left untouched
  */
 export function applyRoomModelData(

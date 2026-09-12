@@ -36,8 +36,9 @@ import {
   metaMap,
 } from '../doc/schema.js';
 import { inflateStructuredAttributes } from './structured-attrs.js';
-import { prefixPathForSlot, type ModelSlotRef } from '../doc/model-slot.js';
+import type { ModelSlotRef } from '../doc/model-slot.js';
 import { clearOverlayTombstones, readOverlayTombstones, resolveTombstoneOpinion, resurrectionBlocked, writeOverlayTombstones } from './overlay-tombstones.js';
+import { qualifyNode, writeIfcxFileMeta } from './slot-ifcx.js';
 import { setClassifications, setMaterials, readIfcClass } from './overlay-entity-attrs.js';
 
 export interface SeedOptions {
@@ -48,8 +49,9 @@ export interface SeedOptions {
   /**
    * The model slot the file's nodes belong to (#4444). Every node path, and
    * every `children` / `inherits` reference, is qualified with the slot's
-   * prefix so the file's own path scheme survives verbatim underneath it.
-   * Omitted: the implicit legacy slot (paths untouched).
+   * prefix, and the file's header / imports / schemas are recorded for that
+   * slot (see slot-ifcx.ts). Omitted: the implicit legacy slot (paths and
+   * room-wide metadata untouched).
    */
   slot?: ModelSlotRef;
 }
@@ -95,10 +97,9 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
       clearOverlayTombstones(meta);
     }
 
-    // Stash file-level metadata so we can re-emit it during snapshotting.
-    if (file.header) meta.set('header', file.header);
-    if (file.imports) meta.set('imports', file.imports);
-    if (file.schemas) meta.set('schemas', file.schemas);
+    // Stash file-level metadata so we can re-emit it during snapshotting —
+    // per slot, so a second IFC5 model does not overwrite the first's.
+    writeIfcxFileMeta(meta, opts.slot, file);
 
     for (const node of file.data ?? []) {
       const decoded = decodeNode(opts.slot ? qualifyNode(opts.slot, node) : node, false);
@@ -109,31 +110,6 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
   }, opts.origin ?? SEED_ORIGIN);
 
   return file;
-}
-
-/**
- * Re-home a node under a slot: its own path plus every path-valued
- * `children` / `inherits` reference (a `null` removal opinion stays `null`).
- * Attribute values are opaque here; geometry carriers are content-hash keyed
- * and slot-independent.
- */
-function qualifyNode(slot: ModelSlotRef, node: IfcxNode): IfcxNode {
-  const raw = node as RawIfcxNode;
-  if (!raw.path) return node;
-  const qualifyRefs = (refs: Record<string, unknown> | undefined): Record<string, unknown> | undefined => {
-    if (!refs) return refs;
-    const out: Record<string, unknown> = {};
-    for (const [role, target] of Object.entries(refs)) {
-      out[role] = typeof target === 'string' ? prefixPathForSlot(slot, target) : target;
-    }
-    return out;
-  };
-  return {
-    ...node,
-    path: prefixPathForSlot(slot, raw.path),
-    children: qualifyRefs(raw.children),
-    inherits: qualifyRefs(raw.inherits),
-  } as IfcxNode;
 }
 
 /* ------------------------------------------------------------------ */

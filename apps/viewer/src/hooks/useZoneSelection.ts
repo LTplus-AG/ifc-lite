@@ -80,10 +80,12 @@ export function resolveZoneSelection(
  * source of truth" — and only falls back to the `federationRegistry` singleton
  * (`fromGlobalId`) for a model that has left `state.models` but is still
  * registered. It used to consult the registry ALONE, which made this a silent
- * no-op in a collaborative room: `collabSlice.ts` seeds the room model with
- * `upsertModel` and never calls `registerModelOffset`, so the registry knew
- * none of its ids, every lookup returned `null`, and every matched element was
- * dropped. Federated-IFCX composition (`useIfcFederation.ts`) has the same gap.
+ * no-op in a collaborative room: until #4444 `collabSlice.ts` seeded the room
+ * model with `upsertModel` and never called `registerModelOffset` (now
+ * `room-reconstruct.ts` registers each `room:<roomId>:<slotId>` model), so the
+ * registry knew none of its ids, every lookup returned `null`, and every
+ * matched element was dropped. Federated-IFCX composition
+ * (`useIfcFederation.ts`) has the same gap.
  * PR #2697 is the sibling fix for the clash path.
  *
  * The store pass is also the only one that sees overlay-allocated ids (its

@@ -832,7 +832,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     if (get().collabRoomId !== roomId) {
       // Run the cleanup this join installed after its last guarded await, which
       // returning here would otherwise skip: the recipient branch registers the
-      // `room:<roomId>` model, then assigns its teardown, then falls through to
+      // `room:<roomId>:<slotId>` models, then assigns its teardown, then falls through to
       // this check. A Leave landing in that window left the model in `models`
       // (and the doc listener attached) until the next `stopCollab` — an orphan
       // sitting in the store between leaving and rejoining. (#3016)

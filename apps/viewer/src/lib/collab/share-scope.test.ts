@@ -86,12 +86,15 @@ describe('share scope (#4444)', () => {
     assert.equal(seed?.models[0].meshes, null);
   });
 
-  it('leaves out models with nothing to seed, and yields no seed when none remains', () => {
+  it('leaves out models with nothing to seed, and yields an EMPTY seed (never none) when none remains', () => {
     const models = new Map([
       ['a', model('a', { store: false })],
       ['b', model('b', { idOffset: 1_000_000 })],
     ]);
     assert.deepEqual(buildShareSeed(models, 'a', 'all')?.models.map((m) => m.modelId), ['b']);
-    assert.equal(buildShareSeed(new Map([['a', model('a', { store: false })]]), 'a', 'all'), null);
+    // An owner with nothing seedable still takes the owner path in
+    // `startCollab` (which keys owner vs recipient on `seed` presence).
+    assert.deepEqual(buildShareSeed(new Map([['a', model('a', { store: false })]]), 'a', 'all'), { models: [] });
+    assert.deepEqual(buildShareSeed(new Map(), null, 'active'), { models: [] });
   });
 });

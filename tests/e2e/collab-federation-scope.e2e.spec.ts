@@ -165,6 +165,8 @@ test.describe('federation scope: two copies of AC20-FZK-Haus.ifc in one room (#4
   test('owner → fresh guest → rejoin: two models, two textures, real picks, slot-free exports', async ({ browser }, info) => {
     const owner = await ownerShares(browser, relay, viewer, info, 'all', true);
     expect(owner.stats.slots).toEqual(['m0', 'm1']);
+    // Anchor the count: if slot qualification regressed, both would be undefined.
+    expect(owner.stats.entitiesPerSlot.m0).toBeGreaterThan(0);
     expect(owner.stats.entitiesPerSlot.m1).toBe(owner.stats.entitiesPerSlot.m0);
     expect(owner.stats.refsPerSlot.m1).toBe(owner.stats.refsPerSlot.m0);
     const evidence: Record<string, unknown> = { fixture: 'tests/models/ara3d/AC20-FZK-Haus.ifc', memberGuid: MEMBER_GUID, owner: recordOf(owner) };

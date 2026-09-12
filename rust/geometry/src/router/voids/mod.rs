@@ -323,12 +323,7 @@ impl GeometryRouter {
             }
         };
 
-        let wall_mesh = match self.process_element(element, decoder) {
-            Ok(m) => m,
-            Err(_) => {
-                return self.process_element(element, decoder);
-            }
-        };
+        let wall_mesh = self.process_element(element, decoder)?;
 
         let mut voided = self.apply_voids_to_mesh(wall_mesh, element, opening_ids, decoder);
         // Clean slivers the CSG cut can introduce at opening seams — same

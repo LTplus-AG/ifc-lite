@@ -15,7 +15,7 @@
 
 use crate::config::Config;
 use crate::services::cache::DiskCache;
-use crate::services::process_streaming;
+use crate::services::{process_streaming, StreamAdmission};
 use crate::types::StreamEvent;
 use crate::{build_router, AppState};
 use axum::body::{to_bytes, Body};
@@ -342,7 +342,7 @@ async fn streaming_complete_event_carries_symbolic_data() {
         1000,
         ifc_lite_processing::OpeningFilterMode::Default,
         ifc_lite_processing::TessellationQuality::default(),
-        None,
+        StreamAdmission::none(),
     )
         .collect()
         .await;
@@ -375,7 +375,7 @@ async fn streaming_zero_batch_sizes_still_complete() {
             0,
             ifc_lite_processing::OpeningFilterMode::Default,
             ifc_lite_processing::TessellationQuality::default(),
-            None,
+            StreamAdmission::none(),
         )
         .collect::<Vec<_>>(),
     )

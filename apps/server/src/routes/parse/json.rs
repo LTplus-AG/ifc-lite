@@ -9,7 +9,7 @@ use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::axis::mesh_to_yup_in_place;
 use crate::services::streaming::detect_schema_version;
-use crate::services::process_streaming;
+use crate::services::{process_streaming, StreamAdmission};
 use crate::types::{MetadataResponse, ParseResponse, SymbolicParseResponse, StreamEvent};
 use crate::AppState;
 use axum::{
@@ -144,7 +144,7 @@ pub async fn parse_stream(
         max_batch_size,
         query.opening_filter,
         tessellation_quality,
-        Some(admission_guard),
+        StreamAdmission::admitted(admission_guard, &state.config),
     )
     .map(|mut event: StreamEvent| {
             // Same Y-up wire frame as every other transport (issue #1841) —

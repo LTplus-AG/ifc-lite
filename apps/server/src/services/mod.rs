@@ -32,4 +32,4 @@ pub use parquet_optimized::{
     serialize_to_parquet_optimized_with_stats, OptimizedStats, VERTEX_MULTIPLIER,
 };
 pub use processor::OpeningFilterMode;
-pub use streaming::process_streaming;
+pub use streaming::{process_streaming, StreamAdmission};

@@ -15,6 +15,7 @@ replica.
 | `IFC_ADMISSION_QUEUE_DEPTH` | `2 * WORKER_THREADS` | Requests allowed to wait for a slot before immediate 503 |
 | `IFC_ADMISSION_QUEUE_TIMEOUT_SECS` | `5` | Longest a queued request waits before 503 |
 | `IFC_MEM_SHED_PCT` | `85` | RSS percentage of the budget above which new work is shed |
+| `IFC_STREAM_IDLE_TIMEOUT_SECS` | `600` | Longest a streaming response may go with the client consuming nothing before its permit is released and the parse cancelled; `0` disables the bound |
 | `IFC_METRICS_ENABLED` | off | Expose `GET /api/v1/metrics` (Prometheus text; behind the bearer token when one is set) |
 
 Each admitted parse reserves the full `MAX_FILE_SIZE_MB` against the byte

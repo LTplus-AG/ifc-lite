@@ -13,7 +13,9 @@ use super::stream_event::ParquetStreamEvent;
 use super::stream_progress::{cache_stream_progress, StreamProgressRecorder};
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
-use crate::services::{extract_data_model, process_streaming, serialize_data_model_to_parquet};
+use crate::services::{
+    extract_data_model, process_streaming, serialize_data_model_to_parquet, StreamAdmission,
+};
 use crate::types::StreamEvent;
 use crate::AppState;
 use axum::{
@@ -157,7 +159,7 @@ pub async fn parse_parquet_stream(
         max_batch_size,
         query.opening_filter,
         tessellation_quality,
-        Some(admission_guard),
+        StreamAdmission::admitted(admission_guard, &state.config),
     )
     .map(move |event: StreamEvent| {
         let sse_event = match event {

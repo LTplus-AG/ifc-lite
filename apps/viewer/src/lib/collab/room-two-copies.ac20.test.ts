@@ -125,8 +125,16 @@ describe('two copies of AC20-FZK-Haus.ifc in one room (#4444)', () => {
     // ── Owner ──
     const doc = collab.createCollabDoc();
     const blobStore = new collab.MemoryBlobStore();
+    // One websocket frame per doc update: the two-copy seed must not send one
+    // per entity, or a relay's write budget drops the second copy's geometry
+    // (see owner-seed.frames.test.ts for the transaction structure pinned here).
+    let frames = 0;
+    doc.on('update', () => {
+      frames += 1;
+    });
     const { outcome, phases } = await ownerShare(doc, blobStore, models, roomModels);
     assert.deepEqual(outcome, { phase: 'ready', failure: null });
+    assert.equal(frames, 9, 'slot record, structure, mesh resolve and geometry per slot, then the marker');
     assert.deepEqual(phases, ['structure', 'geometry', 'structure', 'geometry']);
     assert.deepEqual(collab.listModelSlots(doc).map((s) => [s.slotId, s.name]), [['m0', 'AC20-FZK-Haus.ifc'], ['m1', 'AC20-FZK-Haus.ifc']]);
     const slotEntities = (slot: string) => Array.from(collab.entitiesMap(doc).keys()).filter((p) => p.startsWith(`/${slot}/`)).length;
@@ -153,7 +161,7 @@ describe('two copies of AC20-FZK-Haus.ifc in one room (#4444)', () => {
     t.diagnostic(
       `AC20 x2: entities/slot=${slotEntities('m0')} room entities=${collab.entitiesMap(doc).size} ` +
         `meshes offered/copy=${baseMeshes.length} refs/slot=${refsPerSlot} geometry records=${doc.getMap('geometry').size} ` +
-        `blobs=${marker?.seeded}`,
+        `blobs=${marker?.seeded} doc update frames=${frames}`,
     );
     const refA = collab.getGeometryRef(doc, `/m0/${paintedGuid}`);
     const refB = collab.getGeometryRef(doc, `/m1/${paintedGuid}`);

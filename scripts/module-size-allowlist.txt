@@ -79,7 +79,7 @@
    536 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
    426 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
    583 apps/viewer/src/components/viewer/EntityContextMenu.tsx
-   859 apps/viewer/src/components/viewer/ExportDialog.tsx
+   849 apps/viewer/src/components/viewer/ExportDialog.tsx
    531 apps/viewer/src/components/viewer/GLBExportDialog.tsx
   1424 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    435 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
@@ -147,7 +147,6 @@
    493 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
    627 apps/viewer/src/lib/clash/persistence.ts
-   419 apps/viewer/src/lib/collab/geometry-sync.ts
    441 apps/viewer/src/lib/compare/buildFingerprints.ts
    436 apps/viewer/src/lib/compare/worldPlacement.ts
    417 apps/viewer/src/lib/export/model-changes.ts
@@ -251,7 +250,7 @@
    573 packages/drawing-2d/src/symbols/door-symbol.ts
    808 packages/drawing-2d/src/types.ts
    592 packages/export/src/effective-index.ts
-   824 packages/export/src/ifc5-exporter.ts
+   810 packages/export/src/ifc5-exporter.ts
   1585 packages/export/src/merged-exporter.ts
    616 packages/export/src/parquet-exporter.ts
    976 packages/export/src/reference-collector.ts

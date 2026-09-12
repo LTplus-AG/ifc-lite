@@ -101,8 +101,8 @@ export function remapRenamedAttributesByName(
   }
   return tgtNames
     .map((name) => {
-      const value = byName.get(name) ?? '$';
-      return value === '$' ? (IFC2X3_MANDATORY_DEFAULTS.get(name) ?? value) : value;
+      const given = byName.get(name);
+      return given !== undefined && given !== '$' ? given : (IFC2X3_MANDATORY_DEFAULTS.get(name) ?? '$');
     })
     .join(',');
 }

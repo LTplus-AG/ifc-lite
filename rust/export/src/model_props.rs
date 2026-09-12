@@ -15,12 +15,8 @@ use super::{PropValue, PropertySet, QuantitySet, QuantityValue};
 ///
 /// Every property value and schema-declared attribute reaching CSV, JSON,
 /// JSON-LD, IFCX and Parquet goes through here, and `json::typed_value`
-/// re-parses the string as the JSON number. It used to format with `{:.6}`
-/// and trim, which rounds anything below 5e-7 to `"0"` (so a `Leakage` of
-/// `2.5E-7` became the number `0.0`, indistinguishable from a recorded zero)
-/// and caps every value at six decimals. Rust's `Display` for `f64` is the
-/// round-trip-shortest form, so the integer cosmetic is the only special
-/// case that stays.
+/// re-parses the string as the JSON number, so the digits must round-trip: no
+/// fixed decimal count (a small nonzero must never read as `0`).
 pub fn fmt_num(v: f64) -> String {
     if v.fract() == 0.0 && v.abs() < 1e15 {
         format!("{}", v as i64)

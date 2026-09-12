@@ -29,7 +29,7 @@ const _: () = assert!(
     "ifc-lite-export assumes a little-endian target (GLB is LE; cast_slice byte reinterpretation)",
 );
 
-use crate::color_space::srgb_to_linear;
+use crate::color_space::srgba_to_linear;
 use crate::error::ExportError;
 use ifc_lite_core::EntityIndex;
 use ifc_lite_geometry::{
@@ -452,14 +452,7 @@ fn color_key(c: [f32; 4]) -> (i32, i32, i32, i32) {
 /// `emissiveFactor = 0`, making the two mutually exclusive; never emit a
 /// spec-violating material that declares unlit AND a non-zero emissiveFactor (#1427).
 fn make_material(color: [f32; 4], lit: bool, emissive: bool) -> Material {
-    // Alpha is opacity, not a gamma-encoded light quantity — never run it through
-    // the sRGB transfer function; only R/G/B convert.
-    let linear_rgb = [
-        srgb_to_linear(color[0]),
-        srgb_to_linear(color[1]),
-        srgb_to_linear(color[2]),
-        color[3],
-    ];
+    let linear_rgb = srgba_to_linear(color);
     Material {
         pbr: Pbr {
             base_color_factor: linear_rgb,
@@ -935,6 +928,45 @@ fn node_extras(
     Some(extras)
 }
 
+/// Push the node(s) for one instanced occurrence placed by `matrix`; returns the
+/// index its parent lists. With a quantized `dequant` (center, half), the dequant
+/// is a non-uniform scale, and folding it into the matrix would make three.js
+/// `Matrix4.decompose` mangle the rotation·scale. So the MESH node carries the
+/// dequant TRS and `extras` (a raycast pick hits the mesh) under a parent that
+/// carries the matrix. Both assemblers place occurrences through here.
+fn push_occurrence_node(
+    nodes: &mut Vec<Node>,
+    mesh: u32,
+    matrix: [f32; 16],
+    dequant: Option<([f64; 3], [f64; 3])>,
+    extras: Option<Value>,
+) -> u32 {
+    let mesh_node = nodes.len() as u32;
+    let (translation, scale) = dequant.map_or((None, None), |(c, h)| (Some(c), Some(h)));
+    nodes.push(Node {
+        rotation: None,
+        mesh: Some(mesh),
+        children: None,
+        translation,
+        scale,
+        matrix: dequant.is_none().then_some(matrix),
+        extras,
+    });
+    if dequant.is_none() {
+        return mesh_node;
+    }
+    nodes.push(Node {
+        rotation: None,
+        mesh: None,
+        children: Some(vec![mesh_node]),
+        translation: None,
+        scale: None,
+        matrix: Some(matrix),
+        extras: None,
+    });
+    mesh_node + 1
+}
+
 /// Export the render geometry in `content` as a binary **GLB**.
 pub fn export_glb(content: &[u8], opts: &GltfOptions) -> Vec<u8> {
     export_glb_with_stats(content, opts).0
@@ -1379,45 +1411,7 @@ fn build_gltf(
                     occ_meta, &m_ref_inv, rtc_zup, t_origin_yup, scene_center,
                 );
                 let extras = node_extras(include_metadata, occ_view.express_id, occ_view.ifc_type, occ_view.global_id, model_id);
-                let node_idx = if let Some((center, half)) = dequant {
-                    // Quantized: the dequant is a non-uniform scale; folding it into the
-                    // occurrence matrix would make three.js `Matrix4.decompose` mangle the
-                    // rotation·scale. Nest it on a child node instead. The MESH node keeps
-                    // `extras` (a raycast pick hits the mesh), placement rides the parent.
-                    let child_idx = nodes.len() as u32;
-                    nodes.push(Node {
-            rotation: None,
-                        mesh: Some(mesh_idx),
-                        children: None,
-                        translation: Some(center),
-                        scale: Some(half),
-                        matrix: None,
-                        extras,
-                    });
-                    let parent_idx = nodes.len() as u32;
-                    nodes.push(Node {
-            rotation: None,
-                        mesh: None,
-                        children: Some(vec![child_idx]),
-                        translation: None,
-                        scale: None,
-                        matrix: Some(matrix),
-                        extras: None,
-                    });
-                    parent_idx
-                } else {
-                    let ni = nodes.len() as u32;
-                    nodes.push(Node {
-            rotation: None,
-                        mesh: Some(mesh_idx),
-                        children: None,
-                        translation: None,
-                        scale: None,
-                        matrix: Some(matrix),
-                        extras,
-                    });
-                    ni
-                };
+                let node_idx = push_occurrence_node(&mut nodes, mesh_idx, matrix, dequant, extras);
                 element_node_indices.push(node_idx);
             }
         }
@@ -2330,13 +2324,8 @@ fn plan_bounded_glb(
     // length, so what a group needs is an identity and a placement, and those
     // fit in the plan this path already keeps.
     //
-    // Quantized, a shared mesh carries a non-uniform dequant scale that cannot
-    // fold into a rotating placement without breaking `Matrix4.decompose`, so
-    // the occurrence gets the nested parent/child node the in-memory path
-    // builds. This path used to skip instancing under `quantize` for that
-    // reason, which wrote every repeated shape once per occurrence: twice the
-    // BIN of the in-memory path on the option meant to halve it, and only on
-    // the models big enough to stream.
+    // Quantized too: the occurrence gets the nested dequant node
+    // `push_occurrence_node` builds for both assemblers.
     let (rtc_zup, site_zup) = site_restore(&meta_result);
     // Rep identities whose occurrences disagree about shape size. Resolved
     // before any bucketing, because one disagreeing member refuses the whole
@@ -2485,7 +2474,8 @@ fn plan_bounded_glb(
         mesh_idx: u32,
         translation: Option<[f64; 3]>,
         scale: Option<[f64; 3]>,
-        matrix: Option<[f32; 16]>,
+        /// An instanced occurrence's placement, and its template's dequant when quantized.
+        occurrence: Option<([f32; 16], Option<([f64; 3], [f64; 3])>)>,
     }
     let mut per_meta: Vec<Emitted> = Vec::with_capacity(metas.len());
     for (mi, meta) in metas.iter_mut().enumerate() {
@@ -2682,10 +2672,8 @@ fn plan_bounded_glb(
                 scene_center,
             )
         });
-        let (translation, scale) = if matrix.is_some() && quantize {
-            // The template's dequant, nested under the matrix below.
-            (Some(center), Some(half))
-        } else if matrix.is_some() {
+        let occurrence = matrix.map(|m| (m, quantize.then_some((center, half))));
+        let (translation, scale) = if matrix.is_some() {
             (None, None)
         } else if quantize {
             // Placement is pure translation, so it commutes with the dequant
@@ -2706,41 +2694,30 @@ fn plan_bounded_glb(
         } else {
             (None, None)
         };
-        per_meta.push(Emitted { mesh_idx, translation, scale, matrix });
+        per_meta.push(Emitted { mesh_idx, translation, scale, occurrence });
     }
     for (meta, emitted) in metas.iter().zip(&per_meta) {
-        // A placement matrix and a dequant together: the dequant on the mesh
-        // node (it keeps `extras`, a pick hits the mesh), the matrix on a parent,
-        // exactly as `build_gltf` nests them.
-        let nested = emitted.matrix.is_some() && emitted.scale.is_some();
-        let mut node_idx = nodes.len() as u32;
-        nodes.push(Node {
-            rotation: None,
-            mesh: Some(emitted.mesh_idx),
-            children: None,
-            translation: emitted.translation,
-            scale: emitted.scale,
-            matrix: if nested { None } else { emitted.matrix },
-            extras: node_extras(
-                opts.include_metadata,
-                meta.express_id,
-                meta.ifc_type.as_ref(),
-                meta.global_id.as_deref(),
-                opts.model_id.as_deref(),
-            ),
-        });
-        if nested {
+        let extras = node_extras(
+            opts.include_metadata,
+            meta.express_id,
+            meta.ifc_type.as_ref(),
+            meta.global_id.as_deref(),
+            opts.model_id.as_deref(),
+        );
+        let node_idx = if let Some((matrix, dequant)) = emitted.occurrence {
+            push_occurrence_node(&mut nodes, emitted.mesh_idx, matrix, dequant, extras)
+        } else {
             nodes.push(Node {
                 rotation: None,
-                mesh: None,
-                children: Some(vec![node_idx]),
-                translation: None,
-                scale: None,
-                matrix: emitted.matrix,
-                extras: None,
+                mesh: Some(emitted.mesh_idx),
+                children: None,
+                translation: emitted.translation,
+                scale: emitted.scale,
+                matrix: None,
+                extras,
             });
-            node_idx += 1;
-        }
+            nodes.len() as u32 - 1
+        };
         element_node_indices.push(node_idx);
     }
     stats.materials = materials.len();

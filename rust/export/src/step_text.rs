@@ -57,13 +57,7 @@ pub(crate) fn merge_edits<'a>(
 ///
 /// ASCII control characters (the C0 range plus DEL) take the same directive:
 /// a newline goes out as `\X2\000A\X0\`, which `decode_ifc_string` reads
-/// back as a newline. They used to be mapped to a space, which kept a record
-/// on one line but lost the character: a header field that arrived as
-/// `line1\X2\000A\X0\line2` was re-exported as `line1 line2`, a
-/// decode-encode-decode trip that was not the identity even though the
-/// standard has a faithful encoding for it. The directive keeps the record on
-/// one line too (no raw byte below 32 is ever written), so nothing is lost by
-/// preferring it.
+/// back as a newline, and the record stays on one line.
 ///
 /// `pub`, and re-exported from the crate root as `escape_step_string`, so the
 /// integration-test binary `tests/step_escape_parity.rs` can pin it to the
@@ -163,13 +157,9 @@ pub(crate) fn refs_in_line_counted(line: &[u8], out: &mut Vec<u32>, refused: &mu
 /// lands on `ObjectPlacement`, deletes the reference that was there, and reports
 /// success (#4125).
 ///
-/// An edit whose index is past the record's arity is refused the same way. The
-/// other edits on the record still apply, the record counts once, and the
-/// out-of-range one is not in the output. It used to be dropped without a
-/// count, so a caller-supplied `index` (JSON from the wasm bridge) past the
-/// end produced a clean export with every `StepStats` counter at zero and no
-/// edit in the file. `step_cow::candidate` pre-checks the same bound for its
-/// own copies; this is the plain `attribute_mutations` path's copy of it.
+/// An edit whose index is past the record's arity (caller-supplied JSON on the
+/// wasm bridge) is refused too: the other edits on the record still apply, the
+/// record counts once, and the out-of-range one is not in the output.
 ///
 /// One function, and `refused` rather than an `Option` the caller interprets,
 /// because both emit sites need the same PAIR — leave the record as its author
@@ -189,14 +179,10 @@ pub(crate) fn apply_attr_mutations_counted(
         let prefix = &body[..=eq];
         let type_name = &after[..popen];
         let mut args = split_top_level_args(&after[popen + 1..aclose])?;
-        let mut out_of_range = false;
-        for (idx, val) in muts {
-            match args.get_mut(*idx) {
-                Some(slot) => *slot = val.clone(),
-                None => out_of_range = true,
-            }
+        for (idx, val) in muts.range(..args.len()) {
+            args[*idx] = val.clone();
         }
-        if out_of_range {
+        if muts.range(args.len()..).next().is_some() {
             *refused += 1;
         }
         Some(format!("{prefix}{type_name}({});", args.join(",")))

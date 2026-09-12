@@ -174,9 +174,7 @@ fn geometry_tables(content: &[u8]) -> Result<GeometryTables, ExportError> {
 /// - `IndexBuffer` is one row per TRIANGLE (`Index0..2`), and the values are
 ///   MESH-LOCAL vertex indices. Upstream: "Local mesh face-corner indices. If
 ///   you use the single shared vertex buffer you need to add the mesh vertex
-///   offsets." That is what `Meshes.VertexStart` is for; this writer used to
-///   add the offset itself, which the twin does not, so the same consumer
-///   could not read both files.
+///   offsets." That is what `Meshes.VertexStart` is for.
 /// - `Meshes.IndexStart` / `IndexCount` count SCALAR indices (face corners),
 ///   the unit upstream's `MeshIndexOffset` uses and the unit the twin writes,
 ///   while the table they address holds triangles: a reader slices
@@ -185,11 +183,8 @@ fn geometry_tables(content: &[u8]) -> Result<GeometryTables, ExportError> {
 ///   the same join the twin's `parquet-geometry.test.ts` reads.
 ///
 /// A mesh is kept whole or not at all: one with `normals.len() !=
-/// positions.len()` is skipped, the way `gltf.rs` and `obj.rs` skip it. The
-/// position and normal columns were filled by independent loops with no such
-/// check, so one short mesh either failed the whole archive (`RecordBatch`
-/// refuses unequal columns) or, with two meshes off in opposite directions,
-/// attached every later mesh's normals to the wrong vertices with no error.
+/// positions.len()` is skipped (as `gltf.rs`'s visibility filter skips it), so
+/// the position and normal columns stay row-aligned.
 fn geometry_tables_from_meshes(meshes: &[MeshData]) -> Result<GeometryTables, ExportError> {
     let mut x = Vec::new();
     let mut y = Vec::new();

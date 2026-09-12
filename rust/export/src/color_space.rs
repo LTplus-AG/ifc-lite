@@ -19,7 +19,13 @@
 /// The same holds for USD: `UsdPreviewSurface.inputs:diffuseColor` and
 /// `primvars:displayColor` are linear too, so `usd` decodes through here and
 /// the two exporters cannot disagree about what an IFC colour means.
-pub(crate) fn srgb_to_linear(c: f32) -> f32 {
+fn srgb_to_linear(c: f32) -> f32 {
     let c = c.clamp(0.0, 1.0);
     if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+}
+
+/// An IFC RGBA colour with RGB decoded through [`srgb_to_linear`]. Alpha is
+/// opacity, not a gamma-encoded light quantity, and passes through.
+pub(crate) fn srgba_to_linear(c: [f32; 4]) -> [f32; 4] {
+    [srgb_to_linear(c[0]), srgb_to_linear(c[1]), srgb_to_linear(c[2]), c[3]]
 }

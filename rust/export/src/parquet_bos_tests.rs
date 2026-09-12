@@ -6,7 +6,8 @@
 use super::*;
 use std::io::Read;
 
-use arrow::array::{Array, Float32Array, UInt32Array};
+use arrow::array::AsArray;
+use arrow::datatypes::{ArrowPrimitiveType, Float32Type, UInt32Type};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
 #[test]
@@ -61,30 +62,10 @@ fn duplex_exports_valid_bos() {
     assert!(v["vertexCount"].as_u64().unwrap() > 0);
 }
 
-/// A minimal, otherwise-valid mesh, mirroring `obj_tests::good_mesh`.
+/// A minimal, otherwise-valid mesh with zero normals.
 fn mesh(express_id: u32, positions: Vec<f32>, indices: Vec<u32>) -> MeshData {
-    MeshData {
-        express_id,
-        ifc_type: "IfcWall".into(),
-        global_id: None,
-        name: None,
-        presentation_layer: None,
-        normals: vec![0.0; positions.len()],
-        positions,
-        indices,
-        color: [0.5, 0.5, 0.5, 1.0],
-        material_name: None,
-        geometry_item_id: None,
-        material_id: None,
-        properties: None,
-        uvs: None,
-        texture: None,
-        geometry_class: 0,
-        origin: [0.0, 0.0, 0.0],
-        instance: None,
-        local_bounds: None,
-        local_to_world: None,
-    }
+    let normals = vec![0.0; positions.len()];
+    MeshData::new(express_id, "IfcWall".into(), positions, normals, indices, [0.5, 0.5, 0.5, 1.0])
 }
 
 /// Read one parquet table back into its record batches. Through a file,
@@ -111,22 +92,13 @@ fn read_table(bytes: Vec<u8>) -> Vec<RecordBatch> {
     batches
 }
 
-fn u32_column(batches: &[RecordBatch], name: &str) -> Vec<u32> {
+/// Every value of one primitive column, across batches.
+fn column<T: ArrowPrimitiveType>(batches: &[RecordBatch], name: &str) -> Vec<T::Native> {
     batches
         .iter()
         .flat_map(|b| {
             let col = b.column_by_name(name).unwrap_or_else(|| panic!("column {name}"));
-            col.as_any().downcast_ref::<UInt32Array>().expect("u32 column").values().to_vec()
-        })
-        .collect()
-}
-
-fn f32_column(batches: &[RecordBatch], name: &str) -> Vec<f32> {
-    batches
-        .iter()
-        .flat_map(|b| {
-            let col = b.column_by_name(name).unwrap_or_else(|| panic!("column {name}"));
-            col.as_any().downcast_ref::<Float32Array>().expect("f32 column").values().to_vec()
+            col.as_primitive::<T>().values().to_vec()
         })
         .collect()
 }
@@ -152,22 +124,22 @@ fn meshes_table_joins_the_index_and_vertex_tables() {
     assert_eq!((vcount, tcount), (7, 3));
 
     let meshes = read_table(mb);
-    assert_eq!(u32_column(&meshes, "ExpressId"), vec![11, 22]);
-    assert_eq!(u32_column(&meshes, "VertexStart"), vec![0, 3]);
-    assert_eq!(u32_column(&meshes, "VertexCount"), vec![3, 4]);
-    assert_eq!(u32_column(&meshes, "IndexStart"), vec![0, 3], "scalar index units");
-    assert_eq!(u32_column(&meshes, "IndexCount"), vec![3, 6], "scalar index units");
+    assert_eq!(column::<UInt32Type>(&meshes, "ExpressId"), vec![11, 22]);
+    assert_eq!(column::<UInt32Type>(&meshes, "VertexStart"), vec![0, 3]);
+    assert_eq!(column::<UInt32Type>(&meshes, "VertexCount"), vec![3, 4]);
+    assert_eq!(column::<UInt32Type>(&meshes, "IndexStart"), vec![0, 3], "scalar index units");
+    assert_eq!(column::<UInt32Type>(&meshes, "IndexCount"), vec![3, 6], "scalar index units");
 
     let vertices = read_table(vb);
-    let xs = f32_column(&vertices, "X");
+    let xs = column::<Float32Type>(&vertices, "X");
     assert_eq!(xs.len(), 7);
     assert_eq!(xs[3], 5.0, "VertexStart lands on mesh b's first vertex");
 
     // Mesh b's triangle rows start at IndexStart / 3 and hold LOCAL indices.
     let indices = read_table(ib);
-    let i0 = u32_column(&indices, "Index0");
-    let i1 = u32_column(&indices, "Index1");
-    let i2 = u32_column(&indices, "Index2");
+    let i0 = column::<UInt32Type>(&indices, "Index0");
+    let i1 = column::<UInt32Type>(&indices, "Index1");
+    let i2 = column::<UInt32Type>(&indices, "Index2");
     assert_eq!(i0.len(), 3);
     let rows: Vec<[u32; 3]> = (0..3).map(|r| [i0[r], i1[r], i2[r]]).collect();
     assert_eq!(rows[0], [0, 1, 2]);
@@ -175,7 +147,7 @@ fn meshes_table_joins_the_index_and_vertex_tables() {
     assert_eq!(rows[2], [0, 2, 3]);
     // And resolving them the way a reader must (local + VertexStart) reaches
     // mesh b's own vertices, which a global index would double-offset.
-    let vstart = u32_column(&meshes, "VertexStart")[1] as usize;
+    let vstart = column::<UInt32Type>(&meshes, "VertexStart")[1] as usize;
     for row in &rows[1..] {
         for &corner in row {
             let v = vstart + corner as usize;
@@ -200,12 +172,12 @@ fn a_mesh_with_short_normals_is_skipped_without_misaligning_the_rest() {
         geometry_tables_from_meshes(&[good, short, marked]).expect("a short mesh must not fail the archive");
     assert_eq!((vcount, tcount), (6, 2));
     let meshes = read_table(mb);
-    assert_eq!(u32_column(&meshes, "ExpressId"), vec![1, 3], "the short mesh is not a row");
-    assert_eq!(u32_column(&meshes, "VertexStart"), vec![0, 3]);
+    assert_eq!(column::<UInt32Type>(&meshes, "ExpressId"), vec![1, 3], "the short mesh is not a row");
+    assert_eq!(column::<UInt32Type>(&meshes, "VertexStart"), vec![0, 3]);
 
     let vertices = read_table(vb);
-    let xs = f32_column(&vertices, "X");
-    let nz = f32_column(&vertices, "NormalZ");
+    let xs = column::<Float32Type>(&vertices, "X");
+    let nz = column::<Float32Type>(&vertices, "NormalZ");
     assert_eq!(xs.len(), nz.len(), "position and normal columns stay in lockstep");
     // Mesh 3's vertices carry mesh 3's normals, not a normal shifted off the
     // skipped mesh's partial run.

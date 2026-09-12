@@ -96,11 +96,11 @@ fn by_name_attr_remap_names(entity_type: &str) -> Option<(&'static [&'static str
 /// value in. `IfcDoorStyle`/`IfcWindowStyle` declare `OperationType`,
 /// `ConstructionType`, `ParameterTakesPrecedence` and `Sizeable` mandatory;
 /// `IfcDoorType`/`IfcWindowType` have no `ConstructionType` or `Sizeable`,
-/// and their `ParameterTakesPrecedence` is optional. A `$` written there is
-/// not valid Part 21 for the target schema and a strict reader rejects the
-/// record, so the remap fills the schema's own "not stated" token instead:
-/// `.NOTDEFINED.` is a member of both construction enums and both operation
-/// enums, and `.F.` is the BOOLEAN that claims nothing.
+/// and their `ParameterTakesPrecedence` is optional. `.NOTDEFINED.` is a
+/// member of both construction enums and both operation enums, and `.F.` is
+/// the BOOLEAN that claims nothing. Only the remap's own target slots are
+/// covered: a `$` the source already wrote in a slot IFC2X3 also requires
+/// (for example `OwnerHistory`) passes through.
 ///
 /// Same table as `IFC2X3_MANDATORY_DEFAULTS` in the TypeScript twin
 /// (`schema-converter-attr-remap.ts`).
@@ -128,12 +128,8 @@ fn remap_attrs_by_name(attrs: &str, src_names: &[&str], tgt_names: &[&str]) -> O
     Some(tgt_names
         .iter()
         .map(|name| {
-            let value = by_name.get(name).copied().unwrap_or("$");
-            if value == "$" {
-                ifc2x3_mandatory_default(name).unwrap_or(value)
-            } else {
-                value
-            }
+            let given = by_name.get(name).copied().filter(|v| *v != "$");
+            given.or_else(|| ifc2x3_mandatory_default(name)).unwrap_or("$")
         })
         .collect::<Vec<_>>()
         .join(","))

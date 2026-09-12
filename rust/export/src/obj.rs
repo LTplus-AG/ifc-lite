@@ -105,10 +105,8 @@ fn write_obj(meshes: &[MeshData], opts: &ObjOptions) -> (String, ObjStats) {
     let _ = writeln!(out, "# units: metres (renderer Y-up frame, origin-folded world coords)");
 
     let mut vert_base: usize = 0; // 0-based count of vertices written so far
-    // `vn` lines written so far. Its own counter: a mesh without normals writes
-    // `v` lines and no `vn` lines, so after it the two counts differ, and reusing
-    // `vert_base` for the normal index (as this did) pointed every later face at
-    // another mesh's normals.
+    // `vn` lines written so far: a mesh without normals writes none, so this is
+    // not `vert_base`.
     let mut norm_base: usize = 0;
     let mut stats = ObjStats { meshes: 0, vertices: 0, triangles: 0 };
 
@@ -151,9 +149,7 @@ fn write_obj(meshes: &[MeshData], opts: &ObjOptions) -> (String, ObjStats) {
         // preserved: (x,y,z) -> (x,z,-y) has determinant +1, so this frame
         // rotation does not change handedness.
         for tri in mesh.indices.chunks_exact(3) {
-            let a = vert_base + tri[0] as usize + 1;
-            let b = vert_base + tri[1] as usize + 1;
-            let c = vert_base + tri[2] as usize + 1;
+            let [a, b, c] = [0, 1, 2].map(|k| vert_base + tri[k] as usize + 1);
             if has_normals {
                 let [na, nb, nc] = [0, 1, 2].map(|k| norm_base + tri[k] as usize + 1);
                 let _ = writeln!(out, "f {a}//{na} {b}//{nb} {c}//{nc}");

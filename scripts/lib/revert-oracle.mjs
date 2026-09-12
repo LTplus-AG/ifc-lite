@@ -43,6 +43,17 @@ import { isInertPath, isTestSupportPath } from './revert-oracle-inert.mjs';
 
 /** Paths whose change can neither be reverted usefully nor observed by a test. */
 const IGNORED_PREFIXES = ['.changeset/', '.github/', 'docs/', '.vscode/'];
+/**
+ * Playwright end-to-end specs and their helpers (`tests/e2e/**`) belong to the
+ * root package, whose `scripts.test` is `turbo test` -- no runner can be derived,
+ * and none should be: they need a built viewer, a browser and (for the collab
+ * specs) a relay, which the `viewer-e2e` lanes provide and this oracle cannot.
+ * Before this they aborted the whole lane (`no runner could be derived`) on any
+ * PR that added one (#4553, #4551, #4552). Ignoring them keeps the verdict
+ * about the unit tests the oracle CAN run: a branch whose only observer is an
+ * e2e spec still fails as UNOBSERVED, which is the honest answer here.
+ */
+const E2E_PREFIX = 'tests/e2e/';
 const IGNORED_EXACT = new Set(['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'Cargo.lock', 'CHANGELOG.md']);
 const IGNORED_SUFFIXES = ['.md', '.mdx', '.txt', '.snap.orig'];
 
@@ -73,6 +84,7 @@ export function isRustFile(path) {
 export function classifyPath(path) {
   if (IGNORED_EXACT.has(path)) return 'ignored';
   for (const p of IGNORED_PREFIXES) if (path.startsWith(p)) return 'ignored';
+  if (path.startsWith(E2E_PREFIX)) return 'ignored';
   for (const s of IGNORED_SUFFIXES) if (path.endsWith(s)) return 'ignored';
   if (DEPLOY_CONFIG_RE.test(path)) return 'ignored';
   if (TEST_FILE_RE.test(path) || /(^|\/)(?:[^/]+_tests|tests)\.rs$/.test(path)) return 'test';

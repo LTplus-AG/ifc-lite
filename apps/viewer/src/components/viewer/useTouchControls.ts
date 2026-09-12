@@ -13,6 +13,8 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
 import { invalidateSelectionPick, markTouchSelection, selectViewportTarget } from './referenceSelection.js';
 import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
+import { toast } from '@/components/ui/toast';
+import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 
 /** Locked gesture mode for 2-finger interactions */
 type TwoFingerGesture = 'none' | 'pinch' | 'pan';
@@ -295,7 +297,16 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           const x = touchState.tapStartPos.x - rect.left;
           const y = touchState.tapStartPos.y - rect.top;
 
-          if (tool === 'select') {
+          if (tool === 'appearance-face') {
+            // Touchend owns this tap. Record it before routing the exact hit so
+            // the browser's compatibility click cannot toggle the same face a
+            // second time through handleSelectionClick (#4555).
+            markTouchSelection(canvas, x, y);
+            const message = viewportFacePickError(pickViewportAppearanceFace(
+              renderer.raycastScene(x, y, getPickOptions())?.intersection ?? null,
+            ));
+            if (message) toast.error(message);
+          } else if (tool === 'select') {
             markTouchSelection(canvas, x, y);
             await selectViewportTarget({ canvas, renderer, x, y, getTool: () => activeToolRef.current,
               getPickOptions, onIfc: handlePickForSelection });

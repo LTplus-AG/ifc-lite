@@ -144,7 +144,7 @@ export class SnapDetector {
     intersection: Intersection | null,
     camera: { position: Vec3; fov: number },
     screenHeight: number,
-    options: Partial<SnapOptions> = {}
+    options: Partial<SnapOptions> = {}, accept?: (target: SnapTarget) => boolean,
   ): SnapTarget | null {
     const opts = { ...this.defaultOptions, ...options };
 
@@ -184,7 +184,7 @@ export class SnapDetector {
     }
 
     // Return best target
-    return this.getBestSnapTarget(targets);
+    return this.getBestSnapTarget(accept ? targets.filter(accept) : targets);
   }
 
   /**

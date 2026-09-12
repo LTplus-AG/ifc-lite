@@ -26,7 +26,11 @@ import { RaycastEngine } from './raycast-engine.js';
 import { Camera } from './camera.js';
 import { Scene, type TexturedMesh } from './scene.js';
 import type { Mesh, BatchedMesh, PickOptions } from './types.js';
-import type { MeshData } from '@ifc-lite/geometry';
+import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
+
+(globalThis as Record<string, unknown>).GPUBufferUsage = {
+  COPY_DST: 1, INDEX: 2, VERTEX: 4,
+};
 
 // ─── fake canvas ────────────────────────────────────────────────────────────
 
@@ -36,6 +40,32 @@ function fakeCanvas(width = 800, height = 600): HTMLCanvasElement {
     height,
     getBoundingClientRect: () => ({ width, height }),
   } as unknown as HTMLCanvasElement;
+}
+
+function instancedDevice(): GPUDevice {
+  return {
+    limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
+    createBuffer: ({ size }: { size: number }) => {
+      const bytes = new ArrayBuffer(size);
+      return { getMappedRange: () => bytes, unmap() {}, destroy() {} };
+    },
+    queue: { writeBuffer() {} },
+  } as unknown as GPUDevice;
+}
+
+function instancedTriangle(entityId: number, itemId?: number): DecodedInstancedShard {
+  return {
+    templates: [{
+      // Decoder output is IFC Z-up. Conversion on upload maps this XZ triangle
+      // to the viewer XY plane at z=0, directly under the camera ray.
+      positions: new Float32Array([-5, 0, -5, 5, 0, -5, 0, 0, 5]),
+      normals: new Float32Array([0, -1, 0, 0, -1, 0, 0, -1, 0]),
+      indices: new Uint32Array([0, 1, 2]), origin: [0, 0, 0],
+    }],
+    instances: [{ templateIndex: 0, entityId, ...(itemId === undefined ? {} : { itemId }), color: [1, 1, 1, 1],
+      transform: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) }],
+    carriesItemIds: itemId !== undefined,
+  };
 }
 
 // ─── fixture geometry ───────────────────────────────────────────────────────
@@ -301,6 +331,73 @@ describe('RaycastEngine.raycastScene', () => {
     engine = engineFor(scene, camera);
     const hitEmptyIsolation = engine.raycastScene(400, 300, { isolatedIds: new Set() });
     assert.equal(hitEmptyIsolation, null);
+  });
+
+  it('reports exact item/model/source identity and continues behind clipped triangles (#4555)', () => {
+    const scene = new Scene();
+    const near = makeQuad({ expressId: 7, modelIndex: 3, translate: [0, 0, 10] });
+    near.geometryItemId = 70;
+    near.appearanceSource = { kind: 'canonical-item', indices: near.indices,
+      sourceIndices: near.indices, cornerIndices: new Uint32Array([3, 4, 5, 0, 1, 2]) };
+    const rear = makeQuad({ expressId: 8, modelIndex: 4, translate: [0, 0, -10] });
+    rear.geometryItemId = 80;
+    rear.appearanceSource = { kind: 'canonical-item', indices: rear.indices, sourceIndices: rear.indices };
+    addRegularQuad(scene, near);
+    addRegularQuad(scene, rear);
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+
+    const exact = engine.raycastScene(399, 301)!.intersection;
+    assert.deepEqual({ expressId: exact.expressId, modelIndex: exact.modelIndex,
+      geometryItemId: exact.geometryItemId, sourceTriangleIndex: exact.sourceTriangleIndex },
+    { expressId: 7, modelIndex: 3, geometryItemId: 70, sourceTriangleIndex: 1 });
+
+    const visible = engine.raycastScene(399, 301, undefined, { sectionPlane: {
+      normal: [0, 0, 1], distance: 0, flipped: false,
+    } })!.intersection;
+    assert.deepEqual({ expressId: visible.expressId, modelIndex: visible.modelIndex,
+      geometryItemId: visible.geometryItemId, sourceTriangleIndex: visible.sourceTriangleIndex },
+    { expressId: 8, modelIndex: 4, geometryItemId: 80, sourceTriangleIndex: 0 });
+
+    const cropVisible = engine.raycastScene(399, 301, undefined, { clipBox: {
+      min: [-2, -2, -12], max: [2, 2, -8], enabled: true,
+    } })!.intersection;
+    assert.equal(cropVisible.expressId, 8, 'the crop box also rejects the nearer hidden surface');
+  });
+
+  it('rejects clipped snap candidates while retaining the best visible candidate (#4555)', () => {
+    const scene = new Scene();
+    const positions = new Float32Array([0.05, 0, 0, -1, -1, 0, -1, 1, 0]);
+    const triangle: MeshData = { expressId: 9, positions,
+      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+      color: [1, 1, 1, 1] };
+    addRegularMesh(scene, triangle);
+    const hit = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50)).raycastScene(399, 300, {
+      snapOptions: { snapToVertices: true, snapToEdges: false, snapToFaces: false, screenSnapRadius: 200 },
+    }, { sectionPlane: { normal: [1, 0, 0], distance: 0, flipped: false } });
+    assert.ok(hit?.snap);
+    assert.equal(hit.intersection.expressId, 9, 'the visible portion of the triangle remains hittable');
+    assert.equal(hit.snap.position.x, -1, 'the closer x=0.05 vertex is clipped and cannot win snapping');
+  });
+
+  it('reports canonical identity from a materialized instance in its federation model (#4555)', () => {
+    const scene = new Scene();
+    scene.addInstancedShard(instancedDevice(), instancedTriangle(1_025, 1_011), 7);
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    const hit = engine.raycastScene(400, 300)?.intersection;
+    assert.ok(hit);
+    assert.deepEqual({ expressId: hit.expressId, modelIndex: hit.modelIndex,
+      geometryItemId: hit.geometryItemId, sourceTriangleIndex: hit.sourceTriangleIndex },
+    { expressId: 1_025, modelIndex: 7, geometryItemId: 1_011, sourceTriangleIndex: 0 });
+  });
+
+  it('does not expose a canonical face ordinal when an instance has no representation item (#4555)', () => {
+    const scene = new Scene();
+    scene.addInstancedShard(instancedDevice(), instancedTriangle(1_025), 7);
+    const hit = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50)).raycastScene(400, 300)?.intersection;
+    assert.ok(hit);
+    assert.equal(hit.modelIndex, 7);
+    assert.equal(hit.geometryItemId, undefined);
+    assert.equal(hit.sourceTriangleIndex, undefined);
   });
 
   it('off-origin, rotated, non-uniformly-scaled geometry is hit at the transformed location, not the local one', () => {

@@ -65,12 +65,18 @@ export function bindMaskedConversionParts(options: {
     const indices = corners(original, ordinals);
     return { ...original, geometryItemId, indices, appearanceSource: { kind: 'canonical-item', indices, sourceIndices: indices } };
   };
-  const textured = options.expandCorners(sub(split.masked, options.texturedItemId), [...corners(original, split.masked)], item.previewCornerUvs,
+  const localTextured = options.expandCorners(sub(split.masked, options.texturedItemId), [...corners(original, split.masked)], item.previewCornerUvs,
     new Uint32Array(item.targetIndices), item.targetCornerNormals, item.targetVertexCount);
+  const fullSourceIndices = source.sourceIndices;
+  const provenance = (ordinals: readonly number[]) => Uint32Array.from(ordinals.flatMap(ordinal => [ordinal * 3, ordinal * 3 + 1, ordinal * 3 + 2]));
+  const textured = { ...localTextured, appearanceSource: { ...localTextured.appearanceSource!, sourceIndices: fullSourceIndices,
+    cornerIndices: provenance(split.masked) } };
+  const retained = sub(split.retained, options.retainedItemId);
+  retained.appearanceSource = { ...retained.appearanceSource!, sourceIndices: fullSourceIndices, cornerIndices: provenance(split.retained) };
   const parts: MeshData[] = [
     { ...textured, color: [1, 1, 1, 1], shadingColor: undefined, texture: undefined, textureBitmap: options.image.bitmap,
       textureRef: { textureId: options.textureId, url: options.image.imageUri, repeatS: options.image.repeatS, repeatT: options.image.repeatT } },
-    { ...sub(split.retained, options.retainedItemId), color: [...original.color] as MeshData['color'], uvs: undefined, texture: undefined, textureRef: undefined, textureBitmap: undefined },
+    { ...retained, color: [...original.color] as MeshData['color'], uvs: undefined, texture: undefined, textureRef: undefined, textureBitmap: undefined },
   ];
   const partition: AppearancePartition = {
     before: [{ geometryItemId: original.geometryItemId!, triangles: Array.from({ length: original.indices.length / 3 }, (_, ordinal) => ordinal) }],

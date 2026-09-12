@@ -14,7 +14,8 @@ import { Raycaster, type Intersection, type Ray } from './raycaster.js';
 import { SnapDetector, SnapType, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
 import { BVH } from './bvh.js';
 import type { MeshData } from '@ifc-lite/geometry';
-import type { PickOptions } from './types.js';
+import type { PickClipState, PickOptions } from './types.js';
+import { pointClipped } from './scene-raycaster.js';
 import {
     queryPointClouds,
     releasedEdgeLock,
@@ -23,9 +24,7 @@ import {
     type PointCloudRayProvider,
     type PointCloudSnapCamera,
 } from './raycast-point-cloud-query.js';
-
 export type { PointCloudRaySource, PointCloudRayProvider } from './raycast-point-cloud-query.js';
-
 /**
  * Cheap order-sensitive 32-bit signature of a mesh set, used to detect when the
  * raycast BVH must rebuild because the SET changed (not just its size). Mixes
@@ -251,7 +250,8 @@ export class RaycastEngine {
     raycastScene(
         x: number,
         y: number,
-        options?: PickOptions & { snapOptions?: Partial<SnapOptions> }
+        options?: PickOptions & { snapOptions?: Partial<SnapOptions> },
+        clip?: PickClipState | null,
     ): { intersection: Intersection; snap?: SnapTarget } | null {
         try {
             const scaled = this.scaleCoordinates(x, y);
@@ -271,7 +271,8 @@ export class RaycastEngine {
             const meshesToTest = this.filterWithBVH(allMeshData, ray);
 
             // Perform raycasting
-            const intersection = this.raycaster.raycast(ray, meshesToTest);
+            const intersection = this.raycaster.raycast(ray, meshesToTest,
+                hit => !pointClipped(clip, hit.point.x, hit.point.y, hit.point.z));
 
             if (!intersection) {
                 return null;
@@ -292,7 +293,7 @@ export class RaycastEngine {
                     intersection,
                     { position: cameraPos, fov: cameraFov },
                     this.canvas.height,
-                    options.snapOptions
+                    options.snapOptions, target => !pointClipped(clip, target.position.x, target.position.y, target.position.z),
                 ) || undefined;
             }
 

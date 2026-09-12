@@ -10,7 +10,7 @@ import { StrictMode, act } from 'react';
 import { IfcParser, unwrapIfcZipWithResources } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
-import { federationRegistry, Raycaster, Renderer as PreviewRenderer, type Renderer } from '@ifc-lite/renderer';
+import { federationRegistry, Renderer as PreviewRenderer, type Renderer } from '@ifc-lite/renderer';
 import type { MeshData, GeometryResult } from '@ifc-lite/geometry';
 import { AppearancePreviewController } from '../../../../../../packages/renderer/src/appearance-preview.js';
 import { render, cleanup, advance, type } from '@/test/render.js';
@@ -29,6 +29,7 @@ import type { AppearanceWorker } from '@/lib/appearance/planner-worker-client.js
 import type { AppearancePlan, AppearanceCatalog, AppearanceRequest, AppearanceWorkerRequest, AppearanceWorkerResponse } from '@/lib/appearance/planner-types.js';
 import { AppearancePanel } from './AppearancePanel.js';
 import { AuthorTab } from '../ribbon/tabs/AuthorTab.js';
+import { pickViewportAppearanceFace } from './face-mask/viewport-face-picker.js';
 
 // The mapped quad in the renderer frame (IFC Z-up -> Y-up): four corners, two
 // triangles. Both occurrences render it; only the chosen one is converted.
@@ -101,14 +102,12 @@ for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' :
       return { width: bytes.getUint32(16), height: bytes.getUint32(20), close() {} } as ImageBitmap;
     };
     Object.defineProperty(globalThis, 'Worker', { configurable: true, value: NativeWorker });
-    // The face-selection canvas has no GPU here: its renderer is a stub and the
-    // hit test answers "triangle 1" for any click. What is asserted is the
-    // selection's effect on the plan, the scene, the IFC and history.
+    // The face-selection canvas has no GPU here. The main viewport hit below
+    // carries the real owner/item/source-triangle contract into the editor.
     const init = mock.method(PreviewRenderer.prototype, 'init', async () => {});
     mock.method(PreviewRenderer.prototype, 'loadGeometry', () => {});
     mock.method(PreviewRenderer.prototype, 'render', () => {});
     mock.method(PreviewRenderer.prototype, 'fitToView', () => {});
-    mock.method(Raycaster.prototype, 'raycast', () => ({ point: { x: 0, y: 0, z: 0 }, normal: { x: 0, y: 1, z: 0 }, distance: 1, meshIndex: 0, triangleIndex: 1, expressId: selection, barycentricCoord: { u: 0.3, v: 0.3, w: 0.4 } }));
     HTMLElement.prototype.setPointerCapture = () => {};
     const gpu = new AppearancePreviewController<number>({ capture: owner => ({ parts: resident.get(owner.expressId)!, resources: [] }),
       stage: () => [], install: (owner, parts) => { resident.set(owner.expressId, parts); }, release() {} });
@@ -141,13 +140,14 @@ for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' :
     // Select one of the two faces: the plan carries the mask, the preview splits.
     await act(async () => button('Select faces').click());
     const editor = ui.querySelector(`[aria-label="Face selection for IFC object #25"]`); assert.ok(editor, 'the face editor opens for the converted object');
-    await act(async () => button('Pick faces').click());
-    const canvas = editor.querySelector('canvas')!;
-    const pointer = (type: string) => canvas.dispatchEvent(new PointerEvent(type, { bubbles: true, isPrimary: true, pointerId: 1, clientX: 10, clientY: 10 }));
     const editorRenderers = init.mock.callCount();
     assert.ok(editorRenderers > 0, 'the face editor owns a renderer');
-    await act(async () => { pointer('pointerdown'); pointer('pointerup'); });
+    await act(async () => button('Pick in model').click());
+    await act(async () => { assert.equal(pickViewportAppearanceFace({ point: { x: 0, y: 0, z: 0 }, normal: { x: 0, y: 1, z: 0 },
+      distance: 1, meshIndex: 0, triangleIndex: 0, expressId: selection, modelIndex: 0, geometryItemId: globalId(11),
+      sourceTriangleIndex: 1, barycentricCoord: { u: 0.3, v: 0.3, w: 0.4 } }), 'picked'); });
     await until(() => requests.at(-1)!.request.faceMasks !== undefined && ui.textContent!.includes('Preview ready'));
+    assert.equal(useViewerStore.getState().activeTool, 'appearance-face', 're-planning keeps main-view face pick active');
     assert.equal(init.mock.callCount(), editorRenderers, 'a face click and its re-plan keep the editor renderer and camera: the surface identity is stable');
     const masked = requests.at(-1)!;
     assert.deepEqual(masked.request.faceMasks, [{ productId: 25, surfaceFingerprint: whole.plan.conversions![0].surfaceFingerprint, triangles: [1] }]);

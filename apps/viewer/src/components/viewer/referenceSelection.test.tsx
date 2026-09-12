@@ -16,6 +16,7 @@ import { handleSelectionClick } from './selectionHandlers.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { useTouchControls, type UseTouchControlsParams } from './useTouchControls.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
+import { registerViewportFacePicker } from './appearance/face-mask/viewport-face-picker.js';
 
 const ref = <T,>(current: T) => ({ current });
 const owner = { kind: 'source' as const, id: 'reference-selection-fixture' };
@@ -41,10 +42,11 @@ async function fixture(modelCount = 1) {
   const calls = { reference: 0, ifc: 0, selected: [] as Array<PickResult | null>, toggled: [] as number[], options: [] as PickOptions[] };
   let referencePick: () => Promise<ReferenceImageHit | null> = async () => ({ referenceId: 'drawing:one', point: [0, 0, 0], distance: 1 });
   let ifcPick: PickResult | null = { expressId: 19, modelIndex: modelCount > 1 ? 1 : undefined };
+  let exactHit: ReturnType<Renderer['raycastScene']> = null;
   const renderer = {
     getCamera: () => camera, requestRender() {},
     getScene: () => ({ getMeshes: () => [], getBatchedMeshes: () => [], getInstancedEntityCount: () => 0 }),
-    raycastScene: () => null,
+    raycastScene: () => exactHit,
     getReferenceImages: () => ({ pick: async (_x: number, _y: number, options: PickOptions) => {
       calls.reference++; calls.options.push(options); return referencePick();
     } }),
@@ -68,7 +70,8 @@ async function fixture(modelCount = 1) {
   };
   function Probe() { useTouchControls(touch); return null; }
   return { canvas, camera, ctx, calls, tool, options, Probe,
-    setReferencePick(value: typeof referencePick) { referencePick = value; }, setIfcPick(value: PickResult | null) { ifcPick = value; } };
+    setReferencePick(value: typeof referencePick) { referencePick = value; }, setIfcPick(value: PickResult | null) { ifcPick = value; },
+    setExactHit(value: typeof exactHit) { exactHit = value; } };
 }
 function clickEvent() { return new window.MouseEvent('click', { clientX: 40, clientY: 30, bubbles: true }); }
 
@@ -125,6 +128,26 @@ test('ordinary touch tap selects once and its compatibility click cannot select 
   await handleSelectionClick(f.ctx, clickEvent());
   assert.equal(f.calls.reference, 1, 'compatibility click is not processed again');
   assert.deepEqual(f.calls.selected, []);
+});
+
+test('appearance face touch uses the exact surface hit without ordinary selection (#4555)', async () => {
+  const f = await fixture(2); f.tool.current = 'appearance-face';
+  f.setExactHit({ intersection: { point: { x: 0, y: 0, z: 0 }, normal: { x: 0, y: 1, z: 0 }, distance: 1,
+    meshIndex: 0, triangleIndex: 0, expressId: 1_025, modelIndex: 1, geometryItemId: 1_101,
+    sourceTriangleIndex: 9, barycentricCoord: { u: 0.2, v: 0.3, w: 0.5 } } });
+  const picked: number[] = [];
+  const release = registerViewportFacePicker({ globalId: 1_025, modelIndex: 1, geometryItemIds: new Set([1_101]),
+    triangleCount: 12, canPick: () => true, onToggle: value => picked.push(value) });
+  render(<f.Probe />);
+  const finger = { identifier: 1, target: f.canvas, clientX: 40, clientY: 30 } as unknown as Touch;
+  const event = (kind: string, touches: Touch[]) => { const value = new window.Event(kind, { bubbles: true, cancelable: true });
+    Object.defineProperty(value, 'touches', { value: touches }); return value; };
+  await act(async () => { f.canvas.dispatchEvent(event('touchstart', [finger])); f.canvas.dispatchEvent(event('touchend', [])); });
+  assert.deepEqual(picked, [9]);
+  await handleSelectionClick(f.ctx, clickEvent());
+  assert.deepEqual(picked, [9], 'the compatibility click cannot toggle the face back off');
+  assert.deepEqual(f.calls.selected, []); assert.equal(f.calls.ifc, 0);
+  release();
 });
 
 

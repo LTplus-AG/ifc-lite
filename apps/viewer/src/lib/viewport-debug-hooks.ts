@@ -1,8 +1,9 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import type { Renderer } from '@ifc-lite/renderer';
+import { appearanceSourceTriangle, type Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
+import { useViewerStore } from '@/store';
 
 /** One resident part of an owner as plain data: no buffers, no live objects. */
 export interface ScenePartSnapshot {
@@ -11,6 +12,13 @@ export interface ScenePartSnapshot {
   vertices: number;
   textured: boolean;
   color: [number, number, number, number];
+  /** Canonical evaluated-surface ordinals still carried by this part. */
+  sourceTriangles: number[];
+}
+export interface SceneFaceHitSnapshot {
+  geometryItemId: number | undefined;
+  sourceTriangleIndex: number;
+  screen: { x: number; y: number };
 }
 /** What the scene currently renders for one federation-resolved id. */
 export interface SceneOwnerSnapshot {
@@ -25,8 +33,13 @@ export interface SceneOwnerSnapshot {
 }
 
 function snapshot(part: MeshData): ScenePartSnapshot {
+  const sourceTriangles: number[] = [];
+  for (let triangle = 0; triangle < part.indices.length / 3; triangle++) {
+    const source = appearanceSourceTriangle(part, triangle);
+    if (source !== undefined) sourceTriangles.push(source);
+  }
   return { geometryItemId: part.geometryItemId, triangles: part.indices.length / 3, vertices: part.positions.length / 3,
-    textured: !!(part.uvs && (part.texture || (part.textureRef && part.textureBitmap))), color: [...part.color] as ScenePartSnapshot['color'] };
+    textured: !!(part.uvs && (part.texture || (part.textureRef && part.textureBitmap))), color: [...part.color] as ScenePartSnapshot['color'], sourceTriangles };
 }
 
 /**
@@ -54,10 +67,38 @@ export function installViewportDebugHooks(renderer: Renderer): void {
     const centre = box && renderer.getCamera().projectToScreen({ x: (box.min.x + box.max.x) / 2, y: (box.min.y + box.max.y) / 2, z: (box.min.z + box.max.z) / 2 }, rect.width, rect.height);
     return { flat: flat?.map(snapshot) ?? null, instance: !!instanced, corners, screen: centre ? { x: rect.left + centre.x, y: rect.top + centre.y } : null };
   };
+  host.__ifc_lite_scene_face_hits__ = (globalId: number): SceneFaceHitSnapshot[] => {
+    const scene = renderer.getScene(), rect = renderer.getCanvas().getBoundingClientRect();
+    const parts = scene.getMeshDataPieces(globalId) ?? scene.getInstancedMeshDataPieces(globalId) ?? [];
+    const hits = new Map<number, SceneFaceHitSnapshot>();
+    for (const part of parts) for (let triangle = 0; triangle < part.indices.length / 3; triangle++) {
+      const sourceTriangleIndex = appearanceSourceTriangle(part, triangle);
+      if (sourceTriangleIndex === undefined || hits.has(sourceTriangleIndex)) continue;
+      const point = { x: 0, y: 0, z: 0 };
+      for (let corner = 0; corner < 3; corner++) {
+        const vertex = part.indices[triangle * 3 + corner];
+        point.x += (part.positions[vertex * 3] + (part.origin?.[0] ?? 0)) / 3;
+        point.y += (part.positions[vertex * 3 + 1] + (part.origin?.[1] ?? 0)) / 3;
+        point.z += (part.positions[vertex * 3 + 2] + (part.origin?.[2] ?? 0)) / 3;
+      }
+      const screen = renderer.getCamera().projectToScreen(point, rect.width, rect.height);
+      if (!screen) continue;
+      const state = useViewerStore.getState();
+      const exact = renderer.raycastScene(screen.x, screen.y, {
+        hiddenIds: state.hiddenEntities, isolatedIds: state.isolatedEntities,
+      })?.intersection;
+      if (exact?.expressId !== globalId || exact.sourceTriangleIndex !== sourceTriangleIndex
+        || exact.geometryItemId !== part.geometryItemId) continue;
+      hits.set(sourceTriangleIndex, { geometryItemId: part.geometryItemId, sourceTriangleIndex,
+        screen: { x: rect.left + screen.x, y: rect.top + screen.y } });
+    }
+    return [...hits.values()].sort((a, b) => a.sourceTriangleIndex - b.sourceTriangleIndex);
+  };
 }
 
 export function clearViewportDebugHooks(): void {
   const host = globalThis as Record<string, unknown>;
   delete host.__ifc_lite_render_stats__;
   delete host.__ifc_lite_scene_owner__;
+  delete host.__ifc_lite_scene_face_hits__;
 }

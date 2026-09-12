@@ -141,7 +141,7 @@
   1226 apps/viewer/src/hooks/useIDS.ts
    586 apps/viewer/src/hooks/useIfcCache.ts
    667 apps/viewer/src/hooks/useIfcFederation.ts
-  2245 apps/viewer/src/hooks/useIfcLoader.ts
+  2201 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    483 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    493 apps/viewer/src/hooks/useSymbolicAnnotations.ts
@@ -178,7 +178,7 @@
    404 apps/viewer/src/store/slices/addElementMeshes.ts
    452 apps/viewer/src/store/slices/chatSlice.ts
    992 apps/viewer/src/store/slices/clashSlice.ts
-  1510 apps/viewer/src/store/slices/collabSlice.ts
+  1313 apps/viewer/src/store/slices/collabSlice.ts
    482 apps/viewer/src/store/slices/dataSlice.ts
    874 apps/viewer/src/store/slices/drawing2DSlice.ts
    482 apps/viewer/src/store/slices/idsSlice.ts
@@ -345,7 +345,7 @@
    500 scripts/check-agents-md-size.mjs
    680 scripts/check-changeset-bump.mjs
    526 scripts/check-ci-path-coverage.mjs
-   574 scripts/check-collab-room-model-target.mjs
+   572 scripts/check-collab-room-model-target.mjs
    533 scripts/check-generated.mjs
    430 scripts/check-git-lfs.mjs
    560 scripts/check-isolate-expansion-routing.mjs

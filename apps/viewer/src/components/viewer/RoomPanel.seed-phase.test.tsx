@@ -57,7 +57,7 @@ beforeEach(() => {
     collabSelfToken: 'admin-token',
     collabPeers: [],
     collabSeedPhase: 'geometry',
-    collabSeedProgress: { uploaded: 120, total: 272 },
+    collabSeedProgress: { uploaded: 120, total: 272, modelIndex: 0, modelCount: 1 },
   });
 });
 
@@ -84,6 +84,16 @@ describe('RoomPanel: a connected room is not "Live" until the seed is in (#4446)
     assert.match(statusText(), /Uploading geometry 120\/272/);
     assert.equal(button(/^Copy invite link$/).disabled, true, 'no invite until the model is in the room');
     assert.match(button(/^Leave/).textContent ?? '', /abandons upload/, 'Leave says what it would abandon');
+  });
+
+  it('names which model of a multi-model share is uploading (#4444)', () => {
+    act(() => {
+      useViewerStore.setState({
+        collabSeedProgress: { uploaded: 5, total: 40, modelIndex: 1, modelCount: 3 },
+      });
+    });
+    renderPanel();
+    assert.match(statusText(), /Uploading geometry 5\/40 \(model 2 of 3\)/);
   });
 
   it('flips to Live, with the copy link and a plain Leave, the moment the seed reports ready', () => {

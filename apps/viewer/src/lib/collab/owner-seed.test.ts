@@ -12,16 +12,20 @@
  * IFCX ingest -> `hydrateGeometryFromRoom` keyed by the recipient's id space.
  * The guest-side counts are asserted against the owner's own seed report, so
  * "ready" and "complete" are pinned to the same numbers.
+ *
+ * Since #4444 the seed is a per-model list, each model into its own room slot
+ * (`/m0/<GlobalId>`, `/m1/…`); a one-model share is the `m0` case throughout.
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import * as collab from '@ifc-lite/collab';
 import type { MeshData } from '@ifc-lite/geometry';
-import { runOwnerSeed, type OwnerSeedDeps, type OwnerSeedResult } from './owner-seed.js';
+import { runOwnerSeed, type CollabSeedModel, type OwnerSeedDeps, type OwnerSeedResult } from './owner-seed.js';
 import { hydrateGeometryFromRoom } from './geometry-sync.js';
 import { readGeometrySeedMarker } from './geometry-seed-signal.js';
-import { buildStepSeedSource } from './step-seed.js';
+import { roomSlotRef } from './model-slot-ref.js';
+import type { CollabSeedProgress } from './seed-phase.js';
 import { parseIfcxViewerModel } from '@/hooks/ingest/viewerModelIngest.js';
 import {
   SEED_GUIDS,
@@ -36,23 +40,43 @@ interface Harness {
   session: collab.CollabSession;
   blobStore: collab.MemoryBlobStore;
   phases: string[];
-  progress: Array<[number, number]>;
+  progress: CollabSeedProgress[];
   run: (overrides?: Partial<OwnerSeedDeps>) => Promise<OwnerSeedResult | null>;
 }
 
-async function harness(meshes: readonly MeshData[] = seedFixtureMeshes()): Promise<Harness> {
+/** The slot-qualified room path of a fixture GUID in slot `m<index>`. */
+const pathOf = (guid: string, index = 0): string => collab.slotPath(roomSlotRef(index), guid);
+
+function fixtureModel(modelId: string, meshes: readonly MeshData[], idOffset = 0): CollabSeedModel {
+  return {
+    modelId,
+    name: 'fixture.ifc',
+    store: seedFixtureStore(),
+    isIfcx: false,
+    meshes,
+    idOffset,
+    schemaVersion: 'IFC4',
+    fileName: 'fixture.ifc',
+  };
+}
+
+async function harness(
+  meshes: readonly MeshData[] = seedFixtureMeshes(),
+  models: CollabSeedModel[] = [fixtureModel('model-1', meshes)],
+): Promise<Harness> {
   const session = await collab.createCollabSession({ roomId: `seed-${Math.random()}`, user, provider: 'memory' });
   const blobStore = new collab.MemoryBlobStore();
-  const store = seedFixtureStore();
   const phases: string[] = [];
-  const progress: Array<[number, number]> = [];
+  const progress: CollabSeedProgress[] = [];
+  const roomModels = new Map(models.map((m, index) => [m.modelId, roomSlotRef(index)]));
   const deps: OwnerSeedDeps = {
     session,
-    seed: () => ({ store, isIfcx: false, stepSource: buildStepSeedSource(store, 'fixture.ifc') }),
+    seed: { models },
     collab,
     geomApi: collab,
     makeBlobStore: async () => blobStore,
-    stepMeshes: () => meshes,
+    parseIfcx: () => Promise.reject(new Error('STEP seeds never re-parse')),
+    roomModels,
     stampBaseline: (path) => {
       if (path) {
         const current = collab.getEntityPlacement(session.doc, path);
@@ -62,7 +86,7 @@ async function harness(meshes: readonly MeshData[] = seedFixtureMeshes()): Promi
     },
     isCurrent: () => true,
     onPhase: (phase) => phases.push(phase),
-    onProgress: (uploaded, total) => progress.push([uploaded, total]),
+    onProgress: (p) => progress.push(p),
   };
   return {
     session,
@@ -81,16 +105,25 @@ describe('runOwnerSeed (#4446)', () => {
       assert.deepEqual(result, { phase: 'ready', failure: null });
       assert.deepEqual(h.phases, ['structure', 'geometry']);
       // `seedGeometryToRoom` reports every 50 blobs and once at the end.
-      assert.deepEqual(h.progress.at(-1), [2, 2], 'the final progress tick is the full count');
+      assert.deepEqual(
+        h.progress.at(-1),
+        { uploaded: 2, total: 2, modelIndex: 0, modelCount: 1 },
+        'the final progress tick is the full count',
+      );
 
       // "Ready" is pinned to the doc actually holding the model.
       const doc = h.session.doc;
       assert.equal(doc.getMap('entities').size, 2, 'both products seeded');
       assert.equal(doc.getMap('geometry').size, 2, 'both meshes referenced');
       for (const guid of Object.values(SEED_GUIDS)) {
-        const ref = collab.getGeometryRef(doc, collab.guidToPath(guid));
+        const ref = collab.getGeometryRef(doc, pathOf(guid));
         assert.equal(ref?.geomIds.length, 1, `${guid} carries its geometry ref`);
       }
+      assert.deepEqual(
+        collab.listModelSlots(doc).map((s) => [s.slotId, s.name, s.legacy]),
+        [['m0', 'fixture.ifc', false]],
+        'the share is recorded as one slot',
+      );
       const marker = readGeometrySeedMarker(doc);
       assert.equal(marker?.expected, 2);
       assert.equal(marker?.seeded, 2);
@@ -117,14 +150,14 @@ describe('runOwnerSeed (#4446)', () => {
         const parsed = await parseIfcxViewerModel(ifcx.buffer as ArrayBuffer, undefined, { allowEmptyGeometry: true });
         assert.ok(parsed.pathToId, 'the ingest exposes the recipient id map');
         for (const guid of Object.values(SEED_GUIDS)) {
-          assert.ok(parsed.pathToId.has(collab.guidToPath(guid)), `${guid} is an entity on the guest`);
+          assert.ok(parsed.pathToId.has(pathOf(guid)), `${guid} is an entity on the guest`);
         }
 
         const meshes = await hydrateGeometryFromRoom(collab, recipient, h.blobStore, parsed.pathToId);
         const marker = readGeometrySeedMarker(h.session.doc);
         assert.equal(meshes.length, marker?.seeded, 'the guest gets exactly what the owner reported as seeded');
         assert.equal(meshes.length, 2);
-        const guestIds = new Set(Object.values(SEED_GUIDS).map((g) => parsed.pathToId!.get(collab.guidToPath(g))));
+        const guestIds = new Set(Object.values(SEED_GUIDS).map((g) => parsed.pathToId!.get(pathOf(g))));
         for (const mesh of meshes) {
           assert.ok(guestIds.has(mesh.expressId), 'meshes are re-keyed into the guest id space');
           assert.deepEqual(mesh.texture?.rgba, SEED_TEXTURE_PIXELS, 'the texture pixels arrive byte-exact');
@@ -195,6 +228,34 @@ describe('runOwnerSeed (#4446)', () => {
       const marker = readGeometrySeedMarker(h.session.doc);
       assert.equal(marker?.expected, 1);
       assert.equal(marker?.seeded, 0);
+    } finally {
+      h.session.dispose();
+    }
+  });
+
+  it('seeds several models one slot after another, and progress names the model (#4444)', async () => {
+    const B_OFFSET = 1_000_000;
+    // A federated copy holds GLOBAL ids on its meshes.
+    const copyB = seedFixtureMeshes().map((m) => ({ ...m, expressId: m.expressId + B_OFFSET }));
+    const h = await harness(seedFixtureMeshes(), [
+      fixtureModel('model-1', seedFixtureMeshes()),
+      fixtureModel('model-2', copyB, B_OFFSET),
+    ]);
+    try {
+      const result = await h.run();
+      assert.deepEqual(result, { phase: 'ready', failure: null });
+      assert.deepEqual(h.phases, ['structure', 'geometry', 'structure', 'geometry']);
+      assert.deepEqual(h.progress.at(-1), { uploaded: 2, total: 2, modelIndex: 1, modelCount: 2 });
+      assert.ok(h.progress.some((p) => p.modelIndex === 0 && p.modelCount === 2), 'the first model reported too');
+
+      const doc = h.session.doc;
+      assert.deepEqual(collab.listModelSlots(doc).map((s) => s.slotId), ['m0', 'm1']);
+      assert.equal(doc.getMap('entities').size, 4, 'same GlobalIds, two slots, twice the entities');
+      for (const guid of Object.values(SEED_GUIDS)) {
+        assert.equal(collab.getGeometryRef(doc, pathOf(guid, 0))?.geomIds.length, 1);
+        assert.equal(collab.getGeometryRef(doc, pathOf(guid, 1))?.geomIds.length, 1);
+      }
+      assert.equal(readGeometrySeedMarker(doc)?.seeded, 4, 'the marker sums every model');
     } finally {
       h.session.dispose();
     }

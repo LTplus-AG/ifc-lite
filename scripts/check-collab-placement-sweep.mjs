@@ -15,11 +15,13 @@
  *
  * `placement-sweep.ts` implements the re-derivation and is unit-tested
  * (`placement-sweep.test.ts`, which pins all three failure modes). This file
- * pins the WIRING, because that is the half a unit test cannot reach:
- * `startCollab`'s recipient branch needs jsdom, IndexedDB, `import.meta.env`
- * and a websocket, so it is not drivable under `tsx --test`. Deleting both
- * calls below leaves `tsc --noEmit` clean and the viewer suite green — an
- * extracted unit, fully tested, with a deletable call site.
+ * pins the WIRING inside the recipient reconstruct, which lives in
+ * `lib/collab/room-reconstruct.ts` since #4444 (one model per room slot;
+ * `reconstructSlot` hydrates each slot, `reconstruct` clears and sweeps once
+ * every slot is in). `room-reconstruct.test.ts` drives it for real, but a
+ * test that passes with both calls deleted is still a green suite over a
+ * silently reverted room — an extracted unit, fully tested, with a deletable
+ * call site — so the text-level gate stays.
  *
  * Three things are required, and ORDER is one of them:
  *
@@ -51,7 +53,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const SLICE = 'apps/viewer/src/store/slices/collabSlice.ts';
+const SLICE = 'apps/viewer/src/lib/collab/room-reconstruct.ts';
 const source = readFileSync(join(repoRoot, SLICE), 'utf8');
 
 const failures = [];
@@ -62,11 +64,13 @@ function lineOf(text, index) {
 }
 
 /**
- * The recipient's re-derivation block. Delimited by text, so renaming or
+ * The recipient's re-derivation block: `reconstructSlot` (per-slot hydrate)
+ * through the end of `reconstruct` (clear + sweep over every slot), up to the
+ * live-update debounce that follows it. Delimited by text, so renaming or
  * extracting it fails the gate rather than silently scanning nothing.
  */
-const START = 'const reconstruct = async () => {';
-const END = '// Initial build (only when we don';
+const START = 'const reconstructSlot = async (';
+const END = 'let debounceHandle';
 const startIdx = source.indexOf(START);
 const endIdx = source.indexOf(END);
 

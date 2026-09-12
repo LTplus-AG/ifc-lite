@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Regression: a collab room's edits must target the ROOM's model in BOTH
+ * Regression: a collab room's edits must target the ROOM's models in BOTH
  * directions, not whatever model happens to be active.
  *
  * Reachable in two clicks. `upsertModel` keeps the existing `activeModelId`
@@ -22,6 +22,12 @@
  *     shared room and applied to whatever entity the id resolved to there,
  *     corrupting the owner's model for everyone.
  *
+ * Since #4444 a room holds one model per slot, so "the room model" is a map
+ * (`collabRoomModels`) and every resolver is keyed by the model an edit names
+ * — outbound by `modelId`, inbound by the entity path's slot. The second
+ * `describe` runs the two-copies-of-one-file case: same local ids, same
+ * GlobalIds, two room models, and every resolver tells them apart.
+ *
  * The active-model tracking these tests turn on is the REAL thing: state is
  * built from `createModelSlice` + `createDataSlice` and driven through
  * `upsertModel` / `setActiveModel` / `setIfcDataStore`, so what is exercised is
@@ -32,15 +38,18 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
+import type { ModelSlotRef } from '@ifc-lite/collab';
 import { createModelSlice, type ModelSlice } from '../../store/slices/modelSlice.js';
 import { createDataSlice, type DataSlice, type DataCrossSliceState } from '../../store/slices/dataSlice.js';
 import type { FederatedModel } from '../../store/types.js';
 import {
   isRoomModel,
-  roomMeshes,
-  roomModelIdOf,
-  roomMutationView,
-  roomStore,
+  roomEntityTargetForPath,
+  roomMeshesFor,
+  roomModelIds,
+  roomMutationViewFor,
+  roomSlotFor,
+  roomStoreFor,
   type RoomModelTargetState,
 } from './room-model-target.js';
 import { toGlobalIdFromModels } from '../../store/globalId.js';
@@ -49,7 +58,7 @@ import { buildGeometryResultFromMeshes } from './geometry-sync.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
 type TestState = ModelSlice & DataSlice & DataCrossSliceState & {
-  collabRoomModelId: string | null;
+  collabRoomModels: ReadonlyMap<string, ModelSlotRef>;
   /** `null` off a session, set the instant `startCollab` begins — see room-model-target.ts. */
   collabRoomId: string | null;
   mutationViews: Map<string, MutablePropertyView>;
@@ -90,8 +99,47 @@ function model(id: string, idOffset = 0): FederatedModel {
   } as unknown as FederatedModel;
 }
 
-const ROOM_MODEL_ID = 'room:r1';
+const ROOM_MODEL_ID = 'room:r1:m0';
 const OWN_MODEL_ID = 'my-file.ifc';
+const SLOT_M0: ModelSlotRef = { slotId: 'm0', pathPrefix: '/m0' };
+const SLOT_M1: ModelSlotRef = { slotId: 'm1', pathPrefix: '/m1' };
+
+function buildState(): TestState {
+  let state: TestState;
+  const setState = (partial: unknown) => {
+    const updates =
+      typeof partial === 'function'
+        ? (partial as (s: TestState) => Partial<TestState>)(state)
+        : (partial as Partial<TestState>);
+    state = { ...state, ...updates };
+  };
+  const getState = () => state;
+  const modelSlice = createModelSlice(
+    setState as Parameters<typeof createModelSlice>[0],
+    getState as unknown as Parameters<typeof createModelSlice>[1],
+    undefined as unknown as Parameters<typeof createModelSlice>[2],
+  );
+  const dataSlice = createDataSlice(
+    setState as Parameters<typeof createDataSlice>[0],
+    getState as unknown as Parameters<typeof createDataSlice>[1],
+    undefined as unknown as Parameters<typeof createDataSlice>[2],
+  );
+  state = {
+    ...modelSlice,
+    ...dataSlice,
+    collabRoomModels: new Map(),
+    collabRoomId: null,
+    mutationViews: new Map(),
+  } as TestState;
+  // `state` is reassigned by `setState`; hand callers a live view.
+  return new Proxy({} as TestState, {
+    get: (_t, key) => (state as unknown as Record<string | symbol, unknown>)[key],
+    set: (_t, key, value) => {
+      (state as unknown as Record<string | symbol, unknown>)[key] = value;
+      return true;
+    },
+  });
+}
 
 describe('room-model-target', () => {
   let state: TestState;
@@ -99,32 +147,7 @@ describe('room-model-target', () => {
   const target = (): RoomModelTargetState => state as unknown as RoomModelTargetState;
 
   beforeEach(() => {
-    const setState = (partial: unknown) => {
-      const updates =
-        typeof partial === 'function'
-          ? (partial as (s: TestState) => Partial<TestState>)(state)
-          : (partial as Partial<TestState>);
-      state = { ...state, ...updates };
-    };
-    const getState = () => state;
-
-    const modelSlice = createModelSlice(
-      setState as Parameters<typeof createModelSlice>[0],
-      getState as Parameters<typeof createModelSlice>[1],
-      undefined as unknown as Parameters<typeof createModelSlice>[2],
-    );
-    const dataSlice = createDataSlice(
-      setState as Parameters<typeof createDataSlice>[0],
-      getState as Parameters<typeof createDataSlice>[1],
-      undefined as unknown as Parameters<typeof createDataSlice>[2],
-    );
-    state = {
-      ...modelSlice,
-      ...dataSlice,
-      collabRoomModelId: null,
-      collabRoomId: null,
-      mutationViews: new Map(),
-    } as TestState;
+    state = buildState();
   });
 
   /**
@@ -135,8 +158,8 @@ describe('room-model-target', () => {
    */
   function joinRoomThenOpenOwnFile(): void {
     state.upsertModel(model(ROOM_MODEL_ID));
-    state.collabRoomModelId = ROOM_MODEL_ID;
-    // `startCollab` sets this in the same `set()` call as `collabRoomModelId`.
+    state.collabRoomModels = new Map([[ROOM_MODEL_ID, SLOT_M0]]);
+    // `startCollab` sets this in the same `set()` call as `collabRoomModels`.
     state.collabRoomId = 'r1';
     state.mutationViews.set(ROOM_MODEL_ID, markerView(ROOM_MODEL_ID));
 
@@ -155,71 +178,79 @@ describe('room-model-target', () => {
     assert.ok(state.models.has(ROOM_MODEL_ID));
   });
 
-  it('resolves the room model by id, not by focus', () => {
+  it('resolves the room models by id, not by focus', () => {
     joinRoomThenOpenOwnFile();
-    assert.equal(roomModelIdOf(target()), ROOM_MODEL_ID);
+    assert.deepEqual(roomModelIds(target()), [ROOM_MODEL_ID]);
+    assert.deepEqual(roomSlotFor(target(), ROOM_MODEL_ID), SLOT_M0);
+    assert.equal(roomSlotFor(target(), OWN_MODEL_ID), null);
   });
 
   it('inbound: a peer edit resolves against the ROOM store, never the active one', () => {
     joinRoomThenOpenOwnFile();
-    const store = roomStore(target()) as unknown as { __tag: string } | null;
-    assert.ok(store, 'room store must resolve');
-    assert.equal(store.__tag, ROOM_MODEL_ID);
-    assert.notEqual(store.__tag, OWN_MODEL_ID);
+    const hit = roomEntityTargetForPath(target(), '/m0/OwnerWall');
+    assert.ok(hit, 'room store must resolve');
+    assert.equal(hit.modelId, ROOM_MODEL_ID);
+    assert.equal((hit.store as unknown as { __tag: string }).__tag, ROOM_MODEL_ID);
+    assert.notEqual((hit.store as unknown as { __tag: string }).__tag, OWN_MODEL_ID);
   });
 
   it('inbound: a peer edit is written through the ROOM view, never the active one', () => {
     joinRoomThenOpenOwnFile();
-    const view = roomMutationView(target()) as unknown as { __tag: string } | undefined;
+    const view = roomMutationViewFor(target(), ROOM_MODEL_ID) as unknown as { __tag: string } | undefined;
     assert.ok(view, 'room view must resolve');
     assert.equal(view.__tag, ROOM_MODEL_ID);
-    assert.notEqual(view.__tag, OWN_MODEL_ID);
+    assert.equal(roomMutationViewFor(target(), OWN_MODEL_ID), undefined);
   });
 
   it('outbound: an edit on the user’s private model is not mirrored into the room', () => {
     joinRoomThenOpenOwnFile();
     assert.equal(isRoomModel(target(), OWN_MODEL_ID), false);
+    assert.equal(roomStoreFor(target(), OWN_MODEL_ID), null);
   });
 
   it('outbound: an edit on the room model IS mirrored even while another model is active', () => {
     joinRoomThenOpenOwnFile();
     assert.equal(isRoomModel(target(), ROOM_MODEL_ID), true);
+    assert.equal((roomStoreFor(target(), ROOM_MODEL_ID) as unknown as { __tag: string }).__tag, ROOM_MODEL_ID);
   });
 
   /**
    * A recipient who already had a file open gets no reconstruct until the first
-   * peer edit, so `room:<roomId>` is named but not yet registered. Falling back
-   * to the top-level store here is the whole defect in miniature: it resolves a
-   * room-id-space path against the user's own file.
+   * peer edit, so `room:<roomId>:m0` is named but not yet registered. Falling
+   * back to the top-level store here is the whole defect in miniature: it
+   * resolves a room-id-space path against the user's own file.
    */
   it('inbound: no store (not the user’s) while the room model is unregistered', () => {
     state.upsertModel(model(OWN_MODEL_ID));
     state.mutationViews.set(OWN_MODEL_ID, markerView(OWN_MODEL_ID));
-    state.collabRoomModelId = ROOM_MODEL_ID;
+    state.collabRoomModels = new Map([[ROOM_MODEL_ID, SLOT_M0]]);
     state.collabRoomId = 'r1';
 
     assert.equal(state.activeModelId, OWN_MODEL_ID);
     assert.ok(state.ifcDataStore, 'the user’s store is loaded and would be the fallback');
-    assert.equal(roomStore(target()), null);
-    assert.equal(roomMutationView(target()), undefined);
+    assert.equal(roomEntityTargetForPath(target(), '/m0/OwnerWall'), null);
+    assert.equal(roomStoreFor(target(), ROOM_MODEL_ID), null);
+    assert.equal(roomMutationViewFor(target(), OWN_MODEL_ID), undefined);
     assert.equal(isRoomModel(target(), OWN_MODEL_ID), false);
   });
 
   /**
-   * Off a session (and for an owner sharing a bare legacy store with no model
-   * record) there is no id to address, so every resolver must reduce to the
-   * behaviour the call sites had before — a single-model session must not
+   * Off a session there are no room models, so every resolver must reduce to
+   * the behaviour the call sites had before — a single-model session must not
    * change at all.
    */
-  it('with no room model id, reduces to the pre-existing active-model behaviour', () => {
+  it('with no session, reduces to the pre-existing active-model behaviour', () => {
     state.upsertModel(model(OWN_MODEL_ID));
     state.mutationViews.set(OWN_MODEL_ID, markerView(OWN_MODEL_ID));
 
-    assert.equal(state.collabRoomModelId, null);
-    assert.equal(roomModelIdOf(target()), state.activeModelId);
-    assert.equal(roomStore(target()), state.ifcDataStore);
+    assert.equal(state.collabRoomModels.size, 0);
+    assert.equal(roomStoreFor(target(), OWN_MODEL_ID), state.ifcDataStore);
+    assert.deepEqual(roomEntityTargetForPath(target(), '/anything'), {
+      modelId: OWN_MODEL_ID,
+      store: state.ifcDataStore,
+    });
     assert.equal(
-      (roomMutationView(target()) as unknown as { __tag: string }).__tag,
+      (roomMutationViewFor(target(), OWN_MODEL_ID) as unknown as { __tag: string }).__tag,
       OWN_MODEL_ID,
     );
     assert.equal(isRoomModel(target(), OWN_MODEL_ID), true);
@@ -232,12 +263,12 @@ describe('room-model-target', () => {
    */
   it('when the room model IS active, room targeting and active targeting agree', () => {
     state.upsertModel(model(ROOM_MODEL_ID));
-    state.collabRoomModelId = ROOM_MODEL_ID;
+    state.collabRoomModels = new Map([[ROOM_MODEL_ID, SLOT_M0]]);
     state.collabRoomId = 'r1';
     state.mutationViews.set(ROOM_MODEL_ID, markerView(ROOM_MODEL_ID));
 
     assert.equal(state.activeModelId, ROOM_MODEL_ID);
-    assert.equal(roomStore(target()), state.ifcDataStore);
+    assert.equal(roomStoreFor(target(), ROOM_MODEL_ID), state.ifcDataStore);
     assert.equal(isRoomModel(target(), ROOM_MODEL_ID), true);
   });
 
@@ -247,11 +278,11 @@ describe('room-model-target', () => {
    * `idOffset + expressId` of a NAMED model) and pivots it about that mesh's
    * bbox centre, and both reads went through the ACTIVE model.
    *
-   * It is not a fail-closed miss. The recipient's reconstructed room model is
-   * registered with `idOffset: 0` and their own file is offset above it, so a
-   * peer's edit on room entity 7 resolved to global 1_000_007 — which, in a
-   * federation, is a REAL mesh of the user's own file. The delivered edit moves
-   * an unrelated element of a model that is not even in the room.
+   * It is not a fail-closed miss. The recipient's room model sits at one
+   * offset and their own file above it, so a peer's edit on room entity 7
+   * resolved to global 1_000_007 — which, in a federation, is a REAL mesh of
+   * the user's own file. The delivered edit moves an unrelated element of a
+   * model that is not even in the room.
    */
   describe('placement reconcile: the mesh is addressed in the ROOM model’s id space', () => {
     const ENTITY_ID = 7;
@@ -260,7 +291,7 @@ describe('room-model-target', () => {
     /** Room model + own file, each with a mesh at the id the other's offset produces. */
     function federateWithMeshes(): void {
       state.upsertModel(model(ROOM_MODEL_ID, 0));
-      state.collabRoomModelId = ROOM_MODEL_ID;
+      state.collabRoomModels = new Map([[ROOM_MODEL_ID, SLOT_M0]]);
       state.collabRoomId = 'r1';
       state.setGeometryResult(buildGeometryResultFromMeshes([cubeAt(ENTITY_ID, 10)]));
 
@@ -278,21 +309,11 @@ describe('room-model-target', () => {
       assert.equal(state.activeModelId, OWN_MODEL_ID);
     });
 
-    it('resolves the moved mesh’s globalId off the room model', () => {
-      federateWithMeshes();
-      const globalId = toGlobalIdFromModels(
-        state.models,
-        roomModelIdOf(target()) ?? '',
-        ENTITY_ID,
-      );
-      assert.equal(globalId, ENTITY_ID);
-    });
-
     it('the active-model spelling names a real mesh of a model that is not in the room', () => {
       federateWithMeshes();
       const wrong = toGlobalIdFromModels(state.models, state.activeModelId ?? '', ENTITY_ID);
       assert.equal(wrong, OWN_OFFSET + ENTITY_ID);
-      assert.notEqual(wrong, ENTITY_ID);
+      assert.notEqual(wrong, toGlobalIdFromModels(state.models, ROOM_MODEL_ID, ENTITY_ID));
       // Not a silent no-op: it hits geometry, so the edit is applied to the
       // wrong element rather than dropped.
       const hit = getEntityCenter(state.geometryResult?.meshes ?? null, wrong);
@@ -302,33 +323,32 @@ describe('room-model-target', () => {
 
     it('takes the rotate pivot from the ROOM model’s meshes, not the active one’s', () => {
       federateWithMeshes();
-      const globalId = toGlobalIdFromModels(
-        state.models,
-        roomModelIdOf(target()) ?? '',
-        ENTITY_ID,
-      );
-      const centre = getEntityCenter(roomMeshes(target()), globalId);
+      const globalId = toGlobalIdFromModels(state.models, ROOM_MODEL_ID, ENTITY_ID);
+      const centre = getEntityCenter(roomMeshesFor(target(), ROOM_MODEL_ID), globalId);
       assert.ok(centre, 'the room mesh must resolve');
       assert.equal(centre.x, 10);
       // What the old read returned for that same id: nothing, so every rotate
       // a peer sent was dropped on the floor.
       assert.equal(getEntityCenter(state.geometryResult?.meshes ?? null, globalId), null);
+      // And the user's own model is never a source of room meshes.
+      assert.equal(roomMeshesFor(target(), OWN_MODEL_ID), null);
     });
 
-    it('with no room model id, reduces to the active model’s meshes', () => {
+    it('with no session, reduces to the active model’s meshes', () => {
       state.upsertModel(model(OWN_MODEL_ID, OWN_OFFSET));
       state.setGeometryResult(buildGeometryResultFromMeshes([cubeAt(OWN_OFFSET + ENTITY_ID, 500)]));
-      assert.equal(state.collabRoomModelId, null);
-      assert.equal(roomMeshes(target()), state.geometryResult?.meshes);
+      assert.equal(state.collabRoomModels.size, 0);
+      assert.equal(roomMeshesFor(target(), OWN_MODEL_ID), state.geometryResult?.meshes);
     });
 
     it('yields no meshes (not the user’s) while the room model is unregistered', () => {
       state.upsertModel(model(OWN_MODEL_ID, OWN_OFFSET));
       state.setGeometryResult(buildGeometryResultFromMeshes([cubeAt(OWN_OFFSET + ENTITY_ID, 500)]));
-      state.collabRoomModelId = ROOM_MODEL_ID;
+      state.collabRoomModels = new Map([[ROOM_MODEL_ID, SLOT_M0]]);
       state.collabRoomId = 'r1';
       assert.ok(state.geometryResult?.meshes.length, 'the user’s meshes would be the fallback');
-      assert.equal(roomMeshes(target()), null);
+      assert.equal(roomMeshesFor(target(), ROOM_MODEL_ID), null);
+      assert.equal(roomMeshesFor(target(), OWN_MODEL_ID), null);
     });
   });
 
@@ -336,40 +356,42 @@ describe('room-model-target', () => {
    * MAJOR (CodeRabbit CLI, PR #2706 review): `ShareDialog` awaits
    * `mintRoomToken()` and does not re-check cancellation before calling
    * `startCollab`. If the last model is removed during that await,
-   * `startCollab` runs with `activeModelId === null` and records a null
-   * `collabRoomModelId` — WHILE `collabRoomId` is already set, synchronously,
+   * `startCollab` runs with nothing to seed and records an empty
+   * `collabRoomModels` — WHILE `collabRoomId` is already set, synchronously,
    * in the same `set()` call (see `startCollab`, collabSlice.ts). The session
    * is live and every resolver must fail closed rather than fall back to
    * `activeModelId`, which would silently target whatever model the user
    * loads next.
    */
-  describe('a live session with no room model id (last model removed mid-mint) fails closed', () => {
+  describe('a live session with no room models (last model removed mid-mint) fails closed', () => {
     beforeEach(() => {
-      // No model ever loaded — mirrors `activeModelId` being null when
+      // No model ever loaded — mirrors the share scope being empty when
       // `startCollab`'s synchronous `set()` ran.
-      state.collabRoomModelId = null;
+      state.collabRoomModels = new Map();
       state.collabRoomId = 'r1';
     });
 
-    it('roomModelIdOf does not fall back to activeModelId', () => {
-      assert.equal(roomModelIdOf(target()), null);
+    it('roomModelIds is empty and no path resolves', () => {
+      assert.deepEqual(roomModelIds(target()), []);
+      assert.equal(roomEntityTargetForPath(target(), '/m0/anything'), null);
     });
 
-    it('roomStore resolves to no store, even with a store loaded afterward', () => {
+    it('roomStoreFor resolves no store, even with a store loaded afterward', () => {
       // The user loads a (private) file AFTER the race — activeModelId and
       // ifcDataStore are now non-null, which is exactly what must NOT leak
       // through as "the room's store".
       state.upsertModel(model(OWN_MODEL_ID));
       state.mutationViews.set(OWN_MODEL_ID, markerView(OWN_MODEL_ID));
       assert.ok(state.ifcDataStore, 'a store now exists and would be the (wrong) fallback');
-      assert.equal(roomStore(target()), null);
+      assert.equal(roomStoreFor(target(), OWN_MODEL_ID), null);
+      assert.equal(roomEntityTargetForPath(target(), '/anything'), null);
     });
 
-    it('roomMeshes resolves to no meshes, even with geometry loaded afterward', () => {
+    it('roomMeshesFor resolves no meshes, even with geometry loaded afterward', () => {
       state.upsertModel(model(OWN_MODEL_ID, 1_000_000));
       state.setGeometryResult(buildGeometryResultFromMeshes([cubeAt(1_000_007, 500)]));
       assert.ok(state.geometryResult?.meshes.length, 'meshes now exist and would be the (wrong) fallback');
-      assert.equal(roomMeshes(target()), null);
+      assert.equal(roomMeshesFor(target(), OWN_MODEL_ID), null);
     });
 
     it('isRoomModel rejects every model id, including one loaded afterward', () => {
@@ -378,11 +400,82 @@ describe('room-model-target', () => {
       assert.equal(isRoomModel(target(), OWN_MODEL_ID), false);
     });
 
-    it('roomMutationView resolves to no view', () => {
+    it('roomMutationViewFor resolves no view', () => {
       state.upsertModel(model(OWN_MODEL_ID));
       state.mutationViews.set(OWN_MODEL_ID, markerView(OWN_MODEL_ID));
       state.setActiveModel(OWN_MODEL_ID);
-      assert.equal(roomMutationView(target()), undefined);
+      assert.equal(roomMutationViewFor(target(), OWN_MODEL_ID), undefined);
     });
+  });
+});
+
+/**
+ * #4444 — two copies of one file in one room. The recipient registers one
+ * model per slot in distinct federation ranges; the two share every local
+ * expressId (and every GlobalId), and every resolver has to tell them apart
+ * by slot, never by focus.
+ */
+describe('room-model-target: two slots, same local ids', () => {
+  const COPY_A = 'room:r1:m0';
+  const COPY_B = 'room:r1:m1';
+  const B_OFFSET = 2_000_000;
+  const ENTITY_ID = 7;
+  let state: TestState;
+  const target = (): RoomModelTargetState => state as unknown as RoomModelTargetState;
+
+  beforeEach(() => {
+    state = buildState();
+    state.upsertModel(model(COPY_A, 0));
+    state.setGeometryResult(buildGeometryResultFromMeshes([cubeAt(ENTITY_ID, 10)]));
+    state.upsertModel({ ...model(COPY_B, B_OFFSET), geometryResult: buildGeometryResultFromMeshes([cubeAt(B_OFFSET + ENTITY_ID, 20)]) });
+    state.collabRoomModels = new Map([
+      [COPY_A, SLOT_M0],
+      [COPY_B, SLOT_M1],
+    ]);
+    state.collabRoomId = 'r1';
+    state.mutationViews.set(COPY_A, markerView(COPY_A));
+    state.mutationViews.set(COPY_B, markerView(COPY_B));
+  });
+
+  it('both copies are room models, in slot order', () => {
+    assert.deepEqual(roomModelIds(target()), [COPY_A, COPY_B]);
+    assert.equal(isRoomModel(target(), COPY_A), true);
+    assert.equal(isRoomModel(target(), COPY_B), true);
+  });
+
+  it('inbound: the path’s slot picks the copy, whichever copy is active', () => {
+    state.setActiveModel(COPY_A);
+    const hitB = roomEntityTargetForPath(target(), '/m1/0aBcDeFgHiJkLmNoPqRsT1');
+    assert.ok(hitB, 'the m1 path resolves');
+    assert.equal(hitB.modelId, COPY_B);
+    assert.equal((hitB.store as unknown as { __tag: string }).__tag, COPY_B);
+    const hitA = roomEntityTargetForPath(target(), '/m0/0aBcDeFgHiJkLmNoPqRsT1');
+    assert.equal(hitA?.modelId, COPY_A);
+    // `m1` is not a prefix of `m10`, and an unqualified path is nobody's.
+    assert.equal(roomEntityTargetForPath(target(), '/m10/x'), null);
+    assert.equal(roomEntityTargetForPath(target(), '/0aBcDeFgHiJkLmNoPqRsT1'), null);
+  });
+
+  it('inbound: each copy’s edit goes through its own view', () => {
+    assert.equal((roomMutationViewFor(target(), COPY_B) as unknown as { __tag: string }).__tag, COPY_B);
+    assert.equal((roomMutationViewFor(target(), COPY_A) as unknown as { __tag: string }).__tag, COPY_A);
+  });
+
+  it('geometry: the same local id names a different mesh per copy, in that copy’s range', () => {
+    const gA = toGlobalIdFromModels(state.models, COPY_A, ENTITY_ID);
+    const gB = toGlobalIdFromModels(state.models, COPY_B, ENTITY_ID);
+    assert.notEqual(gA, gB);
+    const centreA = getEntityCenter(roomMeshesFor(target(), COPY_A), gA);
+    const centreB = getEntityCenter(roomMeshesFor(target(), COPY_B), gB);
+    assert.equal(centreA?.x, 10);
+    assert.equal(centreB?.x, 20);
+    // Neither copy's meshes answer for the other's id.
+    assert.equal(getEntityCenter(roomMeshesFor(target(), COPY_A), gB), null);
+    assert.equal(getEntityCenter(roomMeshesFor(target(), COPY_B), gA), null);
+  });
+
+  it('outbound: an edit on copy B resolves copy B’s store, not copy A’s', () => {
+    assert.equal((roomStoreFor(target(), COPY_B) as unknown as { __tag: string }).__tag, COPY_B);
+    assert.equal((roomStoreFor(target(), COPY_A) as unknown as { __tag: string }).__tag, COPY_A);
   });
 });

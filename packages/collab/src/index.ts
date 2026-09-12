@@ -15,6 +15,7 @@ export * from './doc/placement.js';
 export * from './doc/relationship.js';
 export * from './doc/geometry.js';
 export * from './doc/annotation.js';
+export * from './doc/model-slot.js';
 
 // Snapshot / IFCX bridge
 export * from './snapshot/index.js';

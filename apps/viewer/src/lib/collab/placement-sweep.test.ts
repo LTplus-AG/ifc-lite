@@ -306,6 +306,38 @@ describe('reconstruct-side placement sweep', () => {
     assert.equal(collectPlacementDrift(sweepApi, doc, undefined, appliedLoc, appliedYaw).length, 0);
   });
 
+  it('#4444 — reads the applied maps under the key the reconciler writes (federation global id)', async () => {
+    // A room holds one model per slot and the live reconciler keys the
+    // applied maps by federation GLOBAL id (`idOffset + expressId`), because
+    // two slots can share every local expressId. A sweep that read them
+    // under the local id would never find what the reconciler wrote and
+    // re-report the same drift after every reconstruct.
+    const ID_OFFSET = 1_000_000;
+    const keyFor = (entityId: number) => entityId + ID_OFFSET;
+    await seedRoom();
+    setEntityPlacement(doc, WALL_PATH, MOVED);
+    // The reconciler, as `collabSlice` keys it: by global id.
+    const reconcile = (entityId: number, placement: LocalPlacement): void => {
+      const baseline = getPlacementBaseline(doc, WALL_PATH) ?? IDENTITY;
+      appliedLoc.set(keyFor(entityId), rendererDeltaForPlacement(baseline, placement));
+      appliedYaw.set(keyFor(entityId), yawOf(placement) - yawOf(baseline));
+    };
+    assert.equal(sweepPlacements(sweepApi, doc, pathToId, appliedLoc, appliedYaw, reconcile, keyFor), 1);
+    assert.deepEqual(appliedLoc.get(WALL_ID + ID_OFFSET), [10, 0, 0], 'bookkeeping lives under the global id');
+    assert.equal(
+      collectPlacementDrift(sweepApi, doc, pathToId, appliedLoc, appliedYaw, keyFor).length,
+      0,
+      'keyed alike, the sweep sees the move as applied',
+    );
+    // The defect: identity keys read `applied.get(localId)` while the
+    // reconciler wrote `applied.set(globalId)` — the same move is drift again.
+    assert.equal(
+      collectPlacementDrift(sweepApi, doc, pathToId, appliedLoc, appliedYaw).length,
+      1,
+      'keyed differently, the sweep re-reports the move on every reconstruct',
+    );
+  });
+
   it('clears applied bookkeeping for named entities only, when given a set', () => {
     appliedLoc.set(1, [1, 0, 0]);
     appliedLoc.set(2, [2, 0, 0]);

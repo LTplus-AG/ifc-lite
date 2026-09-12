@@ -189,7 +189,7 @@ describe('collabSlice: stopCollab returns the room state to rest', () => {
       collabLastShareToken: 'share-tok',
       collabSeedFailure: 'geometry upload failed',
       collabSeedPhase: 'geometry',
-      collabSeedProgress: { uploaded: 12, total: 40 },
+      collabSeedProgress: { uploaded: 12, total: 40, modelIndex: 0, modelCount: 1 },
       collabGeometryNotice: 'stale notice',
       collabPanelVisible: true,
       collabPeersSinceBaseline: true,

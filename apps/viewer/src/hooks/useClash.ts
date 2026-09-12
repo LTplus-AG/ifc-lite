@@ -106,7 +106,7 @@ export const CLASH_SUPERSEDED_MESSAGE =
  * loading the model again.
  *
  * The model is not NAMED in the message: `ClashElementRef.model` is a store id
- * (`room:<roomId>`, or a load-time key), the display name lived on the model
+ * (`room:<roomId>:<slotId>`, or a load-time key), the display name lived on the model
  * entry that has just been dropped from `state.models`, and a message quoting
  * an internal id would be worse than one that quotes nothing.
  */
@@ -695,9 +695,9 @@ export function useClash() {
    *
    * The `federationRegistry` singleton (`fromGlobalId`) did that search, and
    * knows only models that went through `registerModelOffset`. A model put into
-   * `state.models` any other way is invisible to it. That is exactly the collab
-   * room model: `collabSlice`'s recipient reconstruct registers it with
-   * `upsertModel({ id: 'room:<id>', ..., idOffset: 0 })` and never calls
+   * `state.models` any other way is invisible to it. That was the collab room
+   * model until #4444: the recipient reconstruct registered it with
+   * `upsertModel({ id: 'room:<id>', ..., idOffset: 0 })` and never called
    * `registerModelOffset`, so in a room EVERY clash row was dead — while
    * clicking the same element in the 3D view selected it normally, that path
    * resolving through `state.models` (`resolveEntityRef`).
@@ -737,10 +737,10 @@ export function useClash() {
    * `federationRegistry.clear()`), so the registry had forgotten it too and the
    * answer was `null` anyway. That does NOT hold for a model the registry never
    * held, which is precisely the class this resolver was fixed for: the collab
-   * room model is created by `upsertModel` with `idOffset: 0` and no
-   * `registerModelOffset` call (`collabSlice`), so `unregisterModel` is a no-op
-   * for it and there is nothing to forget. Leaving the room while a published
-   * clash result is kept drops `room:<roomId>` from `state.models` and sent its
+   * room model was (until #4444) created by `upsertModel` with `idOffset: 0`
+   * and no `registerModelOffset` call, so `unregisterModel` was a no-op for it
+   * and there was nothing to forget. Leaving the room while a published
+   * clash result is kept drops `room:<roomId>:<slotId>` from `state.models` and sent its
    * refs down this fallback, where `fromGlobalId` range-searched the registry
    * and landed inside a DIFFERENT, still-loaded file — isolating and painting
    * two of its elements, with no error. Established by review with an executed
@@ -771,7 +771,7 @@ export function useClash() {
    * order (`packages/ifcx/src/entity-extractor.ts`), so any structural edit
    * renumbers everything after it — and every stale ref then still looks
    * resolvable, and resolves to the WRONG element. Leaving a room and rejoining
-   * rebuilds `room:<roomId>` the same way.
+   * rebuilds `room:<roomId>:<slotId>` the same way.
    *
    * So the result's own recorded federation identity — captured by the run and
    * bound to the result object at the publish site

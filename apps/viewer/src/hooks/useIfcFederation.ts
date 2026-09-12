@@ -630,10 +630,10 @@ export function useIfcFederation(
   // `resolveGlobalIdFromModels` first, falling back to the `federationRegistry`
   // singleton only for a model that has left `state.models` but is still
   // registered. Consulting the registry alone missed every model seeded
-  // without `registerModelOffset` — the collab room (`collabSlice.ts`) and the
-  // federated-IFCX composition just above both do exactly that. See
-  // `useZoneSelection.ts` for the same delegation, and PR #2697 for the clash
-  // path.
+  // without `registerModelOffset` — the federated-IFCX composition just above
+  // does exactly that (the collab room did too until #4444, when its models
+  // started registering like any added file). See `useZoneSelection.ts` for
+  // the same delegation, and PR #2697 for the clash path.
 
   /**
    * Find which model contains a given globalId.

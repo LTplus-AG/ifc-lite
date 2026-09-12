@@ -422,6 +422,19 @@ fn from_meshes_export_is_structurally_conformant() {
     assert_gltf_conformant(&glb.0, "from_meshes");
 }
 
+/// The quantized x bounded cell the matrix lacked (export review finding H4):
+/// it is the only one carrying both the closed-form quantized accessor
+/// min/max and the bounded index padding, and since the bounded path now
+/// instances under `quantize`, the nested dequant nodes too.
+#[test]
+fn streaming_bounded_quantized_export_is_structurally_conformant() {
+    let content = fixture_or_skip!("ara3d/duplex.ifc");
+    let opts = GltfOptions { quantize: true, ..Default::default() };
+    let (glb, stats) = export_glb_streaming_bounded(&content, &opts);
+    assert!(stats.meshes > 0, "the bounded assembler produced no meshes to check");
+    assert_gltf_conformant(&glb, "streaming_bounded_quantized");
+}
+
 #[test]
 fn streaming_bounded_export_is_structurally_conformant() {
     // The bounded/streaming assembler writes the same buffers under a

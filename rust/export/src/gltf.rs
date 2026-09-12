@@ -2040,11 +2040,11 @@ pub struct GlbSizeProjection {
 /// or [`project_glb_size`] to decide up front.
 ///
 /// Tradeoffs vs the in-memory assembler (`build_gltf`):
-/// - rep-identity instancing is done here too, on the f32 layout, under the
-///   same policy `collate_refs` applies. The vertex data needs every occurrence
+/// - rep-identity instancing is done here too, under the same policy
+///   `collate_refs` applies. The vertex data needs every occurrence
 ///   co-resident; the grouping decision does not, so it is made from the plan.
-///   Quantized output still skips it: a shared mesh's non-uniform dequant scale
-///   cannot fold into a rotating placement without breaking `Matrix4.decompose`.
+///   Quantized, the dequant rides a child node under the placement node, as in
+///   `build_gltf`.
 /// - content-hash dedup is kept (the hash is computed batch-locally on pass 1).
 /// - the model is meshed twice (the price of bounded memory).
 /// - **the #3666 reconstruction check does not run here.** The in-memory
@@ -2222,10 +2222,6 @@ fn plan_bounded_glb(
     // Intern IFC type names so each distinct type is heap-allocated once, not per mesh.
     let mut type_intern: FxHashMap<String, Arc<str>> = FxHashMap::default();
     let mut metas: Vec<StreamedMeshMeta> = Vec::new();
-    // Quantized output cannot share a shape anyway (see the rep-bucket block
-    // below), so under `--quantize` this is never built rather than built and
-    // then not read.
-    let want_rep = !opts.quantize;
     let mut reps: Vec<(u128, [f64; 16])> = Vec::new();
     let mut rep_of: FxHashMap<u32, u32> = FxHashMap::default();
     let mut wmin = [f64::INFINITY; 3];
@@ -2301,15 +2297,13 @@ fn plan_bounded_glb(
                 // 2 writes it. (That 160 is this entry, not the per-mesh struct
                 // -- `the_streamed_mesh_plan_stays_small` pins that separately
                 // at 240, and it is 240 *because* this moved out.)
-                if want_rep {
-                    let instanceable = m
-                        .instance
-                        .as_ref()
-                        .filter(|i| i.instanceable && i.canonical_transform.is_none());
-                    if let Some(inst) = instanceable {
-                        rep_of.insert(metas.len() as u32, reps.len() as u32);
-                        reps.push((inst.rep_identity, compose_world_meta(inst)));
-                    }
+                let instanceable = m
+                    .instance
+                    .as_ref()
+                    .filter(|i| i.instanceable && i.canonical_transform.is_none());
+                if let Some(inst) = instanceable {
+                    rep_of.insert(metas.len() as u32, reps.len() as u32);
+                    reps.push((inst.rep_identity, compose_world_meta(inst)));
                 }
                 metas.push(StreamedMeshMeta {
                     express_id: m.express_id,
@@ -2347,10 +2341,13 @@ fn plan_bounded_glb(
     // length, so what a group needs is an identity and a placement, and those
     // fit in the plan this path already keeps.
     //
-    // f32 output only. Quantized, a shared mesh carries a non-uniform dequant
-    // scale that cannot fold into a rotating placement without breaking
-    // `Matrix4.decompose`, so it needs the nested parent/child node the
-    // in-memory path builds.
+    // Quantized, a shared mesh carries a non-uniform dequant scale that cannot
+    // fold into a rotating placement without breaking `Matrix4.decompose`, so
+    // the occurrence gets the nested parent/child node the in-memory path
+    // builds. This path used to skip instancing under `quantize` for that
+    // reason, which wrote every repeated shape once per occurrence: twice the
+    // BIN of the in-memory path on the option meant to halve it, and only on
+    // the models big enough to stream.
     let (rtc_zup, site_zup) = site_restore(&meta_result);
     // Rep identities whose occurrences disagree about shape size. Resolved
     // before any bucketing, because one disagreeing member refuses the whole
@@ -2465,7 +2462,9 @@ fn plan_bounded_glb(
         }
         *key_counts.entry(meta.key).or_insert(0) += 1;
     }
-    let mut rep_cache: FxHashMap<RepBucket, u32> = FxHashMap::default();
+    // bucket -> (mesh_idx, dequant center, dequant half) of the TEMPLATE: every
+    // occurrence dequantizes the template's bytes, not its own bbox.
+    let mut rep_cache: FxHashMap<RepBucket, (u32, [f64; 3], [f64; 3])> = FxHashMap::default();
     let mut accessors: Vec<Accessor> = Vec::new();
     let mut meshes: Vec<Mesh> = Vec::new();
     let mut nodes: Vec<Node> = Vec::new();
@@ -2664,13 +2663,13 @@ fn plan_bounded_glb(
                 idx_len += meta.nidx as u64 * 4;
             }
             if let Some((bucket, _)) = rep {
-                rep_cache.insert(bucket, mesh_idx);
+                rep_cache.insert(bucket, (mesh_idx, q_center, q_half));
             } else if shared {
                 shared_cache.insert(meta.key, (mesh_idx, q_center, q_half));
             }
             (mesh_idx, q_center, q_half)
         } else if let Some((bucket, _)) = rep {
-            (rep_cache[&bucket], q_center, q_half)
+            rep_cache[&bucket]
         } else {
             shared_cache[&meta.key]
         };
@@ -2694,7 +2693,10 @@ fn plan_bounded_glb(
                 scene_center,
             )
         });
-        let (translation, scale) = if matrix.is_some() {
+        let (translation, scale) = if matrix.is_some() && quantize {
+            // The template's dequant, nested under the matrix below.
+            (Some(center), Some(half))
+        } else if matrix.is_some() {
             (None, None)
         } else if quantize {
             // Placement is pure translation, so it commutes with the dequant
@@ -2718,14 +2720,18 @@ fn plan_bounded_glb(
         per_meta.push(Emitted { mesh_idx, translation, scale, matrix });
     }
     for (meta, emitted) in metas.iter().zip(&per_meta) {
-        let node_idx = nodes.len() as u32;
+        // A placement matrix and a dequant together: the dequant on the mesh
+        // node (it keeps `extras`, a pick hits the mesh), the matrix on a parent,
+        // exactly as `build_gltf` nests them.
+        let nested = emitted.matrix.is_some() && emitted.scale.is_some();
+        let mut node_idx = nodes.len() as u32;
         nodes.push(Node {
             rotation: None,
             mesh: Some(emitted.mesh_idx),
             children: None,
             translation: emitted.translation,
             scale: emitted.scale,
-            matrix: emitted.matrix,
+            matrix: if nested { None } else { emitted.matrix },
             extras: node_extras(
                 opts.include_metadata,
                 meta.express_id,
@@ -2734,6 +2740,18 @@ fn plan_bounded_glb(
                 opts.model_id.as_deref(),
             ),
         });
+        if nested {
+            nodes.push(Node {
+                rotation: None,
+                mesh: None,
+                children: Some(vec![node_idx]),
+                translation: None,
+                scale: None,
+                matrix: emitted.matrix,
+                extras: None,
+            });
+            node_idx += 1;
+        }
         element_node_indices.push(node_idx);
     }
     stats.materials = materials.len();

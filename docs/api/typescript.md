@@ -46,6 +46,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/codegen`](#ifc-litecodegen) | TypeScript code generator from IFC EXPRESS schemas |
 | [`create-ifc-lite`](#create-ifc-lite) | Create IFC-Lite projects with one command |
 | [`@ifc-lite/bcf-api`](https://www.npmjs.com/package/@ifc-lite/bcf-api) | BCF API (OpenCDE) REST client for connecting to BCF servers |
+| [`@ifc-lite/charts`](https://www.npmjs.com/package/@ifc-lite/charts) | Headless chart data binding for IFC-Lite: aggregate model rows into buckets that keep their element ids, build ECharts options, render SVG |
 | [`@ifc-lite/merge`](https://www.npmjs.com/package/@ifc-lite/merge) | Three-way merge engine for IFCX layers — MergePlan with auto-merged ops and explicit conflict records, merge-layer emission, rebase, and revert. |
 | [`@ifc-lite/oauth-pkce`](https://www.npmjs.com/package/@ifc-lite/oauth-pkce) | Browser OAuth 2.0 Authorization Code + PKCE flow, shared by ifc-lite's file-source providers |
 | [`@ifc-lite/plugin-api`](https://www.npmjs.com/package/@ifc-lite/plugin-api) | Dependency-free type surface for ifc-lite file-source plugins |

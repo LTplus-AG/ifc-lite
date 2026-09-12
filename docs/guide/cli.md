@@ -606,7 +606,7 @@ ifc-lite bcf add-comment --file topics.bcf --text "Fixed in revision 3" --out up
 
 ### `clash` - Clash Detection
 
-Detect geometric clashes between elements. Meshes the model headlessly, then runs the clash engine with either a single ad-hoc rule (`--a` / `--b`) or the standard discipline matrix (`--matrix`). Results can be exported as a BCF archive.
+Detect geometric clashes between elements. Meshes the model headlessly, then runs the clash engine with either a single ad-hoc rule (`--a` / `--b`) or the standard discipline matrix (`--matrix`). Results can be exported as a BCF archive or as a flat CSV table for spreadsheets and BI tools.
 
 ```bash
 # Standard discipline matrix
@@ -618,6 +618,9 @@ ifc-lite clash model.ifc --a "IfcDuct*|IfcPipe*" --b "IfcWall*" --mode clearance
 
 # Export clashes as BCF topics
 ifc-lite clash model.ifc --matrix --bcf clashes.bcfzip
+
+# Export every clash as one CSV row (both GlobalIds, types, names, storey, distance, review) for Excel / Power BI
+ifc-lite clash model.ifc --matrix --csv clashes.csv
 ```
 
 **Flags:**
@@ -634,6 +637,7 @@ ifc-lite clash model.ifc --matrix --bcf clashes.bcfzip
 | `--group <g>` | BCF topic grouping: `cluster` (default), `rule`, `typePair`, `element` |
 | `--bcf-status <s>` | Topic status for exported BCF topics |
 | `--max-topics <N>` | Cap the number of BCF topics |
+| `--csv <file>` | Write every clash as one row of an RFC 4180 CSV table: `ClashId, Rule, Status, Severity, Review, ReviewComment, ReviewUpdatedAt, GlobalIdA, GlobalIdB, KeyA, KeyB, ModelA, ModelB, TypeA, TypeB, NameA, NameB, StoreyA, StoreyB, PointX, PointY, PointZ, Distance, DistanceKind, Group`. Uncapped (the `--json` limit is a display cap); `GlobalId*` is empty for an element without an IfcGUID while `Key*` always carries the run's durable key |
 | `--json` | JSON output (stdout carries exactly one JSON document; progress and geometry diagnostics go to stderr) |
 
 ---

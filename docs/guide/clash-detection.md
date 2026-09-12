@@ -94,6 +94,9 @@ ifc-lite clash model.ifc --a "IfcPipeSegment*"
 
 # Export clashes as a BCF archive
 ifc-lite clash model.ifc --matrix --bcf clashes.bcfzip
+
+# Export every clash as one CSV row for Excel / Power BI
+ifc-lite clash model.ifc --matrix --csv clashes.csv
 ```
 
 | Flag | Description |
@@ -108,6 +111,7 @@ ifc-lite clash model.ifc --matrix --bcf clashes.bcfzip
 | `--group <g>` | BCF topic grouping: `cluster` (default), `rule`, `typePair`, `element` |
 | `--bcf-status <s>` | Topic status for exported BCF topics |
 | `--max-topics <N>` | Cap the number of BCF topics |
+| `--csv <file>` | Write every clash as one row of a CSV table (see [CSV table export](#csv-table-export)) |
 | `--json` | JSON output |
 
 The human summary reports the total, a severity breakdown, and the top clashes with their signed distance (`penetration 0.043m` or `gap 0.012m`). `--json` emits the full summary and clash list (capped for display).
@@ -132,5 +136,27 @@ const topicStatus = aggregateReviewStatus(members.map((c) => reviews.get(clashRe
 ### BCF export
 
 `groupClashes` clusters related clashes into the unit of a single BCF topic, and `createBCFFromClashResult` (from `@ifc-lite/clash/bcf`) turns those groups into a BCF project you write with `@ifc-lite/bcf`. On export, review status maps to a BCF 2.1 `TopicStatus` through `reviewStatusToBcfTopicStatus`, using only the two universally supported statuses (`Open` and `Closed`) so any BCF tool round-trips the archive. Both `resolved` and `accepted` are terminal and close the topic; the finer distinction is preserved in the topic description rather than the status field. See the [BCF Collaboration](bcf.md) guide for the round-trip.
+
+### CSV table export
+
+For spreadsheets and BI tools the run is also a flat table: one row per clash, both elements on the row, keyed by their bare IfcGUIDs so the rows join back to the model's own element tables. In the viewer, the clash panel's **CSV** button downloads the whole run (after exclusions — the panel's review-status and "hide touching" filters are for reading, and a BI reader filters in their own tool); on the CLI it is `--csv <file>`. Both go through `clashTableRows` and the shared `tableToCsv` writer, so the file has the same columns everywhere:
+
+| Column | Meaning |
+|--------|---------|
+| `ClashId`, `Rule`, `Status`, `Severity` | The detection: `Status` is `hard` / `clearance` / `touch` |
+| `Review`, `ReviewComment`, `ReviewUpdatedAt` | The coordinator's triage (`open` / `resolved` / `accepted`), joined by `clashReviewKey`; `open` when never reviewed |
+| `GlobalIdA`, `GlobalIdB` | Bare IfcGUIDs — empty for an element without one (a model whose roots carry no GlobalId, or an IFCx prim) |
+| `KeyA`, `KeyB` | The adapter's durable key as the run saw it (`IfcGUID`, `IfcGUID:occurrence`, `expressid:model:n`, or a USD prim path) |
+| `ModelA`, `ModelB`, `TypeA`, `TypeB`, `NameA`, `NameB`, `StoreyA`, `StoreyB` | Where and what; the storey is resolved from the loaded model's spatial hierarchy and left empty when the element no longer resolves |
+| `PointX`, `PointY`, `PointZ`, `Distance`, `DistanceKind` | The contact point in the run's world frame and the signed distance (`<0` penetration, `>0` gap), with its provenance (`mesh` / `estimate`) |
+| `Group` | Title of the cluster / rule / type-pair group the clash was put in, when groups were computed |
+
+```typescript
+import { clashTableRows, CLASH_TABLE_COLUMNS } from '@ifc-lite/clash';
+import { tableToCsv } from '@ifc-lite/export';
+
+const rows = clashTableRows(result.clashes, { reviews, storeyOf: (ref) => storeyNameFor(ref) });
+const csv = tableToCsv(CLASH_TABLE_COLUMNS, rows);
+```
 
 For the full API, see the [`@ifc-lite/clash` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/clash).

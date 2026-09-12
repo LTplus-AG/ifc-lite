@@ -611,3 +611,52 @@ END-ISO-10303-21;
         "expected 0.01745… for DEGREE, got {scale}"
     );
 }
+
+/// Every hand-rolled whitespace skip in the raw-byte readers took only
+/// `' ' | '\n' | '\r'`, leaving out TAB, vertical tab and form feed, all three
+/// legal ISO 10303-21 separators and all three in `is_step_space`, the one
+/// predicate the scanner uses (its doc comment cites #3733: a form feed
+/// silently dropping an entity). The nom decoder read the same bytes fine.
+///
+/// Four of the eight sites had nothing past the skip that tolerated a stray
+/// byte, and the callers hide the refusal: `processors/helpers.rs` uses `?`,
+/// `brep/faceted.rs` uses `None => continue`, so the face is dropped with
+/// nothing said. Each is asserted on its own line so a single site reverting
+/// names itself:
+///   * `get_face_bound_fast`, before the loop ref: `(\t#4` refused the bound.
+///   * `get_face_bound_fast`, before the orientation: `,\t.F.)` fell through
+///     to the default and read as `true`, an inverted face.
+///   * `parse_next_float` (under `get_cartesian_point_fast`) and
+///     `parse_float_inline` (under `get_polyloop_coords_cached`):
+///     `fast_float2` does not skip leading whitespace, so `\t1.` refused the
+///     point.
+///
+/// The other four sites (the two list readers, `get_first_entity_ref_fast`,
+/// `get_polyloop_coords_cached_into`'s own loop) already stepped past an
+/// unknown byte one at a time, so they never refused; they share the
+/// predicate now so the set cannot drift apart again, and their lines here
+/// are the control, not a regression.
+#[test]
+fn fast_readers_accept_every_step_whitespace_byte_3733() {
+    for ws in ["\t", "\x0b", "\x0c", " "] {
+        let content = format!(
+            "#1=IFCCARTESIANPOINT(({ws}1.,{ws}2.,{ws}3.));\n\
+             #2=IFCCARTESIANPOINT(({ws}4.,{ws}5.,{ws}6.));\n\
+             #3=IFCCARTESIANPOINT(({ws}7.,{ws}8.,{ws}9.));\n\
+             #4=IFCPOLYLOOP(({ws}#1,{ws}#2,{ws}#3));\n\
+             #5=IFCFACEOUTERBOUND({ws}#4,{ws}.F.);\n"
+        );
+        let mut decoder = EntityDecoder::new(&content);
+        assert_eq!(decoder.get_face_bound_fast(5), Some((4, false, true)), "ws {ws:?}");
+        assert_eq!(decoder.get_cartesian_point_fast(1), Some((1., 2., 3.)), "ws {ws:?}");
+        assert_eq!(
+            decoder.get_polyloop_coords_cached(4),
+            Some(vec![(1., 2., 3.), (4., 5., 6.), (7., 8., 9.)]),
+            "ws {ws:?}"
+        );
+        // Control: never refused, now on the shared predicate.
+        assert_eq!(decoder.get_polyloop_point_ids_fast(4), Some(vec![1, 2, 3]), "ws {ws:?}");
+        assert_eq!(decoder.get_entity_ref_list_fast(4), Some(vec![1, 2, 3]), "ws {ws:?}");
+        assert_eq!(decoder.get_first_entity_ref_fast(5), Some(4), "ws {ws:?}");
+    }
+}

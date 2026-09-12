@@ -8,7 +8,7 @@
 
 use crate::columnar_index::EntityIndexStore;
 use crate::error::{Error, Result};
-use crate::parser::{parse_entity, report_scan_diagnostics, EntityScanner};
+use crate::parser::{is_step_space, parse_entity, report_scan_diagnostics, EntityScanner};
 use crate::schema_gen::{AttributeValue, DecodedEntity};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -484,7 +484,7 @@ impl<'a> EntityDecoder<'a> {
         // Find first '#' which is the entity ref
         while i < len {
             // Skip whitespace
-            while i < len && (bytes[i] == b' ' || bytes[i] == b'\n' || bytes[i] == b'\r') {
+            while i < len && is_step_space(bytes[i]) {
                 i += 1;
             }
 
@@ -559,7 +559,7 @@ impl<'a> EntityDecoder<'a> {
         while i < len {
             // Skip whitespace and commas
             while i < len
-                && (bytes[i] == b' ' || bytes[i] == b',' || bytes[i] == b'\n' || bytes[i] == b'\r')
+                && (bytes[i] == b',' || is_step_space(bytes[i]))
             {
                 i += 1;
             }
@@ -678,7 +678,7 @@ impl<'a> EntityDecoder<'a> {
         i += 1; // Skip first '('
 
         // Skip whitespace
-        while i < len && (bytes[i] == b' ' || bytes[i] == b'\n' || bytes[i] == b'\r') {
+        while i < len && is_step_space(bytes[i]) {
             i += 1;
         }
 
@@ -709,7 +709,7 @@ impl<'a> EntityDecoder<'a> {
         i += 1; // Skip comma
 
         // Skip whitespace
-        while i < len && (bytes[i] == b' ' || bytes[i] == b'\n' || bytes[i] == b'\r') {
+        while i < len && is_step_space(bytes[i]) {
             i += 1;
         }
 
@@ -769,7 +769,7 @@ fn parse_float_inline(bytes: &[u8], offset: &mut usize) -> Option<f64> {
 
     // Skip whitespace and commas
     while i < len
-        && (bytes[i] == b' ' || bytes[i] == b',' || bytes[i] == b'\n' || bytes[i] == b'\r')
+        && (bytes[i] == b',' || is_step_space(bytes[i]))
     {
         i += 1;
     }
@@ -796,7 +796,7 @@ fn parse_next_float(bytes: &[u8], offset: &mut usize) -> Option<f64> {
 
     // Skip whitespace and commas
     while i < len
-        && (bytes[i] == b' ' || bytes[i] == b',' || bytes[i] == b'\n' || bytes[i] == b'\r')
+        && (bytes[i] == b',' || is_step_space(bytes[i]))
     {
         i += 1;
     }

@@ -155,10 +155,17 @@ shows `Face selection for <object> is stale: the evaluated surface geometry
 changed, so the selection was cleared. Select faces again.` beside the
 exclusions; the plan then re-runs without it. A conversion that reports a
 different fingerprint than the mask it was drawn on is treated the same way.
-In the browser build a pure translation of a mapped tessellation keeps its
-fingerprint and therefore its selection (the surface is unchanged relative to
-the product); the native test fixture's translated swept box reports stale.
-Both are the planner's verdicts, which the viewer only relays.
+Which edits change the fingerprint is the planner's call, and the viewer only
+relays it. Measured on this build: a geometry edit (a widened box profile)
+reports the mask stale; an ordinary (12.345, 67.891, 0.1) m translation of the
+same swept box or of a mapped quad keeps the fingerprint in the wasm planner,
+because the authored coordinates are rebuilt around a per-element origin, so
+the selection survives on a surface that is unchanged relative to its product.
+The native Rust unit test of the same fixture asserts the translated box stale,
+so native and wasm currently differ in the fingerprint's placement sensitivity;
+either verdict is safe for a mask (kept only when the planner reproduces the
+identical surface identity), and the difference is a planner follow-up, not a
+viewer decision.
 
 The renderer preview stages a masked plan as two parts of one owner through an
 explicit `AppearancePartition`: the textured face set expanded with the planned

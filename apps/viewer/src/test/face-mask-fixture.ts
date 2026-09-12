@@ -6,13 +6,14 @@ import { texturedProductSource } from './textured-product-fixture.js';
 /**
  * Two occurrences share one mapped two-triangle quad (#4404 face masks): a
  * partial selection needs at least two source triangles. A third product is a
- * unique swept box, evaluated in world space like the Rust contract fixture.
- * `movedPlacement` gives the chosen occurrence and the box an ordinary
- * (12.345, 67.891, 0.1) m placement; the box's evaluated surface fingerprint
- * changes, the mapped quad's exactly representable move keeps it.
+ * unique swept box, the Rust contract fixture's. `movedPlacement` gives the
+ * chosen occurrence and the box an ordinary (12.345, 67.891, 0.1) m placement;
+ * `resizedBox` widens the box profile from 2 m to 3 m, which changes its
+ * evaluated surface.
  */
-export function faceMaskProductSource(options: { movedPlacement?: boolean } = {}): Uint8Array {
+export function faceMaskProductSource(options: { movedPlacement?: boolean; resizedBox?: boolean } = {}): Uint8Array {
   const placement = options.movedPlacement ? '#62' : '#41';
+  const profileWidth = options.resizedBox ? '3.' : '2.';
   return new TextEncoder().encode(new TextDecoder().decode(texturedProductSource).replace('ENDSEC;\nEND-ISO', `
 #10=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(1.,1.,0.),(0.,1.,0.)));
 #11=IFCTRIANGULATEDFACESET(#10,$,.F.,((1,2,3),(1,3,4)),$);
@@ -38,7 +39,7 @@ export function faceMaskProductSource(options: { movedPlacement?: boolean } = {}
 #72=IFCPRODUCTDEFINITIONSHAPE($,$,(#73));
 #73=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#74));
 #74=IFCEXTRUDEDAREASOLID(#75,#5,#77,1.);
-#75=IFCRECTANGLEPROFILEDEF(.AREA.,$,#76,2.,1.);
+#75=IFCRECTANGLEPROFILEDEF(.AREA.,$,#76,${profileWidth},1.);
 #76=IFCAXIS2PLACEMENT2D(#78,$);
 #77=IFCDIRECTION((0.,0.,1.));
 #78=IFCCARTESIANPOINT((0.,0.));

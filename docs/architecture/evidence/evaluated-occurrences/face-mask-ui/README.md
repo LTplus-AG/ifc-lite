@@ -125,9 +125,11 @@ remesh. The planar member reopens 1:1.
   portable image, retained keeps the colour, corners partition exactly, 41
   siblings byte-identical, one extra mesh.
 - `apps/viewer/src/lib/appearance/face-masks.test.ts`: request scoping and
-  reconciliation; a placement edit of a swept body reported stale by the real
-  planner drops the mask with a diagnostic, and an exactly representable move
-  of a mapped tessellation keeps its identity (see the policy doc).
+  reconciliation against the real planner; a geometry edit of a masked swept
+  box (profile widened) is reported stale and the workspace drops the mask
+  with its diagnostic, while a (12.345, 67.891, 0.1) m translation keeps both
+  products' fingerprints and selections in the wasm build (see the policy doc
+  on the native/wasm difference).
 - `apps/viewer/src/lib/appearance/preview-mask.test.ts`, `preview-history.test.ts`,
   `packages/renderer/src/appearance-partition.test.ts`: the split binder, the
   partition's Undo/Redo inversion and the renderer's exact partition contract.

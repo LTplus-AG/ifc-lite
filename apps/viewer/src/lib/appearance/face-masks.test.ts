@@ -42,13 +42,16 @@ test('reconciliation drops a mask the planner reports stale or direct-bodied and
   assert.match(renumbered.diagnostics[0], /IFC object #45 is stale/);
 });
 
-// A placement edit changes the surface the fingerprint binds to whenever the
-// body is evaluated in world space (PR-1 contract, the swept box). The real
-// planner must refuse the old selection as stale and the workspace must drop
-// it with a visible diagnostic rather than reuse its triangle ordinals. A
-// mapped tessellation moved by an exactly representable translation keeps its
-// identity, so that selection legitimately survives.
-test('a placement edit on a masked product invalidates the selection through the real planner (#4404)', async t => {
+// The workspace never judges staleness itself: it drops a mask when the real
+// planner excludes the product as stale and says so. A geometry edit of the
+// masked body (the box profile widened from 2 m to 3 m) is such a verdict.
+// A pure translation is not, in the browser build: the planner rebuilds the
+// authored local coordinates around a per-element origin, so an ordinary
+// (12.345, 67.891, 0.1) m placement edit keeps both products' fingerprints and
+// therefore their selections, which are still meaningful on the unchanged
+// surface. (The native Rust fixture test asserts the translated swept box
+// stale; the wasm build reports it unchanged. Both are the planner's call.)
+test('a geometry edit on a masked product invalidates the selection through the real planner; a translation keeps it (#4404)', async t => {
   const wasmUrl = new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
   if (!existsSync(wasmUrl)) { t.skip('Run pnpm build:wasm for the native face-mask contract'); return; }
   const { default: init, IfcAPI } = await import('@ifc-lite/wasm');
@@ -70,17 +73,24 @@ test('a placement edit on a masked product invalidates the selection through the
     assert.deepEqual(conversion(masked, 25).maskedTriangles, [0]);
     assert.deepEqual(conversion(masked, 70).maskedTriangles, [0, 1, 2]);
     assert.equal(reconcileFaceMasks(masks, masked, label).masks, masks, 'matching fingerprints keep both selections');
+    // Translation: same surfaces relative to their products, same fingerprints, selections kept.
     const moved = planOn(faceMaskProductSource({ movedPlacement: true }), { faceMasks: faceMaskRequests(masks, [25, 70]) });
-    assert.deepEqual(moved.exclusions.map(item => item.productId), [70]);
-    assert.match(moved.exclusions[0].reason, /^Face selection is stale/);
-    assert.deepEqual(conversion(moved, 25).maskedTriangles, [0], 'an exactly representable move of a mapped tessellation keeps its surface identity');
-    const reconciled = reconcileFaceMasks(masks, moved, label);
+    assert.deepEqual(moved.exclusions, []);
+    assert.deepEqual(conversion(moved, 25).maskedTriangles, [0]);
+    assert.deepEqual(conversion(moved, 70).maskedTriangles, [0, 1, 2]);
+    assert.equal(reconcileFaceMasks(masks, moved, label).masks, masks, 'a translated placement keeps both selections in this build');
+    // Geometry edit: the box's surface changed; the planner refuses the old selection and the workspace drops it.
+    const resized = planOn(faceMaskProductSource({ resizedBox: true }), { faceMasks: faceMaskRequests(masks, [25, 70]) });
+    assert.deepEqual(resized.exclusions.map(item => item.productId), [70]);
+    assert.match(resized.exclusions[0].reason, /^Face selection is stale/);
+    assert.deepEqual(conversion(resized, 25).maskedTriangles, [0], 'the untouched quad keeps its selection');
+    const reconciled = reconcileFaceMasks(masks, resized, label);
     assert.deepEqual([...reconciled.masks.keys()], [25]);
     assert.equal(reconciled.diagnostics.length, 1);
     assert.match(reconciled.diagnostics[0], /Face selection for IFC object #70 is stale/);
     masks = reconciled.masks;
-    // Without the stale mask the moved box converts whole and reports its new identity.
-    const replanned = planOn(faceMaskProductSource({ movedPlacement: true }), { faceMasks: faceMaskRequests(masks, [25, 70]) });
+    // Without the stale mask the resized box converts whole and reports its new identity.
+    const replanned = planOn(faceMaskProductSource({ resizedBox: true }), { faceMasks: faceMaskRequests(masks, [25, 70]) });
     assert.deepEqual(replanned.exclusions, []);
     assert.notEqual(conversion(replanned, 70).surfaceFingerprint, conversion(before, 70).surfaceFingerprint);
     assert.equal(conversion(replanned, 70).maskedTriangles, undefined);

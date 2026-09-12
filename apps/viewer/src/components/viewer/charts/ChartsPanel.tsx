@@ -54,7 +54,10 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
 
   // Seed the first dashboard so the panel opens with something to click.
   useEffect(() => {
-    if (dashboards.length === 0) {
+    // Read the live slice, not the render's snapshot: StrictMode runs this
+    // effect twice on the same (empty) props and the second run must see
+    // the first run's seed rather than add a second "Model overview".
+    if (useViewerStore.getState().dashboards.length === 0) {
       const seeded = modelOverviewDashboard();
       upsertDashboard(seeded);
       setActiveDashboardId(seeded.id);

@@ -100,6 +100,22 @@ fn solar_device_has_geometry() {
     assert!(has_geometry_by_name("IfcSolarDevice"));
 }
 
+/// `IfcSchema::has_geometry` was a second copy of this rule, a leaf-level
+/// whitelist with `name.contains("Reinforc")`, and it answered `false` for
+/// `IfcChiller` (an `IfcEnergyConversionDevice` leaf it never listed) where
+/// this function answers `true`. The copy is deleted (the units review
+/// behind #4577, finding 6); these are the answers the one remaining rule gives for the
+/// leaves the whitelist missed and for the `Reinforc` shape it matched more
+/// loosely than `starts_with("IFCREINFORCING")`.
+#[test]
+fn distribution_leaves_the_deleted_whitelist_missed_have_geometry() {
+    for name in ["IFCCHILLER", "IFCCOIL", "IFCFAN", "IFCLIGHTFIXTURE", "IFCSENSOR"] {
+        assert!(has_geometry_by_name(name), "{name}");
+    }
+    // `contains("Reinforc")` also admitted this, which is not a product.
+    assert!(!has_geometry_by_name("IfcReinforcementBarProperties"));
+}
+
 #[test]
 fn ifc4x3_infrastructure_have_geometry() {
     for name in [

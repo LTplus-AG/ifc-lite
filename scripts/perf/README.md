@@ -1516,3 +1516,18 @@ fixture, not a PDF-preparation throughput claim: the report interpreter is
 bounded by the existing operation, path-number and save-depth budgets plus a
 4,096-entry listed-omission cap with complete summary counts. See the
 [raw runs](../../docs/architecture/evidence/pdf-fidelity-report/native-load.json).
+
+## Mixed planar and residual opening compatibility (#4610)
+
+Interleaved native end-to-end probes show byte-identical AC20 output and no
+material phase change. ISSUE_129 intentionally restores the exact mesh,
+vertex, and triangle counts from immediately before #4579; its comparison with
+the regressed parent is not like-for-like because the parent dropped geometry.
+A separate interleaved comparison against that pre-regression commit produced
+identical output and timings within run-to-run noise. The discarded topology
+fallback was materially slower because it built both the torn hybrid candidate
+and the full-context candidate. The useful lesson is to quarantine a known
+composition incompatibility before doing either expensive route, while keeping
+the public and pure-2D union operation correct; #4617 owns removing that
+temporary boundary once mixed routing can preserve both union semantics and
+final topology.

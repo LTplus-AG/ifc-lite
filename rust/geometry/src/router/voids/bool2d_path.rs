@@ -3,7 +3,6 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! 2D opening-subtraction fast path (IfcOpenShell's `boolean-attempt-2d`).
-//!
 //! For the common case — an extruded host whose openings penetrate straight
 //! through the extrusion depth — the exact 3D mesh-boolean is replaced by a much
 //! cheaper operation: subtract the openings' footprints from the host's 2D
@@ -11,15 +10,9 @@
 //! the holed profile. On CSG-heavy models the void-cut is ~80% of geometry time
 //! and the exact kernel is at its single-threaded, bandwidth-bound floor; this
 //! path collapses each qualifying host to a couple of profile triangulations.
-//!
-//! HYBRID per-opening eligibility. A host's openings are split at capture:
-//!   * ELIGIBLE — an extruded opening swept PARALLEL to the host axis that
-//!     penetrates the FULL host depth (a through-cut). These are subtracted from
-//!     the profile in 2D and re-extruded.
-//!   * RESIDUAL — everything else (perpendicular sleeves, partial-depth recesses,
-//!     non-extruded voids). These are cut by the exact kernel on the re-extruded
-//!     host, so one ineligible opening no longer forfeits its host's cheap ones.
-//!
+//! HYBRID eligibility subtracts parallel through-cuts in 2D. Perpendicular,
+//! partial-depth, and non-extruded openings remain residual 3D cuts on the
+//! re-extruded host, so one ineligible opening does not forfeit the cheap ones.
 //! CORRECTNESS is paramount — every gate defers to the exact kernel on the
 //! faintest doubt, and the emitted mesh is reconciled by bounds + volume against
 //! the real host mesh and self-checked watertight:
@@ -48,7 +41,10 @@ use std::sync::OnceLock;
 
 use super::geom::{mesh_signed_volume, param_cut_watertight};
 use super::{world_host_bounds, GeometryRouter, VoidContext};
-use crate::bool2d::{compute_signed_area, subtract_multiple_2d_counted};
+use crate::bool2d::{
+    compute_signed_area, subtract_multiple_2d_counted,
+    subtract_multiple_2d_counted_mixed_compat,
+};
 use crate::extrusion::{apply_transform, extrude_profile, extrude_profile_watertight};
 use crate::mesh::Mesh;
 use crate::profile::Profile2D;
@@ -274,8 +270,12 @@ impl GeometryRouter {
         // is kept, silently dropping geometry. Reject any multi-shape result and
         // require at least one hole to have formed (a zero-hole result would signal
         // a projection error rather than a real cut).
-        let (holed, n_shapes) =
-            subtract_multiple_2d_counted(&cut.host_profile, &cut.footprints).ok()?;
+        let subtract = if cut.residual.is_some() {
+            subtract_multiple_2d_counted_mixed_compat
+        } else {
+            subtract_multiple_2d_counted
+        };
+        let (holed, n_shapes) = subtract(&cut.host_profile, &cut.footprints).ok()?;
         if n_shapes != 1 {
             return None;
         }
@@ -304,18 +304,12 @@ impl GeometryRouter {
             return None;
         }
 
+        FIRES.fetch_add(1, Ordering::Relaxed);
+        FOOTPRINTS.fetch_add(cut.footprints.len() as u64, Ordering::Relaxed);
         Some(out)
     }
 
-    /// Record an accepted 2D cut after any residual routing pass has also
-    /// passed its final watertightness check. An attempted 2D prefix that is
-    /// discarded must not inflate the fast-path telemetry.
-    pub(super) fn record_bool2d_cut(&self, cut: &Bool2dCut) {
-        FIRES.fetch_add(1, Ordering::Relaxed);
-        FOOTPRINTS.fetch_add(cut.footprints.len() as u64, Ordering::Relaxed);
-    }
-
-    /// The captured residual (ineligible-opening) routing context, if any.
+    /// The captured residual (ineligible-opening) exact-kernel context, if any.
     pub(super) fn bool2d_residual<'a>(&self, cut: &'a Bool2dCut) -> Option<&'a VoidContext> {
         cut.residual.as_deref()
     }

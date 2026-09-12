@@ -77,4 +77,7 @@ test('a point source request records target-referenced orientation and validates
   assert.throws(() => transferSource(source, { ...settings, neighborhoodRadiusMetres: 0.6 }), /support radius/);
   assert.throws(() => transferSource(source, { ...settings, minNeighbors: 2 }), /neighbours/);
   assert.throws(() => transferSource(source, { ...settings, maxNeighbors: 3 }), /neighbours/);
+  // The planner's index bound (distance within 16 support radii) is read here, before any payload is shipped.
+  assert.throws(() => transferSource(source, { ...settings, maxDistanceMetres: 0.5, neighborhoodRadiusMetres: 0.03, surfaceBandMetres: 0.003 }), /16 support radii/);
+  assert.doesNotThrow(() => transferSource(source, { ...settings, maxDistanceMetres: 0.48, neighborhoodRadiusMetres: 0.03 }));
 });

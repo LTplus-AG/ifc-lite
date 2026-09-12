@@ -34,6 +34,9 @@ export function transferSource(source: ScanSource, settings: ScanTransferSetting
     if (!Number.isFinite(settings.neighborhoodRadiusMetres) || settings.neighborhoodRadiusMetres <= 0 || settings.neighborhoodRadiusMetres > 0.5
       || !Number.isFinite(settings.surfaceBandMetres) || settings.surfaceBandMetres <= 0 || settings.surfaceBandMetres > settings.neighborhoodRadiusMetres
       || !Number.isInteger(settings.minNeighbors) || settings.minNeighbors < 3 || !Number.isInteger(settings.maxNeighbors) || settings.maxNeighbors < settings.minNeighbors || settings.maxNeighbors > 256) throw new Error('Point fit needs a support radius within 0.5 m, a surface band within it and 3..256 neighbours.');
+    // Mirrors the planner's index bound so the refusal is read here, not after
+    // the payload has crossed into the worker.
+    if (settings.maxDistanceMetres > 16 * settings.neighborhoodRadiusMetres) throw new Error('Keep the maximum scan distance within 16 support radii.');
     // The retained sample carries positions and colours only: no per-point
     // normals and no scanner stations survive the streamed ingest, so the
     // orientation source is the IFC face itself and the plan records it.

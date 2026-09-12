@@ -2,14 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useEffect, useRef, useState } from 'react';
-import { Renderer, Raycaster, type Intersection } from '@ifc-lite/renderer';
+import { Raycaster, type Intersection } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { appearanceAssets } from '@/lib/appearance/model-assets';
 import { Button } from '@/components/ui/button';
 import { capturedScreenRegion } from './capture-screen-region';
+import { NO_MARKERS, PreviewMarkers, useLocalPreviewRenderer, type PreviewMarker } from './local-preview-renderer';
 
 const NO_PARTS: readonly MeshData[] = [];
-const NO_MARKERS: { id: string; point: { x: number; y: number; z: number }; check?: boolean }[] = [];
 /** How a region gesture was made, so a face-selection host can add, remove or toggle (#4404). */
 export interface RegionGesture { kind: 'marquee' | 'click'; subtract: boolean }
 export interface FaceSelectionMode {
@@ -22,128 +22,90 @@ export interface FaceSelectionMode {
 export function AppearanceMeshPreview({ mesh, assetId, additionalMeshes = NO_PARTS, initialPlane, triangles, disabled, onRegion, onReady, onError, onLandmark, markers = NO_MARKERS, regionControls = true, instruction, canvasLabel, faceSelection }: {
   mesh: MeshData; assetId?: string; additionalMeshes?: readonly MeshData[]; triangles: readonly number[]; disabled: boolean;
   onRegion(ids: number[], gesture: RegionGesture): void; onReady(ready: boolean): void; onError(message: string): void;
-  onLandmark?(hit: Intersection): void; markers?: { id: string; point: { x: number; y: number; z: number }; check?: boolean }[];
+  onLandmark?(hit: Intersection): void; markers?: PreviewMarker[];
   initialPlane?: { normal: readonly [number, number, number]; up: readonly [number, number, number] };
   regionControls?: boolean; instruction?: string; canvasLabel?: string;
   /** Face-selection mode: the whole surface stays visible, select mode is sticky, a click toggles one triangle. */
   faceSelection?: FaceSelectionMode;
 }) {
-  const canvas = useRef<HTMLCanvasElement>(null), renderer = useRef<Renderer | null>(null);
   const bitmap = useRef<ImageBitmap | null>(null);
-  const failure = useRef<((message: string) => void) | null>(null);
-  const callbacks = useRef({ onRegion, onReady, onError, onLandmark }); callbacks.current = { onRegion, onReady, onError, onLandmark };
-  const markerRef = useRef(markers); markerRef.current = markers;
-  const [projected, setProjected] = useState<{ id: string; x: number; y: number; check?: boolean }[]>([]);
-  function projectMarkers(view: Renderer) {
-    const element = canvas.current; if (!element) return;
-    const next = markerRef.current.flatMap(marker => { const p = view.getCamera().projectToScreen(marker.point, element.getBoundingClientRect().width, element.getBoundingClientRect().height); return p ? [{ id: marker.id, check: marker.check, x: p.x, y: p.y }] : []; });
-    setProjected(previous => previous.length === next.length && previous.every((p, i) => p.id === next[i].id && p.x === next[i].x && p.y === next[i].y && p.check === next[i].check) ? previous : next);
-  }
+  /** The image lease for the current scene; released whenever that scene's view is discarded. */
+  const owner = useRef<{ kind: 'draft'; id: string } | null>(null);
   const region = useRef(triangles); region.current = triangles;
-  const blocked = useRef(disabled); blocked.current = disabled;
-  const [generation, setGeneration] = useState(0), [failed, setFailed] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [box, setBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const gesture = useRef<{ start: { x: number; y: number }; last: { x: number; y: number }; pointer: number } | null>(null);
+  const preview = useLocalPreviewRenderer({
+    deps: [mesh, assetId, additionalMeshes, initialPlane], disabled, markers, onReady, onError,
+    async upload(view, signal) {
+      if ((!assetId && mesh.textureRef) || additionalMeshes.some(part => part.textureRef)) throw new Error('The preview is missing a retained image for its textured geometry.');
+      const lease = { kind: 'draft' as const, id: `capture-preview:${crypto.randomUUID()}` };
+      owner.current = lease;
+      if (assetId) appearanceAssets.retain(assetId, lease);
+      bitmap.current = assetId ? await appearanceAssets.decode(assetId, lease, signal) : null;
+      signal.throwIfAborted();
+      if (!draw()) return;
+      view.fitToView();
+      if (initialPlane) {
+        const camera = view.getCamera(), target = camera.getTarget(), distance = camera.getDistance();
+        camera.setUp(...initialPlane.up);
+        camera.setPosition(target.x + initialPlane.normal[0] * distance, target.y + initialPlane.normal[1] * distance, target.z + initialPlane.normal[2] * distance);
+      }
+    },
+    release() {
+      bitmap.current = null;
+      if (owner.current) { appearanceAssets.releaseOwner(owner.current); owner.current = null; }
+    },
+  });
   function draw() {
-    const view = renderer.current, image = bitmap.current;
+    const view = preview.renderer.current, image = bitmap.current;
     if (!view || (assetId && !image)) return false;
     try {
-    view.getScene().clear();
-    const count = mesh.indices.length / 3;
-    const visible = selecting && !faceSelection ? Array.from({ length: count }, (_, i) => i) : region.current;
-    const base = mesh.origin ?? [0, 0, 0];
-    const corners = (ids: readonly number[]) => Uint32Array.from(ids.flatMap(id => [mesh.indices[id * 3], mesh.indices[id * 3 + 1], mesh.indices[id * 3 + 2]]));
-    const parts: MeshData[] = visible.length ? [{ ...mesh, origin: [0,0,0], textureBitmap: image ?? undefined, indices: corners(visible) }] : [];
-    if (faceSelection) {
-      const chosen = new Set(visible), rest = Array.from({ length: count }, (_, i) => i).filter(id => !chosen.has(id));
-      if (rest.length) parts.push({ ...mesh, origin: [0,0,0], indices: corners(rest), color: [...faceSelection.unselectedColor], uvs: undefined, texture: undefined, textureRef: undefined, textureBitmap: undefined });
-    }
-    for (const part of additionalMeshes) parts.push({ ...part, origin: [
-      (part.origin?.[0] ?? 0) - base[0], (part.origin?.[1] ?? 0) - base[1], (part.origin?.[2] ?? 0) - base[2]] });
-    if (parts.length) view.loadGeometry(parts);
-    view.render(); projectMarkers(view); return true;
-    } catch (error) { failure.current?.(error instanceof Error ? error.message : String(error)); return false; }
-  }
-  useEffect(() => {
-    const element = canvas.current; if (!element) return;
-    const controller = new AbortController(), view = new Renderer(element);
-    const owner = { kind: 'draft' as const, id: `capture-preview:${crypto.randomUUID()}` };
-    let frame = 0, observer: ResizeObserver | undefined;
-    const wheel = (event: WheelEvent) => { event.preventDefault(); event.stopPropagation(); if (!blocked.current && renderer.current === view) { view.getCamera().zoom(event.deltaY); view.requestRender(); } };
-    element.addEventListener('wheel', wheel, { passive: false });
-    setFailed(false); callbacks.current.onReady(false);
-    const fail = (message: string) => {
-      if (controller.signal.aborted) return; controller.abort(); cancelAnimationFrame(frame);
-      setFailed(true); callbacks.current.onReady(false); callbacks.current.onError(message);
-      observer?.disconnect();
-      if (renderer.current === view) { renderer.current = null; bitmap.current = null; }
-      view.destroy(); appearanceAssets.releaseOwner(owner);
-    };
-    failure.current = fail;
-    const unsubscribeLoss = view.onDeviceLost(() => fail('The preview graphics connection was lost. Reload the preview to continue.'));
-    void (async () => {
-      try {
-        if ((!assetId && mesh.textureRef) || additionalMeshes.some(part => part.textureRef)) throw new Error('The preview is missing a retained image for its textured geometry.');
-        if (assetId) appearanceAssets.retain(assetId, owner);
-        const image = assetId ? await appearanceAssets.decode(assetId, owner, controller.signal) : null;
-        await view.init(); controller.signal.throwIfAborted();
-        renderer.current = view; bitmap.current = image;
-        const resize = () => { view.resize(element.clientWidth, element.clientHeight); view.requestRender(); };
-        observer = new ResizeObserver(resize); observer.observe(element); resize();
-        if (!draw()) { view.destroy(); appearanceAssets.releaseOwner(owner); return; } view.fitToView();
-        if (initialPlane) {
-          const camera = view.getCamera(), target = camera.getTarget(), distance = camera.getDistance();
-          camera.setUp(...initialPlane.up);
-          camera.setPosition(target.x + initialPlane.normal[0] * distance, target.y + initialPlane.normal[1] * distance, target.z + initialPlane.normal[2] * distance);
-        }
-        view.requestRender();
-        const tick = () => { if (controller.signal.aborted) return; try { if (view.consumeRenderRequest()) { view.render(); projectMarkers(view); } frame = requestAnimationFrame(tick); } catch (error) { fail(error instanceof Error ? error.message : String(error)); } };
-        frame = requestAnimationFrame(tick); callbacks.current.onReady(true);
-      } catch (error) {
-        if (!controller.signal.aborted) { setFailed(true); callbacks.current.onError(error instanceof Error ? error.message : String(error)); }
-        view.destroy(); appearanceAssets.releaseOwner(owner);
+      view.getScene().clear();
+      const count = mesh.indices.length / 3;
+      const visible = selecting && !faceSelection ? Array.from({ length: count }, (_, i) => i) : region.current;
+      const base = mesh.origin ?? [0, 0, 0];
+      const corners = (ids: readonly number[]) => Uint32Array.from(ids.flatMap(id => [mesh.indices[id * 3], mesh.indices[id * 3 + 1], mesh.indices[id * 3 + 2]]));
+      const parts: MeshData[] = visible.length ? [{ ...mesh, origin: [0, 0, 0], textureBitmap: image ?? undefined, indices: corners(visible) }] : [];
+      if (faceSelection) {
+        const chosen = new Set(visible), rest = Array.from({ length: count }, (_, i) => i).filter(id => !chosen.has(id));
+        if (rest.length) parts.push({ ...mesh, origin: [0, 0, 0], indices: corners(rest), color: [...faceSelection.unselectedColor], uvs: undefined, texture: undefined, textureRef: undefined, textureBitmap: undefined });
       }
-    })();
-    return () => {
-      controller.abort(); cancelAnimationFrame(frame); observer?.disconnect(); unsubscribeLoss(); element.removeEventListener('wheel', wheel);
-      if (failure.current === fail) failure.current = null;
-      view.destroy(); if (renderer.current === view) { renderer.current = null; bitmap.current = null; }
-      appearanceAssets.releaseOwner(owner); callbacks.current.onReady(false);
-    };
-  }, [mesh, assetId, additionalMeshes, initialPlane, generation]);
-  useEffect(() => { draw(); }, [triangles, selecting, faceSelection]);
-  useEffect(() => { renderer.current?.requestRender(); }, [markers]);
-  function point(event: React.PointerEvent<HTMLCanvasElement>) {
-    const bounds = event.currentTarget.getBoundingClientRect(); return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+      for (const part of additionalMeshes) parts.push({ ...part, origin: [
+        (part.origin?.[0] ?? 0) - base[0], (part.origin?.[1] ?? 0) - base[1], (part.origin?.[2] ?? 0) - base[2]] });
+      if (parts.length) view.loadGeometry(parts);
+      view.render(); preview.projectMarkers(view); return true;
+    } catch (error) { preview.failure.current?.(error instanceof Error ? error.message : String(error)); return false; }
   }
+  useEffect(() => { draw(); }, [triangles, selecting, faceSelection]);
   return <div className="space-y-2">
-    {failed && <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => setGeneration(value => value + 1)}>Reload preview</Button>}
+    {preview.failed && <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={preview.reload}>Reload preview</Button>}
     {regionControls && <div className="flex gap-2"><Button type="button" size="sm" variant={selecting ? 'secondary' : 'outline'} aria-pressed={selecting}
       disabled={disabled} onClick={() => { setSelecting(value => !value); setBox(null); }}>{faceSelection ? 'Pick faces' : 'Select region'}</Button>
       <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => onRegion(Array.from({ length: mesh.indices.length / 3 }, (_, i) => i), { kind: 'marquee', subtract: false })}>{faceSelection ? 'All faces' : 'Entire surface'}</Button></div>}
     <div className="relative overflow-hidden rounded border">
-      <canvas ref={canvas} aria-label={canvasLabel ?? "Captured surface preview"} className="h-64 w-full touch-none" onContextMenu={event => event.preventDefault()}
-        onPointerDown={event => { if (!event.isPrimary || disabled || !renderer.current) return; const p = point(event); gesture.current = { start: p, last: p, pointer: event.pointerId }; event.currentTarget.setPointerCapture(event.pointerId); }}
+      <canvas ref={preview.canvas} aria-label={canvasLabel ?? 'Captured surface preview'} className="h-64 w-full touch-none" onContextMenu={event => event.preventDefault()}
+        onPointerDown={preview.beginGesture}
         onPointerMove={event => {
-          const current = gesture.current, view = renderer.current; if (!current || current.pointer !== event.pointerId || !view || disabled) return;
-          const p = point(event);
-          if (selecting) setBox({ x: Math.min(p.x,current.start.x), y: Math.min(p.y,current.start.y), width: Math.abs(p.x-current.start.x), height: Math.abs(p.y-current.start.y) });
-          else { view.getCamera().orbit(p.x-current.last.x,p.y-current.last.y); view.requestRender(); }
-          current.last = p;
+          const live = preview.currentGesture(event); if (!live) return;
+          const p = preview.point(event);
+          if (selecting) { setBox({ x: Math.min(p.x, live.current.start.x), y: Math.min(p.y, live.current.start.y), width: Math.abs(p.x - live.current.start.x), height: Math.abs(p.y - live.current.start.y) }); live.current.last = p; }
+          else preview.orbit(live.view, live.current, p);
         }}
         onPointerUp={event => {
-          const current = gesture.current, view = renderer.current;
-          if (!current || current.pointer !== event.pointerId || !view || disabled) return;
-          gesture.current = null; setBox(null);
-          const click = Math.hypot(point(event).x - current.start.x, point(event).y - current.start.y) < 4;
-          const pick = () => { const p = point(event); const element = event.currentTarget; const ray = view.getCamera().unprojectToRay(p.x * element.width / element.getBoundingClientRect().width, p.y * element.height / element.getBoundingClientRect().height, element.width, element.height); return new Raycaster().raycast(ray, [{ ...mesh, origin: [0,0,0] }]); };
-          if (!selecting && callbacks.current.onLandmark && click) { const hit = pick(); if (hit) callbacks.current.onLandmark(hit); }
+          const live = preview.currentGesture(event); if (!live) return;
+          preview.gesture.current = null; setBox(null);
+          const p = preview.point(event), element = event.currentTarget, click = preview.isClick(live.current, p);
+          const pick = () => {
+            const rect = element.getBoundingClientRect();
+            const ray = live.view.getCamera().unprojectToRay(p.x * element.width / rect.width, p.y * element.height / rect.height, element.width, element.height);
+            return new Raycaster().raycast(ray, [{ ...mesh, origin: [0, 0, 0] }]);
+          };
+          if (!selecting && onLandmark && click) { const hit = pick(); if (hit) onLandmark(hit); }
           if (selecting && faceSelection && click) { const hit = pick(); if (hit) onRegion([hit.triangleIndex], { kind: 'click', subtract: event.altKey }); return; }
-          if (selecting) { const size = event.currentTarget; onRegion(capturedScreenRegion(mesh,current.start,point(event), p => view.getCamera().projectToScreen(p,size.clientWidth,size.clientHeight)), { kind: 'marquee', subtract: event.altKey }); if (!faceSelection) setSelecting(false); }
-        }} onPointerCancel={() => { gesture.current = null; setBox(null); }}
+          if (selecting) { onRegion(capturedScreenRegion(mesh, live.current.start, p, q => live.view.getCamera().projectToScreen(q, element.clientWidth, element.clientHeight)), { kind: 'marquee', subtract: event.altKey }); if (!faceSelection) setSelecting(false); }
+        }} onPointerCancel={() => { preview.gesture.current = null; setBox(null); }}
  />
-      {projected.map(marker => <span key={marker.id} className={`pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border px-1 text-[10px] font-bold shadow ${marker.check ? 'bg-amber-100 text-amber-950' : 'bg-primary text-primary-foreground'}`} style={{ left: marker.x, top: marker.y }}>{marker.id}</span>)}
+      <PreviewMarkers projected={preview.projected} />
       {box && <div className="pointer-events-none absolute border border-primary bg-primary/15" style={{ left: box.x, top: box.y, width: box.width, height: box.height }} />}
     </div>
     <p className="text-[11px] text-muted-foreground">{instruction ?? (faceSelection

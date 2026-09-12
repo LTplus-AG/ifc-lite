@@ -11,19 +11,12 @@ import { computeFullSourceHash, computeFullSourceHashFromBlob } from '@/utils/so
 import { placementFrameKey } from '@/lib/model-placement/persistence';
 import { appearanceRevision, captureAppearanceSource } from '../command';
 import { prepareAppearanceSerialization } from '../serialization';
-import { modelAppearanceAssets } from '../model-assets';
-import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
 import { scanTargetGlobalId } from './landmarks';
 import { sameLandmarkGeometry } from './geometry-proof';
-import { samePointSource, snapshotPointSource, type ScanPointSource } from './point-source';
+import { snapshotScanSource, type ScanSource, type ScanSourceSelector } from './session-source';
 import type { ScanFrame } from './types';
 
-/** Which capture of a loaded model is the alignment source: one textured GLB
- * surface by mesh ordinal, or the model's streamed RGB point cloud (#4381). */
-export type ScanSourceSelector = number | 'points';
-export type ScanSource =
-  | { kind: 'mesh'; mesh: MeshData; meshOrdinal: number; assetId: string }
-  | { kind: 'points'; points: ScanPointSource };
+export type { ScanSource, ScanSourceSelector } from './session-source';
 export interface ScanSession {
   sourceModelId: string; targetModelId: string; selector: ScanSourceSelector;
   source: ScanSource;
@@ -47,24 +40,8 @@ export async function prepareScanSession(sourceModelId: string, selector: ScanSo
   if (!model?.sourceFile || !target?.ifcDataStore || !view || sourceModelId === targetModelId) throw new Error('Choose a loaded textured GLB surface or point cloud and an editable IFC destination.');
   if (target.ifcDataStore.source.byteLength > 128 * 1024 * 1024) throw new Error('Choose a destination IFC below 128 MiB.');
   if (initial.modelPlacement.preview || initial.collabRoomId) throw new Error('Finish repositioning and leave the shared room before aligning a scan.');
-  const isPoints = selector === 'points';
-  const mesh = isPoints ? undefined : model.geometryResult?.meshes[selector];
-  const handleId = model.pointCloudHandleId;
-  if (isPoints) {
-    if (handleId === undefined || model.loadState === 'error') throw new Error('Choose a completely streamed point cloud (LAS, LAZ, E57, PLY, PCD, PTS or XYZ).');
-    if (model.sourceFile.size > 1024 * 1024 * 1024) throw new Error('Choose a point-cloud source below 1 GiB so its identity can be hashed.');
-  } else {
-    if (!/\.glb$/i.test(model.sourceFile.name) || !mesh?.textureRef || !mesh.uvs) throw new Error('Choose a loaded textured GLB surface and an editable IFC destination.');
-    if (mesh.indices.length / 3 > 200_000 || mesh.positions.length / 3 > 200_000 || model.sourceFile.size > 128 * 1024 * 1024) throw new Error('Choose a source surface below 200,000 triangles/vertices and source files below 128 MiB.');
-  }
-  const retained = isPoints ? getPointCloudScanSample(handleId!) : null;
-  if (isPoints && !retained) throw new Error('The point cloud kept no retained sample. Reload it before aligning.');
-  const points = retained ? snapshotPointSource(handleId!, retained) : null;
-  const positions = mesh?.positions, indices = mesh?.indices, uvs = mesh?.uvs;
-  const meshSnapshot: MeshData | null = mesh ? { ...mesh, positions: positions!.slice(), indices: indices!.slice(), normals: mesh.normals.slice(), uvs: uvs!.slice(), origin: mesh.origin?.slice() as MeshData['origin'] } : null;
-  const color = mesh ? [...mesh.color] : [], textureRef = mesh?.textureRef ? { ...mesh.textureRef } : null;
-  const origin = mesh?.origin?.slice(), frame = placementFrameKey(initial), placement = initial.modelPlacement;
-  const assetId = mesh?.textureRef ? modelAppearanceAssets.resolveImageAsset(sourceModelId, mesh.textureRef.url) : '';
+  const snapshot = snapshotScanSource(model, sourceModelId, selector);
+  const frame = placementFrameKey(initial), placement = initial.modelPlacement;
   new StoreEditor(target.ifcDataStore, view);
   const guard = captureAppearanceSource(view), revision = appearanceRevision(targetModelId), nextExpressId = view.peekNextExpressId();
   const schema = target.schemaVersion.startsWith('IFC4X3') ? 'IFC4X3' : 'IFC4';
@@ -86,15 +63,7 @@ export async function prepareScanSession(sourceModelId: string, selector: ScanSo
       || currentTarget?.ifcDataStore !== target.ifcDataStore || currentTarget?.geometryResult !== target.geometryResult
       || now.mutationVersion !== initial.mutationVersion || now.modelPlacement !== placement || placementFrameKey(now) !== frame
       || now.collabRoomId || now.modelPlacement.preview) throw new Error('The scan, IFC model or coordinate frame changed. Restart alignment.');
-    if (points) {
-      if (currentSource.pointCloudHandleId !== handleId || !samePointSource(points, getPointCloudScanSample(handleId!))) throw new Error('The scan, IFC model or coordinate frame changed. Restart alignment.');
-    } else if (!mesh || !meshSnapshot || !textureRef || model.geometryResult?.meshes[selector as number] !== mesh
-      || mesh.positions !== positions || mesh.indices !== indices || mesh.uvs !== uvs
-      || !mesh.color.every((v, i) => v === color[i]) || mesh.textureRef?.url !== textureRef.url
-      || mesh.textureRef?.repeatS !== textureRef.repeatS || mesh.textureRef?.repeatT !== textureRef.repeatT
-      || !equal(positions!, meshSnapshot.positions) || !equal(indices!, meshSnapshot.indices) || !equal(uvs!, meshSnapshot.uvs!)
-      || (origin ? !mesh.origin || !equal(mesh.origin, origin) : mesh.origin !== undefined)
-      || modelAppearanceAssets.resolveImageAsset(sourceModelId, mesh.textureRef!.url) !== assetId) throw new Error('The scan, IFC model or coordinate frame changed. Restart alignment.');
+    snapshot.validate(currentSource);
     guard.validate(now.mutationViews.get(targetModelId));
     for (const [piece, snapshot] of targetMeshes) {
       if (!target.geometryResult?.meshes.includes(piece) || !equal(piece.positions, snapshot.positions) || !equal(piece.indices, snapshot.indices)
@@ -112,9 +81,8 @@ export async function prepareScanSession(sourceModelId: string, selector: ScanSo
   const frameHash = await computeFullSourceHash(new TextEncoder().encode(JSON.stringify({ frame, placement: [...placement.placements], revision: placement.revision, targetModelId })));
   validate();
   if (!sourceHash || !targetHash || !frameHash) throw new Error('Secure content hashing is unavailable. Open the viewer in a secure browser context.');
-  const sourceFrameKey = points ? `pointcloud-native-z-up-metres-v1:${sourceHash}` : `glb-scene-y-up-metres-v1:${sourceHash}:${selector}`;
-  const source: ScanSource = points ? { kind: 'points', points } : { kind: 'mesh', mesh: meshSnapshot!, meshOrdinal: selector as number, assetId };
-  return { sourceModelId, targetModelId, selector, source, retainTargetMesh, afterAppearance() {
+  const sourceFrameKey = snapshot.frameKey(sourceHash);
+  return { sourceModelId, targetModelId, selector, source: snapshot.source, retainTargetMesh, afterAppearance() {
       validate();
       const paired = [...targetMeshes].map(([piece, saved]) => ({ guid: scanTargetGlobalId(piece.expressId), ordinal: target.geometryResult!.meshes.indexOf(piece), mesh: { ...piece, positions: saved.positions, indices: saved.indices, origin: saved.origin } }));
       const untouched = target.geometryResult!.meshes.map((piece, ordinal) => ({ piece, ordinal })).filter(({ piece }) => !targetMeshes.has(piece));

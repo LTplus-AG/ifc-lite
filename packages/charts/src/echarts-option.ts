@@ -44,7 +44,12 @@ export interface BuildOptionArgs {
   selected?: ReadonlyArray<number | ChartItem>;
   /** Show the title inside the chart; a host card usually draws its own. */
   showTitle?: boolean;
+  /** Width available to the chart in px; sizes the category labels so none is dropped. */
+  width?: number;
 }
+
+/** Fallback width when the host has not measured yet. */
+const DEFAULT_WIDTH = 600;
 
 /** A plain-object ECharts option; typed loosely so this module needs no ECharts import. */
 export type EChartsOptionObject = Record<string, unknown>;
@@ -153,9 +158,13 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
   // bar / stackedBar / histogram / timeline: category x, measure y
   const stacked = spec.type === 'stackedBar';
   const labels = categories.map((c) => c.label);
-  // Long IFC class names ("IfcBuildingElementProxy") collide upright well
-  // before eight buckets; rotate as soon as the row of labels is long.
-  const rotate = categories.length > 8 || labels.join('').length > 40 ? 30 : 0;
+  // Long IFC class names ("IfcBuildingElementProxy") would collide upright
+  // and `hideOverlap` would then drop a neighbour outright. Each label gets
+  // its share of the width and is truncated with an ellipsis instead — the
+  // full name is in the tooltip and the legend. Past eight buckets the
+  // shares are too narrow to read, so the labels tilt.
+  const labelWidth = Math.max(36, Math.floor((args.width ?? DEFAULT_WIDTH) / Math.max(1, categories.length)) - 6);
+  const rotate = categories.length > 8 ? 30 : 0;
   // A count needs no axis title; a sum says what it sums, and gets room for it.
   const yName = spec.measure.agg === 'sum' ? measureLabel(aggregation) : '';
   return {
@@ -168,7 +177,7 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
       type: 'category',
       data: labels,
       axisLine: { lineStyle: { color: theme.axis } },
-      axisLabel: { color: theme.mutedText, interval: 0, rotate, hideOverlap: true },
+      axisLabel: { color: theme.mutedText, interval: 0, rotate, width: labelWidth, overflow: 'truncate', hideOverlap: true },
     },
     yAxis: {
       type: 'value',

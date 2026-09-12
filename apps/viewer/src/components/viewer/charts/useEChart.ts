@@ -100,7 +100,8 @@ export function readChartTheme(): ChartTheme {
 }
 
 export interface UseEChartArgs {
-  option: EChartsOptionObject | null;
+  /** Builds the option for the host's measured width (0 before the first measure); `null` draws nothing. */
+  option: (width: number) => EChartsOptionObject | null;
   /** Items fully selected in 3D (marked selected in the option) and partially selected (emphasised). */
   selected: readonly ChartItem[];
   partial: readonly ChartItem[];
@@ -108,13 +109,18 @@ export interface UseEChartArgs {
   renderer?: ChartRenderer;
 }
 
-/** Mount a chart in the returned ref's element and keep it in step with `option` / `selected`. */
-export function useEChart({ option, selected, partial, onSelect, renderer = echartsRenderer }: UseEChartArgs): { ref: React.RefObject<HTMLDivElement | null>; ready: boolean } {
+/**
+ * Mount a chart in the returned ref's element and keep it in step with
+ * `option` / `selected`. `width` is the host's measured width in px (0 until
+ * measured), for options that size themselves to it.
+ */
+export function useEChart({ option, selected, partial, onSelect, renderer = echartsRenderer }: UseEChartArgs): { ref: React.RefObject<HTMLDivElement | null>; ready: boolean; width: number } {
   const ref = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<ChartRendererHandle | null>(null);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
   const [ready, setReady] = useState(false);
+  const [width, setWidth] = useState(0);
   // Re-render on theme change so the tokens are re-read.
   const theme = useViewerStore((s) => s.theme);
 
@@ -127,7 +133,11 @@ export function useEChart({ option, selected, partial, onSelect, renderer = echa
       handleRef.current = create(el, { onSelect: (e) => onSelectRef.current(e) });
       setReady(true);
     });
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => handleRef.current?.resize());
+    setWidth(Math.round(el.clientWidth));
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
+      handleRef.current?.resize();
+      setWidth(Math.round(el.clientWidth));
+    });
     observer?.observe(el);
     return () => {
       disposed = true;
@@ -139,10 +149,12 @@ export function useEChart({ option, selected, partial, onSelect, renderer = echa
   }, [renderer]);
 
   useEffect(() => {
-    if (!ready || !option) return;
-    handleRef.current?.setOption(option);
+    if (!ready) return;
+    const built = option(width);
+    if (!built) return;
+    handleRef.current?.setOption(built);
     handleRef.current?.select(selected, partial);
-  }, [ready, option, theme, selected, partial]);
+  }, [ready, option, width, theme, selected, partial]);
 
-  return { ref, ready };
+  return { ref, ready, width };
 }

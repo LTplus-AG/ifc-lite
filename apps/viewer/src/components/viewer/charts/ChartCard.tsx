@@ -71,11 +71,11 @@ export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onA
 
   const selection = useMemo(() => (aggregation ? link.selectionFor(aggregation) : { full: [], partial: [] }), [aggregation, link]);
 
-  const option = useMemo(() => {
+  const option = useCallback((width: number) => {
     if (!aggregation) return null;
     // `theme` in the deps re-reads the stylesheet tokens on a light/dark switch.
     void theme;
-    return buildEChartsOption({ aggregation, theme: readChartTheme(), selected: selection.full });
+    return buildEChartsOption({ aggregation, theme: readChartTheme(), selected: selection.full, width: width || undefined });
   }, [aggregation, selection.full, theme]);
 
   const onSelect = useCallback((event: ChartSelectEvent) => {

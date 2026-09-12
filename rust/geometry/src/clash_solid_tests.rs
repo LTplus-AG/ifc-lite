@@ -105,6 +105,46 @@ fn an_axis_below_its_own_band_is_caught_even_when_a_different_axis_is_the_argmin
     );
 }
 
+/// Rust review follow-up (finding D4): the withheld pair's REPORTED
+/// `(thickness, required)` must come from one axis. The gate decision above
+/// was right, but the report still tracked the global argmin extent (Z,
+/// 0.6 mm) and paired it with Z's own band (0.49 mm), so the user read
+/// "thinner (0.60 mm) than the kernel can resolve (needs >= 0.49 mm)": the
+/// premise assertion in the test above (`old_thickness >= old_required`) was
+/// exactly the returned pair. The report is now the thinnest VIOLATING axis:
+/// X at 2 mm against X's ~9.5 mm band. Mutation: restoring the unconditional
+/// `if t < thickness` update fails the `thickness < required` assertion.
+#[test]
+fn withheld_pair_reports_the_violating_axis() {
+    let axes: [[f64; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let mut band = NearBand::default();
+    for p in [
+        [10000.0, 0.0, 0.0],
+        [10001.0, 1.0, 1.0],
+        [10000.998, 0.0, 0.9994],
+        [10002.0, 1.0, 2.0],
+    ] {
+        band.observe_point(&p);
+    }
+    let overlap_lo = [10000.998, 0.0, 0.9994];
+    let overlap_hi = [10001.0, 1.0, 1.0];
+    let tris: Vec<Tri> = vec![[overlap_lo, overlap_hi, overlap_lo]];
+
+    let (thickness, required) = trust_gate_reason(&tris, &axes, &band, TRUST_BAND_MULTIPLE)
+        .expect("the 2 mm X overlap is inside X's band and must be withheld");
+    assert!(
+        thickness < required,
+        "the withheld report contradicts itself: thickness {thickness} is not below required \
+         {required} (the pair came from two different axes)"
+    );
+    let x_extent = overlap_hi[0] - overlap_lo[0];
+    let x_required = TRUST_BAND_MULTIPLE * band.scaled_band2(axes[0], 1.0).sqrt();
+    assert!(
+        (thickness - x_extent).abs() < 1e-9 && (required - x_required).abs() < 1e-12,
+        "expected the violating X pair ({x_extent}, {x_required}), got ({thickness}, {required})"
+    );
+}
+
 /// PR #2573 review finding, pinned as a KNOWN LIMITATION rather than fixed —
 /// see `component_groups`'s doc comment for the full reasoning. Two triangles
 /// that share only one bit-identical vertex (no shared edge) are still
@@ -149,4 +189,8 @@ fn two_disjoint_triangles_with_no_shared_geometry_are_two_components() {
     let groups = component_groups(&[tri_a, tri_b]);
 
     assert_eq!(groups.len(), 2);
+    // Components come back in first-triangle order, so the trust gate's
+    // reported pair does not depend on hash-map iteration order (rust review
+    // follow-up, finding D "minor": `groups.into_values()` varied per run).
+    assert_eq!(groups, vec![vec![0], vec![1]]);
 }

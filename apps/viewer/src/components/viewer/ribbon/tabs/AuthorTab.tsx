@@ -10,8 +10,7 @@ import { hasWorkspaceHistory, replayWorkspaceHistory } from '@/lib/model-placeme
  * toolbar (viewer/commenter roles cannot unlock authoring).
  */
 
-import { Extension, SpaceSketch, AddElement, EditElement, EditProperty, ImportData, Undo, Redo } from '@/icons';
-import { Palette } from 'lucide-react';
+import { Extension, SpaceSketch, AddElement, EditElement, EditProperty, ImportData, Undo, Redo, Appearance } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
@@ -89,7 +88,7 @@ export function AuthorTab() {
 
       <RibbonGroup label="Create">
         <RibbonLargeButton
-          icon={Palette}
+          icon={Appearance}
           label="Appearance"
           className="w-20"
           tooltip="Appearance: apply images across IFC surfaces"

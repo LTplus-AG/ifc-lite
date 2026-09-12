@@ -69,11 +69,15 @@ function selectedFlags(count: number, seriesIndex: number, selected: ReadonlyArr
   return flags;
 }
 
+/** Opacity of the buckets outside a selection, so the selected ones read at a glance. */
+export const UNSELECTED_OPACITY = 0.35;
+
 function itemData(buckets: Bucket[], flags: boolean[]): Array<Record<string, unknown>> {
+  const dimOthers = flags.some(Boolean);
   return buckets.map((b, i) => ({
     name: b.label,
     value: b.value,
-    itemStyle: { color: b.color },
+    itemStyle: dimOthers && !flags[i] ? { color: b.color, opacity: UNSELECTED_OPACITY } : { color: b.color },
     selected: flags[i],
   }));
 }

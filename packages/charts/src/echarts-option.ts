@@ -96,6 +96,8 @@ function barSeries(aggregation: Aggregation, selected: BuildOptionArgs['selected
     selectedMode: 'multiple',
     select: { itemStyle: { borderColor: '#000', borderWidth: 2 } },
     emphasis: { focus: 'self' },
+    // Hover blur on the others stays readable (ECharts' default is 0.1).
+    blur: { itemStyle: { opacity: 0.3 } },
     itemStyle: stacked ? { color: s.buckets[0]?.color } : undefined,
     large: true,
   }));
@@ -133,6 +135,7 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
         selectedMode: 'multiple',
         selectedOffset: 6,
         emphasis: { focus: 'self' },
+        blur: { itemStyle: { opacity: 0.3 } },
         label: { color: theme.mutedText, formatter: '{b}' },
       }],
     };
@@ -150,6 +153,7 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
         data: itemData(categories, flags),
         selectedMode: 'multiple',
         emphasis: { focus: 'self' },
+        blur: { itemStyle: { opacity: 0.3 } },
         label: { color: '#fff' },
       }],
     };

@@ -12,24 +12,18 @@ use crate::api::IfcAPI;
 use js_sys::Function;
 use wasm_bindgen::prelude::*;
 
-/// One `[r, g, b, a]` per id: the shard-resolved style columns are host-built
-/// parallel arrays, and `finalizePrepassStyles` reads `colors[i * 4 + 3]` for
-/// every id (directly for the orphan seed, via
-/// `flat_styles_rgba8_from_geometry_columns` for the geometry columns). Under
-/// the wasm `panic=abort` profile an index past the end traps the whole
-/// instance, so a length disagreement is refused here, before either column
-/// is read, with an error naming the pair. Same stance as
-/// `style_colors_from_wire` in `batch_partition.rs`, which skips a style whose
-/// four bytes are not all present rather than read past the end.
+/// One `[r, g, b, a]` per id. `finalizePrepassStyles` reads four floats per id
+/// from both style column pairs, and under wasm `panic=abort` a read past the
+/// end traps the instance, so any other length is refused before either pair
+/// is read (#4614).
 pub(super) fn check_rgba_columns(what: &str, ids: &[u32], colors: &[f32]) -> Result<(), String> {
-    let expected = ids.len().checked_mul(4);
-    if expected == Some(colors.len()) {
+    if colors.len().is_multiple_of(4) && colors.len() / 4 == ids.len() {
         return Ok(());
     }
     Err(format!(
         "{what} style columns disagree: {} ids need {} colour floats, got {}",
         ids.len(),
-        expected.map_or_else(|| "more than usize".to_string(), |n| n.to_string()),
+        ids.len() as u64 * 4,
         colors.len()
     ))
 }

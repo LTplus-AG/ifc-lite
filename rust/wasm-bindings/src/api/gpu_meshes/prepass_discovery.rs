@@ -27,11 +27,8 @@ pub(super) struct ColumnsDiscovery {
 
 /// Parse the raw STEP keyword at a record start (`#id=KEYWORD(...`). Only
 /// called for the few records that need it (geometry jobs + type candidates),
-/// never for the 19M-entity bulk. A span that lies past `content` (columns
-/// stitched against a different buffer than the one this worker was handed)
-/// yields `""`, the same as a record with no keyword: the span is bounded on
-/// both ends here, since clamping only `end` still panics when `start` is
-/// past it.
+/// never for the 19M-entity bulk. A span outside `content` (columns stitched
+/// against a different buffer) yields `""`, like a record with no keyword.
 fn keyword_at(content: &[u8], start: usize, end: usize) -> &str {
     let span = content.get(start..end.min(content.len())).unwrap_or_default();
     let eq = span.iter().position(|&b| b == b'=').map(|p| p + 1).unwrap_or(0);
@@ -80,18 +77,13 @@ pub(super) fn discover_from_columns(
         type_candidate_spans: Vec::new(),
         has_layer_set: false,
     };
-    // Zipped, not indexed by one counter: a column shorter than `ids` ends
-    // the walk instead of trapping the worker. The sharded entry refuses
-    // unequal columns before this runs (`check_index_columns`); the zip keeps
-    // the walk itself panic-free whoever calls it.
+    // Zipped, so a short column ends the walk rather than trapping the worker.
     for (((&id, &start), &length), &class) in ids.iter().zip(starts).zip(lengths).zip(classes) {
         if class == p::PREPASS_CLASS_NONE {
             continue;
         }
         let start = start as usize;
-        // Saturating: on wasm32 `usize` is 32 bits and the release profile has
-        // no overflow checks, so a plain `+` on hostile columns wraps to an
-        // `end` below `start`.
+        // Saturating: `+` wraps on wasm32 release builds (no overflow checks).
         let end = start.saturating_add(length as usize);
         match class & p::PREPASS_CLASS_CODE_MASK {
             c if c == p::PREPASS_CLASS_PROJECT => {

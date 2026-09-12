@@ -282,14 +282,11 @@ fn null_pointers_return_code_1() {
 }
 
 /// Every failing return leaves `*out_ptr` / `*out_len` as null / 0, never as
-/// whatever the host had in those variables. Before this the error paths
-/// returned without writing them (review finding K2), so a host loop that
-/// frees on "ptr is non-null" freed the previous, already released buffer a
-/// second time after any failed parse. The variables start as a stale
-/// non-null pointer and a non-zero length, which is what a reused pair holds
-/// after an earlier successful call; `null_pointers_return_code_1` starts from
-/// null and cannot see the difference. Mutation that fails this test: delete
-/// the two out-parameter writes at the top of `run_parse`.
+/// the host's previous values: the error paths used to skip the writes, so a
+/// host that frees on "ptr is non-null" freed an old buffer twice (#4614). The
+/// variables start stale and non-null, as a reused pair would after a
+/// successful call. Mutation that fails this test: delete the two
+/// out-parameter writes at the top of `run_parse`.
 #[test]
 fn error_returns_write_null_and_zero_through_the_out_parameters() {
     let mut stale_buffer = [0u8; 4];
@@ -404,14 +401,11 @@ fn parse_ex_maps_every_filter_mode() {
     let _ = std::fs::remove_file(&path);
 }
 
-/// The panic log must name the file whose parse panicked. The parse body runs
-/// on a pool worker (`ThreadPool::install` injects it; the caller only waits),
-/// and a panic hook runs on the panicking thread, so the path has to live
-/// where that worker can read it. The previous thread-local was written on
-/// the caller's thread and read on the worker's, so every entry it ever wrote
-/// said `file: <unknown>` (review finding K1; reproduced in a scratch crate
-/// of the same shape before this fix). Mutation that fails this test: store
-/// the path in a `thread_local!` again, or register it after `install`.
+/// The panic log must name the file whose parse panicked. The panic hook runs
+/// on the pool worker that panicked, and the path used to live in a
+/// thread-local written on the caller's thread, so every entry said
+/// `file: <unknown>` (#4614). Mutation that fails this test: drop the
+/// `InFlightPath::register` call in `run_in_pool`.
 #[test]
 fn panic_log_names_the_file_when_the_panic_happens_on_a_pool_worker() {
     ensure_panic_logging();
@@ -430,12 +424,9 @@ fn panic_log_names_the_file_when_the_panic_happens_on_a_pool_worker() {
         .expect("the panic hook must have written the log");
     // Other tests parse concurrently on the shared pool, so the entry may list
     // their paths beside this one; the probe must be among them.
-    let file_lines: Vec<&str> = log.lines().filter(|l| l.starts_with("file: ")).collect();
     assert!(
-        file_lines.iter().any(|l| l.contains(&probe_path)),
-        "the panic log entry must name the file being parsed; wanted {probe_path:?} in a \
-         `file:` line; the log's `file:` lines end with {:?}",
-        &file_lines[file_lines.len().saturating_sub(3)..]
+        log.lines().any(|l| l.starts_with("file: ") && l.contains(&probe_path)),
+        "no `file:` line in the panic log names {probe_path:?}"
     );
 
     // The registration is scoped to the call (its guard drops during the
@@ -444,44 +435,26 @@ fn panic_log_names_the_file_when_the_panic_happens_on_a_pool_worker() {
     assert!(!in_flight_paths_for_log().contains(&probe_path));
 }
 
-/// Review finding K4: the parse path had three panics outside its only
-/// `catch_unwind`, and a panic that unwinds out of an `extern "C"` function
-/// aborts the host. These pin the two halves of the fix.
-///
-/// The guard covers everything `parse_impl` hands to `run_in_pool`: the
-/// geometry call, the coordinate normalisation and the JSON serialisation all
-/// live in that one closure now, so a panic after the work has produced a
-/// value is code `3`, and the closure's own error code passes through
-/// unchanged. That `parse_impl` keeps all three inside the closure is by
-/// construction, not observed here: nothing on that path can be made to
-/// panic from a test. Mutation that fails this test: remove the
-/// `catch_unwind` from `run_in_pool` (the panic then reaches the test).
+/// `run_in_pool` is the one `catch_unwind` on the parse path, and
+/// `parse_impl` hands it geometry, normalisation and serialisation as one
+/// closure (a panic in any of them used to unwind out of the `extern "C"`
+/// function and abort the host, #4614). A panic there is code 3 (pinned by
+/// the test above); the closure's own code and value pass through.
 #[test]
-fn every_panic_on_the_parse_path_is_code_3_and_error_codes_pass_through() {
-    ensure_panic_logging();
-    let late_panic = run_in_pool::<Vec<u8>>("late_panic_probe.ifc", || {
-        let bytes = vec![1u8, 2, 3];
-        if !bytes.is_empty() {
-            panic!("panic after the geometry result exists");
-        }
-        Ok(bytes)
-    });
-    assert_eq!(late_panic, Err(3));
+fn run_in_pool_passes_the_closure_outcome_through() {
     assert_eq!(run_in_pool::<()>("code_probe.ifc", || Err(4)), Err(4));
     assert_eq!(run_in_pool("ok_probe.ifc", || Ok(7)), Ok(7));
 }
 
-/// The other half of K4: building the large-stack pool can fail when the OS
-/// refuses the threads, and that used to be `.expect(..)` on the `extern "C"`
-/// path. A stack no machine can reserve (2^62 bytes, past any 64-bit address
-/// space) makes the spawn fail for real; the build must come back as an `Err`
-/// the caller maps to code `3`. Mutation that fails this test: panic on the
-/// build error inside `build_parse_pool`, as the old `.expect` did.
+/// Building the large-stack pool used to `.expect` on the `extern "C"` path
+/// (#4614). A 2^62-byte stack, past any 64-bit address space, makes the thread
+/// spawn fail for real; the build must be an `Err`, which the caller maps to
+/// code 3. Mutation that fails this test: panic on the build error inside
+/// `build_parse_pool`, as the old `.expect` did.
 #[cfg(target_pointer_width = "64")]
 #[test]
 fn a_pool_that_cannot_spawn_its_threads_is_an_error_not_a_panic() {
-    let built = std::panic::catch_unwind(|| build_parse_pool(1 << 62).is_err());
-    assert_eq!(built.ok(), Some(true), "an unspawnable pool must be Err, without panicking");
+    assert!(build_parse_pool(1 << 62).is_err());
 }
 
 #[test]

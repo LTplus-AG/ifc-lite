@@ -6,14 +6,10 @@
 
 use super::check_rgba_columns;
 
-/// `finalizePrepassStyles` used to index `orphan_colors[i * 4 + 3]` for every
-/// orphan id with no length agreement, and the geometry columns reach the
-/// same unchecked indexing in `flat_styles_rgba8_from_geometry_columns`. On
-/// wasm (`panic=abort`) a short colour column was a worker-instance crash
-/// mid-load, not an exception (review finding K5). The pair is now refused
-/// at the boundary with the counts in the message. Mutation that fails this
-/// test: make `check_rgba_columns` return `Ok(())` unconditionally, or
-/// compare against `ids.len()` instead of `ids.len() * 4`.
+/// `finalizePrepassStyles` used to index `orphan_colors[i * 4 + 3]` with no
+/// length check, so on wasm (`panic=abort`) a short colour column crashed the
+/// worker mid-load (#4614). Mutation that fails this test: compare against
+/// `ids.len()` instead of four floats per id.
 #[test]
 fn a_colour_column_must_carry_exactly_four_floats_per_id() {
     assert_eq!(check_rgba_columns("orphan", &[], &[]), Ok(()));

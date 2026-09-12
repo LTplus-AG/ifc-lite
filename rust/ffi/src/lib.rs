@@ -75,15 +75,13 @@ fn build_parse_pool(stack_size: usize) -> Result<rayon::ThreadPool, rayon::Threa
 }
 
 /// Paths of the IFC files whose parses are in flight, so the panic hook can
-/// name the offending file. A process-wide `static`, not a thread-local: the
-/// parse body runs on the pool's worker threads (`ThreadPool::install` injects
-/// the closure into the pool and the calling thread only waits for it), and a
-/// panic hook runs on the thread that panicked. A thread-local written by the
-/// caller was therefore never visible to the hook, and every entry it wrote
-/// said `file: <unknown>`. Entries are registered for the call's duration by
-/// [`InFlightPath`]; a host that parses from several threads at once has every
-/// in-flight path listed, since the shared pool can be running jobs of any of
-/// them on the panicking worker.
+/// name the offending file. Process-wide, not thread-local: the parse runs on
+/// pool workers and the hook runs on whichever one panicked. Registered for
+/// the call's duration by [`InFlightPath`]; with parses from several host
+/// threads at once every in-flight path is listed, since the shared pool may
+/// be running any of their jobs on the panicking worker. The hook, not the
+/// `catch_unwind` site, reads it because a `panic = "abort"` build never
+/// reaches the catch site.
 static IN_FLIGHT_PATHS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 /// RAII registration of one parse's path in [`IN_FLIGHT_PATHS`]. Dropping it,
@@ -226,13 +224,10 @@ fn normalize_to_site_local(result: &mut ProcessingResult) {
 /// [`IN_FLIGHT_PATHS`] for the whole call, so a panic on any pool worker is
 /// logged against this file.
 ///
-/// One `catch_unwind` around everything that can panic on the parse path:
-/// the pool acquisition, the registration, and all of `work`. A panic
-/// anywhere in there is error code `3`; `install` carries a worker's panic
-/// back to this thread, so the guard sits outside it. Before this only the
-/// geometry call was guarded, and the pool's `expect`, the coordinate
-/// normalisation and the JSON serialisation could unwind out of the
-/// `extern "C"` function, which aborts the host.
+/// One `catch_unwind` around the registration, the pool acquisition and all
+/// of `work`: a panic anywhere in there is error code `3` instead of an unwind
+/// out of the `extern "C"` function, which aborts the host. `install` carries
+/// a worker's panic back to this thread, so the guard sits outside it.
 fn run_in_pool<T: Send>(
     path_str: &str,
     work: impl FnOnce() -> Result<T, i32> + Send,
@@ -255,8 +250,11 @@ fn run_in_pool<T: Send>(
 fn parse_impl(path_str: &str, mode: OpeningFilterMode) -> Result<Vec<u8>, i32> {
     let content = std::fs::read_to_string(path_str).map_err(|_| 2)?;
 
-    run_in_pool(path_str, || {
+    run_in_pool(path_str, move || {
         let mut result = process_geometry_filtered(&content, mode);
+        // The source text is not needed past geometry; free it before the
+        // JSON buffer is built next to the meshes.
+        drop(content);
 
         // Normalize all meshes to uniform site-local coordinates.
         normalize_to_site_local(&mut result);
@@ -294,10 +292,8 @@ unsafe fn run_parse(
 ) -> i32 {
     ensure_panic_logging();
 
-    // Every return leaves each non-null out-parameter in a defined state.
-    // Left untouched on an error, a host that reuses the two variables across
-    // calls still held the previous call's (already freed) buffer and freed it
-    // again.
+    // Every return leaves each non-null out-parameter defined, so a host that
+    // reuses the variables never sees a previous call's freed buffer.
     if !out_ptr.is_null() {
         *out_ptr = std::ptr::null_mut();
     }

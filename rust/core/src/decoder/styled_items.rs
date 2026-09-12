@@ -38,7 +38,14 @@ impl EntityDecoder<'_> {
         let mut edges = 0usize;
         let mut seen_ids = FxHashSet::default();
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
-            if type_name != "IFCSTYLEDITEM" {
+            // The scanner hands back the RAW keyword slice, and 10303-21
+            // keywords are case-insensitive: `IfcStyledItem(` is the same
+            // record, and a case-sensitive test here built an EMPTY index
+            // from such a file, so every item read as unstyled, which is the
+            // one answer this module's contract says it must never give.
+            // Same rule as the `IFCPROJECT` scans in `decoder.rs` (#4497)
+            // and `EntityScanner::find_by_type`.
+            if !type_name.eq_ignore_ascii_case("IFCSTYLEDITEM") {
                 continue;
             }
             if end - start > 16 * 1024 {
@@ -142,6 +149,23 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("entity id"));
+        }
+    }
+
+    /// ISO 10303-21 keywords are case-insensitive, and the scanner hands back
+    /// the raw slice. A case-sensitive `!= "IFCSTYLEDITEM"` skipped every
+    /// record of a lower- or mixed-case file, so the index came back EMPTY and
+    /// `styled_item_ids` reported every item unstyled: a success, not the
+    /// refusal the module header promises. The uppercase file is the control.
+    #[test]
+    fn styled_lookup_keyword_case_is_not_significant() {
+        for keyword in ["IfcStyledItem", "ifcstyleditem", "IFCSTYLEDITEM"] {
+            let source = format!("#1={keyword}(#10,(#20),$);#2={keyword}(#11,(#21),$);");
+            let index = Arc::new(ColumnarEntityIndex::from_scan(source.as_bytes()));
+            let mut decoder = EntityDecoder::with_arc_columnar_index(&source, index);
+            assert_eq!(decoder.styled_item_ids(10).unwrap(), &[1], "keyword {keyword}");
+            assert_eq!(decoder.styled_item_ids(11).unwrap(), &[2], "keyword {keyword}");
+            assert!(decoder.styled_item_ids(12).unwrap().is_empty(), "keyword {keyword}");
         }
     }
 

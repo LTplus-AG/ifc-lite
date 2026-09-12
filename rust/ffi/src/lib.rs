@@ -257,7 +257,7 @@ fn parse_impl(path_str: &str, mode: OpeningFilterMode) -> Result<Vec<u8>, i32> {
 /// functions so the null checks and contract live in exactly one place.
 ///
 /// # Safety
-/// `out_ptr`/`out_len` (when non-null) must be valid for writes.
+/// The caller upholds the contract stated on [`ifc_lite_parse`].
 unsafe fn run_parse(
     path_ptr: *const u8,
     path_len: usize,
@@ -324,7 +324,15 @@ unsafe fn run_parse(
 /// no-op).
 ///
 /// # Safety
-/// Caller must free the returned buffer with `ifc_lite_free`.
+/// - `path_ptr` must be valid for reads of `path_len` bytes, all inside one
+///   allocation, and `path_len` must not exceed `isize::MAX`. `path_len` is a
+///   count of UTF-8 bytes: passing a UTF-16 length (a .NET `string.Length`)
+///   for a non-ASCII path reads past the buffer. Only a null `path_ptr` is
+///   detected; a wrong length is undefined behaviour, not error `1`.
+/// - `out_ptr` and `out_len` must each be null or valid for writes and
+///   properly aligned.
+/// - A buffer returned on `0` must be freed exactly once, with
+///   `ifc_lite_free` and the same `*out_len`.
 #[no_mangle]
 pub unsafe extern "C" fn ifc_lite_parse(
     path_ptr: *const u8,
@@ -348,7 +356,7 @@ pub unsafe extern "C" fn ifc_lite_parse(
 /// unrecognised `opening_filter_mode` is treated as `0`.
 ///
 /// # Safety
-/// Caller must free the returned buffer with `ifc_lite_free`.
+/// Same contract as `ifc_lite_parse`.
 #[no_mangle]
 pub unsafe extern "C" fn ifc_lite_parse_ex(
     path_ptr: *const u8,
@@ -369,8 +377,10 @@ pub unsafe extern "C" fn ifc_lite_parse_ex(
 /// Free a buffer previously returned by `ifc_lite_parse` or `ifc_lite_parse_ex`.
 ///
 /// # Safety
-/// `ptr` and `len` must match a previous return from a parse function.
-/// Must not be called more than once for the same buffer.
+/// `ptr` and `len` must be exactly a pointer and length written by a parse
+/// function that returned `0`; any other length deallocates with the wrong
+/// layout. Must not be called more than once for the same buffer. A null
+/// `ptr` or a `len` of 0 is a no-op.
 #[no_mangle]
 pub unsafe extern "C" fn ifc_lite_free(ptr: *mut u8, len: usize) {
     if !ptr.is_null() && len > 0 {

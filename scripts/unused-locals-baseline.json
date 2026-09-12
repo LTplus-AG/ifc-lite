@@ -1,6 +1,6 @@
 {
-  "apps/viewer": 265,
-  "apps/viewer-embed": 267,
+  "apps/viewer": 258,
+  "apps/viewer-embed": 260,
   "examples/babylonjs-viewer": 1,
   "examples/collab-demo": 1,
   "examples/threejs-collab": 1,

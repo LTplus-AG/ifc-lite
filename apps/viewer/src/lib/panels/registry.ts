@@ -122,13 +122,9 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   { id: 'appearance', title: 'Appearance', short: 'Appearance', Icon: Palette, group: 'author', region: 'side' },
 ];
 
-/** The bottom-strip panel ids, mapped to their store visibility flag + setter
- *  names — these stay independent of the single-tenant right pane. */
-export type BottomPanelId = Extract<WorkspacePanelId, 'script' | 'gantt' | 'lists'>;
-
-export function isBottomPanel(id: WorkspacePanelId): id is BottomPanelId {
-  return id === 'script' || id === 'gantt' || id === 'lists';
-}
+// The bottom strip (Script / Schedule / Lists) is table-driven; the id union and
+// the type guard are re-exported here so registry consumers keep one import.
+export { isBottomPanel, type BottomPanelId } from './bottom-panels';
 
 /** The left-slot nav panel (Hierarchy, #1267): toggled via `leftPanelCollapsed`,
  *  never floated / popped / docked into the right pane. */

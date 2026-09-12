@@ -125,7 +125,7 @@
    406 apps/viewer/src/components/viewer/useAnimationLoop.ts
    980 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    946 apps/viewer/src/components/viewer/useMouseControls.ts
-   782 apps/viewer/src/components/viewer/ViewerLayout.tsx
+   686 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1815 apps/viewer/src/components/viewer/Viewport.tsx
   1382 apps/viewer/src/components/viewer/ViewportContainer.tsx
    511 apps/viewer/src/components/viewer/ZonesPanel.tsx
@@ -172,7 +172,7 @@
    561 apps/viewer/src/services/ifc-cache.ts
    581 apps/viewer/src/store/basketVisibleSet.ts
    485 apps/viewer/src/store/constants.ts
-   579 apps/viewer/src/store/index.ts
+   564 apps/viewer/src/store/index.ts
    404 apps/viewer/src/store/slices/addElementMeshes.ts
    452 apps/viewer/src/store/slices/chatSlice.ts
    992 apps/viewer/src/store/slices/clashSlice.ts

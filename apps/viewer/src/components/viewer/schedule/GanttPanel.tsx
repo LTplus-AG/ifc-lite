@@ -17,7 +17,6 @@ import { extractScheduleOnDemand } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { resolveScheduleSourceModelId } from '@/store/slices/schedule-edit-helpers';
 import { useIfc } from '@/hooks/useIfc';
-import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { GanttToolbar } from './GanttToolbar';
 import { GanttTaskTree } from './GanttTaskTree';
@@ -29,7 +28,6 @@ import { canGenerateScheduleFrom, resolveActiveDataStore } from './generate-sche
 import { useConstructionSequence } from './useConstructionSequence';
 import { useScheduleFileImport } from './useScheduleFileImport';
 import { useGanttSelection3DHighlight } from './useGanttSelection3DHighlight';
-import { useOverlayCompositor } from './useOverlayCompositor';
 
 interface GanttPanelProps {
   onClose?: () => void;
@@ -125,15 +123,11 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStore]);
 
-  // Single compositor — reads the overlay-layer registry and writes the
-  // composite into the renderer's legacy hiddenEntities / pendingColorUpdates
-  // channels. Must be mounted BEFORE any layer owner in the render tree so
-  // its first reconcile can observe their initial contributions.
-  useOverlayCompositor();
-
   // Drive the 3D viewport's hidden-entity set from the playback clock.
-  // Registers the 'animation' overlay layer; the compositor above does
-  // the actual write.
+  // Registers the 'animation' overlay layer; the single compositor mounted
+  // by `ViewerLayout` (`useOverlayCompositor`) does the actual write, so a
+  // layer registered by any panel — docked, floating or popped out — is
+  // composited by exactly one writer.
   useConstructionSequence();
 
   // Highlight the current Gantt selection's products in 3D. Selection-only

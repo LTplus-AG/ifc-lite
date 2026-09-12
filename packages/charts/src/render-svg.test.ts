@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { aggregate } from './aggregate.js';
-import { buildEChartsOption } from './echarts-option.js';
+import { UNSELECTED_OPACITY, buildEChartsOption } from './echarts-option.js';
 import { renderChartSvg } from './render-svg.js';
 import { validateDashboardSpec } from './validate.js';
 import type { ChartDataset, ChartSpec, DashboardSpec } from './types.js';
@@ -26,10 +26,17 @@ describe('buildEChartsOption', () => {
     const series = option.series as Array<Record<string, unknown>>;
     expect(series).toHaveLength(1);
     expect(series[0].selectedMode).toBe('multiple');
-    const data = series[0].data as Array<{ name: string; value: number; selected: boolean; itemStyle: { color: string } }>;
+    const data = series[0].data as Array<{ name: string; value: number; selected: boolean; itemStyle: { color: string; opacity?: number } }>;
     expect(data.map((d) => [d.name, d.value, d.selected])).toEqual([['IfcWall', 2, false], ['IfcDoor', 1, true]]);
     expect(data[0].itemStyle.color).toBe(agg.categories[0].color);
+    // With a selection the other buckets are dimmed; with none, nothing is.
+    expect(data.map((d) => d.itemStyle.opacity)).toEqual([UNSELECTED_OPACITY, undefined]);
+    const plain = (buildEChartsOption({ aggregation: agg }).series as Array<{ data: Array<{ itemStyle: { opacity?: number } }> }>)[0].data;
+    expect(plain.map((d) => d.itemStyle.opacity)).toEqual([undefined, undefined]);
     expect((option.xAxis as { data: string[] }).data).toEqual(['IfcWall', 'IfcDoor']);
+    // No key for a component the bundle does not register (ECharts reports `title: undefined` as missing).
+    expect('title' in option).toBe(false);
+    expect('brush' in option).toBe(false);
   });
 
   it('builds one bar series per stack value, a pie and a treemap from the same aggregation shape', () => {

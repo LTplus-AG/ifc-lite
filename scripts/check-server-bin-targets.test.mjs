@@ -320,6 +320,17 @@ const ASSERT_STEP_NAME = '- name: Assert the built binary unwinds';
 const SELFTEST_FLAG = '--panic-strategy-selftest';
 const WINDOWS_SELFTEST_CONDITION = " || matrix.target == 'win32-x64'";
 const WINDOWS_BINARY_SUFFIX = 'bin="${bin}.exe"';
+const RELEASE_SELFTEST_BODY = `        if: matrix.target == 'linux-x64' || matrix.target == 'darwin-arm64' || matrix.target == 'linux-x64-musl' || matrix.target == 'win32-x64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="target/\${{ matrix.rust-target }}/server-release/ifc-lite-server"
+          if [ "\${{ runner.os }}" = "Windows" ]; then
+            bin="\${bin}.exe"
+          fi
+          verdict="$("$bin" --panic-strategy-selftest)"
+          echo "$verdict"
+          test "$verdict" = "panic-strategy: unwind"`;
 
 test('profile: a cargo build leg back on --release is red', () => {
   const result = runChecker({
@@ -352,7 +363,10 @@ test('profile: a build step whose build lines are all commented out is red, not 
       `            # ${CARGO_BUILD_LINE.trim()}`,
     ),
   });
-  assertRed(result, /runs no cargo\/cross build command/);
+  assertRed(
+    result,
+    /runs no cargo\/cross build command[\s\S]*Restore an active cargo build or cross build --profile server-release/,
+  );
 });
 
 test('profile: archiving out of target/<triple>/release/ is red', () => {
@@ -404,6 +418,17 @@ test('profile: running the extensionless path for the Windows self-test is red',
     workflow: (s) => mutate(s, WINDOWS_BINARY_SUFFIX, 'bin="${bin}"'),
   });
   assertRed(result, /does not select the \.exe path on Windows/);
+});
+
+test('profile: an unnamed sibling cannot supply a named self-test step contents', () => {
+  const replacement = RELEASE_SELFTEST_BODY.replace(
+    '        run: |\n',
+    '        run: echo "named step no longer tests the binary"\n\n      - run: |\n',
+  );
+  const result = runChecker({
+    workflow: (s) => mutate(s, RELEASE_SELFTEST_BODY, replacement),
+  });
+  assertRed(result, /has no "Assert the built binary unwinds" step running the built binary/);
 });
 
 // ---- The gate's original eight deliberate regressions, re-confirmed so the

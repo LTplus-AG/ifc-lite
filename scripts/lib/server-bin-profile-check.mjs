@@ -99,7 +99,8 @@ export function checkUnwindProfile(workflow, origin) {
     if (builds.length === 0) {
       fail(
         `the "${BUILD_STEP}" step in job "${job}" of ${origin} runs no cargo/cross build command; ` +
-        `refusing a vacuous pass - a commented-out build line counts as absent here`,
+        `refusing a vacuous pass - a commented-out build line counts as absent here. Restore an ` +
+        `active cargo build or cross build --profile ${REQUIRED_PROFILE} command in that step`,
       );
     }
     for (const { tool, args } of builds) {

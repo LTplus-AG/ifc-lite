@@ -193,6 +193,49 @@ async fn a_stalled_sse_body_releases_its_permit_end_to_end() {
     );
 }
 
+/// Response transformation is still producer work: the client cannot drain a
+/// frame until serialization has returned it. Regression for #4582.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn slow_response_mapping_does_not_count_as_client_idle() {
+    let admission = single_slot_admission();
+    let guard = admission.acquire(0).await.expect("the first permit is free");
+    let idle = Duration::from_millis(25);
+    let mut stream = process_streaming_mapped(
+        bytes::Bytes::from_static(MINIMAL_IFC.as_bytes()),
+        100,
+        1000,
+        OpeningFilterMode::Default,
+        TessellationQuality::default(),
+        StreamAdmission::bounded(guard, idle),
+        move |event| {
+            std::thread::sleep(idle * 3);
+            event
+        },
+    );
+
+    assert!(stream.next().await.is_some(), "the mapped stream must emit a frame");
+    assert!(
+        admission.acquire(0).await.is_err(),
+        "serialization took longer than the idle bound, but no frame was waiting on the client"
+    );
+    let rest = stream.collect::<Vec<_>>().await;
+    assert!(
+        rest.iter().any(|event| matches!(event, StreamEvent::Complete { .. })),
+        "a continuously drained stream must finish after slow response mapping"
+    );
+    let released = tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if admission.acquire(0).await.is_ok() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .is_ok();
+    assert!(released, "the completed stream returns its permit");
+}
+
 /// On a stall the watchdog drops what the client never took. Without this,
 /// the freed permit admits a replacement stream while the old one's whole
 /// output stays resident, and a client that stalls one stream per window

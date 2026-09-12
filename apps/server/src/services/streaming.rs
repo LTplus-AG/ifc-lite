@@ -34,45 +34,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 
-/// The admission permit a streaming response carries, and the ceiling on how
-/// long it may carry it.
-///
-/// The two travel together because the second exists only to bound the first:
-/// the permit's lifetime is otherwise decided by the CLIENT (see
-/// [`process_streaming`]), and a client that stops reading its socket has no
-/// deadline of its own.
-pub struct StreamAdmission {
-    /// The acquired permit, or `None` on paths that hold none (cached replay,
-    /// unit tests).
-    guard: Option<AdmissionGuard>,
-    /// Longest the response may go without the client consuming a frame
-    /// before the permit is released and the parse cancelled. `None` disables
-    /// the bound.
-    idle_timeout: Option<Duration>,
-}
-
-impl StreamAdmission {
-    /// The production shape: a held permit, bounded by the operator's
-    /// `IFC_STREAM_IDLE_TIMEOUT_SECS`. The only constructor a route can
-    /// reach, so a stream cannot be wired up with the bound forgotten.
-    pub fn admitted(guard: AdmissionGuard, config: &crate::config::Config) -> Self {
-        Self { guard: Some(guard), idle_timeout: config.stream_idle_timeout() }
-    }
-
-    /// A held permit with an explicit bound, for the end-to-end test.
-    #[cfg(test)]
-    pub fn bounded(guard: AdmissionGuard, idle_timeout: Duration) -> Self {
-        Self { guard: Some(guard), idle_timeout: Some(idle_timeout) }
-    }
-
-    /// No permit and no bound. Test-only: every production caller holds a
-    /// permit, and a production path that did not would be the defect this
-    /// type exists to make visible.
-    #[cfg(test)]
-    pub fn none() -> Self {
-        Self { guard: None, idle_timeout: None }
-    }
-}
+mod admission;
+pub use admission::StreamAdmission;
 
 /// The response stream's event queue, shared with the watchdog so that on a
 /// stall it can drop what the client never took.
@@ -217,6 +180,39 @@ pub fn process_streaming(
     tessellation_quality: TessellationQuality,
     admission: StreamAdmission,
 ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send>> {
+    process_streaming_mapped(
+        content,
+        initial_batch_size,
+        max_batch_size,
+        opening_filter,
+        tessellation_quality,
+        admission,
+        |event| event,
+    )
+}
+
+/// Generate streaming geometry events and finish response-specific CPU work
+/// before the watchdog starts charging client-idle time for each frame.
+///
+/// A `StreamExt::map` outside [`process_streaming`] runs while the inner
+/// generator is suspended at `yield`, which is already classified as
+/// [`Waiting::OnConsumer`]. Parquet serialization can take longer than the
+/// idle bound without the client having received anything to consume. Keeping
+/// the mapper inside this generator makes that work producer time; only the
+/// mapped, ready-to-send frame is timed as consumer work.
+pub fn process_streaming_mapped<T, F>(
+    content: bytes::Bytes,
+    initial_batch_size: usize,
+    max_batch_size: usize,
+    opening_filter: OpeningFilterMode,
+    tessellation_quality: TessellationQuality,
+    admission: StreamAdmission,
+    mut map_event: F,
+) -> Pin<Box<dyn Stream<Item = T> + Send>>
+where
+    T: Send + 'static,
+    F: FnMut(StreamEvent) -> T + Send + 'static,
+{
     let StreamAdmission { guard: admission, idle_timeout } = admission;
     // Zero is a caller bug, not a reason to stall the stream.
     let initial_batch_size = initial_batch_size.max(1);
@@ -364,6 +360,7 @@ pub fn process_streaming(
         // is what lets the watchdog take it on a stall.
         while let Some(event) = { let mut rx = events.lock().await; rx.recv().await } {
             completed |= matches!(event, StreamEvent::Complete { .. });
+            let event = map_event(event);
             // Parked on the CONSUMER from here until the yield returns; the
             // watchdog only counts a stall in this state. A failed send means
             // the watchdog already fired and is gone, which is fine.
@@ -377,18 +374,20 @@ pub fn process_streaming(
         // client that stalls on the very last frame (a producer panic on a
         // malformed file is the likely one) is still seen as stalled.
         if let Err(e) = handle.await {
-            let _ = waiting.send(Waiting::OnConsumer);
-            yield StreamEvent::Error {
+            let event = map_event(StreamEvent::Error {
                 message: format!("Streaming geometry task failed: {e}"),
-            };
+            });
+            let _ = waiting.send(Waiting::OnConsumer);
+            yield event;
         } else if !completed && cancel.load(Ordering::Relaxed) {
             // The watchdog cut the parse short. A client that disconnected
             // never reads this; one that stalled and came back must not
             // mistake a truncated stream for a finished model.
-            let _ = waiting.send(Waiting::OnConsumer);
-            yield StreamEvent::Error {
+            let event = map_event(StreamEvent::Error {
                 message: "Streaming parse cancelled: no frame was consumed within the idle bound".into(),
-            };
+            });
+            let _ = waiting.send(Waiting::OnConsumer);
+            yield event;
         }
     })
 }

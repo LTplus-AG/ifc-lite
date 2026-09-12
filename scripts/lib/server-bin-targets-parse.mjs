@@ -142,7 +142,7 @@ export function sliceStep(jobBody, stepName) {
   const start = jobBody.indexOf(`- name: ${stepName}`);
   if (start === -1) return null;
   const rest = jobBody.slice(start + 1);
-  const next = /\n {6}- name:/.exec(rest);
+  const next = /\n {6}-(?:[ \t]|$)/m.exec(rest);
   return jobBody.slice(start, next ? start + 1 + next.index : jobBody.length);
 }
 

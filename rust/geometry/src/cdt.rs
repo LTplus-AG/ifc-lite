@@ -383,6 +383,29 @@ impl Cdt {
         // Canonical order so new-triangle indices are platform-stable.
         boundary.sort_unstable();
 
+        // A boundary edge collinear with `p` is a constraint edge `p` lies ON:
+        // any non-constraint edge through `p` has a bad triangle on both sides
+        // (`p` is strictly inside the circumcircle of each), so it is interior
+        // to the cavity, never on its rim. The fan below would build the
+        // zero-area triangle `(a, b, vi)` and leave the far side of the
+        // constraint unsplit, a T-junction `legalize` cannot repair (it never
+        // flips a constraint). Nothing has been retired yet, so abandon the
+        // cavity and take the lockstep both-sides split instead.
+        for &(a, b, _) in &boundary {
+            let (pa, pb) = (self.points[a], self.points[b]);
+            if orient(pa, pb, p) != 0 {
+                continue;
+            }
+            if strictly_between(pa, pb, p) {
+                let on = bad.iter().find_map(|&ti| self.tris[ti].edge_of(a, b).map(|e| (ti, e)));
+                if let Some((ti, e)) = on {
+                    self.split_on_edge(ti, e, vi);
+                    self.last_loc = self.tris.len() - 1;
+                }
+            }
+            return;
+        }
+
         for &ti in &bad {
             self.tris[ti].alive = false;
         }
@@ -446,13 +469,25 @@ impl Cdt {
         let region = self.inside.get(t).copied().unwrap_or(false);
         let v = self.tris[t].v;
         let n = self.tris[t].n;
+        let degenerate: [bool; 3] =
+            std::array::from_fn(|e| orient(self.points[v[e]], self.points[v[(e + 1) % 3]], self.points[vi]) == 0);
+        if degenerate.iter().filter(|&&d| d).count() >= 2 {
+            // `vi` coincides with a vertex of `t`: a duplicate input coordinate
+            // (`rings_to_pslg` does not dedup, so two rings sharing a corner
+            // arrive as two indices at one point). Retiring `t` for the single
+            // child that survives would leave the neighbours across the two
+            // skipped edges linked to a dead triangle. Leave `t` alone and skip
+            // the point: a constraint naming it then fails recovery and the
+            // caller falls back, and a free duplicate is merely unreferenced.
+            return;
+        }
         self.tris[t].alive = false;
         let mut owner: BTreeMap<(usize, usize), (usize, usize)> = BTreeMap::new();
         let mut children: Vec<usize> = Vec::new();
         for e in 0..3 {
             let a = v[e];
             let b = v[(e + 1) % 3];
-            if orient(self.points[a], self.points[b], self.points[vi]) == 0 {
+            if degenerate[e] {
                 continue; // degenerate child (vi on edge a-b)
             }
             let ti = self.tris.len();
@@ -934,9 +969,17 @@ impl Cdt {
         true
     }
 
-    /// Recover a single constraint segment `a-b` by repeatedly flipping the
-    /// triangulation edge that crosses it. Deterministic: always processes the
-    /// crossing edge nearest `a`.
+    /// Recover a single constraint segment `a-b` by repeatedly flipping a
+    /// triangulation edge that crosses it. Deterministic: each pass scans the
+    /// triangle slots in index order and flips the FIRST crossing edge whose
+    /// quad is convex, which is not the crossing nearest `a` (Sloan's order,
+    /// whose termination proof this does not inherit). The `guard` below is
+    /// the only bound, and it counts flips: every one of those passes is an
+    /// O(T) rescan with exact predicates, so an unrecoverable segment costs up
+    /// to 100 000 x T predicate evaluations before the caller falls back.
+    /// Reordering the walk would change the flip sequence and, on cocircular
+    /// input (every rectangular profile), the emitted triangulation, which
+    /// the mesh-determinism manifests pin; re-pin both if you reorder it.
     fn recover_segment(
         &mut self,
         a: usize,

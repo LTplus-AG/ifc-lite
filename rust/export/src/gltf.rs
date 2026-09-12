@@ -1490,10 +1490,13 @@ fn build_gltf(
 
 /// Like [`export_glb`] but also returns coverage stats. Meshes the model from bytes.
 ///
-/// NOTE: this path fails OPEN on an empty visible set — it returns a structurally
-/// valid zero-mesh GLB reported as success. Prefer [`try_export_glb_with_stats`],
-/// which turns that case into [`ExportError::NoRenderGeometry`] so no caller can
-/// silently ship an empty artifact.
+/// NOTE: this path fails OPEN on an empty visible set: it returns a zero-mesh
+/// GLB reported as success, and that GLB is NOT valid glTF. Its `accessors`,
+/// `bufferViews`, `meshes` and `nodes` are empty arrays (the glTF schema says
+/// `minItems: 1` when present) and `buffers[0].byteLength` is 0 (schema
+/// `minimum: 1`), the same artifact `try_export_glb_from_meshes` documents
+/// refusing. Prefer [`try_export_glb_with_stats`], which turns that case into
+/// [`ExportError::NoRenderGeometry`] so no caller can silently ship it.
 ///
 /// Inputs at or above the streaming threshold (default 64 MB, native override
 /// `IFC_LITE_GLB_STREAM_THRESHOLD_MB`, `0` disables) route to the bounded
@@ -2093,9 +2096,11 @@ fn export_glb_streaming_bounded_impl(
 
 /// Fail-closed [`export_glb_streaming_bounded`]: an oversize projected GLB
 /// returns [`ExportError::TooLarge`] (carrying the projected byte size) after
-/// pass 1 — no output allocation, no panic (#1516). An empty visible set is a
-/// valid (zero-mesh) GLB here; use [`try_export_glb_with_stats`] for the
-/// [`ExportError::NoRenderGeometry`] guard as well.
+/// pass 1 — no output allocation, no panic (#1516). An empty visible set is
+/// NOT refused here: it returns the zero-mesh GLB described on
+/// [`export_glb_with_stats`], which is not valid glTF; use
+/// [`try_export_glb_with_stats`] for the [`ExportError::NoRenderGeometry`]
+/// guard as well.
 pub fn try_export_glb_streaming_bounded(
     content: &[u8],
     opts: &GltfOptions,

@@ -1661,6 +1661,13 @@ fn try_export_glb_fails_closed_on_geometryless_model() {
     assert_eq!(stats.meshes, 0);
     let (json, _) = parse_glb(&glb);
     assert!(json["meshes"].as_array().is_none_or(|m| m.is_empty()));
+    // What that fail-open GLB is, as `export_glb_with_stats` documents it (export
+    // review finding H7: the doc called it "structurally valid"): empty arrays
+    // where the glTF schema requires at least one item, and a zero-length buffer.
+    for key in ["accessors", "bufferViews", "meshes", "nodes"] {
+        assert_eq!(json[key].as_array().map(Vec::len), Some(0), "{key}: {json}");
+    }
+    assert_eq!(json["buffers"][0]["byteLength"].as_u64(), Some(0), "{json}");
 }
 
 /// The #1516 TooLarge variant carries the projected size and a stable code the

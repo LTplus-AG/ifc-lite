@@ -16,7 +16,7 @@ pub const MAX_LISTED_OMISSIONS: usize = 4096;
 #[serde(rename_all = "camelCase")]
 pub struct Omission {
     /// `text`, `image`, `pattern`, `clip`, `transparency`, `dash`,
-    /// `roundCapJoin`, `curvedStroke`, `hairline`, `hidden`, `annotation`
+    /// `curvedStroke`, `hairline`, `hidden`, `annotation`
     /// or `unsupported:<pinned operator>`.
     pub kind: String,
     pub operator_ordinal: u32,

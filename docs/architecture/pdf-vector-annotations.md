@@ -299,8 +299,9 @@ work, topology and canonical IFC creation bounds.
 Reversals, degenerate segments, offset segment collapse and offset contour
 self-contact/crossings refuse the whole page. This first sufficient qualifier
 does not repair wide/self-overlapping stroke arrangements. Round arcs are
-subdivided with a post-affine metric error bound. Hairlines, dash patterns and
-curved strokes remain unsupported. Outlining
+subdivided with a post-affine metric error bound; a request below the numerical
+precision of its transformed coordinates refuses rather than overstating that
+bound. Hairlines, dash patterns and curved strokes remain unsupported. Outlining
 produces visual filled vector geometry, not editable centreline/text semantics.
 Original-PDF raster and independent IFC evidence lives in
 [evidence/pdf-straight-stroke-annotations](evidence/pdf-straight-stroke-annotations/README.md).

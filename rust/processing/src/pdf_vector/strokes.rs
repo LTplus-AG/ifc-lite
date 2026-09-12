@@ -48,8 +48,24 @@ fn arc(
     if !model_radius_bound.is_finite() || model_radius_bound == 0. {
         return Err("PDF round stroke cap/join collapses in the model plane".into());
     }
-    let ratio = (tolerance / model_radius_bound).clamp(f64::EPSILON, 1.);
-    let max_step = 2. * (1. - ratio).clamp(-1., 1.).acos();
+    // Chord sagitta alone is not a metric certificate when forming and
+    // transforming an arc point can already lose more than the allowance.
+    // Bound the affine operands rather than only the final point: translation
+    // or cancellation can otherwise hide the magnitude that drives roundoff.
+    let [tx, ty] = [state.model_metres_from_path[4], state.model_metres_from_path[5]];
+    let magnitude = (a.abs() * centre[0].abs() + c.abs() * centre[1].abs() + tx.abs())
+        .max(b.abs() * centre[0].abs() + d.abs() * centre[1].abs() + ty.abs())
+        .max(model_radius_bound)
+        .max(1.);
+    let roundoff = 256. * f64::EPSILON * magnitude;
+    if !roundoff.is_finite() || roundoff >= tolerance {
+        return Err("PDF round stroke tolerance is below model-coordinate numerical precision".into());
+    }
+    let ratio = ((tolerance - roundoff) / model_radius_bound).min(1.);
+    // sagitta / radius = 1-cos(step/2) = 2*sin(step/4)^2.
+    // The asin form stays meaningful when `ratio` is below machine epsilon;
+    // subtracting it from one would round up and under-subdivide shallow arcs.
+    let max_step = 4. * (ratio / 2.).sqrt().asin();
     let segments = (sweep.abs() / max_step).ceil().max(1.) as usize;
     if segments > 1024 {
         return Err("PDF round stroke cap/join exceeds flattened vertex budget".into());
@@ -63,6 +79,10 @@ fn arc(
         })
         .collect())
 }
+
+#[cfg(test)]
+#[path = "strokes_tests.rs"]
+mod tests;
 fn direction(a: Point, b: Point) -> Result<Point, String> {
     let d = sub(b, a);
     let length = d[0].hypot(d[1]);
@@ -100,9 +120,7 @@ fn emit(
     Ok(())
 }
 fn join(
-    p: Point,
-    previous: Point,
-    next: Point,
+    [p, previous, next]: [Point; 3],
     side: f64,
     h: f64,
     state: &PdfVectorGraphicsState,
@@ -195,9 +213,7 @@ fn outline(
         for (i, &p) in points.iter().enumerate() {
             if closed || (i > 0 && i < count) {
                 edge.extend(join(
-                    p,
-                    directions[(i + count - 1) % count],
-                    directions[i % count],
+                    [p, directions[(i + count - 1) % count], directions[i % count]],
                     side,
                     h,
                     state,
@@ -222,14 +238,14 @@ fn outline(
             let q = points[(i + 1) % points.len()];
             let d = directions[i];
             let start = if closed || i > 0 {
-                *join(p, directions[(i + count - 1) % count], d, side, h, state, tolerance, remaining)?
+                *join([p, directions[(i + count - 1) % count], d], side, h, state, tolerance, remaining)?
                     .last()
                     .unwrap()
             } else {
                 edge[0]
             };
             let end = if closed || i + 1 < count {
-                join(q, d, directions[(i + 1) % count], side, h, state, tolerance, remaining)?[0]
+                join([q, d, directions[(i + 1) % count]], side, h, state, tolerance, remaining)?[0]
             } else {
                 *edge.last().unwrap()
             };

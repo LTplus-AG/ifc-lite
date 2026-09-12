@@ -21,7 +21,9 @@ the sheared control has 85 differing pixels, within 0.464 pixel of a native
 boundary. This raster test does not establish the requested metric tolerance.
 Separate analytic areas, including the shear determinant, agree with independent
 IFC mesh areas; the native test suite additionally covers reflection, closed
-holes, cap extent, miter cutoff, unsupported paint and collapsed offsets.
+holes, both turn signs, cap extent, near reversals, metric distance after affine
+transforms, numerical-precision refusal, miter cutoff, unsupported paint and
+collapsed offsets.
 
 Original PDF and exported IFC remain outside git. The committed requests,
 screenshots and oracle report reproduce the bounded controls. Run from a built

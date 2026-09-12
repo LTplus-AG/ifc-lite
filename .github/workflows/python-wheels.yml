@@ -45,6 +45,7 @@ jobs:
   build:
     name: wheel ${{ matrix.os }} / ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -104,6 +105,7 @@ jobs:
         with:
           name: wheels-${{ matrix.os }}-${{ matrix.target }}
           path: rust/python/dist/*.whl
+          if-no-files-found: error
 
   # The other four legs, OFF the PR lane. Same steps as `build` (kept
   # verbatim rather than shared, since workflow YAML has no include); the
@@ -113,6 +115,7 @@ jobs:
     name: wheel ${{ matrix.os }} / ${{ matrix.target }}
     if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -178,6 +181,7 @@ jobs:
         with:
           name: wheels-${{ matrix.os }}-${{ matrix.target }}
           path: rust/python/dist/*.whl
+          if-no-files-found: error
 
   # A red push to main must not scroll by. One issue per workflow, updated
   # rather than duplicated while it is open; closed by whoever fixes it.
@@ -213,6 +217,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/ifclite-geom-v')
     needs: [build, build-cross]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: pypi
     permissions:
       id-token: write # PyPI trusted publishing (OIDC)
@@ -222,6 +227,16 @@ jobs:
           pattern: wheels-*
           merge-multiple: true
           path: dist
+      - name: Assert the complete wheel matrix arrived
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t wheels < <(find dist -maxdepth 1 -type f -name '*.whl' -print)
+          printf 'downloaded wheel: %s\n' "${wheels[@]}"
+          if [ "${#wheels[@]}" -ne 5 ]; then
+            echo "::error::expected 5 wheels (one per matrix leg), got ${#wheels[@]}"
+            exit 1
+          fi
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           packages-dir: dist

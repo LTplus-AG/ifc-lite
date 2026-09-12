@@ -1228,6 +1228,10 @@ jobs:
       # `test:` job must FAIL rather than report "0 unjudged of 0".
       - name: Check aggregate-coverage gate regressions
         run: node --test scripts/check-ci-aggregate-coverage.test.mjs
+      - name: Check workflow report paths and anti-vacuity guards
+        run: node scripts/check-workflow-report-paths.mjs
+      - name: Check workflow report-path gate regressions
+        run: node --test scripts/check-workflow-report-paths.test.mjs
       # Same class as the gate above (#3452), for a case it cannot see: its
       # own scan only recognises gates invoked as a literal `node
       # scripts/*.mjs` in a `run:` step, and sdk-canary.yml's job is `pnpm
@@ -1990,6 +1994,24 @@ jobs:
       # then made every fixture-gated test skip silently and report ok.
       - name: Verify fixtures
         run: node scripts/fixtures/fetch-fixtures.mjs --check
+      # A named Cargo target can compile and exit 0 after every contained test
+      # becomes ignored or cfg-gated. Prove this invocation still selects work
+      # before treating its exit status as census evidence (#4144).
+      - name: Assert the census target contains runnable tests
+        run: |
+          set -euo pipefail
+          cargo test -p ifc-lite-geometry --features triangulation-alt \
+            --test triangulation_invariance -- --list > "$RUNNER_TEMP/census-tests.txt"
+          cargo test -p ifc-lite-geometry --features triangulation-alt \
+            --test triangulation_invariance -- --ignored --list > "$RUNNER_TEMP/census-ignored-tests.txt"
+          cat "$RUNNER_TEMP/census-tests.txt"
+          all=$(grep -c ': test$' "$RUNNER_TEMP/census-tests.txt" || true)
+          ignored=$(grep -c ': test$' "$RUNNER_TEMP/census-ignored-tests.txt" || true)
+          runnable=$(( ${all:-0} - ${ignored:-0} ))
+          if [ "$runnable" -le 0 ]; then
+            echo "::error::triangulation_invariance selected zero runnable tests"
+            exit 1
+          fi
       - name: Census
         run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance -- --nocapture
       # The per-host rows this run measured, uploaded pass or fail. The census
@@ -2003,7 +2025,7 @@ jobs:
         with:
           name: watertightness-census-rows
           path: target/watertightness_census.run.tsv
-          if-no-files-found: warn
+          if-no-files-found: error
   # The boolean accept gates' feature builds (#3871).
   #
   # `csg_manifold_gate` (#3440) and `csg_topology_gate` (#3717) are off by

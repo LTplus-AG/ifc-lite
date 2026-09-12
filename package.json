@@ -34,6 +34,7 @@
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
     "check:ci-path-coverage": "node scripts/check-ci-path-coverage.mjs",
     "check:ci-aggregate-coverage": "node scripts/check-ci-aggregate-coverage.mjs",
+    "check:workflow-report-paths": "node scripts/check-workflow-report-paths.mjs",
     "check:test-glob-coverage": "node scripts/check-test-glob-coverage.mjs",
     "check:source-text-assertions": "node scripts/check-source-text-assertions.mjs",
     "check:rust-source-text-assertions": "node scripts/check-rust-source-text-assertions.mjs",

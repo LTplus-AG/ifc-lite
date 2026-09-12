@@ -197,10 +197,10 @@ function readFixture(bucket: string, file: string): string | null {
 function runFixtureTable(bucket: string, table: FixtureExpectation[]): void {
   for (const fx of table) {
     if ((fx.status as string) === 'skip') continue;
-    it(`${bucket}/${fx.file} → ${fx.status}`, async () => {
+    it(`${bucket}/${fx.file} → ${fx.status}`, async (context) => {
       const xml = readFixture(bucket, fx.file);
       if (xml === null) {
-        // Fixture not on disk (e.g. `Restriction/` directory): skip.
+        context.skip(`fixture is absent; run pnpm fixtures before ${bucket}/${fx.file}`);
         return;
       }
       const r = await auditIDSDocument(xml);

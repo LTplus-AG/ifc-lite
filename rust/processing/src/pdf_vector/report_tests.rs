@@ -403,7 +403,7 @@ fn issue_4406_stroke_features_and_pattern_colours_split_combined_paints() {
     assert_eq!(
         paints,
         [
-            (2, PdfVectorPaint::EvenOddFill),
+            (2, PdfVectorPaint::CloseEvenOddFillStroke),
             (8, PdfVectorPaint::Stroke),
             (16, PdfVectorPaint::Fill),
             (22, PdfVectorPaint::CloseStroke),
@@ -413,18 +413,17 @@ fn issue_4406_stroke_features_and_pattern_colours_split_combined_paints() {
     assert_eq!(
         kinds(&report),
         [
-            (2, "dash".into(), true),
             (12, "curvedStroke".into(), true),
             (16, "pattern".into(), true),
             (22, "pattern".into(), true),
         ]
     );
-    assert_eq!(report.fidelity.omitted_paints, 4);
+    assert_eq!(report.fidelity.omitted_paints, 3);
     assert_eq!(report.fidelity.convertible_paths, 5);
 }
 
 #[test]
-fn issue_4406_only_qualified_open_straight_dashes_leave_the_fidelity_report() {
+fn issue_4583_qualified_open_and_closed_straight_dashes_leave_the_fidelity_report() {
     let dashed = |commands| Op::Path {
         paint: PdfVectorPaint::Stroke,
         commands,
@@ -440,18 +439,18 @@ fn issue_4406_only_qualified_open_straight_dashes_leave_the_fidelity_report() {
     .unwrap();
     assert_eq!(
         report.paths.iter().map(|path| path.operator_ordinal).collect::<Vec<_>>(),
-        [2],
-        "only the open straight positive-pattern stroke is convertible",
+        [2, 4],
+        "open and closed straight positive-pattern strokes are convertible",
     );
     assert_eq!(
         kinds(&report),
-        [(4, "dash".into(), true), (6, "dash".into(), false), (10, "dash".into(), true)],
+        [(6, "dash".into(), false), (10, "dash".into(), true)],
     );
-    assert_eq!(report.fidelity.omitted_paints, 2);
+    assert_eq!(report.fidelity.omitted_paints, 1);
 }
 
 #[test]
-fn issue_4406_explicit_and_paint_time_dash_closure_are_separate_omissions() {
+fn issue_4583_explicit_and_paint_time_dash_closure_are_both_convertible() {
     let report = prepare_pdf_vector_page(&page(vec![
         Op::Dash { lengths: vec![3., 2.], phase: 0. },
         Op::Path {
@@ -464,9 +463,10 @@ fn issue_4406_explicit_and_paint_time_dash_closure_are_separate_omissions() {
         },
     ]))
     .unwrap();
-    assert!(report.paths.is_empty());
-    assert_eq!(kinds(&report), [(2, "dash".into(), true), (4, "dash".into(), true)]);
-    assert_eq!(report.fidelity.omitted_paints, 2);
+    assert!(report.fidelity.exact);
+    assert_eq!(report.paths.iter().map(|path| path.operator_ordinal).collect::<Vec<_>>(), [2, 4]);
+    assert!(kinds(&report).is_empty());
+    assert_eq!(report.fidelity.omitted_paints, 0);
 }
 
 #[test]

@@ -309,9 +309,9 @@ pub(super) fn rings(
         }
         let mut out = PathRings { rings: vec![], curved: vec![] };
         for run in super::dashes::expand(
-            commands, &state.dash_lengths, state.dash_phase, remaining,
+            commands, close_last, &state.dash_lengths, state.dash_phase, remaining,
         )? {
-            outline(&run, false, state, &mut out, remaining, tolerance)?;
+            outline(&run.points, run.closed, state, &mut out, remaining, tolerance)?;
         }
         return Ok(out);
     }

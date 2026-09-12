@@ -11,21 +11,28 @@ type Point = [f64; 2];
 const MAX_DASH_RUNS: usize = 1024;
 
 /// Preparation may call a dashed stroke convertible only when the planner can
-/// preserve its semantics. Closed and curved paths remain reportable omissions.
-pub(super) fn supported(commands: &[f64], close_last: bool, pattern: &[f64]) -> bool {
-    if close_last || pattern.is_empty() || pattern.iter().any(|length| *length <= 0.) {
+/// preserve its semantics. Straight open and closed subpaths are supported;
+/// curves remain reportable omissions.
+pub(super) fn supported(commands: &[f64], _close_last: bool, pattern: &[f64]) -> bool {
+    if pattern.is_empty() || pattern.iter().any(|length| *length <= 0.) {
         return false;
     }
     let mut cursor = 0;
     while cursor < commands.len() {
         match commands[cursor] {
             0. | 1. => cursor += 3,
-            // Curves and explicit close-paths require separate qualifications.
-            2. | 3. | 4. => return false,
+            2. | 3. => return false,
+            4. => cursor += 1,
             _ => return false,
         }
     }
     true
+}
+
+#[derive(Debug, PartialEq)]
+pub(super) struct DashRun {
+    pub points: Vec<Point>,
+    pub closed: bool,
 }
 
 fn point_at(a: Point, b: Point, distance: f64, length: f64) -> Point {
@@ -44,15 +51,20 @@ fn finish(run: &mut Vec<Point>, runs: &mut Vec<Vec<Point>>) -> Result<(), String
     Ok(())
 }
 
-/// Expand one open polyline. Pattern state resets at each PDF subpath and is
-/// continuous across its vertices, so an on-run crossing a corner keeps the
-/// ordinary PDF join instead of gaining two artificial caps.
+/// Expand one polyline. Pattern state resets at each PDF subpath and is
+/// continuous across its vertices. For a closed subpath the closing edge is
+/// traversed too, and visible pieces meeting across the closure seam are joined.
 fn subpath(
-    points: &[Point], pattern: &[f64], phase: f64,
-    runs: &mut Vec<Vec<Point>>, remaining: &mut u64,
-) -> Result<(), String> {
+    points: &[Point], closed: bool, pattern: &[f64], phase: f64,
+    remaining: &mut u64,
+) -> Result<Vec<DashRun>, String> {
+    let points = if closed && points.len() > 1 && points.first() == points.last() {
+        &points[..points.len() - 1]
+    } else {
+        points
+    };
     if points.len() < 2 {
-        return Ok(());
+        return Ok(vec![]);
     }
     let cycle: f64 = pattern.iter().sum();
     if !cycle.is_finite() || cycle <= 0. {
@@ -65,9 +77,12 @@ fn subpath(
         pattern_index = (pattern_index + 1) % pattern.len();
     }
     let mut dash_left = pattern[pattern_index] - offset;
+    let starts_on = pattern_index % 2 == 0;
     let mut run = Vec::new();
-    for segment in points.windows(2) {
-        let [a, b] = [segment[0], segment[1]];
+    let segment_count = points.len() - usize::from(!closed);
+    let mut raw_runs = Vec::new();
+    for i in 0..segment_count {
+        let [a, b] = [points[i], points[(i + 1) % points.len()]];
         let length = (b[0] - a[0]).hypot(b[1] - a[1]);
         if !length.is_finite() || length == 0. {
             return Err("PDF dashed stroke has a zero-length segment".into());
@@ -97,22 +112,37 @@ fn subpath(
             let boundary = dash_left <= 0. || dash_left + step == step;
             if boundary {
                 if pattern_index % 2 == 0 {
-                    finish(&mut run, runs)?;
+                    finish(&mut run, &mut raw_runs)?;
                 }
                 pattern_index = (pattern_index + 1) % pattern.len();
                 dash_left = pattern[pattern_index];
             }
         }
     }
-    finish(&mut run, runs)
+    finish(&mut run, &mut raw_runs)?;
+
+    let ends_on = pattern_index % 2 == 0 && dash_left < pattern[pattern_index];
+    if closed && starts_on && ends_on && !raw_runs.is_empty() {
+        if raw_runs.len() == 1 {
+            return Ok(vec![DashRun { points: raw_runs.pop().unwrap(), closed: true }]);
+        }
+        let first = raw_runs.remove(0);
+        let last = raw_runs.last_mut().unwrap();
+        if last.last() == first.first() {
+            last.extend(first.into_iter().skip(1));
+        } else {
+            last.extend(first);
+        }
+    }
+    Ok(raw_runs.into_iter().map(|points| DashRun { points, closed: false }).collect())
 }
 
-/// Split all open straight subpaths into their visible on-runs. An odd pattern
+/// Split all straight subpaths into their visible on-runs. An odd pattern
 /// is repeated once as required by PDF, and phase is normalized over that
 /// effective even cycle.
 pub(super) fn expand(
-    commands: &[f64], pattern: &[f64], phase: f64, remaining: &mut u64,
-) -> Result<Vec<Vec<Point>>, String> {
+    commands: &[f64], close_last: bool, pattern: &[f64], phase: f64, remaining: &mut u64,
+) -> Result<Vec<DashRun>, String> {
     if pattern.is_empty() || pattern.iter().any(|length| !length.is_finite() || *length <= 0.) {
         return Err("Planner invariant: unsupported PDF dash pattern reached expansion".into());
     }
@@ -122,24 +152,48 @@ pub(super) fn expand(
     }
     let mut runs = Vec::new();
     let mut points = Vec::new();
+    let mut just_closed = false;
     let mut cursor = 0;
     while cursor < commands.len() {
         match commands[cursor] {
             0. => {
-                subpath(&points, &effective, phase, &mut runs, remaining)?;
+                append_subpath(&mut runs, subpath(&points, false, &effective, phase, remaining)?)?;
                 points.clear();
                 points.push([commands[cursor + 1], commands[cursor + 2]]);
                 cursor += 3;
+                just_closed = false;
             }
             1. => {
                 points.push([commands[cursor + 1], commands[cursor + 2]]);
                 cursor += 3;
+                just_closed = false;
+            }
+            4. => {
+                if !just_closed {
+                    append_subpath(&mut runs, subpath(&points, true, &effective, phase, remaining)?)?;
+                }
+                points.truncate(1);
+                cursor += 1;
+                just_closed = true;
             }
             _ => return Err("Planner invariant: unsupported dashed PDF path reached expansion".into()),
         }
     }
-    subpath(&points, &effective, phase, &mut runs, remaining)?;
+    if !just_closed {
+        append_subpath(
+            &mut runs,
+            subpath(&points, close_last, &effective, phase, remaining)?,
+        )?;
+    }
     Ok(runs)
+}
+
+fn append_subpath(runs: &mut Vec<DashRun>, mut next: Vec<DashRun>) -> Result<(), String> {
+    if runs.len() + next.len() > MAX_DASH_RUNS {
+        return Err("PDF dashed stroke exceeds 1024 visible run pieces".into());
+    }
+    runs.append(&mut next);
+    Ok(())
 }
 
 #[cfg(test)]

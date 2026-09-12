@@ -29,9 +29,9 @@
  *      when EVERY production file is TypeScript and type-only. One runtime
  *      change anywhere and the runtime observer is the right one for the
  *      whole revert set (a mixed revert is judged by the stricter tool).
- *   3. `typecheckPlans` / `runTypecheckPlan`: group the changed TypeScript
- *      test files by owning package and type-check that package's test
- *      program through `scripts/typecheck-tests.mjs` (the repo's dedicated
+ *   3. `typecheckPlans` / `runTypecheckPlan`: make an attributable ledger
+ *      entry for each changed TypeScript test while type-checking each owning
+ *      package program once through `scripts/typecheck-tests.mjs` (the repo's dedicated
  *      lane for test-only type errors, #2457), at baseline and again with
  *      production reverted. The result carries the SAME shape
  *      `parseRunnerOutput` produces, so `aggregate()` and `verdict()` in
@@ -57,13 +57,15 @@
  * of the verdict knows which channel it came from.
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { claimRuntimeAdapter } from './revert-oracle-adapters.mjs';
 
 const TS_EXTS = ['.ts', '.tsx', '.mts', '.cts'];
+const typecheckRuns = new Map();
 
 export const TYPECHECK_SCRIPT = 'scripts/typecheck-tests.mjs';
 
@@ -169,7 +171,8 @@ function findUp(startDir, filename, root) {
 }
 
 /**
- * One plan per package that owns a changed TypeScript test file. Non-TypeScript
+ * One ledger plan per changed TypeScript test file. Package compiler runs are
+ * cached per phase, and generated-program membership proves attribution. Non-TypeScript
  * test files can never observe a type-only change and are listed in `skipped`
  * by name so the dispatcher can say so.
  *
@@ -178,7 +181,7 @@ function findUp(startDir, filename, root) {
  * script that will be spawned, for the log line.
  */
 export function typecheckPlans(testPaths, root) {
-  const groups = new Map();
+  const plans = [];
   const skipped = [];
   const unassigned = [];
   for (const rel of testPaths) {
@@ -186,19 +189,21 @@ export function typecheckPlans(testPaths, root) {
     const abs = join(root, rel);
     const pkgDir = findUp(dirname(abs), 'package.json', root);
     if (!pkgDir || pkgDir === root || !existsSync(join(pkgDir, 'tsconfig.json'))) { unassigned.push(rel); continue; }
-    if (!groups.has(pkgDir)) groups.set(pkgDir, { dir: pkgDir, files: [] });
-    groups.get(pkgDir).files.push(rel);
+    const relFile = relative(pkgDir, join(root, rel)).split(sep).join('/');
+    const claimed = claimRuntimeAdapter({ kind: 'typecheck' });
+    plans.push({
+      key: `typecheck:${rel}`,
+      file: rel,
+      dir: pkgDir,
+      files: [rel],
+      relFiles: [relFile],
+      script: undefined,
+      crate: null,
+      typecheck: true,
+      adapter: claimed?.adapter ?? null,
+      runner: claimed?.runner ?? null,
+    });
   }
-  const plans = [...groups.values()].map((g) => ({
-    key: `typecheck:${g.dir}`,
-    dir: g.dir,
-    files: g.files,
-    relFiles: g.files.map((f) => relative(g.dir, join(root, f)).split(sep).join('/')),
-    script: undefined,
-    crate: null,
-    typecheck: true,
-    runner: { family: 'typecheck', bin: 'node', args: [TYPECHECK_SCRIPT] },
-  }));
   return { plans, skipped, unassigned };
 }
 
@@ -226,33 +231,69 @@ const samePath = (a, b) => a === b || a.endsWith(`/${b}`) || b.endsWith(`/${a}`)
  * @param {'baseline'|'reverted'} phase which run this is -- see the header table
  * @param {{spawn?: typeof spawnSync}} [deps] injectable for tests
  */
-export function runTypecheckPlan(plan, root, phase, { spawn = spawnSync } = {}) {
+export function compilerProgramIncludes(plan, root) {
+  const generated = join(plan.dir, 'tsconfig.tests.json');
+  try {
+    const config = JSON.parse(readFileSync(generated, 'utf8'));
+    const included = Array.isArray(config.files) && config.files.some((file) => samePath(file.replace(/^\.\//, ''), plan.relFiles[0]));
+    return included
+      ? { included: true, evidence: relative(root, generated).split(sep).join('/') }
+      : { included: false, evidence: `${plan.file} is absent from ${relative(root, generated).split(sep).join('/')}` };
+  } catch (error) {
+    return { included: false, evidence: `cannot read the generated compiler program: ${error.message}` };
+  }
+}
+
+export function runTypecheckPlan(plan, root, phase, { spawn = spawnSync, programIncludes = compilerProgramIncludes } = {}) {
   const script = join(root, TYPECHECK_SCRIPT);
   if (!existsSync(script)) {
-    return { kind: 'runner-missing', passed: null, failed: null, total: null, evidence: [`${TYPECHECK_SCRIPT} not found under ${root}`] };
+    return { kind: 'runner-missing', passed: null, failed: null, total: null, rawExitCode: null, evidence: [`${TYPECHECK_SCRIPT} not found under ${root}`] };
   }
-  const r = spawn(process.execPath, [script], {
-    cwd: plan.dir,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, CI: '1', FORCE_COLOR: '0', NO_COLOR: '1' },
-  });
+  const cacheKey = `${phase}:${plan.dir}`;
+  let r = spawn === spawnSync ? typecheckRuns.get(cacheKey) : null;
+  if (!r) {
+    r = spawn(process.execPath, [script], {
+      cwd: plan.dir,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: 10 * 60 * 1000,
+      env: { ...process.env, CI: '1', FORCE_COLOR: '0', NO_COLOR: '1' },
+    });
+    if (spawn === spawnSync) typecheckRuns.set(cacheKey, r);
+  }
   if (r.error) {
-    return { kind: 'runner-missing', passed: null, failed: null, total: null, evidence: [`could not spawn ${TYPECHECK_SCRIPT}: ${r.error.message}`] };
+    return { kind: 'runner-missing', passed: null, failed: null, total: null, rawExitCode: null, evidence: [`could not spawn ${TYPECHECK_SCRIPT}: ${r.error.message}`] };
+  }
+  if (r.signal || r.status === null) {
+    return {
+      kind: 'unparseable', passed: null, failed: null, total: null, rawExitCode: r.status, signal: r.signal ?? null,
+      attributed: false, evidence: [r.signal ? `typecheck terminated by ${r.signal}` : 'typecheck returned no exit status'],
+    };
   }
   const output = `${r.stdout ?? ''}\n${r.stderr ?? ''}`;
   const diagnostics = parseTscDiagnostics(output);
-  const total = plan.files.length;
+  const total = 1;
+  const inclusion = programIncludes(plan, root);
+  if (!inclusion.included) {
+    return {
+      kind: 'runner-missing', passed: null, failed: null, total: null, rawExitCode: r.status,
+      signal: r.signal ?? null, attributed: false,
+      evidence: [`cannot prove ${plan.file} entered the compiler program: ${inclusion.evidence} -- refusing a synthetic typecheck result`],
+    };
+  }
   const inChanged = diagnostics.filter((d) => plan.files.some((f) => samePath(d.file, f)));
   const elsewhere = diagnostics.length - inChanged.length;
   const describe = (d) => `${d.file}(${d.line},${d.col}): ${d.code} ${d.message}`;
 
   if (phase === 'baseline') {
     if (r.status === 0 && diagnostics.length === 0) {
-      return { kind: 'pass', passed: total, failed: 0, total, evidence: [] };
+      return { kind: 'pass', passed: total, failed: 0, total, rawExitCode: r.status, signal: null, attributed: true, evidence: [] };
     }
     return {
       kind: 'load-failure',
+      rawExitCode: r.status,
+      signal: null,
+      attributed: true,
       passed: null,
       failed: null,
       total,
@@ -264,17 +305,34 @@ export function runTypecheckPlan(plan, root, phase, { spawn = spawnSync } = {}) 
     };
   }
   if (inChanged.length > 0) {
+    if (r.status === 0) {
+      return { kind: 'unparseable', rawExitCode: 0, signal: null, attributed: false, passed: null, failed: null, total,
+        evidence: ['typecheck reported diagnostics in the changed test file but exited 0'] };
+    }
     const hit = new Set(inChanged.map((d) => plan.files.find((f) => samePath(d.file, f)))).size;
     return {
       kind: 'assertion-failure',
+      rawExitCode: r.status,
+      signal: null,
+      attributed: true,
       passed: total - hit,
       failed: hit,
       total,
       evidence: inChanged.slice(0, 5).map(describe),
     };
   }
+  if (r.status !== 0) {
+    return {
+      kind: 'load-failure', rawExitCode: r.status, signal: null, attributed: true,
+      passed: null, failed: null, total,
+      evidence: [diagnostics[0] ? `typecheck failed outside the changed test file: ${describe(diagnostics[0])}` : `typecheck exited ${r.status} with no diagnostic`],
+    };
+  }
   return {
     kind: 'pass',
+    rawExitCode: r.status,
+    signal: null,
+    attributed: true,
     passed: total,
     failed: 0,
     total,

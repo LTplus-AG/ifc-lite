@@ -464,6 +464,10 @@ test('classifyPath: Python `test_*.py` / `*_test.py` are tests, not production (
   assert.equal(classifyPath('a/b/c/test_deep.py'), 'test');
 });
 
+test('#4109: unsupported Go entrypoints stay tests so planning can expose a capability gap', () => {
+  assert.equal(classifyPath('cmd/widget_test.go'), 'test');
+});
+
 test('classifyPath: a Python module that merely CONTAINS "test" stays production', () => {
   assert.equal(classifyPath('tools/ifcopenshell_reference/canonical.py'), 'production');
   assert.equal(classifyPath('tools/ifcopenshell_reference/latest_export.py'), 'production');
@@ -798,6 +802,13 @@ test('node --test: all green', () => {
   assert.equal(r.passed, 197);
 });
 
+test('#4109: a green summary cannot override nonzero, missing, or signalled process status', () => {
+  for (const processState of [{ exitCode: 9 }, { exitCode: null }, { exitCode: null, signal: 'SIGTERM' }]) {
+    const parsed = parseRunnerOutput({ family: 'node-test', stdout: NODE_ALL_PASS, stderr: '', ...processState });
+    assert.equal(parsed.kind, UNPARSEABLE);
+  }
+});
+
 test('node --test: zero collected tests is never a pass', () => {
   const r = parseRunnerOutput({ family: 'node-test', stdout: NODE_ZERO_TESTS, stderr: '', exitCode: 0 });
   assert.equal(r.kind, NO_TESTS);
@@ -1037,10 +1048,10 @@ test('verdict: a missing run never reports clean', () => {
   assert.notEqual(verdict({ baseline: green, reverted: null }).exitCode, 0);
 });
 
-test('#3661: CI blocks misses and broken baselines, but not honest inconclusives', () => {
+test('#4109: CI blocks misses, broken baselines, and oracle capability gaps', () => {
   assert.equal(ciExitCode(OBSERVED), 0);
   assert.equal(ciExitCode(UNOBSERVED), 1);
-  assert.equal(ciExitCode(INCONCLUSIVE), 0);
+  assert.notEqual(ciExitCode(INCONCLUSIVE), 0);
   assert.notEqual(ciExitCode(BASELINE_BROKEN), 0);
 });
 
@@ -1113,6 +1124,32 @@ test('#4131 regression: multi-package all-skipped-plus-evidence run does not blo
   const v = verdict({ baseline, reverted });
   assert.equal(v.verdict, OBSERVED);
   assert.equal(v.exitCode, 0);
+});
+
+test('#4109: a green structured run may log the literal `SyntaxError:` as fixture data', () => {
+  const parsed = parseRunnerOutput({
+    family: 'node-test',
+    stdout: 'fixture caught: SyntaxError: expected\n# tests 120\n# pass 120\n# fail 0\n',
+    stderr: '',
+    exitCode: 0,
+  });
+  assert.equal(parsed.kind, 'pass');
+  assert.equal(parsed.total, 120);
+});
+
+test('#4109: incomplete execution cannot support a negative UNOBSERVED finding', () => {
+  const baseline = aggregate([
+    { kind: PASS, passed: 12, failed: 0, total: 12, evidence: [] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+  ]);
+  const reverted = aggregate([
+    { kind: PASS, passed: 12, failed: 0, total: 12, evidence: [] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+  ]);
+  const v = verdict({ baseline, reverted });
+  assert.equal(v.verdict, INCONCLUSIVE);
+  assert.match(v.reason, /cannot support an UNOBSERVED finding/);
+  assert.notEqual(ciExitCode(v.verdict), 0);
 });
 
 test('#4108 (still fixed): aggregate: a SINGLE all-skipped package is still ALL_SKIPPED and still blocks', () => {

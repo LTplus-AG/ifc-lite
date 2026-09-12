@@ -347,21 +347,6 @@ export function requiredFeatureCombos(root, relFiles, defaultFeatures = null) {
  */
 export const EXIT_UNHANDLED_CFG_SHAPE = 6;
 
-/** The `--json` payload for an UnhandledCfgShapeError, in the same shape the
- * dispatcher's normal report uses (verdict/reason/base/head/production/tests),
- * plus an `error` object naming what could not be planned and where. */
-export function unhandledCfgShapeReport(err, base, head, production, tests) {
-  return {
-    verdict: 'ERROR',
-    reason: err.message,
-    base,
-    head,
-    production,
-    tests,
-    error: { name: err.name, shape: err.shape, file: err.file, line: err.line },
-  };
-}
-
 /**
  * Run `planRuns(testPaths)`, catching UnhandledCfgShapeError so it becomes a
  * structured, distinguishable failure — die()'s ABORT formatting, JSON when
@@ -374,15 +359,16 @@ export function unhandledCfgShapeReport(err, base, head, production, tests) {
  * are defined in check-test-revert-oracle.mjs (`planRuns` closes over its
  * `ROOT`; `die` closes over its restoration state), and this module has no
  * dependency on that file today. Keeping the call site there to one line —
- * matching what it replaces — is what let this defect's fix land without
- * raising that file's module-size budget.
+ * matching what it replaces — keeps the runner-specific refusal here while
+ * the dispatcher owns the process-wide exactly-one result record.
  */
-export function requiredFeaturePlanOrDie(planRuns, testPaths, json, base, head, production, die, exitCode) {
+export function requiredFeaturePlanOrDie(planRuns, testPaths, die, exitCode) {
   try {
     return planRuns(testPaths);
   } catch (err) {
     if (!(err instanceof UnhandledCfgShapeError)) throw err;
-    if (json) console.log(JSON.stringify(unhandledCfgShapeReport(err, base, head, production, testPaths), null, 2));
-    die(exitCode, err.message);
+    die(exitCode, err.message, [], {
+      error: { name: err.name, shape: err.shape, file: err.file, line: err.line },
+    });
   }
 }

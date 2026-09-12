@@ -161,6 +161,7 @@ const TS2339 = `${TEST_FILE}(35,37): error TS2339: Property 'getMeshData' does n
 const ELSEWHERE = `packages/renderer/src/other.test.ts(9,3): error TS2339: Property 'getMeshData' does not exist on type 'SceneContents'.\n`;
 
 const fakeSpawn = (status, stdout) => () => ({ status, stdout, stderr: '' });
+const included = { programIncludes: () => ({ included: true, evidence: 'fixture program' }) };
 
 test('parseTscDiagnostics reads tsc\'s `file(line,col): error TSnnnn:` lines and nothing else', () => {
   const d = parseTscDiagnostics(`typecheck-tests: packages/renderer FAILED (110 test files)\n${TS2339}${ELSEWHERE}some prose\n`);
@@ -172,11 +173,11 @@ test('parseTscDiagnostics reads tsc\'s `file(line,col): error TSnnnn:` lines and
 });
 
 test('#4472 through verdict(): baseline clean, revert puts TS2339 in the changed test -> OBSERVED', () => {
-  const baseline = runTypecheckPlan(PLAN, REPO_ROOT, 'baseline', { spawn: fakeSpawn(0, 'typecheck-tests: packages/renderer OK (110 test files)\n') });
+  const baseline = runTypecheckPlan(PLAN, REPO_ROOT, 'baseline', { spawn: fakeSpawn(0, 'typecheck-tests: packages/renderer OK (110 test files)\n'), ...included });
   assert.equal(baseline.kind, 'pass');
   assert.deepEqual([baseline.passed, baseline.failed, baseline.total], [1, 0, 1]);
 
-  const reverted = runTypecheckPlan(PLAN, REPO_ROOT, 'reverted', { spawn: fakeSpawn(1, TS2339) });
+  const reverted = runTypecheckPlan(PLAN, REPO_ROOT, 'reverted', { spawn: fakeSpawn(1, TS2339), ...included });
   assert.equal(reverted.kind, 'assertion-failure');
   assert.deepEqual([reverted.passed, reverted.failed, reverted.total], [0, 1, 1]);
   assert.match(reverted.evidence[0], /TS2339/);
@@ -193,24 +194,24 @@ test('the pre-fix answer, for contrast: the runtime observer saw pass/pass and s
   assert.equal(verdict({ baseline: pass4, reverted: pass4 }).verdict, 'UNOBSERVED');
 });
 
-test('a diagnostic that lands ONLY in some other test file is UNOBSERVED, with the reason named', () => {
-  const baseline = runTypecheckPlan(PLAN, REPO_ROOT, 'baseline', { spawn: fakeSpawn(0, '') });
-  const reverted = runTypecheckPlan(PLAN, REPO_ROOT, 'reverted', { spawn: fakeSpawn(1, ELSEWHERE) });
-  assert.equal(reverted.kind, 'pass');
-  assert.match(reverted.evidence[0], /outside the changed test files/);
-  assert.equal(verdict({ baseline: aggregate([baseline]), reverted: aggregate([reverted]) }).verdict, 'UNOBSERVED');
+test('a nonzero typecheck with diagnostics only elsewhere is inconclusive, never a synthetic pass', () => {
+  const baseline = runTypecheckPlan(PLAN, REPO_ROOT, 'baseline', { spawn: fakeSpawn(0, ''), ...included });
+  const reverted = runTypecheckPlan(PLAN, REPO_ROOT, 'reverted', { spawn: fakeSpawn(1, ELSEWHERE), ...included });
+  assert.equal(reverted.kind, 'load-failure');
+  assert.match(reverted.evidence[0], /outside the changed test file/);
+  assert.equal(verdict({ baseline: aggregate([baseline]), reverted: aggregate([reverted]) }).verdict, 'INCONCLUSIVE');
 });
 
 test('a baseline that does not type-check is BASELINE-BROKEN, whichever file the diagnostic is in', () => {
   for (const out of [TS2339, ELSEWHERE]) {
-    const baseline = runTypecheckPlan(PLAN, REPO_ROOT, 'baseline', { spawn: fakeSpawn(1, out) });
+    const baseline = runTypecheckPlan(PLAN, REPO_ROOT, 'baseline', { spawn: fakeSpawn(1, out), ...included });
     assert.equal(baseline.kind, 'load-failure');
     assert.match(baseline.evidence[0], /before any revert/);
-    const reverted = runTypecheckPlan(PLAN, REPO_ROOT, 'reverted', { spawn: fakeSpawn(1, TS2339) });
+    const reverted = runTypecheckPlan(PLAN, REPO_ROOT, 'reverted', { spawn: fakeSpawn(1, TS2339), ...included });
     assert.equal(verdict({ baseline: aggregate([baseline]), reverted: aggregate([reverted]) }).verdict, 'BASELINE-BROKEN');
   }
   // A non-zero exit with nothing parseable is broken too, never a pass.
-  assert.equal(runTypecheckPlan(PLAN, REPO_ROOT, 'baseline', { spawn: fakeSpawn(2, 'boom') }).kind, 'load-failure');
+  assert.equal(runTypecheckPlan(PLAN, REPO_ROOT, 'baseline', { spawn: fakeSpawn(2, 'boom'), ...included }).kind, 'load-failure');
 });
 
 test('a runner that cannot be spawned, or a root without typecheck-tests.mjs, is runner-missing', () => {
@@ -218,13 +219,22 @@ test('a runner that cannot be spawned, or a root without typecheck-tests.mjs, is
   assert.equal(runTypecheckPlan(PLAN, mkdtempSync(join(tmpdir(), 'oracle-no-script-')), 'baseline').kind, 'runner-missing');
 });
 
-test('typecheckPlans groups TypeScript tests by package, names non-TypeScript tests as skipped', () => {
+test('#4109: a green tsc exit is rejected when the changed file is absent from its compiler program', () => {
+  const result = runTypecheckPlan(PLAN, REPO_ROOT, 'baseline', {
+    spawn: fakeSpawn(0, 'typecheck-tests: packages/renderer OK (110 test files)\n'),
+    programIncludes: () => ({ included: false, evidence: 'not listed' }),
+  });
+  assert.equal(result.kind, 'runner-missing');
+  assert.match(result.evidence[0], /refusing a synthetic typecheck result/);
+});
+
+test('typecheckPlans creates one attributable plan per TypeScript file and names non-TypeScript tests as skipped', () => {
   const { plans, skipped, unassigned } = typecheckPlans(
     ['packages/renderer/src/a.test.ts', 'packages/renderer/src/b.test.tsx', 'packages/parser/src/c.test.ts', 'scripts/lib/d.test.mjs'],
     REPO_ROOT,
   );
-  assert.deepEqual(plans.map((p) => p.files), [['packages/renderer/src/a.test.ts', 'packages/renderer/src/b.test.tsx'], ['packages/parser/src/c.test.ts']]);
-  assert.deepEqual(plans[0].relFiles, ['src/a.test.ts', 'src/b.test.tsx']);
+  assert.deepEqual(plans.map((p) => p.files), [['packages/renderer/src/a.test.ts'], ['packages/renderer/src/b.test.tsx'], ['packages/parser/src/c.test.ts']]);
+  assert.deepEqual(plans[0].relFiles, ['src/a.test.ts']);
   assert.equal(plans[0].runner.family, 'typecheck');
   assert.deepEqual(skipped, ['scripts/lib/d.test.mjs']);
   assert.deepEqual(unassigned, []);

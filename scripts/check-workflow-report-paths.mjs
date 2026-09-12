@@ -108,9 +108,15 @@ export function auditRoot(root) {
       }
     }
     if (name === 'python-wheels.yml') {
-      const wheelGate = Object.values(jobs).map((job) => namedStep(job, 'Assert the complete wheel matrix arrived')).find(Boolean);
+      const publishJob = Object.values(jobs).find((job) => namedStep(job, 'Assert the complete wheel matrix arrived'));
+      const publishSteps = stepsOf(publishJob);
+      const wheelGate = namedStep(publishJob, 'Assert the complete wheel matrix arrived');
+      const checkoutIndex = publishSteps.findIndex((step) => expression(step.uses).startsWith('actions/checkout@'));
+      const gateIndex = publishSteps.indexOf(wheelGate);
       const publisher = Object.values(jobs).flatMap(stepsOf).find((step) => expression(step.uses).startsWith('pypa/gh-action-pypi-publish@'));
       if (expression(wheelGate?.run).trim() !== REQUIRED_STEP_RUN.get('Assert the complete wheel matrix arrived')
+        || checkoutIndex < 0 || checkoutIndex >= gateIndex
+        || !isRecord(publishJob?.permissions) || publishJob.permissions.contents !== 'read'
         || !isRecord(publisher?.with) || publisher.with['packages-dir'] !== 'dist/publish') {
         failures.push(`${displayPath(root, path)}: wheel publish gate does not prove every matrix leg independently`);
       }

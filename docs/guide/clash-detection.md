@@ -155,7 +155,10 @@ For spreadsheets and BI tools the run is also a flat table: one row per clash, b
 import { clashTableRows, CLASH_TABLE_COLUMNS } from '@ifc-lite/clash';
 import { tableToCsv } from '@ifc-lite/export';
 
-const rows = clashTableRows(result.clashes, { reviews, storeyOf: (ref) => storeyNameFor(ref) });
+const storeys = new Map<string, string>(); // element key -> storey name, from your own model index
+
+// `storeyOf` / `modelNameOf` are the consumer's lookups: the result carries a model id and no storey.
+const rows = clashTableRows(clashResult.clashes, { reviews, storeyOf: (ref) => storeys.get(ref.key) });
 const csv = tableToCsv(CLASH_TABLE_COLUMNS, rows);
 ```
 

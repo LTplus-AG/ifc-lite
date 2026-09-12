@@ -22,9 +22,11 @@ import { ChartCard } from './ChartCard';
 import { ChartEditor } from './ChartEditor';
 import { DashboardGrid } from './DashboardGrid';
 import { DashboardMenu } from './DashboardMenu';
+import { ReportExportDialog } from './ReportExportDialog';
 import { useChart3DLink, useChartColorOverlay } from './useChart3DLink';
 import { useChartDatasets } from './useChartDatasets';
 import type { ChartRenderer } from './useEChart';
+import type { ReportPdfSeams } from '@/lib/export/report/generate-report-pdf';
 
 const FOCUS_LABEL: Record<ChartFocusMode, string> = { highlight: 'Highlight', isolate: 'Isolate', ghost: 'Ghost others' };
 const SCOPE_LABEL: Record<ChartScope['kind'], string> = { all: 'All models', visible: 'Visible elements', basket: 'Basket', list: 'Saved list' };
@@ -33,9 +35,11 @@ export interface ChartsPanelProps {
   onClose?: () => void;
   /** Injectable chart renderer; tests pass a recorder, the app uses ECharts. */
   renderer?: ChartRenderer;
+  /** Injectable PDF seams for the report export; the app uses jsPDF + the live renderer. */
+  reportSeams?: () => Promise<ReportPdfSeams>;
 }
 
-export function ChartsPanel({ onClose, renderer }: ChartsPanelProps) {
+export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps) {
   const dashboards = useViewerStore((s) => s.dashboards);
   const activeDashboardId = useViewerStore((s) => s.activeDashboardId);
   const setActiveDashboardId = useViewerStore((s) => s.setActiveDashboardId);
@@ -170,6 +174,7 @@ export function ChartsPanel({ onClose, renderer }: ChartsPanelProps) {
             <Plus className="h-3.5 w-3.5 mr-1" />
             Add chart
           </Button>
+          <ReportExportDialog dashboard={dashboard} aggregations={aggregations} onSaveReportSetup={upsertDashboard} seams={reportSeams} />
           {onClose && (
             <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose} aria-label="Close charts">
               <X className="h-3.5 w-3.5" />

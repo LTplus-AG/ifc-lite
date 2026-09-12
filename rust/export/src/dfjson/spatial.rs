@@ -24,7 +24,7 @@
 
 use std::collections::HashMap;
 
-use ifc_lite_core::{EntityDecoder, EntityScanner};
+use ifc_lite_core::{keyword_eq, EntityDecoder, EntityScanner};
 
 use crate::relationships::relationships;
 
@@ -87,8 +87,8 @@ pub(crate) fn spatial_index(content: &[u8]) -> SpatialIndex {
     let mut buildings: Vec<u32> = Vec::new();
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        let is_storey = type_name == "IFCBUILDINGSTOREY";
-        let is_building = type_name == "IFCBUILDING";
+        let is_storey = keyword_eq(type_name, "IFCBUILDINGSTOREY");
+        let is_building = keyword_eq(type_name, "IFCBUILDING");
         if !is_storey && !is_building {
             continue;
         }

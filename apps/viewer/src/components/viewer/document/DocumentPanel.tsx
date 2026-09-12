@@ -9,7 +9,7 @@
  * the report's jsPDF path; the document itself is a template saved as
  * `.ifclite-document.json` and re-opened on the next model revision.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileText, Plus, X } from 'lucide-react';
 import type { ReportPageSetup } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,7 @@ import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { blankDocument, DOCUMENT_PRESETS } from '@/lib/document/presets';
 import { freshBlockId } from '@/lib/document/persistence';
 import { newChartSpec } from '@/lib/charts/presets';
+import { largestBucketIds } from '@/lib/charts/buckets';
 import type { DocumentBlock, DocumentSpec } from '@/lib/document/types';
 import { browserImageSize, generateDocumentPdf, type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
 import { browserReportSeams } from '@/lib/export/report/generate-report-pdf';
@@ -64,7 +65,17 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const update = useCallback((next: DocumentSpec) => upsertDocument(next), [upsertDocument]);
+  // A write the browser refuses (storage blocked or full) keeps the edit in memory; the author must know before reload.
+  const persistWarned = useRef(false);
+  const warnUnsaved = useCallback((saved: boolean) => {
+    if (saved) { persistWarned.current = false; return; }
+    if (persistWarned.current) return;
+    persistWarned.current = true;
+    toast.error('The document could not be saved in this browser (storage blocked or full). Export it as a template before you reload.');
+  }, []);
+  const upsert = useCallback((next: DocumentSpec) => warnUnsaved(upsertDocument(next)), [upsertDocument, warnUnsaved]);
+  const remove = useCallback((id: string) => warnUnsaved(deleteDocument(id)), [deleteDocument, warnUnsaved]);
+  const update = upsert;
   const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update({ ...document, blocks }); }, [document, update]);
 
   const addBlock = (kind: DocumentBlock['kind']): void => {
@@ -88,7 +99,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
         document,
         bindings: data.bindings,
         aggregations: data.aggregations,
-        snapshotIds: (blockId) => Array.from(data.aggregations.get(blockId)?.categories[0]?.ids ?? []),
+        snapshotIds: (blockId) => largestBucketIds(data.aggregations.get(blockId)),
         topics: data.topics,
       }, seams);
       downloadBlob(result.blob, `${sanitizeFilename(document.name, { fallback: 'document' })}.pdf`);
@@ -123,7 +134,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
             const preset = DOCUMENT_PRESETS.find((p) => `preset:${p.name}` === e.target.value);
             if (preset) {
               const created = preset.create();
-              upsertDocument(created);
+              upsert(created);
               setActiveDocumentId(created.id);
             } else {
               setActiveDocumentId(e.target.value);
@@ -136,7 +147,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
             {DOCUMENT_PRESETS.map((p) => <option key={p.name} value={`preset:${p.name}`}>{p.name}</option>)}
           </optgroup>
         </select>
-        <DocumentMenu document={document} onUpsert={upsertDocument} onDelete={deleteDocument} onActivate={setActiveDocumentId} />
+        <DocumentMenu document={document} onUpsert={upsert} onDelete={remove} onActivate={setActiveDocumentId} />
         <label className="inline-flex items-center gap-1 text-muted-foreground">Page
           <select className={select} value={document?.page.size ?? 'A4'} disabled={!document} onChange={(e) => document && update({ ...document, page: { ...document.page, size: e.target.value as ReportPageSetup['size'] } })} aria-label="Page size">
             <option value="A4">A4</option><option value="A3">A3</option>

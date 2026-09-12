@@ -13,8 +13,9 @@ import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { aggregate, type Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
-import { parsePath, renderTemplate, resolveBinding, templatePaths, type BindingContext } from './bindings.js';
+import { localIsoDate, parsePath, renderTemplate, resolveBinding, templatePaths, type BindingContext } from './bindings.js';
 import { composeDocument, estimateTextWidth, wrapText } from './compose.js';
+import { largestBucketIds } from '../charts/buckets.js';
 import { generateDocumentPdf, topicLines, type DocumentPdfSeams } from './generate-document-pdf.js';
 import { parseDocumentFile } from './persistence.js';
 import { blankDocument, coverSheetDocument } from './presets.js';
@@ -105,7 +106,8 @@ describe('bindings', () => {
     assert.equal(v('Model.Name'), 'tower.ifc');
     assert.equal(v('Model.Schema'), 'IFC4');
     assert.equal(v('Model.Elements'), '3');
-    assert.equal(v('Today'), '2026-09-12');
+    assert.equal(v('Today'), localIsoDate(ctx.today), "the local calendar day, not UTC's");
+    assert.equal(localIsoDate(new Date(2026, 0, 5, 23, 30)), '2026-01-05');
   });
 
   it('says why a binding does not resolve, and a template prints the reason instead of nothing', () => {
@@ -145,8 +147,8 @@ describe('document file', () => {
     imported.blocks.forEach((b, i) => assert.notEqual(b.id, doc.blocks[i].id));
     assert.equal((imported.blocks[0] as { text: string }).text, '{IfcProject.LongName}');
     assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 2 })), /Not a document file: version expected version 1/);
-    const broken = { ...doc, blocks: [{ kind: 'image', id: 'i', dataUrl: 'http://x/logo.png', height: 0, align: 'middle' }] };
-    assert.deepEqual(validateDocumentSpec(broken).map((e) => e.path), ['blocks[0].dataUrl', 'blocks[0].height', 'blocks[0].align']);
+    const broken = { ...doc, blocks: [{ kind: 'image', id: 'i', dataUrl: 'http://x/logo.png', height: 0, align: 'middle', caption: {} }] };
+    assert.deepEqual(validateDocumentSpec(broken).map((e) => e.path), ['blocks[0].dataUrl', 'blocks[0].height', 'blocks[0].align', 'blocks[0].caption']);
   });
 });
 
@@ -181,6 +183,23 @@ describe('compose', () => {
     assert.equal(image.x + image.w, 595.28 - 40, 'right-aligned to the margin');
     // Every item stays inside the page frame.
     for (const page of layout.pages) for (const item of page.items) assert.ok(item.y >= 40 && item.y <= layout.size.h - 40, `${item.kind} at y=${item.y}`);
+  });
+
+  it('a topic whose description outruns the page continues on the next page instead of running through the footer (review finding)', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [{ kind: 'topic', id: 'tp', title: 'Long topic', lines: Array.from({ length: 90 }, (_, i) => `Line ${i} of the description`), snapshotAspect: 4 / 3 }],
+    });
+    assert.ok(layout.pages.length >= 2, `${layout.pages.length} pages`);
+    for (const page of layout.pages) for (const item of page.items) assert.ok(item.y <= layout.size.h - 40 - 24, `${item.kind} at y=${item.y} on page ${page.index}`);
+    assert.equal(layout.pages[0].items.filter((i) => i.kind === 'topic-snapshot').length, 1);
+    assert.equal(layout.pages.flatMap((p) => p.items).filter((i) => i.kind === 'text').length, 91, 'title + every line drawn once');
+  });
+
+  it('the snapshot frames the bucket with the largest value, whatever the display order (review finding)', () => {
+    const agg = { categories: [{ label: 'a', value: 1, ids: new Set([1]) }, { label: 'b', value: 5, ids: new Set([2, 3]) }, { label: 'c', value: 2, ids: new Set([4]) }] } as unknown as Aggregation;
+    assert.deepEqual(largestBucketIds(agg), [2, 3]);
+    assert.deepEqual(largestBucketIds(null), []);
   });
 });
 

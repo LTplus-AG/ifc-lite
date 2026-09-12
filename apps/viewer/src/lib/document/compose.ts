@@ -170,19 +170,24 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       }
       case 'topic': {
         const lineH = 10 * 1.4;
-        const lines = block.lines.flatMap((l) => wrapText(l, contentW - (block.snapshotAspect ? 200 : 0), 10, false, input.measure));
-        const textH = 16 + lines.length * lineH;
         const snapshotW = block.snapshotAspect ? Math.min(190, TOPIC_SNAPSHOT_HEIGHT * block.snapshotAspect) : 0;
         const snapshotH = block.snapshotAspect ? snapshotW / block.snapshotAspect : 0;
-        ensure(Math.max(textH, snapshotH) + BLOCK_GAP);
+        const lines = block.lines.flatMap((l) => wrapText(l, contentW - (snapshotW ? snapshotW + BLOCK_GAP : 0), 10, false, input.measure));
+        // Title, snapshot and the first lines move together; a long description then continues page by page.
+        ensure(Math.max(16 + Math.min(lines.length, 3) * lineH, snapshotH) + BLOCK_GAP);
         page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + 11, size: 11, bold: true, gray: 0, text: block.title });
+        if (block.snapshotAspect) page.items.push({ kind: 'topic-snapshot', blockId: block.id, x: size.w - REPORT_MARGIN - snapshotW, y, w: snapshotW, h: snapshotH });
+        const snapshotBottom = y + snapshotH;
         let ty = y + 16;
         for (const line of lines) {
+          if (ty + lineH > bottom) {
+            newPage();
+            ty = y;
+          }
           page.items.push({ kind: 'text', x: REPORT_MARGIN, y: ty + 10, size: 10, bold: false, gray: 60, text: line });
           ty += lineH;
         }
-        if (block.snapshotAspect) page.items.push({ kind: 'topic-snapshot', blockId: block.id, x: size.w - REPORT_MARGIN - snapshotW, y, w: snapshotW, h: snapshotH });
-        y += Math.max(textH, snapshotH) + BLOCK_GAP;
+        y = Math.max(ty, page.items.some((i) => i.kind === 'topic-snapshot' && i.blockId === block.id) ? snapshotBottom : ty) + BLOCK_GAP;
         break;
       }
     }

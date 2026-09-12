@@ -31,11 +31,14 @@ export function loadDocuments(): DocumentSpec[] {
   }
 }
 
-export function saveDocuments(documents: readonly DocumentSpec[]): void {
+/** `false` when the browser refused the write (storage blocked or full — a few 1 MB logos reach the quota); the caller says so. */
+export function saveDocuments(documents: readonly DocumentSpec[]): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(documents));
+    return true;
   } catch (err) {
     console.warn('[Documents] Failed to save documents to localStorage', err);
+    return false;
   }
 }
 

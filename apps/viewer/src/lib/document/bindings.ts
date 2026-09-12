@@ -146,6 +146,12 @@ export function elementPropertyPaths(globalId: string, ctx: BindingContext, limi
   return out;
 }
 
+/** YYYY-MM-DD in the user's own calendar day, not UTC's. */
+export function localIsoDate(date: Date): string {
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 const fail = (path: string, reason: string): ResolvedBinding => ({ path, value: '', ok: false, reason });
 const succeed = (path: string, value: string): ResolvedBinding => ({ path, value, ok: true });
 
@@ -154,7 +160,7 @@ export function resolveBinding(path: string, ctx: BindingContext): ResolvedBindi
   if (!segments || segments.length === 0) return fail(path, 'not a path');
   const [head, ...rest] = segments;
 
-  if (head.name === 'Today') return succeed(path, ctx.today.toISOString().slice(0, 10));
+  if (head.name === 'Today') return succeed(path, localIsoDate(ctx.today));
 
   const active = ctx.models.find((m) => m.id === ctx.activeModelId) ?? ctx.models[0];
   if (head.name === 'Model') {

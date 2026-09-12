@@ -20,8 +20,9 @@ export interface DocumentSlice {
   activeDocumentId: string | null;
   documentPanelVisible: boolean;
 
-  upsertDocument: (document: DocumentSpec) => void;
-  deleteDocument: (id: string) => void;
+  /** `false` when the change is in memory but could not be persisted. */
+  upsertDocument: (document: DocumentSpec) => boolean;
+  deleteDocument: (id: string) => boolean;
   setActiveDocumentId: (id: string | null) => void;
   setDocumentPanelVisible: (visible: boolean) => void;
 }
@@ -36,12 +37,12 @@ export const createDocumentSlice: StateCreator<DocumentSlice, [], [], DocumentSl
     const index = current.findIndex((d) => d.id === document.id);
     const documents = index === -1 ? [...current, document] : current.map((d, i) => (i === index ? document : d));
     set({ documents });
-    saveDocuments(documents);
+    return saveDocuments(documents);
   },
   deleteDocument: (id) => {
     const documents = get().documents.filter((d) => d.id !== id);
     set({ documents, activeDocumentId: get().activeDocumentId === id ? null : get().activeDocumentId });
-    saveDocuments(documents);
+    return saveDocuments(documents);
   },
   setActiveDocumentId: (activeDocumentId) => set({ activeDocumentId }),
   setDocumentPanelVisible: (documentPanelVisible) => set({ documentPanelVisible }),

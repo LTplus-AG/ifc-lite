@@ -14,11 +14,10 @@ import type { ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
-import { useViewerStore } from '@/store';
+import { resolveGlobalId, useViewerStore } from '@/store';
 import { readImageFile } from '@/lib/document/persistence';
 import { FIELD_SUGGESTIONS } from '@/lib/document/presets';
 import { elementPropertyPaths, type BindingContext } from '@/lib/document/bindings';
-import { expressIdToGlobalId } from '@/hooks/bcfIdLookup';
 import type { DocumentBlock, TextBlock } from '@/lib/document/types';
 
 export interface BlockEditorProps {
@@ -39,8 +38,6 @@ const field = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5
 
 /** The fields offered for insertion: the fixed suggestions, the model's storeys, and the selected element. */
 function useFieldOptions(bindings: BindingContext): Array<{ path: string; label: string }> {
-  const models = useViewerStore((s) => s.models);
-  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
   const selected = useViewerStore((s) => s.selectedEntityIds);
   return useMemo(() => {
     const options = [...FIELD_SUGGESTIONS];
@@ -51,14 +48,15 @@ function useFieldOptions(bindings: BindingContext): Array<{ path: string; label:
       if (name) options.push({ path: `IfcBuildingStorey["${name}"].Elevation`, label: `Storey "${name}" elevation` });
     }
     const first = selected.size > 0 ? [...selected][0] : null;
-    const guid = first === null ? null : expressIdToGlobalId(first, models, ifcDataStore);
+    // The store's own renderer-id → GlobalId path, so an element added by an edit resolves too.
+    const guid = first === null ? null : resolveGlobalId(first);
     if (guid) {
       for (const attr of ['Name', 'Type', 'Description', 'ObjectType', 'Tag', 'Storey']) options.push({ path: `Element[${guid}].${attr}`, label: `Selected element · ${attr}` });
       // The selected element's property and quantity sets, so a Pset value is one pick away.
       for (const p of elementPropertyPaths(guid, bindings)) options.push({ path: p.path, label: `Selected element · ${p.label}` });
     }
     return options;
-  }, [bindings, models, ifcDataStore, selected]);
+  }, [bindings, selected]);
 }
 
 function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings: BindingContext; onChange: (b: TextBlock) => void }) {

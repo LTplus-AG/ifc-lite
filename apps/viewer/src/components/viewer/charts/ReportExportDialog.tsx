@@ -21,7 +21,6 @@ import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { browserReportSeams, generateReportPdf, type ReportPdfSeams } from '@/lib/export/report/generate-report-pdf';
 import { createSnapshotCapture } from '@/lib/export/report/snapshots';
-import { readChartTheme } from './useEChart';
 
 /** Title-block fields offered, in order; values seeded from the drawing sheet's title block when present. */
 const FIELDS: Array<[string, string]> = [['project', 'Project'], ['title', 'Report title'], ['author', 'Prepared by'], ['date', 'Date'], ['revision', 'Revision']];
@@ -79,7 +78,7 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
     setBusy(true);
     const snapshot = seams ? null : createSnapshotCapture();
     try {
-      const s = await (seams ? seams() : browserReportSeams(snapshots ? snapshot?.capture ?? null : null, readChartTheme()));
+      const s = await (seams ? seams() : browserReportSeams(snapshots ? snapshot?.capture ?? null : null));
       const result = await generateReportPdf({
         name: dashboard.name,
         page,

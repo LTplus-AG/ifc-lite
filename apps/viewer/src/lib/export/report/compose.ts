@@ -83,6 +83,8 @@ export function pageBox(page: ReportPageSetup): { w: number; h: number } {
   return page.orientation === 'landscape' ? { w: base.h, h: base.w } : base;
 }
 
+const plural = (n: number, word: string): string => `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
+
 function formatValue(value: number, unit?: string): string {
   const text = Number.isInteger(value) ? value.toLocaleString() : value.toFixed(2);
   return unit ? `${text} ${unit}` : text;
@@ -153,7 +155,7 @@ export function composeReport(input: ComposeReportInput): ReportLayout {
       chartId: chart.id,
       title: chart.title,
       subtitle: agg
-        ? `${agg.categories.length} bucket${agg.categories.length === 1 ? '' : 's'} · ${agg.total.toLocaleString()} ${agg.spec.measure.agg === 'count' ? 'elements' : (agg.unit ?? '')}`
+        ? `${plural(agg.categories.length, 'bucket')} · ${agg.spec.measure.agg === 'count' ? plural(agg.total, 'element') : `${agg.total.toLocaleString()} ${agg.unit ?? ''}`.trim()}`
         : 'No data',
       chart: chartBox,
       snapshot,

@@ -54,8 +54,16 @@ export interface ReportPdfResult {
   snapshotFailures: string[];
 }
 
+/**
+ * The report prints on white with a font jsPDF ships, whatever the app's
+ * theme: the screen theme's font stack carries quoted family names
+ * (`"Segoe UI"`) that break the chart SVG as XML, and its dark tokens
+ * would print light-on-white.
+ */
+export const REPORT_THEME: ChartTheme = { ...DEFAULT_THEME, fontFamily: 'Helvetica, Arial, sans-serif' };
+
 /** The browser seams: real jsPDF + autotable + svg2pdf, lazily imported. */
-export async function browserReportSeams(capture: SnapshotCapture | null, theme: ChartTheme = DEFAULT_THEME): Promise<ReportPdfSeams> {
+export async function browserReportSeams(capture: SnapshotCapture | null, theme: ChartTheme = REPORT_THEME): Promise<ReportPdfSeams> {
   return {
     createDoc: async (format, orientation) => {
       const { jsPDF } = await import('jspdf');
@@ -71,8 +79,21 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
         text: (t, x, y) => { doc.text(t, x, y); },
         addImage: (bytes, format, x, y, w, h) => { doc.addImage(bytes, format, x, y, w, h); },
         svg: async (svg, x, y, w, h) => {
-          const el = parser.parseFromString(svg, 'image/svg+xml').documentElement;
-          await doc.svg(el, { x, y, width: w, height: h });
+          const parsed = parser.parseFromString(svg, 'image/svg+xml');
+          const error = parsed.querySelector('parsererror');
+          if (error) throw new Error(`Chart SVG did not parse: ${error.textContent ?? ''}`);
+          // svg2pdf measures text and resolves styles through the live DOM,
+          // so the element is attached (off-screen) for the duration.
+          const host = document.createElement('div');
+          host.style.cssText = 'position:absolute;left:-10000px;top:0;width:0;height:0;overflow:hidden';
+          const el = document.adoptNode(parsed.documentElement);
+          host.appendChild(el);
+          document.body.appendChild(host);
+          try {
+            await doc.svg(el, { x, y, width: w, height: h });
+          } finally {
+            host.remove();
+          }
         },
         table: ({ startY, margin, head, body }) => {
           autoTable(doc, {

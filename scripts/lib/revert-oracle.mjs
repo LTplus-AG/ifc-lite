@@ -36,7 +36,7 @@
 
 import { parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs';
 import { ALL_SKIPPED, classifyExecuted, severityCandidates } from './revert-oracle-all-skipped.mjs';
-import { isInertPath, isTestSupportPath } from './revert-oracle-inert.mjs';
+import { isInertPath, isTestSupportPath, withoutBrowserSpecs } from './revert-oracle-inert.mjs';
 // ---------------------------------------------------------------------------
 // Diff classification
 // ---------------------------------------------------------------------------
@@ -196,7 +196,7 @@ export const LOAD_FAILURE = 'load-failure';
 export const NO_TESTS = 'no-tests';
 export const RUNNER_MISSING = 'runner-missing';
 export const UNPARSEABLE = 'unparseable';
-export { ALL_SKIPPED };
+export { ALL_SKIPPED, withoutBrowserSpecs };
 
 /**
  * Errors that mean the module never loaded, so no assertion was ever evaluated.

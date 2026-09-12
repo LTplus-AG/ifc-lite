@@ -84,7 +84,7 @@ import {
   aggregate,
   verdict,
   UNOBSERVED,
-  SURGICAL_ADVICE,
+  SURGICAL_ADVICE, withoutBrowserSpecs,
 } from './lib/revert-oracle.mjs';
 import { isDependabotDependencyOnly } from './lib/revert-oracle-dependabot.mjs';
 import { isVersionOnlyManifestDiff } from './lib/revert-oracle-version-bump.mjs';
@@ -328,7 +328,7 @@ if (opts.only.length > 0) {
   if (prodPaths.length === 0) die(EXIT_NOTHING_CHECKED, `--only matched none of the ${before} changed production files.`);
 }
 
-let testPaths = testEntries.map((e) => e.path).filter((p) => existsSync(join(ROOT, p)));
+let testPaths = withoutBrowserSpecs(testEntries.map((e) => e.path).filter((p) => existsSync(join(ROOT, p))), (p) => readFileSync(join(ROOT, p), 'utf8'), console.log);
 if (opts.tests.length > 0) {
   testPaths = testPaths.filter((p) => opts.tests.includes(p));
   if (testPaths.length === 0) die(EXIT_NOTHING_CHECKED, '--test matched none of the branch\'s changed test files.');

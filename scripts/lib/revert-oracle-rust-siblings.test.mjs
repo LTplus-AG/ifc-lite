@@ -58,7 +58,9 @@ test('#4016: the complete oracle executes changed Rust sibling assertions and re
     const output = run(process.execPath, [oracle, '--root', root, '--base', base, '--ci', '--json']);
     assert.match(output, /OBSERVED/);
     assert.match(output, /reverting production turned an assertion RED in src\/(?:renamed_tests|value_tests)\.rs/);
-    assert.match(readFileSync(join(root, 'src/value.rs'), 'utf8'), /^pub fn value\(\) -> u32 \{ 2 \}/);
+    // Execute the restored production/test pair instead of trusting its source
+    // text: this goes red if either side was left at the reverted revision.
+    run('cargo', ['test', '--offline', '--lib', 'path_owned::observes_value', '--', '--exact']);
     assert.equal(run('git', ['status', '--porcelain']).trim(), '');
   } finally {
     rmSync(root, { recursive: true, force: true });

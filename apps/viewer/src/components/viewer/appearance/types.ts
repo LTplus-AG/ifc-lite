@@ -4,6 +4,7 @@
 import type { AppearanceCalibrationProps } from './AppearanceCalibrationFields.js';
 import type { AppearancePdfControls, AppearancePdfPasswordPrompt } from './pdf-controls.js';
 import type { AppearanceScope, AppearanceDraftSettings, AppearanceSourceOption } from '@/lib/appearance/draft-types.js';
+import type { FaceMaskControls } from './face-mask/useFaceMasks.js';
 export type { AppearanceScope, AppearanceDraftSettings, AppearanceSourceOption } from '@/lib/appearance/draft-types.js';
 export interface AppearancePanelViewProps {
   intent?: 'apply' | 'reference' | 'capture' | 'scan';
@@ -36,6 +37,8 @@ export interface AppearancePanelViewProps {
   selectionCount: number;
   affectedCount: number;
   convertedObjects?: readonly { productId: number; name: string }[];
+  /** Face selections of the converted objects (#4404); absent outside the apply intent. */
+  faceMasks?: FaceMaskControls;
   excludedCount: number;
   exclusions?: readonly string[];
   onUseSupported?(): void;

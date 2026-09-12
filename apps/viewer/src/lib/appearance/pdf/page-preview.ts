@@ -5,6 +5,7 @@ import { modelAppearanceAssets } from '../model-assets.js';
 import type { AppearanceAssetOwner } from '../assets.js';
 import type { AppearanceDraftSettings, AppearanceSourceOption } from '../draft-types.js';
 import type { AppearanceSnapshot } from '../snapshot.js';
+import type { AppearanceFaceMask } from '../planner-types.js';
 import type { createAppearancePlanner } from '../planner-worker-client.js';
 import { prepareAppearanceRasterPayload } from '../raster-payload';
 import { adoptBakedImages } from '../baked-images';
@@ -18,6 +19,8 @@ export async function preparePdfPagePreview(options: {
   snapshot: AppearanceSnapshot; productIds: number[]; source: AppearanceSourceOption;
   settings: AppearanceDraftSettings;
   planner: ReturnType<typeof createAppearancePlanner>; owner: AppearanceAssetOwner; signal: AbortSignal;
+  /** Reviewed face selections of converted products (#4404); omitted textures whole surfaces. */
+  faceMasks?: AppearanceFaceMask[];
 }) {
   const { snapshot, productIds, source, settings, planner, owner, signal } = options;
   const pdf = source.pdf;
@@ -35,7 +38,8 @@ export async function preparePdfPagePreview(options: {
   const result = await planner.pagePlan(snapshot.bytes, {
     appearance: { schema: snapshot.schema, sourceRevision: snapshot.revision, nextExpressId: snapshot.nextExpressId,
       productIds, imageUri: modelAppearanceAssets.getAuthoredUri(snapshot.modelId, source.assetId),
-      repeatS: false, repeatT: false, representationPolicy: settings.representationPolicy ?? 'preserve', mapping: calibration.mapping },
+      repeatS: false, repeatT: false, representationPolicy: settings.representationPolicy ?? 'preserve', mapping: calibration.mapping,
+      ...(options.faceMasks ? { faceMasks: options.faceMasks } : {}) },
     page, sourceImages,
     texelsPerMetre: Math.max(pdf.recipe.pixelWidth / calibration.mapping.metresPerTile[0],
       pdf.recipe.pixelHeight / calibration.mapping.metresPerTile[1]),

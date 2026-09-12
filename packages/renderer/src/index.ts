@@ -14,7 +14,7 @@ export { Camera } from './camera.js';
 export type { SceneContents } from './scene-contents.js';
 export { expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
 export { sameCompanionParts } from './appearance-companions.js';
-export type { AppearancePreview, AppearanceOwner, AppearanceToken, AppearanceChange } from './appearance-preview.js';
+export { invertAppearancePartition, type AppearancePreview, type AppearanceOwner, type AppearanceToken, type AppearanceChange, type AppearancePartition, type AppearancePartitionPart } from './appearance-preview.js';
 import type { AppearancePreview } from './appearance-preview.js';
 import { createReferenceImageManager } from './reference-image-host.js';
 export type { ReferenceImages, ReferenceImageInput, ReferenceImageHit, ReferenceCorners } from './reference-image-types.js';

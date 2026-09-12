@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MeshData } from '@ifc-lite/geometry';
 import { equivalentAppearanceGeometry, sameCompanionParts } from '@ifc-lite/renderer';
-import type { AppearanceChange, AppearancePreview, AppearanceToken, Renderer } from '@ifc-lite/renderer';
+import type { AppearanceChange, AppearancePartition, AppearancePreview, AppearanceToken, Renderer } from '@ifc-lite/renderer';
 import type { ViewerState } from '@/store';
 import { occurrenceSourceMesh, validateOccurrenceSourceBudget } from './occurrence-source-mesh';
 import { placementFrameKey, placementFrameCoordinateInfo } from '@/lib/model-placement/persistence';
@@ -11,6 +11,7 @@ import { totalYupOffset } from '@/hooks/ingest/federationAlign';
 import { useViewerStore } from '@/store';
 import type { AppearancePlan } from './planner-types.js';
 import { bindCompanionPreview, companionHiddenNow } from './companion-preview';
+import { bindMaskedConversionParts, maskedSplit, partitionHistoryParts } from './preview-partition';
 
 // Renderer cache keys only. These never enter IFC entities or selection lanes.
 let nextTextureIdentity = -1;
@@ -36,6 +37,8 @@ export interface AppearancePreviewParts {
   companionOriginals?: readonly MeshData[];
   companionHidden?: true;
   instanced?: boolean;
+  /** A face-masked owner: one original part becomes textured + retained parts (#4404). */
+  partition?: AppearancePartition;
   validate?(): void;
 }
 
@@ -51,16 +54,14 @@ export function bindAppearancePreview(
   const plannedItems = new Map(plan.items.map(item => [item.geometryItemId, item]));
   const conversions = new Map<number, NonNullable<AppearancePlan['conversions']>[number]>();
   for (const conversion of plan.conversions ?? []) {
-    // A masked conversion splits one source part into a textured and a retained
-    // face set. The renderer preview replaces parts one-to-one, so refuse here
-    // rather than render the retained triangles as missing geometry.
-    if (conversion.maskedTriangles || conversion.retainedGeometryItemId !== undefined) {
-      throw new Error(`IFC object #${conversion.productId} carries a face selection this viewer cannot preview yet.`);
-    }
     const item = plannedItems.get(conversion.geometryItemId);
+    // A masked conversion textures only its selected triangles; the planned
+    // item then covers the masked corners while the conversion keeps the
+    // whole source surface as the preview/history original.
+    const split = maskedSplit(conversion);
     if (!item || item.productId !== conversion.productId || conversions.has(conversion.geometryItemId)
       || conversion.sourceGeometryItemId === conversion.geometryItemId
-      || conversion.sourceIndices.length !== item.sourceIndices.length) {
+      || (split ? split.masked.length * 3 : conversion.sourceIndices.length) !== item.sourceIndices.length) {
       throw new Error('Invalid native occurrence conversion provenance.');
     }
     conversions.set(conversion.geometryItemId, conversion);
@@ -111,8 +112,10 @@ export function bindAppearancePreview(
     if (!originals?.length) throw new Error(`Geometry for IFC object #${productId} is not available. Reload the model and try again.`);
     const represented = new Set<number>();
     const modelIndex = originals[0].modelIndex ?? 0;
+    const pieces = originals.length;
     const geometryItemRemaps: NonNullable<AppearanceChange['geometryItemRemaps']>[number][] = [];
-    const parts = originals.map(mesh => {
+    let partition: AppearancePartition | undefined;
+    const parts = originals.flatMap(mesh => {
       const ref = mesh.geometryItemId === undefined ? null : state.resolveGlobalIdFromModels(mesh.geometryItemId);
       const item = ref?.modelId === modelId ? items.get(ref.expressId) : undefined;
       if (!item || (mesh.modelIndex ?? 0) !== modelIndex) {
@@ -122,16 +125,25 @@ export function bindAppearancePreview(
       const image = itemImages ? itemImages.get(item.geometryItemId) : { bitmap, imageUri, repeatS, repeatT };
       if (!image) throw new Error(`The baked image for IFC geometry #${item.geometryItemId} is missing.`);
       const conversion = conversions.get(item.geometryItemId);
+      if (conversion && maskedSplit(conversion)) {
+        // The partition names the whole owner, so a masked owner must be one part.
+        if (pieces !== 1) throw new Error(`Face selection needs the evaluated surface of IFC object #${productId} in one piece, but it renders in ${pieces} pieces. Clear its face selection to texture the whole surface.`);
+        const masked = bindMaskedConversionParts({ original: mesh, conversion, item, image, expandCorners, textureId: textureIdentity(image.bitmap),
+          texturedItemId: state.toGlobalId(modelId, item.geometryItemId), retainedItemId: state.toGlobalId(modelId, conversion.retainedGeometryItemId!) });
+        partition = masked.partition;
+        return masked.parts;
+      }
       if (conversion && !geometryItemRemaps.some(pair => pair.from === mesh.geometryItemId)) {
         geometryItemRemaps.push({ from: mesh.geometryItemId!, to: state.toGlobalId(modelId, item.geometryItemId) });
       }
-      return { ...expandCorners(mesh, conversion?.sourceIndices ?? item.sourceIndices, item.previewCornerUvs, targetTopologies.get(item.geometryItemId)!, item.targetCornerNormals, item.targetVertexCount), geometryItemId: state.toGlobalId(modelId, item.geometryItemId), color: [1, 1, 1, 1] as [number, number, number, number],
+      return [{ ...expandCorners(mesh, conversion?.sourceIndices ?? item.sourceIndices, item.previewCornerUvs, targetTopologies.get(item.geometryItemId)!, item.targetCornerNormals, item.targetVertexCount), geometryItemId: state.toGlobalId(modelId, item.geometryItemId), color: [1, 1, 1, 1] as [number, number, number, number],
         shadingColor: undefined, texture: undefined,
         textureBitmap: image.bitmap,
-        textureRef: { textureId: textureIdentity(image.bitmap), url: image.imageUri, repeatS: image.repeatS, repeatT: image.repeatT } };
+        textureRef: { textureId: textureIdentity(image.bitmap), url: image.imageUri, repeatS: image.repeatS, repeatT: image.repeatT } }];
     });
     if (represented.size !== items.size) throw new Error(`Some geometry for IFC object #${productId} is still loading.`);
-    return { globalId, modelIndex, parts, ...(materializedOriginals ? { materializedOriginals, validate } : {}), ...(geometryItemRemaps.length ? { geometryItemRemaps } : {}) };
+    return { globalId, modelIndex, parts, ...(materializedOriginals ? { materializedOriginals, validate } : {}),
+      ...(geometryItemRemaps.length ? { geometryItemRemaps } : {}), ...(partition ? { partition } : {}) };
   });
   return [...groups, ...bindCompanionPreview(state, renderer, modelId, plan)];
 }
@@ -148,7 +160,7 @@ export class AppearancePreviewSession {
     try {
       for (const group of groups) {
         group.validate?.();
-        const token = this.preview.begin({ expressId: group.globalId, modelIndex: group.modelIndex }, { geometryItemRemaps: group.geometryItemRemaps, materializedOriginals: group.materializedOriginals, companionOriginals: group.companionOriginals, companionHidden: group.companionHidden });
+        const token = this.preview.begin({ expressId: group.globalId, modelIndex: group.modelIndex }, { geometryItemRemaps: group.geometryItemRemaps, materializedOriginals: group.materializedOriginals, companionOriginals: group.companionOriginals, companionHidden: group.companionHidden, partition: group.partition });
         this.tokens.push(token);
         this.preview.update(token, group.parts);
       }
@@ -235,6 +247,7 @@ export function appearanceHistoryParts(renderer: Renderer, changes: readonly App
       }
       return { globalId: change.owner.expressId, modelIndex: change.owner.modelIndex, parts: target, companionOriginals: change.companionOriginals, companionHidden: companionHiddenNow(change.owner.expressId) ? true : undefined };
     }
+    if (change.partition) return partitionHistoryParts(change, current, direction);
     if (!current || current.length !== target.length || current.length !== expectedCurrent.length) {
       throw new Error('Cannot restore appearance because the object geometry changed.');
     }

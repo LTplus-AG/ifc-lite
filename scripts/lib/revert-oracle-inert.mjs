@@ -62,3 +62,44 @@ const TEST_SUPPORT_EXACT = new Set([
 export function isTestSupportPath(path) {
   return TEST_SUPPORT_EXACT.has(path);
 }
+
+/**
+ * Playwright specs (#4404, #4340): a `*.spec.ts` that imports `@playwright/test`
+ * runs only under `playwright test`, against a built viewer, in a real browser.
+ * The repo's `tests/e2e/` specs are owned by the root package, whose
+ * `scripts.test` is `turbo test` — no runner the oracle can derive, so a
+ * branch that added one alongside real production code ABORTed with "no
+ * runner could be derived" (#4340 merged over that red). The spec cannot count
+ * as observation either (the oracle never launches a browser), so it is set
+ * aside: reported, removed from the run set, and the remaining node/cargo/
+ * pytest tests still have to observe the change on their own.
+ */
+const PLAYWRIGHT_IMPORT_RE = /(^|\n)\s*import\s[^;]*?\sfrom\s+['"]@playwright\/test['"]/;
+
+/** @param {string} source file text */
+export function isBrowserSpecSource(source) {
+  return typeof source === 'string' && PLAYWRIGHT_IMPORT_RE.test(source);
+}
+
+/**
+ * Split `paths` (repo-relative) into the tests a repo runner can drive and the
+ * Playwright specs it cannot; `read(path)` returns the file text (callers
+ * pass only paths that exist). Only `*.spec.*` files are read: `*.test.*`
+ * files are never Playwright specs in this repo.
+ * @returns {{ runnable: string[], browser: string[] }}
+ */
+export function partitionBrowserSpecs(paths, read) {
+  const runnable = [], browser = [];
+  for (const p of paths) {
+    const spec = /\.spec\.[cm]?[jt]sx?$/.test(p) && isBrowserSpecSource(read(p));
+    (spec ? browser : runnable).push(p);
+  }
+  return { runnable, browser };
+}
+
+/** Dispatcher hook: log every set-aside Playwright spec and return the runnable rest. */
+export function withoutBrowserSpecs(paths, read, log) {
+  const { runnable, browser } = partitionBrowserSpecs(paths, read);
+  for (const p of browser) log(`  set aside: ${p} is a Playwright spec; it runs only under \`playwright test\` in a real browser, which the oracle cannot drive, so it neither observes the change nor blocks the verdict`);
+  return runnable;
+}

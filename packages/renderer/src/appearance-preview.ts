@@ -4,6 +4,9 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import { equivalentAppearanceGeometry } from './appearance-uvs.js';
 import { sameCompanionParts } from './appearance-companions.js';
+import { freezeAppearancePartition, validateAppearancePartition, type AppearancePartition } from './appearance-partition.js';
+// The partition is part of the preview contract; the package publishes it from here.
+export { invertAppearancePartition, type AppearancePartition, type AppearancePartitionPart } from './appearance-partition.js';
 
 /** expressId is already federation-resolved; modelIndex is the renderer model. */
 export interface AppearanceOwner {
@@ -23,8 +26,10 @@ export interface AppearanceChange {
   readonly afterInstanced?: true;
   /** Explicit occurrence-local representation changes, captured before preview. */
   readonly geometryItemRemaps?: readonly { readonly from: number; readonly to: number }[];
+  /** A face-masked owner: its parts are repartitioned corner-for-corner (#4404). */
+  readonly partition?: AppearancePartition;
 }
-export interface AppearancePreviewOptions extends Pick<AppearanceChange, 'geometryItemRemaps' | 'companionOriginals'> {
+export interface AppearancePreviewOptions extends Pick<AppearanceChange, 'geometryItemRemaps' | 'companionOriginals' | 'partition'> {
   /** Canonical native originals for an occurrence absent from flat scene geometry. */
   readonly materializedOriginals?: readonly MeshData[];
   /** Host proved canonical originals exist but current visibility omits residency. */
@@ -79,6 +84,7 @@ interface Draft<Resource> {
   current: readonly Resource[];
   geometryItemRemaps: NonNullable<AppearanceChange['geometryItemRemaps']>;
   companionOriginals?: readonly MeshData[];
+  partition?: AppearancePartition;
 }
 
 /** Owns detached GPU originals until cancellation/commit; never exports GPU handles. */
@@ -103,6 +109,17 @@ export class AppearancePreviewController<Resource>
       }
       if (remaps.length > captured.parts.length) throw new Error('Appearance item remap exceeds the original part count');
       const originals = new Set(captured.parts.map(part => part.geometryItemId));
+      const partition = options?.partition && freezeAppearancePartition(options.partition);
+      if (partition) {
+        // The partition names the whole owner: every original part in order,
+        // and replacement identities that do not collide with them.
+        const ids = new Set(partition.after.map(part => part.geometryItemId));
+        if (remaps.length || companions || partition.before.length !== captured.parts.length
+          || partition.before.some((part, index) => part.geometryItemId !== captured.parts[index].geometryItemId)
+          || ids.size !== partition.after.length || [...ids].some(id => !Number.isSafeInteger(id) || id <= 0 || originals.has(id))) {
+          throw new Error('Invalid appearance partition');
+        }
+      }
       const from = new Set<number>(), to = new Set<number>();
       for (const pair of remaps) {
         if (!Number.isSafeInteger(pair.from) || !Number.isSafeInteger(pair.to)
@@ -125,6 +142,7 @@ export class AppearancePreviewController<Resource>
         current: captured.resources,
         geometryItemRemaps,
         companionOriginals: companions && Object.freeze(companions.map(part => Object.freeze({ ...part }))),
+        ...(partition ? { partition } : {}),
       });
       return token;
     } catch (error) { captured.abandon?.(); throw error; }
@@ -149,7 +167,8 @@ export class AppearancePreviewController<Resource>
       this.installDraft(draft, after);
       return;
     }
-    if (parts.length !== draft.before.length)
+    if (draft.partition) validateAppearancePartition(draft.partition, draft.before, parts);
+    else if (parts.length !== draft.before.length)
       throw new Error('Appearance preview requires every original mesh part');
     const bitmapIds = new Map<number, ImageBitmap | undefined>();
     for (const old of draft.before)
@@ -158,22 +177,28 @@ export class AppearancePreviewController<Resource>
     for (const old of draft.after)
       if (old.textureRef)
         bitmapIds.set(old.textureRef.textureId, old.textureBitmap);
-    for (let i = 0; i < parts.length; i++) {
-      const p = parts[i],
-        b = draft.before[i];
-      if (
-        p.expressId !== b.expressId ||
-        p.modelIndex !== b.modelIndex ||
-        !equivalentAppearanceGeometry(p, b, { allowNormalChanges: true }) ||
-        p.entityIds !== b.entityIds ||
-        p.geometryItemId !== (draft.geometryItemRemaps.find(pair => pair.from === b.geometryItemId)?.to ?? b.geometryItemId) ||
-        p.normals.length !== p.positions.length ||
-        !p.normals.every(Number.isFinite)
-      ) {
-        throw new Error(
-          'Appearance preview cannot change geometry or ownership',
-        );
+    // One-to-one replacement: every part keeps its original's geometry and
+    // ownership. A partition proved its own geometry contract above.
+    if (!draft.partition) {
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i],
+          b = draft.before[i];
+        if (
+          p.expressId !== b.expressId ||
+          p.modelIndex !== b.modelIndex ||
+          !equivalentAppearanceGeometry(p, b, { allowNormalChanges: true }) ||
+          p.entityIds !== b.entityIds ||
+          p.geometryItemId !== (draft.geometryItemRemaps.find(pair => pair.from === b.geometryItemId)?.to ?? b.geometryItemId) ||
+          p.normals.length !== p.positions.length ||
+          !p.normals.every(Number.isFinite)
+        ) {
+          throw new Error(
+            'Appearance preview cannot change geometry or ownership',
+          );
+        }
       }
+    }
+    for (const p of parts) {
       if (
         !p.texture &&
         p.textureRef &&
@@ -196,10 +221,12 @@ export class AppearancePreviewController<Resource>
         );
       }
     }
+    // A partitioned owner keeps the first original's live wrapper metadata:
+    // validation proves every replacement part shares its placement frame.
     const after = Object.freeze(
       parts.map((part, index) =>
         Object.freeze({
-          ...draft.before[index],
+          ...draft.before[draft.partition ? 0 : index],
           geometryItemId: part.geometryItemId,
           positions: part.positions,
           normals: part.normals,
@@ -264,6 +291,7 @@ export class AppearancePreviewController<Resource>
         ...(this.adapter.instanced?.(draft.token.owner, draft.before) ? { beforeInstanced: true as const } : {}),
         ...(this.adapter.instanced?.(draft.token.owner, after) ? { afterInstanced: true as const } : {}),
         ...(draft.geometryItemRemaps.length ? { geometryItemRemaps: draft.geometryItemRemaps } : {}),
+        ...(draft.partition ? { partition: draft.partition } : {}),
       }),
     );
     let committed = false;
@@ -318,6 +346,8 @@ export class AppearancePreviewController<Resource>
 
   /** End drafts, then validate every surviving history owner before GPU reset. */
   prepareRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>): Set<number> {
+    // cancel() deletes from this.drafts while we iterate, so iterate a copy.
+    // eslint-disable-next-line unicorn/no-useless-spread
     for (const draft of [...this.drafts.values()]) this.cancel(draft.token);
     return this.adapter.prepareRebuild?.(geometry, models) ?? new Set();
   }

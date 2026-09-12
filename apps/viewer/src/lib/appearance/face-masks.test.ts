@@ -1,0 +1,111 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { faceMaskProductSource } from '@/test/face-mask-fixture.js';
+import { faceMaskRequests, normalizeFaceTriangles, reconcileFaceMasks, type FaceMask, type FaceMasks } from './face-masks.js';
+import type { AppearancePlan, AppearanceRequest } from './planner-types.js';
+
+const label = (id: number) => `IFC object #${id}`;
+const mask = (productId: number, triangles: number[], fingerprint = 'a'.repeat(64)): FaceMask =>
+  ({ productId, surfaceFingerprint: fingerprint, triangles: Uint32Array.from(triangles) });
+const plan = (partial: Partial<AppearancePlan>): AppearancePlan => ({ sourceRevision: 'r', nextExpressId: 100, nextAvailableExpressId: 100,
+  created: [], edits: [], removed: [], exclusions: [], items: [], ...partial });
+
+test('face mask requests carry only in-scope, non-empty selections in ascending order (#4404)', () => {
+  const masks: FaceMasks = new Map([[25, mask(25, [3, 0, 1])], [35, mask(35, [2])], [45, { ...mask(45, []) }]]);
+  assert.deepEqual(faceMaskRequests(masks, [25, 45, 99]), [{ productId: 25, surfaceFingerprint: 'a'.repeat(64), triangles: [3, 0, 1] }]);
+  assert.equal(faceMaskRequests(masks, [99]), undefined, 'no in-scope mask leaves the request without the field');
+  assert.deepEqual([...normalizeFaceTriangles([3, 0, 3, 1, -1, 12, 2.5], 4)], [0, 1, 3]);
+});
+
+test('reconciliation drops a mask the planner reports stale or direct-bodied and keeps the map identity otherwise (#4404)', () => {
+  const masks: FaceMasks = new Map([[25, mask(25, [0])], [35, mask(35, [1])], [45, mask(45, [0, 1])]]);
+  const unchanged = reconcileFaceMasks(masks, plan({ exclusions: [{ productId: 99, reason: 'Face selection is stale: the evaluated surface geometry changed' }],
+    conversions: [{ productId: 25, representationId: 1, sourceGeometryItemId: 2, geometryItemId: 3, sourceIndices: [0, 1, 2], surfaceFingerprint: 'a'.repeat(64) }] }), label);
+  assert.equal(unchanged.masks, masks, 'nothing to drop returns the same map instance');
+  assert.deepEqual(unchanged.diagnostics, []);
+  const stale = reconcileFaceMasks(masks, plan({ exclusions: [
+    { productId: 25, reason: 'Face selection is stale: the evaluated surface geometry changed' },
+    { productId: 35, reason: 'Face masks currently apply to converted occurrence bodies only; this object already has a direct tessellated Body' },
+    { productId: 45, reason: 'Evaluated appearance currently requires one unambiguous source surface' }] }), label);
+  assert.deepEqual([...stale.masks.keys()], [45], 'an unrelated exclusion keeps its mask for the next plan');
+  assert.equal(stale.diagnostics.length, 2);
+  assert.match(stale.diagnostics[0], /Face selection for IFC object #25 is stale: the evaluated surface geometry changed/);
+  assert.match(stale.diagnostics[1], /IFC object #35 was cleared: the object now has a direct tessellated Body/);
+  const renumbered = reconcileFaceMasks(masks, plan({ conversions: [{ productId: 45, representationId: 1, sourceGeometryItemId: 2, geometryItemId: 3,
+    sourceIndices: [0, 1, 2], surfaceFingerprint: 'b'.repeat(64) }] }), label);
+  assert.deepEqual([...renumbered.masks.keys()], [25, 35], 'a conversion reporting another fingerprint cannot keep the old selection');
+  assert.match(renumbered.diagnostics[0], /IFC object #45 is stale/);
+});
+
+// The workspace never judges staleness itself: it drops a mask when the real
+// planner excludes the product as stale and says so. A geometry edit of the
+// masked body (the box profile widened from 2 m to 3 m) is such a verdict.
+// For a pure translation the planner's verdict is platform-dependent today
+// (#4550: the native test asserts the translated swept box stale, the wasm
+// build reports the same fingerprint), so this test asserts the viewer's
+// invariant rather than either verdict: a selection is kept only on a
+// conversion that reports the identical fingerprint; otherwise the product is
+// excluded as stale and the selection is dropped with a diagnostic. Never a
+// misapplied mask.
+test('a geometry edit on a masked product invalidates the selection through the real planner; a translation keeps or drops it, never misapplies it (#4404)', async t => {
+  const wasmUrl = new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+  if (!existsSync(wasmUrl)) { t.skip('Run pnpm build:wasm for the native face-mask contract'); return; }
+  const { default: init, IfcAPI } = await import('@ifc-lite/wasm');
+  await init({ module_or_path: await readFile(wasmUrl) });
+  const api = new IfcAPI();
+  const request: AppearanceRequest = { schema: 'IFC4', sourceRevision: 'mask', nextExpressId: 100, productIds: [25, 70], imageUri: 'textures/mask.png',
+    repeatS: true, repeatT: true, representationPolicy: 'evaluatedOccurrence', mapping: { kind: 'box', frame: 'world', origin: [0, 0, 0], metresPerTile: [1, 1, 1] } };
+  const planOn = (source: Uint8Array, extra: Partial<AppearanceRequest> = {}) =>
+    JSON.parse(new TextDecoder().decode(api.planAppearance(source, JSON.stringify({ ...request, ...extra })))) as AppearancePlan;
+  const conversion = (result: AppearancePlan, productId: number) => result.conversions!.find(item => item.productId === productId)!;
+  try {
+    const before = planOn(faceMaskProductSource());
+    assert.deepEqual(before.exclusions, []);
+    assert.equal(conversion(before, 25).sourceIndices.length, 6, 'the quad evaluates to two source triangles');
+    assert.equal(conversion(before, 70).sourceIndices.length, 36, 'the box evaluates to twelve source triangles');
+    let masks: FaceMasks = new Map([[25, mask(25, [0], conversion(before, 25).surfaceFingerprint!)], [70, mask(70, [0, 1, 2], conversion(before, 70).surfaceFingerprint!)]]);
+    const masked = planOn(faceMaskProductSource(), { faceMasks: faceMaskRequests(masks, [25, 70]) });
+    assert.deepEqual(masked.exclusions, []);
+    assert.deepEqual(conversion(masked, 25).maskedTriangles, [0]);
+    assert.deepEqual(conversion(masked, 70).maskedTriangles, [0, 1, 2]);
+    assert.equal(reconcileFaceMasks(masks, masked, label).masks, masks, 'matching fingerprints keep both selections');
+    // Translation (12.345, 67.891, 0.1) m of both products: kept on the identical identity or dropped as stale (#4550).
+    const moved = planOn(faceMaskProductSource({ movedPlacement: true }), { faceMasks: faceMaskRequests(masks, [25, 70]) });
+    const movedVerdict = reconcileFaceMasks(masks, moved, label);
+    for (const productId of [25, 70]) {
+      const kept = moved.conversions?.find(item => item.productId === productId);
+      const excluded = moved.exclusions.find(item => item.productId === productId);
+      assert.ok(!!kept !== !!excluded, `product ${productId} is either converted or excluded after the move`);
+      if (kept) {
+        assert.equal(kept.surfaceFingerprint, conversion(before, productId).surfaceFingerprint, 'a kept selection sits on the identical surface identity');
+        assert.deepEqual(kept.maskedTriangles, [...masks.get(productId)!.triangles], 'the kept selection applies exactly as drawn');
+        assert.ok(movedVerdict.masks.has(productId));
+      } else {
+        assert.match(excluded!.reason, /^Face selection is stale/, 'a changed identity is the explicit stale exclusion');
+        assert.ok(!movedVerdict.masks.has(productId), 'the stale selection is dropped');
+        assert.ok(movedVerdict.diagnostics.some(item => item.includes(`#${productId} is stale`)), 'and said so');
+      }
+    }
+    // Geometry edit: the box's surface changed; the planner refuses the old selection and the workspace drops it.
+    const resized = planOn(faceMaskProductSource({ resizedBox: true }), { faceMasks: faceMaskRequests(masks, [25, 70]) });
+    assert.deepEqual(resized.exclusions.map(item => item.productId), [70]);
+    assert.match(resized.exclusions[0].reason, /^Face selection is stale/);
+    assert.deepEqual(conversion(resized, 25).maskedTriangles, [0], 'the untouched quad keeps its selection');
+    const reconciled = reconcileFaceMasks(masks, resized, label);
+    assert.deepEqual([...reconciled.masks.keys()], [25]);
+    assert.equal(reconciled.diagnostics.length, 1);
+    assert.match(reconciled.diagnostics[0], /Face selection for IFC object #70 is stale/);
+    masks = reconciled.masks;
+    // Without the stale mask the resized box converts whole and reports its new identity.
+    const replanned = planOn(faceMaskProductSource({ resizedBox: true }), { faceMasks: faceMaskRequests(masks, [25, 70]) });
+    assert.deepEqual(replanned.exclusions, []);
+    assert.notEqual(conversion(replanned, 70).surfaceFingerprint, conversion(before, 70).surfaceFingerprint);
+    assert.equal(conversion(replanned, 70).maskedTriangles, undefined);
+    assert.equal(reconcileFaceMasks(masks, replanned, label).masks, masks);
+  } finally { api.free(); }
+});

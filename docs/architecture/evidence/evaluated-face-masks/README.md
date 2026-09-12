@@ -5,9 +5,9 @@ product and any uniquely owned Body whose representation type permits
 tessellation, not only mapped occurrences. The policy and the mask contract are
 in [the representation policy](../../appearance-evaluated-occurrences.md).
 This directory records the real AC20-FZK-Haus evidence for the native plan and
-its independent reopening. It makes no browser, preview or timing claim: the
-viewer's split-part preview and face-selection UI are a separate slice, and its
-preview binder refuses a masked plan explicitly until then.
+its independent reopening. It makes no browser, preview or timing claim; the
+viewer's face-selection UI, split-part preview and browser acceptance are in
+[`../evaluated-occurrences/face-mask-ui/`](../evaluated-occurrences/face-mask-ui/README.md).
 
 ## Native plan
 
@@ -50,8 +50,8 @@ wrapper. The real post-opening slab #59290 (one opening, cloned type-shared
 wrapper, rounding bounds on the cut corners) takes a 16-of-32 triangle mask: the
 opening companion still travels, the edit set equals the unmasked conversion's,
 both face sets share one point list, and the retained set reproduces exactly the
-cut geometry the unmasked conversion authors (native test only; no IfcOpenShell
-run was made for the masked slab).
+cut geometry the unmasked conversion authors (the IfcOpenShell run for the
+masked slab is in the face-mask UI evidence linked above).
 
 ## Independent reopening
 

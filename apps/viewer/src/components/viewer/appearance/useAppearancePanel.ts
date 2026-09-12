@@ -22,6 +22,7 @@ import { appearanceRevision, captureAppearanceSource, commitAppearance } from '@
 import type { AppearanceCatalog, AppearancePlan } from '@/lib/appearance/planner-types.js';
 import type { AppearanceAssetOwner } from '@/lib/appearance/assets.js';
 import type { AppearancePanelViewProps, AppearanceScope, AppearanceDraftSettings } from './types.js';
+import { useFaceMasks } from './face-mask/useFaceMasks.js';
 
 interface Draft {
   modelId: string;
@@ -79,6 +80,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
   const mounted = useRef(true);
   const selectedSource = sources.find(source => source.id === sourceId);
   const target = models.get(modelId ?? '');
+  const faceMasks = useFaceMasks(modelId);
   const owners = useMemo(() => appearanceOwners(useViewerStore.getState(), modelId ?? ''),
     [models, modelId, selection, primarySelection, mutationVersion]);
   const scopeResult = appearanceScope(catalogState?.modelId === modelId ? catalogState.catalog : null, owners.selectedProductIds, scope);
@@ -118,7 +120,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     if (intent !== 'apply' || !modelId || unavailableReason) {
       const previous = draft.current; draft.current = null;
       discardDraft(previous);
-      snapshot.current = null; setCatalogState(null); setConvertedObjects([]);
+      snapshot.current = null; setCatalogState(null); setConvertedObjects([]); faceMasks.reset();
       setStatus('idle');
       setCounts({ affected: 0, excluded: 0, reasons: [] });
       setStatusMessage(undefined);
@@ -161,8 +163,11 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         if (!renderer) throw new Error('The renderer is not ready to preview appearance.');
         const { source, schema, nextExpressId, bytes } = currentSnapshot;
         const assetId = selectedSource?.assetId ?? sourceId;
+        // Face masks are a request-shape fault under any other policy; a
+        // dormant selection waits in the session for the policy to return.
+        const masks = settings.representationPolicy === 'evaluatedOccurrence' ? faceMasks.requests(currentScope.productIds) : undefined;
         const page = selectedSource?.pdf ? await preparePdfPagePreview({ snapshot: currentSnapshot,
-          productIds: currentScope.productIds, source: selectedSource, settings, planner: worker, owner, signal: controller.signal }) : undefined;
+          productIds: currentScope.productIds, source: selectedSource, settings, planner: worker, owner, signal: controller.signal, faceMasks: masks }) : undefined;
         const firstPageImage = page?.itemImages.values().next().value;
         const imageUri = page ? firstPageImage?.imageUri ?? '' : modelAppearanceAssets.getAuthoredUri(modelId, assetId);
         if (!page) appearanceAssets.retain(assetId, owner);
@@ -170,9 +175,15 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         currentSnapshot.validate();
         const plan = page?.plan ?? await worker.plan(bytes, { schema, sourceRevision: currentSnapshot.revision, nextExpressId,
           productIds: currentScope.productIds, imageUri, repeatS: settings.repeatS,
-          repeatT: settings.repeatT, representationPolicy: settings.representationPolicy ?? 'preserve', mapping: appearanceMapping(settings) }, { signal: controller.signal });
+          repeatT: settings.repeatT, representationPolicy: settings.representationPolicy ?? 'preserve', mapping: appearanceMapping(settings),
+          ...(masks ? { faceMasks: masks } : {}) }, { signal: controller.signal });
         if (controller.signal.aborted || !mounted.current) return;
         currentSnapshot.validate();
+        // A stale or spent face selection is dropped here with its diagnostic; the
+        // mask change re-runs this effect, so this plan is not staged.
+        if (faceMasks.reconcile(plan, modelId, id => `IFC object #${id}`).diagnostics.length) {
+          setStatusMessage('A face selection changed. Refreshing the preview…'); return;
+        }
         const state = useViewerStore.getState();
         if (!plan.items.length) throw new Error(plan.exclusions[0]?.reason ?? 'No surfaces in this scope support the chosen mapping.');
         // Exclusions must be acknowledged explicitly before the narrower scope applies.
@@ -199,7 +210,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
       } finally { if (!adopted) appearanceAssets.releaseOwner(owner); }
     })(); }, 250);
     return () => { clearTimeout(timer); controller.abort(); applyAbort.current?.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };
-  }, [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled, suspendPreview]);
+  }, [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled, suspendPreview, faceMasks.masks]);
 
   async function upload(file: File): Promise<void> {
     if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) { await pdfSource.upload(file); return; }
@@ -246,6 +257,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     setPreviewEnabled(false);
     const previous = draft.current; draft.current = null;
     discardDraft(previous);
+    faceMasks.reset();
     setConvertedObjects([]); setShowingOriginal(false); setStatus('idle'); setStatusMessage('Preview discarded.');
   }
   function compare(original: boolean): void {
@@ -270,6 +282,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         onProgress: phase => { if (mounted.current) setStatusMessage(phase === 'preparing' ? 'Preparing IFC changes…' : 'Saving appearance…'); },
       });
       setPreviewEnabled(false); setConvertedObjects([]);
+      faceMasks.clearApplied((current.plan.conversions ?? []).map(conversion => conversion.productId));
       appliedRevision.current = appearanceRevision(current.modelId);
       draft.current = null;
       appearanceAssets.releaseOwner(current.owner);
@@ -303,7 +316,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
       state.setSelectedEntityIds(supported.current.map(id => state.toGlobalId(modelId, id)));
       setScope({ kind: 'selection' }); setPreviewEnabled(true);
     },
-    affectedCount: counts.affected, convertedObjects, excludedCount: counts.excluded, exclusions: counts.reasons,
+    affectedCount: counts.affected, convertedObjects, faceMasks: faceMasks.controls, excludedCount: counts.excluded, exclusions: counts.reasons,
     settings, onSettingsChange: patch => { setSettings(current => ({ ...current, ...patch })); setPreviewEnabled(true); },
     status, statusMessage, unavailableReason, canApply: status === 'ready' && !!draft.current?.session,
     canDiscard: !!draft.current || status === 'preparing' || pdfSource.busy || !!pdfSource.passwordPrompt, hasPreview: !!draft.current,

@@ -126,7 +126,7 @@
    980 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    946 apps/viewer/src/components/viewer/useMouseControls.ts
    782 apps/viewer/src/components/viewer/ViewerLayout.tsx
-  1819 apps/viewer/src/components/viewer/Viewport.tsx
+  1815 apps/viewer/src/components/viewer/Viewport.tsx
   1382 apps/viewer/src/components/viewer/ViewportContainer.tsx
    511 apps/viewer/src/components/viewer/ZonesPanel.tsx
    862 apps/viewer/src/hooks/ids/idsExportService.ts

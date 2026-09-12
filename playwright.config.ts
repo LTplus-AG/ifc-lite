@@ -4,6 +4,12 @@
 
 import { defineConfig, devices } from '@playwright/test';
 
+// One preview server per run. Every project shares it; `reuseExistingServer`
+// means a server another checkout already runs on the port would be tested
+// instead, so a host with several checkouts sets PLAYWRIGHT_PORT per run.
+const PORT = process.env.PLAYWRIGHT_PORT ?? '3000';
+const BASE_URL = `http://localhost:${PORT}`;
+
 export default defineConfig({
   // Covers tests/benchmark (perf) and tests/e2e (functional smoke);
   // each project scopes its own files via testMatch.
@@ -17,8 +23,8 @@ export default defineConfig({
   // against an already-running server). The e2e projects rely on this
   // one; reuseExistingServer keeps local dev-server workflows working.
   webServer: {
-    command: 'pnpm --filter @ifc-lite/viewer exec vite preview --port 3000',
-    port: 3000,
+    command: `pnpm --filter @ifc-lite/viewer exec vite preview --port ${PORT}`,
+    port: Number(PORT),
     reuseExistingServer: true,
     timeout: 90000,
     env: {
@@ -32,7 +38,7 @@ export default defineConfig({
       timeout: 240000,
       use: {
         ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:3000',
+        baseURL: BASE_URL,
         actionTimeout: 60000,
         headless: false,
         channel: 'chrome',
@@ -52,7 +58,7 @@ export default defineConfig({
       testMatch: /(viewer-smoke|usd-export|laz-wasm|model-reposition)\.e2e\.spec\.ts/,
       timeout: 240000,
       use: {
-        baseURL: 'http://localhost:3000',
+        baseURL: BASE_URL,
         actionTimeout: 60000,
         headless: true,
         // Real Chrome, not Playwright's headless shell — the shell's
@@ -74,12 +80,37 @@ export default defineConfig({
       },
     },
     {
+      // Opt-in browser acceptance for appearance authoring (#4404 face masks):
+      // real wasm planner + WebGPU renderer on a real GPU. Not in CI's default
+      // lane; the spec skips unless APPEARANCE_E2E=1. Real Chrome like the
+      // other viewer projects, so no Playwright browser download is needed.
+      name: 'viewer-appearance-e2e',
+      testMatch: /appearance-face-mask\.e2e\.spec\.ts/,
+      timeout: 600000,
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: BASE_URL,
+        actionTimeout: 60000,
+        headless: true,
+        channel: 'chrome',
+        launchOptions: {
+          args: [
+            '--enable-gpu',
+            '--enable-webgpu',
+            '--enable-unsafe-webgpu',
+            '--use-angle=default',
+            '--ignore-gpu-blocklist',
+          ],
+        },
+      },
+    },
+    {
       name: 'viewer-benchmark',
       testMatch: /viewer-benchmark\.spec\.ts/,
       timeout: 600000, // 10 min for very large files (327MB)
       webServer: {
-        command: 'pnpm --filter @ifc-lite/viewer exec vite preview --port 3000',
-        port: 3000,
+        command: `pnpm --filter @ifc-lite/viewer exec vite preview --port ${PORT}`,
+        port: Number(PORT),
         reuseExistingServer: true,
         timeout: 60000,
         env: {
@@ -88,7 +119,7 @@ export default defineConfig({
       },
       use: {
         ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:3000',
+        baseURL: BASE_URL,
         actionTimeout: 300000,
         // Run headed for realistic GPU/WebGPU performance
         headless: false,
@@ -111,8 +142,8 @@ export default defineConfig({
       testMatch: /viewer-benchmark\.spec\.ts/,
       timeout: 600000,
       webServer: {
-        command: 'pnpm --filter @ifc-lite/viewer exec vite preview --port 3000',
-        port: 3000,
+        command: `pnpm --filter @ifc-lite/viewer exec vite preview --port ${PORT}`,
+        port: Number(PORT),
         reuseExistingServer: true,
         timeout: 60000,
         env: {
@@ -120,7 +151,7 @@ export default defineConfig({
         },
       },
       use: {
-        baseURL: 'http://localhost:3000',
+        baseURL: BASE_URL,
         actionTimeout: 300000,
         // CI mode: headless but with GPU flags
         headless: true,

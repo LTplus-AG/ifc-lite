@@ -3,29 +3,75 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import type { MeshData } from '@ifc-lite/geometry';
 import { expandAppearanceCorners, type Renderer } from '@ifc-lite/renderer';
 import type { ViewerState } from '@/store';
 import { bindAppearancePreview } from './preview.js';
 import type { AppearancePlan } from './planner-types.js';
 
-function plan(conversion: Partial<NonNullable<AppearancePlan['conversions']>[number]>): AppearancePlan {
-  const indices = [0, 1, 2];
-  return { sourceRevision: 'r', nextExpressId: 100, nextAvailableExpressId: 104, created: [], edits: [], removed: [], exclusions: [],
-    items: [{ productId: 25, geometryItemId: 101, texCoords: [], texCoordIndex: [], sourceIndices: indices, targetIndices: indices,
-      targetVertexCount: 3, previewCornerUvs: [0, 0, 1, 0, 0, 1], targetCornerNormals: [0, 1, 0, 0, 1, 0, 0, 1, 0] }],
-    conversions: [{ productId: 25, representationId: 23, sourceGeometryItemId: 11, geometryItemId: 101, sourceIndices: indices,
-      sourcePositions: [0, 0, 0, 1, 0, 0, 0, 1, 0], sourceNormals: [0, 0, 1, 0, 0, 1, 0, 0, 1], sourceOrigin: [0, 0, 0],
-      sourceColor: [1, 1, 1, 1], rtcOffset: [0, 0, 0], surfaceFingerprint: 'f'.repeat(64), ...conversion }] };
+// The evaluated source surface is a quad: two triangles over four corners.
+const sourceIndices = [0, 1, 2, 0, 2, 3];
+const sourcePositions = [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0];
+function plan(conversion: Partial<NonNullable<AppearancePlan['conversions']>[number]>, item: Partial<AppearancePlan['items'][number]> = {}): AppearancePlan {
+  return { sourceRevision: 'r', nextExpressId: 100, nextAvailableExpressId: 106, created: [], edits: [], removed: [], exclusions: [],
+    items: [{ productId: 25, geometryItemId: 101, texCoords: [], texCoordIndex: [], sourceIndices, targetIndices: sourceIndices,
+      targetVertexCount: 4, previewCornerUvs: [0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1], targetCornerNormals: Array(18).fill(0).map((_, i) => i % 3 === 1 ? 1 : 0), ...item }],
+    conversions: [{ productId: 25, representationId: 23, sourceGeometryItemId: 11, geometryItemId: 101, sourceIndices,
+      sourcePositions, sourceNormals: Array(12).fill(0).map((_, i) => i % 3 === 2 ? 1 : 0), sourceOrigin: [0, 0, 0],
+      sourceColor: [0.8, 0.2, 0.1, 1], rtcOffset: [0, 0, 0], surfaceFingerprint: 'f'.repeat(64), ...conversion }] };
 }
-// The renderer preview replaces an owner's parts one-to-one; a masked plan
-// splits one part in two, so the binder refuses it before touching the scene.
-const state = { toGlobalId: (_model: string, id: number) => id } as unknown as ViewerState;
-const renderer = { getScene: () => ({ getMeshDataPieces: () => undefined, isInstancedEntity: () => false }) } as unknown as Renderer;
-const bind = (masked: AppearancePlan) => bindAppearancePreview(state, renderer, 'model', masked, {} as ImageBitmap, 'textures/a.png', true, true, expandAppearanceCorners);
+const indices = new Uint32Array(sourceIndices);
+const original: MeshData = { expressId: 25, geometryItemId: 11, modelIndex: 0, color: [0.8, 0.2, 0.1, 1],
+  positions: new Float32Array([0, 0, 0, 1, 0, 0, 1, 0, -1, 0, 0, -1]), normals: new Float32Array(12).map((_, i) => i % 3 === 1 ? 1 : 0),
+  indices, appearanceSource: { kind: 'canonical-item', indices, sourceIndices: indices } };
+const state = { toGlobalId: (_model: string, id: number) => id, models: new Map(), modelPlacement: { frameKey: 'test', placements: new Map() },
+  resolveGlobalIdFromModels: (id: number) => ({ modelId: 'model', expressId: id }) } as unknown as ViewerState;
+const renderer = (pieces: MeshData[] | undefined) => ({ getScene: () => ({ getMeshDataPieces: () => pieces, isInstancedEntity: () => false }) }) as unknown as Renderer;
+const bitmap = {} as ImageBitmap;
+const bind = (masked: AppearancePlan, pieces: MeshData[] | undefined = [original]) =>
+  bindAppearancePreview(state, renderer(pieces), 'model', masked, bitmap, 'textures/a.png', true, true, expandAppearanceCorners);
 
-test('a face-masked conversion is refused explicitly by the preview binder (#4404)', () => {
-  assert.throws(() => bind(plan({ maskedTriangles: [0], retainedGeometryItemId: 102 })), /IFC object #25 carries a face selection/);
-  assert.throws(() => bind(plan({ retainedGeometryItemId: 102 })), /IFC object #25 carries a face selection/);
-  // The same plan without a mask passes the guard and fails only on the absent scene geometry.
-  assert.throws(() => bind(plan({})), /Geometry for IFC object #25 is not available/);
+// The masked item covers one triangle: three corners of UVs, normals and topology.
+const maskedItem = { sourceIndices: [0, 1, 2], targetIndices: [0, 1, 2], targetVertexCount: 3,
+  previewCornerUvs: [0, 0, 1, 0, 1, 1], targetCornerNormals: [0, 1, 0, 0, 1, 0, 0, 1, 0] };
+
+test('a face-masked conversion previews as textured and retained parts of one owner (#4404)', () => {
+  const [group] = bind(plan({ maskedTriangles: [0], retainedGeometryItemId: 102 }, maskedItem));
+  assert.equal(group.globalId, 25);
+  assert.deepEqual(group.parts.map(part => part.geometryItemId), [101, 102]);
+  const [textured, retained] = group.parts;
+  assert.deepEqual([...textured.indices], [0, 1, 2]);
+  assert.deepEqual([...textured.positions], [0, 0, 0, 1, 0, 0, 1, 0, -1], 'the textured part expands exactly the masked triangle corners');
+  assert.deepEqual([...textured.uvs!], maskedItem.previewCornerUvs);
+  assert.equal(textured.textureBitmap, bitmap); assert.equal(textured.textureRef?.url, 'textures/a.png');
+  assert.deepEqual(textured.color, [1, 1, 1, 1]);
+  assert.deepEqual([...retained.indices], [0, 2, 3], 'the retained part keeps the complementary source corners');
+  assert.equal(retained.positions, original.positions);
+  assert.deepEqual(retained.color, [0.8, 0.2, 0.1, 1]);
+  assert.equal(retained.uvs, undefined); assert.equal(retained.textureRef, undefined); assert.equal(retained.textureBitmap, undefined);
+  assert.equal(retained.appearanceSource?.indices, retained.indices);
+  assert.deepEqual(group.partition, { before: [{ geometryItemId: 11, triangles: [0, 1] }],
+    after: [{ geometryItemId: 101, triangles: [0] }, { geometryItemId: 102, triangles: [1] }] });
+  assert.equal(group.geometryItemRemaps, undefined, 'a partition replaces the one-to-one item remap');
+});
+
+test('the masked binder refuses inconsistent or fragmented provenance explicitly (#4404)', () => {
+  assert.throws(() => bind(plan({ maskedTriangles: [0], retainedGeometryItemId: 102 })), /Invalid native occurrence conversion provenance/);
+  assert.throws(() => bind(plan({ maskedTriangles: [1, 0], retainedGeometryItemId: 102 }, maskedItem)), /Invalid native face mask provenance/);
+  assert.throws(() => bind(plan({ maskedTriangles: [0, 1], retainedGeometryItemId: 102 }, maskedItem)), /Invalid native face mask provenance/);
+  assert.throws(() => bind(plan({ maskedTriangles: [0] }, maskedItem)), /Invalid native face mask provenance/);
+  const half = (from: number): MeshData => {
+    const part = new Uint32Array(sourceIndices.slice(from, from + 3));
+    return { ...original, indices: part, appearanceSource: { kind: 'canonical-item', indices: part, sourceIndices: indices, cornerIndices: Uint32Array.from([from, from + 1, from + 2]) } };
+  };
+  assert.throws(() => bind(plan({ maskedTriangles: [0], retainedGeometryItemId: 102 }, maskedItem), [half(0), half(3)]), /in one piece, but it renders in 2 pieces/);
+  assert.throws(() => bind(plan({ maskedTriangles: [0], retainedGeometryItemId: 102 }, maskedItem), [half(0)]), /in one piece/);
+  const renumbered = { ...original, indices: new Uint32Array([0, 2, 3, 0, 1, 2]) };
+  renumbered.appearanceSource = { kind: 'canonical-item', indices: renumbered.indices, sourceIndices: renumbered.indices };
+  assert.throws(() => bind(plan({ maskedTriangles: [0], retainedGeometryItemId: 102 }, maskedItem), [renumbered]), /geometry of IFC object #25 changed/);
+  // The same plan without a mask still binds as one textured part.
+  const [whole] = bind(plan({}));
+  assert.equal(whole.parts.length, 1); assert.equal(whole.partition, undefined);
+  assert.deepEqual(whole.geometryItemRemaps, [{ from: 11, to: 101 }]);
+  assert.throws(() => bindAppearancePreview(state, renderer(undefined), 'model', plan({}), bitmap, 'textures/a.png', true, true, expandAppearanceCorners), /Geometry for IFC object #25 is not available/);
 });

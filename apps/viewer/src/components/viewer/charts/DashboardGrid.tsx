@@ -18,7 +18,8 @@ import 'react-grid-layout/css/styles.css';
 import type { DashboardLayoutItem } from '@ifc-lite/charts';
 
 export const GRID_COLUMNS = 12;
-export const GRID_ROW_HEIGHT = 56;
+/** 4 rows (the preset card height) plus gaps fit the bottom strip's default 300 px with its header. */
+export const GRID_ROW_HEIGHT = 50;
 /** Below this width (a freshly floated panel is 360 px) the grid folds to half the columns and is read-only. */
 export const GRID_NARROW_WIDTH = 640;
 export const GRID_MIN_W = 3;

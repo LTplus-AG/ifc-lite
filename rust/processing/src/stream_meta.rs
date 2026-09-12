@@ -101,7 +101,9 @@ pub fn resolve_stream_meta(
             length_unit_scale,
         ),
         MetaMode::SmallFileSingle => {
-            router.detect_rtc_offset_with_fallback(jobs, decoder, content)
+            router
+                .detect_rtc_offset_with_fallback(jobs, decoder, content)
+                .unwrap_or((0.0, 0.0, 0.0))
         }
     };
     let needs_shift = coord_is_large(rtc_offset);
@@ -163,7 +165,9 @@ fn resolve_partial_rtc(
         // scan_placement_bounds reads raw IfcCartesianPoint values (FILE
         // units); the scale converts them to metres BEFORE the 10 km gate
         // decides, so the result is in the detection path's unit.
-        rtc_offset = ifc_lite_core::scan_placement_bounds(content).rtc_offset(length_unit_scale);
+        rtc_offset = ifc_lite_core::scan_placement_bounds(content)
+            .rtc_offset(length_unit_scale)
+            .unwrap_or((0.0, 0.0, 0.0));
     }
     rtc_offset
 }

@@ -167,7 +167,9 @@ fn streaming_partial_first_pass_success_suppresses_fallback() {
         "first pass must succeed on the partial index"
     );
     assert!(
-        coord_is_large(ifc_lite_core::scan_placement_bounds(content).rtc_offset(1.0)),
+        ifc_lite_core::scan_placement_bounds(content)
+            .rtc_offset(1.0)
+            .is_some_and(coord_is_large),
         "placement-bounds fallback would shift (large) if taken"
     );
 
@@ -238,7 +240,9 @@ fn streaming_partial_stage3_placement_bounds_fallback() {
     assert!((scale - 0.001).abs() < 1e-12, "expected mm scale, got {scale}");
 
     // Reproduce exactly what stage 3 computes: raw placement bounds times scale.
-    let raw = ifc_lite_core::scan_placement_bounds(content).centroid();
+    let raw = ifc_lite_core::scan_placement_bounds(content)
+        .rtc_offset(1.0)
+        .expect("the fixture has placement points");
     assert_eq!(raw, (80_000_000.0, 90_000_000.0, 0.0), "raw mm bounds");
     let expected = (raw.0 * scale, raw.1 * scale, raw.2 * scale);
     assert_eq!(meta.rtc_offset, expected, "stage 3 unit-scales raw bounds");

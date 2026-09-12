@@ -1079,7 +1079,9 @@ pub fn process_geometry_streaming_filtered_with_options(
         .map(|job| (job.id, job.start, job.end, job.ifc_type))
         .collect();
     let detected_rtc_offset =
-        router.detect_rtc_offset_with_fallback(&rtc_jobs, &mut decoder, content);
+        router
+            .detect_rtc_offset_with_fallback(&rtc_jobs, &mut decoder, content)
+            .unwrap_or((0.0, 0.0, 0.0));
 
     // Three-tier coordinate-space selection:
     //   1. `site_local`: IfcSite placement has a non-identity translation.

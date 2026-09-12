@@ -41,7 +41,7 @@ fn test_large_coordinates_detection() {
     bounds.expand(2679112.0, 1248092.0, 632.0);
     assert!(bounds.has_large_coordinates(1.0));
     // The RTC offset is the bbox centre, not a corner, on ALL THREE axes.
-    assert_eq!(bounds.rtc_offset(1.0), (2679062.0, 1247992.0, 532.0));
+    assert_eq!(bounds.rtc_offset(1.0), Some((2679062.0, 1247992.0, 532.0)));
 }
 
 #[test]
@@ -52,7 +52,7 @@ fn test_small_coordinates_no_shift() {
 
     assert!(!bounds.has_large_coordinates(1.0));
 
-    let offset = bounds.rtc_offset(1.0);
+    let offset = bounds.rtc_offset(1.0).expect("bounds contain points");
     assert_eq!(offset.0, 0.0);
     assert_eq!(offset.1, 0.0);
     assert_eq!(offset.2, 0.0);
@@ -120,7 +120,7 @@ END-ISO-10303-21;
     assert!(bounds.is_valid());
     assert!(!bounds.has_large_coordinates(1.0));
 
-    let offset = bounds.rtc_offset(1.0);
+    let offset = bounds.rtc_offset(1.0).expect("bounds contain points");
     assert_eq!(offset.0, 0.0); // No shift needed for small coordinates
 }
 
@@ -147,7 +147,7 @@ fn test_precision_preserved_with_rtc() {
     assert!(error_direct > 0.01, "premise: cast must lose 0.1 m");
 
     // WITH RTC: subtract the offset the pipeline applies (in f64), then cast.
-    let (offset_x, _, _) = bounds.rtc_offset(1.0);
+    let (offset_x, _, _) = bounds.rtc_offset(1.0).expect("bounds contain points");
     let diff_rtc = (((x2 - offset_x) as f32) - ((x1 - offset_x) as f32)) as f64;
     let error_rtc = (diff_rtc - expected_diff).abs();
     assert!(
@@ -171,11 +171,11 @@ fn large_coordinate_gate_scales_file_units_to_metres_before_deciding() {
 
     // Metres: 5 km out, under the gate.
     assert!(!bounds.has_large_coordinates(1.0));
-    assert_eq!(bounds.rtc_offset(1.0), (0.0, 0.0, 0.0));
+    assert_eq!(bounds.rtc_offset(1.0), Some((0.0, 0.0, 0.0)));
 
     // Kilometres: 5 000 km out, must shift, and the offset is in metres.
     assert!(bounds.has_large_coordinates(1000.0));
-    let (x, y, z) = bounds.rtc_offset(1000.0);
+    let (x, y, z) = bounds.rtc_offset(1000.0).expect("bounds contain points");
     assert!((x - 5_000_050.0).abs() < 1e-6, "x offset in metres, got {x}");
     assert!((y - 5_000_050.0).abs() < 1e-6, "y offset in metres, got {y}");
     assert!((z - 5.0).abs() < 1e-6, "z offset in metres, got {z}");
@@ -192,7 +192,7 @@ fn millimetre_model_inside_ten_metres_is_not_large() {
 
     assert!(bounds.has_large_coordinates(1.0), "premise: raw values read as 25 km");
     assert!(!bounds.has_large_coordinates(0.001));
-    assert_eq!(bounds.rtc_offset(0.001), (0.0, 0.0, 0.0));
+    assert_eq!(bounds.rtc_offset(0.001), Some((0.0, 0.0, 0.0)));
 }
 
 /// STEP keyword case is not significant (ISO 10303-21) and the scanner

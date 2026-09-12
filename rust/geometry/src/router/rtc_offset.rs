@@ -462,16 +462,19 @@ impl GeometryRouter {
     /// carries >10 km coordinates must be re-based identically everywhere
     /// (previously the wasm prepasses silently fell back to (0,0,0) and the
     /// browser rendered f32 vertex jitter that the server never saw).
-    /// Both arms answer in METRES: the bounds fallback gets `unit_scale`, so its 10 km gate never sees raw file units.
+    ///
+    /// `None` means NEITHER ladder found a coordinate to judge (no usable
+    /// placement sample and no `IfcCartesianPoint` in the file); `Some((0,0,0))`
+    /// means one of them did and the model is small. The selector that turns
+    /// this into a mesh frame (`ifc_lite_processing::MeshFrame::select`) is
+    /// the one place that decides what `None` means.
     pub fn detect_rtc_offset_with_fallback(
         &self,
         jobs: &[(u32, usize, usize, IfcType)],
         decoder: &mut EntityDecoder,
         content: &[u8],
-    ) -> (f64, f64, f64) {
-        match self.detect_rtc_offset_from_jobs(jobs, decoder) {
-            Some(offset) => offset,
-            None => ifc_lite_core::scan_placement_bounds(content).rtc_offset(self.unit_scale),
-        }
+    ) -> Option<(f64, f64, f64)> {
+        self.detect_rtc_offset_from_jobs(jobs, decoder)
+            .or_else(|| ifc_lite_core::scan_placement_bounds(content).rtc_offset(self.unit_scale))
     }
 }

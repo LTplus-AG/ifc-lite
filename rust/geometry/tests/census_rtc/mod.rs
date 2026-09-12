@@ -125,6 +125,9 @@ fn detect_rtc_offset(content: &str, decoder: &mut EntityDecoder) -> (f64, f64, f
         let t = (m[12], m[13], m[14]);
         (t.0.abs() > 1e-9 || t.1.abs() > 1e-9 || t.2.abs() > 1e-9).then_some(t)
     });
-    site_offset
-        .unwrap_or_else(|| router.detect_rtc_offset_with_fallback(&jobs, decoder, content.as_bytes()))
+    site_offset.unwrap_or_else(|| {
+        router
+            .detect_rtc_offset_with_fallback(&jobs, decoder, content.as_bytes())
+            .unwrap_or((0.0, 0.0, 0.0))
+    })
 }

@@ -7,11 +7,14 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import * as collab from '@ifc-lite/collab';
 import { IfcParser } from '@ifc-lite/parser';
-import { parseRoomStepSource } from './room-step-source.js';
+import { loadRoomStepSource, parseRoomStepSource } from './room-step-source.js';
+import { zipSync } from 'fflate';
 import { createEmptyFlatSymbolic } from '@/lib/overlay-parse/symbolic-flat.js';
+import { buildParseResult } from '@/lib/overlay-parse/symbolic-parse.js';
 import { remapRoomSymbolicOwners, roomSymbolicSource } from './room-symbolic-source.js';
 import { joiner, localIdOf, ownerShare } from '@/test/collab-room-harness.js';
 import { roomStepExportSource } from './room-step-export.js';
+import { appearanceAssets, modelAppearanceAssets } from '@/lib/appearance/model-assets.js';
 
 describe('portable room STEP source (#4604)', () => {
   it('retains the PDF annotation source and maps its owner into the room id space', async () => {
@@ -31,6 +34,68 @@ describe('portable room STEP source (#4604)', () => {
     const flat = createEmptyFlatSymbolic();
     flat.fillOwner = new Uint32Array([79, 79]);
     assert.deepEqual(remapRoomSymbolicOwners(flat, source.ownerIds).fillOwner, new Uint32Array([17, 17]));
+  });
+
+  it('retains exact IFCZIP model and texture paths for a fresh room binding', async () => {
+    modelAppearanceAssets.clear();
+    const step = new Uint8Array(await readFile(new URL(
+      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      import.meta.url,
+    )));
+    const png = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lWkmWQAAAABJRU5ErkJggg==', 'base64'));
+    const archive = zipSync({ 'project/model.ifc': step, 'project/textures/scan.png': png });
+    const blobs = new collab.MemoryBlobStore();
+    const { hash } = await blobs.put(archive);
+    const source = await loadRoomStepSource(blobs, hash, 'ifczip');
+    assert.equal(source.resources?.modelPath, 'project/model.ifc');
+    assert.deepEqual([...source.resources?.resources.keys() ?? []], ['project/textures/scan.png']);
+    const texture = source.resources?.resources.get('project/textures/scan.png');
+    assert.ok(texture);
+    assert.deepEqual(texture, png);
+
+    const doc = collab.createCollabDoc();
+    const store = await new IfcParser().parseColumnar(step.slice().buffer);
+    const slot = collab.modelSlotRef('m0');
+    await ownerShare(doc, blobs, [{
+      modelId: 'pdf', name: 'model.ifc', store, isIfcx: false, meshes: [], idOffset: 0,
+      portableStepSource: archive, portableStepSourceFormat: 'ifczip',
+    }], new Map([['pdf', slot]]));
+    const guest = joiner(doc, blobs, 'ifczip-room');
+    await guest.reconstructor.reconstruct();
+    const roomModelId = guest.store.state().models.keys().next().value;
+    assert.ok(roomModelId);
+    const originals = modelAppearanceAssets.exportOriginals(roomModelId);
+    assert.equal(originals.modelPath, 'project/model.ifc');
+    assert.deepEqual(originals.resources.get('project/textures/scan.png'), png);
+    const authoredPng = png.slice();
+    authoredPng[authoredPng.length - 1] ^= 1;
+    const draftOwner = { kind: 'draft' as const, id: 'guest-texture' };
+    const authored = await appearanceAssets.add(authoredPng, { owner: draftOwner });
+    modelAppearanceAssets.registerAuthored(roomModelId, 'guest-command', [authored.id]);
+    const combined = modelAppearanceAssets.exportResources(roomModelId);
+    assert.equal(combined.resources.size, 2, 'guest-authored and shared originals coexist in export');
+    assert.deepEqual(combined.resources.get('project/textures/scan.png'), png);
+    appearanceAssets.releaseOwner(draftOwner);
+    modelAppearanceAssets.clear();
+  });
+
+  it('drops a deleted portable annotation without hiding surviving symbols', () => {
+    const flat = createEmptyFlatSymbolic();
+    flat.typeNames = ['IfcAnnotation'];
+    flat.fillPoints = Float32Array.from([0, 0, 1, 0, 0, 1, 2, 0, 3, 0, 2, 1]);
+    flat.fillPointStart = Uint32Array.from([0, 6, 12]);
+    flat.fillHoleStart = Uint32Array.from([0, 0, 0]);
+    flat.fillColor = Float32Array.from([1, 0, 0, 1, 0, 1, 0, 1]);
+    flat.fillHatch = Float32Array.from([0, 0, Number.NaN, 0, 0, 0, Number.NaN, 0]);
+    flat.fillOwner = Uint32Array.from([79, 80]);
+    flat.fillGeometryItem = Uint32Array.from([0, 0]);
+    flat.fillWorldY = Float32Array.from([Number.NaN, Number.NaN]);
+    flat.fillFlags = Uint8Array.from([0, 0]);
+    flat.fillType = Uint16Array.from([0, 0]);
+    const remapped = remapRoomSymbolicOwners(flat, new Map([[80, 18]]));
+    assert.deepEqual(remapped.fillOwner, new Uint32Array([0, 18]));
+    const result = buildParseResult(remapped, {});
+    assert.deepEqual(result.looseFills.map(fill => fill.ownerId), [18]);
   });
 
   it('rejects malformed and missing source references without inventing an empty source', async () => {
@@ -111,7 +176,7 @@ describe('portable room STEP source (#4604)', () => {
     const initialModel = guest.store.state().models.values().next().value;
     assert.ok(initialModel);
     const initialSource = roomSymbolicSource(initialModel.ifcDataStore!);
-    assert.ok(initialSource);
+    assert.ok(initialSource, guest.notices.join('; '));
     assert.equal(initialSource.ownerIds.get(79), localIdOf(initialModel, `${slot.pathPrefix}/0aaaaaaaaaaaaaaaaaaaaa`));
 
     const createdPath = `${slot.pathPrefix}/1bbbbbbbbbbbbbbbbbbbbb`;
@@ -134,6 +199,37 @@ describe('portable room STEP source (#4604)', () => {
       'export falls back to IFCX instead of dropping the room-created root',
     );
     guest.reconstructor.teardown();
+  });
+
+  it('does not publish a model after the room closes during sidecar fetch', async () => {
+    const bytes = new Uint8Array(await readFile(new URL(
+      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      import.meta.url,
+    )));
+    const store = await new IfcParser().parseColumnar(bytes.slice().buffer);
+    const doc = collab.createCollabDoc();
+    const blobs = new collab.MemoryBlobStore();
+    const slot = collab.modelSlotRef('m0');
+    await ownerShare(doc, blobs, [{
+      modelId: 'pdf', name: 'annotation.ifc', store, isIfcx: false, meshes: [], idOffset: 0,
+      portableStepSource: bytes,
+    }], new Map([['pdf', slot]]));
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let reads = 0;
+    const delayed: collab.BlobStore = {
+      put: (value, contentType) => blobs.put(value, contentType),
+      get: async hash => { reads++; await gate; return blobs.get(hash); },
+      has: hash => blobs.has(hash), delete: hash => blobs.delete(hash), list: () => blobs.list(),
+    };
+    const guest = joiner(doc, delayed, 'closed-during-fetch');
+    const pending = guest.reconstructor.reconstruct();
+    for (let turn = 0; reads === 0 && turn < 20; turn++) await new Promise(resolve => setImmediate(resolve));
+    assert.ok(reads > 0);
+    guest.store.state().collabRoomId = null;
+    release();
+    await pending;
+    assert.equal(guest.store.state().models.size, 0);
   });
 
   it('falls back to IFCX when the room deletes a root that remains in the frozen STEP source', async () => {

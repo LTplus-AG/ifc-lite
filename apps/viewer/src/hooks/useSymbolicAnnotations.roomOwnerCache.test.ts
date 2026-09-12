@@ -37,6 +37,7 @@ function store(sharedSource: IfcSourceBytes, portableStore: IfcDataStore, roomOw
     source: sharedSource,
     seededIds: new Set([SOURCE_OWNER]),
     ownerIds: new Map([[SOURCE_OWNER, roomOwner]]),
+    placements: new Map(),
   });
   return result;
 }
@@ -104,6 +105,7 @@ describe('room symbolic cache owner identity (#4608)', () => {
         source: sharedSource,
         seededIds: new Set([SOURCE_OWNER]),
         ownerIds: new Map([[SOURCE_OWNER, 41]]),
+        placements: new Map(),
       });
       await Promise.all(ensureParseFor([first]));
       assert.equal(getParseFor(first)?.looseFills[0]?.ownerId, 41,

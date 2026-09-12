@@ -33,20 +33,17 @@ import { type GeometryResult } from '@ifc-lite/geometry';
 import {
   getWholeSourceForWorker,
   parseProfilesFlat,
-  parseSymbolicFlat,
 } from '@/lib/overlay-parse/index.js';
 import { placedConstructionProfiles } from '@/lib/model-placement/construction-profiles';
 import { buildProfileEntries, warnAboutSkippedProfiles } from '@/lib/overlay-parse/profile-entries.js';
-import {
-  buildSymbolicDrawingLines,
-  type SymbolicDrawingLine,
-} from '@/lib/overlay-parse/symbolic-drawing-lines.js';
+import { type SymbolicDrawingLine } from '@/lib/overlay-parse/symbolic-drawing-lines.js';
 import type { SpatialHierarchy } from '@ifc-lite/data';
 import * as IfcWasm from '@ifc-lite/wasm';
 import { customPlaneCenter, useViewerStore } from '@/store';
 import { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './useDrawing2DPersistence.js';
 import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
 import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
+import { drawingStoreIdentity, roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
 
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
@@ -229,7 +226,7 @@ export function useDrawingGeneration({
     // For multi-model: create cache key from model count and visible model IDs
     // For single-model: use source byteLength as before
     const modelCacheKey = models.size > 0
-      ? `${models.size}-${[...models.values()].filter(m => m.visible).map(m => m.id).sort().join('|')}`
+      ? `${models.size}-${[...models.values()].filter(m => m.visible).map(m => m.id).sort().join('|')}:${drawingStoreIdentity(ifcDataStore)}`
       : (ifcDataStore?.source ? String(ifcDataStore.source.byteLength) : null);
 
     const useSymbolic = displayOptions.useSymbolicRepresentations && !!ifcDataStore?.source;
@@ -262,14 +259,9 @@ export function useDrawingGeneration({
           //
           // `'all'`, not the overlay's IfcAnnotation/IfcGridAxis filter: the
           // drawing renders the symbolic representation of every product type.
-          const flat = await parseSymbolicFlat(
-            getWholeSourceForWorker(ifcDataStore!),
-            false,
-            'all',
-          );
           // Single-model (legacy) mode, so model index is always 0. Multi-model
           // symbolic parsing would require iterating over each model separately.
-          const symbolic = buildSymbolicDrawingLines(flat, 0);
+          const symbolic = await roomDrawingSymbolic(ifcDataStore!);
           symbolicLines = symbolic.lines;
           entitiesWithSymbols = symbolic.entities;
 

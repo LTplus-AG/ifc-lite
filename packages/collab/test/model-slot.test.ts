@@ -90,11 +90,13 @@ describe('model slot records', () => {
   it('records slots in seed order and is idempotent on the slot id', () => {
     const doc = createCollabDoc();
     createModelSlot(doc, 'm1', { name: 'second', order: 1 });
-    const first = createModelSlot(doc, 'm0', { name: 'first', order: 0, fileName: 'a.ifc', schemaVersion: 'IFC4', stepSourceBlobHash: 'a'.repeat(32) });
+    const first = createModelSlot(doc, 'm0', { name: 'first', order: 0, fileName: 'a.ifc', schemaVersion: 'IFC4', stepSourceBlobHash: 'a'.repeat(32), stepSourceFormat: 'ifczip' });
     // A second create for the same slot does not overwrite the record.
     createModelSlot(doc, 'm0', { name: 'renamed', order: 5 });
     expect(first.pathPrefix).toBe('/m0');
     expect(first.stepSourceBlobHash).toBe('a'.repeat(32));
+    expect(first.stepSourceFormat).toBe('ifczip');
+    expect(getModelSlot(doc, 'm0')?.stepSourceFormat).toBe('ifczip');
     expect(getModelSlot(doc, 'm0')?.name).toBe('first');
     expect(listModelSlots(doc).map((s) => [s.slotId, s.name, s.legacy])).toEqual([
       ['m0', 'first', false],

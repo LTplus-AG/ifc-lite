@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
+import type { LocalPlacement } from '@ifc-lite/collab';
 import type { FlatSymbolic } from '@/lib/overlay-parse/symbolic-flat';
 
 export interface RoomSymbolicSource {
@@ -12,15 +13,19 @@ export interface RoomSymbolicSource {
   seededIds: ReadonlySet<number>;
   /** Portable STEP owner expressId → reconstructed room expressId. */
   ownerIds: ReadonlyMap<number, number>;
+  /** Current room placements, keyed in portable STEP id space. */
+  placements: ReadonlyMap<number, LocalPlacement>;
+  /** Original IFCZIP resources needed by relative IfcImageTexture URLs. */
+  resources?: { modelPath?: string; resources: ReadonlyMap<string, Uint8Array> };
 }
 
-const sources = new WeakMap<IfcDataStore, RoomSymbolicSource>();
+const sources = new WeakMap<object, RoomSymbolicSource>();
 
 export function registerRoomSymbolicSource(store: IfcDataStore, source: RoomSymbolicSource): void {
   sources.set(store, source);
 }
 
-export function roomSymbolicSource(store: IfcDataStore): RoomSymbolicSource | undefined {
+export function roomSymbolicSource(store: object): RoomSymbolicSource | undefined {
   return sources.get(store);
 }
 
@@ -30,8 +35,10 @@ export function remapRoomSymbolicOwners(flat: FlatSymbolic, ids: ReadonlyMap<num
     const out = source.slice();
     for (let i = 0; i < out.length; i++) {
       const target = ids.get(out[i]);
-      if (target === undefined) throw new Error(`Room symbolic owner #${out[i]} has no reconstructed entity path.`);
-      out[i] = target;
+      // A room deletion deliberately removes the path while the immutable
+      // portable source still contains its primitive. Zero is not a valid IFC
+      // express id; downstream symbolic builders drop it and retain survivors.
+      out[i] = target ?? 0;
     }
     return out;
   };

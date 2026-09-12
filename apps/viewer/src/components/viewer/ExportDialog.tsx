@@ -71,6 +71,7 @@ import { roomExportPathPrefix } from '@/lib/collab/room-export-paths';
 import { ExtensionExportSlot } from '@/components/extensions/ExtensionExportSlot';
 import { preferredExportModelId } from './export-model-default';
 import { canExportRoomAsStep, roomStepExportSource } from '@/lib/collab/room-step-export';
+import { roomMergeInput, roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 
 type ExportScope = 'single' | 'merged';
@@ -79,8 +80,6 @@ type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 interface ExportDialogProps {
   trigger?: React.ReactNode;
 }
-
-
 export function ExportDialog({ trigger }: ExportDialogProps) {
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
@@ -374,45 +373,34 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           dataStore: await ensureModelExportReady(model.id),
         })));
         const mergeInputs: MergeModelInput[] = [];
+        const portableByModel = new Map<string, NonNullable<ReturnType<typeof roomStepExportSource>>>();
         for (const entry of hydratedModels) {
           if (!entry.dataStore) {
             continue;
           }
-          mergeInputs.push({
-            id: entry.model.id,
-            name: entry.model.name,
-            dataStore: entry.dataStore,
-            // Pass each model's pending edits so federated export round-trips
-            // mutations like single-model export. Gated by the Apply Mutations
-            // toggle; models without edits resolve to undefined (no bake cost).
-            mutationView: applyMutations ? (getMutationView(entry.model.id) ?? undefined) : undefined,
+          const roomView = applyMutations ? (getMutationView(entry.model.id) ?? undefined) : undefined;
+          const { input, portable } = roomMergeInput({
+            id: entry.model.id, name: entry.model.name, store: entry.dataStore, roomView, applyMutations,
           });
+          if (portable) portableByModel.set(entry.model.id, portable);
+          mergeInputs.push(input);
         }
 
         const mergedExporter = new MergedExporter(mergeInputs);
 
-        // Build per-model visibility maps if visible-only export
-        const hiddenByModel = new Map<string, Set<number>>();
-        const isolatedByModel = new Map<string, Set<number> | null>();
-        if (visibleOnly) {
-          for (const m of models.values()) {
-            hiddenByModel.set(m.id, getLocalHiddenIds(m.id));
-            isolatedByModel.set(m.id, getLocalIsolatedIds(m.id));
-          }
-        }
+        const visibility = visibleOnly
+          ? roomMergeVisibility(models.keys(), portableByModel, getLocalHiddenIds, getLocalIsolatedIds)
+          : { hidden: new Map<string, Set<number>>(), isolated: new Map<string, Set<number> | null>() };
 
-        // Merged files are the largest STEP output (every federated model
-        // concatenated) and this branch downloads them directly — no schedule
-        // splice sits between the exporter and the save. Assemble off-heap as a
-        // Blob so the file never materialises as one contiguous Uint8Array on
-        // the JS heap (and downloadFile skips its Uint8Array-to-BlobPart copy).
+        // Assemble the merged download off-heap so it does not materialise as
+        // one contiguous Uint8Array on the JS heap.
         const result = await mergedExporter.exportBlobAsync({
           schema,
           projectStrategy: 'keep-first',
           unitReconciliation,
           visibleOnly,
-          hiddenEntityIdsByModel: hiddenByModel,
-          isolatedEntityIdsByModel: isolatedByModel,
+          hiddenEntityIdsByModel: visibility.hidden,
+          isolatedEntityIdsByModel: visibility.isolated,
           description: `Merged export of ${mergeInputs.length} models from ifc-lite`,
           application: 'ifc-lite',
           onProgress: (p: ExportProgress) => setExportProgress({

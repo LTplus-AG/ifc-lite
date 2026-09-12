@@ -575,6 +575,40 @@ describe('deleteQuantitySet (#2508)', () => {
     expect(secondHop.getMutations()).toHaveLength(1);
   });
 
+  it('keeps a delayed-base quantity deleted after replaying an update followed by delete', () => {
+    const replayed = new MutablePropertyView(null, 'model-1');
+    replayed.applyMutations([
+      {
+        id: 'update-length', type: 'UPDATE_QUANTITY', timestamp: 1,
+        modelId: 'model-1', entityId: 7, psetName: 'Qto_Base', propName: 'Length',
+        oldValue: 3, newValue: 4, quantityType: QuantityType.Length,
+      },
+      {
+        id: 'delete-length', type: 'DELETE_QUANTITY', timestamp: 2,
+        modelId: 'model-1', entityId: 7, psetName: 'Qto_Base', propName: 'Length',
+      },
+    ]);
+    const quantities = () => [{
+      name: 'Qto_Base',
+      quantities: [
+        { name: 'Length', type: QuantityType.Length, value: 3 },
+        { name: 'Count', type: QuantityType.Count, value: 2 },
+      ],
+    }];
+    replayed.setQuantityExtractor(quantities);
+
+    expect(replayed.getQuantitiesForEntity(7)[0]?.quantities.map(quantity => quantity.name)).toEqual(['Count']);
+    expect(replayed.getMutations().map(mutation => mutation.type)).toEqual([
+      'CREATE_QUANTITY',
+      'DELETE_QUANTITY',
+    ]);
+
+    const secondHop = new MutablePropertyView(null, 'model-1');
+    secondHop.setQuantityExtractor(quantities);
+    secondHop.applyMutations(replayed.getMutations());
+    expect(secondHop.getQuantitiesForEntity(7)[0]?.quantities.map(quantity => quantity.name)).toEqual(['Count']);
+  });
+
   it('removes a quantity set created in this session, along with its quantities', () => {
     const view = new MutablePropertyView(null, 'model-1');
     view.setOnDemandExtractor(() => []);

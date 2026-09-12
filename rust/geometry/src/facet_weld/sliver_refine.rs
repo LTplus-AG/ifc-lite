@@ -169,7 +169,15 @@ pub(super) fn refine_high_aspect_slivers_impl(
     }
 
     // Triangles as canonical-id triples; drop degenerate / out-of-range.
+    // `raw` keeps each triangle's AUTHORED corner indices until a split
+    // replaces it: the rebuild below emits an unsplit triangle at those
+    // positions, not at its cells' first-seen ones, so the pass moves only
+    // what it refined (the `_within` contract: "everything outside is left
+    // exactly as authored"). A canonical cell holding two distinct raw
+    // vertices used to snap both to one position mesh-wide once any split
+    // fired anywhere.
     let mut tris: Vec<[usize; 3]> = Vec::with_capacity(mesh.indices.len() / 3);
+    let mut raw: Vec<Option<[usize; 3]>> = Vec::with_capacity(mesh.indices.len() / 3);
     for c in mesh.indices.chunks_exact(3) {
         let (i0, i1, i2) = (c[0] as usize, c[1] as usize, c[2] as usize);
         if i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count {
@@ -180,6 +188,7 @@ pub(super) fn refine_high_aspect_slivers_impl(
             continue;
         }
         tris.push([a, b, d]);
+        raw.push(Some([i0, i1, i2]));
     }
 
     let edge_key = |u: usize, v: usize| -> (usize, usize) {
@@ -319,9 +328,11 @@ pub(super) fn refine_high_aspect_slivers_impl(
         // edge's midpoint, preserving winding. Each triangle carries at most
         // one split edge (the claim rule above).
         let mut new_tris: Vec<[usize; 3]> = Vec::with_capacity(tris.len() + round_edges.len() * 2);
+        let mut new_raw: Vec<Option<[usize; 3]>> = Vec::with_capacity(new_tris.capacity());
         for (ti, t) in tris.iter().enumerate() {
             if !claimed.contains(&ti) {
                 new_tris.push(*t);
+                new_raw.push(raw[ti]);
                 continue;
             }
             // Rotate so the split edge is (t[k], t[k+1]); the apex is t[k+2].
@@ -334,15 +345,18 @@ pub(super) fn refine_high_aspect_slivers_impl(
                     // u → mid → w  and  mid → v → w  preserves [u,v,w] winding.
                     new_tris.push([u, mid, w]);
                     new_tris.push([mid, v, w]);
+                    new_raw.extend([None, None]);
                     split = true;
                     break;
                 }
             }
             if !split {
                 new_tris.push(*t);
+                new_raw.push(raw[ti]);
             }
         }
         tris = new_tris;
+        raw = new_raw;
         changed_any = true;
         splits_done += round_edges.len();
         if region.is_some() && splits_done >= MAX_SCOPED_SPLITS {
@@ -359,10 +373,11 @@ pub(super) fn refine_high_aspect_slivers_impl(
     let mut positions: Vec<f32> = Vec::with_capacity(tris.len() * 9);
     let mut normals: Vec<f32> = Vec::with_capacity(tris.len() * 9);
     let mut indices: Vec<u32> = Vec::with_capacity(tris.len() * 3);
-    for t in &tris {
-        let a = cpos[t[0]];
-        let b = cpos[t[1]];
-        let c = cpos[t[2]];
+    for (t, r) in tris.iter().zip(&raw) {
+        let [a, b, c] = match r {
+            Some(r) => [pos(r[0]), pos(r[1]), pos(r[2])],
+            None => [cpos[t[0]], cpos[t[1]], cpos[t[2]]],
+        };
         let n = tri_normal(a, b, c).map(|(n, _)| n).unwrap_or([0.0, 0.0, 1.0]);
         let base = (positions.len() / 3) as u32;
         for p in [a, b, c] {

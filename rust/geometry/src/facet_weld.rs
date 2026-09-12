@@ -443,9 +443,10 @@ pub fn weld_near_coplanar_facets(mesh: &Mesh) -> Mesh {
     // ── Step 5: resolve each canonical vertex's final position. A vertex with
     // candidate projections (from one or more clusters) gets their average
     // (deterministic — they were pushed in cluster-iteration order), snapped to
-    // the kernel grid; a vertex with none stays put.
-    let mut new_canon_pos = canon_pos.clone();
-    let mut any_moved = false;
+    // the kernel grid; a vertex with none stays `None` and is NOT written back
+    // (its raw vertices keep their authored positions, not the cell's
+    // first-seen one — the contract above says only welded vertices move).
+    let mut new_canon_pos: Vec<Option<[f64; 3]>> = vec![None; n_canon];
     for cv in 0..n_canon {
         let cands = &vertex_moves[cv];
         if cands.is_empty() {
@@ -466,22 +467,22 @@ pub fn weld_near_coplanar_facets(mesh: &Mesh) -> Mesh {
         if d2 > MAX_VERTEX_MOVE * MAX_VERTEX_MOVE {
             continue;
         }
-        new_canon_pos[cv] = [snap_grid(avg[0]), snap_grid(avg[1]), snap_grid(avg[2])];
-        any_moved = true;
+        new_canon_pos[cv] = Some([snap_grid(avg[0]), snap_grid(avg[1]), snap_grid(avg[2])]);
     }
 
-    if !any_moved {
+    if new_canon_pos.iter().all(|p| p.is_none()) {
         return mesh.clone();
     }
 
     // ── Step 6: rebuild with the SAME indices/normals, replacing each ORIGINAL
-    // vertex position with its (possibly welded) canonical position.
+    // vertex position with its welded canonical position where one exists.
     let mut out = mesh.clone();
     for i in 0..vertex_count {
-        let np = new_canon_pos[canon_of[i]];
-        out.positions[i * 3] = np[0] as f32;
-        out.positions[i * 3 + 1] = np[1] as f32;
-        out.positions[i * 3 + 2] = np[2] as f32;
+        if let Some(np) = new_canon_pos[canon_of[i]] {
+            out.positions[i * 3] = np[0] as f32;
+            out.positions[i * 3 + 1] = np[1] as f32;
+            out.positions[i * 3 + 2] = np[2] as f32;
+        }
     }
     out
 }

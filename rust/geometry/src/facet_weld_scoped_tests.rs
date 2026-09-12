@@ -225,6 +225,39 @@ fn degenerate_needle_terminates_without_exploding() {
     );
 }
 
+/// The refine pass rebuilt EVERY triangle at its dedup cell's first-seen
+/// position once any split fired, so two authored vertices 30 µm apart in a
+/// cell far outside the scoped region collapsed onto one another. An unsplit
+/// triangle must come back at its authored corners.
+#[test]
+fn scoped_refinement_leaves_unsplit_corners_at_their_authored_positions() {
+    let mut mesh = slivered_box(4, 100.0);
+    // Give the far end cap its own copy of corner (400, 0, 0), lifted 30 µm:
+    // same 100 µm dedup cell as the shared corner, distinct authored position.
+    let far = (mesh.positions.len() / 3) as u32; // new vertex id
+    let lifted_z = 0.00003_f32;
+    mesh.positions.extend_from_slice(&[400.0, 0.0, lifted_z]);
+    let shared = (0..mesh.positions.len() / 3 - 1)
+        .find(|&i| mesh.positions[i * 3] == 400.0 && mesh.positions[i * 3 + 1] == 0.0 && mesh.positions[i * 3 + 2] == 0.0)
+        .expect("corner (400,0,0)") as u32;
+    let n_tris = mesh.indices.len() / 3;
+    for t in (n_tris - 2)..n_tris {
+        // the last two triangles are the far end cap
+        for k in 0..3 {
+            if mesh.indices[t * 3 + k] == shared {
+                mesh.indices[t * 3 + k] = far;
+            }
+        }
+    }
+    assert!(mesh.indices.contains(&far), "the end cap references the lifted copy");
+    // Refine only the first strip; the far cap is 300 m outside the region.
+    let region = vec![([-1.0, -1.0, -1.0], [101.0, 2.0, 2.0])];
+    let out = refine_high_aspect_slivers_within(&mesh, &region);
+    assert!(out.indices.len() > mesh.indices.len(), "the first strip's slivers were bisected");
+    let lifted_survives = out.positions.chunks_exact(3).any(|p| p[0] == 400.0 && p[1] == 0.0 && p[2] == lifted_z);
+    assert!(lifted_survives, "an unsplit far-cap corner was snapped to its cell's first-seen position");
+}
+
 #[cfg(test)]
 mod offset_anchor_tests {
     use super::*;
@@ -638,5 +671,31 @@ mod offset_anchor_tests {
                 );
             }
         }
+    }
+
+    /// Once any vertex welded, Step 6 wrote EVERY vertex back at its dedup
+    /// cell's first-seen position, so an unrelated pair 30 µm apart elsewhere
+    /// in the mesh (each in its own single-facet normal bucket, so nothing
+    /// welds them) collapsed onto one another. Only welded vertices may move.
+    #[test]
+    fn weld_leaves_unwelded_vertices_at_their_authored_positions() {
+        let j = 15.0e-6;
+        let mesh = mesh_from_tris(&[
+            // The z≈0 slab pair that welds (15 µm offset jitter).
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            [[1.0, 0.0, j], [1.0, 1.0, j], [0.0, 1.0, j]],
+            // Two unrelated facets on distinct planes (-y and +x normals) whose
+            // corners at x≈6 share one 100 µm dedup cell but differ by 30 µm.
+            [[5.0, 0.0, 0.0], [6.0, 0.0, 0.0], [6.0, 0.0, 1.0]],
+            [[6.00003, 0.0, 0.0], [6.00003, 1.0, 0.0], [6.00003, 0.0, 1.0]],
+        ]);
+        let welded = weld_near_coplanar_facets(&mesh);
+        assert_eq!(distinct_offset_buckets(&welded), distinct_offset_buckets(&mesh) - 1, "the slab pair welds");
+        // Vertices 9, 10, 11 are the +x facet; none of them took part in a weld.
+        for i in 9..12 {
+            assert_eq!(vert(&welded, i), vert(&mesh, i), "unwelded vertex {i} moved");
+        }
+        let x = vert(&welded, 9)[0];
+        assert!(x > 6.00002 && x < 6.00004, "the 30 µm-offset corner was snapped onto its neighbour: x = {x}");
     }
 }

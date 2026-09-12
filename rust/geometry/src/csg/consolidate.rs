@@ -17,12 +17,15 @@ use ring_ops::{floor_pow2, simplify_2d_collinear, weld_near_coincident_2d};
 /// shallow-dihedral near-duplicate the interner correctly does NOT weld) out to a
 /// far vertex (issue #1007 / schependomlaan: the diagonal flap over an opening).
 ///
-/// The test is `min_edge < floor_pow2(max_edge) · 2⁻¹³` — POWER-OF-TWO and
-/// scale-relative, so it is bit-deterministic AND catches the needle (min 6.6 µm
-/// vs max ~5 m ⇒ threshold ~5·10⁻⁴) while never touching a real thin sliver
-/// (e.g. a 0.2 m × 2 m face, min 0.2 m ≫ 2·10⁻⁴). Dropping a needle cannot open a
-/// real gap — the hole/seam is already framed by the neighbouring non-degenerate
-/// triangles, exactly as Manifold (which welds the near-duplicate) produces.
+/// The test is `min_edge < floor_pow2(max_edge) · 2⁻¹³`, capped at an absolute
+/// 2⁻¹² m — POWER-OF-TWO and scale-relative, so it is bit-deterministic AND
+/// catches the needle (min 6.6 µm vs max ~5 m ⇒ threshold ~5·10⁻⁴) while never
+/// touching a real thin sliver (e.g. a 0.2 m × 2 m face, min 0.2 m ≫ 2·10⁻⁴).
+/// The cap is the same one `weld_near_coincident_2d` carries, for the same
+/// reason: uncapped, a 64 m face's threshold is 7.8 mm, which swallows a 5 mm
+/// rebate strip along it. Dropping a needle cannot open a real gap — the
+/// hole/seam is already framed by the neighbouring non-degenerate triangles,
+/// exactly as Manifold (which welds the near-duplicate) produces.
 pub(crate) fn tri_is_needle(v: &[Point3<f64>; 3]) -> bool {
     let d = |a: &Point3<f64>, b: &Point3<f64>| (a - b).norm();
     let (e0, e1, e2) = (d(&v[0], &v[1]), d(&v[1], &v[2]), d(&v[2], &v[0]));
@@ -31,7 +34,7 @@ pub(crate) fn tri_is_needle(v: &[Point3<f64>; 3]) -> bool {
     if !mx.is_finite() || mx <= 0.0 {
         return true; // fully degenerate
     }
-    mn < floor_pow2(mx) * 2.0_f64.powi(-13)
+    mn < (floor_pow2(mx) * 2.0_f64.powi(-13)).min(2.0_f64.powi(-12))
 }
 
 /// Push a single triangle (with the supplied face normal applied to all
@@ -292,7 +295,11 @@ impl ClippingProcessor {
 
             // Total bucket area — used to filter sub-resolution shapes /
             // holes (f64 noise leaves tiny spurious cavities after the
-            // i_overlay union).
+            // i_overlay union). Noise is absolute, a few snap-grid cells
+            // across, and does not grow with the plane; an uncapped relative
+            // term did, and on a 200 m² slab deleted (and triangulated over) a
+            // Ø150 mm sleeve. Cap it at 2⁻²⁰ m² (≈ 1 mm², a 64·SNAP_GRID
+            // square) so the filter never outgrows a genuine feature.
             let bucket_area: f64 = tris
                 .iter()
                 .map(|t| {
@@ -304,7 +311,7 @@ impl ClippingProcessor {
                             .abs()
                 })
                 .sum();
-            let min_significant = (bucket_area * 1.0e-4).max(1.0e-8);
+            let min_significant = (bucket_area * 1.0e-4).min(2.0_f64.powi(-20)).max(1.0e-8);
 
             let signed_area_2d = |ring: &[nalgebra::Point2<f64>]| -> f64 {
                 let n = ring.len();
@@ -828,5 +835,72 @@ mod tests {
             cons_open, 0,
             "consolidate must preserve the curved-wall opening seam (was torn)"
         );
+    }
+
+    #[test]
+    fn tri_is_needle_threshold_is_capped_on_long_faces() {
+        // A 5 mm rebate strip along a 64 m face: min edge 5 mm, max 64 m. The
+        // uncapped scale-relative threshold (64 · 2⁻¹³ = 7.8 mm) dropped it; the
+        // absolute 2⁻¹² m cap (0.24 mm) keeps it.
+        let rebate = [
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(64.0, 0.0, 0.0),
+            Point3::new(64.0, 0.005, 0.0),
+        ];
+        assert!(!tri_is_needle(&rebate), "a 5 mm strip on a 64 m face was dropped as a needle");
+        // A genuine hairline on the same face (50 µm base) is still a needle.
+        let hairline = [
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(64.0, 0.0, 0.0),
+            Point3::new(64.0, 0.00005, 0.0),
+        ];
+        assert!(tri_is_needle(&hairline), "a 50 µm hairline on a 64 m face must still be dropped");
+    }
+
+    /// One plane bucket: a `w × h` face with a centred square hole of side
+    /// `s`, as the 8-triangle annulus between the two rings.
+    fn face_with_square_hole(w: f64, h: f64, s: f64) -> Mesh {
+        let mut mesh = Mesh::new();
+        let (cx, cy, r) = (w / 2.0, h / 2.0, s / 2.0);
+        let outer = [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]];
+        let inner = [[cx - r, cy - r], [cx + r, cy - r], [cx + r, cy + r], [cx - r, cy + r]];
+        for p in outer.iter().chain(inner.iter()) {
+            mesh.add_vertex(Point3::new(p[0], p[1], 0.0), Vector3::new(0.0, 0.0, 1.0));
+        }
+        for i in 0..4u32 {
+            let j = (i + 1) % 4;
+            mesh.add_triangle(i, j, 4 + j);
+            mesh.add_triangle(i, 4 + j, 4 + i);
+        }
+        mesh
+    }
+
+    fn total_area(mesh: &Mesh) -> f64 {
+        let p = |i: u32| {
+            let i = i as usize;
+            Point3::new(mesh.positions[i * 3] as f64, mesh.positions[i * 3 + 1] as f64, mesh.positions[i * 3 + 2] as f64)
+        };
+        mesh.indices
+            .chunks_exact(3)
+            .map(|t| (p(t[1]) - p(t[0])).cross(&(p(t[2]) - p(t[0]))).norm() * 0.5)
+            .sum()
+    }
+
+    /// The hole filter judged significance against the WHOLE plane's area, so a
+    /// 100 mm sleeve in a 20 × 10 m slab face (0.01 m² against a 0.02 m² cutoff)
+    /// was dropped from the ring set and the CDT filled it. Noise cavities are
+    /// absolute, so the relative term is now capped at 2⁻²⁰ m²; a hole below
+    /// the 1e-8 m² floor is still removed.
+    #[test]
+    fn small_hole_in_a_large_face_survives_consolidation() {
+        let sleeve = face_with_square_hole(20.0, 10.0, 0.1);
+        let out = ClippingProcessor::consolidate_coplanar(sleeve);
+        let area = total_area(&out);
+        assert!((area - (200.0 - 0.01)).abs() < 1e-6, "the 0.01 m² sleeve was sealed over: area {area}");
+
+        let noise = face_with_square_hole(20.0, 10.0, 0.00005); // 2.5e-9 m²: sub-floor noise
+        let out = ClippingProcessor::consolidate_coplanar(noise);
+        let area = total_area(&out);
+        assert!((area - 200.0).abs() < 1e-6, "a sub-floor cavity must still be filtered: area {area}");
     }
 }

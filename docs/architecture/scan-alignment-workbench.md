@@ -1,10 +1,11 @@
 # Scan alignment workbench
 
 The Appearance workspace's **Align scan** stage matches a loaded textured GLB
-surface to visible surfaces of a loaded IFC4/IFC4X3 model. Open both through the
-normal Open/Add model controls, choose the source surface and IFC destination,
-and click each source landmark in the preview followed by its corresponding IFC
-point in the main view. Orbit and zoom remain available in both views.
+surface, or a completely streamed **point cloud** (LAS, LAZ, E57, PLY, PCD, PTS,
+XYZ), to visible surfaces of a loaded IFC4/IFC4X3 model. Open both through the
+normal Open/Add model controls, choose the source and IFC destination, and click
+each source landmark in the preview followed by its corresponding IFC point in
+the main view. Orbit and zoom remain available in both views.
 
 Use well-distributed **Fit** landmarks to estimate a rigid transform, and choose
 **Check** landmarks independently. Calculate alignment reports each point's
@@ -25,11 +26,22 @@ the landmark pairs.
 
 ## Observation and frame contract
 
-The source comes from canonical GLB ingestion. An observation records the
+A GLB source comes from canonical GLB ingestion. An observation records the
 original decoded surface ordinal, triangle ordinal and barycentric weights
 (`A:w`, `B:u`, `C:v`), evaluated in original GLB scene Y-up metres, including the
 retained mesh origin. It is bound to the SHA-256 of the original source file.
 The preview never substitutes a newly ingested or reconstructed source.
+
+A point-cloud source is the ingest's retained reservoir sample (positions and
+RGB, up to 2,000,000 points, the same points the 2D section layer reads),
+pinned as an immutable snapshot for the session; a reservoir that changes
+underneath the session invalidates it. Its coordinates are the file's own Z-up
+metres — the scan cache records the decoder's f64 origin offset so landmarks
+are not squeezed through the f32 render transform — under the frame key
+`pointcloud-native-z-up-metres-v1:<sha256>`. An observation names the retained
+point index and the reservoir size (`point:<index>:seen:<n>`). Landmarks are
+picked on a local point preview by the nearest visible retained point within an
+8 px depth-scaled tolerance.
 
 The IFC feature records GlobalId, retained piece/item identity, triangle and
 barycentric weights. Picking first resolves the visible owner and then raycasts
@@ -78,10 +90,30 @@ surface is included; the viewer never silently crops, downsamples or narrows it.
 Enter the project tolerance and explicitly review landmark spread and residuals.
 Both fit and check maximum errors must meet that tolerance before planning.
 
-**Preview transfer** runs the native registered-mesh planner in the existing
-appearance worker. The source is one opaque, untinted GLB base-color image.
-Distance, normal agreement, ambiguity and behind-surface settings determine
-which samples are observed. Unknown samples retain the prior IFC appearance.
+**Preview transfer** runs the native registered-scan planner in the existing
+appearance worker. A GLB source is one opaque, untinted base-color image. A
+point-cloud source ships its retained positions and colours as a binary payload
+(`planPointTransfer`); every sample is then a least-squares plane fitted to the
+points around it (support radius, surface band and neighbour bounds are
+sampling controls), never the nearest colour alone, and the plan records which
+orientation source decided its facing side. The viewer's retained sample
+carries neither normals nor scanner stations, so its plans are
+`target-referenced`: each local plane is oriented toward the IFC face being
+sampled, and the target's own geometry decides the side. A scan point
+reachable only through another face of the same object is refused as behind
+the surface (a capture *outside* the solid can never cross to the far face); a
+capture *inside* the solid is attributed to its nearest face only — the behind
+limit is capped at half the object's thickness there, so a far-side capture
+that scan noise or an as-built deviation has pushed into the modelled wall is
+refused by the near face even under a generous behind limit; and when a
+capture in front of the face and one inside the solid both lie within the
+distance bound, the one in front is observed, because from that side it is the
+visible one. What this cannot do is know the side of a capture that lies
+deeper inside the solid than the midplane: such a capture belongs to the
+opposite face by geometry, and only oriented sources (normals or stations)
+could say otherwise. Supports too thin to fit are reported as sparse. Distance, normal agreement, ambiguity and
+behind-surface settings determine which samples are observed. Unknown samples
+retain the prior IFC appearance.
 The behind-surface limit refuses a same-facing scan surface that lies deeper
 than that distance behind the IFC face, so the far side of a thin wall, or
 furniture beyond it, never paints the near face. Its default equals the default
@@ -131,15 +163,51 @@ Three kinds of evidence exist, and they answer different questions:
    Preview, Compare, Apply, Undo/Redo, IFCZIP export, fresh import and shared
    rooms with retained unknown pixels. The GLB and IFC derive from one surface,
    so residuals there say nothing about aligning independent captures.
-3. **Independent real-pair registration** is the open gate. It requires a
-   licensed scan/IFC pair, reviewed fit landmarks and spatially distributed
-   held-out check landmarks at several heights, frozen before solving, with the
-   held-out residuals published before any bake tolerance is chosen. The
-   [CRAS candidate](evidence/scan-transfer/README.md) has real bytes and a
-   protocol but no such landmark lists; its scan is an RGB point cloud, which the
-   workbench cannot yet use as a transfer source. Until an RGB-point source path
-   and that reviewed list exist, no accuracy tolerance is validated and the
-   tolerance the user enters remains a project decision, not a measured one.
+3. **Independent real-pair registration** is met by the
+   [CRAS registration and transfer evidence](evidence/scan-registration-cras/README.md):
+   the complete CC BY 4.0 archive (584,701,977 points, MD5 verified) against the
+   published model, 16 landmarks each defined as the intersection of three named
+   planar building faces, measured on the scan side by a seeded plane fit and on
+   the IFC side from the published geometry, alternating fit/check in a list
+   frozen before the solve (8 fit, 8 held-out; refitting with the measured
+   offset moves no landmark by more than 1.7 mm). Held-out RMS 4.5 cm, median
+   3.4 cm, max 6.5 cm; the tolerance follows from them by the pre-stated rule
+   (largest held-out residual rounded up: 7 cm). Point transfer onto two walls
+   then reports observed, too-far, normal, ambiguous, behind and sparse counts,
+   observed coverage per wall face from the independent reopen, the registered
+   scan surface's measured position against each modelled face, one budget
+   refusal at 64 texels/m, an independent IfcOpenShell reopen, IFCZIP packaging
+   and a fresh room join. What that supports is exactly a 7 cm tolerance for
+   this pair: the residuals are as-built deviations of the model (a corridor
+   9 cm narrower than drawn; a room wall shifted ~5 cm so the far side's capture
+   lies inside the modelled solid), not scanner noise, and the landmarks are
+   measured building features, not surveyed control points. At half the
+   tolerance the corridor wall observes nothing, which is the correct answer.
+   Where the far side's capture lies deeper inside the modelled wall than its
+   midplane, that face is refused rather than painted from the wrong side, and
+   the room-facing side takes the room capture in front of it. The tolerance a
+   user enters for another pair remains that pair's decision until its own
+   held-out residuals exist.
+
+The RGB-point controls (`rust/processing/src/appearance/transfer_points_tests.rs`,
+`scripts/lib/wasm-point-transfer-contract.mjs`) run the two-sided partition
+under all three orientation sources — supplied normals, scanner stations and
+the target-referenced fallback — and reproduce the mesh acceptance numbers
+(6,340 observed, 2,084 refused): by normal when the points carry an
+orientation, by self-occlusion otherwise. Two further target-referenced
+controls cover captures inside the solid, the regime the CRAS pair actually
+measured (`face-depth-wall-*.json` in the CRAS evidence): the front face
+captured 1 mm *inside* the 4 mm partition with the back uncaptured paints the
+front face only (4,212 observed / 4,212 behind; 3 mm inside, past the midplane,
+the same capture paints the back face only), and on a 10 cm slab with a room
+capture 5.5 cm in front of a face and the far side's capture 4.5 cm inside the
+solid the front capture is observed while the far face refuses both. Two
+sheets separated by more than the surface band are ambiguous, never averaged;
+a 5 cm-spaced capture under a 3 cm support radius is sparse almost
+everywhere. Format-carried normals and
+E57 scanner poses are decoded but not yet retained by the streamed ingest; when
+they are, the viewer can request `source-normals` or `viewpoints` without any
+planner change.
 
 A one-sided surface facing the same way as the IFC face within the distance
 bound (a poster on a wall) is observed as the wall's appearance: local nearest

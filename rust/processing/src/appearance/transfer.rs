@@ -1,23 +1,47 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-//! Bounded registered mesh observations composed over canonical IFC appearance.
+//! Bounded registered scan observations (textured mesh or RGB point cloud)
+//! composed over canonical IFC appearance.
 use super::{
     page_raster::Raster,
-    transfer_budget::TransferBudget,
+    transfer_budget::{self, TransferBudget},
     transfer_math::validate_frame,
     transfer_sampler::{accumulate, TransferSampler},
-    transfer_surface::Surface,
+    transfer_source::ScanSource,
     transfer_types::*,
     *,
 };
 use sha2::{Digest, Sha256};
 
+/// Textured mesh source. `rgba` carries the source image and the target's
+/// existing rasters; a point source is refused here.
 pub fn plan_mesh_transfer(
     bytes: &[u8],
     request: &MeshTransferRequest,
     rgba: &[u8],
 ) -> Result<MeshTransferPlan, String> {
+    plan_transfer(bytes, request, rgba, None)
+}
+/// RGB point-cloud source (#4381). `rgba` carries only the target's existing
+/// rasters; positions, colours and optional normals/stations arrive in `points`.
+pub fn plan_point_transfer(
+    bytes: &[u8],
+    request: &MeshTransferRequest,
+    rgba: &[u8],
+    points: &TransferPointPayload<'_>,
+) -> Result<MeshTransferPlan, String> {
+    plan_transfer(bytes, request, rgba, Some(points))
+}
+fn plan_transfer(
+    bytes: &[u8],
+    request: &MeshTransferRequest,
+    rgba: &[u8],
+    points: Option<&TransferPointPayload<'_>>,
+) -> Result<MeshTransferPlan, String> {
+    if points.is_some_and(|p| p.positions.len() > 6 * 2_000_000) {
+        return Err("Transfer point payload exceeds its budget".into());
+    }
     if request.product_ids.is_empty()
         || request.product_ids.len() > 10_000
         || bytes.len() > 128 * 1024 * 1024
@@ -69,19 +93,27 @@ pub fn plan_mesh_transfer(
     };
     let mut budget = TransferBudget::new();
     budget.reserve(rgba.len())?;
-    let image = Raster::supplied(&request.source_image, rgba)?;
-    budget.charge(image.rgba.len() / 4)?;
-    if image.rgba.chunks_exact(4).any(|p| p[3] != 255) {
-        return Err("Transfer source image must be opaque; alpha appearance is unsupported".into());
-    }
-    let surface = Surface::new(request, &source_frame, &mut budget)?;
-    let prepared_sha256 = digest(bytes, request, rgba)?;
+    let (image, repeat) = match (&request.source, &request.source_image) {
+        (TransferSource::Mesh(mesh), Some(spec)) => {
+            let image = Raster::supplied(spec, rgba)?;
+            budget.charge(image.rgba.len() / 4)?;
+            if image.rgba.chunks_exact(4).any(|p| p[3] != 255) {
+                return Err("Transfer source image must be opaque; alpha appearance is unsupported".into());
+            }
+            (Some(image), [mesh.repeat_s, mesh.repeat_t])
+        }
+        (TransferSource::Points(_), None) => (None, [false; 2]),
+        (TransferSource::Mesh(_), None) => return Err("Transfer mesh source needs its source image".into()),
+        (TransferSource::Points(_), Some(_)) => return Err("Transfer point source carries colours per point, not a source image".into()),
+    };
+    let source = ScanSource::new(request, points, &source_frame, &mut budget)?;
+    let prepared_sha256 = digest(bytes, request, rgba, points)?;
     let mut sampler = TransferSampler::new(
-        surface,
+        source,
         budget,
         image,
         &request.target_from_ifc_world,
-        [request.source_mesh.repeat_s, request.source_mesh.repeat_t],
+        repeat,
     );
     // Mapping is only canonical initial UV scaffolding; the sampler supplies all
     // final charts, using the same planner/material preservation as page overlays.
@@ -135,6 +167,11 @@ pub fn plan_mesh_transfer(
         texels_per_metre: request.texels_per_metre,
         transfer: MeshTransferSummary {
             prepared_sha256,
+            source: ScanSource::summary(request),
+            budget: TransferBudgetReport {
+                work_used: (transfer_budget::WORK_LIMIT - sampler.budget.work) as u64,
+                work_limit: transfer_budget::WORK_LIMIT as u64,
+            },
             registration_sha256: registration.request_sha256.clone(),
             registration,
             applicable,
@@ -145,7 +182,12 @@ pub fn plan_mesh_transfer(
         },
     })
 }
-fn digest(bytes: &[u8], request: &MeshTransferRequest, rgba: &[u8]) -> Result<String, String> {
+fn digest(
+    bytes: &[u8],
+    request: &MeshTransferRequest,
+    rgba: &[u8],
+    points: Option<&TransferPointPayload<'_>>,
+) -> Result<String, String> {
     struct Writer(Sha256);
     impl std::io::Write for Writer {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
@@ -157,18 +199,34 @@ fn digest(bytes: &[u8], request: &MeshTransferRequest, rgba: &[u8]) -> Result<St
         }
     }
     let mut hash = Writer(Sha256::new());
-    hash.0.update(b"ifclite-mesh-transfer-v3-behind-bound\0");
+    hash.0.update(b"ifclite-scan-transfer-v4-source-kind\0");
     // Length-prefix binary portions; JSON is last and streamed without a duplicate allocation.
     hash.0.update((bytes.len() as u64).to_le_bytes());
     hash.0.update(bytes);
     hash.0.update((rgba.len() as u64).to_le_bytes());
     hash.0.update(rgba);
+    if let Some(points) = points {
+        for (label, length) in [("positions", points.positions.len()), ("colors", points.colors.len()), ("normals", points.normals.len()), ("stations", points.stations.len())] {
+            hash.0.update(label.as_bytes());
+            hash.0.update((length as u64).to_le_bytes());
+        }
+        for v in points.positions {
+            hash.0.update(v.to_le_bytes());
+        }
+        hash.0.update(points.colors);
+        for v in points.normals {
+            hash.0.update(v.to_le_bytes());
+        }
+        for v in points.stations {
+            hash.0.update(v.to_le_bytes());
+        }
+    }
     serde_json::to_writer(&mut hash, request).map_err(|e| e.to_string())?;
     Ok(format!("{:x}", hash.0.finalize()))
 }
 #[cfg(test)]
 #[path = "transfer_tests.rs"]
-mod tests;
+pub(super) mod tests;
 #[cfg(test)]
 #[path = "transfer_acceptance_tests.rs"]
-mod acceptance_tests;
+pub(super) mod acceptance_tests;

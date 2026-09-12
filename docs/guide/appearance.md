@@ -297,13 +297,34 @@ values before returning a plan because the current STEP mutation protocol has
 no unqualified literal-string marker. Ordinary names, including Unicode and
 punctuation, remain unchanged. Preserved page material names use the same rule.
 
+### Point-cloud sources
+
+**Align scan** lists every completely streamed point cloud beside textured GLB
+surfaces. Its landmarks are picked on a local point preview; its transfer fits
+a small plane to the retained points around each sample (support radius,
+surface band and neighbour bounds are sampling controls) rather than copying
+the nearest point's colour, and the coverage report says which orientation
+source decided each plane's facing side. The retained sample carries no normals
+or scanner stations, so planes are oriented toward the IFC face and the
+object's own geometry decides the side: a scan point beyond another face of
+the same object is refused as behind the surface, a capture inside the object
+counts for its nearest face only (the behind limit is capped at half the
+object's thickness), and a capture in front of the face is preferred over one
+inside it. A capture deeper inside the object than its midplane therefore
+belongs to the opposite face; only a source with normals or scanner stations
+could say otherwise. Supports too thin to fit are reported as **too sparse**. The
+retained sample is a uniform reservoir of the whole scan (up to 2,000,000
+points), so a small object in a large scan may have fewer points than a dense
+atlas needs — lower the pixel density or widen the support radius.
+
 ### Scan transfer capacity
 
-Registered mesh transfer keeps the entire selected IFC object as its target.
+Registered scan transfer keeps the entire selected IFC object as its target.
 Preview reports observed and unknown coverage; unreliable observations keep the
 object’s previous appearance. Unknown counts name the reason: too far, an
 incompatible normal, an ambiguous near-tie, or a same-facing scan surface deeper
-than the **Maximum depth behind the IFC surface** limit. That limit keeps the far
+than the **Maximum depth behind the IFC surface** limit, or (point clouds) too
+sparse to fit a surface. That limit keeps the far
 side of a thin wall, or objects beyond it, from painting the near face. Its
 default equals the default project tolerance (10 mm); raise it only to the
 accepted registration error plus modelling tolerance. Increasing atlas density can improve visible

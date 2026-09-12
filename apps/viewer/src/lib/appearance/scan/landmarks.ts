@@ -19,7 +19,7 @@ export function sourceLandmark(mesh: MeshData, hit: Intersection, meshOrdinal: n
   const point: ScanPoint = [0, 0, 0];
   for (let corner = 0; corner < 3; corner++) for (let axis = 0; axis < 3; axis++) point[axis] += mesh.positions[mesh.indices[triangle * 3 + corner] * 3 + axis] * weights[corner];
   for (let axis = 0; axis < 3; axis++) point[axis] += mesh.origin?.[axis] ?? 0;
-  return { point, triangle, barycentric: weights, observation: `surface:${meshOrdinal}:triangle:${triangle}:bary:${weights.join(',')}` };
+  return { kind: 'triangle', point, triangle, barycentric: weights, observation: `surface:${meshOrdinal}:triangle:${triangle}:bary:${weights.join(',')}` };
 }
 
 /** Resolve the visible owner, then query its retained raw pieces in stable order.

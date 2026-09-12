@@ -33,6 +33,7 @@ function catalogBoundary(beforeReply?: () => Promise<void>): AppearancePlanner {
     async pdfFidelity() { throw new Error('Catalog tests must not check PDF fidelity'); },
     async pdfFillPlan() { throw new Error('Catalog tests must not create PDF geometry'); },
     async meshTransfer() { throw new Error('Catalog tests must not transfer appearance'); },
+    async pointTransfer() { throw new Error('Catalog tests must not transfer appearance'); },
     async registerScan() { throw new Error('Catalog tests must not solve registration'); },
     async catalog(_bytes, request) {
       await beforeReply?.();

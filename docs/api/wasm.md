@@ -742,11 +742,12 @@ Hosts retain the frozen request with the report and invalidate it after any sour
 frame, feature or partition change. This digest binds declared inputs; it does not
 verify the asset bytes or validate a user's correspondence claim.
 
-A successful solve is not an accuracy verdict. F4 acceptance still requires at
-least four fitting and four independently selected, spatially distributed held-out
-features at different heights, uncertainty review, frozen tolerance, and explicit
-assessment of unknown areas and thin-wall transfer. See the
-[real CRAS evidence](../architecture/evidence/scan-transfer/README.md).
+A successful solve is not an accuracy verdict. F4 acceptance requires at least
+four fitting and four independently selected, spatially distributed held-out
+features at different heights, uncertainty review, a tolerance chosen from the
+held-out residuals, and explicit assessment of unknown areas and thin-wall
+transfer. The [CRAS real-pair evidence](../architecture/evidence/scan-registration-cras/README.md)
+does this for one licensed pair (8 fit, 8 held-out, tolerance 7 cm).
 
 ### Registered textured-mesh appearance transfer
 
@@ -769,16 +770,45 @@ The typed `MeshTransferRequest` contains:
   for identity. The host derives it from actual model/workspace placement; never
   assume identity for federated or repositioned models. Unsupported reprojection
   must be refused until the exact transform is available.
-- `sourceMesh: {meshOrdinal, positions, triangles, uvs, baseColorFactor, repeatS,
-  repeatT}`. Positions are original GLB scene **Y-up metres**, with node transforms
+- `source`, a tagged union. `{kind: 'mesh', meshOrdinal, positions, triangles,
+  uvs, baseColorFactor, repeatS, repeatT}`: positions are original GLB scene **Y-up metres**, with node transforms
   and the canonical mesh origin included, before workspace/model placement.
   Triangles use zero-based indices; per-vertex UVs retain duplicated seam vertices
   and the canonical decoder's texture transform. UVs are GLB image-top-down; Rust
   performs the single V conversion at its existing IFC raster-sampler boundary.
-- `sourceImage` and existing target `sourceImages` use the page API's RGBA range
-  descriptors. The first slice requires one opaque source image and neutral
-  `[1,1,1,1]` base-color factor. Tint, alpha, missing old rasters and unsupported
-  target materials are explicit refusals, never silently discarded.
+- `{kind: 'points', pointCount, orientation, neighborhoodRadiusMetres,
+  minNeighbors, maxNeighbors, surfaceBandMetres, viewpoints}` describes an RGB
+  point cloud whose positions (3n f64, source-frame metres), RGB8 colours,
+  optional oriented normals (3n f32) and optional station indices (n u32 into
+  `viewpoints`) travel as binary arguments of
+  `IfcAPI.planPointTransfer(content, requestJson, rgba, positions, colors,
+  normals, stations)`; up to 2,000,000 points cannot travel inside the 64 MiB
+  JSON request. `orientation` is `source-normals` (normals required, stations
+  refused), `viewpoints` (one station per point, 1..4096 stations, normals
+  refused) or `target-referenced` (neither supplied); a payload that does not
+  match the declared orientation is refused rather than reinterpreted. Each
+  sample is a least-squares plane through the points within
+  `neighborhoodRadiusMetres` of it (or of its nearest point when none lies
+  within the radius), bounded by `minNeighbors..maxNeighbors` (3..256); the
+  support must be planar within `surfaceBandMetres`, its oriented normal must
+  agree with the target face, and its plane must lie within the distance and
+  behind bounds. In every mode the nearest point is refused when the segment
+  from the sampled face to it crosses another face of the same item, and
+  supporting points deeper than the item's own thickness along the face normal
+  are dropped. Under `target-referenced` the item's thickness also caps
+  `maxBehindMetres` at half its value, so a capture inside the solid is
+  attributed to its nearest face only, and a capture in front of the face
+  within the distance bound is preferred over one inside the solid. Together
+  these keep opposite thin-wall faces apart for captures outside the solid and
+  for captures inside it up to the midplane; a capture deeper than the midplane
+  belongs to the opposite face by geometry, which only oriented sources can
+  overrule. Colour is the mean of the supporting points. `maxDistanceMetres` may not exceed 16 support radii.
+  Supports too thin to fit are counted as `unknownSparseSamples`.
+- `sourceImage` (mesh sources only; absent for points) and existing target
+  `sourceImages` use the page API's RGBA range descriptors. A mesh source needs
+  one opaque source image and neutral `[1,1,1,1]` base-color factor. Tint,
+  alpha, missing old rasters and unsupported target materials are explicit
+  refusals, never silently discarded.
 - `texelsPerMetre`, positive `maxDistanceMetres` (at most 10), `minNormalDot` in
   `(0,1]`, `ambiguityDistanceMetres` and `maxBehindMetres`, each between zero and
   the maximum distance. These are explicit sampling criteria, not estimated
@@ -811,8 +841,12 @@ surface matching, not camera visibility reconstruction or confidence learned
 from scans.
 
 Unknown samples preserve existing target albedo through the shared atlas/material
-planner. The output adds `transfer` metadata: `preparedSha256`,
-`registrationSha256`, the full `registration` fit/check residual report,
+planner. The output adds `transfer` metadata: `preparedSha256` (digest v4,
+binding the request, the target bytes, the RGBA payload and any point payload),
+`source: {kind, orientation, pointCount}` so the orientation source of every
+point plan is auditable, `budget: {workUsed, workLimit}` against the fixed
+128,000,000-unit work budget, `registrationSha256`, the full `registration`
+fit/check residual report,
 `applicable`, aggregate `coverage`, per-item coverage, target eligibility
 `exclusions` (also retained without an applicable plan), and
 explicit diagnostics. Fewer than four fit or four held-out observations carries

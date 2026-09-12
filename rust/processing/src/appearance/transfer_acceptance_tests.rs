@@ -14,7 +14,7 @@ use crate::appearance::tests::apply;
 
 /// One IfcWall whose only body is a 4 mm partition: two 1 m² faces, front at
 /// y=0 facing -Y and back at y=0.004 facing +Y, styled solid green.
-const THIN_WALL_IFC: &str = r#"ISO-10303-21;
+pub(in crate::appearance) const THIN_WALL_IFC: &str = r#"ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('issue-4381 thin wall transfer control'),'2;1');
 FILE_NAME('thinwall.ifc','2026-09-11T00:00:00',(''),(''),'','','');
@@ -40,8 +40,8 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 "#;
-const WALL: u32 = 40;
-const THICKNESS: f64 = 0.004;
+pub(in crate::appearance) const WALL: u32 = 40;
+pub(in crate::appearance) const THICKNESS: f64 = 0.004;
 /// Constant UVs at the centre of one pixel of the 3×1 red/blue/yellow image.
 const RED: [f64; 2] = [1. / 6., 0.5];
 const BLUE: [f64; 2] = [0.5, 0.5];
@@ -50,9 +50,9 @@ const RED_RGBA: [f64; 4] = [1., 0., 0., 1.];
 const BLUE_RGBA: [f64; 4] = [0., 0., 1., 1.];
 const YELLOW_RGBA: [f64; 4] = [1., 1., 0., 1.];
 /// The wall's prior solid appearance, expected wherever a sample is unknown.
-const GREEN: [f64; 4] = [0., 1., 0., 1.];
+pub(in crate::appearance) const GREEN: [f64; 4] = [0., 1., 0., 1.];
 
-fn control(
+pub(in crate::appearance) fn control(
     source_mesh: TransferSourceMesh,
     max_distance_metres: f64,
     max_behind_metres: f64,
@@ -97,13 +97,13 @@ fn control(
             registration,
             registration_sha256,
             target_from_ifc_world: identity(),
-            source_mesh,
-            source_image: AppearanceRaster {
+            source: TransferSource::Mesh(source_mesh),
+            source_image: Some(AppearanceRaster {
                 width: 3,
                 height: 1,
                 byte_offset: 0,
                 byte_length: 12,
-            },
+            }),
             source_images: vec![],
             texels_per_metre: 64.,
             max_distance_metres,
@@ -114,7 +114,7 @@ fn control(
         rgba,
     )
 }
-fn mesh() -> TransferSourceMesh {
+pub(in crate::appearance) fn mesh() -> TransferSourceMesh {
     TransferSourceMesh {
         mesh_ordinal: 0,
         positions: vec![],

@@ -14,7 +14,8 @@ import { targetTransferFrame } from './transfer-frame';
 import { validateTransferReview, type ScanTransferSettings } from './prepare-transfer';
 import type { ScanRegistrationRequest, ScanRegistrationReport } from './types';
 
-const settings: ScanTransferSettings = { toleranceMetres: 0.01, reviewed: true, texelsPerMetre: 64, maxDistanceMetres: 0.02, minNormalDot: 0.8, ambiguityDistanceMetres: 0.001, maxBehindMetres: 0.005 };
+const settings: ScanTransferSettings = { toleranceMetres: 0.01, reviewed: true, texelsPerMetre: 64, maxDistanceMetres: 0.02, minNormalDot: 0.8, ambiguityDistanceMetres: 0.001, maxBehindMetres: 0.005,
+  neighborhoodRadiusMetres: 0.03, minNeighbors: 4, maxNeighbors: 32, surfaceBandMetres: 0.003 };
 test('transfer review rejects the independently wrong actual browser check despite an unchanged fit #4381', () => {
   const load = (name: string) => (JSON.parse(readFileSync(new URL(`../../../../../../docs/architecture/evidence/scan-alignment-workbench/${name}.json`, import.meta.url), 'utf8')) as { result: { request: ScanRegistrationRequest; report: ScanRegistrationReport } }).result;
   const good = load('good'), wrong = load('wrong-heldout');

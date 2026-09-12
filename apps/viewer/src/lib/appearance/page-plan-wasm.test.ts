@@ -100,13 +100,15 @@ test('real transfer WASM envelope supports observed output and an explicit wholl
     const transfer: import('./scan/transfer-types').MeshTransferRequest = {
       schema: 'IFC4', sourceRevision: 'transfer-wasm', nextExpressId: 100, productIds: [10], registration, registrationSha256: report.requestSha256,
       targetFromIfcWorld: { rotation: [[1,0,0],[0,1,0],[0,0,1]], sourceAnchor: [0,0,0], targetAnchor: [0,0,0] },
-      sourceMesh: { meshOrdinal: 0, positions: [[0.2,0.2,0],[0.6,0.2,0],[0.2,0.6,0]], triangles: [[0,1,2]], uvs: [[0,0],[1,0],[0,1]], baseColorFactor: [1,1,1,1], repeatS: false, repeatT: false },
+      source: { kind: 'mesh', meshOrdinal: 0, positions: [[0.2,0.2,0],[0.6,0.2,0],[0.2,0.6,0]], triangles: [[0,1,2]], uvs: [[0,0],[1,0],[0,1]], baseColorFactor: [1,1,1,1], repeatS: false, repeatT: false },
       sourceImage: { width: 1, height: 1, byteOffset: 0, byteLength: 4 }, sourceImages: [], texelsPerMetre: 32,
       maxDistanceMetres: 0.01, minNormalDot: 0.9, ambiguityDistanceMetres: 0.001, maxBehindMetres: 0.005,
     };
     const pixels = new Uint8Array([255,0,0,255]);
+    const mesh = transfer.source as import('./scan/transfer-types').TransferSourceMesh;
     const result = decodeAtlasOutput<import('./scan/transfer-types').MeshTransferPlan>(api.planMeshTransfer(source, JSON.stringify(transfer), pixels));
     assert.ok(result.plan && result.transfer.applicable);
+    assert.deepEqual(result.transfer.source, { kind: 'mesh', orientation: null, pointCount: null });
     assert.ok(result.transfer.coverage.observedSamples > 0);
     assert.ok(result.transfer.coverage.unknownDistanceSamples > 0);
     assert.equal(result.assets.length, 1);
@@ -122,11 +124,11 @@ test('real transfer WASM envelope supports observed output and an explicit wholl
     const translated: import('./scan/transfer-types').MeshTransferRequest = { ...transfer,
       registration: rotatedRegistration, registrationSha256: rotatedReport.requestSha256,
       targetFromIfcWorld: { ...transfer.targetFromIfcWorld, targetAnchor: [91,-268,183] },
-      sourceMesh: { ...transfer.sourceMesh, positions: transfer.sourceMesh.positions.map(([x,y,z]) => [91-y,-268+x,183+z]) } };
+      source: { ...mesh, positions: mesh.positions.map(([x,y,z]): import('./scan/types').ScanPoint => [91-y,-268+x,183+z]) } };
     const rotated = decodeAtlasOutput<import('./scan/transfer-types').MeshTransferPlan>(api.planMeshTransfer(rotatedSource, JSON.stringify(translated), pixels));
     assert.ok(rotated.plan && rotated.transfer.applicable, 'rotated IFC parent plus explicit federation translation still observes the source patch');
     assert.ok(Math.abs(rotated.transfer.coverage.observedAreaEstimateM2 - result.transfer.coverage.observedAreaEstimateM2) < 0.01);
-    transfer.sourceMesh.positions = transfer.sourceMesh.positions.map(([x,y]) => [x,y,10]);
+    mesh.positions = mesh.positions.map(([x,y]): import('./scan/types').ScanPoint => [x,y,10]);
     const unknown = decodeAtlasOutput<import('./scan/transfer-types').MeshTransferPlan>(api.planMeshTransfer(source, JSON.stringify(transfer), pixels));
     assert.equal(unknown.plan, null);
     assert.equal(unknown.transfer.applicable, false);

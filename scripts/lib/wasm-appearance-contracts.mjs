@@ -7,6 +7,7 @@ import { checkPdfVectorContract } from './wasm-pdf-vector-contract.mjs';
 import { checkAnnotationFillContract } from './wasm-annotation-fill-contract.mjs';
 import { checkMeshTransferContract } from './wasm-mesh-transfer-contract.mjs';
 import { checkMeshTransferSurfacesContract } from './wasm-mesh-transfer-surfaces-contract.mjs';
+import { checkPointTransferContract } from './wasm-point-transfer-contract.mjs';
 import { checkScanRegistrationContract } from './wasm-scan-registration-contract.mjs';
 
 export function runAppearanceContracts(IfcAPI, test) {
@@ -15,5 +16,6 @@ export function runAppearanceContracts(IfcAPI, test) {
   test('annotation fills preserve holes, units and solid colour (#4406)', () => checkAnnotationFillContract(IfcAPI));
   test('registered mesh transfer reports unknown coverage and binds prepared assets (#4381)', () => checkMeshTransferContract(IfcAPI));
   test('thin-wall, occluder and gap observations classify without painting through (#4381)', () => checkMeshTransferSurfacesContract(IfcAPI));
+  test('RGB point-cloud source keeps thin-wall faces apart under every orientation source (#4381)', () => checkPointTransferContract(IfcAPI));
   test('proper rigid scan registration preserves held-out independence and frame binding (#4381)', () => checkScanRegistrationContract(IfcAPI));
 }

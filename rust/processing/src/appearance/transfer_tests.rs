@@ -1,10 +1,20 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-use super::super::{transfer_math::*, transfer_surface::Observation};
+use super::super::{
+    transfer_math::*,
+    transfer_source::ScanSource,
+    transfer_surface::{Observation, Surface},
+};
 use super::*;
 use crate::appearance::tests::{apply, CONTROLLED_IFC};
-pub(super) fn identity() -> TransferFrame {
+pub(in crate::appearance) fn mesh_of(request: &mut MeshTransferRequest) -> &mut TransferSourceMesh {
+    match &mut request.source {
+        TransferSource::Mesh(mesh) => mesh,
+        TransferSource::Points(_) => panic!("mesh fixture"),
+    }
+}
+pub(in crate::appearance) fn identity() -> TransferFrame {
     TransferFrame {
         rotation: [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
         source_anchor: [0.; 3],
@@ -60,7 +70,7 @@ fn fixture() -> (MeshTransferRequest, Vec<u8>) {
             registration,
             registration_sha256,
             target_from_ifc_world: identity(),
-            source_mesh: TransferSourceMesh {
+            source: TransferSource::Mesh(TransferSourceMesh {
                 mesh_ordinal: 0,
                 positions: vec![[0.2, 0.2, 5.], [0.6, 0.2, 5.], [0.2, 0.6, 5.]],
                 triangles: vec![[0, 1, 2]],
@@ -68,13 +78,13 @@ fn fixture() -> (MeshTransferRequest, Vec<u8>) {
                 base_color_factor: [1.; 4],
                 repeat_s: false,
                 repeat_t: false,
-            },
-            source_image: AppearanceRaster {
+            }),
+            source_image: Some(AppearanceRaster {
                 width: 1,
                 height: 1,
                 byte_offset: 0,
                 byte_length: 4,
-            },
+            }),
             source_images: vec![AppearanceSourceRaster {
                 image_uri: "textures/wood.jpg".into(),
                 raster: AppearanceRaster {
@@ -93,7 +103,7 @@ fn fixture() -> (MeshTransferRequest, Vec<u8>) {
         rgba,
     )
 }
-pub(super) fn color(
+pub(in crate::appearance) fn color(
     mesh: &crate::types::mesh::MeshData,
     raster: Raster<'_>,
     point: Point,
@@ -176,7 +186,7 @@ fn issue_4381_partial_transfer_reopens_ifc_and_preserves_unknown_albedo() {
 #[test]
 fn issue_4381_geometric_nearest_does_not_look_through_opposite_thinwall_face() {
     let (mut request, _) = fixture();
-    request.source_mesh.positions = vec![
+    mesh_of(&mut request).positions = vec![
         [0., 0., 0.],
         [1., 0., 0.],
         [0., 1., 0.],
@@ -184,8 +194,8 @@ fn issue_4381_geometric_nearest_does_not_look_through_opposite_thinwall_face() {
         [1., 0., 0.003],
         [0., 1., 0.003],
     ];
-    request.source_mesh.triangles = vec![[0, 2, 1], [3, 4, 5]];
-    request.source_mesh.uvs = vec![[0., 0.]; 6];
+    mesh_of(&mut request).triangles = vec![[0, 2, 1], [3, 4, 5]];
+    mesh_of(&mut request).uvs = vec![[0., 0.]; 6];
     let mut budget = TransferBudget::new();
     let mut surface = Surface::new(&request, &identity(), &mut budget).unwrap();
     let observed = surface
@@ -197,9 +207,9 @@ fn issue_4381_geometric_nearest_does_not_look_through_opposite_thinwall_face() {
 #[test]
 fn issue_4381_overlap_and_uv_seams_are_unknown_but_continuous_shared_edges_are_valid() {
     let (mut request, _) = fixture();
-    request.source_mesh.positions = vec![[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [1., 1., 0.]];
-    request.source_mesh.triangles = vec![[0, 1, 2], [1, 3, 2]];
-    request.source_mesh.uvs = vec![[0., 0.], [1., 0.], [0., 1.], [1., 1.]];
+    mesh_of(&mut request).positions = vec![[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [1., 1., 0.]];
+    mesh_of(&mut request).triangles = vec![[0, 1, 2], [1, 3, 2]];
+    mesh_of(&mut request).uvs = vec![[0., 0.], [1., 0.], [0., 1.], [1., 1.]];
     let observe = |request: &MeshTransferRequest| {
         let mut budget = TransferBudget::new();
         Surface::new(request, &identity(), &mut budget)
@@ -209,15 +219,14 @@ fn issue_4381_overlap_and_uv_seams_are_unknown_but_continuous_shared_edges_are_v
             .0
     };
     assert!(observe(&request) == Observation::Observed);
-    request.source_mesh.triangles.push([0, 1, 2]);
+    mesh_of(&mut request).triangles.push([0, 1, 2]);
     assert!(observe(&request) == Observation::Ambiguous);
-    request.source_mesh.triangles.pop();
-    request
-        .source_mesh
+    mesh_of(&mut request).triangles.pop();
+    mesh_of(&mut request)
         .positions
         .extend([[1., 0., 0.], [0., 1., 0.]]);
-    request.source_mesh.uvs.extend([[0., 0.], [0., 0.]]);
-    request.source_mesh.triangles[1] = [4, 3, 5];
+    mesh_of(&mut request).uvs.extend([[0., 0.], [0., 0.]]);
+    mesh_of(&mut request).triangles[1] = [4, 3, 5];
     assert!(observe(&request) == Observation::Ambiguous);
 }
 #[test]
@@ -234,7 +243,7 @@ fn issue_4381_stale_inputs_alpha_tint_frames_and_work_refuse_without_partial_pla
             .contains("snapshot")
     );
     let mut bad = request.clone();
-    bad.source_mesh.base_color_factor[0] = 0.5;
+    mesh_of(&mut bad).base_color_factor[0] = 0.5;
     assert!(plan_mesh_transfer(CONTROLLED_IFC.as_bytes(), &bad, &rgba)
         .unwrap_err()
         .contains("baseColorFactor"));
@@ -300,7 +309,7 @@ fn issue_4381_insufficient_registration_checks_cannot_produce_applicable_transfe
 #[test]
 fn issue_4381_triangle_permutation_does_not_change_tie_refusal() {
     let (mut request, _) = fixture();
-    request.source_mesh.positions = vec![
+    mesh_of(&mut request).positions = vec![
         [0., 0., 0.],
         [1., 0., 0.],
         [0., 1., 0.],
@@ -308,15 +317,15 @@ fn issue_4381_triangle_permutation_does_not_change_tie_refusal() {
         [1., 0., 0.0005],
         [0., 1., 0.0005],
     ];
-    request.source_mesh.triangles = vec![[0, 1, 2], [3, 4, 5]];
-    request.source_mesh.uvs = vec![[0., 0.]; 6];
+    mesh_of(&mut request).triangles = vec![[0, 1, 2], [3, 4, 5]];
+    mesh_of(&mut request).uvs = vec![[0., 0.]; 6];
     for triangles in [
         vec![[0, 1, 2], [3, 4, 5]],
         vec![[3, 4, 5], [0, 1, 2]],
         vec![[0, 2, 1], [3, 4, 5]],
         vec![[3, 4, 5], [0, 2, 1]],
     ] {
-        request.source_mesh.triangles = triangles;
+        mesh_of(&mut request).triangles = triangles;
         let mut budget = TransferBudget::new();
         let mut surface = Surface::new(&request, &identity(), &mut budget).unwrap();
         assert_eq!(
@@ -345,7 +354,7 @@ fn issue_4381_target_exclusions_remain_visible_without_applicable_output() {
 fn issue_4381_centroid_only_observation_cannot_apply_an_all_old_raster() {
     let (mut request, mut rgba) = fixture();
     let c = 1. / 3.;
-    request.source_mesh.positions = vec![
+    mesh_of(&mut request).positions = vec![
         [c - 0.002, c - 0.002, 5.],
         [c + 0.004, c - 0.002, 5.],
         [c - 0.002, c + 0.004, 5.],
@@ -381,9 +390,9 @@ fn issue_4381_centroid_only_observation_cannot_apply_an_all_old_raster() {
     // The IFC fixture's old image is solid blue; the source patch is solid red.
     let frame = identity();
     let mut budget = TransferBudget::new();
-    let surface = Surface::new(&request, &frame, &mut budget).unwrap();
-    let image = Raster::supplied(&request.source_image, &rgba).unwrap();
-    let mut sampler = TransferSampler::new(surface, budget, image, &frame, [false, false]);
+    let surface = ScanSource::Mesh(Surface::new(&request, &frame, &mut budget).unwrap());
+    let image = Raster::supplied(request.source_image.as_ref().unwrap(), &rgba).unwrap();
+    let mut sampler = TransferSampler::new(surface, budget, Some(image), &frame, [false, false]);
     let spec = AppearanceRequest {
         representation_policy: RepresentationPolicy::Preserve,
         schema: request.schema.clone(),

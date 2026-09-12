@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { PdfFillAnnotationRequest, PdfFillAnnotationPlan } from './pdf/fill-plan-types';
 import type { PdfVectorPage, PreparedPdfVectorPage } from './pdf/vector-types';
-import type { MeshTransferRequest, MeshTransferPlan } from './scan/transfer-types';
+import type { MeshTransferRequest, MeshTransferPlan, TransferPointPayload } from './scan/transfer-types';
 import type { ScanRegistrationRequest, ScanRegistrationReport } from './scan/types';
 import type { CapturedMeshPlan, CapturedMeshRequest, AnnotationPlanePlan, AnnotationPlaneRequest, PageAppearancePlan, PageAppearanceRequest, AppearanceCatalog, AppearanceCatalogRequest, AppearancePlan, AppearanceRequest, AppearanceWorkerJob, AppearanceWorkerRequest, AppearanceWorkerResponse } from './planner-types.js';
 
@@ -19,6 +19,8 @@ export interface AppearancePlanner {
   pdfFidelity(page: PdfVectorPage, options?: { signal?: AbortSignal }): Promise<PreparedPdfVectorPage>;
   pdfFillPlan(source: Uint8Array, request: PdfFillAnnotationRequest, options?: { signal?: AbortSignal }): Promise<PdfFillAnnotationPlan>;
   meshTransfer(source: Uint8Array, request: MeshTransferRequest, rgba: Uint8Array, options?: { signal?: AbortSignal }): Promise<MeshTransferPlan>;
+  /** Registered RGB point-cloud transfer (#4381); `request.source.kind` must be `points` and `points` is its binary payload. */
+  pointTransfer(source: Uint8Array, request: MeshTransferRequest, rgba: Uint8Array, points: TransferPointPayload, options?: { signal?: AbortSignal }): Promise<MeshTransferPlan>;
   registerScan(request: ScanRegistrationRequest, options?: { signal?: AbortSignal }): Promise<ScanRegistrationReport>;
   capturedMeshPlan(source: Uint8Array, request: CapturedMeshRequest, options?: { signal?: AbortSignal }): Promise<CapturedMeshPlan>;
   annotationPlan(source: Uint8Array, request: AnnotationPlaneRequest, options?: { signal?: AbortSignal }): Promise<AnnotationPlanePlan>;
@@ -29,6 +31,14 @@ export interface AppearancePlanner {
   dispose(): void;
 }
 const aborted = () => new DOMException('Appearance planning was cancelled', 'AbortError');
+function acceptTransfer(message: Exclude<AppearanceWorkerResponse, { type: 'error' }>, request: MeshTransferRequest, kind: 'mesh' | 'points'): MeshTransferPlan {
+  if (message.type !== 'mesh-transfer-complete' || !message.result.transfer || message.result.transfer.source?.kind !== kind
+    || message.result.transfer.registrationSha256 !== request.registrationSha256
+    || message.result.transfer.registration.requestSha256 !== request.registrationSha256
+    || !/^[a-f0-9]{64}$/.test(message.result.transfer.preparedSha256)
+    || (message.result.plan && (message.result.plan.sourceRevision !== request.sourceRevision || message.result.plan.nextExpressId !== request.nextExpressId))) throw new Error('Scan worker returned a stale transfer');
+  return message.result;
+}
 
 /** New requests supersede old jobs. Cancellation terminates CPU-heavy Rust
  * immediately rather than waiting for the worker event loop to receive it. */
@@ -56,7 +66,7 @@ export function createAppearancePlanner(options: {
       return Promise.reject(new Error('Appearance source exceeds 128 MiB. Use a smaller IFC model.'));
     }
     const request = job.type === 'page-plan' ? job.request.appearance : job.request;
-    if ((job.type === 'page-plan' || job.type === 'mesh-transfer') && job.rgba.byteLength > 128 * 1024 * 1024) {
+    if ((job.type === 'page-plan' || job.type === 'mesh-transfer' || job.type === 'point-transfer') && job.rgba.byteLength > 128 * 1024 * 1024) {
       return Promise.reject(new Error('Page raster payload exceeds 128 MiB. Use a smaller source.'));
     }
     // Refuse oversized capture arrays before structured clone and JSON encoding
@@ -114,17 +124,16 @@ export function createAppearancePlanner(options: {
     cancel,
     dispose() { disposed = true; cancel(); },
     meshTransfer(source, request, rgba, options) {
-      const mesh = request.sourceMesh;
-      if ([mesh.positions.length, mesh.triangles.length, mesh.uvs.length].some(n => n === 0 || n > 200_000)
+      const mesh = request.source;
+      if (mesh.kind !== 'mesh' || [mesh.positions.length, mesh.triangles.length, mesh.uvs.length].some(n => n === 0 || n > 200_000)
         || request.registration.fit.length > 256 || request.registration.heldOut.length > 256) return Promise.reject(new Error('Scan transfer exceeds its source or landmark budget. Choose a smaller source.'));
-      return run(source, { type: 'mesh-transfer', request, rgba }, message => {
-        if (message.type !== 'mesh-transfer-complete' || !message.result.transfer
-          || message.result.transfer.registrationSha256 !== request.registrationSha256
-          || message.result.transfer.registration.requestSha256 !== request.registrationSha256
-          || !/^[a-f0-9]{64}$/.test(message.result.transfer.preparedSha256)
-          || (message.result.plan && (message.result.plan.sourceRevision !== request.sourceRevision || message.result.plan.nextExpressId !== request.nextExpressId))) throw new Error('Scan worker returned a stale transfer');
-        return message.result;
-      }, options);
+      return run(source, { type: 'mesh-transfer', request, rgba }, message => acceptTransfer(message, request, 'mesh'), options);
+    },
+    pointTransfer(source, request, rgba, points, options) {
+      const spec = request.source;
+      if (spec.kind !== 'points' || spec.pointCount === 0 || spec.pointCount > 2_000_000 || points.positions.length !== spec.pointCount * 3 || points.colors.length !== spec.pointCount * 3
+        || request.registration.fit.length > 256 || request.registration.heldOut.length > 256) return Promise.reject(new Error('Point-cloud transfer exceeds its 2,000,000-point or landmark budget. Choose a smaller source.'));
+      return run(source, { type: 'point-transfer', request, rgba, points }, message => acceptTransfer(message, request, 'points'), options);
     },
     registerScan(request, options) {
       if (request.fit.length > 256 || request.heldOut.length > 256 || new TextEncoder().encode(JSON.stringify(request)).byteLength > 512 * 1024) return Promise.reject(new Error('Scan registration exceeds its request budget'));

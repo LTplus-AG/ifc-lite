@@ -1,0 +1,175 @@
+{
+ "ifc": {
+  "file": "craslabbim-ifc4-tessellated.ifc",
+  "sha256": "45a69aee943d6d460af5880ee73168ea0a03f5a43987bbb77c7ad765ad7d6984",
+  "bytes": 73495
+ },
+ "strip": {
+  "file": "cras-wall-1273-strip-s36.ply",
+  "sha256": "f5124f132025d16934bdea65888cfc7e400b576d0623fdb31c1b7e9131b3b6bc",
+  "points": 623244
+ },
+ "runs": [
+  {
+   "label": "tolerance",
+   "texelsPerMetre": 64,
+   "maxDistanceMetres": 0.07,
+   "maxBehindMetres": 0.07,
+   "wallId": 258,
+   "wallGuid": "3qeiF73TD1uOeHIcNGcTy8",
+   "points": 623244,
+   "ms": 763,
+   "refused": "Transfer work budget exhausted; reduce source extent or atlas density"
+  },
+  {
+   "label": "tolerance",
+   "texelsPerMetre": 32,
+   "maxDistanceMetres": 0.07,
+   "maxBehindMetres": 0.07,
+   "wallId": 258,
+   "wallGuid": "3qeiF73TD1uOeHIcNGcTy8",
+   "points": 623244,
+   "ms": 331,
+   "applicable": true,
+   "source": {
+    "kind": "points",
+    "orientation": "target-referenced",
+    "pointCount": 623244
+   },
+   "budget": {
+    "workLimit": 128000000,
+    "workUsed": 59536866
+   },
+   "coverage": {
+    "centroidSamples": 60,
+    "observedAreaEstimateM2": 15.14339268247737,
+    "observedCentroidSamples": 14,
+    "observedRasterInteriorTexels": 16019,
+    "observedSamples": 16033,
+    "rasterInteriorTexels": 40612,
+    "samples": 40672,
+    "unknownAmbiguousSamples": 1256,
+    "unknownAreaEstimateM2": 22.074707347522622,
+    "unknownBehindSamples": 7478,
+    "unknownDistanceSamples": 7975,
+    "unknownNormalSamples": 3024,
+    "unknownSparseSamples": 4906
+   },
+   "items": [
+    {
+     "centroidSamples": 60,
+     "geometryItemId": 253,
+     "observedAreaEstimateM2": 15.14339268247737,
+     "observedCentroidSamples": 14,
+     "observedRasterInteriorTexels": 16019,
+     "observedSamples": 16033,
+     "productId": 258,
+     "rasterInteriorTexels": 40612,
+     "samples": 40672,
+     "unknownAmbiguousSamples": 1256,
+     "unknownAreaEstimateM2": 22.074707347522622,
+     "unknownBehindSamples": 7478,
+     "unknownDistanceSamples": 7975,
+     "unknownNormalSamples": 3024,
+     "unknownSparseSamples": 4906
+    }
+   ],
+   "diagnostics": [
+    "Coverage is a triangle-area-weighted centroid/interior-texel estimate, not a registration accuracy approval",
+    "Unknown samples preserve the existing target albedo through the shared atlas; source GLB byte-to-decoded-mesh/image identity is verified by the host",
+    "Mathematical rigid fit only; no automatic registration or accuracy approval"
+   ],
+   "exclusions": [],
+   "preparedSha256": "57b7fd9bd58f0d57a2efb081b0fa10a63f4d3e9a1e193caa62433ba0000db526",
+   "assets": [
+    {
+     "imageUri": "textures/d032099a48a597fd6734bfca3c28d993de2135ec9cd5441b3ab7df80c00f567b.png",
+     "width": 512,
+     "height": 374,
+     "byteOffset": 0,
+     "byteLength": 46078
+    }
+   ],
+   "planEntities": {
+    "created": 8,
+    "edits": 1,
+    "removed": 0
+   }
+  },
+  {
+   "label": "half-tolerance",
+   "texelsPerMetre": 32,
+   "maxDistanceMetres": 0.035,
+   "maxBehindMetres": 0.035,
+   "wallId": 258,
+   "wallGuid": "3qeiF73TD1uOeHIcNGcTy8",
+   "points": 623244,
+   "ms": 123,
+   "applicable": true,
+   "source": {
+    "kind": "points",
+    "orientation": "target-referenced",
+    "pointCount": 623244
+   },
+   "budget": {
+    "workLimit": 128000000,
+    "workUsed": 27411514
+   },
+   "coverage": {
+    "centroidSamples": 60,
+    "observedAreaEstimateM2": 1.3377126328856759,
+    "observedCentroidSamples": 5,
+    "observedRasterInteriorTexels": 1516,
+    "observedSamples": 1521,
+    "rasterInteriorTexels": 40612,
+    "samples": 40672,
+    "unknownAmbiguousSamples": 800,
+    "unknownAreaEstimateM2": 35.88038739711431,
+    "unknownBehindSamples": 945,
+    "unknownDistanceSamples": 33898,
+    "unknownNormalSamples": 1815,
+    "unknownSparseSamples": 1693
+   },
+   "items": [
+    {
+     "centroidSamples": 60,
+     "geometryItemId": 253,
+     "observedAreaEstimateM2": 1.3377126328856759,
+     "observedCentroidSamples": 5,
+     "observedRasterInteriorTexels": 1516,
+     "observedSamples": 1521,
+     "productId": 258,
+     "rasterInteriorTexels": 40612,
+     "samples": 40672,
+     "unknownAmbiguousSamples": 800,
+     "unknownAreaEstimateM2": 35.88038739711431,
+     "unknownBehindSamples": 945,
+     "unknownDistanceSamples": 33898,
+     "unknownNormalSamples": 1815,
+     "unknownSparseSamples": 1693
+    }
+   ],
+   "diagnostics": [
+    "Coverage is a triangle-area-weighted centroid/interior-texel estimate, not a registration accuracy approval",
+    "Unknown samples preserve the existing target albedo through the shared atlas; source GLB byte-to-decoded-mesh/image identity is verified by the host",
+    "Mathematical rigid fit only; no automatic registration or accuracy approval"
+   ],
+   "exclusions": [],
+   "preparedSha256": "84e97d3e058621331c31d7e9ac2eaf4e45307d02c833a412a9f2cd9702b568ae",
+   "assets": [
+    {
+     "imageUri": "textures/eb6c51b96d25ddf280018c2b8339c879e40bf273d646a4d19cbcd29c530f2544.png",
+     "width": 512,
+     "height": 374,
+     "byteOffset": 0,
+     "byteLength": 8607
+    }
+   ],
+   "planEntities": {
+    "created": 8,
+    "edits": 1,
+    "removed": 0
+   }
+  }
+ ]
+}

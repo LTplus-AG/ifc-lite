@@ -16,6 +16,8 @@ test('scan observations retain original triangle and barycentric scene coordinat
   assert.ok(hit);
   const landmark = sourceLandmark(mesh, hit, 3);
   assert.deepEqual(landmark.point, [1000001, 2000004, 30]);
+  assert.equal(landmark.kind, 'triangle');
+  if (landmark.kind !== 'triangle') throw new Error('unreachable');
   assert.deepEqual(landmark.barycentric, [0.25, 0.25, 0.5]);
   assert.equal(landmark.triangle, 0);
   assert.match(landmark.observation, /^surface:3:triangle:0:bary:/);

@@ -56,6 +56,41 @@ describe('portable room STEP source (#4604)', () => {
     );
   });
 
+  it('retries transient blob read failures and reports the final failure', async () => {
+    const bytes = new Uint8Array(await readFile(new URL(
+      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      import.meta.url,
+    )));
+    let reads = 0;
+    const recovering: collab.BlobStore = {
+      put: async () => { throw new Error('unused'); },
+      get: async () => {
+        reads++;
+        if (reads < 3) throw new Error(`relay read ${reads}`);
+        return bytes;
+      },
+      has: async () => true,
+      delete: async () => false,
+      list: async () => [],
+    };
+    const parsed = await parseRoomStepSource(
+      recovering, 'a'.repeat(32), collab.modelSlotRef('m0'), new Map(),
+    );
+    assert.ok(parsed.source.byteLength > 0);
+    assert.equal(reads, 3);
+
+    reads = 0;
+    const failing: collab.BlobStore = {
+      ...recovering,
+      get: async () => { reads++; throw new Error(`relay read ${reads}`); },
+    };
+    await assert.rejects(
+      parseRoomStepSource(failing, 'b'.repeat(32), collab.modelSlotRef('m0'), new Map()),
+      /after 3 attempts.*relay read 3/,
+    );
+    assert.equal(reads, 3);
+  });
+
   it('keeps snapshot-only roots selectable when a room adds them after the portable source', async () => {
     const bytes = new Uint8Array(await readFile(new URL(
       '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',

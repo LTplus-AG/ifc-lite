@@ -912,7 +912,10 @@ the immutable source `viewBox`. Fully outside paths do not consume the converted
 path cap. A supported fill or conservative painted stroke envelope that crosses
 the rectangle refuses, so the host must place the boundary through empty space.
 The effective rectangle is returned as `pageClipPdf` and recorded in IFC as
-`ConversionClipPdf`; this selection does not rewrite `SourceCropBox`.
+`ConversionClipPdf`; this selection does not rewrite `SourceCropBox`. Because
+zero-width hairlines have a device-dependent minimum width, every hairline on
+an interior selection remains a visible omission unless a future authenticated
+raster target can prove it contributes no pixels.
 
 The response holds `paths` — only the paths whose complete graphics state the
 planner understands — and a canonical `fidelity` report (`ifclite-pdf-fidelity-v1`)

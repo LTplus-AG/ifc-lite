@@ -96,7 +96,9 @@ pub(super) fn run(page: &PdfVectorPage) -> Result<Interpreted, String> {
         base,
         stack: Vec::new(),
         clip: page.conversion_clip_pdf.unwrap_or(page.view_box),
-        conversion_clip: page.conversion_clip_pdf.is_some(),
+        conversion_clip: page
+            .conversion_clip_pdf
+            .is_some_and(|clip| clip != page.view_box),
         clip_tolerance_pdf: page.tolerance_metres / largest_scale(&page.model_metres_from_pdf),
         pending_clip: false,
         marked: Vec::new(),
@@ -339,7 +341,14 @@ impl Interpreter {
             if self.hidden > 0 {
                 self.report.record("hidden", ordinal, bbox, false, true);
             } else {
-                let visible = bbox.is_some_and(|b| extent::intersects(&b, &self.clip));
+                // A PDF hairline has device-dependent minimum width. Without
+                // an authenticated target raster, an interior selection cannot
+                // prove that an outside centreline contributes no pixels.
+                let uncertain_hairline = self.conversion_clip
+                    && paint.strokes()
+                    && self.frame.state.line_width == 0.;
+                let visible = uncertain_hairline
+                    || bbox.is_some_and(|b| extent::intersects(&b, &self.clip));
                 let fill_block = paint.fills().then(|| self.state_block(self.frame.taint.fill_pattern)).flatten();
                 let stroke_block = paint.strokes().then(|| self.stroke_block(commands, paint.closes())).flatten();
                 let kept = match (paint.fills(), paint.strokes(), &fill_block, &stroke_block) {

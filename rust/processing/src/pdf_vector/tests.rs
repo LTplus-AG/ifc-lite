@@ -66,20 +66,30 @@ fn issue_4406_conversion_clip_filters_off_crop_geometry_without_rewriting_source
     let mut input = page(vec![
         PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke, commands: vec![0., 15., 25., 1., 19., 25.] },
         PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke, commands: vec![0., 80., 80., 1., 90., 80.] },
-        PdfVectorOperator::LineWidth { width: 0. },
-        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke, commands: vec![0., 70., 70., 1., 75., 70.] },
     ]);
     input.conversion_clip_pdf = Some([10., 20., 20., 30.]);
     let prepared = prepare_pdf_vector_page(&input).unwrap();
     assert_eq!(prepared.page_clip_pdf, [10., 20., 20., 30.]);
     assert_eq!(prepared.paths.len(), 1, "only the supported on-crop paint reaches geometry");
     assert_eq!(prepared.paths[0].operator_ordinal, 0);
-    assert!(prepared.fidelity.exact, "an off-crop unsupported paint is listed but invisible");
-    assert_eq!(prepared.fidelity.summary[0].kind, "hairline");
-    assert_eq!(prepared.fidelity.summary[0].visible_count, 0);
+    assert!(prepared.fidelity.exact);
 
     input.conversion_clip_pdf = Some([9., 20., 20., 30.]);
     assert!(prepare_pdf_vector_page(&input).unwrap_err().contains("conversion clip"));
+}
+#[test]
+fn issue_4406_conversion_clip_cannot_prove_an_outside_hairline_invisible() {
+    let mut input = page(vec![
+        PdfVectorOperator::LineWidth { width: 0. },
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke,
+            commands: vec![0., 70., 70., 1., 75., 70.] },
+    ]);
+    input.conversion_clip_pdf = Some([10., 20., 20., 30.]);
+    let prepared = prepare_pdf_vector_page(&input).unwrap();
+    assert!(!prepared.fidelity.exact,
+        "device-minimum ink may bleed into an interior crop even when its centreline is outside");
+    assert_eq!(prepared.fidelity.summary[0].kind, "hairline");
+    assert_eq!(prepared.fidelity.summary[0].visible_count, 1);
 }
 #[test]
 fn issue_4406_conversion_clip_counts_a_wide_stroke_whose_centerline_is_outside() {

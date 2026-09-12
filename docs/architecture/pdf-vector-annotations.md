@@ -236,7 +236,10 @@ only when its complete conservative painted envelope is inside the boundary;
 if fill geometry or a stroke envelope crosses it, preparation refuses and asks
 for a boundary through empty space. Stroke visibility includes the transformed
 line width and conservative join/cap reach, including wide strokes whose
-centreline is outside. This is bounded selection, not geometric clipping.
+centreline is outside. A zero-width hairline on an interior selection is always
+a visible omission because its device-dependent ink extent cannot be proven
+outside without an authenticated raster target. This is bounded selection, not
+geometric clipping.
 
 This construction-space contract applies to well-formed PDF path objects. In
 [ISO 32000-1 §8.2, Figure 9 and its following note](https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf),

@@ -795,9 +795,14 @@ The typed `MeshTransferRequest` contains:
   behind bounds. In every mode the nearest point is refused when the segment
   from the sampled face to it crosses another face of the same item, and
   supporting points deeper than the item's own thickness along the face normal
-  are dropped: this target self-occlusion rule keeps opposite thin-wall faces
-  apart when the points carry no orientation. Colour is the mean of the
-  supporting points. `maxDistanceMetres` may not exceed 16 support radii.
+  are dropped. Under `target-referenced` the item's thickness also caps
+  `maxBehindMetres` at half its value, so a capture inside the solid is
+  attributed to its nearest face only, and a capture in front of the face
+  within the distance bound is preferred over one inside the solid. Together
+  these keep opposite thin-wall faces apart for captures outside the solid and
+  for captures inside it up to the midplane; a capture deeper than the midplane
+  belongs to the opposite face by geometry, which only oriented sources can
+  overrule. Colour is the mean of the supporting points. `maxDistanceMetres` may not exceed 16 support radii.
   Supports too thin to fit are counted as `unknownSparseSamples`.
 - `sourceImage` (mesh sources only; absent for points) and existing target
   `sourceImages` use the page API's RGBA range descriptors. A mesh source needs

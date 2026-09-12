@@ -305,9 +305,14 @@ a small plane to the retained points around each sample (support radius,
 surface band and neighbour bounds are sampling controls) rather than copying
 the nearest point's colour, and the coverage report says which orientation
 source decided each plane's facing side. The retained sample carries no normals
-or scanner stations, so planes are oriented toward the IFC face and any scan
-point that lies beyond another face of the same object is refused as behind
-the surface; supports too thin to fit are reported as **too sparse**. The
+or scanner stations, so planes are oriented toward the IFC face and the
+object's own geometry decides the side: a scan point beyond another face of
+the same object is refused as behind the surface, a capture inside the object
+counts for its nearest face only (the behind limit is capped at half the
+object's thickness), and a capture in front of the face is preferred over one
+inside it. A capture deeper inside the object than its midplane therefore
+belongs to the opposite face; only a source with normals or scanner stations
+could say otherwise. Supports too thin to fit are reported as **too sparse**. The
 retained sample is a uniform reservoir of the whole scan (up to 2,000,000
 points), so a small object in a large scan may have fewer points than a dense
 atlas needs — lower the pixel density or widen the support radius.

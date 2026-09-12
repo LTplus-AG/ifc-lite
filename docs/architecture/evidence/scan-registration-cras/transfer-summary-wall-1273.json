@@ -18,7 +18,7 @@
    "wallId": 258,
    "wallGuid": "3qeiF73TD1uOeHIcNGcTy8",
    "points": 623244,
-   "ms": 824,
+   "ms": 763,
    "refused": "Transfer work budget exhausted; reduce source extent or atlas density"
   },
   {
@@ -29,7 +29,7 @@
    "wallId": 258,
    "wallGuid": "3qeiF73TD1uOeHIcNGcTy8",
    "points": 623244,
-   "ms": 306,
+   "ms": 331,
    "applicable": true,
    "source": {
     "kind": "points",
@@ -38,40 +38,40 @@
    },
    "budget": {
     "workLimit": 128000000,
-    "workUsed": 48973231
+    "workUsed": 59536866
    },
    "coverage": {
     "centroidSamples": 60,
-    "observedAreaEstimateM2": 20.688525286375892,
+    "observedAreaEstimateM2": 15.14339268247737,
     "observedCentroidSamples": 14,
-    "observedRasterInteriorTexels": 21878,
-    "observedSamples": 21892,
+    "observedRasterInteriorTexels": 16019,
+    "observedSamples": 16033,
     "rasterInteriorTexels": 40612,
     "samples": 40672,
-    "unknownAmbiguousSamples": 1525,
-    "unknownAreaEstimateM2": 16.529574743624096,
-    "unknownBehindSamples": 292,
-    "unknownDistanceSamples": 7949,
-    "unknownNormalSamples": 2891,
-    "unknownSparseSamples": 6123
+    "unknownAmbiguousSamples": 1256,
+    "unknownAreaEstimateM2": 22.074707347522622,
+    "unknownBehindSamples": 7478,
+    "unknownDistanceSamples": 7975,
+    "unknownNormalSamples": 3024,
+    "unknownSparseSamples": 4906
    },
    "items": [
     {
      "centroidSamples": 60,
      "geometryItemId": 253,
-     "observedAreaEstimateM2": 20.688525286375892,
+     "observedAreaEstimateM2": 15.14339268247737,
      "observedCentroidSamples": 14,
-     "observedRasterInteriorTexels": 21878,
-     "observedSamples": 21892,
+     "observedRasterInteriorTexels": 16019,
+     "observedSamples": 16033,
      "productId": 258,
      "rasterInteriorTexels": 40612,
      "samples": 40672,
-     "unknownAmbiguousSamples": 1525,
-     "unknownAreaEstimateM2": 16.529574743624096,
-     "unknownBehindSamples": 292,
-     "unknownDistanceSamples": 7949,
-     "unknownNormalSamples": 2891,
-     "unknownSparseSamples": 6123
+     "unknownAmbiguousSamples": 1256,
+     "unknownAreaEstimateM2": 22.074707347522622,
+     "unknownBehindSamples": 7478,
+     "unknownDistanceSamples": 7975,
+     "unknownNormalSamples": 3024,
+     "unknownSparseSamples": 4906
     }
    ],
    "diagnostics": [
@@ -83,11 +83,11 @@
    "preparedSha256": "57b7fd9bd58f0d57a2efb081b0fa10a63f4d3e9a1e193caa62433ba0000db526",
    "assets": [
     {
-     "imageUri": "textures/82683da1d40ffde0ef2042ff242805e4ee3cbc80c0ee5c7cda2809a85e341cf3.png",
+     "imageUri": "textures/d032099a48a597fd6734bfca3c28d993de2135ec9cd5441b3ab7df80c00f567b.png",
      "width": 512,
      "height": 374,
      "byteOffset": 0,
-     "byteLength": 65482
+     "byteLength": 46078
     }
    ],
    "planEntities": {
@@ -99,12 +99,12 @@
   {
    "label": "half-tolerance",
    "texelsPerMetre": 32,
-   "maxDistanceMetres": 0.04,
-   "maxBehindMetres": 0.04,
+   "maxDistanceMetres": 0.035,
+   "maxBehindMetres": 0.035,
    "wallId": 258,
    "wallGuid": "3qeiF73TD1uOeHIcNGcTy8",
    "points": 623244,
-   "ms": 125,
+   "ms": 123,
    "applicable": true,
    "source": {
     "kind": "points",
@@ -113,40 +113,40 @@
    },
    "budget": {
     "workLimit": 128000000,
-    "workUsed": 27453540
+    "workUsed": 27411514
    },
    "coverage": {
     "centroidSamples": 60,
-    "observedAreaEstimateM2": 0.9229581111195055,
-    "observedCentroidSamples": 3,
-    "observedRasterInteriorTexels": 1075,
-    "observedSamples": 1078,
+    "observedAreaEstimateM2": 1.3377126328856759,
+    "observedCentroidSamples": 5,
+    "observedRasterInteriorTexels": 1516,
+    "observedSamples": 1521,
     "rasterInteriorTexels": 40612,
     "samples": 40672,
-    "unknownAmbiguousSamples": 829,
-    "unknownAreaEstimateM2": 36.29514191888049,
-    "unknownBehindSamples": 109,
-    "unknownDistanceSamples": 33655,
-    "unknownNormalSamples": 1742,
-    "unknownSparseSamples": 3259
+    "unknownAmbiguousSamples": 800,
+    "unknownAreaEstimateM2": 35.88038739711431,
+    "unknownBehindSamples": 945,
+    "unknownDistanceSamples": 33898,
+    "unknownNormalSamples": 1815,
+    "unknownSparseSamples": 1693
    },
    "items": [
     {
      "centroidSamples": 60,
      "geometryItemId": 253,
-     "observedAreaEstimateM2": 0.9229581111195055,
-     "observedCentroidSamples": 3,
-     "observedRasterInteriorTexels": 1075,
-     "observedSamples": 1078,
+     "observedAreaEstimateM2": 1.3377126328856759,
+     "observedCentroidSamples": 5,
+     "observedRasterInteriorTexels": 1516,
+     "observedSamples": 1521,
      "productId": 258,
      "rasterInteriorTexels": 40612,
      "samples": 40672,
-     "unknownAmbiguousSamples": 829,
-     "unknownAreaEstimateM2": 36.29514191888049,
-     "unknownBehindSamples": 109,
-     "unknownDistanceSamples": 33655,
-     "unknownNormalSamples": 1742,
-     "unknownSparseSamples": 3259
+     "unknownAmbiguousSamples": 800,
+     "unknownAreaEstimateM2": 35.88038739711431,
+     "unknownBehindSamples": 945,
+     "unknownDistanceSamples": 33898,
+     "unknownNormalSamples": 1815,
+     "unknownSparseSamples": 1693
     }
    ],
    "diagnostics": [
@@ -155,14 +155,14 @@
     "Mathematical rigid fit only; no automatic registration or accuracy approval"
    ],
    "exclusions": [],
-   "preparedSha256": "26ddcd90df1a5fee0315193e2ec03e05bdff63d7d6c1795aa3b10de2c913cd37",
+   "preparedSha256": "84e97d3e058621331c31d7e9ac2eaf4e45307d02c833a412a9f2cd9702b568ae",
    "assets": [
     {
-     "imageUri": "textures/e34f1a8ef4da175d87ba37cf75d60cbfda4d5e68293fa365f8059dd6164c3cda.png",
+     "imageUri": "textures/eb6c51b96d25ddf280018c2b8339c879e40bf273d646a4d19cbcd29c530f2544.png",
      "width": 512,
      "height": 374,
      "byteOffset": 0,
-     "byteLength": 6917
+     "byteLength": 8607
     }
    ],
    "planEntities": {

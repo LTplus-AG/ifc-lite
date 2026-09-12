@@ -121,11 +121,33 @@ its IFC face is consistent with the independently checked registration; nothing
 tighter is supported. The residuals are not scanner noise (plane fits are
 millimetre-level) but as-built deviations from the model: the corridor is
 ~9 cm narrower than modelled (after registration its east face lies 6.0 cm
-inside the IFC face, its west face 3.1 cm), the north clerestory band starts
-~10 cm further east than the modelled opening, and room B is 3–5 cm deeper
-between its south and north faces than modelled. A rigid fit spreads these
-over its 16 points; a transfer bound tighter than a wall's own deviation
-refuses that wall entirely (see the half-tolerance control).
+into the corridor from the IFC face, its west face 3.1 cm), the north
+clerestory band starts ~10 cm further east than the modelled opening, and
+room B is 3–5 cm deeper between its south and north faces than modelled. A
+rigid fit spreads these over its 16 points; a transfer bound tighter than a
+wall's own deviation refuses that wall entirely (see the half-tolerance
+control).
+
+### Where the registered scan lies against each transfer wall
+
+`node tools/texture-authoring/cras-face-depth.mjs SUBSET.ply registration-report.json craslabbim-ifc4-tessellated.ifc WALL_GUID x|y OUT.json`
+applies the registration to a subset and histograms, at 1 cm, every point in a
+wall's footprint along its thickness axis, measured from the wall's minimum
+face ([`face-depth-wall-1117.json`](face-depth-wall-1117.json),
+[`face-depth-wall-1273.json`](face-depth-wall-1273.json)). This is the
+measured basis for the side statements below; it never enters a transfer.
+
+| Wall (10 cm) | scan surface | position after registration |
+| --- | --- | --- |
+| Corridor drywall `1gsZ4XbYD0qRhfvwOUEK3Z`, faces x 0.3907 / 0.4907 | corridor face (the only one in the subset), 89.8 % of 52,588 points | **6 cm in front of** the modelled corridor face (x − 0.06), outside the solid |
+| North wall `3qeiF73TD1uOeHIcNGcTy8`, faces y 10.8615 / 10.9615 | room B face, 52 % of 421,312 points | **5–6 cm in front of** the modelled south face (y − 0.05 … − 0.06), outside the solid |
+| | far (north) side face, 22 % | **4–5 cm inside** the modelled solid (y + 0.04 … + 0.05): 5.5 cm behind the modelled north face, past its 5 cm midplane, and 4.5 cm behind the south face |
+
+So the real north wall is shifted ~5.5 cm south of its model: the room-B
+capture sits in front of the south face while the far side's capture sits
+inside the modelled wall, nearer to the south face than to the north face it
+belongs to. Without orientation this is the hardest side question the planner
+faces, and the transfer below reports it as such.
 
 ## Transfer target: a tessellated derivative
 
@@ -149,23 +171,31 @@ or stations), support radius 4 cm, 6–48 supporting points, 6 mm surface band,
 `minNormalDot 0.8`, ambiguity 2 mm, and `maxDistanceMetres = maxBehindMetres =`
 the tolerance. Times are single Node runs on this host, not a browser claim.
 
+The half-tolerance control runs at exactly half the tolerance (3.5 cm), as
+`cras-register-transfer.mjs` computes it; the committed summaries carry
+`maxDistanceMetres = maxBehindMetres = 0.035` for those rows.
+
 **Corridor drywall `1gsZ4XbYD0qRhfvwOUEK3Z`** (10 cm, no openings; source:
 corridor subset, stride 24, 465,029 points) —
 [`transfer-summary-wall-1117.json`](transfer-summary-wall-1117.json):
 
 | bound | texels/m | samples | observed | too far | normal | ambiguous | behind | sparse | observed area | work used |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| 7 cm | 64 | 105,126 | **33,809** | 63,591 | 793 | 731 | 119 | 6,083 | **8.19 m²** of 25.28 m² | 43.5 M of 128 M (399 ms) |
-| 3.5 cm | 64 | 105,126 | 0 | 105,085 | 0 | 0 | 0 | 41 | 0 | 16.6 M (139 ms) |
+| 7 cm | 64 | 105,126 | **33,843** | 63,591 | 793 | 700 | 119 | 6,080 | **8.20 m²** of 25.28 m² | 43.5 M of 128 M (376 ms) |
+| 3.5 cm | 64 | 105,126 | 0 | 105,092 | 0 | 15 | 0 | 19 | 0 | 15.8 M (113 ms) |
 
 The wall's 25.3 m² are two 4.1 × 2.9 m faces plus edges. Only the corridor
 face was scanned in this subset, and only below the corridor's suspended
-ceiling (scan z 1.04 ↔ IFC 2.29 m), so ≈ 9.1 m² could ever be observed; 8.19 m²
-were. The far face, the 0.7 m above the ceiling and the edges are unknown by
-distance. At half the tolerance nothing is observed, because the as-built face
-lies 6 cm from the modelled one — the tolerance is doing exactly the work the
-held-out residuals licence. Atlas 512 × 700 (`textures/5e74c2b4….png`); the
-bright band near the ceiling is the fluorescent lighting in the capture.
+ceiling (scan z 1.04 ↔ IFC 2.29 m), so ≈ 9.1 m² could ever be observed; 8.20 m²
+were. Per face from the independent reopen (`observed_by_face_normal` in
+[`oracle-wall-1117.json`](oracle-wall-1117.json), 55 barycentric samples per
+triangle): corridor face (−x) 75.5 % of samples observed, far face (+x) 0 %,
+bottom edge 15.5 %, every other face 0 %. The far face, the 0.7 m above the
+ceiling and the edges are unknown by distance. At half the tolerance nothing
+is observed, because the as-built face lies 6 cm in front of the modelled one
+— the tolerance is doing exactly the work the held-out residuals licence.
+Atlas 512 × 700 (`textures/b12ae7a6….png`); the bright band near the ceiling
+is the fluorescent lighting in the capture.
 
 **North wall `3qeiF73TD1uOeHIcNGcTy8`** (10 cm drywall with five clerestory
 windows, both faces scanned; source: strip stride 36, 623,244 points) —
@@ -173,9 +203,25 @@ windows, both faces scanned; source: strip stride 36, 623,244 points) —
 
 | bound | texels/m | outcome |
 | --- | --- | --- |
-| 7 cm | 64 | **refused**: `Transfer work budget exhausted; reduce source extent or atlas density` (824 ms) |
-| 7 cm | 32 | 40,672 samples, **21,892 observed**, 7,949 too far, 2,891 normal, 1,525 ambiguous, 292 behind, 6,123 sparse; **20.69 m²** of 37.22 m²; 49.0 M work (306 ms); atlas 512 × 374 |
-| 3.5 cm | 32 | 1,078 observed, 33,655 too far; 0.92 m² |
+| 7 cm | 64 | **refused**: `Transfer work budget exhausted; reduce source extent or atlas density` (763 ms) |
+| 7 cm | 32 | 40,672 samples, **16,033 observed**, 7,975 too far, 3,024 normal, 1,256 ambiguous, **7,478 behind**, 4,906 sparse; **15.14 m²** of 37.22 m²; 59.5 M work (331 ms); atlas 512 × 374 |
+| 3.5 cm | 32 | 1,521 observed, 33,898 too far, 945 behind; 1.34 m² |
+
+Per face from the independent reopen
+([`oracle-wall-1273.json`](oracle-wall-1273.json)): room-B face (−y) **49.0 %**
+of samples observed, far face (+y) **7.4 %**, window heads / bottom (−z)
+13.8 %, jambs (±x) 21–24 %, tops (+z) 0.5 %. This is the side question from
+the depth table resolved by target geometry alone: the room-B face takes the
+room capture 5–6 cm in front of it (a capture in front of a face is preferred
+over one inside the solid), and the far side's capture, 5.5 cm inside the
+modelled wall and past its midplane, is **refused as behind** on the north face
+instead of being painted there — the 7,478 behind samples. The 7.4 % the north
+face does observe is what lies within 7 cm in front of its modelled position
+(a surface at y + 0.15 … + 0.16 in the depth histogram). Before the
+nearest-face rule this wall reported 21,892 observed / 292 behind with both
+faces ~39 % observed, i.e. the north face was painted from a capture 5.5 cm
+behind it and the room-B face partly from the far side's capture 4.5 cm behind
+it; those numbers were withdrawn with this revision.
 
 The refusal at 64 texels/m is the bounded job behaving as specified on a real
 wall: two scanned faces 10 cm apart double the points every query visits, and
@@ -193,8 +239,10 @@ writes the transferred IFC and PNG, reopens the file and checks it
 triangle, the image URI equal to the atlas asset (named by its own SHA-256),
 `IfcSurfaceStyleWithTextures` assigned, IfcOpenShell schema validation 0 errors
 (EXPRESS rules not run). Sampling every triangle's UV centroid in the atlas: 2
-of 12 (the corridor face) and 14 of 60 triangles carry captured colour, the
-rest the prior style.
+of 12 (the corridor face) and 12 of 60 triangles carry captured colour, the
+rest the prior style; `observed_by_face_normal` samples 55 barycentric points
+per triangle and groups them by the triangle's world normal (the per-face
+percentages quoted above).
 
 `apps/viewer/src/lib/appearance/scan/cras-transferred-output.test.ts` is the
 ifc-lite side over the committed
@@ -217,8 +265,16 @@ by its GlobalId path with byte-exact texture pixels and UVs.
   building features measured in both datasets, not surveyed control points);
   any tolerance below 7 cm for this pair; behaviour on voided extrusions (the
   target is a tessellated derivative); browser timing (Node runs only); the
-  colour fidelity of the captured atlas beyond what the scanner recorded.
+  colour fidelity of the captured atlas beyond what the scanner recorded; the
+  side of an unoriented capture that lies deeper inside a modelled wall than
+  its midplane (by geometry it belongs to the opposite face, and nothing in
+  this archive can overrule that).
 - Orientation: with no normals or stations in the archive, every point plan is
-  `target-referenced`, and the thin-wall separation rests on the target
-  self-occlusion rule (`unknownBehindSamples`), which the controlled and WASM
-  tests pin under all three orientation sources.
+  `target-referenced`, and the side of each sample rests on the target's own
+  geometry: self-occlusion for captures outside the solid, nearest-face
+  attribution for captures inside it (behind bound capped at half the
+  thickness), and preference for a capture in front of the face over one inside
+  the solid. The controlled and WASM tests pin these with captures 1 mm outside
+  the faces (all three orientation sources), 1 mm and 3 mm inside a 4 mm
+  partition, and the measured 10 cm-wall configuration above (5.5 cm in front /
+  4.5 cm inside).

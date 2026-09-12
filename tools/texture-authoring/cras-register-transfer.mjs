@@ -84,7 +84,7 @@ try {
   // work budget refuses a plan it cannot finish, and that refusal is recorded as a
   // result of its own. The half-tolerance control runs at the accepted density.
   const densities = (process.env.CRAS_TEXELS_PER_METRE ?? '64,32').split(',').map(Number);
-  const half = Math.max(0.005, Math.round(toleranceMetres * 50) / 100);
+  const half = Math.max(0.005, toleranceMetres / 2);
   const attempts = densities.map(texels => ['tolerance', toleranceMetres, toleranceMetres, texels]);
   const runs = [];
   let accepted = null;

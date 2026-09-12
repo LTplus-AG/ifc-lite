@@ -68,12 +68,31 @@ height, width, _ = pixels.shape
 # and captured colour for observed texels; sample every triangle's UV centroid.
 observed_like, prior_like, total = 0, 0, 0
 prior = np.array([0.85, 0.84, 0.80])
-for tri in tex_index:
-    uv = uvs[tri - 1].mean(0)
+def texel(uv):
     x = min(width - 1, max(0, int(uv[0] * width))); y = min(height - 1, max(0, int((1 - uv[1]) * height)))
-    rgb = pixels[y, x, :3]; total += 1
+    return pixels[y, x, :3]
+for tri in tex_index:
+    rgb = texel(uvs[tri - 1].mean(0)); total += 1
     if np.abs(rgb - prior).max() < 0.02: prior_like += 1
     else: observed_like += 1
+# Which faces carry captured colour: sample a barycentric grid over every triangle
+# and bucket by the triangle's geometric normal (world axes), so a wall's two
+# faces are reported separately. This is what decides the side question.
+coords = np.array(tfs.Coordinates.CoordList)
+by_face = {}
+grid = [(i / 12, j / 12) for i in range(1, 12) for j in range(1, 12 - i)]
+for tri, tex in zip(coord_index, tex_index):
+    a, b, c = coords[tri - 1]
+    n = np.cross(b - a, c - a); n = n / (np.linalg.norm(n) or 1.0)
+    axis = int(np.argmax(np.abs(n))); key = ('-' if n[axis] < 0 else '+') + 'xyz'[axis]
+    entry = by_face.setdefault(key, {'triangles': 0, 'samples': 0, 'observed': 0})
+    entry['triangles'] += 1
+    ta, tb, tc = uvs[tex - 1]
+    for u, v in grid:
+        rgb = texel(ta + (tb - ta) * u + (tc - ta) * v); entry['samples'] += 1
+        if np.abs(rgb - prior).max() >= 0.02: entry['observed'] += 1
+for entry in by_face.values():
+    entry['observed_fraction'] = round(entry['observed'] / entry['samples'], 3) if entry['samples'] else None
 report = {
     'oracle': 'IfcOpenShell apply of the canonical plan + independent reopen; Pillow atlas decode',
     'ifcopenshell': ifcopenshell.version,
@@ -87,6 +106,7 @@ report = {
         'image_uri_matches_asset': image.URLReference == asset['imageUri'],
         'surface_style_with_textures_assigned': bool(textured),
         'triangle_uv_centroids_observed_like': observed_like, 'triangle_uv_centroids_prior_like': prior_like, 'triangles_sampled': total,
+        'observed_by_face_normal': by_face,
         'schema_validation': None,
     },
 }

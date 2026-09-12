@@ -7,13 +7,13 @@
  },
  "transferred": {
   "file": "craslabbim-ifc4-tessellated-transferred-tolerance.ifc",
-  "sha256": "fd88a12ef921e8cb76db226848e59ef715d50805c84f21dd069e9a339a20525d",
+  "sha256": "163ba3e5104192bf92f6fea1d1d9396af5f34a58eb69828601265e254c0f637e",
   "bytes": 75407,
   "entities": 492
  },
  "asset": {
-  "uri": "textures/5e74c2b420986b1b5a7dc8b2617e211781a822d116d25e275cf3d13f6ca4b996.png",
-  "sha256": "5e74c2b420986b1b5a7dc8b2617e211781a822d116d25e275cf3d13f6ca4b996",
+  "uri": "textures/b12ae7a645c0b79fddc43f3b09e8677ff0c37d73a655ca11ee42a27a11447355.png",
+  "sha256": "b12ae7a645c0b79fddc43f3b09e8677ff0c37d73a655ca11ee42a27a11447355",
   "width": 512,
   "height": 700
  },
@@ -31,6 +31,44 @@
   "triangle_uv_centroids_observed_like": 2,
   "triangle_uv_centroids_prior_like": 10,
   "triangles_sampled": 12,
+  "observed_by_face_normal": {
+   "+x": {
+    "triangles": 2,
+    "samples": 110,
+    "observed": 0,
+    "observed_fraction": 0.0
+   },
+   "+y": {
+    "triangles": 2,
+    "samples": 110,
+    "observed": 0,
+    "observed_fraction": 0.0
+   },
+   "-x": {
+    "triangles": 2,
+    "samples": 110,
+    "observed": 83,
+    "observed_fraction": 0.755
+   },
+   "-y": {
+    "triangles": 2,
+    "samples": 110,
+    "observed": 0,
+    "observed_fraction": 0.0
+   },
+   "-z": {
+    "triangles": 2,
+    "samples": 110,
+    "observed": 17,
+    "observed_fraction": 0.155
+   },
+   "+z": {
+    "triangles": 2,
+    "samples": 110,
+    "observed": 0,
+    "observed_fraction": 0.0
+   }
+  },
   "schema_validation": {
    "errors": 0,
    "first": []

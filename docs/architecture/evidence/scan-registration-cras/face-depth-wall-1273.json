@@ -1,0 +1,481 @@
+{
+ "wall": {
+  "globalId": "3qeiF73TD1uOeHIcNGcTy8",
+  "expressId": 258,
+  "axis": "y",
+  "minFace": 10.861515201,
+  "maxFace": 10.961515201,
+  "thicknessMetres": 0.1
+ },
+ "subset": {
+  "file": "cras-wall-1273-strip-s36.ply",
+  "sha256": "f5124f132025d16934bdea65888cfc7e400b576d0623fdb31c1b7e9131b3b6bc",
+  "points": 623244
+ },
+ "registration": {
+  "requestSha256": "d8e25e598b6d7b1a06a23e96b9ac246ffe58162ddda00f15901ed8b0ae61b53a"
+ },
+ "footprintInsetMetres": 0.2,
+ "pointsConsidered": 421312,
+ "binMetres": 0.01,
+ "peaks": [
+  {
+   "fromMinFaceMetres": -0.06,
+   "points": 47840,
+   "share": 0.114,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.05,
+   "points": 149087,
+   "share": 0.354,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.04,
+   "points": 23005,
+   "share": 0.055,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.04,
+   "points": 20229,
+   "share": 0.048,
+   "where": "inside the modelled solid"
+  },
+  {
+   "fromMinFaceMetres": 0.05,
+   "points": 71921,
+   "share": 0.171,
+   "where": "inside the modelled solid"
+  }
+ ],
+ "bins": [
+  {
+   "fromMinFaceMetres": -0.3,
+   "points": 829,
+   "share": 0.002,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.29,
+   "points": 1622,
+   "share": 0.004,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.28,
+   "points": 1506,
+   "share": 0.004,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.27,
+   "points": 2190,
+   "share": 0.005,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.26,
+   "points": 2765,
+   "share": 0.007,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.25,
+   "points": 1949,
+   "share": 0.005,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.24,
+   "points": 1866,
+   "share": 0.004,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.23,
+   "points": 1668,
+   "share": 0.004,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.22,
+   "points": 1421,
+   "share": 0.003,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.21,
+   "points": 1334,
+   "share": 0.003,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.2,
+   "points": 1470,
+   "share": 0.003,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.19,
+   "points": 1498,
+   "share": 0.004,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.18,
+   "points": 1546,
+   "share": 0.004,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.17,
+   "points": 1566,
+   "share": 0.004,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.16,
+   "points": 1600,
+   "share": 0.004,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.15,
+   "points": 2374,
+   "share": 0.006,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.14,
+   "points": 2552,
+   "share": 0.006,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.13,
+   "points": 2191,
+   "share": 0.005,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.12,
+   "points": 1732,
+   "share": 0.004,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.11,
+   "points": 1536,
+   "share": 0.004,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.1,
+   "points": 1585,
+   "share": 0.004,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.09,
+   "points": 1813,
+   "share": 0.004,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.08,
+   "points": 3548,
+   "share": 0.008,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.07,
+   "points": 6330,
+   "share": 0.015,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.06,
+   "points": 47840,
+   "share": 0.114,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.05,
+   "points": 149087,
+   "share": 0.354,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.04,
+   "points": 23005,
+   "share": 0.055,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.03,
+   "points": 1877,
+   "share": 0.004,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.02,
+   "points": 1383,
+   "share": 0.003,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.01,
+   "points": 1415,
+   "share": 0.003,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0,
+   "points": 1336,
+   "share": 0.003,
+   "where": "inside the modelled solid"
+  },
+  {
+   "fromMinFaceMetres": 0.01,
+   "points": 1339,
+   "share": 0.003,
+   "where": "inside the modelled solid"
+  },
+  {
+   "fromMinFaceMetres": 0.02,
+   "points": 1101,
+   "share": 0.003,
+   "where": "inside the modelled solid"
+  },
+  {
+   "fromMinFaceMetres": 0.03,
+   "points": 2201,
+   "share": 0.005,
+   "where": "inside the modelled solid"
+  },
+  {
+   "fromMinFaceMetres": 0.04,
+   "points": 20229,
+   "share": 0.048,
+   "where": "inside the modelled solid"
+  },
+  {
+   "fromMinFaceMetres": 0.05,
+   "points": 71921,
+   "share": 0.171,
+   "where": "inside the modelled solid"
+  },
+  {
+   "fromMinFaceMetres": 0.06,
+   "points": 1033,
+   "share": 0.002,
+   "where": "inside the modelled solid"
+  },
+  {
+   "fromMinFaceMetres": 0.07,
+   "points": 837,
+   "share": 0.002,
+   "where": "inside the modelled solid"
+  },
+  {
+   "fromMinFaceMetres": 0.08,
+   "points": 766,
+   "share": 0.002,
+   "where": "inside the modelled solid"
+  },
+  {
+   "fromMinFaceMetres": 0.09,
+   "points": 827,
+   "share": 0.002,
+   "where": "inside the modelled solid"
+  },
+  {
+   "fromMinFaceMetres": 0.1,
+   "points": 834,
+   "share": 0.002,
+   "where": "inside the modelled solid"
+  },
+  {
+   "fromMinFaceMetres": 0.11,
+   "points": 861,
+   "share": 0.002,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.12,
+   "points": 917,
+   "share": 0.002,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.13,
+   "points": 1896,
+   "share": 0.005,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.14,
+   "points": 1094,
+   "share": 0.003,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.15,
+   "points": 7509,
+   "share": 0.018,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.16,
+   "points": 2557,
+   "share": 0.006,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.17,
+   "points": 1000,
+   "share": 0.002,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.18,
+   "points": 1094,
+   "share": 0.003,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.19,
+   "points": 1127,
+   "share": 0.003,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.2,
+   "points": 1175,
+   "share": 0.003,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.21,
+   "points": 1128,
+   "share": 0.003,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.22,
+   "points": 1229,
+   "share": 0.003,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.23,
+   "points": 1299,
+   "share": 0.003,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.24,
+   "points": 1286,
+   "share": 0.003,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.25,
+   "points": 1292,
+   "share": 0.003,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.26,
+   "points": 1219,
+   "share": 0.003,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.27,
+   "points": 1210,
+   "share": 0.003,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.28,
+   "points": 1439,
+   "share": 0.003,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.29,
+   "points": 1586,
+   "share": 0.004,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.3,
+   "points": 1360,
+   "share": 0.003,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.31,
+   "points": 1648,
+   "share": 0.004,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.32,
+   "points": 2207,
+   "share": 0.005,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.33,
+   "points": 2174,
+   "share": 0.005,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.34,
+   "points": 2309,
+   "share": 0.005,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.35,
+   "points": 2372,
+   "share": 0.006,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.36,
+   "points": 1692,
+   "share": 0.004,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.37,
+   "points": 648,
+   "share": 0.002,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.38,
+   "points": 266,
+   "share": 0.001,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.39,
+   "points": 154,
+   "share": 0,
+   "where": "outside, on the maximum-face side"
+  },
+  {
+   "fromMinFaceMetres": 0.4,
+   "points": 42,
+   "share": 0,
+   "where": "outside, on the maximum-face side"
+  }
+ ]
+}

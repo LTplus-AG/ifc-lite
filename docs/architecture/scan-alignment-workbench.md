@@ -99,10 +99,19 @@ sampling controls), never the nearest colour alone, and the plan records which
 orientation source decided its facing side. The viewer's retained sample
 carries neither normals nor scanner stations, so its plans are
 `target-referenced`: each local plane is oriented toward the IFC face being
-sampled, and a scan point reachable only through another face of the same
-object is refused as behind the surface — that self-occlusion rule, not the
-behind limit, keeps the two faces of a thin wall apart. Supports too thin to
-fit are reported as sparse. Distance, normal agreement, ambiguity and
+sampled, and the target's own geometry decides the side. A scan point
+reachable only through another face of the same object is refused as behind
+the surface (a capture *outside* the solid can never cross to the far face); a
+capture *inside* the solid is attributed to its nearest face only — the behind
+limit is capped at half the object's thickness there, so a far-side capture
+that scan noise or an as-built deviation has pushed into the modelled wall is
+refused by the near face even under a generous behind limit; and when a
+capture in front of the face and one inside the solid both lie within the
+distance bound, the one in front is observed, because from that side it is the
+visible one. What this cannot do is know the side of a capture that lies
+deeper inside the solid than the midplane: such a capture belongs to the
+opposite face by geometry, and only oriented sources (normals or stations)
+could say otherwise. Supports too thin to fit are reported as sparse. Distance, normal agreement, ambiguity and
 behind-surface settings determine which samples are observed. Unknown samples
 retain the prior IFC appearance.
 The behind-surface limit refuses a same-facing scan surface that lies deeper
@@ -165,12 +174,18 @@ Three kinds of evidence exist, and they answer different questions:
    3.4 cm, max 6.5 cm; the tolerance follows from them by the pre-stated rule
    (largest held-out residual rounded up: 7 cm). Point transfer onto two walls
    then reports observed, too-far, normal, ambiguous, behind and sparse counts,
-   one budget refusal at 64 texels/m, an independent IfcOpenShell reopen, IFCZIP
-   packaging and a fresh room join. What that supports is exactly a 7 cm
-   tolerance for this pair: the residuals are as-built deviations of the model
-   (a corridor 9 cm narrower than drawn), not scanner noise, and the landmarks
-   are measured building features, not surveyed control points. Below 7 cm the
-   corridor wall observes nothing, which is the correct answer. The tolerance a
+   observed coverage per wall face from the independent reopen, the registered
+   scan surface's measured position against each modelled face, one budget
+   refusal at 64 texels/m, an independent IfcOpenShell reopen, IFCZIP packaging
+   and a fresh room join. What that supports is exactly a 7 cm tolerance for
+   this pair: the residuals are as-built deviations of the model (a corridor
+   9 cm narrower than drawn; a room wall shifted ~5 cm so the far side's capture
+   lies inside the modelled solid), not scanner noise, and the landmarks are
+   measured building features, not surveyed control points. At half the
+   tolerance the corridor wall observes nothing, which is the correct answer.
+   Where the far side's capture lies deeper inside the modelled wall than its
+   midplane, that face is refused rather than painted from the wrong side, and
+   the room-facing side takes the room capture in front of it. The tolerance a
    user enters for another pair remains that pair's decision until its own
    held-out residuals exist.
 
@@ -179,9 +194,17 @@ The RGB-point controls (`rust/processing/src/appearance/transfer_points_tests.rs
 under all three orientation sources — supplied normals, scanner stations and
 the target-referenced fallback — and reproduce the mesh acceptance numbers
 (6,340 observed, 2,084 refused): by normal when the points carry an
-orientation, by self-occlusion otherwise. Two sheets separated by more than
-the surface band are ambiguous, never averaged; a 5 cm-spaced capture under a
-3 cm support radius is sparse almost everywhere. Format-carried normals and
+orientation, by self-occlusion otherwise. Two further target-referenced
+controls cover captures inside the solid, the regime the CRAS pair actually
+measured (`face-depth-wall-*.json` in the CRAS evidence): the front face
+captured 1 mm *inside* the 4 mm partition with the back uncaptured paints the
+front face only (4,212 observed / 4,212 behind; 3 mm inside, past the midplane,
+the same capture paints the back face only), and on a 10 cm slab with a room
+capture 5.5 cm in front of a face and the far side's capture 4.5 cm inside the
+solid the front capture is observed while the far face refuses both. Two
+sheets separated by more than the surface band are ambiguous, never averaged;
+a 5 cm-spaced capture under a 3 cm support radius is sparse almost
+everywhere. Format-carried normals and
 E57 scanner poses are decoded but not yet retained by the streamed ingest; when
 they are, the viewer can request `source-normals` or `viewpoints` without any
 planner change.

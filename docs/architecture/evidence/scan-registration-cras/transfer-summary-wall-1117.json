@@ -18,7 +18,7 @@
    "wallId": 216,
    "wallGuid": "1gsZ4XbYD0qRhfvwOUEK3Z",
    "points": 465029,
-   "ms": 399,
+   "ms": 376,
    "applicable": true,
    "source": {
     "kind": "points",
@@ -27,40 +27,40 @@
    },
    "budget": {
     "workLimit": 128000000,
-    "workUsed": 43535487
+    "workUsed": 43537518
    },
    "coverage": {
     "centroidSamples": 12,
-    "observedAreaEstimateM2": 8.189458371998496,
+    "observedAreaEstimateM2": 8.196821746037216,
     "observedCentroidSamples": 2,
-    "observedRasterInteriorTexels": 33807,
-    "observedSamples": 33809,
+    "observedRasterInteriorTexels": 33841,
+    "observedSamples": 33843,
     "rasterInteriorTexels": 105114,
     "samples": 105126,
-    "unknownAmbiguousSamples": 731,
-    "unknownAreaEstimateM2": 17.092752954001494,
+    "unknownAmbiguousSamples": 700,
+    "unknownAreaEstimateM2": 17.085389579962776,
     "unknownBehindSamples": 119,
     "unknownDistanceSamples": 63591,
     "unknownNormalSamples": 793,
-    "unknownSparseSamples": 6083
+    "unknownSparseSamples": 6080
    },
    "items": [
     {
      "centroidSamples": 12,
      "geometryItemId": 211,
-     "observedAreaEstimateM2": 8.189458371998496,
+     "observedAreaEstimateM2": 8.196821746037216,
      "observedCentroidSamples": 2,
-     "observedRasterInteriorTexels": 33807,
-     "observedSamples": 33809,
+     "observedRasterInteriorTexels": 33841,
+     "observedSamples": 33843,
      "productId": 216,
      "rasterInteriorTexels": 105114,
      "samples": 105126,
-     "unknownAmbiguousSamples": 731,
-     "unknownAreaEstimateM2": 17.092752954001494,
+     "unknownAmbiguousSamples": 700,
+     "unknownAreaEstimateM2": 17.085389579962776,
      "unknownBehindSamples": 119,
      "unknownDistanceSamples": 63591,
      "unknownNormalSamples": 793,
-     "unknownSparseSamples": 6083
+     "unknownSparseSamples": 6080
     }
    ],
    "diagnostics": [
@@ -72,11 +72,11 @@
    "preparedSha256": "4b1ff800fc754f36ec86a18a899b7c7f5d4b8ea233bc7f78a13904557c6fe886",
    "assets": [
     {
-     "imageUri": "textures/5e74c2b420986b1b5a7dc8b2617e211781a822d116d25e275cf3d13f6ca4b996.png",
+     "imageUri": "textures/b12ae7a645c0b79fddc43f3b09e8677ff0c37d73a655ca11ee42a27a11447355.png",
      "width": 512,
      "height": 700,
      "byteOffset": 0,
-     "byteLength": 50290
+     "byteLength": 50310
     }
    ],
    "planEntities": {
@@ -88,12 +88,12 @@
   {
    "label": "half-tolerance",
    "texelsPerMetre": 64,
-   "maxDistanceMetres": 0.04,
-   "maxBehindMetres": 0.04,
+   "maxDistanceMetres": 0.035,
+   "maxBehindMetres": 0.035,
    "wallId": 216,
    "wallGuid": "1gsZ4XbYD0qRhfvwOUEK3Z",
    "points": 465029,
-   "ms": 139,
+   "ms": 113,
    "applicable": false,
    "source": {
     "kind": "points",
@@ -102,7 +102,7 @@
    },
    "budget": {
     "workLimit": 128000000,
-    "workUsed": 16613293
+    "workUsed": 15793671
    },
    "coverage": {
     "centroidSamples": 12,
@@ -112,12 +112,12 @@
     "observedSamples": 0,
     "rasterInteriorTexels": 105114,
     "samples": 105126,
-    "unknownAmbiguousSamples": 0,
+    "unknownAmbiguousSamples": 15,
     "unknownAreaEstimateM2": 25.282211325999988,
     "unknownBehindSamples": 0,
-    "unknownDistanceSamples": 105085,
+    "unknownDistanceSamples": 105092,
     "unknownNormalSamples": 0,
-    "unknownSparseSamples": 41
+    "unknownSparseSamples": 19
    },
    "items": [
     {
@@ -130,12 +130,12 @@
      "productId": 216,
      "rasterInteriorTexels": 105114,
      "samples": 105126,
-     "unknownAmbiguousSamples": 0,
+     "unknownAmbiguousSamples": 15,
      "unknownAreaEstimateM2": 25.282211325999988,
      "unknownBehindSamples": 0,
-     "unknownDistanceSamples": 105085,
+     "unknownDistanceSamples": 105092,
      "unknownNormalSamples": 0,
-     "unknownSparseSamples": 41
+     "unknownSparseSamples": 19
     }
    ],
    "diagnostics": [
@@ -145,7 +145,7 @@
     "No observed target samples; no applicable mutation plan was produced"
    ],
    "exclusions": [],
-   "preparedSha256": "ff9b74683a6fcae28ebadf5ababe59586688cc1feaa12a2334a7c0f4cd5839fd",
+   "preparedSha256": "d6f25b3c670ff8155aa1eee635c7935d527cbe67bf165a320f49edce5562901e",
    "assets": [],
    "planEntities": null
   }

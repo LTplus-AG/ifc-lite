@@ -10,7 +10,7 @@ import type { ScanSession, ScanSource } from './session';
 import type { ScanPoint, ScanRegistrationRequest, ScanRegistrationReport } from './types';
 import type { MeshTransferRequest, TransferSourceMesh, TransferSourcePoints } from './transfer-types';
 import { targetTransferFrame } from './transfer-frame';
-import { pointTransferPayload } from './point-source';
+import { pointSourceOrientation, pointTransferPayload } from './point-source';
 
 export interface ScanTransferSettings {
   toleranceMetres: number; reviewed: boolean; texelsPerMetre: number;
@@ -37,10 +37,8 @@ export function transferSource(source: ScanSource, settings: ScanTransferSetting
     // Mirrors the planner's index bound so the refusal is read here, not after
     // the payload has crossed into the worker.
     if (settings.maxDistanceMetres > 16 * settings.neighborhoodRadiusMetres) throw new Error('Keep the maximum scan distance within 16 support radii.');
-    // The retained sample carries positions and colours only: no per-point
-    // normals and no scanner stations survive the streamed ingest, so the
-    // orientation source is the IFC face itself and the plan records it.
-    return { repeat: [false, false], source: { kind: 'points', pointCount: points.count, orientation: 'target-referenced',
+    const orientation = pointSourceOrientation(points);
+    return { repeat: [false, false], source: { kind: 'points', pointCount: points.count, orientation,
       neighborhoodRadiusMetres: settings.neighborhoodRadiusMetres, minNeighbors: settings.minNeighbors, maxNeighbors: settings.maxNeighbors,
       surfaceBandMetres: settings.surfaceBandMetres, viewpoints: [] } };
   }
@@ -80,7 +78,7 @@ export async function prepareMeshTransfer(session: ScanSession,
     minNormalDot: settings.minNormalDot, ambiguityDistanceMetres: settings.ambiguityDistanceMetres, maxBehindMetres: settings.maxBehindMetres,
   };
   const output = session.source.kind === 'points'
-    ? await planner.pointTransfer(session.bytes, request, pixels.rgba, { ...pointTransferPayload(session.source.points), normals: new Float32Array(0), stations: new Uint32Array(0) }, { signal })
+    ? await planner.pointTransfer(session.bytes, request, pixels.rgba, { ...pointTransferPayload(session.source.points), stations: new Uint32Array(0) }, { signal })
     : await planner.meshTransfer(session.bytes, request, pixels.rgba, { signal });
   session.validate(); signal.throwIfAborted();
   const images = await adoptBakedImages(session.targetModelId, output, owner, signal);

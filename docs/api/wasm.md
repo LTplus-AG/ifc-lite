@@ -965,13 +965,17 @@ page refuses regardless. Acceptance covers the listed omissions, not geometry.
 
 The geometry scope accepts opaque RGB pages made of straight fill edges,
 qualified quadratic/cubic curved rings, and qualified solid straight strokes.
-Strokes support positive width, butt/square/round caps, bevel/miter/round joins
-and miter-limit fallback, outlined before the full affine transform. Round arcs
+Strokes support positive width, butt/square/round caps, bevel/miter/round joins,
+miter-limit fallback and positive dash patterns on open straight subpaths,
+outlined before the full affine transform. Dash phase, odd-array repetition,
+per-subpath reset and joins across vertices are preserved. Combined fill and
+dashed-stroke paints still pass the same region-composition qualifier; a page
+with multiple dash-run crossings that it cannot prove refuses atomically. Round arcs
 are subdivided against the declared metric tolerance after accounting for
 nonuniform scale, reflection and shear. It resolves
 nonzero/even-odd winding, holes, islands, implicit CropBox clipping and paint
 order, including fill then stroke in combined operators. Text, images, explicit
-clips, transparency, patterns, dashed, curved and hairline
+clips, transparency, patterns, unqualified dashed, curved and hairline
 strokes and unsupported state are never drawn approximately: they are the
 report's omissions, left out only under acceptance and recorded with the
 annotation. Quantization collapse, uncertain near contacts and exhausted

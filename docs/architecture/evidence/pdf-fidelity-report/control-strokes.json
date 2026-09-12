@@ -43,26 +43,14 @@
     ]
   },
   "fidelity": {
-    "sha256": "839cb18db84dc76606f573c7c5066f3c3ed03fc67de9e44747f82f390b2f8761",
+    "sha256": "49206dcd8e55743123266e4d9836972a3182b4756678fb5957ca1ff3734866e5",
     "algorithm": "ifclite-pdf-fidelity-v1",
-    "exact": false,
+    "exact": true,
     "rasterOnly": false,
-    "convertiblePaths": 2,
-    "omittedPaints": 1,
-    "summary": [
-      {
-        "kind": "dash",
-        "count": 1,
-        "visibleCount": 1,
-        "bboxPdf": [
-          20,
-          50,
-          60,
-          50
-        ]
-      }
-    ],
+    "convertiblePaths": 3,
+    "omittedPaints": 0,
+    "summary": [],
     "omissionsTruncated": false,
-    "listedOmissions": 1
+    "listedOmissions": 0
   }
 }

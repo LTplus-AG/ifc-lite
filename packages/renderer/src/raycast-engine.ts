@@ -25,22 +25,6 @@ import {
     type PointCloudSnapCamera,
 } from './raycast-point-cloud-query.js';
 export type { PointCloudRaySource, PointCloudRayProvider } from './raycast-point-cloud-query.js';
-/**
- * Cheap order-sensitive 32-bit signature of a mesh set, used to detect when the
- * raycast BVH must rebuild because the SET changed (not just its size). Mixes
- * each mesh's express id + vertex count via a rolling hash — O(n) integer ops,
- * no allocation. Different sets of the same length differ with high probability.
- */
-function computeMeshSetSignature(meshData: readonly MeshData[]): number {
-    let sig = meshData.length | 0;
-    for (let i = 0; i < meshData.length; i++) {
-        const m = meshData[i];
-        sig = (Math.imul(sig, 31) + (m.expressId | 0)) | 0;
-        sig = (Math.imul(sig, 31) + (m.positions.length | 0)) | 0;
-    }
-    return sig;
-}
-
 /** Raycast-only capability; does not widen Renderer.getScene()'s public surface. */
 type RaycastScene = SceneContents & {
     getTexturedMeshes?(): readonly Pick<MeshData, 'expressId' | 'modelIndex'>[];
@@ -58,11 +42,8 @@ export class RaycastEngine {
     // BVH cache
     private bvhCache: {
         meshCount: number;
-        /** Cheap content signature of the built mesh set (#1238): catches a
-         *  same-COUNT but different-MEMBERS set — e.g. two rays materializing
-         *  different instanced pieces — which a count-only check would miss,
-         *  leaving the BVH stale and raycasts wrong. */
-        signature: number;
+        /** Exact ordered objects used to build the BVH. Geometry pieces with
+         *  equal ids and buffer lengths can still occupy different bounds. */
         meshData: MeshData[];
         isBuilt: boolean;
     } | null = null;
@@ -107,9 +88,17 @@ export class RaycastEngine {
         const allMeshData: MeshData[] = [];
         const meshes = this.scene.getMeshes();
         const batchedMeshes = this.scene.getBatchedMeshes();
-        const seenKeys = new Set<string>();
+        const queriedOwners = new Set<string>();
+        const seenPieces = new Set<MeshData>();
+        const seenInstancedKeys = new Set<string>();
 
         const pushVisiblePieces = (expressId: number, modelIndex?: number) => {
+            // One owner/model query returns every resident fragment. Deduplicate
+            // the query, then retain each distinct MeshData object; geometry
+            // signatures can collide for equal-sized fragments sharing a vertex.
+            const ownerKey = `${expressId}:${modelIndex ?? 'any'}`;
+            if (queriedOwners.has(ownerKey)) return;
+            queriedOwners.add(ownerKey);
             const pieces = this.scene.getMeshDataPieces(expressId, modelIndex);
             if (!pieces) return;
 
@@ -117,23 +106,8 @@ export class RaycastEngine {
                 // Apply visibility filtering
                 if (!isEntityVisible(piece.expressId, options?.hiddenIds, options?.isolatedIds)) continue;
 
-                // Avoid duplicates when a piece is reachable from both regular and
-                // batched passes — but DON'T collapse distinct pieces of one entity.
-                // Mapped copies (IfcMappedItem, e.g. the 4 bolts of one fastener)
-                // become several flat pieces sharing expressId/modelIndex AND buffer
-                // sizes (same template), differing only in position/origin. A
-                // size-based key dropped all but the first, so 3 of 4 bolts were
-                // absent from the raycast set → unpickable / unsnappable. Include the
-                // per-piece origin + first vertex so distinct placements survive while
-                // a truly identical piece reached twice still dedups. (Mirrors the
-                // instanced-piece key fix in #1238.)
-                const p0 = piece.positions;
-                const o = piece.origin;
-                const key = `${piece.expressId}:${piece.modelIndex ?? 'any'}:${piece.positions.length}:${piece.indices.length}`
-                    + `:${o ? `${o[0]},${o[1]},${o[2]}` : ''}`
-                    + `:${p0.length >= 3 ? `${p0[0]},${p0[1]},${p0[2]}` : ''}`;
-                if (seenKeys.has(key)) continue;
-                seenKeys.add(key);
+                if (seenPieces.has(piece)) continue;
+                seenPieces.add(piece);
                 allMeshData.push(piece);
             }
         };
@@ -177,8 +151,8 @@ export class RaycastEngine {
                 for (let p = 0; p < pieces.length; p++) {
                     const piece = pieces[p];
                     const key = `${piece.expressId}:inst:${p}`;
-                    if (seenKeys.has(key)) continue;
-                    seenKeys.add(key);
+                    if (seenInstancedKeys.has(key)) continue;
+                    seenInstancedKeys.add(key);
                     allMeshData.push(piece);
                 }
             }
@@ -196,23 +170,20 @@ export class RaycastEngine {
             return allMeshData;
         }
 
-        // Check if BVH needs rebuilding. Compare a content signature, not just the
-        // count: instanced pieces are materialized per-ray (only AABB-hit
-        // occurrences), so two rays can yield the SAME count over DIFFERENT
-        // geometry — a count-only check would reuse a stale BVH. (#1238 review)
-        const signature = computeMeshSetSignature(allMeshData);
+        // Instanced pieces are materialized per-ray and resident fragments can
+        // be replaced or reordered while keeping the same ids and buffer sizes.
+        // Reuse is safe only for the exact ordered objects the BVH indexed.
         const needsRebuild =
             !this.bvhCache ||
             !this.bvhCache.isBuilt ||
             this.bvhCache.meshCount !== allMeshData.length ||
-            this.bvhCache.signature !== signature;
+            this.bvhCache.meshData.some((mesh, index) => mesh !== allMeshData[index]);
 
         if (needsRebuild) {
             // Build BVH only when needed
             this.bvh.build(allMeshData);
             this.bvhCache = {
                 meshCount: allMeshData.length,
-                signature,
                 meshData: allMeshData,
                 isBuilt: true,
             };

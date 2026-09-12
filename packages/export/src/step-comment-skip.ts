@@ -10,7 +10,7 @@
  * (a comma, an unbalanced paren, an odd number of `'`) is skipped as one
  * unit rather than read as argument-list structure. Shared by both
  * `step-argument-parser.ts` splitters so the skip rule can't drift between
- * them again (#4227: `splitTopLevelArgs` shipped with no comment handling
+ * them again (#4227: `splitTopLevelListItems` shipped with no comment handling
  * at all while `splitTopLevelStepArguments` had this same logic inline).
  */
 export function skipStepComment(text: string, i: number): number {

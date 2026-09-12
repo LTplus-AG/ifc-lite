@@ -29,6 +29,20 @@ if (chunk) {
 }
 ```
 
+`DecodedPointChunk.normals` carries source-supplied oriented normals as
+row-aligned `nx, ny, nz` float triples when a decoder provides them. PLY
+supports complete `nx`/`ny`/`nz` properties in ASCII and binary files and
+preserves their values and vertex order exactly. Partial, duplicate, list-valued,
+non-finite, and zero normal declarations leave XYZ loadable but set
+`normalState: 'invalid'`; consumers decide whether valid normals are required
+for their operation.
+
+The canonical PLY streaming source scans headers and bounds in bounded byte
+windows, then decodes directly into host-sized, stride-filtered chunks. A
+memory-cap probe therefore does not allocate full-file point channels before
+downsampling. Streaming PLY headers are limited to 65,536 bytes and files that
+exceed that bound are refused with an explicit error.
+
 The renderer (`@ifc-lite/renderer`) uploads decoded chunks (wrapped as
 `PointCloudAsset` values) via `Renderer.setPointClouds()` /
 `Renderer.addPointClouds()`.
@@ -48,6 +62,12 @@ const source = createDecodeWorkerSource({ format: 'las', blob: file });
 const info = await source.open();
 // drive source.next(maxPoints) → DecodedPointChunk until it returns null
 ```
+
+PLY chunks retain complete scalar `nx`/`ny`/`nz` channels as raw, row-aligned
+`Float32Array` values. `normalState` explicitly distinguishes `supplied`,
+`absent`, and `invalid` declarations; consumers must not silently treat an
+invalid declaration as an un-oriented scan. Stride sampling and worker
+transfer keep each normal with the same position and colour row.
 
 Notes:
 

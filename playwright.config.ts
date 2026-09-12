@@ -51,7 +51,7 @@ export default defineConfig({
   projects: [
     {
       name: 'viewer-e2e',
-      testMatch: /(viewer-smoke|usd-export|laz-wasm|model-reposition)\.e2e\.spec\.ts/,
+      testMatch: /(viewer-smoke|usd-export|laz-wasm|model-reposition|document-text)\.e2e\.spec\.ts/,
       timeout: 240000,
       use: {
         ...devices['Desktop Chrome'],
@@ -72,7 +72,7 @@ export default defineConfig({
     },
     {
       name: 'viewer-e2e-ci',
-      testMatch: /(viewer-smoke|usd-export|laz-wasm|model-reposition)\.e2e\.spec\.ts/,
+      testMatch: /(viewer-smoke|usd-export|laz-wasm|model-reposition|document-text)\.e2e\.spec\.ts/,
       timeout: 240000,
       use: {
         baseURL: BASE_URL,

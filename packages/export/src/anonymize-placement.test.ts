@@ -20,7 +20,7 @@ import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
 import { getEffectiveEntityIndex } from './effective-index.js';
 import { applyPlacementAnonymization } from './anonymize-placement.js';
-import { splitTopLevelArgs } from './step-argument-parser.js';
+import { splitTopLevelListItems } from './step-argument-parser.js';
 
 const enc = (s: string): ArrayBuffer => new TextEncoder().encode(s).buffer as ArrayBuffer;
 const decode = (b: Uint8Array): string => new TextDecoder().decode(b);
@@ -291,7 +291,7 @@ describe('applyPlacementAnonymization (anonymized isolated export, #2934)', () =
 
     const siteLine = content.match(/^#2=IFCSITE\(([^;]*)\);$/m);
     expect(siteLine).not.toBeNull();
-    const siteArgs = splitTopLevelArgs(siteLine![1]);
+    const siteArgs = splitTopLevelListItems(siteLine![1]);
     // RefLatitude, RefLongitude, RefElevation, LandTitleNumber, SiteAddress
     // are IfcSite's last five positional slots.
     const [refLatitude, refLongitude, refElevation, landTitleNumber, siteAddress] = siteArgs.slice(-5);
@@ -304,7 +304,7 @@ describe('applyPlacementAnonymization (anonymized isolated export, #2934)', () =
 
     const buildingLine = content.match(/^#3=IFCBUILDING\(([^;]*)\);$/m);
     expect(buildingLine).not.toBeNull();
-    const buildingArgs = splitTopLevelArgs(buildingLine![1]);
+    const buildingArgs = splitTopLevelListItems(buildingLine![1]);
     expect(buildingArgs.at(-1)).toBe('$'); // BuildingAddress
     expect(buildingArgs).not.toContain("''");
 

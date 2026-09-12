@@ -22,7 +22,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { getEffectiveEntityIndex } from './effective-index.js';
 import { applyScrub, type ScrubOptions } from './anonymize-scrub.js';
 import { StepExporter } from './step-exporter.js';
-import { splitTopLevelArgs } from './step-argument-parser.js';
+import { splitTopLevelListItems } from './step-argument-parser.js';
 import { HAS_PROPERTY_SETS_SLOT } from './type-owned-psets.js';
 
 const enc = (s: string): ArrayBuffer => new TextEncoder().encode(s).buffer as ArrayBuffer;
@@ -57,7 +57,7 @@ function lineArgs(content: string, id: number): string[] {
   // capture would.
   const match = content.match(new RegExp(`^#${id}=\\w+\\((.*)\\);$`, 'm'));
   if (!match) throw new Error(`no exported line for #${id}`);
-  return splitTopLevelArgs(match[1]);
+  return splitTopLevelListItems(match[1]);
 }
 
 /**
@@ -275,6 +275,21 @@ describe('applyScrub: guidMap', () => {
 
     // Every replacement is unique (no two entities collided onto one guid).
     expect(new Set(guidMap.values()).size).toBe(guidMap.size);
+  });
+
+  it('does not create a GUID mapping from a record whose slots were refused (#4200)', async () => {
+    const malformed = MODEL.replace(
+      `#5=IFCWALL('${guid(5)}',#10,`,
+      `#5=IFCWALL('${guid(5)}',"01,23",`,
+    );
+    const store = await parse(malformed);
+    const view = new MutablePropertyView(null, 'anonymize');
+    const index = getEffectiveEntityIndex(store, view, true);
+    const result = applyScrub(store, index, INCLUDED_IDS, view, { guidRandom: seededRandom(5) });
+
+    expect(result.guidMap.has(guid(5))).toBe(false);
+    expect(result.warnings.some((warning) => warning.includes('Entity #5') && warning.includes('could not be read'))).toBe(true);
+    expect(view.getPositionalMutationsForEntity(5)).toBeNull();
   });
 
   it('is empty when regenerateGlobalIds is false, and the exported GlobalIds are unchanged', async () => {

@@ -184,20 +184,26 @@ safe for a mask (kept only when the planner reproduces the identical surface
 identity, otherwise dropped with the diagnostic), and the viewer test asserts
 that invariant rather than either verdict.
 
-The renderer preview stages a masked plan as two parts of one owner through an
-explicit `AppearancePartition`: the textured face set expanded with the planned
-UVs and the retained face set with the source colour, over exactly the
-original's triangle corners. The renderer proves corner-for-corner position
-equality, an identical placement frame and ownership, and full single coverage
-of the reference surface before installing the parts; Compare and Discard
-restore the single original; Apply commits both parts; history records the
-partition and joins the parts again on Undo through the inverted record. The
-partition names the whole owner, so a masked product whose original renders in
-more than one resident fragment is refused explicitly (`Face selection needs
-the evaluated surface ... in one piece, but it renders in N pieces. Clear its
-face selection to texture the whole surface.`); evaluated conversions have one
-source surface, so this only affects streaming fragments above the renderer's
-fragment size. Picking either part selects the product; a portable
+The renderer preview stages a masked plan through an explicit
+`AppearancePartition`: each resident fragment contributes a textured subset, a
+retained subset, or both. Every part has a side-local `partId`, so several
+streaming fragments may retain the same IFC `geometryItemId` without becoming
+ambiguous. The partition also names the canonical source item, its complete
+triangle count and the canonical triangle ordinals carried by every fragment.
+Each mesh keeps the complete `appearanceSource.sourceIndices` plus its
+current-corner-to-canonical-corner map. Later viewport hits therefore remain
+full-surface ordinals rather than becoming subset-local ordinals.
+
+Before installing any GPU part, the renderer proves that both sides provide
+disjoint complete coverage of at most 500,000 canonical triangles, that every
+declared part matches its corner map, and that owner, model, placement and exact
+corner positions are unchanged. Missing, overlapping, reordered or detached
+provenance is refused. Compare and Discard restore every original fragment;
+Apply commits the generated parts; history validates the live side and inverts
+the same partition to join on Undo and split again on Redo. Retained fragments
+keep their previous UV, texture and style references. Empty selected or
+retained halves are omitted per fragment. Picking any generated part selects
+the product; a portable
 IFCZIP export carries the image; reopening the export tessellates the product
 into its two face sets under one selectable product. Real-browser and
 independent-reader evidence, including a masked opening-bearing slab, is in

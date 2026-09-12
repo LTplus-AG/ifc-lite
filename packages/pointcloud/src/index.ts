@@ -11,7 +11,7 @@
  * Phase 2: streaming `.laz` (laz-perf in the worker).
  */
 
-export type { DecodedPointChunk, PointCloudBBox } from './types.js';
+export type { DecodedPointChunk, PointCloudBBox, PointNormalState } from './types.js';
 
 // Inline / IFCx decoders (Phase 0)
 export { decodePcd } from './formats/pcd.js';

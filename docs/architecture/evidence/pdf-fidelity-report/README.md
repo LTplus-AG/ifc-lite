@@ -36,7 +36,7 @@ asserts the same values through the real decoder and WASM on every run.
 | invisibleText (render mode 3) | exact | 1 | text 0/1 | — |
 | clip (rectangle not containing the page) | partial | 1 | clip 1/1 | [0, 0, 80, 80] |
 | transparency (`/ca 0.5` ExtGState) | partial | 1 | transparency 1/1 | [20, 30, 30, 40] |
-| strokes (round join, dash, solid) | partial | 2 | dash 1/1 | [20, 50, 60, 50] |
+| strokes (round join, dash, solid) | exact | 3 | — | — |
 | form (XObject with Matrix and clipping BBox) | partial | 1 | clip 1/1 | [5, 5, 25, 25] |
 | hiddenLayer (optional content OFF) | exact | 1 | hidden 0/1 | — |
 | rasterOnly (one inline image) | raster-only | 0 | image 1/1 | [10, 20, 110, 92] |

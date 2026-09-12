@@ -8,6 +8,7 @@
 pub(crate) mod fills;
 mod fill_paths;
 mod curve_hulls;
+mod dashes;
 mod extent;
 mod flatten;
 mod interpret;

@@ -129,7 +129,7 @@ the planner understands — and a `fidelity` report (next section). It contains
 **no IFC plan**, flattened geometry, contour classification or paint-order
 composition. Forms, transparency groups, annotation appearances, clipping,
 ExtGState dictionaries, optional content, images, shadings/patterns, painted
-text, dashes, curved strokes and device-dependent painted
+text, unqualified dashes, curved strokes and device-dependent painted
 hairlines are interpreted in order and recorded as omissions with their
 original operator ordinal, kind, page-space extent and visibility; they never
 become paths drawn without their clip or effect. Unused font/text-position
@@ -301,10 +301,23 @@ self-contact/crossings refuse the whole page. This first sufficient qualifier
 does not repair wide/self-overlapping stroke arrangements. Round arcs are
 subdivided with a post-affine metric error bound; a request below the numerical
 precision of its transformed coordinates refuses rather than overstating that
-bound. Hairlines, dash patterns and curved strokes remain unsupported. Outlining
+bound. Qualified positive dash patterns on open straight subpaths are split in
+construction space before the complete affine transform. Odd arrays repeat to
+form an even cycle, phase (including a negative phase) is normalized over that
+cycle, and pattern state resets for each subpath while remaining continuous
+across its vertices. An on-run crossing a vertex therefore keeps the configured
+join; each separated run receives the configured cap. Closed dashed contours,
+curved dashed paths and patterns containing a zero remain reported omissions;
+an invalid all-zero array refuses during preparation. Expansion shares the page
+work and piece budgets and refuses atomically when numeric progress cannot be
+proved. A combined fill-and-dashed-stroke paint is supported when the composed
+regions pass the existing fill lattice qualifier; multiple dash-run boundaries
+can create unsupported repeated crossings, in which case the whole plan refuses
+atomically rather than dropping either paint. Hairlines and curved strokes remain unsupported. Outlining
 produces visual filled vector geometry, not editable centreline/text semantics.
 Original-PDF raster and independent IFC evidence lives in
-[evidence/pdf-straight-stroke-annotations](evidence/pdf-straight-stroke-annotations/README.md).
+[the solid-stroke evidence](evidence/pdf-straight-stroke-annotations/README.md)
+and [the dashed-stroke evidence](evidence/pdf-dashed-stroke-annotations/README.md).
 
 ## One lattice for the complete page
 

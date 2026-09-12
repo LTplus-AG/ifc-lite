@@ -12,14 +12,14 @@ import {
   clearAllPointCloudScanCaches,
 } from './pointCloudScanCache.js';
 
-function makeChunk(count: number, startAt = 0): { positions: Float32Array; pointCount: number } {
+function makeChunk(count: number, startAt = 0): { positions: Float32Array; normalState: 'absent'; pointCount: number } {
   const positions = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     positions[i * 3] = startAt + i;
     positions[i * 3 + 1] = 0;
     positions[i * 3 + 2] = 0;
   }
-  return { positions, pointCount: count };
+  return { positions, normalState: 'absent', pointCount: count };
 }
 
 describe('pointCloudScanCache', () => {
@@ -52,11 +52,13 @@ describe('pointCloudScanCache', () => {
     assert.strictEqual(sample!.positions.length, 50 * 3);
   });
 
-  it('carries colours and classifications alongside positions', () => {
+  it('carries colours, normals and classifications alongside positions', () => {
     registerPointCloudScanCache(3, 10);
     const chunk = {
       positions: new Float32Array([1, 2, 3]),
       colors: new Float32Array([1, 0, 0]),
+      normals: new Float32Array([0.1, 0.2, 0.3]),
+      normalState: 'supplied' as const,
       classifications: new Uint8Array([5]),
       pointCount: 1,
     };
@@ -64,7 +66,36 @@ describe('pointCloudScanCache', () => {
     const sample = getPointCloudScanSample(3);
     assert.ok(sample);
     assert.deepStrictEqual(Array.from(sample!.colors!.slice(0, 3)), [255, 0, 0]);
+    assert.deepStrictEqual(Array.from(sample!.normals!.slice(0, 3)), [0.1, 0.2, 0.3].map(Math.fround));
     assert.strictEqual(sample!.classifications![0], 5);
+  });
+
+  it('replaces position, colour and normal as one reservoir row and refuses misaligned channels (#4561)', () => {
+    registerPointCloudScanCache(10, 1);
+    addPointsToScanCache(10, { positions: new Float32Array([1, 2, 3]), colors: new Float32Array([1, 0, 0]), normals: new Float32Array([1, 0, 0]), normalState: 'supplied', pointCount: 1 });
+    const random = Math.random;
+    Math.random = () => 0;
+    try {
+      addPointsToScanCache(10, { positions: new Float32Array([4, 5, 6]), colors: new Float32Array([0, 1, 0]), normals: new Float32Array([0, 0, 1]), normalState: 'supplied', pointCount: 1 });
+    } finally { Math.random = random; }
+    const sample = getPointCloudScanSample(10)!;
+    assert.deepEqual(Array.from(sample.positions), [4, 5, 6]);
+    assert.deepEqual(Array.from(sample.colors!), [0, 255, 0]);
+    assert.deepEqual(Array.from(sample.normals!), [0, 0, 1]);
+    assert.throws(() => addPointsToScanCache(10, { positions: new Float32Array(6), normals: new Float32Array(3), normalState: 'supplied', pointCount: 2 }), /row-aligned/);
+  });
+
+  it('latches invalid normal provenance even when no row from that chunk enters a full reservoir', () => {
+    registerPointCloudScanCache(11, 1);
+    addPointsToScanCache(11, makeChunk(1));
+    const random = Math.random;
+    Math.random = () => 0.99;
+    try {
+      addPointsToScanCache(11, { positions: new Float32Array([4, 5, 6]), normals: new Float32Array([Number.NaN, 0, 1]), normalState: 'invalid', pointCount: 1 });
+    } finally { Math.random = random; }
+    const sample = getPointCloudScanSample(11)!;
+    assert.equal(sample.normals, null);
+    assert.equal(sample.normalState, 'invalid');
   });
 
   it('removePointCloudScanCache drops the sample', () => {
@@ -112,7 +143,7 @@ describe('pointCloudScanCache', () => {
       colors[i * 3] = (i % 256) / 255;
       classifications[i] = i % 256;
     }
-    addPointsToScanCache(8, { positions, colors, classifications, pointCount: total });
+    addPointsToScanCache(8, { positions, colors, classifications, normalState: 'absent', pointCount: total });
 
     const sample = getPointCloudScanSample(8)!;
     assert.strictEqual(sample.count, total);
@@ -125,10 +156,11 @@ describe('pointCloudScanCache', () => {
 
   it('backfills neutral grey for points retained before the first coloured chunk', () => {
     registerPointCloudScanCache(7, 10);
-    addPointsToScanCache(7, { positions: new Float32Array([1, 2, 3]), pointCount: 1 });
+    addPointsToScanCache(7, { positions: new Float32Array([1, 2, 3]), normalState: 'absent', pointCount: 1 });
     addPointsToScanCache(7, {
       positions: new Float32Array([4, 5, 6]),
       colors: new Float32Array([1, 0, 0]),
+      normalState: 'absent',
       pointCount: 1,
     });
     const sample = getPointCloudScanSample(7)!;

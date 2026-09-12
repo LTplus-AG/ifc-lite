@@ -748,6 +748,9 @@ importers:
         specifier: workspace:^
         version: link:../wasm
     devDependencies:
+      '@ifc-lite/export':
+        specifier: workspace:^
+        version: link:../export
       '@ifc-lite/world-frame-fixtures':
         specifier: workspace:^
         version: link:../world-frame-fixtures

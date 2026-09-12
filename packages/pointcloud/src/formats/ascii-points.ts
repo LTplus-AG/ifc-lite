@@ -294,6 +294,7 @@ export function decodeAsciiPointsFromText(
   return {
     positions: written === dataLineCount ? positions : new Float32Array(trimmedPositions),
     colors,
+    normalState: 'absent',
     intensities,
     pointCount: written,
     bbox,

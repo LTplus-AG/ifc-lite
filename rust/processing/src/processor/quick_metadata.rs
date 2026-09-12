@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::types::response::{QuickMetadataEntitySummary, QuickMetadataSpatialNode};
-use ifc_lite_core::{IfcType, IFC_TYPES};
+use ifc_lite_core::{keyword_eq, IfcType, IFC_TYPES};
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
@@ -47,7 +47,7 @@ fn is_quick_spatial_type(ifc_type: IfcType) -> bool {
 ///
 /// Materialised as a name slice rather than resolved per call: the gate runs
 /// once for every entity in the scan loop, and `IfcType::from_str` normalises to
-/// uppercase first, which allocates. A linear `eq_ignore_ascii_case` sweep over
+/// uppercase first, which allocates. A linear `keyword_eq` sweep over
 /// ~18 short names is what the hand-written chain already cost, so the
 /// derivation is free at the call site.
 static QUICK_SPATIAL_TYPE_NAMES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
@@ -67,7 +67,7 @@ static QUICK_SPATIAL_TYPE_NAMES: LazyLock<Vec<&'static str>> = LazyLock::new(|| 
 pub fn is_quick_spatial_type_ci(type_name: &str) -> bool {
     QUICK_SPATIAL_TYPE_NAMES
         .iter()
-        .any(|candidate| type_name.eq_ignore_ascii_case(candidate))
+        .any(|candidate| keyword_eq(type_name, candidate))
 }
 
 pub(super) fn parse_step_arguments(entity_bytes: &[u8]) -> Vec<&[u8]> {

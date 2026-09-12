@@ -64,7 +64,7 @@ pub(crate) fn extract_grid_axes(content: &str) -> Vec<GridAxis3D> {
     let mut out: Vec<GridAxis3D> = Vec::new();
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name != "IFCGRID" {
+        if !ifc_lite_core::keyword_eq(type_name, "IFCGRID") {
             continue;
         }
         let Ok(grid) = decoder.decode_at_with_id(id, start, end) else {

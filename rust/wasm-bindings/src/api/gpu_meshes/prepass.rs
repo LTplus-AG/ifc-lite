@@ -7,6 +7,7 @@ use js_sys::Function;
 use wasm_bindgen::prelude::*;
 
 use super::prepass_affinity::fold_u128_to_u32;
+use super::prepass_discovery::is_disabled;
 
 // The per-submesh #858 palette split lives inside the canonical per-element
 // producer (`ifc_lite_processing::element`) — shared with the native pipeline.
@@ -197,7 +198,7 @@ impl IfcAPI {
             prebuilt.map(std::sync::Arc::new);
         // Load START on the streaming pre-pass path (see build_pre_pass_once).
         self.reset_pipeline_diagnostics();
-        use ifc_lite_core::{has_geometry_by_name, EntityDecoder, EntityScanner, IfcType};
+        use ifc_lite_core::{has_geometry_by_name, keyword_eq, EntityDecoder, EntityScanner, IfcType};
         use ifc_lite_geometry::GeometryRouter;
         use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
 
@@ -246,9 +247,8 @@ impl IfcAPI {
         // (referenced RepresentationMaps, instantiated type ids, the material-
         // layer index). Collect the spans they need HERE, during the one scan the
         // pre-pass already runs, then build + ship each ONCE below (`rel_associates_material`
-        // spans are already stashed in `prepass_spans`).
+        // and `defines_by_type` spans are already stashed in `prepass_spans`).
         let mut mapped_item_spans: Vec<(u32, usize, usize)> = Vec::new();
-        let mut rel_defines_by_type_spans: Vec<(u32, usize, usize)> = Vec::new();
         // #957/#962: IfcTypeProduct candidates (id, span, resolved type), stashed
         // here so the orphan-type-geometry pass reuses THIS scan instead of a
         // second full EntityScanner walk over the file. `IfcType` is captured
@@ -323,7 +323,6 @@ impl IfcAPI {
             prepass_spans = d.prepass_spans;
             prepass_spans.styled_items = Vec::new(); // shards resolve styles
             mapped_item_spans = d.mapped_item_spans;
-            rel_defines_by_type_spans = d.rel_defines_by_type_spans;
             type_candidate_spans = d.type_candidate_spans;
             has_layer_set = d.has_layer_set;
         } else {
@@ -332,88 +331,61 @@ impl IfcAPI {
                 entity_index.insert(id, (start, end)); // prebuilt mode: map unused
             }
 
-            match type_name {
-                "IFCPROJECT" => {
-                    if project_id.is_none() {
-                        project_id = Some(id);
-                    }
+            if prepass_spans.stash(type_name, id, start, end) {
+                // span-list record, nothing else to do for it
+            } else if keyword_eq(type_name, "IFCPROJECT") {
+                if project_id.is_none() {
+                    project_id = Some(id);
                 }
-                "IFCSITE" => {
-                    if site_position.is_none() {
-                        site_position = Some((id, start, end));
-                    }
+            } else if keyword_eq(type_name, "IFCSITE") {
+                if site_position.is_none() {
+                    site_position = Some((id, start, end));
+                }
+                let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+                buffered_jobs.push((id, start, end, ifc_type));
+                total_jobs += 1;
+            } else if keyword_eq(type_name, "IFCMAPPEDITEM") {
+                mapped_item_spans.push((id, start, end));
+            } else if keyword_eq(type_name, "IFCMATERIALLAYERSET")
+                || keyword_eq(type_name, "IFCMATERIALLAYERSETUSAGE")
+            {
+                has_layer_set = true;
+            } else {
+                // #957/#962: an IfcTypeProduct subtype (its geometry is
+                // authored on RepresentationMaps, not the type itself, so it
+                // never matches `has_geometry_by_name`). Stash it for the
+                // orphan-type pass; the RepresentationMaps attr-6 decode +
+                // referenced-filter happens later in
+                // `collect_type_geometry_jobs_from_spans`.
+                if let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) {
+                    type_candidate_spans.push((id, start, end, type_ty));
+                }
+                if has_geometry_by_name(type_name) && !is_disabled(&disabled_types, type_name) {
+                    let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+                    // We don't bucket by simple/complex here — the host
+                    // distributes work across N geometry workers anyway,
+                    // and the simple/complex split was a heuristic for
+                    // RTC sampling that we now resolve once after
+                    // RTC_SAMPLE_THRESHOLD jobs have been collected.
+                    buffered_jobs.push((id, start, end, ifc_type));
+                    total_jobs += 1;
+                } else if !is_disabled(&disabled_types, type_name)
+                    && ifc_lite_core::is_representationless_spatial_container_by_name(
+                        type_name,
+                    )
+                    && ifc_lite_core::nth_attribute_is_present(&content[start..end], 6)
+                {
+                    // #1910: mirrors the identical exception in
+                    // `rust/processing/src/processor/mod.rs` — a spatial
+                    // container `has_geometry_by_name` blocks by name
+                    // (`IfcBuilding` et al.) that exceptionally carries a
+                    // real `Representation` (e.g. a DGM/terrain export
+                    // with no `IfcBuildingElement` children at all) must
+                    // still be scheduled for meshing, or the browser
+                    // viewer renders nothing despite a correct scene tree.
                     let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
                     buffered_jobs.push((id, start, end, ifc_type));
                     total_jobs += 1;
-                }
-                "IFCSTYLEDITEM" => {
-                    prepass_spans.styled_items.push((id, start, end));
-                }
-                "IFCINDEXEDCOLOURMAP" => {
-                    prepass_spans.indexed_colour_maps.push((id, start, end));
-                }
-                "IFCMATERIALDEFINITIONREPRESENTATION" => {
-                    prepass_spans.material_def_reprs.push((id, start, end));
-                }
-                "IFCRELASSOCIATESMATERIAL" => {
-                    prepass_spans.rel_associates_material.push((id, start, end));
-                }
-                "IFCRELVOIDSELEMENT" => {
-                    prepass_spans.void_rels.push((id, start, end));
-                }
-                "IFCRELFILLSELEMENT" => {
-                    prepass_spans.fills_rels.push((id, start, end));
-                }
-                "IFCRELAGGREGATES" => {
-                    prepass_spans.aggregate_rels.push((id, start, end));
-                }
-                "IFCMAPPEDITEM" => {
-                    mapped_item_spans.push((id, start, end));
-                }
-                "IFCRELDEFINESBYTYPE" => {
-                    rel_defines_by_type_spans.push((id, start, end));
-                    prepass_spans.defines_by_type.push((id, start, end)); // material type-fallback
-                }
-                "IFCMATERIALLAYERSET" | "IFCMATERIALLAYERSETUSAGE" => {
-                    has_layer_set = true;
-                }
-                _ => {
-                    // #957/#962: an IfcTypeProduct subtype (its geometry is
-                    // authored on RepresentationMaps, not the type itself, so it
-                    // never matches `has_geometry_by_name`). Stash it for the
-                    // orphan-type pass; the RepresentationMaps attr-6 decode +
-                    // referenced-filter happens later in
-                    // `collect_type_geometry_jobs_from_spans`.
-                    if let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) {
-                        type_candidate_spans.push((id, start, end, type_ty));
-                    }
-                    if has_geometry_by_name(type_name) && !disabled_types.contains(type_name) {
-                        let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
-                        // We don't bucket by simple/complex here — the host
-                        // distributes work across N geometry workers anyway,
-                        // and the simple/complex split was a heuristic for
-                        // RTC sampling that we now resolve once after
-                        // RTC_SAMPLE_THRESHOLD jobs have been collected.
-                        buffered_jobs.push((id, start, end, ifc_type));
-                        total_jobs += 1;
-                    } else if !disabled_types.contains(type_name)
-                        && ifc_lite_core::is_representationless_spatial_container_by_name(
-                            type_name,
-                        )
-                        && ifc_lite_core::nth_attribute_is_present(&content[start..end], 6)
-                    {
-                        // #1910: mirrors the identical exception in
-                        // `rust/processing/src/processor/mod.rs` — a spatial
-                        // container `has_geometry_by_name` blocks by name
-                        // (`IfcBuilding` et al.) that exceptionally carries a
-                        // real `Representation` (e.g. a DGM/terrain export
-                        // with no `IfcBuildingElement` children at all) must
-                        // still be scheduled for meshing, or the browser
-                        // viewer renders nothing despite a correct scene tree.
-                        let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
-                        buffered_jobs.push((id, start, end, ifc_type));
-                        total_jobs += 1;
-                    }
                 }
             }
 
@@ -607,7 +579,7 @@ impl IfcAPI {
             );
         let instantiated_type_ids =
             crate::api::styling::build_instantiated_type_ids_from_spans(
-                &rel_defines_by_type_spans,
+                &prepass_spans.defines_by_type,
                 &mut decoder,
             );
         // #1623 Phase 3 don't-bake plan: the RepresentationMap ids an IfcMappedItem
@@ -743,7 +715,7 @@ impl IfcAPI {
         // type-library (#957) geometry, so skip producing it at load when the
         // caller asks (the Types view re-loads on demand).
         if !skip_type_geometry
-            && memchr::memmem::find(content, b"IFCREPRESENTATIONMAP").is_some()
+            && ifc_lite_core::find_keyword(content, b"IFCREPRESENTATIONMAP").is_some()
         {
             let type_jobs = crate::api::styling::collect_type_geometry_jobs_from_spans(
                 &mapped_item_spans,

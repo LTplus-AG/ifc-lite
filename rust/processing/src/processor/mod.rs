@@ -12,7 +12,7 @@ use crate::types::response::{
     QuickMetadataEntitySummary,
 };
 use ifc_lite_core::{
-    DecodedEntity, EntityDecoder,
+    keyword_eq, keyword_starts_with, DecodedEntity, EntityDecoder,
     EntityIndex, EntityScanner, IfcType,
 };
 use ifc_lite_geometry::TessellationQuality;
@@ -611,7 +611,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     express_id: id,
                     type_name: type_name.to_string(),
                     name: extract_name_from_args(&args, &fallback),
-                    elevation: if type_name.eq_ignore_ascii_case("IfcBuildingStorey") {
+                    elevation: if keyword_eq(type_name, "IFCBUILDINGSTOREY") {
                         extract_storey_elevation_from_args(&args)
                     } else {
                         None
@@ -620,7 +620,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     elements: Vec::new(),
                     parent: None,
                 });
-            } else if type_name.eq_ignore_ascii_case("IFCRELAGGREGATES") {
+            } else if keyword_eq(type_name, "IFCRELAGGREGATES") {
                 let args = parse_step_arguments(&content[start..end]);
                 if let Some(parent_id) = args.get(4).and_then(|token| parse_step_ref(token)) {
                     quick_aggregate_links.push((
@@ -630,7 +630,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                             .unwrap_or_default(),
                     ));
                 }
-            } else if type_name.eq_ignore_ascii_case("IFCRELCONTAINEDINSPATIALSTRUCTURE") {
+            } else if keyword_eq(type_name, "IFCRELCONTAINEDINSPATIALSTRUCTURE") {
                 let args = parse_step_arguments(&content[start..end]);
                 if let Some(parent_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
                     quick_containment_links.push((
@@ -640,7 +640,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                             .unwrap_or_default(),
                     ));
                 }
-            } else if type_name.eq_ignore_ascii_case("IFCRELREFERENCEDINSPATIALSTRUCTURE") {
+            } else if keyword_eq(type_name, "IFCRELREFERENCEDINSPATIALSTRUCTURE") {
                 let args = parse_step_arguments(&content[start..end]);
                 if let Some(parent_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
                     quick_referenced_links.push((
@@ -653,25 +653,25 @@ pub fn process_geometry_streaming_filtered_with_options(
             }
         }
 
-        if type_name == "IFCINDEXEDCOLOURMAP" {
+        if keyword_eq(type_name, "IFCINDEXEDCOLOURMAP") {
             // Span-stashed for the shared post-scan resolver (#663, #858).
             prepass_spans.indexed_colour_maps.push((id, start, end));
             continue;
         }
 
-        if type_name == "IFCSTYLEDITEM" {
+        if keyword_eq(type_name, "IFCSTYLEDITEM") {
             // Span-stashed; the shared resolver classifies orphan (material
             // appearance, #407 — always resolved up front) vs
             // geometry-attached (deferred in fast_first_batch mode, #913 §2c).
             prepass_spans.styled_items.push((id, start, end));
             continue;
-        } else if type_name == "IFCMATERIALDEFINITIONREPRESENTATION" {
+        } else if keyword_eq(type_name, "IFCMATERIALDEFINITIONREPRESENTATION") {
             prepass_spans.material_def_reprs.push((id, start, end));
             continue;
-        } else if type_name == "IFCRELASSOCIATESMATERIAL" {
+        } else if keyword_eq(type_name, "IFCRELASSOCIATESMATERIAL") {
             prepass_spans.rel_associates_material.push((id, start, end));
             continue;
-        } else if type_name == "IFCPRESENTATIONLAYERASSIGNMENT" {
+        } else if keyword_eq(type_name, "IFCPRESENTATIONLAYERASSIGNMENT") {
             if !options.include_presentation_layers {
                 continue;
             }
@@ -682,34 +682,34 @@ pub fn process_geometry_streaming_filtered_with_options(
                 );
             }
             continue;
-        } else if type_name == "IFCPROPERTYSET" {
+        } else if keyword_eq(type_name, "IFCPROPERTYSET") {
             // Decoded lazily in the lookup phase, and only when referenced by a
             // space/zone (its sole consumer). The inline index holds the span.
             continue;
-        } else if type_name == "IFCRELDEFINESBYPROPERTIES" {
+        } else if keyword_eq(type_name, "IFCRELDEFINESBYPROPERTIES") {
             if options.include_properties {
                 rel_defines_spans.push((start, end));
             }
             continue;
-        } else if type_name.starts_with("IFCPROPERTY") {
+        } else if keyword_starts_with(type_name, "IFCPROPERTY") {
             // Individual property values are resolved lazily by id in the lookup
             // phase (only those a referenced space/zone property set lists).
             continue;
-        } else if type_name == "IFCRELVOIDSELEMENT" {
+        } else if keyword_eq(type_name, "IFCRELVOIDSELEMENT") {
             prepass_spans.void_rels.push((id, start, end));
-        } else if type_name == "IFCRELFILLSELEMENT" {
+        } else if keyword_eq(type_name, "IFCRELFILLSELEMENT") {
             prepass_spans.fills_rels.push((id, start, end));
-        } else if type_name == "IFCRELAGGREGATES" {
+        } else if keyword_eq(type_name, "IFCRELAGGREGATES") {
             // Independent of quick-metadata mode: the shared resolver decodes
             // these into the parent → children map that pushes voids down to
             // aggregated parts when the host has no body of its own
             // (IfcWallElementedCase, #845).
             prepass_spans.aggregate_rels.push((id, start, end));
-        } else if type_name == "IFCPROJECT" && project_id.is_none() {
+        } else if keyword_eq(type_name, "IFCPROJECT") && project_id.is_none() {
             project_id = Some(id);
-        } else if type_name == "IFCSITE" && site_entity_pos.is_none() {
+        } else if keyword_eq(type_name, "IFCSITE") && site_entity_pos.is_none() {
             site_entity_pos = Some((start, end));
-        } else if type_name == "IFCBUILDING" && building_entity_pos.is_none() {
+        } else if keyword_eq(type_name, "IFCBUILDING") && building_entity_pos.is_none() {
             building_entity_pos = Some((start, end));
         }
 
@@ -783,7 +783,7 @@ pub fn process_geometry_streaming_filtered_with_options(
         // instantiates (orphan library/showcase geometry). The cheap suffix
         // pre-filter keeps the is_subtype_of check off the hot path for the
         // ~all-non-type majority of entities.
-        else if type_name == "IFCMAPPEDITEM" {
+        else if keyword_eq(type_name, "IFCMAPPEDITEM") {
             let args = parse_step_arguments(&content[start..end]);
             if let Some(source_id) = args.first().and_then(|token| parse_step_ref(token)) {
                 referenced_representation_maps.insert(source_id);
@@ -802,7 +802,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                         .or_insert((1, id));
                 }
             }
-        } else if type_name == "IFCRELDEFINESBYTYPE" {
+        } else if keyword_eq(type_name, "IFCRELDEFINESBYTYPE") {
             // IfcRelDefinesByType.RelatingType is the last attribute (index 5);
             // record it so its type-only geometry is suppressed (it has occurrences).
             let args = parse_step_arguments(&content[start..end]);
@@ -999,16 +999,21 @@ pub fn process_geometry_streaming_filtered_with_options(
                 }
             }
         }
-        let mut root_id = spatial_nodes
+        // `type_name` is the raw keyword; `min` rather than `find` because
+        // `spatial_nodes` is a HashMap, so a file with two roots (or no
+        // IfcProject) would otherwise pick a different tree per run.
+        let root_id = spatial_nodes
             .values()
-            .find(|node| node.type_name == "IfcProject")
-            .map(|node| node.express_id);
-        if root_id.is_none() {
-            root_id = spatial_nodes
-                .values()
-                .find(|node| node.parent.is_none())
-                .map(|node| node.express_id);
-        }
+            .filter(|node| keyword_eq(&node.type_name, "IFCPROJECT"))
+            .map(|node| node.express_id)
+            .min()
+            .or_else(|| {
+                spatial_nodes
+                    .values()
+                    .filter(|node| node.parent.is_none())
+                    .map(|node| node.express_id)
+                    .min()
+            });
         let spatial_tree = root_id
             .map(|root| {
                 build_quick_spatial_tree_node(root, &spatial_nodes, &quick_element_summaries)

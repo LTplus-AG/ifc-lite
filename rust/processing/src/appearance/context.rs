@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Load-time context shared by both canonical appearance passes.
 use crate::stream_meta::{resolve_stream_meta, MetaMode, StreamMeta};
-use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
+use ifc_lite_core::{keyword_eq, EntityDecoder, EntityScanner, IfcType};
 use ifc_lite_geometry::{GeometryRouter, MaterialLayerIndex};
 use std::sync::Arc;
 
@@ -18,13 +18,14 @@ impl Context {
         let mut project = None;
         let mut site = None;
         while let Some((id, name, start, end)) = scanner.next_entity() {
-            if name == "IFCPROJECT" && project.is_none() {
+            if keyword_eq(name, "IFCPROJECT") && project.is_none() {
                 project = Some(id);
             }
-            if name == "IFCSITE" && site.is_none() {
+            let is_site = keyword_eq(name, "IFCSITE");
+            if is_site && site.is_none() {
                 site = Some((id, start, end));
             }
-            if name == "IFCSITE"
+            if is_site
                 || ifc_lite_core::has_geometry_by_name(name)
                 || (ifc_lite_core::is_representationless_spatial_container_by_name(name)
                     && ifc_lite_core::nth_attribute_is_present(&bytes[start..end], 6))

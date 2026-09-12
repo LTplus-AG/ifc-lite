@@ -288,7 +288,7 @@ impl GeometryRouter {
     fn scan_unit_scale(content: &[u8], decoder: &mut EntityDecoder) -> f64 {
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         while let Some((id, type_name, _, _)) = scanner.next_entity() {
-            if type_name == "IFCPROJECT" {
+            if ifc_lite_core::keyword_eq(type_name, "IFCPROJECT") {
                 if let Ok(s) = ifc_lite_core::extract_length_unit_scale(decoder, id) {
                     return s;
                 }

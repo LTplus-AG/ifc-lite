@@ -290,6 +290,15 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(ui.querySelector('[data-chart-subtitle]')?.textContent, 'No data');
   });
 
+  it('lays the cards out in the dashboard grid, one grid item per chart, and offers the dashboard actions menu', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    assert.ok(ui.querySelector('[data-dashboard-grid]'), 'the cards are in the grid');
+    assert.equal(ui.querySelectorAll('[data-grid-item]').length, 3);
+    assert.ok(ui.querySelector('button[aria-label="Dashboard actions"]'), 'rename / duplicate / delete / export / import live behind one menu');
+  });
+
   it('the close button runs onClose and unmounting releases the claim the panel installed', async () => {
     const { renderer, charts } = recordingRenderer();
     let closed = 0;

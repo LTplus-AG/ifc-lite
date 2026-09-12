@@ -44,6 +44,7 @@ import { buildStreamMessagesForModel, filterAttachmentsForModel } from '@/lib/ll
 import { buildSystemPrompt } from '@/lib/llm/system-prompt';
 import { getModelContext, parseCSV } from '@/lib/llm/context-builder';
 import { collectActiveFileAttachments } from '@/lib/attachments';
+import { extractPdfText, MAX_PDF_ATTACHMENT_BYTES } from '@/lib/llm/document-text';
 import { extractCodeBlocks } from '@/lib/llm/code-extractor';
 import { extractScriptEditOps, filterUnappliedScriptOps } from '@/lib/llm/script-edit-ops';
 import { createPatchDiagnostic, getPrimaryRootCause, type RepairScope } from '@/lib/llm/script-diagnostics';
@@ -89,22 +90,9 @@ const MAX_INLINE_IMAGE_DATA_URL_CHARS = 1_200_000;
 const MAX_ATTACHMENTS_PER_MESSAGE = 6;
 const MAX_TEXT_ATTACHMENT_BYTES = 512_000;
 const MAX_IMAGE_ATTACHMENT_BYTES = 8_000_000;
-/** Anthropic's PDF content-block limit is ~32 MB; keep our upload cap lower. */
-const MAX_PDF_ATTACHMENT_BYTES = 16_000_000;
 
 function createAttachmentId(): string {
   return crypto.randomUUID();
-}
-
-/** Convert an ArrayBuffer (binary file) to raw base64 — no data-URL prefix. */
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
-  }
-  return btoa(binary);
 }
 
 interface ChatSendOptions {
@@ -1206,9 +1194,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           remainingSlots -= 1;
           continue;
         }
-        // PDFs are supported by Claude as native document content blocks.
-        // Route them separately from text attachments so the chat request
-        // can emit the correct multimodal block type.
+        // Extract PDF text locally so the same bounded document context works
+        // with every configured model and with bim.files scripts.
         if (file.name.match(/\.pdf$/i) || file.type === 'application/pdf') {
           if (!supportsFileAttachments) {
             setChatError('Selected model does not support file attachments. Switch model to attach PDFs.');
@@ -1218,15 +1205,12 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             setChatError(`PDF attachments must be smaller than ${Math.round(MAX_PDF_ATTACHMENT_BYTES / 1_000_000)} MB.`);
             continue;
           }
-          const buffer = await file.arrayBuffer();
-          const base64 = arrayBufferToBase64(buffer);
           const attachment: FileAttachment = {
             id: createAttachmentId(),
             name: file.name,
             type: 'application/pdf',
             size: file.size,
-            pdfBase64: base64,
-            isPdf: true,
+            textContent: await extractPdfText(file),
           };
           addAttachment(attachment);
           remainingSlots -= 1;
@@ -1253,8 +1237,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           remainingSlots -= 1;
           continue;
         }
-        // Text-based files — CSV, TSV, JSON, TXT
-        if (!file.name.match(/\.(csv|json|txt|tsv)$/i)) continue;
+        // Text-based files — CSV, TSV, JSON, TXT and Markdown.
+        if (!file.name.match(/\.(csv|json|txt|tsv|md|markdown)$/i)) continue;
         if (!supportsFileAttachments) {
           setChatError('Selected model does not support file attachments. Switch model to attach files.');
           continue;
@@ -1352,7 +1336,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const modelSupportsFiles = modelForUi?.supportsFileAttachments ?? true;
   const attachmentAccept = [
     modelSupportsFiles
-      ? '.csv,.json,.txt,.tsv,.pdf,application/pdf,.xlsx,.xls,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.oasis.opendocument.spreadsheet'
+      ? '.csv,.json,.txt,.tsv,.md,.markdown,text/markdown,.pdf,application/pdf,.xlsx,.xls,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.oasis.opendocument.spreadsheet'
       : '',
     modelSupportsImages ? 'image/*' : '',
   ].filter(Boolean).join(',');

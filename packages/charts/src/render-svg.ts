@@ -10,7 +10,7 @@
  */
 import { init, use } from 'echarts/core';
 import { BarChart, PieChart, TreemapChart } from 'echarts/charts';
-import { BrushComponent, GridComponent, LegendComponent, TitleComponent, TooltipComponent } from 'echarts/components';
+import { GridComponent, LegendComponent, TitleComponent, TooltipComponent } from 'echarts/components';
 import { SVGRenderer } from 'echarts/renderers';
 import { buildEChartsOption, type BuildOptionArgs } from './echarts-option.js';
 
@@ -18,7 +18,7 @@ let registered = false;
 /** Register the chart types and components this package uses, once. */
 export function registerEChartsModules(): void {
   if (registered) return;
-  use([BarChart, PieChart, TreemapChart, BrushComponent, GridComponent, LegendComponent, TitleComponent, TooltipComponent, SVGRenderer]);
+  use([BarChart, PieChart, TreemapChart, GridComponent, LegendComponent, TitleComponent, TooltipComponent, SVGRenderer]);
   registered = true;
 }
 

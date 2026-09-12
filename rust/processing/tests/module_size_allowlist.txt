@@ -50,11 +50,9 @@
 # +4: build the index once in parallel on the fail-closed try_/project_glb_size large-model GLB paths (perf/parallel-scan).
 # +81: emissive-material knob for KMZ/Google Earth (#1427) - make_material lit/unlit/emissive branch + emissive param threaded through build_gltf/export_glb_from_meshes and their tests.
     4028 rust/export/src/gltf.rs
-# COLLADA (.dae) exporter that embeds geometry in the KMZ (#1427); cohesive single-purpose module.
-# -205: #2628 review follow-up split the inline #[cfg(test)] mod out to collada_tests.rs
-# (ratchet-exempt) to make room for the composed KMZ heading+up-axis orientation
-# invariant test without growing this file; budget refreshed downward.
-    430 rust/export/src/collada.rs
+# Row DELETED: the COLLADA document WRITER moved verbatim to collada_document.rs
+# so collada.rs could take try_export_collada_from_meshes and come
+# back under the 400-line rule instead of raising this budget to 470.
      468 rust/export/src/model.rs
 # -140 net: text-level STEP primitives (escape/detect_schema/refs_in_line/
 # split_top_level_args/apply_attr_mutations) split out to step_text.rs, making

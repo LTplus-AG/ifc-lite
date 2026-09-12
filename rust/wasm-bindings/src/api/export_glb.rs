@@ -186,6 +186,14 @@ impl IfcAPI {
     /// `altitude_mode` (`"clampToGround"` default ⇒ rest on terrain, ignoring
     /// `altitude`; `"absolute"` ⇒ place at `altitude` metres MSL) selects the
     /// KML vertical placement (#1427).
+    ///
+    /// Fails CLOSED: when no triangle survives (an empty visible set, or meshes
+    /// whose only triangles are degenerate and collapse in the vertex dedup)
+    /// this throws an `Error` whose message starts with `NO_RENDER_GEOMETRY`;
+    /// a declared vertex/index count running past its buffer throws
+    /// `MALFORMED_MESH_INPUT`, as `exportGlbFromMeshes` does. Both used to ship
+    /// as a small "successful" archive: the first around a COLLADA document
+    /// the 1.4.1 schema rejects, the second with every later mesh missing.
     #[wasm_bindgen(js_name = exportKmzFromMeshes)]
     #[allow(clippy::too_many_arguments)]
     pub fn export_kmz_from_meshes(
@@ -204,7 +212,7 @@ impl IfcAPI {
         x_axis_ordinate: Option<f64>,
         name: String,
         altitude_mode: Option<String>,
-    ) -> Vec<u8> {
+    ) -> Result<Vec<u8>, JsValue> {
         let opts = ifc_lite_export::KmzOptions {
             latitude,
             longitude,
@@ -214,7 +222,7 @@ impl IfcAPI {
             x_axis_ordinate,
             name: if name.is_empty() { None } else { Some(name) },
         };
-        ifc_lite_export::export_kmz_collada_from_meshes(
+        ifc_lite_export::try_export_kmz_collada_from_meshes(
             positions,
             normals,
             indices,
@@ -224,5 +232,6 @@ impl IfcAPI {
             origins,
             &opts,
         )
+        .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))
     }
 }

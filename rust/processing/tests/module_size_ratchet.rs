@@ -58,7 +58,7 @@ const ALLOWLIST: &str = include_str!("module_size_allowlist.txt");
 const ALLOWLIST_DIGESTS: &[(&str, u64)] = &[
     ("apps/server", 4114979320796990468),
     ("rust/core", 5128986816533797052),
-    ("rust/export", 15791359419451037914),
+    ("rust/export", 3941515267630379051),
     ("rust/geometry", 17164311728163718683),
     ("rust/processing", 7633784028779437211),
     ("rust/wasm-bindings", 11372642225568989008),

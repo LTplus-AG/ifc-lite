@@ -24,7 +24,9 @@ type ScanTransferWorkbench = Pick<ReturnType<typeof useScanWorkbench>, 'targetId
 export function useScanTransfer(work: ScanTransferWorkbench) {
   const [productIds, setProductIds] = useState<number[]>([]);
   const [settings, setSettings] = useState<ScanTransferSettings>({ toleranceMetres: 0.01, reviewed: false,
-    texelsPerMetre: 256, maxDistanceMetres: 0.02, minNormalDot: 0.8, ambiguityDistanceMetres: 0.001, maxBehindMetres: 0.01 });
+    texelsPerMetre: 256, maxDistanceMetres: 0.02, minNormalDot: 0.8, ambiguityDistanceMetres: 0.001, maxBehindMetres: 0.01,
+    // Point-cloud fit (#4381): 3 cm support, 4..32 neighbours, 3 mm surface band.
+    neighborhoodRadiusMetres: 0.03, minNeighbors: 4, maxNeighbors: 32, surfaceBandMetres: 0.003 });
   const [coverage, setCoverage] = useState<MeshTransferPlan['transfer'] | null>(null);
   const [busy, setBusy] = useState(false), [ready, setReady] = useState(false), [original, setOriginal] = useState(false);
   const [status, setStatus] = useState('Choose the IFC objects that should receive scan appearance.'), [error, setError] = useState(false);
@@ -95,6 +97,7 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
     });
   }
   return { productIds, setProductIds, targets, selectedCount, settings, setSettings, coverage, busy, ready, original, status, error, preview, compare, apply,
+    pointSource: work.session?.source.kind === 'points',
     chooseSelection() { setProductIds(appearanceOwners(useViewerStore.getState(), work.targetId).selectedProductIds); setStatus('Target objects pinned. Review alignment and preview transfer.'); },
     discard() { operation.current?.abort(); planner.current?.cancel(); release(); setBusy(false); setReady(false); setOriginal(false); setCoverage(null); setStatus('Transfer preview discarded.'); },
   };

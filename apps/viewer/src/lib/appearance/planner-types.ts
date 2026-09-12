@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { PdfFillAnnotationRequest, PdfFillAnnotationPlan } from './pdf/fill-plan-types';
 import type { PdfVectorPage, PreparedPdfVectorPage } from './pdf/vector-types';
-import type { MeshTransferRequest, MeshTransferPlan } from './scan/transfer-types';
+import type { MeshTransferRequest, MeshTransferPlan, TransferPointPayload } from './scan/transfer-types';
 import type { ScanRegistrationRequest, ScanRegistrationReport } from './scan/types';
 
 import type { IfcAttributeValue, NewEntity } from '@ifc-lite/mutations';
@@ -159,6 +159,8 @@ export type AppearanceWorkerJob =
   | { type: 'pdf-fidelity'; request: PdfVectorPage }
   | { type: 'pdf-fill-plan'; request: PdfFillAnnotationRequest }
   | { type: 'mesh-transfer'; request: MeshTransferRequest; rgba: Uint8Array }
+  /** RGB point-cloud source (#4381): the same request shape with `source.kind === 'points'` plus its binary payload. */
+  | { type: 'point-transfer'; request: MeshTransferRequest; rgba: Uint8Array; points: TransferPointPayload }
   | { type: 'scan-registration'; request: ScanRegistrationRequest }
   | { type: 'captured-mesh-plan'; request: CapturedMeshRequest }
   | { type: 'annotation-plan'; request: AnnotationPlaneRequest }

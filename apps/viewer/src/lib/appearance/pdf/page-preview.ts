@@ -35,6 +35,7 @@ export async function preparePdfPagePreview(options: {
   });
   abort(signal); snapshot.validate();
   const { sourceImage: page, sourceImages, rgba } = await prepareAppearanceRasterPayload(snapshot.modelId, productIds, source.assetId, owner, signal, snapshot.validate);
+  if (!page) throw new Error('The page image was not decoded.');
   const result = await planner.pagePlan(snapshot.bytes, {
     appearance: { schema: snapshot.schema, sourceRevision: snapshot.revision, nextExpressId: snapshot.nextExpressId,
       productIds, imageUri: modelAppearanceAssets.getAuthoredUri(snapshot.modelId, source.assetId),

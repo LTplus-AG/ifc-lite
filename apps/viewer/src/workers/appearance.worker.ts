@@ -5,7 +5,7 @@ import type { PdfFillAnnotationRequest, PdfFillAnnotationPlan } from '../lib/app
 import type { PdfVectorPage, PreparedPdfVectorPage } from '../lib/appearance/pdf/vector-types';
 import type { ScanRegistrationRequest, ScanRegistrationReport } from '../lib/appearance/scan/types';
 
-import type { MeshTransferRequest, MeshTransferPlan } from '../lib/appearance/scan/transfer-types';
+import type { MeshTransferRequest, MeshTransferPlan, TransferPointPayload } from '../lib/appearance/scan/transfer-types';
 import init, { IfcAPI } from '@ifc-lite/wasm';
 import { decodePagePlan, decodeAtlasOutput } from '../lib/appearance/page-plan-output.js';
 import type { CapturedMeshPlan, CapturedMeshRequest, AnnotationPlanePlan, AnnotationPlaneRequest, PageAppearancePlan, PageAppearanceRequest, AppearanceCatalog, AppearanceCatalogRequest, AppearancePlan, AppearanceRequest, AppearanceWorkerRequest, AppearanceWorkerResponse } from '../lib/appearance/planner-types.js';
@@ -27,6 +27,9 @@ export function runPdfFillAnnotationPlanning(source: Uint8Array, request: PdfFil
 }
 export function runMeshTransfer(source: Uint8Array, request: MeshTransferRequest, rgba: Uint8Array): Promise<MeshTransferPlan> {
   return runAppearanceJob(api => api.planMeshTransfer(source, JSON.stringify(request), rgba), bytes => decodeAtlasOutput<MeshTransferPlan>(bytes));
+}
+export function runPointTransfer(source: Uint8Array, request: MeshTransferRequest, rgba: Uint8Array, points: TransferPointPayload): Promise<MeshTransferPlan> {
+  return runAppearanceJob(api => api.planPointTransfer(source, JSON.stringify(request), rgba, points.positions, points.colors, points.normals, points.stations), bytes => decodeAtlasOutput<MeshTransferPlan>(bytes));
 }
 export function runScanRegistration(request: ScanRegistrationRequest): Promise<ScanRegistrationReport> {
   return runAppearanceJob(api => api.registerScanCorrespondences(JSON.stringify(request)));
@@ -56,7 +59,7 @@ const isWorkerScope = typeof self !== 'undefined' &&
 if (isWorkerScope) {
   self.onmessage = async (event: MessageEvent<AppearanceWorkerRequest>) => {
     const job = event.data;
-    if (!job || (job.type !== 'pdf-fidelity' && job.type !== 'pdf-fill-plan' && job.type !== 'mesh-transfer' && job.type !== 'scan-registration' && job.type !== 'plan' && job.type !== 'catalog' && job.type !== 'page-plan' && job.type !== 'annotation-plan' && job.type !== 'captured-mesh-plan')) return;
+    if (!job || (job.type !== 'pdf-fidelity' && job.type !== 'pdf-fill-plan' && job.type !== 'mesh-transfer' && job.type !== 'point-transfer' && job.type !== 'scan-registration' && job.type !== 'plan' && job.type !== 'catalog' && job.type !== 'page-plan' && job.type !== 'annotation-plan' && job.type !== 'captured-mesh-plan')) return;
     try {
       const response: AppearanceWorkerResponse = job.type === 'pdf-fidelity'
         ? { type: 'pdf-fidelity-complete', id: job.id, result: await runPdfFidelity(job.request) }
@@ -64,6 +67,8 @@ if (isWorkerScope) {
         ? { type: 'pdf-fill-complete', id: job.id, result: await runPdfFillAnnotationPlanning(job.source, job.request) }
         : job.type === 'mesh-transfer'
         ? { type: 'mesh-transfer-complete', id: job.id, result: await runMeshTransfer(job.source, job.request, job.rgba) }
+        : job.type === 'point-transfer'
+        ? { type: 'mesh-transfer-complete', id: job.id, result: await runPointTransfer(job.source, job.request, job.rgba, job.points) }
         : job.type === 'scan-registration'
         ? { type: 'scan-registration-complete', id: job.id, result: await runScanRegistration(job.request) }
         : job.type === 'plan'

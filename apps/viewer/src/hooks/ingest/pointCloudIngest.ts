@@ -33,7 +33,7 @@ import {
 import {
   addPointsToScanCache,
   registerPointCloudScanCache,
-  removePointCloudScanCache,
+  removePointCloudScanCache, setPointCloudScanCacheOrigin,
 } from './pointCloudScanCache.js';
 
 export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
@@ -379,7 +379,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
       signal: opts.signal,
       autoOrigin: true,
       onOpen: (info) => {
-        if (info.originOffset) retargetPointCloudDecodeOrigin(opts.renderer, handle, info.originOffset);
+        if (info.originOffset) { retargetPointCloudDecodeOrigin(opts.renderer, handle, info.originOffset); setPointCloudScanCacheOrigin(handle.id, info.originOffset); }
         opts.onProgress?.({
           phase: info.stride > 1
             ? `Streaming (${info.stride}× downsampled, ${info.totalPointCount.toLocaleString()} pts)`

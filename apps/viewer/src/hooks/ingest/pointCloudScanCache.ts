@@ -39,6 +39,15 @@ export interface RetainedPointCloudSample {
   /** Total points offered to the reservoir so far (for diagnostics only). */
   seen: number;
   capacity: number;
+  /**
+   * Native (X, Y, Z) decode origin the decoder subtracted in f64 before
+   * narrowing to f32 (`streamPointCloud`'s `originOffset`), or null when the
+   * source streamed at its raw coordinates. `positions` are Y-up-swapped
+   * decode-relative values, so native = (x + o.x, -z + o.y, y + o.z). Retained
+   * so the scan alignment workbench can name landmarks in the file's own
+   * frame (#4381) without the f32 render transform's precision loss.
+   */
+  origin: readonly [number, number, number] | null;
 }
 
 interface ReservoirCache extends RetainedPointCloudSample {
@@ -69,6 +78,7 @@ function createReservoir(capacity: number): ReservoirCache {
     count: 0,
     seen: 0,
     capacity,
+    origin: null,
     hasColor: false,
     hasClassifications: false,
     allocated,
@@ -164,6 +174,12 @@ function writePoint(
 
 function clampByte(v: number): number {
   return v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
+}
+
+/** Record the decoder's f64 origin offset once the stream opens (#4381). */
+export function setPointCloudScanCacheOrigin(handleId: number, origin: readonly [number, number, number]): void {
+  const cache = caches.get(handleId);
+  if (cache) cache.origin = [origin[0], origin[1], origin[2]];
 }
 
 /**

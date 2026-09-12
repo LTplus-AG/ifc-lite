@@ -30,7 +30,7 @@
 import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
 import { asSourceBytes, STEP_TRIVIA } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
-import { splitTopLevelArgs } from './step-argument-parser.js';
+import { readStepSlots, splitTopLevelListItems } from './step-argument-parser.js';
 // Schema-derived type-set machinery (INFRASTRUCTURE_TYPES, PRODUCT_TYPES,
 // collectDescendantNames) lives in `entity-type-sets.ts` — shared with
 // `subset-roots.ts`, which derives IFC_ROOT_TYPES the same way. Re-exported
@@ -52,7 +52,6 @@ export { INFRASTRUCTURE_TYPES, PRODUCT_TYPES, collectDescendantNames };
  * isOptionalTrailingRef} entry, so its omitted trailing ref dropped the WHOLE
  * line instead of becoming `$`. `.trim()` hides the whitespace-only form.
  */
-const RECORD_PREFIX_RE = new RegExp(`^(#\\d+\\s*=\\s*(\\w+)${STEP_TRIVIA}\\()([\\s\\S]*)(\\)\\s*;)\\s*$`);
 export const BARE_REF_RE = new RegExp(`^${STEP_TRIVIA}#(\\d+)${STEP_TRIVIA}$`); // bare `#N` ref, trivia-tolerant (#4227), exported for reuse
 /**
  * UTF-8 decode of `[start, end)` of the source. Mirrors `step-exporter.ts` /
@@ -536,10 +535,10 @@ export function collectReferencedEntityIds(
  *
  * Returns the line unchanged when it names nothing excluded, a rewritten line
  * when a list member was dropped, or `null` to mean "do not emit this
- * relationship at all". A line this cannot parse as a single `#N=TYPE(...);`
- * record is returned unchanged — the source-iteration pass's own byte-range
- * and mutation passes are what validate that shape; this function only ever
- * narrows what a well-formed one contains.
+ * relationship at all". A STEP entity line whose validated slot layout cannot
+ * be read is withheld too: retaining an unverified line here could retain the
+ * exact excluded reference this output gate exists to remove. Non-entity text
+ * is returned unchanged.
  *
  * `isExcluded` is a predicate rather than a fixed `Set` because "excluded"
  * has two independent sources that a caller may need to combine: a
@@ -554,19 +553,25 @@ export function filterHiddenRefsFromRelationshipLine(
   line: string,
   isExcluded: (id: number) => boolean,
 ): string | null {
-  const match = line.match(RECORD_PREFIX_RE);
-  if (!match) return line;
-  const [, prefix, typeName, argsText, suffix] = match;
-  const attrs = splitTopLevelArgs(argsText);
-  const entityType = typeName.toUpperCase();
+  const record = readStepSlots(line);
+  // This helper is also the output gate for relationship/source-style lines.
+  // Once a line identifies itself as a STEP entity, refusing its slot layout
+  // must withhold the whole record; emitting it unchanged can retain exactly
+  // the dangling reference this gate exists to remove (#4200).
+  if (record === null) return /^\s*#\d+\s*=/.test(line) ? null : line;
+  const attrs = [...record.slots];
+  const entityType = record.type;
 
   let changed = false;
   const nextAttrs: string[] = [];
   for (let index = 0; index < attrs.length; index++) {
-    const attr = attrs[index];
+    const rawAttr = attrs[index];
+    const attr = rawAttr.trim();
+    const leading = rawAttr.slice(0, rawAttr.indexOf(attr));
+    const trailing = rawAttr.slice(rawAttr.indexOf(attr) + attr.length);
     if (attr.length >= 2 && attr.charCodeAt(0) === 0x28 /* '(' */ && attr.charCodeAt(attr.length - 1) === 0x29 /* ')' */) {
       const inner = attr.slice(1, -1);
-      const items = inner.trim() === '' ? [] : splitTopLevelArgs(inner);
+      const items = inner.trim() === '' ? [] : splitTopLevelListItems(inner);
       const survivors = items.filter((item) => {
         const refMatch = item.match(BARE_REF_RE);
         return !(refMatch && isExcluded(Number(refMatch[1])));
@@ -574,10 +579,10 @@ export function filterHiddenRefsFromRelationshipLine(
       if (survivors.length !== items.length) {
         if (survivors.length === 0) return null;
         changed = true;
-        nextAttrs.push(`(${survivors.join(',')})`);
+        nextAttrs.push(`${leading}(${survivors.join(',')})${trailing}`);
         continue;
       }
-      nextAttrs.push(attr);
+      nextAttrs.push(rawAttr);
       continue;
     }
 
@@ -585,16 +590,16 @@ export function filterHiddenRefsFromRelationshipLine(
     if (refMatch && isExcluded(Number(refMatch[1]))) {
       if (isOptionalTrailingRef(entityType, attrs.length, index)) {
         changed = true;
-        nextAttrs.push('$');
+        nextAttrs.push(`${leading}$${trailing}`);
         continue;
       }
       return null;
     }
-    nextAttrs.push(attr);
+    nextAttrs.push(rawAttr);
   }
 
   if (!changed) return line;
-  return `${prefix}${nextAttrs.join(',')}${suffix}`;
+  return `${record.prefix}${nextAttrs.join(',')}${record.suffix}`;
 }
 
 /**
@@ -680,13 +685,12 @@ export function relationshipRefsSurviveExclusion(
  * {@link relationshipRefGroupsFromSourceLine} needs to splice a positional or
  * named-attribute override into the right slot.
  *
- * Built from the exact same primitives (`splitTopLevelArgs`, the `#(\d+)`
+ * Built from the exact same primitives (`splitTopLevelListItems`, the `#(\d+)`
  * ref pattern) `filterHiddenRefsFromRelationshipLine` uses, so the two
  * extraction routes (this one from text, `refGroupsOf` from an authored
  * attribute list) feed the SAME decision function identically. A line that
- * does not parse as a single `#N=TYPE(...);` record yields no groups —
- * nothing to exclude on, so the relationship survives, matching that
- * function's own "return line unchanged" behavior for the same input shape.
+ * does not parse as a single `#N=TYPE(...);` record yields no groups. Callers
+ * that emit source records separately apply the withholding gate above.
  *
  * A parenthesised list holding a NON-reference item (an inline typed value
  * alongside, or instead of, `#N` members) yields `undefined` for that slot
@@ -717,9 +721,10 @@ export function relationshipRefsSurviveExclusion(
  * comments (#2637) call out as a defect source.
  */
 export function refGroupFromArg(attr: string): number | number[] | undefined {
+  attr = attr.trim();
   if (attr.length >= 2 && attr.charCodeAt(0) === 0x28 /* '(' */ && attr.charCodeAt(attr.length - 1) === 0x29 /* ')' */) {
     const inner = attr.slice(1, -1);
-    const items = inner.trim() === '' ? [] : splitTopLevelArgs(inner);
+    const items = inner.trim() === '' ? [] : splitTopLevelListItems(inner);
     const ids: number[] = [];
     let hasNonRefItem = false;
     for (const item of items) {
@@ -734,10 +739,8 @@ export function refGroupFromArg(attr: string): number | number[] | undefined {
 }
 
 function extractRelationshipRefGroupsIndexed(line: string): Array<number | number[] | undefined> {
-  const match = line.match(RECORD_PREFIX_RE);
-  if (!match) return [];
-  const attrs = splitTopLevelArgs(match[3]);
-  return attrs.map(refGroupFromArg);
+  const record = readStepSlots(line);
+  return record === null ? [] : record.slots.map(refGroupFromArg);
 }
 
 /**

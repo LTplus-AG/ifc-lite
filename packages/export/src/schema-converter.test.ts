@@ -135,6 +135,19 @@ describe('schema-converter', () => {
       expect(convertStepLine('', 'IFC4', 'IFC2X3')).toBe('');
     });
 
+    it('refuses malformed slots before any type rename or proxy replacement (#4200)', () => {
+      expect(() => convertStepLine(
+        '#10=IFCBRIDGE(\'g\',"01,23",$);',
+        'IFC4X3',
+        'IFC4',
+      )).toThrow(/refused an invalid STEP argument list/);
+      expect(() => convertStepLine(
+        '#99=IFCALIGNMENTCANT(\'g\',"01,23",$);',
+        'IFC4X3',
+        'IFC4',
+      )).toThrow(/refused an invalid STEP argument list/);
+    });
+
     it('handles complex STEP attribute values correctly', () => {
       // Attributes with nested parentheses and strings
       const line = "#10=IFCWALL('2O2Fr$t4X7Zf8NOew3FLOH',$,'Basic Wall:Interior - 79mm Partition (1-hr):128475',$,'Basic Wall:Interior - 79mm Partition (1-hr)',$,#8,#9,.STANDARD.);";

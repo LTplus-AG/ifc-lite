@@ -112,9 +112,22 @@ export function bindAppearancePreview(
     if (!originals?.length) throw new Error(`Geometry for IFC object #${productId} is not available. Reload the model and try again.`);
     const represented = new Set<number>();
     const modelIndex = originals[0].modelIndex ?? 0;
-    const pieces = originals.length;
     const geometryItemRemaps: NonNullable<AppearanceChange['geometryItemRemaps']>[number][] = [];
-    let partition: AppearancePartition | undefined;
+    const firstRef = originals[0].geometryItemId === undefined ? null : state.resolveGlobalIdFromModels(originals[0].geometryItemId);
+    const firstItem = firstRef?.modelId === modelId ? items.get(firstRef.expressId) : undefined;
+    const maskedConversion = firstItem && conversions.get(firstItem.geometryItemId);
+    if (firstItem && maskedConversion && maskedSplit(maskedConversion)) {
+      if (originals.some(mesh => mesh.geometryItemId !== originals![0].geometryItemId || (mesh.modelIndex ?? 0) !== modelIndex)) {
+        throw new Error(`Face selection requires one canonical surface for IFC object #${productId}.`);
+      }
+      const image = itemImages ? itemImages.get(firstItem.geometryItemId) : { bitmap, imageUri, repeatS, repeatT };
+      if (!image) throw new Error(`The baked image for IFC geometry #${firstItem.geometryItemId} is missing.`);
+      const masked = bindMaskedConversionParts({ originals, conversion: maskedConversion, item: firstItem, image, expandCorners,
+        textureId: textureIdentity(image.bitmap), texturedItemId: state.toGlobalId(modelId, firstItem.geometryItemId),
+        retainedItemId: state.toGlobalId(modelId, maskedConversion.retainedGeometryItemId!) });
+      return { globalId, modelIndex, parts: masked.parts, ...(materializedOriginals ? { materializedOriginals, validate } : {}),
+        partition: masked.partition };
+    }
     const parts = originals.flatMap(mesh => {
       const ref = mesh.geometryItemId === undefined ? null : state.resolveGlobalIdFromModels(mesh.geometryItemId);
       const item = ref?.modelId === modelId ? items.get(ref.expressId) : undefined;
@@ -125,14 +138,7 @@ export function bindAppearancePreview(
       const image = itemImages ? itemImages.get(item.geometryItemId) : { bitmap, imageUri, repeatS, repeatT };
       if (!image) throw new Error(`The baked image for IFC geometry #${item.geometryItemId} is missing.`);
       const conversion = conversions.get(item.geometryItemId);
-      if (conversion && maskedSplit(conversion)) {
-        // The partition names the whole owner, so a masked owner must be one part.
-        if (pieces !== 1) throw new Error(`Face selection needs the evaluated surface of IFC object #${productId} in one piece, but it renders in ${pieces} pieces. Clear its face selection to texture the whole surface.`);
-        const masked = bindMaskedConversionParts({ original: mesh, conversion, item, image, expandCorners, textureId: textureIdentity(image.bitmap),
-          texturedItemId: state.toGlobalId(modelId, item.geometryItemId), retainedItemId: state.toGlobalId(modelId, conversion.retainedGeometryItemId!) });
-        partition = masked.partition;
-        return masked.parts;
-      }
+      if (conversion && maskedSplit(conversion)) throw new Error(`Face selection requires one canonical surface for IFC object #${productId}.`);
       if (conversion && !geometryItemRemaps.some(pair => pair.from === mesh.geometryItemId)) {
         geometryItemRemaps.push({ from: mesh.geometryItemId!, to: state.toGlobalId(modelId, item.geometryItemId) });
       }
@@ -143,7 +149,7 @@ export function bindAppearancePreview(
     });
     if (represented.size !== items.size) throw new Error(`Some geometry for IFC object #${productId} is still loading.`);
     return { globalId, modelIndex, parts, ...(materializedOriginals ? { materializedOriginals, validate } : {}),
-      ...(geometryItemRemaps.length ? { geometryItemRemaps } : {}), ...(partition ? { partition } : {}) };
+      ...(geometryItemRemaps.length ? { geometryItemRemaps } : {}) };
   });
   return [...groups, ...bindCompanionPreview(state, renderer, modelId, plan)];
 }

@@ -169,7 +169,7 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
             styles.geometry_style_index.insert(face,style);
         }
         if let Some((retained_item,_))=retained {
-            source.evaluated_splits.insert(product_id,source::SplitBody {mapped:item,retained:retained_item});
+            source.evaluated_splits.insert(product_id,source::SplitBody {textured:item,retained:retained_item});
         }
         for owner in removed.iter().map(|mesh|mesh.express_id).collect::<BTreeSet<_>>() {
             if !canonical::produce(source,owner,&textures,Some(&styles))?.is_empty() {

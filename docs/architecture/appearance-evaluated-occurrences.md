@@ -92,10 +92,15 @@ evaluated surface. Masks exist only under `representationPolicy:
 policy is refused as a whole. Each accepted conversion reports a
 `surfaceFingerprint`: the hex SHA-256 of the product GlobalId, the authored
 product-local coordinates quantised to one micrometre, and the triangle
-topology. Express ids are deliberately excluded, so a renumbered export or a
-rigid placement edit keeps a mask, while any change to the evaluated surface
-(an edited opening, a different profile, another tessellator) changes the
-fingerprint. A mask is `{ productId, surfaceFingerprint, triangles }` with
+topology. Express ids are deliberately excluded, so a renumbered export keeps
+a mask, while any change to the evaluated surface (an edited opening, a
+different profile, another tessellator) changes the fingerprint. The authored
+coordinates are rebuilt from the canonical f32 world evaluation, so the
+fingerprint binds to the surface at its current placement: a placement edit
+generally changes it and reports the mask stale, because f32 spacing exceeds
+one micrometre a few metres from the origin; only a move that is exactly
+representable in f32 (the controlled test's 10 m offset) keeps it. Stale is
+the safe direction, and a viewer must treat a placement edit as invalidating. A mask is `{ productId, surfaceFingerprint, triangles }` with
 source triangle ordinals in the same order as `sourceIndices`.
 
 The planner never reuses triangle ordinals by position. Faults in one mask

@@ -40,10 +40,18 @@ The same test module covers, on a controlled extruded box, the policy widening
 split with both image and finite-page planning, the explicit refusals (stale
 fingerprint, empty or out-of-range ordinals, direct tessellated Body, duplicate
 or out-of-scope masks, masks under `preserve`), a whole-surface mask collapsing
-to an ordinary conversion, and the fingerprint following geometry rather than
-express ids or a rigid placement move. The real slab #34509 (`SweptSolid`, no
-openings, Body referenced by its type map) converts with a cloned wrapper and a
-single ProductDefinitionShape edit while the type map keeps the original wrapper.
+to an ordinary conversion, and the fingerprint binding to the placed surface
+rather than express ids: a renumbered export keeps it, an f32-exact 10 m move
+keeps it, and an ordinary (12.345, 67.891, 0.1) m placement edit changes it so
+the mask is reported stale, never reapplied. The real slab #34509 (`SweptSolid`,
+no openings, Body referenced by its type map) converts with a cloned wrapper and
+a single ProductDefinitionShape edit while the type map keeps the original
+wrapper. The real post-opening slab #59290 (one opening, cloned type-shared
+wrapper, rounding bounds on the cut corners) takes a 16-of-32 triangle mask: the
+opening companion still travels, the edit set equals the unmasked conversion's,
+both face sets share one point list, and the retained set reproduces exactly the
+cut geometry the unmasked conversion authors (native test only; no IfcOpenShell
+run was made for the masked slab).
 
 ## Independent reopening
 

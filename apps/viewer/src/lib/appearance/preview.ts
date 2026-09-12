@@ -55,7 +55,7 @@ export function bindAppearancePreview(
     // face set. The renderer preview replaces parts one-to-one, so refuse here
     // rather than render the retained triangles as missing geometry.
     if (conversion.maskedTriangles || conversion.retainedGeometryItemId !== undefined) {
-      throw new Error(`This viewer cannot preview the face selection on IFC object #${conversion.productId} yet. Clear the face selection to convert the whole surface.`);
+      throw new Error(`IFC object #${conversion.productId} carries a face selection this viewer cannot preview yet.`);
     }
     const item = plannedItems.get(conversion.geometryItemId);
     if (!item || item.productId !== conversion.productId || conversions.has(conversion.geometryItemId)

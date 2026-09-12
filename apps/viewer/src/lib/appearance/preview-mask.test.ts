@@ -24,8 +24,8 @@ const renderer = { getScene: () => ({ getMeshDataPieces: () => undefined, isInst
 const bind = (masked: AppearancePlan) => bindAppearancePreview(state, renderer, 'model', masked, {} as ImageBitmap, 'textures/a.png', true, true, expandAppearanceCorners);
 
 test('a face-masked conversion is refused explicitly by the preview binder (#4404)', () => {
-  assert.throws(() => bind(plan({ maskedTriangles: [0], retainedGeometryItemId: 102 })), /face selection on IFC object #25/);
-  assert.throws(() => bind(plan({ retainedGeometryItemId: 102 })), /face selection on IFC object #25/);
+  assert.throws(() => bind(plan({ maskedTriangles: [0], retainedGeometryItemId: 102 })), /IFC object #25 carries a face selection/);
+  assert.throws(() => bind(plan({ retainedGeometryItemId: 102 })), /IFC object #25 carries a face selection/);
   // The same plan without a mask passes the guard and fails only on the absent scene geometry.
   assert.throws(() => bind(plan({})), /Geometry for IFC object #25 is not available/);
 });

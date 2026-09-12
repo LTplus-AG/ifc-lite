@@ -165,16 +165,29 @@ fn issue_4404_stale_or_malformed_face_masks_are_explicit_refusals() {
 }
 
 #[test]
-fn issue_4404_surface_fingerprint_follows_geometry_not_express_ids_or_placement() {
+fn issue_4404_surface_fingerprint_binds_to_the_placed_surface_not_express_ids() {
     let source = swept_source();
     let fingerprint = fingerprint_of(&source, 40);
     assert_eq!(fingerprint_of(&source, 40), fingerprint, "deterministic across plans");
     let renumbered = source.replace("#44", "#94");
     assert_eq!(fingerprint_of(&renumbered, 40), fingerprint, "express ids are not part of the surface identity");
-    let moved = source.replace("#41=IFCLOCALPLACEMENT($,#5);", "#41=IFCLOCALPLACEMENT($,#52);\n#52=IFCAXIS2PLACEMENT3D(#53,$,$);\n#53=IFCCARTESIANPOINT((10.,20.,0.));");
-    assert_eq!(fingerprint_of(&moved, 40), fingerprint, "a rigid move keeps the local surface");
+    // The local coordinates are rebuilt from the f32 world evaluation, so the
+    // placement is part of the identity except where the move is exactly
+    // representable: (10, 20, 0) keeps the fingerprint, an ordinary survey
+    // offset does not and the mask is reported stale rather than reapplied.
+    let place = |x: &str, y: &str, z: &str| source.replace("#41=IFCLOCALPLACEMENT($,#5);",
+        &format!("#41=IFCLOCALPLACEMENT($,#52);\n#52=IFCAXIS2PLACEMENT3D(#53,$,$);\n#53=IFCCARTESIANPOINT(({x},{y},{z}));"));
+    let exact = place("10.", "20.", "0.");
+    assert_eq!(fingerprint_of(&exact, 40), fingerprint, "an f32-exact move keeps the surface");
+    let mask_on_exact = plan_appearance(exact.as_bytes(), &request(40, vec![mask(40, &fingerprint, vec![0, 1])])).unwrap();
+    assert!(mask_on_exact.exclusions.is_empty(), "{:?}", mask_on_exact.exclusions);
+    let moved = place("12.345", "67.891", "0.1");
+    assert_ne!(fingerprint_of(&moved, 40), fingerprint, "a placement edit generally changes the placed surface");
+    assert_eq!(fingerprint_of(&moved, 40), fingerprint_of(&moved, 40), "the placed surface is itself stable");
     let mask_on_moved = plan_appearance(moved.as_bytes(), &request(40, vec![mask(40, &fingerprint, vec![0, 1])])).unwrap();
-    assert!(mask_on_moved.exclusions.is_empty(), "{:?}", mask_on_moved.exclusions);
+    assert_eq!(mask_on_moved.exclusions.len(), 1, "{:?}", mask_on_moved.exclusions);
+    assert_eq!(mask_on_moved.exclusions[0].reason, super::STALE);
+    assert!(mask_on_moved.items.is_empty() && mask_on_moved.created.is_empty() && mask_on_moved.edits.is_empty());
     let resized = source.replace("#45=IFCRECTANGLEPROFILEDEF(.AREA.,$,#46,2.,1.);", "#45=IFCRECTANGLEPROFILEDEF(.AREA.,$,#46,3.,1.);");
     let changed = fingerprint_of(&resized, 40);
     assert_ne!(changed, fingerprint);
@@ -255,5 +268,67 @@ fn issue_4404_real_mapped_member_face_mask_changes_one_occurrence_only() {
         std::fs::create_dir_all(&directory).unwrap();
         std::fs::write(std::path::Path::new(&directory).join("native-mask-planned.ifc"), output).unwrap();
         std::fs::write(std::path::Path::new(&directory).join("native-mask-plan.json"), serde_json::to_vec_pretty(&plan).unwrap()).unwrap();
+    }
+}
+
+/// The post-opening slab (one opening, cloned type-shared wrapper, rounding
+/// bounds on the cut corners) carries a partial mask: the retained face set
+/// must reproduce the cut geometry the unmasked conversion authors.
+#[test]
+fn issue_4404_real_cut_slab_face_mask_retains_the_opening_cut_geometry() {
+    let Some(source) = real_source() else { return };
+    let mut whole = request(59290, vec![]);
+    whole.next_express_id = 100_000; whole.source_revision = "real-AC20".into();
+    let unmasked = plan_appearance(source.as_bytes(), &whole).unwrap();
+    assert!(unmasked.exclusions.is_empty(), "{:?}", unmasked.exclusions);
+    let fingerprint = unmasked.conversions[0].surface_fingerprint.clone();
+    let cut = meshes_of(&apply(&source, &unmasked), 59290);
+    assert_eq!(cut.len(), 1);
+    assert_eq!(cut[0].indices.len() / 3, 32, "the unmasked conversion authors the cut slab");
+    let selected: Vec<u32> = (0..32).step_by(2).collect();
+    let mut masked = whole.clone();
+    masked.face_masks = vec![mask(59290, &fingerprint, selected.clone())];
+    let plan = plan_appearance(source.as_bytes(), &masked).unwrap();
+    assert!(plan.exclusions.is_empty(), "{:?}", plan.exclusions);
+    let conversion = &plan.conversions[0];
+    assert_eq!(conversion.masked_triangles.as_deref(), Some(&selected[..]));
+    assert_eq!(conversion.surface_fingerprint, fingerprint);
+    let retained = conversion.retained_geometry_item_id.unwrap();
+    assert_eq!(conversion.source_removed_meshes.len(), 1, "the opening companion still travels with a masked plan");
+    assert_eq!(conversion.source_removed_meshes[0].express_id, 59365);
+    assert_ne!(conversion.representation_id, 59278, "the type-shared wrapper is cloned, never rewritten");
+    assert_eq!(plan.edits.iter().map(|edit| (edit.express_id, edit.index)).collect::<BTreeSet<_>>(),
+        unmasked.edits.iter().map(|edit| (edit.express_id, edit.index)).collect::<BTreeSet<_>>(), "a mask adds no edit beyond the unmasked conversion");
+    assert_eq!(plan.edits.iter().map(|edit| edit.express_id).collect::<BTreeSet<_>>(), BTreeSet::from([59286, 59354]));
+    assert_eq!(plan.created.iter().map(|row| row.express_id).collect::<Vec<_>>(), (plan.next_express_id..plan.next_available_express_id).collect::<Vec<_>>());
+    let face_sets: Vec<_> = plan.created.iter().filter(|row| row.r#type == "IfcTriangulatedFaceSet").collect();
+    assert_eq!(face_sets.iter().map(|row| row.express_id).collect::<Vec<_>>(), vec![conversion.geometry_item_id, retained]);
+    assert_eq!(face_sets[0].attributes[0], face_sets[1].attributes[0], "both face sets share one point list");
+    let output = apply(&source, &plan);
+    let before = crate::process_geometry(source.as_bytes());
+    let after = crate::process_geometry(output.as_bytes());
+    assert_eq!(before.meshes.len(), after.meshes.len(), "one opening mesh leaves, one retained face set arrives");
+    assert!(!after.meshes.iter().any(|mesh| mesh.express_id == 59365), "the Reference opening produces no subtractive geometry");
+    let textured = after.meshes.iter().find(|m| m.geometry_item_id == Some(conversion.geometry_item_id)).unwrap();
+    let plain = after.meshes.iter().find(|m| m.geometry_item_id == Some(retained)).unwrap();
+    assert!(textured.texture.is_some() && textured.uvs.is_some());
+    assert!(plain.texture.is_none() && plain.uvs.is_none());
+    assert_eq!((textured.indices.len() / 3, plain.indices.len() / 3), (16, 16));
+    assert_eq!(corners(textured), selected_corners(&cut[0], &selected, true));
+    assert_eq!(corners(plain), selected_corners(&cut[0], &selected, false), "the retained set is the unmasked cut geometry");
+    let original = before.meshes.iter().find(|m| m.express_id == 59290).unwrap();
+    assert_eq!(plain.color, original.color);
+    assert_eq!(textured.global_id, original.global_id);
+    assert_eq!(plain.global_id, original.global_id);
+    let mut max_error = 0f64;
+    for (mesh, keep) in [(textured, true), (plain, false)] {
+        for (a, b) in selected_corners(original, &selected, keep).iter().zip(corners(mesh)) {
+            for axis in 0..3 { max_error = max_error.max((a[axis] - b[axis]).abs()); }
+        }
+    }
+    assert!(max_error <= 1e-3, "masked and retained corners stay within a millimetre of the canonical cut source: {max_error}");
+    for mesh in before.meshes.iter().filter(|m| m.express_id != 59290 && m.express_id != 59365) {
+        let other = after.meshes.iter().find(|m| m.express_id == mesh.express_id && m.geometry_item_id == mesh.geometry_item_id).unwrap();
+        assert_eq!(serde_json::to_value(mesh).unwrap(), serde_json::to_value(other).unwrap());
     }
 }

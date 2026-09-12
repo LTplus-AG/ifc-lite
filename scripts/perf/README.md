@@ -1152,10 +1152,12 @@ exceeded its 15% threshold on a machine shared with other builds. This is
 "no resolvable change", not a speedup or a regression claim, and no browser
 worker-pool measurement was made. A separate `--fingerprint` run of both
 binaries reports identical mesh, vertex and triangle counts and identical
-ordered geometry fingerprints. Two tool lessons: `scripts/perf/ab-order.mjs`'s
-CLI guard compares `import.meta.url` with a bare `file://` prefix and prints
-nothing on Windows, so `ab.sh` there produces zero rounds and a vacuous
-"within noise" verdict; drive `roundOrder` directly and check the run count.
+ordered geometry fingerprints. Tool lesson: at the time of this probe
+`scripts/perf/ab-order.mjs`'s CLI guard compared `import.meta.url` with a bare
+`file://` prefix and printed nothing on Windows, so `ab.sh` there produced
+zero rounds and a vacuous "within noise" verdict; the probe drove `roundOrder`
+directly and checked the run count. #4541 fixed the guard with
+`pathToFileURL`; always check the round count `ab.sh` reports.
 [Raw rounds](../../docs/architecture/evidence/evaluated-face-masks/native-load.json) and [fingerprints](../../docs/architecture/evidence/evaluated-face-masks/native-fingerprints.json).
 
 ### Shared appearance atlas sampling (#4381)

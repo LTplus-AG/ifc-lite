@@ -11,8 +11,13 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(super) const STALE: &str = "Face selection is stale: the evaluated surface geometry changed";
 pub(super) const DIRECT_BODY: &str =
     "Face masks currently apply to converted occurrence bodies only; this object already has a direct tessellated Body";
-/// Coordinates are quantised to one micrometre before hashing, so a placement
-/// edit that only perturbs rounding keeps the mask while any real change drops it.
+/// Coordinates are quantised to one micrometre before hashing so that
+/// sub-micrometre noise between two plans of the same file cannot drop a mask.
+/// The points come from the canonical f32 world evaluation, so the fingerprint
+/// binds to the surface at its current placement: a renumbered export keeps a
+/// mask, while a placement edit generally reports it stale (f32 spacing exceeds
+/// one micrometre beyond a few metres from the origin) unless the move is
+/// exactly representable. Stale is the safe direction; a mask is never reused.
 const QUANTUM_PER_METRE: f64 = 1e6;
 
 /// Request-shape validation before any source work. Masks are meaningful only

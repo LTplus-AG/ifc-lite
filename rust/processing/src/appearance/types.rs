@@ -147,7 +147,9 @@ pub struct AppearanceConversion {
     pub rtc_offset: [f64; 3],
     /// Hex SHA-256 of the product GlobalId, its quantised local evaluated
     /// surface and topology. Face masks bind to this value; express ids are
-    /// excluded so a renumbered export keeps its selection.
+    /// excluded so a renumbered export keeps its selection. The surface is
+    /// evaluated in f32 world space at its current placement, so a placement
+    /// edit generally changes the value and reports a mask stale.
     pub surface_fingerprint: String,
     /// Accepted ascending source triangle ordinals that received the
     /// appearance. Absent when the whole surface was converted.

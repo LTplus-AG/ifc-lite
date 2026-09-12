@@ -44,7 +44,8 @@ import { buildStreamMessagesForModel, filterAttachmentsForModel } from '@/lib/ll
 import { buildSystemPrompt } from '@/lib/llm/system-prompt';
 import { getModelContext, parseCSV } from '@/lib/llm/context-builder';
 import { collectActiveFileAttachments } from '@/lib/attachments';
-import { extractPdfText, MAX_PDF_ATTACHMENT_BYTES } from '@/lib/llm/document-text';
+import { MAX_PDF_ATTACHMENT_BYTES } from '@/lib/llm/document-text';
+import { attachPdfDocument, createDocumentUploadGate } from '@/lib/llm/document-upload';
 import { extractCodeBlocks } from '@/lib/llm/code-extractor';
 import { extractScriptEditOps, filterUnappliedScriptOps } from '@/lib/llm/script-edit-ops';
 import { createPatchDiagnostic, getPrimaryRootCause, type RepairScope } from '@/lib/llm/script-diagnostics';
@@ -338,6 +339,9 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const documentUploadsRef = useRef<ReturnType<typeof createDocumentUploadGate> | null>(null);
+  documentUploadsRef.current ??= createDocumentUploadGate();
+  const documentUploads = documentUploadsRef.current;
   const dragCounterRef = useRef(0);
   const autoRepairAttemptCountsRef = useRef(new Map<string, { attempts: number; lastScope: RepairScope }>());
 
@@ -351,6 +355,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   useEffect(() => {
     resizeInput();
   }, [inputText, resizeInput]);
+  useEffect(() => () => documentUploads.cancel(), [activeModel, documentUploads]);
 
   // ── Smart auto-scroll ──
   // Only auto-scroll if user hasn't scrolled up to read old messages
@@ -1132,6 +1137,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
   // ── Clear with confirmation ──
   const handleClearClick = useCallback(() => {
+    documentUploads.cancel();
     if (messages.length <= 2) {
       resetScriptEditorForNewChat();
       clearMessages();
@@ -1142,9 +1148,10 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     } else {
       setShowClearConfirm(true);
     }
-  }, [messages.length, clearMessages, resetScriptEditorForNewChat, setChatToolReady]);
+  }, [messages.length, clearMessages, resetScriptEditorForNewChat, setChatToolReady, documentUploads]);
 
   const confirmClear = useCallback(() => {
+    documentUploads.cancel();
     resetScriptEditorForNewChat();
     clearMessages();
     setChatToolReady(null);
@@ -1152,7 +1159,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     setInputText('');
     setLastFinishReason(null);
     setShowClearConfirm(false);
-  }, [clearMessages, resetScriptEditorForNewChat, setChatToolReady]);
+  }, [clearMessages, resetScriptEditorForNewChat, setChatToolReady, documentUploads]);
 
   // ── File upload (button + drag-drop + paste) ──
   const processFiles = useCallback(async (files: FileList | File[]) => {
@@ -1205,14 +1212,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             setChatError(`PDF attachments must be smaller than ${Math.round(MAX_PDF_ATTACHMENT_BYTES / 1_000_000)} MB.`);
             continue;
           }
-          const attachment: FileAttachment = {
-            id: createAttachmentId(),
-            name: file.name,
-            type: 'application/pdf',
-            size: file.size,
-            textContent: await extractPdfText(file),
-          };
-          addAttachment(attachment);
+          await attachPdfDocument(file, documentUploads, addAttachment);
           remainingSlots -= 1;
           continue;
         }
@@ -1263,10 +1263,11 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         addAttachment(attachment);
         remainingSlots -= 1;
       } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') continue;
         setChatError(`Could not read ${file.name}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-  }, [activeModel, addAttachment, attachments.length, setChatError]);
+  }, [activeModel, addAttachment, attachments.length, setChatError, documentUploads]);
 
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;

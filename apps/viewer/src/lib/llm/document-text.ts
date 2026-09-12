@@ -4,6 +4,8 @@
 export const MAX_PDF_ATTACHMENT_BYTES = 16_000_000;
 export const MAX_DOCUMENT_TEXT_CHARS = 1_000_000;
 const MAX_PDF_PAGES = 500;
+const MAX_PDF_TEXT_ITEMS = 250_000;
+const PDF_EXTRACTION_TIMEOUT_MS = 30_000;
 
 interface PdfTextItem { str: string; hasEOL?: boolean }
 interface PdfTextPage {
@@ -21,14 +23,19 @@ interface PdfLoadingTask {
 export interface PdfTextBackend {
   load(data: Uint8Array): PdfLoadingTask;
 }
+export interface PdfTextOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
 
 const browserBackend: PdfTextBackend = {
   load(data) {
-    // Lazy loading keeps PDF.js out of the initial viewer bundle.
+    // Lazy loading keeps PDF.js out of the initial viewer bundle. Reuse the
+    // canonical browser backend so CMaps and standard fonts are never omitted.
     let task: ReturnType<(typeof import('pdfjs-dist'))['getDocument']> | undefined;
-    const pending = Promise.all([import('pdfjs-dist'), import('pdfjs-dist/build/pdf.worker.min.mjs?url')]).then(([pdf, worker]) => {
-      pdf.GlobalWorkerOptions.workerSrc = worker.default;
-      task = pdf.getDocument({ data, enableXfa: false, stopAtErrors: true });
+    const pending = import('../appearance/pdf/browser-backend.js').then(({ browserPdfBackend }) => {
+      const backend = browserPdfBackend();
+      task = backend.getDocument({ ...backend.options, data, enableXfa: false, stopAtErrors: true });
       return task.promise;
     });
     return { promise: pending, async destroy() {
@@ -43,22 +50,58 @@ function textItem(value: unknown): value is PdfTextItem {
     && typeof (value as { str?: unknown }).str === 'string';
 }
 
-export async function extractPdfText(file: Blob, backend: PdfTextBackend = browserBackend): Promise<string> {
+function abortError(signal: AbortSignal): Error {
+  return signal.reason instanceof Error ? signal.reason : new DOMException('PDF extraction was cancelled.', 'AbortError');
+}
+
+function waitFor<T>(promise: Promise<T>, signal: AbortSignal | undefined, deadline: number): Promise<T> {
+  if (signal?.aborted) return Promise.reject(abortError(signal));
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return Promise.reject(new Error('PDF text extraction timed out.'));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => finish(() => reject(new Error('PDF text extraction timed out.'))), remaining);
+    const onAbort = () => finish(() => reject(abortError(signal!)));
+    const finish = (settle: () => void) => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      settle();
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    promise.then(value => finish(() => resolve(value)), error => finish(() => reject(error)));
+  });
+}
+
+export async function extractPdfText(
+  file: Blob,
+  backend: PdfTextBackend = browserBackend,
+  options: PdfTextOptions = {},
+): Promise<string> {
   if (file.size === 0) throw new Error('The PDF is empty.');
   if (file.size > MAX_PDF_ATTACHMENT_BYTES) throw new Error(`PDF attachments must be smaller than ${MAX_PDF_ATTACHMENT_BYTES / 1_000_000} MB.`);
+  const timeoutMs = options.timeoutMs ?? PDF_EXTRACTION_TIMEOUT_MS;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('PDF extraction timeout must be positive.');
+  const deadline = Date.now() + timeoutMs;
+  options.signal?.throwIfAborted();
   const loading = backend.load(new Uint8Array(await file.arrayBuffer()));
   try {
-    const document = await loading.promise;
+    const document = await waitFor(loading.promise, options.signal, deadline);
     if (!Number.isSafeInteger(document.numPages) || document.numPages < 1 || document.numPages > MAX_PDF_PAGES) {
       throw new Error(`PDF attachments must contain 1..${MAX_PDF_PAGES} pages.`);
     }
     let result = '';
+    let itemCount = 0;
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
-      const page = await document.getPage(pageNumber);
+      const page = await waitFor(document.getPage(pageNumber), options.signal, deadline);
       try {
-        const content = await page.getTextContent();
+        const content = await waitFor(page.getTextContent(), options.signal, deadline);
         let pageText = '';
         for (const item of content.items) {
+          itemCount += 1;
+          if (itemCount > MAX_PDF_TEXT_ITEMS) throw new Error(`PDF text exceeds the ${MAX_PDF_TEXT_ITEMS.toLocaleString()} item work limit.`);
+          if ((itemCount & 1023) === 0) {
+            options.signal?.throwIfAborted();
+            if (Date.now() >= deadline) throw new Error('PDF text extraction timed out.');
+          }
           if (!textItem(item)) continue;
           const separator = item.hasEOL ? '\n' : ' ';
           if (result.length + pageText.length + item.str.length + separator.length > MAX_DOCUMENT_TEXT_CHARS) {

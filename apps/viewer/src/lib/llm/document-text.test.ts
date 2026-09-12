@@ -52,6 +52,22 @@ test('#4177 refuses scanned/no-text and oversized PDFs without inventing OCR', a
   const inflated = backend([[{ str: 'x'.repeat(MAX_DOCUMENT_TEXT_CHARS + 1) }]]);
   await assert.rejects(extractPdfText(new Blob(['%PDF compressed']), inflated.value), /character attachment limit/);
   assert.equal(inflated.destroyed(), true);
+  const excessiveWork = backend([Array(250_001).fill({ type: 'layout-only' })]);
+  await assert.rejects(extractPdfText(new Blob(['%PDF item bomb']), excessiveWork.value), /item work limit/);
+  assert.equal(excessiveWork.destroyed(), true);
+});
+
+test('#4177 bounds a silent parser by cancellation and a deadline', async () => {
+  let destroyed = 0;
+  const silent: PdfTextBackend = { load() { return {
+    promise: new Promise(() => undefined), async destroy() { destroyed += 1; },
+  }; } };
+  const controller = new AbortController();
+  const cancelled = extractPdfText(new Blob(['%PDF hangs']), silent, { signal: controller.signal });
+  controller.abort(new Error('upload cancelled'));
+  await assert.rejects(cancelled, /upload cancelled/);
+  await assert.rejects(extractPdfText(new Blob(['%PDF hangs']), silent, { timeoutMs: 5 }), /timed out/);
+  assert.equal(destroyed, 2);
 });
 
 test('#4177 destroys the PDF task when text extraction fails', async () => {

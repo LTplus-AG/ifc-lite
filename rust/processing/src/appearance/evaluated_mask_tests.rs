@@ -159,6 +159,12 @@ fn issue_4404_stale_or_malformed_face_masks_are_explicit_refusals() {
     assert!(plan_appearance(source.as_bytes(), &duplicate).unwrap_err().contains("Duplicate"));
     assert!(plan_appearance(source.as_bytes(), &request(40, vec![mask(40, &fingerprint, vec![0]), mask(40, &fingerprint, vec![1])])).unwrap_err().contains("exceed the appearance scope"));
     assert!(plan_appearance(source.as_bytes(), &request(40, vec![mask(40, "abc", vec![0])])).unwrap_err().contains("hex SHA-256"));
+    let mut surplus = request(40, vec![mask(40, &fingerprint, vec![0; 300_000]), mask(10, &fingerprint, vec![0; 200_001])]);
+    surplus.product_ids.push(10);
+    assert!(plan_appearance(source.as_bytes(), &surplus).unwrap_err().contains("exceed their triangle budget"), "the ordinal budget is request-wide");
+    let mut within = request(40, vec![mask(40, &fingerprint, vec![0; 250_000]), mask(10, &fingerprint, vec![0; 250_000])]);
+    within.product_ids.push(10);
+    assert!(plan_appearance(source.as_bytes(), &within).is_ok(), "exactly the budget passes request validation");
     let direct = plan_appearance(source.as_bytes(), &request(10, vec![mask(10, &fingerprint, vec![0])])).unwrap();
     assert!(direct.items.is_empty() && direct.created.is_empty());
     assert_eq!(direct.exclusions[0].reason, super::DIRECT_BODY);

@@ -9,6 +9,7 @@ source style, and their union must reproduce the canonical source corners.
 """
 from pathlib import Path
 import collections
+import hashlib
 import json
 import sys
 import ifcopenshell
@@ -104,7 +105,17 @@ reader_faces = np.asarray(shape.geometry.faces, dtype=np.int64).reshape(-1, 3)
 assert len(reader_faces) == len(source_faces)
 reader_corner_distance = float(max(np.linalg.norm(reader_vertices - corner, axis=1).min() for corner in source_corners.reshape(-1, 3)))
 assert reader_corner_distance < 1e-6, reader_corner_distance
+def geometry_digest(file, entity_id):
+    # Independent world tessellation of one product; equal digests mean equal
+    # vertex and face arrays, not merely an unchanged entity id.
+    shape = ifcopenshell.geom.create_shape(settings, file.by_id(entity_id))
+    vertices = np.asarray(shape.geometry.verts, dtype=np.float64)
+    faces = np.asarray(shape.geometry.faces, dtype=np.int64)
+    return hashlib.sha256(vertices.tobytes() + faces.tobytes()).hexdigest()
+
 siblings = [member.id() for member in original.by_type('IfcMember') if member.id() != product]
+unchanged_siblings = [sibling for sibling in siblings if geometry_digest(original, sibling) == geometry_digest(exported, sibling)]
+assert unchanged_siblings == siblings, sorted(set(siblings) - set(unchanged_siblings))
 report = {'reader': 'IfcOpenShell', 'version': ifcopenshell.version, 'product': product, 'GlobalId': owner.GlobalId,
           'maskedTriangles': masked, 'surfaceFingerprint': conversion['surfaceFingerprint'],
           'texturedFaceSet': {'id': textured.id(), 'triangles': len(textured.CoordIndex), 'style': textured_style.id(),
@@ -112,7 +123,8 @@ report = {'reader': 'IfcOpenShell', 'version': ifcopenshell.version, 'product': 
           'retainedFaceSet': {'id': retained.id(), 'triangles': len(retained.CoordIndex), 'style': retained_style.id(),
                               'sourceStyle': True, 'maxAuthoredCornerErrorMetres': retained_error},
           'readerTriangles': int(len(reader_faces)), 'maxReaderCornerDistanceMetres': reader_corner_distance,
-          'changedExistingEntities': changed, 'unchangedSiblingMembers': len(siblings),
+          'changedExistingEntities': changed, 'siblingMembers': len(siblings), 'unchangedSiblingMembers': len(unchanged_siblings),
+          'siblingComparison': 'IfcOpenShell world tessellation digest (vertices and faces) equal before and after',
           'sourceSchemaFindings': sum(old_findings.values()), 'exportSchemaFindings': sum(new_findings.values()),
           'newSchemaFindings': [],
           'note': 'Sampled corner comparison against the canonical native source snapshot; not a Hausdorff proof and not a browser claim.'}

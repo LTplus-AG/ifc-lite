@@ -59,7 +59,9 @@ run was made for the masked slab).
 [`verify-native-mask.py`](verify-native-mask.py) with IfcOpenShell 0.8.3.post2
 on this host. It confirms that only #35155 changed among the existing entities
 (comparing entity text after recovering the native test writer's raw UTF-8
-strings), that no new schema finding appeared relative to the source's 170
+strings), that all 41 sibling members of the shared type tessellate to the same
+IfcOpenShell world vertices and faces before and after (a geometry digest per
+sibling, not an id count), that no new schema finding appeared relative to the source's 170
 existing findings, that the textured face set carries the `IfcSurfaceStyleWithTextures`
 and the single `IfcIndexedTriangleTextureMap`, that the retained face set keeps
 the original surface style entity #17391 with no texture map, that both face

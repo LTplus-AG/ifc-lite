@@ -28,7 +28,9 @@
   "changedExistingEntities": [
     35155
   ],
+  "siblingMembers": 41,
   "unchangedSiblingMembers": 41,
+  "siblingComparison": "IfcOpenShell world tessellation digest (vertices and faces) equal before and after",
   "sourceSchemaFindings": 170,
   "exportSchemaFindings": 170,
   "newSchemaFindings": [],

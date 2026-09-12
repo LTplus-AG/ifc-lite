@@ -111,8 +111,9 @@ mask, an ordinal beyond the surface, and a mask on a product that already has
 a direct tessellated Body each have their own reason. Faults in the request
 shape refuse the whole plan as an error before any source work: masks under
 the preserve policy, a mask outside the scope, two masks for one product, more
-masks than products, a fingerprint that is not a hex SHA-256 digest, or a mask
-beyond the 500 000-triangle budget. A mask covering every triangle is an
+masks than products, a fingerprint that is not a hex SHA-256 digest, or more
+than 500 000 triangle ordinals across all masks (the plan geometry budget's
+triangle capacity, checked before any ordinal is sorted). A mask covering every triangle is an
 ordinary whole-surface conversion and reports no split.
 
 A partial mask authors one shared `IfcCartesianPointList3D` and two

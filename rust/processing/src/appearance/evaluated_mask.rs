@@ -19,6 +19,8 @@ pub(super) const DIRECT_BODY: &str =
 /// one micrometre beyond a few metres from the origin) unless the move is
 /// exactly representable. Stale is the safe direction; a mask is never reused.
 const QUANTUM_PER_METRE: f64 = 1e6;
+/// Equals the plan geometry budget's triangle capacity (1 500 000 corners).
+const MASK_ORDINAL_BUDGET: usize = 500_000;
 
 /// Request-shape validation before any source work. Masks are meaningful only
 /// when conversion is permitted; a mask outside the scope is a caller error.
@@ -32,6 +34,10 @@ pub(super) fn validate(request: &AppearanceRequest) -> Result<BTreeMap<u32, &Fac
         return Err("Face masks exceed the appearance scope".into());
     }
     let scope: BTreeSet<u32> = request.product_ids.iter().copied().collect();
+    // The plan's corner budget admits at most MASK_ORDINAL_BUDGET triangles in
+    // total, so more raw ordinals than that across the request can never be a
+    // valid selection; refuse before any of them is cloned or sorted.
+    let mut ordinals = 0usize;
     for mask in &request.face_masks {
         if !scope.contains(&mask.product_id) {
             return Err("Face mask targets a product outside the appearance scope".into());
@@ -39,7 +45,8 @@ pub(super) fn validate(request: &AppearanceRequest) -> Result<BTreeMap<u32, &Fac
         if mask.surface_fingerprint.len() != 64 || !mask.surface_fingerprint.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err("Face mask fingerprint must be a hex SHA-256 digest".into());
         }
-        if mask.triangles.len() > 500_000 { return Err("Face mask exceeds its triangle budget".into()); }
+        ordinals = ordinals.saturating_add(mask.triangles.len());
+        if ordinals > MASK_ORDINAL_BUDGET { return Err("Face masks exceed their triangle budget".into()); }
         if masks.insert(mask.product_id, mask).is_some() {
             return Err("Duplicate face mask for one product".into());
         }

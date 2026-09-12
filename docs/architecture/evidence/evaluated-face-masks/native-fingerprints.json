@@ -8,7 +8,7 @@
     "binarySha256": "3de543f8e4a5a80a40e9a91609b111811fea8d9623222e9e78add5d33ed487eb"
   },
   "method": "perf_probe --iters 1 --json --fingerprint on each prebuilt profiling binary; every non-timing field compared.",
-  "fixture": "C:/Users/louistrue/ci/wt-4404/tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
   "meshes": [
     285,
     285

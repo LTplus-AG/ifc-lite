@@ -12,6 +12,7 @@ import { texturedProductSource as source } from '@/test/textured-product-fixture
 import { createAppearancePlanner, type AppearanceWorker } from '../planner-worker-client';
 import type { AppearanceWorkerRequest } from '../planner-types';
 import type { PdfFillAnnotationPlan, PdfFillAnnotationRequest } from './fill-plan-types';
+import type { PreparedPdfVectorPage } from './vector-types';
 
 test('actual decoded PDF fill plans survive host export and reject stale/cancelled worker results (#4406)', async t => {
   const wasm = new URL('../../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
@@ -39,6 +40,17 @@ test('actual decoded PDF fill plans survive host export and reject stale/cancell
       const reopened = await new IfcParser().parseColumnar(bytes.slice().buffer);
       assert.equal(reopened.entities.getName(result.annotationId), request.Name);
       assert.equal(reopened.entities.getTypeName(result.annotationId), 'IfcAnnotation');
+      // Provenance (#4406): the exact verdict and its digest travel with the annotation through host export and reopen.
+      const provenance = reopened.getProperties(result.annotationId).find(set => set.name === 'IfcLite_PdfVectorConversion');
+      assert.ok(provenance, 'the provenance property set reopens on the annotation');
+      assert.equal(provenance.properties.find(entry => entry.name === 'FidelitySha256')?.value, result.fidelity.sha256);
+      const content = typeof exported.content === 'string' ? exported.content : new TextDecoder().decode(exported.content);
+      assert.equal(result.fidelity.exact, true);
+      assert.match(content, /IFCPROPERTYSINGLEVALUE\('ExactConversion',\$,IFCBOOLEAN\(\.T\.\),\$\)/);
+      assert.match(content, /IFCPROPERTYSINGLEVALUE\('Omissions',\$,IFCTEXT\('\[\]'\),\$\)/);
+      assert.ok(content.includes(`IFCPROPERTYSINGLEVALUE('FidelitySha256',$,IFCIDENTIFIER('${result.fidelity.sha256}'),$)`), 'the accepted verdict digest is exported');
+      const prepared = JSON.parse(new TextDecoder().decode(api.preparePdfVectorPage(JSON.stringify(request.page)))) as PreparedPdfVectorPage;
+      assert.equal(prepared.fidelity.sha256, result.fidelity.sha256, 'the plan quotes the same canonical verdict as the standalone report');
       const { runPdfFillAnnotationPlanning } = await import('../../../workers/appearance.worker.js');
       assert.equal((await runPdfFillAnnotationPlanning(source, request)).requestSha256, result.requestSha256);
       let latest: AppearanceWorkerRequest | undefined, terminations = 0;

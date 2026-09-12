@@ -230,8 +230,10 @@ fn set_alt(on: bool) {
 fn set_alt(_on: bool) {}
 
 /// Restore the process-wide triangulator switch even when an assertion panics.
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
 struct AltTriangulatorReset;
 
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
 impl Drop for AltTriangulatorReset {
     fn drop(&mut self) {
         set_alt(false);
@@ -1419,25 +1421,33 @@ fn watertightness_census_and_triangulator_invariance() {
 /// must preserve the established topology under both triangulators. The same
 /// contract holds with the optional prism route disabled; that mode has its own
 /// expected tessellation and runs in a separate process during validation.
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
 #[test]
 fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _reset = AltTriangulatorReset;
     let rel = "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc".to_string();
     let path = crate_dir().join("../..").join("tests/models").join(&rel);
-    let Ok(content) = std::fs::read_to_string(&path) else {
-        eprintln!("SKIPPED: fixture absent; run `pnpm fixtures` to install {}", path.display());
+    if !oracle_fixture_present(&path) {
+        eprintln!("Skipping #4610 mixed-opening oracle: run pnpm fixtures");
         return;
-    };
+    }
+    let content = std::fs::read_to_string(&path).expect("read ISSUE_129 fixture");
     let voids = void_index(&content);
     let frame = ModelFrame::new(&content);
-    for alt in [false, true] {
+
+    #[cfg(feature = "triangulation-alt")]
+    let triangulators = [false, true].as_slice();
+    #[cfg(not(feature = "triangulation-alt"))]
+    let triangulators = [false].as_slice();
+
+    let expected = if std::env::var("IFC_LITE_PRISM_CUT").as_deref() == Ok("0") {
+        [(12381, 30, 31, 9400), (32810, 0, 0, 1936)]
+    } else {
+        [(12381, 25, 26, 7565), (32810, 3, 3, 2005)]
+    };
+    for &alt in triangulators {
         set_alt(alt);
-        let expected = if std::env::var("IFC_LITE_PRISM_CUT").as_deref() == Ok("0") {
-            [(12381, 30, 31, 9400), (32810, 0, 0, 1936)]
-        } else {
-            [(12381, 25, 26, 7565), (32810, 3, 3, 2005)]
-        };
         for (id, open, strict, tris) in expected {
             let mesh =
                 process(&frame, id, &voids).unwrap_or_else(|| panic!("host #{id} must mesh"));
@@ -2227,7 +2237,7 @@ fn the_heavy_golden_pins_the_known_3435_tear_population() {
 /// `Path::exists()`) because `exists()` collapses a permission error into
 /// `false` just like a genuinely absent file, and is a TOCTOU check besides
 /// — each caller performs the real read moments later.
-// Unused under `csg_topology_gate` / `csg_manifold_gate`: both callers are
+// Unused under `csg_topology_gate` / `csg_manifold_gate`: all callers are
 // cfg-gated off in those builds, which made this a hard `never used` error.
 // Allowed rather than cfg-gated to match the callers, because revert-oracle
 // cannot parse a `not(...)` cfg shape and aborts on it.

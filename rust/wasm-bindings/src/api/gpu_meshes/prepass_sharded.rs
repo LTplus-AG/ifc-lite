@@ -12,6 +12,28 @@ use crate::api::IfcAPI;
 use js_sys::Function;
 use wasm_bindgen::prelude::*;
 
+/// One `[r, g, b, a]` per id: the shard-resolved style columns are host-built
+/// parallel arrays, and `finalizePrepassStyles` reads `colors[i * 4 + 3]` for
+/// every id (directly for the orphan seed, via
+/// `flat_styles_rgba8_from_geometry_columns` for the geometry columns). Under
+/// the wasm `panic=abort` profile an index past the end traps the whole
+/// instance, so a length disagreement is refused here, before either column
+/// is read, with an error naming the pair. Same stance as
+/// `style_colors_from_wire` in `batch_partition.rs`, which skips a style whose
+/// four bytes are not all present rather than read past the end.
+pub(super) fn check_rgba_columns(what: &str, ids: &[u32], colors: &[f32]) -> Result<(), String> {
+    let expected = ids.len().checked_mul(4);
+    if expected == Some(colors.len()) {
+        return Ok(());
+    }
+    Err(format!(
+        "{what} style columns disagree: {} ids need {} colour floats, got {}",
+        ids.len(),
+        expected.map_or_else(|| "more than usize".to_string(), |n| n.to_string()),
+        colors.len()
+    ))
+}
+
 /// Serialize the shared [`StreamMeta`] onto a JS object as the wire fields the
 /// host reads: `unitScale`, `planeAngleToRadians`, `rtcOffset` (`[x,y,z]`),
 /// `needsShift`, `buildingRotation` (`null` when absent). Used by both the
@@ -233,7 +255,9 @@ impl IfcAPI {
     /// CANONICAL styles flatten. Returns the exact `styles` event payload the
     /// serial path emits. Runs on any worker with `setEntityIndex` installed.
     /// Span arguments are `[id, start, len]` triples; `plane_angle_to_radians`
-    /// comes from the meta event.
+    /// comes from the meta event. `orphanColors` / `geomColors` carry exactly
+    /// four floats per id in `orphanIds` / `geomIds`; any other length throws
+    /// before either column is read.
     #[wasm_bindgen(js_name = finalizePrepassStyles)]
     #[allow(clippy::too_many_arguments)]
     pub fn finalize_prepass_styles(
@@ -252,6 +276,9 @@ impl IfcAPI {
         plane_angle_to_radians: f64,
     ) -> Result<JsValue, JsValue> {
         use ifc_lite_core::EntityDecoder;
+        check_rgba_columns("orphan", orphan_ids, orphan_colors)
+            .and_then(|()| check_rgba_columns("geometry", geom_ids, geom_colors))
+            .map_err(|message| JsValue::from_str(&format!("finalizePrepassStyles: {message}")))?;
         fn triples(v: &[u32]) -> Vec<(u32, usize, usize)> {
             v.chunks_exact(3)
                 .map(|c| (c[0], c[1] as usize, c[1] as usize + c[2] as usize))
@@ -289,13 +316,8 @@ impl IfcAPI {
         // orphan_styled_items, so injecting after resolve_prepass loses
         // material-dependent styles.
         let mut orphan_seed = rustc_hash::FxHashMap::default();
-        for (i, &id) in orphan_ids.iter().enumerate() {
-            orphan_seed.insert(id, [
-                orphan_colors[i * 4],
-                orphan_colors[i * 4 + 1],
-                orphan_colors[i * 4 + 2],
-                orphan_colors[i * 4 + 3],
-            ]);
+        for (&id, rgba) in orphan_ids.iter().zip(orphan_colors.chunks_exact(4)) {
+            orphan_seed.insert(id, [rgba[0], rgba[1], rgba[2], rgba[3]]);
         }
         // Geometry styles stay as COLUMNS (stage 2): the support resolution
         // only consults the ORPHAN map (material chain), and the column-based
@@ -353,3 +375,7 @@ pub(super) fn styles_payload_with_flat(
     crate::api::set_js_prop(&result, "materialColors", &js_sys::Uint8Array::from(mat_colors_vec.as_slice()));
     result
 }
+
+#[cfg(test)]
+#[path = "prepass_sharded_tests.rs"]
+mod tests;

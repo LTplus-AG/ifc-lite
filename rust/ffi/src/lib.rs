@@ -267,8 +267,19 @@ unsafe fn run_parse(
 ) -> i32 {
     ensure_panic_logging();
 
+    // Every return leaves each non-null out-parameter in a defined state.
+    // Left untouched on an error, a host that reuses the two variables across
+    // calls still held the previous call's (already freed) buffer and freed it
+    // again.
+    if !out_ptr.is_null() {
+        *out_ptr = std::ptr::null_mut();
+    }
+    if !out_len.is_null() {
+        *out_len = 0;
+    }
+
     // Defensive null checks: a C#/P-Invoke marshalling slip would otherwise be
-    // undefined behavior in `from_raw_parts` / the out-pointer writes below.
+    // undefined behavior in `from_raw_parts` / the result writes below.
     if path_ptr.is_null() || out_ptr.is_null() || out_len.is_null() {
         return 1;
     }
@@ -307,6 +318,11 @@ unsafe fn run_parse(
 /// - `3` if geometry processing fails
 /// - `4` if JSON serialization fails
 ///
+/// On `0`, `*out_ptr` / `*out_len` describe the buffer. On every other code,
+/// each of them that is non-null is set to null / 0, so a host may free on
+/// "non-null" without re-zeroing between calls (`ifc_lite_free(NULL, 0)` is a
+/// no-op).
+///
 /// # Safety
 /// Caller must free the returned buffer with `ifc_lite_free`.
 #[no_mangle]
@@ -328,7 +344,8 @@ pub unsafe extern "C" fn ifc_lite_parse(
 /// - `out_len`: receives length of allocated JSON bytes
 ///
 /// # Returns
-/// Same error codes as `ifc_lite_parse`.
+/// Same error codes and out-parameter states as `ifc_lite_parse`. An
+/// unrecognised `opening_filter_mode` is treated as `0`.
 ///
 /// # Safety
 /// Caller must free the returned buffer with `ifc_lite_free`.

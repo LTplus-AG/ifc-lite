@@ -281,6 +281,48 @@ fn null_pointers_return_code_1() {
     }
 }
 
+/// Every failing return leaves `*out_ptr` / `*out_len` as null / 0, never as
+/// whatever the host had in those variables. Before this the error paths
+/// returned without writing them (review finding K2), so a host loop that
+/// frees on "ptr is non-null" freed the previous, already released buffer a
+/// second time after any failed parse. The variables start as a stale
+/// non-null pointer and a non-zero length, which is what a reused pair holds
+/// after an earlier successful call; `null_pointers_return_code_1` starts from
+/// null and cannot see the difference. Mutation that fails this test: delete
+/// the two out-parameter writes at the top of `run_parse`.
+#[test]
+fn error_returns_write_null_and_zero_through_the_out_parameters() {
+    let mut stale_buffer = [0u8; 4];
+    let missing = temp_path("out_params_missing");
+    let _ = std::fs::remove_file(&missing);
+    let missing_str = missing.to_str().unwrap();
+    let bad_utf8 = [0xff_u8, 0xfe];
+
+    // (code, path pointer, path length) for each error path a host can reach
+    // with valid out-pointers.
+    let cases: [(i32, *const u8, usize); 3] = [
+        (2, missing_str.as_ptr(), missing_str.len()),
+        (1, bad_utf8.as_ptr(), bad_utf8.len()),
+        (1, ptr::null(), 0),
+    ];
+    for (expected_code, path_ptr, path_len) in cases {
+        for extended in [false, true] {
+            let mut out_ptr: *mut u8 = stale_buffer.as_mut_ptr();
+            let mut out_len: usize = stale_buffer.len();
+            let code = unsafe {
+                if extended {
+                    ifc_lite_parse_ex(path_ptr, path_len, 0, &mut out_ptr, &mut out_len)
+                } else {
+                    ifc_lite_parse(path_ptr, path_len, &mut out_ptr, &mut out_len)
+                }
+            };
+            assert_eq!(code, expected_code, "extended={extended}");
+            assert!(out_ptr.is_null(), "code {code} (extended={extended}) must null *out_ptr");
+            assert_eq!(out_len, 0, "code {code} (extended={extended}) must zero *out_len");
+        }
+    }
+}
+
 #[test]
 fn invalid_utf8_path_returns_code_1() {
     let bad = [0xff_u8, 0xfe, 0xfd];

@@ -5,6 +5,8 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { equivalentAppearanceGeometry } from './appearance-uvs.js';
 import { sameCompanionParts } from './appearance-companions.js';
 import { freezeAppearancePartition, validateAppearancePartition, type AppearancePartition } from './appearance-partition.js';
+// The partition is part of the preview contract; the package publishes it from here.
+export { invertAppearancePartition, type AppearancePartition, type AppearancePartitionPart } from './appearance-partition.js';
 
 /** expressId is already federation-resolved; modelIndex is the renderer model. */
 export interface AppearanceOwner {
@@ -175,23 +177,28 @@ export class AppearancePreviewController<Resource>
     for (const old of draft.after)
       if (old.textureRef)
         bitmapIds.set(old.textureRef.textureId, old.textureBitmap);
-    for (let i = 0; i < parts.length; i++) {
-      const p = parts[i],
-        b = draft.before[i];
-      if (
-        !draft.partition && (
-        p.expressId !== b.expressId ||
-        p.modelIndex !== b.modelIndex ||
-        !equivalentAppearanceGeometry(p, b, { allowNormalChanges: true }) ||
-        p.entityIds !== b.entityIds ||
-        p.geometryItemId !== (draft.geometryItemRemaps.find(pair => pair.from === b.geometryItemId)?.to ?? b.geometryItemId) ||
-        p.normals.length !== p.positions.length ||
-        !p.normals.every(Number.isFinite))
-      ) {
-        throw new Error(
-          'Appearance preview cannot change geometry or ownership',
-        );
+    // One-to-one replacement: every part keeps its original's geometry and
+    // ownership. A partition proved its own geometry contract above.
+    if (!draft.partition) {
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i],
+          b = draft.before[i];
+        if (
+          p.expressId !== b.expressId ||
+          p.modelIndex !== b.modelIndex ||
+          !equivalentAppearanceGeometry(p, b, { allowNormalChanges: true }) ||
+          p.entityIds !== b.entityIds ||
+          p.geometryItemId !== (draft.geometryItemRemaps.find(pair => pair.from === b.geometryItemId)?.to ?? b.geometryItemId) ||
+          p.normals.length !== p.positions.length ||
+          !p.normals.every(Number.isFinite)
+        ) {
+          throw new Error(
+            'Appearance preview cannot change geometry or ownership',
+          );
+        }
       }
+    }
+    for (const p of parts) {
       if (
         !p.texture &&
         p.textureRef &&

@@ -93,6 +93,9 @@ jobs:
       - name: Verify fixtures
         run: pnpm fixtures:check
 
+      - name: Assert native determinism targets contain runnable tests
+        run: node scripts/ci-assert-native-determinism-tests.mjs
+
       # exact_predicate_determinism pins exact-predicate signs across
       # platforms; geometry_correctness_harness asserts the committed
       # x86_64-generated .snap files byte-for-byte against the pure-Rust
@@ -141,3 +144,15 @@ jobs:
       # wasm32 file. See docs/architecture/mesh-determinism.md.
       - name: Mesh-output determinism manifest (wasm32 in Node)
         run: wasm-pack test --node rust/wasm-bindings --test mesh_determinism
+
+  report-scheduled-failure:
+    needs: [arm64-determinism, wasm32-mesh-determinism]
+    if: always() && github.event_name == 'schedule' && (needs.arm64-determinism.result != 'success' || needs.wasm32-mesh-determinism.result != 'success')
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: Determinism (arm64 + wasm32)
+      jobs: arm64-determinism, wasm32-mesh-determinism
+      result: arm64=${{ needs.arm64-determinism.result }}, wasm32=${{ needs.wasm32-mesh-determinism.result }}
+    permissions:
+      contents: read
+      issues: write

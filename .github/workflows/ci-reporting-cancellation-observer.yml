@@ -1,0 +1,27 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: CI reporting cancellation observer
+
+on:
+  workflow_run:
+    workflows: [CI reporting outcome probe]
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  report-cancelled:
+    if: github.event.workflow_run.conclusion == 'cancelled'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: CI reporting outcome probe
+      jobs: cancelled workflow run
+      result: ${{ github.event.workflow_run.conclusion }}
+      dry_run: true
+    permissions:
+      contents: read
+      issues: write

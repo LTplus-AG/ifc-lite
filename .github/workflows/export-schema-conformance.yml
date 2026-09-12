@@ -111,3 +111,15 @@ jobs:
 
       - name: Re-export both fixtures and validate against IfcOpenShell
         run: pnpm --filter @ifc-lite/export exec vitest run src/ifcopenshell-schema-conformance.test.ts
+
+  report-scheduled-failure:
+    needs: validate
+    if: always() && github.event_name == 'schedule' && needs.validate.result != 'success'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: Export schema conformance
+      jobs: validate
+      result: ${{ needs.validate.result }}
+    permissions:
+      contents: read
+      issues: write

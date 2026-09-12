@@ -35,6 +35,7 @@
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
     "check:ci-path-coverage": "node scripts/check-ci-path-coverage.mjs",
     "check:ci-aggregate-coverage": "node scripts/check-ci-aggregate-coverage.mjs",
+    "check:workflow-report-paths": "node scripts/check-workflow-report-paths.mjs",
     "check:test-glob-coverage": "node scripts/check-test-glob-coverage.mjs",
     "check:source-text-assertions": "node scripts/check-source-text-assertions.mjs",
     "check:rust-source-text-assertions": "node scripts/check-rust-source-text-assertions.mjs",
@@ -114,7 +115,8 @@
     "oxlint": "^1.81.0",
     "tsx": "^4.23.13",
     "turbo": "^2.10.12",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "yaml": "^2.9.0"
   },
   "engines": {
     "node": ">=22.13 <23 || 24.x",

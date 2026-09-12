@@ -216,3 +216,15 @@ jobs:
         run: |
           node scripts/xmatch/run.mjs --write || true
           git --no-pager diff --exit-code -- scripts/xmatch/scorecard.json
+
+  report-scheduled-failure:
+    needs: content-matching-fixture
+    if: always() && github.event_name == 'schedule' && needs.content-matching-fixture.result != 'success'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: Content-matching fixture
+      jobs: content-matching-fixture
+      result: ${{ needs.content-matching-fixture.result }}
+    permissions:
+      contents: read
+      issues: write

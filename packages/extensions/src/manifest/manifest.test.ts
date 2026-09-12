@@ -20,6 +20,7 @@ function loadJson(path: string): unknown {
 
 describe('validateManifest — valid fixtures', () => {
   const files = readdirSync(VALID_DIR).filter((f) => f.endsWith('.json'));
+  expect(files.length, 'valid manifest fixtures must not disappear').toBeGreaterThan(0);
 
   for (const file of files) {
     it(`accepts ${file}`, () => {
@@ -34,6 +35,7 @@ describe('validateManifest — valid fixtures', () => {
 
 describe('validateManifest — invalid fixtures', () => {
   const files = readdirSync(INVALID_DIR).filter((f) => f.endsWith('.json'));
+  expect(files.length, 'invalid manifest fixtures must not disappear').toBeGreaterThan(0);
 
   for (const file of files) {
     it(`rejects ${file}`, () => {

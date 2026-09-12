@@ -77,12 +77,17 @@ describe('validateDashboardSpec', () => {
     (bad.charts as Array<Record<string, unknown>>)[1].id = 'c';
     (bad.layout as Array<Record<string, unknown>>)[1].chartId = 'missing';
     (bad.layout as Array<Record<string, unknown>>)[0].w = 'wide';
+    (bad.layout as Array<Record<string, unknown>>)[1].x = 9; // 9 + 6 > 12
     (bad.charts as Array<Record<string, unknown>>)[0].bins = 0;
     bad.page = { size: 'A4', orientation: 'portrait' };
     bad.titleBlock = { project: 42 };
     bad.snapshots = false;
     const paths = validateDashboardSpec(bad).map((e) => e.path).sort();
-    expect(paths).toEqual(['.charts[0].bins', '.charts[1].id', '.charts[1].stackBy', '.layout[0].w', '.layout[1].chartId', '.titleBlock.project', '.version']);
+    expect(paths).toEqual(['.charts[0].bins', '.charts[1].id', '.charts[1].stackBy', '.layout[0].w', '.layout[1].chartId', '.layout[1].x', '.titleBlock.project', '.version']);
+    // Negative / fractional / zero-size cells are refused too (review finding).
+    const cells = JSON.parse(JSON.stringify(good)) as DashboardSpec;
+    cells.layout[0] = { chartId: 'c', x: -1, y: 0.5, w: 0, h: 4 };
+    expect(validateDashboardSpec(cells).map((e) => e.path).sort()).toEqual(['.layout[0].w', '.layout[0].x', '.layout[0].y']);
     expect(validateDashboardSpec(null)).toEqual([{ path: '', message: 'expected a dashboard object' }]);
   });
 });

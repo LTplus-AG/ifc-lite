@@ -80,7 +80,12 @@ test('a named fail-closed step cannot be disabled or allowed to fail', (context)
     steps:
       - name: Run canary bundles
         ${guard}
-        run: exit 1
+        run: |
+          canaries=(tests/extensions/canaries/example/)
+          if [ "\${#canaries[@]}" -eq 0 ]; then
+            exit 1
+          fi
+          node packages/cli/dist/index.js ext test "\${canaries[0]}"
 `;
   const root = fixture({ 'sdk-canary.yml': workflow('if: false') });
   context.after(() => rmSync(root, { recursive: true, force: true }));
@@ -89,8 +94,55 @@ test('a named fail-closed step cannot be disabled or allowed to fail', (context)
   assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
   writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow(''));
   assert.deepEqual(auditRoot(root), []);
+  writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow('').replace('exit 1', 'echo "exit 1"'));
+  assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
   writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow('').replace('runs-on: ubuntu-latest', 'runs-on: ubuntu-latest\n    continue-on-error: true'));
   assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
+});
+
+test('reporters cover every non-success dependency and reject inert conditions', (context) => {
+  const scheduled = `jobs:
+  content-matching-fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps: []
+  report-scheduled-failure:
+    needs: content-matching-fixture
+    if: always() && github.event_name == 'schedule' && needs.content-matching-fixture.result != 'success'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+`;
+  const main = `jobs:
+  validate-server-binaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps: []
+  validate-server-binaries-cross:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps: []
+  report-red-on-main:
+    needs: [validate-server-binaries, validate-server-binaries-cross]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.validate-server-binaries.result != 'success' || needs.validate-server-binaries-cross.result != 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions:
+      issues: write
+    steps: []
+`;
+  const root = fixture({ 'xmatch-fixture.yml': scheduled, 'server-binaries.yml': main });
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  assert.deepEqual(auditRoot(root), []);
+  const scheduledPath = join(root, '.github', 'workflows', 'xmatch-fixture.yml');
+  writeFileSync(scheduledPath, scheduled.replace(" != 'success'", " == 'failure'"));
+  assert.ok(auditRoot(root).some((failure) => failure.includes('missing active scheduled failure reporter')));
+  writeFileSync(scheduledPath, scheduled.replace(" != 'success'", " != 'success' && false"));
+  assert.ok(auditRoot(root).some((failure) => failure.includes('missing active scheduled failure reporter')));
+  writeFileSync(scheduledPath, `permissions:\n  issues: write\n${scheduled}`);
+  assert.ok(auditRoot(root).some((failure) => failure.includes('missing active scheduled failure reporter')));
+  writeFileSync(scheduledPath, scheduled);
+  const mainPath = join(root, '.github', 'workflows', 'server-binaries.yml');
+  writeFileSync(mainPath, main.replace("needs.validate-server-binaries-cross.result != 'success'", "needs.validate-server-binaries-cross.result == 'failure'"));
+  assert.ok(auditRoot(root).some((failure) => failure.includes('partial main-only matrix')));
 });
 
 test('runtime reporters consume actual dependency and workflow conclusions', (context) => {

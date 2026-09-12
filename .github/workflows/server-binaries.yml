@@ -271,7 +271,7 @@ jobs:
   report-red-on-main:
     name: Open an issue when main is red
     needs: [validate-server-binaries, validate-server-binaries-cross]
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.validate-server-binaries.result == 'failure' || needs.validate-server-binaries-cross.result == 'failure')
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.validate-server-binaries.result != 'success' || needs.validate-server-binaries-cross.result != 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

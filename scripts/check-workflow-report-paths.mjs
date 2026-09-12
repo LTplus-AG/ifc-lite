@@ -37,6 +37,12 @@ const REQUIRED_STEPS = new Map([
   ['determinism.yml', ['Assert native determinism targets contain runnable tests']],
   ['python-wheels.yml', ['Assert the complete wheel matrix arrived']],
 ]);
+const REQUIRED_STEP_RUN_PATTERNS = new Map([
+  ['Run canary bundles', [/canaries=\(/, /if \[ "\$\{#canaries\[@\]\}" -eq 0 \]; then/, /node packages\/cli\/dist\/index\.js ext test/]],
+  ['Assert the census target contains runnable tests', [/cargo test[\s\S]*-- --list/, /runnable=\$\(\(/, /if \[ "\$runnable" -le 0 \]; then/]],
+  ['Assert native determinism targets contain runnable tests', [/for target in exact_predicate_determinism geometry_correctness_harness/, /cargo test[\s\S]*-- --list/, /\$\(\( \$\{all:-0\} - \$\{ignored:-0\} \)\)" -le 0/]],
+  ['Assert the complete wheel matrix arrived', [/expected=\(/, /find "dist\/\$artifact"/, /if \[ "\$\{#wheels\[@\]\}" -ne 1 \]; then/]],
+]);
 const REPORTER_NEEDS = new Map([
   ['determinism.yml', ['arm64-determinism', 'wasm32-mesh-determinism']],
   ['export-schema-conformance.yml', ['validate']],
@@ -75,8 +81,11 @@ export function auditRoot(root) {
     for (const stepName of REQUIRED_STEPS.get(name) ?? []) {
       const owner = Object.values(jobs).find((job) => namedStep(job, stepName));
       const step = namedStep(owner, stepName);
+      const run = expression(step?.run);
+      const provesMeasurement = (REQUIRED_STEP_RUN_PATTERNS.get(stepName) ?? []).every((pattern) => pattern.test(run));
       if (!isRecord(owner) || owner['continue-on-error'] === true
-        || !step || typeof step.run !== 'string' || !/\bexit\s+1\b/.test(step.run)
+        || !step || typeof step.run !== 'string' || !provesMeasurement
+        || !/^\s*exit\s+1\s*$/m.test(run)
         || step.if !== undefined || step['continue-on-error'] === true) {
         failures.push(`${displayPath(root, path)}: missing active fail-closed step: ${stepName}`);
       }
@@ -105,9 +114,15 @@ export function auditRoot(root) {
     }
     if (REPORTER_NEEDS.has(name)) {
       const reporter = jobs['report-scheduled-failure'];
+      const condition = expression(reporter?.if);
+      const dependencies = REPORTER_NEEDS.get(name);
+      const workflowPermissions = isRecord(workflow.permissions) ? workflow.permissions : {};
       if (!isRecord(reporter) || reporter.uses !== './.github/workflows/report-scheduled-failure.yml'
-        || !expression(reporter.if).includes("always()") || !expression(reporter.if).includes("event_name == 'schedule'")
-        || !REPORTER_NEEDS.get(name).every((dependency) => needs(reporter, dependency))) {
+        || !condition.includes('always()') || !condition.includes("event_name == 'schedule'")
+        || /\bfalse\b/.test(condition)
+        || !dependencies.every((dependency) => needs(reporter, dependency))
+        || !dependencies.every((dependency) => condition.includes(`needs.${dependency}.result != 'success'`))
+        || workflowPermissions.issues === 'write') {
         failures.push(`${displayPath(root, path)}: missing active scheduled failure reporter with complete needs`);
       }
     }
@@ -119,8 +134,12 @@ export function auditRoot(root) {
     if (name === 'python-wheels.yml' || name === 'server-binaries.yml') {
       const reporter = jobs['report-red-on-main'];
       const expected = name === 'python-wheels.yml' ? ['build', 'build-cross'] : ['validate-server-binaries', 'validate-server-binaries-cross'];
-      if (!isRecord(reporter) || !expression(reporter.if).includes('always()') || !expression(reporter.if).includes('refs/heads/main')
-        || !expected.every((dependency) => needs(reporter, dependency)) || !isRecord(reporter.permissions) || reporter.permissions.issues !== 'write') {
+      const condition = expression(reporter?.if);
+      if (!isRecord(reporter) || !condition.includes('always()') || !condition.includes("event_name == 'push'")
+        || !condition.includes('refs/heads/main') || /\bfalse\b/.test(condition)
+        || !expected.every((dependency) => needs(reporter, dependency))
+        || !expected.every((dependency) => condition.includes(`needs.${dependency}.result != 'success'`))
+        || !isRecord(reporter.permissions) || reporter.permissions.issues !== 'write') {
         failures.push(`${displayPath(root, path)}: partial main-only matrix has no active issue reporter disposition`);
       }
     }

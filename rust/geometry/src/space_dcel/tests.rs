@@ -1308,28 +1308,54 @@
         plate.outgoing_half_edges(from).find(|&h| plate.dest(h) == to).expect("edge between the two vertices")
     }
 
+    /// Run an edit that used to spin forever on a worker thread, so a
+    /// regression reads as a named failure within `TERMINATION_TIMEOUT`
+    /// instead of a suite that never finishes. The worker sends the plate
+    /// back on its last line, so `Disconnected` means it panicked (#2945).
+    const TERMINATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+    fn edit_or_diagnose<T: Send + 'static>(
+        what: &str,
+        edit: impl FnOnce() -> T + Send + 'static,
+    ) -> T {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let _ = tx.send(edit());
+        });
+        let value = crate::test_support::recv_or_diagnose(
+            &rx,
+            TERMINATION_TIMEOUT,
+            &format!("{what} did not terminate within {TERMINATION_TIMEOUT:?}"),
+            &format!("{what}'s worker PANICKED (not a hang); its panic is printed above"),
+        );
+        let _ = handle.join();
+        value
+    }
+
     /// Split the shared partition of `two_room_plate` into P-M-N-Q, merge the
     /// rooms across P-M (which leaves M a degree-1 tip and N-Q a bridge inside
     /// the merged room), then remove the non-tip bridge N-Q.
     ///
-    /// Without the fix this HANGS rather than failing: the bridge splice left
-    /// M-N as a 2-cycle still tagged with the room, `remove_spur_edge` refused
-    /// it because a lone stick "cannot bound a room", and Phase A of
-    /// `prune_orphans` had no exit other than "no degree-1 vertices left". The
-    /// failure mode is therefore a CI lane timeout, not an assertion, which is
-    /// how the repo's other termination tests read too.
+    /// Without the fix this spun forever: the bridge splice left M-N as a
+    /// 2-cycle still tagged with the room, `remove_spur_edge` refused it
+    /// because a lone stick "cannot bound a room", and Phase A of
+    /// `prune_orphans` had no exit other than "no degree-1 vertices left".
+    /// Both removals auto-prune, so the whole edit sequence runs under
+    /// `edit_or_diagnose`, whose timeout is the assertion.
     #[test]
     fn remove_edge_on_a_non_tip_bridge_after_a_merge_terminates_and_cleans_up() {
-        let mut plate = two_room_plate();
-        let p = plate.find_vertex([4.0, 0.0]);
-        let q = plate.find_vertex([4.0, 3.0]);
-        let m = plate.split_edge(edge_between(&plate, p, q), 4.0, 1.0).expect("split at M");
-        let n = plate.split_edge(edge_between(&plate, m, q), 4.0, 2.0).expect("split at N");
-        plate.remove_edge(edge_between(&plate, p, m)).expect("merge the rooms across P-M");
-        assert_eq!(plate.room_count(), 1, "P-M separated two rooms, so removing it merges them");
-        assert_eq!(plate.vertex_degree(m), 1, "M is left dangling by the merge");
-
-        let patches = plate.remove_edge(edge_between(&plate, n, q)).expect("remove the bridge N-Q");
+        let (plate, m, n, patches) = edit_or_diagnose("split, merge across P-M, remove N-Q", || {
+            let mut plate = two_room_plate();
+            let p = plate.find_vertex([4.0, 0.0]);
+            let q = plate.find_vertex([4.0, 3.0]);
+            let m = plate.split_edge(edge_between(&plate, p, q), 4.0, 1.0).expect("split at M");
+            let n = plate.split_edge(edge_between(&plate, m, q), 4.0, 2.0).expect("split at N");
+            plate.remove_edge(edge_between(&plate, p, m)).expect("merge the rooms across P-M");
+            assert_eq!(plate.room_count(), 1, "P-M separated two rooms, so removing it merges them");
+            assert_eq!(plate.vertex_degree(m), 1, "M is left dangling by the merge");
+            let patches = plate.remove_edge(edge_between(&plate, n, q)).expect("remove the bridge N-Q");
+            (plate, m, n, patches)
+        });
         assert_eq!(plate.room_count(), 1, "the merged room survives");
         assert_eq!(patches.len(), 1);
         assert!((patches[0].area - 24.0).abs() < 1e-6, "full box: {}", patches[0].area);
@@ -1346,7 +1372,7 @@
     /// face, so the peninsula check fails) must not spin the sweep forever.
     /// The lone-stick change above means the edit path no longer produces such
     /// a tip, so this corrupts one tag by hand to reach the guard. Without the
-    /// guard this hangs (CI timeout), it does not assert.
+    /// guard the sweep spins, so it runs under `edit_or_diagnose`.
     #[test]
     fn prune_orphans_terminates_when_a_tip_refuses_removal() {
         let mut plate = spur_plate_unpruned();
@@ -1359,7 +1385,10 @@
             .expect("a second face");
         plate.half_edges[t.0 as usize].face = other_face;
         assert_eq!(plate.remove_spur_edge(s), Err(EditError::StaleHandle), "the tip is refused");
-        let removed = plate.prune_orphans();
+        let (plate, removed) = edit_or_diagnose("prune_orphans", move || {
+            let removed = plate.prune_orphans();
+            (plate, removed)
+        });
         assert_eq!(plate.vertex_degree(tip), 1, "the refused tip is still there");
         assert_eq!(removed, 0, "nothing else to prune: {removed}");
     }

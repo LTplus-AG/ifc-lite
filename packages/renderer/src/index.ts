@@ -15,6 +15,8 @@ export type { SceneContents } from './scene-contents.js';
 export { expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
 export { sameCompanionParts } from './appearance-companions.js';
 export type { AppearancePreview, AppearanceOwner, AppearanceToken, AppearanceChange } from './appearance-preview.js';
+export { invertAppearancePartition } from './appearance-partition.js';
+export type { AppearancePartition, AppearancePartitionPart } from './appearance-partition.js';
 import type { AppearancePreview } from './appearance-preview.js';
 import { createReferenceImageManager } from './reference-image-host.js';
 export type { ReferenceImages, ReferenceImageInput, ReferenceImageHit, ReferenceCorners } from './reference-image-types.js';

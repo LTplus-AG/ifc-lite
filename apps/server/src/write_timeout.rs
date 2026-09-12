@@ -14,7 +14,7 @@
 use axum::serve::Listener;
 use std::{
     future::Future,
-    io,
+    io::{self, IoSlice},
     net::SocketAddr,
     pin::Pin,
     task::{Context, Poll},
@@ -127,6 +127,33 @@ impl<T: AsyncWrite + Unpin> AsyncWrite for WriteTimeoutIo<T> {
             Poll::Ready(Err(error)) => Poll::Ready(Err(error)),
             Poll::Pending => self.poll_stall(cx),
         }
+    }
+
+    fn poll_write_vectored(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffers: &[IoSlice<'_>],
+    ) -> Poll<io::Result<usize>> {
+        let all_empty = buffers.iter().all(|buffer| buffer.is_empty());
+        let Some(inner) = self.inner.as_mut() else {
+            return Poll::Ready(Err(Self::disconnected()));
+        };
+        match Pin::new(inner).poll_write_vectored(cx, buffers) {
+            Poll::Ready(Ok(written)) => {
+                if written > 0 || all_empty {
+                    self.note_progress();
+                }
+                Poll::Ready(Ok(written))
+            }
+            Poll::Ready(Err(error)) => Poll::Ready(Err(error)),
+            Poll::Pending => self.poll_stall(cx),
+        }
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        self.inner
+            .as_ref()
+            .is_some_and(AsyncWrite::is_write_vectored)
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {

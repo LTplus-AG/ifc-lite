@@ -7,12 +7,14 @@ use axum::{body::Body, routing::get, Router};
 use bytes::Bytes;
 use std::{
     convert::Infallible,
-    io,
+    io::{self, IoSlice},
+    pin::Pin,
     sync::{Arc, Mutex},
+    task::{Context, Poll},
     time::Duration,
 };
 use tokio::{
-    io::{duplex, AsyncReadExt, AsyncWriteExt},
+    io::{duplex, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf},
     net::{TcpListener, TcpStream},
     sync::{oneshot, OwnedSemaphorePermit, Semaphore},
     task::yield_now,
@@ -20,6 +22,48 @@ use tokio::{
 };
 
 const IDLE: Duration = Duration::from_secs(30);
+
+struct PendingVectoredWriter;
+
+impl AsyncRead for PendingVectoredWriter {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        _buffer: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Poll::Pending
+    }
+}
+
+impl AsyncWrite for PendingVectoredWriter {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        _buffer: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        panic!("the wrapper must preserve and use the vectored write path")
+    }
+
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        _buffers: &[IoSlice<'_>],
+    ) -> Poll<io::Result<usize>> {
+        Poll::Pending
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        true
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+}
 
 struct ResponseReservation {
     _permit: OwnedSemaphorePermit,
@@ -109,6 +153,24 @@ async fn zero_timeout_keeps_a_blocked_write_pending() {
     advance(IDLE * 10).await;
     assert!(!task.is_finished());
     task.abort();
+}
+
+/// Regression for #4624 review: preserve scatter/gather support so Hyper does
+/// not flatten large response chunks, while enforcing the same idle deadline.
+#[tokio::test(start_paused = true)]
+async fn vectored_writes_preserve_capability_and_the_idle_bound() {
+    let mut writer = WriteTimeoutIo::new(PendingVectoredWriter, Some(IDLE));
+    assert!(writer.is_write_vectored());
+
+    let write = tokio::spawn(async move {
+        let buffers = [IoSlice::new(b"a"), IoSlice::new(b"b")];
+        writer.write_vectored(&buffers).await
+    });
+    yield_now().await;
+    advance(IDLE).await;
+
+    let error = write.await.unwrap().unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::TimedOut);
 }
 
 /// Regression for #4582 at the real Axum/Hyper boundary: once an unread peer

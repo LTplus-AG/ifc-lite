@@ -66,6 +66,23 @@ describe('PlyStreamingSource source normals (#4561)', () => {
     expect((await source.next(10))?.normalState).toBe('invalid');
   });
 
+  it.each([1e-100, 1e100])('applies Float32 normal validity to unretained binary-double rows (%s)', async (nx) => {
+    const header = new TextEncoder().encode('ply\nformat binary_little_endian 1.0\nelement vertex 3\n'
+      + 'property float x\nproperty float y\nproperty float z\n'
+      + 'property double nx\nproperty double ny\nproperty double nz\nend_header\n');
+    const body = new ArrayBuffer(3 * 36), view = new DataView(body);
+    for (let row = 0; row < 3; row++) {
+      const base = row * 36;
+      view.setFloat32(base, row, true);
+      view.setFloat64(base + 12, row === 1 ? nx : 1, true);
+      view.setFloat64(base + 20, 0, true);
+      view.setFloat64(base + 28, 0, true);
+    }
+    const source = new PlyStreamingSource(new Blob([header, body]), { downsample: { stride: 2 } });
+    await source.open();
+    expect((await source.next(10))?.normalState).toBe('invalid');
+  });
+
   it('selects the floating RGB convention once for the whole file, independent of chunk size', async () => {
     const text = 'ply\nformat ascii 1.0\nelement vertex 2\nproperty float x\nproperty float y\nproperty float z\n'
       + 'property float red\nproperty float green\nproperty float blue\nend_header\n0 0 0 .5 0 0\n1 0 0 255 0 0\n';

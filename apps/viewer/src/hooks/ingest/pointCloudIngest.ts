@@ -19,6 +19,7 @@ import {
   createClassificationCounts,
   streamPointCloud,
   type DecodedPointChunk,
+  type StreamPointCloudOptions,
   type StreamHandle,
 } from '@ifc-lite/pointcloud';
 import type { CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
@@ -123,6 +124,8 @@ export interface PointCloudIngestOptions {
   onClassCounts?: (handleId: number, counts: Record<number, number> | null) => void;
   /** Abort signal to cancel ingest. */
   signal?: AbortSignal;
+  /** In-process decoder seam used by integration tests; production uses the worker source. */
+  createSource?: StreamPointCloudOptions['createSource'];
   /**
    * IfcMapConversion-derived alignment transform for this scan (issue
    * #1804), computed by the caller from the reference model's
@@ -378,6 +381,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
       maxPointsInMemory: opts.maxPointsInMemory,
       maxFileSize: opts.maxFileSize,
       signal: opts.signal,
+      createSource: opts.createSource,
       autoOrigin: true,
       onOpen: (info) => {
         if (info.originOffset) { retargetPointCloudDecodeOrigin(opts.renderer, handle, info.originOffset); setPointCloudScanCacheOrigin(handle.id, info.originOffset); }

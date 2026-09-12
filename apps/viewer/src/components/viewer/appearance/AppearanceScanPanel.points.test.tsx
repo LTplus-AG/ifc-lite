@@ -8,16 +8,19 @@ import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { Renderer } from '@ifc-lite/renderer';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { decodePly } from '@ifc-lite/pointcloud';
+import { PlyStreamingSource } from '@ifc-lite/pointcloud';
 import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture';
 import { cleanup, render } from '@/test/render';
 import { emptyPlacementState } from '@/lib/model-placement/state';
-import { addPointsToScanCache, clearAllPointCloudScanCaches, getPointCloudScanSample, registerPointCloudScanCache, setPointCloudScanCacheOrigin } from '@/hooks/ingest/pointCloudScanCache';
-import { swapZupChunkToYup } from '@/hooks/ingest/pointCloudFrame';
+import { addPointsToScanCache, clearAllPointCloudScanCaches, getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
+import { ingestPointCloud } from '@/hooks/ingest/pointCloudIngest';
 import { prepareScanSession } from '@/lib/appearance/scan/session';
-import { nativePointFromSample } from '@/lib/appearance/scan/point-source';
+import { nativePointFromSample, pointTransferPayload } from '@/lib/appearance/scan/point-source';
 import { transferSource } from '@/lib/appearance/scan/prepare-transfer';
+import { createAppearancePlanner, type AppearanceWorker } from '@/lib/appearance/planner-worker-client';
+import type { AppearanceWorkerRequest } from '@/lib/appearance/planner-types';
+import type { MeshTransferRequest } from '@/lib/appearance/scan/transfer-types';
 import { AppearanceScanPanel } from './AppearanceScanPanel';
 
 const initial = useViewerStore.getState();
@@ -36,12 +39,20 @@ async function fixture() {
   const ply = 'ply\nformat ascii 1.0\nelement vertex 8\nproperty float x\nproperty float y\nproperty float z\n'
     + 'property uchar red\nproperty uchar green\nproperty uchar blue\nproperty float nx\nproperty float ny\nproperty float nz\nend_header\n'
     + native.map(([x, y, z], i) => `${x} ${y} ${z} ${i * 20} 128 255 ${i + 1} ${i + 2} ${i + 3}`).join('\n') + '\n';
-  const scan: ReturnType<typeof fixtureModel> = { ...fixtureModel('scan'), ifcDataStore: null, sourceFile: new File([ply], 'room.ply'), pointCloudHandleId: HANDLE, loadState: 'complete',
+  const scanFile = new File([ply], 'room.ply');
+  const scan: ReturnType<typeof fixtureModel> = { ...fixtureModel('scan'), ifcDataStore: null, sourceFile: scanFile, pointCloudHandleId: HANDLE, loadState: 'complete',
     geometryResult: { meshes: [], pointClouds: [], totalTriangles: 0, totalVertices: 0, coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } } };
-  registerPointCloudScanCache(HANDLE, 1000);
-  setPointCloudScanCacheOrigin(HANDLE, [100, 200, 300]);
-  // Native (Z-up) points 101..108 around the origin, delivered Y-up decode-relative like the ingest does.
-  addPointsToScanCache(HANDLE, swapZupChunkToYup(decodePly(new TextEncoder().encode(ply), [100, 200, 300])));
+  const ingestRenderer = new Renderer(document.createElement('canvas'));
+  mock.method(ingestRenderer, 'beginPointCloudStream', () => ({ id: HANDLE }));
+  mock.method(ingestRenderer, 'setPointCloudTransform', () => {});
+  mock.method(ingestRenderer, 'appendPointCloudChunk', () => {});
+  mock.method(ingestRenderer, 'requestRender', () => {});
+  mock.method(ingestRenderer, 'endPointCloudStream', () => {});
+  mock.method(ingestRenderer, 'removePointCloudAsset', () => {});
+  const loaded = ingestPointCloud({ format: 'ply', blob: scanFile, fileName: scanFile.name,
+    fileSize: scanFile.size, renderer: ingestRenderer, maxScanCachePoints: 1000,
+    createSource: options => new PlyStreamingSource(options.blob, { downsample: { stride: options.stride ?? 1 }, originOffset: options.originOffset }) });
+  await loaded.done;
   useViewerStore.setState({ models: new Map([['scan', scan], ['target', target]]), mutationViews: new Map([['target', new MutablePropertyView(store.properties, 'target')]]), mutationVersion: 0, modelPlacement: emptyPlacementState(), collabRoomId: null, sectionPlane: { ...initial.sectionPlane, enabled: false } });
   return { scan, target, native };
 }
@@ -61,6 +72,31 @@ test('a completely streamed point cloud is offered as a scan source with its ret
   assert.match(session.sourceFrame.frameKey, /^pointcloud-native-z-up-metres-v1:[a-f0-9]{64}$/);
   assert.match(session.targetFrame.frameKey, /^workspace-ifc-z-up-metres:/);
   native.forEach((point, i) => assert.deepEqual(nativePointFromSample(points, i).map(v => Math.round(v * 1e4) / 1e4), point));
+  let delivered: AppearanceWorkerRequest | undefined;
+  const worker: AppearanceWorker = {
+    onmessage: null, onerror: null, onmessageerror: null,
+    postMessage(message) { delivered = structuredClone(message); },
+    terminate() {},
+  };
+  const planner = createAppearancePlanner({ workerFactory: () => worker });
+  const controller = new AbortController();
+  const request: MeshTransferRequest = { schema: 'IFC4', sourceRevision: session.revision, nextExpressId: session.nextExpressId,
+    productIds: [10], registration: { sourceFrame: session.sourceFrame, targetFrame: session.targetFrame, fit: [], heldOut: [] },
+    registrationSha256: 'a'.repeat(64), targetFromIfcWorld: { rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], sourceAnchor: [0, 0, 0], targetAnchor: [0, 0, 0] },
+    source: planned, sourceImages: [], texelsPerMetre: 64, maxDistanceMetres: 0.02, minNormalDot: 0.8,
+    ambiguityDistanceMetres: 0.001, maxBehindMetres: 0.01 };
+  const pending = planner.pointTransfer(session.bytes, request, new Uint8Array(0),
+    { ...pointTransferPayload(points), stations: new Uint32Array(0) }, { signal: controller.signal });
+  assert.equal(delivered?.type, 'point-transfer');
+  if (delivered?.type !== 'point-transfer') throw new Error('point transfer did not reach the planner worker');
+  assert.equal(delivered.request.source.kind === 'points' && delivered.request.source.orientation, 'source-normals');
+  assert.equal(delivered.points.normals.length, 24);
+  assert.deepEqual(Array.from(delivered.points.normals.slice(0, 3)).map(v => Math.round(v * 1e6) / 1e6),
+    [1, 2, 3].map(v => v / Math.sqrt(14)).map(v => Math.round(v * 1e6) / 1e6));
+  assert.deepEqual(Array.from(delivered.points.positions.slice(0, 3)), native[0]);
+  controller.abort();
+  await assert.rejects(pending, { name: 'AbortError' });
+  planner.dispose();
   assert.doesNotThrow(() => session.validate());
   // Another chunk reaching the reservoir means the pinned sample no longer describes the live scan.
   addPointsToScanCache(HANDLE, { positions: new Float32Array([1, 1, 1]), normalState: 'absent', pointCount: 1 });

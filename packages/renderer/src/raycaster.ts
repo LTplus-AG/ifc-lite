@@ -152,7 +152,9 @@ export class Raycaster {
           ? { x: intersection.point.x + o[0], y: intersection.point.y + o[1], z: intersection.point.z + o[2] }
           : intersection.point;
         const geometryItemId = reportableItemId(mesh, mesh.expressId);
-        const sourceTriangleIndex = appearanceSourceTriangle(mesh, i / 3);
+        // A canonical ordinal is only actionable together with the exact IFC
+        // representation item whose evaluated surface owns it.
+        const sourceTriangleIndex = geometryItemId === undefined ? undefined : appearanceSourceTriangle(mesh, i / 3);
 
         const exact: Intersection = {
           point: worldPoint,

@@ -293,7 +293,7 @@ export class RaycastEngine {
                     intersection,
                     { position: cameraPos, fov: cameraFov },
                     this.canvas.height,
-                    options.snapOptions
+                    options.snapOptions, target => !pointClipped(clip, target.position.x, target.position.y, target.position.z),
                 ) || undefined;
             }
 

@@ -53,7 +53,7 @@ function instancedDevice(): GPUDevice {
   } as unknown as GPUDevice;
 }
 
-function instancedTriangle(entityId: number, itemId: number): DecodedInstancedShard {
+function instancedTriangle(entityId: number, itemId?: number): DecodedInstancedShard {
   return {
     templates: [{
       // Decoder output is IFC Z-up. Conversion on upload maps this XZ triangle
@@ -62,9 +62,9 @@ function instancedTriangle(entityId: number, itemId: number): DecodedInstancedSh
       normals: new Float32Array([0, -1, 0, 0, -1, 0, 0, -1, 0]),
       indices: new Uint32Array([0, 1, 2]), origin: [0, 0, 0],
     }],
-    instances: [{ templateIndex: 0, entityId, itemId, color: [1, 1, 1, 1],
+    instances: [{ templateIndex: 0, entityId, ...(itemId === undefined ? {} : { itemId }), color: [1, 1, 1, 1],
       transform: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) }],
-    carriesItemIds: true,
+    carriesItemIds: itemId !== undefined,
   };
 }
 
@@ -364,6 +364,21 @@ describe('RaycastEngine.raycastScene', () => {
     assert.equal(cropVisible.expressId, 8, 'the crop box also rejects the nearer hidden surface');
   });
 
+  it('rejects clipped snap candidates while retaining the best visible candidate (#4555)', () => {
+    const scene = new Scene();
+    const positions = new Float32Array([0.05, 0, 0, -1, -1, 0, -1, 1, 0]);
+    const triangle: MeshData = { expressId: 9, positions,
+      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+      color: [1, 1, 1, 1] };
+    addRegularMesh(scene, triangle);
+    const hit = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50)).raycastScene(399, 300, {
+      snapOptions: { snapToVertices: true, snapToEdges: false, snapToFaces: false, screenSnapRadius: 200 },
+    }, { sectionPlane: { normal: [1, 0, 0], distance: 0, flipped: false } });
+    assert.ok(hit?.snap);
+    assert.equal(hit.intersection.expressId, 9, 'the visible portion of the triangle remains hittable');
+    assert.equal(hit.snap.position.x, -1, 'the closer x=0.05 vertex is clipped and cannot win snapping');
+  });
+
   it('reports canonical identity from a materialized instance in its federation model (#4555)', () => {
     const scene = new Scene();
     scene.addInstancedShard(instancedDevice(), instancedTriangle(1_025, 1_011), 7);
@@ -373,6 +388,16 @@ describe('RaycastEngine.raycastScene', () => {
     assert.deepEqual({ expressId: hit.expressId, modelIndex: hit.modelIndex,
       geometryItemId: hit.geometryItemId, sourceTriangleIndex: hit.sourceTriangleIndex },
     { expressId: 1_025, modelIndex: 7, geometryItemId: 1_011, sourceTriangleIndex: 0 });
+  });
+
+  it('does not expose a canonical face ordinal when an instance has no representation item (#4555)', () => {
+    const scene = new Scene();
+    scene.addInstancedShard(instancedDevice(), instancedTriangle(1_025), 7);
+    const hit = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50)).raycastScene(400, 300)?.intersection;
+    assert.ok(hit);
+    assert.equal(hit.modelIndex, 7);
+    assert.equal(hit.geometryItemId, undefined);
+    assert.equal(hit.sourceTriangleIndex, undefined);
   });
 
   it('off-origin, rotated, non-uniformly-scaled geometry is hit at the transformed location, not the local one', () => {

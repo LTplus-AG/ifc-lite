@@ -2,34 +2,20 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Geometric helpers for [`super::intersection_solid`]: enclosed volume of a
-//! triangle soup, connected-component partitioning of the kernel's raw
-//! arrangement output, and the per-operand near-band used to size the trust
-//! gate. Split out of `clash_solid.rs` so that file stays under the
-//! module-size rule; `intersection_solid` itself, and the reasoning for HOW
-//! these are used, stays there.
+//! Geometric helpers for [`super::intersection_solid`]: connected-component
+//! partitioning of the kernel's raw arrangement output, and the per-operand
+//! near-band used to size the trust gate. Split out of `clash_solid.rs` so
+//! that file stays under the module-size rule; `intersection_solid` itself,
+//! and the reasoning for HOW these are used, stays there. (The reported
+//! solid's volume comes from `kernel::signed_volume`, summed about the
+//! solid's own AABB centre; the world-origin sum that used to live here read
+//! a rotated overlap 9 km out 2e-5 relative off, on a field documented as
+//! exact to f64.)
 
 use crate::clash_contact_axes::dot3;
 use crate::kernel::arrangement::Tri;
 use crate::kernel::near_band::NearBand;
 use crate::mesh::Mesh;
-
-/// Enclosed volume of a closed f64 triangle soup (divergence theorem).
-pub(super) fn tri_volume(tris: &[Tri]) -> f64 {
-    tris.iter()
-        .map(|t| {
-            let (a, b, c) = (t[0], t[1], t[2]);
-            let cr = [
-                b[1] * c[2] - b[2] * c[1],
-                b[2] * c[0] - b[0] * c[2],
-                b[0] * c[1] - b[1] * c[0],
-            ];
-            a[0] * cr[0] + a[1] * cr[1] + a[2] * cr[2]
-        })
-        .sum::<f64>()
-        .abs()
-        / 6.0
-}
 
 /// Partitions `tris` into disjoint connected components by shared-vertex
 /// adjacency, returning each component as a list of indices into `tris`.

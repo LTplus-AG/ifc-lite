@@ -55,7 +55,7 @@ use crate::mesh::Mesh;
 
 #[path = "clash_solid_geom.rs"]
 mod clash_solid_geom;
-use clash_solid_geom::{operand_near_band, tri_volume, trust_gate_reason};
+use clash_solid_geom::{operand_near_band, trust_gate_reason};
 
 /// Multiple of the kernel's near-coplanar band above which the intersection
 /// volume was measured to be exactly analytic.
@@ -265,7 +265,8 @@ pub fn intersection_solid(a: &Mesh, b: &Mesh) -> IntersectionSolid {
     IntersectionSolid::Solid {
         positions,
         indices,
-        volume_m3: tri_volume(&tris),
+        // Magnitude only: the arrangement's winding is not what is reported.
+        volume_m3: crate::kernel::signed_volume::signed_volume_of(&tris).abs(),
     }
 }
 

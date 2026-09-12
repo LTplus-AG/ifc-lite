@@ -486,6 +486,7 @@ fn build_cellular(grid: &[Vec<f64>; 3], openings: &[[[f64; 3]; 2]]) -> Mesh {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kernel::signed_volume::mesh_signed_volume;
 
     /// Closed axis-aligned box, 12 outward triangles.
     fn box_mesh(min: [f64; 3], max: [f64; 3]) -> Mesh {
@@ -561,25 +562,6 @@ mod tests {
         n
     }
 
-    /// Signed volume × 6 (divergence), about origin.
-    fn vol6(m: &Mesh) -> f64 {
-        let v = |i: u32| {
-            let b = i as usize * 3;
-            [m.positions[b] as f64, m.positions[b + 1] as f64, m.positions[b + 2] as f64]
-        };
-        let mut s = 0.0;
-        for t in m.indices.chunks_exact(3) {
-            let (a, b, c) = (v(t[0]), v(t[1]), v(t[2]));
-            let cr = [
-                b[1] * c[2] - b[2] * c[1],
-                b[2] * c[0] - b[0] * c[2],
-                b[0] * c[1] - b[1] * c[0],
-            ];
-            s += a[0] * cr[0] + a[1] * cr[1] + a[2] * cr[2];
-        }
-        s
-    }
-
     // 4m × 0.2m × 3m wall (thin along Y). Opening boxes poke through Y.
     fn wall(base: [f64; 3]) -> Mesh {
         box_mesh(base, [base[0] + 4.0, base[1] + 0.2, base[2] + 3.0])
@@ -599,7 +581,7 @@ mod tests {
         assert_eq!(open_edges(&cut), 0, "{label}: not watertight");
         assert_eq!(degenerate(&cut), 0, "{label}: degenerate triangles");
         // Removed volume ≈ Σ opening∩host volume.
-        let removed = (vol6(&host) - vol6(&cut)) / 6.0;
+        let removed = mesh_signed_volume(&host) - mesh_signed_volume(&cut);
         let mut expect = 0.0;
         let (hmn, hmx) = (base, [base[0] + 4.0, base[1] + 0.2, base[2] + 3.0]);
         for (omn, omx) in openings {

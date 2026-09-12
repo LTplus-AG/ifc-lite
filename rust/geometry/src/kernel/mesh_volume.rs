@@ -68,13 +68,13 @@ use crate::mesh::Mesh;
 /// widened or an equivalent check of its own — same requirement
 /// `GeometryHasher::volume`'s own gate establishes upstream.
 ///
-/// The other volume readings already in the crate were each wrong for this
-/// job for a different reason: `router::voids::geom::mesh_signed_volume`
-/// sums about the world origin (fine for its own callers, which only ever see
-/// frame-local meshes near the origin — not true of an arbitrary zone piece),
-/// and `kernel::mesh_bridge`'s `#[cfg(test)]`-only helper duplicates that same
-/// world-origin arithmetic for test-only use. Reusing `signed_volume6`
-/// avoids adding another divergence-theorem implementation to reconcile.
+/// The other `Mesh` reader in the crate, `signed_volume::mesh_signed_volume`,
+/// sums about the same AABB centre but reads the f32 positions UNSNAPPED: it
+/// serves the void router's before/after gates on meshes the kernel has not
+/// yet seen. This one is the kernel-grid view. Both fold
+/// `signed_volume6_about`, so they cannot drift in arithmetic, only in what
+/// they feed it. (`kernel::mesh_bridge`'s `#[cfg(test)]`-only helper still
+/// carries a world-origin sum for test use.)
 pub fn mesh_volume(mesh: &Mesh) -> f64 {
     signed_volume_of(&mesh_to_tris(mesh))
 }

@@ -286,11 +286,6 @@ struct PTri {
 }
 
 impl PTri {
-    /// Signed volume contribution about the origin (divergence theorem, ×6).
-    #[inline]
-    fn vol6(&self) -> f64 {
-        dot(self.p[0], cross(self.p[1], self.p[2]))
-    }
     #[inline]
     fn aabb(&self) -> (V3, V3) {
         let mut lo = self.p[0];
@@ -305,8 +300,57 @@ impl PTri {
     }
 }
 
-fn tri_volume6(tris: &[PTri]) -> f64 {
-    tris.iter().map(PTri::vol6).sum()
+/// Divergence sum (×6) over `tris` about `o`. See `partition_volumes_consistent`
+/// for why the reference point is the host's centre and not the frame origin.
+fn tri_volume6_about(tris: &[PTri], o: V3) -> f64 {
+    crate::kernel::signed_volume::signed_volume6_about(tris.iter().map(|t| t.p), &o)
+}
+
+/// Volume self-checks on a cut's partition (f64, exact identities up to
+/// roundoff), returning the removed volume `vol_in` when they hold:
+///   vol_out + vol_in == vol_host   (caps cancel, fragments partition)
+///   0 < vol_in <= vol(cutter)      (the caps close the removed solid)
+///
+/// Every sum is taken about the host's AABB centre. `out`, `inside` and
+/// `caps` are each OPEN surfaces, so each sum carries a boundary flux that
+/// only cancels between them in exact arithmetic; about the frame origin on a
+/// native host 5-10 km out (positions are absolute there) each sum is
+/// thousands of m³ of flux for a wall face, and the tolerance used to be
+/// scaled by the host's world magnitude cubed to cover its rounding. At 9 km
+/// that was 0.7 m³ of slack on `vol_in <= vol(cutter)`: a removed solid
+/// 10 % larger than a 1 m³ cutter passed. About the centre every sum is at
+/// the solid's own scale and the same formula, now over the extent about
+/// the centre, is a tolerance again.
+fn partition_volumes_consistent(
+    tris: &[PTri],
+    out: &[PTri],
+    inside: &[PTri],
+    caps: &[PTri],
+    pf: &PrismFrame,
+    aabbs: &[(V3, V3)],
+) -> Option<f64> {
+    let o = crate::kernel::signed_volume::aabb_centre(
+        aabbs.iter().flat_map(|(lo, hi)| [*lo, *hi]),
+    )?;
+    let mut host_mag = pf.corner_mag_about(o);
+    for (lo, hi) in aabbs {
+        for k in 0..3 {
+            host_mag = host_mag.max((lo[k] - o[k]).abs()).max((hi[k] - o[k]).abs());
+        }
+    }
+    let vol_host = tri_volume6_about(tris, o) / 6.0;
+    let caps_vol = tri_volume6_about(caps, o) / 6.0; // caps oriented for the RESULT
+    let vol_out = tri_volume6_about(out, o) / 6.0 + caps_vol;
+    let vol_in = tri_volume6_about(inside, o) / 6.0 - caps_vol;
+    let scale3 = (1.0 + host_mag).powi(3);
+    let tol = 1.0e-12 * scale3 + 1.0e-9;
+    if (vol_out + vol_in - vol_host).abs() > tol.max(1.0e-6 * vol_host.abs()) {
+        return None;
+    }
+    if vol_in < 1.0e-9 {
+        return None; // removed nothing measurable — leave to the exact path
+    }
+    (vol_in <= pf.volume() * (1.0 + 1.0e-6) + tol).then_some(vol_in)
 }
 
 /// Promote a `Mesh` to the f64 triangle list, folding nothing (the mesh is
@@ -465,12 +509,16 @@ impl PrismFrame {
     /// Largest coordinate magnitude over the swept profile corners (epsilon
     /// scaling).
     fn corner_mag(&self) -> f64 {
+        self.corner_mag_about([0.0; 3])
+    }
+    /// Largest per-axis distance from `o` over the swept profile corners.
+    fn corner_mag_about(&self, o: V3) -> f64 {
         let mut mag = 0.0f64;
         for prof in &self.profiles {
             for &[uu, vv] in prof {
                 for w in [self.d0(), self.d1()] {
-                    for c in self.lift(uu, vv, w) {
-                        mag = mag.max(c.abs());
+                    for (c, oc) in self.lift(uu, vv, w).into_iter().zip(o) {
+                        mag = mag.max((c - oc).abs());
                     }
                 }
             }
@@ -959,6 +1007,46 @@ fn detect_prism(verts: &[V3], tris: &[[usize; 3]], mesh_vol: f64) -> Option<Pris
     None
 }
 
+/// A cutter mesh as host-local f64 vertices (cutter origin folded, host
+/// origin removed) plus six times its enclosed volume from the raw
+/// (per-face-vertex) soup. `None` on a non-finite vertex or an index past
+/// the end.
+///
+/// The volume is summed about the cutter's own centre, not the frame origin:
+/// host-local is absolute on native. The soup is read BEFORE the weld that
+/// admits the cutter, so one corner whose per-face copies differ by an f32
+/// ulp (1 mm at 9 km) leaves it open, and about the frame origin that
+/// sliver's flux moved a 100-gon prism's reading 5 %, past `detect_prism`'s
+/// 2 % reconciliation, sending a clean prism to the exact kernel (see
+/// `partition_volumes_consistent`).
+fn host_local_soup(m: &Mesh, origin: V3) -> Option<(Vec<V3>, f64)> {
+    let o = m.origin;
+    let vc = m.positions.len() / 3;
+    let mut raw: Vec<V3> = Vec::with_capacity(vc);
+    for c in m.positions.chunks_exact(3) {
+        let p = [
+            c[0] as f64 + o[0] - origin[0],
+            c[1] as f64 + o[1] - origin[1],
+            c[2] as f64 + o[2] - origin[2],
+        ];
+        if p.iter().any(|x| !x.is_finite()) {
+            return None;
+        }
+        raw.push(p);
+    }
+    if m.indices.iter().any(|&i| i as usize >= vc) {
+        return None;
+    }
+    let centre = crate::kernel::signed_volume::aabb_centre(raw.iter().copied())?;
+    let vol6 = crate::kernel::signed_volume::signed_volume6_about(
+        m.indices
+            .chunks_exact(3)
+            .map(|t| [raw[t[0] as usize], raw[t[1] as usize], raw[t[2] as usize]]),
+        &centre,
+    );
+    Some((raw, vol6))
+}
+
 /// Build the analytic prism for one classified opening, expressed in the
 /// host's local frame (`origin` subtracted in f64). `None` ⇒ the opening is
 /// not a clean prism and stays with the exact kernel.
@@ -1054,34 +1142,7 @@ fn prepare_prism(op: &OpeningType, origin: [f64; 3]) -> Option<PrismFrame> {
                 }
                 &deseamed
             };
-            // Host-local f64 verts (cutter origin folded, host origin removed).
-            let o = m.origin;
-            let vc = m.positions.len() / 3;
-            let mut raw: Vec<V3> = Vec::with_capacity(vc);
-            for c in m.positions.chunks_exact(3) {
-                let p = [
-                    c[0] as f64 + o[0] - origin[0],
-                    c[1] as f64 + o[1] - origin[1],
-                    c[2] as f64 + o[2] - origin[2],
-                ];
-                if p.iter().any(|x| !x.is_finite()) {
-                    return None;
-                }
-                raw.push(p);
-            }
-            // Enclosed volume from the raw (per-face-vertex) soup.
-            let mut vol6 = 0.0;
-            for t in m.indices.chunks_exact(3) {
-                if t.iter().any(|&i| i as usize >= vc) {
-                    return None;
-                }
-                let (a, b, c) = (
-                    raw[t[0] as usize],
-                    raw[t[1] as usize],
-                    raw[t[2] as usize],
-                );
-                vol6 += dot(a, cross(b, c));
-            }
+            let (raw, vol6) = host_local_soup(m, origin)?;
             // Weld by position for exact edge stitching of the cap boundary.
             let mut wverts: Vec<V3> = Vec::new();
             let mut wmap: FxHashMap<(i64, i64, i64), usize> = FxHashMap::default();
@@ -1932,30 +1993,10 @@ fn cut_prism(tris: &[PTri], pf: &PrismFrame) -> Result<PrismCutOutcome, usize> {
         }
     }
 
-    // Volume self-checks (f64, exact identities up to roundoff):
-    //   vol_out + vol_in == vol_host   (caps cancel, fragments partition)
-    //   0 < vol_in <= vol(cutter)      (the caps close the removed solid)
-    let mut host_mag = pf.corner_mag();
-    for (lo, hi) in &aabbs {
-        for k in 0..3 {
-            host_mag = host_mag.max(lo[k].abs()).max(hi[k].abs());
-        }
-    }
-    let vol_host = tri_volume6(tris) / 6.0;
-    let caps_vol = tri_volume6(&caps) / 6.0; // caps oriented for the RESULT
-    let vol_out = tri_volume6(&out) / 6.0 + caps_vol;
-    let vol_in = tri_volume6(&inside) / 6.0 - caps_vol;
-    let scale3 = (1.0 + host_mag).powi(3);
-    let tol = 1.0e-12 * scale3 + 1.0e-9;
-    if (vol_out + vol_in - vol_host).abs() > tol.max(1.0e-6 * vol_host.abs()) {
+    let Some(vol_in) = partition_volumes_consistent(tris, &out, &inside, &caps, pf, &aabbs)
+    else {
         return Err(8);
-    }
-    if vol_in < 1.0e-9 {
-        return Err(8); // removed nothing measurable — leave to the exact path
-    }
-    if vol_in > pf.volume() * (1.0 + 1.0e-6) + tol {
-        return Err(8);
-    }
+    };
 
     let mut tris_out = out;
     tris_out.append(&mut caps);

@@ -111,3 +111,51 @@ fn a_5mm_overlap_10km_out_in_x_must_still_be_a_solid() {
          does not match the expected {expected}"
     );
 }
+
+
+/// The reported `volume_m3` used to come from a world-origin divergence sum
+/// over the arrangement's triangles. The box corpus above cannot see that:
+/// its coordinates are integers and axis-aligned, so every product in the
+/// sum is exact at any offset. The arrangement's output is f64 on the 2^-16
+/// grid, ~30 significant bits at 9 km, so its cross products round, and a
+/// rotated sphere clipped by a box (650 output triangles) read 1.9e-5
+/// relative off its origin twin (bit-exact translation, see the fixture).
+/// Small, but the field is documented "exact to f64" and the reference
+/// point was the only thing that differed. About the solid's own centre the
+/// two readings agree to 1e-15.
+#[test]
+fn a_rotated_overlap_9km_out_reports_the_same_volume_as_at_the_origin() {
+    use crate::world_frame_fixture::{placed_sphere_mesh, translated_exactly, FAR_SITE_M};
+    let sphere_far = placed_sphere_mesh(FAR_SITE_M, 0.3, 20, 25);
+    // A box covering the sphere's lower half and then some, so the overlap
+    // is a thick solid the trust gate has no reason to withhold.
+    let lo: [f64; 3] = std::array::from_fn(|k| FAR_SITE_M[k] - 0.5);
+    let hi = [FAR_SITE_M[0] + 0.5, FAR_SITE_M[1] + 0.5, FAR_SITE_M[2] + 0.05];
+    let box_far = placed_box_mesh(WorldFrameCase::AtOrigin, lo, hi);
+    let sphere_near = translated_exactly(&sphere_far, FAR_SITE_M);
+    let box_near = translated_exactly(&box_far, FAR_SITE_M);
+
+    let read = |a: &crate::mesh::Mesh, b: &crate::mesh::Mesh| {
+        let solid = intersection_solid(a, b);
+        solid
+            .volume_m3()
+            .unwrap_or_else(|| panic!("a thick sphere/box overlap must be a Solid, got {solid:?}"))
+    };
+    let v_near = read(&sphere_near, &box_near);
+    let v_far = read(&sphere_far, &box_far);
+
+    // Just over half a 0.3 m sphere: bounded by the half-sphere below and
+    // the whole sphere above, which guards against a trivially-zero pass.
+    let sphere = 4.0 / 3.0 * std::f64::consts::PI * 0.3f64.powi(3);
+    assert!(
+        v_near > 0.5 * sphere && v_near < sphere,
+        "near-origin control reads {v_near}, outside ({}, {sphere})",
+        0.5 * sphere
+    );
+    assert!(
+        ((v_far - v_near) / v_near).abs() < 1e-7,
+        "the same overlap 9 km out reports {v_far} against {v_near} at the origin \
+         (relative {:e})",
+        (v_far - v_near) / v_near
+    );
+}

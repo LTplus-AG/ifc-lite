@@ -324,27 +324,12 @@ pub(super) fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Poi
     instance_meta: None, local_bounds: None, local_to_world: None, welded_in_object_frame: false }
 }
 
-/// Signed volume of a (closed) triangle mesh via the divergence theorem. Used to
-/// reconcile a union of parametric boxes against the meshed opening solid by volume.
-pub(crate) fn mesh_signed_volume(mesh: &Mesh) -> f64 {
-    let v = |i: u32| {
-        let b = i as usize * 3;
-        [
-            mesh.positions[b] as f64,
-            mesh.positions[b + 1] as f64,
-            mesh.positions[b + 2] as f64,
-        ]
-    };
-    mesh.indices
-        .chunks_exact(3)
-        .map(|t| {
-            let (a, b, c) = (v(t[0]), v(t[1]), v(t[2]));
-            a[0] * (b[1] * c[2] - b[2] * c[1]) + a[1] * (b[2] * c[0] - b[0] * c[2])
-                + a[2] * (b[0] * c[1] - b[1] * c[0])
-        })
-        .sum::<f64>()
-        / 6.0
-}
+/// Signed volume of a (closed) triangle mesh via the divergence theorem, about
+/// the mesh's own AABB centre. Used to reconcile a union of parametric boxes
+/// against the meshed opening solid by volume, and by every before/after cut
+/// gate in this module. Lives in the kernel next to `signed_volume6` so the
+/// reference-point rule has one home.
+pub(crate) use crate::kernel::signed_volume::mesh_signed_volume;
 
 /// Closed-2-manifold self-check (0.1 mm weld): every undirected edge shared by exactly
 /// two non-degenerate triangles. The parametric path refuses to emit a cut that fails

@@ -172,3 +172,101 @@ pub(crate) fn mesh_volume(mesh: &Mesh) -> f64 {
     }
     v.abs()
 }
+
+/// A site 5-10 km out on every axis, under `LARGE_COORD_THRESHOLD_METERS`
+/// per axis so nothing upstream recentres it, and a multiple of `2^-3` so a
+/// mesh baked through f32 here can be translated back to the origin without
+/// changing a single bit of its relative geometry (see
+/// [`translated_exactly`]).
+pub(crate) const FAR_SITE_M: [f64; 3] = [9000.375, 5000.25, 300.125];
+
+/// A UV sphere of radius `r` (`stacks` rings, `slices` segments,
+/// `2·slices·(stacks−1)` outward triangles) under a fixed non-axis-aligned
+/// rotation, centred at `centre`, baked through f32 as ingestion does.
+///
+/// Nothing about it is integer or axis-aligned. That is the point: the
+/// all-integer axis-aligned boxes above keep every product in a divergence
+/// sum exact in f64 whatever the offset, so they cannot see a world-origin
+/// reference point at all. A rotated sphere's `a·(b×c)` terms round at
+/// `|v|³·ε ≈ 1e-4` each at this site, and a thousand of them add up to a
+/// per-mille error on a 0.1 m³ solid.
+pub(crate) fn placed_sphere_mesh(centre: [f64; 3], r: f64, stacks: usize, slices: usize) -> Mesh {
+    let point = |i: usize, j: usize| -> [f64; 3] {
+        let phi = std::f64::consts::PI * i as f64 / stacks as f64;
+        let theta = 2.0 * std::f64::consts::PI * j as f64 / slices as f64;
+        let p = [r * phi.sin() * theta.cos(), r * phi.sin() * theta.sin(), r * phi.cos()];
+        rotate_and_place(p, centre)
+    };
+    let mut m = Mesh::new();
+    let mut push = |a: [f64; 3], b: [f64; 3], d: [f64; 3]| {
+        let base = (m.positions.len() / 3) as u32;
+        for p in [a, b, d] {
+            m.positions.extend_from_slice(&[p[0] as f32, p[1] as f32, p[2] as f32]);
+            let n: [f64; 3] = std::array::from_fn(|k| (p[k] - centre[k]) / r);
+            m.normals.extend_from_slice(&[n[0] as f32, n[1] as f32, n[2] as f32]);
+        }
+        m.indices.extend_from_slice(&[base, base + 1, base + 2]);
+    };
+    for i in 0..stacks {
+        for j in 0..slices {
+            let (p00, p01) = (point(i, j), point(i, j + 1));
+            let (p10, p11) = (point(i + 1, j), point(i + 1, j + 1));
+            // The quad's two triangles; the one that degenerates at a pole
+            // (two of its corners ARE the pole) is skipped there.
+            if i + 1 < stacks {
+                push(p00, p10, p11);
+            }
+            if i > 0 {
+                push(p00, p11, p01);
+            }
+        }
+    }
+    m
+}
+
+/// `centre + R·p` for the corpus's fixed non-axis-aligned rotation `R`
+/// (0.7 rad about the (1, 2, 3) axis, Rodrigues). A proper rotation, so
+/// winding is preserved.
+pub(crate) fn rotate_and_place(p: [f64; 3], centre: [f64; 3]) -> [f64; 3] {
+    let (ax, ay, az) = (1.0 / 14f64.sqrt(), 2.0 / 14f64.sqrt(), 3.0 / 14f64.sqrt());
+    let (s, c) = 0.7f64.sin_cos();
+    let t = 1.0 - c;
+    let rot = [
+        [t * ax * ax + c, t * ax * ay - s * az, t * ax * az + s * ay],
+        [t * ax * ay + s * az, t * ay * ay + c, t * ay * az - s * ax],
+        [t * ax * az - s * ay, t * ay * az + s * ax, t * az * az + c],
+    ];
+    std::array::from_fn(|k| rot[k][0] * p[0] + rot[k][1] * p[1] + rot[k][2] * p[2] + centre[k])
+}
+
+/// The same mesh moved by `-offset`, bit-exact: every f32 coordinate becomes
+/// `(f64::from(x) - offset)`, which is exact when `offset` is a multiple of
+/// the f32 ulp at the far magnitude ([`FAR_SITE_M`] is), and the result is
+/// below 1 in magnitude so it re-enters f32 unchanged. Two meshes related by
+/// this are the SAME geometry; any observable that differs between them is
+/// reading the reference frame, not the mesh.
+pub(crate) fn translated_exactly(mesh: &Mesh, offset: [f64; 3]) -> Mesh {
+    let mut out = mesh.clone();
+    for chunk in out.positions.chunks_exact_mut(3) {
+        for k in 0..3 {
+            chunk[k] = (f64::from(chunk[k]) - offset[k]) as f32;
+        }
+    }
+    out
+}
+
+/// Open `mesh` by ONE f32 ulp: the x of the first corner of triangle 7 moves
+/// to the next representable value, so that corner no longer matches the
+/// copies of the same vertex on the neighbouring triangles. This is the crack
+/// ingestion really produces: two triangles' shared vertex arriving through
+/// two placement transforms and rounding to adjacent f32 values. At
+/// [`FAR_SITE_M`] the ulp is ~1 mm, so the sliver is 1 mm by an edge length,
+/// and a divergence sum about the WORLD origin picks up that sliver's
+/// boundary flux, up to `|v| × area / 3`: measured 2 % of a 0.11 m³ sphere
+/// and 5 % of a 0.085 m³ prism out of a single 1 mm crack, growing linearly
+/// with the distance to the reference point. Call before
+/// [`translated_exactly`] so both twins carry the same crack.
+pub(crate) fn crack_one_vertex(mesh: &mut Mesh) {
+    let i = mesh.indices[7 * 3] as usize * 3;
+    mesh.positions[i] = f32::from_bits(mesh.positions[i].to_bits() + 1);
+}

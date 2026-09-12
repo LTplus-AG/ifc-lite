@@ -1039,3 +1039,118 @@ fn tetrahedron_missing_face_fails_directed_closed() {
     m.indices.truncate(m.indices.len() - 3); // drop the last triangle
     assert!(!directed_closed(&m));
 }
+
+
+/// Closed `n`-gon prism of radius `r` and depth `depth`, under the corpus's
+/// fixed rotation, centred at `centre`, baked through f32. Fan caps and quad
+/// sides, outward-wound; nothing integer or axis-aligned about it.
+fn rotated_ngon_prism(centre: [f64; 3], r: f64, n: usize, depth: f64) -> Mesh {
+    use crate::world_frame_fixture::rotate_and_place;
+    let ring = |z: f64, i: usize| {
+        let a = 2.0 * std::f64::consts::PI * i as f64 / n as f64;
+        rotate_and_place([r * a.cos(), r * a.sin(), z], centre)
+    };
+    let (z0, z1) = (-depth / 2.0, depth / 2.0);
+    let mut m = Mesh::new();
+    let mut push = |a: [f64; 3], b: [f64; 3], c: [f64; 3]| {
+        let base = (m.positions.len() / 3) as u32;
+        for p in [a, b, c] {
+            m.positions.extend_from_slice(&[p[0] as f32, p[1] as f32, p[2] as f32]);
+        }
+        m.indices.extend_from_slice(&[base, base + 1, base + 2]);
+    };
+    for i in 0..n {
+        let j = (i + 1) % n;
+        // Sides (outward), then the two caps (top +z outward, bottom -z outward).
+        push(ring(z0, i), ring(z0, j), ring(z1, j));
+        push(ring(z0, i), ring(z1, j), ring(z1, i));
+        if i >= 1 && i + 1 < n {
+            push(ring(z1, 0), ring(z1, i), ring(z1, j));
+            push(ring(z0, 0), ring(z0, j), ring(z0, i));
+        }
+    }
+    m
+}
+
+/// `host_local_soup`'s volume feeds `detect_prism`'s 2 % reconciliation
+/// (`|mesh_vol| / (area × depth)`). The near twin is the same f32 geometry
+/// translated bit-exactly, so the two readings must agree and both must
+/// match the analytic prism.
+///
+/// CLOSED, the world-origin sum was 4e-9 relative off at 9 km (f32
+/// coordinates keep the cross products exact): not a defect, and the control
+/// says so. The soup here is per-face vertices BEFORE the 1 µm weld, and a
+/// cutter is admitted on being closed AFTER that weld, so a shared corner
+/// whose copies differ by one f32 ulp (1 mm at 9 km) is a legitimate input
+/// with an open raw soup. Summed about the frame origin its sliver flux
+/// moved the reading 5 % (0.0806 against 0.0848), past the 2 % gate, sending
+/// a clean prism to the exact kernel; about the cutter's own centre the flux
+/// is bounded by the cutter and the reading is the origin twin's.
+#[test]
+fn a_cutter_9km_out_reads_the_same_volume_as_at_the_origin() {
+    use crate::world_frame_fixture::{crack_one_vertex, translated_exactly, FAR_SITE_M};
+    let closed_far = rotated_ngon_prism(FAR_SITE_M, 0.3, 100, 0.3);
+    let mut cracked_far = closed_far.clone();
+    crack_one_vertex(&mut cracked_far);
+    let n = 100.0f64;
+    let analytic = 0.5 * n * 0.3 * 0.3 * (2.0 * std::f64::consts::PI / n).sin() * 0.3;
+    for (label, far, tol) in [("closed", &closed_far, 1e-6), ("cracked", &cracked_far, 1e-3)] {
+        let near = translated_exactly(far, FAR_SITE_M);
+        let (_, v6_far) = host_local_soup(far, [0.0; 3]).expect("finite, in range");
+        let (_, v6_near) = host_local_soup(&near, [0.0; 3]).expect("finite, in range");
+        assert!(
+            (v6_near / 6.0 - analytic).abs() < 1e-3 * analytic,
+            "{label}: near-origin control reads {} against {analytic}",
+            v6_near / 6.0
+        );
+        assert!(
+            ((v6_far - v6_near) / v6_near).abs() < tol,
+            "{label}: the same cutter 9 km out reads {} against {} at the origin",
+            v6_far / 6.0,
+            v6_near / 6.0
+        );
+    }
+}
+
+/// The partition self-check's tolerance used to scale with the host's WORLD
+/// magnitude cubed, because its four sums were taken about the frame
+/// origin and rounded at that scale. At 9 km that was 0.73 m³ of slack on
+/// `vol_in <= vol(cutter)`: a removed solid 10 % larger than a 1 m³ cutter
+/// passed. About the host's own centre the roundoff is at the solid's
+/// scale and the same over-cut is refused, as it always was at the origin.
+#[test]
+fn an_over_cut_9km_out_is_refused_like_one_at_the_origin() {
+    use crate::world_frame_fixture::{translated_exactly, FAR_SITE_M};
+    // Host = the removed solid = a 1.1 x 1.0 x 1.0 box turned 0.6 rad about
+    // Z; nothing survives (`out` empty), no caps: vol_in == vol_host == 1.1.
+    let far_mesh = framed_box_mesh(FAR_SITE_M, rot_z_frame(0.6), [0.55, 0.5, 0.5]);
+    for (label, mesh) in [
+        ("origin", translated_exactly(&far_mesh, FAR_SITE_M)),
+        ("9 km out", far_mesh),
+    ] {
+        let tris = ptris_from_mesh(&mesh).expect("box");
+        let aabbs: Vec<(V3, V3)> = tris.iter().map(PTri::aabb).collect();
+        let (lo, hi) = mesh.bounds();
+        // A 1 m³ axis-aligned unit cutter sitting on the host's min corner.
+        let pf = PrismFrame {
+            u: [1.0, 0.0, 0.0],
+            v: [0.0, 1.0, 0.0],
+            d: [0.0, 0.0, 1.0],
+            planes: vec![lo.z as f64, lo.z as f64 + 1.0],
+            profiles: vec![vec![
+                [lo.x as f64, lo.y as f64],
+                [lo.x as f64 + 1.0, lo.y as f64],
+                [lo.x as f64 + 1.0, lo.y as f64 + 1.0],
+                [lo.x as f64, lo.y as f64 + 1.0],
+            ]],
+            slab_area: vec![1.0],
+            slab_interior: vec![[lo.x as f64 + 0.5, lo.y as f64 + 0.5]],
+            bb: ([lo.x as f64, lo.y as f64], [hi.x as f64, hi.y as f64]),
+        };
+        let verdict = partition_volumes_consistent(&tris, &[], &tris, &[], &pf, &aabbs);
+        assert!(
+            verdict.is_none(),
+            "{label}: removing 1.1 m³ with a 1 m³ cutter must be refused, got {verdict:?}"
+        );
+    }
+}

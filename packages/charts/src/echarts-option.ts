@@ -16,7 +16,7 @@
  * from ECharts' own palette, so the legend, the 3D overlay and the printed
  * report agree.
  */
-import type { Aggregation, Bucket } from './types.js';
+import type { Aggregation, Bucket, ChartItem } from './types.js';
 
 /** The tokens a host reads off its stylesheet; ECharts has no CSS variables. */
 export interface ChartTheme {
@@ -40,8 +40,8 @@ export const DEFAULT_THEME: ChartTheme = {
 export interface BuildOptionArgs {
   aggregation: Aggregation;
   theme?: ChartTheme;
-  /** Category indices to mark selected (ECharts `select` state). */
-  selected?: readonly number[];
+  /** Items to mark selected (ECharts `select` state); a number is a category index on every series. */
+  selected?: ReadonlyArray<number | ChartItem>;
   /** Show the title inside the chart; a host card usually draws its own. */
   showTitle?: boolean;
 }
@@ -59,9 +59,13 @@ function measureLabel(aggregation: Aggregation): string {
   return measure.agg === 'count' ? 'Count' : `Sum of ${measure.column ?? ''}`;
 }
 
-function selectedFlags(count: number, selected: readonly number[] | undefined): boolean[] {
+/** Selected flags for one series: category indices apply to every series, items only to their own. */
+function selectedFlags(count: number, seriesIndex: number, selected: ReadonlyArray<number | ChartItem> | undefined): boolean[] {
   const flags = new Array<boolean>(count).fill(false);
-  for (const i of selected ?? []) if (i >= 0 && i < count) flags[i] = true;
+  for (const sel of selected ?? []) {
+    const i = typeof sel === 'number' ? sel : sel.seriesIndex === seriesIndex ? sel.dataIndex : -1;
+    if (i >= 0 && i < count) flags[i] = true;
+  }
   return flags;
 }
 
@@ -74,12 +78,12 @@ function itemData(buckets: Bucket[], flags: boolean[]): Array<Record<string, unk
   }));
 }
 
-function barSeries(aggregation: Aggregation, flags: boolean[], stacked: boolean): Array<Record<string, unknown>> {
-  return aggregation.series.map((s) => ({
+function barSeries(aggregation: Aggregation, selected: BuildOptionArgs['selected'], stacked: boolean): Array<Record<string, unknown>> {
+  return aggregation.series.map((s, seriesIndex) => ({
     type: 'bar',
     name: s.label,
     stack: stacked ? 'total' : undefined,
-    data: itemData(s.buckets, flags),
+    data: itemData(s.buckets, selectedFlags(s.buckets.length, seriesIndex, selected)),
     selectedMode: 'multiple',
     select: { itemStyle: { borderColor: '#000', borderWidth: 2 } },
     emphasis: { focus: 'self' },
@@ -92,7 +96,7 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
   const { aggregation, selected } = args;
   const theme = args.theme ?? DEFAULT_THEME;
   const { spec, categories } = aggregation;
-  const flags = selectedFlags(categories.length, selected);
+  const flags = selectedFlags(categories.length, 0, selected);
   const unit = spec.measure.agg === 'sum' ? aggregation.unit : undefined;
 
   const base: EChartsOptionObject = {
@@ -158,6 +162,6 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
       splitLine: { lineStyle: { color: theme.grid } },
     },
     brush: { toolbox: [], xAxisIndex: 0, brushLink: 'all', outOfBrush: { colorAlpha: 0.2 }, throttleType: 'debounce', throttleDelay: 100 },
-    series: barSeries(aggregation, flags, stacked),
+    series: barSeries(aggregation, selected, stacked),
   };
 }

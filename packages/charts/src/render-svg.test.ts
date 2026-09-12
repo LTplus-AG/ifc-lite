@@ -34,8 +34,11 @@ describe('buildEChartsOption', () => {
 
   it('builds one bar series per stack value, a pie and a treemap from the same aggregation shape', () => {
     const stacked = aggregate({ ...bar, type: 'stackedBar', stackBy: 'Storey' }, ds);
-    const option = buildEChartsOption({ aggregation: stacked });
+    const option = buildEChartsOption({ aggregation: stacked, selected: [{ seriesIndex: 1, dataIndex: 0 }] });
     expect((option.series as Array<{ name: string; stack: string }>).map((s) => [s.name, s.stack])).toEqual([['L1', 'total'], ['L2', 'total']]);
+    // An item selection marks one segment, not the whole category.
+    const flags = (option.series as Array<{ data: Array<{ selected: boolean }> }>).map((s) => s.data.map((d) => d.selected));
+    expect(flags).toEqual([[false, false], [true, false]]);
     expect((buildEChartsOption({ aggregation: aggregate({ ...bar, type: 'pie' }, ds) }).series as Array<{ type: string }>)[0].type).toBe('pie');
     expect((buildEChartsOption({ aggregation: aggregate({ ...bar, type: 'treemap' }, ds) }).series as Array<{ type: string }>)[0].type).toBe('treemap');
   });

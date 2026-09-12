@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { LENS_PALETTE } from '@ifc-lite/lens';
-import { aggregate, categoriesForIds, idsForCategories, isoWeekKey, sturgesBins } from './aggregate.js';
+import { aggregate, categoriesForIds, idsForCategories, idsForItems, itemsForIds, isoWeekKey, sturgesBins } from './aggregate.js';
 import { elementsDataset, ELEMENT_COLUMNS } from './elements-dataset.js';
 import { OTHER_BUCKET_COLOR, OTHER_BUCKET_KEY } from './palette.js';
 import type { ChartDataset, ChartSpec } from './types.js';
@@ -188,6 +188,11 @@ describe('aggregate invariants', () => {
     expect(agg.series[1].buckets.map((b) => b.value)).toEqual([1, 0]);
     expect(agg.series[0].buckets[0].color).toBe(agg.series[0].buckets[1].color);
     expect(agg.series[0].buckets[0].color).not.toBe(agg.series[1].buckets[0].color);
+    // A stacked SEGMENT selects only its own series' share of the category (review finding).
+    expect([...idsForItems(agg, [{ seriesIndex: 1, dataIndex: 0 }])]).toEqual([3]);
+    expect([...idsForItems(agg, [{ seriesIndex: 0, dataIndex: 0 }])].sort()).toEqual([1, 2]);
+    expect(itemsForIds(agg, [3])).toEqual({ full: [{ seriesIndex: 1, dataIndex: 0 }], partial: [] });
+    expect(itemsForIds(agg, [1])).toEqual({ full: [], partial: [{ seriesIndex: 0, dataIndex: 0 }] });
   });
 
   it('bins a number column into a histogram whose last bin includes the max', () => {

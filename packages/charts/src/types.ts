@@ -128,6 +128,12 @@ export interface BucketSeries {
   buckets: Bucket[];
 }
 
+/** One selectable mark in a chart: a bucket of one series. A plain chart has one series. */
+export interface ChartItem {
+  seriesIndex: number;
+  dataIndex: number;
+}
+
 export interface Aggregation {
   spec: ChartSpec;
   /** Category axis in display order; every series aligns to it. */

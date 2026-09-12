@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 export * from './types.js';
-export { aggregate, idsForCategories, categoriesForIds, isoWeekKey, sturgesBins, type AggregateOptions, type AggregateResult } from './aggregate.js';
+export { aggregate, idsForCategories, categoriesForIds, idsForItems, itemsForIds, isoWeekKey, sturgesBins, type AggregateOptions, type AggregateResult } from './aggregate.js';
 export { assignColors, emptyPalette, paletteColor, OTHER_BUCKET_KEY, OTHER_BUCKET_COLOR, type PaletteAssignment } from './palette.js';
 export { buildEChartsOption, DEFAULT_THEME, type ChartTheme, type BuildOptionArgs, type EChartsOptionObject } from './echarts-option.js';
 export { renderChartSvg, registerEChartsModules, type RenderSvgOptions } from './render-svg.js';

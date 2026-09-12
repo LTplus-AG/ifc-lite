@@ -119,6 +119,22 @@ function type(el: HTMLInputElement, value: string): void {
   });
 }
 
+/** Mutate (never replace) the env object `import.meta.env` is bound to. */
+function setEnv(name: string, value: string | undefined): void {
+  const g = globalThis as unknown as { __VITE_ENV__?: Record<string, string | boolean> };
+  // Seed the shim's own defaults when this test is the first to touch the
+  // env: a bare `{}` would hand every later `import.meta.env` reader an env
+  // with no MODE/DEV/PROD.
+  g.__VITE_ENV__ ??= { MODE: 'test', DEV: false, PROD: false };
+  if (value === undefined) delete g.__VITE_ENV__[name];
+  else g.__VITE_ENV__[name] = value;
+}
+const BIMCOLLAB_APP_VARS = [
+  'VITE_BCF_APP_BIMCOLLAB_CLIENT_ID',
+  'VITE_BCF_APP_BIMCOLLAB_CLIENT_SECRET',
+  'VITE_BCF_APP_BIMCOLLAB_REDIRECT_URI',
+];
+
 beforeEach(() => {
   clearBcfServerConfig();
   useViewerStore.setState({ bcfProject: null, bcfAuthor: 'user@example.com' });
@@ -129,6 +145,7 @@ afterEach(() => {
   globalThis.fetch = realFetch;
   clearBcfServerConfig();
   document.body.innerHTML = '';
+  for (const name of BIMCOLLAB_APP_VARS) setEnv(name, undefined);
 });
 
 describe('BCFServerDialog', () => {
@@ -202,6 +219,100 @@ describe('BCFServerDialog', () => {
     // server while connecting to another.
     chooseOption('bcf-server-preset', 'BIMcollab');
     assert.equal(input('bcf-server-url').value, '');
+  });
+
+  it('tells a BIMcollab user the truth about client ids when the deployment holds no app', () => {
+    // BIMcollab only issues client ids to application vendors (#3900). The
+    // generic "register an OAuth application with the vendor" copy sent the
+    // reporter after something they could never obtain.
+    installFakeServer();
+    render(<BCFServerDialog open onOpenChange={() => {}} />);
+    chooseOption('bcf-server-preset', 'BIMcollab');
+    assert.ok(document.body.querySelector('#bcf-server-oauth-client-id'));
+    assert.ok(
+      document.body.textContent?.includes(
+        'BIMcollab issues client ids to application vendors, not to space users',
+      ),
+    );
+    assert.ok(!document.body.textContent?.includes('Servers offering dynamic client registration'));
+  });
+
+  it('signs a BIMcollab user in through the deployment-held app, with no client id to enter', async () => {
+    setEnv('VITE_BCF_APP_BIMCOLLAB_CLIENT_ID', 'PlayGround_Client');
+    setEnv('VITE_BCF_APP_BIMCOLLAB_CLIENT_SECRET', 'play-secret');
+    setEnv('VITE_BCF_APP_BIMCOLLAB_REDIRECT_URI', `${window.location.origin}/Callback`);
+    const tokenForms: URLSearchParams[] = [];
+    const json = (body: unknown) =>
+      new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      // A Nexus space: the API under /bcf, IdentityServer under /identity.
+      if (url.pathname === '/bcf/2.1/auth') {
+        return json({
+          oauth2_auth_url: 'https://space.example/identity/connect/authorize',
+          oauth2_token_url: 'https://space.example/identity/connect/token',
+        });
+      }
+      if (url.pathname === '/identity/connect/token') {
+        tokenForms.push(new URLSearchParams(String(init?.body)));
+        return json({ access_token: 'token-1', refresh_token: 'refresh-1', expires_in: 3600 });
+      }
+      if (url.pathname === '/bcf/2.1/current-user') return json({ id: 'tester@example.com' });
+      if (url.pathname === '/bcf/2.1/projects') return json([]);
+      return new Response('not found', { status: 404 });
+    }) as typeof fetch;
+    // The popup is a stub the form navigates; the callback page's broadcast
+    // is replayed once the authorization URL is known.
+    const popup = { closed: false, location: { href: '' }, close() {} };
+    const realOpen = window.open;
+    window.open = (() => popup) as unknown as typeof window.open;
+    try {
+      render(<BCFServerDialog open onOpenChange={() => {}} />);
+      chooseOption('bcf-server-preset', 'BIMcollab');
+      type(input('bcf-server-url'), 'https://space.example');
+      // The app stands in for the client id: no field for it, and no
+      // redirect-URI registration hint, just a line saying what happens.
+      // Asserted as booleans: a failing `assert.equal(element, null)` has
+      // node:assert inspect the DOM element for its message, which never
+      // returns on a cyclic DOM tree, so the test would hang instead of fail.
+      assert.ok(!document.body.querySelector('#bcf-server-oauth-client-id'), 'no client id field');
+      assert.ok(
+        !document.body.querySelector('#bcf-server-oauth-client-secret'),
+        'no client secret field',
+      );
+      assert.ok(document.body.querySelector('[data-testid="bcf-server-vendor-app"]'));
+      assert.ok(!document.body.textContent?.includes('must allow this redirect URI'));
+
+      click(button('Connect'));
+      await waitFor(() => popup.location.href !== '', 'popup navigated to the authorize URL');
+      const authorize = new URL(popup.location.href);
+      assert.equal(authorize.origin + authorize.pathname, 'https://space.example/identity/connect/authorize');
+      assert.equal(authorize.searchParams.get('client_id'), 'PlayGround_Client');
+      assert.equal(authorize.searchParams.get('redirect_uri'), `${window.location.origin}/Callback`);
+      assert.equal(authorize.searchParams.get('scope'), 'openid offline_access bcf');
+      const state = authorize.searchParams.get('state');
+      assert.ok(state);
+
+      // What apps/viewer/public/oauth/bcf/callback.html posts on landing.
+      const channel = new BroadcastChannel('ifc-lite:oauth-callback');
+      channel.postMessage({
+        type: 'ifc-lite:oauth-callback',
+        state,
+        url: `${window.location.origin}/Callback?code=good-code&state=${state}`,
+      });
+      channel.close();
+      await waitFor(() => tokenForms.length === 1, 'authorization code exchanged');
+      assert.equal(tokenForms[0].get('grant_type'), 'authorization_code');
+      assert.equal(tokenForms[0].get('client_id'), 'PlayGround_Client');
+      assert.equal(tokenForms[0].get('client_secret'), 'play-secret');
+      assert.equal(tokenForms[0].get('redirect_uri'), `${window.location.origin}/Callback`);
+      await waitFor(
+        () => document.body.textContent?.includes('Signed in as tester@example.com') ?? false,
+        'signed-in banner',
+      );
+    } finally {
+      window.open = realOpen;
+    }
   });
 
   it('connects with a pasted access token', async () => {

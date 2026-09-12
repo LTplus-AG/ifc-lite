@@ -26,8 +26,62 @@ export interface BcfServerPreset {
   authMethods: readonly BcfAuthMethod[];
   /** OAuth `scope` this server's authorization endpoint expects, if any. */
   oauthScope?: string;
+  /**
+   * Set when the vendor issues OAuth client ids to application vendors only,
+   * never to the people who administer a space. Without a deployment-held
+   * app (see `vendorAppForPreset`) the browser sign-in cannot start, and the
+   * form says so instead of asking the user to register an app they cannot.
+   */
+  vendorIssuedClientsOnly?: boolean;
   /** Short hint rendered under the server picker. */
   note?: string;
+}
+
+/**
+ * OAuth application this deployment holds with a vendor, so its users sign
+ * in without ever seeing a client id. Read from the build env per preset:
+ *
+ *   VITE_BCF_APP_<PRESET>_CLIENT_ID      required; absent = no app
+ *   VITE_BCF_APP_<PRESET>_CLIENT_SECRET  when the vendor issued one
+ *   VITE_BCF_APP_<PRESET>_REDIRECT_URI   only when the vendor registered a
+ *                                        different callback than this
+ *                                        origin's `/oauth/bcf/callback`
+ *
+ * `<PRESET>` is the preset id upper-cased with `-` as `_`, e.g.
+ * `VITE_BCF_APP_BIMCOLLAB_CLIENT_ID`. The secret ships in the bundle, which
+ * is the model these vendors work with (their published playground client
+ * comes with one, and every desktop BCF manager embeds its own): it
+ * identifies the application, and PKCE plus the registered redirect URI are
+ * what protect the authorization code. A deployment that would rather not
+ * ship it leaves the variables unset and the form falls back to asking for
+ * a client id.
+ */
+export interface BcfVendorApp {
+  clientId: string;
+  clientSecret: string;
+  /** Absolute redirect URI registered with the vendor; empty = the default. */
+  redirectUri: string;
+}
+
+function readEnv(name: string): string {
+  const env = import.meta.env as Record<string, string | undefined>;
+  return (env[name] ?? '').trim();
+}
+
+export function vendorAppEnvPrefix(presetId: string): string {
+  return `VITE_BCF_APP_${presetId.toUpperCase().replace(/-/g, '_')}`;
+}
+
+export function vendorAppForPreset(presetId: string): BcfVendorApp | null {
+  if (presetId === CUSTOM_PRESET_ID) return null;
+  const prefix = vendorAppEnvPrefix(presetId);
+  const clientId = readEnv(`${prefix}_CLIENT_ID`);
+  if (!clientId) return null;
+  return {
+    clientId,
+    clientSecret: readEnv(`${prefix}_CLIENT_SECRET`),
+    redirectUri: readEnv(`${prefix}_REDIRECT_URI`),
+  };
 }
 
 export const CUSTOM_PRESET_ID = 'custom';
@@ -109,6 +163,15 @@ export const BCF_SERVER_PRESETS: readonly BcfServerPreset[] = [
     // client, two requests differing only in this parameter. These three are
     // what the Connection API implementation guide documents.
     oauthScope: 'openid offline_access bcf',
+    // BIMcollab issues a client id and secret to an application once it has
+    // been demonstrated to them (Connection API implementation guide, §
+    // Authentication); a space administrator cannot create one. Their
+    // IdentityServer also refuses the password and client-credentials grants
+    // for such a client (`unauthorized_client`, measured on
+    // playground.bimcollab.com against the published playground client), so
+    // the browser flow through a deployment-held app is the only sign-in
+    // that can work — and the reason for `vendorAppForPreset`.
+    vendorIssuedClientsOnly: true,
     note: 'Your space URL, e.g. https://myspace.bimcollab.com. The same address you give Solibri or a BCF manager.',
   },
   {

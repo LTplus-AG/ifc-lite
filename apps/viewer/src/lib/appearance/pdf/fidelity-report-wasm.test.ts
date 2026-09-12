@@ -65,7 +65,7 @@ test('controlled pages report each fidelity category with page extent and visibi
     assert.deepEqual(summary(form), [['clip', 1, 1]], 'a form BBox that does not contain the page clips its content');
     assert.deepEqual(form.summary[0]!.bboxPdf, [5, 5, 25, 25], 'form Matrix and content transform place the omitted fill');
     const hidden = report(api, await decode('hiddenLayer'));
-    assert.deepEqual([hidden.exact, hidden.convertiblePaths], [true, 1]);
+    assert.deepEqual([hidden.exact, hidden.convertiblePaths, hidden.omittedPaints], [true, 1, 0], 'an exact page records no omitted paints');
     assert.deepEqual(summary(hidden), [['hidden', 1, 0]], 'optional content hidden by the document configuration is not visible loss');
     const raster = report(api, await decode('rasterOnly'));
     assert.deepEqual([raster.rasterOnly, raster.exact, raster.convertiblePaths], [true, false, 0]);
@@ -84,7 +84,7 @@ test('an accepted partial conversion plans, exports and reopens with its provena
       GlobalId: '0aaaaaaaaaaaaaaaaaaaaa', containmentGlobalId: '0bbbbbbbbbbbbbbbbbbbbb', propertySetGlobalId: '0cccccccccccccccccccc1', propertyRelationGlobalId: '0cccccccccccccccccccc2',
       Name: 'Partial text page', frame: { origin: [2, 3, 4], axisU: [1, 0, 0], axisV: [0, 0, 1], sizeMetres: [8, 8] }, page, acceptedFidelitySha256: null };
     const plan = (r: PdfFillAnnotationRequest) => JSON.parse(new TextDecoder().decode(api.planPdfFillAnnotation(source, JSON.stringify(r)))) as PdfFillAnnotationPlan;
-    assert.throws(() => plan(request), /1 visible omissions.*explicit acceptance/);
+    assert.throws(() => plan(request), /1 visible omission\).*explicit acceptance/);
     assert.throws(() => plan({ ...request, acceptedFidelitySha256: '0'.repeat(64) }), /does not match/);
     assert.equal(view.getNewEntities().length, 0);
     const result = plan({ ...request, acceptedFidelitySha256: verdict.sha256 });
@@ -92,8 +92,8 @@ test('an accepted partial conversion plans, exports and reopens with its provena
     for (const row of result.plan.created) assert.equal(editor.addEntity(row.type, row.attributes).expressId, row.expressId);
     const exported = await new StepExporter(data, view).exportAsync({ schema: 'IFC4', applyMutations: true, includeGeometry: true });
     const content = typeof exported.content === 'string' ? exported.content : new TextDecoder().decode(exported.content);
-    assert.match(content, /IFCANNOTATION\('0aaaaaaaaaaaaaaaaaaaaa',(\$|#\d+),'Partial text page','PDF vectors, page 1: partial conversion; omitted 1 text','IfcLite:PdfVectorFills'/);
-    assert.match(content, /IFCPROPERTYSET\('0cccccccccccccccccccc1',(\$|#\d+),'IfcLite_PdfVectorConversion','PDF vector conversion provenance \(partial conversion; omitted 1 text\)'/);
+    assert.match(content, /IFCANNOTATION\('0aaaaaaaaaaaaaaaaaaaaa',(\$|#\d+),'Partial text page','PDF vectors, page 1: partial conversion; omitted 1 text run','IfcLite:PdfVectorFills'/);
+    assert.match(content, /IFCPROPERTYSET\('0cccccccccccccccccccc1',(\$|#\d+),'IfcLite_PdfVectorConversion','PDF vector conversion provenance \(partial conversion; omitted 1 text run\)'/);
     assert.match(content, /IFCPROPERTYSINGLEVALUE\('AcceptedPartialConversion',\$,IFCBOOLEAN\(\.T\.\),\$\)/);
     assert.match(content, /IFCPROPERTYSINGLEVALUE\('ExactConversion',\$,IFCBOOLEAN\(\.F\.\),\$\)/);
     assert.match(content, /IFCPROPERTYSINGLEVALUE\('Omissions',\$,IFCTEXT\('\[\{"kind":"text","count":1,"visible":1\}\]'\),\$\)/);

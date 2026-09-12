@@ -51,9 +51,10 @@ pub(crate) fn compose(
         return Err("PDF page has no vector drawing content; keep it as a raster reference".into());
     }
     if !fidelity.exact && !accept_partial {
+        let n = fidelity.visible_omissions();
         return Err(format!(
-            "PDF page is not exactly convertible ({} visible omissions); partial conversion needs explicit acceptance of its fidelity report",
-            fidelity.visible_omissions()
+            "PDF page is not exactly convertible ({n} visible {}); partial conversion needs explicit acceptance of its fidelity report",
+            if n == 1 { "omission" } else { "omissions" }
         ));
     }
     if prepared.paths.is_empty() {

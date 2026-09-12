@@ -96,7 +96,8 @@ try {
   const verdict = page.getByText(/^Partial conversion: 1 visible omission would be left out; 2 paths convert\.$/);
   await verdict.waitFor();
   const omissions = await page.getByRole('list', { name: 'PDF omissions' }).locator('li').allTextContents();
-  assert.deepEqual(omissions, ['1 × Text runs — region x 10–68.0, y 16.4–32 pt']);
+  // The control page declares /UserUnit 2, so its user-space extent [10, 16.4, 68.02, 32] is shown doubled in points.
+  assert.deepEqual(omissions, ['1 × Text runs — region x 20–136.0, y 32.8–64 pt']);
   const prepare = page.getByRole('button', { name: 'Prepare partial conversion', exact: true });
   assert.equal(await prepare.isDisabled(), true, 'partial preparation stays disabled before acknowledgement');
   assert.equal(await page.getByRole('button', { name: 'Create annotation', exact: true }).count(), 0);
@@ -168,7 +169,7 @@ try {
       oracle = JSON.parse(fs.readFileSync(path.join(out, 'reopened-oracle.json'), 'utf8'));
       const provenance = oracle.annotations[0].provenance;
       assert.equal(oracle.annotations[0].Name, 'PDF fidelity UI control');
-      assert.equal(oracle.annotations[0].Description, 'PDF vectors, page 1: partial conversion; omitted 1 text');
+      assert.equal(oracle.annotations[0].Description, 'PDF vectors, page 1: partial conversion; omitted 1 text run');
       assert.equal(provenance.AcceptedPartialConversion, true); assert.equal(provenance.ExactConversion, false);
       assert.equal(provenance.ToleranceMetres, 0.001);
       assert.deepEqual(JSON.parse(provenance.Omissions), [{ kind: 'text', count: 1, visible: 1 }]);

@@ -180,6 +180,9 @@ export function createAppearancePlanner(options: {
           || JSON.stringify([message.result.frame.origin, message.result.frame.axisU, message.result.frame.axisV, message.result.frame.sizeMetres])
             !== JSON.stringify([frozen.frame.origin, frozen.frame.axisU, frozen.frame.axisV, frozen.frame.sizeMetres])
           || !/^[a-f0-9]{64}$/.test(message.result.requestSha256) || !/^[a-f0-9]{64}$/.test(message.result.sourceIfcSha256)
+          || message.result.fidelity?.algorithm !== 'ifclite-pdf-fidelity-v1' || !/^[a-f0-9]{64}$/.test(message.result.fidelity.sha256)
+          || typeof message.result.fidelity.exact !== 'boolean' || !Array.isArray(message.result.fidelity.summary)
+          || !Number.isInteger(message.result.propertySetId)
           || !message.result.meshes?.length || message.result.meshes.some(mesh => mesh.express_id !== message.result.annotationId
             || mesh.texture !== undefined || mesh.uvs !== undefined)) {
           throw new Error('Appearance worker returned a stale or invalid PDF fill annotation plan');

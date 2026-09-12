@@ -24,10 +24,12 @@ conversion leaves out.
 `apps/viewer/src/lib/appearance/pdf/fixtures.ts` (`fidelityControls`) builds
 every control on the same page: CropBox `[10 20 110 92]`, `/Rotate 90`,
 `/UserUnit 2`, calibrated at one model metre per 30 PDF units. Extents are in
-unrotated PDF user space. `apps/viewer/src/lib/appearance/pdf/fidelity-report-wasm.test.ts`
+unrotated PDF user space (the raw `bboxPdf` values; the viewer multiplies them
+by UserUnit before labelling them in points, so the same text run shows as
+`x 20–136.0 pt` on screen). `apps/viewer/src/lib/appearance/pdf/fidelity-report-wasm.test.ts`
 asserts the same values through the real decoder and WASM on every run.
 
-| control (`control-*.json`) | verdict | convertible paths | omissions visible/total | extent (pt) |
+| control (`control-*.json`) | verdict | convertible paths | omissions visible/total | extent (PDF user-space units) |
 | --- | --- | --- | --- | --- |
 | transforms (nonuniform `cm`, cubic fill) | exact | 2 | — | — |
 | text (Helvetica 12 pt run) | partial | 2 | text 1/1 | [10, 16.4, 68.02, 32] |
@@ -42,7 +44,8 @@ asserts the same values through the real decoder and WASM on every run.
 Text extents are em-box estimates from font advances (here `x 10–68.02`,
 `y 16.4–32` for a 12 pt run at (10, 20)); they locate the run, they do not
 reproduce glyphs. The invisible-text and hidden-layer pages are exact because
-nothing visible is lost, and their omissions stay listed with `visibleCount 0`.
+nothing visible is lost, and their omissions stay listed with `visibleCount 0`
+and `omittedPaints 0` (only visible painted parts count as omitted paints).
 The clipped, transparent and form-scoped fills are reported instead of being
 drawn without their clip or effect; the later unclipped fill on each page still
 converts.
@@ -85,7 +88,7 @@ fixture (`accepted` block in `control-text.json`). IfcOpenShell 0.8.3.post2
 reopened it through `tools/texture-authoring/pdf-fidelity-oracle.py`
 ([`control-text-oracle.json`](control-text-oracle.json)): one `IfcAnnotation`
 (`IfcLite:PdfVectorFills`) contained in "Level" with two representation items,
-Description `PDF vectors, page 1: partial conversion; omitted 1 text`, and the
+Description `PDF vectors, page 1: partial conversion; omitted 1 text run`, and the
 `IfcLite_PdfVectorConversion` property set with 20 properties — source PDF
 digest, page 1, CropBox `[10.0,20.0,110.0,92.0]`, UserUnit 2, rotation 90,
 decoder `PDF.js 6.3.289`, calibration key and affine, `ToleranceMetres 0.0001`,
@@ -136,7 +139,8 @@ removes the catalog source, then chooses Save into model → PDF vectors and
 presses Prepare vector preview. [`browser-report.png`](browser-report.png)
 shows the outcome: the report line "Partial conversion: 1 visible omission
 would be left out; 2 paths convert.", the omission row "1 × Text runs — region
-x 10–68.0, y 16.4–32 pt", the unchecked "Create a partial conversion"
+x 20–136.0, y 32.8–64 pt" (the page's user-space extent scaled by its
+`/UserUnit 2`), the unchecked "Create a partial conversion"
 acknowledgement, a disabled Prepare partial conversion button and no Create
 button. Ticking the acknowledgement enables preparation; the native preview
 reports two coloured regions of the accepted partial conversion; Create selects
@@ -150,7 +154,7 @@ difference of 0, and pointer selection works again
 ([`browser-reopened-selected.png`](browser-reopened-selected.png)). The
 IfcOpenShell oracle then reads the exported file
 ([`browser-reopened-oracle.json`](browser-reopened-oracle.json)): Description
-`partial conversion; omitted 1 text`, `AcceptedPartialConversion true`,
+`partial conversion; omitted 1 text run`, `AcceptedPartialConversion true`,
 `ToleranceMetres 0.001`, the registration calibration key and affine, and
 `Omissions [{"kind":"text","count":1,"visible":1}]`. Measurements, browser and
 WASM digest are in [`browser-journey.json`](browser-journey.json).

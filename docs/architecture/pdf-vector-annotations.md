@@ -182,7 +182,11 @@ its extent intersects the effective page clip, it is not inside hidden optional
 content and, for text, its render mode paints. Text extents are em-box estimates
 from font advances, images map the unit square through each placement, shadings
 take the page clip. A rectangular clip that still contains the whole page clip
-removes nothing and is not an omission. Any other clip, a painted text clip,
+removes nothing and is not an omission; the containment test allows the
+rectangle to fall short of the page by the declared tolerance (metres mapped
+back through the calibration's largest scale), because exporters routinely
+clip to a rectangle a few thousandths of a point inside the CropBox and that
+strip is below the tolerance the user declared. Any other clip, a painted text clip,
 transparency (non-unit alpha, blend modes, soft masks, composited groups) and
 unknown operators taint the rest of their save scope, and a pattern colour
 taints until a solid colour replaces it, so every later paint in that scope is
@@ -204,13 +208,17 @@ failures (unqualified curves, stroke topology, budgets) still refuse the whole
 page after acceptance — acceptance covers the listed omissions, not geometry.
 
 Every created annotation carries its verdict: `IfcAnnotation.Description`
-states `exact conversion` or `partial conversion; omitted N <kind>…`, and the
+states `exact conversion` or `partial conversion; omitted N <kind>…` with the
+kinds spelled out for readers (`1 text run`, `556 hairline strokes`,
+`2 entries under unsupported operator setGState:TR`); the canonical kind
+tokens stay in the property set's `Omissions` JSON. The
 `IfcLite_PdfVectorConversion` property set (attached through
 `IfcRelDefinesByProperties`) records the source PDF digest, page, CropBox,
 UserUnit, rotation, decoder version, calibration key, PDF-to-model affine,
 declared tolerance in metres, composition grid, request and fidelity digests,
 `ExactConversion`, `AcceptedPartialConversion`, converted paths, fill regions,
-omitted paints and the omission summary as JSON text. It uses ordinary IFC
+omitted paints (visible painted parts only, so an exact page records zero) and
+the omission summary as JSON text. It uses ordinary IFC
 property types so it survives host export and reopens in any IFC reader; it
 does not make omitted content recoverable. Evidence for the controlled
 categories and the real drawings, the MuPDF raster comparison confining every

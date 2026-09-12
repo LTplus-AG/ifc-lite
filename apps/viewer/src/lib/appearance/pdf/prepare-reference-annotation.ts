@@ -103,7 +103,9 @@ export async function checkPdfReferenceVectors(referenceId: string,
         const result = await planner.pdfFillPlan(target.bytes, { schema: target.schema, sourceRevision: target.sourceRevision,
           nextExpressId: target.nextExpressId, containerId, GlobalId: generateIfcGuid(), containmentGlobalId: generateIfcGuid(),
           propertySetGlobalId: generateIfcGuid(), propertyRelationGlobalId: generateIfcGuid(),
-          Name: request.Name.trim() || 'PDF vector annotation', frame: placed, page, acceptedFidelitySha256: report.sha256 }, { signal });
+          Name: request.Name.trim() || 'PDF vector annotation', frame: placed, page,
+          // The digest is the user's acceptance: only quoted when they accepted, so the canonical planner's refusal stays load-bearing.
+          acceptedFidelitySha256: request.acceptPartial ? report.sha256 : null }, { signal });
         check(signal); target.validate();
         if (result.sourceIfcSha256 !== sourceIfcSha256 || result.sourcePdfSha256 !== reference.pdf!.documentSha256
           || result.pageNumber !== originalPage.pageNumber || result.calibrationKey !== calibrationKey

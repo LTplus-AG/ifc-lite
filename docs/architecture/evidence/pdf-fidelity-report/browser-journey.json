@@ -1,14 +1,14 @@
 {
   "browser": "153.0.8010.36",
   "before": {
-    "modelId": "15ddccfb-a7a4-4193-b57f-a41990570995",
+    "modelId": "d1b9994a-a92e-43e4-af4e-f3dba9870fbe",
     "meshCount": 11
   },
   "omissions": [
-    "1 × Text runs — region x 10–68.0, y 16.4–32 pt"
+    "1 × Text runs — region x 20–136.0, y 32.8–64 pt"
   ],
   "created": {
-    "modelId": "15ddccfb-a7a4-4193-b57f-a41990570995",
+    "modelId": "d1b9994a-a92e-43e4-af4e-f3dba9870fbe",
     "expressId": 2476,
     "globalId": 2476,
     "parts": 2,
@@ -35,9 +35,9 @@
     "annotations": [
       {
         "expressId": 2476,
-        "GlobalId": "3N2UiHm25BMPH5oLfSfQXt",
+        "GlobalId": "0itmBaFqzC2Bm41zoyq4nK",
         "Name": "PDF fidelity UI control",
-        "Description": "PDF vectors, page 1: partial conversion; omitted 1 text",
+        "Description": "PDF vectors, page 1: partial conversion; omitted 1 text run",
         "containedIn": [
           "L1"
         ],
@@ -52,7 +52,7 @@
           "CalibrationKey": "pdf-registration-sha256:b55614b58d92043feb67b4c0b08552e8e4b7730971c1a183f7c92ffe937a42a0",
           "ModelMetresFromPdf": "[0.0,-0.03469561515538527,0.03469561515538528,0.0,-0.6939123031077056,3.81651766709238]",
           "ToleranceMetres": 0.001,
-          "GridSizeMetres": 5.208333333333333e-06,
+          "GridSizeMetres": 0.000005208333333333333,
           "Algorithm": "ifclite-pdf-fill-annotation-v1",
           "RequestSha256": "ece58595d2dbdcb7548665a594129a8dce20568bd9e59b1ba9e8ae8928ae1b5a",
           "FidelityAlgorithm": "ifclite-pdf-fidelity-v1",
@@ -77,6 +77,6 @@
     "target": "tests/models/various/issue-604-door.ifc (IFC4, storeys L1/L2, 11 meshes)",
     "pdf": "control-text-accepted.pdf",
     "chrome": "153.0.8010.36",
-    "wasmSha256": "66dedd5c0217fd810a95a93e5219cb5b23b71945197abae34623b31a191ef881"
+    "wasmSha256": "4583d9df6764ad54dba4ac3496efb40178ea4fb56c736c34a5977eba20d1cdab"
   }
 }

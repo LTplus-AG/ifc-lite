@@ -108,7 +108,7 @@ test('partial pages show the report, need explicit acceptance and record their o
     click(button('Prepare vector preview')!);
     await until(() => !!checkbox());
     assert.match(ui.textContent ?? '', /Partial conversion: 1 visible omission would be left out; 2 paths convert/);
-    assert.match(ui.textContent ?? '', /1 × Text runs — region x 10–/);
+    assert.match(ui.textContent ?? '', /1 × Text runs — region x 20–/, 'the /UserUnit 2 control page reports its extent in points');
     assert.match(ui.textContent ?? '', /accept the partial conversion to prepare it/);
     assert.equal(button('Create annotation'), undefined);
     assert.ok(button('Prepare partial conversion')!.disabled, 'no partial preparation without acceptance');
@@ -124,7 +124,7 @@ test('partial pages show the report, need explicit acceptance and record their o
     const annotation = rows.find(row => row.type === 'IfcAnnotation'), set = rows.find(row => row.type === 'IfcPropertySet');
     assert.ok(annotation && set, 'one annotation with its provenance property set');
     assert.equal(set.attributes[2], 'IfcLite_PdfVectorConversion');
-    assert.match(String(annotation.attributes[3]), /partial conversion; omitted 1 text/);
+    assert.match(String(annotation.attributes[3]), /partial conversion; omitted 1 text run/);
     assert.ok(rows.some(row => row.type === 'IfcPropertySingleValue' && row.attributes[0] === 'AcceptedPartialConversion'));
     assert.ok(rows.some(row => row.type === 'IfcRelDefinesByProperties'));
     assert.equal(owners.get(annotation.expressId)?.length, 2, 'both coloured parts are published under the one owner');

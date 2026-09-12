@@ -62,8 +62,54 @@ fn issue_4406_exact_page_reports_no_visible_omissions_and_binds_its_verdict() {
     .unwrap();
     assert!(!partial.fidelity.exact);
     assert_ne!(partial.fidelity.sha256, exact.fidelity.sha256);
-    assert_eq!(partial.fidelity.describe(), "partial conversion; omitted 1 text");
+    assert_eq!(partial.fidelity.describe(), "partial conversion; omitted 1 text run");
     assert_eq!(exact.fidelity.describe(), "exact conversion");
+    let mut many = vec![Op::LineWidth { width: 0. }, path(), path(), Op::LineWidth { width: 1. }, Op::LineCap { cap: 1 }, path()];
+    many.push(Op::Unsupported {
+        operator: "setGState:TR".into(),
+    });
+    let described = prepare_pdf_vector_page(&page(many)).unwrap().fidelity;
+    assert_eq!(
+        described.describe(),
+        "partial conversion; omitted 2 hairline strokes, 1 round-cap/join stroke, 1 entry under unsupported operator setGState:TR"
+    );
+}
+
+/// Exporters routinely clip to a rectangle a few thousandths of a point inside
+/// the CropBox; that loss is below the declared tolerance and must not taint
+/// the page, while a clip short by more than the tolerance still does.
+#[test]
+fn issue_4406_page_clip_short_of_the_cropbox_by_less_than_the_tolerance_is_a_noop() {
+    // The test page maps one PDF unit to 2 mm, so 1 mm is half a PDF unit.
+    let clipped = |shortfall: f64, tolerance_metres: f64| {
+        let mut input = page(vec![
+            Op::Clip { even_odd: false },
+            end_path(rect(10., 20., 100. - shortfall, 72. - shortfall)),
+            path(),
+        ]);
+        input.tolerance_metres = tolerance_metres;
+        prepare_pdf_vector_page(&input).unwrap()
+    };
+    let tolerated = clipped(0.01, 0.001);
+    assert!(tolerated.fidelity.exact, "0.01 pt shortfall at 1 mm tolerance removes nothing reportable");
+    assert_eq!(tolerated.paths.len(), 1);
+    let tolerated_form = {
+        let mut input = page(vec![
+            Op::FormBegin {
+                matrix: None,
+                bbox: Some([10., 20., 109.99, 91.99]),
+            },
+            path(),
+            Op::FormEnd,
+        ]);
+        input.tolerance_metres = 0.001;
+        prepare_pdf_vector_page(&input).unwrap()
+    };
+    assert!(tolerated_form.fidelity.exact && tolerated_form.paths.len() == 1);
+    let reported = clipped(0.01, 0.000_001);
+    assert_eq!(kinds(&reported), [(4, "clip".into(), true)], "the same shortfall above a 1 µm tolerance is reported");
+    let beyond = clipped(0.6, 0.001);
+    assert_eq!(kinds(&beyond), [(4, "clip".into(), true)], "0.6 pt (1.2 mm) exceeds a 1 mm tolerance");
 }
 
 #[test]
@@ -262,6 +308,7 @@ fn issue_4406_hidden_optional_content_and_raster_only_verdicts() {
     .unwrap();
     assert!(hidden.paths.is_empty());
     assert_eq!(kinds(&hidden), [(4, "hidden".into(), false), (6, "text".into(), false), (14, "image".into(), true)]);
+    assert_eq!(hidden.fidelity.omitted_paints, 0, "hidden paint is listed but not counted as an omitted paint");
     assert!(hidden.fidelity.raster_only, "only the raster image is visible");
     assert!(!hidden.fidelity.exact);
     assert_eq!(hidden.fidelity.describe(), "raster-only page");
@@ -401,11 +448,15 @@ fn issue_4406_unsupported_operator_taints_the_rest_of_its_scope_by_name() {
 
 #[test]
 fn issue_4406_annotation_appearance_is_one_omission_and_resets_state() {
+    // Page-level state (a transform outside any save) does not leak into the
+    // appearance or past it; the explicit stack is balanced when it begins.
     let report = prepare_pdf_vector_page(&page(vec![
-        Op::Save,
         Op::Transform {
             matrix: [2., 0., 0., 2., 0., 0.],
         },
+        Op::Save,
+        Op::LineWidth { width: 5. },
+        Op::Restore,
         Op::AnnotationBegin {
             rect: Some([20., 30., 40., 50.]),
         },
@@ -421,10 +472,12 @@ fn issue_4406_annotation_appearance_is_one_omission_and_resets_state() {
         path(),
     ]))
     .unwrap();
-    assert_eq!(kinds(&report), [(4, "annotation".into(), true)]);
+    assert_eq!(kinds(&report), [(8, "annotation".into(), true)]);
     assert_eq!(report.fidelity.omissions[0].bbox_pdf, Some([20., 30., 40., 50.]));
     assert_eq!(report.paths.len(), 1);
+    assert_eq!(report.paths[0].operator_ordinal, 18);
     assert_eq!(report.paths[0].state.model_metres_from_path, page(vec![]).model_metres_from_pdf);
+    assert_eq!(report.paths[0].state.line_width, 1.);
     let outside = prepare_pdf_vector_page(&page(vec![
         Op::AnnotationBegin {
             rect: Some([500., 500., 600., 600.]),
@@ -466,6 +519,23 @@ fn issue_4406_scope_mismatches_and_unbounded_placements_refuse_atomically() {
         vec![Op::Unsupported {
             operator: String::new(),
         }],
+        // A dangling save is refused whether or not an annotation follows it;
+        // the pinned decoder closes pending restores before annotations.
+        vec![Op::Save],
+        vec![
+            Op::Save,
+            Op::AnnotationBegin { rect: None },
+            Op::AnnotationEnd,
+        ],
+        vec![Op::AnnotationBegin { rect: None }, Op::Save, Op::AnnotationEnd],
+        vec![
+            Op::AnnotationBegin { rect: None },
+            Op::FormBegin {
+                matrix: None,
+                bbox: None,
+            },
+            Op::AnnotationEnd,
+        ],
     ] {
         assert!(prepare_pdf_vector_page(&page(ops)).is_err());
     }

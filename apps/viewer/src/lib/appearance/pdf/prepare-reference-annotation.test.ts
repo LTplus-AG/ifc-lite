@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { useViewerStore } from '@/store';
 import { pdfReferenceAnnotationFixture } from '@/test/pdf-reference-annotation-fixture';
+import { texturedProductSource } from '@/test/textured-product-fixture';
 import { createAppearancePlanner, type AppearancePlanner, type AppearanceWorker } from '../planner-worker-client';
 import type { AppearanceWorkerResponse } from '../planner-types';
 import type { PdfFillAnnotationPlan } from './fill-plan-types';
@@ -84,6 +85,13 @@ test('partial pages need explicit acceptance of the canonical report and raster-
     assert.equal(check.report.summary[0]!.bboxPdf![0], 10, 'the omission carries its page-space extent');
     await assert.rejects(check.prepare('pdf-target', 40, { Name: 'Partial', acceptPartial: false }), /Accept the fidelity report/);
     assert.equal(text.view.getNewEntities().length, 0);
+    // Bypassing the host pre-check: without the accepted digest the canonical planner itself refuses the partial page.
+    const bypass = { schema: 'IFC4' as const, sourceRevision: 'bypass', nextExpressId: text.view.peekNextExpressId(), containerId: 40,
+      GlobalId: '0aaaaaaaaaaaaaaaaaaaaa', containmentGlobalId: '0bbbbbbbbbbbbbbbbbbbbb', propertySetGlobalId: '0cccccccccccccccccccc1',
+      propertyRelationGlobalId: '0cccccccccccccccccccc2', Name: 'Bypass', frame: { origin: [0, 0, 0] as [number, number, number],
+      axisU: [1, 0, 0] as [number, number, number], axisV: [0, 0, 1] as [number, number, number], sizeMetres: [4, 3] as [number, number] }, page: check.page };
+    await assert.rejects(planner.pdfFillPlan(texturedProductSource, { ...bypass, acceptedFidelitySha256: null }), /explicit acceptance/);
+    await assert.rejects(planner.pdfFillPlan(texturedProductSource, { ...bypass, acceptedFidelitySha256: '0'.repeat(64) }), /does not match/);
     const prepared = await check.prepare('pdf-target', 40, { Name: 'Partial', acceptPartial: true });
     assert.deepEqual([prepared.regions, prepared.fidelity.exact, prepared.fidelity.sha256], [2, false, check.report.sha256]);
     check.dispose();

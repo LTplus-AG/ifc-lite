@@ -20,7 +20,7 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
   referenceId: string; modelId: string; containerId?: number; Name: string; disabled: boolean;
 }) {
   const [tolerance, setTolerance] = useState('0.001');
-  const [report, setReport] = useState<PdfFidelityReport | null>(null);
+  const [report, setReport] = useState<{ verdict: PdfFidelityReport; userUnit: number } | null>(null);
   const [accepted, setAccepted] = useState(false);
   const [prepared, setPrepared] = useState<PreparedPdfReferenceAnnotation | null>(null);
   const check = useRef<PdfReferenceVectorCheck | null>(null);
@@ -49,7 +49,7 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
   const metricTolerance = Number(tolerance);
   const valid = !!modelId && containerId !== undefined && !!Name.trim() && tolerance.trim() !== ''
     && Number.isFinite(metricTolerance) && metricTolerance > 0 && metricTolerance <= 0.1;
-  const partial = !!report && !report.exact && !report.rasterOnly;
+  const partial = !!report && !report.verdict.exact && !report.verdict.rasterOnly;
   async function prepare() {
     if (!valid || disabled || room || operation.current || containerId === undefined) return;
     dropPrepared(); const controller = new AbortController(); operation.current = controller;
@@ -60,12 +60,13 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
         current = await checkPdfReferenceVectors(referenceId, { toleranceMetres: metricTolerance, signal: controller.signal });
         if (controller.signal.aborted || operation.current !== controller) { current.dispose(); return; }
         try { current.validate(); } catch (failure) { current.dispose(); throw failure; }
-        check.current = current; setReport(current.report);
+        check.current = current; setReport({ verdict: current.report, userUnit: current.page.userUnit });
       }
       const verdict = current.report;
       if (verdict.rasterOnly) { setError(true); setMessage('This page has no vector drawing content. Keep it as a raster reference and use the Image representation.'); return; }
       if (!verdict.exact && !accepted) {
-        setMessage(`Partial conversion: ${visibleOmissionCount(verdict)} visible omissions. Review the report and accept the partial conversion to prepare it.`); return;
+        const n = visibleOmissionCount(verdict);
+        setMessage(`Partial conversion: ${n} visible ${n === 1 ? 'omission' : 'omissions'}. Review the report and accept the partial conversion to prepare it.`); return;
       }
       setMessage('Preparing geometry…');
       const result = await current.prepare(modelId, containerId, { Name, acceptPartial: accepted, signal: controller.signal });
@@ -78,7 +79,7 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
     } finally { if (operation.current === controller) { operation.current = null; setBusy(false); } }
   }
   async function create() {
-    const result = retained.current, renderer = getGlobalRenderer(), exact = !!report?.exact;
+    const result = retained.current, renderer = getGlobalRenderer(), exact = !!report?.verdict.exact;
     if (!result || !ready || busy || disabled || room) return;
     if (!renderer) { setError(true); setMessage('Wait for the 3D view to be ready.'); return; }
     const controller = new AbortController(); operation.current = controller;
@@ -97,10 +98,10 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
     <p className="text-[11px] text-muted-foreground">Convert supported fills and straight strokes into coloured IFC geometry. Curves are flattened within the tolerance below, measured in model metres after calibration. The page is checked first: text, images, clipping, transparency, patterns and other unsupported paint are reported, never silently dropped. User-cropped pages are not yet supported.</p>
     <label className="block text-[11px]">Geometry tolerance (m)<Input aria-label="PDF geometry tolerance (m)" value={tolerance} disabled={busy || disabled}
       onChange={event => setTolerance(event.target.value)} className="h-8 text-xs" /></label>
-    {report && <PdfFidelityReportView report={report} />}
+    {report && <PdfFidelityReportView report={report.verdict} userUnit={report.userUnit} />}
     {partial && <label className="flex items-start gap-1.5 text-[11px]"><input type="checkbox" aria-label="Accept partial PDF conversion" className="mt-0.5" checked={accepted} disabled={busy || disabled}
       onChange={event => { setAccepted(event.target.checked); dropPrepared(); }} />Create a partial conversion. The omissions listed above are left out and recorded with the annotation.</label>}
-    <Button type="button" variant="outline" size="sm" disabled={!valid || busy || disabled || !!room || !!report?.rasterOnly || (partial && !accepted)} onClick={() => { void prepare(); }}>
+    <Button type="button" variant="outline" size="sm" disabled={!valid || busy || disabled || !!room || !!report?.verdict.rasterOnly || (partial && !accepted)} onClick={() => { void prepare(); }}>
       {partial ? 'Prepare partial conversion' : 'Prepare vector preview'}</Button>
     {prepared && <>
       <AppearanceMeshPreview mesh={prepared.meshes[0]} additionalMeshes={additionalMeshes} initialPlane={prepared.initialPlane} triangles={triangles} disabled={busy || disabled}

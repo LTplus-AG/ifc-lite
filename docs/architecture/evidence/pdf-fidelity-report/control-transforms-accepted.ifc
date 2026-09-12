@@ -1,7 +1,7 @@
 ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('annotation creation contract','Re-exported by ifc-lite, 176 modifications'),'2;1');
-FILE_NAME('export.ifc','2026-09-12T00:56:14',(''),(''),'ifc-lite','ifc-lite','');
+FILE_NAME('export.ifc','2026-09-12T01:55:04',(''),(''),'ifc-lite','ifc-lite','');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;

@@ -16,16 +16,18 @@ export function omissionLabel(kind: string): string {
 export function visibleOmissionCount(report: PdfFidelityReport): number {
   return report.summary.reduce((count, entry) => count + entry.visibleCount, 0);
 }
-/** Extent in unrotated PDF user space (CropBox coordinates, points). */
-function region(box: PdfPageRect): string {
-  const point = (value: number) => Number.isInteger(value) ? String(value) : value.toFixed(1);
+/** Extent in unrotated PDF user space (CropBox coordinates) shown in points:
+ * one user-space unit is `UserUnit` points (ISO 32000-1 §14.11.5), so a page
+ * with `/UserUnit 2` reports twice the raw coordinate. */
+export function omissionRegion(box: PdfPageRect, userUnit: number): string {
+  const point = (value: number) => { const pt = value * userUnit; return Number.isInteger(pt) ? String(pt) : pt.toFixed(1); };
   return `x ${point(box[0])}–${point(box[2])}, y ${point(box[1])}–${point(box[3])} pt`;
 }
-function OmissionRow({ entry }: { entry: PdfOmissionSummary }) {
-  return <li>{entry.visibleCount} × {omissionLabel(entry.kind)}{entry.bboxPdf ? ` — region ${region(entry.bboxPdf)}` : ''}</li>;
+function OmissionRow({ entry, userUnit }: { entry: PdfOmissionSummary; userUnit: number }) {
+  return <li>{entry.visibleCount} × {omissionLabel(entry.kind)}{entry.bboxPdf ? ` — region ${omissionRegion(entry.bboxPdf, userUnit)}` : ''}</li>;
 }
-/** The canonical page verdict, shown before any geometry is prepared. */
-export function PdfFidelityReportView({ report }: { report: PdfFidelityReport }) {
+/** The canonical page verdict, shown before any geometry is prepared. `userUnit` is the page's /UserUnit. */
+export function PdfFidelityReportView({ report, userUnit }: { report: PdfFidelityReport; userUnit: number }) {
   if (report.rasterOnly) {
     return <p role="alert" className="text-[11px] text-destructive">This page has no vector drawing content — raster reference only. Use the Image representation; it is not presented as editable vectors.</p>;
   }
@@ -36,7 +38,7 @@ export function PdfFidelityReportView({ report }: { report: PdfFidelityReport })
   const invisible = report.summary.reduce((count, entry) => count + entry.count - entry.visibleCount, 0);
   return <div role="status" className="space-y-1 text-[11px]">
     <p className="text-amber-700 dark:text-amber-400">Partial conversion: {visibleOmissionCount(report)} visible {visibleOmissionCount(report) === 1 ? 'omission' : 'omissions'} would be left out; {report.convertiblePaths} {report.convertiblePaths === 1 ? 'path converts' : 'paths convert'}.</p>
-    <ul className="list-disc pl-4" aria-label="PDF omissions">{visible.map(entry => <OmissionRow key={entry.kind} entry={entry} />)}</ul>
+    <ul className="list-disc pl-4" aria-label="PDF omissions">{visible.map(entry => <OmissionRow key={entry.kind} entry={entry} userUnit={userUnit} />)}</ul>
     {invisible > 0 && <p className="text-muted-foreground">{invisible} further {invisible === 1 ? 'item is' : 'items are'} not visible on the page and do not affect the conversion.</p>}
     {report.omissionsTruncated && <p className="text-muted-foreground">The detailed list is truncated; these counts are complete.</p>}
   </div>;

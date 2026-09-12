@@ -45,7 +45,9 @@ pub struct FidelityReport {
     /// Only raster images are visible: keep the page as a raster reference.
     pub raster_only: bool,
     pub convertible_paths: u32,
-    /// Painted fill or stroke parts the planner leaves out.
+    /// Visible painted fill or stroke parts the planner leaves out. Paints
+    /// inside hidden optional content are listed under `hidden` but not
+    /// counted here, so an exact page always records zero.
     pub omitted_paints: u32,
     pub summary: Vec<OmissionSummary>,
     pub omissions: Vec<Omission>,
@@ -74,7 +76,7 @@ impl ReportBuilder {
     /// `painted` marks omitted fill/stroke parts of real paths, distinct from
     /// text, images and scope markers.
     pub fn record(&mut self, kind: &str, ordinal: u32, bbox: Option<Rect>, visible: bool, painted: bool) {
-        if painted {
+        if painted && visible {
             self.omitted_paints += 1;
         }
         if visible {
@@ -147,6 +149,8 @@ impl FidelityReport {
         self.summary.iter().map(|s| s.visible_count).sum()
     }
     /// Short human sentence for `IfcAnnotation.Description` and messages.
+    /// Kinds are spelled out for people; the JSON `Omissions` property keeps
+    /// the canonical tokens.
     pub fn describe(&self) -> String {
         if self.raster_only {
             return "raster-only page".into();
@@ -158,8 +162,30 @@ impl FidelityReport {
             .summary
             .iter()
             .filter(|s| s.visible_count > 0)
-            .map(|s| format!("{} {}", s.visible_count, s.kind))
+            .map(|s| format!("{} {}", s.visible_count, kind_label(&s.kind, s.visible_count)))
             .collect();
         format!("partial conversion; omitted {}", parts.join(", "))
+    }
+}
+
+/// Human wording for one omission kind, pluralised by `count`.
+pub fn kind_label(kind: &str, count: u32) -> String {
+    let plural = |one: &str, many: &str| if count == 1 { one } else { many }.to_owned();
+    match kind {
+        "text" => plural("text run", "text runs"),
+        "image" => plural("image", "images"),
+        "clip" => plural("clipped path", "clipped paths"),
+        "transparency" => plural("transparent path", "transparent paths"),
+        "pattern" => plural("pattern paint", "pattern paints"),
+        "dash" => plural("dashed stroke", "dashed strokes"),
+        "roundCapJoin" => plural("round-cap/join stroke", "round-cap/join strokes"),
+        "curvedStroke" => plural("curved stroke", "curved strokes"),
+        "hairline" => plural("hairline stroke", "hairline strokes"),
+        "hidden" => plural("hidden path", "hidden paths"),
+        "annotation" => plural("annotation appearance", "annotation appearances"),
+        other => match other.strip_prefix("unsupported:") {
+            Some(op) => format!("{} under unsupported operator {op}", plural("entry", "entries")),
+            None => other.to_owned(),
+        },
     }
 }

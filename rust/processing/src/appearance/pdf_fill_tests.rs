@@ -371,7 +371,7 @@ fn issue_4406_partial_page_needs_the_accepted_fidelity_digest_and_records_its_om
         },
     });
     let refused = plan_pdf_fill_annotation(source.as_bytes(), &partial).unwrap_err();
-    assert!(refused.contains("1 visible omissions") && refused.contains("explicit acceptance"), "{refused}");
+    assert!(refused.contains("1 visible omission)") && refused.contains("explicit acceptance"), "{refused}");
     let report = crate::pdf_vector::prepare_pdf_vector_page(&partial.page).unwrap().fidelity;
     assert!(!report.exact);
     let mut wrong = partial.clone();
@@ -392,7 +392,7 @@ fn issue_4406_partial_page_needs_the_accepted_fidelity_digest_and_records_its_om
     assert!(step.contains("IFCPROPERTYSINGLEVALUE('ToleranceMetres',$,IFCREAL(0.0001),$)"));
     assert!(step.contains("IFCPROPERTYSINGLEVALUE('SourceCropBox',$,IFCTEXT('[0.0,0.0,8.0,8.0]'),$)"), "{step}");
     assert!(step.contains(&format!("IFCRELDEFINESBYPROPERTIES('0cccccccccccccccccccc2',$,$,$,(#{}),#{});", plan.annotation_id, plan.property_set_id)), "{step}");
-    assert!(step.contains("'PDF vectors, page 1: partial conversion; omitted 1 text'"), "{step}");
+    assert!(step.contains("'PDF vectors, page 1: partial conversion; omitted 1 text run'"), "{step}");
     // The provenance rows do not disturb canonical geometry on reopen.
     let reopened = crate::process_geometry(step.as_bytes());
     assert_eq!(reopened.meshes.iter().filter(|m| m.express_id == plan.annotation_id).count(), 2);

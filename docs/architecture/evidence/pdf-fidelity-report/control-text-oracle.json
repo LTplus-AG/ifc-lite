@@ -6,7 +6,7 @@
       "expressId": 79,
       "GlobalId": "0aaaaaaaaaaaaaaaaaaaaa",
       "Name": "PDF fidelity evidence control:text",
-      "Description": "PDF vectors, page 1: partial conversion; omitted 1 text",
+      "Description": "PDF vectors, page 1: partial conversion; omitted 1 text run",
       "containedIn": [
         "Level"
       ],

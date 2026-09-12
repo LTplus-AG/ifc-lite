@@ -42,12 +42,12 @@
     ]
   },
   "fidelity": {
-    "sha256": "7208c015e3d7256e2138d4e1a36ac19a0c2928427a5bcc4e470e677c845486b9",
+    "sha256": "5d489c023fc32a89c9f43d5ca4b4fbd07851f505d1266c1d0804e8fdc029380a",
     "algorithm": "ifclite-pdf-fidelity-v1",
     "exact": true,
     "rasterOnly": false,
     "convertiblePaths": 1,
-    "omittedPaints": 1,
+    "omittedPaints": 0,
     "summary": [
       {
         "kind": "hidden",

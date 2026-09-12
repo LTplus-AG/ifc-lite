@@ -164,7 +164,7 @@ impl Interpreter {
                 if let Some(rect) = rect {
                     validate_rect(rect)?;
                 }
-                self.reset();
+                self.reset("an annotation begin")?;
                 self.push(Scope::Annotation)?;
                 self.annotation = true;
                 let visible = rect.is_none_or(|r| extent::intersects(&r, &self.clip));
@@ -174,8 +174,12 @@ impl Interpreter {
                 if !self.annotation {
                     return Err("PDF annotation end has no matching begin".into());
                 }
+                if !matches!(self.stack.as_slice(), [(_, Scope::Annotation)]) {
+                    return Err("PDF graphics-state stack is unbalanced inside an annotation appearance".into());
+                }
+                self.stack.clear();
                 self.annotation = false;
-                self.reset();
+                self.reset("an annotation end")?;
             }
             Op::MarkedContent { visible } => {
                 self.marked.push(*visible);

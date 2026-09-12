@@ -50,6 +50,10 @@ struct Interpreter {
     frame: Frame,
     stack: Vec<(Frame, Scope)>,
     clip: Rect,
+    /// The declared metric tolerance in PDF user-space units under the
+    /// calibration's largest scale: a clip may fall short of the page by at
+    /// most this strip before the loss counts.
+    clip_tolerance_pdf: f64,
     pending_clip: bool,
     marked: Vec<bool>,
     hidden: usize,
@@ -80,6 +84,7 @@ pub(super) fn run(page: &PdfVectorPage) -> Result<Interpreted, String> {
         base,
         stack: Vec::new(),
         clip: page.view_box,
+        clip_tolerance_pdf: page.tolerance_metres / largest_scale(&page.model_metres_from_pdf),
         pending_clip: false,
         marked: Vec::new(),
         hidden: 0,
@@ -104,6 +109,16 @@ pub(super) fn run(page: &PdfVectorPage) -> Result<Interpreted, String> {
         paths: it.paths,
         report: it.report,
     })
+}
+
+/// Largest singular value of the affine's linear part: the most any PDF
+/// length is stretched into model metres.
+fn largest_scale(m: &[f64; 6]) -> f64 {
+    let (a, b, c, d) = (m[0], m[1], m[2], m[3]);
+    let sum = a * a + b * b + c * c + d * d;
+    let det = a * d - b * c;
+    let discriminant = (sum * sum - 4. * det * det).max(0.).sqrt();
+    ((sum + discriminant) / 2.).sqrt().max(f64::MIN_POSITIVE)
 }
 
 fn validate_rect(r: &Rect) -> Result<(), String> {
@@ -135,10 +150,16 @@ impl Interpreter {
             None => Err(format!("PDF {what} has no matching save")),
         }
     }
-    fn reset(&mut self) {
-        self.stack.clear();
+    /// Annotation appearances start from the base state, like the pinned
+    /// canvas; the explicit stack must already be balanced (the pinned decoder
+    /// closes pending restores at the end of every content stream).
+    fn reset(&mut self, what: &str) -> Result<(), String> {
+        if !self.stack.is_empty() {
+            return Err(format!("PDF graphics-state stack is unbalanced at {what}"));
+        }
         self.frame = self.base.clone();
         self.pending_clip = false;
+        Ok(())
     }
     fn visible(&self) -> bool {
         self.hidden == 0 && !self.annotation
@@ -153,8 +174,18 @@ impl Interpreter {
         validate_matrix(&self.frame.state.model_metres_from_path)?;
         validate_matrix(&self.frame.pdf_from_path)
     }
+    /// The page clip shrunk by the declared tolerance: a clip containing this
+    /// inner rectangle removes at most a sub-tolerance strip along the page
+    /// edge, which the planner's implicit CropBox clip already bounds.
+    fn tolerant_page(&self) -> Rect {
+        let t = self.clip_tolerance_pdf;
+        let [x0, y0, x1, y1] = self.clip;
+        let (cx, cy) = ((x0 + x1) / 2., (y0 + y1) / 2.);
+        [(x0 + t).min(cx), (y0 + t).min(cy), (x1 - t).max(cx), (y1 - t).max(cy)]
+    }
     /// A rectangle in construction space (optionally under an extra matrix)
-    /// that still contains the whole page clip removes nothing visible.
+    /// that still contains the whole page clip (within tolerance) removes
+    /// nothing visible.
     fn clip_rect(&mut self, rect: &Rect, matrix: Option<&[f64; 6]>) -> Result<(), String> {
         validate_rect(rect)?;
         let m = match matrix {
@@ -165,7 +196,7 @@ impl Interpreter {
             None => self.frame.pdf_from_path,
         };
         let quad = extent::rect_corners(rect).map(|p| extent::apply(&m, p));
-        if !extent::quad_contains_rect(&quad, &self.clip) {
+        if !extent::quad_contains_rect(&quad, &self.tolerant_page()) {
             self.frame.taint.clip = true;
         }
         Ok(())
@@ -173,7 +204,7 @@ impl Interpreter {
     fn consume_clip(&mut self, commands: &[f64]) {
         if let Some(rect) = extent::rectangle_path(commands) {
             let quad = extent::rect_corners(&rect).map(|p| self.to_pdf(p));
-            if extent::quad_contains_rect(&quad, &self.clip) {
+            if extent::quad_contains_rect(&quad, &self.tolerant_page()) {
                 return;
             }
         }

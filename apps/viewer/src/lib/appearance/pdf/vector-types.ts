@@ -71,6 +71,13 @@ export interface PdfFidelityReport {
   omissions: PdfOmission[];
   omissionsTruncated: boolean;
 }
+/** Complete graphics state of one convertible path; commands stay in construction space. */
+export interface PdfVectorGraphicsState {
+  modelMetresFromPath: PdfAffine;
+  fillRgb: [number, number, number]; strokeRgb: [number, number, number];
+  lineWidth: number; lineCap: number; lineJoin: number; miterLimit: number;
+  dashLengths: number[]; dashPhase: number;
+}
 export interface PreparedPdfVectorPage {
   requestSha256: string;
   algorithm: 'ifclite-pdf-vector-state-v1';
@@ -79,6 +86,6 @@ export interface PreparedPdfVectorPage {
   calibrationKey: string;
   toleranceMetres: number;
   pageClipPdf: PdfPageRect;
-  paths: Array<{ operatorOrdinal: number; paint: PdfVectorPaint; commands: number[] }>;
+  paths: Array<{ operatorOrdinal: number; paint: PdfVectorPaint; commands: number[]; state: PdfVectorGraphicsState }>;
   fidelity: PdfFidelityReport;
 }

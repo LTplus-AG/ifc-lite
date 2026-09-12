@@ -222,6 +222,15 @@ In the IFClite viewer, BCF is integrated through the BCF panel:
 
 1. **Load BCF** - Open the BCF panel and use its Import button to pick a `.bcf` or `.bcfzip` file (dropping one onto the main viewport is not supported — it names a model file, not a BCF archive). Load the IFC model a BCF's topics were captured from *before* importing it, so their viewpoints and component references resolve; the panel warns when you import with no model loaded.
 2. **Connect to a BCF server** - The cloud button in the panel header connects to a BCF API server — pick a known server (Aconex regions, BIMcollab, BIMData.io, BIM Track/Newforma Konekt, Catenda Hub, Dalux Field, OpenProject, StreamBIM) or enter a custom URL, sign in via the browser OAuth popup (authorization code + PKCE, with dynamic client registration where the server offers it), email & password, a pasted access token, or OAuth client credentials — then list its projects and load topics, viewpoints, and snapshots straight into the panel
+   - **Vendor-issued OAuth apps.** Some vendors — BIMcollab in particular — issue OAuth client ids to *application* developers, never to the people who administer a space, and refuse the password and client-credentials grants for such a client. Space users therefore cannot supply a client id themselves. A deployment signs its users in through its own registered app instead, configured at build time per preset id (upper-cased, `-` as `_`):
+
+     ```
+     VITE_BCF_APP_BIMCOLLAB_CLIENT_ID=<issued client id>
+     VITE_BCF_APP_BIMCOLLAB_CLIENT_SECRET=<issued secret, if any>
+     VITE_BCF_APP_BIMCOLLAB_REDIRECT_URI=<only if the vendor registered something other than https://<this origin>/oauth/bcf/callback>
+     ```
+
+     With the app configured, picking that server shows no client-id field: the user enters their space URL, clicks Connect and signs in with their own account in the popup. The secret ships in the bundle — that is the model these vendors work with (their published playground client has one, and every desktop BCF manager embeds its own); it identifies the application, while PKCE and the registered redirect URI protect the authorization code. The redirect URI must be on the deployment's own origin, because the popup hands the result back over an origin-scoped `BroadcastChannel`. Without the app, the form says plainly that the vendor issues client ids to application vendors instead of asking the user to register one. To develop against BIMcollab's playground, whose published client is pinned to `http://localhost:5000/Callback`, set that as the redirect URI and run `vite --port 5000`; the dev server routes the configured path to the callback page.
 3. **Browse Topics** - View all issues with status, priority, and labels
 4. **Navigate Viewpoints** - Click a viewpoint to restore camera and visibility
 5. **Add Comments** - Discuss issues directly in the viewer

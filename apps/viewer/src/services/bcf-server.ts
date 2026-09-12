@@ -125,6 +125,28 @@ export interface BcfOAuthPreparation {
   codeVerifier: string;
   clientId: string;
   clientSecret: string;
+  /** Redirect URI the authorization request named; the exchange must repeat it. */
+  redirectUri: string;
+}
+
+export interface PrepareBcfOAuthOptions {
+  clientId?: string;
+  clientSecret?: string;
+  scope?: string;
+  /**
+   * Redirect URI registered with the vendor when it is not this origin's
+   * `bcfOAuthRedirectUri()`. Must still be on this origin: the callback page
+   * hands the result back over a BroadcastChannel, which is origin-scoped,
+   * so a redirect elsewhere would land where nobody is listening.
+   */
+  redirectUri?: string;
+  /**
+   * What to tell the user when no client id is available and the server
+   * offers no dynamic registration. The default asks them to register an
+   * app with the vendor, which is wrong advice for vendors that only issue
+   * ids to application developers.
+   */
+  missingClientIdMessage?: string;
 }
 
 /**
@@ -136,8 +158,19 @@ export interface BcfOAuthPreparation {
  */
 export async function prepareBcfOAuth(
   serverUrl: string,
-  options: { clientId?: string; clientSecret?: string; scope?: string } = {},
+  options: PrepareBcfOAuthOptions = {},
 ): Promise<BcfOAuthPreparation> {
+  const redirectUri = options.redirectUri?.trim() || bcfOAuthRedirectUri();
+  // Checked before any network work: a mis-registered redirect would
+  // otherwise send the user through the vendor's login only to strand them
+  // on the callback page, and the opener would wait out its timeout.
+  const redirectOrigin = new URL(redirectUri).origin;
+  if (redirectOrigin !== window.location.origin) {
+    throw new Error(
+      `This sign-in returns to ${redirectOrigin}, not to ${window.location.origin} — open the viewer at ${redirectOrigin} to sign in.`,
+    );
+  }
+
   const api = await loadApi();
   const { baseUrl, authInfo } = await api.discoverBcfService({ baseUrl: serverUrl });
   const tokenUrl = requireSecureTokenUrl(authInfo.oauth2_token_url);
@@ -148,7 +181,8 @@ export async function prepareBcfOAuth(
   if (!clientId) {
     if (!authInfo.oauth2_dynamic_client_reg_url) {
       throw new Error(
-        'This server needs a Client ID: register an OAuth application with the vendor and enter its client id.',
+        options.missingClientIdMessage ??
+          'This server needs a Client ID: register an OAuth application with the vendor and enter its client id.',
       );
     }
     const registered = await api.registerBcfClient({
@@ -158,7 +192,7 @@ export async function prepareBcfOAuth(
       ),
       clientName: 'IFClite viewer',
       clientUrl: window.location.origin,
-      redirectUrl: bcfOAuthRedirectUri(),
+      redirectUrl: redirectUri,
     });
     clientId = registered.client_id;
     clientSecret = registered.client_secret ?? '';
@@ -168,7 +202,7 @@ export async function prepareBcfOAuth(
   const request = await createAuthorizationRequest({
     authorizationEndpoint: authEndpoint,
     clientId,
-    redirectUri: bcfOAuthRedirectUri(),
+    redirectUri,
     scope: options.scope,
   });
   return {
@@ -179,6 +213,7 @@ export async function prepareBcfOAuth(
     codeVerifier: request.codeVerifier,
     clientId,
     clientSecret,
+    redirectUri,
   };
 }
 
@@ -194,7 +229,7 @@ export async function completeBcfOAuth(
 ): Promise<BcfServerConfig> {
   const api = await loadApi();
   const { parseAuthorizationCallback } = await import('@ifc-lite/oauth-pkce');
-  const redirectUri = bcfOAuthRedirectUri();
+  const { redirectUri } = preparation;
   const { code } = parseAuthorizationCallback(callbackUrl, {
     expectedRedirectOrigin: new URL(redirectUri).origin,
     expectedState: preparation.state,

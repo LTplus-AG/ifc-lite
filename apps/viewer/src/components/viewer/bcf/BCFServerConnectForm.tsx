@@ -8,7 +8,7 @@
  * success the parent takes over with the connected view.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Loader2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,6 +36,8 @@ import {
   CUSTOM_PRESET_ID,
   findBcfServerPreset,
   presetForServerUrl,
+  vendorAppEnvPrefix,
+  vendorAppForPreset,
   type BcfAuthMethod,
 } from './bcf-server-presets';
 
@@ -64,6 +66,17 @@ export function BCFServerConnectForm({
   const [error, setError] = useState<string | null>(null);
 
   const preset = findBcfServerPreset(presetId);
+  // An OAuth app this deployment holds with the vendor. When present the
+  // browser sign-in runs through it and the client-id fields stay hidden:
+  // for vendors that only issue ids to application developers (BIMcollab)
+  // this is the only way a space user can sign in at all.
+  const vendorApp = useMemo(() => vendorAppForPreset(preset.id), [preset.id]);
+  // Honest wording for those vendors when the deployment has no app: the
+  // generic "register an OAuth application with the vendor" sends users
+  // after something the vendor will not give them (#3900).
+  const missingClientIdMessage = preset.vendorIssuedClientsOnly
+    ? `${preset.label} issues client ids to application vendors, not to space users, and this IFClite deployment has no ${preset.label} app configured (${vendorAppEnvPrefix(preset.id)}_CLIENT_ID). Sign in via browser is unavailable here.`
+    : undefined;
 
   const handlePresetChange = useCallback((id: string) => {
     const next = findBcfServerPreset(id);
@@ -111,9 +124,11 @@ export function BCFServerConnectForm({
           throw new Error('Sign-in popup was blocked — allow popups for this site and try again.');
         }
         const preparation = await prepareBcfOAuth(serverUrl, {
-          clientId,
-          clientSecret,
+          clientId: vendorApp?.clientId ?? clientId,
+          clientSecret: vendorApp?.clientSecret ?? clientSecret,
+          redirectUri: vendorApp?.redirectUri || undefined,
           scope: preset.oauthScope,
+          missingClientIdMessage,
         });
         // Subscribe before navigating: BroadcastChannel does not buffer.
         const { waitForOAuthCallback } = await import('@ifc-lite/oauth-pkce');
@@ -143,7 +158,19 @@ export function BCFServerConnectForm({
       popup?.close();
       setBusy(false);
     }
-  }, [serverUrl, authMethod, username, password, accessToken, clientId, clientSecret, preset, onSignedIn]);
+  }, [
+    serverUrl,
+    authMethod,
+    username,
+    password,
+    accessToken,
+    clientId,
+    clientSecret,
+    preset,
+    vendorApp,
+    missingClientIdMessage,
+    onSignedIn,
+  ]);
 
   const missingCredentials =
     authMethod === 'password'
@@ -249,7 +276,14 @@ export function BCFServerConnectForm({
         </div>
       )}
 
-      {authMethod === 'oauth' && (
+      {authMethod === 'oauth' && vendorApp && (
+        <p className="text-xs text-muted-foreground" data-testid="bcf-server-vendor-app">
+          Signs you in with your {preset.label} account through IFClite&rsquo;s registered{' '}
+          {preset.label} app — no client id to enter.
+        </p>
+      )}
+
+      {authMethod === 'oauth' && !vendorApp && (
         <>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="bcf-server-oauth-client-id">Client ID</Label>
@@ -257,12 +291,17 @@ export function BCFServerConnectForm({
               id="bcf-server-oauth-client-id"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
-              placeholder="Leave empty to auto-register when supported"
+              placeholder={
+                preset.vendorIssuedClientsOnly
+                  ? 'Issued by the vendor to application developers'
+                  : 'Leave empty to auto-register when supported'
+              }
               autoComplete="off"
             />
             <p className="text-xs text-muted-foreground">
-              From an OAuth app registered with the vendor. Servers offering dynamic client
-              registration need no ID — leave it empty.
+              {preset.vendorIssuedClientsOnly
+                ? `${preset.label} issues client ids to application vendors, not to space users. Ask whoever runs this IFClite deployment to configure its ${preset.label} app.`
+                : 'From an OAuth app registered with the vendor. Servers offering dynamic client registration need no ID — leave it empty.'}
             </p>
           </div>
           <div className="flex flex-col gap-1.5">

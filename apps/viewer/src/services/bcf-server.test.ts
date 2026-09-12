@@ -47,6 +47,8 @@ interface FakeServerState {
   dynamicRegistration?: boolean;
   /** Registration requests seen, for asserting what was sent. */
   registrations: Array<Record<string, unknown>>;
+  /** Every token-endpoint form body, in order. */
+  tokenForms: URLSearchParams[];
 }
 
 /** Fake BCF server at the fetch boundary: auth discovery, OAuth2, projects. */
@@ -55,6 +57,7 @@ function installFakeServer(): FakeServerState {
     validTokens: new Set(['token-1']),
     grants: [],
     registrations: [],
+    tokenForms: [],
   };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
@@ -89,6 +92,7 @@ function installFakeServer(): FakeServerState {
       if (state.tokenGate) await state.tokenGate;
       const form = new URLSearchParams(String(init?.body));
       state.grants.push(form.get('grant_type') ?? '');
+      state.tokenForms.push(form);
       if (form.get('grant_type') === 'authorization_code') {
         if (form.get('code') !== 'good-code' || !form.get('code_verifier')) {
           return json({ error: 'invalid_grant', error_description: 'bad code' }, 400);
@@ -541,6 +545,63 @@ describe('prepareBcfOAuth', () => {
       /insecure client registration endpoint/,
     );
     assert.equal(server.registrations.length, 0, 'no client secret may be minted over http');
+  });
+
+  it('uses the caller-supplied wording when no client id can be had', async () => {
+    // BIMcollab issues client ids to application vendors only; telling a
+    // space user to "register an OAuth application" is a dead end (#3900).
+    const server = installFakeServer();
+    server.dynamicRegistration = false;
+    await assert.rejects(
+      prepareBcfOAuth('https://fake.example/bcf', {
+        missingClientIdMessage: 'BIMcollab issues client ids to application vendors',
+      }),
+      /issues client ids to application vendors/,
+    );
+  });
+
+  it('names a vendor-registered redirect URI on this origin instead of the default path', async () => {
+    // BIMcollab's playground client is pinned to http://localhost:5000/Callback;
+    // the request must carry exactly what the vendor registered, and the
+    // exchange must repeat it.
+    const server = installFakeServer();
+    const redirectUri = `${window.location.origin}/Callback`;
+    const preparation = await prepareBcfOAuth('https://fake.example/bcf', {
+      clientId: 'PlayGround_Client',
+      clientSecret: 'play-secret',
+      redirectUri,
+    });
+    assert.equal(new URL(preparation.authorizeUrl).searchParams.get('redirect_uri'), redirectUri);
+    assert.equal(preparation.redirectUri, redirectUri);
+    const config = await completeBcfOAuth(
+      preparation,
+      `${redirectUri}?code=good-code&state=${preparation.state}`,
+    );
+    const exchange = server.tokenForms.at(-1);
+    assert.ok(exchange);
+    assert.equal(exchange.get('redirect_uri'), redirectUri);
+    assert.equal(exchange.get('client_id'), 'PlayGround_Client');
+    assert.equal(exchange.get('client_secret'), 'play-secret');
+    assert.equal(config.clientId, 'PlayGround_Client', 'kept for the refresh grant');
+  });
+
+  it('refuses a redirect URI on another origin before touching the network', async () => {
+    // The callback page reports back over an origin-scoped BroadcastChannel,
+    // so a redirect to a different origin would strand the user on the
+    // vendor's callback with nobody listening.
+    let fetched = false;
+    globalThis.fetch = (async () => {
+      fetched = true;
+      return new Response('{}');
+    }) as typeof fetch;
+    await assert.rejects(
+      prepareBcfOAuth('https://fake.example/bcf', {
+        clientId: 'x',
+        redirectUri: 'https://www.ifclite.com/oauth/bcf/callback',
+      }),
+      /open the viewer at https:\/\/www\.ifclite\.com/,
+    );
+    assert.equal(fetched, false);
   });
 });
 

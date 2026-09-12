@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { Plugin } from 'vite';
+import { loadEnv, type Plugin } from 'vite';
 
 /**
  * OAuth redirect paths are extension-less (`/oauth/dropbox/callback`,
@@ -26,13 +26,42 @@ const CALLBACK_PAGES: Record<string, string> = {
   '/oauth/bcf/callback': '/oauth/bcf/callback.html',
 };
 
+/**
+ * A BCF vendor app configured through `VITE_BCF_APP_<PRESET>_REDIRECT_URI`
+ * (see `vendorAppForPreset` in src/components/viewer/bcf/bcf-server-presets.ts)
+ * may register a callback path of the vendor's choosing — BIMcollab's
+ * playground client is pinned to `http://localhost:5000/Callback` — and
+ * that path needs the same static page. Only the dev server learns it
+ * from the env; production serves the default path via vercel.json, so a
+ * production app registers that.
+ */
+function configuredBcfCallbackPaths(env: Record<string, string>): string[] {
+  const paths: string[] = [];
+  for (const [key, value] of Object.entries(env)) {
+    if (!/^VITE_BCF_APP_[A-Z0-9_]+_REDIRECT_URI$/.test(key) || !value) continue;
+    try {
+      paths.push(new URL(value).pathname);
+    } catch {
+      // Not a URL; the form reports that when the user tries to sign in.
+    }
+  }
+  return paths;
+}
+
 export function oauthCallbackRoutes(): Plugin {
+  const pages: Record<string, string> = { ...CALLBACK_PAGES };
   return {
     name: 'ifc-lite-oauth-callback-routes',
+    config(config, { mode }) {
+      const envDir = config.envDir ?? config.root ?? process.cwd();
+      for (const path of configuredBcfCallbackPaths(loadEnv(mode, envDir, 'VITE_'))) {
+        pages[path] ??= CALLBACK_PAGES['/oauth/bcf/callback'];
+      }
+    },
     configureServer(server) {
       server.middlewares.use((req, _res, next) => {
         const [path, query] = (req.url ?? '').split('?');
-        const page = CALLBACK_PAGES[path];
+        const page = pages[path];
         // Rewrite rather than serve: Vite's own static handling then serves
         // the file from `public/`, which keeps the dev server's COOP/COEP
         // headers on the response. The query string carries `code`/`state`

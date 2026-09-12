@@ -95,16 +95,24 @@ pub fn export_obj(content: &[u8], opts: &ObjOptions) -> String {
 
 /// Like [`export_obj`] but also returns coverage stats.
 pub fn export_obj_with_stats(content: &[u8], opts: &ObjOptions) -> (String, ObjStats) {
-    let result = process_geometry(content);
+    write_obj(&process_geometry(content).meshes, opts)
+}
 
+/// The OBJ text for already-meshed geometry.
+fn write_obj(meshes: &[MeshData], opts: &ObjOptions) -> (String, ObjStats) {
     let mut out = String::new();
     let _ = writeln!(out, "# ifc-lite OBJ export");
     let _ = writeln!(out, "# units: metres (renderer Y-up frame, origin-folded world coords)");
 
     let mut vert_base: usize = 0; // 0-based count of vertices written so far
+    // `vn` lines written so far. Its own counter: a mesh without normals writes
+    // `v` lines and no `vn` lines, so after it the two counts differ, and reusing
+    // `vert_base` for the normal index (as this did) pointed every later face at
+    // another mesh's normals.
+    let mut norm_base: usize = 0;
     let mut stats = ObjStats { meshes: 0, vertices: 0, triangles: 0 };
 
-    for mesh in &result.meshes {
+    for mesh in meshes {
         if !mesh_visible(mesh, &opts.isolated, &opts.hidden) {
             continue;
         }
@@ -147,7 +155,8 @@ pub fn export_obj_with_stats(content: &[u8], opts: &ObjOptions) -> (String, ObjS
             let b = vert_base + tri[1] as usize + 1;
             let c = vert_base + tri[2] as usize + 1;
             if has_normals {
-                let _ = writeln!(out, "f {a}//{a} {b}//{b} {c}//{c}");
+                let [na, nb, nc] = [0, 1, 2].map(|k| norm_base + tri[k] as usize + 1);
+                let _ = writeln!(out, "f {a}//{na} {b}//{nb} {c}//{nc}");
             } else {
                 let _ = writeln!(out, "f {a} {b} {c}");
             }
@@ -155,6 +164,9 @@ pub fn export_obj_with_stats(content: &[u8], opts: &ObjOptions) -> (String, ObjS
         }
 
         vert_base += nverts;
+        if has_normals {
+            norm_base += nverts;
+        }
         stats.vertices += nverts;
         stats.meshes += 1;
     }

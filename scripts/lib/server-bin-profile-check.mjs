@@ -51,7 +51,10 @@ const SELFTEST_FLAG = '--panic-strategy-selftest';
 const SELFTEST_VERDICT = 'test "$verdict" = "panic-strategy: unwind"';
 const PROFILE_BINARY = `${REQUIRED_PROFILE}/ifc-lite-server`;
 const WINDOWS_BINARY_SUFFIX = 'bin="$' + '{bin}.exe"';
-const RELEASE_SELFTEST_SOURCE_GUARD = `grep -Fq -- '${SELFTEST_FLAG}' apps/server/src/panic_strategy.rs`;
+const RELEASE_SELFTEST_SOURCE_GUARD = new RegExp(
+  `^\\s*if grep -Fq -- '${SELFTEST_FLAG}' apps/server/src/panic_strategy\\.rs 2>/dev/null; then\\s*$`,
+  'm',
+);
 /** The release job's archive steps, each of which must copy the built binary. */
 const ARCHIVE_STEPS = ['Prepare Binary (Unix)', 'Prepare Binary (Windows)'];
 /** Release legs whose output can execute natively on the matrix runner. */
@@ -193,12 +196,13 @@ export function checkUnwindProfile(workflow, origin) {
       `the .exe path on Windows; the win32-x64 behavioural check must execute the built artefact`,
     );
   }
-  if (releaseSelftest === null || !releaseSelftest.includes(RELEASE_SELFTEST_SOURCE_GUARD)) {
+  if (releaseSelftest === null || !RELEASE_SELFTEST_SOURCE_GUARD.test(releaseSelftest)) {
     fail(
       `the "${ASSERT_STEP}" step of job "release-server-binaries" in ${origin} does not guard ` +
       `the behavioural flag on checked-out source support; workflow_dispatch upload-to-tag ` +
       `backfills can build an older binary that ignores ${SELFTEST_FLAG} and starts the server, ` +
-      `hanging the release job instead of reaching upload`,
+      `hanging the release job instead of reaching upload; restore the active ` +
+      `if grep -Fq -- '${SELFTEST_FLAG}' ...; then check before the self-test`,
     );
   }
 }

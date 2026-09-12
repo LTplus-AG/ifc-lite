@@ -323,7 +323,8 @@ const ASSERT_STEP_NAME = '- name: Assert the built binary unwinds';
 const SELFTEST_FLAG = '--panic-strategy-selftest';
 const WINDOWS_SELFTEST_CONDITION = " || matrix.target == 'win32-x64'";
 const WINDOWS_BINARY_SUFFIX = 'bin="$' + '{bin}.exe"';
-const RELEASE_SELFTEST_SOURCE_GUARD = "if grep -Fq -- '--panic-strategy-selftest' apps/server/src/panic_strategy.rs";
+const RELEASE_SELFTEST_SOURCE_GUARD =
+  "          if grep -Fq -- '--panic-strategy-selftest' apps/server/src/panic_strategy.rs 2>/dev/null; then";
 const RELEASE_SELFTEST_BODY = `        if: matrix.target == 'linux-x64' || matrix.target == 'darwin-arm64' || matrix.target == 'linux-x64-musl' || matrix.target == 'win32-x64'
         shell: bash
         run: |
@@ -412,9 +413,16 @@ test('profile: skipping the native Windows release self-test is red', () => {
 
 test('profile: historical backfills must guard the unsupported behavioural flag', () => {
   const result = runChecker({
-    workflow: (s) => mutate(s, RELEASE_SELFTEST_SOURCE_GUARD, 'if true'),
+    workflow: (s) => mutate(
+      s,
+      RELEASE_SELFTEST_SOURCE_GUARD,
+      `          echo "${RELEASE_SELFTEST_SOURCE_GUARD.trim()}"\n          if true; then`,
+    ),
   });
-  assertRed(result, /does not guard[\s\S]*upload-to-tag[\s\S]*hanging the release job/);
+  assertRed(
+    result,
+    /does not guard[\s\S]*upload-to-tag[\s\S]*hanging the release job[\s\S]*restore the active if grep/,
+  );
 });
 
 test('profile: running the extensionless path for the Windows self-test is red', () => {

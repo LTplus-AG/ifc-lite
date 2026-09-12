@@ -14,9 +14,11 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 import { isBrowserSpecSource, partitionBrowserSpecs, withoutBrowserSpecs } from './revert-oracle-inert.mjs';
 import { withoutBrowserSpecs as reexported } from './revert-oracle.mjs';
@@ -59,4 +61,74 @@ test('the dispatcher hook logs each set-aside spec and returns the runnable rest
   assert.match(logged[0], /set aside: tests\/e2e\/x\.e2e\.spec\.ts is a Playwright spec/);
   assert.deepEqual(withoutBrowserSpecs(['tests/e2e/x.e2e.spec.ts'], read, () => {}), [], 'nothing runnable remains: the dispatcher then reports UNOBSERVED as before');
   assert.equal(reexported, withoutBrowserSpecs, 'the dispatcher imports it through revert-oracle.mjs, which is at its frozen budget');
+});
+
+test('root-owned support modules under a set-aside spec leave with it; entrypoints and package helpers stay (#4446)', () => {
+  const read = (p) => (p.endsWith('.e2e.spec.ts') ? PLAYWRIGHT : NODE_SPEC);
+  const ownedByRoot = (p) => !p.startsWith('packages/') && !p.startsWith('apps/');
+  const paths = [
+    'tests/e2e/share.e2e.spec.ts',
+    'tests/e2e/collab/relay.ts', // page object / launcher for the spec
+    'tests/e2e/collab/viewer-page.ts',
+    'tests/benchmark/plain.spec.ts', // root entrypoint that is NOT Playwright: stays, and keeps aborting downstream
+    'scripts/lib/c.test.mjs',
+    'packages/x/test/helper.ts', // package-owned helper under a dir that is not the spec's
+    'apps/viewer/src/a.test.ts',
+  ];
+  const { runnable, browser, support } = partitionBrowserSpecs(paths, read, ownedByRoot);
+  assert.deepEqual(browser, ['tests/e2e/share.e2e.spec.ts']);
+  assert.deepEqual(support, ['tests/e2e/collab/relay.ts', 'tests/e2e/collab/viewer-page.ts']);
+  assert.deepEqual(runnable, ['tests/benchmark/plain.spec.ts', 'scripts/lib/c.test.mjs', 'packages/x/test/helper.ts', 'apps/viewer/src/a.test.ts']);
+  // Without a spec set aside, nothing is support — a changed helper alone is judged as before.
+  assert.deepEqual(partitionBrowserSpecs(['tests/e2e/collab/relay.ts'], read, ownedByRoot).support, []);
+  // A package-owned file under the spec's directory is never root support.
+  assert.deepEqual(partitionBrowserSpecs(['tests/e2e/share.e2e.spec.ts', 'tests/e2e/pkg/helper.ts'], read, () => false).support, []);
+  // Without the predicate (the default), behaviour is exactly the pre-#4446 one.
+  assert.deepEqual(partitionBrowserSpecs(['tests/e2e/share.e2e.spec.ts', 'tests/e2e/collab/relay.ts'], read).runnable, ['tests/e2e/collab/relay.ts']);
+  const logged = [];
+  withoutBrowserSpecs(['tests/e2e/share.e2e.spec.ts', 'tests/e2e/collab/relay.ts'], read, (l) => logged.push(l), ownedByRoot);
+  assert.equal(logged.length, 2);
+  assert.match(logged[1], /set aside: tests\/e2e\/collab\/relay\.ts is a root-owned support module/);
+});
+
+test('end to end: a Playwright spec with root helpers beside a real unit test is judged by the unit test (#4446)', { timeout: 60_000 }, () => {
+  const root = mkdtempSync(join(tmpdir(), 'oracle-browser-support-'));
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT; // the nested fixture owns a separate Node test run
+  const run = (bin, args, expected = 0) => {
+    const result = spawnSync(bin, args, { cwd: root, env, encoding: 'utf8', timeout: 30_000 });
+    assert.equal(result.error, undefined, result.error?.message);
+    assert.equal(result.status, expected, `${result.stdout}\n${result.stderr}`);
+    return result.stdout + result.stderr;
+  };
+  try {
+    run('git', ['init', '-q']);
+    run('git', ['config', 'user.name', 'Revert oracle fixture']);
+    run('git', ['config', 'user.email', 'oracle@example.invalid']);
+    // The oracle verifies a byte-identical tree after restore; a host-level core.autocrlf would rewrite endings under it.
+    run('git', ['config', 'core.autocrlf', 'false']);
+    for (const dir of ['src', 'scripts', 'tests/e2e/collab']) mkdirSync(join(root, dir), { recursive: true });
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ type: 'module', scripts: { test: 'turbo test' } }));
+    writeFileSync(join(root, 'src/value.mjs'), 'export const value = 1;\n');
+    run('git', ['add', '.']);
+    run('git', ['commit', '-qm', 'control']);
+    const base = run('git', ['rev-parse', 'HEAD']).trim();
+
+    writeFileSync(join(root, 'src/value.mjs'), 'export const value = 2;\n');
+    writeFileSync(join(root, 'scripts/value.test.mjs'),
+      "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { value } from '../src/value.mjs';\ntest('observes production', () => assert.equal(value, 2));\n");
+    writeFileSync(join(root, 'tests/e2e/value.e2e.spec.ts'), PLAYWRIGHT);
+    writeFileSync(join(root, 'tests/e2e/collab/helper.ts'), 'export const helper = 1;\n');
+    run('git', ['add', '.']);
+    run('git', ['commit', '-qm', 'production + unit test + browser spec + its helper']);
+    const oracle = join(ROOT, 'scripts/check-test-revert-oracle.mjs');
+    const output = run(process.execPath, [oracle, '--root', root, '--base', base, '--ci', '--json']);
+    assert.match(output, /set aside: tests\/e2e\/value\.e2e\.spec\.ts is a Playwright spec/);
+    assert.match(output, /set aside: tests\/e2e\/collab\/helper\.ts is a root-owned support module/);
+    assert.match(output, /OBSERVED/);
+    assert.doesNotMatch(output, /no runner could be derived/);
+    assert.equal(run('git', ['status', '--porcelain']).trim(), '');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

@@ -176,15 +176,23 @@ export class PdfAppearanceSource<B extends AppearanceBitmap = ImageBitmap> {
   async vectors(request: PdfVectorRequest, options: { signal?: AbortSignal } = {}): Promise<PdfVectorPage> {
     this.check();
     const revision = ++this.revision;
-    const expected: PdfVectorRequest = { ...request, modelMetresFromPdf: [...request.modelMetresFromPdf] };
+    const expected: PdfVectorRequest = { ...request,
+      modelMetresFromPdf: [...request.modelMetresFromPdf],
+      conversionClipPdf: request.conversionClipPdf ? [...request.conversionClipPdf] : request.conversionClipPdf };
     const result = await this.worker.run(this.bytes, { kind: 'vectors', request: expected }, { ...options, password: this.password });
     this.check();
     if (revision !== this.revision) throw new PdfAppearanceError('cancelled', 'PDF source operation changed.');
+    const resultClip = result.kind === 'vectors' ? result.page.conversionClipPdf : undefined;
+    const clipMatches = resultClip === expected.conversionClipPdf
+      || (Array.isArray(resultClip) && Array.isArray(expected.conversionClipPdf)
+        && resultClip.length === expected.conversionClipPdf.length
+        && resultClip.every((value, index) => value === expected.conversionClipPdf?.[index]));
     if (result.kind !== 'vectors' || result.page.pdfSha256 !== this.id || result.page.pageNumber !== expected.pageNumber
       || result.page.calibrationKey !== expected.calibrationKey
       || result.page.toleranceMetres !== expected.toleranceMetres
       || result.page.modelMetresFromPdf.length !== 6
-      || result.page.modelMetresFromPdf.some((value, index) => value !== expected.modelMetresFromPdf[index])) {
+      || result.page.modelMetresFromPdf.some((value, index) => value !== expected.modelMetresFromPdf[index])
+      || !clipMatches) {
       throw new PdfAppearanceError('invalid-pdf', 'PDF vector result does not match its retained source and calibration.');
     }
     return result.page;

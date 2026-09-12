@@ -61,6 +61,58 @@ fn issue_4406_calibrated_transform_preserves_stroke_construction_space_and_resto
     assert!(report.paths[1].state.dash_lengths.is_empty());
 }
 #[test]
+fn issue_4406_conversion_clip_filters_off_crop_geometry_without_rewriting_source_cropbox() {
+    let input = page(vec![
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke, commands: vec![0., 15., 25., 1., 19., 25.] },
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke, commands: vec![0., 80., 80., 1., 90., 80.] },
+    ]);
+    let prepared = prepare_pdf_vector_page_with_clip(&input, Some([10., 20., 20., 30.])).unwrap();
+    assert_eq!(prepared.page_clip_pdf, [10., 20., 20., 30.]);
+    assert_eq!(prepared.paths.len(), 1, "only the supported on-crop paint reaches geometry");
+    assert_eq!(prepared.paths[0].operator_ordinal, 0);
+    assert!(prepared.fidelity.exact);
+
+    assert!(prepare_pdf_vector_page_with_clip(&input, Some([9., 20., 20., 30.]))
+        .unwrap_err().contains("conversion clip"));
+}
+#[test]
+fn issue_4406_conversion_clip_cannot_prove_an_outside_hairline_invisible() {
+    let input = page(vec![
+        PdfVectorOperator::LineWidth { width: 0. },
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke,
+            commands: vec![0., 70., 70., 1., 75., 70.] },
+    ]);
+    let prepared = prepare_pdf_vector_page_with_clip(&input, Some([10., 20., 20., 30.])).unwrap();
+    assert!(!prepared.fidelity.exact,
+        "device-minimum ink may bleed into an interior crop even when its centreline is outside");
+    assert_eq!(prepared.fidelity.summary[0].kind, "hairline");
+    assert_eq!(prepared.fidelity.summary[0].visible_count, 1);
+}
+#[test]
+fn issue_4406_conversion_clip_counts_a_wide_stroke_whose_centerline_is_outside() {
+    let input = page(vec![
+        PdfVectorOperator::LineWidth { width: 6. },
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke, commands: vec![0., 7., 25., 1., 8., 25.] },
+    ]);
+    let error = prepare_pdf_vector_page_with_clip(&input, Some([10., 20., 20., 30.])).unwrap_err();
+    assert!(error.contains("conversion boundary crosses painted path"),
+        "the centreline is outside, but its painted envelope overlaps the crop: {error}");
+}
+#[test]
+fn issue_4406_conversion_clip_combines_square_caps_with_small_miter_limit() {
+    let input = page(vec![
+        PdfVectorOperator::LineWidth { width: 2. },
+        PdfVectorOperator::LineCap { cap: 2 },
+        PdfVectorOperator::LineJoin { join: 0 },
+        PdfVectorOperator::MiterLimit { limit: 1. },
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke,
+            commands: vec![0., 11.5, 22., 1., 15., 22., 1., 15., 28.] },
+    ]);
+    let error = prepare_pdf_vector_page_with_clip(&input, Some([10., 20., 20., 30.])).unwrap_err();
+    assert!(error.contains("conversion boundary crosses painted path"),
+        "square end caps remain part of the envelope when the miter limit is smaller: {error}");
+}
+#[test]
 fn issue_4406_preserves_curves_fill_rules_and_paint_order_without_claiming_flattening() {
     let commands = vec![
         0., 0., 0., 2., 1., 3., 2., 3., 3., 0., 3., 4., 1., 5., 0., 4.,

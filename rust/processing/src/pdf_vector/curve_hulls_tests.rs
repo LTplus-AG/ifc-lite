@@ -30,6 +30,16 @@ fn issue_4406_nonadjacent_hulls_may_not_share_endpoints_or_overlap() {
     ));
 }
 #[test]
+fn issue_4406_disjoint_collinear_hulls_are_strictly_separated() {
+    let first = vec![[0., 0.], [1., 0.]];
+    let separated = vec![[3., 0.], [4., 0.]];
+    let touching = vec![[1., 0.], [2., 0.]];
+    assert!(strictly_separated(&first, &separated));
+    assert!(!strictly_separated(&first, &touching));
+    let pieces = vec![first, separated];
+    assert!(qualify(&pieces, &mut 10000).is_ok());
+}
+#[test]
 fn issue_4406_hull_proof_charges_before_quadratic_pairs() {
     let pieces = vec![
         vec![[0., 0.], [1., 0.]],

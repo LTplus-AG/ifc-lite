@@ -113,6 +113,7 @@ test('an accepted partial conversion plans, exports and reopens with its provena
     assert.match(content, new RegExp(`IFCPROPERTYSINGLEVALUE\\('SourcePdfSha256',\\$,IFCIDENTIFIER\\('${page.pdfSha256}'\\),\\$\\)`));
     assert.match(content, new RegExp(`IFCPROPERTYSINGLEVALUE\\('FidelitySha256',\\$,IFCIDENTIFIER\\('${verdict.sha256}'\\),\\$\\)`));
     assert.match(content, /IFCPROPERTYSINGLEVALUE\('SourceCropBox',\$,IFCTEXT\('\[10\.0,20\.0,110\.0,92\.0\]'\),\$\)/);
+    assert.match(content, /IFCPROPERTYSINGLEVALUE\('ConversionClipPdf',\$,IFCTEXT\('\[10\.0,20\.0,110\.0,92\.0\]'\),\$\)/);
     assert.match(content, /IFCPROPERTYSINGLEVALUE\('SourceRotation',\$,IFCINTEGER\(90\),\$\)/);
     assert.match(content, /IFCPROPERTYSINGLEVALUE\('SourceUserUnit',\$,IFCREAL\(2\.\),\$\)/);
     assert.match(content, /IFCPROPERTYSINGLEVALUE\('ToleranceMetres',\$,IFCREAL\((0\.0001|1\.E-4)\),\$\)/);
@@ -123,10 +124,11 @@ test('an accepted partial conversion plans, exports and reopens with its provena
     const provenance = reopened.getProperties(result.annotationId).find(set => set.name === 'IfcLite_PdfVectorConversion');
     assert.ok(provenance, 'the provenance property set reopens on the annotation through the ordinary parser');
     const property = (name: string) => provenance.properties.find(entry => entry.name === name)?.value;
-    assert.equal(provenance.properties.length, 21);
+    assert.equal(provenance.properties.length, 22);
     assert.equal(property('SourcePdfSha256'), page.pdfSha256);
     assert.equal(property('SourcePdfFormatVersion'), '1.7');
     assert.equal(property('FidelitySha256'), verdict.sha256);
+    assert.equal(property('ConversionClipPdf'), '[10.0,20.0,110.0,92.0]');
     assert.equal(property('Omissions'), '[{"kind":"text","count":1,"visible":1}]');
     assert.equal(property('AcceptedPartialConversion'), true);
     assert.equal(property('ExactConversion'), false);

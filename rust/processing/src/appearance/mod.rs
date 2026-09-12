@@ -16,7 +16,7 @@ mod authored;
 mod pdf_fill;
 mod pdf_fill_provenance;
 mod pdf_fill_types;
-pub use pdf_fill::plan_pdf_fill_annotation;
+pub use pdf_fill::{plan_pdf_fill_annotation, plan_pdf_fill_annotation_with_clip};
 pub use pdf_fill_types::{PdfFillAnnotationRequest,PdfFillAnnotationPlan,PdfFillRegion};
 mod captured;
 mod captured_types;

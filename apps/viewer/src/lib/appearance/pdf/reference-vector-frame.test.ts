@@ -34,8 +34,14 @@ test('real rotated CropBox/UserUnit PDF maps every raster corner into its regist
         world.forEach((value, axis) => assert.ok(Math.abs(value - reference.cornersIfcWorld[index][axis]) < 1e-10,
           `rotation ${rotation}, corner ${index}, axis ${axis}`));
       }
-      const cropped = { ...reference, pdf: { ...reference.pdf!, recipe: { ...recipe, cropPoints: [1, 0, recipe.page.widthPoints - 1, recipe.page.heightPoints] as [number, number, number, number] } } };
-      assert.throws(() => referenceVectorFrame(cropped), /whole PDF page/);
+      const croppedRecipe = rasterRecipe(page, { pageNumber: 1, rotation, dpi: 144,
+        cropPoints: [1, 2, recipe.page.widthPoints - 4, recipe.page.heightPoints - 6] });
+      const cropped = { ...reference, pdf: { ...reference.pdf!, recipe: croppedRecipe } };
+      const clipped = referenceVectorFrame(cropped).conversionClipPdf;
+      const cropFrame = pdfCalibrationFrame(croppedRecipe);
+      const nativeCorners = fractions.map(fraction => rasterLandmarkAt(cropFrame, fraction));
+      assert.deepEqual(clipped, [Math.min(...nativeCorners.map(point => point[0])), Math.min(...nativeCorners.map(point => point[1])),
+        Math.max(...nativeCorners.map(point => point[0])), Math.max(...nativeCorners.map(point => point[1]))]);
       assert.throws(() => referenceVectorFrame({ ...reference, pdf: undefined }), /original PDF/);
     }
   } finally { await task.destroy(); }

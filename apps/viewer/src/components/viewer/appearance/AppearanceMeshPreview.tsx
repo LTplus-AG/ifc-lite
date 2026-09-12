@@ -147,7 +147,7 @@ export function AppearanceMeshPreview({ mesh, assetId, additionalMeshes = NO_PAR
       {box && <div className="pointer-events-none absolute border border-primary bg-primary/15" style={{ left: box.x, top: box.y, width: box.width, height: box.height }} />}
     </div>
     <p className="text-[11px] text-muted-foreground">{instruction ?? (faceSelection
-      ? (selecting ? 'Drag a rectangle to add whole faces by their centres, or click one face to toggle it. Hold Alt to remove.' : 'Drag to orbit. Scroll to zoom. Select faces to restrict the image to part of this surface.')
+      ? (selecting ? 'Drag a rectangle to add whole faces by their centres, or click one face to toggle it. Hold Alt to remove.' : 'Drag to orbit. Scroll to zoom. Turn on Pick faces to restrict the image to part of this surface.')
       : (selecting ? 'Drag a rectangle. Whole triangles are selected by their centres, through the surface.' : 'Drag to orbit. Scroll to zoom. Select region to keep part of this surface.'))}</p>
   </div>;
 }

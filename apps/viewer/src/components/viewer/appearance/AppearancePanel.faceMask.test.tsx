@@ -104,7 +104,7 @@ for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' :
     // The face-selection canvas has no GPU here: its renderer is a stub and the
     // hit test answers "triangle 1" for any click. What is asserted is the
     // selection's effect on the plan, the scene, the IFC and history.
-    mock.method(PreviewRenderer.prototype, 'init', async () => {});
+    const init = mock.method(PreviewRenderer.prototype, 'init', async () => {});
     mock.method(PreviewRenderer.prototype, 'loadGeometry', () => {});
     mock.method(PreviewRenderer.prototype, 'render', () => {});
     mock.method(PreviewRenderer.prototype, 'fitToView', () => {});
@@ -144,8 +144,11 @@ for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' :
     await act(async () => button('Pick faces').click());
     const canvas = editor.querySelector('canvas')!;
     const pointer = (type: string) => canvas.dispatchEvent(new PointerEvent(type, { bubbles: true, isPrimary: true, pointerId: 1, clientX: 10, clientY: 10 }));
+    const editorRenderers = init.mock.callCount();
+    assert.ok(editorRenderers > 0, 'the face editor owns a renderer');
     await act(async () => { pointer('pointerdown'); pointer('pointerup'); });
     await until(() => requests.at(-1)!.request.faceMasks !== undefined && ui.textContent!.includes('Preview ready'));
+    assert.equal(init.mock.callCount(), editorRenderers, 'a face click and its re-plan keep the editor renderer and camera: the surface identity is stable');
     const masked = requests.at(-1)!;
     assert.deepEqual(masked.request.faceMasks, [{ productId: 25, surfaceFingerprint: whole.plan.conversions![0].surfaceFingerprint, triangles: [1] }]);
     assert.deepEqual(masked.plan.exclusions, []);
@@ -160,6 +163,24 @@ for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' :
     assert.match(ui.textContent ?? '', /1 of 2 faces selected/);
     assert.deepEqual(readParts(globalId(35))!, siblingBefore);
     assert.equal(view.getNewEntities().length, 0, 'preview publishes no IFC conversion');
+
+    // Leaving the evaluated policy keeps the selection dormant: no mask enters a
+    // preserve-policy request (a request-shape fault), the policy's own
+    // exclusion shows, and the selection returns with the policy.
+    const beforePolicy = requests.length;
+    await act(async () => consent.click());
+    await until(() => requests.length > beforePolicy && requests.at(-1)!.request.representationPolicy === 'preserve');
+    const preserved = requests.at(-1)!;
+    assert.equal(preserved.request.faceMasks, undefined, 'a face selection never enters a preserve-policy request');
+    assert.ok(preserved.plan.exclusions.length > 0 && preserved.plan.exclusions.every(item => !item.reason.startsWith('Face')), 'only the policy exclusion remains');
+    await until(() => (ui.textContent ?? '').includes(preserved.plan.exclusions[0].reason));
+    assert.doesNotMatch(ui.textContent ?? '', /Face masks require|faces selected/, 'the panel shows the policy refusal, not the request-shape fault');
+    assert.ok(!button('Apply') || button('Apply').disabled, 'a refused plan cannot be applied');
+    await act(async () => consent.click());
+    await until(() => requests.length > beforePolicy + 1 && requests.at(-1)!.request.faceMasks !== undefined && (ui.textContent ?? '').includes('Preview ready'));
+    assert.deepEqual(requests.at(-1)!.request.faceMasks?.[0].triangles, [1], 'the dormant selection returns with the evaluated policy');
+    assert.deepEqual(ids(selection), [textured, retained]);
+    assert.match(ui.textContent ?? '', /1 of 2 faces selected/);
     await act(async () => button('Compare original').click());
     assert.deepEqual(ids(selection), [globalId(11)]);
     await act(async () => button('Show preview').click());

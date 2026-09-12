@@ -29,13 +29,32 @@ export interface FaceMaskControls {
   onEdit(productId: number | null): void;
   onChange(productId: number, triangles: Iterable<number> | null): void;
 }
+interface Surface { productId: number; fingerprint: string; triangleCount: number; mesh: MeshData }
+
+const sameArray = (a: ArrayLike<number> | undefined, b: ArrayLike<number> | undefined) =>
+  a === b || (!!a && !!b && a.length === b.length && Array.prototype.every.call(a, (value: number, i: number) => value === b[i]));
+
+/**
+ * The editor's canvas owns a renderer whose lifetime follows the `mesh`
+ * identity, so a re-plan that reproduces the same surface (same fingerprint,
+ * same placed corners) must hand back the previous object, not an equal copy.
+ */
+function stableSurface(previous: Surface | undefined, conversion: Conversion, modelId: string): Surface {
+  const fingerprint = conversion.surfaceFingerprint!;
+  const mesh = { ...occurrenceSourceMesh(useViewerStore.getState(), modelId, conversion), color: [...SELECTED_FACE_COLOR] as MeshData['color'] };
+  if (previous && previous.fingerprint === fingerprint && sameArray(previous.mesh.positions, mesh.positions)
+    && sameArray(previous.mesh.indices, mesh.indices) && sameArray(previous.mesh.origin, mesh.origin)) return previous;
+  return { productId: conversion.productId, fingerprint, triangleCount: conversion.sourceIndices.length / 3, mesh };
+}
 
 /**
  * Session face masks of the appearance workspace (#4404): one reviewed
  * selection per converted product, bound to the planner's surface fingerprint.
  * Masks never persist to IFC; they clear when the target model changes or
  * reloads, when the product is applied (its Body is direct tessellation from
- * then on), and when the planner reports the surface stale.
+ * then on), and when the planner reports the surface stale. Under a policy
+ * other than `evaluatedOccurrence` they stay dormant in the session; the host
+ * decides which requests carry them.
  */
 export function useFaceMasks(modelId: string | null) {
   const modelKey = useViewerStore(state => modelId ? `${modelId}:${state.models.get(modelId)?.loadedAt ?? 'removed'}` : null);
@@ -43,58 +62,57 @@ export function useFaceMasks(modelId: string | null) {
   const [diagnostics, setDiagnostics] = useState<readonly string[]>([]);
   const [conversions, setConversions] = useState<{ modelId: string; items: readonly Conversion[] } | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
-  const current = useRef(masks); current.current = masks;
-  useEffect(() => { setMasks(new Map()); setDiagnostics([]); setConversions(null); setEditing(null); }, [modelKey]);
+  // The latest map for callbacks that run between renders (requests, reconcile).
+  const current = useRef(masks);
+  const surfaces = useRef(new Map<number, Surface>());
+  const commit = useCallback((next: FaceMasks) => { if (next !== current.current) { current.current = next; setMasks(next); } }, []);
+  useEffect(() => { commit(new Map()); setDiagnostics([]); setConversions(null); setEditing(null); surfaces.current.clear(); }, [modelKey, commit]);
 
   const requests = useCallback((productIds: readonly number[]) => faceMaskRequests(current.current, productIds), []);
   /** Adopt the planner's verdicts: drop stale masks with a diagnostic, remember the converted surfaces for editing. */
   const reconcile = useCallback((plan: AppearancePlan, targetModelId: string, label: (productId: number) => string) => {
     const result = reconcileFaceMasks(current.current, plan, label);
-    if (result.masks !== current.current) { current.current = result.masks; setMasks(result.masks); }
-    if (result.diagnostics.length) setDiagnostics(previous => [...previous, ...result.diagnostics]);
-    if (plan.conversions?.length) setConversions({ modelId: targetModelId, items: plan.conversions });
+    commit(result.masks);
+    // A dropped selection's diagnostic stays through the automatic re-plan
+    // that follows it; a selection change, Discard or Apply clears it.
+    if (result.diagnostics.length) setDiagnostics(result.diagnostics);
+    setConversions(plan.conversions?.length ? { modelId: targetModelId, items: plan.conversions } : null);
     return result;
-  }, []);
+  }, [commit]);
   const change = useCallback((productId: number, triangles: Iterable<number> | null) => {
     const conversion = conversions?.items.find(item => item.productId === productId);
     setDiagnostics([]);
-    setMasks(previous => {
-      const next = new Map(previous);
-      const count = conversion ? conversion.sourceIndices.length / 3 : 0;
-      const normalized = triangles === null || !conversion?.surfaceFingerprint ? new Uint32Array() : normalizeFaceTriangles(triangles, count);
-      if (!normalized.length || normalized.length >= count) next.delete(productId);
-      else next.set(productId, { productId, surfaceFingerprint: conversion!.surfaceFingerprint!, triangles: normalized } satisfies FaceMask);
-      current.current = next;
-      return next;
-    });
-  }, [conversions]);
+    const next = new Map(current.current);
+    const count = conversion ? conversion.sourceIndices.length / 3 : 0;
+    const normalized = triangles === null || !conversion?.surfaceFingerprint ? new Uint32Array() : normalizeFaceTriangles(triangles, count);
+    if (!normalized.length || normalized.length >= count) next.delete(productId);
+    else next.set(productId, { productId, surfaceFingerprint: conversion!.surfaceFingerprint!, triangles: normalized } satisfies FaceMask);
+    commit(next);
+  }, [conversions, commit]);
   /** Applied products carry a direct tessellated Body from now on; their selections are spent. */
   const clearApplied = useCallback((productIds: readonly number[]) => {
-    setMasks(previous => {
-      if (!productIds.some(id => previous.has(id))) return previous;
-      const next = new Map(previous);
+    if (productIds.some(id => current.current.has(id))) {
+      const next = new Map(current.current);
       for (const id of productIds) next.delete(id);
-      current.current = next;
-      return next;
-    });
-    setConversions(null); setEditing(null);
-  }, []);
-  const reset = useCallback(() => { setConversions(null); setEditing(null); }, []);
-  const targets = useMemo<FaceMaskTarget[]>(() => {
+      commit(next);
+    }
+    setDiagnostics([]); setConversions(null); setEditing(null);
+  }, [commit]);
+  /** The workspace left the preview (Discard, another intent, no model): keep the selections, close the editor. */
+  const reset = useCallback(() => { setDiagnostics([]); setConversions(null); setEditing(null); }, []);
+  const editable = useMemo<Surface[]>(() => {
     if (!conversions || conversions.modelId !== modelId) return [];
-    const state = useViewerStore.getState();
-    return conversions.items.flatMap(conversion => {
-      if (!conversion.surfaceFingerprint || conversion.sourcePositions === undefined) return [];
-      try {
-        const mesh = { ...occurrenceSourceMesh(state, conversions.modelId, conversion), color: [...SELECTED_FACE_COLOR] as MeshData['color'] };
-        return [{ productId: conversion.productId, label: `IFC object #${conversion.productId}`, triangleCount: conversion.sourceIndices.length / 3,
-          selected: masks.get(conversion.productId)?.triangles, mesh }];
-      } catch (error) {
-        console.warn('[Appearance] face selection surface unavailable', error);
-        return [];
-      }
-    });
-  }, [conversions, masks, modelId]);
+    const cache = surfaces.current, live = new Map<number, Surface>();
+    for (const conversion of conversions.items) {
+      if (!conversion.surfaceFingerprint || conversion.sourcePositions === undefined) continue;
+      try { live.set(conversion.productId, stableSurface(cache.get(conversion.productId), conversion, conversions.modelId)); }
+      catch (error) { console.warn('[Appearance] face selection surface unavailable', error); }
+    }
+    surfaces.current = live;
+    return [...live.values()];
+  }, [conversions, modelId]);
+  const targets = useMemo<FaceMaskTarget[]>(() => editable.map(surface => ({ productId: surface.productId, label: `IFC object #${surface.productId}`,
+    triangleCount: surface.triangleCount, selected: masks.get(surface.productId)?.triangles, mesh: surface.mesh })), [editable, masks]);
   const controls = useMemo<FaceMaskControls>(() => ({ targets, diagnostics, editing, onEdit: setEditing, onChange: change }), [targets, diagnostics, editing, change]);
   return { masks, requests, reconcile, clearApplied, reset, controls };
 }

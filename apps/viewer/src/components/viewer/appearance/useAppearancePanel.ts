@@ -163,7 +163,9 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         if (!renderer) throw new Error('The renderer is not ready to preview appearance.');
         const { source, schema, nextExpressId, bytes } = currentSnapshot;
         const assetId = selectedSource?.assetId ?? sourceId;
-        const masks = faceMasks.requests(currentScope.productIds);
+        // Face masks are a request-shape fault under any other policy; a
+        // dormant selection waits in the session for the policy to return.
+        const masks = settings.representationPolicy === 'evaluatedOccurrence' ? faceMasks.requests(currentScope.productIds) : undefined;
         const page = selectedSource?.pdf ? await preparePdfPagePreview({ snapshot: currentSnapshot,
           productIds: currentScope.productIds, source: selectedSource, settings, planner: worker, owner, signal: controller.signal, faceMasks: masks }) : undefined;
         const firstPageImage = page?.itemImages.values().next().value;
@@ -255,6 +257,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     setPreviewEnabled(false);
     const previous = draft.current; draft.current = null;
     discardDraft(previous);
+    faceMasks.reset();
     setConvertedObjects([]); setShowingOriginal(false); setStatus('idle'); setStatusMessage('Preview discarded.');
   }
   function compare(original: boolean): void {

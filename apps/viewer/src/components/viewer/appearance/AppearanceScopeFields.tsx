@@ -18,6 +18,10 @@ export function AppearanceScopeFields(props: Pick<AppearancePanelViewProps,
   const latest = filters.find(filter => filter.name === currentName);
   const changed = props.scope.kind === 'filter' && latest
     && JSON.stringify(ownAppearanceQuery(latest)) !== JSON.stringify(props.scope.query);
+  // While a re-plan runs the converted list is empty, but the face-selection
+  // editors keep their surfaces: staying mounted keeps their renderers and cameras.
+  const converted = props.convertedObjects?.length ? props.convertedObjects
+    : (props.faceMasks?.targets ?? []).map(target => ({ productId: target.productId, name: target.label }));
   return <section className="space-y-2" aria-labelledby={`${id}-heading`}>
     <h3 id={`${id}-heading`} className="text-xs font-medium">Apply to</h3>
     <label className="block space-y-1 text-[11px] text-muted-foreground"><span>Model</span>
@@ -78,9 +82,9 @@ export function AppearanceScopeFields(props: Pick<AppearancePanelViewProps,
     <div className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px]" aria-live="polite">
       <span className="font-medium">{props.affectedCount.toLocaleString()} {props.affectedCount === 1 ? 'object' : 'objects'} affected</span>
       {props.excludedCount > 0 && <span className="text-muted-foreground"> · {props.excludedCount.toLocaleString()} excluded</span>}
-      {!!props.convertedObjects?.length && <details className="mt-1" open={!!props.faceMasks?.targets.length}><summary className="cursor-pointer font-medium">{props.convertedObjects.length} {props.convertedObjects.length === 1 ? 'object' : 'objects'} will become mesh geometry</summary>
+      {!!converted.length && <details className="mt-1" open={!!props.faceMasks?.targets.length}><summary className="cursor-pointer font-medium">{converted.length} {converted.length === 1 ? 'object' : 'objects'} will become mesh geometry</summary>
         {props.faceMasks?.targets.length ? <div className="mt-1"><FaceMaskTargets controls={props.faceMasks} disabled={props.disabled} /></div>
-          : <ul className="mt-1 max-h-28 space-y-1 overflow-y-auto text-muted-foreground">{props.convertedObjects.map(item => <li key={item.productId}>{item.name}</li>)}</ul>}
+          : <ul className="mt-1 max-h-28 space-y-1 overflow-y-auto text-muted-foreground">{converted.map(item => <li key={item.productId}>{item.name}</li>)}</ul>}
       </details>}
       {!!props.faceMasks?.diagnostics.length && !props.faceMasks.targets.length && <ul className="mt-1 space-y-1 text-destructive" role="alert" aria-label="Face selection diagnostics">
         {props.faceMasks.diagnostics.map((message, index) => <li key={`${index}:${message}`}>{message}</li>)}</ul>}

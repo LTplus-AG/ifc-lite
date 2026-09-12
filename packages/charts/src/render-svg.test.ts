@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { aggregate } from './aggregate.js';
-import { UNSELECTED_OPACITY, buildEChartsOption } from './echarts-option.js';
+import { DEFAULT_THEME, UNSELECTED_OPACITY, buildEChartsOption } from './echarts-option.js';
 import { renderChartSvg } from './render-svg.js';
 import { validateDashboardSpec } from './validate.js';
 import type { ChartDataset, ChartSpec, DashboardSpec } from './types.js';
@@ -62,6 +62,14 @@ describe('renderChartSvg (ECharts SSR, no DOM)', () => {
       expect(svg).toContain('Elements by type');
       expect(svg.toLowerCase()).toContain(agg.categories[0].color.toLowerCase());
     }
+  });
+
+  it('stays well-formed XML with a quoted font family from a stylesheet (browser finding: the report PDF refused the SVG)', () => {
+    const svg = renderChartSvg({ aggregation: aggregate(bar, ds), width: 480, height: 320, theme: { ...DEFAULT_THEME, fontFamily: '"Segoe UI", ui-sans-serif, system-ui' } });
+    expect(svg).toContain("'Segoe UI'");
+    // Every attribute value is delimited by the double quote that opened it: no `"` may occur inside one.
+    for (const attr of svg.matchAll(/=\"([^\"]*)\"/g)) expect(attr[1]).not.toContain('"');
+    expect(svg).not.toContain('"Segoe UI"');
   });
 });
 

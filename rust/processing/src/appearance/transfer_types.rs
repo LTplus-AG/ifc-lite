@@ -145,12 +145,21 @@ pub struct TransferSourceSummary {
     pub orientation: Option<PointOrientation>,
     pub point_count: Option<u32>,
 }
+/// Work actually charged against the fixed transfer budget, so a plan's cost is
+/// auditable next to its coverage (#4381).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferBudgetReport {
+    pub work_used: u64,
+    pub work_limit: u64,
+}
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MeshTransferSummary {
     /// Binds the entire typed request, supplied RGBA/point bytes and effective IFC bytes.
     pub prepared_sha256: String,
     pub source: TransferSourceSummary,
+    pub budget: TransferBudgetReport,
     pub registration_sha256: String,
     /// Full fit/check residuals remain reviewable; mathematical solve is not approval.
     pub registration: super::ScanRegistrationReport,

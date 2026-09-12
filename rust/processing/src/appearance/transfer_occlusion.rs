@@ -6,7 +6,10 @@
 //! the same item lies beyond that solid: the far side of a thin wall, or clutter
 //! behind it. Unlike an oriented mesh, unoriented points cannot say which way
 //! they face, so this rule is what keeps opposite thin-wall faces separate under
-//! every orientation source, independent of the behind bound.
+//! every orientation source, independent of the behind bound. The nearest scan
+//! point is tested exactly along its segment; the rest of a sample's support is
+//! bounded by the item's thickness measured once along the face normal, so a
+//! sample costs two ray queries, not one per supporting point.
 use super::{transfer_budget::TransferBudget, transfer_math::*, transfer_target::TargetTriangle};
 use ifc_lite_geometry::kernel::broadphase::Bvh;
 
@@ -35,14 +38,26 @@ impl Occluder {
     /// crossing at the segment's far end does, because a scan point exactly on
     /// another face belongs to that face.
     pub fn blocked(&mut self, from: Point, to: Point, budget: &mut TransferBudget) -> Result<bool, String> {
+        Ok(self.first_crossing(from, sub(to, from), budget)?.is_some())
+    }
+    /// How far behind the sampled face point the item's own opposite face lies
+    /// along `-normal`, within `depth`: the solid's thickness at this sample.
+    /// None when no other face is crossed (an open shell, or thicker than `depth`).
+    pub fn thickness_behind(&mut self, from: Point, normal: Point, depth: f64, budget: &mut TransferBudget) -> Result<Option<f64>, String> {
+        Ok(self.first_crossing(from, normal.map(|v| -v * depth), budget)?.map(|t| t * depth))
+    }
+    /// Parameter in (0, 1] of the nearest crossing of `from + t * direction`
+    /// with a target face whose plane does not contain `from`.
+    fn first_crossing(&mut self, from: Point, direction: Point, budget: &mut TransferBudget) -> Result<Option<f64>, String> {
+        let far: Point = std::array::from_fn(|a| from[a] + direction[a]);
         self.candidates.clear();
         self.tree
-            .ray_candidates_bounded(from, to, &mut self.candidates, &mut budget.work)
+            .ray_candidates_bounded(from, far, &mut self.candidates, &mut budget.work)
             .map_err(str::to_owned)?;
         budget.charge(self.candidates.len() + 1)?;
-        let magnitude = from.iter().chain(&to).fold(1_f64, |m, v| m.max(v.abs()));
+        let magnitude = from.iter().chain(&far).fold(1_f64, |m, v| m.max(v.abs()));
         let tolerance = 64. * f64::EPSILON * magnitude;
-        let direction = sub(to, from);
+        let mut nearest: Option<f64> = None;
         for &index in &self.candidates {
             let triangle = self.triangles[index as usize];
             let normal = self.normals[index as usize];
@@ -55,15 +70,15 @@ impl Occluder {
                 continue;
             }
             let t = -offset / slope;
-            if t < 0. || t > 1. + 1e-9 {
+            if t < 0. || t > 1. + 1e-9 || nearest.is_some_and(|n| n <= t) {
                 continue;
             }
             let hit: Point = std::array::from_fn(|a| from[a] + direction[a] * t);
             if inside(triangle, normal, hit, tolerance) {
-                return Ok(true);
+                nearest = Some(t);
             }
         }
-        Ok(false)
+        Ok(nearest)
     }
 }
 /// Conservative containment: edge-touching hits count as inside.
@@ -104,6 +119,13 @@ mod tests {
         assert!(!occluder.blocked(back, [0.31, 0.004, 0.52], &mut budget).unwrap(), "coplanar neighbor");
         // Around the wall's open edge nothing is crossed.
         assert!(!occluder.blocked([0.999, 0., 0.5], [1.002, 0.006, 0.5], &mut budget).unwrap());
+        // Thickness along the face normal: 4 mm from either face, none past the open edge.
+        let t = occluder.thickness_behind(front, [0., -1., 0.], 0.05, &mut budget).unwrap().unwrap();
+        assert!((t - 0.004).abs() < 1e-12, "{t}");
+        let t = occluder.thickness_behind(back, [0., 1., 0.], 0.05, &mut budget).unwrap().unwrap();
+        assert!((t - 0.004).abs() < 1e-12, "{t}");
+        assert_eq!(occluder.thickness_behind(front, [0., -1., 0.], 0.003, &mut budget).unwrap(), None, "deeper than the probe");
+        assert_eq!(occluder.thickness_behind([1.5, 0., 0.5], [0., -1., 0.], 0.05, &mut budget).unwrap(), None, "beside the wall");
         let mut exhausted = TransferBudget::new();
         exhausted.work = 1;
         assert!(occluder.blocked(front, [0.3, 0.005, 0.5], &mut exhausted).unwrap_err().contains("budget"));

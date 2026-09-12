@@ -44,7 +44,7 @@ test('coverage report names samples refused behind the surface beside the other 
   const counts = { centroidSamples: 2, observedCentroidSamples: 1, rasterInteriorTexels: 4096, observedRasterInteriorTexels: 1800, samples: 8424, observedSamples: 3426,
     unknownDistanceSamples: 0, unknownNormalSamples: 4212, unknownAmbiguousSamples: 38, unknownBehindSamples: 748, unknownSparseSamples: 0, observedAreaEstimateM2: 0.813, unknownAreaEstimateM2: 1.187 };
   const { registration } = { registration: (JSON.parse(readFileSync(new URL('../../../../../../docs/architecture/evidence/scan-alignment-workbench/good.json', import.meta.url), 'utf8')) as { result: { report: ScanRegistrationReport } }).result.report };
-  const ui = mount({ preparedSha256: 'prepared', source: { kind: 'mesh', orientation: null, pointCount: null }, registrationSha256: 'registration', registration, applicable: true, coverage: counts,
+  const ui = mount({ preparedSha256: 'prepared', source: { kind: 'mesh', orientation: null, pointCount: null }, budget: { workUsed: 1, workLimit: 128_000_000 }, registrationSha256: 'registration', registration, applicable: true, coverage: counts,
     items: [{ ...counts, productId: 10, geometryItemId: 3 }], exclusions: [], diagnostics: [] });
   const report = ui.querySelector('[aria-label="Scan transfer coverage"]');
   assert.ok(report);

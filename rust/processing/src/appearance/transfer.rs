@@ -5,7 +5,7 @@
 //! composed over canonical IFC appearance.
 use super::{
     page_raster::Raster,
-    transfer_budget::TransferBudget,
+    transfer_budget::{self, TransferBudget},
     transfer_math::validate_frame,
     transfer_sampler::{accumulate, TransferSampler},
     transfer_source::ScanSource,
@@ -168,6 +168,10 @@ fn plan_transfer(
         transfer: MeshTransferSummary {
             prepared_sha256,
             source: ScanSource::summary(request),
+            budget: TransferBudgetReport {
+                work_used: (transfer_budget::WORK_LIMIT - sampler.budget.work) as u64,
+                work_limit: transfer_budget::WORK_LIMIT as u64,
+            },
             registration_sha256: registration.request_sha256.clone(),
             registration,
             applicable,

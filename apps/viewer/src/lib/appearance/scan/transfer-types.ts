@@ -39,7 +39,7 @@ export interface TransferCoverage {
 export interface TransferSourceSummary { kind: 'mesh' | 'points'; orientation: PointOrientation | null; pointCount: number | null }
 export interface MeshTransferPlan extends Omit<PageAppearancePlan, 'plan'> {
   plan: PageAppearancePlan['plan'] | null;
-  transfer: { preparedSha256: string; source: TransferSourceSummary; registrationSha256: string; registration: ScanRegistrationReport; applicable: boolean;
+  transfer: { preparedSha256: string; source: TransferSourceSummary; budget: { workUsed: number; workLimit: number }; registrationSha256: string; registration: ScanRegistrationReport; applicable: boolean;
     coverage: TransferCoverage; items: (TransferCoverage & { productId: number; geometryItemId: number })[];
     exclusions: PageAppearancePlan['plan']['exclusions']; diagnostics: string[] };
 }

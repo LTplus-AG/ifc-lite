@@ -1,0 +1,39 @@
+{
+  "ifcopenshell": "0.8.3.post2",
+  "source": {
+    "file": "craslabbim.ifc",
+    "schema": "IFC2X3",
+    "sha256": "a83e573037b0c4cbba30f1167ed96cda52eb51859091d2c7d47cec7a59e1a36b",
+    "ifcroot": 2414
+  },
+  "derived": {
+    "file": "craslabbim-ifc4.ifc",
+    "schema": "IFC4",
+    "sha256": "1f81a729d09ab1b64f9b4877fd55f9b856a8ec36a4b447f4f7eb8f616cf8e9d5",
+    "ifcroot": 2414
+  },
+  "globalids_preserved": true,
+  "seconds": 43.4,
+  "reference_ids": {
+    "3qeiF73TD1uOeHIcNGcTy8": {
+      "ifc2x3": 1273,
+      "ifc4": 575796,
+      "name": "Basic Wall:(10cm) Drywall:973242"
+    },
+    "1gsZ4XbYD0qRhfvwOUEI1z": {
+      "ifc2x3": 703,
+      "ifc4": 863714,
+      "name": "Basic Wall:(10cm) Drywall:961571"
+    },
+    "0FDABnXCHCUR8gI54b$Kx2": {
+      "ifc2x3": 383,
+      "ifc4": 1179339,
+      "name": "Basic Wall:(35cm) Tijolo cer\u00e2mico acabamento pintura branca:919433"
+    },
+    "3XP_HdJcfD9xJPuaOu_0Jb": {
+      "ifc2x3": 159,
+      "ifc4": 1299372,
+      "name": "Floor:(15cm) Piso + Porcelanato cinza claro 60 X 60:911079"
+    }
+  }
+}

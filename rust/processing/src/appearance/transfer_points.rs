@@ -4,7 +4,8 @@
 //! RGB point-cloud observations for registered scan transfer (#4381).
 //!
 //! Each target sample is answered by a local plane fitted to the scan points
-//! around the nearest point, never by the nearest colour alone: the fit must be
+//! around the sample (around the nearest point when the sample itself has none
+//! within the support radius), never by the nearest colour alone: the fit must be
 //! planar within `surface_band_metres`, its oriented normal must agree with the
 //! target face, and the support must lie in front of the face or within the
 //! behind bound. Orientation comes from the source normals, the scanner station
@@ -89,8 +90,12 @@ impl PointSurface {
             }
             normals.push(rotate(n.map(|v| v / length)));
         }
-        let cell = request.max_distance_metres.max(spec.neighborhood_radius_metres);
-        let grid = PointGrid::build(&positions, cell, budget)?;
+        // Cells match the support radius: the common query. The rarer nearest
+        // search out to the distance bound spans more cells (bounded by 16 per axis).
+        if request.max_distance_metres > 16. * spec.neighborhood_radius_metres {
+            return Err("Transfer distance bound must not exceed 16 times the point support radius".into());
+        }
+        let grid = PointGrid::build(&positions, spec.neighborhood_radius_metres, budget)?;
         Ok(Self {
             positions,
             colors: payload.colors.to_vec(),
@@ -119,8 +124,17 @@ impl PointSurface {
     ) -> Result<(Observation, [f64; 4]), String> {
         budget.charge(1)?;
         let unknown = |o| Ok((o, [0.; 4]));
-        let Some((nearest, _)) = self.grid.nearest(&self.positions, point, self.distance, &mut self.scratch, budget)? else {
-            return unknown(Observation::Distance);
+        // One support query around the sample point serves as the nearest-point
+        // search too; only a sample with no point inside the support radius pays
+        // for the wider search out to the distance bound.
+        self.support.clear();
+        self.grid.within(&self.positions, point, self.radius, &mut self.support, budget)?;
+        let nearest = match self.support.iter().copied().min_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0))) {
+            Some((index, _)) => index,
+            None => match self.grid.nearest(&self.positions, point, self.distance, &mut self.scratch, budget)? {
+                Some((index, _)) => index,
+                None => return unknown(Observation::Distance),
+            },
         };
         let anchor = self.positions[nearest as usize];
         // Never look through an incompatible nearest capture for a farther match:
@@ -137,27 +151,27 @@ impl PointSurface {
         if occluder.blocked(point, anchor, budget)? {
             return unknown(Observation::Behind);
         }
-        self.support.clear();
-        self.grid.within(&self.positions, anchor, self.radius, &mut self.support, budget)?;
+        if self.support.is_empty() {
+            // The anchor lies beyond the support radius: its own neighborhood is the surface.
+            self.grid.within(&self.positions, anchor, self.radius, &mut self.support, budget)?;
+        }
         if self.support.len() > self.max_neighbors {
             budget.charge(self.support.len())?;
             self.support.sort_unstable_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
             self.support.truncate(self.max_neighbors);
         }
-        // Support reachable only through another target face, or facing away from
-        // the anchor's own orientation, belongs to a different surface.
-        let mut kept = Vec::with_capacity(self.support.len());
-        for &(index, d2) in &self.support {
-            let p = self.positions[index as usize];
-            if index != nearest && occluder.blocked(point, p, budget)? {
-                continue;
+        // Support beyond the item's own opposite face (deeper than its thickness
+        // here), or facing away from the anchor's orientation, is another surface.
+        let thickness = occluder.thickness_behind(point, target_normal, self.distance + self.radius, budget)?;
+        budget.charge(self.support.len())?;
+        let (positions, normals, orientation) = (&self.positions, &self.normals, self.orientation);
+        self.support.retain(|&(index, _)| {
+            let depth = dot(sub(positions[index as usize], point), target_normal);
+            if thickness.is_some_and(|t| depth < -t) {
+                return false;
             }
-            if self.orientation == PointOrientation::SourceNormals && dot(self.normals[index as usize], self.normals[nearest as usize]) <= 0. {
-                continue;
-            }
-            kept.push((index, d2));
-        }
-        self.support = kept;
+            orientation != PointOrientation::SourceNormals || dot(normals[index as usize], normals[nearest as usize]) > 0.
+        });
         let Some(mut plane) = self.fit(budget)? else { return unknown(Observation::Sparse) };
         if self.orientation == PointOrientation::Viewpoints {
             // Points seen from the other side of this plane are the other sheet.

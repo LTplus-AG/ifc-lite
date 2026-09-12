@@ -1,0 +1,39 @@
+{
+ "oracle": "IfcOpenShell apply of the canonical plan + independent reopen; Pillow atlas decode",
+ "ifcopenshell": "0.8.3.post2",
+ "target": {
+  "file": "craslabbim-ifc4-tessellated.ifc",
+  "sha256": "45a69aee943d6d460af5880ee73168ea0a03f5a43987bbb77c7ad765ad7d6984"
+ },
+ "transferred": {
+  "file": "craslabbim-ifc4-tessellated-transferred-tolerance.ifc",
+  "sha256": "fd88a12ef921e8cb76db226848e59ef715d50805c84f21dd069e9a339a20525d",
+  "bytes": 75407,
+  "entities": 492
+ },
+ "asset": {
+  "uri": "textures/5e74c2b420986b1b5a7dc8b2617e211781a822d116d25e275cf3d13f6ca4b996.png",
+  "sha256": "5e74c2b420986b1b5a7dc8b2617e211781a822d116d25e275cf3d13f6ca4b996",
+  "width": 512,
+  "height": 700
+ },
+ "wall": {
+  "globalId": "1gsZ4XbYD0qRhfvwOUEK3Z",
+  "expressId": 216,
+  "triangles": 12,
+  "vertices": 8
+ },
+ "checks": {
+  "geometry_unchanged": true,
+  "texture_map_covers_every_triangle": true,
+  "image_uri_matches_asset": true,
+  "surface_style_with_textures_assigned": true,
+  "triangle_uv_centroids_observed_like": 2,
+  "triangle_uv_centroids_prior_like": 10,
+  "triangles_sampled": 12,
+  "schema_validation": {
+   "errors": 0,
+   "first": []
+  }
+ }
+}

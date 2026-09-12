@@ -21,8 +21,10 @@ pub(super) struct PointGrid {
     cells: Vec<(u64, u32)>,
 }
 impl PointGrid {
-    /// `cell` must cover the largest query radius so a query touches at most
-    /// 27 cells. Charges one sort's worth of work and reserves index memory.
+    /// `cell` should match the common query radius: a query visits the cells
+    /// its box overlaps, so a radius up to `cell` touches at most 27 cells and a
+    /// wider (rarer) query proportionally more. Charges one sort's worth of work
+    /// and reserves index memory.
     pub fn build(points: &[Point], cell: f64, budget: &mut TransferBudget) -> Result<Self, String> {
         if points.is_empty() || !cell.is_finite() || cell <= 0. {
             return Err("Transfer point index needs points and a positive cell size".into());
@@ -68,8 +70,8 @@ impl PointGrid {
         out: &mut Vec<(u32, f64)>,
         budget: &mut TransferBudget,
     ) -> Result<(), String> {
-        if !center.iter().all(|v| v.is_finite()) || !radius.is_finite() || radius < 0. || radius > self.cell {
-            return Err("Transfer point query needs a finite center and a radius within the index cell".into());
+        if !center.iter().all(|v| v.is_finite()) || !radius.is_finite() || radius < 0. || radius > 16. * self.cell {
+            return Err("Transfer point query needs a finite center and a radius within 16 index cells".into());
         }
         let low = cell_coordinates(&std::array::from_fn(|a| center[a] - radius), self.min, self.cell);
         let high = cell_coordinates(&std::array::from_fn(|a| center[a] + radius), self.min, self.cell);
@@ -143,7 +145,7 @@ mod tests {
         let grid = PointGrid::build(&points, 0.05, &mut budget).unwrap();
         let before = budget.work;
         for center in [[0., 5.5, -99.5], [-1., 5., -100.], [2.01, 7., -98.5], [0.3, 6.2, -99.]] {
-            for radius in [0., 0.01, 0.05] {
+            for radius in [0., 0.01, 0.05, 0.12] {
                 let mut out = Vec::new();
                 grid.within(&points, center, radius, &mut out, &mut budget).unwrap();
                 out.sort_by_key(|(i, _)| *i);
@@ -162,7 +164,7 @@ mod tests {
             }
         }
         assert!(budget.work < before, "every query charges the shared budget");
-        assert!(grid.within(&points, [0., 5.5, -99.5], 0.06, &mut Vec::new(), &mut budget).is_err(), "radius above the cell is refused");
+        assert!(grid.within(&points, [0., 5.5, -99.5], 0.9, &mut Vec::new(), &mut budget).is_err(), "a radius beyond 16 cells is refused");
         assert!(grid.within(&points, [f64::NAN, 5.5, -99.5], 0.01, &mut Vec::new(), &mut budget).is_err());
         let mut exhausted = TransferBudget::new();
         exhausted.work = 3;

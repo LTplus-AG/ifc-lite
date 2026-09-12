@@ -253,7 +253,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
 
   it('a click on a stacked segment selects only that series share of the category (review finding)', async () => {
     const { renderer, charts } = recordingRenderer();
-    render(<ChartsPanel renderer={renderer} />);
+    const ui = render(<ChartsPanel renderer={renderer} />);
     await settle();
     // The third seeded chart is "Types per storey": storey on the axis, one series per type.
     const option = charts[2].options.at(-1)!;
@@ -265,6 +265,8 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     await settle();
     // Level 1 holds walls A, B and door A; the door segment selects door A only.
     assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [GID(44)]);
+    // The other charts re-aggregate over that one door — singular, not "1 elements".
+    assert.match(ui.querySelectorAll('[data-chart-subtitle]')[0]!.textContent!, /1 bucket · 1 element$/);
   });
 
   it('the close button runs onClose and unmounting releases the claim the panel installed', async () => {

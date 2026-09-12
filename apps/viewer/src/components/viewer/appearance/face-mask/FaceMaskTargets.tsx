@@ -1,10 +1,12 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { AppearanceMeshPreview, type RegionGesture } from '../AppearanceMeshPreview.js';
 import { UNSELECTED_FACE_COLOR, type FaceMaskControls, type FaceMaskTarget } from './useFaceMasks.js';
+import { registerViewportFacePicker } from './viewport-face-picker.js';
+import { useViewerStore } from '@/store';
 
 /** One converted object's selection state as a chip, plus the way into its editor.
  * Vocabulary shared with the editor: **Select faces** opens it, **Pick faces**
@@ -27,6 +29,19 @@ export function FaceMaskEditor({ target, disabled, onChange }: { target: FaceMas
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const selected = useMemo(() => [...(target.selected ?? [])], [target.selected]);
+  const latest = useRef({ selected, onChange, disabled });
+  latest.current = { selected, onChange, disabled };
+  const activeTool = useViewerStore(state => state.activeTool);
+  const setActiveTool = useViewerStore(state => state.setActiveTool);
+  useEffect(() => registerViewportFacePicker({ globalId: target.globalId, modelIndex: target.modelIndex,
+    geometryItemIds: target.geometryItemIds, triangleCount: target.triangleCount, canPick: () => !latest.current.disabled, onToggle: triangle => {
+      const next = new Set(latest.current.selected);
+      if (next.has(triangle)) next.delete(triangle); else next.add(triangle);
+      latest.current.onChange(next);
+    } }), [target.globalId, target.modelIndex, target.geometryItemIds, target.triangleCount]);
+  useEffect(() => () => {
+    if (useViewerStore.getState().activeTool === 'appearance-face') useViewerStore.getState().setActiveTool('select');
+  }, []);
   const faceSelection = useMemo(() => ({ unselectedColor: UNSELECTED_FACE_COLOR }), []);
   const region = (ids: number[], gesture: RegionGesture) => {
     const next = new Set(selected);
@@ -35,6 +50,14 @@ export function FaceMaskEditor({ target, disabled, onChange }: { target: FaceMas
     onChange(next);
   };
   return <div className="space-y-1 rounded-md border p-2" aria-label={`Face selection for ${target.label}`} aria-busy={!ready}>
+    <div className="flex items-center gap-2">
+      <Button type="button" size="sm" variant={activeTool === 'appearance-face' ? 'secondary' : 'outline'}
+        aria-pressed={activeTool === 'appearance-face'} disabled={disabled && activeTool !== 'appearance-face'}
+        onClick={() => setActiveTool(activeTool === 'appearance-face' ? 'select' : 'appearance-face')}>
+        {activeTool === 'appearance-face' ? 'Picking in model' : 'Pick in model'}
+      </Button>
+      {activeTool === 'appearance-face' && <span className="text-[11px] text-muted-foreground" role="status">Click visible faces in the main view. The tool stays active.</span>}
+    </div>
     <AppearanceMeshPreview mesh={target.mesh} triangles={selected} disabled={disabled} faceSelection={faceSelection} canvasLabel={`Face selection preview for ${target.label}`}
       onRegion={region} onReady={setReady} onError={message => { setReady(false); setError(message); }} />
     {error && <p className="text-[11px] text-destructive" role="alert">{error}</p>}

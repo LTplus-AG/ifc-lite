@@ -19,6 +19,7 @@ import { notifyWallSplit } from './wallSplitNotice.js';
 import { raycastForPolylinePoint, isNearPolylineStart,
   isDuplicateClickPoint,
 } from './measureHandlers.js';
+import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 
 /**
  * Handle click event for selection (single click and double click).
@@ -39,6 +40,12 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
 
   // Skip selection for pan/walk tools - they don't select
   if (tool === 'pan' || tool === 'walk') {
+    return;
+  }
+
+  if (tool === 'appearance-face') {
+    const message = viewportFacePickError(pickViewportAppearanceFace(renderer.raycastScene(x, y, ctx.getPickOptions())?.intersection ?? null));
+    if (message) toast.error(message);
     return;
   }
 

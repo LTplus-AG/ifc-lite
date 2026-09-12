@@ -15,6 +15,9 @@ export const UNSELECTED_FACE_COLOR: readonly [number, number, number, number] = 
 
 export interface FaceMaskTarget {
   productId: number;
+  globalId: number;
+  modelIndex: number;
+  geometryItemIds: ReadonlySet<number>;
   label: string;
   triangleCount: number;
   /** Ascending selected ordinals; `undefined` textures the whole surface. */
@@ -29,7 +32,7 @@ export interface FaceMaskControls {
   onEdit(productId: number | null): void;
   onChange(productId: number, triangles: Iterable<number> | null): void;
 }
-interface Surface { productId: number; fingerprint: string; triangleCount: number; mesh: MeshData }
+interface Surface { productId: number; fingerprint: string; triangleCount: number; mesh: MeshData; geometryItemIds: ReadonlySet<number> }
 
 const sameArray = (a: ArrayLike<number> | undefined, b: ArrayLike<number> | undefined) =>
   a === b || (!!a && !!b && a.length === b.length && Array.prototype.every.call(a, (value: number, i: number) => value === b[i]));
@@ -42,9 +45,12 @@ const sameArray = (a: ArrayLike<number> | undefined, b: ArrayLike<number> | unde
 function stableSurface(previous: Surface | undefined, conversion: Conversion, modelId: string): Surface {
   const fingerprint = conversion.surfaceFingerprint!;
   const mesh = { ...occurrenceSourceMesh(useViewerStore.getState(), modelId, conversion), color: [...SELECTED_FACE_COLOR] as MeshData['color'] };
+  const state = useViewerStore.getState();
+  const geometryItemIds = new Set([conversion.sourceGeometryItemId, conversion.geometryItemId,
+    conversion.retainedGeometryItemId].filter((id): id is number => id !== undefined).map(id => state.toGlobalId(modelId, id)));
   if (previous && previous.fingerprint === fingerprint && sameArray(previous.mesh.positions, mesh.positions)
-    && sameArray(previous.mesh.indices, mesh.indices) && sameArray(previous.mesh.origin, mesh.origin)) return previous;
-  return { productId: conversion.productId, fingerprint, triangleCount: conversion.sourceIndices.length / 3, mesh };
+    && sameArray(previous.mesh.indices, mesh.indices) && sameArray(previous.mesh.origin, mesh.origin)) return { ...previous, geometryItemIds };
+  return { productId: conversion.productId, fingerprint, triangleCount: conversion.sourceIndices.length / 3, mesh, geometryItemIds };
 }
 
 /**
@@ -111,8 +117,10 @@ export function useFaceMasks(modelId: string | null) {
     surfaces.current = live;
     return [...live.values()];
   }, [conversions, modelId]);
-  const targets = useMemo<FaceMaskTarget[]>(() => editable.map(surface => ({ productId: surface.productId, label: `IFC object #${surface.productId}`,
-    triangleCount: surface.triangleCount, selected: masks.get(surface.productId)?.triangles, mesh: surface.mesh })), [editable, masks]);
+  const targets = useMemo<FaceMaskTarget[]>(() => editable.map(surface => ({ productId: surface.productId,
+    globalId: surface.mesh.expressId, modelIndex: surface.mesh.modelIndex ?? 0, geometryItemIds: surface.geometryItemIds,
+    label: `IFC object #${surface.productId}`, triangleCount: surface.triangleCount,
+    selected: masks.get(surface.productId)?.triangles, mesh: surface.mesh })), [editable, masks]);
   const controls = useMemo<FaceMaskControls>(() => ({ targets, diagnostics, editing, onEdit: setEditing, onChange: change }), [targets, diagnostics, editing, change]);
   return { masks, requests, reconcile, clearApplied, reset, controls };
 }

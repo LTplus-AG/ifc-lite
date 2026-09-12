@@ -154,6 +154,15 @@ editor keeps its renderer and camera across selection changes and re-plans that
 reproduce the same surface (same fingerprint, same placed corners); only a
 changed surface rebuilds it.
 
+**Pick in model** keeps the main viewport in a sticky face-pick mode. Each click
+must resolve the open product's federation model, one of its source/textured/
+retained representation items, and a canonical evaluated-surface triangle; a
+miss, another object, or absent/ambiguous provenance changes no selection and
+shows a diagnostic. Hidden and isolated objects and section/crop-clipped faces
+follow the same visibility rules as the rendered frame. Masked preview parts
+retain full-surface corner ordinals, so clicking the retained half after a split
+does not restart numbering at zero.
+
 The viewer never decides staleness itself. After every plan it reconciles: a
 mask whose product the planner excluded as `Face selection is stale` (an
 edited opening, a different profile, a different tessellator) or as already

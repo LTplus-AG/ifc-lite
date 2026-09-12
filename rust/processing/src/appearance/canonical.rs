@@ -130,6 +130,28 @@ pub(super) fn produce(
     textures: &FxHashMap<u32, ResolvedTextureMap>,
     appearance: Option<&crate::prepass::ResolvedPrepass>,
 ) -> Result<Vec<MeshData>, String> {
+    produce_with_frame(source, product_id, textures, appearance, false)
+}
+
+/// Evaluate an occurrence in the same placement-independent frame on native
+/// and wasm. This is kept separate from ordinary canonical production because
+/// authoring previews must retain the target's established output frame.
+pub(super) fn produce_evaluated(
+    source: &mut Source<'_>,
+    product_id: u32,
+    textures: &FxHashMap<u32, ResolvedTextureMap>,
+    appearance: Option<&crate::prepass::ResolvedPrepass>,
+) -> Result<Vec<MeshData>, String> {
+    produce_with_frame(source, product_id, textures, appearance, true)
+}
+
+fn produce_with_frame(
+    source: &mut Source<'_>,
+    product_id: u32,
+    textures: &FxHashMap<u32, ResolvedTextureMap>,
+    appearance: Option<&crate::prepass::ResolvedPrepass>,
+    evaluated: bool,
+) -> Result<Vec<MeshData>, String> {
     let product = source.entity(product_id)?;
     source.validate_world_placement(&product)?;
     let scale = source.decoder.length_unit_scale();
@@ -145,7 +167,7 @@ pub(super) fn produce(
     if context.layers.is_sliceable(product_id) {
         return Err("Material-layer slicing is unsupported for appearance authoring".into());
     }
-    let router = context.router();
+    let router = if evaluated { context.evaluated_router() } else { context.router() };
     let voids = FxHashMap::default();
     let styles = FxHashMap::default();
     let colours = FxHashMap::default();

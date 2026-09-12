@@ -95,12 +95,9 @@ product-local coordinates quantised to one micrometre, and the triangle
 topology. Express ids are deliberately excluded, so a renumbered export keeps
 a mask, while any change to the evaluated surface (an edited opening, a
 different profile, another tessellator) changes the fingerprint. The authored
-coordinates are rebuilt from the canonical f32 world evaluation, so the
-fingerprint binds to the surface at its current placement: a placement edit
-generally changes it and reports the mask stale, because f32 spacing exceeds
-one micrometre a few metres from the origin; only a move that is exactly
-representable in f32 (the controlled test's 10 m offset) keeps it. Stale is
-the safe direction, and a viewer must treat a placement edit as invalidating. A mask is `{ productId, surfaceFingerprint, triangles }` with
+coordinates are rebuilt from a precision-preserving canonical local-frame
+evaluation on every target, so a pure placement edit keeps the fingerprint. A
+mask is `{ productId, surfaceFingerprint, triangles }` with
 source triangle ordinals in the same order as `sourceIndices`.
 
 The planner never reuses triangle ordinals by position. Faults in one mask
@@ -173,16 +170,9 @@ without it, and the diagnostic stays through that automatic re-plan until the
 next selection change, Discard or Apply. A conversion that reports a different
 fingerprint than the mask it was drawn on is treated the same way. Which edits
 change the fingerprint is the planner's call, and the viewer only relays it.
-Measured on this build: a geometry edit (a widened box profile) reports the
-mask stale; an ordinary (12.345, 67.891, 0.1) m translation of the same swept
-box or of a mapped quad keeps the fingerprint in the wasm planner (the authored
-coordinates are rebuilt around a per-element origin), while the native Rust
-unit test of the same fixture asserts the translated box stale. Native and wasm
-currently differ in the fingerprint's placement sensitivity — tracked as
-[#4550](https://github.com/LTplus-AG/ifc-lite/issues/4550). Either verdict is
-safe for a mask (kept only when the planner reproduces the identical surface
-identity, otherwise dropped with the diagnostic), and the viewer test asserts
-that invariant rather than either verdict.
+Measured on native and wasm builds: a geometry edit (a widened box profile)
+reports the mask stale, while an ordinary (12.345, 67.891, 0.1) m translation
+of the same swept box or of a mapped quad keeps the fingerprint and selection.
 
 The renderer preview stages a masked plan through an explicit
 `AppearancePartition`: each resident fragment contributes a textured subset, a

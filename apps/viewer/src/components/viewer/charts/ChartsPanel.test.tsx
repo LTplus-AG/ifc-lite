@@ -14,7 +14,9 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import type { ChartItem, EChartsOptionObject } from '@ifc-lite/charts';
+import { renderChartSvg, DEFAULT_THEME, type ChartItem, type EChartsOptionObject, type ReportSpec } from '@ifc-lite/charts';
+import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
+import type { ReportPdfSeams } from '@/lib/export/report/generate-report-pdf.js';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
@@ -322,5 +324,68 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     const s = useViewerStore.getState();
     assert.equal(s.chartSlice, null);
     assert.equal(s.chartVisibilityOwned, null);
+  });
+});
+
+describe('report export from the panel (#3944)', () => {
+  beforeEach(async () => {
+    const model = await parsedModel();
+    useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id, dashboards: [], activeDashboardId: null, chartSlice: null, chartSliceSource: null, chartVisibilityOwned: null, selectedEntityIds: new Set(), overlayLayers: new Map(), cameraCallbacks: {} });
+  });
+  afterEach(() => cleanup());
+
+  it('exports the seeded dashboard as a PDF through injected seams, downloads it, and remembers the page setup on the dashboard', async () => {
+    const { renderer } = recordingRenderer();
+    const drawn: string[] = [];
+    let created: [string, string] | null = null;
+    const seams = async (): Promise<ReportPdfSeams> => ({
+      createDoc: async (format, orientation) => {
+        created = [format, orientation];
+        let pages = 1;
+        return {
+          addPage: () => { pages += 1; },
+          setFont: () => {}, setFontSize: () => {}, setTextColor: () => {},
+          text: (t) => { drawn.push(`text:${t}`); },
+          addImage: () => { drawn.push('image'); },
+          svg: async (svg) => { drawn.push(`svg:${svg.length > 100 ? 'ok' : 'short'}`); },
+          table: (t) => { drawn.push(`table:${t.body.length}`); },
+          pageCount: () => pages,
+          output: () => new Blob(['pdf']),
+        };
+      },
+      renderSvg: (aggregation, w, h, theme) => renderChartSvg({ aggregation, width: w, height: h, theme, showTitle: false }),
+      capture: async (ids) => new Uint8Array(ids.length),
+      theme: DEFAULT_THEME,
+      now: () => new Date(0),
+    });
+    const downloads: string[] = [];
+    const onDownload = (e: Event): void => { downloads.push(String((e as CustomEvent<{ kind: string }>).detail.kind)); };
+    window.addEventListener(EVENT_FILE_DOWNLOADED, onDownload);
+    try {
+      const ui = render(<ChartsPanel renderer={renderer} reportSeams={seams} />);
+      await settle();
+      click(ui.querySelector('button[title="Print this dashboard to a PDF report"]')!);
+      await settle();
+      const dialog = document.querySelector('[data-report-dialog]');
+      assert.ok(dialog, 'the report dialog opened');
+      const size = dialog!.querySelector<HTMLSelectElement>('select[aria-label="Page size"]')!;
+      await act(async () => { size.value = 'A3'; size.dispatchEvent(new window.Event('change', { bubbles: true })); });
+      click(dialog!.querySelector('[data-report-export]')!);
+      for (let i = 0; i < 20 && downloads.length === 0; i++) await settle();
+
+      assert.deepEqual(created, ['a3', 'portrait']);
+      assert.deepEqual(downloads, ['pdf']);
+      // Three seeded charts: three vector charts, three snapshots, three tables.
+      assert.equal(drawn.filter((d) => d === 'svg:ok').length, 3);
+      assert.equal(drawn.filter((d) => d === 'image').length, 3);
+      assert.equal(drawn.filter((d) => d.startsWith('table:')).length, 3);
+      assert.ok(drawn.includes('text:Model overview'));
+      const saved = useViewerStore.getState().dashboards[0] as ReportSpec;
+      assert.deepEqual(saved.page, { size: 'A3', orientation: 'portrait' });
+      assert.equal(saved.snapshots, true);
+      assert.equal(typeof saved.titleBlock.date, 'string');
+    } finally {
+      window.removeEventListener(EVENT_FILE_DOWNLOADED, onDownload);
+    }
   });
 });

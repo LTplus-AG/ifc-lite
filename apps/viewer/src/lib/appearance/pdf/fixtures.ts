@@ -31,6 +31,7 @@ export function controlledPdf(contents = '1 0 0 rg 10 20 30 30 re f\n0 1 0 rg 90
   return new TextEncoder().encode(pdf);
 }
 const HELVETICA = '/Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >>';
+const CLOSED_DASHES = '0 0 1 RG 2 w 0 J 0 j\n[10 10] 3 d 20 30 m 40 30 l 40 50 l 20 50 l h S\n[10 10] 13 d 55 30 m 75 30 l 75 50 l 55 50 l s\n[10 10] 3 d 20 70 m 45 70 l 60 62 m 80 62 l 80 82 l 60 82 l h S\n';
 /** Controlled fidelity pages (#4406), CC0. Each exercises one report category on the
  * same CropBox [10 20 110 92] / Rotate 90 / UserUnit 2 page so extents, visibility and
  * the exact/partial/raster-only verdicts are checked through the real decoder. */
@@ -41,6 +42,8 @@ export const fidelityControls: Readonly<Record<string, { contents: string; resou
   clip: { contents: 'q 0 0 40 40 re W n 1 0 0 rg 0 0 80 80 re f Q\n0 1 0 rg 90 60 20 30 re f\n' },
   transparency: { contents: 'q /GS1 gs 0 0 1 rg 20 30 10 10 re f Q\n1 0 0 rg 60 60 20 20 re f\n', resources: '/ExtGState << /GS1 << /ca 0.5 >> >>' },
   strokes: { contents: '0 0 1 RG 2 w 1 j 20 30 m 60 30 l S\n0 j [3 2] 0 d 20 50 m 60 50 l S\n[] 0 d 20 70 m 60 70 l S\n' },
+  closedDashes: { contents: CLOSED_DASHES },
+  closedDashesV2: { contents: CLOSED_DASHES, catalog: '/Version /2.0' },
   form: { contents: 'q /Fx1 Do Q\n1 0 0 rg 60 60 20 20 re f\n', resources: '/XObject << /Fx1 6 0 R >>',
     extraObjects: [pdfStream('/Type /XObject /Subtype /Form /BBox [0 0 50 50] /Matrix [2 0 0 2 5 5]', '0 0 1 rg 0 0 10 10 re f\n')] },
   hiddenLayer: { contents: '/OC /OC1 BDC 0 1 0 rg 20 30 10 10 re f EMC\n1 0 0 rg 20 30 30 30 re f\n', resources: '/Properties << /OC1 6 0 R >>',

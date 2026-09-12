@@ -292,7 +292,9 @@ ${WORKER_LEXING}
       // tokenizer.ts's scanEntitiesFast. Resume at the ')' balancing this
       // record's own '(' when there is one, dropping just this record;
       // otherwise run to len, ending the scan un-resynced rather than guessing
-      // a resume point from misaligned bytes.
+      // a resume point from misaligned bytes. The balance walk stops at the
+      // next declaration's '=' (#4573), so a refusal costs this record's
+      // bytes, never a re-walk of the remainder per refusal.
       if (!foundTerminator) {
         stopped = true;
         if (recordClose === -3) {
@@ -306,7 +308,8 @@ ${WORKER_LEXING}
           line = startLine;
           for (var q = startOffset; q < pos; q++) if (buf[q] === 0x0A) line++;
         } else if (recordClose === -1) {
-          // Unbalanced but readable: re-hunt from past this record's '#'.
+          // No ')' before the next '=' (or EOF), bytes after readable:
+          // re-hunt from past this record's '#'.
           pos = startOffset + 1;
           line = startLine;
         } else {

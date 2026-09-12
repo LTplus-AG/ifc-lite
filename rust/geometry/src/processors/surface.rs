@@ -228,11 +228,16 @@ impl SurfaceOfLinearExtrusionProcessor {
                     .get_polyloop_point_ids_fast(curve_id)
                     .ok_or_else(|| Error::geometry("Failed to get polyline points".to_string()))?;
 
+                // A point that does not resolve refuses the whole curve, never
+                // the one corner: a polyline one vertex short is a different
+                // outline, meshed as if it were the authored one. Same rule as
+                // `helpers::extract_loop_points_by_id`.
                 let mut points = Vec::with_capacity(point_ids.len());
                 for point_id in point_ids {
-                    if let Some((x, y, _z)) = decoder.get_cartesian_point_fast(point_id) {
-                        points.push(Point2::new(x, y));
-                    }
+                    let (x, y, _z) = decoder.get_cartesian_point_fast(point_id).ok_or_else(|| {
+                        Error::geometry(format!("Polyline point #{point_id} did not resolve"))
+                    })?;
+                    points.push(Point2::new(x, y));
                 }
                 Ok(points)
             }
@@ -245,9 +250,10 @@ impl SurfaceOfLinearExtrusionProcessor {
                 if let Some(point_ids) = decoder.get_polyloop_point_ids_fast(curve_id) {
                     let mut points = Vec::with_capacity(point_ids.len());
                     for point_id in point_ids {
-                        if let Some((x, y, _z)) = decoder.get_cartesian_point_fast(point_id) {
-                            points.push(Point2::new(x, y));
-                        }
+                        let (x, y, _z) = decoder.get_cartesian_point_fast(point_id).ok_or_else(|| {
+                            Error::geometry(format!("Curve point #{point_id} did not resolve"))
+                        })?;
+                        points.push(Point2::new(x, y));
                     }
                     Ok(points)
                 } else {

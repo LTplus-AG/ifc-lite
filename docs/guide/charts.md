@@ -39,6 +39,10 @@ The dashboard's **scope** applies to the elements source and decides which eleme
 - **Colour in 3D** pushes the first chart's bucket colours onto the model as an overlay layer (priority 75 — above the lens, below a running 4D playback). Colours are assigned per label and kept when a bucket changes rank, so the legend stays a key.
 - The **frame** button on a card frames the selected buckets (or the whole chart) in the camera.
 
+## Coordination report (PDF)
+
+**Report** in the panel header prints the active dashboard: choose A4 or A3, portrait or landscape, fill the title-block fields (seeded from the 2D sheet's title block when one exists — project, drawn by, revision — plus report title and date), and optionally include a **3D snapshot of each chart's largest bucket**, ghosting everything else. Every chart is drawn as a vector (ECharts → SVG → PDF), followed by its bucket table (label, element count, measure); a table longer than the page space is cut with an "… n more" row. Pages break between chart blocks and carry a running header, a footer with the generation time, and page numbers. A snapshot that cannot be captured (no WebGPU renderer, a lost canvas) is reported in its place; the rest of the report still renders. The page setup and fields are remembered on the dashboard, so the next export is one click — a dashboard exported to a file with a page setup is a **report template**.
+
 ## Dashboards
 
 Cards sit on a 12-column grid: drag a card by its title bar, resize it from the corner; positions are part of the dashboard and saved with it. The **⋯** menu next to the dashboard picker renames, duplicates, deletes, exports the dashboard as an `.ifclite-dashboard.json` file, or imports one — an imported dashboard gets fresh ids so it never collides with the copy it came from, and its layout comes along.

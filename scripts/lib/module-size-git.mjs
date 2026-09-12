@@ -7,9 +7,10 @@
  * (`scripts/check-module-size.mjs`): the merge base with main, the paths a
  * change touched, and a blob at a commit. Split out of the CLI when #4388
  * gave check mode its own use for the merge base — the CLI is allowlisted
- * and may not grow, and `check-source-text-assertions.mjs` carries the same
- * derivation, so this is the copy the next gate should import rather than
- * write a third time.
+ * and may not grow. `check-source-text-assertions.mjs` carried its own copy
+ * of `resolveBase`/`readBlobAt` until #4536 and imports these now, so this
+ * is the one derivation, and the copy the next gate should import rather
+ * than write again.
  *
  * Every function here FAILS CLOSED: an unreadable path, a root that is not
  * the top of its worktree, or no merge base at all is an `{ error }`, never a

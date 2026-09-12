@@ -7,7 +7,7 @@
 use super::{
     fill_paths::{point, PathRings},
     flatten::charge,
-    PdfVectorGraphicsState,
+    PdfDashClosure, PdfVectorGraphicsState,
 };
 use ifc_lite_geometry::{kernel::Sign, Ring2D};
 type Point = [f64; 2];
@@ -296,6 +296,7 @@ fn outline(
 pub(super) fn rings(
     commands: &[f64],
     close_last: bool,
+    dash_closure: Option<PdfDashClosure>,
     state: &PdfVectorGraphicsState,
     remaining: &mut u64,
     tolerance: f64,
@@ -309,9 +310,14 @@ pub(super) fn rings(
         }
         let mut out = PathRings { rings: vec![], curved: vec![] };
         for run in super::dashes::expand(
-            commands, &state.dash_lengths, state.dash_phase, remaining,
+            commands,
+            close_last,
+            dash_closure == Some(PdfDashClosure::Joined),
+            &state.dash_lengths,
+            state.dash_phase,
+            remaining,
         )? {
-            outline(&run, false, state, &mut out, remaining, tolerance)?;
+            outline(&run.points, run.closed, state, &mut out, remaining, tolerance)?;
         }
         return Ok(out);
     }

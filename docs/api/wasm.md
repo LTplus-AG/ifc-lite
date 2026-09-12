@@ -907,6 +907,16 @@ em-box), `image` placements, `shading`, fill/stroke `pattern` colours, decoded
 `annotationBegin`/`annotationEnd`, `markedContent`/`endMarkedContent` and
 `unsupported` operators.
 
+An optional `conversionClipPdf: [x0, y0, x1, y1]` selects a rectangle inside
+the immutable source `viewBox`. Fully outside paths do not consume the converted
+path cap. A supported fill or conservative painted stroke envelope that crosses
+the rectangle refuses, so the host must place the boundary through empty space.
+The effective rectangle is returned as `pageClipPdf` and recorded in IFC as
+`ConversionClipPdf`; this selection does not rewrite `SourceCropBox`. Because
+zero-width hairlines have a device-dependent minimum width, every hairline on
+an interior selection remains a visible omission unless a future authenticated
+raster target can prove it contributes no pixels.
+
 The response holds `paths` — only the paths whose complete graphics state the
 planner understands — and a canonical `fidelity` report (`ifclite-pdf-fidelity-v1`)
 naming everything else:
@@ -955,7 +965,9 @@ containment GlobalId, `Name` and plane frame, plus a canonical decoded
 `PdfVectorPage`, host-owned `propertySetGlobalId` and `propertyRelationGlobalId`
 for the provenance rows, and `acceptedFidelitySha256` (a string or `null`). Its
 calibrated PDF-to-plane affine determines model scale; `frame.sizeMetres` is
-descriptive page extent, not a second scale.
+descriptive page extent, not a second scale. The decoded page also carries
+PDF.js's effective `pdfFormatVersion`, including a Catalog `/Version` override,
+because PDF 2.0 resolves an ambiguity in the earlier closed-dash seam rules.
 
 The planner recomputes the fidelity report and applies the acceptance rule: an
 exact page plans directly; a page with visible omissions plans only when
@@ -966,9 +978,17 @@ page refuses regardless. Acceptance covers the listed omissions, not geometry.
 The geometry scope accepts opaque RGB pages made of straight fill edges,
 qualified quadratic/cubic curved rings, and qualified solid straight strokes.
 Strokes support positive width, butt/square/round caps, bevel/miter/round joins,
-miter-limit fallback and positive dash patterns on open straight subpaths,
+miter-limit fallback and positive dash patterns on open or closed straight subpaths,
 outlined before the full affine transform. Dash phase, odd-array repetition,
-per-subpath reset and joins across vertices are preserved. Combined fill and
+per-subpath reset and joins across vertices are preserved. A closed subpath
+includes its closing edge. PDF 1.0–1.7 retain caps where first and last on-dash
+pieces meet at the closure seam; PDF 2.0 joins them as the newer specification
+requires. Explicit close-path and close-and-stroke operators use the same path.
+An absent, malformed or unsupported effective version reports the closed stroke
+as a `dashVersion` omission. A PDF 1.x dash that covers the entire closed
+perimeter reports `dashTopology` until coincident independent caps can be
+decomposed without weakening the topology qualifier.
+Combined fill and
 dashed-stroke paints still pass the same region-composition qualifier; a page
 with multiple dash-run crossings that it cannot prove refuses atomically. Round arcs
 are subdivided against the declared metric tolerance after accounting for
@@ -987,7 +1007,7 @@ multiple untextured colored `meshes`, `coordinateSpace: 'ifc-z-up'`, `rtcOffset`
 declared tolerance, actual grid size/work count, per-region source operator/RGB
 provenance and the `fidelity` report the plan was built under. The plan's rows
 include an `IfcLite_PdfVectorConversion` `IfcPropertySet` (source PDF digest,
-page, CropBox, UserUnit, rotation, decoder, calibration key and affine,
+page, CropBox, UserUnit, rotation, effective PDF format version, decoder, calibration key and affine,
 `ToleranceMetres`, grid, request/fidelity digests, `ExactConversion`,
 `AcceptedPartialConversion`, converted paths, fill regions, omitted paints and
 the omission summary as JSON) attached through `IfcRelDefinesByProperties`, and

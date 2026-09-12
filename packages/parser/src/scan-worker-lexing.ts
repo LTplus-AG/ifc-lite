@@ -75,8 +75,12 @@ export const WORKER_LEXING = `
   // (#4179), and the exact answer for whether a ';' is the record's own.
   // Mirrors findEntityLength in step-record-boundary.ts; a literal is jumped
   // whole and a comment after it, in that order, so a paren inside either is
-  // text. NOTE: skipCommentAt advances the line counter, so a caller that
-  // re-walks the record must save and restore it.
+  // text. A top-level '=' is the NEXT declaration's, so the walk stops there
+  // and answers -1 rather than balancing across a record it has not read;
+  // that stop is also what keeps a file of unbalanced records linear instead
+  // of quadratic (#4573; the argument is on findEntityLength). NOTE:
+  // skipCommentAt advances the line counter, so a caller that re-walks the
+  // record must save and restore it.
   function findEntityLengthAt(p, startOffset) {
     var d = 0;
     while (p < len) {
@@ -92,7 +96,8 @@ export const WORKER_LEXING = `
         var q = skipCommentAt(p);
         if (q < 0) return -2;
         p = q;
-      } else if (b === 0x28) { d++; p++; }
+      } else if (b === 0x3D) { return -1; }
+      else if (b === 0x28) { d++; p++; }
       else if (b === 0x29) { if (d === 0) return -1; d--; p++; if (d === 0) return p - startOffset; }
       else { p++; }
     }

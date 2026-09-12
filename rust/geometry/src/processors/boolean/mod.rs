@@ -14,12 +14,8 @@ use crate::{
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use std::cell::RefCell;
 
-use super::brep::FacetedBrepProcessor;
-use super::csg_primitive::{BlockProcessor, CsgSolidProcessor};
-use super::extrusion::ExtrudedAreaSolidProcessor;
+use super::csg_primitive::CsgSolidProcessor;
 use super::helpers::parse_axis2_placement_3d;
-use super::swept::{RevolvedAreaSolidProcessor, SweptDiskSolidProcessor};
-use super::tessellated::TriangulatedFaceSetProcessor;
 
 mod cut_heuristics;
 mod failures;

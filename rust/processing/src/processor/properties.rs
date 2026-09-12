@@ -259,7 +259,7 @@ pub(super) fn assign_space_zone_properties(
 ///      the eager path built (target filtering stays inside `assign`);
 ///   3. decode ONLY the property sets a space/zone actually references — gated to
 ///      genuine `IfcPropertySet` entities, mirroring the eager scan's exact
-///      `type_name == "IFCPROPERTYSET"` branch so a stray ref to a non-pset entity
+///      `keyword_eq(type_name, "IFCPROPERTYSET")` branch so a stray ref to a non-pset entity
 ///      cannot mint phantom properties — and only the property atoms those sets
 ///      list, resolving each by id through the completed entity index.
 ///

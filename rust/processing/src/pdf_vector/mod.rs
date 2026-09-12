@@ -28,11 +28,26 @@ const MAX_OPERATIONS: usize = 100_000;
 /// cannot convert is never dropped silently: it is reported with page extent and
 /// visibility, and `fidelity.exact` is false whenever any of it is visible.
 pub fn prepare_pdf_vector_page(page: &PdfVectorPage) -> Result<PreparedPdfVectorPage, String> {
+    prepare_pdf_vector_page_with_clip(page, None)
+}
+
+/// Prepare a PDF page within an optional registered rectangle in native PDF
+/// space. The separate argument keeps [`PdfVectorPage`] source-compatible for
+/// Rust callers while the WASM wire format accepts `conversionClipPdf`.
+pub fn prepare_pdf_vector_page_with_clip(
+    page: &PdfVectorPage,
+    conversion_clip_pdf: Option<[f64; 4]>,
+) -> Result<PreparedPdfVectorPage, String> {
     validate_page(page)?;
-    let interpreted = interpret::run(page)?;
+    validate_conversion_clip(page, conversion_clip_pdf)?;
+    let interpreted = interpret::run(page, conversion_clip_pdf)?;
     let mut hash = Sha256::new();
     hash.update(ALGORITHM.as_bytes());
     hash.update(serde_json::to_vec(page).map_err(|e| format!("Cannot bind PDF request: {e}"))?);
+    if let Some(clip) = conversion_clip_pdf {
+        hash.update(b"conversion-clip-pdf\0");
+        hash.update(serde_json::to_vec(&clip).map_err(|e| format!("Cannot bind PDF clip: {e}"))?);
+    }
     let request_sha256 = format!("{:x}", hash.finalize());
     let fidelity = interpreted.report.finish(&request_sha256, interpreted.paths.len());
     Ok(PreparedPdfVectorPage {
@@ -42,7 +57,7 @@ pub fn prepare_pdf_vector_page(page: &PdfVectorPage) -> Result<PreparedPdfVector
         page_number: page.page_number,
         calibration_key: page.calibration_key.clone(),
         tolerance_metres: page.tolerance_metres,
-        page_clip_pdf: page.view_box,
+        page_clip_pdf: conversion_clip_pdf.unwrap_or(page.view_box),
         paths: interpreted.paths,
         fidelity,
     })
@@ -59,6 +74,14 @@ fn validate_page(page: &PdfVectorPage) -> Result<(), String> {
     }
     if page.decoder_version != "6.3.289" {
         return Err("Unqualified PDF decoder version".into());
+    }
+    if page.pdf_format_version.as_ref().is_some_and(|version| {
+        version.is_empty()
+            || version.len() > 16
+            || !version.is_ascii()
+            || version.chars().any(char::is_control)
+    }) {
+        return Err("Invalid PDF format version".into());
     }
     if page.page_number == 0 || page.page_number > 2000 {
         return Err("Invalid PDF page number".into());
@@ -81,6 +104,22 @@ fn validate_page(page: &PdfVectorPage) -> Result<(), String> {
     }
     scalar(page.tolerance_metres, 1e-9, 1.)?;
     validate_matrix(&page.model_metres_from_pdf)
+}
+
+fn validate_conversion_clip(
+    page: &PdfVectorPage,
+    conversion_clip_pdf: Option<[f64; 4]>,
+) -> Result<(), String> {
+    if let Some(clip) = conversion_clip_pdf {
+        for x in clip { scalar(x, -1e9, 1e9)?; }
+        if clip[0] >= clip[2] || clip[1] >= clip[3]
+            || clip[0] < page.view_box[0] || clip[1] < page.view_box[1]
+            || clip[2] > page.view_box[2] || clip[3] > page.view_box[3]
+        {
+            return Err("Invalid PDF conversion clip".into());
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn scalar(x: f64, min: f64, max: f64) -> Result<(), String> {

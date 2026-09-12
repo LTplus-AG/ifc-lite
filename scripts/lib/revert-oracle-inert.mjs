@@ -47,16 +47,22 @@ export function isInertPath(path) {
 
 /**
  * Test-support modules outside any test directory and not named `*.test.*`,
- * which exist only to register assertions for a test entrypoint
- * (`scripts/test-wasm-contract.mjs` imports the one below; nothing else does).
- * Editing one changes what a test asserts. Classifying it as production tripped
- * the "changes production code and adds/changes NO test file" ABORT on #4501 —
- * the same classifier false-positive shape the inert list above fixed for
+ * which exist only to serve a test entrypoint: `shard-refusal-boundary`
+ * registers assertions for `scripts/test-wasm-contract.mjs`, and
+ * `relocated-gate-source` prepares the copy of the source-text gate that
+ * `check-source-text-assertions.test.mjs` and its identity twin run in a
+ * synthetic tree; nothing else imports either. Editing one changes what a
+ * test asserts or runs. Classifying it as production tripped the "changes
+ * production code and adds/changes NO test file" ABORT on #4501, and
+ * reverting one as production takes the tests that import it down at load
+ * time — an attribution gap (INCONCLUSIVE), never a verdict (#4536). The
+ * same classifier false-positive shape the inert list above fixed for
  * binary assets. Kept exact, not a pattern: `scripts/lib/` is otherwise real
  * production tooling and must keep reading as such.
  */
 const TEST_SUPPORT_EXACT = new Set([
   'scripts/lib/shard-refusal-boundary.mjs',
+  'scripts/lib/relocated-gate-source.mjs',
 ]);
 
 export function isTestSupportPath(path) {

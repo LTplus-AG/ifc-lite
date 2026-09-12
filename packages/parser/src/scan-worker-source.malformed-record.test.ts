@@ -18,9 +18,15 @@ import { WORKER_CODE } from './scan-worker-source.js';
 import {
   LEGAL_BODIES,
   LINE_NUMBER_CASE,
+  NEXT_DECLARATION_CASE,
+  PHANTOM_NEIGHBOUR_CASE,
+  QUADRATIC_RECORDS,
+  QUADRATIC_SHAPES,
+  QUADRATIC_WELL_FORMED,
   SWALLOW_CASES,
   UNBALANCED_CASE,
   UNRESUMABLE_BODIES,
+  quadraticBudgetMs,
   type ScanDriver,
 } from './step-record-boundary.vectors.js';
 import { MAX_EXPRESS_ID } from './express-id.js';
@@ -237,4 +243,44 @@ describe('scan-worker-source WORKER_CODE: record-boundary guards (#4179)', () =>
       expect(malformed, body).toBe(0);
     }
   });
+
+  it('does not resume past the next declaration when a record balances only there (#4573)', () => {
+    const { spans, malformed } = scan(NEXT_DECLARATION_CASE.text);
+    expect(spans).toEqual(NEXT_DECLARATION_CASE.spans);
+    expect(malformed).toBe(1);
+  });
+
+  it('does not mint a phantom neighbour from a stray "=" in a refused body (#4573)', () => {
+    const { spans, malformed } = scan(PHANTOM_NEIGHBOUR_CASE.text);
+    expect(spans.map(([id]) => id)).toEqual(PHANTOM_NEIGHBOUR_CASE.ids);
+    expect(malformed).toBe(1);
+  });
+
+  // Same shape as tokenizer.test.ts's: a ratio against the well-formed twin,
+  // because this copy of the loop is the one the browser's upload actually
+  // runs, and it carried the same quadratic walk.
+  describe.each(QUADRATIC_SHAPES)(
+    'a file of refused records %s does not rescan the remainder per record (#4573)',
+    (_label, body, tail) => {
+      it('scans within 20x the well-formed twin', () => {
+        const timeWorker = (text: string) => {
+          const started = performance.now();
+          const result = runWorkerCode(text);
+          return { ms: performance.now() - started, found: result.count };
+        };
+        const baseline = timeWorker(QUADRATIC_WELL_FORMED.repeat(QUADRATIC_RECORDS));
+        expect(baseline.found).toBe(QUADRATIC_RECORDS);
+        const budget = quadraticBudgetMs(baseline.ms);
+
+        const malformed = timeWorker(body.repeat(QUADRATIC_RECORDS) + tail);
+        expect(malformed.found, 'every record is malformed').toBe(0);
+        expect(
+          malformed.ms,
+          `${QUADRATIC_RECORDS} refused records took ${malformed.ms.toFixed(0)}ms against a ` +
+            `${budget.toFixed(0)}ms budget (20x the ${baseline.ms.toFixed(1)}ms well-formed twin): ` +
+            'recovery is walking the remainder per record again',
+        ).toBeLessThan(budget);
+      }, 120_000);
+    },
+  );
 });

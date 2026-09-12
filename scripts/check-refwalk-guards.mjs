@@ -173,8 +173,13 @@ const SCAN_ROOTS = ['rust/geometry/src', 'rust/processing/src', 'rust/wasm-bindi
  * roots. Set to 30, a small margin so ordinary churn does not force an edit,
  * while a broken detector -- every break measured while building this dropped
  * the count to zero or near it -- still fails.
+ *
+ * Re-measured at 29 when `resolve_presentation_layer_name` in
+ * `processing/src/processor/color_layer.rs` stopped recursing: the walk became
+ * iterative, so it is no longer a candidate, and the margin the 30 carried had
+ * already been spent by earlier refactors. Set to 28 to restore a margin of one.
  */
-const CANDIDATE_FLOOR = 30;
+const CANDIDATE_FLOOR = 28;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

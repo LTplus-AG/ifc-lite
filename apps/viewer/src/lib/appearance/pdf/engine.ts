@@ -108,8 +108,29 @@ export async function runPdfJob(
       if (job.kind === 'vectors') {
         if (!backend.vectorDecoder) throw new PdfAppearanceError('unsupported', 'PDF vector decoding is unavailable.');
         // Optional-content visibility is a document setting; the adapter resolves it per marked-content scope.
-        const optionalContent = await document.getOptionalContentConfig({ intent: 'display' });
-        return { kind: 'vectors', page: await decodePdfVectorPage(page, source, job.request, backend.vectorDecoder, options.signal, { optionalContent }) };
+        const [optionalContent, metadata] = await Promise.all([
+          document.getOptionalContentConfig({ intent: 'display' }),
+          document.getMetadata(),
+        ]);
+        const info: unknown = metadata.info;
+        const candidate =
+          typeof info === 'object' &&
+          info !== null &&
+          'PDFFormatVersion' in info
+            ? info.PDFFormatVersion
+            : null;
+        const pdfFormatVersion = typeof candidate === 'string' ? candidate : null;
+        return {
+          kind: 'vectors',
+          page: await decodePdfVectorPage(
+            page,
+            source,
+            job.request,
+            backend.vectorDecoder,
+            options.signal,
+            { optionalContent, pdfFormatVersion },
+          ),
+        };
       }
       const recipe = rasterRecipe(page, job.request),
         scale = recipe.effectiveDpi / 72;

@@ -96,7 +96,7 @@ pub(crate) fn compose(
         if path.paint.strokes() {
             let close = matches!(path.paint, PdfVectorPaint::CloseStroke |
                 PdfVectorPaint::CloseFillStroke | PdfVectorPaint::CloseEvenOddFillStroke);
-            paths.push(super::strokes::rings(&path.commands, close, &path.state,
+            paths.push(super::strokes::rings(&path.commands, close, path.dash_closure, &path.state,
                 &mut budget.remaining, stroke_arc_error).map_err(|e| format!("PDF operator {}: {e}", path.operator_ordinal))?);
             // A combined operator fills first, then strokes. Expansion retains
             // its original operator identity and distinct fill/stroke colours.

@@ -100,7 +100,11 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
             if matches!(request.mapping,Mapping::ExistingUv {..}) { return Err("Evaluated occurrence conversion requires a new planar or box mapping".into()); }
             let (product, body)=evaluated_source::body(source,product_id)?;
             let layers=super::evaluated_replacement::layers(source,body.id)?;
-            let mut meshes=canonical::produce(source,product_id,&textures,Some(&styles))?;
+            // One explicit local-frame evaluation supplies both the authored
+            // replacement and its placement-independent fingerprint (#4550).
+            // Re-evaluating the same CSG surface solely for identity would
+            // double the opt-in appearance planner's dominant work.
+            let mut meshes=canonical::produce_evaluated(source,product_id,&textures,Some(&styles))?;
             if meshes.len()!=1 { return Err("Evaluated appearance currently requires one unambiguous source surface".into()); }
             let mesh=meshes.remove(0);
             if mesh.texture.is_some() || mesh.uvs.is_some() { return Err("Evaluated conversion of textured source surfaces is not supported yet".into()); }
@@ -118,9 +122,12 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
                 styles.void_index.get(&product_id).map_or(&[],Vec::as_slice),
                 &opening_edits,&textures,&styles,&mut budget)?;
             let points=evaluated_source::local_points(source,&product,&mesh)?;
-            let rounding_bounds=if opening_edits.is_empty() {None} else {
-                Some(super::evaluated_precision::local_cast_bounds(&points,source.decoder.length_unit_scale())?)
-            };
+            // The explicit local frame and the normal target frame can round
+            // equivalent f64 world corners through different f32 values. Use
+            // the existing per-corner cast bound for that representation-only
+            // difference, with or without opening edits.
+            let rounding_bounds=Some(super::evaluated_precision::local_cast_bounds(
+                &points,source.decoder.length_unit_scale())?);
             let fingerprint=super::evaluated_mask::fingerprint(product.get_string(0).ok_or("Product has no GlobalId")?,
                 &points,source.decoder.length_unit_scale(),&mesh.indices)?;
             let partition=masks.get(&product_id).map(|mask|super::evaluated_mask::partition(mask,&fingerprint,&mesh.indices)).transpose()?.flatten();

@@ -353,7 +353,7 @@
    512 scripts/check-module-size.mjs
   1066 scripts/check-pr-review-signal.mjs
    855 scripts/check-review-posted.mjs
-   446 scripts/check-source-text-assertions.mjs
+   425 scripts/check-source-text-assertions.mjs
    423 scripts/check-test-glob-coverage.mjs
    605 scripts/check-test-revert-oracle.mjs
    703 scripts/check-test-wiring.mjs

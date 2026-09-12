@@ -754,3 +754,178 @@ fn record_boundary_guards_accept_legal_records_4179() {
         assert_eq!(stop, None, "body: {body}");
     }
 }
+
+/// A record whose parens balance only PAST a later declaration must not hand
+/// back a resume point past that declaration. `#1` here balances at the `)`
+/// closing #2's own parameter list, so the pre-fix scan resumed after it and
+/// #2 vanished from the model with nothing reported about it: the refused
+/// record took its neighbour with it. #4179 follow-up.
+#[test]
+fn recovery_does_not_resume_past_the_next_declaration_4179() {
+    let content = "#1=IFCA(2 #2=IFCWALL($));\n#3=IFCC(3);\n";
+    let (spans, stop) = scan_spans_and_stop(content);
+    assert_eq!(spans, vec![(2, "#2=IFCWALL($));"), (3, "#3=IFCC(3);")]);
+    assert_eq!(stop, content.find("#1"));
+}
+
+/// Recovery from a refused record must be MONOTONE in the file: dropping one
+/// record may not cost a walk over everything after it, because the NEXT
+/// declaration then pays for the same walk again.
+///
+/// All three bodies below are nothing but refused records, and each reaches
+/// the walk from a different side. `#1=A(2;` has no balancing `)`, so
+/// `close_step_record` ran to end of input to answer `Unbalanced`. `#1=A(`
+/// leaves no `'`, `;` or `/` anywhere after it, so `find_entity_end`'s
+/// `memchr3` ran to end of input to answer `None`. Both were clean O(n^2),
+/// measured on the release build at 80 000 records (0.6 MB and 0.5 MB): 16.2s
+/// and 11.8s, rising 4x per doubling.
+///
+/// The third and fourth bodies are the second plus a trailer: one `;` at end
+/// of file, and the `ENDSEC;` / `END-ISO-10303-21;` every real file carries.
+/// A first cut of this fix memoised "no terminator from here on" as a suffix
+/// property, which bounds the second shape and is disarmed by either trailer:
+/// the walk finds the trailing `;` every time and the memo never arms, so on
+/// a real upload it never fired at all. Measured on that cut, 80 000 records
+/// with the `ENDSEC;` trailer took 644ms and 320 000 with a lone `;` took
+/// 14.5s, both still 4x per doubling. Putting `=` in the `memchr3` triple
+/// bounds all four with one rule, because the walk can never pass the next
+/// declaration whatever lies beyond it.
+///
+/// The verdict is a RATIO against a well-formed file of the same record
+/// count, and the scan runs on its own thread so the test FAILS the moment
+/// the budget is spent rather than waiting for a quadratic walk to finish.
+/// An absolute threshold has to be sized for one build mode and one machine:
+/// the earlier cut at 80 000 records came in under its 5 s bound unfixed on a
+/// release build (a test that cannot fail there), and at 320 000 records the
+/// unfixed debug build ran for longer than the revert oracle's 20-minute job,
+/// so it "failed" by hanging, which AGENTS.md is explicit is worse than
+/// failing. Scanning the well-formed twin first gives a linear baseline in
+/// whatever mode and on whatever machine this runs; the malformed file must
+/// then cost at most a small multiple of it. Linear-vs-linear sits near 1x;
+/// the quadratic walk is far past 20x at this size in either build mode. A
+/// scan that overruns is abandoned on its thread and reported, so the whole
+/// test decides in about a second either way. Every entry point over
+/// untrusted bytes reaches this scan (`entity_count`, `build_entity_index`,
+/// `ColumnarEntityIndex::from_scan`, the wasm prepass, the server's parse
+/// routes), so the input is an ordinary upload.
+#[test]
+fn refused_records_do_not_rescan_the_remainder_4179() {
+    const RECORDS: usize = 40_000;
+
+    /// Scan on a thread; `None` if it did not finish within `cap`.
+    fn scan_within(content: String, cap: std::time::Duration) -> Option<(usize, std::time::Duration)> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let started = std::time::Instant::now();
+            let found = EntityScanner::new(&content).count();
+            let _ = tx.send((found, started.elapsed()));
+        });
+        rx.recv_timeout(cap).ok()
+    }
+
+    let mut well_formed = String::from(DATA_PREAMBLE);
+    well_formed.push_str(&"#1=A();\n".repeat(RECORDS));
+    let (found, baseline) = scan_within(well_formed, std::time::Duration::from_secs(60))
+        .expect("the well-formed baseline must scan within a minute in any build mode");
+    assert_eq!(found, RECORDS, "the baseline file is well-formed");
+    // A floor keeps a sub-millisecond release baseline from making the
+    // budget tighter than timer resolution.
+    let budget = baseline.max(std::time::Duration::from_millis(5)) * 20;
+
+    for (body, tail) in [
+        ("#1=A(2;\n", ""),
+        ("#1=A(\n", ""),
+        ("#1=A(\n", ";"),
+        ("#1=A(\n", "ENDSEC;\nEND-ISO-10303-21;\n"),
+    ] {
+        let mut content = String::from(DATA_PREAMBLE);
+        content.push_str(&body.repeat(RECORDS));
+        content.push_str(tail);
+        let bytes = content.len();
+        let Some((found, elapsed)) = scan_within(content, budget) else {
+            panic!(
+                "{RECORDS} refused records ({bytes} bytes) of {body:?}{tail:?} did not finish within \
+                 {budget:?} (20x the {baseline:?} baseline for the same count well-formed): recovery \
+                 is walking the remainder per record again"
+            );
+        };
+        assert_eq!(found, 0, "every record in {body:?} is malformed");
+        assert!(elapsed < budget, "{body:?}{tail:?} finished in {elapsed:?} but over the {budget:?} budget");
+    }
+}
+
+/// The record-body walk must also be linear in ONE record's own length. An
+/// intermediate cut of the #4179 fix took `/` out of the `memchr3` triple and
+/// looked for it on the plain span before the hit, then resumed the SIMD pass
+/// from just after each `/`: every division or comment re-scanned to the hit,
+/// so a single record dense with them was quadratic in itself. Measured on
+/// that cut through `build_entity_index`, release build: one record of
+/// `1/1/1/...` at 100 KB / 200 KB / 400 KB took 96ms / 310ms / 1.23s, and one
+/// record of repeated `/**/` at 800 KB took 2.5s, against 0.09 / 0.25 / 0.32ms
+/// and 1.5ms on the parent. Each `/` now moves `pos` past itself and the next
+/// one is searched for only in `[pos, hit)`. Same fail-fast shape as the test
+/// above: a scan that overruns 20x the slash-free baseline is abandoned and
+/// reported rather than waited for.
+///
+/// Both shapes are well-formed 10303-21 (division in a value list, comment
+/// trivia), so this is an ordinary upload, not a malformed one.
+#[test]
+fn a_record_dense_with_slashes_costs_one_walk_of_its_own_length() {
+    const BYTES: usize = 400_000;
+    let scan_within = |content: String, cap: std::time::Duration| {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let started = std::time::Instant::now();
+            let found = EntityScanner::new(&content).count();
+            let _ = tx.send((found, started.elapsed()));
+        });
+        rx.recv_timeout(cap).ok()
+    };
+
+    // Baseline: one record of the same size with no '/' in it at all.
+    let mut plain = String::from(DATA_PREAMBLE);
+    plain.push_str("#1=IFCX(");
+    plain.push_str(&"1,".repeat(BYTES / 2));
+    plain.push_str("$);\n");
+    let (found, baseline) = scan_within(plain, std::time::Duration::from_secs(60))
+        .expect("the slash-free baseline must scan within a minute in any build mode");
+    assert_eq!(found, 1);
+    let budget = baseline.max(std::time::Duration::from_millis(5)) * 20;
+
+    for (name, unit) in [("division", "1/"), ("comment", "/**/")] {
+        let mut content = String::from(DATA_PREAMBLE);
+        content.push_str("#1=IFCX(");
+        content.push_str(&unit.repeat(BYTES / unit.len()));
+        content.push_str("$);\n");
+        let Some((found, _)) = scan_within(content, budget) else {
+            panic!(
+                "one {BYTES}-byte record of {name} did not finish within {budget:?} (20x the \
+                 {baseline:?} slash-free baseline): the body walk is re-scanning per '/'"
+            );
+        };
+        assert_eq!(found, 1, "the {name} record is well-formed and must scan as one entity");
+    }
+}
+
+/// A refused record must not damage its NEIGHBOUR. `#1` here is malformed (a
+/// stray `=` inside its parameter list), and the `=` bound refuses it at that
+/// byte and re-hunts from past its `#`. The hunt then meets `#5 = 3);`, which
+/// has the trivia-tolerant `#<digits> =` prefix of a declaration; before the
+/// hunt also required a record after the `=`, that scanned as entity #5 with
+/// body `3)`, and the last-wins entity index wrote it over the REAL #5 point
+/// declared a line earlier. A malformed record cost a well-formed one.
+/// Regression for #4577.
+#[test]
+fn a_stray_equals_in_a_refused_body_does_not_mint_a_phantom_neighbour() {
+    let mut content = String::from(DATA_PREAMBLE);
+    content.push_str("#5=IFCCARTESIANPOINT((0.,0.));\n#1=IFCWALL(#5 = 3);\n#6=IFCWALL($);\n");
+    let mut scanner = EntityScanner::new(&content);
+    let seen: Vec<(u32, String)> =
+        std::iter::from_fn(|| scanner.next_entity().map(|(id, name, _, _)| (id, name.to_string()))).collect();
+    assert_eq!(
+        seen,
+        vec![(5, "IFCCARTESIANPOINT".to_string()), (6, "IFCWALL".to_string())],
+        "the refused #1 must be dropped alone: no phantom #5, and #6 still found"
+    );
+    assert_eq!(scanner.malformed_record_start(), Some(DATA_PREAMBLE.len() + 31));
+}

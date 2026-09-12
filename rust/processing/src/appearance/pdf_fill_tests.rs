@@ -48,6 +48,7 @@ fn fixture() -> (String, PdfFillAnnotationRequest) {
             page: PdfVectorPage {
                 pdf_sha256: "a".repeat(64),
                 decoder_version: "6.3.289".into(),
+                pdf_format_version: Some("2.0".into()),
                 page_number: 1,
                 view_box: [0., 0., 8., 8.],
                 user_unit: 1.,
@@ -67,6 +68,38 @@ fn fixture() -> (String, PdfFillAnnotationRequest) {
         },
     )
 }
+
+#[test]
+fn issue_4406_conversion_clip_refuses_crossing_stroke_and_reopens_contained_geometry() {
+    let (source, mut request) = fixture();
+    request.page.operations = vec![
+        PdfVectorOperation { ordinal: 0, operation: PdfVectorOperator::LineWidth { width: 1. } },
+        PdfVectorOperation { ordinal: 1, operation: PdfVectorOperator::Path {
+            paint: PdfVectorPaint::Stroke, commands: vec![0., 0., 4., 1., 8., 4.],
+        }},
+    ];
+    let clip = Some([2., 2., 6., 6.]);
+    let error = plan_pdf_fill_annotation_with_clip(source.as_bytes(), &request, clip).unwrap_err();
+    assert!(error.contains("conversion boundary crosses painted path"), "{error}");
+
+    request.page.operations[1].operation = PdfVectorOperator::Path {
+        paint: PdfVectorPaint::Stroke, commands: vec![0., 3., 4., 1., 5., 4.],
+    };
+    let plan = plan_pdf_fill_annotation_with_clip(source.as_bytes(), &request, clip).unwrap();
+    let exported = apply(&source, &plan.plan);
+    assert_eq!(reopened_property_value(&exported, "SourceCropBox").as_deref(), Some("[0.0,0.0,8.0,8.0]"));
+    assert_eq!(reopened_property_value(&exported, "ConversionClipPdf").as_deref(), Some("[2.0,2.0,6.0,6.0]"));
+    let reopened = crate::process_geometry(exported.as_bytes());
+    let meshes: Vec<_> = reopened.meshes.iter().filter(|m| m.express_id == plan.annotation_id).collect();
+    assert!(!meshes.is_empty());
+    for mesh in meshes {
+        for p in mesh.positions.chunks_exact(3) {
+            let world: [f64; 3] = std::array::from_fn(|i| f64::from(p[i]) + mesh.origin[i] + plan.rtc_offset[i]);
+            assert!(world[0] >= 4. - 1e-6 && world[0] <= 8. + 1e-6, "{world:?}");
+            assert!(world[2] >= 6. - 1e-6 && world[2] <= 10. + 1e-6, "{world:?}");
+        }
+    }
+}
 fn area(mesh: &crate::types::mesh::MeshData) -> f64 {
     mesh.indices
         .chunks_exact(3)
@@ -85,6 +118,26 @@ fn area(mesh: &crate::types::mesh::MeshData) -> f64 {
             c.iter().map(|v| v * v).sum::<f64>().sqrt() / 2.
         })
         .sum()
+}
+fn reopened_property_value(ifc: &str, property_name: &str) -> Option<String> {
+    let mut scanner = ifc_lite_core::EntityScanner::new(ifc.as_bytes());
+    let mut decoder = ifc_lite_core::EntityDecoder::new(ifc);
+    while let Some((id, name, start, end)) = scanner.next_entity() {
+        if name != "IFCPROPERTYSINGLEVALUE" {
+            continue;
+        }
+        let property = decoder.decode_at_with_id(id, start, end).ok()?;
+        if property.get_string(0) != Some(property_name) {
+            continue;
+        }
+        return property.get(2).and_then(|value| match value {
+            ifc_lite_core::AttributeValue::List(typed) => {
+                typed.get(1).and_then(ifc_lite_core::AttributeValue::as_string).map(str::to_owned)
+            }
+            value => value.as_string().map(str::to_owned),
+        });
+    }
+    None
 }
 #[test]
 fn issue_4459_direct_pdf_fill_provenance_matches_mesh_without_removing_2d_symbols() {
@@ -389,6 +442,7 @@ fn issue_4406_partial_page_needs_the_accepted_fidelity_digest_and_records_its_om
     assert!(step.contains(r#"IFCPROPERTYSINGLEVALUE('Omissions',$,IFCTEXT('[{"kind":"text","count":1,"visible":1}]'),$)"#), "{step}");
     assert!(step.contains(&format!("IFCPROPERTYSINGLEVALUE('FidelitySha256',$,IFCIDENTIFIER('{}'),$)", report.sha256)));
     assert!(step.contains("IFCPROPERTYSINGLEVALUE('SourcePdfSha256',$,IFCIDENTIFIER('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),$)"));
+    assert!(step.contains("IFCPROPERTYSINGLEVALUE('SourcePdfFormatVersion',$,IFCLABEL('2.0'),$)"));
     assert!(step.contains("IFCPROPERTYSINGLEVALUE('ToleranceMetres',$,IFCREAL(0.0001),$)"));
     assert!(step.contains("IFCPROPERTYSINGLEVALUE('SourceCropBox',$,IFCTEXT('[0.0,0.0,8.0,8.0]'),$)"), "{step}");
     assert!(step.contains(&format!("IFCRELDEFINESBYPROPERTIES('0cccccccccccccccccccc2',$,$,$,(#{}),#{});", plan.annotation_id, plan.property_set_id)), "{step}");
@@ -396,6 +450,10 @@ fn issue_4406_partial_page_needs_the_accepted_fidelity_digest_and_records_its_om
     // The provenance rows do not disturb canonical geometry on reopen.
     let reopened = crate::process_geometry(step.as_bytes());
     assert_eq!(reopened.meshes.iter().filter(|m| m.express_id == plan.annotation_id).count(), 2);
+    assert_eq!(
+        reopened_property_value(&step, "SourcePdfFormatVersion").as_deref(),
+        Some("2.0")
+    );
     // An exact page records the same set without acceptance.
     let exact = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
     assert!(exact.fidelity.exact);
@@ -404,6 +462,18 @@ fn issue_4406_partial_page_needs_the_accepted_fidelity_digest_and_records_its_om
     assert!(exact_step.contains("IFCPROPERTYSINGLEVALUE('Omissions',$,IFCTEXT('[]'),$)"));
     assert!(exact_step.contains("IFCPROPERTYSINGLEVALUE('FillRegions',$,IFCINTEGER(2),$)"));
     assert!(exact_step.contains("'PDF vectors, page 1: exact conversion'"));
+
+    // Older hosts omit the optional version. Preserve that fact explicitly so
+    // a reopened IFC can explain why version-sensitive closed dashes were not
+    // converted rather than silently implying either PDF 1.x or PDF 2.0.
+    let mut unversioned = request.clone();
+    unversioned.page.pdf_format_version = None;
+    let unversioned = plan_pdf_fill_annotation(source.as_bytes(), &unversioned).unwrap();
+    let unversioned_step = apply(&source, &unversioned.plan);
+    assert_eq!(
+        reopened_property_value(&unversioned_step, "SourcePdfFormatVersion").as_deref(),
+        Some("not reported")
+    );
 }
 
 #[test]

@@ -1,0 +1,5 @@
+---
+"@ifc-lite/parser": patch
+---
+
+Bound the STEP scan's malformed-record recovery at the next declaration (#4573). `findEntityLength` and the Blob worker's hand-duplicate walked from a refused record to the `)` balancing it anywhere in the buffer, so a record with no `)` of its own read to end of input, the scan resumed one byte past its `#`, and the next declaration repeated the walk: a file of `#1=A(2;` repeated was O(n^2), measured 2.5s at 10 000 records and 10s at 20 000 in both `scanEntitiesFast` and the browser scan worker. The same walk balanced across a following declaration, so `#1=IFCA(2 #2=IFCWALL($));` dropped #2 with nothing reported. Both walks now stop at the next top-level `=` (ISO 10303-21 has `=` only in `entity_instance_name '=' record`), answer unbalanced, and the scan re-hunts from the refused record's `#`: each refusal costs its own record's bytes, and #2 is found. `scanEntities` (the balanced scan) stops and reports on that shape instead of yielding one mis-spanned record.

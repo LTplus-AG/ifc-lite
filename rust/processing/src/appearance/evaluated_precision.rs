@@ -3,16 +3,26 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Explicit error accounting for post-CSG f64-origin → IFC → f32 tessellation.
 
-/// Tessellation parsing first stores product-local IFC coordinates in f32.
-/// A rigid placement coefficient has absolute value at most one, so the sum of
-/// the three actual cast errors bounds each world-axis error after rotation.
-/// This initial slice requires metre units; an additional f32 scale operation
-/// must be accounted for before enabling other unit systems.
+/// Tessellation parsing first stores product-local IFC coordinates in f32 and
+/// multiplies them by the model-unit scale in f32. A rigid placement
+/// coefficient has absolute value at most one, so the sum of the three actual
+/// metre-space errors bounds each world-axis error after rotation.
 pub(super) fn local_cast_bounds(points: &[[f64;3]], scale:f64)->Result<Vec<f64>,String> {
-    if scale!=1. {return Err("Post-opening conversion currently requires metre model units".into());}
+    if !scale.is_finite() || scale<=0. {return Err("Invalid model length unit scale".into());}
+    let scale_f32=scale as f32;
+    if !scale_f32.is_finite() || scale_f32<=0. {return Err("Model length unit scale is not a positive finite f32".into());}
     points.iter().map(|point| {
-        let bound=point.iter().map(|&v|(v-f64::from(v as f32)).abs()).sum::<f64>();
-        if bound.is_finite() {Ok(bound)}else{Err("Post-opening coordinate exceeds f32 range".into())}
+        let mut bound=0.;
+        for &value in point {
+            let ideal_metres=value*scale;
+            let reparsed_metres=f64::from((value as f32)*scale_f32);
+            let error=(ideal_metres-reparsed_metres).abs();
+            if !ideal_metres.is_finite() || !reparsed_metres.is_finite() || !error.is_finite() {
+                return Err("Evaluated coordinate exceeds f32 range".into());
+            }
+            bound+=error;
+        }
+        if bound.is_finite() {Ok(bound)}else{Err("Evaluated coordinate exceeds f32 range".into())}
     }).collect()
 }
 
@@ -58,8 +68,23 @@ mod tests {
     }
 
     #[test]
-    fn issue_4404_frame_bound_refuses_unaccounted_scale_and_nonfinite_coordinates() {
-        assert!(local_cast_bounds(&[[1.,2.,3.]],0.001).is_err());
+    fn issue_4550_frame_bound_accounts_for_file_unit_and_scale_casts() {
+        let point=[1_000.123_456,2_000.234_567,3_000.345_678];
+        let scale=0.001;
+        let scale_f32=scale as f32;
+        let expected=point.iter().map(|&value| {
+            let ideal_metres=value*scale;
+            let reparsed_metres=f64::from((value as f32)*scale_f32);
+            (ideal_metres-reparsed_metres).abs()
+        }).sum::<f64>();
+        assert_eq!(local_cast_bounds(&[point],scale).unwrap(),vec![expected]);
+    }
+
+    #[test]
+    fn issue_4550_frame_bound_refuses_invalid_scale_and_nonfinite_products() {
+        for scale in [0.,-1.,f64::NAN,f64::INFINITY,f64::from(f32::MAX)*2.] {
+            assert!(local_cast_bounds(&[[1.,2.,3.]],scale).is_err());
+        }
         assert!(local_cast_bounds(&[[f64::MAX,0.,0.]],1.).is_err());
         assert!(local_cast_bounds(&[[f64::NAN,0.,0.]],1.).is_err());
         assert!(!same_corner(&[0.;3],[0.;3],&[f32::INFINITY,0.,0.],[0.;3],0.));

@@ -50,6 +50,21 @@ pub(super) fn convex(controls: &[[f64; 2]], remaining: &mut u64) -> Result<(), S
     Ok(())
 }
 fn strictly_separated(a: &Ring2D, b: &Ring2D) -> bool {
+    let bounds = |ring: &Ring2D| {
+        ring.iter().fold(
+            [
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::NEG_INFINITY,
+            ],
+            |[x0, y0, x1, y1], p| [x0.min(p[0]), y0.min(p[1]), x1.max(p[0]), y1.max(p[1])],
+        )
+    };
+    let (aa, bb) = (bounds(a), bounds(b));
+    if aa[2] < bb[0] || bb[2] < aa[0] || aa[3] < bb[1] || bb[3] < aa[1] {
+        return true;
+    }
     for hull in [a, b] {
         for i in 0..hull.len() {
             for j in i + 1..hull.len() {

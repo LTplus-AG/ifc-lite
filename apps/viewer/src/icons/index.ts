@@ -50,6 +50,7 @@ export { default as Script } from '~icons/viewer/script';
 export { default as Coloring } from '~icons/viewer/coloring';
 export { default as Schedule } from '~icons/viewer/schedule';
 export { default as Chart } from '~icons/viewer/chart';
+export { default as Document } from '~icons/viewer/document';
 export { default as Extension } from '~icons/viewer/extension';
 export { default as SpaceSketch } from '~icons/viewer/space-sketch';
 export { default as AddElement } from '~icons/viewer/add-element';

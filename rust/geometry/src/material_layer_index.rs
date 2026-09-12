@@ -147,7 +147,7 @@ impl MaterialLayerIndex {
         let mut scanner = EntityScanner::new(content);
 
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
-            if type_name != "IFCRELASSOCIATESMATERIAL" {
+            if !ifc_lite_core::keyword_eq(type_name, "IFCRELASSOCIATESMATERIAL") {
                 continue;
             }
             index.insert_association(id, start, end, decoder);

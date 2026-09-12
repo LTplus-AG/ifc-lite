@@ -48,10 +48,14 @@ export interface PdfVectorRequest {
   modelMetresFromPdf: PdfAffine;
   calibrationKey: string;
   toleranceMetres: number;
+  /** Optional registered crop in unrotated native PDF user space. */
+  conversionClipPdf?: PdfPageRect | null;
 }
 export interface PdfVectorPage extends PdfVectorRequest {
   pdfSha256: string;
   decoderVersion: string;
+  /** Effective PDF version reported by PDF.js; absent on older hosts. */
+  pdfFormatVersion?: string | null;
   viewBox: PdfPageRect;
   userUnit: number;
   intrinsicRotation: number;
@@ -86,6 +90,13 @@ export interface PreparedPdfVectorPage {
   calibrationKey: string;
   toleranceMetres: number;
   pageClipPdf: PdfPageRect;
-  paths: Array<{ operatorOrdinal: number; paint: PdfVectorPaint; commands: number[]; state: PdfVectorGraphicsState }>;
+  paths: Array<{
+    operatorOrdinal: number;
+    paint: PdfVectorPaint;
+    commands: number[];
+    state: PdfVectorGraphicsState;
+    /** Version-bound closed-dash seam behavior; absent for other paths. */
+    dashClosure: 'capped' | 'joined' | null;
+  }>;
   fidelity: PdfFidelityReport;
 }

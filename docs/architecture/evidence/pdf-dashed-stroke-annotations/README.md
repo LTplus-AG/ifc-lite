@@ -29,7 +29,9 @@ This control establishes the common qualified even-pattern case through decode,
 planning, export and independent reopen. Native tests separately pin negative
 phase normalization, odd-array repetition, per-subpath reset, continuity across
 vertices, the cap-versus-join boundary, affine area and ordinary native reopen.
-Closed and curved dashed paths and zero-containing patterns remain omissions.
+Closed straight dashes are covered by the separate
+[closed-path evidence](../pdf-closed-dash-annotations/README.md). Curved dashed
+paths and zero-containing patterns remain omissions.
 Combined fill-and-dashed-stroke paints can still refuse atomically when multiple
 dash run boundaries create a composition crossing the current fill lattice
 cannot qualify; the evidence makes no broader arbitrary-page claim.

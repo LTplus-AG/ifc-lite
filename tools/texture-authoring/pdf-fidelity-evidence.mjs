@@ -4,8 +4,8 @@
 /** Offline F8 fidelity-report evidence (#4406). Decodes one PDF page with the
  * pinned viewer adapter and records the canonical `IfcAPI.preparePdfVectorPage`
  * verdict: convertible paths, omission kinds with counts, visibility and
- * page-space extent, exact / raster-only. It converts nothing and the record
- * contains no page content, only counts, extents and digests.
+ * page-space extent, exact / raster-only. Without an IFC output it converts
+ * nothing; the JSON record contains only counts, extents and digests.
  *
  *   TSX_TSCONFIG_PATH=apps/viewer/tsconfig.json node --import tsx \
  *     --import ./apps/viewer/src/test/vite-module-hooks.mjs \
@@ -51,11 +51,18 @@ const backend = { getDocument: pdf.getDocument, vectorDecoder: { version: pdf.ve
 // PDF_FIDELITY_TOLERANCE_METRES overrides the declared tolerance (a curved control planned at 0.1 mm exceeds the composition budget).
 const toleranceOverride = process.env.PDF_FIDELITY_TOLERANCE_METRES ? Number(process.env.PDF_FIDELITY_TOLERANCE_METRES) : null;
 if (toleranceOverride !== null && !(toleranceOverride > 0 && toleranceOverride <= 0.1)) throw new Error('PDF_FIDELITY_TOLERANCE_METRES must be in (0, 0.1]');
+const conversionClipPdf = process.env.PDF_FIDELITY_CLIP_PDF
+  ? JSON.parse(process.env.PDF_FIDELITY_CLIP_PDF) : null;
+if (conversionClipPdf !== null && (conversionClipPdf.length !== 4 || !conversionClipPdf.every(Number.isFinite))) {
+  throw new Error('PDF_FIDELITY_CLIP_PDF must be a JSON array of four finite native PDF coordinates');
+}
 const calibration = control
   ? { modelMetresFromPdf: [1 / 30, 0, 0, 1 / 30, 0, 0], calibrationKey: 'synthetic-control-30-pdf-units-per-metre', toleranceMetres: toleranceOverride ?? 0.0001 }
   : { modelMetresFromPdf: [0.01, 0, 0, 0.01, 0, 0], calibrationKey: 'evidence-nominal-100-pdf-units-per-metre', toleranceMetres: toleranceOverride ?? 0.001 };
 try {
-  const decoded = await runPdfJob(backend, source, { kind: 'vectors', request: { pageNumber, ...calibration } });
+  const decoded = await runPdfJob(backend, source, { kind: 'vectors', request: {
+    pageNumber, ...calibration, conversionClipPdf,
+  } });
   if (decoded.kind !== 'vectors') throw new Error('Wrong decoder response');
   const page = decoded.page;
   const prepared = JSON.parse(new TextDecoder().decode(api.preparePdfVectorPage(JSON.stringify(page))));
@@ -65,9 +72,11 @@ try {
   const record = {
     input: control ? `control:${control}` : input.replace(/\\/g, '/').split('/').pop(),
     sourceBytes: source.length, sourceSha256: createHash('sha256').update(source).digest('hex'),
-    decoderVersion: page.decoderVersion, pageNumber, viewBox: page.viewBox, userUnit: page.userUnit, intrinsicRotation: page.intrinsicRotation,
+    decoderVersion: page.decoderVersion, pdfFormatVersion: page.pdfFormatVersion ?? null,
+    pageNumber, viewBox: page.viewBox, userUnit: page.userUnit, intrinsicRotation: page.intrinsicRotation,
     calibration, operations: page.operations.length, operators,
-    preparation: { algorithm: prepared.algorithm, requestSha256: prepared.requestSha256, pageClipPdf: prepared.pageClipPdf },
+    preparation: { algorithm: prepared.algorithm, requestSha256: prepared.requestSha256, pageClipPdf: prepared.pageClipPdf,
+      dashClosures: prepared.paths.map(path => path.dashClosure) },
     fidelity: { ...fidelity, listedOmissions: omissions.length },
   };
   if (ifcOutput) {
@@ -83,7 +92,9 @@ try {
     const step = await new StepExporter(data, view).exportAsync({ schema: 'IFC4', applyMutations: true, includeGeometry: true });
     await writeFile(ifcOutput, typeof step.content === 'string' ? step.content : Buffer.from(step.content));
     const planOutput = ifcOutput.replace(/\.ifc$/, '') + '-plan.json';
-    await writeFile(planOutput, `${JSON.stringify({ pageNumber, viewBox: page.viewBox, intrinsicRotation: page.intrinsicRotation, userUnit: page.userUnit,
+    await writeFile(planOutput, `${JSON.stringify({ pageNumber, pdfFormatVersion: page.pdfFormatVersion ?? null,
+      viewBox: page.viewBox, intrinsicRotation: page.intrinsicRotation, userUnit: page.userUnit,
+      conversionClipPdf: prepared.pageClipPdf,
       modelMetresFromPdf: calibration.modelMetresFromPdf, frame: request.frame, rtcOffset: plan.rtcOffset, coordinateSpace: plan.coordinateSpace,
       annotationId: plan.annotationId, regions: plan.regions, fidelity: { exact: fidelity.exact, summary: fidelity.summary },
       meshes: plan.meshes.map(mesh => ({ positions: mesh.positions, indices: mesh.indices, color: mesh.color, origin: mesh.origin ?? [0, 0, 0] })) })}\n`);

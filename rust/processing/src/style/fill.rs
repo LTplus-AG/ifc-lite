@@ -55,10 +55,8 @@ pub(crate) fn fill_style_from_styled_item(
     if refs.len() > 64 {
         return None;
     }
-    // A reference that does not resolve (dangling in a partial export) is
-    // skipped, as `symbolic::color` skips it. A `?` here used to return
-    // `None` for the whole styled item, so the style index had no entry for
-    // a fill whose 2D view found the colour.
+    // An unresolved reference (dangling in a partial export) is skipped, as
+    // `symbolic::color` skips it, never fatal for the whole styled item.
     for style_ref in refs {
         let Ok(style) = decoder.decode_by_id(style_ref) else { continue };
         if decoder.get_raw_bytes(style.id).and_then(|raw| {

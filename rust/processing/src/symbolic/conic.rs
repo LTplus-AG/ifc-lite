@@ -3,10 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! The one reader of an `IfcConic` (`IfcCircle` / `IfcEllipse`) for the 2D
-//! symbolic path. `items.rs` (circle, ellipse), `fill.rs` (boundary rings and
-//! their elevation) and `trimmed_curve.rs` (arcs) read the placement, the
-//! semi-axes and the parameterisation through here, so they cannot drift
-//! apart again.
+//! symbolic path: placement, semi-axes and parameterisation.
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 

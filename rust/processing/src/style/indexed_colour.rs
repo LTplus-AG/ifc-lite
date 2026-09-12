@@ -48,13 +48,9 @@ impl FullIndexedColourMap {
     /// The most-frequently-referenced colour (single-colour maps return their
     /// only colour). Used to fill the element style index.
     ///
-    /// A tie goes to the LOWEST palette index. It used to fall to
-    /// `FxHashMap` iteration order, which depends on the hasher's
-    /// pointer-width constants and not on the file: this runs in the shared
-    /// prepass on the server (64-bit) and in the browser (wasm32), so the two
-    /// could seed the element style index with different colours for one
-    /// file. The sort key is now entirely data, so map order cannot reach
-    /// the result.
+    /// A tie goes to the LOWEST palette index, so the result never depends on
+    /// `FxHashMap` order, which differs between 64-bit (server) and wasm32
+    /// (browser) builds.
     pub fn dominant(&self) -> Rgba {
         let mut counts: rustc_hash::FxHashMap<usize, u32> = rustc_hash::FxHashMap::default();
         for &p in &self.triangle_palette {

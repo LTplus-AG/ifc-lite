@@ -46,7 +46,7 @@ pub(super) fn extract_trimmed_curve(
     // ellipse items use, so a dangling or absent `Position` gives the arc an
     // unresolved elevation (`null`), not a finite 0.0.
     let Some(circle) = Conic::read(&basis_curve, decoder, unit_scale) else { return };
-    let (basis, radius) = (circle.basis, circle.semi_a);
+    let (basis, radius) = (&circle.basis, circle.semi_a);
     let world_y = rebase.elevation(basis.tz + transform.tz);
 
     let angle_scale = decoder.plane_angle_to_radians() as f32;
@@ -58,7 +58,7 @@ pub(super) fn extract_trimmed_curve(
     let raw_trim1 = resolve_trim(
         item.get(1),
         decoder,
-        &basis,
+        basis,
         unit_scale,
         angle_scale,
         prefer_cartesian,
@@ -66,7 +66,7 @@ pub(super) fn extract_trimmed_curve(
     let raw_trim2 = resolve_trim(
         item.get(2),
         decoder,
-        &basis,
+        basis,
         unit_scale,
         angle_scale,
         prefer_cartesian,
@@ -90,34 +90,22 @@ pub(super) fn extract_trimmed_curve(
         return;
     }
 
-    let point_at = |angle: f32| circle.point_at(angle);
-    let (start_x, start_y) = point_at(start_angle);
-    let (end_x, end_y) = point_at(end_angle);
+    let (start_x, start_y) = circle.point_at(start_angle);
+    let (end_x, end_y) = circle.point_at(end_angle);
     let chord_dx = end_x - start_x;
     let chord_dy = end_y - start_y;
     let chord_len = (chord_dx * chord_dx + chord_dy * chord_dy).sqrt();
-    // A sweep of at least a half turn passes through two diametrically
-    // opposite points, so it is never a straight segment whatever its
-    // chord: a full turn (or several) has chord ~ 0 by construction, and a
-    // NEAR-full turn has a short but non-zero chord. Only a sweep under a
-    // half turn can be near-collinear, and for those the sagitta test
-    // decides: sagitta/chord = tan(sweep/4)/2, which is under 0.02 for a
-    // sweep below 0.16 rad.
-    //
-    // Two predicates used to sit here instead: an `is_full_turn` window of
-    // 0.02 rad around k*TAU, and `radius > chord_len * 10.0` alongside the
-    // sagitta term. The latter is |sin(sweep/2)| < 0.05, true within 0.1 rad
-    // of EVERY k*TAU, five times wider than the window meant to exclude it,
-    // so a 355 degree arc (sweep = TAU - 0.087) was emitted as a 0.09r
-    // straight chord and a 362 degree one likewise. On the k = 0 side the
-    // radius term accepted nothing the sagitta test did not already accept,
-    // so both are replaced by the half-turn bound rather than re-tuned.
+    // A sweep of at least a half turn passes through two opposite points, so
+    // it is never a straight segment whatever its chord (a near-full turn has
+    // a short one). Under a half turn the sagitta test decides:
+    // sagitta/chord = tan(sweep/4)/2, under 0.02 below 0.16 rad. A former
+    // `radius > chord_len * 10.0` term flattened 355 degree arcs (G2).
     let angle_span = (end_angle - start_angle).abs();
     let is_near_collinear = if angle_span >= std::f32::consts::PI {
         false
     } else if chord_len > 0.0001 {
         let mid_angle = (start_angle + end_angle) / 2.0;
-        let (mid_x, mid_y) = point_at(mid_angle);
+        let (mid_x, mid_y) = circle.point_at(mid_angle);
         let sagitta = ((end_y - start_y) * mid_x - (end_x - start_x) * mid_y
             + end_x * start_y
             - end_y * start_x)
@@ -158,7 +146,7 @@ pub(super) fn extract_trimmed_curve(
         for i in 0..=num_segments {
             let t = i as f32 / num_segments as f32;
             let angle = start_angle + t * (end_angle - start_angle);
-            let (local_x, local_y) = point_at(angle);
+            let (local_x, local_y) = circle.point_at(angle);
             let (wx, wy) = transform.transform_point(local_x, local_y);
             let (x, y) = rebase.plan(wx, wy);
             push_finite_point(&mut points, x, y);

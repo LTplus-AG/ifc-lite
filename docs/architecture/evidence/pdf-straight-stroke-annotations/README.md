@@ -35,8 +35,11 @@ TSX_TSCONFIG_PATH=apps/viewer/tsconfig.json node --import tsx --import ./apps/vi
 python tools/texture-authoring/pdf-stroke-oracle.py /tmp/stroke-proof /tmp/strokes.pdf
 ```
 
-The solid-stroke scope deliberately refuses hairlines, dash patterns, curved
-strokes, degenerate/reversing segments, offset collapse,
+The stroke scope deliberately refuses hairlines, closed, curved and
+zero-containing dash forms, curved strokes, degenerate/reversing segments,
+offset collapse,
 and offset-boundary self-contact/intersection. It does not repair a complex
 stroke arrangement or silently omit unsupported paint. Output is visual filled
 geometry, not editable centreline stroke semantics or preserved PDF text.
+Positive dash patterns on open straight subpaths are covered by the separate
+[decode, export and independent-reader evidence](../pdf-dashed-stroke-annotations/README.md).

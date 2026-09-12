@@ -158,6 +158,94 @@ fn issue_4406_combined_fill_stroke_retains_stroke_over_fill_and_closed_hole() {
     assert!((green - 32.).abs() < 0.0001);
     assert_eq!(result.regions.len(), 2);
 }
+
+#[test]
+fn issue_4406_combined_fill_and_qualified_open_dash_plan_together() {
+    let (source, mut request) = stroke(
+        vec![0., 0., 0., 1., 20., 0., 1., 10., 20.],
+        0,
+        0,
+        10.,
+        [1., 0., 0., 1., 0., 0.],
+    );
+    request.page.operations.insert(
+        5,
+        PdfVectorOperation {
+            ordinal: 5,
+            operation: PdfVectorOperator::Dash {
+                lengths: vec![100., 1.],
+                phase: -1.,
+            },
+        },
+    );
+    request.page.operations[6].ordinal = 6;
+    if let PdfVectorOperator::Path { paint, .. } = &mut request.page.operations[6].operation {
+        *paint = PdfVectorPaint::FillStroke;
+    }
+    let result = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
+    assert!(result.fidelity.exact);
+    assert!(result.regions.iter().all(|region| region.source_operator_ordinal == 6));
+    assert!(result.regions.iter().any(|region| region.rgb == [0., 0., 0.]));
+    assert!(result.regions.iter().any(|region| region.rgb == [0., 1., 0.]));
+}
+
+#[test]
+fn issue_4406_combined_fill_and_multiple_dash_runs_refuse_atomically() {
+    let (source, mut request) = stroke(
+        vec![0., 0., 0., 1., 20., 0., 1., 10., 20.],
+        0,
+        0,
+        10.,
+        [1., 0., 0., 1., 0., 0.],
+    );
+    request.page.operations.insert(
+        5,
+        PdfVectorOperation {
+            ordinal: 5,
+            operation: PdfVectorOperator::Dash {
+                lengths: vec![3., 2.],
+                phase: 0.,
+            },
+        },
+    );
+    request.page.operations[6].ordinal = 6;
+    if let PdfVectorOperator::Path { paint, .. } = &mut request.page.operations[6].operation {
+        *paint = PdfVectorPaint::FillStroke;
+    }
+    let error = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap_err();
+    assert!(error.contains("multiple crossings on one edge"), "{error}");
+}
+
+#[test]
+fn issue_4406_fully_off_dash_keeps_the_combined_fill() {
+    let (source, mut request) = stroke(
+        vec![0., 0., 0., 1., 1., 0., 1., 0.5, 1.],
+        0,
+        0,
+        10.,
+        [1., 0., 0., 1., 0., 0.],
+    );
+    request.page.operations.insert(
+        5,
+        PdfVectorOperation {
+            ordinal: 5,
+            operation: PdfVectorOperator::Dash {
+                lengths: vec![1., 100.],
+                phase: 2.,
+            },
+        },
+    );
+    request.page.operations[6].ordinal = 6;
+    if let PdfVectorOperator::Path { paint, .. } = &mut request.page.operations[6].operation {
+        *paint = PdfVectorPaint::FillStroke;
+    }
+    let result = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
+    assert!(result.fidelity.exact);
+    assert!(!result.regions.is_empty());
+    assert!(result.regions.iter().all(|region| {
+        region.source_operator_ordinal == 6 && region.rgb == [0., 0., 0.]
+    }));
+}
 #[test]
 fn issue_4406_unsupported_strokes_are_omissions_that_need_acceptance_and_never_convert() {
     let (source, request) = stroke(
@@ -171,7 +259,7 @@ fn issue_4406_unsupported_strokes_are_omissions_that_need_acceptance_and_never_c
         (PdfVectorOperator::LineWidth { width: 0. }, "hairline"),
         (
             PdfVectorOperator::Dash {
-                lengths: vec![1., 1.],
+                lengths: vec![1., 0.],
                 phase: 0.,
             },
             "dash",
@@ -197,6 +285,93 @@ fn issue_4406_unsupported_strokes_are_omissions_that_need_acceptance_and_never_c
         assert!(error.contains("no convertible vector paths"), "{error}");
     }
 }
+
+#[test]
+fn issue_4406_open_straight_dashes_plan_reopen_and_preserve_cap_area_after_affine() {
+    for (cap, construction_area, area_error) in [
+        (0, 8., 0.0001),
+        (1, 8. + 2. * std::f64::consts::PI, 0.2),
+        (2, 16., 0.0001),
+    ] {
+        let matrix = [2., 0.2, 0.5, 0.8, 3., 4.];
+        let (source, mut request) = stroke(
+            vec![0., 0., 0., 1., 10., 0.], cap, 0, 10., matrix,
+        );
+        request.page.operations.insert(5, PdfVectorOperation {
+            ordinal: 5,
+            operation: PdfVectorOperator::Dash { lengths: vec![2., 4.], phase: 0. },
+        });
+        request.page.operations[6].ordinal = 6;
+        if cap == 1 {
+            request.page.tolerance_metres = 0.01;
+        }
+        let result = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
+        assert!(result.fidelity.exact, "a qualified dash is no longer an omission");
+        assert!(result.fidelity.summary.iter().all(|entry| entry.kind != "dash"));
+        let determinant: f64 = matrix[0] * matrix[3] - matrix[1] * matrix[2];
+        let expected = construction_area * determinant.abs();
+        assert!((result.meshes.iter().map(area).sum::<f64>() - expected).abs() < area_error);
+        assert!(result.regions.iter().all(|region| region.source_operator_ordinal == 6));
+        let reopened = crate::process_geometry(apply(&source, &result.plan).as_bytes());
+        let area_after_reopen: f64 = reopened.meshes.iter()
+            .filter(|mesh| mesh.express_id == result.annotation_id)
+            .map(area)
+            .sum();
+        assert!((area_after_reopen - expected).abs() < area_error);
+    }
+}
+
+#[test]
+fn issue_4406_dash_phase_odd_pattern_subpath_reset_and_corner_continuity_plan_together() {
+    let matrix = [-1., 0.3, 0.4, 1.7, -2., 5.];
+    let plan_areas = |commands| {
+        let (source, mut request) = stroke(commands, 0, 1, 10., matrix);
+        request.page.operations.insert(5, PdfVectorOperation {
+            ordinal: 5,
+            operation: PdfVectorOperator::Dash { lengths: vec![5., 2., 3.], phase: -7. },
+        });
+        request.page.operations[6].ordinal = 6;
+        let result = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
+        assert!(result.fidelity.exact);
+        assert!(result.geometry_work <= 4_000_000);
+        let mut areas: Vec<_> = result.meshes.iter().map(area).collect();
+        areas.sort_by(f64::total_cmp);
+        areas
+    };
+    let single = plan_areas(vec![0., 0., 0., 1., 6., 0., 1., 6., 4.]);
+    let combined = plan_areas(vec![
+        0., 0., 0., 1., 6., 0., 1., 6., 4.,
+        0., 0., 10., 1., 6., 10., 1., 6., 14.,
+    ]);
+    let mut expected = [single.as_slice(), single.as_slice()].concat();
+    expected.sort_by(f64::total_cmp);
+    assert_eq!(combined.len(), expected.len());
+    for (actual, expected) in combined.iter().zip(expected) {
+        assert!((actual - expected).abs() < 1e-6, "subpath reset area {actual} != {expected}");
+    }
+}
+
+#[test]
+fn issue_4406_dash_boundary_uses_caps_while_an_on_run_crossing_a_vertex_uses_the_join() {
+    let commands = vec![0., 0., 0., 1., 3., 0., 1., 3., 4.];
+    let mut areas = Vec::new();
+    for pattern in [vec![3., 2.], vec![5., 2.]] {
+        let (source, mut request) = stroke(
+            commands.clone(), 2, 0, 10., [1., 0., 0., 1., 0., 0.],
+        );
+        request.page.operations.insert(5, PdfVectorOperation {
+            ordinal: 5,
+            operation: PdfVectorOperator::Dash { lengths: pattern, phase: 0. },
+        });
+        request.page.operations[6].ordinal = 6;
+        let result = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
+        assert!(result.fidelity.exact);
+        areas.push(result.meshes.iter().map(area).sum::<f64>());
+    }
+    assert!((areas[0] - 18.).abs() < 0.0001, "two separated runs receive four square caps: {areas:?}");
+    assert!((areas[1] - 14.).abs() < 0.0001, "one run crossing the vertex receives one join and two caps: {areas:?}");
+}
+
 #[test]
 fn issue_4406_strokes_refuse_collapsed_offsets_reversals_crossings_and_exhaustion() {
     for commands in [

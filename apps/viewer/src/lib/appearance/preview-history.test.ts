@@ -55,3 +55,37 @@ it('history reverses only the recorded occurrence item remap (#4404)', () => {
   assert.throws(() => appearanceHistoryParts(f.renderer(after), [{ ...change, geometryItemRemaps: [] }], 'undo'), /topology/);
   assert.throws(() => appearanceHistoryParts(f.renderer({ ...after, geometryItemId: 99 }), [change], 'undo'), /geometry/);
 });
+
+// #4404: a face-masked owner is recorded as a partition. Undo joins the
+// textured and retained parts back into the one original through the inverted
+// record; Redo splits again. Either direction refuses a changed resident part.
+it('history joins and splits a partitioned owner through the inverted partition (#4404)', () => {
+  const indices = new Uint32Array([0, 1, 2, 0, 2, 3]);
+  const original: MeshData = { expressId: 19, geometryItemId: 21, modelIndex: 0, color: [0.8, 0.2, 0.1, 1],
+    positions: new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0]), normals: new Float32Array(12).map((_, i) => i % 3 === 2 ? 1 : 0),
+    indices, appearanceSource: { kind: 'canonical-item', indices, sourceIndices: indices } };
+  const texturedIndices = new Uint32Array([0, 1, 2]), retainedIndices = new Uint32Array([0, 2, 3]);
+  const textured: MeshData = { ...original, geometryItemId: 101, color: [1, 1, 1, 1], indices: texturedIndices,
+    positions: new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    uvs: new Float32Array([0, 0, 1, 0, 1, 1]), textureRef: { textureId: -1, url: 'textures/a.png', repeatS: true, repeatT: true },
+    textureBitmap: {} as ImageBitmap, appearanceSource: { kind: 'canonical-item', indices: texturedIndices, sourceIndices: texturedIndices } };
+  const retained: MeshData = { ...original, geometryItemId: 102, indices: retainedIndices,
+    appearanceSource: { kind: 'canonical-item', indices: retainedIndices, sourceIndices: retainedIndices } };
+  const partition = { before: [{ geometryItemId: 21, triangles: [0, 1] }], after: [{ geometryItemId: 101, triangles: [0] }, { geometryItemId: 102, triangles: [1] }] };
+  const change: AppearanceChange = { owner: { expressId: 19, modelIndex: 0 }, before: [original], after: [textured, retained], partition };
+  const renderer = (current: MeshData[]) => ({ getScene: () => ({ getMeshDataPieces: () => current }), getAppearancePreview: () => ({}) }) as unknown as Renderer;
+  const undo = appearanceHistoryParts(renderer([textured, retained]), [change], 'undo')[0];
+  assert.deepEqual(undo.parts.map(part => part.geometryItemId), [21]);
+  assert.equal(undo.parts[0].positions, original.positions);
+  assert.deepEqual(undo.partition, { before: partition.after, after: partition.before });
+  assert.equal(undo.geometryItemRemaps, undefined);
+  const redo = appearanceHistoryParts(renderer([original]), [change], 'redo')[0];
+  assert.deepEqual(redo.parts.map(part => part.geometryItemId), [101, 102]);
+  assert.equal(redo.parts[0].textureBitmap, textured.textureBitmap);
+  assert.deepEqual(redo.partition, partition);
+  assert.throws(() => appearanceHistoryParts(renderer([textured]), [change], 'undo'), /geometry or shading changed/);
+  assert.throws(() => appearanceHistoryParts(renderer([retained, textured]), [change], 'undo'), /geometry or shading changed/);
+  const moved = { ...retained, positions: retained.positions.slice() }; moved.positions[0] = 0.25;
+  assert.throws(() => appearanceHistoryParts(renderer([textured, moved]), [change], 'undo'), /geometry or shading changed/);
+  assert.throws(() => appearanceHistoryParts(renderer([textured, retained]), [change], 'redo'), /geometry or shading changed/);
+});

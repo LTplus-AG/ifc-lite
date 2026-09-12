@@ -122,7 +122,8 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
           try {
             const size = await imageSize(dataUrl);
             snapshotAspect = size.w > 0 && size.h > 0 ? size.w / size.h : 4 / 3;
-          } catch {
+          } catch (err) {
+            console.warn(`[Documents] viewpoint snapshot of "${topic.title}" could not be measured; printed 4:3`, err);
             snapshotAspect = 4 / 3;
           }
         }

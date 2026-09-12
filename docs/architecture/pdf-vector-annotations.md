@@ -329,8 +329,8 @@ produces visual filled vector geometry, not editable centreline/text semantics.
 Original-PDF raster and independent IFC evidence lives in
 [the solid-stroke evidence](evidence/pdf-straight-stroke-annotations/README.md)
 and [the dashed-stroke evidence](evidence/pdf-dashed-stroke-annotations/README.md).
-Closed-path decoder, export and independent-reader evidence lives in
-[the closed-dash evidence](evidence/pdf-closed-dash-annotations/README.md).
+Closed-path decoder, export and independent-reader evidence is tracked in
+[the closed-dash evidence PR](https://github.com/LTplus-AG/ifc-lite/pull/4596).
 
 ## One lattice for the complete page
 

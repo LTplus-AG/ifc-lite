@@ -41,25 +41,9 @@ use crate::parser::lexical::{skip_step_comment, skip_step_trivia};
 /// container exceptionally carries geometry (#1910), companion to
 /// `is_representationless_spatial_container_by_name`.
 pub fn nth_attribute_is_present(record: &[u8], index: usize) -> bool {
-    // Reach the '(' that opens the argument list. Only the `#id = TYPE` head
-    // and trivia precede it, so each non-trivia byte is stepped over; a
-    // comment is consumed as a region so a '(' inside it does not open the
-    // list early.
-    let mut pos = 0;
-    loop {
-        pos = match skip_step_trivia(record, pos) {
-            Some(p) => p,
-            None => return false,
-        };
-        match record.get(pos) {
-            None => return false,
-            Some(b'(') => {
-                pos += 1;
-                break;
-            }
-            Some(_) => pos += 1,
-        }
-    }
+    let Some(mut pos) = argument_list_start(record) else {
+        return false;
+    };
 
     // A null or empty slot answers at once; a slot with a value still needs
     // the list to close, since an unclosed record settles nothing.
@@ -119,6 +103,21 @@ pub fn nth_attribute_is_present(record: &[u8], index: usize) -> bool {
         }
     }
     false
+}
+
+/// The index just past the `(` that opens a record's argument list. Only the
+/// `#id = TYPE` head and trivia precede it, so each non-trivia byte is stepped
+/// over and a comment is consumed as a region: a `(` inside one does not open
+/// the list. `None` when the list never opens or a comment never closes.
+pub(crate) fn argument_list_start(record: &[u8]) -> Option<usize> {
+    let mut pos = 0;
+    loop {
+        pos = skip_step_trivia(record, pos)?;
+        match record.get(pos)? {
+            b'(' => return Some(pos + 1),
+            _ => pos += 1,
+        }
+    }
 }
 
 /// Whether the slot starting at `pos` holds a value: skip trivia, then look

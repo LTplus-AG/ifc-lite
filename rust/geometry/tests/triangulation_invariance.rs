@@ -229,6 +229,15 @@ fn set_alt(on: bool) {
 #[cfg(not(feature = "triangulation-alt"))]
 fn set_alt(_on: bool) {}
 
+/// Restore the process-wide triangulator switch even when an assertion panics.
+struct AltTriangulatorReset;
+
+impl Drop for AltTriangulatorReset {
+    fn drop(&mut self) {
+        set_alt(false);
+    }
+}
+
 fn void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
     let mut idx: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     let mut scanner = EntityScanner::new(content);
@@ -1410,6 +1419,8 @@ fn watertightness_census_and_triangulator_invariance() {
 /// must reject that candidate and preserve the full-context exact result.
 #[test]
 fn issue_129_mixed_bool2d_residual_keeps_the_less_torn_result() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
     let rel = "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc".to_string();
     let path = crate_dir().join("../..").join("tests/models").join(&rel);
     let Ok(content) = std::fs::read_to_string(&path) else {
@@ -1431,7 +1442,6 @@ fn issue_129_mixed_bool2d_residual_keeps_the_less_torn_result() {
             }
         }
     }
-    set_alt(false);
 }
 
 /// A unit cube as 8 welded vertices and 12 consistently wound triangles.

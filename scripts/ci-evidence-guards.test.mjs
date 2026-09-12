@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -58,8 +58,13 @@ test('wheel guard requires the exact matrix and one wheel per artifact', (contex
   }
   prepareWheelMatrix(root);
   assert.equal(readdirSync(join(dist, 'publish')).length, EXPECTED_WHEEL_ARTIFACTS.length);
+  assert.throws(() => prepareWheelMatrix(root), /must start empty/);
+  rmSync(join(dist, 'publish'), { recursive: true });
+  const firstName = 'wheel-0.whl';
+  renameSync(join(dist, EXPECTED_WHEEL_ARTIFACTS[1], 'wheel-1.whl'), join(dist, EXPECTED_WHEEL_ARTIFACTS[1], firstName));
+  assert.throws(() => prepareWheelMatrix(root), /duplicate output filenames/);
+  renameSync(join(dist, EXPECTED_WHEEL_ARTIFACTS[1], firstName), join(dist, EXPECTED_WHEEL_ARTIFACTS[1], 'wheel-1.whl'));
   const first = join(dist, EXPECTED_WHEEL_ARTIFACTS[0]);
   writeFileSync(join(first, 'duplicate.whl'), 'wheel');
   assert.throws(() => prepareWheelMatrix(root), /exactly one wheel/);
-  assert.equal(existsSync(join(dist, 'publish', 'wheel-0.whl')), true);
 });

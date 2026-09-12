@@ -1283,3 +1283,208 @@
             );
         }
     }
+
+    // ───────────── removal edits: termination and cycle re-homing ─────────────
+
+    /// Every live half-edge must be reachable from the anchor of the face it is
+    /// tagged with. A face whose boundary has silently become two cycles fails
+    /// this for the cycle the anchor does not sit on.
+    fn assert_face_walks_cover_every_half_edge(plate: &SpacePlate) {
+        for (i, he) in plate.half_edges.iter().enumerate() {
+            if !he.alive {
+                continue;
+            }
+            let h = HalfEdgeId(i as u32);
+            assert!(
+                plate.face_half_edges(he.face).any(|x| x == h),
+                "half-edge {i} is tagged face {:?} but that face's walk never reaches it",
+                he.face,
+            );
+        }
+    }
+
+    /// The outgoing half-edge of `from` whose destination is `to`.
+    fn edge_between(plate: &SpacePlate, from: VertexId, to: VertexId) -> HalfEdgeId {
+        plate.outgoing_half_edges(from).find(|&h| plate.dest(h) == to).expect("edge between the two vertices")
+    }
+
+    /// Split the shared partition of `two_room_plate` into P-M-N-Q, merge the
+    /// rooms across P-M (which leaves M a degree-1 tip and N-Q a bridge inside
+    /// the merged room), then remove the non-tip bridge N-Q.
+    ///
+    /// Without the fix this HANGS rather than failing: the bridge splice left
+    /// M-N as a 2-cycle still tagged with the room, `remove_spur_edge` refused
+    /// it because a lone stick "cannot bound a room", and Phase A of
+    /// `prune_orphans` had no exit other than "no degree-1 vertices left". The
+    /// failure mode is therefore a CI lane timeout, not an assertion, which is
+    /// how the repo's other termination tests read too.
+    #[test]
+    fn remove_edge_on_a_non_tip_bridge_after_a_merge_terminates_and_cleans_up() {
+        let mut plate = two_room_plate();
+        let p = plate.find_vertex([4.0, 0.0]);
+        let q = plate.find_vertex([4.0, 3.0]);
+        let m = plate.split_edge(edge_between(&plate, p, q), 4.0, 1.0).expect("split at M");
+        let n = plate.split_edge(edge_between(&plate, m, q), 4.0, 2.0).expect("split at N");
+        plate.remove_edge(edge_between(&plate, p, m)).expect("merge the rooms across P-M");
+        assert_eq!(plate.room_count(), 1, "P-M separated two rooms, so removing it merges them");
+        assert_eq!(plate.vertex_degree(m), 1, "M is left dangling by the merge");
+
+        let patches = plate.remove_edge(edge_between(&plate, n, q)).expect("remove the bridge N-Q");
+        assert_eq!(plate.room_count(), 1, "the merged room survives");
+        assert_eq!(patches.len(), 1);
+        assert!((patches[0].area - 24.0).abs() < 1e-6, "full box: {}", patches[0].area);
+        let room = plate.rooms().next().unwrap();
+        assert_eq!(plate.face_outline(room).len(), 4, "stick pruned, P and Q dissolved as collinear");
+        assert_eq!(plate.vertex_position(m), None, "M tombstoned");
+        assert_eq!(plate.vertex_position(n), None, "N tombstoned");
+        assert_eq!(live_vertex_count(&plate), 4, "only the four box corners remain");
+        assert_face_walks_cover_every_half_edge(&plate);
+    }
+
+    /// Phase A's own exit guard, pinned directly: a degree-1 tip that
+    /// `remove_spur_edge` refuses (here: its twin is mis-tagged with another
+    /// face, so the peninsula check fails) must not spin the sweep forever.
+    /// The lone-stick change above means the edit path no longer produces such
+    /// a tip, so this corrupts one tag by hand to reach the guard. Without the
+    /// guard this hangs (CI timeout), it does not assert.
+    #[test]
+    fn prune_orphans_terminates_when_a_tip_refuses_removal() {
+        let mut plate = spur_plate_unpruned();
+        let tip = plate.find_vertex([6.0, 1.5]);
+        let s = plate.outgoing_half_edges(tip).next().expect("spur half-edge");
+        let t = plate.half_edges[s.0 as usize].twin;
+        let other_face = (0..plate.faces.len())
+            .map(|i| FaceId(i as u32))
+            .find(|&f| f != plate.half_edges[s.0 as usize].face)
+            .expect("a second face");
+        plate.half_edges[t.0 as usize].face = other_face;
+        assert_eq!(plate.remove_spur_edge(s), Err(EditError::StaleHandle), "the tip is refused");
+        let removed = plate.prune_orphans();
+        assert_eq!(plate.vertex_degree(tip), 1, "the refused tip is still there");
+        assert_eq!(removed, 0, "nothing else to prune: {removed}");
+    }
+
+    /// A bridge that is NOT a spur tip: a 2x2 column loop inside an 8x6 room,
+    /// tied to the right wall by one wall. Removing the tie splits the room's
+    /// boundary into the outer rectangle and the column's outside; the second
+    /// cycle must get its own (outer) face rather than staying tagged with the
+    /// room, where no walk from the room's anchor could reach it.
+    #[test]
+    fn remove_edge_on_a_bridge_to_an_island_gives_the_island_cycle_its_own_face() {
+        let mut segs = loop_segments(&rect(0.0, 0.0, 8.0, 6.0), 100);
+        segs.extend(loop_segments(&rect(3.0, 2.0, 5.0, 4.0), 200));
+        segs.push(InputSegment::new([5.0, 3.0], [8.0, 3.0], Some(300)));
+        let mut plate = SpacePlate::build(&segs, BuildOptions::default());
+        assert_eq!(plate.room_count(), 2, "the big room and the column interior");
+        let big = plate.rooms().max_by(|a, b| plate.face_area(*a).total_cmp(&plate.face_area(*b))).unwrap();
+        assert!((plate.face_area(big) - 44.0).abs() < 1e-6, "48 minus the 4 m² column: {}", plate.face_area(big));
+        let column = plate.rooms().find(|&f| f != big).unwrap();
+        let tie = edge_between(&plate, plate.find_vertex([5.0, 3.0]), plate.find_vertex([8.0, 3.0]));
+        assert_eq!(plate.neighbor_across(tie), Some(plate.half_edges[tie.0 as usize].face), "the tie is a bridge");
+
+        let patches = plate.remove_edge(tie).expect("remove the tie");
+        assert_eq!(patches.len(), 1);
+        assert_eq!(patches[0].face, big, "the room keeps its id");
+        assert!((patches[0].area - 48.0).abs() < 1e-6, "the room is the whole box now: {}", patches[0].area);
+        assert_eq!(plate.face_outline(big).len(), 4, "the tie's ends were dissolved as collinear");
+        assert_eq!(plate.room_count(), 2, "the column interior is still a room");
+        assert!((plate.face_area(column) - 4.0).abs() < 1e-6);
+        for h in plate.face_half_edges(column) {
+            let outside = plate.neighbor_across(h).expect("live");
+            assert_ne!(outside, big, "the column's outside is no longer tagged with the room");
+            assert!(plate.faces[outside.0 as usize].is_outer, "a cut-off CW cycle is an outer face");
+        }
+        assert_face_walks_cover_every_half_edge(&plate);
+    }
+
+    /// A 200 mm wall continuing in line as a 150 mm one: the node between them
+    /// is where the thickness changes, so neither the build-time collinear
+    /// sweep nor a user dissolve may weld the two into one edge (the welded
+    /// edge carries ONE `half_thickness` for both twins).
+    #[test]
+    fn dissolve_refuses_a_collinear_node_where_the_wall_thickness_changes() {
+        let segs = vec![
+            InputSegment::new([0.0, 0.0], [4.0, 0.0], Some(1)).with_half_thickness(0.100),
+            InputSegment::new([4.0, 0.0], [8.0, 0.0], Some(2)).with_half_thickness(0.075),
+            InputSegment::new([8.0, 0.0], [8.0, 3.0], Some(3)).with_half_thickness(0.100),
+            InputSegment::new([8.0, 3.0], [0.0, 3.0], Some(4)).with_half_thickness(0.100),
+            InputSegment::new([0.0, 3.0], [0.0, 0.0], Some(5)).with_half_thickness(0.100),
+        ];
+        let mut plate = SpacePlate::build(&segs, BuildOptions::default());
+        assert_eq!(plate.room_count(), 1);
+        let room = plate.rooms().next().unwrap();
+        assert_eq!(plate.face_outline(room).len(), 5, "build keeps the thickness-change node");
+        let node = plate.find_vertex([4.0, 0.0]);
+        assert_eq!(plate.vertex_degree(node), 2);
+        assert_eq!(plate.dissolve_vertex(node), Err(EditError::VertexNotDissolvable));
+        // The net inset still reads each run's own thickness: the bottom edge
+        // sits at y = 0.100 under the thick run and y = 0.075 under the thin one.
+        let net = plate.net_outline(room, true);
+        let y_at = |x: f64| {
+            net.iter().filter(|p| (p[0] - x).abs() < 1.5).map(|p| p[1]).fold(f64::INFINITY, f64::min)
+        };
+        assert!((y_at(0.5) - 0.100).abs() < 1e-9, "thick run inset: {}", y_at(0.5));
+        assert!((y_at(7.5) - 0.075).abs() < 1e-9, "thin run inset: {}", y_at(7.5));
+        // The same node with EQUAL thickness on both sides dissolves as before.
+        let uniform: Vec<InputSegment> = segs.iter().map(|s| s.with_half_thickness(0.1)).collect();
+        let plate = SpacePlate::build(&uniform, BuildOptions::default());
+        assert_eq!(plate.face_outline(plate.rooms().next().unwrap()).len(), 4, "uniform run is dissolved at build");
+    }
+
+    /// `gap_boundary`'s fallback is the un-offset net ring, which has exactly
+    /// as many points as the face cycle, so the axis lift in
+    /// `build_from_wall_rects` could not tell a failed offset from a real one
+    /// and consumed the net ring as the wall axis. A 1 m² gap walled by 6 m
+    /// thick rectangles trips the runaway guard (7x7 = 49 > 4·1 + 25); it must
+    /// be skipped, leaving only the ordinary room that lifted cleanly.
+    #[test]
+    fn axis_lift_skips_a_gap_whose_offset_failed_instead_of_lifting_the_net_ring() {
+        let dx = 30.0;
+        let mut rects: Vec<[[f64; 2]; 4]> = vec![
+            [[dx - 0.1, -0.1], [dx + 4.1, -0.1], [dx + 4.1, 0.1], [dx - 0.1, 0.1]],
+            [[dx - 0.1, 2.9], [dx + 4.1, 2.9], [dx + 4.1, 3.1], [dx - 0.1, 3.1]],
+            [[dx - 0.1, -0.1], [dx + 0.1, -0.1], [dx + 0.1, 3.1], [dx - 0.1, 3.1]],
+            [[dx + 3.9, -0.1], [dx + 4.1, -0.1], [dx + 4.1, 3.1], [dx + 3.9, 3.1]],
+        ];
+        // A 1x1 gap at [0,1]x[0,1] boxed by four 6 m thick walls.
+        let thick: [[[f64; 2]; 4]; 4] = [
+            [[-6.0, -6.0], [7.0, -6.0], [7.0, 0.0], [-6.0, 0.0]],
+            [[-6.0, 1.0], [7.0, 1.0], [7.0, 7.0], [-6.0, 7.0]],
+            [[-6.0, -6.0], [0.0, -6.0], [0.0, 7.0], [-6.0, 7.0]],
+            [[1.0, -6.0], [7.0, -6.0], [7.0, 7.0], [1.0, 7.0]],
+        ];
+        rects.extend(thick);
+        // Stage 1 does see the small gap as a room; its offset is what fails.
+        let mut thick_edges = Vec::new();
+        for (wi, r) in thick.iter().enumerate() {
+            for i in 0..4 {
+                thick_edges.push(InputSegment::new(r[i], r[(i + 1) % 4], Some(wi as u32)).with_half_thickness(3.0));
+            }
+        }
+        let gap_only = SpacePlate::from_arrangement(Arrangement::resolve(&thick_edges, 0.1), 0.5);
+        let small = (0..gap_only.faces.len())
+            .map(|i| FaceId(i as u32))
+            .find(|&f| !gap_only.faces[f.0 as usize].is_outer && (gap_only.face_area(f) - 1.0).abs() < 1e-6)
+            .expect("the 1 m² gap face exists");
+        assert_eq!(gap_only.try_gap_boundary(small, 1.0), None, "the runaway guard fires for this gap");
+
+        let plate = SpacePlate::build_from_wall_rects(&rects, BuildOptions::default());
+        let areas: Vec<f64> = plate.rooms().map(|f| plate.face_area(f)).collect();
+        assert_eq!(areas.len(), 1, "only the ordinary room lifts; got areas {areas:?}");
+        assert!((areas[0] - 12.0).abs() < 1e-6, "the ordinary room's axis outline: {}", areas[0]);
+    }
+
+    /// The bbox reject in `snap_corners` pads by 2·tol, not tol: the corner
+    /// `p` may be a full `tol` from the end AND a full `tol` from the other
+    /// wall's extent, in different directions. Here `e = (1,0)` is 0.15 from
+    /// the slanted wall's bbox with tol 0.1, and must still snap to (1.09, 0).
+    #[test]
+    fn corner_snap_reaches_a_corner_two_tolerances_from_the_other_walls_extent() {
+        let mut segs = vec![
+            InputSegment::new([0.0, 0.0], [1.0, 0.0], None),
+            InputSegment::new([1.15, 0.06], [2.15, 1.06], None), // line y = x - 1.09
+        ];
+        super::arrangement::snap_corners(&mut segs, 0.1);
+        let e = segs[0].b;
+        assert!((e[0] - 1.09).abs() < 1e-9 && e[1].abs() < 1e-9, "end must snap to (1.09, 0): {e:?}");
+    }

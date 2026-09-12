@@ -209,6 +209,15 @@ pub(super) fn snap_corners(segs: &mut [InputSegment], tol: f64) {
     let lines: Vec<([f64; 2], [f64; 2])> = segs.iter().map(|s| (s.a, s.b)).collect();
     let n = lines.len();
     let tol2 = tol * tol;
+    // A candidate corner `p` must lie within `tol` of the end `e` AND within
+    // `tol` of segment j's finite extent, so `e` is within 2·tol of j's bbox on
+    // each axis. Reject on that before the two-intersection arithmetic: the
+    // pass is all-pairs (16k segments at the wasm input ceiling), and this is
+    // the same bbox prune the crossing pass in `resolve` uses.
+    let bboxes: Vec<[f64; 4]> = lines
+        .iter()
+        .map(|(a, b)| [a[0].min(b[0]) - 2.0 * tol, a[1].min(b[1]) - 2.0 * tol, a[0].max(b[0]) + 2.0 * tol, a[1].max(b[1]) + 2.0 * tol])
+        .collect();
     for i in 0..n {
         for slot in 0..2 {
             let e = if slot == 0 { segs[i].a } else { segs[i].b };
@@ -216,6 +225,10 @@ pub(super) fn snap_corners(segs: &mut [InputSegment], tol: f64) {
             let mut best_d2 = tol2;
             for j in 0..n {
                 if i == j {
+                    continue;
+                }
+                let bb = bboxes[j];
+                if e[0] < bb[0] || e[0] > bb[2] || e[1] < bb[1] || e[1] > bb[3] {
                     continue;
                 }
                 let Some(p) = line_intersection(lines[i].0, lines[i].1, lines[j].0, lines[j].1) else {

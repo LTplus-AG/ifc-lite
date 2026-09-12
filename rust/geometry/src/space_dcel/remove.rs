@@ -6,7 +6,8 @@
 //! sweep that cleans up after them. Split out of `mod.rs` for the module-size
 //! ratchet; the construction, split/merge/dissolve edits and queries stay there.
 
-use super::{EditError, FacePatch, HalfEdgeId, SpacePlate, VertexId, EPS_COLL};
+use super::walk::FaceWalk;
+use super::{EditError, Face, FaceId, FacePatch, HalfEdgeId, SpacePlate, VertexId, EPS_COLL};
 use super::geom2d::perp_distance;
 
 impl SpacePlate {
@@ -53,19 +54,21 @@ impl SpacePlate {
         let b = self.half_edges[s.0 as usize].next; // starts at J
 
         if a == s {
-            // Lone stick: J is degree-1 too — the whole 2-vertex component is just
-            // this edge bounding one outer face. Tombstone the lot.
-            if !self.faces[f.0 as usize].is_outer {
-                return Err(EditError::StaleHandle); // a lone stick can't bound a room
-            }
+            // Lone stick: J is degree-1 too, so this 2-cycle bounds nothing.
+            // Fresh from `from_arrangement` it is the outer face of a 2-vertex
+            // component. It used to refuse a stick tagged with a room, which a
+            // bridge splice in `remove_edge` produced until `split_bridge_cycles`
+            // re-homed the cut-off cycle; that refusal left Phase A of
+            // `prune_orphans` with a tip it could never remove. Tombstone the
+            // stick whatever its face and let the face re-anchor on whatever
+            // else it still bounds, or die with it.
             self.half_edges[s.0 as usize].alive = false;
             self.half_edges[s_t.0 as usize].alive = false;
             self.vertices[tip.0 as usize].outgoing = None;
             self.vertices[tip.0 as usize].alive = false;
             self.vertices[j.0 as usize].outgoing = None;
             self.vertices[j.0 as usize].alive = false;
-            self.faces[f.0 as usize].alive = false;
-            self.faces[f.0 as usize].half_edge = None;
+            self.reanchor_face_if_dead(f);
             return Ok(());
         }
 
@@ -90,15 +93,15 @@ impl SpacePlate {
     /// Returns how many topology elements were pruned.
     pub fn prune_orphans(&mut self) -> usize {
         let mut removed = 0usize;
-        // Phase A — spur sweep to a fixpoint (chews whole chains).
+        // Phase A — spur sweep to a fixpoint (chews whole chains). A tip that
+        // `remove_spur_edge` refuses stays degree-1, so "no tips left" alone is
+        // not an exit: a sweep that removes nothing must break, as Phase C does.
         loop {
+            let mut progress = false;
             let tips: Vec<VertexId> = (0..self.vertices.len())
                 .map(|i| VertexId(i as u32))
                 .filter(|&v| self.vertex_degree(v) == 1)
                 .collect();
-            if tips.is_empty() {
-                break;
-            }
             for tip in tips {
                 if self.vertex_degree(tip) != 1 {
                     continue; // a sibling removal already changed it
@@ -107,8 +110,12 @@ impl SpacePlate {
                 if let Some(s) = s {
                     if self.remove_spur_edge(s).is_ok() {
                         removed += 1;
+                        progress = true;
                     }
                 }
+            }
+            if !progress {
+                break;
             }
         }
         // Phase B — drop leftover degree-0 (isolated) vertices.
@@ -153,7 +160,9 @@ impl SpacePlate {
     /// Remove the wall `edge`, choosing the right semantics from its two
     /// incident faces, and auto-clean the orphans it leaves:
     /// - room ↔ room → union the two rooms (`merge_faces`);
-    /// - bridge (same face both sides) or outer ↔ outer → delete it + `prune_orphans`;
+    /// - bridge (same face both sides) → delete it, give the cycle it cut off
+    ///   its own face (`split_bridge_cycles`), then `prune_orphans`;
+    /// - outer ↔ outer → delete it + `prune_orphans`;
     /// - room ↔ outer (a real enclosing wall) → `BordersExterior` (don't open a room).
     pub fn remove_edge(&mut self, edge: HalfEdgeId) -> Result<Vec<FacePatch>, EditError> {
         let hi = edge.0 as usize;
@@ -203,6 +212,9 @@ impl SpacePlate {
         // The face's anchor may have been one of the removed half-edges (esp. a
         // bridge / spur in the outer face) — re-point it at a survivor.
         self.reanchor_face_if_dead(f_keep);
+        if f_drop == f_keep {
+            self.split_bridge_cycles(f_keep, hn, tn);
+        }
 
         self.prune_orphans();
 
@@ -211,5 +223,45 @@ impl SpacePlate {
             out.push(self.face_patch(f_keep));
         }
         Ok(out)
+    }
+
+    /// After a bridge splice in `remove_edge`, the face's one cycle
+    /// `h, hn, …, tp, t, tn, …, hp` has become two: `hn…tp` and `tn…hp`, both
+    /// still tagged `f`. A `Face` anchors one cycle, so the walk from `f`'s
+    /// anchor reached only one of them and the other was a fragment nothing
+    /// could reach or re-home. Give the second cycle its own face, classified
+    /// by signed area exactly as `from_arrangement` does (a cut-off stick or
+    /// island winds CW or flat → outer); `f` stays on the larger-area cycle so
+    /// a room keeps its id when something is cut off it. A spur tip needs
+    /// nothing: its "second cycle" is the dead pair itself.
+    fn split_bridge_cycles(&mut self, f: FaceId, hn: HalfEdgeId, tn: HalfEdgeId) {
+        if !self.half_edges[hn.0 as usize].alive || !self.half_edges[tn.0 as usize].alive {
+            return;
+        }
+        let walk = |start: HalfEdgeId| FaceWalk { plate: self, start: Some(start), cur: None };
+        let cycle_h: Vec<HalfEdgeId> = walk(hn).collect();
+        if cycle_h.contains(&tn) {
+            return; // still one cycle
+        }
+        let cycle_t: Vec<HalfEdgeId> = walk(tn).collect();
+        let (area_h, area_t) = (self.signed_area_of_cycle(&cycle_h), self.signed_area_of_cycle(&cycle_t));
+        let (keep, split, split_area) =
+            if area_h >= area_t { (cycle_h, cycle_t, area_t) } else { (cycle_t, cycle_h, area_h) };
+        let parent = self.faces[f.0 as usize].clone();
+        let is_outer = split_area <= 0.0;
+        let new_face = FaceId(self.faces.len() as u32);
+        self.faces.push(Face {
+            half_edge: split.first().copied(),
+            is_outer,
+            is_room: !is_outer && parent.is_room,
+            floor_z: parent.floor_z,
+            ceiling_z: parent.ceiling_z,
+            non_planar_ceiling: parent.non_planar_ceiling,
+            alive: true,
+        });
+        for he in split {
+            self.half_edges[he.0 as usize].face = new_face;
+        }
+        self.faces[f.0 as usize].half_edge = keep.first().copied();
     }
 }

@@ -1317,12 +1317,17 @@ per point, a least-squares plane per sample, and a target self-occlusion rule
 that costs two budgeted BVH ray queries per sample (exact segment for the
 nearest point, one thickness probe for the rest of the support) after a first
 version that spent one ray per supporting point exhausted the 128 M budget on a
-real 25 m² wall. On the CRAS corridor drywall the accepted plan used 43.5 M of
-128 M units in 399 ms (Node, 465 k points, 64 texels/m); the windowed north
-wall with both faces scanned was refused at 64 texels/m and accepted at 32
-(49.0 M units, 306 ms), so the planner now reports `budget.workUsed` next to
-coverage. Interleaved native AC20 A/B/A/B probes on a shared host: best totals
-13/12 ms (base e18a434ec) vs 13/12 ms (branch), identical mesh/vertex/triangle
+real 25 m² wall. Review then added the nearest-face rule for unoriented
+captures inside the solid: a sample whose nearest capture lies deeper inside
+than one surface band pays one wider query out to the distance bound to look
+for a capture in front, and the support is regathered around the nearest point
+whenever it lies farther than half the radius. On the CRAS corridor drywall the
+accepted plan used 43.5 M of 128 M units in 376 ms (Node, 465 k points,
+64 texels/m); the windowed north wall with both faces scanned was refused at
+64 texels/m and accepted at 32 (59.5 M units, 331 ms; 49.0 M before the rule),
+so the planner now reports `budget.workUsed` next to coverage. Interleaved
+native AC20 A/B/A/B probes on a shared host at the final head: best totals
+16/15 ms (base 1996e9281) vs 14/15 ms (branch), identical mesh/vertex/triangle
 counts (285 / 35,940 / 19,456) and identical ordered geometry fingerprint
 `25ac885b6ff4ad00` in all four runs — no load-path regression, and, as before,
 only a control: the sampler is not on the load path. Lesson: for point sources

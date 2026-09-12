@@ -1,10 +1,10 @@
 {
   "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
   "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
-  "baseSource": "e18a434ec (origin/main), built in a detached throwaway worktree",
-  "branchSource": "feat/4381-rgb-points-real-pair at 4e3f8d55d (Rust diff confined to rust/processing/src/appearance/transfer*.rs and rust/geometry/src/kernel/broadphase/bounded.rs)",
+  "baseSource": "1996e9281 (origin/main), built in a detached throwaway worktree",
+  "branchSource": "feat/4381-rgb-points-real-pair at 25d00f7c1 (Rust diff confined to rust/processing/src/appearance/transfer*.rs and rust/geometry/src/kernel/broadphase/bounded.rs); re-measured after the review fix to transfer_points.rs",
   "command": "target/profiling/examples/perf_probe <fixture> --iters 5 --json --fingerprint, built with cargo build --profile profiling -p ifc-lite-processing --example perf_probe in each checkout",
-  "measurement": "Interleaved native five-iteration normal-load A/B/A/B on a shared Windows 11 host during other work; a no-regression control only. The point transfer sampler is not on the load path.",
+  "measurement": "Interleaved native five-iteration normal-load A/B/A/B on a shared Windows 11 host during other work (four concurrent agent worktrees building); a no-regression control only. The point transfer sampler is not on the load path.",
   "order": [
     "A1",
     "B1",
@@ -13,21 +13,21 @@
   ],
   "runs": {
     "A1": {
-      "label": "base e18a434ec, run 1",
-      "bestTotalMs": 13,
+      "label": "base 1996e9281, run 1",
+      "bestTotalMs": 16,
       "allTotalsMs": [
+        19,
+        17,
         16,
-        13,
-        13,
-        13,
-        13
+        16,
+        26
       ],
       "allWallMs": [
-        17.93,
-        14.99,
-        14.16,
-        14.68,
-        14.64
+        21.2199,
+        19.336699999999997,
+        18.0555,
+        18.286,
+        27.6815
       ],
       "meshes": 285,
       "vertices": 35940,
@@ -38,20 +38,20 @@
     },
     "B1": {
       "label": "branch, run 1",
-      "bestTotalMs": 13,
+      "bestTotalMs": 14,
       "allTotalsMs": [
+        22,
+        15,
+        16,
         17,
-        13,
-        13,
-        13,
-        13
+        14
       ],
       "allWallMs": [
-        19.1,
-        14.5,
-        14.78,
-        14.96,
-        14.39
+        23.7635,
+        17.9836,
+        17.591800000000003,
+        18.9194,
+        16.0866
       ],
       "meshes": 285,
       "vertices": 35940,
@@ -61,21 +61,21 @@
       ]
     },
     "A2": {
-      "label": "base e18a434ec, run 2",
-      "bestTotalMs": 12,
+      "label": "base 1996e9281, run 2",
+      "bestTotalMs": 15,
       "allTotalsMs": [
+        21,
+        19,
         16,
-        13,
-        13,
-        13,
-        12
+        15,
+        18
       ],
       "allWallMs": [
-        17.79,
-        14.23,
-        14.51,
-        14.52,
-        14.29
+        23.6687,
+        20.855800000000002,
+        18.415999999999997,
+        17.5291,
+        20.915
       ],
       "meshes": 285,
       "vertices": 35940,
@@ -86,20 +86,20 @@
     },
     "B2": {
       "label": "branch, run 2",
-      "bestTotalMs": 12,
+      "bestTotalMs": 15,
       "allTotalsMs": [
-        18,
-        12,
-        13,
-        13,
-        13
+        19,
+        15,
+        15,
+        17,
+        15
       ],
       "allWallMs": [
-        20.09,
-        14.18,
-        15.02,
-        14.83,
-        15.25
+        21.2123,
+        17.8826,
+        16.9076,
+        19.215300000000003,
+        16.9805
       ],
       "meshes": 285,
       "vertices": 35940,

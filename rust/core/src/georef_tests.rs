@@ -417,6 +417,24 @@ fn zero_length_axis_direction_resets_to_identity() {
     assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1010.0, 2020.0, 47.0));
 }
 
+/// A rotation-only conversion (zero offsets, 30 degrees to grid north, no
+/// `IfcProjectedCRS`) is a georeference: the TS twin reports one whenever a
+/// map conversion parsed, and the value-based test dropped it.
+#[test]
+fn rotation_only_map_conversion_is_reported() {
+    let content = ifc4x3_with_conversion(
+        "#11=IFCMAPCONVERSION(#2,#12,0.,0.,0.,0.8660254037844387,0.5,1.);\n#12=IFCGEOGRAPHICCRS('EPSG:4326',$,$,$,$,$,$);",
+    );
+    let mut decoder = EntityDecoder::new(&content);
+    // No IfcProjectedCRS candidate: the CRS name stays None.
+    let geo = GeoRefExtractor::extract(&mut decoder, &[(11u32, IfcType::IfcMapConversion)])
+        .expect("decode ok")
+        .expect("a parsed map conversion is a georeference even with zero offsets");
+    assert!(geo.has_map_conversion);
+    assert_eq!(geo.crs_name, None);
+    assert!((geo.rotation().to_degrees() - 30.0).abs() < 1e-9);
+}
+
 /// A non-numeric component in a compound plane angle refuses the WHOLE
 /// angle. Compacting the list first re-indexed `($,51,30,0)` as 51 deg 30
 /// min and placed the site instead of skipping it.

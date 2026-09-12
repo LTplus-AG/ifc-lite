@@ -89,6 +89,11 @@ pub struct GeoReference {
     pub factor_x: f64,
     pub factor_y: f64,
     pub factor_z: f64,
+    /// True once an `IfcMapConversion` (or its `Scaled` subtype) was parsed.
+    /// Presence is then reported even for a conversion whose translations are
+    /// all zero (a rotation- or scale-only conversion), matching the TS
+    /// twin, which sets `hasGeoreference` whenever a conversion parsed.
+    pub has_map_conversion: bool,
 }
 
 impl Default for GeoReference {
@@ -112,6 +117,7 @@ impl Default for GeoReference {
             factor_x: 1.0,
             factor_y: 1.0,
             factor_z: 1.0,
+            has_map_conversion: false,
         }
     }
 }
@@ -122,10 +128,15 @@ impl GeoReference {
         Self::default()
     }
 
-    /// Check if georeferencing is present
+    /// Check if georeferencing is present.
+    ///
+    /// A parsed `IfcMapConversion` is presence on its own: the value test
+    /// alone dropped a rotation-only conversion (zero offsets, 30 degrees to
+    /// grid north) as "no georeferencing" while the browser reported one.
     #[inline]
     pub fn has_georef(&self) -> bool {
-        self.crs_name.is_some()
+        self.has_map_conversion
+            || self.crs_name.is_some()
             || self.eastings != 0.0
             || self.northings != 0.0
             || self.orthogonal_height != 0.0
@@ -359,6 +370,7 @@ impl GeoRefExtractor {
     /// Parse IfcMapConversion entity (and the IFC4X3 `IfcMapConversionScaled`
     /// subtype, whose first eight attributes have the same layout).
     fn parse_map_conversion(entity: &DecodedEntity, georef: &mut GeoReference) {
+        georef.has_map_conversion = true;
         // Index 2: Eastings
         if let Some(e) = entity.get_float(2) {
             georef.eastings = e;

@@ -47,7 +47,8 @@ function corners(source: MeshData, ordinals: readonly number[]): Uint32Array {
  * prove corner-for-corner equivalence and lets history join them again.
  */
 export function bindMaskedConversionParts(options: {
-  originals: readonly MeshData[]; conversion: Conversion; item: Item; texturedItemId: number; retainedItemId: number;
+  originals: readonly MeshData[]; conversion: Conversion; item: Item; sourceGeometryItemId: number;
+  texturedItemId: number; retainedItemId: number;
   image: AppearancePreviewImage; textureId: number; expandCorners: ExpandCorners;
 }): { parts: MeshData[]; partition: AppearancePartition } {
   const { originals, conversion, item } = options;
@@ -63,7 +64,7 @@ export function bindMaskedConversionParts(options: {
   const fragments = originals.map((original) => {
     const source = original.appearanceSource;
     if (!source || source.kind !== 'canonical-item' || source.indices !== original.indices
-      || original.geometryItemId !== conversion.sourceGeometryItemId
+      || original.geometryItemId !== options.sourceGeometryItemId
       || source.sourceIndices !== full
       || original.indices.length % 3 !== 0
       || (originals.length > 1 && !source.cornerIndices)) {
@@ -122,7 +123,7 @@ export function bindMaskedConversionParts(options: {
     }
   });
   const partition: AppearancePartition = {
-    sourceGeometryItemId: conversion.sourceGeometryItemId,
+    sourceGeometryItemId: options.sourceGeometryItemId,
     triangleCount: conversion.sourceIndices.length / 3,
     before,
     after,

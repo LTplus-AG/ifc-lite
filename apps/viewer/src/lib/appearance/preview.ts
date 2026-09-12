@@ -123,6 +123,7 @@ export function bindAppearancePreview(
       const image = itemImages ? itemImages.get(firstItem.geometryItemId) : { bitmap, imageUri, repeatS, repeatT };
       if (!image) throw new Error(`The baked image for IFC geometry #${firstItem.geometryItemId} is missing.`);
       const masked = bindMaskedConversionParts({ originals, conversion: maskedConversion, item: firstItem, image, expandCorners,
+        sourceGeometryItemId: originals[0].geometryItemId!,
         textureId: textureIdentity(image.bitmap), texturedItemId: state.toGlobalId(modelId, firstItem.geometryItemId),
         retainedItemId: state.toGlobalId(modelId, maskedConversion.retainedGeometryItemId!) });
       return { globalId, modelIndex, parts: masked.parts, ...(materializedOriginals ? { materializedOriginals, validate } : {}),

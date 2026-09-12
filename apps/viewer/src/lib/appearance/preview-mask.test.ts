@@ -59,6 +59,23 @@ test('a face-masked conversion previews as textured and retained parts of one ow
   assert.equal(group.geometryItemRemaps, undefined, 'a partition replaces the one-to-one item remap');
 });
 
+test('masked partition identities are renderer-global with a federation offset (#4556)', () => {
+  const offset = 1_000_000;
+  const federatedState = { ...state,
+    toGlobalId: (_model: string, id: number) => id + offset,
+    resolveGlobalIdFromModels: (id: number) => ({ modelId: 'offset-model', expressId: id - offset }),
+  } as unknown as ViewerState;
+  const federatedOriginal: MeshData = { ...original, expressId: 25 + offset, geometryItemId: 11 + offset, modelIndex: 1 };
+  const [group] = bindAppearancePreview(federatedState, renderer([federatedOriginal]), 'offset-model',
+    plan({ maskedTriangles: [0], retainedGeometryItemId: 102 }, maskedItem), bitmap, 'textures/a.png', true, true,
+    expandAppearanceCorners);
+  assert.equal(group.globalId, 25 + offset);
+  assert.equal(group.modelIndex, 1);
+  assert.equal(group.partition?.sourceGeometryItemId, 11 + offset);
+  assert.deepEqual(group.parts.map(part => part.geometryItemId), [101 + offset, 102 + offset]);
+  assert.deepEqual(group.partition?.after.map(part => part.geometryItemId), [101 + offset, 102 + offset]);
+});
+
 test('the masked binder refuses inconsistent provenance explicitly (#4404)', () => {
   assert.throws(() => bind(plan({ maskedTriangles: [0], retainedGeometryItemId: 102 })), /Invalid native occurrence conversion provenance/);
   assert.throws(() => bind(plan({ maskedTriangles: [1, 0], retainedGeometryItemId: 102 }, maskedItem)), /Invalid native face mask provenance/);

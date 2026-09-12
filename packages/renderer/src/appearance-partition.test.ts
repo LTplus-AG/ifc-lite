@@ -104,7 +104,7 @@ describe('partitioned appearance preview (#4404)', () => {
     validateAppearancePartition(split, [quad], [textured, retained]);
     assert.throws(() => validateAppearancePartition({ ...split, after: [{ partId: 0, geometryItemId: 101, triangles: [0] }, { partId: 1, geometryItemId: 102, triangles: [0] }] },
       [quad], [textured, { ...retained, indices: new Uint32Array([0, 1, 2]) }]), /canonical triangles|provenance/);
-    assert.throws(() => validateAppearancePartition({ ...split, before: [{ partId: 0, geometryItemId: 21, triangles: [0, 2] }] }, [quad], [textured, retained]), /canonical triangles|full-surface coverage|changes triangle geometry/);
+    assert.throws(() => validateAppearancePartition({ ...split, before: [{ partId: 0, geometryItemId: 21, triangles: [0, 2] }] }, [quad], [textured, retained]), /invalid triangle|canonical triangles|full-surface coverage|changes triangle geometry/);
     assert.throws(() => validateAppearancePartition({ ...split, after: [{ partId: 0, geometryItemId: 101, triangles: [0, 1] }, { partId: 1, geometryItemId: 102, triangles: [1] }] }, [quad], [textured, retained]), /triangle count/);
     assert.throws(() => validateAppearancePartition(split, [quad], [textured, { ...retained, normals: new Float32Array([0, 0, 1]) }]), /normals are invalid/);
     assert.throws(() => validateAppearancePartition({ ...split, triangleCount: 500_001 }, [quad], [textured, retained]), /full-surface identity/);

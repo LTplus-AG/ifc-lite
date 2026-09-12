@@ -50,9 +50,10 @@ function sameFrame(a: MeshData, b: MeshData): boolean {
 }
 
 /** Items appear in declaration order; part identity, rather than IFC item id, is unique. */
-function checkSide(side: readonly AppearancePartitionPart[], parts: readonly MeshData[], label: string): void {
+function checkSide(side: readonly AppearancePartitionPart[], parts: readonly MeshData[], label: string, triangleCount: number): void {
   if (!side.length || side.length !== parts.length) throw new Error(`Appearance partition ${label} does not name every part`);
   const seen = new Set<number>();
+  let work = 0;
   side.forEach((entry, index) => {
     if (!Number.isSafeInteger(entry.partId) || entry.partId < 0 || seen.has(entry.partId)
       || !Number.isSafeInteger(entry.geometryItemId) || entry.geometryItemId <= 0
@@ -64,7 +65,14 @@ function checkSide(side: readonly AppearancePartitionPart[], parts: readonly Mes
       || source.cornerIndices && source.cornerIndices.length !== parts[index].indices.length) {
       throw new Error(`Appearance partition ${label} has invalid full-surface provenance`);
     }
+    if (!entry.triangles.length || entry.triangles.length > triangleCount - work) {
+      throw new Error(`Appearance partition ${label} exceeds its triangle work budget`);
+    }
+    work += entry.triangles.length;
     entry.triangles.forEach((ordinal, triangle) => {
+      if (!Number.isSafeInteger(ordinal) || ordinal < 0 || ordinal >= triangleCount) {
+        throw new Error(`Appearance partition ${label} names an invalid triangle`);
+      }
       for (let corner = 0; corner < 3; corner++) {
         if ((source.cornerIndices?.[triangle * 3 + corner] ?? triangle * 3 + corner) !== ordinal * 3 + corner) {
           throw new Error(`Appearance partition ${label} part identity does not match its canonical triangles`);
@@ -72,24 +80,33 @@ function checkSide(side: readonly AppearancePartitionPart[], parts: readonly Mes
       }
     });
   });
+  if (work !== triangleCount) throw new Error(`Appearance partition ${label} does not cover the full surface`);
 }
 
-/** Reference corner -> position, from one side of the partition. */
-function referenceCorners(side: readonly AppearancePartitionPart[], parts: readonly MeshData[], label: string): Map<number, readonly [number, number, number]> {
-  const corners = new Map<number, readonly [number, number, number]>();
+/** Write or compare reference-corner positions using a fixed-size allocation. */
+function referenceCorners(side: readonly AppearancePartitionPart[], parts: readonly MeshData[], label: string,
+  triangleCount: number, expected?: Float32Array): Float32Array {
+  const corners = expected ?? new Float32Array(triangleCount * 9);
+  const seen = new Uint8Array(triangleCount * 3);
   side.forEach((entry, index) => {
     const part = parts[index];
     entry.triangles.forEach((ordinal, triangle) => {
-      if (!Number.isSafeInteger(ordinal) || ordinal < 0) throw new Error(`Appearance partition ${label} names an invalid triangle`);
       for (let corner = 0; corner < 3; corner++) {
         const reference = ordinal * 3 + corner;
-        if (corners.has(reference)) throw new Error(`Appearance partition ${label} names a triangle twice`);
+        if (seen[reference]) throw new Error(`Appearance partition ${label} names a triangle twice`);
+        seen[reference] = 1;
         const vertex = part.indices[triangle * 3 + corner] * 3;
         if (vertex + 2 >= part.positions.length) throw new Error(`Appearance partition ${label} part index is out of range`);
-        corners.set(reference, [part.positions[vertex], part.positions[vertex + 1], part.positions[vertex + 2]]);
+        const output = reference * 3;
+        for (let axis = 0; axis < 3; axis++) {
+          const value = part.positions[vertex + axis];
+          if (expected && expected[output + axis] !== value) throw new Error('Appearance partition changes triangle geometry');
+          corners[output + axis] = value;
+        }
       }
     });
   });
+  if (seen.some(value => value !== 1)) throw new Error(`Appearance partition ${label} does not provide complete coverage`);
   return corners;
 }
 
@@ -105,11 +122,12 @@ export function validateAppearancePartition(partition: AppearancePartition, befo
     || partition.before.length > partition.triangleCount || partition.after.length > partition.triangleCount) {
     throw new Error('Appearance partition full-surface identity is invalid');
   }
-  checkSide(partition.before, before, 'original');
-  checkSide(partition.after, after, 'replacement');
+  checkSide(partition.before, before, 'original', partition.triangleCount);
+  checkSide(partition.after, after, 'replacement', partition.triangleCount);
   const sourceIndices = before[0].appearanceSource!.sourceIndices;
   if (sourceIndices.length !== partition.triangleCount * 3
-    || [...before, ...after].some(part => part.appearanceSource!.sourceIndices !== sourceIndices)
+    || before.some(part => part.appearanceSource!.sourceIndices !== sourceIndices)
+    || after.some(part => part.appearanceSource!.sourceIndices !== sourceIndices)
     || !(before.every(part => part.geometryItemId === partition.sourceGeometryItemId)
       || after.every(part => part.geometryItemId === partition.sourceGeometryItemId))) {
     throw new Error('Appearance partition full-surface provenance does not match its source item');
@@ -120,16 +138,6 @@ export function validateAppearancePartition(partition: AppearancePartition, befo
       || !sameFrame(part, owner)) throw new Error('Appearance partition cannot change ownership or placement');
     if (part.normals.length !== part.positions.length || !part.normals.every(Number.isFinite)) throw new Error('Appearance partition part normals are invalid');
   }
-  const original = referenceCorners(partition.before, before, 'original');
-  const replacement = referenceCorners(partition.after, after, 'replacement');
-  if (original.size !== partition.triangleCount * 3 || replacement.size !== original.size
-    || [...original.keys()].some(reference => reference >= partition.triangleCount * 3)) {
-    throw new Error('Appearance partition does not provide disjoint complete full-surface coverage');
-  }
-  for (const [reference, position] of original) {
-    const other = replacement.get(reference);
-    if (!other || other[0] !== position[0] || other[1] !== position[1] || other[2] !== position[2]) {
-      throw new Error('Appearance partition changes triangle geometry');
-    }
-  }
+  const original = referenceCorners(partition.before, before, 'original', partition.triangleCount);
+  referenceCorners(partition.after, after, 'replacement', partition.triangleCount, original);
 }

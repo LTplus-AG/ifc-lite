@@ -673,6 +673,15 @@ export class IfcAPI {
      */
     planPdfFillAnnotation(source: Uint8Array, request_json: string): Uint8Array;
     /**
+     * Registered RGB point-cloud observations (#4381). `request_json.source`
+     * is `{kind:'points', …}`; `positions` (3n f64, source-frame metres) and
+     * `colors` (3n RGB8) are the payload, `normals` (3n f32, oriented) and
+     * `stations` (n indices into `source.viewpoints`) are empty when absent.
+     * `rgba` carries only the target's existing rasters. Same output as
+     * `planMeshTransfer`; `transfer.source` records the orientation used.
+     */
+    planPointTransfer(content: Uint8Array, request_json: string, rgba: Uint8Array, positions: Float64Array, colors: Uint8Array, normals: Float32Array, stations: Uint32Array): Uint8Array;
+    /**
      * Prepare bounded ordered PDF vector graphics states and the page fidelity
      * report (convertible paths, omissions with extent, exact/raster-only).
      */
@@ -2112,6 +2121,7 @@ export interface InitOutput {
     readonly ifcapi_planMeshTransfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_planPageAppearance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_planPdfFillAnnotation: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly ifcapi_planPointTransfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number) => void;
     readonly ifcapi_preparePdfVectorPage: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_processGeometryBatch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
     readonly ifcapi_processGeometryBatchFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;

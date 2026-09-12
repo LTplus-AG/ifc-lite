@@ -46,11 +46,11 @@ function quad(mesh, y, [x0, x1], facingNegativeY, uv) {
   mesh.triangles.push(...(facingNegativeY ? [[a, b, c], [a, c, d]] : [[a, c, b], [a, d, c]]));
 }
 function scan(...quads) {
-  const mesh = { meshOrdinal: 0, positions: [], triangles: [], uvs: [], baseColorFactor: [1, 1, 1, 1], repeatS: false, repeatT: false };
+  const mesh = { kind: 'mesh', meshOrdinal: 0, positions: [], triangles: [], uvs: [], baseColorFactor: [1, 1, 1, 1], repeatS: false, repeatT: false };
   for (const args of quads) quad(mesh, ...args);
   return mesh;
 }
-export function thinWallRequest(api, sourceMesh, maxDistanceMetres, maxBehindMetres) {
+export function thinWallRequest(api, source, maxDistanceMetres, maxBehindMetres) {
   const pair = (kind, i, p) => ({ id: `${kind}${i}`, sourceObservation: `${kind}-scan${i}`, targetFeature: `${kind}-ifc${i}`, source: p, target: p });
   const registration = {
     sourceFrame: { assetSha256: 'b'.repeat(64), frameKey: 'controlled-scan' },
@@ -63,12 +63,12 @@ export function thinWallRequest(api, sourceMesh, maxDistanceMetres, maxBehindMet
     schema: 'IFC4', sourceRevision: 'thin-wall-control', nextExpressId: 100, productIds: [40], registration,
     registrationSha256: report.requestSha256,
     targetFromIfcWorld: { rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], sourceAnchor: [0, 0, 0], targetAnchor: [0, 0, 0] },
-    sourceMesh, sourceImage: { width: 3, height: 1, byteOffset: 0, byteLength: 12 }, sourceImages: [],
+    source, sourceImage: { width: 3, height: 1, byteOffset: 0, byteLength: 12 }, sourceImages: [],
     texelsPerMetre: 64, maxDistanceMetres, minNormalDot: 0.8, ambiguityDistanceMetres: 0.001, maxBehindMetres,
   };
 }
 function unknownSum(coverage) {
-  return coverage.unknownDistanceSamples + coverage.unknownNormalSamples + coverage.unknownAmbiguousSamples + coverage.unknownBehindSamples;
+  return coverage.unknownDistanceSamples + coverage.unknownNormalSamples + coverage.unknownAmbiguousSamples + coverage.unknownBehindSamples + coverage.unknownSparseSamples;
 }
 /** Thin-wall, occlusion and missing-region classification over the real WASM boundary (#4381). */
 export function checkMeshTransferSurfacesContract(IfcAPI) {

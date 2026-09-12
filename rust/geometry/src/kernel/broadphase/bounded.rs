@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-use super::{aabb_contains, Bvh};
+use super::{aabb_contains, seg_hits_aabb, Bvh};
 
 impl Bvh {
     /// Conservative near-point candidates using this same tree/padding policy,
@@ -48,9 +48,82 @@ impl Bvh {
     }
 }
 
+impl Bvh {
+    /// Conservative candidates for the segment `p`→`far`, charging every visited
+    /// node to the caller's aggregate work budget like `point_candidates_bounded`.
+    /// On exhaustion discard `out`: a partial candidate list is not a result.
+    pub fn ray_candidates_bounded(
+        &self,
+        p: [f64; 3],
+        far: [f64; 3],
+        out: &mut Vec<u32>,
+        remaining: &mut usize,
+    ) -> Result<(), &'static str> {
+        if !p.iter().chain(&far).all(|v| v.is_finite()) {
+            return Err("BVH query requires finite segment endpoints");
+        }
+        if self.root == u32::MAX {
+            return Ok(());
+        }
+        let mut pending = [0_u32; 64];
+        pending[0] = self.root;
+        let mut count = 1;
+        while count > 0 {
+            count -= 1;
+            let index = pending[count];
+            *remaining = remaining
+                .checked_sub(1)
+                .ok_or("BVH query work budget exhausted")?;
+            let node = &self.nodes[index as usize];
+            if !seg_hits_aabb(p, far, &node.aabb, self.pad) {
+                continue;
+            }
+            if node.tri != u32::MAX {
+                out.push(node.tri);
+            } else {
+                if count + 2 > pending.len() {
+                    return Err("BVH query stack budget exceeded");
+                }
+                pending[count] = node.right;
+                pending[count + 1] = node.left;
+                count += 2;
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn issue_4381_bounded_ray_query_matches_candidates_and_reports_exhaustion() {
+        let triangles = [
+            [[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]],
+            [[0., 0., 0.004], [1., 0., 0.004], [0., 1., 0.004]],
+            [[5., 5., 0.], [6., 5., 0.], [5., 6., 0.]],
+        ];
+        let tree = Bvh::build(&triangles);
+        let mut old = Vec::new();
+        tree.ray_candidates([0.2, 0.2, -0.001], [0.2, 0.2, 0.01], &mut old);
+        let mut actual = Vec::new();
+        let mut budget = 5;
+        tree.ray_candidates_bounded([0.2, 0.2, -0.001], [0.2, 0.2, 0.01], &mut actual, &mut budget)
+            .unwrap();
+        actual.sort_unstable();
+        old.sort_unstable();
+        assert_eq!(actual, old);
+        assert_eq!(actual, vec![0, 1]);
+        assert!(tree
+            .ray_candidates_bounded([0.2, 0.2, -0.001], [0.2, 0.2, 0.01], &mut Vec::new(), &mut 1)
+            .is_err());
+        assert!(tree
+            .ray_candidates_bounded([f64::NAN, 0., 0.], [0., 0., 1.], &mut Vec::new(), &mut 10)
+            .is_err());
+        let mut none = Vec::new();
+        tree.ray_candidates_bounded([0.2, 0.2, 0.001], [0.2, 0.2, 0.003], &mut none, &mut 10).unwrap();
+        assert!(none.is_empty(), "a segment strictly between the sheets touches neither");
+    }
     #[test]
     fn issue_4381_bounded_query_matches_candidates_and_reports_exhaustion() {
         let triangles = [

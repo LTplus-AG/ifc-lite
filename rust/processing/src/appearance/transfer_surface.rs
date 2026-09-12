@@ -18,6 +18,8 @@ pub(super) enum Observation {
     /// Same-facing nearest surface lies beyond the target face: the far side of
     /// a thin element or an oversized IFC solid, never painted through.
     Behind,
+    /// Point sources only: too few supporting points for a local surface fit.
+    Sparse,
 }
 pub(super) struct Surface {
     pub triangles: Vec<Triangle>,
@@ -34,7 +36,9 @@ impl Surface {
         frame: &TransferFrame,
         budget: &mut TransferBudget,
     ) -> Result<Self, String> {
-        let mesh = &request.source_mesh;
+        let TransferSource::Mesh(mesh) = &request.source else {
+            return Err("Transfer mesh surface needs a mesh source".into());
+        };
         if mesh.positions.len() < 3
             || mesh.positions.len() > 200_000
             || mesh.triangles.is_empty()

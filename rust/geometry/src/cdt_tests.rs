@@ -218,3 +218,70 @@ use super::*;
         // Material area = 100 − 4 (the hole is excluded).
         assert!((area_of(&pts, &idx) - 96.0).abs() < 1e-9);
     }
+
+    /// A vertex EXACTLY on a constraint edge, inserted after that edge exists:
+    /// a square with an interior seam x=5 (y 2..8) and the point (5,5) last.
+    /// The cavity BFS is blocked at the seam, so the seam lands on the cavity
+    /// rim and the fan used to build the zero-area triangle (4, 5, 6) there,
+    /// with the far side of the seam never split (a T-junction `legalize`
+    /// cannot flip away). The point must instead split the seam in lockstep on
+    /// both sides, as `split_at` already does for an empty cavity.
+    #[test]
+    fn point_on_a_constraint_inside_a_cavity_splits_both_sides() {
+        let points: Vec<P2> =
+            vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0], [5.0, 2.0], [5.0, 8.0], [5.0, 5.0]];
+        let segments = vec![(0usize, 1usize), (1, 2), (2, 3), (3, 0), (4, 5)];
+        let cdt = Cdt::build_from(points, &segments, 0).expect("CDT builds");
+        assert_structurally_valid(&cdt);
+        // The seam is now its two halves, both present, and (5,5) is fanned on
+        // BOTH sides of it.
+        assert!(cdt.edge_exists(4, 6) && cdt.edge_exists(6, 5), "seam split at the on-edge vertex");
+        assert!(cdt.constraints.contains(&ekey(4, 6)) && cdt.constraints.contains(&ekey(6, 5)));
+        assert!(!cdt.constraints.contains(&ekey(4, 5)), "the whole seam is no longer a constraint");
+        let (mut left, mut right) = (0, 0);
+        for t in cdt.tris.iter().filter(|t| t.alive && t.v.contains(&6)) {
+            let apex = t.v.iter().copied().find(|&x| x != 4 && x != 5 && x != 6).expect("apex");
+            if cdt.points[apex][0] < 5.0 { left += 1 } else { right += 1 }
+        }
+        assert!(left >= 2 && right >= 2, "fanned on both sides of the seam: left {left}, right {right}");
+    }
+
+    /// A duplicate input coordinate as a FREE point (the `triangulate_pslg`
+    /// shape: prism-cut seam pools carry no ring dedup). `split_in_triangle`
+    /// used to retire the containing triangle and create only the one
+    /// non-degenerate child, leaving the neighbours across the two skipped
+    /// edges linked to a dead triangle; `build_from` still returned `Some`.
+    #[test]
+    fn duplicate_free_point_leaves_the_triangulation_valid() {
+        let points: Vec<P2> = vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0], [4.0, 4.0], [0.0, 0.0]];
+        let segments = vec![(0usize, 1usize), (1, 2), (2, 3), (3, 0)];
+        let cdt = Cdt::build_from(points, &segments, 0).expect("CDT builds");
+        assert_structurally_valid(&cdt);
+        assert!(!cdt.tris.iter().any(|t| t.alive && t.v.contains(&5)), "the duplicate is unreferenced");
+        let (pts, idx) = triangulate_pslg(
+            &[pt(0.0, 0.0), pt(10.0, 0.0), pt(10.0, 10.0), pt(0.0, 10.0), pt(4.0, 4.0), pt(0.0, 0.0)],
+            &segments,
+        )
+        .expect("pslg");
+        assert_eq!(pts.len(), 6, "the vertex list is exactly the input");
+        assert!((area_of(&pts, &idx) - 100.0).abs() < 1e-9, "hull covered once: {}", area_of(&pts, &idx));
+    }
+
+    /// Two rings sharing a corner: the outer square and a hole with a vertex
+    /// at (0,0). The duplicate is named by the hole's constraints, so recovery
+    /// fails and the caller falls back, but the CDT must decline cleanly rather
+    /// than corrupt adjacency first.
+    #[test]
+    fn rings_sharing_a_corner_decline_cleanly() {
+        let outer = vec![pt(0.0, 0.0), pt(10.0, 0.0), pt(10.0, 10.0), pt(0.0, 10.0)];
+        let holes = vec![vec![pt(0.0, 0.0), pt(3.0, 1.0), pt(1.0, 3.0)]];
+        assert!(super::triangulate_constrained(&outer, &holes).is_none());
+        let (points, segments) = rings_to_pslg(&[
+            vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]],
+            vec![[0.0, 0.0], [3.0, 1.0], [1.0, 3.0]],
+        ]);
+        // Same input, the hole's own constraints dropped: builds and is valid,
+        // which it is not when the duplicate insertion retires its triangle.
+        let cdt = Cdt::build_from(points, &segments[..4], 0).expect("CDT builds");
+        assert_structurally_valid(&cdt);
+    }

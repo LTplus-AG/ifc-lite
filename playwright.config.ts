@@ -10,6 +10,20 @@ import { defineConfig, devices } from '@playwright/test';
 const PORT = process.env.PLAYWRIGHT_PORT ?? '3000';
 const BASE_URL = `http://localhost:${PORT}`;
 
+/**
+ * `playwright test --project=viewer-collab-e2e` (and nothing else): that
+ * project serves its own private preview, so the shared webServer below
+ * would only be started — or, with `reuseExistingServer`, silently borrowed
+ * from whichever checkout holds the port — to sit unused.
+ */
+function onlyCollabProject(): boolean {
+  const argv = process.argv;
+  const projects = argv.flatMap((arg, i) =>
+    arg.startsWith('--project=') ? [arg.slice('--project='.length)] : arg === '--project' && argv[i + 1] ? [argv[i + 1]] : [],
+  );
+  return projects.length > 0 && projects.every((p) => p === 'viewer-collab-e2e');
+}
+
 export default defineConfig({
   // Covers tests/benchmark (perf) and tests/e2e (functional smoke);
   // each project scopes its own files via testMatch.
@@ -22,15 +36,18 @@ export default defineConfig({
   // ignored by Playwright (latent: those projects are run manually
   // against an already-running server). The e2e projects rely on this
   // one; reuseExistingServer keeps local dev-server workflows working.
-  webServer: {
-    command: `pnpm --filter @ifc-lite/viewer exec vite preview --port ${PORT}`,
-    port: Number(PORT),
-    reuseExistingServer: true,
-    timeout: 90000,
-    env: {
-      BROWSER: 'none',
-    },
-  },
+  // Skipped when only viewer-collab-e2e runs (it brings its own preview).
+  webServer: onlyCollabProject()
+    ? undefined
+    : {
+        command: `pnpm --filter @ifc-lite/viewer exec vite preview --port ${PORT}`,
+        port: Number(PORT),
+        reuseExistingServer: true,
+        timeout: 90000,
+        env: {
+          BROWSER: 'none',
+        },
+      },
   projects: [
     {
       name: 'viewer-e2e',
@@ -110,10 +127,11 @@ export default defineConfig({
       // signed relay AND its own `vite preview` of this checkout's dist, both
       // on ephemeral ports (the shared webServer above, PLAYWRIGHT_PORT / :3000,
       // is reused from whatever process holds it — a sibling checkout's preview
-      // would test the wrong build — so this project sets no baseURL), and enables collab
-      // through the viewer's localStorage overrides. Real Google Chrome
-      // (`channel: 'chrome'`) is required for WebGPU. Not in CI's default lanes
-      // (no relay there) — `pnpm test:e2e:collab`, see
+      // would test the wrong build — so this project sets no baseURL, and it is
+      // not started at all when this is the only project selected, see
+      // onlyCollabProject), and enables collab through the viewer's localStorage
+      // overrides. Real Google Chrome (`channel: 'chrome'`) is required for
+      // WebGPU. Not in CI's default lanes (no relay there) — `pnpm test:e2e:collab`, see
       // docs/contributing/collaboration-testing.md.
       name: 'viewer-collab-e2e',
       testMatch: /collab-(share-seed|federation-scope)\.e2e\.spec\.ts/,

@@ -41,8 +41,9 @@ export interface MeshFingerprint {
 /**
  * Point a fresh context at the relay before any app script runs: the collab
  * flag and the server URL both have a per-browser `localStorage` override
- * (`apps/viewer/src/lib/collab/config.ts`), so the ordinary `vite preview`
- * build on :3000 becomes a collab-enabled viewer without a rebuild.
+ * (`apps/viewer/src/lib/collab/config.ts`), so the ordinary viewer build —
+ * served by the private preview `collab/preview.ts` starts for this spec —
+ * becomes a collab-enabled viewer without a rebuild.
  */
 export async function enableCollab(context: BrowserContext, wsUrl: string): Promise<void> {
   await context.addInitScript((url: string) => {

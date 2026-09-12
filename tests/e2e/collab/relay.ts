@@ -14,9 +14,9 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { collectOutput, freePort, stopProcess } from './process';
 
 export interface Relay {
   /** `ws://127.0.0.1:<port>` — what the viewer's `ifc-lite:collab:server-url` override is set to. */
@@ -32,23 +32,6 @@ export interface Relay {
 
 export function relayBinary(root: string): string {
   return join(root, 'packages/collab-server/dist/bin.js');
-}
-
-async function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = createServer();
-    srv.once('error', reject);
-    srv.listen(0, '127.0.0.1', () => {
-      const addr = srv.address();
-      if (!addr || typeof addr === 'string') {
-        srv.close();
-        reject(new Error('could not allocate a port'));
-        return;
-      }
-      const { port } = addr;
-      srv.close((err) => (err ? reject(err) : resolve(port)));
-    });
-  });
 }
 
 async function waitForHealth(httpUrl: string, child: ChildProcess, log: string[], timeoutMs: number): Promise<void> {
@@ -83,26 +66,10 @@ export async function startRelay(root: string): Promise<Relay> {
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  const collect = (chunk: Buffer) => {
-    for (const line of chunk.toString('utf8').split(/\r?\n/)) if (line.trim()) log.push(line);
-  };
-  child.stdout?.on('data', collect);
-  child.stderr?.on('data', collect);
+  collectOutput(child, log);
   const httpUrl = `http://127.0.0.1:${port}`;
   const stop = async (): Promise<void> => {
-    if (child.exitCode === null) {
-      child.kill();
-      await new Promise<void>((resolve) => {
-        const t = setTimeout(() => {
-          child.kill('SIGKILL');
-          resolve();
-        }, 5000);
-        child.once('exit', () => {
-          clearTimeout(t);
-          resolve();
-        });
-      });
-    }
+    await stopProcess(child);
     rmSync(dataDir, { recursive: true, force: true });
   };
   try {

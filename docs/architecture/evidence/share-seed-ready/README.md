@@ -28,8 +28,9 @@ existing user, room or token is involved.
 
 Host: Windows 11, Chrome (channel) headless with WebGPU, Node 22.16,
 Playwright 1.60. Three consecutive full runs of the spec passed
-(3 tests each, ~36 s per run) after the fix below; the numbers in this
-directory are from the last of them.
+(3 tests each, ~33 s per run) on the reviewed head (relay confirmation with
+probe back-off, see Control 2); the numbers in this directory are from the
+last of them.
 
 ## The textured input
 
@@ -53,9 +54,9 @@ output and refuses a file whose wall moved. Independent oracle (IfcOpenShell
 |---|---|
 | Owner loads the IFCZIP | 317 meshes; exactly one textured mesh (12 triangles); decoded PNG pixels FNV-1a `39bd94b5` = the generated card |
 | File → Share | `role="status"` row visible first (`Connecting to the room…`), Copy disabled, link field reads `Link is ready once the upload finishes…` |
-| Seed phases (store subscription) | `none → syncing 136 ms → structure 36 ms → geometry 345 ms → confirming 10 ms → ready`; Copy enabled 0.8 s after the progress row was first asserted (a screenshot in between) |
+| Seed phases (store subscription) | `none → syncing 64 ms → structure 34 ms → geometry 333 ms → confirming 10 ms → ready`; Copy enabled 0.8 s after the progress row was first asserted (a screenshot in between) |
 | Room at `ready` (owner's Y.Doc) | **184 structural entries, 313 geometry records** (313 entity→geometry refs, 1 textured record), 1 model slot; transport `connected` over `indexeddb+websocket` |
-| Owner context closed | immediately after reading the link |
+| Owner context closed | immediately after reading the link from the field (Copy is asserted enabled; the clipboard is not exercised headless) |
 | Fresh guest | same 184 / 313 / 313 / 1; 313 hydrated meshes; `collabGeometryNotice` null; seed phase `none`; textured wall byte-identical: positions `37de7dad`, UVs `4745cfcd`, texture 8×8 `39bd94b5` |
 | Guest export | ordinary Export dialog → `AC20-FZK-Haus.textured_export.ifcx` download, 111 IFCX nodes ("Exported IFCX: 111 nodes, 90 meshes, 47 properties") |
 | Rejoin (third context, both earlier ones closed) | identical counts and fingerprints; guest `ifcDataStore.entityCount` 184 both times |
@@ -102,10 +103,15 @@ Fix (this PR): the seed ends in a new phase **`confirming`** — the owner opens
 a throw-away connection, reads the relay's state vector from the sync-step-1
 frame the server sends on every connection (`fetchRoomStateVector`,
 `@ifc-lite/collab`), and reports `ready` only once it covers the owner's own
-(`stateVectorCovers`), polling every 250 ms up to 30 s, else `failed` with an
-owner-facing message. In this run: phases
-`syncing 2599 ms → structure 53 ms → geometry 348 ms → confirming 2687 ms → ready`,
-129 frames held, 12 sockets (live + 11 probes); Copy stayed disabled with
+(`stateVectorCovers`). Probes back off 250 → 500 → 1000 ms; a relay that
+answers but is still behind is waited for (the bytes are in transit — the
+dialog stays on `Confirming…`), a relay out of reach for 30 s, or one that
+never catches up within 10 min, settles the seed as `failed` with an
+owner-facing message (a seed that was itself partial keeps its own reason
+next to it). In this run: phases
+`syncing 2580 ms → structure 44 ms → geometry 324 ms → confirming 2834 ms → ready`,
+128 frames held, 6 sockets (live + 5 probes: immediate, then 250 / 500 /
+1000 / 1000 ms apart); Copy stayed disabled with
 `Confirming the upload with the room server…` until the relay had the model;
 the guest after the owner left was complete (184 / 313 / 313, texture
 `39bd94b5`). Without the hold the confirmation costs ~10 ms (test 1).

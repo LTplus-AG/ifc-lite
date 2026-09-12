@@ -281,7 +281,9 @@ pnpm test:e2e:collab
 
 The spec spawns its own signed relay (random `COLLAB_TOKEN_SECRET`, temp data
 dir) and its own `vite preview` of `apps/viewer/dist`, both on ephemeral
-ports, and enables collab per browser context through the `localStorage`
+ports (the config's shared `:3000` webServer is not started when this is the
+only project selected — it would test whichever checkout holds that port), and
+enables collab per browser context through the `localStorage`
 overrides (`ifc-lite:collab:enabled`, `ifc-lite:collab:server-url`). It
 builds a textured AC20 IFCZIP on the fly (`tests/e2e/collab/textured-ac20.ts`,
 one wall re-bodied as a textured `IfcTriangulatedFaceSet`), shares it, closes

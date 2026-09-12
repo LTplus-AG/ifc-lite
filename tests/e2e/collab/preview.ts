@@ -13,10 +13,10 @@
  * `apps/viewer/dist` itself, on a port nobody else holds, and stops it.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { createServer } from 'node:net';
 import { join } from 'node:path';
+import { collectOutput, freePort, stopProcess } from './process';
 
 export interface ViewerPreview {
   /** `http://127.0.0.1:<port>` */
@@ -27,39 +27,6 @@ export interface ViewerPreview {
 
 export function viewerDist(root: string): string {
   return join(root, 'apps/viewer/dist/index.html');
-}
-
-async function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = createServer();
-    srv.once('error', reject);
-    srv.listen(0, '127.0.0.1', () => {
-      const addr = srv.address();
-      if (!addr || typeof addr === 'string') {
-        srv.close();
-        reject(new Error('could not allocate a port'));
-        return;
-      }
-      const { port } = addr;
-      srv.close((err) => (err ? reject(err) : resolve(port)));
-    });
-  });
-}
-
-function stopProcess(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    const t = setTimeout(() => {
-      child.kill('SIGKILL');
-      resolve();
-    }, 5000);
-    child.once('exit', () => {
-      clearTimeout(t);
-      resolve();
-    });
-    // The vite binary is a plain node process here (no shell), so kill() reaches it.
-    child.kill();
-  });
 }
 
 /** Serve the built viewer; throws when `apps/viewer/dist` is missing. */
@@ -74,11 +41,7 @@ export async function startViewerPreview(root: string): Promise<ViewerPreview> {
     env: { ...process.env, BROWSER: 'none' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  const collect = (chunk: Buffer) => {
-    for (const line of chunk.toString('utf8').split(/\r?\n/)) if (line.trim()) log.push(line);
-  };
-  child.stdout?.on('data', collect);
-  child.stderr?.on('data', collect);
+  collectOutput(child, log);
   const url = `http://127.0.0.1:${port}`;
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {

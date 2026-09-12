@@ -19,10 +19,12 @@
  *
  * Both values have a per-browser `localStorage` override (`ifc-lite:collab:
  * enabled`, `ifc-lite:collab:server-url`) so a built viewer can be pointed at
- * a local relay without a rebuild — the relay acceptance in
- * `tests/e2e/collab-share-seed.e2e.spec.ts` (#4446) drives the ordinary
- * `vite preview` build against a disposable signed relay this way. An empty
- * override (`''`) means "no server, local-only", distinct from "unset".
+ * a local relay without a rebuild — the relay acceptances in
+ * `tests/e2e/collab-*.e2e.spec.ts` (#4444 federation scope, #4446 share seed)
+ * drive the ordinary `vite preview` build against a disposable signed relay
+ * this way. An empty override (`''`) means "no server, local-only", distinct
+ * from "unset". An applied URL override is logged once so a stale one (left by
+ * a test profile or set by hand) is visible when a session cannot connect.
  */
 
 const LS_OVERRIDE_KEY = 'ifc-lite:collab:enabled';
@@ -89,10 +91,22 @@ function readServerUrlOverride(): string | null | undefined {
   }
 }
 
+let serverUrlOverrideLogged = false;
+
 /** Configured collab-server websocket URL, or `null` for local-only mode. */
 export function collabServerUrl(): string | null {
   const override = readServerUrlOverride();
-  if (override !== undefined) return override;
+  if (override !== undefined) {
+    if (!serverUrlOverrideLogged) {
+      serverUrlOverrideLogged = true;
+      // eslint-disable-next-line no-console
+      console.info(
+        `[collab] server URL overridden via localStorage ${LS_SERVER_URL_KEY}:`,
+        override === null ? '(local-only)' : override,
+      );
+    }
+    return override;
+  }
   const raw = import.meta.env.VITE_COLLAB_SERVER_URL;
   if (typeof raw !== 'string') return null;
   return normalizeServerUrl(raw);

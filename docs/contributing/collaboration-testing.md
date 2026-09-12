@@ -239,6 +239,11 @@ pnpm --filter @ifc-lite/viewer build                 # the ordinary build, no co
 pnpm test:e2e:collab                                 # Playwright project viewer-collab-e2e
 ```
 
+The project runs real Google Chrome (`channel: 'chrome'`, headless, WebGPU);
+a host with only Playwright's bundled Chromium fails at launch with "chrome
+distribution not found" — install Chrome, the spec cannot detect that ahead
+of time the way it skips on a missing fixture or build.
+
 `tests/e2e/collab-federation-scope.e2e.spec.ts` loads the fixture twice, paints
 the same IfcMember red in copy 1 and blue in copy 2 through the Appearance
 workspace, shares "All 2 loaded models", closes the owner, and checks a fresh

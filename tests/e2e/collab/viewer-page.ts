@@ -101,7 +101,7 @@ export async function openViewer(context: BrowserContext, url: string): Promise<
 export async function storeState<T>(page: Page, pick: string): Promise<T> {
   return page.evaluate(
     ({ key, pickExpr }) => {
-      const store = (globalThis as Record<string, { getState(): unknown } | undefined>)[key];
+      const store = (globalThis as unknown as Record<string, { getState(): unknown } | undefined>)[key];
       if (!store) throw new Error(`viewer store singleton ${key} not found`);
       // eslint-disable-next-line no-new-func
       return new Function('state', `return (${pickExpr});`)(store.getState());
@@ -126,6 +126,30 @@ export async function waitForStore<T>(
     await page.waitForTimeout(150);
   }
   throw new Error(`${label} did not settle within ${timeoutMs}ms; last: ${JSON.stringify(last)}`);
+}
+
+/**
+ * Record every `collabSeedPhase` transition with a timestamp through the
+ * store's own `subscribe` (polling would miss the sub-100 ms phases).
+ */
+export async function traceSeedPhases(page: Page): Promise<void> {
+  await page.evaluate((key) => {
+    const store = (globalThis as unknown as Record<string, { getState(): { collabSeedPhase: string }; subscribe(fn: (s: { collabSeedPhase: string }) => void): void } | undefined>)[key];
+    if (!store) throw new Error(`viewer store singleton ${key} not found`);
+    const trace: Array<{ phase: string; at: number }> = [{ phase: store.getState().collabSeedPhase, at: performance.now() }];
+    (globalThis as Record<string, unknown>).__collabSeedPhaseTrace = trace;
+    store.subscribe((s) => {
+      if (s.collabSeedPhase !== trace[trace.length - 1].phase) trace.push({ phase: s.collabSeedPhase, at: performance.now() });
+    });
+  }, STORE_KEY);
+}
+
+/** The phases recorded by `traceSeedPhases`, with the time spent in each (ms). */
+export async function seedPhaseTrace(page: Page): Promise<Array<{ phase: string; ms: number | null }>> {
+  return page.evaluate(() => {
+    const trace = ((globalThis as Record<string, unknown>).__collabSeedPhaseTrace ?? []) as Array<{ phase: string; at: number }>;
+    return trace.map((t, i) => ({ phase: t.phase, ms: i + 1 < trace.length ? Math.round(trace[i + 1].at - t.at) : null }));
+  });
 }
 
 /** Load a model file through the ordinary file input and wait for its geometry and data store. */
@@ -180,7 +204,7 @@ export async function roomCounts(page: Page): Promise<RoomCounts> {
 export async function texturedMeshFingerprints(page: Page, modelId: string): Promise<MeshFingerprint[]> {
   return page.evaluate(
     async ({ key, id }) => {
-      const store = (globalThis as Record<string, { getState(): unknown } | undefined>)[key];
+      const store = (globalThis as unknown as Record<string, { getState(): unknown } | undefined>)[key];
       if (!store) throw new Error(`viewer store singleton ${key} not found`);
       const state = store.getState() as { models: Map<string, { geometryResult?: { meshes: Array<Record<string, unknown>> } }> };
       const model = state.models.get(id);

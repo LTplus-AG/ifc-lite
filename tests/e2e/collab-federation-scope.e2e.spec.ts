@@ -22,7 +22,9 @@
  * checkout's build (`tests/e2e/collab/{relay,preview}.ts`, shared with the
  * #4446 relay acceptance); see `pnpm test:e2e:collab` in
  * `docs/contributing/collaboration-testing.md`. Skips, never fails, when the
- * fixture, the viewer build or the relay build is absent.
+ * fixture, the viewer build or the relay build is absent; needs real Google
+ * Chrome (the project's `channel: 'chrome'`, for WebGPU) — that one it cannot
+ * detect ahead of launch.
  */
 
 import { test, expect, type Browser, type Page, type TestInfo } from '@playwright/test';
@@ -218,6 +220,9 @@ test.describe('federation scope: two copies of AC20-FZK-Haus.ifc in one room (#4
       if (i === 0) save(info, 'guest-export-m0-sample.json', JSON.stringify({ filename, member, fragments: fragments.length }, null, 2), 'application/json');
     }
     expect(exports[0].entityPaths as number).toBe(exports[1].entityPaths as number);
+    // Two byte-different files must not download under one name: the "(2)"
+    // copy suffix has to survive the extension strip (review of this PR).
+    expect(exports[1].filename).not.toBe(exports[0].filename);
     evidence.exports = exports;
     await guest.context.close();
 

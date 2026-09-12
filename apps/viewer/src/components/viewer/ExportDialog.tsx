@@ -66,7 +66,7 @@ import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
-import { downloadFile, sanitizeFilename } from '@/lib/export/download';
+import { downloadFile, sanitizeFilename, stripExtension } from '@/lib/export/download';
 import { roomExportPathPrefix } from '@/lib/collab/room-export-paths';
 import { ExtensionExportSlot } from '@/components/extensions/ExtensionExportSlot';
 import { preferredExportModelId } from './export-model-default';
@@ -441,7 +441,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         throw new Error('Selected model has no parsed IFC data store available for export');
       }
       const mutationView = getMutationView(selectedModelId);
-      const baseName = sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' });
+      const baseName = sanitizeFilename(stripExtension(selectedModel.name), { fallback: 'model' });
 
       // ── IFC5 → always IFCX ──────────────────────────────────────────
       if (isIfc5) {
@@ -505,8 +505,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           isolatedEntityIds: localIsolated,
           onlyKnownProperties,
           author: 'ifc-lite',
-          // A recipient's room model is keyed by room path; export the file's own paths (#4444).
-          stripPathPrefix: roomExportPathPrefix(useViewerStore.getState(), selectedModelId),
+          stripPathPrefix: roomExportPathPrefix(useViewerStore.getState(), selectedModelId), // room path -> file path, #4444
         });
 
         const suffix = changesOnly ? '_changes' : (visibleOnly ? '_visible' : '_export');
@@ -819,7 +818,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           <ExtensionExportSlot
             baseName={
               selectedModel
-                ? sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' })
+                ? sanitizeFilename(stripExtension(selectedModel.name), { fallback: 'model' })
                 : 'model'
             }
           />

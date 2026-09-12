@@ -2,7 +2,7 @@
   "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
   "memberGuid": "0oTQ6V1VbChulreA_hfmUa",
   "owner": {
-    "invite": "http://127.0.0.1:51016/?room=a41c688b1156&t=<redacted>",
+    "invite": "http://127.0.0.1:63650/?room=879b031bf82f&t=<redacted>",
     "stats": {
       "slots": [
         "m0",
@@ -23,12 +23,12 @@
         "failed": 0,
         "abandoned": false,
         "interrupted": false,
-        "at": "2026-09-12T07:07:26.833Z"
+        "at": "2026-09-12T07:37:19.239Z"
       }
     },
     "members": [
       {
-        "modelId": "9530af2c-1645-404a-be1c-25c3dc8d6aef",
+        "modelId": "eecf6c25-c6ba-43ad-97e0-f2bd91eebcb8",
         "local": 35169,
         "global": 35169,
         "storedGlobalId": "0oTQ6V1VbChulreA_hfmUa",
@@ -39,7 +39,7 @@
         "textureRef": "textures/57cda64cead0869cd5f90dfebb024f4bd9a922aaea91d513de6fa3e949d88921.png"
       },
       {
-        "modelId": "a958fcc5-780b-42c8-8471-9dc4a4f7fbd3",
+        "modelId": "08d72196-bf3c-46bd-bfd4-b677908ab339",
         "local": 35169,
         "global": 1114277,
         "storedGlobalId": "0oTQ6V1VbChulreA_hfmUa",
@@ -55,7 +55,7 @@
   "guest": {
     "models": [
       {
-        "id": "room:a41c688b1156:m0",
+        "id": "room:879b031bf82f:m0",
         "slot": "m0",
         "name": "AC20-FZK-Haus.ifc",
         "idOffset": 0,
@@ -64,7 +64,7 @@
         "schemaVersion": "IFC5"
       },
       {
-        "id": "room:a41c688b1156:m1",
+        "id": "room:879b031bf82f:m1",
         "slot": "m1",
         "name": "AC20-FZK-Haus.ifc (2)",
         "idOffset": 1000185,
@@ -75,7 +75,7 @@
     ],
     "members": [
       {
-        "modelId": "room:a41c688b1156:m0",
+        "modelId": "room:879b031bf82f:m0",
         "local": 47,
         "global": 47,
         "storedGlobalId": "/m0/0oTQ6V1VbChulreA_hfmUa",
@@ -93,7 +93,7 @@
         "textureRef": null
       },
       {
-        "modelId": "room:a41c688b1156:m1",
+        "modelId": "room:879b031bf82f:m1",
         "local": 47,
         "global": 1000232,
         "storedGlobalId": "/m1/0oTQ6V1VbChulreA_hfmUa",
@@ -115,7 +115,7 @@
       "a": {
         "selected": 47,
         "lookup": {
-          "modelId": "room:a41c688b1156:m0",
+          "modelId": "room:879b031bf82f:m0",
           "expressId": 47
         },
         "clicks": 13,
@@ -126,7 +126,7 @@
       "b": {
         "selected": 1000232,
         "lookup": {
-          "modelId": "room:a41c688b1156:m1",
+          "modelId": "room:879b031bf82f:m1",
           "expressId": 47
         },
         "clicks": 13,
@@ -155,7 +155,7 @@
         "failed": 0,
         "abandoned": false,
         "interrupted": false,
-        "at": "2026-09-12T07:07:26.833Z"
+        "at": "2026-09-12T07:37:19.239Z"
       }
     }
   },
@@ -169,7 +169,7 @@
     },
     {
       "slot": "m1",
-      "filename": "AC20-FZK-Haus_export.ifcx",
+      "filename": "AC20-FZK-Haus -2_export.ifcx",
       "nodes": 111,
       "entityPaths": 108,
       "memberPath": "/0oTQ6V1VbChulreA_hfmUa"
@@ -178,7 +178,7 @@
   "rejoin": {
     "models": [
       {
-        "id": "room:a41c688b1156:m0",
+        "id": "room:879b031bf82f:m0",
         "slot": "m0",
         "name": "AC20-FZK-Haus.ifc",
         "idOffset": 0,
@@ -187,7 +187,7 @@
         "schemaVersion": "IFC5"
       },
       {
-        "id": "room:a41c688b1156:m1",
+        "id": "room:879b031bf82f:m1",
         "slot": "m1",
         "name": "AC20-FZK-Haus.ifc (2)",
         "idOffset": 1000185,
@@ -198,7 +198,7 @@
     ],
     "members": [
       {
-        "modelId": "room:a41c688b1156:m0",
+        "modelId": "room:879b031bf82f:m0",
         "local": 47,
         "global": 47,
         "storedGlobalId": "/m0/0oTQ6V1VbChulreA_hfmUa",
@@ -216,7 +216,7 @@
         "textureRef": null
       },
       {
-        "modelId": "room:a41c688b1156:m1",
+        "modelId": "room:879b031bf82f:m1",
         "local": 47,
         "global": 1000232,
         "storedGlobalId": "/m1/0oTQ6V1VbChulreA_hfmUa",
@@ -238,7 +238,7 @@
       "a": {
         "selected": 47,
         "lookup": {
-          "modelId": "room:a41c688b1156:m0",
+          "modelId": "room:879b031bf82f:m0",
           "expressId": 47
         },
         "clicks": 13,
@@ -249,7 +249,7 @@
       "b": {
         "selected": 1000232,
         "lookup": {
-          "modelId": "room:a41c688b1156:m1",
+          "modelId": "room:879b031bf82f:m1",
           "expressId": 47
         },
         "clicks": 13,
@@ -278,7 +278,7 @@
         "failed": 0,
         "abandoned": false,
         "interrupted": false,
-        "at": "2026-09-12T07:07:26.833Z"
+        "at": "2026-09-12T07:37:19.239Z"
       }
     }
   }

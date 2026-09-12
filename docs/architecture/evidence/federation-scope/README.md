@@ -24,7 +24,7 @@ pnpm fixtures
 pnpm turbo build --filter=@ifc-lite/collab-server
 pnpm --filter @ifc-lite/viewer build
 E2E_EVIDENCE_DIR=<dir> pnpm test:e2e:collab
-# 2 passed (42.1s): the two-copy journey 29.8s, the "Active model only" control 9.7s
+# 2 passed (44.0s): the two-copy journey 29.8s, the "Active model only" control 9.7s
 ```
 
 **Owner profile** ([owner-two-copies-painted.png](owner-two-copies-painted.png),
@@ -57,7 +57,7 @@ The room's document at that point: slots `m0`, `m1`; 184 entities per slot;
 | Store keys | `/m0/0oTQ6V1VbChulreA_hfmUa` in copy 1, `/m1/0oTQ6V1VbChulreA_hfmUa` in copy 2 |
 | Picking | with the other copy hidden, the member framed and the roof slab that hides it (Elements → Hide selection, one occluder per copy) out of the way, a real canvas click at the member's projected triangle centre selects global id 47 → `{ modelId: room:…:m0, expressId: 47 }` in copy 1 and 1 000 232 → `{ modelId: room:…:m1, expressId: 47 }` in copy 2 (13 clicks each) |
 | Geometry notice | `collabGeometryNotice` null; no "shared model … geometry" toast |
-| Export | Export dialog, Model "AC20-FZK-Haus.ifc (IFC5)" then "AC20-FZK-Haus.ifc (2) (IFC5)", schema IFC5 (current), output `.ifcx`, **Export**: two downloads `AC20-FZK-Haus_export.ifcx`, 111 nodes / 108 entity paths each; the member at `/0oTQ6V1VbChulreA_hfmUa` with its `ifclite::appearance::v1` fragment in both; no node path or child reference under `/m0/` or `/m1/` ([sample](guest-export-m0-sample.json)) |
+| Export | Export dialog, Model "AC20-FZK-Haus.ifc (IFC5)" then "AC20-FZK-Haus.ifc (2) (IFC5)", schema IFC5 (current), output `.ifcx`, **Export**: two downloads, `AC20-FZK-Haus_export.ifcx` and `AC20-FZK-Haus -2_export.ifcx` (the "(2)" copy suffix survives the extension strip, `sanitizeFilename` then rewrites the parentheses — the first run of this spec downloaded both copies under one name), 111 nodes / 108 entity paths each; the member at `/0oTQ6V1VbChulreA_hfmUa` with its `ifclite::appearance::v1` fragment in both; no node path or child reference under `/m0/` or `/m1/` ([sample](guest-export-m0-sample.json)) |
 
 **Rejoin** — a third profile opens the same invite
 ([rejoin-copy-b-picked.png](rejoin-copy-b-picked.png)): the same two models,

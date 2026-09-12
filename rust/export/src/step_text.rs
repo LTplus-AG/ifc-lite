@@ -155,6 +155,14 @@ pub(crate) fn refs_in_line_counted(line: &[u8], out: &mut Vec<u32>, refused: &mu
 /// lands on `ObjectPlacement`, deletes the reference that was there, and reports
 /// success (#4125).
 ///
+/// An edit whose index is past the record's arity is refused the same way. The
+/// other edits on the record still apply, the record counts once, and the
+/// out-of-range one is not in the output. It used to be dropped without a
+/// count, so a caller-supplied `index` (JSON from the wasm bridge) past the
+/// end produced a clean export with every `StepStats` counter at zero and no
+/// edit in the file. `step_cow::candidate` pre-checks the same bound for its
+/// own copies; this is the plain `attribute_mutations` path's copy of it.
+///
 /// One function, and `refused` rather than an `Option` the caller interprets,
 /// because both emit sites need the same PAIR — leave the record as its author
 /// wrote it, and say that an edit is missing — and a site that did the first
@@ -173,10 +181,15 @@ pub(crate) fn apply_attr_mutations_counted(
         let prefix = &body[..=eq];
         let type_name = &after[..popen];
         let mut args = split_top_level_args(&after[popen + 1..aclose])?;
+        let mut out_of_range = false;
         for (idx, val) in muts {
-            if *idx < args.len() {
-                args[*idx] = val.clone();
+            match args.get_mut(*idx) {
+                Some(slot) => *slot = val.clone(),
+                None => out_of_range = true,
             }
+        }
+        if out_of_range {
+            *refused += 1;
         }
         Some(format!("{prefix}{type_name}({});", args.join(",")))
     });

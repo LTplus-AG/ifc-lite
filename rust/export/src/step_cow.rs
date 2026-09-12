@@ -57,9 +57,10 @@ fn candidate<'a>(
         return None;
     }
     // The attribute has to exist before an id is spent on the copy.
-    // `apply_attr_mutations_counted` ignores an index past the end, so without this the
-    // copy comes out identical to the record it copied and the referrer is
-    // repointed at a duplicate that changed nothing.
+    // `apply_attr_mutations_counted` drops an index past the end (and counts
+    // it into `attribute_edits_refused`), so without this the copy comes out
+    // identical to the record it copied and the referrer is repointed at a
+    // duplicate that changed nothing.
     let source_line = String::from_utf8_lossy(&content[source_start..source_end]);
     attribute_of(&source_line, cow.index)?;
 

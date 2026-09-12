@@ -11,7 +11,7 @@ import { IfcParser, unwrapIfcZipWithResources } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { federationRegistry, Renderer as PreviewRenderer, type Renderer } from '@ifc-lite/renderer';
-import type { MeshData, GeometryResult } from '@ifc-lite/geometry';
+import { GeometryProcessor, type MeshData, type GeometryResult } from '@ifc-lite/geometry';
 import { AppearancePreviewController } from '../../../../../../packages/renderer/src/appearance-preview.js';
 import { render, cleanup, advance, type } from '@/test/render.js';
 import { AppearanceStreamingHarness } from '@/test/appearance-streaming-harness.js';
@@ -25,8 +25,13 @@ import { getGlobalRenderer, setGlobalRendererRef } from '@/hooks/useBCF';
 import { appearanceAssets, modelAppearanceAssets } from '@/lib/appearance/model-assets.js';
 import { prepareAppearanceSerialization } from '@/lib/appearance/serialization.js';
 import { packagePortableIfcAsync } from '@/lib/export/portable-ifc.js';
+import { PdfAppearanceSource } from '@/lib/appearance/pdf/source-document.js';
+import { registerPdfDocument, removePdfDocument } from '@/lib/appearance/pdf/documents.js';
+import { publishPdfRaster } from '@/lib/appearance/pdf/publish-source.js';
+import { controlledPdf } from '@/lib/appearance/pdf/fixtures.js';
+import { runPdfJob, type PdfEngineBackend, type PdfRasterSurface } from '@/lib/appearance/pdf/engine.js';
 import type { AppearanceWorker } from '@/lib/appearance/planner-worker-client.js';
-import type { AppearancePlan, AppearanceCatalog, AppearanceRequest, AppearanceWorkerRequest, AppearanceWorkerResponse } from '@/lib/appearance/planner-types.js';
+import type { AppearancePlan, AppearanceCatalog, AppearanceRequest, AppearanceWorkerRequest, AppearanceWorkerResponse, PageAppearancePlan, PageAppearanceRequest } from '@/lib/appearance/planner-types.js';
 import { AppearancePanel } from './AppearancePanel.js';
 import { AuthorTab } from '../ribbon/tabs/AuthorTab.js';
 import { pickViewportAppearanceFace } from './face-mask/viewport-face-picker.js';
@@ -38,18 +43,121 @@ const indices = new Uint32Array([0, 1, 2, 0, 2, 3]);
 const positions = new Float32Array([0, 0, 0, 1, 0, 0, 1, 0, -1, 0, 0, -1]);
 const normals = new Float32Array(12).map((_, i) => i % 3 === 1 ? 1 : 0);
 
-for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' : 'resident'} face selection previews a split, survives discard, applies, exports and undoes/redoes (#4404)`, {
+interface RasterPixels { width: number; height: number; rgba: Uint8ClampedArray }
+interface FrozenTopologyOracle {
+  readonly sourceIndices: readonly number[];
+  readonly cornerPositions: readonly (readonly number[])[];
+}
+
+function meshSnapshot(parts: readonly MeshData[]) {
+  return parts.map(part => ({
+    expressId: part.expressId, geometryItemId: part.geometryItemId, modelIndex: part.modelIndex, ifcType: part.ifcType,
+    positions: [...part.positions], normals: [...part.normals], indices: [...part.indices], color: [...part.color],
+    shadingColor: part.shadingColor && [...part.shadingColor], uvs: part.uvs && [...part.uvs],
+    texture: part.texture && { width: part.texture.width, height: part.texture.height, rgba: [...part.texture.rgba] },
+    textureRef: part.textureRef && { ...part.textureRef },
+    appearanceSource: part.appearanceSource && { kind: part.appearanceSource.kind,
+      indices: [...part.appearanceSource.indices], sourceIndices: [...part.appearanceSource.sourceIndices],
+      cornerIndices: part.appearanceSource.cornerIndices && [...part.appearanceSource.cornerIndices] },
+  }));
+}
+
+function freezeTopologyOracle(sourcePositions: Float32Array, sourceIndices: Uint32Array): FrozenTopologyOracle {
+  return Object.freeze({
+    sourceIndices: Object.freeze([...sourceIndices]),
+    cornerPositions: Object.freeze([...sourceIndices].map(vertex =>
+      Object.freeze([...sourcePositions.slice(vertex * 3, vertex * 3 + 3)]))),
+  });
+}
+
+function freezeExpandedTopologyOracle(source: FrozenTopologyOracle): FrozenTopologyOracle {
+  const cornerPositions = source.cornerPositions.map(point => [...point]);
+  return freezeTopologyOracle(new Float32Array(cornerPositions.flat()),
+    Uint32Array.from({ length: cornerPositions.length }, (_, corner) => corner));
+}
+
+function freezeCenteredTopologyOracle(source: FrozenTopologyOracle): FrozenTopologyOracle {
+  const axes = [0, 1, 2].map(axis => {
+    const values = source.cornerPositions.map(point => point[axis]);
+    return (Math.min(...values) + Math.max(...values)) / 2;
+  });
+  return Object.freeze({ sourceIndices: source.sourceIndices,
+    cornerPositions: Object.freeze(source.cornerPositions.map(point =>
+      Object.freeze(point.map((value, axis) => value - axes[axis])))) });
+}
+
+function assertCanonicalFragments(parts: readonly MeshData[], oracle: FrozenTopologyOracle,
+  expected: readonly (readonly number[])[], message: string): void {
+  const actual = parts.map(part => {
+    const source = part.appearanceSource;
+    assert.ok(source?.cornerIndices, `${message}: each fragment retains canonical corners`);
+    assert.strictEqual(source.indices, part.indices, `${message}: provenance names the rendered fragment index buffer`);
+    assert.deepEqual([...source.sourceIndices], oracle.sourceIndices,
+      `${message}: every fragment retains the independently frozen full topology`);
+    const corners = [...source.cornerIndices];
+    assert.equal(corners.length, part.indices.length, `${message}: every rendered corner has canonical provenance`);
+    corners.forEach((canonicalCorner, localCorner) => {
+      const vertex = part.indices[localCorner];
+      assert.deepEqual([...part.positions.slice(vertex * 3, vertex * 3 + 3)], oracle.cornerPositions[canonicalCorner],
+        `${message}: rendered corner ${localCorner} matches canonical corner ${canonicalCorner}`);
+    });
+    return corners;
+  }).sort((a, b) => a[0] - b[0]);
+  assert.deepEqual(actual, expected, message);
+  assert.deepEqual(actual.map(corners => corners[0] / 3), expected.map(corners => corners[0] / 3),
+    `${message}: canonical source triangle ordinals remain stable`);
+}
+
+function triangleGeometry(mesh: MeshData, message: string): number[][] {
+  assert.equal(mesh.indices.length, 3, `${message}: one triangle is present`);
+  return [...mesh.indices].map(vertex => [...mesh.positions.slice(vertex * 3, vertex * 3 + 3)])
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+}
+
+function oracleTriangle(oracle: FrozenTopologyOracle, ordinal: number): number[][] {
+  return oracle.cornerPositions.slice(ordinal * 3, ordinal * 3 + 3).map(point => [...point])
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+}
+
+function requireRasterPixels(raster: RasterPixels | undefined): RasterPixels {
+  if (!raster) throw new Error('the PDF backend must expose the exact pixels used to encode its page derivative');
+  return raster;
+}
+
+async function pdfBackend(onRaster: (raster: RasterPixels) => void): Promise<PdfEngineBackend> {
+  const pdf = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  type NativeCanvas = HTMLCanvasElement & { toBuffer(type: string): Uint8Array };
+  type Target = { canvas: NativeCanvas; context: CanvasRenderingContext2D };
+  let factory: { create(width: number, height: number): Target; destroy(target: Target): void };
+  return { getDocument(options) {
+    const task = pdf.getDocument(options);
+    void task.promise.then(document => { factory = document.canvasFactory as typeof factory; }, () => {});
+    return task;
+  }, options: { disableFontFace: true, useSystemFonts: false },
+  surface(width, height): PdfRasterSurface {
+    const target = factory.create(width, height);
+    return { ...target, async png() {
+      onRaster({ width, height, rgba: new Uint8ClampedArray(target.context.getImageData(0, 0, width, height).data) });
+      return new Uint8Array(target.canvas.toBuffer('image/png'));
+    }, dispose() { factory.destroy(target); } };
+  } };
+}
+
+for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as const) test(`mounted ${mode} face selection previews a split, survives discard, applies, exports and undoes/redoes (#4404, #4557)`, {
   skip: !existsSync(wasmUrl) && 'Run pnpm build:wasm for the native appearance contract',
 }, async () => {
+  const instanced = mode === 'instanced-image', pageSource = mode === 'fragmented-pdf';
   const initial = useViewerStore.getState(), previousRenderer = getGlobalRenderer();
   modelIndices(new Map());
   const workerDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'Worker');
   const oldDecode = globalThis.createImageBitmap;
   const capture = HTMLElement.prototype.setPointerCapture;
+  const canvasDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'OffscreenCanvas');
+  let pdfKey: string | undefined;
   let instanceScene: ReturnType<typeof appearanceInstanceScene> | undefined;
   const { default: init, IfcAPI } = await import('@ifc-lite/wasm');
   await init({ module_or_path: await readFile(wasmUrl) });
-  const requests: { request: AppearanceRequest; plan: AppearancePlan }[] = [];
+  const requests: Array<{ request: AppearanceRequest; plan: AppearancePlan; page?: PageAppearanceRequest; rgba?: Uint8Array; result?: PageAppearancePlan }> = [];
   class NativeWorker implements AppearanceWorker {
     onmessage: ((event: MessageEvent<AppearanceWorkerResponse>) => void) | null = null;
     onerror: ((event: ErrorEvent) => void) | null = null;
@@ -57,7 +165,7 @@ for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' :
     stopped = false;
     terminate() { this.stopped = true; }
     postMessage(job: AppearanceWorkerRequest) {
-      queueMicrotask(() => {
+      queueMicrotask(async () => {
         if (this.stopped) return;
         const api = new IfcAPI();
         try {
@@ -67,6 +175,10 @@ for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' :
           else if (job.type === 'plan') {
             const plan = JSON.parse(new TextDecoder().decode(api.planAppearance(new Uint8Array(job.source), JSON.stringify(job.request)))) as AppearancePlan;
             requests.push({ request: job.request, plan }); response = { type: 'complete', id: job.id, plan };
+          } else if (job.type === 'page-plan') {
+            const result = await import('@/workers/appearance.worker.js').then(module => module.runPageAppearancePlanning(new Uint8Array(job.source), job.request, job.rgba));
+            requests.push({ request: job.request.appearance, plan: result.plan, page: job.request, rgba: job.rgba.slice(), result });
+            response = { type: 'page-complete', id: job.id, result };
           } else throw new Error('Unexpected native fixture request');
           this.onmessage?.({ data: response } as MessageEvent<AppearanceWorkerResponse>);
         } catch (error) { this.onerror?.({ message: String(error) } as ErrorEvent); }
@@ -80,10 +192,21 @@ for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' :
     const view = new MutablePropertyView(data.properties, 'evaluated');
     const idOffset = federationRegistry.registerModel('evaluated', 80);
     const globalId = (id: number) => federationRegistry.toGlobalId('evaluated', id);
+    // Freeze the renderer topology before any mesh enters preview ownership.
+    // This remains independent of every appearanceSource installed later.
+    const originalOracle = freezeTopologyOracle(positions.slice(), indices.slice());
+    const previewOracle = freezeExpandedTopologyOracle(originalOracle);
+    const reopenedOracle = freezeCenteredTopologyOracle(originalOracle);
     const makeMesh = (id: number): MeshData => ({ expressId: globalId(id), geometryItemId: globalId(11), modelIndex: 0, positions, normals, indices,
       color: [0.8, 0.2, 0.1, 1], appearanceSource: { kind: 'canonical-item', indices, sourceIndices: indices } });
     const originals = [makeMesh(25), makeMesh(35)];
-    const resident = new Map(originals.map(mesh => [mesh.expressId, [mesh] as readonly MeshData[]]));
+    const fragment = (mesh: MeshData, from: number): MeshData => {
+      const part = mesh.indices.slice(from, from + 3);
+      return { ...mesh, indices: part, appearanceSource: { kind: 'canonical-item', indices: part,
+        sourceIndices: mesh.indices, cornerIndices: Uint32Array.from([from, from + 1, from + 2]) } };
+    };
+    const resident = new Map<number, MeshData[]>(originals.map(mesh => [mesh.expressId,
+      pageSource && mesh.expressId === globalId(25) ? [fragment(mesh, 0), fragment(mesh, 3)] : [mesh]]));
     const bounds = { min: { x: 0, y: 0, z: -1 }, max: { x: 1, y: 0, z: 0 } };
     const geometry: GeometryResult = { meshes: instanced ? [] : originals, totalTriangles: instanced ? 0 : 4, totalVertices: instanced ? 0 : 8,
       ...(instanced ? { instancedGeometryAabbs: new Map(originals.map(mesh => [mesh.expressId, { min: [0, 0, -1] as [number, number, number], max: [1, 0, 0] as [number, number, number] }])) } : {}),
@@ -95,11 +218,52 @@ for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' :
       undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null,
       appearanceSources: [], appearanceDraft: null, selectedEntityId: selection, selectedEntityIds: new Set([selection]) });
     const owner = { kind: 'source' as const, id: 'face-mask-image' };
-    const asset = await appearanceAssets.add(png, { owner });
-    useViewerStore.getState().addAppearanceSource({ id: asset.id, name: 'Texture', width: 1, height: 1 });
+    let decodedPdf: RasterPixels | undefined;
+    let pdfPagePng: Uint8Array | undefined;
+    let pdfPageBitmap: ImageBitmap | undefined;
+    let pdfPageBitmapDrawn = false;
+    if (pageSource) {
+      const bytes = controlledPdf(), backend = await pdfBackend(raster => { decodedPdf = raster; });
+      const document = await PdfAppearanceSource.open(new File([bytes], 'Controlled plan.pdf', { type: 'application/pdf' }), appearanceAssets, {
+        worker: { run: (source, job, options) => runPdfJob(backend, source, job, options), cancel() {}, dispose() {} },
+      });
+      pdfKey = registerPdfDocument(document);
+      const raster = await document.rasterize({ pageNumber: 1, dpi: 18 });
+      const pagePng = appearanceAssets.encoded(raster.asset.id);
+      pdfPagePng = pagePng.slice();
+      assert.ok(raster.recipe.pixelWidth > 1 && raster.recipe.pixelWidth <= 256
+        && raster.recipe.pixelHeight > 1 && raster.recipe.pixelHeight <= 256 && pagePng.length > 100,
+      'real PDF.js decoded a bounded page derivative');
+      const rasterPixels = requireRasterPixels(decodedPdf);
+      decodedPdf = rasterPixels;
+      const published = publishPdfRaster(pdfKey, raster);
+      useViewerStore.getState().updateAppearanceSource({ ...published,
+        calibration: { sourcePoints: [[10, 20], [110, 20]], distanceMetres: 1 } });
+      Object.defineProperty(globalThis, 'OffscreenCanvas', { configurable: true, value: class {
+        constructor(readonly width: number, readonly height: number) { assert.equal(width, rasterPixels.width); assert.equal(height, rasterPixels.height); }
+        getContext() { return { drawImage(bitmap: ImageBitmap) {
+          assert.strictEqual(bitmap, pdfPageBitmap, 'the PDF compositor draws the bitmap decoded from the exact page PNG');
+          pdfPageBitmapDrawn = true;
+        }, getImageData: () => {
+          assert.equal(pdfPageBitmapDrawn, true, 'RGBA extraction follows the exact decoded PDF page bitmap draw');
+          return { data: rasterPixels.rgba };
+        } }; }
+      } });
+    } else {
+      const asset = await appearanceAssets.add(png, { owner });
+      useViewerStore.getState().addAppearanceSource({ id: asset.id, name: 'Texture', width: 1, height: 1 });
+    }
     globalThis.createImageBitmap = async (blob: ImageBitmapSource) => {
-      assert.ok(blob instanceof Blob); const bytes = new DataView(await blob.arrayBuffer());
-      return { width: bytes.getUint32(16), height: bytes.getUint32(20), close() {} } as ImageBitmap;
+      assert.ok(blob instanceof Blob);
+      const encoded = new Uint8Array(await blob.arrayBuffer());
+      const bytes = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength);
+      const bitmap = { width: bytes.getUint32(16), height: bytes.getUint32(20), close() {} } as ImageBitmap;
+      if (pageSource && pdfPageBitmap === undefined) {
+        assert.ok(pdfPagePng, 'the real PDF page PNG is frozen before browser decoding');
+        assert.deepEqual(encoded, pdfPagePng, 'createImageBitmap receives the exact PNG emitted by the PDF.js canvas');
+        pdfPageBitmap = bitmap;
+      }
+      return bitmap;
     };
     Object.defineProperty(globalThis, 'Worker', { configurable: true, value: NativeWorker });
     // The face-selection canvas has no GPU here. The main viewport hit below
@@ -110,14 +274,16 @@ for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' :
     mock.method(PreviewRenderer.prototype, 'fitToView', () => {});
     HTMLElement.prototype.setPointerCapture = () => {};
     const gpu = new AppearancePreviewController<number>({ capture: owner => ({ parts: resident.get(owner.expressId)!, resources: [] }),
-      stage: () => [], install: (owner, parts) => { resident.set(owner.expressId, parts); }, release() {} });
+      stage: () => [], install: (owner, parts) => { resident.set(owner.expressId, [...parts]); }, release() {} });
     // Instanced shards take their template in IFC Z-up; the scene converts.
     if (instanced) instanceScene = appearanceInstanceScene(originals, { positions: new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0]), normals: new Float32Array(12).map((_, i) => i % 3 === 2 ? 1 : 0), indices });
     const activePreview = instanceScene?.preview ?? gpu;
     const readParts = (id: number) => instanceScene
       ? activePreview.getParts?.({ expressId: id, modelIndex: 0 }) ?? instanceScene.scene.getInstancedMeshDataPieces(id)
       : resident.get(id);
-    const siblingBefore = readParts(globalId(35))!;
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
+      'the initial resident fragments match the topology frozen before preview ownership');
+    const siblingBefore = meshSnapshot(readParts(globalId(35))!);
     const renderer = { getAppearancePreview: () => activePreview,
       getScene: () => instanceScene?.scene ?? { getMeshDataPieces: (id: number) => resident.get(id) }, requestRender() {},
       getGPUDevice: () => instanceScene?.device, getPipeline: () => instanceScene?.pipeline, getCanvas: () => null, clearCaches() {},
@@ -126,7 +292,12 @@ for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' :
     const ui = render(<StrictMode>{instanced && <AppearanceStreamingHarness renderer={renderer} />}<AppearancePanel /><AuthorTab /></StrictMode>);
     const until = async (predicate: () => boolean) => { for (let i = 0; i < 200 && !predicate(); i++) await advance(10); assert.ok(predicate(), ui.textContent ?? 'UI stalled'); };
     const button = (name: string) => [...ui.querySelectorAll('button')].find(item => item.textContent?.trim() === name)!;
-    const ids = (id: number) => readParts(id)!.map(part => part.geometryItemId);
+    const partIds = (parts: readonly MeshData[]) => parts.map(part => {
+      if (part.geometryItemId === undefined) assert.fail('every appearance part must retain its geometry item identity');
+      return part.geometryItemId;
+    });
+    const ids = (id: number) => partIds(readParts(id)!);
+    const originalIds = pageSource ? [globalId(11), globalId(11)] : [globalId(11)];
     await until(() => requests.length > 0);
     const consent = ui.querySelector<HTMLInputElement>('input[type=checkbox]'); assert.ok(consent);
     await act(async () => consent.click());
@@ -135,7 +306,11 @@ for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' :
     assert.equal(whole.request.faceMasks, undefined);
     assert.equal(whole.plan.conversions?.length, 1); assert.equal(whole.plan.conversions![0].sourceIndices.length, 6);
     assert.match(ui.textContent ?? '', /all 2 faces/);
-    assert.deepEqual(ids(selection), [globalId(whole.plan.conversions![0].geometryItemId)], 'a whole-surface conversion previews as one textured part');
+    const wholeTextured = globalId(whole.plan.conversions![0].geometryItemId);
+    assert.deepEqual(ids(selection), pageSource ? [wholeTextured, wholeTextured] : [wholeTextured],
+      'a whole-surface conversion textures every resident fragment without changing its partition');
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, previewOracle, [[0, 1, 2], [3, 4, 5]],
+      'the initial whole-surface preview preserves both stream fragments');
 
     // Select one of the two faces: the plan carries the mask, the preview splits.
     await act(async () => button('Select faces').click());
@@ -153,15 +328,49 @@ for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' :
     assert.deepEqual(masked.request.faceMasks, [{ productId: 25, surfaceFingerprint: whole.plan.conversions![0].surfaceFingerprint, triangles: [1] }]);
     assert.deepEqual(masked.plan.exclusions, []);
     const conversion = masked.plan.conversions![0];
+    assert.equal(conversion.surfaceFingerprint, whole.plan.conversions![0].surfaceFingerprint);
     assert.deepEqual(conversion.maskedTriangles, [1]);
-    const textured = globalId(conversion.geometryItemId), retained = globalId(conversion.retainedGeometryItemId!);
-    assert.deepEqual(ids(selection), [textured, retained], 'the masked preview stages the textured and the retained face set under one owner');
-    assert.equal(readParts(selection)![0].indices.length, 3); assert.equal(readParts(selection)![1].indices.length, 3);
-    assert.ok(readParts(selection)![0].uvs && (readParts(selection)![0].textureRef || readParts(selection)![0].texture));
-    assert.equal(readParts(selection)![1].uvs, undefined);
-    assert.deepEqual([...readParts(selection)![1].color], [0.8, 0.2, 0.1, 1], 'the retained part keeps the source colour');
+    if (pageSource) {
+      assert.ok(masked.page && masked.rgba, 'the selected faces reached the native page compositor');
+      assert.equal(masked.page.appearance.repeatS, false); assert.equal(masked.page.appearance.repeatT, false);
+      assert.equal(masked.page.page.width * masked.page.page.height * 4, masked.rgba.length);
+      assert.equal(pdfPageBitmapDrawn, true, 'the exact PDF page bitmap reaches the compositor before RGBA extraction');
+      assert.deepEqual([...masked.rgba], [...requireRasterPixels(decodedPdf).rgba],
+        'native page planning receives the exact RGBA decoded by PDF.js');
+      assert.deepEqual(masked.page.appearance.mapping, { kind: 'planar', frame: 'world', origin: [1, 0, 0],
+        axisU: [0, 0, 1], axisV: [-1, -0, -0], metresPerTile: [0.72, 1] },
+      'the known 100-unit PDF landmark span calibrates to exactly one metre');
+      assert.equal(masked.page.texelsPerMetre, 50);
+      const staleFingerprint = `${whole.plan.conversions![0].surfaceFingerprint![0] === '0' ? '1' : '0'}${whole.plan.conversions![0].surfaceFingerprint!.slice(1)}`;
+      const stale = await import('@/workers/appearance.worker.js').then(module => module.runPageAppearancePlanning(source, {
+        ...masked.page!, appearance: { ...masked.page!.appearance,
+          faceMasks: [{ ...masked.page!.appearance.faceMasks![0], surfaceFingerprint: staleFingerprint }] },
+      }, masked.rgba!));
+      assert.equal(stale.plan.items.length, 0); assert.match(stale.plan.exclusions[0].reason, /Face selection is stale:.*geometry changed/);
+      await assert.rejects(import('@/workers/appearance.worker.js').then(module => module.runPageAppearancePlanning(source,
+        { ...masked.page!, texelsPerMetre: 1e9 }, masked.rgba!)), /budget/);
+    }
+    assert.ok(conversion.geometryItemId !== undefined && conversion.retainedGeometryItemId !== undefined);
+    const textured = globalId(conversion.geometryItemId), retained = globalId(conversion.retainedGeometryItemId);
+    const expectedSplitIds = [textured, retained].sort((a, b) => a - b);
+    const splitIds = () => ids(selection).sort((a, b) => a - b);
+    assert.deepEqual(splitIds(), expectedSplitIds, 'the masked preview stages the textured and the retained face set under one owner');
+    const texturedPart = readParts(selection)!.find(part => part.geometryItemId === textured);
+    const retainedPart = readParts(selection)!.find(part => part.geometryItemId === retained);
+    assert.equal(texturedPart?.indices.length, 3); assert.equal(retainedPart?.indices.length, 3);
+    assert.ok(texturedPart?.uvs && (texturedPart.textureRef || texturedPart.texture));
+    assert.equal(retainedPart?.uvs, undefined);
+    assert.deepEqual(retainedPart && [...retainedPart.color], [0.8, 0.2, 0.1, 1], 'the retained part keeps the source colour');
+    if (pageSource) {
+      assert.equal(texturedPart?.textureRef?.repeatS, false, 'finite PDF pages clamp instead of tile');
+      assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
+        'the masked preview preserves canonical source triangles across its textured/retained split');
+      assertCanonicalFragments([texturedPart!], originalOracle, [[3, 4, 5]], 'the picked face keeps canonical source ordinal 1');
+      assertCanonicalFragments([retainedPart!], originalOracle, [[0, 1, 2]], 'the unpicked face keeps canonical source ordinal 0');
+    }
     assert.match(ui.textContent ?? '', /1 of 2 faces selected/);
-    assert.deepEqual(readParts(globalId(35))!, siblingBefore);
+    assert.deepEqual(meshSnapshot(readParts(globalId(35))!), siblingBefore,
+      'preview leaves the sibling identity, geometry bytes, and style unchanged');
     assert.equal(view.getNewEntities().length, 0, 'preview publishes no IFC conversion');
 
     // Leaving the evaluated policy keeps the selection dormant: no mask enters a
@@ -179,34 +388,55 @@ for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' :
     await act(async () => consent.click());
     await until(() => requests.length > beforePolicy + 1 && requests.at(-1)!.request.faceMasks !== undefined && (ui.textContent ?? '').includes('Preview ready'));
     assert.deepEqual(requests.at(-1)!.request.faceMasks?.[0].triangles, [1], 'the dormant selection returns with the evaluated policy');
-    assert.deepEqual(ids(selection), [textured, retained]);
+    assert.deepEqual(splitIds(), expectedSplitIds);
     assert.match(ui.textContent ?? '', /1 of 2 faces selected/);
     await act(async () => button('Compare original').click());
-    assert.deepEqual(ids(selection), [globalId(11)]);
+    assert.deepEqual(ids(selection), originalIds);
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
+      'Compare restores both original canonical fragments');
     await act(async () => button('Show preview').click());
-    assert.deepEqual(ids(selection), [textured, retained]);
+    assert.deepEqual(splitIds(), expectedSplitIds);
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
+      'Show preview restores the canonical masked split');
 
     // Discard restores the single original part and keeps the selection for the next preview.
     await act(async () => button('Discard').click());
     await until(() => (ui.textContent ?? '').includes('Preview discarded'));
-    assert.deepEqual(ids(selection), [globalId(11)]);
-    const tile = ui.querySelector<HTMLInputElement>('input[aria-label="Tile width (m)"]') ?? [...ui.querySelectorAll('label')].find(label => label.textContent?.includes('Tile width'))?.querySelector('input');
-    assert.ok(tile, 'a mapping field re-enables the preview');
+    assert.deepEqual(ids(selection), originalIds);
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
+      'Discard restores both original canonical fragments');
+    const mappingInput = pageSource
+      ? ui.querySelector<HTMLInputElement>('input[aria-label="Distance A–B (m)"]')
+      : ui.querySelector<HTMLInputElement>('input[aria-label="Tile width (m)"]') ?? [...ui.querySelectorAll('label')].find(label => label.textContent?.includes('Tile width'))?.querySelector('input');
+    assert.ok(mappingInput, 'a mapping field re-enables the preview');
     const planned = requests.length;
-    type(tile, '2');
+    type(mappingInput, '2');
     await until(() => requests.length > planned && !!button('Apply') && !button('Apply').disabled);
     const again = requests.at(-1)!;
     assert.deepEqual(again.request.faceMasks?.[0].triangles, [1], 'the selection survives Discard');
-    assert.deepEqual(ids(selection), [textured, retained]);
+    assert.deepEqual(splitIds(), expectedSplitIds);
+    if (pageSource) {
+      assert.ok(again.page && again.result);
+      assert.deepEqual(again.page.appearance.mapping, { kind: 'planar', frame: 'world', origin: [2, 0, 0],
+        axisU: [0, 0, 1], axisV: [-1, -0, -0], metresPerTile: [1.44, 2] },
+      'doubling the measured distance deterministically doubles the calibrated page scale');
+      assert.equal(again.page.texelsPerMetre, 25, 'doubling page scale halves the raster density');
+      assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
+        'the re-preview keeps canonical provenance after calibration changes');
+    }
 
     // Apply: one history step, two face sets in the IFC, the sibling untouched, selection intact.
     await act(async () => button('Apply').click());
     await until(() => (useViewerStore.getState().undoStacks.get('evaluated')?.length ?? 0) === 1);
     assert.equal(useViewerStore.getState().selectedEntityId, selection);
-    assert.deepEqual(ids(selection), [textured, retained]);
+    assert.deepEqual(splitIds(), expectedSplitIds);
     const applied = useViewerStore.getState().models.get('evaluated')!.geometryResult!.meshes.filter(mesh => mesh.expressId === selection);
-    assert.deepEqual(applied.map(mesh => mesh.geometryItemId), [textured, retained], 'the model geometry carries both parts of the product');
-    assert.deepEqual(readParts(globalId(35))!, siblingBefore);
+    assert.deepEqual(partIds(applied).sort((a, b) => a - b), expectedSplitIds,
+      'the model geometry carries both parts of the product');
+    if (pageSource) assertCanonicalFragments(applied, originalOracle, [[0, 1, 2], [3, 4, 5]],
+      'Apply commits the same canonical source ordinals');
+    assert.deepEqual(meshSnapshot(readParts(globalId(35))!), siblingBefore,
+      'Apply leaves the sibling identity, geometry bytes, and style unchanged');
     assert.doesNotMatch(ui.textContent ?? '', /faces selected/, 'the applied selection is spent');
     const faceSets = view.getNewEntities().filter(entity => entity.type === 'IfcTriangulatedFaceSet').map(entity => entity.expressId);
     assert.deepEqual(faceSets, [conversion.geometryItemId, conversion.retainedGeometryItemId]);
@@ -216,26 +446,71 @@ for (const instanced of [false, true]) test(`mounted ${instanced ? 'instanced' :
     assert.match(text, new RegExp(`#23=IFCSHAPEREPRESENTATION\\(#2,'Body','Tessellation',\\(#${faceSets[0]},#${faceSets[1]}\\)\\)`), 'the occurrence Body lists both face sets');
     assert.match(text, /#33=IFCSHAPEREPRESENTATION\(#2,'Body','MappedRepresentation',\(#22\)\)/, 'the sibling keeps its mapped Body');
     assert.equal((text.match(/IFCTRIANGULATEDFACESET\(/g) ?? []).length, 3, 'source quad plus textured and retained face sets');
+    const registered = modelAppearanceAssets.exportResources('evaluated').resources;
+    assert.equal(registered.size, 1, 'the applied command registers exactly one baked image');
+    const expectedAsset = pageSource ? again.result?.assets[0] : undefined;
+    if (pageSource) {
+      assert.ok(expectedAsset && again.result?.assets.length === 1, 'native page planning bakes exactly one selected-face image');
+      assert.deepEqual(again.result.itemImages, [{ geometryItemId: again.plan.conversions![0].geometryItemId,
+        imageUri: expectedAsset.imageUri }], 'the sole native image is owned by the selected-face geometry item');
+      assert.equal(registered.has(expectedAsset.imageUri), true, 'the registered resource retains the native image identity');
+      assert.deepEqual(registered.get(expectedAsset.imageUri), expectedAsset.png,
+        'the registered resource retains the exact native PNG bytes');
+    }
     const archive = await unwrapIfcZipWithResources(new Uint8Array((await packagePortableIfcAsync('evaluated', text, serialized.resources)).content as Uint8Array).buffer);
-    assert.deepEqual([...archive.originalResources.values()][0], png, 'the portable archive carries the image');
+    assert.equal(archive.originalResources.size, 1, 'the IFCZIP contains exactly one image resource');
+    const derivative = [...archive.originalResources.values()][0];
+    const derivativeUri = [...archive.originalResources.keys()][0];
+    if (pageSource) {
+      assert.equal(derivativeUri, expectedAsset!.imageUri, 'the archive keeps the native baked resource identity');
+      assert.deepEqual(derivative, expectedAsset!.png, 'the archive keeps the exact registered native PNG bytes');
+    }
+    else assert.deepEqual(derivative, png);
     const reopened = await new IfcParser().parseColumnar(archive.model, { disableWorkerScan: true });
     assert.equal(reopened.entities.getGlobalId(25), '0Proxy000000000000000a');
     assert.ok(reopened.entityIndex.byId.has(faceSets[0]) && reopened.entityIndex.byId.has(faceSets[1]));
+    if (pageSource) {
+      const processor = new GeometryProcessor();
+      try {
+        await processor.init();
+        const meshes = (await processor.process(new Uint8Array(archive.model))).meshes.filter(mesh => mesh.expressId === 25);
+        const texturedMesh = meshes.find(mesh => mesh.geometryItemId === conversion.geometryItemId);
+        const retainedMesh = meshes.find(mesh => mesh.geometryItemId === conversion.retainedGeometryItemId);
+        assert.ok(texturedMesh?.uvs && texturedMesh.textureRef?.url === derivativeUri,
+          'reopen preserves the selected-face UV/image association and selectable product identity');
+        assert.equal(texturedMesh.textureRef.repeatS, false); assert.equal(texturedMesh.textureRef.repeatT, false);
+        assert.equal(texturedMesh.expressId, 25); assert.equal(retainedMesh?.expressId, 25);
+        assert.equal(retainedMesh?.textureRef, undefined); assert.ok(retainedMesh);
+        assert.deepEqual(triangleGeometry(texturedMesh, 'the reopened textured face set'), oracleTriangle(reopenedOracle, 1),
+          'the reopened textured face set is geometrically canonical ordinal 1');
+        assert.deepEqual(triangleGeometry(retainedMesh, 'the reopened retained face set'), oracleTriangle(reopenedOracle, 0),
+          'the reopened retained face set is geometrically the canonical complement');
+        [0.8, 0.2, 0.1, 1].forEach((expected, index) => assert.ok(Math.abs(retainedMesh.color[index] - expected) <= 1 / 255,
+          'the retained face keeps the original style through IFC colour quantization'));
+      } finally { processor.dispose(); }
+    }
 
     // Undo joins the parts back into the original; Redo splits them again.
     await act(async () => { const undo = ui.querySelector<HTMLButtonElement>('button[aria-label="Undo"]'); assert.ok(undo && !undo.disabled); undo.click(); });
     assert.equal(view.getNewEntities().length, 0);
-    assert.deepEqual(ids(selection), [globalId(11)]);
+    assert.deepEqual(ids(selection), originalIds);
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
+      'Undo restores the original canonical fragments');
     if (instanced) assert.equal(useViewerStore.getState().models.get('evaluated')!.geometryResult!.meshes.length, 0);
     await act(async () => { const redo = ui.querySelector<HTMLButtonElement>('button[aria-label="Redo"]'); assert.ok(redo && !redo.disabled); redo.click(); });
-    assert.deepEqual(ids(selection), [textured, retained]);
+    assert.deepEqual(splitIds(), expectedSplitIds);
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
+      'Redo restores the canonical masked split');
     assert.equal(view.getNewEntities().filter(entity => entity.type === 'IfcTriangulatedFaceSet').length, 2);
-    assert.deepEqual(readParts(globalId(35))!, siblingBefore);
+    assert.deepEqual(meshSnapshot(readParts(globalId(35))!), siblingBefore,
+      'Redo leaves the sibling identity, geometry bytes, and style unchanged');
   } finally {
     cleanup(); instanceScene?.scene.clear(); setGlobalRendererRef({ current: previousRenderer });
     mock.restoreAll(); HTMLElement.prototype.setPointerCapture = capture;
     if (workerDescriptor) Object.defineProperty(globalThis, 'Worker', workerDescriptor); else Reflect.deleteProperty(globalThis, 'Worker');
     globalThis.createImageBitmap = oldDecode;
+    if (canvasDescriptor) Object.defineProperty(globalThis, 'OffscreenCanvas', canvasDescriptor); else Reflect.deleteProperty(globalThis, 'OffscreenCanvas');
+    if (pdfKey) removePdfDocument(pdfKey);
     useViewerStore.getState().clearAllMutations(); modelAppearanceAssets.clear(); appearanceAssets.clear(); federationRegistry.clear();
     useViewerStore.setState(initial);
     modelIndices(new Map());

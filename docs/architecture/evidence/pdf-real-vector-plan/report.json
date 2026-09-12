@@ -1,0 +1,70 @@
+{
+  "input": "HouseFlrPlan.pdf",
+  "sourceBytes": 1541,
+  "sourceSha256": "de2e10df02059bc14a0eae6c1922cd2a699c1938a4c74c97978fccf1ef5df550",
+  "decoderVersion": "6.3.289",
+  "pdfFormatVersion": "1.3",
+  "pageNumber": 1,
+  "viewBox": [
+    0,
+    0,
+    218.25,
+    150.75
+  ],
+  "userUnit": 1,
+  "intrinsicRotation": 0,
+  "calibration": {
+    "modelMetresFromPdf": [
+      0.01,
+      0,
+      0,
+      0.01,
+      0,
+      0
+    ],
+    "calibrationKey": "evidence-nominal-100-pdf-units-per-metre",
+    "toleranceMetres": 0.002
+  },
+  "operations": 6,
+  "operators": {
+    "transform": 1,
+    "save": 1,
+    "fillColor": 1,
+    "graphicsState": 1,
+    "path": 1,
+    "restore": 1
+  },
+  "preparation": {
+    "algorithm": "ifclite-pdf-vector-state-v1",
+    "requestSha256": "77992ad154cbbf74b56616ac6d1ba556954b4476cd5f8a2dfea46c98ae5ad8eb",
+    "pageClipPdf": [
+      0,
+      0,
+      218.25,
+      150.75
+    ],
+    "dashClosures": [
+      null
+    ]
+  },
+  "fidelity": {
+    "sha256": "349ef69ae9efc49751c5dac73235524541c389491fc5b80b363303e83e9a1e9f",
+    "algorithm": "ifclite-pdf-fidelity-v1",
+    "exact": true,
+    "rasterOnly": false,
+    "convertiblePaths": 1,
+    "omittedPaints": 0,
+    "summary": [],
+    "omissionsTruncated": false,
+    "listedOmissions": 0
+  },
+  "accepted": {
+    "ifc": "HouseFlrPlan.ifc",
+    "plan": "HouseFlrPlan-plan.json",
+    "annotationId": 261,
+    "propertySetId": 285,
+    "regions": 3,
+    "requestSha256": "c74a6234c6b8f88396306b6ee2575a58b85dee97909678189b54b8d24aa2a396",
+    "acceptedFidelitySha256": null
+  }
+}

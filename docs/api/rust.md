@@ -938,10 +938,16 @@ complete graphics state snapshots and a `FidelityReport` (`fidelity`) listing
 every omission kind with counts, page extents and visibility, plus the
 `exact`/`raster_only` verdict and its binding digest. Canonical Rust validates
 bounded decoded input and binds the immutable page/calibration/operations
-request. It does not parse PDF bytes, flatten curves or create IFC entities;
+request. `prepare_pdf_vector_page_with_clip` accepts an optional rectangle
+inside the immutable CropBox; paths wholly outside it are excluded, while any
+supported painted envelope crossing it refuses. The original
+`prepare_pdf_vector_page` API remains the whole-page operation. It does not parse
+PDF bytes, flatten curves or create IFC entities;
 `fidelity.exact` is deliberately separate from geometric qualification or Apply
-readiness. `appearance::plan_pdf_fill_annotation` recomputes the report and
-plans a partial page only when the request's `accepted_fidelity_sha256` quotes
+readiness. `appearance::plan_pdf_fill_annotation_with_clip` applies the same
+selection when it creates IFC; `appearance::plan_pdf_fill_annotation` remains
+the whole-page API. Both recompute the report and plan a partial page only when
+the request's `accepted_fidelity_sha256` quotes
 it. See the [WASM contract](wasm.md#pdf-vector-graphics-state-preparation-and-fidelity-report)
 and [annotation implementation boundary](../architecture/pdf-vector-annotations.md#fidelity-report-and-partial-acceptance).
 

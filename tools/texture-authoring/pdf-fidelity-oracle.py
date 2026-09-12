@@ -116,6 +116,11 @@ def raster_compare(model, plan_path, pdf_path, out_dir, stem, pdf2_closed_dash_d
     # Rotated page (y down) back to unrotated page (y down), then to PDF user space.
     unrotated = {0: (px, py), 90: (py, (y1 - y0) - px), 180: ((x1 - x0) - px, (y1 - y0) - py), 270: ((x1 - x0) - py, px)}[rotation]
     pdf_xy = np.stack((unrotated[0] + x0, y1 - unrotated[1]), axis=-1)
+    clip = plan.get("conversionClipPdf", plan["viewBox"])
+    in_conversion_clip = ((pdf_xy[..., 0] >= clip[0]) & (pdf_xy[..., 0] <= clip[2])
+                          & (pdf_xy[..., 1] >= clip[1]) & (pdf_xy[..., 1] <= clip[3]))
+    expected = expected.copy()
+    expected[~in_conversion_clip] = 255
     a, b, c, d, e, f = plan["modelMetresFromPdf"]
     uv = np.stack((a * pdf_xy[..., 0] + c * pdf_xy[..., 1] + e, b * pdf_xy[..., 0] + d * pdf_xy[..., 1] + f), axis=-1)
     # Prediction 1: the native plan meshes, in paint order.

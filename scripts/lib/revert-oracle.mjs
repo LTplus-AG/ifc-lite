@@ -41,8 +41,8 @@ import { isInertPath, isTestSupportPath, withoutBrowserSpecs } from './revert-or
 // Diff classification
 // ---------------------------------------------------------------------------
 
-/** Paths whose change can neither be reverted usefully nor observed by a test. */
-const IGNORED_PREFIXES = ['.changeset/', '.github/', 'docs/', '.vscode/'];
+/** Paths no test can observe: release/CI/docs, and Playwright e2e specs (`tests/e2e/**`, root `turbo test` has no runner; the viewer-e2e lanes own them -- see revert-oracle.test.mjs). */
+const IGNORED_PREFIXES = ['.changeset/', '.github/', 'docs/', '.vscode/', 'tests/e2e/'];
 const IGNORED_EXACT = new Set(['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'Cargo.lock', 'CHANGELOG.md']);
 const IGNORED_SUFFIXES = ['.md', '.mdx', '.txt', '.snap.orig'];
 

@@ -96,10 +96,19 @@ point-cloud source ships its retained positions and colours as a binary payload
 (`planPointTransfer`); every sample is then a least-squares plane fitted to the
 points around it (support radius, surface band and neighbour bounds are
 sampling controls), never the nearest colour alone, and the plan records which
-orientation source decided its facing side. The viewer's retained sample
-carries neither normals nor scanner stations, so its plans are
-`target-referenced`: each local plane is oriented toward the IFC face being
-sampled, and the target's own geometry decides the side. A scan point
+orientation source decided its facing side. A PLY source with complete
+`nx`/`ny`/`nz` properties retains those normals row-for-row through streaming,
+frame conversion and reservoir sampling. When every retained normal is finite
+and nonzero, its plan uses `source-normals`. Partial or duplicate PLY normal
+declarations are rejected during decode; a complete declaration containing a
+zero or non-finite retained normal refuses transfer instead of silently falling
+back. PLY without declared normals, and other currently loaded point-cloud
+formats without retained orientation, use `target-referenced`: each local plane
+is oriented toward the IFC face being sampled, and the target's own geometry
+decides the side. Scanner-station indices and viewpoints are not retained by
+the viewer. The CRAS evidence below therefore remains target-referenced; PLY
+normal retention does not retroactively improve its accuracy or validate
+source-normal transfer on that dataset. A scan point
 reachable only through another face of the same object is refused as behind
 the surface (a capture *outside* the solid can never cross to the far face); a
 capture *inside* the solid is attributed to its nearest face only — the behind
@@ -204,10 +213,12 @@ capture 5.5 cm in front of a face and the far side's capture 4.5 cm inside the
 solid the front capture is observed while the far face refuses both. Two
 sheets separated by more than the surface band are ambiguous, never averaged;
 a 5 cm-spaced capture under a 3 cm support radius is sparse almost
-everywhere. Format-carried normals and
-E57 scanner poses are decoded but not yet retained by the streamed ingest; when
-they are, the viewer can request `source-normals` or `viewpoints` without any
-planner change.
+everywhere. In the live viewer, `source-normals` is available only for a
+qualified PLY normal triple. Other formats still reach the planner without
+retained orientation and remain `target-referenced`; scanner-station
+`viewpoints` are unavailable. The three-mode controls above exercise the native
+planner contract and do not claim that every mode is wired from every viewer
+source format.
 
 A one-sided surface facing the same way as the IFC face within the distance
 bound (a poster on a wall) is observed as the wall's appearance: local nearest

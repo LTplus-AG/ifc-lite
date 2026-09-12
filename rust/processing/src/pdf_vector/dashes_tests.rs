@@ -139,6 +139,23 @@ fn issue_4583_dash_boundary_exactly_at_seam_does_not_merge_caps() {
 }
 
 #[test]
+fn issue_4583_decimal_cycle_boundary_at_seam_does_not_create_a_phantom_join() {
+    let side = 0.07500000000000001;
+    let commands = vec![
+        0., 0., 0., 1., side, 0., 1., side, side, 1., 0., side, 4.,
+    ];
+    let runs = expand(&commands, false, &[0.2, 0.1], 0., &mut 4_000_000).unwrap();
+    assert_eq!(
+        runs.len(),
+        1,
+        "a rounding residue must not become a second visible run: {runs:?}"
+    );
+    assert!(!runs[0].closed, "the gap immediately before the seam keeps the run capped");
+    assert_eq!(runs[0].points.first(), Some(&[0., 0.]));
+    assert_ne!(runs[0].points.last(), Some(&[0., 0.]));
+}
+
+#[test]
 fn issue_4583_fully_visible_closed_dash_uses_a_closed_outline() {
     let runs = expand(&square(false), true, &[100., 1.], 0., &mut 4_000_000).unwrap();
     assert_eq!(runs, [DashRun {

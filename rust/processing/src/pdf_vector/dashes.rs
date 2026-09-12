@@ -81,6 +81,7 @@ fn subpath(
     let mut run = Vec::new();
     let segment_count = points.len() - usize::from(!closed);
     let mut raw_runs = Vec::new();
+    let mut decisions = 0_u64;
     for i in 0..segment_count {
         let [a, b] = [points[i], points[(i + 1) % points.len()]];
         let length = (b[0] - a[0]).hypot(b[1] - a[1]);
@@ -93,7 +94,33 @@ fn subpath(
             // segments terminate on the shared page budget without allocating
             // an attacker-controlled number of runs.
             charge(remaining, 8)?;
-            let step = dash_left.min(length - travelled);
+            decisions = decisions.saturating_add(1);
+            let segment_left = length - travelled;
+            // `dash_left` and `segment_left` arrive through independent chains
+            // of floating-point subtraction. At a mathematical dash boundary
+            // on a vertex they can differ by a few ulps (for example a 0.2/0.1
+            // pattern around a 0.075 square). Without snapping inside the
+            // propagated error envelope, that residue becomes a microscopic
+            // extra run and changes a seam cap into a join. The second check
+            // refuses inputs whose progress itself is smaller than the error
+            // envelope: snapping those would choose topology without evidence.
+            let scale = length
+                .abs()
+                .max(cycle.abs())
+                .max(dash_left.abs())
+                .max(segment_left.abs());
+            let progress_error = 32. * f64::EPSILON * scale * decisions as f64;
+            let coincident_boundary = (dash_left - segment_left).abs() <= progress_error;
+            if coincident_boundary
+                && progress_error * 4. >= dash_left.abs().min(segment_left.abs())
+            {
+                return Err("PDF dash boundary is unresolved at numeric precision".into());
+            }
+            let step = if coincident_boundary {
+                segment_left
+            } else {
+                dash_left.min(segment_left)
+            };
             if step <= 0. || travelled + step == travelled {
                 return Err("PDF dash cannot advance at numeric precision".into());
             }
@@ -108,7 +135,7 @@ fn subpath(
                     run.push(end);
                 }
             }
-            dash_left -= step;
+            dash_left = if coincident_boundary { 0. } else { dash_left - step };
             let boundary = dash_left <= 0. || dash_left + step == step;
             if boundary {
                 if pattern_index % 2 == 0 {

@@ -23,6 +23,8 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
 import { ensureModelExportReady } from '@/services/desktop-export';
+import { getViewerStoreApi } from '@/store';
+import { roomExportPathPrefix } from '@/lib/collab/room-export-paths';
 import type {
   BuildArtifactsDeps,
   ChangesExportArtifact,
@@ -96,6 +98,8 @@ export async function exportChangedModelToIfcx(
     includeProperties: true,
     applyMutations: true,
     visibleOnly: false,
+    // A recipient's room model is keyed by room path; export the file's own paths (#4444).
+    stripPathPrefix: roomExportPathPrefix(getViewerStoreApi().getState(), modelId),
     // A round-trip "export my edits" should not silently drop properties that
     // lack an official IFC5 schema, so keep full fidelity here. (The Export
     // dialog exposes this as a user toggle that defaults to on; the one-click

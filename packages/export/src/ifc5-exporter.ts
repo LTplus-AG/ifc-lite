@@ -29,7 +29,13 @@ import { getEffectiveEntityIndex } from './effective-index.js';
 import { Ifc5AppearanceWriter } from './ifc5-appearance.js';
 import { IFCX_APPEARANCE_SCHEMAS, type IfcxEncodedImage } from '@ifc-lite/ifcx';
 import { buildMaterialAttribute } from './ifc5-material.js';
-import { collectRequiredImports, generateUuid, stepTypeToClassName } from './ifc5-export-helpers.js';
+import {
+  collectRequiredImports,
+  generateUuid,
+  IFC5_KNOWN_PROP_NAMES,
+  stepTypeToClassName,
+  stripNodePathPrefix,
+} from './ifc5-export-helpers.js';
 import { addClassificationAttribute } from './ifc5-classification.js';
 
 /** Recursive spatial tree node type used when walking the hierarchy. */
@@ -38,35 +44,6 @@ interface SpatialTreeNode {
   name?: string;
   children: SpatialTreeNode[];
 }
-
-/**
- * Property names that have official IFC5 schema definitions in prop@v5a.ifcx.
- * Source: https://github.com/buildingSMART/ifcx.dev/blob/main/@standards.buildingsmart.org/ifc/core/prop@v5a.ifcx
- *
- * IFC4 properties NOT in this set (e.g. Reference, LoadBearing, ExtendToStructure)
- * must be omitted from IFC5 export — the viewer reports "Missing schema" errors for them.
- *
- * Name and Description are handled separately (always exported), so they're excluded here.
- */
-export const IFC5_KNOWN_PROP_NAMES = new Set([
-  'UsageType',
-  'TypeName',
-  'IsExternal',
-  'RefElevation',
-  'ElevationOfRefHeight',
-  'ElevationOfTerrain',
-  'NumberOfStoreys',
-  'Height',
-  'Width',
-  'Length',
-  'Depth',
-  'Volume',
-  'NetVolume',
-  'NetArea',
-  'NetSideArea',
-  'CrossSectionArea',
-  'Station',
-]);
 
 // ============================================================================
 // Types
@@ -102,6 +79,14 @@ export interface Ifc5ExportOptions {
    *  When true, relationship entities (IfcRel*), type objects, materials,
    *  and other non-spatial entities are excluded from the output. */
   onlyTreeEntities?: boolean;
+  /**
+   * A namespace prefix to remove from GlobalId-derived node paths (#4444). A
+   * store reconstructed from a shared room keys its entities by room path,
+   * `/<slotId>/<GlobalId>`; the slot is the room's namespace, not the
+   * model's, so the exported file carries `/<GlobalId>` — the same paths a
+   * single-model room exports. GlobalIds outside the prefix are untouched.
+   */
+  stripPathPrefix?: string;
 }
 
 /** Result of IFC5 export */
@@ -233,7 +218,7 @@ export class Ifc5Exporter {
       || (treeIds !== null && !treeIds.has(id));
 
     // Build UUID paths and child-name maps from spatial hierarchy
-    this.buildEntityMaps(isOmitted);
+    this.buildEntityMaps(isOmitted, options.stripPathPrefix);
 
     // Build mesh lookup by expressId
     const meshByEntity = this.buildMeshLookup(options);
@@ -449,8 +434,9 @@ export class Ifc5Exporter {
    *   will NOT be emitted as a node (deleted, hidden, or outside the exported
    *   tree). Every step below is driven by it rather than by the deletion
    *   check alone, so the maps can never describe a node `export` never wrote.
+   * @param stripPathPrefix see {@link Ifc5ExportOptions.stripPathPrefix}.
    */
-  private buildEntityMaps(isOmitted: (id: number) => boolean): void {
+  private buildEntityMaps(isOmitted: (id: number) => boolean, stripPathPrefix?: string): void {
     const { spatialHierarchy, entities, strings } = this.dataStore;
 
     // --- 1. Assign UUID paths ---
@@ -466,7 +452,7 @@ export class Ifc5Exporter {
       if (isOmitted(id)) continue;
       // Use IFC GlobalId if available, otherwise generate a deterministic UUID
       const globalId = strings.get(entities.globalId[i]);
-      this.entityUuids.set(id, globalId || generateUuid(id));
+      this.entityUuids.set(id, globalId ? stripNodePathPrefix(globalId, stripPathPrefix) : generateUuid(id));
     }
 
     // --- 2. Build parent→children and spatial maps ---

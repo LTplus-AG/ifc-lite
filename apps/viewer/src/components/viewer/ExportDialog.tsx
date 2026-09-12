@@ -67,6 +67,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
+import { roomExportPathPrefix } from '@/lib/collab/room-export-paths';
 import { ExtensionExportSlot } from '@/components/extensions/ExtensionExportSlot';
 import { preferredExportModelId } from './export-model-default';
 
@@ -504,6 +505,8 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           isolatedEntityIds: localIsolated,
           onlyKnownProperties,
           author: 'ifc-lite',
+          // A recipient's room model is keyed by room path; export the file's own paths (#4444).
+          stripPathPrefix: roomExportPathPrefix(useViewerStore.getState(), selectedModelId),
         });
 
         const suffix = changesOnly ? '_changes' : (visibleOnly ? '_visible' : '_export');

@@ -28,7 +28,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as collab from '@ifc-lite/collab';
 import { Ifc5Exporter } from '@ifc-lite/export';
-import { IFCX_APPEARANCE } from '@ifc-lite/ifcx';
+import { IFCX_APPEARANCE, IFCX_IMAGE } from '@ifc-lite/ifcx';
 import type { ModelSlotRef } from '@ifc-lite/collab';
 import { ColumnarParser, StepTokenizer, type IfcDataStore } from '@ifc-lite/parser';
 import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
@@ -36,6 +36,7 @@ import { applyFederationOffsetToMesh } from '../../hooks/ingest/federationOffset
 import { readGeometrySeedMarker } from './geometry-seed-signal.js';
 import type { CollabSeedModel } from './owner-seed.js';
 import { roomSlotRef } from './model-slot-ref.js';
+import { roomExportPathPrefix } from './room-export-paths.js';
 import { joiner, localIdOf, ownerShare, texturePixel, type RoomTestState } from '../../test/collab-room-harness.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');
@@ -105,6 +106,11 @@ describe('two copies of AC20-FZK-Haus.ifc in one room (#4444)', () => {
     const painted = baseMeshes.find((m) => storeA.entities.getTypeName(m.expressId) === 'IfcWallStandardCase') ?? baseMeshes[0];
     const paintedGuid = storeA.entities.getGlobalId(painted.expressId);
     assert.ok(paintedGuid, 'the painted member has a GlobalId');
+    const sourceGuids = new Set<string>();
+    for (const id of storeA.entityIndex.byId.keys()) {
+      const guid = storeA.entities.getGlobalId(id);
+      if (guid) sourceGuids.add(guid);
+    }
     const B_OFFSET = 1_000_000;
 
     const models: CollabSeedModel[] = [
@@ -177,11 +183,15 @@ describe('two copies of AC20-FZK-Haus.ifc in one room (#4444)', () => {
       // Room export, as the Export dialog's IFC5 branch runs it per selected
       // model (merged export is STEP-only): both room models export, each
       // carrying only its own copy's meshes, the painted member's texture
-      // included, under the slot-qualified path the recipient keys it by.
-      const exportedWall: string[] = [];
-      const exportedMeshCounts: number[] = [];
+      // included. The recipient's store keys entities by slot-qualified room
+      // path, and the dialog un-homes them (`roomExportPathPrefix` →
+      // `stripPathPrefix`): the file carries `/<GlobalId>` — the paths a
+      // single-model room has always exported — never the room's slot.
+      const exported: { paths: Set<string>; nodes: Map<string, string>; carriers: string; meshCount: number }[] = [];
       for (const [m, wallLocal] of [[a, wallA], [b, wallB]] as const) {
         assert.ok(m.ifcDataStore && m.schemaVersion, `${label}: ${m.id} is exportable on its own`);
+        const stripPathPrefix = roomExportPathPrefix(s, m.id);
+        assert.equal(stripPathPrefix, `/${s.collabRoomModels.get(m.id)?.slotId}`, `${label}: ${m.id} exports without its slot`);
         const result = new Ifc5Exporter(m.ifcDataStore, m.geometryResult, undefined, m.idOffset).export({
           includeGeometry: true,
           includeProperties: true,
@@ -189,18 +199,19 @@ describe('two copies of AC20-FZK-Haus.ifc in one room (#4444)', () => {
           visibleOnly: false,
           onlyKnownProperties: false,
           author: 'ifc-lite',
+          stripPathPrefix,
         });
         // The exporter's spatial-tree filter (the dialog's default) keeps
         // contained elements only, so this is fewer than the hydrated refs —
         // the same for both copies, and the same as the owner's own export.
         assert.ok(result.stats.meshCount > 0, `${label}: ${m.id} exports geometry`);
-        exportedMeshCounts.push(result.stats.meshCount);
         const file = JSON.parse(result.content) as {
           data: { path: string; children?: Record<string, string>; attributes?: Record<string, unknown> }[];
         };
-        const wallPath = m.ifcDataStore.entities.getGlobalId(wallLocal);
-        const wallNode = file.data.find((n) => n.path === wallPath);
-        assert.ok(wallNode, `${label}: ${m.id} exports the painted member at ${wallPath}`);
+        // The recipient's own key for the wall is the room path; the file's is not.
+        assert.equal(m.ifcDataStore.entities.getGlobalId(wallLocal), `${stripPathPrefix}/${paintedGuid}`);
+        const wallNode = file.data.find((n) => n.path === `/${paintedGuid}`);
+        assert.ok(wallNode, `${label}: ${m.id} exports the painted member at /${paintedGuid}`);
         // A textured member is written as appearance fragments under the node.
         const fragmentPaths = new Set(Object.values(wallNode.children ?? {}));
         const fragments = file.data.filter((n) => fragmentPaths.has(n.path));
@@ -208,10 +219,37 @@ describe('two copies of AC20-FZK-Haus.ifc in one room (#4444)', () => {
           fragments.some((n) => n.attributes?.[IFCX_APPEARANCE] !== undefined),
           `${label}: ${m.id} exports the painted member's texture`,
         );
-        exportedWall.push(wallPath);
+        // Every entity path in the file is a GlobalId of the SOURCE model (a
+        // leading slash, as every room export carries), so the export diffs
+        // against the file the owner loaded; the slot appears nowhere.
+        const entityPaths = new Set<string>();
+        const nodes = new Map<string, string>();
+        const carriers: unknown[] = [];
+        for (const n of file.data) {
+          if (!n.path.startsWith('/')) {
+            // The document root and the appearance/image carriers (`ifclite-mesh-*`, `ifclite-image-*`).
+            if (n.attributes?.[IFCX_APPEARANCE] !== undefined || n.attributes?.[IFCX_IMAGE] !== undefined) carriers.push(n.attributes);
+            continue;
+          }
+          entityPaths.add(n.path);
+          nodes.set(n.path, JSON.stringify({ children: n.children ?? null, attributes: n.attributes ?? null }));
+          assert.doesNotMatch(n.path, /^\/m\d+\//, `${label}: ${m.id} leaks its slot into ${n.path}`);
+          assert.ok(sourceGuids.has(n.path.slice(1)), `${label}: ${m.id} exports ${n.path}, which the source model has no GlobalId for`);
+          for (const child of Object.values(n.children ?? {})) {
+            assert.doesNotMatch(child, /^\/m\d+\//, `${label}: ${m.id} leaks its slot into a child reference ${child}`);
+          }
+        }
+        assert.ok(carriers.length > 0, `${label}: ${m.id} writes its texture carriers`);
+        exported.push({ paths: entityPaths, nodes, carriers: JSON.stringify(carriers), meshCount: result.stats.meshCount });
       }
-      assert.deepEqual(exportedWall, [`/m0/${paintedGuid}`, `/m1/${paintedGuid}`], `${label}: one export path per copy`);
-      assert.equal(exportedMeshCounts[0], exportedMeshCounts[1], `${label}: both copies export the same mesh set`);
+      assert.deepEqual(exported[0].paths, exported[1].paths, `${label}: both copies export the same node paths`);
+      assert.equal(exported[0].meshCount, exported[1].meshCount, `${label}: both copies export the same mesh set`);
+      // The two files differ only where the copies differ — the pixels of the
+      // painted member's texture: every entity node (path, children,
+      // attributes, the wall's fragment reference included) is identical.
+      const differing = [...exported[0].paths].filter((path) => exported[0].nodes.get(path) !== exported[1].nodes.get(path));
+      assert.deepEqual(differing, [], `${label}: the copies' entity nodes are identical`);
+      assert.notEqual(exported[0].carriers, exported[1].carriers, `${label}: the copies carry different textures`);
     };
     check('fresh guest', guest.store.state());
     assert.deepEqual(guest.notices, [], 'no missing-geometry warning');

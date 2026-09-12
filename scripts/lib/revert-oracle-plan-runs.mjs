@@ -98,8 +98,14 @@ function crateDefaultFeatures(dir) {
   }
 }
 
-function withoutRustComments(source) {
+function sanitizeRustSource(source) {
   let result = '', index = 0, blockDepth = 0;
+  const strings = new Map();
+  const keepString = (value) => {
+    const token = `__RUST_STRING_${strings.size}__`;
+    strings.set(token, value);
+    return `"${token}"`;
+  };
   while (index < source.length) {
     if (blockDepth > 0) {
       if (source.startsWith('/*', index)) { blockDepth += 1; result += '  '; index += 2; continue; }
@@ -110,7 +116,7 @@ function withoutRustComments(source) {
     }
     if (source.startsWith('//', index)) {
       const end = source.indexOf('\n', index);
-      if (end < 0) return result + ' '.repeat(source.length - index);
+      if (end < 0) return { text: result + ' '.repeat(source.length - index), strings };
       result += ' '.repeat(end - index) + '\n';
       index = end + 1;
       continue;
@@ -121,7 +127,8 @@ function withoutRustComments(source) {
       const hashes = raw[1] ?? '', terminator = `"${hashes}`;
       const end = source.indexOf(terminator, index + raw[0].length);
       const length = end < 0 ? source.length - index : end + terminator.length - index;
-      result += source.slice(index, index + length); index += length; continue;
+      const literal = source.slice(index, index + length);
+      result += keepString(literal.slice(raw[0].length, length - terminator.length)); index += length; continue;
     }
     if (source[index] === '"') {
       const start = index++;
@@ -129,12 +136,12 @@ function withoutRustComments(source) {
         if (source[index] === '\\') { index += 2; continue; }
         if (source[index++] === '"') break;
       }
-      result += source.slice(start, index);
+      result += keepString(source.slice(start + 1, Math.max(start + 1, index - 1)));
       continue;
     }
     result += source[index++];
   }
-  return result;
+  return { text: result, strings };
 }
 
 function rustModuleOwner(crateDir, abs) {
@@ -147,7 +154,7 @@ function rustModuleOwner(crateDir, abs) {
     const key = `${resolve(parent)}\0${modules.join('::')}`;
     if (visited.has(key) || !existsSync(parent)) continue;
     visited.add(key);
-    const text = withoutRustComments(readFileSync(parent, 'utf8'));
+    const { text, strings } = sanitizeRustSource(readFileSync(parent, 'utf8'));
     const declarations = /((?:\s*#\s*\[[\s\S]*?\]\s*)*)(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
     let match;
     while ((match = declarations.exec(text)) !== null) {
@@ -155,7 +162,8 @@ function rustModuleOwner(crateDir, abs) {
         ? dirname(parent)
         : join(dirname(parent), basename(parent, '.rs'));
       const attributes = match[1], moduleName = match[2];
-      const explicitPath = /#\s*\[\s*path\s*=\s*"([^"]+)"\s*\]/.exec(attributes)?.[1];
+      const pathToken = /#\s*\[\s*path\s*=\s*"([^"]+)"\s*\]/.exec(attributes)?.[1];
+      const explicitPath = pathToken ? (strings.get(pathToken) ?? pathToken) : undefined;
       const target = explicitPath
         ? resolve(dirname(parent), explicitPath)
         : [resolve(ordinaryBase, `${moduleName}.rs`), resolve(ordinaryBase, moduleName, 'mod.rs')].find(existsSync);

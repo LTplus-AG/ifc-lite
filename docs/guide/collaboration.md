@@ -43,6 +43,23 @@ Opening the dialog puts you in the room as **admin** and starts sharing your
 model into it. You can re-copy a link at any access level, and you stay admin
 for the room.
 
+### Sharing several models
+
+With more than one model loaded, the dialog first asks what the room should
+carry, and creates the room only when you press **Create link**:
+
+| Scope | The room holds… |
+| --- | --- |
+| **All N loaded models** (default) | Every loaded model, each as its own model. Recipients see the whole workspace and can pick, edit and export each model separately. |
+| **Active model only** | The model that is active in the hierarchy. The others stay private. |
+
+Each shared model gets its own *slot* in the room, so two copies of the same
+file — same file name, same bytes, same IFC GlobalIds — stay two distinct
+models with their own geometry, placement and textures. The scope is fixed once
+the room exists; re-opening the dialog shows how many models the room carries.
+While several models upload, the progress row names the model it is on
+("model 2 of 3").
+
 Textured models share their UV coordinates and image pixels with the geometry.
 Recipients do not need the original IFCZIP or access to its image filenames.
 Images are shared once per content hash, with each surface retaining its wrap

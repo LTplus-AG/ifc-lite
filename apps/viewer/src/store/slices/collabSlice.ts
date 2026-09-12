@@ -30,6 +30,7 @@ import type { StateCreator } from 'zustand';
 import type {
   CollabSession,
   LocalPlacement,
+  ModelSlotRef,
   PresenceState,
   ProviderKind,
   UserIdentity,
@@ -50,38 +51,27 @@ import {
   mirrorPlacement,
   mirrorProperty,
   mirrorPropertyDelete,
-  pathForEntity,
-  registerEntityMaps,
-  registerEntityPath,
   type CollabDocApi,
 } from '@/lib/collab/mutation-bridge';
+import { pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
-import {
-  buildGeometryResultFromMeshes,
-  hydrateGeometryFromRoom,
-  seedGeometryToRoom,
-  type CollabGeomApi,
-} from '@/lib/collab/geometry-sync';
-import { missingRoomGeometryMessage, readGeometrySeedMarker } from '@/lib/collab/geometry-seed-signal';
+import { seedGeometryToRoom, type CollabGeomApi } from '@/lib/collab/geometry-sync';
 import { runOwnerSeed, type CollabSeedInput } from '@/lib/collab/owner-seed';
 import type { CollabSeedPhase, CollabSeedProgress } from '@/lib/collab/seed-phase';
-import { highestExpressId, raisedMaxExpressId } from '@/lib/collab/express-id-bounds';
 import { createSharedBlobStore } from '@/lib/collab/blob-store';
-import { applyRoomModelData } from '@/lib/collab/room-model-apply';
 import {
-  roomMeshes,
-  roomModelIdOf,
-  roomMutationView,
-  roomStore,
+  roomEntityTargetForPath,
+  roomMeshesFor,
+  roomMutationViewFor,
   roomStoreFor,
 } from '@/lib/collab/room-model-target';
+import { roomSlotRef } from '@/lib/collab/model-slot-ref';
+import { createRoomReconstructor } from '@/lib/collab/room-reconstruct';
 import {
   PLACEMENT_EPS,
   YAW_EPS,
-  clearAppliedPlacements,
   rendererDeltaForPlacement,
-  sweepPlacements,
   yawOf,
   type PlacementSweepApi,
 } from '@/lib/collab/placement-sweep';
@@ -125,13 +115,17 @@ export interface StartCollabOptions {
   /** Bearer room token forwarded to the collab-server (plan §3.1). */
   token?: string;
   /**
-   * Owner-only: lazily produce the model seed (plan §4.6 seed-into-room). Built
-   * only when needed and applied only if the room's Y.Doc is still empty, so a
-   * recipient joining a populated room hydrates from the doc instead of
-   * re-seeding. Recipients (deep-link join) omit this.
+   * Owner-only: the models to seed (plan §4.6 seed-into-room), one room slot
+   * each, in this order. Applied only to slots the room does not hold yet, so
+   * a recipient joining a populated room hydrates from the doc instead of
+   * re-seeding. Recipients (deep-link join) omit this. The room's slots are
+   * recorded from this list synchronously, before any await — which is why
+   * it is a value, not a thunk.
    */
-  seed?: () => CollabSeedInput | null;
+  seed?: CollabSeedInput;
 }
+
+export type { CollabSeedInput, CollabSeedModel } from '@/lib/collab/owner-seed';
 
 export interface CollabSlice {
   // ── State ────────────────────────────────────────────────────────────────
@@ -142,10 +136,11 @@ export interface CollabSlice {
   /** Current room id, or `null`. */
   collabRoomId: string | null;
   /**
-   * The id of the model this room's edits belong to, fixed for the session —
-   * the model the owner seeded, or the recipient's reconstructed
-   * `room:<roomId>`. `null` off a session (and for an owner sharing a bare
-   * legacy store with no model record).
+   * The models this room's edits belong to — viewer model id → room slot —
+   * fixed for the session: the models the owner seeded (the share scope), or
+   * the recipient's reconstructed `room:<roomId>:<slotId>` models, one per
+   * slot (#4444). Empty off a session (and for an owner who pressed Share
+   * with nothing to seed).
    *
    * Both edit directions used to resolve the room's model as "whatever is
    * active", which is wrong the moment the user loads a second file:
@@ -153,24 +148,25 @@ export interface CollabSlice {
    * `@/lib/collab/room-model-target`, which is the only thing allowed to
    * answer this question, so the two directions cannot disagree again.
    *
-   * KNOWN GAP — this goes stale if the room's model is removed mid-session.
+   * KNOWN GAP — this goes stale if a room model is removed mid-session.
    * `removeModel` (modelSlice.ts) purges every other dangling reference to a
    * removed model (mutation views, undo stacks, source tags, clash focus, IDS
    * report, selection, activeStorey) but not this one. The session then fails
-   * CLOSED and silently: `roomStore` finds no model for the id, so inbound peer
-   * events are all dropped and every outbound mirror is dead, while RoomPanel
-   * still shows the room as live. Unrecoverable without a rejoin.
+   * CLOSED and silently for that model: `roomStoreFor` finds no model for the
+   * id, so its inbound peer events are all dropped and every outbound mirror
+   * is dead, while RoomPanel still shows the room as live. Unrecoverable
+   * without a rejoin.
    *
-   * Do NOT "fix" this by clearing the field on removal. `roomModelIdOf` falls
-   * back to `activeModelId` when this is `null` — that fallback exists for the
-   * no-session / bare-legacy-store case — so clearing it mid-session would make
-   * the room target whatever the user has selected, which is exactly the
-   * corruption this whole module exists to prevent. Failing closed is strictly
-   * better than that. A real fix has to decide what removing the shared model
-   * MEANS (end the session? refuse the removal?), which is a product question,
-   * so it is recorded here rather than guessed at.
+   * Do NOT "fix" this by dropping the entry on removal. `isRoomModel` falls
+   * back to `activeModelId` only OFF a session — that fallback exists for the
+   * no-session case — so a live session with an emptied map fails closed,
+   * which is strictly better than retargeting to whatever the user has
+   * selected, the corruption this whole module exists to prevent. A real fix
+   * has to decide what removing a shared model MEANS (end the session? refuse
+   * the removal?), which is a product question, so it is recorded here rather
+   * than guessed at.
    */
-  collabRoomModelId: string | null;
+  collabRoomModels: ReadonlyMap<string, ModelSlotRef>;
   /** This client's resolved role (UI gating only). */
   collabRole: CollabRole | null;
   /** Local ephemeral identity (handle + color). */
@@ -386,8 +382,10 @@ let makeBlobStore: (() => Promise<Awaited<ReturnType<typeof createSharedBlobStor
 let cachedBlobStore: Awaited<ReturnType<typeof createSharedBlobStore>> | null = null;
 // Per-session render reconciliation: renderer-frame translation (Y-up) currently
 // baked into each entity's live mesh, RELATIVE to its baked baseline. Keyed by
-// entity expressId in the active model's id space. Lets inbound placement edits
-// push only the *incremental* delta (and avoids re-applying our own edits).
+// federation GLOBAL id (`toGlobalIdFromModels`), because a room holds one
+// model per slot (#4444) and two slots can share every local expressId. Lets
+// inbound placement edits push only the *incremental* delta (and avoids
+// re-applying our own edits).
 let placementAppliedLoc: Map<number, [number, number, number]> | null = null;
 // Companion to placementAppliedLoc: renderer-frame yaw (radians) currently
 // baked into each entity's live mesh, relative to its baked baseline.
@@ -429,18 +427,17 @@ function composePlacement(
  * it. Shared by inbound remote apply, the recipient's own collab edit, and the
  * owner's track bookkeeping — so own-edits and remote-edits never double-apply.
  *
- * `entityId` is in the ROOM's id space at every call site, so the model it is
- * resolved against is read here from `roomModelIdOf` rather than threaded in as
- * a parameter. That is not a shortcut: the two outbound callers
- * (`collabTranslateEntity` / `collabRotateEntity`) already returned early
- * unless `roomStoreFor(get(), modelId)` was non-null, which is true only when
- * `modelId === roomModelIdOf(get())` — so a parameter would be a second
- * spelling of a value that is provably the same, and a second thing a future
- * call site could get wrong.
+ * `entityId` is in `modelId`'s id space at every call site, and `modelId` is
+ * one of the ROOM's models — every caller established that first, through
+ * `roomStoreFor(get(), modelId)` outbound or `roomEntityTargetForPath` inbound
+ * — so the mesh it addresses is `toGlobalIdFromModels(models, modelId, id)`
+ * and the pivot comes out of THAT model's meshes (`roomMeshesFor`), never the
+ * active model's.
  */
 
 function reconcilePlacementMesh(
   get: () => ViewerState,
+  modelId: string,
   store: IfcDataStore,
   doc: CollabSession['doc'],
   entityId: number,
@@ -457,18 +454,17 @@ function reconcilePlacementMesh(
     baseline = placement;
     placementApi.setPlacementBaseline(doc, path, baseline);
   }
-  // The ROOM's model, not the active one. `entityId` is in the room's id
-  // space, and `globalId` is `idOffset + expressId` of a NAMED model: the
-  // reconstructed room model is registered with `idOffset: 0` (see the
-  // recipient `reconstruct` below) while the user's own file generally is not,
-  // so a recipient with their own file active would move an unrelated mesh —
-  // or none — for an edit that was delivered correctly.
-  const modelId = roomModelIdOf(get()) ?? '';
+  // The ROOM model the edit names, not the active one. `entityId` is in that
+  // model's id space, and `globalId` is `idOffset + expressId` of a NAMED
+  // model: a recipient's room models sit in their own federation ranges while
+  // the user's own file sits in another, so a recipient with their own file
+  // active would move an unrelated mesh — or none — for an edit that was
+  // delivered correctly. The applied bookkeeping is keyed by this global id.
   const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
 
   // ── Translation ──
   const target = rendererDeltaForPlacement(baseline, placement);
-  const applied = placementAppliedLoc.get(entityId) ?? [0, 0, 0];
+  const applied = placementAppliedLoc.get(globalId) ?? [0, 0, 0];
   const inc: [number, number, number] = [
     target[0] - applied[0],
     target[1] - applied[1],
@@ -480,26 +476,26 @@ function reconcilePlacementMesh(
     Math.abs(inc[2]) >= PLACEMENT_EPS
   ) {
     get().setPendingMeshTranslations(new Map([[globalId, inc]]));
-    placementAppliedLoc.set(entityId, target);
+    placementAppliedLoc.set(globalId, target);
   }
 
   // ── Rotation (yaw about Z = renderer rotation about +Y, same angle) ──
   // Pivot is the entity's bbox centre in renderer world — identical on every
   // client (same geometry), so the live rotation stays consistent across peers.
   const targetYaw = yawOf(placement) - yawOf(baseline);
-  const appliedYaw = placementAppliedYaw.get(entityId) ?? 0;
+  const appliedYaw = placementAppliedYaw.get(globalId) ?? 0;
   const incYaw = targetYaw - appliedYaw;
   if (Math.abs(incYaw) >= YAW_EPS) {
-    // Same reason as `modelId` above: the pivot is this entity's bbox centre,
-    // looked up by the room-model `globalId`, so it has to come out of the
+    // Same reason as `globalId` above: the pivot is this entity's bbox centre,
+    // looked up by the room-model `globalId`, so it has to come out of THAT
     // room model's meshes.
-    const meshes = roomMeshes(get());
+    const meshes = roomMeshesFor(get(), modelId);
     const c = getEntityCenter(meshes, globalId);
     if (c) {
       get().setPendingMeshRotations(
         new Map([[globalId, { angle: incYaw, pivot: [c.x, c.y, c.z] as [number, number, number] }]]),
       );
-      placementAppliedYaw.set(entityId, targetYaw);
+      placementAppliedYaw.set(globalId, targetYaw);
     }
   }
 }
@@ -516,7 +512,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   collabSession: null,
   collabStatus: 'disconnected',
   collabRoomId: null,
-  collabRoomModelId: null,
+  collabRoomModels: new Map(),
   collabDraftBaseline: null,
   collabPeersSinceBaseline: false,
   collabRole: null,
@@ -551,30 +547,24 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // Set the join token up front (not just at the end): setting collabRoomId
     // re-renders subscribers (e.g. ShareDialog) that immediately mint a
     // role-scoped share link, which needs our admin bearer to be available.
-    // The model this room's edits belong to, resolved ONCE, before any await
-    // inside this function: for an owner it is whatever is active when the join
-    // begins; for a recipient it is the `room:<roomId>` the reconstruct below
-    // registers — named here, not there, so the two cannot spell it
-    // differently. Every later resolution reads this via
-    // `@/lib/collab/room-model-target`, never `activeModelId`, which the user
-    // can change with two clicks (`upsertModel` does not switch focus,
-    // modelSlice.ts).
-    //
-    // NOT provably the same snapshot `seed()` reads, and this comment used to
-    // claim it was. `seed()` is a closure built in ShareDialog over
-    // React-captured `ifcDataStore` / `activeModelId` from the render that ran
-    // the effect, whereas the read below is live Zustand state — and
-    // `ShareDialog` awaits `mintRoomToken(...)` between the two. A user who
-    // switches models during that round-trip would seed the captured store
-    // while this records the newer id. Latent rather than live (the window is a
-    // single network call and nothing else re-enters), but the honest statement
-    // is "two snapshots that normally agree", not "the same one".
-    const reconstructedModelId = `room:${roomId}`;
-    const roomModelId = seed ? get().activeModelId : reconstructedModelId;
+    // The models this room's edits belong to, resolved ONCE, before any await
+    // inside this function: for an owner they are the models of the share
+    // scope, each assigned the room slot of its position in the seed (#4444);
+    // for a recipient they are the `room:<roomId>:<slotId>` models the
+    // reconstruct registers — one per slot the room turns out to hold, so a
+    // recipient's map is published from the reconstruct itself, once the room
+    // has synced, and is EMPTY until then. Every later resolution reads this
+    // via `@/lib/collab/room-model-target`, never `activeModelId`, which the
+    // user can change with two clicks (`upsertModel` does not switch focus,
+    // modelSlice.ts). An empty map on a live session fails every resolver
+    // closed, which is the correct answer while the room's models are not
+    // known or not registered.
+    const roomModels = new Map<string, ModelSlotRef>();
+    seed?.models.forEach((m, index) => roomModels.set(m.modelId, roomSlotRef(index)));
     set({
       collabConnecting: true,
       collabRoomId: roomId,
-      collabRoomModelId: roomModelId,
+      collabRoomModels: roomModels,
       collabRole: role,
       collabSelfToken: token ?? null,
       // An owner's seed is in flight from this very moment, before the session
@@ -721,23 +711,28 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     makeBlobStore = () => createSharedBlobStore(collabMod, collabServerUrl(), token);
     cachedBlobStore = null;
 
-    // Owner seeds the model into the Y.Doc (plan §4.6 seed-into-room) once the
-    // room has synced — but only if it's still empty, so we don't re-seed a
-    // populated room or clobber a peer's edits. Recipients pass no `seed` and
-    // hydrate from the doc instead. The seed's phases are mirrored into
-    // `collabSeedPhase` (#4446): `collabStatus` says 'connected' long before
-    // the room holds the model, and the Share dialog must key off THIS, not
-    // that. Every write is guarded on the join still being current, so a
-    // Leave landing mid-seed cannot have a stale continuation re-stamp it.
+    // Owner seeds every model of the share scope into the Y.Doc (plan §4.6
+    // seed-into-room), one slot each, once the room has synced — structure
+    // only into slots the room does not hold yet, so we don't re-seed a
+    // populated room or clobber a peer's edits (see owner-seed.ts for the two
+    // per-slot guards). Recipients pass no `seed` and hydrate from the doc.
+    // The seed's phases are mirrored into `collabSeedPhase` (#4446):
+    // `collabStatus` says 'connected' long before the room holds the models,
+    // and the Share dialog must key off THIS, not that. Every write is
+    // guarded on the join still being current, so a Leave landing mid-seed
+    // cannot have a stale continuation re-stamp it.
     if (seed) {
       const current = () => get().collabRoomId === roomId;
+      // Loaded lazily so the collab feature stays code-split.
+      const { parseIfcxViewerModel } = await import('@/hooks/ingest/viewerModelIngest');
       const outcome = await runOwnerSeed({
         session,
         seed,
         collab: collabMod,
         geomApi,
         makeBlobStore: () => createSharedBlobStore(collabMod, collabServerUrl(), token),
-        stepMeshes: () => get().geometryResult?.meshes,
+        parseIfcx: (buffer) => parseIfcxViewerModel(buffer, undefined, { allowEmptyGeometry: true }),
+        roomModels,
         // Record the placement each entity's blob is baked at, so every
         // client (incl. late joiners) can render `blob + (current
         // usd::xformop − baseline)`. The blob is baked at whatever
@@ -754,254 +749,57 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         onPhase: (phase) => {
           if (current()) set({ collabSeedPhase: phase });
         },
-        onProgress: (uploaded, total) => {
-          if (current()) set({ collabSeedProgress: { uploaded, total } });
+        onProgress: (progress) => {
+          if (current()) set({ collabSeedProgress: progress });
         },
       });
       if (outcome && current()) {
         set({ collabSeedPhase: outcome.phase, collabSeedFailure: outcome.failure });
       }
     } else {
-      // Recipient (deep-link join, no local model): reconstruct the full model
-      // from the CRDT as IFCX — the canonical format — then attach geometry
-      // hydrated from the room's blobs. IFC5 rooms carry containment +
-      // properties natively; legacy STEP rooms are seeded IFCX-shaped too (see
-      // `buildStepSeedSource`), so this single path serves both. The renderer
-      // and panels then use the standard legacy single-model path
-      // (`ifcDataStore` + `geometryResult`). Best-effort — blobs may still be
-      // syncing; a later re-join picks up the rest.
+      // Recipient (deep-link join, no local model): reconstruct every model
+      // the room holds from the CRDT as IFCX, one viewer model per slot — see
+      // room-reconstruct.ts, which owns the whole derivation (snapshot per
+      // slot, federation registration, blob hydration, placement sweep) and
+      // the live re-reconstruct on peer edits.
       try {
         await session.whenSynced;
-        // Reconstruct the IfcDataStore (entities + spatial hierarchy +
-        // properties) from the CRDT-as-IFCX via the viewer's existing importer.
         // Loaded lazily so the collab feature stays code-split.
         const { parseIfcxViewerModel } = await import('@/hooks/ingest/viewerModelIngest');
         const blobStore = await createSharedBlobStore(collabMod, collabServerUrl(), token);
-        let lastGeomCount = -1;
-        let reconstructing = false;
-        // The missing-geometry warning fires at most once per room: reconstruct
-        // re-runs on every peer edit, and a repeating alarm gets tuned out.
-        let warnedMissingGeometry = false;
-        /** Meshes the last hydrate produced (0 until one has run). */
-        let lastMeshCount = 0;
-        // Decoded-mesh cache (geomId → mesh), persisted across re-reconstructs so
-        // a later doc update only fetches the *new* blobs, not the whole model.
-        const geomCache = new Map<string, MeshData>();
-        // The recipient is registered as a real model (not the bare legacy store
-        // path) so it gets an activeModelId + an editable MutablePropertyView —
-        // which is what lets a recipient's edits flow back to the owner.
-        // This IS the session-level `roomModelId` (this branch is `!seed`, so
-        // that expression resolved to exactly this const) — restated with the
-        // narrower type, since TS cannot narrow `string | null` across the
-        // branch. The edit paths target the same value by construction.
-        const roomModelId = reconstructedModelId;
-        let modelCreated = false;
-
-        // Re-derive the whole model from the doc. Cheap metadata refresh always;
-        // geometry is re-hydrated from blobs only when the geometry set changed
-        // (so a peer's property edit doesn't re-fetch every mesh).
-        const reconstruct = async () => {
-          if (reconstructing || get().collabRoomId !== roomId) return;
-          reconstructing = true;
-          try {
-            const ifcxFile = collabMod.snapshotToIfcx(session.doc);
-            const buffer = new TextEncoder().encode(JSON.stringify(ifcxFile)).buffer as ArrayBuffer;
-            const payload = await parseIfcxViewerModel(buffer, undefined, { allowEmptyGeometry: true });
-            if (get().collabRoomId !== roomId) return;
-            // Register the IFCX path maps so the recipient's outbound mirror and
-            // inbound apply can resolve entity↔path (the reconstructed store has
-            // no STEP `entityIndex.byId`). Without this, recipient edits don't sync.
-            if (payload.idToPath && payload.pathToId) {
-              registerEntityMaps(payload.dataStore, payload.idToPath, payload.pathToId);
-            }
-            if (!modelCreated) {
-              // First build: register a real model record (like a normal file
-              // load), giving the recipient an activeModelId + selection that
-              // resolves to a model (not 'legacy') so PropertiesPanel registers an
-              // editable MutablePropertyView. idOffset 0 — mesh expressIds are
-              // already in the reconstructed store's id space.
-              modelCreated = true;
-              const maxExpressId = highestExpressId(payload.idToPath);
-              get().upsertModel({
-                id: roomModelId,
-                name: 'Shared model',
-                ifcDataStore: payload.dataStore,
-                geometryResult: payload.geometryResult,
-                visible: true,
-                collapsed: false,
-                schemaVersion: payload.schemaVersion,
-                loadedAt: Date.now(),
-                fileSize: 0,
-                idOffset: 0,
-                maxExpressId,
-                loadState: 'complete',
-              });
-            } else {
-              // Re-derivation on a peer edit: refresh the ROOM model's store in
-              // place (keeps the model id + activeModelId stable). Addressed by
-              // id, not through the bare active-model setter: the recipient may
-              // have their own model active (see `applyRoomModelData`), and
-              // writing there would replace their file's store with the room's.
-              // When the room model IS active this still goes through
-              // setIfcDataStore, so the global store the outbound mirror reads
-              // stays in sync.
-              applyRoomModelData(get(), roomModelId, { ifcDataStore: payload.dataStore });
-              // `applyRoomModelData`'s ifcDataStore write leaves `maxExpressId` at
-              // whatever the FIRST reconstruct captured (#2719). The re-derive
-              // re-allocates dense ids from 1 (`entity-extractor.ts`), so a peer's
-              // newly created entity lands ABOVE that frozen bound, and
-              // `globalId.ts` gates resolution on
-              // `localExpressId <= model.maxExpressId`. Everything a peer adds
-              // after the first reconstruct then stops resolving: no error, the
-              // entity is simply not found.
-              //
-              // Raised, never lowered. A delete shrinks the id space, but ids
-              // already handed out elsewhere (selection, annotations) must keep
-              // resolving, so the bound is a high-water mark rather than a
-              // current count. Addressed by id directly (not through
-              // `applyRoomModelData`, which only routes `ifcDataStore` /
-              // `geometryResult`) — `updateModel` already patches the room
-              // model's record regardless of which model is active.
-              const model = get().models.get(roomModelId);
-              const raised = model ? raisedMaxExpressId(model.maxExpressId, payload.idToPath) : null;
-              if (raised !== null) get().updateModel(roomModelId, { maxExpressId: raised });
-            }
-            const geomCount = session.doc.getMap('geometry').size;
-            if (geomCount !== lastGeomCount) {
-              lastGeomCount = geomCount;
-              // Re-key for selection; cache and stream room geometry incrementally.
-              const meshes = await hydrateGeometryFromRoom(
-                geomApi,
-                session,
-                blobStore,
-                payload.pathToId,
-                {
-                  cache: geomCache,
-                  onFailure: (message) => {
-                    if (get().collabRoomId === roomId) set({ collabGeometryNotice: message });
-                  },
-                  onProgress: (soFar) => {
-                    if (get().collabRoomId === roomId && soFar.length > 0) {
-                      applyRoomModelData(get(), roomModelId, {
-                        geometryResult: buildGeometryResultFromMeshes(soFar.slice()),
-                      });
-                    }
-                  },
-                },
-              );
-              lastMeshCount = meshes.length;
-              if (get().collabRoomId === roomId) {
-                applyRoomModelData(get(), roomModelId, {
-                  geometryResult:
-                    meshes.length > 0 ? buildGeometryResultFromMeshes(meshes) : payload.geometryResult,
-                });
-                // The meshes just installed are BAKED, i.e. back at
-                // `meta.placementBaseline` (hydrate now copies the vertex arrays
-                // per consumer, so a re-hydrate returns the original geometry
-                // rather than a copy the renderer had already translated in
-                // place). The applied-placement bookkeeping describes the
-                // meshes just replaced, so it is now false — and false in the
-                // one direction that silently pins the damage: the sweep below
-                // would read "already applied" and leave the entity reverted.
-                // Forget it here, NOT before the `await hydrateGeometryFromRoom`
-                // above: a remote placement event landing during that await
-                // would call `reconcilePlacementMesh` and re-stamp `applied` for
-                // a mesh that is discarded by this replacement, and clearing
-                // beforehand would let that stale stamp survive into the sweep.
-                //
-                // SAFE FOR A NON-OBVIOUS REASON: `placementAppliedLoc` /
-                // `placementAppliedYaw` are module-scoped and shared with the
-                // live placement-event path, so a clear here is only correct if
-                // nothing can observe it mid-way. Nothing can — there is no
-                // `await` between this clear and the `sweepPlacements` call
-                // below (`collectPlacementDrift` reads the doc synchronously),
-                // so the clear-then-sweep pair is one uninterruptible turn of
-                // the event loop. Inserting an `await` anywhere in that span
-                // (e.g. chunking the sweep for a large model) reopens the
-                // window this comment closes.
-                clearAppliedPlacements(placementAppliedLoc, placementAppliedYaw);
-              }
-            }
-            // Placement is NOT carried by the blobs: a hydrated mesh sits at the
-            // `usd::xformop` it was baked at, and only a live placement *event*
-            // ever moved it. So re-derive it from the doc here — for a late
-            // joiner (which receives no such event at all), for an event dropped
-            // before this model existed, and for the meshes just re-hydrated
-            // above. Idempotent: `sweepPlacements` skips anything already
-            // applied, so this is a no-op on a room where nothing has moved,
-            // and it is the ONLY placement-replay mechanism in this file — see
-            // `clearAppliedPlacements` above for why it is safe to reach here
-            // synchronously off the geometry-changed branch too.
-            if (get().collabRoomId === roomId) {
-              sweepPlacements(
-                sweepApi,
-                session.doc,
-                payload.pathToId,
-                placementAppliedLoc,
-                placementAppliedYaw,
-                (entityId, placement) => {
-                  reconcilePlacementMesh(get, payload.dataStore, session.doc, entityId, placement);
-                },
-              );
-            }
-            // Warn about a room that rendered nothing. The old guard was
-            // `geomCount > 0`, which cannot fire in the case that actually
-            // breaks a room: a failed upload leaves no geometry records at all.
-            // The owner's seed marker is what separates that from a
-            // legitimately geometry-less model. Checked OUTSIDE the
-            // geometry-changed guard because the marker can land on its own,
-            // with no geometry record to change (that is precisely the failed
-            // seed), and would otherwise never be looked at.
-            if (!warnedMissingGeometry) {
-              const missing = missingRoomGeometryMessage({
-                marker: readGeometrySeedMarker(session.doc),
-                geometryRecords: geomCount,
-                hydratedMeshes: lastMeshCount,
-              });
-              if (missing && get().collabRoomId === roomId) {
-                warnedMissingGeometry = true;
-                // eslint-disable-next-line no-console
-                console.warn(`[collab] recipient: ${missing}`);
-                set({ collabGeometryNotice: missing });
-              }
-            }
-          } finally {
-            reconstructing = false;
-          }
-        };
+        const reconstructor = createRoomReconstructor({
+          roomId,
+          session,
+          collab: collabMod,
+          geomApi,
+          sweepApi,
+          blobStore,
+          parseIfcx: (buffer) => parseIfcxViewerModel(buffer, undefined, { allowEmptyGeometry: true }),
+          get,
+          setRoomModels: (models) => {
+            // The room's models are named here, from the doc, once the slots
+            // are known — the recipient half of the "resolved once" contract
+            // in the synchronous prefix above. Guarded like every other
+            // post-await write in this function.
+            if (get().collabRoomId === roomId) set({ collabRoomModels: models });
+          },
+          notify: (message) => {
+            if (get().collabRoomId === roomId) set({ collabGeometryNotice: message });
+          },
+          applied: () => ({ loc: placementAppliedLoc, yaw: placementAppliedYaw }),
+          reconcile: (modelId, store, entityId, placement) => {
+            reconcilePlacementMesh(get, modelId, store, session.doc, entityId, placement);
+          },
+        });
 
         // Initial build (only when we don't already have a local model).
         if (get().collabRoomId === roomId && !get().ifcDataStore) {
-          await reconstruct();
+          await reconstructor.reconstruct();
         }
 
         // Live updates: re-reconstruct (debounced) whenever a peer edits the doc.
-        let debounceHandle: ReturnType<typeof setTimeout> | null = null;
-        const onDocUpdate = () => {
-          if (debounceHandle) clearTimeout(debounceHandle);
-          debounceHandle = setTimeout(() => {
-            void reconstruct();
-          }, 800);
-        };
-        session.doc.on('update', onDocUpdate);
-        ownLiveTeardown = () => {
-          if (debounceHandle) clearTimeout(debounceHandle);
-          try {
-            session.doc.off('update', onDocUpdate);
-          } catch {
-            /* cleanup — safe to ignore */
-          }
-          // Drop the reconstructed room model on leave so rejoining a different
-          // room doesn't accumulate stale `room:*` models. (Only the recipient
-          // path creates this; the owner shares its own local model.)
-          if (modelCreated) {
-            try {
-              get().removeModel(roomModelId);
-            } catch {
-              /* cleanup — safe to ignore */
-            }
-          }
-        };
+        reconstructor.attachLive();
+        ownLiveTeardown = reconstructor.teardown;
         // Published into the module-level slot only while this join is still
         // the live one. A join the user left mid-reconstruct resumes here after
         // whatever came next — including a NEWER join that has already put its
@@ -1059,27 +857,31 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // Remote → local apply (plan §7.5): replay peers' property/attribute edits
     // into the ROOM model's MutablePropertyView (no undo tracking, no echo).
     //
-    // Resolved per event off `collabRoomModelId`, never off `activeModelId` and
-    // never captured once. A peer's edit carries an expressId in the ROOM's id
-    // space, so it is only meaningful against the room's own store and view.
+    // Resolved per event BY PATH off `collabRoomModels` — the path's slot
+    // names the model (#4444) — never off `activeModelId` and never captured
+    // once. A peer's edit carries an expressId in ONE room model's id space,
+    // so it is only meaningful against that model's own store and view.
     // Targeting the active model wrote it into the user's own file instead.
     // Not into `undoStacks` / `dirtyModels` — the handlers below call the view
     // directly, which is what "no undo tracking" above means — but into that
     // view's overlay and append-only `mutationHistory`, which the exporter and
     // `getModifiedEntityCount` read, so it survived a reload and shipped in
     // their exported IFC.
-    // `roomStore` returns null until the room model is registered, and every
-    // handler drops the event rather than falling back to another model; the
-    // next reconstruct rebuilds the whole model from the CRDT anyway.
-    remoteApplyTeardown = attachRemoteApply(docApi!, session, () => roomStore(get()), {
-      onProperty: (entityId, pset, prop, value, type) => {
-        const view = roomMutationView(get());
+    // `roomEntityTargetForPath` returns null until the room model is
+    // registered, and every handler drops the event rather than falling back
+    // to another model; the next reconstruct rebuilds the whole model from
+    // the CRDT anyway. Each handler is handed the model the resolver named
+    // and re-gates on it (`roomStoreFor` / `roomMutationViewFor`), so a
+    // handler cannot be handed one model and write another.
+    remoteApplyTeardown = attachRemoteApply(docApi!, session, (path) => roomEntityTargetForPath(get(), path), {
+      onProperty: (modelId, entityId, pset, prop, value, type) => {
+        const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
         view.setProperty(entityId, pset, prop, value, type);
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
-      onPropertyDelete: (entityId, pset, prop) => {
-        const view = roomMutationView(get());
+      onPropertyDelete: (modelId, entityId, pset, prop) => {
+        const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
         view.deleteProperty(entityId, pset, prop);
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
@@ -1088,41 +890,39 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       // cascades). Property names are unavailable at this point (see the
       // handler's doc comment in mutation-bridge.ts), so drop the entire set
       // rather than trying to replay per-property deletes.
-      onPsetDelete: (entityId, pset) => {
-        const view = roomMutationView(get());
+      onPsetDelete: (modelId, entityId, pset) => {
+        const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
         view.deletePropertySet(entityId, pset);
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
-      onAttribute: (entityId, attrName, value) => {
-        const view = roomMutationView(get());
+      onAttribute: (modelId, entityId, attrName, value) => {
+        const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
         view.setAttribute(entityId, attrName, value === null ? '' : String(value));
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       // A peer moved/rotated an entity: reflect it on the local mesh by
       // pushing the incremental renderer-frame delta (no undo, no echo).
-      onPlacement: (entityId, placement) => {
-        const store = roomStore(get());
+      onPlacement: (modelId, entityId, placement) => {
+        const store = roomStoreFor(get(), modelId);
         if (!store) return;
-        reconcilePlacementMesh(get, store, session.doc, entityId, placement);
+        reconcilePlacementMesh(get, modelId, store, session.doc, entityId, placement);
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       // A peer deleted an entity: hide its mesh (matches the owner's local
       // removeEntity, which hides rather than destroying GPU buffers).
       //
       // Unlike the four handlers above, this one does not go through
-      // `roomMutationView` / `roomStore`'s own null check, so it needs its
-      // own: in the named-but-unregistered window (recipient with
-      // `?room=&model=` before the first reconstruct completes),
-      // `roomModelIdOf` already names the room model, but `toGlobalIdFromModels`
-      // falls back to the bare expressId for a model it can't find — which can
-      // collide with an offset-0 model of the user's OWN. Gating on
-      // `roomStore` (registered only once the model exists) makes this drop
-      // the event exactly like its siblings until then.
-      onEntityDelete: (entityId) => {
-        if (!roomStore(get())) return;
-        const modelId = roomModelIdOf(get()) ?? '';
+      // `roomMutationViewFor`'s own null check, so it needs its own: in the
+      // named-but-unregistered window (recipient with `?room=&model=` before
+      // the first reconstruct completes) `toGlobalIdFromModels` falls back to
+      // the bare expressId for a model it can't find — which can collide with
+      // an offset-0 model of the user's OWN. Gating on `roomStoreFor`
+      // (non-null only once the model exists) makes this drop the event
+      // exactly like its siblings until then.
+      onEntityDelete: (modelId, entityId) => {
+        if (!roomStoreFor(get(), modelId)) return;
         const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
         get().hideEntities([globalId]);
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
@@ -1208,7 +1008,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       collabSession: null,
       collabStatus: 'disconnected',
       collabRoomId: null,
-      collabRoomModelId: null,
+      collabRoomModels: new Map(),
       collabDraftBaseline: null,
       collabPeersSinceBaseline: false,
       collabRole: null,
@@ -1327,9 +1127,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     mirrorPlacement(docApi, session, store, entityId, next);
     // The local mesh was already moved/rotated by the edit path; record the
     // resulting baked offset + yaw so we don't double-apply on a later remote
-    // edit (and so a remote edit computes the correct incremental).
-    placementAppliedLoc.set(entityId, rendererDeltaForPlacement(baseline, next));
-    if (placementAppliedYaw) placementAppliedYaw.set(entityId, yawOf(next) - yawOf(baseline));
+    // edit (and so a remote edit computes the correct incremental). Keyed by
+    // global id like the reconciler (see `placementAppliedLoc`).
+    const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
+    placementAppliedLoc.set(globalId, rendererDeltaForPlacement(baseline, next));
+    if (placementAppliedYaw) placementAppliedYaw.set(globalId, yawOf(next) - yawOf(baseline));
   },
 
   readCollabPlacement: (modelId, entityId) => {
@@ -1376,7 +1178,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     };
     mirrorPlacement(docApi, session, store, entityId, next);
     // No STEP chain on this store — move our own mesh via the shared reconciler.
-    reconcilePlacementMesh(get, store, session.doc, entityId, next);
+    reconcilePlacementMesh(get, modelId, store, session.doc, entityId, next);
     return true;
   },
 
@@ -1394,7 +1196,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     const next = composePlacement(prev, [0, 0, 0], deltaYaw);
     mirrorPlacement(docApi, session, store, entityId, next);
     // Live-rotate our own mesh via the shared reconciler (rotation branch).
-    reconcilePlacementMesh(get, store, session.doc, entityId, next);
+    reconcilePlacementMesh(get, modelId, store, session.doc, entityId, next);
     return true;
   },
 
@@ -1406,8 +1208,9 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     if (!get().canCollabEdit()) return;
     mirrorEntityDelete(docApi, session, store, entityId);
     // Drop any placement tracking for the removed entity.
-    placementAppliedLoc?.delete(entityId);
-    placementAppliedYaw?.delete(entityId);
+    const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
+    placementAppliedLoc?.delete(globalId);
+    placementAppliedYaw?.delete(globalId);
   },
 
   mirrorEntityCreate: (modelId, entityId, ifcType, guid, mesh) => {
@@ -1417,11 +1220,12 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     if (!session || !store || !docApi || !placementApi || !geomApiRef) return;
     if (!get().canCollabEdit()) return;
     // Overlay (runtime-created) entities aren't in the store's GUID maps, so
-    // derive the path from the new entity's GlobalId and register it so this
-    // (and later edits to it) resolve.
+    // derive the path from the new entity's GlobalId — in the store's room
+    // slot, like every seeded path — and register it so this (and later
+    // edits to it) resolve.
     let path = pathForEntity(store, entityId);
     if (!path && guid) {
-      path = `/${guid}`;
+      path = pathForGuid(store, guid);
       registerEntityPath(store, entityId, path);
     }
     if (!path) return;
@@ -1470,8 +1274,9 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // baseline, set at create/seed). Reset applied tracking so the fresh blob
     // is treated as the new zero (resize-after-move on a peer is an accepted v1
     // limitation — the peer's stale applied delta isn't reset remotely).
-    placementAppliedLoc?.delete(entityId);
-    placementAppliedYaw?.delete(entityId);
+    const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
+    placementAppliedLoc?.delete(globalId);
+    placementAppliedYaw?.delete(globalId);
     const geom = geomApiRef;
     void (async () => {
       try {

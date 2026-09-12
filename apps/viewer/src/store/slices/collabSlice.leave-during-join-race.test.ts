@@ -129,16 +129,16 @@ describe('collabSlice — stopCollab() racing an in-flight startCollab()', () =>
 
     const s = buildCollabTestState();
 
-    // Owner path, `seed: () => null` — a legitimate "nothing to seed" share
-    // (matches ShareDialog's real usage) that skips the heavy
-    // parse/hydrate/blob-store machinery entirely, isolating the race to
-    // exactly the gap this test targets: the unguarded tail after
+    // Owner path with an empty share scope — a legitimate "nothing to seed"
+    // share (what ShareDialog passes when no loaded model has a store) that
+    // skips the heavy parse/hydrate/blob-store machinery entirely, isolating
+    // the race to exactly the gap this test targets: the unguarded tail after
     // `await session.whenSynced`.
     const pending = s.get().startCollab({
       roomId: 'room-1',
       role: 'viewer',
       token: 'test-token',
-      seed: () => null,
+      seed: { models: [] },
     });
 
     // Real session creation (real Y.Doc, real fake-indexeddb open) has to

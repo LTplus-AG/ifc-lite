@@ -32,8 +32,8 @@ register('../../test/collab-session-race-hook.mjs', import.meta.url);
 import type { CollabSession } from '@ifc-lite/collab';
 import { buildCollabTestState } from '../../test/collab-slice-state.js';
 import { buildGeometryResultFromMeshes } from '@/lib/collab/geometry-sync.js';
-import { buildStepSeedSource } from '@/lib/collab/step-seed.js';
-import type { CollabSeedPhase } from '@/lib/collab/seed-phase.js';
+import { roomSlotRef } from '@/lib/collab/model-slot-ref.js';
+import type { CollabSeedPhase, CollabSeedProgress } from '@/lib/collab/seed-phase.js';
 import { SEED_GUIDS, seedFixtureMesh, seedFixtureMeshes, seedFixtureStore } from '../../test/collab-seed-fixture.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
@@ -60,7 +60,6 @@ interface Trace {
 /** Owner join with the fixture model; records every phase transition. */
 function ownerJoin(roomId: string, meshes: MeshData[]) {
   const trace: Trace[] = [];
-  const store = seedFixtureStore();
   const s = buildCollabTestState({
     onSet: (before, after) => {
       if (after.collabSeedPhase !== before.collabSeedPhase) {
@@ -73,6 +72,7 @@ function ownerJoin(roomId: string, meshes: MeshData[]) {
     },
   });
   s.set({ geometryResult: buildGeometryResultFromMeshes(meshes) });
+  const store = seedFixtureStore();
   let created: CollabSession | null = null;
   (globalThis as { __collabSessionCreated?: (session: CollabSession) => void }).__collabSessionCreated = (
     session,
@@ -83,7 +83,12 @@ function ownerJoin(roomId: string, meshes: MeshData[]) {
     roomId,
     role: 'admin',
     token: 'admin-token',
-    seed: () => ({ store, isIfcx: false, stepSource: buildStepSeedSource(store, 'fixture.ifc') }),
+    // One model, the m0 slot (#4444); its meshes are the owner's live geometry.
+    seed: {
+      models: [
+        { modelId: 'model-1', name: 'fixture.ifc', store, isIfcx: false, meshes, idOffset: 0, schemaVersion: 'IFC4' },
+      ],
+    },
   });
   return { s, trace, pending, session: () => created };
 }
@@ -131,6 +136,12 @@ describe('collabSlice — collabSeedPhase (#4446)', () => {
       releaseGate();
       await within(ready, 'collabSeedPhase to reach ready');
 
+      assert.deepEqual(
+        Array.from(s.get().collabRoomModels.entries()),
+        [['model-1', roomSlotRef(0)]],
+        'the owner recorded its model under slot m0',
+      );
+
       // The owner navigates away the instant the invite becomes available.
       s.get().stopCollab();
 
@@ -140,9 +151,9 @@ describe('collabSlice — collabSeedPhase (#4446)', () => {
       assert.equal(doc.getMap('geometry').size, 2, 'both meshes are referenced when ready is reported');
       // Loaded here, after `register()`, so it resolves through the same hook
       // as the slice's own lazy import.
-      const { getGeometryRef, guidToPath } = await import('@ifc-lite/collab');
+      const { getGeometryRef, slotPath } = await import('@ifc-lite/collab');
       for (const guid of Object.values(SEED_GUIDS)) {
-        assert.equal(getGeometryRef(doc, guidToPath(guid))?.geomIds.length, 1, `${guid} carries its geometry ref`);
+        assert.equal(getGeometryRef(doc, slotPath(roomSlotRef(0), guid))?.geomIds.length, 1, `${guid} carries its geometry ref`);
       }
 
       assert.deepEqual(
@@ -168,7 +179,7 @@ describe('collabSlice — collabSeedPhase (#4446)', () => {
 
   it('records geometry progress and settles ready with no failure on a clean seed', async () => {
     delete (globalThis as { __collabSyncGate?: Promise<void> }).__collabSyncGate;
-    const progress: Array<{ uploaded: number; total: number }> = [];
+    const progress: CollabSeedProgress[] = [];
     const { s, pending, session } = ownerJoin('seed-phase-room-2', seedFixtureMeshes());
     const original = s.hooks.onSet;
     s.hooks.onSet = (before, after) => {
@@ -181,7 +192,7 @@ describe('collabSlice — collabSeedPhase (#4446)', () => {
       await within(pending, 'startCollab to complete');
       assert.equal(s.get().collabSeedPhase, 'ready');
       assert.equal(s.get().collabSeedFailure, null);
-      assert.deepEqual(progress.at(-1), { uploaded: 2, total: 2 });
+      assert.deepEqual(progress.at(-1), { uploaded: 2, total: 2, modelIndex: 0, modelCount: 1 });
       assert.ok(s.get().collabSession, 'the session is committed once the seed is done');
       assert.equal(s.get().collabStatus, 'indexeddb', 'status is the provider, not the seed');
     } finally {

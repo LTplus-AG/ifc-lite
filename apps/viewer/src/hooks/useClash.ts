@@ -695,9 +695,9 @@ export function useClash() {
    *
    * The `federationRegistry` singleton (`fromGlobalId`) did that search, and
    * knows only models that went through `registerModelOffset`. A model put into
-   * `state.models` any other way is invisible to it. That is exactly the collab
-   * room model: `collabSlice`'s recipient reconstruct registers it with
-   * `upsertModel({ id: 'room:<id>', ..., idOffset: 0 })` and never calls
+   * `state.models` any other way is invisible to it. That was the collab room
+   * model until #4444: the recipient reconstruct registered it with
+   * `upsertModel({ id: 'room:<id>', ..., idOffset: 0 })` and never called
    * `registerModelOffset`, so in a room EVERY clash row was dead — while
    * clicking the same element in the 3D view selected it normally, that path
    * resolving through `state.models` (`resolveEntityRef`).

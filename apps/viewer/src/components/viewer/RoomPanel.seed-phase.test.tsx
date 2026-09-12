@@ -57,7 +57,7 @@ beforeEach(() => {
     collabSelfToken: 'admin-token',
     collabPeers: [],
     collabSeedPhase: 'geometry',
-    collabSeedProgress: { uploaded: 120, total: 272 },
+    collabSeedProgress: { uploaded: 120, total: 272, modelIndex: 0, modelCount: 1 },
   });
 });
 

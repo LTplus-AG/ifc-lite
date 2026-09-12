@@ -36,10 +36,18 @@ export type CollabSeedPhase =
   /** The room got structure but no geometry, or the seed threw; `collabSeedFailure` says what. */
   | 'failed';
 
-/** Geometry blob uploads so far, for a progress row. */
+/**
+ * Geometry blob uploads so far, for a progress row. A room can carry several
+ * models (#4444), seeded one slot after another: `modelIndex` / `modelCount`
+ * say which model's blobs these are, so the row can read "model 2 of 3".
+ */
 export interface CollabSeedProgress {
   uploaded: number;
   total: number;
+  /** 0-based position of the model being uploaded in the share scope. */
+  modelIndex: number;
+  /** Number of models in the share scope. */
+  modelCount: number;
 }
 
 /** Phases during which an invite must NOT be handed out yet. */
@@ -65,8 +73,11 @@ export function describeSeedPhase(phase: CollabSeedPhase, progress: CollabSeedPr
       return 'Connecting to the room…';
     case 'structure':
       return 'Uploading model structure…';
-    case 'geometry':
-      return progress ? `Uploading geometry ${progress.uploaded}/${progress.total}…` : 'Uploading geometry…';
+    case 'geometry': {
+      if (!progress) return 'Uploading geometry…';
+      const which = progress.modelCount > 1 ? ` (model ${progress.modelIndex + 1} of ${progress.modelCount})` : '';
+      return `Uploading geometry ${progress.uploaded}/${progress.total}${which}…`;
+    }
     default:
       return null;
   }

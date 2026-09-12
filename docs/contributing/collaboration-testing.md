@@ -193,6 +193,32 @@ Useful things to try:
 - **History:** click "Capture snapshot" twice; the history sidecar
   records IFCX entries you can inspect via the "history" panel.
 
+### Sharing several models (federation scope)
+
+Exercise the multi-model room with the real viewer (TL;DR step 3b) and two
+copies of one file, so that every IFC identity collides on purpose:
+
+1. Owner: load `tests/models/…/AC20-FZK-Haus.ifc` twice (`pnpm fixtures`
+   downloads it), apply a different appearance source to the same member in
+   each copy, then File → Share. With two models loaded the dialog asks for
+   the scope before any room exists; keep **All 2 loaded models**, press
+   **Create link**, wait for the upload row ("model 2 of 2") to clear, and
+   copy the link.
+2. Recipient (second profile): open the link. The hierarchy lists two models
+   named after the file; each is selectable on its own, each keeps its own
+   texture, and a property edit on one copy lands on that copy only.
+3. Rejoin: close the recipient, open the link again — still two models.
+4. Export on the recipient: the Export dialog lists both `room:*` models
+   like any federation; the federated merge is the "export everything" path.
+
+What to look for in the doc (DevTools, `session.doc`): the `models` map holds
+`m0` and `m1`, and every entity path is `/m0/<GlobalId>` or `/m1/<GlobalId>`.
+`pnpm --filter viewer exec tsx --import ./src/test/vite-module-hooks.mjs --test src/lib/collab/room-reconstruct.test.ts`
+runs the same owner → recipient → rejoin sequence headlessly on a synthetic
+two-entity model, and `room-two-copies.ac20.test.ts` beside it runs it on the
+real fixture (skipped until `pnpm fixtures` has run); the numbers of one such
+run are recorded in `docs/architecture/evidence/federation-scope/`.
+
 ### The 3D variant
 
 ```sh

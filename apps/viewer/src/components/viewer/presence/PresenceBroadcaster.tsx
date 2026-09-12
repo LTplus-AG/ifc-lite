@@ -16,7 +16,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useViewerStore, resolveEntityRef } from '@/store';
-import { pathForEntity } from '@/lib/collab/mutation-bridge';
+import { pathForEntity } from '@/lib/collab/entity-paths';
 import type { IfcDataStore } from '@ifc-lite/parser';
 
 /** Cursor plane: most viewer models sit near the local-frame ground (y≈0). */

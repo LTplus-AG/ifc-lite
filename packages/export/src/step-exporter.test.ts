@@ -1000,7 +1000,7 @@ describe('StepExporter', () => {
   // `@ifc-lite/data`: `entities-ifc2x3.ts` vs `entities-ifc4.ts`), so there is
   // no arity difference for THESE FOUR classes to exercise. What this test
   // instead confirms is that the closure/bridge mechanism — which is purely
-  // SYNTACTIC (byte/text parsing of the STEP line, `splitTopLevelArgs`) for a
+  // SYNTACTIC (byte/text parsing of the STEP line, `splitTopLevelListItems`) for a
   // SOURCE-backed relationship, and consults `getAttributeNamesAcrossSchemas`
   // (a version-invariant, IFC4-pinned-then-union resolver) only for a NAMED
   // attribute override — behaves identically when `dataStore.schemaVersion`
@@ -1202,7 +1202,7 @@ describe('StepExporter', () => {
   // at the SAME indices (4/5) in both schemas — the shorter arity is a
   // TRAILING difference — so this exercises the same retarget shape as the
   // IFC4 tests above, just on the schema that genuinely has fewer attributes
-  // to parse `splitTopLevelArgs` over.
+  // to parse `splitTopLevelListItems` over.
   it('does not leave a dangling ref for a retargeted IfcRelSequence on an IFC2X3 source (a genuine arity difference)', () => {
     const dataStore = buildMockDataStore([
       [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,$,$);"],

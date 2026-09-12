@@ -210,3 +210,25 @@ fn other_ifc2x3_downgrade_renames_still_use_positional_trim() {
     // IfcBuildingElementProxy caps at 9 IFC2X3 attrs; this line has exactly 9, so nothing trims.
     assert!(out.contains(".USERDEFINED."), "positional trim/pass-through unaffected: {out}");
 }
+
+#[test]
+fn schema_conversion_preserves_utf8_through_the_shared_slot_parser() {
+    let line = "#5=IFCCHIMNEY('g',$,'Größe',$,$,#6,#7,'tag',.USERDEFINED.,$);";
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 5);
+    assert!(out.contains("'Größe'"), "UTF-8 text must remain byte-correct: {out}");
+}
+
+#[test]
+fn schema_conversion_refuses_a_malformed_positional_split() {
+    let line = "#1=IFCDOORTYPE('g',\"01,23\",$,$,$,$,$,$,$,$,$,$,$);";
+    assert_eq!(convert_step_line(line, "IFC4", "IFC2X3", 1), line);
+}
+
+#[test]
+fn schema_conversion_refuses_before_type_rename_or_proxy_replacement() {
+    let rename = "#10=IFCBRIDGE('g',\"01,23\",$);";
+    assert_eq!(convert_step_line(rename, "IFC4X3", "IFC4", 10), rename);
+
+    let proxy = "#99=IFCALIGNMENTCANT('g',\"01,23\",$);";
+    assert_eq!(convert_step_line(proxy, "IFC4X3", "IFC4", 99), proxy);
+}

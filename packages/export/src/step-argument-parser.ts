@@ -14,7 +14,7 @@ import { isWellFormedStepSlot } from './step-slot-grammar.js';
  * repoint, see below), the same failure class. Compiled once since
  * `replaceStepArgument` runs per rewritten line.
  */
-const RECORD_PREFIX_RE = new RegExp(`^(#\\d+\\s*=\\s*\\w+${STEP_TRIVIA}\\()([\\s\\S]*)(\\)\\s*;)\\s*$`);
+const RECORD_PREFIX_RE = new RegExp(`^(#\\d+\\s*=\\s*(\\w+)${STEP_TRIVIA}\\()([\\s\\S]*)(\\)\\s*;)\\s*$`);
 
 /**
  * The STEP argument parser and rewriter: reading a record's top-level argument
@@ -36,9 +36,11 @@ const RECORD_PREFIX_RE = new RegExp(`^(#\\d+\\s*=\\s*\\w+${STEP_TRIVIA}\\()([\\s
  */
 /**
  * Split a STEP argument list on top-level commas, respecting nested
- * parens, quoted strings, and comments (#4227). Used by `applyAttributeMutations`.
+ * parens, quoted strings, and comments (#4227). This permissive helper is for
+ * already-extracted aggregate/list bodies; whole entity records must go
+ * through `readStepSlots` so every slot is validated before mutation.
  */
-export function splitTopLevelArgs(text: string): string[] {
+export function splitTopLevelListItems(text: string): string[] {
   const parts: string[] = [];
   let current = '';
   let depth = 0;
@@ -100,6 +102,23 @@ export function splitTopLevelArgs(text: string): string[] {
   return parts;
 }
 
+export interface StepRecordSlots {
+  readonly prefix: string;
+  readonly type: string;
+  readonly slots: readonly string[];
+  readonly suffix: string;
+}
+
+/** Parse a complete STEP record into validated, position-addressable slots. */
+export function readStepSlots(entityText: string): StepRecordSlots | null {
+  const match = entityText.match(RECORD_PREFIX_RE);
+  if (!match) return null;
+  const [, prefix, type, attrsText, suffix] = match;
+  const slots = splitTopLevelStepArguments(attrsText);
+  if (slots === null) return null;
+  return { prefix, type: type.toUpperCase(), slots, suffix };
+}
+
 /**
  * Replace ONE top-level argument of a STEP record, by zero-based slot, leaving
  * every other token — and the record's class keyword and id — byte-identical.
@@ -127,11 +146,7 @@ export function replaceStepArgument(
   attrIndex: number,
   replacement: string,
 ): string | null {
-  const match = entityText.match(RECORD_PREFIX_RE);
-  if (!match) return null;
-
-  const [, prefix, attrsText, suffix] = match;
-  const attrs = splitTopLevelStepArguments(attrsText);
+  const record = readStepSlots(entityText);
   // Load-bearing, and covered: the bounds check below READS `attrs.length`, so a
   // null reaches it as a TypeError rather than falling through to a rejection.
   // Deleting this line fails exactly the three malformed-input cases in
@@ -139,7 +154,8 @@ export function replaceStepArgument(
   // closing paren — which throw instead of returning null. Kept as its own line,
   // not folded into that check, because "could not scan it" and "that slot is
   // past the end" are different facts about the input.
-  if (attrs === null) return null;
+  if (record === null) return null;
+  const attrs = [...record.slots];
   // A negative or fractional slot must not reach the assignment below: it would
   // set a NAMED PROPERTY on the array rather than an element, `join` would skip
   // it, and this would hand back the line unchanged — but non-null, which the
@@ -150,14 +166,14 @@ export function replaceStepArgument(
   if (!Number.isInteger(attrIndex) || attrIndex < 0 || attrIndex >= attrs.length) return null;
 
   attrs[attrIndex] = replacement;
-  return `${prefix}${attrs.join(',')}${suffix}`;
+  return `${record.prefix}${attrs.join(',')}${record.suffix}`;
 }
 
 /**
  * Split a STEP argument list on top-level commas while preserving nested syntax,
  * or null when the text is not a well-formed argument list.
  *
- * Similar to `splitTopLevelArgs` but uses a slightly different accumulation style
+ * Similar to `splitTopLevelListItems` but uses a slightly different accumulation style
  * suited for the {@link replaceStepArgument} call-site.
  *
  * ## Why it validates

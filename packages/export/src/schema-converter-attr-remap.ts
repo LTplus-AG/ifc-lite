@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { splitTopLevelArgs } from './step-argument-parser.js';
+import { splitTopLevelStepArguments } from './step-argument-parser.js';
 
 /**
  * Attribute-list reconciliation for a genuine cross-schema entity RENAME
@@ -16,29 +16,17 @@ import { splitTopLevelArgs } from './step-argument-parser.js';
  * value strings, respecting nested parentheses and single-quoted strings.
  * Empty list → [].
  *
- * A thin wrapper over `step-argument-parser.ts`'s `splitTopLevelArgs` — the
- * same package's general-purpose top-level-comma splitter, already used by
- * seven other read paths in this package (`retype.ts`, `reference-collector.ts`,
- * `merged-empty-containers.ts`, etc). This module used to carry its own
- * near-identical scan; kept here as `remapRenamedAttributesByName`'s only
- * caller expects, but no longer a fourth copy of the same rule
- * (LTplus-AG/ifc-lite#4125). `trimAttributes` in `schema-converter.ts` is
- * NOT folded in here: it stops early at a positional budget, which is a
- * genuinely different rule, not a copy of this one.
+ * A thin wrapper over `step-argument-parser.ts`'s validated
+ * `splitTopLevelStepArguments`. This module used to carry its own permissive
+ * scan; keeping the wrapper gives remapping an explicit refusal boundary
+ * without retaining a fourth parser (LTplus-AG/ifc-lite#4125/#4200).
  *
- * `splitTopLevelArgs` behaves differently from the old local scanner in two
- * ways: it drops a trailing empty argument (`"a,"` → `['a']`) rather than
- * keeping it as `['a', '']`, and it trims each token
- * (`"a, b,c"` → `['a','b','c']` instead of `['a',' b','c']`). Both are safe
- * for `remapRenamedAttributesByName`'s real inputs: neither `IFCDOORTYPE`
- * nor `IFCWINDOWTYPE`'s fixed-arity attribute list has a trailing comma in
- * well-formed STEP, so the first difference never fires; and STEP has no
- * semantic significance to whitespace between top-level tokens, so a trimmed
- * token is the same value either way. Pinned by
- * `schema-converter-attr-remap.test.ts`.
+ * The validated splitter preserves an empty trailing slot so malformed
+ * fixed-arity records cannot shift positional meaning, and trims legal STEP
+ * whitespace around each token. Pinned by the adjacent tests.
  */
-export function splitTopLevelAttributes(attrsRaw: string): string[] {
-  return splitTopLevelArgs(attrsRaw);
+export function splitTopLevelAttributes(attrsRaw: string): string[] | null {
+  return splitTopLevelStepArguments(attrsRaw);
 }
 
 /**
@@ -86,8 +74,9 @@ export function remapRenamedAttributesByName(
   attrsRaw: string,
   srcNames: readonly string[],
   tgtNames: readonly string[],
-): string {
+): string | null {
   const values = splitTopLevelAttributes(attrsRaw);
+  if (values === null) return null;
   const byName = new Map<string, string>();
   for (let i = 0; i < srcNames.length && i < values.length; i++) {
     byName.set(srcNames[i], values[i]);

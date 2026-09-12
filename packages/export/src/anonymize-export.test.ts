@@ -34,7 +34,7 @@ import { EMPTY_SOURCE_BYTES, IfcParser, parseSourceHeader, type IfcDataStore } f
 import { isValidIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { exportAnonymizedSubset } from './anonymize-export.js';
 import type { AnonymizeOptions } from './anonymize-types.js';
-import { splitTopLevelArgs } from './step-argument-parser.js';
+import { splitTopLevelListItems } from './step-argument-parser.js';
 import { HAS_PROPERTY_SETS_SLOT } from './type-owned-psets.js';
 
 const enc = (s: string): ArrayBuffer => new TextEncoder().encode(s).buffer as ArrayBuffer;
@@ -76,7 +76,7 @@ function findDanglingRefs(content: string): number[] {
 function lineArgs(content: string, id: number): string[] {
   const match = content.match(new RegExp(`^#${id}=\\w+\\((.*)\\);$`, 'm'));
   if (!match) throw new Error(`no exported line for #${id}`);
-  return splitTopLevelArgs(match[1]);
+  return splitTopLevelListItems(match[1]);
 }
 
 /**
@@ -511,6 +511,24 @@ describe('exportAnonymizedSubset — IfcPropertyReferenceValue into an excluded 
     expect(findDanglingRefs(content)).toEqual([]);
     expect(lineArgs(content, 96)[3]).toBe('#51');
     expect(result.stats.droppedPropertyReferenceIds).toEqual([]);
+  });
+
+  it('does not report a drop when malformed slots make the positional edit unverifiable (#4200)', async () => {
+    const malformed = FIXTURE_MODEL.replace(
+      "#96=IFCPROPERTYREFERENCEVALUE('AddressRef',$,$,#51);",
+      "#96=IFCPROPERTYREFERENCEVALUE('AddressRef',\"01,23\",#51);",
+    );
+    const store = await parse(malformed);
+    const result = exportAnonymizedSubset(store, new Set([1, 3, 95, 96]), {
+      keepPropertySets: true,
+      guidRandom: seededRandom(18),
+    });
+
+    expect(result.stats.droppedPropertyReferenceIds).toEqual([]);
+    expect(result.stats.warnings.some(
+      (warning) => warning.includes('IfcPropertyReferenceValue #96')
+        && warning.includes('not changed or reported as dropped'),
+    )).toBe(true);
   });
 });
 

@@ -99,6 +99,21 @@ async function harness(
 }
 
 describe('runOwnerSeed (#4446)', () => {
+  it('uploads a complete portable STEP source and binds its hash to the model slot (#4604)', async () => {
+    const bytes = new TextEncoder().encode('ISO-10303-21;\nEND-ISO-10303-21;');
+    const model = fixtureModel('model-1', seedFixtureMeshes());
+    model.portableStepSource = bytes;
+    const h = await harness(model.meshes!, [model]);
+    try {
+      assert.equal((await h.run())?.phase, 'ready');
+      const slot = collab.getModelSlot(h.session.doc, 'm0');
+      assert.match(slot?.stepSourceBlobHash ?? '', /^[0-9a-f]{32}$/);
+      assert.deepEqual(await h.blobStore.get(slot!.stepSourceBlobHash!), bytes);
+    } finally {
+      h.session.dispose();
+    }
+  });
+
   it('walks structure -> geometry, reports progress, and settles ready only once the room holds it all', async () => {
     const h = await harness();
     try {

@@ -54,6 +54,9 @@ import { buildStepSeedSource } from './step-seed';
 import { pathForEntity, registerEntityMaps, registerStoreSlot } from './entity-paths';
 import { pathInRoomSlot } from './model-slot-ref';
 import { seedPhaseFromOutcome, type CollabSeedProgress } from './seed-phase';
+import { DEFAULT_UPLOAD_RETRIES, DEFAULT_UPLOAD_RETRY_DELAYS_MS, putBlobWithRetry } from './blob-upload';
+
+const MAX_PORTABLE_STEP_SOURCE_BYTES = 96 * 1024 * 1024;
 
 /**
  * One model of a share (#4444). Carries the model's OWN parsed store plus
@@ -83,6 +86,12 @@ export interface CollabSeedModel {
   schemaVersion?: string;
   fileName?: string;
   sourceFingerprint?: string;
+  /**
+   * Complete, mutation-materialized STEP source. When present it is stored as
+   * a room blob so a recipient can retain resource-level representations such
+   * as IfcAnnotationFillArea in addition to the collaboration IFCX snapshot.
+   */
+  portableStepSource?: Uint8Array;
 }
 
 /** Model-share payload the owner hands to `startCollab`: the share scope, in slot order. */
@@ -209,6 +218,16 @@ async function seedModel(
   if (!collab.getModelSlot(doc, slot.slotId)) {
     deps.onPhase('structure');
     wrote = true;
+    let stepSourceBlobHash: string | undefined;
+    if (model.portableStepSource) {
+      if (model.portableStepSource.byteLength > MAX_PORTABLE_STEP_SOURCE_BYTES) {
+        throw new Error('The portable IFC source exceeds the 96 MiB room-source limit. Export it locally or share a smaller model.');
+      }
+      stepSourceBlobHash = (await putBlobWithRetry(
+        await blobs(), model.portableStepSource, DEFAULT_UPLOAD_RETRIES, DEFAULT_UPLOAD_RETRY_DELAYS_MS,
+      )).hash;
+      if (!deps.isCurrent()) return { report: null, wrote: false };
+    }
     session.transact(() => {
       collab.createModelSlot(doc, slot.slotId, {
         name: model.name,
@@ -216,6 +235,7 @@ async function seedModel(
         schemaVersion: model.schemaVersion,
         order,
         sourceFingerprint: model.sourceFingerprint,
+        stepSourceBlobHash,
       });
     });
     if (model.isIfcx) {

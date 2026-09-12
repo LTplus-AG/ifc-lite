@@ -996,12 +996,20 @@ jobs:
       # AGENTS.md has asked for TypeScript modules under ~400 lines since long
       # before this gate existed, and self-policing left 312 files over the
       # line. A convention with no gate ratchets the wrong way: the allowlist
-      # is the frozen debt. The gate has exactly two teeth and this step fails
-      # on either: a NEW source file over 400 lines with no allowlist row, and
-      # an allowlisted file that GREW past its recorded budget. Raising a
-      # budget by hand is NOT one of them (#3745) -- it is sanctioned, and the
-      # allowlist row's own diff is the reviewable line, read by a human in
-      # the PR rather than failed here.
+      # is the frozen debt. The gate's two teeth judge FILES against rows, and
+      # this step fails on either: a NEW source file over 400 lines with no
+      # allowlist row, and an allowlisted file that GREW past its recorded
+      # budget. Since #4388 (landed by #4535) it also judges the ROWS this
+      # change wrote, against the merge base with main: a row added or raised
+      # must equal the count `--update` would have written (a budget above the
+      # file, or a row for a file at or under 400, fails); a lowered row must
+      # still name a file over 400; and a kept row fails when this change's
+      # own diff took a file that was over 400 at the base under it, or
+      # removed it. Raising a budget is still not refused as such (#3745): the
+      # row's diff stays the reviewable line, and the audit only holds it to
+      # the measurement. Rows this change did not write, and files it did not
+      # touch, stay advisory notes. The full rationale is the header of
+      # scripts/check-module-size.mjs; this comment is its summary.
       - name: Check TypeScript module size ratchet
         run: node scripts/check-module-size.mjs
       # Executable proof the ratchet cannot pass vacuously: a gate that

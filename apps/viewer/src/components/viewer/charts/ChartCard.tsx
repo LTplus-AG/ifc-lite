@@ -14,6 +14,7 @@ import { aggregate, buildEChartsOption, type Aggregation, type ChartDataset, typ
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
 import { readChartTheme, useEChart, type ChartRenderer, type ChartSelectEvent } from './useEChart';
+import { GRID_DRAG_HANDLE_CLASS } from './DashboardGrid';
 import type { Chart3DLink } from './useChart3DLink';
 
 export interface ChartCardProps {
@@ -76,9 +77,9 @@ export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onA
     : 'Cannot aggregate — edit the chart';
 
   return (
-    <div className="flex flex-col min-h-0 rounded-md border border-border bg-card" data-chart-id={spec.id}>
+    <div className="flex h-full flex-col min-h-0 rounded-md border border-border bg-card" data-chart-id={spec.id}>
       <div className="flex items-center gap-1 px-2 py-1 border-b border-border/60 text-xs">
-        <div className="min-w-0 flex-1">
+        <div className={`min-w-0 flex-1 cursor-grab active:cursor-grabbing select-none ${GRID_DRAG_HANDLE_CLASS}`} title="Drag to move the card">
           <div className="font-medium truncate" title={spec.title}>{spec.title}</div>
           <div className="text-[10px] text-muted-foreground truncate" data-chart-subtitle>{subtitle}</div>
         </div>

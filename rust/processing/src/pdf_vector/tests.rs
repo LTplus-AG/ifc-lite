@@ -6,6 +6,7 @@ pub(super) fn page(ops: Vec<PdfVectorOperator>) -> PdfVectorPage {
     PdfVectorPage {
         pdf_sha256: "a".repeat(64),
         decoder_version: "6.3.289".into(),
+        pdf_format_version: Some("2.0".into()),
         page_number: 1,
         view_box: [10., 20., 110., 92.],
         user_unit: 2.,
@@ -179,6 +180,19 @@ fn issue_4406_strict_json_rejects_unknown_semantics_instead_of_dropping_them() {
     let mut json = serde_json::to_value(page(vec![path()])).unwrap();
     json["operations"][0]["operation"]["alpha"] = serde_json::json!(0.5);
     assert!(serde_json::from_value::<PdfVectorPage>(json).is_err());
+}
+#[test]
+fn issue_4583_older_hosts_without_a_pdf_version_remain_decodable() {
+    let mut json = serde_json::to_value(page(vec![path()])).unwrap();
+    json.as_object_mut().unwrap().remove("pdfFormatVersion");
+    let decoded: PdfVectorPage = serde_json::from_value(json).unwrap();
+    assert_eq!(decoded.pdf_format_version, None);
+
+    let mut invalid = page(vec![path()]);
+    invalid.pdf_format_version = Some("x".repeat(17));
+    assert!(prepare_pdf_vector_page(&invalid)
+        .unwrap_err()
+        .contains("format version"));
 }
 #[test]
 fn issue_4406_report_operators_use_the_adapter_camel_case_wire_shape() {

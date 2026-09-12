@@ -5,7 +5,7 @@
 //! Fast STEP list decoding into caller-owned scratch (#3988). The owned-return
 //! accessors use the same fill routines; only scratch ownership differs.
 
-use super::{parse_cartesian_point_inline, EntityDecoder};
+use super::{is_step_space, parse_cartesian_point_inline, EntityDecoder};
 
 impl EntityDecoder<'_> {
     /// Extract entity reference IDs from a raw list attribute, in authored order.
@@ -52,7 +52,7 @@ impl EntityDecoder<'_> {
         while i < len {
             // Skip whitespace and commas
             while i < len
-                && (bytes[i] == b' ' || bytes[i] == b',' || bytes[i] == b'\n' || bytes[i] == b'\r')
+                && (bytes[i] == b',' || is_step_space(bytes[i]))
             {
                 i += 1;
             }
@@ -142,7 +142,7 @@ impl EntityDecoder<'_> {
         while i < len {
             // Skip whitespace and commas
             while i < len
-                && (bytes[i] == b' ' || bytes[i] == b',' || bytes[i] == b'\n' || bytes[i] == b'\r')
+                && (bytes[i] == b',' || is_step_space(bytes[i]))
             {
                 i += 1;
             }

@@ -213,7 +213,7 @@ kinds spelled out for readers (`1 text run`, `556 hairline strokes`,
 tokens stay in the property set's `Omissions` JSON. The
 `IfcLite_PdfVectorConversion` property set (attached through
 `IfcRelDefinesByProperties`) records the source PDF digest, page, CropBox,
-UserUnit, rotation, decoder version, calibration key, PDF-to-model affine,
+UserUnit, rotation, effective PDF format version, decoder version, calibration key, PDF-to-model affine,
 declared tolerance in metres, composition grid, request and fidelity digests,
 `ExactConversion`, `AcceptedPartialConversion`, converted paths, fill regions,
 omitted paints (visible painted parts only, so an exact page records zero) and
@@ -301,13 +301,24 @@ self-contact/crossings refuse the whole page. This first sufficient qualifier
 does not repair wide/self-overlapping stroke arrangements. Round arcs are
 subdivided with a post-affine metric error bound; a request below the numerical
 precision of its transformed coordinates refuses rather than overstating that
-bound. Qualified positive dash patterns on open straight subpaths are split in
+bound. Qualified positive dash patterns on open or closed straight subpaths are split in
 construction space before the complete affine transform. Odd arrays repeat to
 form an even cycle, phase (including a negative phase) is normalized over that
 cycle, and pattern state resets for each subpath while remaining continuous
 across its vertices. An on-run crossing a vertex therefore keeps the configured
-join; each separated run receives the configured cap. Closed dashed contours,
-curved dashed paths and patterns containing a zero remain reported omissions;
+join; each separated run receives the configured cap. The closing edge of a
+closed subpath participates in the same cycle. For PDF 1.0–1.7 compatibility,
+the conversion retains the first and last on-dash pieces as independently
+capped at the closure seam; PDF 2.0 explicitly requires those pieces to be
+joined. The host binds PDF.js's effective
+format version, including a Catalog `/Version` override, into the decoded page.
+An absent, malformed or unsupported version therefore makes a closed dashed
+paint a `dashVersion` omission instead of guessing. A PDF 1.x dash covering the
+entire closed perimeter is a `dashTopology` omission until its coincident caps
+can be decomposed under the existing self-contact qualifier. Explicit close-path
+commands and close-and-stroke paints share this rule, including in a path that
+also contains open subpaths. Curved dashed paths and patterns containing a zero
+remain reported omissions;
 an invalid all-zero array refuses during preparation. Expansion shares the page
 work and piece budgets and refuses atomically when numeric progress cannot be
 proved. A combined fill-and-dashed-stroke paint is supported when the composed
@@ -318,6 +329,8 @@ produces visual filled vector geometry, not editable centreline/text semantics.
 Original-PDF raster and independent IFC evidence lives in
 [the solid-stroke evidence](evidence/pdf-straight-stroke-annotations/README.md)
 and [the dashed-stroke evidence](evidence/pdf-dashed-stroke-annotations/README.md).
+Closed-path decoder, export and independent-reader evidence is tracked in
+[the closed-dash evidence](evidence/pdf-closed-dash-annotations/README.md).
 
 ## One lattice for the complete page
 

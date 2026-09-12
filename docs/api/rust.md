@@ -479,6 +479,12 @@ new cache whenever the source model changes: signatures are keyed by express
 ID. Tessellation quality, unit scale and RTC remain router-local and are folded
 into the final deduplication key. The native processing pipeline manages this lifetime automatically.
 
+`GeometryRouter::with_scale_and_local_frame(unit_scale, enabled)` fixes the
+mesh-coordinate frame when the router is created. Use it when one operation
+must produce identical local-frame geometry across native and wasm targets;
+ordinary routers continue to use the target and environment default. The frame
+choice cannot be changed after construction because router caches depend on it.
+
 Other notable re-exports: `orient_mesh_outward`, `calculate_normals`, `ClippingProcessor`, `Plane`, `Triangle` (CSG), `hash_mesh_world` / `GeometryHasher` (geometry-diff hashing), instancing encode/decode helpers, and the nalgebra types `Point2`, `Point3`, `Vector2`, `Vector3`.
 
 `embedded_raster_dimensions(step_binary)` returns optional PNG/JPEG dimensions

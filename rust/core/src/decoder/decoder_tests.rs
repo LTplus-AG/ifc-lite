@@ -383,7 +383,8 @@ fn definition_and_reference_readers_agree_at_the_express_id_boundary() {
     let content = "\
 #1=IFCCARTESIANPOINT((1.,1.,1.));
 #4294967295=IFCCARTESIANPOINT((9.,9.,9.));
-#2=IFCPOLYLOOP((#1,#4294967295,#4294967297));
+#2=IFCPOLYLOOP((#1,#4294967295));
+#3=IFCPOLYLOOP((#1,#4294967297));
 ";
 
     // Definition side: the scanner must see #1 and #4294967295 as distinct
@@ -393,41 +394,25 @@ fn definition_and_reference_readers_agree_at_the_express_id_boundary() {
     while let Some((id, _type_name, _start, _end)) = scanner.next_entity() {
         defined_ids.push(id);
     }
-    assert_eq!(defined_ids, vec![1, u32::MAX, 2]);
+    assert_eq!(defined_ids, vec![1, u32::MAX, 2, 3]);
 
     // Reference side: get_polyloop_point_ids_fast reads the SAME
-    // `#4294967295` and `#4294967297` bytes out of #2's attribute list.
+    // `#4294967295` and `#4294967297` bytes out of the loops' attribute lists.
+    // The two halves of the boundary are read from SEPARATE loops, because a
+    // loop carrying the oversized ref is now refused whole (a shortened
+    // polygon is a different face) and so cannot also show what resolves.
     let mut decoder = EntityDecoder::new(content);
-    let point_ids = decoder
-        .get_polyloop_point_ids_fast(2)
-        .expect("polyloop with two resolvable point refs");
     assert_eq!(
-        point_ids,
-        vec![1, u32::MAX],
-        "the oversized ref must be dropped, and u32::MAX must resolve, matching the definition side"
+        decoder.get_polyloop_point_ids_fast(2),
+        Some(vec![1, u32::MAX]),
+        "u32::MAX is inside the bound and must resolve as its own entity, \
+         matching the definition side"
     );
-}
-
-/// `get_polyloop_coords_fast` needs >= 3 resolved points to return a polygon
-/// at all, so the previous test's 2-point case always yields `None` — this
-/// isolates the "oversized ref dropped, others still resolve" behaviour with
-/// enough real points to actually get coordinates back.
-#[test]
-fn get_polyloop_coords_fast_drops_oversized_ref_but_resolves_the_rest() {
-    let content = "\
-#1=IFCCARTESIANPOINT((1.,0.,0.));
-#2=IFCCARTESIANPOINT((0.,1.,0.));
-#4294967295=IFCCARTESIANPOINT((0.,0.,1.));
-#3=IFCPOLYLOOP((#1,#2,#4294967295,#4294967297));
-";
-    let mut decoder = EntityDecoder::new(content);
-    let coords = decoder
-        .get_polyloop_coords_fast(3)
-        .expect("3 of the 4 referenced points resolve, which is >= the minimum of 3");
     assert_eq!(
-        coords,
-        vec![(1., 0., 0.), (0., 1., 0.), (0., 0., 1.)],
-        "the oversized ref (#4294967297) must be dropped, not aliased onto #1's coordinates"
+        decoder.get_polyloop_point_ids_fast(3),
+        None,
+        "#4294967297 must refuse the loop, not alias onto #1 (which would give \
+         Some(vec![1, 1]))"
     );
 }
 
@@ -450,15 +435,34 @@ fn get_polyloop_coords_cached_rejects_oversized_ref() {
     );
 }
 
-/// `get_polyloop_point_ids_fast` (issue #3421): pins the drop-not-alias
-/// behaviour directly, independent of the combined test above.
+/// `get_polyloop_point_ids_fast` (issue #3421): pins refuse-not-alias and
+/// refuse-not-SHORTEN directly, independent of the combined test above.
+///
+/// This used to assert `Some(vec![2, u32::MAX])` — it blessed the drop. A
+/// dropped vertex is not a smaller error than an aliased one: the caller
+/// (`extract_loop_points_by_id` in `ifc-lite-geometry`, and the two
+/// `IfcPolyline` reads in `processors/surface.rs`) meshes whatever it is
+/// handed, so a three-corner face read out of a four-corner loop is rendered
+/// as if the file had said so. The guarded sibling
+/// `get_polyloop_coords_cached_into` has always refused this, and the two
+/// accessors read the SAME bytes.
 #[test]
-fn get_polyloop_point_ids_fast_drops_oversized_ref() {
-    let content = "#1=IFCPOLYLOOP((#2,#4294967297,#4294967295));\n";
-    let mut decoder = EntityDecoder::new(content);
+fn get_polyloop_point_ids_fast_refuses_a_loop_with_an_oversized_ref() {
+    let mut decoder =
+        EntityDecoder::new("#1=IFCPOLYLOOP((#2,#4294967297,#4294967295));\n");
     assert_eq!(
         decoder.get_polyloop_point_ids_fast(1),
-        Some(vec![2, u32::MAX])
+        None,
+        "one unresolvable ref of three refuses the whole loop, rather than \
+         handing back a 2-corner face"
+    );
+
+    // Two-way control: with every ref resolvable the loop still comes back,
+    // and `u32::MAX` is inside the bound rather than at its wrong side.
+    let mut decoder = EntityDecoder::new("#1=IFCPOLYLOOP((#2,#3,#4294967295));\n");
+    assert_eq!(
+        decoder.get_polyloop_point_ids_fast(1),
+        Some(vec![2, 3, u32::MAX])
     );
 }
 
@@ -606,4 +610,53 @@ END-ISO-10303-21;
         (scale - 0.0174532925199433).abs() < 1e-9,
         "expected 0.01745… for DEGREE, got {scale}"
     );
+}
+
+/// Every hand-rolled whitespace skip in the raw-byte readers took only
+/// `' ' | '\n' | '\r'`, leaving out TAB, vertical tab and form feed, all three
+/// legal ISO 10303-21 separators and all three in `is_step_space`, the one
+/// predicate the scanner uses (its doc comment cites #3733: a form feed
+/// silently dropping an entity). The nom decoder read the same bytes fine.
+///
+/// Four of the eight sites had nothing past the skip that tolerated a stray
+/// byte, and the callers hide the refusal: `processors/helpers.rs` uses `?`,
+/// `brep/faceted.rs` uses `None => continue`, so the face is dropped with
+/// nothing said. Each is asserted on its own line so a single site reverting
+/// names itself:
+///   * `get_face_bound_fast`, before the loop ref: `(\t#4` refused the bound.
+///   * `get_face_bound_fast`, before the orientation: `,\t.F.)` fell through
+///     to the default and read as `true`, an inverted face.
+///   * `parse_next_float` (under `get_cartesian_point_fast`) and
+///     `parse_float_inline` (under `get_polyloop_coords_cached`):
+///     `fast_float2` does not skip leading whitespace, so `\t1.` refused the
+///     point.
+///
+/// The other four sites (the two list readers, `get_first_entity_ref_fast`,
+/// `get_polyloop_coords_cached_into`'s own loop) already stepped past an
+/// unknown byte one at a time, so they never refused; they share the
+/// predicate now so the set cannot drift apart again, and their lines here
+/// are the control, not a regression.
+#[test]
+fn fast_readers_accept_every_step_whitespace_byte_3733() {
+    for ws in ["\t", "\x0b", "\x0c", " "] {
+        let content = format!(
+            "#1=IFCCARTESIANPOINT(({ws}1.,{ws}2.,{ws}3.));\n\
+             #2=IFCCARTESIANPOINT(({ws}4.,{ws}5.,{ws}6.));\n\
+             #3=IFCCARTESIANPOINT(({ws}7.,{ws}8.,{ws}9.));\n\
+             #4=IFCPOLYLOOP(({ws}#1,{ws}#2,{ws}#3));\n\
+             #5=IFCFACEOUTERBOUND({ws}#4,{ws}.F.);\n"
+        );
+        let mut decoder = EntityDecoder::new(&content);
+        assert_eq!(decoder.get_face_bound_fast(5), Some((4, false, true)), "ws {ws:?}");
+        assert_eq!(decoder.get_cartesian_point_fast(1), Some((1., 2., 3.)), "ws {ws:?}");
+        assert_eq!(
+            decoder.get_polyloop_coords_cached(4),
+            Some(vec![(1., 2., 3.), (4., 5., 6.), (7., 8., 9.)]),
+            "ws {ws:?}"
+        );
+        // Control: never refused, now on the shared predicate.
+        assert_eq!(decoder.get_polyloop_point_ids_fast(4), Some(vec![1, 2, 3]), "ws {ws:?}");
+        assert_eq!(decoder.get_entity_ref_list_fast(4), Some(vec![1, 2, 3]), "ws {ws:?}");
+        assert_eq!(decoder.get_first_entity_ref_fast(5), Some(4), "ws {ws:?}");
+    }
 }

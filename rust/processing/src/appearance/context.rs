@@ -45,7 +45,14 @@ impl Context {
         Self { meta, layers }
     }
     pub fn router(&self) -> GeometryRouter {
-        let mut router = GeometryRouter::with_scale(self.meta.length_unit_scale);
+        self.configure(GeometryRouter::with_scale(self.meta.length_unit_scale))
+    }
+    /// Evaluated-occurrence identity and replacement use one frame on every
+    /// target. Other appearance paths retain their established native output.
+    pub fn evaluated_router(&self) -> GeometryRouter {
+        self.configure(GeometryRouter::with_scale_and_local_frame(self.meta.length_unit_scale, true))
+    }
+    fn configure(&self, mut router: GeometryRouter) -> GeometryRouter {
         if self.meta.needs_shift {
             router.set_rtc_offset(self.meta.rtc_offset);
         }

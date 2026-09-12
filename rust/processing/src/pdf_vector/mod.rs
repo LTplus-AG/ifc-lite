@@ -60,6 +60,14 @@ fn validate_page(page: &PdfVectorPage) -> Result<(), String> {
     if page.decoder_version != "6.3.289" {
         return Err("Unqualified PDF decoder version".into());
     }
+    if page.pdf_format_version.as_ref().is_some_and(|version| {
+        version.is_empty()
+            || version.len() > 16
+            || !version.is_ascii()
+            || version.chars().any(char::is_control)
+    }) {
+        return Err("Invalid PDF format version".into());
+    }
     if page.page_number == 0 || page.page_number > 2000 {
         return Err("Invalid PDF page number".into());
     }

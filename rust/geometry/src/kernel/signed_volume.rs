@@ -54,17 +54,27 @@ pub(crate) fn tetra_volume6(a: &[f64; 3], b: &[f64; 3], c: &[f64; 3], o: &[f64; 
 /// cascade). About the AABB center the crack flux is bounded by the operand's
 /// own extent — the sign is decided by the solid, not by where the model sits.
 pub(crate) fn signed_volume6(tris: &[Tri]) -> f64 {
+    signed_volume6_of(tris.iter().copied())
+}
+
+/// [`signed_volume6`] over any re-walkable triangle source, so a caller that
+/// holds its triangles in an index buffer or a scratch pool (the orienter in
+/// `mesh_orient`) shares this reference-point rule instead of carrying its own
+/// copy of it. Two passes: one for the AABB centre, one for the sum.
+pub(crate) fn signed_volume6_of(tris: impl Iterator<Item = Tri> + Clone) -> f64 {
     let mut lo = [f64::MAX; 3];
     let mut hi = [f64::MIN; 3];
-    for t in tris {
-        for v in t {
+    let mut any = false;
+    for t in tris.clone() {
+        any = true;
+        for v in &t {
             for k in 0..3 {
                 lo[k] = lo[k].min(v[k]);
                 hi[k] = hi[k].max(v[k]);
             }
         }
     }
-    if tris.is_empty() {
+    if !any {
         return 0.0;
     }
     let o = [
@@ -72,9 +82,7 @@ pub(crate) fn signed_volume6(tris: &[Tri]) -> f64 {
         (lo[1] + hi[1]) * 0.5,
         (lo[2] + hi[2]) * 0.5,
     ];
-    tris.iter()
-        .map(|t| tetra_volume6(&t[0], &t[1], &t[2], &o))
-        .sum()
+    tris.map(|t| tetra_volume6(&t[0], &t[1], &t[2], &o)).sum()
 }
 
 /// Enclosed volume of a closed triangle soup, in the operands' own units.

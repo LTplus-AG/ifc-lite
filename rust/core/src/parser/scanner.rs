@@ -20,6 +20,10 @@ mod scanner_attributes;
 #[path = "scanner_diagnostics.rs"]
 mod scanner_diagnostics;
 
+// `find_entity_end` and the #4179 rules it carries, likewise.
+#[path = "scanner_record_end.rs"]
+mod scanner_record_end;
+
 /// Fast entity scanner over raw IFC bytes without full parsing.
 /// O(n) performance for finding entities by type
 /// Uses memchr for SIMD-accelerated byte searching
@@ -181,11 +185,26 @@ impl<'a> EntityScanner<'a> {
                 // `skip_step_comment` ends the scan on it.
                 let probe = super::lexical::skip_step_trivia(bytes, digit_end).unwrap_or(len);
                 if probe < len && bytes[probe] == b'=' {
-                    break (candidate, parsed_id, probe);
+                    // A declaration continues `= keyword(` or `= (` (complex
+                    // record); `!` opens a user-defined keyword, and a
+                    // non-ASCII lead byte is tolerated because the type-name
+                    // read below already maps it to `UNKNOWN` rather than
+                    // refusing. An ASCII non-letter after the `=` is not a
+                    // record, and accepting it would mint a phantom entity:
+                    // `#1=IFCWALL(#5 = 3);` is refused at its `=` and
+                    // re-hunted from past its `#`, and without this test
+                    // `#5 = 3);` scans as entity #5 with body `3)`, which the
+                    // last-wins index then writes over the REAL #5.
+                    let after_eq = super::lexical::skip_step_trivia(bytes, probe + 1).unwrap_or(len);
+                    if after_eq < len
+                        && matches!(bytes[after_eq], b'A'..=b'Z' | b'a'..=b'z' | b'!' | b'(' | 0x80..=0xFF)
+                    {
+                        break (candidate, parsed_id, probe);
+                    }
                 }
-                // '#<digits>' not followed by '=' — this is a comment or string
-                // reference, not an entity definition. Skip past the digits and
-                // keep searching.
+                // '#<digits>' not followed by '=' and a record: a comment or
+                // string reference, or a stray '=' inside a refused body. Skip
+                // past the digits and keep searching.
                 self.position = digit_end;
             };
 
@@ -271,86 +290,6 @@ impl<'a> EntityScanner<'a> {
         }
     }
 
-    /// Offset of the record's terminating `;` from the start of the slice.
-    ///
-    /// `memchr3` jumps straight to the next quote, comment opener or
-    /// semicolon, so a string-free geometry primitive
-    /// (`#7=IFCCARTESIANPOINT((1.,2.,3.));`), the overwhelming majority of
-    /// records, resolves in one vectorized hop rather than a per-byte loop.
-    /// A quote is tested before a comment opener and a comment is then
-    /// consumed whole, which is what makes a `/*` inside a literal text and a
-    /// `;` or quote inside a comment text: `#1=IFCWALL('a', /* p; q */ $);` is
-    /// legal 10303-21 and used to come back truncated at that inner `;`.
-    ///
-    /// Returns the first `;` outside a string and outside a comment, doubled
-    /// `''` being an escaped in-string quote per STEP (ISO 10303-21), and
-    /// `None` unless that `;` is preceded by the `)` closing the parameter
-    /// list with no `=` before it, which bounds the search to the record's OWN
-    /// body (#4179). [`close_step_record`](super::lexical::close_step_record)
-    /// argues both rules, the general property they approximate, and why a
-    /// refusal recovers rather than stops; the TypeScript halves are
-    /// `step-record-boundary.ts` and `scan-worker-source.ts`. This is the
-    /// single hottest structural-scan function: every entity of every model,
-    /// native and wasm, through `build_entity_index` and the processor scan
-    /// loop alike.
-    #[inline]
-    fn find_entity_end(&self, content: &[u8]) -> Option<usize> {
-        let mut pos = 0;
-        // Only the two arms that can make it true compute it (#4179).
-        let mut closes_paren = false;
-
-        loop {
-            // Outside a quoted string: jump to the next quote, comment opener
-            // or terminating semicolon in one SIMD pass. Slicing `rest` once
-            // spares the arms below a repeated bounds check on `content[pos]`.
-            let rest = &content[pos..];
-            let hit = memchr::memchr3(b'\'', b';', b'/', rest)?;
-            let plain = &rest[..hit];
-            // An '=' out here is the NEXT declaration's: this record never ended.
-            if memchr::memchr(b'=', plain).is_some() {
-                return None;
-            }
-            let found = rest[hit];
-            pos += hit;
-
-            if found == b';' {
-                // A ';' closing nothing belongs to what FOLLOWS the record.
-                return super::lexical::closes_with_paren(plain, closes_paren).then_some(pos);
-            }
-            if found == b'/' {
-                if content.get(pos + 1) == Some(&b'*') {
-                    // A comment is trivia, so a ')' before it still counts:
-                    // `#1=IFCWALL($) /* c */ ;` closes at that ')'.
-                    closes_paren = super::lexical::closes_with_paren(plain, closes_paren);
-                    // Unterminated: the rest of the input is inside the
-                    // comment, so this record has no terminator. `None` drops
-                    // it and ends the scan rather than inventing an end.
-                    pos = super::lexical::skip_step_comment(content, pos)?;
-                } else {
-                    // A lone '/' is STEP division inside a value list.
-                    closes_paren = false;
-                    pos += 1;
-                }
-                continue;
-            }
-
-            // found == b'\'' : entered a quoted string. Scan to the closing
-            // quote, treating a doubled '' as an escaped quote.
-            pos += 1;
-            loop {
-                pos += memchr::memchr(b'\'', &content[pos..])?;
-                if content.get(pos + 1) == Some(&b'\'') {
-                    // Escaped quote ('') - skip both, stay in the string.
-                    pos += 2;
-                    continue;
-                }
-                // Closing quote.
-                pos += 1;
-                break;
-            }
-            closes_paren = false; // A literal is a parameter, not a close.
-        }
-    }
 
     /// Find all entities of a specific type
     pub fn find_by_type(&mut self, target_type: &str) -> Vec<(u32, usize, usize)> {

@@ -47,6 +47,7 @@ import { composeTeardown, createTeardownRegistry, type AnySliceTeardown } from '
 
 import { loadingTeardown } from './slices/loadingSlice.js';
 import { chartTeardown } from './slices/chartSlice.js';
+import { documentTeardown } from './slices/documentSlice.js';
 import { selectionTeardown } from './slices/selectionSlice.teardown.js';
 import { visibilityTeardown } from './slices/visibilitySlice.teardown.js';
 import { uiTeardown } from './slices/uiSlice.teardown.js';
@@ -121,6 +122,7 @@ export const viewerTeardownRegistry: readonly AnySliceTeardown[] = createTeardow
   layerStackTeardown,
   modelTagsTeardown,
   chartTeardown,
+  documentTeardown,
 ]);
 
 /**

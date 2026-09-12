@@ -164,12 +164,15 @@ export class BalancedEntityScan {
             line: startLine,
           };
         } else {
-          // Either classified failure (UNBALANCED_RECORD / UNREADABLE_RECORD)
-          // means findEntityLength ran off the end of the buffer without ever
-          // balancing the '('. Its own loop has no other exit, so this is
-          // always the EOF case, never a mid-file syntax choice to resume
-          // past; this scan stops on both, unlike scanEntitiesFast, which
-          // resumes past an unbalanced record (#4179).
+          // Either classified failure: UNREADABLE_RECORD (a literal or
+          // comment took the rest of the input) or UNBALANCED_RECORD (no ')'
+          // of this record's own before the next declaration's '=' or EOF,
+          // #4573). This scan STOPS on both, unlike scanEntitiesFast, which
+          // re-hunts past an unbalanced record (#4179): its one consumer is
+          // the CLI's mutate-step-record, a write path, where a refusal beats
+          // a guess. Before the '=' bound this walk balanced across the next
+          // declaration and yielded `#1=IFCA(2 #2=IFCWALL($))` as ONE record
+          // with nothing reported; now it stops here and reports it.
           stopped = true;
           break;
         }

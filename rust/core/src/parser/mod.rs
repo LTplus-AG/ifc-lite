@@ -29,6 +29,8 @@ mod tokenizer;
 
 pub use keyword::{find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with};
 pub use lexical::skip_step_comment;
+// The one STEP whitespace set, for the raw-byte readers in `decoder` (#3733).
+pub(crate) use lexical::is_step_space;
 pub use malformed_records::report_malformed_records;
 pub use oversized_ids::{oversized_id_report, report_oversized_ids, set_report_sink};
 pub use scanner::{entity_count, EntityScanner};

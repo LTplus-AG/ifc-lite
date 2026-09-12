@@ -373,6 +373,109 @@ fn issue_4406_dash_boundary_uses_caps_while_an_on_run_crossing_a_vertex_uses_the
 }
 
 #[test]
+fn issue_4583_closed_dash_seam_on_and_gap_use_exactly_the_visible_run_caps() {
+    let commands = rectangle(0., 0., 10., 10.);
+    for (pattern, phase, expected_butt_area, expected_square_cap_area) in [
+        (vec![10., 10.], 3., 40., 48.),
+        (vec![10., 10.], 13., 40., 48.),
+        // The two runs meet only at the seam boundary. Their independently
+        // capped outlines overlap there; fixed-grid composition unions that
+        // overlap, rather than replacing the two caps with a join.
+        (vec![15., 10.], 0., 59., 64.),
+    ] {
+        let mut areas = vec![];
+        for cap in [0, 2] {
+            let (source, mut request) = stroke(
+                commands.clone(), cap, 0, 10., [1., 0., 0., 1., 0., 0.],
+            );
+            request.page.operations.insert(5, PdfVectorOperation {
+                ordinal: 5,
+                operation: PdfVectorOperator::Dash { lengths: pattern.clone(), phase },
+            });
+            request.page.operations[6].ordinal = 6;
+            let result = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
+            assert!(result.fidelity.exact);
+            assert!(result.regions.iter().all(|region| {
+                region.source_operator_ordinal == 6 && region.rgb == [0., 1., 0.]
+            }));
+            areas.push(result.meshes.iter().map(area).sum::<f64>());
+        }
+        assert!((areas[0] - expected_butt_area).abs() < 0.0001,
+            "butt-cap area at pattern {pattern:?}, phase {phase}: {areas:?}");
+        assert!((areas[1] - expected_square_cap_area).abs() < 0.0001,
+            "closure seam gained or lost a cap at pattern {pattern:?}, phase {phase}: {areas:?}");
+    }
+}
+
+#[test]
+fn issue_4583_explicit_close_and_close_paint_match_after_affine_and_reopen() {
+    let matrix = [-1., 0.3, 0.4, 1.7, -2., 5.];
+    let plan = |commands, paint| {
+        let (source, mut request) = stroke(commands, 2, 0, 10., matrix);
+        request.page.operations.insert(5, PdfVectorOperation {
+            ordinal: 5,
+            operation: PdfVectorOperator::Dash { lengths: vec![10., 10.], phase: 3. },
+        });
+        request.page.operations[6].ordinal = 6;
+        if let PdfVectorOperator::Path { paint: target, .. } = &mut request.page.operations[6].operation {
+            *target = paint;
+        }
+        let result = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
+        assert!(result.fidelity.exact);
+        let planned = result.meshes.iter().map(area).sum::<f64>();
+        let reopened = crate::process_geometry(apply(&source, &result.plan).as_bytes());
+        let reopened_area = reopened.meshes.iter()
+            .filter(|mesh| mesh.express_id == result.annotation_id)
+            .map(area)
+            .sum::<f64>();
+        assert!((planned - reopened_area).abs() < 0.0001);
+        planned
+    };
+    let explicit = plan(rectangle(0., 0., 10., 10.), PdfVectorPaint::Stroke);
+    let close_paint = plan(
+        vec![0., 0., 0., 1., 10., 0., 1., 10., 10., 1., 0., 10.],
+        PdfVectorPaint::CloseStroke,
+    );
+    assert!((explicit - close_paint).abs() < 0.0001);
+    let determinant: f64 = matrix[0] * matrix[3] - matrix[1] * matrix[2];
+    assert!((explicit - 48. * determinant.abs()).abs() < 0.0001);
+}
+
+#[test]
+fn issue_4583_fully_on_closed_dash_has_joins_and_ignores_caps() {
+    let mut areas = vec![];
+    for cap in [0, 1, 2] {
+        let (source, mut request) = stroke(
+            rectangle(0., 0., 4., 4.), cap, 0, 10., [1., 0., 0., 1., 0., 0.],
+        );
+        request.page.operations.insert(5, PdfVectorOperation {
+            ordinal: 5,
+            operation: PdfVectorOperator::Dash { lengths: vec![100., 1.], phase: 0. },
+        });
+        request.page.operations[6].ordinal = 6;
+        areas.push(plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap()
+            .meshes.iter().map(area).sum::<f64>());
+    }
+    assert!(areas.iter().all(|actual| (*actual - 32.).abs() < 0.0001), "{areas:?}");
+}
+
+#[test]
+fn issue_4583_mixed_open_and_closed_subpaths_reset_and_keep_one_paint_identity() {
+    let mut commands = rectangle(0., 0., 10., 10.);
+    commands.extend([0., 20., 0., 1., 30., 0.]);
+    let (source, mut request) = stroke(commands, 0, 0, 10., [1., 0., 0., 1., 0., 0.]);
+    request.page.operations.insert(5, PdfVectorOperation {
+        ordinal: 5,
+        operation: PdfVectorOperator::Dash { lengths: vec![10., 10.], phase: 3. },
+    });
+    request.page.operations[6].ordinal = 6;
+    let result = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
+    assert!(result.fidelity.exact);
+    assert!((result.meshes.iter().map(area).sum::<f64>() - 54.).abs() < 0.0001);
+    assert!(result.regions.iter().all(|region| region.source_operator_ordinal == 6));
+}
+
+#[test]
 fn issue_4406_strokes_refuse_collapsed_offsets_reversals_crossings_and_exhaustion() {
     for commands in [
         rectangle(0., 0., 1., 1.),

@@ -9,7 +9,7 @@
  * `useWorkspacePanelControls`, shared with the classic toolbar.
  */
 
-import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring, Zones, LoadReport, Chart } from '@/icons';
+import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring, Zones, LoadReport, Chart, Document } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import {
@@ -123,6 +123,13 @@ export function AnalyzeTab() {
           tooltip="Charts bound to the model — click a bar to select it in 3D"
           active={activeWorkspacePanels.has('charts')}
           onClick={() => handleToggleBottomPanel('charts')}
+        />
+        <RibbonLargeButton
+          icon={Document}
+          label="Document"
+          tooltip="A page over the model — text with live labels, logos, charts, BCF topics — printed to PDF"
+          active={activeWorkspacePanels.has('document')}
+          onClick={() => handleToggleBottomPanel('document')}
         />
         <RibbonLargeButton
           icon={Script}

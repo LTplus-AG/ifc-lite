@@ -7,11 +7,26 @@ import { StepTokenizer } from './tokenizer.js';
 import {
   LEGAL_BODIES,
   LINE_NUMBER_CASE,
+  NEXT_DECLARATION_CASE,
+  PHANTOM_NEIGHBOUR_CASE,
+  QUADRATIC_RECORDS,
+  QUADRATIC_SHAPES,
+  QUADRATIC_WELL_FORMED,
   SWALLOW_CASES,
   UNBALANCED_CASE,
   UNRESUMABLE_BODIES,
+  quadraticBudgetMs,
   type ScanDriver,
 } from './step-record-boundary.vectors.js';
+
+/** Wall-clock milliseconds to fully drain `scan` over `text`, and how many records it found. */
+function timeScan(text: string, scan: (buf: Uint8Array) => Iterable<unknown>): { ms: number; found: number } {
+  const buf = new TextEncoder().encode(text);
+  const started = performance.now();
+  let found = 0;
+  for (const _ of scan(buf)) found++;
+  return { ms: performance.now() - started, found };
+}
 
 describe('StepTokenizer.scanEntitiesFast', () => {
   it('finds entities and reports correct expressId/type/line', () => {
@@ -177,6 +192,31 @@ describe('StepTokenizer.scanEntities (balanced-parenthesis path)', () => {
     expect(tokenizer.malformedRecordCount).toBe(1);
     expect(refs.map((r) => r.expressId)).toEqual([1]);
   });
+
+  // This scan closes a record on the ')' balancing its '(' and yields the
+  // span WITHOUT the ';', so the shared vectors' spans do not apply verbatim;
+  // ids are what the two scans must agree on.
+  const scanIds = (text: string) => {
+    const tokenizer = new StepTokenizer(new TextEncoder().encode(text));
+    const ids = Array.from(tokenizer.scanEntities()).map((r) => r.expressId);
+    return { ids, malformed: tokenizer.malformedRecordCount };
+  };
+
+  it('stops, and reports, instead of balancing across the next declaration (#4573)', () => {
+    // Pre-fix: [1, 3] with malformed 0, #1's span running through #2's ')'
+    // -- a mis-spanned record and a swallowed one, and nothing reported. The
+    // balance walk now stops at #2's '=' and this scan, which does not
+    // re-hunt (see scan-entities-balanced.ts), stops there and says so.
+    expect(scanIds(NEXT_DECLARATION_CASE.text)).toEqual({ ids: [], malformed: 1 });
+  });
+
+  it('never falsely refuses a legal record at the "=" bound', () => {
+    // findEntityLength runs on EVERY record of this scan, so an '=' inside a
+    // literal or comment being read as a declaration would drop real records.
+    for (const body of LEGAL_BODIES) {
+      expect(scanIds(`#1=${body}\n#2=IFCDOOR($);\n`), body).toEqual({ ids: [1, 2], malformed: 0 });
+    }
+  });
 });
 
 
@@ -229,4 +269,43 @@ describe('StepTokenizer.scanEntitiesFast: record-boundary guards (#4179)', () =>
       expect(malformed, body).toBe(0);
     }
   });
+
+  it('does not resume past the next declaration when a record balances only there (#4573)', () => {
+    const { spans, malformed } = scan(NEXT_DECLARATION_CASE.text);
+    expect(spans).toEqual(NEXT_DECLARATION_CASE.spans);
+    expect(malformed).toBe(1);
+  });
+
+  it('does not mint a phantom neighbour from a stray "=" in a refused body (#4573)', () => {
+    const { spans, malformed } = scan(PHANTOM_NEIGHBOUR_CASE.text);
+    expect(spans.map(([id]) => id)).toEqual(PHANTOM_NEIGHBOUR_CASE.ids);
+    expect(malformed).toBe(1);
+  });
+
+  // The budget is a RATIO against the well-formed twin of the same record
+  // count, so it holds in any build mode on any machine; the unfixed walk is
+  // ~20x over it at this size (see QUADRATIC_SHAPES). Vitest cannot interrupt
+  // a synchronous scan, so an overrun fails by finishing late, not by
+  // timing out: the explicit timeout below only keeps the runner from
+  // reporting a misleading "timed out" before the real assertion runs.
+  describe.each(QUADRATIC_SHAPES)(
+    'a file of refused records %s does not rescan the remainder per record (#4573)',
+    (_label, body, tail) => {
+      it('scans within 20x the well-formed twin', () => {
+        const fast = (buf: Uint8Array) => new StepTokenizer(buf).scanEntitiesFast();
+        const baseline = timeScan(QUADRATIC_WELL_FORMED.repeat(QUADRATIC_RECORDS), fast);
+        expect(baseline.found).toBe(QUADRATIC_RECORDS);
+        const budget = quadraticBudgetMs(baseline.ms);
+
+        const malformed = timeScan(body.repeat(QUADRATIC_RECORDS) + tail, fast);
+        expect(malformed.found, 'every record is malformed').toBe(0);
+        expect(
+          malformed.ms,
+          `${QUADRATIC_RECORDS} refused records took ${malformed.ms.toFixed(0)}ms against a ` +
+            `${budget.toFixed(0)}ms budget (20x the ${baseline.ms.toFixed(1)}ms well-formed twin): ` +
+            'recovery is walking the remainder per record again',
+        ).toBeLessThan(budget);
+      }, 120_000);
+    },
+  );
 });

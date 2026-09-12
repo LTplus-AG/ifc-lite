@@ -52,6 +52,7 @@ export function useWorkspacePanelControls() {
   const setScriptPanelVisible = useViewerStore((state) => state.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((state) => state.ganttPanelVisible);
   const chartPanelVisible = useViewerStore((state) => state.chartPanelVisible);
+  const documentPanelVisible = useViewerStore((state) => state.documentPanelVisible);
   const setGanttPanelVisible = useViewerStore((state) => state.setGanttPanelVisible);
   const layersPanelVisible = useViewerStore((state) => state.layersPanelVisible);
   const collabPanelVisible = useViewerStore((state) => state.collabPanelVisible);
@@ -239,7 +240,7 @@ export function useWorkspacePanelControls() {
     // activity bar never had the bug because it reads `panelLocation`.
     for (const panel of floatingPanels) panels.add(panel.id);
     for (const id of poppedOutIds) panels.add(id);
-    const bottomFlags = { ganttPanelVisible, scriptPanelVisible, listPanelVisible, chartPanelVisible };
+    const bottomFlags = { ganttPanelVisible, scriptPanelVisible, listPanelVisible, chartPanelVisible, documentPanelVisible };
     for (const id of BOTTOM_PANEL_IDS) if (isBottomPanelOpen(bottomFlags, id)) panels.add(id);
     if (bcfPanelVisible) panels.add('bcf');
     if (idsPanelVisible) panels.add('ids');
@@ -267,6 +268,7 @@ export function useWorkspacePanelControls() {
     extensionsPanelVisible,
     ganttPanelVisible,
     chartPanelVisible,
+    documentPanelVisible,
     idsPanelVisible,
     lensPanelVisible,
     listPanelVisible,

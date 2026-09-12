@@ -102,6 +102,7 @@
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^4.12.3",
     "remark-gfm": "^4.0.0",
+    "svg2pdf.js": "^2.8.1",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.3",
     "three": "^0.185.1",

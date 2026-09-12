@@ -69,6 +69,11 @@ test('a geometry edit invalidates a mask while translation retains it through th
     assert.deepEqual(conversion(masked, 25).maskedTriangles, [0]);
     assert.deepEqual(conversion(masked, 70).maskedTriangles, [0, 1, 2]);
     assert.equal(reconcileFaceMasks(masks, masked, label).masks, masks, 'matching fingerprints keep both selections');
+    const millimetres = new TextEncoder().encode(new TextDecoder().decode(faceMaskProductSource())
+      .replace('.LENGTHUNIT.,$,.METRE.', '.LENGTHUNIT.,.MILLI.,.METRE.'));
+    const millimetrePlan = planOn(millimetres);
+    assert.deepEqual(millimetrePlan.exclusions, [], 'no-opening millimetre occurrences convert across the real wasm boundary');
+    assert.equal(millimetrePlan.conversions?.length, 2);
     // Translation (12.345, 67.891, 0.1) m of both products keeps the authored surface identity.
     const moved = planOn(faceMaskProductSource({ movedPlacement: true }), { faceMasks: faceMaskRequests(masks, [25, 70]) });
     const movedVerdict = reconcileFaceMasks(masks, moved, label);

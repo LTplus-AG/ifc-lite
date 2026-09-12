@@ -225,6 +225,20 @@ fn issue_4550_surface_fingerprint_is_placement_invariant_on_native() {
 }
 
 #[test]
+fn issue_4550_no_opening_millimetre_occurrence_converts_and_reopens() {
+    let source=swept_source().replace(".LENGTHUNIT.,$,.METRE.",".LENGTHUNIT.,.MILLI.,.METRE.");
+    let original=meshes_of(&source,40).remove(0);
+    let plan=plan_appearance(source.as_bytes(),&request(40,Vec::new())).unwrap();
+    assert!(plan.exclusions.is_empty(),"{:?}",plan.exclusions);
+    assert_eq!(plan.conversions.len(),1);
+    assert!(plan.conversions[0].source_removed_meshes.is_empty(),"the fixture has no opening companions");
+    let output=apply(&source,&plan);
+    let reopened=meshes_of(&output,40);
+    assert_eq!(reopened.len(),1);
+    assert_same_surface(corners(&reopened[0]),corners(&original));
+}
+
+#[test]
 fn issue_4404_real_unique_swept_slab_converts_with_a_cloned_type_shared_wrapper() {
     let Some(source) = real_source() else { return };
     let mut request = request(34509, vec![]);

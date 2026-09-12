@@ -87,6 +87,10 @@ test('a named fail-closed step cannot be disabled or allowed to fail', (context)
   assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
   writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow('continue-on-error: true'));
   assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
+  writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow(`continue-on-error: \${{ true }}`));
+  assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
+  writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow('shell: bash -n {0}'));
+  assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
   writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow(''));
   assert.deepEqual(auditRoot(root), []);
   writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow('').replace(
@@ -95,6 +99,10 @@ test('a named fail-closed step cannot be disabled or allowed to fail', (context)
   ));
   assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
   writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow('').replace('runs-on: ubuntu-latest', 'runs-on: ubuntu-latest\n    continue-on-error: true'));
+  assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
+  writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow('').replace('runs-on: ubuntu-latest', 'runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: bash -n {0}'));
+  assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
+  writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), `defaults:\n  run:\n    shell: bash -n {0}\n${workflow('')}`);
   assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
 });
 

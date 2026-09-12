@@ -30,6 +30,8 @@ const needs = (job, id) => {
 };
 
 const displayPath = (root, path) => relative(root, path).replaceAll('\\', '/');
+const permitsFailure = (value) => value !== undefined && value !== false;
+const configuredShell = (owner) => isRecord(owner?.defaults) && isRecord(owner.defaults.run) ? owner.defaults.run.shell : undefined;
 
 const REQUIRED_STEPS = new Map([
   ['sdk-canary.yml', ['Run canary bundles']],
@@ -88,9 +90,10 @@ export function auditRoot(root) {
       const owner = Object.values(jobs).find((job) => namedStep(job, stepName));
       const step = namedStep(owner, stepName);
       const run = expression(step?.run);
-      if (!isRecord(owner) || owner['continue-on-error'] === true
+      if (!isRecord(owner) || permitsFailure(owner['continue-on-error'])
         || !step || typeof step.run !== 'string' || run.trim() !== REQUIRED_STEP_RUN.get(stepName)
-        || step.if !== undefined || step['continue-on-error'] === true) {
+        || step.if !== undefined || permitsFailure(step['continue-on-error']) || step.shell !== undefined
+        || configuredShell(workflow) !== undefined || configuredShell(owner) !== undefined) {
         failures.push(`${displayPath(root, path)}: missing active fail-closed step: ${stepName}`);
       }
     }

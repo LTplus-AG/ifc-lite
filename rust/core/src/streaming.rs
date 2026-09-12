@@ -126,6 +126,13 @@ struct ParserState<'a> {
     entities_scanned: usize,
     total_entities: usize,
     triangles_generated: usize,
+    /// A `Progress` event built on the poll that scanned the
+    /// `progress_interval`-th entity, handed out on the NEXT poll. Progress
+    /// is a second event for the same entity, and a poll returns one, so the
+    /// entity's own `EntityScanned` goes first and this waits (core review behind
+    /// #4577, finding 5: the old code returned `Progress` INSTEAD and the entity was
+    /// never emitted while `Completed.entity_count` still counted it).
+    pending_progress: Option<ParseEvent>,
     /// Whether [`Self::report_scan_once`] has already fired. The scan is
     /// reported at whichever comes first: the end of the walk, or the state
     /// being dropped under a consumer that stopped early.
@@ -144,6 +151,7 @@ impl<'a> ParserState<'a> {
             entities_scanned: 0,
             total_entities: 0,
             triangles_generated: 0,
+            pending_progress: None,
             scan_reported: false,
         }
     }
@@ -179,6 +187,13 @@ impl<'a> ParserState<'a> {
         // Stream has ended - CRITICAL: prevents infinite loop!
         if self.completed {
             return None;
+        }
+
+        // A Progress event owed from the previous poll goes out before the
+        // scan moves on, so the consumer sees it next to the entity that
+        // triggered it.
+        if let Some(progress) = self.pending_progress.take() {
+            return Some(progress);
         }
 
         // Emit Started event on first call
@@ -235,14 +250,18 @@ impl<'a> ParserState<'a> {
                 position: start,
             };
 
-            // Check if we should emit progress
+            // Every `progress_interval`-th entity also owes a Progress event.
+            // It is queued for the next poll rather than returned here: this
+            // poll's return is the entity, and returning Progress in its
+            // place dropped ids 100, 200, ... from the stream while
+            // `Completed.entity_count` still counted them.
             if self
                 .entities_scanned
                 .is_multiple_of(self.config.progress_interval)
             {
                 // Note: In a real implementation, we'd estimate total_entities
                 // by doing a quick pre-scan or using file size heuristics
-                return Some(ParseEvent::Progress {
+                self.pending_progress = Some(ParseEvent::Progress {
                     phase: "Scanning entities".to_string(),
                     percent: 0.0, // Would calculate based on position/file_size
                     entities_processed: self.entities_scanned,

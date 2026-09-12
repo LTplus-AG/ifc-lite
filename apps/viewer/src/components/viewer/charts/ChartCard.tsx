@@ -59,16 +59,16 @@ export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onA
 
   const onSelect = useCallback((event: ChartSelectEvent) => {
     if (!aggregation) return;
-    if (event.dataIndices.length === 0) link.clearSelection();
-    else link.selectCategories(aggregation, event.dataIndices);
+    if (event.items.length === 0) link.clearSelection();
+    else link.selectItems(aggregation, event.items);
   }, [aggregation, link]);
 
-  const { ref } = useEChart({ option, selected: selection.full, onSelect, renderer });
+  const { ref } = useEChart({ option, selected: selection.full, partial: selection.partial, onSelect, renderer });
 
   const frame = useCallback(() => {
     if (!aggregation) return;
-    const indices = selection.full.length > 0 ? selection.full : aggregation.categories.map((_, i) => i);
-    link.frameCategories(aggregation, indices);
+    const items = selection.full.length > 0 ? selection.full : aggregation.categories.map((_, i) => ({ seriesIndex: 0, dataIndex: i }));
+    link.frameItems(aggregation, items);
   }, [aggregation, selection.full, link]);
 
   const subtitle = aggregation
@@ -98,7 +98,7 @@ export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onA
         <ul className="sr-only" data-chart-legend>
           {aggregation.categories.map((bucket, index) => (
             <li key={bucket.key}>
-              <button type="button" onClick={() => link.selectCategories(aggregation, [index])}>
+              <button type="button" onClick={() => link.selectItems(aggregation, [{ seriesIndex: 0, dataIndex: index }])}>
                 {bucket.label}: {bucket.value}
               </button>
             </li>

@@ -14,7 +14,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import type { EChartsOptionObject } from '@ifc-lite/charts';
+import type { ChartItem, EChartsOptionObject } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
@@ -67,7 +67,7 @@ async function parsedModel(): Promise<FederatedModel> {
 }
 
 /** Records every option and selection a card pushes; can fire a chart click. */
-interface Recorded { options: EChartsOptionObject[]; selections: number[][]; events: ChartRendererEvents }
+interface Recorded { options: EChartsOptionObject[]; selections: Array<{ full: ChartItem[]; partial: ChartItem[] }>; events: ChartRendererEvents }
 function recordingRenderer(): { renderer: ChartRenderer; charts: Recorded[] } {
   const charts: Recorded[] = [];
   const renderer: ChartRenderer = async (_el, events) => {
@@ -75,7 +75,7 @@ function recordingRenderer(): { renderer: ChartRenderer; charts: Recorded[] } {
     charts.push(rec);
     return {
       setOption: (option) => { rec.options.push(option); },
-      select: (indices) => { rec.selections.push([...indices]); },
+      select: (full, partial) => { rec.selections.push({ full: [...full], partial: [...partial] }); },
       resize: () => {},
       dispose: () => {},
     };
@@ -142,7 +142,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     await settle();
 
     // Click the door bucket of the first chart through the chart's own event.
-    await act(async () => { charts[0].events.onSelect({ dataIndices: [1] }); });
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
     await settle();
 
     const s = useViewerStore.getState();
@@ -166,7 +166,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     const { renderer, charts } = recordingRenderer();
     const ui = render(<ChartsPanel renderer={renderer} />);
     await settle();
-    await act(async () => { charts[0].events.onSelect({ dataIndices: [0] }); });
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
     await settle();
     const focus = ui.querySelector<HTMLSelectElement>('select[aria-label="Focus mode"]')!;
     await act(async () => {
@@ -184,7 +184,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     const { renderer, charts } = recordingRenderer();
     const ui = render(<ChartsPanel renderer={renderer} />);
     await settle();
-    await act(async () => { charts[0].events.onSelect({ dataIndices: [1] }); });
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
     await settle();
     assert.ok(useViewerStore.getState().chartSlice);
 
@@ -194,9 +194,9 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     });
     await settle();
     assert.equal(useViewerStore.getState().chartSlice, null, 'a foreign pick drops the chart slice');
-    // Partial bucket: not marked selected in the option, but the chart is told nothing is fully selected.
+    // Partial bucket: not marked selected in the option, but pushed to the chart as an emphasised item.
     assert.deepEqual(barData(charts[0].options.at(-1)!), [['IfcWall', 3, false], ['IfcDoor', 2, false]]);
-    assert.deepEqual(charts[0].selections.at(-1), []);
+    assert.deepEqual(charts[0].selections.at(-1), { full: [], partial: [{ seriesIndex: 0, dataIndex: 0 }] });
 
     // Someone else's ghost replaces the panel's: the panel's claim is invalidated by content.
     await act(async () => { useViewerStore.getState().setGhostExceptEntities(new Set([GID(41)])); });
@@ -225,11 +225,42 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(useViewerStore.getState().overlayLayers.get('charts'), undefined);
   });
 
+  it('a click on a stacked segment selects only that series share of the category (review finding)', async () => {
+    const { renderer, charts } = recordingRenderer();
+    render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    // The third seeded chart is "Types per storey": storey on the axis, one series per type.
+    const option = charts[2].options.at(-1)!;
+    const series = option.series as Array<{ name: string; data: Array<{ name: string; value: number }> }>;
+    const doorSeries = series.findIndex((s) => s.name === 'IfcDoor');
+    const level1 = series[doorSeries].data.findIndex((d) => d.name === 'Level 1');
+    assert.ok(doorSeries >= 0 && level1 >= 0, JSON.stringify(series.map((s) => [s.name, s.data.map((d) => [d.name, d.value])])));
+    await act(async () => { charts[2].events.onSelect({ items: [{ seriesIndex: doorSeries, dataIndex: level1 }] }); });
+    await settle();
+    // Level 1 holds walls A, B and door A; the door segment selects door A only.
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [GID(44)]);
+  });
+
+  it('the close button runs onClose and unmounting releases the claim the panel installed', async () => {
+    const { renderer, charts } = recordingRenderer();
+    let closed = 0;
+    const ui = render(<ChartsPanel renderer={renderer} onClose={() => { closed += 1; }} />);
+    await settle();
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
+    await settle();
+    assert.ok(useViewerStore.getState().chartVisibilityOwned);
+    click(ui.querySelector('button[aria-label="Close charts"]')!);
+    assert.equal(closed, 1);
+    cleanup();
+    assert.equal(useViewerStore.getState().chartVisibilityOwned, null);
+    assert.equal(useViewerStore.getState().ghostExceptEntities, null);
+  });
+
   it('removing the model releases the panel\'s claim and drops the slice', async () => {
     const { renderer, charts } = recordingRenderer();
     render(<ChartsPanel renderer={renderer} />);
     await settle();
-    await act(async () => { charts[0].events.onSelect({ dataIndices: [1] }); });
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 1 }] }); });
     await settle();
     await act(async () => { useViewerStore.getState().removeModel('m1'); });
     const s = useViewerStore.getState();

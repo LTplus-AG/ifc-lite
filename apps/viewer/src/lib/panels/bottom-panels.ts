@@ -34,6 +34,14 @@ export const BOTTOM_PANEL_FLAG = {
 
 export type BottomPanelFlag = (typeof BOTTOM_PANEL_FLAG)[BottomPanelId];
 
+/** The store setter for each flag, so a panel-control path never spells the trio by hand. */
+export const BOTTOM_PANEL_SETTER = {
+  gantt: 'setGanttPanelVisible',
+  script: 'setScriptPanelVisible',
+  lists: 'setListPanelVisible',
+  charts: 'setChartPanelVisible',
+} as const satisfies Record<BottomPanelId, string>;
+
 /** The slice of store state the bottom strip reads. */
 export type BottomPanelFlags = Record<BottomPanelFlag, boolean>;
 

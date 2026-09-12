@@ -21,7 +21,7 @@ import {
   type WorkspacePanelId,
   type AnalysisPanelId,
 } from '@/lib/panels/registry';
-import { isBottomPanel, isBottomPanelOpen } from '@/lib/panels/bottom-panels';
+import { BOTTOM_PANEL_SETTER, isBottomPanel, isBottomPanelOpen } from '@/lib/panels/bottom-panels';
 import { useBottomPanelFlags } from './useBottomPanelFlags';
 import { openPanelWindow, closePanelWindow } from '@/services/panel-windows';
 
@@ -58,9 +58,8 @@ function setDockedVisible(id: AnalysisPanelId, visible: boolean): void {
     case 'clash': s.setClashPanelVisible(visible); break;
     case 'extensions': s.setExtensionsPanelVisible(visible); break;
     case 'sources': s.setSourcesPanelVisible(visible); break;
-    case 'script': s.setScriptPanelVisible(visible); break;
-    case 'gantt': s.setGanttPanelVisible(visible); break;
-    case 'lists': s.setListPanelVisible(visible); break;
+    // Bottom-strip panels: one row of the table each (`BOTTOM_PANEL_SETTER`).
+    case 'script': case 'gantt': case 'lists': case 'charts': s[BOTTOM_PANEL_SETTER[id]](visible); break;
     case 'layers': s.setLayersPanelVisible(visible); break;
   }
 }

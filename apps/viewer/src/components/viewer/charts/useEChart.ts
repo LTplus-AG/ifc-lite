@@ -13,20 +13,19 @@
  * events without a canvas.
  */
 import { useEffect, useRef, useState } from 'react';
-import type { EChartsOptionObject, ChartTheme } from '@ifc-lite/charts';
+import type { ChartItem, EChartsOptionObject, ChartTheme } from '@ifc-lite/charts';
 import { DEFAULT_THEME } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store';
 
-/** What a chart click / brush hands back: category indices per series. */
+/** What a chart click / brush hands back: the items (series + category) now selected. */
 export interface ChartSelectEvent {
-  /** Category (data) indices now selected, across series. */
-  dataIndices: number[];
+  items: ChartItem[];
 }
 
 export interface ChartRendererHandle {
   setOption: (option: EChartsOptionObject) => void;
-  /** Push a selection into the chart without firing `onSelect` back. */
-  select: (dataIndices: readonly number[]) => void;
+  /** Push a selection into the chart without firing `onSelect` back; `partial` items get emphasis, not selection. */
+  select: (full: readonly ChartItem[], partial: readonly ChartItem[]) => void;
   resize: () => void;
   dispose: () => void;
 }
@@ -45,27 +44,31 @@ export const echartsRenderer: ChartRenderer = async (el, events) => {
   let suppress = false;
   // `selectchanged` reports every selected item per series after a click;
   // `brushselected` reports the items under a drag rectangle.
+  const itemsOf = (selected: Array<{ seriesIndex: number; dataIndex: number[] }> | undefined): ChartItem[] => {
+    const items: ChartItem[] = [];
+    for (const s of selected ?? []) for (const dataIndex of s.dataIndex) items.push({ seriesIndex: s.seriesIndex, dataIndex });
+    return items;
+  };
   chart.on('selectchanged', (params) => {
     if (suppress) return;
-    const p = params as { selected?: Array<{ dataIndex: number[] }> };
-    const indices = new Set<number>();
-    for (const s of p.selected ?? []) for (const i of s.dataIndex) indices.add(i);
-    events.onSelect({ dataIndices: [...indices].sort((a, b) => a - b) });
+    events.onSelect({ items: itemsOf((params as { selected?: Array<{ seriesIndex: number; dataIndex: number[] }> }).selected) });
   });
   chart.on('brushselected', (params) => {
     if (suppress) return;
-    const p = params as { batch?: Array<{ selected?: Array<{ dataIndex: number[] }> }> };
-    const indices = new Set<number>();
-    for (const b of p.batch ?? []) for (const s of b.selected ?? []) for (const i of s.dataIndex) indices.add(i);
-    if (indices.size > 0) events.onSelect({ dataIndices: [...indices].sort((a, b) => a - b) });
+    const items: ChartItem[] = [];
+    for (const b of (params as { batch?: Array<{ selected?: Array<{ seriesIndex: number; dataIndex: number[] }> }> }).batch ?? []) items.push(...itemsOf(b.selected));
+    if (items.length > 0) events.onSelect({ items });
   });
   return {
     setOption: (option) => chart.setOption(option, { notMerge: true }),
-    select: (dataIndices) => {
+    select: (full, partial) => {
       suppress = true;
       try {
-        chart.dispatchAction({ type: 'unselect', seriesIndex: 0, dataIndex: [] });
-        if (dataIndices.length > 0) chart.dispatchAction({ type: 'select', dataIndex: [...dataIndices] });
+        // The option already carries `selected` per item; `downplay` + `highlight`
+        // is the emphasis pass for partially selected buckets.
+        chart.dispatchAction({ type: 'downplay' });
+        for (const item of partial) chart.dispatchAction({ type: 'highlight', seriesIndex: item.seriesIndex, dataIndex: item.dataIndex });
+        void full;
       } finally {
         suppress = false;
       }
@@ -93,14 +96,15 @@ export function readChartTheme(): ChartTheme {
 
 export interface UseEChartArgs {
   option: EChartsOptionObject | null;
-  /** Category indices to show selected (from the 3D side). */
-  selected: readonly number[];
+  /** Items fully selected in 3D (marked selected in the option) and partially selected (emphasised). */
+  selected: readonly ChartItem[];
+  partial: readonly ChartItem[];
   onSelect: (event: ChartSelectEvent) => void;
   renderer?: ChartRenderer;
 }
 
 /** Mount a chart in the returned ref's element and keep it in step with `option` / `selected`. */
-export function useEChart({ option, selected, onSelect, renderer = echartsRenderer }: UseEChartArgs): { ref: React.RefObject<HTMLDivElement | null>; ready: boolean } {
+export function useEChart({ option, selected, partial, onSelect, renderer = echartsRenderer }: UseEChartArgs): { ref: React.RefObject<HTMLDivElement | null>; ready: boolean } {
   const ref = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<ChartRendererHandle | null>(null);
   const onSelectRef = useRef(onSelect);
@@ -135,8 +139,8 @@ export function useEChart({ option, selected, onSelect, renderer = echartsRender
   useEffect(() => {
     if (!ready || !option) return;
     handleRef.current?.setOption(option);
-    handleRef.current?.select(selected);
-  }, [ready, option, theme, selected]);
+    handleRef.current?.select(selected, partial);
+  }, [ready, option, theme, selected, partial]);
 
   return { ref, ready };
 }

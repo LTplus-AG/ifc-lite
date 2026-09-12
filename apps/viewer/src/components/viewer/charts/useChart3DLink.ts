@@ -24,7 +24,7 @@
  * temporary colouring that an animation still wins over.
  */
 import { useCallback, useEffect, useRef } from 'react';
-import { categoriesForIds, idsForCategories, type Aggregation } from '@ifc-lite/charts';
+import { idsForItems, itemsForIds, type Aggregation, type ChartItem } from '@ifc-lite/charts';
 import { hexToRgba } from '@ifc-lite/lens';
 import { useViewerStore } from '@/store';
 import type { ChartFocusMode } from '@/store/slices/chartSlice';
@@ -37,10 +37,10 @@ export const CHART_OVERLAY_LAYER_ID = 'charts';
 export const CHART_OVERLAY_PRIORITY = 75;
 
 export interface ChartSelection {
-  /** Category indices whose every element is selected in 3D. */
-  full: number[];
-  /** Category indices with some, not all, elements selected. */
-  partial: number[];
+  /** Items whose every element is selected in 3D. */
+  full: ChartItem[];
+  /** Items with some, not all, elements selected. */
+  partial: ChartItem[];
 }
 
 function sameSet(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
@@ -90,12 +90,12 @@ export function selectChartIds(ids: number[]): void {
 }
 
 export interface Chart3DLink {
-  /** A chart click: select the buckets' elements, present them, and set the dashboard slice. */
-  selectCategories: (aggregation: Aggregation, indices: readonly number[]) => void;
+  /** A chart click: select the items' elements, present them, and set the dashboard slice. */
+  selectItems: (aggregation: Aggregation, items: readonly ChartItem[]) => void;
   /** Clear the chart selection, the slice, and release any presentation the panel installed. */
   clearSelection: () => void;
-  /** Frame the buckets' elements in the camera. */
-  frameCategories: (aggregation: Aggregation, indices: readonly number[]) => void;
+  /** Frame the items' elements in the camera. */
+  frameItems: (aggregation: Aggregation, items: readonly ChartItem[]) => void;
   /** What the current 3D selection means for this aggregation. */
   selectionFor: (aggregation: Aggregation) => ChartSelection;
 }
@@ -106,8 +106,8 @@ export function useChart3DLink(): Chart3DLink {
   // The selection this hook last wrote; a matching store value is our own echo.
   const lastWrittenRef = useRef<Set<number> | null>(null);
 
-  const selectCategories = useCallback((aggregation: Aggregation, indices: readonly number[]) => {
-    const ids = [...idsForCategories(aggregation, indices)];
+  const selectItems = useCallback((aggregation: Aggregation, items: readonly ChartItem[]) => {
+    const ids = [...idsForItems(aggregation, items)];
     lastWrittenRef.current = new Set(ids);
     selectChartIds(ids);
     presentChartIds(ids, focusMode);
@@ -122,14 +122,14 @@ export function useChart3DLink(): Chart3DLink {
     releaseChartVisibility();
   }, []);
 
-  const frameCategories = useCallback((aggregation: Aggregation, indices: readonly number[]) => {
+  const frameItems = useCallback((aggregation: Aggregation, items: readonly ChartItem[]) => {
     const state = useViewerStore.getState();
-    const ids = resolvePresentationIds(state.cameraCallbacks?.resolveHighlightIds, [...idsForCategories(aggregation, indices)]);
+    const ids = resolvePresentationIds(state.cameraCallbacks?.resolveHighlightIds, [...idsForItems(aggregation, items)]);
     if (ids.length > 0) state.cameraCallbacks?.frameEntities?.(ids);
   }, []);
 
   const selectionFor = useCallback((aggregation: Aggregation): ChartSelection => {
-    return categoriesForIds(aggregation, selectedEntityIds);
+    return itemsForIds(aggregation, selectedEntityIds);
   }, [selectedEntityIds]);
 
   // A 3D pick that is NOT our own write drops the slice: the dashboard then
@@ -152,7 +152,7 @@ export function useChart3DLink(): Chart3DLink {
   // Release the presentation when the panel goes away.
   useEffect(() => () => releaseChartVisibility(), []);
 
-  return { selectCategories, clearSelection, frameCategories, selectionFor };
+  return { selectItems, clearSelection, frameItems, selectionFor };
 }
 
 /**

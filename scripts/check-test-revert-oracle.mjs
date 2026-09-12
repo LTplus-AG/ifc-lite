@@ -91,7 +91,7 @@ import { isVersionOnlyManifestDiff } from './lib/revert-oracle-version-bump.mjs'
 import { isCommentOnlyDiff } from './lib/revert-oracle-comment-only.mjs';
 import { requiredFeaturePlanOrDie, EXIT_UNHANDLED_CFG_SHAPE } from './lib/revert-oracle-rust-features.mjs';
 import { ciExitCode } from './lib/revert-oracle-ci.mjs';
-import { planRuns, findUp } from './lib/revert-oracle-plan-runs.mjs';
+import { planRuns } from './lib/revert-oracle-plan-runs.mjs';
 import { loadTypeScript, typeOnlyProduction, typecheckPlans, runTypecheckPlan, gitShow } from './lib/revert-oracle-type-only.mjs';
 
 const SELF_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -328,7 +328,7 @@ if (opts.only.length > 0) {
   if (prodPaths.length === 0) die(EXIT_NOTHING_CHECKED, `--only matched none of the ${before} changed production files.`);
 }
 
-let testPaths = withoutBrowserSpecs(testEntries.map((e) => e.path).filter((p) => existsSync(join(ROOT, p))), (p) => readFileSync(join(ROOT, p), 'utf8'), console.log, (p) => findUp(dirname(join(ROOT, p)), 'package.json', ROOT) === ROOT);
+let testPaths = withoutBrowserSpecs(testEntries.map((e) => e.path).filter((p) => existsSync(join(ROOT, p))), (p) => readFileSync(join(ROOT, p), 'utf8'), console.log);
 if (opts.tests.length > 0) {
   testPaths = testPaths.filter((p) => opts.tests.includes(p));
   if (testPaths.length === 0) die(EXIT_NOTHING_CHECKED, '--test matched none of the branch\'s changed test files.');

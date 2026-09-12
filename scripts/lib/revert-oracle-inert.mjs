@@ -81,41 +81,25 @@ export function isBrowserSpecSource(source) {
   return typeof source === 'string' && PLAYWRIGHT_IMPORT_RE.test(source);
 }
 
-/** A test entrypoint by name (`*.test.*` / `*.spec.*`), as opposed to a helper module. */
-const ENTRYPOINT_RE = /\.(test|spec)\.[^/]+$/;
-
 /**
  * Split `paths` (repo-relative) into the tests a repo runner can drive and the
  * Playwright specs it cannot; `read(path)` returns the file text (callers
  * pass only paths that exist). Only `*.spec.*` files are read: `*.test.*`
  * files are never Playwright specs in this repo.
- *
- * A spec's SUPPORT modules leave with it (#4446): a page object, a relay
- * launcher, a fixture builder under the spec's directory, not an entrypoint
- * by name, and owned by the root package (`ownedByRoot(path)` — the caller
- * knows the package layout). They exist only for the spec and have no runner
- * either; left in the set they would keep the root group runner-less, and
- * the branch's unit tests could never be judged. Package-owned helpers are
- * never set aside: their package's runner handles them as it always did.
- * @returns {{ runnable: string[], browser: string[], support: string[] }}
+ * @returns {{ runnable: string[], browser: string[] }}
  */
-export function partitionBrowserSpecs(paths, read, ownedByRoot = () => false) {
-  const rest = [], browser = [];
+export function partitionBrowserSpecs(paths, read) {
+  const runnable = [], browser = [];
   for (const p of paths) {
     const spec = /\.spec\.[cm]?[jt]sx?$/.test(p) && isBrowserSpecSource(read(p));
-    (spec ? browser : rest).push(p);
+    (spec ? browser : runnable).push(p);
   }
-  const dirOf = (p) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '');
-  const under = (p, dir) => dir === '' || p.startsWith(`${dir}/`);
-  const specDirs = browser.map(dirOf);
-  const support = rest.filter((p) => !ENTRYPOINT_RE.test(p) && specDirs.some((d) => under(p, d)) && ownedByRoot(p));
-  return { runnable: rest.filter((p) => !support.includes(p)), browser, support };
+  return { runnable, browser };
 }
 
-/** Dispatcher hook: log every set-aside Playwright spec (and its support) and return the runnable rest. */
-export function withoutBrowserSpecs(paths, read, log, ownedByRoot) {
-  const { runnable, browser, support } = partitionBrowserSpecs(paths, read, ownedByRoot);
+/** Dispatcher hook: log every set-aside Playwright spec and return the runnable rest. */
+export function withoutBrowserSpecs(paths, read, log) {
+  const { runnable, browser } = partitionBrowserSpecs(paths, read);
   for (const p of browser) log(`  set aside: ${p} is a Playwright spec; it runs only under \`playwright test\` in a real browser, which the oracle cannot drive, so it neither observes the change nor blocks the verdict`);
-  for (const p of support) log(`  set aside: ${p} is a root-owned support module of a set-aside Playwright spec; it has no runner of its own`);
   return runnable;
 }

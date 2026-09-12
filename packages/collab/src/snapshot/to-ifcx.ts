@@ -19,6 +19,7 @@ import * as Y from 'yjs';
 import { entityToJSON, iterEntities } from '../doc/entity.js';
 import { metaMap } from '../doc/schema.js';
 import { flattenStructuredBranches, geometryRecordLookup } from './structured-attrs.js';
+import { pathInSlot, type ModelSlotRef } from '../doc/model-slot.js';
 import { IFCX_VERSION } from '@ifc-lite/ifcx';
 
 export interface SnapshotOptions {
@@ -33,6 +34,12 @@ export interface SnapshotOptions {
   ifcxVersion?: string;
   /** Stable child-key ordering (defaults to insertion order from the Y.Map). */
   sortChildren?: boolean;
+  /**
+   * Emit only the entities of one model slot (#4444), paths kept as stored
+   * (slot-qualified). A recipient reconstructs one viewer model per slot from
+   * one snapshot per slot. Omitted: every entity in the room.
+   */
+  slot?: ModelSlotRef;
 }
 
 export function snapshotToIfcx(doc: Y.Doc, options: SnapshotOptions = {}): IfcxFile {
@@ -53,6 +60,7 @@ export function snapshotToIfcx(doc: Y.Doc, options: SnapshotOptions = {}): IfcxF
   const data: IfcxNode[] = [];
   const geometryRecordFor = geometryRecordLookup(doc);
   for (const [path, entity] of iterEntities(doc)) {
+    if (options.slot && !pathInSlot(options.slot, path)) continue;
     const json = entityToJSON(entity);
     const node: IfcxNode = { path };
 

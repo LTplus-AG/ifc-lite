@@ -36,6 +36,7 @@ import {
   metaMap,
 } from '../doc/schema.js';
 import { inflateStructuredAttributes } from './structured-attrs.js';
+import { prefixPathForSlot, type ModelSlotRef } from '../doc/model-slot.js';
 import { clearOverlayTombstones, readOverlayTombstones, resolveTombstoneOpinion, resurrectionBlocked, writeOverlayTombstones } from './overlay-tombstones.js';
 import { setClassifications, setMaterials, readIfcClass } from './overlay-entity-attrs.js';
 
@@ -44,6 +45,13 @@ export interface SeedOptions {
   origin?: unknown;
   /** If true, clear any existing top-level state before seeding. */
   reset?: boolean;
+  /**
+   * The model slot the file's nodes belong to (#4444). Every node path, and
+   * every `children` / `inherits` reference, is qualified with the slot's
+   * prefix so the file's own path scheme survives verbatim underneath it.
+   * Omitted: the implicit legacy slot (paths untouched).
+   */
+  slot?: ModelSlotRef;
 }
 
 export type IfcxInput = ArrayBuffer | Uint8Array | string | IfcxFile;
@@ -93,7 +101,7 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
     if (file.schemas) meta.set('schemas', file.schemas);
 
     for (const node of file.data ?? []) {
-      const decoded = decodeNode(node, false);
+      const decoded = decodeNode(opts.slot ? qualifyNode(opts.slot, node) : node, false);
       if (!decoded) continue;
       restoreGeometryCarriers(doc, decoded, createGeometry);
       createNodeEntity(doc, decoded);
@@ -101,6 +109,31 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
   }, opts.origin ?? SEED_ORIGIN);
 
   return file;
+}
+
+/**
+ * Re-home a node under a slot: its own path plus every path-valued
+ * `children` / `inherits` reference (a `null` removal opinion stays `null`).
+ * Attribute values are opaque here; geometry carriers are content-hash keyed
+ * and slot-independent.
+ */
+function qualifyNode(slot: ModelSlotRef, node: IfcxNode): IfcxNode {
+  const raw = node as RawIfcxNode;
+  if (!raw.path) return node;
+  const qualifyRefs = (refs: Record<string, unknown> | undefined): Record<string, unknown> | undefined => {
+    if (!refs) return refs;
+    const out: Record<string, unknown> = {};
+    for (const [role, target] of Object.entries(refs)) {
+      out[role] = typeof target === 'string' ? prefixPathForSlot(slot, target) : target;
+    }
+    return out;
+  };
+  return {
+    ...node,
+    path: prefixPathForSlot(slot, raw.path),
+    children: qualifyRefs(raw.children),
+    inherits: qualifyRefs(raw.inherits),
+  } as IfcxNode;
 }
 
 /* ------------------------------------------------------------------ */

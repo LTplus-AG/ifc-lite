@@ -1374,10 +1374,15 @@ optimization should measure the explicit conversion workload independently.
 
 ## Qualified solid straight PDF strokes (#4406)
 
-Exact-source native A/B/A/B normal-load controls resolve no regression, with
-identical phase minima in each pair and identical ordered mesh fingerprints and
-counts. This does not measure PDF authoring or worker-pool throughput. The new
-path remains opt-in through the existing PDF annotation planner. A draft union
+Fresh exact-source native A/B, A/B, then reverse B/A normal-load controls for
+the round-cap/join expansion resolve no regression. Timing drift affected both
+directions (8 ms equal in the first pair; later branch 10 vs base 8, then branch
+10 vs base 11), while mesh, vertex and triangle counts and every ordered mesh
+fingerprint remained identical. This isolates the normal IFC load path; it does
+not measure opt-in PDF authoring or worker-pool throughput. Stable sagitta
+inversion also reduced the independent round controls' bounded planner work and
+triangle counts without changing analytic acceptance; the source-specific
+oracle carries those measurements. A draft union
 of segment rectangles and join wedges was rejected by existing conservative
 contact/intersection guards even on ordinary joins; direct offset contours
 retain the same guards and avoid manufacturing those internal boundaries.

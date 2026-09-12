@@ -55,6 +55,17 @@ pub(crate) fn is_file_digest(hash: &str) -> bool {
     hash.len() == 64 && hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
+/// The one rejection for a path segment that is not a file digest, shared by
+/// every route that takes one so the rule is spelled once. The value itself
+/// is not echoed: it is caller-controlled text, and its length plus the rule
+/// is all a caller needs.
+pub(crate) fn not_a_file_digest(value: &str) -> crate::error::ApiError {
+    crate::error::ApiError::BadRequest(format!(
+        "expected a file's sha256 content hash (64 lowercase hex characters); got {} character(s)",
+        value.chars().count()
+    ))
+}
+
 /// Request-level cache key: file hash + opening-filter suffix + quality suffix.
 pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: TessellationQuality) -> String {
     cache_key_from_parts(

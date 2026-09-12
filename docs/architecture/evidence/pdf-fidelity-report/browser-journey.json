@@ -1,0 +1,82 @@
+{
+  "browser": "153.0.8010.36",
+  "before": {
+    "modelId": "15ddccfb-a7a4-4193-b57f-a41990570995",
+    "meshCount": 11
+  },
+  "omissions": [
+    "1 × Text runs — region x 10–68.0, y 16.4–32 pt"
+  ],
+  "created": {
+    "modelId": "15ddccfb-a7a4-4193-b57f-a41990570995",
+    "expressId": 2476,
+    "globalId": 2476,
+    "parts": 2,
+    "textureBatches": 0,
+    "flatBatches": 2
+  },
+  "createdPick": {
+    "x": 808.5893370905857,
+    "y": 952.1698097401744
+  },
+  "filename": "issue-604-door_export.ifc",
+  "reopened": {
+    "type": "IfcAnnotation",
+    "name": "PDF fidelity UI control"
+  },
+  "reopenedPick": {
+    "x": 808.5893370905857,
+    "y": 952.1698097401744
+  },
+  "worldError": 0,
+  "oracle": {
+    "ifcopenshell": "0.8.3.post2",
+    "schema": "IFC4",
+    "annotations": [
+      {
+        "expressId": 2476,
+        "GlobalId": "3N2UiHm25BMPH5oLfSfQXt",
+        "Name": "PDF fidelity UI control",
+        "Description": "PDF vectors, page 1: partial conversion; omitted 1 text",
+        "containedIn": [
+          "L1"
+        ],
+        "representationItems": 2,
+        "provenance": {
+          "SourcePdfSha256": "529c5fc262bf8948af31df1c10e60b898f37fecac1c4331143a51932bbf95d51",
+          "SourcePageNumber": 1,
+          "SourceCropBox": "[10.0,20.0,110.0,92.0]",
+          "SourceUserUnit": 2,
+          "SourceRotation": 90,
+          "DecoderVersion": "PDF.js 6.3.289",
+          "CalibrationKey": "pdf-registration-sha256:b55614b58d92043feb67b4c0b08552e8e4b7730971c1a183f7c92ffe937a42a0",
+          "ModelMetresFromPdf": "[0.0,-0.03469561515538527,0.03469561515538528,0.0,-0.6939123031077056,3.81651766709238]",
+          "ToleranceMetres": 0.001,
+          "GridSizeMetres": 5.208333333333333e-06,
+          "Algorithm": "ifclite-pdf-fill-annotation-v1",
+          "RequestSha256": "ece58595d2dbdcb7548665a594129a8dce20568bd9e59b1ba9e8ae8928ae1b5a",
+          "FidelityAlgorithm": "ifclite-pdf-fidelity-v1",
+          "FidelitySha256": "2629a72d3e42754cd33f94a331bad38f1ae6ad65b20e338a29c05a45bee933ba",
+          "ExactConversion": false,
+          "AcceptedPartialConversion": true,
+          "ConvertedPaths": 2,
+          "FillRegions": 2,
+          "OmittedPaints": 0,
+          "Omissions": "[{\"kind\":\"text\",\"count\":1,\"visible\":1}]",
+          "id": 2498
+        }
+      }
+    ]
+  },
+  "runtime": {
+    "node": "v22.16.0",
+    "viewport": [
+      1600,
+      1200
+    ],
+    "target": "tests/models/various/issue-604-door.ifc (IFC4, storeys L1/L2, 11 meshes)",
+    "pdf": "control-text-accepted.pdf",
+    "chrome": "153.0.8010.36",
+    "wasmSha256": "66dedd5c0217fd810a95a93e5219cb5b23b71945197abae34623b31a191ef881"
+  }
+}

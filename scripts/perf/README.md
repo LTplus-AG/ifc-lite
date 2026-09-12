@@ -1386,3 +1386,21 @@ compared `import.meta.url` with a backslash `argv[1]` and never fired. Fixed in
 the same PR (`pathToFileURL`, a CLI test, and `ab.sh` now refuses an order file
 with fewer lines than `--iters`); the recorded runs replicate the procedure by
 hand with the same `roundOrder()` and reporter.
+
+## PDF fidelity report and partial acceptance (#4406)
+
+Bounded graphics-state preparation now interprets forms, groups, annotation
+appearances, clips, ExtGState dictionaries, optional content, text, images and
+stroke features into a page-level fidelity report, and fill planning records
+the accepted verdict in a provenance property set. None of this is on the
+parse or element-geometry path. An interleaved base/branch/base/branch native
+AC20-FZK-Haus probe (5 iterations each) retained identical ordered mesh
+fingerprints and mesh/vertex/triangle counts in all 20 iterations; total-phase
+medians were 13 and 20 ms on base against 24 and 19 ms on the branch, so the
+base-to-base spread exceeds any base/branch difference and no regression is
+observed. The host was shared with other builds during the first branch pair,
+which the raw record states. The verdict is no material regression on that
+fixture, not a PDF-preparation throughput claim: the report interpreter is
+bounded by the existing operation, path-number and save-depth budgets plus a
+4,096-entry listed-omission cap with complete summary counts. See the
+[raw runs](../../docs/architecture/evidence/pdf-fidelity-report/native-load.json).

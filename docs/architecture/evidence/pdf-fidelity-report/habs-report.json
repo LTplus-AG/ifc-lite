@@ -1,0 +1,67 @@
+{
+  "input": "habs04a.pdf",
+  "sourceBytes": 675723,
+  "sourceSha256": "f75301c338d80bc2f428dede7c54d4799def2c2726cea8bed50c3e85d5f6305a",
+  "decoderVersion": "6.3.289",
+  "pageNumber": 1,
+  "viewBox": [
+    0,
+    487.700012,
+    596,
+    1224
+  ],
+  "userUnit": 1,
+  "intrinsicRotation": 0,
+  "calibration": {
+    "modelMetresFromPdf": [
+      0.01,
+      0,
+      0,
+      0.01,
+      0,
+      0
+    ],
+    "calibrationKey": "evidence-nominal-100-pdf-units-per-metre",
+    "toleranceMetres": 0.001
+  },
+  "operations": 19,
+  "operators": {
+    "save": 4,
+    "transform": 8,
+    "image": 3,
+    "restore": 4
+  },
+  "preparation": {
+    "algorithm": "ifclite-pdf-vector-state-v1",
+    "requestSha256": "c7d1dd80a3a60ebfdd2471adb6893c8af45609390d90d657086223bae7e05ccc",
+    "pageClipPdf": [
+      0,
+      487.700012,
+      596,
+      1224
+    ]
+  },
+  "fidelity": {
+    "sha256": "9f9fc8184d7e4e98797846ee5367fa46f0ba10db53f2aa6303709ad83e29e978",
+    "algorithm": "ifclite-pdf-fidelity-v1",
+    "exact": false,
+    "rasterOnly": true,
+    "convertiblePaths": 0,
+    "omittedPaints": 0,
+    "summary": [
+      {
+        "kind": "image",
+        "count": 3,
+        "visibleCount": 3,
+        "bboxPdf": [
+          0,
+          487.68000000000006,
+          596.88,
+          1224
+        ]
+      }
+    ],
+    "omissionsTruncated": false,
+    "listedOmissions": 3
+  }
+}

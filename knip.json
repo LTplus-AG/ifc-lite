@@ -22,7 +22,8 @@
         "api/*.ts",
         "scripts/dev-chat-api.ts",
         "scripts/add-license-headers.mjs",
-        "docs/architecture/evidence/pdf-annotation-ui/browser-proof.mjs"
+        "docs/architecture/evidence/pdf-annotation-ui/browser-proof.mjs",
+        "docs/architecture/evidence/pdf-fidelity-report/browser-proof.mjs"
       ]
     },
     "packages/ids": {

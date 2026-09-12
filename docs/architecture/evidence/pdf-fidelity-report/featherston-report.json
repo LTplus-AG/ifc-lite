@@ -1,0 +1,115 @@
+{
+  "input": "Floor_Plan.pdf",
+  "sourceBytes": 515902,
+  "sourceSha256": "c8c923759a412dc0f108ed77e54edc76203592f4befb25b3779550c7bb287d66",
+  "decoderVersion": "6.3.289",
+  "pageNumber": 1,
+  "viewBox": [
+    0,
+    0,
+    841.89,
+    595.28
+  ],
+  "userUnit": 1,
+  "intrinsicRotation": 0,
+  "calibration": {
+    "modelMetresFromPdf": [
+      0.01,
+      0,
+      0,
+      0.01,
+      0,
+      0
+    ],
+    "calibrationKey": "evidence-nominal-100-pdf-units-per-metre",
+    "toleranceMetres": 0.001
+  },
+  "operations": 12758,
+  "operators": {
+    "markedContent": 1,
+    "save": 3148,
+    "clip": 1,
+    "path": 3167,
+    "graphicsState": 3,
+    "groupBegin": 1,
+    "formBegin": 1,
+    "fillColor": 6,
+    "transform": 3146,
+    "restore": 3148,
+    "formEnd": 1,
+    "groupEnd": 1,
+    "strokeColor": 45,
+    "lineWidth": 49,
+    "lineJoin": 8,
+    "lineCap": 14,
+    "miterLimit": 6,
+    "text": 11,
+    "endMarkedContent": 1
+  },
+  "preparation": {
+    "algorithm": "ifclite-pdf-vector-state-v1",
+    "requestSha256": "1a785bc4c438ceb92c248c37864c4cf0d61112b18c9814cb56fcb5c39e2cf689",
+    "pageClipPdf": [
+      0,
+      0,
+      841.89,
+      595.28
+    ]
+  },
+  "fidelity": {
+    "sha256": "840ad16b449b93bf7d94fa8a2d43d803e3e02d17d51ae07e891a7f25919b8f33",
+    "algorithm": "ifclite-pdf-fidelity-v1",
+    "exact": false,
+    "rasterOnly": false,
+    "convertiblePaths": 1141,
+    "omittedPaints": 2025,
+    "summary": [
+      {
+        "kind": "roundCapJoin",
+        "count": 1436,
+        "visibleCount": 1436,
+        "bboxPdf": [
+          215.21019931335448,
+          33.909996948242195,
+          623.9293993286133,
+          570.6004003051758
+        ]
+      },
+      {
+        "kind": "hairline",
+        "count": 556,
+        "visibleCount": 556,
+        "bboxPdf": [
+          485.1449999551773,
+          214.97180007629393,
+          542.568200017643,
+          358.67649989700317
+        ]
+      },
+      {
+        "kind": "clip",
+        "count": 33,
+        "visibleCount": 33,
+        "bboxPdf": [
+          228.9600067138672,
+          35.499799966621396,
+          623.9297,
+          570.6003993896484
+        ]
+      },
+      {
+        "kind": "text",
+        "count": 11,
+        "visibleCount": 11,
+        "bboxPdf": [
+          244.11409301757817,
+          93.59660546875,
+          617.3740930175782,
+          501.57260546875
+        ]
+      }
+    ],
+    "omissionsTruncated": false,
+    "listedOmissions": 2036
+  }
+}

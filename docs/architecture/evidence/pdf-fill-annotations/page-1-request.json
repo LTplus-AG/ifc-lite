@@ -5,6 +5,8 @@
   "containerId": 40,
   "GlobalId": "0aaaaaaaaaaaaaaaaaaaaa",
   "containmentGlobalId": "0bbbbbbbbbbbbbbbbbbbbb",
+  "propertySetGlobalId": "0cccccccccccccccccccc1",
+  "propertyRelationGlobalId": "0cccccccccccccccccccc2",
   "Name": "Actual PDF fill control",
   "frame": {
     "origin": [2, 3, 4],

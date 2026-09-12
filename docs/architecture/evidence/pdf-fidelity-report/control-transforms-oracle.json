@@ -1,0 +1,67 @@
+{
+  "ifcopenshell": "0.8.3.post2",
+  "schema": "IFC4",
+  "annotations": [
+    {
+      "expressId": 206,
+      "GlobalId": "0aaaaaaaaaaaaaaaaaaaaa",
+      "Name": "PDF fidelity evidence control:transforms",
+      "Description": "PDF vectors, page 1: exact conversion",
+      "containedIn": [
+        "Level"
+      ],
+      "representationItems": 2,
+      "provenance": {
+        "SourcePdfSha256": "d048a384c3db90ef514cf6c3f35ca662331f38b5ae62cac086dae354755403d3",
+        "SourcePageNumber": 1,
+        "SourceCropBox": "[10.0,20.0,110.0,92.0]",
+        "SourceUserUnit": 2.0,
+        "SourceRotation": 90,
+        "DecoderVersion": "PDF.js 6.3.289",
+        "CalibrationKey": "synthetic-control-30-pdf-units-per-metre",
+        "ModelMetresFromPdf": "[0.03333333333333333,0.0,0.0,0.03333333333333333,0.0,0.0]",
+        "ToleranceMetres": 0.001,
+        "GridSizeMetres": 5.208333333333333e-06,
+        "Algorithm": "ifclite-pdf-fill-annotation-v1",
+        "RequestSha256": "42bd96489100ff9bf3e46f623f36dd6a24ef613b97550446fc64d43fb44a0195",
+        "FidelityAlgorithm": "ifclite-pdf-fidelity-v1",
+        "FidelitySha256": "99d7eb4b2f8581c5fa7ea77f0251ba0e8dc4363b7ecc41251f0298389e3714b5",
+        "ExactConversion": true,
+        "AcceptedPartialConversion": false,
+        "ConvertedPaths": 2,
+        "FillRegions": 2,
+        "OmittedPaints": 0,
+        "Omissions": "[]",
+        "id": 228
+      }
+    }
+  ],
+  "raster": {
+    "mupdf": "1.28.2",
+    "renderScale": 4,
+    "pixelsCompared": 460800,
+    "pixmap": [
+      576,
+      800
+    ],
+    "rasterMode": "MuPDF antialiasing disabled; all pixel centres; one 8-bit quantization step allowed",
+    "reportedVisibleExtentsPdf": [],
+    "native3dVersusReader2dPixels": 0,
+    "comparisons": {
+      "native3d": {
+        "mismatchPixels": 83,
+        "insideReportedExtent": 0,
+        "withinOnePixelOfNativeBoundary": 83,
+        "unexplained": 0,
+        "maxBoundaryDistancePixels": 0.25410239026214193
+      },
+      "reader2d": {
+        "mismatchPixels": 83,
+        "insideReportedExtent": 0,
+        "withinOnePixelOfNativeBoundary": 83,
+        "unexplained": 0,
+        "maxBoundaryDistancePixels": 0.25410239026214193
+      }
+    }
+  }
+}

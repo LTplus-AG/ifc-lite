@@ -2,9 +2,9 @@
 
 Implementation contract for [F8 / #4406](https://github.com/LTplus-AG/ifc-lite/issues/4406).
 The [pinned PDF investigation](evidence/pdf-vectors/README.md) establishes inputs
-and controls. Conversion is not yet enabled. This document records the next
-implementation boundaries so the PDF adapter does not become a second drawing
-system or IFC writer.
+and controls. Conversion is enabled for the qualified subset described below,
+gated by a fidelity report. This document records the implementation boundaries
+so the PDF adapter does not become a second drawing system or IFC writer.
 
 ## Representation and existing annotation work
 
@@ -124,15 +124,17 @@ transforms, solid RGB paints, line width/caps/joins/miter/dash state, packed
 DrawOPS command arities and original operator order. It retains cubic/quadratic
 commands unchanged and snapshots complete affine state for each painted path.
 
-`stateQualified` means only that this graphics-state subset was understood. The
-report contains **no IFC plan**, flattened geometry, contour classification,
-paint-order composition or exact-conversion permission. `paths` in an
-unqualified report are diagnostic input only, not a supported partial export.
-Unsupported forms, groups, clipping, graphics-state dictionaries, optional
-content, images, patterns and painted text retain original operator indices as
-blocking diagnostics. Device-dependent painted hairlines also block qualification.
-Unused font/text-position setup is nonpainting and does not alone block a page.
-Unknown operations are never ignored.
+The prepared page carries `paths` — only paths whose complete graphics state
+the planner understands — and a `fidelity` report (next section). It contains
+**no IFC plan**, flattened geometry, contour classification or paint-order
+composition. Forms, transparency groups, annotation appearances, clipping,
+ExtGState dictionaries, optional content, images, shadings/patterns, painted
+text, dashes, round caps/joins, curved strokes and device-dependent painted
+hairlines are interpreted in order and recorded as omissions with their
+original operator ordinal, kind, page-space extent and visibility; they never
+become paths drawn without their clip or effect. Unused font/text-position
+setup is nonpainting and produces no omission. Unknown operations are never
+ignored.
 
 The request binds the exact retained PDF SHA-256, pinned decoder, one-based page,
 effective native CropBox, UserUnit, intrinsic rotation, host calibration identity,
@@ -151,16 +153,70 @@ releases the document/page. PDF.js allocates its operator list before the adapte
 can count it, so these post-decode limits are not a claim about a strict decoder
 native-allocation ceiling. Unsupported or over-budget input creates no entities.
 
-Next, canonical Rust must flatten curves to the declared model-metre tolerance,
-outline strokes in construction space **before** nonuniform transforms, classify
-nonzero/even-odd fills, and resolve ordered overlap. Stroke outlining preserves
-visual vector geometry, not editable centreline or text semantics. Only then can
-the shared annotation creation transaction expose 2D/3D Compare and Apply.
+Canonical Rust then flattens curves to the declared model-metre tolerance,
+outlines strokes in construction space **before** nonuniform transforms,
+classifies nonzero/even-odd fills and resolves ordered overlap (the sections
+below). Stroke outlining preserves visual vector geometry, not editable
+centreline or text semantics.
 
-The report also fixes `geometryReady=false`, returns `pageClipPdf` and enumerates
-pending geometry stages. The implicit page clip must be resolved even when no
-explicit `clip` operator appears; paths crossing the effective CropBox cannot be
-published merely because their state was understood.
+The prepared page also returns `pageClipPdf`. The implicit page clip is resolved
+by the fill planner even when no explicit `clip` operator appears; paths crossing
+the effective CropBox are not published merely because their state was understood.
+
+## Fidelity report and partial acceptance
+
+`prepare_pdf_vector_page` returns a `FidelityReport` (`ifclite-pdf-fidelity-v1`)
+beside the convertible paths. Its `summary` lists every omission kind with a
+total count, a visible count and the union extent of the visible entries in
+unrotated PDF user space (CropBox coordinates); `omissions` lists up to 4,096
+individual entries with operator ordinal, extent and visibility, and
+`omissionsTruncated` says when that detailed list stopped while the counts
+stayed complete. Kinds are `text`, `image`, `clip`, `transparency`, `pattern`
+(fill/stroke pattern colours and shadings), `dash`, `roundCapJoin`,
+`curvedStroke`, `hairline`, `hidden` (optional content the document
+configuration turns off), `annotation` (annotation appearance streams) and
+`unsupported:<operator>`.
+
+Visibility follows what the pinned canvas would paint: an entry is visible when
+its extent intersects the effective page clip, it is not inside hidden optional
+content and, for text, its render mode paints. Text extents are em-box estimates
+from font advances, images map the unit square through each placement, shadings
+take the page clip. A rectangular clip that still contains the whole page clip
+removes nothing and is not an omission. Any other clip, a painted text clip,
+transparency (non-unit alpha, blend modes, soft masks, composited groups) and
+unknown operators taint the rest of their save scope, and a pattern colour
+taints until a solid colour replaces it, so every later paint in that scope is
+reported rather than drawn without its clip or effect. A combined fill/stroke
+keeps its convertible half and reports the other.
+
+`exact` is true when no omission is visible. `rasterOnly` is true when nothing
+converts, no visible vector content is omitted and at least one image is
+visible: a scanned sheet stays a raster reference and the vector action is
+disabled rather than presented as editable vectors. The report's `sha256` binds
+the request digest to the verdict (exact, raster-only, convertible paths,
+omitted paints and the summary).
+
+`planPdfFillAnnotation` recomputes the report. An exact page plans directly. A
+page with visible omissions refuses unless `acceptedFidelitySha256` quotes the
+digest of the report the host displayed, and refuses when the quoted digest does
+not match; a raster-only page refuses regardless. Geometric qualification
+failures (unqualified curves, stroke topology, budgets) still refuse the whole
+page after acceptance — acceptance covers the listed omissions, not geometry.
+
+Every created annotation carries its verdict: `IfcAnnotation.Description`
+states `exact conversion` or `partial conversion; omitted N <kind>…`, and the
+`IfcLite_PdfVectorConversion` property set (attached through
+`IfcRelDefinesByProperties`) records the source PDF digest, page, CropBox,
+UserUnit, rotation, decoder version, calibration key, PDF-to-model affine,
+declared tolerance in metres, composition grid, request and fidelity digests,
+`ExactConversion`, `AcceptedPartialConversion`, converted paths, fill regions,
+omitted paints and the omission summary as JSON text. It uses ordinary IFC
+property types so it survives host export and reopens in any IFC reader; it
+does not make omitted content recoverable. Evidence for the controlled
+categories and the real drawings, the MuPDF raster comparison confining every
+difference between page and output (native 3D meshes and reopened 2D fill
+areas) to the reported extents, and the browser journey through the report
+step are in [evidence/pdf-fidelity-report](evidence/pdf-fidelity-report/README.md).
 
 This construction-space contract applies to well-formed PDF path objects. In
 [ISO 32000-1 §8.2, Figure 9 and its following note](https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf),
@@ -278,8 +334,20 @@ before publication. The existing coordinate adapter preserves saved placement,
 page rotation, UserUnit and native CropBox while converting the raster vertical
 axis once; it does not solve another calibration.
 
+Prepare vector preview first obtains the canonical fidelity report and shows it.
+An exact page continues straight to the native preview. A partial page stops at
+the report — each visible omission kind with its count and page region — and the
+action becomes Prepare partial conversion, enabled only after the explicit
+"Create a partial conversion" acknowledgement; the accepted report digest travels
+with the plan and its omissions are recorded in the created annotation's property
+set. A raster-only page disables the action with a raster-reference message and
+is never presented as editable vectors. Changing the drawing or tolerance discards
+the report; changing the target, container or Name discards only the prepared
+result.
+
 User-cropped raster registrations are explicitly refused for vectors because their
 extra crop has not been qualified by the native geometry planner. Use Image for
-those pages, text, image content or unsupported paint effects. Native refusals do
-not create partial annotations. Tolerance bounds geometric approximation; it is
-not a claim that arbitrary PDF typography or graphics have been preserved.
+those pages. Native refusals do not create partial annotations; a partial
+annotation exists only after the user accepted its listed omissions. Tolerance
+bounds geometric approximation in model metres after calibration; it is not a
+claim that arbitrary PDF typography or graphics have been preserved.

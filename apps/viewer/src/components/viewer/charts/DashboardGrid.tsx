@@ -19,6 +19,10 @@ import type { DashboardLayoutItem } from '@ifc-lite/charts';
 
 export const GRID_COLUMNS = 12;
 export const GRID_ROW_HEIGHT = 56;
+/** Below this width (a freshly floated panel is 360 px) the grid folds to half the columns and is read-only. */
+export const GRID_NARROW_WIDTH = 640;
+export const GRID_MIN_W = 3;
+export const GRID_MIN_H = 3;
 /** The drag handle selector: a card's title bar carries this class. */
 export const GRID_DRAG_HANDLE_CLASS = 'chart-drag-handle';
 
@@ -30,17 +34,35 @@ export interface DashboardGridProps {
   onLayoutChange: (layout: DashboardLayoutItem[]) => void;
 }
 
-/** `DashboardLayoutItem` ↔ react-grid-layout's `LayoutItem`. */
-export function toGridLayout(layout: readonly DashboardLayoutItem[], ids: readonly string[]): LayoutItem[] {
+/**
+ * `DashboardLayoutItem` ↔ react-grid-layout's `LayoutItem`. With `cols` below
+ * the full count (a floated panel) the cards are stacked one per row in
+ * their reading order — a view of the saved positions, never written back.
+ * Sizes below the grid minimum (a hand-edited file) are clamped, not refused.
+ */
+export function toGridLayout(layout: readonly DashboardLayoutItem[], ids: readonly string[], cols = GRID_COLUMNS): LayoutItem[] {
   const byId = new Map(layout.map((l) => [l.chartId, l]));
   let nextY = layout.reduce((max, l) => Math.max(max, l.y + l.h), 0);
-  return ids.map((id) => {
+  const items = ids.map((id) => {
     const item = byId.get(id);
-    if (item) return { i: id, x: item.x, y: item.y, w: item.w, h: item.h, minW: 3, minH: 3 };
-    const fresh = { i: id, x: 0, y: nextY, w: 6, h: 4, minW: 3, minH: 3 };
+    if (item) {
+      const w = Math.min(GRID_COLUMNS, Math.max(GRID_MIN_W, item.w));
+      return { i: id, x: Math.min(GRID_COLUMNS - w, Math.max(0, item.x)), y: Math.max(0, item.y), w, h: Math.max(GRID_MIN_H, item.h), minW: GRID_MIN_W, minH: GRID_MIN_H };
+    }
+    const fresh = { i: id, x: 0, y: nextY, w: 6, h: 4, minW: GRID_MIN_W, minH: GRID_MIN_H };
     nextY += 4;
     return fresh;
   });
+  if (cols >= GRID_COLUMNS) return items;
+  // Narrow: one card per row, in reading order (top to bottom, left to right).
+  let y = 0;
+  return [...items]
+    .sort((a, b) => a.y - b.y || a.x - b.x)
+    .map((item) => {
+      const stacked = { ...item, x: 0, w: cols, y };
+      y += item.h;
+      return stacked;
+    });
 }
 
 export function fromGridLayout(layout: Layout): DashboardLayoutItem[] {
@@ -58,23 +80,29 @@ function sameLayout(a: readonly DashboardLayoutItem[], b: readonly DashboardLayo
 
 export function DashboardGrid({ layout, ids, renderItem, onLayoutChange }: DashboardGridProps) {
   const { width, containerRef, mounted } = useContainerWidth();
-  const gridLayout = useMemo(() => toGridLayout(layout, ids), [layout, ids]);
+  // A narrow host (a freshly floated panel is 360 px) folds the grid to half
+  // the columns so a 6-wide card is a full row, and makes it read-only: the
+  // folded positions are a view of the saved ones, never a replacement.
+  const narrow = mounted && width < GRID_NARROW_WIDTH;
+  const cols = narrow ? GRID_COLUMNS / 2 : GRID_COLUMNS;
+  const gridLayout = useMemo(() => toGridLayout(layout, ids, cols), [layout, ids, cols]);
 
   const handleChange = useCallback((next: Layout) => {
+    if (narrow) return;
     const converted = fromGridLayout(next);
     // The grid reports on every render; only a real move/resize is a save.
     if (!sameLayout(layout, converted)) onLayoutChange(converted);
-  }, [layout, onLayoutChange]);
+  }, [layout, onLayoutChange, narrow]);
 
   return (
-    <div ref={containerRef} className="w-full" data-dashboard-grid>
+    <div ref={containerRef} className="w-full" data-dashboard-grid data-grid-cols={cols}>
       {mounted && (
         <GridLayout
           width={width}
           layout={gridLayout}
-          gridConfig={{ cols: GRID_COLUMNS, rowHeight: GRID_ROW_HEIGHT, margin: [8, 8], containerPadding: [0, 0] }}
-          dragConfig={{ handle: `.${GRID_DRAG_HANDLE_CLASS}`, bounded: true }}
-          resizeConfig={{ handles: ['se'] }}
+          gridConfig={{ cols, rowHeight: GRID_ROW_HEIGHT, margin: [8, 8], containerPadding: [0, 0] }}
+          dragConfig={{ handle: `.${GRID_DRAG_HANDLE_CLASS}`, bounded: true, enabled: !narrow }}
+          resizeConfig={{ handles: ['se'], enabled: !narrow }}
           onLayoutChange={handleChange}
         >
           {ids.map((id) => (

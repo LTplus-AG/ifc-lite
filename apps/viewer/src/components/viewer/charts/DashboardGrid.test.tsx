@@ -31,6 +31,14 @@ describe('DashboardGrid layout mapping', () => {
     ]);
   });
 
+  it('stacks the cards one per row in reading order on a narrow grid and clamps sizes below the minimum (review finding)', () => {
+    const folded = toGridLayout([{ chartId: 'a', x: 6, y: 0, w: 6, h: 4 }, { chartId: 'b', x: 0, y: 0, w: 6, h: 4 }, { chartId: 'c', x: 0, y: 4, w: 1, h: 1 }], ['a', 'b', 'c'], 6);
+    assert.deepEqual(folded.map((i) => [i.i, i.x, i.y, i.w, i.h]), [['b', 0, 0, 6, 4], ['a', 0, 4, 6, 4], ['c', 0, 8, 6, 3]]);
+    // At full width the saved positions are kept, only the undersized card is clamped.
+    const full = toGridLayout([{ chartId: 'c', x: 0, y: 4, w: 1, h: 1 }], ['c']);
+    assert.deepEqual(full.map((i) => [i.x, i.y, i.w, i.h]), [[0, 4, 3, 3]]);
+  });
+
   it('renders one grid item per id and does not write a layout back for a layout that did not change', () => {
     const layout = [{ chartId: 'a', x: 0, y: 0, w: 6, h: 4 }, { chartId: 'b', x: 6, y: 0, w: 6, h: 4 }];
     const writes: unknown[] = [];

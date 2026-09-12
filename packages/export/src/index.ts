@@ -63,6 +63,8 @@ export { columnsToParquet, isParquet } from './columns-to-parquet.js';
 // are the guard's internals, and the parity suite imports them from the module
 // directly. Callers need the two functions and the options type.
 export { escapeCsvCell, guardSpreadsheetFormula, type CsvCellOptions } from './csv-cell.js';
+// THE CSV table writer: header + rows of row objects through the escaper above.
+export { tableToCsv, csvCellOf, type TableToCsvOptions, type TableColumn } from './csv-table.js';
 
 export { planAuthoredResourceCleanup } from './authored-resource-cleanup.js';
 

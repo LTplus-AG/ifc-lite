@@ -13,6 +13,7 @@
  */
 
 export * from './types.js';
+export { clashTableRows, bareIfcGuid, CLASH_TABLE_COLUMNS, type ClashTableRow, type ClashTableOptions } from './export/table.js';
 export { matchesSelector } from './selectors.js';
 export { clashMemberKey, clashMemberSet, inClashSet } from './members.js';
 export {

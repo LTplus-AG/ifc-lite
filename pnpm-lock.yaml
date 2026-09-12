@@ -714,6 +714,9 @@ importers:
         specifier: workspace:^
         version: link:../wasm
     devDependencies:
+      '@ifc-lite/export':
+        specifier: workspace:^
+        version: link:../export
       '@ifc-lite/world-frame-fixtures':
         specifier: workspace:^
         version: link:../world-frame-fixtures
@@ -5535,7 +5538,7 @@ packages:
     resolution: {integrity: sha512-pJ2sYawQS0R/WI928Gj5GlPhTGzbMelq0+4INtSYNDV9ErKJcX6xjGWkoG/VnB3dpUm00zALaqkrUD77pO5TDQ==}
     hasBin: true
     peerDependencies:
-      browserslist: ^4.28.7
+      browserslist: ^4.28.9
 
   urijs@1.19.11:
     resolution: {integrity: sha512-HXgFDgDommxn5/bIv0cnQZsPhHDA90NPHD6+c/v21U5+Sx5hoP8+dP9IZXBU1gIfvdRfhG8cel9QNPeionfcCQ==}

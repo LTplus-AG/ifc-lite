@@ -5,7 +5,12 @@
 use super::{source::{refs, Source}, *};
 use ifc_lite_core::DecodedEntity;
 
-pub(super) fn body(source: &mut Source<'_>, product_id: u32, post_opening: bool) -> Result<(DecodedEntity, DecodedEntity), String> {
+/// Body representation types the canonical funnel evaluates to one face set.
+/// Curve, point, annotation and bounding-box types are refused explicitly.
+const TESSELLATABLE: &[&str] = &["MappedRepresentation", "SweptSolid", "AdvancedSweptSolid", "Brep",
+    "AdvancedBrep", "CSG", "Clipping", "SolidModel", "SurfaceModel", "Tessellation", "SectionedSpine"];
+
+pub(super) fn body(source: &mut Source<'_>, product_id: u32) -> Result<(DecodedEntity, DecodedEntity), String> {
     let product = source.entity(product_id)?;
     if !product.ifc_type.is_subtype_of(IfcType::IfcElement)
         || product.ifc_type.name().ends_with("StandardCase")
@@ -29,17 +34,22 @@ pub(super) fn body(source: &mut Source<'_>, product_id: u32, post_opening: bool)
             continue;
         }
         if found.is_some() { return Err("Evaluated appearance requires exactly one Body representation".into()); }
+        let kind = rep.get_string(2).unwrap_or("");
+        let mapped = kind == "MappedRepresentation";
+        // A type's representation map may reference an occurrence's own solid
+        // Body; the replacement then clones the wrapper and leaves the map. A
+        // map of a mapped wrapper is a chain and stays refused.
         if !source.incoming.get(&id).is_some_and(|incoming| incoming.contains(&pds_id)
             && incoming.iter().all(|parent| *parent == pds_id || (source.types.get(parent) == Some(&IfcType::IfcPresentationLayerAssignment)
-                || post_opening && source.types.get(parent)==Some(&IfcType::IfcRepresentationMap)))) {
+                || !mapped && source.types.get(parent)==Some(&IfcType::IfcRepresentationMap)))) {
             return Err("Body is shared or has unsupported layer/aspect associations".into());
         }
-        if rep.get_string(2) != Some("MappedRepresentation") && !(post_opening && rep.get_string(2)==Some("SweptSolid")) {
-            return Err("Evaluated appearance currently supports mapped occurrence bodies only".into());
+        if !TESSELLATABLE.contains(&kind) {
+            return Err("Evaluated appearance requires a Body representation type that permits tessellation".into());
         }
         let items=refs(rep.get(3))?;
-        if items.len()!=1 || (rep.get_string(2)==Some("MappedRepresentation") && source.types.get(&items[0])!=Some(&IfcType::IfcMappedItem)) {
-            return Err("Evaluated appearance requires one mapped occurrence item".into());
+        if items.len()!=1 || (mapped && source.types.get(&items[0])!=Some(&IfcType::IfcMappedItem)) {
+            return Err("Evaluated appearance requires one Body representation item".into());
         }
         found = Some(rep);
     }

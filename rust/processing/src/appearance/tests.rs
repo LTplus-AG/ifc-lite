@@ -58,6 +58,7 @@ fn request(products: Vec<u32>) -> AppearanceRequest {
             offset: [0.25, 0.5],
             rotation_radians: 0.,
         },
+        face_masks: Vec::new(),
     }
 }
 fn wire(value: &A) -> Value {

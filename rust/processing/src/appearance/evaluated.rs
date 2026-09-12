@@ -36,6 +36,31 @@ pub(super) fn authored(plan: &mut AppearancePlan, entities: &mut FxHashMap<u32, 
     entities.insert(id,Arc::new(DecodedEntity::new(id,ty,attributes))); id
 }
 
+/// Everything one occurrence needs before any private row is authored.
+struct Candidate {
+    body: DecodedEntity,
+    points: Vec<[f64; 3]>,
+    mesh: crate::types::mesh::MeshData,
+    old_item: u32,
+    surface: Vec<u32>,
+    old_items: Vec<u32>,
+    opening_edits: Vec<DecodedEntity>,
+    layers: Vec<DecodedEntity>,
+    rounding_bounds: Option<Vec<f64>>,
+    removed: Vec<crate::types::mesh::MeshData>,
+    fingerprint: String,
+    partition: Option<super::evaluated_mask::Partition>,
+}
+/// One IfcTriangulatedFaceSet over the shared point list, styled like the source.
+fn face_set(plan: &mut AppearancePlan, entities: &mut FxHashMap<u32, Arc<DecodedEntity>>,
+    coordinates: u32, corners: &[u32], surface: &[u32]) -> (u32, u32) {
+    let indices=A::List(corners.chunks_exact(3).map(|tri|A::List(tri.iter().map(|&i|A::Integer(i64::from(i)+1)).collect())).collect());
+    let item=authored(plan,entities,IfcType::IfcTriangulatedFaceSet,
+        vec![A::EntityRef(coordinates),A::Null,A::Null,indices,A::Null]);
+    let styled=authored(plan,entities,IfcType::IfcStyledItem,vec![A::EntityRef(item),list(surface),A::Null]);
+    (item,styled)
+}
+
 pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut Source<'_>) -> Result<Normalized,String> {
     if !matches!(request.schema.as_str(),"IFC4"|"IFC4X3") || request.product_ids.is_empty()
         || request.product_ids.len()>10_000 || request.source_revision.len()>4096 {
@@ -43,6 +68,7 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
     }
     validate_image_uri(&request.image_uri)?;
     mapping::validate(&request.mapping)?;
+    let masks=super::evaluated_mask::validate(request)?;
     texture_budget::preflight(source)?;
     if request.next_express_id <= source.types.last_key_value().map_or(0,|(id,_)|*id) {
         return Err("Stale allocator watermark overlaps effective IFC source".into());
@@ -57,18 +83,22 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
     let mut normalized = Normalized { request:request.clone(), conversions:Vec::new(), exclusions:Vec::new(), start:request.next_express_id };
     normalized.request.representation_policy=RepresentationPolicy::Preserve;
     normalized.request.product_ids.clear();
+    normalized.request.face_masks.clear();
     let mut budget=budget::PlanBudget::default();
     let mut seen=BTreeSet::new();
     for &product_id in &request.product_ids {
         if !seen.insert(product_id) { continue; }
         if source.product_items(product_id).is_ok() {
+            if masks.contains_key(&product_id) {
+                normalized.exclusions.push(Exclusion {product_id,reason:super::evaluated_mask::DIRECT_BODY.into()}); continue;
+            }
             normalized.request.product_ids.push(product_id); continue;
         }
         let candidate=(|| {
             let opening_edits=super::evaluated_openings::prepare(source,product_id,
                 styles.void_index.get(&product_id).map_or(&[],Vec::as_slice),&exclusive)?;
             if matches!(request.mapping,Mapping::ExistingUv {..}) { return Err("Evaluated occurrence conversion requires a new planar or box mapping".into()); }
-            let (product, body)=evaluated_source::body(source,product_id,!opening_edits.is_empty())?;
+            let (product, body)=evaluated_source::body(source,product_id)?;
             let layers=super::evaluated_replacement::layers(source,body.id)?;
             let mut meshes=canonical::produce(source,product_id,&textures,Some(&styles))?;
             if meshes.len()!=1 { return Err("Evaluated appearance currently requires one unambiguous source surface".into()); }
@@ -91,30 +121,35 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
             let rounding_bounds=if opening_edits.is_empty() {None} else {
                 Some(super::evaluated_precision::local_cast_bounds(&points,source.decoder.length_unit_scale())?)
             };
-            Ok((body.clone(),points,mesh,old_item,surface,source::refs(body.get(3))?,opening_edits,layers,rounding_bounds,removed))
+            let fingerprint=super::evaluated_mask::fingerprint(product.get_string(0).ok_or("Product has no GlobalId")?,
+                &points,source.decoder.length_unit_scale(),&mesh.indices)?;
+            let partition=masks.get(&product_id).map(|mask|super::evaluated_mask::partition(mask,&fingerprint,&mesh.indices)).transpose()?.flatten();
+            Ok(Candidate {old_items:source::refs(body.get(3))?,body:body.clone(),points,mesh,old_item,surface,opening_edits,layers,rounding_bounds,removed,fingerprint,partition})
         })();
-        let (mut body,points,mesh,old_item,surface,old_items,opening_edits,layers,rounding_bounds,removed)=match candidate {
+        let Candidate {mut body,points,mesh,old_item,surface,old_items,opening_edits,layers,rounding_bounds,removed,fingerprint,partition}=match candidate {
             Ok(value)=>value,
             Err(reason)=> {
                 if budget.exhausted { return Err(budget::BUDGET_ERROR.into()); }
                 normalized.exclusions.push(Exclusion {product_id,reason}); continue;
             }
         };
-        if u64::from(normalized.request.next_express_id)+4+layers.len() as u64>=u64::from(u32::MAX) || source.types.len()+4+layers.len()>200_000 {
+        let rows=if partition.is_some() {6} else {4};
+        if u64::from(normalized.request.next_express_id)+rows+layers.len() as u64>=u64::from(u32::MAX) || source.types.len()+rows as usize+layers.len()>200_000 {
             return Err("Evaluated appearance entity capacity exceeded".into());
         }
         let mut plan=AppearancePlan {next_express_id:normalized.request.next_express_id,
             next_available_express_id:normalized.request.next_express_id,..Default::default()};
         let mut entities=FxHashMap::default();
-        let rows=A::List(points.into_iter().map(|p|A::List(p.into_iter().map(A::Float).collect())).collect());
-        let mut point_attributes=vec![rows];
+        let point_rows=A::List(points.into_iter().map(|p|A::List(p.into_iter().map(A::Float).collect())).collect());
+        let mut point_attributes=vec![point_rows];
         if request.schema=="IFC4X3" {point_attributes.push(A::Null);}
         let coordinates=authored(&mut plan,&mut entities,IfcType::IfcCartesianPointList3D,point_attributes);
-        let indices=A::List(mesh.indices.chunks_exact(3).map(|tri|A::List(tri.iter().map(|&i|A::Integer(i64::from(i)+1)).collect())).collect());
-        let item=authored(&mut plan,&mut entities,IfcType::IfcTriangulatedFaceSet,
-            vec![A::EntityRef(coordinates),A::Null,A::Null,indices,A::Null]);
-        let styled=authored(&mut plan,&mut entities,IfcType::IfcStyledItem,vec![A::EntityRef(item),list(&surface),A::Null]);
-        super::evaluated_replacement::replace(source,product_id,&mut body,item,layers,&mut plan,&mut entities)?;
+        // The masked face set is authored first so `plan.items` keeps ascending
+        // creation order; the retained face set follows under the same wrapper.
+        let (item,styled)=face_set(&mut plan,&mut entities,coordinates,partition.as_ref().map_or(&mesh.indices,|p|&p.masked),&surface);
+        let retained=partition.as_ref().map(|p|face_set(&mut plan,&mut entities,coordinates,&p.retained,&surface));
+        let items:Vec<u32>=std::iter::once(item).chain(retained.map(|(id,_)|id)).collect();
+        super::evaluated_replacement::replace(source,product_id,&mut body,&items,layers,&mut plan,&mut entities)?;
         for mut opening in opening_edits {
             Arc::make_mut(&mut opening.attributes)[1]=A::String("Reference".into());
             plan.edits.push(PositionalEdit {express_id:opening.id,index:1,value:json!("Reference")});
@@ -125,30 +160,44 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
         source.decoder.inject_shared_cache(&entities);
         for entity in &plan.created { source.types.insert(entity.express_id,entities[&entity.express_id].ifc_type); }
         for old in old_items { if let Some(parents)=source.incoming.get_mut(&old) {parents.remove(&body_id);} }
-        source.incoming.insert(coordinates,BTreeSet::from([item]));
-        source.incoming.insert(item,BTreeSet::from([body_id,styled]));
-        source.styled_items.insert(item,vec![styled]);
-        let (_,style)=crate::prepass::surface_style_from_styled_item(&entities[&styled],&mut source.decoder)
-            .ok_or("Converted surface style failed canonical resolution")?;
-        styles.geometry_style_index.insert(item,style);
+        source.incoming.insert(coordinates,items.iter().copied().collect());
+        for &(face,styled_row) in std::iter::once(&(item,styled)).chain(retained.as_ref()) {
+            source.incoming.insert(face,BTreeSet::from([body_id,styled_row]));
+            source.styled_items.insert(face,vec![styled_row]);
+            let (_,style)=crate::prepass::surface_style_from_styled_item(&entities[&styled_row],&mut source.decoder)
+                .ok_or("Converted surface style failed canonical resolution")?;
+            styles.geometry_style_index.insert(face,style);
+        }
+        if let Some((retained_item,_))=retained {
+            source.evaluated_splits.insert(product_id,source::SplitBody {textured:item,retained:retained_item});
+        }
         for owner in removed.iter().map(|mesh|mesh.express_id).collect::<BTreeSet<_>>() {
             if !canonical::produce(source,owner,&textures,Some(&styles))?.is_empty() {
                 return Err("Converted Reference opening still produces canonical geometry".into());
             }
         }
+        // Every authored face set must reproduce its share of the source
+        // corners exactly, with the source colour and material retained.
         let target=canonical::produce(source,product_id,&textures,Some(&styles))?;
-        if target.len()!=1 { return Err("Evaluated replacement changed canonical submesh count".into()); }
-        let target=&target[0];
-        if mesh.indices.len()!=target.indices.len() || mesh.color!=target.color || mesh.material_name!=target.material_name {
-            return Err("Evaluated replacement changed source appearance or triangle count".into());
-        }
-        for (&a,&b) in mesh.indices.iter().zip(&target.indices) {
-            let before=canonical::corner_position(&mesh.positions,a)?;
-            let after=canonical::corner_position(&target.positions,b)?;
-            let equivalent=if let Some(bounds)=&rounding_bounds {
-                super::evaluated_precision::same_corner(before,mesh.origin,after,target.origin,bounds[a as usize])
-            } else {(0..3).all(|axis|f64::from(before[axis])+mesh.origin[axis]==f64::from(after[axis])+target.origin[axis])};
-            if !equivalent {return Err("Evaluated replacement exceeds its canonical coordinate precision contract".into());}
+        let expected:Vec<(u32,&[u32])>=match (&partition,retained) {
+            (None,None)=>vec![(item,&mesh.indices)],
+            (Some(p),Some((retained_item,_)))=>vec![(item,&p.masked),(retained_item,&p.retained)],
+            _=>return Err("Face mask split bookkeeping is inconsistent".into()),
+        };
+        if target.len()!=expected.len() { return Err("Evaluated replacement changed canonical submesh count".into()); }
+        for (face,corners) in expected {
+            let target=target.iter().find(|m|m.geometry_item_id==Some(face)).ok_or("Evaluated replacement lost an authored face set")?;
+            if corners.len()!=target.indices.len() || mesh.color!=target.color || mesh.material_name!=target.material_name {
+                return Err("Evaluated replacement changed source appearance or triangle count".into());
+            }
+            for (&a,&b) in corners.iter().zip(&target.indices) {
+                let before=canonical::corner_position(&mesh.positions,a)?;
+                let after=canonical::corner_position(&target.positions,b)?;
+                let equivalent=if let Some(bounds)=&rounding_bounds {
+                    super::evaluated_precision::same_corner(before,mesh.origin,after,target.origin,bounds[a as usize])
+                } else {(0..3).all(|axis|f64::from(before[axis])+mesh.origin[axis]==f64::from(after[axis])+target.origin[axis])};
+                if !equivalent {return Err("Evaluated replacement exceeds its canonical coordinate precision contract".into());}
+            }
         }
         normalized.request.next_express_id=plan.next_available_express_id;
         normalized.request.product_ids.push(product_id);
@@ -158,7 +207,9 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
         normalized.conversions.push(Conversion {plan,styled_id:styled,binding:AppearanceConversion {
             product_id,representation_id:body_id,source_geometry_item_id:old_item,geometry_item_id:item,
             source_indices:mesh.indices,source_positions:mesh.positions,source_normals:mesh.normals,
-            source_origin:mesh.origin,source_color:mesh.color,rtc_offset,source_removed_meshes:removed }});
+            source_origin:mesh.origin,source_color:mesh.color,rtc_offset,surface_fingerprint:fingerprint,
+            masked_triangles:partition.map(|p|p.triangles),retained_geometry_item_id:retained.map(|(id,_)|id),
+            source_removed_meshes:removed }});
     }
     Ok(normalized)
 }
@@ -198,4 +249,4 @@ impl Normalized {
 
 #[cfg(test)]
 #[path = "evaluated_tests.rs"]
-mod tests;
+pub(crate) mod tests;

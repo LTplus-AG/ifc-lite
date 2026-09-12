@@ -26,6 +26,19 @@ pub struct AppearanceRequest {
     pub repeat_s: bool,
     pub repeat_t: bool,
     pub mapping: Mapping,
+    /// Reviewable surface targeting for evaluated occurrence conversions only.
+    /// A mask binds to the `surface_fingerprint` a previous plan reported.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub face_masks: Vec<FaceMask>,
+}
+/// Ascending or unordered source triangle ordinals of one product's evaluated
+/// surface. A stale fingerprint is an explicit exclusion, never a silent reuse.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FaceMask {
+    pub product_id: u32,
+    pub surface_fingerprint: String,
+    pub triangles: Vec<u32>,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
@@ -132,6 +145,20 @@ pub struct AppearanceConversion {
     pub source_origin: [f64; 3],
     pub source_color: [f32; 4],
     pub rtc_offset: [f64; 3],
+    /// Hex SHA-256 of the product GlobalId, its quantised local evaluated
+    /// surface and topology. Face masks bind to this value; express ids are
+    /// excluded so a renumbered export keeps its selection. The surface is
+    /// evaluated in f32 world space at its current placement, so a placement
+    /// edit generally changes the value and reports a mask stale.
+    pub surface_fingerprint: String,
+    /// Accepted ascending source triangle ordinals that received the
+    /// appearance. Absent when the whole surface was converted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub masked_triangles: Option<Vec<u32>>,
+    /// The unmasked IfcTriangulatedFaceSet under the same Body wrapper. It keeps
+    /// the source surface style and the complementary source triangles.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retained_geometry_item_id: Option<u32>,
     /// Canonical opening meshes removed when their Body becomes Reference.
     /// Inner fields use the shared MeshData wire contract; origin + rtc_offset
     /// restores IFC Z-up metres. These owners are companion dependency roots.

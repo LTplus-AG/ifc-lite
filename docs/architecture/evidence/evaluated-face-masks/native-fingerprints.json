@@ -1,0 +1,35 @@
+{
+  "base": {
+    "source": "e700a7ba3",
+    "binarySha256": "3369b1ca4ce11da5da610c6c502155819ed96fd7d45990d4e72f1c9aa7fca1f1"
+  },
+  "branch": {
+    "source": "e9273525c",
+    "binarySha256": "3de543f8e4a5a80a40e9a91609b111811fea8d9623222e9e78add5d33ed487eb"
+  },
+  "method": "perf_probe --iters 1 --json --fingerprint on each prebuilt profiling binary; every non-timing field compared.",
+  "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "meshes": [
+    285,
+    285
+  ],
+  "vertices": [
+    35940,
+    35940
+  ],
+  "triangles": [
+    19456,
+    19456
+  ],
+  "fingerprints": {
+    "meshFingerprintsFnv1a64": [
+      [
+        "25ac885b6ff4ad00"
+      ],
+      [
+        "25ac885b6ff4ad00"
+      ]
+    ]
+  },
+  "differences": {}
+}

@@ -51,6 +51,12 @@ export function bindAppearancePreview(
   const plannedItems = new Map(plan.items.map(item => [item.geometryItemId, item]));
   const conversions = new Map<number, NonNullable<AppearancePlan['conversions']>[number]>();
   for (const conversion of plan.conversions ?? []) {
+    // A masked conversion splits one source part into a textured and a retained
+    // face set. The renderer preview replaces parts one-to-one, so refuse here
+    // rather than render the retained triangles as missing geometry.
+    if (conversion.maskedTriangles || conversion.retainedGeometryItemId !== undefined) {
+      throw new Error(`IFC object #${conversion.productId} carries a face selection this viewer cannot preview yet.`);
+    }
     const item = plannedItems.get(conversion.geometryItemId);
     if (!item || item.productId !== conversion.productId || conversions.has(conversion.geometryItemId)
       || conversion.sourceGeometryItemId === conversion.geometryItemId

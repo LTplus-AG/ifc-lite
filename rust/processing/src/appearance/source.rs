@@ -5,6 +5,13 @@ use ifc_lite_core::{AttributeValue as A, DecodedEntity, EntityDecoder, EntitySca
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) const MAX_VALUES: usize = 8_000_000;
+/// A face-masked evaluated Body: only `textured` receives the appearance while
+/// `retained` keeps the source style under the same wrapper (#4404).
+#[derive(Clone, Copy)]
+pub(super) struct SplitBody {
+    pub textured: u32,
+    pub retained: u32,
+}
 pub(super) struct Source<'a> {
     pub context: Option<super::context::Context>,
     pub decoder: EntityDecoder<'a>,
@@ -14,6 +21,8 @@ pub(super) struct Source<'a> {
     pub styled_items: BTreeMap<u32, Vec<u32>>,
     pub voided: BTreeSet<u32>,
     pub style_assignments: BTreeSet<u32>,
+    /// Private normalization state keyed by product; empty outside conversions.
+    pub evaluated_splits: BTreeMap<u32, SplitBody>,
 }
 impl<'a> Source<'a> {
     pub fn new(bytes: &'a [u8]) -> Result<Self, String> {
@@ -29,6 +38,7 @@ impl<'a> Source<'a> {
             styled_items: BTreeMap::new(),
             voided: BTreeSet::new(),
             style_assignments: BTreeSet::new(),
+            evaluated_splits: BTreeMap::new(),
         };
         let mut scanner = EntityScanner::new(bytes);
         let mut work = 0;
@@ -216,6 +226,14 @@ impl<'a> Source<'a> {
         }
         if items.is_empty() {
             return Err("No direct tessellated Body representation".into());
+        }
+        // A masked conversion textures only its selected face set; the retained
+        // face set is a sibling item the appearance pass must leave untouched.
+        if let Some(split) = self.evaluated_splits.get(&product) {
+            if !items.contains(&split.textured) || !items.contains(&split.retained) {
+                return Err("Masked evaluated Body lost one of its face sets".into());
+            }
+            return Ok(vec![split.textured]);
         }
         Ok(items.into_iter().collect())
     }

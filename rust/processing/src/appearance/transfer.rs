@@ -99,6 +99,7 @@ pub fn plan_mesh_transfer(
             origin: [0.; 3],
             metres_per_tile: [1.; 3],
         },
+        face_masks: Vec::new(),
     };
     let output = atlas_plan::plan_sampled_appearance(
         bytes,

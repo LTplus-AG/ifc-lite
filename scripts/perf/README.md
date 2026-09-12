@@ -1140,6 +1140,26 @@ speedup. Preserve literal-versus-reference schema slots when compacting plans;
 never trade semantic fidelity for convenient generic string rewriting.
 [Follow-up samples and limits](../../docs/architecture/evidence/evaluated-occurrences/allocation-load.json).
 
+### Evaluated face masks and tessellatable-body policy (#4404)
+
+Face masks and the widened evaluated policy live only inside an explicit
+appearance plan; normal loading does not touch them. The interleaved,
+order-balanced native AC20 base/branch probe (nine rounds per side, prebuilt
+profiling binaries, `scripts/perf/ab-order.mjs` seed 4404) found phase
+medians equal or within two milliseconds, every phase inside the reporter's
+noise band, and the reporter refused a verdict because the base's own spread
+exceeded its 15% threshold on a machine shared with other builds. This is
+"no resolvable change", not a speedup or a regression claim, and no browser
+worker-pool measurement was made. A separate `--fingerprint` run of both
+binaries reports identical mesh, vertex and triangle counts and identical
+ordered geometry fingerprints. Tool lesson: at the time of this probe
+`scripts/perf/ab-order.mjs`'s CLI guard compared `import.meta.url` with a bare
+`file://` prefix and printed nothing on Windows, so `ab.sh` there produced
+zero rounds and a vacuous "within noise" verdict; the probe drove `roundOrder`
+directly and checked the run count. #4541 fixed the guard with
+`pathToFileURL`; always check the round count `ab.sh` reports.
+[Raw rounds](../../docs/architecture/evidence/evaluated-face-masks/native-load.json) and [fingerprints](../../docs/architecture/evidence/evaluated-face-masks/native-fingerprints.json).
+
 ### Shared appearance atlas sampling (#4381)
 
 Factoring target appearance preservation, charts and canonical image binding into

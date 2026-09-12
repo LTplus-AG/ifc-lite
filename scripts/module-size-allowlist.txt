@@ -355,7 +355,7 @@
    855 scripts/check-review-posted.mjs
    446 scripts/check-source-text-assertions.mjs
    423 scripts/check-test-glob-coverage.mjs
-   640 scripts/check-test-revert-oracle.mjs
+   605 scripts/check-test-revert-oracle.mjs
    703 scripts/check-test-wiring.mjs
    488 scripts/check-wasm-disposal.mjs
    499 scripts/docs/check-doc-samples.mjs
@@ -367,7 +367,7 @@
   1113 scripts/lib/pr-review-signal.mjs
    443 scripts/lib/prepass-class-boundary.mjs
    734 scripts/lib/refwalk-classify.mjs
-   523 scripts/lib/revert-oracle.mjs
+   516 scripts/lib/revert-oracle.mjs
    494 scripts/lib/rust-source-text-detect.mjs
   1165 scripts/lib/vitest-timeout-audit.mjs
    691 scripts/review/build-context-pack.mjs

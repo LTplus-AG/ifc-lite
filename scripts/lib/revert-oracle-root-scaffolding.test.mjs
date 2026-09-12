@@ -44,6 +44,9 @@ test('#4036: root Node assertions run through retained benchmark scaffolding aft
     const output = run(process.execPath, [oracle, '--root', root, '--base', base, '--ci', '--json']);
     assert.match(output, /OBSERVED/);
     assert.match(output, /1 assertion\(s\) RED out of 1 collected/);
+    const payload = JSON.parse(output.slice(output.indexOf('{')));
+    assert.equal(payload.channel, 'pull-request');
+    assert.equal(payload.verdict, 'OBSERVED');
     assert.equal(readFileSync(join(root, 'src/value.mjs'), 'utf8'), 'export const value = 2;\n');
     assert.equal(run('git', ['status', '--porcelain']).trim(), '');
 

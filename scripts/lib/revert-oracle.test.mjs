@@ -1037,10 +1037,10 @@ test('verdict: a missing run never reports clean', () => {
   assert.notEqual(verdict({ baseline: green, reverted: null }).exitCode, 0);
 });
 
-test('#3661: CI blocks misses and broken baselines, but not honest inconclusives', () => {
+test('#4109: CI blocks misses, broken baselines, and oracle capability gaps', () => {
   assert.equal(ciExitCode(OBSERVED), 0);
   assert.equal(ciExitCode(UNOBSERVED), 1);
-  assert.equal(ciExitCode(INCONCLUSIVE), 0);
+  assert.notEqual(ciExitCode(INCONCLUSIVE), 0);
   assert.notEqual(ciExitCode(BASELINE_BROKEN), 0);
 });
 
@@ -1113,6 +1113,21 @@ test('#4131 regression: multi-package all-skipped-plus-evidence run does not blo
   const v = verdict({ baseline, reverted });
   assert.equal(v.verdict, OBSERVED);
   assert.equal(v.exitCode, 0);
+});
+
+test('#4109: incomplete execution cannot support a negative UNOBSERVED finding', () => {
+  const baseline = aggregate([
+    { kind: PASS, passed: 12, failed: 0, total: 12, evidence: [] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+  ]);
+  const reverted = aggregate([
+    { kind: PASS, passed: 12, failed: 0, total: 12, evidence: [] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+  ]);
+  const v = verdict({ baseline, reverted });
+  assert.equal(v.verdict, INCONCLUSIVE);
+  assert.match(v.reason, /cannot support an UNOBSERVED finding/);
+  assert.notEqual(ciExitCode(v.verdict), 0);
 });
 
 test('#4108 (still fixed): aggregate: a SINGLE all-skipped package is still ALL_SKIPPED and still blocks', () => {

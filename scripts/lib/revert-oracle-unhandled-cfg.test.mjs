@@ -52,7 +52,7 @@ function makeCrate() {
   writeFileSync(
     join(root, 'Cargo.toml'),
     '[package]\nname = "oracle-unhandled-cfg"\nversion = "0.1.0"\nedition = "2021"\n\n' +
-      '[features]\ndefault = [\"gate_a\"]\ngate_a = []\n',
+      '[features]\ndefault = ["gate_a"]\ngate_a = []\n',
   );
   writeFileSync(join(root, 'src/lib.rs'), 'pub fn value() -> u32 { 1 }\n');
   run('cargo', ['generate-lockfile', '--offline']);
@@ -99,7 +99,10 @@ test(
       const jsonStart = result.stdout.indexOf('{');
       assert.ok(jsonStart >= 0, `no JSON in stdout:\n${result.stdout}`);
       const payload = JSON.parse(result.stdout.slice(jsonStart));
+      assert.equal(payload.schemaVersion, 1);
+      assert.equal(payload.channel, 'oracle');
       assert.equal(payload.verdict, 'ERROR');
+      assert.equal(payload.exitCode, EXIT_UNHANDLED_CFG_SHAPE);
       assert.equal(payload.error.name, 'UnhandledCfgShapeError');
       assert.equal(payload.error.shape, 'not(...) over default feature "gate_a"');
       assert.match(payload.reason, /not\(\.\.\.\)/);

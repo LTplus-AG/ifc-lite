@@ -36,6 +36,7 @@
 
 import { parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs';
 import { ALL_SKIPPED, classifyExecuted, severityCandidates } from './revert-oracle-all-skipped.mjs';
+import { passVerdict } from './revert-oracle-pass-verdict.mjs';
 import { isInertPath, isTestSupportPath, withoutBrowserSpecs } from './revert-oracle-inert.mjs';
 // ---------------------------------------------------------------------------
 // Diff classification
@@ -472,16 +473,7 @@ export function verdict({ baseline, reverted }) {
     };
   }
   if (reverted.kind === PASS) {
-    return {
-      verdict: UNOBSERVED,
-      exitCode: 1,
-      reason:
-        `FINDING: with the production change fully reverted, all ${reverted.total} test(s) still PASS. ` +
-        'The branch\'s tests do not observe the branch\'s change.',
-      advice:
-        'Either the test asserts something the change does not affect, or it stubs the very module ' +
-        'the change lives in. Write a test that fails on this revert before shipping.',
-    };
+    return passVerdict(baseline, reverted);
   }
   return { verdict: INCONCLUSIVE, exitCode: 3, reason: `unhandled reverted kind: ${reverted.kind}`, advice: SURGICAL_ADVICE };
 }
@@ -518,6 +510,7 @@ export function aggregate(results) {
     passed: sum('passed'),
     failed: sum('failed'),
     total: sum('total'),
+    allSkippedRuns: results.filter((r) => r.kind === ALL_SKIPPED).length,
     evidence: results.flatMap((r) => r.evidence ?? []),
   };
 }

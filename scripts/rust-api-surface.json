@@ -32,7 +32,6 @@
     "Token": "enum { Derived; EntityRef(u32); Enum(&'a [u8]); Float(f64); Integer(i64); List(Vec<Token<'a>>); Null; String(&'a [u8]); TypedValue(&'a [u8], Vec<Token<'a>>) }",
     "build_entity_index": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "decode_ifc_string": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
-    "encode_ifc_string": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "entity_count": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "extract_coordinate_list_from_entity": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "extract_entity_refs_from_list": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

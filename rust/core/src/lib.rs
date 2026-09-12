@@ -115,7 +115,7 @@ pub use schema_helpers::{
     is_simple_geometry_type,
     legacy_aware_ifc_type, legacy_aware_ifc_type_from_record, type_product_ifc_type,
 };
-pub use step_encoding::{decode_ifc_string, encode_ifc_string};
+pub use step_encoding::decode_ifc_string;
 pub use streaming::{parse_stream, ParseEvent, StreamConfig};
 pub use units::{
     extract_length_unit_scale, extract_plane_angle_to_radians, get_si_prefix_multiplier,

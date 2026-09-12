@@ -135,6 +135,90 @@ fn sharded_column_discovery_schedules_storey_geometry_job() {
     );
 }
 
+/// The columns are host-built parallel arrays and the discovery walk runs
+/// under wasm `panic=abort`, so an index past a column or past the content
+/// is the end of the worker, not an exception. The four column lengths are
+/// checked once at the sharded entry (`check_index_columns`, the rule
+/// `setEntityIndex` already applies); this pins the two in-walk bounds that
+/// the length check cannot cover: a `start` past the content (columns
+/// scanned against a longer buffer than this worker holds) and a span whose
+/// `start + length` would wrap (review finding K6). Before the fix
+/// `keyword_at` clamped only `end`, so `start > content.len()` panicked with
+/// "slice index starts at X but ends at Y". Mutation that fails this test:
+/// restore `&content[start..end.min(content.len())]` in `keyword_at`, or
+/// `start + lengths[i]` in the walk (the latter only on a 32-bit target).
+#[test]
+fn a_span_past_the_content_is_an_unnamed_record_not_a_panic() {
+    let bytes = LEGACY_JOB_FIXTURE.as_bytes();
+    let (records, classes, _) =
+        ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
+    let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
+    let lengths: Vec<u32> = records.iter().map(|&(_, s, e)| (e - s) as u32).collect();
+    // Every record start shifted past the end of the buffer, as if the
+    // columns had been stitched against a longer file. `u32::MAX` on the
+    // geometry-job record exercises the saturating end as well.
+    let beam_idx = records
+        .iter()
+        .position(|&(_, s, e)| keyword_at(bytes, s, e) == "IFCBEAMSTANDARDCASE")
+        .expect("fixture must contain the IFCBEAMSTANDARDCASE");
+    assert!(
+        classes[beam_idx] & ifc_lite_processing::PREPASS_CLASS_FLAG_GEOMETRY_JOB != 0,
+        "sanity: the walk must reach keyword_at for this record"
+    );
+    let mut starts: Vec<u32> = records.iter().map(|&(_, s, _)| (s + bytes.len()) as u32).collect();
+    starts[beam_idx] = u32::MAX;
+
+    assert_eq!(keyword_at(bytes, bytes.len() + 10, bytes.len() + 20), "");
+
+    let disabled = rustc_hash::FxHashSet::default();
+    let discovery = discover_from_columns(bytes, &ids, &starts, &lengths, &classes, &disabled);
+    // The record is still scheduled (the decoder's own bounds check drops it
+    // later, and counts it), but with no keyword to name it.
+    let beam_id = records[beam_idx].0;
+    let labelled: Vec<_> = discovery
+        .buffered_jobs
+        .iter()
+        .filter(|&&(id, _, _, _)| id == beam_id)
+        .map(|&(_, _, _, ty)| ty)
+        .collect();
+    assert_eq!(
+        labelled,
+        vec![ifc_lite_core::legacy_aware_ifc_type("")],
+        "a job whose span lies outside the content carries the empty keyword's type"
+    );
+}
+
+/// A class column shorter than the id column (review finding K6's first
+/// trigger: `ids` of 3, `classes` of 2) used to index `classes[i]` past its
+/// end inside the walk. The sharded entry now refuses unequal columns, and
+/// the walk itself stops at the shortest column, so no caller can trap the
+/// worker through it. Mutation that fails this test: restore the
+/// `for i in 0..ids.len()` loop indexing each column by `i`.
+#[test]
+fn a_short_column_ends_the_walk_instead_of_panicking() {
+    let bytes = LEGACY_JOB_FIXTURE.as_bytes();
+    let (records, classes, _) =
+        ifc_lite_processing::scan_shard_classified(bytes, 0, bytes.len());
+    let ids: Vec<u32> = records.iter().map(|&(id, _, _)| id).collect();
+    let starts: Vec<u32> = records.iter().map(|&(_, s, _)| s as u32).collect();
+    let lengths: Vec<u32> = records.iter().map(|&(_, s, e)| (e - s) as u32).collect();
+    let disabled = rustc_hash::FxHashSet::default();
+
+    let full = discover_from_columns(bytes, &ids, &starts, &lengths, &classes, &disabled);
+    let last_id = *ids.last().expect("fixture has records");
+    assert!(
+        full.buffered_jobs.iter().any(|&(id, _, _, _)| id == last_id),
+        "sanity: the last record (the beam) is a geometry job when every column is whole"
+    );
+
+    let short = &classes[..classes.len() - 1];
+    let truncated = discover_from_columns(bytes, &ids, &starts, &lengths, short, &disabled);
+    assert!(
+        truncated.buffered_jobs.iter().all(|&(id, _, _, _)| id != last_id),
+        "the record past the short column is not walked"
+    );
+}
+
     // The geometry-JOB fixture. `IFCBEAMSTANDARDCASE` is an IFC4 entity that
     // IFC4X3 removed, and `has_geometry_by_name` admits it, so it reaches the
     // geometry-job branch directly. Declared IFC4 because that is the schema

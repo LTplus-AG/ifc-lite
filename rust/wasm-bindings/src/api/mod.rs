@@ -19,7 +19,7 @@ mod clash;
 mod clash_solid;
 mod csg_diagnostics;
 mod diagnose;
-mod entity_index;
+pub(crate) mod entity_index;
 mod export_data;
 mod export_dfjson;
 mod export_glb;

@@ -10,14 +10,22 @@ use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 use super::{PropValue, PropertySet, QuantitySet, QuantityValue};
 
-/// Format an f64 without noisy trailing zeros (`1.0` → `1`, `1.50` → `1.5`).
+/// Format an f64 without noisy trailing zeros (`1.0` → `1`, `1.50` → `1.5`),
+/// and otherwise with the shortest digits that parse back to the same value.
+///
+/// Every property value and schema-declared attribute reaching CSV, JSON,
+/// JSON-LD, IFCX and Parquet goes through here, and `json::typed_value`
+/// re-parses the string as the JSON number. It used to format with `{:.6}`
+/// and trim, which rounds anything below 5e-7 to `"0"` (so a `Leakage` of
+/// `2.5E-7` became the number `0.0`, indistinguishable from a recorded zero)
+/// and caps every value at six decimals. Rust's `Display` for `f64` is the
+/// round-trip-shortest form, so the integer cosmetic is the only special
+/// case that stays.
 pub fn fmt_num(v: f64) -> String {
     if v.fract() == 0.0 && v.abs() < 1e15 {
         format!("{}", v as i64)
     } else {
-        let s = format!("{v:.6}");
-        let trimmed = s.trim_end_matches('0').trim_end_matches('.');
-        trimmed.to_string()
+        format!("{v}")
     }
 }
 

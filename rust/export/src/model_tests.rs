@@ -138,6 +138,47 @@ fn fmt_num_is_clean() {
     assert_eq!(fmt_num(0.0), "0");
 }
 
+/// `fmt_num` used to format with `{:.6}` and trim, so a magnitude below 5e-7
+/// became the string `"0"` and the JSON exporter re-parsed it as `0.0`, the
+/// same number a file that actually recorded zero produces; and any value
+/// with more than six decimals lost them. The output has to parse back to
+/// the value the file said.
+#[test]
+fn fmt_num_round_trips_small_and_precise_values() {
+    for v in [2.5e-7, 1234.56789012, 1e-12, -3.0e-9, 0.1 + 0.2] {
+        let s = fmt_num(v);
+        assert_eq!(s.parse::<f64>().ok(), Some(v), "fmt_num({v:?}) = {s:?} must parse back to {v:?}");
+    }
+    assert_ne!(fmt_num(2.5e-7), "0", "a small nonzero must not collapse to zero");
+    assert_eq!(fmt_num(1234.56789012), "1234.56789012");
+}
+
+/// The same loss through the public JSON export: a small property value must
+/// come out as the file's number, not as `0.0`.
+#[test]
+fn json_export_keeps_a_property_value_below_the_old_six_decimal_floor() {
+    use crate::json::export_json;
+    let src = concat!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n",
+        "#1=IFCWALL('0WALL0000000000000000A',$,'W',$,$,$,$,$,.SOLIDWALL.);\n",
+        "#10=IFCPROPERTYSINGLEVALUE('Leakage',$,IFCREAL(2.5E-7),$);\n",
+        "#11=IFCPROPERTYSET('0PSET0000000000000000A',$,'Pset_X',$,(#10));\n",
+        "#12=IFCRELDEFINESBYPROPERTIES('0REL00000000000000000A',$,$,$,(#1),#11);\n",
+        "ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let json = export_json(src.as_bytes(), &Default::default());
+    let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+    let leakage = v
+        .as_array()
+        .expect("export_json emits an array")
+        .iter()
+        .flat_map(|e| e["propertySets"].as_array().cloned().unwrap_or_default())
+        .flat_map(|ps| ps["properties"].as_array().cloned().unwrap_or_default())
+        .find(|p| p["name"] == "Leakage")
+        .unwrap_or_else(|| panic!("Leakage property in JSON export: {json}"));
+    assert_eq!(leakage["value"].as_f64(), Some(2.5e-7), "got {leakage}");
+}
+
 /// A 22-character IFC GlobalId, padded from a readable tag. Synthetic: these
 /// files are written here, not sampled from anywhere.
 fn gid(tag: &str) -> String {

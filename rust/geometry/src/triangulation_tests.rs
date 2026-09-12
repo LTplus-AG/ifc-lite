@@ -45,6 +45,7 @@ fn ring_area2(p: &[Point2<f64>]) -> f64 {
 /// outside the ring) and `tri(0,2,3)` is +40.0, double-covering that outside
 /// region. The valid split is the 1-3 diagonal: +24.0 and +8.0, summing to
 /// the ring's own +32.0.
+/// Regression for #4579.
 #[test]
 fn concave_quad_is_split_across_an_interior_diagonal() {
     let dart = vec![
@@ -81,6 +82,7 @@ fn concave_quad_is_split_across_an_interior_diagonal() {
 /// correct one, so that ring passes with the defect present and proves
 /// nothing. Here `tri(0,1,2)` is +8.0 against a ring of -32.0 (backwards,
 /// outside) and `tri(0,2,3)` is -40.0; the 1-3 split is -16.0 and -16.0.
+/// Regression for #4579.
 #[test]
 fn concave_quad_split_is_correct_for_a_clockwise_ring() {
     let dart = vec![
@@ -105,6 +107,7 @@ fn concave_quad_split_is_correct_for_a_clockwise_ring() {
 }
 
 /// Convex quads keep the exact indices the old unconditional arm emitted.
+/// Regression for #4579.
 #[test]
 fn convex_quad_still_uses_the_zero_two_diagonal() {
     let square = vec![

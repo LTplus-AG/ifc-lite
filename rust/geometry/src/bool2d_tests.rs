@@ -328,6 +328,7 @@ fn assert_single_merged_hole(result: &Profile2D, case: &str) {
     );
 }
 
+/// Regression for #4579.
 #[test]
 fn overlapping_voids_merge_instead_of_cancelling() {
     // Regression: under `FillRule::EvenOdd` i_overlay applies the rule to the CLIP
@@ -350,6 +351,7 @@ fn overlapping_voids_merge_instead_of_cancelling() {
     assert!((net_area(&counted) - 72.0).abs() < 1e-6);
 }
 
+/// Regression for #4579.
 #[test]
 fn overlapping_voids_merge_when_one_footprint_is_mirrored() {
     // `NonZero` alone is not enough: a CW (mirrored / negatively scaled) footprint
@@ -368,6 +370,7 @@ fn overlapping_voids_merge_when_one_footprint_is_mirrored() {
     assert_single_merged_hole(&result, "one footprint mirrored CW");
 }
 
+/// Regression for #4579.
 #[test]
 fn subtract_2d_single_void_overlapping_an_existing_hole_merges() {
     // Single-clip path (`subtract_2d`): the host already has a `[2,6]^2` hole and

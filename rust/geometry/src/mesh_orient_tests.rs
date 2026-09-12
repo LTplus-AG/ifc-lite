@@ -643,6 +643,7 @@ fn dense_adjacency_reuses_links_across_width_transitions_3988() {
 /// large offset carried somewhere other than IfcSite, under the RTC threshold,
 /// on a closed solid of a few centimetres. This pins the pass as robust to it
 /// rather than claiming the canonical path was broken.
+/// Regression for #4579.
 #[test]
 fn a_small_solid_far_from_the_origin_is_oriented_by_its_shape_not_its_position() {
     const ALL: [usize; 12] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];

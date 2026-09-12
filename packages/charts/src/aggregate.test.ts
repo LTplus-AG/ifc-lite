@@ -53,12 +53,21 @@ END-ISO-10303-21;
 async function parsedDataset(idOffset = 0): Promise<ChartDataset> {
   const bytes = new TextEncoder().encode(MINI_IFC);
   const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-  return elementsDataset([{ store, idOffset, name: 'mini.ifc' }]);
+  return elementsDataset([{ store, toGlobalId: (id) => id + idOffset, name: 'mini.ifc' }]);
 }
 
 const byType: ChartSpec = { id: 'c1', title: 'Elements by type', source: 'elements', type: 'bar', dimension: ELEMENT_COLUMNS.ifcType, measure: { agg: 'count' } };
 
 describe('elementsDataset on a real parsed store', () => {
+  it('two include sets of the same size produce different fingerprints (review finding)', async () => {
+    const bytes = new TextEncoder().encode(MINI_IFC);
+    const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    const a = elementsDataset([{ store, toGlobalId: (id) => id, name: 'm', include: new Set([41, 42]) }]);
+    const b = elementsDataset([{ store, toGlobalId: (id) => id, name: 'm', include: new Set([41, 43]) }]);
+    expect(a.rows).toHaveLength(2);
+    expect(a.fingerprint).not.toBe(b.fingerprint);
+  });
+
   it('yields one row per element instance with type, storey, model, name and the offset renderer id', async () => {
     const ds = await parsedDataset(1_000_000);
     expect(ds.rows).toHaveLength(5);
@@ -136,14 +145,36 @@ describe('aggregate invariants', () => {
     expect(other.key).toBe(OTHER_BUCKET_KEY);
     expect(other.color).toBe(OTHER_BUCKET_COLOR);
     expect([...other.ids].sort()).toEqual([4, 5]);
-    expect(agg.categoryOf.get(5)).toBe(2);
+    expect(agg.categoryOf.get(5)).toEqual([2]);
   });
 
-  it('a pair row (clash) puts both ids in the bucket and de-duplicates across rows', () => {
-    const ds = dataset([['Rule', 'category']], [[[10, 20], ['r1']], [[20, 30], ['r1']]]);
+  it('a pair row (clash) puts both ids in the bucket, de-duplicates across rows, and an element under two rules maps back to both', () => {
+    const ds = dataset([['Rule', 'category']], [[[10, 20], ['r1']], [[20, 30], ['r1']], [[20, 40], ['r2']]]);
     const agg = aggregate({ id: 'p', title: 'p', source: 'clash', type: 'bar', dimension: 'Rule', measure: { agg: 'count' } }, ds);
     expect(agg.categories[0].count).toBe(2);
     expect([...agg.categories[0].ids].sort()).toEqual([10, 20, 30]);
+    // Element 20 is in r1 and r2 (review finding): selecting it in 3D touches both buckets.
+    expect(agg.categoryOf.get(20)).toEqual([0, 1]);
+    expect(categoriesForIds(agg, [20])).toEqual({ full: [], partial: [0, 1] });
+    expect(categoriesForIds(agg, [20, 40])).toEqual({ full: [1], partial: [0] });
+  });
+
+  it('a real dimension value spelled like the Other sentinel stays a real bucket (review finding)', () => {
+    const ds = dataset([['S', 'category'], ['T', 'category']], [[[1], ['L1', '__other__']], [[2], ['L1', '__other__']], [[3], ['L1', 'b']], [[4], ['L1', 'c']], [[5], ['L2', 'd']]]);
+    const agg = aggregate({ id: 'o', title: 'o', source: 'clash', type: 'stackedBar', dimension: 'T', stackBy: 'S', measure: { agg: 'count' }, topN: 1 }, ds);
+    expect(agg.categories.map((c) => [c.label, c.count])).toEqual([['__other__', 2], ['Other', 3]]);
+    expect(agg.series.find((s) => s.label === 'L1')!.buckets.map((b) => b.count)).toEqual([2, 2]);
+    expect(agg.series.find((s) => s.label === 'L2')!.buckets.map((b) => b.count)).toEqual([0, 1]);
+    // And on a plain chart the real value keeps a palette colour, only the synthetic tail is grey.
+    const plain = aggregate({ id: 'o2', title: 'o', source: 'clash', type: 'bar', dimension: 'T', measure: { agg: 'count' }, topN: 1 }, ds);
+    expect(plain.categories[0].color).not.toBe(OTHER_BUCKET_COLOR);
+    expect(plain.categories[1].color).toBe(OTHER_BUCKET_COLOR);
+  });
+
+  it('clamps a non-positive bin count instead of producing negative bins', () => {
+    const ds = dataset([['D', 'number']], [[[1], [0]], [[2], [5]]]);
+    const agg = aggregate({ id: 'b', title: 'b', source: 'clash', type: 'histogram', dimension: 'D', measure: { agg: 'count' }, bins: 0 }, ds);
+    expect(agg.categories.map((c) => [c.label, c.count])).toEqual([['0–5', 2]]);
   });
 
   it('stacks a second category into aligned series with per-series colour', () => {

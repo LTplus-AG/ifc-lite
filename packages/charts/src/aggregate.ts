@@ -44,6 +44,9 @@ interface Accumulator {
   ids: Set<number>;
   /** Sort helper for `label` order on date/number dimensions. */
   order: number;
+  /** The synthetic folded tail — flagged, not keyed, so a real value spelled
+   *  like the sentinel can never be mistaken for it. */
+  isOther?: true;
 }
 
 /**
@@ -101,7 +104,9 @@ function histogramKeyer(rows: readonly ChartDatasetRow[], column: number, bins: 
     if (v < min) min = v;
     if (v > max) max = v;
   }
-  const count = bins ?? sturgesBins(n);
+  // A saved spec can carry `bins: 0`; a non-positive count would produce
+  // negative indices and `-Infinity` labels, so clamp to at least one bin.
+  const count = Math.max(1, Math.floor(bins ?? sturgesBins(n)));
   const width = n === 0 || max === min ? 1 : (max - min) / count;
   const format = (x: number): string => (Number.isInteger(x) ? String(x) : x.toFixed(2));
   return (value) => {
@@ -147,7 +152,7 @@ function applyTopN(accs: Accumulator[], spec: ChartSpec): Accumulator[] {
   if (!spec.topN || spec.topN <= 0 || accs.length <= spec.topN) return accs;
   if (spec.type === 'histogram' || spec.type === 'timeline') return accs;
   const kept = accs.slice(0, spec.topN);
-  const other: Accumulator = { key: OTHER_BUCKET_KEY, label: OTHER_LABEL, value: 0, count: 0, ids: new Set(), order: Number.MAX_SAFE_INTEGER };
+  const other: Accumulator = { key: OTHER_BUCKET_KEY, label: OTHER_LABEL, value: 0, count: 0, ids: new Set(), order: Number.MAX_SAFE_INTEGER, isOther: true };
   for (const acc of accs.slice(spec.topN)) {
     other.value += acc.value;
     other.count += acc.count;
@@ -219,20 +224,26 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
   }
 
   const ordered = applyTopN(orderBuckets([...categories.values()], spec), spec);
-  const keptKeys = new Set(ordered.map((o) => o.key));
+  const keptKeys = new Set(ordered.filter((o) => !o.isOther).map((o) => o.key));
   const folded = new Set([...categories.keys()].filter((k) => !keptKeys.has(k)));
 
   // Colours: a stacked bar keys colour by SERIES (the legend), a plain chart by
   // category; the Other bucket always gets the neutral grey.
-  const colorKey = (acc: Accumulator): string => (acc.key === OTHER_BUCKET_KEY ? OTHER_BUCKET_KEY : acc.label);
-  const colorLabels = stackColumn >= 0 ? [...series.values()].map((s) => s.label) : ordered.map(colorKey);
+  const colorLabels = stackColumn >= 0 ? [...series.values()].map((s) => s.label) : ordered.filter((o) => !o.isOther).map((o) => o.label);
   const palette = assignColors(colorLabels, options.palette);
-  const colorFor = (acc: Accumulator): string => palette.colors.get(colorKey(acc)) ?? OTHER_BUCKET_COLOR;
+  const colorFor = (acc: Accumulator): string => (acc.isOther ? OTHER_BUCKET_COLOR : palette.colors.get(acc.label) ?? OTHER_BUCKET_COLOR);
 
   const categoryBuckets = ordered.map((acc) => toBucket(acc, colorFor(acc)));
-  const categoryOf = new Map<number, number>();
+  // An element can sit in several categories (a clash element under two
+  // rules, a task product in two tasks), so the reverse index keeps them all.
+  const categoryOf = new Map<number, number[]>();
   categoryBuckets.forEach((bucket, index) => {
-    for (let i = 0; i < bucket.ids.length; i++) categoryOf.set(bucket.ids[i], index);
+    for (let i = 0; i < bucket.ids.length; i++) {
+      const id = bucket.ids[i];
+      const list = categoryOf.get(id);
+      if (list) list.push(index);
+      else categoryOf.set(id, [index]);
+    }
   });
 
   let seriesOut: BucketSeries[];
@@ -240,9 +251,9 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
     seriesOut = [...series.entries()].map(([stackKey, s]) => {
       const color = palette.colors.get(s.label) ?? OTHER_BUCKET_COLOR;
       const buckets = ordered.map((cat) => {
-        if (cat.key === OTHER_BUCKET_KEY) {
+        if (cat.isOther) {
           // The Other column of this series: its cells for every folded category.
-          const other: Accumulator = { key: OTHER_BUCKET_KEY, label: OTHER_LABEL, value: 0, count: 0, ids: new Set(), order: 0 };
+          const other: Accumulator = { key: OTHER_BUCKET_KEY, label: OTHER_LABEL, value: 0, count: 0, ids: new Set(), order: 0, isOther: true };
           for (const [k, cell] of s.cells) if (folded.has(k)) { other.value += cell.value; other.count += cell.count; for (const id of cell.ids) other.ids.add(id); }
           return toBucket(other, color);
         }
@@ -278,9 +289,9 @@ export function idsForCategories(aggregation: Aggregation, indices: Iterable<num
 export function categoriesForIds(aggregation: Aggregation, ids: Iterable<number>): { full: number[]; partial: number[] } {
   const hits = new Map<number, number>();
   for (const id of ids) {
-    const index = aggregation.categoryOf.get(id);
-    if (index === undefined) continue;
-    hits.set(index, (hits.get(index) ?? 0) + 1);
+    const indices = aggregation.categoryOf.get(id);
+    if (!indices) continue;
+    for (const index of indices) hits.set(index, (hits.get(index) ?? 0) + 1);
   }
   const full: number[] = [];
   const partial: number[] = [];

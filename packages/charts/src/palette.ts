@@ -26,6 +26,7 @@ export function paletteColor(slot: number): string {
   return slot < LENS_PALETTE.length ? LENS_PALETTE[slot] : uniqueColor(slot);
 }
 
+/** `Bucket.key` of the synthetic folded tail; `aggregate` flags it, it never goes through the palette. */
 export const OTHER_BUCKET_KEY = '__other__';
 /** `Other` is always the same neutral grey, whatever slot it would have had. */
 export const OTHER_BUCKET_COLOR = '#9E9E9E';
@@ -43,10 +44,6 @@ export function assignColors(labels: readonly string[], previous: PaletteAssignm
   let nextSlot = previous.nextSlot;
   for (const label of labels) {
     if (colors.has(label)) continue;
-    if (label === OTHER_BUCKET_KEY) {
-      colors.set(label, OTHER_BUCKET_COLOR);
-      continue;
-    }
     colors.set(label, paletteColor(nextSlot));
     nextSlot += 1;
   }

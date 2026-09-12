@@ -10,8 +10,8 @@
  * are the lists engine's job (a host merges those in through
  * `ListDefinition` columns); this is the fast path that needs no list.
  *
- * Rows carry RENDERER ids: `expressId + idOffset` for the model's slot in a
- * federation, so a bucket's ids can go straight to selection / visibility.
+ * Rows carry RENDERER ids through the host's own resolver (`toGlobalId`), so
+ * a bucket's ids can go straight to selection and visibility.
  */
 import { EntityFlags } from '@ifc-lite/data';
 import type { ChartDataset, ChartDatasetColumn, ChartDatasetRow } from './types.js';
@@ -49,12 +49,26 @@ export const ELEMENT_DATASET_COLUMNS: ChartDatasetColumn[] = [
 export interface ElementsDatasetModel {
   /** The parsed store (its `entities` + `spatialHierarchy` are read). */
   store: ElementsStore;
-  /** Renderer id offset of this model's slot; 0 for a single model. */
-  idOffset: number;
+  /**
+   * Local express id → renderer (federated) global id, the host's canonical
+   * resolver (in the viewer, the store's `toGlobalId` over the federation
+   * registry). The package does no id arithmetic of its own.
+   */
+  toGlobalId: (expressId: number) => number;
   /** Human model name for the `Model` column. */
   name: string;
   /** Keep only these express ids (a list scope, the visible set); all when absent. */
   include?: ReadonlySet<number>;
+}
+
+/** FNV-1a over the row identities, so two include sets of equal size differ. */
+function fingerprintRows(ids: readonly number[]): string {
+  let h = 0x811c9dc5;
+  for (const id of ids) {
+    h ^= id;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16);
 }
 
 /** Only instances with geometry are chartable elements — types, styles, relationships are not. */
@@ -78,18 +92,19 @@ export function elementsDataset(models: readonly ElementsDatasetModel[]): ChartD
       }
       return cached;
     };
-    let kept = 0;
+    const rowIds: number[] = [];
     for (let i = 0; i < entities.count; i++) {
       if (!isElementRow(entities.flags[i])) continue;
       const expressId = entities.expressId[i];
       if (model.include && !model.include.has(expressId)) continue;
-      kept += 1;
+      const globalId = model.toGlobalId(expressId);
+      rowIds.push(globalId);
       rows.push({
-        ids: [expressId + model.idOffset],
+        ids: [globalId],
         values: [entities.getTypeName(expressId), storeyOf(expressId), model.name, entities.getName(expressId)],
       });
     }
-    fingerprintParts.push(`${model.name}@${model.idOffset}:${kept}/${entities.count}`);
+    fingerprintParts.push(`${model.name}:${rowIds.length}/${entities.count}#${fingerprintRows(rowIds)}`);
   }
   return { source: 'elements', columns: ELEMENT_DATASET_COLUMNS, rows, fingerprint: fingerprintParts.join('|') };
 }

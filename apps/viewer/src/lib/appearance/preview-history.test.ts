@@ -4,7 +4,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
-import type { AppearanceChange, Renderer } from '@ifc-lite/renderer';
+import { invertAppearancePartition, type AppearanceChange, type AppearancePartition, type Renderer } from '@ifc-lite/renderer';
 import { appearanceHistoryParts } from './preview.js';
 
 function fixture() {
@@ -68,16 +68,20 @@ it('history joins and splits a partitioned owner through the inverted partition 
   const textured: MeshData = { ...original, geometryItemId: 101, color: [1, 1, 1, 1], indices: texturedIndices,
     positions: new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
     uvs: new Float32Array([0, 0, 1, 0, 1, 1]), textureRef: { textureId: -1, url: 'textures/a.png', repeatS: true, repeatT: true },
-    textureBitmap: {} as ImageBitmap, appearanceSource: { kind: 'canonical-item', indices: texturedIndices, sourceIndices: texturedIndices } };
+    textureBitmap: {} as ImageBitmap, appearanceSource: { kind: 'canonical-item', indices: texturedIndices, sourceIndices: indices,
+      cornerIndices: new Uint32Array([0, 1, 2]) } };
   const retained: MeshData = { ...original, geometryItemId: 102, indices: retainedIndices,
-    appearanceSource: { kind: 'canonical-item', indices: retainedIndices, sourceIndices: retainedIndices } };
-  const partition = { before: [{ geometryItemId: 21, triangles: [0, 1] }], after: [{ geometryItemId: 101, triangles: [0] }, { geometryItemId: 102, triangles: [1] }] };
+    appearanceSource: { kind: 'canonical-item', indices: retainedIndices, sourceIndices: indices,
+      cornerIndices: new Uint32Array([3, 4, 5]) } };
+  const partition = { sourceGeometryItemId: 21, triangleCount: 2,
+    before: [{ partId: 0, geometryItemId: 21, triangles: [0, 1] }],
+    after: [{ partId: 0, geometryItemId: 101, triangles: [0] }, { partId: 1, geometryItemId: 102, triangles: [1] }] };
   const change: AppearanceChange = { owner: { expressId: 19, modelIndex: 0 }, before: [original], after: [textured, retained], partition };
   const renderer = (current: MeshData[]) => ({ getScene: () => ({ getMeshDataPieces: () => current }), getAppearancePreview: () => ({}) }) as unknown as Renderer;
   const undo = appearanceHistoryParts(renderer([textured, retained]), [change], 'undo')[0];
   assert.deepEqual(undo.parts.map(part => part.geometryItemId), [21]);
   assert.equal(undo.parts[0].positions, original.positions);
-  assert.deepEqual(undo.partition, { before: partition.after, after: partition.before });
+  assert.deepEqual(undo.partition, invertAppearancePartition(partition));
   assert.equal(undo.geometryItemRemaps, undefined);
   const redo = appearanceHistoryParts(renderer([original]), [change], 'redo')[0];
   assert.deepEqual(redo.parts.map(part => part.geometryItemId), [101, 102]);
@@ -88,4 +92,36 @@ it('history joins and splits a partitioned owner through the inverted partition 
   const moved = { ...retained, positions: retained.positions.slice() }; moved.positions[0] = 0.25;
   assert.throws(() => appearanceHistoryParts(renderer([textured, moved]), [change], 'undo'), /geometry or shading changed/);
   assert.throws(() => appearanceHistoryParts(renderer([textured, retained]), [change], 'redo'), /geometry or shading changed/);
+});
+
+it('history joins and re-splits streamed parts with repeated item ids (#4556)', () => {
+  const fullIndices = new Uint32Array([0, 1, 2, 0, 2, 3, 1, 4, 2, 4, 5, 2]);
+  const fullPositions = new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 2, 0, 0, 2, 1, 0]);
+  const fullNormals = new Float32Array(18).map((_, i) => i % 3 === 2 ? 1 : 0);
+  const make = (geometryItemId: number, triangles: readonly number[]): MeshData => {
+    const cornerIndices = Uint32Array.from(triangles.flatMap(ordinal => [ordinal * 3, ordinal * 3 + 1, ordinal * 3 + 2]));
+    const indices = Uint32Array.from(cornerIndices, corner => fullIndices[corner]);
+    return { expressId: 19, modelIndex: 0, geometryItemId, color: [geometryItemId / 100, 0, 0, 1],
+      positions: fullPositions, normals: fullNormals, indices,
+      appearanceSource: { kind: 'canonical-item', indices, sourceIndices: fullIndices, cornerIndices } };
+  };
+  const before = [make(21, [0, 1]), make(21, [2, 3])];
+  const after = [make(101, [0]), make(102, [1]), make(101, [2]), make(102, [3])];
+  const partition: AppearancePartition = { sourceGeometryItemId: 21, triangleCount: 4,
+    before: [{ partId: 0, geometryItemId: 21, triangles: [0, 1] }, { partId: 1, geometryItemId: 21, triangles: [2, 3] }],
+    after: [{ partId: 0, geometryItemId: 101, triangles: [0] }, { partId: 1, geometryItemId: 102, triangles: [1] },
+      { partId: 2, geometryItemId: 101, triangles: [2] }, { partId: 3, geometryItemId: 102, triangles: [3] }] };
+  const change: AppearanceChange = { owner: { expressId: 19, modelIndex: 0 }, before, after, partition };
+  const renderer = (current: MeshData[]) => ({ getScene: () => ({ getMeshDataPieces: () => current }),
+    getAppearancePreview: () => ({}) }) as unknown as Renderer;
+  const undo = appearanceHistoryParts(renderer(after), [change], 'undo')[0];
+  assert.deepEqual(undo.parts.map(part => part.geometryItemId), [21, 21]);
+  assert.deepEqual(undo.partition, invertAppearancePartition(partition));
+  const redo = appearanceHistoryParts(renderer(before), [change], 'redo')[0];
+  assert.deepEqual(redo.parts.map(part => part.geometryItemId), [101, 102, 101, 102]);
+  assert.deepEqual(redo.partition, partition);
+  assert.throws(() => appearanceHistoryParts(renderer([after[2], after[1], after[0], after[3]]), [change], 'undo'), /geometry or shading changed/);
+  const staleSource = fullIndices.slice(); staleSource[6] = 0;
+  const stale = { ...after[2], appearanceSource: { ...after[2].appearanceSource!, sourceIndices: staleSource } };
+  assert.throws(() => appearanceHistoryParts(renderer([after[0], after[1], stale, after[3]]), [change], 'undo'), /geometry or shading changed/);
 });

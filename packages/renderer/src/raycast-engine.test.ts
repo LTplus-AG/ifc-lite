@@ -400,6 +400,56 @@ describe('RaycastEngine.raycastScene', () => {
     assert.equal(hit.sourceTriangleIndex, undefined);
   });
 
+  it('keeps equal-sized fragments that share an owner, origin and first vertex (#4556)', () => {
+    const scene = new Scene();
+    const sourceIndices = new Uint32Array([0, 1, 2, 0, 3, 4]);
+    const fragment = (x: number, ordinal: number): MeshData => {
+      const indices = new Uint32Array([0, 1, 2]);
+      return { expressId: 7, modelIndex: 3, geometryItemId: 70,
+        positions: new Float32Array([0, 0, 0, x, -1, 0, x, 1, 0]),
+        normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices, color: [1, 1, 1, 1],
+        appearanceSource: { kind: 'canonical-item', indices, sourceIndices,
+          cornerIndices: Uint32Array.from([ordinal * 3, ordinal * 3 + 1, ordinal * 3 + 2]) } };
+    };
+    addRegularMesh(scene, fragment(-10, 0));
+    addRegularMesh(scene, fragment(10, 1));
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    const left = engine.raycastScene(300, 300)?.intersection;
+    const right = engine.raycastScene(500, 300)?.intersection;
+    assert.deepEqual(left && { modelIndex: left.modelIndex, geometryItemId: left.geometryItemId,
+      sourceTriangleIndex: left.sourceTriangleIndex }, { modelIndex: 3, geometryItemId: 70, sourceTriangleIndex: 0 });
+    assert.deepEqual(right && { modelIndex: right.modelIndex, geometryItemId: right.geometryItemId,
+      sourceTriangleIndex: right.sourceTriangleIndex }, { modelIndex: 3, geometryItemId: 70, sourceTriangleIndex: 1 },
+    'the equal-signature right fragment must remain raycastable with its canonical ordinal');
+  });
+
+  it('rebuilds a populated BVH when equal-shaped owner fragments are replaced and reordered (#4556)', () => {
+    const scene = new Scene();
+    const fullSource = new Uint32Array([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
+    const fragment = (x: number, itemId: number, firstCorner: number): MeshData => {
+      const mesh = makeQuad({ expressId: 7, modelIndex: 3, translate: [x, 0, 0] });
+      return { ...mesh, geometryItemId: itemId,
+        appearanceSource: { kind: 'canonical-item', indices: mesh.indices, sourceIndices: fullSource,
+          cornerIndices: Uint32Array.from({ length: 6 }, (_, corner) => firstCorner + corner) } };
+    };
+    addRegularMesh(scene, fragment(-10, 70, 0));
+    addRegularMesh(scene, fragment(10, 71, 6));
+    for (let i = 0; i < 99; i++) {
+      addRegularMesh(scene, makeQuad({ expressId: 100 + i, translate: [1_000 + i * 20, 0, 0] }));
+    }
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    assert.equal(engine.raycastScene(200, 350)?.intersection.geometryItemId, 70,
+      'the first ray populates the >100-piece BVH with the old left fragment');
+
+    const newRight = fragment(10, 170, 0);
+    const newLeft = fragment(-10, 171, 6);
+    (scene as unknown as { meshDataMap: Map<number, MeshData[]> }).meshDataMap.set(7, [newRight, newLeft]);
+    const hit = engine.raycastScene(200, 350)?.intersection;
+    assert.deepEqual(hit && { geometryItemId: hit.geometryItemId, sourceTriangleIndex: hit.sourceTriangleIndex,
+      x: Math.round(hit.point.x) }, { geometryItemId: 171, sourceTriangleIndex: 2, x: -10 },
+    'same-count, same-shape replacement and reorder must return the new piece, ordinal and location');
+  });
+
   it('off-origin, rotated, non-uniformly-scaled geometry is hit at the transformed location, not the local one', () => {
     // An asymmetric triangle (legs of different length: 12 along local X, 4
     // along local Y), scaled non-uniformly, rotated 90 degrees about Y, and

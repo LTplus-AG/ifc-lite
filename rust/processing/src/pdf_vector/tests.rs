@@ -113,6 +113,23 @@ fn issue_4406_conversion_clip_combines_square_caps_with_small_miter_limit() {
         "square end caps remain part of the envelope when the miter limit is smaller: {error}");
 }
 #[test]
+fn issue_4613_omission_extent_stays_in_the_independent_control_point_contract() {
+    let input = page(vec![
+        PdfVectorOperator::LineWidth { width: 2. },
+        PdfVectorOperator::Path {
+            paint: PdfVectorPaint::Stroke,
+            commands: vec![0., 120., 20., 2., 120., 100., 220., 100., 220., 20.],
+        },
+    ]);
+    let prepared = prepare_pdf_vector_page(&input).unwrap();
+    let omission = &prepared.fidelity.omissions[0];
+    assert_eq!(omission.kind, "curvedStroke");
+    // The MuPDF oracle records cubic controls in this frame. The separate
+    // painted-ink envelope expands by the default miter limit for fail-closed
+    // crop decisions, but must not shift this independently checked extent.
+    assert_eq!(omission.bbox_pdf, Some([120., 20., 220., 100.]));
+}
+#[test]
 fn issue_4406_preserves_curves_fill_rules_and_paint_order_without_claiming_flattening() {
     let commands = vec![
         0., 0., 0., 2., 1., 3., 2., 3., 3., 0., 3., 4., 1., 5., 0., 4.,

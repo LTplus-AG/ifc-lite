@@ -8,7 +8,7 @@
  * selects, like the clash panel's — nothing here needs a portal.
  */
 import { useState } from 'react';
-import type { ChartDatasetColumn, ChartSpec, ChartType } from '@ifc-lite/charts';
+import type { ChartDataset, ChartDatasetColumn, ChartSource, ChartSpec, ChartType } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 
 const TYPE_LABELS: Record<ChartType, string> = {
@@ -20,9 +20,18 @@ const TYPE_LABELS: Record<ChartType, string> = {
   timeline: 'Timeline (per week)',
 };
 
+const SOURCE_LABELS: Record<ChartSource, string> = {
+  elements: 'Elements',
+  clash: 'Clash results',
+  bcf: 'BCF topics',
+  schedule: 'Schedule tasks',
+  ids: 'IDS results',
+  compare: 'Model compare',
+};
+
 export interface ChartEditorProps {
   spec: ChartSpec;
-  columns: readonly ChartDatasetColumn[];
+  datasets: Record<ChartSource, ChartDataset>;
   onSave: (spec: ChartSpec) => void;
   onCancel: () => void;
 }
@@ -34,8 +43,10 @@ function dimensionColumns(type: ChartType, columns: readonly ChartDatasetColumn[
   return columns.filter((c) => c.kind === 'category' || c.kind === 'boolean');
 }
 
-export function ChartEditor({ spec, columns, onSave, onCancel }: ChartEditorProps) {
+export function ChartEditor({ spec, datasets, onSave, onCancel }: ChartEditorProps) {
   const [draft, setDraft] = useState<ChartSpec>(spec);
+  const columns = datasets[draft.source].columns;
+  const rowCount = datasets[draft.source].rows.length;
   const numberColumns = columns.filter((c) => c.kind === 'number');
   const categoryColumns = columns.filter((c) => c.kind === 'category');
   const dims = dimensionColumns(draft.type, columns);
@@ -43,6 +54,12 @@ export function ChartEditor({ spec, columns, onSave, onCancel }: ChartEditorProp
   const measureOk = draft.measure.agg === 'count' || numberColumns.some((c) => c.id === draft.measure.column);
   const stackOk = draft.type !== 'stackedBar' || categoryColumns.some((c) => c.id === draft.stackBy);
   const valid = draft.title.trim().length > 0 && dimensionOk && measureOk && stackOk;
+
+  const setSource = (source: ChartSource): void => {
+    const cols = datasets[source].columns;
+    const allowed = dimensionColumns(draft.type, cols);
+    setDraft({ ...draft, source, dimension: allowed[0]?.id ?? '', stackBy: undefined, measure: { agg: 'count' } });
+  };
 
   const setType = (type: ChartType): void => {
     const next = { ...draft, type };
@@ -68,6 +85,12 @@ export function ChartEditor({ spec, columns, onSave, onCancel }: ChartEditorProp
         <input className={field} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} aria-label="Chart title" />
       </label>
       <div className="grid grid-cols-2 gap-2">
+        <label className="flex flex-col gap-0.5">
+          <span className="text-muted-foreground">Source{rowCount === 0 ? ' (nothing loaded for this source yet)' : ` (${rowCount.toLocaleString()} rows)`}</span>
+          <select className={field} value={draft.source} onChange={(e) => setSource(e.target.value as ChartSource)} aria-label="Source">
+            {(Object.keys(SOURCE_LABELS) as ChartSource[]).map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
+          </select>
+        </label>
         <label className="flex flex-col gap-0.5">
           <span className="text-muted-foreground">Chart</span>
           <select className={field} value={draft.type} onChange={(e) => setType(e.target.value as ChartType)} aria-label="Chart type">

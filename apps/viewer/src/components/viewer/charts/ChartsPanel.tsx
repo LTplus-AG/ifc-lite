@@ -17,11 +17,11 @@ import type { Aggregation, ChartScope, ChartSpec, DashboardSpec } from '@ifc-lit
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
 import type { ChartFocusMode } from '@/store/slices/chartSlice';
-import { modelOverviewDashboard, newChartSpec } from '@/lib/charts/presets';
+import { DASHBOARD_PRESETS, modelOverviewDashboard, newChartSpec } from '@/lib/charts/presets';
 import { ChartCard } from './ChartCard';
 import { ChartEditor } from './ChartEditor';
 import { useChart3DLink, useChartColorOverlay } from './useChart3DLink';
-import { useChartDataset } from './useChartDataset';
+import { useChartDatasets } from './useChartDatasets';
 import type { ChartRenderer } from './useEChart';
 
 const FOCUS_LABEL: Record<ChartFocusMode, string> = { highlight: 'Highlight', isolate: 'Isolate', ghost: 'Ghost others' };
@@ -58,7 +58,7 @@ export function ChartsPanel({ onClose, renderer }: ChartsPanelProps) {
 
   const dashboard = useMemo(() => dashboards.find((d) => d.id === activeDashboardId) ?? null, [dashboards, activeDashboardId]);
   const scope = dashboard?.scope ?? { kind: 'all' as const };
-  const dataset = useChartDataset(scope);
+  const datasets = useChartDatasets(scope);
   const link = useChart3DLink();
 
   const [editing, setEditing] = useState<ChartSpec | null>(null);
@@ -100,8 +100,26 @@ export function ChartsPanel({ onClose, renderer }: ChartsPanelProps) {
     <div className="flex h-full min-h-0 flex-col text-xs" data-charts-panel>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-border">
         <BarChart3 className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
-        <select className={select} value={activeDashboardId ?? ''} onChange={(e) => setActiveDashboardId(e.target.value)} aria-label="Dashboard">
+        <select
+          className={select}
+          value={activeDashboardId ?? ''}
+          onChange={(e) => {
+            // The preset entries create a new dashboard from a template.
+            const preset = DASHBOARD_PRESETS.find((p) => `preset:${p.name}` === e.target.value);
+            if (preset) {
+              const created = preset.create();
+              upsertDashboard(created);
+              setActiveDashboardId(created.id);
+            } else {
+              setActiveDashboardId(e.target.value);
+            }
+          }}
+          aria-label="Dashboard"
+        >
           {dashboards.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          <optgroup label="New from preset">
+            {DASHBOARD_PRESETS.map((p) => <option key={p.name} value={`preset:${p.name}`}>{p.name}</option>)}
+          </optgroup>
         </select>
         <label className="inline-flex items-center gap-1 text-muted-foreground">
           Scope
@@ -139,7 +157,7 @@ export function ChartsPanel({ onClose, renderer }: ChartsPanelProps) {
 
       {editing && (
         <div className="border-b border-border bg-muted/20">
-          <ChartEditor spec={editing} columns={dataset.columns} onSave={saveChart} onCancel={() => setEditing(null)} />
+          <ChartEditor spec={editing} datasets={datasets} onSave={saveChart} onCancel={() => setEditing(null)} />
         </div>
       )}
 
@@ -157,7 +175,7 @@ export function ChartsPanel({ onClose, renderer }: ChartsPanelProps) {
               <ChartCard
                 key={spec.id}
                 spec={spec}
-                dataset={dataset}
+                dataset={datasets[spec.source]}
                 link={link}
                 renderer={renderer}
                 onEdit={() => setEditing(spec)}

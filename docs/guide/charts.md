@@ -19,9 +19,18 @@ Because a bucket keeps its element ids, the bidirectional link needs no support 
 
 ## Sources and scope
 
-The **elements** source is available today: one row per element instance across every loaded model with `IFC type`, `Storey`, `Model` and `Name`, read straight off the entity tables (no list needs to run). Clash results, BCF topics, the 4D schedule, IDS results and model compare follow as further sources.
+| Source | One row per | Columns | A bucket selects |
+|--------|-------------|---------|------------------|
+| **Elements** | element instance across every loaded model | `IFC type`, `Storey`, `Model`, `Name` — straight off the entity tables, no list needs to run | the elements |
+| **Clash results** | clash of the current run (after exclusions) | `Rule`, `Severity`, `Detection` (hard / clearance / touch), `Review status`, `Type A`, `Type B`, `Type pair`, `Model A`, `Model B`, `Storey`, `Distance` (m, for a penetration histogram), `Group` | both elements of every clash in it |
+| **BCF topics** | topic of the loaded project | `Status`, `Type`, `Priority`, `Assigned to`, `Stage`, `Labels`, `Author`, `Due` (overdue / this week / later / none), `Age` (days), and the dates `Created`, `Modified`, `Due date`, `Closed` | the components of the topics' viewpoints that are loaded |
+| **Schedule tasks** | task of the active schedule | `Task`, `Status`, `Phase at cursor` (not started / in progress / done, following the 4D playback), `Task type`, `Critical`, `Milestone`, `Duration` (days), `Products`, and the dates `Start`, `Finish` | the tasks' products |
+| **IDS results** | (specification, entity) result of the last validation | `Specification`, `Result` (pass / fail), `Entity type`, `Failing facet`, `Model` | the entities |
+| **Model compare** | diff entry of the last comparison | `State`, `What changed`, `IFC type`, `Revision` | the head-side entity (base-side for a deletion) |
 
-The dashboard's **scope** decides which elements the rows cover: all loaded models, only what is visible right now (the same answer the Lists panel's "visible only" gives), or the basket.
+Date columns feed the `timeline` chart, which buckets per ISO week — topics created or closed per week, tasks starting per week. There is no run history in the viewer, so BCF dates are the only time axis; clash counts over successive runs are not charted.
+
+The dashboard's **scope** applies to the elements source and decides which elements its rows cover: all loaded models, only what is visible right now (the same answer the Lists panel's "visible only" gives), or the basket.
 
 ## Chart ↔ 3D
 
@@ -32,4 +41,4 @@ The dashboard's **scope** decides which elements the rows cover: all loaded mode
 
 ## Dashboards
 
-Dashboards persist in the browser like saved lists. The first open seeds **Model overview** (elements by type, by storey, and types per storey). Add, edit and remove charts from the panel header; every dashboard is a `DashboardSpec` JSON document validated on load, so a hand-edited or stale entry is dropped with a warning rather than crashing the panel.
+Dashboards persist in the browser like saved lists. The first open seeds **Model overview** (elements by type, by storey, and types per storey); the dashboard picker's *New from preset* group adds **Coordination** (clashes by type pair, severity, review status per storey, penetration depth; topics by status, open topics by assignee and due, topics created and closed per week), **Delivery** (IDS result per specification, failures by facet and entity type, elements treemap) and **Schedule** (tasks by phase at the cursor and by type, tasks starting per week, products per phase). Add, edit and remove charts from the panel header; every dashboard is a `DashboardSpec` JSON document validated on load, so a hand-edited or stale entry is dropped with a warning rather than crashing the panel.

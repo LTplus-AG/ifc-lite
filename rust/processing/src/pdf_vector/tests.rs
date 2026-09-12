@@ -9,6 +9,7 @@ pub(super) fn page(ops: Vec<PdfVectorOperator>) -> PdfVectorPage {
         pdf_format_version: Some("2.0".into()),
         page_number: 1,
         view_box: [10., 20., 110., 92.],
+        conversion_clip_pdf: None,
         user_unit: 2.,
         intrinsic_rotation: 90,
         model_metres_from_pdf: [0., -0.002, 0.002, 0., -0.04, 0.22],
@@ -59,6 +60,52 @@ fn issue_4406_calibrated_transform_preserves_stroke_construction_space_and_resto
     );
     assert_eq!(report.paths[1].state.line_width, 1.);
     assert!(report.paths[1].state.dash_lengths.is_empty());
+}
+#[test]
+fn issue_4406_conversion_clip_filters_off_crop_geometry_without_rewriting_source_cropbox() {
+    let mut input = page(vec![
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke, commands: vec![0., 15., 25., 1., 19., 25.] },
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke, commands: vec![0., 80., 80., 1., 90., 80.] },
+        PdfVectorOperator::LineWidth { width: 0. },
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke, commands: vec![0., 70., 70., 1., 75., 70.] },
+    ]);
+    input.conversion_clip_pdf = Some([10., 20., 20., 30.]);
+    let prepared = prepare_pdf_vector_page(&input).unwrap();
+    assert_eq!(prepared.page_clip_pdf, [10., 20., 20., 30.]);
+    assert_eq!(prepared.paths.len(), 1, "only the supported on-crop paint reaches geometry");
+    assert_eq!(prepared.paths[0].operator_ordinal, 0);
+    assert!(prepared.fidelity.exact, "an off-crop unsupported paint is listed but invisible");
+    assert_eq!(prepared.fidelity.summary[0].kind, "hairline");
+    assert_eq!(prepared.fidelity.summary[0].visible_count, 0);
+
+    input.conversion_clip_pdf = Some([9., 20., 20., 30.]);
+    assert!(prepare_pdf_vector_page(&input).unwrap_err().contains("conversion clip"));
+}
+#[test]
+fn issue_4406_conversion_clip_counts_a_wide_stroke_whose_centerline_is_outside() {
+    let mut input = page(vec![
+        PdfVectorOperator::LineWidth { width: 6. },
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke, commands: vec![0., 7., 25., 1., 8., 25.] },
+    ]);
+    input.conversion_clip_pdf = Some([10., 20., 20., 30.]);
+    let error = prepare_pdf_vector_page(&input).unwrap_err();
+    assert!(error.contains("conversion boundary crosses painted path"),
+        "the centreline is outside, but its painted envelope overlaps the crop: {error}");
+}
+#[test]
+fn issue_4406_conversion_clip_combines_square_caps_with_small_miter_limit() {
+    let mut input = page(vec![
+        PdfVectorOperator::LineWidth { width: 2. },
+        PdfVectorOperator::LineCap { cap: 2 },
+        PdfVectorOperator::LineJoin { join: 0 },
+        PdfVectorOperator::MiterLimit { limit: 1. },
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke,
+            commands: vec![0., 11.5, 22., 1., 15., 22., 1., 15., 28.] },
+    ]);
+    input.conversion_clip_pdf = Some([10., 20., 20., 30.]);
+    let error = prepare_pdf_vector_page(&input).unwrap_err();
+    assert!(error.contains("conversion boundary crosses painted path"),
+        "square end caps remain part of the envelope when the miter limit is smaller: {error}");
 }
 #[test]
 fn issue_4406_preserves_curves_fill_rules_and_paint_order_without_claiming_flattening() {

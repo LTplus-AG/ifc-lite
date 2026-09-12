@@ -50,6 +50,7 @@ struct Interpreter {
     frame: Frame,
     stack: Vec<(Frame, Scope)>,
     clip: Rect,
+    conversion_clip: bool,
     /// The declared metric tolerance in PDF user-space units under the
     /// calibration's largest scale: a clip may fall short of the page by at
     /// most this strip before the loss counts.
@@ -94,7 +95,8 @@ pub(super) fn run(page: &PdfVectorPage) -> Result<Interpreted, String> {
         frame: base.clone(),
         base,
         stack: Vec::new(),
-        clip: page.view_box,
+        clip: page.conversion_clip_pdf.unwrap_or(page.view_box),
+        conversion_clip: page.conversion_clip_pdf.is_some(),
         clip_tolerance_pdf: page.tolerance_metres / largest_scale(&page.model_metres_from_pdf),
         pending_clip: false,
         marked: Vec::new(),
@@ -305,7 +307,35 @@ impl Interpreter {
         // unused zero-width setting does not itself paint a hairline.
         let painted = paint != PdfVectorPaint::EndPath && !commands.is_empty();
         if painted && !self.annotation {
-            let bbox = extent::bbox(extent::path_points(commands).map(|p| self.to_pdf(p)));
+            let mut bbox = extent::bbox(extent::path_points(commands).map(|p| self.to_pdf(p)));
+            // Visibility and crop containment apply to painted ink, not only
+            // the path centreline. This deliberately overbounds joins/caps:
+            // an uncertain boundary contact refuses instead of losing paint.
+            if paint.strokes() && self.frame.state.line_width > 0. {
+                if let Some([mut x0, mut y0, mut x1, mut y1]) = bbox {
+                    let [a, b, c, d, _, _] = self.frame.pdf_from_path;
+                    let points = extent::path_points(commands).count();
+                    let closed = paint.closes() || extent::opcodes(commands).any(|op| op == 4);
+                    let joined = points > 2 || closed;
+                    let join_factor = if joined && self.frame.state.line_join == 0 {
+                        self.frame.state.miter_limit.max(1.)
+                    } else {
+                        1.
+                    };
+                    let cap_factor = if !closed && self.frame.state.line_cap == 2 {
+                        2.
+                    } else {
+                        1.
+                    };
+                    let half = self.frame.state.line_width * join_factor.max(cap_factor) / 2.;
+                    let (mx, my) = (half * a.hypot(c), half * b.hypot(d));
+                    x0 -= mx;
+                    x1 += mx;
+                    y0 -= my;
+                    y1 += my;
+                    bbox = Some([x0, y0, x1, y1]);
+                }
+            }
             if self.hidden > 0 {
                 self.report.record("hidden", ordinal, bbox, false, true);
             } else {
@@ -318,6 +348,17 @@ impl Interpreter {
                     (true, true, Some(_), None) => Some(paint.stroke_only()),
                     _ => None,
                 };
+                if self.conversion_clip && visible {
+                    if let (Some(_), Some([x0, y0, x1, y1])) = (kept, bbox) {
+                        if x0 < self.clip[0] || y0 < self.clip[1]
+                            || x1 > self.clip[2] || y1 > self.clip[3]
+                        {
+                            return Err(format!(
+                                "PDF operator {ordinal}: conversion boundary crosses painted path; choose a crop through empty space"
+                            ));
+                        }
+                    }
+                }
                 if let Some(kind) = &fill_block {
                     self.report.record(kind, ordinal, bbox, visible, true);
                 }
@@ -326,25 +367,27 @@ impl Interpreter {
                         self.report.record(kind, ordinal, bbox, visible, true);
                     }
                 }
-                if let Some(paint) = kept {
-                    if self.paths.len() == MAX_PATHS {
-                        return Err("PDF page exceeds 20000 painted paths".into());
+                if visible || !self.conversion_clip {
+                    if let Some(paint) = kept {
+                        if self.paths.len() == MAX_PATHS {
+                            return Err("PDF page exceeds 20000 painted paths".into());
+                        }
+                        self.paths.push(PreparedPdfVectorPath {
+                            operator_ordinal: ordinal,
+                            paint,
+                            commands: commands.to_vec(),
+                            state: self.frame.state.clone(),
+                            dash_closure: if paint.strokes()
+                                && !self.frame.state.dash_lengths.is_empty()
+                                && (paint.closes()
+                                    || extent::opcodes(commands).any(|op| op == 4))
+                            {
+                                self.dash_closure
+                            } else {
+                                None
+                            },
+                        });
                     }
-                    self.paths.push(PreparedPdfVectorPath {
-                        operator_ordinal: ordinal,
-                        paint,
-                        commands: commands.to_vec(),
-                        state: self.frame.state.clone(),
-                        dash_closure: if paint.strokes()
-                            && !self.frame.state.dash_lengths.is_empty()
-                            && (paint.closes()
-                                || extent::opcodes(commands).any(|op| op == 4))
-                        {
-                            self.dash_closure
-                        } else {
-                            None
-                        },
-                    });
                 }
             }
         }

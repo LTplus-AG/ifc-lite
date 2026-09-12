@@ -212,7 +212,8 @@ kinds spelled out for readers (`1 text run`, `556 hairline strokes`,
 `2 entries under unsupported operator setGState:TR`); the canonical kind
 tokens stay in the property set's `Omissions` JSON. The
 `IfcLite_PdfVectorConversion` property set (attached through
-`IfcRelDefinesByProperties`) records the source PDF digest, page, CropBox,
+`IfcRelDefinesByProperties`) records the source PDF digest, page, immutable source CropBox,
+effective `ConversionClipPdf`,
 UserUnit, rotation, effective PDF format version, decoder version, calibration key, PDF-to-model affine,
 declared tolerance in metres, composition grid, request and fidelity digests,
 `ExactConversion`, `AcceptedPartialConversion`, converted paths, fill regions,
@@ -224,6 +225,18 @@ categories and the real drawings, the MuPDF raster comparison confining every
 difference between page and output (native 3D meshes and reopened 2D fill
 areas) to the reported extents, and the browser journey through the report
 step are in [evidence/pdf-fidelity-report](evidence/pdf-fidelity-report/README.md).
+The [real floor-plan acceptance](evidence/pdf-real-vector-plan/README.md)
+converts a permissively licensed complete architectural plan and compares its
+source raster with native 3D, reopened native 2D and an independent IFC reopen.
+
+An optional registered conversion boundary may select a rectangular part of
+the source CropBox without rewriting source provenance. Paths wholly outside
+that boundary do not consume the converted-path cap. A supported path is kept
+only when its complete conservative painted envelope is inside the boundary;
+if fill geometry or a stroke envelope crosses it, preparation refuses and asks
+for a boundary through empty space. Stroke visibility includes the transformed
+line width and conservative join/cap reach, including wide strokes whose
+centreline is outside. This is bounded selection, not geometric clipping.
 
 This construction-space contract applies to well-formed PDF path objects. In
 [ISO 32000-1 §8.2, Figure 9 and its following note](https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf),

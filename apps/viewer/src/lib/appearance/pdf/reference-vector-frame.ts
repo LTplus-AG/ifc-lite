@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { annotationFrame } from '../create-annotation';
-import { rasterLandmarkFraction } from '../raster-calibration';
+import { rasterLandmarkAt, rasterLandmarkFraction } from '../raster-calibration';
 import type { RegisteredAppearanceReference } from '../references/types';
 import type { PdfAffine } from './vector-types';
 import { pdfCalibrationFrame } from './calibration';
@@ -12,9 +12,6 @@ export function referenceVectorFrame(reference: RegisteredAppearanceReference) {
   const pdf = reference.pdf;
   if (!pdf || !reference.calibration) throw new Error('Register this drawing from its original PDF to use PDF vectors.');
   const recipe = pdf.recipe;
-  if (recipe.cropPoints.some((value, index) => Math.abs(value - [0, 0, recipe.page.widthPoints, recipe.page.heightPoints][index]) > 1e-8)) {
-    throw new Error('PDF vectors currently require a whole PDF page. Use Image for this cropped drawing, or register the whole page.');
-  }
   const frame = annotationFrame(reference), [width, height] = frame.sizeMetres;
   const calibration = pdfCalibrationFrame(recipe);
   // Use page-scale baselines rather than subtracting two almost equal unit probes.
@@ -28,5 +25,11 @@ export function referenceVectorFrame(reference: RegisteredAppearanceReference) {
   const yx = (c[0] - a[0]) / dy, yy = (c[1] - a[1]) / dy;
   const modelMetresFromPdf: PdfAffine = [xx, xy, yx, yy, a[0] - xx * x - yx * y, a[1] - xy * x - yy * y];
   if (!modelMetresFromPdf.every(Number.isFinite)) throw new Error('The PDF page has an invalid registered coordinate transform.');
-  return { frame, modelMetresFromPdf };
+  const corners = [[0, 0], [1, 0], [1, 1], [0, 1]] as const;
+  const native = corners.map(fraction => rasterLandmarkAt(calibration, fraction));
+  const conversionClipPdf = [Math.min(...native.map(point => point[0])), Math.min(...native.map(point => point[1])),
+    Math.max(...native.map(point => point[0])), Math.max(...native.map(point => point[1]))] as [number, number, number, number];
+  const wholePage = recipe.cropPoints.every((value, index) =>
+    Math.abs(value - [0, 0, recipe.page.widthPoints, recipe.page.heightPoints][index]) <= 1e-8);
+  return { frame, modelMetresFromPdf, conversionClipPdf: wholePage ? null : conversionClipPdf };
 }

@@ -113,6 +113,7 @@ test('an accepted partial conversion plans, exports and reopens with its provena
     assert.match(content, new RegExp(`IFCPROPERTYSINGLEVALUE\\('SourcePdfSha256',\\$,IFCIDENTIFIER\\('${page.pdfSha256}'\\),\\$\\)`));
     assert.match(content, new RegExp(`IFCPROPERTYSINGLEVALUE\\('FidelitySha256',\\$,IFCIDENTIFIER\\('${verdict.sha256}'\\),\\$\\)`));
     assert.match(content, /IFCPROPERTYSINGLEVALUE\('SourceCropBox',\$,IFCTEXT\('\[10\.0,20\.0,110\.0,92\.0\]'\),\$\)/);
+    assert.match(content, /IFCPROPERTYSINGLEVALUE\('ConversionClipPdf',\$,IFCTEXT\('\[10\.0,20\.0,110\.0,92\.0\]'\),\$\)/);
     assert.match(content, /IFCPROPERTYSINGLEVALUE\('SourceRotation',\$,IFCINTEGER\(90\),\$\)/);
     assert.match(content, /IFCPROPERTYSINGLEVALUE\('SourceUserUnit',\$,IFCREAL\(2\.\),\$\)/);
     assert.match(content, /IFCPROPERTYSINGLEVALUE\('ToleranceMetres',\$,IFCREAL\((0\.0001|1\.E-4)\),\$\)/);

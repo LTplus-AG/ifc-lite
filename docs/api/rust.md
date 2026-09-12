@@ -938,7 +938,9 @@ complete graphics state snapshots and a `FidelityReport` (`fidelity`) listing
 every omission kind with counts, page extents and visibility, plus the
 `exact`/`raster_only` verdict and its binding digest. Canonical Rust validates
 bounded decoded input and binds the immutable page/calibration/operations
-request. It does not parse PDF bytes, flatten curves or create IFC entities;
+request. `conversion_clip_pdf` may select a rectangle inside the immutable
+CropBox; paths wholly outside it are excluded, while any supported painted
+envelope crossing it refuses. It does not parse PDF bytes, flatten curves or create IFC entities;
 `fidelity.exact` is deliberately separate from geometric qualification or Apply
 readiness. `appearance::plan_pdf_fill_annotation` recomputes the report and
 plans a partial page only when the request's `accepted_fidelity_sha256` quotes

@@ -42,7 +42,7 @@ pub fn prepare_pdf_vector_page(page: &PdfVectorPage) -> Result<PreparedPdfVector
         page_number: page.page_number,
         calibration_key: page.calibration_key.clone(),
         tolerance_metres: page.tolerance_metres,
-        page_clip_pdf: page.view_box,
+        page_clip_pdf: page.conversion_clip_pdf.unwrap_or(page.view_box),
         paths: interpreted.paths,
         fidelity,
     })
@@ -82,6 +82,15 @@ fn validate_page(page: &PdfVectorPage) -> Result<(), String> {
     }
     if page.view_box[0] >= page.view_box[2] || page.view_box[1] >= page.view_box[3] {
         return Err("Invalid PDF CropBox".into());
+    }
+    if let Some(clip) = page.conversion_clip_pdf {
+        for x in clip { scalar(x, -1e9, 1e9)?; }
+        if clip[0] >= clip[2] || clip[1] >= clip[3]
+            || clip[0] < page.view_box[0] || clip[1] < page.view_box[1]
+            || clip[2] > page.view_box[2] || clip[3] > page.view_box[3]
+        {
+            return Err("Invalid PDF conversion clip".into());
+        }
     }
     scalar(page.user_unit, f64::MIN_POSITIVE, 75000.)?;
     if ![0, 90, 180, 270].contains(&page.intrinsic_rotation) {

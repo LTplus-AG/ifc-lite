@@ -907,6 +907,13 @@ em-box), `image` placements, `shading`, fill/stroke `pattern` colours, decoded
 `annotationBegin`/`annotationEnd`, `markedContent`/`endMarkedContent` and
 `unsupported` operators.
 
+An optional `conversionClipPdf: [x0, y0, x1, y1]` selects a rectangle inside
+the immutable source `viewBox`. Fully outside paths do not consume the converted
+path cap. A supported fill or conservative painted stroke envelope that crosses
+the rectangle refuses, so the host must place the boundary through empty space.
+The effective rectangle is returned as `pageClipPdf` and recorded in IFC as
+`ConversionClipPdf`; this selection does not rewrite `SourceCropBox`.
+
 The response holds `paths` — only the paths whose complete graphics state the
 planner understands — and a canonical `fidelity` report (`ifclite-pdf-fidelity-v1`)
 naming everything else:

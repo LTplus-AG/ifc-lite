@@ -3159,8 +3159,7 @@ export class Scene {
       // Retain the compact CPU geometry + the packed instance records (mat4 per
       // occurrence) so CPU consumers can reach instanced geometry without a full
       // per-occurrence MeshData each. These are references into the decoded shard.
-      // Slot-assigned, not pushed: the CPU array is emptied on geometry release
-      // while the GPU slots live on, so `push` would silently misalign the two.
+      // Slot-assigned because release empties the CPU array while GPU slots live on; push would misalign them.
       this.instancedTemplateCpu[templateIndex] = {
         modelIndex,
         positions: t.positions,

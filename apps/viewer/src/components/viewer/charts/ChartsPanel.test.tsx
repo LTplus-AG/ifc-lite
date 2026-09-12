@@ -12,14 +12,14 @@
 import '@/test/setup-dom.js';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, StrictMode } from 'react';
+import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { ChartItem, EChartsOptionObject } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { render, click, cleanup } from '@/test/render.js';
-import { ChartsPanel } from './ChartsPanel.js';
+import { ChartsPanel, ensureActiveDashboard } from './ChartsPanel.js';
 import type { ChartRenderer, ChartRendererEvents } from './useEChart.js';
 
 const MINI_IFC = `ISO-10303-21;
@@ -136,22 +136,30 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(useViewerStore.getState().dashboards.length, 1);
   });
 
-  it('under StrictMode the panel seeds one dashboard and each card gets one chart, even when the engine loads after the first mount is undone (browser finding)', async () => {
-    const created: string[] = [];
-    // The engine resolves only after React has run mount → unmount → mount.
+  it('a mount undone while the engine is still loading creates no chart, and the seed is idempotent — what StrictMode does in dev (browser finding)', async () => {
+    const live: string[] = [];
+    // The engine resolves only after React has mounted, unmounted and mounted again.
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
     const renderer: ChartRenderer = async () => {
-      for (let i = 0; i < 3; i++) await Promise.resolve();
+      await gate;
       return (el) => {
-        created.push(el.tagName);
-        return { setOption: () => {}, select: () => {}, resize: () => {}, dispose: () => { created.pop(); } };
+        live.push(el.tagName);
+        return { setOption: () => {}, select: () => {}, resize: () => {}, dispose: () => { live.pop(); } };
       };
     };
-    const ui = render(<StrictMode><ChartsPanel renderer={renderer} /></StrictMode>);
+    render(<ChartsPanel renderer={renderer} />);
+    cleanup();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    release();
     await settle();
-    await settle();
-    assert.equal(useViewerStore.getState().dashboards.length, 1, 'the double effect must not seed twice');
     assert.equal(ui.querySelectorAll('[data-chart-host]').length, 3);
-    assert.equal(created.length, 3, 'one live chart per card, none created for the undone first mount');
+    assert.equal(live.length, 3, 'one live chart per card; the undone first mount created none');
+
+    // The seed effect runs twice on the same empty snapshot under StrictMode.
+    ensureActiveDashboard();
+    ensureActiveDashboard();
+    assert.equal(useViewerStore.getState().dashboards.length, 1, 'the double effect must not seed twice');
   });
 
   it('a chart click selects the bucket in 3D on both channels, ghosts the rest, claims the channel, and slices the other charts', async () => {

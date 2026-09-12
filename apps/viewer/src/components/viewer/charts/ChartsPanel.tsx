@@ -35,6 +35,23 @@ export interface ChartsPanelProps {
   renderer?: ChartRenderer;
 }
 
+/**
+ * Seeds "Model overview" when there is no dashboard and makes sure one is
+ * active. Reads and writes the live slice, so it is idempotent: StrictMode
+ * runs the mount effect twice on the same (empty) render snapshot, and the
+ * second run must see the first run's seed rather than add another.
+ */
+export function ensureActiveDashboard(): void {
+  const live = useViewerStore.getState();
+  if (live.dashboards.length === 0) {
+    const seeded = modelOverviewDashboard();
+    live.upsertDashboard(seeded);
+    live.setActiveDashboardId(seeded.id);
+  } else if (!live.activeDashboardId || !live.dashboards.some((d) => d.id === live.activeDashboardId)) {
+    live.setActiveDashboardId(live.dashboards[0].id);
+  }
+}
+
 export function ChartsPanel({ onClose, renderer }: ChartsPanelProps) {
   const dashboards = useViewerStore((s) => s.dashboards);
   const activeDashboardId = useViewerStore((s) => s.activeDashboardId);
@@ -49,18 +66,7 @@ export function ChartsPanel({ onClose, renderer }: ChartsPanelProps) {
   const modelCount = useViewerStore((s) => s.models.size);
 
   // Seed the first dashboard so the panel opens with something to click.
-  useEffect(() => {
-    // Read the live slice, not the render's snapshot: StrictMode runs this
-    // effect twice on the same (empty) props and the second run must see
-    // the first run's seed rather than add a second "Model overview".
-    if (useViewerStore.getState().dashboards.length === 0) {
-      const seeded = modelOverviewDashboard();
-      upsertDashboard(seeded);
-      setActiveDashboardId(seeded.id);
-    } else if (!activeDashboardId || !dashboards.some((d) => d.id === activeDashboardId)) {
-      setActiveDashboardId(dashboards[0].id);
-    }
-  }, [dashboards, activeDashboardId, upsertDashboard, setActiveDashboardId]);
+  useEffect(() => { ensureActiveDashboard(); }, [dashboards, activeDashboardId]);
 
   const dashboard = useMemo(() => dashboards.find((d) => d.id === activeDashboardId) ?? null, [dashboards, activeDashboardId]);
   const scope = dashboard?.scope ?? { kind: 'all' as const };

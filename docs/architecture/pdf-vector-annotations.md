@@ -129,7 +129,7 @@ the planner understands — and a `fidelity` report (next section). It contains
 **no IFC plan**, flattened geometry, contour classification or paint-order
 composition. Forms, transparency groups, annotation appearances, clipping,
 ExtGState dictionaries, optional content, images, shadings/patterns, painted
-text, dashes, round caps/joins, curved strokes and device-dependent painted
+text, dashes, curved strokes and device-dependent painted
 hairlines are interpreted in order and recorded as omissions with their
 original operator ordinal, kind, page-space extent and visibility; they never
 become paths drawn without their clip or effect. Unused font/text-position
@@ -172,8 +172,7 @@ unrotated PDF user space (CropBox coordinates); `omissions` lists up to 4,096
 individual entries with operator ordinal, extent and visibility, and
 `omissionsTruncated` says when that detailed list stopped while the counts
 stayed complete. Kinds are `text`, `image`, `clip`, `transparency`, `pattern`
-(fill/stroke pattern colours and shadings), `dash`, `roundCapJoin`,
-`curvedStroke`, `hairline`, `hidden` (optional content the document
+(fill/stroke pattern colours and shadings), `dash`, `curvedStroke`, `hairline`, `hidden` (optional content the document
 configuration turns off), `annotation` (annotation appearance streams) and
 `unsupported:<operator>`.
 
@@ -290,7 +289,7 @@ limits before requesting publication. Image remains the default representation. 
 ## Qualified solid straight strokes
 
 The same `planPdfFillAnnotation` route also accepts positive-width solid straight
-strokes with butt/square caps, bevel/miter joins and PDF miter-limit fallback.
+strokes with butt/square/round caps, bevel/miter/round joins and PDF miter-limit fallback.
 Offset contours are constructed in path coordinates before the entire affine
 transform, preserving nonuniform scale and shear of stroke width. Combined
 fill/stroke operators expand to fill then stroke, retain their source operator
@@ -299,8 +298,9 @@ work, topology and canonical IFC creation bounds.
 
 Reversals, degenerate segments, offset segment collapse and offset contour
 self-contact/crossings refuse the whole page. This first sufficient qualifier
-does not repair wide/self-overlapping stroke arrangements. Hairlines, round
-caps/joins, dash patterns and curved strokes remain unsupported. Outlining
+does not repair wide/self-overlapping stroke arrangements. Round arcs are
+subdivided with a post-affine metric error bound. Hairlines, dash patterns and
+curved strokes remain unsupported. Outlining
 produces visual filled vector geometry, not editable centreline/text semantics.
 Original-PDF raster and independent IFC evidence lives in
 [evidence/pdf-straight-stroke-annotations](evidence/pdf-straight-stroke-annotations/README.md).

@@ -66,6 +66,42 @@ fn issue_4406_stroke_caps_joins_and_miter_cutoff_have_analytic_area_after_affine
     }
 }
 #[test]
+fn issue_4406_round_caps_and_joins_obey_the_declared_metric_error_after_affine() {
+    for (commands, cap, join, expected) in [
+        (vec![0., 0., 0., 1., 4., 0.], 1, 0, 8. + std::f64::consts::PI),
+        (
+            vec![0., 0., 0., 1., 4., 0., 1., 4., 4.],
+            0,
+            1,
+            15. + std::f64::consts::FRAC_PI_4,
+        ),
+        (
+            rectangle(0., 0., 4., 4.),
+            0,
+            1,
+            28. + std::f64::consts::PI,
+        ),
+    ] {
+        let (source, mut request) = stroke(
+            commands,
+            cap,
+            join,
+            10.,
+            [2., 0.2, 0.5, 0.8, 3., 4.],
+        );
+        request.page.tolerance_metres = 0.01;
+        let result = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
+        let determinant: f64 = 2. * 0.8 - 0.2 * 0.5;
+        // Every circular arc is an inscribed contour whose post-affine
+        // Hausdorff error is bounded by the request tolerance. Area is a
+        // secondary analytic check with a perimeter-scaled bound.
+        let actual = result.meshes.iter().map(area).sum::<f64>();
+        assert!((actual - expected * determinant.abs()).abs() < 0.2);
+        assert!(result.fidelity.exact);
+        assert!(result.fidelity.summary.iter().all(|item| item.kind != "roundCapJoin"));
+    }
+}
+#[test]
 fn issue_4406_combined_fill_stroke_retains_stroke_over_fill_and_closed_hole() {
     let (source, mut request) = stroke(
         rectangle(0., 0., 4., 4.),
@@ -98,8 +134,6 @@ fn issue_4406_unsupported_strokes_are_omissions_that_need_acceptance_and_never_c
         [1., 0., 0., 1., 0., 0.],
     );
     for (operation, kind) in [
-        (PdfVectorOperator::LineCap { cap: 1 }, "roundCapJoin"),
-        (PdfVectorOperator::LineJoin { join: 1 }, "roundCapJoin"),
         (PdfVectorOperator::LineWidth { width: 0. }, "hairline"),
         (
             PdfVectorOperator::Dash {

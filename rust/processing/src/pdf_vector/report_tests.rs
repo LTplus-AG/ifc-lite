@@ -71,7 +71,7 @@ fn issue_4406_exact_page_reports_no_visible_omissions_and_binds_its_verdict() {
     let described = prepare_pdf_vector_page(&page(many)).unwrap().fidelity;
     assert_eq!(
         described.describe(),
-        "partial conversion; omitted 2 hairline strokes, 1 round-cap/join stroke, 1 entry under unsupported operator setGState:TR"
+        "partial conversion; omitted 2 hairline strokes, 1 entry under unsupported operator setGState:TR"
     );
 }
 
@@ -404,6 +404,7 @@ fn issue_4406_stroke_features_and_pattern_colours_split_combined_paints() {
         paints,
         [
             (2, PdfVectorPaint::EvenOddFill),
+            (8, PdfVectorPaint::Stroke),
             (16, PdfVectorPaint::Fill),
             (22, PdfVectorPaint::CloseStroke),
             (26, PdfVectorPaint::FillStroke),
@@ -413,14 +414,13 @@ fn issue_4406_stroke_features_and_pattern_colours_split_combined_paints() {
         kinds(&report),
         [
             (2, "dash".into(), true),
-            (8, "roundCapJoin".into(), true),
             (12, "curvedStroke".into(), true),
             (16, "pattern".into(), true),
             (22, "pattern".into(), true),
         ]
     );
-    assert_eq!(report.fidelity.omitted_paints, 5);
-    assert_eq!(report.fidelity.convertible_paths, 4);
+    assert_eq!(report.fidelity.omitted_paints, 4);
+    assert_eq!(report.fidelity.convertible_paths, 5);
 }
 
 #[test]

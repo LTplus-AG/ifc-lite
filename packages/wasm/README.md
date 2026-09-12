@@ -158,7 +158,7 @@ for source identity, coordinate frames, budgets and host acceptance requirements
 `IfcAPI.preparePdfVectorPage` validates bounded ordered PDF vector graphics states
 and preserves source operator identity, calibrated transforms and paint state.
 Content the planner cannot convert (text, images, clips, transparency,
-patterns, dashed/round/curved/hairline strokes, unknown operators) is returned
+patterns, dashed/curved/hairline strokes, unknown operators) is returned
 as a fidelity report with counts, page extents and visibility, and an
 `exact`/`rasterOnly` verdict; `IfcAPI.planPdfFillAnnotation` plans a partial
 page only when the request quotes that report's digest as the user's

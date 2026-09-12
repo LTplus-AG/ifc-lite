@@ -57,9 +57,9 @@ test('controlled pages report each fidelity category with page extent and visibi
     assert.deepEqual([transparency.exact, transparency.convertiblePaths], [false, 1]);
     assert.deepEqual(summary(transparency), [['transparency', 1, 1]]);
     const strokes = report(api, await decode('strokes'));
-    assert.deepEqual([strokes.exact, strokes.convertiblePaths, strokes.omittedPaints], [false, 1, 2]);
-    assert.deepEqual(summary(strokes), [['dash', 1, 1], ['roundCapJoin', 1, 1]]);
-    assert.deepEqual(strokes.summary.map(entry => entry.bboxPdf), [[20, 50, 60, 50], [20, 30, 60, 30]]);
+    assert.deepEqual([strokes.exact, strokes.convertiblePaths, strokes.omittedPaints], [false, 2, 1]);
+    assert.deepEqual(summary(strokes), [['dash', 1, 1]]);
+    assert.deepEqual(strokes.summary.map(entry => entry.bboxPdf), [[20, 50, 60, 50]]);
     const form = report(api, await decode('form'));
     assert.deepEqual([form.exact, form.convertiblePaths], [false, 1]);
     assert.deepEqual(summary(form), [['clip', 1, 1]], 'a form BBox that does not contain the page clips its content');

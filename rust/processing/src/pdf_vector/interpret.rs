@@ -229,8 +229,6 @@ impl Interpreter {
         let s = &self.frame.state;
         if s.line_width == 0. {
             Some("hairline".into())
-        } else if s.line_cap == 1 || s.line_join == 1 {
-            Some("roundCapJoin".into())
         } else if !s.dash_lengths.is_empty() {
             Some("dash".into())
         } else if extent::opcodes(commands).any(|op| op == 2 || op == 3) {

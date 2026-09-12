@@ -49,7 +49,7 @@ export function fail(message) {
  * direction fails red, never green.
  */
 export function stripYamlComments(source) {
-  return source.split('\n').map((line) => {
+  return source.split(/\r?\n/).map((line) => {
     let quote = null;
     for (let i = 0; i < line.length; i++) {
       const c = line[i];
@@ -131,6 +131,19 @@ export function jobBlock(source, jobName, origin) {
   const bodyStart = start.index + start[0].length;
   const next = /^  [A-Za-z0-9_-]+:/m.exec(source.slice(bodyStart));
   return next ? source.slice(bodyStart, bodyStart + next.index) : source.slice(bodyStart);
+}
+
+/**
+ * Slice one `- name: <stepName>` step out of a job body, or null when absent.
+ * The step-level twin of `jobBlock`: shared by the profile and upload checks so
+ * the one YAML-slicing heuristic has one home.
+ */
+export function sliceStep(jobBody, stepName) {
+  const start = jobBody.indexOf(`- name: ${stepName}`);
+  if (start === -1) return null;
+  const rest = jobBody.slice(start + 1);
+  const next = /\n {6}-(?:[ \t]|$)/m.exec(rest);
+  return jobBody.slice(start, next ? start + 1 + next.index : jobBody.length);
 }
 
 /**

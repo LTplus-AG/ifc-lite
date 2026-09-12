@@ -34,7 +34,7 @@
  * for why). Executable proof: scripts/check-server-bin-targets.test.mjs.
  */
 
-import { fail, jobBlock, unquoteScalar } from './server-bin-targets-parse.mjs';
+import { fail, jobBlock, sliceStep, unquoteScalar } from './server-bin-targets-parse.mjs';
 
 /**
  * The exact expression the upload step must use for the archive filename.
@@ -52,18 +52,9 @@ export const SIDECAR_EXPR = '$asset.sha256';
 const UPLOAD_STEP = 'Upload to GitHub Release';
 const JOB = 'release-server-binaries';
 
-/** Slice the upload step out of a job block, or null when absent. */
-function sliceUploadStep(jobBody) {
-  const stepStart = jobBody.indexOf(`- name: ${UPLOAD_STEP}`);
-  if (stepStart === -1) return null;
-  const rest = jobBody.slice(stepStart + 1);
-  const nextStep = /\n {6}- name:/.exec(rest);
-  return jobBody.slice(stepStart, nextStep ? stepStart + 1 + nextStep.index : jobBody.length);
-}
-
 /** Extract the upload step's block from the (comment-stripped) workflow. */
 function uploadStepBlock(workflow, origin) {
-  const step = sliceUploadStep(jobBlock(workflow, JOB, origin));
+  const step = sliceStep(jobBlock(workflow, JOB, origin), UPLOAD_STEP);
   if (step === null) {
     fail(
       `cannot find the "${UPLOAD_STEP}" step in job "${JOB}" of ${origin}; ` +
@@ -180,7 +171,7 @@ export function uploadStepPublishesSidecars(workflow) {
   const bodyStart = job.index + job[0].length;
   const next = /^  [A-Za-z0-9_-]+:/m.exec(workflow.slice(bodyStart));
   const body = next ? workflow.slice(bodyStart, bodyStart + next.index) : workflow.slice(bodyStart);
-  const step = sliceUploadStep(body);
+  const step = sliceStep(body, UPLOAD_STEP);
   if (step === null) return false;
   const assign = /^[ \t]*sidecar=(.*)$/m.exec(step);
   return assign !== null && unquoteScalar(assign[1].trim()) === SIDECAR_EXPR;

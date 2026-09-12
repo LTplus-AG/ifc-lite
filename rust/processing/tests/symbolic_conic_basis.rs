@@ -224,3 +224,54 @@ fn g1_control_ellipse_without_ref_direction_is_axis_aligned() {
         "{p:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// G6: a trimmed arc over an `IfcCircle` whose mandatory `Position` is dangling
+// or absent. `trimmed_curve.rs` had its own copy of the placement read that
+// answered `Transform2D::identity()` on those two arms, so the arc got a
+// finite elevation 0.0 while the circle item on the same data got `null`.
+//
+// MUTATION that fails both defect tests: restore the inline copy's
+// `identity()` arms in `extract_trimmed_curve`.
+// ---------------------------------------------------------------------------
+
+/// A quarter arc of radius 2 over circle `#53`; `circle` supplies `#53` and
+/// what it references.
+fn trimmed_arc(circle: &str) -> String {
+    fixture(&format!(
+        "{circle}\n#60=IFCTRIMMEDCURVE(#53,(IFCPARAMETERVALUE(0.)),\
+         (IFCPARAMETERVALUE(1.5707963267948966)),.T.,.PARAMETER.);"
+    ))
+}
+
+fn single_arc_world_y(ifc: &str) -> f32 {
+    let data = extract_symbolic_data(ifc);
+    assert_eq!(data.polylines.len(), 1, "{:?}", data.polylines);
+    let p = &data.polylines[0];
+    assert!(p.points.len() > 4, "the arc must still be drawn: {:?}", p.points);
+    p.world_y
+}
+
+#[test]
+fn g6_trimmed_arc_over_a_dangling_position_has_unresolved_elevation() {
+    // #52 is referenced and absent from the file.
+    let world_y = single_arc_world_y(&trimmed_arc("#53=IFCCIRCLE(#52,2.);"));
+    assert!(world_y.is_nan(), "got {world_y}");
+}
+
+#[test]
+fn g6_trimmed_arc_over_an_absent_position_has_unresolved_elevation() {
+    let world_y = single_arc_world_y(&trimmed_arc("#53=IFCCIRCLE($,2.);"));
+    assert!(world_y.is_nan(), "got {world_y}");
+}
+
+/// BOUNDING CONTROL: a well-formed placement at elevation 4 keeps it.
+#[test]
+fn g6_control_trimmed_arc_over_a_well_formed_position_keeps_its_elevation() {
+    let world_y = single_arc_world_y(&trimmed_arc(
+        "#50=IFCCARTESIANPOINT((0.,0.,4.));\n\
+         #52=IFCAXIS2PLACEMENT3D(#50,$,$);\n\
+         #53=IFCCIRCLE(#52,2.);",
+    ));
+    assert!((world_y - 4.0).abs() < 1e-5, "got {world_y}");
+}

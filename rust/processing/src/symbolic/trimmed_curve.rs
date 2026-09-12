@@ -10,7 +10,8 @@ use super::rebase::RenderFrameRebase;
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 use super::primitives::{SymbolicPolyline};
-use super::transform::{parse_axis2_placement_2d, push_finite_point, Transform2D};
+use super::conic::Conic;
+use super::transform::{push_finite_point, Transform2D};
 
 /// Tessellate an `IfcTrimmedCurve` whose `BasisCurve` is an `IfcCircle`.
 /// Honours `PLANEANGLEUNIT` scaling, `SenseAgreement`, and wrap-around so
@@ -39,26 +40,13 @@ pub(super) fn extract_trimmed_curve(
     if basis_curve.ifc_type != IfcType::IfcCircle {
         return;
     }
-    let radius = basis_curve.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-    if radius <= 0.0 || !radius.is_finite() {
-        return;
-    }
     // The trim angles are measured in the circle's OWN placement basis, not
     // in world X/Y: `IfcCircle.Position.RefDirection` defines local +X and the
-    // angles run from there. `parse_axis2_placement_2d` yields exactly that
-    // basis — translation = the centre, linear block = the RefDirection
-    // rotation, which degrades to identity when RefDirection is absent, so a
-    // plain world-aligned circle is bit-identical to the old world-XY maths.
-    let basis = match basis_curve.get_ref(0) {
-        Some(pos_ref) => match decoder.decode_by_id(pos_ref) {
-            Ok(position) => parse_axis2_placement_2d(&position, decoder, unit_scale),
-            Err(_) => Transform2D::identity(),
-        },
-        None => Transform2D::identity(),
-    };
-    if !basis.tx.is_finite() || !basis.ty.is_finite() {
-        return;
-    }
+    // angles run from there. `Conic::read` is the same reader the circle and
+    // ellipse items use, so a dangling or absent `Position` gives the arc an
+    // unresolved elevation (`null`), not a finite 0.0.
+    let Some(circle) = Conic::read(&basis_curve, decoder, unit_scale) else { return };
+    let (basis, radius) = (circle.basis, circle.semi_a);
     let world_y = rebase.elevation(basis.tz + transform.tz);
 
     let angle_scale = decoder.plane_angle_to_radians() as f32;
@@ -102,7 +90,7 @@ pub(super) fn extract_trimmed_curve(
         return;
     }
 
-    let point_at = |angle: f32| basis.transform_point(radius * angle.cos(), radius * angle.sin());
+    let point_at = |angle: f32| circle.point_at(angle);
     let (start_x, start_y) = point_at(start_angle);
     let (end_x, end_y) = point_at(end_angle);
     let chord_dx = end_x - start_x;

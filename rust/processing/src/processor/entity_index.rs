@@ -111,7 +111,8 @@ impl IndexBuilder {
                 match DenseEntityIndex::try_from_columns(&ids, &starts, &lengths) {
                     Some(index) => ProcessingIndex::Dense(Arc::new(index)),
                     None => ProcessingIndex::Columnar(Arc::new(
-                        ColumnarEntityIndex::from_columns(&ids, &starts, &lengths))),
+                        ColumnarEntityIndex::from_columns(&ids, &starts, &lengths)
+                            .expect("the three columns are pushed together above"))),
                 }
             }
         }

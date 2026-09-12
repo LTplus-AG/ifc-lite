@@ -867,13 +867,10 @@ export class IfcAPI {
      * multiple loads with different files.
      *
      * Throws when the three columns disagree in length. Every call is a
-     * content swap, the rejected ones included: the previous file's index and
-     * its content-scoped caches are dropped and the pipeline diagnostics
-     * reset BEFORE the error is raised, so a worker that catches it holds no
-     * stale state and its next batch falls back to the lazy scan of the bytes
-     * it is actually given. A silent no-op here kept the previous file's byte
-     * offsets live against the next file's bytes, resolving `#`-references to
-     * whichever entity happened to sit at those offsets.
+     * content swap, a rejected one included: the previous file's index,
+     * content-scoped caches and pipeline diagnostics are dropped before the
+     * error is raised, and a rejected or empty index leaves no index, so the
+     * next batch scans the bytes it is given.
      */
     setEntityIndex(ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array): void;
     /**

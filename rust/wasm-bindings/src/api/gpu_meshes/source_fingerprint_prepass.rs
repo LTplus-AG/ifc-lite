@@ -38,18 +38,18 @@ impl IfcAPI {
         index_ids: &[u32], index_starts: &[u32], index_lengths: &[u32], index_classes: &[u8],
         compute_source_fingerprint: bool,
     ) -> Result<JsValue, JsValue> {
-        // The same rule `setEntityIndex` applies, and for the same reason: the
-        // columns-discovery walk below indexes all four columns by one
-        // counter, and `from_columns` would otherwise turn a mismatch into an
-        // empty index one line before that walk trapped the worker on it.
-        crate::api::entity_index::check_index_columns(
-            index_ids.len(),
-            index_starts.len(),
-            index_lengths.len(),
-            Some(index_classes.len()),
-        )
-        .map_err(|message| JsValue::from_str(&format!("buildPrePassStreamingSharded: {message}")))?;
-        let prebuilt = ifc_lite_core::ColumnarEntityIndex::from_columns(index_ids, index_starts, index_lengths);
+        // Refuse unequal columns before the index build or the discovery walk
+        // reads any of them (#4614).
+        let refuse = |message: String| JsValue::from_str(&format!("buildPrePassStreamingSharded: {message}"));
+        let prebuilt = ifc_lite_core::ColumnarEntityIndex::from_columns(index_ids, index_starts, index_lengths)
+            .map_err(|mismatch| refuse(mismatch.to_string()))?;
+        if index_classes.len() != index_ids.len() {
+            return Err(refuse(format!(
+                "entity index columns disagree in length: ids {}, classes {}",
+                index_ids.len(),
+                index_classes.len()
+            )));
+        }
         self.pre_pass_streaming_impl(data, on_event, chunk_size, disabled_type_names,
             skip_type_geometry, Some(prebuilt), true,
             Some((index_ids, index_starts, index_lengths, index_classes)), compute_source_fingerprint)

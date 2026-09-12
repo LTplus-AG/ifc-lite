@@ -180,7 +180,99 @@ pub fn try_export_kmz_collada_from_meshes(
         colors,
         origins,
     )?;
-    Ok(pack_kmz(&dae, "model.dae", opts))
+    try_pack_kmz(&dae, "model.dae", opts)
+}
+
+const ZIP_LOCAL_HEADER_LEN: u64 = 30;
+const ZIP_CENTRAL_HEADER_LEN: u64 = 46;
+const ZIP_END_RECORD_LEN: u64 = 22;
+
+fn zip32_error(detail: impl Into<String>) -> crate::error::ExportError {
+    crate::error::ExportError::Serialization {
+        stage: "KMZ ZIP32",
+        detail: detail.into(),
+    }
+}
+
+/// Validate the complete stored-ZIP layout using wide arithmetic before any
+/// header field is narrowed. Kept separate from allocation so boundary tests
+/// can exercise multi-gigabyte sizes without constructing multi-gigabyte
+/// buffers.
+fn validate_zip32_layout(entries: &[(&str, u64)]) -> Result<u64, crate::error::ExportError> {
+    if entries.len() > u16::MAX as usize {
+        return Err(zip32_error(format!(
+            "{} entries exceed ZIP32's {}-entry limit",
+            entries.len(),
+            u16::MAX
+        )));
+    }
+
+    let mut local_size = 0u64;
+    let mut central_size = 0u64;
+    for (name, data_size) in entries {
+        let name_size = u64::try_from(name.len()).map_err(|_| zip32_error("entry name length overflow"))?;
+        if name_size > u16::MAX as u64 {
+            return Err(zip32_error(format!("entry name is {name_size} bytes, over ZIP32's 65535-byte limit")));
+        }
+        if *data_size > u32::MAX as u64 {
+            return Err(zip32_error(format!(
+                "entry {name:?} is {data_size} bytes, over ZIP32's 4 GiB entry limit"
+            )));
+        }
+        if local_size > u32::MAX as u64 {
+            return Err(zip32_error(format!(
+                "entry {name:?} starts at offset {local_size}, over ZIP32's 32-bit offset limit"
+            )));
+        }
+        local_size = local_size
+            .checked_add(ZIP_LOCAL_HEADER_LEN)
+            .and_then(|size| size.checked_add(name_size))
+            .and_then(|size| size.checked_add(*data_size))
+            .ok_or_else(|| zip32_error("local-entry layout overflow"))?;
+        central_size = central_size
+            .checked_add(ZIP_CENTRAL_HEADER_LEN)
+            .and_then(|size| size.checked_add(name_size))
+            .ok_or_else(|| zip32_error("central-directory layout overflow"))?;
+    }
+
+    if local_size > u32::MAX as u64 {
+        return Err(zip32_error(format!(
+            "central directory starts at offset {local_size}, over ZIP32's 32-bit offset limit"
+        )));
+    }
+    if central_size > u32::MAX as u64 {
+        return Err(zip32_error(format!(
+            "central directory is {central_size} bytes, over ZIP32's 32-bit size limit"
+        )));
+    }
+    let total = local_size
+        .checked_add(central_size)
+        .and_then(|size| size.checked_add(ZIP_END_RECORD_LEN))
+        .ok_or_else(|| zip32_error("archive layout overflow"))?;
+    if total > u32::MAX as u64 {
+        return Err(zip32_error(format!(
+            "archive is {total} bytes, over this ZIP32 writer's 4 GiB limit"
+        )));
+    }
+    Ok(total)
+}
+
+fn try_pack_kmz(
+    model: &[u8],
+    href: &str,
+    opts: &KmzOptions,
+) -> Result<Vec<u8>, crate::error::ExportError> {
+    let heading = ifc_angle_to_kml_heading(opts.x_axis_abscissa, opts.x_axis_ordinate);
+    let kml = build_kml(opts, heading, href);
+    validate_zip32_layout(&[
+        ("doc.kml", kml.len() as u64),
+        (href, model.len() as u64),
+    ])?;
+
+    let mut zip = StoredZip::new();
+    zip.add("doc.kml", kml.as_bytes());
+    zip.add(href, model);
+    Ok(zip.finish())
 }
 
 /// `doc.kml` plus one model file in a stored ZIP: the one archive layout both

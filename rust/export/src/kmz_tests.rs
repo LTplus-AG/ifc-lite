@@ -130,3 +130,24 @@ fn kmz_from_an_empty_mesh_set_fails_closed_instead_of_shipping_an_empty_model() 
         .expect_err("an empty mesh set must be NoRenderGeometry");
     assert!(matches!(err, crate::ExportError::NoRenderGeometry), "got {err:?}");
 }
+
+#[test]
+fn zip32_layout_accepts_the_exact_archive_limit_without_allocating_it() {
+    // One one-byte name contributes 30 local-header bytes, 47 central bytes,
+    // and the 22-byte end record: 100 bytes outside the payload.
+    let payload = u32::MAX as u64 - 100;
+    assert_eq!(validate_zip32_layout(&[("m", payload)]).unwrap(), u32::MAX as u64);
+}
+
+#[test]
+fn zip32_layout_rejects_total_size_and_entry_size_before_narrowing() {
+    let total_err = validate_zip32_layout(&[("m", u32::MAX as u64 - 99)]).unwrap_err();
+    assert!(matches!(
+        total_err,
+        crate::error::ExportError::Serialization { stage: "KMZ ZIP32", .. }
+    ));
+    assert!(total_err.to_string().contains("archive is"));
+
+    let entry_err = validate_zip32_layout(&[("m", u32::MAX as u64 + 1)]).unwrap_err();
+    assert!(entry_err.to_string().contains("4 GiB entry limit"));
+}

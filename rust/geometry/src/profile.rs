@@ -74,6 +74,30 @@ impl Profile2D {
         }
     }
 
+    /// Reverse `outer` when it winds clockwise, so the counter-clockwise
+    /// contract on [`outer`](Self::outer) holds however a builder listed
+    /// its points. Holes are untouched (their contract is clockwise and the
+    /// hollow builders emit them that way). The extrusion and earcut paths
+    /// each re-derive orientation and were right either way; the 2D drawing
+    /// path emits `outer` verbatim, and that is where a clockwise T or Z
+    /// showed.
+    pub fn make_outer_ccw(&mut self) {
+        let n = self.outer.len();
+        if n < 3 {
+            return;
+        }
+        let twice_signed_area: f64 = (0..n)
+            .map(|i| {
+                let a = self.outer[i];
+                let b = self.outer[(i + 1) % n];
+                a.x * b.y - b.x * a.y
+            })
+            .sum();
+        if twice_signed_area < 0.0 {
+            self.outer.reverse();
+        }
+    }
+
     /// Triangulate the profile using earcutr
     /// Returns triangle indices into the flattened vertex array
     pub fn triangulate(&self) -> Result<Triangulation> {

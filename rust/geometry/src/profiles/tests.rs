@@ -397,6 +397,34 @@ use super::*;
             .sum()
     }
 
+    /// `Profile2D::outer`'s contract is counter-clockwise. The T and Z
+    /// builders listed their points clockwise (measured signed areas -16 and
+    /// -22 for the fixtures below while I/L/U/C/Rect were positive), which
+    /// the extrusion and earcut paths hid by re-deriving orientation and the
+    /// 2D drawing path emitted verbatim. `process_parametric` now pins the
+    /// contract for every parametric shape in one place.
+    #[test]
+    fn every_parametric_profile_outer_loop_is_counter_clockwise() {
+        let fixtures: [(&str, &str, f64); 7] = [
+            ("T", "#1=IFCTSHAPEPROFILEDEF(.AREA.,'T',$,5.,8.,2.,1.,$,$,$,$,$);\n", 16.0),
+            ("Z", "#1=IFCZSHAPEPROFILEDEF(.AREA.,'Z',$,10.,3.,2.,1.,$,$);\n", 22.0),
+            ("I", "#1=IFCISHAPEPROFILEDEF(.AREA.,'I',$,6.,8.,1.,1.,$,$,$);\n", 18.0),
+            ("L", "#1=IFCLSHAPEPROFILEDEF(.AREA.,'L',$,10.,8.,2.,$,$,$);\n", 32.0),
+            ("U", "#1=IFCUSHAPEPROFILEDEF(.AREA.,'U',$,10.,4.,1.,2.,$,$,$);\n", 22.0),
+            ("C", "#1=IFCCSHAPEPROFILEDEF(.AREA.,'C',$,10.,5.,1.,2.,$);\n", 20.0),
+            ("Rect", "#1=IFCRECTANGLEPROFILEDEF(.AREA.,'R',$,4.,2.);\n", 8.0),
+        ];
+        for (name, content, area) in fixtures {
+            let profile = process_content(content, 1);
+            let signed = signed_area2(&profile.outer) * 0.5;
+            assert!(
+                (signed.abs() - area).abs() < 1e-9,
+                "{name}: fixture area drifted, got {signed}"
+            );
+            assert!(signed > 0.0, "{name}: outer loop must be CCW, signed area {signed}");
+        }
+    }
+
     #[test]
     fn test_mirrored_profile_negates_x_and_reverses_winding() {
         let mut decoder = EntityDecoder::new(L_WITH_HOLE_IFC);

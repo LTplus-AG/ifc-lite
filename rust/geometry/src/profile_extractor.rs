@@ -673,7 +673,7 @@ fn parse_cartesian_point(
     Ok(Point3::new(x, y, z))
 }
 
-/// Parse IfcDirection entity to a Vector3.
+/// Parse an IfcDirection to its RAW ratios. `build_axis2_matrix` normalises once; a bare `normalize()` here turned `(0,0,0)` into NaN BEFORE its `try_normalize` guard, which cannot recover a NaN.
 fn parse_direction_entity(entity: &DecodedEntity) -> Result<Vector3<f64>> {
     let ratios = entity
         .get(0)
@@ -684,7 +684,7 @@ fn parse_direction_entity(entity: &DecodedEntity) -> Result<Vector3<f64>> {
     let y = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
     let z = ratios.get(2).and_then(|v| v.as_float()).unwrap_or(1.0);
 
-    Ok(Vector3::new(x, y, z).normalize())
+    Ok(Vector3::new(x, y, z))
 }
 
 /// Parse IfcExtrudedAreaSolid ExtrudedDirection (attr 2) to a local Vector3.
@@ -747,7 +747,7 @@ fn convert_ifc_to_webgl(m: &Matrix4<f64>) -> [f32; 16] {
 fn detect_unit_scale(content: &[u8], decoder: &mut EntityDecoder) -> f64 {
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, _, _)) = scanner.next_entity() {
-        if type_name == "IFCPROJECT" {
+        if type_name.eq_ignore_ascii_case("IFCPROJECT") {
             if let Ok(scale) = ifc_lite_core::extract_length_unit_scale(decoder, id) {
                 return scale;
             }

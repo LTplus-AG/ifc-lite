@@ -190,8 +190,8 @@ impl ProfileProcessor {
             profile.get_float(9).unwrap_or(0.0).clamp(0.0, (half_web * 0.999).max(0.0)),
         );
 
-        // Sharp outline (counter-clockwise). 1,6 = junctions; 2,5 = flange toes;
-        // 0,7 = web free-end corners.
+        // Sharp outline, listed clockwise (`process_parametric` reverses it to
+        // CCW). 1,6 = junctions; 2,5 = flange toes; 0,7 = web free-end corners.
         let sharp = [
             Point2::new(-half_web, 0.0),       // 0 web bottom-left (web edge)
             Point2::new(-half_web, ftf),       // 1 left junction (fillet)
@@ -284,7 +284,7 @@ impl ProfileProcessor {
         let half_depth = depth / 2.0;
         let half_web = web_thickness / 2.0;
 
-        // Z-shape profile (counter-clockwise)
+        // Z-shape outline, listed clockwise (`process_parametric` reverses it).
         let points = vec![
             Point2::new(-half_web, -half_depth),
             Point2::new(-half_web - flange_width, -half_depth),

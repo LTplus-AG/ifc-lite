@@ -207,12 +207,12 @@ impl ProfileProcessor {
             ))),
         }?;
 
-        // Parameterised profiles are defined centred on their bounding box, and the
-        // Position placement below is applied relative to that centred origin.
-        // Several asymmetric builders (L/U/T/C) emit their points from a corner, so
-        // centre every parametric profile here in one place. Already-centred shapes
-        // (rectangle, circle, I, Z, …) are unaffected.
+        // Parameterised profiles are defined centred on their bounding box (the
+        // Position placement below is relative to that origin), yet several
+        // builders (L/U/T/C) emit from a corner, and T/Z listed their points
+        // clockwise: centre and pin the outer loop's CCW contract here, once.
         base_profile.center_on_bbox();
+        base_profile.make_outer_ccw();
 
         // Apply Profile Position transform (attribute 2: IfcAxis2Placement2D)
         if let Some(pos_attr) = profile.get(2) {

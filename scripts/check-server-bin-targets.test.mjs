@@ -300,6 +300,80 @@ test('an upload argument that braces the asset variable is green', () => {
   assertGreen(result);
 });
 
+// ---- Build profile. The published binaries must unwind on panic: under the
+// repo-root [profile.release] panic = 'abort', the CatchPanicLayer in
+// apps/server/src/main.rs is inert and one malformed IFC upload aborts the
+// whole multi-tenant process. Every one of these mutations shipped in the
+// real workflow until this gate learned about the profile.
+
+// GitHub Actions expressions used as literal mutation anchors, not JS templates.
+/* eslint-disable no-template-curly-in-string */
+const CARGO_BUILD_LINE =
+  '            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --profile server-release' +
+  ' --package ifc-lite-server --target ${{ matrix.rust-target }}';
+const CROSS_BUILD_LINE =
+  '            cross build --profile server-release --package ifc-lite-server' +
+  ' --target ${{ matrix.rust-target }}';
+const UNIX_COPY_LINE = '          cp target/${{ matrix.rust-target }}/server-release/ifc-lite-server dist/';
+/* eslint-enable no-template-curly-in-string */
+const ASSERT_STEP_NAME = '- name: Assert the built binary unwinds';
+const SELFTEST_FLAG = '--panic-strategy-selftest';
+
+test('profile: a cargo build leg back on --release is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, CARGO_BUILD_LINE, CARGO_BUILD_LINE.replace('--profile server-release', '--release')),
+  });
+  assertRed(result, /passes --release[\s\S]*panic = 'abort'/);
+});
+
+test('profile: a cross build leg back on --release is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, CROSS_BUILD_LINE, CROSS_BUILD_LINE.replace('--profile server-release', '--release')),
+  });
+  assertRed(result, /"cross build" in job "validate-server-binaries"[\s\S]*passes --release/);
+});
+
+test('profile: a build leg naming no profile at all is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, CARGO_BUILD_LINE, CARGO_BUILD_LINE.replace(' --profile server-release', '')),
+  });
+  assertRed(result, /does not pass --profile server-release/);
+});
+
+test('profile: a build step whose build lines are all commented out is red, not vacuously green', () => {
+  // Both branches of the first (validate-server-binaries) step, so that step
+  // runs no build at all. A commented-out command is absent, never compliant.
+  const result = runChecker({
+    workflow: (s) => mutate(
+      mutate(s, CROSS_BUILD_LINE, `            # ${CROSS_BUILD_LINE.trim()}`),
+      CARGO_BUILD_LINE,
+      `            # ${CARGO_BUILD_LINE.trim()}`,
+    ),
+  });
+  assertRed(result, /runs no cargo\/cross build command/);
+});
+
+test('profile: archiving out of target/<triple>/release/ is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, UNIX_COPY_LINE, UNIX_COPY_LINE.replace('/server-release/', '/release/')),
+  });
+  assertRed(result, /the archived bytes must come from[\s\S]*server-release/);
+});
+
+test('profile: deleting the behavioural self-test step is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, ASSERT_STEP_NAME, '- name: Assert nothing in particular'),
+  });
+  assertRed(result, /has no "Assert the built binary unwinds" step/);
+});
+
+test('profile: keeping the step but dropping the self-test flag is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, SELFTEST_FLAG, '--help'),
+  });
+  assertRed(result, /has no "Assert the built binary unwinds" step running the built binary/);
+});
+
 // ---- The gate's original eight deliberate regressions, re-confirmed so the
 // rewrite cannot have traded old coverage for new.
 

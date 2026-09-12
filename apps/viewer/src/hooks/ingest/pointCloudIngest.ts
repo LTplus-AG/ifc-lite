@@ -19,6 +19,7 @@ import {
   createClassificationCounts,
   streamPointCloud,
   type DecodedPointChunk,
+  type StreamPointCloudOptions,
   type StreamHandle,
 } from '@ifc-lite/pointcloud';
 import type { CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
@@ -35,6 +36,7 @@ import {
   registerPointCloudScanCache,
   removePointCloudScanCache, setPointCloudScanCacheOrigin,
 } from './pointCloudScanCache.js';
+import { swapZupChunkToYup } from './pointCloudFrame.js';
 
 export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
 
@@ -122,6 +124,8 @@ export interface PointCloudIngestOptions {
   onClassCounts?: (handleId: number, counts: Record<number, number> | null) => void;
   /** Abort signal to cancel ingest. */
   signal?: AbortSignal;
+  /** In-process decoder seam used by integration tests; production uses the worker source. */
+  createSource?: StreamPointCloudOptions['createSource'];
   /**
    * IfcMapConversion-derived alignment transform for this scan (issue
    * #1804), computed by the caller from the reference model's
@@ -377,6 +381,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
       maxPointsInMemory: opts.maxPointsInMemory,
       maxFileSize: opts.maxFileSize,
       signal: opts.signal,
+      createSource: opts.createSource,
       autoOrigin: true,
       onOpen: (info) => {
         if (info.originOffset) { retargetPointCloudDecodeOrigin(opts.renderer, handle, info.originOffset); setPointCloudScanCacheOrigin(handle.id, info.originOffset); }
@@ -487,39 +492,5 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
     rendererHandle: handle,
     streamHandle: stream,
     done: stream.done,
-  };
-}
-
-/**
- * Re-orient a Z-up chunk into the renderer's Y-up convention.
- *   Z-up: X=right, Y=forward, Z=up
- *   Y-up: X=right, Y=up,      Z=back   (negate Y to keep right-hand rule)
- *
- * Mirrors the geometry / pointcloud extractors' Z↔Y handling for IFCx.
- * Allocates a fresh positions buffer so the source chunk's typed array
- * (often a transferable from the worker) stays untouched.
- */
-function swapZupChunkToYup(chunk: DecodedPointChunk): DecodedPointChunk {
-  const src = chunk.positions;
-  const positions = new Float32Array(src.length);
-  for (let i = 0; i < src.length; i += 3) {
-    const x = src[i];
-    const y = src[i + 1];
-    const z = src[i + 2];
-    positions[i] = x;
-    positions[i + 1] = z;        // new Y = old Z
-    positions[i + 2] = -y;       // new Z = -old Y
-  }
-  // BBox transforms the same way. New min/max derive from the swapped
-  // axes; note the negation flips min and max on the Z-back axis.
-  const oldMin = chunk.bbox.min;
-  const oldMax = chunk.bbox.max;
-  return {
-    ...chunk,
-    positions,
-    bbox: {
-      min: [oldMin[0], oldMin[2], -oldMax[1]],
-      max: [oldMax[0], oldMax[2], -oldMin[1]],
-    },
   };
 }

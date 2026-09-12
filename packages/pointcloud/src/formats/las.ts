@@ -279,6 +279,7 @@ export function decodeLasPoints(
   return {
     positions,
     colors,
+    normalState: 'absent',
     classifications,
     intensities,
     pointCount: count,

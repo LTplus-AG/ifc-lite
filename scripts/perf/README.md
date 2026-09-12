@@ -27,6 +27,17 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Qualified PDF dash expansion (#4406)
+
+Dash expansion is reachable only from the explicit PDF annotation planner; it
+does not enter ordinary IFC element production. An idle source-matched
+AC20-FZK-Haus base/branch probe reported equal best parse, geometry and total
+phases across five runs. Every run retained the same ordered mesh fingerprint,
+mesh count and triangle count. The verdict is no ordinary-load regression, not
+a PDF-page throughput claim. The lesson is to charge each dash advance and each
+vertex crossed by a continuing run: a piece cap alone does not bound one long
+on-run across attacker-controlled path vertices.
+
 ## Canonical appearance provenance (#4243)
 
 Item-identified geometry now retains its canonical triangle-order identity at

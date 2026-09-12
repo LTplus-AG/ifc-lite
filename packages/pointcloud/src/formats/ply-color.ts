@@ -18,6 +18,12 @@ function isFloatColorType(type: string): boolean {
   return type === 'float' || type === 'float32' || type === 'double' || type === 'float64';
 }
 
+/** Match the value that will actually survive assignment into the Float32 RGB buffer. */
+export function floatColorSelectsByteRange(value: number, type: string): boolean {
+  const stored = Math.fround(value);
+  return isFloatColorType(type) && Number.isFinite(stored) && stored > 1;
+}
+
 /**
  * Normalize a decoded RGB channel value to 0..1.
  *
@@ -88,7 +94,7 @@ export function normalizePlyColors(
   types: readonly [string, string, string],
 ): void {
   const floatUsesByteRange = colors.some(
-    (value, index) => isFloatColorType(types[index % 3]) && Number.isFinite(value) && value > 1,
+    (value, index) => floatColorSelectsByteRange(value, types[index % 3]),
   );
   for (let index = 0; index < colors.length; index++) {
     colors[index] = normalizeColorChannel(colors[index], types[index % 3], floatUsesByteRange);

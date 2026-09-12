@@ -32,11 +32,14 @@ export function checkPdfVectorContract(IfcAPI) {
     const actual = prepare(decoded);
     assert.equal(actual.algorithm, 'ifclite-pdf-vector-state-v1');
     assert.equal(actual.fidelity.algorithm, 'ifclite-pdf-fidelity-v1');
-    // The control's cubic and dashed strokes are reported, never converted.
+    // The cubic remains explicit; the qualified straight dash is retained.
     assert.equal(actual.fidelity.exact, false);
     assert.equal(actual.fidelity.rasterOnly, false);
     assert.equal(actual.fidelity.convertiblePaths, actual.paths.length);
-    assert.deepEqual(actual.fidelity.summary.map(s => [s.kind, s.count, s.visibleCount]), [['curvedStroke',1,1],['dash',1,1]]);
+    assert.deepEqual(actual.fidelity.summary.map(s => [s.kind, s.count, s.visibleCount]), [['curvedStroke',1,1]]);
+    const dashed = actual.paths.find(path => path.operatorOrdinal === 19);
+    assert.deepEqual(dashed?.state.dashLengths, [6,3]);
+    assert.equal(dashed?.state.dashPhase, 0);
     const [pdfA, pdfB, pdfC, pdfD, pdfE, pdfF] = oracle.pdfToOracle;
     for (const expected of oracle.paths) {
       const path = actual.paths.find(p => p.operatorOrdinal === expected.operatorOrdinal);

@@ -222,14 +222,16 @@ impl Interpreter {
             taint.unsupported.as_ref().map(|op| format!("unsupported:{op}"))
         }
     }
-    fn stroke_block(&self, commands: &[f64]) -> Option<String> {
+    fn stroke_block(&self, commands: &[f64], close_last: bool) -> Option<String> {
         if let Some(block) = self.state_block(self.frame.taint.stroke_pattern) {
             return Some(block);
         }
         let s = &self.frame.state;
         if s.line_width == 0. {
             Some("hairline".into())
-        } else if !s.dash_lengths.is_empty() {
+        } else if !s.dash_lengths.is_empty()
+            && !super::dashes::supported(commands, close_last, &s.dash_lengths)
+        {
             Some("dash".into())
         } else if extent::opcodes(commands).any(|op| op == 2 || op == 3) {
             Some("curvedStroke".into())
@@ -241,7 +243,7 @@ impl Interpreter {
         if lengths.len() > 128 {
             return Err("PDF dash array exceeds 128 entries".into());
         }
-        scalar(phase, 0., 1e9)?;
+        scalar(phase, -1e9, 1e9)?;
         for length in lengths {
             scalar(*length, 0., 1e9)?;
         }
@@ -282,7 +284,7 @@ impl Interpreter {
             } else {
                 let visible = bbox.is_some_and(|b| extent::intersects(&b, &self.clip));
                 let fill_block = paint.fills().then(|| self.state_block(self.frame.taint.fill_pattern)).flatten();
-                let stroke_block = paint.strokes().then(|| self.stroke_block(commands)).flatten();
+                let stroke_block = paint.strokes().then(|| self.stroke_block(commands, paint.closes())).flatten();
                 let kept = match (paint.fills(), paint.strokes(), &fill_block, &stroke_block) {
                     (true, true, None, None) | (true, false, None, _) | (false, true, _, None) => Some(paint),
                     (true, true, None, Some(_)) => Some(paint.fill_only()),

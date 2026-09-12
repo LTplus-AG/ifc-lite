@@ -25,6 +25,7 @@ import { deterministicGlobalId } from '@ifc-lite/parser';
 import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
 import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
 import { BY_NAME_ATTR_REMAP_TYPES, remapRenamedAttributesByName } from './schema-converter-attr-remap.js';
+import { splitTopLevelStepArguments } from './step-argument-parser.js';
 
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 
@@ -252,24 +253,10 @@ function isStrictAttrPrefix(shorter: readonly string[], longer: readonly string[
 
 /** Count top-level (comma-separated) STEP attributes, respecting nested
  *  parentheses and single-quoted strings. Empty list → 0. */
-function countTopLevelAttributes(attrsRaw: string): number {
-  if (!attrsRaw.trim()) return 0;
-  let count = 1;
-  let depth = 0;
-  let inString = false;
-  for (let i = 0; i < attrsRaw.length; i++) {
-    const ch = attrsRaw[i];
-    if (ch === "'" && !inString) inString = true;
-    else if (ch === "'" && inString) {
-      if (i + 1 < attrsRaw.length && attrsRaw[i + 1] === "'") { i++; continue; }
-      inString = false;
-    } else if (!inString) {
-      if (ch === '(') depth++;
-      else if (ch === ')') depth--;
-      else if (ch === ',' && depth === 0) count++;
-    }
-  }
-  return count;
+function requireTopLevelAttributes(attrsRaw: string): string[] {
+  const attrs = splitTopLevelStepArguments(attrsRaw);
+  if (attrs === null) throw new Error('Schema conversion refused an invalid STEP argument list.');
+  return attrs;
 }
 
 /**
@@ -308,6 +295,11 @@ export function convertStepLine(
   const prefix = match[1];  // "#123="
   const entityType = match[2].toUpperCase();
   const attrsRaw = match[3] ?? '';
+
+  // Validate before choosing any conversion branch. A malformed slot list
+  // must not still receive a type rename, proxy replacement, trim, or padding:
+  // that would partially convert a record whose positions are untrustworthy.
+  requireTopLevelAttributes(attrsRaw);
 
   // Convert entity type
   const newType = convertEntityType(entityType, fromSchema, toSchema);
@@ -381,13 +373,15 @@ export function convertStepLine(
     if (isStrictAttrPrefix(tgtAttrs, srcAttrs)) {
       finalAttrs = trimAttributes(attrsRaw, tgtAttrs.length);
     } else if (isStrictAttrPrefix(srcAttrs, tgtAttrs)) {
-      const currentCount = countTopLevelAttributes(finalAttrs);
+      const currentCount = requireTopLevelAttributes(finalAttrs).length;
       if (currentCount > 0 && currentCount < tgtAttrs.length) {
         finalAttrs = `${finalAttrs}${',$'.repeat(tgtAttrs.length - currentCount)}`;
       }
     } else if (entityType !== newType && BY_NAME_ATTR_REMAP_TYPES.has(entityType)) {
       // Neither list is a prefix of the other; see `BY_NAME_ATTR_REMAP_TYPES`.
-      finalAttrs = remapRenamedAttributesByName(attrsRaw, srcAttrs, tgtAttrs);
+      const remapped = remapRenamedAttributesByName(attrsRaw, srcAttrs, tgtAttrs);
+      if (remapped === null) throw new Error('Schema conversion refused an invalid STEP argument list.');
+      finalAttrs = remapped;
     }
   }
 
@@ -432,54 +426,7 @@ function trimAttributes(attrsRaw: string, maxCount: number): string {
   // schema keeps none.
   if (maxCount <= 0) return '';
 
-  const attrs: string[] = [];
-  let depth = 0;
-  let inString = false;
-  let current = '';
-
-  for (let i = 0; i < attrsRaw.length; i++) {
-    const ch = attrsRaw[i];
-
-    if (ch === "'" && !inString) {
-      inString = true;
-      current += ch;
-    } else if (ch === "'" && inString) {
-      // Check for escaped quote ''
-      if (i + 1 < attrsRaw.length && attrsRaw[i + 1] === "'") {
-        current += "''";
-        i++;
-        continue;
-      }
-      inString = false;
-      current += ch;
-    } else if (inString) {
-      current += ch;
-    } else if (ch === '(') {
-      depth++;
-      current += ch;
-    } else if (ch === ')') {
-      depth--;
-      current += ch;
-    } else if (ch === ',' && depth === 0) {
-      attrs.push(current);
-      current = '';
-      if (attrs.length >= maxCount) {
-        return attrs.join(',');
-      }
-    } else {
-      current += ch;
-    }
-  }
-
-  // Last attribute
-  attrs.push(current);
-
-  // Trim to maxCount
-  if (attrs.length > maxCount) {
-    return attrs.slice(0, maxCount).join(',');
-  }
-
-  return attrs.join(',');
+  return requireTopLevelAttributes(attrsRaw).slice(0, maxCount).join(',');
 }
 
 /**

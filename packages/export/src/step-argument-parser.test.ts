@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { replaceStepArgument, splitTopLevelArgs, splitTopLevelStepArguments } from './step-argument-parser.js';
+import { readStepSlots, replaceStepArgument, splitTopLevelListItems, splitTopLevelStepArguments } from './step-argument-parser.js';
 
 describe('replaceStepArgument slot validation', () => {
   const LINE = "#5=IFCWALLTYPE('0OSuGGYUFyIf0LtE29OSuT',$,'WT1',$,$,(#30),$,$,$,.STANDARD.);";
@@ -29,6 +29,21 @@ describe('replaceStepArgument slot validation', () => {
       expect(replaceStepArgument(LINE, slot, '(#33)')).toBeNull();
     });
   }
+});
+
+describe('readStepSlots (#4200)', () => {
+  it('returns the type, framing, and validated positional slots together', () => {
+    expect(readStepSlots("#5=IFCWALL('g',$,'Größe');")).toEqual({
+      prefix: '#5=IFCWALL(',
+      type: 'IFCWALL',
+      slots: ["'g'", '$', "'Größe'"],
+      suffix: ');',
+    });
+  });
+
+  it('refuses a record whose apparent slots fail the shared grammar', () => {
+    expect(readStepSlots(`#5=IFCWALL('g',"01,23");`)).toBeNull();
+  });
 });
 
 /**
@@ -248,7 +263,7 @@ describe('splitTopLevelStepArguments skips comment content in the outer scan', (
   });
 
   it('a top-level comma glued directly to the closing "*/" is still a boundary', () => {
-    // Same `skipStepComment` off-by-one hazard as `splitTopLevelArgs`: it must
+    // Same `skipStepComment` off-by-one hazard as `splitTopLevelListItems`: it must
     // stop AT `*/` (`end + 2`), not past it, or the comma right after a
     // comment attached to a real value gets swallowed into that value's slot.
     expect(splitTopLevelStepArguments('5/* c */,#2')).toEqual(['5/* c */', '#2']);
@@ -320,7 +335,7 @@ describe('replaceStepArgument still accepts every well-formed list', () => {
 });
 
 /**
- * #4227: `splitTopLevelArgs` shipped with none of `splitTopLevelStepArguments`'s
+ * #4227: `splitTopLevelListItems` shipped with none of `splitTopLevelStepArguments`'s
  * comment-skip logic, so a `,` inside a `/* ... *​/` comment inside an
  * argument list was read as a top-level argument separator — a phantom slot
  * boundary that let a hidden/deleted `#N` reference survive
@@ -329,11 +344,11 @@ describe('replaceStepArgument still accepts every well-formed list', () => {
  * ref attached to a slot like `comment *​/#5`, which never matches). Both
  * splitters now share `skipStepComment`.
  */
-describe('splitTopLevelArgs skips comment content in the outer scan (#4227)', () => {
+describe('splitTopLevelListItems skips comment content in the outer scan (#4227)', () => {
   it('does not read a comma inside a comment as an argument boundary', () => {
     // The exact adversarial argument list from #4227 (the record wrapper is
     // exercised end-to-end in reference-collector.test.ts).
-    expect(splitTopLevelArgs("'guid',$,$,$,#1,/* void, comment */#5")).toEqual([
+    expect(splitTopLevelListItems("'guid',$,$,$,#1,/* void, comment */#5")).toEqual([
       "'guid'",
       '$',
       '$',
@@ -344,7 +359,7 @@ describe('splitTopLevelArgs skips comment content in the outer scan (#4227)', ()
   });
 
   it('a commented comma inside a NESTED list still resolves to the right slot boundaries', () => {
-    expect(splitTopLevelArgs("$,(#2,/* c, with a comma */#3),#1")).toEqual([
+    expect(splitTopLevelListItems("$,(#2,/* c, with a comma */#3),#1")).toEqual([
       '$',
       '(#2,/* c, with a comma */#3)',
       '#1',
@@ -354,23 +369,23 @@ describe('splitTopLevelArgs skips comment content in the outer scan (#4227)', ()
   it('a comment containing an apostrophe (odd quote count) does not flip string-scan state', () => {
     // An undoubled `'` inside a comment must not be read as opening a string
     // — if it were, the comma in the next real argument would be swallowed.
-    expect(splitTopLevelArgs("$,/* it's a void */#5,$")).toEqual(['$', "/* it's a void */#5", '$']);
+    expect(splitTopLevelListItems("$,/* it's a void */#5,$")).toEqual(['$', "/* it's a void */#5", '$']);
   });
 
   it('a comment before the argument list even starts is untouched (no regression)', () => {
-    // splitTopLevelArgs only ever receives the text INSIDE a record's `(` and
+    // splitTopLevelListItems only ever receives the text INSIDE a record's `(` and
     // `)` — a comment before that `(` is stripped by the caller's record
     // regex before this function ever sees it. Pinned here as a control: the
     // comment-skip branch added for #4227 must not affect a plain list with
     // no comment in it at all.
-    expect(splitTopLevelArgs("'guid',$,$,$,#1,#5")).toEqual(["'guid'", '$', '$', '$', '#1', '#5']);
+    expect(splitTopLevelListItems("'guid',$,$,$,#1,#5")).toEqual(["'guid'", '$', '$', '$', '#1', '#5']);
   });
 
   it('a top-level comma glued directly to the closing "*/" is still a boundary', () => {
     // `skipStepComment` must stop exactly at `*/` (`end + 2`), not one char
     // past it. Consuming an extra char swallows a comma with zero whitespace
     // after the comment, merging the next argument into this one.
-    expect(splitTopLevelArgs('$,/* c */,#5')).toEqual(['$', '/* c */', '#5']);
+    expect(splitTopLevelListItems('$,/* c */,#5')).toEqual(['$', '/* c */', '#5']);
   });
 });
 

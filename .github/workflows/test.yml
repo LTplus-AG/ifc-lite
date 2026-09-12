@@ -607,13 +607,11 @@ jobs:
       # `unittest.skipUnless(HAVE_IFCOPENSHELL, ...)` — bare pytest would run
       # them as silent skips instead of the real assertions the oracle needs
       # to revert against.
-      - if: needs.changes.outputs.python == 'true'
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Provision optional revert-oracle runner toolchains
+        uses: ./.github/actions/setup-revert-oracle
         with:
-          python-version: "3.12"
-      - if: needs.changes.outputs.python == 'true'
-        name: Install the Python toolchain the oracle's pytest lane needs
-        run: pip install -r tools/ifcopenshell_reference/requirements.lock pytest
+          python: ${{ needs.changes.outputs.python == 'true' && 'full' || 'none' }}
+          rust: ${{ needs.changes.outputs.rust }}
       - name: Prove the changed tests observe the production change
         env:
           PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}

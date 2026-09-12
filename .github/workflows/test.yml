@@ -2344,6 +2344,7 @@ jobs:
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    timeout-minutes: 5
     steps:
       # THE NO-OP EDIT REPLAY (CI redesign, step 2). When `changes` found this
       # to be a title/body edit of a head that already has a completed

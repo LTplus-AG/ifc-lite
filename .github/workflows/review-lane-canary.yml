@@ -74,7 +74,10 @@ jobs:
       # updated in place rather than duplicated, so a week of failures is one
       # thread and the close is the all-clear.
       - name: Raise or update the ops issue
-        if: steps.canary.outputs.rc != '0'
+        # `always()` is load-bearing: setup/test failures and a timed-out
+        # canary leave `rc` unset, which must mean "lane down", not "skip the
+        # reporter".
+        if: always() && steps.canary.outputs.rc != '0'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -111,7 +114,7 @@ jobs:
       # failure still reaches a human even if this step is what someone later
       # decides to make non-blocking.
       - name: Fail the run if the lane is down
-        if: steps.canary.outputs.rc != '0'
+        if: always() && steps.canary.outputs.rc != '0'
         run: |
           echo "The lane canary failed; see the review-lane-down issue."
           exit 1

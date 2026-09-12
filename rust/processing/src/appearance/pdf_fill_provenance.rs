@@ -76,6 +76,10 @@ impl Provenance<'_> {
         let boolean = |b: bool| typed("IfcBoolean", A::Enum(if b { "T" } else { "F" }.into()));
         vec![
             ("SourcePdfSha256", identifier(&page.pdf_sha256)),
+            (
+                "SourcePdfFormatVersion",
+                label(page.pdf_format_version.as_deref().unwrap_or("not reported")),
+            ),
             ("SourcePageNumber", integer(i64::from(page.page_number))),
             ("SourceCropBox", text(json_numbers(&page.view_box))),
             ("SourceUserUnit", real(page.user_unit)),

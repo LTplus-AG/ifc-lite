@@ -26,6 +26,63 @@ fn cross(a: Point, b: Point) -> f64 {
 fn dot(a: Point, b: Point) -> f64 {
     a[0] * b[0] + a[1] * b[1]
 }
+fn arc(
+    centre: Point,
+    start: Point,
+    sweep: f64,
+    state: &PdfVectorGraphicsState,
+    tolerance: f64,
+    remaining: &mut u64,
+) -> Result<Vec<Point>, String> {
+    let radius = sub(start, centre);
+    let h = radius[0].hypot(radius[1]);
+    let [a, b, c, d, _, _] = state.model_metres_from_path;
+    // The largest singular value bounds the affine map, so
+    // an inscribed construction-space arc is within `tolerance` after every
+    // supported nonuniform scale, reflection and shear.
+    let trace = a * a + b * b + c * c + d * d;
+    let determinant = a * d - b * c;
+    let discriminant = (trace * trace - 4. * determinant * determinant).max(0.);
+    let max_scale = ((trace + discriminant.sqrt()) / 2.).sqrt() * (1. + 16. * f64::EPSILON);
+    let model_radius_bound = h * max_scale;
+    if !model_radius_bound.is_finite() || model_radius_bound == 0. {
+        return Err("PDF round stroke cap/join collapses in the model plane".into());
+    }
+    // Chord sagitta alone is not a metric certificate when forming and
+    // transforming an arc point can already lose more than the allowance.
+    // Bound the affine operands rather than only the final point: translation
+    // or cancellation can otherwise hide the magnitude that drives roundoff.
+    let [tx, ty] = [state.model_metres_from_path[4], state.model_metres_from_path[5]];
+    let magnitude = (a.abs() * centre[0].abs() + c.abs() * centre[1].abs() + tx.abs())
+        .max(b.abs() * centre[0].abs() + d.abs() * centre[1].abs() + ty.abs())
+        .max(model_radius_bound)
+        .max(1.);
+    let roundoff = 256. * f64::EPSILON * magnitude;
+    if !roundoff.is_finite() || roundoff >= tolerance {
+        return Err("PDF round stroke tolerance is below model-coordinate numerical precision".into());
+    }
+    let ratio = ((tolerance - roundoff) / model_radius_bound).min(1.);
+    // sagitta / radius = 1-cos(step/2) = 2*sin(step/4)^2.
+    // The asin form stays meaningful when `ratio` is below machine epsilon;
+    // subtracting it from one would round up and under-subdivide shallow arcs.
+    let max_step = 4. * (ratio / 2.).sqrt().asin();
+    let segments = (sweep.abs() / max_step).ceil().max(1.) as usize;
+    if segments > 1024 {
+        return Err("PDF round stroke cap/join exceeds flattened vertex budget".into());
+    }
+    charge(remaining, (segments * 8) as u64)?;
+    let start_angle = radius[1].atan2(radius[0]);
+    Ok((0..=segments)
+        .map(|i| {
+            let angle = start_angle + sweep * i as f64 / segments as f64;
+            add(centre, [h * angle.cos(), h * angle.sin()])
+        })
+        .collect())
+}
+
+#[cfg(test)]
+#[path = "strokes_tests.rs"]
+mod tests;
 fn direction(a: Point, b: Point) -> Result<Point, String> {
     let d = sub(b, a);
     let length = d[0].hypot(d[1]);
@@ -63,12 +120,12 @@ fn emit(
     Ok(())
 }
 fn join(
-    p: Point,
-    previous: Point,
-    next: Point,
+    [p, previous, next]: [Point; 3],
     side: f64,
     h: f64,
     state: &PdfVectorGraphicsState,
+    tolerance: f64,
+    remaining: &mut u64,
 ) -> Result<Vec<Point>, String> {
     let turn = cross(previous, next);
     let cosine = dot(previous, next);
@@ -91,6 +148,16 @@ fn join(
     // side, the miter limit replaces the tip with a bevel when exceeded.
     if side * turn > 0. || (state.line_join == 0 && ratio <= state.miter_limit) {
         Ok(vec![tip])
+    } else if state.line_join == 1 {
+        let start_angle = sub(a, p)[1].atan2(sub(a, p)[0]);
+        let end_angle = sub(b, p)[1].atan2(sub(b, p)[0]);
+        let mut sweep = end_angle - start_angle;
+        if turn > 0. && sweep < 0. {
+            sweep += std::f64::consts::TAU;
+        } else if turn < 0. && sweep > 0. {
+            sweep -= std::f64::consts::TAU;
+        }
+        arc(p, a, sweep, state, tolerance, remaining)
     } else {
         Ok(vec![a, b])
     }
@@ -106,6 +173,7 @@ fn outline(
     state: &PdfVectorGraphicsState,
     out: &mut PathRings,
     remaining: &mut u64,
+    tolerance: f64,
 ) -> Result<(), String> {
     let points = if closed && points.len() > 1 && points.first() == points.last() {
         &points[..points.len() - 1]
@@ -145,12 +213,12 @@ fn outline(
         for (i, &p) in points.iter().enumerate() {
             if closed || (i > 0 && i < count) {
                 edge.extend(join(
-                    p,
-                    directions[(i + count - 1) % count],
-                    directions[i % count],
+                    [p, directions[(i + count - 1) % count], directions[i % count]],
                     side,
                     h,
                     state,
+                    tolerance,
+                    remaining,
                 )?);
             } else {
                 let d = directions[if i == 0 { 0 } else { count - 1 }];
@@ -170,14 +238,14 @@ fn outline(
             let q = points[(i + 1) % points.len()];
             let d = directions[i];
             let start = if closed || i > 0 {
-                *join(p, directions[(i + count - 1) % count], d, side, h, state)?
+                *join([p, directions[(i + count - 1) % count], d], side, h, state, tolerance, remaining)?
                     .last()
                     .unwrap()
             } else {
                 edge[0]
             };
             let end = if closed || i + 1 < count {
-                join(q, d, directions[(i + 1) % count], side, h, state)?[0]
+                join([q, d, directions[(i + 1) % count]], side, h, state, tolerance, remaining)?[0]
             } else {
                 *edge.last().unwrap()
             };
@@ -206,7 +274,20 @@ fn outline(
         }
     } else {
         let mut edge = sides.remove(0);
-        edge.extend(sides.remove(0).into_iter().rev());
+        let other = sides.remove(0);
+        if state.line_cap == 1 {
+            let end = *points.last().unwrap();
+            let cap = arc(end, *edge.last().unwrap(), -std::f64::consts::PI, state, tolerance, remaining)?;
+            let interior = cap.len().saturating_sub(2);
+            edge.extend(cap.into_iter().skip(1).take(interior));
+        }
+        edge.extend(other.iter().rev().copied());
+        if state.line_cap == 1 {
+            let start = points[0];
+            let cap = arc(start, other[0], -std::f64::consts::PI, state, tolerance, remaining)?;
+            let interior = cap.len().saturating_sub(2);
+            edge.extend(cap.into_iter().skip(1).take(interior));
+        }
         super::stroke_topology::qualify(std::slice::from_ref(&edge), remaining)?;
         emit(out, &edge, state, remaining)?;
     }
@@ -217,15 +298,14 @@ pub(super) fn rings(
     close_last: bool,
     state: &PdfVectorGraphicsState,
     remaining: &mut u64,
+    tolerance: f64,
 ) -> Result<PathRings, String> {
     if state.line_width <= 0.
-        || state.line_cap == 1
-        || state.line_join == 1
         || !state.dash_lengths.is_empty()
     {
-        // The interpreter reports hairline, round and dashed strokes before
+        // The interpreter reports hairline and dashed strokes before
         // composition; reaching this is a planner invariant violation.
-        return Err("Planner invariant: the interpreter must omit strokes without positive width, butt/square caps, bevel/miter joins and a solid line".into());
+        return Err("Planner invariant: the interpreter must omit strokes without positive width or a solid line".into());
     }
     let mut out = PathRings {
         rings: vec![],
@@ -240,7 +320,7 @@ pub(super) fn rings(
         match op as u8 {
             0 => {
                 if points.len() > 1 || (!points.is_empty() && !just_closed) {
-                    outline(&points, false, state, &mut out, remaining)?;
+                    outline(&points, false, state, &mut out, remaining, tolerance)?;
                 }
                 points = vec![[commands[cursor], commands[cursor + 1]]];
                 cursor += 2;
@@ -253,7 +333,7 @@ pub(super) fn rings(
             }
             4 => {
                 if !just_closed {
-                    outline(&points, true, state, &mut out, remaining)?;
+                    outline(&points, true, state, &mut out, remaining, tolerance)?;
                 }
                 points.truncate(1);
                 just_closed = true;
@@ -264,7 +344,7 @@ pub(super) fn rings(
         }
     }
     if points.len() > 1 || (!points.is_empty() && !just_closed) {
-        outline(&points, close_last, state, &mut out, remaining)?;
+        outline(&points, close_last, state, &mut out, remaining, tolerance)?;
     }
     Ok(out)
 }

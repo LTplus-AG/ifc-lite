@@ -66,6 +66,76 @@ fn issue_4406_stroke_caps_joins_and_miter_cutoff_have_analytic_area_after_affine
     }
 }
 #[test]
+fn issue_4406_round_caps_and_joins_obey_the_declared_metric_error_after_affine() {
+    for (commands, cap, join, expected) in [
+        (vec![0., 0., 0., 1., 4., 0.], 1, 0, 8. + std::f64::consts::PI),
+        (
+            vec![0., 0., 0., 1., 4., 0., 1., 4., 4.],
+            0,
+            1,
+            15. + std::f64::consts::FRAC_PI_4,
+        ),
+        (
+            vec![0., 0., 0., 1., 4., 0., 1., 4., -4.],
+            0,
+            1,
+            15. + std::f64::consts::FRAC_PI_4,
+        ),
+        (
+            rectangle(0., 0., 4., 4.),
+            0,
+            1,
+            28. + std::f64::consts::PI,
+        ),
+    ] {
+        let (source, mut request) = stroke(
+            commands,
+            cap,
+            join,
+            10.,
+            [2., 0.2, 0.5, 0.8, 3., 4.],
+        );
+        request.page.tolerance_metres = 0.01;
+        let result = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
+        let determinant: f64 = 2. * 0.8 - 0.2 * 0.5;
+        // Every circular arc is an inscribed contour whose post-affine
+        // Hausdorff error is bounded by the request tolerance. Area is a
+        // secondary analytic check with a perimeter-scaled bound.
+        let actual = result.meshes.iter().map(area).sum::<f64>();
+        assert!((actual - expected * determinant.abs()).abs() < 0.2);
+        assert!(result.fidelity.exact);
+        assert!(result.fidelity.summary.iter().all(|item| item.kind != "roundCapJoin"));
+    }
+}
+#[test]
+fn issue_4406_round_join_qualifies_a_concave_closed_path_and_ignores_its_cap() {
+    let commands = vec![0., 0., 0., 1., 6., 0., 1., 6., 6., 1., 3., 6., 1., 3., 3., 1., 0., 3., 4.];
+    let mut areas = vec![];
+    for cap in [0, 1, 2] {
+        let (source, mut request) = stroke(commands.clone(), cap, 1, 10., [1., 0., 0., 1., 0., 0.]);
+        request.page.tolerance_metres = 0.01;
+        let result = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
+        assert!(result.fidelity.exact);
+        areas.push(result.meshes.iter().map(area).sum::<f64>());
+    }
+    assert!(areas.windows(2).all(|pair| (pair[0] - pair[1]).abs() < 1e-9), "{areas:?}");
+}
+#[test]
+fn issue_4406_round_join_qualifies_a_long_segment_near_reversal() {
+    let (source, mut request) = stroke(
+        vec![0., 0., 0., 1., 1_000., 0., 1., 0.05, 10.],
+        1,
+        1,
+        10.,
+        [1., 0., 0., 1., 0., 0.],
+    );
+    request.page.view_box = [-2_000., -2_000., 2_000., 2_000.];
+    request.page.tolerance_metres = 0.001;
+    let result = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
+    assert!(result.fidelity.exact);
+    assert_eq!(result.regions.len(), 1);
+}
+#[test]
 fn issue_4406_combined_fill_stroke_retains_stroke_over_fill_and_closed_hole() {
     let (source, mut request) = stroke(
         rectangle(0., 0., 4., 4.),
@@ -98,8 +168,6 @@ fn issue_4406_unsupported_strokes_are_omissions_that_need_acceptance_and_never_c
         [1., 0., 0., 1., 0., 0.],
     );
     for (operation, kind) in [
-        (PdfVectorOperator::LineCap { cap: 1 }, "roundCapJoin"),
-        (PdfVectorOperator::LineJoin { join: 1 }, "roundCapJoin"),
         (PdfVectorOperator::LineWidth { width: 0. }, "hairline"),
         (
             PdfVectorOperator::Dash {
@@ -151,6 +219,8 @@ fn issue_4406_actual_decoded_stroke_pages_preserve_analytic_areas() {
         (include_str!("../../../../docs/architecture/evidence/pdf-straight-stroke-annotations/page-3-request.json"),2.38),
         (include_str!("../../../../docs/architecture/evidence/pdf-straight-stroke-annotations/page-4-request.json"),19.36),
         (include_str!("../../../../docs/architecture/evidence/pdf-straight-stroke-annotations/page-5-request.json"),1.5768),
+        (include_str!("../../../../docs/architecture/evidence/pdf-straight-stroke-annotations/page-6-request.json"),(1080.+36.*std::f64::consts::PI)/900.),
+        (include_str!("../../../../docs/architecture/evidence/pdf-straight-stroke-annotations/page-7-request.json"),(2124.+9.*std::f64::consts::PI)/900.),
     ] {
         let request:PdfFillAnnotationRequest=serde_json::from_str(data).unwrap();
         let result=plan_pdf_fill_annotation(source.as_bytes(),&request).unwrap();

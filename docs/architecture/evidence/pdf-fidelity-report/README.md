@@ -36,7 +36,7 @@ asserts the same values through the real decoder and WASM on every run.
 | invisibleText (render mode 3) | exact | 1 | text 0/1 | — |
 | clip (rectangle not containing the page) | partial | 1 | clip 1/1 | [0, 0, 80, 80] |
 | transparency (`/ca 0.5` ExtGState) | partial | 1 | transparency 1/1 | [20, 30, 30, 40] |
-| strokes (round join, dash, solid) | partial | 1 | dash 1/1; roundCapJoin 1/1 | [20, 50, 60, 50]; [20, 30, 60, 30] |
+| strokes (round join, dash, solid) | partial | 2 | dash 1/1 | [20, 50, 60, 50] |
 | form (XObject with Matrix and clipping BBox) | partial | 1 | clip 1/1 | [5, 5, 25, 25] |
 | hiddenLayer (optional content OFF) | exact | 1 | hidden 0/1 | — |
 | rasterOnly (one inline image) | raster-only | 0 | image 1/1 | [10, 20, 110, 92] |
@@ -59,15 +59,17 @@ digest in [`../pdf-vectors/sources.json`](../pdf-vectors/sources.json);
 515,902 bytes, SHA-256 `c8c9…87d66`; downloaded locally, not committed). The
 adapter produced 12,758 typed operations from the 12,773 raw operator-list
 entries (text-state setup folds into 11 text runs) with 3,167 painted paths.
-The verdict is **partial**: 1,141 paths convert, 2,025 painted parts are
-omitted — `roundCapJoin` 1,436 (the drawing's default line style, extent
+That committed report records the earlier qualifier, before round-stroke
+conversion: 1,141 paths converted and 2,025 painted parts were omitted,
+including `roundCapJoin` 1,436 (the drawing's default line style, extent
 [215.2, 33.9, 623.9, 570.6]), `hairline` 556 ([485.1, 215.0, 542.6, 358.7]),
 `clip` 33 fills inside one clipping path ([229.0, 35.5, 623.9, 570.6]) and
 `text` 11 labels ([244.1, 93.6, 617.4, 501.6]). All 2,036 individual entries
-are listed; nothing was truncated. The report is what a user would have to
-accept before this page converts; converting round-capped strokes, hairlines,
-clipped content and text remains outstanding work, so this drawing is not
-presented as an exact conversion.
+are listed; nothing was truncated. Current preparation accepts the round
+cap/join state, as the controlled report above proves. This retained real-file
+record is not silently rewritten into a current verdict without the original
+PDF and a fresh complete run. Hairlines, clipped content and text still prevent
+an exact conversion, and the drawing is not presented as one.
 
 [`habs-report.json`](habs-report.json) is the public-domain HABS PA-6709 sheet 4
 (Cyclorama Building floor plans; source metadata in

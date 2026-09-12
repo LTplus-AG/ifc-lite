@@ -918,7 +918,7 @@ naming everything else:
 - `convertiblePaths`, `omittedPaints`: how many paths convert and how many
   visible painted fill/stroke parts are left out.
 - `summary`: one entry per omission kind — `text`, `image`, `clip`,
-  `transparency`, `pattern`, `dash`, `roundCapJoin`, `curvedStroke`,
+  `transparency`, `pattern`, `dash`, `curvedStroke`,
   `hairline`, `hidden`, `annotation`, `unsupported:<operator>` — with total
   `count`, `visibleCount` and `bboxPdf`, the union extent of the visible entries
   in unrotated PDF user space (CropBox coordinates).
@@ -965,11 +965,13 @@ page refuses regardless. Acceptance covers the listed omissions, not geometry.
 
 The geometry scope accepts opaque RGB pages made of straight fill edges,
 qualified quadratic/cubic curved rings, and qualified solid straight strokes.
-Strokes support positive width, butt/square caps, bevel/miter joins and
-miter-limit fallback, outlined before the full affine transform. It resolves
+Strokes support positive width, butt/square/round caps, bevel/miter/round joins
+and miter-limit fallback, outlined before the full affine transform. Round arcs
+are subdivided against the declared metric tolerance after accounting for
+nonuniform scale, reflection and shear. It resolves
 nonzero/even-odd winding, holes, islands, implicit CropBox clipping and paint
 order, including fill then stroke in combined operators. Text, images, explicit
-clips, transparency, patterns, dashed, round-capped/joined, curved and hairline
+clips, transparency, patterns, dashed, curved and hairline
 strokes and unsupported state are never drawn approximately: they are the
 report's omissions, left out only under acceptance and recorded with the
 annotation. Quantization collapse, uncertain near contacts and exhausted

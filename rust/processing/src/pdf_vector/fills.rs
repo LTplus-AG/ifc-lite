@@ -76,6 +76,11 @@ pub(crate) fn compose(
         point(model_metres_from_pdf, [x0, y1])?,
     ]];
     let flatten_error = prepared.tolerance_metres / 8.;
+    // A round stroke contour has one polygonal approximation pass followed by
+    // the shared grid operations above. Reserve half the declared tolerance
+    // for its arc chords; the grid's per-pass allowance is substantially less
+    // than the other half even at the one-paint minimum.
+    let stroke_arc_error = prepared.tolerance_metres / 2.;
     let mut paths = Vec::with_capacity(prepared.paths.len() * 2);
     let mut paints = Vec::with_capacity(prepared.paths.len() * 2);
     for path in &prepared.paths {
@@ -92,7 +97,7 @@ pub(crate) fn compose(
             let close = matches!(path.paint, PdfVectorPaint::CloseStroke |
                 PdfVectorPaint::CloseFillStroke | PdfVectorPaint::CloseEvenOddFillStroke);
             paths.push(super::strokes::rings(&path.commands, close, &path.state,
-                &mut budget.remaining).map_err(|e| format!("PDF operator {}: {e}", path.operator_ordinal))?);
+                &mut budget.remaining, stroke_arc_error).map_err(|e| format!("PDF operator {}: {e}", path.operator_ordinal))?);
             // A combined operator fills first, then strokes. Expansion retains
             // its original operator identity and distinct fill/stroke colours.
             paints.push((path.operator_ordinal, path.state.stroke_rgb, false));

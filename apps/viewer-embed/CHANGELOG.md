@@ -1,5 +1,15 @@
 # @ifc-lite/viewer-embed
 
+## 1.15.3
+
+### Patch Changes
+
+- Updated dependencies [[`e18a434`](https://github.com/LTplus-AG/ifc-lite/commit/e18a434ec2258e474728bd9a90146486b38efedb), [`624bfa3`](https://github.com/LTplus-AG/ifc-lite/commit/624bfa3b7d1d636a6142af984613eb5bd79c09b4), [`6f339d8`](https://github.com/LTplus-AG/ifc-lite/commit/6f339d8165104cd44f6c6c36371c205ec3cccafb), [`ad4672f`](https://github.com/LTplus-AG/ifc-lite/commit/ad4672fc9007f8ac86076f123a1e6020b04af7b6), [`0d8c5da`](https://github.com/LTplus-AG/ifc-lite/commit/0d8c5dac6175255d12ce758fe69c177af849dd03)]:
+  - @ifc-lite/collab@0.8.0
+  - @ifc-lite/wasm@7.1.0
+  - @ifc-lite/lists@2.2.0
+  - @ifc-lite/mcp@0.14.2
+
 ## 1.15.2
 
 ### Patch Changes

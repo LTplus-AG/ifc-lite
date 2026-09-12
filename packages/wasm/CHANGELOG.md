@@ -1,5 +1,19 @@
 # @ifc-lite/wasm
 
+## 7.1.0
+
+### Minor Changes
+
+- [#4545](https://github.com/LTplus-AG/ifc-lite/pull/4545) [`624bfa3`](https://github.com/LTplus-AG/ifc-lite/commit/624bfa3b7d1d636a6142af984613eb5bd79c09b4) Thanks [@louistrue](https://github.com/louistrue)! - Add reviewable face masks to opted-in evaluated occurrence appearance planning (`AppearanceRequest.faceMasks`). Every conversion now reports a `surfaceFingerprint` for its evaluated surface at its current placement (express ids excluded, so a renumbered export keeps a mask; a placement edit generally reports it stale); a mask bound to that fingerprint splits the authored Body into a textured `IfcTriangulatedFaceSet` and a retained face set that keeps the source style, under the same wrapper. A mask whose surface changed is an explicit `Face selection is stale` exclusion, never a silent reuse of triangle ordinals. The evaluated policy also accepts any uniquely owned Body whose representation type permits tessellation (SweptSolid, Brep, CSG, Clipping and similar), including a solid Body a type's representation map references, instead of mapped occurrences only.
+
+- [#4547](https://github.com/LTplus-AG/ifc-lite/pull/4547) [`ad4672f`](https://github.com/LTplus-AG/ifc-lite/commit/ad4672fc9007f8ac86076f123a1e6020b04af7b6) Thanks [@louistrue](https://github.com/louistrue)! - PDF vector conversion (F8, [#4406](https://github.com/LTplus-AG/ifc-lite/issues/4406)) is now fidelity-gated. `IfcAPI.preparePdfVectorPage` returns a canonical `fidelity` report beside the convertible paths — omission kinds (text, images, clipping, transparency, patterns and shadings, dashes, round caps/joins, curved strokes, hairlines, hidden optional content, annotation appearances, unknown operators) with counts, page-space extents and visibility, plus `exact`, `rasterOnly` and a digest binding the verdict — replacing the previous `stateQualified`, `geometryReady`, `pendingGeometry` and `diagnostics` fields. `IfcAPI.planPdfFillAnnotation` takes `propertySetGlobalId`, `propertyRelationGlobalId` and `acceptedFidelitySha256`: an exact page plans directly, a page with visible omissions plans only when the request quotes the digest of the displayed report, a raster-only page refuses, and every created annotation carries an `IfcLite_PdfVectorConversion` property set recording the source PDF digest, page, CropBox, UserUnit, rotation, decoder, calibration, tolerance in metres and the accepted verdict. The decoder wire format adds typed `clip`, `text`, `image`, `shading`/pattern, `graphicsState`, form/group/annotation scope and marked-content operations.
+  
+  The viewer's PDF vectors representation shows the report before preparing geometry: exact pages continue, partial pages need the "Create a partial conversion" acknowledgement, and raster-only pages disable the action with a raster-reference message.
+
+### Patch Changes
+
+- [#4539](https://github.com/LTplus-AG/ifc-lite/pull/4539) [`0d8c5da`](https://github.com/LTplus-AG/ifc-lite/commit/0d8c5dac6175255d12ce758fe69c177af849dd03) Thanks [@louistrue](https://github.com/louistrue)! - Refuse registered mesh transfer observations that lie behind the IFC face. `planMeshTransfer` requires an explicit `maxBehindMetres` (bounded by `maxDistanceMetres`) and reports `unknownBehindSamples`: a same-facing scan surface deeper than that limit behind the face, such as the far side of a thin wall or furniture beyond it, keeps the existing appearance instead of being painted through. Coplanar captures are tolerated within f64 rounding under a zero limit.
+
 ## 7.0.0
 
 ### Major Changes

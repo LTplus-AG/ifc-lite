@@ -37,6 +37,10 @@ describe('buildEChartsOption', () => {
     // Labels share the width and truncate rather than being dropped; they only tilt past eight buckets.
     const axisLabel = (buildEChartsOption({ aggregation: agg, width: 400 }).xAxis as { axisLabel: { width: number; overflow: string; rotate: number } }).axisLabel;
     expect(axisLabel).toMatchObject({ width: 194, overflow: 'truncate', rotate: 0 });
+    // Past eight buckets the labels tilt and may run past their (now narrow) share.
+    const twelve: ChartDataset = { ...ds, rows: Array.from({ length: 12 }, (_, i) => ({ ids: [100 + i], values: [`Type ${i}`, 'L1'] })) };
+    const tilted = (buildEChartsOption({ aggregation: aggregate(bar, twelve), width: 300 }).xAxis as { axisLabel: { width: number; rotate: number } }).axisLabel;
+    expect(tilted).toMatchObject({ width: 60, rotate: 30 });
     // No key for a component the bundle does not register (ECharts reports `title: undefined` as missing).
     expect('title' in option).toBe(false);
     expect('brush' in option).toBe(false);

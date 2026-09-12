@@ -13,11 +13,9 @@ pub(super) const DIRECT_BODY: &str =
     "Face masks currently apply to converted occurrence bodies only; this object already has a direct tessellated Body";
 /// Coordinates are quantised to one micrometre before hashing so that
 /// sub-micrometre noise between two plans of the same file cannot drop a mask.
-/// The points come from the canonical f32 world evaluation, so the fingerprint
-/// binds to the surface at its current placement: a renumbered export keeps a
-/// mask, while a placement edit generally reports it stale (f32 spacing exceeds
-/// one micrometre beyond a few metres from the origin) unless the move is
-/// exactly representable. Stale is the safe direction; a mask is never reused.
+/// The canonical evaluation uses a per-element local frame before the inverse
+/// product transform, so a pure placement edit does not change this product-local
+/// identity on either native or wasm. Geometry and topology edits still do.
 const QUANTUM_PER_METRE: f64 = 1e6;
 /// Equals the plan geometry budget's triangle capacity (1 500 000 corners).
 const MASK_ORDINAL_BUDGET: usize = 500_000;

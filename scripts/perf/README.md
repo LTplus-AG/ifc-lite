@@ -1190,6 +1190,20 @@ directly and checked the run count. #4541 fixed the guard with
 `pathToFileURL`; always check the round count `ab.sh` reports.
 [Raw rounds](../../docs/architecture/evidence/evaluated-face-masks/native-load.json) and [fingerprints](../../docs/architecture/evidence/evaluated-face-masks/native-fingerprints.json).
 
+The #4550 native/wasm fingerprint-parity follow-up makes the existing
+per-element local frame explicit only inside opt-in appearance planning. Fresh
+interleaved base/branch and branch/base AC20 normal-load controls resolved no
+change at the probe's phase precision, and every run retained identical mesh,
+vertex and triangle counts plus ordered geometry fingerprint. The useful lesson
+is to select frame policy per router before its caches are populated: a
+process-global override would make concurrent native planning unsafe, while
+changing the native load default would needlessly disturb deterministic output.
+An interleaved release A/B over the real AC20 mapped-member
+`plan_appearance` path also retained the same source-index checksum and
+fingerprint with no slowdown. The final implementation evaluates the canonical
+surface once and shares that mesh between replacement and fingerprinting; a
+second identity-only evaluation was measured and removed before review.
+
 ### Shared appearance atlas sampling (#4381)
 
 Factoring target appearance preservation, charts and canonical image binding into

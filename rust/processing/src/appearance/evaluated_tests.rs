@@ -32,6 +32,16 @@ pub(crate) fn real_source()->Option<String> {
 pub(crate) fn corners(mesh:&crate::types::mesh::MeshData)->Vec<[f64;3]> {
     mesh.indices.iter().map(|&i|std::array::from_fn(|axis|f64::from(mesh.positions[i as usize*3+axis])+mesh.origin[axis])).collect()
 }
+fn assert_binding_surface(binding:&AppearanceConversion, mesh:&crate::types::mesh::MeshData) {
+    assert_eq!(binding.source_normals,mesh.normals);
+    assert_eq!(binding.source_indices,mesh.indices);
+    assert_eq!(binding.source_color,mesh.color);
+    let actual:Vec<[f64;3]>=binding.source_indices.iter().map(|&i|std::array::from_fn(|axis|
+        f64::from(binding.source_positions[i as usize*3+axis])+binding.source_origin[axis])).collect();
+    for (a,b) in actual.iter().zip(corners(mesh)) {
+        assert!((0..3).all(|axis|(a[axis]-b[axis]).abs()<1e-6),"{a:?} != {b:?}");
+    }
+}
 #[test]
 fn issue_4404_real_mapped_member_is_opt_in_and_preserves_every_sibling_and_world_corner() {
     let Some(source)=real_source() else{return};
@@ -57,11 +67,7 @@ fn issue_4404_real_mapped_member_is_opt_in_and_preserves_every_sibling_and_world
         if mesh.express_id==35169 {
             assert_eq!(corners(mesh),corners(other));assert!(other.uvs.is_some());assert!(other.texture.is_some());
             let binding=&plan.conversions[0];
-            assert_eq!(binding.source_positions,mesh.positions);
-            assert_eq!(binding.source_normals,mesh.normals);
-            assert_eq!(binding.source_indices,mesh.indices);
-            assert_eq!(binding.source_origin,mesh.origin);
-            assert_eq!(binding.source_color,mesh.color);
+            assert_binding_surface(binding,mesh);
             assert_eq!(binding.rtc_offset,[0.;3]);
             assert_eq!(mesh.global_id,other.global_id);
         } else { assert_eq!(serde_json::to_value(mesh).unwrap(),serde_json::to_value(other).unwrap()); }
@@ -227,9 +233,7 @@ fn issue_4404_materialization_payload_restores_georeferenced_native_frame_once()
     let textures=ifc_lite_geometry::build_texture_index(source.as_bytes(),&mut effective.decoder);
     let meshes=canonical::produce(&mut effective,35169,&textures,Some(&styles)).unwrap();
     let mesh=&meshes[0];
-    assert_eq!(binding.source_positions,mesh.positions);
-    assert_eq!(binding.source_normals,mesh.normals);
-    assert_eq!(binding.source_origin,mesh.origin);
+    assert_binding_surface(binding,mesh);
     let output=apply(&source,&plan);
     let reopened=crate::process_geometry(output.as_bytes());
     let target=reopened.meshes.iter().find(|m|m.express_id==35169).unwrap();
@@ -338,9 +342,7 @@ fn issue_4404_real_cut_slab_preserves_type_semantics_and_accepts_second_appearan
     for mesh in before.meshes.iter().filter(|mesh|mesh.express_id!=59365) {
         let other=after.meshes.iter().find(|m|m.express_id==mesh.express_id && (m.express_id==59290 || m.geometry_item_id==mesh.geometry_item_id)).unwrap();
         if mesh.express_id==59290 {
-            assert_eq!(plan.conversions[0].source_positions,mesh.positions);
-            assert_eq!(plan.conversions[0].source_indices,mesh.indices);
-            assert_eq!(plan.conversions[0].source_origin,mesh.origin);
+            assert_binding_surface(&plan.conversions[0],mesh);
             assert_eq!(mesh.indices.len()/3,32);assert_eq!(other.indices.len()/3,32);
             assert!(other.uvs.is_some());assert!(other.texture.is_some());
             assert_eq!(mesh.global_id,other.global_id);

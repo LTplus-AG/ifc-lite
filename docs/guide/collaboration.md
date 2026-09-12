@@ -58,7 +58,10 @@ file — same file name, same bytes, same IFC GlobalIds — stay two distinct
 models with their own geometry, placement and textures. The scope is fixed once
 the room exists; re-opening the dialog shows how many models the room carries.
 While several models upload, the progress row names the model it is on
-("model 2 of 3").
+("model 2 of 3"). A recipient exports each room model to its own `.ifcx`
+(merged export is STEP-only); the file carries the model's own `/<GlobalId>`
+paths, never the room's slot, so it opens in any viewer and diffs against the
+other copy's export.
 
 Textured models share their UV coordinates and image pixels with the geometry.
 Recipients do not need the original IFCZIP or access to its image filenames.

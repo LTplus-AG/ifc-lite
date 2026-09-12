@@ -101,7 +101,7 @@ function crateDefaultFeatures(dir) {
 function rustModuleOwner(crateDir, abs) {
   const root = join(crateDir, 'src', 'lib.rs');
   if (!existsSync(root)) return null;
-  const queue = [{ file: root, modules: [] }];
+  const queue = [{ file: root, modules: [] }], matches = [];
   const visited = new Set();
   while (queue.length > 0) {
     const { file: parent, modules } = queue.shift();
@@ -109,22 +109,28 @@ function rustModuleOwner(crateDir, abs) {
     if (visited.has(key) || !existsSync(parent)) continue;
     visited.add(key);
     const text = readFileSync(parent, 'utf8');
-    const declarations = /(?:#\[path\s*=\s*"([^"]+)"\]\s*)?(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
+    const declarations = /((?:\s*#\[[^\]\r\n]+\]\s*)*)(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
     let match;
     while ((match = declarations.exec(text)) !== null) {
       const ordinaryBase = /(?:^|[\\/])(?:lib|mod)\.rs$/.test(parent)
         ? dirname(parent)
         : join(dirname(parent), basename(parent, '.rs'));
-      const target = match[1]
-        ? resolve(dirname(parent), match[1])
-        : [resolve(ordinaryBase, `${match[2]}.rs`), resolve(ordinaryBase, match[2], 'mod.rs')].find(existsSync);
+      const attributes = match[1], moduleName = match[2];
+      const explicitPath = /#\[\s*path\s*=\s*"([^"]+)"\s*\]/.exec(attributes)?.[1];
+      const target = explicitPath
+        ? resolve(dirname(parent), explicitPath)
+        : [resolve(ordinaryBase, `${moduleName}.rs`), resolve(ordinaryBase, moduleName, 'mod.rs')].find(existsSync);
       if (!target) continue;
-      const targetModules = [...modules, match[2]];
-      if (resolve(target) === resolve(abs)) return targetModules.join('::');
+      const targetModules = [...modules, moduleName];
+      const conditional = [...attributes.matchAll(/#\[\s*cfg[^\]]*\]/g)]
+        .some((cfg) => cfg[0].replaceAll(/\s/g, '') !== '#[cfg(test)]');
+      if (resolve(target) === resolve(abs)) matches.push({ moduleFilter: targetModules.join('::'), conditional });
+      if (conditional) continue;
       queue.push({ file: target, modules: targetModules });
     }
   }
-  return null;
+  if (matches.length !== 1 || matches[0].conditional) return matches.length > 0 ? { ambiguous: true } : null;
+  return matches[0];
 }
 
 export function planRuns(testPaths, root) {
@@ -138,13 +144,15 @@ export function planRuns(testPaths, root) {
     if (c) {
       const within = relative(c.dir, abs).split(sep).join('/');
       const targetMatch = /^tests\/([^/]+)\.rs$/.exec(within);
-      const declaredModule = targetMatch ? null : rustModuleOwner(c.dir, abs);
-      if (!targetMatch && !declaredModule) {
+      const owner = targetMatch ? null : rustModuleOwner(c.dir, abs);
+      if (!targetMatch && (!owner || owner.ambiguous)) {
         if (/(^|\/)(?:fixtures?|test-data|testdata|corpus)(\/|$)/.test(within)) {
           support.push(rel);
           continue;
         }
-        unassigned.push({ file: rel, reason: 'Rust unit/module/support files cannot be attributed to one executable cargo target' });
+        unassigned.push({ file: rel, reason: owner?.ambiguous
+          ? 'Rust module ownership is conditional or ambiguous; active compiled source ownership was not proven'
+          : 'Rust unit/module/support files cannot be attributed to one executable cargo target' });
         continue;
       }
       const defaults = crateDefaultFeatures(c.dir);
@@ -161,7 +169,7 @@ export function planRuns(testPaths, root) {
         : [[]];
       for (const features of runs) {
         const suffix = features.length > 0 ? `+${features.join('+')}` : '';
-        const moduleFilter = declaredModule;
+      const moduleFilter = owner?.moduleFilter ?? null;
         const identity = targetMatch?.[1] ?? moduleFilter;
         const claimed = claimRuntimeAdapter({ kind: 'cargo', crate: c.crate, features, target: targetMatch?.[1] ?? null, moduleFilter });
         plans.push({

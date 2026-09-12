@@ -29,6 +29,7 @@ const _: () = assert!(
     "ifc-lite-export assumes a little-endian target (GLB is LE; cast_slice byte reinterpretation)",
 );
 
+use crate::color_space::srgb_to_linear;
 use crate::error::ExportError;
 use ifc_lite_core::EntityIndex;
 use ifc_lite_geometry::{
@@ -443,23 +444,6 @@ fn mesh_visible(mesh: &MeshData, opts: &GltfOptions) -> bool {
 fn color_key(c: [f32; 4]) -> (i32, i32, i32, i32) {
     let r = |v: f32| (v * 100.0).round() as i32;
     (r(c[0]), r(c[1]), r(c[2]), r(c[3]))
-}
-
-/// IEC 61966-2-1 sRGB electro-optical transfer function (decode): maps a
-/// gamma-encoded channel in `[0, 1]` to linear light. `IfcColourRgb` components
-/// are authored the way every BIM tool's colour picker works — a perceptual
-/// (sRGB) swatch, the same convention IfcOpenShell/BlenderBIM follow when
-/// building a renderer's albedo input — while glTF's `baseColorFactor` and
-/// `emissiveFactor` are defined in LINEAR space (glTF 2.0 spec, "Reference
-/// Material"). Copying the sRGB value straight into `baseColorFactor` skips
-/// this decode and renders every colour too bright/washed out in any
-/// spec-compliant consumer (Blender, three.js, Cesium — the whole point of
-/// exporting glTF for tools outside this repo). Metallic/roughness factors are
-/// NOT colour and must never go through this — only RGB channels that end up
-/// as a `*Factor` colour do.
-fn srgb_to_linear(c: f32) -> f32 {
-    let c = c.clamp(0.0, 1.0);
-    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
 }
 
 /// One material for a mesh colour: the single source of the lit / unlit / emissive

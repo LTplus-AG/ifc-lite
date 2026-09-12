@@ -4,6 +4,8 @@
 
 use std::collections::HashSet;
 
+use crate::color_space::srgb_to_linear;
+
 // ── materials ───────────────────────────────────────────────────────────────
 
 /// Material dedup key: RGBA rounded to 2 decimals, clamped to 0..=100 (matches the
@@ -22,10 +24,19 @@ pub(super) fn mat_name(key: (i32, i32, i32, i32)) -> String {
     format!("Mat_{}_{}_{}_{}", key.0, key.1, key.2, key.3)
 }
 
-/// Clamp an RGBA colour into the [0,1] range USD expects (non-finite → mid-grey/opaque).
-pub(super) fn clamp_color(c: [f32; 4]) -> [f32; 4] {
+/// An IFC (sRGB) RGBA colour as the LINEAR colour USD's `color3f` inputs take:
+/// clamped into [0,1] (non-finite → mid-grey/opaque), then RGB decoded through
+/// [`srgb_to_linear`], the decode the glTF writer applies. Alpha is opacity and
+/// is not decoded. This used to clamp only, so mid-grey `0.5` reached USD as
+/// `0.5` and glTF as `0.214`: the same element in two colours.
+pub(super) fn linear_color(c: [f32; 4]) -> [f32; 4] {
     let f = |v: f32, d: f32| if v.is_finite() { v.clamp(0.0, 1.0) } else { d };
-    [f(c[0], 0.8), f(c[1], 0.8), f(c[2], 0.8), f(c[3], 1.0)]
+    [
+        srgb_to_linear(f(c[0], 0.8)),
+        srgb_to_linear(f(c[1], 0.8)),
+        srgb_to_linear(f(c[2], 0.8)),
+        f(c[3], 1.0),
+    ]
 }
 
 // ── identifiers ───────────────────────────────────────────────────────────────

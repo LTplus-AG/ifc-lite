@@ -73,7 +73,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel }: ChartEditorPro
 
   return (
     <form
-      className="flex flex-col gap-2 p-2 text-xs"
+      className="flex w-full max-w-3xl flex-col gap-2 p-2 text-xs"
       data-chart-editor
       onSubmit={(e) => {
         e.preventDefault();

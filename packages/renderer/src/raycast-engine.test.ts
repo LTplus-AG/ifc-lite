@@ -400,6 +400,19 @@ describe('RaycastEngine.raycastScene', () => {
     assert.equal(hit.sourceTriangleIndex, undefined);
   });
 
+  it('keeps equal-sized fragments that share an owner, origin and first vertex (#4556)', () => {
+    const scene = new Scene();
+    const fragment = (x: number): MeshData => ({ expressId: 7, modelIndex: 3,
+      positions: new Float32Array([0, 0, 0, x, -1, 0, x, 1, 0]),
+      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+      color: [1, 1, 1, 1] });
+    addRegularMesh(scene, fragment(-10));
+    addRegularMesh(scene, fragment(10));
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    assert.ok(engine.raycastScene(300, 300), 'the left fragment remains raycastable');
+    assert.ok(engine.raycastScene(500, 300), 'the equal-signature right fragment must not be deduplicated');
+  });
+
   it('off-origin, rotated, non-uniformly-scaled geometry is hit at the transformed location, not the local one', () => {
     // An asymmetric triangle (legs of different length: 12 along local X, 4
     // along local Y), scaled non-uniformly, rotated 90 degrees about Y, and

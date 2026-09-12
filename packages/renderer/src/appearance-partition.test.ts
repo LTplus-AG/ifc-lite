@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { MeshData } from '@ifc-lite/geometry';
+import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
 import { Scene } from './scene.js';
 import { invertAppearancePartition, validateAppearancePartition, type AppearancePartition } from './appearance-partition.js';
 import { splitMeshForStreaming } from './scene-stream-split.js';
@@ -162,5 +162,40 @@ describe('partitioned appearance preview (#4404)', () => {
     } finally {
       scene.clear();
     }
+  });
+
+  it('replays a federated instanced mask through Apply, Undo and Redo (#4556)', () => {
+    const modelIndex = 7, expressId = 1_007, sourceItem = 1_021;
+    const shard: DecodedInstancedShard = { carriesItemIds: true,
+      templates: [{ positions: new Float32Array([0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1]),
+        normals: new Float32Array([0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0]), indices, origin: [0, 0, 0] }],
+      instances: [{ templateIndex: 0, entityId: expressId, itemId: sourceItem, color: [0.8, 0.2, 0.1, 1],
+        transform: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) }] };
+    const scene = new Scene();
+    scene.addInstancedShard(device, shard, modelIndex);
+    const source: MeshData = { ...quad, expressId, modelIndex, geometryItemId: sourceItem, origin: [0, 0, 0] };
+    const [localTextured, localRetained] = halves(source);
+    const textured = { ...localTextured, geometryItemId: 1_101 };
+    const retained = { ...localRetained, geometryItemId: 1_102 };
+    const partition: AppearancePartition = { sourceGeometryItemId: sourceItem, triangleCount: 2,
+      before: [{ partId: 0, geometryItemId: sourceItem, triangles: [0, 1] }],
+      after: [{ partId: 0, geometryItemId: 1_101, triangles: [0] }, { partId: 1, geometryItemId: 1_102, triangles: [1] }] };
+    const owner = { expressId, modelIndex }, api = scene.appearancePreview(device, pipeline);
+    const apply = api.begin(owner, { materializedOriginals: [source], partition });
+    api.update(apply, [textured, retained]);
+    const release = api.retainSource(owner), change = api.commit(apply);
+    assert.equal(change.beforeInstanced, true);
+    assert.deepEqual(scene.getMeshDataPieces(expressId, modelIndex)!.map(part => part.geometryItemId), [1_101, 1_102]);
+
+    const undo = api.begin(owner, { partition: invertAppearancePartition(change.partition!) });
+    api.update(undo, [source]); api.commit(undo);
+    assert.equal(scene.isInstancedEntity(expressId), true);
+    assert.equal(scene.getMeshDataPieces(expressId, modelIndex), undefined);
+
+    const redo = api.begin(owner, { partition });
+    api.update(redo, [textured, retained]); api.commit(redo);
+    assert.equal([...scene.getInstancedEntityIds()].includes(expressId), false, 'the retained instance is suppressed behind the flat mask');
+    assert.deepEqual(scene.getMeshDataPieces(expressId, modelIndex)!.map(part => part.geometryItemId), [1_101, 1_102]);
+    release(); scene.clear();
   });
 });

@@ -6,8 +6,12 @@ import { extractPdfText, type PdfTextOptions } from './document-text.js';
 
 type Extractor = (file: Blob, options: PdfTextOptions) => Promise<string>;
 
-export interface DocumentUploadGate {
+export interface DocumentUploadBatch {
+  current(): boolean;
   run<T>(file: Blob, commit: (text: string) => T): Promise<T>;
+}
+export interface DocumentUploadGate {
+  begin(): DocumentUploadBatch;
   cancel(): void;
 }
 
@@ -21,17 +25,21 @@ export function createDocumentUploadGate(
   let generation = 0;
   const active = new Set<AbortController>();
   return {
-    async run(file, commit) {
+    begin() {
       const ownGeneration = generation;
-      const controller = new AbortController();
-      active.add(controller);
-      try {
-        const text = await extractor(file, { signal: controller.signal });
-        if (generation !== ownGeneration) throw new DOMException('PDF upload became stale.', 'AbortError');
-        return commit(text);
-      } finally {
-        active.delete(controller);
-      }
+      const current = () => generation === ownGeneration;
+      return { current, async run(file, commit) {
+        if (!current()) throw new DOMException('PDF upload became stale.', 'AbortError');
+        const controller = new AbortController();
+        active.add(controller);
+        try {
+          const text = await extractor(file, { signal: controller.signal });
+          if (!current()) throw new DOMException('PDF upload became stale.', 'AbortError');
+          return commit(text);
+        } finally {
+          active.delete(controller);
+        }
+      } };
     },
     cancel() {
       generation += 1;
@@ -43,10 +51,10 @@ export function createDocumentUploadGate(
 
 export async function attachPdfDocument(
   file: File,
-  gate: DocumentUploadGate,
+  batch: DocumentUploadBatch,
   add: (attachment: FileAttachment) => void,
 ): Promise<void> {
-  await gate.run(file, textContent => {
+  await batch.run(file, textContent => {
     add({ id: crypto.randomUUID(), name: file.name, type: 'application/pdf', size: file.size, textContent });
   });
 }

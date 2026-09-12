@@ -1167,8 +1167,10 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     const supportsImages = model?.supportsImages ?? false;
     const supportsFileAttachments = model?.supportsFileAttachments ?? true;
     let remainingSlots = Math.max(0, MAX_ATTACHMENTS_PER_MESSAGE - attachments.length);
+    const documentBatch = documentUploads.begin();
 
     for (const file of Array.from(files)) {
+      if (!documentBatch.current()) break;
       if (remainingSlots <= 0) {
         setChatError(`You can attach up to ${MAX_ATTACHMENTS_PER_MESSAGE} files per message.`);
         break;
@@ -1212,7 +1214,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             setChatError(`PDF attachments must be smaller than ${Math.round(MAX_PDF_ATTACHMENT_BYTES / 1_000_000)} MB.`);
             continue;
           }
-          await attachPdfDocument(file, documentUploads, addAttachment);
+          await attachPdfDocument(file, documentBatch, addAttachment);
           remainingSlots -= 1;
           continue;
         }

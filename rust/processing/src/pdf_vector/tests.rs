@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::*;
-fn page(ops: Vec<PdfVectorOperator>) -> PdfVectorPage {
+pub(super) fn page(ops: Vec<PdfVectorOperator>) -> PdfVectorPage {
     PdfVectorPage {
         pdf_sha256: "a".repeat(64),
         decoder_version: "6.3.289".into(),
@@ -23,7 +23,7 @@ fn page(ops: Vec<PdfVectorOperator>) -> PdfVectorPage {
             .collect(),
     }
 }
-fn path() -> PdfVectorOperator {
+pub(super) fn path() -> PdfVectorOperator {
     PdfVectorOperator::Path {
         paint: PdfVectorPaint::Stroke,
         commands: vec![0., 10., 20., 1., 82., 20.],
@@ -37,23 +37,17 @@ fn issue_4406_calibrated_transform_preserves_stroke_construction_space_and_resto
             matrix: [2., 0., 0., 3., 4., 5.],
         },
         PdfVectorOperator::LineWidth { width: 2. },
-        PdfVectorOperator::Dash {
-            lengths: vec![4., 2.],
-            phase: 1.,
-        },
         path(),
         PdfVectorOperator::Restore,
         path(),
     ]);
     let report = prepare_pdf_vector_page(&input).unwrap();
-    assert!(report.state_qualified);
-    assert!(!report.geometry_ready);
+    assert!(report.fidelity.exact);
+    assert_eq!(report.fidelity.convertible_paths, 2);
     assert_eq!(report.page_clip_pdf, input.view_box);
-    assert!(report.pending_geometry.contains(&"pageClip"));
     let transformed = &report.paths[0];
-    assert_eq!(transformed.operator_ordinal, 8);
+    assert_eq!(transformed.operator_ordinal, 6);
     assert_eq!(transformed.state.line_width, 2.);
-    assert_eq!(transformed.state.dash_lengths, [4., 2.]);
     let m = transformed.state.model_metres_from_path;
     // Independent successive maps: path (10,20) -> PDF (24,65) -> metres (.09,.172).
     assert!((m[0] * 10. + m[2] * 20. + m[4] - 0.09).abs() < 1e-15);
@@ -89,7 +83,7 @@ fn issue_4406_preserves_curves_fill_rules_and_paint_order_without_claiming_flatt
     assert!(report.paths[0].operator_ordinal < report.paths[1].operator_ordinal);
 }
 #[test]
-fn issue_4406_unsupported_content_and_painted_hairlines_never_qualify_partial_paths() {
+fn issue_4406_unsupported_content_and_painted_hairlines_are_reported_not_converted() {
     let report = prepare_pdf_vector_page(&page(vec![
         PdfVectorOperator::LineWidth { width: 0. },
         PdfVectorOperator::Path {
@@ -101,15 +95,15 @@ fn issue_4406_unsupported_content_and_painted_hairlines_never_qualify_partial_pa
             operator: "showText".into(),
         },
         PdfVectorOperator::Unsupported {
-            operator: "clip".into(),
+            operator: "setFillTransparent".into(),
         },
     ]))
     .unwrap();
-    assert!(!report.state_qualified);
-    assert_eq!(report.paths.len(), 1);
-    assert_eq!(report.diagnostics.len(), 3);
-    assert_eq!(report.diagnostics[0].operator_ordinal, 4);
-    assert_eq!(report.diagnostics[1].code, "unsupported:showText");
+    assert!(!report.fidelity.exact);
+    assert!(report.paths.is_empty(), "a hairline is never a convertible path");
+    let kinds: Vec<_> = report.fidelity.omissions.iter().map(|o| (o.operator_ordinal, o.kind.as_str())).collect();
+    assert_eq!(kinds, [(4, "hairline"), (6, "unsupported:showText"), (8, "unsupported:setFillTransparent")]);
+    assert_eq!(report.fidelity.omitted_paints, 1);
 }
 #[test]
 fn issue_4406_binds_page_source_calibration_tolerance_and_original_operator_identity() {
@@ -185,4 +179,33 @@ fn issue_4406_strict_json_rejects_unknown_semantics_instead_of_dropping_them() {
     let mut json = serde_json::to_value(page(vec![path()])).unwrap();
     json["operations"][0]["operation"]["alpha"] = serde_json::json!(0.5);
     assert!(serde_json::from_value::<PdfVectorPage>(json).is_err());
+}
+#[test]
+fn issue_4406_report_operators_use_the_adapter_camel_case_wire_shape() {
+    let mut json = serde_json::to_value(page(vec![path()])).unwrap();
+    json["operations"] = serde_json::json!([
+        {"ordinal": 0, "operation": {"kind": "clip", "evenOdd": true}},
+        {"ordinal": 1, "operation": {"kind": "graphicsState", "lineWidth": 2.5, "lineCap": null, "lineJoin": 2,
+            "miterLimit": null, "dash": [[1.0, 2.0], 0.5], "transparency": ["ca"], "unsupported": []}},
+        {"ordinal": 2, "operation": {"kind": "text", "quad": [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0], "invisible": false}},
+        {"ordinal": 3, "operation": {"kind": "formBegin", "matrix": null, "bbox": [0.0, 0.0, 500.0, 500.0]}},
+        {"ordinal": 4, "operation": {"kind": "markedContent", "visible": false}},
+        {"ordinal": 5, "operation": {"kind": "endMarkedContent"}},
+        {"ordinal": 6, "operation": {"kind": "formEnd"}}
+    ]);
+    let page: PdfVectorPage = serde_json::from_value(json).unwrap();
+    assert!(matches!(page.operations[0].operation, PdfVectorOperator::Clip { even_odd: true }));
+    match &page.operations[1].operation {
+        PdfVectorOperator::GraphicsState { line_width, line_join, dash, transparency, .. } => {
+            assert_eq!((*line_width, *line_join), (Some(2.5), Some(2)));
+            assert_eq!(dash.as_ref().map(|(l, p)| (l.clone(), *p)), Some((vec![1., 2.], 0.5)));
+            assert_eq!(transparency, &["ca".to_string()]);
+        }
+        other => panic!("{other:?}"),
+    }
+    let report = prepare_pdf_vector_page(&page).unwrap();
+    assert_eq!(report.fidelity.summary.iter().map(|s| s.kind.as_str()).collect::<Vec<_>>(), ["text"]);
+    let mut wrong = serde_json::to_value(page).unwrap();
+    wrong["operations"][0]["operation"] = serde_json::json!({"kind": "clip", "even_odd": true});
+    assert!(serde_json::from_value::<PdfVectorPage>(wrong).is_err(), "snake_case is not the adapter wire shape");
 }

@@ -45,6 +45,13 @@ export const REQUIRED_PROFILE = 'server-release';
 const BUILD_STEP = 'Build Server Binary';
 const ASSERT_STEP = 'Assert the built binary unwinds';
 const SELFTEST_FLAG = '--panic-strategy-selftest';
+// The comparison that makes the step fail on an aborting binary. A text gate
+// cannot prove the binary ran; this line, executed in CI, is what does, so the
+// gate pins it rather than modelling shell quoting around the invocation.
+const SELFTEST_VERDICT = 'test "$verdict" = "panic-strategy: unwind"';
+const PROFILE_BINARY = `${REQUIRED_PROFILE}/ifc-lite-server`;
+/** The release job's archive steps, each of which must copy the built binary. */
+const ARCHIVE_STEPS = ['Prepare Binary (Unix)', 'Prepare Binary (Windows)'];
 
 /** Every job that builds a server binary. */
 const BUILD_JOBS = [
@@ -132,14 +139,35 @@ export function checkUnwindProfile(workflow, origin) {
     }
   }
 
+  // The workflow-wide scan above cannot tell WHICH job a path came from, so a
+  // release job whose archive steps stopped reading the profile directory
+  // would still pass on the self-test's path. Each archive step must copy the
+  // binary out of the required profile.
+  const release = jobBlock(workflow, 'release-server-binaries', origin);
+  for (const name of ARCHIVE_STEPS) {
+    const step = sliceStep(release, name);
+    if (step === null || !step.includes(PROFILE_BINARY)) {
+      fail(
+        `the "${name}" step of job "release-server-binaries" in ${origin} does not copy ` +
+        `target/<rust-target>/${PROFILE_BINARY}; the archived bytes must be the unwinding build`,
+      );
+    }
+  }
+
   // The behavioural assertion itself.
   for (const job of SELFTEST_JOBS) {
     const step = sliceStep(jobBlock(workflow, job, origin), ASSERT_STEP);
-    if (step === null || !step.includes(SELFTEST_FLAG)) {
+    if (
+      step === null ||
+      !step.includes(SELFTEST_FLAG) ||
+      !step.includes(PROFILE_BINARY) ||
+      !step.includes(SELFTEST_VERDICT)
+    ) {
       fail(
-        `job "${job}" of ${origin} has no "${ASSERT_STEP}" step running the built binary with ` +
-        `${SELFTEST_FLAG}; that step is the only check that reads the ARTEFACT's panic ` +
-        `strategy rather than the flags meant to produce it`,
+        `job "${job}" of ${origin} has no "${ASSERT_STEP}" step running the built binary ` +
+        `(${PROFILE_BINARY}) with ${SELFTEST_FLAG} and checking ${SELFTEST_VERDICT}; that ` +
+        `step is the only check that reads the ARTEFACT's panic strategy rather than the ` +
+        `flags meant to produce it`,
       );
     }
   }

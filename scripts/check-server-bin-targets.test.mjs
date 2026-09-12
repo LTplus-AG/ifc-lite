@@ -360,6 +360,15 @@ test('profile: archiving out of target/<triple>/release/ is red', () => {
   assertRed(result, /the archived bytes must come from[\s\S]*server-release/);
 });
 
+test('profile: a release archive step that stops copying the profile binary is red', () => {
+  // The self-test line still names the profile path, so a workflow-wide scan
+  // alone would stay green here.
+  const result = runChecker({
+    workflow: (s) => mutate(s, UNIX_COPY_LINE, '          cp dist/prebuilt/ifc-lite-server dist/'),
+  });
+  assertRed(result, /"Prepare Binary \(Unix\)" step of job "release-server-binaries"/);
+});
+
 test('profile: deleting the behavioural self-test step is red', () => {
   const result = runChecker({
     workflow: (s) => mutate(s, ASSERT_STEP_NAME, '- name: Assert nothing in particular'),
@@ -370,6 +379,13 @@ test('profile: deleting the behavioural self-test step is red', () => {
 test('profile: keeping the step but dropping the self-test flag is red', () => {
   const result = runChecker({
     workflow: (s) => mutate(s, SELFTEST_FLAG, '--help'),
+  });
+  assertRed(result, /has no "Assert the built binary unwinds" step running the built binary/);
+});
+
+test('profile: dropping the self-test verdict comparison is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, 'test "$verdict" = "panic-strategy: unwind"', 'true'),
   });
   assertRed(result, /has no "Assert the built binary unwinds" step running the built binary/);
 });

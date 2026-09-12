@@ -164,7 +164,7 @@ fn spawn_idle_watchdog(
                     tracing::warn!(
                         idle_secs = idle.as_secs(),
                         dropped_events = dropped,
-                        "Streaming client consumed no frame within the idle bound; releasing its admission permit, dropping its undrained output and cancelling the parse"
+                        "Streaming client consumed no frame within the idle bound; dropping the stream's share of its admission permit and its undrained output, and cancelling the parse (the permit frees when the parse stops)"
                     );
                     return;
                 }

@@ -11,10 +11,17 @@ use super::*;
 /// Build a unit cube as a flat-shaded mesh (positions not index-shared), with
 /// `bad` triangle indices given as flipped (inward) so the winding is mixed.
 fn cube(flipped: &[usize]) -> Mesh {
+    cube_at(0.0, 1.0, flipped)
+}
+
+/// [`cube`] generalised: side `s`, min corner at `(o, o, o)`.
+fn cube_at(o: f64, s: f64, flipped: &[usize]) -> Mesh {
     // 12 triangles, outward-wound.
+    let p = |a: f64, b: f64, c: f64| [a as f32, b as f32, c as f32];
+    let (l, h) = (o, o + s);
     let c = [
-        [0.0f32, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0],
+        p(l, l, l), p(h, l, l), p(h, h, l), p(l, h, l),
+        p(l, l, h), p(h, l, h), p(h, h, h), p(l, h, h),
     ];
     let faces: [[usize; 3]; 12] = [
         [0, 2, 1], [0, 3, 2], // bottom z=0 (outward -z)
@@ -458,11 +465,6 @@ fn issue_3988_orientation_is_independent_of_vertex_index_sharing() {
         // Unreferenced positions must not influence welding IDs or topology.
         sparse.positions.extend(std::iter::repeat_n(37.0, 300));
         let expected = orient_mesh_outward_verdict(&mut expanded);
-        let directed_positions = |m: &Mesh| -> Vec<u32> {
-            m.indices.iter().flat_map(|&i| {
-                m.positions[i as usize * 3..i as usize * 3 + 3].iter().map(|p| p.to_bits())
-            }).collect()
-        };
         for m in [&mut indexed, &mut sparse] {
             assert_eq!(orient_mesh_outward_verdict(m), expected);
             assert_eq!(directed_positions(m), directed_positions(&expanded));
@@ -619,4 +621,61 @@ fn dense_adjacency_reuses_links_across_width_transitions_3988() {
         assert_eq!(input.indices, expected.indices, "{triangles} triangles");
     }
     ORIENT_SCRATCH.with(|slot| *slot.borrow_mut() = Some(OrientScratch::default()));
+}
+
+/// The outward flip is decided by the SIGN of a divergence-theorem sum. Summed
+/// about the world origin each term is O(|v|^3), so for a small solid far from
+/// the origin the sum cancels catastrophically and the sign is rounding noise.
+///
+/// Concrete numbers for this fixture, a correctly OUTWARD-wound 1 cm cube with
+/// its min corner at 9900.123 m on every axis (true 6V = 6.0e-6): the
+/// world-origin sum came out -2.678e-4, the WRONG sign at 45x the true
+/// magnitude, and this pass flipped the entire shell inside-out while the
+/// inward-wound copy was left alone. Referenced to the component's own AABB
+/// centre the same cube sums to +5.578e-6 (the ~7% shortfall is the f32
+/// storage of a 1 cm cube at 9.9 km, 1e-3 m granularity, and is why only the
+/// sign is consumed). The identical cube at the origin decides correctly under
+/// either reference, so the offset is the only variable.
+///
+/// Reachability is narrow on purpose: on the viewer positions are stored
+/// element-relative (`Mesh.origin`), and native subtracts the IfcSite
+/// translation and rebases anything past 10 km. What remains is native, a
+/// large offset carried somewhere other than IfcSite, under the RTC threshold,
+/// on a closed solid of a few centimetres. This pins the pass as robust to it
+/// rather than claiming the canonical path was broken.
+/// Regression for #4579.
+#[test]
+fn a_small_solid_far_from_the_origin_is_oriented_by_its_shape_not_its_position() {
+    const ALL: [usize; 12] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    for &off in &[0.0, 9900.123] {
+        let mut outward = cube_at(off, 0.01, &[]);
+        let authored = outward.indices.clone();
+        let v = orient_mesh_outward_verdict(&mut outward);
+        assert!(v.is_single_closed_solid(), "fixture precondition at {off}: {v:?}");
+        assert!(
+            !v.flipped,
+            "an outward-wound cube at {off} must NOT be flipped inside-out"
+        );
+        assert_eq!(outward.indices, authored, "at {off}: winding left as authored");
+
+        let mut inward = cube_at(off, 0.01, &ALL);
+        let v = orient_mesh_outward_verdict(&mut inward);
+        assert!(v.flipped, "an inward-wound cube at {off} must be flipped outward");
+        assert_eq!(
+            directed_positions(&inward),
+            directed_positions(&outward),
+            "at {off}: the repaired winding is the outward one, corner for corner"
+        );
+    }
+}
+
+/// The mesh's directed position stream: every corner of every triangle, in
+/// index order, as bit patterns. Two meshes agree here only if they wind every
+/// triangle the same way corner for corner, which is stricter than comparing
+/// rotated faces.
+fn directed_positions(m: &Mesh) -> Vec<u32> {
+    m.indices
+        .iter()
+        .flat_map(|&i| m.positions[i as usize * 3..i as usize * 3 + 3].iter().map(|p| p.to_bits()))
+        .collect()
 }

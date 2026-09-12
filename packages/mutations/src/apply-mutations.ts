@@ -63,8 +63,8 @@ export interface MutationApplyTarget {
 
 /**
  * Apply a batch of mutations (e.g., from imported change set) against
- * `target`. `hasNewEntity` and `markQuantitySetDeleted` give this function
- * the two bits of the view's private state the dispatcher needs without
+ * `target`. The callbacks give this function the narrow pieces of the view's
+ * private state the dispatcher needs without
  * exposing those fields publicly.
  */
 export function applyMutationsBatch(
@@ -72,6 +72,7 @@ export function applyMutationsBatch(
   mutations: Mutation[],
   hasNewEntity: (entityId: number) => boolean,
   markQuantitySetDeleted: (entityId: number, qsetName: string) => void,
+  markQuantityDeleted: (entityId: number, qsetName: string, quantName: string) => void,
 ): void {
   // CREATE_ENTITY records are skipped (callers must restore the
   // payload via restoreNewEntity). Track the ids we've skipped so a
@@ -167,6 +168,9 @@ export function applyMutationsBatch(
       case 'DELETE_QUANTITY':
         if (mutation.psetName && mutation.propName) {
           target.deleteQuantity(mutation.entityId, mutation.psetName, mutation.propName);
+          // Like whole-set deletion, replay must retain intent before the
+          // optional base extractor is configured.
+          markQuantityDeleted(mutation.entityId, mutation.psetName, mutation.propName);
         }
         break;
 

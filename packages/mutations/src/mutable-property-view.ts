@@ -1854,6 +1854,9 @@ export class MutablePropertyView extends MutableOverlayState {
       mutations,
       (entityId) => this.newEntities.has(entityId),
       (entityId, qsetName) => this.deletedQsets.add(`${entityId}:${qsetName}`),
+      (entityId, qsetName, name) => this.setQuantityMutation(
+        entityId, quantityKey(entityId, qsetName, name), { operation: 'DELETE' },
+      ),
     );
   }
 

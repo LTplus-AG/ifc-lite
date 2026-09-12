@@ -549,6 +549,23 @@ describe('deleteQuantitySet (#2508)', () => {
     expect(replayed.getQuantitiesForEntity(7)[0]?.quantities.map(quantity => quantity.name)).toEqual(['Count']);
   });
 
+  it('retains a replayed member tombstone when the base extractor is configured later', () => {
+    const replayed = new MutablePropertyView(null, 'model-1');
+    replayed.applyMutations([{
+      id: 'delete-length', type: 'DELETE_QUANTITY', timestamp: 1,
+      modelId: 'model-1', entityId: 7, psetName: 'Qto_Base', propName: 'Length',
+    }]);
+    replayed.setQuantityExtractor(() => [{
+      name: 'Qto_Base',
+      quantities: [
+        { name: 'Length', type: QuantityType.Length, value: 3 },
+        { name: 'Count', type: QuantityType.Count, value: 2 },
+      ],
+    }]);
+
+    expect(replayed.getQuantitiesForEntity(7)[0]?.quantities.map(quantity => quantity.name)).toEqual(['Count']);
+  });
+
   it('removes a quantity set created in this session, along with its quantities', () => {
     const view = new MutablePropertyView(null, 'model-1');
     view.setOnDemandExtractor(() => []);

@@ -5,6 +5,7 @@
 //! Cache retrieval and deletion endpoints.
 
 use crate::error::ApiError;
+use crate::routes::parse::cache_keys::{is_file_digest, not_a_file_digest};
 use crate::types::ParseResponse;
 use crate::AppState;
 use axum::{
@@ -36,7 +37,7 @@ pub async fn get_cached(
 /// Response body for `DELETE /api/v1/cache/:hash`.
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct CacheDeleteResponse {
-    /// The `sha256` (or full cache-key) prefix that was targeted.
+    /// The file `sha256` whose entries were targeted.
     pub key: String,
     /// Number of index entries removed. `0` for a prefix nothing was cached
     /// under, or whose entries were already gone -- see `remove_by_key_prefix`.
@@ -58,10 +59,29 @@ pub struct CacheDeleteResponse {
 /// `deleted: 0`, not a `404`, so a client can call this unconditionally
 /// (e.g. "the model behind this hash was removed, drop whatever is cached
 /// for it, if anything") and retry safely without checking existence first.
+///
+/// Two bounds stand in front of that work, because it is expensive and, in
+/// the shipped default configuration (`config.api_token` unset, so
+/// `middleware::auth` is a pass-through), reachable by anyone:
+///
+///  - the path segment must be a file digest. `remove_by_key_prefix` walks
+///    the whole cache index twice whatever it is handed, and a miss costs
+///    exactly as much as a hit, so without this an arbitrary string buys a
+///    full index walk. Everything this route can legitimately be called with
+///    is a `DiskCache::generate_key` output.
+///  - one such walk runs at a time, enforced by `DiskCache` itself so the
+///    permit travels with the blocking work rather than with this request
+///    future (a client that hangs up mid-walk must not release the bound
+///    while the walk runs on). A concurrent one is shed with 503 +
+///    `Retry-After` rather than queued; this route is retry-safe by
+///    construction.
 pub async fn delete_cached(
     State(state): State<AppState>,
     Path(hash): Path<String>,
 ) -> Result<Json<CacheDeleteResponse>, ApiError> {
+    if !is_file_digest(&hash) {
+        return Err(not_a_file_digest(&hash));
+    }
     let deleted = state.cache.remove_by_key_prefix(&hash).await?;
     tracing::info!(hash = %hash, deleted, "Cache invalidation");
     Ok(Json(CacheDeleteResponse { key: hash, deleted }))

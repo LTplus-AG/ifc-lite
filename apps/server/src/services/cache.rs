@@ -9,7 +9,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{OwnedSemaphorePermit, RwLock, Semaphore};
 
 /// Content-addressable disk cache.
 #[derive(Debug, Clone)]
@@ -37,7 +37,25 @@ pub struct DiskCache {
     // entry can only orphan a blob, never unlink one out from under a
     // writer -- and are deliberately left outside the lock.
     write_gc_lock: Arc<RwLock<()>>,
+    /// One `remove_by_key_prefix` at a time, process-wide.
+    ///
+    /// The removal walks the whole index twice, and the second walk holds
+    /// `write_gc_lock.write_owned()` for its duration. tokio's `RwLock` is
+    /// write-preferring, so overlapping removals starve every cache write in
+    /// the process, and a walk costs exactly the same for a key nothing was
+    /// ever stored under. Lives on the cache, not on `Admission`, so every
+    /// caller gets the bound without learning it exists, and the permit is
+    /// carried INTO both blocking closures the same way the GC guard is: a
+    /// permit held by the async fn would be released when a client drops the
+    /// request mid-walk, while the walk itself runs on.
+    pub(crate) index_walk: Arc<Semaphore>,
 }
+
+/// `Retry-After` handed to a caller whose removal was shed because another
+/// walk was in flight. Removal is idempotent and retry-safe, so shedding
+/// costs a legitimate client one retry, where queueing would let a caller
+/// park unbounded requests on work that starves cache writes.
+const INDEX_WALK_RETRY_AFTER_SECS: u64 = 5;
 
 /// cacache's on-disk index root inside a cache directory.
 ///
@@ -132,6 +150,7 @@ impl DiskCache {
         Self {
             cache_dir: path,
             write_gc_lock: Arc::new(RwLock::new(())),
+            index_walk: Arc::new(Semaphore::new(1)),
         }
     }
 
@@ -230,6 +249,12 @@ impl DiskCache {
     /// already had its entries removed -- deleting an absent entry is a
     /// no-op, not an error, so a retried or duplicate `DELETE` stays safe.
     pub async fn remove_by_key_prefix(&self, key_prefix: &str) -> Result<usize, ApiError> {
+        // Deliberately non-blocking (see `index_walk`): a concurrent removal
+        // is shed, never queued.
+        let walk_permit = Arc::clone(&self.index_walk).try_acquire_owned().map_err(|_| {
+            tracing::warn!("Cache index walk already in flight; shedding this one");
+            ApiError::Overloaded { retry_after_secs: INDEX_WALK_RETRY_AFTER_SECS }
+        })?;
         let cache_dir = self.cache_dir.clone();
         let prefix = format!("{key_prefix}-");
         let exact = key_prefix.to_string();
@@ -247,7 +272,12 @@ impl DiskCache {
         // string form (`Integrity` itself carries no `Hash`/`Eq` impl) and
         // re-parsed just before the hash-addressed removal call, which is the
         // only place that needs the typed value.
-        let removed_integrities: Vec<String> = tokio::task::spawn_blocking(move || {
+        // The walk permit rides in the closure and comes back out with the
+        // result, so it covers exactly the blocking work: dropped request
+        // future or not, phase 1 holds it until phase 1 ends, and a dropped
+        // `JoinHandle` between the phases releases it without starting phase 2.
+        let (removed_integrities, walk_permit): (Vec<String>, OwnedSemaphorePermit) =
+            tokio::task::spawn_blocking(move || {
             let mut removed = Vec::new();
             for entry in cacache::list_sync(&cache_dir) {
                 // A walk that cannot complete is a real failure, not an
@@ -270,7 +300,7 @@ impl DiskCache {
                     removed.push(meta.integrity.to_string());
                 }
             }
-            Ok::<_, ApiError>(removed)
+            Ok::<_, ApiError>((removed, walk_permit))
         })
         .await??;
 
@@ -288,6 +318,7 @@ impl DiskCache {
         let mut removed_integrities = removed_integrities;
         tokio::task::spawn_blocking(move || {
             let _guard = guard;
+            let _walk_permit = walk_permit;
 
             // A SECOND walk, not the one phase 1 made. Phase 1 ran before the
             // lock was taken, so this walk does two jobs the first cannot:

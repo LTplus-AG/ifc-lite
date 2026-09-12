@@ -74,6 +74,31 @@ export default defineConfig({
       },
     },
     {
+      // Opt-in browser acceptance for appearance authoring (#4404 face masks):
+      // real wasm planner + WebGPU renderer on a real GPU. Not in CI's default
+      // lane; the spec skips unless APPEARANCE_E2E=1. Real Chrome like the
+      // other viewer projects, so no Playwright browser download is needed.
+      name: 'viewer-appearance-e2e',
+      testMatch: /appearance-face-mask\.e2e\.spec\.ts/,
+      timeout: 600000,
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:3000',
+        actionTimeout: 60000,
+        headless: true,
+        channel: 'chrome',
+        launchOptions: {
+          args: [
+            '--enable-gpu',
+            '--enable-webgpu',
+            '--enable-unsafe-webgpu',
+            '--use-angle=default',
+            '--ignore-gpu-blocklist',
+          ],
+        },
+      },
+    },
+    {
       name: 'viewer-benchmark',
       testMatch: /viewer-benchmark\.spec\.ts/,
       timeout: 600000, // 10 min for very large files (327MB)

@@ -23,6 +23,7 @@ function FaceMaskRow({ target, editing, disabled, onEdit, onClear }: { target: F
  * selection is a set of source triangle ordinals; every change re-plans. */
 export function FaceMaskEditor({ target, disabled, onChange }: { target: FaceMaskTarget; disabled: boolean; onChange(triangles: Iterable<number> | null): void }) {
   const [error, setError] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
   const selected = useMemo(() => [...(target.selected ?? [])], [target.selected]);
   const faceSelection = useMemo(() => ({ unselectedColor: UNSELECTED_FACE_COLOR }), []);
   const region = (ids: number[], gesture: RegionGesture) => {
@@ -31,9 +32,9 @@ export function FaceMaskEditor({ target, disabled, onChange }: { target: FaceMas
     else for (const id of ids) { if (gesture.subtract) next.delete(id); else next.add(id); }
     onChange(next);
   };
-  return <div className="space-y-1 rounded-md border p-2" aria-label={`Face selection for ${target.label}`}>
+  return <div className="space-y-1 rounded-md border p-2" aria-label={`Face selection for ${target.label}`} aria-busy={!ready}>
     <AppearanceMeshPreview mesh={target.mesh} triangles={selected} disabled={disabled} faceSelection={faceSelection} canvasLabel={`Face selection preview for ${target.label}`}
-      onRegion={region} onReady={() => {}} onError={message => setError(message)} />
+      onRegion={region} onReady={setReady} onError={message => { setReady(false); setError(message); }} />
     {error && <p className="text-[11px] text-destructive" role="alert">{error}</p>}
     <p className="text-[11px] text-muted-foreground">Selected faces receive the image; the rest of the surface keeps its current style. The selection binds to this exact evaluated surface.</p>
   </div>;

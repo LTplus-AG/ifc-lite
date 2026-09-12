@@ -167,7 +167,7 @@ fn streaming_partial_first_pass_success_suppresses_fallback() {
         "first pass must succeed on the partial index"
     );
     assert!(
-        coord_is_large(ifc_lite_core::scan_placement_bounds(content).rtc_offset()),
+        coord_is_large(ifc_lite_core::scan_placement_bounds(content).rtc_offset(1.0)),
         "placement-bounds fallback would shift (large) if taken"
     );
 
@@ -213,9 +213,9 @@ END-ISO-10303-21;
 ";
 
 /// StreamingPartial stage 3: both detect passes abstain (no representation),
-/// so resolution falls through to `scan_placement_bounds` and unit-scales
-/// the raw FILE-unit bounds to metres. Asserts the RTC offset equals the
-/// unit-scaled placement bounds exactly.
+/// so resolution falls through to `scan_placement_bounds`, which gates and
+/// answers in metres given the unit scale. Asserts the RTC offset equals
+/// the unit-scaled placement bounds exactly.
 #[test]
 fn streaming_partial_stage3_placement_bounds_fallback() {
     let content = IFC_STAGE3.as_bytes();
@@ -238,10 +238,97 @@ fn streaming_partial_stage3_placement_bounds_fallback() {
     assert!((scale - 0.001).abs() < 1e-12, "expected mm scale, got {scale}");
 
     // Reproduce exactly what stage 3 computes: raw placement bounds times scale.
-    let raw = ifc_lite_core::scan_placement_bounds(content).rtc_offset();
+    let raw = ifc_lite_core::scan_placement_bounds(content).centroid();
     assert_eq!(raw, (80_000_000.0, 90_000_000.0, 0.0), "raw mm bounds");
     let expected = (raw.0 * scale, raw.1 * scale, raw.2 * scale);
     assert_eq!(meta.rtc_offset, expected, "stage 3 unit-scales raw bounds");
     assert_ne!(meta.rtc_offset, raw, "scaling changed the value");
     assert!(meta.needs_shift);
+}
+
+/// The unscaled-fallback hazard in the MILLIMETRE direction (JUDGMENT
+/// item 1): `SmallFileSingle` runs one `detect_rtc_offset_with_fallback`,
+/// whose bounds arm used to hand back the RAW file-unit centroid. For a mm
+/// model 25 m wide whose only job carries no representation (so the job
+/// sampler abstains), that centroid is 25 000, which `coord_is_large` read
+/// as 25 km: `needs_shift` came back true and the router subtracted 25 km
+/// from every vertex of a model that sits 12.5 m from the origin.
+#[test]
+fn small_file_single_bounds_fallback_scales_millimetres_before_the_gate() {
+    // 25 m wide in millimetres: raw 25 000 > 10 000, scaled 25 < 10 000.
+    let mm = IFC_STAGE3.replace(
+        "#43=IFCCARTESIANPOINT((80000000.,90000000.,0.));",
+        "#43=IFCCARTESIANPOINT((25000.,25000.,0.));",
+    );
+    let content = mm.as_bytes();
+    let full_index = ifc_lite_core::build_entity_index(content);
+    let mut decoder = EntityDecoder::with_index(content, full_index);
+    let jobs = vec![wall_job(content)];
+
+    // Premises: the job sampler abstains, and the raw centroid alone would
+    // pass the gate.
+    assert_eq!(
+        GeometryRouter::with_scale(0.001).detect_rtc_offset_from_jobs(&jobs, &mut decoder),
+        None,
+        "premise: no representation, so no job sample"
+    );
+    assert!(
+        coord_is_large(ifc_lite_core::scan_placement_bounds(content).centroid()),
+        "premise: the raw mm centroid reads as large"
+    );
+
+    let meta = resolve_stream_meta(
+        MetaMode::SmallFileSingle,
+        content,
+        Some(1),
+        None,
+        &jobs,
+        &mut decoder,
+    );
+
+    assert!((meta.length_unit_scale - 0.001).abs() < 1e-12, "mm project");
+    assert!(
+        !meta.needs_shift,
+        "a 25 m mm model must not be re-based, got offset {:?}",
+        meta.rtc_offset
+    );
+    assert_eq!(meta.rtc_offset, (0.0, 0.0, 0.0));
+}
+
+/// The other direction of the same gate: a KILOMETRE model 5 000 km out
+/// reads `5000 < 10000` raw and was never re-based, while the identical
+/// geometry declared in metres was. The gate must see metres.
+#[test]
+fn small_file_single_bounds_fallback_rebases_a_kilometre_model() {
+    let km = IFC_STAGE3
+        .replace(
+            "#9=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);",
+            "#9=IFCSIUNIT(*,.LENGTHUNIT.,.KILO.,.METRE.);",
+        )
+        .replace(
+            "#43=IFCCARTESIANPOINT((80000000.,90000000.,0.));",
+            "#43=IFCCARTESIANPOINT((5000.,5000.,0.));",
+        );
+    let content = km.as_bytes();
+    let full_index = ifc_lite_core::build_entity_index(content);
+    let mut decoder = EntityDecoder::with_index(content, full_index);
+    let jobs = vec![wall_job(content)];
+
+    assert!(
+        !coord_is_large(ifc_lite_core::scan_placement_bounds(content).centroid()),
+        "premise: the raw km centroid reads as small"
+    );
+
+    let meta = resolve_stream_meta(
+        MetaMode::SmallFileSingle,
+        content,
+        Some(1),
+        None,
+        &jobs,
+        &mut decoder,
+    );
+
+    assert!((meta.length_unit_scale - 1000.0).abs() < 1e-9, "km project");
+    assert!(meta.needs_shift, "5 000 km out must be re-based");
+    assert_eq!(meta.rtc_offset, (5_000_000.0, 5_000_000.0, 0.0), "offset in metres");
 }

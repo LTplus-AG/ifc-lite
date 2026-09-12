@@ -171,14 +171,10 @@ fn resolve_partial_rtc(
     }
 
     if !detection_succeeded && !coord_is_large(rtc_offset) {
-        let raw = ifc_lite_core::scan_placement_bounds(content).rtc_offset();
         // scan_placement_bounds reads raw IfcCartesianPoint values (FILE
-        // units); the detection path is unit-scaled to metres.
-        rtc_offset = (
-            raw.0 * length_unit_scale,
-            raw.1 * length_unit_scale,
-            raw.2 * length_unit_scale,
-        );
+        // units); the scale converts them to metres BEFORE the 10 km gate
+        // decides, so the result is in the detection path's unit.
+        rtc_offset = ifc_lite_core::scan_placement_bounds(content).rtc_offset(length_unit_scale);
     }
     rtc_offset
 }

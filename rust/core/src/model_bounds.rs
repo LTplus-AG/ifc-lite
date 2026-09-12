@@ -75,26 +75,42 @@ impl ModelBounds {
         )
     }
 
-    /// Check if bounds contain large coordinates (>10km from origin)
+    /// Check if bounds reach more than 10 km (in METRES) from the origin.
+    ///
+    /// The sampled values are raw `IfcCartesianPoint` coordinates in the
+    /// file's length unit, so the caller passes `length_unit_scale` (file
+    /// unit to metres, e.g. 0.001 for millimetres, 1000.0 for kilometres)
+    /// and the comparison happens in metres. Gating on the raw values against
+    /// a metre-shaped constant let a kilometre-unit model 5 000 km out read
+    /// as "5000 < 10000" and skip the RTC rebase, and the caller's scaling
+    /// afterwards could not undo a decision already taken.
     #[inline]
-    pub fn has_large_coordinates(&self) -> bool {
-        const THRESHOLD: f64 = 10000.0; // 10km
+    pub fn has_large_coordinates(&self, length_unit_scale: f64) -> bool {
+        const THRESHOLD_METERS: f64 = 10000.0;
         if !self.is_valid() {
             return false;
         }
-        self.min_x.abs() > THRESHOLD
-            || self.min_y.abs() > THRESHOLD
-            || self.max_x.abs() > THRESHOLD
-            || self.max_y.abs() > THRESHOLD
-            || self.min_z.abs() > THRESHOLD
-            || self.max_z.abs() > THRESHOLD
+        [
+            self.min_x,
+            self.min_y,
+            self.min_z,
+            self.max_x,
+            self.max_y,
+            self.max_z,
+        ]
+        .iter()
+        .any(|v| (v * length_unit_scale).abs() > THRESHOLD_METERS)
     }
 
-    /// Get the RTC offset (same as centroid for large coordinates, zero otherwise)
+    /// The RTC offset IN METRES: the unit-scaled bbox centre when the bounds
+    /// are large (see [`has_large_coordinates`](Self::has_large_coordinates)),
+    /// zero otherwise. Same unit as the router's job-sampled offset, so the
+    /// two fallback ladders agree.
     #[inline]
-    pub fn rtc_offset(&self) -> (f64, f64, f64) {
-        if self.has_large_coordinates() {
-            self.centroid()
+    pub fn rtc_offset(&self, length_unit_scale: f64) -> (f64, f64, f64) {
+        if self.has_large_coordinates(length_unit_scale) {
+            let (x, y, z) = self.centroid();
+            (x * length_unit_scale, y * length_unit_scale, z * length_unit_scale)
         } else {
             (0.0, 0.0, 0.0)
         }
@@ -127,8 +143,9 @@ where
     let mut scanner = EntityScanner::new(content);
 
     while let Some((_id, type_name, start, end)) = scanner.next_entity() {
-        // Only process cartesian points
-        if type_name != "IFCCARTESIANPOINT" {
+        // Only process cartesian points. STEP keyword case is not
+        // significant (ISO 10303-21) and the scanner returns it as written.
+        if !type_name.eq_ignore_ascii_case("IFCCARTESIANPOINT") {
             continue;
         }
 
@@ -205,30 +222,19 @@ where
 
     // First pass: find cartesian points referenced by Axis2Placement3D
     while let Some((_id, type_name, start, end)) = scanner.next_entity() {
-        if type_name == "IFCAXIS2PLACEMENT3D" {
+        if type_name.eq_ignore_ascii_case("IFCAXIS2PLACEMENT3D") {
             let entity_text = &content[start..end];
             // Extract the Location reference (first attribute)
             if let Some(ref_id) = extract_first_reference(entity_text) {
                 placement_point_ids.insert(ref_id);
             }
         }
-        // Also include IfcSite coordinates which often have real-world coords
-        if type_name == "IFCSITE" {
-            // IfcSite has RefLatitude, RefLongitude, RefElevation
-            // These are stored as IfcCompoundPlaneAngleMeasure, not coords
-            // But we can get bounds from the site's placement
-        }
-        // Store the entity ID for cartesian points
-        if type_name == "IFCCARTESIANPOINT" {
-            // Will be checked in second pass
-            continue;
-        }
     }
 
     // Second pass: extract coordinates from referenced points
     scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name == "IFCCARTESIANPOINT" {
+        if type_name.eq_ignore_ascii_case("IFCCARTESIANPOINT") {
             // Check if this point is referenced by a placement
             let is_placement_point = placement_point_ids.contains(&id);
 
@@ -290,155 +296,5 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_bounds_creation() {
-        let bounds = ModelBounds::new();
-        assert!(!bounds.is_valid());
-        assert!(!bounds.has_large_coordinates());
-    }
-
-    #[test]
-    fn test_bounds_expand() {
-        let mut bounds = ModelBounds::new();
-        bounds.expand(100.0, 200.0, 50.0);
-        bounds.expand(150.0, 250.0, 75.0);
-
-        assert!(bounds.is_valid());
-        assert_eq!(bounds.min_x, 100.0);
-        assert_eq!(bounds.max_x, 150.0);
-        assert_eq!(bounds.min_y, 200.0);
-        assert_eq!(bounds.max_y, 250.0);
-
-        let centroid = bounds.centroid();
-        assert_eq!(centroid.0, 125.0);
-        assert_eq!(centroid.1, 225.0);
-    }
-
-    #[test]
-    fn test_large_coordinates_detection() {
-        let mut bounds = ModelBounds::new();
-        // TWO distinct points: with a single sample min == max == centroid, so
-        // the assertion below cannot tell the bbox CENTRE from either corner.
-        bounds.expand(2679012.0, 1247892.0, 432.0); // Swiss UTM coordinates
-        bounds.expand(2679112.0, 1248092.0, 632.0);
-        assert!(bounds.has_large_coordinates());
-        // The RTC offset is the bbox centre, not a corner, on ALL THREE axes.
-        assert_eq!(bounds.rtc_offset(), (2679062.0, 1247992.0, 532.0));
-    }
-
-    #[test]
-    fn test_small_coordinates_no_shift() {
-        let mut bounds = ModelBounds::new();
-        bounds.expand(0.0, 0.0, 0.0);
-        bounds.expand(100.0, 100.0, 10.0);
-
-        assert!(!bounds.has_large_coordinates());
-
-        let offset = bounds.rtc_offset();
-        assert_eq!(offset.0, 0.0);
-        assert_eq!(offset.1, 0.0);
-        assert_eq!(offset.2, 0.0);
-    }
-
-    #[test]
-    fn test_extract_point_coordinates_3d() {
-        let text = "IFCCARTESIANPOINT((2679012.123,1247892.456,432.789))";
-        let coords = extract_point_coordinates(text).unwrap();
-
-        assert!((coords.0 - 2679012.123).abs() < 0.001);
-        assert!((coords.1 - 1247892.456).abs() < 0.001);
-        assert!((coords.2.unwrap() - 432.789).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_extract_point_coordinates_2d() {
-        let text = "IFCCARTESIANPOINT((100.5,200.5))";
-        let coords = extract_point_coordinates(text).unwrap();
-
-        assert_eq!(coords.0, 100.5);
-        assert_eq!(coords.1, 200.5);
-        assert!(coords.2.is_none());
-    }
-
-    #[test]
-    fn test_scan_model_bounds() {
-        let ifc_content = r#"
-ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION((''),'2;1');
-ENDSEC;
-DATA;
-#1=IFCCARTESIANPOINT((2679012.0,1247892.0,432.0));
-#2=IFCCARTESIANPOINT((2679112.0,1247992.0,442.0));
-#3=IFCWALL('guid',$,$,$,$,$,$,$);
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
-        let bounds = scan_model_bounds(ifc_content);
-
-        assert!(bounds.is_valid());
-        assert!(bounds.has_large_coordinates());
-        assert_eq!(bounds.sample_count, 2);
-
-        let centroid = bounds.centroid();
-        assert!((centroid.0 - 2679062.0).abs() < 0.001);
-        assert!((centroid.1 - 1247942.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_scan_model_bounds_small_model() {
-        let ifc_content = r#"
-ISO-10303-21;
-DATA;
-#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
-#2=IFCCARTESIANPOINT((10.0,10.0,5.0));
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
-        let bounds = scan_model_bounds(ifc_content);
-
-        assert!(bounds.is_valid());
-        assert!(!bounds.has_large_coordinates());
-
-        let offset = bounds.rtc_offset();
-        assert_eq!(offset.0, 0.0); // No shift needed for small coordinates
-    }
-
-    #[test]
-    fn test_precision_preserved_with_rtc() {
-        // The shift subtracted here is the PRODUCTION offset (`rtc_offset()` on a
-        // real `ModelBounds`), not an inline `(x1 + x2) / 2.0`. The earlier version
-        // called no production code at all, so it asserted only a property of
-        // IEEE-754 and stayed green even if the whole RTC feature were deleted.
-        let x1 = 2679012.123456_f64; // large Swiss UTM coordinates,
-        let x2 = 2679012.223456_f64; // 0.1 m apart
-        let expected_diff = 0.1;
-
-        let mut bounds = ModelBounds::new();
-        bounds.expand(x1, 1247892.0, 432.0);
-        bounds.expand(x2, 1247892.5, 432.5);
-        assert!(bounds.has_large_coordinates(), "premise: large coords");
-
-        // WITHOUT RTC: cast straight to f32. At ~2.7e6 the f32 ulp is 0.25 m, so
-        // this really does destroy the 0.1 m separation. Pinning that keeps the
-        // comparison below from passing on two equally-good numbers.
-        let diff_direct = ((x2 as f32) - (x1 as f32)) as f64;
-        let error_direct = (diff_direct - expected_diff).abs();
-        assert!(error_direct > 0.01, "premise: cast must lose 0.1 m");
-
-        // WITH RTC: subtract the offset the pipeline applies (in f64), then cast.
-        let (offset_x, _, _) = bounds.rtc_offset();
-        let diff_rtc = (((x2 - offset_x) as f32) - ((x1 - offset_x) as f32)) as f64;
-        let error_rtc = (diff_rtc - expected_diff).abs();
-        assert!(
-            error_rtc < 1.0e-6,
-            "RTC-shifted f32 must keep the 0.1 m separation (diff={diff_rtc}, err={error_rtc})"
-        );
-        assert!(error_rtc < error_direct * 0.1, "RTC must improve precision");
-    }
-}
+#[path = "model_bounds_tests.rs"]
+mod tests;

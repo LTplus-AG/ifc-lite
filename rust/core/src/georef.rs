@@ -10,27 +10,14 @@
 use crate::decoder::EntityDecoder;
 use crate::error::Result;
 use crate::generated::IfcType;
-use crate::schema_gen::{AttributeValue, DecodedEntity};
+use crate::schema_gen::DecodedEntity;
 
 #[path = "georef_parse.rs"]
 mod georef_parse;
 use georef_parse::{compound_angle_has_literal_negative_zero, compound_plane_angle_to_degrees};
 
-/// Read an `IfcPropertySingleValue.NominalValue` (index 2) as a string,
-/// unwrapping the typed-value wrapper `IFCLABEL('…')` / `IFCIDENTIFIER('…')`
-/// (parsed as a `List([type-name, value])`) that plain `get_string` doesn't
-/// see through. Property values in the IFC2x3 ePSets are always typed, so
-/// without this the CRS `Name`/`TargetCRS` labels came back empty.
-fn pset_value_string(prop: &DecodedEntity) -> Option<String> {
-    match prop.get(2)? {
-        AttributeValue::String(s) => Some(s.clone()),
-        AttributeValue::List(items) => match (items.first(), items.get(1)) {
-            (Some(AttributeValue::String(_)), Some(AttributeValue::String(v))) => Some(v.clone()),
-            _ => None,
-        },
-        _ => None,
-    }
-}
+#[path = "georef_pset.rs"]
+mod georef_pset;
 
 /// Where the georeferencing data was authored in the file.
 ///
@@ -95,6 +82,18 @@ pub struct GeoReference {
     pub x_axis_ordinate: f64,
     /// Scale factor (default 1.0)
     pub scale: f64,
+    /// Per-axis factors from `IfcMapConversionScaled.FactorX/Y/Z` (IFC4X3),
+    /// each 1.0 when absent. They multiply `scale` on their own axis: a
+    /// feet-authored scaled conversion carries 0.3048 here and 1.0 in
+    /// `scale`, and applying only `scale` placed such models 3.28x out.
+    pub factor_x: f64,
+    pub factor_y: f64,
+    pub factor_z: f64,
+    /// True once an `IfcMapConversion` (or its `Scaled` subtype) was parsed.
+    /// Presence is then reported even for a conversion whose translations are
+    /// all zero (a rotation- or scale-only conversion), matching the TS
+    /// twin, which sets `hasGeoreference` whenever a conversion parsed.
+    pub has_map_conversion: bool,
 }
 
 impl Default for GeoReference {
@@ -115,6 +114,10 @@ impl Default for GeoReference {
             x_axis_abscissa: 1.0, // No rotation (cos(0) = 1)
             x_axis_ordinate: 0.0, // No rotation (sin(0) = 0)
             scale: 1.0,
+            factor_x: 1.0,
+            factor_y: 1.0,
+            factor_z: 1.0,
+            has_map_conversion: false,
         }
     }
 }
@@ -125,10 +128,15 @@ impl GeoReference {
         Self::default()
     }
 
-    /// Check if georeferencing is present
+    /// Check if georeferencing is present.
+    ///
+    /// A parsed `IfcMapConversion` is presence on its own: the value test
+    /// alone dropped a rotation-only conversion (zero offsets, 30 degrees to
+    /// grid north) as "no georeferencing" while the browser reported one.
     #[inline]
     pub fn has_georef(&self) -> bool {
-        self.crs_name.is_some()
+        self.has_map_conversion
+            || self.crs_name.is_some()
             || self.eastings != 0.0
             || self.northings != 0.0
             || self.orthogonal_height != 0.0
@@ -148,12 +156,30 @@ impl GeoReference {
     /// [`rotation`](Self::rotation) (which `atan2`-normalizes) within one
     /// payload, and with the TS parser's matrix (alignment audit). Called at
     /// parse time by every extraction path.
+    ///
+    /// A zero-length direction (both components authored `0.`) resets to
+    /// the identity `(1, 0)` rather than passing through: used as cos/sin
+    /// it collapsed every map coordinate to `(Eastings, Northings)`.
     fn normalize_axis(&mut self) {
         let len = self.x_axis_abscissa.hypot(self.x_axis_ordinate);
-        if len > f64::EPSILON && (len - 1.0).abs() > f64::EPSILON {
+        if len.is_nan() || len <= f64::EPSILON {
+            self.x_axis_abscissa = 1.0;
+            self.x_axis_ordinate = 0.0;
+        } else if (len - 1.0).abs() > f64::EPSILON {
             self.x_axis_abscissa /= len;
             self.x_axis_ordinate /= len;
         }
+    }
+
+    /// Effective per-axis scale: the uniform `Scale` times the
+    /// `IfcMapConversionScaled` factor for that axis.
+    #[inline]
+    fn axis_scales(&self) -> (f64, f64, f64) {
+        (
+            self.scale * self.factor_x,
+            self.scale * self.factor_y,
+            self.scale * self.factor_z,
+        )
     }
 
     /// Transform local coordinates to map coordinates
@@ -163,15 +189,17 @@ impl GeoReference {
     /// z-axis [...] and then a translation in (x,y,z) of Eastings,
     /// Northings, OrthogonalHeight" — note the Scale applies to z as well
     /// ("one scale is applied equally to x, y and z, to convert units").
+    /// `IfcMapConversionScaled` adds a per-axis factor on top of that.
     #[inline]
     pub fn local_to_map(&self, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
         let cos_r = self.x_axis_abscissa;
         let sin_r = self.x_axis_ordinate;
-        let s = self.scale;
+        let (sx, sy, sz) = self.axis_scales();
+        let (x, y, z) = (sx * x, sy * y, sz * z);
 
-        let e = s * (cos_r * x - sin_r * y) + self.eastings;
-        let n = s * (sin_r * x + cos_r * y) + self.northings;
-        let h = s * z + self.orthogonal_height;
+        let e = cos_r * x - sin_r * y + self.eastings;
+        let n = sin_r * x + cos_r * y + self.northings;
+        let h = z + self.orthogonal_height;
 
         (e, n, h)
     }
@@ -181,21 +209,18 @@ impl GeoReference {
     pub fn map_to_local(&self, e: f64, n: f64, h: f64) -> (f64, f64, f64) {
         let cos_r = self.x_axis_abscissa;
         let sin_r = self.x_axis_ordinate;
-        // Guard against division by zero
-        let inv_scale = if self.scale.abs() < f64::EPSILON {
-            1.0
-        } else {
-            1.0 / self.scale
-        };
+        // Guard against division by zero, per axis.
+        let inv = |s: f64| if s.abs() < f64::EPSILON { 1.0 } else { 1.0 / s };
+        let (sx, sy, sz) = self.axis_scales();
 
         let dx = e - self.eastings;
         let dy = n - self.northings;
 
-        // Inverse rotation: transpose of rotation matrix
-        let x = inv_scale * (cos_r * dx + sin_r * dy);
-        let y = inv_scale * (-sin_r * dx + cos_r * dy);
+        // Inverse rotation (transpose), then undo the per-axis scale.
+        let x = inv(sx) * (cos_r * dx + sin_r * dy);
+        let y = inv(sy) * (-sin_r * dx + cos_r * dy);
         // Scale applies to z too (IfcMapConversion scales all three axes).
-        let z = inv_scale * (h - self.orthogonal_height);
+        let z = inv(sz) * (h - self.orthogonal_height);
 
         (x, y, z)
     }
@@ -204,22 +229,22 @@ impl GeoReference {
     pub fn to_matrix(&self) -> [f64; 16] {
         let cos_r = self.x_axis_abscissa;
         let sin_r = self.x_axis_ordinate;
-        let s = self.scale;
+        let (sx, sy, sz) = self.axis_scales();
 
-        // Column-major 4x4 matrix
+        // Column-major 4x4 matrix: scale each local axis, then rotate.
         [
-            s * cos_r,
-            s * sin_r,
+            sx * cos_r,
+            sx * sin_r,
             0.0,
             0.0,
-            -s * sin_r,
-            s * cos_r,
+            -sy * sin_r,
+            sy * cos_r,
             0.0,
             0.0,
             0.0,
             0.0,
-            // Scale applies uniformly to x, y AND z (IfcMapConversion).
-            s,
+            // Scale applies to z as well (IfcMapConversion scales all three axes).
+            sz,
             0.0,
             self.eastings,
             self.northings,
@@ -340,8 +365,10 @@ impl GeoRefExtractor {
         }
     }
 
-    /// Parse IfcMapConversion entity
+    /// Parse IfcMapConversion entity (and the IFC4X3 `IfcMapConversionScaled`
+    /// subtype, whose first eight attributes have the same layout).
     fn parse_map_conversion(entity: &DecodedEntity, georef: &mut GeoReference) {
+        georef.has_map_conversion = true;
         // Index 2: Eastings
         if let Some(e) = entity.get_float(2) {
             georef.eastings = e;
@@ -365,6 +392,22 @@ impl GeoRefExtractor {
         // Index 7: Scale (optional, default 1.0)
         if let Some(s) = entity.get_float(7) {
             georef.scale = s;
+        }
+        // Index 8..10: IfcMapConversionScaled.FactorX/Y/Z (absent on the
+        // plain supertype). These are the only reason the subtype exists;
+        // reading it "as its supertype" silently applied a feet-based scaled
+        // conversion unscaled. A non-finite or zero factor is refused (left
+        // at 1.0) rather than poisoning every coordinate.
+        for (index, factor) in [
+            (8, &mut georef.factor_x),
+            (9, &mut georef.factor_y),
+            (10, &mut georef.factor_z),
+        ] {
+            if let Some(f) = entity.get_float(index) {
+                if f.is_finite() && f != 0.0 {
+                    *factor = f;
+                }
+            }
         }
     }
 
@@ -470,171 +513,6 @@ impl GeoRefExtractor {
         }
     }
 
-    /// Extract from IFC2X3 property sets (fallback)
-    fn extract_from_pset(
-        decoder: &mut EntityDecoder,
-        entity_types: &[(u32, IfcType)],
-    ) -> Result<Option<GeoReference>> {
-        // Locate the ePSet_MapConversion (required) and ePSet_ProjectedCRS
-        // (optional) property sets. The match is case-insensitive: the
-        // buildingSMART geo-referencing guide spells these `ePSet_…` (capital
-        // S), but real authoring tools (e.g. the `ifc-georeferencer`
-        // post-processor) write `ePset_…` (lowercase), and an exact match
-        // silently dropped those models to the legacy IfcSite/EPSG:4326
-        // fallback so they displayed the wrong CRS. IfcPropertySet.Name is
-        // attribute 2 (attribute 0 is GlobalId); reading attribute 0 here
-        // never matched the ePSet at all (issue #900 review).
-        let mut map_conversion_pset: Option<u32> = None;
-        let mut projected_crs_pset: Option<u32> = None;
-        for (id, ifc_type) in entity_types {
-            if *ifc_type != IfcType::IfcPropertySet {
-                continue;
-            }
-            if let Some(name) = decoder.decode_string_by_id_transient(*id, 2)? {
-                if name.eq_ignore_ascii_case("ePSet_MapConversion") && map_conversion_pset.is_none() {
-                    map_conversion_pset = Some(*id);
-                } else if name.eq_ignore_ascii_case("ePSet_ProjectedCRS") && projected_crs_pset.is_none() {
-                    projected_crs_pset = Some(*id);
-                }
-            }
-        }
-
-        let Some(mc_id) = map_conversion_pset else {
-            return Ok(None);
-        };
-        let mc_entity = decoder.decode_by_id(mc_id)?;
-        Self::parse_pset_map_conversion(decoder, &mc_entity, projected_crs_pset)
-    }
-
-    /// Parse ePSet_MapConversion property set, plus the EPSG `Name` from an
-    /// optional ePSet_ProjectedCRS set (falling back to the MapConversion's
-    /// own `TargetCRS` label). Without the CRS name the EPSG code authored in
-    /// the file was never surfaced on the IFC2x3 path.
-    fn parse_pset_map_conversion(
-        decoder: &mut EntityDecoder,
-        pset: &DecodedEntity,
-        projected_crs_pset: Option<u32>,
-    ) -> Result<Option<GeoReference>> {
-        let mut georef = GeoReference::new();
-        georef.source = GeoRefSource::EPSetMapConversion;
-        let mut target_crs: Option<String> = None;
-
-        // HasProperties is typically at index 4
-        if let Some(props_list) = pset.get_list(4) {
-            for prop_attr in props_list {
-                if let Some(prop_id) = prop_attr.as_entity_ref() {
-                    let prop = decoder.decode_by_id(prop_id)?;
-                    // IfcPropertySingleValue: Name (0), Description (1), NominalValue (2)
-                    if let Some(name) = prop.get_string(0) {
-                        let value = prop.get_float(2);
-                        match name {
-                            "Eastings" => {
-                                if let Some(v) = value {
-                                    georef.eastings = v;
-                                }
-                            }
-                            "Northings" => {
-                                if let Some(v) = value {
-                                    georef.northings = v;
-                                }
-                            }
-                            "OrthogonalHeight" => {
-                                if let Some(v) = value {
-                                    georef.orthogonal_height = v;
-                                }
-                            }
-                            "XAxisAbscissa" => {
-                                if let Some(v) = value {
-                                    georef.x_axis_abscissa = v;
-                                }
-                            }
-                            "XAxisOrdinate" => {
-                                if let Some(v) = value {
-                                    georef.x_axis_ordinate = v;
-                                }
-                            }
-                            "Scale" => {
-                                if let Some(v) = value {
-                                    georef.scale = v;
-                                }
-                            }
-                            "TargetCRS" => {
-                                if let Some(v) = pset_value_string(&prop) {
-                                    target_crs = Some(v);
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-        }
-
-        // Pull the CRS name + datum fields from ePSet_ProjectedCRS if present.
-        if let Some(crs_id) = projected_crs_pset {
-            let crs_entity = decoder.decode_by_id(crs_id)?;
-            Self::parse_pset_projected_crs(decoder, &crs_entity, &mut georef);
-        }
-        // ePSet_ProjectedCRS.Name wins, but an empty/whitespace-only name must
-        // not block the TargetCRS fallback — the viewer gate requires a truthy
-        // CRS name, so leaving `crs_name = Some("")` would silently drop the
-        // model to the IfcSite/EPSG:4326 fallback. Treat blank as missing.
-        let crs_name_is_blank = georef
-            .crs_name
-            .as_ref()
-            .is_none_or(|name| name.trim().is_empty());
-        if crs_name_is_blank {
-            georef.crs_name = target_crs.filter(|name| !name.trim().is_empty());
-        }
-
-        georef.normalize_axis();
-
-        if georef.has_georef() {
-            Ok(Some(georef))
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Parse an ePSet_ProjectedCRS property set into the georef's CRS fields.
-    fn parse_pset_projected_crs(
-        decoder: &mut EntityDecoder,
-        pset: &DecodedEntity,
-        georef: &mut GeoReference,
-    ) {
-        let Some(props_list) = pset.get_list(4) else {
-            return;
-        };
-        for prop_attr in props_list {
-            let Some(prop_id) = prop_attr.as_entity_ref() else {
-                continue;
-            };
-            let Ok(prop) = decoder.decode_by_id(prop_id) else {
-                continue;
-            };
-            let Some(name) = prop.get_string(0) else {
-                continue;
-            };
-            let value = pset_value_string(&prop);
-            match name {
-                "Name" => georef.crs_name = value,
-                "Description" => georef.crs_description = value,
-                "GeodeticDatum" => georef.geodetic_datum = value,
-                "VerticalDatum" => georef.vertical_datum = value,
-                "MapProjection" => georef.map_projection = value,
-                "MapZone" => georef.map_zone = value,
-                "MapUnit" => {
-                    // Parity with the native IfcProjectedCRS path: derive the
-                    // metre scale from the unit label so consumers don't default
-                    // explicit non-metre ePSet offsets to metres.
-                    georef.map_unit_scale = value.as_deref().and_then(crate::unit_labels::infer_map_unit_scale);
-                    georef.map_unit = value;
-                }
-                _ => {}
-            }
-        }
-    }
-
     /// Legacy `IfcSite.RefLatitude`/`RefLongitude` fallback (TS parity).
     ///
     /// Mirrors the TS parser's `extractLegacySiteGeoreference`: WGS84
@@ -710,11 +588,13 @@ impl RtcOffset {
     /// Create from centroid of positions
     #[inline]
     pub fn from_positions(positions: &[f32]) -> Self {
-        if positions.is_empty() {
+        // Guard on whole triples, not `is_empty()`: a buffer of length 1 or 2
+        // has no complete position, and `0.0 / 0` gave a NaN offset that
+        // `apply` then wrote into every vertex.
+        let count = positions.len() / 3;
+        if count == 0 {
             return Self::default();
         }
-
-        let count = positions.len() / 3;
         let mut sum = (0.0f64, 0.0f64, 0.0f64);
 
         for chunk in positions.chunks_exact(3) {

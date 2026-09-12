@@ -11,7 +11,7 @@
     "FastMeshData": "struct { indices: Vec<u32>; positions: Vec<f32> }",
     "GeoRefExtractor": "struct (unit)",
     "GeoRefSource": "enum { EPSetMapConversion; MapConversion; SiteLocation }",
-    "GeoReference": "struct { crs_description: Option<String>; crs_name: Option<String>; eastings: f64; geodetic_datum: Option<String>; map_projection: Option<String>; map_unit: Option<String>; map_unit_scale: Option<f64>; map_zone: Option<String>; northings: f64; orthogonal_height: f64; scale: f64; source: GeoRefSource; vertical_datum: Option<String>; x_axis_abscissa: f64; x_axis_ordinate: f64 }",
+    "GeoReference": "struct { crs_description: Option<String>; crs_name: Option<String>; eastings: f64; factor_x: f64; factor_y: f64; factor_z: f64; geodetic_datum: Option<String>; has_map_conversion: bool; map_projection: Option<String>; map_unit: Option<String>; map_unit_scale: Option<f64>; map_zone: Option<String>; northings: f64; orthogonal_height: f64; scale: f64; source: GeoRefSource; vertical_datum: Option<String>; x_axis_abscissa: f64; x_axis_ordinate: f64 }",
     "GeometryCategory": "enum { Boolean; Curve; ExplicitMesh; MappedItem; Other; Surface; SweptSolid }",
     "IFC_TYPES": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "IfcSchema": "struct { geometry_types: HashMap<IfcType, GeometryCategory>; profile_types: HashMap<IfcType, ProfileCategory> }",

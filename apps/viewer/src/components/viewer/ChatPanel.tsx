@@ -45,7 +45,7 @@ import { buildSystemPrompt } from '@/lib/llm/system-prompt';
 import { getModelContext, parseCSV } from '@/lib/llm/context-builder';
 import { collectActiveFileAttachments } from '@/lib/attachments';
 import { MAX_PDF_ATTACHMENT_BYTES } from '@/lib/llm/document-text';
-import { attachPdfDocument, createDocumentUploadGate } from '@/lib/llm/document-upload';
+import { attachPdfDocument, createDocumentUploadGate, shouldContinueDocumentUploadBatch } from '@/lib/llm/document-upload';
 import { extractCodeBlocks } from '@/lib/llm/code-extractor';
 import { extractScriptEditOps, filterUnappliedScriptOps } from '@/lib/llm/script-edit-ops';
 import { createPatchDiagnostic, getPrimaryRootCause, type RepairScope } from '@/lib/llm/script-diagnostics';
@@ -1263,7 +1263,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         addAttachment(attachment);
         remainingSlots -= 1;
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') continue;
+        if (!shouldContinueDocumentUploadBatch(error)) break;
         setChatError(`Could not read ${file.name}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }

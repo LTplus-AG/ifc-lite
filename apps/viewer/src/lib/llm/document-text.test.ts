@@ -14,7 +14,9 @@ function backend(pages: unknown[][]): { value: PdfTextBackend; cleaned: number[]
     destroyed: () => didDestroy,
     value: { load() { return {
       promise: Promise.resolve({ numPages: pages.length, async getPage(pageNumber) {
-        return { async getTextContent() { return { items: pages[pageNumber - 1] }; }, cleanup() { cleaned.push(pageNumber); } };
+        return { streamTextContent() { return new ReadableStream({ start(controller) {
+          controller.enqueue({ items: pages[pageNumber - 1] }); controller.close();
+        } }); }, cleanup() { cleaned.push(pageNumber); } };
       } }),
       async destroy() { didDestroy = true; },
     }; } },
@@ -68,6 +70,15 @@ test('#4177 bounds a silent parser by cancellation and a deadline', async () => 
   await assert.rejects(cancelled, /upload cancelled/);
   await assert.rejects(extractPdfText(new Blob(['%PDF hangs']), silent, { timeoutMs: 5 }), /timed out/);
   assert.equal(destroyed, 2);
+});
+
+test('#4177 a nonsettling destroy cannot extend the overall deadline', async () => {
+  const stuck: PdfTextBackend = { load() { return {
+    promise: new Promise(() => undefined), destroy: () => new Promise(() => undefined),
+  }; } };
+  const started = Date.now();
+  await assert.rejects(extractPdfText(new Blob(['%PDF hangs']), stuck, { timeoutMs: 5 }), /timed out/);
+  assert.ok(Date.now() - started < 100, 'cleanup must not outlive the extraction deadline');
 });
 
 test('#4177 destroys the PDF task when text extraction fails', async () => {

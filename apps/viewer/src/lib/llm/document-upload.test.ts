@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import type { FileAttachment } from './types.js';
 import { collectActiveFileAttachments } from '../attachments.js';
 import { buildSystemPrompt } from './system-prompt.js';
-import { attachPdfDocument, createDocumentUploadGate } from './document-upload.js';
+import { attachPdfDocument, createDocumentUploadGate, shouldContinueDocumentUploadBatch } from './document-upload.js';
 
 test('#4177 attaches extracted PDF text at the upload boundary', async () => {
   const added: FileAttachment[] = [];
@@ -31,4 +31,26 @@ test('#4177 a late extraction cannot attach after its composer is cancelled', as
   resolve('late text');
   await assert.rejects(pending, /stale/);
   assert.deepEqual(added, []);
+});
+
+test('#4177 validation and attachment commit are one gate transaction', async () => {
+  const gate = createDocumentUploadGate(async () => 'extracted');
+  const added: FileAttachment[] = [];
+  const pending = attachPdfDocument(new File(['pdf'], 'race.pdf'), gate, value => added.push(value));
+  queueMicrotask(() => gate.cancel());
+  await pending;
+  assert.deepEqual(added.map(item => item.name), ['race.pdf']);
+});
+
+test('#4177 cancellation stops the whole selected-file batch', async () => {
+  const visited: string[] = [];
+  for (const file of ['first.pdf', 'second.pdf']) {
+    try {
+      visited.push(file);
+      throw new DOMException('composer cleared', 'AbortError');
+    } catch (error) {
+      if (!shouldContinueDocumentUploadBatch(error)) break;
+    }
+  }
+  assert.deepEqual(visited, ['first.pdf']);
 });

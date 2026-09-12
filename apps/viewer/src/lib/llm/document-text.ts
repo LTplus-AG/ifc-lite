@@ -9,7 +9,7 @@ const PDF_EXTRACTION_TIMEOUT_MS = 30_000;
 
 interface PdfTextItem { str: string; hasEOL?: boolean }
 interface PdfTextPage {
-  getTextContent(): Promise<{ items: unknown[] }>;
+  streamTextContent(): ReadableStream<{ items: unknown[] }>;
   cleanup(): void;
 }
 interface PdfTextDocument {
@@ -33,13 +33,15 @@ const browserBackend: PdfTextBackend = {
     // Lazy loading keeps PDF.js out of the initial viewer bundle. Reuse the
     // canonical browser backend so CMaps and standard fonts are never omitted.
     let task: ReturnType<(typeof import('pdfjs-dist'))['getDocument']> | undefined;
+    let cancelled = false;
     const pending = import('../appearance/pdf/browser-backend.js').then(({ browserPdfBackend }) => {
+      if (cancelled) throw new DOMException('PDF extraction was cancelled.', 'AbortError');
       const backend = browserPdfBackend();
       task = backend.getDocument({ ...backend.options, data, enableXfa: false, stopAtErrors: true });
       return task.promise;
     });
     return { promise: pending, async destroy() {
-      if (!task) await pending.catch(() => undefined);
+      cancelled = true;
       await task?.destroy();
     } };
   },
@@ -71,6 +73,13 @@ function waitFor<T>(promise: Promise<T>, signal: AbortSignal | undefined, deadli
   });
 }
 
+async function settleWithin(promise: Promise<unknown>, deadline: number, warning: string): Promise<void> {
+  const settled = promise.then(() => true, error => { console.warn(warning, error); return true; });
+  const remaining = Math.max(0, Math.min(1_000, deadline - Date.now()));
+  if (remaining === 0) return;
+  await Promise.race([settled, new Promise(resolve => setTimeout(resolve, remaining))]);
+}
+
 export async function extractPdfText(
   file: Blob,
   backend: PdfTextBackend = browserBackend,
@@ -92,27 +101,34 @@ export async function extractPdfText(
     let itemCount = 0;
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
       const page = await waitFor(document.getPage(pageNumber), options.signal, deadline);
+      const reader = page.streamTextContent().getReader();
+      let streamDone = false;
       try {
-        const content = await waitFor(page.getTextContent(), options.signal, deadline);
         let pageText = '';
-        for (const item of content.items) {
-          itemCount += 1;
-          if (itemCount > MAX_PDF_TEXT_ITEMS) throw new Error(`PDF text exceeds the ${MAX_PDF_TEXT_ITEMS.toLocaleString()} item work limit.`);
-          if ((itemCount & 1023) === 0) {
-            options.signal?.throwIfAborted();
-            if (Date.now() >= deadline) throw new Error('PDF text extraction timed out.');
+        while (!streamDone) {
+          const chunk = await waitFor(reader.read(), options.signal, deadline);
+          streamDone = chunk.done;
+          if (chunk.done) break;
+          for (const item of chunk.value.items) {
+            itemCount += 1;
+            if (itemCount > MAX_PDF_TEXT_ITEMS) throw new Error(`PDF text exceeds the ${MAX_PDF_TEXT_ITEMS.toLocaleString()} item work limit.`);
+            if ((itemCount & 1023) === 0) {
+              options.signal?.throwIfAborted();
+              if (Date.now() >= deadline) throw new Error('PDF text extraction timed out.');
+            }
+            if (!textItem(item)) continue;
+            const separator = item.hasEOL ? '\n' : ' ';
+            if (result.length + pageText.length + item.str.length + separator.length > MAX_DOCUMENT_TEXT_CHARS) {
+              throw new Error(`PDF text exceeds the ${MAX_DOCUMENT_TEXT_CHARS.toLocaleString()} character attachment limit.`);
+            }
+            pageText += item.str + separator;
           }
-          if (!textItem(item)) continue;
-          const separator = item.hasEOL ? '\n' : ' ';
-          if (result.length + pageText.length + item.str.length + separator.length > MAX_DOCUMENT_TEXT_CHARS) {
-            throw new Error(`PDF text exceeds the ${MAX_DOCUMENT_TEXT_CHARS.toLocaleString()} character attachment limit.`);
-          }
-          pageText += item.str + separator;
         }
         pageText = pageText.trim();
         if (pageText) result += `${result ? '\n\n' : ''}[Page ${pageNumber}]\n${pageText}`;
         if (result.length > MAX_DOCUMENT_TEXT_CHARS) throw new Error(`PDF text exceeds the ${MAX_DOCUMENT_TEXT_CHARS.toLocaleString()} character attachment limit.`);
       } finally {
+        if (!streamDone) await settleWithin(reader.cancel(), deadline, '[PDF text] stream cancellation failed');
         page.cleanup();
       }
     }
@@ -122,6 +138,6 @@ export async function extractPdfText(
     if (error instanceof Error && error.name === 'PasswordException') throw new Error('Password-protected PDFs must be unlocked before attachment.');
     throw error;
   } finally {
-    await loading.destroy().catch(error => console.warn('[PDF text] cleanup failed', error));
+    await settleWithin(loading.destroy(), deadline, '[PDF text] cleanup failed');
   }
 }

@@ -7,8 +7,12 @@ import { extractPdfText, type PdfTextOptions } from './document-text.js';
 type Extractor = (file: Blob, options: PdfTextOptions) => Promise<string>;
 
 export interface DocumentUploadGate {
-  extract(file: Blob): Promise<string>;
+  run<T>(file: Blob, commit: (text: string) => T): Promise<T>;
   cancel(): void;
+}
+
+export function shouldContinueDocumentUploadBatch(error: unknown): boolean {
+  return !(error instanceof Error && error.name === 'AbortError');
 }
 
 export function createDocumentUploadGate(
@@ -17,14 +21,14 @@ export function createDocumentUploadGate(
   let generation = 0;
   const active = new Set<AbortController>();
   return {
-    async extract(file) {
+    async run(file, commit) {
       const ownGeneration = generation;
       const controller = new AbortController();
       active.add(controller);
       try {
         const text = await extractor(file, { signal: controller.signal });
         if (generation !== ownGeneration) throw new DOMException('PDF upload became stale.', 'AbortError');
-        return text;
+        return commit(text);
       } finally {
         active.delete(controller);
       }
@@ -42,6 +46,7 @@ export async function attachPdfDocument(
   gate: DocumentUploadGate,
   add: (attachment: FileAttachment) => void,
 ): Promise<void> {
-  const textContent = await gate.extract(file);
-  add({ id: crypto.randomUUID(), name: file.name, type: 'application/pdf', size: file.size, textContent });
+  await gate.run(file, textContent => {
+    add({ id: crypto.randomUUID(), name: file.name, type: 'application/pdf', size: file.size, textContent });
+  });
 }

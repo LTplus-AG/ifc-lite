@@ -125,6 +125,9 @@ importers:
       '@ifc-lite/cache':
         specifier: workspace:^
         version: link:../../packages/cache
+      '@ifc-lite/charts':
+        specifier: workspace:^
+        version: link:../../packages/charts
       '@ifc-lite/clash':
         specifier: workspace:^
         version: link:../../packages/clash
@@ -281,6 +284,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      echarts:
+        specifier: ^6.1.0
+        version: 6.1.0
       exceljs:
         specifier: ^4.4.0
         version: 4.4.0

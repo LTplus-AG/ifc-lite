@@ -21,7 +21,8 @@ import {
   type WorkspacePanelId,
   type AnalysisPanelId,
 } from '@/lib/panels/registry';
-import { isBottomPanel, isBottomPanelOpen, type BottomPanelFlags } from '@/lib/panels/bottom-panels';
+import { isBottomPanel, isBottomPanelOpen } from '@/lib/panels/bottom-panels';
+import { useBottomPanelFlags } from './useBottomPanelFlags';
 import { openPanelWindow, closePanelWindow } from '@/services/panel-windows';
 
 export type PanelLocation = 'docked' | 'floating' | 'popped' | 'closed';
@@ -68,15 +69,8 @@ export function usePanelControls(): PanelControls {
   const floatingPanels = useViewerStore((s) => s.floatingPanels);
   const poppedOutIds = useViewerStore((s) => s.poppedOutIds);
   const activePanel = useViewerStore((s) => s.sidebarActivePanel);
-  // Bottom-strip visibility flags (their "docked" state), one subscription
-  // per flag so an unrelated store write does not re-render every rail icon.
-  const ganttVisible = useViewerStore((s) => s.ganttPanelVisible);
-  const scriptVisible = useViewerStore((s) => s.scriptPanelVisible);
-  const listVisible = useViewerStore((s) => s.listPanelVisible);
-  const bottomFlags = useMemo<BottomPanelFlags>(
-    () => ({ ganttPanelVisible: ganttVisible, scriptPanelVisible: scriptVisible, listPanelVisible: listVisible }),
-    [ganttVisible, scriptVisible, listVisible],
-  );
+  // Bottom-strip visibility flags (their "docked" state), shallow-compared.
+  const bottomFlags = useBottomPanelFlags();
   // The Hierarchy panel (left region, #1267) is "docked" while its slot is open.
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
   // The lower half of a docked split (#1266), also docked/visible.

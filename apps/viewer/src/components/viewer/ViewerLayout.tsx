@@ -46,6 +46,7 @@ import {
 } from '@/services/analysis-extensions';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { activeBottomPanel } from '@/lib/panels/bottom-panels';
+import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
 import { getPanelDef } from '@/lib/panels/registry';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { usePanelControls } from '@/hooks/usePanelControls';
@@ -190,12 +191,9 @@ export function ViewerLayout() {
   const setRightPanelCollapsed = useViewerStore((s) => s.setRightPanelCollapsed);
   const activeTool = useViewerStore((s) => s.activeTool);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
-  const listPanelVisible = useViewerStore((s) => s.listPanelVisible);
-  const scriptPanelVisible = useViewerStore((s) => s.scriptPanelVisible);
-  const ganttPanelVisible = useViewerStore((s) => s.ganttPanelVisible);
   // Which bottom panel the flags say is open (table precedence), and whether
   // it is actually docked here rather than floating / popped out.
-  const bottomPanel = activeBottomPanel({ ganttPanelVisible, scriptPanelVisible, listPanelVisible });
+  const bottomPanel = activeBottomPanel(useBottomPanelFlags());
   // The right pane is owned by the sidebar (#1208); here we only need to know which
   // BOTTOM panel (Script / Schedule / Lists) is docked vs detached, so the bottom strip skips a floating (#1201) or popped-out one.
   const floatingPanels = useViewerStore((s) => s.floatingPanels);

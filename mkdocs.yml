@@ -158,6 +158,7 @@ nav:
     - Lens Visualization: guide/lens.md
     - Lists & Schedules: guide/lists.md
     - Schedule Import: guide/schedule-import.md
+    - Charts: guide/charts.md
     - Solar Analysis: guide/solar.md
     - Scripting SDK: guide/scripting-sdk.md
   - Customization:

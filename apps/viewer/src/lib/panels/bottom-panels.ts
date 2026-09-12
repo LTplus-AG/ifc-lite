@@ -20,7 +20,7 @@
  */
 
 /** Bottom-strip panel ids, in display precedence. Append only. */
-export const BOTTOM_PANEL_IDS = ['gantt', 'script', 'lists'] as const;
+export const BOTTOM_PANEL_IDS = ['gantt', 'script', 'lists', 'charts'] as const;
 
 export type BottomPanelId = (typeof BOTTOM_PANEL_IDS)[number];
 
@@ -29,6 +29,7 @@ export const BOTTOM_PANEL_FLAG = {
   gantt: 'ganttPanelVisible',
   script: 'scriptPanelVisible',
   lists: 'listPanelVisible',
+  charts: 'chartPanelVisible',
 } as const satisfies Record<BottomPanelId, string>;
 
 export type BottomPanelFlag = (typeof BOTTOM_PANEL_FLAG)[BottomPanelId];

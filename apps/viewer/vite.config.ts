@@ -360,6 +360,8 @@ export default defineConfig({
           if (id.includes('/node_modules/apache-arrow/')) return 'arrow';
           if (id.includes('/node_modules/parquet-wasm/')) return 'parquet';
           if (id.includes('/node_modules/cesium/')) return 'cesium';
+          // ECharts + its zrender core: reached only through the lazy Charts panel (#3944).
+          if (id.includes('/node_modules/echarts/') || id.includes('/node_modules/zrender/')) return 'echarts';
           // @radix-ui/@floating-ui run synchronous, top-level module-init
           // code (e.g. react-tooltip's `createPopperScope()` at module
           // scope). The default chunker otherwise merges them into whatever
@@ -379,10 +381,7 @@ export default defineConfig({
           ) return 'radix-ui';
           // three.js + addons — only the /mcp landing imports them, keep
           // the main viewer / pages off the hook.
-          if (
-            id.includes('/node_modules/three/') ||
-            id.includes('/node_modules/.pnpm/three@')
-          ) return 'three';
+          if (id.includes('/node_modules/three/') || id.includes('/node_modules/.pnpm/three@')) return 'three';
           return undefined;
         },
       },

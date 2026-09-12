@@ -46,6 +46,7 @@ import { appearanceReferenceTeardown } from './slices/appearanceReferenceSlice.j
 import { composeTeardown, createTeardownRegistry, type AnySliceTeardown } from './teardown.js';
 
 import { loadingTeardown } from './slices/loadingSlice.js';
+import { chartTeardown } from './slices/chartSlice.js';
 import { selectionTeardown } from './slices/selectionSlice.teardown.js';
 import { visibilityTeardown } from './slices/visibilitySlice.teardown.js';
 import { uiTeardown } from './slices/uiSlice.teardown.js';
@@ -119,6 +120,7 @@ export const viewerTeardownRegistry: readonly AnySliceTeardown[] = createTeardow
   zonesTeardown,
   layerStackTeardown,
   modelTagsTeardown,
+  chartTeardown,
 ]);
 
 /**

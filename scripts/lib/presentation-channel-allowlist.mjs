@@ -77,6 +77,10 @@ export const REQUIRES_ROUTING_MARKER = new Set([
   // moved its union policy into the shared `resolvePresentationIds`, so this
   // now genuinely routes and belongs here instead of NO_MARKER_REQUIRED.
   'apps/viewer/src/sdk/adapters/visibility-adapter.ts',
+  // The charts panel's bucket → 3D presentation (`presentChartIds`): a bucket
+  // is whatever the dimension grouped, which can include a geometry-less
+  // assembly, so the ids route through `resolvePresentationIds` (#3944).
+  'apps/viewer/src/components/viewer/charts/useChart3DLink.ts',
 ]);
 
 /**

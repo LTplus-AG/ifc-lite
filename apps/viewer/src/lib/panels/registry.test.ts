@@ -87,11 +87,11 @@ describe('BCF panel title', () => {
 // (Digit0) via the shortcut map — 'gantt' (Digit9) was never checked here,
 // so dropping it from `isBottomPanel`'s own condition went unnoticed.
 describe('isBottomPanel', () => {
-  it('is true for exactly script, gantt and lists — the bottom-strip trio', () => {
+  it('is true for exactly script, gantt, lists and charts — the bottom-strip panels', () => {
     for (const id of WORKSPACE_PANELS.map((p) => p.id)) {
       assert.strictEqual(
         isBottomPanel(id),
-        id === 'script' || id === 'gantt' || id === 'lists',
+        id === 'script' || id === 'gantt' || id === 'lists' || id === 'charts',
         `isBottomPanel('${id}')`,
       );
     }

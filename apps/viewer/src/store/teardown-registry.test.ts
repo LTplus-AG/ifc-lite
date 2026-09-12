@@ -28,6 +28,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * field on every file swap.
  */
 const PINNED_SESSION_RESET_KEYS: readonly string[] = [
+  'chartPanelVisible', 'chartSlice', 'chartSliceSource', 'chartVisibilityOwned', // #3944 charts: the slice is renderer ids of the outgoing model; the claim is on a shared channel
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
   'appearanceReferences', 'referenceUndo', 'referenceRedo', 'referenceRevision', 'selectedAppearanceReferenceId', // #4308 drawing workspace lifecycle
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle
@@ -91,6 +92,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
 
 /** The same, for `all-models-cleared`. */
 const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
+  'chartSlice', 'chartSliceSource', 'chartVisibilityOwned', // #3944 charts
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle
   'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'basketVisibilityOwned', 'classFilter',
@@ -211,6 +213,7 @@ function modelRemovedFixture() {
  * `owns` list fails even when no scope emits it under an empty state.
  */
 const PINNED_OWNED_KEYS: readonly string[] = [
+  'chartPanelVisible', 'chartSlice', 'chartSliceSource', 'chartVisibilityOwned', // #3944 charts
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
   'appearanceReferences', 'referenceUndo', 'referenceRedo', 'referenceRevision', 'selectedAppearanceReferenceId', // #4308 drawing workspace lifecycle
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle

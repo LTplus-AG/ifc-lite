@@ -9,7 +9,7 @@
  * `useWorkspacePanelControls`, shared with the classic toolbar.
  */
 
-import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring, Zones, LoadReport } from '@/icons';
+import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring, Zones, LoadReport, Chart } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import {
@@ -116,6 +116,13 @@ export function AnalyzeTab() {
           tooltip="Construction schedule (Gantt)"
           active={activeWorkspacePanels.has('gantt')}
           onClick={() => handleToggleBottomPanel('gantt')}
+        />
+        <RibbonLargeButton
+          icon={Chart}
+          label="Charts"
+          tooltip="Charts bound to the model — click a bar to select it in 3D"
+          active={activeWorkspacePanels.has('charts')}
+          onClick={() => handleToggleBottomPanel('charts')}
         />
         <RibbonLargeButton
           icon={Script}

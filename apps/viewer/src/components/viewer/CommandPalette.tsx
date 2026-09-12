@@ -33,7 +33,6 @@ import {
   Building2,
   Layout,
   TreeDeciduous,
-  FileCode2,
   MessageSquare,
   ClipboardCheck,
   FileWarning,
@@ -51,7 +50,6 @@ import {
   Clock,
   Save,
   Tag,
-  CalendarClock,
   CalendarPlus,
   Sparkles,
   Eraser,
@@ -103,6 +101,7 @@ import { getRecentFiles, formatFileSize, getCachedFile, getCachedFileNames } fro
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
+import { bottomPanelCommands } from './commandPaletteBottomPanels';
 import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import {
   type Command,
@@ -347,12 +346,11 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
     // ── Panels ──
     c.push(
+      ...bottomPanelCommands(activateBottomPanel),
       { id: 'panel:properties', label: 'Information', keywords: 'properties attributes material classification schedule task panel right inspector information', category: 'Panels', icon: Layout,
         action: () => { useViewerStore.getState().showWorkspacePanel('properties'); } },
       { id: 'panel:tree', label: 'Hierarchy', keywords: 'spatial tree hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
         action: () => { const s = useViewerStore.getState(); s.setLeftPanelCollapsed(!s.leftPanelCollapsed); } },
-      { id: 'panel:script', label: 'Script Editor', keywords: 'code automation console', category: 'Panels', icon: FileCode2,
-        action: () => { activateBottomPanel('script'); } },
       { id: 'panel:bcf', label: 'BCF Topics', keywords: 'collaboration topics comments viewpoint', category: 'Panels', icon: MessageSquare,
         action: () => { activateRightPanel('bcf'); } },
       { id: 'panel:ids', label: 'IDS Validation', keywords: 'information delivery specification check', category: 'Panels', icon: ClipboardCheck,
@@ -361,10 +359,6 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { activateRightPanel('clash'); } },
       { id: 'panel:compare', label: 'Compare Models', keywords: 'diff revision version change added deleted modified geometry data', category: 'Panels', icon: GitCompareArrows,
         action: () => { activateRightPanel('compare'); } },
-      { id: 'panel:lists', label: 'Entity Lists', keywords: 'table spreadsheet', category: 'Panels', icon: FileSpreadsheet,
-        action: () => { activateBottomPanel('lists'); } },
-      { id: 'panel:gantt', label: 'Construction Schedule (Gantt)', keywords: '4d timeline tasks ifctask sequence playback animation', category: 'Panels', icon: CalendarClock,
-        action: () => { activateBottomPanel('gantt'); } },
       { id: 'panel:lens', label: 'Lens Rules', keywords: 'color filter highlight', category: 'Panels', icon: Palette,
         action: () => { activateRightPanel('lens'); } },
       { id: 'panel:layers', label: 'Layer Stack', keywords: 'ifcx layers federation draft publish merge review provenance registry version overlay', category: 'Panels', icon: Layers,

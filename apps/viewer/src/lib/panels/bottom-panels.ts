@@ -20,7 +20,7 @@
  */
 
 /** Bottom-strip panel ids, in display precedence. Append only. */
-export const BOTTOM_PANEL_IDS = ['gantt', 'script', 'lists'] as const;
+export const BOTTOM_PANEL_IDS = ['gantt', 'script', 'lists', 'charts'] as const;
 
 export type BottomPanelId = (typeof BOTTOM_PANEL_IDS)[number];
 
@@ -29,9 +29,18 @@ export const BOTTOM_PANEL_FLAG = {
   gantt: 'ganttPanelVisible',
   script: 'scriptPanelVisible',
   lists: 'listPanelVisible',
+  charts: 'chartPanelVisible',
 } as const satisfies Record<BottomPanelId, string>;
 
 export type BottomPanelFlag = (typeof BOTTOM_PANEL_FLAG)[BottomPanelId];
+
+/** The store setter for each flag, so a panel-control path never spells the trio by hand. */
+export const BOTTOM_PANEL_SETTER = {
+  gantt: 'setGanttPanelVisible',
+  script: 'setScriptPanelVisible',
+  lists: 'setListPanelVisible',
+  charts: 'setChartPanelVisible',
+} as const satisfies Record<BottomPanelId, string>;
 
 /** The slice of store state the bottom strip reads. */
 export type BottomPanelFlags = Record<BottomPanelFlag, boolean>;

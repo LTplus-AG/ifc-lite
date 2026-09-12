@@ -133,12 +133,15 @@ export interface OwnedVisibilityRecords {
   clashVisibilityOwned?: VisibilityOwnership;
   /** The basket's claim on the isolate channel (`store/slices/pinboard-isolation.ts`, #4527). */
   basketVisibilityOwned?: VisibilityOwnership;
+  /** The charts panel's claim on the isolate / ghost channel for a bucket selection (`store/slices/chartSlice.ts`, #3944). */
+  chartVisibilityOwned?: VisibilityOwnership;
 }
 
 const OWNERSHIP_RECORD_FIELDS = [
   'idsFocusVisibilityOwned',
   'clashVisibilityOwned',
   'basketVisibilityOwned',
+  'chartVisibilityOwned',
 ] as const satisfies readonly (keyof OwnedVisibilityRecords)[];
 
 /**

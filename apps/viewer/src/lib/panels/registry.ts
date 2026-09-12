@@ -34,6 +34,7 @@ import {
   Layers as LayersIcon,
   Box,
   FileWarning,
+  BarChart3,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -59,7 +60,8 @@ export type WorkspacePanelId =
   | 'layers'
   | 'zones'
   | 'loadReport'
-  | 'appearance';
+  | 'appearance'
+  | 'charts';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -120,6 +122,9 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // non-SIDEBAR_PANEL_FLAGS branch adopts it directly (issue #3927).
   { id: 'loadReport', title: 'Load report', short: 'Load report', Icon: FileWarning, group: 'review', region: 'side' },
   { id: 'appearance', title: 'Appearance', short: 'Appearance', Icon: Palette, group: 'author', region: 'side' },
+  // Charts bound to the model, bidirectional with the 3D view (#3944). Bottom
+  // strip like Lists / Schedule; the table in `bottom-panels.ts` carries it.
+  { id: 'charts', title: 'Charts', short: 'Charts', Icon: BarChart3, group: 'work', region: 'bottom', prefersWide: true },
 ];
 
 // The bottom strip (Script / Schedule / Lists) is table-driven; the id union and

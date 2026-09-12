@@ -105,6 +105,27 @@ export default defineConfig({
       },
     },
     {
+      // Opt-in relay acceptance (#4446, #4444): needs a built @ifc-lite/collab-server
+      // and the AC20 fixture; each spec spawns its own signed relay on an
+      // ephemeral port and serves this checkout's viewer build itself
+      // (tests/e2e/collab/{relay,preview}.ts), pointing the page at the relay
+      // through the viewer's localStorage collab overrides. Not in CI's default
+      // lanes (no relay there) — `pnpm test:e2e:collab`, see
+      // docs/contributing/collaboration-testing.md.
+      name: 'viewer-collab-e2e',
+      testMatch: /collab-(share-seed|federation-scope)\.e2e\.spec\.ts/,
+      timeout: 600000,
+      use: {
+        baseURL: 'http://localhost:3000',
+        actionTimeout: 60000,
+        headless: true,
+        channel: 'chrome',
+        launchOptions: {
+          args: ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--enable-gpu'],
+        },
+      },
+    },
+    {
       name: 'viewer-benchmark',
       testMatch: /viewer-benchmark\.spec\.ts/,
       timeout: 600000, // 10 min for very large files (327MB)

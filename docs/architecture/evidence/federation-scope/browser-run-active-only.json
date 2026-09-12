@@ -1,0 +1,74 @@
+{
+  "owner": {
+    "invite": "http://127.0.0.1:51016/?room=16f1c6c0e6a2&t=<redacted>",
+    "stats": {
+      "slots": [
+        "m0"
+      ],
+      "entitiesPerSlot": {
+        "m0": 184
+      },
+      "refsPerSlot": {
+        "m0": 313
+      },
+      "geometryRecords": 313,
+      "seedMarker": {
+        "expected": 317,
+        "seeded": 317,
+        "failed": 0,
+        "abandoned": false,
+        "interrupted": false,
+        "at": "2026-09-12T07:07:52.063Z"
+      }
+    },
+    "members": [
+      {
+        "modelId": "848d213d-5c8f-47c2-8164-67d71eb27bc6",
+        "local": 35169,
+        "global": 35169,
+        "storedGlobalId": "0oTQ6V1VbChulreA_hfmUa",
+        "meshCount": 1,
+        "textureSize": null,
+        "texturePixel": null,
+        "textureBlobHash": null,
+        "textureRef": null
+      },
+      {
+        "modelId": "1b6f8ec1-daf2-4c20-8848-38619c0b5b49",
+        "local": 35169,
+        "global": 1114277,
+        "storedGlobalId": "0oTQ6V1VbChulreA_hfmUa",
+        "meshCount": 1,
+        "textureSize": null,
+        "texturePixel": null,
+        "textureBlobHash": null,
+        "textureRef": null
+      }
+    ],
+    "clipboardRead": true
+  },
+  "guest": {
+    "models": [
+      {
+        "id": "room:16f1c6c0e6a2:m0",
+        "slot": "m0",
+        "name": "AC20-FZK-Haus.ifc",
+        "idOffset": 0,
+        "maxExpressId": 184,
+        "meshes": 313,
+        "schemaVersion": "IFC5"
+      }
+    ],
+    "member": {
+      "modelId": "room:16f1c6c0e6a2:m0",
+      "local": 47,
+      "global": 47,
+      "storedGlobalId": "/m0/0oTQ6V1VbChulreA_hfmUa",
+      "meshCount": 1,
+      "textureSize": null,
+      "texturePixel": null,
+      "textureBlobHash": null,
+      "textureRef": null
+    }
+  }
+}

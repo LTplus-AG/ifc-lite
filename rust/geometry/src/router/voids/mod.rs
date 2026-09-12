@@ -616,7 +616,7 @@ impl GeometryRouter {
             if let Some(holed) = self.try_bool2d_cut(&mesh, cut) {
                 // Eligible openings are now subtracted. Any residual (ineligible)
                 // openings — perpendicular sleeves, partial-depth recesses — are
-                // cut by the exact kernel on the re-extruded host (origin 0, world
+                // routed on the re-extruded host (origin 0, world
                 // frame; residual cutters are world-framed), so a single
                 // ineligible opening no longer forfeits its host's cheap ones.
                 match self.bool2d_residual(cut) {
@@ -627,7 +627,7 @@ impl GeometryRouter {
                     Some(residual) => {
                         let composed = self.apply_void_context(holed, residual, element_id);
                         // The 2D prefix is watertight before this recursive pass,
-                        // but the exact residual can tear that replacement mesh.
+                        // but the residual route can tear that replacement mesh.
                         // Validate the FINAL composition; on a material tear,
                         // compare against unchanged full-context routing. #4610's
                         // ISSUE_129 slab changed from 25 to 875 open edges when
@@ -637,7 +637,7 @@ impl GeometryRouter {
                             self.record_bool2d_cut(cut);
                             return composed;
                         }
-                        // Some exact-kernel outputs are already mildly torn on
+                        // Some routed outputs are already mildly torn on
                         // real files. A blanket reject would replace #32810's
                         // 3-edge hybrid result with a 36-edge full-context one
                         // when the prism route is enabled.
@@ -645,7 +645,7 @@ impl GeometryRouter {
                         // has fewer non-manifold edges under the same welded
                         // topology rule. This makes the fallback monotonic.
                         let composed_defects = param_cut_nonmanifold_edges(&composed);
-                        // A handful of residual-kernel edge defects can already
+                        // A handful of residual-route edge defects can already
                         // be BETTER than the full-context path, and that path's
                         // reading can change with an equally valid cap diagonal
                         // (#32810). Preserve those established small tears. Only
@@ -662,13 +662,13 @@ impl GeometryRouter {
                             param: None,
                             bool2d: None,
                         };
-                        let exact = self.apply_void_context(mesh.clone(), &full, element_id);
-                        let exact_defects = param_cut_nonmanifold_edges(&exact);
+                        let full_routed = self.apply_void_context(mesh.clone(), &full, element_id);
+                        let full_routed_defects = param_cut_nonmanifold_edges(&full_routed);
                         // Require a material improvement, not a one-edge win.
                         // This hysteresis keeps the route stable under tiny
                         // triangulation changes.
-                        if exact_defects.saturating_mul(2) < composed_defects {
-                            return exact;
+                        if full_routed_defects.saturating_mul(2) < composed_defects {
+                            return full_routed;
                         }
                         self.record_bool2d_cut(cut);
                         return composed;

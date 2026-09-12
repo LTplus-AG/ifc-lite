@@ -82,6 +82,104 @@ pub(crate) fn build_tube_rmf(
     (tangents, perp1s, perp2s)
 }
 
+/// Mesh a circular (optionally annular) cross-section swept along
+/// `curve_points`: one ring of `segments` vertices per sample on the outer
+/// wall, a second ring per sample on the bore when `inner_radius` is set, and
+/// caps at both ends (discs for a rod, annuli for a tube). Returns
+/// `(positions, indices)`.
+///
+/// Every triangle is wound so its geometric normal points OUT of the material:
+/// outer wall radially outward, bore wall radially inward (toward the axis),
+/// start cap along `-t`, end cap along `+t`. The frame `(perp1, perp2, t)` is
+/// right-handed (`perp2 = t x perp1`), so a ring vertex at angle `theta` sits
+/// at `p + r(cos theta perp1 + sin theta perp2)` and CCW order in the
+/// `(perp1, perp2)` plane faces `+t`. `swept_disk_side_walls_face_outward` in
+/// `tests/swept_disk_winding_and_bore.rs` pins the sign.
+fn build_tube(
+    curve_points: &[Point3<f64>],
+    radius: f64,
+    inner_radius: Option<f64>,
+    segments: usize,
+) -> (Vec<f32>, Vec<u32>) {
+    let n = curve_points.len();
+    let seg = segments as u32;
+    let walls = if inner_radius.is_some() { 2 } else { 1 };
+    let mut positions: Vec<f32> = Vec::with_capacity(3 * (walls * n * segments + 2));
+    let mut indices: Vec<u32> = Vec::with_capacity(6 * segments * walls * n);
+
+    // Build a rotation-minimising frame across all sample points up-front.
+    // (Per-iteration `up` selection caused frame flips at sharp bends.)
+    let (_, perp1s, perp2s) = build_tube_rmf(curve_points);
+    let unit_circle: Vec<(f64, f64)> = (0..segments)
+        .map(|j| {
+            let angle = 2.0 * std::f64::consts::PI * j as f64 / segments as f64;
+            (angle.cos(), angle.sin())
+        })
+        .collect();
+
+    let push_ring = |positions: &mut Vec<f32>, i: usize, r: f64| {
+        let p = curve_points[i];
+        for &(cos, sin) in &unit_circle {
+            let vertex = p + (perp1s[i] * (r * cos) + perp2s[i] * (r * sin));
+            positions.extend_from_slice(&[vertex.x as f32, vertex.y as f32, vertex.z as f32]);
+        }
+    };
+    // Join ring `a` to ring `b`. `outward` is the outer wall's winding
+    // (ring i to ring i+1, normal away from the axis); `false` is its mirror.
+    // The bore wall and both annular caps (outer ring to bore ring) reuse it.
+    let push_strip = |indices: &mut Vec<u32>, a: u32, b: u32, outward: bool| {
+        for j in 0..seg {
+            let j_next = (j + 1) % seg;
+            if outward {
+                indices.extend_from_slice(&[a + j, b + j_next, b + j]);
+                indices.extend_from_slice(&[a + j, a + j_next, b + j_next]);
+            } else {
+                indices.extend_from_slice(&[a + j, b + j, b + j_next]);
+                indices.extend_from_slice(&[a + j, b + j_next, a + j_next]);
+            }
+        }
+    };
+
+    let ring = |i: usize| (i * segments) as u32;
+    for i in 0..n {
+        push_ring(&mut positions, i, radius);
+    }
+    for i in 0..n - 1 {
+        push_strip(&mut indices, ring(i), ring(i + 1), true);
+    }
+
+    match inner_radius {
+        Some(inner) => {
+            // Bore rings follow the outer rings, same sample order.
+            let bore = |i: usize| ring(n + i);
+            for i in 0..n {
+                push_ring(&mut positions, i, inner);
+            }
+            for i in 0..n - 1 {
+                push_strip(&mut indices, bore(i), bore(i + 1), false);
+            }
+            // Annular caps: start faces -t, end faces +t.
+            push_strip(&mut indices, ring(0), bore(0), false);
+            push_strip(&mut indices, ring(n - 1), bore(n - 1), true);
+        }
+        None => {
+            // Disc caps fanned from the sample point on the axis.
+            let (c0, c1) = (ring(n), ring(n) + 1);
+            for p in [curve_points[0], curve_points[n - 1]] {
+                positions.extend_from_slice(&[p.x as f32, p.y as f32, p.z as f32]);
+            }
+            let (o0, o1) = (ring(0), ring(n - 1));
+            for j in 0..seg {
+                let jn = (j + 1) % seg;
+                indices.extend_from_slice(&[c0, o0 + jn, o0 + j]); // start cap faces -t
+                indices.extend_from_slice(&[c1, o1 + j, o1 + jn]); // end cap faces +t
+            }
+        }
+    }
+
+    (positions, indices)
+}
+
 /// SweptDiskSolid processor
 /// Handles IfcSweptDiskSolid - sweeps a circular profile along a curve
 pub struct SweptDiskSolidProcessor {
@@ -119,8 +217,12 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
             .get_float(1)
             .ok_or_else(|| Error::geometry("SweptDiskSolid missing Radius".to_string()))?;
 
-        // Get inner radius if hollow
-        let _inner_radius = entity.get_float(2);
+        // InnerRadius (optional): a hollow tube's bore. Only a bore strictly
+        // inside the outer wall bounds an annulus; a non-positive, non-finite,
+        // or at-or-past-`radius` value cannot, and the sweep meshes as a rod.
+        let inner_radius = entity
+            .get_float(2)
+            .filter(|&r| r.is_finite() && r > 0.0 && r < radius);
 
         // StartParam / EndParam (optional IfcParameterValue). Per IFC spec, when the
         // directrix is an IfcCompositeCurve the curve is parameterised so that segment
@@ -191,79 +293,7 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
         // Generate tube mesh by sweeping circle along curve
         // 24 segments around the circle at Medium; scaled by quality.
         let segments = scale_segments(24, 8, 96, quality);
-        let mut positions = Vec::new();
-        let mut indices = Vec::new();
-
-        // Build a rotation-minimising frame across all sample points up-front.
-        // (Per-iteration `up` selection caused frame flips at sharp bends.)
-        let (_, perp1s, perp2s) = build_tube_rmf(&curve_points);
-
-        // For each point on the curve, create a ring of vertices
-        for i in 0..curve_points.len() {
-            let p = curve_points[i];
-            let perp1 = perp1s[i];
-            let perp2 = perp2s[i];
-
-            // Create ring of vertices
-            for j in 0..segments {
-                let angle = 2.0 * std::f64::consts::PI * j as f64 / segments as f64;
-                let offset = perp1 * (radius * angle.cos()) + perp2 * (radius * angle.sin());
-                let vertex = p + offset;
-
-                positions.push(vertex.x as f32);
-                positions.push(vertex.y as f32);
-                positions.push(vertex.z as f32);
-            }
-
-            // Create triangles connecting this ring to the next
-            if i < curve_points.len() - 1 {
-                let base = (i * segments) as u32;
-                let next_base = ((i + 1) * segments) as u32;
-
-                for j in 0..segments {
-                    let j_next = (j + 1) % segments;
-
-                    // Two triangles per quad
-                    indices.push(base + j as u32);
-                    indices.push(next_base + j as u32);
-                    indices.push(next_base + j_next as u32);
-
-                    indices.push(base + j as u32);
-                    indices.push(next_base + j_next as u32);
-                    indices.push(base + j_next as u32);
-                }
-            }
-        }
-
-        // Add end caps
-        // Start cap
-        let center_idx = (positions.len() / 3) as u32;
-        let start = curve_points[0];
-        positions.push(start.x as f32);
-        positions.push(start.y as f32);
-        positions.push(start.z as f32);
-
-        for j in 0..segments {
-            let j_next = (j + 1) % segments;
-            indices.push(center_idx);
-            indices.push(j_next as u32);
-            indices.push(j as u32);
-        }
-
-        // End cap
-        let end_center_idx = (positions.len() / 3) as u32;
-        let end_base = ((curve_points.len() - 1) * segments) as u32;
-        let end = curve_points[curve_points.len() - 1];
-        positions.push(end.x as f32);
-        positions.push(end.y as f32);
-        positions.push(end.z as f32);
-
-        for j in 0..segments {
-            let j_next = (j + 1) % segments;
-            indices.push(end_center_idx);
-            indices.push(end_base + j as u32);
-            indices.push(end_base + j_next as u32);
-        }
+        let (positions, indices) = build_tube(&curve_points, radius, inner_radius, segments);
 
         let mut mesh = Mesh {
             positions,
@@ -300,57 +330,5 @@ impl Default for SweptDiskSolidProcessor {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rmf_is_constant_on_a_straight_line() {
-        // Three collinear samples → tangents identical → frame must not change.
-        let pts = vec![
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-            Point3::new(2.0, 0.0, 0.0),
-        ];
-        let (tangents, perp1s, perp2s) = build_tube_rmf(&pts);
-        assert_eq!(tangents.len(), 3);
-        for i in 1..3 {
-            assert!((tangents[i] - tangents[0]).norm() < 1e-9);
-            assert!((perp1s[i] - perp1s[0]).norm() < 1e-9);
-            assert!((perp2s[i] - perp2s[0]).norm() < 1e-9);
-        }
-    }
-
-    #[test]
-    fn rmf_does_not_flip_at_sharp_bends() {
-        // L-shape (0,0,0) → (1,0,0) → (1,1,0). The previous implementation
-        // re-picked `up` per cross-section based on `tangent.x.abs() < 0.9`:
-        // at i=0 tangent is +X (|x|=1, picks up=Y) → perp1 = +Z; at i=1 the
-        // midpoint tangent is (1/√2, 1/√2, 0) (|x|≈0.71 < 0.9, picks up=X)
-        // → perp1 = -Z. The sign flip mirrors the cross-section ring and
-        // produces a twisted/flat-ribbon tube. RMF must propagate +Z through.
-        let pts = vec![
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-            Point3::new(1.0, 1.0, 0.0),
-        ];
-        let (_, perp1s, _) = build_tube_rmf(&pts);
-        assert_eq!(perp1s.len(), 3);
-        for (i, p) in perp1s.iter().enumerate() {
-            assert!(
-                p.z > 0.5,
-                "perp1 at i={i} flipped or rotated out of +Z half-space: {p:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn rmf_handles_degenerate_inputs() {
-        let empty: Vec<Point3<f64>> = Vec::new();
-        let (t, p1, p2) = build_tube_rmf(&empty);
-        assert!(t.is_empty() && p1.is_empty() && p2.is_empty());
-
-        let single = vec![Point3::new(0.0, 0.0, 0.0)];
-        let (t, p1, p2) = build_tube_rmf(&single);
-        assert!(t.is_empty() && p1.is_empty() && p2.is_empty());
-    }
-}
+#[path = "disk_tests.rs"]
+mod tests;

@@ -36,7 +36,11 @@
 # scanner_diagnostics.rs (67 lines, under budget, no row) to make room for
 # #4179 review finding 2, which needed every dropped offset kept rather than
 # only the first; 453 -> 422.
-     422 rust/core/src/parser/scanner.rs
+# scanner.rs row removed: and once more, this time clear of the limit.
+# find_entity_end (one walk over an already-located record body, sharing no
+# control flow with the declaration hunt) split out to scanner_record_end.rs
+# (113 lines, under budget, no row) so the quadratic-recovery fix and its
+# doc had room; 422 -> 361, under 400, so the exemption goes.
 # +3: Arc<Vec<AttributeValue>> so DecodedEntity clone is a refcount bump not a deep attribute-tree clone (perf/decode-churn).
     553 rust/core/src/schema_gen.rs
 # schema_helpers.rs row removed: the merged upstream #1969 split its tests into

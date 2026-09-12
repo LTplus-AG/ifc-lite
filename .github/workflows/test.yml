@@ -1704,7 +1704,7 @@ jobs:
         with:
           name: e2e-test-results
           path: test-results/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 3
 
   # THE PR LANE FOR RUST (CI redesign, step 5): workspace clippy and

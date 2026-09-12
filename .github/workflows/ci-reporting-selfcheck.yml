@@ -16,6 +16,10 @@ on:
       - '.github/workflows/xmatch-fixture.yml'
       - 'scripts/check-workflow-report-paths.mjs'
       - 'scripts/check-workflow-report-paths.test.mjs'
+      - 'scripts/build-rustdoc-index.mjs'
+      - 'scripts/build-rustdoc-index.test.mjs'
+      - 'scripts/report-scheduled-failure.mjs'
+      - 'scripts/report-scheduled-failure.test.mjs'
   workflow_dispatch:
 
 permissions:
@@ -23,12 +27,11 @@ permissions:
   issues: write
 
 jobs:
-  probes:
+  failure-probe:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       assertion: ${{ steps.assertion.outputs.rc }}
-      deadline: ${{ steps.deadline.outputs.rc }}
     steps:
       - name: Force an assertion failure
         id: assertion
@@ -44,6 +47,34 @@ jobs:
           OUTCOME: ${{ steps.assertion.outcome }}
           RC: ${{ steps.assertion.outputs.rc }}
         run: test "$OUTCOME" = failure && test "$RC" = 23
+
+  cancellation-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      cancelled: ${{ steps.cancelled.outputs.rc }}
+    steps:
+      - name: Force a cancellation signal
+        id: cancelled
+        continue-on-error: true
+        run: |
+          set +e
+          bash -c 'kill -TERM $$'
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          exit "$rc"
+      - name: Prove the cancellation signal remained observable
+        env:
+          OUTCOME: ${{ steps.cancelled.outcome }}
+          RC: ${{ steps.cancelled.outputs.rc }}
+        run: test "$OUTCOME" = failure && test "$RC" = 143
+
+  deadline-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      deadline: ${{ steps.deadline.outputs.rc }}
+    steps:
       - name: Force an in-step deadline
         id: deadline
         continue-on-error: true
@@ -59,14 +90,40 @@ jobs:
           RC: ${{ steps.deadline.outputs.rc }}
         run: test "$OUTCOME" = failure && test "$RC" = 124
 
-  exercise-reporter:
-    needs: probes
+  report-failure:
+    needs: failure-probe
     if: always()
     uses: ./.github/workflows/report-scheduled-failure.yml
     with:
       workflow_name: CI reporting selfcheck
-      jobs: assertion probe, deadline probe
-      result: assertion=${{ needs.probes.outputs.assertion }}, deadline=${{ needs.probes.outputs.deadline }}, probe-job=${{ needs.probes.result }}
+      jobs: assertion probe
+      result: failure rc=${{ needs.failure-probe.outputs.assertion }}
+      dry_run: true
+    permissions:
+      contents: read
+      issues: write
+
+  report-cancelled:
+    needs: cancellation-probe
+    if: always()
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: CI reporting selfcheck
+      jobs: cancelled dependency probe
+      result: cancelled rc=${{ needs.cancellation-probe.outputs.cancelled }}
+      dry_run: true
+    permissions:
+      contents: read
+      issues: write
+
+  report-deadline:
+    needs: deadline-probe
+    if: always()
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: CI reporting selfcheck
+      jobs: deadline probe
+      result: deadline-exceeded rc=${{ needs.deadline-probe.outputs.deadline }}
       dry_run: true
     permissions:
       contents: read

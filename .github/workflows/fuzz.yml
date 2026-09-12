@@ -113,4 +113,4 @@ jobs:
           name: fuzz-crash-${{ matrix.target }}
           path: ${{ matrix.crate_dir }}/artifacts/${{ matrix.target }}
           retention-days: 30
-          if-no-files-found: ignore
+          if-no-files-found: error

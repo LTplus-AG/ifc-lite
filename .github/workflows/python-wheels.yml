@@ -225,20 +225,35 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
         with:
           pattern: wheels-*
-          merge-multiple: true
           path: dist
       - name: Assert the complete wheel matrix arrived
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t wheels < <(find dist -maxdepth 1 -type f -name '*.whl' -print)
-          printf 'downloaded wheel: %s\n' "${wheels[@]}"
-          if [ "${#wheels[@]}" -ne 5 ]; then
-            echo "::error::expected 5 wheels (one per matrix leg), got ${#wheels[@]}"
+          expected=(
+            wheels-ubuntu-latest-x86_64
+            wheels-ubuntu-latest-aarch64
+            wheels-macos-14-aarch64
+            wheels-macos-14-x86_64
+            wheels-windows-latest-x64
+          )
+          mkdir -p dist/publish
+          for artifact in "${expected[@]}"; do
+            mapfile -t wheels < <(find "dist/$artifact" -maxdepth 1 -type f -name '*.whl' -print 2>/dev/null || true)
+            if [ "${#wheels[@]}" -ne 1 ]; then
+              echo "::error::$artifact must contain exactly one wheel; found ${#wheels[@]}"
+              exit 1
+            fi
+            printf 'verified matrix artifact: %s -> %s\n' "$artifact" "${wheels[0]}"
+            cp "${wheels[0]}" dist/publish/
+          done
+          mapfile -t artifact_dirs < <(find dist -mindepth 1 -maxdepth 1 -type d -name 'wheels-*' -print)
+          if [ "${#artifact_dirs[@]}" -ne "${#expected[@]}" ]; then
+            echo "::error::expected exactly ${#expected[@]} wheel matrix artifacts, got ${#artifact_dirs[@]}"
             exit 1
           fi
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
-          packages-dir: dist
+          packages-dir: dist/publish
           # First publish needs a PyPI trusted-publisher config for `ifclite-geom`
           # (project + this workflow), same OIDC pattern as the crates/npm release.

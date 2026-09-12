@@ -34,6 +34,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Checkout reporter implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Open or update the scheduled-lane issue
         env:
           GH_TOKEN: ${{ github.token }}
@@ -42,28 +46,4 @@ jobs:
           RESULT: ${{ inputs.result }}
           DRY_RUN: ${{ inputs.dry_run }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          TITLE: "ci: scheduled ${{ inputs.workflow_name }} lane is not reporting"
-        run: |
-          set -euo pipefail
-          title="ci: scheduled ${WORKFLOW_NAME} lane is not reporting"
-          body="The scheduled ${WORKFLOW_NAME} lane did not succeed (jobs: ${JOBS}; results: ${RESULT}). Run: ${RUN_URL}"
-          if [ "$DRY_RUN" = "true" ]; then
-            echo "dry-run reporter: $title"
-            echo "$body"
-            exit 0
-          fi
-          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
-            --search "$title in:title" --limit 100 --json number,title | \
-            node -e '
-              let input = "";
-              process.stdin.on("data", chunk => input += chunk);
-              process.stdin.on("end", () => {
-                const hit = JSON.parse(input).find(issue => issue.title === process.env.TITLE);
-                if (hit) process.stdout.write(String(hit.number));
-              });
-            ')
-          if [ -n "$existing" ]; then
-            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
-          else
-            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
-          fi
+        run: node scripts/report-scheduled-failure.mjs

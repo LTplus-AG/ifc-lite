@@ -86,6 +86,7 @@ jobs:
           test -d target/doc
           mkdir -p site/api/rust
           cp -r target/doc/* site/api/rust/
+          node scripts/build-rustdoc-index.mjs target/doc site/api/rust/index.html
 
       - name: Create .nojekyll file
         run: touch site/.nojekyll

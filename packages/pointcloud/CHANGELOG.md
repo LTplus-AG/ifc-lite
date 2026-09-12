@@ -1,5 +1,13 @@
 # @ifc-lite/pointcloud
 
+## 0.9.0
+
+### Minor Changes
+
+- [#4587](https://github.com/LTplus-AG/ifc-lite/pull/4587) [`e94a233`](https://github.com/LTplus-AG/ifc-lite/commit/e94a233a8fce5be0e9d6fa833f6a5fc121961e08) Thanks [@louistrue](https://github.com/louistrue)! - Preserve invalid PLY normal provenance through streaming and exact worker transfers, and keep floating RGB normalization consistent across chunks.
+
+- [#4570](https://github.com/LTplus-AG/ifc-lite/pull/4570) [`ed38bfc`](https://github.com/LTplus-AG/ifc-lite/commit/ed38bfc562cb170458141c5abecf15c0c0e2ea4d) Thanks [@louistrue](https://github.com/louistrue)! - Expose source-supplied PLY `nx`/`ny`/`nz` normals on decoded and streamed point chunks while preserving row order through bounded, stride-aware decoding and the worker wire protocol.
+
 ## 0.8.0
 
 ### Minor Changes

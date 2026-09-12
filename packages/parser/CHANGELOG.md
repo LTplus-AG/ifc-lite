@@ -1,5 +1,14 @@
 # @ifc-lite/parser
 
+## 6.1.1
+
+### Patch Changes
+
+- [#4597](https://github.com/LTplus-AG/ifc-lite/pull/4597) [`74aa364`](https://github.com/LTplus-AG/ifc-lite/commit/74aa364a14360f2af67a1902d7760b623d95c029) Thanks [@louistrue](https://github.com/louistrue)! - Bound the STEP scan's malformed-record recovery at the next declaration ([#4573](https://github.com/LTplus-AG/ifc-lite/issues/4573)). `findEntityLength` and the Blob worker's hand-duplicate walked from a refused record to the `)` balancing it anywhere in the buffer, so a record with no `)` of its own read to end of input, the scan resumed one byte past its `#`, and the next declaration repeated the walk: a file of `[#1](https://github.com/LTplus-AG/ifc-lite/issues/1)=A(2;` repeated was O(n^2), measured 2.5s at 10 000 records and 10s at 20 000 in both `scanEntitiesFast` and the browser scan worker. The same walk balanced across a following declaration, so `[#1](https://github.com/LTplus-AG/ifc-lite/issues/1)=IFCA(2 [#2](https://github.com/LTplus-AG/ifc-lite/issues/2)=IFCWALL($));` dropped [#2](https://github.com/LTplus-AG/ifc-lite/issues/2) with nothing reported. Both walks now stop at the next top-level `=` (ISO 10303-21 has `=` only in `entity_instance_name '=' record`), answer unbalanced, and the scan re-hunts from the refused record's `#`: each refusal costs its own record's bytes, and [#2](https://github.com/LTplus-AG/ifc-lite/issues/2) is found. `scanEntities` (the balanced scan) stops and reports on that shape instead of yielding one mis-spanned record.
+- Updated dependencies [[`0bd9521`](https://github.com/LTplus-AG/ifc-lite/commit/0bd9521554b616c101ab61425d6dc46beb3e904d), [`7562e5b`](https://github.com/LTplus-AG/ifc-lite/commit/7562e5b3f62ec57ca49cd412e35489bbf9e2ee6e), [`624bfa3`](https://github.com/LTplus-AG/ifc-lite/commit/624bfa3b7d1d636a6142af984613eb5bd79c09b4), [`4eef3be`](https://github.com/LTplus-AG/ifc-lite/commit/4eef3be61bcc6fea16fb1a4376a7d7340ab5dc69), [`94074df`](https://github.com/LTplus-AG/ifc-lite/commit/94074df5c7e53557e45dd838ce22990c19544df8), [`ad4672f`](https://github.com/LTplus-AG/ifc-lite/commit/ad4672fc9007f8ac86076f123a1e6020b04af7b6), [`6295f8b`](https://github.com/LTplus-AG/ifc-lite/commit/6295f8b58ee5f85be27470463e4f333f5aa11b35), [`0d8c5da`](https://github.com/LTplus-AG/ifc-lite/commit/0d8c5dac6175255d12ce758fe69c177af849dd03), [`6cc1b43`](https://github.com/LTplus-AG/ifc-lite/commit/6cc1b4362ed7ab2e909b81995bd7d4d99bc268d0), [`f7ea57f`](https://github.com/LTplus-AG/ifc-lite/commit/f7ea57f0555ca77695e28e41cfcfb0e9e7e3a2bb), [`a3aaaf0`](https://github.com/LTplus-AG/ifc-lite/commit/a3aaaf0832b0924237841075f37e76391ef200a2)]:
+  - @ifc-lite/wasm@7.1.0
+  - @ifc-lite/ifcx@4.1.1
+
 ## 6.1.0
 
 ### Minor Changes

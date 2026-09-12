@@ -1,5 +1,23 @@
 # @ifc-lite/renderer
 
+## 3.0.0
+
+### Major Changes
+
+- [#4566](https://github.com/LTplus-AG/ifc-lite/pull/4566) [`ad8fde2`](https://github.com/LTplus-AG/ifc-lite/commit/ad8fde2c9cd1bdf4c6a6b097e745e84306951e1b) Thanks [@louistrue](https://github.com/louistrue)! - Preview face masks across every resident streaming fragment of one canonical evaluated surface ([#4556](https://github.com/LTplus-AG/ifc-lite/issues/4556)).
+  
+  - `@ifc-lite/renderer`: `AppearancePartition` now identifies its canonical source item and full triangle count, and every `AppearancePartitionPart` has a side-local `partId`. Repeated IFC geometry item ids are valid across fragments; validation requires bounded, disjoint, complete canonical coverage and exact full-surface provenance before install or history replay. `validateAppearancePartition` is exported for hosts that construct history transitions.
+  - Viewer: masked previews split selected and retained faces independently in each streaming fragment, preserve full-surface corner ordinals and retained UV/texture/style references, and join/split all fragments through Compare, Discard, Apply, Undo and Redo. Malformed, overlapping, incomplete, reordered and stale fragment provenance is refused.
+
+### Minor Changes
+
+- [#4564](https://github.com/LTplus-AG/ifc-lite/pull/4564) [`3b7d860`](https://github.com/LTplus-AG/ifc-lite/commit/3b7d8609267a25261a55623886fd0a0233c1d24e) Thanks [@louistrue](https://github.com/louistrue)! - Add canonical evaluated-surface identity to exact raycast intersections. `Intersection` now reports the federation `modelIndex`, unambiguous `geometryItemId`, and `sourceTriangleIndex` when the rendered triangle carries valid appearance provenance; `appearanceSourceTriangle()` exposes the same strict mapping for renderer consumers. Exact scene raycasts also honor the renderer's active section plane and crop box.
+
+- [#4552](https://github.com/LTplus-AG/ifc-lite/pull/4552) [`1996e92`](https://github.com/LTplus-AG/ifc-lite/commit/1996e9281b8d36585c3faba940a0f56be4ef706b) Thanks [@louistrue](https://github.com/louistrue)! - Face selection for evaluated occurrence appearance ([#4404](https://github.com/LTplus-AG/ifc-lite/issues/4404), closes the F6 slice).
+  
+  - `@ifc-lite/renderer`: an appearance preview owner can declare an `AppearancePartition` (`AppearancePreviewOptions.partition`, recorded on `AppearanceChange.partition`, inverted for history with `invertAppearancePartition`). The controller then accepts a replacement that repartitions the owner's items — one evaluated surface into a textured and a retained face set, or the join back — after proving corner-for-corner position equality, identical placement frame and ownership, and that both sides name every triangle of the shared reference surface exactly once. Everything else about the one-to-one contract is unchanged.
+  - Viewer: the appearance workspace previews a face-masked plan as two parts of the same product instead of refusing it — the selected faces textured, the rest keeping the source style — and Compare, Discard, Apply, Undo and Redo work on the split. Converted objects gain a **Select faces** editor on their evaluated surface (click toggles a face, a marquee adds faces, Alt removes, "All faces" clears); the selection is session state bound to the planner's `surfaceFingerprint`, is dropped with a visible diagnostic when the planner reports the surface stale or the object already carries a direct tessellated Body (after Apply), never persists to IFC, and clears on model change or reload. Portable IFCZIP export and reopening a face-masked export tessellate the product into its two face sets under one selectable product.
+
 ## 2.2.0
 
 ### Minor Changes

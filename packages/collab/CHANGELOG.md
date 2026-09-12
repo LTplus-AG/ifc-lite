@@ -1,5 +1,21 @@
 # @ifc-lite/collab
 
+## 0.8.0
+
+### Minor Changes
+
+- [#4546](https://github.com/LTplus-AG/ifc-lite/pull/4546) [`e18a434`](https://github.com/LTplus-AG/ifc-lite/commit/e18a434ec2258e474728bd9a90146486b38efedb) Thanks [@louistrue](https://github.com/louistrue)! - Rooms carry an explicit federation scope: one model slot per shared model ([#4444](https://github.com/LTplus-AG/ifc-lite/issues/4444)).
+  
+  - `@ifc-lite/collab`: new top-level `models` map and `doc/model-slot` helpers (`modelSlotRef`, `slotPath`, `pathInSlot`, `prefixPathForSlot`, `createModelSlot`, `listModelSlots`, …). `seedFromStep` / `seedFromIfcx` accept a `slot` option that qualifies every entity path with `/<slotId>` (children and inherits references included); `snapshotToIfcx` accepts `slot` to emit one slot's entities with that slot's own IFCX header / imports / schemas (recorded per slot under `meta.ifcxFile:<slotId>`; a whole-room snapshot merges them in slot order). Slot ids are minted in share order, never from a file name, its bytes or its GlobalIds, so two copies of one file are two slots. Rooms seeded before slots existed keep their unqualified `/<GlobalId>` paths and room-wide file metadata, and are read as one implicit legacy slot — no migration, nothing on disk is rewritten. Known limit: an IFCX seed re-homes `children` / `inherits` references under the slot but not path-valued attributes of a custom schema, which keep the file's unqualified path.
+  - Viewer: with several models loaded, the Share dialog asks whether to share the active model only or all loaded models (default: all — the workspace on screen is the federation) and creates the room only on **Create link**, since a room's scope is fixed by its seed. Each model is seeded from its own store and meshes into its own slot, one after another; `collabSeedProgress` carries `modelIndex` / `modelCount` and the upload row reads "model 2 of 3". A recipient reconstructs one federated model per slot (`room:<roomId>:<slotId>`), registered through the federation registry in its own global-id range, so two copies of one file — same GlobalIds, same local express ids — are two selectable, editable, exportable models with their own geometry and textures (the second is listed as "<name> (2)" on the recipient). An owner with nothing seedable (a model still loading, a GLB or point-cloud workspace) still creates the room as its owner with an empty scope, and the "All loaded models" option counts what can be shared rather than what is loaded. Inbound peer edits are routed to the model their path's slot names; outbound mirrors gate per model.
+
+- [#4553](https://github.com/LTplus-AG/ifc-lite/pull/4553) [`4ab63cd`](https://github.com/LTplus-AG/ifc-lite/commit/4ab63cd72e374dbdc98b6f59599fb9d2050f0f85) Thanks [@louistrue](https://github.com/louistrue)! - Sharing: the invite is withheld until the relay confirms it holds the model ([#4446](https://github.com/LTplus-AG/ifc-lite/issues/4446)). The owner seed ends in a new `confirming` phase: `@ifc-lite/collab` gains `fetchRoomStateVector` (reads a room's state vector from the sync handshake of a throw-away connection), `stateVectorCovers` and `roomSocketUrl`, and `runOwnerSeed` reports `ready` only once the relay's state vector covers the owner's — a local transaction only proves the bytes are queued in the browser's socket, and a tab closed at that moment used to leave the room empty. Share dialog and Room panel show "Confirming the upload with the room server…" meanwhile; a relay that stays out of reach settles the seed as failed with an owner-facing message, while a relay that answers but is still behind is waited for (probes back off 250 → 500 → 1000 ms). The automated relay acceptance (`tests/e2e/collab-share-seed.e2e.spec.ts`, Playwright project `viewer-collab-e2e`) proves the fresh-guest / rejoin / export journey over a disposable signed relay.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @ifc-lite/ifcx@4.1.1
+
 ## 0.7.0
 
 ### Minor Changes

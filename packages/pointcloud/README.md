@@ -29,6 +29,19 @@ if (chunk) {
 }
 ```
 
+`DecodedPointChunk.normals` carries source-supplied oriented normals as
+row-aligned `nx, ny, nz` float triples when a decoder provides them. PLY
+supports complete `nx`/`ny`/`nz` properties in ASCII and binary files and
+preserves their values and vertex order exactly. A partial normal declaration
+is rejected; consumers decide whether finite, nonzero normals are required for
+their operation.
+
+The canonical PLY streaming source scans headers and bounds in bounded byte
+windows, then decodes directly into host-sized, stride-filtered chunks. A
+memory-cap probe therefore does not allocate full-file point channels before
+downsampling. Streaming PLY headers are limited to 65,536 bytes and files that
+exceed that bound are refused with an explicit error.
+
 The renderer (`@ifc-lite/renderer`) uploads decoded chunks (wrapped as
 `PointCloudAsset` values) via `Renderer.setPointClouds()` /
 `Renderer.addPointClouds()`.

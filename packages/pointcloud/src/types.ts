@@ -30,6 +30,8 @@ export interface DecodedPointChunk {
   positions: Float32Array;
   /** [r,g,b, r,g,b, ...] in 0..1 — undefined when source has no color */
   colors?: Float32Array;
+  /** Source-supplied oriented normals [nx,ny,nz, ...], row-aligned with positions. */
+  normals?: Float32Array;
   /** Per-point u8 classification — undefined when source has none */
   classifications?: Uint8Array;
   /** Per-point u16 intensity — undefined when source has none */

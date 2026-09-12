@@ -272,8 +272,14 @@ describe('BCFServerDialog', () => {
       type(input('bcf-server-url'), 'https://space.example');
       // The app stands in for the client id: no field for it, and no
       // redirect-URI registration hint, just a line saying what happens.
-      assert.equal(document.body.querySelector('#bcf-server-oauth-client-id'), null);
-      assert.equal(document.body.querySelector('#bcf-server-oauth-client-secret'), null);
+      // Asserted as booleans: a failing `assert.equal(element, null)` has
+      // node:assert inspect the DOM element for its message, which never
+      // returns on a cyclic DOM tree, so the test would hang instead of fail.
+      assert.ok(!document.body.querySelector('#bcf-server-oauth-client-id'), 'no client id field');
+      assert.ok(
+        !document.body.querySelector('#bcf-server-oauth-client-secret'),
+        'no client secret field',
+      );
       assert.ok(document.body.querySelector('[data-testid="bcf-server-vendor-app"]'));
       assert.ok(!document.body.textContent?.includes('must allow this redirect URI'));
 

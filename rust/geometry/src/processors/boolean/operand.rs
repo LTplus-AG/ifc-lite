@@ -17,6 +17,23 @@ use crate::router::GeometryProcessor;
 use crate::{Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
+/// The node's operator enum as authored (the parser may strip the dots).
+///
+/// `None` when the attribute is not an enum (`$`, `*`, a string) on an
+/// `IfcBooleanResult`, where UNION and INTERSECTION are as legal as
+/// DIFFERENCE and defaulting would execute a subtraction the file never
+/// asked for. An `IfcBooleanClippingResult` has DIFFERENCE as its only legal
+/// operator, so there the default is what the schema says.
+pub(super) fn boolean_operator(entity: &DecodedEntity) -> Option<&str> {
+    entity
+        .get(0)
+        .and_then(|v| match v {
+            ifc_lite_core::AttributeValue::Enum(e) => Some(e.as_str()),
+            _ => None,
+        })
+        .or((entity.ifc_type == IfcType::IfcBooleanClippingResult).then_some(".DIFFERENCE."))
+}
+
 impl BooleanClippingProcessor {
     /// Process a solid operand with depth tracking. The mesh only; callers
     /// that must not double-record an unsupported operand's consequence use

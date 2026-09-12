@@ -139,23 +139,90 @@ pub fn resolve_unit_by_ref(
     decoder: &mut EntityDecoder,
     unit_ref: u32,
 ) -> Option<(Option<String>, ResolvedUnit, bool)> {
-    resolve_unit_by_ref_depth(decoder, unit_ref, 0)
+    let mut walk = UnitWalk::default();
+    let out = resolve_unit_by_ref_walk(decoder, unit_ref, &mut walk);
+    // A budget trip stops the walk part-way through some element list, so
+    // whatever was composed depends on where it stopped. Refuse the unit
+    // rather than hand back a symbol that is missing the elements it never
+    // reached.
+    if walk.over_budget() {
+        return None;
+    }
+    out
 }
 
 /// Max depth for the IFCDERIVEDUNIT -> element -> unit recursion. Real derived
 /// units nest ~2 levels; a malformed file can form a reference cycle (an
 /// IFCDERIVEDUNIT whose element's Unit points back to it), so cap the recursion
 /// to keep it from overflowing the stack, which is an uncatchable abort.
-const MAX_UNIT_RESOLVE_DEPTH: u32 = 16;
+///
+/// The cap bounds one path's LENGTH only. A cycle is refused by
+/// [`UnitWalk::path`] and a fan-out by [`UnitWalk::decodes`]; see AGENTS.md
+/// "Bounding walks over file-supplied references". With the cap alone, a
+/// cycle whose derived unit lists `k` elements costs `O(k^16)`: seconds at
+/// k=3 from a file of a few hundred bytes.
+const MAX_UNIT_RESOLVE_DEPTH: usize = 16;
 
-fn resolve_unit_by_ref_depth(
+/// Entity decodes one `resolve_unit_by_ref` call may spend before giving up.
+/// A real derived unit (`m³/s`, `W/(m·K)`) decodes under ten entities; the
+/// walk over `IfcDerivedUnit -> IfcDerivedUnitElement -> Unit` is a tree, so
+/// an ACYCLIC file that fans out `k` ways per level (which the path set cannot
+/// see) still costs `k^depth` without this.
+///
+/// Not a memo: a unit's resolution is a pure function of its id, but its
+/// SYMBOL is the concatenation of its elements' symbols, so a fan-out that a
+/// memo made cheap to walk would still compose an output exponential in the
+/// depth (`4^12` copies of `m` from twelve small records). Bounding decodes
+/// bounds the elements composed, and with them the output.
+const MAX_UNIT_RESOLVE_DECODES: u32 = 256;
+
+/// Bookkeeping for one top-level unit resolution.
+#[derive(Default)]
+struct UnitWalk {
+    /// Unit entity ids on the CURRENT chain, innermost last; pushed on entry,
+    /// popped on exit, so its length is the recursion depth and a repeat is a
+    /// cycle.
+    path: Vec<u32>,
+    /// Entity decodes spent so far; past [`MAX_UNIT_RESOLVE_DECODES`] the walk
+    /// refuses the rest, and the top level refuses the whole unit rather than
+    /// hand back a symbol missing the elements it never reached.
+    decodes: u32,
+}
+
+impl UnitWalk {
+    /// Charge one entity decode; `false` once the budget is spent.
+    fn charge(&mut self) -> bool {
+        self.decodes += 1;
+        self.decodes <= MAX_UNIT_RESOLVE_DECODES
+    }
+
+    fn over_budget(&self) -> bool {
+        self.decodes > MAX_UNIT_RESOLVE_DECODES
+    }
+}
+
+fn resolve_unit_by_ref_walk(
     decoder: &mut EntityDecoder,
     unit_ref: u32,
-    depth: u32,
+    walk: &mut UnitWalk,
 ) -> Option<(Option<String>, ResolvedUnit, bool)> {
-    if depth > MAX_UNIT_RESOLVE_DEPTH {
+    if walk.path.len() >= MAX_UNIT_RESOLVE_DEPTH
+        || walk.path.contains(&unit_ref)
+        || !walk.charge()
+    {
         return None;
     }
+    walk.path.push(unit_ref);
+    let out = resolve_unit_entity(decoder, unit_ref, walk);
+    walk.path.pop();
+    out
+}
+
+fn resolve_unit_entity(
+    decoder: &mut EntityDecoder,
+    unit_ref: u32,
+    walk: &mut UnitWalk,
+) -> Option<(Option<String>, ResolvedUnit, bool)> {
     let entity = decoder.decode_by_id(unit_ref).ok()?;
     match entity.ifc_type.as_str() {
         "IFCSIUNIT" => {
@@ -176,7 +243,7 @@ fn resolve_unit_by_ref_depth(
             let symbol = conversion_unit_symbol(name);
             let conv_ref = entity.get_ref(3);
             let scale = conv_ref
-                .and_then(|r| conversion_factor_scale(decoder, r, depth))
+                .and_then(|r| conversion_factor_scale(decoder, r, walk))
                 .unwrap_or(1.0);
             Some((unit_type, ResolvedUnit::new(symbol, scale), false))
         }
@@ -192,7 +259,7 @@ fn resolve_unit_by_ref_depth(
             let mut scale = 1.0f64;
             for er in elem_refs {
                 if let Some((sym, unit_scale, exponent)) =
-                    resolve_derived_element(decoder, er, depth)
+                    resolve_derived_element(decoder, er, walk)
                 {
                     scale *= unit_scale.powi(exponent);
                     parts.push((sym, exponent));
@@ -220,8 +287,11 @@ fn resolve_unit_by_ref_depth(
 fn resolve_derived_element(
     decoder: &mut EntityDecoder,
     elem_ref: u32,
-    depth: u32,
+    walk: &mut UnitWalk,
 ) -> Option<(String, f64, i32)> {
+    if !walk.charge() {
+        return None;
+    }
     let elem = decoder.decode_by_id(elem_ref).ok()?;
     if elem.ifc_type.as_str() != "IFCDERIVEDUNITELEMENT" {
         return None;
@@ -229,7 +299,7 @@ fn resolve_derived_element(
     // [0]=Unit (IfcNamedUnit), [1]=Exponent
     let unit_ref = elem.get_ref(0)?;
     let exponent = elem.get(1).and_then(|a| a.as_int()).unwrap_or(1) as i32;
-    let (_ut, resolved, _mon) = resolve_unit_by_ref_depth(decoder, unit_ref, depth + 1)?;
+    let (_ut, resolved, _mon) = resolve_unit_by_ref_walk(decoder, unit_ref, walk)?;
     Some((resolved.symbol, resolved.si_scale, exponent))
 }
 
@@ -240,7 +310,14 @@ fn resolve_derived_element(
 /// (a real-world chain, e.g. YARD defined as 3 FOOT where FOOT is itself
 /// conversion-based). Resolving through the shared dispatcher folds in every
 /// case uniformly instead of silently treating a non-SI component as scale 1.0.
-fn conversion_factor_scale(decoder: &mut EntityDecoder, measure_ref: u32, depth: u32) -> Option<f64> {
+fn conversion_factor_scale(
+    decoder: &mut EntityDecoder,
+    measure_ref: u32,
+    walk: &mut UnitWalk,
+) -> Option<f64> {
+    if !walk.charge() {
+        return None;
+    }
     let measure = decoder.decode_by_id(measure_ref).ok()?;
     if measure.ifc_type.as_str() != "IFCMEASUREWITHUNIT" {
         return None;
@@ -252,7 +329,7 @@ fn conversion_factor_scale(decoder: &mut EntityDecoder, measure_ref: u32, depth:
     }
     let component_scale = measure
         .get_ref(1)
-        .and_then(|r| resolve_unit_by_ref_depth(decoder, r, depth + 1))
+        .and_then(|r| resolve_unit_by_ref_walk(decoder, r, walk))
         .map(|(_, resolved, _)| resolved.si_scale)
         .unwrap_or(1.0);
     Some(value * component_scale)

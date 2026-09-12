@@ -1309,6 +1309,28 @@ matching needs a signed depth bound, not a larger symmetric one: relaxing the
 distance bound to reach the opposite face reintroduces every far-side bleed.
 See the [controls and raw probe samples](../../docs/architecture/evidence/mesh-transfer-surfaces/README.md).
 
+### RGB point-cloud transfer source (#4381)
+
+The registered transfer source became a tagged union and gained an RGB
+point-cloud path: a bounded uniform grid (16 bytes/point) instead of a BVH leaf
+per point, a least-squares plane per sample, and a target self-occlusion rule
+that costs two budgeted BVH ray queries per sample (exact segment for the
+nearest point, one thickness probe for the rest of the support) after a first
+version that spent one ray per supporting point exhausted the 128 M budget on a
+real 25 m² wall. On the CRAS corridor drywall the accepted plan used 43.5 M of
+128 M units in 399 ms (Node, 465 k points, 64 texels/m); the windowed north
+wall with both faces scanned was refused at 64 texels/m and accepted at 32
+(49.0 M units, 306 ms), so the planner now reports `budget.workUsed` next to
+coverage. Interleaved native AC20 A/B/A/B probes on a shared host: best totals
+13/12 ms (base e18a434ec) vs 13/12 ms (branch), identical mesh/vertex/triangle
+counts (285 / 35,940 / 19,456) and identical ordered geometry fingerprint
+`25ac885b6ff4ad00` in all four runs — no load-path regression, and, as before,
+only a control: the sampler is not on the load path. Lesson: for point sources
+the per-sample cost is set by point density times the support area, not by the
+point count, so the grid cell must follow the support radius and any per-point
+occlusion test must be replaced by a per-sample one. See the
+[real-pair evidence](../../docs/architecture/evidence/scan-registration-cras/README.md).
+
 ## Qualified PDF fill composition (#4406)
 
 The new explicit creation API leaves ordinary model loading on the existing

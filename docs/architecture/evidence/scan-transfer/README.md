@@ -1,8 +1,13 @@
 # Real scan/IFC acceptance data — #4381
 
-CRAS is a downloaded, licensed **candidate**, not a passed registration or
-appearance-transfer acceptance test. The independent check-point gate remains
-open. [Inspection manifest](cras-source-inspection.json) contains measured source
+**Superseded for the acceptance gate** by
+[scan-registration-cras](../scan-registration-cras/README.md), which streams the
+complete verified archive, measures 16 three-plane landmarks with frozen
+fit/check lists, publishes the held-out residuals and transfers point colour
+onto two walls. This directory keeps the earlier bounded acquisition notes.
+
+CRAS was a downloaded, licensed **candidate** when this was written; the
+independent check-point gate described below has since been closed there. [Inspection manifest](cras-source-inspection.json) contains measured source
 identity, units, component counts and bounded scan-prefix statistics.
 
 ## Provenance and acquisition

@@ -1,0 +1,5 @@
+---
+"@ifc-lite/wasm": minor
+---
+
+Registered scan transfer accepts RGB point clouds. `MeshTransferRequest.source` is a tagged union (`{kind:'mesh', …}` replaces `sourceMesh`; `sourceImage` is optional and mesh-only) and the new `planPointTransfer(content, requestJson, rgba, positions, colors, normals, stations)` takes up to 2,000,000 points as binary arguments. Each sample is a least-squares plane through the points around it, never the nearest colour; the plan records its orientation source (`source-normals`, `viewpoints` or `target-referenced`), refuses a payload that does not match it, keeps opposite thin-wall faces apart by target self-occlusion under every orientation source, counts `unknownSparseSamples`, and reports `budget.workUsed` against the fixed work budget. The prepared digest moves to v4 and binds the point bytes.

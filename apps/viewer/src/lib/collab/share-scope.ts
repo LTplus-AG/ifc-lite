@@ -20,7 +20,16 @@ import { IfcParser } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { prepareAppearanceSerialization } from '@/lib/appearance/serialization';
 import { mapStepSchema } from '@/lib/export/artifact-naming';
+import { packagePortableIfcAsync } from '@/lib/export/portable-ifc';
 import type { CollabSeedInput, CollabSeedModel } from './owner-seed';
+
+const MAX_PORTABLE_STEP_SOURCE_BYTES = 96 * 1024 * 1024;
+
+function assertPortableSourceSize(bytes: { byteLength: number }): void {
+  if (bytes.byteLength > MAX_PORTABLE_STEP_SOURCE_BYTES) {
+    throw new Error('The portable IFC source exceeds the 96 MiB room-source limit. Export it locally or share a smaller model.');
+  }
+}
 
 export type ShareScope = 'active' | 'all';
 
@@ -112,14 +121,31 @@ export async function prepareShareSeed(
         application: 'ifc-lite',
       });
       const bytes = result.content.slice();
+      const liveStore = item.store;
       item.store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer);
-      item.portableStepSource = bytes;
+      item.liveStore = liveStore;
+      if ((item.store.entityIndex.byType.get('IFCANNOTATION')?.length ?? 0) > 0) {
+        assertPortableSourceSize(bytes);
+        const artifact = await packagePortableIfcAsync(item.modelId, bytes, serialized.resources);
+        item.portableStepSource = typeof artifact.content === 'string'
+          ? new TextEncoder().encode(artifact.content)
+          : artifact.content;
+        item.portableStepSourceFormat = artifact.ext === 'ifczip' ? 'ifczip' : 'step';
+      }
       continue;
     }
     // Preserve native symbolic rows for an unchanged IFC that already carries
     // annotations. Ordinary models keep the lighter root-only room snapshot.
     if ((item.store.entityIndex.byType.get('IFCANNOTATION')?.length ?? 0) > 0) {
-      item.portableStepSource = item.store.source.materialize().slice();
+      assertPortableSourceSize(item.store.source);
+      const serialized = prepareAppearanceSerialization(item.modelId, item.store, undefined);
+      const artifact = await packagePortableIfcAsync(
+        item.modelId, item.store.source.materialize().slice(), serialized.resources,
+      );
+      item.portableStepSource = typeof artifact.content === 'string'
+        ? new TextEncoder().encode(artifact.content)
+        : artifact.content;
+      item.portableStepSourceFormat = artifact.ext === 'ifczip' ? 'ifczip' : 'step';
     }
   }
   return seed;

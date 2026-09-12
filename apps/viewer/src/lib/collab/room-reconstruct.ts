@@ -6,19 +6,13 @@
  * Recipient side of a share: rebuild every model the room holds, one viewer
  * model per slot (#4444).
  *
- * A recipient (deep-link join, no local model) reconstructs the room from the
- * CRDT as IFCX — the canonical format — one snapshot per slot
- * (`snapshotToIfcx(doc, { slot })` → `parseIfcxViewerModel`), then attaches
- * geometry hydrated from the room's blobs, filtered to that slot's entities.
- * IFC5 rooms carry containment + properties natively; legacy STEP rooms are
- * seeded IFCX-shaped too (see `buildStepSeedSource`), so this single path
- * serves both. A room shared before slots existed reads as one legacy slot
- * (`listModelSlots`), so it reconstructs exactly what it did before, under
- * `room:<roomId>:m0`.
+ * A recipient (deep-link join, no local model) reconstructs one IFCX snapshot
+ * per room slot, then attaches that slot's blob-backed geometry. IFC5 rooms
+ * carry containment + properties natively; legacy STEP rooms use the same
+ * IFCX shape. Pre-slot rooms still reconstruct as one legacy slot.
  *
- * Each slot is registered as a real federated model — through
- * `registerModelOffset`, like any file added to the workspace — so its meshes
- * live in their own global id range and two copies of one file, with the same
+ * Each slot is registered as a federated model so its meshes live in their own
+ * global id range. Two copies of one file, with the same
  * local express ids and the same GlobalIds, are two selectable models. The
  * hydrated meshes are re-homed with `applyFederationOffsetToMesh` exactly as
  * the loader does for an added file.
@@ -44,8 +38,8 @@ import { missingRoomGeometryMessage, readGeometrySeedMarker } from './geometry-s
 import { highestExpressId, raisedMaxExpressId } from './express-id-bounds';
 import { clearAppliedPlacements, sweepPlacements, type PlacementSweepApi } from './placement-sweep';
 import { pathInRoomSlot, roomModelIdFor, roomModelNameFor } from './model-slot-ref';
-import { bindRoomStepSource, loadRoomStepSource, type ParsedRoomStepSource } from './room-step-source';
-import { registerRoomSymbolicSource } from './room-symbolic-source';
+import type { ParsedRoomStepSource } from './room-step-source';
+import { attachRoomStepSource } from './room-step-attach';
 
 /** The slice of the collab runtime the reconstruct needs (injected). */
 export type RoomReconstructRuntime = Pick<typeof import('@ifc-lite/collab'), 'snapshotToIfcx' | 'listModelSlots'>;
@@ -97,7 +91,7 @@ interface SlotState {
 const LIVE_DEBOUNCE_MS = 800;
 
 export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstructor {
-  const { roomId, session, collab, geomApi, blobStore } = deps;
+  const { roomId, session, collab, geomApi, sweepApi, blobStore } = deps;
   const live = (): boolean => deps.get().collabRoomId === roomId;
   const slots = new Map<string, SlotState>();
   let lastGeomSignature = '';
@@ -107,14 +101,11 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
   let warnedMissingGeometry = false;
   /** Meshes the last hydrate produced across every slot (0 until one has run). */
   let lastMeshCount = 0;
-  // Decoded-mesh cache (geomId → mesh), persisted across re-reconstructs so a
-  // later doc update only fetches the *new* blobs, not the whole model. Shared
-  // by every slot: geometry is content-addressed, and hydrate hands each
-  // consumer its own copy of the vertex arrays.
+  // Persist decoded meshes across reconstructions so peer edits fetch only
+  // new content-addressed blobs.
   const geomCache = new Map<string, MeshData>();
   const symbolicSources = new Map<string, Promise<ParsedRoomStepSource>>();
 
-  /** Re-home a hydrate's meshes once each (progress and final lists share objects). */
   const shifted = new WeakSet<MeshData>();
   const rehome = (meshes: readonly MeshData[], idOffset: number): MeshData[] => {
     for (const m of meshes) {
@@ -163,15 +154,20 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
     const buffer = new TextEncoder().encode(JSON.stringify(ifcxFile)).buffer as ArrayBuffer;
     const payload = await deps.parseIfcx(buffer);
     if (!live()) return null;
+    const modelId = roomModelIdFor(roomId, slot.slotId);
     if (slot.stepSourceBlobHash && payload.pathToId) {
       const key = `${slot.slotId}:${slot.stepSourceBlobHash}`;
-      let source = symbolicSources.get(key);
-      if (!source) {
-        source = loadRoomStepSource(blobStore, slot.stepSourceBlobHash);
-        symbolicSources.set(key, source);
-      }
       try {
-        registerRoomSymbolicSource(payload.dataStore, bindRoomStepSource(await source, slot, payload.pathToId));
+        await attachRoomStepSource({
+          payload,
+          modelId,
+          slot,
+          blobStore,
+          sources: symbolicSources,
+          placementForPath: path => sweepApi.getEntityPlacement(session.doc, path) ?? undefined,
+          live,
+        });
+        if (!live()) return null;
       } catch (error) {
         symbolicSources.delete(key);
         if (live()) deps.notify(error instanceof Error ? error.message : String(error));
@@ -186,7 +182,6 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
     }
     registerStoreSlot(payload.dataStore, slot);
 
-    const modelId = roomModelIdFor(roomId, slot.slotId);
     let state = slots.get(modelId);
     if (!state) {
       state = { modelId, created: false };

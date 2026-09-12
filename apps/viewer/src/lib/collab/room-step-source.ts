@@ -11,8 +11,8 @@
  * hydrates from the room's content-addressed mesh blobs.
  */
 
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import type { BlobStore, ModelSlotRef } from '@ifc-lite/collab';
+import { IfcParser, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
+import type { BlobStore, LocalPlacement, ModelSlotRef } from '@ifc-lite/collab';
 import { roomSlotPath } from './model-slot-ref';
 import type { RoomSymbolicSource } from './room-symbolic-source';
 
@@ -43,11 +43,34 @@ async function fetchSource(store: BlobStore, hash: string): Promise<Uint8Array> 
   });
 }
 
-export type ParsedRoomStepSource = Omit<RoomSymbolicSource, 'ownerIds'>;
+export type ParsedRoomStepSource = Omit<RoomSymbolicSource, 'ownerIds' | 'placements'>;
 
 /** Fetch and parse immutable portable STEP bytes; safe to cache by blob hash. */
-export async function loadRoomStepSource(store: BlobStore, hash: string): Promise<ParsedRoomStepSource> {
-  const bytes = await fetchSource(store, hash);
+export async function loadRoomStepSource(
+  store: BlobStore,
+  hash: string,
+  format: 'step' | 'ifczip' = 'step',
+): Promise<ParsedRoomStepSource> {
+  const uploaded = await fetchSource(store, hash);
+  let bytes = uploaded;
+  let resources: ParsedRoomStepSource['resources'];
+  if (format === 'ifczip') {
+    const archiveBuffer = uploaded.buffer.slice(
+      uploaded.byteOffset, uploaded.byteOffset + uploaded.byteLength,
+    ) as ArrayBuffer;
+    const archive = await unwrapIfcZipWithResources(archiveBuffer, MAX_PORTABLE_STEP_SOURCE_BYTES);
+    bytes = new Uint8Array(archive.model);
+    if (bytes.byteLength > MAX_PORTABLE_STEP_SOURCE_BYTES) {
+      throw new Error('The room\'s extracted portable IFC source exceeds the 96 MiB safety limit.');
+    }
+    if (archive.resourcesIncomplete) {
+      throw new Error('The room IFCZIP sidecar exceeds the texture extraction safety limits.');
+    }
+    resources = {
+      modelPath: archive.modelPath,
+      resources: archive.originalResources,
+    };
+  }
   const copy = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
     ? bytes.buffer.slice(0)
     : bytes.slice().buffer;
@@ -59,7 +82,7 @@ export async function loadRoomStepSource(store: BlobStore, hash: string): Promis
     // those paths instead of rejecting an otherwise shareable model.
     if (dataStore.entities.getGlobalId(expressId)) seededIds.add(expressId);
   }
-  return { dataStore, source: dataStore.source, seededIds };
+  return { dataStore, source: dataStore.source, seededIds, resources };
 }
 
 /** Bind cached portable rows to one current reconstruction's synthetic ids. */
@@ -67,15 +90,19 @@ export function bindRoomStepSource(
   parsed: ParsedRoomStepSource,
   slot: ModelSlotRef,
   roomPathToId: ReadonlyMap<string, number>,
+  placementForPath?: (path: string) => LocalPlacement | null | undefined,
 ): RoomSymbolicSource {
   const ownerIds = new Map<number, number>();
+  const placements = new Map<number, LocalPlacement>();
   for (const expressId of parsed.seededIds) {
     const guid = parsed.dataStore.entities.getGlobalId(expressId)!;
     const path = roomSlotPath(slot, guid);
     const targetId = roomPathToId.get(path);
     if (targetId !== undefined) ownerIds.set(expressId, targetId);
+    const placement = placementForPath?.(path);
+    if (placement) placements.set(expressId, placement);
   }
-  return { ...parsed, ownerIds };
+  return { ...parsed, ownerIds, placements };
 }
 
 /** Parse one portable source and key its GUID-bearing roots to this room slot. */

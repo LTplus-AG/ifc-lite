@@ -279,7 +279,7 @@ pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> ZoneSplit {
         // would point them at redrawing zones that are not the problem.
         let rest = if conforming { difference_all(&host, &[&cutter]) } else { None };
         match rest {
-            Some(rest) => {
+            Some((rest, _changed)) => {
                 let volume = signed_volume_of(&rest);
                 if !rest.is_empty() && volume > negligible {
                     pieces.push(ZonePiece { zone: None, tris: rest, volume });

@@ -15,11 +15,13 @@ use std::cell::RefCell;
 
 mod consolidate;
 mod degenerate_check;
+mod group_cut;
 mod normals;
 mod plane_eps;
 mod topology_diagnostic;
 mod union;
 
+pub use group_cut::{GroupCut, GroupReject};
 pub use normals::calculate_normals;
 pub(crate) use consolidate::tri_is_needle;
 
@@ -339,84 +341,6 @@ impl ClippingProcessor {
         }
         if self.accept_gates_reject(BoolOp::Difference, &result) {
             return Ok(host_mesh.clone());
-        }
-        Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Difference, m))
-    }
-
-    /// Subtract a GROUP of pairwise-disjoint opening cutters from the host in
-    /// ONE conforming arrangement (disjoint-cutter batching).
-    ///
-    /// A REJECTED group (the N-ary arrangement could not fully conform, or no
-    /// cutter overlaps the host) returns the host UN-CUT and records NO
-    /// failure: rejection is the expected, handled outcome — the router's
-    /// per-opening sequential loop (with the full #635 fallback machinery and
-    /// its own diagnostics) immediately takes over for the group's members, so
-    /// a failure record here would be pure noise on elements whose voids end
-    /// up perfectly cut (the issue-582/583 zero-CSG-failure bar). Only a
-    /// genuinely invalid kernel OUTPUT records, exactly like
-    /// [`Self::subtract_mesh`].
-    pub fn subtract_mesh_many(&self, host_mesh: &Mesh, cutters: &[&Mesh]) -> Result<Mesh> {
-        if host_mesh.is_empty() {
-            return Ok(Mesh::new());
-        }
-        let live: Vec<&Mesh> = cutters
-            .iter()
-            .copied()
-            .filter(|c| !c.is_empty() && Self::bounds_overlap(host_mesh, c))
-            .collect();
-        if live.is_empty() {
-            return Ok(host_mesh.clone()); // silent: sequential path takes over
-        }
-        // Cap the cutters packed into ONE conforming arrangement. Void cutters
-        // here are order-free (set difference: host − {all} ≡ host − {chunk₁} −
-        // {chunk₂} − …), and the N-ary arrangement cost is SUPER-LINEAR in the
-        // cutters in a single arrangement. A Revit IfcBuildingElementPart with
-        // ~90 openings cost ~12 s in one arrangement vs ~0.4 s chunked at 16 (30×),
-        // and on wasm that single element alone blew the geometry-stream watchdog —
-        // an 86 MB model that loaded in ~15 s natively STALLED at 40 s in the
-        // browser. Chunking bounds the per-arrangement cost so no single element
-        // can stall the stream. It is solid-equivalent (the batch path's contract
-        // is volume parity + watertightness, not byte-identical tessellation); for
-        // live.len() <= MAX_CUTTERS_PER_ARRANGEMENT it IS the prior single
-        // arrangement. On any chunk's budget trip / unrecovered constraint, reject
-        // the WHOLE group (return host un-cut) so the per-opening sequential path
-        // (own budget + #635 AABB fallback) takes over — identical to before.
-        const MAX_CUTTERS_PER_ARRANGEMENT: usize = 16;
-        let mut result = host_mesh.clone();
-        for chunk in live.chunks(MAX_CUTTERS_PER_ARRANGEMENT) {
-            // Census: record THIS kernel invocation's real operand sizes (the
-            // current host + this chunk's cutters). Chunking runs the kernel once
-            // per chunk, so report K real ops, not one synthetic op carrying the
-            // whole group's cutter total. For live.len() <= cap this is one record
-            // identical to the prior single arrangement.
-            let chunk_tris: usize = chunk.iter().map(|c| c.triangle_count()).sum();
-            record_csg_op(0, result.triangle_count(), chunk_tris);
-            crate::kernel::budget::begin();
-            let raw = crate::kernel::mesh_bridge::subtract_many(&result, chunk);
-            if crate::kernel::budget::tripped() {
-                // Escalation budget exceeded (#1109): reject the group silently so
-                // the per-opening sequential path takes over (deterministic).
-                return Ok(host_mesh.clone());
-            }
-            let Some(raw) = raw else {
-                // Unrecovered constraint in this chunk's arrangement — reject the
-                // group so the sequential per-opening path takes over.
-                return Ok(host_mesh.clone());
-            };
-            let next = Self::consolidate_coplanar(raw);
-            // Validate each intermediate BEFORE it becomes the next chunk's host:
-            // a non-watertight / invalid intermediate would silently corrupt every
-            // subsequent subtraction. On failure reject the whole group so the
-            // per-opening sequential path takes over — same guard as the
-            // un-chunked path, just applied per chunk.
-            if !next.is_empty() && !self.validate_mesh(&next) {
-                self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
-                return Ok(host_mesh.clone());
-            }
-            if self.accept_gates_reject(BoolOp::Difference, &next) {
-                return Ok(host_mesh.clone());
-            }
-            result = next;
         }
         Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Difference, m))
     }

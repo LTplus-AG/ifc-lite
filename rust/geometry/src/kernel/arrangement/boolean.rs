@@ -204,9 +204,17 @@ pub fn boolean_with_conformity(a: &[Tri], b: &[Tri], op: BoolOp) -> (Vec<Tri>, b
 /// grid re-jitters carve vertices off shared planes, so cut N+1 re-cracks what
 /// cut N reconciled (many-void walls' compounding open edges) — and is
 /// ~N× cheaper on N box cutters.
-pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<Vec<Tri>> {
+///
+/// Returns `(difference, changed)`, the same shape as [`union_all`]'s
+/// `(union, conforming)`. `changed == false` means the arrangement conformed
+/// but no cutter reaches the solid `a` bounds (every A sub-triangle kept, no B
+/// sub-triangle kept): the triangles are `a` re-tessellated, not a cut. The
+/// bit comes from the classifier's own keep decisions, so it is exact where a
+/// triangle-count or volume comparison against `a` is not (a re-tessellated
+/// host moves the count; a sub-0.1 % cut does not move the volume).
+pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<(Vec<Tri>, bool)> {
     if comps.is_empty() {
-        return Some(a.to_vec());
+        return Some((a.to_vec(), false));
     }
     let b_all: Vec<Tri> = comps.iter().flat_map(|c| c.iter().copied()).collect();
     let arr = arrange(a, &b_all);
@@ -220,12 +228,13 @@ pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<Vec<Tri>> {
         return None;
     }
     let bc = BComponents::new(comps);
-    let vids = boolean_vids_components(&arr, a, &bc, BoolOp::Difference);
-    Some(
+    let (vids, changed) = boolean_vids_components(&arr, a, &bc, BoolOp::Difference);
+    Some((
         vids.into_iter()
             .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
             .collect(),
-    )
+        changed,
+    ))
 }
 
 /// Like [`difference_all`] but WITHOUT the conformity gate — returns the batched
@@ -233,18 +242,22 @@ pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<Vec<Tri>> {
 /// exact batched topology is cleaner than the sequential re-jitter on dense
 /// faceted-reveal walls (issue #098), but its centroid classification can
 /// over/under-cut volume, so the caller (`subtract_many`) VERIFIES the removed
-/// volume against a sequential reference before trusting it.
-pub fn difference_all_lenient(a: &[Tri], comps: &[&[Tri]]) -> Vec<Tri> {
+/// volume against a sequential reference before trusting it. The second
+/// element is the same `changed` bit [`difference_all`] returns.
+pub fn difference_all_lenient(a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool) {
     if comps.is_empty() {
-        return a.to_vec();
+        return (a.to_vec(), false);
     }
     let b_all: Vec<Tri> = comps.iter().flat_map(|c| c.iter().copied()).collect();
     let arr = arrange(a, &b_all);
     let bc = BComponents::new(comps);
-    boolean_vids_components(&arr, a, &bc, BoolOp::Difference)
-        .into_iter()
-        .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
-        .collect()
+    let (vids, changed) = boolean_vids_components(&arr, a, &bc, BoolOp::Difference);
+    (
+        vids.into_iter()
+            .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
+            .collect(),
+        changed,
+    )
 }
 
 /// Topology fingerprint of a boolean result: each oriented Vid triangle rotated

@@ -289,9 +289,13 @@ impl SpacePlate {
             if gap.faces[i].is_outer || !gap.is_gap_face(f) {
                 continue;
             }
-            let axis = gap.gap_boundary(f, 1.0); // net gap → wall axis (½ thickness out)
+            // net gap → wall axis (½ thickness out). A gap the offset cannot
+            // handle is skipped, not lifted as-is: `gap_boundary`'s fallback is
+            // the un-offset net ring, which has exactly `cycle.len()` points,
+            // so a length test cannot tell it from a real axis.
+            let Some(axis) = gap.try_gap_boundary(f, 1.0) else { continue };
             let cycle: Vec<HalfEdgeId> = gap.face_half_edges(f).collect();
-            if axis.len() < 3 || axis.len() != cycle.len() {
+            if axis.len() != cycle.len() {
                 continue;
             }
             for k in 0..axis.len() {
@@ -662,6 +666,9 @@ impl SpacePlate {
     /// Rejects:
     /// - a vertex whose degree isn't exactly 2 — a wall junction or dangling
     ///   tip has no unambiguous edge pair to merge (`VertexNotDissolvable`);
+    /// - a node where the wall thickness changes: the welded edge carries ONE
+    ///   `half_thickness` for both twins, so a 200 mm wall meeting a 150 mm one
+    ///   end-to-end has no single value to carry (`VertexNotDissolvable`);
     /// - a weld whose two neighbours are already directly joined, which would
     ///   make a parallel edge / collapse a triangle to a digon (`DegenerateCut`).
     pub fn dissolve_vertex(&mut self, v: VertexId) -> Result<Vec<FacePatch>, EditError> {
@@ -690,6 +697,13 @@ impl SpacePlate {
         // t2, and symmetrically prev(o2)==t1. If this doesn't hold one edge is a
         // dangling antenna — bail rather than corrupt the rotation.
         if self.half_edges[o1.0 as usize].prev != t2 || self.half_edges[o2.0 as usize].prev != t1 {
+            return Err(EditError::VertexNotDissolvable);
+        }
+        // Unlike `source_element`, thickness has no "unknown" to drop to that
+        // keeps `net_outline` honest: `0.0` would silently un-inset the whole
+        // welded run. Both twins must carry one value, so a mismatch refuses.
+        let ht = self.half_edges[t1.0 as usize].half_thickness;
+        if (ht - self.half_edges[t2.0 as usize].half_thickness).abs() > EPS {
             return Err(EditError::VertexNotDissolvable);
         }
         let fa = self.half_edges[t2.0 as usize].face; // face that saw Y→v→X
@@ -1025,15 +1039,28 @@ impl SpacePlate {
     /// (½ thickness — where the editable node sits, on the wall mid); `2` → the
     /// gross outer face (full thickness). No shared-edge pinning: two rooms across
     /// a wall correctly meet at the mid axis and overlap into it for gross.
+    ///
+    /// Falls back to the un-offset net ring when the offset cannot be built;
+    /// `try_gap_boundary` is the same computation with that case as `None`.
     pub fn gap_boundary(&self, face: FaceId, factor: f64) -> Vec<[f64; 2]> {
+        self.try_gap_boundary(face, factor).unwrap_or_else(|| self.face_outline(face))
+    }
+
+    /// `gap_boundary` with failure as `None`: the face has under 3 vertices, an
+    /// edge is degenerate, a corner is non-finite, or the offset ring collapsed
+    /// or ran away. `factor == 0` is the net ring itself, which is `Some`.
+    fn try_gap_boundary(&self, face: FaceId, factor: f64) -> Option<Vec<[f64; 2]>> {
         let centre = self.face_outline(face);
         let n = centre.len();
-        if n < 3 || factor.abs() < EPS {
-            return centre;
+        if n < 3 {
+            return None;
+        }
+        if factor.abs() < EPS {
+            return Some(centre);
         }
         let cycle: Vec<HalfEdgeId> = self.face_half_edges(face).collect();
         if cycle.len() != n {
-            return centre;
+            return None;
         }
         // Per edge: the offset line (anchor + dir), the outward displacement
         // vector applied, and |offset| (for the corner miter clamp below).
@@ -1046,7 +1073,7 @@ impl SpacePlate {
             let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
             let l = (dx * dx + dy * dy).sqrt();
             if l < EPS {
-                return centre;
+                return None;
             }
             let (ux, uy) = (dx / l, dy / l);
             let half = self.half_edges[cycle[i].0 as usize].half_thickness;
@@ -1091,9 +1118,9 @@ impl SpacePlate {
             || off_area <= EPS
             || off_area > 4.0 * net_area + 25.0
         {
-            return centre;
+            return None;
         }
-        verts
+        Some(verts)
     }
 
     /// The bounding half-edges of a face paired with the IFC element each

@@ -65,14 +65,14 @@ export async function checkPdfReferenceVectors(referenceId: string,
   };
   try {
     check(options.signal);
-    const { frame, modelMetresFromPdf } = referenceVectorFrame(reference);
+    const { frame, modelMetresFromPdf, conversionClipPdf } = referenceVectorFrame(reference);
     const calibrationSha256 = await computeFullSourceHash(new TextEncoder().encode(JSON.stringify({
       pdf: reference.pdf, calibration: reference.calibration, corners: reference.cornersIfcWorld })));
     if (!calibrationSha256) throw new Error('This browser could not verify the saved PDF calibration.');
     const calibrationKey = `pdf-registration-sha256:${calibrationSha256}`;
     check(options.signal);
     const page = await found.document.vectors({ pageNumber: reference.pdf.recipe.page.pageNumber,
-      modelMetresFromPdf, calibrationKey, toleranceMetres: options.toleranceMetres }, { signal: options.signal });
+      modelMetresFromPdf, conversionClipPdf, calibrationKey, toleranceMetres: options.toleranceMetres }, { signal: options.signal });
     check(options.signal);
     const originalPage = reference.pdf.recipe.page;
     if (page.userUnit !== originalPage.userUnit || page.intrinsicRotation !== originalPage.intrinsicRotation

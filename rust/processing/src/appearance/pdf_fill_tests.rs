@@ -68,6 +68,38 @@ fn fixture() -> (String, PdfFillAnnotationRequest) {
         },
     )
 }
+
+#[test]
+fn issue_4406_conversion_clip_refuses_crossing_stroke_and_reopens_contained_geometry() {
+    let (source, mut request) = fixture();
+    request.page.operations = vec![
+        PdfVectorOperation { ordinal: 0, operation: PdfVectorOperator::LineWidth { width: 1. } },
+        PdfVectorOperation { ordinal: 1, operation: PdfVectorOperator::Path {
+            paint: PdfVectorPaint::Stroke, commands: vec![0., 0., 4., 1., 8., 4.],
+        }},
+    ];
+    let clip = Some([2., 2., 6., 6.]);
+    let error = plan_pdf_fill_annotation_with_clip(source.as_bytes(), &request, clip).unwrap_err();
+    assert!(error.contains("conversion boundary crosses painted path"), "{error}");
+
+    request.page.operations[1].operation = PdfVectorOperator::Path {
+        paint: PdfVectorPaint::Stroke, commands: vec![0., 3., 4., 1., 5., 4.],
+    };
+    let plan = plan_pdf_fill_annotation_with_clip(source.as_bytes(), &request, clip).unwrap();
+    let exported = apply(&source, &plan.plan);
+    assert_eq!(reopened_property_value(&exported, "SourceCropBox").as_deref(), Some("[0.0,0.0,8.0,8.0]"));
+    assert_eq!(reopened_property_value(&exported, "ConversionClipPdf").as_deref(), Some("[2.0,2.0,6.0,6.0]"));
+    let reopened = crate::process_geometry(exported.as_bytes());
+    let meshes: Vec<_> = reopened.meshes.iter().filter(|m| m.express_id == plan.annotation_id).collect();
+    assert!(!meshes.is_empty());
+    for mesh in meshes {
+        for p in mesh.positions.chunks_exact(3) {
+            let world: [f64; 3] = std::array::from_fn(|i| f64::from(p[i]) + mesh.origin[i] + plan.rtc_offset[i]);
+            assert!(world[0] >= 4. - 1e-6 && world[0] <= 8. + 1e-6, "{world:?}");
+            assert!(world[2] >= 6. - 1e-6 && world[2] <= 10. + 1e-6, "{world:?}");
+        }
+    }
+}
 fn area(mesh: &crate::types::mesh::MeshData) -> f64 {
     mesh.indices
         .chunks_exact(3)

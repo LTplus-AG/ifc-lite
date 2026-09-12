@@ -52,6 +52,14 @@ converts.
 
 ## Real drawings
 
+The [HouseFlrPlan acceptance](../pdf-real-vector-plan/README.md) is a complete,
+GPL-2.0-or-later architectural vector floor plan. At a declared 2 mm tolerance
+it converts exactly as one compound path and three native regions, reopens with
+IfcOpenShell, and matches both native 3D and reopened 2D output pixel for pixel.
+Its independent MuPDF comparison has zero unexplained pixels. That focused
+directory carries the pinned source, deterministic PDF derivative, IFC and
+visual evidence.
+
 [`featherston-report.json`](featherston-report.json) is the CC BY-SA 3.0
 Zaidaudi ground-floor plan already used by the
 [pinned decoder investigation](../pdf-vectors/README.md) (attribution and
@@ -91,8 +99,8 @@ reopened it through `tools/texture-authoring/pdf-fidelity-oracle.py`
 ([`control-text-oracle.json`](control-text-oracle.json)): one `IfcAnnotation`
 (`IfcLite:PdfVectorFills`) contained in "Level" with two representation items,
 Description `PDF vectors, page 1: partial conversion; omitted 1 text run`, and the
-`IfcLite_PdfVectorConversion` property set with 20 properties — source PDF
-digest, page 1, CropBox `[10.0,20.0,110.0,92.0]`, UserUnit 2, rotation 90,
+`IfcLite_PdfVectorConversion` property set with 21 properties — source PDF
+digest, page 1, CropBox and conversion boundary `[10.0,20.0,110.0,92.0]`, UserUnit 2, rotation 90,
 decoder `PDF.js 6.3.289`, calibration key and affine, `ToleranceMetres 0.0001`,
 grid size, request and fidelity digests, `ExactConversion false`,
 `AcceptedPartialConversion true`, 2 converted paths, 2 fill regions, 0 omitted
@@ -175,8 +183,7 @@ browser journey above (report, acknowledgement, preview, create, Undo/Redo,
 picking, export, fresh-tab reopen, independent reader).
 
 Not verified here: no fresh shared-room join (rooms disable authoring in this
-build, as the panel test asserts), no raster comparison of a real drawing (none
-of them converts within the 128-path bound), and no browser run of the
+build, as the panel test asserts), and no browser run of the
 raster-only or exact paths beyond the earlier
 [registered PDF vectors UI journey](../pdf-annotation-ui/README.md), which
 covers the exact control page and predates the report step.

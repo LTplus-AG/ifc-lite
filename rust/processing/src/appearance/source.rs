@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-use ifc_lite_core::{AttributeValue as A, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
+use ifc_lite_core::{keyword_eq, AttributeValue as A, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) const MAX_VALUES: usize = 8_000_000;
@@ -68,7 +68,7 @@ impl<'a> Source<'a> {
                     _ => {}
                 }
             }
-            if name == "IFCPRESENTATIONSTYLEASSIGNMENT" { source.style_assignments.insert(id); }
+            if keyword_eq(name, "IFCPRESENTATIONSTYLEASSIGNMENT") { source.style_assignments.insert(id); }
             match entity.ifc_type {
                 IfcType::IfcIndexedTriangleTextureMap => {
                     if let Some(item) = entity.get_ref(1) {

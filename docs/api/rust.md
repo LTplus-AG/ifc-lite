@@ -479,6 +479,12 @@ new cache whenever the source model changes: signatures are keyed by express
 ID. Tessellation quality, unit scale and RTC remain router-local and are folded
 into the final deduplication key. The native processing pipeline manages this lifetime automatically.
 
+`GeometryRouter::with_scale_and_local_frame(unit_scale, enabled)` fixes the
+mesh-coordinate frame when the router is created. Use it when one operation
+must produce identical local-frame geometry across native and wasm targets;
+ordinary routers continue to use the target and environment default. The frame
+choice cannot be changed after construction because router caches depend on it.
+
 Other notable re-exports: `orient_mesh_outward`, `calculate_normals`, `ClippingProcessor`, `Plane`, `Triangle` (CSG), `hash_mesh_world` / `GeometryHasher` (geometry-diff hashing), instancing encode/decode helpers, and the nalgebra types `Point2`, `Point3`, `Vector2`, `Vector3`.
 
 `embedded_raster_dimensions(step_binary)` returns optional PNG/JPEG dimensions
@@ -932,10 +938,16 @@ complete graphics state snapshots and a `FidelityReport` (`fidelity`) listing
 every omission kind with counts, page extents and visibility, plus the
 `exact`/`raster_only` verdict and its binding digest. Canonical Rust validates
 bounded decoded input and binds the immutable page/calibration/operations
-request. It does not parse PDF bytes, flatten curves or create IFC entities;
+request. `prepare_pdf_vector_page_with_clip` accepts an optional rectangle
+inside the immutable CropBox; paths wholly outside it are excluded, while any
+supported painted envelope crossing it refuses. The original
+`prepare_pdf_vector_page` API remains the whole-page operation. It does not parse
+PDF bytes, flatten curves or create IFC entities;
 `fidelity.exact` is deliberately separate from geometric qualification or Apply
-readiness. `appearance::plan_pdf_fill_annotation` recomputes the report and
-plans a partial page only when the request's `accepted_fidelity_sha256` quotes
+readiness. `appearance::plan_pdf_fill_annotation_with_clip` applies the same
+selection when it creates IFC; `appearance::plan_pdf_fill_annotation` remains
+the whole-page API. Both recompute the report and plan a partial page only when
+the request's `accepted_fidelity_sha256` quotes
 it. See the [WASM contract](wasm.md#pdf-vector-graphics-state-preparation-and-fidelity-report)
 and [annotation implementation boundary](../architecture/pdf-vector-annotations.md#fidelity-report-and-partial-acceptance).
 

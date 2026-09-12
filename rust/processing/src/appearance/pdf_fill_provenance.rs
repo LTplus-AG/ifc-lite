@@ -82,6 +82,7 @@ impl Provenance<'_> {
             ),
             ("SourcePageNumber", integer(i64::from(page.page_number))),
             ("SourceCropBox", text(json_numbers(&page.view_box))),
+            ("ConversionClipPdf", text(json_numbers(&self.prepared.page_clip_pdf))),
             ("SourceUserUnit", real(page.user_unit)),
             ("SourceRotation", integer(i64::from(page.intrinsic_rotation))),
             ("DecoderVersion", label(&format!("PDF.js {}", page.decoder_version))),

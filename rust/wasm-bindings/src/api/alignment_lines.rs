@@ -59,7 +59,7 @@ pub(crate) fn extract_alignment_line_vertices(content: &str) -> Vec<f32> {
     let mut project_scanner = EntityScanner::new(content);
     let mut unit_scale = 1.0_f64;
     while let Some((id, type_name, _, _)) = project_scanner.next_entity() {
-        if type_name == "IFCPROJECT" {
+        if ifc_lite_core::keyword_eq(type_name, "IFCPROJECT") {
             if let Ok(s) = extract_length_unit_scale(&mut decoder, id) {
                 unit_scale = s;
             }
@@ -77,7 +77,7 @@ pub(crate) fn extract_alignment_line_vertices(content: &str) -> Vec<f32> {
     let mut out: Vec<f32> = Vec::new();
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name != "IFCALIGNMENT" {
+        if !ifc_lite_core::keyword_eq(type_name, "IFCALIGNMENT") {
             continue;
         }
         let Ok(entity) = decoder.decode_at_with_id(id, start, end) else {

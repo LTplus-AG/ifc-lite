@@ -5,7 +5,7 @@
 use super::{get_refs_from_list, normalize_optional_string};
 use crate::style::GeometryStyleInfo;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 pub(super) fn collect_presentation_layer_assignments(
     layer_by_assigned_representation: &mut FxHashMap<u32, String>,
@@ -53,7 +53,6 @@ pub(super) fn resolve_presentation_layer_for_product_definition_shape(
             layer_by_assigned_representation,
             cache_by_representation,
             decoder,
-            &mut Vec::new(),
         ) {
             return Some(layer_name);
         }
@@ -62,67 +61,171 @@ pub(super) fn resolve_presentation_layer_for_product_definition_shape(
     None
 }
 
+/// One unit of pending work. `IfcPresentationLayerAssignment.AssignedItems` is
+/// a SELECT over both representations and representation items, so the walk
+/// has to be able to test either.
+enum Step {
+    Representation { id: u32, parent: Option<u32> },
+    Item { item_id: u32, owner: u32 },
+}
+
+/// Memoise a hit: `Some(layer)` for `start` and every representation on the
+/// path that led to it, `None` for every other representation the walk
+/// visited.
+///
+/// The chain is sound because the walk is depth-first in document order and
+/// returns on the FIRST match: for each ancestor, everything earlier in its
+/// own traversal order was explored and missed, so this hit is that ancestor's
+/// first match too. The `None`s are sound because the stack is LIFO: a hit
+/// while a representation's items were still pending could only have come
+/// from inside its subtree, which puts it on the chain. So anything visited
+/// and NOT on the chain was explored to exhaustion.
+///
+/// Both halves are what the recursive version got for free on unwind, and both
+/// matter for mapped-item instancing, where every occurrence has its own root
+/// and what they share is the subtree below the map.
+fn memoise_hit(
+    start: u32,
+    layer: &str,
+    parent_of: &FxHashMap<u32, u32>,
+    visited: FxHashSet<u32>,
+    cache_by_representation: &mut FxHashMap<u32, Option<String>>,
+) {
+    let mut chain: FxHashSet<u32> = FxHashSet::default();
+    let mut at = Some(start);
+    while let Some(id) = at {
+        chain.insert(id);
+        at = parent_of.get(&id).copied();
+    }
+    for id in visited {
+        let answer = chain.contains(&id).then(|| layer.to_string());
+        cache_by_representation.insert(id, answer);
+    }
+}
+
+/// Resolve the presentation layer for one `IfcRepresentation`, chasing
+/// `IfcMappedItem` -> `IfcRepresentationMap` -> `MappedRepresentation`.
+///
+/// ITERATIVE, deliberately. The reference graph comes from the file, so it is
+/// exporter- and attacker-controlled, and this walk used to recurse with only
+/// a path-scoped cycle guard. A visited set bounds cycles and revisits but not
+/// a long ACYCLIC chain: every insert succeeds, the guard never fires, and the
+/// stack still overflows. A Rust stack overflow is SIGABRT, not a catchable
+/// panic, so nothing upstream turns it into a load error and in the wasm
+/// geometry worker it takes the instance down. Reproduced on 6.9 MB of
+/// well-formed IFC: 60 000 nested mapped items, every id distinct.
+///
+/// AGENTS.md asks for this shape over a depth cap, and the reason applies
+/// exactly here: with no call stack to consume there is nothing left for a cap
+/// to protect, and the visited set becomes sufficient on its own. A cap would
+/// also have to answer "what is a legitimate nesting depth", and answering it
+/// wrong loses a layer silently on a file no exporter would call malformed.
+/// `appearance::evaluated_source::validate_style_tree` walks a comparable
+/// graph the same way.
+///
+/// Work is bounded without a budget: each representation is expanded at most
+/// once, and items are pushed only from a representation being expanded for
+/// the first time, so the total is at most the number of item references in
+/// the file.
+///
+/// Traversal order is the document order the recursive version had, and it is
+/// load-bearing because the first match wins: a file may assign layers at more
+/// than one depth. Items are pushed in reverse so the first pops first, and
+/// pushing a mapped item's target representation on top descends into it
+/// before the next sibling item is examined.
 fn resolve_presentation_layer_name(
-    representation_id: u32,
+    root_representation_id: u32,
     layer_by_assigned_representation: &FxHashMap<u32, String>,
     cache_by_representation: &mut FxHashMap<u32, Option<String>>,
     decoder: &mut EntityDecoder,
-    traversal_stack: &mut Vec<u32>,
 ) -> Option<String> {
-    if let Some(cached) = cache_by_representation.get(&representation_id) {
+    if let Some(cached) = cache_by_representation.get(&root_representation_id) {
         return cached.clone();
     }
 
-    if traversal_stack.contains(&representation_id) {
-        return None;
-    }
-    traversal_stack.push(representation_id);
+    let mut visited: FxHashSet<u32> = FxHashSet::default();
+    // Recorded at pop time, not push time: the same representation can be
+    // pushed by two different items before either is popped, and the parent
+    // that counts is the one whose step was actually taken.
+    let mut parent_of: FxHashMap<u32, u32> = FxHashMap::default();
+    let mut stack = vec![Step::Representation { id: root_representation_id, parent: None }];
 
-    if let Some(layer_name) = layer_by_assigned_representation.get(&representation_id) {
-        let result = Some(layer_name.clone());
-        cache_by_representation.insert(representation_id, result.clone());
-        traversal_stack.pop();
-        return result;
-    }
-
-    let mut resolved: Option<String> = None;
-
-    if let Ok(representation) = decoder.decode_by_id(representation_id) {
-        if let Some(items) = get_refs_from_list(&representation, 3) {
-            for item_id in items {
-                if let Some(layer_name) = layer_by_assigned_representation.get(&item_id) {
-                    resolved = Some(layer_name.clone());
-                    break;
+    while let Some(step) = stack.pop() {
+        match step {
+            Step::Representation { id: representation_id, parent } => {
+                if !visited.insert(representation_id) {
+                    continue;
+                }
+                if let Some(parent) = parent {
+                    parent_of.insert(representation_id, parent);
                 }
 
-                if let Ok(item) = decoder.decode_by_id(item_id) {
-                    if item.ifc_type == IfcType::IfcMappedItem {
-                        if let Some(mapping_source_id) = item.get_ref(0) {
-                            if let Ok(mapping_source) = decoder.decode_by_id(mapping_source_id) {
-                                if let Some(mapped_representation_id) = mapping_source.get_ref(1) {
-                                    if let Some(layer_name) = resolve_presentation_layer_name(
-                                        mapped_representation_id,
-                                        layer_by_assigned_representation,
-                                        cache_by_representation,
-                                        decoder,
-                                        traversal_stack,
-                                    ) {
-                                        resolved = Some(layer_name);
-                                        break;
-                                    }
-                                }
-                            }
-                        }
+                match cache_by_representation.get(&representation_id) {
+                    // Explored to exhaustion by an earlier element, so this is
+                    // the whole subtree's answer, not a partial one.
+                    Some(Some(layer_name)) => {
+                        let hit = layer_name.clone();
+                        memoise_hit(representation_id, &hit, &parent_of, visited, cache_by_representation);
+                        return Some(hit);
                     }
+                    Some(None) => continue,
+                    None => {}
                 }
+
+                if let Some(layer_name) = layer_by_assigned_representation.get(&representation_id) {
+                    let hit = layer_name.clone();
+                    memoise_hit(representation_id, &hit, &parent_of, visited, cache_by_representation);
+                    return Some(hit);
+                }
+
+                let Ok(representation) = decoder.decode_by_id(representation_id) else {
+                    continue;
+                };
+                let Some(items) = get_refs_from_list(&representation, 3) else {
+                    continue;
+                };
+                for item_id in items.into_iter().rev() {
+                    stack.push(Step::Item { item_id, owner: representation_id });
+                }
+            }
+            Step::Item { item_id, owner } => {
+                if let Some(layer_name) = layer_by_assigned_representation.get(&item_id) {
+                    let hit = layer_name.clone();
+                    memoise_hit(owner, &hit, &parent_of, visited, cache_by_representation);
+                    return Some(hit);
+                }
+
+                let Ok(item) = decoder.decode_by_id(item_id) else {
+                    continue;
+                };
+                if item.ifc_type != IfcType::IfcMappedItem {
+                    continue;
+                }
+                let Some(mapping_source_id) = item.get_ref(0) else {
+                    continue;
+                };
+                let Ok(mapping_source) = decoder.decode_by_id(mapping_source_id) else {
+                    continue;
+                };
+                let Some(mapped_representation_id) = mapping_source.get_ref(1) else {
+                    continue;
+                };
+                stack.push(Step::Representation { id: mapped_representation_id, parent: Some(owner) });
             }
         }
     }
 
-    traversal_stack.pop();
-    cache_by_representation.insert(representation_id, resolved.clone());
-    resolved
+    // The walk ran to exhaustion, so every representation it reached had its
+    // whole closure searched. `None` is the true answer for all of them, not
+    // an artefact of where the walk started, and memoising the lot is what
+    // keeps a shared library representation from being re-walked per element.
+    for representation_id in visited {
+        cache_by_representation.insert(representation_id, None);
+    }
+
+    None
 }
+
 
 /// Find a color in a representation (`IfcProductDefinitionShape`) by
 /// traversing each of its `IfcShapeRepresentation`s.
@@ -187,145 +290,5 @@ fn find_color_in_shape_representation(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use ifc_lite_core::{build_entity_index, EntityDecoder};
-
-    /// `find_color_in_representation` used to bottom out after ONE level of
-    /// `IfcMappedItem` indirection: `find_color_in_shape_representation`
-    /// checked each item's own direct style but never chased a nested
-    /// `IfcMappedItem` inside a mapped representation's items, unlike the
-    /// canonical per-element resolver `element::find_geometry_item_color`
-    /// (#913 §2.7), which recurses to arbitrary depth.
-    ///
-    /// This fixture nests the styled geometry TWO mapped-item hops deep:
-    /// `#10 PDS -> #20 ShapeRepr -> #30 MappedItem -> #40 RepMap -> #50
-    /// ShapeRepr -> #60 MappedItem -> #70 RepMap -> #80 ShapeRepr -> #90
-    /// (styled leaf item)`.
-    #[test]
-    fn find_color_in_representation_follows_nested_mapped_items() {
-        let content = b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n\
-            #10=IFCPRODUCTDEFINITIONSHAPE($,$,(#20));\n\
-            #20=IFCSHAPEREPRESENTATION($,$,$,(#30));\n\
-            #30=IFCMAPPEDITEM(#40,$);\n\
-            #40=IFCREPRESENTATIONMAP($,#50);\n\
-            #50=IFCSHAPEREPRESENTATION($,$,$,(#60));\n\
-            #60=IFCMAPPEDITEM(#70,$);\n\
-            #70=IFCREPRESENTATIONMAP($,#80);\n\
-            #80=IFCSHAPEREPRESENTATION($,$,$,(#90));\n\
-            #90=IFCEXTRUDEDAREASOLID($,$,$,$);\n\
-            ENDSEC;\nEND-ISO-10303-21;\n";
-        let index = build_entity_index(content);
-        let mut decoder = EntityDecoder::with_index(content, index);
-
-        let mut styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
-        styles.insert(
-            90,
-            GeometryStyleInfo {
-                color: [1.0, 0.0, 0.0, 1.0],
-                shading_color: None,
-                material_name: None,
-            },
-        );
-
-        let color = find_color_in_representation(10, &styles, &mut decoder);
-        assert_eq!(
-            color,
-            Some([1.0, 0.0, 0.0, 1.0]),
-            "a styled leaf item two IfcMappedItem hops deep must still resolve — \
-             find_color_in_shape_representation must chase nested IfcMappedItem \
-             the same way find_color_in_representation's own first hop does, \
-             mirroring element::find_geometry_item_color's unbounded recursion"
-        );
-    }
-
-    /// #2863's cyclic fixture, transplanted to this module's own entry
-    /// point: `#30`'s mapped representation lists `#30` itself, so the chase
-    /// re-enters where it started. Before the guard this stack-overflows and
-    /// SIGABRTs the whole test binary; asserting `None` (not merely "does not
-    /// crash") is the only way to see it pass or fail rather than vanish.
-    #[test]
-    fn find_color_in_representation_terminates_on_cyclic_mapping() {
-        let content = b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n\
-            #10=IFCPRODUCTDEFINITIONSHAPE($,$,(#20));\n\
-            #20=IFCSHAPEREPRESENTATION($,$,$,(#30));\n\
-            #30=IFCMAPPEDITEM(#40,$);\n\
-            #40=IFCREPRESENTATIONMAP($,#50);\n\
-            #50=IFCSHAPEREPRESENTATION($,$,$,(#30));\n\
-            ENDSEC;\nEND-ISO-10303-21;\n";
-        let index = build_entity_index(content);
-        let mut decoder = EntityDecoder::with_index(content, index);
-        let styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
-        assert_eq!(find_color_in_representation(10, &styles, &mut decoder), None);
-    }
-
-    /// Build a chain of `hops` nested `IfcMappedItem`s under one
-    /// `IfcProductDefinitionShape` (`#10`), terminating in a leaf
-    /// `IfcShapeRepresentation` (`#9000`) whose own item `#9999` carries the
-    /// style. `#9999` is never decoded as an entity — the resolver checks
-    /// styles by id before it ever needs to decode the item — so it does not
-    /// need its own STEP record.
-    fn nested_mapped_chain(hops: u32) -> Vec<u8> {
-        let mut s = String::from(
-            "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#10=IFCPRODUCTDEFINITIONSHAPE($,$,(#20));\n",
-        );
-        for i in 0..hops {
-            let shape = 20 + i * 10;
-            let map_item = 21 + i * 10;
-            let rep_map = 22 + i * 10;
-            let next = if i + 1 == hops { 9000 } else { 20 + (i + 1) * 10 };
-            s.push_str(&format!(
-                "#{shape}=IFCSHAPEREPRESENTATION($,$,$,(#{map_item}));\n"
-            ));
-            s.push_str(&format!("#{map_item}=IFCMAPPEDITEM(#{rep_map},$);\n"));
-            s.push_str(&format!("#{rep_map}=IFCREPRESENTATIONMAP($,#{next});\n"));
-        }
-        s.push_str("#9000=IFCSHAPEREPRESENTATION($,$,$,(#9999));\n");
-        s.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
-        s.into_bytes()
-    }
-
-    #[test]
-    fn find_color_in_representation_resolves_exactly_at_the_depth_cap() {
-        let red = [1.0, 0.0, 0.0, 1.0];
-        let mut styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
-        styles.insert(
-            9999,
-            GeometryStyleInfo {
-                color: red,
-                shading_color: None,
-                material_name: None,
-            },
-        );
-        let content = nested_mapped_chain(ifc_lite_core::MAX_MAPPED_ITEM_DEPTH);
-        let index = build_entity_index(&content);
-        let mut decoder = EntityDecoder::with_index(&content, index);
-        assert_eq!(
-            find_color_in_representation(10, &styles, &mut decoder),
-            Some(red),
-            "a chain exactly MAX_MAPPED_ITEM_DEPTH hops deep must still resolve"
-        );
-    }
-
-    #[test]
-    fn find_color_in_representation_stops_one_hop_past_the_depth_cap() {
-        let red = [1.0, 0.0, 0.0, 1.0];
-        let mut styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
-        styles.insert(
-            9999,
-            GeometryStyleInfo {
-                color: red,
-                shading_color: None,
-                material_name: None,
-            },
-        );
-        let content = nested_mapped_chain(ifc_lite_core::MAX_MAPPED_ITEM_DEPTH + 1);
-        let index = build_entity_index(&content);
-        let mut decoder = EntityDecoder::with_index(&content, index);
-        assert_eq!(
-            find_color_in_representation(10, &styles, &mut decoder),
-            None,
-            "one hop past the cap the chase gives up rather than recursing on"
-        );
-    }
-}
+#[path = "color_layer_tests.rs"]
+mod tests;

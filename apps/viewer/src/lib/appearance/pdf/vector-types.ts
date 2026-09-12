@@ -48,6 +48,8 @@ export interface PdfVectorRequest {
   modelMetresFromPdf: PdfAffine;
   calibrationKey: string;
   toleranceMetres: number;
+  /** Optional registered crop in unrotated native PDF user space. */
+  conversionClipPdf?: PdfPageRect | null;
 }
 export interface PdfVectorPage extends PdfVectorRequest {
   pdfSha256: string;

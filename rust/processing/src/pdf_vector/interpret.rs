@@ -14,6 +14,8 @@ use super::{
 
 #[path = "interpret_ops.rs"]
 mod ops;
+#[path = "interpret_path.rs"]
+mod path;
 
 const MAX_PATH_NUMBERS: usize = 2_000_000;
 const MAX_PATHS: usize = 20_000;
@@ -50,6 +52,7 @@ struct Interpreter {
     frame: Frame,
     stack: Vec<(Frame, Scope)>,
     clip: Rect,
+    conversion_clip: bool,
     /// The declared metric tolerance in PDF user-space units under the
     /// calibration's largest scale: a clip may fall short of the page by at
     /// most this strip before the loss counts.
@@ -74,7 +77,10 @@ fn dash_closure(version: Option<&str>) -> Option<PdfDashClosure> {
     }
 }
 
-pub(super) fn run(page: &PdfVectorPage) -> Result<Interpreted, String> {
+pub(super) fn run(
+    page: &PdfVectorPage,
+    conversion_clip_pdf: Option<Rect>,
+) -> Result<Interpreted, String> {
     let base = Frame {
         state: PdfVectorGraphicsState {
             model_metres_from_path: page.model_metres_from_pdf,
@@ -94,7 +100,8 @@ pub(super) fn run(page: &PdfVectorPage) -> Result<Interpreted, String> {
         frame: base.clone(),
         base,
         stack: Vec::new(),
-        clip: page.view_box,
+        clip: conversion_clip_pdf.unwrap_or(page.view_box),
+        conversion_clip: conversion_clip_pdf.is_some_and(|clip| clip != page.view_box),
         clip_tolerance_pdf: page.tolerance_metres / largest_scale(&page.model_metres_from_pdf),
         pending_clip: false,
         marked: Vec::new(),
@@ -293,66 +300,6 @@ impl Interpreter {
             return Err("Invalid PDF line join".into());
         }
         self.frame.state.line_join = join;
-        Ok(())
-    }
-    fn path(&mut self, ordinal: u32, paint: PdfVectorPaint, commands: &[f64]) -> Result<(), String> {
-        self.numbers += commands.len();
-        if self.numbers > MAX_PATH_NUMBERS {
-            return Err("PDF paths exceed two million numbers".into());
-        }
-        validate_path(commands)?;
-        // Empty paths/endPath consume no visible paint. In particular an
-        // unused zero-width setting does not itself paint a hairline.
-        let painted = paint != PdfVectorPaint::EndPath && !commands.is_empty();
-        if painted && !self.annotation {
-            let bbox = extent::bbox(extent::path_points(commands).map(|p| self.to_pdf(p)));
-            if self.hidden > 0 {
-                self.report.record("hidden", ordinal, bbox, false, true);
-            } else {
-                let visible = bbox.is_some_and(|b| extent::intersects(&b, &self.clip));
-                let fill_block = paint.fills().then(|| self.state_block(self.frame.taint.fill_pattern)).flatten();
-                let stroke_block = paint.strokes().then(|| self.stroke_block(commands, paint.closes())).flatten();
-                let kept = match (paint.fills(), paint.strokes(), &fill_block, &stroke_block) {
-                    (true, true, None, None) | (true, false, None, _) | (false, true, _, None) => Some(paint),
-                    (true, true, None, Some(_)) => Some(paint.fill_only()),
-                    (true, true, Some(_), None) => Some(paint.stroke_only()),
-                    _ => None,
-                };
-                if let Some(kind) = &fill_block {
-                    self.report.record(kind, ordinal, bbox, visible, true);
-                }
-                if let Some(kind) = &stroke_block {
-                    if fill_block.as_ref() != Some(kind) {
-                        self.report.record(kind, ordinal, bbox, visible, true);
-                    }
-                }
-                if let Some(paint) = kept {
-                    if self.paths.len() == MAX_PATHS {
-                        return Err("PDF page exceeds 20000 painted paths".into());
-                    }
-                    self.paths.push(PreparedPdfVectorPath {
-                        operator_ordinal: ordinal,
-                        paint,
-                        commands: commands.to_vec(),
-                        state: self.frame.state.clone(),
-                        dash_closure: if paint.strokes()
-                            && !self.frame.state.dash_lengths.is_empty()
-                            && (paint.closes()
-                                || extent::opcodes(commands).any(|op| op == 4))
-                        {
-                            self.dash_closure
-                        } else {
-                            None
-                        },
-                    });
-                }
-            }
-        }
-        // PDF paints first, then intersects the pending clip with the same path.
-        if self.pending_clip {
-            self.pending_clip = false;
-            self.consume_clip(commands);
-        }
         Ok(())
     }
 }

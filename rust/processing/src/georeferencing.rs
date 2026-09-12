@@ -15,7 +15,9 @@
 
 use std::sync::Arc;
 
-use ifc_lite_core::{EntityDecoder, EntityIndex, EntityScanner, GeoRefExtractor, IfcType};
+use ifc_lite_core::{
+    keyword_eq, EntityDecoder, EntityIndex, EntityScanner, GeoRefExtractor, IfcType,
+};
 use serde::{Deserialize, Serialize};
 
 /// Georeferencing metadata (`IfcMapConversion` + `IfcProjectedCRS`).
@@ -147,26 +149,24 @@ pub fn extract_georeferencing_with_index(
 /// case-insensitive. A case-sensitive match silently classified every entity in
 /// a lowercase- or CamelCase-keyword file as a non-candidate, and the model then
 /// reported no georeferencing at all despite carrying complete data (#4497).
-/// `eq_ignore_ascii_case` rather than an uppercase copy: this runs once per
-/// entity in the scan loop, and the comparison is against fixed literals, so
-/// there is nothing an allocated canonical form would be reused for — the same
-/// shape `processor::quick_metadata::is_quick_spatial_type_ci` uses.
+/// `keyword_eq` rather than an uppercase copy: this runs once per entity in
+/// the scan loop, and the comparison is against fixed literals, so there is
+/// nothing an allocated canonical form would be reused for — the same shape
+/// `processor::quick_metadata::is_quick_spatial_type_ci` uses.
 pub(crate) fn georeferencing_candidate_type(type_name: &str) -> Option<IfcType> {
     // Scaled's first eight attributes have the base conversion layout.
-    const MAP_CONVERSION: [&str; 2] = ["IFCMAPCONVERSION", "IFCMAPCONVERSIONSCALED"];
-    if MAP_CONVERSION
-        .iter()
-        .any(|candidate| type_name.eq_ignore_ascii_case(candidate))
+    if keyword_eq(type_name, "IFCMAPCONVERSION")
+        || keyword_eq(type_name, "IFCMAPCONVERSIONSCALED")
     {
         return Some(IfcType::IfcMapConversion);
     }
-    if type_name.eq_ignore_ascii_case("IFCPROJECTEDCRS") {
+    if keyword_eq(type_name, "IFCPROJECTEDCRS") {
         return Some(IfcType::IfcProjectedCRS);
     }
-    if type_name.eq_ignore_ascii_case("IFCPROPERTYSET") {
+    if keyword_eq(type_name, "IFCPROPERTYSET") {
         return Some(IfcType::IfcPropertySet);
     }
-    if type_name.eq_ignore_ascii_case("IFCSITE") {
+    if keyword_eq(type_name, "IFCSITE") {
         return Some(IfcType::IfcSite);
     }
     None

@@ -22,7 +22,18 @@ pub fn plan_pdf_fill_annotation(
     bytes: &[u8],
     r: &PdfFillAnnotationRequest,
 ) -> Result<PdfFillAnnotationPlan, String> {
-    let prepared = crate::pdf_vector::prepare_pdf_vector_page(&r.page)?;
+    plan_pdf_fill_annotation_with_clip(bytes, r, None)
+}
+
+/// Plan an annotation from an optional registered rectangle in native PDF
+/// space without changing the source-compatible request struct.
+pub fn plan_pdf_fill_annotation_with_clip(
+    bytes: &[u8],
+    r: &PdfFillAnnotationRequest,
+    conversion_clip_pdf: Option<[f64; 4]>,
+) -> Result<PdfFillAnnotationPlan, String> {
+    let prepared =
+        crate::pdf_vector::prepare_pdf_vector_page_with_clip(&r.page, conversion_clip_pdf)?;
     let fidelity = &prepared.fidelity;
     if let Some(accepted) = &r.accepted_fidelity_sha256 {
         if *accepted != fidelity.sha256 {

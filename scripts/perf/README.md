@@ -27,6 +27,25 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Boolean operands dispatch from the router's built-in table (#4560)
+
+The boolean operand resolver no longer keeps its own list of meshable operand
+types; it falls through to the registry's `builtin_processor` for everything
+except the two arms that carry `depth` and the cycle guard (`IfcCsgSolid`,
+the boolean types). A processor is still built fresh per operand, exactly as
+the hand-written arms did, so the only new work per operand is one `Rc`
+allocation. Interleaved native A/B/A/B (5 rounds, `ab.sh`) on AC20-FZK-Haus
+and ISSUE_129 resolved no phase beyond the base's own noise floor; mesh,
+vertex and triangle counts were identical on every round of both fixtures
+(285/35,940/19,456 and 1,402/218,365/132,657), as expected: neither corpus
+authors a boolean operand of a type the old list lacked. Output changes only
+where a boolean names such an operand — `IfcPolygonalFaceSet` cutters on the
+Bonsai wall fixture now cut. This is a correctness fix, not a speedup. The
+lesson: a second copy of a dispatch table drifts the moment a processor is
+registered in one and not the other, and the drift is invisible because the
+loser is an `UnsupportedOperand` record nobody reads; derive the operand set
+from the registry instead of maintaining it.
+
 ## Qualified PDF dash expansion (#4406)
 
 Dash expansion is reachable only from the explicit PDF annotation planner; it
@@ -1170,6 +1189,20 @@ zero rounds and a vacuous "within noise" verdict; the probe drove `roundOrder`
 directly and checked the run count. #4541 fixed the guard with
 `pathToFileURL`; always check the round count `ab.sh` reports.
 [Raw rounds](../../docs/architecture/evidence/evaluated-face-masks/native-load.json) and [fingerprints](../../docs/architecture/evidence/evaluated-face-masks/native-fingerprints.json).
+
+The #4550 native/wasm fingerprint-parity follow-up makes the existing
+per-element local frame explicit only inside opt-in appearance planning. Fresh
+interleaved base/branch and branch/base AC20 normal-load controls resolved no
+change at the probe's phase precision, and every run retained identical mesh,
+vertex and triangle counts plus ordered geometry fingerprint. The useful lesson
+is to select frame policy per router before its caches are populated: a
+process-global override would make concurrent native planning unsafe, while
+changing the native load default would needlessly disturb deterministic output.
+An interleaved release A/B over the real AC20 mapped-member
+`plan_appearance` path also retained the same source-index checksum and
+fingerprint with no slowdown. The final implementation evaluates the canonical
+surface once and shares that mesh between replacement and fingerprinting; a
+second identity-only evaluation was measured and removed before review.
 
 ### Shared appearance atlas sampling (#4381)
 

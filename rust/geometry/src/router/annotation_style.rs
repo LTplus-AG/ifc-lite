@@ -18,7 +18,7 @@ pub(super) fn validate(item_id: u32, decoder: &mut EntityDecoder) -> Result<()> 
             let assignment = decoder.get_raw_bytes(style_id).and_then(|raw| {
                 EntityScanner::new(raw)
                     .next_entity()
-                    .map(|(_, name, _, _)| name == "IFCPRESENTATIONSTYLEASSIGNMENT")
+                    .map(|(_, name, _, _)| ifc_lite_core::keyword_eq(name, "IFCPRESENTATIONSTYLEASSIGNMENT"))
             }) == Some(true);
             if assignment {
                 for inner in references(&style, 0, &mut work)? {

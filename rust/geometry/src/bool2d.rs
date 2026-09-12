@@ -30,7 +30,7 @@ const MIN_AREA_THRESHOLD: f64 = 1e-10;
 ///
 /// # Arguments
 /// * `profile` - The base profile to subtract from
-/// * `void_contour` - The void footprint to subtract (should be counter-clockwise)
+/// * `void_contour` - The void footprint to subtract (any winding; normalised CCW)
 ///
 /// # Returns
 /// * `Ok(Profile2D)` - The resulting profile with the void subtracted
@@ -52,12 +52,11 @@ pub fn subtract_2d(profile: &Profile2D, void_contour: &[Point2<f64>]) -> Result<
     // Subject is the profile (outer boundary + holes)
     let subject = profile_to_paths(profile);
 
-    // Clip is the void contour
-    let clip = vec![contour_to_path(void_contour)];
+    let clip = ccw_paths([void_contour]);
 
     // Perform boolean difference using i_overlay
     // Result is Vec<Vec<Vec<[f64; 2]>>> - Vec of shapes, each shape is Vec of contours
-    let result = subject.overlay(&clip, OverlayRule::Difference, FillRule::EvenOdd);
+    let result = subject.overlay(&clip, OverlayRule::Difference, FillRule::NonZero);
 
     // Convert result back to Profile2D (take first shape if multiple)
     shapes_to_profile(&result)
@@ -78,28 +77,7 @@ pub fn subtract_multiple_2d(
     profile: &Profile2D,
     void_contours: &[Vec<Point2<f64>>],
 ) -> Result<Profile2D> {
-    if void_contours.is_empty() {
-        return Ok(profile.clone());
-    }
-
-    // Filter out invalid contours
-    let valid_contours: Vec<_> = void_contours.iter().filter(|c| c.len() >= 3).collect();
-
-    if valid_contours.is_empty() {
-        return Ok(profile.clone());
-    }
-
-    // Convert profile to i_overlay format
-    let subject = profile_to_paths(profile);
-
-    // Convert all void contours - union them first if multiple
-    let clip: Vec<Vec<[f64; 2]>> = valid_contours.iter().map(|c| contour_to_path(c)).collect();
-
-    // Perform boolean difference
-    let result = subject.overlay(&clip, OverlayRule::Difference, FillRule::EvenOdd);
-
-    // Convert result back to Profile2D
-    shapes_to_profile(&result)
+    subtract_multiple_2d_counted(profile, void_contours).map(|(profile, _)| profile)
 }
 
 /// Like [`subtract_multiple_2d`], but also reports how many DISCONNECTED output
@@ -117,8 +95,8 @@ pub fn subtract_multiple_2d_counted(
         return Ok((profile.clone(), 1));
     }
     let subject = profile_to_paths(profile);
-    let clip: Vec<Vec<[f64; 2]>> = valid_contours.iter().map(|c| contour_to_path(c)).collect();
-    let result = subject.overlay(&clip, OverlayRule::Difference, FillRule::EvenOdd);
+    let clip = ccw_paths(valid_contours.iter().map(|c| c.as_slice()));
+    let result = subject.overlay(&clip, OverlayRule::Difference, FillRule::NonZero);
     // Count EVERY non-empty output shape (any outer contour with >= 3 vertices),
     // NOT just those above MIN_AREA_THRESHOLD. This gate decides single-vs-multi
     // shape for the caller: only `shapes == 1` lets the re-extrude proceed with the
@@ -142,11 +120,7 @@ pub fn subtract_multiple_2d_counted(
 /// (< 3-vertex or zero-area) contours are dropped; an empty input yields an empty
 /// result. Deterministic f64 → byte-identical native==wasm.
 pub fn union_contours_to_shapes(contours: &[Vec<Point2<f64>>]) -> Vec<Profile2D> {
-    let subject: Vec<Vec<[f64; 2]>> = contours
-        .iter()
-        .filter(|c| c.len() >= 3)
-        .map(|c| contour_to_path(&ensure_ccw(c)))
-        .collect();
+    let subject = ccw_paths(contours.iter().filter(|c| c.len() >= 3).map(Vec::as_slice));
     if subject.is_empty() {
         return Vec::new();
     }
@@ -272,7 +246,8 @@ fn profile_to_paths(profile: &Profile2D) -> Vec<Vec<[f64; 2]>> {
     let outer = ensure_ccw(&profile.outer);
     paths.push(contour_to_path(&outer));
 
-    // Add holes (must be clockwise for i_overlay, but we'll use EvenOdd fill rule)
+    // Add holes clockwise: the opposite winding is what subtracts them under the
+    // `NonZero` fill rule every overlay in this module uses.
     for hole in &profile.holes {
         let hole_cw = ensure_cw(hole);
         paths.push(contour_to_path(&hole_cw));
@@ -284,6 +259,20 @@ fn profile_to_paths(profile: &Profile2D) -> Vec<Vec<[f64; 2]>> {
 /// Convert a Point2 contour to i_overlay path format
 fn contour_to_path(contour: &[Point2<f64>]) -> Vec<[f64; 2]> {
     contour.iter().map(|p| [p.x, p.y]).collect()
+}
+
+/// Every contour handed to an overlay, normalised CCW, in i_overlay's path
+/// form. The ONE home for the winding contract on this module's inputs: under
+/// `NonZero` a CW contour's winding sums against a CCW one's and the overlap
+/// cancels, exactly the phantom-pillar shape `EvenOdd` produced (`1 & 2 == 0`
+/// on a doubly-covered patch), so the fill rule and the normalisation are one
+/// change, not two. Subject and clip alike go through here; `profile_to_paths`
+/// is the exception because a profile's holes are CW by contract.
+fn ccw_paths<'a>(contours: impl IntoIterator<Item = &'a [Point2<f64>]>) -> Vec<Vec<[f64; 2]>> {
+    contours
+        .into_iter()
+        .map(|c| contour_to_path(&ensure_ccw(c)))
+        .collect()
 }
 
 /// Convert i_overlay result shapes back to Profile2D

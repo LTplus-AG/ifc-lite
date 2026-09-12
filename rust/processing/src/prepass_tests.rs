@@ -310,12 +310,12 @@ fn find_ifcproject_id_accepts_a_record_at_the_start_of_input() {
     assert_eq!(find_ifcproject_id(b"#7=IFCPROJECT('g',$);\n"), Some(7));
 }
 
-/// `find_ifcproject_keyword` prefilters on `J` rather than the lead `I` (a
-/// ~20x scan win on a project-less file, since every IFC keyword starts with
-/// `I`). The offset arithmetic that buys it — candidate start is `j - 6`,
-/// with the first six bytes and any hit behind `from` skipped — is exactly
-/// where such a rewrite goes wrong, so pin it against a naive reference over
-/// every offset of adversarial and pseudo-random buffers.
+/// `find_ifcproject_keyword` is `find_keyword` anchored on `J` rather than
+/// the lead `I` (a ~20x scan win on a project-less file, since every IFC
+/// keyword starts with `I`). The offset arithmetic that buys it — candidate
+/// start is `j - 6`, with the first six bytes skipped and `from` applied by
+/// slicing — is exactly where such a rewrite goes wrong, so pin it against a
+/// naive reference over every offset of adversarial and pseudo-random buffers.
 #[test]
 fn find_ifcproject_keyword_matches_a_naive_reference_at_every_offset() {
     const KEYWORD: &[u8] = b"IFCPROJECT(";

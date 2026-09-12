@@ -136,8 +136,8 @@ export interface Aggregation {
   total: number;
   /** Rows the spec could not place (missing dimension value). */
   unbucketed: number;
-  /** Element id → index into `categories`. */
-  categoryOf: Map<number, number>;
+  /** Element id → every index into `categories` it belongs to (a clash element under two rules is in two). */
+  categoryOf: Map<number, number[]>;
   /** Display unit of the summed column, when the measure is a sum. */
   unit?: string;
 }

@@ -74,8 +74,12 @@ describe('validateDashboardSpec', () => {
     (bad.charts as Array<Record<string, unknown>>)[1].id = 'c';
     (bad.layout as Array<Record<string, unknown>>)[1].chartId = 'missing';
     (bad.layout as Array<Record<string, unknown>>)[0].w = 'wide';
+    (bad.charts as Array<Record<string, unknown>>)[0].bins = 0;
+    bad.page = { size: 'A4', orientation: 'portrait' };
+    bad.titleBlock = { project: 42 };
+    bad.snapshots = false;
     const paths = validateDashboardSpec(bad).map((e) => e.path).sort();
-    expect(paths).toEqual(['.charts[1].id', '.charts[1].stackBy', '.layout[0].w', '.layout[1].chartId', '.version']);
+    expect(paths).toEqual(['.charts[0].bins', '.charts[1].id', '.charts[1].stackBy', '.layout[0].w', '.layout[1].chartId', '.titleBlock.project', '.version']);
     expect(validateDashboardSpec(null)).toEqual([{ path: '', message: 'expected a dashboard object' }]);
   });
 });

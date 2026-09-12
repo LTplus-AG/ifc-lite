@@ -8,6 +8,7 @@
   "packages/bcf": 2,
   "packages/bcf-api": 0,
   "packages/cache": 5,
+  "packages/charts": 0,
   "packages/clash": 1,
   "packages/cli": 6,
   "packages/codegen": 5,

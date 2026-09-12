@@ -15,8 +15,8 @@ import { aggregate, elementsDataset, idsForCategories, categoriesForIds, renderC
 import type { ChartSpec } from '@ifc-lite/charts';
 
 // One row per element instance with IfcType / Storey / Model / Name, straight
-// off the columnar entity table; `idOffset` is the model's slot in a federation.
-const dataset = elementsDataset([{ store, idOffset: 0, name: 'office.ifc' }]);
+// off the columnar entity table; `toGlobalId` is the host's own local → renderer id resolver.
+const dataset = elementsDataset([{ store, toGlobalId: (id) => id, name: 'office.ifc' }]);
 
 const spec: ChartSpec = {
   id: 'by-type', title: 'Elements by type', source: 'elements', type: 'bar',

@@ -56,6 +56,7 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
   if (chart.sort !== undefined && chart.sort !== 'value' && chart.sort !== 'label') errors.push({ path: `${path}.sort`, message: 'expected "value" or "label"' });
   num(errors, chart, 'topN', path, true);
   num(errors, chart, 'bins', path, true);
+  if (typeof chart.bins === 'number' && chart.bins < 1) errors.push({ path: `${path}.bins`, message: 'expected at least 1 bin' });
 }
 
 /** Every problem in a dashboard/report spec; an empty array means it is one. */
@@ -102,7 +103,13 @@ export function validateDashboardSpec(spec: unknown): DashboardValidationError[]
     if (!isRecord(page) || (page.size !== 'A4' && page.size !== 'A3') || (page.orientation !== 'portrait' && page.orientation !== 'landscape')) {
       errors.push({ path: '.page', message: 'expected { size: "A4" | "A3", orientation: "portrait" | "landscape" }' });
     }
-    if (!isRecord(spec.titleBlock)) errors.push({ path: '.titleBlock', message: 'expected an object of title-block fields' });
+    if (!isRecord(spec.titleBlock)) {
+      errors.push({ path: '.titleBlock', message: 'expected an object of title-block fields' });
+    } else {
+      for (const [key, value] of Object.entries(spec.titleBlock)) {
+        if (typeof value !== 'string') errors.push({ path: `.titleBlock.${key}`, message: 'expected a string' });
+      }
+    }
     if (typeof spec.snapshots !== 'boolean') errors.push({ path: '.snapshots', message: 'expected a boolean' });
   }
   return errors;

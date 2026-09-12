@@ -862,6 +862,7 @@ fn a_record_dense_with_slashes_costs_one_walk_of_its_own_length() {
 /// hunt also required a record after the `=`, that scanned as entity #5 with
 /// body `3)`, and the last-wins entity index wrote it over the REAL #5 point
 /// declared a line earlier. A malformed record cost a well-formed one.
+/// Regression for #4577.
 #[test]
 fn a_stray_equals_in_a_refused_body_does_not_mint_a_phantom_neighbour() {
     let mut content = String::from(DATA_PREAMBLE);

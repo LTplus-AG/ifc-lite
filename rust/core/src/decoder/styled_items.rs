@@ -157,6 +157,7 @@ mod tests {
     /// record of a lower- or mixed-case file, so the index came back EMPTY and
     /// `styled_item_ids` reported every item unstyled: a success, not the
     /// refusal the module header promises. The uppercase file is the control.
+    /// Regression for #4577.
     #[test]
     fn styled_lookup_keyword_case_is_not_significant() {
         for keyword in ["IfcStyledItem", "ifcstyleditem", "IFCSTYLEDITEM"] {

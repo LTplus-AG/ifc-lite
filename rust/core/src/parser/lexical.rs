@@ -349,6 +349,7 @@ mod tests {
     /// it has not read. Pre-fix `IFCA(2 #2=IFCWALL($));` answered `At`, and
     /// the scanner resumed past #2 and lost it. The same bound is what keeps
     /// a file of unbalanced records linear instead of O(n^2).
+    /// Regression for #4577.
     #[test]
     fn close_step_record_stops_at_the_next_declaration() {
         assert_eq!(close_step_record(b"IFCA(2 #2=IFCWALL($));"), RecordClose::Unbalanced);

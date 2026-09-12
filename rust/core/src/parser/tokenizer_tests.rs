@@ -372,6 +372,7 @@ fn test_list_rejects_junk_where_only_whitespace_is_allowed() {
 /// fast reader on the other decode path) accepts `+`, and the TypeScript half
 /// reads through `parseFloat`, so the file below decoded in the browser and
 /// not in wasm.
+/// Regression for #4577.
 #[test]
 fn plus_is_a_legal_sign_on_integer_and_real() {
     let empty: &[u8] = b"";

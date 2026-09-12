@@ -587,14 +587,18 @@ pub struct RtcOffset {
 }
 
 impl RtcOffset {
-    /// Create from centroid of positions
+    /// Centroid of the whole `[x, y, z]` triples in `positions`.
+    ///
+    /// A trailing partial triple is ignored. A buffer with no whole triple
+    /// (length 0, 1 or 2) has no centroid and yields the zero offset, meaning
+    /// "no rebase": guarding on `is_empty()` alone let lengths 1 and 2 reach
+    /// `0.0 / 0`, and `apply` wrote that NaN into every vertex.
     #[inline]
     pub fn from_positions(positions: &[f32]) -> Self {
-        if positions.is_empty() {
+        let count = positions.len() / 3;
+        if count == 0 {
             return Self::default();
         }
-
-        let count = positions.len() / 3;
         let mut sum = (0.0f64, 0.0f64, 0.0f64);
 
         for chunk in positions.chunks_exact(3) {

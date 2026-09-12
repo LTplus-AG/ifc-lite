@@ -435,6 +435,20 @@ fn rotation_only_map_conversion_is_reported() {
     assert!((geo.rotation().to_degrees() - 30.0).abs() < 1e-9);
 }
 
+/// Buffers of length 1 or 2 hold no complete position: the offset must be
+/// zero, not `0.0 / 0` = NaN, which `apply` would then write into every
+/// vertex.
+#[test]
+fn rtc_from_positions_with_no_whole_triple_is_zero_not_nan() {
+    for buffer in [&[1.0f32][..], &[1.0f32, 2.0][..]] {
+        let offset = RtcOffset::from_positions(buffer);
+        assert_eq!((offset.x, offset.y, offset.z), (0.0, 0.0, 0.0), "len {}", buffer.len());
+    }
+    // A trailing partial triple is ignored, not averaged in.
+    let offset = RtcOffset::from_positions(&[1.0, 2.0, 3.0, 99.0]);
+    assert_eq!((offset.x, offset.y, offset.z), (1.0, 2.0, 3.0));
+}
+
 /// A non-numeric component in a compound plane angle refuses the WHOLE
 /// angle. Compacting the list first re-indexed `($,51,30,0)` as 51 deg 30
 /// min and placed the site instead of skipping it.

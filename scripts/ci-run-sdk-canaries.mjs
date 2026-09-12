@@ -6,7 +6,9 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 export function runSdkCanaries(root, run) {
-  const canaryRoot = join(root, 'tests', 'extensions', 'canaries');
+  // Keep the repository-relative input in one literal so the CI path-coverage
+  // audit sees the real tree this guard reads, not each join() fragment.
+  const canaryRoot = join(root, 'tests/extensions/canaries');
   let entries;
   try {
     entries = readdirSync(canaryRoot, { withFileTypes: true });

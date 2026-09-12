@@ -74,7 +74,6 @@ scripts/check-tla-chunk-await.test.mjs apps/landing/** # same walk, in the harne
 scripts/check-test-wiring.mjs apps/landing/** # walks apps/ for test suites; apps/landing has none
 scripts/typecheck-tests.test.mjs apps/landing/** # apps/landing is not a tsconfig project
 scripts/check-workflow-report-paths.mjs apps/landing/** # walks apps/ only for package.json; apps/landing contains no package manifest
-scripts/check-workflow-report-paths.test.mjs apps/landing/** # synthetic fixture uses an apps/ directory; the real landing subtree contains no package manifest
 
 # ---------------------------------------------------------------------------
 # 3. OTHER WORKFLOWS. Real holes, in workflows this change does not own.

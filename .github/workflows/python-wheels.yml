@@ -23,6 +23,7 @@ on:
       - "rust/export/**"
       - "rust/core/**"
       - "rust-toolchain.toml"
+      - "scripts/ci-prepare-wheel-matrix.mjs"
       - ".github/workflows/python-wheels.yml"
   pull_request:
     paths:
@@ -32,6 +33,7 @@ on:
       - "rust/export/**"
       - "rust/core/**"
       - "rust-toolchain.toml"
+      - "scripts/ci-prepare-wheel-matrix.mjs"
       - ".github/workflows/python-wheels.yml"
   workflow_dispatch:
 

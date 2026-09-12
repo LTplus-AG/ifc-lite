@@ -365,6 +365,7 @@ jobs:
               # only the csg-accept-gates lane compiles.
               - 'Cargo.toml'
               - 'rust-toolchain.toml'
+              - 'scripts/ci-assert-runnable-cargo-tests.mjs'
               - '.github/workflows/test.yml'
               # The watertightness census sweeps the fixture set named here, so a
               # corpus change moves its pinned counts even with no code change.

@@ -59,6 +59,7 @@ on:
       - 'packages/wasm/**'
       - 'packages/wasm-lifecycle/**'
       - 'packages/world-frame-fixtures/**'
+      - 'scripts/ci-run-sdk-canaries.mjs'
       - 'tests/extensions/canaries/**'
       - '.github/workflows/sdk-canary.yml'
 

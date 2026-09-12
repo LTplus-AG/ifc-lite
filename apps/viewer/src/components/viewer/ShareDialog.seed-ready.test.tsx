@@ -131,6 +131,15 @@ describe('ShareDialog: invite waits for the initial seed (#4446)', () => {
     assert.equal(copyButton().disabled, true);
   });
 
+  it('still withholds the link while the relay has not confirmed the upload (#4446)', async () => {
+    useViewerStore.setState({ collabSeedPhase: 'confirming', collabSeedProgress: null });
+    renderDialog();
+    await settle();
+    assert.match(statusText(), /Confirming the upload with the room server/);
+    assert.doesNotMatch(linkField().value, /room=/, 'everything is written locally, but the relay has not said it holds it');
+    assert.equal(copyButton().disabled, true);
+  });
+
   it('mints the invite and enables Copy the moment the seed reports ready', async () => {
     renderDialog();
     await settle();

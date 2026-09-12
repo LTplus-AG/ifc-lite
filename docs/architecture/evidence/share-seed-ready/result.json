@@ -1,0 +1,294 @@
+{
+  "issue": 4446,
+  "startedAt": "2026-09-12T07:55:54.715Z",
+  "fixture": {
+    "ifczipPath": "test-results/collab-share-seed/AC20-FZK-Haus.textured.ifczip",
+    "wallExpressId": 15042,
+    "wallGlobalId": "2XPyKWY018sA1ygZKgQPtU",
+    "wallTriangles": 12,
+    "texture": {
+      "width": 8,
+      "height": 8,
+      "rgbaFnv1a": "39bd94b5"
+    }
+  },
+  "relay": {
+    "wsUrl": "ws://127.0.0.1:60880",
+    "auth": "room-token (random COLLAB_TOKEN_SECRET)",
+    "dataDir": "temp, deleted on stop"
+  },
+  "viewer": {
+    "url": "http://127.0.0.1:60886",
+    "dist": "apps/viewer/dist (this checkout, private vite preview)"
+  },
+  "owner": {
+    "modelId": "228e96be-f54a-41a2-a5f0-b75431dbd8ab",
+    "meshesLoaded": 317,
+    "firstStatus": "Connecting to the room…",
+    "seedPhases": [
+      {
+        "phase": "none",
+        "ms": 520
+      },
+      {
+        "phase": "syncing",
+        "ms": 64
+      },
+      {
+        "phase": "structure",
+        "ms": 34
+      },
+      {
+        "phase": "geometry",
+        "ms": 333
+      },
+      {
+        "phase": "confirming",
+        "ms": 10
+      },
+      {
+        "phase": "ready",
+        "ms": null
+      }
+    ],
+    "copyEnabledAfterStatusMs": 834,
+    "roomCounts": {
+      "entities": 184,
+      "geometryRecords": 313,
+      "texturedRecords": 1,
+      "geometryRefs": 313,
+      "modelSlots": 1
+    },
+    "textured": {
+      "triangles": 12,
+      "vertices": 24,
+      "positions": "37de7dad",
+      "uvs": "4745cfcd",
+      "texture": {
+        "width": 8,
+        "height": 8,
+        "rgbaFnv1a": "39bd94b5"
+      }
+    },
+    "link": "http://127.0.0.1:60886/?room=39462317f6e6&t=<redacted>",
+    "contextClosedAt": "2026-09-12T07:56:00.561Z",
+    "log": [
+      "http 404: http://127.0.0.1:60886/_vercel/insights/script.js",
+      "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "log: [collab-ws] close code=1005 reason=\"\" clean=true"
+    ]
+  },
+  "guest": {
+    "counts": {
+      "entities": 184,
+      "geometryRecords": 313,
+      "texturedRecords": 1,
+      "geometryRefs": 313,
+      "modelSlots": 1
+    },
+    "model": {
+      "meshes": 313,
+      "entities": 184,
+      "idOffset": 0,
+      "texturedExpressId": 8
+    },
+    "textured": [
+      {
+        "triangles": 12,
+        "vertices": 24,
+        "positions": "37de7dad",
+        "uvs": "4745cfcd",
+        "texture": {
+          "width": 8,
+          "height": 8,
+          "rgbaFnv1a": "39bd94b5"
+        }
+      }
+    ],
+    "notice": null,
+    "seedPhase": "none",
+    "transport": {
+      "status": "connected",
+      "provider": "indexeddb+websocket"
+    },
+    "export": {
+      "file": "AC20-FZK-Haus.textured_export.ifcx",
+      "nodes": 111,
+      "summary": "Exported IFCX: 111 nodes, 90 meshes, 47 properties"
+    },
+    "log": [
+      "http 404: http://127.0.0.1:60886/_vercel/insights/script.js",
+      "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ]
+  },
+  "rejoin": {
+    "counts": {
+      "entities": 184,
+      "geometryRecords": 313,
+      "texturedRecords": 1,
+      "geometryRefs": 313,
+      "modelSlots": 1
+    },
+    "model": {
+      "meshes": 313,
+      "entities": 184,
+      "idOffset": 0,
+      "texturedExpressId": 8
+    },
+    "textured": [
+      {
+        "triangles": 12,
+        "vertices": 24,
+        "positions": "37de7dad",
+        "uvs": "4745cfcd",
+        "texture": {
+          "width": 8,
+          "height": 8,
+          "rgbaFnv1a": "39bd94b5"
+        }
+      }
+    ],
+    "notice": null,
+    "seedPhase": "none",
+    "transport": {
+      "status": "connected",
+      "provider": "indexeddb+websocket"
+    },
+    "log": [
+      "http 404: http://127.0.0.1:60886/_vercel/insights/script.js",
+      "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ]
+  },
+  "control": {
+    "linkMoment": {
+      "phase": "geometry",
+      "status": "connected",
+      "progress": {
+        "uploaded": 50,
+        "total": 317,
+        "modelIndex": 0,
+        "modelCount": 1
+      }
+    },
+    "leaveMoment": {
+      "phase": "geometry",
+      "progress": {
+        "uploaded": 50,
+        "total": 317,
+        "modelIndex": 0,
+        "modelCount": 1
+      }
+    },
+    "abandonedGuest": {
+      "counts": {
+        "entities": 184,
+        "geometryRecords": 0,
+        "texturedRecords": 0,
+        "geometryRefs": 0,
+        "modelSlots": 1
+      },
+      "model": {
+        "meshes": 0,
+        "entities": 184,
+        "idOffset": 0,
+        "texturedExpressId": null
+      },
+      "textured": [],
+      "notice": null,
+      "seedPhase": "none",
+      "transport": {
+        "status": "connected",
+        "provider": "indexeddb+websocket"
+      },
+      "hydratedAtFirstCheck": 0,
+      "log": [
+        "http 404: http://127.0.0.1:60886/_vercel/insights/script.js",
+        "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    "readyCounts": {
+      "entities": 184,
+      "geometryRecords": 313,
+      "texturedRecords": 1,
+      "geometryRefs": 313,
+      "modelSlots": 1
+    }
+  },
+  "controlDelayedRelay": {
+    "holdMs": 2500,
+    "heldFrames": 128,
+    "sockets": 6,
+    "seedPhases": [
+      {
+        "phase": "none",
+        "ms": 203
+      },
+      {
+        "phase": "syncing",
+        "ms": 2580
+      },
+      {
+        "phase": "structure",
+        "ms": 44
+      },
+      {
+        "phase": "geometry",
+        "ms": 324
+      },
+      {
+        "phase": "confirming",
+        "ms": 2834
+      },
+      {
+        "phase": "ready",
+        "ms": null
+      }
+    ],
+    "roomCounts": {
+      "entities": 184,
+      "geometryRecords": 313,
+      "texturedRecords": 1,
+      "geometryRefs": 313,
+      "modelSlots": 1
+    },
+    "guest": {
+      "counts": {
+        "entities": 184,
+        "geometryRecords": 313,
+        "texturedRecords": 1,
+        "geometryRefs": 313,
+        "modelSlots": 1
+      },
+      "model": {
+        "meshes": 313,
+        "entities": 184,
+        "idOffset": 0,
+        "texturedExpressId": 8
+      },
+      "textured": [
+        {
+          "triangles": 12,
+          "vertices": 24,
+          "positions": "37de7dad",
+          "uvs": "4745cfcd",
+          "texture": {
+            "width": 8,
+            "height": 8,
+            "rgbaFnv1a": "39bd94b5"
+          }
+        }
+      ],
+      "notice": null,
+      "seedPhase": "none",
+      "transport": {
+        "status": "connected",
+        "provider": "indexeddb+websocket"
+      }
+    }
+  },
+  "relayLog": [
+    "[collab-server] listening at ws://127.0.0.1:60880 (data: C:\\Users\\LOUIST~1\\AppData\\Local\\Temp\\ifc-lite-relay-ZVxISx, auth: room-token, registry: off, blob-gc: every 360m)",
+    "[blob-gc] swept 0 room log(s): deleted 0 blob(s), 0 stale upload(s), kept 0"
+  ],
+  "finishedAt": "2026-09-12T07:56:28.708Z"
+}

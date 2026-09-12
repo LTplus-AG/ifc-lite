@@ -158,7 +158,7 @@ describe('collabSlice — collabSeedPhase (#4446)', () => {
 
       assert.deepEqual(
         trace.map((t) => t.phase),
-        ['syncing', 'structure', 'geometry', 'ready', 'none'],
+        ['syncing', 'structure', 'geometry', 'confirming', 'ready', 'none'],
         'phases in order; the trailing none is stopCollab',
       );
       for (const t of trace.filter((t) => t.phase !== 'none')) {
@@ -212,7 +212,7 @@ describe('collabSlice — collabSeedPhase (#4446)', () => {
       await within(pending, 'startCollab to complete');
       assert.equal(s.get().collabSeedPhase, 'failed');
       assert.match(s.get().collabSeedFailure ?? '', /no 3D geometry|source image is unavailable/);
-      assert.deepEqual(trace.map((t) => t.phase), ['syncing', 'structure', 'geometry', 'failed']);
+      assert.deepEqual(trace.map((t) => t.phase), ['syncing', 'structure', 'geometry', 'confirming', 'failed'], 'even a failed seed confirms what it did write before settling');
       assert.equal(session()?.doc.getMap('geometry').size, 0);
     } finally {
       s.get().stopCollab();

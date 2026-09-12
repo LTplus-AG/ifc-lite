@@ -107,7 +107,7 @@ describe('room seed + reconstruct: two copies of one file (#4444)', () => {
     blobStore = new collab.MemoryBlobStore();
     const { outcome, phases } = await shareTwoCopies(doc, blobStore);
     assert.deepEqual(outcome, { phase: 'ready', failure: null });
-    assert.deepEqual(phases, ['structure', 'geometry', 'structure', 'geometry'], 'one structure → geometry pass per slot');
+    assert.deepEqual(phases, ['structure', 'geometry', 'structure', 'geometry', 'confirming'], 'one structure → geometry pass per slot, then one relay confirmation');
     assert.equal(readGeometrySeedMarker(doc)?.seeded, 2, 'both walls landed, and the marker says so');
   });
 

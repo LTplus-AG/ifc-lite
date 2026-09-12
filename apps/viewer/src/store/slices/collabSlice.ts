@@ -58,6 +58,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { seedGeometryToRoom, type CollabGeomApi } from '@/lib/collab/geometry-sync';
 import { runOwnerSeed, type CollabSeedInput } from '@/lib/collab/owner-seed';
+import { buildOwnerSeedDeps } from '@/lib/collab/owner-seed-deps';
 import type { CollabSeedPhase, CollabSeedProgress } from '@/lib/collab/seed-phase';
 import { createSharedBlobStore } from '@/lib/collab/blob-store';
 import {
@@ -725,34 +726,26 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       const current = () => get().collabRoomId === roomId;
       // Loaded lazily so the collab feature stays code-split.
       const { parseIfcxViewerModel } = await import('@/hooks/ingest/viewerModelIngest');
-      const outcome = await runOwnerSeed({
-        session,
-        seed,
-        collab: collabMod,
-        geomApi,
-        makeBlobStore: () => createSharedBlobStore(collabMod, collabServerUrl(), token),
-        parseIfcx: (buffer) => parseIfcxViewerModel(buffer, undefined, { allowEmptyGeometry: true }),
-        roomModels,
-        // Record the placement each entity's blob is baked at, so every
-        // client (incl. late joiners) can render `blob + (current
-        // usd::xformop − baseline)`. The blob is baked at whatever
-        // placement the doc holds now: the seeded `usd::xformop` for IFCX
-        // models, identity for legacy STEP (geometry baked world-absolute).
-        stampBaseline: (path) => {
-          if (path && placementApi) {
-            const currentPlacement = placementApi.getEntityPlacement(session.doc, path);
-            placementApi.setPlacementBaseline(session.doc, path, currentPlacement ?? { location: [0, 0, 0] });
-          }
-          return path;
-        },
-        isCurrent: current,
-        onPhase: (phase) => {
-          if (current()) set({ collabSeedPhase: phase });
-        },
-        onProgress: (progress) => {
-          if (current()) set({ collabSeedProgress: progress });
-        },
-      });
+      const outcome = await runOwnerSeed(
+        buildOwnerSeedDeps({
+          session,
+          seed,
+          collab: collabMod,
+          geomApi,
+          serverUrl: collabServerUrl(),
+          roomId,
+          token,
+          roomModels,
+          parseIfcx: (buffer) => parseIfcxViewerModel(buffer, undefined, { allowEmptyGeometry: true }),
+          isCurrent: current,
+          onPhase: (phase) => {
+            if (current()) set({ collabSeedPhase: phase });
+          },
+          onProgress: (progress) => {
+            if (current()) set({ collabSeedProgress: progress });
+          },
+        }),
+      );
       if (outcome && current()) {
         set({ collabSeedPhase: outcome.phase, collabSeedFailure: outcome.failure });
       }

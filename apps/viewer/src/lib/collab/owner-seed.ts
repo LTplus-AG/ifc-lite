@@ -27,7 +27,12 @@
  * Reports its progress through `onPhase` / `onProgress` and returns the phase
  * the seed settled in (#4446): the slice mirrors those into `collabSeedPhase`
  * so the Share dialog can hold the invite back until the room actually holds
- * every model. Every store write stays in the slice; this module only computes.
+ * every model. "Holds" means the RELAY holds it: after the last local write
+ * the seed asks `confirmRelay` whether the server's state vector covers the
+ * owner's (`'confirming'`), because a local transaction only proves the bytes
+ * are queued in the browser's socket — a tab closed right then loses them and
+ * the next joiner reconstructs an empty room. Every store write stays in the
+ * slice; this module only computes.
  *
  * The collab runtime is injected (never imported at module scope) so the
  * feature stays code-split — see the import note in collabSlice.ts.
@@ -116,9 +121,20 @@ export interface OwnerSeedDeps {
   stampBaseline: (path: string | null) => string | null;
   /** False once this join was abandoned (a newer start/stop ran); stops all writes. */
   isCurrent: () => boolean;
-  onPhase: (phase: 'structure' | 'geometry') => void;
+  /**
+   * Called after the seed's last local write. Resolve `true` once the relay
+   * reports holding everything the session's doc holds (its state vector at
+   * call time), `false` when that could not be confirmed in time. Local-only
+   * sessions have no relay and resolve `true`.
+   */
+  confirmRelay: () => Promise<boolean>;
+  onPhase: (phase: 'structure' | 'geometry' | 'confirming') => void;
   onProgress: (progress: CollabSeedProgress) => void;
 }
+
+/** Owner-facing message when the relay never confirmed the seed. */
+export const RELAY_UNCONFIRMED_MESSAGE =
+  'The room server has not confirmed receiving this model. Keep this tab open and check the connection before sharing the link.';
 
 export interface OwnerSeedResult {
   phase: 'ready' | 'partial' | 'failed';
@@ -307,7 +323,8 @@ export async function runOwnerSeed(deps: OwnerSeedDeps): Promise<OwnerSeedResult
       if (report) reports.push(report);
     }
     // Every slot already held its model (a re-join of a seeded room): nothing
-    // was added, and the marker the original seed stamped stands.
+    // was added, the marker the original seed stamped stands, and there is
+    // nothing of ours for the relay to confirm.
     if (!wroteAny) return { phase: 'ready', failure: null };
 
     // Stamp intent vs outcome into the room. Without it a joiner sees the
@@ -324,6 +341,18 @@ export async function runOwnerSeed(deps: OwnerSeedDeps): Promise<OwnerSeedResult
     if (failure) {
       // eslint-disable-next-line no-console
       console.error('[collab] geometry seed incomplete:', failure, report);
+    }
+    // The marker was the last local write: once the relay's state vector
+    // covers ours, everything above is on the server too.
+    deps.onPhase('confirming');
+    const confirmed = await deps.confirmRelay();
+    if (!deps.isCurrent()) return null;
+    if (!confirmed) {
+      // eslint-disable-next-line no-console
+      console.error('[collab] the relay did not confirm the seed');
+      // A seed that was already incomplete keeps its own, more specific
+      // reason next to the delivery one: both are true for the owner.
+      return { phase: 'failed', failure: failure ? `${RELAY_UNCONFIRMED_MESSAGE} ${failure}` : RELAY_UNCONFIRMED_MESSAGE };
     }
     return { phase: seedPhaseFromOutcome(classifySeed(report)), failure };
   } catch (err) {

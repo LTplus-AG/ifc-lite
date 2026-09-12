@@ -98,6 +98,45 @@ function crateDefaultFeatures(dir) {
   }
 }
 
+function withoutRustComments(source) {
+  let result = '', index = 0, blockDepth = 0;
+  while (index < source.length) {
+    if (blockDepth > 0) {
+      if (source.startsWith('/*', index)) { blockDepth += 1; result += '  '; index += 2; continue; }
+      if (source.startsWith('*/', index)) { blockDepth -= 1; result += '  '; index += 2; continue; }
+      result += source[index] === '\n' ? '\n' : ' ';
+      index += 1;
+      continue;
+    }
+    if (source.startsWith('//', index)) {
+      const end = source.indexOf('\n', index);
+      if (end < 0) return result + ' '.repeat(source.length - index);
+      result += ' '.repeat(end - index) + '\n';
+      index = end + 1;
+      continue;
+    }
+    if (source.startsWith('/*', index)) { blockDepth = 1; result += '  '; index += 2; continue; }
+    const raw = /^r(#+)?"/.exec(source.slice(index));
+    if (raw) {
+      const hashes = raw[1] ?? '', terminator = `"${hashes}`;
+      const end = source.indexOf(terminator, index + raw[0].length);
+      const length = end < 0 ? source.length - index : end + terminator.length - index;
+      result += source.slice(index, index + length); index += length; continue;
+    }
+    if (source[index] === '"') {
+      const start = index++;
+      while (index < source.length) {
+        if (source[index] === '\\') { index += 2; continue; }
+        if (source[index++] === '"') break;
+      }
+      result += source.slice(start, index);
+      continue;
+    }
+    result += source[index++];
+  }
+  return result;
+}
+
 function rustModuleOwner(crateDir, abs) {
   const root = join(crateDir, 'src', 'lib.rs');
   if (!existsSync(root)) return null;
@@ -108,8 +147,8 @@ function rustModuleOwner(crateDir, abs) {
     const key = `${resolve(parent)}\0${modules.join('::')}`;
     if (visited.has(key) || !existsSync(parent)) continue;
     visited.add(key);
-    const text = readFileSync(parent, 'utf8');
-    const declarations = /((?:\s*(?:#\s*\[[\s\S]*?\]|\/\/[^\r\n]*(?:\r?\n|$)|\/\*[\s\S]*?\*\/)\s*)*)(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
+    const text = withoutRustComments(readFileSync(parent, 'utf8'));
+    const declarations = /((?:\s*#\s*\[[\s\S]*?\]\s*)*)(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
     let match;
     while ((match = declarations.exec(text)) !== null) {
       const ordinaryBase = /(?:^|[\\/])(?:lib|mod)\.rs$/.test(parent)

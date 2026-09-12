@@ -266,6 +266,35 @@ runs the owner → recipient → rejoin sequence on a synthetic two-entity model
 handful of doc updates — the relay's per-connection write budget dropped a
 per-entity burst and lost the second copy's geometry before that.
 
+### Relay acceptance for the share invite (#4446)
+
+The invite must not appear before the room — on the relay — holds the model.
+`pnpm test:e2e:collab` runs `tests/e2e/collab-share-seed.e2e.spec.ts`
+(Playwright project `viewer-collab-e2e`, opt-in, not in CI's default lanes):
+
+```sh
+pnpm fixtures                                  # AC20-FZK-Haus.ifc
+pnpm turbo build --filter=@ifc-lite/viewer     # the ordinary viewer build — no VITE_COLLAB_* needed
+pnpm --filter @ifc-lite/collab-server build
+pnpm test:e2e:collab
+```
+
+The spec spawns its own signed relay (random `COLLAB_TOKEN_SECRET`, temp data
+dir) and its own `vite preview` of `apps/viewer/dist`, both on ephemeral
+ports, and enables collab per browser context through the `localStorage`
+overrides (`ifc-lite:collab:enabled`, `ifc-lite:collab:server-url`). It
+builds a textured AC20 IFCZIP on the fly (`tests/e2e/collab/textured-ac20.ts`,
+one wall re-bodied as a textured `IfcTriangulatedFaceSet`), shares it, closes
+the owner the instant Copy is enabled, and checks a fresh guest, a rejoin and
+the guest's export against the owner's room counts and the textured wall's
+byte-exact pixels/UVs. Two controls show the gate at work: slowed blob uploads
+(Copy withheld, "Leave (abandons upload)", an abandoned room has no geometry)
+and the owner's websocket frames held back (Copy withheld in `confirming`
+until the relay's state vector covers the owner's). Numbers and screenshots of
+one run: `docs/architecture/evidence/share-seed-ready/`. The spec skips, with a
+pointer, when the fixture, the wasm runtime, the viewer build or the relay
+build is missing.
+
 ### The 3D variant
 
 ```sh

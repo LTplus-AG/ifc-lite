@@ -19,8 +19,9 @@ pnpm --filter @ifc-lite/viewer build
 APPEARANCE_E2E=1 APPEARANCE_E2E_OUT=/tmp/face-mask-ui pnpm exec playwright test --project=viewer-appearance-e2e
 ```
 
-One run on this host (Windows 11, NVIDIA GPU, Chrome stable, headless) took
-13.7 s after the model load and passed every assertion. The journey on
+The recorded run on this host (Windows 11, NVIDIA GPU, Chrome stable,
+headless, the branch's final build) took 14.4 s including the model load and
+passed every assertion; earlier iterations of the same spec passed as well. The journey on
 `IfcMember` #35169 (one of 42 members sharing a type; sibling #35304 compared
 corner-for-corner at every step), recorded in
 [`browser-journey.json`](browser-journey.json):

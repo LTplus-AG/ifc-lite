@@ -177,9 +177,10 @@ restore the single original; Apply commits both parts; history records the
 partition and joins the parts again on Undo through the inverted record. The
 partition names the whole owner, so a masked product whose original renders in
 more than one resident fragment is refused explicitly (`Face selection needs
-the complete evaluated surface ... in one piece`); evaluated conversions have
-one source surface, so this only affects streaming fragments above the
-renderer's fragment size. Picking either part selects the product; a portable
+the evaluated surface ... in one piece, but it renders in N pieces. Clear its
+face selection to texture the whole surface.`); evaluated conversions have one
+source surface, so this only affects streaming fragments above the renderer's
+fragment size. Picking either part selects the product; a portable
 IFCZIP export carries the image; reopening the export tessellates the product
 into its two face sets under one selectable product. Real-browser and
 independent-reader evidence, including a masked opening-bearing slab, is in

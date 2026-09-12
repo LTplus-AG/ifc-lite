@@ -112,6 +112,7 @@ export function bindAppearancePreview(
     if (!originals?.length) throw new Error(`Geometry for IFC object #${productId} is not available. Reload the model and try again.`);
     const represented = new Set<number>();
     const modelIndex = originals[0].modelIndex ?? 0;
+    const pieces = originals.length;
     const geometryItemRemaps: NonNullable<AppearanceChange['geometryItemRemaps']>[number][] = [];
     let partition: AppearancePartition | undefined;
     const parts = originals.flatMap(mesh => {
@@ -126,7 +127,7 @@ export function bindAppearancePreview(
       const conversion = conversions.get(item.geometryItemId);
       if (conversion && maskedSplit(conversion)) {
         // The partition names the whole owner, so a masked owner must be one part.
-        if (originals!.length !== 1) throw new Error(`Face selection needs the complete evaluated surface of IFC object #${productId} in one piece. Reload the model and try again.`);
+        if (pieces !== 1) throw new Error(`Face selection needs the evaluated surface of IFC object #${productId} in one piece, but it renders in ${pieces} pieces. Clear its face selection to texture the whole surface.`);
         const masked = bindMaskedConversionParts({ original: mesh, conversion, item, image, expandCorners, textureId: textureIdentity(image.bitmap),
           texturedItemId: state.toGlobalId(modelId, item.geometryItemId), retainedItemId: state.toGlobalId(modelId, conversion.retainedGeometryItemId!) });
         partition = masked.partition;

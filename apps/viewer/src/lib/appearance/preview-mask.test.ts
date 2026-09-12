@@ -64,11 +64,11 @@ test('the masked binder refuses inconsistent or fragmented provenance explicitly
     const part = new Uint32Array(sourceIndices.slice(from, from + 3));
     return { ...original, indices: part, appearanceSource: { kind: 'canonical-item', indices: part, sourceIndices: indices, cornerIndices: Uint32Array.from([from, from + 1, from + 2]) } };
   };
-  assert.throws(() => bind(plan({ maskedTriangles: [0], retainedGeometryItemId: 102 }, maskedItem), [half(0), half(3)]), /in one piece/);
+  assert.throws(() => bind(plan({ maskedTriangles: [0], retainedGeometryItemId: 102 }, maskedItem), [half(0), half(3)]), /in one piece, but it renders in 2 pieces/);
   assert.throws(() => bind(plan({ maskedTriangles: [0], retainedGeometryItemId: 102 }, maskedItem), [half(0)]), /in one piece/);
   const renumbered = { ...original, indices: new Uint32Array([0, 2, 3, 0, 1, 2]) };
   renumbered.appearanceSource = { kind: 'canonical-item', indices: renumbered.indices, sourceIndices: renumbered.indices };
-  assert.throws(() => bind(plan({ maskedTriangles: [0], retainedGeometryItemId: 102 }, maskedItem), [renumbered]), /in one piece/);
+  assert.throws(() => bind(plan({ maskedTriangles: [0], retainedGeometryItemId: 102 }, maskedItem), [renumbered]), /geometry of IFC object #25 changed/);
   // The same plan without a mask still binds as one textured part.
   const [whole] = bind(plan({}));
   assert.equal(whole.parts.length, 1); assert.equal(whole.partition, undefined);

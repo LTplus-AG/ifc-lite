@@ -51,10 +51,14 @@ export function bindMaskedConversionParts(options: {
   const { original, conversion, item } = options;
   const split = maskedSplit(conversion);
   const source = original.appearanceSource;
-  if (!split || !source || source.kind !== 'canonical-item' || source.indices !== original.indices || source.cornerIndices
+  if (!split) throw new Error('Invalid native occurrence conversion provenance.');
+  if (source?.cornerIndices) {
+    throw new Error(`Face selection needs the evaluated surface of IFC object #${conversion.productId} in one piece, but it renders in several pieces. Clear its face selection to texture the whole surface.`);
+  }
+  if (!source || source.kind !== 'canonical-item' || source.indices !== original.indices
     || original.indices.length !== conversion.sourceIndices.length
     || conversion.sourceIndices.some((index, corner) => index !== original.indices[corner])) {
-    throw new Error(`Face selection needs the complete evaluated surface of IFC object #${conversion.productId} in one piece. Reload the model and try again.`);
+    throw new Error(`The geometry of IFC object #${conversion.productId} changed. Reload it before applying appearance.`);
   }
   if (item.sourceIndices.length !== split.masked.length * 3) throw new Error('Invalid native occurrence conversion provenance.');
   const sub = (ordinals: readonly number[], geometryItemId: number): MeshData => {

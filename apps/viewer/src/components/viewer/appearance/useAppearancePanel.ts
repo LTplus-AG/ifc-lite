@@ -163,10 +163,9 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         if (!renderer) throw new Error('The renderer is not ready to preview appearance.');
         const { source, schema, nextExpressId, bytes } = currentSnapshot;
         const assetId = selectedSource?.assetId ?? sourceId;
-        const page = selectedSource?.pdf ? await preparePdfPagePreview({ snapshot: currentSnapshot,
-          productIds: currentScope.productIds, source: selectedSource, settings, planner: worker, owner, signal: controller.signal,
-          faceMasks: faceMasks.requests(currentScope.productIds) }) : undefined;
         const masks = faceMasks.requests(currentScope.productIds);
+        const page = selectedSource?.pdf ? await preparePdfPagePreview({ snapshot: currentSnapshot,
+          productIds: currentScope.productIds, source: selectedSource, settings, planner: worker, owner, signal: controller.signal, faceMasks: masks }) : undefined;
         const firstPageImage = page?.itemImages.values().next().value;
         const imageUri = page ? firstPageImage?.imageUri ?? '' : modelAppearanceAssets.getAuthoredUri(modelId, assetId);
         if (!page) appearanceAssets.retain(assetId, owner);

@@ -74,7 +74,8 @@ export function auditRoot(root) {
     }
     for (const stepName of REQUIRED_STEPS.get(name) ?? []) {
       const step = Object.values(jobs).map((job) => namedStep(job, stepName)).find(Boolean);
-      if (!step || typeof step.run !== 'string' || !/\bexit\s+1\b/.test(step.run)) {
+      if (!step || typeof step.run !== 'string' || !/\bexit\s+1\b/.test(step.run)
+        || step.if !== undefined || step['continue-on-error'] === true) {
         failures.push(`${displayPath(root, path)}: missing active fail-closed step: ${stepName}`);
       }
     }
@@ -138,20 +139,25 @@ export function auditRoot(root) {
         }
       }
     }
-    if (name === 'ci-reporting-selfcheck.yml') {
-      const cases = [
-        ['failure-probe', 'report-failure', 'failure'],
-        ['cancellation-probe', 'report-cancelled', 'cancelled'],
-        ['deadline-probe', 'report-deadline', 'deadline-exceeded'],
-      ];
-      for (const [probeId, reportId, result] of cases) {
-        const reporter = jobs[reportId];
-        if (!isRecord(jobs[probeId]) || !isRecord(reporter) || !needs(reporter, probeId)
-          || !expression(reporter.if).includes('always()')
-          || reporter.uses !== './.github/workflows/report-scheduled-failure.yml'
-          || !isRecord(reporter.with) || !expression(reporter.with.result).startsWith(result)) {
-          failures.push(`${displayPath(root, path)}: ${result} selfcheck is not independently routed through the reporter`);
-        }
+    if (name === 'ci-reporting-outcome-probe.yml') {
+      const reporter = jobs.report;
+      if (!isRecord(jobs.subject) || !isRecord(reporter) || !needs(reporter, 'subject')
+        || !expression(reporter.if).includes('always()')
+        || reporter.uses !== './.github/workflows/report-scheduled-failure.yml'
+        || !isRecord(reporter.with)
+        || !expression(reporter.with.result).includes('needs.subject.result')
+        || !expression(reporter.with.result).includes('needs.subject.outputs.evidence')) {
+        failures.push(`${displayPath(root, path)}: probe does not route the actual dependency result and absent output through the reporter`);
+      }
+    }
+    if (name === 'ci-reporting-cancellation-observer.yml') {
+      const reporter = jobs['report-cancelled'];
+      if (!isRecord(reporter)
+        || !expression(reporter.if).includes("workflow_run.conclusion == 'cancelled'")
+        || reporter.uses !== './.github/workflows/report-scheduled-failure.yml'
+        || !isRecord(reporter.with)
+        || expression(reporter.with.result) !== '${{ github.event.workflow_run.conclusion }}') {
+        failures.push(`${displayPath(root, path)}: cancellation observer does not route the actual completed workflow conclusion`);
       }
     }
   }

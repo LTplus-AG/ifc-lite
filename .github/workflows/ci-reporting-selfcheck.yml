@@ -8,6 +8,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/ci-reporting-selfcheck.yml'
+      - '.github/workflows/ci-reporting-outcome-probe.yml'
+      - '.github/workflows/ci-reporting-cancellation-observer.yml'
       - '.github/workflows/report-scheduled-failure.yml'
       - '.github/workflows/determinism.yml'
       - '.github/workflows/export-schema-conformance.yml'
@@ -24,107 +26,22 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
-  failure-probe:
+  audit:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    outputs:
-      assertion: ${{ steps.assertion.outputs.rc }}
     steps:
-      - name: Force an assertion failure
-        id: assertion
-        continue-on-error: true
-        run: |
-          set +e
-          bash -c 'exit 23'
-          rc=$?
-          echo "rc=$rc" >> "$GITHUB_OUTPUT"
-          exit "$rc"
-      - name: Prove the assertion failure remained observable
-        env:
-          OUTCOME: ${{ steps.assertion.outcome }}
-          RC: ${{ steps.assertion.outputs.rc }}
-        run: test "$OUTCOME" = failure && test "$RC" = 23
-
-  cancellation-probe:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      cancelled: ${{ steps.cancelled.outputs.rc }}
-    steps:
-      - name: Force a cancellation signal
-        id: cancelled
-        continue-on-error: true
-        run: |
-          set +e
-          bash -c 'kill -TERM $$'
-          rc=$?
-          echo "rc=$rc" >> "$GITHUB_OUTPUT"
-          exit "$rc"
-      - name: Prove the cancellation signal remained observable
-        env:
-          OUTCOME: ${{ steps.cancelled.outcome }}
-          RC: ${{ steps.cancelled.outputs.rc }}
-        run: test "$OUTCOME" = failure && test "$RC" = 143
-
-  deadline-probe:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      deadline: ${{ steps.deadline.outputs.rc }}
-    steps:
-      - name: Force an in-step deadline
-        id: deadline
-        continue-on-error: true
-        run: |
-          set +e
-          timeout --signal=TERM --kill-after=1s 1s bash -c 'sleep 30'
-          rc=$?
-          echo "rc=$rc" >> "$GITHUB_OUTPUT"
-          exit "$rc"
-      - name: Prove the deadline remained observable
-        env:
-          OUTCOME: ${{ steps.deadline.outcome }}
-          RC: ${{ steps.deadline.outputs.rc }}
-        run: test "$OUTCOME" = failure && test "$RC" = 124
-
-  report-failure:
-    needs: failure-probe
-    if: always()
-    uses: ./.github/workflows/report-scheduled-failure.yml
-    with:
-      workflow_name: CI reporting selfcheck
-      jobs: assertion probe
-      result: failure rc=${{ needs.failure-probe.outputs.assertion }}
-      dry_run: true
-    permissions:
-      contents: read
-      issues: write
-
-  report-cancelled:
-    needs: cancellation-probe
-    if: always()
-    uses: ./.github/workflows/report-scheduled-failure.yml
-    with:
-      workflow_name: CI reporting selfcheck
-      jobs: cancelled dependency probe
-      result: cancelled rc=${{ needs.cancellation-probe.outputs.cancelled }}
-      dry_run: true
-    permissions:
-      contents: read
-      issues: write
-
-  report-deadline:
-    needs: deadline-probe
-    if: always()
-    uses: ./.github/workflows/report-scheduled-failure.yml
-    with:
-      workflow_name: CI reporting selfcheck
-      jobs: deadline probe
-      result: deadline-exceeded rc=${{ needs.deadline-probe.outputs.deadline }}
-      dry_run: true
-    permissions:
-      contents: read
-      issues: write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@78d1e4777b8bc5e9135e04b5c2f55d5eb3769567 # v4.2.0
+      - uses: actions/setup-node@6044e13b5dc13081f3f5c8910f7717d43be5c17e # v6.3.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Audit reporting topology
+        run: node scripts/check-workflow-report-paths.mjs
+      - name: Exercise reporting audit mutations
+        run: node --test scripts/check-workflow-report-paths.test.mjs scripts/report-scheduled-failure.test.mjs

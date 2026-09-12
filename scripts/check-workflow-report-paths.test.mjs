@@ -72,41 +72,52 @@ test('comments cannot satisfy active evidence steps or reporters', (context) => 
   assert.ok(auditRoot(root).some((failure) => failure.includes('missing active scheduled failure reporter')));
 });
 
-test('the runtime reporter audit requires three independent outcome routes', (context) => {
+test('a named fail-closed step cannot be disabled or allowed to fail', (context) => {
+  const workflow = (guard) => `jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Run canary bundles
+        ${guard}
+        run: exit 1
+`;
+  const root = fixture({ 'sdk-canary.yml': workflow('if: false') });
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
+  writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow('continue-on-error: true'));
+  assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
+  writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow(''));
+  assert.deepEqual(auditRoot(root), []);
+});
+
+test('runtime reporters consume actual dependency and workflow conclusions', (context) => {
   const root = fixture({
-    'ci-reporting-selfcheck.yml': `jobs:
-  failure-probe:
+    'ci-reporting-outcome-probe.yml': `jobs:
+  subject:
     runs-on: ubuntu-latest
     timeout-minutes: 1
-  cancellation-probe:
-    runs-on: ubuntu-latest
-    timeout-minutes: 1
-  deadline-probe:
-    runs-on: ubuntu-latest
-    timeout-minutes: 1
-  report-failure:
-    needs: failure-probe
+  report:
+    needs: subject
     if: always()
     uses: ./.github/workflows/report-scheduled-failure.yml
     with:
-      result: failure
+      result: \${{ needs.subject.result }} output=\${{ needs.subject.outputs.evidence }}
+`,
+    'ci-reporting-cancellation-observer.yml': `jobs:
   report-cancelled:
-    needs: cancellation-probe
-    if: always()
+    if: github.event.workflow_run.conclusion == 'cancelled'
     uses: ./.github/workflows/report-scheduled-failure.yml
     with:
-      result: cancelled
-  report-deadline:
-    needs: deadline-probe
-    if: always()
-    uses: ./.github/workflows/report-scheduled-failure.yml
-    with:
-      result: deadline-exceeded
+      result: \${{ github.event.workflow_run.conclusion }}
 `,
   });
   context.after(() => rmSync(root, { recursive: true, force: true }));
   assert.deepEqual(auditRoot(root), []);
-  const path = join(root, '.github', 'workflows', 'ci-reporting-selfcheck.yml');
-  writeFileSync(path, readFileSync(path, 'utf8').replace('needs: cancellation-probe', 'needs: failure-probe'));
-  assert.ok(auditRoot(root).some((failure) => failure.includes('cancelled selfcheck')));
+  const probe = join(root, '.github', 'workflows', 'ci-reporting-outcome-probe.yml');
+  writeFileSync(probe, readFileSync(probe, 'utf8').replace('needs.subject.result', "'failure'"));
+  assert.ok(auditRoot(root).some((failure) => failure.includes('actual dependency result')));
+  const observer = join(root, '.github', 'workflows', 'ci-reporting-cancellation-observer.yml');
+  writeFileSync(observer, readFileSync(observer, 'utf8').replace('${{ github.event.workflow_run.conclusion }}', 'cancelled'));
+  assert.ok(auditRoot(root).some((failure) => failure.includes('actual completed workflow conclusion')));
 });

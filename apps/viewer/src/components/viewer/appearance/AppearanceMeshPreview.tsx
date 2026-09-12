@@ -10,15 +10,23 @@ import { capturedScreenRegion } from './capture-screen-region';
 
 const NO_PARTS: readonly MeshData[] = [];
 const NO_MARKERS: { id: string; point: { x: number; y: number; z: number }; check?: boolean }[] = [];
+/** How a region gesture was made, so a face-selection host can add, remove or toggle (#4404). */
+export interface RegionGesture { kind: 'marquee' | 'click'; subtract: boolean }
+export interface FaceSelectionMode {
+  /** Triangles outside the region stay visible in this colour instead of being hidden. */
+  unselectedColor: readonly [number, number, number, number];
+}
 
 /** A local renderer borrows the retained image. It never installs a global
  * renderer, changes the main camera, or publishes a model/IFC owner. */
-export function AppearanceMeshPreview({ mesh, assetId, additionalMeshes = NO_PARTS, initialPlane, triangles, disabled, onRegion, onReady, onError, onLandmark, markers = NO_MARKERS, regionControls = true, instruction, canvasLabel }: {
+export function AppearanceMeshPreview({ mesh, assetId, additionalMeshes = NO_PARTS, initialPlane, triangles, disabled, onRegion, onReady, onError, onLandmark, markers = NO_MARKERS, regionControls = true, instruction, canvasLabel, faceSelection }: {
   mesh: MeshData; assetId?: string; additionalMeshes?: readonly MeshData[]; triangles: readonly number[]; disabled: boolean;
-  onRegion(ids: number[]): void; onReady(ready: boolean): void; onError(message: string): void;
+  onRegion(ids: number[], gesture: RegionGesture): void; onReady(ready: boolean): void; onError(message: string): void;
   onLandmark?(hit: Intersection): void; markers?: { id: string; point: { x: number; y: number; z: number }; check?: boolean }[];
   initialPlane?: { normal: readonly [number, number, number]; up: readonly [number, number, number] };
   regionControls?: boolean; instruction?: string; canvasLabel?: string;
+  /** Face-selection mode: the whole surface stays visible, select mode is sticky, a click toggles one triangle. */
+  faceSelection?: FaceSelectionMode;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null), renderer = useRef<Renderer | null>(null);
   const bitmap = useRef<ImageBitmap | null>(null);
@@ -42,10 +50,15 @@ export function AppearanceMeshPreview({ mesh, assetId, additionalMeshes = NO_PAR
     if (!view || (assetId && !image)) return false;
     try {
     view.getScene().clear();
-    const visible = selecting ? Array.from({ length: mesh.indices.length / 3 }, (_, i) => i) : region.current;
+    const count = mesh.indices.length / 3;
+    const visible = selecting && !faceSelection ? Array.from({ length: count }, (_, i) => i) : region.current;
     const base = mesh.origin ?? [0, 0, 0];
-    const parts: MeshData[] = visible.length ? [{ ...mesh, origin: [0,0,0], textureBitmap: image ?? undefined,
-      indices: Uint32Array.from(visible.flatMap(id => [mesh.indices[id * 3], mesh.indices[id * 3 + 1], mesh.indices[id * 3 + 2]])) }] : [];
+    const corners = (ids: readonly number[]) => Uint32Array.from(ids.flatMap(id => [mesh.indices[id * 3], mesh.indices[id * 3 + 1], mesh.indices[id * 3 + 2]]));
+    const parts: MeshData[] = visible.length ? [{ ...mesh, origin: [0,0,0], textureBitmap: image ?? undefined, indices: corners(visible) }] : [];
+    if (faceSelection) {
+      const chosen = new Set(visible), rest = Array.from({ length: count }, (_, i) => i).filter(id => !chosen.has(id));
+      if (rest.length) parts.push({ ...mesh, origin: [0,0,0], indices: corners(rest), color: [...faceSelection.unselectedColor], uvs: undefined, texture: undefined, textureRef: undefined, textureBitmap: undefined });
+    }
     for (const part of additionalMeshes) parts.push({ ...part, origin: [
       (part.origin?.[0] ?? 0) - base[0], (part.origin?.[1] ?? 0) - base[1], (part.origin?.[2] ?? 0) - base[2]] });
     if (parts.length) view.loadGeometry(parts);
@@ -99,7 +112,7 @@ export function AppearanceMeshPreview({ mesh, assetId, additionalMeshes = NO_PAR
       appearanceAssets.releaseOwner(owner); callbacks.current.onReady(false);
     };
   }, [mesh, assetId, additionalMeshes, initialPlane, generation]);
-  useEffect(() => { draw(); }, [triangles, selecting]);
+  useEffect(() => { draw(); }, [triangles, selecting, faceSelection]);
   useEffect(() => { renderer.current?.requestRender(); }, [markers]);
   function point(event: React.PointerEvent<HTMLCanvasElement>) {
     const bounds = event.currentTarget.getBoundingClientRect(); return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
@@ -107,8 +120,8 @@ export function AppearanceMeshPreview({ mesh, assetId, additionalMeshes = NO_PAR
   return <div className="space-y-2">
     {failed && <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => setGeneration(value => value + 1)}>Reload preview</Button>}
     {regionControls && <div className="flex gap-2"><Button type="button" size="sm" variant={selecting ? 'secondary' : 'outline'} aria-pressed={selecting}
-      disabled={disabled} onClick={() => { setSelecting(value => !value); setBox(null); }}>Select region</Button>
-      <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => onRegion(Array.from({ length: mesh.indices.length / 3 }, (_, i) => i))}>Entire surface</Button></div>}
+      disabled={disabled} onClick={() => { setSelecting(value => !value); setBox(null); }}>{faceSelection ? 'Pick faces' : 'Select region'}</Button>
+      <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => onRegion(Array.from({ length: mesh.indices.length / 3 }, (_, i) => i), { kind: 'marquee', subtract: false })}>{faceSelection ? 'All faces' : 'Entire surface'}</Button></div>}
     <div className="relative overflow-hidden rounded border">
       <canvas ref={canvas} aria-label={canvasLabel ?? "Captured surface preview"} className="h-64 w-full touch-none" onContextMenu={event => event.preventDefault()}
         onPointerDown={event => { if (!event.isPrimary || disabled || !renderer.current) return; const p = point(event); gesture.current = { start: p, last: p, pointer: event.pointerId }; event.currentTarget.setPointerCapture(event.pointerId); }}
@@ -123,13 +136,18 @@ export function AppearanceMeshPreview({ mesh, assetId, additionalMeshes = NO_PAR
           const current = gesture.current, view = renderer.current;
           if (!current || current.pointer !== event.pointerId || !view || disabled) return;
           gesture.current = null; setBox(null);
-          if (!selecting && callbacks.current.onLandmark && Math.hypot(point(event).x - current.start.x, point(event).y - current.start.y) < 4) { const p = point(event); const element = event.currentTarget; const ray = view.getCamera().unprojectToRay(p.x * element.width / element.getBoundingClientRect().width, p.y * element.height / element.getBoundingClientRect().height, element.width, element.height); const hit = new Raycaster().raycast(ray, [{ ...mesh, origin: [0,0,0] }]); if (hit) callbacks.current.onLandmark(hit); }
-          if (selecting) { const size = event.currentTarget; onRegion(capturedScreenRegion(mesh,current.start,point(event), p => view.getCamera().projectToScreen(p,size.clientWidth,size.clientHeight))); setSelecting(false); }
+          const click = Math.hypot(point(event).x - current.start.x, point(event).y - current.start.y) < 4;
+          const pick = () => { const p = point(event); const element = event.currentTarget; const ray = view.getCamera().unprojectToRay(p.x * element.width / element.getBoundingClientRect().width, p.y * element.height / element.getBoundingClientRect().height, element.width, element.height); return new Raycaster().raycast(ray, [{ ...mesh, origin: [0,0,0] }]); };
+          if (!selecting && callbacks.current.onLandmark && click) { const hit = pick(); if (hit) callbacks.current.onLandmark(hit); }
+          if (selecting && faceSelection && click) { const hit = pick(); if (hit) onRegion([hit.triangleIndex], { kind: 'click', subtract: event.altKey }); return; }
+          if (selecting) { const size = event.currentTarget; onRegion(capturedScreenRegion(mesh,current.start,point(event), p => view.getCamera().projectToScreen(p,size.clientWidth,size.clientHeight)), { kind: 'marquee', subtract: event.altKey }); if (!faceSelection) setSelecting(false); }
         }} onPointerCancel={() => { gesture.current = null; setBox(null); }}
  />
       {projected.map(marker => <span key={marker.id} className={`pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border px-1 text-[10px] font-bold shadow ${marker.check ? 'bg-amber-100 text-amber-950' : 'bg-primary text-primary-foreground'}`} style={{ left: marker.x, top: marker.y }}>{marker.id}</span>)}
       {box && <div className="pointer-events-none absolute border border-primary bg-primary/15" style={{ left: box.x, top: box.y, width: box.width, height: box.height }} />}
     </div>
-    <p className="text-[11px] text-muted-foreground">{instruction ?? (selecting ? 'Drag a rectangle. Whole triangles are selected by their centres, through the surface.' : 'Drag to orbit. Scroll to zoom. Select region to keep part of this surface.')}</p>
+    <p className="text-[11px] text-muted-foreground">{instruction ?? (faceSelection
+      ? (selecting ? 'Drag a rectangle to add whole faces by their centres, or click one face to toggle it. Hold Alt to remove.' : 'Drag to orbit. Scroll to zoom. Select faces to restrict the image to part of this surface.')
+      : (selecting ? 'Drag a rectangle. Whole triangles are selected by their centres, through the surface.' : 'Drag to orbit. Scroll to zoom. Select region to keep part of this surface.'))}</p>
   </div>;
 }

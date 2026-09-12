@@ -172,6 +172,7 @@ pub(crate) fn detect_schema_version(content: &[u8]) -> &'static str {
 /// Takes the raw IFC bytes (issue #1023): localized non-UTF-8 byte sequences
 /// in the HEADER must not block otherwise valid models, so no `String`
 /// conversion happens anywhere on this path.
+#[cfg(test)]
 pub fn process_streaming(
     content: bytes::Bytes,
     initial_batch_size: usize,

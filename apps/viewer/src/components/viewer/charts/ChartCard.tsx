@@ -93,7 +93,7 @@ export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onA
           <X className="h-3.5 w-3.5" />
         </Button>
       </div>
-      <div ref={ref} className="flex-1 min-h-[160px]" data-chart-host />
+      <div ref={ref} className="flex-1 min-h-[120px]" data-chart-host />
       {aggregation && (
         // A screen-reader / test-visible legend: one row per bucket, clickable like the bars.
         <ul className="sr-only" data-chart-legend>

@@ -140,6 +140,7 @@ test('a mask crossing forced-size fragments keeps repeated item ids and source a
   assert.deepEqual(group.parts.map(part => [...part.appearanceSource!.cornerIndices!]), [
     [0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
   ], 'every generated local triangle retains its canonical full-surface ordinal');
+  assert.deepEqual(group.parts.map(part => appearanceSourceTriangle(part, 0)), [0, 1, 2, 3]);
   for (const part of group.parts) assert.strictEqual(part.appearanceSource?.sourceIndices, fullIndices);
   for (const retained of [group.parts[1], group.parts[3]]) {
     assert.strictEqual(retained.textureRef, oldTexture);

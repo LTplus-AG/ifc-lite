@@ -465,6 +465,8 @@ Other exports: `Camera`, `Picker`, `Raycaster`, `SnapDetector`, `BVH`, `RaycastE
 
 `Renderer.hasActiveClipping()` reports section, terrain or box clipping from the last rendered frame. `raycastScene()` applies the same clip state and its `Intersection` includes `modelIndex`, plus `geometryItemId` and `sourceTriangleIndex` when the hit has unambiguous representation-item and canonical evaluated-surface provenance. `appearanceSourceTriangle(mesh, triangleIndex)` performs that strict provenance lookup directly and returns `undefined` for absent, stale or mixed-corner identity.
 
+An appearance preview may carry an `AppearancePartition` whose `sourceGeometryItemId` and `triangleCount` name one canonical evaluated surface. Its `before` and `after` parts use side-local `partId` values and canonical triangle ordinals, allowing repeated representation-item ids across streaming fragments. `validateAppearancePartition(partition, before, after)` verifies bounded, disjoint and complete provenance plus exact ownership, placement and corner geometry; `invertAppearancePartition(partition)` describes the reverse transition for Undo.
+
 `Scene` and `Section2DOverlayRenderer` are package-internal from 2.0: reach the scene through `getScene(): SceneContents`, and the 3D line overlays through `Renderer.setLineOverlay`. `PickingManager` is package-internal from 2.0 as well: its constructor takes the now-internal `Scene`, so an exported class nobody could construct would have been worse than no export. Pick through `Renderer.pick` / `Renderer.pickRect`.
 
 ---

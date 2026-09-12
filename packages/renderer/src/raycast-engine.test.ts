@@ -402,15 +402,25 @@ describe('RaycastEngine.raycastScene', () => {
 
   it('keeps equal-sized fragments that share an owner, origin and first vertex (#4556)', () => {
     const scene = new Scene();
-    const fragment = (x: number): MeshData => ({ expressId: 7, modelIndex: 3,
-      positions: new Float32Array([0, 0, 0, x, -1, 0, x, 1, 0]),
-      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
-      color: [1, 1, 1, 1] });
-    addRegularMesh(scene, fragment(-10));
-    addRegularMesh(scene, fragment(10));
+    const sourceIndices = new Uint32Array([0, 1, 2, 0, 3, 4]);
+    const fragment = (x: number, ordinal: number): MeshData => {
+      const indices = new Uint32Array([0, 1, 2]);
+      return { expressId: 7, modelIndex: 3, geometryItemId: 70,
+        positions: new Float32Array([0, 0, 0, x, -1, 0, x, 1, 0]),
+        normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices, color: [1, 1, 1, 1],
+        appearanceSource: { kind: 'canonical-item', indices, sourceIndices,
+          cornerIndices: Uint32Array.from([ordinal * 3, ordinal * 3 + 1, ordinal * 3 + 2]) } };
+    };
+    addRegularMesh(scene, fragment(-10, 0));
+    addRegularMesh(scene, fragment(10, 1));
     const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
-    assert.ok(engine.raycastScene(300, 300), 'the left fragment remains raycastable');
-    assert.ok(engine.raycastScene(500, 300), 'the equal-signature right fragment must not be deduplicated');
+    const left = engine.raycastScene(300, 300)?.intersection;
+    const right = engine.raycastScene(500, 300)?.intersection;
+    assert.deepEqual(left && { modelIndex: left.modelIndex, geometryItemId: left.geometryItemId,
+      sourceTriangleIndex: left.sourceTriangleIndex }, { modelIndex: 3, geometryItemId: 70, sourceTriangleIndex: 0 });
+    assert.deepEqual(right && { modelIndex: right.modelIndex, geometryItemId: right.geometryItemId,
+      sourceTriangleIndex: right.sourceTriangleIndex }, { modelIndex: 3, geometryItemId: 70, sourceTriangleIndex: 1 },
+    'the equal-signature right fragment must remain raycastable with its canonical ordinal');
   });
 
   it('off-origin, rotated, non-uniformly-scaled geometry is hit at the transformed location, not the local one', () => {

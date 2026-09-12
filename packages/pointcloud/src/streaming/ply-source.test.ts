@@ -57,6 +57,15 @@ describe('PlyStreamingSource source normals (#4561)', () => {
     expect((await source.next(2))?.normalState).toBe('invalid');
   });
 
+  it.each(['1e-100', '1e100'])('invalidates an unretained normal that cannot survive Float32 storage (%s)', async (nx) => {
+    const text = 'ply\nformat ascii 1.0\nelement vertex 3\nproperty float x\nproperty float y\nproperty float z\n'
+      + 'property double nx\nproperty double ny\nproperty double nz\nend_header\n'
+      + `0 0 0 1 0 0\n1 0 0 ${nx} 0 0\n2 0 0 1 0 0\n`;
+    const source = new PlyStreamingSource(new Blob([text]), { downsample: { stride: 2 } });
+    await source.open();
+    expect((await source.next(10))?.normalState).toBe('invalid');
+  });
+
   it('selects the floating RGB convention once for the whole file, independent of chunk size', async () => {
     const text = 'ply\nformat ascii 1.0\nelement vertex 2\nproperty float x\nproperty float y\nproperty float z\n'
       + 'property float red\nproperty float green\nproperty float blue\nend_header\n0 0 0 .5 0 0\n1 0 0 255 0 0\n';
@@ -64,6 +73,15 @@ describe('PlyStreamingSource source normals (#4561)', () => {
     await source.open();
     expect((await source.next(1))!.colors![0]).toBeCloseTo(0.5 / 255);
     expect((await source.next(1))!.colors![0]).toBe(1);
+  });
+
+  it.each(['Infinity', '1.0000000001'])('matches whole-buffer Float32 color convention for %s', async (red) => {
+    const text = 'ply\nformat ascii 1.0\nelement vertex 2\nproperty float x\nproperty float y\nproperty float z\n'
+      + 'property double red\nproperty double green\nproperty double blue\nend_header\n'
+      + `0 0 0 .5 0 0\n1 0 0 ${red} 0 0\n`;
+    const source = new PlyStreamingSource(new Blob([text]));
+    await source.open();
+    expect((await source.next(1))!.colors![0]).toBe(0.5);
   });
 
   it('traverses variable ASCII normal lists without losing XYZ and marks the source invalid', async () => {

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { normalizeColorChannel } from '../formats/ply-color.js';
+import { floatColorSelectsByteRange, normalizeColorChannel } from '../formats/ply-color.js';
 import { readPlyScalar } from '../formats/ply-scalar.js';
 import { parseAsciiVariableRow, writeVariablePlyRow } from '../formats/ply-variable-row.js';
 import type { DecodedPointChunk, PointCloudBBox, PointNormalState } from '../types.js';
@@ -289,17 +289,17 @@ function findChannels(layout: PlyVertexLayout): Channels {
   const find = (...names: string[]) => layout.vertex.properties.find((property) => names.includes(property.name));
   return { r: find('red', 'r'), g: find('green', 'g'), b: find('blue', 'b'), intensity: find('intensity', 'scalar_Intensity') };
 }
-const isFloatType = (type: string) => type === 'float' || type === 'float32' || type === 'double' || type === 'float64';
 function usableNormal(x: number, y: number, z: number): boolean {
-  return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) && x * x + y * y + z * z !== 0;
+  const stored = [Math.fround(x), Math.fround(y), Math.fround(z)];
+  return stored.every(Number.isFinite) && stored.some(value => value !== 0);
 }
 function observeValues(values: ReadonlyMap<string, number>, state: PointNormalState): PointNormalState {
   if (state !== 'supplied') return state;
   return usableNormal(values.get('nx') ?? Number.NaN, values.get('ny') ?? Number.NaN, values.get('nz') ?? Number.NaN) ? state : 'invalid';
 }
 function valuesUseByteColors(values: ReadonlyMap<string, number>, channels: Channels): boolean {
-  return [channels.r, channels.g, channels.b].some(property => property && isFloatType(property.type)
-    && (values.get(property.name) ?? Number.NaN) > 1);
+  return [channels.r, channels.g, channels.b].some(property => property
+    && floatColorSelectsByteRange(values.get(property.name) ?? Number.NaN, property.type));
 }
 function observeAsciiRow(parts: string[], layout: PlyVertexLayout, _channels: Channels, state: PointNormalState): PointNormalState {
   if (state !== 'supplied' || !layout.nxProp || !layout.nyProp || !layout.nzProp) return state;
@@ -312,12 +312,13 @@ function observeBinaryRow(view: DataView, base: number, layout: PlyVertexLayout,
   return usableNormal(scalar(view, base, layout.nxProp, le), scalar(view, base, layout.nyProp, le), scalar(view, base, layout.nzProp, le)) ? state : 'invalid';
 }
 function asciiUsesByteColors(parts: string[], layout: PlyVertexLayout, channels: Channels): boolean {
-  return [channels.r, channels.g, channels.b].some((property) => property && isFloatType(property.type)
-    && Number(parts[layout.vertex.properties.indexOf(property)]) > 1);
+  return [channels.r, channels.g, channels.b].some((property) => property
+    && floatColorSelectsByteRange(Number(parts[layout.vertex.properties.indexOf(property)]), property.type));
 }
 function binaryUsesByteColors(view: DataView, base: number, layout: PlyVertexLayout, channels: Channels, header: PlyHeader): boolean {
   const le = header.format === 'binary_little_endian';
-  return [channels.r, channels.g, channels.b].some((property) => property && isFloatType(property.type) && scalar(view, base, property, le) > 1);
+  return [channels.r, channels.g, channels.b].some((property) => property
+    && floatColorSelectsByteRange(scalar(view, base, property, le), property.type));
 }
 function positionColumns(layout: PlyVertexLayout): [number, number, number] { return [layout.vertex.properties.indexOf(layout.xProp), layout.vertex.properties.indexOf(layout.yProp), layout.vertex.properties.indexOf(layout.zProp)]; }
 function asciiColumns(layout: PlyVertexLayout, channels: Channels): AsciiColumns {

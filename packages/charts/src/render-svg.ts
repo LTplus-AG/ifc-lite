@@ -31,7 +31,11 @@ export function renderChartSvg(options: RenderSvgOptions): string {
   registerEChartsModules();
   const chart = init(null, null, { renderer: 'svg', ssr: true, width: options.width, height: options.height });
   try {
-    chart.setOption(buildEChartsOption({ ...options, showTitle: options.showTitle ?? true }));
+    // A font stack read off a stylesheet quotes family names (`"Segoe UI"`);
+    // zrender writes it into an attribute verbatim, and a double quote there
+    // makes the SVG malformed XML for any parser downstream (svg2pdf).
+    const theme = options.theme ? { ...options.theme, fontFamily: options.theme.fontFamily.replace(/"/g, "'") } : options.theme;
+    chart.setOption(buildEChartsOption({ ...options, theme, showTitle: options.showTitle ?? true }));
     return chart.renderToSVGString();
   } finally {
     chart.dispose();

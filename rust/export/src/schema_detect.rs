@@ -11,7 +11,10 @@
 //!
 //! The sibling reader is `source_header::parse_source_header`, which answers
 //! the same question from the same bytes and does it better (see #3303). This
-//! one exists because it runs earlier and without the 64 KiB cap.
+//! one exists because it runs earlier and without the 64 KiB cap. They are no
+//! longer independent: [`detect_schema`] asks the sibling when its own scan
+//! finds nothing, because "nothing" here includes a keyword the file spelled in
+//! lower case.
 
 use crate::source_header::Lex;
 
@@ -22,7 +25,7 @@ use crate::source_header::Lex;
 /// 10303-21 keywords are case-insensitive, so a file spelling `endsec;` in
 /// lower case ends its header in one of these readers and not the other. That
 /// is a real divergence and it predates the comment handling here; it is
-/// tracked in #3303 rather than changed in passing, because widening this match
+/// tracked in #4593 rather than changed in passing, because widening this match
 /// changes where every header ends and wants its own corpus.
 ///
 /// Neither literals nor comments carry structure, and this drives
@@ -62,7 +65,49 @@ fn find_unquoted(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 }
 
 /// Detect the source `FILE_SCHEMA` label (e.g. `IFC2X3`); defaults to `IFC4`.
+///
+/// Two readers answer, in order, and only the FIRST of them is uncapped:
+///
+/// 1. [`declared_schema`], the case-SENSITIVE scan below, over the whole file.
+/// 2. `source_header::parse_source_header`, whose `find_ascii_ci_from` reads
+///    `file_schema` as well as `FILE_SCHEMA`, over the first 64 KiB.
+///
+/// The second exists because the first is case-sensitive and Part-21 keywords
+/// are not (#4593). Without it a source header reading `file_schema(('IFC2X3'));`
+/// fell through to the `IFC4` default, and on a PLAIN re-export the default IS
+/// the stamped schema: `step.rs`'s `opts.schema.clone().unwrap_or_else(|| ...)`
+/// writes it into `FILE_SCHEMA` while the IFC2X3 entity records beneath it are
+/// copied through unchanged. A file relabelled as a schema it is not.
+///
+/// Two readers of one field, chained rather than collapsed, and only because
+/// widening `find_unquoted` moves where every header ENDS and wants a corpus
+/// first (#4593). The collapse point is `source_header.rs`'s 64 KiB cap:
+/// applied after the `ENDSEC` search instead of before, the header reader
+/// gives the same header-bounded window this scan has and becomes the only
+/// reader. Until then a file whose `FILE_SCHEMA` is
+/// BOTH lower-case and past 64 KiB is out of reach of both and still defaults.
+/// The two readers also unescape differently (`declared_schema` un-doubles
+/// `''` and `\\`; `parse_source_header` resolves `\X2\` and friends too); no
+/// real schema label carries a directive, so the fork is inert today.
 pub(crate) fn detect_schema(content: &[u8]) -> String {
+    declared_schema(content)
+        // TODO(remove-by: #4593, parse_source_header header-bounded before its
+        // cap, louistrue): collapse to the header reader alone.
+        .or_else(|| {
+            crate::source_header::parse_source_header(content)
+                .and_then(|h| h.schema_identifiers.into_iter().next())
+                .filter(|label| !label.is_empty())
+        })
+        .unwrap_or_else(|| "IFC4".to_string())
+}
+
+/// The `FILE_SCHEMA` label this file declares, read case-SENSITIVELY over the
+/// whole buffer, or `None` when there is no label to read.
+///
+/// `None` rather than the `IFC4` default so [`detect_schema`] can tell "the
+/// file says IFC4" from "the file did not say", which is the whole of the
+/// fallback above.
+fn declared_schema(content: &[u8]) -> Option<String> {
     // Only look in the header region: from the start through the HEADER
     // section's closing `ENDSEC;`. A fixed byte cutoff is not safe here —
     // an earlier header field (e.g. a long DESCRIPTION or AUTHOR string)
@@ -169,12 +214,12 @@ pub(crate) fn detect_schema(content: &[u8]) -> String {
                     // `''` gets the same treatment for the same reason. Without
                     // it the doubling compounds on every pass through the merge
                     // path: 'IFC''4' -> 'IFC''''4' -> 'IFC''''''''4'.
-                    return label.replace("\\\\", "\\").replace("''", "'");
+                    return Some(label.replace("\\\\", "\\").replace("''", "'"));
                 }
             }
         }
     }
-    "IFC4".to_string()
+    None
 }
 
 #[cfg(test)]

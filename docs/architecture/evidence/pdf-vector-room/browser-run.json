@@ -1,0 +1,112 @@
+{
+  "browser": "chromium 153.0.8010.36",
+  "fixture": "tests/models/various/issue-604-door.ifc",
+  "pdf": "control-text-accepted.pdf",
+  "created": {
+    "modelId": "49f7b156-ddc5-4269-8618-62139821ec55",
+    "expressId": 2476,
+    "globalId": 2476,
+    "guid": "3FHCHcxDbC_976b4cRYn4g",
+    "name": "Shared PDF vector control",
+    "parts": 2,
+    "colors": [
+      [
+        0,
+        1,
+        0,
+        1
+      ],
+      [
+        1,
+        0,
+        0,
+        1
+      ]
+    ],
+    "triangles": [
+      2,
+      2
+    ]
+  },
+  "room": {
+    "stepSourceBlobHash": "927667bfc5f4eadb7b376cd687361af7",
+    "geometryRecords": 13
+  },
+  "joined": {
+    "modelId": "room:651cb738bd2c:m0",
+    "expressId": 5,
+    "globalId": 5,
+    "storedGuid": "/m0/3FHCHcxDbC_976b4cRYn4g",
+    "type": "IfcAnnotation",
+    "name": "Shared PDF vector control",
+    "parts": 2,
+    "colors": [
+      [
+        0,
+        1,
+        0,
+        1
+      ],
+      [
+        1,
+        0,
+        0,
+        1
+      ]
+    ],
+    "triangles": [
+      2,
+      2
+    ],
+    "resolved": {
+      "modelId": "room:651cb738bd2c:m0",
+      "expressId": 5
+    }
+  },
+  "native2d": {
+    "red": 11455,
+    "green": 0
+  },
+  "pick": {
+    "selectedEntityId": 5,
+    "candidatePoints": 4
+  },
+  "export": {
+    "filename": "issue-604-door_export.ifc",
+    "reopened": {
+      "modelId": "ea17b9b9-4e7d-460a-9c02-aeb18950f6a5",
+      "expressId": 2476,
+      "globalId": 2476,
+      "storedGuid": "3FHCHcxDbC_976b4cRYn4g",
+      "type": "IfcAnnotation",
+      "name": "Shared PDF vector control",
+      "parts": 2,
+      "colors": [
+        [
+          0,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          1
+        ]
+      ],
+      "triangles": [
+        2,
+        2
+      ],
+      "resolved": {
+        "modelId": "ea17b9b9-4e7d-460a-9c02-aeb18950f6a5",
+        "expressId": 2476
+      }
+    },
+    "native2d": {
+      "red": 11455,
+      "green": 0
+    }
+  }
+}

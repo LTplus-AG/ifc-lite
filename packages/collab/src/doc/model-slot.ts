@@ -58,6 +58,15 @@ export interface ModelSlotRecord {
   order: number;
   /** Durable source identity when the owner has one (never used to key a slot). */
   sourceFingerprint?: string;
+  /**
+   * Content-addressed blob containing a complete portable STEP source for
+   * this slot. Recipients may parse it to retain representation-level data
+   * (for example IfcAnnotation symbolic geometry) that the root-only IFCX
+   * collaboration snapshot cannot express.
+   */
+  stepSourceBlobHash?: string;
+  /** Encoding of `stepSourceBlobHash`; absent records are plain STEP. */
+  stepSourceFormat?: 'step' | 'ifczip';
 }
 
 export interface ModelSlot extends ModelSlotRef, ModelSlotRecord {
@@ -130,6 +139,8 @@ export function createModelSlot(doc: Y.Doc, slotId: string, record: ModelSlotRec
   if (record.fileName !== undefined) stored.fileName = record.fileName;
   if (record.schemaVersion !== undefined) stored.schemaVersion = record.schemaVersion;
   if (record.sourceFingerprint !== undefined) stored.sourceFingerprint = record.sourceFingerprint;
+  if (record.stepSourceBlobHash !== undefined) stored.stepSourceBlobHash = record.stepSourceBlobHash;
+  if (record.stepSourceFormat !== undefined) stored.stepSourceFormat = record.stepSourceFormat;
   models.set(slotId, stored);
   return { ...ref, ...stored, legacy: false };
 }
@@ -171,5 +182,11 @@ function readRecord(raw: unknown): ModelSlotRecord | null {
   if (typeof r.fileName === 'string') record.fileName = r.fileName;
   if (typeof r.schemaVersion === 'string') record.schemaVersion = r.schemaVersion;
   if (typeof r.sourceFingerprint === 'string') record.sourceFingerprint = r.sourceFingerprint;
+  if (typeof r.stepSourceBlobHash === 'string' && /^[0-9a-f]{32}$/.test(r.stepSourceBlobHash)) {
+    record.stepSourceBlobHash = r.stepSourceBlobHash;
+  }
+  if (r.stepSourceFormat === 'step' || r.stepSourceFormat === 'ifczip') {
+    record.stepSourceFormat = r.stepSourceFormat;
+  }
   return record;
 }

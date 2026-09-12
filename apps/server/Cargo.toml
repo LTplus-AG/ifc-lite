@@ -96,6 +96,9 @@ base64 = "0.23"
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
+# Paused-clock transport timeout regressions; test-only so production timer
+# behavior cannot be frozen accidentally.
+tokio = { version = "1", features = ["test-util"] }
 # `util` feature pulls in `ServiceExt::oneshot` for in-process route tests.
 tower = { version = "0.5", features = ["util"] }
 

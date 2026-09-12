@@ -122,13 +122,30 @@ jobs:
           sudo apt-get install -y musl-tools musl-dev
 
       - name: Build Server Binary
+        # `--profile server-release`, NEVER `--release`. The repo-root
+        # `[profile.release]` sets `panic = 'abort'`, and this server parses
+        # attacker-supplied IFC bytes for every tenant in one process: under
+        # `abort` a single malformed upload takes the whole process down, the
+        # `CatchPanicLayer` in apps/server/src/main.rs never sees the panic,
+        # and `spawn_blocking` isolation cannot help either because the panic
+        # never becomes a `JoinError`. `server-release` inherits `release` and
+        # only re-enables unwinding, which is what apps/server/Dockerfile has
+        # always built with; these artifacts (the GitHub release assets and
+        # what `@ifc-lite/server-bin` publishes to npm) did not. Every leg
+        # whose output its runner can execute proves it with an "Assert the
+        # built binary unwinds" step; the spelling itself is gated on every
+        # leg by scripts/check-server-bin-targets.mjs.
+        # `CARGO_UNSTABLE_BUILD_STD=std,panic_abort` stays as-is: the crate
+        # LIST is not the panic strategy. cargo builds both panic runtimes and
+        # links the one the profile selects; the assert step is what proves it.
+        #
         # Force bash so the if/else runs under Git Bash on Windows runners too
         # (default shell there is PowerShell, which choked on the POSIX test →
         # win32-x64 release build failed with a ParserError).
         shell: bash
         run: |
           if [ "${{ matrix.target }}" = "linux-x64-musl" ]; then
-            cross build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
+            cross build --profile server-release --package ifc-lite-server --target ${{ matrix.rust-target }}
           else
             # See the "Setup Rust" step above: this actually runs on the
             # nightly pinned by rust-toolchain.toml, not the `stable` named
@@ -148,10 +165,31 @@ jobs:
             # `cross`'s own Docker image with its own toolchain setup,
             # wasn't reported broken, and forwarding host env vars into
             # that container isn't verified here.
-            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
+            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --profile server-release --package ifc-lite-server --target ${{ matrix.rust-target }}
           fi
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+      - name: Assert the built binary unwinds
+        # BEHAVIOURAL, against the artefact rather than against the flags that
+        # were meant to produce it: this runs the binary that is about to be
+        # archived and makes it catch its own panic. Under `panic = 'abort'`
+        # (the repo-root `release` profile) it dies with SIGABRT and this step
+        # fails; under `server-release` it prints the verdict. It also fails
+        # when nothing is at the `server-release` path at all, which is the
+        # other half of the same regression.
+        #
+        # Only a leg whose output this runner can EXECUTE can carry it. The
+        # cross-compiled legs build the same profile from the same cargo
+        # invocation in the same step, and the profile spelling itself is
+        # gated for every leg by scripts/check-server-bin-targets.mjs.
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="target/${{ matrix.rust-target }}/server-release/ifc-lite-server"
+          verdict="$("$bin" --panic-strategy-selftest)"
+          echo "$verdict"
+          test "$verdict" = "panic-strategy: unwind"
 
       # The `cargo build` step above is the validation — it fails the job
       # if the binary doesn't compile. We deliberately don't archive or
@@ -229,13 +267,17 @@ jobs:
           sudo apt-get install -y musl-tools musl-dev
 
       - name: Build Server Binary
+        # `--profile server-release`, NEVER `--release`: see the first
+        # "Build Server Binary" step (validate-server-binaries) for why, and
+        # the "Assert the built binary unwinds" step for the proof.
+        #
         # Force bash so the if/else runs under Git Bash on Windows runners too
         # (default shell there is PowerShell, which choked on the POSIX test →
         # win32-x64 release build failed with a ParserError).
         shell: bash
         run: |
           if [ "${{ matrix.target }}" = "linux-x64-musl" ]; then
-            cross build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
+            cross build --profile server-release --package ifc-lite-server --target ${{ matrix.rust-target }}
           else
             # See the "Setup Rust" step above: this actually runs on the
             # nightly pinned by rust-toolchain.toml, not the `stable` named
@@ -255,7 +297,7 @@ jobs:
             # `cross`'s own Docker image with its own toolchain setup,
             # wasn't reported broken, and forwarding host env vars into
             # that container isn't verified here.
-            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
+            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --profile server-release --package ifc-lite-server --target ${{ matrix.rust-target }}
           fi
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
@@ -398,13 +440,17 @@ jobs:
           sudo apt-get install -y musl-tools musl-dev
 
       - name: Build Server Binary
+        # `--profile server-release`, NEVER `--release`: see the first
+        # "Build Server Binary" step (validate-server-binaries) for why, and
+        # the "Assert the built binary unwinds" step for the proof.
+        #
         # Force bash so the if/else runs under Git Bash on Windows runners too
         # (default shell there is PowerShell, which choked on the POSIX test →
         # win32-x64 release build failed with a ParserError).
         shell: bash
         run: |
           if [ "${{ matrix.target }}" = "linux-x64-musl" ]; then
-            cross build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
+            cross build --profile server-release --package ifc-lite-server --target ${{ matrix.rust-target }}
           else
             # See the "Setup Rust" step above: this actually runs on the
             # nightly pinned by rust-toolchain.toml, not the `stable` named
@@ -424,16 +470,46 @@ jobs:
             # `cross`'s own Docker image with its own toolchain setup,
             # wasn't reported broken, and forwarding host env vars into
             # that container isn't verified here.
-            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
+            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --profile server-release --package ifc-lite-server --target ${{ matrix.rust-target }}
           fi
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+      - name: Assert the built binary unwinds
+        # BEHAVIOURAL, against the artefact: see the same step in
+        # validate-server-binaries. Runs on every leg whose runner can execute
+        # its own output; the musl binary is static x86_64 and runs natively
+        # on ubuntu although it was BUILT through cross's container. The
+        # remaining cross-architecture legs (linux-arm64, darwin-x64) rely on the
+        # profile spelling gate in scripts/check-server-bin-targets.mjs.
+        if: matrix.target == 'linux-x64' || matrix.target == 'darwin-arm64' || matrix.target == 'linux-x64-musl' || matrix.target == 'win32-x64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="target/${{ matrix.rust-target }}/server-release/ifc-lite-server"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            bin="${bin}.exe"
+          fi
+          # Manual `upload-to-tag` backfills check out the historical tag's
+          # source while using this current workflow definition. Tags older
+          # than the self-test flag ignore unknown arguments and start the
+          # server, so invoking them here would hang the job for 120 minutes.
+          # The unwinding profile remains mandatory for every build; run the
+          # stronger behavioural proof exactly when the checked-out source
+          # declares support for it.
+          if grep -Fq -- '--panic-strategy-selftest' apps/server/src/panic_strategy.rs 2>/dev/null; then
+            verdict="$("$bin" --panic-strategy-selftest)"
+            echo "$verdict"
+            test "$verdict" = "panic-strategy: unwind"
+          else
+            echo "Historical source predates --panic-strategy-selftest; profile spelling gate remains active"
+          fi
 
       - name: Prepare Binary (Unix)
         if: runner.os != 'Windows'
         run: |
           mkdir -p dist
-          cp target/${{ matrix.rust-target }}/release/ifc-lite-server dist/
+          cp target/${{ matrix.rust-target }}/server-release/ifc-lite-server dist/
           chmod +x dist/ifc-lite-server
 
       - name: Prepare Binary (Windows)
@@ -441,7 +517,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist
-          Copy-Item "target/${{ matrix.rust-target }}/release/ifc-lite-server.exe" -Destination "dist/"
+          Copy-Item "target/${{ matrix.rust-target }}/server-release/ifc-lite-server.exe" -Destination "dist/"
 
       - name: Create Archive (tar.gz)
         if: matrix.archive == 'tar.gz'

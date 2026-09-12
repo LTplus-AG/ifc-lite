@@ -41,6 +41,18 @@ relay's per-connection write budget is a token bucket, and an unbatched burst of
 per-entity frames is dropped there — after which Yjs holds every later frame
 from that client pending — so the frame count is pinned by test.
 
+STEP models with authored `IfcAnnotation` representations also carry one
+content-addressed, mutation-materialized STEP source in their slot record. The
+room snapshot remains authoritative for live roots and edits; recipients attach
+the STEP source for representation-level symbolic extraction and remap its
+owners through slot-qualified GlobalIds. This preserves native 2D fills while
+the same annotation's mesh blobs remain selectable 3D parts. The source upload
+and recipient fetch are both capped at 96 MiB, and only canonical 32-character lowercase blob
+references are accepted. When that source still covers every live room root,
+Export emits ordinary STEP and remaps room edits and visibility IDs back to
+source express IDs. A root created later in the room makes IFCX the complete
+export again, so it is never omitted to preserve the older STEP representation.
+
 ## Synchronization
 
 Clients exchange Yjs updates through `@ifc-lite/collab-server`. The server owns

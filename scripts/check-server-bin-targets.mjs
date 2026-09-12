@@ -58,6 +58,12 @@
  * fetched but simply predates a file, which is a fact about the revision:
  * see scripts/lib/server-bin-tag-read.mjs.
  *
+ * Beyond the three lists, the workflow must also build the profile whose
+ * binaries UNWIND (`--profile server-release`, never `--release`) and keep
+ * the step that proves it against the built artefact - see
+ * scripts/lib/server-bin-profile-check.mjs for why an aborting binary is a
+ * whole-process outage rather than a failed request.
+ *
  * Source-text matching is comment-aware (rationale in
  * scripts/lib/server-bin-targets-parse.mjs); the upload check (in
  * scripts/lib/server-bin-upload-check.mjs) binds the asset and sidecar
@@ -80,6 +86,7 @@ import {
   checkUploadStep,
   uploadStepPublishesSidecars,
 } from './lib/server-bin-upload-check.mjs';
+import { checkUnwindProfile } from './lib/server-bin-profile-check.mjs';
 import { readFileAtTag } from './lib/server-bin-tag-read.mjs';
 
 // --root <dir>: read the input files from an alternate tree (in --release
@@ -230,6 +237,11 @@ function checkSourceParity() {
   // must ship a .sha256 sidecar with every archive (or the fail-closed
   // install-time verification in checksum.ts breaks every install).
   checkUploadStep(workflow, WORKFLOW, PLATFORM_TS);
+
+  // Every build step must build (and archive) the unwinding profile: the
+  // shipped binary's panic strategy decides whether a malformed upload costs
+  // one request or the whole process. See server-bin-profile-check.mjs.
+  checkUnwindProfile(workflow, WORKFLOW);
 
   // Validate matrix: a deliberate cost-saving subset, never an unknown
   // target, and its legs must build the triple their target names.

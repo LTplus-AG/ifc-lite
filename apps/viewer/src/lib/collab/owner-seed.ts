@@ -6,28 +6,20 @@
  * The owner's seed-into-room (plan §4.6), lifted out of `collabSlice.startCollab`.
  *
  * Runs once the session has synced, once per model of the share scope, each
- * into the room slot `startCollab` assigned it (#4444): structure first, then
- * geometry as content-addressed mesh blobs, then — after every model — the
- * seed marker that lets joiners tell "nothing to seed" from "seed never
- * arrived". Each model is seeded from ITS OWN store and meshes, so two loaded
- * copies of the same file land as two entity sets with two geometry sets.
+ * into the room slot `startCollab` assigned it (#4444), preserving one store
+ * and geometry set per loaded model.
  *
- * Per slot, two independent guards keep re-seeding safe:
- *   - structure is seeded once — a slot that already has a record in the
- *     room's `models` map is never re-seeded, so a populated room or a peer's
- *     edits are never clobbered;
- *   - geometry is seeded whenever the slot's entities carry no geometry refs
- *     yet, DECOUPLED from the structure guard so a partially seeded room
- *     backfills. Blobs are content-addressed, so re-seeding dedupes.
+ * Independent structure and geometry guards keep re-seeding safe and let a
+ * partially seeded room backfill its content-addressed geometry.
  *
  * A room that holds entities but no slot records was shared before slots
  * existed; nothing is seeded into it (an owner never re-shares into an old
  * room — every share mints a fresh room id — so this is a guard, not a path).
  *
- * Reports its progress through `onPhase` / `onProgress` and returns the phase
- * the seed settled in (#4446): the slice mirrors those into `collabSeedPhase`
+ * Reports progress through `onPhase` / `onProgress` and returns the settled
+ * phase (#4446): the slice mirrors it into `collabSeedPhase`
  * so the Share dialog can hold the invite back until the room actually holds
- * every model. "Holds" means the RELAY holds it: after the last local write
+ * every model. "Holds" means the relay holds it: after the last local write
  * the seed asks `confirmRelay` whether the server's state vector covers the
  * owner's (`'confirming'`), because a local transaction only proves the bytes
  * are queued in the browser's socket — a tab closed right then loses them and
@@ -51,9 +43,13 @@ import {
   writeGeometrySeedMarker,
 } from './geometry-seed-signal';
 import { buildStepSeedSource } from './step-seed';
-import { pathForEntity, registerEntityMaps, registerStoreSlot } from './entity-paths';
+import { pathForEntity, registerEntityMaps } from './entity-paths';
 import { pathInRoomSlot } from './model-slot-ref';
 import { seedPhaseFromOutcome, type CollabSeedProgress } from './seed-phase';
+import { assertPortableSourceHash, assertPortableSourceSize, DEFAULT_UPLOAD_RETRIES, DEFAULT_UPLOAD_RETRY_DELAYS_MS, putBlobWithRetry } from './blob-upload';
+import { registerLiveSeedStore } from './owner-seed-paths';
+
+const MAX_PORTABLE_STEP_SOURCE_BYTES = 96 * 1024 * 1024;
 
 /**
  * One model of a share (#4444). Carries the model's OWN parsed store plus
@@ -71,6 +67,8 @@ export interface CollabSeedModel {
   name: string;
   /** The model's parsed store. For IFC5, `store.source` holds the IFCX bytes. */
   store: IfcDataStore;
+  /** Original live store when `store` is a materialized/reparsed share snapshot. */
+  liveStore?: IfcDataStore;
   /** True when the model is IFC5/IFCX (seed natively from `store.source`). */
   isIfcx: boolean;
   /**
@@ -83,6 +81,13 @@ export interface CollabSeedModel {
   schemaVersion?: string;
   fileName?: string;
   sourceFingerprint?: string;
+  /**
+   * Complete, mutation-materialized STEP source. When present it is stored as
+   * a room blob so a recipient can retain resource-level representations such
+   * as IfcAnnotationFillArea in addition to the collaboration IFCX snapshot.
+   */
+  portableStepSource?: Uint8Array;
+  portableStepSourceFormat?: 'step' | 'ifczip';
 }
 
 /** Model-share payload the owner hands to `startCollab`: the share scope, in slot order. */
@@ -203,12 +208,21 @@ async function seedModel(
   const doc = session.doc;
   const store = model.store;
   let wrote = false;
-  registerStoreSlot(store, slot);
+  registerLiveSeedStore(model.liveStore, store, slot);
 
   // ── Structure: once per slot. ──
   if (!collab.getModelSlot(doc, slot.slotId)) {
     deps.onPhase('structure');
     wrote = true;
+    let stepSourceBlobHash: string | undefined;
+    if (model.portableStepSource) {
+      assertPortableSourceSize(model.portableStepSource, MAX_PORTABLE_STEP_SOURCE_BYTES);
+      stepSourceBlobHash = (await putBlobWithRetry(
+        await blobs(), model.portableStepSource, DEFAULT_UPLOAD_RETRIES, DEFAULT_UPLOAD_RETRY_DELAYS_MS,
+      )).hash;
+      assertPortableSourceHash(stepSourceBlobHash);
+      if (!deps.isCurrent()) return { report: null, wrote: false };
+    }
     session.transact(() => {
       collab.createModelSlot(doc, slot.slotId, {
         name: model.name,
@@ -216,6 +230,8 @@ async function seedModel(
         schemaVersion: model.schemaVersion,
         order,
         sourceFingerprint: model.sourceFingerprint,
+        stepSourceBlobHash,
+        stepSourceFormat: model.portableStepSourceFormat,
       });
     });
     if (model.isIfcx) {

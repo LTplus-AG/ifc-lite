@@ -8,9 +8,9 @@
  * Mesh blobs grow without bound during long sessions. This module
  * implements an epoch + reference-count sweep:
  *
- *   1. `collectReferencedBlobHashes(doc)` walks every entity, collects
- *      its `geometryRef.geomId`, then resolves each geometry node to
- *      its `blobHash`. Returns the set of currently-referenced hashes.
+ *   1. `collectReferencedBlobHashes(doc)` walks every entity and model slot,
+ *      resolving geometry blobs and portable STEP/IFCZIP sidecars. Returns
+ *      the set of currently-referenced hashes.
  *
  *   2. `planBlobSweep(store, referenced, opts)` returns the list of
  *      blob hashes that exist in `store` but aren't referenced. With
@@ -33,17 +33,18 @@ import {
   GEOMETRY_KEY,
   entitiesMap,
   geometryMap,
+  modelsMap,
 } from '../doc/schema.js';
 import type { BlobHash, BlobMeta, BlobStore } from './blob-store.js';
 
 /**
  * Collect every blob hash currently referenced from a Y.Doc.
  *
- * An entity's `geometryRef.geomId` points at a `geometry` top-level
- * entry whose `blobHash` (if any) we want to keep. We also include any
- * `blobHash` that appears directly in `geometry.params.<*>` so apps
- * that store auxiliary blob refs in params (e.g. textures) survive
- * gc.
+ * An entity's `geometryRef.geomId` points at a `geometry` top-level entry
+ * whose `blobHash` (if any) we want to keep. Model slots can independently
+ * own a portable STEP/IFCZIP sidecar. We also include any `blobHash` that
+ * appears directly in `geometry.params.<*>` so apps that store auxiliary
+ * blob refs in params (e.g. textures) survive gc.
  */
 export function collectReferencedBlobHashes(doc: Y.Doc): Set<BlobHash> {
   const referenced = new Set<BlobHash>();
@@ -74,6 +75,15 @@ export function collectReferencedBlobHashes(doc: Y.Doc): Set<BlobHash> {
   //    in any geometry entry.
   geom.forEach((nodeUntyped) => {
     addBlobHashesFromGeometry(nodeUntyped as Y.Map<unknown>, referenced);
+  });
+
+  // 3. Portable STEP/IFCZIP sidecars are model-slot roots, independent of
+  // geometry records. They are required for native annotation/texture
+  // reconstruction and must remain live for the lifetime of the room.
+  modelsMap(doc).forEach((slotUntyped) => {
+    if (!slotUntyped || typeof slotUntyped !== 'object' || Array.isArray(slotUntyped)) return;
+    const hash = (slotUntyped as Record<string, unknown>).stepSourceBlobHash;
+    if (typeof hash === 'string' && /^[a-f0-9]{32}$/.test(hash)) referenced.add(hash);
   });
 
   return referenced;

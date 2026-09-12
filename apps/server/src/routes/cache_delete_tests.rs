@@ -242,3 +242,64 @@ async fn delete_does_not_disturb_an_unrelated_file_cached_entry() {
         "an unrelated file's cache entry must survive deleting a different file's hash"
     );
 }
+
+/// The route walks the whole cache index for whatever it is handed, and a
+/// miss costs the same as a hit, so any string used to buy a full index walk
+/// (twice, the second under the write/GC lock). Only a file digest names
+/// anything this route can invalidate; everything else is refused before the
+/// index is touched. Cases sit on both sides of every rule in
+/// `is_file_digest`: length 63/64/65, upper vs lower case, one non-hex byte.
+/// Regression for #4582.
+#[tokio::test]
+async fn delete_refuses_anything_that_is_not_a_file_digest() {
+    let state = test_state("not-a-digest").await;
+    let rejected: Vec<String> = vec![
+        "missing-key".into(),
+        "0123456789abcdef".into(),
+        "a".repeat(63),
+        "a".repeat(65),
+        "A".repeat(64),
+        format!("{}g", "0".repeat(63)),
+    ];
+    for key in &rejected {
+        let response = delete_cache(&state, key).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "{key:?} is not a sha256 file digest and must not reach the index walk"
+        );
+        let body = String::from_utf8(to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(
+            !body.contains(key),
+            "the rejected value is caller-controlled text and must not be echoed: {body}"
+        );
+    }
+    // Control: the real shape still goes through (and is a 200 no-op here).
+    let accepted = delete_cache(&state, &"0".repeat(64)).await;
+    assert_eq!(accepted.status(), StatusCode::OK);
+}
+
+/// Index walks are bounded to one at a time. While one is in flight a second
+/// invalidation is shed with 503 + `Retry-After` (this route is idempotent and
+/// documented as retry-safe, so that costs a client one retry), and it does
+/// not latch: once the walk ends the same request goes through.
+/// Regression for #4582.
+#[tokio::test]
+async fn a_concurrent_cache_invalidation_is_shed_with_503_not_queued() {
+    let state = test_state("index-walk-gate").await;
+    let digest = "0".repeat(64);
+
+    let in_flight = Arc::clone(&state.cache.index_walk)
+        .try_acquire_owned()
+        .expect("the gate starts free");
+    let shed = delete_cache(&state, &digest).await;
+    assert_eq!(shed.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert!(
+        shed.headers().get(header::RETRY_AFTER).is_some(),
+        "a shed invalidation must tell the client when to retry"
+    );
+
+    drop(in_flight);
+    let after = delete_cache(&state, &digest).await;
+    assert_eq!(after.status(), StatusCode::OK, "the gate sheds, it does not latch");
+}

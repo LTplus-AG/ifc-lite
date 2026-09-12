@@ -370,6 +370,20 @@ fn overlapping_voids_merge_when_one_footprint_is_mirrored() {
     assert_single_merged_hole(&result, "one footprint mirrored CW");
 }
 
+/// Regression for #4610; remove with #4617's mixed-route compatibility helper.
+#[test]
+fn mixed_route_compat_preserves_established_overlap_parity() {
+    let profile = plate_10x10();
+    let voids = overlapping_void_pair();
+    let (result, shapes) =
+        subtract_multiple_2d_counted_mixed_compat(&profile, &voids).unwrap();
+    assert_eq!(shapes, 1);
+    assert!(
+        (net_area(&result) - 76.0).abs() < 1e-6,
+        "mixed routing keeps its established input mesh until #4617"
+    );
+}
+
 /// Regression for #4579.
 #[test]
 fn subtract_2d_single_void_overlapping_an_existing_hole_merges() {

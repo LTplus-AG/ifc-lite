@@ -134,7 +134,7 @@ export default defineConfig({
       // WebGPU. Not in CI's default lanes (no relay there) — `pnpm test:e2e:collab`, see
       // docs/contributing/collaboration-testing.md.
       name: 'viewer-collab-e2e',
-      testMatch: /collab-(share-seed|federation-scope)\.e2e\.spec\.ts/,
+      testMatch: /collab-(share-seed|federation-scope|pdf-vector-room)\.e2e\.spec\.ts/,
       timeout: 600000,
       use: {
         actionTimeout: 60000,

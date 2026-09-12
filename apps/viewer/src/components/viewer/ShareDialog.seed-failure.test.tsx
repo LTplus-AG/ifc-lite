@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store/index.js';
+import { createSyntheticDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store/types.js';
 import { ShareDialog } from './ShareDialog.js';
 
@@ -22,7 +23,7 @@ function makeModel(): FederatedModel {
   return {
     id: 'model-1',
     name: 'tower.ifc',
-    ifcDataStore: { schemaVersion: 'IFC4' } as unknown as FederatedModel['ifcDataStore'],
+    ifcDataStore: createSyntheticDataStore({ schemaVersion: 'IFC4', fileSize: 3 }),
     geometryResult: null,
     visible: true,
     collapsed: false,

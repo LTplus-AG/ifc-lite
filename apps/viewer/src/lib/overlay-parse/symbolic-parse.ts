@@ -197,6 +197,7 @@ export function buildParseResult(
   for (let i = 0; i < flat.polyOwner.length; i++) {
     const ifcType = typeNames[flat.polyType[i]];
     const expressId = flat.polyOwner[i];
+    if (expressId === 0) continue;
     const bucket = ensureBucket(expressId, flat.polyWorldY[i], ifcType);
     const looseTarget = isGridChannelOwnerType(ifcType) ? result.gridLoose : result.loose;
     const out = bucket ? bucket.lines : looseTarget;
@@ -211,6 +212,7 @@ export function buildParseResult(
   for (let i = 0; i < flat.circleOwner.length; i++) {
     const ifcType = typeNames[flat.circleType[i]];
     const expressId = flat.circleOwner[i];
+    if (expressId === 0) continue;
     const bucket = ensureBucket(expressId, flat.circleWorldY[i], ifcType);
     const looseTarget = isGridChannelOwnerType(ifcType) ? result.gridLoose : result.loose;
     const out = bucket ? bucket.lines : looseTarget;
@@ -229,6 +231,7 @@ export function buildParseResult(
   for (let i = 0; i < flat.textOwner.length; i++) {
     const ifcType = typeNames[flat.textType[i]];
     const expressId = flat.textOwner[i];
+    if (expressId === 0) continue;
     // Skip empty literals so the renderer doesn't waste an instance slot.
     //
     // The content arrives ALREADY DECODED: the Rust extractor reads it through
@@ -296,6 +299,7 @@ export function buildParseResult(
   for (let i = 0; i < flat.fillOwner.length; i++) {
     const ifcType = typeNames[flat.fillType[i]];
     const expressId = flat.fillOwner[i];
+    if (expressId === 0) continue;
     // The ring vertices and hole table are STORED into f2d (they outlive this
     // iteration), so slice them out of the shared buffers rather than viewing
     // them. Element types match the AnnotationFill2D fields.

@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
-import { BulkQueryEngine, MutablePropertyView } from '../src/index.js';
+import { BulkQueryEngine, MutablePropertyView, type Mutation } from '../src/index.js';
 
 describe('MutablePropertyView', () => {
   it('creates a new property set automatically and returns mutated values', () => {
@@ -530,6 +530,85 @@ describe('hasQuantityBase (github.com/LTplus-AG/ifc-lite/issues/2487)', () => {
 });
 
 describe('deleteQuantitySet (#2508)', () => {
+  it('deletes one base quantity, retains its siblings, and replays the mutation', () => {
+    const quantities = () => [{
+      name: 'Qto_Base',
+      quantities: [
+        { name: 'Length', type: QuantityType.Length, value: 3 },
+        { name: 'Count', type: QuantityType.Count, value: 2 },
+      ],
+    }];
+    const origin = new MutablePropertyView(null, 'model-1');
+    origin.setQuantityExtractor(quantities);
+    expect(origin.deleteQuantity(7, 'Qto_Base', 'Length')?.type).toBe('DELETE_QUANTITY');
+    expect(origin.getQuantitiesForEntity(7)[0]?.quantities.map(quantity => quantity.name)).toEqual(['Count']);
+
+    const replayed = new MutablePropertyView(null, 'model-1');
+    replayed.setQuantityExtractor(quantities);
+    replayed.applyMutations(origin.getMutations());
+    expect(replayed.getQuantitiesForEntity(7)[0]?.quantities.map(quantity => quantity.name)).toEqual(['Count']);
+  });
+
+  it('retains a replayed member tombstone when the base extractor is configured later', () => {
+    const deletion: Mutation = {
+      id: 'delete-length', type: 'DELETE_QUANTITY', timestamp: 1,
+      modelId: 'model-1', entityId: 7, psetName: 'Qto_Base', propName: 'Length',
+    };
+    const replayed = new MutablePropertyView(null, 'model-1');
+    replayed.applyMutations([deletion]);
+    const quantities = () => [{
+      name: 'Qto_Base',
+      quantities: [
+        { name: 'Length', type: QuantityType.Length, value: 3 },
+        { name: 'Count', type: QuantityType.Count, value: 2 },
+      ],
+    }];
+    replayed.setQuantityExtractor(quantities);
+
+    expect(replayed.getQuantitiesForEntity(7)[0]?.quantities.map(quantity => quantity.name)).toEqual(['Count']);
+    expect(replayed.getMutations()).toEqual([deletion]);
+
+    const secondHop = new MutablePropertyView(null, 'model-1');
+    secondHop.setQuantityExtractor(quantities);
+    secondHop.applyMutations(replayed.getMutations());
+    expect(secondHop.getQuantitiesForEntity(7)[0]?.quantities.map(quantity => quantity.name)).toEqual(['Count']);
+    expect(secondHop.getMutations()).toHaveLength(1);
+  });
+
+  it('keeps a delayed-base quantity deleted after replaying an update followed by delete', () => {
+    const replayed = new MutablePropertyView(null, 'model-1');
+    replayed.applyMutations([
+      {
+        id: 'update-length', type: 'UPDATE_QUANTITY', timestamp: 1,
+        modelId: 'model-1', entityId: 7, psetName: 'Qto_Base', propName: 'Length',
+        oldValue: 3, newValue: 4, quantityType: QuantityType.Length,
+      },
+      {
+        id: 'delete-length', type: 'DELETE_QUANTITY', timestamp: 2,
+        modelId: 'model-1', entityId: 7, psetName: 'Qto_Base', propName: 'Length',
+      },
+    ]);
+    const quantities = () => [{
+      name: 'Qto_Base',
+      quantities: [
+        { name: 'Length', type: QuantityType.Length, value: 3 },
+        { name: 'Count', type: QuantityType.Count, value: 2 },
+      ],
+    }];
+    replayed.setQuantityExtractor(quantities);
+
+    expect(replayed.getQuantitiesForEntity(7)[0]?.quantities.map(quantity => quantity.name)).toEqual(['Count']);
+    expect(replayed.getMutations().map(mutation => mutation.type)).toEqual([
+      'CREATE_QUANTITY',
+      'DELETE_QUANTITY',
+    ]);
+
+    const secondHop = new MutablePropertyView(null, 'model-1');
+    secondHop.setQuantityExtractor(quantities);
+    secondHop.applyMutations(replayed.getMutations());
+    expect(secondHop.getQuantitiesForEntity(7)[0]?.quantities.map(quantity => quantity.name)).toEqual(['Count']);
+  });
+
   it('removes a quantity set created in this session, along with its quantities', () => {
     const view = new MutablePropertyView(null, 'model-1');
     view.setOnDemandExtractor(() => []);

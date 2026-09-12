@@ -124,7 +124,56 @@ style entity. Both keep the source colour and material name through the
 canonical funnel, and each must reproduce its share of the source corners
 exactly before the plan leaves Rust. The conversion reports `maskedTriangles`
 (ascending) and `retainedGeometryItemId`; `sourceIndices` remains the complete
-source surface so preview and history keep one original. Face masks do not yet
+source surface so preview and history keep one original. Face masks do not
 apply to direct tessellated bodies, which would require replacing a file-owned
-item, and the viewer's renderer preview still replaces owner parts one-to-one:
-its binder refuses a masked plan explicitly until the split preview lands.
+item; the planner reports such a mask as its own exclusion.
+
+### Face masks in the viewer
+
+The appearance workspace holds one face selection per converted product as
+session state only: `{ productId, surfaceFingerprint, triangles }`, bound to
+the fingerprint the last plan reported for that product. Selections never
+persist to IFC (the output carries the resulting face sets), clear when the
+target model changes or reloads, and are spent by Apply (the product then owns
+a direct tessellated Body, which cannot carry a mask). A plan request carries
+only the masks of products inside its scope; masks of other products wait in
+the workspace.
+
+Each converted object in the panel shows a chip (`all N faces` or `k of N faces
+selected`) and a **Select faces** editor over the product's evaluated source
+surface, the same `sourcePositions`/`sourceIndices` the plan reports, so editor
+triangle ordinals are mask ordinals. In the editor a click toggles one face, a
+marquee adds the faces whose centres it covers (Alt removes), **All faces**
+clears the selection, and every change re-plans; **Clear** on the chip does the
+same. A selection covering every face is no selection.
+
+The viewer never decides staleness itself. After every plan it reconciles: a
+mask whose product the planner excluded as `Face selection is stale` (a
+placement edit of a world-evaluated body, an edited opening, a different
+tessellator) or as already carrying a direct Body is dropped, and the panel
+shows `Face selection for <object> is stale: the evaluated surface geometry
+changed, so the selection was cleared. Select faces again.` beside the
+exclusions; the plan then re-runs without it. A conversion that reports a
+different fingerprint than the mask it was drawn on is treated the same way.
+In the browser build a pure translation of a mapped tessellation keeps its
+fingerprint and therefore its selection (the surface is unchanged relative to
+the product); the native test fixture's translated swept box reports stale.
+Both are the planner's verdicts, which the viewer only relays.
+
+The renderer preview stages a masked plan as two parts of one owner through an
+explicit `AppearancePartition`: the textured face set expanded with the planned
+UVs and the retained face set with the source colour, over exactly the
+original's triangle corners. The renderer proves corner-for-corner position
+equality, an identical placement frame and ownership, and full single coverage
+of the reference surface before installing the parts; Compare and Discard
+restore the single original; Apply commits both parts; history records the
+partition and joins the parts again on Undo through the inverted record. The
+partition names the whole owner, so a masked product whose original renders in
+more than one resident fragment is refused explicitly (`Face selection needs
+the complete evaluated surface ... in one piece`); evaluated conversions have
+one source surface, so this only affects streaming fragments above the
+renderer's fragment size. Picking either part selects the product; a portable
+IFCZIP export carries the image; reopening the export tessellates the product
+into its two face sets under one selectable product. Real-browser and
+independent-reader evidence, including a masked opening-bearing slab, is in
+[`evidence/evaluated-occurrences/face-mask-ui/`](evidence/evaluated-occurrences/face-mask-ui/README.md).

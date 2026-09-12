@@ -44,6 +44,10 @@ const positions = new Float32Array([0, 0, 0, 1, 0, 0, 1, 0, -1, 0, 0, -1]);
 const normals = new Float32Array(12).map((_, i) => i % 3 === 1 ? 1 : 0);
 
 interface RasterPixels { width: number; height: number; rgba: Uint8ClampedArray }
+interface FrozenTopologyOracle {
+  readonly sourceIndices: readonly number[];
+  readonly cornerPositions: readonly (readonly number[])[];
+}
 
 function meshSnapshot(parts: readonly MeshData[]) {
   return parts.map(part => ({
@@ -58,20 +62,61 @@ function meshSnapshot(parts: readonly MeshData[]) {
   }));
 }
 
-function assertCanonicalFragments(parts: readonly MeshData[], expected: readonly (readonly number[])[], message: string): void {
-  const canonicalIndices = parts[0]?.appearanceSource?.sourceIndices;
-  assert.ok(canonicalIndices && canonicalIndices.length === indices.length, `${message}: the complete canonical item is retained`);
+function freezeTopologyOracle(sourcePositions: Float32Array, sourceIndices: Uint32Array): FrozenTopologyOracle {
+  return Object.freeze({
+    sourceIndices: Object.freeze([...sourceIndices]),
+    cornerPositions: Object.freeze([...sourceIndices].map(vertex =>
+      Object.freeze([...sourcePositions.slice(vertex * 3, vertex * 3 + 3)]))),
+  });
+}
+
+function freezeExpandedTopologyOracle(source: FrozenTopologyOracle): FrozenTopologyOracle {
+  const cornerPositions = source.cornerPositions.map(point => [...point]);
+  return freezeTopologyOracle(new Float32Array(cornerPositions.flat()),
+    Uint32Array.from({ length: cornerPositions.length }, (_, corner) => corner));
+}
+
+function freezeCenteredTopologyOracle(source: FrozenTopologyOracle): FrozenTopologyOracle {
+  const axes = [0, 1, 2].map(axis => {
+    const values = source.cornerPositions.map(point => point[axis]);
+    return (Math.min(...values) + Math.max(...values)) / 2;
+  });
+  return Object.freeze({ sourceIndices: source.sourceIndices,
+    cornerPositions: Object.freeze(source.cornerPositions.map(point =>
+      Object.freeze(point.map((value, axis) => value - axes[axis])))) });
+}
+
+function assertCanonicalFragments(parts: readonly MeshData[], oracle: FrozenTopologyOracle,
+  expected: readonly (readonly number[])[], message: string): void {
   const actual = parts.map(part => {
     const source = part.appearanceSource;
     assert.ok(source?.cornerIndices, `${message}: each fragment retains canonical corners`);
-    assert.deepEqual([...source.sourceIndices], [...canonicalIndices], `${message}: every fragment names the same canonical item index buffer`);
+    assert.strictEqual(source.indices, part.indices, `${message}: provenance names the rendered fragment index buffer`);
+    assert.deepEqual([...source.sourceIndices], oracle.sourceIndices,
+      `${message}: every fragment retains the independently frozen full topology`);
     const corners = [...source.cornerIndices];
     assert.equal(corners.length, part.indices.length, `${message}: every rendered corner has canonical provenance`);
+    corners.forEach((canonicalCorner, localCorner) => {
+      const vertex = part.indices[localCorner];
+      assert.deepEqual([...part.positions.slice(vertex * 3, vertex * 3 + 3)], oracle.cornerPositions[canonicalCorner],
+        `${message}: rendered corner ${localCorner} matches canonical corner ${canonicalCorner}`);
+    });
     return corners;
   }).sort((a, b) => a[0] - b[0]);
   assert.deepEqual(actual, expected, message);
   assert.deepEqual(actual.map(corners => corners[0] / 3), expected.map(corners => corners[0] / 3),
     `${message}: canonical source triangle ordinals remain stable`);
+}
+
+function triangleGeometry(mesh: MeshData, message: string): number[][] {
+  assert.equal(mesh.indices.length, 3, `${message}: one triangle is present`);
+  return [...mesh.indices].map(vertex => [...mesh.positions.slice(vertex * 3, vertex * 3 + 3)])
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+}
+
+function oracleTriangle(oracle: FrozenTopologyOracle, ordinal: number): number[][] {
+  return oracle.cornerPositions.slice(ordinal * 3, ordinal * 3 + 3).map(point => [...point])
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
 }
 
 function requireRasterPixels(raster: RasterPixels | undefined): RasterPixels {
@@ -147,6 +192,11 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     const view = new MutablePropertyView(data.properties, 'evaluated');
     const idOffset = federationRegistry.registerModel('evaluated', 80);
     const globalId = (id: number) => federationRegistry.toGlobalId('evaluated', id);
+    // Freeze the renderer topology before any mesh enters preview ownership.
+    // This remains independent of every appearanceSource installed later.
+    const originalOracle = freezeTopologyOracle(positions.slice(), indices.slice());
+    const previewOracle = freezeExpandedTopologyOracle(originalOracle);
+    const reopenedOracle = freezeCenteredTopologyOracle(originalOracle);
     const makeMesh = (id: number): MeshData => ({ expressId: globalId(id), geometryItemId: globalId(11), modelIndex: 0, positions, normals, indices,
       color: [0.8, 0.2, 0.1, 1], appearanceSource: { kind: 'canonical-item', indices, sourceIndices: indices } });
     const originals = [makeMesh(25), makeMesh(35)];
@@ -169,6 +219,9 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
       appearanceSources: [], appearanceDraft: null, selectedEntityId: selection, selectedEntityIds: new Set([selection]) });
     const owner = { kind: 'source' as const, id: 'face-mask-image' };
     let decodedPdf: RasterPixels | undefined;
+    let pdfPagePng: Uint8Array | undefined;
+    let pdfPageBitmap: ImageBitmap | undefined;
+    let pdfPageBitmapDrawn = false;
     if (pageSource) {
       const bytes = controlledPdf(), backend = await pdfBackend(raster => { decodedPdf = raster; });
       const document = await PdfAppearanceSource.open(new File([bytes], 'Controlled plan.pdf', { type: 'application/pdf' }), appearanceAssets, {
@@ -177,6 +230,7 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
       pdfKey = registerPdfDocument(document);
       const raster = await document.rasterize({ pageNumber: 1, dpi: 18 });
       const pagePng = appearanceAssets.encoded(raster.asset.id);
+      pdfPagePng = pagePng.slice();
       assert.ok(raster.recipe.pixelWidth > 1 && raster.recipe.pixelWidth <= 256
         && raster.recipe.pixelHeight > 1 && raster.recipe.pixelHeight <= 256 && pagePng.length > 100,
       'real PDF.js decoded a bounded page derivative');
@@ -187,15 +241,29 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
         calibration: { sourcePoints: [[10, 20], [110, 20]], distanceMetres: 1 } });
       Object.defineProperty(globalThis, 'OffscreenCanvas', { configurable: true, value: class {
         constructor(readonly width: number, readonly height: number) { assert.equal(width, rasterPixels.width); assert.equal(height, rasterPixels.height); }
-        getContext() { return { drawImage() {}, getImageData: () => ({ data: rasterPixels.rgba }) }; }
+        getContext() { return { drawImage(bitmap: ImageBitmap) {
+          assert.strictEqual(bitmap, pdfPageBitmap, 'the PDF compositor draws the bitmap decoded from the exact page PNG');
+          pdfPageBitmapDrawn = true;
+        }, getImageData: () => {
+          assert.equal(pdfPageBitmapDrawn, true, 'RGBA extraction follows the exact decoded PDF page bitmap draw');
+          return { data: rasterPixels.rgba };
+        } }; }
       } });
     } else {
       const asset = await appearanceAssets.add(png, { owner });
       useViewerStore.getState().addAppearanceSource({ id: asset.id, name: 'Texture', width: 1, height: 1 });
     }
     globalThis.createImageBitmap = async (blob: ImageBitmapSource) => {
-      assert.ok(blob instanceof Blob); const bytes = new DataView(await blob.arrayBuffer());
-      return { width: bytes.getUint32(16), height: bytes.getUint32(20), close() {} } as ImageBitmap;
+      assert.ok(blob instanceof Blob);
+      const encoded = new Uint8Array(await blob.arrayBuffer());
+      const bytes = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength);
+      const bitmap = { width: bytes.getUint32(16), height: bytes.getUint32(20), close() {} } as ImageBitmap;
+      if (pageSource && pdfPageBitmap === undefined) {
+        assert.ok(pdfPagePng, 'the real PDF page PNG is frozen before browser decoding');
+        assert.deepEqual(encoded, pdfPagePng, 'createImageBitmap receives the exact PNG emitted by the PDF.js canvas');
+        pdfPageBitmap = bitmap;
+      }
+      return bitmap;
     };
     Object.defineProperty(globalThis, 'Worker', { configurable: true, value: NativeWorker });
     // The face-selection canvas has no GPU here. The main viewport hit below
@@ -213,6 +281,8 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     const readParts = (id: number) => instanceScene
       ? activePreview.getParts?.({ expressId: id, modelIndex: 0 }) ?? instanceScene.scene.getInstancedMeshDataPieces(id)
       : resident.get(id);
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
+      'the initial resident fragments match the topology frozen before preview ownership');
     const siblingBefore = meshSnapshot(readParts(globalId(35))!);
     const renderer = { getAppearancePreview: () => activePreview,
       getScene: () => instanceScene?.scene ?? { getMeshDataPieces: (id: number) => resident.get(id) }, requestRender() {},
@@ -239,7 +309,7 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     const wholeTextured = globalId(whole.plan.conversions![0].geometryItemId);
     assert.deepEqual(ids(selection), pageSource ? [wholeTextured, wholeTextured] : [wholeTextured],
       'a whole-surface conversion textures every resident fragment without changing its partition');
-    if (pageSource) assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, previewOracle, [[0, 1, 2], [3, 4, 5]],
       'the initial whole-surface preview preserves both stream fragments');
 
     // Select one of the two faces: the plan carries the mask, the preview splits.
@@ -264,6 +334,7 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
       assert.ok(masked.page && masked.rgba, 'the selected faces reached the native page compositor');
       assert.equal(masked.page.appearance.repeatS, false); assert.equal(masked.page.appearance.repeatT, false);
       assert.equal(masked.page.page.width * masked.page.page.height * 4, masked.rgba.length);
+      assert.equal(pdfPageBitmapDrawn, true, 'the exact PDF page bitmap reaches the compositor before RGBA extraction');
       assert.deepEqual([...masked.rgba], [...requireRasterPixels(decodedPdf).rgba],
         'native page planning receives the exact RGBA decoded by PDF.js');
       assert.deepEqual(masked.page.appearance.mapping, { kind: 'planar', frame: 'world', origin: [1, 0, 0],
@@ -292,10 +363,10 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     assert.deepEqual(retainedPart && [...retainedPart.color], [0.8, 0.2, 0.1, 1], 'the retained part keeps the source colour');
     if (pageSource) {
       assert.equal(texturedPart?.textureRef?.repeatS, false, 'finite PDF pages clamp instead of tile');
-      assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+      assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
         'the masked preview preserves canonical source triangles across its textured/retained split');
-      assertCanonicalFragments([texturedPart!], [[3, 4, 5]], 'the picked face keeps canonical source ordinal 1');
-      assertCanonicalFragments([retainedPart!], [[0, 1, 2]], 'the unpicked face keeps canonical source ordinal 0');
+      assertCanonicalFragments([texturedPart!], originalOracle, [[3, 4, 5]], 'the picked face keeps canonical source ordinal 1');
+      assertCanonicalFragments([retainedPart!], originalOracle, [[0, 1, 2]], 'the unpicked face keeps canonical source ordinal 0');
     }
     assert.match(ui.textContent ?? '', /1 of 2 faces selected/);
     assert.deepEqual(meshSnapshot(readParts(globalId(35))!), siblingBefore,
@@ -321,18 +392,18 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     assert.match(ui.textContent ?? '', /1 of 2 faces selected/);
     await act(async () => button('Compare original').click());
     assert.deepEqual(ids(selection), originalIds);
-    if (pageSource) assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
       'Compare restores both original canonical fragments');
     await act(async () => button('Show preview').click());
     assert.deepEqual(splitIds(), expectedSplitIds);
-    if (pageSource) assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
       'Show preview restores the canonical masked split');
 
     // Discard restores the single original part and keeps the selection for the next preview.
     await act(async () => button('Discard').click());
     await until(() => (ui.textContent ?? '').includes('Preview discarded'));
     assert.deepEqual(ids(selection), originalIds);
-    if (pageSource) assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
       'Discard restores both original canonical fragments');
     const mappingInput = pageSource
       ? ui.querySelector<HTMLInputElement>('input[aria-label="Distance A–B (m)"]')
@@ -350,7 +421,7 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
         axisU: [0, 0, 1], axisV: [-1, -0, -0], metresPerTile: [1.44, 2] },
       'doubling the measured distance deterministically doubles the calibrated page scale');
       assert.equal(again.page.texelsPerMetre, 25, 'doubling page scale halves the raster density');
-      assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+      assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
         'the re-preview keeps canonical provenance after calibration changes');
     }
 
@@ -362,7 +433,7 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     const applied = useViewerStore.getState().models.get('evaluated')!.geometryResult!.meshes.filter(mesh => mesh.expressId === selection);
     assert.deepEqual(partIds(applied).sort((a, b) => a - b), expectedSplitIds,
       'the model geometry carries both parts of the product');
-    if (pageSource) assertCanonicalFragments(applied, [[0, 1, 2], [3, 4, 5]],
+    if (pageSource) assertCanonicalFragments(applied, originalOracle, [[0, 1, 2], [3, 4, 5]],
       'Apply commits the same canonical source ordinals');
     assert.deepEqual(meshSnapshot(readParts(globalId(35))!), siblingBefore,
       'Apply leaves the sibling identity, geometry bytes, and style unchanged');
@@ -410,6 +481,10 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
         assert.equal(texturedMesh.textureRef.repeatS, false); assert.equal(texturedMesh.textureRef.repeatT, false);
         assert.equal(texturedMesh.expressId, 25); assert.equal(retainedMesh?.expressId, 25);
         assert.equal(retainedMesh?.textureRef, undefined); assert.ok(retainedMesh);
+        assert.deepEqual(triangleGeometry(texturedMesh, 'the reopened textured face set'), oracleTriangle(reopenedOracle, 1),
+          'the reopened textured face set is geometrically canonical ordinal 1');
+        assert.deepEqual(triangleGeometry(retainedMesh, 'the reopened retained face set'), oracleTriangle(reopenedOracle, 0),
+          'the reopened retained face set is geometrically the canonical complement');
         [0.8, 0.2, 0.1, 1].forEach((expected, index) => assert.ok(Math.abs(retainedMesh.color[index] - expected) <= 1 / 255,
           'the retained face keeps the original style through IFC colour quantization'));
       } finally { processor.dispose(); }
@@ -419,12 +494,12 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     await act(async () => { const undo = ui.querySelector<HTMLButtonElement>('button[aria-label="Undo"]'); assert.ok(undo && !undo.disabled); undo.click(); });
     assert.equal(view.getNewEntities().length, 0);
     assert.deepEqual(ids(selection), originalIds);
-    if (pageSource) assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
       'Undo restores the original canonical fragments');
     if (instanced) assert.equal(useViewerStore.getState().models.get('evaluated')!.geometryResult!.meshes.length, 0);
     await act(async () => { const redo = ui.querySelector<HTMLButtonElement>('button[aria-label="Redo"]'); assert.ok(redo && !redo.disabled); redo.click(); });
     assert.deepEqual(splitIds(), expectedSplitIds);
-    if (pageSource) assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
       'Redo restores the canonical masked split');
     assert.equal(view.getNewEntities().filter(entity => entity.type === 'IfcTriangulatedFaceSet').length, 2);
     assert.deepEqual(meshSnapshot(readParts(globalId(35))!), siblingBefore,

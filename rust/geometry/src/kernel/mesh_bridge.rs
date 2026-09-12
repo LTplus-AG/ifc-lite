@@ -129,9 +129,7 @@ pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
     tris_to_mesh(&boolean(&h, &c, BoolOp::Difference))
 }
 
-/// What [`subtract_many`] made of a cutter group. Each variant is its own
-/// outcome so the caller matches instead of re-deriving "did it cut" from the
-/// returned mesh (the count-then-0.1 %-volume decoder #1788 repaired twice).
+/// What [`subtract_many`] made of a cutter group.
 #[derive(Debug, Clone)]
 pub enum BatchSubtract {
     /// The arrangement conformed (or its lenient batch passed the volume
@@ -145,6 +143,17 @@ pub enum BatchSubtract {
     /// lenient batch failed the volume oracle, or the oracle itself tripped the
     /// budget. The caller falls back to sequential per-cutter subtraction.
     Nonconforming,
+}
+
+impl BatchSubtract {
+    /// `Cut` when the classifier changed the host, `Unchanged` otherwise.
+    fn classified(tris: &[Tri], changed: bool) -> Self {
+        if changed {
+            Self::Cut(tris_to_mesh(tris))
+        } else {
+            Self::Unchanged
+        }
+    }
 }
 
 /// `host − (∪ cutters)` as a `Mesh` — the batched void-group subtract.
@@ -171,16 +180,9 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> BatchSubtract {
         })
         .collect();
     let refs: Vec<&[Tri]> = comp_tris.iter().map(|c| c.as_slice()).collect();
-    let outcome = |tris: Vec<Tri>, changed: bool| {
-        if changed {
-            BatchSubtract::Cut(tris_to_mesh(&tris))
-        } else {
-            BatchSubtract::Unchanged
-        }
-    };
     // Conforming batch: the fast, exact, byte-identical common path.
     if let Some((r, changed)) = difference_all(&h, &refs) {
-        return outcome(r, changed);
+        return BatchSubtract::classified(&r, changed);
     }
     // Non-conforming batch (an unrecovered constraint remains after the robust
     // traversal recovery). Its exact topology is CLEANER than sequential per-cutter
@@ -223,7 +225,7 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> BatchSubtract {
     // reject the #1167 gross under-cut (3.7 m³ vs 13 m³).
     let tol = inter_sum.abs().max(1.0e-9) * 0.01;
     if (batch_removed - inter_sum).abs() <= tol {
-        outcome(batch, changed)
+        BatchSubtract::classified(&batch, changed)
     } else {
         BatchSubtract::Nonconforming
     }

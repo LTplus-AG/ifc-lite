@@ -460,12 +460,12 @@ impl GeometryRouter {
         clipper: &ClippingProcessor,
     ) -> bool {
         let tri_before = result.triangle_count();
-        let vol_before = mesh_signed_volume(result);
         if !multi_slab {
             let cutters: Vec<&Mesh> = prisms.iter().collect();
             // A `Rejected` group (any `GroupReject`) is `false`: the caller
             // falls back to the 3D union, then defers.
-            if let Ok(GroupCut::Cut(cut)) = clipper.subtract_mesh_many(result, &cutters) {
+            if let GroupCut::Cut(cut) = clipper.subtract_mesh_many(result, &cutters) {
+                let vol_before = mesh_signed_volume(result);
                 return accept_cut(result, cut, tri_before, vol_before, max_removed);
             }
             return false;
@@ -479,6 +479,7 @@ impl GeometryRouter {
         if union.is_empty() || !mesh_is_closed_exact(&union) {
             return false;
         }
+        let vol_before = mesh_signed_volume(result);
         let Ok(cut) = clipper.subtract_mesh(result, &union) else {
             return false;
         };

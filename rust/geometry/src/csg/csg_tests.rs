@@ -43,15 +43,15 @@ fn aabb_to_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
 }
 
 /// The cut mesh of a group subtraction, or a panic naming the rejection.
-fn group_cut(outcome: Result<GroupCut>) -> Mesh {
-    match outcome.expect("subtract_mesh_many never errors") {
+fn group_cut(outcome: GroupCut) -> Mesh {
+    match outcome {
         GroupCut::Cut(m) => m,
         GroupCut::Rejected(why) => panic!("group rejected: {why:?}"),
     }
 }
 
-fn group_reject(outcome: Result<GroupCut>) -> GroupReject {
-    match outcome.expect("subtract_mesh_many never errors") {
+fn group_reject(outcome: GroupCut) -> GroupReject {
+    match outcome {
         GroupCut::Cut(m) => panic!("expected a rejection, got a {}-triangle cut", m.triangle_count()),
         GroupCut::Rejected(why) => why,
     }
@@ -797,7 +797,7 @@ fn topology_gate_rejects_every_torn_boolean_result_when_enabled() {
 
     let p = ClippingProcessor::new();
     let subtract = p.subtract_mesh(&open_host, &through_cutter).unwrap();
-    let batched = p.subtract_mesh_many(&open_host, &[&through_cutter]).unwrap();
+    let batched = p.subtract_mesh_many(&open_host, &[&through_cutter]);
     let union = p.union_mesh(&open_host, &overlapping).unwrap();
     let intersection = p.intersection_mesh(&open_host, &overlapping).unwrap();
 
@@ -888,7 +888,7 @@ fn manifold_gate_rejects_a_non_manifold_result_at_the_accept_seam() {
 
     let p = ClippingProcessor::new();
     let subtract = p.subtract_mesh(&host, &through_cutter).unwrap();
-    let batched = p.subtract_mesh_many(&host, &[&through_cutter]).unwrap();
+    let batched = p.subtract_mesh_many(&host, &[&through_cutter]);
     let union = p.union_mesh(&host, &overlapping).unwrap();
 
     assert_eq!(

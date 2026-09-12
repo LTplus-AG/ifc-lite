@@ -1286,7 +1286,7 @@ impl GeometryRouter {
                         // `Cut` already says the kernel removed host volume; a
                         // `Rejected` group (any `GroupReject`) leaves every member
                         // to the sequential loop below.
-                        if let Ok(GroupCut::Cut(csg_result)) =
+                        if let GroupCut::Cut(csg_result) =
                             clipper.subtract_mesh_many(&result, &cutters)
                         {
                             let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)

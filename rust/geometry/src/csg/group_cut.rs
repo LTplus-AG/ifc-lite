@@ -4,18 +4,13 @@
 
 //! Group subtraction (disjoint-cutter batching) and its outcome type.
 //!
-//! [`ClippingProcessor::subtract_mesh_many`] used to hand back `Ok(host)` for
-//! every way a group can be turned down (budget trip, unrecovered constraint,
-//! invalid intermediate, accept-gate rejection, no overlap) and `Ok(cut)` for
-//! a real cut, so the router could only tell the two apart by comparing the
-//! result against the host with a triangle count and a 0.1 % volume gate
-//! (`router/voids/sweep.rs`). That decoder was repaired twice under #1788 and
-//! its own doc records a case it still misreads. [`GroupCut`] carries the bit
-//! instead: the caller matches, and nothing downstream re-derives it.
+//! [`GroupCut`] says whether the group was cut and, if not, why, so the router
+//! matches on it instead of comparing the returned mesh against the host (the
+//! triangle-count and 0.1 % volume decoder of #1788, `router/voids/sweep.rs`,
+//! which still serves the single-cutter path).
 
 use super::{record_csg_op, ClippingProcessor};
 use crate::diagnostics::{BoolFailureReason, BoolOp};
-use crate::error::Result;
 use crate::kernel::mesh_bridge::{subtract_many, BatchSubtract};
 use crate::mesh::Mesh;
 
@@ -26,9 +21,7 @@ pub enum GroupCut {
     /// intermediate passed validation and the accept gates. Empty when the
     /// cutters engulf the host.
     Cut(Mesh),
-    /// The host is untouched. The router's per-opening sequential loop (with
-    /// the #635 fallback machinery and its own diagnostics) takes over for the
-    /// group's members.
+    /// The host is untouched; the caller cuts the members one by one.
     Rejected(GroupReject),
 }
 
@@ -72,22 +65,18 @@ const MAX_CUTTERS_PER_ARRANGEMENT: usize = 16;
 
 impl ClippingProcessor {
     /// Subtract a GROUP of pairwise-disjoint opening cutters from the host in
-    /// ONE conforming arrangement (disjoint-cutter batching).
+    /// ONE conforming arrangement per chunk (disjoint-cutter batching).
     ///
-    /// A REJECTED group leaves the host un-cut and, except for an invalid
-    /// kernel output or an accept-gate refusal, records NO failure: rejection
-    /// is the expected, handled outcome. The router's per-opening sequential
-    /// loop (with the full #635 fallback machinery and its own diagnostics)
-    /// immediately takes over for the group's members, so a failure record
-    /// here would be pure noise on elements whose voids end up perfectly cut
-    /// (the issue-582/583 zero-CSG-failure bar). Which way it was rejected is
-    /// carried in [`GroupReject`], not inferred from the returned mesh.
-    ///
-    /// On any chunk's rejection the WHOLE group is rejected so the sequential
-    /// per-opening path (own budget + #635 AABB fallback) takes over.
-    pub fn subtract_mesh_many(&self, host_mesh: &Mesh, cutters: &[&Mesh]) -> Result<GroupCut> {
+    /// On any chunk's rejection the WHOLE group is rejected and the host is
+    /// left un-cut: the router's per-opening sequential loop (own budget,
+    /// #635 fallback machinery, own diagnostics) then takes over for the
+    /// members. Rejection is the expected, handled outcome, so only an invalid
+    /// kernel output or an accept-gate refusal records a failure; anything
+    /// more would be noise on elements whose voids end up perfectly cut (the
+    /// issue-582/583 zero-CSG-failure bar).
+    pub fn subtract_mesh_many(&self, host_mesh: &Mesh, cutters: &[&Mesh]) -> GroupCut {
         if host_mesh.is_empty() {
-            return Ok(GroupCut::Rejected(GroupReject::EmptyHost));
+            return GroupCut::Rejected(GroupReject::EmptyHost);
         }
         let live: Vec<&Mesh> = cutters
             .iter()
@@ -95,30 +84,31 @@ impl ClippingProcessor {
             .filter(|c| !c.is_empty() && Self::bounds_overlap(host_mesh, c))
             .collect();
         if live.is_empty() {
-            return Ok(GroupCut::Rejected(GroupReject::NoOverlap));
+            return GroupCut::Rejected(GroupReject::NoOverlap);
         }
-        let mut result = host_mesh.clone();
-        let mut changed = false;
+        // `None` until a chunk cuts: the host is only copied by the kernel.
+        let mut cut: Option<Mesh> = None;
         for chunk in live.chunks(MAX_CUTTERS_PER_ARRANGEMENT) {
+            let current = cut.as_ref().unwrap_or(host_mesh);
             // Census: record THIS kernel invocation's real operand sizes (the
             // current host + this chunk's cutters). Chunking runs the kernel once
             // per chunk, so report K real ops, not one synthetic op carrying the
             // whole group's cutter total. For live.len() <= cap this is one record
             // identical to the prior single arrangement.
             let chunk_tris: usize = chunk.iter().map(|c| c.triangle_count()).sum();
-            record_csg_op(0, result.triangle_count(), chunk_tris);
+            record_csg_op(0, current.triangle_count(), chunk_tris);
             crate::kernel::budget::begin();
-            let raw = subtract_many(&result, chunk);
+            let raw = subtract_many(current, chunk);
             if crate::kernel::budget::tripped() {
                 // Escalation budget exceeded (#1109): the partial arrangement
                 // is discarded whatever the kernel made of it (deterministic).
-                return Ok(GroupCut::Rejected(GroupReject::BudgetTripped));
+                return GroupCut::Rejected(GroupReject::BudgetTripped);
             }
             let raw = match raw {
                 BatchSubtract::Cut(raw) => raw,
                 BatchSubtract::Unchanged => continue,
                 BatchSubtract::Nonconforming => {
-                    return Ok(GroupCut::Rejected(GroupReject::Nonconforming));
+                    return GroupCut::Rejected(GroupReject::Nonconforming);
                 }
             };
             let next = Self::consolidate_coplanar(raw);
@@ -127,18 +117,19 @@ impl ClippingProcessor {
             // subsequent subtraction. Same guard as `subtract_mesh`, per chunk.
             if !next.is_empty() && !self.validate_mesh(&next) {
                 self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
-                return Ok(GroupCut::Rejected(GroupReject::InvalidOutput));
+                return GroupCut::Rejected(GroupReject::InvalidOutput);
             }
             if self.accept_gates_reject(BoolOp::Difference, &next) {
-                return Ok(GroupCut::Rejected(GroupReject::GateRejected));
+                return GroupCut::Rejected(GroupReject::GateRejected);
             }
-            result = next;
-            changed = true;
+            cut = Some(next);
         }
-        if !changed {
-            return Ok(GroupCut::Rejected(GroupReject::Unchanged));
+        match cut {
+            Some(result) => {
+                self.record_topology_tear(BoolOp::Difference, &result);
+                GroupCut::Cut(result)
+            }
+            None => GroupCut::Rejected(GroupReject::Unchanged),
         }
-        self.record_topology_tear(BoolOp::Difference, &result);
-        Ok(GroupCut::Cut(result))
     }
 }

@@ -524,9 +524,7 @@ pub(super) fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) 
 ///
 /// Returns `(tris, changed)`. `changed == false` means no A sub-triangle was
 /// dropped and no B sub-triangle kept: the result is operand A re-tessellated
-/// along the arrangement, bounding the same solid. A caller that wants "did
-/// the boolean do anything" reads this bit instead of comparing the output
-/// against A by triangle count or volume (the decoder #1788 repaired twice).
+/// along the arrangement, bounding the same solid.
 pub(super) fn boolean_vids_components(
     arr: &Arrangement,
     a: &[Tri],
@@ -534,7 +532,6 @@ pub(super) fn boolean_vids_components(
     op: BoolOp,
 ) -> (Vec<[Vid; 3]>, bool) {
     use std::collections::HashSet;
-    let mut changed = false;
     let ext_a = operand_extent(a);
     // One BVH over operand A, reused for every B-face inside/outside ray-cast AND
     // coincident/near-surface probe below (the dominant O(|tris_b|·|a|) scans on
@@ -610,10 +607,9 @@ pub(super) fn boolean_vids_components(
                 a_kept.insert(rotate_min_first(tri));
             }
             out.push(tri);
-        } else {
-            changed = true;
         }
     }
+    let a_kept_count = out.len();
     for (i, &tri) in arr.tris_b.iter().enumerate() {
         // dedup a true co-oriented duplicate of a kept A face (keep the A-copy)
         if dedup && a_kept.contains(&rotate_min_first(tri)) {
@@ -637,7 +633,6 @@ pub(super) fn boolean_vids_components(
                 if keep {
                     let flip = matches!(op, BoolOp::Difference);
                     out.push(if flip { [tri[0], tri[2], tri[1]] } else { tri });
-                    changed = true;
                 }
                 continue;
             }
@@ -650,9 +645,9 @@ pub(super) fn boolean_vids_components(
         };
         if keep {
             out.push(if flip { [tri[0], tri[2], tri[1]] } else { tri });
-            changed = true;
         }
     }
+    let changed = a_kept_count != arr.tris_a.len() || out.len() != a_kept_count;
     (out, changed)
 }
 

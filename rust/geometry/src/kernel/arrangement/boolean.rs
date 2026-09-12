@@ -10,7 +10,7 @@ use super::classify::{
     BComponents,
 };
 use super::ray_parity::{operand_extent, point_inside};
-use super::{arrange, arrange_many, BoolOp, MultiArrangement, Tri};
+use super::{arrange, arrange_many, Arrangement, BoolOp, MultiArrangement, Tri};
 use num_traits::ToPrimitive;
 
 /// `∪ meshes` as a watertight triangle list — the N-ary union.
@@ -206,12 +206,9 @@ pub fn boolean_with_conformity(a: &[Tri], b: &[Tri], op: BoolOp) -> (Vec<Tri>, b
 /// ~N× cheaper on N box cutters.
 ///
 /// Returns `(difference, changed)`, the same shape as [`union_all`]'s
-/// `(union, conforming)`. `changed == false` means the arrangement conformed
-/// but no cutter reaches the solid `a` bounds (every A sub-triangle kept, no B
-/// sub-triangle kept): the triangles are `a` re-tessellated, not a cut. The
-/// bit comes from the classifier's own keep decisions, so it is exact where a
-/// triangle-count or volume comparison against `a` is not (a re-tessellated
-/// host moves the count; a sub-0.1 % cut does not move the volume).
+/// `(union, conforming)`. `changed == false` means no cutter reaches the solid
+/// `a` bounds (every A sub-triangle kept, no B sub-triangle kept): the
+/// triangles are `a` re-tessellated, not a cut.
 pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<(Vec<Tri>, bool)> {
     if comps.is_empty() {
         return Some((a.to_vec(), false));
@@ -227,14 +224,7 @@ pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<(Vec<Tri>, bool)> {
     if arr.unrecovered > 0 {
         return None;
     }
-    let bc = BComponents::new(comps);
-    let (vids, changed) = boolean_vids_components(&arr, a, &bc, BoolOp::Difference);
-    Some((
-        vids.into_iter()
-            .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
-            .collect(),
-        changed,
-    ))
+    Some(classify_difference(&arr, a, comps))
 }
 
 /// Like [`difference_all`] but WITHOUT the conformity gate — returns the batched
@@ -250,14 +240,19 @@ pub fn difference_all_lenient(a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool) {
     }
     let b_all: Vec<Tri> = comps.iter().flat_map(|c| c.iter().copied()).collect();
     let arr = arrange(a, &b_all);
+    classify_difference(&arr, a, comps)
+}
+
+/// The shared tail of [`difference_all`] and [`difference_all_lenient`]:
+/// classify `a − ∪comps` over `arr` and return `(triangles, changed)`.
+fn classify_difference(arr: &Arrangement, a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool) {
     let bc = BComponents::new(comps);
-    let (vids, changed) = boolean_vids_components(&arr, a, &bc, BoolOp::Difference);
-    (
-        vids.into_iter()
-            .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
-            .collect(),
-        changed,
-    )
+    let (vids, changed) = boolean_vids_components(arr, a, &bc, BoolOp::Difference);
+    let tris = vids
+        .into_iter()
+        .map(|t| [to_f64_pt(arr, t[0]), to_f64_pt(arr, t[1]), to_f64_pt(arr, t[2])])
+        .collect();
+    (tris, changed)
 }
 
 /// Topology fingerprint of a boolean result: each oriented Vid triangle rotated

@@ -44,8 +44,8 @@ fn replay(job: &CapturedCsgJob) -> usize {
         CapturedCsgJob::Many { host, cutters } => {
             let refs: Vec<&Mesh> = cutters.iter().collect();
             match csg.subtract_mesh_many(host, &refs) {
-                Ok(GroupCut::Cut(m)) => m.indices.len(),
-                _ => 0,
+                GroupCut::Cut(m) => m.indices.len(),
+                GroupCut::Rejected(_) => 0,
             }
         }
     }

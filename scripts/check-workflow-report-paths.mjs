@@ -73,8 +73,10 @@ export function auditRoot(root) {
       }
     }
     for (const stepName of REQUIRED_STEPS.get(name) ?? []) {
-      const step = Object.values(jobs).map((job) => namedStep(job, stepName)).find(Boolean);
-      if (!step || typeof step.run !== 'string' || !/\bexit\s+1\b/.test(step.run)
+      const owner = Object.values(jobs).find((job) => namedStep(job, stepName));
+      const step = namedStep(owner, stepName);
+      if (!isRecord(owner) || owner['continue-on-error'] === true
+        || !step || typeof step.run !== 'string' || !/\bexit\s+1\b/.test(step.run)
         || step.if !== undefined || step['continue-on-error'] === true) {
         failures.push(`${displayPath(root, path)}: missing active fail-closed step: ${stepName}`);
       }
@@ -141,12 +143,16 @@ export function auditRoot(root) {
     }
     if (name === 'ci-reporting-outcome-probe.yml') {
       const reporter = jobs.report;
+      const deadline = namedStep(jobs.subject, 'Turn a real hang into a failed inner deadline');
       if (!isRecord(jobs.subject) || !isRecord(reporter) || !needs(reporter, 'subject')
         || !expression(reporter.if).includes('always()')
         || reporter.uses !== './.github/workflows/report-scheduled-failure.yml'
         || !isRecord(reporter.with)
         || !expression(reporter.with.result).includes('needs.subject.result')
-        || !expression(reporter.with.result).includes('needs.subject.outputs.evidence')) {
+        || !expression(reporter.with.result).includes('needs.subject.outputs.evidence')
+        || !expression(reporter.with.result).includes('needs.subject.outputs.deadline')
+        || !expression(deadline?.run).includes('timeout --signal=TERM')
+        || !expression(deadline?.run).includes('exit "$rc"')) {
         failures.push(`${displayPath(root, path)}: probe does not route the actual dependency result and absent output through the reporter`);
       }
     }

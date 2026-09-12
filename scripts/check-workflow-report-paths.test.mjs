@@ -89,6 +89,8 @@ test('a named fail-closed step cannot be disabled or allowed to fail', (context)
   assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
   writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow(''));
   assert.deepEqual(auditRoot(root), []);
+  writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow('').replace('runs-on: ubuntu-latest', 'runs-on: ubuntu-latest\n    continue-on-error: true'));
+  assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
 });
 
 test('runtime reporters consume actual dependency and workflow conclusions', (context) => {
@@ -97,12 +99,15 @@ test('runtime reporters consume actual dependency and workflow conclusions', (co
   subject:
     runs-on: ubuntu-latest
     timeout-minutes: 1
+    steps:
+      - name: Turn a real hang into a failed inner deadline
+        run: timeout --signal=TERM 1s sleep 300; rc=$?; exit "$rc"
   report:
     needs: subject
     if: always()
     uses: ./.github/workflows/report-scheduled-failure.yml
     with:
-      result: \${{ needs.subject.result }} output=\${{ needs.subject.outputs.evidence }}
+      result: \${{ needs.subject.result }} output=\${{ needs.subject.outputs.evidence }} deadline=\${{ needs.subject.outputs.deadline }}
 `,
     'ci-reporting-cancellation-observer.yml': `jobs:
   report-cancelled:

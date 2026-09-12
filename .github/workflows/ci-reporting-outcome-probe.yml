@@ -13,6 +13,7 @@ on:
         type: choice
         options:
           - failure
+          - deadline
           - skipped
           - cancelled
 
@@ -28,10 +29,20 @@ jobs:
     timeout-minutes: 5
     outputs:
       evidence: ${{ steps.completed.outputs.evidence }}
+      deadline: ${{ steps.deadline.outputs.evidence }}
     steps:
       - name: Produce a real failed dependency
         if: inputs.outcome == 'failure'
         run: exit 23
+      - name: Turn a real hang into a failed inner deadline
+        id: deadline
+        if: inputs.outcome == 'deadline'
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=1s 1s sleep 300
+          rc=$?
+          echo "evidence=deadline-rc-$rc" >> "$GITHUB_OUTPUT"
+          exit "$rc"
       - name: Cancel this workflow through the Actions API
         if: inputs.outcome == 'cancelled'
         env:
@@ -50,7 +61,7 @@ jobs:
     with:
       workflow_name: CI reporting outcome probe
       jobs: subject
-      result: ${{ needs.subject.result }} output=${{ needs.subject.outputs.evidence }}
+      result: ${{ needs.subject.result }} output=${{ needs.subject.outputs.evidence }} deadline=${{ needs.subject.outputs.deadline }}
       dry_run: true
     permissions:
       contents: read

@@ -44,9 +44,26 @@ describe('convertStepLine maps IfcDoorType/IfcWindowType to their IFC2X3 IfcDoor
     expect(out).toContain('(#4)');
     expect(out).toContain("'tag'");
     // OperationType (name match at a different position) survives too.
+    // ConstructionType and Sizeable are mandatory in IFC2X3 and have no IFC4
+    // source, so they carry the schema's "not stated" value, not `$`.
     expect(out).toBe(
       "#1=IFCDOORSTYLE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Type',$,$,(#3),(#4),'tag'," +
-        '.SINGLE_SWING_LEFT.,$,.T.,$);',
+        '.SINGLE_SWING_LEFT.,.NOTDEFINED.,.T.,.F.);',
+    );
+  });
+
+  it('fills mandatory IFC2X3 style slots instead of writing $ (a strict reader rejects $ there)', () => {
+    // ParameterTakesPrecedence is `$` in the IFC4 source and mandatory in IFC2X3.
+    const door =
+      "#1=IFCDOORTYPE('0DOORTYPE00000000000A',$,'DT',$,$,$,$,'tag',$,.DOOR.,.SINGLE_SWING_LEFT.,$,$);";
+    expect(convertStepLine(door, 'IFC4', 'IFC2X3')).toBe(
+      "#1=IFCDOORSTYLE('0DOORTYPE00000000000A',$,'DT',$,$,$,$,'tag',.SINGLE_SWING_LEFT.,.NOTDEFINED.,.F.,.F.);",
+    );
+    // IfcWindowStyle: ...,Tag,ConstructionType,OperationType,ParameterTakesPrecedence,Sizeable.
+    const window =
+      "#2=IFCWINDOWTYPE('0WINDOWTYPE000000000A',$,'WT',$,$,$,$,'tag',$,.WINDOW.,.SINGLE_PANEL.,.T.,$);";
+    expect(convertStepLine(window, 'IFC4', 'IFC2X3')).toBe(
+      "#2=IFCWINDOWSTYLE('0WINDOWTYPE000000000A',$,'WT',$,$,$,$,'tag',.NOTDEFINED.,.NOTDEFINED.,.T.,.F.);",
     );
   });
 

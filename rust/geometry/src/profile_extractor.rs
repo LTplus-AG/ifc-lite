@@ -747,7 +747,7 @@ fn convert_ifc_to_webgl(m: &Matrix4<f64>) -> [f32; 16] {
 fn detect_unit_scale(content: &[u8], decoder: &mut EntityDecoder) -> f64 {
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, _, _)) = scanner.next_entity() {
-        if type_name.eq_ignore_ascii_case("IFCPROJECT") {
+        if ifc_lite_core::keyword_eq(type_name, "IFCPROJECT") {
             if let Ok(scale) = ifc_lite_core::extract_length_unit_scale(decoder, id) {
                 return scale;
             }

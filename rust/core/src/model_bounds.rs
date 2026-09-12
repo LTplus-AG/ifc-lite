@@ -145,7 +145,7 @@ where
     while let Some((_id, type_name, start, end)) = scanner.next_entity() {
         // Only process cartesian points. STEP keyword case is not
         // significant (ISO 10303-21) and the scanner returns it as written.
-        if !type_name.eq_ignore_ascii_case("IFCCARTESIANPOINT") {
+        if !crate::keyword_eq(type_name, "IFCCARTESIANPOINT") {
             continue;
         }
 
@@ -222,7 +222,7 @@ where
 
     // First pass: find cartesian points referenced by Axis2Placement3D
     while let Some((_id, type_name, start, end)) = scanner.next_entity() {
-        if type_name.eq_ignore_ascii_case("IFCAXIS2PLACEMENT3D") {
+        if crate::keyword_eq(type_name, "IFCAXIS2PLACEMENT3D") {
             let entity_text = &content[start..end];
             // Extract the Location reference (first attribute)
             if let Some(ref_id) = extract_first_reference(entity_text) {
@@ -234,7 +234,7 @@ where
     // Second pass: extract coordinates from referenced points
     scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name.eq_ignore_ascii_case("IFCCARTESIANPOINT") {
+        if crate::keyword_eq(type_name, "IFCCARTESIANPOINT") {
             // Check if this point is referenced by a placement
             let is_placement_point = placement_point_ids.contains(&id);
 

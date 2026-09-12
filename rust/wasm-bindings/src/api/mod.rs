@@ -759,7 +759,7 @@ impl IfcAPI {
         // memmem (SIMD O(n)) not the naive O(n*k) `windows().any()`: this runs on
         // the whole file on each worker's first batch call, so on a 200-340MB model
         // the naive scan cost ~100-400ms per worker. Byte-identical boolean.
-        let has_layer_set = memchr::memmem::find(content, LAYER_SET_KW).is_some();
+        let has_layer_set = ifc_lite_core::find_keyword(content, LAYER_SET_KW).is_some();
         let index = if has_layer_set {
             ifc_lite_geometry::MaterialLayerIndex::from_content(content, decoder)
         } else {
@@ -923,7 +923,7 @@ impl IfcAPI {
         // IfcIndexedColourMap pay only a single substring search (SIMD memmem),
         // not a full entity scan + decode, on the first batch of every worker.
         // The empty result is still cached so later batches skip even that.
-        if memchr::memmem::find(content, b"IFCINDEXEDCOLOURMAP").is_none() {
+        if ifc_lite_core::find_keyword(content, b"IFCINDEXEDCOLOURMAP").is_none() {
             let arc = std::sync::Arc::new(map);
             let mut slot = self
                 .cached_indexed_colour_maps
@@ -934,7 +934,7 @@ impl IfcAPI {
         }
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         while let Some((_id, type_name, start, end)) = scanner.next_entity() {
-            if type_name == "IFCINDEXEDCOLOURMAP" {
+            if ifc_lite_core::keyword_eq(type_name, "IFCINDEXEDCOLOURMAP") {
                 if let Ok(icm) = decoder.decode_at(start, end) {
                     if let Some(full) =
                         ifc_lite_processing::style::resolve_indexed_colour_map_full(&icm, decoder)

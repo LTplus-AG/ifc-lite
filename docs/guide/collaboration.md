@@ -17,7 +17,7 @@ Collaboration ships behind a flag so it stays out of the way until you want it.
 | How | What |
 | --- | --- |
 | Build env | Set `VITE_COLLAB_ENABLED=true` (and a server URL — see below) when building/serving the viewer. |
-| Per-browser (dev) | In the browser console: `localStorage.setItem('ifc-lite:collab:enabled', 'true')`, then reload. |
+| Per-browser (dev) | In the browser console: `localStorage.setItem('ifc-lite:collab:enabled', 'true')`, then reload. `localStorage.setItem('ifc-lite:collab:server-url', 'ws://127.0.0.1:1234')` likewise points this browser at a relay without a rebuild (an empty string forces local-only). |
 
 When enabled, a **Share** button appears in the toolbar (it's active once a model
 is loaded). To sync across machines you also need a [collaboration server](collab-server.md);

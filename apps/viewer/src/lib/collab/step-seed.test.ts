@@ -210,14 +210,17 @@ function makeFakeStoreWithProperties(): IfcDataStore {
 }
 
 describe('collab step-seed property sets', () => {
-  it('flattens a Pset property into bsi::ifc::prop::<Pset>::<Prop>, namespaced and value-preserved', () => {
+  it('seeds a Pset property through the exact structured branch', () => {
     const source = buildStepSeedSource(makeFakeStoreWithProperties());
     const wall = Array.from(source.entities).find((e) => e.guid === 'GUID-WALL-1')!;
     assert.ok(wall.attributes, 'seeded entity must carry attributes');
-    assert.strictEqual(wall.attributes['bsi::ifc::prop::Pset_WallCommon::IsExternal'], true);
+    assert.deepEqual(wall.psets?.Pset_WallCommon?.IsExternal, {
+      type: 'IFCBOOLEAN', value: true,
+    });
+    assert.ok(!('bsi::ifc::prop::Pset_WallCommon::IsExternal' in wall.attributes));
     // A property with a null/absent nominal value must be dropped, not
     // materialized as a `null`/`undefined` attribute.
-    assert.ok(!('bsi::ifc::prop::Pset_WallCommon::EmptyProp' in wall.attributes));
+    assert.ok(!('EmptyProp' in (wall.psets?.Pset_WallCommon ?? {})));
   });
 });
 

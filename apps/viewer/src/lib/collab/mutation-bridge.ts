@@ -70,7 +70,7 @@ function toScalar(value: unknown): string | number | boolean | null {
 }
 
 /** Map a collab IFC type string back to the closest `PropertyValueType`. */
-function propertyValueTypeFor(ifcType: string): PropertyValueType {
+export function propertyValueTypeFor(ifcType: string): PropertyValueType {
   switch (ifcType) {
     case 'IfcBoolean':
     case 'IfcLogical':

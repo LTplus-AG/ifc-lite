@@ -11,12 +11,103 @@ import { loadRoomStepSource, parseRoomStepSource } from './room-step-source.js';
 import { zipSync } from 'fflate';
 import { createEmptyFlatSymbolic } from '@/lib/overlay-parse/symbolic-flat.js';
 import { buildParseResult } from '@/lib/overlay-parse/symbolic-parse.js';
-import { remapRoomSymbolicOwners, roomSymbolicSource } from './room-symbolic-source.js';
+import { placeRoomSymbolic, remapRoomSymbolicOwners, roomSymbolicSource } from './room-symbolic-source.js';
 import { joiner, localIdOf, ownerShare } from '@/test/collab-room-harness.js';
 import { roomStepExportSource } from './room-step-export.js';
 import { appearanceAssets, modelAppearanceAssets } from '@/lib/appearance/model-assets.js';
+import { StepExporter } from '@ifc-lite/export';
+
+function withTaggedQuantityRoot(source: Uint8Array): Uint8Array {
+  const text = new TextDecoder().decode(source);
+  const rows = [
+    "#102=IFCBUILDINGELEMENTPROXY('1bbbbbbbbbbbbbbbbbbbbb',$,'Tagged proxy',$,$,$,$,'TAG-42',.NOTDEFINED.);",
+    "#103=IFCQUANTITYLENGTH('Length',$,$,12.5,$);",
+    "#104=IFCELEMENTQUANTITY('1ccccccccccccccccccccc',$,'Qto_RoomAcceptance',$,$,(#103));",
+    "#105=IFCRELDEFINESBYPROPERTIES('1ddddddddddddddddddddd',$,$,$,(#102),#104);",
+    "#106=IFCPROPERTYLISTVALUE('Aggregate',$,(IFCLABEL('A'),IFCLABEL('B')),$);",
+    "#107=IFCPROPERTYSINGLEVALUE('Collision',$,IFCLABEL('exact'),$);",
+    "#108=IFCPROPERTYSET('1eeeeeeeeeeeeeeeeeeeee',$,'Material',$,(#107));",
+    "#109=IFCRELDEFINESBYPROPERTIES('1fffffffffffffffffffff',$,$,$,(#79),#108);",
+  ].join('\n');
+  const contained = text
+    .replace('(#79),#40);', '(#79,#102),#40);')
+    .replace('#100));', '#100,#106));');
+  return new TextEncoder().encode(contained.replace(/ENDSEC;\s*END-ISO-10303-21;\s*$/, `${rows}\nENDSEC;\nEND-ISO-10303-21;\n`));
+}
 
 describe('portable room STEP source (#4604)', () => {
+  it('preserves unchanged exact psets, qsets and unprojected root attributes', async () => {
+    const control = new Uint8Array(await readFile(new URL(
+      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      import.meta.url,
+    )));
+    const bytes = withTaggedQuantityRoot(control);
+    const inputText = new TextDecoder().decode(bytes);
+    const inputEntityCount = inputText.match(/^#\d+=/gm)?.length ?? 0;
+    const store = await new IfcParser().parseColumnar(bytes.slice().buffer);
+    const doc = collab.createCollabDoc();
+    const blobs = new collab.MemoryBlobStore();
+    const slot = collab.modelSlotRef('m0');
+    await ownerShare(doc, blobs, [{
+      modelId: 'pdf', name: 'annotation.ifc', store, isIfcx: false, meshes: [], idOffset: 0,
+      schemaVersion: 'IFC4', fileName: 'annotation.ifc', portableStepSource: bytes,
+    }], new Map([['pdf', slot]]));
+    const guest = joiner(doc, blobs, 'unchanged-portable');
+    await guest.reconstructor.reconstruct();
+    const model = guest.store.state().models.values().next().value;
+    assert.ok(model?.ifcDataStore);
+    const portable = roomStepExportSource(model.ifcDataStore, undefined, model.id);
+    assert.ok(portable);
+    const output = await new StepExporter(portable.dataStore, portable.mutationView).exportAsync({
+      schema: 'IFC4', applyMutations: true, includeGeometry: true,
+    });
+    const outputText = typeof output.content === 'string' ? output.content : new TextDecoder().decode(output.content);
+    assert.match(outputText, /IFCPROPERTYSET\([^\n]*'IfcLite_PdfVectorConversion'/);
+    assert.match(outputText, /IFCELEMENTQUANTITY\([^\n]*'Qto_RoomAcceptance'/);
+    assert.match(outputText, /IFCBUILDINGELEMENTPROXY\([^\n]*'TAG-42'/);
+    assert.match(outputText, /IFCPROPERTYLISTVALUE\('Aggregate'[^\n]*IFCLABEL\('A'\),IFCLABEL\('B'\)/);
+    assert.match(outputText, /IFCPROPERTYSET\([^\n]*'Material'/,
+      'an exact Pset may legally use a display-group-like name');
+    assert.doesNotMatch(outputText, /IFCPROPERTYSET\([^\n]*'IFC Properties/);
+    assert.equal(outputText.match(/^#\d+=/gm)?.length ?? 0, inputEntityCount,
+      'an unchanged room replay neither drops nor inflates STEP rows');
+    guest.reconstructor.teardown();
+  });
+
+  it('exports deletion of an existing portable property set', async () => {
+    const bytes = new Uint8Array(await readFile(new URL(
+      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      import.meta.url,
+    )));
+    const store = await new IfcParser().parseColumnar(bytes.slice().buffer);
+    const doc = collab.createCollabDoc();
+    const blobs = new collab.MemoryBlobStore();
+    const slot = collab.modelSlotRef('m0');
+    await ownerShare(doc, blobs, [{
+      modelId: 'pdf', name: 'annotation.ifc', store, isIfcx: false, meshes: [], idOffset: 0,
+      schemaVersion: 'IFC4', fileName: 'annotation.ifc', portableStepSource: bytes,
+    }], new Map([['pdf', slot]]));
+    const path = `${slot.pathPrefix}/0aaaaaaaaaaaaaaaaaaaaa`;
+    const provenance = store.getProperties(79).find(pset => pset.name === 'IfcLite_PdfVectorConversion');
+    assert.ok(provenance);
+    for (const property of provenance.properties) {
+      assert.equal(collab.deletePropertyValue(doc, path, provenance.name, property.name), true);
+    }
+
+    const guest = joiner(doc, blobs, 'deleted-portable-pset');
+    await guest.reconstructor.reconstruct();
+    const model = guest.store.state().models.values().next().value;
+    assert.ok(model?.ifcDataStore);
+    const portable = roomStepExportSource(model.ifcDataStore, undefined, model.id);
+    assert.ok(portable);
+    const output = await new StepExporter(portable.dataStore, portable.mutationView).exportAsync({
+      schema: 'IFC4', applyMutations: true, includeGeometry: true,
+    });
+    const outputText = typeof output.content === 'string' ? output.content : new TextDecoder().decode(output.content);
+    assert.doesNotMatch(outputText, /IFCPROPERTYSET\([^\n]*'IfcLite_PdfVectorConversion'/);
+    guest.reconstructor.teardown();
+  });
+
   it('retains the PDF annotation source and maps its owner into the room id space', async () => {
     const bytes = new Uint8Array(await readFile(new URL(
       '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
@@ -96,6 +187,27 @@ describe('portable room STEP source (#4604)', () => {
     assert.deepEqual(remapped.fillOwner, new Uint32Array([0, 18]));
     const result = buildParseResult(remapped, {});
     assert.deepEqual(result.looseFills.map(fill => fill.ownerId), [18]);
+  });
+
+  it('moves and rotates symbolic coordinates by the room placement delta', () => {
+    const flat = createEmptyFlatSymbolic();
+    flat.fillPoints = Float32Array.from([0, 0, 2, 0, 0, 1]);
+    flat.fillPointStart = Uint32Array.from([0, 6]);
+    flat.fillOwner = Uint32Array.from([79]);
+    flat.fillWorldY = Float32Array.from([3]);
+    const placed = placeRoomSymbolic(flat, {
+      dataStore: {} as never,
+      source: {} as never,
+      seededIds: new Set([79]),
+      ownerIds: new Map([[79, 17]]),
+      baselines: new Map([[79, { location: [0, 0, 0], refDirection: [1, 0, 0] }]]),
+      placements: new Map([[79, { location: [4, 5, 6], refDirection: [0, 1, 0] }]]),
+      structuredPsets: new Map(),
+      structuredQuantities: new Map(),
+    });
+    assert.deepEqual([...placed.fillOwner], [17]);
+    assert.deepEqual([...placed.fillPoints].map(value => Math.round(value * 10) / 10), [4.5, -3.5, 4.5, -5.5, 5.5, -3.5]);
+    assert.deepEqual([...placed.fillWorldY], [9]);
   });
 
   it('rejects malformed and missing source references without inventing an empty source', async () => {
@@ -230,6 +342,50 @@ describe('portable room STEP source (#4604)', () => {
     release();
     await pending;
     assert.equal(guest.store.state().models.size, 0);
+  });
+
+  it('aborts a pending room texture decode when the room is torn down', async () => {
+    modelAppearanceAssets.clear();
+    const step = new Uint8Array(await readFile(new URL(
+      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      import.meta.url,
+    )));
+    const png = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lWkmWQAAAABJRU5ErkJggg==', 'base64'));
+    const archive = zipSync({ 'model.ifc': step, 'texture.png': png });
+    const store = await new IfcParser().parseColumnar(step.slice().buffer);
+    const doc = collab.createCollabDoc();
+    const blobs = new collab.MemoryBlobStore();
+    const slot = collab.modelSlotRef('m0');
+    await ownerShare(doc, blobs, [{
+      modelId: 'pdf', name: 'model.ifc', store, isIfcx: false, meshes: [], idOffset: 0,
+      portableStepSource: archive, portableStepSourceFormat: 'ifczip',
+    }], new Map([['pdf', slot]]));
+
+    const originalDecode = appearanceAssets.decode.bind(appearanceAssets);
+    let decodeSignal: AbortSignal | undefined;
+    let signalStarted!: () => void;
+    const started = new Promise<void>(resolve => { signalStarted = resolve; });
+    appearanceAssets.decode = async (_id, _owner, signal) => {
+      decodeSignal = signal;
+      signalStarted();
+      return await new Promise<never>((_resolve, reject) => {
+        if (signal?.aborted) reject(signal.reason);
+        else signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    };
+    const guest = joiner(doc, blobs, 'decode-cancel');
+    try {
+      const pending = guest.reconstructor.reconstruct();
+      await started;
+      guest.store.state().collabRoomId = null;
+      guest.reconstructor.teardown();
+      await pending;
+      assert.equal(decodeSignal?.aborted, true);
+      assert.equal(guest.store.state().models.size, 0);
+    } finally {
+      appearanceAssets.decode = originalDecode;
+      modelAppearanceAssets.clear();
+    }
   });
 
   it('falls back to IFCX when the room deletes a root that remains in the frozen STEP source', async () => {

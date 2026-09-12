@@ -46,7 +46,7 @@ import { buildStepSeedSource } from './step-seed';
 import { pathForEntity, registerEntityMaps } from './entity-paths';
 import { pathInRoomSlot } from './model-slot-ref';
 import { seedPhaseFromOutcome, type CollabSeedProgress } from './seed-phase';
-import { DEFAULT_UPLOAD_RETRIES, DEFAULT_UPLOAD_RETRY_DELAYS_MS, putBlobWithRetry } from './blob-upload';
+import { assertPortableSourceHash, assertPortableSourceSize, DEFAULT_UPLOAD_RETRIES, DEFAULT_UPLOAD_RETRY_DELAYS_MS, putBlobWithRetry } from './blob-upload';
 import { registerLiveSeedStore } from './owner-seed-paths';
 
 const MAX_PORTABLE_STEP_SOURCE_BYTES = 96 * 1024 * 1024;
@@ -216,12 +216,11 @@ async function seedModel(
     wrote = true;
     let stepSourceBlobHash: string | undefined;
     if (model.portableStepSource) {
-      if (model.portableStepSource.byteLength > MAX_PORTABLE_STEP_SOURCE_BYTES) {
-        throw new Error('The portable IFC source exceeds the 96 MiB room-source limit. Export it locally or share a smaller model.');
-      }
+      assertPortableSourceSize(model.portableStepSource, MAX_PORTABLE_STEP_SOURCE_BYTES);
       stepSourceBlobHash = (await putBlobWithRetry(
         await blobs(), model.portableStepSource, DEFAULT_UPLOAD_RETRIES, DEFAULT_UPLOAD_RETRY_DELAYS_MS,
       )).hash;
+      assertPortableSourceHash(stepSourceBlobHash);
       if (!deps.isCurrent()) return { report: null, wrote: false };
     }
     session.transact(() => {

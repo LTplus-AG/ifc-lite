@@ -12,7 +12,7 @@
  */
 
 import { IfcParser, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
-import type { BlobStore, LocalPlacement, ModelSlotRef } from '@ifc-lite/collab';
+import type { BlobStore, LocalPlacement, ModelSlotRef, PropertyValue as CollabPropertyValue } from '@ifc-lite/collab';
 import { roomSlotPath } from './model-slot-ref';
 import type { RoomSymbolicSource } from './room-symbolic-source';
 
@@ -43,7 +43,12 @@ async function fetchSource(store: BlobStore, hash: string): Promise<Uint8Array> 
   });
 }
 
-export type ParsedRoomStepSource = Omit<RoomSymbolicSource, 'ownerIds' | 'placements'>;
+export type ParsedRoomStepSource = Omit<RoomSymbolicSource, 'ownerIds' | 'placements' | 'baselines' | 'structuredPsets' | 'structuredQuantities'>;
+
+interface StructuredEntityState {
+  psets: Record<string, Record<string, CollabPropertyValue>>;
+  quantities: Record<string, Record<string, number>>;
+}
 
 /** Fetch and parse immutable portable STEP bytes; safe to cache by blob hash. */
 export async function loadRoomStepSource(
@@ -91,9 +96,14 @@ export function bindRoomStepSource(
   slot: ModelSlotRef,
   roomPathToId: ReadonlyMap<string, number>,
   placementForPath?: (path: string) => LocalPlacement | null | undefined,
+  baselineForPath?: (path: string) => LocalPlacement | null | undefined,
+  structuredForPath?: (path: string) => StructuredEntityState | null | undefined,
 ): RoomSymbolicSource {
   const ownerIds = new Map<number, number>();
   const placements = new Map<number, LocalPlacement>();
+  const baselines = new Map<number, LocalPlacement>();
+  const structuredPsets = new Map<number, StructuredEntityState['psets']>();
+  const structuredQuantities = new Map<number, StructuredEntityState['quantities']>();
   for (const expressId of parsed.seededIds) {
     const guid = parsed.dataStore.entities.getGlobalId(expressId)!;
     const path = roomSlotPath(slot, guid);
@@ -101,8 +111,15 @@ export function bindRoomStepSource(
     if (targetId !== undefined) ownerIds.set(expressId, targetId);
     const placement = placementForPath?.(path);
     if (placement) placements.set(expressId, placement);
+    const baseline = baselineForPath?.(path);
+    if (baseline) baselines.set(expressId, baseline);
+    const structured = structuredForPath?.(path);
+    if (structured) {
+      structuredPsets.set(expressId, structured.psets);
+      structuredQuantities.set(expressId, structured.quantities);
+    }
   }
-  return { ...parsed, ownerIds, placements };
+  return { ...parsed, ownerIds, placements, baselines, structuredPsets, structuredQuantities };
 }
 
 /** Parse one portable source and key its GUID-bearing roots to this room slot. */

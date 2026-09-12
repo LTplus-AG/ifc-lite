@@ -10,7 +10,7 @@ import { StrictMode, act } from 'react';
 import { IfcParser, unwrapIfcZipWithResources } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
-import { federationRegistry, Raycaster, Renderer as PreviewRenderer, type Renderer } from '@ifc-lite/renderer';
+import { federationRegistry, Renderer as PreviewRenderer, type Renderer } from '@ifc-lite/renderer';
 import { GeometryProcessor, type MeshData, type GeometryResult } from '@ifc-lite/geometry';
 import { AppearancePreviewController } from '../../../../../../packages/renderer/src/appearance-preview.js';
 import { render, cleanup, advance, type } from '@/test/render.js';
@@ -31,7 +31,7 @@ import { publishPdfRaster } from '@/lib/appearance/pdf/publish-source.js';
 import { controlledPdf } from '@/lib/appearance/pdf/fixtures.js';
 import { runPdfJob, type PdfEngineBackend, type PdfRasterSurface } from '@/lib/appearance/pdf/engine.js';
 import type { AppearanceWorker } from '@/lib/appearance/planner-worker-client.js';
-import type { AppearancePlan, AppearanceCatalog, AppearanceRequest, AppearanceWorkerRequest, AppearanceWorkerResponse, PageAppearanceRequest } from '@/lib/appearance/planner-types.js';
+import type { AppearancePlan, AppearanceCatalog, AppearanceRequest, AppearanceWorkerRequest, AppearanceWorkerResponse, PageAppearancePlan, PageAppearanceRequest } from '@/lib/appearance/planner-types.js';
 import { AppearancePanel } from './AppearancePanel.js';
 import { AuthorTab } from '../ribbon/tabs/AuthorTab.js';
 import { pickViewportAppearanceFace } from './face-mask/viewport-face-picker.js';
@@ -44,6 +44,35 @@ const positions = new Float32Array([0, 0, 0, 1, 0, 0, 1, 0, -1, 0, 0, -1]);
 const normals = new Float32Array(12).map((_, i) => i % 3 === 1 ? 1 : 0);
 
 interface RasterPixels { width: number; height: number; rgba: Uint8ClampedArray }
+
+function meshSnapshot(parts: readonly MeshData[]) {
+  return parts.map(part => ({
+    expressId: part.expressId, geometryItemId: part.geometryItemId, modelIndex: part.modelIndex, ifcType: part.ifcType,
+    positions: [...part.positions], normals: [...part.normals], indices: [...part.indices], color: [...part.color],
+    shadingColor: part.shadingColor && [...part.shadingColor], uvs: part.uvs && [...part.uvs],
+    texture: part.texture && { width: part.texture.width, height: part.texture.height, rgba: [...part.texture.rgba] },
+    textureRef: part.textureRef && { ...part.textureRef },
+    appearanceSource: part.appearanceSource && { kind: part.appearanceSource.kind,
+      indices: [...part.appearanceSource.indices], sourceIndices: [...part.appearanceSource.sourceIndices],
+      cornerIndices: part.appearanceSource.cornerIndices && [...part.appearanceSource.cornerIndices] },
+  }));
+}
+
+function assertCanonicalFragments(parts: readonly MeshData[], expected: readonly (readonly number[])[], message: string): void {
+  const canonicalIndices = parts[0]?.appearanceSource?.sourceIndices;
+  assert.ok(canonicalIndices && canonicalIndices.length === indices.length, `${message}: the complete canonical item is retained`);
+  const actual = parts.map(part => {
+    const source = part.appearanceSource;
+    assert.ok(source?.cornerIndices, `${message}: each fragment retains canonical corners`);
+    assert.deepEqual([...source.sourceIndices], [...canonicalIndices], `${message}: every fragment names the same canonical item index buffer`);
+    const corners = [...source.cornerIndices];
+    assert.equal(corners.length, part.indices.length, `${message}: every rendered corner has canonical provenance`);
+    return corners;
+  }).sort((a, b) => a[0] - b[0]);
+  assert.deepEqual(actual, expected, message);
+  assert.deepEqual(actual.map(corners => corners[0] / 3), expected.map(corners => corners[0] / 3),
+    `${message}: canonical source triangle ordinals remain stable`);
+}
 
 function requireRasterPixels(raster: RasterPixels | undefined): RasterPixels {
   if (!raster) throw new Error('the PDF backend must expose the exact pixels used to encode its page derivative');
@@ -83,7 +112,7 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
   let instanceScene: ReturnType<typeof appearanceInstanceScene> | undefined;
   const { default: init, IfcAPI } = await import('@ifc-lite/wasm');
   await init({ module_or_path: await readFile(wasmUrl) });
-  const requests: Array<{ request: AppearanceRequest; plan: AppearancePlan; page?: PageAppearanceRequest; rgba?: Uint8Array }> = [];
+  const requests: Array<{ request: AppearanceRequest; plan: AppearancePlan; page?: PageAppearanceRequest; rgba?: Uint8Array; result?: PageAppearancePlan }> = [];
   class NativeWorker implements AppearanceWorker {
     onmessage: ((event: MessageEvent<AppearanceWorkerResponse>) => void) | null = null;
     onerror: ((event: ErrorEvent) => void) | null = null;
@@ -103,7 +132,7 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
             requests.push({ request: job.request, plan }); response = { type: 'complete', id: job.id, plan };
           } else if (job.type === 'page-plan') {
             const result = await import('@/workers/appearance.worker.js').then(module => module.runPageAppearancePlanning(new Uint8Array(job.source), job.request, job.rgba));
-            requests.push({ request: job.request.appearance, plan: result.plan, page: job.request, rgba: job.rgba.slice() });
+            requests.push({ request: job.request.appearance, plan: result.plan, page: job.request, rgba: job.rgba.slice(), result });
             response = { type: 'page-complete', id: job.id, result };
           } else throw new Error('Unexpected native fixture request');
           this.onmessage?.({ data: response } as MessageEvent<AppearanceWorkerResponse>);
@@ -139,9 +168,9 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
       undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null,
       appearanceSources: [], appearanceDraft: null, selectedEntityId: selection, selectedEntityIds: new Set([selection]) });
     const owner = { kind: 'source' as const, id: 'face-mask-image' };
+    let decodedPdf: RasterPixels | undefined;
     if (pageSource) {
-      let decoded: RasterPixels | undefined;
-      const bytes = controlledPdf(), backend = await pdfBackend(raster => { decoded = raster; });
+      const bytes = controlledPdf(), backend = await pdfBackend(raster => { decodedPdf = raster; });
       const document = await PdfAppearanceSource.open(new File([bytes], 'Controlled plan.pdf', { type: 'application/pdf' }), appearanceAssets, {
         worker: { run: (source, job, options) => runPdfJob(backend, source, job, options), cancel() {}, dispose() {} },
       });
@@ -151,7 +180,8 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
       assert.ok(raster.recipe.pixelWidth > 1 && raster.recipe.pixelWidth <= 256
         && raster.recipe.pixelHeight > 1 && raster.recipe.pixelHeight <= 256 && pagePng.length > 100,
       'real PDF.js decoded a bounded page derivative');
-      const rasterPixels = requireRasterPixels(decoded);
+      const rasterPixels = requireRasterPixels(decodedPdf);
+      decodedPdf = rasterPixels;
       const published = publishPdfRaster(pdfKey, raster);
       useViewerStore.getState().updateAppearanceSource({ ...published,
         calibration: { sourcePoints: [[10, 20], [110, 20]], distanceMetres: 1 } });
@@ -183,7 +213,7 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     const readParts = (id: number) => instanceScene
       ? activePreview.getParts?.({ expressId: id, modelIndex: 0 }) ?? instanceScene.scene.getInstancedMeshDataPieces(id)
       : resident.get(id);
-    const siblingBefore = readParts(globalId(35))!;
+    const siblingBefore = meshSnapshot(readParts(globalId(35))!);
     const renderer = { getAppearancePreview: () => activePreview,
       getScene: () => instanceScene?.scene ?? { getMeshDataPieces: (id: number) => resident.get(id) }, requestRender() {},
       getGPUDevice: () => instanceScene?.device, getPipeline: () => instanceScene?.pipeline, getCanvas: () => null, clearCaches() {},
@@ -209,6 +239,8 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     const wholeTextured = globalId(whole.plan.conversions![0].geometryItemId);
     assert.deepEqual(ids(selection), pageSource ? [wholeTextured, wholeTextured] : [wholeTextured],
       'a whole-surface conversion textures every resident fragment without changing its partition');
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+      'the initial whole-surface preview preserves both stream fragments');
 
     // Select one of the two faces: the plan carries the mask, the preview splits.
     await act(async () => button('Select faces').click());
@@ -232,6 +264,12 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
       assert.ok(masked.page && masked.rgba, 'the selected faces reached the native page compositor');
       assert.equal(masked.page.appearance.repeatS, false); assert.equal(masked.page.appearance.repeatT, false);
       assert.equal(masked.page.page.width * masked.page.page.height * 4, masked.rgba.length);
+      assert.deepEqual([...masked.rgba], [...requireRasterPixels(decodedPdf).rgba],
+        'native page planning receives the exact RGBA decoded by PDF.js');
+      assert.deepEqual(masked.page.appearance.mapping, { kind: 'planar', frame: 'world', origin: [1, 0, 0],
+        axisU: [0, 0, 1], axisV: [-1, -0, -0], metresPerTile: [0.72, 1] },
+      'the known 100-unit PDF landmark span calibrates to exactly one metre');
+      assert.equal(masked.page.texelsPerMetre, 50);
       const staleFingerprint = `${whole.plan.conversions![0].surfaceFingerprint![0] === '0' ? '1' : '0'}${whole.plan.conversions![0].surfaceFingerprint!.slice(1)}`;
       const stale = await import('@/workers/appearance.worker.js').then(module => module.runPageAppearancePlanning(source, {
         ...masked.page!, appearance: { ...masked.page!.appearance,
@@ -252,9 +290,16 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     assert.ok(texturedPart?.uvs && (texturedPart.textureRef || texturedPart.texture));
     assert.equal(retainedPart?.uvs, undefined);
     assert.deepEqual(retainedPart && [...retainedPart.color], [0.8, 0.2, 0.1, 1], 'the retained part keeps the source colour');
-    if (pageSource) assert.equal(texturedPart?.textureRef?.repeatS, false, 'finite PDF pages clamp instead of tile');
+    if (pageSource) {
+      assert.equal(texturedPart?.textureRef?.repeatS, false, 'finite PDF pages clamp instead of tile');
+      assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+        'the masked preview preserves canonical source triangles across its textured/retained split');
+      assertCanonicalFragments([texturedPart!], [[3, 4, 5]], 'the picked face keeps canonical source ordinal 1');
+      assertCanonicalFragments([retainedPart!], [[0, 1, 2]], 'the unpicked face keeps canonical source ordinal 0');
+    }
     assert.match(ui.textContent ?? '', /1 of 2 faces selected/);
-    assert.deepEqual(readParts(globalId(35))!, siblingBefore);
+    assert.deepEqual(meshSnapshot(readParts(globalId(35))!), siblingBefore,
+      'preview leaves the sibling identity, geometry bytes, and style unchanged');
     assert.equal(view.getNewEntities().length, 0, 'preview publishes no IFC conversion');
 
     // Leaving the evaluated policy keeps the selection dormant: no mask enters a
@@ -276,13 +321,19 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     assert.match(ui.textContent ?? '', /1 of 2 faces selected/);
     await act(async () => button('Compare original').click());
     assert.deepEqual(ids(selection), originalIds);
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+      'Compare restores both original canonical fragments');
     await act(async () => button('Show preview').click());
     assert.deepEqual(splitIds(), expectedSplitIds);
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+      'Show preview restores the canonical masked split');
 
     // Discard restores the single original part and keeps the selection for the next preview.
     await act(async () => button('Discard').click());
     await until(() => (ui.textContent ?? '').includes('Preview discarded'));
     assert.deepEqual(ids(selection), originalIds);
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+      'Discard restores both original canonical fragments');
     const mappingInput = pageSource
       ? ui.querySelector<HTMLInputElement>('input[aria-label="Distance A–B (m)"]')
       : ui.querySelector<HTMLInputElement>('input[aria-label="Tile width (m)"]') ?? [...ui.querySelectorAll('label')].find(label => label.textContent?.includes('Tile width'))?.querySelector('input');
@@ -293,6 +344,15 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     const again = requests.at(-1)!;
     assert.deepEqual(again.request.faceMasks?.[0].triangles, [1], 'the selection survives Discard');
     assert.deepEqual(splitIds(), expectedSplitIds);
+    if (pageSource) {
+      assert.ok(again.page && again.result);
+      assert.deepEqual(again.page.appearance.mapping, { kind: 'planar', frame: 'world', origin: [2, 0, 0],
+        axisU: [0, 0, 1], axisV: [-1, -0, -0], metresPerTile: [1.44, 2] },
+      'doubling the measured distance deterministically doubles the calibrated page scale');
+      assert.equal(again.page.texelsPerMetre, 25, 'doubling page scale halves the raster density');
+      assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+        'the re-preview keeps canonical provenance after calibration changes');
+    }
 
     // Apply: one history step, two face sets in the IFC, the sibling untouched, selection intact.
     await act(async () => button('Apply').click());
@@ -302,7 +362,10 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     const applied = useViewerStore.getState().models.get('evaluated')!.geometryResult!.meshes.filter(mesh => mesh.expressId === selection);
     assert.deepEqual(partIds(applied).sort((a, b) => a - b), expectedSplitIds,
       'the model geometry carries both parts of the product');
-    assert.deepEqual(readParts(globalId(35))!, siblingBefore);
+    if (pageSource) assertCanonicalFragments(applied, [[0, 1, 2], [3, 4, 5]],
+      'Apply commits the same canonical source ordinals');
+    assert.deepEqual(meshSnapshot(readParts(globalId(35))!), siblingBefore,
+      'Apply leaves the sibling identity, geometry bytes, and style unchanged');
     assert.doesNotMatch(ui.textContent ?? '', /faces selected/, 'the applied selection is spent');
     const faceSets = view.getNewEntities().filter(entity => entity.type === 'IfcTriangulatedFaceSet').map(entity => entity.expressId);
     assert.deepEqual(faceSets, [conversion.geometryItemId, conversion.retainedGeometryItemId]);
@@ -312,10 +375,25 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     assert.match(text, new RegExp(`#23=IFCSHAPEREPRESENTATION\\(#2,'Body','Tessellation',\\(#${faceSets[0]},#${faceSets[1]}\\)\\)`), 'the occurrence Body lists both face sets');
     assert.match(text, /#33=IFCSHAPEREPRESENTATION\(#2,'Body','MappedRepresentation',\(#22\)\)/, 'the sibling keeps its mapped Body');
     assert.equal((text.match(/IFCTRIANGULATEDFACESET\(/g) ?? []).length, 3, 'source quad plus textured and retained face sets');
+    const registered = modelAppearanceAssets.exportResources('evaluated').resources;
+    assert.equal(registered.size, 1, 'the applied command registers exactly one baked image');
+    const expectedAsset = pageSource ? again.result?.assets[0] : undefined;
+    if (pageSource) {
+      assert.ok(expectedAsset && again.result?.assets.length === 1, 'native page planning bakes exactly one selected-face image');
+      assert.deepEqual(again.result.itemImages, [{ geometryItemId: again.plan.conversions![0].geometryItemId,
+        imageUri: expectedAsset.imageUri }], 'the sole native image is owned by the selected-face geometry item');
+      assert.equal(registered.has(expectedAsset.imageUri), true, 'the registered resource retains the native image identity');
+      assert.deepEqual(registered.get(expectedAsset.imageUri), expectedAsset.png,
+        'the registered resource retains the exact native PNG bytes');
+    }
     const archive = await unwrapIfcZipWithResources(new Uint8Array((await packagePortableIfcAsync('evaluated', text, serialized.resources)).content as Uint8Array).buffer);
+    assert.equal(archive.originalResources.size, 1, 'the IFCZIP contains exactly one image resource');
     const derivative = [...archive.originalResources.values()][0];
     const derivativeUri = [...archive.originalResources.keys()][0];
-    if (pageSource) assert.ok(derivative && derivative.length > 100, 'the portable archive carries the PDF page derivative');
+    if (pageSource) {
+      assert.equal(derivativeUri, expectedAsset!.imageUri, 'the archive keeps the native baked resource identity');
+      assert.deepEqual(derivative, expectedAsset!.png, 'the archive keeps the exact registered native PNG bytes');
+    }
     else assert.deepEqual(derivative, png);
     const reopened = await new IfcParser().parseColumnar(archive.model, { disableWorkerScan: true });
     assert.equal(reopened.entities.getGlobalId(25), '0Proxy000000000000000a');
@@ -341,11 +419,16 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     await act(async () => { const undo = ui.querySelector<HTMLButtonElement>('button[aria-label="Undo"]'); assert.ok(undo && !undo.disabled); undo.click(); });
     assert.equal(view.getNewEntities().length, 0);
     assert.deepEqual(ids(selection), originalIds);
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+      'Undo restores the original canonical fragments');
     if (instanced) assert.equal(useViewerStore.getState().models.get('evaluated')!.geometryResult!.meshes.length, 0);
     await act(async () => { const redo = ui.querySelector<HTMLButtonElement>('button[aria-label="Redo"]'); assert.ok(redo && !redo.disabled); redo.click(); });
     assert.deepEqual(splitIds(), expectedSplitIds);
+    if (pageSource) assertCanonicalFragments(readParts(selection)!, [[0, 1, 2], [3, 4, 5]],
+      'Redo restores the canonical masked split');
     assert.equal(view.getNewEntities().filter(entity => entity.type === 'IfcTriangulatedFaceSet').length, 2);
-    assert.deepEqual(readParts(globalId(35))!, siblingBefore);
+    assert.deepEqual(meshSnapshot(readParts(globalId(35))!), siblingBefore,
+      'Redo leaves the sibling identity, geometry bytes, and style unchanged');
   } finally {
     cleanup(); instanceScene?.scene.clear(); setGlobalRendererRef({ current: previousRenderer });
     mock.restoreAll(); HTMLElement.prototype.setPointerCapture = capture;

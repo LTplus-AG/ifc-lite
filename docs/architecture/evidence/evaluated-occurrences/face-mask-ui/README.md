@@ -135,7 +135,7 @@ remesh. The planar member reopens 1:1.
   deliberately resident in two stream fragments. The test proves the complete
   fingerprint plus `maskedTriangles`, finite-page clamp, textured and retained
   preview fragments, stale-fingerprint and excessive-memory refusal, IFCZIP
-  derivative transport, and reopened selectable product ownership with the
+  derivative transport, and reopened product ownership with the
   selected-face UV/image association and retained original style.
 - `apps/viewer/src/lib/appearance/face-mask-reopen-wasm.test.ts`: the AC20
   member's masked export (6 of 12) reopened through the loader's parser and

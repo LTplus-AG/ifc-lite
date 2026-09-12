@@ -142,7 +142,7 @@ export function recipientState(roomId: string): { get: () => RoomTestState; stat
   return { get: () => state, state: () => state };
 }
 
-export function joiner(doc: RoomDoc, blobStore: collab.MemoryBlobStore, roomId: string) {
+export function joiner(doc: RoomDoc, blobStore: collab.BlobStore, roomId: string) {
   const store = recipientState(roomId);
   const notices: string[] = [];
   /** How many times the reconstruct published `collabRoomModels`. */

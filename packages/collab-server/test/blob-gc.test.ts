@@ -13,7 +13,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as Y from 'yjs';
-import { geometryMap } from '@ifc-lite/collab';
+import { createModelSlot, geometryMap } from '@ifc-lite/collab';
 import { FilePersistence } from '../src/persistence.js';
 import { FsBlobStorage } from '../src/blob-route.js';
 import {
@@ -50,6 +50,14 @@ function updateReferencing(hashes: string[]): Uint8Array {
       (geom.get(`g${i}`) as Y.Map<unknown>).set('blobHash', h);
     });
   });
+  const update = Y.encodeStateAsUpdate(doc);
+  doc.destroy();
+  return update;
+}
+
+function updateReferencingSidecar(hash: string): Uint8Array {
+  const doc = new Y.Doc();
+  createModelSlot(doc, 'm0', { name: 'annotation.ifc', order: 0, stepSourceBlobHash: hash });
   const update = Y.encodeStateAsUpdate(doc);
   doc.destroy();
   return update;
@@ -121,6 +129,12 @@ describe('blob gc', () => {
     const scan = await collectPersistedBlobRefs(dataDir);
     expect(scan.roomLogs).toBe(1);
     expect([...scan.refs]).toEqual([A]);
+  });
+
+  it('keeps a sidecar referenced only by a persisted model slot (#4604)', async () => {
+    await new FilePersistence({ dataDir }).append('idle-sidecar-room', updateReferencingSidecar(A));
+    writeBlob(A, 3 * DAY);
+    expect((await plan()).deleteHashes).toEqual([]);
   });
 
   it('aborts when a non-empty room log parses to nothing', async () => {

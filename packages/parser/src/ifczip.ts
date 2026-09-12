@@ -161,9 +161,10 @@ export interface IfcZipContents {
  */
 export async function unwrapIfcZipWithResources(
   buffer: ArrayBuffer,
+  maxModelBytes: number = MAX_UNCOMPRESSED_BYTES,
 ): Promise<IfcZipContents> {
   if (!isZipBuffer(buffer)) return { model: buffer, resources: new Map(), originalResources: new Map(), resourcesIncomplete: false };
-  const { zip, entry } = await openZipModelEntry(buffer, MAX_UNCOMPRESSED_BYTES);
+  const { zip, entry } = await openZipModelEntry(buffer, maxModelBytes);
 
   const resources = new Map<string, Uint8Array>();
   const originalResources = new Map<string, Uint8Array>();
@@ -187,7 +188,11 @@ export async function unwrapIfcZipWithResources(
     if (!resources.has(basename)) resources.set(basename, bytes);
   }
 
-  return { model: await entry.async('arraybuffer'), resources, originalResources, modelPath: entry.name, resourcesIncomplete };
+  const model = await entry.async('arraybuffer');
+  if (model.byteLength > maxModelBytes) {
+    throw new Error(`This .ifcZIP archive's extracted model exceeds the ${(maxModelBytes / (1024 * 1024)).toFixed(0)} MiB limit.`);
+  }
+  return { model, resources, originalResources, modelPath: entry.name, resourcesIncomplete };
 }
 
 /** JSZip's central-directory uncompressed size — internal field, so read

@@ -74,3 +74,16 @@ export async function putBlobWithRetry(
   }
   throw lastError;
 }
+
+/** Validate a sidecar before its hash becomes a durable room reference. */
+export function assertPortableSourceSize(bytes: Uint8Array, maxBytes: number): void {
+  if (bytes.byteLength > maxBytes) {
+    throw new Error('The portable IFC source exceeds the 96 MiB room-source limit. Export it locally or share a smaller model.');
+  }
+}
+
+export function assertPortableSourceHash(hash: string): void {
+  if (!/^[0-9a-f]{32}$/.test(hash)) {
+    throw new Error('The room blob store returned an invalid portable IFC source hash.');
+  }
+}

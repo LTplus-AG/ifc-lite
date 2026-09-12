@@ -227,6 +227,11 @@ describe('unwrapIfcZipWithResources (#1781)', () => {
     await expect(unwrapIfcZipWithResources(zip)).rejects.toThrow(/2 model files/);
   });
 
+  it('checks a caller model ceiling before decompressing the model entry', async () => {
+    const zip = await makeZip({ 'model.ifc': STEP_HEADER.repeat(8), 'wood.png': 'image' });
+    await expect(unwrapIfcZipWithResources(zip, 32)).rejects.toThrow(/over the .* limit/);
+  });
+
   it('first entry wins on a basename collision', async () => {
     const zip = await makeZip({
       'model.ifc': STEP_HEADER,

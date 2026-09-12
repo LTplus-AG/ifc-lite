@@ -86,6 +86,7 @@ export function buildSymbolicDrawingLines(
 
   for (let i = 0; i < flat.polyOwner.length; i++) {
     const expressId = flat.polyOwner[i];
+    if (expressId === 0) continue;
     const ifcType = typeNames[flat.polyType[i]];
     entities.add(expressId);
 
@@ -148,6 +149,7 @@ export function buildSymbolicDrawingLines(
 
   for (let i = 0; i < flat.circleOwner.length; i++) {
     const expressId = flat.circleOwner[i];
+    if (expressId === 0) continue;
     const ifcType = typeNames[flat.circleType[i]];
     entities.add(expressId);
 

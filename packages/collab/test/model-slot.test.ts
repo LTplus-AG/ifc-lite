@@ -90,10 +90,13 @@ describe('model slot records', () => {
   it('records slots in seed order and is idempotent on the slot id', () => {
     const doc = createCollabDoc();
     createModelSlot(doc, 'm1', { name: 'second', order: 1 });
-    const first = createModelSlot(doc, 'm0', { name: 'first', order: 0, fileName: 'a.ifc', schemaVersion: 'IFC4' });
+    const first = createModelSlot(doc, 'm0', { name: 'first', order: 0, fileName: 'a.ifc', schemaVersion: 'IFC4', stepSourceBlobHash: 'a'.repeat(32), stepSourceFormat: 'ifczip' });
     // A second create for the same slot does not overwrite the record.
     createModelSlot(doc, 'm0', { name: 'renamed', order: 5 });
     expect(first.pathPrefix).toBe('/m0');
+    expect(first.stepSourceBlobHash).toBe('a'.repeat(32));
+    expect(first.stepSourceFormat).toBe('ifczip');
+    expect(getModelSlot(doc, 'm0')?.stepSourceFormat).toBe('ifczip');
     expect(getModelSlot(doc, 'm0')?.name).toBe('first');
     expect(listModelSlots(doc).map((s) => [s.slotId, s.name, s.legacy])).toEqual([
       ['m0', 'first', false],
@@ -112,6 +115,18 @@ describe('model slot records', () => {
     // And the legacy slot's snapshot is the whole room, at the old paths.
     const paths = snapshotToIfcx(doc, { slot: slots[0] }).data.map((n) => n.path).sort();
     expect(paths).toEqual([guidToPath(WALL), guidToPath(STOREY)].sort());
+  });
+
+  it('drops an untrusted portable-source reference unless it is a canonical content hash', () => {
+    const doc = createCollabDoc();
+    doc.getMap('models').set('m0', {
+      name: 'bad source', order: 0, stepSourceBlobHash: 'A'.repeat(32),
+    });
+    expect(getModelSlot(doc, 'm0')?.stepSourceBlobHash).toBeUndefined();
+    doc.getMap('models').set('m0', {
+      name: 'bad source', order: 0, stepSourceBlobHash: '../blob',
+    });
+    expect(getModelSlot(doc, 'm0')?.stepSourceBlobHash).toBeUndefined();
   });
 });
 

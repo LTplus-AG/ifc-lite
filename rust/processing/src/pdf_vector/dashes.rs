@@ -29,6 +29,79 @@ pub(super) fn supported(commands: &[f64], _close_last: bool, pattern: &[f64]) ->
     true
 }
 
+/// A capped closed dash whose first on interval covers the whole perimeter has
+/// coincident, independently capped ends. The general open-stroke contour is
+/// self-touching there, so this remains an explicit topology omission until it
+/// has a dedicated multi-ring decomposition.
+pub(super) fn has_capped_loop(
+    commands: &[f64],
+    close_last: bool,
+    pattern: &[f64],
+    phase: f64,
+) -> bool {
+    let mut effective = pattern.to_vec();
+    if effective.len() % 2 == 1 {
+        effective.extend_from_slice(pattern);
+    }
+    let cycle: f64 = effective.iter().sum();
+    let mut offset = phase.rem_euclid(cycle);
+    let mut index = 0;
+    while offset >= effective[index] {
+        offset -= effective[index];
+        index = (index + 1) % effective.len();
+    }
+    if index % 2 == 1 {
+        return false;
+    }
+    let first_on_left = effective[index] - offset;
+    let qualifies = |points: &[[f64; 2]], closed: bool| {
+        if !closed || points.len() < 2 {
+            return false;
+        }
+        let points = if points.first() == points.last() {
+            &points[..points.len() - 1]
+        } else {
+            points
+        };
+        let perimeter = (0..points.len())
+            .map(|i| {
+                let [a, b] = [points[i], points[(i + 1) % points.len()]];
+                (b[0] - a[0]).hypot(b[1] - a[1])
+            })
+            .sum::<f64>();
+        let error = 32.
+            * f64::EPSILON
+            * perimeter.abs().max(first_on_left.abs())
+            * points.len() as f64;
+        perimeter.is_finite()
+            && (perimeter <= first_on_left || (perimeter - first_on_left).abs() <= error)
+    };
+    let mut points = Vec::new();
+    let mut cursor = 0;
+    while cursor < commands.len() {
+        match commands[cursor] {
+            0. => {
+                points.clear();
+                points.push([commands[cursor + 1], commands[cursor + 2]]);
+                cursor += 3;
+            }
+            1. => {
+                points.push([commands[cursor + 1], commands[cursor + 2]]);
+                cursor += 3;
+            }
+            4. => {
+                if qualifies(&points, true) {
+                    return true;
+                }
+                points.truncate(1);
+                cursor += 1;
+            }
+            _ => return false,
+        }
+    }
+    qualifies(&points, close_last)
+}
+
 #[derive(Debug, PartialEq)]
 pub(super) struct DashRun {
     pub points: Vec<Point>,
@@ -55,7 +128,7 @@ fn finish(run: &mut Vec<Point>, runs: &mut Vec<Vec<Point>>) -> Result<(), String
 /// continuous across its vertices. For a closed subpath the closing edge is
 /// traversed too, and visible pieces meeting across the closure seam are joined.
 fn subpath(
-    points: &[Point], closed: bool, pattern: &[f64], phase: f64,
+    points: &[Point], closed: bool, join_seam: bool, pattern: &[f64], phase: f64,
     remaining: &mut u64,
 ) -> Result<Vec<DashRun>, String> {
     let points = if closed && points.len() > 1 && points.first() == points.last() {
@@ -149,7 +222,7 @@ fn subpath(
     finish(&mut run, &mut raw_runs)?;
 
     let ends_on = pattern_index % 2 == 0 && dash_left < pattern[pattern_index];
-    if closed && starts_on && ends_on && !raw_runs.is_empty() {
+    if closed && join_seam && starts_on && ends_on && !raw_runs.is_empty() {
         if raw_runs.len() == 1 {
             return Ok(vec![DashRun { points: raw_runs.pop().unwrap(), closed: true }]);
         }
@@ -168,7 +241,8 @@ fn subpath(
 /// is repeated once as required by PDF, and phase is normalized over that
 /// effective even cycle.
 pub(super) fn expand(
-    commands: &[f64], close_last: bool, pattern: &[f64], phase: f64, remaining: &mut u64,
+    commands: &[f64], close_last: bool, join_seam: bool, pattern: &[f64], phase: f64,
+    remaining: &mut u64,
 ) -> Result<Vec<DashRun>, String> {
     if pattern.is_empty() || pattern.iter().any(|length| !length.is_finite() || *length <= 0.) {
         return Err("Planner invariant: unsupported PDF dash pattern reached expansion".into());
@@ -184,7 +258,10 @@ pub(super) fn expand(
     while cursor < commands.len() {
         match commands[cursor] {
             0. => {
-                append_subpath(&mut runs, subpath(&points, false, &effective, phase, remaining)?)?;
+                append_subpath(
+                    &mut runs,
+                    subpath(&points, false, false, &effective, phase, remaining)?,
+                )?;
                 points.clear();
                 points.push([commands[cursor + 1], commands[cursor + 2]]);
                 cursor += 3;
@@ -197,7 +274,10 @@ pub(super) fn expand(
             }
             4. => {
                 if !just_closed {
-                    append_subpath(&mut runs, subpath(&points, true, &effective, phase, remaining)?)?;
+                    append_subpath(
+                        &mut runs,
+                        subpath(&points, true, join_seam, &effective, phase, remaining)?,
+                    )?;
                 }
                 points.truncate(1);
                 cursor += 1;
@@ -209,7 +289,14 @@ pub(super) fn expand(
     if !just_closed {
         append_subpath(
             &mut runs,
-            subpath(&points, close_last, &effective, phase, remaining)?,
+            subpath(
+                &points,
+                close_last,
+                join_seam,
+                &effective,
+                phase,
+                remaining,
+            )?,
         )?;
     }
     Ok(runs)

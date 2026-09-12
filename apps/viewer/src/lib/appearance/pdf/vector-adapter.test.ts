@@ -32,6 +32,7 @@ test('actual PDF vectors retain native CropBox/UserUnit/rotation and paint order
   assert.deepEqual(page.viewBox, [10,20,110,92]);
   assert.equal(page.userUnit, 2);
   assert.equal(page.intrinsicRotation, 90);
+  assert.equal(page.pdfFormatVersion, '1.7');
   assert.match(page.pdfSha256, /^[a-f0-9]{64}$/);
   const colors = page.operations.flatMap(({ operation }) => operation.kind === 'fillColor' ? [operation.rgb] : []);
   assert.deepEqual(colors, [[1,0,0],[0,1,0]]);
@@ -39,6 +40,10 @@ test('actual PDF vectors retain native CropBox/UserUnit/rotation and paint order
   assert.equal(paths.length, 2);
   assert.ok(paths[0]!.ordinal < paths[1]!.ordinal);
   assert.ok(!page.operations.some(({ operation }) => operation.kind === 'unsupported'));
+});
+test('effective PDF version includes a Catalog override (#4583)', async () => {
+  const page = await decode(controlledPdf(undefined, '', [], '/Version /2.0'));
+  assert.equal(page.pdfFormatVersion, '2.0');
 });
 test('actual PDF dash, nonuniform transform, cubic commands and unused font setup survive (#4406)', async () => {
   // Source drawing invariant: the cubic and stroke are constructed BEFORE a

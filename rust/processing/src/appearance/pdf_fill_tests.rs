@@ -48,6 +48,7 @@ fn fixture() -> (String, PdfFillAnnotationRequest) {
             page: PdfVectorPage {
                 pdf_sha256: "a".repeat(64),
                 decoder_version: "6.3.289".into(),
+                pdf_format_version: Some("2.0".into()),
                 page_number: 1,
                 view_box: [0., 0., 8., 8.],
                 user_unit: 1.,

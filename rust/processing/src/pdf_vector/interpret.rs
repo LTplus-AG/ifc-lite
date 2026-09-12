@@ -8,8 +8,8 @@
 use super::extent::{self, Rect};
 use super::report::ReportBuilder;
 use super::{
-    multiply, scalar, validate_matrix, validate_path, PdfVectorGraphicsState, PdfVectorPage,
-    PdfVectorPaint, PreparedPdfVectorPath,
+    multiply, scalar, validate_matrix, validate_path, PdfDashClosure, PdfVectorGraphicsState,
+    PdfVectorPage, PdfVectorPaint, PreparedPdfVectorPath,
 };
 
 #[path = "interpret_ops.rs"]
@@ -61,6 +61,17 @@ struct Interpreter {
     numbers: usize,
     paths: Vec<PreparedPdfVectorPath>,
     report: ReportBuilder,
+    dash_closure: Option<PdfDashClosure>,
+}
+
+fn dash_closure(version: Option<&str>) -> Option<PdfDashClosure> {
+    match version {
+        Some("1.0" | "1.1" | "1.2" | "1.3" | "1.4" | "1.5" | "1.6" | "1.7") => {
+            Some(PdfDashClosure::Capped)
+        }
+        Some("2.0") => Some(PdfDashClosure::Joined),
+        _ => None,
+    }
 }
 
 pub(super) fn run(page: &PdfVectorPage) -> Result<Interpreted, String> {
@@ -92,6 +103,7 @@ pub(super) fn run(page: &PdfVectorPage) -> Result<Interpreted, String> {
         numbers: 0,
         paths: Vec::new(),
         report: ReportBuilder::default(),
+        dash_closure: dash_closure(page.pdf_format_version.as_deref()),
     };
     let mut previous = None;
     for entry in &page.operations {
@@ -233,6 +245,21 @@ impl Interpreter {
             && !super::dashes::supported(commands, close_last, &s.dash_lengths)
         {
             Some("dash".into())
+        } else if !s.dash_lengths.is_empty()
+            && (close_last || extent::opcodes(commands).any(|op| op == 4))
+            && self.dash_closure.is_none()
+        {
+            Some("dashVersion".into())
+        } else if !s.dash_lengths.is_empty()
+            && self.dash_closure == Some(PdfDashClosure::Capped)
+            && super::dashes::has_capped_loop(
+                commands,
+                close_last,
+                &s.dash_lengths,
+                s.dash_phase,
+            )
+        {
+            Some("dashTopology".into())
         } else if extent::opcodes(commands).any(|op| op == 2 || op == 3) {
             Some("curvedStroke".into())
         } else {
@@ -308,6 +335,15 @@ impl Interpreter {
                         paint,
                         commands: commands.to_vec(),
                         state: self.frame.state.clone(),
+                        dash_closure: if paint.strokes()
+                            && !self.frame.state.dash_lengths.is_empty()
+                            && (paint.closes()
+                                || extent::opcodes(commands).any(|op| op == 4))
+                        {
+                            self.dash_closure
+                        } else {
+                            None
+                        },
                     });
                 }
             }

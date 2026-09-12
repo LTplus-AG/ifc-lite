@@ -10,6 +10,7 @@ export interface PdfVectorDecoder { version: string; ops: Readonly<Record<string
 export interface PdfVectorDecodeContext {
   optionalContent?: { isVisible(group: unknown): unknown } | null;
   fonts?: PdfFontObjects;
+  pdfFormatVersion?: string | null;
 }
 const MAX_OPERATIONS = 100_000, MAX_NUMBERS = 2_000_000, MAX_PLACEMENTS = 4096;
 function unsupported(operator: string): PdfVectorOperator { return { kind: 'unsupported', operator }; }
@@ -191,7 +192,8 @@ export async function decodePdfVectorPage(
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(source)));
   return {
     ...request, pdfSha256: Array.from(hash, byte => byte.toString(16).padStart(2,'0')).join(''),
-    decoderVersion: decoder.version, viewBox: view as PdfPageRect,
+    decoderVersion: decoder.version, pdfFormatVersion: context.pdfFormatVersion ?? null,
+    viewBox: view as PdfPageRect,
     userUnit: page.userUnit, intrinsicRotation: page.rotate, operations,
   };
 }

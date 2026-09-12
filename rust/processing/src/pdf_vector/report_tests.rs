@@ -470,6 +470,44 @@ fn issue_4583_explicit_and_paint_time_dash_closure_are_both_convertible() {
 }
 
 #[test]
+fn issue_4583_closed_dash_semantics_are_version_bound_or_omitted() {
+    let operations = vec![
+        Op::Dash { lengths: vec![3., 2.], phase: 0. },
+        Op::Path {
+            paint: PdfVectorPaint::CloseStroke,
+            commands: vec![0., 0., 0., 1., 4., 0., 1., 4., 4.],
+        },
+    ];
+    let mut pdf_1 = page(operations.clone());
+    pdf_1.pdf_format_version = Some("1.7".into());
+    let capped = prepare_pdf_vector_page(&pdf_1).unwrap();
+    assert_eq!(capped.paths[0].dash_closure, Some(PdfDashClosure::Capped));
+
+    let mut capped_loop = page(vec![
+        Op::Dash { lengths: vec![100., 1.], phase: 0. },
+        Op::Path {
+            paint: PdfVectorPaint::CloseStroke,
+            commands: vec![0., 20., 30., 1., 24., 30., 1., 24., 34.],
+        },
+    ]);
+    capped_loop.pdf_format_version = Some("1.7".into());
+    let capped_loop = prepare_pdf_vector_page(&capped_loop).unwrap();
+    assert!(capped_loop.paths.is_empty());
+    assert_eq!(kinds(&capped_loop), [(2, "dashTopology".into(), true)]);
+
+    let joined = prepare_pdf_vector_page(&page(operations.clone())).unwrap();
+    assert_eq!(joined.paths[0].dash_closure, Some(PdfDashClosure::Joined));
+
+    for version in [None, Some("future".into())] {
+        let mut unknown = page(operations.clone());
+        unknown.pdf_format_version = version;
+        let report = prepare_pdf_vector_page(&unknown).unwrap();
+        assert!(report.paths.is_empty());
+        assert_eq!(kinds(&report), [(2, "dashVersion".into(), false)]);
+    }
+}
+
+#[test]
 fn issue_4406_combined_fill_and_supported_dash_keep_paint_colours_and_ordinal() {
     let report = prepare_pdf_vector_page(&page(vec![
         Op::FillColor { rgb: [1., 0., 0.] },

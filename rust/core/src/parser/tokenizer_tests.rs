@@ -360,3 +360,44 @@ fn test_list_rejects_junk_where_only_whitespace_is_allowed() {
         "`(x)` must be rejected: `x` is neither STEP trivia nor a token"
     );
 }
+
+/// ISO 10303-21 writes `INTEGER` and `REAL` as `[ SIGN ] ...` with
+/// `SIGN = '+' | '-'`, so a leading `+` is exactly as legal as a leading `-`.
+/// Both parsers took `opt(char('-'))` only, and the cost was not the one
+/// attribute: every caller of `parse_entity` throws the record away when
+/// tokenizing fails (`let Ok(..) = .. else { continue }`), so one `+1.` inside
+/// a coordinate list deleted the whole `IfcCartesianPoint`.
+///
+/// The exponent sign already accepted both, `fast_float2::parse_partial` (the
+/// fast reader on the other decode path) accepts `+`, and the TypeScript half
+/// reads through `parseFloat`, so the file below decoded in the browser and
+/// not in wasm.
+#[test]
+fn plus_is_a_legal_sign_on_integer_and_real() {
+    let empty: &[u8] = b"";
+    assert_eq!(integer(b"+42"), Ok((empty, Token::Integer(42))));
+    assert_eq!(integer(b"+0"), Ok((empty, Token::Integer(0))));
+    assert_eq!(float(b"+3.14"), Ok((empty, Token::Float(3.14))));
+    // "0." with no fraction digits, and an exponent that also carries a sign.
+    assert_eq!(float(b"+1."), Ok((empty, Token::Float(1.0))));
+    assert_eq!(float(b"+1.5E+10"), Ok((empty, Token::Float(1.5e10))));
+    // The minus arm keeps working; a sign is optional, not required.
+    assert_eq!(integer(b"-42"), Ok((empty, Token::Integer(-42))));
+    assert_eq!(float(b"-3.14"), Ok((empty, Token::Float(-3.14))));
+
+    // The whole entity, which is what was actually lost.
+    let (id, ifc_type, args) = parse_entity("#1=IFCCARTESIANPOINT((+1.,2.,-3.));")
+        .expect("a '+'-signed REAL is legal 10303-21");
+    assert_eq!(id, 1);
+    assert_eq!(ifc_type, IfcType::IfcCartesianPoint);
+    assert_eq!(
+        args,
+        vec![Token::List(vec![
+            Token::Float(1.0),
+            Token::Float(2.0),
+            Token::Float(-3.0),
+        ])]
+    );
+    let (_, _, args) = parse_entity("#2=IFCINTEGER(+7);").expect("a '+'-signed INTEGER too");
+    assert_eq!(args, vec![Token::Integer(7)]);
+}

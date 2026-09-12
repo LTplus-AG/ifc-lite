@@ -27,6 +27,25 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Boolean operands dispatch from the router's built-in table (#4560)
+
+The boolean operand resolver no longer keeps its own list of meshable operand
+types; it falls through to the registry's `builtin_processor` for everything
+except the two arms that carry `depth` and the cycle guard (`IfcCsgSolid`,
+the boolean types). A processor is still built fresh per operand, exactly as
+the hand-written arms did, so the only new work per operand is one `Rc`
+allocation. Interleaved native A/B/A/B (5 rounds, `ab.sh`) on AC20-FZK-Haus
+and ISSUE_129 resolved no phase beyond the base's own noise floor; mesh,
+vertex and triangle counts were identical on every round of both fixtures
+(285/35,940/19,456 and 1,402/218,365/132,657), as expected: neither corpus
+authors a boolean operand of a type the old list lacked. Output changes only
+where a boolean names such an operand — `IfcPolygonalFaceSet` cutters on the
+Bonsai wall fixture now cut. This is a correctness fix, not a speedup. The
+lesson: a second copy of a dispatch table drifts the moment a processor is
+registered in one and not the other, and the drift is invisible because the
+loser is an `UnsupportedOperand` record nobody reads; derive the operand set
+from the registry instead of maintaining it.
+
 ## Qualified PDF dash expansion (#4406)
 
 Dash expansion is reachable only from the explicit PDF annotation planner; it

@@ -7,13 +7,9 @@
 //! Split out of `boolean/mod.rs` (module-size ratchet) when the unsupported-
 //! operand arm gained its diagnostic record (#3821).
 
-use super::{
-    BlockProcessor, BooleanClippingProcessor, CsgSolidProcessor, ExtrudedAreaSolidProcessor,
-    FacetedBrepProcessor, OperandPath, RevolvedAreaSolidProcessor, SweptDiskSolidProcessor,
-    TriangulatedFaceSetProcessor,
-};
+use super::{BooleanClippingProcessor, CsgSolidProcessor, OperandPath};
 use crate::diagnostics::{BoolFailureReason, BoolOp};
-use crate::router::GeometryProcessor;
+use crate::router::builtin_processor;
 use crate::{Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
@@ -66,30 +62,15 @@ impl BooleanClippingProcessor {
         visited: &mut OperandPath,
     ) -> Result<(Mesh, bool)> {
         let mut unsupported = false;
+        // Only the two arms that must NOT run on a fresh processor are spelled
+        // out here: both carry `depth` and the cycle guard across the hop.
+        // Every other operand type goes to the same built-in table the router
+        // dispatches representation items from (#4560), so an operand is
+        // supported exactly when the engine can mesh it at all. This path used
+        // to keep its own six-arm copy of that table; `IfcPolygonalFaceSet`,
+        // the tessellated cutter Bonsai/IfcOpenShell emits for a wall clipped
+        // by a roof, was never in it and the wall rendered up to the ridge.
         let mesh = match operand.ifc_type {
-            IfcType::IfcExtrudedAreaSolid => {
-                let processor = ExtrudedAreaSolidProcessor::new(self.schema.clone());
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcFacetedBrep => {
-                let processor = FacetedBrepProcessor::new();
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcTriangulatedFaceSet => {
-                let processor = TriangulatedFaceSetProcessor::new();
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcSweptDiskSolid => {
-                let processor = SweptDiskSolidProcessor::new(self.schema.clone());
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcRevolvedAreaSolid => {
-                let processor = RevolvedAreaSolidProcessor::new(self.schema.clone());
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcBlock => {
-                BlockProcessor::new().process(operand, decoder, &self.schema, quality)
-            }
             // `CsgSolidProcessor::process` builds a FRESH BooleanClippingProcessor
             // for a boolean TreeRootExpression, so routing through it used to reset
             // both `depth` and the cycle guard. `#10 IfcBooleanResult -> FirstOperand
@@ -123,20 +104,26 @@ impl BooleanClippingProcessor {
                 // Recursive case with depth tracking
                 self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality, visited)
             }
-            // No meshing branch for this operand type: the operand resolves to
-            // an EMPTY mesh. As a FIRST operand that empties the whole boolean
-            // result and the element's item renders nothing; as a SECOND
-            // operand it means an unsupported cutter and the host renders
-            // un-cut. Returning `Err` here would be wrong for the second case
-            // — it would delete the host as well — so the arm keeps returning
-            // an empty mesh and RECORDS the loss instead (#3821). Before this,
-            // the only base-operand drop in the whole boolean path left no
-            // trace at all, not even in a debug build.
-            other => {
-                self.record_failure(op, BoolFailureReason::UnsupportedOperand(other.to_string()));
-                unsupported = true;
-                Ok(Mesh::new())
-            }
+            other => match builtin_processor(other, &self.schema) {
+                Some(processor) => processor.process(operand, decoder, &self.schema, quality),
+                // No built-in meshes this operand type: the operand resolves to
+                // an EMPTY mesh. As a FIRST operand that empties the whole
+                // boolean result and the element's item renders nothing; as a
+                // SECOND operand it means an unsupported cutter and the host
+                // renders un-cut. Returning `Err` here would be wrong for the
+                // second case — it would delete the host as well — so the arm
+                // keeps returning an empty mesh and RECORDS the loss instead
+                // (#3821). Before this, the only base-operand drop in the whole
+                // boolean path left no trace at all, not even in a debug build.
+                None => {
+                    self.record_failure(
+                        op,
+                        BoolFailureReason::UnsupportedOperand(other.to_string()),
+                    );
+                    unsupported = true;
+                    Ok(Mesh::new())
+                }
+            },
         }?;
         Ok((mesh, unsupported))
     }

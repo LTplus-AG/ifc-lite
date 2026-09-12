@@ -79,15 +79,6 @@ function extractBulletDescription(line: string): string | null {
   return null;
 }
 
-function compareSemver(a: string, b: string): number {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    if (pa[i] !== pb[i]) return pa[i] - pb[i];
-  }
-  return 0;
-}
-
 function parseChangelogs(): PackageChangelog[] {
   const packagesDir = path.resolve(__dirname, '../../packages');
   let dirs: string[];
@@ -360,8 +351,9 @@ export default defineConfig({
           if (id.includes('/node_modules/apache-arrow/')) return 'arrow';
           if (id.includes('/node_modules/parquet-wasm/')) return 'parquet';
           if (id.includes('/node_modules/cesium/')) return 'cesium';
-          // ECharts + its zrender core: reached only through the lazy Charts panel (#3944).
+          // ECharts (+ zrender) and the dashboard grid: reached only through the lazy Charts panel (#3944).
           if (id.includes('/node_modules/echarts/') || id.includes('/node_modules/zrender/')) return 'echarts';
+          if (id.includes('/node_modules/react-grid-layout/')) return 'grid-layout';
           // @radix-ui/@floating-ui run synchronous, top-level module-init
           // code (e.g. react-tooltip's `createPopperScope()` at module
           // scope). The default chunker otherwise merges them into whatever
@@ -375,10 +367,7 @@ export default defineConfig({
           // scope (issue #2243). Keep radix/floating-ui in their own chunk,
           // clear of the store's async taint, so their module-init always
           // finishes before anything can import from them.
-          if (
-            id.includes('/node_modules/@radix-ui/') ||
-            id.includes('/node_modules/@floating-ui/')
-          ) return 'radix-ui';
+          if (id.includes('/node_modules/@radix-ui/') || id.includes('/node_modules/@floating-ui/')) return 'radix-ui';
           // three.js + addons — only the /mcp landing imports them, keep
           // the main viewer / pages off the hook.
           if (id.includes('/node_modules/three/') || id.includes('/node_modules/.pnpm/three@')) return 'three';

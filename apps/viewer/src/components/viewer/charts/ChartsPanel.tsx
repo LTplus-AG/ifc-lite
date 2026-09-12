@@ -13,13 +13,15 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BarChart3, Plus, X } from 'lucide-react';
-import type { Aggregation, ChartScope, ChartSpec, DashboardSpec } from '@ifc-lite/charts';
+import type { Aggregation, ChartScope, ChartSpec, DashboardLayoutItem, DashboardSpec } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
 import type { ChartFocusMode } from '@/store/slices/chartSlice';
 import { DASHBOARD_PRESETS, modelOverviewDashboard, newChartSpec } from '@/lib/charts/presets';
 import { ChartCard } from './ChartCard';
 import { ChartEditor } from './ChartEditor';
+import { DashboardGrid } from './DashboardGrid';
+import { DashboardMenu } from './DashboardMenu';
 import { useChart3DLink, useChartColorOverlay } from './useChart3DLink';
 import { useChartDatasets } from './useChartDatasets';
 import type { ChartRenderer } from './useEChart';
@@ -55,6 +57,7 @@ export function ChartsPanel({ onClose, renderer }: ChartsPanelProps) {
   const activeDashboardId = useViewerStore((s) => s.activeDashboardId);
   const setActiveDashboardId = useViewerStore((s) => s.setActiveDashboardId);
   const upsertDashboard = useViewerStore((s) => s.upsertDashboard);
+  const deleteDashboard = useViewerStore((s) => s.deleteDashboard);
   const focusMode = useViewerStore((s) => s.chartFocusMode);
   const setFocusMode = useViewerStore((s) => s.setChartFocusMode);
   const colorIn3D = useViewerStore((s) => s.chartColorIn3D);
@@ -102,6 +105,25 @@ export function ChartsPanel({ onClose, renderer }: ChartsPanelProps) {
     if (!dashboard || kind === 'list') return;
     update({ ...dashboard, scope: { kind } });
   }, [dashboard, update]);
+  const setLayout = useCallback((layout: DashboardLayoutItem[]) => {
+    if (dashboard) update({ ...dashboard, layout });
+  }, [dashboard, update]);
+  const chartIds = useMemo(() => dashboard?.charts.map((c) => c.id) ?? [], [dashboard]);
+  const renderCard = useCallback((id: string) => {
+    const spec = dashboard?.charts.find((c) => c.id === id);
+    if (!spec) return null;
+    return (
+      <ChartCard
+        spec={spec}
+        dataset={datasets[spec.source]}
+        link={link}
+        renderer={renderer}
+        onEdit={() => setEditing(spec)}
+        onRemove={() => removeChart(spec.id)}
+        onAggregation={onAggregation}
+      />
+    );
+  }, [dashboard, datasets, link, renderer, removeChart, onAggregation]);
 
   const select = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5';
 
@@ -130,6 +152,7 @@ export function ChartsPanel({ onClose, renderer }: ChartsPanelProps) {
             {DASHBOARD_PRESETS.map((p) => <option key={p.name} value={`preset:${p.name}`}>{p.name}</option>)}
           </optgroup>
         </select>
+        <DashboardMenu dashboard={dashboard} onUpsert={upsertDashboard} onDelete={deleteDashboard} onActivate={setActiveDashboardId} />
         <label className="inline-flex items-center gap-1 text-muted-foreground">
           Scope
           <select className={select} value={scope.kind} onChange={(e) => setScope(e.target.value as ChartScope['kind'])} aria-label="Scope">
@@ -179,20 +202,7 @@ export function ChartsPanel({ onClose, renderer }: ChartsPanelProps) {
             <Button size="sm" className="h-7 px-2 text-xs" onClick={() => setEditing(newChartSpec())}>Add a chart</Button>
           </div>
         ) : (
-          <div className="grid gap-2 auto-rows-[220px]" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
-            {dashboard.charts.map((spec) => (
-              <ChartCard
-                key={spec.id}
-                spec={spec}
-                dataset={datasets[spec.source]}
-                link={link}
-                renderer={renderer}
-                onEdit={() => setEditing(spec)}
-                onRemove={() => removeChart(spec.id)}
-                onAggregation={onAggregation}
-              />
-            ))}
-          </div>
+          <DashboardGrid layout={dashboard.layout} ids={chartIds} renderItem={renderCard} onLayoutChange={setLayout} />
         )}
       </div>
     </div>

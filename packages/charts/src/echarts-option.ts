@@ -102,7 +102,9 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
   const base: EChartsOptionObject = {
     backgroundColor: theme.background,
     textStyle: { color: theme.text, fontFamily: theme.fontFamily },
-    title: args.showTitle ? { text: spec.title, left: 'center', textStyle: { color: theme.text, fontSize: 13 } } : undefined,
+    // Only components that are actually used may appear as keys: ECharts
+    // reports an `undefined` `title` as a missing TitleComponent.
+    ...(args.showTitle ? { title: { text: spec.title, left: 'center', textStyle: { color: theme.text, fontSize: 13 } } } : {}),
     tooltip: { trigger: 'item', valueFormatter: (v: number) => formatValue(v, unit) },
     animation: false,
   };
@@ -146,8 +148,10 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
   const stacked = spec.type === 'stackedBar';
   return {
     ...base,
-    grid: { left: 8, right: 8, top: stacked ? 32 : 12, bottom: 8, containLabel: true },
-    legend: stacked ? { top: 0, textStyle: { color: theme.mutedText } } : undefined,
+    // ECharts 6 keeps axis labels inside the grid's outer bounds by default
+    // (`containLabel` is the removed v5 way of saying the same).
+    grid: { left: 8, right: 8, top: stacked ? 32 : 12, bottom: 8 },
+    ...(stacked ? { legend: { top: 0, textStyle: { color: theme.mutedText } } } : {}),
     xAxis: {
       type: 'category',
       data: categories.map((c) => c.label),
@@ -161,7 +165,6 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
       axisLabel: { color: theme.mutedText },
       splitLine: { lineStyle: { color: theme.grid } },
     },
-    brush: { toolbox: [], xAxisIndex: 0, brushLink: 'all', outOfBrush: { colorAlpha: 0.2 }, throttleType: 'debounce', throttleDelay: 100 },
     series: barSeries(aggregation, selected, stacked),
   };
 }

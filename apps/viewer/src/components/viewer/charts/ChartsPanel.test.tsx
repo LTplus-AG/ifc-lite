@@ -12,7 +12,7 @@
 import '@/test/setup-dom.js';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, StrictMode } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { ChartItem, EChartsOptionObject } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store/index.js';
@@ -70,7 +70,7 @@ async function parsedModel(): Promise<FederatedModel> {
 interface Recorded { options: EChartsOptionObject[]; selections: Array<{ full: ChartItem[]; partial: ChartItem[] }>; events: ChartRendererEvents }
 function recordingRenderer(): { renderer: ChartRenderer; charts: Recorded[] } {
   const charts: Recorded[] = [];
-  const renderer: ChartRenderer = async (_el, events) => {
+  const renderer: ChartRenderer = async () => (_el, events) => {
     const rec: Recorded = { options: [], selections: [], events };
     charts.push(rec);
     return {
@@ -134,6 +134,24 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     // What ECharts would draw for the first card.
     assert.deepEqual(barData(charts[0].options.at(-1)!), [['IfcWall', 3, false], ['IfcDoor', 2, false]]);
     assert.equal(useViewerStore.getState().dashboards.length, 1);
+  });
+
+  it('under StrictMode the panel seeds one dashboard and each card gets one chart, even when the engine loads after the first mount is undone (browser finding)', async () => {
+    const created: string[] = [];
+    // The engine resolves only after React has run mount → unmount → mount.
+    const renderer: ChartRenderer = async () => {
+      for (let i = 0; i < 3; i++) await Promise.resolve();
+      return (el) => {
+        created.push(el.tagName);
+        return { setOption: () => {}, select: () => {}, resize: () => {}, dispose: () => { created.pop(); } };
+      };
+    };
+    const ui = render(<StrictMode><ChartsPanel renderer={renderer} /></StrictMode>);
+    await settle();
+    await settle();
+    assert.equal(useViewerStore.getState().dashboards.length, 1, 'the double effect must not seed twice');
+    assert.equal(ui.querySelectorAll('[data-chart-host]').length, 3);
+    assert.equal(created.length, 3, 'one live chart per card, none created for the undone first mount');
   });
 
   it('a chart click selects the bucket in 3D on both channels, ghosts the rest, claims the channel, and slices the other charts', async () => {

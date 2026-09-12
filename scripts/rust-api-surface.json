@@ -86,7 +86,7 @@
     "AlignmentCurve": "struct {  }",
     "AlignmentFrame": "struct { origin: Point3<f64>; right: Vector3<f64>; tangent: Vector3<f64>; up: Vector3<f64> }",
     "BoolFailure": "struct { op: BoolOp; product_id: Option<u32>; reason: BoolFailureReason }",
-    "BoolFailureReason": "enum { CutterUnionUnavailable; DegenerateOperand; DifferenceEmptiedHost; EmptyOperand; KernelError(String); KernelOutputInvalid; ManifoldOutputDegenerate { host_tris: usize; result_tris: usize }; NoBoundsOverlap; NonManifoldRejected { over_used: usize; same_direction: usize }; OpenTopologyRejected; OperandTooLarge { polys_a: usize; polys_b: usize }; PolygonalBoundedHalfSpaceFallback; SolidSolidDifferenceSkipped; UnknownBooleanOperator(String); UnsupportedOperand(String) }",
+    "BoolFailureReason": "enum { CutterUnionUnavailable; DegenerateOperand; DifferenceEmptiedHost; EmptyOperand; KernelError(String); KernelOutputInvalid; ManifoldOutputDegenerate { host_tris: usize; result_tris: usize }; NoBoundsOverlap; NonManifoldRejected { over_used: usize; same_direction: usize }; OpenTopologyRejected; OperandBudgetExhausted; OperandTooLarge { polys_a: usize; polys_b: usize }; PolygonalBoundedHalfSpaceFallback; SolidSolidDifferenceSkipped; UnknownBooleanOperator(String); UnsupportedOperand(String) }",
     "BoolOp": "ambiguous",
     "BooleanClippingProcessor": "struct {  }",
     "BooleanOp2D": "enum { Difference; Intersection; Union }",

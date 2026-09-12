@@ -238,3 +238,136 @@ fn cyclic_derived_unit_terminates_not_stack_overflow() {
     let mut decoder = EntityDecoder::new(content);
     assert!(resolve_unit_by_ref(&mut decoder, 10).is_none());
 }
+
+/// Run `resolve_unit_by_ref(#10)` on a worker thread, failing the test if it
+/// has not returned by `limit`. The timeout is the assertion: a walk that
+/// regresses to `k^depth` takes seconds at k=3, so a one-second limit cannot
+/// pass by accident and cannot hang the revert oracle.
+fn resolve_within(
+    content: String,
+    limit: std::time::Duration,
+) -> Option<(Option<String>, ResolvedUnit, bool)> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut decoder = EntityDecoder::new(&content);
+        let _ = tx.send(resolve_unit_by_ref(&mut decoder, 10));
+    });
+    match rx.recv_timeout(limit) {
+        Ok(out) => out,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            panic!("resolve_unit_by_ref did not return within {limit:?}")
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("resolve_unit_by_ref's worker panicked (not a hang)")
+        }
+    }
+}
+
+/// The same cycle as above with THREE elements per level, each pointing back
+/// at the derived unit. A depth cap alone bounds one path's length, not the
+/// breadth: every level fans out three ways, so the walk cost `3^16` before
+/// the path set refused the re-entry. The k=1 test above cannot see this,
+/// being the one fan-out the cap is sufficient for.
+#[test]
+fn cyclic_derived_unit_with_fan_out_returns_in_bounded_time() {
+    let content = "\
+#10=IFCDERIVEDUNIT((#11,#12,#13),.USERDEFINED.);
+#11=IFCDERIVEDUNITELEMENT(#10,1);
+#12=IFCDERIVEDUNITELEMENT(#10,1);
+#13=IFCDERIVEDUNITELEMENT(#10,1);
+"
+    .to_string();
+    let out = resolve_within(content, std::time::Duration::from_secs(1));
+    assert!(out.is_none(), "a derived unit made only of itself resolves to nothing");
+}
+
+/// An ACYCLIC fan-out: twelve derived units in a chain, each listing the next
+/// one four times. No id repeats on any path, so the path set never fires
+/// and the depth cap never binds (12 < 16); only the decode budget bounds
+/// the `4^12` element resolutions, and with them the composed symbol, which
+/// would otherwise be `4^12` copies of `m`. Refused, not truncated: the
+/// result is `None`, not a symbol composed of whichever elements the walk
+/// reached.
+#[test]
+fn acyclic_derived_unit_fan_out_is_refused_in_bounded_time() {
+    let mut content = String::new();
+    for level in 0..12u32 {
+        let unit = 10 + level * 10;
+        let next = unit + 10;
+        content.push_str(&format!(
+            "#{unit}=IFCDERIVEDUNIT((#{a},#{b},#{c},#{d}),.USERDEFINED.);\n\
+             #{a}=IFCDERIVEDUNITELEMENT(#{next},1);\n\
+             #{b}=IFCDERIVEDUNITELEMENT(#{next},1);\n\
+             #{c}=IFCDERIVEDUNITELEMENT(#{next},1);\n\
+             #{d}=IFCDERIVEDUNITELEMENT(#{next},1);\n",
+            a = unit + 1,
+            b = unit + 2,
+            c = unit + 3,
+            d = unit + 4,
+        ));
+    }
+    content.push_str("#130=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n");
+    let out = resolve_within(content, std::time::Duration::from_secs(1));
+    assert!(out.is_none(), "an over-budget walk must refuse the unit, got {out:?}");
+}
+
+/// The budget on a TREE rather than a fan-out: three hundred distinct
+/// elements over three hundred distinct SI units. Refused, not truncated:
+/// the result is `None`, not a symbol composed of whichever elements the
+/// walk reached before the budget ran out.
+#[test]
+fn an_over_budget_unit_graph_is_refused_not_truncated() {
+    let n = 300u32;
+    let elements: Vec<String> = (0..n).map(|i| format!("#{}", 100 + 2 * i)).collect();
+    let mut content = format!("#10=IFCDERIVEDUNIT(({}),.USERDEFINED.);\n", elements.join(","));
+    for i in 0..n {
+        let (elem, unit) = (100 + 2 * i, 101 + 2 * i);
+        content.push_str(&format!(
+            "#{elem}=IFCDERIVEDUNITELEMENT(#{unit},1);\n#{unit}=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n"
+        ));
+    }
+    let out = resolve_within(content, std::time::Duration::from_secs(1));
+    assert!(out.is_none(), "an over-budget walk must refuse the unit, got {out:?}");
+}
+
+/// The budget must not bind on a real derived unit: a flow rate over a
+/// conversion-based length whose factor is itself an SI unit resolves as
+/// before, with decodes to spare.
+#[test]
+fn real_derived_units_stay_well_under_the_budget() {
+    let content = "\
+#10=IFCDERIVEDUNIT((#11,#12),.VOLUMETRICFLOWRATEUNIT.,$);
+#11=IFCDERIVEDUNITELEMENT(#20,3);
+#12=IFCDERIVEDUNITELEMENT(#21,-1);
+#20=IFCCONVERSIONBASEDUNIT(*,.LENGTHUNIT.,'FOOT',#30);
+#30=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#22);
+#21=IFCSIUNIT(*,.TIMEUNIT.,$,.SECOND.);
+#22=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+";
+    let mut decoder = EntityDecoder::new(content);
+    let (_, resolved, _) = resolve_unit_by_ref(&mut decoder, 10).expect("resolves");
+    assert_eq!(resolved.symbol, "ft\u{00B3}/s");
+    assert!((resolved.si_scale - 0.3048f64.powi(3)).abs() < 1e-12);
+}
+
+/// A cyclic element beside two sound ones. The path set refuses the cyclic
+/// element on its first re-entry and the sound elements compose once. Pins
+/// the path set separately from the budget: with the set deleted the cycle
+/// re-enters `#10` until the depth cap (well inside the budget at fan-out 1)
+/// and the two sound elements are composed at every level, so the symbol
+/// comes back as `m/s` repeated sixteen times.
+#[test]
+fn a_cyclic_element_is_dropped_without_spending_the_budget_on_it() {
+    let content = "\
+#10=IFCDERIVEDUNIT((#11,#12,#13),.LINEARVELOCITYUNIT.,$);
+#11=IFCDERIVEDUNITELEMENT(#10,1);
+#12=IFCDERIVEDUNITELEMENT(#20,1);
+#13=IFCDERIVEDUNITELEMENT(#21,-1);
+#20=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#21=IFCSIUNIT(*,.TIMEUNIT.,$,.SECOND.);
+";
+    let mut decoder = EntityDecoder::new(content);
+    let (_, resolved, _) = resolve_unit_by_ref(&mut decoder, 10)
+        .expect("the two sound elements still compose");
+    assert_eq!(resolved.symbol, "m/s");
+}

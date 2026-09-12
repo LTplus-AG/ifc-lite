@@ -9,13 +9,96 @@
 
 use super::{
     BlockProcessor, BooleanClippingProcessor, CsgSolidProcessor, ExtrudedAreaSolidProcessor,
-    FacetedBrepProcessor, OperandPath, RevolvedAreaSolidProcessor, SweptDiskSolidProcessor,
+    FacetedBrepProcessor, RevolvedAreaSolidProcessor, SweptDiskSolidProcessor,
     TriangulatedFaceSetProcessor,
 };
 use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::router::GeometryProcessor;
 use crate::{Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+
+/// Boolean/CSG operand nodes one `process` call (one representation item)
+/// may ENTER, every path counted.
+///
+/// The third bound from AGENTS.md "Bounding walks over file-supplied
+/// references": `MAX_BOOLEAN_DEPTH` bounds nesting, `MAX_OPERAND_PATH_NODES`
+/// bounds one path's length, and the path-scoped set breaks cycles, but none
+/// of them sees a DAG that fans out. `m` spine nodes per level whose
+/// SecondOperands all point at the same next-level boolean re-mesh that
+/// boolean `m` times, `m^levels` in all, from a few dozen STEP entities and
+/// with nothing repeating on any path. `kernel::budget` cannot help: it
+/// counts exact-tier predicate escalations, and a fan-out of cheap box
+/// booleans escalates zero times.
+///
+/// Why 1024: spine (FirstOperand) nodes are walked iteratively and never
+/// charged, so an unshared tree of spine width `w` under
+/// `MAX_BOOLEAN_DEPTH` (10) charges about `w^10` SecondOperand entries;
+/// 1024 is that bound at width 2, and a wider unshared tree that deep is
+/// not a shape files have (real items enter this walk a handful of times;
+/// a CSG tree enters each primitive once, so this is roughly a thousand
+/// primitives under one item). The adversarial DAG crosses it at fan-out 4
+/// by the fifth level.
+///
+/// A memo of `id -> meshed result` inside the walk would make that shape
+/// cheap instead of refused (the mesh of a nested node is a function of the
+/// id, the quality and the small-cut flag, all fixed per item); it needs
+/// the node's failure records stored and replayed with it, since
+/// `defer_after` rewinds records made under a provisional union attempt.
+/// Separate change; the budget stays as the bound on distinct-node work.
+pub(crate) const MAX_OPERAND_VISITS: u32 = 1024;
+
+/// Entity ids on the CURRENT operand path — inserted on the way in, removed on
+/// the way out, so `len()` is live recursion depth. The two accumulate-only
+/// sets in `boolean/mod.rs` (`collect_polygonal_chain`'s, and the spine
+/// walk's `spine_seen`) are NOT frame counts and must not be compared to the
+/// bound. Carries the per-item visit budget alongside, because the two
+/// travel together through every operand hop (the `IfcCsgSolid` hop threads
+/// it without charging; its tree root re-enters `process_with_depth`, which
+/// does) and a budget on a separate parameter would be one more thing a new
+/// hop could forget to thread.
+#[derive(Default)]
+pub(crate) struct OperandPath {
+    path: rustc_hash::FxHashSet<u32>,
+    visits: u32,
+}
+
+impl OperandPath {
+    /// Push `id` onto the current path; `false` if it is already on it.
+    pub(crate) fn insert(&mut self, id: u32) -> bool {
+        self.path.insert(id)
+    }
+
+    /// Pop `id` off the current path on the way out.
+    pub(crate) fn remove(&mut self, id: u32) {
+        self.path.remove(&id);
+    }
+
+    /// Live recursion depth.
+    pub(crate) fn len(&self) -> usize {
+        self.path.len()
+    }
+
+    /// Charge one node visit against [`MAX_OPERAND_VISITS`]; `false` once
+    /// the budget is spent.
+    pub(crate) fn charge(&mut self) -> bool {
+        if self.visits >= MAX_OPERAND_VISITS {
+            return false;
+        }
+        self.visits += 1;
+        true
+    }
+
+    /// Visits charged so far, for a provisional attempt to mark.
+    pub(crate) fn visits(&self) -> u32 {
+        self.visits
+    }
+
+    /// Give back the visits charged since `mark`: the provisional attempt
+    /// that charged them deferred, and its work is redone sequentially.
+    pub(crate) fn refund_to(&mut self, mark: u32) {
+        self.visits = mark;
+    }
+}
 
 impl BooleanClippingProcessor {
     /// Process a solid operand with depth tracking. The mesh only; callers

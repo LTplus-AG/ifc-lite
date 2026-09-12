@@ -30,9 +30,7 @@ mod single_cutter_gate;
 use single_cutter_gate::SingleCutterSubtract;
 mod polygonal_union;
 mod polygonal_removal;
-use cut_heuristics::{
-    cutter_below_skip_ratio, plane_is_coincident_with_host_face, quality_skips_small_cuts,
-};
+use cut_heuristics::{cutter_below_skip_ratio, quality_skips_small_cuts};
 use halfspace_cap::cap_half_space_clip;
 #[cfg(test)]
 use halfspace_cap::force_cdt_fail_on_ring_for_test;
@@ -54,11 +52,7 @@ const MAX_BOOLEAN_DEPTH: u32 = 10;
 /// wrong trade.
 const MAX_OPERAND_PATH_NODES: usize = 64;
 
-/// Entity ids on the CURRENT operand path — inserted on the way in, removed on
-/// the way out, so `len()` is live recursion depth. The two accumulate-only
-/// sets in this file (`collect_polygonal_chain`'s, and the spine walk's
-/// `spine_seen`) are NOT frame counts and must not be compared to the bound.
-pub(crate) type OperandPath = rustc_hash::FxHashSet<u32>;
+pub(crate) use operand::{OperandPath, MAX_OPERAND_VISITS};
 
 /// BooleanResult processor
 /// Handles IfcBooleanResult and IfcBooleanClippingResult - CSG operations
@@ -107,35 +101,6 @@ impl BooleanClippingProcessor {
             failures: RefCell::new(Vec::new()),
             skip_small_cuts,
         }
-    }
-
-    /// If a DIFFERENCE clip emptied a non-empty host **and** the cutter's
-    /// plane is coincident with one of the host's bounding-box faces,
-    /// revert to the host and record the loss. The coincidence test is
-    /// what keeps this from rendering geometry the model explicitly
-    /// removed: a half-space deliberately placed far from the host so it
-    /// engulfs the body (e.g. a demolition-phase cutter) still produces
-    /// the correct empty mesh because no host face touches that plane.
-    /// Only the Revit IFC2x3 "top-trim at exactly the wall top" pattern
-    /// — issue #821 TallBuilding.ifc walls #615, #1297, #2401 and similar
-    /// Revit exports where the spec-correct cut would erase the wall —
-    /// hits the fallback.
-    fn guard_against_full_host_removal(
-        &self,
-        host: Mesh,
-        result: Mesh,
-        plane_point: Point3<f64>,
-        plane_normal: Vector3<f64>,
-    ) -> Mesh {
-        if host.is_empty() || !result.is_empty() {
-            return result;
-        }
-        if !plane_is_coincident_with_host_face(&host, plane_point, plane_normal) {
-            // Spec-correct full removal — respect the author's intent.
-            return result;
-        }
-        self.record_failure(BoolOp::Difference, BoolFailureReason::DifferenceEmptiedHost);
-        host
     }
 
     /// Parse IfcHalfSpaceSolid to get clipping plane
@@ -543,9 +508,10 @@ impl BooleanClippingProcessor {
         quality: TessellationQuality,
         visited: &mut OperandPath,
     ) -> Result<Mesh> {
-        // PATH-scoped, not global: a boolean tree is a DAG and geometry
-        // ACCUMULATES, so one operand legitimately referenced down two
-        // different branches must be processed both times. Removing the id on
+        // PATH-scoped, not global: a boolean tree is a DAG and one operand
+        // legitimately referenced down two different branches must be PRESENT
+        // in both (the accumulation is the parent's subtract, not the node's;
+        // a memo could serve the second branch, see MAX_OPERAND_VISITS). Removing the id on
         // the way out breaks cycles without dropping real geometry — the same
         // choice `router/processing.rs` makes, and the opposite of the colour
         // resolvers, where the result is a pure function of the id so a global
@@ -569,6 +535,22 @@ impl BooleanClippingProcessor {
                 entity.id
             )));
         }
+        // Work budget, the one bound the two above cannot provide: a shared
+        // SecondOperand is re-meshed on every path that reaches it (the set
+        // is path-scoped on purpose), so `m` spine nodes per level all
+        // pointing at one next-level boolean cost `m^levels` entries here
+        // with no cycle and no long path. Recorded AND refused: the record
+        // is what a consumer sees, the `Err` is what stops the work.
+        if !visited.charge() {
+            self.record_failure(
+                BoolOp::Unknown,
+                BoolFailureReason::OperandBudgetExhausted,
+            );
+            return Err(Error::geometry(format!(
+                "Boolean/CSG operand walk exceeds {MAX_OPERAND_VISITS} node visits at #{}",
+                entity.id
+            )));
+        }
         if !visited.insert(entity.id) {
             return Err(Error::geometry(format!(
                 "Cyclic boolean/CSG operand reference at #{}",
@@ -576,7 +558,7 @@ impl BooleanClippingProcessor {
             )));
         }
         let out = self.process_with_depth_inner(entity, decoder, schema, depth, quality, visited);
-        visited.remove(&entity.id);
+        visited.remove(entity.id);
         out
     }
 
@@ -634,9 +616,18 @@ impl BooleanClippingProcessor {
             }
             let operator = Self::boolean_operator(&current);
             if operator == ".DIFFERENCE." || operator == "DIFFERENCE" {
-                if let Some(result) =
-                    self.try_union_polygonal_chain(&current, decoder, depth, quality, visited)?
-                {
+                // The batched attempt meshes the base provisionally and is
+                // retried at every spine level it defers on, so its visits
+                // are refunded on deferral: a chain of N cutters over a base
+                // of B nodes is N x B re-meshes (a cost this file already
+                // pays) but not N x B against a budget sized for one walk.
+                let visits_mark = visited.visits();
+                let attempt =
+                    self.try_union_polygonal_chain(&current, decoder, depth, quality, visited)?;
+                if attempt.is_none() {
+                    visited.refund_to(visits_mark);
+                }
+                if let Some(result) = attempt {
                     // Batched PBHS resolution handled this node and everything
                     // below it (see the comment on the sequential step).
                     based_on_batch = true;

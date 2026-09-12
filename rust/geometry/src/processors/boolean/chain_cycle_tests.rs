@@ -1126,3 +1126,162 @@ fn solo_step_batched_suffix_defect_is_active_on_a_synthetic_bowtie_cutter() {
     );
 }
 
+/// `m` DIFFERENCE nodes per level on the left spine, every one of whose
+/// SecondOperand is the SAME next-level root, repeated for `levels` levels
+/// and bottoming out on a block. No id repeats on any path, every path is
+/// short, and the nesting depth is `levels`, so neither the cycle set, the
+/// path bound nor `MAX_BOOLEAN_DEPTH` fires; the walk simply enters the
+/// next-level root `m` times per level, `m^levels` in all.
+fn fan_out_fixture(m: u32, levels: u32) -> String {
+    // The base is a 2 m block and the cutter a 1 m block in its corner, so
+    // every level's result is a non-empty solid that does not engulf the
+    // next base: an emptied intermediate would end a spine early and hide
+    // the fan-out (an identical-block fixture did exactly that).
+    let mut data = String::from("#1=IFCBLOCK($,2.,2.,2.);\n#2=IFCBLOCK($,1.,1.,1.);\n");
+    for level in 0..levels {
+        let base = 100 * (level + 1);
+        let next_root = if level + 1 == levels { 2 } else { 100 * (level + 2) };
+        for i in 0..m {
+            let id = base + i;
+            let first = if i + 1 == m { 1 } else { id + 1 };
+            data.push_str(&format!(
+                "#{id}=IFCBOOLEANRESULT(.DIFFERENCE.,#{first},#{next_root});\n"
+            ));
+        }
+    }
+    wrap_ifc(&data)
+}
+
+/// Pins the operand work budget (`MAX_OPERAND_VISITS`): four spine nodes per
+/// level over six levels is `sum(4^i, i < 6)` entries into
+/// `process_with_depth`, each with up to four exact subtracts, from 26 STEP
+/// entities. Without the budget the walk runs them all (the 60 s timeout is
+/// the assertion for that); with it the element is refused past the budget
+/// and the refusal is on record.
+#[test]
+fn a_shared_second_operand_fan_out_is_refused_at_the_visit_budget() {
+    let content = fan_out_fixture(4, 6);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = std::thread::spawn(move || {
+        let mut decoder = EntityDecoder::new(&content);
+        let entity = decoder.decode_by_id(100).expect("decode #100");
+        let processor = BooleanClippingProcessor::new();
+        let schema = IfcSchema::new();
+        let result = processor.process(&entity, &mut decoder, &schema, Default::default());
+        let failures = processor.take_failures();
+        let _ = tx.send((result.map(|m| m.triangle_count()).map_err(|e| e.to_string()), failures));
+    });
+    let (result, failures) = crate::test_support::recv_or_diagnose(
+        &rx,
+        std::time::Duration::from_secs(60),
+        "the operand fan-out walk did not terminate within 60 s (no work budget?)",
+        "the operand fan-out worker PANICKED (not a hang); its panic is printed above",
+    );
+    let _ = handle.join();
+    let err = result.expect_err("an over-budget operand walk must be refused, not rendered");
+    assert!(
+        err.contains("operand walk exceeds"),
+        "expected the visit budget to be named, got: {err}"
+    );
+    assert!(
+        failures.iter().any(|f| matches!(f.reason, BoolFailureReason::OperandBudgetExhausted)),
+        "the refusal must be on record; got {failures:?}"
+    );
+}
+
+/// The budget must not bind on the shapes real files have: a three-level fan
+/// of three resolves with nothing on record.
+#[test]
+fn a_small_shared_second_operand_fan_out_still_resolves() {
+    let content = fan_out_fixture(3, 3);
+    let mut decoder = EntityDecoder::new(&content);
+    let entity = decoder.decode_by_id(100).expect("decode #100");
+    let processor = BooleanClippingProcessor::new();
+    let schema = IfcSchema::new();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, Default::default())
+        .expect("a 13-entry fan-out is well inside the budget");
+    assert!(!mesh.is_empty(), "the 2 m block minus a corner cube is a solid");
+    let failures = processor.take_failures();
+    assert!(failures.is_empty(), "nothing to record on a small fan-out: {failures:?}");
+}
+
+/// A legitimate deep chain must not be refused by the budget because of the
+/// processor's own retries. `try_union_polygonal_chain` meshes the base
+/// provisionally at EVERY spine level it is attempted from and defers when
+/// a cutter cannot be batched (here the innermost PBHS has no boundary), so
+/// `n` PBHS cutters over a base whose spine carries `b` boolean second
+/// operands enters the base's nodes `n * b` times. Those provisional visits
+/// are refunded on deferral; without the refund this 40 x 30 chain (1200
+/// entries against a budget of 1024) is refused where main renders it.
+#[test]
+fn provisional_batch_attempts_do_not_spend_the_visit_budget() {
+    const CUTTERS: u32 = 40;
+    const BASE_OPERANDS: u32 = 30;
+    let mut data = String::from(
+        "#10=IFCCARTESIANPOINT((0.,0.));
+#11=IFCAXIS2PLACEMENT2D(#10,$);
+#12=IFCRECTANGLEPROFILEDEF(.AREA.,$,#11,10.,10.);
+#13=IFCCARTESIANPOINT((0.,0.,0.));
+#14=IFCAXIS2PLACEMENT3D(#13,$,$);
+#15=IFCDIRECTION((0.,0.,1.));
+#16=IFCEXTRUDEDAREASOLID(#12,#14,#15,10.);
+#20=IFCBLOCK(#14,1.,1.,1.);
+#21=IFCBLOCK(#14,0.5,0.5,0.5);
+#22=IFCBOOLEANRESULT(.DIFFERENCE.,#20,#21);
+#200=IFCCARTESIANPOINT((0.,3.,0.));
+#201=IFCDIRECTION((0.,1.,0.));
+#202=IFCAXIS2PLACEMENT3D(#200,#201,$);
+#203=IFCPLANE(#202);
+#210=IFCCARTESIANPOINT((0.,3.,0.));
+#211=IFCDIRECTION((0.,1.,0.));
+#212=IFCDIRECTION((0.,0.,1.));
+#213=IFCAXIS2PLACEMENT3D(#210,#211,#212);
+#240=IFCPOLYGONALBOUNDEDHALFSPACE(#203,.F.,#213,$);
+#300=IFCCARTESIANPOINT((3.,0.,0.));
+#301=IFCDIRECTION((1.,0.,0.));
+#302=IFCAXIS2PLACEMENT3D(#300,#301,$);
+#303=IFCPLANE(#302);
+#310=IFCCARTESIANPOINT((3.,0.,0.));
+#311=IFCDIRECTION((1.,0.,0.));
+#312=IFCDIRECTION((0.,0.,1.));
+#313=IFCAXIS2PLACEMENT3D(#310,#311,#312);
+#320=IFCCARTESIANPOINT((-6.,-6.));
+#321=IFCCARTESIANPOINT((6.,-6.));
+#322=IFCCARTESIANPOINT((6.,6.));
+#323=IFCCARTESIANPOINT((-6.,6.));
+#324=IFCCARTESIANPOINT((-6.,-6.));
+#330=IFCPOLYLINE((#320,#321,#322,#323,#324));
+#340=IFCPOLYGONALBOUNDEDHALFSPACE(#303,.F.,#313,#330);
+",
+    );
+    // The base: a spine of `b` DIFFERENCE nodes whose second operand is the
+    // boolean node #22 (a charged entry each time the base is meshed).
+    let mut prev = 16;
+    for j in 0..BASE_OPERANDS {
+        let id = 1000 + j;
+        data.push_str(&format!("#{id}=IFCBOOLEANRESULT(.DIFFERENCE.,#{prev},#22);\n"));
+        prev = id;
+    }
+    // The chain: `n` PBHS clips, the innermost with no boundary so every
+    // batch attempt defers.
+    for i in 0..CUTTERS {
+        let id = 2000 + i;
+        let cutter = if i == 0 { 240 } else { 340 };
+        data.push_str(&format!("#{id}=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#{prev},#{cutter});\n"));
+        prev = id;
+    }
+    let content = wrap_ifc(&data);
+    let mut decoder = EntityDecoder::new(&content);
+    let entity = decoder.decode_by_id(prev).expect("decode chain root");
+    let processor = BooleanClippingProcessor::new();
+    let schema = IfcSchema::new();
+    let out = processor.process(&entity, &mut decoder, &schema, Default::default());
+    let failures = processor.take_failures();
+    let mesh = out.expect("a deep legitimate chain renders");
+    assert!(!mesh.is_empty());
+    assert!(
+        !failures.iter().any(|f| matches!(f.reason, BoolFailureReason::OperandBudgetExhausted)),
+        "provisional attempts must not spend the budget; got {failures:?}"
+    );
+}

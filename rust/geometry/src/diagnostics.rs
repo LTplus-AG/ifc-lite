@@ -104,6 +104,13 @@ pub enum BoolFailureReason {
     CutterUnionUnavailable,
     /// `IfcBooleanResult` operator string didn't match any known op.
     UnknownBooleanOperator(String),
+    /// The operand walk under one representation item entered more
+    /// boolean/CSG nodes than `processors::boolean::MAX_OPERAND_VISITS`
+    /// allows and was stopped. The item is dropped (the walk returns `Err`),
+    /// so this is the only trace of why. A shared SecondOperand re-meshed
+    /// down `m^levels` paths is the shape that gets here; a real item does
+    /// not.
+    OperandBudgetExhausted,
     /// HISTORICAL: the deleted Manifold C++ kernel's `difference` returned
     /// output implausibly small relative to the host (a Linux-x86_64-only
     /// pathology). No longer emitted — the deterministic exact kernel
@@ -194,6 +201,7 @@ impl BoolFailureReason {
             }
             BoolFailureReason::CutterUnionUnavailable => "CutterUnionUnavailable",
             BoolFailureReason::UnknownBooleanOperator(_) => "UnknownBooleanOperator",
+            BoolFailureReason::OperandBudgetExhausted => "OperandBudgetExhausted",
             BoolFailureReason::ManifoldOutputDegenerate { .. } => "ManifoldOutputDegenerate",
             BoolFailureReason::KernelError(_) => "KernelError",
             BoolFailureReason::DifferenceEmptiedHost => "DifferenceEmptiedHost",
@@ -229,6 +237,9 @@ impl fmt::Display for BoolFailureReason {
             BoolFailureReason::UnknownBooleanOperator(op) => {
                 write!(f, "unknown IfcBooleanResult operator '{op}'")
             }
+            BoolFailureReason::OperandBudgetExhausted => f.write_str(
+                "boolean operand walk exhausted its per-item node visit budget; the item is dropped",
+            ),
             BoolFailureReason::DifferenceEmptiedHost => f.write_str(
                 "DIFFERENCE removed the entire host; reverted to un-cut",
             ),

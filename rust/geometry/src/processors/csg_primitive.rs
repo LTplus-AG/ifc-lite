@@ -177,7 +177,7 @@ impl CsgSolidProcessor {
             )));
         }
         let out = self.resolve_tree_root(entity, decoder, schema, depth, quality, visited);
-        visited.remove(&entity.id);
+        visited.remove(entity.id);
         out
     }
 

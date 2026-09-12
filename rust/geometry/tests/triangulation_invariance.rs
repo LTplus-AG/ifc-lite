@@ -1416,7 +1416,10 @@ fn watertightness_census_and_triangulator_invariance() {
 /// Regression for #4610: the correctly merged 2D footprints on this mixed
 /// eligible/residual slab leave a watertight intermediate, but cutting the
 /// residuals into it tears the final mesh badly. The composed-path final check
-/// must reject that candidate and preserve the full-context exact result.
+/// must reject that candidate and preserve the better full-context route. The
+/// same contract holds when the optional prism route is disabled; the expected
+/// tessellation then differs, so this test is run in a separate process with
+/// `IFC_LITE_PRISM_CUT=0` as part of #4610's validation.
 #[test]
 fn issue_129_mixed_bool2d_residual_keeps_the_less_torn_result() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -1431,7 +1434,12 @@ fn issue_129_mixed_bool2d_residual_keeps_the_less_torn_result() {
     let frame = ModelFrame::new(&content);
     for alt in [false, true] {
         set_alt(alt);
-        for (id, open, strict, tris) in [(12381, 25, 26, 7565), (32810, 3, 3, 2005)] {
+        let expected = if std::env::var("IFC_LITE_PRISM_CUT").as_deref() == Ok("0") {
+            [(12381, 30, 31, 9400), (32810, 0, 0, 1936)]
+        } else {
+            [(12381, 25, 26, 7565), (32810, 3, 3, 2005)]
+        };
+        for (id, open, strict, tris) in expected {
             let mesh =
                 process(&frame, id, &voids).unwrap_or_else(|| panic!("host #{id} must mesh"));
             let stats = edge_stats(&mesh);

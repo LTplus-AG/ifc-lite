@@ -628,8 +628,8 @@ impl GeometryRouter {
                         let composed = self.apply_void_context(holed, residual, element_id);
                         // The 2D prefix is watertight before this recursive pass,
                         // but the exact residual can tear that replacement mesh.
-                        // Validate the FINAL composition; on a tear, continue to
-                        // the unchanged full-context exact path below. #4610's
+                        // Validate the FINAL composition; on a material tear,
+                        // compare against unchanged full-context routing. #4610's
                         // ISSUE_129 slab changed from 25 to 875 open edges when
                         // overlapping eligible footprints first merged correctly,
                         // exposing this missing half of the fast-path contract.
@@ -639,7 +639,8 @@ impl GeometryRouter {
                         }
                         // Some exact-kernel outputs are already mildly torn on
                         // real files. A blanket reject would replace #32810's
-                        // 3-edge hybrid result with a 36-edge full-context one.
+                        // 3-edge hybrid result with a 36-edge full-context one
+                        // when the prism route is enabled.
                         // Run that fallback once and keep whichever candidate
                         // has fewer non-manifold edges under the same welded
                         // topology rule. This makes the fallback monotonic.

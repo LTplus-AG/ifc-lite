@@ -15,9 +15,9 @@ use super::transform::{parse_axis2_placement_2d, Transform2D};
 ///
 /// `Position` is MANDATORY on `IfcConic`, so an absent attribute, a dangling
 /// reference or a non-placement entity is malformed data and comes back as
-/// [`Transform2D::unresolved`] (`tz = NaN`), never as a legitimate-looking
-/// origin (#2256's convention, shared with every placement path in
-/// `transform.rs`).
+/// [`Transform2D::unresolved`]: the plan centre stays at the local origin, as
+/// for every unresolved placement in `transform.rs`, and `tz = NaN` marks the
+/// result unresolved (#2256's convention) instead of a finite elevation 0.
 pub(super) fn conic_basis(
     conic: &DecodedEntity,
     decoder: &mut EntityDecoder,

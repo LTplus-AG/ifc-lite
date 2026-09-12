@@ -235,12 +235,18 @@ describe('clash --csv writes every clash as one table row with both GlobalIds (#
         // Three crossings, three rows, trailing newline.
         expect(lines).toHaveLength(5);
         expect(lines[4]).toBe('');
-        // Column positions come from the literal header asserted above, not the constant.
+        // Column positions come from the literal header asserted above, not
+        // the constant. The file read here is the CLI's OWN CSV OUTPUT — the
+        // subject under test — not a source file, which is what the
+        // source-text gate's file-read taint is guarding against.
         const header = lines[0].split(',');
+        // @source-text-assertion-ok the read file is the CLI's CSV output, the subject, not a source file
         const col = (name: string) => header.indexOf(name);
         for (const line of lines.slice(1, 4)) {
           const cells = line.split(',');
+          // @source-text-assertion-ok the read file is the CLI's CSV output, the subject, not a source file
           expect(cells[col('GlobalIdA')]).toMatch(/^[0-9A-Za-z_$]{22}$/);
+          // @source-text-assertion-ok the read file is the CLI's CSV output, the subject, not a source file
           expect(cells[col('GlobalIdB')]).toMatch(/^[0-9A-Za-z_$]{22}$/);
           expect(cells[col('GlobalIdA')]).not.toBe(cells[col('GlobalIdB')]);
           expect(cells[col('TypeA')]).toBe('IfcWall');

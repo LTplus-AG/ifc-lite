@@ -19,7 +19,7 @@
 
 use super::cache_keys::{
     cache_key_from_parts, has_current_data_model, has_cached_symbolic, has_parquet_metadata, is_file_digest,
-    load_cached_symbolic, parquet_geometry_key, parquet_metadata_key,
+    load_cached_symbolic, not_a_file_digest, parquet_geometry_key, parquet_metadata_key,
 };
 use super::ParseQuery;
 use ifc_lite_processing::TessellationQuality;
@@ -76,9 +76,7 @@ pub(super) async fn replay_by_client_hash(
     sha256: &str,
 ) -> Result<axum::response::Response, ApiError> {
     if !is_file_digest(sha256) {
-        return Err(ApiError::BadRequest(
-            "sha256 must be a 64-character lowercase hex SHA-256 digest".to_string(),
-        ));
+        return Err(not_a_file_digest(sha256));
     }
     let cache_key = cache_key_from_parts(sha256, query.opening_filter, quality);
 

@@ -81,6 +81,13 @@ Like every other route, `DELETE` is UNAUTHENTICATED when
 the cache hash by hash. Set the token on any deployment whose port is not
 already private.
 
+The path segment must be the file's sha256 content hash, 64 lowercase hex
+characters; anything else is a `400` and never touches the index. Each call
+walks the whole cache index (twice, the second pass under the cache's write
+lock), so one such walk runs at a time: a `DELETE` that arrives while another
+is in flight is shed with `503` and a `Retry-After` header rather than
+queued. The route is idempotent, so retrying is always safe.
+
 `DELETE` does not cancel or outrank an in-flight parse for the same hash: a
 cache fill that is already running (or queued behind the reclaim lock)
 re-inserts its entries after the `200` returns. If you are invalidating

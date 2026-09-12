@@ -342,6 +342,16 @@
              a writer let in here can lose its content blob to the in-flight GC"
         );
 
+        // The one-walk-at-a-time permit rides in the same closure for the
+        // same reason. Held by the async fn instead, this cancel would have
+        // released it while the walk ran on, and the next removal would be
+        // admitted on top of it: the bound would hold only for clients polite
+        // enough not to hang up.
+        assert!(
+            matches!(cache.remove_by_key_prefix("other").await, Err(ApiError::Overloaded { .. })),
+            "a removal issued while the detached walk still runs must be shed, not admitted"
+        );
+
         // ...and it is a real hand-off, not a leak: the pass finishes,
         // releases the guard, and the entries are actually gone.
         let released = tokio::time::timeout(

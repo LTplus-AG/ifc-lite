@@ -23,6 +23,7 @@
     "fixtures:manifest": "node scripts/fixtures/build-manifest.mjs",
     "fixtures:upload": "node scripts/fixtures/upload-fixtures.mjs",
     "test": "turbo test",
+    "test:revert-oracle-selfcheck": "node scripts/revert-oracle-selfcheck.mjs",
     "test:collab": "pnpm --filter @ifc-lite/collab --filter @ifc-lite/collab-server test",
     "test:e2e": "playwright test --project=viewer-e2e",
     "test:e2e:ci": "playwright test --project=viewer-e2e-ci",

@@ -62,6 +62,7 @@ import { createRequire } from 'node:module';
 import { dirname, join, relative, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { claimRuntimeAdapter } from './revert-oracle-adapters.mjs';
 
 const TS_EXTS = ['.ts', '.tsx', '.mts', '.cts'];
 const typecheckRuns = new Map();
@@ -189,6 +190,7 @@ export function typecheckPlans(testPaths, root) {
     const pkgDir = findUp(dirname(abs), 'package.json', root);
     if (!pkgDir || pkgDir === root || !existsSync(join(pkgDir, 'tsconfig.json'))) { unassigned.push(rel); continue; }
     const relFile = relative(pkgDir, join(root, rel)).split(sep).join('/');
+    const claimed = claimRuntimeAdapter({ kind: 'typecheck' });
     plans.push({
       key: `typecheck:${rel}`,
       file: rel,
@@ -198,7 +200,8 @@ export function typecheckPlans(testPaths, root) {
       script: undefined,
       crate: null,
       typecheck: true,
-      runner: { family: 'typecheck', bin: 'node', args: [TYPECHECK_SCRIPT] },
+      adapter: claimed?.adapter ?? null,
+      runner: claimed?.runner ?? null,
     });
   }
   return { plans, skipped, unassigned };

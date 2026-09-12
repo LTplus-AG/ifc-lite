@@ -49,6 +49,7 @@ export function buildExecutionLedger({ plans, gaps = [], support = [], baselineR
     file: plan.file,
     role: 'executable',
     runKey: plan.key,
+    adapter: plan.adapter ?? (plan.typecheck ? 'typescript' : null),
     runner: plan.runner ? {
       family: plan.runner.family,
       command: [plan.runner.bin, ...plan.runner.args],

@@ -21,15 +21,15 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname, relative, basename, sep } from 'node:path';
 
-import { rootScriptsRunner, detectRunner } from './revert-oracle.mjs';
-import { cargoRunner, cargoTestOwner } from './revert-oracle-cargo.mjs';
+import { cargoTestOwner } from './revert-oracle-cargo.mjs';
+import { claimRuntimeAdapter } from './revert-oracle-adapters.mjs';
 import {
   requiredFeatureCombos,
   stripComments,
   INNER_CFG_RE,
   TEST_CFG_RE,
 } from './revert-oracle-rust-features.mjs';
-import { pythonTestOwner, pythonRunner } from './revert-oracle-python.mjs';
+import { pythonTestOwner } from './revert-oracle-python.mjs';
 
 /** Walk up from `startDir` looking for `filename`, stopping at `root`. */
 export function findUp(startDir, filename, root) {
@@ -125,6 +125,7 @@ export function planRuns(testPaths, root) {
       for (const features of runs) {
         const suffix = features.length > 0 ? `+${features.join('+')}` : '';
         const identity = targetMatch?.[1] ?? siblingMatch[1];
+        const claimed = claimRuntimeAdapter({ kind: 'cargo', crate: c.crate, features, target: targetMatch?.[1] ?? null, moduleFilter: siblingMatch?.[1] ?? null });
         plans.push({
           key: `cargo:${c.crate}:${identity}${suffix}`,
           file: rel,
@@ -135,7 +136,8 @@ export function planRuns(testPaths, root) {
           crate: c.crate,
           features,
           moduleFilter: siblingMatch?.[1] ?? null,
-          runner: cargoRunner(c.crate, features, targetMatch?.[1] ?? null, siblingMatch?.[1] ?? null),
+          adapter: claimed?.adapter ?? null,
+          runner: claimed?.runner ?? null,
         });
       }
       continue;
@@ -146,7 +148,8 @@ export function planRuns(testPaths, root) {
       if (!p) { unassigned.push({ file: rel, reason: 'no owning Python package found' }); continue; }
       if (!/(^test_.+|.+_test)\.py$/.test(basename(rel))) { support.push(rel); continue; }
       const relFile = relative(p.dir, abs);
-      plans.push({ key: `python:${rel}`, file: rel, dir: p.dir, files: [rel], relFiles: [relFile], script: undefined, crate: null, runner: pythonRunner([relFile]) });
+      const claimed = claimRuntimeAdapter({ kind: 'python', relFile });
+      plans.push({ key: `python:${rel}`, file: rel, dir: p.dir, files: [rel], relFiles: [relFile], script: undefined, crate: null, adapter: claimed?.adapter ?? null, runner: claimed?.runner ?? null });
       continue;
     }
     const pkgDir = findUp(dirname(abs), 'package.json', root);
@@ -160,8 +163,8 @@ export function planRuns(testPaths, root) {
       continue;
     }
     const relFile = relative(pkgDir, abs);
-    const runner = (pkgDir === root ? rootScriptsRunner([rel]) : null) ?? detectRunner(script, [relFile]);
-    plans.push({ key: `test:${rel}`, file: rel, dir: pkgDir, files: [rel], relFiles: [relFile], runner, script, crate: null });
+    const claimed = claimRuntimeAdapter({ kind: 'javascript', file: rel, relFile, script, rootPackage: pkgDir === root });
+    plans.push({ key: `test:${rel}`, file: rel, dir: pkgDir, files: [rel], relFiles: [relFile], adapter: claimed?.adapter ?? null, runner: claimed?.runner ?? null, script, crate: null });
   }
   return { plans, unassigned, support };
 }

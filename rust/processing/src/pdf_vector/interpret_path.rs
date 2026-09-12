@@ -20,12 +20,13 @@ impl Interpreter {
         // unused zero-width setting does not itself paint a hairline.
         let painted = paint != PdfVectorPaint::EndPath && !commands.is_empty();
         if painted && !self.annotation {
-            let mut bbox = extent::bbox(extent::path_points(commands).map(|p| self.to_pdf(p)));
+            let path_bbox = extent::bbox(extent::path_points(commands).map(|p| self.to_pdf(p)));
+            let mut painted_bbox = path_bbox;
             // Visibility and crop containment apply to painted ink, not only
             // the path centreline. This deliberately overbounds joins/caps:
             // an uncertain boundary contact refuses instead of losing paint.
             if paint.strokes() && self.frame.state.line_width > 0. {
-                if let Some([mut x0, mut y0, mut x1, mut y1]) = bbox {
+                if let Some([mut x0, mut y0, mut x1, mut y1]) = painted_bbox {
                     let [a, b, c, d, _, _] = self.frame.pdf_from_path;
                     let points = extent::path_points(commands).count();
                     let closed = paint.closes() || extent::opcodes(commands).any(|op| op == 4);
@@ -46,13 +47,13 @@ impl Interpreter {
                     x1 += mx;
                     y0 -= my;
                     y1 += my;
-                    bbox = Some([x0, y0, x1, y1]);
+                    painted_bbox = Some([x0, y0, x1, y1]);
                 }
             }
             if self.hidden > 0 {
-                self.report.record("hidden", ordinal, bbox, false, true);
+                self.report.record("hidden", ordinal, path_bbox, false, true);
             } else {
-                self.record_visible_path(ordinal, paint, commands, bbox)?;
+                self.record_visible_path(ordinal, paint, commands, path_bbox, painted_bbox)?;
             }
         }
         // PDF paints first, then intersects the pending clip with the same path.
@@ -68,14 +69,16 @@ impl Interpreter {
         ordinal: u32,
         paint: PdfVectorPaint,
         commands: &[f64],
-        bbox: Option<Rect>,
+        path_bbox: Option<Rect>,
+        painted_bbox: Option<Rect>,
     ) -> Result<(), String> {
         // A PDF hairline has device-dependent minimum width. Without an
         // authenticated target raster, an interior selection cannot prove that
         // an outside centreline contributes no pixels.
         let uncertain_hairline =
             self.conversion_clip && paint.strokes() && self.frame.state.line_width == 0.;
-        let visible = uncertain_hairline || bbox.is_some_and(|b| extent::intersects(&b, &self.clip));
+        let visible = uncertain_hairline
+            || painted_bbox.is_some_and(|b| extent::intersects(&b, &self.clip));
         let fill_block = paint
             .fills()
             .then(|| self.state_block(self.frame.taint.fill_pattern))
@@ -91,7 +94,7 @@ impl Interpreter {
             _ => None,
         };
         if self.conversion_clip && visible {
-            if let (Some(_), Some([x0, y0, x1, y1])) = (kept, bbox) {
+            if let (Some(_), Some([x0, y0, x1, y1])) = (kept, painted_bbox) {
                 if x0 < self.clip[0] || y0 < self.clip[1]
                     || x1 > self.clip[2] || y1 > self.clip[3]
                 {
@@ -102,11 +105,11 @@ impl Interpreter {
             }
         }
         if let Some(kind) = &fill_block {
-            self.report.record(kind, ordinal, bbox, visible, true);
+            self.report.record(kind, ordinal, path_bbox, visible, true);
         }
         if let Some(kind) = &stroke_block {
             if fill_block.as_ref() != Some(kind) {
-                self.report.record(kind, ordinal, bbox, visible, true);
+                self.report.record(kind, ordinal, path_bbox, visible, true);
             }
         }
         if visible || !self.conversion_clip {

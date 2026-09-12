@@ -199,7 +199,7 @@ fn digest(
         }
     }
     let mut hash = Writer(Sha256::new());
-    hash.0.update(b"ifclite-scan-transfer-v4-source-kind ");
+    hash.0.update(b"ifclite-scan-transfer-v4-source-kind\0");
     // Length-prefix binary portions; JSON is last and streamed without a duplicate allocation.
     hash.0.update((bytes.len() as u64).to_le_bytes());
     hash.0.update(bytes);

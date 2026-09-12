@@ -5,11 +5,13 @@
 //! only be reached from the sampled IFC face by passing through another face of
 //! the same item lies beyond that solid: the far side of a thin wall, or clutter
 //! behind it. Unlike an oriented mesh, unoriented points cannot say which way
-//! they face, so this rule is what keeps opposite thin-wall faces separate under
-//! every orientation source, independent of the behind bound. The nearest scan
-//! point is tested exactly along its segment; the rest of a sample's support is
-//! bounded by the item's thickness measured once along the face normal, so a
-//! sample costs two ray queries, not one per supporting point.
+//! they face, so this rule keeps a capture *outside* the solid from crossing to
+//! the opposite face under every orientation source; a capture *inside* the
+//! solid is attributed by `transfer_points` to its nearest face using the
+//! thickness measured here. The nearest scan point is tested exactly along its
+//! segment; the rest of a sample's support is bounded by the item's thickness
+//! measured once along the face normal, so a sample costs two ray queries, not
+//! one per supporting point.
 use super::{transfer_budget::TransferBudget, transfer_math::*, transfer_target::TargetTriangle};
 use ifc_lite_geometry::kernel::broadphase::Bvh;
 

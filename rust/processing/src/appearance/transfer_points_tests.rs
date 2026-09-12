@@ -2,8 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! RGB point-cloud transfer controls (#4381): opposite thin-wall faces observe
-//! only their own side under every orientation source, holes stay unknown, the
-//! payload is bound into the digest, and the shared budget refuses partial work.
+//! only their own side under every orientation source, a capture inside the
+//! solid goes to its nearest face only, holes stay unknown, the payload is bound
+//! into the digest, and the shared budget refuses partial work.
 use super::super::page_raster::Raster;
 use super::super::transfer::acceptance_tests::{control, mesh, GREEN, THICKNESS, THIN_WALL_IFC, WALL};
 use super::super::transfer::tests::{color, identity};
@@ -151,6 +152,101 @@ fn issue_4381_point_cloud_thin_wall_faces_observe_only_their_own_side_under_ever
         baked.expect([0.3, THICKNESS, 0.5], BLUE_RGBA);
         baked.expect([0.8, THICKNESS, 0.5], GREEN);
     }
+}
+#[test]
+fn issue_4381_point_capture_inside_the_solid_belongs_to_its_nearest_face_only() {
+    // Only the front face is captured, and 1 mm INSIDE the 4 mm partition (scan
+    // noise or registration error). The default 10 mm behind bound exceeds the
+    // thickness and no face is crossed on the way to the points, so without an
+    // orientation only nearest-face attribution keeps the uncaptured back face
+    // unknown: the bound is capped at the 2 mm midplane.
+    let mut inside = Cloud::default();
+    inside.sheet(Sheet { y: 0.001, x: [0., 1.], spacing: 0.005, noise: 0.001, color: RED }, true);
+    let baked = Baked::new(&inside, PointOrientation::TargetReferenced, 0.01);
+    let coverage = &baked.plan.transfer.coverage;
+    println!("inside capture coverage {coverage:?}");
+    assert!(coverage.observed_area_estimate_m2 > 0.95 && coverage.observed_area_estimate_m2 < 1.05, "{coverage:?}");
+    assert!(coverage.unknown_behind_samples > 0 && coverage.unknown_normal_samples == 0 && coverage.unknown_distance_samples == 0, "{coverage:?}");
+    baked.expect([0.3, 0., 0.5], RED_RGBA);
+    baked.expect([0.3, THICKNESS, 0.5], GREEN);
+    // Deeper than the midplane the same unoriented capture is nearer the back
+    // face and is attributed there, never to both faces at once.
+    let mut deep = Cloud::default();
+    deep.sheet(Sheet { y: THICKNESS - 0.001, x: [0., 1.], spacing: 0.005, noise: 0.001, color: RED }, true);
+    let baked = Baked::new(&deep, PointOrientation::TargetReferenced, 0.01);
+    let coverage = &baked.plan.transfer.coverage;
+    assert!(coverage.observed_area_estimate_m2 > 0.95 && coverage.observed_area_estimate_m2 < 1.05, "{coverage:?}");
+    assert!(coverage.unknown_behind_samples > 0, "{coverage:?}");
+    baked.expect([0.3, 0., 0.5], GREEN);
+    baked.expect([0.3, THICKNESS, 0.5], RED_RGBA);
+    // With an orientation the normal decides the face instead: the deep front
+    // capture still paints the front face and the back face refuses it by normal.
+    for orientation in [PointOrientation::SourceNormals, PointOrientation::Viewpoints] {
+        let baked = Baked::new(&deep, orientation, 0.01);
+        let coverage = &baked.plan.transfer.coverage;
+        assert!(coverage.unknown_normal_samples > 4000 && coverage.observed_samples > 4000, "{orientation:?} {coverage:?}");
+        baked.expect([0.3, 0., 0.5], RED_RGBA);
+        baked.expect([0.3, THICKNESS, 0.5], GREEN);
+    }
+}
+#[test]
+fn issue_4381_unoriented_capture_in_front_of_the_face_is_preferred_over_one_inside_the_solid() {
+    // The measured CRAS configuration (wall 3qeiF73TD1uOeHIcNGcTy8): a 10 cm
+    // wall shifted ~5 cm against its model, so the room-side capture lies 5.5 cm
+    // IN FRONT of the modelled face and the far side's capture 4.5 cm INSIDE the
+    // solid, nearer to the face. Without an orientation the in-solid capture is
+    // ambiguous between the faces while the front one can only be this side's,
+    // so the front one is observed; the far face refuses both (behind the midplane).
+    let slab = |y: f64, sign: f64| -> [TargetTriangle; 2] {
+        let c = [[0., y, 0.], [1., y, 0.], [1., y, 1.], [0., y, 1.]];
+        [TargetTriangle { points: [c[0], c[1], c[2]], normal: [0., sign, 0.], area: 0.5 }, TargetTriangle { points: [c[0], c[2], c[3]], normal: [0., sign, 0.], area: 0.5 }]
+    };
+    let targets: Vec<TargetTriangle> = slab(0., -1.).into_iter().chain(slab(0.1, 1.)).collect();
+    let observe = |cloud: &Cloud, point: Point, normal: Point| -> (Observation, [f64; 4]) {
+        let (mut request, _) = point_request(cloud, PointOrientation::TargetReferenced, 0.07);
+        request.max_distance_metres = 0.07;
+        let TransferSource::Points(spec) = &mut request.source else { unreachable!() };
+        spec.neighborhood_radius_metres = 0.04;
+        spec.surface_band_metres = 0.006;
+        spec.min_neighbors = 6;
+        spec.max_neighbors = 48;
+        let (spec, frame, payload) = (spec.clone(), identity(), cloud.payload(PointOrientation::TargetReferenced));
+        let mut budget = TransferBudget::new();
+        let mut surface = PointSurface::new(&request, &spec, &payload, &frame, &mut budget).unwrap();
+        let mut occluder = Occluder::new(&targets, &mut budget).unwrap();
+        surface.observe(point, normal, &mut occluder, &mut budget).unwrap()
+    };
+    let (front, back) = (([0.5, 0., 0.5], [0., -1., 0.]), ([0.5, 0.1, 0.5], [0., 1., 0.]));
+    let mut both = Cloud::default();
+    both.sheet(Sheet { y: -0.055, x: [0., 1.], spacing: 0.01, noise: 0.001, color: BLUE }, true);
+    both.sheet(Sheet { y: 0.045, x: [0., 1.], spacing: 0.01, noise: 0.001, color: RED }, false);
+    let (observation, rgba) = observe(&both, front.0, front.1);
+    assert_eq!(observation, Observation::Observed);
+    assert!((rgba[2] - 1.).abs() < 0.02 && rgba[0] < 0.02, "front face takes the front capture, not the nearer in-solid one: {rgba:?}");
+    assert_eq!(observe(&both, back.0, back.1).0, Observation::Behind, "5.5 cm inside from the far face is beyond its 5 cm midplane");
+    // With nothing in front, the in-solid capture within the midplane is this face's nearest.
+    let mut inside = Cloud::default();
+    inside.sheet(Sheet { y: 0.045, x: [0., 1.], spacing: 0.01, noise: 0.001, color: RED }, false);
+    let (observation, rgba) = observe(&inside, front.0, front.1);
+    assert_eq!(observation, Observation::Observed);
+    assert!((rgba[0] - 1.).abs() < 0.02, "{rgba:?}");
+    assert_eq!(observe(&inside, back.0, back.1).0, Observation::Behind);
+    // Beyond the midplane the same capture belongs to the far face instead.
+    let mut deep = Cloud::default();
+    deep.sheet(Sheet { y: 0.06, x: [0., 1.], spacing: 0.01, noise: 0.001, color: RED }, false);
+    assert_eq!(observe(&deep, front.0, front.1).0, Observation::Behind);
+    assert_eq!(observe(&deep, back.0, back.1).0, Observation::Observed);
+    // The user's own behind bound still applies when it is tighter than the midplane.
+    let (mut tight, _) = point_request(&inside, PointOrientation::TargetReferenced, 0.02);
+    tight.max_distance_metres = 0.07;
+    let TransferSource::Points(spec) = &mut tight.source else { unreachable!() };
+    spec.neighborhood_radius_metres = 0.04;
+    spec.surface_band_metres = 0.006;
+    let (spec, frame, payload) = (spec.clone(), identity(), inside.payload(PointOrientation::TargetReferenced));
+    let mut budget = TransferBudget::new();
+    let mut surface = PointSurface::new(&tight, &spec, &payload, &frame, &mut budget).unwrap();
+    let mut occluder = Occluder::new(&targets, &mut budget).unwrap();
+    assert_eq!(surface.observe(front.0, front.1, &mut occluder, &mut budget).unwrap().0, Observation::Behind);
 }
 #[test]
 fn issue_4381_point_cloud_holes_and_clutter_stay_unknown_and_colour_is_a_surface_estimate() {

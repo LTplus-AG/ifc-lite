@@ -4,13 +4,17 @@
 //! RGB point-cloud observations for registered scan transfer (#4381).
 //!
 //! Each target sample is answered by a local plane fitted to the scan points
-//! around the sample (around the nearest point when the sample itself has none
-//! within the support radius), never by the nearest colour alone: the fit must be
+//! around the sample (around the nearest point when that lies farther than half
+//! the support radius), never by the nearest colour alone: the fit must be
 //! planar within `surface_band_metres`, its oriented normal must agree with the
 //! target face, and the support must lie in front of the face or within the
 //! behind bound. Orientation comes from the source normals, the scanner station
 //! or the target face itself; in every mode a point reachable only through
-//! another face of the target is refused (see `transfer_occlusion`).
+//! another face of the target is refused (see `transfer_occlusion`). Borrowing
+//! the target's orientation cannot say which face a capture *inside* the solid
+//! belongs to, so in that mode an in-solid capture is attributed to its nearest
+//! face only (the behind bound is capped at half the item's thickness) and a
+//! capture in front of the face within the distance bound is preferred over it.
 use super::{
     transfer_budget::TransferBudget,
     transfer_math::*,
@@ -124,19 +128,26 @@ impl PointSurface {
     ) -> Result<(Observation, [f64; 4]), String> {
         budget.charge(1)?;
         let unknown = |o| Ok((o, [0.; 4]));
+        let rounding = |p: Point| 16. * f64::EPSILON * point.iter().chain(&p).fold(1_f64, |m, v| m.max(v.abs()));
+        let referenced = self.orientation == PointOrientation::TargetReferenced;
         // One support query around the sample point serves as the nearest-point
         // search too; only a sample with no point inside the support radius pays
         // for the wider search out to the distance bound.
         self.support.clear();
         self.grid.within(&self.positions, point, self.radius, &mut self.support, budget)?;
-        let nearest = match self.support.iter().copied().min_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0))) {
-            Some((index, _)) => index,
-            None => match self.grid.nearest(&self.positions, point, self.distance, &mut self.scratch, budget)? {
+        let positions = &self.positions;
+        let depth_of = |index: u32| dot(sub(positions[index as usize], point), target_normal);
+        let nearest_of = |candidates: &[(u32, f64)], keep: &dyn Fn(u32) -> bool| {
+            candidates.iter().copied().filter(|&(i, _)| keep(i)).min_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0))).map(|(i, _)| i)
+        };
+        let mut nearest = match nearest_of(&self.support, &|_| true) {
+            Some(index) => index,
+            None => match self.grid.nearest(positions, point, self.distance, &mut self.scratch, budget)? {
                 Some((index, _)) => index,
                 None => return unknown(Observation::Distance),
             },
         };
-        let anchor = self.positions[nearest as usize];
+        let mut anchor = positions[nearest as usize];
         // Never look through an incompatible nearest capture for a farther match:
         // a point facing away, or one scanned from behind the sampled face.
         let facing_away = match self.orientation {
@@ -151,23 +162,63 @@ impl PointSurface {
         if occluder.blocked(point, anchor, budget)? {
             return unknown(Observation::Behind);
         }
-        if self.support.is_empty() {
-            // The anchor lies beyond the support radius: its own neighborhood is the surface.
-            self.grid.within(&self.positions, anchor, self.radius, &mut self.support, budget)?;
+        // The item's own thickness here bounds what may still count as this face.
+        // Without an orientation a capture inside the solid belongs to its nearest
+        // face, so the behind bound is capped at the midplane; with one, the
+        // normal decides the face and only support beyond the opposite face is
+        // another surface.
+        let thickness = occluder.thickness_behind(point, target_normal, self.distance + self.radius, budget)?;
+        let behind = match thickness {
+            Some(t) if referenced => self.behind.min(t / 2.),
+            _ => self.behind,
+        };
+        // The nearest capture deeper than the bound is another surface behind this face.
+        if depth_of(nearest) < -(behind + rounding(anchor)) {
+            return unknown(Observation::Behind);
+        }
+        // A capture within one surface band of the face is this face's surface as
+        // far as planarity can tell; deeper inside the solid it could be either
+        // face's, so a capture in front of the face within the distance bound is
+        // preferred: from this side it is the visible one.
+        let coplanar = |index: u32| depth_of(index) >= -(self.band.min(behind) + rounding(positions[index as usize]));
+        if referenced && !coplanar(nearest) {
+            self.scratch.clear();
+            self.grid.within(positions, point, self.distance, &mut self.scratch, budget)?;
+            budget.charge(self.scratch.len())?;
+            if let Some(front) = nearest_of(&self.scratch, &coplanar) {
+                if !occluder.blocked(point, positions[front as usize], budget)? {
+                    nearest = front;
+                    anchor = positions[front as usize];
+                }
+            }
+        }
+        let support_floor = match (self.orientation, thickness) {
+            // A front capture's support is its own sheet: in-solid points deeper
+            // than the surface band are the other side, not noise.
+            (PointOrientation::TargetReferenced, _) if coplanar(nearest) => self.band.min(behind),
+            (PointOrientation::TargetReferenced, _) => behind,
+            (_, Some(t)) => t,
+            (_, None) => f64::INFINITY,
+        };
+        let offset2: f64 = (0..3).map(|a| (anchor[a] - point[a]).powi(2)).sum();
+        if offset2 > self.radius * self.radius / 4. || !self.support.iter().any(|&(index, _)| index == nearest) {
+            // The surface is off-centre or beyond the sample's support: the
+            // anchor's own neighborhood is the surface, not a thin cap of it.
+            self.support.clear();
+            self.grid.within(positions, anchor, self.radius, &mut self.support, budget)?;
         }
         if self.support.len() > self.max_neighbors {
             budget.charge(self.support.len())?;
             self.support.sort_unstable_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
             self.support.truncate(self.max_neighbors);
         }
-        // Support beyond the item's own opposite face (deeper than its thickness
-        // here), or facing away from the anchor's orientation, is another surface.
-        let thickness = occluder.thickness_behind(point, target_normal, self.distance + self.radius, budget)?;
+        // Support deeper than the floor, or facing away from the anchor's
+        // orientation, is another surface.
         budget.charge(self.support.len())?;
-        let (positions, normals, orientation) = (&self.positions, &self.normals, self.orientation);
+        let (normals, orientation) = (&self.normals, self.orientation);
         self.support.retain(|&(index, _)| {
             let depth = dot(sub(positions[index as usize], point), target_normal);
-            if thickness.is_some_and(|t| depth < -t) {
+            if depth < -support_floor {
                 return false;
             }
             orientation != PointOrientation::SourceNormals || dot(normals[index as usize], normals[nearest as usize]) > 0.
@@ -213,8 +264,7 @@ impl PointSurface {
             return unknown(Observation::Distance);
         }
         let depth = dot(sub(closest, point), target_normal);
-        let rounding = 16. * f64::EPSILON * point.iter().chain(&closest).fold(1_f64, |m, v| m.max(v.abs()));
-        if depth < -(self.behind + rounding) {
+        if depth < -(behind + rounding(closest)) {
             return unknown(Observation::Behind);
         }
         let mut color = [0.; 3];

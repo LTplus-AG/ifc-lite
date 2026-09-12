@@ -40,8 +40,9 @@ export function pointPayload(cloud, orientation) {
     orientation === 'viewpoints' ? Uint32Array.from(cloud.stations) : new Uint32Array(0)];
 }
 /** RGB point-cloud source over the real WASM boundary (#4381): each thin-wall
- * face observes only its own side under every orientation source; holes and
- * sparse captures stay unknown; the payload is bound into the digest. */
+ * face observes only its own side under every orientation source; a capture
+ * inside the solid goes to its nearest face only; holes and sparse captures
+ * stay unknown; the payload is bound into the digest. */
 export function checkPointTransferContract(IfcAPI) {
   const api = new IfcAPI();
   try {
@@ -70,6 +71,15 @@ export function checkPointTransferContract(IfcAPI) {
       digests.add(metadata.transfer.preparedSha256);
     }
     assert.equal(digests.size, 3, 'the orientation source is bound into the prepared digest');
+    // Only the front face captured, 1 mm INSIDE the solid, under the 10 mm behind
+    // bound: without an orientation the capture belongs to its nearest face only,
+    // so the uncaptured back face stays unknown (behind) instead of turning red.
+    const inside = { positions: [], colors: [], normals: [], stations: [] };
+    sheet(inside, 0.001, [0, 1], 0.005, 0.001, true, [255, 0, 0]);
+    const nearest = run(pointCloudRequest(api, inside, 'target-referenced', 0.01), inside, 'target-referenced').metadata.transfer.coverage;
+    assert.ok(Math.abs(nearest.observedAreaEstimateM2 - 1) < 0.05 && nearest.unknownBehindSamples > 0 && nearest.unknownNormalSamples === 0, JSON.stringify(nearest));
+    assert.equal(nearest.observedSamples + nearest.unknownBehindSamples + nearest.unknownSparseSamples, nearest.samples, JSON.stringify(nearest));
+    assert.ok(nearest.unknownBehindSamples > nearest.samples * 0.45, JSON.stringify(nearest));
     // A hole in the front capture and no back capture: unknown by distance, never painted.
     const holed = { positions: [], colors: [], normals: [], stations: [] };
     sheet(holed, -0.001, [0, 0.4], 0.005, 0.001, true, [255, 0, 0]);

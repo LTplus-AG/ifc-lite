@@ -123,6 +123,6 @@ test('runtime reporters consume actual dependency and workflow conclusions', (co
   writeFileSync(probe, readFileSync(probe, 'utf8').replace('needs.subject.result', "'failure'"));
   assert.ok(auditRoot(root).some((failure) => failure.includes('actual dependency result')));
   const observer = join(root, '.github', 'workflows', 'ci-reporting-cancellation-observer.yml');
-  writeFileSync(observer, readFileSync(observer, 'utf8').replace('${{ github.event.workflow_run.conclusion }}', 'cancelled'));
+  writeFileSync(observer, readFileSync(observer, 'utf8').replace(`\${{ github.event.workflow_run.conclusion }}`, 'cancelled'));
   assert.ok(auditRoot(root).some((failure) => failure.includes('actual completed workflow conclusion')));
 });

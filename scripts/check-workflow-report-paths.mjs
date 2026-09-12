@@ -162,7 +162,7 @@ export function auditRoot(root) {
         || !expression(reporter.if).includes("workflow_run.conclusion == 'cancelled'")
         || reporter.uses !== './.github/workflows/report-scheduled-failure.yml'
         || !isRecord(reporter.with)
-        || expression(reporter.with.result) !== '${{ github.event.workflow_run.conclusion }}') {
+        || expression(reporter.with.result) !== `\${{ github.event.workflow_run.conclusion }}`) {
         failures.push(`${displayPath(root, path)}: cancellation observer does not route the actual completed workflow conclusion`);
       }
     }

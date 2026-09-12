@@ -3,131 +3,86 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * PLY streaming source — whole-file decode, single chunk.
+ * PLY streaming source.
  *
- * PLY isn't an octree format, so we don't get incremental visibility
- * benefits from chunked decode. Reading the whole file once and emitting
- * one chunk is simpler and correct.  Memory is still bounded by
- * `streamPointCloud`'s 25M-point cap — for files past that, the stride
- * downsample applies on the way out.
+ * `open()` scans header and bounds in fixed-size byte windows without
+ * allocating point channels. `next()` decodes directly into a bounded output
+ * chunk and skips unretained stride rows before allocation. A cap probe and
+ * its downsampled reopen therefore never materialise full-count XYZ/RGB/normal
+ * arrays.
  */
 
+import { inspectPlyVertex, parsePlyHeader } from '../formats/ply.js';
 import type { DecodedPointChunk } from '../types.js';
-import { decodePly, parsePlyHeader } from '../formats/ply.js';
-import type {
-  DownsampleHint,
-  PointSourceInfo,
-  StreamingPointSource,
-} from './types.js';
+import { PlyChunkReader, scanPlyBounds, type PlyStreamInstrumentation } from './ply-stream-decode.js';
+import { normalizePointStride } from './stride.js';
+import type { DownsampleHint, PointSourceInfo, StreamingPointSource } from './types.js';
+
+const HEADER_BYTES = 65_536;
+const HEADER_DECODER = new TextDecoder();
 
 export class PlyStreamingSource implements StreamingPointSource {
-  private blob: Blob;
-  private downsample: DownsampleHint;
-  private label?: string;
-  private chunk: DecodedPointChunk | null = null;
-  private served = false;
-  /** See `decodePly`'s `originOffset` param (extends #1804's LAS/LAZ
-   *  pattern). */
-  private originOffset?: readonly [number, number, number];
+  private readonly downsample: DownsampleHint;
+  private readonly label?: string;
+  private readonly originOffset?: readonly [number, number, number];
+  private readonly instrumentation?: PlyStreamInstrumentation;
+  private reader: PlyChunkReader | null = null;
 
   constructor(
-    blob: Blob,
+    private readonly blob: Blob,
     options: {
       label?: string;
       downsample?: DownsampleHint;
       originOffset?: readonly [number, number, number];
+      /** @internal Regression instrumentation; production callers omit it. */
+      instrumentation?: PlyStreamInstrumentation;
     } = {},
   ) {
-    this.blob = blob;
     this.downsample = options.downsample ?? { stride: 1 };
     this.label = options.label;
     this.originOffset = options.originOffset;
+    this.instrumentation = options.instrumentation;
   }
 
   async open(signal?: AbortSignal): Promise<PointSourceInfo> {
+    this.close();
     abortIfAborted(signal);
-    const buf = await this.blob.arrayBuffer();
+    const headerBytes = new Uint8Array(await this.blob.slice(0, Math.min(HEADER_BYTES, this.blob.size)).arrayBuffer());
     abortIfAborted(signal);
-    const bytes = new Uint8Array(buf);
-    // Header probe first — gives us the count + capabilities so the
-    // host can decide on downsampling stride before the full decode.
-    const header = parsePlyHeader(bytes);
-    const vertex = header.elements.find((e) => e.name === 'vertex');
-    if (!vertex) throw new Error('PLY: no vertex element');
-    const hasRgb =
-      !!vertex.properties.find((p) => p.name === 'red' || p.name === 'r')
-      && !!vertex.properties.find((p) => p.name === 'green' || p.name === 'g')
-      && !!vertex.properties.find((p) => p.name === 'blue' || p.name === 'b');
-    const hasIntensity = !!vertex.properties.find(
-      (p) => p.name === 'intensity' || p.name === 'scalar_Intensity',
-    );
-
-    // Decode now (we already have all bytes). The cost is amortised over
-    // the next() call — caller perceives no extra latency.
-    const fullChunk = decodePly(bytes, this.originOffset);
-    this.chunk = applyStride(fullChunk, this.downsample.stride);
+    if (headerBytes.byteLength === HEADER_BYTES && !hasCompleteHeader(headerBytes)) {
+      throw new Error(`PLY: header exceeds the bounded ${HEADER_BYTES}-byte streaming limit`);
+    }
+    const header = parsePlyHeader(headerBytes);
+    const layout = inspectPlyVertex(header);
+    const bbox = await scanPlyBounds(this.blob, header, layout, this.originOffset, signal);
+    const stride = normalizePointStride(this.downsample.stride);
+    this.reader = new PlyChunkReader(this.blob, header, layout, stride, this.originOffset, this.instrumentation);
+    const properties = layout.vertex.properties;
+    const has = (...names: string[]) => properties.some((property) => names.includes(property.name));
     return {
-      totalPointCount: this.chunk.pointCount,
-      bbox: this.chunk.bbox,
-      hasColor: hasRgb,
+      totalPointCount: Math.ceil(layout.vertex.count / stride),
+      bbox,
+      hasColor: has('red', 'r') && has('green', 'g') && has('blue', 'b'),
       hasClassification: false,
-      hasIntensity,
+      hasIntensity: has('intensity', 'scalar_Intensity'),
       label: this.label,
     };
   }
 
   async next(maxPoints: number, signal?: AbortSignal): Promise<DecodedPointChunk | null> {
-    abortIfAborted(signal);
-    if (!this.chunk || this.served) return null;
-    void maxPoints; // Whole-file decode: ignore chunk-size hint.
-    this.served = true;
-    return this.chunk;
+    if (!this.reader) return null;
+    return this.reader.next(maxPoints, signal);
   }
 
   close(): void {
-    this.chunk = null;
-    this.served = false;
+    this.reader = null;
   }
 }
 
-function applyStride(chunk: DecodedPointChunk, stride: number): DecodedPointChunk {
-  const s = Math.max(1, stride | 0);
-  if (s === 1) return chunk;
-  const newCount = Math.ceil(chunk.pointCount / s);
-  const positions = new Float32Array(newCount * 3);
-  const colors = chunk.colors ? new Float32Array(newCount * 3) : undefined;
-  const classifications = chunk.classifications ? new Uint8Array(newCount) : undefined;
-  const intensities = chunk.intensities ? new Uint16Array(newCount) : undefined;
-  let dst = 0;
-  for (let i = 0; i < chunk.pointCount; i += s) {
-    positions[dst * 3] = chunk.positions[i * 3];
-    positions[dst * 3 + 1] = chunk.positions[i * 3 + 1];
-    positions[dst * 3 + 2] = chunk.positions[i * 3 + 2];
-    if (colors && chunk.colors) {
-      colors[dst * 3] = chunk.colors[i * 3];
-      colors[dst * 3 + 1] = chunk.colors[i * 3 + 1];
-      colors[dst * 3 + 2] = chunk.colors[i * 3 + 2];
-    }
-    if (classifications && chunk.classifications) {
-      classifications[dst] = chunk.classifications[i];
-    }
-    if (intensities && chunk.intensities) {
-      intensities[dst] = chunk.intensities[i];
-    }
-    dst++;
-  }
-  return {
-    positions,
-    colors,
-    classifications,
-    intensities,
-    pointCount: newCount,
-    bbox: chunk.bbox,
-  };
+function hasCompleteHeader(bytes: Uint8Array): boolean {
+  return /(?:^|\n)[\t ]*end_header[\t ]*\r?\n/.test(HEADER_DECODER.decode(bytes));
 }
 
 function abortIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError');
-  }
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 }

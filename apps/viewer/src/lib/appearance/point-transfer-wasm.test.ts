@@ -39,7 +39,7 @@ END-ISO-10303-21;
 function sheet(cloud: { positions: number[]; colors: number[] }, y: number, x0: number, x1: number, color: number[]) {
   for (let i = 0; i <= Math.round((x1 - x0) / 0.005); i++) for (let k = 0; k <= 200; k++) { cloud.positions.push(x0 + i * 0.005, y, k * 0.005); cloud.colors.push(...color); }
 }
-test('real WASM point-cloud transfer keeps thin-wall faces apart, records its orientation source and refuses a mismatched payload (#4381)', async t => {
+test('real WASM point-cloud transfer keeps thin-wall faces apart, records source normals and refuses a mismatched payload (#4381, #4561)', async t => {
   const wasmUrl = new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
   try { await access(wasmUrl); } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -74,6 +74,19 @@ test('real WASM point-cloud transfer keeps thin-wall faces apart, records its or
     assert.ok(coverage.observedAreaEstimateM2 > 1.4 && coverage.observedAreaEstimateM2 < 1.6, 'whole front plus half the back, never the far side through the wall');
     assert.equal(result.assets.length, 1);
     assert.equal(result.transfer.registrationSha256, report.requestSha256);
+    // The same binary rows with qualified source normals take the existing
+    // source-normals planner branch and report that choice at the WASM boundary.
+    const suppliedNormals = new Float32Array(payload.positions.length);
+    for (let i = 0; i < payload.positions.length / 3; i++) {
+      suppliedNormals[i * 3 + 1] = payload.positions[i * 3 + 1] < 0 ? -1 : 1;
+    }
+    const sourceNormalRequest: MeshTransferRequest = {
+      ...request,
+      source: { ...request.source, orientation: 'source-normals' } as MeshTransferRequest['source'],
+    };
+    const sourceNormalResult = await runPointTransfer(wall, sourceNormalRequest, new Uint8Array(0), { ...payload, normals: suppliedNormals });
+    assert.ok(sourceNormalResult.transfer.applicable);
+    assert.deepEqual(sourceNormalResult.transfer.source, { kind: 'points', orientation: 'source-normals', pointCount: cloud.positions.length / 3 });
     // The binding refuses a payload whose orientation the request does not declare, and a points request on the mesh entry point.
     await assert.rejects(runPointTransfer(wall, request, new Uint8Array(0), { ...payload, normals: new Float32Array(payload.positions.length) }), /orientation/);
     await assert.rejects(runMeshTransfer(wall, request, new Uint8Array(0)), /binary point payload/);

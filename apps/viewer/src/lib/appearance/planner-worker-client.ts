@@ -131,6 +131,14 @@ export function createAppearancePlanner(options: {
     },
     pointTransfer(source, request, rgba, points, options) {
       const spec = request.source;
+      const invalidOrientationPayload = spec.kind === 'points' && (
+        (spec.orientation === 'source-normals' && (points.normals.length !== spec.pointCount * 3 || points.stations.length !== 0))
+        || (spec.orientation === 'viewpoints' && (points.normals.length !== 0 || points.stations.length !== spec.pointCount))
+        || (spec.orientation === 'target-referenced' && (points.normals.length !== 0 || points.stations.length !== 0))
+      );
+      if (invalidOrientationPayload) {
+        return Promise.reject(new Error(`Point-cloud ${spec.kind === 'points' ? spec.orientation : 'unknown'} orientation has mismatched normal or station rows.`));
+      }
       if (spec.kind !== 'points' || spec.pointCount === 0 || spec.pointCount > 2_000_000 || points.positions.length !== spec.pointCount * 3 || points.colors.length !== spec.pointCount * 3
         || request.registration.fit.length > 256 || request.registration.heldOut.length > 256) return Promise.reject(new Error('Point-cloud transfer exceeds its 2,000,000-point or landmark budget. Choose a smaller source.'));
       return run(source, { type: 'point-transfer', request, rgba, points }, message => acceptTransfer(message, request, 'points'), options);

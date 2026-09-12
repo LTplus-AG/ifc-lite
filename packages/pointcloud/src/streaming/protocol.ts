@@ -66,6 +66,7 @@ export type WorkerResponse =
 export interface SerializedChunk {
   positions: ArrayBuffer;
   colors?: ArrayBuffer;
+  normals?: ArrayBuffer;
   classifications?: ArrayBuffer;
   intensities?: ArrayBuffer;
   pointCount: number;
@@ -93,6 +94,11 @@ export function chunkToWire(chunk: DecodedPointChunk): {
     payload.colors = buf;
     transfer.push(buf);
   }
+  if (chunk.normals) {
+    const buf = chunk.normals.buffer as ArrayBuffer;
+    payload.normals = buf;
+    transfer.push(buf);
+  }
   if (chunk.classifications) {
     const buf = chunk.classifications.buffer as ArrayBuffer;
     payload.classifications = buf;
@@ -111,6 +117,7 @@ export function chunkFromWire(payload: SerializedChunk): DecodedPointChunk {
   return {
     positions: new Float32Array(payload.positions),
     colors: payload.colors ? new Float32Array(payload.colors) : undefined,
+    normals: payload.normals ? new Float32Array(payload.normals) : undefined,
     classifications: payload.classifications ? new Uint8Array(payload.classifications) : undefined,
     intensities: payload.intensities ? new Uint16Array(payload.intensities) : undefined,
     pointCount: payload.pointCount,

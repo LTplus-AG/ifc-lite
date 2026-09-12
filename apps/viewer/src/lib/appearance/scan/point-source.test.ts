@@ -8,11 +8,13 @@ import { alignedPointPreview, nativePointFromSample, pickScanPoint, pointLandmar
 import { transferSource } from './prepare-transfer';
 import type { ScanRegistrationReport } from './types';
 
-function retained(native: number[][], origin: readonly [number, number, number] | null, colors?: number[]): RetainedPointCloudSample {
+function retained(native: number[][], origin: readonly [number, number, number] | null, colors?: number[], nativeNormals?: number[]): RetainedPointCloudSample {
   // The ingest subtracts the decode origin in f64, then swaps Z-up to Y-up before the reservoir sees a point.
   const positions = new Float32Array(native.length * 3);
   native.forEach(([x, y, z], i) => { const o = origin ?? [0, 0, 0]; positions.set([x - o[0], z - o[2], -(y - o[1])], i * 3); });
-  return { positions, colors: colors ? Uint8Array.from(colors) : null, classifications: null, count: native.length, seen: native.length * 10, capacity: 2_000_000, origin };
+  const normals = nativeNormals ? new Float32Array(nativeNormals.length) : null;
+  if (normals) for (let i = 0; i < native.length; i++) normals.set([nativeNormals![i * 3], nativeNormals![i * 3 + 2], -nativeNormals![i * 3 + 1]], i * 3);
+  return { positions, colors: colors ? Uint8Array.from(colors) : null, normals, classifications: null, count: native.length, seen: native.length * 10, capacity: 2_000_000, origin };
 }
 
 test('retained sample positions map back to the file\'s native Z-up metres exactly, including a georeferenced decode origin (#4381)', () => {
@@ -80,4 +82,61 @@ test('a point source request records target-referenced orientation and validates
   // The planner's index bound (distance within 16 support radii) is read here, before any payload is shipped.
   assert.throws(() => transferSource(source, { ...settings, maxDistanceMetres: 0.5, neighborhoodRadiusMetres: 0.03, surfaceBandMetres: 0.003 }), /16 support radii/);
   assert.doesNotThrow(() => transferSource(source, { ...settings, maxDistanceMetres: 0.48, neighborhoodRadiusMetres: 0.03 }));
+});
+
+test('frozen point sessions detect independent XYZ and RGB mutation or row permutation (#4561)', () => {
+  const native = [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]];
+  const colors = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  const mutatedPosition = retained(native, null, colors);
+  const positionSnapshot = snapshotPointSource(20, mutatedPosition);
+  mutatedPosition.positions[0] += 1;
+  assert.equal(samePointSource(positionSnapshot, mutatedPosition), false, 'XYZ-only mutation is stale');
+
+  const permutedPosition = retained(native, null, colors);
+  const permutationSnapshot = snapshotPointSource(21, permutedPosition);
+  const firstPosition = permutedPosition.positions.slice(0, 3);
+  permutedPosition.positions.copyWithin(0, 3, 6);
+  permutedPosition.positions.set(firstPosition, 3);
+  assert.equal(samePointSource(permutationSnapshot, permutedPosition), false, 'XYZ row permutation is stale');
+
+  const mutatedColor = retained(native, null, colors);
+  const colorSnapshot = snapshotPointSource(22, mutatedColor);
+  mutatedColor.colors![0] += 1;
+  assert.equal(samePointSource(colorSnapshot, mutatedColor), false, 'RGB-only mutation is stale');
+
+  const permutedColor = retained(native, null, colors);
+  const colorPermutationSnapshot = snapshotPointSource(23, permutedColor);
+  const firstColor = permutedColor.colors!.slice(0, 3);
+  permutedColor.colors!.copyWithin(0, 3, 6);
+  permutedColor.colors!.set(firstColor, 3);
+  assert.equal(samePointSource(colorPermutationSnapshot, permutedColor), false, 'RGB row permutation is stale');
+
+  const colorless = retained(native, null);
+  const neutralSnapshot = snapshotPointSource(24, colorless);
+  neutralSnapshot.colors[0] = 0;
+  assert.equal(samePointSource(neutralSnapshot, colorless), false, 'mutation of generated neutral RGB is stale too');
+});
+
+test('qualified PLY normals survive snapshot/frame conversion and select source-normals; malformed or stale rows refuse (#4561)', () => {
+  const native = [[10, 20, 30], [11, 20, 30], [10, 21, 30], [11, 21, 30]];
+  const nativeNormals = [2, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0, 0];
+  const sample = retained(native, [10, 20, 30], undefined, nativeNormals);
+  const points = snapshotPointSource(11, sample);
+  const settings = { toleranceMetres: 0.01, reviewed: true, texelsPerMetre: 256, maxDistanceMetres: 0.02, minNormalDot: 0.8, ambiguityDistanceMetres: 0.001, maxBehindMetres: 0.01,
+    neighborhoodRadiusMetres: 0.03, minNeighbors: 4, maxNeighbors: 32, surfaceBandMetres: 0.003 };
+  const request = transferSource({ kind: 'points', points }, settings).source;
+  assert.equal(request.kind === 'points' && request.orientation, 'source-normals');
+  const payload = pointTransferPayload(points);
+  assert.deepEqual(Array.from(payload.normals), [1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0, 0]);
+  assert.deepEqual(Array.from(sample.normals!, value => value === 0 ? 0 : value), [2, 0, 0, 0, 0, -1, 0, 1, 0, -1, 0, 0], 'live Y-up source stays unchanged');
+  sample.normals![0] = 0;
+  assert.equal(samePointSource(points, sample), false, 'mutating only the live normal channel invalidates the session');
+  sample.normals!.set([0, 0, -1, 2, 0, 0], 0);
+  assert.equal(samePointSource(points, sample), false, 'permuting only normal rows also invalidates the session');
+  const malformed = snapshotPointSource(12, retained(native, null, undefined, [0, 0, 0, ...nativeNormals.slice(3)]));
+  assert.throws(() => transferSource({ kind: 'points', points: malformed }, settings), /normal 1.*zero/i);
+  const nonFiniteSample = retained(native, null, undefined, [Number.NaN, 0, 1, ...nativeNormals.slice(3)]);
+  const nonFinite = snapshotPointSource(13, nonFiniteSample);
+  assert.equal(samePointSource(nonFinite, nonFiniteSample), true, 'unchanged NaN survives identity validation so transfer can report the malformed row');
+  assert.throws(() => transferSource({ kind: 'points', points: nonFinite }, settings), /normal 1.*non-finite/i);
 });

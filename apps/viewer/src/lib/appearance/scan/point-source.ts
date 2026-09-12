@@ -33,6 +33,10 @@ export interface ScanPointSource {
   positions: Float32Array;
   /** RGB8, 3n; neutral grey when the source carried no colour. */
   colors: Uint8Array;
+  /** Distinguishes real RGB rows from the neutral snapshot fallback. */
+  hadColors: boolean;
+  /** Source-supplied decode-relative Y-up normals, 3n, or null when absent. */
+  normals: Float32Array | null;
   /** The retained sample this snapshot was taken from, for identity checks. */
   retained: RetainedPointCloudSample;
 }
@@ -41,18 +45,51 @@ export function snapshotPointSource(handleId: number, retained: RetainedPointClo
   if (retained.count > 2_000_000) throw new Error('The retained point sample exceeds the 2,000,000-point transfer budget.');
   const positions = retained.positions.slice(0, retained.count * 3);
   const colors = retained.colors ? retained.colors.slice(0, retained.count * 3) : new Uint8Array(retained.count * 3).fill(200);
-  return { handleId, count: retained.count, seen: retained.seen, origin: retained.origin ? [...retained.origin] : null, positions, colors, retained };
+  const normals = retained.normals?.slice(0, retained.count * 3) ?? null;
+  return { handleId, count: retained.count, seen: retained.seen, origin: retained.origin ? [...retained.origin] : null, positions, colors, hadColors: retained.colors !== null, normals, retained };
 }
 /** True while the snapshot still describes the live reservoir. */
 export function samePointSource(snapshot: ScanPointSource, live: RetainedPointCloudSample | null): boolean {
   return live === snapshot.retained && live.count === snapshot.count && live.seen === snapshot.seen
-    && (live.origin === null ? snapshot.origin === null : snapshot.origin !== null && live.origin.every((v, i) => v === snapshot.origin![i]));
+    && (live.origin === null ? snapshot.origin === null : snapshot.origin !== null && live.origin.every((v, i) => v === snapshot.origin![i]))
+    && equalPrefix(live.positions, snapshot.positions)
+    && (live.colors === null ? !snapshot.hadColors && neutralColors(snapshot.colors) : snapshot.hadColors && equalPrefix(live.colors, snapshot.colors))
+    && (live.normals === null ? snapshot.normals === null : snapshot.normals !== null && equalPrefix(live.normals, snapshot.normals));
 }
-/** Native f64 positions (3n) and RGB8 colours for the transfer payload. */
-export function pointTransferPayload(source: ScanPointSource): { positions: Float64Array; colors: Uint8Array } {
+function equalPrefix(live: ArrayLike<number>, frozen: ArrayLike<number>): boolean {
+  if (live.length < frozen.length) return false;
+  for (let i = 0; i < frozen.length; i++) if (!Object.is(live[i], frozen[i])) return false;
+  return true;
+}
+function neutralColors(colors: Uint8Array): boolean {
+  for (const value of colors) if (value !== 200) return false;
+  return true;
+}
+/** Choose the planner orientation without silently ignoring malformed supplied normals. */
+export function pointSourceOrientation(source: ScanPointSource): 'source-normals' | 'target-referenced' {
+  if (!source.normals) return 'target-referenced';
+  if (source.normals.length !== source.count * 3) throw new Error('The point cloud normal rows no longer match its retained points. Reload the scan.');
+  for (let i = 0; i < source.count; i++) {
+    const x = source.normals[i * 3], y = source.normals[i * 3 + 1], z = source.normals[i * 3 + 2];
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || x * x + y * y + z * z === 0) {
+      throw new Error(`PLY source normal ${i + 1} is missing, non-finite or zero. Repair the declared nx/ny/nz values before transferring appearance.`);
+    }
+  }
+  return 'source-normals';
+}
+/** Native f64 positions, RGB8 colours and native Z-up normals for transfer. */
+export function pointTransferPayload(source: ScanPointSource): { positions: Float64Array; colors: Uint8Array; normals: Float32Array } {
   const positions = new Float64Array(source.count * 3);
   for (let i = 0; i < source.count; i++) positions.set(nativePointFromSample(source, i), i * 3);
-  return { positions, colors: source.colors.slice() };
+  const normals = source.normals ? new Float32Array(source.normals.length) : new Float32Array(0);
+  if (source.normals) for (let i = 0; i < source.count; i++) {
+    const x = source.normals[i * 3], y = -source.normals[i * 3 + 2], z = source.normals[i * 3 + 1];
+    const length = Math.hypot(x, y, z);
+    normals[i * 3] = x / length;
+    normals[i * 3 + 1] = y / length;
+    normals[i * 3 + 2] = z / length;
+  }
+  return { positions, colors: source.colors.slice(), normals };
 }
 
 /** Nearest retained point to a preview ray, in the preview's own frame:

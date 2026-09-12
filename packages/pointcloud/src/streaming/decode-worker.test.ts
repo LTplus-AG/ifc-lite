@@ -20,6 +20,7 @@
  * — proving nothing was left registered for the client to leak.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { chunkFromWire, type SerializedChunk } from './protocol.js';
 
 const { openMock, closeMock, sourceCtorMock } = vi.hoisted(() => {
   const openMock = vi.fn().mockResolvedValue({
@@ -126,5 +127,45 @@ describe('decode-worker handleOpen — post(\'opened\') failure', () => {
 
     expect(posted[0]).toMatchObject({ kind: 'opened', sourceId: 1 });
     expect(closeMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('decode-worker PLY normal payload (#4561)', () => {
+  it('sends source normals through the real PLY source and transferable wire row-for-row', async () => {
+    const posted: unknown[] = [];
+    installSelfPolyfill(msg => { posted.push(msg); });
+    const onmessage = await loadWorker();
+    const ply = 'ply\nformat ascii 1.0\nelement vertex 2\n'
+      + 'property float x\nproperty float y\nproperty float z\n'
+      + 'property uchar red\nproperty uchar green\nproperty uchar blue\n'
+      + 'property float nx\nproperty float ny\nproperty float nz\nend_header\n'
+      + '1 2 3 255 0 0 0 0 1\n4 5 6 0 255 0 1 0 0\n';
+    onmessage({ data: { kind: 'open', requestId: 41, format: 'ply', blob: new Blob([ply]), stride: 1 } });
+    await vi.waitFor(() => expect(posted.some(row => (row as { kind?: string }).kind === 'opened')).toBe(true));
+    const opened = posted.find(row => (row as { kind?: string }).kind === 'opened') as { sourceId: number };
+    onmessage({ data: { kind: 'next', requestId: 42, sourceId: opened.sourceId, maxPoints: 10 } });
+    await vi.waitFor(() => expect(posted.some(row => (row as { kind?: string }).kind === 'chunk')).toBe(true));
+    const response = posted.find(row => (row as { kind?: string }).kind === 'chunk') as { chunk: SerializedChunk };
+    const chunk = chunkFromWire(response.chunk);
+    expect(Array.from(chunk.positions)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(Array.from(chunk.colors!).map(value => Math.round(value * 255))).toEqual([255, 0, 0, 0, 255, 0]);
+    expect(Array.from(chunk.normals!)).toEqual([0, 0, 1, 1, 0, 0]);
+  });
+
+  it('preserves a safe-integer stride above 32 bits at the real worker boundary', async () => {
+    const posted: unknown[] = [];
+    installSelfPolyfill(msg => { posted.push(msg); });
+    const onmessage = await loadWorker();
+    const ply = 'ply\nformat ascii 1.0\nelement vertex 3\n'
+      + 'property float x\nproperty float y\nproperty float z\nend_header\n'
+      + '1 0 0\n2 0 0\n3 0 0\n';
+    onmessage({ data: { kind: 'open', requestId: 51, format: 'ply', blob: new Blob([ply]), stride: 2 ** 32 } });
+    await vi.waitFor(() => expect(posted.some(row => (row as { kind?: string }).kind === 'opened')).toBe(true));
+    const opened = posted.find(row => (row as { kind?: string }).kind === 'opened') as { sourceId: number; info: { totalPointCount: number } };
+    expect(opened.info.totalPointCount).toBe(1);
+    onmessage({ data: { kind: 'next', requestId: 52, sourceId: opened.sourceId, maxPoints: 10 } });
+    await vi.waitFor(() => expect(posted.some(row => (row as { kind?: string }).kind === 'chunk')).toBe(true));
+    const response = posted.find(row => (row as { kind?: string }).kind === 'chunk') as { chunk: SerializedChunk };
+    expect(Array.from(chunkFromWire(response.chunk).positions)).toEqual([1, 0, 0]);
   });
 });

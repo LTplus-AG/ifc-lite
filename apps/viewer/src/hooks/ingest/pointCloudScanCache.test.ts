@@ -52,11 +52,12 @@ describe('pointCloudScanCache', () => {
     assert.strictEqual(sample!.positions.length, 50 * 3);
   });
 
-  it('carries colours and classifications alongside positions', () => {
+  it('carries colours, normals and classifications alongside positions', () => {
     registerPointCloudScanCache(3, 10);
     const chunk = {
       positions: new Float32Array([1, 2, 3]),
       colors: new Float32Array([1, 0, 0]),
+      normals: new Float32Array([0.1, 0.2, 0.3]),
       classifications: new Uint8Array([5]),
       pointCount: 1,
     };
@@ -64,7 +65,23 @@ describe('pointCloudScanCache', () => {
     const sample = getPointCloudScanSample(3);
     assert.ok(sample);
     assert.deepStrictEqual(Array.from(sample!.colors!.slice(0, 3)), [255, 0, 0]);
+    assert.deepStrictEqual(Array.from(sample!.normals!.slice(0, 3)), [0.1, 0.2, 0.3].map(Math.fround));
     assert.strictEqual(sample!.classifications![0], 5);
+  });
+
+  it('replaces position, colour and normal as one reservoir row and refuses misaligned channels (#4561)', () => {
+    registerPointCloudScanCache(10, 1);
+    addPointsToScanCache(10, { positions: new Float32Array([1, 2, 3]), colors: new Float32Array([1, 0, 0]), normals: new Float32Array([1, 0, 0]), pointCount: 1 });
+    const random = Math.random;
+    Math.random = () => 0;
+    try {
+      addPointsToScanCache(10, { positions: new Float32Array([4, 5, 6]), colors: new Float32Array([0, 1, 0]), normals: new Float32Array([0, 0, 1]), pointCount: 1 });
+    } finally { Math.random = random; }
+    const sample = getPointCloudScanSample(10)!;
+    assert.deepEqual(Array.from(sample.positions), [4, 5, 6]);
+    assert.deepEqual(Array.from(sample.colors!), [0, 255, 0]);
+    assert.deepEqual(Array.from(sample.normals!), [0, 0, 1]);
+    assert.throws(() => addPointsToScanCache(10, { positions: new Float32Array(6), normals: new Float32Array(3), pointCount: 2 }), /row-aligned/);
   });
 
   it('removePointCloudScanCache drops the sample', () => {

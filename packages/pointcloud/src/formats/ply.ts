@@ -11,14 +11,16 @@
  * meshes but not for the scan-style files this viewer ingests).
  *
  * Position fields (x/y/z) are required. RGB (r/g/b or red/green/blue,
- * uchar) and intensity (intensity, uchar/ushort/float) are optional and
- * surfaced when present. Returns a single `DecodedPointChunk` — large
- * .ply files (>25M points) get bounded by `streamPointCloud`'s memory
- * cap which downsamples upstream.
+ * uchar), complete source normals (nx/ny/nz) and intensity
+ * (intensity, uchar/ushort/float) are optional and surfaced when present.
+ * `decodePly` is the direct whole-buffer API. The canonical Open/Add path
+ * uses `PlyStreamingSource`, whose bounded decoder never allocates full-count
+ * channels before applying its host-selected stride.
  */
 
 import type { DecodedPointChunk, PointCloudBBox } from '../types.js';
 import { normalizePlyColors } from './ply-color.js';
+import { readPlyScalar } from './ply-scalar.js';
 
 /** Name → byte size for the PLY-defined scalar types. */
 const TYPE_SIZES: Record<string, number> = {
@@ -28,7 +30,7 @@ const TYPE_SIZES: Record<string, number> = {
   float: 4, float32: 4, double: 8, float64: 8,
 };
 
-interface PropertyDecl {
+export interface PlyPropertyDecl {
   name: string;
   type: string;
   size: number;
@@ -36,10 +38,10 @@ interface PropertyDecl {
   offset: number;
 }
 
-interface ElementDecl {
+export interface PlyElementDecl {
   name: string;
   count: number;
-  properties: PropertyDecl[];
+  properties: PlyPropertyDecl[];
   /** Bytes per record (binary mode); unused for ascii. */
   recordSize: number;
   /**
@@ -54,7 +56,7 @@ interface ElementDecl {
 export interface PlyHeader {
   format: 'ascii' | 'binary_little_endian' | 'binary_big_endian';
   version: string;
-  elements: ElementDecl[];
+  elements: PlyElementDecl[];
   /** Byte offset where the body data starts. */
   bodyOffset: number;
 }
@@ -85,8 +87,8 @@ export function parsePlyHeader(buffer: Uint8Array): PlyHeader {
   const lines = headerText.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
   let format: PlyHeader['format'] | null = null;
   let version = '1.0';
-  const elements: ElementDecl[] = [];
-  let current: ElementDecl | null = null;
+  const elements: PlyElementDecl[] = [];
+  let current: PlyElementDecl | null = null;
 
   for (const line of lines) {
     if (line === 'ply' || line === 'end_header') continue;
@@ -151,6 +153,37 @@ export function parsePlyHeader(buffer: Uint8Array): PlyHeader {
   return { format, version, elements, bodyOffset };
 }
 
+export interface PlyVertexLayout {
+  vertex: PlyElementDecl;
+  xProp: PlyPropertyDecl; yProp: PlyPropertyDecl; zProp: PlyPropertyDecl;
+  nxProp?: PlyPropertyDecl; nyProp?: PlyPropertyDecl; nzProp?: PlyPropertyDecl;
+}
+
+/** Validate the fixed-row vertex schema shared by whole-file and streaming decode. */
+export function inspectPlyVertex(header: PlyHeader): PlyVertexLayout {
+  const vertex = header.elements.find((element) => element.name === 'vertex');
+  if (!vertex) throw new Error('PLY: no vertex element');
+  if (header.elements[0] !== vertex) {
+    throw new Error(`PLY: vertex element must appear first; saw "${header.elements[0]?.name}" first`);
+  }
+  if (vertex.hasListProperty) {
+    throw new Error('PLY: list-valued properties on the vertex element are not supported (variable-length records)');
+  }
+  const one = (name: string): PlyPropertyDecl | undefined => {
+    const matches = vertex.properties.filter((property) => property.name === name);
+    if (matches.length > 1) throw new Error(`PLY: vertex property "${name}" must not be declared more than once`);
+    return matches[0];
+  };
+  const xProp = one('x'), yProp = one('y'), zProp = one('z');
+  if (!xProp || !yProp || !zProp) throw new Error('PLY: vertex element must define x, y, z properties');
+  const nxProp = one('nx'), nyProp = one('ny'), nzProp = one('nz');
+  const normalCount = Number(!!nxProp) + Number(!!nyProp) + Number(!!nzProp);
+  if (normalCount !== 0 && normalCount !== 3) {
+    throw new Error('PLY: vertex normals must declare all of nx, ny and nz');
+  }
+  return { vertex, xProp, yProp, zProp, nxProp, nyProp, nzProp };
+}
+
 export function decodePly(
   buffer: Uint8Array,
   /**
@@ -163,37 +196,13 @@ export function decodePly(
   originOffset?: readonly [number, number, number],
 ): DecodedPointChunk {
   const header = parsePlyHeader(buffer);
-  const vertex = header.elements.find((e) => e.name === 'vertex');
-  if (!vertex) throw new Error('PLY: no vertex element');
-  // Both decoders start at header.bodyOffset, so vertex MUST be the first
-  // element. Files that declare another element first would silently
-  // produce garbage point data otherwise. Reject deterministically.
-  if (header.elements[0] !== vertex) {
-    throw new Error(
-      `PLY: vertex element must appear first; saw "${header.elements[0]?.name}" first`,
-    );
-  }
-
-  // A list property on the vertex element makes its records variable length:
-  // `recordSize` (binary stride) and the ascii column map would both drift and
-  // silently read garbage. Reject up front; list properties on OTHER elements
-  // (face indices) stay fine because those elements are never decoded.
-  if (vertex.hasListProperty) {
-    throw new Error(
-      'PLY: list-valued properties on the vertex element are not supported (variable-length records)',
-    );
-  }
-
-  const xProp = vertex.properties.find((p) => p.name === 'x');
-  const yProp = vertex.properties.find((p) => p.name === 'y');
-  const zProp = vertex.properties.find((p) => p.name === 'z');
-  if (!xProp || !yProp || !zProp) {
-    throw new Error('PLY: vertex element must define x, y, z properties');
-  }
+  const layout = inspectPlyVertex(header);
+  const { vertex } = layout;
   const rProp = vertex.properties.find((p) => p.name === 'red' || p.name === 'r');
   const gProp = vertex.properties.find((p) => p.name === 'green' || p.name === 'g');
   const bProp = vertex.properties.find((p) => p.name === 'blue' || p.name === 'b');
   const hasRgb = !!(rProp && gProp && bProp);
+  const { nxProp, nyProp, nzProp } = layout;
   const intensityProp = vertex.properties.find(
     (p) => p.name === 'intensity' || p.name === 'scalar_Intensity',
   );
@@ -227,10 +236,11 @@ export function decodePly(
   }
   const positions = new Float32Array(count * 3);
   const colors = hasRgb ? new Float32Array(count * 3) : undefined;
+  const normals = nxProp && nyProp && nzProp ? new Float32Array(count * 3) : undefined;
   const intensities = intensityProp ? new Uint16Array(count) : undefined;
 
   if (header.format === 'ascii') {
-    decodeAsciiBody(buffer, header, vertex, positions, colors, intensities, originOffset);
+    decodeAsciiBody(buffer, header, vertex, positions, colors, normals, intensities, originOffset);
   } else {
     decodeBinaryBody(
       buffer,
@@ -238,6 +248,7 @@ export function decodePly(
       vertex,
       positions,
       colors,
+      normals,
       intensities,
       header.format === 'binary_little_endian',
       originOffset,
@@ -251,20 +262,20 @@ export function decodePly(
   return {
     positions,
     colors,
+    normals,
     intensities,
     pointCount: count,
     bbox: computeBBox(positions),
   };
 }
 
-// ─── ascii body ─────────────────────────────────────────────────────────────
-
 function decodeAsciiBody(
   buffer: Uint8Array,
   header: PlyHeader,
-  vertex: ElementDecl,
+  vertex: PlyElementDecl,
   positions: Float32Array,
   colors: Float32Array | undefined,
+  normals: Float32Array | undefined,
   intensities: Uint16Array | undefined,
   originOffset?: readonly [number, number, number],
 ): void {
@@ -281,6 +292,9 @@ function decodeAsciiBody(
   const rCol = vertex.properties.findIndex((p) => p.name === 'red' || p.name === 'r');
   const gCol = vertex.properties.findIndex((p) => p.name === 'green' || p.name === 'g');
   const bCol = vertex.properties.findIndex((p) => p.name === 'blue' || p.name === 'b');
+  const nxCol = vertex.properties.findIndex((p) => p.name === 'nx');
+  const nyCol = vertex.properties.findIndex((p) => p.name === 'ny');
+  const nzCol = vertex.properties.findIndex((p) => p.name === 'nz');
   const iCol = vertex.properties.findIndex(
     (p) => p.name === 'intensity' || p.name === 'scalar_Intensity',
   );
@@ -302,6 +316,11 @@ function decodeAsciiBody(
       colors[written * 3 + 1] = Number(parts[gCol]);
       colors[written * 3 + 2] = Number(parts[bCol]);
     }
+    if (normals) {
+      normals[written * 3] = Number(parts[nxCol]);
+      normals[written * 3 + 1] = Number(parts[nyCol]);
+      normals[written * 3 + 2] = Number(parts[nzCol]);
+    }
     if (intensities && iCol >= 0) {
       intensities[written] = Math.min(65535, Math.max(0, Number(parts[iCol]) | 0));
     }
@@ -312,14 +331,13 @@ function decodeAsciiBody(
   }
 }
 
-// ─── binary body ────────────────────────────────────────────────────────────
-
 function decodeBinaryBody(
   buffer: Uint8Array,
   header: PlyHeader,
-  vertex: ElementDecl,
+  vertex: PlyElementDecl,
   positions: Float32Array,
   colors: Float32Array | undefined,
+  normals: Float32Array | undefined,
   intensities: Uint16Array | undefined,
   littleEndian: boolean,
   originOffset?: readonly [number, number, number],
@@ -339,45 +357,31 @@ function decodeBinaryBody(
   const rProp = colors ? vertex.properties.find((p) => p.name === 'red' || p.name === 'r') : undefined;
   const gProp = colors ? vertex.properties.find((p) => p.name === 'green' || p.name === 'g') : undefined;
   const bProp = colors ? vertex.properties.find((p) => p.name === 'blue' || p.name === 'b') : undefined;
+  const nxProp = normals ? vertex.properties.find((p) => p.name === 'nx') : undefined;
+  const nyProp = normals ? vertex.properties.find((p) => p.name === 'ny') : undefined;
+  const nzProp = normals ? vertex.properties.find((p) => p.name === 'nz') : undefined;
   const iProp = intensities
     ? vertex.properties.find((p) => p.name === 'intensity' || p.name === 'scalar_Intensity')
     : undefined;
 
   for (let i = 0; i < vertex.count; i++) {
     const base = i * stride;
-    positions[i * 3] = readScalar(view, base + xProp.offset, xProp, littleEndian) - offX;
-    positions[i * 3 + 1] = readScalar(view, base + yProp.offset, yProp, littleEndian) - offY;
-    positions[i * 3 + 2] = readScalar(view, base + zProp.offset, zProp, littleEndian) - offZ;
+    positions[i * 3] = readPlyScalar(view, base + xProp.offset, xProp, littleEndian) - offX;
+    positions[i * 3 + 1] = readPlyScalar(view, base + yProp.offset, yProp, littleEndian) - offY;
+    positions[i * 3 + 2] = readPlyScalar(view, base + zProp.offset, zProp, littleEndian) - offZ;
     if (colors && rProp && gProp && bProp) {
-      colors[i * 3] = readScalar(view, base + rProp.offset, rProp, littleEndian);
-      colors[i * 3 + 1] = readScalar(view, base + gProp.offset, gProp, littleEndian);
-      colors[i * 3 + 2] = readScalar(view, base + bProp.offset, bProp, littleEndian);
+      colors[i * 3] = readPlyScalar(view, base + rProp.offset, rProp, littleEndian);
+      colors[i * 3 + 1] = readPlyScalar(view, base + gProp.offset, gProp, littleEndian);
+      colors[i * 3 + 2] = readPlyScalar(view, base + bProp.offset, bProp, littleEndian);
+    }
+    if (normals && nxProp && nyProp && nzProp) {
+      normals[i * 3] = readPlyScalar(view, base + nxProp.offset, nxProp, littleEndian);
+      normals[i * 3 + 1] = readPlyScalar(view, base + nyProp.offset, nyProp, littleEndian);
+      normals[i * 3 + 2] = readPlyScalar(view, base + nzProp.offset, nzProp, littleEndian);
     }
     if (intensities && iProp) {
-      intensities[i] = Math.min(65535, Math.max(0, readScalar(view, base + iProp.offset, iProp, littleEndian) | 0));
+      intensities[i] = Math.min(65535, Math.max(0, readPlyScalar(view, base + iProp.offset, iProp, littleEndian) | 0));
     }
-  }
-}
-
-function readScalar(view: DataView, offset: number, prop: PropertyDecl, le: boolean): number {
-  switch (prop.type) {
-    case 'char':
-    case 'int8':   return view.getInt8(offset);
-    case 'uchar':
-    case 'uint8':  return view.getUint8(offset);
-    case 'short':
-    case 'int16':  return view.getInt16(offset, le);
-    case 'ushort':
-    case 'uint16': return view.getUint16(offset, le);
-    case 'int':
-    case 'int32':  return view.getInt32(offset, le);
-    case 'uint':
-    case 'uint32': return view.getUint32(offset, le);
-    case 'float':
-    case 'float32': return view.getFloat32(offset, le);
-    case 'double':
-    case 'float64': return view.getFloat64(offset, le);
-    default: throw new Error(`PLY: cannot read scalar of type "${prop.type}"`);
   }
 }
 

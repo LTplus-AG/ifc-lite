@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createAppearancePlanner, type AppearanceWorker } from './planner-worker-client.js';
 import type { AppearancePlan, AppearanceRequest, AppearanceWorkerRequest, AppearanceWorkerResponse } from './planner-types.js';
+import type { MeshTransferRequest } from './scan/transfer-types.js';
 const request: AppearanceRequest = {
   schema: 'IFC4', sourceRevision: 'first', nextExpressId: 100, productIds: [10],
   imageUri: 'image.png', repeatS: true, repeatT: true,
@@ -184,4 +185,20 @@ it('scan registration refuses oversized correspondence sets before creating a wo
   const point = { id: 'p', sourceObservation: 's', targetFeature: 't', source: [0,0,0] as [number,number,number], target: [0,0,0] as [number,number,number] };
   await assert.rejects(client.registerScan({ sourceFrame: { assetSha256: 'a'.repeat(64), frameKey: 'source' }, targetFrame: { assetSha256: 'b'.repeat(64), frameKey: 'target' }, fit: new Array(257).fill(point), heldOut: [] }), /budget/);
   assert.equal(workers.length, 0); client.dispose();
+});
+
+it('point transfer reports malformed orientation channels before spawning a worker (#4561)', async () => {
+  const { client, workers } = setup();
+  const scanRequest: MeshTransferRequest = {
+    schema: 'IFC4', sourceRevision: 'points', nextExpressId: 1, productIds: [1],
+    registration: { sourceFrame: { assetSha256: 'a'.repeat(64), frameKey: 'source' }, targetFrame: { assetSha256: 'b'.repeat(64), frameKey: 'target' }, fit: [], heldOut: [] },
+    registrationSha256: 'c'.repeat(64), targetFromIfcWorld: { rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], sourceAnchor: [0, 0, 0], targetAnchor: [0, 0, 0] },
+    source: { kind: 'points', pointCount: 1, orientation: 'source-normals', neighborhoodRadiusMetres: 0.03, minNeighbors: 3, maxNeighbors: 8, surfaceBandMetres: 0.003, viewpoints: [] },
+    sourceImages: [], texelsPerMetre: 64, maxDistanceMetres: 0.02, minNormalDot: 0.8, ambiguityDistanceMetres: 0.001, maxBehindMetres: 0.01,
+  };
+  await assert.rejects(client.pointTransfer(new Uint8Array(), scanRequest, new Uint8Array(), {
+    positions: new Float64Array(3), colors: new Uint8Array(3), normals: new Float32Array(0), stations: new Uint32Array(0),
+  }), /source-normals orientation has mismatched normal or station rows/);
+  assert.equal(workers.length, 0);
+  client.dispose();
 });

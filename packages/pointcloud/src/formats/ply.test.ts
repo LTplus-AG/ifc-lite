@@ -126,6 +126,41 @@ describe('decodePly originOffset (extends #1804 to PLY)', () => {
 });
 
 describe('decodePly', () => {
+  it('preserves complete ascii source normals in vertex order and rejects a partial declaration (#4561)', () => {
+    const header = 'ply\nformat ascii 1.0\nelement vertex 2\n'
+      + 'property float x\nproperty float y\nproperty float z\n'
+      + 'property float nx\nproperty float ny\nproperty float nz\nend_header\n';
+    const chunk = decodePly(enc.encode(header + '1 2 3 0.1 0.2 0.3\n4 5 6 -0.4 -0.5 -0.6\n'));
+    expect(Array.from(chunk.positions)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(Array.from(chunk.normals!)).toEqual([
+      Math.fround(0.1), Math.fround(0.2), Math.fround(0.3),
+      Math.fround(-0.4), Math.fround(-0.5), Math.fround(-0.6),
+    ]);
+    expect(() => decodePly(enc.encode(header.replace('property float nz\n', '') + '1 2 3 0 1\n4 5 6 0 1\n')))
+      .toThrow(/all of nx, ny and nz/);
+    expect(() => decodePly(enc.encode(header.replace('property float nx\n', 'property float nx\nproperty float nx\n') + '1 2 3 0 0 0 1\n4 5 6 1 1 0 0\n')))
+      .toThrow(/property "nx" must not be declared more than once/);
+  });
+
+  it('preserves binary source normals, including unusable values for transfer-time refusal (#4561)', () => {
+    const header = 'ply\nformat binary_little_endian 1.0\nelement vertex 2\n'
+      + 'property float x\nproperty float y\nproperty float z\n'
+      + 'property double nx\nproperty double ny\nproperty double nz\nend_header\n';
+    const headerBytes = enc.encode(header), body = new ArrayBuffer(72), view = new DataView(body);
+    const rows = [[1, 2, 3, 0, 0, 1], [4, 5, 6, Number.NaN, 0, 0]];
+    rows.forEach((row, i) => {
+      const base = i * 36;
+      view.setFloat32(base, row[0], true); view.setFloat32(base + 4, row[1], true); view.setFloat32(base + 8, row[2], true);
+      view.setFloat64(base + 12, row[3], true); view.setFloat64(base + 20, row[4], true); view.setFloat64(base + 28, row[5], true);
+    });
+    const bytes = new Uint8Array(headerBytes.length + body.byteLength);
+    bytes.set(headerBytes); bytes.set(new Uint8Array(body), headerBytes.length);
+    const chunk = decodePly(bytes);
+    expect(Array.from(chunk.positions)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(Array.from(chunk.normals!.subarray(0, 3))).toEqual([0, 0, 1]);
+    expect(Number.isNaN(chunk.normals![3])).toBe(true);
+  });
+
   it('decodes ascii xyz', () => {
     const buf = buildAsciiPly([
       [1, 2, 3],

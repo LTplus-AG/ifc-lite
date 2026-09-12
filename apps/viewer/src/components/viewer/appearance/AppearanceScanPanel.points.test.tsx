@@ -4,6 +4,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { access, readFile } from 'node:fs/promises';
 import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { Renderer } from '@ifc-lite/renderer';
@@ -17,9 +18,10 @@ import { addPointsToScanCache, clearAllPointCloudScanCaches, getPointCloudScanSa
 import { ingestPointCloud } from '@/hooks/ingest/pointCloudIngest';
 import { prepareScanSession } from '@/lib/appearance/scan/session';
 import { nativePointFromSample, pointTransferPayload } from '@/lib/appearance/scan/point-source';
-import { transferSource } from '@/lib/appearance/scan/prepare-transfer';
+import { prepareMeshTransfer, transferSource } from '@/lib/appearance/scan/prepare-transfer';
 import { createAppearancePlanner, type AppearanceWorker } from '@/lib/appearance/planner-worker-client';
 import type { AppearanceWorkerRequest } from '@/lib/appearance/planner-types';
+import type { ScanCorrespondence, ScanRegistrationRequest } from '@/lib/appearance/scan/types';
 import type { MeshTransferRequest } from '@/lib/appearance/scan/transfer-types';
 import { AppearanceScanPanel } from './AppearanceScanPanel';
 
@@ -33,15 +35,18 @@ const HANDLE = 41;
 async function fixture() {
   const bytes = new TextEncoder().encode("ISO-10303-21;HEADER;FILE_DESCRIPTION(('point alignment'),'2;1');FILE_NAME('target.ifc','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;DATA;#10=IFCWALL('0Wall00000000000000001',$,'Wall',$,$,$,$,$,.NOTDEFINED.);ENDSEC;END-ISO-10303-21;");
   const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
-  const target: ReturnType<typeof fixtureModel> = { ...fixtureModel('target'), maxExpressId: 10, ifcDataStore: store, schemaVersion: 'IFC4' as const };
   const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } };
+  const emptyGeometry = { meshes: [], pointClouds: [], totalTriangles: 0, totalVertices: 0,
+    coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } };
+  const target: ReturnType<typeof fixtureModel> = { ...fixtureModel('target'), maxExpressId: 10, ifcDataStore: store,
+    schemaVersion: 'IFC4' as const, geometryResult: emptyGeometry };
   const native = Array.from({ length: 8 }, (_, i) => [100 + i, 200 + (i % 3), 300 + (i % 2)]);
   const ply = 'ply\nformat ascii 1.0\nelement vertex 8\nproperty float x\nproperty float y\nproperty float z\n'
     + 'property uchar red\nproperty uchar green\nproperty uchar blue\nproperty float nx\nproperty float ny\nproperty float nz\nend_header\n'
     + native.map(([x, y, z], i) => `${x} ${y} ${z} ${i * 20} 128 255 ${i + 1} ${i + 2} ${i + 3}`).join('\n') + '\n';
   const scanFile = new File([ply], 'room.ply');
   const scan: ReturnType<typeof fixtureModel> = { ...fixtureModel('scan'), ifcDataStore: null, sourceFile: scanFile, pointCloudHandleId: HANDLE, loadState: 'complete',
-    geometryResult: { meshes: [], pointClouds: [], totalTriangles: 0, totalVertices: 0, coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } } };
+    geometryResult: emptyGeometry };
   const ingestRenderer = new Renderer(document.createElement('canvas'));
   mock.method(ingestRenderer, 'beginPointCloudStream', () => ({ id: HANDLE }));
   mock.method(ingestRenderer, 'setPointCloudTransform', () => {});
@@ -102,6 +107,45 @@ test('a completely streamed point cloud is offered as a scan source with its ret
   addPointsToScanCache(HANDLE, { positions: new Float32Array([1, 1, 1]), normalState: 'absent', pointCount: 1 });
   assert.throws(() => session.validate(), /frame changed/);
   assert.equal(getPointCloudScanSample(HANDLE)!.count, 9);
+});
+
+test('the bounded PLY ingest completes the Rust planner with retained source normals (#4561)', async t => {
+  const wasmUrl = new URL('../../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+  try { await access(wasmUrl); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    t.skip('Build WASM with pnpm build:wasm to run the completed point-transfer journey'); return;
+  }
+  const { native } = await fixture();
+  const session = await prepareScanSession('scan', 'points', 'target', new AbortController().signal);
+  if (session.source.kind !== 'points') throw new Error('fixture did not retain its streamed PLY');
+  const { default: init, IfcAPI } = await import('@ifc-lite/wasm');
+  await init({ module_or_path: await readFile(wasmUrl) });
+  const { runPointTransfer } = await import('@/workers/appearance.worker');
+  const api = new IfcAPI();
+  const pairs: ScanCorrespondence[] = native.map((point, index) => ({ id: `p${index}`, sourceObservation: `point:${index}:seen:8`,
+    targetFeature: `target-${index}`, source: [point[0], point[1], point[2]], target: [point[0], point[1], point[2]] }));
+  const registration: ScanRegistrationRequest = { sourceFrame: session.sourceFrame, targetFrame: session.targetFrame, fit: pairs.slice(0, 4), heldOut: pairs.slice(4) };
+  try {
+    const report = JSON.parse(new TextDecoder().decode(api.registerScanCorrespondences(JSON.stringify(registration)))) as import('@/lib/appearance/scan/types').ScanRegistrationReport;
+    const settings = { toleranceMetres: 0.01, reviewed: true, texelsPerMetre: 64, maxDistanceMetres: 0.02,
+      minNormalDot: 0.8, ambiguityDistanceMetres: 0.001, maxBehindMetres: 0.01,
+      neighborhoodRadiusMetres: 0.03, minNeighbors: 4, maxNeighbors: 32, surfaceBandMetres: 0.003 };
+    let deliveredRows = 0;
+    const worker: AppearanceWorker = { onmessage: null, onerror: null, onmessageerror: null, terminate() {}, postMessage(message) {
+      if (message.type !== 'point-transfer') throw new Error(`unexpected planner job ${message.type}`);
+      deliveredRows = message.points.normals.length / 3;
+      void runPointTransfer(message.source, message.request, message.rgba, message.points).then(result => {
+        worker.onmessage?.({ data: { type: 'mesh-transfer-complete', id: message.id, result } } as MessageEvent);
+      }, error => worker.onerror?.({ message: error instanceof Error ? error.message : String(error) } as ErrorEvent));
+    } };
+    const planner = createAppearancePlanner({ workerFactory: () => worker });
+    try {
+      const result = await prepareMeshTransfer(session, { request: registration, report }, [10], settings, planner,
+        { kind: 'draft', id: 'ply-normal-journey' }, new AbortController().signal);
+      assert.equal(deliveredRows, 8);
+      assert.deepEqual(result.transfer.source, { kind: 'points', orientation: 'source-normals', pointCount: 8 });
+    } finally { planner.dispose(); }
+  } finally { api.free(); }
 });
 
 test('the workbench lists the point cloud and mounts the point preview through the real session, not a GLB path (#4381)', async () => {

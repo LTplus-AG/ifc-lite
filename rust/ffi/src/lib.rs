@@ -32,10 +32,9 @@ use ifc_lite_processing::{
     process_geometry_filtered, OpeningFilterMode, ParseResponse, ProcessingResult,
 };
 use std::backtrace::Backtrace;
-use std::cell::RefCell;
 use std::io::Write;
 use std::slice;
-use std::sync::{Once, OnceLock};
+use std::sync::{Mutex, Once, OnceLock};
 
 /// Stack size for the geometry worker threads (256 MiB).
 ///
@@ -63,10 +62,59 @@ fn parse_pool() -> &'static rayon::ThreadPool {
     })
 }
 
-thread_local! {
-    /// Path of the IFC file currently being parsed on this thread, so the panic hook
-    /// can name the offending file. Empty when no parse is in flight.
-    static CURRENT_IFC_PATH: RefCell<String> = const { RefCell::new(String::new()) };
+/// Paths of the IFC files whose parses are in flight, so the panic hook can
+/// name the offending file. A process-wide `static`, not a thread-local: the
+/// parse body runs on the pool's worker threads (`ThreadPool::install` injects
+/// the closure into the pool and the calling thread only waits for it), and a
+/// panic hook runs on the thread that panicked. A thread-local written by the
+/// caller was therefore never visible to the hook, and every entry it wrote
+/// said `file: <unknown>`. Entries are registered for the call's duration by
+/// [`InFlightPath`]; a host that parses from several threads at once has every
+/// in-flight path listed, since the shared pool can be running jobs of any of
+/// them on the panicking worker.
+static IN_FLIGHT_PATHS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// RAII registration of one parse's path in [`IN_FLIGHT_PATHS`]. Dropping it,
+/// including during the unwind of a caught panic, removes the entry again.
+struct InFlightPath(String);
+
+impl InFlightPath {
+    fn register(path: &str) -> Self {
+        IN_FLIGHT_PATHS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(path.to_string());
+        Self(path.to_string())
+    }
+}
+
+impl Drop for InFlightPath {
+    fn drop(&mut self) {
+        let mut paths = IN_FLIGHT_PATHS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(i) = paths.iter().position(|p| *p == self.0) {
+            paths.remove(i);
+        }
+    }
+}
+
+/// The in-flight paths joined for the panic log, or `<unknown>` when nothing
+/// is registered. `try_lock`, never `lock`: a hook must not block on a lock
+/// held by the thread it interrupted (`register` and `drop` hold it only
+/// across a `Vec` push or remove, but a hook that could deadlock is worse
+/// than one that misses a name).
+fn in_flight_paths_for_log() -> String {
+    let paths = match IN_FLIGHT_PATHS.try_lock() {
+        Ok(paths) => paths,
+        Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) => return "<unknown>".to_string(),
+    };
+    if paths.is_empty() {
+        "<unknown>".to_string()
+    } else {
+        paths.join(", ")
+    }
 }
 
 static PANIC_HOOK_INIT: Once = Once::new();
@@ -82,7 +130,7 @@ fn ensure_panic_logging() {
     PANIC_HOOK_INIT.call_once(|| {
         let previous_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
-            let path = CURRENT_IFC_PATH.with(|p| p.borrow().clone());
+            let path = in_flight_paths_for_log();
             let backtrace = Backtrace::force_capture();
             let log_path = std::env::temp_dir().join("ifc_lite_panic.log");
             if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -92,8 +140,7 @@ fn ensure_panic_logging() {
             {
                 let _ = writeln!(
                     file,
-                    "==== ifc-lite panic ====\nfile: {}\n{info}\nbacktrace:\n{backtrace}\n",
-                    if path.is_empty() { "<unknown>" } else { &path },
+                    "==== ifc-lite panic ====\nfile: {path}\n{info}\nbacktrace:\n{backtrace}\n",
                 );
             }
 
@@ -163,6 +210,16 @@ fn normalize_to_site_local(result: &mut ProcessingResult) {
     result.mesh_coordinate_space = Some(SITE_LOCAL_MESH_COORDINATE_SPACE.to_string());
 }
 
+/// Run `work` on the large-stack pool with `path_str` registered in
+/// [`IN_FLIGHT_PATHS`] for the whole call, so a panic on any pool worker is
+/// logged against this file. A panic inside `work` is error code `3`.
+fn run_in_pool<T: Send>(path_str: &str, work: impl FnOnce() -> T + Send) -> Result<T, i32> {
+    let _in_flight = InFlightPath::register(path_str);
+    parse_pool()
+        .install(|| std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)))
+        .map_err(|_| 3)
+}
+
 /// Shared body of both parse entry points: read the file, run geometry
 /// processing inside the large-stack pool under `catch_unwind`, normalize mesh
 /// coordinates, and serialize the response to JSON bytes.
@@ -173,17 +230,7 @@ fn normalize_to_site_local(result: &mut ProcessingResult) {
 fn parse_impl(path_str: &str, mode: OpeningFilterMode) -> Result<Vec<u8>, i32> {
     let content = std::fs::read_to_string(path_str).map_err(|_| 2)?;
 
-    CURRENT_IFC_PATH.with(|p| *p.borrow_mut() = path_str.to_string());
-
-    let result = parse_pool().install(|| {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            process_geometry_filtered(&content, mode)
-        }))
-    });
-
-    CURRENT_IFC_PATH.with(|p| p.borrow_mut().clear());
-
-    let mut result = result.map_err(|_| 3)?;
+    let mut result = run_in_pool(path_str, || process_geometry_filtered(&content, mode))?;
 
     // Normalize all meshes to uniform site-local coordinates.
     normalize_to_site_local(&mut result);

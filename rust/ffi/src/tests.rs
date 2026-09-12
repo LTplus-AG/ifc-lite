@@ -362,6 +362,46 @@ fn parse_ex_maps_every_filter_mode() {
     let _ = std::fs::remove_file(&path);
 }
 
+/// The panic log must name the file whose parse panicked. The parse body runs
+/// on a pool worker (`ThreadPool::install` injects it; the caller only waits),
+/// and a panic hook runs on the panicking thread, so the path has to live
+/// where that worker can read it. The previous thread-local was written on
+/// the caller's thread and read on the worker's, so every entry it ever wrote
+/// said `file: <unknown>` (review finding K1; reproduced in a scratch crate
+/// of the same shape before this fix). Mutation that fails this test: store
+/// the path in a `thread_local!` again, or register it after `install`.
+#[test]
+fn panic_log_names_the_file_when_the_panic_happens_on_a_pool_worker() {
+    ensure_panic_logging();
+    // A tag no other test or earlier run could have written: process id plus
+    // a wall-clock nanosecond stamp, so the assertion reads THIS entry.
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let probe_path = format!("hook_probe_{}_{stamp}.ifc", std::process::id());
+
+    let outcome = run_in_pool::<()>(&probe_path, || panic!("hook probe"));
+    assert_eq!(outcome, Err(3), "a panic on the pool is error code 3");
+
+    let log = std::fs::read_to_string(std::env::temp_dir().join("ifc_lite_panic.log"))
+        .expect("the panic hook must have written the log");
+    // Other tests parse concurrently on the shared pool, so the entry may list
+    // their paths beside this one; the probe must be among them.
+    let file_lines: Vec<&str> = log.lines().filter(|l| l.starts_with("file: ")).collect();
+    assert!(
+        file_lines.iter().any(|l| l.contains(&probe_path)),
+        "the panic log entry must name the file being parsed; wanted {probe_path:?} in a \
+         `file:` line; the log's `file:` lines end with {:?}",
+        &file_lines[file_lines.len().saturating_sub(3)..]
+    );
+
+    // The registration is scoped to the call (its guard drops during the
+    // unwind), so a later unrelated panic must not be blamed on this file.
+    // Other tests parse concurrently, so only this path's absence is asserted.
+    assert!(!in_flight_paths_for_log().contains(&probe_path));
+}
+
 #[test]
 fn free_tolerates_null_and_zero_len() {
     // Must be a no-op, never a double-free or segfault.

@@ -5,6 +5,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { access, readFile } from 'node:fs/promises';
 import type { AppearancePlan, AppearanceRequest } from './planner-types.js';
+import { appearanceSourceTriangle } from '@ifc-lite/renderer';
+import type { MeshData } from '@ifc-lite/geometry';
+
+function assertCanonicalSurface(conversion: NonNullable<AppearancePlan['conversions']>[number]): void {
+  const indices = new Uint32Array(conversion.sourceIndices);
+  const mesh: MeshData = { expressId: conversion.productId, geometryItemId: conversion.sourceGeometryItemId,
+    positions: new Float32Array(conversion.sourcePositions!), normals: new Float32Array(conversion.sourceNormals!),
+    indices, color: conversion.sourceColor!, appearanceSource: { kind: 'canonical-item', indices, sourceIndices: indices } };
+  assert.equal(appearanceSourceTriangle(mesh, indices.length / 3 - 1), indices.length / 3 - 1);
+}
 
 test('real WASM preserves mapped occurrences unless explicitly opted in and composes finite PDF appearance (#4404)', async t => {
   const wasmUrl = new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
@@ -32,6 +42,7 @@ test('real WASM preserves mapped occurrences unless explicitly opted in and comp
     assert.equal(result.conversions?.[0].sourceGeometryItemId, 35135);
     assert.equal(result.conversions?.[0].sourceIndices.length, 36);
     original = result.conversions![0];
+    assertCanonicalSurface(original);
     assert.ok(original.sourcePositions?.length && original.sourceNormals?.length);
     assert.equal(original.sourcePositions.length, original.sourceNormals.length);
     assert.ok(original.sourceIndices.every(index => index < original!.sourcePositions!.length / 3));
@@ -104,6 +115,7 @@ test('real WASM image and page conversion preserve cut slab and opening companio
   finally { api.free(); }
   assert.equal(image.items.length, 1); assert.deepEqual(image.exclusions, []);
   const conversion = image.conversions![0];
+  assertCanonicalSurface(conversion);
   assert.equal(conversion.sourceIndices.length / 3, 32);
   assert.equal(conversion.sourceRemovedMeshes?.length, 1);
   const opening = conversion.sourceRemovedMeshes![0];

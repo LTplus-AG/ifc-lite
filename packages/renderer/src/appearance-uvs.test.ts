@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
 import {
+  appearanceSourceTriangle,
   expandAppearanceCorners,
   equivalentAppearanceGeometry,
 } from './appearance-uvs.js';
@@ -26,6 +27,23 @@ function sourceMesh(): MeshData {
   };
 }
 describe('canonical appearance corner provenance (#4243)', () => {
+  it('resolves full-surface ordinals through streamed and masked subsets (#4555)', () => {
+    const mesh = sourceMesh();
+    const fragments = splitMeshForStreaming(mesh, 3, 4096);
+    assert.deepEqual(fragments.map(fragment => appearanceSourceTriangle(fragment, 0)), [0, 1, 2]);
+
+    const indices = new Uint32Array([3, 2, 1, 2, 0, 1]);
+    const masked: MeshData = { ...mesh, indices, appearanceSource: {
+      kind: 'canonical-item', indices, sourceIndices: mesh.indices,
+      cornerIndices: new Uint32Array([3, 4, 5, 0, 1, 2]),
+    } };
+    assert.equal(appearanceSourceTriangle(masked, 0), 1);
+    assert.equal(appearanceSourceTriangle(masked, 1), 0);
+    masked.appearanceSource!.cornerIndices![2] = 6;
+    assert.equal(appearanceSourceTriangle(masked, 0), undefined, 'mixed source triangles refuse');
+    masked.appearanceSource!.indices = new Uint32Array(indices);
+    assert.equal(appearanceSourceTriangle(masked, 1), undefined, 'rebuilt topology refuses');
+  });
   it('composes repeated fragments and expands welded vertices without losing UV seams', () => {
     const mesh = sourceMesh(),
       uvs = Array.from({ length: 18 }, (_, index) => index / 4);
@@ -49,7 +67,7 @@ describe('canonical appearance corner provenance (#4243)', () => {
       );
       for (const index of expanded.indices) {
         assert.deepEqual(
-          [...expanded.uvs!.slice(index * 2, index * 2 + 2)],
+          Array.from(expanded.uvs!.slice(index * 2, index * 2 + 2)),
           uvs.slice(corner * 2, corner * 2 + 2),
         );
         corner++;

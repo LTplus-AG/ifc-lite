@@ -12,7 +12,7 @@ export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
 // The MEASURED surface `getScene()` publishes — see its docs.
 export type { SceneContents } from './scene-contents.js';
-export { expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
+export { appearanceSourceTriangle, expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
 export { sameCompanionParts } from './appearance-companions.js';
 export { invertAppearancePartition, type AppearancePreview, type AppearanceOwner, type AppearanceToken, type AppearanceChange, type AppearancePartition, type AppearancePartitionPart } from './appearance-preview.js';
 import type { AppearancePreview } from './appearance-preview.js';
@@ -3276,13 +3276,13 @@ export class Renderer {
         return this._activePickSection !== null || this._activePickClipBox !== null;
     }
 
-    /** Exact surface raycast in CSS canvas coordinates; does not apply clipping. */
+    /** Exact visible-surface raycast in CSS canvas coordinates. */
     raycastScene(
         x: number,
         y: number,
         options?: PickOptions & { snapOptions?: Partial<SnapOptions> }
     ): { intersection: Intersection; snap?: SnapTarget } | null {
-        return this.raycastEngine.raycastScene(x, y, options);
+        return this.raycastEngine.raycastScene(x, y, options, this.activePickClip());
     }
 
     /**

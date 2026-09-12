@@ -43,7 +43,7 @@ canvas.addEventListener('click', async (e) => {
 });
 ```
 
-For exact world-space hits with surface normals, use `raycastScene(x, y)` — slower but returns the precise intersection point + normal.
+For exact world-space hits with surface normals, use `raycastScene(x, y)` — slower but returns the precise intersection point, normal and, where provenance is unambiguous, the federation model, representation item and canonical evaluated-surface triangle.
 
 ## Section planes
 
@@ -114,7 +114,7 @@ Registered raster references are available through `renderer.getReferenceImages(
 ### Exact surface tools and clipping
 
 `renderer.hasActiveClipping()` reports whether the last rendered frame applied
-section, terrain or box clipping. It reads the retained render snapshot, so
+section or box clipping. It reads the retained render snapshot, so
 mutating a previous options object does not change the answer.
-`raycastScene()` does not clip triangle hits; tools requiring an exact visible
-surface should refuse that operation while this query returns `true`.
+`raycastScene()` applies that same clip state while walking triangles, so a
+clipped front face cannot hide a visible face behind it.

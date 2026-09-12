@@ -7720,6 +7720,7 @@
     "VisualEnhancementOptions: interface",
     "WebGPUDevice: class",
     "aggregateFrameTimings: function",
+    "appearanceSourceTriangle: function",
     "bucketBaseKeyFor: function",
     "chunkCellKey: function",
     "computeDurationStats: function",

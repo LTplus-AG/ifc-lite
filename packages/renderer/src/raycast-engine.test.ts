@@ -303,6 +303,37 @@ describe('RaycastEngine.raycastScene', () => {
     assert.equal(hitEmptyIsolation, null);
   });
 
+  it('reports exact item/model/source identity and continues behind clipped triangles (#4555)', () => {
+    const scene = new Scene();
+    const near = makeQuad({ expressId: 7, modelIndex: 3, translate: [0, 0, 10] });
+    near.geometryItemId = 70;
+    near.appearanceSource = { kind: 'canonical-item', indices: near.indices,
+      sourceIndices: near.indices, cornerIndices: new Uint32Array([3, 4, 5, 0, 1, 2]) };
+    const rear = makeQuad({ expressId: 8, modelIndex: 4, translate: [0, 0, -10] });
+    rear.geometryItemId = 80;
+    rear.appearanceSource = { kind: 'canonical-item', indices: rear.indices, sourceIndices: rear.indices };
+    addRegularQuad(scene, near);
+    addRegularQuad(scene, rear);
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+
+    const exact = engine.raycastScene(399, 301)!.intersection;
+    assert.deepEqual({ expressId: exact.expressId, modelIndex: exact.modelIndex,
+      geometryItemId: exact.geometryItemId, sourceTriangleIndex: exact.sourceTriangleIndex },
+    { expressId: 7, modelIndex: 3, geometryItemId: 70, sourceTriangleIndex: 1 });
+
+    const visible = engine.raycastScene(399, 301, undefined, { sectionPlane: {
+      normal: [0, 0, 1], distance: 0, flipped: false,
+    } })!.intersection;
+    assert.deepEqual({ expressId: visible.expressId, modelIndex: visible.modelIndex,
+      geometryItemId: visible.geometryItemId, sourceTriangleIndex: visible.sourceTriangleIndex },
+    { expressId: 8, modelIndex: 4, geometryItemId: 80, sourceTriangleIndex: 0 });
+
+    const cropVisible = engine.raycastScene(399, 301, undefined, { clipBox: {
+      min: [-2, -2, -12], max: [2, 2, -8], enabled: true,
+    } })!.intersection;
+    assert.equal(cropVisible.expressId, 8, 'the crop box also rejects the nearer hidden surface');
+  });
+
   it('off-origin, rotated, non-uniformly-scaled geometry is hit at the transformed location, not the local one', () => {
     // An asymmetric triangle (legs of different length: 12 along local X, 4
     // along local Y), scaled non-uniformly, rotated 90 degrees about Y, and

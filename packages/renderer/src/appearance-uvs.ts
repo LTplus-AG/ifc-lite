@@ -3,6 +3,36 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MeshData } from '@ifc-lite/geometry';
 
+/** Resolve a rendered triangle to its canonical evaluated-surface ordinal.
+ * Returns undefined when topology provenance is absent or ambiguous. */
+export function appearanceSourceTriangle(
+  mesh: MeshData,
+  triangleIndex: number,
+): number | undefined {
+  const source = mesh.appearanceSource;
+  if (
+    !source ||
+    source.kind !== 'canonical-item' ||
+    source.indices !== mesh.indices ||
+    mesh.indices.length % 3 !== 0 ||
+    source.sourceIndices.length % 3 !== 0 ||
+    !Number.isSafeInteger(triangleIndex) ||
+    triangleIndex < 0 ||
+    triangleIndex * 3 + 2 >= mesh.indices.length ||
+    (source.cornerIndices && source.cornerIndices.length !== mesh.indices.length)
+  ) return undefined;
+
+  const first = triangleIndex * 3;
+  const corners = [0, 1, 2].map(offset => source.cornerIndices?.[first + offset] ?? first + offset);
+  if (corners.some(corner => !Number.isSafeInteger(corner) || corner < 0 || corner >= source.sourceIndices.length)) return undefined;
+  const ordinal = Math.floor(corners[0] / 3);
+  if (
+    corners.some(corner => Math.floor(corner / 3) !== ordinal) ||
+    new Set(corners.map(corner => corner % 3)).size !== 3
+  ) return undefined;
+  return ordinal;
+}
+
 /** Bind canonical final triangle corners, expanding welded vertices only for
  * appearance. Geometry coordinates and triangle order remain exactly unchanged. */
 export function expandAppearanceCorners(

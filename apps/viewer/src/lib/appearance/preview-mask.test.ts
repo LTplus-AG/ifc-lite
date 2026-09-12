@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
-import { expandAppearanceCorners, type Renderer } from '@ifc-lite/renderer';
+import { appearanceSourceTriangle, expandAppearanceCorners, type Renderer } from '@ifc-lite/renderer';
 import type { ViewerState } from '@/store';
 import { bindAppearancePreview } from './preview.js';
 import type { AppearancePlan } from './planner-types.js';
@@ -50,6 +50,9 @@ test('a face-masked conversion previews as textured and retained parts of one ow
   assert.deepEqual(retained.color, [0.8, 0.2, 0.1, 1]);
   assert.equal(retained.uvs, undefined); assert.equal(retained.textureRef, undefined); assert.equal(retained.textureBitmap, undefined);
   assert.equal(retained.appearanceSource?.indices, retained.indices);
+  assert.equal(appearanceSourceTriangle(textured, 0), 0);
+  assert.equal(appearanceSourceTriangle(retained, 0), 1,
+    'the retained subset keeps its full evaluated-surface ordinal');
   assert.deepEqual(group.partition, { before: [{ geometryItemId: 11, triangles: [0, 1] }],
     after: [{ geometryItemId: 101, triangles: [0] }, { geometryItemId: 102, triangles: [1] }] });
   assert.equal(group.geometryItemRemaps, undefined, 'a partition replaces the one-to-one item remap');

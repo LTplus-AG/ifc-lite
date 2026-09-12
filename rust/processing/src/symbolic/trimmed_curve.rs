@@ -20,9 +20,9 @@ use super::transform::{push_finite_point, Transform2D};
 /// (parameter and Cartesian point) are accepted — see [`resolve_trim`].
 ///
 /// Near-collinear arcs collapse to a straight segment. The test is purely
-/// RELATIVE (sagitta vs chord, radius vs chord): a big circle is not by
-/// itself a straight line, and the absolute `radius > 100.0` that used to
-/// sit here flattened genuinely curved long-radius arcs.
+/// RELATIVE (sagitta vs chord): a big circle is not by itself a straight
+/// line, and the absolute `radius > 100.0` that used to sit here flattened
+/// genuinely curved long-radius arcs.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn extract_trimmed_curve(
     item: &DecodedEntity,
@@ -96,19 +96,24 @@ pub(super) fn extract_trimmed_curve(
     let chord_dx = end_x - start_x;
     let chord_dy = end_y - start_y;
     let chord_len = (chord_dx * chord_dx + chord_dy * chord_dy).sqrt();
-    // A circle is injective mod TAU, so the chord can only shrink toward 0
-    // for two reasons: the trim barely moves at all (angle_span ~ 0), or
-    // the trim sweeps one or more FULL turns (angle_span ~ k*TAU, k >= 1)
-    // and the start/end points coincide by construction. Only the first
-    // case is degenerate; the second is a full circle (or a near-full
-    // circle, whose small-but-nonzero chord previously slipped through
-    // the `radius > chord_len * 10.0` shortcut below) and must still be
-    // tessellated as an arc/loop, not collapsed to a 2-point chord.
+    // A sweep of at least a half turn passes through two diametrically
+    // opposite points, so it is never a straight segment whatever its
+    // chord: a full turn (or several) has chord ~ 0 by construction, and a
+    // NEAR-full turn has a short but non-zero chord. Only a sweep under a
+    // half turn can be near-collinear, and for those the sagitta test
+    // decides: sagitta/chord = tan(sweep/4)/2, which is under 0.02 for a
+    // sweep below 0.16 rad.
+    //
+    // Two predicates used to sit here instead: an `is_full_turn` window of
+    // 0.02 rad around k*TAU, and `radius > chord_len * 10.0` alongside the
+    // sagitta term. The latter is |sin(sweep/2)| < 0.05, true within 0.1 rad
+    // of EVERY k*TAU, five times wider than the window meant to exclude it,
+    // so a 355 degree arc (sweep = TAU - 0.087) was emitted as a 0.09r
+    // straight chord and a 362 degree one likewise. On the k = 0 side the
+    // radius term accepted nothing the sagitta test did not already accept,
+    // so both are replaced by the half-turn bound rather than re-tuned.
     let angle_span = (end_angle - start_angle).abs();
-    let turns = (angle_span / std::f32::consts::TAU).round();
-    let is_full_turn =
-        turns >= 1.0 && (angle_span - turns * std::f32::consts::TAU).abs() < 0.02;
-    let is_near_collinear = if is_full_turn {
+    let is_near_collinear = if angle_span >= std::f32::consts::PI {
         false
     } else if chord_len > 0.0001 {
         let mid_angle = (start_angle + end_angle) / 2.0;
@@ -118,7 +123,7 @@ pub(super) fn extract_trimmed_curve(
             - end_y * start_x)
             .abs()
             / chord_len;
-        sagitta < chord_len * 0.02 || radius > chord_len * 10.0
+        sagitta < chord_len * 0.02
     } else {
         true
     };

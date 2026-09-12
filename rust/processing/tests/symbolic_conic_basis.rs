@@ -16,10 +16,6 @@ use ifc_lite_processing::extract_symbolic_data;
 /// One `IfcAnnotation` at the world origin whose single representation item
 /// is `#60`. `items` supplies `#60` and everything it references.
 fn fixture(items: &str) -> String {
-    fixture_with_angle_unit(".RADIAN.", items)
-}
-
-fn fixture_with_angle_unit(plane_angle_unit: &str, items: &str) -> String {
     format!(
         r#"ISO-10303-21;
 HEADER;
@@ -34,7 +30,7 @@ DATA;
 #4=IFCCARTESIANPOINT((0.,0.,0.));
 #5=IFCAXIS2PLACEMENT3D(#4,$,$);
 #6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#7=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,{plane_angle_unit});
+#7=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
 #40=IFCLOCALPLACEMENT($,#5);
 {items}
 #61=IFCSHAPEREPRESENTATION(#2,'Annotation','Annotation2D',(#60));
@@ -238,9 +234,14 @@ fn g1_control_ellipse_without_ref_direction_is_axis_aligned() {
 /// A quarter arc of radius 2 over circle `#53`; `circle` supplies `#53` and
 /// what it references.
 fn trimmed_arc(circle: &str) -> String {
+    arc_over(circle, std::f64::consts::FRAC_PI_2)
+}
+
+/// An arc over circle `#53` from angle 0 to `end` radians, sense agreeing.
+fn arc_over(circle: &str, end: f64) -> String {
     fixture(&format!(
         "{circle}\n#60=IFCTRIMMEDCURVE(#53,(IFCPARAMETERVALUE(0.)),\
-         (IFCPARAMETERVALUE(1.5707963267948966)),.T.,.PARAMETER.);"
+         (IFCPARAMETERVALUE({end:?})),.T.,.PARAMETER.);"
     ))
 }
 
@@ -248,7 +249,11 @@ fn single_arc_world_y(ifc: &str) -> f32 {
     let data = extract_symbolic_data(ifc);
     assert_eq!(data.polylines.len(), 1, "{:?}", data.polylines);
     let p = &data.polylines[0];
-    assert!(p.points.len() > 4, "the arc must still be drawn: {:?}", p.points);
+    assert!(
+        p.points.len() > 4,
+        "the arc must still be drawn: {:?}",
+        p.points
+    );
     p.world_y
 }
 
@@ -274,4 +279,61 @@ fn g6_control_trimmed_arc_over_a_well_formed_position_keeps_its_elevation() {
          #53=IFCCIRCLE(#52,2.);",
     ));
     assert!((world_y - 4.0).abs() < 1e-5, "got {world_y}");
+}
+
+// ---------------------------------------------------------------------------
+// G2: a near-full-turn arc is an arc. The collapse predicate's
+// `radius > chord_len * 10.0` term is |sin(sweep/2)| < 0.05, true within
+// 0.1 rad of every full turn, while the `is_full_turn` escape covered only
+// 0.02 rad, so a 355 or 362 degree arc was emitted as a two-point chord.
+//
+// MUTATION that fails both defect tests: restore `|| radius > chord_len * 10.0`
+// and the 0.02 rad `is_full_turn` window in `extract_trimmed_curve`.
+// ---------------------------------------------------------------------------
+
+const WORLD_CIRCLE_R2: &str = "#50=IFCCARTESIANPOINT((0.,0.));\n\
+     #52=IFCAXIS2PLACEMENT2D(#50,$);\n\
+     #53=IFCCIRCLE(#52,2.);";
+
+/// The single emitted polyline's points, asserted to lie on the radius-2
+/// circle about the origin.
+fn arc_points(end_degrees: f64) -> Vec<f32> {
+    let data = extract_symbolic_data(&arc_over(WORLD_CIRCLE_R2, end_degrees.to_radians()));
+    assert_eq!(data.polylines.len(), 1, "{:?}", data.polylines);
+    let points = data.polylines[0].points.clone();
+    for pair in points.chunks_exact(2) {
+        let r = (pair[0].powi(2) + pair[1].powi(2)).sqrt();
+        assert!(
+            (r - 2.0).abs() < 1e-3,
+            "{end_degrees} deg: point {pair:?} off the circle"
+        );
+    }
+    points
+}
+
+#[test]
+fn g2_a_355_degree_arc_is_not_collapsed_to_a_chord() {
+    let points = arc_points(355.0);
+    assert!(
+        points.len() / 2 > 8,
+        "a 355 degree arc must be tessellated, got {} point(s): {points:?}",
+        points.len() / 2
+    );
+}
+
+#[test]
+fn g2_a_362_degree_arc_is_not_collapsed_to_a_chord() {
+    let points = arc_points(362.0);
+    assert!(
+        points.len() / 2 > 8,
+        "a 362 degree arc must be tessellated, got {} point(s): {points:?}",
+        points.len() / 2
+    );
+}
+
+/// BOUNDING CONTROL: a genuinely shallow 2 degree arc still collapses to its
+/// two-point chord (the sagitta test), before and after the fix.
+#[test]
+fn g2_control_a_2_degree_arc_still_collapses_to_a_chord() {
+    assert_eq!(arc_points(2.0).len(), 4);
 }

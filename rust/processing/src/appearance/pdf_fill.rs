@@ -4,20 +4,34 @@
 use super::{
     authored::{self, refs, vector, Metadata},
     canonical,
+    pdf_fill_provenance::Provenance,
     pdf_fill_types::*,
 };
 use ifc_lite_core::{AttributeValue as A, IfcType};
 use rustc_hash::FxHashMap;
 use sha2::{Digest, Sha256};
 
-/// Create complete opaque polygonal fill pages through canonical product
-/// authoring and geometry. Unsupported visible semantics refuse the whole page.
+pub(super) const ALGORITHM: &str = "ifclite-pdf-fill-annotation-v1";
+
+/// Create opaque polygonal fill pages through canonical product authoring and
+/// geometry. An exact page converts as is; a page with visible unsupported
+/// content converts only when the request quotes its fidelity report digest,
+/// and the omissions are recorded with the annotation. Raster-only pages and
+/// geometric qualification failures refuse the whole page.
 pub fn plan_pdf_fill_annotation(
     bytes: &[u8],
     r: &PdfFillAnnotationRequest,
 ) -> Result<PdfFillAnnotationPlan, String> {
     let prepared = crate::pdf_vector::prepare_pdf_vector_page(&r.page)?;
-    let geometry = crate::pdf_vector::fills::compose(&prepared, r.page.model_metres_from_pdf)?;
+    let fidelity = &prepared.fidelity;
+    if let Some(accepted) = &r.accepted_fidelity_sha256 {
+        if *accepted != fidelity.sha256 {
+            return Err("Accepted PDF fidelity report does not match this page; review the current report".into());
+        }
+    }
+    let accept_partial = r.accepted_fidelity_sha256.is_some();
+    let geometry = crate::pdf_vector::fills::compose(&prepared, r.page.model_metres_from_pdf, accept_partial)?;
+    let extra_global_ids = [r.property_set_global_id.as_str(), r.property_relation_global_id.as_str()];
     let metadata = Metadata {
         schema: &r.schema,
         source_revision: &r.source_revision,
@@ -25,9 +39,16 @@ pub fn plan_pdf_fill_annotation(
         container_id: r.container_id,
         global_id: &r.global_id,
         containment_global_id: &r.containment_global_id,
+        extra_global_ids: &extra_global_ids,
         name: &r.name,
     };
-    let mut reserve = 9usize;
+    let provenance = Provenance {
+        request: r,
+        prepared: &prepared,
+        grid_size_metres: geometry.grid_metres,
+        fill_regions: geometry.shapes.len(),
+    };
+    let mut reserve = 9usize + provenance.reserve();
     for shape in &geometry.shapes {
         reserve = reserve
             .checked_add(4 + shape.rings.len() + shape.rings.iter().map(Vec::len).sum::<usize>())
@@ -118,7 +139,7 @@ pub fn plan_pdf_fill_annotation(
         A::String(r.global_id.clone()),
         owner.clone(),
         A::String(r.name.clone()),
-        A::Null,
+        A::String(format!("PDF vectors, page {}: {}", r.page.page_number, fidelity.describe())),
         A::String("IfcLite:PdfVectorFills".into()),
         A::EntityRef(placement),
         A::EntityRef(pds),
@@ -131,13 +152,14 @@ pub fn plan_pdf_fill_annotation(
         IfcType::IfcRelContainedInSpatialStructure,
         vec![
             A::String(r.containment_global_id.clone()),
-            owner,
+            owner.clone(),
             A::Null,
             A::Null,
             refs(&[annotation]),
             A::EntityRef(r.container_id),
         ],
     );
+    let property_set_id = provenance.author(&mut author, &owner, annotation)?;
     if author.plan.created.len() != reserve {
         return Err("PDF annotation allocation preflight disagrees with authored rows".into());
     }
@@ -219,12 +241,14 @@ pub fn plan_pdf_fill_annotation(
     }
     let source_ifc_sha256 = format!("{:x}", Sha256::digest(bytes));
     let mut digest = Sha256::new();
-    digest.update(b"ifclite-pdf-fill-annotation-v1\0");
+    digest.update(ALGORITHM.as_bytes());
+    digest.update(b"\0");
     digest.update(source_ifc_sha256.as_bytes());
     digest.update(serde_json::to_vec(r).map_err(|e| e.to_string())?);
     Ok(PdfFillAnnotationPlan {
         plan: author.plan,
         annotation_id: annotation,
+        property_set_id,
         meshes,
         coordinate_space: "ifc-z-up",
         rtc_offset,
@@ -233,12 +257,13 @@ pub fn plan_pdf_fill_annotation(
         source_pdf_sha256: r.page.pdf_sha256.clone(),
         page_number: r.page.page_number,
         request_sha256: format!("{:x}", digest.finalize()),
-        algorithm: "ifclite-pdf-fill-annotation-v1",
+        algorithm: ALGORITHM,
         calibration_key: r.page.calibration_key.clone(),
         tolerance_metres: r.page.tolerance_metres,
         grid_size_metres: geometry.grid_metres,
         geometry_work,
         regions,
+        fidelity: prepared.fidelity,
     })
 }
 

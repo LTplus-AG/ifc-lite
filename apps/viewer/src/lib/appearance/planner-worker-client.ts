@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { PdfFillAnnotationRequest, PdfFillAnnotationPlan } from './pdf/fill-plan-types';
+import type { PdfVectorPage, PreparedPdfVectorPage } from './pdf/vector-types';
 import type { MeshTransferRequest, MeshTransferPlan } from './scan/transfer-types';
 import type { ScanRegistrationRequest, ScanRegistrationReport } from './scan/types';
 import type { CapturedMeshPlan, CapturedMeshRequest, AnnotationPlanePlan, AnnotationPlaneRequest, PageAppearancePlan, PageAppearanceRequest, AppearanceCatalog, AppearanceCatalogRequest, AppearancePlan, AppearanceRequest, AppearanceWorkerJob, AppearanceWorkerRequest, AppearanceWorkerResponse } from './planner-types.js';
@@ -14,6 +15,8 @@ export interface AppearanceWorker {
   terminate(): void;
 }
 export interface AppearancePlanner {
+  /** Canonical fidelity report for a decoded page; no IFC source is involved. */
+  pdfFidelity(page: PdfVectorPage, options?: { signal?: AbortSignal }): Promise<PreparedPdfVectorPage>;
   pdfFillPlan(source: Uint8Array, request: PdfFillAnnotationRequest, options?: { signal?: AbortSignal }): Promise<PdfFillAnnotationPlan>;
   meshTransfer(source: Uint8Array, request: MeshTransferRequest, rgba: Uint8Array, options?: { signal?: AbortSignal }): Promise<MeshTransferPlan>;
   registerScan(request: ScanRegistrationRequest, options?: { signal?: AbortSignal }): Promise<ScanRegistrationReport>;
@@ -142,6 +145,24 @@ export function createAppearancePlanner(options: {
         return message.plan;
       }, options);
     },
+    pdfFidelity(page, options) {
+      if (page.operations.length > 100_000 || new TextEncoder().encode(JSON.stringify(page)).byteLength > 32 * 1024 * 1024) {
+        return Promise.reject(new Error('PDF fidelity request exceeds its bounded display-list budget'));
+      }
+      const frozen = structuredClone(page);
+      return run(new Uint8Array(), { type: 'pdf-fidelity', request: frozen }, message => {
+        if (message.type !== 'pdf-fidelity-complete' || !message.result
+          || message.result.algorithm !== 'ifclite-pdf-vector-state-v1' || message.result.pdfSha256 !== frozen.pdfSha256
+          || message.result.pageNumber !== frozen.pageNumber || message.result.calibrationKey !== frozen.calibrationKey
+          || message.result.toleranceMetres !== frozen.toleranceMetres
+          || message.result.fidelity?.algorithm !== 'ifclite-pdf-fidelity-v1' || !/^[a-f0-9]{64}$/.test(message.result.fidelity.sha256)
+          || !/^[a-f0-9]{64}$/.test(message.result.requestSha256) || !Array.isArray(message.result.fidelity.summary)
+          || !Array.isArray(message.result.fidelity.omissions)) {
+          throw new Error('Appearance worker returned a stale or invalid PDF fidelity report');
+        }
+        return message.result;
+      }, options);
+    },
     pdfFillPlan(source, request, options) {
       if (request.page.operations.length > 100_000 || request.page.operations.reduce((n, row) =>
         n + (row.operation.kind === 'path' ? row.operation.commands.length : 0), 0) > 2_000_000
@@ -159,6 +180,9 @@ export function createAppearancePlanner(options: {
           || JSON.stringify([message.result.frame.origin, message.result.frame.axisU, message.result.frame.axisV, message.result.frame.sizeMetres])
             !== JSON.stringify([frozen.frame.origin, frozen.frame.axisU, frozen.frame.axisV, frozen.frame.sizeMetres])
           || !/^[a-f0-9]{64}$/.test(message.result.requestSha256) || !/^[a-f0-9]{64}$/.test(message.result.sourceIfcSha256)
+          || message.result.fidelity?.algorithm !== 'ifclite-pdf-fidelity-v1' || !/^[a-f0-9]{64}$/.test(message.result.fidelity.sha256)
+          || typeof message.result.fidelity.exact !== 'boolean' || !Array.isArray(message.result.fidelity.summary)
+          || !Number.isInteger(message.result.propertySetId)
           || !message.result.meshes?.length || message.result.meshes.some(mesh => mesh.express_id !== message.result.annotationId
             || mesh.texture !== undefined || mesh.uvs !== undefined)) {
           throw new Error('Appearance worker returned a stale or invalid PDF fill annotation plan');

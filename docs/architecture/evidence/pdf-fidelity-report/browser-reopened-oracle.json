@@ -1,0 +1,39 @@
+{
+  "ifcopenshell": "0.8.3.post2",
+  "schema": "IFC4",
+  "annotations": [
+    {
+      "expressId": 2476,
+      "GlobalId": "0itmBaFqzC2Bm41zoyq4nK",
+      "Name": "PDF fidelity UI control",
+      "Description": "PDF vectors, page 1: partial conversion; omitted 1 text run",
+      "containedIn": [
+        "L1"
+      ],
+      "representationItems": 2,
+      "provenance": {
+        "SourcePdfSha256": "529c5fc262bf8948af31df1c10e60b898f37fecac1c4331143a51932bbf95d51",
+        "SourcePageNumber": 1,
+        "SourceCropBox": "[10.0,20.0,110.0,92.0]",
+        "SourceUserUnit": 2.0,
+        "SourceRotation": 90,
+        "DecoderVersion": "PDF.js 6.3.289",
+        "CalibrationKey": "pdf-registration-sha256:b55614b58d92043feb67b4c0b08552e8e4b7730971c1a183f7c92ffe937a42a0",
+        "ModelMetresFromPdf": "[0.0,-0.03469561515538527,0.03469561515538528,0.0,-0.6939123031077056,3.81651766709238]",
+        "ToleranceMetres": 0.001,
+        "GridSizeMetres": 5.208333333333333e-06,
+        "Algorithm": "ifclite-pdf-fill-annotation-v1",
+        "RequestSha256": "ece58595d2dbdcb7548665a594129a8dce20568bd9e59b1ba9e8ae8928ae1b5a",
+        "FidelityAlgorithm": "ifclite-pdf-fidelity-v1",
+        "FidelitySha256": "2629a72d3e42754cd33f94a331bad38f1ae6ad65b20e338a29c05a45bee933ba",
+        "ExactConversion": false,
+        "AcceptedPartialConversion": true,
+        "ConvertedPaths": 2,
+        "FillRegions": 2,
+        "OmittedPaints": 0,
+        "Omissions": "[{\"kind\":\"text\",\"count\":1,\"visible\":1}]",
+        "id": 2498
+      }
+    }
+  ]
+}

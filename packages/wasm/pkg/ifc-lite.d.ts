@@ -667,13 +667,14 @@ export class IfcAPI {
      */
     planPageAppearance(content: Uint8Array, request_json: string, rgba: Uint8Array): Uint8Array;
     /**
-     * Plan a complete opaque polygonal PDF fill page as canonical IfcAnnotation
-     * geometry. Painted strokes, curves and unsupported states refuse atomically.
+     * Plan an opaque polygonal PDF fill page as canonical IfcAnnotation
+     * geometry with a provenance property set. An exact page plans directly; a
+     * page with visible omissions needs the accepted fidelity report digest.
      */
     planPdfFillAnnotation(source: Uint8Array, request_json: string): Uint8Array;
     /**
-     * Prepare bounded ordered PDF vector graphics states. No IFC entities or
-     * flattened geometry are produced; unsupported content prevents qualification.
+     * Prepare bounded ordered PDF vector graphics states and the page fidelity
+     * report (convertible paths, omissions with extent, exact/raster-only).
      */
     preparePdfVectorPage(request_json: string): Uint8Array;
     /**

@@ -44,7 +44,7 @@ pub(super) fn qualify(rings: &[Ring2D], remaining: &mut u64) -> Result<(), Strin
                         continue;
                     }
                     if touches(a, b, s[j], s[(j + 1) % s.len()]) {
-                        return Err("PDF stroke offset boundaries cross or touch; no partial page is created".into());
+                        return Err("PDF stroke offset boundaries cross or touch; the page is not geometrically qualified".into());
                     }
                 }
             }

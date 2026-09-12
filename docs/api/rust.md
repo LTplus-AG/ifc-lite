@@ -927,12 +927,17 @@ malformed source records. Failure never means that an item has no style.
 ### PDF vector graphics-state preparation
 
 `ifc_lite_processing::pdf_vector::prepare_pdf_vector_page(&PdfVectorPage)` returns
-a `PreparedPdfVectorPage` containing ordered source paths and complete graphics
-state snapshots. Canonical Rust validates bounded decoded input and binds the
-immutable page/calibration/operations request. It does not parse PDF bytes,
-flatten curves or create IFC entities. `state_qualified` is deliberately separate
-from geometry fidelity or Apply readiness. See the [WASM contract](wasm.md#pdf-vector-graphics-state-preparation)
-and [annotation implementation boundary](../architecture/pdf-vector-annotations.md#bounded-graphics-state-preparation).
+a `PreparedPdfVectorPage` containing the ordered convertible source paths with
+complete graphics state snapshots and a `FidelityReport` (`fidelity`) listing
+every omission kind with counts, page extents and visibility, plus the
+`exact`/`raster_only` verdict and its binding digest. Canonical Rust validates
+bounded decoded input and binds the immutable page/calibration/operations
+request. It does not parse PDF bytes, flatten curves or create IFC entities;
+`fidelity.exact` is deliberately separate from geometric qualification or Apply
+readiness. `appearance::plan_pdf_fill_annotation` recomputes the report and
+plans a partial page only when the request's `accepted_fidelity_sha256` quotes
+it. See the [WASM contract](wasm.md#pdf-vector-graphics-state-preparation-and-fidelity-report)
+and [annotation implementation boundary](../architecture/pdf-vector-annotations.md#fidelity-report-and-partial-acceptance).
 
 ### Sequential fixed-grid contour composition
 

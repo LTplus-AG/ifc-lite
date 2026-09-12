@@ -12,6 +12,8 @@ pnpm-lock.yaml linguist-generated=true
 Cargo.lock linguist-generated=true
 # Binary files
 *.wasm binary linguist-generated=true
+# Controlled evidence PDFs are byte-exact (stream /Length and SHA-256 digests).
+docs/architecture/evidence/**/*.pdf binary
 # Test fixtures (.ifc/.IFC/.ifcx) are fetched on demand via
 # `pnpm fixtures`. See tests/models/manifest.json for the catalogue and
 # tests/models/README.md for the rationale. The repo no longer uses Git LFS.

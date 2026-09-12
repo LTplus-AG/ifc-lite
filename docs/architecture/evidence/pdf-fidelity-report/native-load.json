@@ -1,0 +1,131 @@
+{
+  "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "fileMb": 2.41,
+  "entities": 44249,
+  "command": "scripts/perf/probe.sh tests/models/ara3d/AC20-FZK-Haus.ifc --iters 5 --json --fingerprint",
+  "order": "base, branch, base, branch (interleaved)",
+  "host": "Windows 11, shared with other builds; the viewer typecheck/lint ran concurrently with branch run 1",
+  "runs": [
+    {
+      "side": "base",
+      "run": 1,
+      "commit": "e700a7ba3",
+      "parseMs": 5,
+      "geometryMs": 7,
+      "totalMs": 12,
+      "allTotalsMs": [
+        16,
+        12,
+        13,
+        13,
+        13
+      ],
+      "allWallMs": [
+        18.4302,
+        14.330499999999999,
+        14.3699,
+        14.7051,
+        15.0442
+      ],
+      "medianTotalMs": 13,
+      "medianWallMs": 14.71,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "side": "branch",
+      "run": 1,
+      "commit": "feat/4406-pdf-vector-annotations-f8 (uncommitted worktree)",
+      "parseMs": 8,
+      "geometryMs": 11,
+      "totalMs": 19,
+      "allTotalsMs": [
+        24,
+        19,
+        23,
+        24,
+        25
+      ],
+      "allWallMs": [
+        26.772100000000002,
+        22.309099999999997,
+        26.03,
+        27.3275,
+        27.8171
+      ],
+      "medianTotalMs": 24,
+      "medianWallMs": 26.77,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "side": "base",
+      "run": 2,
+      "commit": "e700a7ba3",
+      "parseMs": 9,
+      "geometryMs": 10,
+      "totalMs": 19,
+      "allTotalsMs": [
+        20,
+        19,
+        21,
+        19,
+        22
+      ],
+      "allWallMs": [
+        22.8633,
+        22.1258,
+        23.763800000000003,
+        21.4936,
+        24.5723
+      ],
+      "medianTotalMs": 20,
+      "medianWallMs": 22.86,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "side": "branch",
+      "run": 2,
+      "commit": "feat/4406-pdf-vector-annotations-f8 (uncommitted worktree)",
+      "parseMs": 8,
+      "geometryMs": 8,
+      "totalMs": 17,
+      "allTotalsMs": [
+        19,
+        17,
+        21,
+        17,
+        19
+      ],
+      "allWallMs": [
+        20.758599999999998,
+        19.883499999999998,
+        23.0412,
+        19.279500000000002,
+        20.7028
+      ],
+      "medianTotalMs": 19,
+      "medianWallMs": 20.7,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    }
+  ],
+  "verdict": "Identical mesh fingerprints and counts in all 20 iterations; base medians 13/20 ms, branch medians 24/19 ms total \u2014 the base-to-base spread (7 ms) exceeds any base/branch difference, so no regression is observed and none is expected: the changed modules (pdf_vector, appearance pdf_fill) are not on the parse/geometry path."
+}

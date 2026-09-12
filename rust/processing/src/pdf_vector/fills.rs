@@ -44,12 +44,24 @@ impl Budget {
 pub(crate) fn compose(
     prepared: &PreparedPdfVectorPage,
     model_metres_from_pdf: [f64; 6],
+    accept_partial: bool,
 ) -> Result<FillGeometry, String> {
-    if !prepared.state_qualified {
-        return Err("PDF page contains unsupported painted content or graphics state; no partial annotation is created".into());
+    let fidelity = &prepared.fidelity;
+    if fidelity.raster_only {
+        return Err("PDF page has no vector drawing content; keep it as a raster reference".into());
     }
-    if prepared.paths.is_empty() || prepared.paths.len() > 128 {
-        return Err("PDF fill-page creation requires 1..128 painted paths".into());
+    if !fidelity.exact && !accept_partial {
+        let n = fidelity.visible_omissions();
+        return Err(format!(
+            "PDF page is not exactly convertible ({n} visible {}); partial conversion needs explicit acceptance of its fidelity report",
+            if n == 1 { "omission" } else { "omissions" }
+        ));
+    }
+    if prepared.paths.is_empty() {
+        return Err("PDF page has no convertible vector paths".into());
+    }
+    if prepared.paths.len() > 128 {
+        return Err("PDF fill-page creation requires 1..128 convertible painted paths".into());
     }
     let paint_count: usize = prepared.paths.iter().map(|p| usize::from(!matches!(p.paint, PdfVectorPaint::Stroke | PdfVectorPaint::CloseStroke)) + usize::from(p.paint.strokes())).sum();
     let grid = prepared.tolerance_metres / ((paint_count * 4 + 4) as f64 * 16.);

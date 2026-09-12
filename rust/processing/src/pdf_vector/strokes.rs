@@ -223,7 +223,9 @@ pub(super) fn rings(
         || state.line_join == 1
         || !state.dash_lengths.is_empty()
     {
-        return Err("PDF stroke requires positive width, butt/square caps, bevel/miter joins and no dash pattern".into());
+        // The interpreter reports hairline, round and dashed strokes before
+        // composition; reaching this is a planner invariant violation.
+        return Err("Planner invariant: the interpreter must omit strokes without positive width, butt/square caps, bevel/miter joins and a solid line".into());
     }
     let mut out = PathRings {
         rings: vec![],
@@ -257,9 +259,7 @@ pub(super) fn rings(
                 just_closed = true;
             }
             _ => {
-                return Err(
-                    "PDF curved strokes are not qualified; no partial page is created".into(),
-                )
+                return Err("Planner invariant: the interpreter must omit curved strokes".into())
             }
         }
     }

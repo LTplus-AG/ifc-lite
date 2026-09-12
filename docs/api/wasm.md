@@ -858,21 +858,50 @@ at every combination of density, overlap and geometry complexity.
 checks a controlled IFC/PNG roundtrip. No real scan-to-BIM accuracy is claimed
 without valid spatially distributed held-out correspondences.
 
-### PDF vector graphics-state preparation
+### PDF vector graphics-state preparation and fidelity report
 
 `IfcAPI.preparePdfVectorPage(requestJson)` returns UTF-8 JSON bytes for a bounded
-`PreparedPdfVectorPage` report. The strict request is the decoder-neutral
+`PreparedPdfVectorPage`. The strict request is the decoder-neutral
 `PdfVectorPage` defined in `rust/processing/src/pdf_vector/types.rs`; the viewer's
 existing PDF worker produces it through its `vectors` job using pinned PDF.js
 6.3.289. It retains original operator indices, page/source identity and the host's
-explicit calibrated native-PDF-to-model-plane affine.
+explicit calibrated native-PDF-to-model-plane affine, and it types every
+operation the pinned decoder emits: path construction, colour and line state,
+`save`/`restore`, `transform`, `clip`, `textClip`, `text` (with its estimated
+em-box), `image` placements, `shading`, fill/stroke `pattern` colours, decoded
+`graphicsState` dictionaries, `formBegin`/`formEnd`, `groupBegin`/`groupEnd`,
+`annotationBegin`/`annotationEnd`, `markedContent`/`endMarkedContent` and
+`unsupported` operators.
 
-`stateQualified` is a graphics-state preparation result only. This call does not
-flatten curves, outline strokes, classify/compose fills, create IFC entities or
-approve exact/partial conversion. Unsupported paint semantics and painted
-hairlines leave diagnostics and `stateQualified=false`; returned paths then serve
-diagnostic inspection only. No Apply plan exists in this response. Malformed
-structure and exceeded work/JSON limits throw before any report is published.
+The response holds `paths` — only the paths whose complete graphics state the
+planner understands — and a canonical `fidelity` report (`ifclite-pdf-fidelity-v1`)
+naming everything else:
+
+- `exact`: no visible content would be omitted. Says nothing about geometric
+  qualification (curves, stroke topology and budgets are decided when planning).
+- `rasterOnly`: nothing converts, no visible vector content is omitted and at
+  least one image is visible; the page stays a raster reference.
+- `convertiblePaths`, `omittedPaints`: how many paths convert and how many
+  visible painted fill/stroke parts are left out.
+- `summary`: one entry per omission kind — `text`, `image`, `clip`,
+  `transparency`, `pattern`, `dash`, `roundCapJoin`, `curvedStroke`,
+  `hairline`, `hidden`, `annotation`, `unsupported:<operator>` — with total
+  `count`, `visibleCount` and `bboxPdf`, the union extent of the visible entries
+  in unrotated PDF user space (CropBox coordinates).
+- `omissions`: up to 4,096 individual entries with `operatorOrdinal`, `bboxPdf`
+  and `visible`; `omissionsTruncated` says when that detailed list stopped while
+  the summary counts stayed complete.
+- `sha256`, `algorithm`: the report digest binds the request digest to the
+  verdict (exact, raster-only, convertible paths, omitted paints and the
+  summary). A partial plan must quote it.
+
+This call does not flatten curves, outline strokes, compose fills, create IFC
+entities or approve a conversion. A rectangular clip that still contains the
+page (within the declared tolerance) is not an omission; any other clip, text
+clip, transparency, pattern colour or unknown operator taints the rest of its
+save scope so later paints there are reported rather than drawn without their
+effect. Malformed structure, unbalanced graphics-state stacks and exceeded
+work/JSON limits throw before any report is published.
 
 The request digest is SHA-256 of the UTF-8 algorithm ID concatenated directly with
 compact typed Rust serde JSON. JSON number spelling and field order follow the
@@ -880,7 +909,8 @@ Rust types; a JavaScript JSON reserialization is not that canonical byte stream.
 Keep the immutable request paired with its report. Native code does not parse the
 PDF bytes; the host verifies original source ownership and decoder provenance.
 See [the full preparation contract](../architecture/pdf-vector-annotations.md#bounded-graphics-state-preparation)
-for limits, unsupported operations and the subsequent geometry/creation stages.
+and [the fidelity contract](../architecture/pdf-vector-annotations.md#fidelity-report-and-partial-acceptance)
+for limits, kinds, visibility and the subsequent geometry/creation stages.
 
 ### PDF fill annotation planning
 
@@ -888,30 +918,46 @@ for limits, unsupported operations and the subsequent geometry/creation stages.
 one colored `IfcAnnotation` in an effective IFC4/IFC4X3 source. The request uses
 the existing annotation source revision, allocator, container, `GlobalId`,
 containment GlobalId, `Name` and plane frame, plus a canonical decoded
-`PdfVectorPage`. Its calibrated PDF-to-plane affine determines model scale;
-`frame.sizeMetres` is descriptive page extent, not a second scale.
+`PdfVectorPage`, host-owned `propertySetGlobalId` and `propertyRelationGlobalId`
+for the provenance rows, and `acceptedFidelitySha256` (a string or `null`). Its
+calibrated PDF-to-plane affine determines model scale; `frame.sizeMetres` is
+descriptive page extent, not a second scale.
 
-The geometry scope accepts complete opaque RGB pages made of straight fill
-edges, qualified quadratic/cubic curved rings, and qualified solid straight
-strokes. Strokes support positive width, butt/square caps, bevel/miter joins and
+The planner recomputes the fidelity report and applies the acceptance rule: an
+exact page plans directly; a page with visible omissions plans only when
+`acceptedFidelitySha256` equals the `sha256` of the report the host displayed
+(a missing or different digest refuses with an explicit message); a raster-only
+page refuses regardless. Acceptance covers the listed omissions, not geometry.
+
+The geometry scope accepts opaque RGB pages made of straight fill edges,
+qualified quadratic/cubic curved rings, and qualified solid straight strokes.
+Strokes support positive width, butt/square caps, bevel/miter joins and
 miter-limit fallback, outlined before the full affine transform. It resolves
 nonzero/even-odd winding, holes, islands, implicit CropBox clipping and paint
-order, including fill then stroke in combined operators. Hairlines, round/dashed
-or curved strokes, text, images, explicit clips,
-patterns, transparency and unsupported state refuse the entire page. Quantization
-collapse, uncertain near contacts and exhausted work/size budgets also refuse.
-No supported subset is silently exported from an unsupported page.
+order, including fill then stroke in combined operators. Text, images, explicit
+clips, transparency, patterns, dashed, round-capped/joined, curved and hairline
+strokes and unsupported state are never drawn approximately: they are the
+report's omissions, left out only under acceptance and recorded with the
+annotation. Quantization collapse, uncertain near contacts and exhausted
+work/size budgets still refuse the entire page. No subset is exported silently.
 
-The result contains the canonical `plan`, `annotationId`, multiple untextured
-colored `meshes`, `coordinateSpace: 'ifc-z-up'`, `rtcOffset`, `frame`, source IFC
-and PDF digests, `requestSha256`, page/calibration identity, declared tolerance,
-actual grid size/work count and per-region source operator/RGB provenance.
+The result contains the canonical `plan`, `annotationId`, `propertySetId`,
+multiple untextured colored `meshes`, `coordinateSpace: 'ifc-z-up'`, `rtcOffset`,
+`frame`, source IFC and PDF digests, `requestSha256`, page/calibration identity,
+declared tolerance, actual grid size/work count, per-region source operator/RGB
+provenance and the `fidelity` report the plan was built under. The plan's rows
+include an `IfcLite_PdfVectorConversion` `IfcPropertySet` (source PDF digest,
+page, CropBox, UserUnit, rotation, decoder, calibration key and affine,
+`ToleranceMetres`, grid, request/fidelity digests, `ExactConversion`,
+`AcceptedPartialConversion`, converted paths, fill regions, omitted paints and
+the omission summary as JSON) attached through `IfcRelDefinesByProperties`, and
+`IfcAnnotation.Description` states the verdict in words.
 Mesh positions are relative to the returned RTC offset. The host must bind the
 decoded operations to the retained original PDF and validate the effective IFC
 revision, frame and allocator before committing the plan. Native receives decoded
 operations, so the supplied PDF digest is not independently authenticated.
 
-The planner limits input to 128 painted paths, each with 4,096 commands, and
+The planner limits input to 128 convertible painted paths, each with 4,096 commands, and
 charges conservative overlay/precision work against a shared bounded budget.
 All original page contours and CropBox share one integer lattice (at most 1,024
 source vertices), retained through classification, clipping and paint ordering;

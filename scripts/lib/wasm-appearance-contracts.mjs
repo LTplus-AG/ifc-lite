@@ -11,7 +11,7 @@ import { checkScanRegistrationContract } from './wasm-scan-registration-contract
 
 export function runAppearanceContracts(IfcAPI, test) {
   test('Reference-only openings preserve exact host image/UV binding (#4440)', () => checkReferenceOpeningContract(IfcAPI));
-  test('PDF vector state preserves calibrated stroke transforms and explicit blockers (#4406)', () => checkPdfVectorContract(IfcAPI));
+  test('PDF vector state preserves calibrated stroke transforms and reports omissions with oracle-frame extents (#4406)', () => checkPdfVectorContract(IfcAPI));
   test('annotation fills preserve holes, units and solid colour (#4406)', () => checkAnnotationFillContract(IfcAPI));
   test('registered mesh transfer reports unknown coverage and binds prepared assets (#4381)', () => checkMeshTransferContract(IfcAPI));
   test('thin-wall, occluder and gap observations classify without painting through (#4381)', () => checkMeshTransferSurfacesContract(IfcAPI));

@@ -21,15 +21,16 @@ fn plan_json(source:&[u8],input:&str)->Result<Vec<u8>,String> {
 }
 #[wasm_bindgen]
 impl IfcAPI {
-    /// Plan a complete opaque polygonal PDF fill page as canonical IfcAnnotation
-    /// geometry. Painted strokes, curves and unsupported states refuse atomically.
+    /// Plan an opaque polygonal PDF fill page as canonical IfcAnnotation
+    /// geometry with a provenance property set. An exact page plans directly; a
+    /// page with visible omissions needs the accepted fidelity report digest.
     #[wasm_bindgen(js_name = planPdfFillAnnotation)]
     pub fn plan_pdf_fill_annotation(&self, source:&[u8], request_json:&str)->Result<Vec<u8>,JsError> {
         plan_json(source,request_json).map_err(|message|JsError::new(&message))
     }
 
-    /// Prepare bounded ordered PDF vector graphics states. No IFC entities or
-    /// flattened geometry are produced; unsupported content prevents qualification.
+    /// Prepare bounded ordered PDF vector graphics states and the page fidelity
+    /// report (convertible paths, omissions with extent, exact/raster-only).
     #[wasm_bindgen(js_name = preparePdfVectorPage)]
     pub fn prepare_pdf_vector_page(&self, request_json: &str) -> Result<Vec<u8>, JsError> {
         prepare_json(request_json).map_err(|message| JsError::new(&message))

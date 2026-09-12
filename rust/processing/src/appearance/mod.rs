@@ -14,6 +14,7 @@ mod evaluated_allocation;
 mod annotation;
 mod authored;
 mod pdf_fill;
+mod pdf_fill_provenance;
 mod pdf_fill_types;
 pub use pdf_fill::plan_pdf_fill_annotation;
 pub use pdf_fill_types::{PdfFillAnnotationRequest,PdfFillAnnotationPlan,PdfFillRegion};

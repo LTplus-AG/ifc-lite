@@ -89,7 +89,7 @@ fn issue_4406_combined_fill_stroke_retains_stroke_over_fill_and_closed_hole() {
     assert_eq!(result.regions.len(), 2);
 }
 #[test]
-fn issue_4406_unsupported_strokes_refuse_whole_page() {
+fn issue_4406_unsupported_strokes_are_omissions_that_need_acceptance_and_never_convert() {
     let (source, request) = stroke(
         vec![0., 0., 0., 1., 4., 0.],
         0,
@@ -97,14 +97,17 @@ fn issue_4406_unsupported_strokes_refuse_whole_page() {
         10.,
         [1., 0., 0., 1., 0., 0.],
     );
-    for operation in [
-        PdfVectorOperator::LineCap { cap: 1 },
-        PdfVectorOperator::LineJoin { join: 1 },
-        PdfVectorOperator::LineWidth { width: 0. },
-        PdfVectorOperator::Dash {
-            lengths: vec![1., 1.],
-            phase: 0.,
-        },
+    for (operation, kind) in [
+        (PdfVectorOperator::LineCap { cap: 1 }, "roundCapJoin"),
+        (PdfVectorOperator::LineJoin { join: 1 }, "roundCapJoin"),
+        (PdfVectorOperator::LineWidth { width: 0. }, "hairline"),
+        (
+            PdfVectorOperator::Dash {
+                lengths: vec![1., 1.],
+                phase: 0.,
+            },
+            "dash",
+        ),
     ] {
         let mut bad = request.clone();
         bad.page.operations.insert(
@@ -115,7 +118,15 @@ fn issue_4406_unsupported_strokes_refuse_whole_page() {
             },
         );
         bad.page.operations[6].ordinal = 6;
-        assert!(plan_pdf_fill_annotation(source.as_bytes(), &bad).is_err());
+        let error = plan_pdf_fill_annotation(source.as_bytes(), &bad).unwrap_err();
+        assert!(error.contains("explicit acceptance"), "{error}");
+        let report = crate::pdf_vector::prepare_pdf_vector_page(&bad.page).unwrap().fidelity;
+        assert_eq!(report.summary[0].kind, kind);
+        assert!(report.summary[0].bbox_pdf.is_some());
+        bad.accepted_fidelity_sha256 = Some(report.sha256);
+        // Accepting the omission leaves nothing convertible on this control.
+        let error = plan_pdf_fill_annotation(source.as_bytes(), &bad).unwrap_err();
+        assert!(error.contains("no convertible vector paths"), "{error}");
     }
 }
 #[test]

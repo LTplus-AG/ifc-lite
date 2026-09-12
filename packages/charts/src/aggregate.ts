@@ -19,6 +19,7 @@ import type {
   CellValue,
   ChartDataset,
   ChartDatasetRow,
+  ChartItem,
   ChartSpec,
 } from './types.js';
 
@@ -300,5 +301,37 @@ export function categoriesForIds(aggregation: Aggregation, ids: Iterable<number>
   }
   full.sort((a, b) => a - b);
   partial.sort((a, b) => a - b);
+  return { full, partial };
+}
+
+/** The element ids behind a set of chart items: a stacked segment selects only its own series' share of the category. */
+export function idsForItems(aggregation: Aggregation, items: Iterable<ChartItem>): Set<number> {
+  const out = new Set<number>();
+  for (const { seriesIndex, dataIndex } of items) {
+    const bucket = aggregation.series[seriesIndex]?.buckets[dataIndex];
+    if (!bucket) continue;
+    for (let i = 0; i < bucket.ids.length; i++) out.add(bucket.ids[i]);
+  }
+  return out;
+}
+
+/**
+ * The chart items a 3D selection touches, per series: `full` items have every
+ * id selected, `partial` ones some. For a single-series chart this is
+ * {@link categoriesForIds} with `seriesIndex: 0`.
+ */
+export function itemsForIds(aggregation: Aggregation, ids: Iterable<number>): { full: ChartItem[]; partial: ChartItem[] } {
+  const selected = ids instanceof Set ? (ids as Set<number>) : new Set(ids);
+  const full: ChartItem[] = [];
+  const partial: ChartItem[] = [];
+  aggregation.series.forEach((series, seriesIndex) => {
+    series.buckets.forEach((bucket, dataIndex) => {
+      if (bucket.ids.length === 0) return;
+      let hits = 0;
+      for (let i = 0; i < bucket.ids.length; i++) if (selected.has(bucket.ids[i])) hits += 1;
+      if (hits === 0) return;
+      (hits === bucket.ids.length ? full : partial).push({ seriesIndex, dataIndex });
+    });
+  });
   return { full, partial };
 }

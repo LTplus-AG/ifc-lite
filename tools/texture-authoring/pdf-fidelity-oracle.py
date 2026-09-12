@@ -20,7 +20,7 @@ boundary; a partial page must actually differ inside its reported extents. This
 checks that the report locates what was left out. It is not a claim that the
 converted subset resembles the page.
 
-Usage: python3 tools/texture-authoring/pdf-fidelity-oracle.py exported.ifc [output.json [plan.json source.pdf]]
+Usage: python3 tools/texture-authoring/pdf-fidelity-oracle.py exported.ifc [output.json [plan.json source.pdf [--pdf2-closed-dash-reader-divergence]]]
 """
 import json
 import sys
@@ -89,7 +89,7 @@ def paint_triangles(predicted, uv, tris_uv, rgb):
     predicted[hit] = np.rint(np.asarray(rgb[:3]) * 255).astype(np.uint8)
 
 
-def raster_compare(model, plan_path, pdf_path, out_dir, stem):
+def raster_compare(model, plan_path, pdf_path, out_dir, stem, pdf2_closed_dash_divergence=False):
     """MuPDF raster of the page versus the native meshes and the reopened fill areas."""
     import fitz
     import numpy as np
@@ -173,7 +173,8 @@ def raster_compare(model, plan_path, pdf_path, out_dir, stem):
             "unexplained": unexplained,
             "maxBoundaryDistancePixels": float(distance.max()) if len(distance) else 0.0,
         }
-        assert unexplained == 0, (name, results[name])
+        if not pdf2_closed_dash_divergence:
+            assert unexplained == 0, (name, results[name])
         if not plan["fidelity"]["exact"]:
             assert explained_by_extent.any(), f"{name}: a partial page must differ inside its reported extents"
         visual = np.full_like(expected, 255)
@@ -184,7 +185,12 @@ def raster_compare(model, plan_path, pdf_path, out_dir, stem):
     Image.fromarray(native).save(out_dir / f"{stem}-native3d.png")
     Image.fromarray(reader).save(out_dir / f"{stem}-reader2d.png")
     both = np.any(np.abs(native.astype(np.int16) - reader.astype(np.int16)) > 1, axis=2)
-    return {
+    assert not both.any(), "native plan and independently reopened IFC predict different pixels"
+    if pdf2_closed_dash_divergence:
+        assert plan.get("pdfFormatVersion") == "2.0", plan.get("pdfFormatVersion")
+        assert plan["fidelity"]["exact"] and not extents, plan["fidelity"]
+        assert all(result["unexplained"] > 0 for result in results.values()), results
+    result = {
         "mupdf": fitz.VersionBind,
         "renderScale": RASTER_SCALE,
         "pixelsCompared": int(pix.w * pix.h),
@@ -194,6 +200,9 @@ def raster_compare(model, plan_path, pdf_path, out_dir, stem):
         "native3dVersusReader2dPixels": int(both.sum()),
         "comparisons": results,
     }
+    if pdf2_closed_dash_divergence:
+        result["expectedReaderDivergence"] = "ISO 32000-2 joins first/last on-dash pieces; MuPDF 1.26.5 caps them"
+    return result
 
 
 def main(argv):
@@ -214,7 +223,10 @@ def main(argv):
     if len(argv) > 4:
         out_path = Path(argv[2])
         stem = out_path.name.removesuffix("-oracle.json").removesuffix(".json")
-        report["raster"] = raster_compare(ifcopenshell.open(argv[1]), argv[3], argv[4], out_path.parent, stem)
+        divergence = len(argv) > 5 and argv[5] == "--pdf2-closed-dash-reader-divergence"
+        if len(argv) > 5 and not divergence:
+            raise SystemExit(f"Unknown option: {argv[5]}")
+        report["raster"] = raster_compare(ifcopenshell.open(argv[1]), argv[3], argv[4], out_path.parent, stem, divergence)
     rendered = json.dumps(report, indent=2)
     if len(argv) > 2:
         with open(argv[2], "w", encoding="utf-8") as handle:

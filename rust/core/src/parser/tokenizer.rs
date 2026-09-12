@@ -95,25 +95,37 @@ fn string_literal(input: &[u8]) -> IResult<&[u8], Token<'_>> {
     ))(input)
 }
 
-/// Parse integer: 42, -42
+/// Parse integer: 42, -42, +42
+///
+/// ISO 10303-21 spells `INTEGER` as `[ SIGN ] DIGIT { DIGIT }` with
+/// `SIGN = '+' | '-'`, so a leading `+` is as legal as a leading `-`. Accepting
+/// only `-` dropped the WHOLE entity, not just the attribute: every caller of
+/// `parse_entity` discards a record that fails to tokenize
+/// (`let Ok(..) = .. else { continue }`). The exponent sign below already
+/// accepted both, `fast_float2::parse_partial` (the fast reader in `decoder.rs`)
+/// accepts `+`, and the TypeScript half reads values with `parseFloat`, so the
+/// same file used to decode differently in the browser and in wasm.
 /// Uses lexical-core for 10x faster parsing
 #[inline]
 fn integer(input: &[u8]) -> IResult<&[u8], Token<'_>> {
-    map_res(recognize(tuple((opt(char('-')), digit1))), |s: &[u8]| {
+    map_res(recognize(tuple((opt(one_of("+-")), digit1))), |s: &[u8]| {
         lexical_core::parse::<i64>(s)
             .map(Token::Integer)
             .map_err(|_| "parse error")
     })(input)
 }
 
-/// Parse float: 3.14, -3.14, 1.5E-10, 0., 1.
+/// Parse float: 3.14, -3.14, +3.14, 1.5E-10, 0., 1.
 /// IFC allows floats like "0." without decimal digits
+///
+/// `REAL` carries the same `[ SIGN ]` as `INTEGER`; see [`integer`] for why a
+/// rejected sign costs the whole entity.
 /// Uses lexical-core for 10x faster parsing
 #[inline]
 fn float(input: &[u8]) -> IResult<&[u8], Token<'_>> {
     map_res(
         recognize(tuple((
-            opt(char('-')),
+            opt(one_of("+-")),
             digit1,
             char('.'),
             opt(digit1), // Made optional to support "0." format

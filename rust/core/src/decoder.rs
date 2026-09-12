@@ -8,7 +8,7 @@
 
 use crate::columnar_index::EntityIndexStore;
 use crate::error::{Error, Result};
-use crate::parser::{parse_entity, report_scan_diagnostics, EntityScanner};
+use crate::parser::{is_step_space, parse_entity, report_scan_diagnostics, EntityScanner};
 use crate::schema_gen::{AttributeValue, DecodedEntity};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -484,7 +484,7 @@ impl<'a> EntityDecoder<'a> {
         // Find first '#' which is the entity ref
         while i < len {
             // Skip whitespace
-            while i < len && (bytes[i] == b' ' || bytes[i] == b'\n' || bytes[i] == b'\r') {
+            while i < len && is_step_space(bytes[i]) {
                 i += 1;
             }
 
@@ -512,6 +512,21 @@ impl<'a> EntityDecoder<'a> {
     /// Fast extraction of PolyLoop point IDs directly from raw bytes
     /// Bypasses full entity decoding for BREP optimization
     /// Returns list of entity IDs for CartesianPoints
+    ///
+    /// `None` when ANY `#<digits>` in the list is unrepresentable, not just when
+    /// none of them is. A reference above `u32::MAX` is refused rather than
+    /// wrapped (#3421), and dropping only that vertex would hand the caller a
+    /// polygon one corner SHORTER than the file's: a different face, meshed
+    /// and rendered as if it were the authored one.
+    ///
+    /// This accessor sees ids, not entities, so a reference that fits `u32`
+    /// but names no record in the file is returned as written. Whether that
+    /// id RESOLVES is the caller's half of the same rule, and every caller
+    /// must refuse the whole loop on a miss rather than skip the point
+    /// (`processors::helpers::extract_loop_points_by_id` and
+    /// `processors::surface` both do). The coordinate sibling
+    /// [`Self::get_polyloop_coords_cached_into`] enforces both halves itself
+    /// because it resolves the points too.
     #[inline]
     pub fn get_polyloop_point_ids_fast(&mut self, entity_id: u32) -> Option<Vec<u32>> {
         let bytes = self.get_raw_bytes(entity_id)?;
@@ -544,7 +559,7 @@ impl<'a> EntityDecoder<'a> {
         while i < len {
             // Skip whitespace and commas
             while i < len
-                && (bytes[i] == b' ' || bytes[i] == b',' || bytes[i] == b'\n' || bytes[i] == b'\r')
+                && (bytes[i] == b',' || is_step_space(bytes[i]))
             {
                 i += 1;
             }
@@ -556,15 +571,13 @@ impl<'a> EntityDecoder<'a> {
             // Expect '#' followed by number
             if bytes[i] == b'#' {
                 i += 1;
-                let start = i;
-                while i < len && bytes[i].is_ascii_digit() {
-                    i += 1;
-                }
-                if i > start {
-                    // Shared checked accumulator (#3421): an oversized id is dropped, not wrapped.
-                    if let Some(id) = crate::express_id::parse_express_id(&bytes[start..i]) {
-                        point_ids.push(id);
-                    }
+                // One digit walk, shared with the scanner (#3395). A ref that
+                // was met but does not resolve refuses the whole loop (#3421):
+                // a shorter polygon is a different face, not a smaller error.
+                let (digits, id) = crate::express_id::parse_express_id_prefix(&bytes[i..]);
+                i += digits;
+                if digits > 0 {
+                    point_ids.push(id?);
                 }
             } else {
                 i += 1; // Skip unknown character
@@ -665,7 +678,7 @@ impl<'a> EntityDecoder<'a> {
         i += 1; // Skip first '('
 
         // Skip whitespace
-        while i < len && (bytes[i] == b' ' || bytes[i] == b'\n' || bytes[i] == b'\r') {
+        while i < len && is_step_space(bytes[i]) {
             i += 1;
         }
 
@@ -696,7 +709,7 @@ impl<'a> EntityDecoder<'a> {
         i += 1; // Skip comma
 
         // Skip whitespace
-        while i < len && (bytes[i] == b' ' || bytes[i] == b'\n' || bytes[i] == b'\r') {
+        while i < len && is_step_space(bytes[i]) {
             i += 1;
         }
 
@@ -709,99 +722,10 @@ impl<'a> EntityDecoder<'a> {
 
         Some((loop_id, orientation, is_outer))
     }
-
-    /// Fast extraction of PolyLoop COORDINATES directly from raw bytes
-    /// This is the ultimate fast path - extracts all coordinates in one go
-    /// Avoids N+1 HashMap lookups by batching point extraction
-    /// Returns Vec of (x, y, z) coordinate tuples
-    #[inline]
-    pub fn get_polyloop_coords_fast(&mut self, entity_id: u32) -> Option<Vec<(f64, f64, f64)>> {
-        // Ensure index is built once
-        self.build_index();
-        let index = self.entity_index.as_ref()?;
-        let bytes_full = self.content;
-
-        // Get polyloop raw bytes
-        let (start, end) = index.lookup(entity_id)?;
-        let bytes = &bytes_full[start..end];
-
-        // IFCPOLYLOOP((#id1,#id2,#id3,...));
-        let mut i = 0;
-        let len = bytes.len();
-
-        // Skip to first '(' after '='
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
-            return None;
-        }
-        i += 1; // Skip first '('
-
-        // Skip to second '(' for the point list
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
-            return None;
-        }
-        i += 1; // Skip second '('
-
-        // Parse point IDs and immediately fetch coordinates
-        let mut coords = Vec::with_capacity(8); // Most faces have 3-8 vertices
-
-        while i < len {
-            // Skip whitespace and commas
-            while i < len
-                && (bytes[i] == b' ' || bytes[i] == b',' || bytes[i] == b'\n' || bytes[i] == b'\r')
-            {
-                i += 1;
-            }
-
-            if i >= len || bytes[i] == b')' {
-                break;
-            }
-
-            // Expect '#' followed by number
-            if bytes[i] == b'#' {
-                i += 1;
-                let id_start = i;
-                while i < len && bytes[i].is_ascii_digit() {
-                    i += 1;
-                }
-                if i > id_start {
-                    // Shared checked accumulator (#3421): an oversized ref drops this point.
-                    if let Some(point_id) =
-                        crate::express_id::parse_express_id(&bytes[id_start..i])
-                    {
-                        // INLINE: Get cartesian point coordinates directly
-                        // This avoids the overhead of calling get_cartesian_point_fast for each point
-                        if let Some((pt_start, pt_end)) = index.lookup(point_id) {
-                            if let Some(coord) =
-                                parse_cartesian_point_inline(&bytes_full[pt_start..pt_end])
-                            {
-                                coords.push(coord);
-                            }
-                        }
-                    }
-                }
-            } else {
-                i += 1; // Skip unknown character
-            }
-        }
-
-        if coords.len() >= 3 {
-            Some(coords)
-        } else {
-            None
-        }
-    }
-
-
 }
 
 /// Parse cartesian point coordinates inline from raw bytes
-/// Used by get_polyloop_coords_fast for maximum performance
+/// Used by the cached polyloop coordinate readers for maximum performance
 #[inline]
 fn parse_cartesian_point_inline(bytes: &[u8]) -> Option<(f64, f64, f64)> {
     let len = bytes.len();
@@ -845,7 +769,7 @@ fn parse_float_inline(bytes: &[u8], offset: &mut usize) -> Option<f64> {
 
     // Skip whitespace and commas
     while i < len
-        && (bytes[i] == b' ' || bytes[i] == b',' || bytes[i] == b'\n' || bytes[i] == b'\r')
+        && (bytes[i] == b',' || is_step_space(bytes[i]))
     {
         i += 1;
     }
@@ -872,7 +796,7 @@ fn parse_next_float(bytes: &[u8], offset: &mut usize) -> Option<f64> {
 
     // Skip whitespace and commas
     while i < len
-        && (bytes[i] == b' ' || bytes[i] == b',' || bytes[i] == b'\n' || bytes[i] == b'\r')
+        && (bytes[i] == b',' || is_step_space(bytes[i]))
     {
         i += 1;
     }

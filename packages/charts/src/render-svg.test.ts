@@ -34,6 +34,9 @@ describe('buildEChartsOption', () => {
     const plain = (buildEChartsOption({ aggregation: agg }).series as Array<{ data: Array<{ itemStyle: { opacity?: number } }> }>)[0].data;
     expect(plain.map((d) => d.itemStyle.opacity)).toEqual([undefined, undefined]);
     expect((option.xAxis as { data: string[] }).data).toEqual(['IfcWall', 'IfcDoor']);
+    // Labels share the width and truncate rather than being dropped; they only tilt past eight buckets.
+    const axisLabel = (buildEChartsOption({ aggregation: agg, width: 400 }).xAxis as { axisLabel: { width: number; overflow: string; rotate: number } }).axisLabel;
+    expect(axisLabel).toMatchObject({ width: 194, overflow: 'truncate', rotate: 0 });
     // No key for a component the bundle does not register (ECharts reports `title: undefined` as missing).
     expect('title' in option).toBe(false);
     expect('brush' in option).toBe(false);

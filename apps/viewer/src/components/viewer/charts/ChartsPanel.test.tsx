@@ -22,6 +22,7 @@ import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { render, click, cleanup } from '@/test/render.js';
 import { ChartsPanel, ensureActiveDashboard } from './ChartsPanel.js';
+import { EMPTY_HINTS } from './ChartCard.js';
 import type { ChartRenderer, ChartRendererEvents } from './useEChart.js';
 
 const MINI_IFC = `ISO-10303-21;
@@ -269,6 +270,24 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [GID(44)]);
     // The other charts re-aggregate over that one door — singular, not "1 elements".
     assert.match(ui.querySelectorAll('[data-chart-subtitle]')[0]!.textContent!, /1 bucket · 1 element$/);
+  });
+
+  it('a chart over a source with no data yet says where the data comes from instead of drawing empty axes', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    const picker = ui.querySelector<HTMLSelectElement>('select[aria-label="Dashboard"]')!;
+    await act(async () => {
+      picker.value = 'preset:Coordination';
+      picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    const empties = [...ui.querySelectorAll('[data-chart-empty]')].map((el) => el.textContent);
+    // The Coordination preset mixes clash and BCF charts; each names its own source.
+    assert.equal(empties.length, 8);
+    assert.ok(empties.includes(EMPTY_HINTS.clash) && empties.includes(EMPTY_HINTS.bcf), empties.join(' | '));
+    assert.ok(empties.every((t) => t === EMPTY_HINTS.clash || t === EMPTY_HINTS.bcf));
+    assert.equal(ui.querySelector('[data-chart-subtitle]')?.textContent, 'No data');
   });
 
   it('the close button runs onClose and unmounting releases the claim the panel installed', async () => {

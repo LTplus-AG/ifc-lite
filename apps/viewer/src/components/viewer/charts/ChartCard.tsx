@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Crosshair, Pencil, X } from 'lucide-react';
-import { aggregate, buildEChartsOption, type Aggregation, type ChartDataset, type ChartSpec, type PaletteAssignment } from '@ifc-lite/charts';
+import { aggregate, buildEChartsOption, type Aggregation, type ChartDataset, type ChartSource, type ChartSpec, type PaletteAssignment } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
 import { readChartTheme, useEChart, type ChartRenderer, type ChartSelectEvent } from './useEChart';
@@ -32,10 +32,21 @@ const plural = (n: number, word: string): string => `${n.toLocaleString()} ${wor
 
 /** "6 buckets · 15 elements · 2 without a value" — the card's subtitle. */
 export function describeAggregation(aggregation: Aggregation): string {
+  if (aggregation.categories.length === 0 && aggregation.unbucketed === 0) return 'No data';
   const total = aggregation.spec.measure.agg === 'count' ? plural(aggregation.total, 'element') : `${aggregation.total.toLocaleString()} ${aggregation.unit ?? ''}`.trim();
   const rest = aggregation.unbucketed > 0 ? ` · ${aggregation.unbucketed} without a value` : '';
   return `${plural(aggregation.categories.length, 'bucket')} · ${total}${rest}`;
 }
+
+/** What fills an empty chart, per source — where the data comes from, in the app's own words. */
+export const EMPTY_HINTS: Record<ChartSource, string> = {
+  elements: 'No elements in scope.',
+  clash: 'No clash results yet — run a clash check (Analyze › Clash).',
+  bcf: 'No BCF topics — open or create topics (Analyze › BCF topics).',
+  schedule: 'No schedule — load one on the Schedule panel.',
+  ids: 'No IDS results yet — run an IDS check (Analyze › IDS check).',
+  compare: 'No comparison yet — compare two models (Analyze › Compare).',
+};
 
 export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onAggregation }: ChartCardProps) {
   const chartSlice = useViewerStore((s) => s.chartSlice);
@@ -100,7 +111,14 @@ export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onA
           <X className="h-3.5 w-3.5" />
         </Button>
       </div>
-      <div ref={ref} className="flex-1 min-h-[120px]" data-chart-host />
+      <div className="relative flex-1 min-h-[120px]">
+        <div ref={ref} className="absolute inset-0" data-chart-host />
+        {aggregation && aggregation.categories.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-muted-foreground" data-chart-empty>
+            {dataset.rows.length === 0 ? EMPTY_HINTS[spec.source] : 'Nothing to bucket — every row is without a value for this dimension.'}
+          </div>
+        )}
+      </div>
       {aggregation && (
         // A screen-reader / test-visible legend: one row per bucket, clickable like the bars.
         <ul className="sr-only" data-chart-legend>

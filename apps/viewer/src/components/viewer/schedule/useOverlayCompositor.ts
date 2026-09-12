@@ -16,8 +16,9 @@
  * Ownership tracking lives here exactly once — previously duplicated as
  * `contributedHiddenRef` / `contributedColorsRef` inside every consumer.
  *
- * This hook must be mounted high in the viewer tree so it runs throughout
- * the session. Mount it alongside the root viewport or the Gantt panel.
+ * Mounted ONCE, by `ViewerLayout`, for the whole session. Two instances
+ * would each keep their own ownership map and double-write the channels —
+ * a panel that owns a layer must only register it, never mount this hook.
  */
 
 import { useEffect, useRef } from 'react';

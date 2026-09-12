@@ -102,6 +102,7 @@ import { buildCommandPaletteJsonEntities } from './commandPaletteJsonExport';
 import { getRecentFiles, formatFileSize, getCachedFile, getCachedFileNames } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
+import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import {
   type Command,
@@ -122,11 +123,10 @@ function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' 
   useViewerStore.getState().toggleWorkspacePanel(panel);
 }
 
-/** Bottom panel (Script / Lists / Gantt) — mutually exclusive in the bottom strip,
- *  independent of the sidebar. The store owns the toggle, including the re-dock of a
- *  floating or popped-out panel; the hand-rolled flag flips that used to live here
- *  knew only the dock flags, so toggling a FLOATING Lists panel left it on screen with nothing latched. */
-function activateBottomPanel(panel: 'script' | 'lists' | 'gantt') {
+/** Bottom panel — mutually exclusive in the bottom strip, independent of the sidebar. The store
+ *  owns the toggle, including the re-dock of a floating or popped-out panel; the hand-rolled flag
+ *  flips that used to live here knew only the dock flags, so toggling a FLOATING Lists panel left it on screen with nothing latched. */
+function activateBottomPanel(panel: BottomPanelId) {
   closeActiveAnalysisExtension();
   useViewerStore.getState().toggleBottomPanel(panel);
 }

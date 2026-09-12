@@ -19,8 +19,7 @@ import { useSearchIndex } from '@/hooks/useSearchIndex';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
 import { isSafeMode } from '@/lib/safe-mode';
-import { ShieldAlert, Grip } from 'lucide-react';
-import { usePanelDetachDrag } from '@/hooks/usePanelDetachDrag';
+import { ShieldAlert } from 'lucide-react';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
@@ -31,9 +30,8 @@ import { EntityContextMenu } from './EntityContextMenu';
 import { AnonymizedExportDialog } from './anonymized-export/AnonymizedExportDialog';
 import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
-import { ListPanel } from './lists/ListPanel';
-import { ScriptPanel } from './ScriptPanel';
-import { GanttPanel } from './schedule/GanttPanel';
+import { BottomStrip } from './BottomStrip';
+import { useOverlayCompositor } from './schedule/useOverlayCompositor';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
 import { TourHost } from '@/components/tours/TourHost';
@@ -47,30 +45,10 @@ import {
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
+import { activeBottomPanel } from '@/lib/panels/bottom-panels';
 import { getPanelDef } from '@/lib/panels/registry';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { usePanelControls } from '@/hooks/usePanelControls';
-
-const BOTTOM_PANEL_MIN_HEIGHT = 120;
-const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
-const BOTTOM_PANEL_MAX_RATIO = 0.7; // max 70% of container
-
-/** Slim grip atop a bottom-strip panel — drag to lift it into a floating window,
- *  or drag onto another screen to pop it out (#1208). */
-function BottomPanelGrip({ id }: { id: 'gantt' | 'script' | 'lists' }) {
-  const onPointerDown = usePanelDetachDrag(id);
-  // Pointer-only drag affordance — not a real button (no keyboard action);
-  // keyboard users dock / float via the sidebar rail / Alt+N (#1208).
-  return (
-    <div
-      onPointerDown={onPointerDown}
-      title="Drag to float · drag onto another screen to pop out"
-      className="flex items-center justify-center h-5 shrink-0 cursor-grab active:cursor-grabbing select-none touch-none border-b border-border/40 bg-muted/10"
-    >
-      <Grip className="h-3.5 w-3.5 text-muted-foreground/50" />
-    </div>
-  );
-}
 
 export function ViewerLayout() {
   useSearchIndex();
@@ -78,6 +56,11 @@ export function ViewerLayout() {
   useKeyboardShortcuts();
   // ⌘D / Ctrl+D to duplicate the current selection.
   useDuplicateShortcut();
+  // THE writer from the overlay-layer registry into the renderer's legacy
+  // hiddenEntities / pendingColorUpdates channels. Mounted once, here, for
+  // the whole session: a second instance would keep its own ownership map and
+  // double-write. Layer owners (4D animation, charts, …) only register layers.
+  useOverlayCompositor();
   // Bridge viewer state transitions into the extension action log so the idle pattern miner can surface one-click tool suggestions.
   useActionLogger();
   // Show the RFC §06 §7 privacy disclosure on first launch.
@@ -205,20 +188,14 @@ export function ViewerLayout() {
   const rightPanelCollapsed = useViewerStore((s) => s.rightPanelCollapsed);
   const setLeftPanelCollapsed = useViewerStore((s) => s.setLeftPanelCollapsed);
   const setRightPanelCollapsed = useViewerStore((s) => s.setRightPanelCollapsed);
-  const bcfPanelVisible = useViewerStore((s) => s.bcfPanelVisible);
   const activeTool = useViewerStore((s) => s.activeTool);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
-  const idsPanelVisible = useViewerStore((s) => s.idsPanelVisible);
-  const extensionsPanelVisible = useViewerStore((s) => s.extensionsPanelVisible);
   const listPanelVisible = useViewerStore((s) => s.listPanelVisible);
-  const setListPanelVisible = useViewerStore((s) => s.setListPanelVisible);
-  const lensPanelVisible = useViewerStore((s) => s.lensPanelVisible);
-  const clashPanelVisible = useViewerStore((s) => s.clashPanelVisible);
-  const comparePanelVisible = useViewerStore((s) => s.comparePanelVisible);
   const scriptPanelVisible = useViewerStore((s) => s.scriptPanelVisible);
-  const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((s) => s.ganttPanelVisible);
-  const setGanttPanelVisible = useViewerStore((s) => s.setGanttPanelVisible);
+  // Which bottom panel the flags say is open (table precedence), and whether
+  // it is actually docked here rather than floating / popped out.
+  const bottomPanel = activeBottomPanel({ ganttPanelVisible, scriptPanelVisible, listPanelVisible });
   // The right pane is owned by the sidebar (#1208); here we only need to know which
   // BOTTOM panel (Script / Schedule / Lists) is docked vs detached, so the bottom strip skips a floating (#1201) or popped-out one.
   const floatingPanels = useViewerStore((s) => s.floatingPanels);
@@ -227,9 +204,7 @@ export function ViewerLayout() {
     () => new Set<string>([...floatingPanels.map((p) => p.id), ...poppedOutIds]),
     [floatingPanels, poppedOutIds],
   );
-  const ganttDocked = ganttPanelVisible && !detachedIds.has('gantt');
-  const scriptDocked = scriptPanelVisible && !detachedIds.has('script');
-  const listDocked = listPanelVisible && !detachedIds.has('lists');
+  const dockedBottomPanel = bottomPanel && !detachedIds.has(bottomPanel) ? bottomPanel : null;
 
   // ── Mobile bottom sheet ──
   // Mobile shows exactly ONE panel at a time, so resolve which, then render it
@@ -255,11 +230,9 @@ export function ViewerLayout() {
   const mobileSheet = useMemo(() => resolveMobileSheet({
     hasAnalysisExtension: activeAnalysisExtension !== null && activeAnalysisExtension !== undefined,
     activeTool,
-    ganttVisible: ganttPanelVisible,
-    scriptVisible: scriptPanelVisible,
-    listVisible: listPanelVisible,
+    bottomPanel,
     sidebarActivePanel,
-  }), [activeAnalysisExtension, activeTool, ganttPanelVisible, scriptPanelVisible, listPanelVisible, sidebarActivePanel]);
+  }), [activeAnalysisExtension, activeTool, bottomPanel, sidebarActivePanel]);
 
   // Panel ref for programmatic collapse/expand (command palette, keyboard
   // shortcuts). The right region is the unified sidebar (#1208), which owns its
@@ -274,55 +247,7 @@ export function ViewerLayout() {
     else if (!leftPanelCollapsed && panel.isCollapsed()) panel.expand();
   }, [leftPanelCollapsed]);
 
-  // Bottom panel resize state (pixel height, persisted in ref to avoid re-renders during drag)
-  const [bottomHeight, setBottomHeight] = useState(BOTTOM_PANEL_DEFAULT_HEIGHT);
   const containerRef = useRef<HTMLDivElement>(null);
-  const isDraggingRef = useRef(false);
-  const cleanupRef = useRef<(() => void) | null>(null);
-
-  // Cleanup drag listeners on unmount
-  useEffect(() => {
-    return () => { cleanupRef.current?.(); };
-  }, []);
-
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isDraggingRef.current = true;
-
-    const startY = e.clientY;
-    const startHeight = bottomHeight;
-
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      if (!isDraggingRef.current) return;
-      const container = containerRef.current;
-      if (!container) return;
-
-      const maxHeight = container.clientHeight * BOTTOM_PANEL_MAX_RATIO;
-      const delta = startY - moveEvent.clientY;
-      const newHeight = Math.min(
-        maxHeight,
-        Math.max(BOTTOM_PANEL_MIN_HEIGHT, startHeight + delta)
-      );
-      setBottomHeight(newHeight);
-    };
-
-    const cleanup = () => {
-      isDraggingRef.current = false;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      cleanupRef.current = null;
-    };
-
-    const onMouseUp = () => { cleanup(); };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-    document.body.style.cursor = 'row-resize';
-    document.body.style.userSelect = 'none';
-    cleanupRef.current = cleanup;
-  }, [bottomHeight]);
 
   // Track the gap between the layout viewport (innerHeight) and the visual
   // viewport. On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES the
@@ -449,36 +374,15 @@ export function ViewerLayout() {
               <SidebarDock />
             </div>
 
-            {/* Bottom Panel - Lists / Script / Gantt / analysis ext (custom resizable).
-                Launched from the sidebar rail but docked here (their home region).
-                A panel that's been dragged out to float / another screen is skipped. */}
-            {(listDocked || scriptDocked || ganttDocked || !!activeBottomAnalysisExtension) && (
-              <div data-detach-root style={{ height: bottomHeight, flexShrink: 0 }} className="relative">
-                {/* Drag handle (resize height) */}
-                <div
-                  className="absolute inset-x-0 top-0 h-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-row-resize z-10"
-                  onMouseDown={handleResizeStart}
-                />
-                <div className="h-full w-full overflow-hidden border-t pt-1.5 flex flex-col">
-                  {/* Detach grip — drag to float / pop the bottom panel onto another
-                      screen (hidden for analysis extensions, which own their chrome). */}
-                  {!activeBottomAnalysisExtension && (
-                    <BottomPanelGrip id={ganttDocked ? 'gantt' : scriptDocked ? 'script' : 'lists'} />
-                  )}
-                  <div className="flex-1 min-h-0 overflow-hidden">
-                    {activeBottomAnalysisExtension ? (
-                      activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                    ) : ganttDocked ? (
-                      <GanttPanel onClose={() => setGanttPanelVisible(false)} />
-                    ) : scriptDocked ? (
-                      <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
-                    ) : (
-                      <ListPanel onClose={() => setListPanelVisible(false)} />
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Bottom strip — Schedule / Script / Lists / analysis ext. Launched from the
+                sidebar rail but docked here (their home region); a panel dragged out to
+                float / another screen is skipped. */}
+            <BottomStrip
+              dockedPanel={dockedBottomPanel}
+              analysisExtension={activeBottomAnalysisExtension}
+              containerRef={containerRef}
+              closePanel={closePanel}
+            />
 
             {/* Floating / docked workspace-panel windows (#1201) */}
             <FloatingPanelHost />

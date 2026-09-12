@@ -17,11 +17,11 @@ import { useCallback, useMemo } from 'react';
 import { useViewerStore } from '@/store';
 import {
   isAnalysisPanel,
-  isBottomPanel,
   isLeftPanel,
   type WorkspacePanelId,
   type AnalysisPanelId,
 } from '@/lib/panels/registry';
+import { isBottomPanel, isBottomPanelOpen, type BottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { openPanelWindow, closePanelWindow } from '@/services/panel-windows';
 
 export type PanelLocation = 'docked' | 'floating' | 'popped' | 'closed';
@@ -68,10 +68,15 @@ export function usePanelControls(): PanelControls {
   const floatingPanels = useViewerStore((s) => s.floatingPanels);
   const poppedOutIds = useViewerStore((s) => s.poppedOutIds);
   const activePanel = useViewerStore((s) => s.sidebarActivePanel);
-  // Bottom-strip visibility flags (their "docked" state).
-  const scriptVisible = useViewerStore((s) => s.scriptPanelVisible);
+  // Bottom-strip visibility flags (their "docked" state), one subscription
+  // per flag so an unrelated store write does not re-render every rail icon.
   const ganttVisible = useViewerStore((s) => s.ganttPanelVisible);
+  const scriptVisible = useViewerStore((s) => s.scriptPanelVisible);
   const listVisible = useViewerStore((s) => s.listPanelVisible);
+  const bottomFlags = useMemo<BottomPanelFlags>(
+    () => ({ ganttPanelVisible: ganttVisible, scriptPanelVisible: scriptVisible, listPanelVisible: listVisible }),
+    [ganttVisible, scriptVisible, listVisible],
+  );
   // The Hierarchy panel (left region, #1267) is "docked" while its slot is open.
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
   // The lower half of a docked split (#1266), also docked/visible.
@@ -104,13 +109,11 @@ export function usePanelControls(): PanelControls {
   const isDockedInHome = useCallback(
     (id: WorkspacePanelId): boolean => {
       if (id === 'hierarchy') return !leftPanelCollapsed; // left slot open
-      if (id === 'script') return scriptVisible;
-      if (id === 'gantt') return ganttVisible;
-      if (id === 'lists') return listVisible;
+      if (isBottomPanel(id)) return isBottomPanelOpen(bottomFlags, id);
       // A side panel is docked as the right-pane primary OR the split secondary.
       return id === sideDocked || id === secondaryDocked;
     },
-    [sideDocked, secondaryDocked, scriptVisible, ganttVisible, listVisible, leftPanelCollapsed],
+    [sideDocked, secondaryDocked, bottomFlags, leftPanelCollapsed],
   );
 
   const panelLocation = useCallback(

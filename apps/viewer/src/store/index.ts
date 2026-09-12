@@ -34,7 +34,8 @@ import { createClashSlice, type ClashSlice } from './slices/clashSlice.js';
 import { createCompareSlice, type CompareSlice } from './slices/compareSlice.js';
 import { createDockSlice, type DockSlice } from './slices/dockSlice.js';
 import { createSidebarSlice, type SidebarSlice } from './slices/sidebarSlice.js';
-import { isBottomPanel, type WorkspacePanelId, type BottomPanelId } from '@/lib/panels/registry';
+import { type WorkspacePanelId } from '@/lib/panels/registry';
+import { bottomPanelFlags, isBottomPanel, isBottomPanelOpen, type BottomPanelId } from '@/lib/panels/bottom-panels';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
@@ -395,12 +396,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
     // routes through this fn with the panel id), so it must land in its home
     // region instead of flipping side-panel flags it doesn't own (#1208).
     if (isBottomPanel(panel)) {
-      set({
-        scriptPanelVisible: panel === 'script',
-        ganttPanelVisible: panel === 'gantt',
-        listPanelVisible: panel === 'lists',
-        rightPanelCollapsed: false,
-      });
+      set({ ...bottomPanelFlags(panel), rightPanelCollapsed: false });
       return;
     }
     if (panel === 'properties') {
@@ -440,21 +436,16 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   toggleBottomPanel: (panel) => {
     const [set, get] = args;
     const s = get();
-    const flagActive = panel === 'script' ? s.scriptPanelVisible : panel === 'gantt' ? s.ganttPanelVisible : s.listPanelVisible;
+    const flagActive = isBottomPanelOpen(s, panel);
     const detached = s.floatingPanels.some((p) => p.id === panel) || s.poppedOutIds.includes(panel);
     // Re-dock any float / OS window for it first.
     get().closeFloatingPanel(panel);
     get().setPanelPoppedOut(panel, false);
     if (flagActive && !detached) {
       // Toggle off (only one bottom panel shows at a time).
-      set({ scriptPanelVisible: false, ganttPanelVisible: false, listPanelVisible: false });
+      set(bottomPanelFlags(null));
     } else {
-      set({
-        scriptPanelVisible: panel === 'script',
-        ganttPanelVisible: panel === 'gantt',
-        listPanelVisible: panel === 'lists',
-        rightPanelCollapsed: false,
-      });
+      set({ ...bottomPanelFlags(panel), rightPanelCollapsed: false });
     }
   },
 
@@ -463,12 +454,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
     if (isBottomPanel(panel)) {
       get().closeFloatingPanel(panel);
       get().setPanelPoppedOut(panel, false);
-      set({
-        scriptPanelVisible: panel === 'script',
-        ganttPanelVisible: panel === 'gantt',
-        listPanelVisible: panel === 'lists',
-        rightPanelCollapsed: false,
-      });
+      set({ ...bottomPanelFlags(panel), rightPanelCollapsed: false });
     } else {
       get().showWorkspacePanel(panel);
     }

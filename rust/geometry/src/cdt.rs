@@ -64,6 +64,39 @@
 mod enc_grid;
 mod predicates;
 
+/// Tally of constraint segments [`Cdt::recover_segment`] gave up on. Every
+/// such segment makes `build_from` return `None` and the caller ear-clip
+/// instead, which used to leave no trace; a harness or fixture test can now
+/// read the count back. Two slots because the two exits mean different
+/// things: `stuck` is the normal "no flippable crossing edge" exit (crossing
+/// constraints, a duplicate vertex the segment names), `exhausted` is the
+/// 100 000-flip guard, the hang-adjacent case where the flip order cycled.
+mod recovery_diag {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static STUCK: AtomicU64 = AtomicU64::new(0);
+    static EXHAUSTED: AtomicU64 = AtomicU64::new(0);
+
+    #[inline]
+    pub(super) fn stuck() {
+        STUCK.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub(super) fn exhausted() {
+        EXHAUSTED.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Read + reset `(stuck, exhausted)`: constraint segments the CDT could
+    /// not recover since the last call, split by which exit gave up. Process-
+    /// global relaxed atomics, like [`crate::take_plane_weld_stats`]: a stale
+    /// read under concurrency mis-reports a diagnostic count, never geometry.
+    pub fn take_cdt_recovery_fallbacks() -> (u64, u64) {
+        (STUCK.swap(0, Ordering::Relaxed), EXHAUSTED.swap(0, Ordering::Relaxed))
+    }
+}
+pub use recovery_diag::take_cdt_recovery_fallbacks;
+
 use crate::Point2;
 use enc_grid::EncGrid;
 use predicates::{dist2, rings_to_pslg, segments_properly_cross, strictly_between};
@@ -980,6 +1013,8 @@ impl Cdt {
     /// Reordering the walk would change the flip sequence and, on cocircular
     /// input (every rectangular profile), the emitted triangulation, which
     /// the mesh-determinism manifests pin; re-pin both if you reorder it.
+    /// Both give-up exits are tallied in [`recovery_diag`] so the ear-clip
+    /// fallback they trigger is not silent.
     fn recover_segment(
         &mut self,
         a: usize,
@@ -995,6 +1030,7 @@ impl Cdt {
         loop {
             guard += 1;
             if guard > 100_000 {
+                recovery_diag::exhausted();
                 return false;
             }
             if edges.contains(&ekey(a, b)) {
@@ -1062,7 +1098,11 @@ impl Cdt {
             if !flipped {
                 // No flippable crossing edge found — segment already present or
                 // unrecoverable. Re-check existence at loop top.
-                return edges.contains(&ekey(a, b));
+                if edges.contains(&ekey(a, b)) {
+                    return true;
+                }
+                recovery_diag::stuck();
+                return false;
             }
         }
     }

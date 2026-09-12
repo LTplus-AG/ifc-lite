@@ -285,3 +285,23 @@ use super::*;
         let cdt = Cdt::build_from(points, &segments[..4], 0).expect("CDT builds");
         assert_structurally_valid(&cdt);
     }
+
+    /// Two crossing constraints: the first is recovered, the second cannot
+    /// be (its only crossing edge is a constraint, which the flip loop never
+    /// touches), so `build_from` declines and the caller ear-clips. That
+    /// fallback used to leave no trace; it now lands in the recovery tally,
+    /// on the `stuck` slot, not the flip-guard `exhausted` slot. The tally is
+    /// process-global, so a parallel test that also declines can only raise
+    /// the `stuck` delta; the mutation that drops the `stuck()` call fails
+    /// this test whenever it runs alone.
+    #[test]
+    fn an_unrecoverable_constraint_is_tallied_not_silent() {
+        let points = [pt(0.0, 0.0), pt(10.0, 0.0), pt(10.0, 10.0), pt(0.0, 10.0)];
+        let _ = take_cdt_recovery_fallbacks();
+        assert!(triangulate_pslg(&points, &[(0, 2), (1, 3)]).is_none(), "crossing constraints decline");
+        let (stuck, exhausted) = take_cdt_recovery_fallbacks();
+        assert!(stuck >= 1, "the declined segment is tallied: stuck {stuck}");
+        assert_eq!(exhausted, 0, "the flip guard never ran out on a 4-point hull");
+        // Positive control: it is the crossing that declines, not the points.
+        assert!(triangulate_pslg(&points, &[(0, 2)]).is_some());
+    }

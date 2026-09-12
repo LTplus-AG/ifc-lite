@@ -48,8 +48,15 @@ const REQUIRED_EVIDENCE = new Map([
     'tests/extensions/canaries contains no bundle directories',
   ]],
   ['test.yml', ['Assert the census target contains runnable tests']],
-  ['determinism.yml', ['Assert native determinism targets contain runnable tests']],
+  ['determinism.yml', [
+    'Assert native determinism targets contain runnable tests',
+    'uses: ./.github/workflows/report-scheduled-failure.yml',
+  ]],
   ['python-wheels.yml', ['Assert the complete wheel matrix arrived']],
+  ['export-schema-conformance.yml', ['uses: ./.github/workflows/report-scheduled-failure.yml']],
+  ['ifcopenshell-parity.yml', ['uses: ./.github/workflows/report-scheduled-failure.yml']],
+  ['wide-arithmetic.yml', ['uses: ./.github/workflows/report-scheduled-failure.yml']],
+  ['xmatch-fixture.yml', ['uses: ./.github/workflows/report-scheduled-failure.yml']],
 ]);
 
 export function auditRoot(root) {

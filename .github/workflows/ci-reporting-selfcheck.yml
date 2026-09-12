@@ -1,0 +1,73 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: CI reporting selfcheck
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ci-reporting-selfcheck.yml'
+      - '.github/workflows/report-scheduled-failure.yml'
+      - '.github/workflows/determinism.yml'
+      - '.github/workflows/export-schema-conformance.yml'
+      - '.github/workflows/ifcopenshell-parity.yml'
+      - '.github/workflows/wide-arithmetic.yml'
+      - '.github/workflows/xmatch-fixture.yml'
+      - 'scripts/check-workflow-report-paths.mjs'
+      - 'scripts/check-workflow-report-paths.test.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  probes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      assertion: ${{ steps.assertion.outputs.rc }}
+      deadline: ${{ steps.deadline.outputs.rc }}
+    steps:
+      - name: Force an assertion failure
+        id: assertion
+        continue-on-error: true
+        run: |
+          set +e
+          bash -c 'exit 23'
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          exit "$rc"
+      - name: Prove the assertion failure remained observable
+        env:
+          OUTCOME: ${{ steps.assertion.outcome }}
+          RC: ${{ steps.assertion.outputs.rc }}
+        run: test "$OUTCOME" = failure && test "$RC" = 23
+      - name: Force an in-step deadline
+        id: deadline
+        continue-on-error: true
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=1s 1s bash -c 'sleep 30'
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          exit "$rc"
+      - name: Prove the deadline remained observable
+        env:
+          OUTCOME: ${{ steps.deadline.outcome }}
+          RC: ${{ steps.deadline.outputs.rc }}
+        run: test "$OUTCOME" = failure && test "$RC" = 124
+
+  exercise-reporter:
+    needs: probes
+    if: always()
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: CI reporting selfcheck
+      jobs: assertion probe, deadline probe
+      result: assertion=${{ needs.probes.outputs.assertion }}, deadline=${{ needs.probes.outputs.deadline }}, probe-job=${{ needs.probes.result }}
+      dry_run: true
+    permissions:
+      contents: read
+      issues: write

@@ -54,3 +54,30 @@ test('#4144: the required aggregate and credential-bearing release job are bound
   assert.match(job(workflow('test.yml'), 'test'), /timeout-minutes:\s*5/);
   assert.match(job(workflow('release.yml'), 'release'), /timeout-minutes:\s*90/);
 });
+
+test('#4144: every scheduled gate reports out-of-band through an always-run job', () => {
+  const cases = new Map([
+    ['wide-arithmetic.yml', 'wide-arithmetic-tripwire'],
+    ['xmatch-fixture.yml', 'content-matching-fixture'],
+    ['export-schema-conformance.yml', 'validate'],
+    ['ifcopenshell-parity.yml', 'full'],
+  ]);
+  for (const [name, dependency] of cases) {
+    const reporter = job(workflow(name), 'report-scheduled-failure');
+    assert.match(reporter, new RegExp(`needs: ${dependency}`));
+    assert.match(reporter, /if: always\(\) && github\.event_name == 'schedule'/);
+    assert.match(reporter, /uses: \.\/\.github\/workflows\/report-scheduled-failure\.yml/);
+  }
+  const determinism = job(workflow('determinism.yml'), 'report-scheduled-failure');
+  assert.match(determinism, /needs: \[arm64-determinism, wasm32-mesh-determinism\]/);
+  assert.match(determinism, /if: always\(\) && github\.event_name == 'schedule'/);
+});
+
+test('#4144: runtime selfcheck forces assertion and deadline failures through the real reporter', () => {
+  const text = workflow('ci-reporting-selfcheck.yml');
+  assert.match(text, /bash -c 'exit 23'/);
+  assert.match(text, /timeout --signal=TERM --kill-after=1s 1s/);
+  assert.match(text, /test "\$OUTCOME" = failure && test "\$RC" = 124/);
+  assert.match(job(text, 'exercise-reporter'), /if: always\(\)/);
+  assert.match(job(text, 'exercise-reporter'), /uses: \.\/\.github\/workflows\/report-scheduled-failure\.yml/);
+});

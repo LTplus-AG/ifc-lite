@@ -48,7 +48,7 @@ test('a missing wheel is an error, while a complete bounded fixture passes', (co
   const root = fixture({
     'sdk-canary.yml': `# ${required}\njobs:\n  canary:\n    timeout-minutes: 1\n`,
     'test.yml': '# Assert the census target contains runnable tests\njobs:\n  gate:\n    timeout-minutes: 1\n',
-    'determinism.yml': '# Assert native determinism targets contain runnable tests\njobs:\n  gate:\n    timeout-minutes: 1\n',
+    'determinism.yml': '# Assert native determinism targets contain runnable tests\n# uses: ./.github/workflows/report-scheduled-failure.yml\njobs:\n  gate:\n    timeout-minutes: 1\n',
     'python-wheels.yml': '# Assert the complete wheel matrix arrived\njobs:\n  wheel:\n    timeout-minutes: 1\n    steps:\n      - uses: actions/upload-artifact@sha\n        with:\n          path: dist/*.whl\n',
   });
   context.after(() => rmSync(root, { recursive: true, force: true }));

@@ -35,6 +35,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -167,3 +168,15 @@ jobs:
       # wasm32 file. See docs/architecture/mesh-determinism.md.
       - name: Mesh-output determinism manifest (wasm32 in Node)
         run: wasm-pack test --node rust/wasm-bindings --test mesh_determinism
+
+  report-scheduled-failure:
+    needs: [arm64-determinism, wasm32-mesh-determinism]
+    if: always() && github.event_name == 'schedule' && (needs.arm64-determinism.result != 'success' || needs.wasm32-mesh-determinism.result != 'success')
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: Determinism (arm64 + wasm32)
+      jobs: arm64-determinism, wasm32-mesh-determinism
+      result: arm64=${{ needs.arm64-determinism.result }}, wasm32=${{ needs.wasm32-mesh-determinism.result }}
+    permissions:
+      contents: read
+      issues: write

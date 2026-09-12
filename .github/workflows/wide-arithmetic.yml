@@ -65,6 +65,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -429,3 +430,15 @@ jobs:
             echo "docs/architecture/wasm-wide-arithmetic.md for the actual measured speedups"
             echo "(1.9-3.1x predicate microbench, 1.71x end-to-end), captured externally."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  report-scheduled-failure:
+    needs: wide-arithmetic-tripwire
+    if: always() && github.event_name == 'schedule' && needs.wide-arithmetic-tripwire.result != 'success'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: WASM wide-arithmetic tripwire
+      jobs: wide-arithmetic-tripwire
+      result: ${{ needs.wide-arithmetic-tripwire.result }}
+    permissions:
+      contents: read
+      issues: write

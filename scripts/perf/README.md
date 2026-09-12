@@ -1375,10 +1375,10 @@ optimization should measure the explicit conversion workload independently.
 ## Qualified solid straight PDF strokes (#4406)
 
 Fresh exact-source native A/B, A/B, then reverse B/A normal-load controls for
-the round-cap/join expansion resolve no regression. Timing drift affected both
-directions (8 ms equal in the first pair; later branch 10 vs base 8, then branch
-10 vs base 11), while mesh, vertex and triangle counts and every ordered mesh
-fingerprint remained identical. This isolates the normal IFC load path; it does
+the round-cap/join expansion resolve no regression. The warmed pairs reported
+base/branch totals of 9/8 ms, 9/9 ms, then branch/base totals of 8/9 ms, while
+mesh, vertex and triangle counts and every ordered mesh fingerprint remained
+identical. This isolates the normal IFC load path; it does
 not measure opt-in PDF authoring or worker-pool throughput. Stable sagitta
 inversion also reduced the independent round controls' bounded planner work and
 triangle counts without changing analytic acceptance; the source-specific

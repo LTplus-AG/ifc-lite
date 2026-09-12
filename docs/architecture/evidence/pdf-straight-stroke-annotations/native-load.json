@@ -1,6 +1,6 @@
 {
   "base": "6cc1b4362e",
-  "branch": "a5ff547814",
+  "branch": "7fd15b7daa",
   "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
   "runs": [
     {
@@ -13,121 +13,29 @@
           "meshes": 285,
           "vertices": 35940,
           "triangles": 19456,
-          "indexBuildMs": 2.24,
+          "indexBuildMs": 1.21,
           "parseMs": 3,
           "entityScanMs": 2,
           "lookupMs": 0,
           "preprocessMs": 0,
-          "geometryMs": 5,
+          "geometryMs": 6,
           "facetedBrepMs": 0,
-          "totalMs": 8,
+          "totalMs": 9,
           "allTotalsMs": [
-            15,
-            11,
+            12,
             10,
-            8,
-            8
+            9,
+            9,
+            9
           ],
           "allWallMs": [
-            16.366834,
-            11.673709,
-            10.812000000000001,
-            9.278333,
-            9.127334000000001
+            13.0475,
+            10.782958,
+            10.568791,
+            10.255541,
+            9.998042
           ],
-          "pointCacheHits": 52108,
-          "pointCacheMisses": 9252,
-          "csgFailures": 0,
-          "degenerateDropped": 0,
-          "meshFingerprintsFnv1a64": [
-            "25ac885b6ff4ad00",
-            "25ac885b6ff4ad00",
-            "25ac885b6ff4ad00",
-            "25ac885b6ff4ad00",
-            "25ac885b6ff4ad00"
-          ]
-        }
-      ]
-    },
-    {
-      "version": "branch",
-      "output": [
-        {
-          "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
-          "fileMb": 2.41,
-          "entities": 44249,
-          "meshes": 285,
-          "vertices": 35940,
-          "triangles": 19456,
-          "indexBuildMs": 1.63,
-          "parseMs": 3,
-          "entityScanMs": 2,
-          "lookupMs": 0,
-          "preprocessMs": 0,
-          "geometryMs": 5,
-          "facetedBrepMs": 0,
-          "totalMs": 8,
-          "allTotalsMs": [
-            13,
-            9,
-            9,
-            8,
-            8
-          ],
-          "allWallMs": [
-            13.847084,
-            10.167333000000001,
-            9.395208,
-            8.822375000000001,
-            8.797208000000001
-          ],
-          "pointCacheHits": 52092,
-          "pointCacheMisses": 9220,
-          "csgFailures": 0,
-          "degenerateDropped": 0,
-          "meshFingerprintsFnv1a64": [
-            "25ac885b6ff4ad00",
-            "25ac885b6ff4ad00",
-            "25ac885b6ff4ad00",
-            "25ac885b6ff4ad00",
-            "25ac885b6ff4ad00"
-          ]
-        }
-      ]
-    },
-    {
-      "version": "base",
-      "output": [
-        {
-          "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
-          "fileMb": 2.41,
-          "entities": 44249,
-          "meshes": 285,
-          "vertices": 35940,
-          "triangles": 19456,
-          "indexBuildMs": 1.36,
-          "parseMs": 3,
-          "entityScanMs": 2,
-          "lookupMs": 0,
-          "preprocessMs": 0,
-          "geometryMs": 5,
-          "facetedBrepMs": 0,
-          "totalMs": 8,
-          "allTotalsMs": [
-            13,
-            9,
-            9,
-            9,
-            8
-          ],
-          "allWallMs": [
-            13.939292,
-            10.315625,
-            9.570375,
-            10.280666,
-            9.145667
-          ],
-          "pointCacheHits": 52068,
+          "pointCacheHits": 52116,
           "pointCacheMisses": 9196,
           "csgFailures": 0,
           "degenerateDropped": 0,
@@ -151,76 +59,30 @@
           "meshes": 285,
           "vertices": 35940,
           "triangles": 19456,
-          "indexBuildMs": 1.65,
-          "parseMs": 4,
-          "entityScanMs": 2,
-          "lookupMs": 1,
-          "preprocessMs": 0,
-          "geometryMs": 6,
-          "facetedBrepMs": 0,
-          "totalMs": 10,
-          "allTotalsMs": [
-            16,
-            11,
-            10,
-            12,
-            11
-          ],
-          "allWallMs": [
-            17.081209,
-            11.671000000000001,
-            10.950833,
-            13.438208,
-            12.182375
-          ],
-          "pointCacheHits": 52172,
-          "pointCacheMisses": 9236,
-          "csgFailures": 0,
-          "degenerateDropped": 0,
-          "meshFingerprintsFnv1a64": [
-            "25ac885b6ff4ad00",
-            "25ac885b6ff4ad00",
-            "25ac885b6ff4ad00",
-            "25ac885b6ff4ad00",
-            "25ac885b6ff4ad00"
-          ]
-        }
-      ]
-    },
-    {
-      "version": "branch",
-      "output": [
-        {
-          "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
-          "fileMb": 2.41,
-          "entities": 44249,
-          "meshes": 285,
-          "vertices": 35940,
-          "triangles": 19456,
-          "indexBuildMs": 1.2,
+          "indexBuildMs": 1.18,
           "parseMs": 3,
           "entityScanMs": 2,
           "lookupMs": 0,
           "preprocessMs": 0,
-          "geometryMs": 6,
+          "geometryMs": 5,
           "facetedBrepMs": 0,
-          "totalMs": 10,
+          "totalMs": 8,
           "allTotalsMs": [
-            12,
             10,
-            10,
-            10,
-            10
+            8,
+            8,
+            8,
+            8
           ],
           "allWallMs": [
-            12.771667,
-            11.172375,
-            11.096667,
-            11.127375,
-            10.959458
+            11.036125,
+            9.098584,
+            9.200292000000001,
+            9.166625,
+            9.07625
           ],
-          "pointCacheHits": 51772,
-          "pointCacheMisses": 9108,
+          "pointCacheHits": 51852,
+          "pointCacheMisses": 9124,
           "csgFailures": 0,
           "degenerateDropped": 0,
           "meshFingerprintsFnv1a64": [
@@ -243,30 +105,168 @@
           "meshes": 285,
           "vertices": 35940,
           "triangles": 19456,
-          "indexBuildMs": 1.29,
+          "indexBuildMs": 1.18,
           "parseMs": 3,
           "entityScanMs": 2,
           "lookupMs": 0,
           "preprocessMs": 0,
-          "geometryMs": 7,
+          "geometryMs": 5,
           "facetedBrepMs": 0,
-          "totalMs": 11,
+          "totalMs": 9,
           "allTotalsMs": [
-            15,
-            19,
-            12,
-            12,
-            11
+            11,
+            9,
+            9,
+            9,
+            9
           ],
           "allWallMs": [
-            16.38575,
-            19.65975,
-            13.176167000000001,
-            12.820791,
-            12.407917
+            12.112167,
+            10.240499999999999,
+            9.680042,
+            9.640459,
+            9.53025
           ],
-          "pointCacheHits": 51900,
-          "pointCacheMisses": 9124,
+          "pointCacheHits": 51748,
+          "pointCacheMisses": 9084,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "meshFingerprintsFnv1a64": [
+            "25ac885b6ff4ad00",
+            "25ac885b6ff4ad00",
+            "25ac885b6ff4ad00",
+            "25ac885b6ff4ad00",
+            "25ac885b6ff4ad00"
+          ]
+        }
+      ]
+    },
+    {
+      "version": "branch",
+      "output": [
+        {
+          "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "fileMb": 2.41,
+          "entities": 44249,
+          "meshes": 285,
+          "vertices": 35940,
+          "triangles": 19456,
+          "indexBuildMs": 1.26,
+          "parseMs": 3,
+          "entityScanMs": 2,
+          "lookupMs": 0,
+          "preprocessMs": 0,
+          "geometryMs": 6,
+          "facetedBrepMs": 0,
+          "totalMs": 9,
+          "allTotalsMs": [
+            12,
+            11,
+            10,
+            9,
+            9
+          ],
+          "allWallMs": [
+            13.047208,
+            12.521374999999999,
+            10.634125,
+            9.9045,
+            10.369541
+          ],
+          "pointCacheHits": 51788,
+          "pointCacheMisses": 9116,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "meshFingerprintsFnv1a64": [
+            "25ac885b6ff4ad00",
+            "25ac885b6ff4ad00",
+            "25ac885b6ff4ad00",
+            "25ac885b6ff4ad00",
+            "25ac885b6ff4ad00"
+          ]
+        }
+      ]
+    },
+    {
+      "version": "branch",
+      "output": [
+        {
+          "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "fileMb": 2.41,
+          "entities": 44249,
+          "meshes": 285,
+          "vertices": 35940,
+          "triangles": 19456,
+          "indexBuildMs": 1.19,
+          "parseMs": 3,
+          "entityScanMs": 2,
+          "lookupMs": 0,
+          "preprocessMs": 0,
+          "geometryMs": 5,
+          "facetedBrepMs": 0,
+          "totalMs": 8,
+          "allTotalsMs": [
+            10,
+            9,
+            9,
+            8,
+            8
+          ],
+          "allWallMs": [
+            11.156083,
+            9.5975,
+            9.489958,
+            9.226625,
+            9.109041999999999
+          ],
+          "pointCacheHits": 51756,
+          "pointCacheMisses": 9100,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "meshFingerprintsFnv1a64": [
+            "25ac885b6ff4ad00",
+            "25ac885b6ff4ad00",
+            "25ac885b6ff4ad00",
+            "25ac885b6ff4ad00",
+            "25ac885b6ff4ad00"
+          ]
+        }
+      ]
+    },
+    {
+      "version": "base",
+      "output": [
+        {
+          "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "fileMb": 2.41,
+          "entities": 44249,
+          "meshes": 285,
+          "vertices": 35940,
+          "triangles": 19456,
+          "indexBuildMs": 1.17,
+          "parseMs": 3,
+          "entityScanMs": 2,
+          "lookupMs": 0,
+          "preprocessMs": 0,
+          "geometryMs": 5,
+          "facetedBrepMs": 0,
+          "totalMs": 9,
+          "allTotalsMs": [
+            12,
+            9,
+            9,
+            9,
+            9
+          ],
+          "allWallMs": [
+            12.762167,
+            10.651417,
+            9.5525,
+            9.71425,
+            9.646
+          ],
+          "pointCacheHits": 52004,
+          "pointCacheMisses": 9164,
           "csgFailures": 0,
           "degenerateDropped": 0,
           "meshFingerprintsFnv1a64": [
@@ -280,5 +280,5 @@
       ]
     }
   ],
-  "measurement": "Exact source-specific prebuilt native probe, five iterations each, in A/B, A/B, then reverse B/A order on an otherwise idle machine. Parse/geometry/total are best-of-five integer-millisecond phases. Timing drift affected both directions (8 ms equal first pair; later B 10 vs A 8, then B 10 vs A 11), so no normal-load regression is resolved. Mesh, vertex and triangle counts and every ordered FNV-1a mesh fingerprint are identical. The round-stroke path is opt-in PDF authoring and is not invoked by this IFC load; no PDF authoring or worker-pool speed claim."
+  "measurement": "Exact source-specific prebuilt native probe, five iterations each, in A/B, A/B, then reverse B/A order on an otherwise idle machine. Parse/geometry/total are best-of-five integer-millisecond phases. The three warmed pairs were base 3/6/9 vs branch 3/5/8 ms, base 3/5/9 vs branch 3/6/9 ms, then branch 3/5/8 vs base 3/5/9 ms: no normal-load regression is resolved at this timing granularity. Mesh, vertex and triangle counts and every ordered FNV-1a mesh fingerprint are identical. The round-stroke path is opt-in PDF authoring and is not invoked by this IFC load; no PDF authoring or worker-pool speed claim."
 }

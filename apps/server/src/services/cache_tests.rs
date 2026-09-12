@@ -9,6 +9,7 @@
 //! tests moved here verbatim.
 
     use super::*;
+    use crate::services::cache_remove::index_root;
 
     /// Build a fresh, uniquely-named cache directory for a test.
     async fn fresh_cache(label: &str) -> (DiskCache, std::path::PathBuf) {

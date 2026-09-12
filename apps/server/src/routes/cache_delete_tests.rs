@@ -249,6 +249,7 @@ async fn delete_does_not_disturb_an_unrelated_file_cached_entry() {
 /// anything this route can invalidate; everything else is refused before the
 /// index is touched. Cases sit on both sides of every rule in
 /// `is_file_digest`: length 63/64/65, upper vs lower case, one non-hex byte.
+/// Regression for #4582.
 #[tokio::test]
 async fn delete_refuses_anything_that_is_not_a_file_digest() {
     let state = test_state("not-a-digest").await;
@@ -282,6 +283,7 @@ async fn delete_refuses_anything_that_is_not_a_file_digest() {
 /// invalidation is shed with 503 + `Retry-After` (this route is idempotent and
 /// documented as retry-safe, so that costs a client one retry), and it does
 /// not latch: once the walk ends the same request goes through.
+/// Regression for #4582.
 #[tokio::test]
 async fn a_concurrent_cache_invalidation_is_shed_with_503_not_queued() {
     let state = test_state("index-walk-gate").await;

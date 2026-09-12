@@ -6,7 +6,7 @@ import { equivalentAppearanceGeometry } from './appearance-uvs.js';
 import { sameCompanionParts } from './appearance-companions.js';
 import { freezeAppearancePartition, validateAppearancePartition, type AppearancePartition } from './appearance-partition.js';
 // The partition is part of the preview contract; the package publishes it from here.
-export { invertAppearancePartition, type AppearancePartition, type AppearancePartitionPart } from './appearance-partition.js';
+export { invertAppearancePartition, validateAppearancePartition, type AppearancePartition, type AppearancePartitionPart } from './appearance-partition.js';
 
 /** expressId is already federation-resolved; modelIndex is the renderer model. */
 export interface AppearanceOwner {
@@ -113,10 +113,12 @@ export class AppearancePreviewController<Resource>
       if (partition) {
         // The partition names the whole owner: every original part in order,
         // and replacement identities that do not collide with them.
-        const ids = new Set(partition.after.map(part => part.geometryItemId));
+        const partIds = new Set(partition.after.map(part => part.partId));
         if (remaps.length || companions || partition.before.length !== captured.parts.length
           || partition.before.some((part, index) => part.geometryItemId !== captured.parts[index].geometryItemId)
-          || ids.size !== partition.after.length || [...ids].some(id => !Number.isSafeInteger(id) || id <= 0 || originals.has(id))) {
+          || partIds.size !== partition.after.length
+          || partition.after.some(part => !Number.isSafeInteger(part.geometryItemId) || part.geometryItemId <= 0
+            || originals.has(part.geometryItemId))) {
           throw new Error('Invalid appearance partition');
         }
       }

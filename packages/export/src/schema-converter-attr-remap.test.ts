@@ -4,20 +4,16 @@
 
 /**
  * `splitTopLevelAttributes` used to carry its own top-level-comma scanner,
- * near-identical to `step-argument-parser.ts`'s `splitTopLevelArgs`
- * (LTplus-AG/ifc-lite#4125). It is now a thin wrapper over that shared
- * splitter. These tests pin: (1) the two functions agree on every input
- * `remapRenamedAttributesByName`'s real callers can produce, so the
- * consolidation changed no observable output; (2) the one input where they
- * legitimately differ (a trailing empty argument), which
- * `remapRenamedAttributesByName`'s fixed-arity IFCDOORTYPE/IFCWINDOWTYPE
- * callers never produce.
+ * near-identical to the validated STEP slot parser (LTplus-AG/ifc-lite#4125).
+ * It is now a thin wrapper over that shared refusal boundary. These tests pin
+ * the actual tokens, including a trailing empty slot, instead of comparing
+ * one parser implementation with another copy.
  */
 import { describe, it, expect } from 'vitest';
 import { splitTopLevelAttributes } from './schema-converter-attr-remap.js';
-import { splitTopLevelArgs } from './step-argument-parser.js';
+import { splitTopLevelStepArguments } from './step-argument-parser.js';
 
-describe('splitTopLevelAttributes delegates to the shared splitTopLevelArgs', () => {
+describe('splitTopLevelAttributes delegates to the validated slot splitter', () => {
   it('returns [] for an empty or whitespace-only list', () => {
     expect(splitTopLevelAttributes('')).toEqual([]);
     expect(splitTopLevelAttributes('   ')).toEqual([]);
@@ -30,8 +26,8 @@ describe('splitTopLevelAttributes delegates to the shared splitTopLevelArgs', ()
     // embedded comma, and a doubled-quote escape.
     //
     // Expected tokens are authored by hand, not derived from
-    // `splitTopLevelArgs` itself: `splitTopLevelAttributes` is now a pure
-    // delegate to `splitTopLevelArgs` (see the export above), so asserting
+    // `splitTopLevelStepArguments` itself: `splitTopLevelAttributes` is a pure
+    // delegate to the validated parser (see the export above), so asserting
     // one against the other would only ever confirm `f(x) === f(x)` — a
     // parser defect shared by both sides (e.g. mis-scanning the embedded
     // comma in `'a, b'`) would pass unnoticed.
@@ -60,13 +56,16 @@ describe('splitTopLevelAttributes delegates to the shared splitTopLevelArgs', ()
     ["'a, b',#1,(#2,#3),$", ["'a, b'", '#1', '(#2,#3)', '$']],
     ["'it''s escaped',#1,$", ["'it''s escaped'", '#1', '$']],
     ['#1,#2,#3', ['#1', '#2', '#3']],
-  ])('splits %j into the expected tokens, in agreement with splitTopLevelArgs', (input, expected) => {
+  ])('splits %j into the expected validated tokens', (input, expected) => {
     expect(splitTopLevelAttributes(input)).toEqual(expected);
-    expect(splitTopLevelArgs(input)).toEqual(expected);
+    expect(splitTopLevelStepArguments(input)).toEqual(expected);
   });
 
-  it('a trailing empty argument is dropped, matching splitTopLevelArgs (not the old local scanner, which kept it) — never reached by a fixed-arity IFCDOORTYPE/IFCWINDOWTYPE list', () => {
-    expect(splitTopLevelAttributes('a,')).toEqual(['a']);
-    expect(splitTopLevelAttributes('a,')).toEqual(splitTopLevelArgs('a,'));
+  it('keeps an empty trailing slot position-addressable', () => {
+    expect(splitTopLevelAttributes('a,')).toEqual(['a', '']);
+  });
+
+  it('refuses malformed slots instead of remapping values at shifted positions', () => {
+    expect(splitTopLevelAttributes(`'g',"01,23"`)).toBeNull();
   });
 });

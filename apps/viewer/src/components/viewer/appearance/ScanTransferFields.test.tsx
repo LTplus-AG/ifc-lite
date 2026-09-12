@@ -56,7 +56,7 @@ test('coverage report names samples refused behind the surface beside the other 
   for (const pointLabel of pointLabels) assert.equal(ui.querySelector(`input[aria-label="${pointLabel}"]`), null, `${pointLabel} is a point-source control`);
 });
 
-test('point sources expose their fit controls and report sparse samples and the orientation source (#4381)', () => {
+test('point sources expose their fit controls and report sparse samples and the orientation source (#4381, #4561)', () => {
   const counts = { centroidSamples: 12, observedCentroidSamples: 2, rasterInteriorTexels: 105114, observedRasterInteriorTexels: 33841, samples: 105126, observedSamples: 33843,
     unknownDistanceSamples: 63591, unknownNormalSamples: 793, unknownAmbiguousSamples: 700, unknownBehindSamples: 119, unknownSparseSamples: 6080, observedAreaEstimateM2: 8.197, unknownAreaEstimateM2: 17.085 };
   const { registration } = { registration: (JSON.parse(readFileSync(new URL('../../../../../../docs/architecture/evidence/scan-alignment-workbench/good.json', import.meta.url), 'utf8')) as { result: { report: ScanRegistrationReport } }).result.report };
@@ -76,4 +76,8 @@ test('point sources expose their fit controls and report sparse samples and the 
   assert.ok(report.textContent!.includes(`Unknown: ${n(63591)} too far · 793 incompatible normals · 700 ambiguous · 119 behind the surface · ${n(6080)} too sparse.`), report.textContent!);
   assert.ok(report.textContent!.includes(`Point-cloud source of ${n(465029)} points; sample orientation from the IFC face being sampled (target-referenced).`), report.textContent!);
   assert.ok(ui.textContent!.includes('attributed to its nearest face only'), 'the point-source note states the nearest-face rule, not an unconditional guarantee');
+  cleanup();
+  const oriented = mount({ preparedSha256: 'prepared', source: { kind: 'points', orientation: 'source-normals', pointCount: 465029 }, budget: { workUsed: 1, workLimit: 128_000_000 }, registrationSha256: 'registration', registration, applicable: true, coverage: counts,
+    items: [], exclusions: [], diagnostics: [] }, true);
+  assert.ok(oriented.textContent!.includes('sample orientation from the capture’s own oriented normals'));
 });

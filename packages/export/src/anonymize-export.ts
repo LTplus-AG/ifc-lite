@@ -121,6 +121,7 @@ function excludePropertySetsUnlessKept(
  * Null `PropertyReference` when an emitted `IfcPropertyReferenceValue` names
  * an entity the subset excludes. The value can be reached by the forward
  * closure rather than appearing in the caller's seed set, hence `closureIds`.
+ * Unreadable records are returned as warnings rather than counted as dropped.
  */
 function dropExcludedPropertyReferences(
   store: { readonly source: IfcSourceBytes },
@@ -129,13 +130,20 @@ function dropExcludedPropertyReferences(
   excludedIds: ReadonlySet<number>,
   view: MutablePropertyView,
   schema: ReturnType<typeof stepSourceSchema>,
-): number[] {
+): { droppedIds: number[]; warnings: string[] } {
   const droppedIds: number[] = [];
+  const warnings: string[] = [];
 
   for (const id of closureIds) {
     if ((index.typeOf(id) ?? '') !== 'IFCPROPERTYREFERENCEVALUE') continue;
     const record = readEntityArgs(store, index, id);
-    if (!record) continue;
+    if (!record) {
+      warnings.push(
+        `IfcPropertyReferenceValue #${id}: its source record could not be read, `
+          + 'so PropertyReference was not changed or reported as dropped.',
+      );
+      continue;
+    }
 
     const idx = attrIndex('IFCPROPERTYREFERENCEVALUE', 'PropertyReference', schema);
     if (idx === -1 || idx >= record.args.length) continue;
@@ -147,7 +155,7 @@ function dropExcludedPropertyReferences(
     droppedIds.push(id);
   }
 
-  return droppedIds;
+  return { droppedIds, warnings };
 }
 
 /**
@@ -261,7 +269,7 @@ export function exportAnonymizedSubset(
     index,
     subset.excludedIds,
   );
-  const droppedPropertyReferenceIds = dropExcludedPropertyReferences(
+  const propertyReferenceResult = dropExcludedPropertyReferences(
     store,
     index,
     exportClosure,
@@ -312,11 +320,12 @@ export function exportAnonymizedSubset(
       includedRootEntityCount,
       prunedRelationshipIds,
       droppedPropertySetIds,
-      droppedPropertyReferenceIds,
+      droppedPropertyReferenceIds: propertyReferenceResult.droppedIds,
       zeroedPlacements: placementResult.zeroedPlacements,
       warnings: [
         ...placementResult.warnings,
         ...scrubResult.warnings,
+        ...propertyReferenceResult.warnings,
         ...exportResult.stats.warnings,
       ],
     },

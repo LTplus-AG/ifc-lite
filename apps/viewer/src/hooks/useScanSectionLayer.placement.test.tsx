@@ -23,7 +23,7 @@ it('uses the final GPU world matrix without applying IFC RTC a second time (#422
   setGlobalRendererRef({ current: renderer });
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('scan'), pointCloudHandleId: 7 }), pointCloudAlignmentEnabled: false });
   registerPointCloudScanCache(7, 1);
-  addPointsToScanCache(7, { positions: new Float32Array([1, 0, 0]), pointCount: 1 });
+  addPointsToScanCache(7, { positions: new Float32Array([1, 0, 0]), normalState: 'absent', pointCount: 1 });
   const bounds = { min: { x: 1000, y: 0, z: 0 }, max: { x: 1010, y: 1, z: 1 } };
   function Scan() {
     const result = useScanSectionLayer({ enabled: true, thickness: 0.01,

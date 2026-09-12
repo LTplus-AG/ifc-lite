@@ -25,14 +25,19 @@
  * error or when `usePointCloudLifecycle` frees the GPU asset for a removed
  * model — mirroring the classification-histogram cleanup already done
  * there so this cache can't outlive its point cloud.
- */
+*/
 
-/** Points retained per asset by default — ~16 bytes/point (pos+color+class) ≈ 32 MB at the cap. */
+import type { PointNormalState } from '@ifc-lite/pointcloud';
+
+/** Points retained per asset by default — at most 28 bytes/point with normals, ≈ 56 MB at the cap. */
 export const DEFAULT_SCAN_CACHE_CAPACITY = 2_000_000;
 
 export interface RetainedPointCloudSample {
   positions: Float32Array;
   colors: Uint8Array | null;
+  /** Source-supplied Y-up normals, or null when no streamed row declared normals. */
+  normals: Float32Array | null;
+  normalState: PointNormalState;
   classifications: Uint8Array | null;
   /** Points actually held in the reservoir (<= capacity). */
   count: number;
@@ -52,6 +57,7 @@ export interface RetainedPointCloudSample {
 
 interface ReservoirCache extends RetainedPointCloudSample {
   hasColor: boolean;
+  hasNormals: boolean;
   hasClassifications: boolean;
   /** Slots currently backed by the typed arrays (grows geometrically toward `capacity`). */
   allocated: number;
@@ -74,12 +80,15 @@ function createReservoir(capacity: number): ReservoirCache {
   return {
     positions: new Float32Array(allocated * 3),
     colors: null,
+    normals: null,
+    normalState: 'absent',
     classifications: null,
     count: 0,
     seen: 0,
     capacity,
     origin: null,
     hasColor: false,
+    hasNormals: false,
     hasClassifications: false,
     allocated,
   };
@@ -102,6 +111,11 @@ function ensureSlotCapacity(cache: ReservoirCache, slot: number): void {
     colors.fill(NEUTRAL_COLOR_BYTE);
     colors.set(cache.colors);
     cache.colors = colors;
+  }
+  if (cache.normals) {
+    const normals = new Float32Array(next * 3);
+    normals.set(cache.normals);
+    cache.normals = normals;
   }
   if (cache.classifications) {
     const classes = new Uint8Array(next);
@@ -143,10 +157,16 @@ function ensureClassBuffer(cache: ReservoirCache): Uint8Array {
   return cache.classifications;
 }
 
+function ensureNormalBuffer(cache: ReservoirCache): Float32Array {
+  if (!cache.normals) cache.normals = new Float32Array(cache.allocated * 3);
+  cache.hasNormals = true;
+  return cache.normals;
+}
+
 function writePoint(
   cache: ReservoirCache,
   slot: number,
-  chunk: { positions: Float32Array; colors?: Float32Array; classifications?: Uint8Array },
+  chunk: { positions: Float32Array; colors?: Float32Array; normals?: Float32Array; classifications?: Uint8Array },
   srcIndex: number,
 ): void {
   ensureSlotCapacity(cache, slot);
@@ -163,6 +183,17 @@ function writePoint(
     colors[slot * 3] = 200;
     colors[slot * 3 + 1] = 200;
     colors[slot * 3 + 2] = 200;
+  }
+  if (chunk.normals) {
+    const normals = ensureNormalBuffer(cache);
+    normals[slot * 3] = chunk.normals[srcIndex * 3];
+    normals[slot * 3 + 1] = chunk.normals[srcIndex * 3 + 1];
+    normals[slot * 3 + 2] = chunk.normals[srcIndex * 3 + 2];
+  } else if (cache.hasNormals) {
+    const normals = ensureNormalBuffer(cache);
+    normals[slot * 3] = 0;
+    normals[slot * 3 + 1] = 0;
+    normals[slot * 3 + 2] = 0;
   }
   if (chunk.classifications) {
     const classes = ensureClassBuffer(cache);
@@ -196,10 +227,27 @@ export function setPointCloudScanCacheOrigin(handleId: number, origin: readonly 
  */
 export function addPointsToScanCache(
   handleId: number,
-  chunk: { positions: Float32Array; colors?: Float32Array; classifications?: Uint8Array; pointCount: number },
+  chunk: { positions: Float32Array; colors?: Float32Array; normals?: Float32Array; normalState: PointNormalState; classifications?: Uint8Array; pointCount: number },
 ): void {
   const cache = caches.get(handleId);
   if (!cache) return;
+  if (!Number.isInteger(chunk.pointCount) || chunk.pointCount < 0 || chunk.positions.length !== chunk.pointCount * 3
+    || (chunk.colors !== undefined && chunk.colors.length !== chunk.pointCount * 3)
+    || (chunk.normals !== undefined && chunk.normals.length !== chunk.pointCount * 3)
+    || (chunk.classifications !== undefined && chunk.classifications.length !== chunk.pointCount)
+    || (chunk.normalState === 'supplied' && chunk.normals === undefined)) {
+    throw new Error('Point-cloud chunk channels must contain one complete, row-aligned value per point.');
+  }
+  let incomingState = chunk.normalState;
+  if (incomingState === 'supplied') {
+    for (let i = 0; i < chunk.normals!.length; i += 3) {
+      const x = chunk.normals![i], y = chunk.normals![i + 1], z = chunk.normals![i + 2];
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || x * x + y * y + z * z === 0) incomingState = 'invalid';
+    }
+  } else if (chunk.normals) incomingState = 'invalid';
+  if (cache.normalState === 'invalid' || incomingState === 'invalid'
+    || (cache.seen > 0 && cache.normalState !== incomingState)) cache.normalState = 'invalid';
+  else cache.normalState = incomingState;
   const { capacity } = cache;
   for (let i = 0; i < chunk.pointCount; i++) {
     const seenIndex = cache.seen++;

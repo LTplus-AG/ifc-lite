@@ -1383,6 +1383,22 @@ or browser worker-pool timing claim is made. See the
 This changes the authoring path, not the normal-load mesh evaluator; future
 optimization should measure the explicit conversion workload independently.
 
+## Version-bound closed PDF dashes (#4583, #4406)
+
+Closed-dash interpretation is confined to opt-in PDF preparation and annotation
+planning. Independently compiled base/branch then branch/base native-load
+controls on AC20-FZK-Haus retained identical ordered mesh fingerprint
+`25ac885b6ff4ad00` and counts (285 meshes, 35,940 vertices, 19,456 triangles)
+in all 20 iterations. Paired wall-time medians were 14.28/16.03 ms and
+14.45/14.65 ms; the second pair nearly converges and the absolute differences
+are below the probe's useful phase resolution, so no material ordinary-load
+regression is observed. This is not a PDF-planning or browser-worker throughput
+measurement. The useful lesson is semantic: the effective PDF version must be
+bound before geometry because the compatibility policy caps a PDF 1.x
+closed-dash seam while PDF 2.0 explicitly requires a join, and a mature
+independent reader may still render the capped form for both. See the
+[paired raw runs and reader evidence](../../docs/architecture/evidence/pdf-closed-dash-annotations/README.md).
+
 ## Qualified solid straight PDF strokes (#4406)
 
 Fresh exact-source native A/B, A/B, then reverse B/A normal-load controls for

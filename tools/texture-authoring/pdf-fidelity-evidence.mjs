@@ -65,9 +65,11 @@ try {
   const record = {
     input: control ? `control:${control}` : input.replace(/\\/g, '/').split('/').pop(),
     sourceBytes: source.length, sourceSha256: createHash('sha256').update(source).digest('hex'),
-    decoderVersion: page.decoderVersion, pageNumber, viewBox: page.viewBox, userUnit: page.userUnit, intrinsicRotation: page.intrinsicRotation,
+    decoderVersion: page.decoderVersion, pdfFormatVersion: page.pdfFormatVersion ?? null,
+    pageNumber, viewBox: page.viewBox, userUnit: page.userUnit, intrinsicRotation: page.intrinsicRotation,
     calibration, operations: page.operations.length, operators,
-    preparation: { algorithm: prepared.algorithm, requestSha256: prepared.requestSha256, pageClipPdf: prepared.pageClipPdf },
+    preparation: { algorithm: prepared.algorithm, requestSha256: prepared.requestSha256, pageClipPdf: prepared.pageClipPdf,
+      dashClosures: prepared.paths.map(path => path.dashClosure) },
     fidelity: { ...fidelity, listedOmissions: omissions.length },
   };
   if (ifcOutput) {
@@ -83,7 +85,8 @@ try {
     const step = await new StepExporter(data, view).exportAsync({ schema: 'IFC4', applyMutations: true, includeGeometry: true });
     await writeFile(ifcOutput, typeof step.content === 'string' ? step.content : Buffer.from(step.content));
     const planOutput = ifcOutput.replace(/\.ifc$/, '') + '-plan.json';
-    await writeFile(planOutput, `${JSON.stringify({ pageNumber, viewBox: page.viewBox, intrinsicRotation: page.intrinsicRotation, userUnit: page.userUnit,
+    await writeFile(planOutput, `${JSON.stringify({ pageNumber, pdfFormatVersion: page.pdfFormatVersion ?? null,
+      viewBox: page.viewBox, intrinsicRotation: page.intrinsicRotation, userUnit: page.userUnit,
       modelMetresFromPdf: calibration.modelMetresFromPdf, frame: request.frame, rtcOffset: plan.rtcOffset, coordinateSpace: plan.coordinateSpace,
       annotationId: plan.annotationId, regions: plan.regions, fidelity: { exact: fidelity.exact, summary: fidelity.summary },
       meshes: plan.meshes.map(mesh => ({ positions: mesh.positions, indices: mesh.indices, color: mesh.color, origin: mesh.origin ?? [0, 0, 0] })) })}\n`);

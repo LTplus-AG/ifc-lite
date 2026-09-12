@@ -45,16 +45,11 @@ test('reconciliation drops a mask the planner reports stale or direct-bodied and
 // The workspace never judges staleness itself: it drops a mask when the real
 // planner excludes the product as stale and says so. A geometry edit of the
 // masked body (the box profile widened from 2 m to 3 m) is such a verdict.
-// For a pure translation the planner's verdict is platform-dependent today
-// (#4550: the native test asserts the translated swept box stale, the wasm
-// build reports the same fingerprint), so this test asserts the viewer's
-// invariant rather than either verdict: a selection is kept only on a
-// conversion that reports the identical fingerprint; otherwise the product is
-// excluded as stale and the selection is dropped with a diagnostic. Never a
-// misapplied mask.
-test('a geometry edit on a masked product invalidates the selection through the real planner; a translation keeps or drops it, never misapplies it (#4404)', async t => {
+// A pure translation keeps the authored product-local identity on every target
+// (#4550), while a geometry edit is stale and can never misapply a mask.
+test('a geometry edit invalidates a mask while translation retains it through the real wasm planner (#4404, #4550)', async t => {
   const wasmUrl = new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
-  if (!existsSync(wasmUrl)) { t.skip('Run pnpm build:wasm for the native face-mask contract'); return; }
+  if (!existsSync(wasmUrl)) { t.skip('Run pnpm build:wasm for the real wasm face-mask contract'); return; }
   const { default: init, IfcAPI } = await import('@ifc-lite/wasm');
   await init({ module_or_path: await readFile(wasmUrl) });
   const api = new IfcAPI();
@@ -74,23 +69,18 @@ test('a geometry edit on a masked product invalidates the selection through the 
     assert.deepEqual(conversion(masked, 25).maskedTriangles, [0]);
     assert.deepEqual(conversion(masked, 70).maskedTriangles, [0, 1, 2]);
     assert.equal(reconcileFaceMasks(masks, masked, label).masks, masks, 'matching fingerprints keep both selections');
-    // Translation (12.345, 67.891, 0.1) m of both products: kept on the identical identity or dropped as stale (#4550).
+    // Translation (12.345, 67.891, 0.1) m of both products keeps the authored surface identity.
     const moved = planOn(faceMaskProductSource({ movedPlacement: true }), { faceMasks: faceMaskRequests(masks, [25, 70]) });
     const movedVerdict = reconcileFaceMasks(masks, moved, label);
     for (const productId of [25, 70]) {
       const kept = moved.conversions?.find(item => item.productId === productId);
-      const excluded = moved.exclusions.find(item => item.productId === productId);
-      assert.ok(!!kept !== !!excluded, `product ${productId} is either converted or excluded after the move`);
-      if (kept) {
-        assert.equal(kept.surfaceFingerprint, conversion(before, productId).surfaceFingerprint, 'a kept selection sits on the identical surface identity');
-        assert.deepEqual(kept.maskedTriangles, [...masks.get(productId)!.triangles], 'the kept selection applies exactly as drawn');
-        assert.ok(movedVerdict.masks.has(productId));
-      } else {
-        assert.match(excluded!.reason, /^Face selection is stale/, 'a changed identity is the explicit stale exclusion');
-        assert.ok(!movedVerdict.masks.has(productId), 'the stale selection is dropped');
-        assert.ok(movedVerdict.diagnostics.some(item => item.includes(`#${productId} is stale`)), 'and said so');
-      }
+      assert.ok(kept, `product ${productId} remains convertible after a pure move`);
+      assert.equal(kept.surfaceFingerprint, conversion(before, productId).surfaceFingerprint);
+      assert.deepEqual(kept.maskedTriangles, [...masks.get(productId)!.triangles], 'the selection applies exactly as drawn');
+      assert.ok(movedVerdict.masks.has(productId));
     }
+    assert.deepEqual(moved.exclusions, []);
+    assert.deepEqual(movedVerdict.diagnostics, []);
     // Geometry edit: the box's surface changed; the planner refuses the old selection and the workspace drops it.
     const resized = planOn(faceMaskProductSource({ resizedBox: true }), { faceMasks: faceMaskRequests(masks, [25, 70]) });
     assert.deepEqual(resized.exclusions.map(item => item.productId), [70]);

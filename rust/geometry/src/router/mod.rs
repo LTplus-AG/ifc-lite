@@ -145,6 +145,10 @@ pub struct GeometryRouter {
     /// RTC (Relative-to-Center) offset, subtracted from world positions in f64
     /// before converting to f32 to preserve precision (e.g. Swiss UTM).
     rtc_offset: (f64, f64, f64),
+    /// Per-router local-frame choice. `None` retains the target/env default;
+    /// appearance authoring sets this explicitly so its canonical surface
+    /// identity cannot vary between native and wasm builds (#4550).
+    local_frame_enabled: Option<bool>,
     /// Material-layer buildup index. When set, `process_element_with_submeshes`
     /// and `process_element_with_submeshes_and_voids` first attempt to slice
     /// single-solid elements by their `IfcMaterialLayerSetUsage` buildup.
@@ -248,6 +252,7 @@ impl GeometryRouter {
             content_hash_oversized_ref_drops: RefCell::new(0),
             unit_scale: 1.0,             // Default to base meters
             rtc_offset: (0.0, 0.0, 0.0), // Default to no offset
+            local_frame_enabled: None,
             material_layer_index: None,
             csg_failures: RefCell::new(FxHashMap::default()),
             classification_stats: RefCell::new(ClassificationStats::default()),
@@ -317,6 +322,17 @@ impl GeometryRouter {
     pub fn with_scale(unit_scale: f64) -> Self {
         let mut router = Self::new();
         router.unit_scale = unit_scale;
+        router
+    }
+
+    /// Create a router with an explicit per-mesh local-frame policy.
+    ///
+    /// This is intentionally a constructor rather than a mutable switch: mesh
+    /// caches are frame-dependent, so the policy must be fixed before any
+    /// geometry is produced.
+    pub fn with_scale_and_local_frame(unit_scale: f64, enabled: bool) -> Self {
+        let mut router = Self::with_scale(unit_scale);
+        router.local_frame_enabled = Some(enabled);
         router
     }
 

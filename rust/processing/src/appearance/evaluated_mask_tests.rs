@@ -46,6 +46,10 @@ fn selected_corners(mesh: &crate::types::mesh::MeshData, triangles: &[u32], keep
     let all: Vec<[f64; 3]> = corners(mesh);
     all.chunks_exact(3).enumerate().filter(|(t, _)| triangles.contains(&(*t as u32)) == keep).flat_map(|(_, c)| c.iter().copied()).collect()
 }
+fn assert_same_surface(actual: Vec<[f64; 3]>, expected: Vec<[f64; 3]>) {
+    assert_eq!(actual.len(), expected.len());
+    assert!(actual.iter().flatten().zip(expected.iter().flatten()).all(|(a, b)| (a - b).abs() < 1e-6));
+}
 
 #[test]
 fn issue_4404_unique_swept_body_converts_only_under_evaluated_policy() {
@@ -171,16 +175,14 @@ fn issue_4404_stale_or_malformed_face_masks_are_explicit_refusals() {
 }
 
 #[test]
-fn issue_4404_surface_fingerprint_binds_to_the_placed_surface_not_express_ids() {
+fn issue_4550_surface_fingerprint_is_placement_invariant_on_native() {
     let source = swept_source();
     let fingerprint = fingerprint_of(&source, 40);
     assert_eq!(fingerprint_of(&source, 40), fingerprint, "deterministic across plans");
     let renumbered = source.replace("#44", "#94");
     assert_eq!(fingerprint_of(&renumbered, 40), fingerprint, "express ids are not part of the surface identity");
-    // The local coordinates are rebuilt from the f32 world evaluation, so the
-    // placement is part of the identity except where the move is exactly
-    // representable: (10, 20, 0) keeps the fingerprint, an ordinary survey
-    // offset does not and the mask is reported stale rather than reapplied.
+    // The fingerprint is authored product-local surface identity: both an exact
+    // offset and an ordinary survey offset retain it on native, matching wasm.
     let place = |x: &str, y: &str, z: &str| source.replace("#41=IFCLOCALPLACEMENT($,#5);",
         &format!("#41=IFCLOCALPLACEMENT($,#52);\n#52=IFCAXIS2PLACEMENT3D(#53,$,$);\n#53=IFCCARTESIANPOINT(({x},{y},{z}));"));
     let exact = place("10.", "20.", "0.");
@@ -188,12 +190,22 @@ fn issue_4404_surface_fingerprint_binds_to_the_placed_surface_not_express_ids() 
     let mask_on_exact = plan_appearance(exact.as_bytes(), &request(40, vec![mask(40, &fingerprint, vec![0, 1])])).unwrap();
     assert!(mask_on_exact.exclusions.is_empty(), "{:?}", mask_on_exact.exclusions);
     let moved = place("12.345", "67.891", "0.1");
-    assert_ne!(fingerprint_of(&moved, 40), fingerprint, "a placement edit generally changes the placed surface");
-    assert_eq!(fingerprint_of(&moved, 40), fingerprint_of(&moved, 40), "the placed surface is itself stable");
+    assert_eq!(fingerprint_of(&moved, 40), fingerprint, "a pure placement edit keeps the authored surface identity");
     let mask_on_moved = plan_appearance(moved.as_bytes(), &request(40, vec![mask(40, &fingerprint, vec![0, 1])])).unwrap();
-    assert_eq!(mask_on_moved.exclusions.len(), 1, "{:?}", mask_on_moved.exclusions);
-    assert_eq!(mask_on_moved.exclusions[0].reason, super::STALE);
-    assert!(mask_on_moved.items.is_empty() && mask_on_moved.created.is_empty() && mask_on_moved.edits.is_empty());
+    assert!(mask_on_moved.exclusions.is_empty(), "{:?}", mask_on_moved.exclusions);
+    assert_eq!(mask_on_moved.conversions[0].masked_triangles.as_deref(), Some(&[0, 1][..]));
+    // The framing choice changes storage precision, not the authored surface:
+    // after applying and reopening, the two partitions cover the same placed
+    // triangle corners within the fingerprint's one-micrometre quantum.
+    let original = meshes_of(&moved, 40).remove(0);
+    let output = apply(&moved, &mask_on_moved);
+    let reopened = meshes_of(&output, 40);
+    assert_eq!(reopened.len(), 2);
+    let conversion = &mask_on_moved.conversions[0];
+    let textured = reopened.iter().find(|mesh| mesh.geometry_item_id == Some(conversion.geometry_item_id)).unwrap();
+    let retained = reopened.iter().find(|mesh| mesh.geometry_item_id == conversion.retained_geometry_item_id).unwrap();
+    assert_same_surface(corners(textured), selected_corners(&original, &[0, 1], true));
+    assert_same_surface(corners(retained), selected_corners(&original, &[0, 1], false));
     let resized = source.replace("#45=IFCRECTANGLEPROFILEDEF(.AREA.,$,#46,2.,1.);", "#45=IFCRECTANGLEPROFILEDEF(.AREA.,$,#46,3.,1.);");
     let changed = fingerprint_of(&resized, 40);
     assert_ne!(changed, fingerprint);
@@ -233,7 +245,10 @@ fn issue_4404_real_unique_swept_slab_converts_with_a_cloned_type_shared_wrapper(
     assert_eq!(before.meshes.len(), after.meshes.len());
     for mesh in &before.meshes {
         let other = after.meshes.iter().find(|m| m.express_id == mesh.express_id && (m.express_id == 34509 || m.geometry_item_id == mesh.geometry_item_id)).unwrap();
-        if mesh.express_id == 34509 { assert_eq!(corners(mesh), corners(other)); assert!(other.texture.is_some()); assert_eq!(mesh.global_id, other.global_id); }
+        if mesh.express_id == 34509 {
+            assert_same_surface(corners(mesh), corners(other));
+            assert!(other.texture.is_some()); assert_eq!(mesh.global_id, other.global_id);
+        }
         else { assert_eq!(serde_json::to_value(mesh).unwrap(), serde_json::to_value(other).unwrap()); }
     }
 }

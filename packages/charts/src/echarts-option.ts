@@ -163,8 +163,10 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
   // its share of the width and is truncated with an ellipsis instead — the
   // full name is in the tooltip and the legend. Past eight buckets the
   // shares are too narrow to read, so the labels tilt.
-  const labelWidth = Math.max(36, Math.floor((args.width ?? DEFAULT_WIDTH) / Math.max(1, categories.length)) - 6);
+  const share = Math.floor((args.width ?? DEFAULT_WIDTH) / Math.max(1, categories.length)) - 6;
   const rotate = categories.length > 8 ? 30 : 0;
+  // Tilted labels overlap far less, so they may run past their share.
+  const labelWidth = rotate ? Math.max(60, share * 2) : Math.max(36, share);
   // A count needs no axis title; a sum says what it sums, and gets room for it.
   const yName = spec.measure.agg === 'sum' ? measureLabel(aggregation) : '';
   return {

@@ -344,6 +344,9 @@ importers:
       remark-gfm:
         specifier: ^4.0.0
         version: 4.0.1
+      svg2pdf.js:
+        specifier: ^2.8.1
+        version: 2.8.1(jspdf@4.2.1)
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
@@ -4123,6 +4126,11 @@ packages:
     resolution: {integrity: sha512-wD5oz5xibMOPHzy13CyGmogB3phdvcDaB5t0W/Nr5Z2O/agcB8YwOz6e2Lsp10pNDzBoDO9nVa3RGs/2BttpHQ==}
     engines: {node: '>= 6'}
 
+  cssesc@3.0.0:
+    resolution: {integrity: sha512-/Tb/JcjK111nNScGob5MNtsntNM1aCNUDipB/TkwZFhyDrrE47SOx/18wF2bbjgc3ZzCSKW1T5nt5EbFoAz/Vg==}
+    engines: {node: '>=4'}
+    hasBin: true
+
   csso@5.0.5:
     resolution: {integrity: sha512-0LrrStPOdJj+SPCCrGhzryycLjwcgUSHBtxNA8aIDxf0GLsRh1cKYhB00Gd1lDOS4yGH69+SNn13+TWbVHETFQ==}
     engines: {node: ^10 || ^12.20.0 || ^14.13.0 || >=15.0.0, npm: '>=7.0.0'}
@@ -4324,6 +4332,9 @@ packages:
 
   flatbuffers@25.9.23:
     resolution: {integrity: sha512-MI1qs7Lo4Syw0EOzUl0xjs2lsoeqFku44KpngfIduHBYvzm8h2+7K8YMQh1JtVVVrUvhLpNwqVi4DERegUJhPQ==}
+
+  font-family-papandreou@0.2.0-patch2:
+    resolution: {integrity: sha512-l/YiRdBSH/eWv6OF3sLGkwErL+n0MqCICi9mppTZBOCL5vixWGDqCYvRcuxB2h7RGCTzaTKOHT2caHvCXQPRlw==}
 
   formatly@0.7.0:
     resolution: {integrity: sha512-7CXJtIIA0zy/u12StsYk25qVKxvdLA2ep2sTNxK3ov0mGNIIDqIvAXDSgTnAfDJFsPfWjuz0WjfYSdpvnLA5Tg==}
@@ -5393,6 +5404,10 @@ packages:
   space-separated-tokens@2.0.2:
     resolution: {integrity: sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q==}
 
+  specificity@0.4.1:
+    resolution: {integrity: sha512-1klA3Gi5PD1Wv9Q0wUoOQN1IWAuPu0D1U03ThXTr0cJ20+/iq2tHSDnK7Kk/0LXJ1ztUB2/1Os0wKmfyNgUQfg==}
+    hasBin: true
+
   stackback@0.0.2:
     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
 
@@ -5440,10 +5455,18 @@ packages:
     resolution: {integrity: sha512-qsjeeq5YjBZ5eMdFuUa4ZosMLxgr5RZ+F+Y1OrDhuOCEInRMA3x74XdBtggJcj9kOeInz0WE+LgCPDkZFlBYJw==}
     engines: {node: '>=12.0.0'}
 
+  svg2pdf.js@2.8.1:
+    resolution: {integrity: sha512-AzXfPHjHnFt9dpdRPhWWBOKipnMSWQZRKiV3FTTPdY6wwRgT3labbA4s0HIQaskNhwAhrcI2u2rDhD8j8udfNQ==}
+    peerDependencies:
+      jspdf: ^4.0.0 || ^3.0.0 || ^2.0.0
+
   svgo@4.1.0:
     resolution: {integrity: sha512-bkxnTg1kSU0guhIBmibA6UUhrQmPVA1XsQLN+ylCd+UWzbnLkySOcXpyk1mrl05f+pcaCx2eHb+sp6BgMZWX+Q==}
     engines: {node: '>=16'}
     hasBin: true
+
+  svgpath@2.6.0:
+    resolution: {integrity: sha512-OIWR6bKzXvdXYyO4DK/UWa1VA1JeKq8E+0ug2DG98Y/vOmMpfZNj+TIG988HjfYSqtcy/hFOtZq/n/j5GSESNg==}
 
   table-layout@3.0.2:
     resolution: {integrity: sha512-rpyNZYRw+/C+dYkcQ3Pr+rLxW4CfHpXjPDnG7lYhdRoUcZTUt+KEsX+94RGp/aVp/MQU35JCITv2T/beY4m+hw==}
@@ -8065,6 +8088,8 @@ snapshots:
 
   css-what@7.0.0: {}
 
+  cssesc@3.0.0: {}
+
   csso@5.0.5:
     dependencies:
       css-tree: 2.2.1
@@ -8276,6 +8301,8 @@ snapshots:
   flatbuffers@23.5.26: {}
 
   flatbuffers@25.9.23: {}
+
+  font-family-papandreou@0.2.0-patch2: {}
 
   formatly@0.7.0:
     dependencies:
@@ -9619,6 +9646,8 @@ snapshots:
 
   space-separated-tokens@2.0.2: {}
 
+  specificity@0.4.1: {}
+
   stackback@0.0.2: {}
 
   stackblur-canvas@2.7.0:
@@ -9663,6 +9692,14 @@ snapshots:
   svg-pathdata@6.0.3:
     optional: true
 
+  svg2pdf.js@2.8.1(jspdf@4.2.1):
+    dependencies:
+      cssesc: 3.0.0
+      font-family-papandreou: 0.2.0-patch2
+      jspdf: 4.2.1
+      specificity: 0.4.1
+      svgpath: 2.6.0
+
   svgo@4.1.0:
     dependencies:
       commander: 11.1.0
@@ -9672,6 +9709,8 @@ snapshots:
       csso: 5.0.5
       picocolors: 1.1.1
       sax: 1.6.1
+
+  svgpath@2.6.0: {}
 
   table-layout@3.0.2:
     dependencies:

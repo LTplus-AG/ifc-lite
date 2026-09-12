@@ -480,13 +480,16 @@ jobs:
         # validate-server-binaries. Runs on every leg whose runner can execute
         # its own output; the musl binary is static x86_64 and runs natively
         # on ubuntu although it was BUILT through cross's container. The
-        # remaining legs (linux-arm64, win32-x64, darwin-x64) rely on the
+        # remaining cross-architecture legs (linux-arm64, darwin-x64) rely on the
         # profile spelling gate in scripts/check-server-bin-targets.mjs.
-        if: matrix.target == 'linux-x64' || matrix.target == 'darwin-arm64' || matrix.target == 'linux-x64-musl'
+        if: matrix.target == 'linux-x64' || matrix.target == 'darwin-arm64' || matrix.target == 'linux-x64-musl' || matrix.target == 'win32-x64'
         shell: bash
         run: |
           set -euo pipefail
           bin="target/${{ matrix.rust-target }}/server-release/ifc-lite-server"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            bin="${bin}.exe"
+          fi
           verdict="$("$bin" --panic-strategy-selftest)"
           echo "$verdict"
           test "$verdict" = "panic-strategy: unwind"

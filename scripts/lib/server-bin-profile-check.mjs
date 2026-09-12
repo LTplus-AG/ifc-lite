@@ -50,8 +50,11 @@ const SELFTEST_FLAG = '--panic-strategy-selftest';
 // gate pins it rather than modelling shell quoting around the invocation.
 const SELFTEST_VERDICT = 'test "$verdict" = "panic-strategy: unwind"';
 const PROFILE_BINARY = `${REQUIRED_PROFILE}/ifc-lite-server`;
+const WINDOWS_BINARY_SUFFIX = 'bin="${bin}.exe"';
 /** The release job's archive steps, each of which must copy the built binary. */
 const ARCHIVE_STEPS = ['Prepare Binary (Unix)', 'Prepare Binary (Windows)'];
+/** Release legs whose output can execute natively on the matrix runner. */
+const RELEASE_SELFTEST_TARGETS = ['linux-x64', 'linux-x64-musl', 'darwin-arm64', 'win32-x64'];
 
 /** Every job that builds a server binary. */
 const BUILD_JOBS = [
@@ -170,5 +173,22 @@ export function checkUnwindProfile(workflow, origin) {
         `flags meant to produce it`,
       );
     }
+  }
+
+  const releaseSelftest = sliceStep(release, ASSERT_STEP);
+  for (const target of RELEASE_SELFTEST_TARGETS) {
+    if (releaseSelftest === null || !releaseSelftest.includes(`matrix.target == '${target}'`)) {
+      fail(
+        `the "${ASSERT_STEP}" step of job "release-server-binaries" in ${origin} does not run ` +
+        `for native target "${target}"; every release artefact executable on its matrix runner ` +
+        `must prove that it unwinds`,
+      );
+    }
+  }
+  if (releaseSelftest === null || !releaseSelftest.includes(WINDOWS_BINARY_SUFFIX)) {
+    fail(
+      `the "${ASSERT_STEP}" step of job "release-server-binaries" in ${origin} does not select ` +
+      `the .exe path on Windows; the win32-x64 behavioural check must execute the built artefact`,
+    );
   }
 }

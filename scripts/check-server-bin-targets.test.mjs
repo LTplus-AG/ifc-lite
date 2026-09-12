@@ -318,6 +318,8 @@ const UNIX_COPY_LINE = '          cp target/${{ matrix.rust-target }}/server-rel
 /* eslint-enable no-template-curly-in-string */
 const ASSERT_STEP_NAME = '- name: Assert the built binary unwinds';
 const SELFTEST_FLAG = '--panic-strategy-selftest';
+const WINDOWS_SELFTEST_CONDITION = " || matrix.target == 'win32-x64'";
+const WINDOWS_BINARY_SUFFIX = 'bin="${bin}.exe"';
 
 test('profile: a cargo build leg back on --release is red', () => {
   const result = runChecker({
@@ -388,6 +390,20 @@ test('profile: dropping the self-test verdict comparison is red', () => {
     workflow: (s) => mutate(s, 'test "$verdict" = "panic-strategy: unwind"', 'true'),
   });
   assertRed(result, /has no "Assert the built binary unwinds" step running the built binary/);
+});
+
+test('profile: skipping the native Windows release self-test is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, WINDOWS_SELFTEST_CONDITION, ''),
+  });
+  assertRed(result, /does not run for native target "win32-x64"/);
+});
+
+test('profile: running the extensionless path for the Windows self-test is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, WINDOWS_BINARY_SUFFIX, 'bin="${bin}"'),
+  });
+  assertRed(result, /does not select the \.exe path on Windows/);
 });
 
 // ---- The gate's original eight deliberate regressions, re-confirmed so the

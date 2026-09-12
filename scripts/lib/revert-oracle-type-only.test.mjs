@@ -194,12 +194,12 @@ test('the pre-fix answer, for contrast: the runtime observer saw pass/pass and s
   assert.equal(verdict({ baseline: pass4, reverted: pass4 }).verdict, 'UNOBSERVED');
 });
 
-test('a diagnostic that lands ONLY in some other test file is UNOBSERVED, with the reason named', () => {
+test('a nonzero typecheck with diagnostics only elsewhere is inconclusive, never a synthetic pass', () => {
   const baseline = runTypecheckPlan(PLAN, REPO_ROOT, 'baseline', { spawn: fakeSpawn(0, ''), ...included });
   const reverted = runTypecheckPlan(PLAN, REPO_ROOT, 'reverted', { spawn: fakeSpawn(1, ELSEWHERE), ...included });
-  assert.equal(reverted.kind, 'pass');
-  assert.match(reverted.evidence[0], /outside the changed test files/);
-  assert.equal(verdict({ baseline: aggregate([baseline]), reverted: aggregate([reverted]) }).verdict, 'UNOBSERVED');
+  assert.equal(reverted.kind, 'load-failure');
+  assert.match(reverted.evidence[0], /outside the changed test file/);
+  assert.equal(verdict({ baseline: aggregate([baseline]), reverted: aggregate([reverted]) }).verdict, 'INCONCLUSIVE');
 });
 
 test('a baseline that does not type-check is BASELINE-BROKEN, whichever file the diagnostic is in', () => {

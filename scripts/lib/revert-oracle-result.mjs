@@ -21,6 +21,10 @@ export function resultRecord({
   head = null,
   production = [],
   tests = [],
+  invocationId = null,
+  startedAt = null,
+  finishedAt = null,
+  restoration = 'not-required',
   ...details
 }) {
   if (channel !== PULL_REQUEST_CHANNEL && channel !== ORACLE_CHANNEL) {
@@ -31,7 +35,7 @@ export function resultRecord({
   }
   return {
     ...details,
-    schemaVersion: 1,
+    schemaVersion: 2,
     channel,
     verdict,
     exitCode,
@@ -40,6 +44,9 @@ export function resultRecord({
     head,
     production,
     tests,
+    invocationId,
+    timing: { startedAt, finishedAt },
+    restoration,
   };
 }
 

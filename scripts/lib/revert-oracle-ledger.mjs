@@ -11,10 +11,13 @@ import {
   INCONCLUSIVE,
 } from './revert-oracle.mjs';
 
-const completePass = (run) => run?.kind === PASS && Number.isInteger(run.total) && run.total > 0;
+const completePass = (run) => run?.kind === PASS && run.attributed === true
+  && run.exitCode === 0 && run.signal === null && Number.isInteger(run.total) && run.total > 0;
 const assertionWitness = (baseline, reverted) =>
   completePass(baseline) &&
   reverted?.kind === ASSERTION_FAILURE &&
+  reverted.attributed === true &&
+  Number.isInteger(reverted.exitCode) && reverted.exitCode !== 0 && reverted.signal === null &&
   Number.isInteger(reverted.total) &&
   reverted.total >= baseline.total &&
   Number.isInteger(reverted.failed) &&
@@ -41,7 +44,8 @@ export function buildExecutionLedger({ plans, gaps = [], support = [], baselineR
     exitCode: run.rawExitCode ?? null,
     signal: run.signal ?? null,
     toolchain: run.toolchain ?? null,
-    files: typeof run.total === 'number' && run.total > 0 ? [plan.file] : [],
+    attributed: run.attributed === true,
+    files: run.attributed === true ? [plan.file] : [],
     testIdentities: [...new Set(run.identities ?? [])],
     evidence: run.evidence ?? [],
   } : null;
@@ -85,7 +89,7 @@ export function ledgerVerdict(ledger) {
     return {
       verdict: BASELINE_BROKEN,
       exitCode: 3,
-      reason: `${broken.file} has no green attributable baseline (${broken.baseline.kind}).`,
+      reason: `${broken.file} has no green attributable baseline (${broken.baseline.kind}${broken.baseline.evidence?.[0] ? `: ${broken.baseline.evidence[0]}` : ''}).`,
     };
   }
 
@@ -98,6 +102,16 @@ export function ledgerVerdict(ledger) {
 
   if (runs.length === 0) {
     return { verdict: INCONCLUSIVE, exitCode: 3, reason: 'no changed executable test file was measured.' };
+  }
+  const changedCollection = runs.find((entry) => entry.baseline.total !== entry.reverted.total
+    || (entry.baseline.testIdentities.length > 0 && entry.reverted.testIdentities.length > 0
+      && JSON.stringify(entry.baseline.testIdentities) !== JSON.stringify(entry.reverted.testIdentities)));
+  if (changedCollection) {
+    return {
+      verdict: INCONCLUSIVE,
+      exitCode: 3,
+      reason: `${changedCollection.file} did not execute the same test collection before and after the revert.`,
+    };
   }
   return {
     verdict: UNOBSERVED,

@@ -464,6 +464,10 @@ test('classifyPath: Python `test_*.py` / `*_test.py` are tests, not production (
   assert.equal(classifyPath('a/b/c/test_deep.py'), 'test');
 });
 
+test('#4109: unsupported Go entrypoints stay tests so planning can expose a capability gap', () => {
+  assert.equal(classifyPath('cmd/widget_test.go'), 'test');
+});
+
 test('classifyPath: a Python module that merely CONTAINS "test" stays production', () => {
   assert.equal(classifyPath('tools/ifcopenshell_reference/canonical.py'), 'production');
   assert.equal(classifyPath('tools/ifcopenshell_reference/latest_export.py'), 'production');
@@ -796,6 +800,13 @@ test('node --test: all green', () => {
   assert.equal(r.kind, PASS);
   assert.equal(r.total, 197);
   assert.equal(r.passed, 197);
+});
+
+test('#4109: a green summary cannot override nonzero, missing, or signalled process status', () => {
+  for (const processState of [{ exitCode: 9 }, { exitCode: null }, { exitCode: null, signal: 'SIGTERM' }]) {
+    const parsed = parseRunnerOutput({ family: 'node-test', stdout: NODE_ALL_PASS, stderr: '', ...processState });
+    assert.equal(parsed.kind, UNPARSEABLE);
+  }
 });
 
 test('node --test: zero collected tests is never a pass', () => {

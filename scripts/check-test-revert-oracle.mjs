@@ -77,6 +77,7 @@ import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync } from 'no
 import { join, dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 
 import {
   parseNameStatus,
@@ -89,7 +90,6 @@ import {
 import { isDependabotDependencyOnly } from './lib/revert-oracle-dependabot.mjs';
 import { isVersionOnlyManifestDiff } from './lib/revert-oracle-version-bump.mjs';
 import { isCommentOnlyDiff } from './lib/revert-oracle-comment-only.mjs';
-import { requiredFeaturePlanOrDie, EXIT_UNHANDLED_CFG_SHAPE } from './lib/revert-oracle-rust-features.mjs';
 import { ciExitCode } from './lib/revert-oracle-ci.mjs';
 import {
   createResultEmitter,
@@ -114,6 +114,9 @@ let restoreVerified = false;
 let patchPath = null;
 let resultContext = { base: null, head: null, production: [], tests: [] };
 const resultEmitter = createResultEmitter(process.argv.includes('--json'));
+const invocationId = randomUUID();
+const startedAt = new Date().toISOString();
+let cleaningUp = false;
 
 // Exit codes. 0 is reserved for OBSERVED and nothing else.
 const EXIT_OBSERVED = 0;
@@ -131,6 +134,10 @@ function emitResult(channel, verdict, code, reason, details = {}) {
     verdict,
     exitCode: code,
     reason,
+    invocationId,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    restoration: reverted ? 'failed' : restoreVerified ? 'verified' : 'not-required',
   }));
 }
 
@@ -154,6 +161,16 @@ function die(code, message, extra = [], details = {}) {
   }
   process.exit(code);
 }
+
+function emergency(signal) {
+  if (cleaningUp) return;
+  cleaningUp = true;
+  console.error(`\n[revert-oracle] interrupted by ${signal} — restoring the tree before exiting`);
+  const ok = restore(signal);
+  emitResult(ORACLE_CHANNEL, ok ? 'INTERRUPTED' : 'RESTORE-FAILED', ok ? EXIT_INCONCLUSIVE : EXIT_RESTORE_FAILED, `the oracle was interrupted by ${signal}`);
+  process.exit(ok ? EXIT_INCONCLUSIVE : EXIT_RESTORE_FAILED);
+}
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => emergency(sig));
 
 process.on('uncaughtException', (error) => {
   console.error(error?.stack ?? String(error));
@@ -367,7 +384,7 @@ if (observer === 'typecheck') {
   ({ plans, unassigned } = t);
   support = t.skipped;
 } else {
-  ({ plans, unassigned, support } = requiredFeaturePlanOrDie((tp) => planRuns(tp, ROOT), testPaths, die, EXIT_UNHANDLED_CFG_SHAPE));
+  ({ plans, unassigned, support } = planRuns(testPaths, ROOT));
 }
 const partitioned = partitionRunnablePlans(plans, unassigned);
 plans = partitioned.runnable;
@@ -395,16 +412,9 @@ if (patchText.trim() === '') {
 }
 writeFileSync(patchPath, patchText);
 
-// --- restoration, guaranteed ------------------------------------------------
-//
-// Restoration is a FORWARD re-apply of the identical patch, never `git
-// checkout --` / `git restore` / `git reset --hard` / `git stash`: those
-// commands would also erase anything else in the tree if an assumption were
-// wrong, and they cannot be verified against the patch that was applied.
-
 function restore(context) {
   if (!reverted || !patchPath) return true;
-  const r = rawGit(['apply', patchPath]);
+  const r = rawGit(['-c', 'core.autocrlf=false', 'apply', patchPath]);
   if (r.error || r.status !== 0) {
     console.error(`\n[revert-oracle] !!! RESTORE FAILED (${context}) !!!`);
     console.error(r.error?.message ?? (r.stderr || '').trim());
@@ -431,18 +441,6 @@ function restore(context) {
   return true;
 }
 
-let cleaningUp = false;
-function emergency(signal) {
-  if (cleaningUp) return;
-  cleaningUp = true;
-  console.error(`\n[revert-oracle] interrupted by ${signal} — restoring the tree before exiting`);
-  const ok = restore(signal);
-  const code = ok ? EXIT_INCONCLUSIVE : EXIT_RESTORE_FAILED;
-  emitResult(ORACLE_CHANNEL, ok ? 'INTERRUPTED' : 'RESTORE-FAILED', code, `the oracle was interrupted by ${signal}`);
-  process.exit(code);
-}
-for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => emergency(sig));
-
 // --- run ---------------------------------------------------------------------
 
 let exitCode = EXIT_INCONCLUSIVE;
@@ -454,7 +452,7 @@ try {
   const baseline = aggregate(baselineResults);
 
   console.log(`\n[2/3] reverting ${prodPaths.length} production file(s)`);
-  const applyR = git(['apply', '-R', '--verbose', patchPath]);
+  const applyR = git(['-c', 'core.autocrlf=false', 'apply', '-R', '--verbose', patchPath]);
   if (applyR.status !== 0) {
     die(EXIT_REVERT_FAILED, 'the production patch would not reverse-apply — nothing was checked.', [
       ...(applyR.stderr || '').trim().split('\n'),

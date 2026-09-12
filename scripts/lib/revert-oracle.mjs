@@ -37,6 +37,7 @@
 import { parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs';
 import { ALL_SKIPPED, classifyExecuted, severityCandidates } from './revert-oracle-all-skipped.mjs';
 import { passVerdict } from './revert-oracle-pass-verdict.mjs';
+import { processResultGap } from './revert-oracle-process-result.mjs';
 import { isInertPath, isTestSupportPath, withoutBrowserSpecs } from './revert-oracle-inert.mjs';
 export { cargoRunner } from './revert-oracle-cargo.mjs';
 // ---------------------------------------------------------------------------
@@ -57,8 +58,8 @@ const IGNORED_SUFFIXES = ['.md', '.mdx', '.txt', '.snap.orig'];
  */
 const DEPLOY_CONFIG_RE = /(^|\/)(vercel\.json|\.vercelignore|vercel-[a-z0-9-]*\.sh)$/;
 
-/** A file that IS a test: JS/TS `*.test.*`/`*.spec.*`, or Python's `test_*.py` / `*_test.py` (#4050). */
-const TEST_FILE_RE = /(^|\/)(?:[^/]*\.(?:test|spec)\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)|test_[^/]*\.py|[^/]*_test\.py)$/;
+/** Known test entrypoint names. Unsupported families still classify as tests so planning reports a capability gap. */
+const TEST_FILE_RE = /(^|\/)(?:[^/]*\.(?:test|spec)\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)|test_[^/]*\.py|[^/]*_test\.(?:py|go))$/;
 /** Directories whose entire contents are test scaffolding, not production. `__corpus__`/`corpus`/`__test__`/`test-data` added for #4142 -- see `revert-oracle.test.mjs` for the trade-off and sibling sweep. */
 const TEST_DIR_RE = /(^|\/)(__corpus__|__fixtures__|__snapshots__|__test__|__tests__|corpus|test-data|test-fixtures|testdata)(\/|$)/;
 /** `tests/` and `test/` as a directory segment (but not `src/test-utils.ts`). */
@@ -289,21 +290,20 @@ export function parseRunnerOutput(run) {
     return { kind: UNPARSEABLE, passed: null, failed: null, total: null, evidence: [`unknown runner family: ${family}`] };
   }
 
-  // A load error ANYWHERE outranks every other signal. Some files may have run
-  // their assertions, but at least one subject never loaded, so the run cannot
-  // be read as "the tests observed the change".
-  // Both signals are recorded: the STRUCTURAL one (the runner reported a file
-  // rather than a test) and the TEXTUAL one (the actual import/compile error).
-  // A human reading an INCONCLUSIVE needs the error text to write the surgical
-  // mutation, so it must never be shadowed by the structural summary.
-  // A successful, structurally parsed run may print error-shaped fixture text
-  // (including the literal `SyntaxError:`). Text alone cannot turn that green
-  // execution into a collection failure (#4109).
+  const earlyProcessGap = processResultGap(parsed, run);
+  if (earlyProcessGap && (run.signal || run.exitCode === null)) return earlyProcessGap;
+
+  // Load/collection evidence outranks assertion output; green processes may
+  // contain error-shaped fixture text without becoming failures (#4109).
   const textualHit = run.exitCode === 0 && parsed.total > 0 ? null : firstMatch(text, LOAD_ERROR_PATTERNS);
   for (const hit of [textualHit, parsed.loadEvidence]) if (hit) evidence.push(hit);
   if (evidence.length > 0) {
     return { kind: LOAD_FAILURE, passed: parsed.passed, failed: parsed.failed, total: parsed.total, evidence };
   }
+
+
+  const processGap = processResultGap(parsed, run);
+  if (processGap) return processGap;
 
   if (parsed.kind) return { ...parsed, evidence: parsed.evidence ?? [] };
 

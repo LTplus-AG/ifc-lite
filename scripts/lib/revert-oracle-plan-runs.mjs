@@ -18,8 +18,8 @@
  * no longer lives inside the dispatcher that freezes it as a top-level const.
  */
 
-import { readFileSync, existsSync } from 'node:fs';
-import { join, dirname, relative, basename, sep } from 'node:path';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { join, dirname, relative, basename, sep, resolve } from 'node:path';
 
 import { cargoTestOwner } from './revert-oracle-cargo.mjs';
 import { claimRuntimeAdapter } from './revert-oracle-adapters.mjs';
@@ -28,6 +28,7 @@ import {
   stripComments,
   INNER_CFG_RE,
   TEST_CFG_RE,
+  UnhandledCfgShapeError,
 } from './revert-oracle-rust-features.mjs';
 import { pythonTestOwner } from './revert-oracle-python.mjs';
 
@@ -97,6 +98,25 @@ function crateDefaultFeatures(dir) {
   }
 }
 
+function rustModuleOwner(crateDir, abs) {
+  const sourceRoot = join(crateDir, 'src');
+  if (!existsSync(sourceRoot)) return null;
+  for (const entry of readdirSync(sourceRoot, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.rs')) continue;
+    const parent = join(entry.parentPath, entry.name);
+    const text = readFileSync(parent, 'utf8');
+    const declarations = /(?:#\[path\s*=\s*"([^"]+)"\]\s*)?(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
+    let match;
+    while ((match = declarations.exec(text)) !== null) {
+      const target = match[1]
+        ? resolve(dirname(parent), match[1])
+        : resolve(dirname(parent), `${match[2]}.rs`);
+      if (target === resolve(abs)) return match[2];
+    }
+  }
+  return null;
+}
+
 export function planRuns(testPaths, root) {
   const plans = [];
   const unassigned = [];
@@ -109,7 +129,8 @@ export function planRuns(testPaths, root) {
       const within = relative(c.dir, abs).split(sep).join('/');
       const targetMatch = /^tests\/([^/]+)\.rs$/.exec(within);
       const siblingMatch = /^src\/([^/]*(?:tests|_tests))\.rs$/.exec(within);
-      if (!targetMatch && !siblingMatch) {
+      const declaredModule = targetMatch ? null : rustModuleOwner(c.dir, abs);
+      if (!targetMatch && !siblingMatch && !declaredModule) {
         if (/(^|\/)(?:fixtures?|test-data|testdata|corpus)(\/|$)/.test(within)) {
           support.push(rel);
           continue;
@@ -118,14 +139,22 @@ export function planRuns(testPaths, root) {
         continue;
       }
       const defaults = crateDefaultFeatures(c.dir);
-      const combos = requiredFeatureCombos(root, [rel], defaults);
+      let combos;
+      try {
+        combos = requiredFeatureCombos(root, [rel], defaults);
+      } catch (error) {
+        if (!(error instanceof UnhandledCfgShapeError)) throw error;
+        unassigned.push({ file: rel, reason: error.message });
+        continue;
+      }
       const runs = combos.length > 0
         ? (requiresDefaultRun(root, [rel]) ? [[], ...combos] : combos)
         : [[]];
       for (const features of runs) {
         const suffix = features.length > 0 ? `+${features.join('+')}` : '';
-        const identity = targetMatch?.[1] ?? siblingMatch[1];
-        const claimed = claimRuntimeAdapter({ kind: 'cargo', crate: c.crate, features, target: targetMatch?.[1] ?? null, moduleFilter: siblingMatch?.[1] ?? null });
+        const moduleFilter = declaredModule ?? siblingMatch?.[1];
+        const identity = targetMatch?.[1] ?? moduleFilter;
+        const claimed = claimRuntimeAdapter({ kind: 'cargo', crate: c.crate, features, target: targetMatch?.[1] ?? null, moduleFilter });
         plans.push({
           key: `cargo:${c.crate}:${identity}${suffix}`,
           file: rel,
@@ -135,7 +164,8 @@ export function planRuns(testPaths, root) {
           script: undefined,
           crate: c.crate,
           features,
-          moduleFilter: siblingMatch?.[1] ?? null,
+          moduleFilter,
+          integrationTarget: targetMatch?.[1] ?? null,
           adapter: claimed?.adapter ?? null,
           runner: claimed?.runner ?? null,
         });
@@ -143,6 +173,7 @@ export function planRuns(testPaths, root) {
       continue;
     }
     if (rel.endsWith('.rs')) { unassigned.push({ file: rel, reason: 'no owning Cargo package found' }); continue; }
+    if (rel.endsWith('.go')) { unassigned.push({ file: rel, reason: 'Go test entrypoints have no revert-oracle adapter' }); continue; }
     if (rel.endsWith('.py')) {
       const p = pythonTestOwner(abs, root);
       if (!p) { unassigned.push({ file: rel, reason: 'no owning Python package found' }); continue; }
@@ -153,7 +184,10 @@ export function planRuns(testPaths, root) {
       continue;
     }
     const pkgDir = findUp(dirname(abs), 'package.json', root);
-    if (!/\.(test|spec)\.[^/]+$/.test(rel)) { support.push(rel); continue; }
+    if (!/\.(test|spec)\.[^/]+$/.test(rel)) {
+      support.push(rel);
+      continue;
+    }
     if (!pkgDir) { unassigned.push({ file: rel, reason: 'no owning JavaScript package found' }); continue; }
     let script;
     try {

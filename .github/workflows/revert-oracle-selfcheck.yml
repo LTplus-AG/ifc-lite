@@ -12,8 +12,10 @@ on:
       - '.github/actions/setup-revert-oracle/**'
       - '.github/workflows/revert-oracle-selfcheck.yml'
       - 'scripts/check-test-revert-oracle.mjs'
+      - 'scripts/lib/revert-oracle.mjs'
       - 'scripts/lib/revert-oracle-*.mjs'
       - 'scripts/revert-oracle-selfcheck.mjs'
+      - 'scripts/revert-oracle-selfcheck.test.mjs'
       - 'package.json'
       - 'pnpm-lock.yaml'
   workflow_dispatch:

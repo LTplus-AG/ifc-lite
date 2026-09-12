@@ -19,8 +19,8 @@ test('#4109: adapter IDs are the executable supported-runner manifest', () => {
 
 test('#4109: corrupting one expected selfcheck value makes the selfcheck fail', () => {
   const corrupt = { ...EXPECTED_PROBES, observed: ['pass'] };
-  const failure = validateSelfcheckResult('node-test', 'observed', { kind: 'assertion-failure' }, corrupt);
-  assert.match(failure, /expected pass, got assertion-failure/);
+  const failure = validateSelfcheckResult('node-test', 'observed', { verdict: 'OBSERVED' }, corrupt);
+  assert.match(failure, /expected pass, got OBSERVED/);
 });
 
 test('#4109: removing runner provisioning fails by naming the lost adapter', () => {

@@ -17,7 +17,8 @@ test('#4109: an early argument refusal emits exactly one oracle JSON record', ()
   assert.equal(result.error, undefined);
   assert.equal(result.status, 2, `${result.stdout}\n${result.stderr}`);
   const record = JSON.parse(result.stdout);
-  assert.equal(record.schemaVersion, 1);
+  assert.equal(record.schemaVersion, 2);
+  assert.equal(record.restoration, 'not-required');
   assert.equal(record.channel, 'oracle');
   assert.equal(record.verdict, 'ERROR');
   assert.equal(record.exitCode, 2);

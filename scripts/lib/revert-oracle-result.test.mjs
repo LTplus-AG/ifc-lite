@@ -25,7 +25,9 @@ test('#4109: every result identifies whether it describes the PR or the oracle',
   });
   assert.equal(finding.channel, 'pull-request');
   assert.equal(gap.channel, 'oracle');
-  assert.equal(finding.schemaVersion, 1);
+  assert.equal(finding.schemaVersion, 2);
+  assert.deepEqual(finding.timing, { startedAt: null, finishedAt: null });
+  assert.equal(finding.restoration, 'not-required');
 });
 
 test('#4109: a process result emitter refuses a second JSON record', () => {
@@ -59,7 +61,7 @@ test('#4109: detail fields cannot overwrite the versioned result envelope', () =
     reason: 'canonical',
     schemaVersion: 99,
   });
-  assert.equal(record.schemaVersion, 1);
+  assert.equal(record.schemaVersion, 2);
   assert.equal(record.reason, 'canonical');
 });
 

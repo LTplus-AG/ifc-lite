@@ -256,12 +256,19 @@ export function runTypecheckPlan(plan, root, phase, { spawn = spawnSync, program
       cwd: plan.dir,
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024,
+      timeout: 10 * 60 * 1000,
       env: { ...process.env, CI: '1', FORCE_COLOR: '0', NO_COLOR: '1' },
     });
     if (spawn === spawnSync) typecheckRuns.set(cacheKey, r);
   }
   if (r.error) {
     return { kind: 'runner-missing', passed: null, failed: null, total: null, rawExitCode: null, evidence: [`could not spawn ${TYPECHECK_SCRIPT}: ${r.error.message}`] };
+  }
+  if (r.signal || r.status === null) {
+    return {
+      kind: 'unparseable', passed: null, failed: null, total: null, rawExitCode: r.status, signal: r.signal ?? null,
+      attributed: false, evidence: [r.signal ? `typecheck terminated by ${r.signal}` : 'typecheck returned no exit status'],
+    };
   }
   const output = `${r.stdout ?? ''}\n${r.stderr ?? ''}`;
   const diagnostics = parseTscDiagnostics(output);
@@ -270,6 +277,7 @@ export function runTypecheckPlan(plan, root, phase, { spawn = spawnSync, program
   if (!inclusion.included) {
     return {
       kind: 'runner-missing', passed: null, failed: null, total: null, rawExitCode: r.status,
+      signal: r.signal ?? null, attributed: false,
       evidence: [`cannot prove ${plan.file} entered the compiler program: ${inclusion.evidence} -- refusing a synthetic typecheck result`],
     };
   }
@@ -279,11 +287,13 @@ export function runTypecheckPlan(plan, root, phase, { spawn = spawnSync, program
 
   if (phase === 'baseline') {
     if (r.status === 0 && diagnostics.length === 0) {
-      return { kind: 'pass', passed: total, failed: 0, total, rawExitCode: r.status, evidence: [] };
+      return { kind: 'pass', passed: total, failed: 0, total, rawExitCode: r.status, signal: null, attributed: true, evidence: [] };
     }
     return {
       kind: 'load-failure',
       rawExitCode: r.status,
+      signal: null,
+      attributed: true,
       passed: null,
       failed: null,
       total,
@@ -295,19 +305,34 @@ export function runTypecheckPlan(plan, root, phase, { spawn = spawnSync, program
     };
   }
   if (inChanged.length > 0) {
+    if (r.status === 0) {
+      return { kind: 'unparseable', rawExitCode: 0, signal: null, attributed: false, passed: null, failed: null, total,
+        evidence: ['typecheck reported diagnostics in the changed test file but exited 0'] };
+    }
     const hit = new Set(inChanged.map((d) => plan.files.find((f) => samePath(d.file, f)))).size;
     return {
       kind: 'assertion-failure',
       rawExitCode: r.status,
+      signal: null,
+      attributed: true,
       passed: total - hit,
       failed: hit,
       total,
       evidence: inChanged.slice(0, 5).map(describe),
     };
   }
+  if (r.status !== 0) {
+    return {
+      kind: 'load-failure', rawExitCode: r.status, signal: null, attributed: true,
+      passed: null, failed: null, total,
+      evidence: [diagnostics[0] ? `typecheck failed outside the changed test file: ${describe(diagnostics[0])}` : `typecheck exited ${r.status} with no diagnostic`],
+    };
+  }
   return {
     kind: 'pass',
     rawExitCode: r.status,
+    signal: null,
+    attributed: true,
     passed: total,
     failed: 0,
     total,

@@ -30,7 +30,7 @@ import { spawnSync } from 'node:child_process';
 const oracle = resolve(dirname(fileURLToPath(import.meta.url)), '../check-test-revert-oracle.mjs');
 const EXIT_OBSERVED = 0;
 const EXIT_UNOBSERVED = 1;
-const EXIT_UNHANDLED_CFG_SHAPE = 6;
+const EXIT_INCONCLUSIVE = 3;
 
 function makeCrate() {
   const root = mkdtempSync(join(tmpdir(), 'oracle-unhandled-cfg-'));
@@ -76,7 +76,7 @@ function makeCrate() {
 }
 
 test(
-  'UnhandledCfgShapeError from planRuns() is caught, not an unhandled crash: distinct exit code, no ambiguity with EXIT_UNOBSERVED',
+  'an unsupported cfg becomes a per-file capability gap instead of aborting other planning',
   { timeout: 60_000 },
   () => {
     const { root, base, env } = makeCrate();
@@ -89,23 +89,21 @@ test(
       // Not an unhandled-exception exit and not EXIT_UNOBSERVED: a CI consumer
       // keyed on exit code must be able to tell this apart from "tests ran and
       // did not observe the change".
-      assert.equal(result.status, EXIT_UNHANDLED_CFG_SHAPE, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+      assert.equal(result.status, EXIT_INCONCLUSIVE, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
       assert.notEqual(result.status, EXIT_OBSERVED);
       assert.notEqual(result.status, EXIT_UNOBSERVED);
-      // die()'s own ABORT formatting, not a raw Node stack trace.
-      assert.match(result.stderr, /\[revert-oracle\] ABORT:/);
+      assert.match(result.stdout, /capability gap: tests\/gated\.rs:.*unhandled cfg shape/);
       assert.doesNotMatch(result.stderr, /at parseCfgExpr/);
       // JSON was still emitted despite the crash path, per --json.
       const jsonStart = result.stdout.indexOf('{');
       assert.ok(jsonStart >= 0, `no JSON in stdout:\n${result.stdout}`);
       const payload = JSON.parse(result.stdout.slice(jsonStart));
-      assert.equal(payload.schemaVersion, 1);
+      assert.equal(payload.schemaVersion, 2);
       assert.equal(payload.channel, 'oracle');
-      assert.equal(payload.verdict, 'ERROR');
-      assert.equal(payload.exitCode, EXIT_UNHANDLED_CFG_SHAPE);
-      assert.equal(payload.error.name, 'UnhandledCfgShapeError');
-      assert.equal(payload.error.shape, 'not(...) over default feature "gate_a"');
-      assert.match(payload.reason, /not\(\.\.\.\)/);
+      assert.equal(payload.verdict, 'INCONCLUSIVE');
+      assert.equal(payload.exitCode, EXIT_INCONCLUSIVE);
+      assert.equal(payload.ledger[0].role, 'capability-gap');
+      assert.match(payload.ledger[0].reason, /not\(\.\.\.\) over default feature/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

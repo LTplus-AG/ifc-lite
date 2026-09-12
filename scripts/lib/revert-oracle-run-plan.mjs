@@ -2,22 +2,34 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 
 import { parseRunnerOutput } from './revert-oracle.mjs';
 import { runTypecheckPlan } from './revert-oracle-type-only.mjs';
 
 const toolchainVersions = new Map();
+const RUN_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** Resolve a runner binary the way the owning package would. */
-function resolveBin(bin, pkgDir, root) {
-  if (bin === 'node') return process.execPath;
-  if (bin === 'cargo' || bin === 'python3') return bin;
+function resolveCommand(bin, pkgDir, root) {
+  if (bin === 'node') return { bin: process.execPath, prefix: [] };
+  if (bin === 'python3' && process.platform === 'win32') return { bin: 'py', prefix: ['-3'] };
+  if (bin === 'cargo' || bin === 'python3') return { bin, prefix: [] };
   let dir = pkgDir;
   for (;;) {
+    const manifest = join(dir, 'node_modules', bin, 'package.json');
+    if (existsSync(manifest)) {
+      try {
+        const pkg = JSON.parse(readFileSync(manifest, 'utf8'));
+        const target = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.[bin];
+        if (typeof target === 'string') return { bin: process.execPath, prefix: [join(dirname(manifest), target)] };
+      } catch (error) {
+        throw new Error(`cannot resolve ${bin} from ${manifest}: ${error.message}`);
+      }
+    }
     const candidate = join(dir, 'node_modules', '.bin', bin);
-    if (existsSync(candidate)) return candidate;
+    if (process.platform !== 'win32' && existsSync(candidate)) return { bin: candidate, prefix: [] };
     const parent = dirname(dir);
     if (parent === dir || !parent.startsWith(root)) return null;
     dir = parent;
@@ -53,12 +65,13 @@ export function runPlan(plan, root, label, log = console.log) {
     parsed.rawExitCode ??= null;
     parsed.signal = null;
     parsed.toolchain = `node ${process.version}`;
+    parsed.attributed = parsed.attributed === true;
     logRun(plan, root, label, parsed, parsed.kind === 'runner-missing' ? '?' : parsed.kind === 'pass' ? 0 : 1, log);
     return parsed;
   }
   const cwd = plan.crate ? root : plan.dir;
-  const binPath = resolveBin(plan.runner.bin, plan.dir, root);
-  if (!binPath) {
+  const command = resolveCommand(plan.runner.bin, plan.dir, root);
+  if (!command) {
     return {
       kind: 'runner-missing',
       passed: null,
@@ -70,32 +83,74 @@ export function runPlan(plan, root, label, log = console.log) {
       toolchain: null,
     };
   }
-  const run = spawnSync(binPath, plan.runner.args, {
+  const spawnOptions = {
     cwd,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
+    timeout: RUN_TIMEOUT_MS,
     env: { ...process.env, CI: '1', FORCE_COLOR: '0', NO_COLOR: '1' },
-  });
+  };
+  const run = plan.moduleFilter
+    ? runExactCargoModule(command.bin, [...command.prefix, ...plan.runner.args], plan.moduleFilter, spawnOptions)
+    : spawnSync(command.bin, [...command.prefix, ...plan.runner.args], spawnOptions);
   const parsed = parseRunnerOutput({
     family: plan.runner.family,
     stdout: run.stdout ?? '',
     stderr: run.stderr ?? '',
     exitCode: run.status,
+    signal: run.signal ?? null,
     spawnError: run.error ? run.error.message : undefined,
   });
   if (
     plan.moduleFilter &&
     (parsed.kind === 'pass' || parsed.kind === 'assertion-failure') &&
-    (!Array.isArray(parsed.identities) || parsed.identities.length === 0 || parsed.identities.some((name) => !name.startsWith(`${plan.moduleFilter}::`)))
+    (!Array.isArray(parsed.identities) || parsed.identities.length === 0 || parsed.identities.some((name) => !name.split('::').includes(plan.moduleFilter)))
   ) {
     parsed.kind = 'unparseable';
     parsed.evidence = [`cargo's ${plan.moduleFilter}:: filter also selected tests outside that source module`];
   }
   parsed.rawExitCode = run.status;
   parsed.signal = run.signal ?? null;
-  parsed.toolchain = toolchainIdentity(binPath, plan.runner.family);
+  parsed.toolchain = toolchainIdentity(command.bin, plan.runner.family);
+  parsed.attributed = attributableExecution(plan, parsed);
   parsed.durationMs = Date.now() - started;
   parsed.tail = `${run.stdout ?? ''}\n${run.stderr ?? ''}`.trim().split('\n').slice(-25).join('\n');
   logRun(plan, root, label, parsed, run.status, log);
   return parsed;
+}
+
+function runExactCargoModule(binPath, args, moduleFilter, options) {
+  const separator = args.indexOf('--');
+  const cargoArgs = separator === -1 ? args : args.slice(0, separator);
+  const listed = spawnSync(binPath, [...cargoArgs, '--', '--list'], options);
+  if (listed.error || listed.status !== 0 || listed.signal) return listed;
+  const identities = `${listed.stdout ?? ''}\n${listed.stderr ?? ''}`
+    .split(/\r?\n/)
+    .map((line) => /^(.+): test$/.exec(line)?.[1])
+    .filter((identity) => identity && identity.split('::').includes(moduleFilter));
+  if (identities.length === 0) {
+    return { status: 0, signal: null, stdout: 'test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n', stderr: '' };
+  }
+  const runs = identities.map((identity) => spawnSync(binPath, [...cargoArgs, '--', identity, '--exact'], options));
+  const failed = runs.find((candidate) => candidate.error || candidate.signal || candidate.status !== 0);
+  return {
+    status: failed?.status ?? 0,
+    signal: failed?.signal ?? null,
+    error: failed?.error,
+    stdout: runs.map((candidate) => candidate.stdout ?? '').join('\n'),
+    stderr: runs.map((candidate) => candidate.stderr ?? '').join('\n'),
+  };
+}
+
+function attributableExecution(plan, parsed) {
+  if (!Number.isInteger(parsed.total) || parsed.total <= 0) return false;
+  if (plan.moduleFilter) {
+    return Array.isArray(parsed.identities) && parsed.identities.length > 0
+      && parsed.identities.every((name) => name.split('::').includes(plan.moduleFilter));
+  }
+  if (plan.crate) {
+    return Boolean(plan.integrationTarget) && Array.isArray(parsed.identities) && parsed.identities.length > 0;
+  }
+  const selected = plan.relFiles?.[0] ?? plan.file;
+  return plan.files?.length === 1 && plan.runner.args.some((arg) => arg === selected || arg === plan.file);
 }

@@ -1464,3 +1464,42 @@ fn dropping_containers_keeps_a_real_model_intact() {
     );
 }
 
+/// Export review finding H1: in an UNFILTERED model a reference to an id with
+/// no line (`#50` here; model A's last line is `#5`) is still moved by the
+/// offset, but `next_offset` bounded the id space by the last LINE, so model B
+/// was placed from `#6` and its 45th entity became `#50`: A's material
+/// relationship silently named B's wall. The filtered path already reserved
+/// the dangling id, and is the control. The reference must stay dangling.
+#[test]
+fn an_unfiltered_models_dangling_reference_is_not_retargeted_at_the_next_model() {
+    let a = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('PROJA0000000000000000A',$,'A',$,$,$,$,$,$);\n\
+#4=IFCWALL('WALLA0000000000000000A',$,'WA',$,$,$,$,$);\n\
+#5=IFCRELASSOCIATESMATERIAL('RELA00000000000000000A',$,$,$,(#4),#50);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+    let mut b = String::from("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n");
+    for i in 1..=60 {
+        b.push_str(&format!("#{i}=IFCWALL('WALLB{i:0>17}',$,'WB{i}',$,$,$,$,$);\n"));
+    }
+    b.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+    for included in [None, Some(vec![1, 4, 5])] {
+        let models = [
+            MergedModel { content: a.as_bytes(), id: "a".to_string(), included: included.clone() },
+            MergedModel { content: b.as_bytes(), id: "b".to_string(), included: None },
+        ];
+        let (merged, stats) = export_merged_models(&models, &MergedOptions::default());
+        assert_eq!(stats.unmerged_model_count, 0, "both models fit");
+        assert_eq!(type_count(&merged, "=IFCWALL("), 61, "every wall is emitted");
+        let rel = merged
+            .lines()
+            .find(|l| l.contains("=IFCRELASSOCIATESMATERIAL("))
+            .expect("model A's relationship is emitted");
+        let target = rel.rsplit('#').next().and_then(|t| t.trim_end_matches(");").parse::<u32>().ok());
+        let target = target.unwrap_or_else(|| panic!("a trailing #ref in {rel}"));
+        assert!(
+            !merged.lines().any(|l| l.starts_with(&format!("#{target}="))),
+            "included={included:?}: A's dangling #50 became #{target}, a real entity: {rel}"
+        );
+    }
+}
+

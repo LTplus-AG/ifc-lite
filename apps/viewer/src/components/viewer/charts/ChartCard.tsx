@@ -27,6 +27,15 @@ export interface ChartCardProps {
   onAggregation?: (spec: ChartSpec, aggregation: Aggregation | null) => void;
 }
 
+const plural = (n: number, word: string): string => `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
+
+/** "6 buckets · 15 elements · 2 without a value" — the card's subtitle. */
+export function describeAggregation(aggregation: Aggregation): string {
+  const total = aggregation.spec.measure.agg === 'count' ? plural(aggregation.total, 'element') : `${aggregation.total.toLocaleString()} ${aggregation.unit ?? ''}`.trim();
+  const rest = aggregation.unbucketed > 0 ? ` · ${aggregation.unbucketed} without a value` : '';
+  return `${plural(aggregation.categories.length, 'bucket')} · ${total}${rest}`;
+}
+
 export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onAggregation }: ChartCardProps) {
   const chartSlice = useViewerStore((s) => s.chartSlice);
   const chartSliceSource = useViewerStore((s) => s.chartSliceSource);
@@ -71,9 +80,7 @@ export function ChartCard({ spec, dataset, link, renderer, onEdit, onRemove, onA
     link.frameItems(aggregation, items);
   }, [aggregation, selection.full, link]);
 
-  const subtitle = aggregation
-    ? `${aggregation.categories.length} bucket${aggregation.categories.length === 1 ? '' : 's'} · ${aggregation.total.toLocaleString()} ${aggregation.spec.measure.agg === 'count' ? 'elements' : (aggregation.unit ?? '')}${aggregation.unbucketed > 0 ? ` · ${aggregation.unbucketed} without a value` : ''}`
-    : 'Cannot aggregate — edit the chart';
+  const subtitle = aggregation ? describeAggregation(aggregation) : 'Cannot aggregate — edit the chart';
 
   return (
     <div className="flex flex-col min-h-0 rounded-md border border-border bg-card" data-chart-id={spec.id}>

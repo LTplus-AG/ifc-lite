@@ -145,9 +145,18 @@ impl GeoReference {
     /// [`rotation`](Self::rotation) (which `atan2`-normalizes) within one
     /// payload, and with the TS parser's matrix (alignment audit). Called at
     /// parse time by every extraction path.
+    ///
+    /// A direction with no usable length (both components authored `0.`, or
+    /// a component that overflowed to infinity) is refused and reset to the
+    /// identity `(1, 0)`, the angle the TS twin's `atan2(0, 0)` gives. Passed
+    /// through, `(0, 0)` collapsed every map coordinate to
+    /// `(Eastings, Northings)` and an infinite length divided into NaN.
     fn normalize_axis(&mut self) {
         let len = self.x_axis_abscissa.hypot(self.x_axis_ordinate);
-        if len > f64::EPSILON && (len - 1.0).abs() > f64::EPSILON {
+        if !(len.is_finite() && len > f64::EPSILON) {
+            self.x_axis_abscissa = 1.0;
+            self.x_axis_ordinate = 0.0;
+        } else if (len - 1.0).abs() > f64::EPSILON {
             self.x_axis_abscissa /= len;
             self.x_axis_ordinate /= len;
         }

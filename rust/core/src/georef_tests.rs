@@ -397,6 +397,26 @@ fn plain_map_conversion_keeps_unit_factors() {
     assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1020.0, 2040.0, 52.0));
 }
 
+/// A zero-length X-axis direction (`XAxisAbscissa = XAxisOrdinate = 0.`) must
+/// reset to the identity direction, not pass through: used as cos/sin it
+/// collapsed every local point to `(Eastings, Northings)`.
+#[test]
+fn zero_length_axis_direction_resets_to_identity() {
+    let geo = extract_map_conversion("#11=IFCMAPCONVERSION(#2,#10,1000.,2000.,42.,0.,0.,1.);")
+        .expect("georeference");
+    assert_eq!((geo.x_axis_abscissa, geo.x_axis_ordinate), (1.0, 0.0));
+    assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1010.0, 2020.0, 47.0));
+    // Two distinct local points must map to two distinct map points.
+    assert_ne!(geo.local_to_map(1.0, 0.0, 0.0), geo.local_to_map(2.0, 0.0, 0.0));
+
+    // An abscissa that overflows the double range has an infinite length:
+    // dividing by it gave a NaN axis and NaN for every map coordinate.
+    let geo = extract_map_conversion("#11=IFCMAPCONVERSION(#2,#10,1000.,2000.,42.,1.0E999,0.,1.);")
+        .expect("georeference");
+    assert_eq!((geo.x_axis_abscissa, geo.x_axis_ordinate), (1.0, 0.0));
+    assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1010.0, 2020.0, 47.0));
+}
+
 /// A non-numeric component in a compound plane angle refuses the WHOLE
 /// angle. Compacting the list first re-indexed `($,51,30,0)` as 51 deg 30
 /// min and placed the site instead of skipping it.

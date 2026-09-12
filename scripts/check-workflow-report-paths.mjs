@@ -37,11 +37,11 @@ const REQUIRED_STEPS = new Map([
   ['determinism.yml', ['Assert native determinism targets contain runnable tests']],
   ['python-wheels.yml', ['Assert the complete wheel matrix arrived']],
 ]);
-const REQUIRED_STEP_RUN_PATTERNS = new Map([
-  ['Run canary bundles', [/canaries=\(/, /if \[ "\$\{#canaries\[@\]\}" -eq 0 \]; then/, /node packages\/cli\/dist\/index\.js ext test/]],
-  ['Assert the census target contains runnable tests', [/cargo test[\s\S]*-- --list/, /runnable=\$\(\(/, /if \[ "\$runnable" -le 0 \]; then/]],
-  ['Assert native determinism targets contain runnable tests', [/for target in exact_predicate_determinism geometry_correctness_harness/, /cargo test[\s\S]*-- --list/, /\$\(\( \$\{all:-0\} - \$\{ignored:-0\} \)\)" -le 0/]],
-  ['Assert the complete wheel matrix arrived', [/expected=\(/, /find "dist\/\$artifact"/, /if \[ "\$\{#wheels\[@\]\}" -ne 1 \]; then/]],
+const REQUIRED_STEP_RUN = new Map([
+  ['Run canary bundles', 'node scripts/ci-run-sdk-canaries.mjs'],
+  ['Assert the census target contains runnable tests', 'node scripts/ci-assert-runnable-cargo-tests.mjs --package ifc-lite-geometry --features triangulation-alt --test triangulation_invariance'],
+  ['Assert native determinism targets contain runnable tests', 'node scripts/ci-assert-native-determinism-tests.mjs'],
+  ['Assert the complete wheel matrix arrived', 'node scripts/ci-prepare-wheel-matrix.mjs'],
 ]);
 const REPORTER_NEEDS = new Map([
   ['determinism.yml', ['arm64-determinism', 'wasm32-mesh-determinism']],
@@ -50,6 +50,12 @@ const REPORTER_NEEDS = new Map([
   ['wide-arithmetic.yml', ['wide-arithmetic-tripwire']],
   ['xmatch-fixture.yml', ['content-matching-fixture']],
 ]);
+
+const normalizeCondition = (value) => expression(value).replace(/^\$\{\{\s*|\s*\}\}$/g, '').replace(/\s+/g, ' ').trim();
+const nonSuccessCondition = (dependencies) => {
+  const checks = dependencies.map((dependency) => `needs.${dependency}.result != 'success'`);
+  return checks.length === 1 ? checks[0] : `(${checks.join(' || ')})`;
+};
 
 export function auditRoot(root) {
   const failures = [];
@@ -82,10 +88,8 @@ export function auditRoot(root) {
       const owner = Object.values(jobs).find((job) => namedStep(job, stepName));
       const step = namedStep(owner, stepName);
       const run = expression(step?.run);
-      const provesMeasurement = (REQUIRED_STEP_RUN_PATTERNS.get(stepName) ?? []).every((pattern) => pattern.test(run));
       if (!isRecord(owner) || owner['continue-on-error'] === true
-        || !step || typeof step.run !== 'string' || !provesMeasurement
-        || !/^\s*exit\s+1\s*$/m.test(run)
+        || !step || typeof step.run !== 'string' || run.trim() !== REQUIRED_STEP_RUN.get(stepName)
         || step.if !== undefined || step['continue-on-error'] === true) {
         failures.push(`${displayPath(root, path)}: missing active fail-closed step: ${stepName}`);
       }
@@ -105,23 +109,21 @@ export function auditRoot(root) {
     }
     if (name === 'python-wheels.yml') {
       const wheelGate = Object.values(jobs).map((job) => namedStep(job, 'Assert the complete wheel matrix arrived')).find(Boolean);
-      const artifacts = ['wheels-ubuntu-latest-x86_64', 'wheels-ubuntu-latest-aarch64', 'wheels-macos-14-aarch64', 'wheels-macos-14-x86_64', 'wheels-windows-latest-x64'];
       const publisher = Object.values(jobs).flatMap(stepsOf).find((step) => expression(step.uses).startsWith('pypa/gh-action-pypi-publish@'));
-      if (!artifacts.every((artifact) => expression(wheelGate?.run).includes(artifact))
+      if (expression(wheelGate?.run).trim() !== REQUIRED_STEP_RUN.get('Assert the complete wheel matrix arrived')
         || !isRecord(publisher?.with) || publisher.with['packages-dir'] !== 'dist/publish') {
         failures.push(`${displayPath(root, path)}: wheel publish gate does not prove every matrix leg independently`);
       }
     }
     if (REPORTER_NEEDS.has(name)) {
       const reporter = jobs['report-scheduled-failure'];
-      const condition = expression(reporter?.if);
+      const condition = normalizeCondition(reporter?.if);
       const dependencies = REPORTER_NEEDS.get(name);
       const workflowPermissions = isRecord(workflow.permissions) ? workflow.permissions : {};
+      const expectedCondition = `always() && github.event_name == 'schedule' && ${nonSuccessCondition(dependencies)}`;
       if (!isRecord(reporter) || reporter.uses !== './.github/workflows/report-scheduled-failure.yml'
-        || !condition.includes('always()') || !condition.includes("event_name == 'schedule'")
-        || /\bfalse\b/.test(condition)
+        || condition !== expectedCondition
         || !dependencies.every((dependency) => needs(reporter, dependency))
-        || !dependencies.every((dependency) => condition.includes(`needs.${dependency}.result != 'success'`))
         || workflowPermissions.issues === 'write') {
         failures.push(`${displayPath(root, path)}: missing active scheduled failure reporter with complete needs`);
       }
@@ -134,11 +136,10 @@ export function auditRoot(root) {
     if (name === 'python-wheels.yml' || name === 'server-binaries.yml') {
       const reporter = jobs['report-red-on-main'];
       const expected = name === 'python-wheels.yml' ? ['build', 'build-cross'] : ['validate-server-binaries', 'validate-server-binaries-cross'];
-      const condition = expression(reporter?.if);
-      if (!isRecord(reporter) || !condition.includes('always()') || !condition.includes("event_name == 'push'")
-        || !condition.includes('refs/heads/main') || /\bfalse\b/.test(condition)
+      const condition = normalizeCondition(reporter?.if);
+      const expectedCondition = `always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && ${nonSuccessCondition(expected)}`;
+      if (!isRecord(reporter) || condition !== expectedCondition
         || !expected.every((dependency) => needs(reporter, dependency))
-        || !expected.every((dependency) => condition.includes(`needs.${dependency}.result != 'success'`))
         || !isRecord(reporter.permissions) || reporter.permissions.issues !== 'write') {
         failures.push(`${displayPath(root, path)}: partial main-only matrix has no active issue reporter disposition`);
       }

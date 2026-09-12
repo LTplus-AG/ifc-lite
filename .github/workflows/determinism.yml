@@ -94,30 +94,7 @@ jobs:
         run: pnpm fixtures:check
 
       - name: Assert native determinism targets contain runnable tests
-        run: |
-          set -euo pipefail
-          for target in exact_predicate_determinism geometry_correctness_harness; do
-            cargo test -p ifc-lite-geometry --test "$target" -- --list > "$RUNNER_TEMP/$target-tests.txt"
-            cargo test -p ifc-lite-geometry --test "$target" -- --ignored --list > "$RUNNER_TEMP/$target-ignored-tests.txt"
-            cat "$RUNNER_TEMP/$target-tests.txt"
-            all=$(grep -c ': test$' "$RUNNER_TEMP/$target-tests.txt" || true)
-            ignored=$(grep -c ': test$' "$RUNNER_TEMP/$target-ignored-tests.txt" || true)
-            if [ "$(( ${all:-0} - ${ignored:-0} ))" -le 0 ]; then
-              echo "::error::$target selected zero runnable tests"
-              exit 1
-            fi
-          done
-          cargo test -p ifc-lite-processing --test mesh_determinism -- --list \
-            > "$RUNNER_TEMP/mesh_determinism-tests.txt"
-          cargo test -p ifc-lite-processing --test mesh_determinism -- --ignored --list \
-            > "$RUNNER_TEMP/mesh_determinism-ignored-tests.txt"
-          cat "$RUNNER_TEMP/mesh_determinism-tests.txt"
-          all=$(grep -c ': test$' "$RUNNER_TEMP/mesh_determinism-tests.txt" || true)
-          ignored=$(grep -c ': test$' "$RUNNER_TEMP/mesh_determinism-ignored-tests.txt" || true)
-          if [ "$(( ${all:-0} - ${ignored:-0} ))" -le 0 ]; then
-            echo "::error::mesh_determinism selected zero runnable tests"
-            exit 1
-          fi
+        run: node scripts/ci-assert-native-determinism-tests.mjs
 
       # exact_predicate_determinism pins exact-predicate signs across
       # platforms; geometry_correctness_harness asserts the committed

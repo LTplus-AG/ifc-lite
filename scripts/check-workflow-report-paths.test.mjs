@@ -80,12 +80,7 @@ test('a named fail-closed step cannot be disabled or allowed to fail', (context)
     steps:
       - name: Run canary bundles
         ${guard}
-        run: |
-          canaries=(tests/extensions/canaries/example/)
-          if [ "\${#canaries[@]}" -eq 0 ]; then
-            exit 1
-          fi
-          node packages/cli/dist/index.js ext test "\${canaries[0]}"
+        run: node scripts/ci-run-sdk-canaries.mjs
 `;
   const root = fixture({ 'sdk-canary.yml': workflow('if: false') });
   context.after(() => rmSync(root, { recursive: true, force: true }));
@@ -94,7 +89,10 @@ test('a named fail-closed step cannot be disabled or allowed to fail', (context)
   assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
   writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow(''));
   assert.deepEqual(auditRoot(root), []);
-  writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow('').replace('exit 1', 'echo "exit 1"'));
+  writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow('').replace(
+    'run: node scripts/ci-run-sdk-canaries.mjs',
+    "run: |\n          : <<'GUARD_DOC'\n          node scripts/ci-run-sdk-canaries.mjs\n          GUARD_DOC"
+  ));
   assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
   writeFileSync(join(root, '.github', 'workflows', 'sdk-canary.yml'), workflow('').replace('runs-on: ubuntu-latest', 'runs-on: ubuntu-latest\n    continue-on-error: true'));
   assert.ok(auditRoot(root).some((failure) => failure.includes('missing active fail-closed step')));
@@ -142,6 +140,8 @@ test('reporters cover every non-success dependency and reject inert conditions',
   writeFileSync(scheduledPath, scheduled);
   const mainPath = join(root, '.github', 'workflows', 'server-binaries.yml');
   writeFileSync(mainPath, main.replace("needs.validate-server-binaries-cross.result != 'success'", "needs.validate-server-binaries-cross.result == 'failure'"));
+  assert.ok(auditRoot(root).some((failure) => failure.includes('partial main-only matrix')));
+  writeFileSync(mainPath, main.replace(" != 'success' || needs.validate-server-binaries-cross", " != 'success' && needs.validate-server-binaries-cross"));
   assert.ok(auditRoot(root).some((failure) => failure.includes('partial main-only matrix')));
 });
 

@@ -127,30 +127,4 @@ jobs:
       # tests/extensions/canaries/ is a bundle. We run the CLI's
       # `ext test` against every one; non-zero exit fails the job.
       - name: Run canary bundles
-        run: |
-          set -euo pipefail
-          if [ ! -d tests/extensions/canaries ]; then
-            echo "::error::tests/extensions/canaries is missing; the SDK canary measured nothing."
-            exit 1
-          fi
-          shopt -s nullglob
-          canaries=(tests/extensions/canaries/*/)
-          if [ "${#canaries[@]}" -eq 0 ]; then
-            echo "::error::tests/extensions/canaries contains no bundle directories."
-            exit 1
-          fi
-          failures=0
-          for dir in "${canaries[@]}"; do
-            name=$(basename "$dir")
-            echo "::group::canary: $name"
-            if ! node packages/cli/dist/index.js ext test "$dir" --json; then
-              echo "::error::canary $name failed"
-              failures=$((failures+1))
-            fi
-            echo "::endgroup::"
-          done
-          if [ "$failures" -gt 0 ]; then
-            echo "$failures canary bundle(s) failed."
-            exit 1
-          fi
-          echo "All canary bundles passed."
+        run: node scripts/ci-run-sdk-canaries.mjs

@@ -1998,20 +1998,7 @@ jobs:
       # becomes ignored or cfg-gated. Prove this invocation still selects work
       # before treating its exit status as census evidence (#4144).
       - name: Assert the census target contains runnable tests
-        run: |
-          set -euo pipefail
-          cargo test -p ifc-lite-geometry --features triangulation-alt \
-            --test triangulation_invariance -- --list > "$RUNNER_TEMP/census-tests.txt"
-          cargo test -p ifc-lite-geometry --features triangulation-alt \
-            --test triangulation_invariance -- --ignored --list > "$RUNNER_TEMP/census-ignored-tests.txt"
-          cat "$RUNNER_TEMP/census-tests.txt"
-          all=$(grep -c ': test$' "$RUNNER_TEMP/census-tests.txt" || true)
-          ignored=$(grep -c ': test$' "$RUNNER_TEMP/census-ignored-tests.txt" || true)
-          runnable=$(( ${all:-0} - ${ignored:-0} ))
-          if [ "$runnable" -le 0 ]; then
-            echo "::error::triangulation_invariance selected zero runnable tests"
-            exit 1
-          fi
+        run: node scripts/ci-assert-runnable-cargo-tests.mjs --package ifc-lite-geometry --features triangulation-alt --test triangulation_invariance
       - name: Census
         run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance -- --nocapture
       # The per-host rows this run measured, uploaded pass or fail. The census

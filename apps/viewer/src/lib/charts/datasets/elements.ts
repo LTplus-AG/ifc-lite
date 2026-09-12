@@ -9,12 +9,14 @@
  * package's typed-array fast path (`elementsDataset`), with the dashboard
  * scope applied as an include-set per model: everything, what is visible
  * right now (the same answer the lists "visible only" filter gives), or the
- * basket. Rows carry renderer ids (`expressId + idOffset`), so a bucket's ids
- * go straight to selection and visibility.
+ * basket. Rows carry renderer ids through the store's federation rule
+ * (`toGlobalIdFromModels`), so a bucket's ids go straight to selection and
+ * visibility.
  */
 import { elementsDataset, type ChartDataset, type ChartScope, type ElementsDatasetModel } from '@ifc-lite/charts';
 import { useViewerStore, type ViewerState } from '@/store';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
+import { toGlobalIdFromModels } from '@/store/globalId';
 import { stringToEntityRef, type EntityRef } from '@/store/types';
 
 type ModelsState = Pick<ViewerState, 'models' | 'activeModelId' | 'pinboardEntities'>;
@@ -47,7 +49,9 @@ export function buildElementsDataset(scope: ChartScope, state: ModelsState = use
     const store = model.ifcDataStore;
     if (!store) continue;
     const include = includes?.get(model.id) ?? (includes ? new Set<number>() : undefined);
-    models.push({ store, idOffset: model.idOffset ?? 0, name: model.name ?? model.id, include });
+    // The store's federation id rule, not offset arithmetic of our own.
+    const modelId = model.id;
+    models.push({ store, toGlobalId: (expressId) => toGlobalIdFromModels(state.models, modelId, expressId), name: model.name ?? modelId, include });
   }
   const dataset = elementsDataset(models);
   // The scope is part of the identity of the rows: the same models with a

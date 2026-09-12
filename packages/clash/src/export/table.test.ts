@@ -10,6 +10,7 @@ import { clashReviewKey } from '../review.js';
 import type { AABB, Clash, ClashElement, ClashElementRef, ClashReview, Vec3 } from '../types.js';
 import { CLASH_TABLE_COLUMNS, bareIfcGuid, clashTableRows } from './table.js';
 
+const LF = String.fromCharCode(10);
 const GUID_A = '0YvctVUKr0kugbFTf53O9L';
 const GUID_B = '2O2Fr$t4X7Zf8NOew3FLKI';
 
@@ -49,10 +50,15 @@ describe('bareIfcGuid', () => {
     expect(bareIfcGuid(`${GUID_A}:occ-7`)).toBe(GUID_A);
   });
 
-  it('is empty for a synthetic expressid key and for a USD prim path, so a reader cannot join on a non-GUID', () => {
+  it('is empty for a synthetic expressid key, a USD prim path and a malformed 22-char value, so a reader cannot join on a non-GUID', () => {
     expect(bareIfcGuid('expressid:model.ifc:42')).toBe('');
     expect(bareIfcGuid('/Site/Building/Wall_1')).toBe('');
     expect(bareIfcGuid('')).toBe('');
+    // 22 characters of the alphabet but the first encodes more than 2 bits —
+    // not a GUID the encoder could have produced (review finding).
+    expect(bareIfcGuid('Z000000000000000000000')).toBe('');
+    expect(bareIfcGuid('4000000000000000000000')).toBe('');
+    expect(bareIfcGuid('3zzzzzzzzzzzzzzzzzzzzz')).toBe('3zzzzzzzzzzzzzzzzzzzzz');
   });
 });
 
@@ -67,11 +73,20 @@ describe('clashTableRows', () => {
     const [row] = clashTableRows(result.clashes, { modelNameOf: (id) => id.replace('.ifc', '') });
     expect(row.Rule).toBe('mep-vs-str');
     expect(row.Status).toBe('hard');
-    expect(new Set([row.GlobalIdA, row.GlobalIdB])).toEqual(new Set([GUID_A, GUID_B]));
-    expect(new Set([row.KeyA, row.KeyB])).toEqual(new Set([GUID_A, `${GUID_B}:occ-1`]));
-    expect(new Set([row.TypeA, row.TypeB])).toEqual(new Set(['IfcPipeSegment', 'IfcBeam']));
-    expect(new Set([row.NameA, row.NameB])).toEqual(new Set(['Pipe 1', 'Beam,1']));
-    expect(new Set([row.ModelA, row.ModelB])).toEqual(new Set(['mep', 'str']));
+    // Column A is the engine's `a`, column B its `b` — never crossed. The
+    // engine decides which element is `a`, so read that off the result.
+    const [c] = result.clashes;
+    const [pipeSide, beamSide] = c.a.key === GUID_A ? (['A', 'B'] as const) : (['B', 'A'] as const);
+    expect(row[`GlobalId${pipeSide}`]).toBe(GUID_A);
+    expect(row[`Key${pipeSide}`]).toBe(GUID_A);
+    expect(row[`Type${pipeSide}`]).toBe('IfcPipeSegment');
+    expect(row[`Name${pipeSide}`]).toBe('Pipe 1');
+    expect(row[`Model${pipeSide}`]).toBe('mep');
+    expect(row[`GlobalId${beamSide}`]).toBe(GUID_B);
+    expect(row[`Key${beamSide}`]).toBe(`${GUID_B}:occ-1`);
+    expect(row[`Type${beamSide}`]).toBe('IfcBeam');
+    expect(row[`Name${beamSide}`]).toBe('Beam,1');
+    expect(row[`Model${beamSide}`]).toBe('str');
     // Half a unit of overlap along X: penetration, so the distance is negative.
     expect(row.Distance).toBeLessThan(0);
     expect(row.Distance).toBeCloseTo(-0.5, 3);
@@ -117,10 +132,14 @@ describe('clashTableRows', () => {
       b: ref(GUID_B, 'IfcDoor', 'm', 'Door, left'),
     });
     const csv = tableToCsv(CLASH_TABLE_COLUMNS, clashTableRows([c]));
-    const [header, line] = csv.split('\n');
-    expect(header).toBe(CLASH_TABLE_COLUMNS.join(','));
-    expect(line).toContain(String.raw`"'=HYPERLINK(""x"")"`);
-    expect(line).toContain('"Door, left"');
-    expect(line.split(',').length).toBeGreaterThanOrEqual(CLASH_TABLE_COLUMNS.length);
+    // The documented contract, spelled out — not derived from the production
+    // constant, so a reordered or dropped column fails here and in the docs.
+    expect(csv).toBe(
+      'ClashId,Rule,Status,Severity,Review,ReviewComment,ReviewUpdatedAt,'
+      + 'GlobalIdA,GlobalIdB,KeyA,KeyB,ModelA,ModelB,TypeA,TypeB,NameA,NameB,StoreyA,StoreyB,'
+      + 'PointX,PointY,PointZ,Distance,DistanceKind,Group' + LF
+      + `c1,r,hard,major,open,,,${GUID_A},${GUID_B},${GUID_A},${GUID_B},m,m,IfcWall,IfcDoor,`
+      + String.raw`"'=HYPERLINK(""x"")","Door, left",,,1,2,3,-0.05,,` + LF,
+    );
   });
 });

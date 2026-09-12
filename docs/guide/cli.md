@@ -619,7 +619,7 @@ ifc-lite clash model.ifc --a "IfcDuct*|IfcPipe*" --b "IfcWall*" --mode clearance
 # Export clashes as BCF topics
 ifc-lite clash model.ifc --matrix --bcf clashes.bcfzip
 
-# Export every clash as one CSV row (both GlobalIds, types, names, storey, distance, review) for Excel / Power BI
+# Export every clash as one CSV row (GlobalIds when the elements have them, plus types, names, storey, distance, review) for Excel / Power BI
 ifc-lite clash model.ifc --matrix --csv clashes.csv
 ```
 

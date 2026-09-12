@@ -28,7 +28,7 @@ import { dirname, join } from 'node:path';
 import { IfcCreator } from '@ifc-lite/create';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { clashCommand, formatClashRow, worstFirst } from './clash.js';
-import { CLASH_TABLE_COLUMNS, type Clash } from '@ifc-lite/clash';
+import type { Clash } from '@ifc-lite/clash';
 
 const execFileAsync = promisify(execFile);
 
@@ -225,11 +225,19 @@ describe('clash --csv writes every clash as one table row with both GlobalIds (#
 
         const csv = await readFile(csvPath, 'utf8');
         const lines = csv.split('\n');
-        expect(lines[0]).toBe(CLASH_TABLE_COLUMNS.join(','));
+        // The documented header, spelled out rather than derived from the
+        // production constant, so a reordered column fails here too.
+        expect(lines[0]).toBe(
+          'ClashId,Rule,Status,Severity,Review,ReviewComment,ReviewUpdatedAt,'
+          + 'GlobalIdA,GlobalIdB,KeyA,KeyB,ModelA,ModelB,TypeA,TypeB,NameA,NameB,StoreyA,StoreyB,'
+          + 'PointX,PointY,PointZ,Distance,DistanceKind,Group',
+        );
         // Three crossings, three rows, trailing newline.
         expect(lines).toHaveLength(5);
         expect(lines[4]).toBe('');
-        const col = (name: string) => CLASH_TABLE_COLUMNS.indexOf(name as (typeof CLASH_TABLE_COLUMNS)[number]);
+        // Column positions come from the literal header asserted above, not the constant.
+        const header = lines[0].split(',');
+        const col = (name: string) => header.indexOf(name);
         for (const line of lines.slice(1, 4)) {
           const cells = line.split(',');
           expect(cells[col('GlobalIdA')]).toMatch(/^[0-9A-Za-z_$]{22}$/);
@@ -247,6 +255,23 @@ describe('clash --csv writes every clash as one table row with both GlobalIds (#
     },
     180_000,
   );
+
+  it('refuses an output path that is the input model, instead of overwriting the IFC (review finding)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-csv-guard-'));
+    const modelPath = join(dir, 'model.ifc');
+    try {
+      const source = buildScatteredClashModel();
+      await writeFile(modelPath, source);
+      // The input path was forgotten: `--csv` swallows model.ifc as its value
+      // and the positional scan then finds the same path as the input.
+      await expect(
+        execFileAsync(process.execPath, [CLI_ENTRY, 'clash', '--csv', modelPath], { timeout: 120_000 }),
+      ).rejects.toMatchObject({ stderr: expect.stringContaining('is the input model') });
+      expect(await readFile(modelPath, 'utf8')).toBe(source);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 180_000);
 });
 
 function clashOf(distance: number, distanceKind: Clash['distanceKind']): Clash {

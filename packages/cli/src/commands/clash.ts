@@ -14,7 +14,7 @@
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, printJson, routeConsoleDiagnosticsToStderr } from '../output.js';
 import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
@@ -279,6 +279,14 @@ export async function clashCommand(args: string[]): Promise<void> {
   const clearance = parseNumberFlag(getFlag(args, '--clearance'), '--clearance');
   const bcfPath = getFlag(args, '--bcf');
   const csvPath = getFlag(args, '--csv');
+  // `ifc-lite clash --csv model.ifc` (input path forgotten) selects `model.ifc`
+  // as BOTH input and output, and a successful run would replace the IFC with
+  // CSV bytes. Refuse any output that resolves to the input.
+  for (const [flag, out] of [['--csv', csvPath], ['--bcf', bcfPath]] as const) {
+    if (out && resolve(out) === resolve(filePath)) {
+      fatal(`${flag} ${out} is the input model; pass a different output path (did you forget <file.ifc>?)`);
+    }
+  }
   const bcfGroupBy = parseGroupBy(getFlag(args, '--group'));
   const bcfStatus = getFlag(args, '--bcf-status');
   const maxTopics = parseNumberFlag(getFlag(args, '--max-topics'), '--max-topics');

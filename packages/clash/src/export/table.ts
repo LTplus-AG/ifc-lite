@@ -17,6 +17,7 @@
  * storey the adapter saw, and a synthetic model id is not a name a reader
  * recognises). Serialisation is `tableToCsv` from `@ifc-lite/export`.
  */
+import { isValidIfcGuid } from '@ifc-lite/encoding';
 import { clashReviewKey } from '../review.js';
 import {
   DEFAULT_CLASH_REVIEW_STATUS,
@@ -86,9 +87,6 @@ export interface ClashTableOptions {
   groups?: readonly ClashGroup[];
 }
 
-/** An IfcGUID is exactly 22 characters of the IFC base-64 alphabet. */
-const IFC_GUID_RE = /^[0-9A-Za-z_$]{22}$/;
-
 /**
  * The bare IfcGUID behind an adapter key, or empty when the key is not one.
  *
@@ -97,11 +95,15 @@ const IFC_GUID_RE = /^[0-9A-Za-z_$]{22}$/;
  * `expressid:<model>:<n>` when the entity has no GlobalId; the IFCX adapter
  * keys on a USD prim path. Only the first form is a GUID a reader can join on,
  * so the others yield an empty cell rather than a string that LOOKS joinable.
+ * Validity is the encoder's own rule (`isValidIfcGuid`: 22 chars of the IFC
+ * base-64 alphabet whose first character encodes only 2 bits, so `0`–`3`) —
+ * a malformed file's `Z000…` GlobalId is kept as the run's key but is not
+ * offered as a GUID.
  */
 export function bareIfcGuid(key: string): string {
   const colon = key.indexOf(':');
   const candidate = colon === -1 ? key : key.slice(0, colon);
-  return IFC_GUID_RE.test(candidate) ? candidate : '';
+  return isValidIfcGuid(candidate) ? candidate : '';
 }
 
 export function clashTableRows(

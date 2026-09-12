@@ -83,7 +83,7 @@ request = dict(schema='IFC4', sourceRevision='controlled-boulder-derived-self-tr
     registration=dict(sourceFrame=dict(assetSha256=hashlib.sha256(glb).hexdigest(), frameKey='original-glb-y-up'),
         targetFrame=dict(assetSha256=hashlib.sha256(source.encode()).hexdigest(), frameKey='known-derived-ifc-z-up'), fit=pairs[:4], heldOut=pairs[4:]),
     registrationSha256='', targetFromIfcWorld=dict(rotation=[[1, 0, 0], [0, 1, 0], [0, 0, 1]], sourceAnchor=[0, 0, 0], targetAnchor=[0, 0, 0]),
-    sourceMesh=dict(meshOrdinal=0, positions=positions.tolist(), triangles=triangles.tolist(), uvs=uvs.tolist(),
+    source=dict(kind='mesh', meshOrdinal=0, positions=positions.tolist(), triangles=triangles.tolist(), uvs=uvs.tolist(),
         baseColorFactor=[1, 1, 1, 1], repeatS=True, repeatT=True),
     sourceImage=raster, sourceImages=[dict(imageUri=uri, raster=raster)], texelsPerMetre=16,
     maxDistanceMetres=0.001, minNormalDot=0.9, ambiguityDistanceMetres=0.0001, maxBehindMetres=0.0005)

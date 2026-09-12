@@ -27,8 +27,11 @@ import {
  * share-link.test.ts).
  */
 function setEnv(name: string, value: string | undefined): void {
-  const g = globalThis as unknown as { __VITE_ENV__?: Record<string, string> };
-  g.__VITE_ENV__ ??= {};
+  const g = globalThis as unknown as { __VITE_ENV__?: Record<string, string | boolean> };
+  // Seed the shim's own defaults when this test is the first to touch the
+  // env: a bare `{}` would hand every later `import.meta.env` reader an env
+  // with no MODE/DEV/PROD.
+  g.__VITE_ENV__ ??= { MODE: 'test', DEV: false, PROD: false };
   if (value === undefined) delete g.__VITE_ENV__[name];
   else g.__VITE_ENV__[name] = value;
 }

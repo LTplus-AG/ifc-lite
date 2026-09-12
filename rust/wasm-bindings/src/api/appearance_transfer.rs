@@ -30,6 +30,9 @@ impl IfcAPI {
     /// `stations` (n indices into `source.viewpoints`) are empty when absent.
     /// `rgba` carries only the target's existing rasters. Same output as
     /// `planMeshTransfer`; `transfer.source` records the orientation used.
+    // Flat typed-array arguments are the wasm-bindgen boundary: each buffer
+    // crosses once without a JSON or struct wrapper (as export_glb does).
+    #[allow(clippy::too_many_arguments)]
     #[wasm_bindgen(js_name = planPointTransfer)]
     pub fn plan_point_transfer(
         &self,

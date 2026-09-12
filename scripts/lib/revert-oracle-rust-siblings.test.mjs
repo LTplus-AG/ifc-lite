@@ -38,7 +38,10 @@ test('#4016: the complete oracle executes changed Rust sibling assertions and re
     writeFileSync(join(root, 'tests/later_target.rs'),
       '#[test]\nfn version_stays_supported() { assert!((1..=2).contains(&oracle_rust_siblings::value::value())); }\n');
     const writeVersion = (value) => {
-      writeFileSync(join(root, 'src/value.rs'), `pub fn value() -> u32 { ${value} }\n`);
+      // This unrelated nested `tests` module is intentionally always red. A
+      // leaf-only `tests::` selector falsely credits/runs it while measuring
+      // the top-level `src/tests.rs`; the full module path must exclude it.
+      writeFileSync(join(root, 'src/value.rs'), `pub fn value() -> u32 { ${value} }\n#[cfg(test)] mod tests { #[test] fn must_not_run() { panic!("unrelated nested test"); } }\n`);
       for (const file of ['value_tests.rs', 'tests.rs', 'renamed_tests.rs']) {
         writeFileSync(join(root, 'src', file), `#[test]\nfn observes_value() { assert_eq!(crate::value::value(), ${value}); }\n`);
       }
@@ -55,7 +58,7 @@ test('#4016: the complete oracle executes changed Rust sibling assertions and re
     const output = run(process.execPath, [oracle, '--root', root, '--base', base, '--ci', '--json']);
     assert.match(output, /OBSERVED/);
     assert.match(output, /reverting production turned an assertion RED in src\/(?:renamed_tests|value_tests)\.rs/);
-    assert.equal(readFileSync(join(root, 'src/value.rs'), 'utf8'), 'pub fn value() -> u32 { 2 }\n');
+    assert.match(readFileSync(join(root, 'src/value.rs'), 'utf8'), /^pub fn value\(\) -> u32 \{ 2 \}/);
     assert.equal(run('git', ['status', '--porcelain']).trim(), '');
   } finally {
     rmSync(root, { recursive: true, force: true });

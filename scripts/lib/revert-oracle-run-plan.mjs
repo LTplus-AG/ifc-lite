@@ -2,8 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { parseRunnerOutput } from './revert-oracle.mjs';
 import { runTypecheckPlan } from './revert-oracle-type-only.mjs';
@@ -83,16 +85,40 @@ export function runPlan(plan, root, label, log = console.log) {
       toolchain: null,
     };
   }
+  const recordsExecution = plan.runner.family === 'node-test';
+  const coverageDir = recordsExecution ? mkdtempSync(join(tmpdir(), 'revert-oracle-execution-')) : null;
   const spawnOptions = {
     cwd,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
     timeout: RUN_TIMEOUT_MS,
-    env: { ...process.env, CI: '1', FORCE_COLOR: '0', NO_COLOR: '1' },
+    env: { ...process.env, CI: '1', FORCE_COLOR: '0', NO_COLOR: '1', ...(coverageDir ? { NODE_V8_COVERAGE: coverageDir } : {}) },
   };
-  const run = plan.moduleFilter
-    ? runExactCargoModule(command.bin, [...command.prefix, ...plan.runner.args], plan.moduleFilter, spawnOptions)
-    : spawnSync(command.bin, [...command.prefix, ...plan.runner.args], spawnOptions);
+  let run;
+  let executionFiles = [];
+  let executionEvidenceError = null;
+  try {
+    if (plan.runner.family === 'vitest') {
+      const selected = plan.relFiles?.[0] ?? plan.file;
+      const listed = spawnSync(command.bin, [...command.prefix, 'list', selected, '--filesOnly'], spawnOptions);
+      if (listed.error || listed.status !== 0 || listed.signal) {
+        throw listed.error ?? new Error(`vitest file discovery failed (${listed.signal ?? listed.status})`);
+      }
+      executionFiles = `${listed.stdout ?? ''}\n${listed.stderr ?? ''}`.split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(line))
+        .map((line) => resolve(plan.dir, line));
+    }
+    run = plan.moduleFilter
+      ? runExactCargoModule(command.bin, [...command.prefix, ...plan.runner.args], plan.moduleFilter, spawnOptions)
+      : spawnSync(command.bin, [...command.prefix, ...plan.runner.args], spawnOptions);
+    if (coverageDir) executionFiles = readCoveredFiles(coverageDir);
+  } catch (error) {
+    executionEvidenceError = error instanceof Error ? error.message : String(error);
+  } finally {
+    if (coverageDir) rmSync(coverageDir, { recursive: true, force: true });
+  }
+  if (!run) throw new Error(`runner did not produce a process result: ${executionEvidenceError ?? 'unknown error'}`);
   const parsed = parseRunnerOutput({
     family: plan.runner.family,
     stdout: run.stdout ?? '',
@@ -104,7 +130,7 @@ export function runPlan(plan, root, label, log = console.log) {
   if (
     plan.moduleFilter &&
     (parsed.kind === 'pass' || parsed.kind === 'assertion-failure') &&
-    (!Array.isArray(parsed.identities) || parsed.identities.length === 0 || parsed.identities.some((name) => !name.split('::').includes(plan.moduleFilter)))
+    (!Array.isArray(parsed.identities) || parsed.identities.length === 0 || parsed.identities.some((name) => !name.startsWith(`${plan.moduleFilter}::`)))
   ) {
     parsed.kind = 'unparseable';
     parsed.evidence = [`cargo's ${plan.moduleFilter}:: filter also selected tests outside that source module`];
@@ -112,11 +138,26 @@ export function runPlan(plan, root, label, log = console.log) {
   parsed.rawExitCode = run.status;
   parsed.signal = run.signal ?? null;
   parsed.toolchain = toolchainIdentity(command.bin, plan.runner.family);
-  parsed.attributed = attributableExecution(plan, parsed);
+  parsed.executionFiles = executionFiles;
+  parsed.attributed = executionEvidenceError === null && attributableExecution(plan, parsed);
+  if (executionEvidenceError) parsed.evidence.push(`could not read runtime execution evidence: ${executionEvidenceError}`);
   parsed.durationMs = Date.now() - started;
   parsed.tail = `${run.stdout ?? ''}\n${run.stderr ?? ''}`.trim().split('\n').slice(-25).join('\n');
   logRun(plan, root, label, parsed, run.status, log);
   return parsed;
+}
+
+function readCoveredFiles(dir) {
+  const files = new Set();
+  for (const entry of readdirSync(dir).filter((name) => name.endsWith('.json'))) {
+    const report = JSON.parse(readFileSync(join(dir, entry), 'utf8'));
+    if (!Array.isArray(report.result)) throw new Error(`${entry} has no V8 coverage result array`);
+    for (const script of report.result) {
+      if (typeof script?.url !== 'string' || !script.url.startsWith('file:')) continue;
+      files.add(resolve(fileURLToPath(script.url)));
+    }
+  }
+  return [...files];
 }
 
 function runExactCargoModule(binPath, args, moduleFilter, options) {
@@ -127,7 +168,7 @@ function runExactCargoModule(binPath, args, moduleFilter, options) {
   const identities = `${listed.stdout ?? ''}\n${listed.stderr ?? ''}`
     .split(/\r?\n/)
     .map((line) => /^(.+): test$/.exec(line)?.[1])
-    .filter((identity) => identity && identity.split('::').includes(moduleFilter));
+    .filter((identity) => identity && identity.startsWith(`${moduleFilter}::`));
   if (identities.length === 0) {
     return { status: 0, signal: null, stdout: 'test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n', stderr: '' };
   }
@@ -146,11 +187,21 @@ function attributableExecution(plan, parsed) {
   if (!Number.isInteger(parsed.total) || parsed.total <= 0) return false;
   if (plan.moduleFilter) {
     return Array.isArray(parsed.identities) && parsed.identities.length > 0
-      && parsed.identities.every((name) => name.split('::').includes(plan.moduleFilter));
+      && parsed.identities.every((name) => name.startsWith(`${plan.moduleFilter}::`));
   }
   if (plan.crate) {
     return Boolean(plan.integrationTarget) && Array.isArray(parsed.identities) && parsed.identities.length > 0;
   }
   const selected = plan.relFiles?.[0] ?? plan.file;
-  return plan.files?.length === 1 && plan.runner.args.some((arg) => arg === selected || arg === plan.file);
+  if (plan.runner.family === 'python') {
+    return plan.files?.length === 1 && plan.runner.args.some((arg) => arg === selected || arg === plan.file);
+  }
+  const expected = resolve(plan.dir, selected);
+  const samePath = (candidate) => process.platform === 'win32'
+    ? candidate.toLowerCase() === expected.toLowerCase()
+    : candidate === expected;
+  if (plan.runner.family === 'vitest') {
+    return plan.files?.length === 1 && parsed.executionFiles?.length === 1 && samePath(parsed.executionFiles[0]);
+  }
+  return plan.files?.length === 1 && parsed.executionFiles?.some(samePath);
 }

@@ -18,7 +18,7 @@
  * no longer lives inside the dispatcher that freezes it as a top-level const.
  */
 
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname, relative, basename, sep, resolve } from 'node:path';
 
 import { cargoTestOwner } from './revert-oracle-cargo.mjs';
@@ -99,19 +99,29 @@ function crateDefaultFeatures(dir) {
 }
 
 function rustModuleOwner(crateDir, abs) {
-  const sourceRoot = join(crateDir, 'src');
-  if (!existsSync(sourceRoot)) return null;
-  for (const entry of readdirSync(sourceRoot, { recursive: true, withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith('.rs')) continue;
-    const parent = join(entry.parentPath, entry.name);
+  const root = join(crateDir, 'src', 'lib.rs');
+  if (!existsSync(root)) return null;
+  const queue = [{ file: root, modules: [] }];
+  const visited = new Set();
+  while (queue.length > 0) {
+    const { file: parent, modules } = queue.shift();
+    const key = `${resolve(parent)}\0${modules.join('::')}`;
+    if (visited.has(key) || !existsSync(parent)) continue;
+    visited.add(key);
     const text = readFileSync(parent, 'utf8');
     const declarations = /(?:#\[path\s*=\s*"([^"]+)"\]\s*)?(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
     let match;
     while ((match = declarations.exec(text)) !== null) {
+      const ordinaryBase = /(?:^|[\\/])(?:lib|mod)\.rs$/.test(parent)
+        ? dirname(parent)
+        : join(dirname(parent), basename(parent, '.rs'));
       const target = match[1]
         ? resolve(dirname(parent), match[1])
-        : resolve(dirname(parent), `${match[2]}.rs`);
-      if (target === resolve(abs)) return match[2];
+        : [resolve(ordinaryBase, `${match[2]}.rs`), resolve(ordinaryBase, match[2], 'mod.rs')].find(existsSync);
+      if (!target) continue;
+      const targetModules = [...modules, match[2]];
+      if (resolve(target) === resolve(abs)) return targetModules.join('::');
+      queue.push({ file: target, modules: targetModules });
     }
   }
   return null;
@@ -128,9 +138,8 @@ export function planRuns(testPaths, root) {
     if (c) {
       const within = relative(c.dir, abs).split(sep).join('/');
       const targetMatch = /^tests\/([^/]+)\.rs$/.exec(within);
-      const siblingMatch = /^src\/([^/]*(?:tests|_tests))\.rs$/.exec(within);
       const declaredModule = targetMatch ? null : rustModuleOwner(c.dir, abs);
-      if (!targetMatch && !siblingMatch && !declaredModule) {
+      if (!targetMatch && !declaredModule) {
         if (/(^|\/)(?:fixtures?|test-data|testdata|corpus)(\/|$)/.test(within)) {
           support.push(rel);
           continue;
@@ -152,7 +161,7 @@ export function planRuns(testPaths, root) {
         : [[]];
       for (const features of runs) {
         const suffix = features.length > 0 ? `+${features.join('+')}` : '';
-        const moduleFilter = declaredModule ?? siblingMatch?.[1];
+        const moduleFilter = declaredModule;
         const identity = targetMatch?.[1] ?? moduleFilter;
         const claimed = claimRuntimeAdapter({ kind: 'cargo', crate: c.crate, features, target: targetMatch?.[1] ?? null, moduleFilter });
         plans.push({

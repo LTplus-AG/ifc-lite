@@ -109,8 +109,7 @@ const ROOT = rootFlag === -1 ? SELF_ROOT : resolve(process.argv[rootFlag + 1] ??
 
 // Restoration state, declared before the first abort path can fire: `die()`
 // consults it, and a `let` in the temporal dead zone would throw instead.
-let reverted = false;
-let restoreVerified = false;
+let restoration = 'not-required';
 let patchPath = null;
 let resultContext = { base: null, head: null, production: [], tests: [] };
 const resultEmitter = createResultEmitter(process.argv.includes('--json'));
@@ -137,7 +136,7 @@ function emitResult(channel, verdict, code, reason, details = {}) {
     invocationId,
     startedAt,
     finishedAt: new Date().toISOString(),
-    restoration: reverted ? 'failed' : restoreVerified ? 'verified' : 'not-required',
+    restoration,
   }));
 }
 
@@ -186,7 +185,7 @@ function notApplicable(message) {
 }
 
 function rawGit(args, opts = {}) {
-  return spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, ...opts });
+  return spawnSync(process.env.IFC_LITE_ORACLE_GIT_BIN ?? 'git', [...(process.env.IFC_LITE_ORACLE_GIT_PREFIX ? [process.env.IFC_LITE_ORACLE_GIT_PREFIX] : []), ...args], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, ...opts });
 }
 
 function git(args, opts = {}) {
@@ -413,30 +412,33 @@ if (patchText.trim() === '') {
 writeFileSync(patchPath, patchText);
 
 function restore(context) {
-  if (!reverted || !patchPath) return true;
+  if (restoration === 'not-required' || restoration === 'verified') return true;
+  if (restoration === 'failed' || !patchPath) return false;
   const r = rawGit(['-c', 'core.autocrlf=false', 'apply', patchPath]);
   if (r.error || r.status !== 0) {
+    restoration = 'failed';
     console.error(`\n[revert-oracle] !!! RESTORE FAILED (${context}) !!!`);
     console.error(r.error?.message ?? (r.stderr || '').trim());
     console.error(`The reverse patch is still on disk: ${patchPath}`);
     console.error(`Re-apply it by hand:  git apply ${patchPath}`);
     return false;
   }
-  reverted = false;
   const statusRun = rawGit(['status', '--porcelain']);
   if (statusRun.error || statusRun.status !== 0) {
+    restoration = 'failed';
     console.error(`\n[revert-oracle] !!! RESTORE VERIFICATION FAILED (${context}) !!!`);
     console.error(statusRun.error?.message ?? (statusRun.stderr || '').trim());
     return false;
   }
   const status = statusRun.stdout.trim();
   if (status !== '') {
+    restoration = 'failed';
     console.error(`\n[revert-oracle] !!! TREE NOT BYTE-IDENTICAL AFTER RESTORE (${context}) !!!`);
     console.error(status);
     console.error(`Patch kept at: ${patchPath}`);
     return false;
   }
-  restoreVerified = true;
+  restoration = 'verified';
   console.log(`  restored: forward re-applied the patch; \`git status --porcelain\` is empty`);
   return true;
 }
@@ -459,7 +461,7 @@ try {
       'The tree is untouched (git apply is all-or-nothing).',
     ]);
   }
-  reverted = true;
+  restoration = 'required';
   for (const p of prodPaths) console.log(`  reverted: ${p}`);
 
   console.log('\n[3/3] re-running the same tests with production reverted');
@@ -495,7 +497,7 @@ try {
   }
 }
 
-if (!restoreVerified && reverted) {
+if (restoration === 'required' || restoration === 'failed') {
   die(EXIT_RESTORE_FAILED, 'restoration was never verified.');
 }
 

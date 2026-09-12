@@ -59,7 +59,7 @@ export function buildExecutionLedger({ plans, gaps = [], support = [], baselineR
       command: [plan.runner.bin, ...plan.runner.args],
     } : null,
     features: plan.features ?? [],
-    attribution: plan.typecheck ? 'compiler-program-membership' : plan.moduleFilter ? 'cargo-module-filter' : plan.crate ? 'cargo-integration-target' : 'exact-file-argument',
+    attribution: plan.typecheck ? 'compiler-program-membership' : plan.moduleFilter ? 'cargo-module-filter' : plan.crate ? 'cargo-integration-target' : plan.runner?.family === 'python' ? 'pytest-exact-file' : 'runtime-v8-file',
     baseline: measurement(baselineResults[index], plan),
     reverted: measurement(revertedResults[index], plan),
   }));

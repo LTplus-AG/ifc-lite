@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::types::response::{QuickMetadataEntitySummary, QuickMetadataSpatialNode};
+use ifc_lite_core::limits::LARGE_COORD_THRESHOLD_METERS;
 use ifc_lite_core::{keyword_eq, IfcType, IFC_TYPES};
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
@@ -156,10 +157,13 @@ pub(super) fn extract_storey_elevation_from_args(args: &[&[u8]]) -> Option<f64> 
             return Some(value);
         }
     }
+    // A storey elevation is a local coordinate: the first numeric attribute
+    // inside the large-coordinate threshold is taken, anything beyond it is a
+    // world coordinate (a georeferenced placement, not an elevation).
     args.iter()
         .filter_map(|token| std::str::from_utf8(token.trim_ascii()).ok())
         .filter_map(|token| token.parse::<f64>().ok())
-        .find(|value| value.abs() < 10_000.0)
+        .find(|value| value.abs() < LARGE_COORD_THRESHOLD_METERS)
 }
 
 pub(super) fn build_quick_spatial_tree_node(

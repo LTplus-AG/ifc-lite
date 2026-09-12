@@ -86,7 +86,6 @@ impl ModelBounds {
     /// afterwards could not undo a decision already taken.
     #[inline]
     pub fn has_large_coordinates(&self, length_unit_scale: f64) -> bool {
-        const THRESHOLD_METERS: f64 = 10000.0;
         if !self.is_valid() {
             return false;
         }
@@ -99,7 +98,7 @@ impl ModelBounds {
             self.max_z,
         ]
         .iter()
-        .any(|v| (v * length_unit_scale).abs() > THRESHOLD_METERS)
+        .any(|v| (v * length_unit_scale).abs() > crate::limits::LARGE_COORD_THRESHOLD_METERS)
     }
 
     /// The RTC offset IN METRES: the unit-scaled bbox centre when the bounds

@@ -26,11 +26,11 @@
 //! [`GeometryRouter::with_scale`],
 //! [`GeometryRouter::detect_rtc_offset_from_jobs`],
 //! [`GeometryRouter::detect_rtc_offset_with_fallback`], and the shared
-//! [`LARGE_COORD_THRESHOLD_METERS`](ifc_lite_geometry::LARGE_COORD_THRESHOLD_METERS)
-//! needs-shift constant.
+//! [`coord_is_large`](ifc_lite_core::limits::coord_is_large) predicate.
 
+use ifc_lite_core::limits::coord_is_large;
 use ifc_lite_core::{EntityDecoder, IfcType};
-use ifc_lite_geometry::{GeometryRouter, LARGE_COORD_THRESHOLD_METERS};
+use ifc_lite_geometry::GeometryRouter;
 
 /// A geometry job span as the pre-passes carry it: `(id, start, end, type)`.
 pub type Job = (u32, usize, usize, IfcType);
@@ -67,17 +67,6 @@ pub struct StreamMeta {
     pub needs_shift: bool,
     /// Z-rotation of the `IfcSite` placement, if any.
     pub building_rotation: Option<f64>,
-}
-
-/// True when any component of the offset exceeds the shared large-coordinate
-/// threshold — the single needs-shift predicate, sharing
-/// [`LARGE_COORD_THRESHOLD_METERS`] with the router's own sampling so both
-/// sides make the identical decision.
-#[inline]
-pub fn coord_is_large(offset: (f64, f64, f64)) -> bool {
-    offset.0.abs() > LARGE_COORD_THRESHOLD_METERS
-        || offset.1.abs() > LARGE_COORD_THRESHOLD_METERS
-        || offset.2.abs() > LARGE_COORD_THRESHOLD_METERS
 }
 
 /// Resolve the full [`StreamMeta`] bundle for one pre-pass emission point.

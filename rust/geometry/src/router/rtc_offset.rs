@@ -6,7 +6,7 @@
 //! and first geometry vertices to decide whether a model needs re-basing.
 
 use super::GeometryRouter;
-use crate::LARGE_COORD_THRESHOLD_METERS;
+use crate::{coord_is_large, LARGE_COORD_THRESHOLD_METERS};
 use ifc_lite_core::{has_geometry_by_name, DecodedEntity, EntityDecoder, IfcType};
 
 /// Whether a near-origin element with this `RepresentationType` may cast a
@@ -30,7 +30,9 @@ fn is_rtc_votable_representation(rep_type: &str) -> bool {
 }
 
 impl GeometryRouter {
-    /// Median RTC offset of sampled translations; `(0,0,0)` if empty or within 10 km of origin.
+    /// Compute median-based RTC offset from sampled translations.
+    /// Returns `(0,0,0)` if empty or the median is within
+    /// [`LARGE_COORD_THRESHOLD_METERS`] of the origin.
     fn rtc_offset_from_translations(translations: &[(f64, f64, f64)]) -> (f64, f64, f64) {
         if translations.is_empty() {
             return (0.0, 0.0, 0.0);
@@ -51,11 +53,7 @@ impl GeometryRouter {
             *z.get(mid).unwrap_or(&0.0),
         );
 
-        const THRESHOLD: f64 = 10000.0;
-        if centroid.0.abs() > THRESHOLD
-            || centroid.1.abs() > THRESHOLD
-            || centroid.2.abs() > THRESHOLD
-        {
+        if coord_is_large(centroid) {
             return centroid;
         }
 

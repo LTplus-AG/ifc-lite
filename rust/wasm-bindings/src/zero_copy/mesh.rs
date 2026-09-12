@@ -573,10 +573,11 @@ impl MeshCollection {
     /// Check if RTC offset is significant (>10km)
     #[wasm_bindgen(js_name = hasRtcOffset)]
     pub fn has_rtc_offset(&self) -> bool {
-        const THRESHOLD: f64 = 10000.0;
-        self.rtc_offset_x.abs() > THRESHOLD
-            || self.rtc_offset_y.abs() > THRESHOLD
-            || self.rtc_offset_z.abs() > THRESHOLD
+        ifc_lite_core::limits::coord_is_large((
+            self.rtc_offset_x,
+            self.rtc_offset_y,
+            self.rtc_offset_z,
+        ))
     }
 
     /// Get building rotation angle in radians (from IfcSite placement)

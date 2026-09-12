@@ -126,8 +126,11 @@
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
 import { analyze } from './source-text-assertion-detect.mjs';
+// The merge-base derivation is the module-size ratchet's, imported rather
+// than carried as a second copy (#4536), so the two gates degrade the same
+// way under the same shallow-clone and no-remote conditions.
+import { readBlobAt, resolveBase } from './lib/module-size-git.mjs';
 
 // --root overrides the scanned tree; only the test harness passes it, to point
 // this UNMODIFIED script at a synthetic git repository. Production CI and
@@ -239,40 +242,6 @@ function parseAllowlistText(text) {
 function loadAllowlist() {
   if (!existsSync(ALLOWLIST_PATH)) return new Set();
   return parseAllowlistText(readFileSync(ALLOWLIST_PATH, 'utf8'));
-}
-
-/**
- * This worktree's merge base with origin/main, falling back to local main --
- * identical derivation to `resolveBase()` in scripts/lib/module-size-git.mjs
- * (the module-size ratchet's), kept in step so the two gates degrade the same
- * way under the same shallow-clone and no-remote conditions.
- *
- * Returns `{ ref, sha }` or `null` if neither ref has a merge base with HEAD
- * (no `origin` remote, or a clone too shallow to share history).
- */
-function resolveBase(root) {
-  const git = (...argv) => spawnSync('git', ['-C', root, ...argv], { encoding: 'utf8' });
-  for (const ref of ['origin/main', 'main']) {
-    const merged = git('merge-base', ref, 'HEAD');
-    const sha = merged.stdout.trim();
-    if (merged.status === 0 && sha !== '') {
-      if (ref !== 'origin/main') {
-        console.warn(
-          `check-source-text-assertions: WARNING -- no merge base with origin/main; fell back ` +
-            `to local '${ref}' (${sha.slice(0, 9)}) for the allowlist identity check. If that ` +
-            `ref is stale, a swapped-in violation could go undetected this run.`
-        );
-      }
-      return { ref, sha };
-    }
-  }
-  return null;
-}
-
-/** `git show <sha>:<relPath>` from `root`, or `null` if the blob is unreadable. */
-function readBlobAt(root, sha, relPath) {
-  const res = spawnSync('git', ['-C', root, 'show', `${sha}:${relPath}`], { encoding: 'utf8' });
-  return res.status === 0 ? res.stdout : null;
 }
 
 const allowlist = loadAllowlist();
@@ -388,8 +357,11 @@ ratcheting.
 // -- any path present now that was absent there is a NEW exemption, whether
 // or not it was offset by a removal elsewhere in the same change.
 let identitySuffix = '';
+// `{ error }` when neither origin/main nor main has a merge base with HEAD
+// (no `origin` remote, or a clone too shallow to share history); `fellBack`
+// when only the local main did, which may be stale.
 const base = resolveBase(ROOT);
-if (base === null) {
+if (base.error !== undefined) {
   console.warn(
     'check-source-text-assertions: WARNING -- could not resolve a merge base with ' +
       "origin/main or main; the allowlist identity check is SKIPPED this run. A same-size " +
@@ -397,6 +369,13 @@ if (base === null) {
       'origin/main and re-run for full coverage.'
   );
 } else {
+  if (base.fellBack) {
+    console.warn(
+      `check-source-text-assertions: WARNING -- no merge base with origin/main; fell back ` +
+        `to local '${base.ref}' (${base.sha.slice(0, 9)}) for the allowlist identity check. If that ` +
+        `ref is stale, a swapped-in violation could go undetected this run.`
+    );
+  }
   const baseAllowlistText = readBlobAt(ROOT, base.sha, 'scripts/source-text-assertion-allowlist.txt');
   const baseGateText = readBlobAt(ROOT, base.sha, 'scripts/check-source-text-assertions.mjs');
   if (baseAllowlistText === null || baseGateText === null) {

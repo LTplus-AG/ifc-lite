@@ -17,7 +17,40 @@ pub struct Config {
     /// Maximum file size in MB.
     pub max_file_size_mb: usize,
     /// Request timeout in seconds.
+    ///
+    /// This is `tower_http`'s `TimeoutLayer`, which races its sleep against
+    /// the HANDLER future only. A streaming response's BODY outlives that
+    /// handler, so this value says nothing about how long an SSE connection
+    /// may live - see `stream_idle_timeout_secs`.
     pub request_timeout_secs: u64,
+    /// Longest a streaming response (`/parse/stream`, `/parse/parquet-stream`)
+    /// may go without the client consuming a frame before its admission
+    /// permit is released and the parse cancelled
+    /// (`IFC_STREAM_IDLE_TIMEOUT_SECS`, default 600; `0` disables the bound).
+    ///
+    /// Without it the permit's lifetime is the TCP connection's, i.e. the
+    /// client's to choose: `max_concurrent_parses` streams that nobody drains
+    /// hold every CPU slot and its reserved bytes indefinitely, and every
+    /// later parse from anyone is shed with 503 OVERLOADED.
+    ///
+    /// The bound is PER FRAME, because hyper stops polling the body while
+    /// one frame drains, so it has to sit above the slowest legitimate
+    /// single-frame transfer rather than being tuned tight. One SSE frame can
+    /// carry a whole mesh batch, up to `max_batch_size` meshes, which reaches
+    /// tens of megabytes of JSON on a dense model; at 600 s that is a client
+    /// sustaining under roughly 600 kbit/s on a single frame, which is the
+    /// point below which mesh streaming is not usable anyway. A stalled
+    /// attacker therefore holds a slot for ten minutes rather than forever.
+    ///
+    /// The window also has to cover the per-frame server-side work that
+    /// happens AFTER the inner stream hands a batch off and BEFORE hyper
+    /// takes it: on `/parse/parquet-stream` that is the cache append, the
+    /// Parquet serialisation and the base64 encoding of one batch, which the
+    /// inner generator cannot see and which therefore reads as client time.
+    /// That is seconds per batch at most, against a ten-minute window; an
+    /// operator tuning this knob down towards that scale would start
+    /// cancelling streams for the server's own work.
+    pub stream_idle_timeout_secs: u64,
     /// Number of worker threads for parallel processing.
     pub worker_threads: usize,
     /// Initial batch size for fast first frame (first 3 batches).
@@ -65,6 +98,7 @@ impl std::fmt::Debug for Config {
             .field("cache_dir", &self.cache_dir)
             .field("max_file_size_mb", &self.max_file_size_mb)
             .field("request_timeout_secs", &self.request_timeout_secs)
+            .field("stream_idle_timeout_secs", &self.stream_idle_timeout_secs)
             .field("worker_threads", &self.worker_threads)
             .field("initial_batch_size", &self.initial_batch_size)
             .field("max_batch_size", &self.max_batch_size)
@@ -84,6 +118,13 @@ impl std::fmt::Debug for Config {
 
 impl Config {
     /// Load configuration from environment variables.
+    /// The streaming idle bound as a duration, or `None` when the operator
+    /// disabled it with `IFC_STREAM_IDLE_TIMEOUT_SECS=0`.
+    pub fn stream_idle_timeout(&self) -> Option<std::time::Duration> {
+        (self.stream_idle_timeout_secs > 0)
+            .then(|| std::time::Duration::from_secs(self.stream_idle_timeout_secs))
+    }
+
     pub fn from_env() -> Self {
         Self::from_lookup(|key| std::env::var(key).ok())
     }
@@ -132,6 +173,9 @@ impl Config {
                 .unwrap_or_else(|| "300".into())
                 .parse()
                 .unwrap_or(300),
+            stream_idle_timeout_secs: get("IFC_STREAM_IDLE_TIMEOUT_SECS")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(600),
             worker_threads,
             max_concurrent_parses: get("IFC_MAX_CONCURRENT_PARSES")
                 .and_then(|v| v.parse().ok())

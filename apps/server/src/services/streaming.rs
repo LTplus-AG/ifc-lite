@@ -19,6 +19,7 @@
 //! automatically, including `opening_filter` support which the bespoke
 //! pipeline never had.
 
+use crate::admission::AdmissionGuard;
 use crate::services::cache::DiskCache;
 use crate::types::StreamEvent;
 use async_stream::stream;
@@ -28,7 +29,112 @@ use ifc_lite_processing::{
     StreamingOptions, TessellationQuality,
 };
 use std::pin::Pin;
-use tokio::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::{mpsc, watch};
+
+mod admission;
+pub use admission::StreamAdmission;
+
+/// The response stream's event queue, shared with the watchdog so that on a
+/// stall it can drop what the client never took.
+type SharedEvents = Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<StreamEvent>>>;
+
+/// Which side the response stream is waiting on, published to the watchdog
+/// around every `yield`. Only a stall while parked `OnConsumer` is the
+/// client's fault: a large model can go minutes between batches, and that
+/// wait is `OnProducer`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Waiting {
+    OnProducer,
+    OnConsumer,
+}
+
+/// Release the stream's share of the permit, and stop the parse, once the
+/// client has gone `idle` without taking the frame it was handed.
+///
+/// The watchdog OWNS that share. It ends, releasing it, when either the
+/// generator drops its sender (the stream finished or the connection went
+/// away, so no task lingers) or a whole window passes with the generator
+/// parked `OnConsumer` and no state change since. `changed()` wakes on every
+/// `send`, so a client that keeps taking frames keeps the window resetting.
+///
+/// Why a task the runtime drives, rather than a body timeout layer, for two
+/// independent reasons read off tower-http's `TimeoutBody::poll_frame`:
+///
+///  - it creates and polls its `Sleep` INSIDE `poll_frame`. When the client
+///    stops reading, its socket buffer fills and hyper stops polling the
+///    response body at all, so that timer is never polled either and never
+///    fires. Only something driven independently of the body observes a stall.
+///  - it times the BODY's production of a frame, not the client's
+///    consumption of one, so it would also fire on a legitimately slow parse
+///    and cancel exactly the requests that need the permit most.
+///
+/// On a stall it also drops the events still queued for the stalled client.
+/// The permit coming back admits a replacement stream, so leaving the old
+/// stream's output resident would let a client that stalls one stream per
+/// window grow memory without bound while every permit reads as free. The
+/// client that stalled reads a truncated stream ending in an `Error` frame if
+/// it ever comes back, which is the honest answer.
+fn spawn_idle_watchdog(
+    share: Arc<AdmissionGuard>,
+    mut waiting: watch::Receiver<Waiting>,
+    cancel: Arc<AtomicBool>,
+    events: SharedEvents,
+    idle: Duration,
+) {
+    tokio::spawn(async move {
+        let _share = share;
+        loop {
+            match tokio::time::timeout(idle, waiting.changed()).await {
+                // Sender dropped: the stream ended or was dropped, and its
+                // own share went with it. Ours goes now.
+                Ok(Err(_)) => return,
+                Ok(Ok(())) => continue,
+                Err(_elapsed) => {
+                    // `Timeout` polls `changed()` BEFORE its sleep, so a
+                    // `send` landing between those two polls is a state that
+                    // changed inside the window and has not been observed
+                    // yet: a frame handed off after a long producer gap, not
+                    // a stall. Ask once more before deciding.
+                    match waiting.has_changed() {
+                        Err(_) => return,
+                        Ok(true) => continue,
+                        Ok(false) if *waiting.borrow() == Waiting::OnConsumer => {}
+                        // Idle on the producer's side: not the client's doing.
+                        Ok(false) => continue,
+                    }
+                    cancel.store(true, Ordering::Relaxed);
+                    // Releasing the permit lets a NEW stream be admitted, so
+                    // what this stream already produced must go too, or a
+                    // client that stalls one stream per window accumulates
+                    // an unbounded number of un-reserved, undrained buffers.
+                    // The generator is parked in its `yield` and cannot do
+                    // this itself; it holds the lock only inside `recv`,
+                    // which is never where a stall is declared.
+                    let dropped = match events.try_lock() {
+                        Ok(mut rx) => {
+                            rx.close();
+                            let mut n = 0usize;
+                            while rx.try_recv().is_ok() {
+                                n += 1;
+                            }
+                            n
+                        }
+                        Err(_) => 0,
+                    };
+                    tracing::warn!(
+                        idle_secs = idle.as_secs(),
+                        dropped_events = dropped,
+                        "Streaming client consumed no frame within the idle bound; dropping the stream's share of its admission permit and its undrained output, and cancelling the parse (the permit frees when the parse stops)"
+                    );
+                    return;
+                }
+            }
+        }
+    });
+}
 
 fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack
@@ -66,19 +172,54 @@ pub(crate) fn detect_schema_version(content: &[u8]) -> &'static str {
 /// Takes the raw IFC bytes (issue #1023): localized non-UTF-8 byte sequences
 /// in the HEADER must not block otherwise valid models, so no `String`
 /// conversion happens anywhere on this path.
+#[cfg(test)]
 pub fn process_streaming(
     content: bytes::Bytes,
     initial_batch_size: usize,
     max_batch_size: usize,
     opening_filter: OpeningFilterMode,
     tessellation_quality: TessellationQuality,
-    admission: Option<crate::admission::AdmissionGuard>,
+    admission: StreamAdmission,
 ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send>> {
+    process_streaming_mapped(
+        content,
+        initial_batch_size,
+        max_batch_size,
+        opening_filter,
+        tessellation_quality,
+        admission,
+        |event| event,
+    )
+}
+
+/// Generate streaming geometry events and finish response-specific CPU work
+/// before the watchdog starts charging client-idle time for each frame.
+///
+/// A `StreamExt::map` outside [`process_streaming`] runs while the inner
+/// generator is suspended at `yield`, which is already classified as
+/// [`Waiting::OnConsumer`]. Parquet serialization can take longer than the
+/// idle bound without the client having received anything to consume. Keeping
+/// the mapper inside this generator makes that work producer time; only the
+/// mapped, ready-to-send frame is timed as consumer work.
+pub fn process_streaming_mapped<T, F>(
+    content: bytes::Bytes,
+    initial_batch_size: usize,
+    max_batch_size: usize,
+    opening_filter: OpeningFilterMode,
+    tessellation_quality: TessellationQuality,
+    admission: StreamAdmission,
+    mut map_event: F,
+) -> Pin<Box<dyn Stream<Item = T> + Send>>
+where
+    T: Send + 'static,
+    F: FnMut(StreamEvent) -> T + Send + 'static,
+{
+    let StreamAdmission { guard: admission, idle_timeout } = admission;
     // Zero is a caller bug, not a reason to stall the stream.
     let initial_batch_size = initial_batch_size.max(1);
     let max_batch_size = max_batch_size.max(1);
 
-    let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
+    let (tx, rx) = mpsc::unbounded_channel::<StreamEvent>();
 
     // Disconnect-aware cancellation: when the SSE client hangs up, the
     // receiver drops, the batch callback notices via `tx.is_closed()`, and the
@@ -95,8 +236,28 @@ pub fn process_streaming(
     // after a fast producer exits, so dropping the permit at task exit would
     // let a replacement parse be admitted on top of the undrained buffers).
     // An Arc'd guard held by both releases on whichever finishes last.
-    let admission = admission.map(std::sync::Arc::new);
+    let admission = admission.map(Arc::new);
     let admission_for_task = admission.clone();
+
+    // ...with a CEILING on the response stream's half. A response body is
+    // dropped when the connection closes, and nothing closes the connection
+    // of a client that simply stops reading: it can open
+    // `max_concurrent_parses` streams, stop draining them, and every later
+    // parse request from anyone is shed with 503 OVERLOADED. `TimeoutLayer`
+    // does not cover this - it races its sleep against the HANDLER future,
+    // which returned as soon as the response was built. So when a bound is
+    // configured the stream's share of the permit is OWNED by the watchdog,
+    // which releases it on the stream's end or on a stall, whichever comes
+    // first; without one the generator holds the share itself, as before.
+    let events: SharedEvents = Arc::new(tokio::sync::Mutex::new(rx));
+    let (waiting_tx, waiting_rx) = watch::channel(Waiting::OnProducer);
+    let stream_share = match (idle_timeout, admission) {
+        (Some(idle), Some(share)) => {
+            spawn_idle_watchdog(share, waiting_rx, Arc::clone(&cancel), Arc::clone(&events), idle);
+            None
+        }
+        (_, share) => share,
+    };
 
     let handle = tokio::task::spawn_blocking(move || {
         let _admission = admission_for_task;
@@ -191,16 +352,43 @@ pub fn process_streaming(
     });
 
     Box::pin(stream! {
-        let _admission = admission;
-        while let Some(event) = rx.recv().await {
+        // Both drop when the stream ends or is dropped: the share directly,
+        // the sender by ending the watchdog that owns the share.
+        let _stream_share = stream_share;
+        let waiting = waiting_tx;
+        let mut completed = false;
+        // The lock is held only across `recv`, never across a `yield`, which
+        // is what lets the watchdog take it on a stall.
+        while let Some(event) = { let mut rx = events.lock().await; rx.recv().await } {
+            completed |= matches!(event, StreamEvent::Complete { .. });
+            let event = map_event(event);
+            // Parked on the CONSUMER from here until the yield returns; the
+            // watchdog only counts a stall in this state. A failed send means
+            // the watchdog already fired and is gone, which is fine.
+            let _ = waiting.send(Waiting::OnConsumer);
             yield event;
+            let _ = waiting.send(Waiting::OnProducer);
         }
         // Surface a panicked/cancelled blocking task as a stream error
-        // instead of silently truncating the SSE stream.
+        // instead of silently truncating the SSE stream. These frames park
+        // the generator on the consumer exactly like the ones above, so a
+        // client that stalls on the very last frame (a producer panic on a
+        // malformed file is the likely one) is still seen as stalled.
         if let Err(e) = handle.await {
-            yield StreamEvent::Error {
+            let event = map_event(StreamEvent::Error {
                 message: format!("Streaming geometry task failed: {e}"),
-            };
+            });
+            let _ = waiting.send(Waiting::OnConsumer);
+            yield event;
+        } else if !completed && cancel.load(Ordering::Relaxed) {
+            // The watchdog cut the parse short. A client that disconnected
+            // never reads this; one that stalled and came back must not
+            // mistake a truncated stream for a finished model.
+            let event = map_event(StreamEvent::Error {
+                message: "Streaming parse cancelled: no frame was consumed within the idle bound".into(),
+            });
+            let _ = waiting.send(Waiting::OnConsumer);
+            yield event;
         }
     })
 }

@@ -96,6 +96,12 @@ base64 = "0.23"
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
+# `test-util` adds tokio's paused-clock (`#[tokio::test(start_paused = true)]`),
+# which is what makes the streaming idle-bound tests deterministic instead of
+# sleeping through a real timeout. Not in the `full` feature set, and
+# deliberately dev-only: `start_paused` in a production build would freeze
+# every timer in the server.
+tokio = { version = "1", features = ["test-util"] }
 # `util` feature pulls in `ServiceExt::oneshot` for in-process route tests.
 tower = { version = "0.5", features = ["util"] }
 

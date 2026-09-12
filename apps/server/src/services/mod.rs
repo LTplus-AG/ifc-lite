@@ -6,6 +6,7 @@
 
 pub mod axis;
 pub mod cache;
+mod cache_remove;
 pub mod data_model;
 pub mod parquet;
 pub mod parquet_data_model;
@@ -32,4 +33,6 @@ pub use parquet_optimized::{
     serialize_to_parquet_optimized_with_stats, OptimizedStats, VERTEX_MULTIPLIER,
 };
 pub use processor::OpeningFilterMode;
+#[cfg(test)]
 pub use streaming::process_streaming;
+pub use streaming::{process_streaming_mapped, StreamAdmission};

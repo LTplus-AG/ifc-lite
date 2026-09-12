@@ -13,7 +13,9 @@ use super::stream_event::ParquetStreamEvent;
 use super::stream_progress::{cache_stream_progress, StreamProgressRecorder};
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
-use crate::services::{extract_data_model, process_streaming, serialize_data_model_to_parquet};
+use crate::services::{
+    extract_data_model, process_streaming_mapped, serialize_data_model_to_parquet, StreamAdmission,
+};
 use crate::types::StreamEvent;
 use crate::AppState;
 use axum::{
@@ -56,7 +58,6 @@ pub async fn parse_parquet_stream(
     use crate::services::{serialize_batch_with_layout, StreamingParquetCacheWriter};
     use axum::response::IntoResponse;
     use base64::{engine::general_purpose::STANDARD, Engine};
-    use futures::StreamExt;
     use std::sync::{Arc, Mutex};
 
     let tessellation_quality = query.resolved_tessellation_quality()?;
@@ -151,15 +152,14 @@ pub async fn parse_parquet_stream(
     let cache_key_for_geometry = cache_key.clone();
 
     // Create streaming response that yields Parquet batches
-    let stream = process_streaming(
+    let stream = process_streaming_mapped(
         content.clone(),
         initial_batch_size,
         max_batch_size,
         query.opening_filter,
         tessellation_quality,
-        Some(admission_guard),
-    )
-    .map(move |event: StreamEvent| {
+        StreamAdmission::admitted(admission_guard, &state.config),
+        move |event: StreamEvent| {
         let sse_event = match event {
             StreamEvent::Start { total_estimate } => {
                 ParquetStreamEvent::Start {
@@ -327,7 +327,8 @@ pub async fn parse_parquet_stream(
             .unwrap()
         });
         Ok(Event::default().data(json))
-    });
+        },
+    );
 
     // Spawn background task to extract and cache data model
     let content_for_cache = content.clone();

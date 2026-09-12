@@ -21,10 +21,15 @@ impl Interpreter {
         let painted = paint != PdfVectorPaint::EndPath && !commands.is_empty();
         if painted && !self.annotation {
             let mut bbox = extent::bbox(extent::path_points(commands).map(|p| self.to_pdf(p)));
-            // Visibility and crop containment apply to painted ink, not only
-            // the path centreline. This deliberately overbounds joins/caps:
-            // an uncertain boundary contact refuses instead of losing paint.
-            if paint.strokes() && self.frame.state.line_width > 0. {
+            // A bounded conversion applies visibility and crop containment to
+            // painted ink, not only the path centreline. This deliberately
+            // overbounds joins/caps: an uncertain boundary contact refuses
+            // instead of losing paint. Whole-page fidelity reports retain the
+            // source path extent used by the independent PDF oracle.
+            if self.conversion_clip
+                && paint.strokes()
+                && self.frame.state.line_width > 0.
+            {
                 if let Some([mut x0, mut y0, mut x1, mut y1]) = bbox {
                     let [a, b, c, d, _, _] = self.frame.pdf_from_path;
                     let points = extent::path_points(commands).count();

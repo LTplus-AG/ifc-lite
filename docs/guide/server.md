@@ -673,6 +673,7 @@ faster than the first load.
 | `IFC_ADMISSION_QUEUE_DEPTH` | 2 x `WORKER_THREADS` | Requests allowed to queue for an admission permit |
 | `IFC_ADMISSION_QUEUE_TIMEOUT_SECS` | 5 | Longest a queued request waits for a permit |
 | `IFC_MEM_SHED_PCT` | 85 | RSS percentage of the budget above which new parses are shed |
+| `IFC_STREAM_IDLE_TIMEOUT_SECS` | 600 | Idle bound on an SSE/Parquet stream: with no frame consumed for this long, the admission permit is released and the parse cancelled; `0` disables |
 | `IFC_METRICS_ENABLED` | false | Expose `GET /api/v1/metrics` |
 
 ### Docker Compose

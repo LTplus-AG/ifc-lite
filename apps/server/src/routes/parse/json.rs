@@ -9,7 +9,7 @@ use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::axis::mesh_to_yup_in_place;
 use crate::services::streaming::detect_schema_version;
-use crate::services::process_streaming;
+use crate::services::{process_streaming_mapped, StreamAdmission};
 use crate::types::{MetadataResponse, ParseResponse, SymbolicParseResponse, StreamEvent};
 use crate::AppState;
 use axum::{
@@ -17,7 +17,6 @@ use axum::{
     response::sse::{Event, KeepAlive, Sse},
     Json,
 };
-use futures::stream::StreamExt;
 use ifc_lite_core::EntityScanner;
 use ifc_lite_processing::process_geometry_filtered_with_quality;
 use std::convert::Infallible;
@@ -138,15 +137,14 @@ pub async fn parse_stream(
     let max_batch_size = state.config.max_batch_size;
 
     // Create streaming response with dynamic batch sizing
-    let stream = process_streaming(
+    let stream = process_streaming_mapped(
         content,
         initial_batch_size,
         max_batch_size,
         query.opening_filter,
         tessellation_quality,
-        Some(admission_guard),
-    )
-    .map(|mut event: StreamEvent| {
+        StreamAdmission::admitted(admission_guard, &state.config),
+        |mut event: StreamEvent| {
             // Same Y-up wire frame as every other transport (issue #1841) —
             // `process_streaming` yields raw IFC Z-up meshes, and the parquet
             // stream route applies the swap inside its serializer, so the JSON
@@ -163,7 +161,8 @@ pub async fn parse_stream(
                 .unwrap()
             });
             Ok::<_, Infallible>(Event::default().data(json))
-        });
+        },
+    );
 
     Ok(Sse::new(stream)
         .keep_alive(KeepAlive::default())

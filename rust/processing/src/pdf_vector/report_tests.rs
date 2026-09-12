@@ -75,6 +75,24 @@ fn issue_4406_exact_page_reports_no_visible_omissions_and_binds_its_verdict() {
     );
 }
 
+#[test]
+fn issue_4406_whole_page_omission_extent_remains_the_source_path_extent() {
+    let report = prepare_pdf_vector_page(&page(vec![
+        Op::LineWidth { width: 10. },
+        Op::Path {
+            paint: PdfVectorPaint::Stroke,
+            commands: vec![0., 20., 30., 2., 25., 40., 30., 40., 35., 30.],
+        },
+    ]))
+    .unwrap();
+
+    assert_eq!(report.fidelity.omissions[0].kind, "curvedStroke");
+    assert_eq!(
+        report.fidelity.omissions[0].bbox_pdf,
+        Some([20., 30., 35., 40.])
+    );
+}
+
 /// Exporters routinely clip to a rectangle a few thousandths of a point inside
 /// the CropBox; that loss is below the declared tolerance and must not taint
 /// the page, while a clip short by more than the tolerance still does.

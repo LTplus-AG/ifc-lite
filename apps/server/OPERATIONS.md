@@ -15,6 +15,7 @@ replica.
 | `IFC_ADMISSION_QUEUE_DEPTH` | `2 * WORKER_THREADS` | Requests allowed to wait for a slot before immediate 503 |
 | `IFC_ADMISSION_QUEUE_TIMEOUT_SECS` | `5` | Longest a queued request waits before 503 |
 | `IFC_MEM_SHED_PCT` | `85` | RSS percentage of the budget above which new work is shed |
+| `IFC_STREAM_IDLE_TIMEOUT_SECS` | `600` | Longest a streaming response may go with the client consuming nothing before its permit is released and the parse cancelled; `0` disables the bound |
 | `IFC_METRICS_ENABLED` | off | Expose `GET /api/v1/metrics` (Prometheus text; behind the bearer token when one is set) |
 
 Each admitted parse reserves the full `MAX_FILE_SIZE_MB` against the byte
@@ -80,6 +81,13 @@ Like every other route, `DELETE` is UNAUTHENTICATED when
 `IFC_SERVER_API_TOKEN` is unset -- anyone who can reach the port can empty
 the cache hash by hash. Set the token on any deployment whose port is not
 already private.
+
+The path segment must be the file's sha256 content hash, 64 lowercase hex
+characters; anything else is a `400` and never touches the index. Each call
+walks the whole cache index (twice, the second pass under the cache's write
+lock), so one such walk runs at a time: a `DELETE` that arrives while another
+is in flight is shed with `503` and a `Retry-After` header rather than
+queued. The route is idempotent, so retrying is always safe.
 
 `DELETE` does not cancel or outrank an in-flight parse for the same hash: a
 cache fill that is already running (or queued behind the reclaim lock)

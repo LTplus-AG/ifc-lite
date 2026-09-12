@@ -134,6 +134,19 @@ export function jobBlock(source, jobName, origin) {
 }
 
 /**
+ * Slice one `- name: <stepName>` step out of a job body, or null when absent.
+ * The step-level twin of `jobBlock`: shared by the profile and upload checks so
+ * the one YAML-slicing heuristic has one home.
+ */
+export function sliceStep(jobBody, stepName) {
+  const start = jobBody.indexOf(`- name: ${stepName}`);
+  if (start === -1) return null;
+  const rest = jobBody.slice(start + 1);
+  const next = /\n {6}-(?:[ \t]|$)/m.exec(rest);
+  return jobBody.slice(start, next ? start + 1 + next.index : jobBody.length);
+}
+
+/**
  * Parse `- target:` / `rust-target:` / `archive:` tuples from a job's matrix
  * include list. Entries are parsed as blocks - a `- ` line opens an entry and
  * indented `key: value` lines extend it - so the target: key may sit anywhere

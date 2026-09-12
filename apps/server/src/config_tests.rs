@@ -33,6 +33,8 @@ fn defaults_apply_when_nothing_is_set() {
     assert_eq!(c.port, 8080, "the container/Railway port contract");
     assert_eq!(c.max_file_size_mb, 500);
     assert_eq!(c.request_timeout_secs, 300);
+    assert_eq!(c.stream_idle_timeout_secs, 600);
+    assert_eq!(c.stream_idle_timeout(), Some(std::time::Duration::from_secs(600)));
     assert_eq!(c.initial_batch_size, 100);
     assert_eq!(c.max_batch_size, 1000);
     assert_eq!(c.cache_max_age_days, 7);
@@ -43,6 +45,25 @@ fn defaults_apply_when_nothing_is_set() {
     // Derived from worker_threads, which defaults to the CPU count.
     assert_eq!(c.max_concurrent_parses, c.worker_threads.max(1));
     assert_eq!(c.admission_queue_depth, c.worker_threads * 2);
+}
+
+/// The streaming idle bound is the ceiling on how long one SSE client may
+/// hold an admission permit. Both ends matter: an explicit value must be
+/// honoured, `0` must resolve to "no bound" rather than to a zero-length one
+/// (which would cancel every stream immediately), and garbage must fall back
+/// to the default instead of disabling the bound silently.
+/// Regression for #4582.
+#[test]
+fn stream_idle_timeout_honours_zero_as_disabled_and_garbage_as_the_default() {
+    assert_eq!(
+        cfg(&[("IFC_STREAM_IDLE_TIMEOUT_SECS", "45")]).stream_idle_timeout(),
+        Some(std::time::Duration::from_secs(45)),
+    );
+    let disabled = cfg(&[("IFC_STREAM_IDLE_TIMEOUT_SECS", "0")]);
+    assert_eq!(disabled.stream_idle_timeout_secs, 0);
+    assert_eq!(disabled.stream_idle_timeout(), None, "0 is an opt-out, not a zero-length bound");
+    let garbage = cfg(&[("IFC_STREAM_IDLE_TIMEOUT_SECS", "soon")]);
+    assert_eq!(garbage.stream_idle_timeout_secs, 600, "unparseable falls back to the default");
 }
 
 /// Both directions of every scalar override: a valid value is honoured, and an

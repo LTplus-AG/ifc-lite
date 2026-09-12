@@ -85,6 +85,7 @@ async function harness(
       return path;
     },
     isCurrent: () => true,
+    confirmRelay: async () => true,
     onPhase: (phase) => phases.push(phase),
     onProgress: (p) => progress.push(p),
   };
@@ -103,7 +104,7 @@ describe('runOwnerSeed (#4446)', () => {
     try {
       const result = await h.run();
       assert.deepEqual(result, { phase: 'ready', failure: null });
-      assert.deepEqual(h.phases, ['structure', 'geometry']);
+      assert.deepEqual(h.phases, ['structure', 'geometry', 'confirming']);
       // `seedGeometryToRoom` reports every 50 blobs and once at the end.
       assert.deepEqual(
         h.progress.at(-1),
@@ -244,7 +245,7 @@ describe('runOwnerSeed (#4446)', () => {
     try {
       const result = await h.run();
       assert.deepEqual(result, { phase: 'ready', failure: null });
-      assert.deepEqual(h.phases, ['structure', 'geometry', 'structure', 'geometry']);
+      assert.deepEqual(h.phases, ['structure', 'geometry', 'structure', 'geometry', 'confirming']);
       assert.deepEqual(h.progress.at(-1), { uploaded: 2, total: 2, modelIndex: 1, modelCount: 2 });
       assert.ok(h.progress.some((p) => p.modelIndex === 0 && p.modelCount === 2), 'the first model reported too');
 
@@ -273,6 +274,64 @@ describe('runOwnerSeed (#4446)', () => {
       assert.match(result?.failure ?? '', /did not complete/);
       const marker = readGeometrySeedMarker(h.session.doc);
       assert.equal(marker?.interrupted, true, 'joiners are told the seed was interrupted, not "nothing to seed"');
+    } finally {
+      h.session.dispose();
+    }
+  });
+
+  it('ready waits for the relay to confirm it holds the LAST local write (#4446)', async () => {
+    const h = await harness();
+    try {
+      let markerAtAsk: ReturnType<typeof readGeometrySeedMarker> | undefined;
+      let release: (ok: boolean) => void = () => {};
+      const gate = new Promise<boolean>((resolve) => { release = resolve; });
+      const pending = h.run({
+        confirmRelay: async () => {
+          markerAtAsk = readGeometrySeedMarker(h.session.doc);
+          return gate;
+        },
+      });
+      // The marker is the seed's last write: it is already in the doc when
+      // the relay is asked, and nothing settles before the relay answers.
+      await new Promise((r) => setTimeout(r, 50));
+      assert.deepEqual(h.phases, ['structure', 'geometry', 'confirming']);
+      assert.equal(markerAtAsk?.seeded, 2, 'the marker was written before the relay check');
+      let settled = false;
+      void pending.then(() => { settled = true; });
+      await new Promise((r) => setTimeout(r, 20));
+      assert.equal(settled, false, 'no outcome (so no invite) while the relay has not confirmed');
+      release(true);
+      assert.deepEqual(await pending, { phase: 'ready', failure: null });
+    } finally {
+      h.session.dispose();
+    }
+  });
+
+  it('an unconfirmed relay settles failed with the owner-facing reason, never ready', async () => {
+    const h = await harness();
+    try {
+      const result = await h.run({ confirmRelay: async () => false });
+      assert.equal(result?.phase, 'failed');
+      assert.match(result?.failure ?? '', /has not confirmed receiving this model/);
+      // The room itself is intact: the failure is about delivery, not content.
+      assert.equal(h.session.doc.getMap('geometry').size, 2);
+    } finally {
+      h.session.dispose();
+    }
+  });
+
+  it('a join abandoned while confirming reports nothing', async () => {
+    const h = await harness();
+    try {
+      let current = true;
+      const result = await h.run({
+        isCurrent: () => current,
+        confirmRelay: async () => {
+          current = false; // Leave landed while the relay was being asked
+          return true;
+        },
+      });
+      assert.equal(result, null);
     } finally {
       h.session.dispose();
     }

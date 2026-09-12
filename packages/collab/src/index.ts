@@ -34,6 +34,12 @@ export {
   type WebSocketStatus,
 } from './providers/websocket.js';
 export {
+  fetchRoomStateVector,
+  roomSocketUrl,
+  stateVectorCovers,
+  type RelayStateVectorOptions,
+} from './providers/relay-state.js';
+export {
   createWebRtcProvider,
   type WebRtcProvider,
   type WebRtcProviderOptions,

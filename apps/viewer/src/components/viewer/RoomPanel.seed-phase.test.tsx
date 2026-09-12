@@ -96,6 +96,17 @@ describe('RoomPanel: a connected room is not "Live" until the seed is in (#4446)
     assert.match(statusText(), /Uploading geometry 5\/40 \(model 2 of 3\)/);
   });
 
+  it('keeps Uploading and the abandon label while the relay confirms the upload (#4446)', () => {
+    act(() => {
+      useViewerStore.setState({ collabSeedPhase: 'confirming', collabSeedProgress: null });
+    });
+    renderPanel();
+    assert.match(document.body.textContent ?? '', /Uploading model/);
+    assert.match(statusText(), /Confirming the upload with the room server/);
+    assert.equal(button(/^Copy invite link$/).disabled, true);
+    assert.match(button(/^Leave/).textContent ?? '', /abandons upload/);
+  });
+
   it('flips to Live, with the copy link and a plain Leave, the moment the seed reports ready', () => {
     renderPanel();
     act(() => {

@@ -84,6 +84,8 @@ export async function ownerShare(
       return path;
     },
     isCurrent: () => true,
+    // No relay in this harness: nothing to confirm (the real poll is unit-tested in relay-confirm.test.ts).
+    confirmRelay: async () => true,
     onPhase: (phase) => phases.push(phase),
     onProgress: () => {},
   });

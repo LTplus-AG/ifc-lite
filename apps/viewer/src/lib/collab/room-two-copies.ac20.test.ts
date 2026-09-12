@@ -135,7 +135,7 @@ describe('two copies of AC20-FZK-Haus.ifc in one room (#4444)', () => {
     const { outcome, phases } = await ownerShare(doc, blobStore, models, roomModels);
     assert.deepEqual(outcome, { phase: 'ready', failure: null });
     assert.equal(frames, 9, 'slot record, structure, mesh resolve and geometry per slot, then the marker');
-    assert.deepEqual(phases, ['structure', 'geometry', 'structure', 'geometry']);
+    assert.deepEqual(phases, ['structure', 'geometry', 'structure', 'geometry', 'confirming']);
     assert.deepEqual(collab.listModelSlots(doc).map((s) => [s.slotId, s.name]), [['m0', 'AC20-FZK-Haus.ifc'], ['m1', 'AC20-FZK-Haus.ifc']]);
     const slotEntities = (slot: string) => Array.from(collab.entitiesMap(doc).keys()).filter((p) => p.startsWith(`/${slot}/`)).length;
     assert.ok(slotEntities('m0') > 0);

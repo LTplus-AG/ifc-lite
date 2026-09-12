@@ -29,6 +29,12 @@ export type CollabSeedPhase =
   | 'structure'
   /** Uploading mesh blobs; see `CollabSeedProgress`. */
   | 'geometry'
+  /**
+   * Everything is written locally; waiting for the relay to report that it
+   * holds it. A local transaction is not a delivered one: the bytes sit in
+   * the browser's socket queue, and a tab closed now loses them (#4446).
+   */
+  | 'confirming'
   /** Everything the model had is in the room (including "it had nothing"). */
   | 'ready'
   /** Some geometry landed, some did not; `collabSeedFailure` says what. */
@@ -52,7 +58,7 @@ export interface CollabSeedProgress {
 
 /** Phases during which an invite must NOT be handed out yet. */
 export function isCollabSeedInFlight(phase: CollabSeedPhase): boolean {
-  return phase === 'syncing' || phase === 'structure' || phase === 'geometry';
+  return phase === 'syncing' || phase === 'structure' || phase === 'geometry' || phase === 'confirming';
 }
 
 /** The phase a finished seed lands in, from the marker classification. */
@@ -78,6 +84,8 @@ export function describeSeedPhase(phase: CollabSeedPhase, progress: CollabSeedPr
       const which = progress.modelCount > 1 ? ` (model ${progress.modelIndex + 1} of ${progress.modelCount})` : '';
       return `Uploading geometry ${progress.uploaded}/${progress.total}${which}…`;
     }
+    case 'confirming':
+      return 'Confirming the upload with the room server…';
     default:
       return null;
   }

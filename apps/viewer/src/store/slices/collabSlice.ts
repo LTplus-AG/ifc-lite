@@ -58,6 +58,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { seedGeometryToRoom, type CollabGeomApi } from '@/lib/collab/geometry-sync';
 import { runOwnerSeed, type CollabSeedInput } from '@/lib/collab/owner-seed';
+import { confirmRelayHoldsState } from '@/lib/collab/relay-confirm';
 import type { CollabSeedPhase, CollabSeedProgress } from '@/lib/collab/seed-phase';
 import { createSharedBlobStore } from '@/lib/collab/blob-store';
 import {
@@ -746,12 +747,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
           return path;
         },
         isCurrent: current,
-        onPhase: (phase) => {
-          if (current()) set({ collabSeedPhase: phase });
-        },
-        onProgress: (progress) => {
-          if (current()) set({ collabSeedProgress: progress });
-        },
+        // 'ready' means the relay holds it, not that the browser queued it (#4446).
+        confirmRelay: () => confirmRelayHoldsState(collabMod, collabServerUrl(), roomId, token, session.captureBaseline(), current),
+        onPhase: (phase) => { if (current()) set({ collabSeedPhase: phase }); },
+        onProgress: (progress) => { if (current()) set({ collabSeedProgress: progress }); },
       });
       if (outcome && current()) {
         set({ collabSeedPhase: outcome.phase, collabSeedFailure: outcome.failure });

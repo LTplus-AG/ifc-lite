@@ -326,7 +326,7 @@ jobs:
         with:
           name: watertightness-census-heavy-rows
           path: target/watertightness_census.heavy.*.tsv
-          if-no-files-found: warn
+          if-no-files-found: error
 
       # READ THIS BEFORE DELETING THE `timeout` ABOVE. This step cannot rescue
       # a cancelled job: it RUNS on a `timeout-minutes` cancellation (the

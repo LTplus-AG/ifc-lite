@@ -365,6 +365,7 @@ jobs:
               # only the csg-accept-gates lane compiles.
               - 'Cargo.toml'
               - 'rust-toolchain.toml'
+              - 'scripts/ci-assert-runnable-cargo-tests.mjs'
               - '.github/workflows/test.yml'
               # The watertightness census sweeps the fixture set named here, so a
               # corpus change moves its pinned counts even with no code change.
@@ -1226,6 +1227,10 @@ jobs:
       # `test:` job must FAIL rather than report "0 unjudged of 0".
       - name: Check aggregate-coverage gate regressions
         run: node --test scripts/check-ci-aggregate-coverage.test.mjs
+      - name: Check workflow report paths and anti-vacuity guards
+        run: node scripts/check-workflow-report-paths.mjs
+      - name: Check workflow report-path gate regressions
+        run: node --test scripts/check-workflow-report-paths.test.mjs
       # Same class as the gate above (#3452), for a case it cannot see: its
       # own scan only recognises gates invoked as a literal `node
       # scripts/*.mjs` in a `run:` step, and sdk-canary.yml's job is `pnpm
@@ -1698,7 +1703,7 @@ jobs:
         with:
           name: e2e-test-results
           path: test-results/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 3
 
   # THE PR LANE FOR RUST (CI redesign, step 5): workspace clippy and
@@ -1988,6 +1993,11 @@ jobs:
       # then made every fixture-gated test skip silently and report ok.
       - name: Verify fixtures
         run: node scripts/fixtures/fetch-fixtures.mjs --check
+      # A named Cargo target can compile and exit 0 after every contained test
+      # becomes ignored or cfg-gated. Prove this invocation still selects work
+      # before treating its exit status as census evidence (#4144).
+      - name: Assert the census target contains runnable tests
+        run: node scripts/ci-assert-runnable-cargo-tests.mjs --package ifc-lite-geometry --features triangulation-alt --test triangulation_invariance
       - name: Census
         run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance -- --nocapture
       # The per-host rows this run measured, uploaded pass or fail. The census
@@ -2001,7 +2011,7 @@ jobs:
         with:
           name: watertightness-census-rows
           path: target/watertightness_census.run.tsv
-          if-no-files-found: warn
+          if-no-files-found: error
   # The boolean accept gates' feature builds (#3871).
   #
   # `csg_manifold_gate` (#3440) and `csg_topology_gate` (#3717) are off by
@@ -2342,6 +2352,7 @@ jobs:
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    timeout-minutes: 5
     steps:
       # THE NO-OP EDIT REPLAY (CI redesign, step 2). When `changes` found this
       # to be a title/body edit of a head that already has a completed

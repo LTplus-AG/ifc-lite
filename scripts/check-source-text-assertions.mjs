@@ -230,7 +230,7 @@ function walk(dir, found = []) {
 function parseAllowlistText(text) {
   return new Set(
     text
-      .split('\n')
+      .split(/\r?\n/)
       .map((line) => line.replace(/#.*$/, '').trim())
       .filter(Boolean)
   );

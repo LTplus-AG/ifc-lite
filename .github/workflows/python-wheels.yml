@@ -23,6 +23,7 @@ on:
       - "rust/export/**"
       - "rust/core/**"
       - "rust-toolchain.toml"
+      - "scripts/ci-prepare-wheel-matrix.mjs"
       - ".github/workflows/python-wheels.yml"
   pull_request:
     paths:
@@ -32,6 +33,7 @@ on:
       - "rust/export/**"
       - "rust/core/**"
       - "rust-toolchain.toml"
+      - "scripts/ci-prepare-wheel-matrix.mjs"
       - ".github/workflows/python-wheels.yml"
   workflow_dispatch:
 
@@ -45,6 +47,7 @@ jobs:
   build:
     name: wheel ${{ matrix.os }} / ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -104,6 +107,7 @@ jobs:
         with:
           name: wheels-${{ matrix.os }}-${{ matrix.target }}
           path: rust/python/dist/*.whl
+          if-no-files-found: error
 
   # The other four legs, OFF the PR lane. Same steps as `build` (kept
   # verbatim rather than shared, since workflow YAML has no include); the
@@ -113,6 +117,7 @@ jobs:
     name: wheel ${{ matrix.os }} / ${{ matrix.target }}
     if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -178,13 +183,14 @@ jobs:
         with:
           name: wheels-${{ matrix.os }}-${{ matrix.target }}
           path: rust/python/dist/*.whl
+          if-no-files-found: error
 
   # A red push to main must not scroll by. One issue per workflow, updated
   # rather than duplicated while it is open; closed by whoever fixes it.
   report-red-on-main:
     name: Open an issue when main is red
     needs: [build, build-cross]
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.build.result == 'failure' || needs.build-cross.result == 'failure')
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.build.result != 'success' || needs.build-cross.result != 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -213,17 +219,23 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/ifclite-geom-v')
     needs: [build, build-cross]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: pypi
     permissions:
+      contents: read
       id-token: write # PyPI trusted publishing (OIDC)
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
         with:
           pattern: wheels-*
-          merge-multiple: true
           path: dist
+      - name: Assert the complete wheel matrix arrived
+        run: node scripts/ci-prepare-wheel-matrix.mjs
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
-          packages-dir: dist
+          packages-dir: dist/publish
           # First publish needs a PyPI trusted-publisher config for `ifclite-geom`
           # (project + this workflow), same OIDC pattern as the crates/npm release.

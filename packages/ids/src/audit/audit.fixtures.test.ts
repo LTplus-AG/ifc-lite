@@ -187,10 +187,11 @@ const ISSUES: FixtureExpectation[] = [
   { file: 'Issue 49 - Error location.ids', status: 'valid' },
 ];
 
-function readFixture(bucket: string, file: string): string | null {
+function readFixture(bucket: string, file: string): string {
   const full = path.join(fixturesRoot, bucket, file);
-  if (!fs.existsSync(full)) return null;
-  if (fs.statSync(full).isDirectory()) return null;
+  if (!fs.existsSync(full) || fs.statSync(full).isDirectory()) {
+    throw new Error(`required tracked audit fixture is absent: ${bucket}/${file}`);
+  }
   return fs.readFileSync(full, 'utf8');
 }
 
@@ -199,10 +200,6 @@ function runFixtureTable(bucket: string, table: FixtureExpectation[]): void {
     if ((fx.status as string) === 'skip') continue;
     it(`${bucket}/${fx.file} → ${fx.status}`, async () => {
       const xml = readFixture(bucket, fx.file);
-      if (xml === null) {
-        // Fixture not on disk (e.g. `Restriction/` directory): skip.
-        return;
-      }
       const r = await auditIDSDocument(xml);
       // We allow the auditor to be *stricter* than the upstream label
       // (e.g. flag a 'warning' fixture as 'error' when our enriched

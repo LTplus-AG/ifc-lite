@@ -173,3 +173,16 @@ jobs:
         with:
           name: ifcopenshell-parity-reports
           path: /tmp/reports/
+          if-no-files-found: error
+
+  report-scheduled-failure:
+    needs: full
+    if: always() && github.event_name == 'schedule' && needs.full.result != 'success'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: IfcOpenShell parity
+      jobs: full
+      result: ${{ needs.full.result }}
+    permissions:
+      contents: read
+      issues: write

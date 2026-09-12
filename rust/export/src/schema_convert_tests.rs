@@ -211,6 +211,13 @@ fn door_and_window_downgrade_fill_mandatory_ifc2x3_slots_instead_of_dollar() {
     // are still `$`, so this is a mandatory-slot rule and not a blanket fill.
     let out = convert_step_line(door, "IFC4", "IFC2X3", 1);
     assert!(out.contains("'DT',$,$,$,$,'tag'"), "optional slots stay `$`: {out}");
+    // A writer that puts a space after each comma: the splitter keeps the
+    // padding, so the empty slot reads ` $`, and it is still the placeholder
+    // (the TypeScript twin's splitter trims, and fills it).
+    let spaced = "#3=IFCDOORTYPE('0DOORTYPE00000000000B',$,'DT',$,$,$,$,'tag',$,.DOOR.,\
+                  .SINGLE_SWING_LEFT., $, $);";
+    let out = convert_step_line(spaced, "IFC4", "IFC2X3", 3);
+    assert!(out.ends_with(",.F.,.F.);"), "a padded `$` in a mandatory slot is filled: {out}");
 }
 
 #[test]

@@ -128,7 +128,7 @@ fn remap_attrs_by_name(attrs: &str, src_names: &[&str], tgt_names: &[&str]) -> O
     Some(tgt_names
         .iter()
         .map(|name| {
-            let given = by_name.get(name).copied().filter(|v| *v != "$");
+            let given = by_name.get(name).copied().filter(|v| v.trim() != "$");
             given.or_else(|| ifc2x3_mandatory_default(name)).unwrap_or("$")
         })
         .collect::<Vec<_>>()

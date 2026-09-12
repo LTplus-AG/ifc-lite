@@ -39,14 +39,24 @@ pub enum ExportError {
         /// The underlying error's `Display` output.
         detail: String,
     },
-    /// The from-meshes assembler was handed inconsistent inputs: the per-mesh
-    /// `vertex_counts` / `index_counts` sum past the end of the flattened
-    /// `positions` / `normals` / `indices` buffers. The infallible
-    /// [`crate::export_glb_from_meshes`] silently drops the un-backed tail (a valid
-    /// GLB missing part of the model, reported as success); the `try_` variant
-    /// surfaces this instead so a caller bug can't ship truncated geometry.
+    /// The from-meshes assembler was handed inconsistent inputs. Two shapes,
+    /// and they fail differently:
+    ///
+    /// * a COUNT that runs past a buffer — the per-mesh `vertex_counts` /
+    ///   `index_counts` sum past the end of the flattened `positions` /
+    ///   `normals` / `indices`. The infallible [`crate::export_glb_from_meshes`]
+    ///   silently drops the un-backed tail (a valid GLB missing part of the
+    ///   model, reported as success);
+    /// * an index VALUE that is not a vertex of its own mesh. That one is not
+    ///   dropped at all — the assembler copies the index buffer verbatim — so
+    ///   it reaches the file and glTF-Validator rejects the result (glTF 2.0
+    ///   3.7.2.1).
+    ///
+    /// The `try_` variant surfaces both so a caller bug can't ship truncated or
+    /// invalid geometry.
     MalformedMeshInput {
-        /// Which buffer was too short, with the expected vs actual lengths.
+        /// Which buffer was too short (expected vs actual lengths), or which
+        /// mesh carried which out-of-range index.
         detail: String,
     },
 }

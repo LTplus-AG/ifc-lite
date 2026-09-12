@@ -53,17 +53,6 @@ export { INFRASTRUCTURE_TYPES, PRODUCT_TYPES, collectDescendantNames };
  * line instead of becoming `$`. `.trim()` hides the whitespace-only form.
  */
 export const BARE_REF_RE = new RegExp(`^${STEP_TRIVIA}#(\\d+)${STEP_TRIVIA}$`); // bare `#N` ref, trivia-tolerant (#4227), exported for reuse
-/**
- * UTF-8 decode of `[start, end)` of the source. Mirrors `step-exporter.ts` /
- * `merged-exporter.ts`'s local `decodeRange` (SAB-safe via the accessor);
- * duplicated rather than shared because this is the only place in the file
- * that needs text instead of raw bytes, and it is only reached for `IFCREL*`
- * entities under `visibleOnly` (see `collectReferencedEntityIds`).
- */
-function decodeRange(src: IfcSourceBytes, start: number, end: number): string {
-  return src.decodeUtf8(start, end);
-}
-
 /** ASCII code points for byte-level scanning. */
 const HASH = 0x23;  // '#'
 const ZERO = 0x30;  // '0'
@@ -386,7 +375,7 @@ export function collectReferencedEntityIds(
         : (sourceRelGroups = relationshipRefGroupsFromSourceLine(
             entityIndex,
             entityId,
-            decodeRange(src, ref.byteOffset, ref.byteOffset + ref.byteLength),
+            src.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength),
           ));
       if (!relationshipRefsSurviveExclusion(groups, isBridgeTargetExcluded)) {
         continue;
@@ -419,7 +408,7 @@ export function collectReferencedEntityIds(
       // at all). Gated on the cheap `hasSourceMutation` check so an entity
       // with nothing queued — the overwhelming majority — still takes the
       // plain byte scan below with no decode/parse cost.
-      const decodedLine = decodeRange(src, ref.byteOffset, ref.byteOffset + ref.byteLength);
+      const decodedLine = src.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
       const generalGroups = relationshipRefGroupsFromSourceLine(entityIndex, entityId, decodedLine);
       for (const group of generalGroups) {
         if (Array.isArray(group)) refs.push(...group);

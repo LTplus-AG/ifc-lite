@@ -65,7 +65,7 @@
 
 use output_cap::SymbolicAccumulator;
 use rebase::RenderFrameRebase;
-use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcType};
+use ifc_lite_core::{build_entity_index, keyword_eq, EntityDecoder, EntityScanner, IfcType};
 
 mod color;
 mod fill;
@@ -170,7 +170,7 @@ where
         if out.is_exhausted() {
             break;
         }
-        let is_grid = type_name == "IFCGRID";
+        let is_grid = keyword_eq(type_name, "IFCGRID");
         if !is_grid && !ifc_lite_core::has_geometry_by_name(type_name) {
             // IfcGrid isn't in `has_geometry_by_name` (it's not a building
             // element) but carries axis curves that we render as symbolic

@@ -22,7 +22,9 @@
 //! this resolution layer, not in the span stashing.
 
 use crate::style::{FullIndexedColourMap, GeometryStyleInfo};
-use ifc_lite_core::{express_id::parse_express_id, DecodedEntity, EntityDecoder};
+use ifc_lite_core::{
+    express_id::parse_express_id, find_keyword, keyword_eq, DecodedEntity, EntityDecoder,
+};
 use rustc_hash::FxHashMap;
 
 /// One stashed entity span: `(express_id, start, end)`.
@@ -49,6 +51,41 @@ pub struct PrepassSpans {
     /// propagation (#845, IfcWallElementedCase etc.).
     pub aggregate_rels: Vec<Span>,
     pub defines_by_type: Vec<Span>, // IFCRELDEFINESBYTYPE, for prepass_type_material.
+}
+
+impl PrepassSpans {
+    /// Stash `(id, start, end)` under the list `type_name` belongs to, and say
+    /// whether it belonged to one at all.
+    ///
+    /// `type_name` is the raw keyword from `EntityScanner::next_entity`, in
+    /// whatever case the file wrote it, so the dispatch goes through
+    /// [`keyword_eq`]. Every scan loop that only needs the span lists calls
+    /// this instead of spelling the same keyword table again; `processor::mod`
+    /// keeps its own arms (its `continue`s interleave with other work) but
+    /// compares the same way.
+    pub fn stash(&mut self, type_name: &str, id: u32, start: usize, end: usize) -> bool {
+        let list = if keyword_eq(type_name, "IFCSTYLEDITEM") {
+            &mut self.styled_items
+        } else if keyword_eq(type_name, "IFCINDEXEDCOLOURMAP") {
+            &mut self.indexed_colour_maps
+        } else if keyword_eq(type_name, "IFCMATERIALDEFINITIONREPRESENTATION") {
+            &mut self.material_def_reprs
+        } else if keyword_eq(type_name, "IFCRELASSOCIATESMATERIAL") {
+            &mut self.rel_associates_material
+        } else if keyword_eq(type_name, "IFCRELVOIDSELEMENT") {
+            &mut self.void_rels
+        } else if keyword_eq(type_name, "IFCRELFILLSELEMENT") {
+            &mut self.fills_rels
+        } else if keyword_eq(type_name, "IFCRELAGGREGATES") {
+            &mut self.aggregate_rels
+        } else if keyword_eq(type_name, "IFCRELDEFINESBYTYPE") {
+            &mut self.defines_by_type
+        } else {
+            return false;
+        };
+        list.push((id, start, end));
+        true
+    }
 }
 
 /// Resolution switches (both pipelines share the resolver).
@@ -374,45 +411,16 @@ pub fn find_ifcproject_id(content: &[u8]) -> Option<u32> {
     result
 }
 
-/// Case-insensitive byte-level search for the literal keyword `IFCPROJECT(`
-/// (issue #4497 — STEP keyword case is not significant, so a lowercase or
-/// CamelCase exporter's `ifcproject(`/`IfcProject(` must resolve exactly like
-/// the uppercase form). `memchr::memmem` has no case-insensitive mode, so
-/// this prefilters one byte of the keyword with `memchr::memchr2` (still
-/// SIMD-accelerated) and verifies the rest with an ASCII case-insensitive
-/// compare — no new dependency, and no allocating uppercase pass over the
-/// whole file.
-///
-/// The prefilter byte is `J`, not the lead `I`. `I` is the WORST choice in
-/// this alphabet: every IFC keyword starts with it and IFC GUIDs are full of
-/// `I`/`i`, so a 20 MB project-less file hits on nearly every record and the
-/// verify loop dominates — measured in release on such a file, leading on
-/// `I`/`i` costs 7.6–13.1 ms against 0.8–1.0 ms for the case-SENSITIVE
-/// `memmem` this replaced. `J` occurs in almost nothing else, which brings
-/// the same scan to 0.33–0.36 ms — below the `memmem` it replaces. `J` sits
-/// at `J_OFFSET` in the keyword, so a hit at `j` means a candidate start of
-/// `j - J_OFFSET`; a `J` in the first `J_OFFSET` bytes cannot start one.
+/// Case-insensitive search for the literal keyword `IFCPROJECT(` at or after
+/// `from` (issue #4497: STEP keyword case is not significant, so a lowercase
+/// or CamelCase exporter's `ifcproject(`/`IfcProject(` must resolve exactly
+/// like the uppercase form). [`find_keyword`] anchors on `J`, which occurs in
+/// almost nothing else; the measurement that chose it over the lead `I` is
+/// recorded on that function's module. The `from` cut matters because the
+/// caller resumes at `previous_hit + 1`, so a hit behind it would be
+/// returned forever.
 fn find_ifcproject_keyword(content: &[u8], from: usize) -> Option<usize> {
-    const KEYWORD: &[u8] = b"IFCPROJECT(";
-    /// Index of `J` within `IFCPROJECT(`.
-    const J_OFFSET: usize = 6;
-    let mut search_from = from;
-    loop {
-        let rel = memchr::memchr2(b'J', b'j', content.get(search_from..)?)?;
-        let j = search_from + rel;
-        search_from = j + 1;
-        // Below `J_OFFSET` bytes in, or behind `from`: either way this `J`
-        // cannot open a keyword at or after `from`. The second case matters
-        // because the caller resumes at `previous_hit + 1`, so without it the
-        // same hit would be returned forever.
-        let Some(candidate) = j.checked_sub(J_OFFSET).filter(|&c| c >= from) else {
-            continue;
-        };
-        let end = candidate + KEYWORD.len();
-        if end <= content.len() && content[candidate..end].eq_ignore_ascii_case(KEYWORD) {
-            return Some(candidate);
-        }
-    }
+    find_keyword(content.get(from..)?, b"IFCPROJECT(").map(|rel| from + rel)
 }
 
 fn find_ifcproject_id_inner(content: &[u8], refused: &mut usize) -> Option<u32> {

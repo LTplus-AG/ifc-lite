@@ -329,9 +329,9 @@ pub fn legacy_aware_ifc_type(type_name: &str) -> IfcType {
 /// did not reach them either. Their `RepresentationMaps` geometry was dropped
 /// by every path at once (#3187).
 ///
-/// `type_name` is the raw STEP keyword, i.e. already uppercase.
+/// `type_name` is the raw STEP keyword as the scanner read it, in whatever case the file wrote it.
 pub fn type_product_ifc_type(type_name: &str) -> Option<IfcType> {
-    if !type_name.ends_with("TYPE") && !type_name.ends_with("STYLE") {
+    if !crate::parser::keyword_ends_with(type_name, "TYPE") && !crate::parser::keyword_ends_with(type_name, "STYLE") {
         return None;
     }
     let ty = legacy_aware_ifc_type(type_name);

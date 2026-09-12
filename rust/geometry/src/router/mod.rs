@@ -47,6 +47,7 @@ mod tests;
 use crate::material_layer_index::MaterialLayerIndex;
 use crate::processors::{BooleanClippingProcessor, CsgSolidProcessor};
 mod processor_registry;
+pub(crate) use processor_registry::builtin_processor;
 use processor_registry::ProcessorRegistry;
 use crate::tessellation::TessellationQuality;
 use crate::{BoolFailure, Mesh, Result};

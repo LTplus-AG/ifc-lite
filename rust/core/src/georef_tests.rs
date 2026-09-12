@@ -386,6 +386,25 @@ fn scaled_map_conversion_applies_factors_before_rotation() {
     assert!((x - 1.0).abs() < 1e-9 && (y - 1.0).abs() < 1e-9 && (z - 1.0).abs() < 1e-9);
 }
 
+/// `GeoRefExtractor::extract` is public, and a caller that types the record
+/// with `IfcType::from_str` hands it `IfcMapConversionScaled`, not the
+/// supertype. Matching only `IfcMapConversion` dropped such a file to "no
+/// georeferencing", factors and all.
+#[test]
+fn scaled_map_conversion_typed_as_its_own_type_is_extracted() {
+    let content = ifc4x3_with_conversion(
+        "#11=IFCMAPCONVERSIONSCALED(#2,#10,1000.,2000.,42.,1.,0.,$,0.3048,0.3048,0.3048);",
+    );
+    let mut decoder = EntityDecoder::new(&content);
+    let types = vec![(11u32, IfcType::from_str("IFCMAPCONVERSIONSCALED")), (10, IfcType::IfcProjectedCRS)];
+    let geo = GeoRefExtractor::extract(&mut decoder, &types)
+        .expect("decode ok")
+        .expect("a scaled conversion typed as itself is a georeference");
+    assert_eq!(geo.source, GeoRefSource::MapConversion);
+    let (e, _, _) = geo.local_to_map(10.0, 20.0, 5.0);
+    assert!((e - 1003.048).abs() < 1e-9, "factors applied, e = {e}");
+}
+
 /// A plain `IfcMapConversion` (eight attributes) leaves every factor at 1.0
 /// and keeps the uniform-scale behaviour byte-for-byte.
 #[test]

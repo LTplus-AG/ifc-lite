@@ -316,7 +316,10 @@ impl GeoRefExtractor {
 
         for (id, ifc_type) in entity_types {
             match ifc_type {
-                IfcType::IfcMapConversion => {
+                // The Scaled subtype by its own type too: only the processing
+                // scan relabels it as the supertype, and a caller typing it
+                // with `IfcType::from_str` lost the whole conversion.
+                IfcType::IfcMapConversion | IfcType::IfcMapConversionScaled => {
                     if map_conversion_id.is_none() {
                         map_conversion_id = Some(*id);
                     }

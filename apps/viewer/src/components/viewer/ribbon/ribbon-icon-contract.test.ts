@@ -26,9 +26,12 @@
  *    honours the loader contract: 24-unit viewBox, painted colours limited
  *    to the two literals the loader rewrites (or `none`), and any stroke no
  *    heavier than the house weight (1.2 — `file-pdf.svg` is the one
- *    stroke-based icon; lucide's 2 is rejected).
+ *    stroke-based icon; lucide's 2 is rejected). The SVG is parsed as a
+ *    document and its elements inspected, the same way the browser reads
+ *    it — nothing here greps the file's text.
  */
 
+import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -104,14 +107,30 @@ function houseIconExports(): Map<string, string> {
   return out;
 }
 
-/** Painted fill/stroke values outside `<defs>` (clipPath geometry is never painted). */
-function paintedColours(svg: string): string[] {
-  const body = svg.replace(/<defs>[\s\S]*?<\/defs>/g, '');
-  return [...body.matchAll(/\b(?:fill|stroke)="([^"]*)"/g)].map((m) => m[1]);
+interface SvgFacts {
+  viewBox: string | null;
+  /** Every `fill` / `stroke` value on a painted element (`<defs>` content is never painted). */
+  paints: string[];
+  strokeWidths: number[];
 }
 
-function strokeWidths(svg: string): number[] {
-  return [...svg.matchAll(/\bstroke-width="([^"]*)"/g)].map((m) => Number(m[1]));
+/** Parse the SVG the way the browser will and read the attributes the loader contract governs. */
+function svgFacts(svg: string): SvgFacts {
+  const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+  const root = doc.documentElement;
+  assert.equal(root.tagName.toLowerCase(), 'svg', 'icon file must parse as an <svg> document');
+  const paints: string[] = [];
+  const strokeWidths: number[] = [];
+  for (const el of Array.from(root.querySelectorAll('*'))) {
+    if (el.closest('defs')) continue;
+    for (const attr of ['fill', 'stroke'] as const) {
+      const v = el.getAttribute(attr);
+      if (v !== null) paints.push(v);
+    }
+    const w = el.getAttribute('stroke-width');
+    if (w !== null) strokeWidths.push(Number(w));
+  }
+  return { viewBox: root.getAttribute('viewBox'), paints, strokeWidths };
 }
 
 const tabFiles = readdirSync(TABS_DIR)
@@ -149,11 +168,11 @@ describe('ribbon icon design contract', () => {
         problems.push(`${name}: ${file}.svg is missing`);
         continue;
       }
-      const svg = readFileSync(svgPath, 'utf8');
-      if (!/<svg[^>]*\bviewBox="0 0 24 24"/.test(svg)) problems.push(`${file}.svg: root must be viewBox="0 0 24 24"`);
-      const off = [...new Set(paintedColours(svg).filter((p) => !ALLOWED_PAINTS.has(p)))];
+      const facts = svgFacts(readFileSync(svgPath, 'utf8'));
+      if (facts.viewBox !== '0 0 24 24') problems.push(`${file}.svg: root viewBox is ${facts.viewBox}, expected "0 0 24 24"`);
+      const off = [...new Set(facts.paints.filter((p) => !ALLOWED_PAINTS.has(p)))];
       if (off.length) problems.push(`${file}.svg: paints the loader will not theme: ${off.join(', ')}`);
-      const heavy = strokeWidths(svg).filter((w) => !(w <= MAX_STROKE_WIDTH));
+      const heavy = facts.strokeWidths.filter((w) => !(w <= MAX_STROKE_WIDTH));
       if (heavy.length) problems.push(`${file}.svg: stroke-width ${heavy.join(', ')} exceeds house weight ${MAX_STROKE_WIDTH}`);
     }
     assert.deepEqual(problems, []);

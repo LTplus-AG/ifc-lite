@@ -335,7 +335,9 @@ export class StepTokenizer {
         // dropping just this record; otherwise run to `len`, ending the scan
         // un-resynced rather than guessing a resume point from misaligned
         // bytes. The pre-existing exits reach the second case, which is the
-        // `pos = len` they used to set for themselves.
+        // `pos = len` they used to set for themselves. The balance walk stops
+        // at the next declaration's '=' (#4573), so a refusal costs this
+        // record's bytes, never a re-walk of the remainder per refusal.
         if (!foundTerminator) {
           stopped = true;
           if (recordClose === NOT_COMPUTED) {
@@ -345,8 +347,9 @@ export class StepTokenizer {
             pos = recordClose;
             line = startLine + countNewlines(buf, startOffset, pos);
           } else if (recordClose === UNBALANCED_RECORD) {
-            // No balancing ')', but the bytes after are readable: re-hunt from
-            // past this record's '#' so the NEXT declaration is still found.
+            // No balancing ')' before the next '=' (or EOF), but the bytes
+            // after are readable: re-hunt from past this record's '#' so the
+            // NEXT declaration is still found.
             pos = startOffset + 1;
             line = startLine;
           } else {

@@ -4,16 +4,10 @@
 
 //! STEP string escape decoding (ISO 10303-21 / IFC).
 //!
-//! Decoding only. The writer side is `step_text::escape` in `ifc-lite-export`
-//! (re-exported as `escape_step_string`), which owns the whole literal
-//! contract: doubling `'` and `\`, mapping control characters, and the
-//! `\X2\`/`\X4\` directives. A second encoder used to live here, exported
-//! from the crate root, that did NOT double the apostrophe and wrote `\X\`
-//! for U+0080..U+00FF; its own doc said not to use it for a literal, nothing
-//! called it, and it is gone (architecture review behind #4577, F6). The round trip
-//! `decode_ifc_string(escape(s)) == s` is pinned in
-//! `rust/export/tests/step_escape_parity.rs`, next to the TypeScript parity
-//! vectors.
+//! Decoding only. The one writer is `ifc_lite_export::escape_step_string`
+//! (a second, literal-unsafe encoder here was deleted: architecture review
+//! behind #4577, F6). The round trip `decode_ifc_string(escape(s)) == s` is
+//! pinned in `rust/export/tests/step_escape_parity.rs`.
 //!
 //! IFC string attribute values encode non-ASCII characters with backslash
 //! escape sequences. This module decodes them to native UTF-8 so the Rust

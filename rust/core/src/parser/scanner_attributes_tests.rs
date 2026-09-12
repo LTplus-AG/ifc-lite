@@ -221,18 +221,11 @@ fn every_step_whitespace_byte_is_trimmed_around_a_value() {
     }
 }
 
-/// The `schema_helpers` copy was comment-blind throughout: a `,` inside a
-/// comment split attributes and a `$` inside one was read as the value.
-/// These are the scanner-side fixtures above, run through the public name
-/// the processing and wasm prepasses call.
+/// Representation (index 6) behind a commented-out earlier value, the shape
+/// the prepasses ask about; the `schema_helpers` copy split the comment's `,`.
 #[test]
 fn a_comment_inside_the_argument_list_is_trivia_for_every_slot() {
-    assert!(!nth_attribute_is_present(b"#1=IFCWALL('a', /* x, y */ $);", 1));
     assert!(!nth_attribute_is_present(b"#1=IFCWALL('a', /* x, y */ $);", 2));
-    assert!(nth_attribute_is_present(b"#1=IFCWALL(/* was $ */ 'a');", 0));
-    assert!(!nth_attribute_is_present(b"#1=IFCWALL(/* was $ */ $);", 0));
-    // Representation (index 6) behind a commented-out earlier value: the
-    // shape the prepasses actually ask about.
     let storey =
         b"#40=IFCBUILDINGSTOREY('guid',$,/* 'Level 1', */ $,$,$,#18,#39,$,.ELEMENT.,0.);";
     assert!(nth_attribute_is_present(storey, 6));

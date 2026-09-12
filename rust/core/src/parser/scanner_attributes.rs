@@ -11,14 +11,11 @@
 //! scan it sat next to. It walks one already-located record, comma by comma,
 //! rather than hunting the next record.
 //!
-//! This used to exist twice: as `EntityScanner::has_non_null_attribute` here
-//! (comment-aware inside the argument list, comment-blind at the `(`) and as
-//! `schema_helpers::nth_attribute_is_present` (comment-blind throughout, and
-//! trimming with `u8::is_ascii_whitespace`, which is not the STEP whitespace
-//! set; see [`is_step_space`](crate::parser::lexical::is_step_space)). The two disagreed on
-//! `#1=IFCWALL /* (was IFCSLAB) */ ($,'a');` and on a `,` inside a comment.
-//! One rule, one home: the `schema_helpers` name is kept as the public entry
-//! point and the scanner method is gone (core review behind #4577, finding 8).
+//! It used to exist twice, as `EntityScanner::has_non_null_attribute` and
+//! as a comment-blind copy in `schema_helpers`, and the two disagreed on a
+//! comment before the `(` and on a `,` inside a comment. The name the
+//! callers use is kept; the rule lives here (core review behind #4577,
+//! finding 8).
 
 use crate::parser::lexical::{skip_step_comment, skip_step_trivia};
 
@@ -64,18 +61,12 @@ pub fn nth_attribute_is_present(record: &[u8], index: usize) -> bool {
         }
     }
 
-    // The answer for `index` is taken at its slot; the walk then continues
-    // only to confirm the list closes, since an unclosed record settles
-    // nothing. A slot already known to be null or empty needs no more walk.
-    let mut slot = 0usize;
-    let mut present = None;
-    if index == 0 {
-        present = slot_holds_a_value(record, pos);
-        if present == Some(false) {
-            return false;
-        }
+    // A null or empty slot answers at once; a slot with a value still needs
+    // the list to close, since an unclosed record settles nothing.
+    if index == 0 && !slot_holds_a_value(record, pos) {
+        return false;
     }
-
+    let mut slot = 0usize;
     let mut depth = 0usize;
     let mut in_string = false;
     while pos < record.len() {
@@ -112,7 +103,7 @@ pub fn nth_attribute_is_present(record: &[u8], index: usize) -> bool {
             }
             b')' => {
                 if depth == 0 {
-                    return present.unwrap_or(false);
+                    return slot >= index;
                 }
                 depth -= 1;
                 pos += 1;
@@ -120,11 +111,8 @@ pub fn nth_attribute_is_present(record: &[u8], index: usize) -> bool {
             b',' if depth == 0 => {
                 slot += 1;
                 pos += 1;
-                if slot == index {
-                    present = slot_holds_a_value(record, pos);
-                    if present == Some(false) {
-                        return false;
-                    }
+                if slot == index && !slot_holds_a_value(record, pos) {
+                    return false;
                 }
             }
             _ => pos += 1,
@@ -135,10 +123,11 @@ pub fn nth_attribute_is_present(record: &[u8], index: usize) -> bool {
 
 /// Whether the slot starting at `pos` holds a value: skip trivia, then look
 /// at the first real byte. `$` is the null token; `,` and `)` mean the slot
-/// is empty. `None` when the record runs out or a comment never closes.
-fn slot_holds_a_value(record: &[u8], pos: usize) -> Option<bool> {
-    let p = skip_step_trivia(record, pos)?;
-    Some(!matches!(*record.get(p)?, b'$' | b',' | b')'))
+/// is empty. `false` when the record runs out or a comment never closes.
+fn slot_holds_a_value(record: &[u8], pos: usize) -> bool {
+    skip_step_trivia(record, pos)
+        .and_then(|p| record.get(p))
+        .is_some_and(|b| !matches!(b, b'$' | b',' | b')'))
 }
 
 #[cfg(test)]

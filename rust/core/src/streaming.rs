@@ -126,12 +126,10 @@ struct ParserState<'a> {
     entities_scanned: usize,
     total_entities: usize,
     triangles_generated: usize,
-    /// A `Progress` event built on the poll that scanned the
-    /// `progress_interval`-th entity, handed out on the NEXT poll. Progress
-    /// is a second event for the same entity, and a poll returns one, so the
-    /// entity's own `EntityScanned` goes first and this waits (core review behind
-    /// #4577, finding 5: the old code returned `Progress` INSTEAD and the entity was
-    /// never emitted while `Completed.entity_count` still counted it).
+    /// The `Progress` event owed by the `progress_interval`-th entity. A poll
+    /// returns one event, so the entity's own `EntityScanned` goes first and
+    /// this goes out on the next poll; returning it instead dropped the
+    /// entity from the stream (core review behind #4577, finding 5).
     pending_progress: Option<ParseEvent>,
     /// Whether [`Self::report_scan_once`] has already fired. The scan is
     /// reported at whichever comes first: the end of the walk, or the state
@@ -189,9 +187,7 @@ impl<'a> ParserState<'a> {
             return None;
         }
 
-        // A Progress event owed from the previous poll goes out before the
-        // scan moves on, so the consumer sees it next to the entity that
-        // triggered it.
+        // Progress owed by the previous poll's entity.
         if let Some(progress) = self.pending_progress.take() {
             return Some(progress);
         }
@@ -250,11 +246,7 @@ impl<'a> ParserState<'a> {
                 position: start,
             };
 
-            // Every `progress_interval`-th entity also owes a Progress event.
-            // It is queued for the next poll rather than returned here: this
-            // poll's return is the entity, and returning Progress in its
-            // place dropped ids 100, 200, ... from the stream while
-            // `Completed.entity_count` still counted them.
+            // Queued, not returned: this poll's return is the entity.
             if self
                 .entities_scanned
                 .is_multiple_of(self.config.progress_interval)

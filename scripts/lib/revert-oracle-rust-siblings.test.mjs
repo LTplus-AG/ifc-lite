@@ -83,7 +83,7 @@ test('#4109: a cfg-disabled path alias cannot borrow an active module test ident
     mkdirSync(join(root, 'src'));
     writeFileSync(join(root, '.gitignore'), '/target/\n');
     writeFileSync(join(root, 'Cargo.toml'), '[package]\nname="cfg-owner"\nversion="0.1.0"\nedition="2021"\n');
-    writeFileSync(join(root, 'src/lib.rs'), 'pub fn value() -> u32 { 1 }\n#[cfg(\n  any()\n)]\n#[path="renamed_tests.rs"]\nmod tests;\n#[cfg(test)]\n#[path="active.rs"]\nmod tests;\n');
+    writeFileSync(join(root, 'src/lib.rs'), 'pub fn value() -> u32 { 1 }\n# [cfg(\n  any()\n)]\n// This alias is deliberately compiled out.\n# [path="renamed_tests.rs"]\nmod tests;\n#[cfg(test)]\n/* The active test module has the same Rust module name. */\n#[path="active.rs"]\nmod tests;\n');
     writeFileSync(join(root, 'src/renamed_tests.rs'), '#[test]\nfn observes() { assert_eq!(crate::value(), 1); }\n');
     writeFileSync(join(root, 'src/active.rs'), '#[test]\nfn unrelated() { assert!(true); }\n');
     run('cargo', ['generate-lockfile', '--offline']);

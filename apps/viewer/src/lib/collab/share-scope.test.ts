@@ -11,7 +11,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { createSyntheticDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../../store/types.js';
 import { buildShareSeed, modelsInShareScope, shareScopeIsChoice } from './share-scope.js';
@@ -31,7 +31,10 @@ function model(id: string, opts: { store?: boolean; idOffset?: number; schema?: 
   return {
     id,
     name: `${id}.ifc`,
-    ifcDataStore: opts.store === false ? null : ({ schemaVersion: opts.schema ?? 'IFC4', __tag: id } as unknown as IfcDataStore),
+    ifcDataStore: opts.store === false ? null : createSyntheticDataStore({
+      schemaVersion: opts.schema ?? 'IFC4',
+      fileSize: 0,
+    }),
     geometryResult: { meshes: [mesh(7 + idOffset)] } as unknown as FederatedModel['geometryResult'],
     visible: true,
     collapsed: false,
@@ -60,7 +63,7 @@ describe('share scope (#4444)', () => {
     assert.ok(seed);
     assert.deepEqual(seed.models.map((m) => m.modelId), ['b', 'a']);
     const b = seed.models[0];
-    assert.equal((b.store as unknown as { __tag: string }).__tag, 'b', 'copy B seeds from ITS store, not the active-model handle');
+    assert.equal(b.store, models.get('b')?.ifcDataStore, 'copy B seeds from ITS store, not the active-model handle');
     assert.equal(b.idOffset, 1_000_000);
     assert.equal(b.meshes?.[0].expressId, 1_000_007, 'meshes are handed over as the record holds them (global ids)');
     assert.equal(b.isIfcx, false);

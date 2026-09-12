@@ -21,6 +21,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { render, click, cleanup } from '@/test/render.js';
+import { createSyntheticDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import type { StartCollabOptions } from '@/store/slices/collabSlice.js';
@@ -36,15 +37,7 @@ function makeModel(id: string, name: string, idOffset: number, opts: { store?: b
     ifcDataStore:
       opts.store === false
         ? null
-        : ({
-            schemaVersion: 'IFC4',
-            __tag: id,
-            // `prepareShareSeed` now preserves complete STEP sources only
-            // when the real store reports authored annotations. Keep this
-            // component fixture structurally valid at that production seam;
-            // an absent index made room creation throw before `startCollab`.
-            entityIndex: { byType: new Map() },
-          } as unknown as FederatedModel['ifcDataStore']),
+        : createSyntheticDataStore({ schemaVersion: 'IFC4', fileSize: 3 }),
     geometryResult: null,
     visible: true,
     collapsed: false,
@@ -107,8 +100,8 @@ afterEach(() => {
   useViewerStore.setState({ startCollab: realStartCollab, models: new Map(), activeModelId: null });
 });
 
-describe('ShareDialog: explicit federation scope (#4444)', () => {
-  it('offers no scope with one model, and creates the room on open seeding that model', async () => {
+describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
+  it('offers no scope with one model, and creates the owner room on open with a valid store seed', async () => {
     useViewerStore.setState({ models: new Map([['a', makeModel('a', 'tower.ifc', 0)]]), activeModelId: 'a' });
     render(<ShareDialog open onOpenChange={() => {}} />);
     await settle();
@@ -188,7 +181,7 @@ describe('ShareDialog: explicit federation scope (#4444)', () => {
     assert.ok(seed);
     assert.deepEqual(seed.models.map((m) => m.modelId), ['b', 'a']);
     // Each model is seeded from ITS OWN store, not the top-level active one.
-    assert.equal((seed.models[1].store as unknown as { __tag: string }).__tag, 'a');
+    assert.equal(seed.models[1].store, useViewerStore.getState().models.get('a')?.ifcDataStore);
     assert.equal(seed.models[0].idOffset, 1_000_000);
     // The room now exists: the scope is fixed and the dialog reports it.
     for (const radio of scopeRadios()) assert.equal((radio as HTMLButtonElement).disabled, true);

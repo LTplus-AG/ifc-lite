@@ -162,3 +162,92 @@ fn traversal_recovers_figure8_pinch_with_exact_coverage() {
         "a directed edge appears twice: overlapping triangles"
     );
 }
+
+/// Segment a=(-10,0.5)->b=(10,0.5) through a 20x4 plate whose vertex x=(0,0)
+/// has a star with two long arms (to b and to a) and two SHORT fan triangles
+/// on top, (x,C,D) with C=(0,0.3), D=(-2,0.3). The segment crosses the right
+/// arm, leaves x's star through B-C into the upper triangles, and re-enters it
+/// through D-E: the channel touches x on BOTH sides with the un-crossed
+/// (x,C,D) between, so the channel boundary is a figure-8 pinched at x, with
+/// (x,C,D) as the hole lobe x->D->C->x.
+fn short_loop_pinch_mesh(it: &mut Interner) -> (Mesh2d, Vid, Vid, Vid, usize) {
+    // Interned so that b's Vid is the largest: the boundary walk's last-wins
+    // `next` map then kept x->b over x->D, which is the SHORT-LOOP outcome
+    // (the other order hit the existing "never returns to start" bail).
+    let x = it.intern(e2(0.0, 0.0));
+    let va = it.intern(e2(10.0, -1.0));
+    let vb = it.intern(e2(10.0, 1.0));
+    let c = it.intern(e2(0.0, 0.3));
+    let d = it.intern(e2(-2.0, 0.3));
+    let e = it.intern(e2(-10.0, 1.0));
+    let f = it.intern(e2(-10.0, -1.0));
+    let u1 = it.intern(e2(10.0, 3.0));
+    let u2 = it.intern(e2(-10.0, 3.0));
+    let a = it.intern(e2(-10.0, 0.5));
+    let b = it.intern(e2(10.0, 0.5));
+    let tris: Vec<SubTri> = vec![
+        // star of x, CCW: A, b, B, C, D, E, a, F
+        [x, va, b],
+        [x, b, vb],
+        [x, vb, c],
+        [x, c, d], // NOT crossed: the island lobe between the two channel arms
+        [x, d, e],
+        [x, e, a],
+        [x, a, f],
+        [x, f, va],
+        // the upper region B -> U1 -> U2 -> E -> D -> C
+        [c, vb, u1],
+        [c, u1, d],
+        [d, u1, u2],
+        [d, u2, e],
+    ];
+    let mesh = Mesh2d {
+        tris,
+        axis: DropAxis::Z,
+        w0: Sign::Positive,
+        unrecovered: 0,
+        audit_needed: false,
+        coords: BTreeMap::new(),
+    };
+    (mesh, a, b, x, 12)
+}
+
+fn assert_directed_edges_unique(mesh: &Mesh2d) {
+    let mut directed: Vec<(Vid, Vid)> = mesh.tris.iter().flat_map(|&t| tri_edges(t)).collect();
+    let n = directed.len();
+    directed.sort_unstable();
+    directed.dedup();
+    assert_eq!(directed.len(), n, "a directed edge appears twice: overlapping triangles");
+}
+
+/// The pocket-split boundary walk stored the channel boundary as a FUNCTION
+/// `next: Vid -> Vid`; a pinch vertex has two successors and last-wins kept
+/// one, so the walk closed on one lobe as if it were the whole boundary. The
+/// channel's triangles were then all deleted and only that lobe re-covered:
+/// here the (x,C,D) island was tiled over a second time (the same shape can
+/// also LOSE the other lobe's area), `edge_exists(a,b)` read true, and the
+/// audit was switched back off. The walk must bail on a pinch and leave the
+/// mesh untouched; the ordered traversal fallback then recovers the edge.
+#[test]
+fn pocket_walk_bails_on_a_pinch_instead_of_closing_a_short_loop() {
+    let mut it = Interner::new();
+    let (mut mesh, a, b, _x, n_tris) = short_loop_pinch_mesh(&mut it);
+    let axis = mesh.axis;
+    let before = area_sum(&it, &mesh.tris, axis);
+    assert_directed_edges_unique(&mesh);
+    assert_eq!(mesh.tris.len(), n_tris);
+    assert!(!edge_exists(&mesh, a, b), "precondition: a-b not yet an edge");
+
+    let original = mesh.tris.clone();
+    recover_subsegment(&mut mesh, &it, a, b);
+    assert_eq!(mesh.tris, original, "the boundary walk must leave a pinched channel untouched");
+    assert!(mesh.audit_needed, "a bailed recovery must leave the audit requested");
+
+    super::retriangulate_recover::enforce_constraint(&mut mesh, &it, a, b);
+    assert!(edge_exists(&mesh, a, b), "the traversal fallback recovers a-b");
+    assert_eq!(area_sum(&it, &mesh.tris, axis), before, "coverage changed: overlap or hole");
+    assert_directed_edges_unique(&mesh);
+    for &t in &mesh.tris {
+        assert_eq!(orient2d_v(&it, t[0], t[1], t[2], axis), mesh.w0, "triangle not oriented w0: {t:?}");
+    }
+}

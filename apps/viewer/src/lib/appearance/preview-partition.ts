@@ -13,9 +13,9 @@ type ExpandCorners = (mesh: MeshData, sourceIndices: readonly number[], cornerUv
   targetCornerNormals: readonly number[], targetVertexCount: number) => MeshData;
 const MAX_PARTITION_TRIANGLES = 500_000;
 
-/** The accepted mask of a conversion as ascending source triangle ordinals and
- * their complement; `undefined` for a whole-surface conversion (#4404). */
-export function maskedSplit(conversion: Conversion): { masked: number[]; retained: number[] } | undefined {
+/** The accepted mask as ascending full-surface triangle ordinals;
+ * `undefined` for a whole-surface conversion (#4404). */
+export function maskedSplit(conversion: Conversion): { masked: readonly number[] } | undefined {
   const { maskedTriangles, retainedGeometryItemId } = conversion;
   if (maskedTriangles === undefined && retainedGeometryItemId === undefined) return undefined;
   const count = conversion.sourceIndices.length / 3;
@@ -26,10 +26,7 @@ export function maskedSplit(conversion: Conversion): { masked: number[]; retaine
       || (index > 0 && ordinal <= maskedTriangles[index - 1]))) {
     throw new Error(`Invalid native face mask provenance for IFC object #${conversion.productId}.`);
   }
-  const selected = new Set(maskedTriangles);
-  const retained: number[] = [];
-  for (let ordinal = 0; ordinal < count; ordinal++) if (!selected.has(ordinal)) retained.push(ordinal);
-  return { masked: [...maskedTriangles], retained };
+  return { masked: maskedTriangles };
 }
 
 function corners(source: MeshData, ordinals: readonly number[]): Uint32Array {
@@ -65,7 +62,7 @@ export function bindMaskedConversionParts(options: {
     const source = original.appearanceSource;
     if (!source || source.kind !== 'canonical-item' || source.indices !== original.indices
       || original.geometryItemId !== options.sourceGeometryItemId
-      || source.sourceIndices !== full
+      || source.sourceIndices.length !== full.length
       || original.indices.length % 3 !== 0
       || (originals.length > 1 && !source.cornerIndices)) {
       throw new Error(`The geometry of IFC object #${conversion.productId} changed. Reload it before applying appearance.`);
@@ -78,6 +75,7 @@ export function bindMaskedConversionParts(options: {
       if (first % 3 || canonicalCorners[local + 1] !== first + 1 || canonicalCorners[local + 2] !== first + 2
         || first + 2 >= seenCorners.length) throw new Error('Invalid streamed appearance triangle provenance.');
       for (let corner = first; corner < first + 3; corner++) {
+        if (source.sourceIndices[corner] !== full[corner]) throw new Error('Invalid streamed appearance full-surface provenance.');
         if (seenCorners[corner]) throw new Error('Streamed appearance fragments overlap.');
         seenCorners[corner] = 1;
       }
@@ -89,20 +87,20 @@ export function bindMaskedConversionParts(options: {
     throw new Error(`The geometry of IFC object #${conversion.productId} changed. Reload it before applying appearance.`);
   }
   if (item.sourceIndices.length !== split.masked.length * 3) throw new Error('Invalid native occurrence conversion provenance.');
-  const maskedRank = new Map(split.masked.map((ordinal, rank) => [ordinal, rank]));
-  const selected = new Set(split.masked);
+  const maskedRank = new Uint32Array(conversion.sourceIndices.length / 3);
+  split.masked.forEach((ordinal, rank) => { maskedRank[ordinal] = rank + 1; });
   const parts: MeshData[] = [];
   const before: AppearancePartition['before'][number][] = [];
   const after: AppearancePartition['after'][number][] = [];
   fragments.forEach(({ original, triangles }, fragment) => {
     before.push({ partId: fragment, geometryItemId: original.geometryItemId!, triangles });
     const local = (wanted: boolean) => triangles.map((ordinal, triangle) => ({ ordinal, triangle }))
-      .filter(({ ordinal }) => selected.has(ordinal) === wanted);
+      .filter(({ ordinal }) => (maskedRank[ordinal] !== 0) === wanted);
     const masked = local(true), retained = local(false);
     if (masked.length) {
       const indices = corners(original, masked.map(({ triangle }) => triangle));
       const cornerMap = Uint32Array.from(masked.flatMap(({ ordinal }) => [ordinal * 3, ordinal * 3 + 1, ordinal * 3 + 2]));
-      const ranks = masked.map(({ ordinal }) => maskedRank.get(ordinal)!);
+      const ranks = masked.map(({ ordinal }) => maskedRank[ordinal] - 1);
       const take = (values: ArrayLike<number>, width: number) => ranks.flatMap(rank =>
         Array.from({ length: 3 * width }, (_, offset) => values[rank * 3 * width + offset]));
       const temporary: MeshData = { ...original, geometryItemId: options.texturedItemId, indices,

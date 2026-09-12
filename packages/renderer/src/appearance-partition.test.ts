@@ -136,8 +136,9 @@ describe('partitioned appearance preview (#4404)', () => {
     validateAppearancePartition(invertAppearancePartition(multipart), pieces, fragments);
     assert.throws(() => validateAppearancePartition({ ...multipart,
       after: multipart.after.map((part, index) => ({ ...part, partId: index % 2 })) }, fragments, pieces), /item identity/);
-    const detachedSource = { ...pieces[3], appearanceSource: { ...pieces[3].appearanceSource!, sourceIndices: fullIndices.slice() } };
-    assert.throws(() => validateAppearancePartition(multipart, fragments, [...pieces.slice(0, 3), detachedSource]), /full-surface provenance/);
+    const changedSource = fullIndices.slice(); changedSource[9] = 0;
+    const detachedSource = { ...pieces[3], appearanceSource: { ...pieces[3].appearanceSource!, sourceIndices: changedSource } };
+    assert.throws(() => validateAppearancePartition(multipart, fragments, [...pieces.slice(0, 3), detachedSource]), /canonical triangles|full-surface provenance/);
 
     const scene = new Scene();
     try {

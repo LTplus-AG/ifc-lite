@@ -121,6 +121,7 @@ it('history joins and re-splits streamed parts with repeated item ids (#4556)', 
   assert.deepEqual(redo.parts.map(part => part.geometryItemId), [101, 102, 101, 102]);
   assert.deepEqual(redo.partition, partition);
   assert.throws(() => appearanceHistoryParts(renderer([after[2], after[1], after[0], after[3]]), [change], 'undo'), /geometry or shading changed/);
-  const stale = { ...after[2], appearanceSource: { ...after[2].appearanceSource!, sourceIndices: fullIndices.slice() } };
+  const staleSource = fullIndices.slice(); staleSource[6] = 0;
+  const stale = { ...after[2], appearanceSource: { ...after[2].appearanceSource!, sourceIndices: staleSource } };
   assert.throws(() => appearanceHistoryParts(renderer([after[0], after[1], stale, after[3]]), [change], 'undo'), /geometry or shading changed/);
 });

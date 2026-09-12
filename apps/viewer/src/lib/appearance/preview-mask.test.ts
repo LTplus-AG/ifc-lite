@@ -114,7 +114,7 @@ test('a mask crossing forced-size fragments keeps repeated item ids and source a
       ? new Float32Array([1, 0, 0, 2, 0, 0, 1, 0, -1, 2, 0, -1]) : positions.slice(0, 12);
     return { ...original, positions: fragmentPositions, normals: second ? normals.slice(3, 15) : normals.slice(0, 12), indices: fragmentIndices,
       uvs: new Float32Array(fragmentPositions.length / 3 * 2), textureRef: oldTexture, textureBitmap: oldBitmap,
-      appearanceSource: { kind: 'canonical-item', indices: fragmentIndices, sourceIndices: fullIndices,
+      appearanceSource: { kind: 'canonical-item', indices: fragmentIndices, sourceIndices: second ? fullIndices.slice() : fullIndices,
         cornerIndices: Uint32Array.from(second ? [6, 7, 8, 9, 10, 11] : [0, 1, 2, 3, 4, 5]) } };
   };
   const base = plan({});

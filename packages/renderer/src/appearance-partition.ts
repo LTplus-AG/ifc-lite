@@ -50,7 +50,8 @@ function sameFrame(a: MeshData, b: MeshData): boolean {
 }
 
 /** Items appear in declaration order; part identity, rather than IFC item id, is unique. */
-function checkSide(side: readonly AppearancePartitionPart[], parts: readonly MeshData[], label: string, triangleCount: number): void {
+function checkSide(side: readonly AppearancePartitionPart[], parts: readonly MeshData[], label: string, triangleCount: number,
+  referenceSource: Uint32Array): void {
   if (!side.length || side.length !== parts.length) throw new Error(`Appearance partition ${label} does not name every part`);
   const seen = new Set<number>();
   let work = 0;
@@ -61,7 +62,7 @@ function checkSide(side: readonly AppearancePartitionPart[], parts: readonly Mes
     seen.add(entry.partId);
     if (entry.triangles.length * 3 !== parts[index].indices.length) throw new Error(`Appearance partition ${label} triangle count does not match its part`);
     const source = parts[index].appearanceSource;
-    if (!source || source.indices !== parts[index].indices || source.sourceIndices.length % 3
+    if (!source || source.indices !== parts[index].indices || source.sourceIndices.length !== triangleCount * 3
       || source.cornerIndices && source.cornerIndices.length !== parts[index].indices.length) {
       throw new Error(`Appearance partition ${label} has invalid full-surface provenance`);
     }
@@ -74,7 +75,9 @@ function checkSide(side: readonly AppearancePartitionPart[], parts: readonly Mes
         throw new Error(`Appearance partition ${label} names an invalid triangle`);
       }
       for (let corner = 0; corner < 3; corner++) {
-        if ((source.cornerIndices?.[triangle * 3 + corner] ?? triangle * 3 + corner) !== ordinal * 3 + corner) {
+        const canonicalCorner = ordinal * 3 + corner;
+        if ((source.cornerIndices?.[triangle * 3 + corner] ?? triangle * 3 + corner) !== canonicalCorner
+          || source.sourceIndices[canonicalCorner] !== referenceSource[canonicalCorner]) {
           throw new Error(`Appearance partition ${label} part identity does not match its canonical triangles`);
         }
       }
@@ -122,16 +125,14 @@ export function validateAppearancePartition(partition: AppearancePartition, befo
     || partition.before.length > partition.triangleCount || partition.after.length > partition.triangleCount) {
     throw new Error('Appearance partition full-surface identity is invalid');
   }
-  checkSide(partition.before, before, 'original', partition.triangleCount);
-  checkSide(partition.after, after, 'replacement', partition.triangleCount);
-  const sourceIndices = before[0].appearanceSource!.sourceIndices;
-  if (sourceIndices.length !== partition.triangleCount * 3
-    || before.some(part => part.appearanceSource!.sourceIndices !== sourceIndices)
-    || after.some(part => part.appearanceSource!.sourceIndices !== sourceIndices)
-    || !(before.every(part => part.geometryItemId === partition.sourceGeometryItemId)
-      || after.every(part => part.geometryItemId === partition.sourceGeometryItemId))) {
+  const sourceSide = before.every(part => part.geometryItemId === partition.sourceGeometryItemId) ? before
+    : after.every(part => part.geometryItemId === partition.sourceGeometryItemId) ? after : undefined;
+  const sourceIndices = sourceSide?.[0].appearanceSource?.sourceIndices;
+  if (!sourceIndices || sourceIndices.length !== partition.triangleCount * 3) {
     throw new Error('Appearance partition full-surface provenance does not match its source item');
   }
+  checkSide(partition.before, before, 'original', partition.triangleCount, sourceIndices);
+  checkSide(partition.after, after, 'replacement', partition.triangleCount, sourceIndices);
   const owner = before[0];
   for (const part of [...before, ...after]) {
     if (part.expressId !== owner.expressId || (part.modelIndex ?? 0) !== (owner.modelIndex ?? 0) || part.entityIds

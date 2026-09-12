@@ -108,7 +108,7 @@ export function BCFServerConnectForm({
     // discovery and dynamic client registration for a sign-in that cannot
     // complete would mint throwaway clients on the server.
     if (authMethod === 'oauth' && (!popup || popup.closed)) {
-      setError('Sign-in popup was blocked — allow popups for this site and try again.');
+      setError('Sign-in popup was blocked. Allow popups for this site and try again.');
       return;
     }
     setBusy(true);
@@ -121,7 +121,7 @@ export function BCFServerConnectForm({
         config = await signInWithToken(serverUrl, accessToken);
       } else if (authMethod === 'oauth') {
         if (!popup) {
-          throw new Error('Sign-in popup was blocked — allow popups for this site and try again.');
+          throw new Error('Sign-in popup was blocked. Allow popups for this site and try again.');
         }
         const preparation = await prepareBcfOAuth(serverUrl, {
           clientId: vendorApp?.clientId ?? clientId,
@@ -278,8 +278,8 @@ export function BCFServerConnectForm({
 
       {authMethod === 'oauth' && vendorApp && (
         <p className="text-xs text-muted-foreground" data-testid="bcf-server-vendor-app">
-          Signs you in with your {preset.label} account through IFClite&rsquo;s registered{' '}
-          {preset.label} app — no client id to enter.
+          Signs you in with your {preset.label} account through the {preset.label} app registered
+          to IFClite. No client id to enter.
         </p>
       )}
 
@@ -301,7 +301,7 @@ export function BCFServerConnectForm({
             <p className="text-xs text-muted-foreground">
               {preset.vendorIssuedClientsOnly
                 ? `${preset.label} issues client ids to application vendors, not to space users. Ask whoever runs this IFClite deployment to configure its ${preset.label} app.`
-                : 'From an OAuth app registered with the vendor. Servers offering dynamic client registration need no ID — leave it empty.'}
+                : 'From an OAuth app registered with the vendor. Servers offering dynamic client registration need no ID; leave it empty.'}
             </p>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -347,8 +347,8 @@ export function BCFServerConnectForm({
 
       <p className="text-xs text-muted-foreground">
         {authMethod === 'password'
-          ? 'The password is exchanged for an access token and never stored. The token is kept in this browser’s local storage, unencrypted — treat it as revocable, not secret.'
-          : 'Credentials are kept in this browser’s local storage, unencrypted — treat them as revocable, not secret.'}
+          ? "The password is exchanged for an access token and never stored. The token is kept in this browser's local storage, unencrypted. Treat it as revocable, not secret."
+          : "Credentials are kept in this browser's local storage, unencrypted. Treat them as revocable, not secret."}
       </p>
 
       {error && (

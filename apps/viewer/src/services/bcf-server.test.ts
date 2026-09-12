@@ -155,8 +155,17 @@ describe('validateBcfServerUrl', () => {
 
 describe('loadBcfServerConfig', () => {
   it('degrades corrupted or partial storage to signed-out, never throws', () => {
-    localStorage.setItem('ifc-lite:bcf-server:v1', '{not json');
-    assert.equal(loadBcfServerConfig(), null);
+    // The corrupt record is reported through console.warn with the parser's
+    // SyntaxError; keep it out of the TAP stream, where a "SyntaxError:" line
+    // reads as a module load failure to the CI observer gate.
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      localStorage.setItem('ifc-lite:bcf-server:v1', '{not json');
+      assert.equal(loadBcfServerConfig(), null);
+    } finally {
+      console.warn = warn;
+    }
     // A record without an access token is a broken session, not a connection.
     localStorage.setItem('ifc-lite:bcf-server:v1', JSON.stringify({ serverUrl: 'https://x' }));
     assert.equal(loadBcfServerConfig(), null);
@@ -599,7 +608,7 @@ describe('prepareBcfOAuth', () => {
         clientId: 'x',
         redirectUri: 'https://www.ifclite.com/oauth/bcf/callback',
       }),
-      /open the viewer at https:\/\/www\.ifclite\.com/,
+      /Open the viewer at https:\/\/www\.ifclite\.com/,
     );
     assert.equal(fetched, false);
   });

@@ -424,6 +424,75 @@ fn issue_4406_stroke_features_and_pattern_colours_split_combined_paints() {
 }
 
 #[test]
+fn issue_4406_only_qualified_open_straight_dashes_leave_the_fidelity_report() {
+    let dashed = |commands| Op::Path {
+        paint: PdfVectorPaint::Stroke,
+        commands,
+    };
+    let report = prepare_pdf_vector_page(&page(vec![
+        Op::Dash { lengths: vec![4., 2., 1.], phase: -11. },
+        dashed(vec![0., 0., 0., 1., 20., 0., 1., 20., 10.]),
+        dashed(vec![0., 0., 20., 1., 20., 20., 4.]),
+        dashed(vec![0., 30., 0., 2., 35., 0., 40., 5., 45., 0.]),
+        Op::Dash { lengths: vec![4., 0.], phase: 0. },
+        dashed(vec![0., 0., 40., 1., 20., 40.]),
+    ]))
+    .unwrap();
+    assert_eq!(
+        report.paths.iter().map(|path| path.operator_ordinal).collect::<Vec<_>>(),
+        [2],
+        "only the open straight positive-pattern stroke is convertible",
+    );
+    assert_eq!(
+        kinds(&report),
+        [(4, "dash".into(), true), (6, "dash".into(), false), (10, "dash".into(), true)],
+    );
+    assert_eq!(report.fidelity.omitted_paints, 2);
+}
+
+#[test]
+fn issue_4406_explicit_and_paint_time_dash_closure_are_separate_omissions() {
+    let report = prepare_pdf_vector_page(&page(vec![
+        Op::Dash { lengths: vec![3., 2.], phase: 0. },
+        Op::Path {
+            paint: PdfVectorPaint::Stroke,
+            commands: rect(20., 30., 10., 10.),
+        },
+        Op::Path {
+            paint: PdfVectorPaint::CloseStroke,
+            commands: vec![0., 40., 30., 1., 50., 30., 1., 50., 40.],
+        },
+    ]))
+    .unwrap();
+    assert!(report.paths.is_empty());
+    assert_eq!(kinds(&report), [(2, "dash".into(), true), (4, "dash".into(), true)]);
+    assert_eq!(report.fidelity.omitted_paints, 2);
+}
+
+#[test]
+fn issue_4406_combined_fill_and_supported_dash_keep_paint_colours_and_ordinal() {
+    let report = prepare_pdf_vector_page(&page(vec![
+        Op::FillColor { rgb: [1., 0., 0.] },
+        Op::StrokeColor { rgb: [0., 1., 0.] },
+        Op::Dash { lengths: vec![3., 2.], phase: -1. },
+        Op::Path {
+            paint: PdfVectorPaint::FillStroke,
+            commands: vec![0., 20., 30., 1., 50., 30., 1., 35., 50.],
+        },
+    ]))
+    .unwrap();
+    assert!(report.fidelity.exact);
+    assert_eq!(report.paths.len(), 1);
+    let path = &report.paths[0];
+    assert_eq!(path.operator_ordinal, 6);
+    assert_eq!(path.paint, PdfVectorPaint::FillStroke, "fill paints before the retained dashed stroke");
+    assert_eq!(path.state.fill_rgb, [1., 0., 0.]);
+    assert_eq!(path.state.stroke_rgb, [0., 1., 0.]);
+    assert_eq!(path.state.dash_lengths, [3., 2.]);
+    assert_eq!(path.state.dash_phase, -1.);
+}
+
+#[test]
 fn issue_4406_unsupported_operator_taints_the_rest_of_its_scope_by_name() {
     let report = prepare_pdf_vector_page(&page(vec![
         Op::Save,

@@ -52,5 +52,14 @@
     "summary": [],
     "omissionsTruncated": false,
     "listedOmissions": 0
+  },
+  "accepted": {
+    "ifc": "dash.ifc",
+    "plan": "dash-plan.json",
+    "annotationId": 151,
+    "propertySetId": 173,
+    "regions": 10,
+    "requestSha256": "66ec748160f6418c72deed201bf9965f84f1d289d3cb8d5da2ed3f0461f8ab41",
+    "acceptedFidelitySha256": null
   }
 }

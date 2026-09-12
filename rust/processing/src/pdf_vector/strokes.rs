@@ -300,12 +300,20 @@ pub(super) fn rings(
     remaining: &mut u64,
     tolerance: f64,
 ) -> Result<PathRings, String> {
-    if state.line_width <= 0.
-        || !state.dash_lengths.is_empty()
-    {
-        // The interpreter reports hairline and dashed strokes before
-        // composition; reaching this is a planner invariant violation.
-        return Err("Planner invariant: the interpreter must omit strokes without positive width or a solid line".into());
+    if state.line_width <= 0. {
+        return Err("Planner invariant: the interpreter must omit strokes without positive width".into());
+    }
+    if !state.dash_lengths.is_empty() {
+        if !super::dashes::supported(commands, close_last, &state.dash_lengths) {
+            return Err("Planner invariant: unsupported dashed stroke reached composition".into());
+        }
+        let mut out = PathRings { rings: vec![], curved: vec![] };
+        for run in super::dashes::expand(
+            commands, &state.dash_lengths, state.dash_phase, remaining,
+        )? {
+            outline(&run, false, state, &mut out, remaining, tolerance)?;
+        }
+        return Ok(out);
     }
     let mut out = PathRings {
         rings: vec![],

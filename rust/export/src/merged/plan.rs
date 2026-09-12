@@ -31,7 +31,7 @@ pub struct ModelIndex<'a> {
     pub order: Vec<u32>,
     /// id → byte span of the raw entity line.
     line_of: HashMap<u32, (usize, usize)>,
-    /// id → uppercase STEP type token.
+    /// id → STEP type token, folded to uppercase.
     pub type_of: HashMap<u32, String>,
     /// Largest express id seen (drives the next model's offset).
     pub max_id: u32,
@@ -64,16 +64,18 @@ impl<'a> ModelIndex<'a> {
             if idx.line_of.insert(id, (start, end)).is_none() {
                 idx.order.push(id);
             }
-            match type_name {
+            // Every consumer of `type_of` reads it as uppercase; fold once here.
+            let type_upper = type_name.to_ascii_uppercase();
+            match type_upper.as_str() {
                 "IFCPROJECT" => idx.projects.push(id),
                 "IFCSITE" => idx.site_count += 1,
                 "IFCBUILDING" => idx.building_count += 1,
                 _ => {}
             }
-            if let Some(&shared) = SHARED_INFRASTRUCTURE_TYPES.iter().find(|&&t| t == type_name) {
+            if let Some(&shared) = SHARED_INFRASTRUCTURE_TYPES.iter().find(|&&t| t == type_upper) {
                 idx.first_infra.entry(shared).or_insert(id);
             }
-            idx.type_of.entry(id).or_insert_with(|| type_name.to_string());
+            idx.type_of.entry(id).or_insert(type_upper);
         }
         idx
     }

@@ -98,8 +98,8 @@ impl<'a> EntityScanner<'a> {
         }
     }
 
-    /// Scan for the next entity
-    /// Returns (entity_id, type_name, line_start, line_end)
+    /// Next `(entity_id, keyword, line_start, line_end)`. The keyword is the RAW slice as the file wrote it
+    /// (`IfcWall` stays `IfcWall`); STEP keyword case is not significant, so compare it with [`super::keyword_eq`], never `==`.
     #[inline]
     pub fn next_entity(&mut self) -> Option<(u32, &'a str, usize, usize)> {
         // Find a '#' that actually starts an entity. A '#' is legal inside

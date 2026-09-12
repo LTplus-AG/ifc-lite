@@ -11,10 +11,11 @@
 mod scanner_header;
 use scanner_header::data_section_start;
 
-// `has_non_null_attribute` lives next door, per this file's own split pattern
+// The per-attribute read lives next door, per this file's own split pattern
 // (see `scanner_attributes.rs`'s doc comment).
 #[path = "scanner_attributes.rs"]
 mod scanner_attributes;
+pub use scanner_attributes::nth_attribute_is_present;
 
 // The refusal/drop reporting surface, likewise (see its doc comment).
 #[path = "scanner_diagnostics.rs"]

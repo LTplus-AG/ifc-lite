@@ -60,7 +60,7 @@ export type SplitMeshByZonesFn = (
   zones: Float64Array,
   footprints?: Float64Array,
   footprintCounts?: Uint32Array,
-) => ZoneSplitHandle;
+) => ZoneSplitHandle | undefined;
 
 /** Seven numbers per zone, the order the binding documents. */
 export const ZONE_STRIDE = 7;
@@ -204,6 +204,10 @@ export function splitElementByZones(
 
   const flat = flattenZones(zones);
   const handle = split(positions, indices, flat.zones, flat.footprints, flat.footprintCounts);
+  // The binding answers `undefined` for a mesh that encloses no volume (every
+  // triangle dropped as malformed, or a degenerate shell). That is "nothing to
+  // split", and it used to arrive as a handle whose every number read perfect.
+  if (!handle) return null;
   try {
     // Inverted rather than `> tolerance`, so a NaN report REFUSES: `NaN >
     // tolerance` is false, and NaN is exactly what a degenerate or unclosed

@@ -189,10 +189,11 @@ impl ZoneSplit {
     /// The invariant #2508 puts above every other for this feature. Exposed
     /// rather than asserted here: a caller that wants to refuse an untrustworthy
     /// split needs the number, and a caller displaying a warning needs it too.
+    ///
+    /// `whole_volume` is never zero here: [`split_mesh_by_zones`] returns
+    /// `None` for a host that encloses no volume instead of a split whose
+    /// every signal reads perfect.
     pub fn sum_error_rel(&self) -> f64 {
-        if self.whole_volume.abs() <= f64::MIN_POSITIVE {
-            return 0.0;
-        }
         let sum: f64 = self.pieces.iter().map(|p| p.volume).sum();
         ((sum - self.whole_volume) / self.whole_volume).abs()
     }
@@ -222,9 +223,20 @@ pub const NEGLIGIBLE_PIECE_REL: f64 = 1e-9;
 /// double-count, so [`ZoneSplit::sum_error_rel`] rises far above any floating
 /// point residue and the caller can refuse on it. That is the same signal the
 /// apportionment path reports as `overlapping`.
-pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> ZoneSplit {
+///
+/// Returns `None` when `host` encloses no volume: no triangles, or a
+/// degenerate shell whose divergence sum is zero. There is nothing to split,
+/// and a `ZoneSplit` for it would carry one zero-triangle "remainder", a
+/// `sum_error_rel` of zero and `remainder_failed == false`: every signal a
+/// caller gates on reading as a perfect split of nothing. The wasm entry
+/// drops malformed triangles before calling here, so an all-malformed input
+/// arrives as an empty host.
+pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> Option<ZoneSplit> {
     let host = orient_outward(host.to_vec());
     let whole_volume = signed_volume_of(&host);
+    if whole_volume.abs() <= f64::MIN_POSITIVE {
+        return None;
+    }
     let negligible = whole_volume.abs() * NEGLIGIBLE_PIECE_REL;
     let (host_lo, host_hi) = tris_aabb(&host);
 
@@ -294,7 +306,7 @@ pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> ZoneSplit {
         pieces.push(ZonePiece { zone: None, tris: host, volume });
     }
 
-    ZoneSplit { pieces, whole_volume, remainder_failed }
+    Some(ZoneSplit { pieces, whole_volume, remainder_failed })
 }
 
 fn tris_aabb(tris: &[Tri]) -> ([f64; 3], [f64; 3]) {

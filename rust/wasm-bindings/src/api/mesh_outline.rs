@@ -9,7 +9,9 @@
 //! triangle areas, so the footprint is correct regardless of the source
 //! mesh's (unreliable) triangle winding.
 
-use ifc_lite_geometry::projection_outline::{mesh_outline_2d, ProjectionAxis};
+use ifc_lite_geometry::projection_outline::{
+    mesh_outline_2d, NoOutline, ProjectionAxis, MAX_OVERLAY_TRIANGLES,
+};
 use wasm_bindgen::prelude::*;
 
 /// A mesh's projected footprint outline.
@@ -75,7 +77,14 @@ impl MeshOutlineJs {
 ///
 /// `positions` is flat XYZ; `indices` is flat triangle indices. `axis` is
 /// 0/1/2 = x/y/z (the cut axis, WebGL Y-up). Returns `undefined` when the mesh
-/// has no triangles or projects to nothing.
+/// has no triangles or projects to nothing: the element has no footprint.
+///
+/// THROWS when the outline was not computed: an `axis` outside 0..=2, or a
+/// mesh with more valid projected triangles than the overlay budget (50 000).
+/// The two used to share `undefined` with "no footprint", so an element
+/// refused for size was absent from the plan with nothing to grep for; a
+/// caller that wants the plan complete must catch and fall back (the viewer's
+/// outline provider does, to its TypeScript silhouette).
 ///
 /// ```javascript
 /// const outline = meshOutline2d(positions, indices, 1, false); // axis 1 = y
@@ -92,9 +101,19 @@ pub fn mesh_outline_2d_js(
     indices: &[u32],
     axis: u8,
     flipped: bool,
-) -> Option<MeshOutlineJs> {
-    let axis = ProjectionAxis::from_u8(axis)?;
-    let outline = mesh_outline_2d(positions, indices, axis, flipped)?;
+) -> Result<Option<MeshOutlineJs>, JsError> {
+    let Some(axis) = ProjectionAxis::from_u8(axis) else {
+        return Err(JsError::new(&format!("meshOutline2d: axis must be 0, 1 or 2, got {axis}")));
+    };
+    let outline = match mesh_outline_2d(positions, indices, axis, flipped) {
+        Ok(outline) => outline,
+        Err(NoOutline::Empty) => return Ok(None),
+        Err(NoOutline::OverBudget { triangles }) => {
+            return Err(JsError::new(&format!(
+                "meshOutline2d: {triangles} triangles exceed the {MAX_OVERLAY_TRIANGLES}-triangle overlay budget; outline not computed"
+            )));
+        }
+    };
     let contours = outline
         .contours
         .into_iter()
@@ -107,9 +126,9 @@ pub fn mesh_outline_2d_js(
             flat
         })
         .collect();
-    Some(MeshOutlineJs {
+    Ok(Some(MeshOutlineJs {
         contours,
         axis_min: outline.axis_min,
         axis_max: outline.axis_max,
-    })
+    }))
 }

@@ -85,24 +85,38 @@ fn axis_coord(p: [f64; 3], axis: ProjectionAxis) -> f64 {
 /// slivers, small enough to keep real footprints.
 const DEGENERATE_AREA: f64 = 1.0e-8;
 
-/// Maximum number of triangles to feed into the i_overlay union. Meshes with
-/// more valid projected triangles bail out early and return `None` to prevent
-/// unbounded computation time in pathological geometry.
-const MAX_OVERLAY_TRIANGLES: usize = 50_000;
+/// Maximum number of triangles to feed into the i_overlay union. A mesh with
+/// more valid projected triangles is refused with [`NoOutline::OverBudget`]
+/// as soon as the projection loop crosses the cap, before the union runs, to
+/// bound computation time on pathological geometry.
+pub const MAX_OVERLAY_TRIANGLES: usize = 50_000;
+
+/// Why [`mesh_outline_2d`] produced no outline. The two are different
+/// answers for the caller: an `Empty` element has no footprint to draw; an
+/// `OverBudget` one has a footprint that was not computed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NoOutline {
+    /// The mesh has no triangles, or every projected triangle is degenerate
+    /// (edge-on to the view) and nothing survives the union.
+    Empty,
+    /// More than [`MAX_OVERLAY_TRIANGLES`] valid projected triangles; the
+    /// union was not attempted. `triangles` is the mesh's own triangle count.
+    OverBudget { triangles: usize },
+}
 
 /// Compute the winding-independent 2D footprint outline of a triangle mesh.
 ///
 /// `positions` is flat XYZ (len = 3·vertexCount); `indices` is flat triangle
-/// indices. Returns `None` when the mesh has no triangles or the projection
-/// collapses to nothing (e.g. a mesh entirely edge-on to the view).
+/// indices. Returns [`NoOutline`] when there is no outline to return, and
+/// which of the two reasons applies.
 pub fn mesh_outline_2d(
     positions: &[f32],
     indices: &[u32],
     axis: ProjectionAxis,
     flipped: bool,
-) -> Option<MeshOutline> {
+) -> Result<MeshOutline, NoOutline> {
     if indices.len() < 3 {
-        return None;
+        return Err(NoOutline::Empty);
     }
     let vertex_count = positions.len() / 3;
 
@@ -166,17 +180,15 @@ pub fn mesh_outline_2d(
         } else {
             clip.push(path);
         }
+        // Refuse as soon as the cap is crossed: the union is the unbounded
+        // part, and projecting the rest of the mesh first is wasted work.
+        if subject.len() + clip.len() > MAX_OVERLAY_TRIANGLES {
+            return Err(NoOutline::OverBudget { triangles: indices.len() / 3 });
+        }
     }
 
     if subject.is_empty() {
-        return None;
-    }
-
-    // Bail out if the polygon set exceeds the safety limit to prevent
-    // unbounded computation in i_overlay on pathological geometry.
-    let total_polys = subject.len() + clip.len();
-    if total_polys > MAX_OVERLAY_TRIANGLES {
-        return None;
+        return Err(NoOutline::Empty);
     }
 
     // Single triangle -> its own outline (skip the union round-trip).
@@ -196,10 +208,10 @@ pub fn mesh_outline_2d(
     }
 
     if contours.is_empty() {
-        return None;
+        return Err(NoOutline::Empty);
     }
 
-    Some(MeshOutline {
+    Ok(MeshOutline {
         contours,
         axis_min: axis_min as f32,
         axis_max: axis_max as f32,
@@ -387,11 +399,42 @@ mod tests {
     }
 
     #[test]
-    fn empty_or_degenerate_returns_none() {
-        assert!(mesh_outline_2d(&[], &[], ProjectionAxis::Y, false).is_none());
+    fn empty_or_degenerate_is_empty() {
+        assert_eq!(
+            mesh_outline_2d(&[], &[], ProjectionAxis::Y, false).err(),
+            Some(NoOutline::Empty)
+        );
         // Single zero-area triangle (all colinear in projection): edge-on strip.
         let pos = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 2.0, 0.0, 0.0];
         let idx = vec![0, 1, 2];
-        assert!(mesh_outline_2d(&pos, &idx, ProjectionAxis::Y, false).is_none());
+        assert_eq!(
+            mesh_outline_2d(&pos, &idx, ProjectionAxis::Y, false).err(),
+            Some(NoOutline::Empty)
+        );
+    }
+
+    /// The budget refusal used to be `None`, the same answer as "no footprint",
+    /// and the wasm boundary forwarded both as `undefined`. A mesh one triangle
+    /// past the cap has a footprint (a unit square, every triangle valid); the
+    /// caller is told the outline was not computed, not that there is none.
+    /// Mutation: return `Err(NoOutline::Empty)` at the cap, or drop the cap.
+    #[test]
+    fn over_budget_is_reported_as_over_budget_not_as_empty() {
+        // MAX + 1 copies of one CCW unit triangle (four shared vertices).
+        let pos = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+        let n = MAX_OVERLAY_TRIANGLES + 1;
+        let mut idx = Vec::with_capacity(n * 3);
+        for i in 0..n {
+            idx.extend_from_slice(if i % 2 == 0 { &[0, 1, 2] } else { &[0, 2, 3] });
+        }
+        assert_eq!(
+            mesh_outline_2d(&pos, &idx, ProjectionAxis::Y, false).err(),
+            Some(NoOutline::OverBudget { triangles: n })
+        );
+        // Exactly at the cap it is computed: the union of the two triangles is
+        // the unit square.
+        let at_cap = &idx[..MAX_OVERLAY_TRIANGLES * 3];
+        let out = mesh_outline_2d(&pos, at_cap, ProjectionAxis::Y, false).expect("at cap");
+        assert_eq!(bbox_2d(&out.contours), (0.0, 0.0, 1.0, 1.0));
     }
 }

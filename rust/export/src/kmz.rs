@@ -138,25 +138,30 @@ fn build_kml(opts: &KmzOptions, heading: f64, model_href: &str) -> String {
 /// Build a KMZ archive (`doc.kml` + `model.glb`) from a GLB byte slice + placement.
 ///
 /// Note: Google Earth's KML `<Model>` does NOT load glTF/GLB (it raises
-/// "Unsupported element: Model"); prefer [`export_kmz_collada_from_meshes`], which
+/// "Unsupported element: Model"); prefer [`try_export_kmz_collada_from_meshes`], which
 /// embeds a COLLADA `.dae` — the format Google Earth actually renders (#1427).
+///
+/// Superseded by its own account and infallible (an empty GLB packs as
+/// success), which is the class the `try_` twins close. It stays reachable
+/// through the wasm `exportKmz` binding and the geometry bridge.
+// TODO(remove-by: #4591 lands the wasm/bridge/index.ts removal under the
+// pending Rust major, louistrue): delete with `pack_kmz` inlined.
 pub fn export_kmz(glb: &[u8], opts: &KmzOptions) -> Vec<u8> {
-    let heading = ifc_angle_to_kml_heading(opts.x_axis_abscissa, opts.x_axis_ordinate);
-    let kml = build_kml(opts, heading, "model.glb");
-
-    let mut zip = StoredZip::new();
-    zip.add("doc.kml", kml.as_bytes());
-    zip.add("model.glb", glb);
-    zip.finish()
+    pack_kmz(glb, "model.glb", opts)
 }
 
 /// Build a Google-Earth-ready KMZ (`doc.kml` + `model.dae`) directly from the
-/// viewer's already-produced (Y-up) meshes — the working path (#1427). The model
+/// viewer's already-produced (Y-up) meshes, the working path (#1427). The model
 /// is embedded as **COLLADA** (the only `<Model>` format Google Earth loads), with
 /// emission-lit, double-sided materials and `clampToGround` placement. Mesh arrays
-/// match [`crate::export_collada_from_meshes`] / `export_glb_from_meshes`.
+/// match [`crate::try_export_collada_from_meshes`] / `export_glb_from_meshes`.
+///
+/// Fails closed when the embedded COLLADA would carry no geometry: the archive
+/// this used to ship around a schema-invalid document was read as success by
+/// every caller. See [`crate::try_export_collada_from_meshes`] for the two
+/// inputs that reach that state.
 #[allow(clippy::too_many_arguments)]
-pub fn export_kmz_collada_from_meshes(
+pub fn try_export_kmz_collada_from_meshes(
     positions: &[f32],
     normals: &[f32],
     indices: &[u32],
@@ -165,8 +170,8 @@ pub fn export_kmz_collada_from_meshes(
     colors: &[f32],
     origins: &[f64],
     opts: &KmzOptions,
-) -> Vec<u8> {
-    let dae = crate::export_collada_from_meshes(
+) -> Result<Vec<u8>, crate::error::ExportError> {
+    let dae = crate::try_export_collada_from_meshes(
         positions,
         normals,
         indices,
@@ -174,13 +179,19 @@ pub fn export_kmz_collada_from_meshes(
         index_counts,
         colors,
         origins,
-    );
+    )?;
+    Ok(pack_kmz(&dae, "model.dae", opts))
+}
+
+/// `doc.kml` plus one model file in a stored ZIP: the one archive layout both
+/// KMZ entry points produce, so placement and layout cannot drift between them.
+fn pack_kmz(model: &[u8], href: &str, opts: &KmzOptions) -> Vec<u8> {
     let heading = ifc_angle_to_kml_heading(opts.x_axis_abscissa, opts.x_axis_ordinate);
-    let kml = build_kml(opts, heading, "model.dae");
+    let kml = build_kml(opts, heading, href);
 
     let mut zip = StoredZip::new();
     zip.add("doc.kml", kml.as_bytes());
-    zip.add("model.dae", &dae);
+    zip.add(href, model);
     zip.finish()
 }
 
@@ -280,121 +291,5 @@ fn crc32(data: &[u8]) -> u32 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn heading_matches_ifc_convention() {
-        // No axes → 0.
-        assert_eq!(ifc_angle_to_kml_heading(None, None), 0.0);
-        // Degenerate zero-length axis → 0 (not 90 from atan2(0,0)).
-        assert_eq!(ifc_angle_to_kml_heading(Some(0.0), Some(0.0)), 0.0);
-        // X-axis along east (1,0): bearing 90, heading = bearing - 90 = 0.
-        assert!((ifc_angle_to_kml_heading(Some(1.0), Some(0.0)) - 0.0).abs() < 1e-9);
-        // X-axis along north (0,1): bearing 0, heading = 0 - 90 = -90 → 270.
-        assert!((ifc_angle_to_kml_heading(Some(0.0), Some(1.0)) - 270.0).abs() < 1e-9);
-        // X-axis along west (-1,0): bearing 270, heading = 270 - 90 = 180.
-        assert!((ifc_angle_to_kml_heading(Some(-1.0), Some(0.0)) - 180.0).abs() < 1e-9);
-    }
-
-    #[test]
-    fn kml_carries_placement() {
-        let opts = KmzOptions {
-            latitude: 47.5,
-            longitude: 8.5,
-            altitude: 412.0,
-            altitude_mode: AltitudeMode::Absolute,
-            x_axis_abscissa: Some(1.0),
-            x_axis_ordinate: Some(0.0),
-            name: Some("Bldg <A>".to_string()),
-        };
-        let kml = build_kml(&opts, ifc_angle_to_kml_heading(opts.x_axis_abscissa, opts.x_axis_ordinate), "model.dae");
-        assert!(kml.contains("<latitude>47.5</latitude>"));
-        assert!(kml.contains("<longitude>8.5</longitude>"));
-        assert!(kml.contains("<altitude>412</altitude>"));
-        assert!(kml.contains("<altitudeMode>absolute</altitudeMode>"));
-        assert!(kml.contains("<heading>0</heading>"));
-        assert!(kml.contains("<href>model.dae</href>"));
-        assert!(kml.contains("Bldg &lt;A&gt;"), "name is XML-escaped");
-    }
-
-    #[test]
-    fn default_altitude_mode_clamps_to_ground() {
-        // #1427: the default must rest the model on the terrain, not float it at its
-        // MSL OrthogonalHeight (the relativeToGround bug).
-        let opts = KmzOptions {
-            latitude: 47.5,
-            longitude: 8.5,
-            altitude: 560.0,
-            altitude_mode: AltitudeMode::default(),
-            x_axis_abscissa: None,
-            x_axis_ordinate: None,
-            name: None,
-        };
-        let kml = build_kml(&opts, 0.0, "model.dae");
-        assert!(kml.contains("<altitudeMode>clampToGround</altitudeMode>"));
-        assert!(
-            !kml.contains("relativeToGround"),
-            "must not re-introduce the floating relativeToGround placement"
-        );
-    }
-
-    #[test]
-    fn kmz_is_a_valid_stored_zip() {
-        let glb = b"glTF\x02\x00\x00\x00placeholder-binary";
-        let opts = KmzOptions {
-            latitude: 0.0,
-            longitude: 0.0,
-            altitude: 0.0,
-            altitude_mode: AltitudeMode::default(),
-            x_axis_abscissa: None,
-            x_axis_ordinate: None,
-            name: None,
-        };
-        let kmz = export_kmz(glb, &opts);
-
-        // Starts with a local file header, ends with the EOCD signature.
-        assert_eq!(&kmz[0..4], &0x0403_4b50u32.to_le_bytes());
-        let eocd = &0x0605_4b50u32.to_le_bytes();
-        assert!(kmz.windows(4).any(|w| w == eocd), "has end-of-central-directory");
-
-        // Both entry names + the GLB bytes are present (stored, uncompressed).
-        assert!(kmz.windows(7).any(|w| w == b"doc.kml"));
-        assert!(kmz.windows(9).any(|w| w == b"model.glb"));
-        assert!(kmz.windows(glb.len()).any(|w| w == glb), "GLB stored verbatim");
-    }
-
-    #[test]
-    fn collada_kmz_embeds_dae_and_references_it() {
-        // #1427: the working path embeds a COLLADA model (model.dae) — the format
-        // Google Earth's <Model> actually loads — not a glTF GLB.
-        let positions = vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0];
-        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 3).flatten().collect();
-        let opts = KmzOptions {
-            latitude: 52.15,
-            longitude: 5.38,
-            altitude: 560.0,
-            altitude_mode: AltitudeMode::default(),
-            x_axis_abscissa: None,
-            x_axis_ordinate: None,
-            name: Some("IFC Model".into()),
-        };
-        let kmz = export_kmz_collada_from_meshes(
-            &positions,
-            &normals,
-            &[0, 1, 2],
-            &[3],
-            &[3],
-            &[1.0, 0.0, 0.0, 1.0],
-            &[0.0, 0.0, 0.0],
-            &opts,
-        );
-        // Stored ZIP holding doc.kml + model.dae, KML referencing the .dae.
-        assert!(kmz.windows(7).any(|w| w == b"doc.kml"));
-        assert!(kmz.windows(9).any(|w| w == b"model.dae"), "embeds model.dae");
-        assert!(
-            kmz.windows(8).any(|w| w == b"COLLADA "),
-            "the .dae is COLLADA, not glTF"
-        );
-    }
-}
+#[path = "kmz_tests.rs"]
+mod tests;

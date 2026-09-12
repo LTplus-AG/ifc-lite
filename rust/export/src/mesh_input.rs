@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! The one gate every from-meshes exporter passes its numeric input through.
 //!
-//! `export_glb_from_meshes`, `export_collada_from_meshes` and (through the latter)
-//! `export_kmz_collada_from_meshes` all take the same flattened parallel arrays —
+//! `export_glb_from_meshes`, `try_export_collada_from_meshes` and (through the latter)
+//! `try_export_kmz_collada_from_meshes` all take the same flattened parallel arrays —
 //! the viewer's `MeshData`, handed across the wasm FFI by
 //! `GeometryProcessor.exportGlbFromMeshes` / `exportKmzFromMeshes`. Those buffers
 //! reach the FFI from whatever produced the meshes (the geometry pipeline, the
@@ -112,7 +112,8 @@ pub(crate) struct MeshInput<'a> {
 /// Gate the four float arrays of a from-meshes export. See the module docs for why
 /// this exists and why it scrubs rather than rejects.
 ///
-/// Indices and counts are integers and need no gate.
+/// Indices and counts are integers and need no scrub; the index VALUES have
+/// their own gate, [`first_index_out_of_range`].
 pub(crate) fn scrub_nonfinite<'a>(
     positions: &'a [f32],
     normals: &'a [f32],
@@ -125,6 +126,39 @@ pub(crate) fn scrub_nonfinite<'a>(
         colors: scrub_colors(colors),
         origins: scrub_f64(origins),
     }
+}
+
+/// The first mesh whose index block names a vertex it does not have, as
+/// `(mesh, largest index, that mesh's vertex count)`, or `None`.
+///
+/// glTF 2.0 section 3.7.2.1 requires every index value to be less than the
+/// vertex count. The glTF assembler copies `mesh.indices` into the BIN chunk
+/// verbatim, so this scan in front of it is the only place an out-of-range
+/// value can be refused; `try_export_glb_from_meshes` used to validate COUNTS
+/// only and shipped the value inside a "successful" GLB. COLLADA and USD apply
+/// the same predicate at their own granularity (drop the triangle, refuse the
+/// mesh) over their own inputs, so they do not share this function.
+///
+/// The caller has already established that `index_counts` covers every mesh
+/// and that the blocks fit inside `indices`; this walks the same blocking.
+/// The max over each block rather than an early-exit `find`: the fold
+/// vectorises, and the reported value is still a concrete offender.
+pub(crate) fn first_index_out_of_range(
+    indices: &[u32],
+    vertex_counts: &[u32],
+    index_counts: &[u32],
+) -> Option<(usize, u32, u32)> {
+    let mut ibase = 0usize;
+    for (i, (&vertex_count, &ic)) in vertex_counts.iter().zip(index_counts).enumerate() {
+        let block = &indices[ibase..ibase + ic as usize];
+        if let Some(&largest) = block.iter().max() {
+            if largest >= vertex_count {
+                return Some((i, largest, vertex_count));
+            }
+        }
+        ibase += ic as usize;
+    }
+    None
 }
 
 #[cfg(test)]

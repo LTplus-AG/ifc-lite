@@ -1404,6 +1404,36 @@ fn watertightness_census_and_triangulator_invariance() {
     );
 }
 
+/// Regression for #4610: the correctly merged 2D footprints on this mixed
+/// eligible/residual slab leave a watertight intermediate, but cutting the
+/// residuals into it tears the final mesh badly. The composed-path final check
+/// must reject that candidate and preserve the full-context exact result.
+#[test]
+fn issue_129_mixed_bool2d_residual_keeps_the_less_torn_result() {
+    let rel = "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc".to_string();
+    let path = crate_dir().join("../..").join("tests/models").join(&rel);
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        eprintln!("SKIPPED: fixture absent; run `pnpm fixtures` to install {}", path.display());
+        return;
+    };
+    let voids = void_index(&content);
+    let frame = ModelFrame::new(&content);
+    for alt in [false, true] {
+        set_alt(alt);
+        for (id, open, strict, tris) in [(12381, 25, 26, 7565), (32810, 3, 3, 2005)] {
+            let mesh =
+                process(&frame, id, &voids).unwrap_or_else(|| panic!("host #{id} must mesh"));
+            let stats = edge_stats(&mesh);
+            assert_eq!(stats.open, open, "host #{id}, alt={alt}: signed edge reading");
+            assert_eq!(stats.strict, strict, "host #{id}, alt={alt}: strict edge reading");
+            if !alt {
+                assert_eq!(mesh.triangle_count(), tris, "host #{id}: geometry must not shrink");
+            }
+        }
+    }
+    set_alt(false);
+}
+
 /// A unit cube as 8 welded vertices and 12 consistently wound triangles.
 ///
 /// Every one of its 18 undirected edges is used exactly once forward and once

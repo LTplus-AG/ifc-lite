@@ -304,9 +304,15 @@ impl GeometryRouter {
             return None;
         }
 
+        Some(out)
+    }
+
+    /// Record an accepted 2D cut after any residual exact-kernel pass has also
+    /// passed its final watertightness check. An attempted 2D prefix that is
+    /// discarded must not inflate the fast-path telemetry.
+    pub(super) fn record_bool2d_cut(&self, cut: &Bool2dCut) {
         FIRES.fetch_add(1, Ordering::Relaxed);
         FOOTPRINTS.fetch_add(cut.footprints.len() as u64, Ordering::Relaxed);
-        Some(out)
     }
 
     /// The captured residual (ineligible-opening) exact-kernel context, if any.

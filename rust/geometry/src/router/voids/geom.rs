@@ -360,6 +360,13 @@ pub(crate) fn mesh_signed_volume(mesh: &Mesh) -> f64 {
 /// here", ask [`point_inside_mesh_agreed`], which asks about the point rather
 /// than the topology and is tolerant of T-junctions.
 pub(super) fn param_cut_watertight(mesh: &Mesh) -> bool {
+    param_cut_nonmanifold_edges(mesh) == 0
+}
+
+/// Count non-manifold undirected edges under the same 0.1 mm weld used by
+/// [`param_cut_watertight`]. An empty edge set is maximally defective: it cannot
+/// certify a solid and must never win a least-damaged fallback comparison.
+pub(super) fn param_cut_nonmanifold_edges(mesh: &Mesh) -> usize {
     let key = |i: u32| -> (i64, i64, i64) {
         let b = i as usize * 3;
         let q = |v: f32| (v as f64 / 1.0e-4).round() as i64;
@@ -380,7 +387,11 @@ pub(super) fn param_cut_watertight(mesh: &Mesh) -> bool {
             *edges.entry(e).or_insert(0) += 1;
         }
     }
-    !edges.is_empty() && edges.values().all(|&c| c == 2)
+    if edges.is_empty() {
+        usize::MAX
+    } else {
+        edges.values().filter(|&&c| c != 2).count()
+    }
 }
 
 #[inline]

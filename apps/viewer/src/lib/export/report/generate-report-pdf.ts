@@ -23,7 +23,9 @@ export interface ReportDoc {
   setFontSize: (size: number) => void;
   setTextColor: (gray: number) => void;
   text: (text: string, x: number, y: number) => void;
-  addImage: (bytes: Uint8Array, format: 'PNG', x: number, y: number, w: number, h: number) => void;
+  /** Width of `text` in the current font and size, in points; a document wraps with it. */
+  textWidth?: (text: string) => number;
+  addImage: (bytes: Uint8Array, format: 'PNG' | 'JPEG', x: number, y: number, w: number, h: number) => void;
   /** Draw an SVG string into the box (svg2pdf); a raster fallback is the caller's business. */
   svg: (svg: string, x: number, y: number, w: number, h: number) => Promise<void>;
   table: (args: { startY: number; margin: { left: number; right: number }; head: string[][]; body: string[][] }) => void;
@@ -77,6 +79,7 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
         setFontSize: (size) => { doc.setFontSize(size); },
         setTextColor: (gray) => { doc.setTextColor(gray); },
         text: (t, x, y) => { doc.text(t, x, y); },
+        textWidth: (t) => doc.getTextWidth(t),
         addImage: (bytes, format, x, y, w, h) => { doc.addImage(bytes, format, x, y, w, h); },
         svg: async (svg, x, y, w, h) => {
           const parsed = parser.parseFromString(svg, 'image/svg+xml');

@@ -59,7 +59,7 @@ function setDockedVisible(id: AnalysisPanelId, visible: boolean): void {
     case 'extensions': s.setExtensionsPanelVisible(visible); break;
     case 'sources': s.setSourcesPanelVisible(visible); break;
     // Bottom-strip panels: one row of the table each (`BOTTOM_PANEL_SETTER`).
-    case 'script': case 'gantt': case 'lists': case 'charts': s[BOTTOM_PANEL_SETTER[id]](visible); break;
+    case 'script': case 'gantt': case 'lists': case 'charts': case 'document': s[BOTTOM_PANEL_SETTER[id]](visible); break;
     case 'layers': s.setLayersPanelVisible(visible); break;
   }
 }

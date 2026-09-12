@@ -29,6 +29,7 @@ import { createExtensionsSlice, type ExtensionsSlice } from './slices/extensions
 import { createSourcesSlice, type SourcesSlice } from './slices/sourcesSlice.js';
 import { createListSlice, type ListSlice } from './slices/listSlice.js';
 import { createChartSlice, type ChartSlice } from './slices/chartSlice.js';
+import { createDocumentSlice, type DocumentSlice } from './slices/documentSlice.js';
 import { createPinboardSlice, type PinboardSlice } from './slices/pinboardSlice.js';
 import { createLensSlice, type LensSlice } from './slices/lensSlice.js';
 import { createClashSlice, type ClashSlice } from './slices/clashSlice.js';
@@ -90,23 +91,18 @@ export type { ForwardModelMapLike } from './globalId.js';
 // Re-export Drawing2D types
 export type { Drawing2DState, Drawing2DStatus, Annotation2DTool, PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D, SelectedAnnotation2D } from './slices/drawing2DSlice.js';
 
-// Re-export Sheet types
+// Re-export Sheet / Collab / BCF types
 export type { SheetState } from './slices/sheetSlice.js';
-
-// Re-export Collab types
 export type { CollabSlice, CollabRole, CollabStatus, StartCollabOptions } from './slices/collabSlice.js';
-
-// Re-export BCF types
 export type { BCFSlice, BCFSliceState } from './slices/bcfSlice.js';
 
 // Re-export IDS types
 export type { IDSSlice, IDSSliceState, IDSDisplayOptions, IDSFilterMode, IDSFocusMode } from './slices/idsSlice.js';
 
-// Re-export List types
+// Re-export List / Chart / Document / Pinboard types
 export type { ListSlice } from './slices/listSlice.js';
 export type { ChartSlice, ChartFocusMode } from './slices/chartSlice.js';
-
-// Re-export Pinboard types
+export type { DocumentSlice } from './slices/documentSlice.js';
 export type { PinboardSlice } from './slices/pinboardSlice.js';
 
 // Re-export Lens types
@@ -157,6 +153,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   IDSSlice &
   ListSlice &
   ChartSlice &
+  DocumentSlice &
   PinboardSlice &
   LensSlice &
   ClashSlice &
@@ -251,6 +248,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createIdsSlice(...args),
   ...createListSlice(...args),
   ...createChartSlice(...args),
+  ...createDocumentSlice(...args),
   ...createPinboardSlice(...args),
   ...createLensSlice(...args),
   ...createClashSlice(...args),

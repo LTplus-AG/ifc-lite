@@ -35,6 +35,7 @@ import {
   Box,
   FileWarning,
   BarChart3,
+  FileText,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -61,7 +62,8 @@ export type WorkspacePanelId =
   | 'zones'
   | 'loadReport'
   | 'appearance'
-  | 'charts';
+  | 'charts'
+  | 'document';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -125,6 +127,8 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Charts bound to the model, bidirectional with the 3D view (#3944). Bottom
   // strip like Lists / Schedule; the table in `bottom-panels.ts` carries it.
   { id: 'charts', title: 'Charts', short: 'Charts', Icon: BarChart3, group: 'work', region: 'bottom', prefersWide: true },
+  // A free-form page over the model — text with bindings, logos, charts, BCF topics — printed to PDF (#4594).
+  { id: 'document', title: 'Document', short: 'Document', Icon: FileText, group: 'work', region: 'bottom', prefersWide: true },
 ];
 
 // The bottom strip (Script / Schedule / Lists) is table-driven; the id union and

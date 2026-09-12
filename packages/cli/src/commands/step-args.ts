@@ -236,6 +236,9 @@ function skipToken(text: string, from: number): number {
       if (char === "'") {
         i = skipString(text, i);
         if (i < 0) return -1;
+      } else if (char === '"') {
+        i = skipBinary(text, i);
+        if (i < 0) return -1;
       } else if (char === '(') {
         depth++;
         i++;
@@ -281,6 +284,12 @@ function skipString(text: string, from: number): number {
   return -1;
 }
 
+/** Index just past a binary literal, or -1 if its closing quote is absent. */
+function skipBinary(text: string, from: number): number {
+  const end = text.indexOf('"', from + 1);
+  return end < 0 ? -1 : end + 1;
+}
+
 /**
  * Can this character only begin or separate another token?
  *
@@ -295,6 +304,7 @@ function skipString(text: string, from: number): number {
 function isTokenBreak(char: string): boolean {
   return (
     char === "'" ||
+    char === '"' ||
     char === '(' ||
     char === ')' ||
     char === ',' ||

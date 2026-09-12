@@ -9,7 +9,7 @@
  * in transferable buffers so we don't double-allocate.
  */
 
-import type { DecodedPointChunk, PointCloudBBox } from '../types.js';
+import type { DecodedPointChunk, PointCloudBBox, PointNormalState } from '../types.js';
 import type { PointSourceInfo } from './types.js';
 
 export type WorkerSourceFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
@@ -67,10 +67,18 @@ export interface SerializedChunk {
   positions: ArrayBuffer;
   colors?: ArrayBuffer;
   normals?: ArrayBuffer;
+  normalState: PointNormalState;
   classifications?: ArrayBuffer;
   intensities?: ArrayBuffer;
   pointCount: number;
   bbox: PointCloudBBox;
+}
+
+function exactBuffer(view: ArrayBufferView): ArrayBuffer {
+  if (view.buffer instanceof ArrayBuffer && view.byteOffset === 0 && view.byteLength === view.buffer.byteLength) {
+    return view.buffer;
+  }
+  return new Uint8Array(view.buffer, view.byteOffset, view.byteLength).slice().buffer;
 }
 
 /** Convert a chunk into a transferable wire payload + transfer list. */
@@ -82,30 +90,31 @@ export function chunkToWire(chunk: DecodedPointChunk): {
   // friends, so `.buffer` is always a plain `ArrayBuffer`. The `as ArrayBuffer`
   // cast is safe and required because TS widens the type to `ArrayBufferLike`
   // (which formally includes `SharedArrayBuffer`).
-  const positions = chunk.positions.buffer as ArrayBuffer;
+  const positions = exactBuffer(chunk.positions);
   const transfer: ArrayBuffer[] = [positions];
   const payload: SerializedChunk = {
     positions,
     pointCount: chunk.pointCount,
     bbox: chunk.bbox,
+    normalState: chunk.normalState,
   };
   if (chunk.colors) {
-    const buf = chunk.colors.buffer as ArrayBuffer;
+    const buf = exactBuffer(chunk.colors);
     payload.colors = buf;
     transfer.push(buf);
   }
   if (chunk.normals) {
-    const buf = chunk.normals.buffer as ArrayBuffer;
+    const buf = exactBuffer(chunk.normals);
     payload.normals = buf;
     transfer.push(buf);
   }
   if (chunk.classifications) {
-    const buf = chunk.classifications.buffer as ArrayBuffer;
+    const buf = exactBuffer(chunk.classifications);
     payload.classifications = buf;
     transfer.push(buf);
   }
   if (chunk.intensities) {
-    const buf = chunk.intensities.buffer as ArrayBuffer;
+    const buf = exactBuffer(chunk.intensities);
     payload.intensities = buf;
     transfer.push(buf);
   }
@@ -118,6 +127,7 @@ export function chunkFromWire(payload: SerializedChunk): DecodedPointChunk {
     positions: new Float32Array(payload.positions),
     colors: payload.colors ? new Float32Array(payload.colors) : undefined,
     normals: payload.normals ? new Float32Array(payload.normals) : undefined,
+    normalState: payload.normalState,
     classifications: payload.classifications ? new Uint8Array(payload.classifications) : undefined,
     intensities: payload.intensities ? new Uint16Array(payload.intensities) : undefined,
     pointCount: payload.pointCount,

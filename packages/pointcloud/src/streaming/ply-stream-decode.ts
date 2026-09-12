@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { normalizePlyColors } from '../formats/ply-color.js';
+import { normalizeColorChannel } from '../formats/ply-color.js';
 import { readPlyScalar } from '../formats/ply-scalar.js';
-import type { DecodedPointChunk, PointCloudBBox } from '../types.js';
+import { parseAsciiVariableRow, writeVariablePlyRow } from '../formats/ply-variable-row.js';
+import type { DecodedPointChunk, PointCloudBBox, PointNormalState } from '../types.js';
 import type { PlyHeader, PlyPropertyDecl, PlyVertexLayout } from '../formats/ply.js';
+import { BinaryPlyRowCursor } from './ply-variable-stream.js';
 
 export const PLY_STREAM_READ_BYTES = 4 * 1024 * 1024;
 const TEXT_DECODER = new TextDecoder();
@@ -26,11 +28,14 @@ export async function scanPlyBounds(
   layout: PlyVertexLayout,
   origin: readonly [number, number, number] | undefined,
   signal?: AbortSignal,
-): Promise<PointCloudBBox> {
+): Promise<{ bbox: PointCloudBBox; normalState: PointNormalState; floatColorsUseByteRange: boolean }> {
   if (!Number.isSafeInteger(layout.vertex.count) || layout.vertex.count < 0) {
     throw new Error(`PLY: invalid vertex count ${layout.vertex.count}`);
   }
   const bounds = emptyBounds();
+  let normalState = layout.normalState;
+  let floatColorsUseByteRange = false;
+  const channels = findChannels(layout);
   if (header.format === 'ascii') {
     const cursor = new AsciiLineCursor(blob, header.bodyOffset);
     const indices = positionColumns(layout);
@@ -39,10 +44,29 @@ export async function scanPlyBounds(
       const line = await cursor.next(signal);
       if (line === null) throw new Error(`PLY ascii: expected ${layout.vertex.count} vertex lines, got ${row}`);
       const parts = line.split(/\s+/);
-      requireColumns(parts, layout.vertex.properties.length, row);
-      extendBounds(bounds, Number(parts[indices[0]]) - (origin?.[0] ?? 0), Number(parts[indices[1]]) - (origin?.[1] ?? 0), Number(parts[indices[2]]) - (origin?.[2] ?? 0));
+      if (layout.vertex.hasListProperty) {
+        const values = parseAsciiVariableRow(parts, layout.vertex.propertyOrder, row);
+        extendBounds(bounds, (values.get('x') ?? Number.NaN) - (origin?.[0] ?? 0), (values.get('y') ?? Number.NaN) - (origin?.[1] ?? 0), (values.get('z') ?? Number.NaN) - (origin?.[2] ?? 0));
+        normalState = observeValues(values, normalState);
+        floatColorsUseByteRange ||= valuesUseByteColors(values, channels);
+      } else {
+        requireColumns(parts, layout.vertex.properties.length, row);
+        extendBounds(bounds, Number(parts[indices[0]]) - (origin?.[0] ?? 0), Number(parts[indices[1]]) - (origin?.[1] ?? 0), Number(parts[indices[2]]) - (origin?.[2] ?? 0));
+        normalState = observeAsciiRow(parts, layout, channels, normalState);
+        floatColorsUseByteRange ||= asciiUsesByteColors(parts, layout, channels);
+      }
     }
   } else {
+    if (layout.vertex.hasListProperty) {
+      const cursor = new BinaryPlyRowCursor(blob, header.bodyOffset, header.format === 'binary_little_endian');
+      for (let row = 0; row < layout.vertex.count; row++) {
+        const values = await cursor.row(layout.vertex.propertyOrder, row, signal);
+        extendBounds(bounds, (values.get('x') ?? Number.NaN) - (origin?.[0] ?? 0), (values.get('y') ?? Number.NaN) - (origin?.[1] ?? 0), (values.get('z') ?? Number.NaN) - (origin?.[2] ?? 0));
+        normalState = observeValues(values, normalState);
+        floatColorsUseByteRange ||= valuesUseByteColors(values, channels);
+      }
+      return { bbox: bounds, normalState, floatColorsUseByteRange };
+    }
     const recordSize = layout.vertex.recordSize;
     const bodyBytes = layout.vertex.count * recordSize;
     const requiredEnd = header.bodyOffset + bodyBytes;
@@ -54,16 +78,22 @@ export async function scanPlyBounds(
       const count = Math.min(recordsPerRead, layout.vertex.count - first);
       const bytes = await readSlice(blob, header.bodyOffset + first * recordSize, count * recordSize, signal);
       const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-      for (let row = 0; row < count; row++) extendBinaryBounds(bounds, view, row * recordSize, layout, header, origin);
+      for (let row = 0; row < count; row++) {
+        const base = row * recordSize;
+        extendBinaryBounds(bounds, view, base, layout, header, origin);
+        normalState = observeBinaryRow(view, base, layout, header, normalState);
+        floatColorsUseByteRange ||= binaryUsesByteColors(view, base, layout, channels, header);
+      }
     }
   }
-  return bounds;
+  return { bbox: bounds, normalState, floatColorsUseByteRange };
 }
 
 export class PlyChunkReader {
   private sourceRow = 0;
   private readonly ascii: AsciiLineCursor | null;
   private readonly channels: Channels;
+  private readonly variableBinary: BinaryPlyRowCursor | null;
 
   constructor(
     private readonly blob: Blob,
@@ -71,9 +101,13 @@ export class PlyChunkReader {
     private readonly layout: PlyVertexLayout,
     private readonly stride: number,
     private readonly origin: readonly [number, number, number] | undefined,
+    private readonly normalState: PointNormalState,
+    private readonly floatColorsUseByteRange: boolean,
     private readonly instrumentation?: PlyStreamInstrumentation,
   ) {
     this.ascii = header.format === 'ascii' ? new AsciiLineCursor(blob, header.bodyOffset) : null;
+    this.variableBinary = header.format !== 'ascii' && layout.vertex.hasListProperty
+      ? new BinaryPlyRowCursor(blob, header.bodyOffset, header.format === 'binary_little_endian') : null;
     this.channels = findChannels(layout);
   }
 
@@ -85,14 +119,15 @@ export class PlyChunkReader {
     if (remainingOutput === 0) return null;
     const capacity = Math.min(limit, remainingOutput);
     this.instrumentation?.onOutputAllocation?.(capacity);
-    const output = allocateChunk(capacity, this.layout, this.channels);
+    const output = allocateChunk(capacity, this.layout, this.channels, this.normalState);
     const written = this.ascii
       ? await this.readAscii(output, capacity, signal)
       : await this.readBinary(output, capacity, signal);
-    return finishChunk(output, written, this.channels);
+    return finishChunk(output, written, this.channels, this.floatColorsUseByteRange);
   }
 
   private async readBinary(output: DecodedPointChunk, capacity: number, signal?: AbortSignal): Promise<number> {
+    if (this.variableBinary) return this.readVariableBinary(output, capacity, signal);
     const recordSize = this.layout.vertex.recordSize;
     const recordsPerRead = Math.max(1, Math.floor(PLY_STREAM_READ_BYTES / recordSize));
     let written = 0;
@@ -118,6 +153,16 @@ export class PlyChunkReader {
     return written;
   }
 
+  private async readVariableBinary(output: DecodedPointChunk, capacity: number, signal?: AbortSignal): Promise<number> {
+    let written = 0;
+    while (written < capacity && this.sourceRow < this.layout.vertex.count) {
+      const values = await this.variableBinary!.row(this.layout.vertex.propertyOrder, this.sourceRow, signal);
+      if (this.sourceRow % this.stride === 0) writeVariablePlyRow(values, written++, { ...output, originOffset: this.origin });
+      this.sourceRow++;
+    }
+    return written;
+  }
+
   private async readAscii(output: DecodedPointChunk, capacity: number, signal?: AbortSignal): Promise<number> {
     const columns = asciiColumns(this.layout, this.channels);
     let written = 0;
@@ -125,8 +170,13 @@ export class PlyChunkReader {
       const line = await this.ascii!.next(signal);
       if (line === null) throw new Error(`PLY ascii: expected ${this.layout.vertex.count} vertex lines, got ${this.sourceRow}`);
       const parts = line.split(/\s+/);
-      requireColumns(parts, this.layout.vertex.properties.length, this.sourceRow);
-      if (this.sourceRow % this.stride === 0) writeAsciiRow(output, written++, parts, columns, this.origin);
+      if (this.layout.vertex.hasListProperty) {
+        const values = parseAsciiVariableRow(parts, this.layout.vertex.propertyOrder, this.sourceRow);
+        if (this.sourceRow % this.stride === 0) writeVariablePlyRow(values, written++, { ...output, originOffset: this.origin });
+      } else {
+        requireColumns(parts, this.layout.vertex.properties.length, this.sourceRow);
+        if (this.sourceRow % this.stride === 0) writeAsciiRow(output, written++, parts, columns, this.origin);
+      }
       this.sourceRow++;
     }
     return written;
@@ -175,19 +225,23 @@ class AsciiLineCursor {
   }
 }
 
-function allocateChunk(capacity: number, layout: PlyVertexLayout, channels: Channels): DecodedPointChunk {
+function allocateChunk(capacity: number, layout: PlyVertexLayout, channels: Channels, normalState: PointNormalState): DecodedPointChunk {
   return {
     positions: new Float32Array(capacity * 3),
     colors: channels.r && channels.g && channels.b ? new Float32Array(capacity * 3) : undefined,
     normals: layout.nxProp && layout.nyProp && layout.nzProp ? new Float32Array(capacity * 3) : undefined,
+    normalState,
     intensities: channels.intensity ? new Uint16Array(capacity) : undefined,
     pointCount: capacity,
     bbox: emptyBounds(),
   };
 }
 
-function finishChunk(output: DecodedPointChunk, written: number, channels: Channels): DecodedPointChunk {
-  if (output.colors && channels.r && channels.g && channels.b) normalizePlyColors(output.colors, [channels.r.type, channels.g.type, channels.b.type]);
+function finishChunk(output: DecodedPointChunk, written: number, channels: Channels, floatColorsUseByteRange: boolean): DecodedPointChunk {
+  if (output.colors && channels.r && channels.g && channels.b) {
+    const types = [channels.r.type, channels.g.type, channels.b.type];
+    for (let i = 0; i < output.colors.length; i++) output.colors[i] = normalizeColorChannel(output.colors[i], types[i % 3], floatColorsUseByteRange);
+  }
   output.pointCount = written;
   output.bbox = computeBounds(output.positions, written);
   if (written === output.positions.length / 3) return output;
@@ -234,6 +288,36 @@ function extendBinaryBounds(bounds: PointCloudBBox, view: DataView, base: number
 function findChannels(layout: PlyVertexLayout): Channels {
   const find = (...names: string[]) => layout.vertex.properties.find((property) => names.includes(property.name));
   return { r: find('red', 'r'), g: find('green', 'g'), b: find('blue', 'b'), intensity: find('intensity', 'scalar_Intensity') };
+}
+const isFloatType = (type: string) => type === 'float' || type === 'float32' || type === 'double' || type === 'float64';
+function usableNormal(x: number, y: number, z: number): boolean {
+  return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) && x * x + y * y + z * z !== 0;
+}
+function observeValues(values: ReadonlyMap<string, number>, state: PointNormalState): PointNormalState {
+  if (state !== 'supplied') return state;
+  return usableNormal(values.get('nx') ?? Number.NaN, values.get('ny') ?? Number.NaN, values.get('nz') ?? Number.NaN) ? state : 'invalid';
+}
+function valuesUseByteColors(values: ReadonlyMap<string, number>, channels: Channels): boolean {
+  return [channels.r, channels.g, channels.b].some(property => property && isFloatType(property.type)
+    && (values.get(property.name) ?? Number.NaN) > 1);
+}
+function observeAsciiRow(parts: string[], layout: PlyVertexLayout, _channels: Channels, state: PointNormalState): PointNormalState {
+  if (state !== 'supplied' || !layout.nxProp || !layout.nyProp || !layout.nzProp) return state;
+  const index = (property: PlyPropertyDecl) => layout.vertex.properties.indexOf(property);
+  return usableNormal(Number(parts[index(layout.nxProp)]), Number(parts[index(layout.nyProp)]), Number(parts[index(layout.nzProp)])) ? state : 'invalid';
+}
+function observeBinaryRow(view: DataView, base: number, layout: PlyVertexLayout, header: PlyHeader, state: PointNormalState): PointNormalState {
+  if (state !== 'supplied' || !layout.nxProp || !layout.nyProp || !layout.nzProp) return state;
+  const le = header.format === 'binary_little_endian';
+  return usableNormal(scalar(view, base, layout.nxProp, le), scalar(view, base, layout.nyProp, le), scalar(view, base, layout.nzProp, le)) ? state : 'invalid';
+}
+function asciiUsesByteColors(parts: string[], layout: PlyVertexLayout, channels: Channels): boolean {
+  return [channels.r, channels.g, channels.b].some((property) => property && isFloatType(property.type)
+    && Number(parts[layout.vertex.properties.indexOf(property)]) > 1);
+}
+function binaryUsesByteColors(view: DataView, base: number, layout: PlyVertexLayout, channels: Channels, header: PlyHeader): boolean {
+  const le = header.format === 'binary_little_endian';
+  return [channels.r, channels.g, channels.b].some((property) => property && isFloatType(property.type) && scalar(view, base, property, le) > 1);
 }
 function positionColumns(layout: PlyVertexLayout): [number, number, number] { return [layout.vertex.properties.indexOf(layout.xProp), layout.vertex.properties.indexOf(layout.yProp), layout.vertex.properties.indexOf(layout.zProp)]; }
 function asciiColumns(layout: PlyVertexLayout, channels: Channels): AsciiColumns {

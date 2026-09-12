@@ -47,6 +47,50 @@ describe('PlyStreamingSource source normals (#4561)', () => {
     expect(chunks.slice(0, 3).every(chunk => chunk?.pointCount === 1 && chunk.normals?.length === 3)).toBe(true);
   });
 
+  it('latches an invalid normal from an unretained stride row across every emitted chunk', async () => {
+    const rows = Array.from({ length: 8 }, (_, i) => `${i} 0 0 ${i === 1 ? 0 : 1} 0 0`);
+    const text = 'ply\nformat ascii 1.0\nelement vertex 8\nproperty float x\nproperty float y\nproperty float z\n'
+      + 'property float nx\nproperty float ny\nproperty float nz\nend_header\n' + rows.join('\n') + '\n';
+    const source = new PlyStreamingSource(new Blob([text]), { downsample: { stride: 2 } });
+    await source.open();
+    expect((await source.next(2))?.normalState).toBe('invalid');
+    expect((await source.next(2))?.normalState).toBe('invalid');
+  });
+
+  it('selects the floating RGB convention once for the whole file, independent of chunk size', async () => {
+    const text = 'ply\nformat ascii 1.0\nelement vertex 2\nproperty float x\nproperty float y\nproperty float z\n'
+      + 'property float red\nproperty float green\nproperty float blue\nend_header\n0 0 0 .5 0 0\n1 0 0 255 0 0\n';
+    const source = new PlyStreamingSource(new Blob([text]));
+    await source.open();
+    expect((await source.next(1))!.colors![0]).toBeCloseTo(0.5 / 255);
+    expect((await source.next(1))!.colors![0]).toBe(1);
+  });
+
+  it('traverses variable ASCII normal lists without losing XYZ and marks the source invalid', async () => {
+    const text = 'ply\nformat ascii 1.0\nelement vertex 2\nproperty float x\nproperty list uchar float nx\nproperty float y\nproperty float z\nend_header\n'
+      + '1 2 9 10 2 3\n4 1 8 5 6\n';
+    const source = new PlyStreamingSource(new Blob([text]));
+    await source.open();
+    const chunk = await source.next(2);
+    expect(Array.from(chunk!.positions)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(chunk!.normalState).toBe('invalid');
+    expect(chunk!.normals).toBeUndefined();
+  });
+
+  it('traverses variable binary normal lists across rows without fixed-stride drift', async () => {
+    const header = new TextEncoder().encode('ply\nformat binary_little_endian 1.0\nelement vertex 2\nproperty float x\nproperty list uchar float nx\nproperty float y\nproperty float z\nend_header\n');
+    const body = new ArrayBuffer(4 + 1 + 8 + 8 + 4 + 1 + 4 + 8), view = new DataView(body);
+    let at = 0;
+    const scalar = (value: number) => { view.setFloat32(at, value, true); at += 4; };
+    scalar(1); view.setUint8(at++, 2); scalar(9); scalar(10); scalar(2); scalar(3);
+    scalar(4); view.setUint8(at++, 1); scalar(8); scalar(5); scalar(6);
+    const source = new PlyStreamingSource(new Blob([header, body]));
+    await source.open();
+    const chunk = await source.next(2);
+    expect(Array.from(chunk!.positions)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(chunk!.normalState).toBe('invalid');
+  });
+
   it('keeps safe-integer strides above the 32-bit range instead of wrapping to one (#4561 review)', async () => {
     const text = 'ply\nformat ascii 1.0\nelement vertex 3\n'
       + 'property float x\nproperty float y\nproperty float z\nend_header\n'

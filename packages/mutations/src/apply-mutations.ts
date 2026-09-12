@@ -72,7 +72,7 @@ export function applyMutationsBatch(
   mutations: Mutation[],
   hasNewEntity: (entityId: number) => boolean,
   markQuantitySetDeleted: (entityId: number, qsetName: string) => void,
-  markQuantityDeleted: (entityId: number, qsetName: string, quantName: string) => void,
+  retainQuantityDeletion: (mutation: Mutation, qsetName: string, quantName: string) => void,
 ): void {
   // CREATE_ENTITY records are skipped (callers must restore the
   // payload via restoreNewEntity). Track the ids we've skipped so a
@@ -167,10 +167,12 @@ export function applyMutationsBatch(
 
       case 'DELETE_QUANTITY':
         if (mutation.psetName && mutation.propName) {
-          target.deleteQuantity(mutation.entityId, mutation.psetName, mutation.propName);
+          const applied = target.deleteQuantity(mutation.entityId, mutation.psetName, mutation.propName);
           // Like whole-set deletion, replay must retain intent before the
-          // optional base extractor is configured.
-          markQuantityDeleted(mutation.entityId, mutation.psetName, mutation.propName);
+          // optional base extractor is configured. A successful delete has
+          // already recorded one history row; only the no-op path needs the
+          // supplied record retained explicitly.
+          if (applied === null) retainQuantityDeletion(mutation, mutation.psetName, mutation.propName);
         }
         break;
 

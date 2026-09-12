@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
-import { BulkQueryEngine, MutablePropertyView } from '../src/index.js';
+import { BulkQueryEngine, MutablePropertyView, type Mutation } from '../src/index.js';
 
 describe('MutablePropertyView', () => {
   it('creates a new property set automatically and returns mutated values', () => {
@@ -550,20 +550,29 @@ describe('deleteQuantitySet (#2508)', () => {
   });
 
   it('retains a replayed member tombstone when the base extractor is configured later', () => {
-    const replayed = new MutablePropertyView(null, 'model-1');
-    replayed.applyMutations([{
+    const deletion: Mutation = {
       id: 'delete-length', type: 'DELETE_QUANTITY', timestamp: 1,
       modelId: 'model-1', entityId: 7, psetName: 'Qto_Base', propName: 'Length',
-    }]);
-    replayed.setQuantityExtractor(() => [{
+    };
+    const replayed = new MutablePropertyView(null, 'model-1');
+    replayed.applyMutations([deletion]);
+    const quantities = () => [{
       name: 'Qto_Base',
       quantities: [
         { name: 'Length', type: QuantityType.Length, value: 3 },
         { name: 'Count', type: QuantityType.Count, value: 2 },
       ],
-    }]);
+    }];
+    replayed.setQuantityExtractor(quantities);
 
     expect(replayed.getQuantitiesForEntity(7)[0]?.quantities.map(quantity => quantity.name)).toEqual(['Count']);
+    expect(replayed.getMutations()).toEqual([deletion]);
+
+    const secondHop = new MutablePropertyView(null, 'model-1');
+    secondHop.setQuantityExtractor(quantities);
+    secondHop.applyMutations(replayed.getMutations());
+    expect(secondHop.getQuantitiesForEntity(7)[0]?.quantities.map(quantity => quantity.name)).toEqual(['Count']);
+    expect(secondHop.getMutations()).toHaveLength(1);
   });
 
   it('removes a quantity set created in this session, along with its quantities', () => {

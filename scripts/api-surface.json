@@ -7531,6 +7531,7 @@
     "PcdStreamingSource: class",
     "PlyStreamingSource: class",
     "PointCloudBBox: interface",
+    "PointNormalState: type",
     "PointSourceInfo: interface",
     "PointsArrayAttribute: interface",
     "PointsBase64Attribute: interface",

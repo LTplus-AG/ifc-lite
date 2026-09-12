@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { Ray } from '@ifc-lite/renderer';
 import type { RetainedPointCloudSample } from '@/hooks/ingest/pointCloudScanCache';
+import type { PointNormalState } from '@ifc-lite/pointcloud';
 import type { ScanLandmark, ScanPoint, ScanRegistrationReport } from './types';
 import { registeredPoint } from './landmarks';
 
@@ -37,6 +38,7 @@ export interface ScanPointSource {
   hadColors: boolean;
   /** Source-supplied decode-relative Y-up normals, 3n, or null when absent. */
   normals: Float32Array | null;
+  normalState: PointNormalState;
   /** The retained sample this snapshot was taken from, for identity checks. */
   retained: RetainedPointCloudSample;
 }
@@ -46,11 +48,12 @@ export function snapshotPointSource(handleId: number, retained: RetainedPointClo
   const positions = retained.positions.slice(0, retained.count * 3);
   const colors = retained.colors ? retained.colors.slice(0, retained.count * 3) : new Uint8Array(retained.count * 3).fill(200);
   const normals = retained.normals?.slice(0, retained.count * 3) ?? null;
-  return { handleId, count: retained.count, seen: retained.seen, origin: retained.origin ? [...retained.origin] : null, positions, colors, hadColors: retained.colors !== null, normals, retained };
+  return { handleId, count: retained.count, seen: retained.seen, origin: retained.origin ? [...retained.origin] : null, positions, colors, hadColors: retained.colors !== null, normals, normalState: retained.normalState, retained };
 }
 /** True while the snapshot still describes the live reservoir. */
 export function samePointSource(snapshot: ScanPointSource, live: RetainedPointCloudSample | null): boolean {
   return live === snapshot.retained && live.count === snapshot.count && live.seen === snapshot.seen
+    && live.normalState === snapshot.normalState
     && (live.origin === null ? snapshot.origin === null : snapshot.origin !== null && live.origin.every((v, i) => v === snapshot.origin![i]))
     && equalPrefix(live.positions, snapshot.positions)
     && (live.colors === null ? !snapshot.hadColors && neutralColors(snapshot.colors) : snapshot.hadColors && equalPrefix(live.colors, snapshot.colors))
@@ -67,6 +70,9 @@ function neutralColors(colors: Uint8Array): boolean {
 }
 /** Choose the planner orientation without silently ignoring malformed supplied normals. */
 export function pointSourceOrientation(source: ScanPointSource): 'source-normals' | 'target-referenced' {
+  if (source.normalState === 'invalid') throw new Error('This PLY declares incomplete or unusable normals. Repair or remove its nx/ny/nz channels before transfer.');
+  if (source.normalState === 'supplied' && !source.normals) throw new Error('The point cloud lost its supplied normal rows. Reload the scan.');
+  if (source.normalState === 'absent' && source.normals) throw new Error('The point cloud normal provenance no longer matches its retained rows. Reload the scan.');
   if (!source.normals) return 'target-referenced';
   if (source.normals.length !== source.count * 3) throw new Error('The point cloud normal rows no longer match its retained points. Reload the scan.');
   for (let i = 0; i < source.count; i++) {

@@ -14,7 +14,9 @@ function retained(native: number[][], origin: readonly [number, number, number] 
   native.forEach(([x, y, z], i) => { const o = origin ?? [0, 0, 0]; positions.set([x - o[0], z - o[2], -(y - o[1])], i * 3); });
   const normals = nativeNormals ? new Float32Array(nativeNormals.length) : null;
   if (normals) for (let i = 0; i < native.length; i++) normals.set([nativeNormals![i * 3], nativeNormals![i * 3 + 2], -nativeNormals![i * 3 + 1]], i * 3);
-  return { positions, colors: colors ? Uint8Array.from(colors) : null, normals, classifications: null, count: native.length, seen: native.length * 10, capacity: 2_000_000, origin };
+  return { positions, colors: colors ? Uint8Array.from(colors) : null, normals,
+    normalState: normals ? 'supplied' : 'absent', classifications: null,
+    count: native.length, seen: native.length * 10, capacity: 2_000_000, origin };
 }
 
 test('retained sample positions map back to the file\'s native Z-up metres exactly, including a georeferenced decode origin (#4381)', () => {
@@ -128,6 +130,7 @@ test('qualified PLY normals survive snapshot/frame conversion and select source-
   assert.equal(request.kind === 'points' && request.orientation, 'source-normals');
   const payload = pointTransferPayload(points);
   assert.deepEqual(Array.from(payload.normals), [1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0, 0]);
+  assert.throws(() => transferSource({ kind: 'points', points: { ...points, normalState: 'absent' } }, settings), /provenance.*no longer matches/i);
   assert.deepEqual(Array.from(sample.normals!, value => value === 0 ? 0 : value), [2, 0, 0, 0, 0, -1, 0, 1, 0, -1, 0, 0], 'live Y-up source stays unchanged');
   sample.normals![0] = 0;
   assert.equal(samePointSource(points, sample), false, 'mutating only the live normal channel invalidates the session');

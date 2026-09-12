@@ -8,11 +8,21 @@ import type { DecodedPointChunk } from '../types.js';
 describe('decode worker normal channel (#4561)', () => {
   it('transfers and reconstructs normals without disturbing row order', () => {
     const chunk: DecodedPointChunk = { positions: new Float32Array([1, 2, 3, 4, 5, 6]), colors: new Float32Array([0, 0.1, 0.2, 0.3, 0.4, 0.5]),
-      normals: new Float32Array([0, 0, 1, 1, 0, 0]), pointCount: 2, bbox: { min: [1, 2, 3], max: [4, 5, 6] } };
+      normals: new Float32Array([0, 0, 1, 1, 0, 0]), normalState: 'supplied', pointCount: 2, bbox: { min: [1, 2, 3], max: [4, 5, 6] } };
     const { payload, transfer } = chunkToWire(chunk);
     expect(transfer).toContain(payload.normals);
     const decoded = chunkFromWire(payload);
     expect(Array.from(decoded.positions)).toEqual([1, 2, 3, 4, 5, 6]);
     expect(Array.from(decoded.normals!)).toEqual([0, 0, 1, 1, 0, 0]);
+    expect(decoded.normalState).toBe('supplied');
+  });
+
+  it('structured-clones only the exact normal view span', () => {
+    const backing = new Float32Array([99, 99, 99, 0, 0, 1, 88, 88, 88]);
+    const chunk: DecodedPointChunk = { positions: new Float32Array([1, 2, 3]), normals: backing.subarray(3, 6),
+      normalState: 'supplied', pointCount: 1, bbox: { min: [1, 2, 3], max: [1, 2, 3] } };
+    const wire = chunkToWire(chunk);
+    const cloned = structuredClone(wire.payload, { transfer: wire.transfer });
+    expect(Array.from(chunkFromWire(cloned).normals!)).toEqual([0, 0, 1]);
   });
 });

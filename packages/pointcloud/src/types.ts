@@ -14,6 +14,9 @@ export interface PointCloudBBox {
   max: [number, number, number];
 }
 
+/** Whether a decoded source omitted normals, supplied usable rows, or declared unusable normal data. */
+export type PointNormalState = 'absent' | 'supplied' | 'invalid';
+
 /**
  * A decoded chunk of points ready for upload to a GPU buffer.
  *
@@ -32,6 +35,8 @@ export interface DecodedPointChunk {
   colors?: Float32Array;
   /** Source-supplied oriented normals [nx,ny,nz, ...], row-aligned with positions. */
   normals?: Float32Array;
+  /** Source-wide normal provenance; invalid must never silently become absent after sampling. */
+  normalState: PointNormalState;
   /** Per-point u8 classification — undefined when source has none */
   classifications?: Uint8Array;
   /** Per-point u16 intensity — undefined when source has none */

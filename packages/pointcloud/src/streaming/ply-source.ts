@@ -54,14 +54,15 @@ export class PlyStreamingSource implements StreamingPointSource {
     }
     const header = parsePlyHeader(headerBytes);
     const layout = inspectPlyVertex(header);
-    const bbox = await scanPlyBounds(this.blob, header, layout, this.originOffset, signal);
+    const scan = await scanPlyBounds(this.blob, header, layout, this.originOffset, signal);
     const stride = normalizePointStride(this.downsample.stride);
-    this.reader = new PlyChunkReader(this.blob, header, layout, stride, this.originOffset, this.instrumentation);
+    this.reader = new PlyChunkReader(this.blob, header, layout, stride, this.originOffset,
+      scan.normalState, scan.floatColorsUseByteRange, this.instrumentation);
     const properties = layout.vertex.properties;
     const has = (...names: string[]) => properties.some((property) => names.includes(property.name));
     return {
       totalPointCount: Math.ceil(layout.vertex.count / stride),
-      bbox,
+      bbox: scan.bbox,
       hasColor: has('red', 'r') && has('green', 'g') && has('blue', 'b'),
       hasClassification: false,
       hasIntensity: has('intensity', 'scalar_Intensity'),

@@ -126,7 +126,7 @@ describe('decodePly originOffset (extends #1804 to PLY)', () => {
 });
 
 describe('decodePly', () => {
-  it('preserves complete ascii source normals in vertex order and rejects a partial declaration (#4561)', () => {
+  it('preserves complete ascii source normals and keeps partial/duplicate declarations loadable but invalid (#4561)', () => {
     const header = 'ply\nformat ascii 1.0\nelement vertex 2\n'
       + 'property float x\nproperty float y\nproperty float z\n'
       + 'property float nx\nproperty float ny\nproperty float nz\nend_header\n';
@@ -136,10 +136,8 @@ describe('decodePly', () => {
       Math.fround(0.1), Math.fround(0.2), Math.fround(0.3),
       Math.fround(-0.4), Math.fround(-0.5), Math.fround(-0.6),
     ]);
-    expect(() => decodePly(enc.encode(header.replace('property float nz\n', '') + '1 2 3 0 1\n4 5 6 0 1\n')))
-      .toThrow(/all of nx, ny and nz/);
-    expect(() => decodePly(enc.encode(header.replace('property float nx\n', 'property float nx\nproperty float nx\n') + '1 2 3 0 0 0 1\n4 5 6 1 1 0 0\n')))
-      .toThrow(/property "nx" must not be declared more than once/);
+    expect(decodePly(enc.encode(header.replace('property float nz\n', '') + '1 2 3 0 1\n4 5 6 0 1\n')).normalState).toBe('invalid');
+    expect(decodePly(enc.encode(header.replace('property float nx\n', 'property float nx\nproperty float nx\n') + '1 2 3 0 0 0 1\n4 5 6 1 1 0 0\n')).normalState).toBe('invalid');
   });
 
   it('preserves binary source normals, including unusable values for transfer-time refusal (#4561)', () => {
@@ -396,10 +394,8 @@ describe('decodePly', () => {
     expect(() => decodePly(enc.encode(header + '1 2 3\n'))).toThrow(/invalid element count/);
   });
 
-  it('rejects list-valued properties on the vertex element, allows them on faces', () => {
-    // A list on the vertex element makes records variable length: the fixed
-    // binary stride / ascii column map would silently drift into garbage.
-    const badVertex =
+  it('walks list-valued vertex properties without drifting and allows them on faces', () => {
+    const listedVertex =
       'ply\n' +
       'format binary_little_endian 1.0\n' +
       'element vertex 1\n' +
@@ -407,9 +403,9 @@ describe('decodePly', () => {
       'property list uchar int vertex_indices\n' +
       'end_header\n';
     const body = new Uint8Array(32);
-    const buf = new Uint8Array(enc.encode(badVertex).length + body.length);
-    buf.set(enc.encode(badVertex), 0);
-    expect(() => decodePly(buf)).toThrow(/list-valued properties on the vertex element/);
+    const buf = new Uint8Array(enc.encode(listedVertex).length + body.length);
+    buf.set(enc.encode(listedVertex), 0);
+    expect(Array.from(decodePly(buf).positions)).toEqual([0, 0, 0]);
 
     // Face lists (skipped elements) stay supported.
     const withFaces =
@@ -423,5 +419,86 @@ describe('decodePly', () => {
     const chunk = decodePly(enc.encode(withFaces + '1 2 3\n4 5 6\n2 0 1\n'));
     expect(chunk.pointCount).toBe(2);
     expect(Array.from(chunk.positions)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+});
+
+describe('decodePly source normals (#4561)', () => {
+  it('keeps distinct ASCII XYZ/RGB/normal rows aligned without mutating the input', () => {
+    const header = 'ply\nformat ascii 1.0\nelement vertex 2\n'
+      + 'property float x\nproperty float y\nproperty float z\n'
+      + 'property uchar red\nproperty uchar green\nproperty uchar blue\n'
+      + 'property float nx\nproperty float ny\nproperty float nz\nend_header\n';
+    const bytes = enc.encode(header + '1 2 3 10 20 30 4 5 6\n7 8 9 40 50 60 -1 -2 -3\n');
+    const before = bytes.slice();
+    const chunk = decodePly(bytes);
+    expect(chunk.normalState).toBe('supplied');
+    expect(Array.from(chunk.positions)).toEqual([1, 2, 3, 7, 8, 9]);
+    expect(Array.from(chunk.normals!)).toEqual([4, 5, 6, -1, -2, -3]);
+    expect(Array.from(bytes)).toEqual(Array.from(before));
+  });
+
+  it.each([
+    ['partial', 'property float nx\nproperty float ny\n', '1 2 3 4 5\n'],
+    ['duplicate', 'property float nx\nproperty float ny\nproperty float nz\nproperty float nx\n', '1 2 3 4 5 6 7\n'],
+  ])('marks a %s normal declaration invalid without hiding valid positions', (_name, props, row) => {
+    const bytes = enc.encode('ply\nformat ascii 1.0\nelement vertex 1\n'
+      + 'property float x\nproperty float y\nproperty float z\n' + props + 'end_header\n' + row);
+    const chunk = decodePly(bytes);
+    expect(Array.from(chunk.positions)).toEqual([1, 2, 3]);
+    expect(chunk.normalState).toBe('invalid');
+    expect(chunk.normals).toBeUndefined();
+  });
+
+  it.each([
+    ['ascii', 'format ascii 1.0', enc.encode('1 2 3 2 9 10\n')],
+    ['binary', 'format binary_little_endian 1.0', (() => {
+      const body = new ArrayBuffer(21);
+      const view = new DataView(body);
+      view.setFloat32(0, 1, true); view.setFloat32(4, 2, true); view.setFloat32(8, 3, true);
+      view.setUint8(12, 2); view.setFloat32(13, 9, true); view.setFloat32(17, 10, true);
+      return new Uint8Array(body);
+    })()],
+  ] as const)('keeps XYZ loadable but marks a non-scalar nx declaration invalid in %s PLY', (_name, format, body) => {
+    const header = `ply\n${format}\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nproperty list uchar float nx\nend_header\n`;
+    const headerBytes = enc.encode(header);
+    const bytes = new Uint8Array(headerBytes.length + body.length);
+    bytes.set(headerBytes); bytes.set(body, headerBytes.length);
+    const chunk = decodePly(bytes);
+    expect(Array.from(chunk.positions)).toEqual([1, 2, 3]);
+    expect(chunk.normalState).toBe('invalid');
+    expect(chunk.normals).toBeUndefined();
+  });
+
+  it.each([
+    ['zero', '0 0 0'],
+    ['non-finite', 'NaN 1 0'],
+  ])('preserves %s complete normal rows but marks the source invalid', (_name, normal) => {
+    const bytes = enc.encode('ply\nformat ascii 1.0\nelement vertex 1\n'
+      + 'property float x\nproperty float y\nproperty float z\n'
+      + 'property float nx\nproperty float ny\nproperty float nz\nend_header\n1 2 3 ' + normal + '\n');
+    const chunk = decodePly(bytes);
+    expect(chunk.normalState).toBe('invalid');
+    expect(chunk.normals).toBeDefined();
+  });
+
+  it.each([
+    ['binary_little_endian', true],
+    ['binary_big_endian', false],
+  ] as const)('decodes %s normal scalars in row order', (format, littleEndian) => {
+    const header = `ply\nformat ${format} 1.0\nelement vertex 2\n`
+      + 'property float x\nproperty float y\nproperty float z\n'
+      + 'property float nx\nproperty float ny\nproperty float nz\nend_header\n';
+    const headerBytes = enc.encode(header);
+    const body = new ArrayBuffer(48);
+    const view = new DataView(body);
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, -1, -2, -3].forEach((value, index) => {
+      view.setFloat32(index * 4, value, littleEndian);
+    });
+    const bytes = new Uint8Array(headerBytes.length + body.byteLength);
+    bytes.set(headerBytes);
+    bytes.set(new Uint8Array(body), headerBytes.length);
+    const chunk = decodePly(bytes);
+    expect(chunk.normalState).toBe('supplied');
+    expect(Array.from(chunk.normals!)).toEqual([4, 5, 6, -1, -2, -3]);
   });
 });

@@ -9,7 +9,8 @@
  * headlessly, maps it to representation-agnostic clash elements, then runs the
  * clash engine with either a single ad-hoc rule (--a/--b) or the standard
  * discipline matrix (--matrix). Results print as a concise human summary or
- * machine-readable JSON, and can be exported as a BCF archive (--bcf).
+ * machine-readable JSON, and can be exported as a BCF archive (--bcf) or as a
+ * flat CSV table with both elements' GlobalIds per row (--csv, #3944).
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
@@ -34,6 +35,7 @@ import {
 import { elementsFromStep } from '@ifc-lite/clash/step';
 import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
 import { writeBCF } from '@ifc-lite/bcf';
+import { writeClashCsv } from './clash-csv.js';
 
 /** Maximum number of clashes embedded in --json output before truncation. */
 const JSON_CLASH_CAP = 1000;
@@ -267,7 +269,7 @@ export async function clashCommand(args: string[]): Promise<void> {
 
   const filePath = args.find(a => !a.startsWith('-'));
   if (!filePath) {
-    fatal('Usage: ifc-lite clash <file.ifc> [--a <selector>] [--b <selector>] [--mode hard|clearance] [--tolerance N] [--clearance N] [--matrix] [--bcf <out.bcfzip>] [--group cluster|rule|typePair|element] [--bcf-status <status>] [--max-topics N] [--json]');
+    fatal('Usage: ifc-lite clash <file.ifc> [--a <selector>] [--b <selector>] [--mode hard|clearance] [--tolerance N] [--clearance N] [--matrix] [--bcf <out.bcfzip>] [--group cluster|rule|typePair|element] [--bcf-status <status>] [--max-topics N] [--csv <out.csv>] [--json]');
   }
 
   const jsonOutput = hasFlag(args, '--json');
@@ -276,6 +278,7 @@ export async function clashCommand(args: string[]): Promise<void> {
   const tolerance = parseNumberFlag(getFlag(args, '--tolerance'), '--tolerance');
   const clearance = parseNumberFlag(getFlag(args, '--clearance'), '--clearance');
   const bcfPath = getFlag(args, '--bcf');
+  const csvPath = getFlag(args, '--csv');
   const bcfGroupBy = parseGroupBy(getFlag(args, '--group'));
   const bcfStatus = getFlag(args, '--bcf-status');
   const maxTopics = parseNumberFlag(getFlag(args, '--max-topics'), '--max-topics');
@@ -331,6 +334,11 @@ export async function clashCommand(args: string[]): Promise<void> {
       const buffer = Buffer.from(await blob.arrayBuffer());
       await writeFile(bcfPath, buffer);
       process.stderr.write(`  BCF report written to ${bcfPath} (${groups.length} topic group(s), grouped by ${bcfGroupBy})\n`);
+    }
+
+    if (csvPath) {
+      const rows = await writeClashCsv(csvPath, result, store, modelId);
+      process.stderr.write(`  CSV table written to ${csvPath} (${rows} clash row(s))\n`);
     }
 
     if (jsonOutput) {

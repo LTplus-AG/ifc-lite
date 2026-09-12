@@ -21,14 +21,14 @@ import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
-import { writeFile, mkdtemp, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { IfcCreator } from '@ifc-lite/create';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { clashCommand, formatClashRow, worstFirst } from './clash.js';
-import type { Clash } from '@ifc-lite/clash';
+import { CLASH_TABLE_COLUMNS, type Clash } from '@ifc-lite/clash';
 
 const execFileAsync = promisify(execFile);
 
@@ -193,6 +193,54 @@ describe('clash --group cluster ineffectiveness note', () => {
         expect(groupCount).toBeGreaterThan(0);
         expect(groupCount).toBeLessThan(12);
         expect(stderr).not.toContain('did not consolidate');
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    180_000,
+  );
+});
+
+describe('clash --csv writes every clash as one table row with both GlobalIds (#3944)', () => {
+  beforeAll(() => {
+    assertBuildArtifactsAvailable(CLI_ENTRY, WASM_RUNTIME);
+  });
+
+  it(
+    'names the file, keeps the documented header, and resolves the storey off the meshed model',
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-csv-'));
+      const modelPath = join(dir, 'model.ifc');
+      const csvPath = join(dir, 'out.csv');
+      try {
+        await writeFile(modelPath, buildScatteredClashModel());
+
+        const { stderr } = await execFileAsync(
+          process.execPath,
+          [CLI_ENTRY, 'clash', modelPath, '--a', 'IfcWall', '--csv', csvPath],
+          { timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
+        );
+        expect(stderr).toContain('CSV table written to');
+        expect(stderr).toContain('(3 clash row(s))');
+
+        const csv = await readFile(csvPath, 'utf8');
+        const lines = csv.split('\n');
+        expect(lines[0]).toBe(CLASH_TABLE_COLUMNS.join(','));
+        // Three crossings, three rows, trailing newline.
+        expect(lines).toHaveLength(5);
+        expect(lines[4]).toBe('');
+        const col = (name: string) => CLASH_TABLE_COLUMNS.indexOf(name as (typeof CLASH_TABLE_COLUMNS)[number]);
+        for (const line of lines.slice(1, 4)) {
+          const cells = line.split(',');
+          expect(cells[col('GlobalIdA')]).toMatch(/^[0-9A-Za-z_$]{22}$/);
+          expect(cells[col('GlobalIdB')]).toMatch(/^[0-9A-Za-z_$]{22}$/);
+          expect(cells[col('GlobalIdA')]).not.toBe(cells[col('GlobalIdB')]);
+          expect(cells[col('TypeA')]).toBe('IfcWall');
+          expect(cells[col('StoreyA')]).toBe('L1');
+          expect(cells[col('ModelA')]).toBe('model.ifc');
+          expect(cells[col('Review')]).toBe('open');
+          expect(Number(cells[col('Distance')])).toBeLessThan(0);
+        }
       } finally {
         await rm(dir, { recursive: true, force: true });
       }

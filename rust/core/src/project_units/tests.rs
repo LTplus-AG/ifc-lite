@@ -350,14 +350,11 @@ fn real_derived_units_stay_well_under_the_budget() {
     assert!((resolved.si_scale - 0.3048f64.powi(3)).abs() < 1e-12);
 }
 
-/// A cyclic element beside two sound ones. The path set refuses the cyclic
-/// element on its first re-entry and the sound elements compose once. Pins
-/// the path set separately from the budget: with the set deleted the cycle
-/// re-enters `#10` until the depth cap (well inside the budget at fan-out 1)
-/// and the two sound elements are composed at every level, so the symbol
-/// comes back as `m/s` repeated sixteen times.
+/// A cyclic element beside two sound ones poisons the whole authored unit.
+/// Returning only the sound siblings would falsely report `m/s` for an
+/// unresolved definition and give downstream conversions a fabricated scale.
 #[test]
-fn a_cyclic_element_is_dropped_without_spending_the_budget_on_it() {
+fn a_cyclic_element_refuses_the_whole_unit_instead_of_truncating_it() {
     let content = "\
 #10=IFCDERIVEDUNIT((#11,#12,#13),.LINEARVELOCITYUNIT.,$);
 #11=IFCDERIVEDUNITELEMENT(#10,1);
@@ -367,7 +364,5 @@ fn a_cyclic_element_is_dropped_without_spending_the_budget_on_it() {
 #21=IFCSIUNIT(*,.TIMEUNIT.,$,.SECOND.);
 ";
     let mut decoder = EntityDecoder::new(content);
-    let (_, resolved, _) = resolve_unit_by_ref(&mut decoder, 10)
-        .expect("the two sound elements still compose");
-    assert_eq!(resolved.symbol, "m/s");
+    assert!(resolve_unit_by_ref(&mut decoder, 10).is_none());
 }

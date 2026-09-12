@@ -1206,16 +1206,16 @@ fn a_small_shared_second_operand_fan_out_still_resolves() {
     assert!(failures.is_empty(), "nothing to record on a small fan-out: {failures:?}");
 }
 
-/// A legitimate deep chain must not be refused by the budget because of the
-/// processor's own retries. `try_union_polygonal_chain` meshes the base
+/// Provisional attempts are real work and must remain charged.
+/// `try_union_polygonal_chain` meshes the base
 /// provisionally at EVERY spine level it is attempted from and defers when
 /// a cutter cannot be batched (here the innermost PBHS has no boundary), so
 /// `n` PBHS cutters over a base whose spine carries `b` boolean second
-/// operands enters the base's nodes `n * b` times. Those provisional visits
-/// are refunded on deferral; without the refund this 40 x 30 chain (1200
-/// entries against a budget of 1024) is refused where main renders it.
+/// operands enters the base's nodes `n * b` times. This 40 x 30 chain crosses
+/// the 1024-entry bound and must be refused; refunding attempts made the
+/// counter linear while nested variants could perform exponential work.
 #[test]
-fn provisional_batch_attempts_do_not_spend_the_visit_budget() {
+fn provisional_batch_attempts_spend_the_monotonic_work_budget() {
     const CUTTERS: u32 = 40;
     const BASE_OPERANDS: u32 = 30;
     let mut data = String::from(
@@ -1278,10 +1278,10 @@ fn provisional_batch_attempts_do_not_spend_the_visit_budget() {
     let schema = IfcSchema::new();
     let out = processor.process(&entity, &mut decoder, &schema, Default::default());
     let failures = processor.take_failures();
-    let mesh = out.expect("a deep legitimate chain renders");
-    assert!(!mesh.is_empty());
+    let err = out.expect_err("repeated provisional work must exhaust the operand budget");
+    assert!(err.to_string().contains("operand walk exceeds"));
     assert!(
-        !failures.iter().any(|f| matches!(f.reason, BoolFailureReason::OperandBudgetExhausted)),
-        "provisional attempts must not spend the budget; got {failures:?}"
+        failures.iter().any(|f| matches!(f.reason, BoolFailureReason::OperandBudgetExhausted)),
+        "the refusal must be observable as OperandBudgetExhausted; got {failures:?}"
     );
 }

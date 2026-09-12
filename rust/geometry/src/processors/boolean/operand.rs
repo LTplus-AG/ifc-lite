@@ -35,12 +35,10 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 /// primitives under one item). The adversarial DAG crosses it at fan-out 4
 /// by the fifth level.
 ///
-/// A memo of `id -> meshed result` inside the walk would make that shape
-/// cheap instead of refused (the mesh of a nested node is a function of the
-/// id, the quality and the small-cut flag, all fixed per item); it needs
-/// the node's failure records stored and replayed with it, since
-/// `defer_after` rewinds records made under a provisional union attempt.
-/// Separate change; the budget stays as the bound on distinct-node work.
+/// Every attempt is charged monotonically, including provisional PBHS batch
+/// attempts that later defer. Refunding completed work lets nested deferrals
+/// repeat the same subtree exponentially while retaining only linear visits.
+/// A future memo may make that work cheap; until then the budget refuses it.
 pub(crate) const MAX_OPERAND_VISITS: u32 = 1024;
 
 /// Entity ids on the CURRENT operand path — inserted on the way in, removed on
@@ -84,16 +82,6 @@ impl OperandPath {
         true
     }
 
-    /// Visits charged so far, for a provisional attempt to mark.
-    pub(crate) fn visits(&self) -> u32 {
-        self.visits
-    }
-
-    /// Give back the visits charged since `mark`: the provisional attempt
-    /// that charged them deferred, and its work is redone sequentially.
-    pub(crate) fn refund_to(&mut self, mark: u32) {
-        self.visits = mark;
-    }
 }
 
 impl BooleanClippingProcessor {

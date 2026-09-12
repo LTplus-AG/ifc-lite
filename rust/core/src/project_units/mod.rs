@@ -145,7 +145,7 @@ pub fn resolve_unit_by_ref(
     // whatever was composed depends on where it stopped. Refuse the unit
     // rather than hand back a symbol that is missing the elements it never
     // reached.
-    if walk.over_budget() {
+    if walk.was_refused() {
         return None;
     }
     out
@@ -187,17 +187,25 @@ struct UnitWalk {
     /// refuses the rest, and the top level refuses the whole unit rather than
     /// hand back a symbol missing the elements it never reached.
     decodes: u32,
+    /// A cycle, depth trip, or decode-budget trip invalidates the whole
+    /// authored unit. Returning the sound siblings would fabricate a
+    /// truncated symbol and SI scale.
+    refused: bool,
 }
 
 impl UnitWalk {
     /// Charge one entity decode; `false` once the budget is spent.
     fn charge(&mut self) -> bool {
         self.decodes += 1;
-        self.decodes <= MAX_UNIT_RESOLVE_DECODES
+        if self.decodes > MAX_UNIT_RESOLVE_DECODES {
+            self.refused = true;
+            return false;
+        }
+        true
     }
 
-    fn over_budget(&self) -> bool {
-        self.decodes > MAX_UNIT_RESOLVE_DECODES
+    fn was_refused(&self) -> bool {
+        self.refused
     }
 }
 
@@ -206,10 +214,11 @@ fn resolve_unit_by_ref_walk(
     unit_ref: u32,
     walk: &mut UnitWalk,
 ) -> Option<(Option<String>, ResolvedUnit, bool)> {
-    if walk.path.len() >= MAX_UNIT_RESOLVE_DEPTH
-        || walk.path.contains(&unit_ref)
-        || !walk.charge()
-    {
+    if walk.path.len() >= MAX_UNIT_RESOLVE_DEPTH || walk.path.contains(&unit_ref) {
+        walk.refused = true;
+        return None;
+    }
+    if !walk.charge() {
         return None;
     }
     walk.path.push(unit_ref);

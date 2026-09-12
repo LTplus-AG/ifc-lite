@@ -612,17 +612,13 @@ impl BooleanClippingProcessor {
             }
             let operator = Self::boolean_operator(&current);
             if operator == ".DIFFERENCE." || operator == "DIFFERENCE" {
-                // The batched attempt meshes the base provisionally and is
-                // retried at every spine level it defers on, so its visits
-                // are refunded on deferral: a chain of N cutters over a base
-                // of B nodes is N x B re-meshes (a cost this file already
-                // pays) but not N x B against a budget sized for one walk.
-                let visits_mark = visited.visits();
+                // The batched attempt meshes the base provisionally and can
+                // be retried at every spine level it defers on. Those are real
+                // node entries and remain charged: refunding them permits
+                // nested deferrals to perform exponential work behind a
+                // linear retained counter.
                 let attempt =
                     self.try_union_polygonal_chain(&current, decoder, depth, quality, visited)?;
-                if attempt.is_none() {
-                    visited.refund_to(visits_mark);
-                }
                 if let Some(result) = attempt {
                     // Batched PBHS resolution handled this node and everything
                     // below it (see the comment on the sequential step).

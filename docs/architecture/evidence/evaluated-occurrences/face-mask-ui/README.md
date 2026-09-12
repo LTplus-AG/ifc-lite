@@ -24,8 +24,10 @@ where another checkout may be serving port 3000, set `PLAYWRIGHT_PORT=<free
 port>` so the run serves and tests this build.
 
 The recorded run on this host (Windows 11, NVIDIA GPU, Chrome stable,
-headless, the branch's final build) took 14.4 s including the model load and
-passed every assertion; earlier iterations of the same spec passed as well. The journey on
+headless, the branch's final build after review, served on `PLAYWRIGHT_PORT=3471`)
+took 14.2 s including the model load and passed every assertion; earlier
+iterations of the same spec passed as well, with journey JSON identical apart
+from the random model id. The journey on
 `IfcMember` #35169 (one of 42 members sharing a type; sibling #35304 compared
 corner-for-corner at every step), recorded in
 [`browser-journey.json`](browser-journey.json):

@@ -12,7 +12,7 @@ import { UNSELECTED_FACE_COLOR, type FaceMaskControls, type FaceMaskTarget } fro
 function FaceMaskRow({ target, editing, disabled, onEdit, onClear }: { target: FaceMaskTarget; editing: boolean; disabled: boolean; onEdit(): void; onClear(): void }) {
   const selected = target.selected?.length ?? 0;
   return <li className="flex flex-wrap items-center gap-2">
-    <span className="min-w-0 flex-1"><span className="text-muted-foreground">IFC object</span> <span className="whitespace-nowrap font-medium">#{target.productId}</span></span>
+    <span className="whitespace-nowrap"><span className="text-muted-foreground">IFC object</span> <span className="font-medium">#{target.productId}</span></span>
     <span className="rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground" role="status">
       {selected ? `${selected.toLocaleString()} of ${target.triangleCount.toLocaleString()} faces selected` : `all ${target.triangleCount.toLocaleString()} faces`}
     </span>

@@ -339,8 +339,13 @@ where
     // Get raw bytes of coordinate list entity
     let coord_bytes = get_entity_bytes(coord_entity_id)?;
 
-    // Parse coordinates directly
-    let positions = parse_coordinates_direct(&coord_bytes);
+    // The bytes are the WHOLE record, `#78=IFCCARTESIANPOINTLIST3D(((...)));`,
+    // and `parse_coordinates_direct` reads every number it meets, so handing
+    // it the record read `78` and the `3` of the type name as the first two
+    // coordinates and shifted every vertex (core review behind #4577, finding 6).
+    // Trim to the `((` ... `))` span first, the way every other reader of a
+    // point-list record does.
+    let positions = extract_coordinate_list_from_entity(&coord_bytes)?;
 
     // Extract and parse indices from attribute 3 (CoordIndex)
     let indices = extract_face_indices_from_entity(faceset_bytes)?;

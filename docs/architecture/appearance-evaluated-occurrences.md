@@ -136,36 +136,44 @@ the fingerprint the last plan reported for that product. Selections never
 persist to IFC (the output carries the resulting face sets), clear when the
 target model changes or reloads, and are spent by Apply (the product then owns
 a direct tessellated Body, which cannot carry a mask). A plan request carries
-only the masks of products inside its scope; masks of other products wait in
-the workspace.
+only the masks of products inside its scope, and only under the
+`evaluatedOccurrence` policy: while **Convert supported objects to mesh** is
+off, the planner would refuse the whole request for carrying masks, so the
+selections stay dormant in the session and return with the policy. Masks of
+other products wait in the workspace.
 
-Each converted object in the panel shows a chip (`all N faces` or `k of N faces
-selected`) and a **Select faces** editor over the product's evaluated source
-surface, the same `sourcePositions`/`sourceIndices` the plan reports, so editor
-triangle ordinals are mask ordinals. In the editor a click toggles one face, a
-marquee adds the faces whose centres it covers (Alt removes), **All faces**
-clears the selection, and every change re-plans; **Clear** on the chip does the
-same. A selection covering every face is no selection.
+Each converted object in the panel shows a row `IFC object #N` (the id is never
+truncated), a chip (`all N faces` or `k of N faces selected`) and a
+**Select faces** editor over the product's evaluated source surface, the same
+`sourcePositions`/`sourceIndices` the plan reports, so editor triangle ordinals
+are mask ordinals. In the editor **Pick faces** is the sticky selection mode: a
+click toggles one face, a marquee adds the faces whose centres it covers (Alt
+removes); **All faces** clears the selection, in the editor and on the row. A
+selection covering every face is no selection. Every change re-plans, and the
+editor keeps its renderer and camera across selection changes and re-plans that
+reproduce the same surface (same fingerprint, same placed corners); only a
+changed surface rebuilds it.
 
 The viewer never decides staleness itself. After every plan it reconciles: a
-mask whose product the planner excluded as `Face selection is stale` (a
-placement edit of a world-evaluated body, an edited opening, a different
-tessellator) or as already carrying a direct Body is dropped, and the panel
-shows `Face selection for <object> is stale: the evaluated surface geometry
-changed, so the selection was cleared. Select faces again.` beside the
-exclusions; the plan then re-runs without it. A conversion that reports a
-different fingerprint than the mask it was drawn on is treated the same way.
-Which edits change the fingerprint is the planner's call, and the viewer only
-relays it. Measured on this build: a geometry edit (a widened box profile)
-reports the mask stale; an ordinary (12.345, 67.891, 0.1) m translation of the
-same swept box or of a mapped quad keeps the fingerprint in the wasm planner,
-because the authored coordinates are rebuilt around a per-element origin, so
-the selection survives on a surface that is unchanged relative to its product.
-The native Rust unit test of the same fixture asserts the translated box stale,
-so native and wasm currently differ in the fingerprint's placement sensitivity;
-either verdict is safe for a mask (kept only when the planner reproduces the
-identical surface identity), and the difference is a planner follow-up, not a
-viewer decision.
+mask whose product the planner excluded as `Face selection is stale` (an
+edited opening, a different profile, a different tessellator) or as already
+carrying a direct Body is dropped, and the panel shows `Face selection for
+<object> is stale: the evaluated surface geometry changed, so the selection was
+cleared. Select faces again.` beside the exclusions; the plan then re-runs
+without it, and the diagnostic stays through that automatic re-plan until the
+next selection change, Discard or Apply. A conversion that reports a different
+fingerprint than the mask it was drawn on is treated the same way. Which edits
+change the fingerprint is the planner's call, and the viewer only relays it.
+Measured on this build: a geometry edit (a widened box profile) reports the
+mask stale; an ordinary (12.345, 67.891, 0.1) m translation of the same swept
+box or of a mapped quad keeps the fingerprint in the wasm planner (the authored
+coordinates are rebuilt around a per-element origin), while the native Rust
+unit test of the same fixture asserts the translated box stale. Native and wasm
+currently differ in the fingerprint's placement sensitivity — tracked as
+[#4550](https://github.com/LTplus-AG/ifc-lite/issues/4550). Either verdict is
+safe for a mask (kept only when the planner reproduces the identical surface
+identity, otherwise dropped with the diagnostic), and the viewer test asserts
+that invariant rather than either verdict.
 
 The renderer preview stages a masked plan as two parts of one owner through an
 explicit `AppearancePartition`: the textured face set expanded with the planned

@@ -19,6 +19,10 @@ pnpm --filter @ifc-lite/viewer build
 APPEARANCE_E2E=1 APPEARANCE_E2E_OUT=/tmp/face-mask-ui pnpm exec playwright test --project=viewer-appearance-e2e
 ```
 
+The Playwright web server reuses an existing server on its port, so on a host
+where another checkout may be serving port 3000, set `PLAYWRIGHT_PORT=<free
+port>` so the run serves and tests this build.
+
 The recorded run on this host (Windows 11, NVIDIA GPU, Chrome stable,
 headless, the branch's final build) took 14.4 s including the model load and
 passed every assertion; earlier iterations of the same spec passed as well. The journey on
@@ -118,8 +122,11 @@ remesh. The planar member reopens 1:1.
 - `apps/viewer/src/components/viewer/appearance/AppearancePanel.faceMask.test.tsx`:
   the mounted panel with the real planner on a controlled two-triangle mapped
   quad, resident and GPU-instanced — select one face through the editor's click
-  gesture, preview the split, Compare, Discard, preview again, Apply, export
-  with the image, reopen, Undo, Redo; the sibling occurrence unchanged.
+  gesture (the editor's renderer is not re-created by the click or its
+  re-plan), preview the split, turn the evaluated policy off (the request
+  carries no mask, the policy's own exclusion shows) and on again (the
+  selection returns), Compare, Discard, preview again, Apply, export with the
+  image, reopen, Undo, Redo; the sibling occurrence unchanged.
 - `apps/viewer/src/lib/appearance/face-mask-reopen-wasm.test.ts`: the AC20
   member's masked export (6 of 12) reopened through the loader's parser and
   wasm geometry pipeline: two items under one product, textured binds the
@@ -128,9 +135,11 @@ remesh. The planar member reopens 1:1.
 - `apps/viewer/src/lib/appearance/face-masks.test.ts`: request scoping and
   reconciliation against the real planner; a geometry edit of a masked swept
   box (profile widened) is reported stale and the workspace drops the mask
-  with its diagnostic, while a (12.345, 67.891, 0.1) m translation keeps both
-  products' fingerprints and selections in the wasm build (see the policy doc
-  on the native/wasm difference).
+  with its diagnostic; for a (12.345, 67.891, 0.1) m translation the test
+  asserts the invariant only — kept on the identical fingerprint or dropped as
+  stale, never misapplied — because the native and wasm planners currently
+  disagree on that verdict ([#4550](https://github.com/LTplus-AG/ifc-lite/issues/4550);
+  the wasm build keeps both fingerprints).
 - `apps/viewer/src/lib/appearance/preview-mask.test.ts`, `preview-history.test.ts`,
   `packages/renderer/src/appearance-partition.test.ts`: the split binder, the
   partition's Undo/Redo inversion and the renderer's exact partition contract.

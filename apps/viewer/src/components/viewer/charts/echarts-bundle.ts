@@ -11,10 +11,10 @@
  */
 import { init, use, type EChartsType } from 'echarts/core';
 import { BarChart, PieChart, TreemapChart } from 'echarts/charts';
-import { BrushComponent, GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 
-use([BarChart, PieChart, TreemapChart, GridComponent, TooltipComponent, LegendComponent, BrushComponent, CanvasRenderer]);
+use([BarChart, PieChart, TreemapChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
 
 export function createChart(el: HTMLElement): EChartsType {
   return init(el, undefined, { renderer: 'canvas' });

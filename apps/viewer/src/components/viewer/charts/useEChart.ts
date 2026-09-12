@@ -17,7 +17,7 @@ import type { ChartItem, EChartsOptionObject, ChartTheme } from '@ifc-lite/chart
 import { DEFAULT_THEME } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store';
 
-/** What a chart click / brush hands back: the items (series + category) now selected. */
+/** What a chart click hands back: the items (series + category) now selected. */
 export interface ChartSelectEvent {
   items: ChartItem[];
 }
@@ -34,47 +34,52 @@ export interface ChartRendererEvents {
   onSelect: (event: ChartSelectEvent) => void;
 }
 
-/** Creates a chart in `el`; the real one is ECharts, tests inject a recorder. */
-export type ChartRenderer = (el: HTMLElement, events: ChartRendererEvents) => Promise<ChartRendererHandle>;
+/** Creates a chart in `el` synchronously; the real one is ECharts, tests inject a recorder. */
+export type ChartFactory = (el: HTMLElement, events: ChartRendererEvents) => ChartRendererHandle;
+
+/**
+ * Loads the chart engine (once) and hands back the factory. Two phases on
+ * purpose: the load is the only async step, so a mount that is undone while
+ * the engine is still loading — StrictMode's double effect, a panel closed
+ * at once — never creates a chart at all. (ECharts returns the *existing*
+ * instance for a second `init` on the same element; creating inside the
+ * async step let one mount dispose the instance the other went on to use,
+ * and the card stayed blank.)
+ */
+export type ChartRenderer = () => Promise<ChartFactory>;
 
 /** The real renderer: tree-shaken ECharts on canvas (`echarts-bundle.ts`, loaded on first mount). */
-export const echartsRenderer: ChartRenderer = async (el, events) => {
+export const echartsRenderer: ChartRenderer = async () => {
   const { createChart } = await import('./echarts-bundle');
-  const chart = createChart(el);
-  let suppress = false;
-  // `selectchanged` reports every selected item per series after a click;
-  // `brushselected` reports the items under a drag rectangle.
-  const itemsOf = (selected: Array<{ seriesIndex: number; dataIndex: number[] }> | undefined): ChartItem[] => {
-    const items: ChartItem[] = [];
-    for (const s of selected ?? []) for (const dataIndex of s.dataIndex) items.push({ seriesIndex: s.seriesIndex, dataIndex });
-    return items;
-  };
-  chart.on('selectchanged', (params) => {
-    if (suppress) return;
-    events.onSelect({ items: itemsOf((params as { selected?: Array<{ seriesIndex: number; dataIndex: number[] }> }).selected) });
-  });
-  chart.on('brushselected', (params) => {
-    if (suppress) return;
-    const items: ChartItem[] = [];
-    for (const b of (params as { batch?: Array<{ selected?: Array<{ seriesIndex: number; dataIndex: number[] }> }> }).batch ?? []) items.push(...itemsOf(b.selected));
-    if (items.length > 0) events.onSelect({ items });
-  });
-  return {
-    setOption: (option) => chart.setOption(option, { notMerge: true }),
-    select: (full, partial) => {
-      suppress = true;
-      try {
-        // The option already carries `selected` per item; `downplay` + `highlight`
-        // is the emphasis pass for partially selected buckets.
-        chart.dispatchAction({ type: 'downplay' });
-        for (const item of partial) chart.dispatchAction({ type: 'highlight', seriesIndex: item.seriesIndex, dataIndex: item.dataIndex });
-        void full;
-      } finally {
-        suppress = false;
+  return (el, events) => {
+    const chart = createChart(el);
+    let suppress = false;
+    // `selectchanged` reports every selected item per series after a click.
+    chart.on('selectchanged', (params) => {
+      if (suppress) return;
+      const items: ChartItem[] = [];
+      for (const s of (params as { selected?: Array<{ seriesIndex: number; dataIndex: number[] }> }).selected ?? []) {
+        for (const dataIndex of s.dataIndex) items.push({ seriesIndex: s.seriesIndex, dataIndex });
       }
-    },
-    resize: () => chart.resize(),
-    dispose: () => chart.dispose(),
+      events.onSelect({ items });
+    });
+    return {
+      setOption: (option) => chart.setOption(option, { notMerge: true }),
+      select: (full, partial) => {
+        suppress = true;
+        try {
+          // The option already carries `selected` per item; `downplay` + `highlight`
+          // is the emphasis pass for partially selected buckets.
+          chart.dispatchAction({ type: 'downplay' });
+          for (const item of partial) chart.dispatchAction({ type: 'highlight', seriesIndex: item.seriesIndex, dataIndex: item.dataIndex });
+          void full;
+        } finally {
+          suppress = false;
+        }
+      },
+      resize: () => chart.resize(),
+      dispose: () => chart.dispose(),
+    };
   };
 };
 
@@ -117,12 +122,9 @@ export function useEChart({ option, selected, partial, onSelect, renderer = echa
     const el = ref.current;
     if (!el) return;
     let disposed = false;
-    void renderer(el, { onSelect: (e) => onSelectRef.current(e) }).then((handle) => {
-      if (disposed) {
-        handle.dispose();
-        return;
-      }
-      handleRef.current = handle;
+    void renderer().then((create) => {
+      if (disposed) return;
+      handleRef.current = create(el, { onSelect: (e) => onSelectRef.current(e) });
       setReady(true);
     });
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => handleRef.current?.resize());

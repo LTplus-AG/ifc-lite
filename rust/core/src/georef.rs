@@ -148,7 +148,8 @@ impl GeoReference {
         self.x_axis_ordinate.atan2(self.x_axis_abscissa)
     }
 
-    /// Normalize the X-axis direction to a unit vector.
+    /// Normalize the X-axis direction to a unit vector, and refuse the
+    /// transform components that have no usable value.
     ///
     /// `IfcMapConversion.XAxisAbscissa/Ordinate` form a DIRECTION — files may
     /// author non-unit components. `local_to_map`/`to_matrix` use them
@@ -162,7 +163,12 @@ impl GeoReference {
     /// identity `(1, 0)`, the angle the TS twin's `atan2(0, 0)` gives. Passed
     /// through, `(0, 0)` collapsed every map coordinate to
     /// `(Eastings, Northings)` and an infinite length divided into NaN.
-    fn normalize_axis(&mut self) {
+    ///
+    /// `Scale` and `FactorX/Y/Z` follow the same rule: zero collapses every
+    /// coordinate onto the translation and a non-finite value poisons it, so
+    /// either resets to 1.0 (the TS twin reads a zero `Scale` as 1.0 through
+    /// `scale || 1.0`).
+    fn sanitize_transform(&mut self) {
         let len = self.x_axis_abscissa.hypot(self.x_axis_ordinate);
         if !(len.is_finite() && len > f64::EPSILON) {
             self.x_axis_abscissa = 1.0;
@@ -170,6 +176,11 @@ impl GeoReference {
         } else if (len - 1.0).abs() > f64::EPSILON {
             self.x_axis_abscissa /= len;
             self.x_axis_ordinate /= len;
+        }
+        for s in [&mut self.scale, &mut self.factor_x, &mut self.factor_y, &mut self.factor_z] {
+            if !(s.is_finite() && *s != 0.0) {
+                *s = 1.0;
+            }
         }
     }
 
@@ -361,7 +372,7 @@ impl GeoRefExtractor {
             Self::parse_projected_crs(&entity, decoder, &mut georef);
         }
 
-        georef.normalize_axis();
+        georef.sanitize_transform();
 
         if georef.has_georef() {
             Ok(Some(georef))
@@ -401,17 +412,15 @@ impl GeoRefExtractor {
         // Index 8..10: IfcMapConversionScaled.FactorX/Y/Z (absent on the
         // plain supertype). These are the only reason the subtype exists;
         // reading it "as its supertype" silently applied a feet-based scaled
-        // conversion unscaled. A non-finite or zero factor is refused (left
-        // at 1.0) rather than poisoning every coordinate.
+        // conversion unscaled. `sanitize_transform` refuses a zero or
+        // non-finite factor.
         for (index, factor) in [
             (8, &mut georef.factor_x),
             (9, &mut georef.factor_y),
             (10, &mut georef.factor_z),
         ] {
             if let Some(f) = entity.get_float(index) {
-                if f.is_finite() && f != 0.0 {
-                    *factor = f;
-                }
+                *factor = f;
             }
         }
     }

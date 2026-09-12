@@ -150,7 +150,7 @@ impl GeoRefExtractor {
             georef.crs_name = target_crs.filter(|name| !name.trim().is_empty());
         }
 
-        georef.normalize_axis();
+        georef.sanitize_transform();
 
         if georef.has_georef() {
             Ok(Some(georef))

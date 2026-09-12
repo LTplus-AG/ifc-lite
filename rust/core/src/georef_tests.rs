@@ -436,6 +436,24 @@ fn zero_length_axis_direction_resets_to_identity() {
     assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1010.0, 2020.0, 47.0));
 }
 
+/// An explicit `Scale` of 0 collapsed every local point onto
+/// `(Eastings, Northings)`, the same failure as a zero axis, and a factor that
+/// overflows to infinity poisoned its axis. Both reset to 1.0.
+#[test]
+fn zero_or_non_finite_scale_resets_to_one() {
+    let geo = extract_map_conversion("#11=IFCMAPCONVERSION(#2,#10,1000.,2000.,42.,1.,0.,0.);")
+        .expect("georeference");
+    assert_eq!(geo.scale, 1.0);
+    assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1010.0, 2020.0, 47.0));
+
+    let geo = extract_map_conversion(
+        "#11=IFCMAPCONVERSIONSCALED(#2,#10,1000.,2000.,42.,1.,0.,$,1.0E999,0.,2.);",
+    )
+    .expect("georeference");
+    assert_eq!((geo.factor_x, geo.factor_y, geo.factor_z), (1.0, 1.0, 2.0));
+    assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1010.0, 2020.0, 52.0));
+}
+
 /// A rotation-only conversion (zero offsets, 30 degrees to grid north, no
 /// `IfcProjectedCRS`) is a georeference: the TS twin reports one whenever a
 /// map conversion parsed, and the value-based test dropped it.

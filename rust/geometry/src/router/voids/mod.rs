@@ -190,6 +190,16 @@ impl VoidContext {
 }
 
 impl OpeningType {
+    /// The cutter mesh and its extrusion direction, for the two mesh-carrying
+    /// kinds; `None` for `Rectangular`, which has no mesh until synthesised.
+    fn mesh_cutter(&self) -> Option<(&Mesh, Option<Vector3<f64>>)> {
+        match self {
+            OpeningType::Rectangular(..) => None,
+            OpeningType::DiagonalRectangular(m, f) => Some((m, Some(f.depth))),
+            OpeningType::NonRectangular(m, _, _, d) => Some((m, *d)),
+        }
+    }
+
     /// Return a copy translated by `-origin` (world → host-local frame). Bounds
     /// (`Point3`) shift; direction vectors and the oriented `OpeningFrame` are
     /// translation-invariant and pass through unchanged.
@@ -242,6 +252,26 @@ impl GeometryRouter {
             TessellationQuality::High | TessellationQuality::Highest => 1e-9,
             _ => MIN_OPENING_VOLUME,
         }
+    }
+
+    /// A batch-group cutter: the opening extended through `host`, welded (1 µm)
+    /// to bit-identical, and kept only if it is then exactly closed (#2176: only
+    /// per-component-watertight solids may join a group). The weld lets a
+    /// geometrically-watertight cutter whose shared-edge f32 coords differ in
+    /// bits after the placement transform pass the bit-exact gate (#098).
+    /// Admission and the re-extension after a host cut both call this, so a
+    /// cutter admitted because of the weld is not refused at cut time.
+    fn batch_cutter(
+        opening_mesh: &Mesh,
+        extrusion_dir: Option<Vector3<f64>>,
+        host: &Mesh,
+    ) -> Option<Mesh> {
+        let depth_dir = extrusion_dir
+            .filter(|d| d.norm() > NORMALIZE_EPSILON)
+            .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
+        let ext = Self::extend_opening_mesh_through_host(opening_mesh, host, depth_dir)
+            .welded_by_position(1.0e-6);
+        mesh_is_closed_exact(&ext).then_some(ext)
     }
 
     /// Process element with void subtraction (openings)
@@ -1115,12 +1145,7 @@ impl GeometryRouter {
                 if batch_consumed[idx] {
                     continue;
                 }
-                let norm: Option<(&Mesh, Option<Vector3<f64>>)> = match **opening {
-                    OpeningType::Rectangular(..) => None,
-                    OpeningType::DiagonalRectangular(ref m, ref f) => Some((m, Some(f.depth))),
-                    OpeningType::NonRectangular(ref m, _, _, ref d) => Some((m, *d)),
-                };
-                let Some((opening_mesh, extrusion_dir)) = norm else { continue };
+                let Some((opening_mesh, extrusion_dir)) = opening.mesh_cutter() else { continue };
                 // Same admission guards as the sequential loop.
                 let opening_valid = !opening_mesh.is_empty()
                     && opening_mesh.positions.iter().all(|&v| v.is_finite())
@@ -1145,19 +1170,9 @@ impl GeometryRouter {
                 if open_vol < Self::min_opening_volume(self.tessellation_quality) {
                     continue;
                 }
-                let depth_dir = extrusion_dir
-                    .filter(|d| d.norm() > NORMALIZE_EPSILON)
-                    .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
-                // Weld (1 µm) to bit-identical so a geometrically-watertight cutter
-                // whose shared-edge f32 coords differ in bits after the placement
-                // transform still passes the bit-exact closure gate below and can
-                // join a batch instead of re-jittering through sequential cuts (#098).
-                let ext = Self::extend_opening_mesh_through_host(opening_mesh, &result, depth_dir)
-                    .welded_by_position(1.0e-6);
-                // #2176: only per-component-watertight solids may join a group.
-                if !mesh_is_closed_exact(&ext) {
+                let Some(ext) = Self::batch_cutter(opening_mesh, extrusion_dir, &result) else {
                     continue;
-                }
+                };
                 let (lo, hi) = ext.bounds();
                 // Engulf-class exclusion: a cutter whose extended AABB covers
                 // the whole host on EVERY axis (3% slack, the sequential
@@ -1250,33 +1265,13 @@ impl GeometryRouter {
                         extended = members;
                     } else {
                         for &(m_idx, _) in &members {
-                            let norm: Option<(&Mesh, Option<Vector3<f64>>)> =
-                                match *all_openings[m_idx] {
-                                    OpeningType::Rectangular(..) => None,
-                                    OpeningType::DiagonalRectangular(ref m, ref f) => {
-                                        Some((m, Some(f.depth)))
-                                    }
-                                    OpeningType::NonRectangular(ref m, _, _, ref d) => {
-                                        Some((m, *d))
-                                    }
-                                };
-                            let Some((opening_mesh, extrusion_dir)) = norm else {
+                            let ext = all_openings[m_idx]
+                                .mesh_cutter()
+                                .and_then(|(m, dir)| Self::batch_cutter(m, dir, &result));
+                            let Some(ext) = ext else {
                                 admissible = false;
                                 break;
                             };
-                            let depth_dir = extrusion_dir
-                                .filter(|d| d.norm() > NORMALIZE_EPSILON)
-                                .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
-                            let ext = Self::extend_opening_mesh_through_host(
-                                opening_mesh,
-                                &result,
-                                depth_dir,
-                            );
-                            // the re-extended cutter must stay watertight (#2176)
-                            if !mesh_is_closed_exact(&ext) {
-                                admissible = false;
-                                break;
-                            }
                             extended.push((m_idx, ext));
                         }
                     }
@@ -1737,3 +1732,5 @@ impl GeometryRouter {
 
 #[cfg(test)]
 mod flap_clip_tests;
+#[cfg(test)]
+mod batch_cutter_tests;

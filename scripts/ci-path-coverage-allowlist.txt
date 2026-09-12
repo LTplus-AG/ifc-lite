@@ -22,6 +22,8 @@
 scripts/check-test-wiring.mjs .github/* # `.github` is a prefix fragment; the walk is `.github/workflows`, which the frontend filter now carries
 scripts/check-test-wiring.test.mjs .github/* # same fragment, in the harness that mutates a copy of the tree
 scripts/release-version-changed.test.mjs .github/* # same fragment; the gate reads .github/workflows/release.yml only
+scripts/check-workflow-report-paths.mjs .github/* # `.github` is a conservative prefix fragment; the real audit input `.github/workflows/**` is carried by frontend
+scripts/check-workflow-report-paths.test.mjs .github/* # same prefix fragment, produced by the synthetic-tree harness
 scripts/lib/module-size-ratchet.test.mjs tests/* # `tests` fragment from a fixture path; the ratchet walks packages/ and apps/
 scripts/fixtures/fetch-fixtures.test.mjs tests/* # `tests` fragment; the fetcher targets tests/models from its manifest
 scripts/docs/generate-docs-sections.mjs tests/benchmark/* # `tests` prefix fragment; the one input under tests/benchmark is baseline.json, now in the docs filter and pinned by REQUIRED_COVERAGE
@@ -71,6 +73,8 @@ scripts/check-loader-hook-specifier-match.test.mjs apps/landing/** # same walk, 
 scripts/check-tla-chunk-await.test.mjs apps/landing/** # same walk, in the harness
 scripts/check-test-wiring.mjs apps/landing/** # walks apps/ for test suites; apps/landing has none
 scripts/typecheck-tests.test.mjs apps/landing/** # apps/landing is not a tsconfig project
+scripts/check-workflow-report-paths.mjs apps/landing/** # walks apps/ only for package.json; apps/landing contains no package manifest
+scripts/check-workflow-report-paths.test.mjs apps/landing/** # synthetic fixture uses an apps/ directory; the real landing subtree contains no package manifest
 
 # ---------------------------------------------------------------------------
 # 3. OTHER WORKFLOWS. Real holes, in workflows this change does not own.

@@ -26,7 +26,7 @@ import { createEmptyFlatSymbolic, type FlatSymbolic } from '../lib/overlay-parse
 import { OVERLAY_OWNER_TYPE_NAMES } from '../lib/overlay-parse/overlay-channels.js';
 import { totalYupOffset } from '../lib/geo/ifc-origin.js';
 import {
-  remapRoomSymbolicOwners,
+  placeRoomSymbolic,
   roomSymbolicSource,
   type RoomSymbolicSource,
 } from '@/lib/collab/room-symbolic-source';
@@ -108,7 +108,7 @@ async function parseAnnotations(
   // `getWholeSourceForWorker` is the single seam for handing a model's bytes
   // to a worker — see `lib/overlay-parse/source-handoff.ts`.
   let flat = sourceFlat ?? await parseFlatAnnotations(store, source);
-  if (roomSource) flat = remapRoomSymbolicOwners(flat, roomSource.ownerIds);
+  if (roomSource) flat = placeRoomSymbolic(flat, roomSource);
   return buildParseResult(flat, {
     elementToStorey: store.spatialHierarchy?.elementToStorey,
     storeyElevations: store.spatialHierarchy?.storeyElevations,

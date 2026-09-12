@@ -10,18 +10,13 @@
  * per room slot, then attaches that slot's blob-backed geometry. IFC5 rooms
  * carry containment + properties natively; legacy STEP rooms use the same
  * IFCX shape. Pre-slot rooms still reconstruct as one legacy slot.
- *
  * Each slot is registered as a federated model so its meshes live in their own
  * global id range. Two copies of one file, with the same
  * local express ids and the same GlobalIds, are two selectable models. The
  * hydrated meshes are re-homed with `applyFederationOffsetToMesh` exactly as
  * the loader does for an added file.
- *
- * Extracted from `collabSlice.startCollab` (which reconstructed one model at
- * `idOffset: 0`) as a factory over injected dependencies, so the slice stays
- * within its size budget and this can be driven under `tsx --test` against a
- * real document without a websocket. Best-effort — blobs may still be
- * syncing; a later re-join picks up the rest.
+ * Extracted from `collabSlice.startCollab` as a dependency-injected factory
+ * that can be driven against a real document without a websocket.
  */
 
 import type { BlobStore, CollabSession, LocalPlacement, ModelSlot, ModelSlotRef } from '@ifc-lite/collab';
@@ -40,9 +35,10 @@ import { clearAppliedPlacements, sweepPlacements, type PlacementSweepApi } from 
 import { pathInRoomSlot, roomModelIdFor, roomModelNameFor } from './model-slot-ref';
 import type { ParsedRoomStepSource } from './room-step-source';
 import { attachRoomStepSource } from './room-step-attach';
-
+import { cleanupRoomModels } from './room-reconstruct-cleanup';
 /** The slice of the collab runtime the reconstruct needs (injected). */
-export type RoomReconstructRuntime = Pick<typeof import('@ifc-lite/collab'), 'snapshotToIfcx' | 'listModelSlots'>;
+export type RoomReconstructRuntime = Pick<typeof import('@ifc-lite/collab'),
+  'snapshotToIfcx' | 'listModelSlots' | 'getEntity' | 'entityToJSON'>;
 
 /** The store actions and reads the reconstruct goes through (a narrow view of `ViewerState`). */
 export type RoomReconstructState = Pick<
@@ -105,6 +101,7 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
   // new content-addressed blobs.
   const geomCache = new Map<string, MeshData>();
   const symbolicSources = new Map<string, Promise<ParsedRoomStepSource>>();
+  const pendingAppearanceModels = new Set<string>();
 
   const shifted = new WeakSet<MeshData>();
   const rehome = (meshes: readonly MeshData[], idOffset: number): MeshData[] => {
@@ -158,6 +155,7 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
     if (slot.stepSourceBlobHash && payload.pathToId) {
       const key = `${slot.slotId}:${slot.stepSourceBlobHash}`;
       try {
+        pendingAppearanceModels.add(modelId);
         await attachRoomStepSource({
           payload,
           modelId,
@@ -165,13 +163,21 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
           blobStore,
           sources: symbolicSources,
           placementForPath: path => sweepApi.getEntityPlacement(session.doc, path) ?? undefined,
+          baselineForPath: path => sweepApi.getPlacementBaseline(session.doc, path) ?? undefined,
+          structuredForPath: path => {
+            const entity = collab.getEntity(session.doc, path);
+            return entity ? collab.entityToJSON(entity) : undefined;
+          },
           live,
         });
         if (!live()) return null;
       } catch (error) {
         symbolicSources.delete(key);
         if (live()) deps.notify(error instanceof Error ? error.message : String(error));
+      } finally {
+        pendingAppearanceModels.delete(modelId);
       }
+      if (!live()) return null;
     }
     // Register the IFCX path maps so the recipient's outbound mirror and
     // inbound apply can resolve entity↔path (the reconstructed store has no
@@ -386,14 +392,8 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
       // Drop the reconstructed room models on leave so rejoining a different
       // room doesn't accumulate stale `room:*` models. (Only the recipient
       // path creates these; the owner shares its own local models.)
-      for (const state of slots.values()) {
-        if (!state.created) continue;
-        try {
-          deps.get().removeModel(state.modelId);
-        } catch {
-          /* cleanup — safe to ignore */
-        }
-      }
+      cleanupRoomModels(pendingAppearanceModels, slots.values(), deps.get().removeModel);
+      pendingAppearanceModels.clear();
       slots.clear();
     },
   };

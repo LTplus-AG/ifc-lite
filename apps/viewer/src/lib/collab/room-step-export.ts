@@ -3,9 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { Property, PropertyValue, Quantity } from '@ifc-lite/data';
 import { MutablePropertyView, StoreEditor, type Mutation } from '@ifc-lite/mutations';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { roomSymbolicSource } from './room-symbolic-source';
+import { propertyValueTypeFor } from './mutation-bridge';
 import { asExpressIdRef, readAttributes, resolvePlacementChain, resolveRotationState } from '@/lib/placement-core';
 import '@/lib/placement-edit.boot';
 
@@ -14,6 +16,22 @@ export interface RoomStepExportSource {
   mutationView?: MutablePropertyView;
   toSourceIds(ids: ReadonlySet<number> | null | undefined): Set<number> | null | undefined;
   resources?: { modelPath?: string; resources: ReadonlyMap<string, Uint8Array> };
+}
+
+function valuesEqual(left: PropertyValue, right: PropertyValue): boolean {
+  if (!Array.isArray(left) || !Array.isArray(right)) return left === right;
+  return left.length === right.length && left.every((value, index) => valuesEqual(value, right[index]!));
+}
+
+function propertyEqual(left: Property, right: Property): boolean {
+  if (Array.isArray(right.value) && typeof left.value === 'string') {
+    return left.value === JSON.stringify(right.value);
+  }
+  return valuesEqual(left.value, right.value);
+}
+
+function quantityEqual(left: Quantity, right: Quantity): boolean {
+  return left.value === right.value;
 }
 
 function snapshotView(
@@ -35,22 +53,56 @@ function snapshotView(
       if (value !== original(sourceId)) view.setAttribute(sourceId, name, value);
     }
 
-    const roomPsets = roomStore.getProperties(roomId);
-    const roomPsetNames = new Set(roomPsets.map(pset => pset.name));
-    for (const pset of portable.dataStore.getProperties(sourceId)) {
-      if (!roomPsetNames.has(pset.name)) view.deletePropertySet(sourceId, pset.name);
+    const originalPsets = portable.dataStore.getProperties(sourceId);
+    const originalPsetsByName = new Map(originalPsets.map(pset => [pset.name, pset]));
+    const roomPsets = portable.structuredPsets.get(sourceId) ?? {};
+    for (const pset of originalPsets) {
+      const current = roomPsets[pset.name];
+      if (!current) {
+        view.deletePropertySet(sourceId, pset.name);
+        continue;
+      }
+      for (const prop of pset.properties) {
+        if (!(prop.name in current)) view.deleteProperty(sourceId, pset.name, prop.name);
+      }
     }
-    for (const pset of roomPsets) for (const prop of pset.properties) {
-      view.setProperty(sourceId, pset.name, prop.name, prop.value, prop.type, prop.unit, false, prop.dataType);
+    for (const [psetName, properties] of Object.entries(roomPsets)) for (const [propName, value] of Object.entries(properties)) {
+      const original = originalPsetsByName.get(psetName)?.properties.find(item => item.name === propName);
+      const current: Property = { name: propName, type: propertyValueTypeFor(value.type), value: value.value, unit: value.unit };
+      if (original && propertyEqual(current, original)) continue;
+      view.setProperty(
+        sourceId,
+        psetName,
+        propName,
+        value.value,
+        original?.type ?? current.type,
+        original?.unit ?? value.unit,
+        false,
+        original?.dataType ?? value.type,
+      );
     }
 
-    const roomQsets = roomStore.getQuantities(roomId);
-    const roomQsetNames = new Set(roomQsets.map(qset => qset.name));
-    for (const qset of portable.dataStore.getQuantities(sourceId)) {
+    const roomQsets = portable.structuredQuantities.get(sourceId) ?? {};
+    const roomQsetDisplay = new Map(roomStore.getQuantities(roomId).map(qset => [qset.name, qset]));
+    const originalQsets = portable.dataStore.getQuantities(sourceId);
+    const originalQsetsByName = new Map(originalQsets.map(qset => [qset.name, qset]));
+    const roomQsetNames = new Set(Object.keys(roomQsets));
+    for (const qset of originalQsets) {
       if (!roomQsetNames.has(qset.name)) view.deleteQuantitySet(sourceId, qset.name);
     }
-    for (const qset of roomQsets) for (const quantity of qset.quantities) {
-      view.setQuantity(sourceId, qset.name, quantity.name, quantity.value, quantity.type, quantity.unit);
+    for (const [qsetName, quantities] of Object.entries(roomQsets)) for (const [quantityName, value] of Object.entries(quantities)) {
+      const original = originalQsetsByName.get(qsetName)?.quantities.find(item => item.name === quantityName);
+      const displayed = roomQsetDisplay.get(qsetName)?.quantities.find(item => item.name === quantityName);
+      const current: Quantity = { name: quantityName, type: original?.type ?? displayed?.type ?? 0, value };
+      if (original && quantityEqual(current, original)) continue;
+      view.setQuantity(
+        sourceId,
+        qsetName,
+        quantityName,
+        value,
+        current.type,
+        original?.unit ?? displayed?.unit,
+      );
     }
 
     const placement = portable.placements.get(sourceId);

@@ -38,6 +38,9 @@ function store(sharedSource: IfcSourceBytes, portableStore: IfcDataStore, roomOw
     seededIds: new Set([SOURCE_OWNER]),
     ownerIds: new Map([[SOURCE_OWNER, roomOwner]]),
     placements: new Map(),
+    baselines: new Map(),
+    structuredPsets: new Map(),
+    structuredQuantities: new Map(),
   });
   return result;
 }
@@ -105,11 +108,16 @@ describe('room symbolic cache owner identity (#4608)', () => {
         source: sharedSource,
         seededIds: new Set([SOURCE_OWNER]),
         ownerIds: new Map([[SOURCE_OWNER, 41]]),
-        placements: new Map(),
+        placements: new Map([[SOURCE_OWNER, { location: [1, -2, 3] }]]),
+        baselines: new Map([[SOURCE_OWNER, { location: [0, 0, 0] }]]),
+        structuredPsets: new Map(),
+        structuredQuantities: new Map(),
       });
       await Promise.all(ensureParseFor([first]));
       assert.equal(getParseFor(first)?.looseFills[0]?.ownerId, 41,
         'rebinding one store invalidates its owner-remapped parse');
+      assert.deepEqual([...getParseFor(first)!.looseFills[0].points], [1, 2, 2, 2, 1, 3],
+        'the rebound parse includes the current room placement');
       assert.equal(workerParses, 1, 'one portable STEP source is parsed once across reconstructions');
       assert.equal(__symbolicAnnotationsRoomFlatCacheHasForTests(portableStore), true);
     } finally {

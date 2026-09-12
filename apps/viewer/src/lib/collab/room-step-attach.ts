@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { BlobStore, LocalPlacement, ModelSlot } from '@ifc-lite/collab';
+import type { BlobStore, LocalPlacement, ModelSlot, PropertyValue as CollabPropertyValue } from '@ifc-lite/collab';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerModelPayload } from '@/hooks/ingest/viewerModelIngest';
 import { bindRoomStepSource, loadRoomStepSource, type ParsedRoomStepSource } from './room-step-source';
@@ -18,6 +18,11 @@ export async function attachRoomStepSource(options: {
   blobStore: BlobStore;
   sources: Map<string, Promise<ParsedRoomStepSource>>;
   placementForPath: (path: string) => LocalPlacement | undefined;
+  baselineForPath: (path: string) => LocalPlacement | undefined;
+  structuredForPath: (path: string) => {
+    psets: Record<string, Record<string, CollabPropertyValue>>;
+    quantities: Record<string, Record<string, number>>;
+  } | undefined;
   live: () => boolean;
 }): Promise<void> {
   const { payload, slot } = options;
@@ -51,6 +56,7 @@ export async function attachRoomStepSource(options: {
     }
   }
   registerRoomSymbolicSource(payload.dataStore, bindRoomStepSource(
-    parsed, slot, payload.pathToId, options.placementForPath,
+    parsed, slot, payload.pathToId, options.placementForPath, options.baselineForPath,
+    options.structuredForPath,
   ));
 }

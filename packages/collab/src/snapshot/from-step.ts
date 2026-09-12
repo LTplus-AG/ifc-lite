@@ -20,7 +20,7 @@
  */
 
 import type * as Y from 'yjs';
-import { createEntity, setPropertyValue } from '../doc/entity.js';
+import { createEntity, setPropertyValue, setQuantityValue } from '../doc/entity.js';
 import { SEED_ORIGIN, assertSchemaInvariants, metaMap } from '../doc/schema.js';
 import type { PropertyValue } from '../doc/schema.js';
 import { legacyModelSlot, slotPath, type ModelSlotRef } from '../doc/model-slot.js';
@@ -66,6 +66,8 @@ export interface StepSeedEntity {
   children?: Record<string, string>;
   /** Property sets: psetName → propName → value. */
   psets?: Record<string, Record<string, PropertyValue>>;
+  /** Quantity sets: qsetName → quantityName → numeric value. */
+  quantities?: Record<string, Record<string, number>>;
 }
 
 /** Minimal model view the seeder consumes (the viewer adapts its store to this). */
@@ -164,6 +166,13 @@ export function seedFromStep(
         for (const [psetName, props] of Object.entries(ent.psets)) {
           for (const [propName, value] of Object.entries(props)) {
             setPropertyValue(doc, path, psetName, propName, value);
+          }
+        }
+      }
+      if (ent.quantities) {
+        for (const [qsetName, quantities] of Object.entries(ent.quantities)) {
+          for (const [quantityName, value] of Object.entries(quantities)) {
+            setQuantityValue(doc, path, qsetName, quantityName, value);
           }
         }
       }

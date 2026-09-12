@@ -5,7 +5,7 @@
 import type { IfcSourceBytes } from '@ifc-lite/parser';
 import { getWholeSourceForWorker, parseSymbolicFlat } from '@/lib/overlay-parse';
 import { buildSymbolicDrawingLines } from '@/lib/overlay-parse/symbolic-drawing-lines';
-import { remapRoomSymbolicOwners, roomSymbolicSource } from './room-symbolic-source';
+import { placeRoomSymbolic, roomSymbolicSource } from './room-symbolic-source';
 
 const STORE_IDENTITIES = new WeakMap<object, number>();
 let nextStoreIdentity = 1;
@@ -28,6 +28,6 @@ export async function roomDrawingSymbolic(store: { source: IfcSourceBytes }) {
     false,
     'all',
   );
-  if (roomSource) flat = remapRoomSymbolicOwners(flat, roomSource.ownerIds);
+  if (roomSource) flat = placeRoomSymbolic(flat, roomSource);
   return buildSymbolicDrawingLines(flat, 0);
 }

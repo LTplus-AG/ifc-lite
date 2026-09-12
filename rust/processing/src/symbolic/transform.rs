@@ -279,31 +279,36 @@ pub(super) fn parse_axis2_placement_2d(
     }
 }
 
-/// Resolve a circle / ellipse Position → Location → (x, y, z) in metres.
-pub(super) fn circle_center(
-    item: &DecodedEntity,
+/// Resolve an `IfcConic` (`IfcCircle` / `IfcEllipse`) `Position` (attribute
+/// 0) into the curve's own basis: translation = the centre in metres, linear
+/// block = the `RefDirection` rotation, `tz` = the centre's elevation. This is
+/// the ONE reader of a conic's placement for the 2D symbolic path: `items.rs`
+/// (circle, ellipse), `fill.rs` (boundary rings and their elevation) and
+/// `trimmed_curve.rs` (arc angles) all sample through it, so an ellipse and a
+/// trimmed arc on the same rotated placement cannot disagree on where local
+/// +X points.
+///
+/// `Position` is MANDATORY on `IfcConic`, so an absent attribute, a dangling
+/// reference or a non-placement entity is malformed data and comes back as
+/// [`Transform2D::unresolved`] (`tz = NaN`), never as a legitimate-looking
+/// origin (#2256's convention, shared with every placement path in this
+/// file). The replaced `circle_center` returned `(0.0, 0.0, 0.0)` on every
+/// one of those failures and read attributes 0 → 0 → coords off entities of
+/// any type, so a circle whose placement was missing from the file drew at
+/// the model origin at elevation 0 and nothing downstream could tell.
+pub(super) fn conic_basis(
+    conic: &DecodedEntity,
     decoder: &mut EntityDecoder,
     unit_scale: f32,
-) -> (f32, f32, f32) {
-    let Some(pos_ref) = item.get_ref(0) else {
-        return (0.0, 0.0, 0.0);
+) -> Transform2D {
+    let Some(pos_ref) = conic.get_ref(0) else {
+        return Transform2D::unresolved(); // mandatory Position absent
     };
-    let Ok(placement) = decoder.decode_by_id(pos_ref) else {
-        return (0.0, 0.0, 0.0);
-    };
-    let Some(loc_ref) = placement.get_ref(0) else {
-        return (0.0, 0.0, 0.0);
-    };
-    let Ok(loc) = decoder.decode_by_id(loc_ref) else {
-        return (0.0, 0.0, 0.0);
-    };
-    let Some(coords) = loc.get(0).and_then(|a| a.as_list()) else {
-        return (0.0, 0.0, 0.0);
-    };
-    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-    (x, y, z)
+    match decoder.decode_by_id(pos_ref) {
+        // Wrong type is refused inside `parse_axis2_placement_2d`.
+        Ok(position) => parse_axis2_placement_2d(&position, decoder, unit_scale),
+        Err(_) => Transform2D::unresolved(), // dangling Position
+    }
 }
 
 #[cfg(test)]

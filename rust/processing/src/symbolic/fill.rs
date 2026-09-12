@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use super::color::resolve_color_via_styles;
 use super::primitives::{SymbolicFillArea};
-use super::transform::{circle_center, push_finite_point, Transform2D};
+use super::transform::{conic_basis, push_finite_point, Transform2D};
 
 // ────────────────────────────────────────────────────────────────────────────
 // Fill area extraction (IfcAnnotationFillArea).
@@ -123,13 +123,13 @@ fn extract_curve_ring(
             if semi_a <= 0.0 || semi_b <= 0.0 || !semi_a.is_finite() || !semi_b.is_finite() {
                 return Vec::new();
             }
-            let (cx_local, cy_local, _) = circle_center(&curve, decoder, unit_scale);
+            let basis = conic_basis(&curve, decoder, unit_scale);
             const SEGMENTS: usize = 64;
             let mut out = Vec::with_capacity(SEGMENTS * 2);
             for i in 0..SEGMENTS {
                 let theta = (i as f32) * std::f32::consts::TAU / (SEGMENTS as f32);
-                let lx = cx_local + semi_a * theta.cos();
-                let ly = cy_local + semi_b * theta.sin();
+                let lx = basis.tx + semi_a * theta.cos();
+                let ly = basis.ty + semi_b * theta.sin();
                 let (wx, wy) = transform.transform_point(lx, ly);
                 let (px, py) = rebase.plan(wx, wy);
                 push_finite_point(&mut out, px, py);
@@ -141,14 +141,14 @@ fn extract_curve_ring(
             if radius <= 0.0 || !radius.is_finite() {
                 return Vec::new();
             }
-            let (cx_local, cy_local, _) = circle_center(&curve, decoder, unit_scale);
+            let basis = conic_basis(&curve, decoder, unit_scale);
             let seg_count = if radius < 0.05 { 32 } else { 64 };
             let mut out = Vec::with_capacity(seg_count * 2);
             let two_pi = std::f32::consts::TAU;
             for i in 0..seg_count {
                 let theta = (i as f32) * two_pi / (seg_count as f32);
-                let lx = cx_local + radius * theta.cos();
-                let ly = cy_local + radius * theta.sin();
+                let lx = basis.tx + radius * theta.cos();
+                let ly = basis.ty + radius * theta.sin();
                 let (wx, wy) = transform.transform_point(lx, ly);
                 let (px, py) = rebase.plan(wx, wy);
                 push_finite_point(&mut out, px, py);
@@ -160,7 +160,8 @@ fn extract_curve_ring(
 }
 
 /// Peek at the boundary curve's first 3D point Z so a fill / line can carry
-/// its elevation forward. Returns 0.0 for 2D-only curves.
+/// its elevation forward. Returns 0.0 for 2D-only curves and NaN (unresolved,
+/// serialised as `null`) for a conic whose mandatory `Position` is missing.
 fn sample_curve_world_y(curve_id: u32, decoder: &mut EntityDecoder, unit_scale: f32) -> f32 {
     let Ok(curve) = decoder.decode_by_id(curve_id) else { return 0.0 };
     match curve.ifc_type {
@@ -178,10 +179,7 @@ fn sample_curve_world_y(curve_id: u32, decoder: &mut EntityDecoder, unit_scale: 
             }
             0.0
         }
-        IfcType::IfcCircle | IfcType::IfcEllipse => {
-            let (_, _, z) = circle_center(&curve, decoder, unit_scale);
-            z
-        }
+        IfcType::IfcCircle | IfcType::IfcEllipse => conic_basis(&curve, decoder, unit_scale).tz,
         IfcType::IfcIndexedPolyCurve => {
             let Some(points_ref) = curve.get_ref(0) else { return 0.0 };
             let Ok(points_entity) = decoder.decode_by_id(points_ref) else { return 0.0 };

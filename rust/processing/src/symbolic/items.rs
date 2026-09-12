@@ -13,7 +13,7 @@ use super::fill::extract_annotation_fill_area;
 use super::primitives::{SymbolicCircle, SymbolicPolyline};
 use super::text::extract_text_literal;
 use super::transform::{
-    circle_center, compose_transforms, parse_axis2_placement_2d,
+    compose_transforms, conic_basis, parse_axis2_placement_2d,
     parse_cartesian_transformation_operator, push_finite_point, Transform2D,
 };
 use super::trimmed_curve::extract_trimmed_curve;
@@ -222,11 +222,14 @@ pub(super) fn extract_symbolic_item_inner(
             // × scale(): a scalar radius never passes through transform_point (#1985).
             let r = item.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32;
             let radius = r * unit_scale * transform.scale();
-            let (center_x, center_y, center_z) = circle_center(item, decoder, unit_scale);
-            if !(radius.is_finite() && radius > 0.0 && center_x.is_finite() && center_y.is_finite()) {
+            // A circle is rotation-invariant, so only the basis translation
+            // (the centre) and its elevation are read; an unresolved Position
+            // carries `tz = NaN` into `world_y` (#2256's convention).
+            let basis = conic_basis(item, decoder, unit_scale);
+            if !(radius.is_finite() && radius > 0.0 && basis.tx.is_finite() && basis.ty.is_finite()) {
                 return;
             }
-            let (wx, wy) = transform.transform_point(center_x, center_y);
+            let (wx, wy) = transform.transform_point(basis.tx, basis.ty);
             let (px, py) = rebase.plan(wx, wy);
             out.push_circle(SymbolicCircle::full(
                 express_id,
@@ -234,7 +237,7 @@ pub(super) fn extract_symbolic_item_inner(
                 px,
                 py,
                 radius,
-                rebase.elevation(center_z + transform.tz),
+                rebase.elevation(basis.tz + transform.tz),
                 rep_identifier.to_string(),
             ));
         }
@@ -245,13 +248,13 @@ pub(super) fn extract_symbolic_item_inner(
             if semi_a <= 0.0 || semi_b <= 0.0 || !semi_a.is_finite() || !semi_b.is_finite() {
                 return;
             }
-            let (cx_local, cy_local, cz_local) = circle_center(item, decoder, unit_scale);
+            let basis = conic_basis(item, decoder, unit_scale);
             const SEGMENTS: usize = 64;
             let mut points: Vec<f32> = Vec::with_capacity((SEGMENTS + 1) * 2);
             for i in 0..=SEGMENTS {
                 let t = (i as f32) * std::f32::consts::TAU / (SEGMENTS as f32);
-                let lx = cx_local + semi_a * t.cos();
-                let ly = cy_local + semi_b * t.sin();
+                let lx = basis.tx + semi_a * t.cos();
+                let ly = basis.ty + semi_b * t.sin();
                 let (wx, wy) = transform.transform_point(lx, ly);
                 let (x, y) = rebase.plan(wx, wy);
                 push_finite_point(&mut points, x, y);
@@ -262,7 +265,7 @@ pub(super) fn extract_symbolic_item_inner(
                     ifc_type: ifc_type.to_string(),
                     points,
                     closed: true,
-                    world_y: rebase.elevation(cz_local + transform.tz),
+                    world_y: rebase.elevation(basis.tz + transform.tz),
                     representation: rep_identifier.to_string(),
                 });
             }

@@ -70,6 +70,8 @@ import { downloadFile, sanitizeFilename, stripExtension } from '@/lib/export/dow
 import { roomExportPathPrefix } from '@/lib/collab/room-export-paths';
 import { ExtensionExportSlot } from '@/components/extensions/ExtensionExportSlot';
 import { preferredExportModelId } from './export-model-default';
+import { canExportRoomAsStep, roomStepExportSource } from '@/lib/collab/room-step-export';
+import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -205,6 +207,11 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     }
     return models.get(selectedModelId);
   }, [models, selectedModelId, legacyIfcDataStore, legacyGeometryResult]);
+  const selectedRoomView = selectedModelId ? getMutationView(selectedModelId) ?? undefined : undefined;
+  const portableRoomStore = selectedModel?.ifcDataStore
+    && canExportRoomAsStep(selectedModel.ifcDataStore, selectedRoomView)
+    ? roomSymbolicSource(selectedModel.ifcDataStore)?.dataStore
+    : undefined;
 
   // Ensure mutation view exists for selected model
   useEffect(() => {
@@ -227,14 +234,14 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   // Default schema to selected model's schema version
   useEffect(() => {
     if (!selectedModel) return;
-    const modelSchema = selectedModel.schemaVersion as SchemaVersion;
+    const modelSchema = (portableRoomStore?.schemaVersion ?? selectedModel.schemaVersion) as SchemaVersion;
     if (modelSchema) {
       setSchema(modelSchema);
     }
-  }, [selectedModel?.schemaVersion]);
+  }, [selectedModel?.schemaVersion, portableRoomStore?.schemaVersion]);
 
   // Determine schema conversion direction
-  const sourceSchema = (selectedModel?.schemaVersion as SchemaVersion) || '';
+  const sourceSchema = ((portableRoomStore?.schemaVersion ?? selectedModel?.schemaVersion) as SchemaVersion) || '';
   const schemaConversion = useMemo(() => {
     if (!sourceSchema || !schema) return null;
     const order: Record<string, number> = { IFC2X3: 1, IFC4: 2, IFC4X3: 3, IFC5: 4 };
@@ -536,16 +543,21 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
       // ── Pre-IFC5 full export → STEP ──────────────────────────────────
       } else {
-        const exportDataStore = await ensureModelExportReady(selectedModelId);
+        const portable = roomStepExportSource(selectedModel.ifcDataStore, mutationView || undefined, selectedModelId);
+        const exportDataStore = portable?.dataStore ?? await ensureModelExportReady(selectedModelId);
         if (!exportDataStore) {
           throw new Error('Model data is unavailable for export');
         }
 
-        const serialized = prepareAppearanceSerialization(selectedModelId, exportDataStore, applyMutations ? mutationView || undefined : undefined);
+        const exportView = portable ? portable.mutationView : mutationView ?? undefined;
+        const serialized = prepareAppearanceSerialization(selectedModelId, exportDataStore, applyMutations ? exportView : undefined);
         const exporter = new StepExporter(exportDataStore, serialized.view);
 
-        const localHidden = visibleOnly ? getLocalHiddenIds(selectedModelId) : undefined;
-        const localIsolated = visibleOnly ? getLocalIsolatedIds(selectedModelId) : undefined;
+        const roomHidden = visibleOnly ? getLocalHiddenIds(selectedModelId) : undefined;
+        const mappedHidden = portable?.toSourceIds(roomHidden);
+        const localHidden = portable ? mappedHidden ?? undefined : roomHidden;
+        const roomIsolated = visibleOnly ? getLocalIsolatedIds(selectedModelId) : undefined;
+        const localIsolated = portable ? portable.toSourceIds(roomIsolated) : roomIsolated;
 
         // Include georeferencing mutations if applying mutations
         const georefMutations = applyMutations
@@ -569,7 +581,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
         // Shared schedule splice and texture packaging keep all export surfaces consistent.
         const state = useViewerStore.getState();
-        const spliced = spliceScheduleIntoExport(result, selectedModelId, selectedModel.ifcDataStore as IfcDataStore, {
+        const spliced = spliceScheduleIntoExport(result, selectedModelId, exportDataStore, {
           scheduleData: state.scheduleData ?? null,
           scheduleIsEdited: state.scheduleIsEdited === true,
           scheduleSourceModelId: state.scheduleSourceModelId ?? null,

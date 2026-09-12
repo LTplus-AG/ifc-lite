@@ -18,6 +18,14 @@ import { commitAuthoredProduct } from './authored-product-command';
 import { captureAppearanceSource, appearanceRevision } from './command';
 import { modelAppearanceAssets } from './model-assets';
 import type { PdfFillAnnotationPlan, PdfFillAnnotationRequest } from './pdf/fill-plan-types';
+import * as collab from '@ifc-lite/collab';
+import { prepareShareSeed } from '@/lib/collab/share-scope';
+import { roomSlotRef } from '@/lib/collab/model-slot-ref';
+import { joiner, localIdOf, ownerShare } from '@/test/collab-room-harness';
+import { parseSymbolicAnnotations } from '@/lib/overlay-parse/symbolic-parse';
+import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
+import { roomStepExportSource } from '@/lib/collab/room-step-export';
+import { configureMutationView } from '@/utils/configureMutationView';
 
 for (const federated of [false, true]) test(`native multicolour PDF owner is one IFC/GPU/history transaction; federation=${federated} (#4406)`, async t => {
   let binary: Buffer;
@@ -69,6 +77,83 @@ for (const federated of [false, true]) test(`native multicolour PDF owner is one
     }
     assert.equal(useViewerStore.getState().undoStacks.get('fill')?.length, 1);
     assert.equal(modelAppearanceAssets.exportResources('fill').resources.size, 0);
+
+    // Direct Create → Share, with no export/reopen boundary: sharing must
+    // materialize the overlay rows while preserving every renderer part that
+    // commitAuthoredProduct published for the new IfcAnnotation (#4604).
+    const current = useViewerStore.getState();
+    const seed = await prepareShareSeed(current.models, current.mutationViews, 'fill', 'active');
+    assert.equal(seed.models.length, 1);
+    assert.ok(seed.models[0].portableStepSource, 'the effective authored STEP is carried with the room');
+    assert.equal(seed.models[0].meshes?.filter(part => part.expressId === result.globalId).length, 2);
+    const annotationGuid = seed.models[0].store.entities.getGlobalId(result.expressId);
+    assert.ok(annotationGuid);
+
+    const doc = collab.createCollabDoc();
+    const blobs = new collab.MemoryBlobStore();
+    const slot = roomSlotRef(0);
+    const shared = await ownerShare(doc, blobs, seed.models, new Map([['fill', slot]]));
+    assert.deepEqual(shared.outcome, { phase: 'ready', failure: null });
+    assert.match(collab.getModelSlot(doc, slot.slotId)?.stepSourceBlobHash ?? '', /^[0-9a-f]{32}$/);
+
+    const guest = joiner(doc, blobs, `pdf-${federated ? 'federated' : 'single'}`);
+    await guest.reconstructor.reconstruct();
+    const guestModel = guest.store.state().models.values().next().value;
+    assert.ok(guestModel?.ifcDataStore);
+    const annotationPath = `${slot.pathPrefix}/${annotationGuid}`;
+    const guestAnnotationId = localIdOf(guestModel, annotationPath);
+    assert.equal(guestModel.ifcDataStore.entities.getGlobalId(guestAnnotationId), annotationPath);
+    assert.equal(guestModel.ifcDataStore.entities.getName(guestAnnotationId), request.Name);
+    const guestGlobalId = guestModel.idOffset + guestAnnotationId;
+    const guestParts = guestModel.geometryResult?.meshes.filter(part => part.expressId === guestGlobalId) ?? [];
+    assert.equal(guestParts.length, 2, 'the fresh join hydrates every authored colour part under one selectable owner');
+    assert.deepEqual(guestParts.map(part => part.color).sort(), [[0, 0, 1, 1], [1, 0, 0, 1]]);
+
+    const portable = roomSymbolicSource(guestModel.ifcDataStore);
+    assert.ok(portable, 'the fresh room model retains its complete STEP representation source');
+    const symbolic = await parseSymbolicAnnotations({ source: portable.source.materialize() });
+    const symbolicFills = [
+      ...symbolic.looseFills,
+      ...symbolic.gridLooseFills,
+      ...Array.from(symbolic.byStorey.values()).flatMap(bucket => bucket.fills),
+    ];
+    assert.equal(symbolicFills.length, 2, 'the same fresh-join model retains both native symbolic 2D fills');
+    assert.ok(symbolicFills.every(fill => fill.ownerId === result.expressId));
+    assert.equal(portable.ownerIds.get(result.expressId), guestAnnotationId);
+
+    const emptyRoomView = new MutablePropertyView(guestModel.ifcDataStore.properties, guestModel.id);
+    configureMutationView(emptyRoomView, guestModel.ifcDataStore);
+    assert.equal(roomStepExportSource(guestModel.ifcDataStore, emptyRoomView, guestModel.id)?.mutationView, undefined,
+      'an empty room-space view is never handed to the portable STEP exporter');
+    const roomView = new MutablePropertyView(guestModel.ifcDataStore.properties, guestModel.id);
+    configureMutationView(roomView, guestModel.ifcDataStore);
+    roomView.setAttribute(guestAnnotationId, 'Name', 'Renamed after fresh join');
+    const roomSource = roomStepExportSource(guestModel.ifcDataStore, roomView, guestModel.id);
+    assert.ok(roomSource, 'the actual room export resolver selects its portable STEP source');
+    assert.deepEqual(roomSource.toSourceIds(new Set([guestAnnotationId])), new Set([result.expressId]));
+    assert.equal(roomSource.toSourceIds(null), null, 'no isolation remains no isolation');
+    const roomExport = await new StepExporter(roomSource.dataStore, roomSource.mutationView).exportAsync({
+      schema: 'IFC4', applyMutations: true, includeGeometry: true,
+      georefMutations: { projectedCRS: { name: 'Room export CRS' } },
+    });
+    const roomBytes = typeof roomExport.content === 'string'
+      ? new TextEncoder().encode(roomExport.content)
+      : roomExport.content;
+    const roomReopened = await new IfcParser().parseColumnar(roomBytes.slice().buffer);
+    assert.equal(roomReopened.entities.getTypeName(result.expressId), 'IfcAnnotation');
+    assert.equal(roomReopened.entities.getGlobalId(result.expressId), annotationGuid);
+    assert.equal(roomReopened.entities.getName(result.expressId), 'Renamed after fresh join');
+    assert.equal(roomReopened.entityIndex.byType.get('IFCPROJECTEDCRS')?.length, 1,
+      'georeferencing fields resolve against the portable source store');
+    const reopenedSymbolic = await parseSymbolicAnnotations({ source: roomReopened.source.materialize() });
+    const reopenedFills = [
+      ...reopenedSymbolic.looseFills,
+      ...reopenedSymbolic.gridLooseFills,
+      ...Array.from(reopenedSymbolic.byStorey.values()).flatMap(bucket => bucket.fills),
+    ];
+    assert.equal(reopenedFills.length, 2, 'room export/reopen retains native symbolic fills');
+    guest.reconstructor.teardown();
+
     const exported = await new StepExporter(data, view).exportAsync({ schema: 'IFC4', applyMutations: true, includeGeometry: true });
     const bytes = typeof exported.content === 'string' ? new TextEncoder().encode(exported.content) : exported.content;
     const reopened = await new IfcParser().parseColumnar(bytes.slice().buffer);

@@ -30,7 +30,7 @@
  * syncing; a later re-join picks up the rest.
  */
 
-import type { BlobStore, CollabSession, LocalPlacement, ModelSlotRef } from '@ifc-lite/collab';
+import type { BlobStore, CollabSession, LocalPlacement, ModelSlot, ModelSlotRef } from '@ifc-lite/collab';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { ViewerState } from '@/store';
@@ -44,6 +44,8 @@ import { missingRoomGeometryMessage, readGeometrySeedMarker } from './geometry-s
 import { highestExpressId, raisedMaxExpressId } from './express-id-bounds';
 import { clearAppliedPlacements, sweepPlacements, type PlacementSweepApi } from './placement-sweep';
 import { pathInRoomSlot, roomModelIdFor, roomModelNameFor } from './model-slot-ref';
+import { bindRoomStepSource, loadRoomStepSource, type ParsedRoomStepSource } from './room-step-source';
+import { registerRoomSymbolicSource } from './room-symbolic-source';
 
 /** The slice of the collab runtime the reconstruct needs (injected). */
 export type RoomReconstructRuntime = Pick<typeof import('@ifc-lite/collab'), 'snapshotToIfcx' | 'listModelSlots'>;
@@ -110,6 +112,7 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
   // by every slot: geometry is content-addressed, and hydrate hands each
   // consumer its own copy of the vertex arrays.
   const geomCache = new Map<string, MeshData>();
+  const symbolicSources = new Map<string, Promise<ParsedRoomStepSource>>();
 
   /** Re-home a hydrate's meshes once each (progress and final lists share objects). */
   const shifted = new WeakSet<MeshData>();
@@ -152,7 +155,7 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
 
   /** One slot: snapshot → parse → register/refresh the model, then geometry. */
   const reconstructSlot = async (
-    slot: ModelSlotRef,
+    slot: ModelSlot,
     name: string,
     geometryChanged: boolean,
   ): Promise<{ payload: ViewerModelPayload; state: SlotState } | null> => {
@@ -160,6 +163,20 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
     const buffer = new TextEncoder().encode(JSON.stringify(ifcxFile)).buffer as ArrayBuffer;
     const payload = await deps.parseIfcx(buffer);
     if (!live()) return null;
+    if (slot.stepSourceBlobHash && payload.pathToId) {
+      const key = `${slot.slotId}:${slot.stepSourceBlobHash}`;
+      let source = symbolicSources.get(key);
+      if (!source) {
+        source = loadRoomStepSource(blobStore, slot.stepSourceBlobHash);
+        symbolicSources.set(key, source);
+      }
+      try {
+        registerRoomSymbolicSource(payload.dataStore, bindRoomStepSource(await source, slot, payload.pathToId));
+      } catch (error) {
+        symbolicSources.delete(key);
+        if (live()) deps.notify(error instanceof Error ? error.message : String(error));
+      }
+    }
     // Register the IFCX path maps so the recipient's outbound mirror and
     // inbound apply can resolve entity↔path (the reconstructed store has no
     // STEP `entityIndex.byId`). The snapshot's paths are the doc's, already

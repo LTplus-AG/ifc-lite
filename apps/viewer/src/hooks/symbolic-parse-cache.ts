@@ -24,6 +24,7 @@ import {
 import { getWholeSourceForWorker, parseSymbolicFlat } from '../lib/overlay-parse/index.js';
 import { OVERLAY_OWNER_TYPE_NAMES } from '../lib/overlay-parse/overlay-channels.js';
 import { totalYupOffset } from '../lib/geo/ifc-origin.js';
+import { remapRoomSymbolicOwners, roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 
 /**
  * Stable cache key for one parsed source.
@@ -36,7 +37,7 @@ import { totalYupOffset } from '../lib/geo/ifc-origin.js';
  * because the parse effect skipped it as already cached (#2183).
  */
 function sourceKey(store: IfcDataStore, rebase: ElevationRebase): string | null {
-  const contentKey = store.source.contentKey ?? null;
+  const contentKey = (roomSymbolicSource(store)?.source ?? store.source).contentKey ?? null;
   if (!contentKey) return null;
   // The cached `ParseResult` has the elevation rebase baked into it, and that
   // rebase is NOT a function of the source bytes: it carries `originShift`,
@@ -64,7 +65,8 @@ async function parseAnnotations(
   store: IfcDataStore,
   elevationRebase: ElevationRebase,
 ): Promise<ParseResult> {
-  const source = store.source;
+  const roomSource = roomSymbolicSource(store);
+  const source = roomSource?.source ?? store.source;
   // Skip the full-source WASM scan only when the model has none of the classes
   // `overlay-channels.ts` lists — this parse path ALSO feeds the grid buckets
   // (gridByStorey / gridLoose*), so gating on the annotation channel's classes
@@ -90,7 +92,8 @@ async function parseAnnotations(
   // thread and `ensureBucket` keeps its exact semantics.
   // `getWholeSourceForWorker` is the single seam for handing a model's bytes
   // to a worker — see `lib/overlay-parse/source-handoff.ts`.
-  const flat = await parseSymbolicFlat(getWholeSourceForWorker(store), debugEnabled());
+  let flat = await parseSymbolicFlat(getWholeSourceForWorker({ source }), debugEnabled());
+  if (roomSource) flat = remapRoomSymbolicOwners(flat, roomSource.ownerIds);
   return buildParseResult(flat, {
     elementToStorey: store.spatialHierarchy?.elementToStorey,
     storeyElevations: store.spatialHierarchy?.storeyElevations,

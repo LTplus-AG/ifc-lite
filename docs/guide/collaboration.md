@@ -58,8 +58,10 @@ file — same file name, same bytes, same IFC GlobalIds — stay two distinct
 models with their own geometry, placement and textures. The scope is fixed once
 the room exists; re-opening the dialog shows how many models the room carries.
 While several models upload, the progress row names the model it is on
-("model 2 of 3"). A recipient exports each room model to its own `.ifcx`
-(merged export is STEP-only); the file carries the model's own `/<GlobalId>`
+("model 2 of 3"). A recipient exports each room model separately. A shared
+STEP model with native authored annotations exports back to `.ifc` while its
+portable source covers the complete room model; other room models export to
+`.ifcx` (merged export is STEP-only). The IFCX file carries the model's own `/<GlobalId>`
 paths, never the room's slot, so it opens in any viewer and diffs against the
 other copy's export.
 
@@ -70,6 +72,13 @@ settings. Each decoded image is limited to 16,777,216 pixels total (4096 × 4096
 with at most 8192 pixels on either side; an unavailable or
 oversized image is reported as a sharing failure instead of silently dropping
 its appearance.
+
+Native PDF-vector `IfcAnnotation` objects can be created before opening Share.
+The share operation materializes pending authored rows automatically; no local
+export/reopen step is required. A fresh recipient gets every colored 3D part
+under the annotation's one selectable identity, plus its symbolic fills in 2D.
+An IFC export from that fresh room reopens with the same annotation identity and
+symbolic content.
 
 Both owner and recipient need a viewer version that supports textured room
 geometry. Older rooms that were shared without texture data cannot recover it

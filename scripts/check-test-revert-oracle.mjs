@@ -82,7 +82,7 @@ import {
   parseNameStatus,
   classifyDiff,
   aggregate,
-  verdict,
+  OBSERVED,
   UNOBSERVED,
   withoutBrowserSpecs,
 } from './lib/revert-oracle.mjs';
@@ -101,6 +101,7 @@ import { planRuns } from './lib/revert-oracle-plan-runs.mjs';
 import { loadTypeScript, typeOnlyProduction, typecheckPlans, gitShow } from './lib/revert-oracle-type-only.mjs';
 import { runPlan } from './lib/revert-oracle-run-plan.mjs';
 import { printHumanReport } from './lib/revert-oracle-human-report.mjs';
+import { buildExecutionLedger, ledgerVerdict, partitionRunnablePlans } from './lib/revert-oracle-ledger.mjs';
 
 const SELF_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const rootFlag = process.argv.indexOf('--root');
@@ -351,6 +352,7 @@ const observer = typeOnly.typeOnly ? 'typecheck' : 'tests';
 console.log(`  observer: ${observer} (${typeOnly.reason})`);
 let plans;
 let unassigned;
+let support = [];
 if (observer === 'typecheck') {
   const t = typecheckPlans(testPaths, ROOT);
   for (const s of t.skipped) console.log(`  skipped: ${s} is not TypeScript, so it cannot observe a type-only change`);
@@ -363,20 +365,15 @@ if (observer === 'typecheck') {
     );
   }
   ({ plans, unassigned } = t);
+  support = t.skipped;
 } else {
-  ({ plans, unassigned } = requiredFeaturePlanOrDie((tp) => planRuns(tp, ROOT), testPaths, die, EXIT_UNHANDLED_CFG_SHAPE));
+  ({ plans, unassigned, support } = requiredFeaturePlanOrDie((tp) => planRuns(tp, ROOT), testPaths, die, EXIT_UNHANDLED_CFG_SHAPE));
 }
-if (unassigned.length > 0) {
-  die(EXIT_NOTHING_CHECKED, 'could not find an owning package for some test files', unassigned);
-}
-const runnerless = plans.filter((p) => !p.runner);
-if (runnerless.length > 0) {
-  die(
-    EXIT_NOTHING_CHECKED,
-    'no runner could be derived for some packages — refusing to report a clean result for tests that were never run',
-    runnerless.map((p) => `${relative(ROOT, p.dir) || '.'}: scripts.test = ${JSON.stringify(p.script)}`),
-  );
-}
+const partitioned = partitionRunnablePlans(plans, unassigned);
+plans = partitioned.runnable;
+const { gaps } = partitioned;
+for (const gap of gaps) console.log(`  capability gap: ${gap.file}: ${gap.reason}`);
+for (const file of support) console.log(`  support: ${file} (not an independently executable test entrypoint)`);
 for (const p of plans) {
   console.log(`  runner: ${relative(ROOT, p.dir) || '.'} -> ${p.runner.bin} ${p.runner.args.join(' ')}`);
 }
@@ -471,9 +468,11 @@ try {
   const revertedResults = plans.map((p) => runPlan(p, ROOT, 'reverted'));
   const revertedAgg = aggregate(revertedResults);
 
-  result = verdict({ baseline, reverted: revertedAgg });
+  const ledger = buildExecutionLedger({ plans, gaps, support, baselineResults, revertedResults });
+  result = ledgerVerdict(ledger);
   result.baseline = baseline;
   result.revertedRun = revertedAgg;
+  result.ledger = ledger;
   result.prodPaths = prodPaths;
   result.testPaths = testPaths;
   exitCode = opts.ci
@@ -516,6 +515,7 @@ emitResult(
     observer,
     baseline: { kind: result.baseline.kind, passed: result.baseline.passed, total: result.baseline.total },
     reverted: { kind: result.revertedRun.kind, passed: result.revertedRun.passed, failed: result.revertedRun.failed, total: result.revertedRun.total, evidence: result.revertedRun.evidence },
+    ledger: result.ledger,
   },
 );
 process.exit(exitCode);

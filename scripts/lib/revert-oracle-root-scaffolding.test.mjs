@@ -43,21 +43,25 @@ test('#4036: root Node assertions run through retained benchmark scaffolding aft
     run('git', ['commit', '-qm', 'change production, helper and assertion']);
     const output = run(process.execPath, [oracle, '--root', root, '--base', base, '--ci', '--json']);
     assert.match(output, /OBSERVED/);
-    assert.match(output, /1 assertion\(s\) RED out of 1 collected/);
+    assert.match(output, /reverting production turned an assertion RED in scripts\/value\.test\.mjs/);
     const payload = JSON.parse(output.slice(output.indexOf('{')));
     assert.equal(payload.channel, 'pull-request');
     assert.equal(payload.verdict, 'OBSERVED');
     assert.equal(readFileSync(join(root, 'src/value.mjs'), 'utf8'), 'export const value = 2;\n');
     assert.equal(run('git', ['status', '--porcelain']).trim(), '');
 
-    // A real unsupported entrypoint must not disappear when helpers are filtered.
+    // A real unsupported entrypoint stays visible as a capability gap, while
+    // the already-proved exact-file witness remains sufficient (#4109).
     writeFileSync(join(root, 'tests/benchmark/unsupported.spec.ts'), 'throw new Error("requires a declared runner");\n');
     run('git', ['add', '.']);
     run('git', ['commit', '-qm', 'add unsupported actual root test']);
     const rejected = spawnSync(process.execPath, [oracle, '--root', root, '--base', base, '--ci', '--json'], { cwd: root, env, encoding: 'utf8', timeout: 20_000 });
     assert.equal(rejected.error, undefined);
-    assert.notEqual(rejected.status, 0);
-    assert.match(rejected.stdout + rejected.stderr, /no runner could be derived/);
+    assert.equal(rejected.status, 0);
+    assert.match(rejected.stdout + rejected.stderr, /capability gap: tests\/benchmark\/unsupported\.spec\.ts/);
+    const rejectedPayload = JSON.parse(rejected.stdout.slice(rejected.stdout.indexOf('{')));
+    assert.equal(rejectedPayload.verdict, 'OBSERVED');
+    assert.equal(rejectedPayload.ledger.some((entry) => entry.file === 'tests/benchmark/unsupported.spec.ts' && entry.role === 'capability-gap'), true);
     assert.equal(run('git', ['status', '--porcelain']).trim(), '');
   } finally {
     rmSync(root, { recursive: true, force: true });

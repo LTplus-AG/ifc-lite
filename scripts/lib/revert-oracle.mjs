@@ -38,6 +38,7 @@ import { parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs'
 import { ALL_SKIPPED, classifyExecuted, severityCandidates } from './revert-oracle-all-skipped.mjs';
 import { passVerdict } from './revert-oracle-pass-verdict.mjs';
 import { isInertPath, isTestSupportPath, withoutBrowserSpecs } from './revert-oracle-inert.mjs';
+export { cargoRunner } from './revert-oracle-cargo.mjs';
 // ---------------------------------------------------------------------------
 // Diff classification
 // ---------------------------------------------------------------------------
@@ -182,12 +183,6 @@ export function rootScriptsRunner(files) {
   if (entries.length === 0 || !entries.every((f) => /^scripts\/.*\.test\.(mjs|js|cjs)$/.test(f))) return null;
   return { family: 'node-test', bin: 'node', args: ['--test', ...entries] };
 }
-/** Cargo test invocation for a crate, optionally under a `--features` combo. */
-export function cargoRunner(crate, features = []) {
-  if (!crate) return null;
-  return { family: 'cargo', bin: 'cargo', args: ['test', '--no-fail-fast', '-p', crate, ...(features.length ? ['--features', features.join(',')] : [])] };
-}
-
 // Runner output parsing — the core of the tool
 // ---------------------------------------------------------------------------
 
@@ -301,7 +296,10 @@ export function parseRunnerOutput(run) {
   // rather than a test) and the TEXTUAL one (the actual import/compile error).
   // A human reading an INCONCLUSIVE needs the error text to write the surgical
   // mutation, so it must never be shadowed by the structural summary.
-  const textualHit = firstMatch(text, LOAD_ERROR_PATTERNS);
+  // A successful, structurally parsed run may print error-shaped fixture text
+  // (including the literal `SyntaxError:`). Text alone cannot turn that green
+  // execution into a collection failure (#4109).
+  const textualHit = run.exitCode === 0 && parsed.total > 0 ? null : firstMatch(text, LOAD_ERROR_PATTERNS);
   for (const hit of [textualHit, parsed.loadEvidence]) if (hit) evidence.push(hit);
   if (evidence.length > 0) {
     return { kind: LOAD_FAILURE, passed: parsed.passed, failed: parsed.failed, total: parsed.total, evidence };
@@ -384,7 +382,8 @@ function parseCargo(text) {
     passed += Number(r[2]);
     failed += Number(r[3]);
   }
-  return { passed, failed, total: passed + failed, loadEvidence: null };
+  const identities = [...text.matchAll(/^test (.+?) \.\.\. (?:ok|FAILED|ignored)\r?$/gm)].map((match) => match[1]);
+  return { passed, failed, total: passed + failed, identities, loadEvidence: null };
 }
 
 function num(m) {

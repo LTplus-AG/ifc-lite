@@ -19,10 +19,10 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs';
-import { join, dirname, relative } from 'node:path';
+import { join, dirname, relative, basename, sep } from 'node:path';
 
-import { cargoRunner, rootScriptsRunner, detectRunner } from './revert-oracle.mjs';
-import { cargoTestOwner } from './revert-oracle-cargo.mjs';
+import { rootScriptsRunner, detectRunner } from './revert-oracle.mjs';
+import { cargoRunner, cargoTestOwner } from './revert-oracle-cargo.mjs';
 import {
   requiredFeatureCombos,
   stripComments,
@@ -43,7 +43,7 @@ export function findUp(startDir, filename, root) {
   }
 }
 
-/** Group test files by the package that owns them and pick each one's runner. */
+/** Pick an exact-file/target runner for every executable changed test file. */
 /**
  * True when any of `relFiles` gates a `#[test]` behind a whole-expression
  * `not(...)` over non-default features.
@@ -98,67 +98,70 @@ function crateDefaultFeatures(dir) {
 }
 
 export function planRuns(testPaths, root) {
-  /** @type {Map<string, {dir: string, files: string[], script: string|undefined, crate: string|null}>} */
-  const groups = new Map();
+  const plans = [];
   const unassigned = [];
+  const support = [];
 
   for (const rel of testPaths) {
     const abs = join(root, rel);
     const c = cargoTestOwner(abs, root);
     if (c) {
-      const key = `cargo:${c.crate}`;
-      if (!groups.has(key)) groups.set(key, { dir: c.dir, files: [], script: undefined, crate: c.crate });
-      groups.get(key).files.push(rel);
-      continue;
-    }
-    if (rel.endsWith('.rs')) { unassigned.push(rel); continue; }
-    if (rel.endsWith('.py')) {
-      const p = pythonTestOwner(abs, root);
-      if (!p) { unassigned.push(rel); continue; }
-      const key = `python:${p.dir}`;
-      if (!groups.has(key)) groups.set(key, { dir: p.dir, files: [], script: undefined, crate: null, python: true });
-      groups.get(key).files.push(rel); continue;
-    }
-    const pkgDir = findUp(dirname(abs), 'package.json', root);
-    if (!pkgDir) { unassigned.push(rel); continue; }
-    if (!groups.has(pkgDir)) {
-      let script;
-      try {
-        script = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')).scripts?.test;
-      } catch {
-        script = undefined;
+      const within = relative(c.dir, abs).split(sep).join('/');
+      const targetMatch = /^tests\/([^/]+)\.rs$/.exec(within);
+      const siblingMatch = /^src\/([^/]*(?:tests|_tests))\.rs$/.exec(within);
+      if (!targetMatch && !siblingMatch) {
+        if (/(^|\/)(?:fixtures?|test-data|testdata|corpus)(\/|$)/.test(within)) {
+          support.push(rel);
+          continue;
+        }
+        unassigned.push({ file: rel, reason: 'Rust unit/module/support files cannot be attributed to one executable cargo target' });
+        continue;
       }
-      groups.set(pkgDir, { dir: pkgDir, files: [], script, crate: null });
-    }
-    groups.get(pkgDir).files.push(rel);
-  }
-
-  const plans = [];
-  for (const [key, g] of groups) {
-    const relFiles = g.files.map((f) => relative(g.dir, join(root, f)) || f);
-    // #4050/#4024: a default build compiles a `#[cfg(feature = "x")]` test OUT
-    // entirely, so run one cargo invocation per feature-combo the changed
-    // files require; none found -> the old, single default-features run.
-    if (g.crate) {
-      // Crate default features: treating a `not(feature = "x")` gate as
-      // "the default build compiles it" is only sound when x is NOT default-on.
-      const defaults = crateDefaultFeatures(g.dir);
-      const combos = requiredFeatureCombos(root, g.files, defaults);
-      // A not()-gated test compiles only in the default build and contributes
-      // no combo, so the default run must happen ALONGSIDE any combos found.
+      const defaults = crateDefaultFeatures(c.dir);
+      const combos = requiredFeatureCombos(root, [rel], defaults);
       const runs = combos.length > 0
-        ? (requiresDefaultRun(root, g.files) ? [[], ...combos] : combos)
+        ? (requiresDefaultRun(root, [rel]) ? [[], ...combos] : combos)
         : [[]];
       for (const features of runs) {
-        const label = features.length > 0 ? `${key}+${features.join('+')}` : key;
-        plans.push({ key: label, dir: g.dir, files: g.files, relFiles, script: g.script, crate: g.crate, runner: cargoRunner(g.crate, features) });
+        const suffix = features.length > 0 ? `+${features.join('+')}` : '';
+        const identity = targetMatch?.[1] ?? siblingMatch[1];
+        plans.push({
+          key: `cargo:${c.crate}:${identity}${suffix}`,
+          file: rel,
+          dir: c.dir,
+          files: [rel],
+          relFiles: [within],
+          script: undefined,
+          crate: c.crate,
+          features,
+          moduleFilter: siblingMatch?.[1] ?? null,
+          runner: cargoRunner(c.crate, features, targetMatch?.[1] ?? null, siblingMatch?.[1] ?? null),
+        });
       }
       continue;
     }
-    const runner = g.python
-      ? pythonRunner(relFiles)
-      : (g.dir === root ? rootScriptsRunner(g.files) : null) ?? detectRunner(g.script, relFiles);
-    plans.push({ key, dir: g.dir, files: g.files, relFiles, runner, script: g.script, crate: null });
+    if (rel.endsWith('.rs')) { unassigned.push({ file: rel, reason: 'no owning Cargo package found' }); continue; }
+    if (rel.endsWith('.py')) {
+      const p = pythonTestOwner(abs, root);
+      if (!p) { unassigned.push({ file: rel, reason: 'no owning Python package found' }); continue; }
+      if (!/(^test_.+|.+_test)\.py$/.test(basename(rel))) { support.push(rel); continue; }
+      const relFile = relative(p.dir, abs);
+      plans.push({ key: `python:${rel}`, file: rel, dir: p.dir, files: [rel], relFiles: [relFile], script: undefined, crate: null, runner: pythonRunner([relFile]) });
+      continue;
+    }
+    const pkgDir = findUp(dirname(abs), 'package.json', root);
+    if (!/\.(test|spec)\.[^/]+$/.test(rel)) { support.push(rel); continue; }
+    if (!pkgDir) { unassigned.push({ file: rel, reason: 'no owning JavaScript package found' }); continue; }
+    let script;
+    try {
+      script = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')).scripts?.test;
+    } catch (error) {
+      unassigned.push({ file: rel, reason: `could not read package.json: ${error.message}` });
+      continue;
+    }
+    const relFile = relative(pkgDir, abs);
+    const runner = (pkgDir === root ? rootScriptsRunner([rel]) : null) ?? detectRunner(script, [relFile]);
+    plans.push({ key: `test:${rel}`, file: rel, dir: pkgDir, files: [rel], relFiles: [relFile], runner, script, crate: null });
   }
-  return { plans, unassigned };
+  return { plans, unassigned, support };
 }

@@ -8,6 +8,8 @@ import { dirname, join, relative } from 'node:path';
 import { parseRunnerOutput } from './revert-oracle.mjs';
 import { runTypecheckPlan } from './revert-oracle-type-only.mjs';
 
+const toolchainVersions = new Map();
+
 /** Resolve a runner binary the way the owning package would. */
 function resolveBin(bin, pkgDir, root) {
   if (bin === 'node') return process.execPath;
@@ -29,12 +31,28 @@ function logRun(plan, root, label, parsed, exit, log) {
   );
 }
 
+function toolchainIdentity(binPath, family) {
+  const key = `${family}:${binPath}`;
+  if (toolchainVersions.has(key)) return toolchainVersions.get(key);
+  const identity = family === 'node-test' || family === 'typecheck'
+    ? `node ${process.version}`
+    : (() => {
+        const version = spawnSync(binPath, ['--version'], { encoding: 'utf8' });
+        return version.status === 0 ? `${version.stdout ?? version.stderr}`.trim() : `${family} (version unavailable)`;
+      })();
+  toolchainVersions.set(key, identity);
+  return identity;
+}
+
 export function runPlan(plan, root, label, log = console.log) {
   const started = Date.now();
   if (plan.typecheck) {
     const parsed = runTypecheckPlan(plan, root, label);
     parsed.durationMs = Date.now() - started;
     parsed.tail = parsed.evidence.join('\n');
+    parsed.rawExitCode ??= null;
+    parsed.signal = null;
+    parsed.toolchain = `node ${process.version}`;
     logRun(plan, root, label, parsed, parsed.kind === 'runner-missing' ? '?' : parsed.kind === 'pass' ? 0 : 1, log);
     return parsed;
   }
@@ -47,6 +65,9 @@ export function runPlan(plan, root, label, log = console.log) {
       failed: null,
       total: null,
       evidence: [`runner binary "${plan.runner.bin}" not found from ${relative(root, plan.dir) || '.'} — run pnpm install`],
+      rawExitCode: null,
+      signal: null,
+      toolchain: null,
     };
   }
   const run = spawnSync(binPath, plan.runner.args, {
@@ -62,7 +83,17 @@ export function runPlan(plan, root, label, log = console.log) {
     exitCode: run.status,
     spawnError: run.error ? run.error.message : undefined,
   });
+  if (
+    plan.moduleFilter &&
+    (parsed.kind === 'pass' || parsed.kind === 'assertion-failure') &&
+    (!Array.isArray(parsed.identities) || parsed.identities.length === 0 || parsed.identities.some((name) => !name.startsWith(`${plan.moduleFilter}::`)))
+  ) {
+    parsed.kind = 'unparseable';
+    parsed.evidence = [`cargo's ${plan.moduleFilter}:: filter also selected tests outside that source module`];
+  }
   parsed.rawExitCode = run.status;
+  parsed.signal = run.signal ?? null;
+  parsed.toolchain = toolchainIdentity(binPath, plan.runner.family);
   parsed.durationMs = Date.now() - started;
   parsed.tail = `${run.stdout ?? ''}\n${run.stderr ?? ''}`.trim().split('\n').slice(-25).join('\n');
   logRun(plan, root, label, parsed, run.status, log);

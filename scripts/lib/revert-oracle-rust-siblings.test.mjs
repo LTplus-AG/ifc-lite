@@ -54,7 +54,7 @@ test('#4016: the complete oracle executes changed Rust sibling assertions and re
     run('git', ['commit', '-qm', 'change production and both sibling assertions']);
     const output = run(process.execPath, [oracle, '--root', root, '--base', base, '--ci', '--json']);
     assert.match(output, /OBSERVED/);
-    assert.match(output, /2 assertion\(s\) RED out of 3 collected/);
+    assert.match(output, /reverting production turned an assertion RED in src\/value_tests\.rs/);
     assert.equal(readFileSync(join(root, 'src/value.rs'), 'utf8'), 'pub fn value() -> u32 { 2 }\n');
     assert.equal(run('git', ['status', '--porcelain']).trim(), '');
   } finally {

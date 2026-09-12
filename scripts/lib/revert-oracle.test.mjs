@@ -1115,6 +1115,17 @@ test('#4131 regression: multi-package all-skipped-plus-evidence run does not blo
   assert.equal(v.exitCode, 0);
 });
 
+test('#4109: a green structured run may log the literal `SyntaxError:` as fixture data', () => {
+  const parsed = parseRunnerOutput({
+    family: 'node-test',
+    stdout: 'fixture caught: SyntaxError: expected\n# tests 120\n# pass 120\n# fail 0\n',
+    stderr: '',
+    exitCode: 0,
+  });
+  assert.equal(parsed.kind, 'pass');
+  assert.equal(parsed.total, 120);
+});
+
 test('#4109: incomplete execution cannot support a negative UNOBSERVED finding', () => {
   const baseline = aggregate([
     { kind: PASS, passed: 12, failed: 0, total: 12, evidence: [] },

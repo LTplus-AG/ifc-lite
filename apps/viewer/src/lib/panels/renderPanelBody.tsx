@@ -41,6 +41,7 @@ const SourcesPanel = lazy(() =>
 
 // Lazy: the Charts panel pulls in ECharts; it stays out of the first-paint bundle.
 const ChartsPanel = lazy(() => import('@/components/viewer/charts/ChartsPanel').then((m) => ({ default: m.ChartsPanel })));
+const DocumentPanel = lazy(() => import('@/components/viewer/document/DocumentPanel').then((m) => ({ default: m.DocumentPanel })));
 
 const AppearancePanel = lazy(() => import('@/components/viewer/appearance/AppearancePanel').then(m => ({ default: m.AppearancePanel })));
 
@@ -50,6 +51,9 @@ function AppearancePanelBody() {
   return <ChunkErrorBoundary label="Appearance panel"><Suspense fallback={null}><AppearancePanel /></Suspense></ChunkErrorBoundary>;
 }
 
+function DocumentPanelBody({ onClose }: { onClose: () => void }) {
+  return <ChunkErrorBoundary label="Document panel"><Suspense fallback={null}><DocumentPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
+}
 function ChartsPanelBody({ onClose }: { onClose: () => void }) {
   return <ChunkErrorBoundary label="Charts panel"><Suspense fallback={null}><ChartsPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
 }
@@ -89,5 +93,6 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'layers': return <LayersPanelBody onClose={onClose} />;
     case 'sources': return <SourcesPanelBody onClose={onClose} />;
     case 'charts': return <ChartsPanelBody onClose={onClose} />;
+    case 'document': return <DocumentPanelBody onClose={onClose} />;
   }
 }

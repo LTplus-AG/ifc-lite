@@ -28,6 +28,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * field on every file swap.
  */
 const PINNED_SESSION_RESET_KEYS: readonly string[] = [
+  'documentPanelVisible', // #4594 documents: templates survive, the panel closes
   'chartPanelVisible', 'chartSlice', 'chartSliceSource', 'chartVisibilityOwned', // #3944 charts: the slice is renderer ids of the outgoing model; the claim is on a shared channel
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
   'appearanceReferences', 'referenceUndo', 'referenceRedo', 'referenceRevision', 'selectedAppearanceReferenceId', // #4308 drawing workspace lifecycle
@@ -213,6 +214,7 @@ function modelRemovedFixture() {
  * `owns` list fails even when no scope emits it under an empty state.
  */
 const PINNED_OWNED_KEYS: readonly string[] = [
+  'documentPanelVisible', // #4594 documents
   'chartPanelVisible', 'chartSlice', 'chartSliceSource', 'chartVisibilityOwned', // #3944 charts
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
   'appearanceReferences', 'referenceUndo', 'referenceRedo', 'referenceRevision', 'selectedAppearanceReferenceId', // #4308 drawing workspace lifecycle

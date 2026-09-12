@@ -21,6 +21,7 @@ import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { browserReportSeams, generateReportPdf, type ReportPdfSeams } from '@/lib/export/report/generate-report-pdf';
 import { createSnapshotCapture } from '@/lib/export/report/snapshots';
+import { largestBucketIds } from '@/lib/charts/buckets';
 
 /** Title-block fields offered, in order; values seeded from the drawing sheet's title block when present. */
 const FIELDS: Array<[string, string]> = [['project', 'Project'], ['title', 'Report title'], ['author', 'Prepared by'], ['date', 'Date'], ['revision', 'Revision']];
@@ -85,7 +86,7 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
         titleBlock: Object.fromEntries(FIELDS.map(([k, label]) => [label, fields[k] ?? ''])),
         snapshots,
         charts: dashboard.charts.map((c) => ({ id: c.id, title: c.title, aggregation: aggregations.get(c.id) ?? null })),
-        snapshotIds: (chartId) => Array.from(aggregations.get(chartId)?.categories[0]?.ids ?? []),
+        snapshotIds: (chartId) => largestBucketIds(aggregations.get(chartId)),
       }, s);
       downloadBlob(result.blob, `${sanitizeFilename(dashboard.name, { fallback: 'report' })}-report.pdf`);
       onSaveReportSetup({ ...dashboard, page, titleBlock: Object.fromEntries(FIELDS.map(([k]) => [k, fields[k] ?? ''])), snapshots });

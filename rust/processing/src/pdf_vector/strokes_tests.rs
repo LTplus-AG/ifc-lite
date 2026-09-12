@@ -27,6 +27,7 @@ fn issue_4406_round_caps_extend_outward_at_both_ends() {
     let result = rings(
         &[0., 0., 0., 1., 4., 0.],
         false,
+        None,
         &state([1., 0., 0., 1., 0., 0.]),
         &mut remaining,
         0.01,

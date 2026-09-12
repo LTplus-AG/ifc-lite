@@ -165,8 +165,14 @@ page only when the request quotes that report's digest as the user's
 acceptance. It emits no IFC entities and makes no flattened-geometry fidelity
 claim; see the
 [preparation contract](../../docs/api/wasm.md#pdf-vector-graphics-state-preparation-and-fidelity-report).
-Qualified positive dash patterns on open straight subpaths preserve phase,
-odd-array repetition, subpath reset, joins across vertices and run caps.
+Qualified positive dash patterns on open and closed straight subpaths preserve
+phase, odd-array repetition, subpath reset, joins across vertices and run caps.
+The closing edge participates in the pattern. PDF 1.0–1.7 retain caps where the
+first and last on-dash pieces meet at the closure seam; PDF 2.0 joins them.
+PDF.js's effective format version is bound into the page DTO; an unknown version
+reports `dashVersion`, and a PDF 1.x dash covering the complete closed perimeter
+reports `dashTopology`. Explicit close-path and close-and-stroke operators share
+the versioned behavior.
 Combined fill and dashed-stroke paints can still refuse atomically when
 multiple run boundaries produce crossings outside the current fill-region
 qualifier.

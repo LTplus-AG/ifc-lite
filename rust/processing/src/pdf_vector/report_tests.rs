@@ -403,7 +403,7 @@ fn issue_4406_stroke_features_and_pattern_colours_split_combined_paints() {
     assert_eq!(
         paints,
         [
-            (2, PdfVectorPaint::EvenOddFill),
+            (2, PdfVectorPaint::CloseEvenOddFillStroke),
             (8, PdfVectorPaint::Stroke),
             (16, PdfVectorPaint::Fill),
             (22, PdfVectorPaint::CloseStroke),
@@ -413,18 +413,17 @@ fn issue_4406_stroke_features_and_pattern_colours_split_combined_paints() {
     assert_eq!(
         kinds(&report),
         [
-            (2, "dash".into(), true),
             (12, "curvedStroke".into(), true),
             (16, "pattern".into(), true),
             (22, "pattern".into(), true),
         ]
     );
-    assert_eq!(report.fidelity.omitted_paints, 4);
+    assert_eq!(report.fidelity.omitted_paints, 3);
     assert_eq!(report.fidelity.convertible_paths, 5);
 }
 
 #[test]
-fn issue_4406_only_qualified_open_straight_dashes_leave_the_fidelity_report() {
+fn issue_4583_qualified_open_and_closed_straight_dashes_leave_the_fidelity_report() {
     let dashed = |commands| Op::Path {
         paint: PdfVectorPaint::Stroke,
         commands,
@@ -440,18 +439,18 @@ fn issue_4406_only_qualified_open_straight_dashes_leave_the_fidelity_report() {
     .unwrap();
     assert_eq!(
         report.paths.iter().map(|path| path.operator_ordinal).collect::<Vec<_>>(),
-        [2],
-        "only the open straight positive-pattern stroke is convertible",
+        [2, 4],
+        "open and closed straight positive-pattern strokes are convertible",
     );
     assert_eq!(
         kinds(&report),
-        [(4, "dash".into(), true), (6, "dash".into(), false), (10, "dash".into(), true)],
+        [(6, "dash".into(), false), (10, "dash".into(), true)],
     );
-    assert_eq!(report.fidelity.omitted_paints, 2);
+    assert_eq!(report.fidelity.omitted_paints, 1);
 }
 
 #[test]
-fn issue_4406_explicit_and_paint_time_dash_closure_are_separate_omissions() {
+fn issue_4583_explicit_and_paint_time_dash_closure_are_both_convertible() {
     let report = prepare_pdf_vector_page(&page(vec![
         Op::Dash { lengths: vec![3., 2.], phase: 0. },
         Op::Path {
@@ -464,9 +463,48 @@ fn issue_4406_explicit_and_paint_time_dash_closure_are_separate_omissions() {
         },
     ]))
     .unwrap();
-    assert!(report.paths.is_empty());
-    assert_eq!(kinds(&report), [(2, "dash".into(), true), (4, "dash".into(), true)]);
-    assert_eq!(report.fidelity.omitted_paints, 2);
+    assert!(report.fidelity.exact);
+    assert_eq!(report.paths.iter().map(|path| path.operator_ordinal).collect::<Vec<_>>(), [2, 4]);
+    assert!(kinds(&report).is_empty());
+    assert_eq!(report.fidelity.omitted_paints, 0);
+}
+
+#[test]
+fn issue_4583_closed_dash_semantics_are_version_bound_or_omitted() {
+    let operations = vec![
+        Op::Dash { lengths: vec![3., 2.], phase: 0. },
+        Op::Path {
+            paint: PdfVectorPaint::CloseStroke,
+            commands: vec![0., 0., 0., 1., 4., 0., 1., 4., 4.],
+        },
+    ];
+    let mut pdf_1 = page(operations.clone());
+    pdf_1.pdf_format_version = Some("1.7".into());
+    let capped = prepare_pdf_vector_page(&pdf_1).unwrap();
+    assert_eq!(capped.paths[0].dash_closure, Some(PdfDashClosure::Capped));
+
+    let mut capped_loop = page(vec![
+        Op::Dash { lengths: vec![100., 1.], phase: 0. },
+        Op::Path {
+            paint: PdfVectorPaint::CloseStroke,
+            commands: vec![0., 20., 30., 1., 24., 30., 1., 24., 34.],
+        },
+    ]);
+    capped_loop.pdf_format_version = Some("1.7".into());
+    let capped_loop = prepare_pdf_vector_page(&capped_loop).unwrap();
+    assert!(capped_loop.paths.is_empty());
+    assert_eq!(kinds(&capped_loop), [(2, "dashTopology".into(), true)]);
+
+    let joined = prepare_pdf_vector_page(&page(operations.clone())).unwrap();
+    assert_eq!(joined.paths[0].dash_closure, Some(PdfDashClosure::Joined));
+
+    for version in [None, Some("future".into())] {
+        let mut unknown = page(operations.clone());
+        unknown.pdf_format_version = version;
+        let report = prepare_pdf_vector_page(&unknown).unwrap();
+        assert!(report.paths.is_empty());
+        assert_eq!(kinds(&report), [(2, "dashVersion".into(), false)]);
+    }
 }
 
 #[test]

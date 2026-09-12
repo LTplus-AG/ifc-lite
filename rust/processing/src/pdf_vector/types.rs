@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 pub struct PdfVectorPage {
     pub pdf_sha256: String,
     pub decoder_version: String,
+    /// Effective document version reported by the pinned decoder. Older hosts
+    /// may omit it; version-sensitive paints then remain explicit omissions.
+    #[serde(default)]
+    pub pdf_format_version: Option<String>,
     pub page_number: u32,
     /// Unrotated native PDF user-space CropBox.
     pub view_box: [f64; 4],
@@ -208,6 +212,16 @@ pub struct PreparedPdfVectorPath {
     /// No flattening or contour/fill classification has happened in this report.
     pub commands: Vec<f64>,
     pub state: PdfVectorGraphicsState,
+    /// Authenticated resolution of the version-sensitive closed-dash seam.
+    /// Open dashes and paths without a dashed stroke carry no value.
+    pub dash_closure: Option<PdfDashClosure>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum PdfDashClosure {
+    Capped,
+    Joined,
 }
 
 #[derive(Debug, Clone, Serialize)]

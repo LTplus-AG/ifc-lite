@@ -31,7 +31,8 @@ async function decode(control: string): Promise<PdfVectorPage> {
   if (result.kind !== 'vectors') throw new Error('Wrong PDF job response');
   return result.page;
 }
-const report = (api: NativeApi, page: PdfVectorPage) => (JSON.parse(new TextDecoder().decode(api.preparePdfVectorPage(JSON.stringify(page)))) as PreparedPdfVectorPage).fidelity;
+const prepare = (api: NativeApi, page: PdfVectorPage) => JSON.parse(new TextDecoder().decode(api.preparePdfVectorPage(JSON.stringify(page)))) as PreparedPdfVectorPage;
+const report = (api: NativeApi, page: PdfVectorPage) => prepare(api, page).fidelity;
 const summary = (verdict: PdfFidelityReport) => verdict.summary.map(entry => [entry.kind, entry.count, entry.visibleCount]);
 
 test('controlled pages report each fidelity category with page extent and visibility through the real decoder (#4406)', async t => {
@@ -60,6 +61,18 @@ test('controlled pages report each fidelity category with page extent and visibi
     assert.deepEqual([strokes.exact, strokes.convertiblePaths, strokes.omittedPaints], [true, 3, 0],
       'the positive-pattern open straight dash is converted through the real decoder and WASM');
     assert.deepEqual(summary(strokes), []);
+    const pdf1Page = await decode('closedDashes'), pdf1 = prepare(api, pdf1Page);
+    assert.equal(pdf1Page.pdfFormatVersion, '1.7', 'PDF.js supplies the effective version used at the native boundary');
+    assert.deepEqual([pdf1.fidelity.exact, pdf1.fidelity.convertiblePaths, pdf1.fidelity.omittedPaints], [true, 3, 0],
+      'PDF 1.7 explicit close, close-paint and mixed open/closed dashed paths convert with capped seams');
+    assert.deepEqual(pdf1.paths.map(path => path.dashClosure), ['capped', 'capped', 'capped']);
+    assert.deepEqual(summary(pdf1.fidelity), []);
+    const pdf2Page = await decode('closedDashesV2'), pdf2 = prepare(api, pdf2Page);
+    assert.equal(pdf2Page.pdfFormatVersion, '2.0', 'PDF.js honors the Catalog /Version override');
+    assert.deepEqual([pdf2.fidelity.exact, pdf2.fidelity.convertiblePaths, pdf2.fidelity.omittedPaints], [true, 3, 0],
+      'the same PDF 2.0 paths convert with joined seams through the real decoder and WASM');
+    assert.deepEqual(pdf2.paths.map(path => path.dashClosure), ['joined', 'joined', 'joined']);
+    assert.deepEqual(summary(pdf2.fidelity), []);
     const form = report(api, await decode('form'));
     assert.deepEqual([form.exact, form.convertiblePaths], [false, 1]);
     assert.deepEqual(summary(form), [['clip', 1, 1]], 'a form BBox that does not contain the page clips its content');
@@ -110,8 +123,9 @@ test('an accepted partial conversion plans, exports and reopens with its provena
     const provenance = reopened.getProperties(result.annotationId).find(set => set.name === 'IfcLite_PdfVectorConversion');
     assert.ok(provenance, 'the provenance property set reopens on the annotation through the ordinary parser');
     const property = (name: string) => provenance.properties.find(entry => entry.name === name)?.value;
-    assert.equal(provenance.properties.length, 20);
+    assert.equal(provenance.properties.length, 21);
     assert.equal(property('SourcePdfSha256'), page.pdfSha256);
+    assert.equal(property('SourcePdfFormatVersion'), '1.7');
     assert.equal(property('FidelitySha256'), verdict.sha256);
     assert.equal(property('Omissions'), '[{"kind":"text","count":1,"visible":1}]');
     assert.equal(property('AcceptedPartialConversion'), true);

@@ -135,6 +135,16 @@ impl VoidContext {
         self.openings.is_empty()
     }
 
+    /// Rectangular openings in the merged set: what every cut path records as
+    /// `HostOpeningDiagnostic::rect_boxes_processed`, so the silent-no-op
+    /// detector reads one quantity whichever path cut the host.
+    fn rect_opening_count(&self) -> usize {
+        self.merged_openings
+            .iter()
+            .filter(|o| matches!(o, OpeningType::Rectangular(..)))
+            .count()
+    }
+
     /// True iff every cutter mesh is already in world coords (`origin == 0`). When
     /// so AND the host is world-framed, `apply_void_context` can run the inner CSG
     /// directly (the native / legacy fast path) without cloning the cutters; if any
@@ -688,7 +698,7 @@ impl GeometryRouter {
                             element_id,
                             prism_tris_before,
                             cut.triangle_count(),
-                            ctx.merged_openings.len(),
+                            ctx.rect_opening_count(),
                             prism_bounds,
                         );
                         cut
@@ -954,7 +964,7 @@ impl GeometryRouter {
                     element_id,
                     tris_before,
                     fast.triangle_count(),
-                    ctx.merged_openings.len(),
+                    ctx.rect_opening_count(),
                     host_bounds_capture,
                 );
                 return fast;
@@ -1652,7 +1662,7 @@ impl GeometryRouter {
             element_id,
             tris_before,
             result.triangle_count(),
-            synth_rect.len(),
+            ctx.rect_opening_count(),
             host_bounds_capture,
         );
 
@@ -1734,3 +1744,5 @@ impl GeometryRouter {
 mod flap_clip_tests;
 #[cfg(test)]
 mod batch_cutter_tests;
+#[cfg(test)]
+mod cut_effect_count_tests;

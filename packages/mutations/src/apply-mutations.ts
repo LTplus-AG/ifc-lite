@@ -31,6 +31,7 @@ export interface MutationApplyTarget {
   deleteProperty(entityId: number, psetName: string, propName: string): unknown;
   deletePropertySet(entityId: number, psetName: string): unknown;
   deleteQuantitySet(entityId: number, qsetName: string): unknown;
+  deleteQuantity(entityId: number, qsetName: string, quantName: string): unknown;
   setQuantity(
     entityId: number,
     qsetName: string,
@@ -160,6 +161,12 @@ export function applyMutationsBatch(
           // on a set that does not exist costs a row in the change list;
           // losing the deletion costs the user's edit.
           markQuantitySetDeleted(mutation.entityId, mutation.psetName);
+        }
+        break;
+
+      case 'DELETE_QUANTITY':
+        if (mutation.psetName && mutation.propName) {
+          target.deleteQuantity(mutation.entityId, mutation.psetName, mutation.propName);
         }
         break;
 

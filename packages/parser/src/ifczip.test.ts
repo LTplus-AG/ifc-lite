@@ -20,6 +20,24 @@ async function makeZip(entries: Record<string, string>): Promise<ArrayBuffer> {
   return zip.generateAsync({ type: 'arraybuffer' });
 }
 
+async function makeDeflatedZip(entries: Record<string, string>): Promise<ArrayBuffer> {
+  const zip = new JSZip();
+  for (const [name, content] of Object.entries(entries)) zip.file(name, content);
+  return zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
+}
+
+function forgeCentralUncompressedSize(buffer: ArrayBuffer, size: number): ArrayBuffer {
+  const bytes = new Uint8Array(buffer.slice(0));
+  const view = new DataView(bytes.buffer);
+  for (let offset = 0; offset <= bytes.byteLength - 28; offset++) {
+    if (view.getUint32(offset, true) === 0x02014b50) {
+      view.setUint32(offset + 24, size, true);
+      return bytes.buffer;
+    }
+  }
+  throw new Error('test ZIP has no central-directory entry');
+}
+
 function toArrayBuffer(text: string): ArrayBuffer {
   const bytes = new TextEncoder().encode(text);
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
@@ -143,6 +161,13 @@ describe('unwrapIfcZip', () => {
     // STEP_HEADER is ~60 bytes; a 10-byte limit forces the guard to fire
     // without needing a real multi-gigabyte fixture.
     await expect(unwrapIfcZipWithLimit(zip, 10)).rejects.toThrow(/refusing to decompress/);
+  });
+
+  it('aborts inflation when forged metadata understates the actual model size', async () => {
+    const expanded = `${STEP_HEADER}\n${' '.repeat(1024 * 1024)}`;
+    const zip = await makeDeflatedZip({ 'model.ifc': expanded });
+    const forged = forgeCentralUncompressedSize(zip, 16);
+    await expect(unwrapIfcZipWithLimit(forged, 4096)).rejects.toThrow(/extracted entry.*exceeds/);
   });
 
   it('allows a model entry within the size limit', async () => {

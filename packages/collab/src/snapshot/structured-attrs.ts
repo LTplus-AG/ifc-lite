@@ -222,9 +222,9 @@ export interface InflatedAttributes extends StructuredBranchesJSON {
 export function inflateStructuredAttributes(
   attributes: Record<string, unknown>,
 ): InflatedAttributes {
-  const flat: Record<string, unknown> = {};
-  const psets: Record<string, Record<string, PropertyValue>> = {};
-  const quantities: Record<string, Record<string, number>> = {};
+  const flat: Record<string, unknown> = Object.create(null);
+  const psets: Record<string, Record<string, PropertyValue>> = Object.create(null);
+  const quantities: Record<string, Record<string, number>> = Object.create(null);
   let classifications: ClassificationRef[] = [];
   let materials: MaterialAssignment[] = [];
   let geometryRefs: string[] = [];
@@ -311,16 +311,16 @@ export function inflateStructuredAttributes(
         if (QTO_SET_RE.test(setName)) {
           const candidate = isPropertyValueShaped(value) ? value.value : value;
           if (typeof candidate === 'number' && Number.isFinite(candidate)) {
-            (quantities[setName] ??= {})[name] = candidate;
+            (quantities[setName] ??= Object.create(null))[name] = candidate;
             continue;
           }
         }
         if (isPropertyValueShaped(value)) {
-          (psets[setName] ??= {})[name] = { ...value };
+          (psets[setName] ??= Object.create(null))[name] = { ...value };
           continue;
         }
         if (typeof value === 'number' && Number.isFinite(value) && !PSET_SET_RE.test(setName)) {
-          (quantities[setName] ??= {})[name] = value;
+          (quantities[setName] ??= Object.create(null))[name] = value;
           continue;
         }
       }

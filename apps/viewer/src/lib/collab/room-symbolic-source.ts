@@ -21,6 +21,8 @@ export interface RoomSymbolicSource {
   structuredPsets: ReadonlyMap<number, Readonly<Record<string, Record<string, CollabPropertyValue>>>>;
   /** Canonical CRDT quantity groups, keyed in portable STEP id space. */
   structuredQuantities: ReadonlyMap<number, Readonly<Record<string, Record<string, number>>>>;
+  /** Canonical CRDT root attributes, excluding IFCX display projections. */
+  structuredAttributes: ReadonlyMap<number, Readonly<Record<string, unknown>>>;
   /** Original IFCZIP resources needed by relative IfcImageTexture URLs. */
   resources?: { modelPath?: string; resources: ReadonlyMap<string, Uint8Array> };
 }

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
 import type { Property, PropertyValue, Quantity } from '@ifc-lite/data';
 import { MutablePropertyView, StoreEditor, type Mutation } from '@ifc-lite/mutations';
 import { configureMutationView } from '@/utils/configureMutationView';
@@ -43,14 +43,24 @@ function snapshotView(
   configureMutationView(view, portable.dataStore);
   const editor = new StoreEditor(portable.dataStore, view);
   const attrs = [
-    ['Name', (id: number) => roomStore.entities.getName(id), (id: number) => portable.dataStore.entities.getName(id)],
-    ['Description', (id: number) => roomStore.entities.getDescription(id), (id: number) => portable.dataStore.entities.getDescription(id)],
-    ['ObjectType', (id: number) => roomStore.entities.getObjectType(id), (id: number) => portable.dataStore.entities.getObjectType(id)],
+    ['Name', (id: number) => portable.dataStore.entities.getName(id)],
+    ['Description', (id: number) => portable.dataStore.entities.getDescription(id)],
+    ['ObjectType', (id: number) => portable.dataStore.entities.getObjectType(id)],
+    ['Tag', (id: number) => portable.dataStore.entities.getTag?.(id) ?? ''],
   ] as const;
   for (const [sourceId, roomId] of portable.ownerIds) {
-    for (const [name, current, original] of attrs) {
-      const value = current(roomId);
-      if (value !== original(sourceId)) view.setAttribute(sourceId, name, value);
+    const roomAttributes = portable.structuredAttributes.get(sourceId) ?? {};
+    for (const [name, original] of attrs) {
+      const value = roomAttributes[`bsi::ifc::prop::${name}`];
+      const originalValue = original(sourceId);
+      if (value === undefined) {
+        if (!originalValue) continue;
+        const type = portable.dataStore.entities.getTypeName(sourceId);
+        const index = getAttributeNamesAcrossSchemas(type).indexOf(name);
+        if (index >= 0) editor.setPositionalAttribute(sourceId, index, null);
+      } else if (typeof value === 'string' && value !== originalValue) {
+        view.setAttribute(sourceId, name, value);
+      }
     }
 
     const originalPsets = portable.dataStore.getProperties(sourceId);
@@ -89,6 +99,9 @@ function snapshotView(
     const roomQsetNames = new Set(Object.keys(roomQsets));
     for (const qset of originalQsets) {
       if (!roomQsetNames.has(qset.name)) view.deleteQuantitySet(sourceId, qset.name);
+      else for (const quantity of qset.quantities) {
+        if (!(quantity.name in roomQsets[qset.name]!)) view.deleteQuantity(sourceId, qset.name, quantity.name);
+      }
     }
     for (const [qsetName, quantities] of Object.entries(roomQsets)) for (const [quantityName, value] of Object.entries(quantities)) {
       const original = originalQsetsByName.get(qsetName)?.quantities.find(item => item.name === quantityName);

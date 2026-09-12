@@ -33,6 +33,12 @@ async function fetchSource(store: BlobStore, hash: string): Promise<Uint8Array> 
       if (bytes.byteLength > MAX_PORTABLE_STEP_SOURCE_BYTES) {
         throw new Error('The room\'s portable IFC source exceeds the 96 MiB safety limit.');
       }
+      if (!store.hashBytes) {
+        throw new Error('The room blob store cannot verify portable IFC content identity.');
+      }
+      if (store.hashBytes(bytes) !== hash) {
+        throw new Error('The room\'s portable IFC source failed its content identity check.');
+      }
       return bytes;
     }
     if (attempt < 2) await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 150 : 600));
@@ -43,9 +49,10 @@ async function fetchSource(store: BlobStore, hash: string): Promise<Uint8Array> 
   });
 }
 
-export type ParsedRoomStepSource = Omit<RoomSymbolicSource, 'ownerIds' | 'placements' | 'baselines' | 'structuredPsets' | 'structuredQuantities'>;
+export type ParsedRoomStepSource = Omit<RoomSymbolicSource, 'ownerIds' | 'placements' | 'baselines' | 'structuredPsets' | 'structuredQuantities' | 'structuredAttributes'>;
 
 interface StructuredEntityState {
+  attributes: Record<string, unknown>;
   psets: Record<string, Record<string, CollabPropertyValue>>;
   quantities: Record<string, Record<string, number>>;
 }
@@ -104,6 +111,7 @@ export function bindRoomStepSource(
   const baselines = new Map<number, LocalPlacement>();
   const structuredPsets = new Map<number, StructuredEntityState['psets']>();
   const structuredQuantities = new Map<number, StructuredEntityState['quantities']>();
+  const structuredAttributes = new Map<number, StructuredEntityState['attributes']>();
   for (const expressId of parsed.seededIds) {
     const guid = parsed.dataStore.entities.getGlobalId(expressId)!;
     const path = roomSlotPath(slot, guid);
@@ -117,9 +125,10 @@ export function bindRoomStepSource(
     if (structured) {
       structuredPsets.set(expressId, structured.psets);
       structuredQuantities.set(expressId, structured.quantities);
+      structuredAttributes.set(expressId, structured.attributes);
     }
   }
-  return { ...parsed, ownerIds, placements, baselines, structuredPsets, structuredQuantities };
+  return { ...parsed, ownerIds, placements, baselines, structuredPsets, structuredQuantities, structuredAttributes };
 }
 
 /** Parse one portable source and key its GUID-bearing roots to this room slot. */

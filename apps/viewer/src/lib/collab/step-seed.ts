@@ -134,9 +134,11 @@ export function buildStepSeedSource(
       const name = store.entities.getName(expressId);
       const description = store.entities.getDescription(expressId);
       const objectType = store.entities.getObjectType(expressId);
+      const tag = store.entities.getTag?.(expressId);
       if (name) attributes['bsi::ifc::prop::Name'] = name;
       if (description) attributes['bsi::ifc::prop::Description'] = description;
       if (objectType) attributes['bsi::ifc::prop::ObjectType'] = objectType;
+      if (tag) attributes['bsi::ifc::prop::Tag'] = tag;
 
       // Storey elevation drives the hierarchy builder's storey ordering.
       if (ifcClass === 'IfcBuildingStorey') {
@@ -148,11 +150,13 @@ export function buildStepSeedSource(
 
       // Structured carriers preserve exact set names and distinguish them
       // from IFCX display groups derived from ordinary root attributes.
-      const psets: NonNullable<StepSeedEntity['psets']> = {};
+      // IFC names are file-controlled. Null-prototype dictionaries preserve
+      // legal names such as "__proto__" as ordinary data.
+      const psets: NonNullable<StepSeedEntity['psets']> = Object.create(null);
       for (const pset of extractPropertiesOnDemand(store, expressId)) {
         for (const prop of pset.properties) {
           if (prop.value === null || prop.value === undefined) continue;
-          const values = psets[pset.name] ?? (psets[pset.name] = {});
+          const values = psets[pset.name] ?? (psets[pset.name] = Object.create(null));
           const value = Array.isArray(prop.value) ? JSON.stringify(prop.value) : prop.value;
           values[prop.name] = {
             type: prop.dataType ?? PROPERTY_TYPE_NAMES[prop.type] ?? 'IfcLabel',
@@ -160,10 +164,10 @@ export function buildStepSeedSource(
           };
         }
       }
-      const quantities: NonNullable<StepSeedEntity['quantities']> = {};
+      const quantities: NonNullable<StepSeedEntity['quantities']> = Object.create(null);
       for (const qset of store.getQuantities?.(expressId) ?? store.quantities?.getForEntity?.(expressId) ?? []) {
         for (const quantity of qset.quantities) {
-          const values = quantities[qset.name] ?? (quantities[qset.name] = {});
+          const values = quantities[qset.name] ?? (quantities[qset.name] = Object.create(null));
           values[quantity.name] = quantity.value;
         }
       }

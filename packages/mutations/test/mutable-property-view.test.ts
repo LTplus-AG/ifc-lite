@@ -530,6 +530,25 @@ describe('hasQuantityBase (github.com/LTplus-AG/ifc-lite/issues/2487)', () => {
 });
 
 describe('deleteQuantitySet (#2508)', () => {
+  it('deletes one base quantity, retains its siblings, and replays the mutation', () => {
+    const quantities = () => [{
+      name: 'Qto_Base',
+      quantities: [
+        { name: 'Length', type: QuantityType.Length, value: 3 },
+        { name: 'Count', type: QuantityType.Count, value: 2 },
+      ],
+    }];
+    const origin = new MutablePropertyView(null, 'model-1');
+    origin.setQuantityExtractor(quantities);
+    expect(origin.deleteQuantity(7, 'Qto_Base', 'Length')?.type).toBe('DELETE_QUANTITY');
+    expect(origin.getQuantitiesForEntity(7)[0]?.quantities.map(quantity => quantity.name)).toEqual(['Count']);
+
+    const replayed = new MutablePropertyView(null, 'model-1');
+    replayed.setQuantityExtractor(quantities);
+    replayed.applyMutations(origin.getMutations());
+    expect(replayed.getQuantitiesForEntity(7)[0]?.quantities.map(quantity => quantity.name)).toEqual(['Count']);
+  });
+
   it('removes a quantity set created in this session, along with its quantities', () => {
     const view = new MutablePropertyView(null, 'model-1');
     view.setOnDemandExtractor(() => []);

@@ -20,6 +20,7 @@ export async function attachRoomStepSource(options: {
   placementForPath: (path: string) => LocalPlacement | undefined;
   baselineForPath: (path: string) => LocalPlacement | undefined;
   structuredForPath: (path: string) => {
+    attributes: Record<string, unknown>;
     psets: Record<string, Record<string, CollabPropertyValue>>;
     quantities: Record<string, Record<string, number>>;
   } | undefined;

@@ -20,18 +20,28 @@ import { StepExporter } from '@ifc-lite/export';
 function withTaggedQuantityRoot(source: Uint8Array): Uint8Array {
   const text = new TextDecoder().decode(source);
   const rows = [
-    "#102=IFCBUILDINGELEMENTPROXY('1bbbbbbbbbbbbbbbbbbbbb',$,'Tagged proxy',$,$,$,$,'TAG-42',.NOTDEFINED.);",
-    "#103=IFCQUANTITYLENGTH('Length',$,$,12.5,$);",
-    "#104=IFCELEMENTQUANTITY('1ccccccccccccccccccccc',$,'Qto_RoomAcceptance',$,$,(#103));",
-    "#105=IFCRELDEFINESBYPROPERTIES('1ddddddddddddddddddddd',$,$,$,(#102),#104);",
-    "#106=IFCPROPERTYLISTVALUE('Aggregate',$,(IFCLABEL('A'),IFCLABEL('B')),$);",
-    "#107=IFCPROPERTYSINGLEVALUE('Collision',$,IFCLABEL('exact'),$);",
-    "#108=IFCPROPERTYSET('1eeeeeeeeeeeeeeeeeeeee',$,'Material',$,(#107));",
-    "#109=IFCRELDEFINESBYPROPERTIES('1fffffffffffffffffffff',$,$,$,(#79),#108);",
+    "#120=IFCBUILDINGELEMENTPROXY('1bbbbbbbbbbbbbbbbbbbbb',$,'Tagged proxy',$,$,$,$,'TAG-42',.NOTDEFINED.);",
+    "#121=IFCQUANTITYLENGTH('Length',$,$,12.5,$);",
+    "#122=IFCELEMENTQUANTITY('1ccccccccccccccccccccc',$,'Qto_RoomAcceptance',$,$,(#121,#128));",
+    "#123=IFCRELDEFINESBYPROPERTIES('1ddddddddddddddddddddd',$,$,$,(#120),#122);",
+    "#124=IFCPROPERTYLISTVALUE('Aggregate',$,(IFCLABEL('A'),IFCLABEL('B')),$);",
+    "#125=IFCPROPERTYSINGLEVALUE('Collision',$,IFCLABEL('exact'),$);",
+    "#126=IFCPROPERTYSET('1eeeeeeeeeeeeeeeeeeeee',$,'Material',$,(#125));",
+    "#127=IFCRELDEFINESBYPROPERTIES('1fffffffffffffffffffff',$,$,$,(#79),#126);",
+    "#128=IFCQUANTITYCOUNT('Count',$,$,2,$);",
+    "#129=IFCPROPERTYSINGLEVALUE('constructor',$,IFCLABEL('safe-a'),$);",
+    "#130=IFCPROPERTYSET('1ggggggggggggggggggggg',$,'__proto__',$,(#129));",
+    "#131=IFCRELDEFINESBYPROPERTIES('1hhhhhhhhhhhhhhhhhhhhh',$,$,$,(#79),#130);",
+    "#132=IFCPROPERTYSINGLEVALUE('__proto__',$,IFCLABEL('safe-b'),$);",
+    "#133=IFCPROPERTYSET('1iiiiiiiiiiiiiiiiiiiii',$,'prototype',$,(#132));",
+    "#134=IFCRELDEFINESBYPROPERTIES('1jjjjjjjjjjjjjjjjjjjjj',$,$,$,(#79),#133);",
+    "#135=IFCQUANTITYCOUNT('__proto__',$,$,3,$);",
+    "#136=IFCELEMENTQUANTITY('1kkkkkkkkkkkkkkkkkkkkk',$,'constructor',$,$,(#135));",
+    "#137=IFCRELDEFINESBYPROPERTIES('1lllllllllllllllllllll',$,$,$,(#79),#136);",
   ].join('\n');
   const contained = text
-    .replace('(#79),#40);', '(#79,#102),#40);')
-    .replace('#100));', '#100,#106));');
+    .replace('(#79),#40);', '(#79,#120),#40);')
+    .replace('#100));', '#100,#124));');
   return new TextEncoder().encode(contained.replace(/ENDSEC;\s*END-ISO-10303-21;\s*$/, `${rows}\nENDSEC;\nEND-ISO-10303-21;\n`));
 }
 
@@ -68,9 +78,51 @@ describe('portable room STEP source (#4604)', () => {
     assert.match(outputText, /IFCPROPERTYLISTVALUE\('Aggregate'[^\n]*IFCLABEL\('A'\),IFCLABEL\('B'\)/);
     assert.match(outputText, /IFCPROPERTYSET\([^\n]*'Material'/,
       'an exact Pset may legally use a display-group-like name');
+    assert.match(outputText, /IFCPROPERTYSET\([^\n]*'__proto__'/);
+    assert.match(outputText, /IFCPROPERTYSINGLEVALUE\('constructor'[^\n]*'safe-a'/);
+    assert.match(outputText, /IFCPROPERTYSET\([^\n]*'prototype'/);
+    assert.match(outputText, /IFCPROPERTYSINGLEVALUE\('__proto__'[^\n]*'safe-b'/);
+    assert.match(outputText, /IFCELEMENTQUANTITY\([^\n]*'constructor'/);
+    assert.match(outputText, /IFCQUANTITYCOUNT\('__proto__'[^\n]*,3,/);
+    assert.equal(Object.hasOwn(Object.prototype, 'polluted'), false);
     assert.doesNotMatch(outputText, /IFCPROPERTYSET\([^\n]*'IFC Properties/);
     assert.equal(outputText.match(/^#\d+=/gm)?.length ?? 0, inputEntityCount,
       'an unchanged room replay neither drops nor inflates STEP rows');
+    guest.reconstructor.teardown();
+  });
+
+  it('exports peer Tag edits and member-level quantity deletion', async () => {
+    const control = new Uint8Array(await readFile(new URL(
+      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      import.meta.url,
+    )));
+    const bytes = withTaggedQuantityRoot(control);
+    const store = await new IfcParser().parseColumnar(bytes.slice().buffer);
+    const doc = collab.createCollabDoc();
+    const blobs = new collab.MemoryBlobStore();
+    const slot = collab.modelSlotRef('m0');
+    await ownerShare(doc, blobs, [{
+      modelId: 'pdf', name: 'annotation.ifc', store, isIfcx: false, meshes: [], idOffset: 0,
+      schemaVersion: 'IFC4', fileName: 'annotation.ifc', portableStepSource: bytes,
+    }], new Map([['pdf', slot]]));
+    const path = `${slot.pathPrefix}/1bbbbbbbbbbbbbbbbbbbbb`;
+    collab.setAttribute(doc, path, 'bsi::ifc::prop::Tag', 'TAG-PEER');
+    assert.equal(collab.deleteQuantityValue(doc, path, 'Qto_RoomAcceptance', 'Length'), true);
+
+    const guest = joiner(doc, blobs, 'peer-root-edits');
+    await guest.reconstructor.reconstruct();
+    const model = guest.store.state().models.values().next().value;
+    assert.ok(model?.ifcDataStore);
+    const portable = roomStepExportSource(model.ifcDataStore, undefined, model.id);
+    assert.ok(portable);
+    const output = await new StepExporter(portable.dataStore, portable.mutationView).exportAsync({
+      schema: 'IFC4', applyMutations: true, includeGeometry: true,
+    });
+    const outputText = typeof output.content === 'string' ? output.content : new TextDecoder().decode(output.content);
+    assert.match(outputText, /IFCBUILDINGELEMENTPROXY\([^\n]*'TAG-PEER'/);
+    assert.match(outputText, /IFCELEMENTQUANTITY\([^\n]*'Qto_RoomAcceptance'/);
+    assert.match(outputText, /IFCQUANTITYCOUNT\('Count'[^\n]*,2\.?0*,/);
+    assert.doesNotMatch(outputText, /IFCQUANTITYLENGTH\('Length'/);
     guest.reconstructor.teardown();
   });
 
@@ -204,6 +256,7 @@ describe('portable room STEP source (#4604)', () => {
       placements: new Map([[79, { location: [4, 5, 6], refDirection: [0, 1, 0] }]]),
       structuredPsets: new Map(),
       structuredQuantities: new Map(),
+      structuredAttributes: new Map(),
     });
     assert.deepEqual([...placed.fillOwner], [17]);
     assert.deepEqual([...placed.fillPoints].map(value => Math.round(value * 10) / 10), [4.5, -3.5, 4.5, -5.5, 5.5, -3.5]);
@@ -233,6 +286,37 @@ describe('portable room STEP source (#4604)', () => {
     );
   });
 
+  it('rejects wrong bytes returned under a syntactically valid source key', async () => {
+    const good = new TextEncoder().encode('portable IFC source');
+    const wrong = new TextEncoder().encode('different relay bytes');
+    const backing = new collab.MemoryBlobStore();
+    const { hash } = await backing.put(good);
+    const swapped: collab.BlobStore = {
+      hashBytes: bytes => backing.hashBytes(bytes),
+      put: (value, contentType) => backing.put(value, contentType),
+      get: async () => wrong,
+      has: hashValue => backing.has(hashValue),
+      delete: hashValue => backing.delete(hashValue),
+      list: () => backing.list(),
+    };
+    await assert.rejects(
+      parseRoomStepSource(swapped, hash, collab.modelSlotRef('m0'), new Map()),
+      /failed its content identity check/,
+    );
+  });
+
+  it('verifies room sources with the blob store custom hasher', async () => {
+    const bytes = new Uint8Array(await readFile(new URL(
+      '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
+      import.meta.url,
+    )));
+    const custom = (value: Uint8Array) => collab.fnv128(value).split('').reverse().join('');
+    const blobs = new collab.MemoryBlobStore(custom);
+    const { hash } = await blobs.put(bytes);
+    const parsed = await parseRoomStepSource(blobs, hash, collab.modelSlotRef('m0'), new Map());
+    assert.equal(parsed.source.byteLength, bytes.byteLength);
+  });
+
   it('retries transient blob read failures and reports the final failure', async () => {
     const bytes = new Uint8Array(await readFile(new URL(
       '../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc',
@@ -240,6 +324,7 @@ describe('portable room STEP source (#4604)', () => {
     )));
     let reads = 0;
     const recovering: collab.BlobStore = {
+      hashBytes: collab.fnv128,
       put: async () => { throw new Error('unused'); },
       get: async () => {
         reads++;
@@ -251,7 +336,7 @@ describe('portable room STEP source (#4604)', () => {
       list: async () => [],
     };
     const parsed = await parseRoomStepSource(
-      recovering, 'a'.repeat(32), collab.modelSlotRef('m0'), new Map(),
+      recovering, collab.fnv128(bytes), collab.modelSlotRef('m0'), new Map(),
     );
     assert.ok(parsed.source.byteLength > 0);
     assert.equal(reads, 3);
@@ -330,6 +415,7 @@ describe('portable room STEP source (#4604)', () => {
     const gate = new Promise<void>(resolve => { release = resolve; });
     let reads = 0;
     const delayed: collab.BlobStore = {
+      hashBytes: value => blobs.hashBytes(value),
       put: (value, contentType) => blobs.put(value, contentType),
       get: async hash => { reads++; await gate; return blobs.get(hash); },
       has: hash => blobs.has(hash), delete: hash => blobs.delete(hash), list: () => blobs.list(),

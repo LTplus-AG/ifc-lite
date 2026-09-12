@@ -51,15 +51,27 @@ const PARSE_STACK_SIZE: usize = 256 * 1024 * 1024;
 /// `par_iter` on rayon workers, so the recursion lives on *their* stacks — not the caller's.
 /// Running the parse through `pool.install(..)` makes both the entry closure and every nested
 /// `par_iter` use these large-stack workers. Built once and reused.
-fn parse_pool() -> &'static rayon::ThreadPool {
+///
+/// `None` when the pool cannot be built (the OS refused to spawn its threads).
+/// That is error code `3` for the caller, never an `expect`: this runs on the
+/// `extern "C"` path, and a panic unwinding out of an `extern "C"` function
+/// aborts the host process. A failed build is not cached, so a later call
+/// retries; two first calls racing may each build a pool, and the loser is
+/// dropped.
+fn parse_pool() -> Option<&'static rayon::ThreadPool> {
     static POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
-    POOL.get_or_init(|| {
-        rayon::ThreadPoolBuilder::new()
-            .stack_size(PARSE_STACK_SIZE)
-            .thread_name(|i| format!("ifc-lite-parse-{i}"))
-            .build()
-            .expect("failed to build ifc-lite parse thread pool")
-    })
+    if let Some(pool) = POOL.get() {
+        return Some(pool);
+    }
+    let pool = build_parse_pool(PARSE_STACK_SIZE).ok()?;
+    Some(POOL.get_or_init(|| pool))
+}
+
+fn build_parse_pool(stack_size: usize) -> Result<rayon::ThreadPool, rayon::ThreadPoolBuildError> {
+    rayon::ThreadPoolBuilder::new()
+        .stack_size(stack_size)
+        .thread_name(|i| format!("ifc-lite-parse-{i}"))
+        .build()
 }
 
 /// Paths of the IFC files whose parses are in flight, so the panic hook can
@@ -212,44 +224,59 @@ fn normalize_to_site_local(result: &mut ProcessingResult) {
 
 /// Run `work` on the large-stack pool with `path_str` registered in
 /// [`IN_FLIGHT_PATHS`] for the whole call, so a panic on any pool worker is
-/// logged against this file. A panic inside `work` is error code `3`.
-fn run_in_pool<T: Send>(path_str: &str, work: impl FnOnce() -> T + Send) -> Result<T, i32> {
-    let _in_flight = InFlightPath::register(path_str);
-    parse_pool()
-        .install(|| std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)))
-        .map_err(|_| 3)
+/// logged against this file.
+///
+/// One `catch_unwind` around everything that can panic on the parse path:
+/// the pool acquisition, the registration, and all of `work`. A panic
+/// anywhere in there is error code `3`; `install` carries a worker's panic
+/// back to this thread, so the guard sits outside it. Before this only the
+/// geometry call was guarded, and the pool's `expect`, the coordinate
+/// normalisation and the JSON serialisation could unwind out of the
+/// `extern "C"` function, which aborts the host.
+fn run_in_pool<T: Send>(
+    path_str: &str,
+    work: impl FnOnce() -> Result<T, i32> + Send,
+) -> Result<T, i32> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _in_flight = InFlightPath::register(path_str);
+        parse_pool().ok_or(3)?.install(work)
+    }))
+    .unwrap_or(Err(3))
 }
 
-/// Shared body of both parse entry points: read the file, run geometry
-/// processing inside the large-stack pool under `catch_unwind`, normalize mesh
-/// coordinates, and serialize the response to JSON bytes.
+/// Shared body of both parse entry points: read the file, then on the
+/// large-stack pool and under [`run_in_pool`]'s `catch_unwind` run geometry
+/// processing, normalize mesh coordinates, and serialize the response to JSON
+/// bytes.
 ///
 /// Returns the JSON buffer on success, or one of the FFI error codes on failure
-/// (`2` read, `3` processing panic, `4` serialization) — `0`/`1` are decided by
+/// (`2` read, `3` panic or no pool, `4` serialization) — `0`/`1` are decided by
 /// the wrappers, which own pointer validation.
 fn parse_impl(path_str: &str, mode: OpeningFilterMode) -> Result<Vec<u8>, i32> {
     let content = std::fs::read_to_string(path_str).map_err(|_| 2)?;
 
-    let mut result = run_in_pool(path_str, || process_geometry_filtered(&content, mode))?;
+    run_in_pool(path_str, || {
+        let mut result = process_geometry_filtered(&content, mode);
 
-    // Normalize all meshes to uniform site-local coordinates.
-    normalize_to_site_local(&mut result);
+        // Normalize all meshes to uniform site-local coordinates.
+        normalize_to_site_local(&mut result);
 
-    let response = ParseResponse {
-        cache_key: String::new(),
-        meshes: result.meshes,
-        mesh_coordinate_space: result.mesh_coordinate_space,
-        site_transform: result.site_transform,
-        building_transform: result.building_transform,
-        metadata: result.metadata,
-        stats: result.stats,
-        // This fork's `ParseResponse` carries 2D symbol data; the FFI parse path
-        // is geometry-only, so emit an empty (default) set. `ProcessingResult`
-        // has no `symbolic_data` to forward here.
-        symbolic_data: Default::default(),
-    };
+        let response = ParseResponse {
+            cache_key: String::new(),
+            meshes: result.meshes,
+            mesh_coordinate_space: result.mesh_coordinate_space,
+            site_transform: result.site_transform,
+            building_transform: result.building_transform,
+            metadata: result.metadata,
+            stats: result.stats,
+            // This fork's `ParseResponse` carries 2D symbol data; the FFI parse path
+            // is geometry-only, so emit an empty (default) set. `ProcessingResult`
+            // has no `symbolic_data` to forward here.
+            symbolic_data: Default::default(),
+        };
 
-    serde_json::to_vec(&response).map_err(|_| 4)
+        serde_json::to_vec(&response).map_err(|_| 4)
+    })
 }
 
 /// Validate the path bytes and out-pointers, run [`parse_impl`], and write the
@@ -315,7 +342,7 @@ unsafe fn run_parse(
 /// - `0` on success
 /// - `1` if a pointer is null or the path is invalid UTF-8
 /// - `2` if the file cannot be read
-/// - `3` if geometry processing fails
+/// - `3` if parsing panics or the worker pool cannot be started
 /// - `4` if JSON serialization fails
 ///
 /// On `0`, `*out_ptr` / `*out_len` describe the buffer. On every other code,

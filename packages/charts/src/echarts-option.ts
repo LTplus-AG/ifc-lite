@@ -150,21 +150,27 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
 
   // bar / stackedBar / histogram / timeline: category x, measure y
   const stacked = spec.type === 'stackedBar';
+  const labels = categories.map((c) => c.label);
+  // Long IFC class names ("IfcBuildingElementProxy") collide upright well
+  // before eight buckets; rotate as soon as the row of labels is long.
+  const rotate = categories.length > 8 || labels.join('').length > 40 ? 30 : 0;
+  // A count needs no axis title; a sum says what it sums, and gets room for it.
+  const yName = spec.measure.agg === 'sum' ? measureLabel(aggregation) : '';
   return {
     ...base,
     // ECharts 6 keeps axis labels inside the grid's outer bounds by default
     // (`containLabel` is the removed v5 way of saying the same).
-    grid: { left: 8, right: 8, top: stacked ? 32 : 12, bottom: 8 },
+    grid: { left: 8, right: 8, top: stacked ? 32 : yName ? 28 : 12, bottom: 8 },
     ...(stacked ? { legend: { top: 0, textStyle: { color: theme.mutedText } } } : {}),
     xAxis: {
       type: 'category',
-      data: categories.map((c) => c.label),
+      data: labels,
       axisLine: { lineStyle: { color: theme.axis } },
-      axisLabel: { color: theme.mutedText, interval: 0, rotate: categories.length > 8 ? 35 : 0, hideOverlap: true },
+      axisLabel: { color: theme.mutedText, interval: 0, rotate, hideOverlap: true },
     },
     yAxis: {
       type: 'value',
-      name: measureLabel(aggregation),
+      name: yName,
       nameTextStyle: { color: theme.mutedText },
       axisLabel: { color: theme.mutedText },
       splitLine: { lineStyle: { color: theme.grid } },

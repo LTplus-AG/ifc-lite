@@ -21,8 +21,14 @@ const MAX_PORTABLE_STEP_SOURCE_BYTES = 96 * 1024 * 1024;
 
 async function fetchSource(store: BlobStore, hash: string): Promise<Uint8Array> {
   if (!CONTENT_HASH.test(hash)) throw new Error('Room model has an invalid portable IFC source reference.');
+  let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
-    const bytes = await store.get(hash);
+    let bytes: Uint8Array | null = null;
+    try {
+      bytes = await store.get(hash);
+    } catch (error) {
+      lastError = error;
+    }
     if (bytes) {
       if (bytes.byteLength > MAX_PORTABLE_STEP_SOURCE_BYTES) {
         throw new Error('The room\'s portable IFC source exceeds the 96 MiB safety limit.');
@@ -31,7 +37,10 @@ async function fetchSource(store: BlobStore, hash: string): Promise<Uint8Array> 
     }
     if (attempt < 2) await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 150 : 600));
   }
-  throw new Error('The room\'s portable IFC source is unavailable after 3 attempts. Reconnect to retry.');
+  const detail = lastError instanceof Error ? ` Last error: ${lastError.message}` : '';
+  throw new Error(`The room's portable IFC source is unavailable after 3 attempts. Reconnect to retry.${detail}`, {
+    cause: lastError,
+  });
 }
 
 export type ParsedRoomStepSource = Omit<RoomSymbolicSource, 'ownerIds'>;

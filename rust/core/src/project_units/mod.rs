@@ -228,7 +228,14 @@ fn resolve_derived_element(
     }
     // [0]=Unit (IfcNamedUnit), [1]=Exponent
     let unit_ref = elem.get_ref(0)?;
-    let exponent = elem.get(1).and_then(|a| a.as_int()).unwrap_or(1) as i32;
+    // The file's exponent is an `i64`; saturate into `i32` rather than
+    // truncate, so an out-of-range value cannot wrap to an unrelated small
+    // exponent (or, at exactly 2^31, to `i32::MIN`).
+    let exponent = elem
+        .get(1)
+        .and_then(|a| a.as_int())
+        .unwrap_or(1)
+        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
     let (_ut, resolved, _mon) = resolve_unit_by_ref_depth(decoder, unit_ref, depth + 1)?;
     Some((resolved.symbol, resolved.si_scale, exponent))
 }

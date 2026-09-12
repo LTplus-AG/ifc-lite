@@ -238,3 +238,25 @@ fn cyclic_derived_unit_terminates_not_stack_overflow() {
     let mut decoder = EntityDecoder::new(content);
     assert!(resolve_unit_by_ref(&mut decoder, 10).is_none());
 }
+
+/// A file-supplied `IfcDerivedUnitElement.Exponent` of `i32::MIN` reached
+/// `superscript` as a re-signed negative magnitude and panicked with an
+/// arithmetic overflow (`'-' - '0'` in `u32`). It must resolve, and an
+/// exponent below `i32::MIN` must saturate rather than wrap to something
+/// small and plausible.
+#[test]
+fn derived_unit_element_exponent_i32_min_resolves_without_panic() {
+    let content = "\
+#10=IFCDERIVEDUNIT((#11),.USERDEFINED.);
+#11=IFCDERIVEDUNITELEMENT(#12,-2147483648);
+#12=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#20=IFCDERIVEDUNIT((#21),.USERDEFINED.);
+#21=IFCDERIVEDUNITELEMENT(#12,-9223372036854775808);
+";
+    let mut decoder = EntityDecoder::new(content);
+    let (_, resolved, _) = resolve_unit_by_ref(&mut decoder, 10).expect("resolves");
+    assert!(resolved.symbol.starts_with("1/m"), "got {}", resolved.symbol);
+    // `i64::MIN` saturates to the same exponent, so the two are identical.
+    let (_, saturated, _) = resolve_unit_by_ref(&mut decoder, 20).expect("resolves");
+    assert_eq!(saturated.symbol, resolved.symbol);
+}

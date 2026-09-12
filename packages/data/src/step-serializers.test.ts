@@ -99,7 +99,7 @@ describe('generateHeader default time_stamp (ISO 10303-21 clause 4.2 "time_stamp
 });
 
 describe('generateHeader control-char handling', () => {
-  it('collapses a newline in a header value to a space so the record stays one line', () => {
+  it('encodes a newline in a header value as an X2 directive so the record stays one line', () => {
     const header = generateHeader({
       schema: 'IFC4',
       author: ['Line1\nLine2'],
@@ -107,9 +107,11 @@ describe('generateHeader control-char handling', () => {
     });
     const fileNameLine = header.split('\n').find((l) => l.startsWith('FILE_NAME'));
     expect(fileNameLine).toBeDefined();
-    // The author value must not have split the record onto a second line.
-    expect(fileNameLine).toContain("('Line1 Line2')");
-    expect(fileNameLine).not.toContain('Line2\n');
+    // The author value must not have split the record onto a second line, and
+    // the newline must still be in the file: it used to become a space, which
+    // lost the character on a decode-encode-decode trip.
+    expect(fileNameLine).toContain("('Line1\\X2\\000A\\X0\\Line2')");
+    expect(fileNameLine).not.toContain('Line1 Line2');
   });
 });
 

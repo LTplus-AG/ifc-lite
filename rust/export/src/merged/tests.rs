@@ -105,10 +105,12 @@ fn merge_ignores_file_schema_literal_text_inside_a_quoted_header_string() {
 
 /// Scenario from the maintainer's review: a header field carrying a raw C0
 /// control byte (outside the ISO 10303-21 basic graphic range 32-126) must
-/// be mapped to a space, not written raw into the STEP literal. Only \n \r
-/// \t were mapped before merged.rs picked up the shared `step_text::escape`.
+/// not be written raw into the STEP literal. Only \n \r \t were handled
+/// before merged.rs picked up the shared `step_text::escape`. The escape is
+/// the `\X2\` directive, not a space: a space kept the record on one line
+/// but lost the character.
 #[test]
-fn merge_maps_raw_control_bytes_in_header_fields_to_a_space() {
+fn merge_encodes_raw_control_bytes_in_header_fields_as_directives() {
     let opts = MergedOptions {
         schema: Some("IFC4".to_string()),
         description: "ViewDefinition [CoordinationView]".to_string(),
@@ -127,7 +129,7 @@ fn merge_maps_raw_control_bytes_in_header_fields_to_a_space() {
     );
     assert_eq!(
         file_name_line,
-        "FILE_NAME('','',(''),(''),'app bell vt','ifc-lite-export','');"
+        "FILE_NAME('','',(''),(''),'app\\X2\\0007\\X0\\bell\\X2\\000B\\X0\\vt','ifc-lite-export','');"
     );
 }
 

@@ -1,30 +1,30 @@
 {
-  "//": "Shared cross-language STEP-string-escape vectors (issue #3300, second half). The TypeScript escaper (packages/data/src/step-serializers.ts, escapeStepString, via packages/data/src/step-escape.parity.test.ts) and the Rust escaper (rust/export/src/step_text.rs, escape, via rust/export/tests/step_escape_parity.rs) are BOTH pinned to this file, so the two cannot drift apart unnoticed. Before this file existed, each side pinned the OTHER side's behaviour via its own hand-written literal test table, with a comment claiming the two agreed -- exactly the arrangement issue #3300 identifies as the cause of bug #3284 (a hand-kept copy 'only resets the clock', per the CSV-cell-escaper precedent this file follows: rust/export/tests/fixtures/csv_cell_vectors.json, rust/export/tests/csv_cell_parity.rs, packages/export/src/csv-cell.parity.test.ts, scripts/check-csv-escaper-copies.mjs). This escaper takes no options, so unlike the CSV fixture a case here is only {name, input, expected}. Author cases by hand; there is no generator script for this one (the CSV fixture's swept option ranges have no equivalent here).",
+  "//": "Shared cross-language STEP-string-escape vectors (issue #3300, second half). The TypeScript escaper (packages/data/src/step-serializers.ts, escapeStepString, via packages/data/src/step-escape.parity.test.ts) and the Rust escaper (rust/export/src/step_text.rs, escape, via rust/export/tests/step_escape_parity.rs) are BOTH pinned to this file, so the two cannot drift apart unnoticed. Before this file existed, each side pinned the OTHER side's behaviour via its own hand-written literal test table, with a comment claiming the two agreed -- exactly the arrangement issue #3300 identifies as the cause of bug #3284 (a hand-kept copy 'only resets the clock', per the CSV-cell-escaper precedent this file follows: rust/export/tests/fixtures/csv_cell_vectors.json, rust/export/tests/csv_cell_parity.rs, packages/export/src/csv-cell.parity.test.ts, scripts/check-csv-escaper-copies.mjs). This escaper takes no options, so unlike the CSV fixture a case here is only {name, input, expected}. Author cases by hand; there is no generator script for this one (the CSV fixture's swept option ranges have no equivalent here). Control characters (C0 and DEL) are X2 directives, not spaces: a space lost the character on a decode-encode-decode trip, while the directive keeps the record on one line and reads back as the character it encodes.",
   "cases": [
     {
-      "name": "tab run",
+      "name": "tab run: one X2 directive per control character",
       "input": "a\t\t\tb",
-      "expected": "a   b"
+      "expected": "a\\X2\\0009\\X0\\\\X2\\0009\\X0\\\\X2\\0009\\X0\\b"
     },
     {
       "name": "crlf",
       "input": "a\r\nb",
-      "expected": "a  b"
+      "expected": "a\\X2\\000D\\X0\\\\X2\\000A\\X0\\b"
     },
     {
-      "name": "mixed C0 and DEL",
+      "name": "mixed C0 and DEL: each is an X2 directive",
       "input": "a\u0000\u000b\u001f\u007fb",
-      "expected": "a    b"
+      "expected": "a\\X2\\0000\\X0\\\\X2\\000B\\X0\\\\X2\\001F\\X0\\\\X2\\007F\\X0\\b"
     },
     {
-      "name": "single control char",
+      "name": "single control char is an X2 directive",
       "input": "a\tb",
-      "expected": "a b"
+      "expected": "a\\X2\\0009\\X0\\b"
     },
     {
       "name": "quote doubling around a run",
       "input": "O'Brien\t\tx",
-      "expected": "O''Brien  x"
+      "expected": "O''Brien\\X2\\0009\\X0\\\\X2\\0009\\X0\\x"
     },
     {
       "name": "no control chars",
@@ -79,32 +79,32 @@
     {
       "name": "rust control: NUL",
       "input": "a\u0000b",
-      "expected": "a b"
+      "expected": "a\\X2\\0000\\X0\\b"
     },
     {
       "name": "rust control: VT 0x0B",
       "input": "a\u000bb",
-      "expected": "a b"
+      "expected": "a\\X2\\000B\\X0\\b"
     },
     {
       "name": "rust control: US 0x1F",
       "input": "a\u001fb",
-      "expected": "a b"
+      "expected": "a\\X2\\001F\\X0\\b"
     },
     {
       "name": "rust control: DEL 0x7F",
       "input": "a\u007fb",
-      "expected": "a b"
+      "expected": "a\\X2\\007F\\X0\\b"
     },
     {
       "name": "rust: a run of three NUL bytes",
       "input": "\u0000\u0000\u0000",
-      "expected": "   "
+      "expected": "\\X2\\0000\\X0\\\\X2\\0000\\X0\\\\X2\\0000\\X0\\"
     },
     {
-      "name": "rust: a mixed-kind control run (CR LF VT DEL)",
+      "name": "rust: a mixed-kind control run (CR LF VT DEL), one directive each",
       "input": "a\r\n\u000b\u007fb",
-      "expected": "a    b"
+      "expected": "a\\X2\\000D\\X0\\\\X2\\000A\\X0\\\\X2\\000B\\X0\\\\X2\\007F\\X0\\b"
     },
     {
       "name": "rust plain: \"plain\"",
@@ -137,9 +137,9 @@
       "expected": "\\X4\\0001F600\\X0\\"
     },
     {
-      "name": "a longer control-char run (n=8) stays one space per char",
+      "name": "a longer control-char run (n=8) stays one directive per char",
       "input": "a\n\n\n\n\n\n\n\nb",
-      "expected": "a        b"
+      "expected": "a\\X2\\000A\\X0\\\\X2\\000A\\X0\\\\X2\\000A\\X0\\\\X2\\000A\\X0\\\\X2\\000A\\X0\\\\X2\\000A\\X0\\\\X2\\000A\\X0\\\\X2\\000A\\X0\\b"
     },
     {
       "name": "a directive-looking literal text run immediately followed by real non-ASCII",

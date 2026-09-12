@@ -44,8 +44,7 @@ pub(crate) fn merge_edits<'a>(
 }
 
 /// Escape a STEP string literal body: double the apostrophe and reverse
-/// solidus, map every ASCII control character (the C0 range plus DEL) to a
-/// space, and encode any character outside the basic graphic range as its
+/// solidus, and encode any character outside the basic graphic range as its
 /// `\X2\`/`\X4\` control directive — never a raw byte — since ISO 10303-21
 /// 6.3.3.4 restricts a literal's plain-text bytes to 32-126. buildingSMART's
 /// IFC string-encoding guidance states the same for IFC2X3/IFC4/IFC4X3: a
@@ -55,6 +54,16 @@ pub(crate) fn merge_edits<'a>(
 /// raw UTF-8 multi-byte sequence into mojibake or a broken parse; this exact
 /// writer shape is a reported, reproduced defect in real IFC tooling
 /// (IfcOpenShell#699/#1016; files rejected by Solibri).
+///
+/// ASCII control characters (the C0 range plus DEL) take the same directive:
+/// a newline goes out as `\X2\000A\X0\`, which `decode_ifc_string` reads
+/// back as a newline. They used to be mapped to a space, which kept a record
+/// on one line but lost the character: a header field that arrived as
+/// `line1\X2\000A\X0\line2` was re-exported as `line1 line2`, a
+/// decode-encode-decode trip that was not the identity even though the
+/// standard has a faithful encoding for it. The directive keeps the record on
+/// one line too (no raw byte below 32 is ever written), so nothing is lost by
+/// preferring it.
 ///
 /// `pub`, and re-exported from the crate root as `escape_step_string`, so the
 /// integration-test binary `tests/step_escape_parity.rs` can pin it to the
@@ -73,7 +82,6 @@ pub fn escape(s: &str) -> String {
             // other (order in the source string is preserved as-is).
             '\'' => out.push_str("''"),
             '\\' => out.push_str("\\\\"),
-            '\0'..='\u{1F}' | '\u{7F}' => out.push(' '),
             '\u{20}'..='\u{7E}' => out.push(c),
             _ => {
                 let cp = c as u32;

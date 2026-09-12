@@ -42,6 +42,16 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const sheetFields = useViewerStore((s) => s.activeSheet?.titleBlock.fields);
+  const projectName = useViewerStore((s) => {
+    const model = s.models.get(s.activeModelId ?? '') ?? s.models.values().next().value;
+    const store = model?.ifcDataStore;
+    const project = store?.spatialHierarchy?.project;
+    return project ? (store?.entities.getName(project.expressId) ?? '') : '';
+  });
+  // Field defaults: the sheet's title block, else the model's IfcProject name;
+  // the report title is the dashboard's name; a saved report setup wins where
+  // it has a value. Re-seeded every time the dialog opens, so a dashboard
+  // switched or a model loaded after the panel mounted is reflected.
   const seeded = useMemo<Record<string, string>>(() => {
     const fromSheet: Record<string, string> = {};
     for (const f of sheetFields ?? []) {
@@ -49,11 +59,20 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
       if (f.id === 'drawn-by') fromSheet.author = f.value;
       if (f.id === 'revision') fromSheet.revision = f.value;
     }
-    return { date: new Date().toISOString().slice(0, 10), title: dashboard?.name ?? '', ...fromSheet, ...(isReport(dashboard) ? dashboard.titleBlock : {}) };
-  }, [sheetFields, dashboard]);
+    const saved = isReport(dashboard) ? Object.fromEntries(Object.entries(dashboard.titleBlock).filter(([, v]) => v.trim().length > 0)) : {};
+    return { date: new Date().toISOString().slice(0, 10), project: projectName, title: dashboard?.name ?? '', ...fromSheet, ...saved };
+  }, [sheetFields, dashboard, projectName]);
   const [page, setPage] = useState<ReportPageSetup>(isReport(dashboard) ? dashboard.page : { size: 'A4', orientation: 'portrait' });
   const [snapshots, setSnapshots] = useState(isReport(dashboard) ? dashboard.snapshots : true);
   const [fields, setFields] = useState<Record<string, string>>(seeded);
+  const openDialog = useCallback(() => {
+    setFields(seeded);
+    if (isReport(dashboard)) {
+      setPage(dashboard.page);
+      setSnapshots(dashboard.snapshots);
+    }
+    setOpen(true);
+  }, [seeded, dashboard]);
 
   const run = useCallback(async () => {
     if (!dashboard) return;
@@ -87,7 +106,7 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
   const field = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs';
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(next) => (next ? openDialog() : setOpen(false))}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={!dashboard || dashboard.charts.length === 0} title="Print this dashboard to a PDF report">
           <FileText className="h-3.5 w-3.5 mr-1" />

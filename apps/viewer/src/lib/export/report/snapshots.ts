@@ -60,7 +60,9 @@ export function createSnapshotCapture(): { capture: SnapshotCapture; restore: ()
   const capture: SnapshotCapture = async (ids) => {
     if (ids.length === 0) return undefined;
     const bounds = unionEntityBounds(meshes, [...ids], (id) => scene.getInstancedEntityBounds(id));
-    if (bounds) await camera.frameBounds(bounds.min, bounds.max, 0);
+    // Duration 1, not 0: the camera only steps an animation with a positive
+    // duration, so a 0 ms frame never completes and the export hangs on it.
+    if (bounds) await camera.frameBounds(bounds.min, bounds.max, 1);
     // restoreEvictedForCapture: a ghosted frame may reveal batches evicted
     // under the GPU residency budget — restore synchronously so the snapshot
     // is complete.

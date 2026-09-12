@@ -9,7 +9,8 @@ use std::collections::HashMap;
 
 use super::color::resolve_color_via_styles;
 use super::primitives::{SymbolicFillArea};
-use super::transform::{conic_basis, push_finite_point, Transform2D};
+use super::conic::{conic_basis, Conic};
+use super::transform::{push_finite_point, Transform2D};
 
 // ────────────────────────────────────────────────────────────────────────────
 // Fill area extraction (IfcAnnotationFillArea).
@@ -117,38 +118,13 @@ fn extract_curve_ring(
             }
             out
         }
-        IfcType::IfcEllipse => {
-            let semi_a = curve.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-            let semi_b = curve.get(2).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-            if semi_a <= 0.0 || semi_b <= 0.0 || !semi_a.is_finite() || !semi_b.is_finite() {
-                return Vec::new();
-            }
-            let basis = conic_basis(&curve, decoder, unit_scale);
-            const SEGMENTS: usize = 64;
-            let mut out = Vec::with_capacity(SEGMENTS * 2);
-            for i in 0..SEGMENTS {
-                let theta = (i as f32) * std::f32::consts::TAU / (SEGMENTS as f32);
-                let lx = basis.tx + semi_a * theta.cos();
-                let ly = basis.ty + semi_b * theta.sin();
-                let (wx, wy) = transform.transform_point(lx, ly);
-                let (px, py) = rebase.plan(wx, wy);
-                push_finite_point(&mut out, px, py);
-            }
-            out
-        }
-        IfcType::IfcCircle => {
-            let radius = curve.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-            if radius <= 0.0 || !radius.is_finite() {
-                return Vec::new();
-            }
-            let basis = conic_basis(&curve, decoder, unit_scale);
-            let seg_count = if radius < 0.05 { 32 } else { 64 };
-            let mut out = Vec::with_capacity(seg_count * 2);
-            let two_pi = std::f32::consts::TAU;
-            for i in 0..seg_count {
-                let theta = (i as f32) * two_pi / (seg_count as f32);
-                let lx = basis.tx + radius * theta.cos();
-                let ly = basis.ty + radius * theta.sin();
+        IfcType::IfcCircle | IfcType::IfcEllipse => {
+            let Some(conic) = Conic::read(&curve, decoder, unit_scale) else { return Vec::new() };
+            let segments = if curve.ifc_type == IfcType::IfcCircle && conic.semi_a < 0.05 { 32 } else { 64 };
+            let mut out = Vec::with_capacity(segments * 2);
+            for i in 0..segments {
+                let theta = (i as f32) * std::f32::consts::TAU / (segments as f32);
+                let (lx, ly) = conic.point_at(theta);
                 let (wx, wy) = transform.transform_point(lx, ly);
                 let (px, py) = rebase.plan(wx, wy);
                 push_finite_point(&mut out, px, py);

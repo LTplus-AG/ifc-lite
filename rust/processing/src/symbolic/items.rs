@@ -12,9 +12,10 @@ use super::item_walk::{extract_symbolic_item_at, ItemWalk};
 use super::fill::extract_annotation_fill_area;
 use super::primitives::{SymbolicCircle, SymbolicPolyline};
 use super::text::extract_text_literal;
+use super::conic::Conic;
 use super::transform::{
-    compose_transforms, conic_basis, parse_axis2_placement_2d,
-    parse_cartesian_transformation_operator, push_finite_point, Transform2D,
+    compose_transforms, parse_axis2_placement_2d, parse_cartesian_transformation_operator,
+    push_finite_point, Transform2D,
 };
 use super::trimmed_curve::extract_trimmed_curve;
 
@@ -219,17 +220,13 @@ pub(super) fn extract_symbolic_item_inner(
             }
         }
         IfcType::IfcCircle => {
+            let Some(conic) = Conic::read(item, decoder, unit_scale) else { return };
             // × scale(): a scalar radius never passes through transform_point (#1985).
-            let r = item.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32;
-            let radius = r * unit_scale * transform.scale();
-            // A circle is rotation-invariant, so only the basis translation
-            // (the centre) and its elevation are read; an unresolved Position
-            // carries `tz = NaN` into `world_y` (#2256's convention).
-            let basis = conic_basis(item, decoder, unit_scale);
-            if !(radius.is_finite() && radius > 0.0 && basis.tx.is_finite() && basis.ty.is_finite()) {
+            let radius = conic.semi_a * transform.scale();
+            if !(radius.is_finite() && radius > 0.0) {
                 return;
             }
-            let (wx, wy) = transform.transform_point(basis.tx, basis.ty);
+            let (wx, wy) = transform.transform_point(conic.basis.tx, conic.basis.ty);
             let (px, py) = rebase.plan(wx, wy);
             out.push_circle(SymbolicCircle::full(
                 express_id,
@@ -237,24 +234,18 @@ pub(super) fn extract_symbolic_item_inner(
                 px,
                 py,
                 radius,
-                rebase.elevation(basis.tz + transform.tz),
+                rebase.elevation(conic.basis.tz + transform.tz),
                 rep_identifier.to_string(),
             ));
         }
         IfcType::IfcEllipse => {
             // NOT × scale() (unlike IfcCircle): sampled points go through transform_point.
-            let semi_a = item.get(1).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-            let semi_b = item.get(2).and_then(|a| a.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-            if semi_a <= 0.0 || semi_b <= 0.0 || !semi_a.is_finite() || !semi_b.is_finite() {
-                return;
-            }
-            let basis = conic_basis(item, decoder, unit_scale);
+            let Some(conic) = Conic::read(item, decoder, unit_scale) else { return };
             const SEGMENTS: usize = 64;
             let mut points: Vec<f32> = Vec::with_capacity((SEGMENTS + 1) * 2);
             for i in 0..=SEGMENTS {
                 let t = (i as f32) * std::f32::consts::TAU / (SEGMENTS as f32);
-                let lx = basis.tx + semi_a * t.cos();
-                let ly = basis.ty + semi_b * t.sin();
+                let (lx, ly) = conic.point_at(t);
                 let (wx, wy) = transform.transform_point(lx, ly);
                 let (x, y) = rebase.plan(wx, wy);
                 push_finite_point(&mut points, x, y);
@@ -265,7 +256,7 @@ pub(super) fn extract_symbolic_item_inner(
                     ifc_type: ifc_type.to_string(),
                     points,
                     closed: true,
-                    world_y: rebase.elevation(basis.tz + transform.tz),
+                    world_y: rebase.elevation(conic.basis.tz + transform.tz),
                     representation: rep_identifier.to_string(),
                 });
             }

@@ -55,9 +55,10 @@ END-ISO-10303-21;
 // `parse_axis2_placement_2d`, whose failure value is `unresolved()`
 // (`tz = NaN`), which `world_y` carries as `null`.
 //
-// MUTATION that fails every test in this block: make `conic_basis` return
-// `Transform2D::identity()` instead of `unresolved()` on its two failure arms
-// (the old `(0,0,0)` behaviour): `world_y` is then a finite 0.0.
+// MUTATIONS: making `conic_basis` return `Transform2D::identity()` instead of
+// `unresolved()` on its absent and dangling arms fails the three dangling
+// tests (`world_y` is then a finite 0.0). Restoring the untyped
+// `circle_center` walk also fails the wrong-type test.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -124,11 +125,15 @@ fn g5_fill_bounded_by_a_circle_with_dangling_position_has_unresolved_elevation()
     );
     let data = extract_symbolic_data(&ifc);
     assert_eq!(data.fills.len(), 1, "{:?}", data.fills);
-    assert!(data.fills[0].world_y.is_nan(), "got {}", data.fills[0].world_y);
+    assert!(
+        data.fills[0].world_y.is_nan(),
+        "got {}",
+        data.fills[0].world_y
+    );
 }
 
 /// BOUNDING CONTROL: a well-formed 3D placement still resolves to its
-/// authored centre and elevation, on both the item and the fill path.
+/// authored centre and elevation.
 #[test]
 fn g5_control_well_formed_position_keeps_its_centre_and_elevation() {
     let ifc = fixture(
@@ -139,6 +144,83 @@ fn g5_control_well_formed_position_keeps_its_centre_and_elevation() {
     let data = extract_symbolic_data(&ifc);
     assert_eq!(data.circles.len(), 1);
     let c = &data.circles[0];
-    assert!((c.center_x - 5.0).abs() < 1e-5 && (c.center_y + 3.0).abs() < 1e-5, "{c:?}");
+    assert!(
+        (c.center_x - 5.0).abs() < 1e-5 && (c.center_y + 3.0).abs() < 1e-5,
+        "{c:?}"
+    );
     assert!((c.world_y - 4.0).abs() < 1e-5, "{c:?}");
+}
+
+// ---------------------------------------------------------------------------
+// G1: an `IfcEllipse` is sampled in its OWN basis. `SemiAxis1` runs along
+// `Position.RefDirection`; the old item and fill copies both added
+// `(semi_a cos t, semi_b sin t)` to the centre unrotated, so a rotated ellipse
+// was drawn axis-aligned. The #843 parity fixture uses `RefDirection = $` and
+// asserts only a point count, so it could not see this.
+//
+// MUTATION that fails both defect tests: in `Conic::point_at`, add the local
+// offset to `basis.tx/ty` instead of passing it through
+// `basis.transform_point` (the old behaviour).
+// ---------------------------------------------------------------------------
+
+/// Centre (20, 10), RefDirection +Y, SemiAxis1 = 3, SemiAxis2 = 1.5.
+const ROTATED_ELLIPSE: &str = "#50=IFCCARTESIANPOINT((20.,10.));\n\
+     #51=IFCDIRECTION((0.,1.));\n\
+     #52=IFCAXIS2PLACEMENT2D(#50,#51);";
+
+/// Every emitted point (plan space, Y negated by the symbolic projection)
+/// must lie on the ellipse whose 3 m axis runs along world Y and whose
+/// 1.5 m axis runs along world X, and the first sample (t = 0) must be the
+/// end of SemiAxis1, (20, 13).
+fn assert_on_rotated_ellipse(points: &[f32], what: &str) {
+    assert!(points.len() >= 8, "{what}: degenerate ring {points:?}");
+    let (x0, y0) = (points[0], -points[1]);
+    assert!(
+        (x0 - 20.0).abs() < 1e-3 && (y0 - 13.0).abs() < 1e-3,
+        "{what}: t = 0 must be the end of SemiAxis1 along RefDirection, (20, 13); got ({x0}, {y0})"
+    );
+    for pair in points.chunks_exact(2) {
+        let (x, y) = (pair[0], -pair[1]);
+        let r = ((x - 20.0) / 1.5).powi(2) + ((y - 10.0) / 3.0).powi(2);
+        assert!(
+            (r - 1.0).abs() < 1e-3,
+            "{what}: ({x}, {y}) is off the rotated ellipse (normalised radius {r})"
+        );
+    }
+}
+
+#[test]
+fn g1_ellipse_item_follows_its_ref_direction() {
+    let ifc = fixture(&format!("{ROTATED_ELLIPSE}\n#60=IFCELLIPSE(#52,3.,1.5);"));
+    let data = extract_symbolic_data(&ifc);
+    assert_eq!(data.polylines.len(), 1, "{:?}", data.polylines);
+    assert_on_rotated_ellipse(&data.polylines[0].points, "ellipse item");
+}
+
+#[test]
+fn g1_fill_bounded_by_an_ellipse_follows_its_ref_direction() {
+    let ifc = fixture(&format!(
+        "{ROTATED_ELLIPSE}\n#59=IFCELLIPSE(#52,3.,1.5);\n#60=IFCANNOTATIONFILLAREA(#59,$);"
+    ));
+    let data = extract_symbolic_data(&ifc);
+    assert_eq!(data.fills.len(), 1, "{:?}", data.fills);
+    assert_on_rotated_ellipse(&data.fills[0].points, "fill boundary");
+}
+
+/// BOUNDING CONTROL: with `RefDirection = $` the ellipse stays axis-aligned
+/// (SemiAxis1 along world X), before and after the fix.
+#[test]
+fn g1_control_ellipse_without_ref_direction_is_axis_aligned() {
+    let ifc = fixture(
+        "#50=IFCCARTESIANPOINT((20.,10.));\n\
+         #52=IFCAXIS2PLACEMENT2D(#50,$);\n\
+         #60=IFCELLIPSE(#52,3.,1.5);",
+    );
+    let data = extract_symbolic_data(&ifc);
+    assert_eq!(data.polylines.len(), 1);
+    let p = &data.polylines[0].points;
+    assert!(
+        (p[0] - 23.0).abs() < 1e-3 && (p[1] + 10.0).abs() < 1e-3,
+        "{p:?}"
+    );
 }

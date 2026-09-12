@@ -68,6 +68,7 @@ use rebase::RenderFrameRebase;
 use ifc_lite_core::{build_entity_index, keyword_eq, EntityDecoder, EntityScanner, IfcType};
 
 mod color;
+mod conic;
 mod fill;
 mod fill_provenance;
 mod provenance;

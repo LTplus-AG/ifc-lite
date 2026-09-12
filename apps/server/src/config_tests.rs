@@ -52,6 +52,7 @@ fn defaults_apply_when_nothing_is_set() {
 /// honoured, `0` must resolve to "no bound" rather than to a zero-length one
 /// (which would cancel every stream immediately), and garbage must fall back
 /// to the default instead of disabling the bound silently.
+/// Regression for #4582.
 #[test]
 fn stream_idle_timeout_honours_zero_as_disabled_and_garbage_as_the_default() {
     assert_eq!(

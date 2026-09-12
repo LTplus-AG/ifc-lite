@@ -6,6 +6,7 @@
 
 pub mod axis;
 pub mod cache;
+mod cache_remove;
 pub mod data_model;
 pub mod parquet;
 pub mod parquet_data_model;

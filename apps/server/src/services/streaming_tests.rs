@@ -41,6 +41,7 @@ const IDLE: Duration = Duration::from_secs(30);
 /// never dropped, so the admission permit it carries is never released, and
 /// `max_concurrent_parses` such connections shut the server to everyone.
 /// The permit must come back on its own.
+/// Regression for #4582.
 #[tokio::test(start_paused = true)]
 async fn an_idle_consumer_loses_the_streams_admission_permit() {
     let admission = single_slot_admission();
@@ -70,6 +71,7 @@ async fn an_idle_consumer_loses_the_streams_admission_permit() {
 /// go minutes between batches, and the stream is then waiting on the PRODUCER,
 /// not on the client. Killing that parse would be a regression, so the
 /// watchdog must stay silent while the generator is not parked in a `yield`.
+/// Regression for #4582.
 #[tokio::test(start_paused = true)]
 async fn a_slow_parse_keeps_its_permit_because_it_is_not_the_client_stalling() {
     let admission = single_slot_admission();
@@ -85,6 +87,7 @@ async fn a_slow_parse_keeps_its_permit_because_it_is_not_the_client_stalling() {
 
 /// A client that keeps consuming keeps its permit, however long the stream
 /// runs: the bound is on IDLENESS, not on total duration.
+/// Regression for #4582.
 #[tokio::test(start_paused = true)]
 async fn a_client_that_keeps_reading_keeps_its_permit() {
     let admission = single_slot_admission();
@@ -108,6 +111,7 @@ async fn a_client_that_keeps_reading_keeps_its_permit() {
 /// generator drops its sender, the watchdog's `changed()` errors, and the
 /// task returns with the permit. Nothing lingers for `idle` per finished
 /// stream.
+/// Regression for #4582.
 #[tokio::test(start_paused = true)]
 async fn a_finished_stream_releases_its_share_without_waiting_out_the_window() {
     let admission = single_slot_admission();
@@ -139,6 +143,7 @@ END-ISO-10303-21;
 /// real stream, a real permit, one frame consumed and then nothing. Real
 /// time (not paused) because the producer runs on a blocking thread; the
 /// bound is 50ms and the poll loop allows 5s, so the margin is 100x.
+/// Regression for #4582.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_stalled_sse_body_releases_its_permit_end_to_end() {
     let admission = single_slot_admission();
@@ -192,6 +197,7 @@ async fn a_stalled_sse_body_releases_its_permit_end_to_end() {
 /// the freed permit admits a replacement stream while the old one's whole
 /// output stays resident, and a client that stalls one stream per window
 /// grows memory without bound with every permit reading as free.
+/// Regression for #4582.
 #[tokio::test(start_paused = true)]
 async fn a_stall_drops_the_undrained_output_not_only_the_permit() {
     let admission = single_slot_admission();

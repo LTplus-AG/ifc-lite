@@ -195,6 +195,7 @@ async fn auth_accepts_correct_token_when_token_configured() {
 /// first half demands. (Several handlers legitimately 404 WITH the token -
 /// a cache miss, metrics while disabled - so the second half asserts only
 /// that the layer let the request through.)
+/// Regression for #4582.
 #[tokio::test]
 async fn every_protected_route_is_behind_the_bearer_layer() {
     let mut state = test_state("auth-every-route").await;

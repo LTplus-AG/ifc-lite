@@ -41,6 +41,15 @@ pub struct Config {
     /// sustaining under roughly 600 kbit/s on a single frame, which is the
     /// point below which mesh streaming is not usable anyway. A stalled
     /// attacker therefore holds a slot for ten minutes rather than forever.
+    ///
+    /// The window also has to cover the per-frame server-side work that
+    /// happens AFTER the inner stream hands a batch off and BEFORE hyper
+    /// takes it: on `/parse/parquet-stream` that is the cache append, the
+    /// Parquet serialisation and the base64 encoding of one batch, which the
+    /// inner generator cannot see and which therefore reads as client time.
+    /// That is seconds per batch at most, against a ten-minute window; an
+    /// operator tuning this knob down towards that scale would start
+    /// cancelling streams for the server's own work.
     pub stream_idle_timeout_secs: u64,
     /// Number of worker threads for parallel processing.
     pub worker_threads: usize,

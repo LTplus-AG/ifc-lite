@@ -329,12 +329,16 @@ fn ifc4x3_with_conversion(map_conversion_line: &str) -> String {
 }
 
 fn extract_map_conversion(map_conversion_line: &str) -> Option<GeoReference> {
-    let content = ifc4x3_with_conversion(map_conversion_line);
-    let mut decoder = EntityDecoder::new(&content);
     // Both the plain and the Scaled spelling are classified as
     // `IfcMapConversion` by the processing-crate candidate scan; the decoder
     // reads the record's own attribute count either way.
-    let types = vec![(11u32, IfcType::IfcMapConversion), (10, IfcType::IfcProjectedCRS)];
+    extract_map_conversion_as(map_conversion_line, IfcType::IfcMapConversion)
+}
+
+fn extract_map_conversion_as(map_conversion_line: &str, conversion_type: IfcType) -> Option<GeoReference> {
+    let content = ifc4x3_with_conversion(map_conversion_line);
+    let mut decoder = EntityDecoder::new(&content);
+    let types = vec![(11u32, conversion_type), (10, IfcType::IfcProjectedCRS)];
     GeoRefExtractor::extract(&mut decoder, &types).expect("decode ok")
 }
 
@@ -392,14 +396,11 @@ fn scaled_map_conversion_applies_factors_before_rotation() {
 /// georeferencing", factors and all.
 #[test]
 fn scaled_map_conversion_typed_as_its_own_type_is_extracted() {
-    let content = ifc4x3_with_conversion(
+    let geo = extract_map_conversion_as(
         "#11=IFCMAPCONVERSIONSCALED(#2,#10,1000.,2000.,42.,1.,0.,$,0.3048,0.3048,0.3048);",
-    );
-    let mut decoder = EntityDecoder::new(&content);
-    let types = vec![(11u32, IfcType::from_str("IFCMAPCONVERSIONSCALED")), (10, IfcType::IfcProjectedCRS)];
-    let geo = GeoRefExtractor::extract(&mut decoder, &types)
-        .expect("decode ok")
-        .expect("a scaled conversion typed as itself is a georeference");
+        IfcType::from_str("IFCMAPCONVERSIONSCALED"),
+    )
+    .expect("a scaled conversion typed as itself is a georeference");
     assert_eq!(geo.source, GeoRefSource::MapConversion);
     let (e, _, _) = geo.local_to_map(10.0, 20.0, 5.0);
     assert!((e - 1003.048).abs() < 1e-9, "factors applied, e = {e}");

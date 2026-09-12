@@ -143,7 +143,10 @@ test('appearance face touch uses the exact surface hit without ordinary selectio
   const event = (kind: string, touches: Touch[]) => { const value = new window.Event(kind, { bubbles: true, cancelable: true });
     Object.defineProperty(value, 'touches', { value: touches }); return value; };
   await act(async () => { f.canvas.dispatchEvent(event('touchstart', [finger])); f.canvas.dispatchEvent(event('touchend', [])); });
-  assert.deepEqual(picked, [9]); assert.deepEqual(f.calls.selected, []); assert.equal(f.calls.ifc, 0);
+  assert.deepEqual(picked, [9]);
+  await handleSelectionClick(f.ctx, clickEvent());
+  assert.deepEqual(picked, [9], 'the compatibility click cannot toggle the face back off');
+  assert.deepEqual(f.calls.selected, []); assert.equal(f.calls.ifc, 0);
   release();
 });
 

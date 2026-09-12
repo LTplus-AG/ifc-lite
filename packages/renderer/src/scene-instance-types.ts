@@ -47,6 +47,8 @@ export interface InstancedOccurrence {
  *  occurrence's byteOffset+0, column-major). These are references into the decoded
  *  shard, so retaining them costs the (already compact) shard size, not N copies. */
 export interface InstancedTemplateCpu {
+  /** Federation owner copied from the GPU template's model-scoped slot. */
+  modelIndex: number;
   positions: Float32Array;
   normals: Float32Array;
   indices: Uint32Array;

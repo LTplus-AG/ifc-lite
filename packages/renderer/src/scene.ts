@@ -3162,6 +3162,7 @@ export class Scene {
       // Slot-assigned, not pushed: the CPU array is emptied on geometry release
       // while the GPU slots live on, so `push` would silently misalign the two.
       this.instancedTemplateCpu[templateIndex] = {
+        modelIndex,
         positions: t.positions,
         normals: t.normals,
         indices: t.indices,

@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MeshData } from '@ifc-lite/geometry';
 interface Occurrence { templateIndex: number; byteOffset: number; originalColor: [number, number, number, number]; itemId?: number }
-interface Template { positions: Float32Array; normals: Float32Array; indices: Uint32Array; instanceData: ArrayBuffer }
-/** CPU display expansion only: f32 instance transforms are not canonical IFC provenance. */
+interface Template { modelIndex: number; positions: Float32Array; normals: Float32Array; indices: Uint32Array; instanceData: ArrayBuffer }
+/** CPU display expansion: transformed f32 coordinates are approximate, while template topology remains canonical. */
 export function materializeInstances(expressId: number, occ: readonly Occurrence[], templates: readonly (Template | undefined)[]): MeshData[] | undefined {
     const out: MeshData[] = [];
     for (const o of occ) {
@@ -46,7 +46,12 @@ export function materializeInstances(expressId: number, occ: readonly Occurrence
       // #2985: the same drill-to-source id a flat mesh carries, so a consumer of
       // these pieces is not worse off for the geometry having been instanced.
       const item = o.itemId !== undefined ? { geometryItemId: o.itemId } : {};
-      out.push({ expressId, positions, normals, indices: tpl.indices, color, occurrenceKey, ...item });
+      // The transform changes coordinates, not template topology. Preserve the
+      // decoded template's exact index reference as the canonical source fence,
+      // and carry its model-scoped slot onto the materialized occurrence.
+      const indices = tpl.indices;
+      out.push({ expressId, modelIndex: tpl.modelIndex, positions, normals, indices, color, occurrenceKey, ...item,
+        appearanceSource: { kind: 'canonical-item', indices, sourceIndices: indices } });
     }
     return out.length > 0 ? out : undefined;
 }

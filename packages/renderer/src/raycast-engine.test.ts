@@ -26,7 +26,11 @@ import { RaycastEngine } from './raycast-engine.js';
 import { Camera } from './camera.js';
 import { Scene, type TexturedMesh } from './scene.js';
 import type { Mesh, BatchedMesh, PickOptions } from './types.js';
-import type { MeshData } from '@ifc-lite/geometry';
+import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
+
+(globalThis as Record<string, unknown>).GPUBufferUsage = {
+  COPY_DST: 1, INDEX: 2, VERTEX: 4,
+};
 
 // ─── fake canvas ────────────────────────────────────────────────────────────
 
@@ -36,6 +40,32 @@ function fakeCanvas(width = 800, height = 600): HTMLCanvasElement {
     height,
     getBoundingClientRect: () => ({ width, height }),
   } as unknown as HTMLCanvasElement;
+}
+
+function instancedDevice(): GPUDevice {
+  return {
+    limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
+    createBuffer: ({ size }: { size: number }) => {
+      const bytes = new ArrayBuffer(size);
+      return { getMappedRange: () => bytes, unmap() {}, destroy() {} };
+    },
+    queue: { writeBuffer() {} },
+  } as unknown as GPUDevice;
+}
+
+function instancedTriangle(entityId: number, itemId: number): DecodedInstancedShard {
+  return {
+    templates: [{
+      // Decoder output is IFC Z-up. Conversion on upload maps this XZ triangle
+      // to the viewer XY plane at z=0, directly under the camera ray.
+      positions: new Float32Array([-5, 0, -5, 5, 0, -5, 0, 0, 5]),
+      normals: new Float32Array([0, -1, 0, 0, -1, 0, 0, -1, 0]),
+      indices: new Uint32Array([0, 1, 2]), origin: [0, 0, 0],
+    }],
+    instances: [{ templateIndex: 0, entityId, itemId, color: [1, 1, 1, 1],
+      transform: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) }],
+    carriesItemIds: true,
+  };
 }
 
 // ─── fixture geometry ───────────────────────────────────────────────────────
@@ -332,6 +362,17 @@ describe('RaycastEngine.raycastScene', () => {
       min: [-2, -2, -12], max: [2, 2, -8], enabled: true,
     } })!.intersection;
     assert.equal(cropVisible.expressId, 8, 'the crop box also rejects the nearer hidden surface');
+  });
+
+  it('reports canonical identity from a materialized instance in its federation model (#4555)', () => {
+    const scene = new Scene();
+    scene.addInstancedShard(instancedDevice(), instancedTriangle(1_025, 1_011), 7);
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    const hit = engine.raycastScene(400, 300)?.intersection;
+    assert.ok(hit);
+    assert.deepEqual({ expressId: hit.expressId, modelIndex: hit.modelIndex,
+      geometryItemId: hit.geometryItemId, sourceTriangleIndex: hit.sourceTriangleIndex },
+    { expressId: 1_025, modelIndex: 7, geometryItemId: 1_011, sourceTriangleIndex: 0 });
   });
 
   it('off-origin, rotated, non-uniformly-scaled geometry is hit at the transformed location, not the local one', () => {

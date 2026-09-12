@@ -114,7 +114,7 @@ Registered raster references are available through `renderer.getReferenceImages(
 ### Exact surface tools and clipping
 
 `renderer.hasActiveClipping()` reports whether the last rendered frame applied
-section or box clipping. It reads the retained render snapshot, so
+section, terrain or box clipping. It reads the retained render snapshot, so
 mutating a previous options object does not change the answer.
 `raycastScene()` applies that same clip state while walking triangles, so a
 clipped front face cannot hide a visible face behind it.

@@ -298,6 +298,10 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           const y = touchState.tapStartPos.y - rect.top;
 
           if (tool === 'appearance-face') {
+            // Touchend owns this tap. Record it before routing the exact hit so
+            // the browser's compatibility click cannot toggle the same face a
+            // second time through handleSelectionClick (#4555).
+            markTouchSelection(canvas, x, y);
             const message = viewportFacePickError(pickViewportAppearanceFace(
               renderer.raycastScene(x, y, getPickOptions())?.intersection ?? null,
             ));

@@ -463,7 +463,7 @@ Visibility is passed via `render()` options (`hiddenIds`, `isolatedIds`); frustu
 
 Other exports: `Camera`, `Picker`, `Raycaster`, `SnapDetector`, `BVH`, `RaycastEngine`, `SectionPlaneRenderer`, `PointCloudRenderer`, `FederationRegistry` (multi-model id ranges), and the section-cap / plane-basis helpers.
 
-`Renderer.hasActiveClipping()` reports section or box clipping from the last rendered frame. `raycastScene()` applies the same clip state and its `Intersection` includes `modelIndex`, plus `geometryItemId` and `sourceTriangleIndex` when the hit has unambiguous representation-item and canonical evaluated-surface provenance. `appearanceSourceTriangle(mesh, triangleIndex)` performs that strict provenance lookup directly and returns `undefined` for absent, stale or mixed-corner identity.
+`Renderer.hasActiveClipping()` reports section, terrain or box clipping from the last rendered frame. `raycastScene()` applies the same clip state and its `Intersection` includes `modelIndex`, plus `geometryItemId` and `sourceTriangleIndex` when the hit has unambiguous representation-item and canonical evaluated-surface provenance. `appearanceSourceTriangle(mesh, triangleIndex)` performs that strict provenance lookup directly and returns `undefined` for absent, stale or mixed-corner identity.
 
 `Scene` and `Section2DOverlayRenderer` are package-internal from 2.0: reach the scene through `getScene(): SceneContents`, and the 3D line overlays through `Renderer.setLineOverlay`. `PickingManager` is package-internal from 2.0 as well: its constructor takes the now-internal `Scene`, so an exported class nobody could construct would have been worse than no export. Pick through `Renderer.pick` / `Renderer.pickRect`.
 

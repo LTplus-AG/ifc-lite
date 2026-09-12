@@ -7,8 +7,8 @@
  * viewer build, the real wasm planner in its worker, the real WebGPU renderer.
  *
  * Journey on AC20-FZK-Haus IfcMember #35169 (one of 42 members sharing a type):
- * opt into evaluated conversion, select part of the member's faces in the
- * Appearance panel, preview the textured + retained split, Discard, preview
+ * opt into evaluated conversion, verify exact main-viewport face hits, select
+ * a face, preview the textured + retained split, Compare, Discard, preview
  * again, Apply, Undo, Redo, click the member in the viewport, export IFC +
  * images, and reopen the IFCZIP in a fresh page where the member renders as
  * two flat parts and still picks as one product. Sibling #35304 is compared
@@ -25,11 +25,12 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import type { ViewerState } from '../../apps/viewer/src/store';
-import type { SceneOwnerSnapshot } from '../../apps/viewer/src/lib/viewport-debug-hooks';
+import type { SceneFaceHitSnapshot, SceneOwnerSnapshot } from '../../apps/viewer/src/lib/viewport-debug-hooks';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
   var __ifc_lite_scene_owner__: (globalId: number) => SceneOwnerSnapshot;
+  var __ifc_lite_scene_face_hits__: (globalId: number) => SceneFaceHitSnapshot[];
 }
 
 const FIXTURE = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
@@ -83,20 +84,25 @@ test.describe('appearance face masks on AC20-FZK-Haus (#4404)', () => {
     await expect(panel).toContainText('all 12 faces');
     journey.wholePreview = whole.flat;
 
-    // Face selection: marquee over the left half of the member's canvas, then
-    // fall back to a single face click if the marquee caught everything or nothing.
+    // Prove the main viewport exposes exact canonical hits, then select one face
+    // in the dedicated surface view. The paired box triangle remains the
+    // adjacent negative control through the native maskedTriangles plan.
     await panel.getByRole('button', { name: 'Select faces', exact: true }).click();
     const editor = panel.getByLabel(`Face selection for IFC object #${MEMBER}`);
     await editor.waitFor();
     await expect(editor, 'the face-selection canvas has its own renderer ready').toHaveAttribute('aria-busy', 'false', { timeout: 60_000 });
+    await page.evaluate(id => globalThis.__ifc_lite_viewer_store__.getState().setIsolatedEntities(new Set([id])), ids.member);
+    await frameSelection(page, ids.member, false);
+    const mainHits = await page.evaluate(id => globalThis.__ifc_lite_scene_face_hits__(id), ids.member);
+    expect(mainHits.length, 'the main viewport raycasts canonical face ordinals').toBeGreaterThan(0);
     await editor.getByRole('button', { name: 'Pick faces', exact: true }).click();
-    const canvas = editor.locator('canvas');
-    const box = (await canvas.boundingBox())!;
-    await page.mouse.move(box.x + 2, box.y + 2); await page.mouse.down();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height - 2, { steps: 4 }); await page.mouse.up();
+    const faceCanvas = editor.locator('canvas');
+    const faceBox = (await faceCanvas.boundingBox())!;
+    await page.mouse.move(faceBox.x + 2, faceBox.y + 2); await page.mouse.down();
+    await page.mouse.move(faceBox.x + faceBox.width / 2, faceBox.y + faceBox.height - 2, { steps: 4 }); await page.mouse.up();
     let chip = await selectedFaces(panel);
     if (chip === null || chip === 12) {
-      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.click(faceBox.x + faceBox.width / 2, faceBox.y + faceBox.height / 2);
       chip = await selectedFaces(panel);
     }
     expect(chip, 'a partial face selection').toBeGreaterThan(0);
@@ -109,8 +115,18 @@ test.describe('appearance face masks on AC20-FZK-Haus (#4404)', () => {
     expect(split.flat?.map(part => part.textured)).toEqual([true, false]);
     expect((split.flat?.[0].triangles ?? 0) + (split.flat?.[1].triangles ?? 0)).toBe(12);
     expect(split.flat?.[0].triangles).toBe(chip);
-    expect([...split.corners].sort(), 'the split preserves every placed corner of the member').toEqual([...memberBefore.corners].sort());
+    expect(split.flat?.[0].sourceTriangles.length, 'native maskedTriangles ordinals reach the textured split').toBe(chip);
+    const selectedOrdinal = split.flat!.find(part => part.textured)!.sourceTriangles[0];
+    const adjacent = selectedOrdinal % 2 === 0 ? selectedOrdinal + 1 : selectedOrdinal - 1;
+    expect(split.flat?.[1].sourceTriangles, 'the adjacent face remains on the retained split').toContain(adjacent);
+    expect(cornerSignature(split.corners), 'the split preserves every placed corner of the member').toEqual(cornerSignature(memberBefore.corners));
     expect((await owner(ids.sibling)).corners).toEqual(siblingBefore.corners);
+    await panel.getByRole('button', { name: 'Compare original', exact: true }).click();
+    const compared = await owner(ids.member);
+    expect(compared, 'Compare restores the exact loaded occurrence').toEqual({ ...memberBefore, screen: compared.screen });
+    await panel.getByRole('button', { name: 'Show preview', exact: true }).click();
+    await page.waitForFunction(id => globalThis.__ifc_lite_scene_owner__(id).flat?.length === 2, ids.member);
+    expect((await owner(ids.member)).flat, 'Show preview restores the same masked split').toEqual(split.flat);
     await frameSelection(page, ids.member, false);
     await page.screenshot({ path: join(OUT, 'preview-split.png') });
     await clearIsolation(page);
@@ -210,7 +226,7 @@ test.describe('appearance face masks on AC20-FZK-Haus (#4404)', () => {
     expect(reopened.flat?.length, 'the reopened member renders as its textured and retained face sets').toBe(2);
     expect(reopened.flat?.map(part => part.textured).sort()).toEqual([false, true]);
     expect(reopened.flat!.reduce((sum, part) => sum + part.triangles, 0)).toBe(12);
-    expect([...reopened.corners].sort()).toEqual([...memberBefore.corners].sort());
+    expect(cornerSignature(reopened.corners)).toEqual(cornerSignature(memberBefore.corners));
     const reopenedSibling = await second.evaluate(id => globalThis.__ifc_lite_scene_owner__(id), reopenedIds.sibling);
     expect(reopenedSibling.corners).toEqual(siblingBefore.corners);
     expect(reopenedSibling.flat?.map(part => part.geometryItemId) ?? 'instance').toEqual(siblingBefore.flat?.map(part => part.geometryItemId) ?? 'instance');
@@ -268,6 +284,7 @@ async function selectedFaces(panel: ReturnType<Page['getByLabel']>): Promise<num
   const match = text.match(/(\d+) of 12 faces selected/);
   return match ? Number(match[1]) : null;
 }
+const cornerSignature = (corners: readonly number[]) => corners.map(value => Math.round(value * 100_000) / 100_000).sort((a, b) => a - b);
 
 /** A 2-colour checkerboard PNG (RGB, 8 bit) built with zlib only: no fixture, no network. */
 function checkerPng(size: number): Buffer {

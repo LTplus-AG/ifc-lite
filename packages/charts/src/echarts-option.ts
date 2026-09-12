@@ -122,6 +122,8 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
         name: measureLabel(aggregation),
         radius: ['35%', '70%'],
         center: ['40%', '50%'],
+        // An empty dataset shows the host's message, not a grey placeholder ring.
+        showEmptyCircle: false,
         data: itemData(categories, flags),
         selectedMode: 'multiple',
         selectedOffset: 6,

@@ -109,7 +109,7 @@ function rustModuleOwner(crateDir, abs) {
     if (visited.has(key) || !existsSync(parent)) continue;
     visited.add(key);
     const text = readFileSync(parent, 'utf8');
-    const declarations = /((?:\s*#\[[^\]\r\n]+\]\s*)*)(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
+    const declarations = /((?:\s*#\[[\s\S]*?\]\s*)*)(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
     let match;
     while ((match = declarations.exec(text)) !== null) {
       const ordinaryBase = /(?:^|[\\/])(?:lib|mod)\.rs$/.test(parent)
@@ -122,7 +122,7 @@ function rustModuleOwner(crateDir, abs) {
         : [resolve(ordinaryBase, `${moduleName}.rs`), resolve(ordinaryBase, moduleName, 'mod.rs')].find(existsSync);
       if (!target) continue;
       const targetModules = [...modules, moduleName];
-      const conditional = [...attributes.matchAll(/#\[\s*cfg[^\]]*\]/g)]
+      const conditional = [...attributes.matchAll(/#\[\s*cfg[\s\S]*?\]/g)]
         .some((cfg) => cfg[0].replaceAll(/\s/g, '') !== '#[cfg(test)]');
       if (resolve(target) === resolve(abs)) matches.push({ moduleFilter: targetModules.join('::'), conditional });
       if (conditional) continue;

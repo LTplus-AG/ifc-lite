@@ -62,7 +62,7 @@ pub(crate) fn is_file_digest(hash: &str) -> bool {
 pub(crate) fn not_a_file_digest(value: &str) -> crate::error::ApiError {
     crate::error::ApiError::BadRequest(format!(
         "expected a file's sha256 content hash (64 lowercase hex characters); got {} character(s)",
-        value.len()
+        value.chars().count()
     ))
 }
 

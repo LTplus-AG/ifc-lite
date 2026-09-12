@@ -4,18 +4,19 @@
 
 /**
  * `confirmRelayHoldsState` (#4446): keeps asking the relay until its state
- * vector covers the owner's, gives up at the budget, stops the moment the
- * join is abandoned, and has nothing to confirm without a relay. The cover
- * check is the real `stateVectorCovers` over a real session's state vector;
- * only the socket read is scripted — a relay that catches up one owner write
- * per probe. (Each `set` of a fresh key is one Yjs struct, so a client's
- * clock after N such writes is N.)
+ * vector covers the owner's, backs off between probes, charges the
+ * unreachable budget only to failing probes, caps the whole wait, stops the
+ * moment the join is abandoned, and has nothing to confirm without a relay.
+ * The cover check is the real `stateVectorCovers` over a real session's state
+ * vector; only the socket read is scripted — a relay that catches up one
+ * owner write per probe. (Each `set` of a fresh key is one Yjs struct, so a
+ * client's clock after N such writes is N.)
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createCollabSession, stateVectorCovers, type CollabSession } from '@ifc-lite/collab';
-import { confirmRelayHoldsState } from './relay-confirm.js';
+import { confirmRelayHoldsState, type ConfirmRelayInput, type RelayProbe } from './relay-confirm.js';
 
 const user = { id: 'owner', name: 'Owner', color: '#000' };
 
@@ -42,26 +43,93 @@ function laggingRelay(clientId: number, from: number, upTo: number) {
   };
 }
 
+function inputFor(
+  owner: CollabSession,
+  collab: RelayProbe,
+  overrides: Partial<ConfirmRelayInput> = {},
+): ConfirmRelayInput {
+  return {
+    collab,
+    serverUrl: 'ws://relay',
+    roomId: 'r',
+    token: 't',
+    stateVector: owner.captureBaseline(),
+    isCurrent: () => true,
+    intervalMs: 1,
+    ...overrides,
+  };
+}
+
 describe('confirmRelayHoldsState (#4446)', () => {
   it('polls until the relay has caught up, then confirms', async () => {
     const owner = await ownerWith(2);
     try {
       const relay = laggingRelay(owner.clientId, 0, 2);
-      const ok = await confirmRelayHoldsState(relay.collab, 'ws://relay', 'r', 't', owner.captureBaseline(), () => true, { intervalMs: 1 });
-      assert.equal(ok, true);
+      assert.equal(await confirmRelayHoldsState(inputFor(owner, relay.collab)), true);
       assert.equal(relay.probes(), 3, 'two probes said "behind" (clock 0, then 1), the third covered');
     } finally {
       owner.dispose();
     }
   });
 
-  it('gives up at the budget when the relay never catches up', async () => {
+  it('a reachable relay that is still behind is waited for past the unreachable budget, up to the hard cap', async () => {
     const owner = await ownerWith(1);
     try {
       const relay = laggingRelay(owner.clientId, 0, 0);
-      const ok = await confirmRelayHoldsState(relay.collab, 'ws://relay', 'r', 't', owner.captureBaseline(), () => true, { timeoutMs: 40, intervalMs: 5 });
+      const t0 = Date.now();
+      const ok = await confirmRelayHoldsState(
+        inputFor(owner, relay.collab, { unreachableMs: 5, maxWaitMs: 60, intervalMs: 2, maxIntervalMs: 4 }),
+      );
       assert.equal(ok, false);
-      assert.ok(relay.probes() >= 2, 'it kept asking until the budget ran out');
+      assert.ok(Date.now() - t0 >= 55, 'the 5 ms unreachable budget did not apply to a relay that answered');
+      assert.ok(relay.probes() >= 5, 'it kept asking until the cap');
+    } finally {
+      owner.dispose();
+    }
+  });
+
+  it('gives up once the relay has been out of reach for the whole budget', async () => {
+    const owner = await ownerWith(1);
+    try {
+      let calls = 0;
+      const collab: RelayProbe = {
+        stateVectorCovers,
+        fetchRoomStateVector: async () => {
+          calls++;
+          throw new Error('ECONNREFUSED');
+        },
+      };
+      const t0 = Date.now();
+      const ok = await confirmRelayHoldsState(inputFor(owner, collab, { unreachableMs: 30, maxWaitMs: 5_000, intervalMs: 2, maxIntervalMs: 4 }));
+      assert.equal(ok, false);
+      assert.ok(Date.now() - t0 < 2_000, 'the unreachable budget, not the hard cap, ended the wait');
+      assert.ok(calls >= 3, 'it retried while the budget lasted');
+    } finally {
+      owner.dispose();
+    }
+  });
+
+  it('backs off between probes: 250 → 500 → 1000 ms, capped, first probe immediate', async () => {
+    const owner = await ownerWith(1);
+    try {
+      const at: number[] = [];
+      const relay = laggingRelay(owner.clientId, 0, 0);
+      const collab: RelayProbe = {
+        stateVectorCovers,
+        fetchRoomStateVector: async () => {
+          at.push(Date.now());
+          return relay.collab.fetchRoomStateVector();
+        },
+      };
+      const t0 = Date.now();
+      await confirmRelayHoldsState(inputFor(owner, collab, { intervalMs: 20, maxIntervalMs: 80, maxWaitMs: 300 }));
+      assert.ok(at[0] - t0 < 15, 'first probe fired immediately');
+      const gaps = at.slice(1).map((t, i) => t - at[i]);
+      // Timer resolution is coarse; check the ordering and the cap rather than exact values.
+      assert.ok(gaps.length >= 4, `expected several probes, got gaps ${gaps.join(',')}`);
+      assert.ok(gaps[0] >= 18 && gaps[0] < 60, `first gap ~20 ms, got ${gaps[0]}`);
+      assert.ok(gaps[1] >= 38 && gaps[1] < 100, `second gap ~40 ms, got ${gaps[1]}`);
+      assert.ok(gaps.slice(2).every((g) => g >= 78 && g < 200), `later gaps capped at ~80 ms, got ${gaps.slice(2).join(',')}`);
     } finally {
       owner.dispose();
     }
@@ -71,7 +139,7 @@ describe('confirmRelayHoldsState (#4446)', () => {
     const owner = await ownerWith(1);
     try {
       let calls = 0;
-      const collab = {
+      const collab: RelayProbe = {
         stateVectorCovers,
         fetchRoomStateVector: async () => {
           calls++;
@@ -79,7 +147,7 @@ describe('confirmRelayHoldsState (#4446)', () => {
           return new Map([[owner.clientId, 1]]);
         },
       };
-      assert.equal(await confirmRelayHoldsState(collab, 'ws://relay', 'r', 't', owner.captureBaseline(), () => true, { intervalMs: 1 }), true);
+      assert.equal(await confirmRelayHoldsState(inputFor(owner, collab)), true);
       assert.equal(calls, 2);
     } finally {
       owner.dispose();
@@ -91,7 +159,7 @@ describe('confirmRelayHoldsState (#4446)', () => {
     try {
       let current = true;
       let calls = 0;
-      const collab = {
+      const collab: RelayProbe = {
         stateVectorCovers,
         fetchRoomStateVector: async () => {
           calls++;
@@ -99,8 +167,7 @@ describe('confirmRelayHoldsState (#4446)', () => {
           return new Map<number, number>();
         },
       };
-      const ok = await confirmRelayHoldsState(collab, 'ws://relay', 'r', 't', owner.captureBaseline(), () => current, { intervalMs: 1 });
-      assert.equal(ok, false);
+      assert.equal(await confirmRelayHoldsState(inputFor(owner, collab, { isCurrent: () => current })), false);
       assert.equal(calls, 1);
     } finally {
       owner.dispose();
@@ -108,12 +175,15 @@ describe('confirmRelayHoldsState (#4446)', () => {
   });
 
   it('a local-only session (no relay) has nothing to confirm', async () => {
-    const collab = {
+    const collab: RelayProbe = {
       stateVectorCovers,
       fetchRoomStateVector: async () => {
         throw new Error('must not be called');
       },
     };
-    assert.equal(await confirmRelayHoldsState(collab, null, 'r', undefined, new Uint8Array([0]), () => true), true);
+    assert.equal(
+      await confirmRelayHoldsState({ collab, serverUrl: null, roomId: 'r', token: undefined, stateVector: new Uint8Array([0]), isCurrent: () => true }),
+      true,
+    );
   });
 });

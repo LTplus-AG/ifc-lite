@@ -320,6 +320,19 @@ describe('runOwnerSeed (#4446)', () => {
     }
   });
 
+  it('a partial seed the relay never confirmed keeps its own reason next to the delivery one', async () => {
+    const released: MeshData = { ...seedFixtureMeshes()[1], positions: new Float32Array(0), indices: new Uint32Array(0) };
+    const h = await harness([seedFixtureMeshes()[0], released]);
+    try {
+      const result = await h.run({ confirmRelay: async () => false });
+      assert.equal(result?.phase, 'failed');
+      assert.match(result?.failure ?? '', /has not confirmed receiving this model/);
+      assert.match(result?.failure ?? '', /1 of 2 elements could not be sent/, "the seed's own failure is not dropped");
+    } finally {
+      h.session.dispose();
+    }
+  });
+
   it('a join abandoned while confirming reports nothing', async () => {
     const h = await harness();
     try {

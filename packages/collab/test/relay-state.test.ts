@@ -44,8 +44,26 @@ describe('stateVectorCovers', () => {
 });
 
 describe('roomSocketUrl', () => {
-  it('dials the room path y-websocket uses, token as ?token=', () => {
+  it('is the URL the live y-websocket provider dials: raw room name, encoded token query', async () => {
     expect(roomSocketUrl('ws://127.0.0.1:1234/', 'abc', 'tok.en')).toBe('ws://127.0.0.1:1234/abc?token=tok.en');
     expect(roomSocketUrl('wss://relay.example', 'abc')).toBe('wss://relay.example/abc');
+    // A slash-bearing room id (`roomIdFor` / `federationRoomId` produce
+    // `project/model`) stays a path segment pair, not `%2F`.
+    const { WebsocketProvider } = await import('y-websocket');
+    for (const [server, room, token] of [
+      ['ws://relay.example/', 'project/model', 'a+b=c'],
+      ['ws://relay.example', 'deadbeef', undefined],
+    ] as const) {
+      const live = new WebsocketProvider(server, room, new Y.Doc(), {
+        connect: false,
+        disableBc: true,
+        params: token ? { token } : {},
+      });
+      try {
+        expect(roomSocketUrl(server, room, token)).toBe(live.url);
+      } finally {
+        live.destroy();
+      }
+    }
   });
 });

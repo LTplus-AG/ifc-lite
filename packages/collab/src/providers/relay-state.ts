@@ -44,11 +44,17 @@ type WebSocketCtor = new (url: string) => {
   close(): void;
 };
 
-/** The same URL y-websocket dials for `(serverUrl, roomId, token)`. */
+/**
+ * The same URL y-websocket dials for `(serverUrl, roomId, token)`: trailing
+ * slashes trimmed, the room name appended RAW (a `project/model` room id
+ * stays a path, exactly as the live provider sends it — encoding it would
+ * let a proxy that normalises `%2F` route the probe to a different room),
+ * only the token query encoded.
+ */
 export function roomSocketUrl(serverUrl: string, roomId: string, token?: string): string {
   const base = serverUrl.replace(/\/+$/, '');
   const query = token ? `?token=${encodeURIComponent(token)}` : '';
-  return `${base}/${encodeURIComponent(roomId)}${query}`;
+  return `${base}/${roomId}${query}`;
 }
 
 /**

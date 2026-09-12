@@ -350,7 +350,9 @@ export async function runOwnerSeed(deps: OwnerSeedDeps): Promise<OwnerSeedResult
     if (!confirmed) {
       // eslint-disable-next-line no-console
       console.error('[collab] the relay did not confirm the seed');
-      return { phase: 'failed', failure: RELAY_UNCONFIRMED_MESSAGE };
+      // A seed that was already incomplete keeps its own, more specific
+      // reason next to the delivery one: both are true for the owner.
+      return { phase: 'failed', failure: failure ? `${RELAY_UNCONFIRMED_MESSAGE} ${failure}` : RELAY_UNCONFIRMED_MESSAGE };
     }
     return { phase: seedPhaseFromOutcome(classifySeed(report)), failure };
   } catch (err) {

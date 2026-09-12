@@ -1,5 +1,24 @@
 # @ifc-lite/export
 
+## 4.3.0
+
+### Minor Changes
+
+- [#4565](https://github.com/LTplus-AG/ifc-lite/pull/4565) [`ec0fcfe`](https://github.com/LTplus-AG/ifc-lite/commit/ec0fcfe5cccec94b28fa1887822f0046b7522812) Thanks [@louistrue](https://github.com/louistrue)! - Export a clash run as a flat CSV table ([#3944](https://github.com/LTplus-AG/ifc-lite/issues/3944)). `@ifc-lite/clash` gains `clashTableRows` / `CLASH_TABLE_COLUMNS` / `bareIfcGuid`: one row per clash carrying both elements' bare IfcGUIDs (plus the adapter's durable keys), IFC types, names, models, storeys, the contact point, the signed distance and the coordinator's review status, so the table joins back to the model in Excel or Power BI. `@ifc-lite/export` gains `tableToCsv`, the one RFC 4180 writer for row-object tables (every cell through the shared formula-injection escaper; the zone-quantity CSV now uses it). The viewer's clash panel gets a **CSV** button next to the BCF export, and `ifc-lite clash` gets `--csv <out.csv>` (uncapped, unlike the `--json` display limit).
+
+- [#4551](https://github.com/LTplus-AG/ifc-lite/pull/4551) [`8d49593`](https://github.com/LTplus-AG/ifc-lite/commit/8d49593994df9a11b9d658397b70e9211496ce28) Thanks [@louistrue](https://github.com/louistrue)! - Room export without the slot, and a seed that survives the relay's write budget ([#4444](https://github.com/LTplus-AG/ifc-lite/issues/4444)).
+  
+  `Ifc5ExportOptions.stripPathPrefix` removes a namespace prefix from GlobalId-derived node paths (and every `children` reference that names them). A recipient of a shared room keys its reconstructed store by room path (`/<slotId>/<GlobalId>`); the viewer's Export dialog and "Export changes" now pass the slot of a `room:<roomId>:<slotId>` model (`roomExportPathPrefix`), so an exported `.ifcx` carries the model's own `/<GlobalId>` paths — two copies of one file export as two files whose entity nodes are identical and that differ only in their textures. The second copy's "(2)" name suffix now survives `stripExtension`, so the two downloads no longer share one filename. `stripNodePathPrefix` is exported alongside `IFC5_KNOWN_PROP_NAMES`.
+  
+  The owner's geometry seed resolves a slot's meshes in one transaction: the per-entity placement-baseline stamps used to be one Yjs update — one websocket frame — each, and two copies of AC20-FZK-Haus.ifc (~245 frames in a burst) tripped the collab-server's default per-connection write budget (200 + 60/s). The relay dropped the tail and Yjs held every later frame from the owner pending, so a guest got the second copy without geometry and without a notice. A two-copy seed is now 9 frames (pinned by `owner-seed.frames.test.ts` and the real-fixture test), the viewer's new `ifc-lite:collab:server-url` `localStorage` override lets a built viewer be pointed at a local relay, and `pnpm test:e2e:collab` runs the two-profile browser acceptance (`tests/e2e/collab-federation-scope.e2e.spec.ts`) against a disposable signed relay.
+
+### Patch Changes
+
+- [#4584](https://github.com/LTplus-AG/ifc-lite/pull/4584) [`315b5cc`](https://github.com/LTplus-AG/ifc-lite/commit/315b5cc5f2dc9b4add51c60bb891bfcf52f654da) Thanks [@louistrue](https://github.com/louistrue)! - Refuse malformed STEP slot lists consistently before positional CLI mutations, export decisions, or schema conversion can rewrite the wrong attribute. Binary literals are now handled by the CLI validator, export record consumers share one validated slot reader, and Rust schema conversion preserves UTF-8 while leaving refused records transactionally unchanged.
+- Updated dependencies [[`74aa364`](https://github.com/LTplus-AG/ifc-lite/commit/74aa364a14360f2af67a1902d7760b623d95c029)]:
+  - @ifc-lite/parser@6.1.1
+  - @ifc-lite/ifcx@4.1.1
+
 ## 4.2.0
 
 ### Minor Changes

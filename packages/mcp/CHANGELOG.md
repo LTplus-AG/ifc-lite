@@ -1,5 +1,17 @@
 # @ifc-lite/mcp
 
+## 0.14.2
+
+### Patch Changes
+
+- Updated dependencies [[`ec0fcfe`](https://github.com/LTplus-AG/ifc-lite/commit/ec0fcfe5cccec94b28fa1887822f0046b7522812), [`e18a434`](https://github.com/LTplus-AG/ifc-lite/commit/e18a434ec2258e474728bd9a90146486b38efedb), [`8d49593`](https://github.com/LTplus-AG/ifc-lite/commit/8d49593994df9a11b9d658397b70e9211496ce28), [`74aa364`](https://github.com/LTplus-AG/ifc-lite/commit/74aa364a14360f2af67a1902d7760b623d95c029), [`315b5cc`](https://github.com/LTplus-AG/ifc-lite/commit/315b5cc5f2dc9b4add51c60bb891bfcf52f654da), [`4ab63cd`](https://github.com/LTplus-AG/ifc-lite/commit/4ab63cd72e374dbdc98b6f59599fb9d2050f0f85)]:
+  - @ifc-lite/clash@2.2.0
+  - @ifc-lite/export@4.3.0
+  - @ifc-lite/collab@0.8.0
+  - @ifc-lite/parser@6.1.1
+  - @ifc-lite/ifcx@4.1.1
+  - @ifc-lite/ids@1.16.3
+
 ## 0.14.1
 
 ### Patch Changes

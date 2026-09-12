@@ -1,5 +1,23 @@
 # @ifc-lite/cli
 
+## 0.30.0
+
+### Minor Changes
+
+- [#4565](https://github.com/LTplus-AG/ifc-lite/pull/4565) [`ec0fcfe`](https://github.com/LTplus-AG/ifc-lite/commit/ec0fcfe5cccec94b28fa1887822f0046b7522812) Thanks [@louistrue](https://github.com/louistrue)! - Export a clash run as a flat CSV table ([#3944](https://github.com/LTplus-AG/ifc-lite/issues/3944)). `@ifc-lite/clash` gains `clashTableRows` / `CLASH_TABLE_COLUMNS` / `bareIfcGuid`: one row per clash carrying both elements' bare IfcGUIDs (plus the adapter's durable keys), IFC types, names, models, storeys, the contact point, the signed distance and the coordinator's review status, so the table joins back to the model in Excel or Power BI. `@ifc-lite/export` gains `tableToCsv`, the one RFC 4180 writer for row-object tables (every cell through the shared formula-injection escaper; the zone-quantity CSV now uses it). The viewer's clash panel gets a **CSV** button next to the BCF export, and `ifc-lite clash` gets `--csv <out.csv>` (uncapped, unlike the `--json` display limit).
+
+### Patch Changes
+
+- [#4584](https://github.com/LTplus-AG/ifc-lite/pull/4584) [`315b5cc`](https://github.com/LTplus-AG/ifc-lite/commit/315b5cc5f2dc9b4add51c60bb891bfcf52f654da) Thanks [@louistrue](https://github.com/louistrue)! - Refuse malformed STEP slot lists consistently before positional CLI mutations, export decisions, or schema conversion can rewrite the wrong attribute. Binary literals are now handled by the CLI validator, export record consumers share one validated slot reader, and Rust schema conversion preserves UTF-8 while leaving refused records transactionally unchanged.
+- Updated dependencies [[`0bd9521`](https://github.com/LTplus-AG/ifc-lite/commit/0bd9521554b616c101ab61425d6dc46beb3e904d), [`7562e5b`](https://github.com/LTplus-AG/ifc-lite/commit/7562e5b3f62ec57ca49cd412e35489bbf9e2ee6e), [`ec0fcfe`](https://github.com/LTplus-AG/ifc-lite/commit/ec0fcfe5cccec94b28fa1887822f0046b7522812), [`624bfa3`](https://github.com/LTplus-AG/ifc-lite/commit/624bfa3b7d1d636a6142af984613eb5bd79c09b4), [`8d49593`](https://github.com/LTplus-AG/ifc-lite/commit/8d49593994df9a11b9d658397b70e9211496ce28), [`74aa364`](https://github.com/LTplus-AG/ifc-lite/commit/74aa364a14360f2af67a1902d7760b623d95c029), [`4eef3be`](https://github.com/LTplus-AG/ifc-lite/commit/4eef3be61bcc6fea16fb1a4376a7d7340ab5dc69), [`94074df`](https://github.com/LTplus-AG/ifc-lite/commit/94074df5c7e53557e45dd838ce22990c19544df8), [`ad4672f`](https://github.com/LTplus-AG/ifc-lite/commit/ad4672fc9007f8ac86076f123a1e6020b04af7b6), [`6295f8b`](https://github.com/LTplus-AG/ifc-lite/commit/6295f8b58ee5f85be27470463e4f333f5aa11b35), [`315b5cc`](https://github.com/LTplus-AG/ifc-lite/commit/315b5cc5f2dc9b4add51c60bb891bfcf52f654da), [`0d8c5da`](https://github.com/LTplus-AG/ifc-lite/commit/0d8c5dac6175255d12ce758fe69c177af849dd03), [`6cc1b43`](https://github.com/LTplus-AG/ifc-lite/commit/6cc1b4362ed7ab2e909b81995bd7d4d99bc268d0), [`f7ea57f`](https://github.com/LTplus-AG/ifc-lite/commit/f7ea57f0555ca77695e28e41cfcfb0e9e7e3a2bb), [`a3aaaf0`](https://github.com/LTplus-AG/ifc-lite/commit/a3aaaf0832b0924237841075f37e76391ef200a2)]:
+  - @ifc-lite/wasm@7.1.0
+  - @ifc-lite/clash@2.2.0
+  - @ifc-lite/export@4.3.0
+  - @ifc-lite/parser@6.1.1
+  - @ifc-lite/mcp@0.14.2
+  - @ifc-lite/ifcx@4.1.1
+  - @ifc-lite/ids@1.16.3
+
 ## 0.29.1
 
 ### Patch Changes

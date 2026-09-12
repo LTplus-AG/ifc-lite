@@ -193,12 +193,11 @@ function isNegativeComponent(n: number): boolean {
 
 function compoundPlaneAngleToDecimalDegrees(value: unknown): number | undefined {
   if (!Array.isArray(value) || value.length < 3) return undefined;
-  const numbers = value
-    .map((entry) => getNumber(entry))
-    .filter((entry): entry is number => entry !== undefined);
-  if (numbers.length < 3) return undefined;
-
-  const [degreesRaw, minutesRaw, secondsRaw, millionthsRaw = 0] = numbers;
+  // Read BY POSITION and refuse the whole angle on a non-numeric component, as
+  // the Rust twin does: dropping non-numbers first read ($,51,30,0) as 51°30'.
+  const parts = [...value.slice(0, 3), value.length > 3 ? value[3] : 0].map((entry) => getNumber(entry));
+  if (!parts.every((part): part is number => part !== undefined)) return undefined;
+  const [degreesRaw, minutesRaw, secondsRaw, millionthsRaw] = parts;
   const sign =
     isNegativeComponent(degreesRaw) ||
     isNegativeComponent(minutesRaw) ||

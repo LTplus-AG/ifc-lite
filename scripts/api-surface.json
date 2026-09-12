@@ -7753,6 +7753,7 @@
     "selectEvictions: function",
     "simplifyIndicesByClustering: function",
     "sumResidentGpuBytes: function",
+    "validateAppearancePartition: function",
     "viewBasis: function"
   ],
   "@ifc-lite/sandbox": [

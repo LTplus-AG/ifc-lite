@@ -145,6 +145,15 @@ remesh. The planar member reopens 1:1.
 - `apps/viewer/src/lib/appearance/preview-mask.test.ts`, `preview-history.test.ts`,
   `packages/renderer/src/appearance-partition.test.ts`: the split binder, the
   partition's Undo/Redo inversion and the renderer's exact partition contract.
+  The #4556 cases force a six-index streaming threshold over a four-triangle
+  surface, select triangles on both fragments, preserve the complete canonical
+  corner map and the retained fragments' prior UV/texture references, and
+  exercise repeated source/generated item ids, empty halves, Apply, Discard,
+  Undo, Redo, overlap, reorder, stale-provenance and work-budget refusal. The
+  portable result is still the native two-face-set plan exercised by
+  `face-mask-reopen-wasm.test.ts` and the independent-reader runs above;
+  streaming fragmentation is a viewer residency detail and does not enter the
+  exported IFC.
 
 ## Not verified here
 

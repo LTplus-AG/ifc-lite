@@ -15,6 +15,9 @@ export interface DashboardValidationError {
   message: string;
 }
 
+/** The dashboard layout's column count: every `DashboardLayoutItem` lives in a 12-column grid. */
+export const DASHBOARD_GRID_COLUMNS = 12;
+
 const SOURCES: ReadonlySet<string> = new Set<ChartSource>(['elements', 'clash', 'bcf', 'schedule', 'ids', 'compare']);
 const TYPES: ReadonlySet<string> = new Set<ChartType>(['bar', 'stackedBar', 'pie', 'treemap', 'histogram', 'timeline']);
 const SCOPES: ReadonlySet<string> = new Set(['all', 'visible', 'basket', 'list']);
@@ -95,6 +98,16 @@ export function validateDashboardSpec(spec: unknown): DashboardValidationError[]
         str(errors, item, 'chartId', path);
         if (typeof item.chartId === 'string' && !ids.has(item.chartId)) errors.push({ path: `${path}.chartId`, message: `no chart with id "${item.chartId}"` });
         for (const key of ['x', 'y', 'w', 'h']) num(errors, item, key, path);
+        // Grid cells: non-negative integers, at least one cell wide/high, inside the column count.
+        for (const key of ['x', 'y', 'w', 'h'] as const) {
+          const v = item[key];
+          if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+          if (!Number.isInteger(v) || v < 0) errors.push({ path: `${path}.${key}`, message: 'expected a non-negative integer' });
+          else if ((key === 'w' || key === 'h') && v < 1) errors.push({ path: `${path}.${key}`, message: 'expected at least 1' });
+        }
+        if (typeof item.x === 'number' && typeof item.w === 'number' && item.x + item.w > DASHBOARD_GRID_COLUMNS) {
+          errors.push({ path: `${path}.x`, message: `x + w exceeds the ${DASHBOARD_GRID_COLUMNS}-column grid` });
+        }
       });
     }
   }

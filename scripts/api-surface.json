@@ -186,6 +186,7 @@
     "ChartSpec: interface",
     "ChartTheme: interface",
     "ChartType: type",
+    "DASHBOARD_GRID_COLUMNS: const",
     "DEFAULT_THEME: const",
     "DashboardLayoutItem: interface",
     "DashboardSpec: interface",

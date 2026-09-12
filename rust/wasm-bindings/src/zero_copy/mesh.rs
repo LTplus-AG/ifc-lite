@@ -696,21 +696,6 @@ impl MeshCollection {
     pub fn set_building_rotation(&mut self, rotation: Option<f64>) {
         self.building_rotation = rotation;
     }
-
-    /// Apply RTC offset to all meshes (shift coordinates)
-    /// This is used when meshes are collected first and then shifted
-    pub fn apply_rtc_offset(&mut self, x: f64, y: f64, z: f64) {
-        self.rtc_offset_x = x;
-        self.rtc_offset_y = y;
-        self.rtc_offset_z = z;
-        for mesh in &mut self.meshes {
-            for chunk in mesh.positions.chunks_exact_mut(3) {
-                chunk[0] = (chunk[0] as f64 - x) as f32;
-                chunk[1] = (chunk[1] as f64 - y) as f32;
-                chunk[2] = (chunk[2] as f64 - z) as f32;
-            }
-        }
-    }
 }
 
 impl Clone for MeshCollection {

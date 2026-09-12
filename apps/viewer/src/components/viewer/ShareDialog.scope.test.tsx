@@ -36,7 +36,15 @@ function makeModel(id: string, name: string, idOffset: number, opts: { store?: b
     ifcDataStore:
       opts.store === false
         ? null
-        : ({ schemaVersion: 'IFC4', __tag: id } as unknown as FederatedModel['ifcDataStore']),
+        : ({
+            schemaVersion: 'IFC4',
+            __tag: id,
+            // `prepareShareSeed` now preserves complete STEP sources only
+            // when the real store reports authored annotations. Keep this
+            // component fixture structurally valid at that production seam;
+            // an absent index made room creation throw before `startCollab`.
+            entityIndex: { byType: new Map() },
+          } as unknown as FederatedModel['ifcDataStore']),
     geometryResult: null,
     visible: true,
     collapsed: false,

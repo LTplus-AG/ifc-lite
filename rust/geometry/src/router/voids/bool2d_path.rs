@@ -13,23 +13,23 @@
 //! HYBRID eligibility subtracts parallel through-cuts in 2D. Perpendicular,
 //! partial-depth, and non-extruded openings remain residual 3D cuts on the
 //! re-extruded host, so one ineligible opening does not forfeit the cheap ones.
-//! CORRECTNESS is paramount — every gate defers to the exact kernel on the
-//! faintest doubt, and the emitted mesh is reconciled by bounds + volume against
-//! the real host mesh and self-checked watertight:
+//! Pure 2D cuts union overlapping footprints. Until #4617, mixed cuts retain
+//! their established parity fill before the residual phase because feeding the
+//! unioned replacement into that phase catastrophically tears a shipped slab.
+//! Safety gates validate the 2D PREFIX before residual routing:
 //!   1. Host body = ONE `IfcExtrudedAreaSolid` swept along local ±Z (arbitrary
 //!      profile OK; mapped items unwrapped; a clipped / multi-item body defers).
 //!   2. Each eligible footprint lands STRICTLY INTERIOR to the host profile
-//!      (gated at capture), so the 2D difference turns it into a clean hole —
-//!      adjacent footprints legitimately MERGE (still the exact cut). A footprint
-//!      that touches / breaches the boundary is routed to the residual instead.
+//!      (gated at capture). A footprint touching or breaching the boundary is
+//!      routed to the residual instead.
 //!   3. The difference must yield ONE connected shape (a void that splits the
 //!      profile is rejected — the largest-shape keep would drop geometry) with at
 //!      least one hole formed.
 //!   4. The no-hole re-extrude reconciles with the host mesh (bounds + volume),
-//!      and the holed re-extrude (watertight CDT caps) self-checks watertight.
+//!      and the holed re-extrude self-checks watertight. The later residual result
+//!      is not certified by this gate; #4610 pins its established census reading.
 //!
-//! When ANY of these fail the host falls through to the exact kernel with its
-//! FULL opening set unchanged, so correctness can never regress.
+//! A prefix-gate failure falls through with the full opening set unchanged.
 //!
 //! Gate: `IFC_LITE_VOID_2D=0` forces every host back through the exact kernel
 //! (A/B measurement / bisection). Default ON. wasm has no env, so the default

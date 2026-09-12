@@ -1413,15 +1413,14 @@ fn watertightness_census_and_triangulator_invariance() {
     );
 }
 
-/// Regression for #4610: the correctly merged 2D footprints on this mixed
-/// eligible/residual slab leave a watertight intermediate, but cutting the
-/// residuals into it tears the final mesh badly. The composed-path final check
-/// must reject that candidate and preserve the better full-context route. The
-/// same contract holds when the optional prism route is disabled; the expected
-/// tessellation then differs, so this test is run in a separate process with
-/// `IFC_LITE_PRISM_CUT=0` as part of #4610's validation.
+/// Regression for #4610: applying correct footprint-union semantics to this
+/// mixed slab changed the residual cutter's input and tore it from 25 to 875
+/// open edges. Until #4617 repairs that composition, the mixed-only parity route
+/// must preserve the established topology under both triangulators. The same
+/// contract holds with the optional prism route disabled; that mode has its own
+/// expected tessellation and runs in a separate process during validation.
 #[test]
-fn issue_129_mixed_bool2d_residual_keeps_the_less_torn_result() {
+fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _reset = AltTriangulatorReset;
     let rel = "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc".to_string();

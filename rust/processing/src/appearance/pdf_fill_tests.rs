@@ -51,7 +51,6 @@ fn fixture() -> (String, PdfFillAnnotationRequest) {
                 pdf_format_version: Some("2.0".into()),
                 page_number: 1,
                 view_box: [0., 0., 8., 8.],
-                conversion_clip_pdf: None,
                 user_unit: 1.,
                 intrinsic_rotation: 0,
                 model_metres_from_pdf: [1., 0., 0., 1., 0., 0.],
@@ -73,20 +72,20 @@ fn fixture() -> (String, PdfFillAnnotationRequest) {
 #[test]
 fn issue_4406_conversion_clip_refuses_crossing_stroke_and_reopens_contained_geometry() {
     let (source, mut request) = fixture();
-    request.page.conversion_clip_pdf = Some([2., 2., 6., 6.]);
     request.page.operations = vec![
         PdfVectorOperation { ordinal: 0, operation: PdfVectorOperator::LineWidth { width: 1. } },
         PdfVectorOperation { ordinal: 1, operation: PdfVectorOperator::Path {
             paint: PdfVectorPaint::Stroke, commands: vec![0., 0., 4., 1., 8., 4.],
         }},
     ];
-    let error = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap_err();
+    let clip = Some([2., 2., 6., 6.]);
+    let error = plan_pdf_fill_annotation_with_clip(source.as_bytes(), &request, clip).unwrap_err();
     assert!(error.contains("conversion boundary crosses painted path"), "{error}");
 
     request.page.operations[1].operation = PdfVectorOperator::Path {
         paint: PdfVectorPaint::Stroke, commands: vec![0., 3., 4., 1., 5., 4.],
     };
-    let plan = plan_pdf_fill_annotation(source.as_bytes(), &request).unwrap();
+    let plan = plan_pdf_fill_annotation_with_clip(source.as_bytes(), &request, clip).unwrap();
     let exported = apply(&source, &plan.plan);
     assert_eq!(reopened_property_value(&exported, "SourceCropBox").as_deref(), Some("[0.0,0.0,8.0,8.0]"));
     assert_eq!(reopened_property_value(&exported, "ConversionClipPdf").as_deref(), Some("[2.0,2.0,6.0,6.0]"));

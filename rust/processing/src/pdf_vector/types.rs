@@ -16,10 +16,6 @@ pub struct PdfVectorPage {
     pub page_number: u32,
     /// Unrotated native PDF user-space CropBox.
     pub view_box: [f64; 4],
-    /// Optional user crop in the same native PDF space. The source CropBox
-    /// remains immutable provenance; only wholly contained paint is selected.
-    #[serde(default)]
-    pub conversion_clip_pdf: Option<[f64; 4]>,
     pub user_unit: f64,
     pub intrinsic_rotation: u16,
     /// Host calibration maps native PDF coordinates to the annotation plane in

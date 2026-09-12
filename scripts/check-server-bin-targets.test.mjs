@@ -319,7 +319,7 @@ const UNIX_COPY_LINE = '          cp target/${{ matrix.rust-target }}/server-rel
 const ASSERT_STEP_NAME = '- name: Assert the built binary unwinds';
 const SELFTEST_FLAG = '--panic-strategy-selftest';
 const WINDOWS_SELFTEST_CONDITION = " || matrix.target == 'win32-x64'";
-const WINDOWS_BINARY_SUFFIX = 'bin="${bin}.exe"';
+const WINDOWS_BINARY_SUFFIX = 'bin="$' + '{bin}.exe"';
 const RELEASE_SELFTEST_BODY = `        if: matrix.target == 'linux-x64' || matrix.target == 'darwin-arm64' || matrix.target == 'linux-x64-musl' || matrix.target == 'win32-x64'
         shell: bash
         run: |
@@ -415,7 +415,7 @@ test('profile: skipping the native Windows release self-test is red', () => {
 
 test('profile: running the extensionless path for the Windows self-test is red', () => {
   const result = runChecker({
-    workflow: (s) => mutate(s, WINDOWS_BINARY_SUFFIX, 'bin="${bin}"'),
+    workflow: (s) => mutate(s, WINDOWS_BINARY_SUFFIX, WINDOWS_BINARY_SUFFIX.replace('.exe', '')),
   });
   assertRed(result, /does not select the \.exe path on Windows/);
 });

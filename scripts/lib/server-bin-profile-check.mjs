@@ -50,7 +50,7 @@ const SELFTEST_FLAG = '--panic-strategy-selftest';
 // gate pins it rather than modelling shell quoting around the invocation.
 const SELFTEST_VERDICT = 'test "$verdict" = "panic-strategy: unwind"';
 const PROFILE_BINARY = `${REQUIRED_PROFILE}/ifc-lite-server`;
-const WINDOWS_BINARY_SUFFIX = 'bin="${bin}.exe"';
+const WINDOWS_BINARY_SUFFIX = 'bin="$' + '{bin}.exe"';
 /** The release job's archive steps, each of which must copy the built binary. */
 const ARCHIVE_STEPS = ['Prepare Binary (Unix)', 'Prepare Binary (Windows)'];
 /** Release legs whose output can execute natively on the matrix runner. */

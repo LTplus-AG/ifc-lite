@@ -7,9 +7,9 @@
 //! The browser pre-passes (`buildPrePassOnce` / `buildPrePassStreaming` in
 //! `wasm-bindings`) each need the same bundle of load-time metadata before
 //! workers can start meshing: the length/plane-angle unit scales, the RTC
-//! (relative-to-centre) offset plus its needs-shift flag, and the building
-//! rotation from `IfcSite`. This module is the single home for that
-//! resolution logic so the three call sites can no longer drift.
+//! (relative-to-centre) frame, and the building rotation from `IfcSite`.
+//! This module is the single home for that resolution logic so the three
+//! call sites can no longer drift.
 //!
 //! Only the RESOLUTION logic lives here — the wasm side keeps ownership of
 //! WHEN the resulting [`StreamMeta`] is emitted. In particular the streaming
@@ -25,9 +25,12 @@
 //! [`EntityDecoder::seed_unit_scales`],
 //! [`GeometryRouter::with_scale`],
 //! [`GeometryRouter::detect_rtc_offset_from_jobs`],
-//! [`GeometryRouter::detect_rtc_offset_with_fallback`], and the shared
-//! [`coord_is_large`](ifc_lite_core::limits::coord_is_large) predicate.
+//! [`GeometryRouter::detect_rtc_offset_with_fallback`], the shared
+//! [`coord_is_large`](ifc_lite_core::limits::coord_is_large) predicate inside
+//! the ladder, and [`MeshFrame::select`] for the frame the ladder's answer
+//! turns into.
 
+use crate::mesh_frame::MeshFrame;
 use ifc_lite_core::limits::coord_is_large;
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
@@ -60,13 +63,27 @@ pub struct StreamMeta {
     pub length_unit_scale: f64,
     /// IFC plane-angle unit → radians.
     pub plane_angle_to_radians: f64,
-    /// World-space RTC offset to subtract before the f32 cast.
-    pub rtc_offset: (f64, f64, f64),
-    /// True when [`Self::rtc_offset`] exceeds the large-coordinate threshold
-    /// and the model must be re-based.
-    pub needs_shift: bool,
+    /// The frame the workers mesh into. Carries the offset and the
+    /// needs-shift decision as one value (see [`MeshFrame`]); the wire fields
+    /// `rtcOffset` and `needsShift` are read off it.
+    pub frame: MeshFrame,
     /// Z-rotation of the `IfcSite` placement, if any.
     pub building_rotation: Option<f64>,
+}
+
+impl StreamMeta {
+    /// World-space RTC offset to subtract before the f32 cast; zero when
+    /// nothing is subtracted.
+    #[inline]
+    pub fn rtc_offset(&self) -> (f64, f64, f64) {
+        self.frame.rtc_offset()
+    }
+
+    /// True when the model must be re-based.
+    #[inline]
+    pub fn needs_shift(&self) -> bool {
+        self.frame.needs_shift()
+    }
 }
 
 /// Resolve the full [`StreamMeta`] bundle for one pre-pass emission point.
@@ -91,7 +108,7 @@ pub fn resolve_stream_meta(
     // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     let router = GeometryRouter::with_scale(length_unit_scale);
 
-    let rtc_offset = match mode {
+    let detected = match mode {
         MetaMode::StreamingPartial => resolve_partial_rtc(
             &router,
             content,
@@ -101,12 +118,14 @@ pub fn resolve_stream_meta(
             length_unit_scale,
         ),
         MetaMode::SmallFileSingle => {
-            router
-                .detect_rtc_offset_with_fallback(jobs, decoder, content)
-                .unwrap_or((0.0, 0.0, 0.0))
+            router.detect_rtc_offset_with_fallback(jobs, decoder, content)
         }
     };
-    let needs_shift = coord_is_large(rtc_offset);
+    // No site tier here: the browser meshes in world axes and reports the
+    // site rotation separately as `building_rotation`. The native pipeline
+    // passes the site translation to the same selector, and that one argument
+    // is the whole difference between the two frames.
+    let frame = MeshFrame::select(None, detected);
 
     let building_rotation =
         site_position.and_then(|pos| resolve_building_rotation(pos, &router, decoder));
@@ -114,8 +133,7 @@ pub fn resolve_stream_meta(
     StreamMeta {
         length_unit_scale,
         plane_angle_to_radians: unit_scales.plane_angle_to_radians,
-        rtc_offset,
-        needs_shift,
+        frame,
         building_rotation,
     }
 }
@@ -131,6 +149,10 @@ pub fn resolve_stream_meta(
 ///    placement translation, fall back to the raw placement-bounds scan
 ///    (unit-scaled to metres).
 ///
+/// `None` only when every stage came back without a coordinate to judge;
+/// `Some((0,0,0))` is a detection that resolved samples and concluded "no
+/// shift", which the later stages must not override.
+///
 /// Mirrors the server needs-shift decision so a browser and the native
 /// pipeline re-base a given model identically.
 fn resolve_partial_rtc(
@@ -140,36 +162,30 @@ fn resolve_partial_rtc(
     jobs: &[Job],
     decoder: &mut EntityDecoder,
     length_unit_scale: f64,
-) -> (f64, f64, f64) {
-    let detected_rtc = router.detect_rtc_offset_from_jobs(jobs, decoder);
-    let mut rtc_offset = detected_rtc.unwrap_or((0.0, 0.0, 0.0));
-    // True once ANY detection (partial OR the full re-detect below) resolved
-    // usable placement samples — even if it concluded "no shift" (0,0,0). The
-    // placement-bounds fallback must NOT override a successful "no shift".
-    let mut detection_succeeded = detected_rtc.is_some();
+) -> Option<(f64, f64, f64)> {
+    let mut rtc_offset = router.detect_rtc_offset_from_jobs(jobs, decoder);
+    let found_large = rtc_offset.is_some_and(coord_is_large);
 
-    if !coord_is_large(rtc_offset) && (site_position.is_none() || !detection_succeeded) {
+    if !found_large && (site_position.is_none() || rtc_offset.is_none()) {
         let full_index = crate::build_entity_index_parallel(content);
         let mut full_decoder = EntityDecoder::with_index(content, full_index);
         if let Some(full_rtc) = router.detect_rtc_offset_from_jobs(jobs, &mut full_decoder) {
-            // The full index resolved the placement chain — a successful
-            // detection whether it shifts (large) or not.
-            detection_succeeded = true;
-            if coord_is_large(full_rtc) {
-                rtc_offset = full_rtc;
+            // The full index resolved the placement chain: a successful
+            // detection whether it shifts (large) or not. It replaces a
+            // partial-pass "no data", and a partial-pass "no shift" only when
+            // the full pass found the shift the partial index could not see.
+            if coord_is_large(full_rtc) || rtc_offset.is_none() {
+                rtc_offset = Some(full_rtc);
             }
         }
     }
 
-    if !detection_succeeded && !coord_is_large(rtc_offset) {
+    rtc_offset.or_else(|| {
         // scan_placement_bounds reads raw IfcCartesianPoint values (FILE
-        // units); the scale converts them to metres BEFORE the 10 km gate
-        // decides, so the result is in the detection path's unit.
-        rtc_offset = ifc_lite_core::scan_placement_bounds(content)
+        // units); rtc_offset applies the unit scale before the 10 km gate.
+        ifc_lite_core::scan_placement_bounds(content)
             .rtc_offset(length_unit_scale)
-            .unwrap_or((0.0, 0.0, 0.0));
-    }
-    rtc_offset
+    })
 }
 
 /// Building rotation = Z-rotation of the `IfcSite` scaled placement, composing

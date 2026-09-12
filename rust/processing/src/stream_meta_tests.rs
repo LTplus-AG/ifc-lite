@@ -5,7 +5,7 @@
 //! Host tests for [`super`] (the streaming pre-pass meta resolver). Split into
 //! its own `*_tests.rs` file so the production module stays small; every case
 //! drives the PUBLIC surface (`resolve_stream_meta` / `MetaMode` / `StreamMeta`
-//! / `coord_is_large`) with crafted inputs — no wasm needed.
+//! / `MeshFrame`) with crafted inputs — no wasm needed.
 
 use super::*;
 use ifc_lite_core::EntityDecoder;
@@ -84,11 +84,11 @@ fn small_file_single_resolves_scale_and_offset() {
     );
 
     assert_eq!(meta.length_unit_scale, 1.0, "metric project → scale 1");
-    assert!(meta.needs_shift, "800 km offset must trigger a shift");
+    assert!(meta.needs_shift(), "800 km offset must trigger a shift");
     assert!(
-        coord_is_large(meta.rtc_offset),
+        coord_is_large(meta.rtc_offset()),
         "resolved RTC must exceed the large-coordinate threshold, got {:?}",
-        meta.rtc_offset
+        meta.rtc_offset()
     );
 }
 
@@ -116,11 +116,11 @@ fn streaming_partial_full_index_fallback_recovers_offset() {
     );
 
     assert!(
-        meta.needs_shift,
+        meta.needs_shift(),
         "3-stage fallback must recover the large offset from the full index, got {:?}",
-        meta.rtc_offset
+        meta.rtc_offset()
     );
-    assert!(coord_is_large(meta.rtc_offset));
+    assert!(coord_is_large(meta.rtc_offset()));
 }
 
 /// StreamingPartial suppression: when the FIRST-pass detect SUCCEEDS on the
@@ -184,9 +184,9 @@ fn streaming_partial_first_pass_success_suppresses_fallback() {
         &mut decoder,
     );
 
-    assert!(!meta.needs_shift, "partial-pass success suppresses the shift");
+    assert!(!meta.needs_shift(), "partial-pass success suppresses the shift");
     assert_eq!(
-        meta.rtc_offset,
+        meta.rtc_offset(),
         (0.0, 0.0, 0.0),
         "offset comes from the partial pass, not the placement-bounds fallback"
     );
@@ -245,9 +245,65 @@ fn streaming_partial_stage3_placement_bounds_fallback() {
         .expect("the fixture has placement points");
     assert_eq!(raw, (80_000_000.0, 90_000_000.0, 0.0), "raw mm bounds");
     let expected = (raw.0 * scale, raw.1 * scale, raw.2 * scale);
-    assert_eq!(meta.rtc_offset, expected, "stage 3 unit-scales raw bounds");
-    assert_ne!(meta.rtc_offset, raw, "scaling changed the value");
-    assert!(meta.needs_shift);
+    assert_eq!(meta.rtc_offset(), expected, "stage 3 unit-scales raw bounds");
+    assert_ne!(meta.rtc_offset(), raw, "scaling changed the value");
+    assert!(meta.needs_shift());
+}
+
+// A metric model whose only geometry job (#40) has NO representation, so both
+// detect passes abstain and the placement-bounds scan decides. The two
+// placement points put one bbox corner past 10 km (15 km) while the bbox
+// centre (8.5 km) stays inside it, so the fallback answers with a non-zero
+// anchor that is not itself "large". The site placement is identity.
+const IFC_SUB_THRESHOLD_ANCHOR: &str = "\
+ISO-10303-21;
+HEADER;
+ENDSEC;
+DATA;
+#1=IFCPROJECT('p',$,'P',$,$,$,$,$,#8);
+#8=IFCUNITASSIGNMENT((#9));
+#9=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#40=IFCWALL('wall',$,$,$,$,#41,$,$,$);
+#41=IFCLOCALPLACEMENT($,#42);
+#42=IFCAXIS2PLACEMENT3D(#43,$,$);
+#43=IFCCARTESIANPOINT((15000.,0.,0.));
+#44=IFCAXIS2PLACEMENT3D(#45,$,$);
+#45=IFCCARTESIANPOINT((2000.,0.,0.));
+ENDSEC;
+END-ISO-10303-21;
+";
+
+/// #4611: the browser resolver and the native pipeline choose the same frame
+/// for the same model. Before the shared `MeshFrame::select`, this fixture
+/// came out `model_rtc` with an 8.5 km anchor on native and `needsShift =
+/// false` beside a non-zero `rtcOffset` in the browser, because the browser
+/// re-gated the detector's anchor on the 10 km test and native did not.
+/// Re-gating `resolve_stream_meta`'s frame on `coord_is_large` fails the
+/// `needs_shift` assertion.
+#[test]
+fn browser_and_native_pick_the_same_frame_for_a_sub_threshold_anchor() {
+    let content = IFC_SUB_THRESHOLD_ANCHOR.as_bytes();
+    let anchor = (8500.0, 0.0, 0.0);
+    assert_eq!(
+        ifc_lite_core::scan_placement_bounds(content).rtc_offset(),
+        Some(anchor),
+        "premise: the bounds fallback answers with the in-threshold bbox centre"
+    );
+    assert!(!coord_is_large(anchor), "premise: the anchor is inside 10 km");
+
+    let native = crate::process_geometry(IFC_SUB_THRESHOLD_ANCHOR);
+    assert_eq!(native.mesh_coordinate_space, crate::MeshCoordinateSpace::ModelRtc);
+    assert_eq!(native.metadata.coordinate_info.origin_shift, [8500.0, 0.0, 0.0]);
+
+    for mode in [MetaMode::SmallFileSingle, MetaMode::StreamingPartial] {
+        let full_index = ifc_lite_core::build_entity_index(content);
+        let mut decoder = EntityDecoder::with_index(content, full_index);
+        let jobs = vec![wall_job(content)];
+        let meta = resolve_stream_meta(mode, content, Some(1), None, &jobs, &mut decoder);
+        assert_eq!(meta.frame, MeshFrame::ModelRtc { anchor }, "{mode:?}");
+        assert!(meta.needs_shift(), "{mode:?}: the anchor native subtracts must be shifted here too");
+        assert_eq!(meta.frame.coordinate_space(), native.mesh_coordinate_space, "{mode:?}");
+    }
 }
 
 /// The unscaled-fallback hazard in the MILLIMETRE direction (JUDGMENT

@@ -25,7 +25,7 @@
 use ifc_lite_export::{build_export_model_with_options, ExportModel, ModelOptions};
 use ifc_lite_processing::{
     build_geometry_data_export, process_geometry_filtered_with_quality, GeometryDataExport,
-    OpeningFilterMode, TessellationQuality,
+    MeshCoordinateSpace, OpeningFilterMode, TessellationQuality,
 };
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -72,7 +72,7 @@ fn run_export(
             let rtc = result.metadata.coordinate_info.origin_shift;
             // Reapply the IfcSite rotation only in the site-local axis frame;
             // model_rtc / raw_ifc keep true IFC world axes (R = identity).
-            let site_rotation = if result.mesh_coordinate_space.as_deref() == Some("site_local") {
+            let site_rotation = if result.mesh_coordinate_space == MeshCoordinateSpace::SiteLocal {
                 result.site_transform.as_deref()
             } else {
                 None

@@ -87,6 +87,25 @@ export function bindMaskedConversionParts(options: {
     throw new Error(`The geometry of IFC object #${conversion.productId} changed. Reload it before applying appearance.`);
   }
   if (item.sourceIndices.length !== split.masked.length * 3) throw new Error('Invalid native occurrence conversion provenance.');
+  // The authored masked face set retains the selected canonical corner order,
+  // while its decoded source lane densely renumbers vertices by first use.
+  // Reconstruct that exact lane from each selected full-surface ordinal.
+  const localVertices = new Map<number, number>();
+  let nextVertex = 0;
+  for (let rank = 0; rank < split.masked.length; rank++) {
+    const canonical = split.masked[rank] * 3;
+    for (let corner = 0; corner < 3; corner++) {
+      const sourceVertex = conversion.sourceIndices[canonical + corner];
+      let localVertex = localVertices.get(sourceVertex);
+      if (localVertex === undefined) {
+        localVertex = nextVertex++;
+        localVertices.set(sourceVertex, localVertex);
+      }
+      if (item.sourceIndices[rank * 3 + corner] !== localVertex) {
+        throw new Error('Invalid native occurrence conversion provenance.');
+      }
+    }
+  }
   const maskedRank = new Uint32Array(conversion.sourceIndices.length / 3);
   split.masked.forEach((ordinal, rank) => { maskedRank[ordinal] = rank + 1; });
   const parts: MeshData[] = [];

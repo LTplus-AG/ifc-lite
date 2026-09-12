@@ -25,22 +25,6 @@ import {
     type PointCloudSnapCamera,
 } from './raycast-point-cloud-query.js';
 export type { PointCloudRaySource, PointCloudRayProvider } from './raycast-point-cloud-query.js';
-/**
- * Cheap order-sensitive 32-bit signature of a mesh set, used to detect when the
- * raycast BVH must rebuild because the SET changed (not just its size). Mixes
- * each mesh's express id + vertex count via a rolling hash — O(n) integer ops,
- * no allocation. Different sets of the same length differ with high probability.
- */
-function computeMeshSetSignature(meshData: readonly MeshData[]): number {
-    let sig = meshData.length | 0;
-    for (let i = 0; i < meshData.length; i++) {
-        const m = meshData[i];
-        sig = (Math.imul(sig, 31) + (m.expressId | 0)) | 0;
-        sig = (Math.imul(sig, 31) + (m.positions.length | 0)) | 0;
-    }
-    return sig;
-}
-
 /** Raycast-only capability; does not widen Renderer.getScene()'s public surface. */
 type RaycastScene = SceneContents & {
     getTexturedMeshes?(): readonly Pick<MeshData, 'expressId' | 'modelIndex'>[];
@@ -58,11 +42,8 @@ export class RaycastEngine {
     // BVH cache
     private bvhCache: {
         meshCount: number;
-        /** Cheap content signature of the built mesh set (#1238): catches a
-         *  same-COUNT but different-MEMBERS set — e.g. two rays materializing
-         *  different instanced pieces — which a count-only check would miss,
-         *  leaving the BVH stale and raycasts wrong. */
-        signature: number;
+        /** Exact ordered objects used to build the BVH. Geometry pieces with
+         *  equal ids and buffer lengths can still occupy different bounds. */
         meshData: MeshData[];
         isBuilt: boolean;
     } | null = null;
@@ -189,23 +170,20 @@ export class RaycastEngine {
             return allMeshData;
         }
 
-        // Check if BVH needs rebuilding. Compare a content signature, not just the
-        // count: instanced pieces are materialized per-ray (only AABB-hit
-        // occurrences), so two rays can yield the SAME count over DIFFERENT
-        // geometry — a count-only check would reuse a stale BVH. (#1238 review)
-        const signature = computeMeshSetSignature(allMeshData);
+        // Instanced pieces are materialized per-ray and resident fragments can
+        // be replaced or reordered while keeping the same ids and buffer sizes.
+        // Reuse is safe only for the exact ordered objects the BVH indexed.
         const needsRebuild =
             !this.bvhCache ||
             !this.bvhCache.isBuilt ||
             this.bvhCache.meshCount !== allMeshData.length ||
-            this.bvhCache.signature !== signature;
+            this.bvhCache.meshData.some((mesh, index) => mesh !== allMeshData[index]);
 
         if (needsRebuild) {
             // Build BVH only when needed
             this.bvh.build(allMeshData);
             this.bvhCache = {
                 meshCount: allMeshData.length,
-                signature,
                 meshData: allMeshData,
                 isBuilt: true,
             };

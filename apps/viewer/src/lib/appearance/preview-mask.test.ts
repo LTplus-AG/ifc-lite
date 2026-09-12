@@ -119,12 +119,18 @@ test('a mask crossing forced-size fragments keeps repeated item ids and source a
   };
   const base = plan({});
   const crossed: AppearancePlan = { ...base,
-    items: [{ ...base.items[0], sourceIndices: [0, 1, 2, 1, 4, 2], targetIndices: [0, 1, 2, 3, 4, 5], targetVertexCount: 6,
+    items: [{ ...base.items[0], sourceIndices: [0, 1, 2, 1, 3, 2], targetIndices: [0, 1, 2, 3, 4, 5], targetVertexCount: 6,
       previewCornerUvs: [0, 0, 1, 0, 1, 1, .25, .25, .75, .25, .5, .75],
       targetCornerNormals: Array(18).fill(0).map((_, i) => i % 3 === 1 ? 1 : 0) }],
     conversions: [{ ...base.conversions![0], sourceIndices: full, sourcePositions: Array.from(positions),
       sourceNormals: Array.from(normals), maskedTriangles: [0, 2], retainedGeometryItemId: 102 }] };
   const fragments = [fragment(false), fragment(true)];
+  const permuted = { ...crossed, items: [{ ...crossed.items[0], sourceIndices: [1, 3, 2, 0, 1, 2] }] };
+  assert.throws(() => bind(permuted, fragments), /Invalid native occurrence conversion provenance/,
+    'equal-length masked topology cannot reorder the canonical selected triangles');
+  const altered = { ...crossed, items: [{ ...crossed.items[0], sourceIndices: [0, 1, 2, 1, 2, 3] }] };
+  assert.throws(() => bind(altered, fragments), /Invalid native occurrence conversion provenance/,
+    'equal-length masked topology cannot alter a canonical selected triangle');
   const [group] = bind(crossed, fragments);
   assert.deepEqual(group.parts.map(part => part.geometryItemId), [101, 102, 101, 102]);
   assert.deepEqual(group.partition?.before, [

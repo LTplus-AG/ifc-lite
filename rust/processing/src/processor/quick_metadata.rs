@@ -167,38 +167,37 @@ pub(super) fn build_quick_spatial_tree_node(
     nodes: &HashMap<u32, QuickSpatialNodeEntry>,
     element_summaries: &HashMap<u32, QuickMetadataEntitySummary>,
 ) -> Result<QuickMetadataSpatialNode, String> {
-    let mut ancestors = HashSet::new();
-    build_quick_spatial_tree_node_inner(express_id, nodes, element_summaries, &mut ancestors)
+    let mut placed = HashSet::with_capacity(nodes.len());
+    placed.insert(express_id);
+    build_quick_spatial_tree_node_inner(express_id, nodes, element_summaries, &mut placed)
 }
 
-/// A malformed IfcRelAggregates graph can make a spatial node its own
-/// descendant; the recursion would then overflow the stack, an uncatchable
-/// abort. `ancestors` holds the current root-to-node path, so a child already on
-/// it is a back-edge: skip just that child and keep building the rest of the tree.
+/// Each spatial node is emitted once, where the depth-first walk from the root
+/// first reaches it. A malformed IfcRelAggregates graph can list a child twice,
+/// under two parents, or as its own ancestor; `placed` spans the whole tree (a
+/// root-to-node path set stops only the last, and k repeats per level then emit
+/// k^depth nodes), so all three are skipped.
 fn build_quick_spatial_tree_node_inner(
     express_id: u32,
     nodes: &HashMap<u32, QuickSpatialNodeEntry>,
     element_summaries: &HashMap<u32, QuickMetadataEntitySummary>,
-    ancestors: &mut HashSet<u32>,
+    placed: &mut HashSet<u32>,
 ) -> Result<QuickMetadataSpatialNode, String> {
     let node = nodes
         .get(&express_id)
         .ok_or_else(|| format!("Quick spatial node #{express_id} not found"))?;
-    ancestors.insert(express_id);
     let mut children = Vec::with_capacity(node.children.len());
     for child_id in &node.children {
-        if ancestors.contains(child_id) {
-            // Cyclic aggregate edge: skip this back-edge child, keep the rest.
+        if !placed.insert(*child_id) {
             continue;
         }
         children.push(build_quick_spatial_tree_node_inner(
             *child_id,
             nodes,
             element_summaries,
-            ancestors,
+            placed,
         )?);
     }
-    ancestors.remove(&express_id);
     let elements = node
         .elements
         .iter()
@@ -225,7 +224,7 @@ fn build_quick_spatial_tree_node_inner(
             name: node.name.clone(),
             global_id: None,
             kind: "spatial".to_string(),
-            has_children: !node.children.is_empty() || !node.elements.is_empty(),
+            has_children: !children.is_empty() || !node.elements.is_empty(),
             element_count: Some(node.elements.len()),
             elevation: node.elevation,
         },
@@ -250,9 +249,6 @@ mod tests {
         }
     }
 
-    // A malformed IfcRelAggregates graph making two nodes each other's child would
-    // recurse forever (stack-overflow abort). The back-edge child is skipped and
-    // the rest of the tree still builds.
     /// #2323 double-collapse guard. This module un-doubles `''` on its OWN
     /// raw-byte path (it never builds a `Token`, so `AttributeValue::from_token`
     /// never runs over the same bytes). Exactly ONE un-doubling pass must
@@ -269,6 +265,9 @@ mod tests {
         assert_eq!(parse_step_string(b"'Plain Name'").as_deref(), Some("Plain Name"));
     }
 
+    // A malformed IfcRelAggregates graph making two nodes each other's child would
+    // recurse forever (stack-overflow abort). The back-edge child is skipped and
+    // the rest of the tree still builds.
     #[test]
     fn cyclic_aggregate_graph_does_not_stack_overflow() {
         let mut nodes = HashMap::new();
@@ -277,6 +276,10 @@ mod tests {
         let summaries = HashMap::new();
         let tree = build_quick_spatial_tree_node(1, &nodes, &summaries);
         assert!(tree.is_ok(), "cyclic tree should build (cycle pruned), got {tree:?}");
+        // #2 lists only the pruned back-edge, so it must not advertise children
+        // it does not carry.
+        let two = &tree.unwrap().children[0];
+        assert!(two.children.is_empty() && !two.summary.has_children);
     }
 
     /// `IfcBuildingStorey`'s `Elevation` attribute sits at index 9 in the IFC4

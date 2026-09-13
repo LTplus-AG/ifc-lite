@@ -5,10 +5,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 
-/** Exact Cargo integration target or filtered library-module invocation. */
-export function cargoRunner(crate, features = [], target = null, moduleFilter = null) {
+/** Exact Cargo integration target, or a filtered module of the library or of `bin` (#4700). */
+export function cargoRunner(crate, features = [], target = null, moduleFilter = null, bin = null) {
   if (!crate) return null;
-  const selection = target ? ['--test', target] : moduleFilter ? ['--lib'] : [];
+  const selection = target ? ['--test', target] : moduleFilter ? (bin ? ['--bin', bin] : ['--lib']) : [];
   const featureArgs = features.length ? ['--features', features.join(',')] : [];
   const filterArgs = moduleFilter ? ['--', `${moduleFilter}::`] : [];
   return { family: 'cargo', bin: 'cargo', args: ['test', '--no-fail-fast', '-p', crate, ...selection, ...featureArgs, ...filterArgs] };

@@ -14,7 +14,7 @@ export const REVERT_ORACLE_ADAPTERS = Object.freeze([
   {
     id: 'cargo', family: 'cargo', binary: 'cargo',
     claim: (context) => context.kind === 'cargo' && Boolean(context.target || context.moduleFilter),
-    runner: (context) => cargoRunner(context.crate, context.features, context.target, context.moduleFilter),
+    runner: (context) => cargoRunner(context.crate, context.features, context.target, context.moduleFilter, context.bin),
     probeRunner: () => cargoRunner('revert-oracle-selfcheck', [], 'probe'),
   },
   {

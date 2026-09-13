@@ -25,6 +25,7 @@ pub mod csv_cell;
 mod dfjson;
 mod error;
 mod frame;
+mod generated;
 mod geom;
 mod gltf;
 mod hbjson;

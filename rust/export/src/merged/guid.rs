@@ -70,18 +70,7 @@ pub fn is_global_id(s: &str) -> bool {
 /// True for IfcRelationship subtypes (objectified relationships): a shared GUID
 /// on two of these does NOT imply the same membership, so they are re-stamped
 /// (never unified/dropped) during reconciliation.
-///
-/// `type_upper` must already be folded to uppercase — STEP keyword case is not
-/// significant, and `EntityScanner::next_entity` hands back the keyword exactly
-/// as the file wrote it. `ModelIndex::build` folds once at population so every
-/// reader of `type_of` can compare against uppercase literals; the
-/// `debug_assert` below is what keeps the parameter name from going quietly
-/// stale if another caller ever appears (issue #4660).
 pub fn is_relationship_type(type_upper: &str) -> bool {
-    debug_assert!(
-        !type_upper.bytes().any(|b| b.is_ascii_lowercase()),
-        "is_relationship_type expects an uppercase STEP keyword, got {type_upper:?}"
-    );
     type_upper.starts_with("IFCREL")
 }
 

@@ -1645,15 +1645,18 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // (~5 s on a 1 GB IFC) — the dominant TTFG bottleneck before this
       // change. Now the only cost is FxHashMap construction from the
       // input slices (~1 s for 14 M entries).
-      await ensureInit();
-      // Cache then apply via the replay helper so a later recovery re-init
-      // (api = null in processBatch) re-installs the index instead of falling
-      // back to the lazy O(file) re-scan (#1097).
-      cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
-      entityIndexApplied = false;
-      applyEntityIndexToApi();
-      // Re-install any already-cached columns: setEntityIndex just cleared them.
+      const ifcApi = await ensureInit();
+      // Install first and cache only an accepted index, so a later recovery
+      // re-init (api = null in processBatch) replays it instead of falling back
+      // to the lazy O(file) re-scan (#1097). `setEntityIndex` throws for columns
+      // of unequal length (#4614); a cached rejected index would throw again in
+      // that replay, before the pre-pass columns and source bytes are restored.
+      // Accepted or not, the call clears the columns on the IfcAPI.
+      cachedEntityIndex = null;
       prepassColumnsApplied = false;
+      ifcApi.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
+      cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
+      entityIndexApplied = true;
       applyPrepassColumnsToApi();
       return;
     }

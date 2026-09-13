@@ -97,36 +97,9 @@ impl GeometryRouter {
         let mut single_instance_meta: Option<InstanceMeta> = None;
         let mut instanceable_item_count: usize = 0;
 
-        // First pass: check if we have any direct geometry representations
-        // This prevents duplication when both direct and MappedRepresentation exist
-        let has_direct_geometry = representations.iter().any(|rep| {
-            rep.ifc_type == IfcType::IfcShapeRepresentation
-                && super::effective_element_rep_type(element, rep)
-                    .map(super::is_direct_body_representation)
-                    .unwrap_or(false)
-        });
-
-        for shape_rep in representations {
-            if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
-                continue;
-            }
-
-            // Check the effective representation type (RepresentationType, falling
-            // back to RepresentationIdentifier when the type is blank - #1661).
-            // Skip 'Axis', 'Curve2D', 'FootPrint', etc. - only process 'Body', 'SweptSolid', 'Brep', etc.
-            if let Some(rep_type) = super::effective_element_rep_type(element, &shape_rep) {
-                // Skip MappedRepresentation if we already have direct geometry
-                // This prevents duplication when an element has both direct and mapped representations
-                if rep_type == "MappedRepresentation" && has_direct_geometry {
-                    continue;
-                }
-
-                // Only process solid/surface geometry representations
-                if !super::is_body_representation(rep_type) && !super::annotation::accepts(element, rep_type) {
-                    continue; // Skip non-solid representations like 'Axis', 'Curve2D', etc.
-                }
-            }
-
+        // Body representations only ('Axis', 'FootPrint', 'Box' are skipped), and
+        // a MappedRepresentation is skipped when direct geometry duplicates it.
+        for shape_rep in super::meshed_representations(element, &representations) {
             // Get items list (attribute 3)
             let items_attr = shape_rep.get(3).ok_or_else(|| {
                 Error::geometry("IfcShapeRepresentation missing Items".to_string())
@@ -245,31 +218,7 @@ impl GeometryRouter {
 
         let mut sub_meshes = SubMeshCollection::new();
 
-        // Check if we have direct geometry
-        let has_direct_geometry = representations.iter().any(|rep| {
-            rep.ifc_type == IfcType::IfcShapeRepresentation
-                && super::effective_element_rep_type(element, rep)
-                    .map(super::is_direct_body_representation)
-                    .unwrap_or(false)
-        });
-
-        for shape_rep in representations {
-            if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
-                continue;
-            }
-
-            if let Some(rep_type) = super::effective_element_rep_type(element, &shape_rep) {
-                // Skip MappedRepresentation if we have direct geometry
-                if rep_type == "MappedRepresentation" && has_direct_geometry {
-                    continue;
-                }
-
-                // Only process solid/surface geometry representations
-                if !super::is_body_representation(rep_type) && !super::annotation::accepts(element, rep_type) {
-                    continue;
-                }
-            }
-
+        for shape_rep in super::meshed_representations(element, &representations) {
             // Get items list (attribute 3)
             let items_attr = shape_rep.get(3).ok_or_else(|| {
                 Error::geometry("IfcShapeRepresentation missing Items".to_string())

@@ -57,6 +57,7 @@
  *   8. plato clash-math freshness (plato-check job)          -- INFO only, see below
  *   9. committed wasm .d.ts vs Rust source (build job)        -- INFO only, see below
  *   10. generate-coverage-ledger.mjs --check (node-tests, alongside gate 4; #4207)
+ *   11. generate-legacy-rooted-types.mjs --check (node-tests; #4203)
  *
  * Steps deliberately NOT treated as a generated-artifact gate here, and why:
  *   - `pnpm fixtures:check` (build job) compares downloaded test-fixture
@@ -159,8 +160,6 @@
  *   pnpm check:generated --build  # + `pnpm build` first, so api-surface is certain
  *   pnpm check:generated --full   # + actually run plato/wasm gates (needs their toolchains)
  *
- * Exit code: non-zero if any gate FAILS. INFO/SKIP notices never fail the run.
- *
  * @unwired-by-design a pre-push aggregator of gates CI already runs.
  * Every gate in the list above is a CI step in its own right (that is how
  * the list is derived), so this exists to move those failures earlier, not
@@ -175,6 +174,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BUILD_FIRST = process.argv.includes('--build');
 const FULL = process.argv.includes('--full');
+const ONLY_GATE = process.env.IFC_LITE_GENERATED_GATE;
 
 const results = [];
 
@@ -249,6 +249,7 @@ function record(name, status, detail, fix) {
 }
 
 function runGate(name, cmd, args, fix, opts = {}) {
+  if (ONLY_GATE && name !== ONLY_GATE) return;
   hr();
   console.log(`Running ${name}: ${[cmd, ...args].join(' ')}`);
   try {
@@ -501,13 +502,12 @@ if (FULL) {
   );
 }
 
-// 10. Coverage ledger (docs/architecture/coverage-ledger.md, #4207) — no build needed.
-// The generator names its own failure: "❌ ... is stale" wants a regenerate;
-// a thrown "missing source file" / "extractor found ZERO entries" wants the
-// named source or extractor fixed FIRST — regenerating cannot repair those.
+// 10. Coverage ledger (#4207): stale output regenerates; missing/zero source data must be fixed.
 runGate('check:coverage-ledger', 'node', ['scripts/generate-coverage-ledger.mjs', '--check'],
   'if the output says "is stale": node scripts/generate-coverage-ledger.mjs   (then commit docs/architecture/coverage-ledger.md); ' +
     'if it names a missing source file or an extractor that found ZERO entries, fix that file/extractor first — regenerating cannot');
+runGate('legacy rooted-type freshness', 'node', ['scripts/generate-legacy-rooted-types.mjs', '--check'],
+  'node scripts/generate-legacy-rooted-types.mjs   (then commit rust/export/src/generated/legacy_rooted_types.rs)');
 hr();
 const failed = results.filter((r) => r.status === 'fail');
 const skipped = results.filter((r) => r.status === 'skip');

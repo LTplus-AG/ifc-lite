@@ -24,6 +24,7 @@ import type {
   LensBackendMethods,
   FilesBackendMethods,
   ScheduleBackendMethods,
+  StructuralBackendMethods,
 } from '@ifc-lite/sdk';
 import type { StoreApi } from './adapters/types.js';
 import { LEGACY_MODEL_ID } from './adapters/model-compat.js';
@@ -39,6 +40,7 @@ import { createLensAdapter } from './adapters/lens-adapter.js';
 import { createExportAdapter } from './adapters/export-adapter.js';
 import { createFilesAdapter } from './adapters/files-adapter.js';
 import { createScheduleAdapter } from './adapters/schedule-adapter.js';
+import { createStructuralAdapter } from './adapters/structural-adapter.js';
 
 export class LocalBackend implements BimBackend {
   readonly model: ModelBackendMethods;
@@ -53,6 +55,7 @@ export class LocalBackend implements BimBackend {
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
+  readonly structural: StructuralBackendMethods;
 
   private storeApi: StoreApi;
 
@@ -70,6 +73,7 @@ export class LocalBackend implements BimBackend {
     this.export = createExportAdapter(store);
     this.files = createFilesAdapter(store);
     this.schedule = createScheduleAdapter(store);
+    this.structural = createStructuralAdapter(store);
   }
 
   subscribe(event: BimEventType, handler: (data: unknown) => void): () => void {

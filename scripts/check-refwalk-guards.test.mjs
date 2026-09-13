@@ -91,6 +91,67 @@ fn chase(id: u32, decoder: &mut EntityDecoder, depth: u32) -> Option<u32> {
   assert.deepEqual(check({ [`${ROOT}/a.rs`]: guarded }).unguarded, []);
 });
 
+test('reports a fan-out walk whose depth/path guards omit a work budget (#4601)', () => {
+  const fanOut = `
+fn walk(id: u32, decoder: &mut EntityDecoder, depth: u32, path: &mut Path) -> Option<u32> {
+    if depth >= MAX_DEPTH || !path.insert(id) { return None; }
+    let item = decoder.decode_by_id(id).ok()?;
+    for child in item.children() {
+        walk(child, decoder, depth + 1, path)?;
+    }
+    Some(id)
+}
+`;
+  const result = check({ [`${ROOT}/fan_out.rs`]: fanOut });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.budgetWarnings, [`${ROOT}/fan_out.rs::walk::recursion`]);
+
+  const budgeted = fanOut.replace(
+    'if depth >= MAX_DEPTH',
+    'if !path.charge() || depth >= MAX_DEPTH'
+  );
+  assert.deepEqual(check({ [`${ROOT}/fan_out.rs`]: budgeted }).budgetWarnings, []);
+
+  const unrelated = fanOut.replace(
+    'if depth >= MAX_DEPTH',
+    'decoder.consume(); if depth >= MAX_DEPTH'
+  );
+  assert.deepEqual(
+    check({ [`${ROOT}/fan_out.rs`]: unrelated }).budgetWarnings,
+    [`${ROOT}/fan_out.rs::walk::recursion`],
+  );
+});
+
+test('an unguarded fan-out walk is both unsafe and missing its work budget (#4601)', () => {
+  const fanOut = `
+fn walk(id: u32, decoder: &mut EntityDecoder) -> Option<u32> {
+    let item = decoder.decode_by_id(id).ok()?;
+    for child in item.children() {
+        walk(child, decoder)?;
+    }
+    Some(id)
+}
+`;
+  const result = check({ [`${ROOT}/fan_out.rs`]: fanOut });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.unguarded, [`${ROOT}/fan_out.rs::walk::recursion`]);
+  assert.deepEqual(result.budgetWarnings, [`${ROOT}/fan_out.rs::walk::recursion`]);
+});
+
+test('two recursive operand calls require a work budget without a loop (#4601)', () => {
+  const binaryWalk = `
+fn walk(id: u32, decoder: &mut EntityDecoder, depth: u32) -> Option<u32> {
+    if depth >= MAX_DEPTH { return None; }
+    let item = decoder.decode_by_id(id).ok()?;
+    walk(item.get_ref(0)?, decoder, depth + 1)?;
+    walk(item.get_ref(1)?, decoder, depth + 1)
+}
+`;
+  const result = check({ [`${ROOT}/binary.rs`]: binaryWalk });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.budgetWarnings, [`${ROOT}/binary.rs::walk::recursion`]);
+});
+
 test('an unrelated bounded loop over a constant is NOT a guard', () => {
   // The regression #2869's parent commit produced: `0..=SEGMENTS` is arc
   // tessellation, not a recursion bound, and reading it as one hid the walk.
@@ -307,6 +368,10 @@ test('the gate actually runs from a path containing a space', () => {
     writeFileSync(
       join(dir, 'lib', 'refwalk-classify.mjs'),
       readFileSync(new URL('./lib/refwalk-classify.mjs', import.meta.url))
+    );
+    writeFileSync(
+      join(dir, 'lib', 'refwalk-cycles.mjs'),
+      readFileSync(new URL('./lib/refwalk-cycles.mjs', import.meta.url))
     );
     writeFileSync(
       join(dir, 'lib', 'is-main-entry.mjs'),

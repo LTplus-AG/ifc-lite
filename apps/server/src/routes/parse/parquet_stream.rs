@@ -5,13 +5,13 @@
 //! SSE Parquet-batch streaming parse endpoint.
 
 use super::cache_keys::{
-    cache_symbolic_data, data_model_cache_key, parquet_geometry_key, parquet_metadata_key,
+    data_model_cache_key, parquet_geometry_key, parquet_metadata_key,
     request_cache_key,
 };
 use super::parquet::ParquetMetadataHeader;
 use super::stream_event::ParquetStreamEvent;
 use super::stream_progress::{cache_stream_progress, StreamProgressRecorder};
-use super::{extract_file, ParseQuery};
+use super::{cache_symbolic_data_off_runtime, extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::{extract_data_model, process_streaming, serialize_data_model_to_parquet};
 use crate::types::StreamEvent;
@@ -219,14 +219,11 @@ pub async fn parse_parquet_stream(
                 // `GET /api/v1/parse/symbolic/{cache_key}` reach parity (issue #900).
                 // Reuses the value already computed inside `process_streaming` —
                 // no re-extraction.
-                {
-                    let cache = cache_for_geometry.clone();
-                    let key = cache_key_for_geometry.clone();
-                    let symbolic_for_cache = symbolic_data.clone();
-                    tokio::spawn(async move {
-                        cache_symbolic_data(&cache, &key, &symbolic_for_cache).await;
-                    });
-                }
+                tokio::spawn(cache_symbolic_data_off_runtime(
+                    cache_for_geometry.clone(),
+                    cache_key_for_geometry.clone(),
+                    symbolic_data.clone(),
+                ));
 
                 // Finish the incremental writer: the cache blob was built row
                 // group by row group as batches streamed, so nothing is

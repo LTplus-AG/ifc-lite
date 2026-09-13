@@ -5,6 +5,7 @@
 use super::{get_refs_from_list, normalize_optional_string, EntityJob, OpeningFilterMode};
 use crate::style::GeometryStyleInfo;
 use ifc_lite_core::{EntityDecoder, IfcType, MAX_MAPPED_ITEM_DEPTH};
+use ifc_lite_geometry::meshed_representations;
 use rustc_hash::FxHashMap;
 use std::collections::HashSet;
 
@@ -126,22 +127,21 @@ fn is_opaque_opening(
     // 2. The filter runs before the metadata phase resolves `job.element_color`
     //    (it still holds the type default), so judge what each sub-mesh will
     //    render with, in `resolve_submesh_color`'s order: the item's own style,
-    //    else the #407 material colours, else the element colour.
-    let repr_ids = entity
+    //    else the #407 material colours, else the element colour. Only the
+    //    representations the router meshes count (#4699).
+    let reprs: Vec<_> = entity
         .get_ref(6)
         .and_then(|shape_id| decoder.decode_by_id(shape_id).ok())
         .and_then(|shape| get_refs_from_list(&shape, 2))
-        .unwrap_or_default();
-    let mut pending: Vec<(u32, u32)> = Vec::new();
-    for repr_id in repr_ids {
-        if let Some(items) = decoder
-            .decode_by_id(repr_id)
-            .ok()
-            .and_then(|repr| get_refs_from_list(&repr, 3))
-        {
-            pending.extend(items.into_iter().map(|id| (id, 0)));
-        }
-    }
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|repr_id| decoder.decode_by_id(repr_id).ok())
+        .collect();
+    let pending: Vec<(u32, u32)> = meshed_representations(&entity, &reprs)
+        .filter_map(|repr| get_refs_from_list(repr, 3))
+        .flatten()
+        .map(|id| (id, 0))
+        .collect();
     let scan = scan_item_styles(pending, styles, decoder);
     if scan.glass {
         return false;

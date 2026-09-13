@@ -575,8 +575,10 @@ Domain-format exporters. Every exporter takes IFC bytes (or already-produced mes
 
 ```rust
 pub use csv::{export_csv, CsvMode, CsvOptions};
-pub use gltf::{export_glb, export_glb_from_meshes, export_glb_with_stats,
-               export_gltf_streaming, try_export_glb, GltfOptions, GltfStats /* ... */};
+pub use gltf::{export_glb_from_meshes, export_gltf_streaming, try_export_glb,
+               try_export_glb_with_stats, GltfOptions, GltfStats /* ... */};
+// Every from-bytes GLB entry point is `try_`: an empty visible set is
+// `ExportError::NoRenderGeometry`, never a zero-mesh GLB (which is not valid glTF).
 // `GltfOptions::tessellation_quality` picks the curve tessellation density for
 // the glTF paths, re-exporting `TessellationQuality` so a caller does not need
 // a direct `ifc-lite-processing` dependency to name a level. The default is

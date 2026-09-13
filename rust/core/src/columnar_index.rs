@@ -266,7 +266,9 @@ impl ColumnarEntityIndex {
         match self.ids.binary_search(&id) {
             Ok(i) => {
                 let start = self.starts[i] as usize;
-                Some((start, start + self.lengths[i] as usize))
+                // A wasm32 overflow must not panic a build with overflow checks;
+                // the decoder refuses the span past the content either way (#4697).
+                Some((start, start.saturating_add(self.lengths[i] as usize)))
             }
             Err(_) => None,
         }

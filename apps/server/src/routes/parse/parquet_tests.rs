@@ -8,7 +8,10 @@
 //! coverage in `services::parquet::parquet_tests`; this file targets the
 //! route's own cache lookup, which the service tests can't reach.
 
-use super::cache_keys::{data_model_cache_key, request_cache_key};
+use super::cache_keys::{data_model_cache_key, request_cache_key, symbolic_cache_key};
+use super::worker_thread_tests::{
+    assert_off_the_worker, await_threads_that_logged, record_event_threads, SYMBOLIC_CACHED,
+};
 use super::ParseQuery;
 use crate::config::Config;
 use crate::services::cache::DiskCache;
@@ -193,4 +196,29 @@ async fn a_geometry_hit_with_a_stale_data_model_still_writes_the_current_data_mo
         b"OLD-GEOMETRY-PAYLOAD",
         "the stale-data-model path must re-parse, not replay the cached blob"
     );
+}
+
+/// The symbolic sidecar this route writes before responding is JSON-encoded
+/// on the blocking pool, not on the async worker resuming the handler
+/// (#4696). See `worker_thread_tests` for how the thread is observed.
+#[tokio::test]
+async fn the_symbolic_sidecar_is_encoded_off_the_async_worker() {
+    record_event_threads();
+    let state = test_state("symbolic-off-runtime").await;
+    let content = MINIMAL_IFC.replace("'W1'", "'W-4696-parquet'");
+    let cache_key =
+        request_cache_key(content.as_bytes(), &ParseQuery::default(), TessellationQuality::default());
+
+    let (content_type, body) = multipart_body(content.as_bytes());
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/parse/parquet")
+        .header(header::CONTENT_TYPE, content_type)
+        .body(Body::from(body))
+        .unwrap();
+    let response = build_router(state).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let threads = await_threads_that_logged(SYMBOLIC_CACHED, &symbolic_cache_key(&cache_key)).await;
+    assert_off_the_worker(&threads, "the symbolic sidecar encode");
 }

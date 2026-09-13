@@ -106,8 +106,10 @@ pub(super) fn boolean_operator(entity: &DecodedEntity) -> std::result::Result<Bo
 }
 
 impl BooleanClippingProcessor {
-    /// Process a solid operand, reporting whether its type had NO meshing
-    /// branch here.
+    /// Process a solid operand, reporting whether it meshed empty with that
+    /// loss already on record: its type had NO meshing branch here, or it is
+    /// a nested boolean or `IfcCsgSolid` whose own walk ended empty on a loss
+    /// it recorded.
     ///
     /// The flag exists because one dropped operand must produce ONE record. An
     /// unsupported SECOND operand meshes empty, so the `EmptyOperand` arm at
@@ -115,7 +117,10 @@ impl BooleanClippingProcessor {
     /// below, counting the same step twice — and since the reason breakdown
     /// breaks ties alphabetically, the viewer's "top failure reason" would name
     /// `EmptyOperand`, the CONSEQUENCE, over `UnsupportedOperand`, the cause.
-    /// Callers pass this to [`Self::record_empty_operand`].
+    /// Callers pass this to [`Self::record_empty_operand`]. A nested operand
+    /// reported only its OWN type here until #4691, so `DIFFERENCE(host,
+    /// UNION(unsupported, unsupported))` recorded `EmptyOperand` on top of the
+    /// inner records.
     ///
     /// `op` is the operation whose operand this is, and it goes into the
     /// `UnsupportedOperand` record. Since that record is then the ONLY one for
@@ -135,7 +140,6 @@ impl BooleanClippingProcessor {
         quality: TessellationQuality,
         visited: &mut OperandPath,
     ) -> Result<(Mesh, bool)> {
-        let mut unsupported = false;
         // Only the two arms that must NOT run on a fresh processor are spelled
         // out here: both carry `depth` and the cycle guard across the hop.
         // Every other operand type goes to the same built-in table the router
@@ -144,7 +148,7 @@ impl BooleanClippingProcessor {
         // to keep its own six-arm copy of that table; `IfcPolygonalFaceSet`,
         // the tessellated cutter Bonsai/IfcOpenShell emits for a wall clipped
         // by a roof, was never in it and the wall rendered up to the ridge.
-        let mesh = match operand.ifc_type {
+        match operand.ifc_type {
             // `CsgSolidProcessor::process` builds a FRESH BooleanClippingProcessor
             // for a boolean TreeRootExpression, so routing through it used to reset
             // both `depth` and the cycle guard. `#10 IfcBooleanResult -> FirstOperand
@@ -179,7 +183,9 @@ impl BooleanClippingProcessor {
                 self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality, visited)
             }
             other => match builtin_processor(other, &self.schema) {
-                Some(processor) => processor.process(operand, decoder, &self.schema, quality),
+                Some(processor) => {
+                    processor.process(operand, decoder, &self.schema, quality).map(|m| (m, false))
+                }
                 // No built-in meshes this operand type: the operand resolves to
                 // an EMPTY mesh. As a FIRST operand that empties the whole
                 // boolean result and the element's item renders nothing; as a
@@ -194,11 +200,9 @@ impl BooleanClippingProcessor {
                         op,
                         BoolFailureReason::UnsupportedOperand(other.to_string()),
                     );
-                    unsupported = true;
-                    Ok(Mesh::new())
+                    Ok((Mesh::new(), true))
                 }
             },
-        }?;
-        Ok((mesh, unsupported))
+        }
     }
 }

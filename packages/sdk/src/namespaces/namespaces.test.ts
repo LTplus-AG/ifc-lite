@@ -26,6 +26,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ModelNamespace } from './model.js';
 import { EventsNamespace } from './events.js';
 import { ScheduleNamespace } from './schedule.js';
+import { StructuralNamespace } from './structural.js';
 import { SpacesNamespace } from './spaces.js';
 import { QueryNamespace } from './query.js';
 import type {
@@ -242,6 +243,81 @@ describe('ScheduleNamespace', () => {
     const { ns, schedule } = setup();
     ns.tasks();
     expect(schedule.tasks).toHaveBeenCalledWith(undefined);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// StructuralNamespace
+// ---------------------------------------------------------------------------
+
+describe('StructuralNamespace', () => {
+  function setup() {
+    const structural = {
+      data: vi.fn(() => ({ kind: 'data', loadsTruncated: true })),
+      analysisModels: vi.fn(() => [{ kind: 'analysisModel' }]),
+      members: vi.fn(() => [{ kind: 'member' }]),
+      connections: vi.fn(() => [{ kind: 'connection' }]),
+      activities: vi.fn(() => [{ kind: 'activity' }]),
+      loadGroups: vi.fn(() => [{ kind: 'loadGroup' }]),
+      resultGroups: vi.fn(() => [{ kind: 'resultGroup' }]),
+    };
+    return { ns: new StructuralNamespace({ structural } as unknown as BimBackend), structural };
+  }
+
+  // Same shape as the ScheduleNamespace check above and for the same reason:
+  // seven near-identical accessors, so a mis-wired one is invisible without a
+  // per-method assertion.
+  it('routes each accessor to the matching backend method', () => {
+    const { ns, structural } = setup();
+
+    expect(ns.data('arch')).toEqual({ kind: 'data', loadsTruncated: true });
+    expect(ns.analysisModels('arch')).toEqual([{ kind: 'analysisModel' }]);
+    expect(ns.members('arch')).toEqual([{ kind: 'member' }]);
+    expect(ns.connections('arch')).toEqual([{ kind: 'connection' }]);
+    expect(ns.activities('arch')).toEqual([{ kind: 'activity' }]);
+    expect(ns.loadGroups('arch')).toEqual([{ kind: 'loadGroup' }]);
+    expect(ns.resultGroups('arch')).toEqual([{ kind: 'resultGroup' }]);
+
+    expect(structural.data).toHaveBeenCalledWith('arch');
+    expect(structural.analysisModels).toHaveBeenCalledWith('arch');
+    expect(structural.members).toHaveBeenCalledWith('arch');
+    expect(structural.connections).toHaveBeenCalledWith('arch');
+    expect(structural.activities).toHaveBeenCalledWith('arch');
+    expect(structural.loadGroups).toHaveBeenCalledWith('arch');
+    expect(structural.resultGroups).toHaveBeenCalledWith('arch');
+  });
+
+  it('forwards an omitted modelId as undefined so the backend picks the active model', () => {
+    const { ns, structural } = setup();
+    ns.members();
+    expect(structural.members).toHaveBeenCalledWith(undefined);
+  });
+
+  // The one field `bim.schedule` has no equivalent of: a caller reading
+  // `data()` must see whether the load tree it just received is complete.
+  it('surfaces loadsTruncated straight off data() without dropping it', () => {
+    const { ns } = setup();
+    expect(ns.data().loadsTruncated).toBe(true);
+  });
+
+  // `backend.structural` is optional: remote/transport-backed contexts leave
+  // it undefined because the store lives server-side. Without a guard the
+  // caller gets an opaque "cannot read properties of undefined" instead of
+  // an actionable message. `context.test.ts`'s "keeps existing backends
+  // compatible and reports unsupported structural reads" exercises this
+  // guard end-to-end through `createBimContext`; every accessor is covered
+  // here too, at the unit level, so a per-method wiring regression on any
+  // one of the seven methods (not just `data()`) is caught.
+  it('throws an explanatory error when the backend has no structural support', () => {
+    const ns = new StructuralNamespace({} as unknown as BimBackend);
+
+    expect(() => ns.data()).toThrow('bim.structural is not supported by this backend');
+    expect(() => ns.analysisModels()).toThrow('bim.structural is not supported by this backend');
+    expect(() => ns.members()).toThrow('bim.structural is not supported by this backend');
+    expect(() => ns.connections()).toThrow('bim.structural is not supported by this backend');
+    expect(() => ns.activities()).toThrow('bim.structural is not supported by this backend');
+    expect(() => ns.loadGroups()).toThrow('bim.structural is not supported by this backend');
+    expect(() => ns.resultGroups()).toThrow('bim.structural is not supported by this backend');
   });
 });
 

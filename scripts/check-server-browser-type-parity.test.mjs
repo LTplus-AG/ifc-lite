@@ -113,19 +113,28 @@ test('RELATIONSHIPS: RED when a type is removed from the Rust rel_types array', 
   assert.match(out, /TS parser .* handles `IFCRELAGGREGATES` but the Rust server .* does not/);
 });
 
-test('RELATIONSHIPS: RED when a type not on the allowlist is removed from the TS side', () => {
-  // IFCRELDEFINESBYPROPERTIES is on BOTH sides today (via PROPERTY_REL_TYPES
-  // on the TS side) and is not allowlisted, so emptying that set must
-  // surface as "Rust has it, TS does not" — proving the comparison is
-  // symmetric and not just checking one direction.
+test('RELATIONSHIPS (documents the corrected claim, #4205): emptying PROPERTY_REL_TYPES does NOT drop IFCRELDEFINESBYPROPERTIES from the TS-recognized set', () => {
+  // Before #4205, IFCRELDEFINESBYPROPERTIES was named ONLY by
+  // PROPERTY_REL_TYPES, so emptying that literal set used to surface as
+  // "Rust has it, TS does not". #4205 made HIERARCHY_REL_TYPES a
+  // schema-derived catch-all (every concrete IfcRelationship subtype minus
+  // PROPERTY_REL_TYPES/ASSOCIATION_REL_TYPES) resolved from the BUILT
+  // @ifc-lite/parser rather than from this source text — so a type removed
+  // from PROPERTY_REL_TYPES is no longer un-recognized, it is simply
+  // reclassified as a hierarchy relationship by the schema-derived fallback.
+  // tsRelationshipTypes' union (HIERARCHY ∪ PROPERTY ∪ ASSOCIATION) is
+  // mathematically invariant to this move: it stays exactly
+  // getAllConcreteRelationshipTypes() regardless of which of the two
+  // on-demand buckets a real concrete type is (or isn't) named in. Mutating
+  // the literal here and asserting the STILL-GREEN result is exactly the
+  // proof that claim holds against the real checker, not just in prose.
   const ts = replaceOnce(
     real.TS_REL_INDEXES,
     "export const PROPERTY_REL_TYPES = new Set([\n    'IFCRELDEFINESBYPROPERTIES',\n]);",
     'export const PROPERTY_REL_TYPES = new Set([]);',
   );
   const { status, out } = runOn({ TS_REL_INDEXES: ts });
-  assert.equal(status, 1, out);
-  assert.match(out, /Rust server .* handles `IFCRELDEFINESBYPROPERTIES` but the TS parser .* does not/);
+  assert.equal(status, 0, out);
 });
 
 // The spatialTypes (#3965) and properties (#3963) allowlist entries used to
@@ -147,11 +156,16 @@ test('RELATIONSHIPS: an allowlisted divergence (IFCRELCONNECTSELEMENTS) does not
 test('RELATIONSHIPS: a FAKE divergence not on the allowlist still fails (allowlist does not over-suppress)', () => {
   // Add a type to the TS set that the Rust side genuinely lacks and that is
   // NOT in ALLOWLIST — proves the allowlist suppresses only what it names.
+  // Added to PROPERTY_REL_TYPES, not HIERARCHY_REL_TYPES: since #4205,
+  // HIERARCHY_REL_TYPES is schema-derived from the BUILT @ifc-lite/parser
+  // (see tsRelationshipTypes), so an invented type spliced into its source
+  // text is never read at all — a real, still-literal sibling set is the
+  // only way left to inject a type this extractor will see.
   assert.ok(!Object.hasOwn(ALLOWLIST, 'relationships:IFCRELINVENTEDFAKETYPE'));
   const ts = replaceOnce(
     real.TS_REL_INDEXES,
-    "export const HIERARCHY_REL_TYPES = new Set([",
-    "export const HIERARCHY_REL_TYPES = new Set([\n    'IFCRELINVENTEDFAKETYPE',",
+    "export const PROPERTY_REL_TYPES = new Set([",
+    "export const PROPERTY_REL_TYPES = new Set([\n    'IFCRELINVENTEDFAKETYPE',",
   );
   const { status, out } = runOn({ TS_REL_INDEXES: ts });
   assert.equal(status, 1, out);
@@ -159,6 +173,8 @@ test('RELATIONSHIPS: a FAKE divergence not on the allowlist still fails (allowli
 });
 
 test('RELATIONSHIPS: adding a type to BOTH sides keeps it passing', () => {
+  // Same reasoning as the FAKE-divergence test above: PROPERTY_REL_TYPES is
+  // the literal set that stays source-text-readable after #4205.
   const rust = replaceOnce(
     real.RUST_REL,
     'let rel_types = [',
@@ -166,8 +182,8 @@ test('RELATIONSHIPS: adding a type to BOTH sides keeps it passing', () => {
   );
   const ts = replaceOnce(
     real.TS_REL_INDEXES,
-    "export const HIERARCHY_REL_TYPES = new Set([",
-    "export const HIERARCHY_REL_TYPES = new Set([\n    'IFCRELINVENTEDFAKETYPE',",
+    "export const PROPERTY_REL_TYPES = new Set([",
+    "export const PROPERTY_REL_TYPES = new Set([\n    'IFCRELINVENTEDFAKETYPE',",
   );
   const { status, out } = runOn({ RUST_REL: rust, TS_REL_INDEXES: ts });
   assert.equal(status, 0, out);
@@ -392,8 +408,8 @@ test('RELATIONSHIPS UNDER-READ: a sibling array whose name does not look like a 
 test('RELATIONSHIPS UNDER-READ: RED when a 4th `*_REL_TYPES` Set appears on the TS side alongside the recognized three', () => {
   const ts = replaceOnce(
     real.TS_REL_INDEXES,
-    "export const HIERARCHY_REL_TYPES = new Set([",
-    "export const PORT_REL_TYPES = new Set([\n    'IFCRELCONNECTSPORTS',\n]);\nexport const HIERARCHY_REL_TYPES = new Set([",
+    'export const HIERARCHY_REL_TYPES: ReadonlySet<string> = new Set(',
+    "export const PORT_REL_TYPES = new Set([\n    'IFCRELCONNECTSPORTS',\n]);\nexport const HIERARCHY_REL_TYPES: ReadonlySet<string> = new Set(",
   );
   const { status, out } = runOn({ TS_REL_INDEXES: ts });
   assert.equal(status, 1, out);
@@ -489,6 +505,10 @@ test('mutation control: disabling the under-read detector lets the same silent-p
     writeFileSync(
       join(scriptsCopy, 'lib', 'allowlist-staleness.mjs'),
       readFileSync(join(SCRIPTS, 'lib', 'allowlist-staleness.mjs'), 'utf8'),
+    );
+    writeFileSync(
+      join(scriptsCopy, 'lib', 'server-browser-type-allowlist.mjs'),
+      readFileSync(join(SCRIPTS, 'lib', 'server-browser-type-allowlist.mjs'), 'utf8'),
     );
 
     const relMutated = replaceOnce(
@@ -627,20 +647,24 @@ test('E2E: a FAKE allowlist entry for a type both sides already handle identical
     }
     const scriptsCopy = join(dir, '__scripts__');
     mkdirSync(join(scriptsCopy, 'lib'), { recursive: true });
-    const checkerSrc = readFileSync(CHECKER, 'utf8');
+    // ALLOWLIST moved to its own module (scripts/lib/server-browser-type-allowlist.mjs,
+    // split out purely to stay under the module-size budget once #4205's
+    // rows were added — see that file's header), so the fabricated stale
+    // entry is spliced into ITS source, not the checker's.
+    const allowlistSrc = readFileSync(join(SCRIPTS, 'lib', 'server-browser-type-allowlist.mjs'), 'utf8');
     const marker = 'export const ALLOWLIST = {\n';
     // @source-text-assertion-ok mutation anchor guard, not a subject assertion
-    assert.ok(checkerSrc.includes(marker), 'ALLOWLIST marker drifted');
+    assert.ok(allowlistSrc.includes(marker), 'ALLOWLIST marker drifted');
     // IFCRELAGGREGATES is handled by both relationships.rs and
     // columnar-parser-indexes.ts today (asserted by the RELATIONSHIPS RED
     // test above, which removes it from the Rust side specifically because
     // it is present on both sides in the unmutated tree) — an allowlist
     // entry for it describes a divergence that does not exist.
-    const mutatedChecker = checkerSrc.replace(
+    const mutatedAllowlist = allowlistSrc.replace(
       marker,
       `${marker}  'relationships:IFCRELAGGREGATES': { status: 'pending', note: 'TEST: fabricated stale entry' },\n`,
     );
-    writeFileSync(join(scriptsCopy, 'check-server-browser-type-parity.mjs'), mutatedChecker);
+    writeFileSync(join(scriptsCopy, 'check-server-browser-type-parity.mjs'), readFileSync(CHECKER, 'utf8'));
     writeFileSync(
       join(scriptsCopy, 'lib', 'server-browser-type-extractors.mjs'),
       readFileSync(join(SCRIPTS, 'lib', 'server-browser-type-extractors.mjs'), 'utf8'),
@@ -649,6 +673,7 @@ test('E2E: a FAKE allowlist entry for a type both sides already handle identical
       join(scriptsCopy, 'lib', 'allowlist-staleness.mjs'),
       readFileSync(join(SCRIPTS, 'lib', 'allowlist-staleness.mjs'), 'utf8'),
     );
+    writeFileSync(join(scriptsCopy, 'lib', 'server-browser-type-allowlist.mjs'), mutatedAllowlist);
     const r = spawnSync(
       process.execPath,
       [join(scriptsCopy, 'check-server-browser-type-parity.mjs'), '--root', dir],

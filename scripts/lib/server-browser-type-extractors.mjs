@@ -13,6 +13,21 @@
  * header for the overall approach and its limits.
  */
 
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
+
+// The DEFAULT for `tsRelationshipTypes`' `repoRoot` option — callers (the
+// real checker, or a test driving it under `--root`) may pass their own.
+// Deliberately `process.cwd()`, not a path derived from this file's own
+// `import.meta.url`: the checker (like every script in this repo, per its
+// own usage line) is always run from the repo root, and `dist/` is a
+// property of the ACTUAL repo, not of wherever this module happens to be
+// copied to (`check-server-browser-type-parity.test.mjs`'s
+// "mutation control" case runs a copy of this whole file from a scripts/lib
+// copy under a temp dir — deriving from `import.meta.url` there would point
+// at the temp dir, which has no `packages/parser/dist/` at all).
+const REPO_ROOT = process.cwd();
+
 /** Strips `/* … *‍/` and `//` comments — symmetric on both languages, same
  * naive strip `check-clash-degenerate-reason-parity.mjs` uses. Neither
  * source's relevant string literals contain `//`, so nothing real is eaten. */
@@ -95,7 +110,47 @@ export function rustRelationshipTypes(src) {
  * property/material/classification/document rels). Together these are the
  * TS-side analogue of the Rust `rel_types` array — one flat list of every
  * IfcRel* type the parser is willing to route to a relationship extractor. */
-export function tsRelationshipTypes(src) {
+// HIERARCHY_REL_TYPES stopped being a literal array at #4205: it is now
+// `new Set([...getAllConcreteRelationshipTypes()].filter(t =>
+// !NON_HIERARCHY_REL_TYPES.has(t)))`, a schema-derived set with no string
+// literals in columnar-parser-indexes.ts at all — the literal-array regex
+// below simply never matches it and (before this fix) the loop silently
+// `continue`d past it, dropping every type ONLY reachable through
+// HIERARCHY_REL_TYPES (IFCRELAGGREGATES, IFCRELDEFINESBYTYPE, ... — the
+// exact 9 types check-server-browser-type-parity started reporting as
+// "server has, TS doesn't" on #4672). Recognized here by name so a
+// genuinely different 4th derived shape still falls through to the
+// under-read guard below instead of being silently assumed equivalent.
+const HIERARCHY_DERIVED_MARKER = /getAllConcreteRelationshipTypes\(\)/;
+
+/** Resolves the schema-derived HIERARCHY_REL_TYPES contents from the BUILT
+ * package rather than re-deriving the walk over `allAttributes` here (that
+ * would be a second copy of `computeSlotPlan`'s logic, exactly the
+ * duplication AGENTS.md's generator rules warn against) — `packages/parser`
+ * is guaranteed built before this checker runs (the `node-tests` CI job
+ * `needs: [changes, build]` and downloads `build-output` into `packages/`
+ * first). Local runs need `pnpm build` (or `pnpm --filter @ifc-lite/parser
+ * build`) first for the same reason any other dist-consuming check does. */
+function schemaDerivedHierarchyRelTypes(repoRoot) {
+  const distPath = join(repoRoot, 'packages/parser/dist/relationship-schema-slots.js');
+  let mod;
+  try {
+    const require = createRequire(import.meta.url);
+    mod = require(distPath);
+  } catch (e) {
+    throw new ExtractorUnderReadError(
+      `tsRelationshipTypes: HIERARCHY_REL_TYPES is schema-derived (getAllConcreteRelationshipTypes()) but ${distPath} could not be loaded — build @ifc-lite/parser first (pnpm build). (${e.message})`,
+    );
+  }
+  if (typeof mod.getAllConcreteRelationshipTypes !== 'function') {
+    throw new ExtractorUnderReadError(
+      `tsRelationshipTypes: ${distPath} no longer exports getAllConcreteRelationshipTypes() — the extractor is under-reading a renamed/moved export.`,
+    );
+  }
+  return mod.getAllConcreteRelationshipTypes();
+}
+
+export function tsRelationshipTypes(src, { repoRoot = REPO_ROOT } = {}) {
   const code = stripComments(src);
   const RECOGNIZED = ['HIERARCHY_REL_TYPES', 'PROPERTY_REL_TYPES', 'ASSOCIATION_REL_TYPES'];
   // Mirrors the Rust-side guard above: a future 4th `export const
@@ -103,9 +158,12 @@ export function tsRelationshipTypes(src) {
   // otherwise be silently invisible to this union (the same shape as the
   // `extra_rel_types` repro, on the TS side). Narrowed to names containing
   // `REL_TYPES` so it does not fire on this file's other, unrelated `*_TYPES`
-  // sets (GEOMETRY_TYPES, SPATIAL_TYPES, PROPERTY_ENTITY_TYPES, ...).
+  // sets (GEOMETRY_TYPES, SPATIAL_TYPES, PROPERTY_ENTITY_TYPES, ...). The
+  // pattern now tolerates a type annotation and whitespace before `[` so it
+  // still sees (and can sibling-check) the schema-derived HIERARCHY_REL_TYPES
+  // shape, not just a plain literal array.
   assertNoUnrecognizedSiblingBindings(code, {
-    bindingPattern: /export const (\w+) = new Set\(\[([\s\S]*?)\]\);/g,
+    bindingPattern: /export const (\w+)(?:\s*:\s*[^=\n]+)?\s*=\s*new Set\(\s*\[([\s\S]*?)\]/g,
     valuePattern: /'[A-Z][A-Z0-9]{3,}'/,
     nameFilter: /REL_TYPES/,
     recognizedNames: RECOGNIZED,
@@ -113,8 +171,18 @@ export function tsRelationshipTypes(src) {
   });
   const found = new Set();
   for (const name of RECOGNIZED) {
-    const m = new RegExp(`export const ${name} = new Set\\(\\[([\\s\\S]*?)\\]\\);`).exec(code);
-    if (!m) continue;
+    const m = new RegExp(`export const ${name}(?:\\s*:\\s*[^=\\n]+)?\\s*=\\s*new Set\\(\\s*\\[([\\s\\S]*?)\\]`).exec(
+      code,
+    );
+    if (!m) {
+      throw new ExtractorUnderReadError(
+        `tsRelationshipTypes: could not find a \`export const ${name} = new Set([...])\` (literal or schema-derived) definition — the extractor is under-reading.`,
+      );
+    }
+    if (HIERARCHY_DERIVED_MARKER.test(m[1])) {
+      for (const t of schemaDerivedHierarchyRelTypes(repoRoot)) found.add(t);
+      continue;
+    }
     for (const x of m[1].matchAll(/'([A-Z0-9]+)'/g)) found.add(x[1]);
   }
   return found;

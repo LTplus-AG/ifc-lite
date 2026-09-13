@@ -80,6 +80,15 @@ export function requiresDefaultRun(root, relFiles) {
 }
 
 /**
+ * The body of every TOML table whose header line is exactly `header` (e.g.
+ * `[features]` or `[[bin]]`), each cut at the next table header.
+ */
+function tomlTableBodies(toml, header) {
+  const escaped = header.replace(/[[\]]/g, '\\$&');
+  return toml.split(new RegExp(`^\\s*${escaped}\\s*$`, 'm')).slice(1).map((table) => table.split(/^\s*\[/m)[0]);
+}
+
+/**
  * The crate's default-on feature names, from its Cargo.toml `[features]`
  * `default = [...]` list. Returns an empty Set when the manifest is absent or
  * declares no defaults - which is the common case and the one that makes a
@@ -88,9 +97,9 @@ export function requiresDefaultRun(root, relFiles) {
 function crateDefaultFeatures(dir) {
   try {
     const toml = readFileSync(join(dir, 'Cargo.toml'), 'utf8');
-    const features = toml.split(/^\s*\[features\]\s*$/m)[1];
+    const features = tomlTableBodies(toml, '[features]')[0];
     if (!features) return new Set();
-    const decl = features.split(/^\s*\[/m)[0].match(/^\s*default\s*=\s*\[([\s\S]*?)\]/m);
+    const decl = features.match(/^\s*default\s*=\s*\[([\s\S]*?)\]/m);
     if (!decl) return new Set();
     return new Set([...decl[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]));
   } catch {
@@ -151,8 +160,7 @@ function sanitizeRustSource(source) {
  */
 function mainBinName(crateDir, crate) {
   const toml = readFileSync(join(crateDir, 'Cargo.toml'), 'utf8');
-  for (const table of toml.split(/^\s*\[\[bin\]\]\s*$/m).slice(1)) {
-    const body = table.split(/^\s*\[/m)[0];
+  for (const body of tomlTableBodies(toml, '[[bin]]')) {
     if (/^\s*path\s*=\s*"(?:\.\/)?src\/main\.rs"/m.test(body)) return /^\s*name\s*=\s*"([^"]+)"/m.exec(body)?.[1] ?? crate;
   }
   return crate;
@@ -242,9 +250,9 @@ export function planRuns(testPaths, root) {
       for (const features of runs) {
         const suffix = features.length > 0 ? `+${features.join('+')}` : '';
       const moduleFilter = owner?.moduleFilter ?? null;
-        const binTarget = owner?.bin ?? null;
-        const identity = targetMatch?.[1] ?? (binTarget ? `bin:${binTarget}:${moduleFilter}` : moduleFilter);
-        const claimed = claimRuntimeAdapter({ kind: 'cargo', crate: c.crate, features, target: targetMatch?.[1] ?? null, moduleFilter, bin: binTarget });
+        const bin = owner?.bin ?? null;
+        const identity = targetMatch?.[1] ?? (bin ? `bin:${bin}:${moduleFilter}` : moduleFilter);
+        const claimed = claimRuntimeAdapter({ kind: 'cargo', crate: c.crate, features, target: targetMatch?.[1] ?? null, moduleFilter, bin });
         plans.push({
           key: `cargo:${c.crate}:${identity}${suffix}`,
           file: rel,
@@ -255,7 +263,7 @@ export function planRuns(testPaths, root) {
           crate: c.crate,
           features,
           moduleFilter,
-          binTarget,
+          bin,
           integrationTarget: targetMatch?.[1] ?? null,
           adapter: claimed?.adapter ?? null,
           runner: claimed?.runner ?? null,

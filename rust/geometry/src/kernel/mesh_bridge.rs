@@ -120,13 +120,27 @@ pub(crate) fn orient_outward(mut tris: Vec<Tri>) -> Vec<Tri> {
 
 /// `host − cutter` as a `Mesh`.
 pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
+    subtract_with_change(host, cutter).0
+}
+
+/// Like [`subtract`], but also returns the classifier's `changed` bit (#4692):
+/// `false` means no host sub-triangle was dropped and no cutter face was kept,
+/// so the triangles are the host re-tessellated, not a cut. [`subtract_many`]
+/// reads the same bit.
+///
+/// A one-component [`difference_all_lenient`] is the binary
+/// `boolean(.., Difference)`: the same arrangement over the same operands,
+/// classified through the same one-component `BComponents`, and neither gates
+/// on conformity.
+pub(crate) fn subtract_with_change(host: &Mesh, cutter: &Mesh) -> (Mesh, bool) {
     #[cfg(feature = "csg_capture")]
     crate::csg_capture::record_single(host, cutter);
     let h = orient_outward(mesh_to_tris(host));
     let mut c = mesh_to_tris(cutter);
     promote_cutter_verts_onto_host_faces(&mut c, &h);
     let c = orient_outward(c);
-    tris_to_mesh(&boolean(&h, &c, BoolOp::Difference))
+    let (tris, changed) = difference_all_lenient(&h, &[&c]);
+    (tris_to_mesh(&tris), changed)
 }
 
 /// What [`subtract_many`] made of a cutter group.

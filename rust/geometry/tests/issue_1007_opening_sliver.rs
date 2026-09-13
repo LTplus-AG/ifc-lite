@@ -23,7 +23,7 @@
 //!
 //! Runs under `--no-default-features` (pure-Rust kernel, NO Manifold).
 
-use ifc_lite_geometry::csg::ClippingProcessor;
+use ifc_lite_geometry::csg::{ClippingProcessor, GroupCut};
 use ifc_lite_geometry::kernel::arrangement::{box_mesh, Tri};
 use ifc_lite_geometry::kernel::mesh_bridge::tris_to_mesh;
 use ifc_lite_geometry::mesh::Mesh;
@@ -135,7 +135,9 @@ fn tilted_opening_cut_frames_the_hole_without_a_sliver() {
     let host_mesh = tris_to_mesh(&host);
     let opening_mesh = tris_to_mesh(&opening);
     let cp = ClippingProcessor::new();
-    let out = cp.subtract_mesh(&host_mesh, &opening_mesh).expect("subtract");
+    let GroupCut::Cut(out) = cp.subtract_mesh(&host_mesh, &opening_mesh) else {
+        panic!("the opening must cut the host");
+    };
     assert!(!out.is_empty(), "subtract produced an empty mesh");
     let out_tris = mesh_tris(&out);
 
@@ -193,9 +195,9 @@ fn aligned_tilted_opening_is_also_clean() {
     let host = rotate_all(box_mesh([-5.0, -5.0, 13.0], [5.0, 5.0, 13.2]), 25.0);
     let opening = rotate_all(box_mesh([-1.0, -1.0, 12.5], [1.0, 1.0, 13.7]), 25.0);
     let cp = ClippingProcessor::new();
-    let out = cp
-        .subtract_mesh(&tris_to_mesh(&host), &tris_to_mesh(&opening))
-        .expect("subtract");
+    let GroupCut::Cut(out) = cp.subtract_mesh(&tris_to_mesh(&host), &tris_to_mesh(&opening)) else {
+        panic!("the tilted opening must cut the host");
+    };
     let wa = worst_aspect(&mesh_tris(&out));
     assert!(wa < 1.0e3, "aligned tilted-opening cut has a sliver: worst aspect {wa:.0}:1");
 }

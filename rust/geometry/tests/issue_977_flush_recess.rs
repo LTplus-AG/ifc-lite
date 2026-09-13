@@ -25,7 +25,7 @@
 //! the recess pocket ends up OUTSIDE the solid — i.e. the cut went all the way
 //! through with no residual wall.
 
-use ifc_lite_geometry::{ClippingProcessor, Mesh, Point3, Vector3};
+use ifc_lite_geometry::{ClippingProcessor, GroupCut, Mesh, Point3, Vector3};
 
 /// Axis-aligned closed box (12 triangles, outward winding) from `min` to `max`.
 fn box_mesh(min: [f64; 3], max: [f64; 3]) -> Mesh {
@@ -130,9 +130,9 @@ fn tekla_flush_end_recess_cuts_through() {
     let cutter = box_mesh([L - D, -50.0, H - T], [L, W + 50.0, H + 50.0]);
 
     let clipper = ClippingProcessor::new();
-    let result = clipper
-        .subtract_mesh(&host, &cutter)
-        .expect("subtract_mesh must not error");
+    let GroupCut::Cut(result) = clipper.subtract_mesh(&host, &cutter) else {
+        panic!("the flush recess must cut the host");
+    };
 
     assert!(
         !result.positions.is_empty() && !result.indices.is_empty(),

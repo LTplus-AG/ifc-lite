@@ -22,7 +22,7 @@
 //! normal-projected noise bound so a far-placement collapse is a defect,
 //! never a tolerance judgement call.
 
-use crate::csg::ClippingProcessor;
+use crate::csg::{ClippingProcessor, GroupCut};
 use crate::world_frame_fixture::{
     WORLD_FRAME_CASES, WorldFrameCase, mesh_volume, normal_projected_noise_bound,
     placed_box_mesh,
@@ -34,10 +34,10 @@ fn recess_volume(case: WorldFrameCase, depth: f64) -> f64 {
     let host = placed_box_mesh(case, [0.0, 0.0, 0.0], [1.0, 1.0, 0.3]);
     let cutter = placed_box_mesh(case, [0.3, 0.3, 0.3 - depth], [0.7, 0.7, 0.5]);
     let processor = ClippingProcessor::new();
-    let result = processor
-        .subtract_mesh(&host, &cutter)
-        .expect("subtract must succeed");
-    mesh_volume(&result)
+    match processor.subtract_mesh(&host, &cutter) {
+        GroupCut::Cut(result) => mesh_volume(&result),
+        GroupCut::Rejected(why) => panic!("the recess must cut, got {why:?}"),
+    }
 }
 
 const THIN_DEPTH: f64 = 0.002;

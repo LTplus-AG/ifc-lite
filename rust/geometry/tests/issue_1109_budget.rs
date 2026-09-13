@@ -18,7 +18,7 @@
 
 use ifc_lite_geometry::kernel::budget;
 use ifc_lite_geometry::mesh::Mesh;
-use ifc_lite_geometry::ClippingProcessor;
+use ifc_lite_geometry::{ClippingProcessor, GroupCut};
 
 /// Axis-aligned box [min,max] as a 12-triangle `Mesh`.
 fn box_mesh(min: [f32; 3], max: [f32; 3]) -> Mesh {
@@ -118,7 +118,7 @@ fn element_escalations(host: &Mesh, cutters: &[Mesh]) -> (u64, Mesh) {
     budget::begin_element();
     let mut result = host.clone();
     for c in cutters {
-        if let Ok(m) = proc.subtract_mesh(&result, c) {
+        if let GroupCut::Cut(m) = proc.subtract_mesh(&result, c) {
             result = m;
         }
     }

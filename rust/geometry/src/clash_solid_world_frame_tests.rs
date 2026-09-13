@@ -240,8 +240,8 @@ fn crack_one_vertex(mesh: &mut Mesh) {
 }
 
 /// `mesh_signed_volume` feeds every before/after gate in the void router
-/// (the 0.1 % `cut_changed_mesh` gate, the 3 % box reconciliation, the
-/// removal bound), and on native positions are absolute. The far and near
+/// (the 3 % box reconciliation, the removal bound, and until #4692 a 0.1 %
+/// "did the cut change the host" gate), and on native positions are absolute. The far and near
 /// meshes are the SAME f32 geometry (translated bit-exactly), so any
 /// difference between the readings is the reference point.
 ///

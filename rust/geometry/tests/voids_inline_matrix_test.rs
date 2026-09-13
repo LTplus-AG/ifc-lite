@@ -15,7 +15,7 @@
 mod voids_common;
 
 use ifc_lite_core::EntityDecoder;
-use ifc_lite_geometry::{csg::ClippingProcessor, GeometryRouter, Mesh};
+use ifc_lite_geometry::{csg::ClippingProcessor, GeometryRouter, GroupCut, Mesh};
 use rustc_hash::FxHashMap;
 use voids_common::fixtures::{
     long_wall_with_many_tessellated_openings, slab_with_opening_ifc,
@@ -117,9 +117,10 @@ fn check_slab_direct_subtract_merge_bounds(ctx: &InlineCtx) {
 
     // --- Direct CSG subtraction ---
     let clipper = ClippingProcessor::new();
-    let result_mesh = clipper
-        .subtract_mesh(&slab_mesh, &opening_mesh)
-        .unwrap_or_else(|e| panic!("CSG subtraction failed: {e}"));
+    let result_mesh = match clipper.subtract_mesh(&slab_mesh, &opening_mesh) {
+        GroupCut::Cut(m) => m,
+        GroupCut::Rejected(why) => panic!("CSG subtraction rejected: {why:?}"),
+    };
 
     assert!(!result_mesh.is_empty(), "CSG result should not be empty");
     assert!(

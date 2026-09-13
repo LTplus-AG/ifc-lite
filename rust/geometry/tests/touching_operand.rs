@@ -18,7 +18,7 @@
 
 use ifc_lite_geometry::kernel::mesh_volume::mesh_volume;
 use nalgebra::{Point3, Vector3};
-use ifc_lite_geometry::{ClippingProcessor, Mesh};
+use ifc_lite_geometry::{ClippingProcessor, GroupCut, Mesh};
 use std::collections::HashMap;
 
 /// Outward-wound axis-aligned box, built HERE rather than reusing
@@ -171,7 +171,7 @@ fn a_touching_cutter_never_tears_the_host_open() {
     for case in CASES {
         let a = boxed(case.a_min, case.a_size);
         let b = boxed(case.b_min, case.b_size);
-        let out = clipper.subtract_mesh(&a, &b).expect("subtract must not error");
+        let out = cut_or_host(clipper.subtract_mesh(&a, &b), &a);
         match open_edges(&out) {
             Err(why) => failures.push(format!("{}: {why}", case.name)),
             Ok(0) => {}
@@ -201,7 +201,7 @@ fn a_touching_cutter_removes_no_volume() {
     for case in CASES {
         let a = boxed(case.a_min, case.a_size);
         let b = boxed(case.b_min, case.b_size);
-        let out = clipper.subtract_mesh(&a, &b).expect("subtract must not error");
+        let out = cut_or_host(clipper.subtract_mesh(&a, &b), &a);
         if !matches!(open_edges(&out), Ok(0)) {
             continue; // torn: reported by the topology test above, not here
         }
@@ -230,4 +230,13 @@ fn a_touching_cutter_removes_no_volume() {
         "a face-touching cutter must remove nothing ({checked} cases checked):\n  {}",
         failures.join("\n  ")
     );
+}
+
+/// The cut, or the host a rejection leaves in place. A touching cutter that
+/// never reaches the host solid is `Unchanged` (#4692).
+fn cut_or_host(outcome: GroupCut, host: &Mesh) -> Mesh {
+    match outcome {
+        GroupCut::Cut(m) => m,
+        GroupCut::Rejected(_) => host.clone(),
+    }
 }

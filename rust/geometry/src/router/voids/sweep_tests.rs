@@ -2,15 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Round-26 mutation-audit fixtures for the two never-mutated magic
-//! constants in this file: the `cut_changed_mesh` volume-drift tolerance
-//! (1.0e-3, relative to `vol_before`) and `drop_faces_outside_host`'s
-//! `VERTEX_CLEARANCE` (1.0e-3, absolute). Both had zero unit-level coverage
-//! before this round — only exercised transitively through full IFC-fixture
-//! integration tests, which never probed the boundary magnitude.
+//! Round-26 mutation-audit fixture for a never-mutated magic constant in this
+//! file: `drop_faces_outside_host`'s `VERTEX_CLEARANCE` (1.0e-3, absolute). It
+//! had zero unit-level coverage before that round, only exercised
+//! transitively through full IFC-fixture integration tests, which never probed
+//! the boundary magnitude.
 
 use super::*;
-use crate::router::voids::geom::mesh_signed_volume;
 use crate::Vector3;
 
 /// Axis-aligned box mesh, outward-wound, `min`..`max`. Volume is exactly
@@ -52,34 +50,6 @@ fn box_mesh(min: (f64, f64, f64), max: (f64, f64, f64)) -> Mesh {
         m.add_triangle(b, b + 2, b + 3);
     }
     m
-}
-
-#[test]
-fn cut_changed_mesh_volume_drift_boundary_is_1e_3_relative() {
-    // Unit cube -> mesh_signed_volume magnitude is exactly 1.0.
-    let cube = box_mesh((0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
-    let vol_after = mesh_signed_volume(&cube).abs();
-    assert!((vol_after - 1.0).abs() < 1e-6, "sanity: unit cube volume ~1.0, got {vol_after}");
-
-    // The host's volume is `vol_before`. Just under the 1e-3 relative threshold
-    // -> NOT changed. vol_before = 0.99901: diff = 0.00099, threshold =
-    // 0.99901 * 1e-3 = 0.00099901. f32 rounds the height by ~3e-8, far inside
-    // the 9e-6 margin.
-    let host = box_mesh((0.0, 0.0, 0.0), (1.0, 1.0, 0.99901));
-    let not_changed = cut_changed_mesh(&cube, &host);
-    assert!(
-        !not_changed,
-        "a 0.099% volume drift is inside the 0.1% tolerance and must read as unchanged"
-    );
-
-    // Just over the threshold -> changed.
-    // vol_before = 0.99899: diff = 0.00101, threshold = 0.99899 * 1e-3 = 0.00099899.
-    let host = box_mesh((0.0, 0.0, 0.0), (1.0, 1.0, 0.99899));
-    let changed = cut_changed_mesh(&cube, &host);
-    assert!(
-        changed,
-        "a 0.101% volume drift exceeds the 0.1% tolerance and must read as changed"
-    );
 }
 
 /// Two triangles: a "needle" triangle with two vertices deep inside the

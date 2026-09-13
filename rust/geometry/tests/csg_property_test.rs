@@ -32,8 +32,8 @@
 //! the counterexample is replayed forever.
 
 use ifc_lite_geometry::{
-    compute_signed_area, extrude_profile, subtract_2d, ClippingProcessor, Mesh, Point2, Point3,
-    Profile2D, Vector3,
+    compute_signed_area, extrude_profile, subtract_2d, ClippingProcessor, GroupCut, Mesh, Point2,
+    Point3, Profile2D, Vector3,
 };
 use proptest::prelude::*;
 use std::collections::HashMap;
@@ -426,9 +426,12 @@ proptest! {
         let vol_ab = aabb_intersection_volume(a_min, a_size, b_min, b_size);
 
         let processor = ClippingProcessor::new();
-        let result = processor
-            .subtract_mesh(&a, &b)
-            .expect("subtract_mesh must not error");
+        // A rejection leaves `a` as it is; the volume identity below still
+        // has to hold for it, so a wrongful rejection of a real overlap fails.
+        let result = match processor.subtract_mesh(&a, &b) {
+            GroupCut::Cut(m) => m,
+            GroupCut::Rejected(_) => a.clone(),
+        };
 
         // (a) numeric sanity
         prop_assert!(all_finite(&result), "result has NaN/Inf positions");
@@ -535,9 +538,9 @@ fn box_difference_thin_notch_seam_is_watertight_4439() {
     );
     assert_eq!(watertight_violation(&raw), None, "raw kernel output is torn");
 
-    let result = ClippingProcessor::new()
-        .subtract_mesh(&a, &b)
-        .expect("subtract_mesh must not error");
+    let GroupCut::Cut(result) = ClippingProcessor::new().subtract_mesh(&a, &b) else {
+        panic!("the #4439 cutter must cut the host");
+    };
     assert!(all_finite(&result), "result has NaN/Inf positions");
     let vol = mesh_volume(&result);
     let vol_a = a_size[0] * a_size[1] * a_size[2];

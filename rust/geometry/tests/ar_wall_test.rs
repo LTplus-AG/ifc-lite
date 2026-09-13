@@ -13,7 +13,7 @@
 //! `cargo test -p ifc-lite-geometry --test ar_wall_test -- --ignored`
 
 use ifc_lite_core::{EntityDecoder, EntityScanner};
-use ifc_lite_geometry::{calculate_normals, csg::ClippingProcessor, GeometryRouter, Mesh};
+use ifc_lite_geometry::{calculate_normals, csg::ClippingProcessor, GeometryRouter, GroupCut, Mesh};
 use rustc_hash::FxHashMap;
 use std::fs;
 
@@ -500,7 +500,7 @@ fn test_csg_subtraction_preserves_normals() {
     let result = clipper.subtract_mesh(&wall_mesh, &opening_mesh);
 
     match result {
-        Ok(result_mesh) => {
+        GroupCut::Cut(result_mesh) => {
             println!("CSG result:");
             println!(
                 "  positions: {}, normals: {}",
@@ -525,8 +525,8 @@ fn test_csg_subtraction_preserves_normals() {
                 "All normals should be finite after CSG"
             );
         }
-        Err(e) => {
-            println!("CSG failed (may be expected for some cases): {}", e);
+        GroupCut::Rejected(why) => {
+            println!("CSG rejected (may be expected for some cases): {why:?}");
         }
     }
 }

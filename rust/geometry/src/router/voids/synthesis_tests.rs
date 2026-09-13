@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
-use crate::ClippingProcessor;
+use crate::{ClippingProcessor, GroupCut};
 
 /// Append a quad, ordering its winding so the facet normal points along
 /// `target`. Deriving the winding instead of hand-listing corner order keeps
@@ -211,10 +211,11 @@ fn flush_cap_is_not_pushed_into_a_pre_cut_jamb() {
     let extended = GeometryRouter::extend_opening_mesh_through_host(&cutter, &host, dir);
     let clipper = ClippingProcessor::new();
     let before = mesh_signed_volume(&host).abs();
-    let cut = clipper
-        .subtract_mesh(&host, &extended)
-        .expect("subtract must not error on two closed boxes");
-    let removed = before - mesh_signed_volume(&cut).abs();
+    // A rejection leaves the host as it is, which removes nothing.
+    let removed = match clipper.subtract_mesh(&host, &extended) {
+        GroupCut::Cut(cut) => before - mesh_signed_volume(&cut).abs(),
+        GroupCut::Rejected(_) => 0.0,
+    };
 
     assert!(
         removed.abs() < 1.0e-3,

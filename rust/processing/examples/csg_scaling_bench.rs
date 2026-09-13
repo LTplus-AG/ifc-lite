@@ -38,16 +38,19 @@ use std::time::Instant;
 fn replay(job: &CapturedCsgJob) -> usize {
     let csg = ClippingProcessor::new();
     match job {
-        CapturedCsgJob::Single { host, cutter } => {
-            csg.subtract_mesh(host, cutter).map(|m| m.indices.len()).unwrap_or(0)
-        }
+        CapturedCsgJob::Single { host, cutter } => cut_index_count(csg.subtract_mesh(host, cutter)),
         CapturedCsgJob::Many { host, cutters } => {
             let refs: Vec<&Mesh> = cutters.iter().collect();
-            match csg.subtract_mesh_many(host, &refs) {
-                GroupCut::Cut(m) => m.indices.len(),
-                GroupCut::Rejected(_) => 0,
-            }
+            cut_index_count(csg.subtract_mesh_many(host, &refs))
         }
+    }
+}
+
+/// Index count of a cut; 0 for a rejection.
+fn cut_index_count(outcome: GroupCut) -> usize {
+    match outcome {
+        GroupCut::Cut(m) => m.indices.len(),
+        GroupCut::Rejected(_) => 0,
     }
 }
 

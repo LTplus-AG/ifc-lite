@@ -2,19 +2,20 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Group subtraction (disjoint-cutter batching) and its outcome type.
+//! Group subtraction (disjoint-cutter batching) and the outcome type it shares
+//! with the single-cutter `subtract_mesh`.
 //!
-//! [`GroupCut`] says whether the group was cut and, if not, why, so the router
+//! [`GroupCut`] says whether the host was cut and, if not, why, so the router
 //! matches on it instead of comparing the returned mesh against the host (the
-//! triangle-count and 0.1 % volume decoder of #1788, `router/voids/sweep.rs`,
-//! which still serves the single-cutter path).
+//! triangle-count and 0.1 % volume decoder of #1788, deleted in #4692).
 
 use super::{record_csg_op, ClippingProcessor};
 use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::kernel::mesh_bridge::{subtract_many, BatchSubtract};
 use crate::mesh::Mesh;
 
-/// Outcome of [`ClippingProcessor::subtract_mesh_many`].
+/// Outcome of [`ClippingProcessor::subtract_mesh_many`] and of
+/// [`ClippingProcessor::subtract_mesh`], which is a group of one.
 #[must_use]
 #[derive(Debug, Clone)]
 pub enum GroupCut {
@@ -26,9 +27,10 @@ pub enum GroupCut {
     Rejected(GroupReject),
 }
 
-/// Why a group was not cut. Only `InvalidOutput` and `GateRejected` record a
-/// [`crate::diagnostics::BoolFailure`]: the others are the expected, handled
-/// outcome (see [`ClippingProcessor::subtract_mesh_many`]).
+/// Why a group was not cut. For a group, only `InvalidOutput` and
+/// `GateRejected` record a [`crate::diagnostics::BoolFailure`]: the others are
+/// the expected, handled outcome (see [`ClippingProcessor::subtract_mesh_many`]).
+/// The single cutter records more; see [`ClippingProcessor::subtract_mesh`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GroupReject {
     /// The host has no triangles.
@@ -38,7 +40,8 @@ pub enum GroupReject {
     /// The #1109 escalation budget tripped inside one chunk's arrangement.
     BudgetTripped,
     /// A chunk's arrangement left an unrecovered constraint and its lenient
-    /// batch failed the kernel's volume oracle.
+    /// batch failed the kernel's volume oracle. Group only: the single cutter
+    /// does not gate on conformity.
     Nonconforming,
     /// Every chunk's arrangement conformed, but no cutter reaches the host
     /// solid: the kernel kept every host face and no cutter face.

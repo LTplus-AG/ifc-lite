@@ -54,7 +54,6 @@ use super::geom::{
     mesh_is_closed_exact, mesh_signed_volume, mesh_signed_volume_about, opening_mesh_thinnest_axis_dir,
     volume_reference,
 };
-use super::sweep::cut_changed_mesh;
 use super::{OpeningType, NORMALIZE_EPSILON};
 use crate::bool2d::union_contours_to_shapes;
 use crate::csg::{ClippingProcessor, GroupCut};
@@ -463,30 +462,27 @@ impl GeometryRouter {
         clipper: &ClippingProcessor,
     ) -> bool {
         let tri_before = result.triangle_count();
-        if !multi_slab {
-            let cutters: Vec<&Mesh> = prisms.iter().collect();
-            // A `Rejected` group (any `GroupReject`) is `false`: the caller
-            // falls back to the 3D union, then defers.
-            if let GroupCut::Cut(cut) = clipper.subtract_mesh_many(result, &cutters) {
-                let vol_before = mesh_signed_volume(result);
-                return accept_cut(result, cut, tri_before, vol_before, max_removed);
-            }
-            return false;
-        }
-        // Multi-slab: fuse the stacked prisms so their shared boundary planes
-        // dissolve, then subtract the single closed solid.
         let cutters: Vec<&Mesh> = prisms.iter().collect();
-        let union = ClippingProcessor::consolidate_coplanar(
-            crate::kernel::mesh_bridge::union_many(&cutters),
-        );
-        if union.is_empty() || !mesh_is_closed_exact(&union) {
-            return false;
-        }
-        let vol_before = mesh_signed_volume(result);
-        let Ok(cut) = clipper.subtract_mesh(result, &union) else {
+        let outcome = if !multi_slab {
+            clipper.subtract_mesh_many(result, &cutters)
+        } else {
+            // Multi-slab: fuse the stacked prisms so their shared boundary
+            // planes dissolve, then subtract the single closed solid.
+            let union = ClippingProcessor::consolidate_coplanar(
+                crate::kernel::mesh_bridge::union_many(&cutters),
+            );
+            if union.is_empty() || !mesh_is_closed_exact(&union) {
+                return false;
+            }
+            clipper.subtract_mesh(result, &union)
+        };
+        // A rejection (any `GroupReject`) is `false`: the caller falls back to
+        // the 3D union, then defers.
+        let GroupCut::Cut(cut) = outcome else {
             return false;
         };
-        accept_single_cut(result, cut, tri_before, vol_before, max_removed)
+        let vol_before = mesh_signed_volume(result);
+        accept_cut(result, cut, tri_before, vol_before, max_removed)
     }
 
 
@@ -504,8 +500,8 @@ fn omy_span(lo: f32, hi: f32) -> f64 {
 /// upstream: each cutter is `mesh_is_closed_exact`, and the kernel's conformity
 /// gate rejects a non-conforming arrangement). A blanket `param_cut_watertight`
 /// scan here is far too slow on the hot path. Whether the cut CHANGED the host
-/// is the caller's: a `GroupCut::Cut` already says so; a `subtract_mesh` result
-/// goes through [`accept_single_cut`].
+/// is the caller's: `subtract_mesh` and `subtract_mesh_many` return
+/// `GroupCut::Cut` only when the kernel cut it.
 ///
 /// `max_removed` is an OVER-CUT guard: the cut is rejected if it removed more host
 /// volume than the caller's provable upper bound (Σ contributing-cutter footprint
@@ -513,7 +509,7 @@ fn omy_span(lo: f32, hi: f32) -> f64 {
 /// cannot over-cut). This catches an approximate union reconstruction — a bridged
 /// depth band, a residual projection inflation — before it is committed and consumed
 /// as if it were an exact cut, so the cluster instead defers to the exact path.
-fn accept_cut(
+pub(super) fn accept_cut(
     result: &mut Mesh,
     cut: Mesh,
     tri_before: usize,
@@ -533,20 +529,6 @@ fn accept_cut(
     } else {
         false
     }
-}
-
-/// [`accept_cut`] for a single-cutter `subtract_mesh` result, which hands the
-/// host back un-cut in the same `Mesh` shape as a real cut, so the change has
-/// to be derived (`cut_changed_mesh`) before the cut can be accepted.
-pub(super) fn accept_single_cut(
-    result: &mut Mesh,
-    cut: Mesh,
-    tri_before: usize,
-    vol_before: f64,
-    max_removed: f64,
-) -> bool {
-    cut_changed_mesh(&cut, result)
-        && accept_cut(result, cut, tri_before, vol_before, max_removed)
 }
 
 /// AABB overlap on all three axes (half-open, matching the batching's disjoint

@@ -83,7 +83,7 @@ fn empty_columns_are_empty_and_mismatched_columns_are_an_error() {
     assert_eq!(ColumnarEntityIndex::from_columns(&[1, 2], &[0], &[0, 0]).err(), Some(short_starts));
     let short_lengths = ColumnLengthMismatch { ids: 2, starts: 2, lengths: 0 };
     assert_eq!(ColumnarEntityIndex::from_columns(&[1, 2], &[0, 0], &[]).err(), Some(short_lengths));
-    // The "columns disagree" phrase is also what geometry.worker.ts
+    // The "columns disagree" phrase is also what wasm-column-refusal.ts
     // `isColumnLengthRefusal` keys on; keep the two in step.
     assert_eq!(
         short_starts.to_string(),

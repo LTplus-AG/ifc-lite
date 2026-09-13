@@ -432,7 +432,7 @@ fn panic_log_names_the_file_when_the_panic_happens_on_a_pool_worker() {
     // The registration is scoped to the call (its guard drops during the
     // unwind), so a later unrelated panic must not be blamed on this file.
     // Other tests parse concurrently, so only this path's absence is asserted.
-    assert!(!in_flight_paths_for_log().contains(&probe_path));
+    assert!(!crate::panic_log::in_flight_paths_for_log().contains(&probe_path));
 }
 
 /// `run_in_pool` is the one `catch_unwind` on the parse path, and

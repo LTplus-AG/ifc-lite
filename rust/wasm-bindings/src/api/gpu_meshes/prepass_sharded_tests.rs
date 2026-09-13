@@ -18,8 +18,9 @@ fn a_colour_column_must_carry_exactly_four_floats_per_id() {
     let short = check_rgba_columns("orphan", &[1, 2], &[0.0; 4]).unwrap_err();
     assert!(short.contains("2 ids need 8 colour floats, got 4"), "{short}");
     assert!(short.starts_with("orphan"), "{short}");
-    // geometry.worker.ts `isColumnLengthRefusal` keys on this phrase to skip
-    // its copy-and-retry fallback; rewording it silently re-enables the retry.
+    // `isColumnLengthRefusal` (packages/geometry/src/wasm-column-refusal.ts)
+    // keys on this phrase to skip its copy-and-retry fallback; rewording it
+    // silently re-enables the retry.
     assert!(short.contains("columns disagree"), "{short}");
 
     // One float short of the last id is the off-by-one that reads past the end.

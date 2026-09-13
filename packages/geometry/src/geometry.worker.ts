@@ -30,6 +30,7 @@ import {
   type BatchSizingConfig,
 } from './batch-sizing.js';
 import { takeWasmPanicStash } from './wasm-panic-forward.js';
+import { isColumnLengthRefusal } from './wasm-column-refusal.js';
 
 export interface GeometryWorkerInitMessage {
   type: 'init';
@@ -703,17 +704,6 @@ function applySourceBytesToApi(): void {
  */
 function viewSharedBytes(sharedBuffer: SharedArrayBuffer): Uint8Array {
   return new Uint8Array(sharedBuffer);
-}
-
-/**
- * A wasm refusal of malformed column arguments (#4614): the text of
- * `ColumnLengthMismatch` in rust/core/src/columnar_index.rs, the class-column
- * check in source_fingerprint_prepass.rs and `check_rgba_columns` in
- * prepass_sharded.rs. Retrying with a materialised copy of the file cannot
- * change that verdict, so the SAB-view fallbacks rethrow it instead.
- */
-function isColumnLengthRefusal(err: unknown): boolean {
-  return /columns disagree/.test(err instanceof Error ? err.message : String(err));
 }
 
 /** Fallback path: copy SAB into a fresh ArrayBuffer-backed Uint8Array. */
@@ -1652,19 +1642,13 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
     }
 
     if (e.data.type === 'set-entity-index') {
-      // Hand the pre-built entity index from the pre-pass worker into
-      // this worker's IfcAPI. Without this, processGeometryBatch's lazy
-      // build path fires on the first call and re-scans the entire file
-      // (~5 s on a 1 GB IFC) — the dominant TTFG bottleneck before this
-      // change. Now the only cost is FxHashMap construction from the
-      // input slices (~1 s for 14 M entries).
+      // Install the pre-pass worker's index so processGeometryBatch never
+      // re-scans the whole file (the dominant time-to-first-geometry cost).
       const ifcApi = await ensureInit();
-      // Install first and cache only an accepted index, so a later recovery
-      // re-init (api = null in processBatch) replays it instead of falling back
-      // to the lazy O(file) re-scan (#1097). `setEntityIndex` throws for columns
-      // of unequal length (#4614); a cached rejected index would throw again in
-      // that replay, before the pre-pass columns and source bytes are restored.
-      // Accepted or not, the call clears the columns on the IfcAPI.
+      // Install, then cache: a recovery re-init (api = null in processBatch)
+      // replays the cache instead of re-scanning (#1097), and a rejected index
+      // (unequal columns throw, #4614) must never be replayed. The call clears
+      // the IfcAPI's pre-pass columns either way.
       cachedEntityIndex = null;
       prepassColumnsApplied = false;
       ifcApi.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);

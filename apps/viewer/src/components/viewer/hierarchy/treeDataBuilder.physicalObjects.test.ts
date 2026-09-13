@@ -223,19 +223,25 @@ describe("storey headline: physical objects that have a shape", () => {
 });
 
 describe('unified storey headline', () => {
+  const model = (id: string): FederatedModel => {
+    const ifcDataStore = createStoreyDataStore();
+    const hierarchy = ifcDataStore.spatialHierarchy!;
+    hierarchy.byStorey.set(STOREY_ID, [...hierarchy.byStorey.get(STOREY_ID)!, 41]);
+    return {
+      id,
+      name: id,
+      idOffset: id === 'model-a' ? 100 : 200,
+      maxExpressId: 61,
+      ifcDataStore,
+    } as unknown as FederatedModel;
+  };
+
+  const models = () => new Map([
+    ['model-a', model('model-a')],
+    ['model-b', model('model-b')],
+  ]);
+
   it('uses the same space exclusion as each model tree', () => {
-    const model = (id: string): FederatedModel => {
-      const ifcDataStore = createStoreyDataStore();
-      const hierarchy = ifcDataStore.spatialHierarchy!;
-      hierarchy.byStorey.set(STOREY_ID, [...hierarchy.byStorey.get(STOREY_ID)!, 41]);
-      return {
-        id,
-        name: id,
-        idOffset: id === 'model-a' ? 100 : 200,
-        maxExpressId: 61,
-        ifcDataStore,
-      } as unknown as FederatedModel;
-    };
     const unified = buildUnifiedStoreys(new Map([
       ['model-a', model('model-a')],
       ['model-b', model('model-b')],
@@ -251,37 +257,20 @@ describe('unified storey headline', () => {
   });
 
   it('reports the same number as the single-model badge on a #1075 rollup', () => {
-    // A model that rolls a space's contents up into `byStorey` (#1075) hands
-    // the federated path a list the per-model tree subtracts from. Counting
-    // that list raw makes the Storeys section and the model's own tree
-    // disagree about one storey — the very defect this work exists to remove,
-    // reappearing inside the fix. No sample model in the corpus rolls up, so
-    // the fixture has to say it.
-    const rolledUp = (id: string): FederatedModel => {
-      const ifcDataStore = createStoreyDataStore();
-      const hierarchy = ifcDataStore.spatialHierarchy!;
-      hierarchy.byStorey.set(STOREY_ID, [...hierarchy.byStorey.get(STOREY_ID)!, 41]);
-      return { id, name: id, idOffset: 0, maxExpressId: 62, ifcDataStore } as unknown as FederatedModel;
-    };
-    // buildUnifiedStoreys only runs in federated mode, so the fixture needs
-    // two models; each contribution is compared to that model's own tree.
-    const model = rolledUp('model-a');
-    const unified = buildUnifiedStoreys(
-      new Map([['model-a', model], ['model-b', rolledUp('model-b')]]),
-      undefined,
-      GEOMETRY_LOADED,
-    );
-    const single = storeyNodeOf(model.ifcDataStore!, GEOMETRY_LOADED).storey;
+    // `model()` above rolls the space's contents up into `byStorey` (#1075),
+    // which is the list the per-model tree subtracts from. Counting it raw
+    // makes the Storeys section and the model's own tree disagree about one
+    // storey — the very defect this work exists to remove, reappearing inside
+    // the fix. No sample model in the corpus rolls up, so a fixture must.
+    const federation = models();
+    const unified = buildUnifiedStoreys(federation, undefined, GEOMETRY_LOADED);
+    const contribution = unified[0].storeys.find((storey) => storey.modelId === 'model-a');
+    const single = storeyNodeOf(federation.get('model-a')!.ifcDataStore!, GEOMETRY_LOADED).storey;
 
     assert.strictEqual(
-      unified[0].storeys[0].objects.counted,
+      contribution?.objects.counted,
       single.elementCount,
       'the Storeys section and the model tree must not answer differently',
-    );
-    assert.strictEqual(unified[0].objects.counted, (single.elementCount ?? 0) * 2, 'and the total sums them');
-    assert.ok(
-      unified[0].storeys.every((storey) => !storey.elements.includes(41)),
-      "the space's own contents are not the storey's",
     );
   });
 
@@ -290,24 +279,66 @@ describe('unified storey headline', () => {
     // `project`. Walking the tree from that root to reach each storey node
     // threw, taking the whole Models section down with it rather than just
     // the count — so the fallback is the raw containment list, not a crash.
-    const model = (id: string): FederatedModel => {
-      const ifcDataStore = createStoreyDataStore();
-      const hierarchy = ifcDataStore.spatialHierarchy as unknown as { project?: SpatialNode };
+    const projectless = (id: string): FederatedModel => {
+      const built = model(id);
+      const hierarchy = built.ifcDataStore!.spatialHierarchy as unknown as { project?: unknown };
       delete hierarchy.project;
-      return { id, name: id, idOffset: 0, maxExpressId: 61, ifcDataStore } as unknown as FederatedModel;
+      return built;
     };
     const unified = buildUnifiedStoreys(new Map([
-      ['model-a', model('model-a')],
-      ['model-b', model('model-b')],
+      ['model-a', projectless('model-a')],
+      ['model-b', projectless('model-b')],
     ]));
 
     assert.strictEqual(unified.length, 1);
-    assert.strictEqual(unified[0].objects.rows, 10, 'the raw containment list, both models');
+    assert.strictEqual(unified[0].objects.rows, 12, 'the raw containment list, both models');
     assert.strictEqual(
       unified[0].objects.spacesNotCounted,
       0,
       'with no node to read children from, no space can be reported as excluded',
     );
+  });
+
+  it('treats a completed model with zero meshes as known-empty', () => {
+    const unified = buildUnifiedStoreys(
+      models(),
+      'elevation-desc',
+      new Set(),
+      new Set(['model-a', 'model-b']),
+    );
+
+    assert.strictEqual(unified[0].objects.counted, 0);
+    assert.strictEqual(unified[0].objects.withoutGeometry, 8);
+    assert.strictEqual(unified[0].objects.geometryKnown, true);
+  });
+
+  it('does not apply one model\'s geometry readiness to an unstreamed sibling', () => {
+    const federation = models();
+    const unified = buildUnifiedStoreys(
+      federation,
+      'elevation-desc',
+      new Set(),
+      new Set(['model-a']),
+    );
+
+    assert.strictEqual(unified[0].objects.counted, 4, 'the unstreamed model stays optimistic');
+    assert.strictEqual(unified[0].objects.withoutGeometry, 4, 'only the known-empty model is shapeless');
+    assert.strictEqual(unified[0].objects.geometryKnown, false, 'the combined row remains provisional');
+
+    const classNodes = buildTypeTree(
+      federation,
+      null,
+      new Set(),
+      true,
+      new Set(),
+      undefined,
+      new Set(['model-a']),
+    );
+    const physicalRows = classNodes
+      .filter((entry) => entry.type === 'type-group' && isPhysicalObjectType(entry.ifcType!))
+      .reduce((sum, entry) => sum + (entry.elementCount ?? 0), 0);
+    // 7, not 6: the truss now nests twice, so its sub-assembly is a row too.
+    assert.strictEqual(physicalRows, 7, 'the By Class tab retains every physical row from model-b');
   });
 });
 

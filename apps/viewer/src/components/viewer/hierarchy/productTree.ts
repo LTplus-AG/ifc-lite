@@ -84,8 +84,10 @@ export function makeAssemblyGeometry(
   modelId: string,
   models: Map<string, FederatedModel>,
   geometricIds: Set<number> | undefined,
+  geometryKnown = !!geometricIds && geometricIds.size > 0,
 ): AssemblyGeometry {
-  const applyFilter = !!geometricIds && geometricIds.size > 0;
+  const applyFilter = geometryKnown;
+  const knownGeometryIds = geometricIds ?? new Set<number>();
   const relationships = dataStore.relationships as AggregationRelationships | undefined;
   const toGlobal = (expressId: number) => resolveTreeGlobalId(modelId, expressId, models);
   const cache = new Map<number, boolean>();
@@ -107,9 +109,9 @@ export function makeAssemblyGeometry(
       // count read off the tab used to pick up groups, zones and containers.
       const physical = isPhysicalObjectType(typeName);
       if (!applyFilter) return physical;
-      if (geometricIds!.has(globalId)) return true;
+      if (knownGeometryIds.has(globalId)) return true;
       if (!physical) return false;
-      return hasAggregatedGeometry(relationships, expressId, toGlobal, geometricIds!, cache);
+      return hasAggregatedGeometry(relationships, expressId, toGlobal, knownGeometryIds, cache);
     },
     parts(expressId, typeName) {
       if (!relationships) return undefined;
@@ -118,11 +120,11 @@ export function makeAssemblyGeometry(
       // guard stays because handing IfcProject the whole spatial skeleton as
       // "aggregated parts" to isolate is the failure it was written for.
       if (isSpatial(typeName)) return undefined;
-      if (applyFilter && geometricIds!.has(toGlobal(expressId))) return undefined;
+      if (applyFilter && knownGeometryIds.has(toGlobal(expressId))) return undefined;
       if (getAggregatedChildren(relationships, expressId).length === 0) return undefined;
       const ids = collectAggregatedDescendants(relationships, expressId)
         .map(toGlobal)
-        .filter((id) => !applyFilter || geometricIds!.has(id));
+        .filter((id) => !applyFilter || knownGeometryIds.has(id));
       return ids.length > 0 ? ids : undefined;
     },
   };

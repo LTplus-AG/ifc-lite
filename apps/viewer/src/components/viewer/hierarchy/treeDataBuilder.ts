@@ -14,7 +14,6 @@ import {
   EntityFlags,
   RelationshipType,
   isSpaceLikeSpatialType,
-  isSpatialStructureType,
   isStoreyLikeSpatialType,
   type SpatialNode,
 } from '@ifc-lite/data';
@@ -36,6 +35,7 @@ import {
 } from './productTree';
 import type { TreeNode, NodeType, StoreyData, UnifiedStorey, HierarchySortMode } from './types';
 import { DEFAULT_HIERARCHY_SORT } from './types';
+import { getSpatialNodeElements, indexSpatialNodes } from './spatialElements';
 
 /** Helper to create elevation key (with 0.5m tolerance for matching) */
 export function elevationKey(elevation: number): string {
@@ -146,88 +146,6 @@ export function getNodeType(ifcType: IfcTypeEnum): NodeType {
   }
 }
 
-function collectDescendantSpaceElements(
-  spatialNode: SpatialNode,
-  hierarchy: IfcDataStore['spatialHierarchy'],
-  cache: Map<number, Set<number>>
-): Set<number> {
-  const cached = cache.get(spatialNode.expressId);
-  if (cached) return cached;
-
-  const elementIds = new Set<number>();
-
-  for (const child of spatialNode.children || []) {
-    // IfcSpace and IfcSpatialZone both roll up their bySpace elements so the
-    // storey doesn't also list them as direct contained elements (#1075).
-    if (isSpaceLikeSpatialType(child.type)) {
-      for (const elementId of hierarchy?.bySpace.get(child.expressId) ?? []) {
-        elementIds.add(elementId);
-      }
-    }
-
-    for (const elementId of collectDescendantSpaceElements(child, hierarchy, cache)) {
-      elementIds.add(elementId);
-    }
-  }
-
-  cache.set(spatialNode.expressId, elementIds);
-  return elementIds;
-}
-
-/**
- * Every spatial node by expressId, so a unified storey can reach the node
- * behind a `byStorey` key and apply the same space exclusion the per-model
- * tree does.
- *
- * `root` is optional because `spatialHierarchy` can exist with no `project`:
- * a cache-restored or synthetic store carries the containment maps and nothing
- * else, and the Models section renders such a store on every "By tag" test.
- * Dereferencing it there crashed the whole panel, not just the count.
- */
-function indexSpatialNodes(root: SpatialNode | undefined): Map<number, SpatialNode> {
-  const nodes = new Map<number, SpatialNode>();
-  if (!root) return nodes;
-  const pending = [root];
-  while (pending.length > 0) {
-    const node = pending.pop()!;
-    nodes.set(node.expressId, node);
-    pending.push(...(node.children ?? []));
-  }
-  return nodes;
-}
-
-function getSpatialNodeElements(
-  spatialNode: SpatialNode,
-  dataStore: IfcDataStore,
-  nodeType: NodeType,
-  descendantSpaceCache: Map<number, Set<number>>
-): number[] {
-  if (isSpaceLikeSpatialType(spatialNode.type)) {
-    return (dataStore.spatialHierarchy?.bySpace.get(spatialNode.expressId) as number[]) || [];
-  }
-
-  if (!isStoreyLikeSpatialType(spatialNode.type)) {
-    if (!isSpatialStructureType(spatialNode.type)) {
-      return [];
-    }
-    return spatialNode.elements || [];
-  }
-
-  if (nodeType !== 'IfcBuildingStorey') {
-    return [];
-  }
-
-  const storeyElements =
-    (dataStore.spatialHierarchy?.byStorey.get(spatialNode.expressId) as number[]) || [];
-  const descendantSpaceElements = collectDescendantSpaceElements(
-    spatialNode,
-    dataStore.spatialHierarchy,
-    descendantSpaceCache
-  );
-
-  return storeyElements.filter((elementId) => !descendantSpaceElements.has(elementId));
-}
-
 /**
  * The shape half of the object count: "would this entity put anything on
  * screen?".
@@ -246,9 +164,10 @@ function makeShapeTest(
   modelId: string,
   models: Map<string, FederatedModel>,
   geometricIds: Set<number> | undefined,
+  geometryKnown = !!geometricIds && geometricIds.size > 0,
 ): ((id: number) => boolean) | null {
-  if (!geometricIds || geometricIds.size === 0) return null;
-  const assemblyGeometry = makeAssemblyGeometry(dataStore, modelId, models, geometricIds);
+  if (!geometryKnown) return null;
+  const assemblyGeometry = makeAssemblyGeometry(dataStore, modelId, models, geometricIds, true);
   return (id: number) =>
     assemblyGeometry.renders(
       dataStore.entities?.getTypeName(id) ?? 'Unknown',
@@ -262,6 +181,7 @@ export function buildUnifiedStoreys(
   models: Map<string, FederatedModel>,
   sortMode: HierarchySortMode = DEFAULT_HIERARCHY_SORT,
   geometricIds?: Set<number>,
+  geometryReadyModelIds?: ReadonlySet<string>,
 ): UnifiedStorey[] {
   if (models.size <= 1) return [];
 
@@ -306,7 +226,13 @@ export function buildUnifiedStoreys(
         objects: summarizeObjects(
           directElements,
           (id) => dataStore.entities?.getTypeName(id),
-          makeShapeTest(dataStore, modelId, models, geometricIds),
+          makeShapeTest(
+            dataStore,
+            modelId,
+            models,
+            geometricIds,
+            geometryReadyModelIds?.has(modelId),
+          ),
           spacesNotCounted,
         ),
       };
@@ -565,6 +491,7 @@ export function buildTreeData(
   unifiedStoreys: UnifiedStorey[],
   sortMode: HierarchySortMode = DEFAULT_HIERARCHY_SORT,
   geometricIds?: Set<number>,
+  geometryReadyModelIds?: ReadonlySet<string>,
 ): TreeNode[] {
   const nodes: TreeNode[] = [];
 
@@ -684,7 +611,13 @@ export function buildTreeData(
           nodes,
           descendantSpaceCache,
           sortMode,
-          makeShapeTest(model.ifcDataStore, modelId, models, geometricIds),
+          makeShapeTest(
+            model.ifcDataStore,
+            modelId,
+            models,
+            geometricIds,
+            geometryReadyModelIds?.has(modelId),
+          ),
         );
       }
     }
@@ -706,7 +639,13 @@ export function buildTreeData(
         nodes,
         descendantSpaceCache,
         sortMode,
-        makeShapeTest(model.ifcDataStore, modelId, models, geometricIds),
+        makeShapeTest(
+          model.ifcDataStore,
+          modelId,
+          models,
+          geometricIds,
+          geometryReadyModelIds?.has(modelId),
+        ),
       );
     }
   } else if (ifcDataStore?.spatialHierarchy?.project) {
@@ -725,7 +664,13 @@ export function buildTreeData(
       nodes,
       descendantSpaceCache,
       sortMode,
-      makeShapeTest(ifcDataStore, 'legacy', models, geometricIds),
+      makeShapeTest(
+        ifcDataStore,
+        'legacy',
+        models,
+        geometricIds,
+        geometryReadyModelIds?.has('legacy'),
+      ),
     );
   }
 
@@ -755,12 +700,19 @@ export function buildTypeTree(
   isMultiModel: boolean,
   geometricIds?: Set<number>,
   authoredProducts?: AuthoredProduct[],
+  geometryReadyModelIds?: ReadonlySet<string>,
 ): TreeNode[] {
   // Collect entities grouped by IFC class across all models
   const typeGroups = new Map<string, Array<{ expressId: number; globalId: number; name: string; modelId: string; parts?: number[] }>>();
 
   const processDataStore = (dataStore: IfcDataStore, modelId: string) => {
-    const assemblyGeometry = makeAssemblyGeometry(dataStore, modelId, models, geometricIds);
+    const assemblyGeometry = makeAssemblyGeometry(
+      dataStore,
+      modelId,
+      models,
+      geometricIds,
+      geometryReadyModelIds?.has(modelId),
+    );
     for (let i = 0; i < dataStore.entities.count; i++) {
       const expressId = dataStore.entities.expressId[i];
       const globalId = resolveTreeGlobalId(modelId, expressId, models);
@@ -881,6 +833,7 @@ export function buildIfcTypeTree(
   expandedNodes: Set<string>,
   isMultiModel: boolean,
   geometricIds?: Set<number>,
+  geometryReadyModelIds?: ReadonlySet<string>,
 ): TreeNode[] {
   // Collect type entities and their typed instances
   interface TypeEntry {
@@ -897,7 +850,13 @@ export function buildIfcTypeTree(
 
   const processDataStore = (dataStore: IfcDataStore, modelId: string) => {
     if (!dataStore.relationships) return;
-    const assemblyGeometry = makeAssemblyGeometry(dataStore, modelId, models, geometricIds);
+    const assemblyGeometry = makeAssemblyGeometry(
+      dataStore,
+      modelId,
+      models,
+      geometricIds,
+      geometryReadyModelIds?.has(modelId),
+    );
 
     // Find all type entities (entities with IS_TYPE flag)
     for (let i = 0; i < dataStore.entities.count; i++) {
@@ -1060,6 +1019,7 @@ export function buildMaterialTree(
   _expandedNodes: Set<string>,
   _isMultiModel: boolean,
   geometricIds?: Set<number>,
+  geometryReadyModelIds?: ReadonlySet<string>,
 ): TreeNode[] {
   interface MatEntry {
     name: string;
@@ -1070,9 +1030,10 @@ export function buildMaterialTree(
   }
 
   const byName = new Map<string, MatEntry>();
-  const applyGeomFilter = !!geometricIds && geometricIds.size > 0;
-
   const processDataStore = (dataStore: IfcDataStore, modelId: string) => {
+    const applyGeomFilter = geometryReadyModelIds
+      ? geometryReadyModelIds.has(modelId)
+      : !!geometricIds && geometricIds.size > 0;
     const usage = buildMaterialUsageIndex(dataStore);
     for (const u of usage.values()) {
       let entry = byName.get(u.name);

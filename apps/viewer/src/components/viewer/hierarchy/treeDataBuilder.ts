@@ -273,7 +273,11 @@ export function buildUnifiedStoreys(
 
     const hierarchy = dataStore.spatialHierarchy;
     const { byStorey, storeyElevations } = hierarchy;
-    const spatialNodes = indexSpatialNodes(hierarchy.project);
+    // Partial/native metadata stores can expose the lookup maps before (or
+    // without) a project tree. Keep their previous byStorey-only behaviour.
+    const spatialNodes = hierarchy.project
+      ? indexSpatialNodes(hierarchy.project)
+      : new Map<number, SpatialNode>();
     const descendantSpaceCache = new Map<number, Set<number>>();
 
     for (const [storeyId, elements] of byStorey.entries()) {

@@ -85,16 +85,19 @@ impl GeometryProcessor for IfcEdgeProcessor {
         };
 
         let offset = right * RIBBON_HALF_WIDTH_FILE_UNITS;
-        let up = Vector3::new(0.0, 0.0, 1.0);
+        // The emitted winding is (start-left, start-right, end-right), whose
+        // geometric face normal is right × direction.  This is +Z for the
+        // usual horizontal ribbon, but it must rotate with vertical and sloped
+        // edges instead of leaving a lighting normal tangent to the face.
+        let normal = right.cross(&dir);
 
         let mut mesh = Mesh::with_capacity(4, 6);
-        mesh.add_vertex(start - offset, up);
-        mesh.add_vertex(start + offset, up);
-        mesh.add_vertex(end - offset, up);
-        mesh.add_vertex(end + offset, up);
+        mesh.add_vertex(start - offset, normal);
+        mesh.add_vertex(start + offset, normal);
+        mesh.add_vertex(end - offset, normal);
+        mesh.add_vertex(end + offset, normal);
 
-        // Two triangles per quad, matching the alignment ribbon's winding
-        // (CCW when viewed from +Z).
+        // Two triangles per quad, matching the alignment ribbon's winding.
         mesh.add_triangle(0, 1, 3);
         mesh.add_triangle(0, 3, 2);
 
@@ -141,7 +144,10 @@ fn resolve_vertex_point(
         )));
     }
     let coords = point.get_list(0).ok_or_else(|| {
-        crate::Error::geometry(format!("IfcCartesianPoint #{} missing coordinates", point.id))
+        crate::Error::geometry(format!(
+            "IfcCartesianPoint #{} missing coordinates",
+            point.id
+        ))
     })?;
     if !(2..=3).contains(&coords.len()) {
         return Err(crate::Error::geometry(format!(

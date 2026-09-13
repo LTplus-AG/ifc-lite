@@ -294,14 +294,9 @@ export async function createCesiumBridge(
     height: origin.height,
   };
   const mapScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
-  const oHeight = origin.height;
-  const originLon = origin.longitude;
-  const originLat = origin.latitude;
-  // Capture the narrowed origin components before defining callbacks. TypeScript
-  // does not retain the nullable narrowing inside a closure.
-  const originScaleX = origin.scaleX;
-  const originScaleY = origin.scaleY;
-  const originScaleZ = origin.scaleZ;
+  const { height: oHeight, longitude: originLon, latitude: originLat } = origin;
+  // Capture narrowed scalars because TypeScript does not retain object narrowing in callbacks.
+  const { scaleX: originScaleX, scaleY: originScaleY, scaleZ: originScaleZ } = origin;
 
   // Build the viewer-to-ENU 3x3 rotation matrix (converts a delta vector from
   // viewer space to ENU). Viewer Y-up maps to IFC Z-up ((vx,vy,vz) -> (vx,-vz,

@@ -5,7 +5,7 @@
 use super::collate::mat4_to_row_major_f32;
 use super::{
     collate_and_encode, collate_instances, collate_refs, collate_refs_in_basis,
-    decode_instanced, encode_instanced, encode_refs, verify_recomposition, Collated,
+    collate_refs_verified_in, decode_instanced, encode_instanced, encode_refs, verify_recomposition, Collated,
     InstanceMeshRef, INSTANCED_MAGIC, INSTANCED_VERSION,
 };
 use crate::mesh::{InstanceMeta, Mesh};
@@ -2040,6 +2040,24 @@ fn the_emitted_rel_is_expressed_in_the_callers_basis() {
         "fixture is vacuous: `B` commutes with this `rel`, so conjugating it \
          changes nothing and the test cannot fail"
     );
+
+    // The former public entry point promised a verify-only basis. Keep that
+    // contract for downstream Rust callers while the new API opts into baked-
+    // frame emission.
+    let legacy = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&s));
+    let legacy_occ = legacy.templates[0]
+        .occurrences
+        .iter()
+        .find(|o| o.mesh_index == 1)
+        .expect("legacy occurrence 1 is in the group");
+    for r in 0..4 {
+        for c in 0..4 {
+            assert!(
+                (legacy_occ.transform[r * 4 + c] as f64 - rel_native[(r, c)]).abs() < 1e-5,
+                "the compatibility API must keep emitting native rel[{r}][{c}]"
+            );
+        }
+    }
 }
 
 /// The other direction, and the guard for the two browser callers: `None` means

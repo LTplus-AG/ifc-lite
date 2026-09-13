@@ -35,6 +35,17 @@ pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize, rtc: [f64; 3])
     collate_refs_in_basis(meshes, min_group, rtc, None)
 }
 
+/// Compatibility entry point preserving the original verify-only emission
+/// contract. Use [`collate_refs_in_basis`] for baked-frame output.
+pub fn collate_refs_verified_in(
+    meshes: &[InstanceMeshRef],
+    min_group: usize,
+    rtc: [f64; 3],
+    verify_basis: Option<&Matrix4<f64>>,
+) -> Collated {
+    collate_refs_impl(meshes, min_group, rtc, verify_basis, false)
+}
+
 /// [`collate_refs`] against baked positions that are NOT in the native frame:
 /// `baked_basis` is what the baker did to the vertices after `InstanceMeta` was
 /// captured, so that `p_baked = B · p_native`.
@@ -48,11 +59,9 @@ pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize, rtc: [f64; 3])
 ///   `B · rel · B⁻¹`, so a consumer that uses the emitted `rel` directly places
 ///   the occurrence in the frame its vertices are in.
 ///
-/// This is the `#4118` behaviour change, and it is why the function is no
-/// longer called `collate_refs_verified_in`: the old name (and its verify-only
-/// `verify_basis` parameter) promised that the basis touched nothing but the
-/// check, and a caller that relied on that promise must now re-read its call
-/// rather than silently get conjugated output. `rtc` is the same kind of
+/// This is the `#4118` behaviour change, exposed under a new name because
+/// `collate_refs_verified_in` promised that its basis touched only the check;
+/// that compatibility entry point retains its original output. `rtc` is the same kind of
 /// argument — `to_post_rtc` already applies it to output and check alike — and
 /// the site rotation simply had no slot until now.
 ///
@@ -63,6 +72,16 @@ pub fn collate_refs_in_basis(
     min_group: usize,
     rtc: [f64; 3],
     baked_basis: Option<&Matrix4<f64>>,
+) -> Collated {
+    collate_refs_impl(meshes, min_group, rtc, baked_basis, true)
+}
+
+fn collate_refs_impl(
+    meshes: &[InstanceMeshRef],
+    min_group: usize,
+    rtc: [f64; 3],
+    baked_basis: Option<&Matrix4<f64>>,
+    emit_in_basis: bool,
 ) -> Collated {
     // A `baked_basis` that cannot be inverted has no conjugation `B · rel · B⁻¹`.
     // This once degraded to `None` — "no basis given" — which compares an
@@ -91,6 +110,7 @@ pub fn collate_refs_in_basis(
             }
         },
     };
+    let emitted_basis = emit_in_basis.then_some(basis_conjugate.as_ref()).flatten();
     // First-seen order keeps output deterministic regardless of hash iteration.
     let mut order: Vec<u128> = Vec::new();
     let mut groups: FxHashMap<u128, Vec<usize>> = FxHashMap::default();
@@ -172,18 +192,18 @@ pub fn collate_refs_in_basis(
             {
                 out.verification_rejections += 1;
             }
-            fall_back(&mut out, meshes, rep, members, t_idx, None, rtc, basis_conjugate.as_ref());
+            fall_back(&mut out, meshes, rep, members, t_idx, None, rtc, emitted_basis);
             continue;
         }
         if members.len() < min_group.max(1) {
-            fall_back(&mut out, meshes, rep, members, t_idx, m_ref_inv.as_ref(), rtc, basis_conjugate.as_ref());
+            fall_back(&mut out, meshes, rep, members, t_idx, m_ref_inv.as_ref(), rtc, emitted_basis);
             continue;
         }
         let Some(m_ref_inv) = m_ref_inv else {
             // A singular template placement is the one refusal that genuinely
             // cannot place a placeholder: there is no `rel` to compute for
             // anyone. `fall_back` counts what it has to drop.
-            fall_back(&mut out, meshes, rep, members, t_idx, None, rtc, basis_conjugate.as_ref());
+            fall_back(&mut out, meshes, rep, members, t_idx, None, rtc, emitted_basis);
             continue;
         };
 
@@ -238,9 +258,10 @@ pub fn collate_refs_in_basis(
             // `rel` in the frame the BAKED vertices are in. The check below and
             // the occurrence emitted at the bottom are handed the SAME matrix,
             // so "verified" and "shipped" cannot describe different frames.
-            let rel = basis_conjugate
+            let rel_native = m_k * m_ref_inv;
+            let rel_baked = basis_conjugate
                 .as_ref()
-                .map_or_else(|| m_k * m_ref_inv, |(s, s_inv)| s * (m_k * m_ref_inv) * s_inv);
+                .map_or(rel_native, |(s, s_inv)| s * rel_native * s_inv);
             // #3666: a shared `rep_identity` is not proof of shared geometry —
             // a 128-bit direct-geometry hash collision has been measured on a
             // real merged model. The count check above still lets a same-
@@ -256,7 +277,7 @@ pub fn collate_refs_in_basis(
                     template.positions,
                     mesh.origin,
                     mesh.positions,
-                    &rel,
+                    &rel_baked,
                 )
             {
                 shapes_match = false;
@@ -264,7 +285,11 @@ pub fn collate_refs_in_basis(
             }
             occurrences.push(InstanceOccurrence {
                 mesh_index: i,
-                transform: mat4_to_row_major_f32(&rel),
+                transform: mat4_to_row_major_f32(if emit_in_basis {
+                    &rel_baked
+                } else {
+                    &rel_native
+                }),
             });
         }
 
@@ -278,7 +303,7 @@ pub fn collate_refs_in_basis(
         }
 
         out.verification_rejections += 1;
-        fall_back(&mut out, meshes, rep, members, t_idx, Some(&m_ref_inv), rtc, basis_conjugate.as_ref());
+        fall_back(&mut out, meshes, rep, members, t_idx, Some(&m_ref_inv), rtc, emitted_basis);
     }
     out
 }

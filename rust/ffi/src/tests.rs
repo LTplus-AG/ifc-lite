@@ -457,14 +457,14 @@ fn a_pool_that_cannot_spawn_its_threads_is_an_error_not_a_panic() {
     assert!(build_parse_pool(1 << 62).is_err());
 }
 
-/// Concurrent panics on different pool workers run the hook at the same time,
-/// and each record is written in several `write` calls; records must still
-/// come out whole, one after another (#4642). Eight threads append 200
-/// records each, every field tagged with its record's id. Mutation that fails
-/// this test: remove the `LOG_WRITE` lock in `append_record`.
+/// Panic records appended from many threads at once come out whole and none
+/// is lost (#4642). Mutation that fails this test: write the record's fields
+/// with separate writes (`writeln!` straight to the file) and drop the lock.
+/// Dropping only the lock does not fail it on a local file, where one small
+/// append write is not split.
 #[test]
 fn concurrent_panic_records_do_not_interleave() {
-    let log = std::env::temp_dir().join(format!("ifc_lite_panic_interleave_{}.log", std::process::id()));
+    let log = temp_path("panic_interleave_log");
     let _ = std::fs::remove_file(&log);
     std::thread::scope(|scope| {
         for t in 0..8 {
@@ -479,16 +479,14 @@ fn concurrent_panic_records_do_not_interleave() {
     });
     let text = std::fs::read_to_string(&log).expect("records were written");
     let _ = std::fs::remove_file(&log);
-    let records: Vec<&str> = text.split("==== ifc-lite panic ====\n").skip(1).collect();
-    assert_eq!(records.len(), 1600);
-    for record in records {
-        let id = record.strip_prefix("file: ").and_then(|r| r.split('\n').next()).unwrap_or("");
-        assert_eq!(
-            record,
-            format!("file: {id}\n{id}\nbacktrace:\n{id}\n\n"),
-            "a record's fields interleaved with another record"
-        );
-    }
+    let mut records: Vec<&str> = text.split("==== ifc-lite panic ====\n").skip(1).collect();
+    let mut expected: Vec<String> = (0..8)
+        .flat_map(|t| (0..200).map(move |r| format!("t{t}r{r}")))
+        .map(|id| format!("file: {id}\n{id}\nbacktrace:\n{id}\n\n"))
+        .collect();
+    records.sort_unstable();
+    expected.sort_unstable();
+    assert!(records == expected, "panic records interleaved, went missing or were duplicated");
 }
 
 #[test]

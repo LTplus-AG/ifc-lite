@@ -27,6 +27,44 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Bounded quick-metadata tree and reachable placement (#4689, #4743)
+
+Measured exact merge-base `74ba2f24e664b37b96e871620fbfdbab653042f3`
+against `9a6c88208079c032e577cfd0dfeb401a51ba6542` on AC20-FZK-Haus,
+whose bytes matched the fixture manifest. Both native probes used the pinned
+Rust toolchain, the `profiling` profile and separate build directories on
+x86_64 Windows (Ryzen 9 9900X3D). Five fresh-process pairs per path ran
+interleaved on an otherwise-idle machine, with balanced order from
+`ab-order.mjs` seed 4743; the OS file cache was not purged.
+
+The stock `perf_probe --iters 1 --json --fingerprint` leaves the bootstrap
+disabled. Its base/branch median parse, geometry and pipeline-total times were
+16/16, 19/19 and 35/36 ms; full-call wall time was 36.819/37.348 ms (+1.44%,
+inside the base's 7.00% spread). That alone does not measure the new planner.
+A source-identical probe on both revisions also called
+`process_geometry_streaming_with_options_and_bootstrap` with
+`emit_quick_metadata_bootstrap: true` and all other options at their defaults.
+It used the stock probe's three preparatory index scans, timed callback entry
+before cloning the bootstrap, and fingerprinted the clone and meshes after
+the full-call timer stopped. Full-call time therefore includes the clone.
+
+With the bootstrap enabled, median parse, geometry and pipeline-total times
+were 16/17, 24/24 and 40/42 ms. Full-call wall time was 42.129/43.717 ms:
+an observed **1.59 ms (+3.77%) opt-in cost**, just beyond the base's 3.71%
+spread, not a no-regression result. Callback readiness was 13.066/14.562 ms
+(+11.45%, inside the base's 13.52% spread). This small native cost is accepted
+for bounded stack use and correct placement; it is not a browser worker-pool
+speed claim or a scaling qualification for unusually large spatial graphs.
+
+All 20 samples retained 285 meshes, 35,940 vertices and 19,456 triangles, with
+ordered mesh FNV-1a64 `25ac885b6ff4ad00`. All ten enabled samples retained the
+same 12-node, 12,600-byte serialized bootstrap, FNV-1a64 `2c58a0fc6e20ecec`.
+The mesh hash covers the stock probe's payload fields, not text metadata,
+material definitions, UVs, textures or instancing. The lesson: qualify the
+enabled path as well as ordinary load, and report full-call cost separately
+from callback readiness and the quantized pipeline timer. A disabled feature's
+unchanged load time cannot establish that its new planning pass is free.
+
 ## Boolean operands dispatch from the router's built-in table (#4560)
 
 The boolean operand resolver no longer keeps its own list of meshable operand

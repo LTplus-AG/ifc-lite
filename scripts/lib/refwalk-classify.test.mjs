@@ -439,4 +439,5 @@ fn walk<T>(store: &Store, id: u32) -> Option<Thing> {
   assert.ok(walk, 'turbofish self-recursion must be detected');
   assert.equal(walk.signal, 'recursion');
   assert.equal(walk.guard, null);
+  assert.equal(walk.fansOut, true, 'a turbofish call inside a loop still fans out');
 });

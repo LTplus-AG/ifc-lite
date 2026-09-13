@@ -269,15 +269,15 @@ function buildCallGraph(fns) {
  * @param {string} name
  * @returns {boolean}
  */
-function callSitePresent(body, name) {
+function callSitePattern(name) {
   const n = escapeRe(name);
-  // `(?:::\s*<...>)?` is the turbofish: a generic function recursing on itself
-  // is routinely spelled `walk::<T>(store, child)`, and without this the call
-  // site is invisible, so the cycle -- and therefore the whole candidate --
-  // disappears. Bounded by `[^;{}\n]` so a stray `<` cannot swallow the file.
+  // Recognize generic recursion such as `walk::<T>(child)`; the bounded body
+  // keeps a stray `<` from swallowing the rest of the file.
   const tf = '(?:::\\s*<[^;{}\\n]*?>)?\\s*';
-  const re = new RegExp(`(?:(?<![.\\w])${n}|(?<!\\w)self\\.${n}|(?<!\\w)Self::${n})${tf}\\(`);
-  return re.test(body);
+  return `(?:(?<![.\\w])${n}|(?<!\\w)self\\.${n}|(?<!\\w)Self::${n})${tf}\\(`;
+}
+function callSitePresent(body, name) {
+  return new RegExp(callSitePattern(name)).test(body);
 }
 
 /**
@@ -580,10 +580,10 @@ const DEPTH_GUARD_RE =
 const WORK_BUDGET_RE =
   /\b(?:(?:work_?budget|visit_?budget|budget|visited|walk|path)|self\s*\.\s*(?:work_?budget|visit_?budget|budget|visited|walk|path))\s*\.\s*(?:charge|spend|consume)\s*\(|\b(?:work_?budget|visit_?budget|visits)\b[^;\n]{0,80}?(?:>=|>|checked_add|saturating_add|\+=)/i;
 function cycleFansOut(cycle, byName) {
-  const names = cycle.map(escapeRe).join('|'), recursiveCalls = new RegExp(`\\b(?:${names})\\s*\\(`, 'g');
   return cycle.some((name) => {
     const body = byName.get(name)?.body ?? '';
-    return (body.match(recursiveCalls)?.length ?? 0) > 1 || extractLoopBodies(body).some((loop) => (loop.match(recursiveCalls)?.length ?? 0) > 0);
+    const calls = cycle.reduce((n, callee) => n + (body.match(new RegExp(callSitePattern(callee), 'g'))?.length ?? 0), 0);
+    return calls > 1 || extractLoopBodies(body).some((loop) => cycle.some((callee) => callSitePresent(loop, callee)));
   });
 }
 

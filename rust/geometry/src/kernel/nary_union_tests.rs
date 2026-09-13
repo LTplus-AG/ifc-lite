@@ -119,6 +119,13 @@ fn issue_3917_boxes() -> [Mesh; 3] {
 
 #[test]
 fn issue_3917_a_torn_caller_order_is_repaired_without_the_caller_reordering_anything() {
+    // This test relies on the DEFAULT (effectively unbounded for this fixture)
+    // cap so all 6 permutations get a chance to close. `issue_3917_retries_share_one_boolean_budget`
+    // below temporarily narrows the shared process-global cap to 1,000 to prove
+    // sharing; take the same lock so the two can never interleave and starve
+    // this test's retries mid-run (cargo's default parallel runner races them
+    // otherwise, since both touch the same global atomics).
+    let _guard = budget::GLOBAL_CAP_LOCK.lock().unwrap();
     let [a, b, c] = issue_3917_boxes();
 
     // CAB: the ordering the issue measured at 53 unmatched directed edges.

@@ -88,6 +88,7 @@
 //! Refs #3913, #3353, #3912, #3874
 
 use crate::csg::ClippingProcessor;
+use crate::kernel::budget;
 use crate::kernel::mesh_bridge::union_many;
 use crate::Mesh;
 use nalgebra::{Point3, Rotation3, Unit, Vector3};
@@ -342,6 +343,15 @@ const KNOWN_TORN_CEILING: usize = 0;
 /// other fast unit test - no opt-in needed.
 #[test]
 fn union_many_nary_sweep_regression_gate() {
+    // This sweep runs 882 real `union_many` calls under the DEFAULT budget
+    // cap and asserts none tear. `nary_union_tests::issue_3917_retries_share_one_boolean_budget`
+    // temporarily narrows the shared process-global cap to 1,000 to prove
+    // retries share it; without this lock cargo's default parallel runner
+    // can interleave the two, tripping the budget mid-sweep and producing a
+    // spurious "torn"/empty union that is a test race, not a real defect
+    // (reproduced: this test is flaky under the default runner and
+    // deterministic green under `--test-threads=1` before this guard).
+    let _guard = budget::GLOBAL_CAP_LOCK.lock().unwrap();
     let verdicts = run_sweep();
     assert_eq!(
         verdicts.len(),

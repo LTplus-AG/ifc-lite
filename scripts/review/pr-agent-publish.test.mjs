@@ -46,8 +46,18 @@ test('classifyFailure names the provider failures a maintainer acts on different
   assert.equal(classifyFailure('\x1b[1mERROR\x1b[0m | litellm.AuthenticationError: bad key'), 'AUTH_FAILED', 'raw log colours');
 });
 
-test('a status-code-looking number outside an error line is not a status code', () => {
+test('a status-code-looking number outside the error message is not a status code', () => {
   assert.equal(classifyFailure('INFO | Tokens: 401, total tokens under limit: 32768\nERROR | Failed to review PR'), 'NO_REVIEW');
+  // The timestamp's milliseconds and the source line number are numbers in the
+  // error line itself.
+  assert.equal(
+    classifyFailure('2026-09-13 13:46:43.401 | ERROR    | pr_agent.algo.x:chat_completion:429 - litellm.ContextWindowExceededError: too long'),
+    'CONTEXT_TOO_LONG',
+  );
+  assert.equal(
+    classifyFailure('2026-09-13 13:46:43.429 | ERROR    | pr_agent.tools.pr_reviewer:run:402 - Failed to review PR: something new'),
+    'NO_REVIEW',
+  );
 });
 
 test('no review.json is a failure even when review.md has text, because PR-Agent exits 0 on a failed call', () => {

@@ -86,7 +86,10 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       vars.PR_AGENT_OPENROUTER_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Above PR-Agent's worst case, so a hung provider ends as a named failure
+    # from the publish step rather than a job timeout that skips it: two models
+    # at CONFIG__AI_TIMEOUT each, plus LiteLLM's own retries.
+    timeout-minutes: 40
     permissions:
       contents: read
       pull-requests: write
@@ -124,6 +127,7 @@ jobs:
           CONFIG__CUSTOM_MODEL_MAX_TOKENS: '1000000'
           CONFIG__MAX_MODEL_TOKENS: ${{ env.PR_AGENT_OPENROUTER_MAX_MODEL_TOKENS }}
           CONFIG__AI_TIMEOUT: '300'
+          CONFIG__RETRY_SAME_MODEL_ON_TIMEOUT: 'false'
           # Sent as OpenRouter's HTTP-Referer and X-Title attribution headers.
           OR_SITE_URL: https://github.com/${{ github.repository }}
           OR_APP_NAME: ifc-lite PR-Agent review
@@ -157,7 +161,9 @@ jobs:
     # configured and the PR is not labelled `ci:hosted`. Otherwise a hosted
     # runner, which only runs the probe step to report why.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && vars.PR_AGENT_LOCAL_BASE_URL != '' && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    timeout-minutes: 60
+    # Same reasoning as the OpenRouter job: above two model attempts at
+    # CONFIG__AI_TIMEOUT plus LiteLLM's retries.
+    timeout-minutes: 90
     # No write permission on the self-hosted runner. The hosted job below posts.
     permissions:
       contents: read
@@ -235,7 +241,8 @@ jobs:
           CONFIG__FALLBACK_MODELS: openai/${{ env.PR_AGENT_LOCAL_MODEL }}
           CONFIG__CUSTOM_MODEL_MAX_TOKENS: ${{ env.PR_AGENT_LOCAL_MAX_MODEL_TOKENS }}
           CONFIG__MAX_MODEL_TOKENS: ${{ env.PR_AGENT_LOCAL_MAX_MODEL_TOKENS }}
-          CONFIG__AI_TIMEOUT: '900'
+          CONFIG__AI_TIMEOUT: '600'
+          CONFIG__RETRY_SAME_MODEL_ON_TIMEOUT: 'false'
           CONFIG__DUPLICATE_PROMPT_EXAMPLES: 'true'
           OPENAI__API_BASE: ${{ vars.PR_AGENT_LOCAL_BASE_URL }}
           OPENAI__KEY: ${{ secrets.PR_AGENT_LOCAL_API_KEY || 'not-needed' }}

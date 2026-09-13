@@ -24,8 +24,9 @@
  * the Claude lane's own sanitiser, imported rather than copied.
  *
  * ONE COMMENT PER LANE, found by the marker on its first line and by author.
- * A failed run rewrites that comment to say the head was NOT reviewed, so a
- * review of an older commit never sits under a newer head looking current.
+ * A failed run rewrites that comment to say the head was NOT reviewed. Runs
+ * that never reach this script (nothing reviewable, local endpoint unavailable)
+ * leave an earlier review in place; its heading names the commit it reviewed.
  */
 
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -71,8 +72,15 @@ const FAILURES = [
 const remedy = (reason) => FAILURES.find(([r]) => r === reason)[2];
 
 /**
- * Only error lines are read, so a token count such as "Tokens: 401" can never
- * be mistaken for a status code.
+ * PR-Agent's log prefix: `2026-09-13 13:46:43.401 | ERROR    | module:function:1201 - `.
+ * Its milliseconds and source line number are numbers too, and `.401` or `:429`
+ * would otherwise read as a status code.
+ */
+const LOG_PREFIX_RE = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+\s*\|\s*\w+\s*\|\s*\S+\s+-\s+/;
+
+/**
+ * Only the message part of error lines is read, so neither a token count
+ * ("Tokens: 401") nor a timestamp or line number is taken for a status code.
  *
  * @param {string|null} logText
  */
@@ -81,6 +89,7 @@ export function classifyFailure(logText) {
     .replace(/\x1b\[[0-9;]*m/g, '')
     .split('\n')
     .filter((line) => /error|exception|failed/i.test(line))
+    .map((line) => line.replace(LOG_PREFIX_RE, ''))
     .join('\n');
   return FAILURES.find(([, re]) => re?.test(errorLines))?.[0] ?? 'NO_REVIEW';
 }

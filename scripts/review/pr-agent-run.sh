@@ -27,7 +27,9 @@ rm -f "$out/review.json" "$out/review.md"
 # does not apply its own [ignore] globs in plain-diff mode (measured on 0.45.0:
 # a glob matching 11 of 12 changed files left the prompt at 11,927 tokens
 # against 12,038 without it).
-git diff --name-only -z "$base...$head" \
+# --no-renames lists BOTH sides of a rename, so the second `git diff` still
+# sees a moved file as a rename instead of a whole new file.
+git diff --name-only --no-renames -z "$base...$head" \
   | node --input-type=module -e "
       import { readFileSync } from 'node:fs';
       import { isExcluded } from './scripts/review/build-review-input.mjs';

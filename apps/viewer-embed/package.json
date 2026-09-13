@@ -14,6 +14,7 @@
   "dependencies": {
     "@ifc-lite/bcf": "workspace:^",
     "@ifc-lite/cache": "workspace:^",
+    "@ifc-lite/charts": "workspace:^",
     "@ifc-lite/clash": "workspace:^",
     "@ifc-lite/collab": "workspace:^",
     "@ifc-lite/create": "workspace:^",

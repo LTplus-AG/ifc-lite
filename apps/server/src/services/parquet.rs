@@ -46,6 +46,12 @@ pub enum ParquetError {
 ///
 /// This format is compatible with ara3d BOS and provides excellent compression
 /// for geometry data through columnar storage and dictionary encoding.
+///
+/// Test-only (`#[cfg(test)]`), like `StreamingParquetCacheWriter::finish`:
+/// the parse route takes the outer-framed body from
+/// [`serialize_combined_for_layout`], so no production caller needs the bare
+/// inner blob. The tests use it as the reference inner blob.
+#[cfg(test)]
 pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> {
     serialize_with_plan(meshes, &ShapePlan::Identity, ParquetLayout::Flat)
 }
@@ -66,9 +72,8 @@ pub fn serialize_batch_with_layout(
 /// tables and framing as [`serialize_to_parquet`]; see `mesh_schema()` in
 /// `services::parquet_schema` for what the layout means on the wire.
 ///
-/// Separate from [`serialize_to_parquet`] rather than replacing it: the
-/// streaming route serializes ONE BATCH at a time, where sharing could only
-/// ever be batch-local, so it keeps calling the identity-plan serializer.
+/// Test-only for the same reason as [`serialize_to_parquet`].
+#[cfg(test)]
 pub fn serialize_to_parquet_shared_shapes(meshes: &[MeshData]) -> Result<Bytes, ParquetError> {
     serialize_with_plan(
         meshes,
@@ -77,19 +82,46 @@ pub fn serialize_to_parquet_shared_shapes(meshes: &[MeshData]) -> Result<Bytes, 
     )
 }
 
+/// The whole-model body of `POST /api/v1/parse/parquet` under the layout the
+/// client asked for, already in the outer `[geo_len][geo_bytes][data_model_len=0]`
+/// framing. Only `SharedShapes` runs the shape-sharing planner; a default
+/// request gets the pre-#3888 bytes (#3888). Framed by
+/// `frame_combined_sections`, which guards the outer length (it can pass
+/// `u32::MAX` while every section passes) and writes both frames in one
+/// allocation.
+pub(crate) fn serialize_combined_for_layout(
+    meshes: &[MeshData],
+    layout: ParquetLayout,
+) -> Result<Bytes, ParquetError> {
+    let plan = match layout {
+        ParquetLayout::SharedShapes => ShapePlan::shared_shapes(meshes),
+        ParquetLayout::Flat => ShapePlan::Identity,
+    };
+    let (mesh, vertex, index) = write_sections(meshes, &plan, layout)?;
+    frame_combined_sections(&mesh, &vertex, &index)
+}
+
 fn serialize_with_plan(
     meshes: &[MeshData],
     plan: &ShapePlan,
     layout: ParquetLayout,
 ) -> Result<Bytes, ParquetError> {
-    let (mesh_batch, vertex_batch, index_batch) = build_mesh_tables(meshes, plan, layout, 0, 0)?;
-
-    // Write to a custom binary format with multiple Parquet sections
     // Format: [mesh_parquet_len:u32][mesh_parquet][vertex_parquet_len:u32][vertex_parquet][index_parquet_len:u32][index_parquet]
-    let mesh_parquet = write_parquet_buffer(&mesh_batch)?;
-    let vertex_parquet = write_parquet_buffer(&vertex_batch)?;
-    let index_parquet = write_parquet_buffer(&index_batch)?;
-    frame_sections(&mesh_parquet, &vertex_parquet, &index_parquet)
+    let (mesh, vertex, index) = write_sections(meshes, plan, layout)?;
+    frame_sections(&mesh, &vertex, &index)
+}
+
+/// The mesh, vertex and index Parquet buffers, in wire order.
+type Sections = (Vec<u8>, Vec<u8>, Vec<u8>);
+
+/// The mesh, vertex and index tables, each written as its own Parquet buffer.
+fn write_sections(meshes: &[MeshData], plan: &ShapePlan, layout: ParquetLayout) -> Result<Sections, ParquetError> {
+    let (mesh_batch, vertex_batch, index_batch) = build_mesh_tables(meshes, plan, layout, 0, 0)?;
+    Ok((
+        write_parquet_buffer(&mesh_batch)?,
+        write_parquet_buffer(&vertex_batch)?,
+        write_parquet_buffer(&index_batch)?,
+    ))
 }
 
 /// Fail loud instead of silently truncating a wire-format `u32` length

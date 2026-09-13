@@ -100,6 +100,22 @@ fn solar_device_has_geometry() {
     assert!(has_geometry_by_name("IfcSolarDevice"));
 }
 
+/// `IfcSchema::has_geometry` was a second copy of this rule, a leaf-level
+/// whitelist with `name.contains("Reinforc")`, and it answered `false` for
+/// `IfcChiller` (an `IfcEnergyConversionDevice` leaf it never listed) where
+/// this function answers `true`. The copy is deleted (the units review
+/// behind #4577, finding 6); these are the answers the one remaining rule gives for the
+/// leaves the whitelist missed and for the `Reinforc` shape it matched more
+/// loosely than `starts_with("IFCREINFORCING")`.
+#[test]
+fn distribution_leaves_the_deleted_whitelist_missed_have_geometry() {
+    for name in ["IFCCHILLER", "IFCCOIL", "IFCFAN", "IFCLIGHTFIXTURE", "IFCSENSOR"] {
+        assert!(has_geometry_by_name(name), "{name}");
+    }
+    // `contains("Reinforc")` also admitted this, which is not a product.
+    assert!(!has_geometry_by_name("IfcReinforcementBarProperties"));
+}
+
 #[test]
 fn ifc4x3_infrastructure_have_geometry() {
     for name in [
@@ -269,103 +285,6 @@ fn is_simple_geometry_type_routes_correctly() {
     // Mixed-case input — exercises the `to_ascii_uppercase` branch.
     assert!(is_simple_geometry_type("IfcWall"));
     assert!(!is_simple_geometry_type("IfcDoor"));
-}
-
-// #1910 review follow-up: `nth_attribute_is_present` had no direct unit
-// test — every existing reference was production use or an integration
-// test exercising it incidentally. These pin the documented contract:
-// "attribute at `index` (0-based, top-level — respects nested parens and
-// quoted strings) is present and non-null (`$`)".
-
-#[test]
-fn nth_attribute_present_and_non_null_is_true() {
-    let entity = b"#40=IFCBUILDINGSTOREY('guid',$,'Level 1',$,$,#18,#39,$,.ELEMENT.,0.);";
-    // index 0: 'guid' — present, non-null.
-    assert!(nth_attribute_is_present(entity, 0));
-    // index 6: #39 (Representation) — present, non-null.
-    assert!(nth_attribute_is_present(entity, 6));
-}
-
-#[test]
-fn nth_attribute_dollar_is_false() {
-    let entity = b"#40=IFCBUILDINGSTOREY('guid',$,'Level 1',$,$,#18,$,$,.ELEMENT.,0.);";
-    // index 6: $ (Representation) — present but null.
-    assert!(!nth_attribute_is_present(entity, 6));
-    // index 1: $ (OwnerHistory) — same.
-    assert!(!nth_attribute_is_present(entity, 1));
-}
-
-#[test]
-fn nth_attribute_past_the_end_is_false() {
-    let entity = b"#1=IFCWALL('guid',$,'Wall');";
-    // Only 3 top-level attributes (indices 0..=2); index 10 doesn't exist.
-    assert!(!nth_attribute_is_present(entity, 10));
-}
-
-#[test]
-fn nth_attribute_empty_value_is_false() {
-    // `,,` — the middle attribute is an empty token, not `$` and not a
-    // value. The scanner treats an empty trimmed token as absent: the
-    // `!token.is_empty()` check in `nth_attribute_is_present` fails.
-    let entity = b"#1=IFCFOO('a',,'c');";
-    assert!(!nth_attribute_is_present(entity, 1));
-    // Confirm the neighbours parsed correctly around the empty slot.
-    assert!(nth_attribute_is_present(entity, 0));
-    assert!(nth_attribute_is_present(entity, 2));
-}
-
-#[test]
-fn nth_attribute_nested_parens_are_not_top_level_commas() {
-    // IFCPOLYLOOP((#20,#21,#22)) — the whole nested list is attribute 0;
-    // the commas inside the inner parens must not be counted as top-level
-    // separators, and there must be no attribute 1.
-    let entity = b"#30=IFCPOLYLOOP((#20,#21,#22),$);";
-    assert!(nth_attribute_is_present(entity, 0));
-    assert!(!nth_attribute_is_present(entity, 1));
-    assert!(!nth_attribute_is_present(entity, 2));
-}
-
-#[test]
-fn nth_attribute_quoted_comma_and_paren_are_not_top_level() {
-    // A quoted string containing both a comma and parens must not be
-    // split on, nor have its parens counted toward nesting depth.
-    let entity =
-        b"#40=IFCBUILDINGSTOREY('guid',$,'Level 1, west (annex)',$);";
-    assert!(nth_attribute_is_present(entity, 0)); // 'guid'
-    assert!(!nth_attribute_is_present(entity, 1)); // $
-    assert!(nth_attribute_is_present(entity, 2)); // the quoted string itself
-    assert!(!nth_attribute_is_present(entity, 3)); // $
-    // Nothing beyond attribute 3 — the embedded comma/parens didn't
-    // fabricate extra attributes.
-    assert!(!nth_attribute_is_present(entity, 4));
-}
-
-#[test]
-fn nth_attribute_escaped_quote_stays_inside_the_string() {
-    // STEP escapes an embedded `'` as `''`. The scanner must not treat
-    // the escape as the string's closing quote.
-    let entity = b"#1=IFCWALL('guid',$,'quo''te',$);";
-    assert!(nth_attribute_is_present(entity, 2)); // 'quo''te'
-    assert!(!nth_attribute_is_present(entity, 3)); // $
-    // No phantom attribute 4 from mis-parsing the escape as a delimiter.
-    assert!(!nth_attribute_is_present(entity, 4));
-}
-
-#[test]
-fn nth_attribute_no_open_paren_is_false() {
-    assert!(!nth_attribute_is_present(b"#1=IFCWALL;", 0));
-}
-
-#[test]
-fn nth_attribute_no_close_paren_is_false() {
-    assert!(!nth_attribute_is_present(b"#1=IFCWALL('guid'", 0));
-}
-
-#[test]
-fn nth_attribute_reversed_boundary_is_false() {
-    // `)` appears before `(` — must not panic or index out of bounds.
-    assert!(!nth_attribute_is_present(b")(", 0));
-    assert!(!nth_attribute_is_present(b"garbage)stuff(more", 0));
 }
 
 /// Every key in `legacy_entities.rs`, derived rather than copied.

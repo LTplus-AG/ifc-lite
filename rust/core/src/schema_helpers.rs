@@ -188,7 +188,8 @@ fn is_non_geometric_spatial(t: IfcType) -> bool {
 /// to", so callers that need to catch that exceptional case combine this
 /// predicate with an instance-level check of whether the entity's
 /// `Representation` attribute (index 6 on any `IfcProduct`) is actually
-/// non-null before scheduling it for meshing. See
+/// non-null before scheduling it for meshing
+/// (`crate::parser::nth_attribute_is_present`). See
 /// `rust/processing/src/processor/mod.rs` and
 /// `rust/wasm-bindings/src/api/gpu_meshes/prepass.rs`.
 pub fn is_representationless_spatial_container_by_name(type_name: &str) -> bool {
@@ -210,73 +211,6 @@ fn compute_is_representationless_spatial_container(upper: &str) -> bool {
         return false;
     }
     is_non_geometric_spatial(t)
-}
-
-/// Cheap textual check for whether a STEP entity's attribute at `index`
-/// (0-based, top-level — respects nested parens and quoted strings) is
-/// present and non-null (`$`), without fully decoding the entity via
-/// `EntityDecoder`. Companion to
-/// [`is_representationless_spatial_container_by_name`]: callers use it to
-/// check attribute 6 (`Representation`, stable across every `IfcProduct`
-/// subtype) before deciding an otherwise-excluded spatial container
-/// exceptionally carries geometry (#1910).
-pub fn nth_attribute_is_present(entity_bytes: &[u8], index: usize) -> bool {
-    let Some(open_idx) = entity_bytes.iter().position(|byte| *byte == b'(') else {
-        return false;
-    };
-    let Some(close_idx) = entity_bytes.iter().rposition(|byte| *byte == b')') else {
-        return false;
-    };
-    if close_idx <= open_idx {
-        return false;
-    }
-    let args = &entity_bytes[open_idx + 1..close_idx];
-
-    let mut in_string = false;
-    let mut depth = 0i32;
-    let mut start = 0usize;
-    let mut attr_idx = 0usize;
-    let mut i = 0usize;
-    while i < args.len() {
-        match args[i] {
-            b'\'' => {
-                if in_string && i + 1 < args.len() && args[i + 1] == b'\'' {
-                    i += 1;
-                } else {
-                    in_string = !in_string;
-                }
-            }
-            b'(' if !in_string => depth += 1,
-            b')' if !in_string => depth -= 1,
-            b',' if !in_string && depth == 0 => {
-                if attr_idx == index {
-                    let token = trim_ascii(&args[start..i]);
-                    return !token.is_empty() && token != b"$";
-                }
-                attr_idx += 1;
-                start = i + 1;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    if attr_idx == index {
-        let token = trim_ascii(&args[start..]);
-        return !token.is_empty() && token != b"$";
-    }
-    false
-}
-
-fn trim_ascii(bytes: &[u8]) -> &[u8] {
-    let mut s = 0usize;
-    let mut e = bytes.len();
-    while s < e && bytes[s].is_ascii_whitespace() {
-        s += 1;
-    }
-    while e > s && bytes[e - 1].is_ascii_whitespace() {
-        e -= 1;
-    }
-    &bytes[s..e]
 }
 
 /// Check if an IFC entity class is "simple" geometry (processed first for

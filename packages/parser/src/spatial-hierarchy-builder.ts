@@ -136,7 +136,7 @@ export class SpatialHierarchyBuilder {
       console.warn('[SpatialHierarchyBuilder] No buildings found in spatial hierarchy');
     }
 
-    const { byStorey, byBuilding, bySite, bySpace, storeyElevations, elementToStorey, elementToContainer } = ctx;
+    const { byStorey, byBuilding, bySite, bySpace, storeyElevations, elementToStorey, elementToContainer, reachableSpatialNodes } = ctx;
 
 
     return {
@@ -151,6 +151,7 @@ export class SpatialHierarchyBuilder {
       elementToStorey,
       elementToContainer,
       ambiguousStorey: computeAmbiguousStorey(byStorey), // #4311
+      reachableSpatialNodes, // #4314: the same set elementToStorey's tie-break above read
 
       getStoreyElements(storeyId: number): number[] {
         return byStorey.get(storeyId) ?? [];

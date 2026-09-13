@@ -83,29 +83,29 @@ impl OperandPath {
     }
 }
 
-impl BooleanClippingProcessor {
-    /// Process a solid operand with depth tracking. The mesh only; callers
-    /// that must not double-record an unsupported operand's consequence use
-    /// [`Self::process_operand_checked`].
-    ///
-    /// Records an unsupported operand under [`BoolOp::Unknown`]: every caller
-    /// here is meshing the BASE solid at the bottom of a left spine, which is
-    /// read before any node's operator is, and whose loss empties the chain
-    /// under every operator alike. Naming one node's operator would claim an
-    /// attribution this path does not have.
-    pub(super) fn process_operand_with_depth(
-        &self,
-        operand: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        depth: u32,
-        quality: TessellationQuality,
-        visited: &mut OperandPath,
-    ) -> Result<Mesh> {
-        Ok(self
-            .process_operand_checked(BoolOp::Unknown, operand, decoder, depth, quality, visited)?
-            .0)
+/// The node's operator. `Err` carries what the `UnknownBooleanOperator`
+/// record names: the keyword as authored when it is none of the three, or
+/// `<unreadable>` when the attribute is not an enum (`$`, `*`, a string) on
+/// an `IfcBooleanResult`, where UNION and INTERSECTION are as legal as
+/// DIFFERENCE and defaulting would execute a subtraction the file never
+/// asked for. An `IfcBooleanClippingResult` has DIFFERENCE as its only legal
+/// operator, so there the default is what the schema says.
+pub(super) fn boolean_operator(entity: &DecodedEntity) -> std::result::Result<BoolOp, &str> {
+    let Some(keyword) = entity.get(0).and_then(|v| v.as_enum()) else {
+        return match entity.ifc_type {
+            IfcType::IfcBooleanClippingResult => Ok(BoolOp::Difference),
+            _ => Err("<unreadable>"),
+        };
+    };
+    match keyword.trim_matches('.') {
+        "DIFFERENCE" => Ok(BoolOp::Difference),
+        "UNION" => Ok(BoolOp::Union),
+        "INTERSECTION" => Ok(BoolOp::Intersection),
+        _ => Err(keyword),
     }
+}
 
+impl BooleanClippingProcessor {
     /// Process a solid operand, reporting whether its type had NO meshing
     /// branch here.
     ///
@@ -115,13 +115,17 @@ impl BooleanClippingProcessor {
     /// below, counting the same step twice — and since the reason breakdown
     /// breaks ties alphabetically, the viewer's "top failure reason" would name
     /// `EmptyOperand`, the CONSEQUENCE, over `UnsupportedOperand`, the cause.
-    /// Callers pass this to [`Self::record_empty_second_operand`].
+    /// Callers pass this to [`Self::record_empty_operand`].
     ///
     /// `op` is the operation whose operand this is, and it goes into the
     /// `UnsupportedOperand` record. Since that record is then the ONLY one for
     /// the dropped step, recording `Unknown` for an operand of an authored
     /// `.DIFFERENCE.` would render "UNKNOWN failed" as the whole story a
     /// consumer of `take_csg_failures` ever gets for it.
+    ///
+    /// The BASE solid at the bottom of a left spine passes [`BoolOp::Unknown`]:
+    /// it is read before any node's operator is, so naming one would claim an
+    /// attribution that path does not have.
     pub(super) fn process_operand_checked(
         &self,
         op: BoolOp,

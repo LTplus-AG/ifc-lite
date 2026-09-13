@@ -24,8 +24,9 @@ thread_local! {
     /// Per-element drop tally. Reset by [`begin_element`], incremented by
     /// [`clean`], read by [`dropped_this_element`].
     ///
-    /// Thread-local is correct on both pipelines: the native rayon loop runs one
-    /// element entirely on one worker thread, and the wasm batch loop is serial.
+    /// Thread-local, scoped by [`begin_element`]'s guard: a native rayon worker
+    /// can run a stolen element to completion in the middle of another one, so
+    /// the scope saves the enclosing element's tally and restores it on drop.
     static DROPPED: Cell<u64> = const { Cell::new(0) };
 }
 
@@ -39,10 +40,27 @@ fn disabled() -> bool {
     *DISABLED.get_or_init(|| std::env::var("IFC_LITE_DISABLE_DEGENERATE_BACKSTOP").is_ok())
 }
 
-/// Open one element's tally scope (same begin/drain shape as the kernel's
-/// per-element CSG budget).
-pub(crate) fn begin_element() {
-    DROPPED.with(|c| c.set(0));
+/// One element's open tally scope; dropping it restores the enclosing
+/// element's tally.
+#[must_use = "dropping the scope immediately restores the enclosing element's tally"]
+pub(crate) struct ElementTally {
+    saved: u64,
+    /// Not `Send`: it restores this thread's tally, so it must drop here.
+    _thread_bound: std::marker::PhantomData<*const ()>,
+}
+
+impl Drop for ElementTally {
+    fn drop(&mut self) {
+        DROPPED.with(|c| c.set(self.saved));
+    }
+}
+
+/// Open one element's tally scope.
+pub(crate) fn begin_element() -> ElementTally {
+    ElementTally {
+        saved: DROPPED.with(|c| c.replace(0)),
+        _thread_bound: std::marker::PhantomData,
+    }
 }
 
 /// Drop this mesh's collapsed triangles, tallying how many went.

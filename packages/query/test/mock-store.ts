@@ -78,6 +78,12 @@ export interface MockSpatialHierarchyOptions {
   byStorey: Array<[number, number[]]>;
   /** storeyId -> elevation (z), inserted in the given order (need not match `byStorey`'s order). */
   storeyElevations: Array<[number, number]>;
+  /**
+   * Spatial nodes reachable from `IfcProject`, as `SpatialHierarchyBuilder`
+   * publishes them (#4314). Omitted by default so the "hierarchy without
+   * reachability information" fallback stays exercised.
+   */
+  reachableSpatialNodes?: number[];
 }
 
 /** Minimal spatial index descriptor for mocking `IfcDataStore.spatialIndex`. */
@@ -121,6 +127,7 @@ function buildMockSpatialHierarchy(
     storeyElevations,
     storeyHeights: new Map(),
     elementToStorey: new Map(),
+    reachableSpatialNodes: opts.reachableSpatialNodes ? new Set(opts.reachableSpatialNodes) : undefined,
     getStoreyElements: (storeyId: number) => byStorey.get(storeyId) ?? [],
     getStoreyByElevation: () => null,
     getContainingSpace: () => null,

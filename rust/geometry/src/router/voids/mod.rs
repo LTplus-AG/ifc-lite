@@ -5,7 +5,7 @@
 //! Void (opening) subtraction: 3D CSG, AABB clipping, and triangle-box intersection.
 
 use super::GeometryRouter;
-use crate::csg::ClippingProcessor;
+use crate::csg::{ClippingProcessor, GroupCut};
 use crate::mesh::{SubMesh, SubMeshCollection};
 use crate::{Mesh, Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -1283,15 +1283,15 @@ impl GeometryRouter {
                     if admissible {
                         let cutters: Vec<&Mesh> = extended.iter().map(|(_, m)| m).collect();
                         let tri_before = result.triangle_count();
-                        let vol_before = mesh_signed_volume(&result);
-                        if let Ok(csg_result) = clipper.subtract_mesh_many(&result, &cutters) {
+                        // `Cut` already says the kernel removed host volume; a
+                        // `Rejected` group (any `GroupReject`) leaves every member
+                        // to the sequential loop below.
+                        if let GroupCut::Cut(csg_result) =
+                            clipper.subtract_mesh_many(&result, &cutters)
+                        {
                             let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
                                 .max(MIN_VALID_TRIANGLES);
-                            let changed = cut_changed_mesh(&csg_result, tri_before, vol_before);
-                            if !csg_result.is_empty()
-                                && csg_result.triangle_count() >= min_tris
-                                && changed
-                            {
+                            if !csg_result.is_empty() && csg_result.triangle_count() >= min_tris {
                                 result = csg_result;
                                 host_mutated = true;
                                 for &(m_idx, _) in &extended {

@@ -23,10 +23,9 @@ pub mod processor;
 pub mod streaming;
 
 pub use data_model::extract_data_model;
-pub use parquet::{
-    serialize_batch_with_layout, serialize_to_parquet, serialize_to_parquet_shared_shapes,
-    ParquetError, StreamingParquetCacheWriter,
-};
+pub use parquet::{serialize_batch_with_layout, ParquetError, StreamingParquetCacheWriter};
+#[cfg(test)]
+pub use parquet::serialize_to_parquet;
 pub use parquet_layout::ParquetLayout;
 pub use parquet_data_model::serialize_data_model_to_parquet;
 pub use parquet_optimized::{

@@ -8,8 +8,15 @@
 use super::geom::{mesh_is_closed_exact, mesh_point, mesh_signed_volume, point_inside_mesh};
 use crate::{Mesh, Point3};
 
-/// Whether a boolean produced a REAL change against the pre-cut host: the
-/// triangle count moved, or the enclosed volume moved beyond noise.
+/// Whether a SINGLE-cutter boolean produced a REAL change against the pre-cut
+/// host: the triangle count moved, or the enclosed volume moved beyond noise.
+///
+/// Only `ClippingProcessor::subtract_mesh` needs this: the kernel's binary
+/// `subtract` returns a `Mesh` unconditionally, and `subtract_mesh` hands the
+/// host back un-cut in that same shape on every bail. The group path does not
+/// go through here: `subtract_mesh_many` returns `GroupCut`, whose `Cut` arm
+/// already carries the kernel's own "changed" bit, exact where this decoder
+/// is a heuristic.
 ///
 /// Triangle count alone misreads two opposite cases (#1788):
 ///  * an end/miter cut can replace a 12-tri box host with another 12-tri box —

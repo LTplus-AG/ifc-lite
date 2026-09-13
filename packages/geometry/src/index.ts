@@ -1158,7 +1158,7 @@ export class GeometryProcessor {
     includeProperties = true,
     includeQuantities = false,
     pretty = false,
-    included: Uint32Array = new Uint32Array(),
+    included: Uint32Array | undefined = undefined,
   ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportJsonld(buffer, context, includeProperties, includeQuantities, pretty, included);
@@ -1167,7 +1167,7 @@ export class GeometryProcessor {
   exportStep(
     buffer: Uint8Array,
     schema = '',
-    included: Uint32Array = new Uint32Array(),
+    included: Uint32Array | undefined = undefined,
     mutationsJson = '',
   ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;

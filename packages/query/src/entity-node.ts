@@ -141,8 +141,29 @@ export class EntityNode {
   }
   
   containedIn(): EntityNode | null {
-    const nodes = this.getRelated(RelationshipType.ContainsElements, 'inverse');
-    return nodes[0] ?? null;
+    const candidates = this.getRelated(RelationshipType.ContainsElements, 'inverse');
+    if (candidates.length < 2) return candidates[0] ?? null;
+    // #4314: more than one candidate - a malformed file naming this element
+    // in more than one IfcRelContainedInSpatialStructure edge (#4311).
+    // First-declared still wins, but only among containers that are actually
+    // reachable from IfcProject: a container with no IfcRelAggregates edge
+    // back to the project is a node `SpatialHierarchyBuilder.buildNode`
+    // never visits, so `elementToStorey` never lets it win a tie either
+    // (#4310) - returning it here is a dangling answer no caller can walk
+    // anywhere from, and one `elementToStorey` disagrees with.
+    //
+    // The set is not recomputed here: `SpatialHierarchyBuilder.build()`
+    // already runs `computeReachableSpatialNodes` once per parse and
+    // publishes the result on the hierarchy, and this reads THAT set - the
+    // one `elementToStorey`'s own tie-break was resolved against - so the
+    // two answers cannot drift apart. A store with no spatial hierarchy has
+    // no reachability information (and no `elementToStorey` to disagree
+    // with), and one where no candidate is reachable has no better answer;
+    // both fall back to the first-declared candidate, so this never turns a
+    // present answer into null.
+    const reachable = this.store.spatialHierarchy?.reachableSpatialNodes;
+    if (!reachable) return candidates[0];
+    return candidates.find((candidate) => reachable.has(candidate.expressId)) ?? candidates[0];
   }
 
   /**

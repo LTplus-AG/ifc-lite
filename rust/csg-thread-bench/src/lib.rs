@@ -16,7 +16,7 @@
 //! isolates the atomics tax; threaded-serial vs threaded-parallel(N) gives the
 //! scaling; plain-serial vs threaded-parallel(N) is the decision number.
 
-use ifc_lite_geometry::csg::ClippingProcessor;
+use ifc_lite_geometry::csg::{ClippingProcessor, GroupCut};
 use ifc_lite_geometry::csg_capture::{deserialize, CapturedCsgJob};
 use ifc_lite_geometry::mesh::Mesh;
 use std::sync::OnceLock;
@@ -40,7 +40,10 @@ fn replay_one(job: &CapturedCsgJob) -> usize {
         }
         CapturedCsgJob::Many { host, cutters } => {
             let refs: Vec<&Mesh> = cutters.iter().collect();
-            csg.subtract_mesh_many(host, &refs).map(|m| m.indices.len()).unwrap_or(0)
+            match csg.subtract_mesh_many(host, &refs) {
+                GroupCut::Cut(m) => m.indices.len(),
+                GroupCut::Rejected(_) => 0,
+            }
         }
     }
 }

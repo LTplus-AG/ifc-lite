@@ -16,8 +16,16 @@ impl IfcAPI {
     /// is genuinely needed.
     ///
     /// `schema` is the FILE_SCHEMA label to write (empty ⇒ preserve the source schema).
-    /// `included` is an express-id allowlist (empty ⇒ whole model); when set, the forward
-    /// `#`-reference closure is added so the subset never dangles a reference.
+    ///
+    /// `included` is an express-id allowlist carrying the same null-vs-empty
+    /// distinction as `exportObj` / `exportGlb`: omit it (`undefined`) for "no
+    /// isolation filter" (whole model); pass an empty `Uint32Array` for "isolation
+    /// is ACTIVE and currently matches nothing", which writes a header-only file
+    /// with an empty `DATA;` section. Collapsing the two — as a bare `Uint32Array`
+    /// parameter would force a caller to do — silently exported the whole model
+    /// when a filter matched nothing (#4659, the STEP twin of #4483/#4484). When
+    /// set, the forward `#`-reference closure is added so the subset never dangles
+    /// a reference.
     /// `mutations_json` carries `MutablePropertyView` edits (attribute updates +
     /// property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
     /// A non-empty but malformed `mutations_json` throws rather than silently
@@ -28,13 +36,13 @@ impl IfcAPI {
         &self,
         content: &[u8],
         schema: String,
-        included: &[u32],
+        included: Option<Vec<u32>>,
         mutations_json: String,
     ) -> Vec<u8> {
         match ifc_lite_export::export_step_json(
             content,
             if schema.is_empty() { None } else { Some(schema) },
-            if included.is_empty() { None } else { Some(included.to_vec()) },
+            included,
             &mutations_json,
         ) {
             Ok(step) => step.into_bytes(),

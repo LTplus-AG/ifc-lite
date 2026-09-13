@@ -159,14 +159,10 @@ if [ -d "$OUT_DIR" ]; then
   fi
 fi
 
-# NOTE: A previous client-side Vercel Skew Protection pin (a __vdpl cookie set
-# from apps/viewer/index.html, with the live deployment id substituted here at
-# deploy time) was REMOVED in #1457. It routed content-hashed asset requests to a
-# stale-pinned deployment, so returning browsers (Edge/Brave) 404'd on every
-# /assets/* after an asset-hash-rotating deploy and the app never booted. The
-# lazy-WASM-404 case it targeted is handled in app code (@ifc-lite/geometry
-# wasm-asset-error + apps/viewer wasm-version-skew). To fully retire the pin,
-# also turn OFF the project's Skew Protection toggle so the platform stops
-# honoring any __vdpl cookie still held by clients.
+# Vercel Skew Protection is integrated by the repository-root middleware. It
+# sets __vdpl in the document response headers, before the HTML preload scanner
+# can request a content-hashed entry, worker, or WASM asset. Do not move the pin
+# back into index.html: the client-side SameSite=Strict implementation raced the
+# preload scanner on cross-site navigation and caused the #1457 blank page.
 
 exit $build_status

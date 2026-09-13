@@ -189,10 +189,11 @@ impl ZoneSplit {
     /// The invariant #2508 puts above every other for this feature. Exposed
     /// rather than asserted here: a caller that wants to refuse an untrustworthy
     /// split needs the number, and a caller displaying a warning needs it too.
+    ///
+    /// `whole_volume` is never zero here: [`split_mesh_by_zones`] returns
+    /// `None` for a host that encloses no volume instead of a split whose
+    /// every signal reads perfect.
     pub fn sum_error_rel(&self) -> f64 {
-        if self.whole_volume.abs() <= f64::MIN_POSITIVE {
-            return 0.0;
-        }
         let sum: f64 = self.pieces.iter().map(|p| p.volume).sum();
         ((sum - self.whole_volume) / self.whole_volume).abs()
     }
@@ -205,6 +206,13 @@ impl ZoneSplit {
 /// have to identify and delete by hand. Matches the intent of the
 /// apportionment path's own negligible-share threshold, one level up.
 pub const NEGLIGIBLE_PIECE_REL: f64 = 1e-9;
+
+/// A host whose enclosed volume is at most this fraction of its bounding-box
+/// diagonal cubed encloses nothing: a double-sided sheet off the axis planes
+/// sums to rounding residue (about 1e-32 for a unit sheet), not to exactly
+/// zero. A real solid is many orders above it (a 1 mm by 1 m by 1 m plate,
+/// 1e-3 m3 against a diagonal cubed of about 2.83, is about 3.5e-4).
+pub const NO_VOLUME_REL: f64 = 1e-12;
 
 /// Split `host` into one solid per zone it reaches, plus the remainder.
 ///
@@ -222,11 +230,27 @@ pub const NEGLIGIBLE_PIECE_REL: f64 = 1e-9;
 /// double-count, so [`ZoneSplit::sum_error_rel`] rises far above any floating
 /// point residue and the caller can refuse on it. That is the same signal the
 /// apportionment path reports as `overlapping`.
-pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> ZoneSplit {
+///
+/// Returns `None` when `host` encloses no volume: no triangles, or a
+/// degenerate shell whose divergence sum is rounding residue (see
+/// [`NO_VOLUME_REL`]). There is nothing to split, and a `ZoneSplit` for it would carry one zero-triangle "remainder", a
+/// `sum_error_rel` of zero and `remainder_failed == false`: every signal a
+/// caller gates on reading as a perfect split of nothing. The wasm entry
+/// drops malformed triangles before calling here, so an all-malformed input
+/// arrives as an empty host.
+pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> Option<ZoneSplit> {
     let host = orient_outward(host.to_vec());
+    if host.is_empty() {
+        return None;
+    }
     let whole_volume = signed_volume_of(&host);
-    let negligible = whole_volume.abs() * NEGLIGIBLE_PIECE_REL;
     let (host_lo, host_hi) = tris_aabb(&host);
+    let diagonal = (0..3).map(|k| (host_hi[k] - host_lo[k]).powi(2)).sum::<f64>().sqrt();
+    // A NaN volume fails `<=` and falls through to `sum_error_rel` as NaN.
+    if whole_volume.abs() <= diagonal.powi(3) * NO_VOLUME_REL {
+        return None;
+    }
+    let negligible = whole_volume.abs() * NEGLIGIBLE_PIECE_REL;
 
     let mut pieces = Vec::new();
     let mut reached: Vec<Vec<Tri>> = Vec::new();
@@ -279,7 +303,7 @@ pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> ZoneSplit {
         // would point them at redrawing zones that are not the problem.
         let rest = if conforming { difference_all(&host, &[&cutter]) } else { None };
         match rest {
-            Some(rest) => {
+            Some((rest, _changed)) => {
                 let volume = signed_volume_of(&rest);
                 if !rest.is_empty() && volume > negligible {
                     pieces.push(ZonePiece { zone: None, tris: rest, volume });
@@ -294,7 +318,7 @@ pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> ZoneSplit {
         pieces.push(ZonePiece { zone: None, tris: host, volume });
     }
 
-    ZoneSplit { pieces, whole_volume, remainder_failed }
+    Some(ZoneSplit { pieces, whole_volume, remainder_failed })
 }
 
 fn tris_aabb(tris: &[Tri]) -> ([f64; 3], [f64; 3]) {

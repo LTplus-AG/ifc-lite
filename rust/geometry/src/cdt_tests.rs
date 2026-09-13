@@ -288,12 +288,10 @@ use super::*;
 
     /// Two crossing constraints: the first is recovered, the second cannot
     /// be (its only crossing edge is a constraint, which the flip loop never
-    /// touches), so `build_from` declines and the caller ear-clips. That
-    /// fallback used to leave no trace; it now lands in the recovery tally,
-    /// on the `stuck` slot, not the flip-guard `exhausted` slot. The tally is
-    /// process-global, so a parallel test that also declines can only raise
-    /// the `stuck` delta; the mutation that drops the `stuck()` call fails
-    /// this test whenever it runs alone.
+    /// touches), so `build_from` declines and the caller ear-clips. The
+    /// fallback lands in the `stuck` slot, not the flip-guard `exhausted`
+    /// slot. The tally is process-global, so a parallel test that also
+    /// declines can only raise the `stuck` delta.
     #[test]
     fn an_unrecoverable_constraint_is_tallied_not_silent() {
         let points = [pt(0.0, 0.0), pt(10.0, 0.0), pt(10.0, 10.0), pt(0.0, 10.0)];

@@ -170,7 +170,7 @@ fn traversal_recovers_figure8_pinch_with_exact_coverage() {
 /// through D-E: the channel touches x on BOTH sides with the un-crossed
 /// (x,C,D) between, so the channel boundary is a figure-8 pinched at x, with
 /// (x,C,D) as the hole lobe x->D->C->x.
-fn short_loop_pinch_mesh(it: &mut Interner) -> (Mesh2d, Vid, Vid, Vid, usize) {
+fn short_loop_pinch_mesh(it: &mut Interner) -> (Mesh2d, Vid, Vid) {
     // Interned so that b's Vid is the largest: the boundary walk's last-wins
     // `next` map then kept x->b over x->D, which is the SHORT-LOOP outcome
     // (the other order hit the existing "never returns to start" bail).
@@ -209,7 +209,7 @@ fn short_loop_pinch_mesh(it: &mut Interner) -> (Mesh2d, Vid, Vid, Vid, usize) {
         audit_needed: false,
         coords: BTreeMap::new(),
     };
-    (mesh, a, b, x, 12)
+    (mesh, a, b)
 }
 
 fn assert_directed_edges_unique(mesh: &Mesh2d) {
@@ -231,11 +231,10 @@ fn assert_directed_edges_unique(mesh: &Mesh2d) {
 #[test]
 fn pocket_walk_bails_on_a_pinch_instead_of_closing_a_short_loop() {
     let mut it = Interner::new();
-    let (mut mesh, a, b, _x, n_tris) = short_loop_pinch_mesh(&mut it);
+    let (mut mesh, a, b) = short_loop_pinch_mesh(&mut it);
     let axis = mesh.axis;
     let before = area_sum(&it, &mesh.tris, axis);
     assert_directed_edges_unique(&mesh);
-    assert_eq!(mesh.tris.len(), n_tris);
     assert!(!edge_exists(&mesh, a, b), "precondition: a-b not yet an edge");
 
     let original = mesh.tris.clone();

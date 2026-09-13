@@ -55,13 +55,9 @@ impl SpacePlate {
 
         if a == s {
             // Lone stick: J is degree-1 too, so this 2-cycle bounds nothing.
-            // Fresh from `from_arrangement` it is the outer face of a 2-vertex
-            // component. It used to refuse a stick tagged with a room, which a
-            // bridge splice in `remove_edge` produced until `split_bridge_cycles`
-            // re-homed the cut-off cycle; that refusal left Phase A of
-            // `prune_orphans` with a tip it could never remove. Tombstone the
-            // stick whatever its face and let the face re-anchor on whatever
-            // else it still bounds, or die with it.
+            // Tombstone it whatever face it is tagged with (refusing left
+            // `prune_orphans` a tip it could never remove) and let the face
+            // re-anchor on whatever else it still bounds, or die with it.
             self.half_edges[s.0 as usize].alive = false;
             self.half_edges[s_t.0 as usize].alive = false;
             self.vertices[tip.0 as usize].outgoing = None;
@@ -254,10 +250,8 @@ impl SpacePlate {
             half_edge: split.first().copied(),
             is_outer,
             is_room: !is_outer && parent.is_room,
-            floor_z: parent.floor_z,
-            ceiling_z: parent.ceiling_z,
-            non_planar_ceiling: parent.non_planar_ceiling,
             alive: true,
+            ..parent
         });
         for he in split {
             self.half_edges[he.0 as usize].face = new_face;

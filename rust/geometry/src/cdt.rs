@@ -64,40 +64,22 @@
 mod enc_grid;
 mod predicates;
 
-/// Tally of constraint segments [`Cdt::recover_segment`] gave up on. Every
-/// such segment makes `build_from` return `None` and the caller ear-clip
-/// instead, which used to leave no trace; a harness or fixture test can now
-/// read the count back. Two slots because the two exits mean different
-/// things: `stuck` is the normal "no flippable crossing edge" exit (crossing
-/// constraints, a duplicate vertex the segment names), `exhausted` is the
-/// 100 000-flip guard, the hang-adjacent case where the flip order cycled.
-mod recovery_diag {
-    use std::sync::atomic::{AtomicU64, Ordering};
+static RECOVERY_STUCK: AtomicU64 = AtomicU64::new(0);
+static RECOVERY_EXHAUSTED: AtomicU64 = AtomicU64::new(0);
 
-    static STUCK: AtomicU64 = AtomicU64::new(0);
-    static EXHAUSTED: AtomicU64 = AtomicU64::new(0);
-
-    #[inline]
-    pub(super) fn stuck() {
-        STUCK.fetch_add(1, Ordering::Relaxed);
-    }
-
-    #[inline]
-    pub(super) fn exhausted() {
-        EXHAUSTED.fetch_add(1, Ordering::Relaxed);
-    }
-
-    /// Read + reset `(stuck, exhausted)`: constraint segments the CDT could
-    /// not recover since the last call, split by which exit gave up. Process-
-    /// global relaxed atomics, like [`crate::take_plane_weld_stats`]: a stale
-    /// read under concurrency mis-reports a diagnostic count, never geometry.
-    pub fn take_cdt_recovery_fallbacks() -> (u64, u64) {
-        (STUCK.swap(0, Ordering::Relaxed), EXHAUSTED.swap(0, Ordering::Relaxed))
-    }
+/// Read + reset `(stuck, exhausted)`: constraint segments
+/// [`Cdt::recover_segment`] gave up on since the last call, each of which made
+/// `build_from` return `None` so the caller ear-clipped. `stuck` is the "no
+/// flippable crossing edge" exit (crossing constraints, a duplicate vertex the
+/// segment names); `exhausted` is the 100 000-flip guard. Process-global
+/// relaxed atomics, like [`crate::take_bool2d_stats`]: a stale read under
+/// concurrency mis-reports a diagnostic count, never geometry.
+pub fn take_cdt_recovery_fallbacks() -> (u64, u64) {
+    (RECOVERY_STUCK.swap(0, Ordering::Relaxed), RECOVERY_EXHAUSTED.swap(0, Ordering::Relaxed))
 }
-pub use recovery_diag::take_cdt_recovery_fallbacks;
 
 use crate::Point2;
+use std::sync::atomic::{AtomicU64, Ordering};
 use enc_grid::EncGrid;
 use predicates::{dist2, rings_to_pslg, segments_properly_cross, strictly_between};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -424,12 +406,8 @@ impl Cdt {
         // constraint unsplit, a T-junction `legalize` cannot repair (it never
         // flips a constraint). Nothing has been retired yet, so abandon the
         // cavity and take the lockstep both-sides split instead.
-        for &(a, b, _) in &boundary {
-            let (pa, pb) = (self.points[a], self.points[b]);
-            if orient(pa, pb, p) != 0 {
-                continue;
-            }
-            if strictly_between(pa, pb, p) {
+        if let Some(&(a, b, _)) = boundary.iter().find(|&&(a, b, _)| orient(self.points[a], self.points[b], p) == 0) {
+            if strictly_between(self.points[a], self.points[b], p) {
                 let on = bad.iter().find_map(|&ti| self.tris[ti].edge_of(a, b).map(|e| (ti, e)));
                 if let Some((ti, e)) = on {
                     self.split_on_edge(ti, e, vi);
@@ -1013,8 +991,6 @@ impl Cdt {
     /// Reordering the walk would change the flip sequence and, on cocircular
     /// input (every rectangular profile), the emitted triangulation, which
     /// the mesh-determinism manifests pin; re-pin both if you reorder it.
-    /// Both give-up exits are tallied in [`recovery_diag`] so the ear-clip
-    /// fallback they trigger is not silent.
     fn recover_segment(
         &mut self,
         a: usize,
@@ -1030,7 +1006,7 @@ impl Cdt {
         loop {
             guard += 1;
             if guard > 100_000 {
-                recovery_diag::exhausted();
+                RECOVERY_EXHAUSTED.fetch_add(1, Ordering::Relaxed);
                 return false;
             }
             if edges.contains(&ekey(a, b)) {
@@ -1101,7 +1077,7 @@ impl Cdt {
                 if edges.contains(&ekey(a, b)) {
                     return true;
                 }
-                recovery_diag::stuck();
+                RECOVERY_STUCK.fetch_add(1, Ordering::Relaxed);
                 return false;
             }
         }

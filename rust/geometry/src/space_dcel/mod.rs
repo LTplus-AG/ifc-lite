@@ -289,15 +289,10 @@ impl SpacePlate {
             if gap.faces[i].is_outer || !gap.is_gap_face(f) {
                 continue;
             }
-            // net gap → wall axis (½ thickness out). A gap the offset cannot
-            // handle is skipped, not lifted as-is: `gap_boundary`'s fallback is
-            // the un-offset net ring, which has exactly `cycle.len()` points,
-            // so a length test cannot tell it from a real axis.
+            // net gap → wall axis (½ thickness out); a gap whose offset failed
+            // is skipped, not lifted as its un-offset net ring.
             let Some(axis) = gap.try_gap_boundary(f, 1.0) else { continue };
             let cycle: Vec<HalfEdgeId> = gap.face_half_edges(f).collect();
-            if axis.len() != cycle.len() {
-                continue;
-            }
             for k in 0..axis.len() {
                 let he = &gap.half_edges[cycle[k].0 as usize];
                 axis_edges.push(

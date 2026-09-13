@@ -484,6 +484,33 @@ fn feature_off_is_a_noop_and_deterministic() {
     assert_eq!((p1, i1, n1), (p2, i2, n2), "deterministic across runs");
 }
 
+/// Offset `d` from a site 9 km out (native positions are absolute).
+fn far(d: [f64; 3]) -> [f64; 3] {
+    const F: [f64; 3] = [9000.375, 5000.25, 300.125];
+    [F[0] + d[0], F[1] + d[1], F[2] + d[2]]
+}
+
+/// One mesh holding every part's triangles, indices rebased.
+fn joined(parts: &[&Mesh]) -> Mesh {
+    let mut mesh = Mesh::new();
+    for part in parts {
+        let offset = (mesh.positions.len() / 3) as u32;
+        mesh.positions.extend_from_slice(&part.positions);
+        mesh.indices.extend(part.indices.iter().map(|i| offset + i));
+    }
+    mesh
+}
+
+/// A single unpaired triangle: the crack that leaves a host open.
+fn crack_triangle(corners: [[f64; 3]; 3]) -> Mesh {
+    let mut mesh = Mesh::new();
+    for p in corners {
+        mesh.positions.extend(p.map(|x| x as f32));
+    }
+    mesh.indices = vec![0, 1, 2];
+    mesh
+}
+
 /// `accept_cut`'s removed volume over an OPEN host 9 km out (native positions
 /// are absolute). One unpaired triangle inside the wall stands in for a crack
 /// (normal -X); the cut removes a 1 m rod from the wall's -X face, moving the
@@ -493,26 +520,11 @@ fn feature_off_is_a_noop_and_deterministic() {
 /// bound tighter than the rod still accepts the cut (#4632).
 #[test]
 fn accept_cut_reads_before_and_after_about_one_point_on_an_open_far_host_4632() {
-    const F: [f64; 3] = [9000.375, 5000.25, 300.125];
-    let at = |d: [f64; 3]| [F[0] + d[0], F[1] + d[1], F[2] + d[2]];
-    let join = |parts: &[&Mesh]| {
-        let mut mesh = Mesh::new();
-        for part in parts {
-            let offset = (mesh.positions.len() / 3) as u32;
-            mesh.positions.extend_from_slice(&part.positions);
-            mesh.indices.extend(part.indices.iter().map(|i| offset + i));
-        }
-        mesh
-    };
-    let rod = box_mesh(at([-1.0, 0.0, 0.0]), at([0.0, 0.125, 0.125]));
-    let wall = box_mesh(at([0.0, 0.0, 0.0]), at([3.0, 1.0, 3.0]));
-    let mut crack = Mesh::new();
-    for p in [at([1.5, 0.0, 0.5]), at([1.5, 0.0, 2.5]), at([1.5, 1.0, 0.5])] {
-        crack.positions.extend(p.map(|x| x as f32));
-    }
-    crack.indices = vec![0, 1, 2];
-    let host = join(&[&rod, &wall, &crack]);
-    let cut = join(&[&wall, &crack]);
+    let rod = box_mesh(far([-1.0, 0.0, 0.0]), far([0.0, 0.125, 0.125]));
+    let wall = box_mesh(far([0.0, 0.0, 0.0]), far([3.0, 1.0, 3.0]));
+    let crack = crack_triangle([far([1.5, 0.0, 0.5]), far([1.5, 0.0, 2.5]), far([1.5, 1.0, 0.5])]);
+    let host = joined(&[&rod, &wall, &crack]);
+    let cut = joined(&[&wall, &crack]);
     let rod_volume = 1.0 * 0.125 * 0.125;
 
     let run = |max_removed: f64| {
@@ -521,4 +533,46 @@ fn accept_cut_reads_before_and_after_about_one_point_on_an_open_far_host_4632() 
     };
     assert!(run(rod_volume * (1.0 + 1e-6)), "a bound just above the rod's volume admits the cut");
     assert!(!run(rod_volume * (1.0 - 1e-3)), "a bound just below the rod's volume refuses it");
+}
+
+/// `cut_changed_mesh`, reached through [`accept_single_cut`], on an OPEN host
+/// 9 km out with the SAME triangle count before and after. The host is a rod
+/// sticking out of a wall's -X face plus a crack inside the wall (normal -X,
+/// area 1.5 m²); the cut shortens the rod, keeps its 12 triangles, and moves
+/// the bounding-box centre 0.5 m in X. Read about each mesh's own centre, the
+/// untouched crack's reading moves by `-(o_after - o_before)·2A·n/6`, exactly
+/// the 0.25 m³ the cut removed, so a real cut reads as unchanged. Read about
+/// the host's one reference point the crack cancels (#4632, #4671).
+#[test]
+fn a_same_count_cut_on_an_open_far_host_reads_as_changed_4671() {
+    let rod = box_mesh(far([-2.0, 0.0, 0.0]), far([0.0, 0.5, 0.5]));
+    let short_rod = box_mesh(far([-1.0, 0.0, 0.0]), far([0.0, 0.5, 0.5]));
+    let wall = box_mesh(far([0.0, 0.0, 0.0]), far([3.0, 1.0, 3.0]));
+    let crack = crack_triangle([far([1.5, 0.0, 0.0]), far([1.5, 0.0, 3.0]), far([1.5, 1.0, 0.0])]);
+    let host = joined(&[&rod, &wall, &crack]);
+    let cut = joined(&[&short_rod, &wall, &crack]);
+    assert_eq!(cut.triangle_count(), host.triangle_count(), "the end cut keeps the triangle count");
+
+    let run = |cut: &Mesh| {
+        let mut result = host.clone();
+        let accepted = accept_single_cut(
+            &mut result,
+            cut.clone(),
+            host.triangle_count(),
+            mesh_signed_volume(&host),
+            f64::INFINITY,
+        );
+        (accepted, result)
+    };
+    let (accepted, result) = run(&cut);
+    assert!(
+        accepted,
+        "shortening the rod removes 0.25 m³ of a 9.5 m³ host; the gate read host {} and cut {} \
+         and judged it unchanged",
+        mesh_signed_volume(&host),
+        mesh_signed_volume(&cut),
+    );
+    assert_eq!(result.positions, cut.positions, "the accepted cut becomes the result");
+    // Control: the host handed back byte-identical is still unchanged.
+    assert!(!run(&host).0, "a host returned un-cut must not read as a change");
 }

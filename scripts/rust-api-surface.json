@@ -1,6 +1,7 @@
 {
   "ifc-lite-core": {
     "AttributeValue": "enum { Derived; EntityRef(u32); Enum(String); Float(f64); Integer(i64); List(Vec<AttributeValue>); Null; String(String) }",
+    "ColumnLengthMismatch": "struct { ids: usize; lengths: usize; starts: usize }",
     "ColumnarEntityIndex": "struct {  }",
     "DecodedEntity": "struct { attributes: std::sync::Arc<Vec<AttributeValue>>; id: u32; ifc_type: IfcType }",
     "DenseEntityIndex": "struct {  }",

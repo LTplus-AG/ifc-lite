@@ -591,7 +591,9 @@ export class IfcAPI {
      * CANONICAL styles flatten. Returns the exact `styles` event payload the
      * serial path emits. Runs on any worker with `setEntityIndex` installed.
      * Span arguments are `[id, start, len]` triples; `plane_angle_to_radians`
-     * comes from the meta event.
+     * comes from the meta event. `orphanColors` / `geomColors` carry exactly
+     * four floats per id in `orphanIds` / `geomIds`; any other length throws
+     * before either column is read.
      */
     finalizePrepassStyles(data: Uint8Array, orphan_ids: Uint32Array, orphan_colors: Float32Array, geom_ids: Uint32Array, geom_colors: Float32Array, colour_map_spans: Uint32Array, material_def_spans: Uint32Array, rel_material_spans: Uint32Array, void_spans: Uint32Array, fills_spans: Uint32Array, aggregate_spans: Uint32Array, plane_angle_to_radians: number): any;
     /**
@@ -879,6 +881,12 @@ export class IfcAPI {
      * Idempotent in the sense that repeated calls REPLACE the cache —
      * supports the parser-worker pattern of reusing one IfcAPI across
      * multiple loads with different files.
+     *
+     * Throws when the three columns disagree in length. Every call is a
+     * content swap, a rejected one included: the previous file's index,
+     * content-scoped caches and pipeline diagnostics are dropped before the
+     * error is raised, and a rejected or empty index leaves no index, so the
+     * next batch scans the bytes it is given.
      */
     setEntityIndex(ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array): void;
     /**
@@ -2177,7 +2185,7 @@ export interface InitOutput {
     readonly ifcapi_scanEntityIndexShardFromSource: (a: number, b: number, c: number) => number;
     readonly ifcapi_scanGeometryEntitiesFast: (a: number, b: number, c: number) => number;
     readonly ifcapi_setComputeGeometryHashes: (a: number, b: number, c: number) => void;
-    readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+    readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_setInstantiatedTypeIds: (a: number, b: number, c: number) => void;
     readonly ifcapi_setMappedInstancePlan: (a: number, b: number, c: number) => void;
     readonly ifcapi_setMaterialLayerIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;

@@ -55,6 +55,45 @@ fn null_pointers_return_code_1() {
     }
 }
 
+/// Every failing return leaves `*out_ptr` / `*out_len` as null / 0, never as
+/// the host's previous values: the error paths used to skip the writes, so a
+/// host that frees on "ptr is non-null" freed an old buffer twice (#4614). The
+/// variables start stale and non-null, as a reused pair would after a
+/// successful call. Mutation that fails this test: delete the two
+/// out-parameter writes at the top of `run_parse`.
+#[test]
+fn error_returns_write_null_and_zero_through_the_out_parameters() {
+    let mut stale_buffer = [0u8; 4];
+    let missing = temp_path("out_params_missing");
+    let _ = std::fs::remove_file(&missing);
+    let missing_str = missing.to_str().unwrap();
+    let bad_utf8 = [0xff_u8, 0xfe];
+
+    // (code, path pointer, path length) for each error path a host can reach
+    // with valid out-pointers.
+    let cases: [(i32, *const u8, usize); 3] = [
+        (2, missing_str.as_ptr(), missing_str.len()),
+        (1, bad_utf8.as_ptr(), bad_utf8.len()),
+        (1, ptr::null(), 0),
+    ];
+    for (expected_code, path_ptr, path_len) in cases {
+        for extended in [false, true] {
+            let mut out_ptr: *mut u8 = stale_buffer.as_mut_ptr();
+            let mut out_len: usize = stale_buffer.len();
+            let code = unsafe {
+                if extended {
+                    ifc_lite_parse_ex(path_ptr, path_len, 0, &mut out_ptr, &mut out_len)
+                } else {
+                    ifc_lite_parse(path_ptr, path_len, &mut out_ptr, &mut out_len)
+                }
+            };
+            assert_eq!(code, expected_code, "extended={extended}");
+            assert!(out_ptr.is_null(), "code {code} (extended={extended}) must null *out_ptr");
+            assert_eq!(out_len, 0, "code {code} (extended={extended}) must zero *out_len");
+        }
+    }
+}
+
 #[test]
 fn invalid_utf8_path_returns_code_1() {
     let bad = [0xff_u8, 0xfe, 0xfd];
@@ -134,6 +173,92 @@ fn parse_ex_maps_every_filter_mode() {
     }
 
     let _ = std::fs::remove_file(&path);
+}
+
+/// The panic log must name the file whose parse panicked. The panic hook runs
+/// on the pool worker that panicked, and the path used to live in a
+/// thread-local written on the caller's thread, so every entry said
+/// `file: <unknown>` (#4614). Mutation that fails this test: drop the
+/// `InFlightPath::register` call in `run_in_pool`.
+#[test]
+fn panic_log_names_the_file_when_the_panic_happens_on_a_pool_worker() {
+    ensure_panic_logging();
+    // A tag no other test or earlier run could have written: process id plus
+    // a wall-clock nanosecond stamp, so the assertion reads THIS entry.
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let probe_path = format!("hook_probe_{}_{stamp}.ifc", std::process::id());
+
+    let outcome = run_in_pool::<()>(&probe_path, || panic!("hook probe"));
+    assert_eq!(outcome, Err(3), "a panic on the pool is error code 3");
+
+    let log = std::fs::read_to_string(std::env::temp_dir().join("ifc_lite_panic.log"))
+        .expect("the panic hook must have written the log");
+    // Other tests parse concurrently on the shared pool, so the entry may list
+    // their paths beside this one; the probe must be among them.
+    assert!(
+        log.lines().any(|l| l.starts_with("file: ") && l.contains(&probe_path)),
+        "no `file:` line in the panic log names {probe_path:?}"
+    );
+
+    // The registration is scoped to the call (its guard drops during the
+    // unwind), so a later unrelated panic must not be blamed on this file.
+    // Other tests parse concurrently, so only this path's absence is asserted.
+    assert!(!crate::panic_log::in_flight_paths_for_log().contains(&probe_path));
+}
+
+/// `run_in_pool` is the one `catch_unwind` on the parse path, and
+/// `parse_impl` hands it geometry, normalisation and serialisation as one
+/// closure (a panic in any of them used to unwind out of the `extern "C"`
+/// function and abort the host, #4614). A panic there is code 3 (pinned by
+/// the test above); the closure's own code and value pass through.
+#[test]
+fn run_in_pool_passes_the_closure_outcome_through() {
+    assert_eq!(run_in_pool::<()>("code_probe.ifc", || Err(4)), Err(4));
+    assert_eq!(run_in_pool("ok_probe.ifc", || Ok(7)), Ok(7));
+}
+
+/// Building the large-stack pool used to `.expect` on the `extern "C"` path
+/// (#4614). A 2^62-byte stack, past any 64-bit address space, makes the thread
+/// spawn fail for real; the build must be an `Err`, which the caller maps to
+/// code 3. Mutation that fails this test: panic on the build error inside
+/// `build_parse_pool`, as the old `.expect` did.
+#[cfg(target_pointer_width = "64")]
+#[test]
+fn a_pool_that_cannot_spawn_its_threads_is_an_error_not_a_panic() {
+    assert!(build_parse_pool(1 << 62).is_err());
+}
+
+/// Panic records appended from many threads at once come out whole and none
+/// is lost (#4642). Mutation that fails this test: remove the `LOG_WRITE`
+/// lock in `append_record`.
+#[test]
+fn concurrent_panic_records_do_not_interleave() {
+    let log = temp_path("panic_interleave_log");
+    let _ = std::fs::remove_file(&log);
+    std::thread::scope(|scope| {
+        for t in 0..8 {
+            let log = &log;
+            scope.spawn(move || {
+                for r in 0..200 {
+                    let id = format!("t{t}r{r}");
+                    crate::panic_log::append_record(log, &id, &id, &id);
+                }
+            });
+        }
+    });
+    let text = std::fs::read_to_string(&log).expect("records were written");
+    let _ = std::fs::remove_file(&log);
+    let mut records: Vec<&str> = text.split("==== ifc-lite panic ====\n").skip(1).collect();
+    let mut expected: Vec<String> = (0..8)
+        .flat_map(|t| (0..200).map(move |r| format!("t{t}r{r}")))
+        .map(|id| format!("file: {id}\n{id}\nbacktrace:\n{id}\n\n"))
+        .collect();
+    records.sort_unstable();
+    expected.sort_unstable();
+    assert!(records == expected, "panic records interleaved, went missing or were duplicated");
 }
 
 #[test]

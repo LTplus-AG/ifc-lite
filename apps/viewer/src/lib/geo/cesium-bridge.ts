@@ -297,6 +297,11 @@ export async function createCesiumBridge(
   const oHeight = origin.height;
   const originLon = origin.longitude;
   const originLat = origin.latitude;
+  // Capture the narrowed origin components before defining callbacks. TypeScript
+  // does not retain the nullable narrowing inside a closure.
+  const originScaleX = origin.scaleX;
+  const originScaleY = origin.scaleY;
+  const originScaleZ = origin.scaleZ;
 
   // Build the viewer-to-ENU 3x3 rotation matrix (converts a delta vector from
   // viewer space to ENU). Viewer Y-up maps to IFC Z-up ((vx,vy,vz) -> (vx,-vz,
@@ -304,7 +309,7 @@ export async function createCesiumBridge(
   // R(gamma) into true-north ENU; `viewerToEnuRotation` composes all three
   // (up = vy). The model-placement matrix reuses the very same `rot` via
   // `bridge.viewerRotation` so the two never drift. Viewer-space deltas are
-  const rot = viewerToEnuRotation(origin.scaleX, absc, ordi, origin.gamma, origin.scaleY);
+  const rot = viewerToEnuRotation(originScaleX, absc, ordi, origin.gamma, originScaleY);
   const m00 = rot.eastFromVx;      // east  from vx
   const m01 = 0;                   // east  from vy
   const m02 = rot.eastFromVz;      // east  from vz
@@ -312,7 +317,7 @@ export async function createCesiumBridge(
   const m11 = 0;                   // north from vy
   const m12 = rot.northFromVz;     // north from vz
   const m20 = 0;                   // up    from vx
-  const m21 = origin.scaleZ;
+  const m21 = originScaleZ;
   const m22 = 0;                   // up    from vz
 
   // ── Cache for ECEF objects ──
@@ -476,10 +481,10 @@ export async function createCesiumBridge(
     const ifcZ = wy;
     // Viewer coords (ifcX/Y/Z) are already in metres; only MapConversion values need scaling
     const easting = mapConversion.eastings * mapScale
-      + absc * origin.scaleX * ifcX - ordi * origin.scaleY * ifcY;
+      + absc * originScaleX * ifcX - ordi * originScaleY * ifcY;
     const northing = mapConversion.northings * mapScale
-      + ordi * origin.scaleX * ifcX + absc * origin.scaleY * ifcY;
-    const height = mapConversion.orthogonalHeight * mapScale + origin.scaleZ * ifcZ;
+      + ordi * originScaleX * ifcX + absc * originScaleY * ifcY;
+    const height = mapConversion.orthogonalHeight * mapScale + originScaleZ * ifcZ;
     try {
       const [lon, lat] = proj4(projDef!, 'WGS84', [easting, northing]);
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
@@ -493,7 +498,7 @@ export async function createCesiumBridge(
     modelOrigin,
     rotationAngle: rotAngle,
     viewerRotation: rot,
-    viewerUpScale: origin.scaleZ,
+    viewerUpScale: originScaleZ,
     syncCamera,
     queryTerrainHeight,
     viewerToGeodetic,

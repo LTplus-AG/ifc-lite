@@ -514,10 +514,8 @@ export class IfcLiteBridge {
 
   /**
    * Re-serialize the model in `content` to a STEP/IFC string (P1: base
-   * re-serialization + reference-closed subset). Empty `schema` ⇒ preserve source.
-   * `included`: `undefined` ⇒ no isolation filter, whole model; empty
-   * `Uint32Array` ⇒ active but matching nothing, i.e. a header-only file with no
-   * entities — don't collapse the two (#4659).
+   * re-serialization + reference-closed subset). Empty `schema` preserves the source;
+   * `included` distinguishes no filter (`undefined`) from an active empty filter (#4659).
    */
   exportStep(
     content: Uint8Array,
@@ -560,10 +558,8 @@ export class IfcLiteBridge {
 
   /**
    * Export JSON-LD (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART IFC4 OWL.
-   * `included` is an express-id isolation filter mirroring the OBJ/glTF/STEP
-   * exporters so `--type`/`--storey`/`--where`/`--limit` subsets apply:
-   * `undefined` ⇒ no filter, every entity; empty `Uint32Array` ⇒ active but
-   * matching nothing, i.e. an empty `@graph` — don't collapse the two (#4659).
+   * `included` distinguishes no filter (`undefined`) from an active empty filter and
+   * otherwise applies an express-id allowlist like the OBJ/glTF/STEP exporters (#4659).
    */
   exportJsonld(
     content: Uint8Array,

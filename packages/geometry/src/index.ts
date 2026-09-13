@@ -1152,11 +1152,6 @@ export class GeometryProcessor {
     return this.bridge.exportJson(buffer, pretty, includeProperties, includeQuantities);
   }
 
-  /**
-   * Export JSON-LD. `included`: `undefined` ⇒ no isolation filter (every
-   * entity); empty `Uint32Array` ⇒ the filter is active and matched nothing,
-   * which emits an empty `@graph` — don't collapse the two (#4659).
-   */
   exportJsonld(
     buffer: Uint8Array,
     context = '',
@@ -1169,11 +1164,6 @@ export class GeometryProcessor {
     return this.bridge.exportJsonld(buffer, context, includeProperties, includeQuantities, pretty, included);
   }
 
-  /**
-   * Re-serialize to STEP/IFC. `included`: `undefined` ⇒ no isolation filter
-   * (whole model); empty `Uint32Array` ⇒ the filter is active and matched
-   * nothing, which writes a header-only file — don't collapse the two (#4659).
-   */
   exportStep(
     buffer: Uint8Array,
     schema = '',

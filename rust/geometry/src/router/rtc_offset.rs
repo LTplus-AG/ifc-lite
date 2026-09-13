@@ -7,7 +7,7 @@
 
 use super::GeometryRouter;
 use crate::coord_is_large;
-use ifc_lite_core::{has_geometry_by_name, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{has_geometry_by_name, DecodedEntity, EntityDecoder, IfcType, RtcVerdict};
 
 /// Whether a near-origin element with this `RepresentationType` may cast a
 /// "no-shift" `(0,0,0)` RTC vote when the vertex probe can't cheaply read a
@@ -470,8 +470,8 @@ impl GeometryRouter {
         jobs: &[(u32, usize, usize, IfcType)],
         decoder: &mut EntityDecoder,
         content: &[u8],
-    ) -> Option<(f64, f64, f64)> {
-        self.detect_rtc_offset_from_jobs(jobs, decoder)
-            .or_else(|| ifc_lite_core::scan_placement_bounds(content).rtc_offset(self.unit_scale))
+    ) -> Option<RtcVerdict> {
+        let bounds = || ifc_lite_core::scan_placement_bounds(content).rtc_offset(self.unit_scale);
+        self.detect_rtc_offset_from_jobs(jobs, decoder).map(RtcVerdict::of_anchor).or_else(bounds)
     }
 }

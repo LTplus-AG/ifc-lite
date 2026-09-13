@@ -97,6 +97,41 @@ pub fn coord_is_large(point: (f64, f64, f64)) -> bool {
         || point.2.abs() > LARGE_COORD_THRESHOLD_METERS
 }
 
+/// What an RTC detector concluded about a model's coordinates. The anchor and
+/// the decision travel together because the decision is not a property of the
+/// anchor: the placement-bounds scan decides on the bbox CORNERS and answers
+/// with the bbox CENTRE, which can be inside the threshold (8.5 km centre, 15 km
+/// corner) or even the origin, while the coordinates still need re-basing.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RtcVerdict {
+    /// Every coordinate judged is inside the threshold: nothing to subtract.
+    Small,
+    /// Some coordinate is past the threshold: subtract `anchor` before the f32
+    /// cast, whatever the anchor's own magnitude.
+    Large { anchor: (f64, f64, f64) },
+}
+
+impl RtcVerdict {
+    /// For a detector whose anchor IS its evidence (the job sampler's median).
+    #[inline]
+    pub fn of_anchor(anchor: (f64, f64, f64)) -> Self {
+        if coord_is_large(anchor) {
+            Self::Large { anchor }
+        } else {
+            Self::Small
+        }
+    }
+
+    /// The translation to subtract: the anchor when large, zero when small.
+    #[inline]
+    pub fn offset(self) -> (f64, f64, f64) {
+        match self {
+            Self::Small => (0.0, 0.0, 0.0),
+            Self::Large { anchor } => anchor,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -11,7 +11,7 @@
 //! through [`MeshFrame::select`], and the wire tag is spelled only by the
 //! `serde` attribute on [`MeshCoordinateSpace`].
 
-use ifc_lite_core::limits::coord_is_large;
+use ifc_lite_core::RtcVerdict;
 use serde::{Deserialize, Serialize};
 
 /// Epsilon (metres) below which a placement translation is treated as identity.
@@ -54,25 +54,25 @@ impl MeshFrame {
     ///   `None` when the pipeline has no site tier (the browser pre-pass and
     ///   the appearance authoring path mesh in world axes and pass `None`
     ///   deliberately: see `stream_meta::resolve_stream_meta`).
-    /// * `detected`: the RTC detector's answer (see
-    ///   `GeometryRouter::detect_rtc_offset_with_fallback`). It is subtracted
-    ///   only when [`coord_is_large`] says so. The job sampler already answers
-    ///   zero below 10 km, but the placement-bounds fallback answers with the
-    ///   bbox centre once any corner is past 10 km, and that centre can be
-    ///   inside it. The 2D overlays (symbolic, grid and alignment lines) re-base
-    ///   on the same 10 km rule, so an anchor they would not subtract must not
-    ///   move the meshes either.
+    /// * `detected`: the RTC detector's verdict (see
+    ///   `GeometryRouter::detect_rtc_offset_with_fallback`). A `Large` verdict
+    ///   is honoured whatever its anchor's own magnitude: the placement-bounds
+    ///   fallback decides on the bbox corners and anchors on the centre, which
+    ///   can be inside 10 km while the coordinates are not. Only an anchor at
+    ///   the origin (nothing to subtract) falls through to `RawIfc`.
     pub fn select(
         site_translation: Option<(f64, f64, f64)>,
-        detected: Option<(f64, f64, f64)>,
+        detected: Option<RtcVerdict>,
     ) -> Self {
         if let Some(translation) = site_translation.filter(|t| translation_is_nonidentity(*t)) {
             return Self::SiteLocal { translation };
         }
-        if let Some(anchor) = detected.filter(|a| coord_is_large(*a)) {
-            return Self::ModelRtc { anchor };
+        match detected {
+            Some(RtcVerdict::Large { anchor }) if translation_is_nonidentity(anchor) => {
+                Self::ModelRtc { anchor }
+            }
+            _ => Self::RawIfc,
         }
-        Self::RawIfc
     }
 
     /// The translation the router subtracts from every world vertex before
@@ -131,13 +131,14 @@ mod tests {
     use super::*;
 
     const FAR: (f64, f64, f64) = (2_679_062.0, 1_247_992.0, 532.0);
+    const LARGE_FAR: RtcVerdict = RtcVerdict::Large { anchor: FAR };
 
     /// The site tier wins whenever the site is translated at all, and it wins
     /// over a detected anchor. Deleting the site arm of `select` sends the
     /// first two cases to `ModelRtc`/`RawIfc`.
     #[test]
     fn a_translated_site_selects_site_local_over_everything() {
-        let frame = MeshFrame::select(Some((500.0, 0.0, 0.0)), Some(FAR));
+        let frame = MeshFrame::select(Some((500.0, 0.0, 0.0)), Some(LARGE_FAR));
         assert_eq!(
             frame,
             MeshFrame::SiteLocal {
@@ -159,7 +160,7 @@ mod tests {
     #[test]
     fn an_identity_site_falls_through_to_the_detected_anchor() {
         for site in [None, Some((0.0, 0.0, 0.0)), Some((1e-10, -1e-10, 0.0))] {
-            let frame = MeshFrame::select(site, Some(FAR));
+            let frame = MeshFrame::select(site, Some(LARGE_FAR));
             assert_eq!(frame, MeshFrame::ModelRtc { anchor: FAR }, "site {site:?}");
             assert_eq!(frame.rtc_offset(), FAR);
             assert!(frame.needs_shift());
@@ -172,7 +173,7 @@ mod tests {
     /// `needs_shift` with a zero offset cannot be built.
     #[test]
     fn no_site_and_no_anchor_is_raw_ifc_with_nothing_to_subtract() {
-        for detected in [None, Some((0.0, 0.0, 0.0))] {
+        for detected in [None, Some(RtcVerdict::Small)] {
             let frame = MeshFrame::select(None, detected);
             assert_eq!(frame, MeshFrame::RawIfc, "detected {detected:?}");
             assert_eq!(frame.rtc_offset(), (0.0, 0.0, 0.0));
@@ -181,23 +182,20 @@ mod tests {
         }
     }
 
-    /// A non-zero anchor inside 10 km (the bounds fallback's bbox centre can
-    /// be one) is not subtracted. Native used to subtract it while the browser
-    /// resolver and the 2D overlays did not. Dropping the `coord_is_large`
-    /// filter on the anchor arm fails this.
+    /// #4643: a `Large` verdict whose anchor is inside 10 km (the bounds
+    /// fallback's bbox centre for a 2 to 15 km extent) is still subtracted;
+    /// judging the anchor's own magnitude cast 15 km coordinates straight to
+    /// f32. A `Large` verdict anchored at the origin has nothing to subtract.
+    /// Re-gating the anchor arm on `coord_is_large` fails the loop.
     #[test]
-    fn a_sub_threshold_anchor_is_not_subtracted() {
+    fn a_large_verdict_with_a_sub_threshold_anchor_is_subtracted() {
         for anchor in [(-5_000.0, 0.0, 0.0), (8_500.0, 0.0, 0.0), (0.0, 0.0, 10_000.0)] {
-            let frame = MeshFrame::select(None, Some(anchor));
-            assert_eq!(frame, MeshFrame::RawIfc, "{anchor:?}");
-            assert!(!frame.needs_shift());
+            let frame = MeshFrame::select(None, Some(RtcVerdict::Large { anchor }));
+            assert_eq!(frame, MeshFrame::ModelRtc { anchor }, "{anchor:?}");
+            assert!(frame.needs_shift());
         }
-        assert_eq!(
-            MeshFrame::select(None, Some((10_000.5, 0.0, 0.0))),
-            MeshFrame::ModelRtc {
-                anchor: (10_000.5, 0.0, 0.0)
-            }
-        );
+        let at_origin = RtcVerdict::Large { anchor: (0.0, 0.0, 0.0) };
+        assert_eq!(MeshFrame::select(None, Some(at_origin)), MeshFrame::RawIfc);
     }
 
     /// Why `ifc_lite_ffi::normalize_to_site_local` could be deleted: it
@@ -216,7 +214,7 @@ mod tests {
             (0.0, -1_500.0, 0.0),
             FAR,
         ] {
-            for detected in [None, Some((0.0, 0.0, 0.0)), Some(FAR)] {
+            for detected in [None, Some(RtcVerdict::Small), Some(LARGE_FAR)] {
                 let frame = MeshFrame::select(Some(translation), detected);
                 assert_ne!(frame, MeshFrame::RawIfc, "{translation:?} / {detected:?}");
                 assert_eq!(frame.coordinate_space(), MeshCoordinateSpace::SiteLocal);

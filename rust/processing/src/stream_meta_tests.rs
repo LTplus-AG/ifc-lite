@@ -8,7 +8,7 @@
 //! / `MeshFrame`) with crafted inputs — no wasm needed.
 
 use super::*;
-use ifc_lite_core::EntityDecoder;
+use ifc_lite_core::{EntityDecoder, RtcVerdict};
 
 // A minimal IFC4 fragment: metric project, an origin-local wall, and an
 // IfcSite whose placement carries a large national-grid offset that only
@@ -167,9 +167,10 @@ fn streaming_partial_first_pass_success_suppresses_fallback() {
         "first pass must succeed on the partial index"
     );
     assert!(
-        ifc_lite_core::scan_placement_bounds(content)
-            .rtc_offset(1.0)
-            .is_some_and(coord_is_large),
+        matches!(
+            ifc_lite_core::scan_placement_bounds(content).rtc_offset(1.0),
+            Some(RtcVerdict::Large { .. })
+        ),
         "placement-bounds fallback would shift (large) if taken"
     );
 
@@ -242,7 +243,8 @@ fn streaming_partial_stage3_placement_bounds_fallback() {
     // Reproduce exactly what stage 3 computes: raw placement bounds times scale.
     let raw = ifc_lite_core::scan_placement_bounds(content)
         .rtc_offset(1.0)
-        .expect("the fixture has placement points");
+        .expect("the fixture has placement points")
+        .offset();
     assert_eq!(raw, (80_000_000.0, 90_000_000.0, 0.0), "raw mm bounds");
     let expected = (raw.0 * scale, raw.1 * scale, raw.2 * scale);
     assert_eq!(meta.frame.rtc_offset(), expected, "stage 3 unit-scales raw bounds");
@@ -273,36 +275,35 @@ ENDSEC;
 END-ISO-10303-21;
 ";
 
-/// #4611: the browser resolver and the native pipeline choose the same frame
-/// for the same model. Before the shared `MeshFrame::select`, this fixture
-/// came out `model_rtc` with an 8.5 km origin shift on native, while the
-/// browser meta said `needsShift = false` (beside a non-zero `rtcOffset`)
-/// because it gated the anchor on 10 km and native did not. Both now take the
-/// 10 km rule, which is also what the 2D overlays re-base on. Dropping the
-/// `coord_is_large` filter from `MeshFrame::select` fails the native
-/// assertions and the browser ones.
+/// #4611, #4643: the browser resolver and the native pipeline choose the same
+/// frame for the same model, and that frame re-bases it. The bounds reach
+/// 15 km, so the model needs a shift; the anchor is the 8.5 km bbox centre.
+/// Main shifted it on native only (the browser gated the centre on 10 km),
+/// and an intermediate version of this PR shifted it on neither, casting
+/// 15 km coordinates straight to f32 (Codex P1 on #4643). Gating the anchor
+/// on its own magnitude again fails the native and the browser assertions.
 #[test]
 fn browser_and_native_pick_the_same_frame_for_a_sub_threshold_anchor() {
     let content = IFC_SUB_THRESHOLD_ANCHOR.as_bytes();
     let anchor = (8500.0, 0.0, 0.0);
     assert_eq!(
         ifc_lite_core::scan_placement_bounds(content).rtc_offset(1.0),
-        Some(anchor),
-        "premise: the bounds fallback answers with the in-threshold bbox centre"
+        Some(RtcVerdict::Large { anchor }),
+        "premise: the bounds are large and anchor on the in-threshold centre"
     );
     assert!(!coord_is_large(anchor), "premise: the anchor is inside 10 km");
 
     let native = crate::process_geometry(IFC_SUB_THRESHOLD_ANCHOR);
-    assert_eq!(native.mesh_coordinate_space, crate::MeshCoordinateSpace::RawIfc);
-    assert_eq!(native.metadata.coordinate_info.origin_shift, [0.0, 0.0, 0.0]);
+    assert_eq!(native.mesh_coordinate_space, crate::MeshCoordinateSpace::ModelRtc);
+    assert_eq!(native.metadata.coordinate_info.origin_shift, [8500.0, 0.0, 0.0]);
 
     for mode in [MetaMode::SmallFileSingle, MetaMode::StreamingPartial] {
         let full_index = ifc_lite_core::build_entity_index(content);
         let mut decoder = EntityDecoder::with_index(content, full_index);
         let jobs = vec![wall_job(content)];
         let meta = resolve_stream_meta(mode, content, Some(1), None, &jobs, &mut decoder);
-        assert_eq!(meta.frame, MeshFrame::RawIfc, "{mode:?}");
-        assert!(!meta.frame.needs_shift(), "{mode:?}");
+        assert_eq!(meta.frame, MeshFrame::ModelRtc { anchor }, "{mode:?}");
+        assert!(meta.frame.needs_shift(), "{mode:?}");
         assert_eq!(meta.frame.coordinate_space(), native.mesh_coordinate_space, "{mode:?}");
     }
 }

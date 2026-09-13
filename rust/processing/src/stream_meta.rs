@@ -135,8 +135,8 @@ pub fn resolve_stream_meta(
 ///    (unit-scaled to metres).
 ///
 /// `None` only when every stage came back without a coordinate to judge;
-/// `Some((0,0,0))` is a detection that resolved samples and concluded "no
-/// shift", which the later stages must not override.
+/// `Some(RtcVerdict::Small)` is a detection that resolved samples and
+/// concluded "no shift", which the later stages must not override.
 ///
 /// Mirrors the server needs-shift decision so a browser and the native
 /// pipeline re-base a given model identically.
@@ -147,7 +147,7 @@ fn resolve_partial_rtc(
     jobs: &[Job],
     decoder: &mut EntityDecoder,
     length_unit_scale: f64,
-) -> Option<(f64, f64, f64)> {
+) -> Option<ifc_lite_core::RtcVerdict> {
     let mut rtc_offset = router.detect_rtc_offset_from_jobs(jobs, decoder);
     let found_large = rtc_offset.is_some_and(coord_is_large);
 
@@ -165,7 +165,7 @@ fn resolve_partial_rtc(
         }
     }
 
-    rtc_offset.or_else(|| {
+    rtc_offset.map(ifc_lite_core::RtcVerdict::of_anchor).or_else(|| {
         // scan_placement_bounds reads raw IfcCartesianPoint values (FILE
         // units); rtc_offset applies the unit scale before the 10 km gate.
         ifc_lite_core::scan_placement_bounds(content)

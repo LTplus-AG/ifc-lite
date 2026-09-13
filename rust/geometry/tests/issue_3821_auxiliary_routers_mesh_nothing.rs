@@ -130,6 +130,7 @@ fn the_preprocess_router_meshes_nothing() {
     let js = jobs();
     let rtc = router
         .detect_rtc_offset_with_fallback(&js, &mut dec, BOOLEAN_MODEL.as_bytes())
+        .map(ifc_lite_core::RtcVerdict::offset)
         .unwrap_or((0.0, 0.0, 0.0));
     router.set_rtc_offset(rtc);
     let _ = router.unit_scale();

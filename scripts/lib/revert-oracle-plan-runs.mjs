@@ -107,6 +107,8 @@ function crateDefaultFeatures(dir) {
   }
 }
 
+const CHAR_LITERAL = /'(?:\\(?:x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f_]{1,6}\}|[^\n])|[^\\'\n\r\t])'/uy;
+
 function sanitizeRustSource(source) {
   let result = '', index = 0, blockDepth = 0;
   const strings = new Map();
@@ -147,6 +149,14 @@ function sanitizeRustSource(source) {
       }
       result += keepString(source.slice(start + 1, Math.max(start + 1, index - 1)));
       continue;
+    }
+    // A char literal ('"', '\'', b'"', '\u{22}') is blanked so its quote is not
+    // taken for a string opener (#4723). It must close right after one char or
+    // escape, which a lifetime or label ('a, 'static, 'outer:) never does.
+    if (source[index] === "'") {
+      CHAR_LITERAL.lastIndex = index;
+      const char = CHAR_LITERAL.exec(source);
+      if (char) { result += `'${' '.repeat(char[0].length - 2)}'`; index += char[0].length; continue; }
     }
     result += source[index++];
   }

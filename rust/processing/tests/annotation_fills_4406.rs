@@ -65,3 +65,83 @@ fn annotation_4406_ifc2x3_style_assignment_wrapper() {
         .iter()
         .all(|m| m.material_name.as_deref() == Some("Cyan fill")));
 }
+
+/// The pre-pass style index (`style::fill::fill_style_from_styled_item`, via
+/// the public `prepass::resolve_styled_item_spans`) reads an
+/// `IfcStyledItem.Styles` list by the same rule as the 2D symbolic index
+/// (`symbolic::color`): a reference that does not resolve is skipped, and a
+/// bare reference is a one-element list. The pre-pass reader used `?` inside
+/// its loops, so one dangling entry left the fill item with no style entry,
+/// and `get_list` refused a bare reference outright, while the 2D view of the
+/// same item found the colour (Rust review finding G4).
+///
+/// Each variant asserts the style index entry for the fill item carries the
+/// authored fill AND agrees with the 2D symbolic fill colour.
+///
+/// MUTATION that fails every variant: restore `style/fill.rs` to the parent
+/// commit (`get_list(1)?` and `decode_by_id(attr.as_entity_ref()?).ok()?`).
+#[test]
+fn annotation_4406_fill_style_list_is_read_by_the_symbolic_rule() {
+    let cases = [
+        (
+            "a dangling reference before the real style",
+            FILL.replace(
+                "#25=IFCSTYLEDITEM(#22,(#24),$);",
+                "#25=IFCSTYLEDITEM(#22,(#98,#24),$);",
+            ),
+        ),
+        (
+            "a bare reference instead of a one-element list",
+            FILL.replace(
+                "#25=IFCSTYLEDITEM(#22,(#24),$);",
+                "#25=IFCSTYLEDITEM(#22,#24,$);",
+            ),
+        ),
+        (
+            "a dangling reference inside an IFC2X3 style assignment",
+            FILL.replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC2X3'))")
+                .replace("(#23),.F.)", "(#23))")
+                .replace(
+                    "#25=IFCSTYLEDITEM(#22,(#24),$);",
+                    "#26=IFCPRESENTATIONSTYLEASSIGNMENT((#98,#24));#25=IFCSTYLEDITEM(#22,(#26),$);",
+                ),
+        ),
+    ];
+    let mut failures = Vec::new();
+    for (label, source) in cases {
+        let mut spans = Vec::new();
+        let mut scanner = ifc_lite_core::EntityScanner::new(source.as_bytes());
+        while let Some((_, name, start, end)) = scanner.next_entity() {
+            if name == "IFCSTYLEDITEM" {
+                spans.push((start, end));
+            }
+        }
+        let mut decoder = ifc_lite_core::EntityDecoder::new(&source);
+        let index = ifc_lite_processing::prepass::resolve_styled_item_spans(&spans, &mut decoder);
+        let Some(info) = index.get(&22) else {
+            failures.push(format!("{label}: the fill item has no style entry"));
+            continue;
+        };
+        let symbolic = ifc_lite_processing::extract_symbolic_data(&source);
+        let agrees = !symbolic.fills.is_empty()
+            && symbolic.fills.iter().all(|fill| {
+                info.color
+                    .iter()
+                    .zip(fill.fill_color)
+                    .all(|(a, b)| (a - b).abs() < 1e-6)
+            });
+        if info.material_name.as_deref() != Some("Cyan fill") || !agrees {
+            failures.push(format!(
+                "{label}: style index {:?} {:?} vs 2D fills {:?}",
+                info.material_name,
+                info.color,
+                symbolic
+                    .fills
+                    .iter()
+                    .map(|f| f.fill_color)
+                    .collect::<Vec<_>>()
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}

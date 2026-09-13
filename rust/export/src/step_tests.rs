@@ -735,8 +735,9 @@ fn a_caller_edit_at_a_missing_index_does_not_buy_a_copy() {
     let (out, stats) = export_step_with_stats(
         src.as_bytes(),
         &StepOptions {
-            // Index 9 is past the end of #9, and apply_attr_mutations_counted ignores
-            // it, so the repointing computed from it never reaches the file.
+            // Index 9 is past the end of #9. apply_attr_mutations_counted drops
+            // it (and counts the record into `attribute_edits_refused`), so the
+            // repointing computed from it never reaches the file.
             attribute_mutations: vec![AttrMutation {
                 express_id: 9,
                 index: 9,
@@ -760,6 +761,9 @@ fn a_caller_edit_at_a_missing_index_does_not_buy_a_copy() {
     assert!(!out.contains("#42="));
     assert_eq!(stats.written, stats.total);
     assert!(out.contains("#9=IFCPROPERTYSET(\'s1\',$,\'P\',$,(#41));"));
+    // The caller's out-of-range attribute edit on #9 is reported, not dropped
+    // in silence: that is the one place this export says the edit is missing.
+    assert_eq!(stats.attribute_edits_refused, 1);
 }
 
 #[test]

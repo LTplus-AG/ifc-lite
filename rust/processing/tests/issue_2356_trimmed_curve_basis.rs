@@ -312,6 +312,37 @@ fn near_full_turn_trim_is_not_flattened_by_the_radius_shortcut() {
     );
 }
 
+/// The same defect in the band that test missed (Rust review finding G2).
+/// `radius > chord_len * 10.0` is |sin(sweep/2)| < 0.05, true within 0.1 rad
+/// of a full turn, while the full-turn escape covered only 0.02 rad, so a 355
+/// or 362 degree arc (0.087 and 0.035 rad from a full turn) still came out as
+/// a two-point chord. Every emitted point must also lie on the circle.
+///
+/// MUTATION that fails both cases: restore `|| radius > chord_len * 10.0` and
+/// the 0.02 rad `is_full_turn` window in `extract_trimmed_curve`.
+#[test]
+fn arcs_within_a_tenth_of_a_radian_of_a_full_turn_are_not_flattened() {
+    for degrees in [355.0_f64, 362.0] {
+        let end = format!("(IFCPARAMETERVALUE({:?}))", degrees.to_radians());
+        let ifc = fixture("$", "(IFCPARAMETERVALUE(0.))", &end, ".PARAMETER.", "");
+        let data = extract_symbolic_data(&ifc);
+        assert_eq!(data.polylines.len(), 1);
+        let p = &data.polylines[0].points;
+        assert!(
+            p.len() / 2 > 8,
+            "a {degrees} degree trim must be tessellated as an arc; got {} point(s): {p:?}",
+            p.len() / 2
+        );
+        for xy in p.chunks_exact(2) {
+            let r = (xy[0] * xy[0] + xy[1] * xy[1]).sqrt();
+            assert!(
+                (r - 2.0).abs() < 1e-3,
+                "{degrees} degrees: {xy:?} is off the circle"
+            );
+        }
+    }
+}
+
 /// BOUNDING CONTROL — a genuinely degenerate trim (start == end, no
 /// revolution at all) must still collapse. This must hold BEFORE and
 /// AFTER the full-turn fix: only chord-near-zero-BECAUSE-OF-a-full-turn

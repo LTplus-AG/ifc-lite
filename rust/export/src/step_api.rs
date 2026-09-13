@@ -120,12 +120,14 @@ pub struct StepStats {
     /// could never itself be a real entity, so this excludes nothing
     /// reachable — it only says the source has an id ifc-lite can't hold (#3752).
     pub refused_refs: usize,
-    /// Records whose root-attribute edits could not be applied because the
+    /// Records with a root-attribute edit that could not be applied: the
     /// record's own argument list did not scan into slots, so the line was
-    /// emitted as the source wrote it (issue #4125). Non-zero means an edit the
-    /// caller asked for is not in the output. Counted rather than left as an
-    /// unchanged line, because a refusal that looks like a successful no-op is
-    /// the failure this whole family is about: writing by index into a
-    /// mis-scanned list lands on the wrong attribute and reports success.
+    /// emitted as the source wrote it (issue #4125), or an edit's `index` is
+    /// past the record's arity, so that edit was dropped and the others kept.
+    /// Non-zero means an edit the caller asked for is not in the output.
+    /// Counted rather than left as an unchanged line, because a refusal that
+    /// looks like a successful no-op is the failure this whole family is
+    /// about: writing by index into a mis-scanned list lands on the wrong
+    /// attribute and reports success.
     pub attribute_edits_refused: usize,
 }

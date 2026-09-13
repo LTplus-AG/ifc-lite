@@ -170,12 +170,54 @@ fn ifcdoortype_maps_to_ifcdoorstyle_preserving_globalid_and_name() {
     assert!(out.contains("'tag'"), "Tag preserved: {out}");
     // IfcDoorStyle(IFC2X3) attrs: GlobalId,OwnerHistory,Name,Description,
     // ApplicableOccurrence,HasPropertySets,RepresentationMaps,Tag,
-    // OperationType,ConstructionType,ParameterTakesPrecedence,Sizeable
+    // OperationType,ConstructionType,ParameterTakesPrecedence,Sizeable.
+    // ConstructionType and Sizeable are mandatory in IFC2X3 and have no
+    // IFC4 source, so they carry the schema's default, not `$`.
     assert_eq!(
         out,
         "#1=IFCDOORSTYLE('1mW6gHB0W7lxCAqIKVEzia',#2,'Türtyp Größe',$,$,(#3),(#4),'tag',\
-         .SINGLE_SWING_LEFT.,$,.T.,$);"
+         .SINGLE_SWING_LEFT.,.NOTDEFINED.,.T.,.F.);"
     );
+}
+
+/// The IFC4 to IFC2X3 door/window remap used to write `$` into every target
+/// slot with no same-named source attribute, and two of those slots are
+/// mandatory in IFC2X3 (`IfcDoorStyle.ConstructionType`, an enum, and
+/// `.Sizeable`, a BOOLEAN), so the downgraded record was one a strict Part 21
+/// reader rejects. The same applies to `ParameterTakesPrecedence`, optional
+/// in IFC4 and mandatory in IFC2X3, when the source left it `$`. Optional
+/// target slots keep `$`.
+#[test]
+fn door_and_window_downgrade_fill_mandatory_ifc2x3_slots_instead_of_dollar() {
+    // ParameterTakesPrecedence (IFC4 index 11) is `$` here.
+    let door = "#1=IFCDOORTYPE('0DOORTYPE00000000000A',$,'DT',$,$,$,$,'tag',$,.DOOR.,\
+                .SINGLE_SWING_LEFT.,$,$);";
+    assert_eq!(
+        convert_step_line(door, "IFC4", "IFC2X3", 1),
+        "#1=IFCDOORSTYLE('0DOORTYPE00000000000A',$,'DT',$,$,$,$,'tag',\
+         .SINGLE_SWING_LEFT.,.NOTDEFINED.,.F.,.F.);"
+    );
+    // IfcWindowStyle(IFC2X3): ...,Tag,ConstructionType,OperationType,
+    // ParameterTakesPrecedence,Sizeable. IFC4's PartitioningType has no
+    // target slot (dropped); OperationType has no source and is mandatory.
+    let window = "#2=IFCWINDOWTYPE('0WINDOWTYPE000000000A',$,'WT',$,$,$,$,'tag',$,.WINDOW.,\
+                  .SINGLE_PANEL.,.T.,$);";
+    assert_eq!(
+        convert_step_line(window, "IFC4", "IFC2X3", 2),
+        "#2=IFCWINDOWSTYLE('0WINDOWTYPE000000000A',$,'WT',$,$,$,$,'tag',\
+         .NOTDEFINED.,.NOTDEFINED.,.T.,.F.);"
+    );
+    // Control: the optional slots (Description, ApplicableOccurrence, ...)
+    // are still `$`, so this is a mandatory-slot rule and not a blanket fill.
+    let out = convert_step_line(door, "IFC4", "IFC2X3", 1);
+    assert!(out.contains("'DT',$,$,$,$,'tag'"), "optional slots stay `$`: {out}");
+    // A writer that puts a space after each comma: the splitter keeps the
+    // padding, so the empty slot reads ` $`, and it is still the placeholder
+    // (the TypeScript twin's splitter trims, and fills it).
+    let spaced = "#3=IFCDOORTYPE('0DOORTYPE00000000000B',$,'DT',$,$,$,$,'tag',$,.DOOR.,\
+                  .SINGLE_SWING_LEFT., $, $);";
+    let out = convert_step_line(spaced, "IFC4", "IFC2X3", 3);
+    assert!(out.ends_with(",.F.,.F.);"), "a padded `$` in a mandatory slot is filled: {out}");
 }
 
 #[test]

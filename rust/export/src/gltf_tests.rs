@@ -1661,6 +1661,13 @@ fn try_export_glb_fails_closed_on_geometryless_model() {
     assert_eq!(stats.meshes, 0);
     let (json, _) = parse_glb(&glb);
     assert!(json["meshes"].as_array().is_none_or(|m| m.is_empty()));
+    // What that fail-open GLB is, as `export_glb_with_stats` documents it (export
+    // review finding H7: the doc called it "structurally valid"): empty arrays
+    // where the glTF schema requires at least one item, and a zero-length buffer.
+    for key in ["accessors", "bufferViews", "meshes", "nodes"] {
+        assert_eq!(json[key].as_array().map(Vec::len), Some(0), "{key}: {json}");
+    }
+    assert_eq!(json["buffers"][0]["byteLength"].as_u64(), Some(0), "{json}");
 }
 
 /// The #1516 TooLarge variant carries the projected size and a stable code the
@@ -1924,24 +1931,30 @@ fn streaming_bounded_shares_a_repeated_shape() {
 /// has no instance side-channel, and this one drops that occurrence and keeps
 /// the rest. The world geometry either path produces is pinned by
 /// `streaming_bounded_preserves_world_geometry_on_instanced_model`.
+///
+/// Under `quantize` too (export review finding H4): the bounded path used to
+/// skip instancing there, so every repeated shape went out once per
+/// occurrence and the BIN was about twice the in-memory path's.
 #[test]
 fn the_bounded_path_shares_at_least_as_much() {
     let Some(content) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else { return };
-    let opts = GltfOptions::default();
-    let (_, mem) = export_glb_from_result(process_geometry(&content), &opts);
-    let (_, streamed) = export_glb_streaming_bounded(&content, &opts);
-    assert!(
-        streamed.meshes <= mem.meshes,
-        "in-memory emitted {} meshes, bounded {} — bounded found less sharing",
-        mem.meshes,
-        streamed.meshes,
-    );
-    assert!(
-        streamed.vertices <= mem.vertices,
-        "vertices follow meshes: in-memory {}, bounded {}",
-        mem.vertices,
-        streamed.vertices,
-    );
+    for quantize in [false, true] {
+        let opts = GltfOptions { quantize, ..GltfOptions::default() };
+        let (_, mem) = export_glb_from_result(process_geometry(&content), &opts);
+        let (_, streamed) = export_glb_streaming_bounded(&content, &opts);
+        assert!(
+            streamed.meshes <= mem.meshes,
+            "quantize={quantize}: in-memory emitted {} meshes, bounded {} — bounded found less sharing",
+            mem.meshes,
+            streamed.meshes,
+        );
+        assert!(
+            streamed.vertices <= mem.vertices,
+            "quantize={quantize}: vertices follow meshes: in-memory {}, bounded {}",
+            mem.vertices,
+            streamed.vertices,
+        );
+    }
 }
 
 #[test]
@@ -1967,11 +1980,11 @@ fn streaming_bounded_quantized_preserves_world_geometry_on_instanced_model() {
     let (in_memory, _) = export_glb_from_result(process_geometry(&content), &opts);
     let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);
     assert!(stream_stats.meshes > 0);
-    let (mem_json, _) = parse_glb(&in_memory);
-    let (str_json, _) = parse_glb(&streamed);
-    // Node counts legitimately differ (the in-memory instanced quantized path
-    // nests a dequant child under a placement parent), but each occurrence
-    // carries exactly one mesh node on both paths, so placed triangles agree.
+    let (mem_json, mem_bin) = parse_glb(&in_memory);
+    let (str_json, str_bin) = parse_glb(&streamed);
+    // Each occurrence carries exactly one mesh node on both paths (an
+    // instanced one nests its dequant child under a placement parent on both),
+    // so placed triangles agree.
     assert_eq!(
         world_triangles(&mem_json),
         world_triangles(&str_json),
@@ -1981,6 +1994,22 @@ fn streaming_bounded_quantized_preserves_world_geometry_on_instanced_model() {
         str_json["extensionsRequired"][0].as_str(),
         Some("KHR_mesh_quantization"),
     );
+    // Where the triangles are. The bounded path now shares shapes under
+    // `quantize` (H4), so a wrong dequant (an occurrence's own bbox instead of
+    // its template's) or a flattened matrix/dequant nesting moves triangles
+    // without moving any count above.
+    let mem_w = world_totals(&mem_json, &[&mem_bin]);
+    let str_w = world_totals(&str_json, &[&str_bin]);
+    // Measured on duplex: the two agree to ~1.5e-8 on the centroid sums and
+    // exactly on the bounds. 1e-6 is the tolerance the f32 twin above uses.
+    assert_eq!(mem_w.triangles, str_w.triangles, "placed triangle count");
+    for k in 0..3 {
+        let axis = ["x", "y", "z"][k];
+        let centroid = (mem_w.centroid_sum[k] - str_w.centroid_sum[k]).abs();
+        let bounds = (mem_w.min[k] - str_w.min[k]).abs().max((mem_w.max[k] - str_w.max[k]).abs());
+        assert!(centroid < 1e-6, "centroid sum {axis} differs by {centroid:e}: shared shapes are placed differently");
+        assert!(bounds < 1e-6, "world bounds {axis} differ by {bounds:e}");
+    }
 }
 
 #[test]

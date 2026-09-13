@@ -172,8 +172,8 @@ pub fn decode_ifc_string(s: &str) -> Cow<'_, str> {
 /// `O'Brien`). A caller that writes into a literal must double `'` itself,
 /// or use `step_text::escape` in `ifc-lite-export` (re-exported as
 /// `escape_step_string`), which handles the full literal-context contract:
-/// doubling `'` and `\`, mapping control characters to a space, and encoding
-/// non-ASCII — per ISO 10303-21 6.3.3.4. The two functions do not produce
+/// doubling `'` and `\`, and encoding control characters and non-ASCII as
+/// directives — per ISO 10303-21 6.3.3.4. The two functions do not produce
 /// the same output for the same input; do not assume they agree.
 ///
 /// Kept for round-trip tests (`decode_ifc_string(encode_ifc_string(s)) ==

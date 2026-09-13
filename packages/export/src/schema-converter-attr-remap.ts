@@ -54,6 +54,23 @@ export function splitTopLevelAttributes(attrsRaw: string): string[] | null {
 export const BY_NAME_ATTR_REMAP_TYPES = new Set(['IFCDOORTYPE', 'IFCWINDOWTYPE']);
 
 /**
+ * The value written into a remap target slot that IFC2X3 declares mandatory
+ * when the source has nothing for it. `IfcDoorStyle`/`IfcWindowStyle` require
+ * `OperationType`, `ConstructionType`, `ParameterTakesPrecedence` and
+ * `Sizeable`; IFC4's types have no `ConstructionType` or `Sizeable` and leave
+ * `ParameterTakesPrecedence` optional, so a plain `$` there made a record a
+ * strict Part 21 reader rejects. `.NOTDEFINED.` is a member of every one of
+ * those enums and `.F.` is the BOOLEAN that claims nothing. Same table as
+ * `ifc2x3_mandatory_default` in the Rust `schema_convert.rs`.
+ */
+const IFC2X3_MANDATORY_DEFAULTS: ReadonlyMap<string, string> = new Map([
+  ['OperationType', '.NOTDEFINED.'],
+  ['ConstructionType', '.NOTDEFINED.'],
+  ['ParameterTakesPrecedence', '.F.'],
+  ['Sizeable', '.F.'],
+]);
+
+/**
  * Reconcile a renamed entity's attribute list by matching attribute NAMES
  * between the source and target schema tables, rather than by position.
  *
@@ -65,7 +82,8 @@ export const BY_NAME_ATTR_REMAP_TYPES = new Set(['IFCDOORTYPE', 'IFCWINDOWTYPE']
  * prefix of the other.
  *
  * A target attribute with no same-named source attribute becomes `$`
- * (unknown) rather than a guess; a source attribute with no same-named
+ * (unknown) rather than a guess, unless IFC2X3 requires a value there (see
+ * `IFC2X3_MANDATORY_DEFAULTS`); a source attribute with no same-named
  * target slot is dropped. Both are honest data loss for attributes the
  * target schema's OWN shape does not carry under that name — never a
  * misplaced value.
@@ -81,5 +99,10 @@ export function remapRenamedAttributesByName(
   for (let i = 0; i < srcNames.length && i < values.length; i++) {
     byName.set(srcNames[i], values[i]);
   }
-  return tgtNames.map((name) => byName.get(name) ?? '$').join(',');
+  return tgtNames
+    .map((name) => {
+      const given = byName.get(name);
+      return given !== undefined && given !== '$' ? given : (IFC2X3_MANDATORY_DEFAULTS.get(name) ?? '$');
+    })
+    .join(',');
 }

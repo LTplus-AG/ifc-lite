@@ -1,5 +1,12 @@
 # @ifc-lite/cache
 
+## 3.4.2
+
+### Patch Changes
+
+- Updated dependencies [[`5583362`](https://github.com/LTplus-AG/ifc-lite/commit/5583362ea8d7c988c84d44bf3b27c6c72fb6b798)]:
+  - @ifc-lite/geometry@6.0.0
+
 ## 3.4.1
 
 ### Patch Changes

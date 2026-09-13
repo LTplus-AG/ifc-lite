@@ -25,7 +25,7 @@
  * gate, this repo has no known history of nine STEP-escaper copies: a search
  * at the time this gate was written found no OTHER full implementation of
  * this escaper's four rules (backslash doubling, apostrophe doubling,
- * control-char-to-space, non-ASCII \X2\/\X4\ directive encoding) together in
+ * control characters as \X2\ directives, non-ASCII \X2\/\X4\ directive encoding) together in
  * one place, so `KNOWN_REMAINING` starts empty. It is a ratchet, not a
  * guarantee that stays true — it exists so a new one can only enter this file
  * as a visible, reviewed exception, never as silent debt.
@@ -35,7 +35,7 @@
  *   - `packages/encoding/src/ifc-string.ts`'s `encodeIfcString` emits the same
  *     `\X2\`/`\X4\` directive shape, but for a DIFFERENT byte range (it also
  *     encodes 8-bit values as `\X\HH`, which this escaper never emits) and
- *     WITHOUT apostrophe/backslash doubling or control-to-space mapping — a
+ *     WITHOUT apostrophe/backslash doubling or control-character directives — a
  *     bare backslash there becomes `\X\5C`, not `\\`. It is a different,
  *     narrower escaper (#3300's own text says so), not a copy of this one.
  *   - `packages/cli/src/commands/mutate.ts`, `packages/parser/src/schedule-serializer.ts`,
@@ -43,7 +43,7 @@
  *     `.replace(/\\/g, '\\\\').replace(/'/g, "''")` — backslash and apostrophe
  *     doubling, the STEP quoting rule these three actually need for their own
  *     narrow inputs (short, caller-controlled identifiers/paths). None of the
- *     three maps a control character to a space or emits a `\X2\`/`\X4\`
+ *     three encodes a control character or emits a `\X2\`/`\X4\`
  *     directive for non-ASCII text, so none of them implements the FULL
  *     four-rule escaper this gate exists to keep singular. They are two-ninths
  *     of the shape, not the shape, and PATTERNS is deliberately built to need

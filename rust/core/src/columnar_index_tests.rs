@@ -15,7 +15,7 @@ fn sorted_unique_uses_fast_path_and_looks_up() {
     let ids = [1u32, 5, 9, 100];
     let starts = [10u32, 20, 30, 40];
     let lengths = [3u32, 4, 5, 6];
-    let idx = ColumnarEntityIndex::from_columns(&ids, &starts, &lengths);
+    let idx = ColumnarEntityIndex::from_columns(&ids, &starts, &lengths).unwrap();
     assert_eq!(idx.len(), 4);
     assert_eq!(idx.lookup(1), Some((10, 13)));
     assert_eq!(idx.lookup(5), Some((20, 24)));
@@ -29,7 +29,7 @@ fn unsorted_input_is_sorted_then_searched() {
     let ids = [100u32, 1, 9, 5];
     let starts = [40u32, 10, 30, 20];
     let lengths = [6u32, 3, 5, 4];
-    let idx = ColumnarEntityIndex::from_columns(&ids, &starts, &lengths);
+    let idx = ColumnarEntityIndex::from_columns(&ids, &starts, &lengths).unwrap();
     assert_eq!(idx.ids(), &[1, 5, 9, 100]);
     assert_eq!(idx.lookup(1), Some((10, 13)));
     assert_eq!(idx.lookup(5), Some((20, 24)));
@@ -44,7 +44,7 @@ fn duplicate_id_last_wins() {
     let ids = [7u32, 3, 7];
     let starts = [10u32, 20, 30];
     let lengths = [1u32, 2, 3];
-    let idx = ColumnarEntityIndex::from_columns(&ids, &starts, &lengths);
+    let idx = ColumnarEntityIndex::from_columns(&ids, &starts, &lengths).unwrap();
     assert_eq!(idx.len(), 2);
     // id 7 -> the (start=30, len=3) entry, NOT (10, 1)
     assert_eq!(idx.lookup(7), Some((30, 33)));
@@ -64,7 +64,7 @@ fn adjacent_duplicate_ids_do_not_take_the_sorted_fast_path() {
     let ids = [1u32, 1, 5];
     let starts = [10u32, 20, 30];
     let lengths = [1u32, 2, 3];
-    let idx = ColumnarEntityIndex::from_columns(&ids, &starts, &lengths);
+    let idx = ColumnarEntityIndex::from_columns(&ids, &starts, &lengths).unwrap();
     assert_eq!(idx.len(), 2, "adjacent duplicate id must be deduped, not adopted as-is");
     // Last-in-input-order wins, matching the hashmap/`from_unsorted` contract.
     assert_eq!(idx.lookup(1), Some((20, 22)));
@@ -72,10 +72,23 @@ fn adjacent_duplicate_ids_do_not_take_the_sorted_fast_path() {
     assert_eq!(idx.ids(), &[1, 5]);
 }
 
+/// Empty columns are an empty index; unequal columns are an error naming the
+/// three lengths, not an empty index that reads the same as an empty file.
+/// A mismatch used to fold into `is_empty()`, and `setEntityIndex` then kept
+/// the previous file's index on a malformed install with no signal (#4614).
 #[test]
-fn empty_and_mismatched_columns_are_empty() {
-    assert!(ColumnarEntityIndex::from_columns(&[], &[], &[]).is_empty());
-    assert!(ColumnarEntityIndex::from_columns(&[1, 2], &[0], &[0, 0]).is_empty());
+fn empty_columns_are_empty_and_mismatched_columns_are_an_error() {
+    assert!(ColumnarEntityIndex::from_columns(&[], &[], &[]).unwrap().is_empty());
+    let short_starts = ColumnLengthMismatch { ids: 2, starts: 1, lengths: 2 };
+    assert_eq!(ColumnarEntityIndex::from_columns(&[1, 2], &[0], &[0, 0]).err(), Some(short_starts));
+    let short_lengths = ColumnLengthMismatch { ids: 2, starts: 2, lengths: 0 };
+    assert_eq!(ColumnarEntityIndex::from_columns(&[1, 2], &[0, 0], &[]).err(), Some(short_lengths));
+    // The "columns disagree" phrase is also what wasm-column-refusal.ts
+    // `isColumnLengthRefusal` keys on; keep the two in step.
+    assert_eq!(
+        short_starts.to_string(),
+        "entity index columns disagree in length: ids 2, starts 1, lengths 2"
+    );
 }
 
 #[test]
@@ -136,7 +149,7 @@ fn issue_3989_owned_sorted_columns_keep_allocations_and_lookup_spans() {
     let starts = vec![10, 25, 70];
     let lengths = vec![5, 8, 11];
     let pointers = (ids.as_ptr(), starts.as_ptr(), lengths.as_ptr());
-    let index = ColumnarEntityIndex::from_owned_columns(ids, starts, lengths);
+    let index = ColumnarEntityIndex::from_owned_columns(ids, starts, lengths).unwrap();
     assert_eq!((index.ids.as_ptr(), index.starts.as_ptr(), index.lengths.as_ptr()), pointers);
     assert_eq!(index.lookup(7), Some((25, 33)));
     assert_eq!(index.lookup(90), Some((70, 81)));
@@ -146,10 +159,10 @@ fn issue_3989_owned_sorted_columns_keep_allocations_and_lookup_spans() {
 #[test]
 fn issue_3989_owned_columns_preserve_unsorted_and_adjacent_duplicate_precedence() {
     for ids in [vec![7, 3, 7], vec![3, 7, 7]] {
-        let index = ColumnarEntityIndex::from_owned_columns(ids, vec![10, 20, 30], vec![1, 2, 3]);
+        let index = ColumnarEntityIndex::from_owned_columns(ids, vec![10, 20, 30], vec![1, 2, 3]).unwrap();
         assert_eq!(index.ids(), &[3, 7]);
         assert_eq!(index.lookup(7), Some((30, 33)), "last input occurrence wins");
     }
-    assert!(ColumnarEntityIndex::from_owned_columns(vec![1, 2], vec![10], vec![1, 2]).is_empty());
-    assert!(ColumnarEntityIndex::from_owned_columns(vec![], vec![], vec![]).is_empty());
+    assert!(ColumnarEntityIndex::from_owned_columns(vec![1, 2], vec![10], vec![1, 2]).is_err());
+    assert!(ColumnarEntityIndex::from_owned_columns(vec![], vec![], vec![]).unwrap().is_empty());
 }

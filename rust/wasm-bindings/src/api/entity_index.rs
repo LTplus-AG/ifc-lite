@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::IfcAPI;
-use ifc_lite_core::ColumnarEntityIndex;
+use ifc_lite_core::{ColumnLengthMismatch, ColumnarEntityIndex};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -29,30 +29,50 @@ impl IfcAPI {
     /// Idempotent in the sense that repeated calls REPLACE the cache —
     /// supports the parser-worker pattern of reusing one IfcAPI across
     /// multiple loads with different files.
+    ///
+    /// Throws when the three columns disagree in length. Every call is a
+    /// content swap, a rejected one included: the previous file's index,
+    /// content-scoped caches and pipeline diagnostics are dropped before the
+    /// error is raised, and a rejected or empty index leaves no index, so the
+    /// next batch scans the bytes it is given.
     #[wasm_bindgen(js_name = setEntityIndex)]
-    pub fn set_entity_index_owned_binding(&self, ids: Vec<u32>, starts: Vec<u32>, lengths: Vec<u32>) {
-        self.install_entity_index(ColumnarEntityIndex::from_owned_columns(ids, starts, lengths));
+    pub fn set_entity_index_owned_binding(
+        &self,
+        ids: Vec<u32>,
+        starts: Vec<u32>,
+        lengths: Vec<u32>,
+    ) -> Result<(), JsValue> {
+        self.install_entity_index(ColumnarEntityIndex::from_owned_columns(ids, starts, lengths))
+            .map_err(|mismatch| JsValue::from_str(&format!("setEntityIndex: {mismatch}")))
     }
 }
 
 impl IfcAPI {
     /// Install an entity index from borrowed columns, preserving the public Rust
     /// API. The JavaScript binding consumes its owned ABI buffers separately
-    /// so it does not copy them again (#3989).
-    pub fn set_entity_index(&self, ids: &[u32], starts: &[u32], lengths: &[u32]) {
-        self.install_entity_index(ColumnarEntityIndex::from_columns(ids, starts, lengths));
+    /// so it does not copy them again (#3989). Same contract as `setEntityIndex`.
+    pub fn set_entity_index(&self, ids: &[u32], starts: &[u32], lengths: &[u32]) -> Result<(), ColumnLengthMismatch> {
+        self.install_entity_index(ColumnarEntityIndex::from_columns(ids, starts, lengths))
     }
 
-    fn install_entity_index(&self, index: ColumnarEntityIndex) {
-        // Invalid or empty input preserves the previous index and caches.
-        if index.is_empty() {
-            return;
-        }
+    /// Swap the content state for a new file and hand back the build outcome.
+    /// The previous load's state is dropped whether or not `built` is an
+    /// index. An empty index is installed as none: a batch treats an installed
+    /// index as authoritative and an empty one would resolve nothing, while
+    /// none makes the next batch scan its bytes.
+    fn install_entity_index(
+        &self,
+        built: Result<ColumnarEntityIndex, ColumnLengthMismatch>,
+    ) -> Result<(), ColumnLengthMismatch> {
+        let (installed, outcome) = match built {
+            Ok(index) => ((!index.is_empty()).then(|| std::sync::Arc::new(index)), Ok(())),
+            Err(mismatch) => (None, Err(mismatch)),
+        };
         let mut slot = self
             .cached_entity_index
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *slot = Some(std::sync::Arc::new(index));
+        *slot = installed;
         drop(slot);
 
         // Swapping the entity index means a different file. The other caches are
@@ -116,6 +136,7 @@ impl IfcAPI {
         // A new entity index means a new file — the pipeline diagnostics
         // describe the previous load, so start fresh.
         self.reset_pipeline_diagnostics();
+        outcome
     }
 }
 

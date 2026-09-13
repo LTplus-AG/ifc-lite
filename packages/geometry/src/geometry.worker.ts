@@ -30,6 +30,7 @@ import {
   type BatchSizingConfig,
 } from './batch-sizing.js';
 import { takeWasmPanicStash } from './wasm-panic-forward.js';
+import { isColumnLengthRefusal } from './wasm-column-refusal.js';
 
 export interface GeometryWorkerInitMessage {
   type: 'init';
@@ -1398,6 +1399,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       try {
         run(viewSharedBytes(sharedBuffer), indexIds, indexStarts, indexLengths, indexClasses);
       } catch (err) {
+        if (isColumnLengthRefusal(err)) throw err;
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`[Worker] Sharded streaming prepass with SAB view failed (${msg}), retrying with copy`);
         try {
@@ -1446,6 +1448,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       try {
         payload = callFinalize(viewSharedBytes(m.sharedBuffer));
       } catch (err) {
+        if (isColumnLengthRefusal(err)) throw err;
         // SAB-view rejection fallback (see scan-shard above).
         warnSabViewFallbackOnce('finalize-prepass-styles', err);
         payload = finalizeApi.finalizePrepassStyles(materialiseSharedBytes(m.sharedBuffer), ...args);
@@ -1639,22 +1642,19 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
     }
 
     if (e.data.type === 'set-entity-index') {
-      // Hand the pre-built entity index from the pre-pass worker into
-      // this worker's IfcAPI. Without this, processGeometryBatch's lazy
-      // build path fires on the first call and re-scans the entire file
-      // (~5 s on a 1 GB IFC) — the dominant TTFG bottleneck before this
-      // change. Now the only cost is FxHashMap construction from the
-      // input slices (~1 s for 14 M entries).
-      await ensureInit();
-      // Cache then apply via the replay helper so a later recovery re-init
-      // (api = null in processBatch) re-installs the index instead of falling
-      // back to the lazy O(file) re-scan (#1097).
-      cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
-      entityIndexApplied = false;
-      applyEntityIndexToApi();
-      // Re-install any already-cached columns: setEntityIndex just cleared them.
+      // Install the pre-pass worker's index so processGeometryBatch never
+      // re-scans the whole file (the dominant time-to-first-geometry cost).
+      const ifcApi = await ensureInit();
+      // Install, then cache: a recovery re-init (api = null in processBatch)
+      // replays the cache instead of re-scanning (#1097), and a rejected index
+      // (unequal columns throw, #4614) must never be replayed. The call clears
+      // the IfcAPI's pre-pass columns either way.
+      cachedEntityIndex = null;
+      cachedPrepassColumns = null;
       prepassColumnsApplied = false;
-      applyPrepassColumnsToApi();
+      ifcApi.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
+      cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
+      entityIndexApplied = true;
       return;
     }
 

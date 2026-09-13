@@ -82,7 +82,7 @@ pub mod streaming;
 pub(crate) mod unit_labels;
 pub mod units;
 
-pub use columnar_index::ColumnarEntityIndex;
+pub use columnar_index::{ColumnLengthMismatch, ColumnarEntityIndex};
 pub use decoder::{build_entity_index, EntityDecoder, EntityIndex};
 pub use dense_index::DenseEntityIndex;
 pub use error::{Error, Result};

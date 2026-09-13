@@ -10,7 +10,7 @@ fn dense_index_preserves_holes_zero_ids_and_empty_spans() {
     let starts: Vec<u32> = ids.iter().map(|id| id * 10).collect();
     let lengths: Vec<u32> = ids.iter().map(|id| if *id == 0 { 0 } else { 5 }).collect();
     let dense = DenseEntityIndex::try_from_columns(&ids, &starts, &lengths).unwrap();
-    let columns = crate::ColumnarEntityIndex::from_columns(&ids, &starts, &lengths);
+    let columns = crate::ColumnarEntityIndex::from_columns(&ids, &starts, &lengths).unwrap();
     for id in 0..300 { assert_eq!(dense.lookup(id), columns.lookup(id), "id={id}"); }
     assert_eq!(dense.lookup(0), Some((0, 0)));
     assert_eq!(dense.lookup(u32::MAX), None);

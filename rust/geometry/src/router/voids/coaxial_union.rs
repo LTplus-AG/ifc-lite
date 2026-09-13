@@ -545,7 +545,7 @@ pub(super) fn accept_single_cut(
     vol_before: f64,
     max_removed: f64,
 ) -> bool {
-    cut_changed_mesh(&cut, tri_before, vol_before)
+    cut_changed_mesh(&cut, result)
         && accept_cut(result, cut, tri_before, vol_before, max_removed)
 }
 

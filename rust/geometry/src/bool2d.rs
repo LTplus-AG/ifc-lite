@@ -111,22 +111,40 @@ pub fn subtract_multiple_2d_counted(
     Ok((shapes_to_profile(&result)?, shapes))
 }
 
-/// Mixed-route variant: dissolve overlapping footprints first, then subtract
-/// the resulting disjoint shapes. The explicit union preserves NonZero union
-/// semantics while avoiding overlap seams in the host passed to residual 3D
-/// cutting (#4617).
-pub(crate) fn subtract_unioned_2d_counted(
+/// Plan a mixed subtraction as a stable precursor and mandatory corrections.
+/// The precursor uses odd coverage to preserve the residual cutter's input
+/// tessellation. It is NOT a finished difference: its intersection with the
+/// NonZero footprint union is returned as additional material to remove AFTER
+/// residual cutting (#4617). Thus `(precursor - residual) - corrections` has
+/// exactly the union semantics of `host - (footprints union residual)`.
+/// The caller must reject disconnected precursors and apply every correction;
+/// failure at any stage must retry the complete opening set on the original host.
+pub(crate) fn subtract_staged_2d_counted(
     profile: &Profile2D,
     void_contours: &[Vec<Point2<f64>>],
-) -> Result<(Profile2D, usize)> {
-    let union = union_contours_to_shapes(void_contours);
-    if union.is_empty() {
-        return Ok((profile.clone(), 1));
+) -> Result<(Profile2D, usize, Vec<Profile2D>)> {
+    let clip: Vec<_> = void_contours
+        .iter()
+        .filter(|c| c.len() >= 3)
+        .map(|c| contour_to_path(c))
+        .collect();
+    if clip.is_empty() {
+        return Ok((profile.clone(), 1, Vec::new()));
     }
-    let clip: Vec<_> = union.iter().flat_map(profile_to_paths).collect();
     let result = profile_to_paths(profile).overlay(&clip, OverlayRule::Difference, FillRule::EvenOdd);
-    let shapes = result.iter().filter(|s| s.first().is_some_and(|outer| outer.len() >= 3)).count();
-    Ok((shapes_to_profile(&result)?, shapes))
+    let shapes = result
+        .iter()
+        .filter(|s| s.first().is_some_and(|outer| outer.len() >= 3))
+        .count();
+    let precursor = shapes_to_profile(&result)?;
+    let union = ccw_paths(void_contours.iter().map(Vec::as_slice));
+    let correction = profile_to_paths(&precursor)
+        .overlay(&union, OverlayRule::Intersect, FillRule::NonZero);
+    let correction = correction
+        .iter()
+        .map(|s| shapes_to_profile(std::slice::from_ref(s)))
+        .collect::<Result<Vec<_>>>()?;
+    Ok((precursor, shapes, correction))
 }
 
 /// Union many 2D contours into a set of DISJOINT shapes, each an outer boundary
@@ -265,7 +283,7 @@ fn profile_to_paths(profile: &Profile2D) -> Vec<Vec<[f64; 2]>> {
     paths.push(contour_to_path(&outer));
 
     // Add holes clockwise: the opposite winding is what subtracts them under the
-    // `NonZero` fill rule every overlay in this module uses.
+    // `NonZero` fill rule used for finished differences and footprint unions.
     for hole in &profile.holes {
         let hole_cw = ensure_cw(hole);
         paths.push(contour_to_path(&hole_cw));

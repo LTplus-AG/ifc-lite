@@ -72,8 +72,10 @@ use rustc_hash::FxHashMap;
 /// kernel for every host). Default ON; read once.
 pub(crate) mod closure_checks;
 mod vertex_dedup;
+mod planar_correction;
 use closure_checks::{closed_or_hairline, directed_closed};
 pub(crate) use vertex_dedup::dedup_cut_vertices;
+pub(super) use planar_correction::correct_planar_overlap;
 
 pub(super) fn enabled() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();

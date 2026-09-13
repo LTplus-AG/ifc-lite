@@ -653,26 +653,28 @@ impl GeometryRouter {
         // reconciles against the real host mesh, whatever `mesh.origin`). Any miss
         // falls through to the exact kernel below unchanged.
         if let Some(cut) = ctx.bool2d.as_ref() {
-            if let Some(holed) = self.try_bool2d_cut(&mesh, cut) {
-                // Eligible openings are now subtracted. Any residual (ineligible)
-                // openings — perpendicular sleeves, partial-depth recesses — are
-                // cut by the exact kernel on the re-extruded host (origin 0, world
-                // frame; residual cutters are world-framed), so a single
-                // ineligible opening no longer forfeits its host's cheap ones.
+            if let Some((holed, corrections)) = self.try_bool2d_cut(&mesh, cut) {
+                // The precursor is complete only for pure planar sets. Mixed
+                // sets first cut their residual sleeves/recesses, then remove
+                // every overlap correction in the host's own origin frame.
+                // Never return the intermediate precursor with parity coverage.
                 match self.bool2d_residual(cut) {
                     None => return holed,
                     Some(residual) => {
                         let candidate = self.apply_void_context(holed, residual, element_id);
+                        let candidate = prism_cut::correct_planar_overlap(&candidate, &corrections);
                         let before = topology_defect_count(&mesh);
                         let limit = before
                             .saturating_mul(MIXED_ROUTE_DEFECT_GROWTH)
                             .max(MIXED_ROUTE_DEFECT_FLOOR);
-                        if topology_defect_count(&candidate) <= limit {
-                            return candidate;
+                        if let Some(candidate) = candidate {
+                            if topology_defect_count(&candidate) <= limit {
+                                return candidate;
+                            }
                         }
-                        // The residual phase tore the re-extruded host. Keep the
-                        // original mesh and let the unified exact route below
-                        // evaluate the complete opening set (#4617).
+                        // An unsafe residual or a failed mandatory correction
+                        // discards the entire staged result. The unified exact
+                        // route evaluates all openings on the original (#4617).
                     }
                 }
             }

@@ -284,3 +284,42 @@ fn footprint_interior_gates_boundary_breach() {
     assert!(footprint_interior(&interior, &profile));
     assert!(!footprint_interior(&breaching, &profile));
 }
+
+/// #4617: duplicate footprints cancel in the staged precursor, so this case
+/// cannot pass by merely returning the precursor or by checking its closure.
+#[test]
+fn mixed_duplicate_footprints_apply_mandatory_union_correction_4617() {
+    let rect = |x0, y0, x1, y1| vec![
+        Point2::new(x0, y0), Point2::new(x1, y0),
+        Point2::new(x1, y1), Point2::new(x0, y1),
+    ];
+    let profile = Profile2D::new(rect(0.0, 0.0, 10.0, 10.0));
+    let router = GeometryRouter::new();
+    let residual_opening = super::super::OpeningType::Rectangular(
+        Point3::new(1.0, 1.0, -1.0), Point3::new(3.0, 3.0, 0.5),
+        Some(Vector3::z()),
+    );
+    let residual = VoidContext {
+        openings: vec![residual_opening.clone()],
+        merged_openings: vec![residual_opening],
+        param: None,
+        bool2d: None,
+    };
+    let cut = Bool2dCut {
+        host_profile: profile.clone(), depth: 1.0, dir_sign: 1.0,
+        wt: Matrix4::identity(),
+        footprints: vec![rect(2.0, 2.0, 4.0, 4.0), rect(2.0, 2.0, 4.0, 4.0), rect(6.0, 6.0, 8.0, 8.0)],
+        residual: Some(Box::new(residual)),
+    };
+    let host = extrude_profile_watertight(&profile, 1.0, None).unwrap();
+    let (precursor, corrections) = router.try_bool2d_cut(&host, &cut).expect("staged prefix eligible");
+    assert_eq!(corrections.len(), 1, "duplicate coverage requires a real correction");
+    assert!((mesh_signed_volume(&precursor).abs() - 96.0).abs() < 1e-6);
+    let residual_result = router.apply_void_context(precursor, cut.residual.as_deref().unwrap(), 4617);
+    let result = super::super::prism_cut::correct_planar_overlap(&residual_result, &corrections)
+        .expect("analytic overlap correction must succeed without a full exact retry");
+    // Two distinct four-unit footprints remove 8, and the half-depth residual
+    // removes 2 minus its 0.5 overlap with the corrected through-opening.
+    assert!((mesh_signed_volume(&result).abs() - 90.5).abs() < 1e-5);
+    assert!(super::super::prism_cut::closure_checks::closed_or_hairline(&result));
+}

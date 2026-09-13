@@ -351,6 +351,25 @@ fn overlapping_voids_merge_instead_of_cancelling() {
     assert!((net_area(&counted) - 72.0).abs() < 1e-6);
 }
 
+/// #4617: a staged precursor is never a final boolean result. Removing its
+/// explicit overlap corrections must recover NonZero union coverage.
+#[test]
+fn staged_overlapping_voids_recover_union_area_4617() {
+    let profile = plate_10x10();
+    for mirrored in [false, true] {
+        let mut voids = overlapping_void_pair();
+        if mirrored { voids[1].reverse(); }
+        let (precursor, _, corrections) = subtract_staged_2d_counted(&profile, &voids).unwrap();
+        let correction_area: f64 = corrections.iter().map(net_area).sum();
+        assert!((net_area(&precursor) - correction_area - 72.0).abs() < 1e-6);
+        let corrected = corrections.iter().fold(precursor, |current, correction| {
+            assert!(correction.holes.is_empty());
+            subtract_2d(&current, &correction.outer).unwrap()
+        });
+        assert_single_merged_hole(&corrected, "staged mixed-opening correction");
+    }
+}
+
 /// Regression for #4579.
 #[test]
 fn overlapping_voids_merge_when_one_footprint_is_mirrored() {

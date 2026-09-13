@@ -610,6 +610,15 @@ pub use model::{stream_export_model_with_options, build_export_model_with_option
 pub use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
 ```
 
+`export_step_with_stats` returns `StepStats`. `total` and `written` describe
+the selected entity set. The remaining counters are validity or refusal
+signals that callers should inspect: `copies_refused` counts copy-on-write
+edits that were not emitted, `refused_refs` counts out-of-range STEP
+references, and `attribute_edits_refused` counts root-attribute edits that
+could not be applied. `owner_history_unfilled` counts records in an IFC2X3
+downgrade that still have `$` in the schema-required `OwnerHistory` slot;
+when it is non-zero, the emitted file is not valid IFC2X3.
+
 `ModelOptions::default().with_placements(true)` resolves each product's
 `ObjectPlacement` into
 `EntityRow::placement`. Off by default: the memo is ~128 B per distinct

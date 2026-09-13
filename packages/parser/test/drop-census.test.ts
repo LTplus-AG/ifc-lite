@@ -101,20 +101,29 @@ describe('drop census (#4208)', () => {
         expect(census.unindexedRelClasses.find(c => c.type === 'IFCRELASSIGNSTOPROCESS')).toBeUndefined();
     });
 
+    it('keeps a schema-known relationship without a RelationshipType visible as unindexed (#4205)', async () => {
+        // HIERARCHY_REL_TYPES now admits every concrete relationship subtype,
+        // but the scoped remainder still has no REL_TYPE_MAP entry and the
+        // parser consequently emits no graph edge. The census must report the
+        // emitted reality, not mistake admission to relationshipRefs for an
+        // edge. IfcRelDefinesByObject is one of the named remainder classes.
+        const ifc = `#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);
+#2=IFCRELDEFINESBYOBJECT('rel-guid',#1,$,$,(#3),#4);
+#3=IFCWALL('w1',#1,'Wall1',$,$,$,$,$);
+#4=IFCWALL('w2',#1,'Wall2',$,$,$,$,$);`;
+        const store = await parseSource(ifc);
+        const census = store.dropCensus!;
+        expect(census.relClassesSeen).toBe(1);
+        expect(census.relClassesIndexed).toBe(0);
+        expect(census.unindexedRelClasses.map(c => c.type)).toContain('IFCRELDEFINESBYOBJECT');
+    });
+
     it('reports an IFCREL* class seen but not indexed as a relationship edge', async () => {
-        // Since #4205, HIERARCHY_REL_TYPES is schema-derived: every concrete
-        // `IfcRelationship` subtype any bundled schema registry knows about
-        // (46+ classes across IFC2X3/IFC4/IFC4X3) passes the census's
-        // "indexed" category, whether or not `REL_TYPE_MAP` also gives it a
-        // dedicated edge type yet. So a REAL schema-known class can no
-        // longer land here the way IFCRELASSIGNSTOPROCESS used to before the
-        // fix — the only way to reach "seen but unindexed" now is a keyword
-        // no bundled schema declares at all (an unreleased draft addition, a
-        // vendor extension): it still starts with "IFCREL" (routed to
+        // A keyword no bundled schema declares (an unreleased draft addition
+        // or vendor extension) still starts with "IFCREL" (routed to
         // CAT_RELEVANT, not CAT_SKIP, by the `upper.startsWith('IFCREL')`
-        // fallback in `columnar-entity-preparation.ts`) but the
-        // schema-derived gate has never heard of it, so it can't be in
-        // HIERARCHY_REL_TYPES either.
+        // fallback in `columnar-entity-preparation.ts`) but cannot be in the
+        // schema-derived HIERARCHY_REL_TYPES gate.
         const ifc = `#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);
 #2=IFCRELVENDOREXTENSIONNOTINANYBUNDLEDSCHEMA('rel-guid',#1,$,$,#3,(#4));
 #3=IFCWALL('w1',#1,'Wall1',$,$,$,$,$);

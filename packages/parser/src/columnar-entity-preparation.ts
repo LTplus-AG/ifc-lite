@@ -11,6 +11,7 @@ import { getInheritanceChain, isKnownType } from './ifc-schema.js';
 import {
   GEOMETRY_TYPES, SPATIAL_TYPES, HIERARCHY_REL_TYPES, PROPERTY_REL_TYPES,
   PROPERTY_ENTITY_TYPES, PROPERTY_CONTAINER_TYPES, ASSOCIATION_REL_TYPES, isIfcTypeLikeEntity,
+  REL_TYPE_MAP, SECONDARY_REL_TYPE_MAP,
 } from './columnar-parser-indexes.js';
 import { buildDropCensus, type DropCensus, type DropCategory } from './drop-census.js';
 
@@ -212,7 +213,18 @@ export async function prepareColumnarEntities(
       );
       if (censusTypeKey.startsWith('IFCREL')) {
         censusRelSeenTypes.add(censusTypeKey);
-        if (cat !== CAT_HIERARCHY_REL && cat !== CAT_PROPERTY_REL && cat !== CAT_ASSOCIATION_REL) {
+        // Being admitted to `relationshipRefs` is not the same as being
+        // indexed: the schema-derived hierarchy gate intentionally includes
+        // a scoped remainder that has no RelationshipType yet, and the parser
+        // loop emits no edge for those names. Keep the census tied to actual
+        // downstream routing so that remainder stays visible (#4205/#4208).
+        const hasHierarchyEdge =
+          Object.prototype.hasOwnProperty.call(REL_TYPE_MAP, censusTypeKey)
+          || Object.prototype.hasOwnProperty.call(SECONDARY_REL_TYPE_MAP, censusTypeKey);
+        const isIndexed = cat === CAT_PROPERTY_REL
+          || cat === CAT_ASSOCIATION_REL
+          || (cat === CAT_HIERARCHY_REL && hasHierarchyEdge);
+        if (!isIndexed) {
           censusRelUnindexedTypes.add(censusTypeKey);
         }
       }

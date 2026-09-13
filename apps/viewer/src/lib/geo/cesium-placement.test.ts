@@ -271,11 +271,11 @@ describe('cesium placement helpers', () => {
     assert.deepStrictEqual(feetToMetres, { eastings: 2, northings: 1 });
   });
 
-  it('does not erase an explicit axis factor when Scale times Factor equals one (#4615)', () => {
-    // Project millimetres -> map metres: Scale=.001 is the authored unit bridge.
-    // FactorX=1000 is an additional explicit axis scaling, even though their raw
-    // product happens to equal the legacy omitted-Scale sentinel.
-    assert.strictEqual(getEffectiveAxisScale(0.001, 1000, 1, 0.001), 1000);
+  it('places a Scale x Factor product of one like Scale=1, whichever way it is split (#4615)', () => {
+    // Scale .001 x FactorX 1000 and Scale 1 x FactorX 1 are the same IFC
+    // transform, so they place the same: the unset-or-unity heuristic reads
+    // the product. (Main, which ignored factors, placed both at 1 as well.)
+    assert.strictEqual(getEffectiveAxisScale(0.001, 1000, 1, 0.001), getEffectiveAxisScale(1, 1, 1, 0.001));
   });
 
   it('rotates viewer XY drag deltas by a genuine (non-identity) grid rotation', () => {

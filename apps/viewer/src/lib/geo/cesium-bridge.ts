@@ -295,18 +295,14 @@ export async function createCesiumBridge(
   };
   const mapScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
   // Scalars, because TypeScript does not keep `origin`'s narrowing inside the callbacks.
-  const {
-    height: oHeight, longitude: originLon, latitude: originLat,
-    scaleX: originScaleX, scaleY: originScaleY, scaleZ: originScaleZ,
-  } = origin;
+  const { height: oHeight, longitude: originLon, latitude: originLat, scaleX: originScaleX, scaleY: originScaleY, scaleZ: originScaleZ } = origin;
 
   // Build the viewer-to-ENU 3x3 rotation matrix (converts a delta vector from
   // viewer space to ENU). Viewer Y-up maps to IFC Z-up ((vx,vy,vz) -> (vx,-vz,
   // vy)), then the Helmert grid alignment, then the meridian convergence
   // R(gamma) into true-north ENU; `viewerToEnuRotation` composes all three
   // (up = vy). The model-placement matrix reuses the very same `rot` via
-  // `bridge.viewerRotation` so the two never drift. Viewer-space deltas are
-  // already metres, so no lengthUnitScale; the axis scales carry Scale x Factor.
+  // `bridge.viewerRotation` so the two never drift. Viewer deltas are metres.
   const rot = viewerToEnuRotation(originScaleX, absc, ordi, origin.gamma, originScaleY);
   const m00 = rot.eastFromVx;      // east  from vx
   const m01 = 0;                   // east  from vy

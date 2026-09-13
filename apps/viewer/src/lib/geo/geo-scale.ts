@@ -2,13 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** `(coefficient * mapUnitScale) / lengthUnitScale`, a non-positive unit scale read as 1. */
-function specEffectiveScale(coefficient: number, mapUnitScale: number, lengthUnitScale: number): number {
-  const lus = lengthUnitScale > 0 ? lengthUnitScale : 1;
-  const mus = mapUnitScale > 0 ? mapUnitScale : 1;
-  return (coefficient * mus) / lus;
-}
-
 /**
  * Compute the effective horizontal scale to apply to viewer-space coordinates
  * (which are already in metres) when transforming through IfcMapConversion.
@@ -42,7 +35,7 @@ export function getEffectiveHorizontalScale(
 ): number {
   const lus = lengthUnitScale > 0 ? lengthUnitScale : 1;
   const mus = mapUnitScale > 0 ? mapUnitScale : 1;
-  const specEffective = specEffectiveScale(ifcMapConversionScale ?? 1.0, mus, lus);
+  const specEffective = ((ifcMapConversionScale ?? 1.0) * mus) / lus;
 
   // Heuristic for files that don't follow the IFC schema's unit-bridging rule.
   //
@@ -80,16 +73,15 @@ export function getEffectiveAxisScale(
   mapUnitScale: number,
   lengthUnitScale: number,
 ): number {
-  if (factor === undefined || ifcMapConversionScale === undefined) {
-    return getEffectiveHorizontalScale(ifcMapConversionScale, mapUnitScale, lengthUnitScale) * (factor ?? 1);
+  // The axis coefficient is Scale x Factor, and the unset-or-unity heuristic
+  // above reads that product the way it reads a plain Scale. So an
+  // IFCMAPCONVERSIONSCALED with unit factors places exactly like the same
+  // IFCMAPCONVERSION, an omitted Scale places like Scale=1, and a factor that
+  // bridges units (Scale 1, Factor 0.3048, feet project) still evaluates to 1.
+  if (ifcMapConversionScale === undefined && factor === undefined) {
+    return getEffectiveHorizontalScale(undefined, mapUnitScale, lengthUnitScale);
   }
-  // A scaled conversion supplies the complete axis coefficient explicitly.
-  // Keep that provenance: applying the legacy Scale==1 compensation to the
-  // product can erase authored factors (Scale=.001, FactorX=1000), while
-  // applying it before the factor corrupts valid Scale=1, FactorX=.3048 unit
-  // bridges. The compatibility heuristic remains for ordinary MapConversion
-  // and for an actually omitted Scale above.
-  return specEffectiveScale(ifcMapConversionScale * factor, mapUnitScale, lengthUnitScale);
+  return getEffectiveHorizontalScale((ifcMapConversionScale ?? 1) * (factor ?? 1), mapUnitScale, lengthUnitScale);
 }
 
 export function getEffectiveAxisScales(

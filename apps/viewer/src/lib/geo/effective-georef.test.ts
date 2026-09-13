@@ -403,6 +403,18 @@ END-ISO-10303-21;
     it('preserves a deliberate factor when project and map units match', () => {
       assert.strictEqual(getEffectiveAxisScale(1, 0.5, 1, 1), 0.5);
     });
+
+    it('places unit factors like the plain conversion in a mm project with metre map units', () => {
+      // IFCMAPCONVERSIONSCALED(...,1.,1.,1.,1.) and IFCMAPCONVERSION(...,1.)
+      // are the same transform; the subtype must not draw 1000x larger.
+      assert.strictEqual(getEffectiveAxisScale(1, 1, 1, 0.001), getEffectiveHorizontalScale(1, 1, 0.001));
+      assert.strictEqual(getEffectiveAxisScale(1, 1, 1, 0.001), 1);
+    });
+
+    it('reads an omitted Scale with a unit-bridging factor like Scale=1', () => {
+      // Feet project, metre map, Scale $ (schema default 1), FactorX 0.3048.
+      assert.strictEqual(getEffectiveAxisScale(undefined, 0.3048, 1, 0.3048), 1);
+    });
   });
 
   describe('detectScaleUnitMismatch', () => {

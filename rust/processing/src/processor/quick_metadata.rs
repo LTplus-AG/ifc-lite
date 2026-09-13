@@ -219,25 +219,19 @@ fn build_subtree(
         if !via_aggregate && (placed.contains_key(&child_id) || by_aggregate.contains(&child_id)) {
             continue;
         }
-        if let Some(&seen) = placed.get(&child_id) {
-            let kind = match seen {
-                None => EdgeKind::BackEdge,
-                Some(parent) if parent == express_id => EdgeKind::SiblingRepeat,
-                Some(_) => EdgeKind::SecondParent,
-            };
+        let skipped = match placed.get(&child_id) {
+            Some(None) => Some(EdgeKind::BackEdge),
+            Some(Some(parent)) if *parent == express_id => Some(EdgeKind::SiblingRepeat),
+            Some(Some(_)) => Some(EdgeKind::SecondParent),
+            // Not marked placed: a shorter path met later may still place it.
+            None if depth == MAX_QUICK_SPATIAL_TREE_DEPTH => Some(EdgeKind::DepthLimit),
+            None => None,
+        };
+        if let Some(kind) = skipped {
             pruned.push(QuickMetadataPrunedEdge {
                 parent_express_id: express_id,
                 child_express_id: child_id,
                 kind,
-            });
-            continue;
-        }
-        if depth == MAX_QUICK_SPATIAL_TREE_DEPTH {
-            // Not marked placed: a shorter path met later may still place it.
-            pruned.push(QuickMetadataPrunedEdge {
-                parent_express_id: express_id,
-                child_express_id: child_id,
-                kind: EdgeKind::DepthLimit,
             });
             continue;
         }

@@ -9,11 +9,13 @@
 //! Every edge left out of the tree is reported on the bootstrap with its parent
 //! and child ids and its kind (#4662).
 
+mod common;
+
+use common::quick_metadata::{bootstrap, child, count, tree};
 use ifc_lite_processing::determinism::FIXTURE_IFC;
 use ifc_lite_processing::QuickMetadataPrunedEdgeKind::{BackEdge, SecondParent, SiblingRepeat};
 use ifc_lite_processing::{
-    process_geometry_streaming_with_options_and_bootstrap, QuickMetadataBootstrap,
-    QuickMetadataPrunedEdge, QuickMetadataSpatialNode, StreamingOptions,
+    QuickMetadataBootstrap, QuickMetadataPrunedEdge, QuickMetadataSpatialNode,
 };
 
 /// Site, building and storey, with the storey containing four elements.
@@ -51,37 +53,6 @@ fn fixture_with(aggregates: &str) -> String {
     )
 }
 
-fn bootstrap(ifc: &str) -> QuickMetadataBootstrap {
-    let mut bootstrap = None;
-    process_geometry_streaming_with_options_and_bootstrap(
-        ifc.as_bytes(),
-        StreamingOptions {
-            emit_quick_metadata_bootstrap: true,
-            ..StreamingOptions::default()
-        },
-        |_, _, _| {},
-        |_| {},
-        |b| bootstrap = Some(b.clone()),
-    );
-    bootstrap.expect("quick metadata bootstrap was requested")
-}
-
-fn tree(bootstrap: &QuickMetadataBootstrap) -> &QuickMetadataSpatialNode {
-    bootstrap
-        .spatial_tree
-        .as_ref()
-        .expect("the fixture has an IfcProject root, so a spatial tree is built")
-}
-
-fn count(node: &QuickMetadataSpatialNode, id: u32) -> usize {
-    usize::from(node.summary.express_id == id)
-        + node.children.iter().map(|c| count(c, id)).sum::<usize>()
-}
-
-fn child(node: &QuickMetadataSpatialNode, id: u32) -> Option<&QuickMetadataSpatialNode> {
-    node.children.iter().find(|c| c.summary.express_id == id)
-}
-
 /// Project, site, building and storey each placed once, in that chain.
 fn assert_single_chain(root: &QuickMetadataSpatialNode) {
     assert_eq!(root.summary.express_id, 1, "IfcProject #1 is the root");
@@ -92,9 +63,7 @@ fn assert_single_chain(root: &QuickMetadataSpatialNode) {
             "node #{id} must be placed exactly once"
         );
     }
-    let site = child(root, 900).expect("site #900 stays under the project");
-    let building = child(site, 901).expect("building #901 stays under site #900");
-    let storey = child(building, 902).expect("storey #902 stays under building #901");
+    let storey = child(child(child(root, 900), 901), 902);
     assert_eq!(
         storey.elements.len(),
         4,

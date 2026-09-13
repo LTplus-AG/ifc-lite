@@ -9,10 +9,10 @@
 //! building, or a back-edge from the space's own child) could remove a
 //! contained space from the tree, or remove the whole tree.
 
-use ifc_lite_processing::{
-    process_geometry_streaming_with_options_and_bootstrap, QuickMetadataBootstrap,
-    QuickMetadataSpatialNode, StreamingOptions,
-};
+mod common;
+
+use common::quick_metadata::{bootstrap, child, count, tree};
+use ifc_lite_processing::QuickMetadataSpatialNode;
 
 const HEADER: &str = "ISO-10303-21;
 HEADER;
@@ -48,43 +48,6 @@ fn file(parts: &[&str]) -> String {
     format!("{HEADER}{}ENDSEC;\nEND-ISO-10303-21;\n", parts.concat())
 }
 
-fn tree(ifc: &str) -> Option<QuickMetadataSpatialNode> {
-    bootstrap(ifc).spatial_tree
-}
-
-fn bootstrap(ifc: &str) -> QuickMetadataBootstrap {
-    let mut bootstrap = None;
-    process_geometry_streaming_with_options_and_bootstrap(
-        ifc.as_bytes(),
-        StreamingOptions {
-            emit_quick_metadata_bootstrap: true,
-            ..StreamingOptions::default()
-        },
-        |_, _, _| {},
-        |_| {},
-        |b| bootstrap = Some(b.clone()),
-    );
-    bootstrap.expect("quick metadata bootstrap was requested")
-}
-
-fn child(node: &QuickMetadataSpatialNode, id: u32) -> &QuickMetadataSpatialNode {
-    node.children
-        .iter()
-        .find(|c| c.summary.express_id == id)
-        .unwrap_or_else(|| {
-            let ids: Vec<u32> = node.children.iter().map(|c| c.summary.express_id).collect();
-            panic!(
-                "#{id} missing under #{}; its children are {ids:?}",
-                node.summary.express_id
-            )
-        })
-}
-
-fn count(node: &QuickMetadataSpatialNode, id: u32) -> usize {
-    usize::from(node.summary.express_id == id)
-        + node.children.iter().map(|c| count(c, id)).sum::<usize>()
-}
-
 /// Site, building and storey under `root`, returning the storey.
 fn storey_under(root: &QuickMetadataSpatialNode) -> &QuickMetadataSpatialNode {
     child(child(child(root, 20), 21), 22)
@@ -99,11 +62,12 @@ fn contained_space_also_named_by_an_orphan_aggregate_stays_under_its_storey() {
 #80=IFCBUILDING('4689Orphan00000000001',$,'Orphan',$,$,$,$,$,.ELEMENT.,$,$,$);
 #90=IFCRELAGGREGATES('4689AggOrphanSpace0001',$,$,$,#80,(#31));
 ";
-    let root = tree(&file(&[PROJECT, CONTAINMENT, ORPHAN])).expect("project root builds a tree");
+    let bootstrap = bootstrap(&file(&[PROJECT, CONTAINMENT, ORPHAN]));
+    let root = tree(&bootstrap);
     assert_eq!(root.summary.express_id, 1);
-    let space = child(storey_under(&root), 31);
+    let space = child(storey_under(root), 31);
     assert_eq!(space.summary.type_name.to_ascii_uppercase(), "IFCSPACE");
-    assert_eq!(count(&root, 31), 1, "space #31 is placed exactly once");
+    assert_eq!(count(root, 31), 1, "space #31 is placed exactly once");
 }
 
 #[test]
@@ -116,10 +80,11 @@ fn contained_space_with_a_back_edge_from_its_own_child_stays_under_its_storey() 
 #91=IFCRELAGGREGATES('4689AggSpaceSub000001',$,$,$,#31,(#32));
 #92=IFCRELAGGREGATES('4689AggSubBack0000001',$,$,$,#32,(#31));
 ";
-    let root = tree(&file(&[PROJECT, CONTAINMENT, BACK_EDGE])).expect("project root builds a tree");
-    let space = child(storey_under(&root), 31);
+    let bootstrap = bootstrap(&file(&[PROJECT, CONTAINMENT, BACK_EDGE]));
+    let root = tree(&bootstrap);
+    let space = child(storey_under(root), 31);
     child(space, 32);
-    assert_eq!((count(&root, 31), count(&root, 32)), (1, 1));
+    assert_eq!((count(root, 31), count(root, 32)), (1, 1));
 }
 
 #[test]
@@ -130,10 +95,14 @@ fn without_a_project_a_back_edge_to_the_top_node_still_yields_a_tree() {
     const BACK_TO_SITE: &str = "\
 #93=IFCRELAGGREGATES('4689AggStoreySite00001',$,$,$,#22,(#20));
 ";
-    let root = tree(&file(&[CONTAINMENT, BACK_TO_SITE]))
-        .expect("a file with spatial nodes and no IfcProject still builds a tree");
+    let bootstrap = bootstrap(&file(&[CONTAINMENT, BACK_TO_SITE]));
+    assert!(
+        bootstrap.spatial_tree.is_some(),
+        "a file with spatial nodes and no IfcProject still builds a tree"
+    );
+    let root = tree(&bootstrap);
     assert_eq!(root.summary.express_id, 20, "the lowest id heads the tree");
-    let storey = child(child(&root, 21), 22);
+    let storey = child(child(root, 21), 22);
     child(storey, 31);
 }
 
@@ -145,12 +114,13 @@ fn without_a_project_the_unnamed_node_is_still_preferred_as_root() {
 #9=IFCSPACE('4689LowIdSpace0000001',$,'Low',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);
 #94=IFCRELCONTAINEDINSPATIALSTRUCTURE('4689ContLowId00000001',$,$,$,(#9),#22);
 ";
-    let root = tree(&file(&[CONTAINMENT, LOW_ID_SPACE])).expect("tree builds");
+    let bootstrap = bootstrap(&file(&[CONTAINMENT, LOW_ID_SPACE]));
+    let root = tree(&bootstrap);
     assert_eq!(
         root.summary.express_id, 20,
         "site #20 is the only unnamed node"
     );
-    let storey = child(child(&root, 21), 22);
+    let storey = child(child(root, 21), 22);
     child(storey, 9);
     child(storey, 31);
 }
@@ -164,10 +134,7 @@ fn space_both_aggregated_and_contained_by_its_storey_reports_no_pruned_edge() {
 #53=IFCRELAGGREGATES('4689AggStoreySpace0001',$,$,$,#22,(#31));
 ";
     let bootstrap = bootstrap(&file(&[PROJECT, BOTH, CONTAINMENT]));
-    let root = bootstrap
-        .spatial_tree
-        .as_ref()
-        .expect("project root builds a tree");
+    let root = tree(&bootstrap);
     child(storey_under(root), 31);
     assert_eq!(count(root, 31), 1);
     assert!(
@@ -188,10 +155,7 @@ fn aggregate_placement_wins_over_an_earlier_containment() {
 #55=IFCRELAGGREGATES('4689AggStorey2Space001',$,$,$,#23,(#31));
 ";
     let bootstrap = bootstrap(&file(&[PROJECT, CONTAINMENT, TWO_STOREYS]));
-    let root = bootstrap
-        .spatial_tree
-        .as_ref()
-        .expect("project root builds a tree");
+    let root = tree(&bootstrap);
     let building = child(child(root, 20), 21);
     child(child(building, 23), 31);
     assert_eq!(count(root, 31), 1, "space #31 is placed exactly once");
@@ -212,10 +176,7 @@ fn space_contained_by_two_storeys_reports_no_pruned_edge() {
 #56=IFCRELCONTAINEDINSPATIALSTRUCTURE('4689ContStorey0000002',$,$,$,(#31),#23);
 ";
     let bootstrap = bootstrap(&file(&[PROJECT, CONTAINMENT, SECOND_CONTAINMENT]));
-    let root = bootstrap
-        .spatial_tree
-        .as_ref()
-        .expect("project root builds a tree");
+    let root = tree(&bootstrap);
     child(storey_under(root), 31);
     assert_eq!(count(root, 31), 1, "space #31 is placed exactly once");
     assert!(

@@ -2,12 +2,17 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Shared helper for the source-walking CI gates in this crate
-//! (`module_size_ratchet`, `styling_parity`).
+//! Shared helpers for this crate's integration tests: the source-walking CI
+//! gates (`module_size_ratchet`, `styling_parity`) and, in [`quick_metadata`],
+//! the quick-metadata bootstrap tests. Each test binary compiles all of it and
+//! uses a part, hence the `dead_code` allowances.
 //!
 //! Lives here rather than being copied into each test binary so the rule has
 //! ONE implementation: two copies of a gate's escape hatch are two chances to
 //! loosen one of them and not the other.
+
+#[allow(dead_code)]
+pub mod quick_metadata;
 
 /// Refuse to skip a source-walking gate when running under CI.
 ///
@@ -31,6 +36,7 @@
 /// packaged consumer's machine does not have it. The truthiness test follows
 /// the form already used by `rust/geometry/tests/triangulation_invariance.rs`
 /// rather than inventing a second convention for the same variable.
+#[allow(dead_code)]
 pub fn refuse_to_skip_in_ci(gate: &str) {
     let ci = std::env::var_os("CI").is_some_and(|v| !v.is_empty() && v != "0" && v != "false");
     assert!(

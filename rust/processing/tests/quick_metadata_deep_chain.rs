@@ -8,10 +8,12 @@
 //! 100 000 spaces overflowed the stack, which aborts the process. The tree now
 //! stops descending at a fixed depth and reports each edge it cut.
 
+mod common;
+
+use common::quick_metadata::{bootstrap, tree};
 use ifc_lite_processing::{
-    process_geometry_streaming_with_options_and_bootstrap, QuickMetadataBootstrap,
-    QuickMetadataPrunedEdge, QuickMetadataPrunedEdgeKind, QuickMetadataSpatialNode,
-    StreamingOptions,
+    QuickMetadataBootstrap, QuickMetadataPrunedEdge, QuickMetadataPrunedEdgeKind,
+    QuickMetadataSpatialNode,
 };
 use std::fmt::Write as _;
 use std::sync::mpsc;
@@ -73,19 +75,8 @@ fn deep_aggregate_chain_builds_serialises_and_drops() {
     thread::Builder::new()
         .stack_size(8 << 20)
         .spawn(move || {
-            let ifc = deep_chain_ifc();
-            let mut captured: Option<QuickMetadataBootstrap> = None;
-            process_geometry_streaming_with_options_and_bootstrap(
-                ifc.as_bytes(),
-                StreamingOptions {
-                    emit_quick_metadata_bootstrap: true,
-                    ..StreamingOptions::default()
-                },
-                |_, _, _| {},
-                |_| {},
-                |b| captured = Some(b.clone()),
-            );
-            let bootstrap = captured.expect("quick metadata bootstrap was requested");
+            // `bootstrap` clones the tree out of the callback, so Clone runs too.
+            let bootstrap = bootstrap(&deep_chain_ifc());
             let json = serde_json::to_string(&bootstrap).expect("bootstrap serialises");
             // serde_json refuses input nested deeper than 128, and each tree
             // level nests twice, so a deeper cap would emit a bootstrap this
@@ -93,12 +84,8 @@ fn deep_aggregate_chain_builds_serialises_and_drops() {
             let read_back = serde_json::from_str::<QuickMetadataBootstrap>(&json)
                 .map(|back| back.pruned_aggregate_edges == bootstrap.pruned_aggregate_edges)
                 .map_err(|err| err.to_string());
-            let tree = bootstrap
-                .spatial_tree
-                .as_ref()
-                .expect("project root builds a tree");
             let summary = (
-                levels(tree),
+                levels(tree(&bootstrap)),
                 bootstrap.pruned_aggregate_edges.clone(),
                 read_back,
             );

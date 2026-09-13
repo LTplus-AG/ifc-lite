@@ -8,7 +8,7 @@ use std::fmt::Write;
 use ifc_lite_processing::MeshData;
 
 use super::fmt::{
-    clamp_color, color_key, escape_str, fmt_f32, fmt_f64, indent_str, mat_name, prim_name,
+    color_key, escape_str, fmt_f32, fmt_f64, indent_str, linear_color, mat_name, prim_name,
     sanitize_ident, Namer,
 };
 use super::{UsdOptions, MAX_DEPTH};
@@ -221,7 +221,7 @@ pub(super) fn write_geometry_body(out: &mut String, indent: usize, m: &MeshData)
 /// full meshes and instance occurrences (each carries its own colour).
 pub(super) fn write_display_material(out: &mut String, indent: usize, color: [f32; 4]) {
     let inner = indent_str(indent + 1);
-    let c = clamp_color(color);
+    let c = linear_color(color);
     writeln!(
         out,
         "{inner}color3f[] primvars:displayColor = [({}, {}, {})]",
@@ -283,7 +283,7 @@ pub(super) fn emit_material(
     let inner = indent_str(indent + 1);
     let inner2 = indent_str(indent + 2);
     let name = mat_name(key);
-    let c = clamp_color(color);
+    let c = linear_color(color);
 
     writeln!(out, "{pad}def Material \"{name}\"").ok();
     writeln!(out, "{pad}{{").ok();

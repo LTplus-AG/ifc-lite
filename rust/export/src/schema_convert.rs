@@ -91,10 +91,33 @@ fn by_name_attr_remap_names(entity_type: &str) -> Option<(&'static [&'static str
     }
 }
 
+/// The IFC2X3 default for a target slot that is NOT optional there, so the
+/// downgraded record never carries `$` in a slot the schema requires a
+/// value in. `IfcDoorStyle`/`IfcWindowStyle` declare `OperationType`,
+/// `ConstructionType`, `ParameterTakesPrecedence` and `Sizeable` mandatory;
+/// `IfcDoorType`/`IfcWindowType` have no `ConstructionType` or `Sizeable`,
+/// and their `ParameterTakesPrecedence` is optional. `.NOTDEFINED.` is a
+/// member of both construction enums and both operation enums, and `.F.` is
+/// the BOOLEAN that claims nothing. Only the remap's own target slots are
+/// covered: a `$` the source already wrote in a slot IFC2X3 also requires
+/// (for example `OwnerHistory`) passes through.
+///
+/// Same table as `IFC2X3_MANDATORY_DEFAULTS` in the TypeScript twin
+/// (`schema-converter-attr-remap.ts`).
+fn ifc2x3_mandatory_default(tgt_name: &str) -> Option<&'static str> {
+    match tgt_name {
+        "OperationType" | "ConstructionType" => Some(".NOTDEFINED."),
+        "ParameterTakesPrecedence" | "Sizeable" => Some(".F."),
+        _ => None,
+    }
+}
+
 /// Reconcile a renamed entity's attribute list by matching attribute NAMES
 /// between the source and target schema tables, rather than by position.
 /// A target attribute with no same-named source attribute becomes `$`
-/// (unknown); a source attribute with no same-named target slot is dropped.
+/// (unknown), unless the target schema requires a value there, in which case
+/// it becomes that schema's default ([`ifc2x3_mandatory_default`]); a source
+/// attribute with no same-named target slot is dropped.
 /// Mirrors TS `schema-converter-attr-remap.ts`'s `remapRenamedAttributesByName`.
 fn remap_attrs_by_name(attrs: &str, src_names: &[&str], tgt_names: &[&str]) -> Option<String> {
     let values = split_top_level_args(attrs)?;
@@ -104,7 +127,10 @@ fn remap_attrs_by_name(attrs: &str, src_names: &[&str], tgt_names: &[&str]) -> O
     }
     Some(tgt_names
         .iter()
-        .map(|name| by_name.get(name).copied().unwrap_or("$"))
+        .map(|name| {
+            let given = by_name.get(name).copied().filter(|v| v.trim() != "$");
+            given.or_else(|| ifc2x3_mandatory_default(name)).unwrap_or("$")
+        })
         .collect::<Vec<_>>()
         .join(","))
 }

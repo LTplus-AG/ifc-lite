@@ -44,8 +44,7 @@ pub(crate) fn merge_edits<'a>(
 }
 
 /// Escape a STEP string literal body: double the apostrophe and reverse
-/// solidus, map every ASCII control character (the C0 range plus DEL) to a
-/// space, and encode any character outside the basic graphic range as its
+/// solidus, and encode any character outside the basic graphic range as its
 /// `\X2\`/`\X4\` control directive — never a raw byte — since ISO 10303-21
 /// 6.3.3.4 restricts a literal's plain-text bytes to 32-126. buildingSMART's
 /// IFC string-encoding guidance states the same for IFC2X3/IFC4/IFC4X3: a
@@ -55,6 +54,10 @@ pub(crate) fn merge_edits<'a>(
 /// raw UTF-8 multi-byte sequence into mojibake or a broken parse; this exact
 /// writer shape is a reported, reproduced defect in real IFC tooling
 /// (IfcOpenShell#699/#1016; files rejected by Solibri).
+///
+/// ASCII control characters (the C0 range plus DEL) take the same directive:
+/// a newline goes out as `\X2\000A\X0\`, which `decode_ifc_string` reads
+/// back as a newline, and the record stays on one line.
 ///
 /// `pub`, and re-exported from the crate root as `escape_step_string`, so the
 /// integration-test binary `tests/step_escape_parity.rs` can pin it to the
@@ -73,7 +76,6 @@ pub fn escape(s: &str) -> String {
             // other (order in the source string is preserved as-is).
             '\'' => out.push_str("''"),
             '\\' => out.push_str("\\\\"),
-            '\0'..='\u{1F}' | '\u{7F}' => out.push(' '),
             '\u{20}'..='\u{7E}' => out.push(c),
             _ => {
                 let cp = c as u32;
@@ -155,6 +157,10 @@ pub(crate) fn refs_in_line_counted(line: &[u8], out: &mut Vec<u32>, refused: &mu
 /// lands on `ObjectPlacement`, deletes the reference that was there, and reports
 /// success (#4125).
 ///
+/// An edit whose index is past the record's arity (caller-supplied JSON on the
+/// wasm bridge) is refused too: the other edits on the record still apply, the
+/// record counts once, and the out-of-range one is not in the output.
+///
 /// One function, and `refused` rather than an `Option` the caller interprets,
 /// because both emit sites need the same PAIR — leave the record as its author
 /// wrote it, and say that an edit is missing — and a site that did the first
@@ -173,10 +179,11 @@ pub(crate) fn apply_attr_mutations_counted(
         let prefix = &body[..=eq];
         let type_name = &after[..popen];
         let mut args = split_top_level_args(&after[popen + 1..aclose])?;
-        for (idx, val) in muts {
-            if *idx < args.len() {
-                args[*idx] = val.clone();
-            }
+        for (idx, val) in muts.range(..args.len()) {
+            args[*idx] = val.clone();
+        }
+        if muts.range(args.len()..).next().is_some() {
+            *refused += 1;
         }
         Some(format!("{prefix}{type_name}({});", args.join(",")))
     });

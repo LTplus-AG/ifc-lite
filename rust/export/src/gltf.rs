@@ -29,6 +29,7 @@ const _: () = assert!(
     "ifc-lite-export assumes a little-endian target (GLB is LE; cast_slice byte reinterpretation)",
 );
 
+use crate::color_space::srgba_to_linear;
 use crate::error::ExportError;
 use ifc_lite_core::EntityIndex;
 use ifc_lite_geometry::{
@@ -445,37 +446,13 @@ fn color_key(c: [f32; 4]) -> (i32, i32, i32, i32) {
     (r(c[0]), r(c[1]), r(c[2]), r(c[3]))
 }
 
-/// IEC 61966-2-1 sRGB electro-optical transfer function (decode): maps a
-/// gamma-encoded channel in `[0, 1]` to linear light. `IfcColourRgb` components
-/// are authored the way every BIM tool's colour picker works — a perceptual
-/// (sRGB) swatch, the same convention IfcOpenShell/BlenderBIM follow when
-/// building a renderer's albedo input — while glTF's `baseColorFactor` and
-/// `emissiveFactor` are defined in LINEAR space (glTF 2.0 spec, "Reference
-/// Material"). Copying the sRGB value straight into `baseColorFactor` skips
-/// this decode and renders every colour too bright/washed out in any
-/// spec-compliant consumer (Blender, three.js, Cesium — the whole point of
-/// exporting glTF for tools outside this repo). Metallic/roughness factors are
-/// NOT colour and must never go through this — only RGB channels that end up
-/// as a `*Factor` colour do.
-fn srgb_to_linear(c: f32) -> f32 {
-    let c = c.clamp(0.0, 1.0);
-    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
-}
-
 /// One material for a mesh colour: the single source of the lit / unlit / emissive
 /// rules, shared by every assembler so the paths cannot drift. `emissive` takes
 /// precedence over `unlit` because the KHR_materials_unlit spec mandates
 /// `emissiveFactor = 0`, making the two mutually exclusive; never emit a
 /// spec-violating material that declares unlit AND a non-zero emissiveFactor (#1427).
 fn make_material(color: [f32; 4], lit: bool, emissive: bool) -> Material {
-    // Alpha is opacity, not a gamma-encoded light quantity — never run it through
-    // the sRGB transfer function; only R/G/B convert.
-    let linear_rgb = [
-        srgb_to_linear(color[0]),
-        srgb_to_linear(color[1]),
-        srgb_to_linear(color[2]),
-        color[3],
-    ];
+    let linear_rgb = srgba_to_linear(color);
     Material {
         pbr: Pbr {
             base_color_factor: linear_rgb,
@@ -951,6 +928,48 @@ fn node_extras(
     Some(extras)
 }
 
+/// A quantized mesh's dequantization frame: local-bbox (center, half extent).
+type Dequant = ([f64; 3], [f64; 3]);
+
+/// Push the node(s) for one instanced occurrence placed by `matrix`; returns the
+/// index its parent lists. With a quantized `dequant` (center, half), the dequant
+/// is a non-uniform scale, and folding it into the matrix would make three.js
+/// `Matrix4.decompose` mangle the rotation·scale. So the MESH node carries the
+/// dequant TRS and `extras` (a raycast pick hits the mesh) under a parent that
+/// carries the matrix. Both assemblers place occurrences through here.
+fn push_occurrence_node(
+    nodes: &mut Vec<Node>,
+    mesh: u32,
+    matrix: [f32; 16],
+    dequant: Option<Dequant>,
+    extras: Option<Value>,
+) -> u32 {
+    let mesh_node = nodes.len() as u32;
+    let (translation, scale) = dequant.map_or((None, None), |(c, h)| (Some(c), Some(h)));
+    nodes.push(Node {
+        rotation: None,
+        mesh: Some(mesh),
+        children: None,
+        translation,
+        scale,
+        matrix: dequant.is_none().then_some(matrix),
+        extras,
+    });
+    if dequant.is_none() {
+        return mesh_node;
+    }
+    nodes.push(Node {
+        rotation: None,
+        mesh: None,
+        children: Some(vec![mesh_node]),
+        translation: None,
+        scale: None,
+        matrix: Some(matrix),
+        extras: None,
+    });
+    mesh_node + 1
+}
+
 /// Export the render geometry in `content` as a binary **GLB**.
 pub fn export_glb(content: &[u8], opts: &GltfOptions) -> Vec<u8> {
     export_glb_with_stats(content, opts).0
@@ -1395,45 +1414,7 @@ fn build_gltf(
                     occ_meta, &m_ref_inv, rtc_zup, t_origin_yup, scene_center,
                 );
                 let extras = node_extras(include_metadata, occ_view.express_id, occ_view.ifc_type, occ_view.global_id, model_id);
-                let node_idx = if let Some((center, half)) = dequant {
-                    // Quantized: the dequant is a non-uniform scale; folding it into the
-                    // occurrence matrix would make three.js `Matrix4.decompose` mangle the
-                    // rotation·scale. Nest it on a child node instead. The MESH node keeps
-                    // `extras` (a raycast pick hits the mesh), placement rides the parent.
-                    let child_idx = nodes.len() as u32;
-                    nodes.push(Node {
-            rotation: None,
-                        mesh: Some(mesh_idx),
-                        children: None,
-                        translation: Some(center),
-                        scale: Some(half),
-                        matrix: None,
-                        extras,
-                    });
-                    let parent_idx = nodes.len() as u32;
-                    nodes.push(Node {
-            rotation: None,
-                        mesh: None,
-                        children: Some(vec![child_idx]),
-                        translation: None,
-                        scale: None,
-                        matrix: Some(matrix),
-                        extras: None,
-                    });
-                    parent_idx
-                } else {
-                    let ni = nodes.len() as u32;
-                    nodes.push(Node {
-            rotation: None,
-                        mesh: Some(mesh_idx),
-                        children: None,
-                        translation: None,
-                        scale: None,
-                        matrix: Some(matrix),
-                        extras,
-                    });
-                    ni
-                };
+                let node_idx = push_occurrence_node(&mut nodes, mesh_idx, matrix, dequant, extras);
                 element_node_indices.push(node_idx);
             }
         }
@@ -1506,10 +1487,13 @@ fn build_gltf(
 
 /// Like [`export_glb`] but also returns coverage stats. Meshes the model from bytes.
 ///
-/// NOTE: this path fails OPEN on an empty visible set — it returns a structurally
-/// valid zero-mesh GLB reported as success. Prefer [`try_export_glb_with_stats`],
-/// which turns that case into [`ExportError::NoRenderGeometry`] so no caller can
-/// silently ship an empty artifact.
+/// NOTE: this path fails OPEN on an empty visible set: it returns a zero-mesh
+/// GLB reported as success, and that GLB is NOT valid glTF. Its `accessors`,
+/// `bufferViews`, `meshes` and `nodes` are empty arrays (the glTF schema says
+/// `minItems: 1` when present) and `buffers[0].byteLength` is 0 (schema
+/// `minimum: 1`), the same artifact `try_export_glb_from_meshes` documents
+/// refusing. Prefer [`try_export_glb_with_stats`], which turns that case into
+/// [`ExportError::NoRenderGeometry`] so no caller can silently ship it.
 ///
 /// Inputs at or above the streaming threshold (default 64 MB, native override
 /// `IFC_LITE_GLB_STREAM_THRESHOLD_MB`, `0` disables) route to the bounded
@@ -2040,11 +2024,11 @@ pub struct GlbSizeProjection {
 /// or [`project_glb_size`] to decide up front.
 ///
 /// Tradeoffs vs the in-memory assembler (`build_gltf`):
-/// - rep-identity instancing is done here too, on the f32 layout, under the
-///   same policy `collate_refs` applies. The vertex data needs every occurrence
+/// - rep-identity instancing is done here too, under the same policy
+///   `collate_refs` applies. The vertex data needs every occurrence
 ///   co-resident; the grouping decision does not, so it is made from the plan.
-///   Quantized output still skips it: a shared mesh's non-uniform dequant scale
-///   cannot fold into a rotating placement without breaking `Matrix4.decompose`.
+///   Quantized, the dequant rides a child node under the placement node, as in
+///   `build_gltf`.
 /// - content-hash dedup is kept (the hash is computed batch-locally on pass 1).
 /// - the model is meshed twice (the price of bounded memory).
 /// - **the #3666 reconstruction check does not run here.** The in-memory
@@ -2109,9 +2093,11 @@ fn export_glb_streaming_bounded_impl(
 
 /// Fail-closed [`export_glb_streaming_bounded`]: an oversize projected GLB
 /// returns [`ExportError::TooLarge`] (carrying the projected byte size) after
-/// pass 1 — no output allocation, no panic (#1516). An empty visible set is a
-/// valid (zero-mesh) GLB here; use [`try_export_glb_with_stats`] for the
-/// [`ExportError::NoRenderGeometry`] guard as well.
+/// pass 1 — no output allocation, no panic (#1516). An empty visible set is
+/// NOT refused here: it returns the zero-mesh GLB described on
+/// [`export_glb_with_stats`], which is not valid glTF; use
+/// [`try_export_glb_with_stats`] for the [`ExportError::NoRenderGeometry`]
+/// guard as well.
 pub fn try_export_glb_streaming_bounded(
     content: &[u8],
     opts: &GltfOptions,
@@ -2222,10 +2208,6 @@ fn plan_bounded_glb(
     // Intern IFC type names so each distinct type is heap-allocated once, not per mesh.
     let mut type_intern: FxHashMap<String, Arc<str>> = FxHashMap::default();
     let mut metas: Vec<StreamedMeshMeta> = Vec::new();
-    // Quantized output cannot share a shape anyway (see the rep-bucket block
-    // below), so under `--quantize` this is never built rather than built and
-    // then not read.
-    let want_rep = !opts.quantize;
     let mut reps: Vec<(u128, [f64; 16])> = Vec::new();
     let mut rep_of: FxHashMap<u32, u32> = FxHashMap::default();
     let mut wmin = [f64::INFINITY; 3];
@@ -2301,15 +2283,13 @@ fn plan_bounded_glb(
                 // 2 writes it. (That 160 is this entry, not the per-mesh struct
                 // -- `the_streamed_mesh_plan_stays_small` pins that separately
                 // at 240, and it is 240 *because* this moved out.)
-                if want_rep {
-                    let instanceable = m
-                        .instance
-                        .as_ref()
-                        .filter(|i| i.instanceable && i.canonical_transform.is_none());
-                    if let Some(inst) = instanceable {
-                        rep_of.insert(metas.len() as u32, reps.len() as u32);
-                        reps.push((inst.rep_identity, compose_world_meta(inst)));
-                    }
+                let instanceable = m
+                    .instance
+                    .as_ref()
+                    .filter(|i| i.instanceable && i.canonical_transform.is_none());
+                if let Some(inst) = instanceable {
+                    rep_of.insert(metas.len() as u32, reps.len() as u32);
+                    reps.push((inst.rep_identity, compose_world_meta(inst)));
                 }
                 metas.push(StreamedMeshMeta {
                     express_id: m.express_id,
@@ -2347,10 +2327,8 @@ fn plan_bounded_glb(
     // length, so what a group needs is an identity and a placement, and those
     // fit in the plan this path already keeps.
     //
-    // f32 output only. Quantized, a shared mesh carries a non-uniform dequant
-    // scale that cannot fold into a rotating placement without breaking
-    // `Matrix4.decompose`, so it needs the nested parent/child node the
-    // in-memory path builds.
+    // Quantized too: the occurrence gets the nested dequant node
+    // `push_occurrence_node` builds for both assemblers.
     let (rtc_zup, site_zup) = site_restore(&meta_result);
     // Rep identities whose occurrences disagree about shape size. Resolved
     // before any bucketing, because one disagreeing member refuses the whole
@@ -2465,7 +2443,9 @@ fn plan_bounded_glb(
         }
         *key_counts.entry(meta.key).or_insert(0) += 1;
     }
-    let mut rep_cache: FxHashMap<RepBucket, u32> = FxHashMap::default();
+    // bucket -> (mesh_idx, dequant center, dequant half) of the TEMPLATE: every
+    // occurrence dequantizes the template's bytes, not its own bbox.
+    let mut rep_cache: FxHashMap<RepBucket, (u32, [f64; 3], [f64; 3])> = FxHashMap::default();
     let mut accessors: Vec<Accessor> = Vec::new();
     let mut meshes: Vec<Mesh> = Vec::new();
     let mut nodes: Vec<Node> = Vec::new();
@@ -2497,7 +2477,8 @@ fn plan_bounded_glb(
         mesh_idx: u32,
         translation: Option<[f64; 3]>,
         scale: Option<[f64; 3]>,
-        matrix: Option<[f32; 16]>,
+        /// An instanced occurrence's placement, and its template's dequant when quantized.
+        occurrence: Option<([f32; 16], Option<Dequant>)>,
     }
     let mut per_meta: Vec<Emitted> = Vec::with_capacity(metas.len());
     for (mi, meta) in metas.iter_mut().enumerate() {
@@ -2664,13 +2645,13 @@ fn plan_bounded_glb(
                 idx_len += meta.nidx as u64 * 4;
             }
             if let Some((bucket, _)) = rep {
-                rep_cache.insert(bucket, mesh_idx);
+                rep_cache.insert(bucket, (mesh_idx, q_center, q_half));
             } else if shared {
                 shared_cache.insert(meta.key, (mesh_idx, q_center, q_half));
             }
             (mesh_idx, q_center, q_half)
         } else if let Some((bucket, _)) = rep {
-            (rep_cache[&bucket], q_center, q_half)
+            rep_cache[&bucket]
         } else {
             shared_cache[&meta.key]
         };
@@ -2694,6 +2675,7 @@ fn plan_bounded_glb(
                 scene_center,
             )
         });
+        let occurrence = matrix.map(|m| (m, quantize.then_some((center, half))));
         let (translation, scale) = if matrix.is_some() {
             (None, None)
         } else if quantize {
@@ -2715,25 +2697,30 @@ fn plan_bounded_glb(
         } else {
             (None, None)
         };
-        per_meta.push(Emitted { mesh_idx, translation, scale, matrix });
+        per_meta.push(Emitted { mesh_idx, translation, scale, occurrence });
     }
     for (meta, emitted) in metas.iter().zip(&per_meta) {
-        let node_idx = nodes.len() as u32;
-        nodes.push(Node {
-            rotation: None,
-            mesh: Some(emitted.mesh_idx),
-            children: None,
-            translation: emitted.translation,
-            scale: emitted.scale,
-            matrix: emitted.matrix,
-            extras: node_extras(
-                opts.include_metadata,
-                meta.express_id,
-                meta.ifc_type.as_ref(),
-                meta.global_id.as_deref(),
-                opts.model_id.as_deref(),
-            ),
-        });
+        let extras = node_extras(
+            opts.include_metadata,
+            meta.express_id,
+            meta.ifc_type.as_ref(),
+            meta.global_id.as_deref(),
+            opts.model_id.as_deref(),
+        );
+        let node_idx = if let Some((matrix, dequant)) = emitted.occurrence {
+            push_occurrence_node(&mut nodes, emitted.mesh_idx, matrix, dequant, extras)
+        } else {
+            nodes.push(Node {
+                rotation: None,
+                mesh: Some(emitted.mesh_idx),
+                children: None,
+                translation: emitted.translation,
+                scale: emitted.scale,
+                matrix: None,
+                extras,
+            });
+            nodes.len() as u32 - 1
+        };
         element_node_indices.push(node_idx);
     }
     stats.materials = materials.len();

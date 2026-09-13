@@ -10,7 +10,7 @@
 //! one — `SpatialHierarchy.parquet`. Those three tables are not produced here, so
 //! a `.bos` archive produced through the CLI/native path (this file) is missing
 //! relationship, string-dedup, and spatial-hierarchy data that a browser export of
-//! the identical model would contain. See `duplex_exports_valid_bos` below, which
+//! the identical model would contain. See `duplex_exports_valid_bos` (in `parquet_bos_tests.rs`), which
 //! asserts the current (narrower) table set explicitly so this gap can't widen
 //! further without a test failure.
 //!
@@ -28,7 +28,7 @@ use serde_json::json;
 use zip::write::SimpleFileOptions;
 use zip::CompressionMethod;
 
-use ifc_lite_processing::process_geometry;
+use ifc_lite_processing::{process_geometry, MeshData};
 
 use crate::error::ExportError;
 use crate::model::{build_export_model, fmt_num, ExportModel};
@@ -159,8 +159,33 @@ type GeometryTables = (Vec<u8>, Vec<u8>, Vec<u8>, usize, usize);
 
 /// Returns the geometry parquet tables plus vertex/triangle totals.
 fn geometry_tables(content: &[u8]) -> Result<GeometryTables, ExportError> {
-    let result = process_geometry(content);
+    geometry_tables_from_meshes(&process_geometry(content).meshes)
+}
 
+/// The three geometry tables over an already-meshed model.
+///
+/// Layout contract, shared with the TypeScript twin (`writeVertexBuffer` /
+/// `writeIndexBuffer` / `writeMeshes` in `parquet-exporter.ts`) and with the
+/// upstream BOS geometry schema (`spec/BimGeometry.cs` in
+/// ara3d/bim-open-schema), which a reader of either file relies on:
+///
+/// - `VertexBuffer` is every kept mesh's vertices concatenated, one row per
+///   vertex, world position (origin folded in) and normal.
+/// - `IndexBuffer` is one row per TRIANGLE (`Index0..2`), and the values are
+///   MESH-LOCAL vertex indices. Upstream: "Local mesh face-corner indices. If
+///   you use the single shared vertex buffer you need to add the mesh vertex
+///   offsets." That is what `Meshes.VertexStart` is for.
+/// - `Meshes.IndexStart` / `IndexCount` count SCALAR indices (face corners),
+///   the unit upstream's `MeshIndexOffset` uses and the unit the twin writes,
+///   while the table they address holds triangles: a reader slices
+///   `IndexBuffer[IndexStart/3 .. (IndexStart+IndexCount)/3]`. Pinned by
+///   `parquet_bos_tests::meshes_table_joins_the_index_and_vertex_tables`,
+///   the same join the twin's `parquet-geometry.test.ts` reads.
+///
+/// A mesh is kept whole or not at all: one with `normals.len() !=
+/// positions.len()` is skipped (as `gltf.rs`'s visibility filter skips it), so
+/// the position and normal columns stay row-aligned.
+fn geometry_tables_from_meshes(meshes: &[MeshData]) -> Result<GeometryTables, ExportError> {
     let mut x = Vec::new();
     let mut y = Vec::new();
     let mut z = Vec::new();
@@ -178,8 +203,11 @@ fn geometry_tables(content: &[u8]) -> Result<GeometryTables, ExportError> {
 
     let mut vertex_offset: u32 = 0;
     let mut index_offset: u32 = 0;
-    for mesh in &result.meshes {
-        if mesh.geometry_class == 2 || mesh.indices.is_empty() {
+    for mesh in meshes {
+        if mesh.geometry_class == 2
+            || mesh.indices.is_empty()
+            || mesh.normals.len() != mesh.positions.len()
+        {
             continue;
         }
         let nverts = (mesh.positions.len() / 3) as u32;
@@ -195,9 +223,9 @@ fn geometry_tables(content: &[u8]) -> Result<GeometryTables, ExportError> {
             nz.push(nrm[2]);
         }
         for tri in mesh.indices.chunks_exact(3) {
-            i0.push(vertex_offset + tri[0]);
-            i1.push(vertex_offset + tri[1]);
-            i2.push(vertex_offset + tri[2]);
+            i0.push(tri[0]);
+            i1.push(tri[1]);
+            i2.push(tri[2]);
         }
         mesh_express.push(mesh.express_id);
         vstart.push(vertex_offset);
@@ -301,59 +329,5 @@ pub fn export_bos(content: &[u8], opts: &ParquetBosOptions) -> Result<Vec<u8>, E
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Read;
-
-    #[test]
-    fn duplex_exports_valid_bos() {
-        let bos = export_bos(&fixture_or_skip!("ara3d/duplex.ifc"), &ParquetBosOptions::default())
-            .expect("bos export");
-        assert!(bos.len() > 1000, "non-trivial archive");
-
-        // Re-open the zip and verify the expected tables + parquet magic.
-        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bos)).expect("valid zip");
-        let names: Vec<String> = (0..archive.len())
-            .map(|i| archive.by_index(i).unwrap().name().to_string())
-            .collect();
-        for expected in [
-            "Entities.parquet",
-            "Properties.parquet",
-            "Quantities.parquet",
-            "VertexBuffer.parquet",
-            "IndexBuffer.parquet",
-            "Meshes.parquet",
-            "Metadata.json",
-        ] {
-            assert!(names.iter().any(|n| n == expected), "missing {expected}");
-        }
-
-        // TS/Rust BOS parity check: running the same `ara3d/duplex.ifc` fixture
-        // through `packages/export/src/parquet-exporter.ts` also produces
-        // `Relationships.parquet`, `Strings.parquet`, and `SpatialHierarchy.parquet`.
-        // This crate does not yet write those three tables — pin that explicitly
-        // so a future silent narrowing (or widening) of the gap fails a test
-        // instead of going unnoticed.
-        for not_yet_ported in ["Relationships.parquet", "Strings.parquet", "SpatialHierarchy.parquet"] {
-            assert!(
-                !names.iter().any(|n| n == not_yet_ported),
-                "{not_yet_ported} is now written here — the TS/Rust BOS parity gap noted \
-                 in this file's module doc comment has narrowed; update the doc comment"
-            );
-        }
-
-        // Each parquet entry starts + ends with the PAR1 magic.
-        let mut entities = Vec::new();
-        archive.by_name("Entities.parquet").unwrap().read_to_end(&mut entities).unwrap();
-        assert_eq!(&entities[0..4], b"PAR1", "parquet header magic");
-        assert_eq!(&entities[entities.len() - 4..], b"PAR1", "parquet footer magic");
-
-        // Metadata.json is valid + reports entities.
-        let mut meta = String::new();
-        archive.by_name("Metadata.json").unwrap().read_to_string(&mut meta).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&meta).unwrap();
-        assert_eq!(v["format"], "ara3d-bos");
-        assert!(v["entityCount"].as_u64().unwrap() > 50);
-        assert!(v["vertexCount"].as_u64().unwrap() > 0);
-    }
-}
+#[path = "parquet_bos_tests.rs"]
+mod tests;

@@ -1,5 +1,11 @@
 # @ifc-lite/mutations
 
+## 2.3.0
+
+### Minor Changes
+
+- [#4608](https://github.com/LTplus-AG/ifc-lite/pull/4608) [`53003de`](https://github.com/LTplus-AG/ifc-lite/commit/53003de1e36a956b7f51e9dffc035218477d5d3c) Thanks [@louistrue](https://github.com/louistrue)! - Add portable STEP archive metadata to collaboration slots and a bounded IFCZIP resource extractor so shared annotations retain referenced appearance resources safely. Property overlays can now delete one quantity while retaining its quantity set.
+
 ## 2.2.0
 
 ### Minor Changes

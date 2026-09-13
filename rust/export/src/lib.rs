@@ -15,6 +15,7 @@ mod adjacency;
 mod collada;
 mod collada_document;
 mod collada_fmt;
+mod color_space;
 mod constructions;
 mod csv;
 /// The single CSV cell escaper for this crate — RFC 4180 quoting plus the

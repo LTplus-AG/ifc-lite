@@ -130,6 +130,13 @@ describe('the escapeStepString / parseStepValue pair stays closed', () => {
     expect(roundTrip('Trümpler')).toBe('Trümpler');
   });
 
+  it('a control character survives - the writer emits an X2 directive, not a space', () => {
+    // A newline used to be written as a space, so a two-line description came
+    // back as one line. The reader already decoded `\X2\000A\X0\` to a
+    // newline; only the writer was lossy.
+    expect(roundTrip('line1\nline2')).toBe('line1\nline2');
+  });
+
   it('text that LOOKS like a directive stays literal', () => {
     // The load-bearing case for the closed pair. The writer doubles the
     // backslashes, and the reader must read the doublings rather than the

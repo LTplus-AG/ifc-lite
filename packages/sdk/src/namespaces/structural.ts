@@ -41,38 +41,44 @@ import type {
 export class StructuralNamespace {
   constructor(private backend: BimBackend) {}
 
+  private methods() {
+    const methods = this.backend.structural;
+    if (!methods) throw new Error('bim.structural is not supported by this backend');
+    return methods;
+  }
+
   /** Full structural extraction for the active (or specified) model. */
   data(modelId?: string): StructuralExtractionData {
-    return this.backend.structural.data(modelId);
+    return this.methods().data(modelId);
   }
 
   /** All IfcStructuralAnalysisModel containers. */
   analysisModels(modelId?: string): StructuralAnalysisModelData[] {
-    return this.backend.structural.analysisModels(modelId);
+    return this.methods().analysisModels(modelId);
   }
 
   /** All IfcStructuralMember subtype occurrences. */
   members(modelId?: string): StructuralMemberData[] {
-    return this.backend.structural.members(modelId);
+    return this.methods().members(modelId);
   }
 
   /** All IfcStructuralConnection subtype occurrences. */
   connections(modelId?: string): StructuralConnectionData[] {
-    return this.backend.structural.connections(modelId);
+    return this.methods().connections(modelId);
   }
 
   /** All IfcStructuralActivity subtype occurrences (actions and reactions). */
   activities(modelId?: string): StructuralActivityData[] {
-    return this.backend.structural.activities(modelId);
+    return this.methods().activities(modelId);
   }
 
   /** All IfcStructuralLoadGroup / IfcStructuralLoadCase entities. */
   loadGroups(modelId?: string): StructuralLoadGroupData[] {
-    return this.backend.structural.loadGroups(modelId);
+    return this.methods().loadGroups(modelId);
   }
 
   /** All IfcStructuralResultGroup entities. */
   resultGroups(modelId?: string): StructuralResultGroupData[] {
-    return this.backend.structural.resultGroups(modelId);
+    return this.methods().resultGroups(modelId);
   }
 }

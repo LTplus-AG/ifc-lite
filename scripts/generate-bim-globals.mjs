@@ -435,7 +435,7 @@ const lines = [
   '  hasTextContent: boolean;',
   '}',
   '',
-  ...derivedTypeLines(),
+  ...derivedTypeLines(), ...NAMESPACE_SCHEMAS.flatMap(ns => ns.ambientDeclarations ?? []),
   '',
   '// ── Sandbox globals ─────────────────────────────────────────────────────',
   '',

@@ -2,13 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * HeadlessBackend — BimBackend implementation for CLI (no renderer).
- *
- * Wraps an IfcDataStore parsed from an IFC file and exposes it through
- * the standard BimBackend interface. Viewer-specific operations (colorize,
- * flyTo, etc.) are no-ops.
- */
+/** Headless `BimBackend` implementation for the CLI (no renderer). */
 
 import type {
   BimBackend,
@@ -85,10 +79,10 @@ import {
   expandTypes,
   QUERY_REL_TYPE_MAP,
   extractScheduleOnDemand,
-  extractStructuralOnDemand,
   isQueryableObjectType,
 } from '@ifc-lite/parser';
 import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { createStructuralAdapter } from './headless-backend-structural.js';
 import { edgeSurvives } from '@ifc-lite/data';
 import { exportHbjson, exportDfjson } from './energy-export.js';
 import { foldQueuedRelated } from './query-overlay-relations.js';
@@ -190,7 +184,7 @@ export class HeadlessBackend implements BimBackend {
     this.lens = this.createLensAdapter();
     this.files = this.createFilesAdapter();
     this.schedule = this.createScheduleAdapter();
-    this.structural = this.createStructuralAdapter();
+    this.structural = createStructuralAdapter(this.dataStore, modelId => this.assertKnownModelId(modelId));
     this.spaces = this.createSpacesAdapter();
     this.style = this.createStyleAdapter();
   }
@@ -793,30 +787,4 @@ export class HeadlessBackend implements BimBackend {
     };
   }
 
-  private createStructuralAdapter(): StructuralBackendMethods {
-    const store = this.dataStore;
-    let cached: ReturnType<StructuralBackendMethods['data']> | null = null;
-
-    const assertModel = (modelId?: string) => {
-      if (modelId) this.assertKnownModelId(modelId);
-    };
-
-    const extract = (modelId?: string) => {
-      assertModel(modelId);
-      if (!cached) {
-        cached = extractStructuralOnDemand(store) as ReturnType<StructuralBackendMethods['data']>;
-      }
-      return cached;
-    };
-
-    return {
-      data: (modelId) => extract(modelId),
-      analysisModels: (modelId) => extract(modelId).analysisModels,
-      members: (modelId) => extract(modelId).members,
-      connections: (modelId) => extract(modelId).connections,
-      activities: (modelId) => extract(modelId).activities,
-      loadGroups: (modelId) => extract(modelId).loadGroups,
-      resultGroups: (modelId) => extract(modelId).resultGroups,
-    };
-  }
 }

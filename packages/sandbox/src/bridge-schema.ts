@@ -32,11 +32,7 @@ import { buildExportNamespace } from './bridge-export.js';
 import { buildScheduleNamespace } from './bridge-schedule.js';
 import { buildStructuralNamespace } from './bridge-structural.js';
 import { buildClashNamespace } from './bridge-clash.js';
-
-// ============================================================================
-// Schema Types
-// ============================================================================
-
+// Schema types
 /** How to unmarshal a single argument from QuickJS */
 type ArgType =
   | 'string'       // vm.getString(handle)
@@ -119,9 +115,9 @@ export interface NamespaceSchema {
   name: string;
   /** Human-readable description for editor completions */
   doc: string;
+  ambientDeclarations?: string[];
   /** Permission key — if false, this namespace is skipped */
   permission: keyof SandboxPermissions;
-  /** Methods in this namespace */
   methods: MethodSchema[];
 }
 

@@ -132,10 +132,20 @@ function buildReturnType(fields: FieldSpec[], extra: string = ''): string {
 // attribute names (ForceX, LinearForceZ, TranslationalStiffnessX, …), so
 // the TS type is a dictionary rather than a fixed field list — exactly like
 // `StructuralLoadData.components` / `BoundaryConditionData.components`.
-const LOAD_RETURN =
-  `{ ExpressId: number; Type: string; Name?: string; Components: Record<string, number>;`
-  + ` Configuration?: { Entries: Array<{ Value?: unknown; Dropped?: string; Location?: number[] }>;`
-  + ` Locations?: number[][]; Truncated: boolean } }`;
+const LOAD_RETURN = 'BimStructuralLoad';
+
+/** Named ambient declarations are required to describe recursively nested configurations. */
+export const STRUCTURAL_AMBIENT_DECLARATIONS = [
+  'interface BimStructuralLoad {',
+  '  ExpressId: number; Type: string; Name?: string;',
+  '  Components: Record<string, number>;',
+  '  Configuration?: BimStructuralLoadConfiguration;',
+  '}',
+  'interface BimStructuralLoadConfiguration {',
+  "  Entries: Array<{ Value?: BimStructuralLoad; Dropped?: 'depth' | 'cycle' | 'budget' | 'invalid-reference' | 'unresolved' | 'unreadable'; Location?: number[] }>;",
+  '  Locations?: number[][]; Truncated: boolean;',
+  '}',
+];
 
 const BOUNDARY_CONDITION_RETURN =
   `{ ExpressId: number; Type: string; Name?: string; Components: Record<string, number | boolean> }`;
@@ -279,6 +289,7 @@ export function buildStructuralNamespace(): NamespaceSchema {
   return {
     name: 'structural',
     doc: 'Structural analysis reader (IfcStructuralAnalysisModel, members, connections, activities, load/result groups)',
+    ambientDeclarations: STRUCTURAL_AMBIENT_DECLARATIONS,
     permission: 'query',
     methods: [
       {

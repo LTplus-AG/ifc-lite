@@ -209,6 +209,14 @@ describe('BimContext', () => {
     expect(bim.spatial).toBeDefined();
   });
 
+  it('keeps existing backends compatible and reports unsupported structural reads', () => {
+    const { structural: _structural, ...backend } = createMockBackend().backend;
+    const bim = createBimContext({ backend });
+
+    expect(bim.model.list()).toEqual([]);
+    expect(() => bim.structural.data()).toThrow('bim.structural is not supported by this backend');
+  });
+
   it('throws without backend or transport', () => {
     expect(() => createBimContext({} as {} & { backend?: BimBackend })).toThrow('BimContext requires either a backend or transport');
   });

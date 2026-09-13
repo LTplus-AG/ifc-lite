@@ -3,7 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { __structural_schema_testing as S } from './bridge-structural.js';
+import {
+  __structural_schema_testing as S,
+  STRUCTURAL_AMBIENT_DECLARATIONS,
+} from './bridge-structural.js';
 
 describe('bridge-structural — internal → public translation', () => {
   it('translateMember maps every camelCase source attribute to its IFC-PascalCase key', () => {
@@ -78,6 +81,12 @@ describe('bridge-structural — internal → public translation', () => {
 });
 
 describe('bridge-structural — schema hygiene', () => {
+  it('declares recursively nested load configurations without erasing Value to unknown', () => {
+    const declarations = STRUCTURAL_AMBIENT_DECLARATIONS.join('\n');
+    expect(declarations).toContain('Value?: BimStructuralLoad');
+    expect(declarations).not.toContain('Value?: unknown');
+  });
+
   it('no duplicate keys across any struct (catches copy-paste errors in the schema table)', () => {
     for (const fields of [
       S.ANALYSIS_MODEL_FIELDS, S.MEMBER_FIELDS, S.CONNECTION_FIELDS,

@@ -73,18 +73,31 @@ pub(crate) fn ensure_panic_logging() {
             let path = in_flight_paths_for_log();
             let backtrace = Backtrace::force_capture();
             let log_path = std::env::temp_dir().join("ifc_lite_panic.log");
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&log_path)
-            {
-                let _ = writeln!(
-                    file,
-                    "==== ifc-lite panic ====\nfile: {path}\n{info}\nbacktrace:\n{backtrace}\n",
-                );
-            }
+            append_record(&log_path, &path, info, &backtrace);
 
             previous_hook(info);
         }));
     });
+}
+
+/// Serialises whole records: panics on different pool workers run the hook
+/// concurrently, and `writeln!` on a `File` is several `write` calls, so
+/// without it the fields of two records interleave (#4642).
+static LOG_WRITE: Mutex<()> = Mutex::new(());
+
+/// Append one panic record to `log_path` under [`LOG_WRITE`]. Holders only
+/// open and write a file, neither of which panics.
+pub(crate) fn append_record(
+    log_path: &std::path::Path,
+    path: &str,
+    info: &dyn std::fmt::Display,
+    backtrace: &dyn std::fmt::Display,
+) {
+    let _serialised = LOG_WRITE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(log_path) {
+        let _ = writeln!(
+            file,
+            "==== ifc-lite panic ====\nfile: {path}\n{info}\nbacktrace:\n{backtrace}\n",
+        );
+    }
 }

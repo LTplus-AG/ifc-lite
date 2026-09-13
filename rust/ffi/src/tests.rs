@@ -457,6 +457,40 @@ fn a_pool_that_cannot_spawn_its_threads_is_an_error_not_a_panic() {
     assert!(build_parse_pool(1 << 62).is_err());
 }
 
+/// Concurrent panics on different pool workers run the hook at the same time,
+/// and each record is written in several `write` calls; records must still
+/// come out whole, one after another (#4642). Eight threads append 200
+/// records each, every field tagged with its record's id. Mutation that fails
+/// this test: remove the `LOG_WRITE` lock in `append_record`.
+#[test]
+fn concurrent_panic_records_do_not_interleave() {
+    let log = std::env::temp_dir().join(format!("ifc_lite_panic_interleave_{}.log", std::process::id()));
+    let _ = std::fs::remove_file(&log);
+    std::thread::scope(|scope| {
+        for t in 0..8 {
+            let log = &log;
+            scope.spawn(move || {
+                for r in 0..200 {
+                    let id = format!("t{t}r{r}");
+                    crate::panic_log::append_record(log, &id, &id, &id);
+                }
+            });
+        }
+    });
+    let text = std::fs::read_to_string(&log).expect("records were written");
+    let _ = std::fs::remove_file(&log);
+    let records: Vec<&str> = text.split("==== ifc-lite panic ====\n").skip(1).collect();
+    assert_eq!(records.len(), 1600);
+    for record in records {
+        let id = record.strip_prefix("file: ").and_then(|r| r.split('\n').next()).unwrap_or("");
+        assert_eq!(
+            record,
+            format!("file: {id}\n{id}\nbacktrace:\n{id}\n\n"),
+            "a record's fields interleaved with another record"
+        );
+    }
+}
+
 #[test]
 fn free_tolerates_null_and_zero_len() {
     // Must be a no-op, never a double-free or segfault.

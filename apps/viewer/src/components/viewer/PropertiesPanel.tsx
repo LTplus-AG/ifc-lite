@@ -33,7 +33,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { IfcQuery } from '@ifc-lite/query';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGroupMembersOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, getAttributeNames, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGroupMembersOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, getAttributeNames, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import type { NewEntity } from '@ifc-lite/mutations';
 import { EntityFlags, RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
@@ -51,6 +51,7 @@ import { ClassificationCard } from './properties/ClassificationCard';
 import { MaterialCard } from './properties/MaterialCard';
 import { MaterialTotalsPanel } from './properties/MaterialTotalsPanel';
 import { ScheduleCard } from './properties/ScheduleCard';
+import { StructuralCard } from './properties/StructuralCard';
 import { TaskEditCard } from './properties/TaskEditCard';
 import { DocumentCard } from './properties/DocumentCard';
 import { RelationshipsCard } from './properties/RelationshipsCard';
@@ -869,6 +870,31 @@ export function PropertiesPanel() {
     }
     return false;
   }, [selectedEntity, scheduleData, selectedEntityGlobalId]);
+
+  // Structural analysis read model — extracted on demand per model, like
+  // georef/typeProperties below, not selection-dependent, so it's memoized
+  // on the model/dataStore alone and StructuralCard does the per-selection
+  // filtering. `extractStructuralOnDemand` costs one `byType` sweep on a
+  // model with no structural entity (see its own docblock) so this is safe
+  // to compute unconditionally rather than gating on selection first.
+  const structuralData = useMemo(() => {
+    const dataStore = model?.ifcDataStore ?? ifcDataStore;
+    if (!dataStore) return null;
+    const out = extractStructuralOnDemand(dataStore as IfcDataStore);
+    return out.hasStructural ? out : null;
+  }, [model, ifcDataStore]);
+  /** True when the selection is itself a structural member the extraction
+   *  knows about — used, like `hasScheduleForSelection`, to keep the
+   *  separator above StructuralCard from rendering on its own. */
+  const hasStructuralForSelection = useMemo(() => {
+    if (!selectedEntity || !structuralData) return false;
+    const gid = selectedEntityGlobalId;
+    const expressId = selectedEntity.expressId;
+    return structuralData.members.some((m) => {
+      if (gid && m.globalId === gid) return true;
+      return expressId > 0 && m.expressId === expressId;
+    });
+  }, [selectedEntity, structuralData, selectedEntityGlobalId]);
 
   // Extract georeferencing info for the model (used in coordinates section)
   const georef = useMemo(() => {
@@ -1775,6 +1801,21 @@ export function PropertiesPanel() {
                       selectedExpressId={selectedEntity.expressId}
                       selectedGlobalId={selectedEntityGlobalId}
                       isGenerated={scheduleIsGenerated}
+                    />
+                  </>
+                )}
+
+                {/* Structural analysis — analysis model, connections and
+                    applied loads for a selected IfcStructuralMember. Gated
+                    on `hasStructuralForSelection` for the same reason as the
+                    schedule separator above. */}
+                {selectedEntity && structuralData && hasStructuralForSelection && (
+                  <>
+                    <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
+                    <StructuralCard
+                      structuralData={structuralData}
+                      selectedExpressId={selectedEntity.expressId}
+                      selectedGlobalId={selectedEntityGlobalId}
                     />
                   </>
                 )}

@@ -502,23 +502,12 @@ if (FULL) {
   );
 }
 
-// 10. Coverage ledger (docs/architecture/coverage-ledger.md, #4207) — no build needed.
-// The generator names its own failure: "❌ ... is stale" wants a regenerate;
-// a thrown "missing source file" / "extractor found ZERO entries" wants the
-// named source or extractor fixed FIRST — regenerating cannot repair those.
+// 10. Coverage ledger (#4207): stale output regenerates; missing/zero source data must be fixed.
 runGate('check:coverage-ledger', 'node', ['scripts/generate-coverage-ledger.mjs', '--check'],
   'if the output says "is stale": node scripts/generate-coverage-ledger.mjs   (then commit docs/architecture/coverage-ledger.md); ' +
     'if it names a missing source file or an extractor that found ZERO entries, fix that file/extractor first — regenerating cannot');
-
-// 11. Legacy rooted-type table — generated from the EXPRESS-derived IFC2X3/
-// IFC4 entity tables and the generated IFC4X3 Rust enum. This is separate from
-// check:codegen-sync because its committed output belongs to a Rust crate.
-runGate(
-  'legacy rooted-type freshness',
-  'node',
-  ['scripts/generate-legacy-rooted-types.mjs', '--check'],
-  'node scripts/generate-legacy-rooted-types.mjs   (then commit rust/export/src/generated/legacy_rooted_types.rs)',
-);
+runGate('legacy rooted-type freshness', 'node', ['scripts/generate-legacy-rooted-types.mjs', '--check'],
+  'node scripts/generate-legacy-rooted-types.mjs   (then commit rust/export/src/generated/legacy_rooted_types.rs)');
 hr();
 const failed = results.filter((r) => r.status === 'fail');
 const skipped = results.filter((r) => r.status === 'skip');

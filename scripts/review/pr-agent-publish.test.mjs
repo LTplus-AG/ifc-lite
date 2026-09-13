@@ -44,7 +44,6 @@ test('classifyFailure names the provider failures a maintainer acts on different
   assert.equal(classifyFailure('ERROR | something nobody has seen'), 'NO_REVIEW');
   assert.equal(classifyFailure(null), 'NO_REVIEW');
   assert.equal(classifyFailure('\x1b[1mERROR\x1b[0m | litellm.AuthenticationError: bad key'), 'AUTH_FAILED', 'raw log colours');
-  assert.equal(classifyFailure('ERROR | OPENROUTER_API_KEY is not set'), 'AUTH_FAILED');
 });
 
 test('a status-code-looking number outside an error line is not a status code', () => {

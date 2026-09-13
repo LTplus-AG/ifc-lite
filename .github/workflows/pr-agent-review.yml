@@ -11,28 +11,24 @@ name: PR-Agent review
 #   local model   the self-hosted `ifclite` runner, any OpenAI-compatible
 #                 endpoint (Ollama, llama.cpp server, vLLM, LM Studio)
 #
-# HOW A LANE RUNS. PR-Agent runs in plain-diff mode over `git diff base...head`
-# and writes files; it never holds a GitHub token. scripts/review/pr-agent-publish.mjs
-# reads those files and owns the one comment per lane. PR-Agent exits 0 when every
-# model call failed (measured on 0.45.0 with an OpenRouter 401 and a 429), so its
-# exit code is not evidence: the publish step fails, with a named reason, unless
-# PR-Agent wrote a parseable review.
+# PR-Agent runs in plain-diff mode (scripts/review/pr-agent-run.sh) and never
+# holds a GitHub token. scripts/review/pr-agent-publish.mjs decides whether a
+# review happened and owns the one comment per lane; its header says why
+# PR-Agent's own exit code cannot be trusted.
 #
 # WHAT EACH CHECK MEANS
 #
 #   PR-Agent review (OpenRouter)     green = review posted for this head.
-#                                    red = configured and it did not happen.
+#                                    red = enabled and it did not happen.
 #                                    skipped = lane disabled.
-#   PR-Agent local model probe       always runs on a same-repo, non-draft PR and
-#                                    says in its summary whether the local lane
-#                                    will run and why not. Green means the probe
-#                                    ran, NOT that anything was reviewed.
-#   PR-Agent local model run         runs PR-Agent on the self-hosted runner.
-#                                    Green means it ran, NOT that it reviewed.
+#   PR-Agent local model run         probes the endpoint, then runs PR-Agent if
+#                                    it answered. Its summary says why the lane
+#                                    did not run. Green means NOTHING about a
+#                                    review; read the verdict below.
 #   PR-Agent review (local model)    the verdict. green = review posted.
 #                                    red = the endpoint answered the probe and
 #                                    the review still did not happen.
-#                                    skipped = probe said unavailable.
+#                                    skipped = the probe said unavailable.
 #
 # TO ENABLE (repository settings, Secrets and variables, Actions):
 #
@@ -55,10 +51,12 @@ name: PR-Agent review
 #   PR_AGENT_LOCAL_MAX_MODEL_TOKENS plus room for the answer, for example
 #   `OLLAMA_CONTEXT_LENGTH=40960 ollama serve` for the 32,768 default.
 #
-# STATED HOLE: with SELF_HOSTED_CI=true and the runner offline, the probe job
-# waits in the queue (pending, never green) until GitHub drops it, exactly like
-# every other self-hosted job in this repository. A hosted job cannot see runner
-# status without an admin token, so SELF_HOSTED_CI is the availability signal.
+# STATED HOLE: with SELF_HOSTED_CI=true and the runner offline, the local run
+# job waits in the queue (pending, never green) until GitHub drops it, exactly
+# like every other self-hosted job in this repository. A hosted job cannot see
+# runner status without an admin token, so SELF_HOSTED_CI is the availability
+# signal. The `ci:hosted` label keeps the job off the self-hosted runner, as it
+# does everywhere else.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -111,6 +109,8 @@ jobs:
       - name: Install PR-Agent
         run: python -m pip install --quiet "pr-agent==${PR_AGENT_VERSION}"
 
+      # A missing key needs no special case: OpenRouter answers 401, and the
+      # publish step reports AUTH_FAILED naming this secret (measured).
       - name: Run PR-Agent
         id: run
         env:
@@ -128,12 +128,6 @@ jobs:
           OR_SITE_URL: https://github.com/${{ github.repository }}
           OR_APP_NAME: ifc-lite PR-Agent review
         run: |
-          if [ -z "$OPENROUTER_API_KEY" ]; then
-            mkdir -p "$RUNNER_TEMP/pr-agent"
-            echo "ERROR | OPENROUTER_API_KEY is not set" > "$RUNNER_TEMP/pr-agent/pr-agent.log"
-            echo "::error::PR_AGENT_OPENROUTER_ENABLED is true but the OPENROUTER_API_KEY secret is not set."
-            exit 0
-          fi
           bash scripts/review/pr-agent-run.sh \
             "${{ github.event.pull_request.base.sha }}" \
             "${{ github.event.pull_request.head.sha }}" \
@@ -154,22 +148,28 @@ jobs:
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha }}"
 
-  local-probe:
-    name: PR-Agent local model probe
+  local-run:
+    name: PR-Agent local model run
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
-    # On the self-hosted runner only when it is declared up AND an endpoint is
-    # configured; otherwise a hosted runner, so the reason is still reported.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && vars.PR_AGENT_LOCAL_BASE_URL != '') && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    timeout-minutes: 5
+    # On the self-hosted runner only when it is declared up, an endpoint is
+    # configured and the PR is not labelled `ci:hosted`. Otherwise a hosted
+    # runner, which only runs the probe step to report why.
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && vars.PR_AGENT_LOCAL_BASE_URL != '' && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    # No write permission on the self-hosted runner. The hosted job below posts.
+    permissions:
+      contents: read
     outputs:
       available: ${{ steps.probe.outputs.available }}
+      skip: ${{ steps.run.outputs.skip }}
     steps:
       - name: Probe the local model endpoint
         id: probe
         env:
           SELF_HOSTED_CI: ${{ vars.SELF_HOSTED_CI }}
+          HOSTED_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:hosted') }}
           BASE_URL: ${{ vars.PR_AGENT_LOCAL_BASE_URL }}
           MODEL: ${{ env.PR_AGENT_LOCAL_MODEL }}
           LOCAL_KEY: ${{ secrets.PR_AGENT_LOCAL_API_KEY }}
@@ -188,6 +188,10 @@ jobs:
             report false "Local model review NOT RUN: vars.PR_AGENT_LOCAL_BASE_URL is not set."
             exit 0
           fi
+          if [ "$HOSTED_LABEL" = "true" ]; then
+            report false "Local model review NOT RUN: the PR is labelled ci:hosted."
+            exit 0
+          fi
           auth=()
           if [ -n "$LOCAL_KEY" ]; then auth=(-H "Authorization: Bearer $LOCAL_KEY"); fi
           if ! models=$(curl -fsS -m 10 "${auth[@]}" "${BASE_URL%/}/models" 2>&1); then
@@ -200,34 +204,31 @@ jobs:
           fi
           report true "Local model endpoint answered and serves $MODEL; the local review runs."
 
-  local-run:
-    name: PR-Agent local model run
-    needs: local-probe
-    if: needs.local-probe.outputs.available == 'true'
-    runs-on: ${{ fromJSON('["self-hosted","linux","x64","ifclite"]') }}
-    timeout-minutes: 60
-    # No write permission on the self-hosted runner. The hosted job below posts.
-    permissions:
-      contents: read
-    outputs:
-      skip: ${{ steps.run.outputs.skip }}
-    steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.probe.outputs.available == 'true'
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           lfs: false
           persist-credentials: false
 
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.probe.outputs.available == 'true'
+        with:
+          node-version: 22
+
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: steps.probe.outputs.available == 'true'
         with:
           python-version: '3.12'
 
       - name: Install PR-Agent
+        if: steps.probe.outputs.available == 'true'
         run: python -m pip install --quiet "pr-agent==${PR_AGENT_VERSION}"
 
       - name: Run PR-Agent
         id: run
+        if: steps.probe.outputs.available == 'true'
         env:
           # LiteLLM's `openai/` provider speaks to any OpenAI-compatible server.
           CONFIG__MODEL: openai/${{ env.PR_AGENT_LOCAL_MODEL }}
@@ -248,7 +249,7 @@ jobs:
       # from pr-agent.log. A run that left no file at all fails here; the
       # verdict job still reports it as NO_OUTPUT.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: ${{ !cancelled() && steps.run.outputs.skip != 'true' }}
+        if: ${{ !cancelled() && steps.probe.outputs.available == 'true' && steps.run.outputs.skip != 'true' }}
         with:
           name: pr-agent-local
           path: |
@@ -260,11 +261,11 @@ jobs:
 
   local-publish:
     name: PR-Agent review (local model)
-    needs: [local-probe, local-run]
-    # !cancelled(): a run job that crashed or timed out must still produce a
-    # red verdict here. Only "the probe said unavailable" (or nothing
+    needs: local-run
+    # !cancelled(): a run that crashed or timed out after the probe must still
+    # produce a red verdict here. Only "the probe said unavailable" (or nothing
     # reviewable) skips it; a run cancelled by a newer push publishes nothing.
-    if: ${{ !cancelled() && needs.local-probe.outputs.available == 'true' && needs.local-run.outputs.skip != 'true' }}
+    if: ${{ !cancelled() && needs.local-run.outputs.available == 'true' && needs.local-run.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -280,8 +281,8 @@ jobs:
         with:
           node-version: 22
 
-      # A missing artifact is not a failure of THIS step: the publish step below
-      # reads the empty directory back and fails as NO_OUTPUT, which names what
+      # A missing artifact is not this step's failure to report: the publish
+      # step reads the directory back and fails as NO_OUTPUT, which names what
       # happened instead of "artifact not found".
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         continue-on-error: true
@@ -293,7 +294,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p "$RUNNER_TEMP/pr-agent"
           node scripts/review/pr-agent-publish.mjs \
             --lane local \
             --dir "$RUNNER_TEMP/pr-agent" \

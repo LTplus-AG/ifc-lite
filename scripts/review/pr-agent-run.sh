@@ -5,41 +5,45 @@
 #
 # Run PR-Agent once over a pull request's diff, for one lane of
 # .github/workflows/pr-agent-review.yml. The model, endpoint and token caps
-# arrive in the environment (CONFIG__MODEL, OPENROUTER_API_KEY, OPENAI__API_BASE,
-# ...); this script is the same for both lanes.
+# arrive in the environment; this script is the same for both lanes.
 #
 #   pr-agent-run.sh <base-sha> <head-sha> <out-dir>
 #
-# Writes <out-dir>/review.json, review.md and pr-agent.log. It does NOT decide
-# whether a review happened: PR-Agent exits 0 when every model call failed, so
-# scripts/review/pr-agent-publish.mjs reads these files and makes that call.
-# Run from the repository root with <head-sha> checked out, so PR-Agent can read
-# the changed files in full.
+# Writes <out-dir>/review.json, review.md and pr-agent.log. Whether a review
+# happened is decided by scripts/review/pr-agent-publish.mjs, not by an exit
+# code here. Run from the repository root with <head-sha> checked out, so
+# PR-Agent can read the changed files in full.
 set -euo pipefail
 
 base="$1"
 head="$2"
 out="$3"
 mkdir -p "$out"
-rm -f "$out/review.json" "$out/review.md" "$out/pr-agent.log" "$out/pr.diff" "$out/pr_agent.base.toml"
+rm -f "$out/review.json" "$out/review.md"
 
-# Three dots: against the merge base, which is the diff GitHub shows. PR-Agent
-# ignores its own [ignore] globs in plain-diff mode, so the exclusions are here.
-git diff --no-color --no-ext-diff "$base...$head" -- . \
-  ':(exclude)pnpm-lock.yaml' \
-  ':(exclude)**/Cargo.lock' \
-  ':(exclude)**/CHANGELOG.md' \
-  ':(exclude)**/*.snap' \
-  ':(exclude)**/fixtures/**' \
-  ':(exclude)**/*.ifc' \
-  ':(exclude)**/*.ifcx' \
-  > "$out/pr.diff"
+# Three dots: against the merge base, which is the diff GitHub shows. The file
+# filter is the Claude lane's `isExcluded` (lockfiles, generated output,
+# fixtures, eval cases, binaries), so both lanes skip the same paths. PR-Agent
+# does not apply its own [ignore] globs in plain-diff mode (measured on 0.45.0:
+# a glob matching 11 of 12 changed files left the prompt at 11,927 tokens
+# against 12,038 without it).
+git diff --name-only -z "$base...$head" \
+  | node --input-type=module -e "
+      import { readFileSync } from 'node:fs';
+      import { isExcluded } from './scripts/review/build-review-input.mjs';
+      const paths = readFileSync(0, 'utf8').split('\0').filter(Boolean);
+      process.stdout.write(paths.filter((p) => !isExcluded(p)).map((p) => p + '\0').join(''));
+    " > "$out/paths"
 
-if [ ! -s "$out/pr.diff" ]; then
+# An EMPTY pathspec list would diff every path, so it is checked first.
+if [ ! -s "$out/paths" ]; then
   echo "skip=true" >> "$GITHUB_OUTPUT"
-  echo "::notice title=PR-Agent review::Nothing reviewable: every changed path is excluded (lockfiles, snapshots, fixtures, changelogs)."
+  echo "::notice title=PR-Agent review::Nothing reviewable: every changed path is excluded."
   exit 0
 fi
+# xargs may split a long list into several `git diff` calls; their outputs
+# concatenate into one valid diff with each file once.
+xargs -0 git diff --no-color --no-ext-diff "$base...$head" -- < "$out/paths" > "$out/pr.diff"
 echo "pr-agent: diff is $(wc -c < "$out/pr.diff") bytes"
 
 # The instructions come from the BASE commit, so a PR cannot rewrite what

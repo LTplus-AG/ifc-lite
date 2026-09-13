@@ -42,15 +42,15 @@ const TYPES: Record<number, string> = {
   10: 'IfcWall', 11: 'IfcDoor', 12: 'IfcAnnotation',
   20: 'IfcGroup', 21: 'IfcZone', 22: 'IfcSystem', 30: 'IfcPropertySet',
   40: 'IfcSpace', 41: 'IfcFurniture', 50: 'IfcBuildingElementProxy',
-  60: 'IfcElementAssembly', 61: 'IfcBeam',
+  60: 'IfcElementAssembly', 61: 'IfcBeam', 62: 'IfcElementAssembly',
 };
 const NAMES: Record<number, string> = {
   4: '00 Groundfloor', 10: 'Basic Wall', 11: 'Single Door', 12: 'Dimension',
   20: 'Cost Group', 21: 'Fire Compartment', 22: 'HVAC', 30: 'Pset_Common',
   40: 'Living Room', 41: 'Sofa', 50: 'Group#21',
-  60: 'Truss', 61: 'Truss Beam',
+  60: 'Truss', 61: 'Truss Beam', 62: 'Truss Panel',
 };
-const ORDER = [1, 2, 3, 4, 10, 11, 12, 20, 21, 22, 30, 40, 41, 50, 60, 61];
+const ORDER = [1, 2, 3, 4, 10, 11, 12, 20, 21, 22, 30, 40, 41, 50, 60, 61, 62];
 
 /** The annotation carries a 2D representation, so it is in the mesh set — the
  *  exact case the "does it have geometry" proxy admitted as an object. The
@@ -101,10 +101,16 @@ function createStoreyDataStore(): IfcDataStore {
       getTypeName: (id: number) => TYPES[id] ?? 'Unknown',
     },
     relationships: {
-      // #60 is a decomposing assembly: no shape of its own, its beam carries
-      // the geometry. It is one object, not zero and not two.
-      getRelated: (id: number, relType: RelationshipType, direction: 'forward' | 'inverse') =>
-        direction === 'forward' && relType === RelationshipType.Aggregates && id === 60 ? [61] : [],
+      // #60 is a decomposing assembly TWO levels deep: no shape of its own,
+      // nor has its #62 sub-assembly; the geometry is on #61 at the bottom.
+      // A descent that stops after one level reports the truss as shapeless,
+      // and no sample model in the corpus nests twice.
+      getRelated: (id: number, relType: RelationshipType, direction: 'forward' | 'inverse') => {
+        if (direction !== 'forward' || relType !== RelationshipType.Aggregates) return [];
+        if (id === 60) return [62];
+        if (id === 62) return [61];
+        return [];
+      },
     },
   } as unknown as IfcDataStore;
 }
@@ -244,6 +250,41 @@ describe('unified storey headline', () => {
     );
   });
 
+  it('reports the same number as the single-model badge on a #1075 rollup', () => {
+    // A model that rolls a space's contents up into `byStorey` (#1075) hands
+    // the federated path a list the per-model tree subtracts from. Counting
+    // that list raw makes the Storeys section and the model's own tree
+    // disagree about one storey — the very defect this work exists to remove,
+    // reappearing inside the fix. No sample model in the corpus rolls up, so
+    // the fixture has to say it.
+    const rolledUp = (id: string): FederatedModel => {
+      const ifcDataStore = createStoreyDataStore();
+      const hierarchy = ifcDataStore.spatialHierarchy!;
+      hierarchy.byStorey.set(STOREY_ID, [...hierarchy.byStorey.get(STOREY_ID)!, 41]);
+      return { id, name: id, idOffset: 0, maxExpressId: 62, ifcDataStore } as unknown as FederatedModel;
+    };
+    // buildUnifiedStoreys only runs in federated mode, so the fixture needs
+    // two models; each contribution is compared to that model's own tree.
+    const model = rolledUp('model-a');
+    const unified = buildUnifiedStoreys(
+      new Map([['model-a', model], ['model-b', rolledUp('model-b')]]),
+      undefined,
+      GEOMETRY_LOADED,
+    );
+    const single = storeyNodeOf(model.ifcDataStore!, GEOMETRY_LOADED).storey;
+
+    assert.strictEqual(
+      unified[0].storeys[0].objects.counted,
+      single.elementCount,
+      'the Storeys section and the model tree must not answer differently',
+    );
+    assert.strictEqual(unified[0].objects.counted, (single.elementCount ?? 0) * 2, 'and the total sums them');
+    assert.ok(
+      unified[0].storeys.every((storey) => !storey.elements.includes(41)),
+      "the space's own contents are not the storey's",
+    );
+  });
+
   it('counts a store whose spatialHierarchy carries no project node', () => {
     // A cache-restored or synthetic store has the containment maps and no
     // `project`. Walking the tree from that root to reach each storey node
@@ -308,8 +349,8 @@ describe('By Class tab never lists a non-object, in either geometry state', () =
     // among them); once the filter is live the tab narrows to what renders.
     // The annotation and the space are shown only because they render, so they
     // appear in the loaded state and not before.
-    ['geometry loaded', GEOMETRY_LOADED, ['IfcAnnotation', 'IfcBeam', 'IfcDoor', 'IfcElementAssembly', 'IfcFurniture', 'IfcSpace', 'IfcWall'], 5],
-    ['geometry not yet streamed', GEOMETRY_ABSENT, ['IfcBeam', 'IfcBuildingElementProxy', 'IfcDoor', 'IfcElementAssembly', 'IfcFurniture', 'IfcWall'], 6],
+    ['geometry loaded', GEOMETRY_LOADED, ['IfcAnnotation', 'IfcBeam', 'IfcDoor', 'IfcElementAssembly', 'IfcFurniture', 'IfcSpace', 'IfcWall'], 6],
+    ['geometry not yet streamed', GEOMETRY_ABSENT, ['IfcBeam', 'IfcBuildingElementProxy', 'IfcDoor', 'IfcElementAssembly', 'IfcFurniture', 'IfcWall'], 7],
   ] as const) {
     it(`lists neither groups, zones, systems, property sets nor the spatial chain (${label})`, () => {
       // The site carries terrain geometry in GEOMETRY_LOADED, so "it renders"

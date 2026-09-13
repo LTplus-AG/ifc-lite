@@ -32,6 +32,13 @@ fn mesh_volume(m: &Mesh) -> f64 {
         / 6.0
 }
 
+fn expect_cut(outcome: BatchSubtract, what: &str) -> Mesh {
+    match outcome {
+        BatchSubtract::Cut(m) => m,
+        other => panic!("{what}: expected BatchSubtract::Cut, got {other:?}"),
+    }
+}
+
 #[test]
 fn snap_reconciles_near_coplanar_and_is_deterministic() {
     // coords closer than the grid snap to the SAME value (f32-flush → exact)
@@ -398,7 +405,7 @@ fn subtract_many_two_pocket_group_matches_sequential() {
     let door = tris_to_mesh(&box_mesh([1., -1.0, 0.0], [2., 1.2, 2.5])); // flush bottom
     let window = tris_to_mesh(&box_mesh([4., -0.3, 0.5], [5., 0.5, 2.0]));
     let seq = subtract(&subtract(&wall, &door), &window);
-    let many = subtract_many(&wall, &[&door, &window]).expect("group must conform");
+    let many = expect_cut(subtract_many(&wall, &[&door, &window]), "group must conform");
     let (vs, vm) = (mesh_volume(&seq), mesh_volume(&many));
     let om = exact_open_edges(&many);
     assert_eq!(om, 0, "batched two-pocket cut left {om} exact open edges");
@@ -425,8 +432,10 @@ fn subtract_many_disjoint_openings_matches_sequential() {
     for t in op2.indices.chunks_exact_mut(3) {
         t.swap(1, 2);
     }
-    let batched = subtract_many(&wall, &[&op1, &op2, &op3])
-        .expect("disjoint box group must conform");
+    let batched = expect_cut(
+        subtract_many(&wall, &[&op1, &op2, &op3]),
+        "disjoint box group must conform",
+    );
     let v = mesh_volume(&batched);
     assert!((v - 4.8).abs() < 1e-3, "batched 3-opening wall volume = {v}, expected 4.8");
     let open = exact_open_edges(&batched);
@@ -438,6 +447,42 @@ fn subtract_many_disjoint_openings_matches_sequential() {
         (v - vs).abs() < 1e-6,
         "batched volume {v} != sequential volume {vs} on disjoint cutters"
     );
+}
+
+/// A cutter whose AABB overlaps the host but whose solid never reaches it used
+/// to come back as `Some(host re-tessellated)`, the same shape as a real cut,
+/// and the router re-derived "did it cut" from a triangle count and a 0.1 %
+/// volume gate (`voids/sweep.rs`, repaired twice under #1788). The classifier
+/// now says it itself: every host sub-triangle kept and no cutter face kept is
+/// [`BatchSubtract::Unchanged`]. Mutation: force `changed = true` in
+/// `boolean_vids_components` and the first assertion reads `Cut`; force it
+/// `false` and the second reads `Unchanged`.
+#[test]
+fn subtract_many_reports_unchanged_when_no_cutter_reaches_the_host() {
+    let host = tris_to_mesh(&cube_mesh(0.0, 1.0));
+    // Tetrahedron in the x + y > 2.2 corner of the host's AABB: its own AABB
+    // [0.1, 2.1]^2 x [0.5, 1.5] overlaps the cube, its solid does not.
+    let tetra = |dx: f32| {
+        mesh_of(
+            &[
+                [2.1 + dx, 0.1 + dx, 0.5],
+                [0.1 + dx, 2.1 + dx, 0.5],
+                [2.1 + dx, 2.1 + dx, 0.5],
+                [2.1 + dx, 2.1 + dx, 1.5],
+            ],
+            &[[0, 1, 2], [0, 3, 1], [1, 3, 2], [2, 3, 0]],
+        )
+    };
+    let disjoint = tetra(0.0);
+    assert!(
+        matches!(subtract_many(&host, &[&disjoint]), BatchSubtract::Unchanged),
+        "a cutter that misses the host solid must read Unchanged, not Cut"
+    );
+    // The same tetrahedron slid into the cube is a real cut: volume drops.
+    let reaching = tetra(-0.6);
+    let cut = expect_cut(subtract_many(&host, &[&reaching]), "reaching tetra");
+    let v = mesh_volume(&cut).abs();
+    assert!(v < 0.99 && v > 0.5, "reaching tetra must remove volume: {v}");
 }
 
 /// Issue #3353, the N-ary half.

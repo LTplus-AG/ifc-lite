@@ -514,19 +514,23 @@ fn on_interface_keep(
 /// interface shares the unordered vertex set but has OPPOSITE winding, so it never
 /// collides; both its copies are dissolved by regime 2.)
 pub(super) fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<[Vid; 3]> {
-    boolean_vids_components(arr, a, &BComponents::new(&[b]), op)
+    boolean_vids_components(arr, a, &BComponents::new(&[b]), op).0
 }
 
 /// [`boolean_vids`] with the B operand as pairwise-disjoint closed components
 /// (see [`BComponents`]). For a single component this is verdict-identical to
 /// the historical binary classifier — the AABB gates are pure prefilters — so
 /// the pinned boolean manifest is unperturbed.
+///
+/// Returns `(tris, changed)`. `changed == false` means no A sub-triangle was
+/// dropped and no B sub-triangle kept: the result is operand A re-tessellated
+/// along the arrangement, bounding the same solid.
 pub(super) fn boolean_vids_components(
     arr: &Arrangement,
     a: &[Tri],
     bc: &BComponents,
     op: BoolOp,
-) -> Vec<[Vid; 3]> {
+) -> (Vec<[Vid; 3]>, bool) {
     use std::collections::HashSet;
     let ext_a = operand_extent(a);
     // One BVH over operand A, reused for every B-face inside/outside ray-cast AND
@@ -605,6 +609,7 @@ pub(super) fn boolean_vids_components(
             out.push(tri);
         }
     }
+    let a_kept_count = out.len();
     for (i, &tri) in arr.tris_b.iter().enumerate() {
         // dedup a true co-oriented duplicate of a kept A face (keep the A-copy)
         if dedup && a_kept.contains(&rotate_min_first(tri)) {
@@ -642,7 +647,8 @@ pub(super) fn boolean_vids_components(
             out.push(if flip { [tri[0], tri[2], tri[1]] } else { tri });
         }
     }
-    out
+    let changed = a_kept_count != arr.tris_a.len() || out.len() != a_kept_count;
+    (out, changed)
 }
 
 #[inline]

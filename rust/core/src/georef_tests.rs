@@ -450,8 +450,11 @@ fn map_conversion_with_a_non_finite_component_is_refused_whole() {
         assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (10.0, 20.0, 5.0), "slot {slot}");
     }
 
-    let content = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('Test'),'2;1');\nFILE_NAME('t.ifc','2026-01-01',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#11=IFCMAPCONVERSION(#2,#10,1000.,2000.,42.,1.0E999,0.,1.);\n#1=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(51,30,0),(14,28,0),0.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
-    let mut decoder = EntityDecoder::new(content);
+    // No IfcProjectedCRS in the candidate list: nothing else claims georeferencing.
+    let content = ifc4x3_with_conversion(
+        "#11=IFCMAPCONVERSION(#2,#10,1000.,2000.,42.,1.0E999,0.,1.);\n#1=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(51,30,0),(14,28,0),0.,$,$);",
+    );
+    let mut decoder = EntityDecoder::new(&content);
     let types = [(11u32, IfcType::IfcMapConversion), (1, IfcType::IfcSite)];
     let geo = GeoRefExtractor::extract(&mut decoder, &types)
         .expect("decode ok")

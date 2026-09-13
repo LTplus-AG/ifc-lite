@@ -347,31 +347,25 @@ impl GeoRefExtractor {
             }
         }
 
-        // If no map conversion, try IFC2X3 property set fallback, then the
-        // legacy IfcSite lat/long fallback (TS parity).
-        if map_conversion_id.is_none() {
-            if let Some(georef) = Self::extract_from_pset(decoder, entity_types)? {
-                return Ok(Some(georef));
-            }
-            return Self::extract_from_site(decoder, entity_types);
-        }
-
         let mut georef = GeoReference::new();
         georef.source = GeoRefSource::MapConversion;
 
         // Parse IfcMapConversion
         // Attributes: SourceCRS, TargetCRS, Eastings, Northings, OrthogonalHeight,
         //             XAxisAbscissa, XAxisOrdinate, Scale
-        if let Some(id) = map_conversion_id {
-            let entity = decoder.decode_by_id(id)?;
-            // A refused conversion claims nothing. With no IfcProjectedCRS to
-            // claim georeferencing either, the fallbacks run, as in TS.
-            if !Self::parse_map_conversion(&entity, &mut georef) && projected_crs_id.is_none() {
-                if let Some(georef) = Self::extract_from_pset(decoder, entity_types)? {
-                    return Ok(Some(georef));
-                }
-                return Self::extract_from_site(decoder, entity_types);
+        let parsed = match map_conversion_id {
+            Some(id) => Self::parse_map_conversion(&decoder.decode_by_id(id)?, &mut georef),
+            None => false,
+        };
+
+        // No map conversion, or a refused one that no IfcProjectedCRS stands in
+        // for: try the IFC2X3 property set fallback, then the legacy IfcSite
+        // lat/long fallback (TS parity).
+        if map_conversion_id.is_none() || (!parsed && projected_crs_id.is_none()) {
+            if let Some(georef) = Self::extract_from_pset(decoder, entity_types)? {
+                return Ok(Some(georef));
             }
+            return Self::extract_from_site(decoder, entity_types);
         }
 
         // Parse IfcProjectedCRS

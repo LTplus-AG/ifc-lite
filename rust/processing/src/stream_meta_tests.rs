@@ -286,7 +286,7 @@ fn browser_and_native_pick_the_same_frame_for_a_sub_threshold_anchor() {
     let content = IFC_SUB_THRESHOLD_ANCHOR.as_bytes();
     let anchor = (8500.0, 0.0, 0.0);
     assert_eq!(
-        ifc_lite_core::scan_placement_bounds(content).rtc_offset(),
+        ifc_lite_core::scan_placement_bounds(content).rtc_offset(1.0),
         Some(anchor),
         "premise: the bounds fallback answers with the in-threshold bbox centre"
     );
@@ -349,11 +349,11 @@ fn small_file_single_bounds_fallback_scales_millimetres_before_the_gate() {
 
     assert!((meta.length_unit_scale - 0.001).abs() < 1e-12, "mm project");
     assert!(
-        !meta.needs_shift,
+        !meta.frame.needs_shift(),
         "a 25 m mm model must not be re-based, got offset {:?}",
-        meta.rtc_offset
+        meta.frame.rtc_offset()
     );
-    assert_eq!(meta.rtc_offset, (0.0, 0.0, 0.0));
+    assert_eq!(meta.frame.rtc_offset(), (0.0, 0.0, 0.0));
 }
 
 /// The other direction of the same gate: a KILOMETRE model 5 000 km out
@@ -390,6 +390,10 @@ fn small_file_single_bounds_fallback_rebases_a_kilometre_model() {
     );
 
     assert!((meta.length_unit_scale - 1000.0).abs() < 1e-9, "km project");
-    assert!(meta.needs_shift, "5 000 km out must be re-based");
-    assert_eq!(meta.rtc_offset, (5_000_000.0, 5_000_000.0, 0.0), "offset in metres");
+    assert!(meta.frame.needs_shift(), "5 000 km out must be re-based");
+    assert_eq!(
+        meta.frame.rtc_offset(),
+        (5_000_000.0, 5_000_000.0, 0.0),
+        "offset in metres"
+    );
 }

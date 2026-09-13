@@ -95,7 +95,7 @@ fn native_to_baked_matches_convert_mesh_to_site_local_per_vertex() {
     convert_mesh_to_site_local(&mut mesh, Some(&site));
 
     let b = native_to_baked(
-        Some(SITE_LOCAL_MESH_COORDINATE_SPACE),
+        MeshCoordinateSpace::SiteLocal,
         Some(&site),
         [rtc[0], rtc[1], rtc[2]],
     );
@@ -130,10 +130,10 @@ fn native_to_baked_matches_convert_mesh_to_site_local_per_vertex() {
 fn non_site_local_tiers_carry_only_the_rtc_translation() {
     let site = yawed_matrix((7.0, 8.0, 9.0));
     for space in [
-        MODEL_RTC_MESH_COORDINATE_SPACE,
-        RAW_IFC_MESH_COORDINATE_SPACE,
+        MeshCoordinateSpace::ModelRtc,
+        MeshCoordinateSpace::RawIfc,
     ] {
-        let b = native_to_baked(Some(space), Some(&site), [7.0, 8.0, 9.0]);
+        let b = native_to_baked(space, Some(&site), [7.0, 8.0, 9.0]);
         #[rustfmt::skip]
         let want = [
             1.0, 0.0, 0.0, -7.0,
@@ -141,12 +141,12 @@ fn non_site_local_tiers_carry_only_the_rtc_translation() {
             0.0, 0.0, 1.0, -9.0,
             0.0, 0.0, 0.0, 1.0,
         ];
-        assert_eq!(b, want, "{space} must not pick up the site rotation");
+        assert_eq!(b, want, "{space:?} must not pick up the site rotation");
     }
     // A translation-only site placement is `site_local` but rotates nothing
     // (#4176), so its basis is a pure translation too.
     let b = native_to_baked(
-        Some(SITE_LOCAL_MESH_COORDINATE_SPACE),
+        MeshCoordinateSpace::SiteLocal,
         Some(&translation_only_matrix((7.0, 8.0, 9.0))),
         [7.0, 8.0, 9.0],
     );

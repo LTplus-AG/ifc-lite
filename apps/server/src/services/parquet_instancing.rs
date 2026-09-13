@@ -31,12 +31,12 @@ use rustc_hash::FxHashMap;
 /// Z-up: this route swaps to Y-up at emission time ([`rotation_zup_to_yup`]),
 /// not before collation, so no axis-swap factor belongs in this basis.
 pub(crate) fn baked_basis_zup(
-    mesh_coordinate_space: Option<&str>,
+    mesh_coordinate_space: Option<ifc_lite_processing::MeshCoordinateSpace>,
     site_transform: Option<&[f64]>,
     origin_shift: [f64; 3],
 ) -> Matrix4<f64> {
     Matrix4::from_row_slice(&ifc_lite_processing::native_to_baked(
-        mesh_coordinate_space,
+        mesh_coordinate_space.unwrap_or(ifc_lite_processing::MeshCoordinateSpace::RawIfc),
         site_transform,
         origin_shift,
     ))

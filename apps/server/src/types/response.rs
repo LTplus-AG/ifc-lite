@@ -12,7 +12,7 @@ use ifc_lite_processing::SymbolicDataWithProvenance;
 use serde::{Deserialize, Serialize};
 
 // Re-export shared types from the processing crate
-pub use ifc_lite_processing::{ModelMetadata, ParseResponse, ProcessingStats};
+pub use ifc_lite_processing::{MeshCoordinateSpace, ModelMetadata, ParseResponse, ProcessingStats};
 
 /// Metadata-only response (no geometry).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,9 +77,10 @@ pub enum StreamEvent {
         metadata: ModelMetadata,
         /// Cache key for the result.
         cache_key: String,
-        /// Coordinate space of the mesh vertices: `"site_local"`, `"model_rtc"`, or `"raw_ifc"`.
+        /// Coordinate space of the mesh vertices; the wire spelling is
+        /// [`MeshCoordinateSpace`]'s.
         #[serde(skip_serializing_if = "Option::is_none")]
-        mesh_coordinate_space: Option<String>,
+        mesh_coordinate_space: Option<MeshCoordinateSpace>,
         /// IfcSite ObjectPlacement as a column-major 4×4 matrix (metres).
         #[serde(skip_serializing_if = "Option::is_none")]
         site_transform: Option<Vec<f64>>,
@@ -148,7 +149,7 @@ mod tests {
             stats: ProcessingStats::default(),
             metadata: ModelMetadata::default(),
             cache_key: "k".to_string(),
-            mesh_coordinate_space: Some("site_local".to_string()),
+            mesh_coordinate_space: Some(MeshCoordinateSpace::SiteLocal),
             site_transform: Some(vec![1.0; 16]),
             building_transform: Some(vec![2.0; 16]),
             symbolic_data: SymbolicDataWithProvenance::default(),

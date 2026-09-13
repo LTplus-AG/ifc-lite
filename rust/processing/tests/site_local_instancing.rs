@@ -18,8 +18,8 @@
 //! instancing metadata survived the site-local tier.
 
 use ifc_lite_processing::{
-    process_geometry_streaming_filtered_with_options, MeshData, OpeningFilterMode,
-    StreamingOptions,
+    process_geometry_streaming_filtered_with_options, MeshCoordinateSpace, MeshData,
+    OpeningFilterMode, StreamingOptions,
 };
 
 /// Site placement translation (metres); zero rotation (RefDirection omitted).
@@ -117,8 +117,8 @@ fn run(rotation: Option<&str>) -> Vec<MeshData> {
         |_| {},
     );
     assert_eq!(
-        result.mesh_coordinate_space.as_deref(),
-        Some("site_local"),
+        result.mesh_coordinate_space,
+        MeshCoordinateSpace::SiteLocal,
         "a translated IfcSite must select the site_local tier"
     );
     result.meshes
@@ -155,7 +155,7 @@ fn translated_only_site_keeps_instancing_metadata() {
     // shared IfcRepresentationMap materialize as meshes (the don't-bake
     // instancing_plan is forced to None for site_local coord spaces, so
     // there is no `result.instances` fallback path here — see
-    // `processor/mod.rs`'s SITE_LOCAL_MESH_COORDINATE_SPACE guard). The two
+    // the `MeshCoordinateSpace::SiteLocal` guard in `processor/mod.rs`). The two
     // assertions above pass on #48 alone, so a regression that dropped #58
     // — or produced it without `InstanceMeta` — would slip past them
     // undetected. Require both express ids to be present, each carrying

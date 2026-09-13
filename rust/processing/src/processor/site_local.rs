@@ -2,28 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::mesh_frame::{MeshCoordinateSpace, PLACEMENT_IDENTITY_EPSILON};
 use crate::types::mesh::MeshData;
-
-/// The `ProcessingResult::mesh_coordinate_space` tag for the tier in which
-/// [`convert_mesh_to_site_local`] rotated the baked vertices. Public so a
-/// downstream consumer selects the tier by the same constant the pipeline set
-/// rather than by a string literal of its own.
-pub const SITE_LOCAL_MESH_COORDINATE_SPACE: &str = "site_local";
-pub(super) const MODEL_RTC_MESH_COORDINATE_SPACE: &str = "model_rtc";
-pub(super) const RAW_IFC_MESH_COORDINATE_SPACE: &str = "raw_ifc";
-
-/// Epsilon (metres) below which a placement translation is treated as identity.
-/// Avoids overriding a detected RTC anchor when `IfcSite` sits at the origin
-/// while the geometry itself carries large world coordinates.
-const PLACEMENT_IDENTITY_EPSILON: f64 = 1e-9;
-
-#[inline]
-pub(super) fn translation_is_nonidentity(t: (f64, f64, f64)) -> bool {
-    t.0.abs() > PLACEMENT_IDENTITY_EPSILON
-        || t.1.abs() > PLACEMENT_IDENTITY_EPSILON
-        || t.2.abs() > PLACEMENT_IDENTITY_EPSILON
-}
-
 /// True when a column-major 4x4 matrix's 3×3 rotation block is (within
 /// [`PLACEMENT_IDENTITY_EPSILON`]) the identity — i.e. the placement it came
 /// from is a pure translation, contributing no rotation of its own.
@@ -120,7 +100,7 @@ pub(crate) fn site_local_rotation_invalidates_captured_transforms(
 /// Row-major, to match the glTF exporter's matrix module, which composes its
 /// Z-up→Y-up swap on top of this.
 pub fn native_to_baked(
-    mesh_coordinate_space: Option<&str>,
+    mesh_coordinate_space: MeshCoordinateSpace,
     site_transform: Option<&[f64]>,
     origin_shift: [f64; 3],
 ) -> [f64; 16] {
@@ -128,7 +108,7 @@ pub fn native_to_baked(
     // result are the COLUMNS of the column-major site matrix — identity
     // everywhere else.
     let rot = site_transform
-        .filter(|_| mesh_coordinate_space == Some(SITE_LOCAL_MESH_COORDINATE_SPACE))
+        .filter(|_| mesh_coordinate_space == MeshCoordinateSpace::SiteLocal)
         .filter(|m| m.len() >= 16 && !rotation_is_identity(m))
         .map(|m| [m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]])
         .unwrap_or([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);

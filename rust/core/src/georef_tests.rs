@@ -122,68 +122,6 @@ fn test_georef_map_to_local_with_rotation_round_trips_local_to_map() {
     assert!((z - lz).abs() < 1e-9, "map_to_local must invert local_to_map (z), got {z}");
 }
 
-#[test]
-fn test_rtc_offset() {
-    let positions = vec![
-        500000.0f32,
-        5000000.0,
-        0.0,
-        500010.0,
-        5000010.0,
-        10.0,
-        500020.0,
-        5000020.0,
-        20.0,
-    ];
-
-    let offset = RtcOffset::from_positions(&positions);
-    assert!(offset.is_significant());
-    assert!((offset.x - 500010.0).abs() < 1.0);
-    assert!((offset.y - 5000010.0).abs() < 1.0);
-}
-
-#[test]
-fn test_rtc_apply() {
-    let mut positions = vec![500000.0f32, 5000000.0, 0.0, 500010.0, 5000010.0, 10.0];
-
-    let offset = RtcOffset {
-        x: 500000.0,
-        y: 5000000.0,
-        z: 0.0,
-    };
-
-    offset.apply(&mut positions);
-
-    assert!((positions[0] - 0.0).abs() < 1e-5);
-    assert!((positions[1] - 0.0).abs() < 1e-5);
-    assert!((positions[3] - 10.0).abs() < 1e-5);
-    assert!((positions[4] - 10.0).abs() < 1e-5);
-}
-
-/// `apply`'s z-channel must subtract `self.z`, not `self.x`/`self.y`.
-///
-/// `test_rtc_apply` above uses `z: 0.0` and never asserts on
-/// `positions[2]`/`positions[5]`, so the third component of `chunk[2] =
-/// chunk[2] - self.z` was free to read the wrong field of `self` — a
-/// `self.x`-for-`self.z` swap left that test fully green. Distinct,
-/// non-zero x/y/z offsets and asserting all three components pins it.
-#[test]
-fn test_rtc_apply_z_channel_uses_z_offset() {
-    let mut positions = vec![100.0f32, 200.0, 300.0];
-
-    let offset = RtcOffset {
-        x: 10.0,
-        y: 20.0,
-        z: 30.0,
-    };
-
-    offset.apply(&mut positions);
-
-    assert!((positions[0] - 90.0).abs() < 1e-5);
-    assert!((positions[1] - 180.0).abs() < 1e-5);
-    assert!((positions[2] - 270.0).abs() < 1e-5);
-}
-
 /// The `-0` leniency (#3546 residual): a writer that signs a zero-magnitude
 /// degree component of `IfcSite.RefLatitude`/`RefLongitude` (e.g. `(-0, 30,
 /// 0)` for 0°30'S) must still land the site in the correct hemisphere.
@@ -496,20 +434,6 @@ fn rotation_only_map_conversion_is_reported() {
     assert!(geo.has_map_conversion);
     assert_eq!(geo.crs_name, None);
     assert!((geo.rotation().to_degrees() - 30.0).abs() < 1e-9);
-}
-
-/// Buffers of length 1 or 2 hold no complete position: the offset must be
-/// zero, not `0.0 / 0` = NaN, which `apply` would then write into every
-/// vertex.
-#[test]
-fn rtc_from_positions_with_no_whole_triple_is_zero_not_nan() {
-    for buffer in [&[1.0f32][..], &[1.0f32, 2.0][..]] {
-        let offset = RtcOffset::from_positions(buffer);
-        assert_eq!((offset.x, offset.y, offset.z), (0.0, 0.0, 0.0), "len {}", buffer.len());
-    }
-    // A trailing partial triple is ignored, not averaged in.
-    let offset = RtcOffset::from_positions(&[1.0, 2.0, 3.0, 99.0]);
-    assert_eq!((offset.x, offset.y, offset.z), (1.0, 2.0, 3.0));
 }
 
 /// A non-numeric component in a compound plane angle refuses the WHOLE

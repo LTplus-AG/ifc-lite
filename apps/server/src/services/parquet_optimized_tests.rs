@@ -616,7 +616,7 @@
         );
 
         let basis = baked_basis_zup(
-            Some(ifc_lite_processing::SITE_LOCAL_MESH_COORDINATE_SPACE),
+            Some(ifc_lite_processing::MeshCoordinateSpace::SiteLocal),
             Some(&site_zup),
             rtc,
         );

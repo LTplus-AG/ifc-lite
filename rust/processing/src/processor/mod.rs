@@ -39,9 +39,7 @@ mod schema_detection;
 mod site_local;
 
 pub use quick_metadata::is_quick_spatial_type_ci;
-pub use site_local::{
-    convert_mesh_to_site_local, native_to_baked, SITE_LOCAL_MESH_COORDINATE_SPACE,
-};
+pub use site_local::{convert_mesh_to_site_local, native_to_baked};
 pub(crate) use site_local::site_local_rotation_invalidates_captured_transforms;
 
 use jobs::{build_color_updates_for_jobs, process_entity_job};
@@ -57,9 +55,7 @@ use quick_metadata::{
     build_quick_spatial_tree_node, extract_name_from_args, extract_storey_elevation_from_args,
     parse_step_arguments, parse_step_ref, parse_step_ref_list, QuickSpatialNodeEntry,
 };
-use site_local::{
-    translation_is_nonidentity, MODEL_RTC_MESH_COORDINATE_SPACE, RAW_IFC_MESH_COORDINATE_SPACE,
-};
+use crate::mesh_frame::{MeshCoordinateSpace, MeshFrame};
 
 /// Wall-clock timer for diagnostic `ProcessingStats`. On wasm32
 /// `std::time::Instant::now()` traps ("time not implemented on this platform"),
@@ -121,8 +117,8 @@ pub struct ProcessingResult {
     /// and each occurrence here places it by a template-relative transform. Always
     /// empty when instancing is off, so exporters/determinism see the flat output.
     pub instances: Vec<InstanceRecord>,
-    /// Declares the coordinate space used by serialized mesh vertices.
-    pub mesh_coordinate_space: Option<String>,
+    /// The frame the mesh vertices are expressed in.
+    pub mesh_coordinate_space: MeshCoordinateSpace,
     /// IfcSite ObjectPlacement as column-major 4x4 matrix (in meters).
     pub site_transform: Option<Vec<f64>>,
     /// IfcBuilding ObjectPlacement as column-major 4x4 matrix (in meters).
@@ -1087,28 +1083,15 @@ pub fn process_geometry_streaming_filtered_with_options(
     let detected_rtc_offset =
         router.detect_rtc_offset_with_fallback(&rtc_jobs, &mut decoder, content);
 
-    // Three-tier coordinate-space selection:
-    //   1. `site_local`: IfcSite placement has a non-identity translation.
-    //      Vertices are expressed relative to the site origin — small floats
-    //      AND a meaningful, relatable frame (useful for coordination).
-    //   2. `model_rtc`:  IfcSite is identity (or missing) but geometry still
-    //      lives at large world coordinates. Subtract a detected anchor so
-    //      f32 precision is preserved.
-    //   3. `raw_ifc`:    neither anchor applies; geometry is already small.
-    let site_rtc = site_transform
+    // The three-tier frame selection lives on `MeshFrame::select`; this is
+    // the site-tier caller (the browser pre-pass passes no site).
+    let site_translation = site_transform
         .as_ref()
-        .map(|st| (st[12], st[13], st[14])) // column-major: translation at 12,13,14
-        .filter(|t| translation_is_nonidentity(*t));
-    let detected_has_offset = translation_is_nonidentity(detected_rtc_offset);
-    let (rtc_offset, coord_space) = if let Some(site) = site_rtc {
-        (site, SITE_LOCAL_MESH_COORDINATE_SPACE)
-    } else if detected_has_offset {
-        (detected_rtc_offset, MODEL_RTC_MESH_COORDINATE_SPACE)
-    } else {
-        ((0.0, 0.0, 0.0), RAW_IFC_MESH_COORDINATE_SPACE)
-    };
-    let has_rtc_offset = coord_space != RAW_IFC_MESH_COORDINATE_SPACE;
-    router.set_rtc_offset(rtc_offset);
+        .map(|st| (st[12], st[13], st[14])); // column-major: translation at 12,13,14
+    let frame = MeshFrame::select(site_translation, detected_rtc_offset);
+    let coord_space = frame.coordinate_space();
+    let has_rtc_offset = frame.needs_shift();
+    router.set_rtc_offset(frame.rtc_offset());
     let preprocess_time = preprocess_start.elapsed();
     preprocess_span.record("phase_ms", preprocess_time.as_millis() as u64);
     drop(preprocess_span);
@@ -1221,7 +1204,7 @@ pub fn process_geometry_streaming_filtered_with_options(
     // a follow-up, and #4118 part B deliberately does not touch it.
     let instancing_plan: Option<ifc_lite_geometry::MappedInstancePlan> = (options.enable_instancing
         && options.retain_emitted_meshes
-        && coord_space != SITE_LOCAL_MESH_COORDINATE_SPACE)
+        && coord_space != MeshCoordinateSpace::SiteLocal)
         .then(|| {
             Arc::new(
                 mapped_item_plan
@@ -1383,7 +1366,7 @@ pub fn process_geometry_streaming_filtered_with_options(
             );
         }
         let site_local_rotation: Option<&Vec<f64>> =
-            if coord_space == SITE_LOCAL_MESH_COORDINATE_SPACE {
+            if coord_space == MeshCoordinateSpace::SiteLocal {
                 site_transform.as_ref()
             } else {
                 None
@@ -1616,7 +1599,7 @@ pub fn process_geometry_streaming_filtered_with_options(
     ProcessingResult {
         meshes,
         instances,
-        mesh_coordinate_space: Some(coord_space.to_string()),
+        mesh_coordinate_space: coord_space,
         site_transform,
         building_transform,
         metadata: ModelMetadata {

@@ -93,7 +93,10 @@ pub(super) fn baked_basis_yup(rtc_zup: [f64; 3], site_zup: Option<&[f64]>) -> [f
     mat4_mul(
         &S_YUP,
         &ifc_lite_processing::native_to_baked(
-            site_zup.map(|_| ifc_lite_processing::SITE_LOCAL_MESH_COORDINATE_SPACE),
+            site_zup.map_or(
+                ifc_lite_processing::MeshCoordinateSpace::RawIfc,
+                |_| ifc_lite_processing::MeshCoordinateSpace::SiteLocal,
+            ),
             site_zup,
             rtc_zup,
         ),
@@ -111,7 +114,10 @@ pub(super) fn baked_basis_yup(rtc_zup: [f64; 3], site_zup: Option<&[f64]>) -> [f
 /// uses to un-rotate the vertices in the first place.
 fn baked_basis_yup_inverse(rtc_zup: [f64; 3], site_zup: Option<&[f64]>) -> [f64; 16] {
     let b = ifc_lite_processing::native_to_baked(
-        site_zup.map(|_| ifc_lite_processing::SITE_LOCAL_MESH_COORDINATE_SPACE),
+        site_zup.map_or(
+            ifc_lite_processing::MeshCoordinateSpace::RawIfc,
+            |_| ifc_lite_processing::MeshCoordinateSpace::SiteLocal,
+        ),
         site_zup,
         rtc_zup,
     );

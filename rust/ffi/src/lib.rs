@@ -18,6 +18,12 @@
 //! aborts the entire host CAD process instead of returning error code `3`.
 //! `server-release` inherits `release` but restores `panic = "unwind"`.
 
+// Keep this declaration before every other item-level attribute. The revert
+// oracle maps the sibling test module from here; placing it later in this long
+// file can make an unrelated `#[cfg(...)]` look like its owner.
+#[cfg(test)]
+mod tests;
+
 // Native global allocator (#1623): the platform system heap's global lock was
 // ~70% of native geometry self-time and capped rayon scaling to ~1.8x on
 // IfcMappedItem-heavy models; mimalloc's per-thread heaps lifted an all-cores
@@ -28,9 +34,7 @@
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use ifc_lite_processing::{
-    process_geometry_filtered, OpeningFilterMode, ParseResponse, ProcessingResult,
-};
+use ifc_lite_processing::{process_geometry_filtered, OpeningFilterMode, ParseResponse};
 use std::backtrace::Backtrace;
 use std::cell::RefCell;
 use std::io::Write;
@@ -102,70 +106,9 @@ fn ensure_panic_logging() {
     });
 }
 
-/// Threshold in meters below which a site translation is treated as identity
-/// (origin-anchored) and there is nothing to subtract.
-const LARGE_COORD_THRESHOLD: f64 = 1000.0;
-
-/// Coordinate-space tags emitted by the processing pipeline in
-/// `ProcessingResult::mesh_coordinate_space` (see `ParseResponse` docs). The
-/// pipeline keeps these private, so the FFI layer mirrors the serialized
-/// string contract here.
-const SITE_LOCAL_MESH_COORDINATE_SPACE: &str = "site_local";
-const RAW_IFC_MESH_COORDINATE_SPACE: &str = "raw_ifc";
-
-/// Post-process meshes so all positions end up in uniform site-local coordinates.
-///
-/// The decision is driven by the coordinate-space tier the pipeline already
-/// computed (`result.mesh_coordinate_space`), not by sniffing vertex magnitudes:
-/// - `raw_ifc`: no RTC anchor was applied, so vertices are still in world space.
-///   Subtract the `IfcSite` translation from *every* mesh and relabel the result
-///   as `site_local`.
-/// - `site_local` / `model_rtc`: already anchored upstream — leave untouched.
-///   (`model_rtc`'s anchor is not the site translation, so subtracting it here
-///   would double-offset the geometry.)
-/// - unknown / absent: do nothing (conservative).
-///
-/// Keying off the tier instead of a per-mesh `first vertex > 1 km` heuristic
-/// fixes two failure modes: large/campus sites whose site-local meshes legitimately
-/// start far from the local origin (no longer wrongly shifted), and world-space
-/// meshes that happen to start near the origin (no longer wrongly skipped).
-fn normalize_to_site_local(result: &mut ProcessingResult) {
-    // Only `raw_ifc` meshes are still in world space and need shifting.
-    if result.mesh_coordinate_space.as_deref() != Some(RAW_IFC_MESH_COORDINATE_SPACE) {
-        return;
-    }
-
-    let (site_tx, site_ty, site_tz) = match result.site_transform {
-        // Column-major 4x4: translation at indices 12, 13, 14.
-        Some(ref st) if st.len() >= 16 => (st[12], st[13], st[14]),
-        _ => return,
-    };
-
-    // If the site sits at (near) the origin there is nothing to subtract.
-    if site_tx.abs() < LARGE_COORD_THRESHOLD
-        && site_ty.abs() < LARGE_COORD_THRESHOLD
-        && site_tz.abs() < LARGE_COORD_THRESHOLD
-    {
-        return;
-    }
-
-    for mesh in &mut result.meshes {
-        // Subtract the site translation with f64 precision, then store as f32.
-        for chunk in mesh.positions.chunks_exact_mut(3) {
-            chunk[0] = (chunk[0] as f64 - site_tx) as f32;
-            chunk[1] = (chunk[1] as f64 - site_ty) as f32;
-            chunk[2] = (chunk[2] as f64 - site_tz) as f32;
-        }
-    }
-
-    // The meshes are now anchored to the site; advertise that to the caller so
-    // it isn't told `raw_ifc` for data we just relocated.
-    result.mesh_coordinate_space = Some(SITE_LOCAL_MESH_COORDINATE_SPACE.to_string());
-}
-
 /// Shared body of both parse entry points: read the file, run geometry
-/// processing inside the large-stack pool under `catch_unwind`, normalize mesh
-/// coordinates, and serialize the response to JSON bytes.
+/// processing inside the large-stack pool under `catch_unwind`, and serialize
+/// the response to JSON bytes.
 ///
 /// Returns the JSON buffer on success, or one of the FFI error codes on failure
 /// (`2` read, `3` processing panic, `4` serialization) — `0`/`1` are decided by
@@ -183,15 +126,12 @@ fn parse_impl(path_str: &str, mode: OpeningFilterMode) -> Result<Vec<u8>, i32> {
 
     CURRENT_IFC_PATH.with(|p| p.borrow_mut().clear());
 
-    let mut result = result.map_err(|_| 3)?;
-
-    // Normalize all meshes to uniform site-local coordinates.
-    normalize_to_site_local(&mut result);
+    let result = result.map_err(|_| 3)?;
 
     let response = ParseResponse {
         cache_key: String::new(),
         meshes: result.meshes,
-        mesh_coordinate_space: result.mesh_coordinate_space,
+        mesh_coordinate_space: Some(result.mesh_coordinate_space),
         site_transform: result.site_transform,
         building_transform: result.building_transform,
         metadata: result.metadata,
@@ -313,6 +253,3 @@ pub unsafe extern "C" fn ifc_lite_free(ptr: *mut u8, len: usize) {
         let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, len));
     }
 }
-
-#[cfg(test)]
-mod tests;

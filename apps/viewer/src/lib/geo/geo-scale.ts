@@ -159,14 +159,17 @@ export function detectScaleUnitMismatch(
   const lus = lengthUnitScale && lengthUnitScale > 0 ? lengthUnitScale : 1;
   const mus = mapUnitScale && mapUnitScale > 0 ? mapUnitScale : 1;
   const spec = specAxisScales(conversion, mus, lus);
-  const axis = AXES.reduce((a, b) => (offUnity(spec[b]) > offUnity(spec[a]) ? b : a));
-  const specEffectiveScale = spec[axis];
-  if (offUnity(specEffectiveScale) <= NEAR_UNITY) return null;
-  const effectiveScale = getEffectiveAxisScales(conversion, mus, lus)[axis];
+  const worst = (s: AxisScales) => AXES.reduce((a, b) => (offUnity(s[b]) > offUnity(s[a]) ? b : a));
+  if (offUnity(spec[worst(spec)]) <= NEAR_UNITY) return null;
+  // Report an axis ifc-lite still draws off-size before one it compensates,
+  // so a compensated Z cannot hide X and Y placed at 0.5.
+  const placed = getEffectiveAxisScales(conversion, mus, lus);
+  const compensated = offUnity(placed[worst(placed)]) <= NEAR_UNITY;
+  const axis = compensated ? worst(spec) : worst(placed);
   return {
-    effectiveScale,
-    specEffectiveScale,
-    compensated: offUnity(effectiveScale) <= NEAR_UNITY,
+    effectiveScale: placed[axis],
+    specEffectiveScale: spec[axis],
+    compensated,
     rawScale: conversion.scale ?? 1.0,
     mapUnitScale: mus,
     lengthUnitScale: lus,

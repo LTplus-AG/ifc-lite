@@ -445,6 +445,12 @@ END-ISO-10303-21;
       assert.strictEqual(found!.expectedScale, 0.5);
       assert.strictEqual(found!.specEffectiveScale, 2);
       assert.strictEqual(found!.effectiveScale, 2);
+      // mm project, metre map, Scale $, factors (0.5, 0.5, 1): Z is furthest
+      // from 1 on paper (1000) and compensated, but X and Y are drawn at 0.5.
+      const partly = detectScaleUnitMismatch({ factorX: 0.5, factorY: 0.5, factorZ: 1 }, 1, 0.001);
+      assert.ok(partly);
+      assert.strictEqual(partly!.compensated, false);
+      assert.strictEqual(partly!.effectiveScale, 0.5);
     });
 
     it('returns null for spec-compliant Scale (mm/m with Scale=0.001)', () => {

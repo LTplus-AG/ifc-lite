@@ -184,7 +184,7 @@ pub use contour_bool2d::{
     boolean_2d, boolean_2d_fixed_grid, ContourFillRule, resolve_2d, sanitize as sanitize_contours, BooleanOp2D, ContourSet, Ring2D,
 };
 pub use clash_solid::{intersection_solid, DegenerateReason, IntersectionSolid};
-pub use csg::{calculate_normals, ClippingProcessor, Plane, Triangle};
+pub use csg::{calculate_normals, ClippingProcessor, GroupCut, GroupReject, Plane, Triangle};
 pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 pub use error::{Error, Result};
 pub use geom_hash::{

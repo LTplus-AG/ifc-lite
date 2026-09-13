@@ -1285,3 +1285,270 @@ fn provisional_batch_attempts_spend_the_monotonic_work_budget() {
         "the refusal must be observable as OperandBudgetExhausted; got {failures:?}"
     );
 }
+
+
+// Regression tests for #4639: an unreadable boolean operator executed as
+// DIFFERENCE, and an emptied intermediate ending a UNION chain, with the
+// one-record-per-dropped-operand bookkeeping around both.
+
+/// Two unit blocks side by side (`#2` is placed at x = 1), so the three
+/// operators give three different solids: DIFFERENCE leaves `#1`, UNION
+/// spans both, INTERSECTION is empty.
+const TWO_BLOCKS: &str = "#1=IFCBLOCK($,1.,1.,1.);\n\
+#2=IFCBLOCK(#3,1.,1.,1.);\n\
+#3=IFCAXIS2PLACEMENT3D(#4,$,$);\n\
+#4=IFCCARTESIANPOINT((1.,0.,0.));\n";
+
+fn process_root(data: &str, root: u32) -> (Result<Mesh>, Vec<BoolFailure>) {
+    let content = wrap_ifc(data);
+    let mut decoder = EntityDecoder::new(&content);
+    let entity = decoder.decode_by_id(root).expect("decode root");
+    let processor = BooleanClippingProcessor::new();
+    let schema = IfcSchema::new();
+    let out = processor.process(&entity, &mut decoder, &schema, Default::default());
+    (out, processor.take_failures())
+}
+
+fn assert_unreadable_operator_recorded(failures: &[BoolFailure]) {
+    assert!(
+        failures.iter().any(|f| matches!(
+            &f.reason,
+            BoolFailureReason::UnknownBooleanOperator(op) if op == "<unreadable>"
+        )),
+        "the unreadable operator must be on record; got {failures:?}"
+    );
+}
+
+/// An `IfcBooleanResult` whose `Operator` is `$` was executed as a
+/// DIFFERENCE: a different solid from the file's, and one the existing
+/// `UnknownBooleanOperator` record could never report because the default
+/// swallowed it first. UNION and INTERSECTION are as legal there as
+/// DIFFERENCE, so there is no safe default: the host comes back un-cut and
+/// the unreadable operator is on record.
+#[test]
+fn an_unreadable_operator_on_a_boolean_result_is_recorded_not_subtracted() {
+    let data = format!("{TWO_BLOCKS}#10=IFCBOOLEANRESULT($,#1,#2);\n");
+    let (out, failures) = process_root(&data, 10);
+    let mesh = out.expect("an unreadable operator hands the first operand back");
+    assert!(!mesh.is_empty());
+    assert_unreadable_operator_recorded(&failures);
+}
+
+/// The same `$` on an `IfcBooleanClippingResult` IS a DIFFERENCE: the schema
+/// allows no other operator there, so the default is the spec, not a guess.
+/// The cutter is a plane at z = 0.5 with the material above it; the clip
+/// keeps the lower half of the block and records nothing.
+#[test]
+fn an_unreadable_operator_on_a_clipping_result_still_clips() {
+    let data = "#1=IFCBLOCK($,1.,1.,1.);\n\
+#20=IFCHALFSPACESOLID(#21,.F.);\n\
+#21=IFCPLANE(#22);\n\
+#22=IFCAXIS2PLACEMENT3D(#23,$,$);\n\
+#23=IFCCARTESIANPOINT((0.,0.,0.5));\n\
+#10=IFCBOOLEANCLIPPINGRESULT($,#1,#20);\n";
+    let (out, failures) = process_root(data, 10);
+    let mesh = out.expect("a clipping result with an unreadable operator is a DIFFERENCE");
+    let (_, hi) = mesh.bounds();
+    assert!(
+        (hi.z - 0.5).abs() < 1e-5,
+        "the plane clip must have run (max z {}), as DIFFERENCE is the only legal operator",
+        hi.z
+    );
+    assert!(failures.is_empty(), "nothing to record: {failures:?}");
+}
+
+/// `collect_polygonal_chain` had the same default: a `$`-operator
+/// `IfcBooleanResult` above a polygonal-bounded cutter was folded into the
+/// DIFFERENCE chain. It must stop the chain instead.
+#[test]
+fn collect_polygonal_chain_stops_at_an_unreadable_operator() {
+    let content = wrap_ifc(
+        "#10=IFCBOOLEANRESULT($,#30,#20);\n\
+#30=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#50,#40);\n\
+#20=IFCPOLYGONALBOUNDEDHALFSPACE($,$,$,$);\n\
+#40=IFCPOLYGONALBOUNDEDHALFSPACE($,$,$,$);\n\
+#50=IFCBLOCK($,1.,1.,1.);\n",
+    );
+    let (base_id, cutters) = collect_with_timeout(content, 10);
+    assert_eq!(base_id, 10, "the chain must stop AT the unreadable node");
+    assert!(cutters.is_empty(), "nothing below an unreadable operator is collected: {cutters:?}");
+}
+
+/// `#5` meshes EMPTY as an operand because no built-in processor takes its
+/// type, so the operand walk records `UnsupportedOperand` for it. It was an
+/// `IfcSphere` until #4560 routed operands through the router's table, which
+/// meshes spheres; the triangle-count asserts below fail if this one gains a
+/// processor too.
+const UNSUPPORTED_BASE: &str = "#5=IFCRIGHTCIRCULARCYLINDER($,1.,0.5);\n";
+
+/// Count `(UnsupportedOperand, EmptyOperand)` records: one dropped operand
+/// must produce exactly one of them, the cause over the consequence.
+fn dropped_operand_records(failures: &[BoolFailure]) -> (usize, usize) {
+    let count = |pred: fn(&BoolFailureReason) -> bool| failures.iter().filter(|f| pred(&f.reason)).count();
+    (
+        count(|r| matches!(r, BoolFailureReason::UnsupportedOperand(_))),
+        count(|r| matches!(r, BoolFailureReason::EmptyOperand)),
+    )
+}
+
+/// `UNION(empty, B) = B`. An emptied first operand used to end the chain
+/// for every operator, so a UNION whose base meshed empty (here
+/// [`UNSUPPORTED_BASE`]) lost its second operand with no record beyond the
+/// base's. The union now carries on with `B`, and the base's loss is on
+/// record ONCE, as `UnsupportedOperand` (the cause), not also as
+/// `EmptyOperand`.
+#[test]
+fn a_union_over_an_emptied_first_operand_keeps_the_second() {
+    let data = format!("{TWO_BLOCKS}{UNSUPPORTED_BASE}#10=IFCBOOLEANRESULT(.UNION.,#5,#2);\n");
+    let (out, failures) = process_root(&data, 10);
+    let mesh = out.expect("UNION(empty, B) is B");
+    assert_eq!(mesh.triangle_count(), 12, "the second operand's block must survive");
+    let (lo, hi) = mesh.bounds();
+    assert!((lo.x - 1.0).abs() < 1e-6 && (hi.x - 2.0).abs() < 1e-6, "got {lo:?}..{hi:?}");
+    assert_eq!(dropped_operand_records(&failures), (1, 0), "one record for one dropped operand: {failures:?}");
+}
+
+/// The same unsupported base under TWO polygonal-bounded cutters, so the
+/// batched `try_union_polygonal_chain` meshes it first. That path used to
+/// return the empty base as a batched SUCCESS, skipping the sequential walk
+/// that sets the one-record flag, so the UNION above recorded `EmptyOperand`
+/// on top of the base's `UnsupportedOperand`. The batched path now hands
+/// the base's unsupported flag to the spine, which owns the one record.
+#[test]
+fn a_union_over_an_emptied_batched_base_records_the_loss_once() {
+    let data = format!(
+        "{TWO_BLOCKS}{UNSUPPORTED_BASE}\
+         #30=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#5,#40);\n\
+         #31=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#30,#41);\n\
+         #40=IFCPOLYGONALBOUNDEDHALFSPACE($,$,$,$);\n\
+         #41=IFCPOLYGONALBOUNDEDHALFSPACE($,$,$,$);\n\
+         #10=IFCBOOLEANRESULT(.UNION.,#31,#2);\n"
+    );
+    let (out, failures) = process_root(&data, 10);
+    let mesh = out.expect("UNION(DIFFERENCE(DIFFERENCE(empty, c1), c2), B) is B");
+    assert_eq!(mesh.triangle_count(), 12, "the second operand's block must survive");
+    assert_eq!(dropped_operand_records(&failures), (1, 0), "one record for one dropped operand: {failures:?}");
+}
+
+/// `#10` is an intersection of two disjoint blocks: an intermediate that
+/// meshes empty for a reason the operand walk did NOT already record.
+/// `#11` applies `op` to it and `#2`; `#12` unions `#11` with `#2`.
+fn emptied_intermediate_chain(op: &str) -> String {
+    format!(
+        "{TWO_BLOCKS}#10=IFCBOOLEANRESULT(.INTERSECTION.,#1,#2);\n\
+         #11=IFCBOOLEANRESULT(.{op}.,#10,#2);\n\
+         #12=IFCBOOLEANRESULT(.UNION.,#11,#2);\n"
+    )
+}
+
+/// A UNION over the emptied intermediate: the second operand survives and
+/// the emptied first operand is recorded as `EmptyOperand` under UNION.
+#[test]
+fn a_union_over_an_emptied_intermediate_records_the_loss_once() {
+    let (out, failures) = process_root(&emptied_intermediate_chain("UNION"), 11);
+    let mesh = out.expect("UNION(empty intersection, B) is B");
+    assert_eq!(mesh.triangle_count(), 12, "the second operand's block must survive");
+    let empty_unions = failures
+        .iter()
+        .filter(|f| f.op == BoolOp::Union && matches!(f.reason, BoolFailureReason::EmptyOperand))
+        .count();
+    assert_eq!(empty_unions, 1, "the emptied first operand is on record once: {failures:?}");
+}
+
+/// The counter-case: an emptied intermediate still empties a DIFFERENCE
+/// (nothing left to cut), as before.
+#[test]
+fn a_difference_over_an_emptied_intermediate_stays_empty() {
+    let (out, _) = process_root(&emptied_intermediate_chain("DIFFERENCE"), 11);
+    assert!(out.expect("resolves").is_empty(), "DIFFERENCE(empty, B) is empty");
+}
+
+/// The emptied DIFFERENCE above does not end the spine: a UNION higher up
+/// (`#12`) still gets its second operand. Returning at the first non-UNION
+/// node that sees an empty mesh loses `B` here just as the original
+/// every-operator early-out did; the node has to be skipped, not the spine.
+#[test]
+fn a_union_above_an_emptied_difference_still_keeps_its_second_operand() {
+    let (out, failures) = process_root(&emptied_intermediate_chain("DIFFERENCE"), 12);
+    let mesh = out.expect("UNION(DIFFERENCE(empty, x), B) is B");
+    assert_eq!(mesh.triangle_count(), 12, "the second operand's block must survive: {failures:?}");
+    assert_eq!(dropped_operand_records(&failures), (0, 1), "the emptied operand is on record once: {failures:?}");
+}
+
+/// An INTERSECTION whose cutter has no mesher records `UnsupportedOperand`
+/// and empties the mesh; the UNION above must not add `EmptyOperand` for the
+/// same dropped operand.
+#[test]
+fn a_union_over_an_intersection_with_an_unsupported_cutter_records_it_once() {
+    let data = format!(
+        "{TWO_BLOCKS}{UNSUPPORTED_BASE}#11=IFCBOOLEANRESULT(.INTERSECTION.,#1,#5);\n\
+         #12=IFCBOOLEANRESULT(.UNION.,#11,#2);\n"
+    );
+    let (out, failures) = process_root(&data, 12);
+    assert_eq!(out.expect("resolves").triangle_count(), 12, "the UNION keeps its second operand");
+    assert_eq!(dropped_operand_records(&failures), (1, 0), "one record for one dropped operand: {failures:?}");
+}
+
+/// The counter-case: the unsupported operand sits INSIDE the INTERSECTION's
+/// cutter (`#13` hands `#2` back un-cut), so the INTERSECTION with the
+/// disjoint block empties for its own reason. That emptying is a separate
+/// loss and the UNION above still records it: a flag set by any drop record
+/// made during the step would hide it.
+#[test]
+fn a_nested_drop_inside_an_intersection_cutter_does_not_hide_its_emptying() {
+    let data = format!(
+        "{TWO_BLOCKS}{UNSUPPORTED_BASE}#13=IFCBOOLEANRESULT(.DIFFERENCE.,#2,#5);\n\
+         #11=IFCBOOLEANRESULT(.INTERSECTION.,#1,#13);\n\
+         #12=IFCBOOLEANRESULT(.UNION.,#11,#2);\n"
+    );
+    let (out, failures) = process_root(&data, 12);
+    assert_eq!(out.expect("resolves").triangle_count(), 12, "the UNION keeps its second operand");
+    assert_eq!(dropped_operand_records(&failures), (1, 1), "two losses, two records: {failures:?}");
+}
+
+/// The one-record flag follows the emptiness, not the spine: a base that
+/// went down as `UnsupportedOperand` is rescued by the inner UNION, the
+/// INTERSECTION with a disjoint block empties the mesh AGAIN, and that
+/// second loss is a new one, recorded under the outer UNION. A flag that
+/// stays set from the base records only the base.
+#[test]
+fn a_second_emptying_after_a_rescued_base_is_recorded_on_its_own() {
+    let data = format!(
+        "{TWO_BLOCKS}{UNSUPPORTED_BASE}\
+         #10=IFCBOOLEANRESULT(.UNION.,#5,#2);\n\
+         #11=IFCBOOLEANRESULT(.INTERSECTION.,#10,#1);\n\
+         #12=IFCBOOLEANRESULT(.UNION.,#11,#2);\n"
+    );
+    let (out, failures) = process_root(&data, 12);
+    assert_eq!(out.expect("resolves").triangle_count(), 12, "the outer UNION keeps its second operand");
+    assert_eq!(dropped_operand_records(&failures), (1, 1), "two losses, two records: {failures:?}");
+}
+
+/// (#4639) The SecondOperand of an unreadable-operator node is never used, so
+/// a `$` there must not become an `Err`. The damage case: `#10` has an
+/// emptied first operand (so #4639 lets it run instead of ending the chain)
+/// and is itself the cutter of `#20`. Resolving its `$` first made `#20` an
+/// `Err` and dropped the valid host `#1`; recording first hands `#20` an
+/// empty cutter, and the host comes back un-cut.
+#[test]
+fn an_unreadable_operator_does_not_resolve_its_unused_second_operand() {
+    let data = format!(
+        "{TWO_BLOCKS}{UNSUPPORTED_BASE}#10=IFCBOOLEANRESULT($,#5,$);\n\
+         #20=IFCBOOLEANRESULT(.DIFFERENCE.,#1,#10);\n"
+    );
+    let (out, failures) = process_root(&data, 20);
+    let mesh = out.unwrap_or_else(|e| panic!("an unused `$` must not drop the parent's host: {e}"));
+    assert_eq!(mesh.triangle_count(), 12, "the parent's host #1 comes back un-cut");
+    assert_unreadable_operator_recorded(&failures);
+}
+
+/// An unreadable operator over an EMPTY first operand is still on record:
+/// skipping the node like a DIFFERENCE would lose the
+/// `UnknownBooleanOperator` record whenever the base meshed empty.
+#[test]
+fn an_unreadable_operator_over_an_empty_first_operand_is_still_recorded() {
+    let data = format!("{TWO_BLOCKS}{UNSUPPORTED_BASE}#10=IFCBOOLEANRESULT($,#5,#2);\n");
+    let (out, failures) = process_root(&data, 10);
+    assert!(out.expect("resolves").is_empty(), "the (empty) host comes back un-cut");
+    assert_unreadable_operator_recorded(&failures);
+}

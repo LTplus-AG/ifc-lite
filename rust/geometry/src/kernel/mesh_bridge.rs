@@ -129,6 +129,34 @@ pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
     tris_to_mesh(&boolean(&h, &c, BoolOp::Difference))
 }
 
+/// What [`subtract_many`] made of a cutter group.
+#[must_use]
+#[derive(Debug, Clone)]
+pub enum BatchSubtract {
+    /// The arrangement conformed (or its lenient batch passed the volume
+    /// oracle) and at least one cutter reaches the host solid. Empty when the
+    /// cutters engulf the host.
+    Cut(Mesh),
+    /// The arrangement conformed but no cutter reaches the host solid: every
+    /// host sub-triangle was kept and no cutter face was. The host is unchanged.
+    Unchanged,
+    /// No trustworthy arrangement: an unrecovered constraint remained and the
+    /// lenient batch failed the volume oracle, or the oracle itself tripped the
+    /// budget. The caller falls back to sequential per-cutter subtraction.
+    Nonconforming,
+}
+
+impl BatchSubtract {
+    /// `Cut` when the classifier changed the host, `Unchanged` otherwise.
+    fn classified(tris: &[Tri], changed: bool) -> Self {
+        if changed {
+            Self::Cut(tris_to_mesh(tris))
+        } else {
+            Self::Unchanged
+        }
+    }
+}
+
 /// `host − (∪ cutters)` as a `Mesh` — the batched void-group subtract.
 ///
 /// The cutters MUST be pairwise disjoint (the router groups by snap-band-
@@ -139,9 +167,8 @@ pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
 /// group is subtracted in ONE arrangement (`difference_all_volume_safe`), so
 /// there is no per-cutter f64→f32→snap round-trip to re-jitter and re-crack the
 /// previous cut's seams. Component order is the caller's (deterministic).
-/// Returns `None` only when even the volume-safe non-conforming batch is
-/// untrustworthy; the caller then falls back to sequential per-cutter subtraction.
-pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
+/// See [`BatchSubtract`] for the three outcomes.
+pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> BatchSubtract {
     #[cfg(feature = "csg_capture")]
     crate::csg_capture::record_many(host, cutters);
     let h = orient_outward(mesh_to_tris(host));
@@ -155,16 +182,16 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
         .collect();
     let refs: Vec<&[Tri]> = comp_tris.iter().map(|c| c.as_slice()).collect();
     // Conforming batch: the fast, exact, byte-identical common path.
-    if let Some(r) = difference_all(&h, &refs) {
-        return Some(tris_to_mesh(&r));
+    if let Some((r, changed)) = difference_all(&h, &refs) {
+        return BatchSubtract::classified(&r, changed);
     }
     // Non-conforming batch (an unrecovered constraint remains after the robust
     // traversal recovery). Its exact topology is CLEANER than sequential per-cutter
     // re-jitter on dense faceted-reveal walls (issue #098 V5C: 532→108 open edges),
     // but a straddling misclassification can over/under-cut VOLUME (#559171/#1167).
     // Trust the lenient batch ONLY when its removed volume matches the true removed
-    // volume; else None, so the caller runs its full sequential path.
-    let batch = difference_all_lenient(&h, &refs);
+    // volume; else Nonconforming, so the caller runs its full sequential path.
+    let (batch, changed) = difference_all_lenient(&h, &refs);
     // ORACLE for the volume comparison (#1788): batched cutters are pairwise
     // disjoint (this fn's contract), so the TRUE removed volume is
     // Σ |host ∩ cutterᵢ| — each a small single boolean against the PRISTINE
@@ -191,7 +218,7 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
     }
     super::budget::restore_counters(budget_snap);
     if oracle_tripped {
-        return None;
+        return BatchSubtract::Nonconforming;
     }
     let host_v = signed_volume6(&h).abs();
     let batch_removed = host_v - signed_volume6(&batch).abs();
@@ -199,9 +226,9 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
     // reject the #1167 gross under-cut (3.7 m³ vs 13 m³).
     let tol = inter_sum.abs().max(1.0e-9) * 0.01;
     if (batch_removed - inter_sum).abs() <= tol {
-        Some(tris_to_mesh(&batch))
+        BatchSubtract::classified(&batch, changed)
     } else {
-        None
+        BatchSubtract::Nonconforming
     }
 }
 

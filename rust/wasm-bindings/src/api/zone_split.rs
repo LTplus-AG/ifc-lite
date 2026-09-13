@@ -143,10 +143,17 @@ impl ZoneSplitJs {
 /// meaningless volumes with a plausible `sumErrorRel`, so the closure proof
 /// above is the caller's responsibility and not a formality.
 ///
+/// Returns `undefined` when the mesh encloses no volume (no triangles survive
+/// the filter above, or the shell is degenerate): there is nothing to split,
+/// and a result for it would report `pieceCount` 1, `sumErrorRel` 0 and
+/// `remainderFailed` false, a perfect split of nothing. A caller that gates
+/// on those numbers must treat `undefined` as "no split", not as "no error".
+///
 /// ```javascript
 /// const split = splitMeshByZones(positions, indices, new Float64Array([
 ///   0, 0, 0, 10, 10, 10, 0,
 /// ]));
+/// if (!split) return; // the mesh encloses no volume
 /// for (let i = 0; i < split.pieceCount; i++) {
 ///   const piece = split.piece(i);
 ///   // piece.zoneIndex, piece.positions, piece.indices, piece.volume
@@ -161,7 +168,7 @@ pub fn split_mesh_by_zones_js(
     zones: &[f64],
     footprints: Option<Vec<f64>>,
     footprint_counts: Option<Vec<u32>>,
-) -> ZoneSplitJs {
+) -> Option<ZoneSplitJs> {
     let tris: Vec<[[f64; 3]; 3]> = indices
         .chunks_exact(3)
         .filter_map(|c| {
@@ -217,7 +224,7 @@ pub fn split_mesh_by_zones_js(
         })
         .collect();
 
-    let split = split_mesh_by_zones(&tris, &shapes);
+    let split = split_mesh_by_zones(&tris, &shapes)?;
     let sum_error_rel = split.sum_error_rel();
     let remainder_failed = split.remainder_failed;
     let pieces = split
@@ -242,10 +249,10 @@ pub fn split_mesh_by_zones_js(
         })
         .collect();
 
-    ZoneSplitJs {
+    Some(ZoneSplitJs {
         pieces,
         whole_volume: split.whole_volume,
         sum_error_rel,
         remainder_failed,
-    }
+    })
 }

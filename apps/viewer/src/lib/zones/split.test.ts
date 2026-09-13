@@ -182,6 +182,13 @@ describe('splitElementByZones', () => {
     assert.ok(freed > 0, 'a refused split leaked its handle');
   });
 
+  it('refuses when the binding reports a mesh that encloses no volume', () => {
+    // `splitMeshByZones` answers `undefined` for a host without volume instead
+    // of a handle whose sumErrorRel is 0 and remainderFailed is false.
+    const fn: SplitMeshByZonesFn = () => undefined;
+    assert.equal(splitElementByZones(fn, [piece([0, 0, 0])], [ZONE]), null);
+  });
+
   it('does not call the binding at all when there is nothing to split', () => {
     const { fn, calls } = fakeSplit([]);
     assert.equal(splitElementByZones(fn, [], [ZONE]), null);

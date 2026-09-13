@@ -119,6 +119,8 @@
     "GeometryHasher": "struct {  }",
     "GeometryProcessor": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "GeometryRouter": "struct {  }",
+    "GroupCut": "enum { Cut(Mesh); Rejected(GroupReject) }",
+    "GroupReject": "enum { BudgetTripped; EmptyHost; GateRejected; InvalidOutput; NoOverlap; Nonconforming; Unchanged }",
     "HostOpeningDiagnostic": "struct { csg_failure_count: usize; first_failure_label: Option<String>; host_bounds: Option<((f32, f32, f32), (f32, f32, f32))>; host_type: String; openings: Vec<OpeningDiagnostic>; rect_boxes_processed: usize; tris_after: Option<usize>; tris_before: Option<usize> }",
     "INSTANCED_MAGIC": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "INSTANCED_VERSION": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

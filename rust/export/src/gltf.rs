@@ -928,6 +928,9 @@ fn node_extras(
     Some(extras)
 }
 
+/// A quantized mesh's dequantization frame: local-bbox (center, half extent).
+type Dequant = ([f64; 3], [f64; 3]);
+
 /// Push the node(s) for one instanced occurrence placed by `matrix`; returns the
 /// index its parent lists. With a quantized `dequant` (center, half), the dequant
 /// is a non-uniform scale, and folding it into the matrix would make three.js
@@ -938,7 +941,7 @@ fn push_occurrence_node(
     nodes: &mut Vec<Node>,
     mesh: u32,
     matrix: [f32; 16],
-    dequant: Option<([f64; 3], [f64; 3])>,
+    dequant: Option<Dequant>,
     extras: Option<Value>,
 ) -> u32 {
     let mesh_node = nodes.len() as u32;
@@ -2475,7 +2478,7 @@ fn plan_bounded_glb(
         translation: Option<[f64; 3]>,
         scale: Option<[f64; 3]>,
         /// An instanced occurrence's placement, and its template's dequant when quantized.
-        occurrence: Option<([f32; 16], Option<([f64; 3], [f64; 3])>)>,
+        occurrence: Option<([f32; 16], Option<Dequant>)>,
     }
     let mut per_meta: Vec<Emitted> = Vec::with_capacity(metas.len());
     for (mi, meta) in metas.iter_mut().enumerate() {

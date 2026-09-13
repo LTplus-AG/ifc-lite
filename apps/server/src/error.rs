@@ -49,6 +49,11 @@ pub enum ApiError {
     Overloaded { retry_after_secs: u64 },
 }
 
+/// The `error` text of a `CACHE_ERROR` response. The underlying detail stays
+/// in the server log: cacache's error text names the index bucket or content
+/// file it failed on, which is the absolute `CACHE_DIR` layout.
+const CACHE_CLIENT_MESSAGE: &str = "Cache error: the server's cache store failed";
+
 /// Error response body.
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
@@ -81,8 +86,16 @@ impl IntoResponse for ApiError {
             _ => None,
         };
 
+        let error = match &self {
+            // Logged inside the request's trace span, never sent.
+            ApiError::Cache(_) => {
+                tracing::error!(error = %self, "Cache store failure");
+                CACHE_CLIENT_MESSAGE.to_string()
+            }
+            _ => self.to_string(),
+        };
         let body = ErrorResponse {
-            error: self.to_string(),
+            error,
             code: code.to_string(),
         };
 

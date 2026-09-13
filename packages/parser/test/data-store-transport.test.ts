@@ -366,6 +366,24 @@ describe('spatialHierarchyToColumns / spatialHierarchyFromColumns: ambiguousStor
     expect(rebuilt.ambiguousStorey).toBeDefined();
     expect(rebuilt.ambiguousStorey!.size).toBe(0);
   });
+
+  // #4314: `EntityNode.containedIn()` resolves duplicate containment against
+  // this set, so a store rehydrated in the main thread must still carry it -
+  // dropping it silently returns containedIn() to its pre-#4314 answer on the
+  // worker path only, while elementToStorey (which survives the transport)
+  // keeps the fixed one.
+  it('carries reachableSpatialNodes across the worker transport', () => {
+    const hierarchy = minimalHierarchy(new Set());
+    hierarchy.reachableSpatialNodes = new Set([1, 3]);
+    const rebuilt = spatialHierarchyFromColumns(structuredClone(spatialHierarchyToColumns(hierarchy)));
+    expect(rebuilt.reachableSpatialNodes).toBeDefined();
+    expect([...rebuilt.reachableSpatialNodes!].sort((a, b) => a - b)).toEqual([1, 3]);
+  });
+
+  it('leaves reachableSpatialNodes absent when the source hierarchy has none', () => {
+    const rebuilt = spatialHierarchyFromColumns(spatialHierarchyToColumns(minimalHierarchy(new Set())));
+    expect(rebuilt.reachableSpatialNodes).toBeUndefined();
+  });
 });
 
 

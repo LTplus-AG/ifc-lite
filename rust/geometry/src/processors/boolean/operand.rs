@@ -81,7 +81,6 @@ impl OperandPath {
         self.visits += 1;
         true
     }
-
 }
 
 impl BooleanClippingProcessor {

@@ -65,9 +65,9 @@ const FAILURES = [
     'Lower PR_AGENT_OPENROUTER_MAX_MODEL_TOKENS or PR_AGENT_LOCAL_MAX_MODEL_TOKENS so PR-Agent clips the diff.'],
   ['ENDPOINT_UNREACHABLE', /APIConnectionError|connection refused|ConnectError|timed? ?out/i,
     'The model endpoint did not answer. Check it is running and reachable from the runner.'],
-  ['NO_REVIEW', null, 'The log of the PR-Agent review check has the details, including a timeout.'],
+  ['NO_REVIEW', null, 'The log of the step that ran PR-Agent has the details, including a timeout.'],
   ['NO_OUTPUT', null, "PR-Agent left no output at all, so the run step did not finish. Read that job's log."],
-  ['BAD_OUTPUT', null, 'PR-Agent wrote output this script cannot read. The log of the PR-Agent review check has the details.'],
+  ['BAD_OUTPUT', null, 'PR-Agent wrote output this script cannot read. The log of the step that ran PR-Agent has the details.'],
 ];
 const remedy = (reason) => FAILURES.find(([r]) => r === reason)[2];
 
@@ -202,10 +202,10 @@ export function publish({ lane, dir, repo, pr, sha, api = ghApi }) {
 }
 
 if (isMainEntry(import.meta.url)) {
-  const { values } = parseArgs({
-    options: Object.fromEntries(['lane', 'dir', 'repo', 'pr', 'sha'].map((k) => [k, { type: 'string' }])),
-  });
   try {
+    const { values } = parseArgs({
+      options: Object.fromEntries(['lane', 'dir', 'repo', 'pr', 'sha'].map((k) => [k, { type: 'string' }])),
+    });
     for (const k of ['lane', 'dir', 'repo', 'pr', 'sha']) {
       if (!values[k]) throw new PrAgentPublishError('BAD_ARGS', `Pass \`--${k}\`.`);
     }
@@ -215,13 +215,6 @@ if (isMainEntry(import.meta.url)) {
     if (!(err instanceof PrAgentPublishError)) throw err;
     console.error(`❌ ${err.reason}: ${err.message}`);
     console.error(`::error::PR-Agent review not published: ${err.reason}`);
-    // The run step prints this tail only if it finishes; a step timeout kills
-    // it first, so the one place a reader can always find the log is here.
-    const log = values.dir ? readIfPresent(join(values.dir, 'pr-agent.log')) : null;
-    if (log !== null) {
-      const tail = log.replace(/\x1b\[[0-9;]*m/g, '').trimEnd().split('\n').filter((l) => !l.includes('| DEBUG ')).slice(-60);
-      console.error(`--- last ${tail.length} lines of pr-agent.log ---\n${tail.join('\n')}`);
-    }
     process.exit(1);
   }
 }

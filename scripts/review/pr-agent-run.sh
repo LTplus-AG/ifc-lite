@@ -57,12 +57,18 @@ else
   echo "::notice title=PR-Agent review::No .pr_agent.toml on the base commit yet; running with PR-Agent defaults."
 fi
 
+# Streamed as it runs, so the log is in the job output even when the step
+# timeout kills this script. Workflow commands are switched off around it:
+# PR-Agent's log can quote the diff, and a PR must not be able to emit
+# `::error::` or similar from there.
+stop_token="pr-agent-$RANDOM$RANDOM"
+echo "::stop-commands::$stop_token"
 rc=0
-LOG_LEVEL=INFO python -m pr_agent.cli \
+LOG_LEVEL=INFO PYTHONUNBUFFERED=1 python -m pr_agent.cli \
   --diff-file "$out/pr.diff" \
   ${config_args[@]+"${config_args[@]}"} \
   --output "$out/review.md" \
   --json-output "$out/review.json" \
-  review > "$out/pr-agent.log" 2>&1 || rc=$?
-echo "pr-agent exit=$rc" >> "$out/pr-agent.log"
-sed 's/\x1b\[[0-9;]*m//g' "$out/pr-agent.log" | grep -v '| DEBUG ' | tail -n 60
+  review 2>&1 | tee "$out/pr-agent.log" || rc=$?
+echo "::$stop_token::"
+echo "pr-agent exit=$rc" | tee -a "$out/pr-agent.log"

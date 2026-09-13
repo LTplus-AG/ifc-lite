@@ -133,6 +133,20 @@ pub(super) fn extract_storey_elevation_from_args(args: &[&[u8]]) -> Option<f64> 
         .find(|value| value.abs() < LARGE_COORD_THRESHOLD_METERS)
 }
 
+/// Deepest level of the quick-metadata spatial tree; the root is level 0. The
+/// builder and the derived `Clone`, `Serialize` and `Drop` of
+/// [`QuickMetadataSpatialNode`] each recurse once per level, so an acyclic
+/// aggregate chain of 100 000 nodes overflowed the stack and aborted (#4689);
+/// making the builder iterative alone would leave the other three. A child of a
+/// node at this level is left out and reported as a depth-limit edge.
+///
+/// Not the server's and viewer's `MAX_SPATIAL_TREE_DEPTH` of 100: their tree is
+/// flat on the wire, while this one nests two JSON levels (node, `children`)
+/// per tree level, and `serde_json` refuses input nested deeper than 128. At 60
+/// the bootstrap still reads back through its own `Deserialize` with room for
+/// an envelope; `quick_metadata_deep_chain.rs` pins that round trip.
+const MAX_QUICK_SPATIAL_TREE_DEPTH: usize = 60;
+
 pub(super) fn build_quick_spatial_tree_node(
     express_id: u32,
     nodes: &HashMap<u32, QuickSpatialNodeEntry>,
@@ -141,7 +155,7 @@ pub(super) fn build_quick_spatial_tree_node(
     let mut placed = HashMap::with_capacity(nodes.len());
     placed.insert(express_id, None);
     let mut pruned = Vec::new();
-    build_subtree(express_id, nodes, element_summaries, &mut placed, &mut pruned)
+    build_subtree(express_id, 0, nodes, element_summaries, &mut placed, &mut pruned)
         .map(|tree| (tree, pruned))
 }
 
@@ -150,9 +164,12 @@ pub(super) fn build_quick_spatial_tree_node(
 /// under two parents, or as its own ancestor; all three are skipped and recorded
 /// in `pruned` (#4662). `placed` spans the whole tree, not the root-to-node path
 /// (k repeats per level would emit k^depth nodes): `None` while a node is still
-/// being built, `Some(parent)` once it is finished.
+/// being built, `Some(parent)` once it is finished. With each node built once,
+/// the walk visits every child edge at most once, so `depth` is the only bound
+/// it still needs.
 fn build_subtree(
     express_id: u32,
+    depth: usize,
     nodes: &HashMap<u32, QuickSpatialNodeEntry>,
     element_summaries: &HashMap<u32, QuickMetadataEntitySummary>,
     placed: &mut HashMap<u32, Option<u32>>,
@@ -176,8 +193,24 @@ fn build_subtree(
             });
             continue;
         }
+        if depth == MAX_QUICK_SPATIAL_TREE_DEPTH {
+            // Not marked placed: a shorter path met later may still place it.
+            pruned.push(QuickMetadataPrunedEdge {
+                parent_express_id: express_id,
+                child_express_id: child_id,
+                kind: EdgeKind::DepthLimit,
+            });
+            continue;
+        }
         placed.insert(child_id, None);
-        children.push(build_subtree(child_id, nodes, element_summaries, placed, pruned)?);
+        children.push(build_subtree(
+            child_id,
+            depth + 1,
+            nodes,
+            element_summaries,
+            placed,
+            pruned,
+        )?);
         placed.insert(child_id, Some(express_id));
     }
     let elements = node
@@ -216,167 +249,5 @@ fn build_subtree(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn node(id: u32, children: Vec<u32>) -> QuickSpatialNodeEntry {
-        QuickSpatialNodeEntry {
-            express_id: id,
-            type_name: "IfcSpace".to_string(),
-            name: format!("#{id}"),
-            elevation: None,
-            children,
-            elements: vec![],
-            named_as_child: false,
-        }
-    }
-
-    /// #2323 double-collapse guard. This module un-doubles `''` on its OWN
-    /// raw-byte path (it never builds a `Token`, so `AttributeValue::from_token`
-    /// never runs over the same bytes). Exactly ONE un-doubling pass must
-    /// happen here: `''''` is two literal apostrophes, not one.
-    #[test]
-    fn parse_step_string_un_doubles_exactly_once() {
-        assert_eq!(parse_step_string(b"'O''Brien'").as_deref(), Some("O'Brien"));
-        assert_eq!(parse_step_string(b"''''''").as_deref(), Some("''"));
-        // The decoder now collapses the doubled reverse solidus too, and this
-        // path picks that up for free rather than needing its own pass.
-        assert_eq!(parse_step_string(br"'C:\\temp'").as_deref(), Some(r"C:\temp"));
-        // Unicode escapes still decode, and plain text is untouched.
-        assert_eq!(parse_step_string(br"'caf\X2\00E9\X0\'").as_deref(), Some("caf\u{e9}"));
-        assert_eq!(parse_step_string(b"'Plain Name'").as_deref(), Some("Plain Name"));
-    }
-
-    // A malformed IfcRelAggregates graph making two nodes each other's child would
-    // recurse forever (stack-overflow abort). The back-edge child is skipped and
-    // the rest of the tree still builds.
-    #[test]
-    fn cyclic_aggregate_graph_does_not_stack_overflow() {
-        let mut nodes = HashMap::new();
-        nodes.insert(1, node(1, vec![2]));
-        nodes.insert(2, node(2, vec![1]));
-        let summaries = HashMap::new();
-        let tree = build_quick_spatial_tree_node(1, &nodes, &summaries);
-        assert!(tree.is_ok(), "cyclic tree should build (cycle pruned), got {tree:?}");
-        // #2 lists only the pruned back-edge, so it must not advertise children
-        // it does not carry (its report is pinned in quick_metadata_aggregate_dedupe.rs).
-        let two = &tree.unwrap().0.children[0];
-        assert!(two.children.is_empty() && !two.summary.has_children);
-    }
-
-    /// `IfcBuildingStorey`'s `Elevation` attribute sits at index 9 in the IFC4
-    /// attribute layout this parser targets; index 8 is only a fallback (e.g. an
-    /// off-by-one attribute count from a schema variant). Indices 8 and 9 hold
-    /// DIFFERENT numeric values here specifically so a priority swap (checking 8
-    /// before 9) is observable — equal values would let a `[9, 8]` -> `[8, 9]`
-    /// swap pass silently.
-    #[test]
-    fn storey_elevation_prefers_index_9_over_index_8() {
-        let args: Vec<&[u8]> = vec![
-            b"$", b"$", b"$", b"$", b"$", b"$", b"$", b"$", b"3.5", b"7.25",
-        ];
-        assert_eq!(
-            extract_storey_elevation_from_args(&args),
-            Some(7.25),
-            "index 9 (the real Elevation attribute) must win over index 8"
-        );
-    }
-
-    /// DRIFT GUARD. `is_quick_spatial_type_ci` decides which entities become
-    /// nodes of the quick-metadata spatial tree. Since #3275 the name list is no
-    /// longer written by hand — it is derived from the rule below against the
-    /// GENERATED schema: `IfcProject`, plus everything in the `IfcSpatialElement`
-    /// branch except the external-spatial (air volume) sub-branch, which is not
-    /// part of the containment hierarchy. This test therefore no longer catches a
-    /// typo in a list; it catches the derivation being rewritten back into one,
-    /// and it is the place the rule itself is stated in reviewable form.
-    ///
-    /// Checked in BOTH directions over every generated `IfcType`: a name the rule
-    /// admits and the predicate rejects severs that subtree from the tree; a name
-    /// the predicate admits and the rule rejects invents a spatial node.
-    #[test]
-    fn quick_spatial_predicate_matches_the_generated_spatial_branch() {
-        use ifc_lite_core::{IfcType, IFC_TYPES};
-
-        fn rule(ty: IfcType) -> bool {
-            ty == IfcType::IfcProject
-                || (ty.is_subtype_of(IfcType::IfcSpatialElement)
-                    && !ty.is_subtype_of(IfcType::IfcExternalSpatialStructureElement))
-        }
-
-        let mut expected_true = 0usize;
-        let mut missing = Vec::new();
-        let mut extra = Vec::new();
-        for ty in IFC_TYPES {
-            let name = ty.as_str();
-            let want = rule(*ty);
-            if want {
-                expected_true += 1;
-            }
-            let got = is_quick_spatial_type_ci(name);
-            if want && !got {
-                missing.push(name);
-            }
-            if !want && got {
-                extra.push(name);
-            }
-        }
-
-        // Anti-vacuity: the enumeration really ran over the whole schema, and the
-        // rule really selects a non-trivial slice of it. A `IFC_TYPES` that came
-        // back empty, or a rule that matched nothing, would otherwise pass.
-        assert!(
-            IFC_TYPES.len() > 800,
-            "generated IFC_TYPES looks truncated: {} entries",
-            IFC_TYPES.len()
-        );
-        assert!(
-            expected_true >= 17,
-            "the spatial branch should cover at least 17 types, got {expected_true}"
-        );
-
-        assert!(
-            missing.is_empty() && extra.is_empty(),
-            "quick-metadata spatial predicate has drifted from the generated schema\n  \
-             missing (severed from the spatial tree): {missing:?}\n  \
-             extra (invented spatial nodes): {extra:?}"
-        );
-    }
-
-    /// #4687: a comment is trivia for the attribute split. A comma in one
-    /// shifted every later attribute, an apostrophe in one opened a string
-    /// for the rest of the record, and one inside a ref list hid the ref.
-    #[test]
-    fn issue_4687_step_arguments_treat_comments_as_trivia() {
-        for record in [
-            &b"#50=IFCRELAGGREGATES('0YvctVUKr0kugbFTf53O9L',$,$,/* a, b */$,#1,(#2,#3));"[..],
-            b"#50=IFCRELAGGREGATES('0YvctVUKr0kugbFTf53O9L',$,$,/* it's */$,#1,(#2,#3));",
-            b"#50=IFCRELAGGREGATES('0YvctVUKr0kugbFTf53O9L',$,$,$,#1 /* x */,(#2, /* door */ #3));",
-        ] {
-            let args = parse_step_arguments(record);
-            let text = String::from_utf8_lossy(record);
-            assert_eq!(args.len(), 6, "{text}");
-            assert_eq!(args.get(4).and_then(|token| parse_step_ref(token)), Some(1), "{text}");
-            assert_eq!(parse_step_ref_list(args[5]), [2, 3], "{text}");
-        }
-    }
-
-    /// Control fixture for the drift guard above. A regression that made the
-    /// predicate answer `true` for everything, or that dropped its
-    /// case-insensitivity, would still satisfy a one-directional check.
-    #[test]
-    fn quick_spatial_predicate_controls() {
-        // Non-spatial products and relationships are NOT tree nodes.
-        for name in ["IFCWALL", "IFCRELAGGREGATES", "IFCPROJECTLIBRARY", "IFCZONE"] {
-            assert!(!is_quick_spatial_type_ci(name), "{name} must not be a spatial node");
-        }
-        // External spatial elements are air volumes, deliberately excluded.
-        for name in ["IFCEXTERNALSPATIALELEMENT", "IFCEXTERNALSPATIALSTRUCTUREELEMENT"] {
-            assert!(!is_quick_spatial_type_ci(name), "{name} must not be a spatial node");
-        }
-        // Both spellings a STEP file may use resolve identically.
-        for name in ["IfcMarineFacility", "IFCMARINEFACILITY", "ifcmarinefacility"] {
-            assert!(is_quick_spatial_type_ci(name), "{name} must be a spatial node");
-        }
-    }
-}
+#[path = "quick_metadata_tests.rs"]
+mod tests;

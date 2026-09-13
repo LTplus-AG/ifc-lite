@@ -110,11 +110,10 @@ pub struct QuickMetadataBootstrap {
 
 /// A spatial child edge left out of [`QuickMetadataBootstrap::spatial_tree`].
 /// Each node is placed where the depth-first walk from the root first reaches
-/// it; every later edge to it is recorded here. This covers the child lists the
-/// walk reads (`IfcRelAggregates`, and the first containment of a spatial
-/// element no aggregate placed). A containment of a spatial element already
-/// placed, by an aggregate or an earlier containment, is dropped before the
-/// walk and is not recorded.
+/// it; every later edge to it is recorded here, as is every edge out of a node
+/// at the depth limit. This covers every child list the walk reads:
+/// `IfcRelAggregates` edges and the spatial elements an
+/// `IfcRelContainedInSpatialStructure` promotes to children (#4689).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuickMetadataPrunedEdge {
     /// Express id of the node whose child list names the edge.
@@ -135,6 +134,9 @@ pub enum QuickMetadataPrunedEdgeKind {
     SecondParent,
     /// A node names itself or one of its own ancestors.
     BackEdge,
+    /// The parent sits at the tree's depth limit, so its subtree is cut there
+    /// (#4689). The child still appears if a shorter path reaches it.
+    DepthLimit,
 }
 
 /// Processing statistics.

@@ -389,7 +389,7 @@ export function HierarchyNode({
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              <CountBadgeTooltip elementCount={node.elementCount} lines={node.countTooltipLines} />
+              <CountBadgeTooltip elementCount={node.elementCount} lines={node.countTooltipLines} summary={node.countSummary} />
             </TooltipContent>
           </Tooltip>
         )}

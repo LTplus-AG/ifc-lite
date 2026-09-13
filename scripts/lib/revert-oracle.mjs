@@ -106,7 +106,7 @@ export function classifyDiff(entries) {
         'as the code — expect INCONCLUSIVE and use --mutation for a surgical revert.',
     );
   }
-  return { production, test, ignored, inert, warnings };
+  return { production, test, ignored, inert, warnings, cargoLockChanged: entries.some((entry) => entry.path === 'Cargo.lock') };
 }
 
 /** Parse `git diff --name-status -z`-free plain output. Renames carry two paths. */

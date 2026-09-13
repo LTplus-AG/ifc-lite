@@ -17,7 +17,6 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-
 import {
   classifyPath,
   classifyDiff,
@@ -680,6 +679,12 @@ test('classifyDiff warns that a Rust revert takes `#[cfg(test)] mod tests` with 
   assert.match(warnings[0], /cfg\(test\)/);
 });
 
+test('classifyDiff reports whether Cargo.lock changed (#4592)', () => {
+  const withLock = parseNameStatus('M\trust/geometry/Cargo.toml\nM\tCargo.lock');
+  assert.equal(classifyDiff(withLock).cargoLockChanged, true);
+  assert.equal(classifyDiff(parseNameStatus('M\trust/geometry/Cargo.toml')).cargoLockChanged, false);
+});
+
 test('parseNameStatus takes the NEW path of a rename', () => {
   const entries = parseNameStatus('R096\tpackages/a/src/old.ts\tpackages/a/src/new.ts');
   assert.deepEqual(entries, [{ status: 'R', path: 'packages/a/src/new.ts' }]);
@@ -1129,7 +1134,7 @@ test('#4131 regression: multi-package all-skipped-plus-evidence run does not blo
   assert.equal(v.exitCode, 0);
 });
 
-test('#4109: a green structured run may log the literal `SyntaxError:` as fixture data', () => {
+test('#4109: a green structured run may log load-error text as fixture data', () => {
   const parsed = parseRunnerOutput({
     family: 'node-test',
     stdout: 'fixture caught: SyntaxError: expected\n# tests 120\n# pass 120\n# fail 0\n',

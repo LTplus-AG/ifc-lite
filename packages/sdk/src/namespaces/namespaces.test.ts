@@ -299,6 +299,26 @@ describe('StructuralNamespace', () => {
     const { ns } = setup();
     expect(ns.data().loadsTruncated).toBe(true);
   });
+
+  // `backend.structural` is optional: remote/transport-backed contexts leave
+  // it undefined because the store lives server-side. Without a guard the
+  // caller gets an opaque "cannot read properties of undefined" instead of
+  // an actionable message. `context.test.ts`'s "keeps existing backends
+  // compatible and reports unsupported structural reads" exercises this
+  // guard end-to-end through `createBimContext`; every accessor is covered
+  // here too, at the unit level, so a per-method wiring regression on any
+  // one of the seven methods (not just `data()`) is caught.
+  it('throws an explanatory error when the backend has no structural support', () => {
+    const ns = new StructuralNamespace({} as unknown as BimBackend);
+
+    expect(() => ns.data()).toThrow('bim.structural is not supported by this backend');
+    expect(() => ns.analysisModels()).toThrow('bim.structural is not supported by this backend');
+    expect(() => ns.members()).toThrow('bim.structural is not supported by this backend');
+    expect(() => ns.connections()).toThrow('bim.structural is not supported by this backend');
+    expect(() => ns.activities()).toThrow('bim.structural is not supported by this backend');
+    expect(() => ns.loadGroups()).toThrow('bim.structural is not supported by this backend');
+    expect(() => ns.resultGroups()).toThrow('bim.structural is not supported by this backend');
+  });
 });
 
 // ---------------------------------------------------------------------------

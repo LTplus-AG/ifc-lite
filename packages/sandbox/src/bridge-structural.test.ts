@@ -19,9 +19,19 @@ describe('bridge-structural — internal → public translation', () => {
       analysisModelGlobalIds: ['m-1'],
     };
     const out = S.translateMember(internal);
+    // Every MEMBER_FIELDS entry gets its own assertion (11 fields): a
+    // mis-keyed camelKey/pascalKey pair anywhere in the table — not just in
+    // the 4 fields previously asserted — must fail this test.
     expect(out.GlobalId).toBe('g-1');
+    expect(out.ExpressId).toBe(42);
     expect(out.Type).toBe('IfcStructuralCurveMember');
+    expect(out.Name).toBe('Beam A');
+    expect(out.Description).toBe('desc');
+    expect(out.ObjectType).toBe('ot');
+    expect(out.PredefinedType).toBe('RIGID_JOINED_MEMBER');
+    expect(out.Thickness).toBe(0.2);
     expect(out.ConnectionGlobalIds).toEqual(['c-1', 'c-2']);
+    expect(out.ActivityGlobalIds).toEqual(['a-1']);
     expect(out.AnalysisModelGlobalIds).toEqual(['m-1']);
   });
 
@@ -57,9 +67,23 @@ describe('bridge-structural — internal → public translation', () => {
         },
       },
     });
-    const load = out.AppliedLoad as { Configuration: { Truncated: boolean; Entries: unknown[] } };
+    const load = out.AppliedLoad as {
+      Configuration: {
+        Truncated: boolean;
+        Entries: Array<{ Location?: number[]; Value?: { ExpressId: number; Type: string; Components: Record<string, unknown> } }>;
+      };
+    };
     expect(load.Configuration.Truncated).toBe(false);
     expect(load.Configuration.Entries).toHaveLength(2);
+    // Distinct values per entry (different expressId/location/component) so a
+    // dropped or duplicated mapping between entries — not just a wrong count
+    // — fails: asserting only `Truncated`/`length` would stay green even if
+    // both entries collapsed onto the first source object.
+    expect(load.Configuration.Entries[0].Location).toEqual([96]);
+    expect(load.Configuration.Entries[0].Value?.ExpressId).toBe(21);
+    expect(load.Configuration.Entries[0].Value?.Components.LinearForceZ).toBe(-100);
+    expect(load.Configuration.Entries[1].Location).toEqual([192]);
+    expect(load.Configuration.Entries[1].Value?.ExpressId).toBe(22);
   });
 
   it('translateConfiguration forwards truncated=true rather than defaulting it away', () => {

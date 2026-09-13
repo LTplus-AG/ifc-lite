@@ -235,9 +235,17 @@ export function viewerHeightDeltaToOrthogonalHeightDeltaForGeometry(deltaY: numb
   return metersToMapUnits(deltaY * viewerUpScaleForGeometry(...frame), frame[1], frame[2]);
 }
 
+/** Invert an authored axis scale without leaking infinities into the gizmo. */
+function divideByAxisScale(value: number, scale: number): number {
+  return Number.isFinite(scale) && Math.abs(scale) >= 1e-12 ? value / scale : 0;
+}
+
 /** The gizmo's height preview: the inverse of the drag conversion above (#4675). */
 export function orthogonalHeightDeltaToViewerDeltaForGeometry(deltaHeight: number, ...frame: HeightFrame): number {
-  return mapUnitsToMeters(deltaHeight, frame[1], frame[2]) / viewerUpScaleForGeometry(...frame);
+  return divideByAxisScale(
+    mapUnitsToMeters(deltaHeight, frame[1], frame[2]),
+    viewerUpScaleForGeometry(...frame),
+  );
 }
 
 export function viewerDeltaToProjectedDelta(
@@ -327,8 +335,8 @@ export function projectedDeltaToViewerDelta(
   const norm = Math.max(abscissa * abscissa + ordinate * ordinate, 1e-12);
 
   return {
-    x: (abscissa * eastMeters + ordinate * northMeters) / (norm * scaleX),
-    z: (ordinate * eastMeters - abscissa * northMeters) / (norm * scaleY),
+    x: divideByAxisScale((abscissa * eastMeters + ordinate * northMeters) / norm, scaleX),
+    z: divideByAxisScale((ordinate * eastMeters - abscissa * northMeters) / norm, scaleY),
   };
 }
 

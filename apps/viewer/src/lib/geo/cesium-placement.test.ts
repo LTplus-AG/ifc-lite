@@ -154,6 +154,13 @@ describe('cesium placement helpers', () => {
     const crs = { mapUnitScale: 1 };
     assert.strictEqual(viewerHeightDeltaToOrthogonalHeightDeltaForGeometry(3, conversion, crs, 1, undefined), 6);
     assert.strictEqual(orthogonalHeightDeltaToViewerDeltaForGeometry(6, conversion, crs, 1, undefined), 3);
+
+    const flat = { ...conversion, factorZ: 0 };
+    assert.strictEqual(
+      orthogonalHeightDeltaToViewerDeltaForGeometry(6, flat, crs, 1, undefined),
+      0,
+      'a flat authored axis must not put the preview at infinity',
+    );
   });
 
   it('computes OrthogonalHeight from target base altitude with shift and RTC', () => {
@@ -302,6 +309,16 @@ describe('cesium placement helpers', () => {
     );
     assert.ok(Math.abs(viewer.x - 3) < 1e-9);
     assert.ok(Math.abs(viewer.z - -4) < 1e-9);
+
+    const flatX = projectedDeltaToViewerDelta(
+      2,
+      1,
+      { ...conversion, factorX: 0 },
+      { mapUnitScale: 1 },
+      1,
+    );
+    assert.strictEqual(flatX.x, 0, 'a flat authored axis must not put the preview at infinity');
+    assert.ok(Number.isFinite(flatX.z));
 
     const feetToMetres = viewerDeltaToProjectedDelta(
       2,

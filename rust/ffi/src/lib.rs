@@ -18,6 +18,12 @@
 //! aborts the entire host CAD process instead of returning error code `3`.
 //! `server-release` inherits `release` but restores `panic = "unwind"`.
 
+// Keep this declaration before every other item-level attribute. The revert
+// oracle maps the sibling test module from here; placing it later in this long
+// file can make an unrelated `#[cfg(...)]` look like its owner.
+#[cfg(test)]
+mod tests;
+
 // Native global allocator (#1623): the platform system heap's global lock was
 // ~70% of native geometry self-time and capped rayon scaling to ~1.8x on
 // IfcMappedItem-heavy models; mimalloc's per-thread heaps lifted an all-cores
@@ -247,6 +253,3 @@ pub unsafe extern "C" fn ifc_lite_free(ptr: *mut u8, len: usize) {
         let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, len));
     }
 }
-
-#[cfg(test)]
-mod tests;

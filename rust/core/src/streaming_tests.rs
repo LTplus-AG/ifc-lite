@@ -126,3 +126,69 @@ this is not an entity line at all !!! ;;;
     assert_eq!(entity_count, 3, "scanner should skip garbage and find all 3");
     assert_eq!(completed, Some(3), "stream must reach Completed, not truncate");
 }
+
+/// The `progress_interval`-th entity used to be swallowed: the poll that
+/// scanned it returned a `Progress` event INSTEAD of its `EntityScanned`,
+/// while `Completed.entity_count` still counted it. On a 250-record file
+/// under the default interval of 100 the stream carried 248 entities, ids
+/// 100 and 200 missing, and reported 250. The Progress event now follows the
+/// entity on the next poll. Reverting the production change fails the
+/// `ids == 1..=250` assertion below (and the count assertion after it).
+/// Found by the core review behind #4577 (finding 5).
+#[tokio::test]
+async fn every_entity_is_emitted_across_a_progress_boundary() {
+    let content: String = (1..=250)
+        .map(|n| format!("#{n}=IFCWALL('g{n}',$,$,$,$,$,$,$);\n"))
+        .collect();
+
+    let mut stream = parse_stream(content.as_str(), StreamConfig::default());
+    let mut ids = Vec::new();
+    let mut progress_after = Vec::new();
+    let mut completed = None;
+    while let Some(event) = stream.next().await {
+        match event {
+            ParseEvent::EntityScanned { id, .. } => ids.push(id),
+            ParseEvent::Progress {
+                entities_processed, ..
+            } => progress_after.push((ids.last().copied(), entities_processed)),
+            ParseEvent::Completed { entity_count, .. } => completed = Some(entity_count),
+            _ => {}
+        }
+    }
+
+    assert_eq!(ids, (1..=250).collect::<Vec<u32>>());
+    assert_eq!(completed, Some(ids.len()));
+    // Progress is a second event for the entity that crossed the interval,
+    // so it is emitted right after that entity, and never in its place.
+    assert_eq!(progress_after, vec![(Some(100), 100), (Some(200), 200)]);
+}
+
+/// The last entity of the file can be the one that owes a Progress event.
+/// The queued event must still go out, before `Completed`, rather than die
+/// with the state.
+#[tokio::test]
+async fn a_progress_event_owed_by_the_last_entity_precedes_completed() {
+    let content: String = (1..=4)
+        .map(|n| format!("#{n}=IFCWALL('g{n}',$,$,$,$,$,$,$);\n"))
+        .collect();
+    let config = StreamConfig {
+        progress_interval: 4,
+        ..Default::default()
+    };
+
+    let mut stream = parse_stream(content.as_str(), config);
+    let mut kinds = Vec::new();
+    while let Some(event) = stream.next().await {
+        kinds.push(match event {
+            ParseEvent::Started { .. } => "started",
+            ParseEvent::EntityScanned { .. } => "entity",
+            ParseEvent::Progress { .. } => "progress",
+            ParseEvent::Completed { .. } => "completed",
+            _ => "other",
+        });
+    }
+    assert_eq!(
+        kinds,
+        ["started", "entity", "entity", "entity", "entity", "progress", "completed"]
+    );
+}

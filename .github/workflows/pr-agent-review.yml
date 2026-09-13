@@ -163,7 +163,7 @@ jobs:
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && vars.PR_AGENT_LOCAL_BASE_URL != '' && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     # Same reasoning as the OpenRouter job: above two model attempts at
     # CONFIG__AI_TIMEOUT plus LiteLLM's retries.
-    timeout-minutes: 90
+    timeout-minutes: 120
     # No write permission on the self-hosted runner. The hosted job below posts.
     permissions:
       contents: read
@@ -241,7 +241,7 @@ jobs:
           CONFIG__FALLBACK_MODELS: openai/${{ env.PR_AGENT_LOCAL_MODEL }}
           CONFIG__CUSTOM_MODEL_MAX_TOKENS: ${{ env.PR_AGENT_LOCAL_MAX_MODEL_TOKENS }}
           CONFIG__MAX_MODEL_TOKENS: ${{ env.PR_AGENT_LOCAL_MAX_MODEL_TOKENS }}
-          CONFIG__AI_TIMEOUT: '600'
+          CONFIG__AI_TIMEOUT: '900'
           CONFIG__RETRY_SAME_MODEL_ON_TIMEOUT: 'false'
           CONFIG__DUPLICATE_PROMPT_EXAMPLES: 'true'
           OPENAI__API_BASE: ${{ vars.PR_AGENT_LOCAL_BASE_URL }}

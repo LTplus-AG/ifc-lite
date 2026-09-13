@@ -830,6 +830,41 @@ describe('SpatialHierarchyBuilder', () => {
     expect(hierarchy.project.children[0].longName).toBeUndefined();
   });
 
+  describe('reachableSpatialNodes (#4314)', () => {
+    // Published so `EntityNode.containedIn()` (@ifc-lite/query) resolves
+    // duplicate containment against the SAME set this builder resolved
+    // elementToStorey's tie-break against, instead of computing its own.
+    it('publishes exactly the spatial nodes buildNode visited, omitting an orphan storey', () => {
+      const strings = new StringTable();
+      const entities = new EntityTableBuilder(4, strings);
+      entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+      entities.add(2, 'IFCBUILDINGSTOREY', 's0', 'Orphan Storey', '', ''); // no Aggregates edge at all
+      entities.add(3, 'IFCBUILDINGSTOREY', 's1', 'Reachable Storey', '', '');
+      entities.add(4, 'IFCWALL', 'w0', 'Wall', '', '', true);
+
+      const relationships = new RelationshipGraphBuilder();
+      relationships.addEdge(1, 3, RelationshipType.Aggregates, 100);
+      relationships.addEdge(2, 4, RelationshipType.ContainsElements, 200);
+      relationships.addEdge(3, 4, RelationshipType.ContainsElements, 201);
+
+      const hierarchy = new SpatialHierarchyBuilder().build(
+        entities.build(),
+        relationships.build(),
+        strings,
+        new Uint8Array(),
+        { byId: { get: () => undefined } },
+      );
+
+      expect(hierarchy.reachableSpatialNodes).toBeDefined();
+      expect(hierarchy.reachableSpatialNodes!.has(1)).toBe(true);
+      expect(hierarchy.reachableSpatialNodes!.has(3)).toBe(true);
+      expect(hierarchy.reachableSpatialNodes!.has(2)).toBe(false);
+      // The same set elementToStorey's own tie-break consulted: the wall
+      // lands on the reachable storey, not the first-declared orphan.
+      expect(hierarchy.elementToStorey.get(4)).toBe(3);
+    });
+  });
+
   describe('ambiguousStorey (#4311)', () => {
     it('flags an element with two direct ContainsElements edges naming different storeys', () => {
       const strings = new StringTable();

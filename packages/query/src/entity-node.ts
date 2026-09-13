@@ -142,41 +142,28 @@ export class EntityNode {
   
   containedIn(): EntityNode | null {
     const candidates = this.getRelated(RelationshipType.ContainsElements, 'inverse');
-    if (candidates.length === 0) return null;
-    if (candidates.length === 1) return candidates[0];
-    // #4314: more than one candidate (a malformed file naming this element in
-    // more than one IfcRelContainedInSpatialStructure edge, #4311) - prefer
-    // the first-declared candidate that is actually reachable from
-    // IfcProject over one that is not, instead of blindly taking `[0]`. A
-    // storey with no IfcRelAggregates edge at all (an orphan/malformed
-    // spatial node) is a dangling answer no caller can walk anywhere from;
-    // falling through to a reachable later-declared candidate keeps this
-    // aligned with `SpatialHierarchyBuilder.elementToStorey`'s tie-break
-    // (#4310), which already skips an unreachable first-declared storey the
-    // same way. Falls back to the first-declared candidate when NONE are
-    // reachable, so this never returns null just because the whole file's
-    // spatial tree is disconnected from IfcProject.
-    const reachable = candidates.find((candidate) => candidate.isReachableFromProject());
-    return reachable ?? candidates[0];
-  }
-
-  /**
-   * Is this entity reachable from an `IfcProject` by walking forward
-   * `IfcRelAggregates` parent edges (`decomposedBy()`)? Used by
-   * `containedIn()` (#4314) to disqualify a duplicate-declared container
-   * that is itself an orphan spatial node. Cycle-safe: a loop that never
-   * reaches an `IfcProject` answers `false` rather than looping forever.
-   */
-  private isReachableFromProject(): boolean {
-    const visited = new Set<number>();
-    let current: EntityNode | null = this;
-    while (current) {
-      if (visited.has(current.expressId)) return false;
-      visited.add(current.expressId);
-      if (current.type === 'IfcProject') return true;
-      current = current.decomposedBy();
-    }
-    return false;
+    if (candidates.length < 2) return candidates[0] ?? null;
+    // #4314: more than one candidate - a malformed file naming this element
+    // in more than one IfcRelContainedInSpatialStructure edge (#4311).
+    // First-declared still wins, but only among containers that are actually
+    // reachable from IfcProject: a container with no IfcRelAggregates edge
+    // back to the project is a node `SpatialHierarchyBuilder.buildNode`
+    // never visits, so `elementToStorey` never lets it win a tie either
+    // (#4310) - returning it here is a dangling answer no caller can walk
+    // anywhere from, and one `elementToStorey` disagrees with.
+    //
+    // The set is not recomputed here: `SpatialHierarchyBuilder.build()`
+    // already runs `computeReachableSpatialNodes` once per parse and
+    // publishes the result on the hierarchy, and this reads THAT set - the
+    // one `elementToStorey`'s own tie-break was resolved against - so the
+    // two answers cannot drift apart. A store with no spatial hierarchy has
+    // no reachability information (and no `elementToStorey` to disagree
+    // with), and one where no candidate is reachable has no better answer;
+    // both fall back to the first-declared candidate, so this never turns a
+    // present answer into null.
+    const reachable = this.store.spatialHierarchy?.reachableSpatialNodes;
+    if (!reachable) return candidates[0];
+    return candidates.find((candidate) => reachable.has(candidate.expressId)) ?? candidates[0];
   }
 
   /**

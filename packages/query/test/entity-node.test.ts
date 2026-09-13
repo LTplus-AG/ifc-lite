@@ -204,6 +204,9 @@ describe('EntityNode', () => {
           { source: 2, target: 10, type: RelationshipType.ContainsElements, relId: 200 }, // Storey A (unreachable), first-declared
           { source: 3, target: 10, type: RelationshipType.ContainsElements, relId: 201 }, // Storey B (reachable), second-declared
         ],
+        // As SpatialHierarchyBuilder would publish it: Storey A is never
+        // visited, so it is not in the set.
+        spatialHierarchy: { projectId: 1, byStorey: [[3, [10]]], storeyElevations: [], reachableSpatialNodes: [1, 3] },
       });
       const wall = new EntityNode(store, 10);
       const container = wall.containedIn();
@@ -227,6 +230,7 @@ describe('EntityNode', () => {
           { source: 3, target: 10, type: RelationshipType.ContainsElements, relId: 200 }, // Storey B (reachable), first-declared
           { source: 2, target: 10, type: RelationshipType.ContainsElements, relId: 201 }, // Storey A (unreachable), second-declared
         ],
+        spatialHierarchy: { projectId: 1, byStorey: [[3, [10]]], storeyElevations: [], reachableSpatialNodes: [1, 3] },
       });
       const wall = new EntityNode(store, 10);
       const container = wall.containedIn();
@@ -248,11 +252,36 @@ describe('EntityNode', () => {
           { source: 2, target: 10, type: RelationshipType.ContainsElements, relId: 200 }, // first-declared, unreachable
           { source: 3, target: 10, type: RelationshipType.ContainsElements, relId: 201 }, // also unreachable
         ],
+        // Neither orphan storey was visited, so the project is alone in the set.
+        spatialHierarchy: { projectId: 1, byStorey: [], storeyElevations: [], reachableSpatialNodes: [1] },
       });
       const wall = new EntityNode(store, 10);
       const container = wall.containedIn();
       expect(container).not.toBeNull();
       expect(container!.expressId).toBe(2);
+    });
+
+    // A store with no spatial hierarchy carries no reachability information -
+    // which is not the same as "nothing is reachable". Every candidate stays
+    // eligible and first-declared wins, exactly as before #4314. (Such a store
+    // has no `elementToStorey` either, so there is nothing to disagree with.)
+    it('containedIn() returns the first-declared container when the store has no spatial hierarchy', () => {
+      const store = createMockStore({
+        entities: [
+          { expressId: 1, type: 'IFCPROJECT', globalId: 'proj-1', name: 'My Project' },
+          { expressId: 2, type: 'IFCBUILDINGSTOREY', globalId: 'storey-a', name: 'Storey A' }, // orphan
+          { expressId: 3, type: 'IFCBUILDINGSTOREY', globalId: 'storey-b', name: 'Storey B' },
+          { expressId: 10, type: 'IFCWALL', globalId: 'wall-1', name: 'Exterior Wall' },
+        ],
+        relationships: [
+          { source: 1, target: 3, type: RelationshipType.Aggregates, relId: 100 },
+          { source: 2, target: 10, type: RelationshipType.ContainsElements, relId: 200 }, // first-declared, would be skipped if the set were known
+          { source: 3, target: 10, type: RelationshipType.ContainsElements, relId: 201 },
+        ],
+        // spatialHierarchy deliberately omitted.
+      });
+      const wall = new EntityNode(store, 10);
+      expect(wall.containedIn()?.expressId).toBe(2);
     });
   });
 

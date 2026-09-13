@@ -271,7 +271,8 @@ unsafe fn run_parse(
 ///   for a non-ASCII path reads past the buffer. Only a null `path_ptr` is
 ///   detected; a wrong length is undefined behaviour, not error `1`.
 /// - `out_ptr` and `out_len` must each be null or valid for writes and
-///   properly aligned.
+///   properly aligned. Their storage must not overlap each other or the
+///   allocation behind `path_ptr`: both are written before the path is read.
 /// - A buffer returned on `0` must be freed exactly once, with
 ///   `ifc_lite_free` and the same `*out_len`.
 #[no_mangle]

@@ -32,7 +32,7 @@
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseArgs } from 'node:util';
+import { parseArgs, stripVTControlCharacters } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { gh } from '../lib/gh.mjs';
 import { normaliseLogin, pageAll } from '../check-review-posted.mjs';
@@ -76,8 +76,6 @@ const remedy = (reason) => FAILURES.find(([r]) => r === reason)[2];
  * Its milliseconds and line number would otherwise read as a status code.
  */
 const LOG_PREFIX_RE = /^[^|]*\|[^|]*\|\s*\S+ - /;
-/** Built from a char code: a `\x1b` regex literal trips oxlint's no-control-regex (see check-unused-locals.mjs). */
-const ANSI_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
 
 /**
  * Reads only the message of error lines, so a token count ("Tokens: 401") is
@@ -86,8 +84,7 @@ const ANSI_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
  * @param {string|null} logText
  */
 export function classifyFailure(logText) {
-  const errorLines = String(logText ?? '')
-    .replace(ANSI_RE, '')
+  const errorLines = stripVTControlCharacters(String(logText ?? ''))
     .split('\n')
     .filter((line) => /error|exception|failed/i.test(line))
     .map((line) => line.replace(LOG_PREFIX_RE, ''))

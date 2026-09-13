@@ -14,11 +14,10 @@ import {
   getMapUnitScale,
   intersectRayWithHorizontalPlane,
   metersToMapUnits,
-  orthogonalHeightDeltaToViewerDeltaForGeometry,
   projectedDeltaToViewerDeltaForGeometry,
   viewerDeltaToProjectedDeltaForGeometry,
-  viewerHeightDeltaToOrthogonalHeightDeltaForGeometry,
 } from '@/lib/geo/cesium-placement';
+import { orthogonalHeightDeltaToViewerDeltaForGeometry, viewerHeightDeltaToOrthogonalHeightDeltaForGeometry } from '@/lib/geo/viewer-up-scale';
 import { findClampAnchorY } from '@/lib/geo/clamp-anchor';
 import { effectiveMapConversionForGeometry } from '@/lib/geo/map-absolute';
 import { cn } from '@/lib/utils';

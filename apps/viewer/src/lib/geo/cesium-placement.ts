@@ -9,6 +9,7 @@ import { findClampAnchorY } from './clamp-anchor';
 import { computeModelCenterInIfcMeters } from './reproject';
 import { effectiveMapConversionForGeometry } from './map-absolute';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
+import { divideByAxisScale, viewerUpScaleForGeometry } from './viewer-up-scale';
 
 export function getMapUnitScale(
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
@@ -210,42 +211,6 @@ export function computeIfcOriginHeight(
   const scaleZ = getEffectiveAxisScales(mapConversion, mapScale, lengthUnitScale).z;
   return mapConversion.orthogonalHeight * mapScale
     + scaleZ * computeModelCenterInIfcMeters(coordinateInfo).ifcZ;
-}
-
-/** The frame's gizmo height arguments: the conversion, CRS, length unit, geometry. */
-type HeightFrame = [
-  mapConversion: MapConversion,
-  projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
-  lengthUnitScale: number,
-  coordinateInfo: CoordinateInfo | undefined,
-];
-
-/**
- * Metres of height per viewer Y unit (Scale x FactorZ), through the
- * map-absolute guard (#2526), as the Cesium bridge derives `viewerUpScale`.
- */
-export function viewerUpScaleForGeometry(...[conversion, crs, lengthUnitScale, coordinateInfo]: HeightFrame): number {
-  const mapScale = getMapUnitScale(crs, lengthUnitScale);
-  const guarded = effectiveMapConversionForGeometry(conversion, mapScale, coordinateInfo);
-  return getEffectiveAxisScales(guarded, mapScale, lengthUnitScale).z;
-}
-
-/** The gizmo's height drag: a viewer-Y delta as an OrthogonalHeight delta in map units (#4675). */
-export function viewerHeightDeltaToOrthogonalHeightDeltaForGeometry(deltaY: number, ...frame: HeightFrame): number {
-  return metersToMapUnits(deltaY * viewerUpScaleForGeometry(...frame), frame[1], frame[2]);
-}
-
-/** Invert an authored axis scale without leaking infinities into the gizmo. */
-function divideByAxisScale(value: number, scale: number): number {
-  return Number.isFinite(scale) && Math.abs(scale) >= 1e-12 ? value / scale : 0;
-}
-
-/** The gizmo's height preview: the inverse of the drag conversion above (#4675). */
-export function orthogonalHeightDeltaToViewerDeltaForGeometry(deltaHeight: number, ...frame: HeightFrame): number {
-  return divideByAxisScale(
-    mapUnitsToMeters(deltaHeight, frame[1], frame[2]),
-    viewerUpScaleForGeometry(...frame),
-  );
 }
 
 export function viewerDeltaToProjectedDelta(

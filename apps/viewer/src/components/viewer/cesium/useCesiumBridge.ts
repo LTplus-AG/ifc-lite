@@ -29,6 +29,7 @@ import {
   orthometricTargetForTerrain,
 } from '@/lib/geo/cesium-placement';
 import { egm96Undulation } from '@/lib/geo/egm96-undulation';
+import { holdCameraY, type ViewerHeightFrame } from '@/lib/geo/viewer-up-scale';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { getCesiumModule } from './cesium-module';
 
@@ -78,7 +79,7 @@ export function useCesiumBridge({
   // entire viewer→ECEF frame translates with it; we offset the IFC viewer's
   // camera Y by the inverse so the user perceives the model moving instead
   // of the camera being dragged along.
-  const prevPlacementRef = useRef<number | null>(null);
+  const prevPlacementRef = useRef<ViewerHeightFrame | null>(null);
 
   // Tracks bridge readiness as state (not just a ref) so dependants re-run.
   const [bridgeVersion, setBridgeVersion] = useState(0);
@@ -230,20 +231,23 @@ export function useCesiumBridge({
       // translates with the model and edits feel like the camera is
       // moving instead of the model — exactly what the user reported.
       const prevPlacement = prevPlacementRef.current;
+      // Hold the height through the frame's Scale x FactorZ and centre, which can change too (#4675).
+      const { placementHeight, modelCenterY } = placement;
+      const nextPlacement = { placementHeight, modelCenterY, viewerUpScale: bridge.viewerUpScale };
       if (!usesSeparateCameraBridge) {
-        prevPlacementRef.current = placement.placementHeight;
+        prevPlacementRef.current = nextPlacement;
       }
       if (!usesSeparateCameraBridge && prevPlacement !== null) {
-        const dh = placement.placementHeight - prevPlacement;
+        const dh = placement.placementHeight - prevPlacement.placementHeight;
         // 5 cm threshold — rejects float jitter from cached terrain reads
         // re-flowing through the same effect, while a real placement edit
         // is always far larger.
-        if (Math.abs(dh) > 0.05) {
+        if (Math.abs(dh) > 0.05 || prevPlacement.viewerUpScale !== nextPlacement.viewerUpScale) {
           const renderer = getGlobalRenderer();
           if (renderer) {
             const cam = renderer.getCamera();
             const pos = cam.getPosition();
-            cam.setPosition(pos.x, pos.y - dh, pos.z);
+            cam.setPosition(pos.x, holdCameraY(pos.y, prevPlacement, nextPlacement), pos.z);
           }
         }
       }

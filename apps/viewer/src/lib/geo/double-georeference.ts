@@ -212,15 +212,19 @@ export function overriddenScaleNote(found: ExportScaleFields): string | null {
 }
 
 /**
- * The values to type in to bake the neutralised conversion into an export:
- * the offsets and rotation always, Scale when it is overridden, and each
- * factor from {@link DoubleGeoreference.factorsForExport}.
+ * How to bake the neutralised conversion into an export: the offsets and
+ * rotation always, Scale when it is overridden. The panel does not edit the
+ * IfcMapConversionScaled factors, so any in
+ * {@link DoubleGeoreference.factorsForExport} are sent to the authoring tool.
  */
 export function exportCorrectionInstruction(found: ExportScaleFields): string {
   const fields = ['Eastings and Northings to 0', 'Angle to Grid North to 0'];
   if (found.scaleForExport !== null) fields.push(`Scale to ${trimFloat(found.scaleForExport)}`);
-  fields.push(...found.factorsForExport.map((name) => `${name} to 1`));
-  return `set ${joinSerial(fields)}`;
+  const inApp = `set ${joinSerial(fields)}, then use Export IFC (with changes).`;
+  const factors = found.factorsForExport;
+  if (factors.length === 0) return inApp;
+  const [pronoun, verb] = factors.length > 1 ? ['them', 'are'] : ['it', 'is'];
+  return `${inApp} ${joinSerial(factors)} ${verb} not editable in ifc-lite; set ${pronoun} to 1 in the authoring tool, or the exported file is still scaled by ${pronoun}.`;
 }
 
 /**

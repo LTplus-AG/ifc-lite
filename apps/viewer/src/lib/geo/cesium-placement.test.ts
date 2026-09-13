@@ -14,7 +14,6 @@ import {
   intersectRayWithHorizontalPlane,
   mapUnitsToMeters,
   metersToMapUnits,
-  orthogonalHeightDeltaToViewerDeltaForGeometry,
   orthometricTargetForTerrain,
   projectedDeltaToViewerDelta,
   projectedDeltaToViewerDeltaForGeometry,
@@ -22,7 +21,6 @@ import {
   shouldPreferOrthometricTerrain,
   viewerDeltaToProjectedDelta,
   viewerDeltaToProjectedDeltaForGeometry,
-  viewerHeightDeltaToOrthogonalHeightDeltaForGeometry,
 } from './cesium-placement.js';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion } from '@ifc-lite/parser';
@@ -143,24 +141,6 @@ describe('cesium placement helpers', () => {
     assert.strictEqual(flat.terrainClipY, null);
     const flatAtTerrain = computeCesiumPlacement({ ifcOriginHeight: 250, terrainHeight: 250, viewerUpScale: 0 });
     assert.strictEqual(flatAtTerrain.terrainClipY, null);
-  });
-
-  it('converts gizmo height deltas through Scale x FactorZ in both directions (#4675)', () => {
-    const conversion: MapConversion = {
-      id: 1, sourceCRS: 2, targetCRS: 3, eastings: 0, northings: 0, orthogonalHeight: 0,
-      scale: 1, factorZ: 2,
-    };
-    // Metre units: 3 viewer units x scaleZ 2 = 6 m of OrthogonalHeight. Unscaled: 3.
-    const crs = { mapUnitScale: 1 };
-    assert.strictEqual(viewerHeightDeltaToOrthogonalHeightDeltaForGeometry(3, conversion, crs, 1, undefined), 6);
-    assert.strictEqual(orthogonalHeightDeltaToViewerDeltaForGeometry(6, conversion, crs, 1, undefined), 3);
-
-    const flat = { ...conversion, factorZ: 0 };
-    assert.strictEqual(
-      orthogonalHeightDeltaToViewerDeltaForGeometry(6, flat, crs, 1, undefined),
-      0,
-      'a flat authored axis must not put the preview at infinity',
-    );
   });
 
   it('computes OrthogonalHeight from target base altitude with shift and RTC', () => {

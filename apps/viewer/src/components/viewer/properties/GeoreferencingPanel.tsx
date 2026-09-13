@@ -750,7 +750,6 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
                   overridden: a spec-strict consumer reading the exported file
                   back would still multiply the map-sized coordinates by it. */}
               {exportCorrectionInstruction(doubleGeoref)}
-              , then use Export IFC (with changes).
             </span>
           </div>
         </div>

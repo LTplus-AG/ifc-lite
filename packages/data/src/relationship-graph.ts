@@ -393,6 +393,23 @@ function RelationshipTypeToString(type: RelationshipType): string {
     [RelationshipType.AssignsToGroupByFactor]: 'IfcRelAssignsToGroupByFactor',
     [RelationshipType.AssignsToProduct]: 'IfcRelAssignsToProduct',
     [RelationshipType.ReferencedInSpatialStructure]: 'IfcRelReferencedInSpatialStructure',
+    [RelationshipType.AssignsToActor]: 'IfcRelAssignsToActor',
+    [RelationshipType.AssignsToResource]: 'IfcRelAssignsToResource',
+    [RelationshipType.AssignsToProcess]: 'IfcRelAssignsToProcess',
+    [RelationshipType.AssignsToControl]: 'IfcRelAssignsToControl',
+    [RelationshipType.AssociatesConstraint]: 'IfcRelAssociatesConstraint',
+    [RelationshipType.AssociatesApproval]: 'IfcRelAssociatesApproval',
+    [RelationshipType.AssociatesLibrary]: 'IfcRelAssociatesLibrary',
+    [RelationshipType.Declares]: 'IfcRelDeclares',
+    [RelationshipType.InterferesElements]: 'IfcRelInterferesElements',
+    [RelationshipType.CoversBldgElements]: 'IfcRelCoversBldgElements',
+    [RelationshipType.CoversSpaces]: 'IfcRelCoversSpaces',
+    [RelationshipType.ServicesBuildings]: 'IfcRelServicesBuildings',
+    [RelationshipType.ProjectsElement]: 'IfcRelProjectsElement',
+    [RelationshipType.Positions]: 'IfcRelPositions',
+    [RelationshipType.AdheresToElement]: 'IfcRelAdheresToElement',
+    [RelationshipType.FlowControlElements]: 'IfcRelFlowControlElements',
+    [RelationshipType.Sequence]: 'IfcRelSequence',
   };
   return names[type] || 'Unknown';
 }

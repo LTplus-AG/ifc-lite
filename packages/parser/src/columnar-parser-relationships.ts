@@ -9,11 +9,21 @@
  * from STEP relationship entities without TextDecoder overhead.
  */
 
-import { skipCommas, readRefId, readRefList } from './columnar-parser-attributes.js';
+import { skipCommas, readRefList } from './columnar-parser-attributes.js';
+import { getRelationshipSlotPlan } from './relationship-schema-slots.js';
 
 /**
- * Extract relatingObject and relatedObjects from a relationship entity using byte-level scanning.
- * No TextDecoder needed - only extracts numeric entity IDs.
+ * Extract relatingObject and relatedObjects from a relationship entity using
+ * byte-level scanning. No TextDecoder needed — only extracts numeric entity
+ * IDs.
+ *
+ * The attribute positions come from {@link getRelationshipSlotPlan}
+ * (schema-derived, per #4205) rather than a hand-written branch per STEP
+ * keyword. `readRefList` accepts both a bare `#id` and a `(...)` list, so a
+ * single read path serves the "relating" slot (always one reference) and the
+ * "related" slot (one reference or a list) alike — the plan's `isList` flag
+ * only documents which shape a class uses, it does not gate how the value is
+ * read.
  */
 export function extractRelFast(
     buffer: Uint8Array,
@@ -21,6 +31,9 @@ export function extractRelFast(
     byteLength: number,
     typeUpper: string,
 ): { relatingObject: number; relatedObjects: number[] } | null {
+    const plan = getRelationshipSlotPlan(typeUpper);
+    if (!plan) return null;
+
     const end = byteOffset + byteLength;
     let pos = byteOffset;
 
@@ -28,75 +41,37 @@ export function extractRelFast(
     if (pos >= end) return null;
     pos++;
 
-    // Skip to attr[4] (all IfcRelationship subtypes have 4 shared IfcRoot+IfcRelationship attrs)
+    // Skip to post-root attr[0] (all IfcRelationship subtypes share 4
+    // IfcRoot+IfcRelationship attrs: GlobalId, OwnerHistory, Name, Description).
     pos = skipCommas(buffer, pos, end, 4);
 
-    if (typeUpper === 'IFCRELCONTAINEDINSPATIALSTRUCTURE'
-        || typeUpper === 'IFCRELREFERENCEDINSPATIALSTRUCTURE'
-        || typeUpper === 'IFCRELDEFINESBYPROPERTIES'
-        || typeUpper === 'IFCRELDEFINESBYTYPE') {
-        // attr[4]=RelatedObjects, attr[5]=RelatingObject
-        const [related, rp] = readRefList(buffer, pos, end);
+    const slots = [
+        { kind: 'relating' as const, ...plan.relating },
+        { kind: 'related' as const, ...plan.related },
+    ].sort((a, b) => a.index - b.index);
+
+    let relatingIds: number[] = [];
+    let relatedIds: number[] = [];
+    let cursor = 0;
+    for (const slot of slots) {
+        pos = skipCommas(buffer, pos, end, slot.index - cursor);
+        cursor = slot.index;
+        const [ids, rp] = readRefList(buffer, pos, end);
+        if (slot.kind === 'relating') relatingIds = ids;
+        else relatedIds = ids;
         pos = rp;
-        while (pos < end && buffer[pos] !== 0x2C) pos++;
-        pos++;
-        const [relating, _] = readRefId(buffer, pos, end);
-        if (relating < 0 || related.length === 0) return null;
-        return { relatingObject: relating, relatedObjects: related };
-    } else if (
-        typeUpper === 'IFCRELASSIGNSTOGROUP'
-        // Subtype of IfcRelAssignsToGroup: same attr[4]=RelatedObjects,
-        // attr[5]=RelatedObjectsType, attr[6]=RelatingGroup layout, plus a
-        // trailing Factor we don't need to read.
-        || typeUpper === 'IFCRELASSIGNSTOGROUPBYFACTOR'
-        || typeUpper === 'IFCRELASSIGNSTOPRODUCT'
-    ) {
-        const [related, rp] = readRefList(buffer, pos, end);
-        // `readRefList` returns `rp` pointing AT the closing `)` of
-        // the list. `skipCommas` tracks paren depth, so leaving `rp`
-        // there makes that `)` cancel the implicit depth-0 baseline
-        // and subsequent commas don't count. Advance past it first.
-        let after = rp;
-        if (after < end && buffer[after] === 0x29) after++;
-        pos = skipCommas(buffer, after, end, 2);
-        const [relating, _] = readRefId(buffer, pos, end);
-        if (relating < 0 || related.length === 0) return null;
-        return { relatingObject: relating, relatedObjects: related };
-    } else if (typeUpper === 'IFCRELCONNECTSPORTTOELEMENT' || typeUpper === 'IFCRELCONNECTSPORTS') {
-        // attr[4]=RelatingPort, attr[5]=RelatedElement / RelatedPort — both
-        // SINGLE references, and both at the front of the attribute list.
-        //
-        // Neither existing branch fits: the default one reads attr[5] as a
-        // LIST, and the ConnectsElements branch skips one attribute first
-        // because that entity carries an optional ConnectionGeometry at [4].
-        // These two carry the port straight away. (`IfcRelConnectsPorts` also
-        // has an optional RealizingElement at [6] — the element that realises
-        // the connection, e.g. a piece of duct. Not read: it is a third party
-        // to the connection, not one of its two ends, and an edge has two.)
-        const [relating, rp] = readRefId(buffer, pos, end);
-        if (relating < 0) return null;
-        pos = skipCommas(buffer, rp, end, 1);
-        const [related, _] = readRefId(buffer, pos, end);
-        if (related < 0) return null;
-        return { relatingObject: relating, relatedObjects: [related] };
-    } else if (typeUpper === 'IFCRELCONNECTSELEMENTS' || typeUpper === 'IFCRELCONNECTSPATHELEMENTS') {
-        pos = skipCommas(buffer, pos, end, 1);
-        const [relating, rp2] = readRefId(buffer, pos, end);
-        pos = skipCommas(buffer, rp2, end, 1);
-        const [related, _] = readRefId(buffer, pos, end);
-        if (relating < 0 || related < 0) return null;
-        return { relatingObject: relating, relatedObjects: [related] };
-    } else {
-        // Default: attr[4]=RelatingObject, attr[5]=RelatedObject(s)
-        const [relating, rp] = readRefId(buffer, pos, end);
-        if (relating < 0) return null;
-        pos = rp;
-        while (pos < end && buffer[pos] !== 0x2C) pos++;
-        pos++;
-        const [related, _] = readRefList(buffer, pos, end);
-        if (related.length === 0) return null;
-        return { relatingObject: relating, relatedObjects: related };
+        // `readRefList` returns `rp` pointing AT the closing `)` when it read
+        // a parenthesised list — `skipCommas` tracks paren depth from its
+        // start position, so leaving `pos` there makes that `)` register as
+        // an unmatched close and miscount every comma after it. Advance past
+        // it before the next slot's `skipCommas` call. A bare single `#id`
+        // never leaves `rp` sitting on a `)`, so this is a no-op for it.
+        if (pos < end && buffer[pos] === 0x29) pos++;
     }
+
+    const relatingObject = relatingIds[0] ?? -1;
+    if (relatingObject < 0 || relatedIds.length === 0) return null;
+    return { relatingObject, relatedObjects: relatedIds };
 }
 
 /**

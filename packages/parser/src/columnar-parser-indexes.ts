@@ -14,6 +14,7 @@ import {
     RelationshipType,
     QuantityType,
 } from '@ifc-lite/data';
+import { getAllConcreteRelationshipTypes } from './relationship-schema-slots.js';
 
 export type { SpatialIndex } from '@ifc-lite/data';
 
@@ -92,6 +93,31 @@ export const REL_TYPE_MAP: Record<string, RelationshipType> = {
     'IFCRELASSIGNSTOGROUPBYFACTOR': RelationshipType.AssignsToGroup,
     'IFCRELASSIGNSTOPRODUCT': RelationshipType.AssignsToProduct,
     'IFCRELREFERENCEDINSPATIALSTRUCTURE': RelationshipType.ReferencedInSpatialStructure,
+    // Previously not indexed at all (#4205) — each gets its own dedicated
+    // edge type since no existing consumer folded it into a broader bucket
+    // to preserve; the slot positions come from `getRelationshipSlotPlan`,
+    // not a hand-typed layout.
+    'IFCRELASSOCIATESCONSTRAINT': RelationshipType.AssociatesConstraint,
+    'IFCRELASSOCIATESAPPROVAL': RelationshipType.AssociatesApproval,
+    'IFCRELASSOCIATESLIBRARY': RelationshipType.AssociatesLibrary,
+    'IFCRELASSIGNSTOACTOR': RelationshipType.AssignsToActor,
+    'IFCRELASSIGNSTORESOURCE': RelationshipType.AssignsToResource,
+    'IFCRELASSIGNSTOPROCESS': RelationshipType.AssignsToProcess,
+    'IFCRELASSIGNSTOCONTROL': RelationshipType.AssignsToControl,
+    'IFCRELDECLARES': RelationshipType.Declares,
+    'IFCRELINTERFERESELEMENTS': RelationshipType.InterferesElements,
+    'IFCRELCOVERSBLDGELEMENTS': RelationshipType.CoversBldgElements,
+    'IFCRELCOVERSSPACES': RelationshipType.CoversSpaces,
+    'IFCRELSERVICESBUILDINGS': RelationshipType.ServicesBuildings,
+    'IFCRELPROJECTSELEMENT': RelationshipType.ProjectsElement,
+    'IFCRELFLOWCONTROLELEMENTS': RelationshipType.FlowControlElements,
+    'IFCRELSEQUENCE': RelationshipType.Sequence,
+    // IFC4X3-only concrete subtypes; absent from the IFC2X3/IFC4 registries,
+    // so `getRelationshipSlotPlan` resolves them from the IFC4X3 registry
+    // (checked first) and this map entry is simply unused when parsing an
+    // older schema (its STEP keyword cannot occur in that file).
+    'IFCRELPOSITIONS': RelationshipType.Positions,
+    'IFCRELADHERESTOELEMENT': RelationshipType.AdheresToElement,
 };
 
 /**
@@ -136,30 +162,6 @@ export const SPATIAL_TYPES = new Set([
     'IFCMARINEFACILITY',
 ]);
 
-// Relationship types needed for hierarchy and structural relationships
-export const HIERARCHY_REL_TYPES = new Set([
-    'IFCRELAGGREGATES', 'IFCRELCONTAINEDINSPATIALSTRUCTURE',
-    'IFCRELDEFINESBYTYPE',
-    // IfcRelNests is a decomposition edge — IDS partOf checks for it
-    // expect to traverse the same graph as IfcRelAggregates.
-    'IFCRELNESTS',
-    // Structural relationships (voids, fills, connections, groups)
-    'IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT',
-    'IFCRELCONNECTSPATHELEMENTS', 'IFCRELCONNECTSELEMENTS',
-    // Plant topology. This set is the GATE — a relationship type missing here
-    // is never collected and so never reaches `extractRelFast`, which is why
-    // ports were invisible to the relationship graph even though the entities
-    // themselves were parsed.
-    'IFCRELCONNECTSPORTTOELEMENT', 'IFCRELCONNECTSPORTS',
-    'IFCRELSPACEBOUNDARY',
-    // IfcRelAssignsToGroupByFactor is a distinct STEP keyword (subtype of
-    // IfcRelAssignsToGroup); omitting it here means it never reaches
-    // relationshipRefs / extractRelFast, so every group/zone/system
-    // membership assigned through it is silently dropped.
-    'IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOGROUPBYFACTOR', 'IFCRELASSIGNSTOPRODUCT',
-    'IFCRELREFERENCEDINSPATIALSTRUCTURE',
-]);
-
 // Relationship types for on-demand property loading
 export const PROPERTY_REL_TYPES = new Set([
     'IFCRELDEFINESBYPROPERTIES',
@@ -170,6 +172,26 @@ export const ASSOCIATION_REL_TYPES = new Set([
     'IFCRELASSOCIATESCLASSIFICATION', 'IFCRELASSOCIATESMATERIAL',
     'IFCRELASSOCIATESDOCUMENT',
 ]);
+
+// Relationship types needed for hierarchy and structural relationships.
+//
+// Schema-derived (#4205): every concrete `IfcRelationship` subtype across
+// every bundled schema version, minus the 4 STEP classes routed to their own
+// specialized on-demand buckets above. Before #4205 this was a hand-written
+// enumeration — #3964, #3237 and #1075 each landed because it forgot one
+// more class, most recently `IFCRELCONNECTSPORTTOELEMENT`/`IFCRELCONNECTSPORTS`
+// (ports invisible to the relationship graph even though the entities
+// themselves were parsed) and `IFCRELASSIGNSTOGROUPBYFACTOR` (every
+// group/zone/system membership assigned through it silently dropped). This
+// set is the GATE — a relationship type missing here is never collected and
+// so never reaches `extractRelFast`.
+const NON_HIERARCHY_REL_TYPES: ReadonlySet<string> = new Set([
+    ...PROPERTY_REL_TYPES,
+    ...ASSOCIATION_REL_TYPES,
+]);
+export const HIERARCHY_REL_TYPES: ReadonlySet<string> = new Set(
+    [...getAllConcreteRelationshipTypes()].filter(t => !NON_HIERARCHY_REL_TYPES.has(t)),
+);
 
 // Attributes to skip in extractAllEntityAttributes (shown elsewhere or non-displayable)
 export const SKIP_DISPLAY_ATTRS = new Set(['GlobalId', 'OwnerHistory', 'ObjectPlacement', 'Representation', 'HasPropertySets', 'RepresentationMaps']);

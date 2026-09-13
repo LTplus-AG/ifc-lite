@@ -85,17 +85,44 @@ describe('drop census (#4208)', () => {
         expect(bogus!.knownInSchema).toBe(false);
     });
 
-    it('reports an IFCREL* class seen but not indexed as a relationship edge', async () => {
-        // IFCRELASSIGNSTOPROCESS is a real IFCREL* keyword that is not in
-        // HIERARCHY_REL_TYPES/PROPERTY_REL_TYPES/ASSOCIATION_REL_TYPES, so it
-        // is seen (and stays addressable via byType) but is never routed
-        // into the relationship graph as an edge.
+    it('IFCRELASSIGNSTOPROCESS is now indexed (#4205) — regression lock for the fix this test used to pin as a gap', async () => {
+        // Until #4205, IFCRELASSIGNSTOPROCESS was in none of
+        // HIERARCHY_REL_TYPES/PROPERTY_REL_TYPES/ASSOCIATION_REL_TYPES, so
+        // it was seen (addressable via byType) but never routed into the
+        // relationship graph as an edge — this test used to assert exactly
+        // that gap. `HIERARCHY_REL_TYPES` is schema-derived now, so this
+        // STEP keyword passes the gate and gets its own `RelationshipType`.
         const ifc = `#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);
 #2=IFCRELASSIGNSTOPROCESS('rel-guid',#1,$,$,$,$,$,$);`;
         const store = await parseSource(ifc);
         const census = store.dropCensus!;
+        expect(census.relClassesSeen).toBe(1);
+        expect(census.relClassesIndexed).toBe(1);
+        expect(census.unindexedRelClasses.find(c => c.type === 'IFCRELASSIGNSTOPROCESS')).toBeUndefined();
+    });
+
+    it('reports an IFCREL* class seen but not indexed as a relationship edge', async () => {
+        // Since #4205, HIERARCHY_REL_TYPES is schema-derived: every concrete
+        // `IfcRelationship` subtype any bundled schema registry knows about
+        // (46+ classes across IFC2X3/IFC4/IFC4X3) passes the census's
+        // "indexed" category, whether or not `REL_TYPE_MAP` also gives it a
+        // dedicated edge type yet. So a REAL schema-known class can no
+        // longer land here the way IFCRELASSIGNSTOPROCESS used to before the
+        // fix — the only way to reach "seen but unindexed" now is a keyword
+        // no bundled schema declares at all (an unreleased draft addition, a
+        // vendor extension): it still starts with "IFCREL" (routed to
+        // CAT_RELEVANT, not CAT_SKIP, by the `upper.startsWith('IFCREL')`
+        // fallback in `columnar-entity-preparation.ts`) but the
+        // schema-derived gate has never heard of it, so it can't be in
+        // HIERARCHY_REL_TYPES either.
+        const ifc = `#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);
+#2=IFCRELVENDOREXTENSIONNOTINANYBUNDLEDSCHEMA('rel-guid',#1,$,$,#3,(#4));
+#3=IFCWALL('w1',#1,'Wall1',$,$,$,$,$);
+#4=IFCWALL('w2',#1,'Wall2',$,$,$,$,$);`;
+        const store = await parseSource(ifc);
+        const census = store.dropCensus!;
         expect(census.relClassesSeen).toBeGreaterThanOrEqual(1);
-        const rel = census.unindexedRelClasses.find(c => c.type === 'IFCRELASSIGNSTOPROCESS');
+        const rel = census.unindexedRelClasses.find(c => c.type === 'IFCRELVENDOREXTENSIONNOTINANYBUNDLEDSCHEMA');
         expect(rel).toBeDefined();
 
         // Exactly one IFCREL* class was seen and it was NOT indexed, so

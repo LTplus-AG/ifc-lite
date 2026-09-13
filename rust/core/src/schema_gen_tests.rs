@@ -110,6 +110,29 @@ fn test_decoded_entity() {
 }
 
 #[test]
+fn decoded_entity_get_refs_accepts_a_list_or_bare_reference() {
+    let entity = DecodedEntity::new(
+        1,
+        IfcType::IfcWall,
+        vec![
+            AttributeValue::List(vec![
+                AttributeValue::EntityRef(2),
+                AttributeValue::Null,
+                AttributeValue::EntityRef(3),
+            ]),
+            AttributeValue::EntityRef(4),
+            AttributeValue::List(Vec::new()),
+            AttributeValue::Null,
+        ],
+    );
+    assert_eq!(entity.get_refs(0), Some(vec![2, 3]));
+    assert_eq!(entity.get_refs(1), Some(vec![4]));
+    assert_eq!(entity.get_refs(2), None);
+    assert_eq!(entity.get_refs(3), None);
+    assert_eq!(entity.get_refs(4), None);
+}
+
+#[test]
 fn test_as_float_with_typed_value() {
     // Test plain float
     let plain_float = AttributeValue::Float(0.5);

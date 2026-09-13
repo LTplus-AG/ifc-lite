@@ -15,7 +15,7 @@
 use ifc_lite_core::EntityDecoder;
 use rustc_hash::FxHashMap;
 
-use crate::prepass::{refs_from_list, Span};
+use crate::prepass::Span;
 
 /// Walk `defines_by_type` spans (`IFCRELDEFINESBYTYPE`) and, for every
 /// occurrence whose type already has a resolved material, install that
@@ -36,7 +36,7 @@ pub(crate) fn propagate_type_material(
         let Some(&type_material) = element_to_material.get(&type_id) else {
             continue;
         };
-        let Some(occurrences) = refs_from_list(&entity, 4) else {
+        let Some(occurrences) = entity.get_refs(4) else {
             continue;
         };
         for occurrence_id in occurrences {

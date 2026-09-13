@@ -3,14 +3,13 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Canonical fill-area colour leaf shared by symbolic and 3D annotations.
-use crate::prepass::refs_from_list;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 pub(crate) fn extract_color_from_fill_area_style(
     style: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Option<[f32; 4]> {
-    for fs_ref in refs_from_list(style, 1)? {
+    for fs_ref in style.get_refs(1)? {
         let Ok(fs) = decoder.decode_by_id(fs_ref) else {
             continue;
         };
@@ -37,7 +36,7 @@ pub(crate) fn fill_style_from_styled_item(
     if item.ifc_type != IfcType::IfcAnnotationFillArea {
         return None;
     }
-    let refs = refs_from_list(styled, 1)?;
+    let refs = styled.get_refs(1)?;
     if refs.len() > 64 {
         return None;
     }
@@ -51,7 +50,7 @@ pub(crate) fn fill_style_from_styled_item(
                 .map(|(_, name, _, _)| ifc_lite_core::keyword_eq(name, "IFCPRESENTATIONSTYLEASSIGNMENT"))
         }) == Some(true)
         {
-            let Some(inner) = refs_from_list(&style, 0) else { continue };
+            let Some(inner) = style.get_refs(0) else { continue };
             if inner.len() > 64 {
                 return None;
             }

@@ -149,7 +149,8 @@ fn annotation_4406_fill_style_list_is_read_by_the_symbolic_rule() {
 /// The 3D surface-style readers take a bare reference where a list is expected
 /// as a one-element list, as the fill reader above and the 2D symbolic index
 /// do (#4694): in `IfcStyledItem.Styles`, in an IFC2X3
-/// `IfcPresentationStyleAssignment.Styles`, and in the material chain's
+/// `IfcPresentationStyleAssignment.Styles`, `IfcSurfaceStyle.Styles`, and the
+/// material chain's
 /// `IfcStyledRepresentation.Items`.
 ///
 /// MUTATION that fails every bare variant: remove the bare-reference arm from
@@ -180,6 +181,13 @@ ENDSEC;END-ISO-10303-21;";
                     "#30=IFCSTYLEDITEM(#14,(#20),$);",
                     "#31=IFCPRESENTATIONSTYLEASSIGNMENT(#20);#30=IFCSTYLEDITEM(#14,(#31),$);",
                 ),
+        ),
+        (
+            "a bare surface-style element",
+            base.replace(
+                "#20=IFCSURFACESTYLE('Red',.BOTH.,(#21));",
+                "#20=IFCSURFACESTYLE('Red',.BOTH.,#21);",
+            ),
         ),
         (
             "a bare Items reference on a material's styled representation",

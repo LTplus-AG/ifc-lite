@@ -323,6 +323,17 @@ impl DecodedEntity {
     pub fn get_list(&self, index: usize) -> Option<&[AttributeValue]> {
         self.get(index).and_then(|v| v.as_list())
     }
+
+    /// Get entity references from a list attribute. A bare reference is a
+    /// tolerated one-element list; non-reference list members are skipped.
+    pub fn get_refs(&self, index: usize) -> Option<Vec<u32>> {
+        let attr = self.get(index)?;
+        let refs = match attr.as_list() {
+            Some(list) => list.iter().filter_map(AttributeValue::as_entity_ref).collect(),
+            None => vec![attr.as_entity_ref()?],
+        };
+        (!refs.is_empty()).then_some(refs)
+    }
 }
 
 /// IFC schema metadata for dynamic processing

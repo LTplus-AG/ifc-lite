@@ -2,7 +2,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::prepass::refs_from_list;
 use crate::style::fill::extract_color_from_fill_area_style;
 use ifc_lite_core::{keyword_eq, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
 use std::collections::HashMap;
@@ -20,7 +19,7 @@ pub(super) fn build_styled_item_index(content: &[u8], decoder: &mut EntityDecode
             continue;
         }
         let Ok(entity) = decoder.decode_at_with_id(id, start, end) else { continue };
-        if let Some(inner_refs) = refs_from_list(&entity, 0) {
+        if let Some(inner_refs) = entity.get_refs(0) {
             wrappers.insert(id, inner_refs);
         }
     }
@@ -34,7 +33,7 @@ pub(super) fn build_styled_item_index(content: &[u8], decoder: &mut EntityDecode
         }
         let Ok(entity) = decoder.decode_at_with_id(id, start, end) else { continue };
         let Some(item_ref) = entity.get_ref(0) else { continue };
-        let Some(styles) = refs_from_list(&entity, 1) else { continue };
+        let Some(styles) = entity.get_refs(1) else { continue };
         let mut final_refs: Vec<u32> = Vec::new();
         for raw_ref in styles {
             if let Some(inner) = wrappers.get(&raw_ref) {

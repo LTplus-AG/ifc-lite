@@ -21,7 +21,6 @@
 //! existing `IfcStyledItem` walk) and passed in as `orphan_styled_items`; this
 //! module walks the material `SELECT` graph and joins the two.
 
-use crate::prepass::refs_from_list;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashMap;
 
@@ -163,7 +162,7 @@ pub fn build_material_style_index(
                 continue;
             };
             // IfcStyledRepresentation : IfcRepresentation — Items is attr 3.
-            for styled_item_id in refs_from_list(&styled_repr, 3).unwrap_or_default() {
+            for styled_item_id in styled_repr.get_refs(3).unwrap_or_default() {
                 if let Some(&color) = orphan_styled_items.get(&styled_item_id) {
                     material_styles.entry(material_id).or_default().push(color);
                 }
@@ -192,7 +191,7 @@ fn resolve_material_ids_inner(
     match entity.ifc_type {
         IfcType::IfcMaterial => vec![material_select_id],
         // IfcMaterialList.Materials (attr 0)
-        IfcType::IfcMaterialList => refs_from_list(&entity, 0).unwrap_or_default(),
+        IfcType::IfcMaterialList => entity.get_refs(0).unwrap_or_default(),
         // IfcMaterialLayerSetUsage.ForLayerSet (attr 0) → IfcMaterialLayerSet
         IfcType::IfcMaterialLayerSetUsage => entity
             .get_ref(0)
@@ -221,7 +220,7 @@ fn extract_nested_material_ids(
     decoder: &mut EntityDecoder,
 ) -> Vec<u32> {
     let mut materials = Vec::new();
-    for container_id in refs_from_list(entity, container_list_attr_idx).unwrap_or_default() {
+    for container_id in entity.get_refs(container_list_attr_idx).unwrap_or_default() {
         if let Ok(container) = decoder.decode_by_id(container_id) {
             if let Some(mat_id) = container.get_ref(material_attr_idx) {
                 materials.push(mat_id);

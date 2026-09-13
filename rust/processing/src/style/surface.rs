@@ -98,13 +98,9 @@ pub fn extract_surface_style_colors(
         return None;
     }
     // IfcSurfaceStyle: Name(0), Side(1), Styles(2: list of surface-style elements).
-    let styles_attr = style.get(2)?;
-    let list = styles_attr.as_list()?;
-    for item in list {
-        if let Some(element_id) = item.as_entity_ref() {
-            if let Some(pair) = rendering_colours(element_id, decoder) {
-                return Some(pair);
-            }
+    for element_id in style.get_refs(2)? {
+        if let Some(pair) = rendering_colours(element_id, decoder) {
+            return Some(pair);
         }
     }
     None

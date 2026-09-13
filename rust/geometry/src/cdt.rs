@@ -61,9 +61,26 @@
 //! constrained-Delaunay, still watertight) — quality is best-effort, validity
 //! is not.
 
+mod enc_grid;
 mod predicates;
 
+static RECOVERY_STUCK: AtomicU64 = AtomicU64::new(0);
+static RECOVERY_EXHAUSTED: AtomicU64 = AtomicU64::new(0);
+
+/// Read + reset `(stuck, exhausted)`: constraint segments
+/// [`Cdt::recover_segment`] gave up on since the last call, each of which made
+/// `build_from` return `None` so the caller ear-clipped. `stuck` is the "no
+/// flippable crossing edge" exit (crossing constraints, a duplicate vertex the
+/// segment names); `exhausted` is the 100 000-flip guard. Process-global
+/// relaxed atomics, like [`crate::take_bool2d_stats`]: a stale read under
+/// concurrency mis-reports a diagnostic count, never geometry.
+pub fn take_cdt_recovery_fallbacks() -> (u64, u64) {
+    (RECOVERY_STUCK.swap(0, Ordering::Relaxed), RECOVERY_EXHAUSTED.swap(0, Ordering::Relaxed))
+}
+
 use crate::Point2;
+use std::sync::atomic::{AtomicU64, Ordering};
+use enc_grid::EncGrid;
 use predicates::{dist2, rings_to_pslg, segments_properly_cross, strictly_between};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -199,23 +216,6 @@ struct Cdt {
     /// returns `None`, so the caller falls back to ear-clipping — matching how
     /// every other degenerate case in this module degrades.
     failed: bool,
-}
-
-/// Broad-phase over the constraint segments' diametral circles, for the
-/// per-candidate encroachment test. CSR uniform grid + an "oversized disk"
-/// list; `nx == 0` = not built.
-#[derive(Default)]
-struct EncGrid {
-    mid: Vec<P2>,
-    r2: Vec<f64>,
-    minx: f64,
-    miny: f64,
-    inv: f64,
-    nx: usize,
-    ny: usize,
-    starts: Vec<u32>,
-    items: Vec<u32>,
-    big: Vec<u32>,
 }
 
 impl Cdt {
@@ -398,6 +398,25 @@ impl Cdt {
         // Canonical order so new-triangle indices are platform-stable.
         boundary.sort_unstable();
 
+        // A boundary edge collinear with `p` is a constraint edge `p` lies ON:
+        // any non-constraint edge through `p` has a bad triangle on both sides
+        // (`p` is strictly inside the circumcircle of each), so it is interior
+        // to the cavity, never on its rim. The fan below would build the
+        // zero-area triangle `(a, b, vi)` and leave the far side of the
+        // constraint unsplit, a T-junction `legalize` cannot repair (it never
+        // flips a constraint). Nothing has been retired yet, so abandon the
+        // cavity and take the lockstep both-sides split instead.
+        if let Some(&(a, b, _)) = boundary.iter().find(|&&(a, b, _)| orient(self.points[a], self.points[b], p) == 0) {
+            if strictly_between(self.points[a], self.points[b], p) {
+                let on = bad.iter().find_map(|&ti| self.tris[ti].edge_of(a, b).map(|e| (ti, e)));
+                if let Some((ti, e)) = on {
+                    self.split_on_edge(ti, e, vi);
+                    self.last_loc = self.tris.len() - 1;
+                }
+            }
+            return;
+        }
+
         for &ti in &bad {
             self.tris[ti].alive = false;
         }
@@ -461,13 +480,25 @@ impl Cdt {
         let region = self.inside.get(t).copied().unwrap_or(false);
         let v = self.tris[t].v;
         let n = self.tris[t].n;
+        let degenerate: [bool; 3] =
+            std::array::from_fn(|e| orient(self.points[v[e]], self.points[v[(e + 1) % 3]], self.points[vi]) == 0);
+        if degenerate.iter().filter(|&&d| d).count() >= 2 {
+            // `vi` coincides with a vertex of `t`: a duplicate input coordinate
+            // (`rings_to_pslg` does not dedup, so two rings sharing a corner
+            // arrive as two indices at one point). Retiring `t` for the single
+            // child that survives would leave the neighbours across the two
+            // skipped edges linked to a dead triangle. Leave `t` alone and skip
+            // the point: a constraint naming it then fails recovery and the
+            // caller falls back, and a free duplicate is merely unreferenced.
+            return;
+        }
         self.tris[t].alive = false;
         let mut owner: BTreeMap<(usize, usize), (usize, usize)> = BTreeMap::new();
         let mut children: Vec<usize> = Vec::new();
         for e in 0..3 {
             let a = v[e];
             let b = v[(e + 1) % 3];
-            if orient(self.points[a], self.points[b], self.points[vi]) == 0 {
+            if degenerate[e] {
                 continue; // degenerate child (vi on edge a-b)
             }
             let ti = self.tris.len();
@@ -949,9 +980,17 @@ impl Cdt {
         true
     }
 
-    /// Recover a single constraint segment `a-b` by repeatedly flipping the
-    /// triangulation edge that crosses it. Deterministic: always processes the
-    /// crossing edge nearest `a`.
+    /// Recover a single constraint segment `a-b` by repeatedly flipping a
+    /// triangulation edge that crosses it. Deterministic: each pass scans the
+    /// triangle slots in index order and flips the FIRST crossing edge whose
+    /// quad is convex, which is not the crossing nearest `a` (Sloan's order,
+    /// whose termination proof this does not inherit). The `guard` below is
+    /// the only bound, and it counts flips: every one of those passes is an
+    /// O(T) rescan with exact predicates, so an unrecoverable segment costs up
+    /// to 100 000 x T predicate evaluations before the caller falls back.
+    /// Reordering the walk would change the flip sequence and, on cocircular
+    /// input (every rectangular profile), the emitted triangulation, which
+    /// the mesh-determinism manifests pin; re-pin both if you reorder it.
     fn recover_segment(
         &mut self,
         a: usize,
@@ -967,6 +1006,7 @@ impl Cdt {
         loop {
             guard += 1;
             if guard > 100_000 {
+                RECOVERY_EXHAUSTED.fetch_add(1, Ordering::Relaxed);
                 return false;
             }
             if edges.contains(&ekey(a, b)) {
@@ -1034,7 +1074,11 @@ impl Cdt {
             if !flipped {
                 // No flippable crossing edge found — segment already present or
                 // unrecoverable. Re-check existence at loop top.
-                return edges.contains(&ekey(a, b));
+                if edges.contains(&ekey(a, b)) {
+                    return true;
+                }
+                RECOVERY_STUCK.fetch_add(1, Ordering::Relaxed);
+                return false;
             }
         }
     }
@@ -1195,148 +1239,6 @@ impl Cdt {
         self.n_real += 1;
         // Constraints reference input vertices only (< n_input <= vi): unchanged.
         self.insert_point_at(vi, loc);
-    }
-
-    /// Does point `p` lie inside the diametral circle of any constraint
-    /// segment?
-    ///
-    /// Existence only — the refinement driver never looks at WHICH segment — so
-    /// the answer is order-independent and a broad-phase is exact rather than
-    /// approximate. Every skinny candidate used to test every constraint
-    /// (5.9e7 disk tests on ISSUE_129); the grid built once per refinement
-    /// answers from one cell plus the few oversized disks.
-    fn is_encroached(&self, p: P2) -> bool {
-        let hit = |i: u32| {
-            let i = i as usize;
-            dist2(p, self.enc.mid[i]) < self.enc.r2[i] * (1.0 - 1e-12)
-        };
-        if self.enc.nx == 0 {
-            // No grid (constraints mutated mid-refinement, or none at all).
-            return self.constraints.iter().any(|&(a, b)| {
-                let (pa, pb) = (self.points[a], self.points[b]);
-                let mid = [(pa[0] + pb[0]) * 0.5, (pa[1] + pb[1]) * 0.5];
-                dist2(p, mid) < dist2(pa, pb) * 0.25 * (1.0 - 1e-12)
-            });
-        }
-        if self.enc.big.iter().copied().any(hit) {
-            return true;
-        }
-        let gx = (p[0] - self.enc.minx) * self.enc.inv;
-        let gy = (p[1] - self.enc.miny) * self.enc.inv;
-        if !(gx >= 0.0 && gy >= 0.0) {
-            return false;
-        }
-        let (gx, gy) = (gx as usize, gy as usize);
-        if gx >= self.enc.nx || gy >= self.enc.ny {
-            return false;
-        }
-        let c = gy * self.enc.nx + gx;
-        let (s, e) = (
-            self.enc.starts[c] as usize,
-            self.enc.starts[c + 1] as usize,
-        );
-        self.enc.items[s..e].iter().copied().any(hit)
-    }
-
-    /// Rebuild [`Cdt::enc`] from the current constraint set. `nx == 0` means
-    /// "no grid" and [`Cdt::is_encroached`] falls back to the linear scan.
-    fn build_enc_grid(&mut self) {
-        let mut mid: Vec<P2> = Vec::with_capacity(self.constraints.len());
-        let mut r2: Vec<f64> = Vec::with_capacity(self.constraints.len());
-        let mut rad: Vec<f64> = Vec::with_capacity(self.constraints.len());
-        for &(a, b) in &self.constraints {
-            let (pa, pb) = (self.points[a], self.points[b]);
-            mid.push([(pa[0] + pb[0]) * 0.5, (pa[1] + pb[1]) * 0.5]);
-            let d2 = dist2(pa, pb) * 0.25;
-            r2.push(d2);
-            rad.push(d2.sqrt());
-        }
-        self.enc = EncGrid {
-            mid,
-            r2,
-            ..EncGrid::default()
-        };
-        let n = self.enc.mid.len();
-        if n == 0 {
-            return;
-        }
-        let (mut minx, mut miny, mut maxx, mut maxy) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-        for (m, r) in self.enc.mid.iter().zip(rad.iter()) {
-            minx = minx.min(m[0] - r);
-            miny = miny.min(m[1] - r);
-            maxx = maxx.max(m[0] + r);
-            maxy = maxy.max(m[1] + r);
-        }
-        let span = (maxx - minx).max(maxy - miny);
-        if !(span > 0.0) || !span.is_finite() {
-            return;
-        }
-        // ~1 cell per constraint, capped so the CSR stays small.
-        let side = ((n as f64).sqrt().ceil() as usize).clamp(1, 64);
-        let cell = span / side as f64;
-        let inv = 1.0 / cell;
-        let (nx, ny) = (side, side);
-        let cellrange = |m: P2, r: f64| -> (usize, usize, usize, usize) {
-            let c = |v: f64, lo: f64, hi: usize| {
-                let g = ((v - lo) * inv).floor();
-                if g < 0.0 {
-                    0
-                } else if g >= hi as f64 {
-                    hi - 1
-                } else {
-                    g as usize
-                }
-            };
-            (
-                c(m[0] - r, minx, nx),
-                c(m[0] + r, minx, nx),
-                c(m[1] - r, miny, ny),
-                c(m[1] + r, miny, ny),
-            )
-        };
-        let mut counts = vec![0u32; nx * ny + 1];
-        let mut big: Vec<u32> = Vec::new();
-        let mut is_big = vec![false; n];
-        for i in 0..n {
-            let (x0, x1, y0, y1) = cellrange(self.enc.mid[i], rad[i]);
-            if (x1 - x0 + 1) * (y1 - y0 + 1) > 32 {
-                big.push(i as u32);
-                is_big[i] = true;
-                continue;
-            }
-            for gy in y0..=y1 {
-                for gx in x0..=x1 {
-                    counts[gy * nx + gx + 1] += 1;
-                }
-            }
-        }
-        for i in 1..counts.len() {
-            counts[i] += counts[i - 1];
-        }
-        let total = counts[nx * ny] as usize;
-        let mut items = vec![0u32; total];
-        let mut cursor = counts.clone();
-        for i in 0..n {
-            if is_big[i] {
-                continue;
-            }
-            let (x0, x1, y0, y1) = cellrange(self.enc.mid[i], rad[i]);
-            for gy in y0..=y1 {
-                for gx in x0..=x1 {
-                    let c = gy * nx + gx;
-                    items[cursor[c] as usize] = i as u32;
-                    cursor[c] += 1;
-                }
-            }
-        }
-        self.enc.minx = minx;
-        self.enc.miny = miny;
-        self.enc.inv = inv;
-        self.enc.nx = nx;
-        self.enc.ny = ny;
-        self.enc.starts = counts;
-        self.enc.items = items;
-        self.enc.big = big;
     }
 
     /// Is interior triangle `ti` skinny (smallest angle < the min-angle target)

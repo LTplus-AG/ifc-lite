@@ -3,25 +3,29 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Manual (not CI) benchmark for the two streaming quadratic-rescan fixes.
+ * Manual (not CI) benchmark for the streaming quadratic-rescan fix in
+ * `robustFitBoundsAccumulator`.
  * Run with: npx tsx src/components/viewer/perf-bench.manual.ts
  *
  * Simulates a streaming load at several total mesh counts, replaying the
  * SAME commit/batch pattern against:
- *   - the OLD full-rescan algorithm (computeStatsFull / robustFitBoundsFull),
- *     called with the ENTIRE accumulated meshes array on every commit — this
- *     is what StatusBar's memo and useGeometryStreaming's early-fit branch
- *     did before the fix, since `geometryResult` is a new object every
- *     commit (so the memo never hit) and, for robustFitBounds, the
+ *   - the OLD full-rescan algorithm (robustFitBoundsFull), called with the
+ *     ENTIRE accumulated meshes array on every commit — what
+ *     useGeometryStreaming's early-fit branch did before the fix, in the
  *     documented worst case where cameraFittedRef never latches.
  *   - the NEW incremental accumulator, called the same way.
+ *
+ * A second arm used to bench StatusBar's element count the same way. That
+ * count is gone: the status bar no longer derives "N elements" from the mesh
+ * array at all, it counts physical objects off the entity index
+ * (`lib/object-count.ts`), so there is no per-commit mesh rescan left to
+ * optimise there.
  *
  * Not a *.test.ts — deliberately excluded from `pnpm test` (perf numbers on
  * a shared CI runner are not a regression gate here); this file exists only
  * to reproduce the before/after scaling numbers reported alongside the fix.
  */
 
-import { computeStatsFull, createStatusBarStatsAccumulator, type StatusBarGeometryResult } from './statusBarStats.js';
 import { robustFitBoundsFull, createRobustFitBoundsAccumulator, type RobustFitMeshInput } from './robustFitBoundsAccumulator.js';
 
 function mulberry32(seed: number) {
@@ -34,7 +38,7 @@ function mulberry32(seed: number) {
   };
 }
 
-function makeMesh(rng: () => number, i: number): { entityIds?: Uint32Array } & RobustFitMeshInput {
+function makeMesh(rng: () => number): RobustFitMeshInput {
   const vcount = 80 + Math.floor(rng() * 240); // ~80-320 verts/mesh, closer to real element meshes
   const positions = new Float32Array(vcount * 3);
   const cx = rng() * 50, cy = rng() * 50, cz = rng() * 50;
@@ -43,10 +47,7 @@ function makeMesh(rng: () => number, i: number): { entityIds?: Uint32Array } & R
     positions[v * 3 + 1] = cy + (rng() - 0.5) * 2;
     positions[v * 3 + 2] = cz + (rng() - 0.5) * 2;
   }
-  const idCount = 1 + Math.floor(rng() * 3);
-  const entityIds = new Uint32Array(idCount);
-  for (let k = 0; k < idCount; k++) entityIds[k] = i * 4 + k;
-  return { positions, entityIds };
+  return { positions };
 }
 
 function commitPlan(totalMeshes: number, commitCount: number): number[] {
@@ -63,70 +64,52 @@ function commitPlan(totalMeshes: number, commitCount: number): number[] {
   return batches;
 }
 
-type RunResult = { statsMs: number; fitMs: number; wallMs: number };
+type RunResult = { fitMs: number; wallMs: number };
 
-function runFull(allMeshes: (({ entityIds?: Uint32Array }) & RobustFitMeshInput)[], batches: number[]): RunResult {
-  const geomArray: (({ entityIds?: Uint32Array }))[] = [];
+function runFull(allMeshes: RobustFitMeshInput[], batches: number[]): RunResult {
   const meshArray: RobustFitMeshInput[] = [];
   let idx = 0;
   const t0 = performance.now();
-  let statsMs = 0;
   let fitMs = 0;
   for (const b of batches) {
     for (let k = 0; k < b; k++) {
-      geomArray.push(allMeshes[idx]);
       meshArray.push(allMeshes[idx]);
       idx++;
     }
-    const gr: StatusBarGeometryResult = { meshes: geomArray, totalTriangles: geomArray.length * 2 };
-    const s0 = performance.now();
-    computeStatsFull(gr);
-    statsMs += performance.now() - s0;
-
     const f0 = performance.now();
     robustFitBoundsFull(meshArray);
     fitMs += performance.now() - f0;
   }
-  return { statsMs, fitMs, wallMs: performance.now() - t0 };
+  return { fitMs, wallMs: performance.now() - t0 };
 }
 
-function runIncremental(allMeshes: (({ entityIds?: Uint32Array }) & RobustFitMeshInput)[], batches: number[]): RunResult {
-  const geomArray: (({ entityIds?: Uint32Array }))[] = [];
+function runIncremental(allMeshes: RobustFitMeshInput[], batches: number[]): RunResult {
   const meshArray: RobustFitMeshInput[] = [];
-  const statsAcc = createStatusBarStatsAccumulator();
   const fitAcc = createRobustFitBoundsAccumulator();
   let idx = 0;
   const t0 = performance.now();
-  let statsMs = 0;
   let fitMs = 0;
   for (const b of batches) {
     for (let k = 0; k < b; k++) {
-      geomArray.push(allMeshes[idx]);
       meshArray.push(allMeshes[idx]);
       idx++;
     }
-    const gr: StatusBarGeometryResult = { meshes: geomArray, totalTriangles: geomArray.length * 2 };
-    const s0 = performance.now();
-    statsAcc.update(gr);
-    statsMs += performance.now() - s0;
-
     const f0 = performance.now();
     fitAcc.update(meshArray);
     fitMs += performance.now() - f0;
   }
-  return { statsMs, fitMs, wallMs: performance.now() - t0 };
+  return { fitMs, wallMs: performance.now() - t0 };
 }
 
 const avg = (a: RunResult, b: RunResult): RunResult => ({
-  statsMs: (a.statsMs + b.statsMs) / 2,
   fitMs: (a.fitMs + b.fitMs) / 2,
   wallMs: (a.wallMs + b.wallMs) / 2,
 });
 
 function bench(totalMeshes: number, targetCommits: number, seed: number) {
   const rng = mulberry32(seed);
-  const allMeshes: (({ entityIds?: Uint32Array }) & RobustFitMeshInput)[] = [];
-  for (let i = 0; i < totalMeshes; i++) allMeshes.push(makeMesh(rng, i));
+  const allMeshes: RobustFitMeshInput[] = [];
+  for (let i = 0; i < totalMeshes; i++) allMeshes.push(makeMesh(rng));
   const batches = commitPlan(totalMeshes, targetCommits);
 
   // Each algorithm is run twice per size, in BOTH relative orders (full-then-
@@ -148,8 +131,8 @@ function bench(totalMeshes: number, targetCommits: number, seed: number) {
 
   console.log(
     `meshes ${String(totalMeshes).padStart(6)}  commits ${String(batches.length).padStart(3)}  ` +
-    `BEFORE robustFitBounds ${before.fitMs.toFixed(1).padStart(7)}ms  StatusBar.stats ${before.statsMs.toFixed(1).padStart(7)}ms  wall ${before.wallMs.toFixed(1)}ms  |  ` +
-    `AFTER robustFitBounds ${after.fitMs.toFixed(1).padStart(7)}ms  StatusBar.stats ${after.statsMs.toFixed(1).padStart(7)}ms  wall ${after.wallMs.toFixed(1)}ms`,
+    `BEFORE robustFitBounds ${before.fitMs.toFixed(1).padStart(7)}ms  wall ${before.wallMs.toFixed(1)}ms  |  ` +
+    `AFTER robustFitBounds ${after.fitMs.toFixed(1).padStart(7)}ms  wall ${after.wallMs.toFixed(1)}ms`,
   );
 }
 

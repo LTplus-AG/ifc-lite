@@ -1,0 +1,335 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: PR-Agent review
+
+# TWO ADVISORY REVIEW LANES FROM PR-AGENT (The-PR-Agent/pr-agent), independent of
+# the Claude review lane in claude-review.yml. Neither gates merging.
+#
+#   OpenRouter    hosted runner, OPENROUTER_API_KEY, a non-Anthropic model
+#   local model   the self-hosted `ifclite` runner, any OpenAI-compatible
+#                 endpoint (Ollama, llama.cpp server, vLLM, LM Studio)
+#
+# PR-Agent runs in plain-diff mode (scripts/review/pr-agent-run.sh) and never
+# holds a GitHub token. scripts/review/pr-agent-publish.mjs decides whether a
+# review happened and owns the one comment per lane; its header says why
+# PR-Agent's own exit code cannot be trusted.
+#
+# WHAT EACH CHECK MEANS
+#
+#   PR-Agent review (OpenRouter)     green = review posted for this head.
+#                                    red = enabled and it did not happen.
+#                                    skipped = lane disabled.
+#   PR-Agent local model run         probes the endpoint, then runs PR-Agent if
+#                                    it answered. Its summary says why the lane
+#                                    did not run. Green means NOTHING about a
+#                                    review; read the verdict below.
+#   PR-Agent review (local model)    the verdict. green = review posted.
+#                                    red = the endpoint answered the probe and
+#                                    the review still did not happen.
+#                                    skipped = the probe said unavailable.
+#
+# TO ENABLE (repository settings, Secrets and variables, Actions):
+#
+#   OpenRouter lane
+#     secret   OPENROUTER_API_KEY                 an OpenRouter key; give it a credit limit
+#     variable PR_AGENT_OPENROUTER_ENABLED=true   the switch; unset means skipped
+#     optional PR_AGENT_OPENROUTER_MODEL, PR_AGENT_OPENROUTER_FALLBACK_MODEL,
+#              PR_AGENT_OPENROUTER_MAX_MODEL_TOKENS (defaults below)
+#
+#   Local lane
+#     variable SELF_HOSTED_CI=true                already the repo-wide runner switch
+#     variable PR_AGENT_LOCAL_BASE_URL            OpenAI-compatible base URL as seen
+#                                                 FROM THE RUNNER, including /v1, for
+#                                                 example http://127.0.0.1:11434/v1
+#     optional PR_AGENT_LOCAL_MODEL, PR_AGENT_LOCAL_MAX_MODEL_TOKENS (defaults below)
+#     optional secret PR_AGENT_LOCAL_API_KEY      only if the endpoint wants a key
+#
+#   Ollama serves a 4,096-token context unless told otherwise, and silently cuts
+#   the prompt. Start it with OLLAMA_CONTEXT_LENGTH at or above
+#   PR_AGENT_LOCAL_MAX_MODEL_TOKENS plus room for the answer, for example
+#   `OLLAMA_CONTEXT_LENGTH=40960 ollama serve` for the 32,768 default.
+#
+# STATED HOLE: with SELF_HOSTED_CI=true and the runner offline, the local run
+# job waits in the queue (pending, never green) until GitHub drops it, exactly
+# like every other self-hosted job in this repository. A hosted job cannot see
+# runner status without an admin token, so SELF_HOSTED_CI is the availability
+# signal. The `ci:hosted` label keeps the job off the self-hosted runner, as it
+# does everywhere else.
+on:
+  # This workflow handles provider credentials and a self-hosted runner. Keep
+  # its executable definition on the trusted base branch; candidate code is
+  # checked out separately and used only as inert input to `git diff`.
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-agent-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  PR_AGENT_VERSION: '0.45.0'
+  PR_AGENT_OPENROUTER_MODEL: ${{ vars.PR_AGENT_OPENROUTER_MODEL || 'openrouter/google/gemini-3.8-flash' }}
+  PR_AGENT_OPENROUTER_FALLBACK_MODEL: ${{ vars.PR_AGENT_OPENROUTER_FALLBACK_MODEL || 'openrouter/deepseek/deepseek-v4-pro-0813' }}
+  PR_AGENT_OPENROUTER_MAX_MODEL_TOKENS: ${{ vars.PR_AGENT_OPENROUTER_MAX_MODEL_TOKENS || '150000' }}
+  PR_AGENT_LOCAL_MODEL: ${{ vars.PR_AGENT_LOCAL_MODEL || 'qwen3-coder:30b' }}
+  PR_AGENT_LOCAL_MAX_MODEL_TOKENS: ${{ vars.PR_AGENT_LOCAL_MAX_MODEL_TOKENS || '32768' }}
+
+jobs:
+  openrouter:
+    name: PR-Agent review (OpenRouter)
+    # Fork PRs get no secrets and a read-only token, so the lane could neither
+    # call the model nor post. Drafts are skipped to save credits.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      vars.PR_AGENT_OPENROUTER_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+          path: trusted
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+          path: candidate
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install PR-Agent
+        run: python -m pip install --quiet "pr-agent==${PR_AGENT_VERSION}"
+
+      # A missing key needs no special case: OpenRouter answers 401, and the
+      # publish step reports AUTH_FAILED naming this secret (measured).
+      - name: Run PR-Agent
+        id: run
+        # A STEP timeout fails only this step, so the !cancelled() publish step
+        # still runs and names the failure. A job timeout would cancel it.
+        timeout-minutes: 30
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CONFIG__MODEL: ${{ env.PR_AGENT_OPENROUTER_MODEL }}
+          # A plain string, not a TOML list: a list is MERGED with PR-Agent's
+          # default fallback list and would add an OpenAI model to the chain.
+          CONFIG__FALLBACK_MODELS: ${{ env.PR_AGENT_OPENROUTER_FALLBACK_MODEL }}
+          # Neither model is in PR-Agent's context table; max_model_tokens is
+          # the cap that actually applies.
+          CONFIG__CUSTOM_MODEL_MAX_TOKENS: '1000000'
+          CONFIG__MAX_MODEL_TOKENS: ${{ env.PR_AGENT_OPENROUTER_MAX_MODEL_TOKENS }}
+          CONFIG__AI_TIMEOUT: '300'
+          CONFIG__RETRY_SAME_MODEL_ON_TIMEOUT: 'false'
+          # Sent as OpenRouter's HTTP-Referer and X-Title attribution headers.
+          OR_SITE_URL: https://github.com/${{ github.repository }}
+          OR_APP_NAME: ifc-lite PR-Agent review
+        run: |
+          bash trusted/scripts/review/pr-agent-run.sh \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}" \
+            "$RUNNER_TEMP/pr-agent" \
+            "$GITHUB_WORKSPACE/candidate"
+
+      - name: Publish the review
+        # !cancelled(), not success(): a crashed install or run step must still
+        # reach the check that says no review happened, and still overwrite a
+        # stale one. A run cancelled by a newer push publishes nothing.
+        if: ${{ !cancelled() && steps.run.outputs.skip != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node trusted/scripts/review/pr-agent-publish.mjs \
+            --lane openrouter \
+            --dir "$RUNNER_TEMP/pr-agent" \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha }}"
+
+  local-run:
+    name: PR-Agent local model run
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    # On the self-hosted runner only when it is declared up, an endpoint is
+    # configured and the PR is not labelled `ci:hosted`. Otherwise a hosted
+    # runner, which only runs the probe step to report why.
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && vars.PR_AGENT_LOCAL_BASE_URL != '' && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    # No write permission on the self-hosted runner. The hosted job below posts.
+    permissions:
+      contents: read
+    outputs:
+      available: ${{ steps.probe.outputs.available }}
+      skip: ${{ steps.run.outputs.skip }}
+    steps:
+      - name: Probe the local model endpoint
+        id: probe
+        env:
+          SELF_HOSTED_CI: ${{ vars.SELF_HOSTED_CI }}
+          HOSTED_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:hosted') }}
+          BASE_URL: ${{ vars.PR_AGENT_LOCAL_BASE_URL }}
+          MODEL: ${{ env.PR_AGENT_LOCAL_MODEL }}
+          LOCAL_KEY: ${{ secrets.PR_AGENT_LOCAL_API_KEY }}
+        run: |
+          set -u
+          report() {
+            echo "available=$1" >> "$GITHUB_OUTPUT"
+            echo "$2" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=PR-Agent local model::$2"
+          }
+          if [ "$SELF_HOSTED_CI" != "true" ]; then
+            report false "Local model review NOT RUN: the self-hosted runner is off (vars.SELF_HOSTED_CI is not 'true')."
+            exit 0
+          fi
+          if [ -z "$BASE_URL" ]; then
+            report false "Local model review NOT RUN: vars.PR_AGENT_LOCAL_BASE_URL is not set."
+            exit 0
+          fi
+          if [ "$HOSTED_LABEL" = "true" ]; then
+            report false "Local model review NOT RUN: the PR is labelled ci:hosted."
+            exit 0
+          fi
+          auth=()
+          if [ -n "$LOCAL_KEY" ]; then auth=(-H "Authorization: Bearer $LOCAL_KEY"); fi
+          if ! models=$(curl -fsS -m 10 "${auth[@]}" "${BASE_URL%/}/models" 2>&1); then
+            report false "Local model review NOT RUN: ${BASE_URL%/}/models did not answer within 10 s (${models:0:200})."
+            exit 0
+          fi
+          if ! printf '%s' "$models" | grep -Fq "\"$MODEL\""; then
+            report false "Local model review NOT RUN: the endpoint answered but does not list the model $MODEL."
+            exit 0
+          fi
+          report true "Local model endpoint answered and serves $MODEL; the local review runs."
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.probe.outputs.available == 'true'
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+          path: trusted
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.probe.outputs.available == 'true'
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+          path: candidate
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.probe.outputs.available == 'true'
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: steps.probe.outputs.available == 'true'
+        with:
+          python-version: '3.12'
+
+      - name: Install PR-Agent
+        if: steps.probe.outputs.available == 'true'
+        run: python -m pip install --quiet "pr-agent==${PR_AGENT_VERSION}"
+
+      - name: Run PR-Agent
+        id: run
+        if: steps.probe.outputs.available == 'true'
+        # Step timeout, as in the OpenRouter job, so the upload still runs.
+        timeout-minutes: 45
+        env:
+          # LiteLLM's `openai/` provider speaks to any OpenAI-compatible server.
+          CONFIG__MODEL: openai/${{ env.PR_AGENT_LOCAL_MODEL }}
+          CONFIG__FALLBACK_MODELS: openai/${{ env.PR_AGENT_LOCAL_MODEL }}
+          CONFIG__CUSTOM_MODEL_MAX_TOKENS: ${{ env.PR_AGENT_LOCAL_MAX_MODEL_TOKENS }}
+          CONFIG__MAX_MODEL_TOKENS: ${{ env.PR_AGENT_LOCAL_MAX_MODEL_TOKENS }}
+          CONFIG__AI_TIMEOUT: '900'
+          CONFIG__RETRY_SAME_MODEL_ON_TIMEOUT: 'false'
+          CONFIG__DUPLICATE_PROMPT_EXAMPLES: 'true'
+          OPENAI__API_BASE: ${{ vars.PR_AGENT_LOCAL_BASE_URL }}
+          OPENAI__KEY: ${{ secrets.PR_AGENT_LOCAL_API_KEY || 'not-needed' }}
+        run: |
+          bash trusted/scripts/review/pr-agent-run.sh \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}" \
+            "$RUNNER_TEMP/pr-agent" \
+            "$GITHUB_WORKSPACE/candidate"
+
+      # Uploaded after a failed run too, so the verdict job can name the failure
+      # from pr-agent.log. A run that left no file at all fails here; the
+      # verdict job still reports it as NO_OUTPUT.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() && steps.probe.outputs.available == 'true' && steps.run.outputs.skip != 'true' }}
+        with:
+          name: pr-agent-local
+          path: |
+            ${{ runner.temp }}/pr-agent/review.json
+            ${{ runner.temp }}/pr-agent/review.md
+            ${{ runner.temp }}/pr-agent/pr-agent.log
+          if-no-files-found: error
+          retention-days: 7
+
+  local-publish:
+    name: PR-Agent review (local model)
+    needs: local-run
+    # !cancelled(): a run that crashed or timed out after the probe must still
+    # produce a red verdict here. Only "the probe said unavailable" (or nothing
+    # reviewable) skips it; a run cancelled by a newer push publishes nothing.
+    if: ${{ !cancelled() && needs.local-run.outputs.available == 'true' && needs.local-run.outputs.skip != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          lfs: false
+          persist-credentials: false
+          path: trusted
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      # A missing artifact is not this step's failure to report: the publish
+      # step reads the directory back and fails as NO_OUTPUT, which names what
+      # happened instead of "artifact not found".
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: pr-agent-local
+          path: ${{ runner.temp }}/pr-agent
+
+      - name: Publish the review
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node trusted/scripts/review/pr-agent-publish.mjs \
+            --lane local \
+            --dir "$RUNNER_TEMP/pr-agent" \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha }}"

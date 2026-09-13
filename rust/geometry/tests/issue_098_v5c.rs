@@ -112,10 +112,12 @@ fn voided_wall() -> Mesh {
 // these pins should go and the default bar apply to every build.
 //
 // The two gates read different defect classes and reject different hosts, so
-// each combination lands somewhere different and each is measured separately
-// rather than assumed. `None` means the real bar still holds in that
-// configuration and is left to do its job: `csg_topology_gate` alone measures
-// 124 unpaired edges, still inside the ~160 bar, so only its volume is pinned.
+// each combination is measured separately rather than assumed. `None` means
+// the real bar still holds in that configuration and is left to do its job.
+// #4640 made `csg_topology_gate` alone converge on the default result (92
+// unpaired edges and 33.399 m3), so that configuration no longer carries a
+// known fallback regression or a pin. The manifold-gated configurations still
+// take the measured worse fallback and remain pinned below.
 #[cfg(not(any(feature = "csg_manifold_gate", feature = "csg_topology_gate")))]
 const PINNED_OPEN_EDGES: Option<i64> = None;
 #[cfg(not(any(feature = "csg_manifold_gate", feature = "csg_topology_gate")))]
@@ -124,7 +126,7 @@ const PINNED_VOLUME_M3: Option<f64> = None;
 #[cfg(all(not(feature = "csg_manifold_gate"), feature = "csg_topology_gate"))]
 const PINNED_OPEN_EDGES: Option<i64> = None;
 #[cfg(all(not(feature = "csg_manifold_gate"), feature = "csg_topology_gate"))]
-const PINNED_VOLUME_M3: Option<f64> = Some(26.763);
+const PINNED_VOLUME_M3: Option<f64> = None;
 
 #[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
 const PINNED_OPEN_EDGES: Option<i64> = Some(416);
@@ -155,8 +157,7 @@ fn v5c_dense_reveal_wall_not_torn() {
     }
     // The volume regression is the more serious half: the fallback does not
     // merely re-fragment the surface, it removes a fifth to a quarter more of
-    // the wall. Every gated configuration regresses here, so every one is
-    // pinned.
+    // the wall. The remaining pinned configurations still regress here.
     match PINNED_VOLUME_M3 {
         None => assert!(vol > 30.0, "V5C under-cut: volume {vol:.3} m³ collapsed (was ~33.4)"),
         Some(pinned) => assert!(

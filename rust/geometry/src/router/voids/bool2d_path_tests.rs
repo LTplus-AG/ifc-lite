@@ -8,7 +8,8 @@
 //! private helpers.
 
 use super::*;
-use nalgebra::Rotation3;
+use super::super::probe::ExtrudedSolidInfo as ExtrudedSolidLike;
+use nalgebra::{Point3, Rotation3};
 
 // Host: extruded +Z over [0, 4] in its own profile frame, placed in the world
 // by a translation and a rotation about Z.
@@ -283,4 +284,61 @@ fn footprint_interior_gates_boundary_breach() {
     ];
     assert!(footprint_interior(&interior, &profile));
     assert!(!footprint_interior(&breaching, &profile));
+}
+
+pub(super) fn mixed_overlap_fixture() -> (Mesh, VoidContext) {
+    let rect = |x0, y0, x1, y1| vec![
+        Point2::new(x0, y0), Point2::new(x1, y0),
+        Point2::new(x1, y1), Point2::new(x0, y1),
+    ];
+    let profile = Profile2D::new(rect(0.0, 0.0, 10.0, 10.0));
+    let residual_opening = super::super::OpeningType::Rectangular(
+        Point3::new(1.0, 1.0, -1.0), Point3::new(3.0, 3.0, 0.5),
+        Some(Vector3::z()),
+    );
+    let residual = VoidContext {
+        openings: vec![residual_opening.clone()],
+        merged_openings: vec![residual_opening.clone()],
+        param: None,
+        bool2d: None,
+    };
+    let cut = Bool2dCut {
+        host_profile: profile.clone(), depth: 1.0, dir_sign: 1.0,
+        wt: Matrix4::identity(),
+        footprints: vec![rect(2.0, 2.0, 4.0, 4.0), rect(2.0, 2.0, 4.0, 4.0), rect(6.0, 6.0, 8.0, 8.0)],
+        residual: Some(Box::new(residual)),
+    };
+    let host = extrude_profile_watertight(&profile, 1.0, None).unwrap();
+    let through_opening = |x0, y0, x1, y1| super::super::OpeningType::Rectangular(
+        Point3::new(x0, y0, -1.0), Point3::new(x1, y1, 2.0), Some(Vector3::z()),
+    );
+    let openings = vec![
+        through_opening(2.0, 2.0, 4.0, 4.0),
+        through_opening(2.0, 2.0, 4.0, 4.0),
+        through_opening(6.0, 6.0, 8.0, 8.0),
+        residual_opening,
+    ];
+    let context = VoidContext {
+        merged_openings: GeometryRouter::merge_rectangular_openings(&openings),
+        openings,
+        param: None,
+        bool2d: Some(cut),
+    };
+    (host, context)
+}
+
+/// #4617: duplicate footprints cancel in the staged precursor, so this case
+/// cannot pass by merely returning the precursor or by checking its closure.
+#[test]
+fn mixed_duplicate_footprints_apply_mandatory_union_correction_4617() {
+    let (host, context) = mixed_overlap_fixture();
+    let router = GeometryRouter::new();
+    // Exercise the existing production entry point, including the mandatory
+    // correction call. Reverting production still compiles this test and exposes
+    // the former parity result (94), rather than failing at a new private API.
+    let result = router.apply_void_context(host, &context, 4617);
+    // Two distinct four-unit footprints remove 8, and the half-depth residual
+    // removes 2 minus its 0.5 overlap with the corrected through-opening.
+    assert!((mesh_signed_volume(&result).abs() - 90.5).abs() < 1e-5);
+    assert!(super::super::prism_cut::closure_checks::closed_or_hairline(&result));
 }

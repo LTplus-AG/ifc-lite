@@ -373,6 +373,15 @@ declare namespace BimClash {
    */
   export type ClashDistanceKind = 'mesh' | 'estimate';
 }
+interface BimStructuralLoad {
+  ExpressId: number; Type: string; Name?: string;
+  Components: Record<string, number>;
+  Configuration?: BimStructuralLoadConfiguration;
+}
+interface BimStructuralLoadConfiguration {
+  Entries: Array<{ Value?: BimStructuralLoad; Dropped?: 'depth' | 'cycle' | 'budget' | 'invalid-reference' | 'unresolved' | 'unreadable'; Location?: number[] }>;
+  Locations?: number[][]; Truncated: boolean;
+}
 
 // ── Sandbox globals ─────────────────────────────────────────────────────
 
@@ -645,6 +654,23 @@ declare const bim: {
     workSchedules(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; Identification?: string; CreationDate?: string; StartTime?: string; FinishTime?: string; Purpose?: string; Duration?: string; PredefinedType?: string; Kind: 'WorkSchedule' | 'WorkPlan'; TaskGlobalIds: string[] }>;
     /** All IfcRelSequence dependency edges (FS/SS/FF/SF, with optional IfcLagTime). */
     sequences(modelId?: string): Array<{ RelatingProcessGlobalId: string; RelatedProcessGlobalId: string; SequenceType: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; UserDefinedSequenceType?: string; TimeLagSeconds?: number; TimeLagDuration?: string }>;
+  };
+  /** Structural analysis reader (IfcStructuralAnalysisModel, members, connections, activities, load/result groups) */
+  structural: {
+    /** Full structural extraction — analysis models, members, connections, activities, load groups, result groups. */
+    data(modelId?: string): { HasStructural: boolean; LoadsTruncated: boolean; AnalysisModels: Array<{ GlobalId: string; ExpressId: number; Name?: string; Description?: string; ObjectType?: string; PredefinedType?: string; LoadGroupGlobalIds: string[]; ResultGroupGlobalIds: string[]; ItemGlobalIds: string[] }>; Members: Array<{ GlobalId: string; ExpressId: number; Type: string; Name?: string; Description?: string; ObjectType?: string; PredefinedType?: string; Thickness?: number; ConnectionGlobalIds: string[]; ActivityGlobalIds: string[]; AnalysisModelGlobalIds: string[] }>; Connections: Array<{ GlobalId: string; ExpressId: number; Type: string; Name?: string; Description?: string; ObjectType?: string; MemberGlobalIds: string[]; ActivityGlobalIds: string[]; AnalysisModelGlobalIds: string[]; AppliedCondition?: { ExpressId: number; Type: string; Name?: string; Components: Record<string, number | boolean> } }>; Activities: Array<{ GlobalId: string; ExpressId: number; Type: string; Kind: 'Action' | 'Reaction' | 'Unknown'; Name?: string; Description?: string; ObjectType?: string; PredefinedType?: string; GlobalOrLocal?: string; DestabilizingLoad?: boolean; AppliesToGlobalId?: string; GroupGlobalIds: string[]; AppliedLoad?: BimStructuralLoad }>; LoadGroups: Array<{ GlobalId: string; ExpressId: number; Type: string; Name?: string; Description?: string; ObjectType?: string; PredefinedType?: string; ActionType?: string; ActionSource?: string; Coefficient?: number; Purpose?: string; SelfWeightCoefficients?: number[]; ActivityGlobalIds: string[] }>; ResultGroups: Array<{ GlobalId: string; ExpressId: number; Name?: string; Description?: string; ObjectType?: string; TheoryType?: string; IsLinear?: boolean; ResultForLoadGroupGlobalId?: string; ActivityGlobalIds: string[] }> };
+    /** All IfcStructuralAnalysisModel containers. */
+    analysisModels(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Name?: string; Description?: string; ObjectType?: string; PredefinedType?: string; LoadGroupGlobalIds: string[]; ResultGroupGlobalIds: string[]; ItemGlobalIds: string[] }>;
+    /** All IfcStructuralMember subtype occurrences (curve, surface). */
+    members(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Type: string; Name?: string; Description?: string; ObjectType?: string; PredefinedType?: string; Thickness?: number; ConnectionGlobalIds: string[]; ActivityGlobalIds: string[]; AnalysisModelGlobalIds: string[] }>;
+    /** All IfcStructuralConnection subtype occurrences, with resolved support conditions. */
+    connections(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Type: string; Name?: string; Description?: string; ObjectType?: string; MemberGlobalIds: string[]; ActivityGlobalIds: string[]; AnalysisModelGlobalIds: string[]; AppliedCondition?: { ExpressId: number; Type: string; Name?: string; Components: Record<string, number | boolean> } }>;
+    /** All IfcStructuralActivity subtype occurrences — applied actions and computed reactions. */
+    activities(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Type: string; Kind: 'Action' | 'Reaction' | 'Unknown'; Name?: string; Description?: string; ObjectType?: string; PredefinedType?: string; GlobalOrLocal?: string; DestabilizingLoad?: boolean; AppliesToGlobalId?: string; GroupGlobalIds: string[]; AppliedLoad?: BimStructuralLoad }>;
+    /** All IfcStructuralLoadGroup / IfcStructuralLoadCase entities. */
+    loadGroups(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Type: string; Name?: string; Description?: string; ObjectType?: string; PredefinedType?: string; ActionType?: string; ActionSource?: string; Coefficient?: number; Purpose?: string; SelfWeightCoefficients?: number[]; ActivityGlobalIds: string[] }>;
+    /** All IfcStructuralResultGroup entities. */
+    resultGroups(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Name?: string; Description?: string; ObjectType?: string; TheoryType?: string; IsLinear?: boolean; ResultForLoadGroupGlobalId?: string; ActivityGlobalIds: string[] }>;
   };
   /** Geometric clash / interference detection over host-meshed ClashElement[]. Read-only analysis - selectors are IFC-type globs (e.g. "IfcDuct*|IfcPipe*", "!IfcSpace"), never GlobalIds. The host meshes the model and builds the elements. */
   clash: {

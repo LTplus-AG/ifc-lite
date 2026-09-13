@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 /// Mirrors `ifc_lite_core::GeoReference` with two derived conveniences
 /// (`rotation_degrees`, `transform_matrix`) so consumers don't have to
 /// recompute the rotation or the local→map matrix.
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Georeferencing {
     /// Projected CRS name from `IfcProjectedCRS.Name` (e.g. `"EPSG:32632"`).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -51,6 +51,13 @@ pub struct Georeferencing {
     pub x_axis_ordinate: f64,
     /// Scale factor applied during the local→map transform (default `1.0`).
     pub scale: f64,
+    /// Per-axis factors from `IfcMapConversionScaled` (default `1.0`).
+    #[serde(default = "default_axis_factor")]
+    pub factor_x: f64,
+    #[serde(default = "default_axis_factor")]
+    pub factor_y: f64,
+    #[serde(default = "default_axis_factor")]
+    pub factor_z: f64,
     /// Rotation to grid north in degrees, derived from the X-axis direction.
     pub rotation_degrees: f64,
     /// Local→map transform as a column-major 4×4 matrix (16 values).
@@ -76,6 +83,37 @@ pub struct Georeferencing {
     pub source: Option<String>,
 }
 
+const fn default_axis_factor() -> f64 {
+    1.0
+}
+
+impl Default for Georeferencing {
+    fn default() -> Self {
+        Self {
+            crs_name: None,
+            geodetic_datum: None,
+            vertical_datum: None,
+            map_projection: None,
+            eastings: 0.0,
+            northings: 0.0,
+            orthogonal_height: 0.0,
+            x_axis_abscissa: 0.0,
+            x_axis_ordinate: 0.0,
+            scale: 0.0,
+            factor_x: 1.0,
+            factor_y: 1.0,
+            factor_z: 1.0,
+            rotation_degrees: 0.0,
+            transform_matrix: [0.0; 16],
+            crs_description: None,
+            map_zone: None,
+            map_unit: None,
+            map_unit_scale: None,
+            source: None,
+        }
+    }
+}
+
 impl Georeferencing {
     fn from_core(geo: &ifc_lite_core::GeoReference) -> Self {
         Self {
@@ -89,6 +127,9 @@ impl Georeferencing {
             x_axis_abscissa: geo.x_axis_abscissa,
             x_axis_ordinate: geo.x_axis_ordinate,
             scale: geo.scale,
+            factor_x: geo.factor_x,
+            factor_y: geo.factor_y,
+            factor_z: geo.factor_z,
             rotation_degrees: geo.rotation().to_degrees(),
             transform_matrix: geo.to_matrix(),
             crs_description: geo.crs_description.clone(),

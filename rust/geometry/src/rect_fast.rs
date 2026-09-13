@@ -117,16 +117,9 @@ pub fn param_set_enabled_override(v: Option<bool>) {
     );
 }
 
-static PARAM_FIRES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-/// Count one parametric fast-path fire (the analytic cut was emitted).
-pub fn param_record_fire() {
-    PARAM_FIRES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-}
-/// Read + reset the parametric fast-path fire counter.
-pub fn take_param_fires() -> u64 {
-    PARAM_FIRES.swap(0, std::sync::atomic::Ordering::Relaxed)
-}
+#[path = "rect_fast/param_stats.rs"]
+mod param_stats;
+pub use param_stats::{param_record_fire, take_param_fires};
 
 // rect_fast engagement counters are now REQUEST-LOCAL: each cut records into its
 // router via `GeometryRouter::record_rect_fast` (drained by `take_rect_fast_stats`),

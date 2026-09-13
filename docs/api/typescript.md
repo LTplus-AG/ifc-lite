@@ -193,13 +193,22 @@ class GeometryProcessor {
   exportGlb(buffer, includeMetadata?, hidden?, isolated?, hiddenTypesCsv?, lit?): Uint8Array | null;
   exportGlbFromMeshes(meshes: MeshData[], includeMetadata?, lit?): Uint8Array | null;
   exportObj(/* ... */): Uint8Array | null;
+  exportKmzFromMeshes(
+    meshes: MeshData[],
+    latitude: number,
+    longitude: number,
+    altitude: number,
+    xAxisAbscissa?: number,
+    xAxisOrdinate?: number,
+    name?: string,
+    altitudeMode?: 'clampToGround' | 'absolute',
+  ): Uint8Array | null;
   exportCsv(/* buffer, mode: 'entities'|'properties'|'quantities'|'spatial', ... */): Uint8Array | null;
   exportJson(/* ... */): Uint8Array | null;
   exportJsonld(/* ... */): Uint8Array | null;
   exportStep(/* ... */): Uint8Array | null;
   exportIfcx(buffer, onlyKnownProperties?, pretty?): Uint8Array | null;
   exportMerged(buffers: Uint8Array[], schema?): Uint8Array | null;
-  exportKmz(/* ... */): Uint8Array | null;
   exportHbjson(buffer, name): Uint8Array | null;
 }
 ```

@@ -12,6 +12,7 @@
 import type { EntityRef } from './types.js';
 import { decodeIfcString } from '@ifc-lite/encoding';
 import { isIndexableExpressId } from './express-id.js';
+import { opensComment, skipComment, skipTrivia } from './step-lexing.js';
 
 /**
  * Find the byte range of a quoted string at a specific attribute position in STEP entity bytes.
@@ -85,7 +86,59 @@ export function findQuotedAttrRange(
 }
 
 /**
+ * True unless the attribute at `attrIndex` is the IFC "not present" token
+ * `$`. False (not true) when the record's attribute list is too short to
+ * reach `attrIndex` at all, matching how `entity.get(N).is_some_and(|a|
+ * !a.is_null())` reads a missing attribute on the Rust export side
+ * (`rust/export/src/model.rs`) — an absent slot means "no value", not
+ * "assume present".
+ *
+ * Used for `Representation` (index 6) on `IfcProduct` descendants: GlobalId,
+ * OwnerHistory, Name, Description, ObjectType, ObjectPlacement,
+ * Representation — `IfcProduct` is the last ancestor in the chain to declare
+ * an attribute before this one, so every subtype (`IfcElement`, `IfcWall`,
+ * `IfcBuildingElementProxy`, `IfcSpatialElement`, …) inherits `Representation`
+ * at this exact position; subtypes only append attributes after it. Callers
+ * are responsible for only calling this on an `IfcProduct` descendant.
+ *
+ * ISO 10303-21 allows a `/* ... *\/` comment anywhere whitespace is legal,
+ * including between attributes and right before the target value — a
+ * comma inside an earlier comment must not count as a delimiter either, or
+ * the scan lands on the wrong slot entirely. Both `skipCommas` (below) and
+ * the final approach to `attrIndex` use `step-lexing.ts`'s comment-aware
+ * `skipTrivia`/`opensComment`/`skipComment` — the same helpers the
+ * tokenizer uses — rather than a second, partial comment lexer: a raw
+ * six-byte whitespace test here previously read `,/* omitted *\/$,` as
+ * landing ON the `/` and reported the attribute present (#4725 review).
+ */
+export function hasAttrValueAt(
+    buffer: Uint8Array,
+    entityStart: number,
+    entityLen: number,
+    attrIndex: number,
+): boolean {
+    const end = entityStart + entityLen;
+    let pos = entityStart;
+    while (pos < end && buffer[pos] !== 0x28 /* ( */) pos++;
+    if (pos >= end) return false;
+    pos++; // skip '('
+    pos = skipCommas(buffer, pos, end, attrIndex);
+    const trivia = skipTrivia(buffer, pos, end);
+    pos = trivia.next;
+    if (trivia.stop || pos >= end) return false;
+    return buffer[pos] !== 0x24 /* $ */;
+}
+
+/**
  * Skip N commas at depth 0 in STEP bytes.
+ *
+ * Comment-aware: a `/* ... *\/` comment is legal wherever whitespace is
+ * legal in a record's attribute list, so a comma or quote INSIDE one must
+ * not be read as a delimiter or a string opener. Comments are skipped
+ * whole via `step-lexing.ts`'s `opensComment`/`skipComment` (the same
+ * comment scanner the tokenizer uses) before the comma/paren/quote checks
+ * run, so `(...,#165,/* a, b *\/$,...)` still lands the `$` at the slot
+ * right after `#165`, not one early from the comma inside the comment.
  */
 export function skipCommas(buffer: Uint8Array, start: number, end: number, count: number): number {
     let pos = start;
@@ -94,14 +147,21 @@ export function skipCommas(buffer: Uint8Array, start: number, end: number, count
     let inString = false;
     while (pos < end && remaining > 0) {
         const ch = buffer[pos];
-        if (ch === 0x27) {
-            if (inString && pos + 1 < end && buffer[pos + 1] === 0x27) { pos += 2; continue; }
-            inString = !inString;
-        } else if (!inString) {
-            if (ch === 0x28) depth++;
-            else if (ch === 0x29) depth--;
-            else if (ch === 0x2C && depth === 0) remaining--;
+        if (inString) {
+            if (ch === 0x27 && pos + 1 < end && buffer[pos + 1] === 0x27) { pos += 2; continue; }
+            if (ch === 0x27) inString = false;
+            pos++;
+            continue;
         }
+        if (ch === 0x27) { inString = true; pos++; continue; }
+        if (opensComment(buffer, pos, end)) {
+            const next = skipComment(buffer, pos, end);
+            pos = next < 0 ? end : next;
+            continue;
+        }
+        if (ch === 0x28) depth++;
+        else if (ch === 0x29) depth--;
+        else if (ch === 0x2C && depth === 0) remaining--;
         pos++;
     }
     return pos;

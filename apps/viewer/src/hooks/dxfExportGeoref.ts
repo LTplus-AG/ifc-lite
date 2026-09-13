@@ -91,7 +91,7 @@ import type { Point2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { dxfWorldShift } from './dxfUnderlayMath';
-import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from '@/lib/geo/geo-scale';
+import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from '@/lib/geo/geo-scale';
 import { effectiveMapConversionForGeometry } from '@/lib/geo/map-absolute';
 import {
   selectAnchorGeoref,
@@ -167,13 +167,13 @@ export function buildDxfExportTransform(params: DxfExportTransformParams): (p: P
 
   if (!georeference) return toWorld;
 
-  const { mapConversion, mapUnitScale, scale, abscissa, ordinate } = resolveGeorefLinearParams(georeference);
+  const { mapConversion, mapUnitScale, scaleX, scaleY, abscissa, ordinate } = resolveGeorefLinearParams(georeference);
 
   return (p) => {
     const world = toWorld(p);
     return {
-      x: mapConversion.eastings * mapUnitScale + scale * (abscissa * world.x - ordinate * world.y),
-      y: mapConversion.northings * mapUnitScale + scale * (ordinate * world.x + abscissa * world.y),
+      x: mapConversion.eastings * mapUnitScale + abscissa * scaleX * world.x - ordinate * scaleY * world.y,
+      y: mapConversion.northings * mapUnitScale + ordinate * scaleX * world.x + abscissa * scaleY * world.y,
     };
   };
 }
@@ -200,7 +200,8 @@ function finiteOr(value: number, fallback: number): number {
 function resolveGeorefLinearParams(georeference: DxfExportGeoreference): {
   mapConversion: MapConversion;
   mapUnitScale: number;
-  scale: number;
+  scaleX: number;
+  scaleY: number;
   abscissa: number;
   ordinate: number;
 } {
@@ -217,13 +218,14 @@ function resolveGeorefLinearParams(georeference: DxfExportGeoreference): {
     georeference.coordinateInfo,
   );
   // Guard the pathological IfcMapConversion.Scale = 0 (or negative/NaN):
-  // getEffectiveHorizontalScale passes an explicit 0 through, which would
+  // getEffectiveAxisScales passes an explicit 0 through, which would
   // collapse every exported point onto the eastings/northings origin (or,
   // inverted, make every map point resolve to the same world point).
   // Falling back to unscaled (1) keeps the geometry intact, which is
   // strictly less wrong than a single-point result.
-  const rawEffectiveScale = getEffectiveHorizontalScale(mapConversion.scale, mapUnitScale, lengthUnitScale);
-  const scale = Number.isFinite(rawEffectiveScale) && rawEffectiveScale > 0 ? rawEffectiveScale : 1;
+  const { x: rawScaleX, y: rawScaleY } = getEffectiveAxisScales(mapConversion, mapUnitScale, lengthUnitScale);
+  const scaleX = Number.isFinite(rawScaleX) && rawScaleX > 0 ? rawScaleX : 1;
+  const scaleY = Number.isFinite(rawScaleY) && rawScaleY > 0 ? rawScaleY : 1;
   // IfcMapConversion.XAxisAbscissa/XAxisOrdinate form a direction vector, not
   // necessarily unit length — the IFC spec allows an authoring tool to write
   // any non-zero (cos, sin)-proportional pair. Used raw, a non-unit vector
@@ -273,7 +275,7 @@ function resolveGeorefLinearParams(georeference: DxfExportGeoreference): {
   const safeMapConversion: MapConversion = (eastings === mapConversion.eastings && northings === mapConversion.northings)
     ? mapConversion
     : { ...mapConversion, eastings, northings };
-  return { mapConversion: safeMapConversion, mapUnitScale, scale, abscissa, ordinate };
+  return { mapConversion: safeMapConversion, mapUnitScale, scaleX, scaleY, abscissa, ordinate };
 }
 
 /**
@@ -298,14 +300,14 @@ export function buildDxfMapToWorldTransform(
 ): (p: Point2D) => Point2D {
   if (!georeference) return (p) => p;
 
-  const { mapConversion, mapUnitScale, scale, abscissa, ordinate } = resolveGeorefLinearParams(georeference);
+  const { mapConversion, mapUnitScale, scaleX, scaleY, abscissa, ordinate } = resolveGeorefLinearParams(georeference);
 
   return (p) => {
     const dE = p.x - mapConversion.eastings * mapUnitScale;
     const dN = p.y - mapConversion.northings * mapUnitScale;
     return {
-      x: (abscissa * dE + ordinate * dN) / scale,
-      y: (-ordinate * dE + abscissa * dN) / scale,
+      x: (abscissa * dE + ordinate * dN) / scaleX,
+      y: (-ordinate * dE + abscissa * dN) / scaleY,
     };
   };
 }

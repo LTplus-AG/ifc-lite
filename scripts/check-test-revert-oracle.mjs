@@ -78,7 +78,8 @@ import { join, dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
-
+import { cargoLockPatchPaths, normalizeRestoredPaths, partialCargoManifestSelection } from './lib/revert-oracle-cargo-lock.mjs';
+import { parseRevertOracleArgs } from './lib/revert-oracle-args.mjs';
 import {
   parseNameStatus,
   classifyDiff,
@@ -109,8 +110,7 @@ const ROOT = rootFlag === -1 ? SELF_ROOT : resolve(process.argv[rootFlag + 1] ??
 
 // Restoration state, declared before the first abort path can fire: `die()`
 // consults it, and a `let` in the temporal dead zone would throw instead.
-let restoration = 'not-required';
-let patchPath = null;
+let restoration = 'not-required', patchPath = null, restorationPaths = [];
 let resultContext = { base: null, head: null, production: [], tests: [] };
 const resultEmitter = createResultEmitter(process.argv.includes('--json'));
 const invocationId = randomUUID();
@@ -206,32 +206,6 @@ function gitOrDie(args) {
 // Args
 // ---------------------------------------------------------------------------
 
-function parseArgs(argv) {
-  const opts = { base: 'upstream/main', head: 'HEAD', only: [], tests: [], mutation: null, json: false, ci: false };
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    const next = () => {
-      const v = argv[++i];
-      if (v === undefined) die(EXIT_NOTHING_CHECKED, `${a} needs a value`);
-      return v;
-    };
-    if (a === '--base') opts.base = next();
-    else if (a === '--head') opts.head = next();
-    else if (a === '--only') opts.only.push(next());
-    else if (a === '--test') opts.tests.push(next());
-    else if (a === '--mutation') opts.mutation = next();
-    else if (a === '--root') next(); // already consumed above, before ROOT is frozen
-    else if (a === '--json') opts.json = true;
-    else if (a === '--ci') opts.ci = true;
-    else if (a === '--help' || a === '-h') {
-      console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0]);
-      emitResult(ORACLE_CHANNEL, 'HELP', 0, 'help requested');
-      process.exit(0);
-    } else die(EXIT_NOTHING_CHECKED, `unknown argument: ${a}`);
-  }
-  return opts;
-}
-
 // ---------------------------------------------------------------------------
 // Package / runner resolution
 // ---------------------------------------------------------------------------
@@ -248,7 +222,15 @@ function parseArgs(argv) {
 // Main
 // ---------------------------------------------------------------------------
 
-const opts = parseArgs(process.argv.slice(2));
+const opts = parseRevertOracleArgs(
+  process.argv.slice(2),
+  (message) => die(EXIT_NOTHING_CHECKED, message),
+);
+if (opts.help) {
+  console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0]);
+  emitResult(ORACLE_CHANNEL, 'HELP', 0, 'help requested');
+  process.exit(0);
+}
 
 console.log('[revert-oracle] does this branch\'s test actually observe this branch\'s change?');
 console.log(`  repo:  ${ROOT}`);
@@ -282,8 +264,7 @@ if (opts.ci && isDependabotDependencyOnly(process.env.PR_AUTHOR_LOGIN, entries))
       'the normal build and test lanes provide the compatibility verdict.',
   );
 }
-
-const { production, test: testEntries, ignored, inert, warnings } = classifyDiff(entries);
+const { production, test: testEntries, ignored, inert, warnings, cargoLockChanged } = classifyDiff(entries);
 resultContext = {
   ...resultContext,
   production: production.map((entry) => entry.path),
@@ -333,6 +314,17 @@ if (opts.only.length > 0) {
   prodPaths = prodPaths.filter((p) => opts.only.some((o) => p === o || p.startsWith(o.endsWith('/') ? o : `${o}/`)));
   console.log(`  --only narrowed the revert set from ${before} to ${prodPaths.length} production file(s)`);
   if (prodPaths.length === 0) die(EXIT_NOTHING_CHECKED, `--only matched none of the ${before} changed production files.`);
+}
+
+const partialCargoSelection = partialCargoManifestSelection(
+  cargoLockChanged, production.map((entry) => entry.path), prodPaths,
+);
+if (partialCargoSelection) {
+  die(
+    EXIT_NOTHING_CHECKED,
+    '--only selected some changed Cargo.toml files, but Cargo.lock can be reverted only with every changed Cargo.toml.',
+    partialCargoSelection,
+  );
 }
 
 let testPaths = withoutBrowserSpecs(testEntries.map((e) => e.path).filter((p) => existsSync(join(ROOT, p))), (p) => readFileSync(join(ROOT, p), 'utf8'), console.log);
@@ -403,7 +395,9 @@ if (opts.mutation) {
   patchText = readFileSync(resolve(opts.mutation), 'utf8');
   console.log(`  mutation: ${opts.mutation} (${patchText.split('\n').length} lines, reverse-applied)`);
 } else {
-  patchText = gitOrDie(['diff', '--binary', mergeBase, headSha, '--', ...prodPaths]);
+  const patchPaths = cargoLockPatchPaths(cargoLockChanged, prodPaths);
+  restorationPaths = patchPaths;
+  patchText = gitOrDie(['diff', '--binary', mergeBase, headSha, '--', ...patchPaths]);
 }
 if (patchText.trim() === '') {
   rmSync(tmp, { recursive: true, force: true });
@@ -421,6 +415,12 @@ function restore(context) {
     console.error(r.error?.message ?? (r.stderr || '').trim());
     console.error(`The reverse patch is still on disk: ${patchPath}`);
     console.error(`Re-apply it by hand:  git apply ${patchPath}`);
+    return false;
+  }
+  const checkoutError = normalizeRestoredPaths(rawGit, headSha, restorationPaths);
+  if (checkoutError) {
+    restoration = 'failed';
+    console.error(`\n[revert-oracle] !!! RESTORE NORMALISATION FAILED (${context}) !!!\n${checkoutError}\nPreserve the post-test edit by committing or stashing it, then rerun from a clean working tree.`);
     return false;
   }
   const statusRun = rawGit(['status', '--porcelain']);

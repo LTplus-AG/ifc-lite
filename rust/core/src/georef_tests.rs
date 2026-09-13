@@ -122,68 +122,6 @@ fn test_georef_map_to_local_with_rotation_round_trips_local_to_map() {
     assert!((z - lz).abs() < 1e-9, "map_to_local must invert local_to_map (z), got {z}");
 }
 
-#[test]
-fn test_rtc_offset() {
-    let positions = vec![
-        500000.0f32,
-        5000000.0,
-        0.0,
-        500010.0,
-        5000010.0,
-        10.0,
-        500020.0,
-        5000020.0,
-        20.0,
-    ];
-
-    let offset = RtcOffset::from_positions(&positions);
-    assert!(offset.is_significant());
-    assert!((offset.x - 500010.0).abs() < 1.0);
-    assert!((offset.y - 5000010.0).abs() < 1.0);
-}
-
-#[test]
-fn test_rtc_apply() {
-    let mut positions = vec![500000.0f32, 5000000.0, 0.0, 500010.0, 5000010.0, 10.0];
-
-    let offset = RtcOffset {
-        x: 500000.0,
-        y: 5000000.0,
-        z: 0.0,
-    };
-
-    offset.apply(&mut positions);
-
-    assert!((positions[0] - 0.0).abs() < 1e-5);
-    assert!((positions[1] - 0.0).abs() < 1e-5);
-    assert!((positions[3] - 10.0).abs() < 1e-5);
-    assert!((positions[4] - 10.0).abs() < 1e-5);
-}
-
-/// `apply`'s z-channel must subtract `self.z`, not `self.x`/`self.y`.
-///
-/// `test_rtc_apply` above uses `z: 0.0` and never asserts on
-/// `positions[2]`/`positions[5]`, so the third component of `chunk[2] =
-/// chunk[2] - self.z` was free to read the wrong field of `self` — a
-/// `self.x`-for-`self.z` swap left that test fully green. Distinct,
-/// non-zero x/y/z offsets and asserting all three components pins it.
-#[test]
-fn test_rtc_apply_z_channel_uses_z_offset() {
-    let mut positions = vec![100.0f32, 200.0, 300.0];
-
-    let offset = RtcOffset {
-        x: 10.0,
-        y: 20.0,
-        z: 30.0,
-    };
-
-    offset.apply(&mut positions);
-
-    assert!((positions[0] - 90.0).abs() < 1e-5);
-    assert!((positions[1] - 180.0).abs() < 1e-5);
-    assert!((positions[2] - 270.0).abs() < 1e-5);
-}
-
 /// The `-0` leniency (#3546 residual): a writer that signs a zero-magnitude
 /// degree component of `IfcSite.RefLatitude`/`RefLongitude` (e.g. `(-0, 30,
 /// 0)` for 0°30'S) must still land the site in the correct hemisphere.
@@ -322,6 +260,26 @@ END-ISO-10303-21;
     assert!((georef.eastings - (-0.75)).abs() < 1e-9);
 }
 
+/// #4687: a comment is trivia for the `-0` scan. A comma in one shifted
+/// every later attribute, an apostrophe in one opened a string for the rest
+/// of the record, and one beside the component hid the `-0`.
+#[test]
+fn issue_4687_negative_zero_scan_treats_comments_as_trivia() {
+    for site in [
+        "#1=IFCSITE('1abc',$,/* a, b */'Site',$,$,$,$,$,.ELEMENT.,(-0,30,0),(-0,45,0),0.,$,$);",
+        "#1=IFCSITE('1abc',$,/* it's */'Site',$,$,$,$,$,.ELEMENT.,(-0,30,0),(-0,45,0),0.,$,$);",
+        "#1=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(-0 /* deg */,30,0),( /* deg */ -0,45,0),0.,$,$);",
+    ] {
+        let ifc_content = format!("DATA;\n{site}\nENDSEC;\n");
+        let mut decoder = EntityDecoder::new(&ifc_content);
+        let georef = GeoRefExtractor::extract(&mut decoder, &[(1u32, IfcType::IfcSite)])
+            .expect("decode ok")
+            .expect("legacy site georeference extracted");
+        assert!((georef.northings - (-0.5)).abs() < 1e-9, "{site}: {}", georef.northings);
+        assert!((georef.eastings - (-0.75)).abs() < 1e-9, "{site}: {}", georef.eastings);
+    }
+}
+
 fn ifc4x3_with_conversion(map_conversion_line: &str) -> String {
     format!(
         "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('Test'),'2;1');\nFILE_NAME('t.ifc','2026-01-01',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);\n#4=IFCCARTESIANPOINT((0.,0.,0.));\n#5=IFCAXIS2PLACEMENT3D(#4,$,$);\n#10=IFCPROJECTEDCRS('EPSG:32632',$,$,$,$,$,$);\n{map_conversion_line}\nENDSEC;\nEND-ISO-10303-21;\n"
@@ -440,10 +398,12 @@ fn zero_length_axis_direction_resets_to_identity() {
 /// `transformMatrix`); without one, the IfcSite fallback runs.
 #[test]
 fn map_conversion_with_a_non_finite_component_is_refused_whole() {
-    for slot in 2..=7 {
-        let mut values = ["1000.", "2000.", "42.", "1.", "0.", "1."];
+    for slot in 2..=10 {
+        let mut values = [
+            "1000.", "2000.", "42.", "1.", "0.", "1.", "1.", "1.", "1.",
+        ];
         values[slot - 2] = "1.0E999";
-        let line = format!("#11=IFCMAPCONVERSION(#2,#10,{});", values.join(","));
+        let line = format!("#11=IFCMAPCONVERSIONSCALED(#2,#10,{});", values.join(","));
         let geo = extract_map_conversion(&line).expect("the IfcProjectedCRS still claims georeferencing");
         assert!(!geo.has_map_conversion, "slot {slot}: conversion must be refused");
         assert_eq!(geo.crs_name.as_deref(), Some("EPSG:32632"));
@@ -463,21 +423,21 @@ fn map_conversion_with_a_non_finite_component_is_refused_whole() {
 }
 
 /// An explicit `Scale` of 0 collapsed every local point onto
-/// `(Eastings, Northings)`, the same failure as a zero axis, and a factor that
-/// overflows to infinity poisoned its axis. Both reset to 1.0.
+/// `(Eastings, Northings)`, the same failure as a zero axis. A zero scaled-axis
+/// factor has the same effect on that axis. Both reset to 1.0.
 #[test]
-fn zero_or_non_finite_scale_resets_to_one() {
+fn zero_scale_or_factor_resets_to_one() {
     let geo = extract_map_conversion("#11=IFCMAPCONVERSION(#2,#10,1000.,2000.,42.,1.,0.,0.);")
         .expect("georeference");
     assert_eq!(geo.scale, 1.0);
     assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1010.0, 2020.0, 47.0));
 
     let geo = extract_map_conversion(
-        "#11=IFCMAPCONVERSIONSCALED(#2,#10,1000.,2000.,42.,1.,0.,$,1.0E999,0.,2.);",
+        "#11=IFCMAPCONVERSIONSCALED(#2,#10,1000.,2000.,42.,1.,0.,$,3.,0.,2.);",
     )
     .expect("georeference");
-    assert_eq!((geo.factor_x, geo.factor_y, geo.factor_z), (1.0, 1.0, 2.0));
-    assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1010.0, 2020.0, 52.0));
+    assert_eq!((geo.factor_x, geo.factor_y, geo.factor_z), (3.0, 1.0, 2.0));
+    assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1030.0, 2020.0, 52.0));
 }
 
 /// A rotation-only conversion (zero offsets, 30 degrees to grid north, no
@@ -496,20 +456,6 @@ fn rotation_only_map_conversion_is_reported() {
     assert!(geo.has_map_conversion);
     assert_eq!(geo.crs_name, None);
     assert!((geo.rotation().to_degrees() - 30.0).abs() < 1e-9);
-}
-
-/// Buffers of length 1 or 2 hold no complete position: the offset must be
-/// zero, not `0.0 / 0` = NaN, which `apply` would then write into every
-/// vertex.
-#[test]
-fn rtc_from_positions_with_no_whole_triple_is_zero_not_nan() {
-    for buffer in [&[1.0f32][..], &[1.0f32, 2.0][..]] {
-        let offset = RtcOffset::from_positions(buffer);
-        assert_eq!((offset.x, offset.y, offset.z), (0.0, 0.0, 0.0), "len {}", buffer.len());
-    }
-    // A trailing partial triple is ignored, not averaged in.
-    let offset = RtcOffset::from_positions(&[1.0, 2.0, 3.0, 99.0]);
-    assert_eq!((offset.x, offset.y, offset.z), (1.0, 2.0, 3.0));
 }
 
 /// A non-numeric component in a compound plane angle refuses the WHOLE

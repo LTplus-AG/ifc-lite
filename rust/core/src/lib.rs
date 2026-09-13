@@ -82,7 +82,7 @@ pub mod streaming;
 pub(crate) mod unit_labels;
 pub mod units;
 
-pub use columnar_index::ColumnarEntityIndex;
+pub use columnar_index::{ColumnLengthMismatch, ColumnarEntityIndex};
 pub use decoder::{build_entity_index, EntityDecoder, EntityIndex};
 pub use dense_index::DenseEntityIndex;
 pub use error::{Error, Result};
@@ -92,8 +92,8 @@ pub use fast_parse::{
     parse_indices_direct, process_triangulated_faceset_direct, should_use_fast_path, FastMeshData,
 };
 pub use generated::{IfcType, IFC_TYPES};
-pub use georef::{GeoRefExtractor, GeoRefSource, GeoReference, RtcOffset};
-pub use limits::{MAX_MAPPED_ITEM_DEPTH, MAX_PLACEMENT_DEPTH};
+pub use georef::{GeoRefExtractor, GeoRefSource, GeoReference};
+pub use limits::{RtcVerdict, MAX_MAPPED_ITEM_DEPTH, MAX_PLACEMENT_DEPTH};
 pub use legacy_entities::{
     get_legacy_entity_info, is_legacy_entity, legacy_attribute_names, map_legacy_to_base_type,
     LegacyEntityInfo, LEGACY_ENTITY_NAMES,
@@ -103,7 +103,7 @@ pub use parser::{
     entity_count, find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with,
     nth_attribute_is_present, oversized_id_report, parse_entity, report_malformed_records,
     report_oversized_ids, report_scan_diagnostics, set_report_sink, skip_step_comment,
-    EntityScanner, Token,
+    EntityScanner, StepListItems, Token,
 };
 pub use project_units::{
     measure::{measure_unit, MeasureUnit},

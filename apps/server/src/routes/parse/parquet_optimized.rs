@@ -7,13 +7,13 @@
 //! (issue #3889) so neither module crosses the 400-line ratchet.
 
 use super::cache_keys::{
-    cache_symbolic_data, has_cached_symbolic, parquet_optimized_cache_key,
+    has_cached_symbolic, parquet_optimized_cache_key,
     parquet_optimized_metadata_cache_key, request_cache_key,
 };
-use super::{extract_file, ParseQuery};
+use super::{cache_symbolic_data_off_runtime, extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::{
-    serialize_to_parquet_optimized_with_stats, OptimizedStats, VERTEX_MULTIPLIER,
+    baked_basis_zup, serialize_to_parquet_optimized_with_stats, OptimizedStats, VERTEX_MULTIPLIER,
 };
 use crate::types::{ModelMetadata, ProcessingStats};
 use crate::AppState;
@@ -23,7 +23,9 @@ use axum::{
     http::{header, StatusCode},
     response::Response,
 };
-use ifc_lite_processing::{extract_symbolic_data_with_provenance, process_geometry_filtered_with_quality};
+use ifc_lite_processing::{
+    extract_symbolic_data_with_provenance, process_geometry_filtered_with_quality, MeshCoordinateSpace,
+};
 use serde::Serialize;
 
 /// Response header containing metadata for optimized Parquet response.
@@ -33,7 +35,7 @@ pub struct OptimizedParquetMetadataHeader {
     pub metadata: ModelMetadata,
     pub stats: ProcessingStats,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mesh_coordinate_space: Option<String>,
+    pub mesh_coordinate_space: Option<MeshCoordinateSpace>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub site_transform: Option<Vec<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -197,8 +199,17 @@ pub async fn parse_parquet_optimized(
             );
             drop(content);
             // Don't include normals by default - client can compute them
+            // The frame `result`'s vertices were baked in (#4118): the
+            // collator's emitted `rel` is consumed directly by this route, so
+            // without it a site-rotated model's repeated shapes fail the
+            // residual check and fall back to content-hash dedup.
+            let basis = baked_basis_zup(
+                Some(result.mesh_coordinate_space),
+                result.site_transform.as_deref(),
+                result.metadata.coordinate_info.origin_shift,
+            );
             let (parquet_data, opt_stats) =
-                serialize_to_parquet_optimized_with_stats(&result.meshes, false)?;
+                serialize_to_parquet_optimized_with_stats(&result.meshes, false, Some(&basis))?;
             // Nothing after this reads the meshes; free them here rather than
             // hold the model across the cache writes below.
             drop(std::mem::take(&mut result.meshes));
@@ -217,14 +228,14 @@ pub async fn parse_parquet_optimized(
 
     // Cache the symbolic stream so the client can fetch it via
     // `GET /api/v1/parse/symbolic/{cache_key}`.
-    cache_symbolic_data(&state.cache, &cache_key, &symbolic_data).await;
+    cache_symbolic_data_off_runtime(state.cache.clone(), cache_key.clone(), symbolic_data).await;
 
     // Create metadata header
     let metadata_header = OptimizedParquetMetadataHeader {
         cache_key: cache_key.clone(),
         metadata: result.metadata,
         stats: result.stats,
-        mesh_coordinate_space: result.mesh_coordinate_space,
+        mesh_coordinate_space: Some(result.mesh_coordinate_space),
         site_transform: result.site_transform,
         building_transform: result.building_transform,
         optimization_stats: opt_stats,

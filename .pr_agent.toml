@@ -1,0 +1,42 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# PR-Agent settings for .github/workflows/pr-agent-review.yml.
+#
+# Only overrides live here; everything else is PR-Agent's default. The MODEL,
+# the endpoint and the token caps are NOT here: they differ per lane (OpenRouter
+# or the local model) and live in the workflow's env, which overrides this file.
+#
+# The workflow reads this file from the PR's BASE commit, never from the PR, so
+# a pull request cannot rewrite the instructions that review it.
+
+[config]
+# Name the model that actually answered and what it cost in tokens. With
+# fallback_models in play, "which model reviewed this" is otherwise unknowable.
+output_run_details = true
+# A diff over the lane's max_model_tokens is clipped rather than skipped.
+large_patch_policy = "clip"
+# Plain-diff mode cannot read repository files for prompt context, so this is
+# off rather than left looking configured.
+repo_context_files = []
+
+[pr_reviewer]
+require_tests_review = true
+require_security_review = true
+require_estimate_effort_to_review = true
+require_ticket_analysis_review = false
+num_max_findings = 6
+enable_review_labels_security = false
+enable_review_labels_effort = false
+extra_instructions = """\
+This is ifc-lite: a Rust core (rust/) compiled to WebAssembly, TypeScript packages \
+(packages/), and apps (apps/). Report only defects a maintainer would act on: wrong \
+results, a change applied at one site and not at its sibling, a guard or test that \
+cannot fail, silent fallbacks that turn an error into a pass, and unbounded work on \
+untrusted input. Do not report style, naming or formatting. Quote the changed line \
+you are talking about.\
+"""
+
+# No [ignore] section: plain-diff mode ignores it. Excluded paths are filtered
+# in scripts/review/pr-agent-run.sh.

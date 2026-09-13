@@ -245,6 +245,63 @@ fn ignore_opaque_judges_the_colour_the_opening_renders_with() {
     );
 }
 
+/// Door #110 again, with a second, non-body representation holding an unstyled
+/// item: a `Box` with an `IfcBoundingBox`, or an `Axis` with a polyline. The
+/// router meshes neither, so the door still renders only its two opaque item
+/// styles, and `IgnoreOpaque` must still suppress it. The filter walked every
+/// representation, counted the unstyled box or axis as a leaf that takes the
+/// transparent pane material, and kept the door (#4699).
+#[test]
+fn ignore_opaque_skips_items_of_representations_the_router_does_not_mesh() {
+    let body_only = |ifc: &str| {
+        process_geometry_filtered(ifc, OpeningFilterMode::Default)
+            .meshes
+            .into_iter()
+            .filter(|m| m.express_id == 110)
+            .map(|m| m.geometry_item_id)
+            .collect::<Vec<_>>()
+    };
+    let mut kept = Vec::new();
+    for (what, extra) in [
+        (
+            "Box",
+            "#121=IFCSHAPEREPRESENTATION(#2,'Box','BoundingBox',(#122));\n#122=IFCBOUNDINGBOX(#4,1.,1.,1.);",
+        ),
+        (
+            "Axis",
+            "#121=IFCSHAPEREPRESENTATION(#2,'Axis','Curve3D',(#122));\n#122=IFCPOLYLINE((#4,#123));\n#123=IFCCARTESIANPOINT((1.,0.,0.));",
+        ),
+        (
+            // Window #140's unstyled mapped face set, which the router skips
+            // because the door already carries direct body geometry.
+            "MappedRepresentation",
+            "#121=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#122));\n#122=IFCMAPPEDITEM(#145,#89);",
+        ),
+    ] {
+        let ifc = OPENINGS_IFC
+            .replace(
+                "#112=IFCPRODUCTDEFINITIONSHAPE($,$,(#113));",
+                &format!("#112=IFCPRODUCTDEFINITIONSHAPE($,$,(#113,#121));\n{extra}"),
+            );
+        assert_ne!(ifc, OPENINGS_IFC, "{what} splice applied");
+        let mut parts = body_only(&ifc);
+        parts.sort();
+        assert_eq!(
+            parts,
+            vec![Some(114), Some(116)],
+            "fixture premise ({what}): door #110 meshes only its two styled body items"
+        );
+        let filtered = process_geometry_filtered(&ifc, OpeningFilterMode::IgnoreOpaque).meshes;
+        if has_mesh(&filtered, 110) {
+            kept.push(what);
+        }
+    }
+    assert!(
+        kept.is_empty(),
+        "door #110 renders only opaque item styles, so IgnoreOpaque must suppress it; kept with an unstyled {kept:?} representation"
+    );
+}
+
 /// A wall with one opening filled by an `IfcWindow` that has no
 /// representation and no material. The window renders nothing, and with no
 /// style or material its colour is the transparent window default, so

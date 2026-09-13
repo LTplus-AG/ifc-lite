@@ -49,6 +49,9 @@ export interface MapConversion {
   xAxisAbscissa?: number;    // X-axis direction (rotation)
   xAxisOrdinate?: number;    // X-axis direction (rotation)
   scale?: number;            // Scale factor
+  factorX?: number;          // IfcMapConversionScaled X factor
+  factorY?: number;          // IfcMapConversionScaled Y factor
+  factorZ?: number;          // IfcMapConversionScaled Z factor
 }
 
 /**

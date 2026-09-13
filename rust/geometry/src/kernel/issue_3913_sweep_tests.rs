@@ -87,8 +87,8 @@
 //!
 //! Refs #3913, #3353, #3912, #3874
 
-use crate::kernel::mesh_bridge::union_many;
 use crate::csg::ClippingProcessor;
+use crate::kernel::mesh_bridge::union_many;
 use crate::Mesh;
 use nalgebra::{Point3, Rotation3, Unit, Vector3};
 use std::collections::HashMap;
@@ -164,7 +164,9 @@ fn open_edges(m: &Mesh) -> Result<usize, String> {
         for k in 0..3 {
             let (a, b) = (t[k], t[(k + 1) % 3]);
             if a == b {
-                return Err(format!("degenerate edge: triangle repeats welded vertex {a}"));
+                return Err(format!(
+                    "degenerate edge: triangle repeats welded vertex {a}"
+                ));
             }
             let e = edges.entry((a.min(b), a.max(b))).or_insert((0, 0));
             if a < b {
@@ -187,7 +189,11 @@ fn open_edges(m: &Mesh) -> Result<usize, String> {
 #[test]
 fn sweep_self_check_open_edges_detects_known_bad_meshes() {
     let closed = boxed([0.0, 0.0, 0.0], [1.0, 1.0, 1.0], None);
-    assert_eq!(open_edges(&closed), Ok(0), "a plain closed box must be clean");
+    assert_eq!(
+        open_edges(&closed),
+        Ok(0),
+        "a plain closed box must be clean"
+    );
 
     let mut doubled = boxed([0.0, 0.0, 0.0], [1.0, 1.0, 1.0], None);
     let tris = doubled.indices.clone();
@@ -282,8 +288,7 @@ fn run_sweep() -> Vec<Verdict> {
             for (dz_idx, &dz) in DZ_VALUES.iter().enumerate() {
                 let boxes = three_boxes_at(bx, by, dz);
                 for (order_idx, order) in ORDERINGS.iter().enumerate() {
-                    let refs: [&Mesh; 3] =
-                        [&boxes[order[0]], &boxes[order[1]], &boxes[order[2]]];
+                    let refs: [&Mesh; 3] = [&boxes[order[0]], &boxes[order[1]], &boxes[order[2]]];
                     let raw = union_many(&refs);
                     let out_mesh = ClippingProcessor::consolidate_coplanar(raw);
                     let (torn, detail) = match open_edges(&out_mesh) {
@@ -309,8 +314,14 @@ fn run_sweep() -> Vec<Verdict> {
 /// The shipped #3912 N-ary weld measured 136 / 882 torn configurations.
 /// #3925 preserves that union path; the unshipped raw-first experiment improved
 /// this synthetic sweep but regressed real large-model cuts and was discarded.
-/// Tighten the pre-weld ceiling of 498 to the measured shipped result.
-const KNOWN_TORN_CEILING: usize = 136;
+/// #3917 then found and fixed the mechanism behind all 136: `union_many`'s
+/// `arrange` now retries the other 5 orderings of a 3-operand union (and only
+/// a 3-operand union — this sweep's exact shape) when the caller's own order
+/// comes back open, keeping the caller's order unchanged whenever it already
+/// closes. That takes the measured count to 0 / 882 across every one of the 6
+/// orderings; see `nary_union.rs` for the mechanism and why it does not
+/// regress the 746 configurations that were already closed.
+const KNOWN_TORN_CEILING: usize = 0;
 
 /// The primary #3913 deliverable: a committed, deterministic, CI-run sweep
 /// over the exact 882-configuration shape (7x7 corner grid x 3 dz x 6
@@ -319,9 +330,9 @@ const KNOWN_TORN_CEILING: usize = 136;
 /// genuinely special or an artefact). Reports how many of the 882
 /// configurations tear, breaks the torn set down by `dz` sign and by
 /// operand ordering (#3913's suggested characterisation axes), and asserts
-/// the count has not REGRESSED past `KNOWN_TORN_CEILING` - not that it is
-/// zero, since a fix is not required and #3913 documents this residual as a
-/// known, currently-unfixed defect.
+/// the count has not REGRESSED past `KNOWN_TORN_CEILING` - #3917's fix took
+/// this to 0, so any future regression here is exactly that, a regression,
+/// not a re-discovery of a known residual.
 ///
 /// Not `#[ignore]`d: measured locally at 882 `union_many` + consolidate
 /// calls over 3 twelve-triangle boxes each, taking ~2.6 seconds total wall
@@ -332,7 +343,11 @@ const KNOWN_TORN_CEILING: usize = 136;
 #[test]
 fn union_many_nary_sweep_regression_gate() {
     let verdicts = run_sweep();
-    assert_eq!(verdicts.len(), 882, "sweep must enumerate exactly 882 configurations");
+    assert_eq!(
+        verdicts.len(),
+        882,
+        "sweep must enumerate exactly 882 configurations"
+    );
 
     let torn: Vec<&Verdict> = verdicts.iter().filter(|v| v.torn).collect();
 
@@ -353,10 +368,24 @@ fn union_many_nary_sweep_regression_gate() {
          by order:   {}={:<4} {}={:<4} {}={:<4} {}={:<4} {}={:<4} {}={}\n",
         torn.len(),
         verdicts.len(),
-        DZ_LABELS[0], by_dz[0], DZ_LABELS[1], by_dz[1], DZ_LABELS[2], by_dz[2],
-        ORDERING_LABELS[0], by_order[0], ORDERING_LABELS[1], by_order[1],
-        ORDERING_LABELS[2], by_order[2], ORDERING_LABELS[3], by_order[3],
-        ORDERING_LABELS[4], by_order[4], ORDERING_LABELS[5], by_order[5],
+        DZ_LABELS[0],
+        by_dz[0],
+        DZ_LABELS[1],
+        by_dz[1],
+        DZ_LABELS[2],
+        by_dz[2],
+        ORDERING_LABELS[0],
+        by_order[0],
+        ORDERING_LABELS[1],
+        by_order[1],
+        ORDERING_LABELS[2],
+        by_order[2],
+        ORDERING_LABELS[3],
+        by_order[3],
+        ORDERING_LABELS[4],
+        by_order[4],
+        ORDERING_LABELS[5],
+        by_order[5],
     );
     for v in &torn {
         report.push_str(&format!(
@@ -370,8 +399,9 @@ fn union_many_nary_sweep_regression_gate() {
     }
     println!("{report}");
 
-    assert!(
-        torn.len() <= KNOWN_TORN_CEILING,
+    assert_eq!(
+        torn.len(),
+        KNOWN_TORN_CEILING,
         "{report}\n{} of 882 configurations tore, exceeding the recorded ceiling of {} \
          (issue #3913) — this is a REGRESSION, not the known residual. Do not raise \
          KNOWN_TORN_CEILING to force a pass; find what changed.",

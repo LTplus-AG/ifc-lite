@@ -113,10 +113,15 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
             edges.insert(e);
         }
     }
+    // `next` is a FUNCTION, so a vertex with TWO outgoing boundary edges (a
+    // pinch: the figure-8 channel) has no representation. Last-wins kept one
+    // lobe, the walk closed on it as if it were the whole boundary, and the
+    // other lobe's triangles were deleted below and never re-covered. Bail to
+    // `recover_via_traversal`, whose ordered walk is immune to the pinch.
     let mut next: BTreeMap<Vid, Vid> = BTreeMap::new();
     for &(u, v) in &edges {
-        if !edges.contains(&(v, u)) {
-            next.insert(u, v);
+        if !edges.contains(&(v, u)) && next.insert(u, v).is_some() {
+            return;
         }
     }
     // Walk the boundary loop. A degenerate channel (non-simply-connected region,
@@ -130,25 +135,18 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
     // whole fan in the channel (the 559171 back-face door jamb - the endpoint is
     // then "swallowed" exactly like 552611's corner, but the a-b pocket split
     // can't run). See the (ia, ib) match below for that case.
-    let start = if next.contains_key(&a) {
-        a
-    } else {
-        match next.keys().next() {
-            Some(&v) => v,
-            None => return,
-        }
-    };
-    let mut loop_v = vec![start];
-    let mut cur = match next.get(&start) {
-        Some(&v) => v,
+    let start = match next.keys().next() {
+        Some(&v) if !next.contains_key(&a) => v,
+        Some(_) => a,
         None => return,
     };
+    let mut loop_v = vec![start];
+    let Some(&first) = next.get(&start) else { return };
+    let mut cur = first;
     while cur != start {
         loop_v.push(cur);
-        cur = match next.get(&cur) {
-            Some(&v) => v,
-            None => return,
-        };
+        let Some(&nxt) = next.get(&cur) else { return };
+        cur = nxt;
         if loop_v.len() > next.len() + 1 {
             return; // cycle that never returns to the start — degenerate
         }
@@ -230,13 +228,12 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
             }
         }
     }
-    mesh.tris = mesh
-        .tris
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| !channel_set.contains(i))
-        .map(|(_, t)| *t)
-        .collect();
+    // Same post-condition as the traversal: an overlapping or degenerate cover
+    // is not committed, so the audit counts the edge unrecovered instead.
+    if !pocket_rebuild_valid(&new_tris) {
+        return;
+    }
+    drop_tris(mesh, &channel_set);
     mesh.tris.extend(new_tris);
     for v in lost {
         if Some(v) == fan_hub {
@@ -359,15 +356,17 @@ pub(crate) fn recover_via_traversal(mesh: &mut Mesh2d, it: &Interner, a: Vid, b:
     if !pocket_rebuild_valid(&new_tris) {
         return;
     }
-    let crossed_set: BTreeSet<usize> = crossed.into_iter().collect();
-    mesh.tris = mesh
-        .tris
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| !crossed_set.contains(i))
-        .map(|(_, t)| *t)
-        .collect();
+    drop_tris(mesh, &crossed.into_iter().collect());
     mesh.tris.extend(new_tris);
+}
+
+/// Remove the triangles at the `dead` slots (a replaced channel), keeping order.
+fn drop_tris(mesh: &mut Mesh2d, dead: &BTreeSet<usize>) {
+    let mut slot = 0usize;
+    mesh.tris.retain(|_| {
+        slot += 1;
+        !dead.contains(&(slot - 1))
+    });
 }
 
 pub(crate) fn enforce_constraint(mesh: &mut Mesh2d, it: &Interner, s: Vid, t: Vid) {

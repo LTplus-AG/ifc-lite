@@ -33,50 +33,82 @@ export function getEffectiveHorizontalScale(
   mapUnitScale: number,
   lengthUnitScale: number,
 ): number {
+  return getEffectiveAxisScales({ scale: ifcMapConversionScale }, mapUnitScale, lengthUnitScale).x;
+}
+
+/** The Scale and IfcMapConversionScaled factors a placement reads. */
+export type ScaleFields = { scale?: number; factorX?: number; factorY?: number; factorZ?: number };
+type Axis = 'x' | 'y' | 'z';
+type AxisScales = Record<Axis, number>;
+const AXES: readonly Axis[] = ['x', 'y', 'z'];
+const FACTOR_KEY = { x: 'factorX', y: 'factorY', z: 'factorZ' } as const;
+/** A coefficient this close to 1 bridges the units (and raises no warning). */
+const NEAR_UNITY = 0.005;
+const offUnity = (value: number) => Math.abs(value - 1);
+const worstAxis = (s: AxisScales): Axis => AXES.reduce((a, b) => (offUnity(s[b]) > offUnity(s[a]) ? b : a));
+
+/** `Scale x Factor x mapUnitScale / lengthUnitScale` per axis, an absent value read as 1. */
+function specAxisScales(c: ScaleFields, mus: number, lus: number): AxisScales {
+  // Divide last: (1 * 0.3048 * 1) / 0.3048 is exactly 1.
+  const axis = (a: Axis) => ((c.scale ?? 1) * (c[FACTOR_KEY[a]] ?? 1) * mus) / lus;
+  return { x: axis('x'), y: axis('y'), z: axis('z') };
+}
+
+/**
+ * Effective per-axis scales for metre viewer geometry (Scale, or Scale x
+ * FactorX/Y/Z for IfcMapConversionScaled). The single home of the #595 rule.
+ *
+ * Spec: Scale converts LOCAL ENGINEERING coords (project length unit) to MAP
+ * coords (MapUnit). Geometry is already metres, so the effective coefficient
+ * is (Scale * mapUnitScale) / lengthUnitScale; a file with mm project units
+ * and m map units MUST set Scale=0.001, and the coefficient evaluates to 1.
+ *
+ * Reality: Bonsai/IfcOpenShell, Revit's IFC exporter, and many CAD tools
+ * either leave Scale unset (default 1.0) or hard-code Scale=1 regardless of
+ * unit pairing. The author's intent is "geometry and offsets share the same
+ * metric unit", but the spec-strict formula then multiplies viewer metres by
+ * 1/lengthUnitScale (1000x for mm projects), far enough that proj4
+ * extrapolates to the antipode (Hans's `IXAS_KW 018_georeffed.ifc`:
+ * 126500/480000 RD offsets + mm units + Scale unset → South Pacific instead of
+ * the Netherlands). Files that genuinely use Scale ≠ 1 followed the spec.
+ *
+ * So the heuristic is decided ONCE for the conversion, then each axis keeps
+ * its own factor. It fires when Scale is absent or 1 (NaN included), the
+ * project and map units differ, and no authored factor already bridges them:
+ * - Scale 1 with factors (1, 1, 1) in a mm project places like the plain
+ *   IFCMAPCONVERSION, at 1;
+ * - Scale absent with grid factors (0.9996, 0.9996, 1) keeps them, on every axis;
+ * - Scale 1 or absent with factors 0.3048 in a feet project bridges the units
+ *   and places at 1;
+ * - an explicit non-unit Scale (0.001 in a mm project) is spec-strict, and a
+ *   factor scales on top of it.
+ */
+export function getEffectiveAxisScales(
+  conversion: ScaleFields,
+  mapUnitScale: number,
+  lengthUnitScale: number,
+): AxisScales {
   const lus = lengthUnitScale > 0 ? lengthUnitScale : 1;
   const mus = mapUnitScale > 0 ? mapUnitScale : 1;
-  const specEffective = ((ifcMapConversionScale ?? 1.0) * mus) / lus;
-
-  // Heuristic for files that don't follow the IFC schema's unit-bridging rule.
-  //
-  // Spec: IfcMapConversion.Scale converts LOCAL ENGINEERING coords (in the
-  // project length unit) to MAP coords (in MapUnit). So a file with mm
-  // project units + m map units MUST set Scale=0.001 to bridge the gap, and
-  // (Scale * mapUnitScale) / lengthUnitScale evaluates to 1 — geometry passes
-  // through unchanged.
-  //
-  // Reality: Bonsai/IfcOpenShell, Revit's IFC exporter, and many CAD tools
-  // either leave Scale unset (default 1.0) or hard-code Scale=1 regardless of
-  // unit pairing. The author's intent in those cases is "geometry and offsets
-  // share the same metric unit", but the spec-strict formula then multiplies
-  // viewer-space metres by 1/lengthUnitScale (e.g. 1000x for mm projects),
-  // inflating the model so far that proj4 extrapolates to the projection's
-  // antipode (Hans's `IXAS_KW 018_georeffed.ifc`: 126500/480000 RD offsets +
-  // mm units + Scale unset → South Pacific instead of the Netherlands).
-  //
-  // When the file's Scale is unset or exactly 1 AND the units don't match,
-  // honour the practical intent: behave as if Scale had been set per spec
-  // (effectiveScale = 1) so the metre-converted geometry passes through.
-  // Files that genuinely use Scale ≠ 1 (e.g. units bridging a foot/metre
-  // gap with Scale=0.3048) are left alone — they followed the spec.
-  const rawScaleProvided = ifcMapConversionScale != null
-    && Math.abs(ifcMapConversionScale - 1) > 1e-9;
-  if (!rawScaleProvided && Math.abs(mus - lus) > 1e-9) {
-    return 1;
-  }
-  return specEffective;
+  const spec = specAxisScales(conversion, mus, lus);
+  const scaleUnset = !(conversion.scale != null && Math.abs(conversion.scale - 1) > 1e-9);
+  const factorBridgesUnits = AXES.some(
+    (a) => conversion[FACTOR_KEY[a]] !== undefined && offUnity(spec[a]) <= NEAR_UNITY,
+  );
+  if (!scaleUnset || Math.abs(mus - lus) <= 1e-9 || factorBridgesUnits) return spec;
+  return { x: conversion.factorX ?? 1, y: conversion.factorY ?? 1, z: conversion.factorZ ?? 1 };
 }
 
 export interface ScaleUnitMismatch {
   /**
-   * Horizontal scale ifc-lite ACTUALLY applies to viewer-space (metre)
-   * geometry — {@link getEffectiveHorizontalScale}, heuristic included.
+   * Scale ifc-lite ACTUALLY applies to viewer-space (metre) geometry on the
+   * reported axis — {@link getEffectiveAxisScales}, heuristic included.
    */
   effectiveScale: number;
   /**
-   * Horizontal scale the spec-strict formula implies,
-   * `(Scale × mapUnitScale) / lengthUnitScale`. Differs from `effectiveScale`
-   * exactly when the unset-Scale heuristic above fired.
+   * Scale the spec-strict formula implies on the reported axis,
+   * `(Scale × Factor × mapUnitScale) / lengthUnitScale`. Differs from
+   * `effectiveScale` exactly when the unset-Scale heuristic fired.
    */
   specEffectiveScale: number;
   /**
@@ -99,43 +131,52 @@ export interface ScaleUnitMismatch {
   lengthUnitScale: number;
   /**
    * Scale value the file would need for the IFC formula to map local→map
-   * coordinates without any extra scaling (i.e. lengthUnitScale / mapUnitScale).
+   * coordinates without any extra scaling on the reported axis
+   * (lengthUnitScale / mapUnitScale, divided by that axis's factor).
    */
   expectedScale: number;
 }
 
 /**
- * Detect when IfcMapConversion.Scale is inconsistent with the project and map
- * units. Per the IFC schema, Scale × mapUnitScale should equal lengthUnitScale
- * (i.e. an effective scale of 1.0). A deviation usually means the authoring
- * tool forgot to set Scale to bridge a unit difference (e.g. mm project + m map
- * with Scale=1.0). Files like this render at the wrong size in any tool that
- * follows the schema strictly — see issue #595.
+ * Detect when IfcMapConversion.Scale (times any IfcMapConversionScaled factor)
+ * is inconsistent with the project and map units. Per the IFC schema,
+ * Scale × mapUnitScale should equal lengthUnitScale (i.e. an effective scale
+ * of 1.0). A deviation usually means the authoring tool forgot to set Scale to
+ * bridge a unit difference (e.g. mm project + m map with Scale=1.0). Files
+ * like this render at the wrong size in any tool that follows the schema
+ * strictly — see issue #595.
  *
- * Returns null when the file is consistent (within 0.5% of 1.0); otherwise the
- * diagnostic data. Read `compensated` before choosing the wording: when it is
- * true, the deviation is an authoring defect that ifc-lite absorbs, and the
- * only true statement left to make is about what OTHER tools will do with it.
+ * Every axis is checked (#4615). The numbers reported are for the axis ifc-lite
+ * draws furthest from 1, or, when every axis is compensated, the axis furthest
+ * from 1 on paper. Returns null when all are consistent (within 0.5% of 1.0).
+ * Read `compensated` before choosing the wording: when it is true, the
+ * deviation is an authoring defect that ifc-lite absorbs, and the only true
+ * statement left to make is about what OTHER tools will do with it.
  */
 export function detectScaleUnitMismatch(
-  ifcMapConversionScale: number | undefined,
+  conversion: ScaleFields,
   mapUnitScale: number | undefined,
   lengthUnitScale: number | undefined,
 ): ScaleUnitMismatch | null {
   const lus = lengthUnitScale && lengthUnitScale > 0 ? lengthUnitScale : 1;
   const mus = mapUnitScale && mapUnitScale > 0 ? mapUnitScale : 1;
-  const rawScale = ifcMapConversionScale ?? 1.0;
-  const specEffectiveScale = (rawScale * mus) / lus;
-  if (Math.abs(specEffectiveScale - 1) <= 0.005) return null;
-  const effectiveScale = getEffectiveHorizontalScale(ifcMapConversionScale, mus, lus);
+  const spec = specAxisScales(conversion, mus, lus);
+  const specAxis = worstAxis(spec);
+  if (offUnity(spec[specAxis]) <= NEAR_UNITY) return null;
+  // Report an axis ifc-lite still draws off-size before one it compensates,
+  // so a compensated Z cannot hide X and Y placed at 0.5.
+  const placed = getEffectiveAxisScales(conversion, mus, lus);
+  const placedAxis = worstAxis(placed);
+  const compensated = offUnity(placed[placedAxis]) <= NEAR_UNITY;
+  const axis = compensated ? specAxis : placedAxis;
   return {
-    effectiveScale,
-    specEffectiveScale,
-    compensated: Math.abs(effectiveScale - 1) <= 0.005,
-    rawScale,
+    effectiveScale: placed[axis],
+    specEffectiveScale: spec[axis],
+    compensated,
+    rawScale: conversion.scale ?? 1.0,
     mapUnitScale: mus,
     lengthUnitScale: lus,
-    expectedScale: lus / mus,
+    expectedScale: lus / mus / (conversion[FACTOR_KEY[axis]] ?? 1),
   };
 }
 

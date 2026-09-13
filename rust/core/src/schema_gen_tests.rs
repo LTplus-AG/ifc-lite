@@ -93,6 +93,23 @@ fn test_attribute_value_conversion() {
 }
 
 #[test]
+fn typed_value_name_decodes_to_the_express_spelling_4707() {
+    // A typed-value name is a STEP keyword, so its case is not significant.
+    // Every consumer matches the uppercase spelling, so decode folds it once.
+    for spelling in [&b"IFCPARAMETERVALUE"[..], b"ifcparametervalue", b"IfcParameterValue"] {
+        let token = Token::TypedValue(spelling, vec![Token::Float(0.5)]);
+        let attr = AttributeValue::from_token(&token);
+        let items = attr.as_list().expect("typed value decodes to a list");
+        assert_eq!(items[0].as_string(), Some("IFCPARAMETERVALUE"), "{}", String::from_utf8_lossy(spelling));
+        assert_eq!(items[1].as_float(), Some(0.5));
+    }
+    // The payload is not a keyword: a typed string keeps its case.
+    let token = Token::TypedValue(b"ifclabel", vec![Token::String(b"Mixed Case")]);
+    let attr = AttributeValue::from_token(&token);
+    assert_eq!(attr.as_list().unwrap()[1].as_string(), Some("Mixed Case"));
+}
+
+#[test]
 fn test_decoded_entity() {
     let entity = DecodedEntity::new(
         1,

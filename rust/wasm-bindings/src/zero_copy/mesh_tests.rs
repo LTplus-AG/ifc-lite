@@ -268,3 +268,18 @@ fn default_agrees_with_new_on_the_fields_new_does_not_take() {
     assert_eq!(d.local_bounds().is_none(), from_new.local_bounds().is_none());
     assert_eq!(d.local_to_world().is_none(), from_new.local_to_world().is_none());
 }
+
+/// #4643: the pre-pass re-bases a model whose bbox corner is past 10 km on
+/// the bbox centre, which can be inside 10 km, and `produce_batch` stores that
+/// offset on the collection. `hasRtcOffset` must report it, or JS reads a
+/// non-zero `rtcOffsetX` beside `hasRtcOffset() == false`. Restoring the
+/// 10 km test fails the second assertion.
+#[test]
+fn has_rtc_offset_reports_any_applied_offset() {
+    let mut c = MeshCollection::new();
+    assert!(!c.has_rtc_offset(), "no offset set");
+    c.set_rtc_offset(8500.0, 0.0, 0.0);
+    assert!(c.has_rtc_offset(), "a sub-10 km bbox-centre anchor was applied");
+    c.set_rtc_offset(0.0, 0.0, -2_600_000.0);
+    assert!(c.has_rtc_offset());
+}

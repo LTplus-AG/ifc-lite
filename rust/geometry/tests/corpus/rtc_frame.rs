@@ -104,8 +104,9 @@ impl<'a> ModelFrame<'a> {
     }
 }
 
-/// The loader's offset choice: the site placement's translation when it is not
-/// at the origin, otherwise the sampled/bounds fallback over every geometry job.
+/// The loader's offset choice (`ifc_lite_processing::MeshFrame::select`): the
+/// site placement's translation when it is not at the origin, otherwise the
+/// sampled/bounds fallback over every geometry job when it judged the model large.
 fn detect_rtc_offset(content: &str, decoder: &mut EntityDecoder) -> (f64, f64, f64) {
     let router = GeometryRouter::with_units(content, decoder);
     let mut scan = EntityScanner::new(content);
@@ -125,6 +126,10 @@ fn detect_rtc_offset(content: &str, decoder: &mut EntityDecoder) -> (f64, f64, f
         let t = (m[12], m[13], m[14]);
         (t.0.abs() > 1e-9 || t.1.abs() > 1e-9 || t.2.abs() > 1e-9).then_some(t)
     });
-    site_offset
-        .unwrap_or_else(|| router.detect_rtc_offset_with_fallback(&jobs, decoder, content.as_bytes()))
+    site_offset.unwrap_or_else(|| {
+        router
+            .detect_rtc_offset_with_fallback(&jobs, decoder, content.as_bytes())
+            .map(ifc_lite_core::RtcVerdict::offset)
+            .unwrap_or((0.0, 0.0, 0.0))
+    })
 }

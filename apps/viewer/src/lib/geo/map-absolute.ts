@@ -128,5 +128,10 @@ export function effectiveMapConversionForGeometry(
     xAxisAbscissa: 1,
     xAxisOrdinate: 0,
     scale: 1,
+    // Clear the subtype factors as well: an authored factor would rescale the
+    // already-absolute coordinates exactly as an authored Scale would.
+    factorX: undefined,
+    factorY: undefined,
+    factorZ: undefined,
   };
 }

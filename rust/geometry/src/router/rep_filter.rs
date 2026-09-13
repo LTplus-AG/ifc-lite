@@ -5,7 +5,7 @@
 //! Representation-type predicates: the single canonical definition of which
 //! `IfcShapeRepresentation`s carry renderable body geometry.
 
-use ifc_lite_core::DecodedEntity;
+use ifc_lite_core::{DecodedEntity, IfcType};
 
 /// Whether an `IfcShapeRepresentation.RepresentationType` names a meshable
 /// body/surface (as opposed to a curve/axis/annotation/footprint/box). This is
@@ -43,6 +43,29 @@ pub(crate) fn is_body_representation(rep_type: &str) -> bool {
 /// already carries directly (and so can be skipped to avoid double-meshing).
 pub(crate) fn is_direct_body_representation(rep_type: &str) -> bool {
     rep_type != "MappedRepresentation" && is_body_representation(rep_type)
+}
+
+/// The representations of `element` (its `IfcProductDefinitionShape`
+/// `Representations`, decoded) that the element meshing paths mesh, in order:
+/// each `IfcShapeRepresentation` whose effective type is body geometry, or an
+/// annotation's 2D fill, or that names no type at all, minus a
+/// `MappedRepresentation` when the element also carries direct body geometry.
+/// Anything that must agree with what renders (the `IgnoreOpaque` opening
+/// filter in `ifc-lite-processing`, #4699) selects through this.
+pub fn meshed_representations<'a>(
+    element: &'a DecodedEntity,
+    representations: &'a [DecodedEntity],
+) -> impl Iterator<Item = &'a DecodedEntity> + 'a {
+    let is_shape = |rep: &&DecodedEntity| rep.ifc_type == IfcType::IfcShapeRepresentation;
+    let has_direct_geometry = representations.iter().filter(is_shape).any(|rep| {
+        effective_element_rep_type(element, rep).is_some_and(is_direct_body_representation)
+    });
+    representations.iter().filter(is_shape).filter(move |rep| {
+        effective_element_rep_type(element, rep).is_none_or(|rep_type| {
+            !(rep_type == "MappedRepresentation" && has_direct_geometry)
+                && (is_body_representation(rep_type) || super::annotation::accepts(element, rep_type))
+        })
+    })
 }
 
 /// The string that should drive body-representation filtering for an

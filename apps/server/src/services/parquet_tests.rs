@@ -268,7 +268,7 @@
         );
         use crate::services::parquet_optimized::serialize_to_parquet_optimized_with_stats;
         let (blob, _) =
-            serialize_to_parquet_optimized_with_stats(&[mesh], false).expect("optimized serialize");
+            serialize_to_parquet_optimized_with_stats(&[mesh], false, None).expect("optimized serialize");
         // The optimized blob has its OWN framing --
         // [version:u8][flags:u8][5 x len:u32][instance_parquet]... -- not the
         // section layout `read_sections` expects. Using the wrong reader here
@@ -498,8 +498,8 @@
             old.extend_from_slice(&0u32.to_le_bytes());
             old
         };
-        let flat = serialize_combined_for_layout(&meshes, ParquetLayout::Flat).unwrap();
-        let shared = serialize_combined_for_layout(&meshes, ParquetLayout::SharedShapes).unwrap();
+        let flat = serialize_combined_for_layout(&meshes, ParquetLayout::Flat, None).unwrap();
+        let shared = serialize_combined_for_layout(&meshes, ParquetLayout::SharedShapes, None).unwrap();
         // `assert!`, not `assert_eq!`: a mismatch would print two Parquet blobs.
         assert!(
             flat.as_ref() == wrap(serialize_to_parquet(&meshes).unwrap()).as_slice(),

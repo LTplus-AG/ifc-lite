@@ -11,6 +11,13 @@
 //! lean). KMZ readers accept stored entries; the trade-off is a larger file than a
 //! deflated archive, acceptable for this infrequent georef export.
 
+// Keep this declaration before item-level attributes. The revert oracle maps
+// sibling Rust tests from this declaration, and a declaration at the foot of a
+// long module can otherwise inherit an unrelated intervening `#[cfg(...)]`.
+#[cfg(test)]
+#[path = "kmz_tests.rs"]
+mod tests;
+
 /// KML `<altitudeMode>` — how Google Earth interprets the model's `altitude`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum AltitudeMode {
@@ -133,21 +140,6 @@ fn build_kml(opts: &KmzOptions, heading: f64, model_href: &str) -> String {
         heading = heading,
         href = model_href,
     )
-}
-
-/// Build a KMZ archive (`doc.kml` + `model.glb`) from a GLB byte slice + placement.
-///
-/// Note: Google Earth's KML `<Model>` does NOT load glTF/GLB (it raises
-/// "Unsupported element: Model"); prefer [`try_export_kmz_collada_from_meshes`], which
-/// embeds a COLLADA `.dae` — the format Google Earth actually renders (#1427).
-///
-/// Superseded by its own account and infallible (an empty GLB packs as
-/// success), which is the class the `try_` twins close. It stays reachable
-/// through the wasm `exportKmz` binding and the geometry bridge.
-// TODO(remove-by: #4591 lands the wasm/bridge/index.ts removal under the
-// pending Rust major, louistrue): delete with `pack_kmz` inlined.
-pub fn export_kmz(glb: &[u8], opts: &KmzOptions) -> Vec<u8> {
-    pack_kmz(glb, "model.glb", opts)
 }
 
 /// Build a Google-Earth-ready KMZ (`doc.kml` + `model.dae`) directly from the
@@ -275,18 +267,6 @@ fn try_pack_kmz(
     Ok(zip.finish())
 }
 
-/// `doc.kml` plus one model file in a stored ZIP: the one archive layout both
-/// KMZ entry points produce, so placement and layout cannot drift between them.
-fn pack_kmz(model: &[u8], href: &str, opts: &KmzOptions) -> Vec<u8> {
-    let heading = ifc_angle_to_kml_heading(opts.x_axis_abscissa, opts.x_axis_ordinate);
-    let kml = build_kml(opts, heading, href);
-
-    let mut zip = StoredZip::new();
-    zip.add("doc.kml", kml.as_bytes());
-    zip.add(href, model);
-    zip.finish()
-}
-
 // ── Minimal stored-ZIP writer ──────────────────────────────────────────────────
 
 /// A bare-bones ZIP writer that stores entries uncompressed (method 0). Enough for
@@ -381,7 +361,3 @@ fn crc32(data: &[u8]) -> u32 {
     }
     !crc
 }
-
-#[cfg(test)]
-#[path = "kmz_tests.rs"]
-mod tests;

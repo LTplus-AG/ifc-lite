@@ -8,233 +8,7 @@
 //! we only assert the C ABI contract documented on the exported functions.
 
 use super::*;
-use ifc_lite_processing::{MeshData, ModelMetadata, ProcessingStats};
 use std::ptr;
-
-/// Builds a minimal [`ProcessingResult`] carrying two meshes with distinct,
-/// easy-to-check positions, tagged with the given coordinate space and
-/// (optional) column-major 4x4 site transform.
-fn processing_result(
-    mesh_coordinate_space: Option<&str>,
-    site_transform: Option<[f64; 16]>,
-) -> ProcessingResult {
-    let mesh_a = MeshData::new(
-        1,
-        "IfcWall".to_string(),
-        vec![0.0, 0.0, 0.0, 1.0, 2.0, 3.0],
-        vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
-        vec![0, 1, 0],
-        [1.0, 1.0, 1.0, 1.0],
-    );
-    let mesh_b = MeshData::new(
-        2,
-        "IfcSlab".to_string(),
-        vec![10.0, -5.0, 2.5],
-        vec![0.0, 0.0, 1.0],
-        vec![0],
-        [0.5, 0.5, 0.5, 1.0],
-    );
-
-    ProcessingResult {
-        meshes: vec![mesh_a, mesh_b],
-        instances: Vec::new(),
-        mesh_coordinate_space: mesh_coordinate_space.map(str::to_string),
-        site_transform: site_transform.map(|m| m.to_vec()),
-        building_transform: None,
-        metadata: ModelMetadata::default(),
-        stats: ProcessingStats::default(),
-    }
-}
-
-/// A column-major identity 4x4 with the translation column (indices 12/13/14)
-/// overridden — the layout `normalize_to_site_local` reads.
-fn transform_with_translation(tx: f64, ty: f64, tz: f64) -> [f64; 16] {
-    let mut m = [0.0; 16];
-    m[0] = 1.0;
-    m[5] = 1.0;
-    m[10] = 1.0;
-    m[15] = 1.0;
-    m[12] = tx;
-    m[13] = ty;
-    m[14] = tz;
-    m
-}
-
-/// `raw_ifc` + a site translation past `LARGE_COORD_THRESHOLD` must subtract
-/// that translation from every mesh's positions and relabel the result as
-/// `site_local` (see `normalize_to_site_local` doc comment, lib.rs:~110-135).
-#[test]
-fn raw_ifc_with_large_site_translation_shifts_all_meshes_and_relabels() {
-    // A realistic georeferenced placement: easting/northing far from the
-    // origin, elevation a normal building height. The Z component must stay
-    // *below* `LARGE_COORD_THRESHOLD`, otherwise all three components exceed
-    // it and the guard's `&&` is indistinguishable from `||` — the shift
-    // happens either way and the conjunction goes untested.
-    let (tx, ty, tz) = (123456.0, -7000.5, 2.0);
-    let mut result = processing_result(
-        Some(RAW_IFC_MESH_COORDINATE_SPACE),
-        Some(transform_with_translation(tx, ty, tz)),
-    );
-
-    normalize_to_site_local(&mut result);
-
-    assert_eq!(
-        result.mesh_coordinate_space.as_deref(),
-        Some(SITE_LOCAL_MESH_COORDINATE_SPACE),
-        "raw_ifc meshes shifted by the site translation must be relabeled site_local"
-    );
-
-    // mesh_a: two vertices, each shifted by (tx, ty, tz).
-    let expected_a = [
-        (0.0 - tx) as f32,
-        (0.0 - ty) as f32,
-        (0.0 - tz) as f32,
-        (1.0 - tx) as f32,
-        (2.0 - ty) as f32,
-        (3.0 - tz) as f32,
-    ];
-    assert_eq!(result.meshes[0].positions, expected_a);
-
-    // mesh_b: one vertex, same shift.
-    let expected_b = [(10.0 - tx) as f32, (-5.0 - ty) as f32, (2.5 - tz) as f32];
-    assert_eq!(result.meshes[1].positions, expected_b);
-}
-
-/// `raw_ifc` with a site translation *inside* `LARGE_COORD_THRESHOLD` (near
-/// the origin) has nothing worth subtracting: positions and the coordinate
-/// space label must both be left exactly as they came in.
-#[test]
-fn raw_ifc_with_near_origin_site_translation_is_left_untouched() {
-    let original = processing_result(
-        Some(RAW_IFC_MESH_COORDINATE_SPACE),
-        Some(transform_with_translation(1.0, -2.0, 0.5)),
-    );
-    let original_positions_a = original.meshes[0].positions.clone();
-    let original_positions_b = original.meshes[1].positions.clone();
-
-    let mut result = original;
-    normalize_to_site_local(&mut result);
-
-    assert_eq!(
-        result.mesh_coordinate_space.as_deref(),
-        Some(RAW_IFC_MESH_COORDINATE_SPACE),
-        "a near-origin site translation must not be relabeled"
-    );
-    assert_eq!(result.meshes[0].positions, original_positions_a);
-    assert_eq!(result.meshes[1].positions, original_positions_b);
-}
-
-/// Pin the boundary's sharpness on EACH axis independently, *relative to
-/// whatever `LARGE_COORD_THRESHOLD` currently is*: a translation just above
-/// the constant on any one axis must shift, just below must not. The guard is
-/// a three-way conjunction, so one axis proves nothing about the other two.
-/// With only the x cases present, the `ty` and `tz` conjuncts could each be
-/// deleted outright and all 11 tests still passed (#2936). The other two
-/// fixtures straddle it by roughly five orders of magnitude (1.0 vs
-/// 123456.0), so any threshold anywhere in between would satisfy them both —
-/// this fixture closes that gap for the *boundary behavior*.
-///
-/// This does **not** pin the constant's *value*: every value used below is
-/// derived from `LARGE_COORD_THRESHOLD` itself, so the fixture is green for
-/// any value of the constant. The `assert_eq!` immediately below is what
-/// actually pins the documented 1 km contract (see `LARGE_COORD_THRESHOLD`'s
-/// doc comment on lib.rs) — mutate the constant and this assertion, not the
-/// bracketing below, is what fails.
-#[test]
-fn the_large_coordinate_threshold_is_bracketed_on_both_sides() {
-    assert_eq!(
-        LARGE_COORD_THRESHOLD, 1000.0,
-        "documented contract is 1 km; the bracketing below derives from this constant and would follow it to any value"
-    );
-
-    for (translation, should_shift) in [
-        ([LARGE_COORD_THRESHOLD + 0.5, 0.0, 0.0], true),
-        ([LARGE_COORD_THRESHOLD - 0.5, 0.0, 0.0], false),
-        // The "untouched" guard is strictly `<`: a translation sitting
-        // exactly on the threshold is NOT `< THRESHOLD`, so it falls through
-        // and shifts, same as anything past it. The two brackets above sit
-        // half a unit off the boundary in either direction, so neither can
-        // tell `<` from `<=` apart — both compile and pass identically
-        // either way. This closes that gap.
-        ([LARGE_COORD_THRESHOLD, 0.0, 0.0], true),
-        // The same three brackets on y and on z: the guard ANDs the three
-        // axes, so each conjunct needs its own boundary.
-        ([0.0, LARGE_COORD_THRESHOLD + 0.5, 0.0], true),
-        ([0.0, LARGE_COORD_THRESHOLD - 0.5, 0.0], false),
-        ([0.0, LARGE_COORD_THRESHOLD, 0.0], true),
-        ([0.0, 0.0, LARGE_COORD_THRESHOLD + 0.5], true),
-        ([0.0, 0.0, LARGE_COORD_THRESHOLD - 0.5], false),
-        ([0.0, 0.0, LARGE_COORD_THRESHOLD], true),
-    ] {
-        let [tx, ty, tz] = translation;
-        let original = processing_result(
-            Some(RAW_IFC_MESH_COORDINATE_SPACE),
-            Some(transform_with_translation(tx, ty, tz)),
-        );
-        let original_positions_a = original.meshes[0].positions.clone();
-
-        let mut result = original;
-        normalize_to_site_local(&mut result);
-
-        if should_shift {
-            assert_eq!(
-                result.mesh_coordinate_space.as_deref(),
-                Some(SITE_LOCAL_MESH_COORDINATE_SPACE),
-                "({tx}, {ty}, {tz}) is at or past the threshold and must be shifted"
-            );
-            let expected_a: Vec<f32> = original_positions_a
-                .chunks_exact(3)
-                .flat_map(|c| {
-                    [
-                        (c[0] as f64 - tx) as f32,
-                        (c[1] as f64 - ty) as f32,
-                        (c[2] as f64 - tz) as f32,
-                    ]
-                })
-                .collect();
-            assert_eq!(result.meshes[0].positions, expected_a);
-        } else {
-            assert_eq!(
-                result.mesh_coordinate_space.as_deref(),
-                Some(RAW_IFC_MESH_COORDINATE_SPACE),
-                "({tx}, {ty}, {tz}) is inside the threshold and must be left alone"
-            );
-            assert_eq!(result.meshes[0].positions, original_positions_a);
-        }
-    }
-}
-
-/// `site_local`, `model_rtc`, and `None` are all coordinate spaces the
-/// pipeline has already anchored upstream (or declined to tag). Even with a
-/// far-from-origin site transform present, `normalize_to_site_local` must
-/// never touch mesh positions for these — subtracting again would
-/// double-offset geometry that's already anchored (the exact bug the
-/// function's doc comment warns about for `model_rtc`).
-#[test]
-fn non_raw_ifc_spaces_are_never_shifted_even_with_a_far_site_transform() {
-    let far_transform = Some(transform_with_translation(500_000.0, 500_000.0, 500_000.0));
-
-    for space in [
-        Some(SITE_LOCAL_MESH_COORDINATE_SPACE),
-        Some("model_rtc"),
-        None,
-    ] {
-        let original = processing_result(space, far_transform);
-        let original_positions_a = original.meshes[0].positions.clone();
-        let original_positions_b = original.meshes[1].positions.clone();
-        let original_space = original.mesh_coordinate_space.clone();
-
-        let mut result = original;
-        normalize_to_site_local(&mut result);
-
-        assert_eq!(
-            result.mesh_coordinate_space, original_space,
-            "coordinate space {space:?} must not be relabeled"
-        );
-        assert_eq!(result.meshes[0].positions, original_positions_a);
-        assert_eq!(result.meshes[1].positions, original_positions_b);
-    }
-}
 
 /// A self-contained, well-formed IFC4 file (no external fixture coupling).
 /// Project-only: it parses successfully and yields an empty mesh set, which
@@ -278,6 +52,45 @@ fn null_pointers_return_code_1() {
             ifc_lite_parse(path.as_ptr(), path.len(), &mut out_ptr, ptr::null_mut()),
             1
         );
+    }
+}
+
+/// Every failing return leaves `*out_ptr` / `*out_len` as null / 0, never as
+/// the host's previous values: the error paths used to skip the writes, so a
+/// host that frees on "ptr is non-null" freed an old buffer twice (#4614). The
+/// variables start stale and non-null, as a reused pair would after a
+/// successful call. Mutation that fails this test: delete the two
+/// out-parameter writes at the top of `run_parse`.
+#[test]
+fn error_returns_write_null_and_zero_through_the_out_parameters() {
+    let mut stale_buffer = [0u8; 4];
+    let missing = temp_path("out_params_missing");
+    let _ = std::fs::remove_file(&missing);
+    let missing_str = missing.to_str().unwrap();
+    let bad_utf8 = [0xff_u8, 0xfe];
+
+    // (code, path pointer, path length) for each error path a host can reach
+    // with valid out-pointers.
+    let cases: [(i32, *const u8, usize); 3] = [
+        (2, missing_str.as_ptr(), missing_str.len()),
+        (1, bad_utf8.as_ptr(), bad_utf8.len()),
+        (1, ptr::null(), 0),
+    ];
+    for (expected_code, path_ptr, path_len) in cases {
+        for extended in [false, true] {
+            let mut out_ptr: *mut u8 = stale_buffer.as_mut_ptr();
+            let mut out_len: usize = stale_buffer.len();
+            let code = unsafe {
+                if extended {
+                    ifc_lite_parse_ex(path_ptr, path_len, 0, &mut out_ptr, &mut out_len)
+                } else {
+                    ifc_lite_parse(path_ptr, path_len, &mut out_ptr, &mut out_len)
+                }
+            };
+            assert_eq!(code, expected_code, "extended={extended}");
+            assert!(out_ptr.is_null(), "code {code} (extended={extended}) must null *out_ptr");
+            assert_eq!(out_len, 0, "code {code} (extended={extended}) must zero *out_len");
+        }
     }
 }
 
@@ -362,6 +175,92 @@ fn parse_ex_maps_every_filter_mode() {
     let _ = std::fs::remove_file(&path);
 }
 
+/// The panic log must name the file whose parse panicked. The panic hook runs
+/// on the pool worker that panicked, and the path used to live in a
+/// thread-local written on the caller's thread, so every entry said
+/// `file: <unknown>` (#4614). Mutation that fails this test: drop the
+/// `InFlightPath::register` call in `run_in_pool`.
+#[test]
+fn panic_log_names_the_file_when_the_panic_happens_on_a_pool_worker() {
+    ensure_panic_logging();
+    // A tag no other test or earlier run could have written: process id plus
+    // a wall-clock nanosecond stamp, so the assertion reads THIS entry.
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let probe_path = format!("hook_probe_{}_{stamp}.ifc", std::process::id());
+
+    let outcome = run_in_pool::<()>(&probe_path, || panic!("hook probe"));
+    assert_eq!(outcome, Err(3), "a panic on the pool is error code 3");
+
+    let log = std::fs::read_to_string(std::env::temp_dir().join("ifc_lite_panic.log"))
+        .expect("the panic hook must have written the log");
+    // Other tests parse concurrently on the shared pool, so the entry may list
+    // their paths beside this one; the probe must be among them.
+    assert!(
+        log.lines().any(|l| l.starts_with("file: ") && l.contains(&probe_path)),
+        "no `file:` line in the panic log names {probe_path:?}"
+    );
+
+    // The registration is scoped to the call (its guard drops during the
+    // unwind), so a later unrelated panic must not be blamed on this file.
+    // Other tests parse concurrently, so only this path's absence is asserted.
+    assert!(!crate::panic_log::in_flight_paths_for_log().contains(&probe_path));
+}
+
+/// `run_in_pool` is the one `catch_unwind` on the parse path, and
+/// `parse_impl` hands it geometry, normalisation and serialisation as one
+/// closure (a panic in any of them used to unwind out of the `extern "C"`
+/// function and abort the host, #4614). A panic there is code 3 (pinned by
+/// the test above); the closure's own code and value pass through.
+#[test]
+fn run_in_pool_passes_the_closure_outcome_through() {
+    assert_eq!(run_in_pool::<()>("code_probe.ifc", || Err(4)), Err(4));
+    assert_eq!(run_in_pool("ok_probe.ifc", || Ok(7)), Ok(7));
+}
+
+/// Building the large-stack pool used to `.expect` on the `extern "C"` path
+/// (#4614). A 2^62-byte stack, past any 64-bit address space, makes the thread
+/// spawn fail for real; the build must be an `Err`, which the caller maps to
+/// code 3. Mutation that fails this test: panic on the build error inside
+/// `build_parse_pool`, as the old `.expect` did.
+#[cfg(target_pointer_width = "64")]
+#[test]
+fn a_pool_that_cannot_spawn_its_threads_is_an_error_not_a_panic() {
+    assert!(build_parse_pool(1 << 62).is_err());
+}
+
+/// Panic records appended from many threads at once come out whole and none
+/// is lost (#4642). Mutation that fails this test: remove the `LOG_WRITE`
+/// lock in `append_record`.
+#[test]
+fn concurrent_panic_records_do_not_interleave() {
+    let log = temp_path("panic_interleave_log");
+    let _ = std::fs::remove_file(&log);
+    std::thread::scope(|scope| {
+        for t in 0..8 {
+            let log = &log;
+            scope.spawn(move || {
+                for r in 0..200 {
+                    let id = format!("t{t}r{r}");
+                    crate::panic_log::append_record(log, &id, &id, &id);
+                }
+            });
+        }
+    });
+    let text = std::fs::read_to_string(&log).expect("records were written");
+    let _ = std::fs::remove_file(&log);
+    let mut records: Vec<&str> = text.split("==== ifc-lite panic ====\n").skip(1).collect();
+    let mut expected: Vec<String> = (0..8)
+        .flat_map(|t| (0..200).map(move |r| format!("t{t}r{r}")))
+        .map(|id| format!("file: {id}\n{id}\nbacktrace:\n{id}\n\n"))
+        .collect();
+    records.sort_unstable();
+    expected.sort_unstable();
+    assert!(records == expected, "panic records interleaved, went missing or were duplicated");
+}
+
 #[test]
 fn free_tolerates_null_and_zero_len() {
     // Must be a no-op, never a double-free or segfault.
@@ -402,103 +301,4 @@ fn geometry_is_sound_and_deterministic_under_the_global_allocator() {
         assert_eq!(x.positions, y.positions, "positions must be deterministic");
         assert_eq!(x.indices, y.indices, "indices must be deterministic");
     }
-}
-
-/// The `f64` intermediate in `normalize_to_site_local` is load-bearing, and
-/// until this test nothing observed it: rewriting all three lines to
-/// `chunk[0] = chunk[0] - site_tx as f32` left the whole suite green (#2950).
-///
-/// Every other fixture in this file uses coordinates (0, 1, 2, 3, 10, -5, 2.5)
-/// and translations (1.0, 123456.0, 1000.5) that are all exactly representable
-/// in f32. For those, `(v as f64 - t) as f32` and `v - (t as f32)` agree bit
-/// for bit, so no assertion could separate the two orderings. The tests were
-/// correct and the property was simply invisible to them.
-///
-/// The magnitude is real: 7_011_526 is a VERTEX northing taken from
-/// `tests/models/issues/860_solid_stratum.ifc` (EPSG:28356, MGA94 Zone 56).
-/// It is not that file's SITE northing — its `IFCSITE` placement is identity,
-/// so that file returns at this function's first guard and its geometry is
-/// unaffected either way. The fixture borrows the scale, nothing else.
-///
-/// At that scale an f32 ULP is 0.5, so rounding the translation to f32 FIRST
-/// snaps it onto the same representable value as the vertex and the offset
-/// collapses to exactly zero:
-///
-///   vertex   7_011_526.5   (exact in f32: 14_023_053 / 2, 24 bits)
-///   site     7_011_526.3
-///   f64 then narrow ->  0.2        (0x3e4ccccd)
-///   narrow then f32  ->  0.0        (0x00000000)
-///
-/// A 200 mm offset becomes no offset at all, silently. That is the whole
-/// reason the subtraction widens first.
-///
-/// REACHABILITY, stated because the test would otherwise imply more than it
-/// proves: no fixture reaches this loop today, and arguably nothing can.
-/// `processor/mod.rs:1098` picks `raw_ifc` only when the site translation is
-/// identity (within 1e-9), and this function returns early unless the space IS
-/// `raw_ifc` AND the translation exceeds LARGE_COORD_THRESHOLD (1000.0). Those
-/// two conditions contradict, so the combination is not one the pipeline can
-/// emit — measured: 113 corpus files parsed, 103 came back `raw_ifc`, 0 reached
-/// this loop. This test therefore pins the function's own documented contract,
-/// not observable render output, and it is worth having for the day that
-/// pipeline branch changes rather than as protection for geometry shipping
-/// today.
-///
-/// Asserted on exact f32 bits rather than an epsilon: an epsilon wide enough
-/// to feel safe here is wider than the 0.2 the bug destroys.
-#[test]
-fn the_subtraction_widens_to_f64_before_narrowing() {
-    // A vertex one ULP-ish above the site translation, at georeferenced scale.
-    const VERTEX_Y: f32 = 7_011_526.5;
-    const SITE_TY: f64 = 7_011_526.3;
-
-    let mesh = MeshData::new(
-        1,
-        "IfcWall".to_string(),
-        vec![0.0, VERTEX_Y, 0.0],
-        vec![0.0, 0.0, 1.0],
-        vec![0],
-        [1.0, 1.0, 1.0, 1.0],
-    );
-    let mut result = ProcessingResult {
-        meshes: vec![mesh],
-        instances: Vec::new(),
-        mesh_coordinate_space: Some(RAW_IFC_MESH_COORDINATE_SPACE.to_string()),
-        site_transform: Some(transform_with_translation(0.0, SITE_TY, 0.0).to_vec()),
-        building_transform: None,
-        metadata: ModelMetadata::default(),
-        stats: ProcessingStats::default(),
-    };
-
-    normalize_to_site_local(&mut result);
-
-    let got = result.meshes[0].positions[1];
-    // The literal, not a recomputation of the production expression: an oracle
-    // that recomputes what it is testing shares any mistake in it.
-    let widened = f32::from_bits(0x3e4c_cccd);
-    debug_assert_eq!(widened, (VERTEX_Y as f64 - SITE_TY) as f32);
-    let narrowed_first = VERTEX_Y - SITE_TY as f32;
-
-    // The control: the two orderings really do differ on this fixture, so the
-    // assertion below is capable of failing. Without this, a fixture that
-    // cannot distinguish them would make the test vacuous in exactly the way
-    // #2950 describes.
-    assert_ne!(
-        widened.to_bits(),
-        narrowed_first.to_bits(),
-        "fixture cannot distinguish the two orderings; it proves nothing"
-    );
-    assert_eq!(
-        narrowed_first, 0.0,
-        "the f32-first ordering should destroy the offset entirely here"
-    );
-
-    assert_eq!(
-        got.to_bits(),
-        widened.to_bits(),
-        "expected the f64-widened result {widened} (0x{:08x}), got {got} (0x{:08x}) \
-         — the subtraction narrowed to f32 before subtracting",
-        widened.to_bits(),
-        got.to_bits()
-    );
 }

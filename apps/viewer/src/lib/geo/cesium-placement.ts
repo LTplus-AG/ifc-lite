@@ -8,7 +8,7 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { findClampAnchorY } from './clamp-anchor';
 import { computeModelCenterInIfcMeters } from './reproject';
 import { effectiveMapConversionForGeometry } from './map-absolute';
-import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
+import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 
 export function getMapUnitScale(
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
@@ -136,6 +136,8 @@ export function computeCesiumPlacement({
 export interface OrthogonalHeightForBaseAltitudeInput {
   coordinateInfo?: CoordinateInfo;
   projectedCRS?: Pick<ProjectedCRS, 'mapUnitScale'>;
+  /** The conversion the read path places with; its Scale x FactorZ scales the anchor's height. */
+  mapConversion: MapConversion | undefined;
   lengthUnitScale: number;
   storeyElevations?: Map<number, number>;
   targetBaseAltitude: number;
@@ -144,6 +146,7 @@ export interface OrthogonalHeightForBaseAltitudeInput {
 export function computeOrthogonalHeightForBaseAltitude({
   coordinateInfo,
   projectedCRS,
+  mapConversion,
   lengthUnitScale,
   storeyElevations,
   targetBaseAltitude,
@@ -160,7 +163,13 @@ export function computeOrthogonalHeightForBaseAltitude({
   const anchorY = findClampAnchorY(bounds, storeyElevations);
   // RTC offset is stored in IFC Z-up; viewer-Y aligns to its Z component.
   const rtcYupY = coordinateInfo?.wasmRtcOffset?.z ?? 0;
-  const orthogonalHeightMeters = targetBaseAltitude - rtcYupY - anchorY;
+  // The read path places IFC height z at `OrthogonalHeight*mapScale +
+  // scaleZ*z` (cesium-bridge.ts), so the anchor's height is scaled before it
+  // is subtracted, through the same map-absolute neutralisation.
+  const mapScale = getMapUnitScale(projectedCRS, lengthUnitScale);
+  const conversion = mapConversion && effectiveMapConversionForGeometry(mapConversion, mapScale, coordinateInfo);
+  const scaleZ = getEffectiveAxisScales(conversion ?? {}, mapScale, lengthUnitScale).z;
+  const orthogonalHeightMeters = targetBaseAltitude - scaleZ * (rtcYupY + anchorY);
 
   return Math.round(
     metersToMapUnits(orthogonalHeightMeters, projectedCRS, lengthUnitScale) * 100,
@@ -185,32 +194,30 @@ export function orthometricTargetForTerrain(
 }
 
 export function computeIfcOriginHeight(
-  mapConversion: Pick<MapConversion, 'orthogonalHeight'>,
+  mapConversion: Pick<MapConversion, 'orthogonalHeight' | 'scale' | 'factorX' | 'factorY' | 'factorZ'>,
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
   coordinateInfo: CoordinateInfo | undefined,
   lengthUnitScale: number,
 ): number {
   const mapScale = getMapUnitScale(projectedCRS, lengthUnitScale);
-  return mapConversion.orthogonalHeight * mapScale + computeModelCenterInIfcMeters(coordinateInfo).ifcZ;
+  const scaleZ = getEffectiveAxisScales(mapConversion, mapScale, lengthUnitScale).z;
+  return mapConversion.orthogonalHeight * mapScale
+    + scaleZ * computeModelCenterInIfcMeters(coordinateInfo).ifcZ;
 }
 
 export function viewerDeltaToProjectedDelta(
   deltaX: number,
   deltaZ: number,
-  mapConversion: Pick<MapConversion, 'xAxisAbscissa' | 'xAxisOrdinate' | 'scale'>,
+  mapConversion: Pick<MapConversion, 'xAxisAbscissa' | 'xAxisOrdinate' | 'scale' | 'factorX' | 'factorY'>,
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
   lengthUnitScale: number,
 ): { eastings: number; northings: number } {
   const mapScale = getMapUnitScale(projectedCRS, lengthUnitScale);
-  const hScale = getEffectiveHorizontalScale(
-    mapConversion.scale,
-    mapScale,
-    lengthUnitScale,
-  );
+  const { x: scaleX, y: scaleY } = getEffectiveAxisScales(mapConversion, mapScale, lengthUnitScale);
   const abscissa = mapConversion.xAxisAbscissa ?? 1;
   const ordinate = mapConversion.xAxisOrdinate ?? 0;
-  const eastMeters = hScale * (abscissa * deltaX + ordinate * deltaZ);
-  const northMeters = hScale * (ordinate * deltaX - abscissa * deltaZ);
+  const eastMeters = abscissa * scaleX * deltaX + ordinate * scaleY * deltaZ;
+  const northMeters = ordinate * scaleX * deltaX - abscissa * scaleY * deltaZ;
 
   return {
     eastings: metersToMapUnits(eastMeters, projectedCRS, lengthUnitScale),
@@ -272,25 +279,21 @@ export function closestYOnVerticalLineFromRay(
 export function projectedDeltaToViewerDelta(
   eastingsDelta: number,
   northingsDelta: number,
-  mapConversion: Pick<MapConversion, 'xAxisAbscissa' | 'xAxisOrdinate' | 'scale'>,
+  mapConversion: Pick<MapConversion, 'xAxisAbscissa' | 'xAxisOrdinate' | 'scale' | 'factorX' | 'factorY'>,
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
   lengthUnitScale: number,
 ): { x: number; z: number } {
   const mapScale = getMapUnitScale(projectedCRS, lengthUnitScale);
-  const hScale = getEffectiveHorizontalScale(
-    mapConversion.scale,
-    mapScale,
-    lengthUnitScale,
-  );
+  const { x: scaleX, y: scaleY } = getEffectiveAxisScales(mapConversion, mapScale, lengthUnitScale);
   const abscissa = mapConversion.xAxisAbscissa ?? 1;
   const ordinate = mapConversion.xAxisOrdinate ?? 0;
   const eastMeters = mapUnitsToMeters(eastingsDelta, projectedCRS, lengthUnitScale);
   const northMeters = mapUnitsToMeters(northingsDelta, projectedCRS, lengthUnitScale);
-  const denom = Math.max((abscissa * abscissa + ordinate * ordinate) * hScale, 1e-12);
+  const norm = Math.max(abscissa * abscissa + ordinate * ordinate, 1e-12);
 
   return {
-    x: (abscissa * eastMeters + ordinate * northMeters) / denom,
-    z: (ordinate * eastMeters - abscissa * northMeters) / denom,
+    x: (abscissa * eastMeters + ordinate * northMeters) / (norm * scaleX),
+    z: (ordinate * eastMeters - abscissa * northMeters) / (norm * scaleY),
   };
 }
 

@@ -25,6 +25,7 @@ pub mod csv_cell;
 mod dfjson;
 mod error;
 mod frame;
+mod generated;
 mod geom;
 mod gltf;
 mod hbjson;
@@ -65,16 +66,15 @@ pub use csv::{export_csv, CsvMode, CsvOptions};
 pub use dfjson::DfjsonStats;
 pub use error::ExportError;
 pub use gltf::{
-    export_glb, export_glb_from_meshes, export_glb_streaming_bounded,
-    export_glb_streaming_bounded_with_index, export_glb_with_stats,
-    export_glb_with_stats_with_index, export_gltf_streaming, export_gltf_streaming_with_index,
+    export_glb_from_meshes, export_gltf_streaming, export_gltf_streaming_with_index,
     project_glb_size, project_glb_size_with_index, try_export_glb, try_export_glb_from_meshes,
     try_export_glb_streaming_bounded, try_export_glb_streaming_bounded_with_index,
-    try_export_glb_with_stats, GlbSizeProjection, GltfBuffer, GltfOptions, GltfStats,
+    try_export_glb_with_stats, try_export_glb_with_stats_with_index, GlbSizeProjection,
+    GltfBuffer, GltfOptions, GltfStats,
 };
 pub use hbjson::Model;
 // Re-exported so a caller can `build_entity_index` once and share it across the
-// geometry (`export_glb_with_stats_with_index`) and attribute
+// geometry (`try_export_glb_with_stats_with_index`) and attribute
 // (`stream_export_model_with_index`) passes.
 //
 // `entity_count` is the cheap `O(scan)`, `O(1)`-memory entity tally (issue
@@ -98,8 +98,7 @@ pub use relationships::{relationships, Relationships};
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, export_jsonld_with_filter, JsonLdOptions};
 pub use kmz::{
-    export_kmz, ifc_angle_to_kml_heading,
-    try_export_kmz_collada_from_meshes, AltitudeMode, KmzOptions,
+    ifc_angle_to_kml_heading, try_export_kmz_collada_from_meshes, AltitudeMode, KmzOptions,
 };
 pub use merged::{
     deterministic_global_id, export_merged, export_merged_models, export_merged_with_stats,

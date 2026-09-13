@@ -42,6 +42,13 @@ pub struct InstanceOccurrence {
     pub mesh_index: usize,
     /// Row-major mat4 mapping the template's baked world geometry onto this
     /// occurrence. The template occurrence's transform is identity.
+    ///
+    /// Expressed in the CALLER'S basis frame — whatever `baked_basis` was
+    /// handed to `collate_refs_in_basis` — and in the native post-RTC frame
+    /// when that basis was `None` (which is what `collate_refs` passes). A
+    /// consumer that reads this field directly rather than recomputing from
+    /// `InstanceMeta` is therefore reading the frame its own baked vertices are
+    /// in, not a native-frame matrix it has to conjugate itself.
     pub transform: [f32; 16],
 }
 

@@ -392,6 +392,14 @@ fn mesh_vertex(mesh: &Mesh, i: u32) -> [f64; 3] {
 /// here", ask [`point_inside_mesh_agreed`], which asks about the point rather
 /// than the topology and is tolerant of T-junctions.
 pub(super) fn param_cut_watertight(mesh: &Mesh) -> bool {
+    topology_defect_count(mesh) == 0
+}
+
+/// Number of 0.1 mm-welded undirected edges whose triangle multiplicity is not
+/// two. This is the same topology reading as [`param_cut_watertight`], exposed
+/// as a count so a composed route can detect a catastrophic increase without
+/// requiring an already imperfect IFC host to be perfectly closed.
+pub(super) fn topology_defect_count(mesh: &Mesh) -> usize {
     let key = |i: u32| -> (i64, i64, i64) {
         let b = i as usize * 3;
         let q = |v: f32| (v as f64 / 1.0e-4).round() as i64;
@@ -412,7 +420,10 @@ pub(super) fn param_cut_watertight(mesh: &Mesh) -> bool {
             *edges.entry(e).or_insert(0) += 1;
         }
     }
-    !edges.is_empty() && edges.values().all(|&c| c == 2)
+    if edges.is_empty() {
+        return usize::MAX;
+    }
+    edges.values().filter(|&&c| c != 2).count()
 }
 
 #[inline]

@@ -52,6 +52,8 @@ pub mod simplify_session;
 #[cfg(test)]
 #[path = "simplify_session_tests.rs"]
 mod simplify_session_tests;
+mod mesh_frame;
+pub use mesh_frame::{MeshCoordinateSpace, MeshFrame};
 pub mod stream_meta;
 pub mod style;
 mod symbolic;
@@ -72,7 +74,7 @@ pub use ifc_lite_geometry::TessellationQuality;
 /// has one home rather than two clones. See its doc comment.
 pub use processor::instancing::recover_occurrences_flat;
 pub use processor::{
-    convert_mesh_to_site_local, is_quick_spatial_type_ci, process_geometry,
+    convert_mesh_to_site_local, is_quick_spatial_type_ci, native_to_baked, process_geometry,
     process_geometry_filtered,
     process_geometry_filtered_with_quality, process_geometry_with_index,
     process_geometry_streaming, process_geometry_streaming_filtered,

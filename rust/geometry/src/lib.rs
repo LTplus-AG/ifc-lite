@@ -147,6 +147,7 @@ pub(crate) mod profile_generic;
 #[cfg(test)]
 #[path = "scalar_adjoint_tests.rs"]
 mod scalar_adjoint;
+mod telemetry_transaction;
 pub use rect_fast::RectFastStats;
 pub(crate) mod router;
 /// Per-element mesh simplification for the demesher (cavity removal, grid
@@ -194,7 +195,7 @@ pub use geom_hash::{
 pub use extrusion::{extrude_profile, extrude_profile_lofted, extrude_profile_with_voids};
 pub use instancing::{
     bake_source_at_world, collate_and_encode, collate_instances, collate_refs,
-    collate_refs_verified_in, compose_instance_world_row_major, decode_instanced,
+    collate_refs_in_basis, collate_refs_verified_in, compose_instance_world_row_major, decode_instanced,
     encode_instanced, encode_refs, instance_rel_row_major_f32, verify_recomposition, Collated,
     DecodedInstance, DecodedInstanced, DecodedTemplate, InstanceMeshRef, InstanceOccurrence,
     InstanceTemplate, INSTANCED_MAGIC, INSTANCED_VERSION,
@@ -216,26 +217,22 @@ pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
 pub use profile_extractor::{extract_profiles, extract_profiles_with_diagnostics, ExtractedProfile};
 pub use profile_skip::SkippedProfile;
 pub use profiles::ProfileProcessor;
+pub use cdt::take_cdt_recovery_fallbacks;
 pub use kernel::plane_weld::take_plane_weld_stats;
 pub use router::take_bool2d_stats;
 pub use router::{take_prism_defers, take_prism_stats};
 pub use router::{
     aggregate_diagnostics, count_attributed_products, format_unsupported_breakdown,
-    local_frame_set_enabled_override, ClassificationStats, UNATTRIBUTED_PRODUCT_ID,
+    local_frame_set_enabled_override, meshed_representations, ClassificationStats, UNATTRIBUTED_PRODUCT_ID,
     GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, FACETED_BREP_DEDUP_FACE_LIMIT,
     ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter,
     HostOpeningDiagnostic, ItemDedupCache, MappedInstancePlan, OpeningDiagnostic, OpeningKindDiag,
     ReasonCount, RectFastSummary, RectParam, SharedMappedItemCache, SharedBrepSignatureCache, WorstHost,
 };
 
-/// The streaming / needs-shift large-coordinate threshold (metres): a world
-/// coordinate whose magnitude exceeds this needs RTC re-basing before it is
-/// cast to f32, or the model renders with vertex jitter. Shared by the router's
-/// own coordinate sampling (`router::rtc_offset`) and the streaming pre-pass
-/// meta resolver (`ifc_lite_processing::stream_meta`) so those two make the same
-/// decision. (Other 10 km checks carry their own local constant of the same
-/// value.)
-pub const LARGE_COORD_THRESHOLD_METERS: f64 = 10000.0;
+/// The large-coordinate threshold and its predicate, defined in
+/// `ifc_lite_core::limits` so core's own bounds scan can use them too.
+pub use ifc_lite_core::limits::{coord_is_large, LARGE_COORD_THRESHOLD_METERS};
 pub use simplify::{simplify_mesh, SimplifyOptions, SimplifyStats};
 pub use tessellation::{scale_segments, TessellationQuality};
 pub use transform::{

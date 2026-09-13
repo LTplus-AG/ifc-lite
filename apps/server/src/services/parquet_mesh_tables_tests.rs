@@ -124,7 +124,7 @@ fn zero_reuse_model_matches_the_v5_layout_with_identity_rotations() {
         })
         .collect();
 
-    let plan = ShapePlan::shared_shapes(&meshes);
+    let plan = ShapePlan::shared_shapes(&meshes, None);
     assert_eq!(
         plan.shape_count(&meshes),
         meshes.len(),

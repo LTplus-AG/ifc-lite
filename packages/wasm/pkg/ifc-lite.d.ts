@@ -467,21 +467,6 @@ export class IfcAPI {
      */
     exportJsonld(content: Uint8Array, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included?: Uint32Array | null): Uint8Array;
     /**
-     * Package an already-produced **GLB** + georeference into a **KMZ** (`Uint8Array`)
-     * for Google Earth: a ZIP of `doc.kml` (a `<Model>` placed at `latitude`/`longitude`/
-     * `altitude`) + `model.glb`. `x_axis_abscissa`/`x_axis_ordinate` are the
-     * `IfcMapConversion` grid-north components; pass both as `undefined` for heading 0.
-     *
-     * `altitude_mode` selects the KML vertical placement: `"clampToGround"`
-     * (the default when omitted) rests the model on the terrain, ignoring
-     * `altitude`; `"absolute"` places the origin at `altitude` metres MSL.
-     * Google Earth's terrain already encodes the site elevation, so clamping
-     * keeps a wrong/zero/double-counted OrthogonalHeight from floating the
-     * model into the sky (#1427); absolute is offered for models whose
-     * OrthogonalHeight is a true MSL elevation the user wants honoured.
-     */
-    exportKmz(glb: Uint8Array, latitude: number, longitude: number, altitude: number, x_axis_abscissa: number | null | undefined, x_axis_ordinate: number | null | undefined, name: string, altitude_mode?: string | null): Uint8Array;
-    /**
      * Build a Google-Earth-ready **KMZ** (`Uint8Array`) straight from the viewer's
      * already-produced meshes — the working path (#1427). The model is embedded as
      * **COLLADA** (`model.dae`), the only `<Model>` format Google Earth loads (a GLB
@@ -591,7 +576,9 @@ export class IfcAPI {
      * CANONICAL styles flatten. Returns the exact `styles` event payload the
      * serial path emits. Runs on any worker with `setEntityIndex` installed.
      * Span arguments are `[id, start, len]` triples; `plane_angle_to_radians`
-     * comes from the meta event.
+     * comes from the meta event. `orphanColors` / `geomColors` carry exactly
+     * four floats per id in `orphanIds` / `geomIds`; any other length throws
+     * before either column is read.
      */
     finalizePrepassStyles(data: Uint8Array, orphan_ids: Uint32Array, orphan_colors: Float32Array, geom_ids: Uint32Array, geom_colors: Float32Array, colour_map_spans: Uint32Array, material_def_spans: Uint32Array, rel_material_spans: Uint32Array, void_spans: Uint32Array, fills_spans: Uint32Array, aggregate_spans: Uint32Array, plane_angle_to_radians: number): any;
     /**
@@ -879,6 +866,12 @@ export class IfcAPI {
      * Idempotent in the sense that repeated calls REPLACE the cache —
      * supports the parser-worker pattern of reusing one IfcAPI across
      * multiple loads with different files.
+     *
+     * Throws when the three columns disagree in length. Every call is a
+     * content swap, a rejected one included: the previous file's index,
+     * content-scoped caches and pipeline diagnostics are dropped before the
+     * error is raised, and a rejected or empty index leaves no index, so the
+     * next batch scans the bytes it is given.
      */
     setEntityIndex(ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array): void;
     /**
@@ -1045,7 +1038,9 @@ export class MeshCollection {
      */
     get(index: number): MeshDataJs | undefined;
     /**
-     * Check if RTC offset is significant (>10km)
+     * Check if an RTC offset was applied to these meshes (any non-zero
+     * component). It can be inside 10 km: the placement-bounds fallback
+     * re-bases on the bbox centre when a corner is past 10 km (#4643).
      */
     hasRtcOffset(): boolean;
     /**
@@ -2136,7 +2131,6 @@ export interface InitOutput {
     readonly ifcapi_exportIfcx: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_exportJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
-    readonly ifcapi_exportKmz: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;
     readonly ifcapi_exportKmzFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
     readonly ifcapi_exportMerged: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_exportObj: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
@@ -2175,7 +2169,7 @@ export interface InitOutput {
     readonly ifcapi_scanEntityIndexShardFromSource: (a: number, b: number, c: number) => number;
     readonly ifcapi_scanGeometryEntitiesFast: (a: number, b: number, c: number) => number;
     readonly ifcapi_setComputeGeometryHashes: (a: number, b: number, c: number) => void;
-    readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+    readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_setInstantiatedTypeIds: (a: number, b: number, c: number) => void;
     readonly ifcapi_setMappedInstancePlan: (a: number, b: number, c: number) => void;
     readonly ifcapi_setMaterialLayerIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;

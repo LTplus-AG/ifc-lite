@@ -144,6 +144,14 @@ describe('viewerPointToProjected', () => {
     assert.strictEqual(out.northings, 5000004);
     assert.strictEqual(out.height, 102);
   });
+
+  it('scales a vertical delta by FactorZ, as the placement does (#4615)', () => {
+    const eff = metreCrsGeoref();
+    eff.mapConversion = { ...eff.mapConversion, factorZ: 2 };
+    // Scale 1 x FactorZ 2 in a metre project and metre CRS: 5 m up is 10 map metres up.
+    const out = viewerPointToProjected({ x: 0, y: 5, z: 0 }, eff, { x: 0, y: 0, z: 0 });
+    assert.strictEqual(out.height, 110);
+  });
 });
 
 describe('hasUsableMapGeoref', () => {

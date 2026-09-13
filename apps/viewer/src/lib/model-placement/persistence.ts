@@ -14,7 +14,8 @@ export function georeferencedPlacementFrameKey(georef: ModelGeoref): string {
   return JSON.stringify({ crs: crs && { name: crs.name, mapUnitScale: crs.mapUnitScale },
     conversion: conversion && { eastings: conversion.eastings, northings: conversion.northings,
       orthogonalHeight: conversion.orthogonalHeight, xAxisAbscissa: conversion.xAxisAbscissa,
-      xAxisOrdinate: conversion.xAxisOrdinate, scale: conversion.scale },
+      xAxisOrdinate: conversion.xAxisOrdinate, scale: conversion.scale,
+      factorX: conversion.factorX, factorY: conversion.factorY, factorZ: conversion.factorZ },
     lengthUnitScale: georef.lengthUnitScale, originShift: info?.originShift,
     rtc: info?.wasmRtcOffset, rotation: info?.buildingRotation });
 }

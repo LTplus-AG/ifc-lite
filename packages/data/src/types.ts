@@ -203,7 +203,7 @@ export enum QuantityType {
 export { RelationshipType } from './relationship-type.js';
 
 export enum EntityFlags {
-  HAS_GEOMETRY = 0b00000001,
+  /** Own `Representation` set (not `$`) — not a class guess, not aggregated children (#4666). */ HAS_GEOMETRY = 0b00000001,
   HAS_PROPERTIES = 0b00000010,
   HAS_QUANTITIES = 0b00000100,
   IS_TYPE = 0b00001000,

@@ -190,12 +190,24 @@ fn issue_4260_low_resolution_page_does_not_erase_high_frequency_source_checker_o
 
 #[test]
 fn issue_4260_page_preserves_independent_rendering_fields_and_typed_roughness() {
+    // A typed-value name is a STEP keyword, so the lowercase and CamelCase
+    // spellings must preserve exactly like the uppercase one (#4707).
+    for rendering in [
+        "IFCNORMALISEDRATIOMEASURE(0.7),#27,$,#27,IFCNORMALISEDRATIOMEASURE(0.2),IFCSPECULARROUGHNESS(0.35)",
+        "ifcnormalisedratiomeasure(0.7),#27,$,#27,ifcnormalisedratiomeasure(0.2),IfcSpecularRoughness(0.35)",
+    ] {
+        page_preserves_rendering(rendering);
+    }
+}
+
+fn page_preserves_rendering(rendering: &str) {
     let (request, rgba) = fixture();
     let source = CONTROLLED_IFC.replace("#25=IFCSURFACESTYLERENDERING(#27,0.,$,$,$,$,$,$,.NOTDEFINED.);",
-        "#25=IFCSURFACESTYLERENDERING(#27,0.,IFCNORMALISEDRATIOMEASURE(0.7),#27,$,#27,IFCNORMALISEDRATIOMEASURE(0.2),IFCSPECULARROUGHNESS(0.35),.PHONG.);");
+        &format!("#25=IFCSURFACESTYLERENDERING(#27,0.,{rendering},.PHONG.);"));
     let source = source.replace("#37=IFCINDEXEDTRIANGLETEXTUREMAP", "#38=IFCSTYLEDITEM(#34,(#24),$);\n#37=IFCINDEXEDTRIANGLETEXTUREMAP");
-    assert!(source.contains("IFCSPECULARROUGHNESS"));
+    assert!(source.contains(rendering));
     let result = plan_page_appearance(source.as_bytes(), &request, &rgba).unwrap();
+    assert!(!result.item_images.is_empty(), "the rendering was preserved, not skipped");
     let exported = apply(&source, &result.plan);
     let mut decoded = Source::new(exported.as_bytes()).unwrap();
     for item in &result.item_images {

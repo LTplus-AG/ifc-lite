@@ -409,11 +409,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
 
   const scaleMismatch = useMemo(() => {
     if (!mergedConversion) return null;
-    return detectScaleUnitMismatch(
-      mergedConversion.scale,
-      mergedCRS?.mapUnitScale,
-      lengthUnitScale,
-    );
+    return detectScaleUnitMismatch(mergedConversion, mergedCRS?.mapUnitScale, lengthUnitScale);
   }, [mergedConversion, mergedCRS?.mapUnitScale, lengthUnitScale]);
 
   // Geometry already at absolute map coordinates AND a MapConversion repeating
@@ -442,21 +438,21 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
    * Given a target world altitude (metres) for the model's ground floor
    * (the storey nearest elevation 0, falling back to bounds.min.y when
    * no storeys are present), return the IfcMapConversion.OrthogonalHeight
-   * value (in map units, rounded to 0.01) that would put the ground floor
-   * there — accounting for any RTC / origin shifts the geometry pipeline
-   * applied. This mirrors the auto-clamp formula so the "Set
-   * OrthogonalHeight to Cesium terrain elevation" button produces the same
-   * world position as toggling the clamp.
+   * value (in map units, rounded to 0.01) that puts the ground floor there,
+   * inverting the Cesium read path (RTC offset, Scale x FactorZ) so the
+   * "Set OrthogonalHeight to Cesium terrain elevation" button lands where
+   * the model is drawn.
    */
   const oHeightForBaseAltitude = useCallback((targetBaseAltitude: number): number => {
     return computeOrthogonalHeightForBaseAltitude({
       coordinateInfo,
       projectedCRS: mergedCRS,
+      mapConversion: mergedConversion,
       lengthUnitScale: lengthUnitScale ?? 1,
       storeyElevations,
       targetBaseAltitude,
     });
-  }, [coordinateInfo, mergedCRS, lengthUnitScale, storeyElevations]);
+  }, [coordinateInfo, mergedCRS, mergedConversion, lengthUnitScale, storeyElevations]);
 
   const isMutated = useCallback((entity: 'projectedCRS' | 'mapConversion', field: string): boolean => {
     if (!mutations) return false;

@@ -112,7 +112,7 @@ ara3d/FM_ARC_DigitalHub.ifc	140227	SweptSolid	0	184	0	0	0	-	0	12700588
 ara3d/FM_ARC_DigitalHub.ifc	140337	SweptSolid	0	496	0	0	0	-	0	88860205
 ara3d/FM_ARC_DigitalHub.ifc	146777	SweptSolid	0	222	0	0	0	-	0	33511716
 ara3d/FM_ARC_DigitalHub.ifc	149094	SweptSolid	0	668	0	0	0	-	0	91218205
-ara3d/FM_ARC_DigitalHub.ifc	155733	SweptSolid	0	284	0	0	14	-	0	33511700
+ara3d/FM_ARC_DigitalHub.ifc	155733	SweptSolid	0	284	0	0	0	-	0	33511700
 ara3d/FM_ARC_DigitalHub.ifc	187843	SweptSolid	0	172	0	0	0	-	0	31679430
 ara3d/FM_ARC_DigitalHub.ifc	188186	SweptSolid	0	32	0	0	0	-	0	3361126
 ara3d/FM_ARC_DigitalHub.ifc	188235	SweptSolid	0	52	0	0	0	-	0	7023366
@@ -256,7 +256,7 @@ ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	27148	SweptSolid	0	142	0	0	0	-	0	8056213
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	27562	SweptSolid	0	28	0	0	0	-	0	764373
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	27770	SweptSolid	0	28	0	0	0	-	0	353129
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	28290	SweptSolid	0	44	0	0	0	-	0	1773116
-ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	34099	SweptSolid	35	259	0	0	27	0	35	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	34099	SweptSolid	0	228	0	0	0	-	0	6672209
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	37094	SweptSolid	0	52	0	0	0	-	0	2914434
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	46565	SweptSolid	0	100	0	0	0	-	0	6616944
 ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	46667	SweptSolid	0	32	0	0	0	-	0	4716292
@@ -418,11 +418,11 @@ ara3d/S_Office_Integrated Design Archi.ifc	99549	SweptSolid	0	52	0	0	0	-	0	92053
 ara3d/S_Office_Integrated Design Archi.ifc	368885	SweptSolid	0	36	0	0	0	-	0	1758145
 ara3d/S_Office_Integrated Design Archi.ifc	414959	SweptSolid	0	40	0	0	0	-	0	5896872
 ara3d/S_Office_Integrated Design Archi.ifc	415490	unknown	0	0	0	0	0	-	0	0
-ara3d/S_Office_Integrated Design Archi.ifc	426329	CSG	0	496	0	0	6	-	0	128252029
-ara3d/S_Office_Integrated Design Archi.ifc	437170	CSG	6	380	0	0	0	6	6	-
-ara3d/S_Office_Integrated Design Archi.ifc	448019	CSG	90	1034	0	0	89	164	90	-
-ara3d/S_Office_Integrated Design Archi.ifc	458857	CSG	77	1061	0	0	80	78	77	-
-ara3d/S_Office_Integrated Design Archi.ifc	469706	CSG	50	1076	0	0	61	51	50	-
+ara3d/S_Office_Integrated Design Archi.ifc	426329	CSG	0	496	0	0	0	-	0	128252029
+ara3d/S_Office_Integrated Design Archi.ifc	437170	CSG	0	256	0	0	0	-	0	19715414
+ara3d/S_Office_Integrated Design Archi.ifc	448019	CSG	0	1056	0	0	0	-	0	5447346
+ara3d/S_Office_Integrated Design Archi.ifc	458857	CSG	0	928	0	0	0	-	0	8168942
+ara3d/S_Office_Integrated Design Archi.ifc	469706	CSG	0	928	0	0	0	-	0	8168942
 ara3d/S_Office_Integrated Design Archi.ifc	489748	SweptSolid	0	40	0	0	0	-	0	5896872
 ara3d/S_Office_Integrated Design Archi.ifc	495955	SweptSolid	0	36	0	0	0	-	0	6031243
 ara3d/S_Office_Integrated Design Archi.ifc	496628	SweptSolid	0	52	0	0	0	-	0	68368125

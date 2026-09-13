@@ -160,6 +160,28 @@ describe('computeIfcOriginViewerPosition', () => {
     assert.ok(Math.abs(out!.viewer.z - 25) < 1e-9, `viewer.z = ${out!.viewer.z}`);
   });
 
+  it('inverts each anchor factor independently (#4615)', async () => {
+    const anchor: ModelGeorefInput = {
+      coordinateInfo: emptyCoordinateInfo(),
+      mapConversion: {
+        ...makeConversion(100, 200, 10),
+        factorX: 2,
+        factorY: 4,
+        factorZ: 5,
+      },
+      projectedCRS: rdCrs(),
+      lengthUnitScale: 1,
+    };
+    const other: ModelGeorefInput = {
+      coordinateInfo: emptyCoordinateInfo(),
+      mapConversion: makeConversion(120, 240, 25),
+      projectedCRS: rdCrs(),
+      lengthUnitScale: 1,
+    };
+    const out = await computeIfcOriginViewerPosition(other, anchor);
+    assert.deepStrictEqual(out, { viewer: { x: 10, y: 3, z: -10 }, source: 'anchor' });
+  });
+
   it('accounts for orthogonalHeight differences (vertical offset)', async () => {
     const anchor: ModelGeorefInput = {
       coordinateInfo: emptyCoordinateInfo(),

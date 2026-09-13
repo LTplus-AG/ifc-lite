@@ -581,6 +581,21 @@ fn reads_ifc4x3_scaled_map_conversion_as_a_map_conversion() {
     assert_eq!(scaled.source, plain.source);
 }
 
+/// The server payload carries the factors next to `scale`, and
+/// `transform_matrix` applies them per axis, so a client rebuilding the
+/// transform from the fields agrees with one reading the matrix (#4615).
+#[test]
+fn scaled_map_conversion_factors_reach_the_payload() {
+    let content = SCALED_MAP_CONVERSION_IFC.replace("1.0,1.0,1.0,1.0);", "2.0,0.5,0.25,3.0);");
+    assert_ne!(content, SCALED_MAP_CONVERSION_IFC, "fixture edit must apply");
+    let geo = extract_georeferencing(&content).expect("scaled georeference");
+    assert_eq!((geo.scale, geo.factor_x, geo.factor_y, geo.factor_z), (2.0, 0.5, 0.25, 3.0));
+    let m = geo.transform_matrix;
+    assert!((m[0].hypot(m[1]) - 1.0).abs() < 1e-5, "x column {:?}", &m[0..2]);
+    assert!((m[4].hypot(m[5]) - 0.5).abs() < 1e-5, "y column {:?}", &m[4..6]);
+    assert_eq!(m[10], 6.0);
+}
+
 /// STEP keyword case is not significant (ISO 10303-21), but
 /// `EntityScanner::next_entity` hands the keyword back exactly as written.
 /// A case-sensitive candidate match therefore drops every candidate in a

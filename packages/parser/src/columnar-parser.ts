@@ -28,7 +28,7 @@ import {
 } from '@ifc-lite/data';
 import type { SpatialHierarchy, QuantityTable, PropertyValue, PropertySet, QuantitySet, IfcStoreBase } from '@ifc-lite/data';
 import { BufferEntitySource } from './entity-source.js';
-import { batchExtractGlobalIdAndName } from './columnar-parser-attributes.js';
+import { batchExtractGlobalIdAndName, hasAttrValueAt } from './columnar-parser-attributes.js';
 import {
     REL_TYPE_MAP,
     SECONDARY_REL_TYPE_MAP,
@@ -40,6 +40,7 @@ import type { EntityByIdIndex } from './columnar-parser-indexes.js';
 
 import { contiguousSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 import { getEntityRefFromStore, extractRootAttributesFromEntity, pickLongName } from './columnar-parser-root-attributes.js';
+import { getAttributeNamesAcrossSchemas } from './ifc-schema.js';
 // Re-exported: part of the package's public on-demand-extraction surface
 // (see packages/parser/src/index.ts).
 export {
@@ -346,11 +347,106 @@ export async function parseColumnarInput(
             }
         };
 
-        addEntityBatch(spatialRefs, false, false);
-        addEntityBatch(geometryRefs, true, false);
+        // #4666 / #4725 review: HAS_GEOMETRY must answer for THIS entity's
+        // own Representation attribute, not merely its class or which
+        // bucket categorisation routed it to. GEOMETRY_TYPES/SPATIAL_TYPES/
+        // the CAT_RELEVANT catch-all each bucket a mix of IfcProduct
+        // descendants (which all inherit Representation at attribute index
+        // 6 — see hasAttrValueAt's own doc comment) and entities that are
+        // NOT IfcProduct at all: IfcProject (spatialRefs — its index 6 is
+        // Phase, not Representation), and materials/units/contexts/
+        // classifications/tasks/actors/etc. (otherRelevantRefs' non-product
+        // helpers and generic IfcRoot catch-all). Reading buffer index 6 as
+        // Representation for one of those would read the wrong attribute
+        // entirely, not just answer the wrong flag.
+        //
+        // `hasOwnRepresentationSlot` resolves the type's ACTUAL attribute
+        // name at index 6 from the schema registry (across IFC2X3/4/4X3, so
+        // IFC4X3-only spatial types like IfcFacility/IfcBridge/IfcRoad —
+        // outside the parser's IFC4 codegen pin — still resolve correctly)
+        // instead of assuming every bucket member is an IfcProduct. Only
+        // when that name really is "Representation" do we read the byte
+        // value at all; every other entity (IfcProject, materials, units,
+        // relationships, type objects, groups, …) keeps `false`, exactly
+        // as before this PR. One cache entry per unique type name (a few
+        // hundred at most), not per entity.
+        //
+        // Deliberately per-entity, not per-descendant: a container whose own
+        // Representation is `$` but that aggregates geometry-bearing
+        // children via IfcRelAggregates (e.g. an IfcRoof aggregating
+        // IfcBeams, Building-Structural.ifc #196) still answers `false`
+        // here. A caller that needs "does this id or its parts render
+        // anything" must do that descent itself — the viewer's object-count
+        // fix (#4655) already does, over the mesh set plus IfcRelAggregates,
+        // specifically because this flag cannot answer that question.
+        //
+        // Deliberately three separate inline loops (spatialRefs,
+        // geometryRefs, otherRelevantRefs) rather than one shared closure
+        // wrapping the `hasAttrValueAt(uint8Buffer, …)` call: a named
+        // closure that captures `uint8Buffer` shares a V8 heap context with
+        // every other closure `parseColumnarInput` defines in this same
+        // scope, including the ones the returned store legitimately keeps
+        // alive (on-demand extraction) — which pulled `uint8Buffer` itself
+        // into that shared, long-lived context and kept the ENTIRE raw
+        // source buffer reachable after `compressSourceInPlace` was meant
+        // to release it (caught by
+        // `test/source-compression-swap.test.ts`'s GC-liveness check, #2183).
+        // Reading `uint8Buffer` directly in a plain `for` loop body, as this
+        // file already did for `geometryRefs`, never allocates that shared
+        // context in the first place.
+        const attr6IsRepresentationCache = new Map<string, boolean>();
+        const hasOwnRepresentationSlot = (typeUpper: string): boolean => {
+            let cached = attr6IsRepresentationCache.get(typeUpper);
+            if (cached === undefined) {
+                cached = getAttributeNamesAcrossSchemas(typeUpper)[6] === 'Representation';
+                attr6IsRepresentationCache.set(typeUpper, cached);
+            }
+            return cached;
+        };
+        for (const ref of spatialRefs) {
+            const entityData = parsedEntityData.get(ref.expressId);
+            entityTableBuilder.add(
+                ref.expressId,
+                ref.type,
+                entityData?.globalId || '',
+                entityData?.name || '',
+                '', // description
+                '', // objectType
+                hasOwnRepresentationSlot(getTypeUpper(ref.type))
+                    && hasAttrValueAt(uint8Buffer, ref.byteOffset, ref.byteLength, 6),
+                false
+            );
+        }
+        for (const ref of geometryRefs) {
+            const entityData = parsedEntityData.get(ref.expressId);
+            entityTableBuilder.add(
+                ref.expressId,
+                ref.type,
+                entityData?.globalId || '',
+                entityData?.name || '',
+                '', // description
+                '', // objectType
+                hasOwnRepresentationSlot(getTypeUpper(ref.type))
+                    && hasAttrValueAt(uint8Buffer, ref.byteOffset, ref.byteLength, 6),
+                false
+            );
+        }
         addEntityBatch(typeObjectRefs, false, true);
         addEntityBatch(relationshipRefs, false, false);
-        addEntityBatch(otherRelevantRefs, false, false);
+        for (const ref of otherRelevantRefs) {
+            const entityData = parsedEntityData.get(ref.expressId);
+            entityTableBuilder.add(
+                ref.expressId,
+                ref.type,
+                entityData?.globalId || '',
+                entityData?.name || '',
+                '', // description
+                '', // objectType
+                hasOwnRepresentationSlot(getTypeUpper(ref.type))
+                    && hasAttrValueAt(uint8Buffer, ref.byteOffset, ref.byteLength, 6),
+                false
+            );
+        }
         // Groups carry Description + ObjectType (the system designation), which
         // the shared addEntityBatch drops as ''. Add them with the extra fields
         // so the Properties title / lists / lens can surface them. (#1075)

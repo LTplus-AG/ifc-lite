@@ -40,6 +40,9 @@ const TRANSFORM_NUMERIC_SLOTS: readonly (readonly [number, string])[] = [
   [5, 'XAxisAbscissa'],
   [6, 'XAxisOrdinate'],
   [7, 'Scale'],
+  [8, 'FactorX'],
+  [9, 'FactorY'],
+  [10, 'FactorZ'],
 ];
 
 /**
@@ -89,5 +92,8 @@ export function extractMapConversion(entity: IfcEntity): MapConversion | null {
     xAxisAbscissa: getNumber(entity.attributes[5]),
     xAxisOrdinate: getNumber(entity.attributes[6]),
     scale: getNumber(entity.attributes[7]),
+    factorX: getNumber(entity.attributes[8]) || undefined,
+    factorY: getNumber(entity.attributes[9]) || undefined,
+    factorZ: getNumber(entity.attributes[10]) || undefined,
   };
 }

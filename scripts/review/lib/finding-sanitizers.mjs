@@ -113,9 +113,13 @@ export function sanitizeBody(text) {
  * inspection -- two copies held together by prose. Steps 1-4 of that list ARE
  * this function; each caller owns only what it adds afterwards.
  *
+ * Exported for scripts/review/pr-agent-publish.mjs, which posts a whole model
+ * review under the same `github-actions` identity and needs these four steps
+ * without `sanitizeBody`'s per-finding length cap.
+ *
  * @param {unknown} text
  */
-function defangDangerous(text) {
+export function defangDangerous(text) {
   return String(text ?? '')
     .replace(HTML_COMMENT_RE, '')
     .replace(DANGLING_COMMENT_OPEN_RE, '<!‑-')

@@ -28,11 +28,7 @@ pub(super) fn prepare(
         .context
         .as_ref()
         .ok_or("Missing canonical target context")?;
-    let rtc: Point = if context.meta.needs_shift {
-        context.meta.rtc_offset.into()
-    } else {
-        [0.; 3]
-    };
+    let rtc: Point = context.meta.frame.rtc_offset().into();
     let local_magnitude = mesh
         .positions
         .iter()

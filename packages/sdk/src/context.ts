@@ -31,6 +31,7 @@ import { BsddNamespace } from './namespaces/bsdd.js';
 import { SandboxNamespace } from './namespaces/sandbox.js';
 import { FilesNamespace } from './namespaces/files.js';
 import { ScheduleNamespace } from './namespaces/schedule.js';
+import { StructuralNamespace } from './namespaces/structural.js';
 import { ClashNamespace } from './namespaces/clash.js';
 import { SpacesNamespace } from './namespaces/spaces.js';
 import { StyleNamespace } from './namespaces/style.js';
@@ -54,6 +55,7 @@ export class BimContext {
   readonly sandbox: SandboxNamespace;
   readonly files: FilesNamespace;
   readonly schedule: ScheduleNamespace;
+  readonly structural: StructuralNamespace;
   readonly clash: ClashNamespace;
   readonly spaces: SpacesNamespace;
   readonly style: StyleNamespace;
@@ -89,6 +91,7 @@ export class BimContext {
     this.sandbox = new SandboxNamespace(this);
     this.files = new FilesNamespace(this._backend);
     this.schedule = new ScheduleNamespace(this._backend);
+    this.structural = new StructuralNamespace(this._backend);
     this.clash = new ClashNamespace();
     this.spaces = new SpacesNamespace(this._backend);
     this.style = new StyleNamespace(this._backend);

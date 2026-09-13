@@ -20,6 +20,9 @@ export function computeTransformMatrix(mapConversion: MapConversion): number[] {
 
   // Default scale to 1.0 if not specified
   const s = scale || 1.0;
+  const sx = s * (mapConversion.factorX ?? 1.0);
+  const sy = s * (mapConversion.factorY ?? 1.0);
+  const sz = s * (mapConversion.factorZ ?? 1.0);
 
   // Compute rotation angle from X-axis direction
   let angle = 0;
@@ -38,9 +41,9 @@ export function computeTransformMatrix(mapConversion: MapConversion): number[] {
   // [0           0          0      1         ]
 
   return [
-    s * cos,  s * sin,  0,  0,
-    -s * sin, s * cos,  0,  0,
-    0,        0,        s,  0,
+    sx * cos,  sx * sin,  0,  0,
+    -sy * sin, sy * cos,  0,  0,
+    0,         0,         sz, 0,
     eastings, northings, orthogonalHeight, 1,
   ];
 }
@@ -82,25 +85,25 @@ export function transformToLocal(
   const m = georef.transformMatrix;
   const [xWorld, yWorld, zWorld] = worldPoint;
 
-  // Extract rotation and scale
-  const scale = georef.mapConversion?.scale || 1.0;
-  const angle = Math.atan2(m[1], m[0]);
-  const cos = Math.cos(-angle);
-  const sin = Math.sin(-angle);
-  const invScale = 1.0 / scale;
-
   // Apply inverse translation
   const xTrans = xWorld - m[12];
   const yTrans = yWorld - m[13];
   const zTrans = zWorld - m[14];
 
-  // Apply inverse rotation and scale
-  const x = invScale * (cos * xTrans - sin * yTrans);
-  const y = invScale * (sin * xTrans + cos * yTrans);
-  // Scale applies to z too (IfcMapConversion scales all three axes).
-  const z = invScale * zTrans;
+  // The horizontal columns are orthogonal rotated axes. Invert them after
+  // normalising each independently, so a small but well-conditioned scale is
+  // not mistaken for a singular matrix merely because sx*sy < EPSILON.
+  const sx = Math.hypot(m[0], m[1]);
+  const sy = Math.hypot(m[4], m[5]);
+  const sz = Math.abs(m[10]);
+  if (![sx, sy, sz].every(Number.isFinite) || sx === 0 || sy === 0 || sz === 0) {
+    return null;
+  }
+  const x = ((m[0] / sx) * xTrans + (m[1] / sx) * yTrans) / sx;
+  const y = ((m[4] / sy) * xTrans + (m[5] / sy) * yTrans) / sy;
+  const z = zTrans / m[10];
 
-  return [x, y, z];
+  return [x, y, z].every(Number.isFinite) ? [x, y, z] : null;
 }
 
 /**

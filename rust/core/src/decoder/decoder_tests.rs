@@ -660,3 +660,29 @@ fn fast_readers_accept_every_step_whitespace_byte_3733() {
         assert_eq!(decoder.get_first_entity_ref_fast(5), Some(4), "ws {ws:?}");
     }
 }
+
+/// #4697: an installed index span past the content is refused, not a panic.
+#[test]
+fn issue_4697_an_index_span_past_the_content_is_refused_not_a_panic() {
+    let content = "\
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCCARTESIANPOINT((1.,0.,0.));
+#3=IFCCARTESIANPOINT((1.,1.,0.));
+#4=IFCPOLYLOOP((#1,#2,#3));
+";
+    let spans = crate::build_entity_index(content);
+    let ids = [1u32, 2, 3, 4];
+    let starts: Vec<u32> = ids.iter().map(|id| spans[id].0 as u32).collect();
+    let mut lengths: Vec<u32> = ids.iter().map(|id| (spans[id].1 - spans[id].0) as u32).collect();
+    lengths[2] = 1000; // #3 runs past the end of the content
+    let index = crate::ColumnarEntityIndex::from_columns(&ids, &starts, &lengths).unwrap();
+    let mut decoder = EntityDecoder::with_arc_columnar_index(content, Arc::new(index));
+
+    let (s1, e1) = spans[&1];
+    assert_eq!(decoder.get_raw_bytes(1), Some(&content.as_bytes()[s1..e1]), "sanity: in-range span");
+    assert_eq!(decoder.get_raw_bytes(3), None);
+    assert_eq!(decoder.get_polyloop_coords_cached(3), None, "the loop's own span");
+    assert_eq!(decoder.get_polyloop_coords_cached(4), None, "a point's span");
+    let named = decoder.decode_by_id(3).unwrap_err().to_string();
+    assert!(named.contains("invalid byte span"), "{named}");
+}

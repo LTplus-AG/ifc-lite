@@ -20,6 +20,7 @@ mod malformed_opening_repair;
 pub(crate) mod prism_cut;
 mod probe;
 mod representation;
+mod staged;
 mod synthesis;
 pub use bool2d_path::take_bool2d_stats;
 pub use prism_cut::{take_prism_defers, take_prism_stats};
@@ -45,6 +46,11 @@ const MIN_OPENING_VOLUME: f64 = 0.0001;
 const CSG_TRIANGLE_RETENTION_DIVISOR: usize = 4;
 /// Minimum triangle count for a valid CSG result.
 const MIN_VALID_TRIANGLES: usize = 4;
+/// A mixed 2D + residual composition may inherit a small number of imperfect
+/// IFC seams, but a large absolute increase signals that the second route tore
+/// the re-extruded host. Below this floor the relative comparison still rules.
+const MIXED_ROUTE_DEFECT_FLOOR: usize = 64;
+const MIXED_ROUTE_DEFECT_GROWTH: usize = 4;
 /// Maximum wrapper depth when drilling through mapped/boolean items to find an extrusion.
 const MAX_EXTRUSION_EXTRACT_DEPTH: usize = 32;
 /// Per-axis AABB engulf slack shared by the batched, host-consumed, and
@@ -648,16 +654,8 @@ impl GeometryRouter {
         // reconciles against the real host mesh, whatever `mesh.origin`). Any miss
         // falls through to the exact kernel below unchanged.
         if let Some(cut) = ctx.bool2d.as_ref() {
-            if let Some(holed) = self.try_bool2d_cut(&mesh, cut) {
-                // Eligible openings are now subtracted. Any residual (ineligible)
-                // openings — perpendicular sleeves, partial-depth recesses — are
-                // cut by the exact kernel on the re-extruded host (origin 0, world
-                // frame; residual cutters are world-framed), so a single
-                // ineligible opening no longer forfeits its host's cheap ones.
-                return match self.bool2d_residual(cut) {
-                    None => holed,
-                    Some(residual) => self.apply_void_context(holed, residual, element_id),
-                };
+            if let Some(candidate) = self.try_staged_bool2d(&mesh, cut, element_id) {
+                return candidate;
             }
         }
 
@@ -1425,11 +1423,10 @@ impl GeometryRouter {
                         depth_dir,
                     );
                     let cutter = &extended_opening;
-                    let vol_before = mesh_signed_volume(&result);
                     if let Ok(csg_result) = clipper.subtract_mesh(&result, cutter) {
                         let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
                             .max(MIN_VALID_TRIANGLES);
-                        let changed = cut_changed_mesh(&csg_result, tri_before, vol_before);
+                        let changed = cut_changed_mesh(&csg_result, &result);
                         csg_unchanged = !changed;
                         if !csg_result.is_empty()
                             && csg_result.triangle_count() >= min_tris

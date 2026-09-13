@@ -72,8 +72,10 @@ use rustc_hash::FxHashMap;
 /// kernel for every host). Default ON; read once.
 pub(crate) mod closure_checks;
 mod vertex_dedup;
+mod planar_correction;
 use closure_checks::{closed_or_hairline, directed_closed};
 pub(crate) use vertex_dedup::dedup_cut_vertices;
+pub(super) use planar_correction::correct_planar_overlap;
 
 pub(super) fn enabled() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
@@ -126,15 +128,19 @@ mod diag {
 
     #[inline]
     pub(super) fn defer(i: usize) {
-        DEFERS[i].fetch_add(1, Ordering::Relaxed);
+        crate::telemetry_transaction::record(move || {
+            DEFERS[i].fetch_add(1, Ordering::Relaxed);
+        });
     }
 
     /// Record one analytic-cut host: (fires, openings cut, openings residual).
     #[inline]
     pub(super) fn record_cut(committed_ops: usize, residual: usize) {
-        FIRES.fetch_add(1, Ordering::Relaxed);
-        OPENINGS_ANALYTIC.fetch_add(committed_ops as u64, Ordering::Relaxed);
-        OPENINGS_RESIDUAL.fetch_add(residual as u64, Ordering::Relaxed);
+        crate::telemetry_transaction::record(move || {
+            FIRES.fetch_add(1, Ordering::Relaxed);
+            OPENINGS_ANALYTIC.fetch_add(committed_ops as u64, Ordering::Relaxed);
+            OPENINGS_RESIDUAL.fetch_add(residual as u64, Ordering::Relaxed);
+        });
     }
 
     /// Read + reset the per-reason defer counters as (name, count) pairs.

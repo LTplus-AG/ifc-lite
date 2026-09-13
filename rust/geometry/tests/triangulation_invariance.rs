@@ -1415,10 +1415,10 @@ fn watertightness_census_and_triangulator_invariance() {
     );
 }
 
-/// Regression for #4610: applying correct footprint-union semantics to this
-/// mixed slab changed the residual cutter's input and tore it from 25 to 875
-/// open edges. Until #4617 repairs that composition, the mixed-only parity route
-/// must preserve the established topology under both triangulators. The same
+/// Regression for #4617: composing a re-extruded 2D cut with the residual exact
+/// cutter tore this mixed slab from 25 to 875 open edges. Mixed sets now defer
+/// as a whole to the exact route and preserve the established topology under
+/// both triangulators. The same
 /// contract holds with the optional prism route disabled; that mode has its own
 /// expected tessellation and runs in a separate process during validation.
 #[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]

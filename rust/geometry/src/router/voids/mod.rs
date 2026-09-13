@@ -45,6 +45,11 @@ const MIN_OPENING_VOLUME: f64 = 0.0001;
 const CSG_TRIANGLE_RETENTION_DIVISOR: usize = 4;
 /// Minimum triangle count for a valid CSG result.
 const MIN_VALID_TRIANGLES: usize = 4;
+/// A mixed 2D + residual composition may inherit a small number of imperfect
+/// IFC seams, but a large absolute increase signals that the second route tore
+/// the re-extruded host. Below this floor the relative comparison still rules.
+const MIXED_ROUTE_DEFECT_FLOOR: usize = 64;
+const MIXED_ROUTE_DEFECT_GROWTH: usize = 4;
 /// Maximum wrapper depth when drilling through mapped/boolean items to find an extrusion.
 const MAX_EXTRUSION_EXTRACT_DEPTH: usize = 32;
 /// Per-axis AABB engulf slack shared by the batched, host-consumed, and
@@ -654,10 +659,22 @@ impl GeometryRouter {
                 // cut by the exact kernel on the re-extruded host (origin 0, world
                 // frame; residual cutters are world-framed), so a single
                 // ineligible opening no longer forfeits its host's cheap ones.
-                return match self.bool2d_residual(cut) {
-                    None => holed,
-                    Some(residual) => self.apply_void_context(holed, residual, element_id),
-                };
+                match self.bool2d_residual(cut) {
+                    None => return holed,
+                    Some(residual) => {
+                        let candidate = self.apply_void_context(holed, residual, element_id);
+                        let before = topology_defect_count(&mesh);
+                        let limit = before
+                            .saturating_mul(MIXED_ROUTE_DEFECT_GROWTH)
+                            .max(MIXED_ROUTE_DEFECT_FLOOR);
+                        if topology_defect_count(&candidate) <= limit {
+                            return candidate;
+                        }
+                        // The residual phase tore the re-extruded host. Keep the
+                        // original mesh and let the unified exact route below
+                        // evaluate the complete opening set (#4617).
+                    }
+                }
             }
         }
 

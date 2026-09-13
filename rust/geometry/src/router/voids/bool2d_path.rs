@@ -41,10 +41,7 @@ use std::sync::OnceLock;
 
 use super::geom::{mesh_signed_volume, param_cut_watertight};
 use super::{world_host_bounds, GeometryRouter, VoidContext};
-use crate::bool2d::{
-    compute_signed_area, subtract_multiple_2d_counted,
-    subtract_multiple_2d_counted_mixed_compat,
-};
+use crate::bool2d::{compute_signed_area, subtract_multiple_2d_counted, subtract_unioned_2d_counted};
 use crate::extrusion::{apply_transform, extrude_profile, extrude_profile_watertight};
 use crate::mesh::Mesh;
 use crate::profile::Profile2D;
@@ -260,17 +257,15 @@ impl GeometryRouter {
             return None;
         }
 
-        // (2) 2D difference. Pure 2D cuts union overlapping footprints; mixed
-        // cuts use #4617's documented parity compatibility before their residual
-        // phase. The one pathology interiority can't rule out is a void that
-        // SPLITS the profile into
+        // (2) 2D difference. The one pathology interiority can't rule out is a
+        // void that SPLITS the profile into
         // disconnected pieces (an interior slot bridging the outer to an existing
         // hole): the difference then yields multiple shapes and only the largest
         // is kept, silently dropping geometry. Reject any multi-shape result and
         // require at least one hole to have formed (a zero-hole result would signal
         // a projection error rather than a real cut).
         let subtract = if cut.residual.is_some() {
-            subtract_multiple_2d_counted_mixed_compat
+            subtract_unioned_2d_counted
         } else {
             subtract_multiple_2d_counted
         };

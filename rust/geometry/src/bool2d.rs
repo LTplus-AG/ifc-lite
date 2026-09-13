@@ -111,29 +111,21 @@ pub fn subtract_multiple_2d_counted(
     Ok((shapes_to_profile(&result)?, shapes))
 }
 
-/// Compatibility route for a 2D prefix that will receive residual 3D cuts.
-///
-/// The public and pure-2D path uses the correct union semantics above. In a
-/// mixed route, however, feeding that changed host into the residual cutter can
-/// catastrophically tear real slabs (#4610). Keep the established parity fill
-/// only at that composition boundary until #4617 replaces it with a route that
-/// preserves both union semantics and final topology.
-// TODO(remove-by: #4617, louistrue) Replace parity fill after mixed routing preserves union topology.
-pub(crate) fn subtract_multiple_2d_counted_mixed_compat(
+/// Mixed-route variant: dissolve overlapping footprints first, then subtract
+/// the resulting disjoint shapes. The explicit union preserves NonZero union
+/// semantics while avoiding overlap seams in the host passed to residual 3D
+/// cutting (#4617).
+pub(crate) fn subtract_unioned_2d_counted(
     profile: &Profile2D,
     void_contours: &[Vec<Point2<f64>>],
 ) -> Result<(Profile2D, usize)> {
-    let valid_contours: Vec<_> = void_contours.iter().filter(|c| c.len() >= 3).collect();
-    if valid_contours.is_empty() {
+    let union = union_contours_to_shapes(void_contours);
+    if union.is_empty() {
         return Ok((profile.clone(), 1));
     }
-    let subject = profile_to_paths(profile);
-    let clip: Vec<Vec<[f64; 2]>> = valid_contours.iter().map(|c| contour_to_path(c)).collect();
-    let result = subject.overlay(&clip, OverlayRule::Difference, FillRule::EvenOdd);
-    let shapes = result
-        .iter()
-        .filter(|s| s.first().is_some_and(|outer| outer.len() >= 3))
-        .count();
+    let clip: Vec<_> = union.iter().flat_map(profile_to_paths).collect();
+    let result = profile_to_paths(profile).overlay(&clip, OverlayRule::Difference, FillRule::EvenOdd);
+    let shapes = result.iter().filter(|s| s.first().is_some_and(|outer| outer.len() >= 3)).count();
     Ok((shapes_to_profile(&result)?, shapes))
 }
 

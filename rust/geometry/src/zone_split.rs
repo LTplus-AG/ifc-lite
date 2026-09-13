@@ -210,8 +210,8 @@ pub const NEGLIGIBLE_PIECE_REL: f64 = 1e-9;
 /// A host whose enclosed volume is at most this fraction of its bounding-box
 /// diagonal cubed encloses nothing: a double-sided sheet off the axis planes
 /// sums to rounding residue (about 1e-32 for a unit sheet), not to exactly
-/// zero. A real solid is many orders above it (a 1 mm by 1 m by 1 m plate is
-/// 1e-3 of a diagonal cubed of about 2.8).
+/// zero. A real solid is many orders above it (a 1 mm by 1 m by 1 m plate,
+/// 1e-3 m3 against a diagonal cubed of about 2.83, is about 3.5e-4).
 pub const NO_VOLUME_REL: f64 = 1e-12;
 
 /// Split `host` into one solid per zone it reaches, plus the remainder.

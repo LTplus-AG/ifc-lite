@@ -149,12 +149,21 @@ async fn every_variant_maps_to_its_documented_status_and_code() {
             "duplicate row for {:?} — every row must pin a different variant",
             variant_name(&err)
         );
+        // A cache error's detail stays in the server log (see
+        // `a_cache_error_body_does_not_carry_the_cache_directory`). The text
+        // is spelled out rather than read from `CACHE_CLIENT_MESSAGE` so the
+        // test pins what a client sees.
+        let expected_message = if matches!(err, ApiError::Cache(_)) {
+            "Cache error: the server's cache store failed".to_string()
+        } else {
+            label.clone()
+        };
         let (status, _, body) = parts(err).await;
         assert_eq!(status, expected_status, "status for {label:?}");
         assert_eq!(body["code"], expected_code, "code for {label:?}");
         assert_eq!(
-            body["error"], label,
-            "the body message must be the Display text for {label:?}"
+            body["error"], expected_message,
+            "the body message for {label:?}"
         );
     }
     assert_eq!(
@@ -339,4 +348,48 @@ async fn error_bodies_carry_the_documented_code() {
         .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["code"], "MISSING_FILE");
+}
+
+/// A real cache I/O failure answers `500 CACHE_ERROR` without the server's
+/// filesystem layout in the body. cacache's error text names the index bucket
+/// it failed to read (`Failed to read index bucket entries from "<CACHE_DIR>/
+/// index-v5/..."`), and the body used to be that text verbatim.
+///
+/// The fixture is a `CACHE_DIR` that is a regular file, so opening a bucket
+/// under it fails with `NotADirectory` rather than the `NotFound` cacache
+/// reads as a miss. The first assertion proves the error really carries the
+/// path, so the body assertion cannot pass on an error that never had one.
+/// Unix only: `ENOTDIR` is the Unix answer, and Windows can map the same
+/// open to a path-not-found error, which cacache would read as a miss.
+/// Regression for #4634.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_cache_error_body_does_not_carry_the_cache_directory() {
+    let dir = std::env::temp_dir().join(format!(
+        "ifc-lite-server-error-body-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::write(&dir, b"not a directory").unwrap();
+    let cache = crate::services::cache::DiskCache::new(dir.to_str().unwrap()).await;
+
+    let err = cache
+        .get_bytes("0000000000000000000000000000000000000000000000000000000000000000")
+        .await
+        .expect_err("a CACHE_DIR that is a file cannot be read");
+    let _ = std::fs::remove_file(&dir);
+    let dir_text = dir.file_name().unwrap().to_str().unwrap().to_string();
+    assert!(
+        matches!(err, ApiError::Cache(_)) && err.to_string().contains(&dir_text),
+        "the fixture must produce a cache error that names the cache directory: {err}"
+    );
+
+    let (status, _, body) = parts(err).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(body["code"], "CACHE_ERROR");
+    let message = body["error"].as_str().unwrap();
+    assert!(
+        !message.contains(&dir_text) && !message.contains("index-v5"),
+        "the response body leaks the cache layout: {message}"
+    );
 }

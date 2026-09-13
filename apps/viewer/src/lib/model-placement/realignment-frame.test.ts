@@ -46,4 +46,7 @@ it('keeps the same coordinate frame across renamed or revised anchors (#4226)', 
   assert.equal(useViewerStore.getState().modelPlacement.frameKey, frame);
   commitRealignmentFrame(useViewerStore.getState().models, { ...georef, lengthUnitScale: 0.001 });
   assert.notEqual(useViewerStore.getState().modelPlacement.frameKey, frame);
+  // An IfcMapConversionScaled factor changes the frame as much as Scale does (#4615).
+  commitRealignmentFrame(useViewerStore.getState().models, { ...georef, mapConversion: { ...georef.mapConversion!, factorZ: 2 } });
+  assert.notEqual(useViewerStore.getState().modelPlacement.frameKey, frame);
 });

@@ -118,7 +118,7 @@ pub use collate::{
     instance_rel_row_major_f32, verify_recomposition, Collated, InstanceMeshRef,
     InstanceOccurrence, InstanceTemplate,
 };
-pub use group::{collate_refs, collate_refs_verified_in};
+pub use group::{collate_refs, collate_refs_in_basis, collate_refs_verified_in};
 pub use wire::{
     collate_and_encode, decode_instanced, encode_instanced, encode_refs, DecodedInstance,
     DecodedInstanced, DecodedTemplate, INSTANCED_MAGIC, INSTANCED_VERSION,

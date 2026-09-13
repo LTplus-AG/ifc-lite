@@ -44,6 +44,14 @@ use crate::decoder::EntityIndex;
 use crate::parser::EntityScanner;
 use std::sync::Arc;
 
+fn check_lengths(ids: usize, starts: usize, lengths: usize) -> Result<(), ColumnLengthMismatch> {
+    if starts == ids && lengths == ids {
+        Ok(())
+    } else {
+        Err(ColumnLengthMismatch { ids, starts, lengths })
+    }
+}
+
 /// Compact, sorted, binary-searched entity index. Columns are kept sorted by
 /// `ids` (strictly ascending, unique) so [`Self::lookup`] can `binary_search`.
 ///
@@ -61,6 +69,29 @@ pub struct ColumnarEntityIndex {
     pub(crate) styled_item_index: std::sync::OnceLock<crate::decoder::StyledItemIndexResult>,
 }
 
+/// The three columns handed to [`ColumnarEntityIndex::from_columns`] or
+/// [`ColumnarEntityIndex::from_owned_columns`] were not all the same length.
+/// A caller-facing error, not an empty index: an empty index is also what an
+/// empty file produces, so folding the two together hid a malformed payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ColumnLengthMismatch {
+    pub ids: usize,
+    pub starts: usize,
+    pub lengths: usize,
+}
+
+impl std::fmt::Display for ColumnLengthMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "entity index columns disagree in length: ids {}, starts {}, lengths {}",
+            self.ids, self.starts, self.lengths
+        )
+    }
+}
+
+impl std::error::Error for ColumnLengthMismatch {}
+
 impl ColumnarEntityIndex {
     /// Build from the three delivered columns (`setEntityIndex` ingestion).
     ///
@@ -71,31 +102,22 @@ impl ColumnarEntityIndex {
     /// single stable argsort permutation is applied and duplicate ids are
     /// collapsed last-in-input-order-wins.
     ///
-    /// Mismatched column lengths yield an empty index (the wasm caller guards
-    /// this too), so a malformed payload never panics a worker.
-    pub fn from_columns(ids: &[u32], starts: &[u32], lengths: &[u32]) -> Self {
-        let n = ids.len();
-        if n == 0 || starts.len() != n || lengths.len() != n {
-            return Self {
-                ids: Vec::new(),
-                starts: Vec::new(),
-                lengths: Vec::new(),
-                styled_item_index: std::sync::OnceLock::new(),
-            };
-        }
+    /// Columns of unequal length are a [`ColumnLengthMismatch`], checked before
+    /// any is read, so a malformed payload never panics a worker. Empty
+    /// columns are a valid, empty index.
+    pub fn from_columns(ids: &[u32], starts: &[u32], lengths: &[u32]) -> Result<Self, ColumnLengthMismatch> {
+        check_lengths(ids.len(), starts.len(), lengths.len())?;
         Self::from_owned_columns(ids.to_vec(), starts.to_vec(), lengths.to_vec())
     }
 
     /// Consume binding-owned columns without another full allocation (#3989).
     /// Validation and last-in-input-order duplicate precedence match `from_columns`.
-    pub fn from_owned_columns(ids: Vec<u32>, starts: Vec<u32>, lengths: Vec<u32>) -> Self {
-        if ids.is_empty() || starts.len() != ids.len() || lengths.len() != ids.len() {
-            return Self { ids: Vec::new(), starts: Vec::new(), lengths: Vec::new(), styled_item_index: std::sync::OnceLock::new() };
-        }
+    pub fn from_owned_columns(ids: Vec<u32>, starts: Vec<u32>, lengths: Vec<u32>) -> Result<Self, ColumnLengthMismatch> {
+        check_lengths(ids.len(), starts.len(), lengths.len())?;
         if is_strictly_ascending(&ids) {
-            return Self { ids, starts, lengths, styled_item_index: std::sync::OnceLock::new() };
+            return Ok(Self { ids, starts, lengths, styled_item_index: std::sync::OnceLock::new() });
         }
-        Self::from_unsorted(ids, starts, lengths)
+        Ok(Self::from_unsorted(ids, starts, lengths))
     }
 
     /// Build from an already-scanned [`EntityIndex`](crate::EntityIndex)

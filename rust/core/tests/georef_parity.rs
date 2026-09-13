@@ -111,6 +111,9 @@ fn check_case(name: &str, expect: &serde_json::Value, georef: Option<&GeoReferen
         ("xAxisAbscissa", g.x_axis_abscissa),
         ("xAxisOrdinate", g.x_axis_ordinate),
         ("scale", g.scale),
+        ("factorX", g.factor_x),
+        ("factorY", g.factor_y),
+        ("factorZ", g.factor_z),
     ] {
         if let Some(want) = expect.get(key).and_then(|v| v.as_f64()) {
             approx(name, key, got, want);

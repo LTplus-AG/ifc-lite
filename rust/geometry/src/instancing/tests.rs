@@ -4,8 +4,8 @@
 
 use super::collate::mat4_to_row_major_f32;
 use super::{
-    collate_and_encode, collate_instances, collate_refs, collate_refs_verified_in,
-    decode_instanced, encode_instanced, encode_refs, verify_recomposition, Collated,
+    collate_and_encode, collate_instances, collate_refs, collate_refs_in_basis,
+    collate_refs_verified_in, decode_instanced, encode_instanced, encode_refs, verify_recomposition, Collated,
     InstanceMeshRef, INSTANCED_MAGIC, INSTANCED_VERSION,
 };
 use crate::mesh::{InstanceMeta, Mesh};
@@ -460,7 +460,7 @@ fn same_positions_different_connectivity_falls_back_to_flat() {
 }
 
 #[test]
-fn verify_basis_reconciles_a_caller_that_baked_positions_in_a_different_frame() {
+fn baked_basis_reconciles_a_caller_that_baked_positions_in_a_different_frame() {
     // The glTF in-memory assembler Z-up→Y-up-converts every visible mesh's baked
     // positions/origin BEFORE calling `collate_refs` in, while `InstanceMeta.transform`
     // (hence `rel`) stays native/Z-up throughout (the per-occurrence node matrix is
@@ -488,8 +488,8 @@ fn verify_basis_reconciles_a_caller_that_baked_positions_in_a_different_frame() 
 
     // Without the basis hint, the reconstruction check compares a native-frame
     // `rel` against converted-frame vertices and (wrongly) rejects genuinely
-    // shared geometry — this is the bug `verify_basis` exists to close.
-    let unaware = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], None);
+    // shared geometry — this is the bug `baked_basis` exists to close.
+    let unaware = collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], None);
     assert_eq!(
         unaware.templates.len(),
         0,
@@ -497,7 +497,7 @@ fn verify_basis_reconciles_a_caller_that_baked_positions_in_a_different_frame() 
     );
 
     // With the basis, it correctly reconstructs and instances.
-    let aware = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&s));
+    let aware = collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], Some(&s));
     assert_eq!(
         aware.templates.len(),
         1,
@@ -507,7 +507,7 @@ fn verify_basis_reconciles_a_caller_that_baked_positions_in_a_different_frame() 
 }
 
 #[test]
-fn verify_basis_still_catches_a_genuine_collision() {
+fn baked_basis_still_catches_a_genuine_collision() {
     // Same converted-frame setup as above, but occurrence B's baked geometry is a
     // genuinely different shape (a #3666-style rep_identity collision) — the basis
     // hint must correct the comparison's frame, not blanket-disable it.
@@ -527,7 +527,7 @@ fn verify_basis_still_catches_a_genuine_collision() {
         mesh_from(baked(&CANON_COLLIDING, &(s * occ_b)), meta(&occ_b)),
     ];
     let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
-    let aware = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&s));
+    let aware = collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], Some(&s));
     assert_eq!(
         aware.templates.len(),
         0,
@@ -537,15 +537,15 @@ fn verify_basis_still_catches_a_genuine_collision() {
 }
 
 #[test]
-fn verify_basis_must_also_conjugate_the_rtc_offset_or_a_rotated_group_falls_flat() {
-    // The glTF exporter's `verify_basis` doubled as BOTH the Z-up->Y-up basis
+fn baked_basis_must_also_conjugate_the_rtc_offset_or_a_rotated_group_falls_flat() {
+    // The glTF exporter's `baked_basis` doubled as BOTH the Z-up->Y-up basis
     // conversion (what the tests above cover) AND the frame `InstanceMeta.transform`
     // is expressed in. It is NOT: `InstanceMeta.transform` (hence `rel`, built with
     // rtc [0,0,0] so `rel` is the RAW pre-RTC ratio here too) is pre-RTC, while the
     // baked positions this compares against are POST-RTC (rtc subtracted). The
     // shipped node matrix (`occurrence_node_matrix_composed` in the export crate)
     // reconciles that with a `T(-rtc)·rel·T(rtc)` conjugation BEFORE the `S·…·S⁻¹`
-    // basis conjugation — passing `verify_basis = S` alone (as the exporter used
+    // basis conjugation — passing `baked_basis = S` alone (as the exporter used
     // to) omits the RTC half, leaving a residual of `(R_rel − I)·rtc` between the
     // reconstructed and actual vertices. For a translation-only `rel` (R_rel = I)
     // the residual vanishes and the check still passes, which is why this is easy
@@ -581,18 +581,18 @@ fn verify_basis_must_also_conjugate_the_rtc_offset_or_a_rotated_group_falls_flat
     ];
     let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
 
-    // `verify_basis = S` alone (the pre-fix exporter behaviour): the rotated
+    // `baked_basis = S` alone (the pre-fix exporter behaviour): the rotated
     // sibling's rtc residual reads as a collision and the WHOLE group — including
     // the genuinely-shared template — falls flat.
-    let basis_only = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&s));
+    let basis_only = collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], Some(&s));
     assert_eq!(
         basis_only.templates.len(),
         0,
         "S alone (no RTC conjugation) must reproduce the reported false rejection"
     );
 
-    // `verify_basis = S · T(-rtc)`: with the RTC conjugation folded in, `s.try_inverse()`
-    // (computed inside `collate_refs_verified_in`) recovers `T(rtc) · S⁻¹`, so
+    // `baked_basis = S · T(-rtc)`: with the RTC conjugation folded in, `s.try_inverse()`
+    // (computed inside `collate_refs_in_basis`) recovers `T(rtc) · S⁻¹`, so
     // `s · rel · s⁻¹` reproduces exactly the node matrix's `S · T(-rtc) · rel · T(rtc) · S⁻¹`
     // -- the genuine pairing must now be recognized and instanced.
     let t_neg_rtc = Matrix4::new(
@@ -602,7 +602,7 @@ fn verify_basis_must_also_conjugate_the_rtc_offset_or_a_rotated_group_falls_flat
         0.0, 0.0, 0.0, 1.0,
     );
     let basis_with_rtc = s * t_neg_rtc;
-    let fixed = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&basis_with_rtc));
+    let fixed = collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], Some(&basis_with_rtc));
     assert_eq!(
         fixed.templates.len(),
         1,
@@ -612,11 +612,11 @@ fn verify_basis_must_also_conjugate_the_rtc_offset_or_a_rotated_group_falls_flat
 }
 
 #[test]
-fn a_wrong_verify_basis_never_falsely_accepts_a_collision() {
-    // Same genuine-collision fixture as `verify_basis_still_catches_a_genuine_collision`,
-    // but the caller hands `collate_refs_verified_in` a basis that does NOT
+fn a_wrong_baked_basis_never_falsely_accepts_a_collision() {
+    // Same genuine-collision fixture as `baked_basis_still_catches_a_genuine_collision`,
+    // but the caller hands `collate_refs_in_basis` a basis that does NOT
     // match the conversion actually baked into the vertices (production code
-    // never checks that `verify_basis` corresponds to the real frame). A
+    // never checks that `baked_basis` corresponds to the real frame). A
     // wrong hint must never flip a genuine collision into a false accept --
     // at worst it should only ever make the check MORE conservative.
     let s = Matrix4::from_euler_angles(std::f64::consts::FRAC_PI_2, 0.0, 0.0);
@@ -636,17 +636,17 @@ fn a_wrong_verify_basis_never_falsely_accepts_a_collision() {
         mesh_from(baked(&CANON_COLLIDING, &(s * occ_b)), meta(&occ_b)),
     ];
     let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
-    let wrongly_aware = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&wrong_basis));
+    let wrongly_aware = collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], Some(&wrong_basis));
     assert!(
         wrongly_aware.templates.is_empty(),
-        "a wrong verify_basis hint falsely accepted a genuine collision as a template"
+        "a wrong baked_basis hint falsely accepted a genuine collision as a template"
     );
 }
 
 #[test]
-fn a_wrong_verify_basis_does_not_coincidentally_accept_a_genuine_pairing() {
+fn a_wrong_baked_basis_does_not_coincidentally_accept_a_genuine_pairing() {
     // Companion: same GENUINE (non-colliding) pairing as
-    // `verify_basis_reconciles_a_caller_that_baked_positions_in_a_different_frame`,
+    // `baked_basis_reconciles_a_caller_that_baked_positions_in_a_different_frame`,
     // but with a wrong basis (a different rotation axis than the real
     // conversion). Only documents current behaviour -- a wrong hint failing
     // to reconcile a genuine pair (falling back to flat) is safe, just
@@ -669,7 +669,7 @@ fn a_wrong_verify_basis_does_not_coincidentally_accept_a_genuine_pairing() {
         mesh_from(baked(&CANON, &(s * occ_b)), meta(&occ_b)),
     ];
     let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
-    let wrongly_aware = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&wrong_basis));
+    let wrongly_aware = collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], Some(&wrong_basis));
     assert!(
         wrongly_aware.templates.is_empty(),
         "a wrong basis must fail to reconcile (flat), never reconcile by coincidence"
@@ -924,10 +924,10 @@ fn dont_bake_empty_occurrence_refs_recompose_like_materialized() {
 }
 
 #[test]
-fn a_singular_verify_basis_refuses_rather_than_panicking_or_hanging() {
+fn a_singular_baked_basis_refuses_rather_than_panicking_or_hanging() {
     // Companion to the wrong-basis tests above: a caller-supplied basis that is
     // singular (non-invertible) cannot be conjugated with at all, so the whole
-    // collation is refused (see `a_singular_verify_basis_rejects_instead_of_\
+    // collation is refused (see `a_singular_baked_basis_rejects_instead_of_\
     // comparing_unconjugated`) — a `diag_warn!`, not a panic and not a hang.
     // What this one pins is the direction that matters either way: a singular
     // basis must never flip a genuine collision into a false accept, and every
@@ -950,9 +950,9 @@ fn a_singular_verify_basis_refuses_rather_than_panicking_or_hanging() {
         mesh_from(baked(&CANON_COLLIDING, &occ_b), meta(&occ_b)),
     ];
     let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
-    let without_basis = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], None);
+    let without_basis = collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], None);
     let with_singular_basis =
-        collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&singular_basis));
+        collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], Some(&singular_basis));
     assert_eq!(without_basis.templates.len(), 0, "genuine collision, no basis");
     assert_eq!(
         with_singular_basis.templates.len(),
@@ -963,7 +963,7 @@ fn a_singular_verify_basis_refuses_rather_than_panicking_or_hanging() {
 }
 
 #[test]
-fn a_singular_verify_basis_counts_the_placeholders_the_whole_refusal_drops() {
+fn a_singular_baked_basis_counts_the_placeholders_the_whole_refusal_drops() {
     // The whole-input refusal above returns "every drawable mesh, flat". A
     // pose-only (#1623 don't-bake) placeholder is not drawable, so it is in
     // neither `templates` nor `flat_indices` — the same disappearance every
@@ -987,7 +987,7 @@ fn a_singular_verify_basis_counts_the_placeholders_the_whole_refusal_drops() {
     ];
     let singular = Matrix4::<f64>::zeros();
     assert!(singular.try_inverse().is_none(), "fixture must actually be singular");
-    let collated = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&singular));
+    let collated = collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], Some(&singular));
     assert_eq!(collated.templates.len(), 0, "the whole collation is refused");
     assert_eq!(collated.flat_indices, vec![0], "only the materialized member can draw");
     assert_eq!(
@@ -1642,8 +1642,8 @@ fn verify_recomposition_genuine_match_still_clears_the_tolerance() {
 }
 
 #[test]
-fn a_singular_verify_basis_rejects_instead_of_comparing_unconjugated() {
-    // `verify_basis` is inverted to build the conjugation `S · rel · S⁻¹`. A
+fn a_singular_baked_basis_rejects_instead_of_comparing_unconjugated() {
+    // `baked_basis` is inverted to build the conjugation `S · rel · S⁻¹`. A
     // singular basis has no inverse, and the code silently degraded to "no
     // basis given" — comparing an UNCONJUGATED `rel` against baked vertices the
     // caller just said are in another frame. That is the one comparison known
@@ -1667,17 +1667,17 @@ fn a_singular_verify_basis_rejects_instead_of_comparing_unconjugated() {
     ];
     let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
     assert_eq!(
-        collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], None).templates.len(),
+        collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], None).templates.len(),
         1,
         "control: with no basis this pairing verifies and instances"
     );
 
     let singular = Matrix4::zeros();
-    let rejected = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&singular));
+    let rejected = collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], Some(&singular));
     assert_eq!(
         rejected.templates.len(),
         0,
-        "a singular verify_basis must reject, not silently compare unconjugated"
+        "a singular baked_basis must reject, not silently compare unconjugated"
     );
     assert_eq!(rejected.flat_indices, vec![0, 1], "both members still drawn, flat");
 }
@@ -1978,4 +1978,136 @@ fn a_refused_group_encodes_as_singleton_templates() {
     routed.flat_indices.clear();
     let dec = decode_instanced(&encode_refs(&refs, &routed)).expect("decodes");
     assert_eq!(dec.templates.len(), 0);
+}
+
+/// #4118: the basis conjugates the EMITTED `rel`, not only the check.
+///
+/// Before this, the basis was verify-only: `collate_refs_in_basis` built
+/// `B · rel · B⁻¹`, handed it to `verify_pairing`, discarded it, and emitted the
+/// unconjugated native `rel`. That was enough for the one caller of the day
+/// (glTF, which ignores the emitted `rel` and recomputes from `InstanceMeta`)
+/// and did nothing at all for the callers that consume it — the shard encoder
+/// and the Parquet writer. Assert the shipped matrix directly, against a
+/// separately computed `B · rel · B⁻¹`, so "wired but inert" cannot pass.
+#[test]
+fn the_emitted_rel_is_expressed_in_the_callers_basis() {
+    let s = Matrix4::from_euler_angles(std::f64::consts::FRAC_PI_2, 0.0, 0.0);
+    let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4118,
+        instanceable: true,
+    };
+    let meshes = [
+        mesh_from(baked(&CANON, &(s * occ_a)), meta(&occ_a)),
+        mesh_from(baked(&CANON, &(s * occ_b)), meta(&occ_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+
+    let aware = collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], Some(&s));
+    assert_eq!(aware.templates.len(), 1, "the group must instance at all");
+    let occ = aware.templates[0]
+        .occurrences
+        .iter()
+        .find(|o| o.mesh_index == 1)
+        .expect("occurrence 1 is in the group");
+
+    let rel_native = occ_b * occ_a.try_inverse().unwrap();
+    let expected = s * rel_native * s.try_inverse().unwrap();
+    for r in 0..4 {
+        for c in 0..4 {
+            assert!(
+                (occ.transform[r * 4 + c] as f64 - expected[(r, c)]).abs() < 1e-5,
+                "emitted rel[{r}][{c}] is {} but `B · rel · B⁻¹` is {} — the basis \
+                 reached the check and not the output",
+                occ.transform[r * 4 + c],
+                expected[(r, c)],
+            );
+        }
+    }
+    // And it is NOT the native `rel`: without this the assertion above could be
+    // satisfied by a basis that happened to commute with `rel`, which would make
+    // the whole fixture unable to observe the change.
+    let native_differs = (0..16).any(|i| {
+        (occ.transform[i] as f64 - rel_native[(i / 4, i % 4)]).abs() > 1e-3
+    });
+    assert!(
+        native_differs,
+        "fixture is vacuous: `B` commutes with this `rel`, so conjugating it \
+         changes nothing and the test cannot fail"
+    );
+
+    // The former public entry point promised a verify-only basis. Keep that
+    // contract for downstream Rust callers while the new API opts into baked-
+    // frame emission.
+    let legacy = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&s));
+    let legacy_occ = legacy.templates[0]
+        .occurrences
+        .iter()
+        .find(|o| o.mesh_index == 1)
+        .expect("legacy occurrence 1 is in the group");
+    for r in 0..4 {
+        for c in 0..4 {
+            assert!(
+                (legacy_occ.transform[r * 4 + c] as f64 - rel_native[(r, c)]).abs() < 1e-5,
+                "the compatibility API must keep emitting native rel[{r}][{c}]"
+            );
+        }
+    }
+}
+
+/// The other direction, and the guard for the two browser callers: `None` means
+/// no multiplication happens, so the shard bytes are provably unchanged.
+///
+/// `gpu_meshes/batch.rs` passes `site_local_rotation: None` and gates instancing
+/// on `!needs_shift`, so the browser never holds a site-rotated vertex and must
+/// keep getting a native-frame `rel` by the IFNS wire spec.
+#[test]
+fn a_none_basis_emits_the_native_rel_unchanged() {
+    let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4119,
+        instanceable: true,
+    };
+    let meshes = [
+        mesh_from(baked(&CANON, &occ_a), meta(&occ_a)),
+        mesh_from(baked(&CANON, &occ_b), meta(&occ_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+
+    let collated = collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], None);
+    assert_eq!(collated.templates.len(), 1);
+    let occ = collated.templates[0]
+        .occurrences
+        .iter()
+        .find(|o| o.mesh_index == 1)
+        .expect("occurrence 1 is in the group");
+    let rel_native = occ_b * occ_a.try_inverse().unwrap();
+    for r in 0..4 {
+        for c in 0..4 {
+            assert!(
+                (occ.transform[r * 4 + c] as f64 - rel_native[(r, c)]).abs() < 1e-6,
+                "a None basis must emit the native rel verbatim; [{r}][{c}] moved \
+                 from {} to {}",
+                rel_native[(r, c)],
+                occ.transform[r * 4 + c],
+            );
+        }
+    }
+    // Byte-identity with the `collate_refs` wrapper the browser actually calls.
+    let via_wrapper = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        via_wrapper.templates[0].occurrences[1].transform,
+        collated.templates[0].occurrences[1].transform,
+        "collate_refs and an explicit None basis must be the same call"
+    );
 }

@@ -100,7 +100,7 @@ pub(super) fn local_points(source: &mut Source<'_>, product: &DecodedEntity,
         || (0..3).any(|i| (0..3).any(|j| (dot(columns[i], columns[j]) - if i==j {1.} else {0.}).abs()>1e-10)) {
         return Err("Evaluated appearance requires a finite rigid product placement".into());
     }
-    let rtc: [f64;3] = if context.meta.needs_shift { context.meta.rtc_offset.into() } else { [0.;3] };
+    let rtc: [f64;3] = context.meta.frame.rtc_offset().into();
     mesh.positions.chunks_exact(3).map(|p| {
         let delta = std::array::from_fn(|i| f64::from(p[i])+mesh.origin[i]+rtc[i]-transform[12+i]);
         let point = columns.map(|axis| dot(axis,delta)/scale);

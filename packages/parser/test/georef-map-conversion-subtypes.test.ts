@@ -115,7 +115,7 @@ describe('MAP_CONVERSION_TYPE_NAMES tracks the schema', () => {
 });
 
 describe('extractGeoreferencingOnDemand reads IfcMapConversionScaled', () => {
-  it('gives IFCMAPCONVERSIONSCALED the same georeference as IFCMAPCONVERSION', async () => {
+  it('keeps unit factors transform-equivalent to IFCMAPCONVERSION', async () => {
     const plain = await storeFromIfc(`${HEADER}\n#38=IFCMAPCONVERSION(${BASE_ATTRS});`);
     const scaled = await storeFromIfc(`${HEADER}\n#38=IFCMAPCONVERSIONSCALED(${BASE_ATTRS},1.,1.,1.);`);
 
@@ -128,7 +128,17 @@ describe('extractGeoreferencingOnDemand reads IfcMapConversionScaled', () => {
 
     const scaledGeoref = extractGeoreferencingOnDemand(scaled);
     expect(scaledGeoref?.source).toBe('mapConversion');
-    expect(scaledGeoref?.mapConversion).toEqual(plainGeoref?.mapConversion);
+    expect(plainGeoref?.mapConversion).toMatchObject({
+      factorX: undefined,
+      factorY: undefined,
+      factorZ: undefined,
+    });
+    expect(scaledGeoref?.mapConversion).toEqual({
+      ...plainGeoref?.mapConversion,
+      factorX: 1,
+      factorY: 1,
+      factorZ: 1,
+    });
     expect(scaledGeoref?.transformMatrix).toEqual(plainGeoref?.transformMatrix);
   });
 

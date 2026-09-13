@@ -454,10 +454,18 @@ export class IfcAPI {
     exportJson(content: Uint8Array, pretty: boolean, include_properties: boolean, include_quantities: boolean): Uint8Array;
     /**
      * Export **JSON-LD** (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART
-     * IFC4 OWL default. `included` is an express-id isolation filter mirroring the
-     * OBJ/glTF/STEP exporters (empty ⇒ all entities).
+     * IFC4 OWL default.
+     *
+     * `included` is an express-id isolation filter mirroring `exportObj` /
+     * `exportGlb`, and carries the same null-vs-empty distinction across the wasm
+     * boundary: omit it (`undefined`) for "no isolation filter" (every entity is
+     * emitted); pass an empty `Uint32Array` for "isolation is ACTIVE and currently
+     * matches nothing", which emits an empty `@graph`. Collapsing the two — as a
+     * bare `Uint32Array` parameter would force a caller to do — silently exported
+     * the whole model when a filter matched nothing (#4659, the JSON-LD twin of
+     * #4483/#4484). A non-empty `Uint32Array` is the ordinary allowlist.
      */
-    exportJsonld(content: Uint8Array, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included: Uint32Array): Uint8Array;
+    exportJsonld(content: Uint8Array, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included?: Uint32Array | null): Uint8Array;
     /**
      * Build a Google-Earth-ready **KMZ** (`Uint8Array`) straight from the viewer's
      * already-produced meshes — the working path (#1427). The model is embedded as
@@ -516,15 +524,23 @@ export class IfcAPI {
      * is genuinely needed.
      *
      * `schema` is the FILE_SCHEMA label to write (empty ⇒ preserve the source schema).
-     * `included` is an express-id allowlist (empty ⇒ whole model); when set, the forward
-     * `#`-reference closure is added so the subset never dangles a reference.
+     *
+     * `included` is an express-id allowlist carrying the same null-vs-empty
+     * distinction as `exportObj` / `exportGlb`: omit it (`undefined`) for "no
+     * isolation filter" (whole model); pass an empty `Uint32Array` for "isolation
+     * is ACTIVE and currently matches nothing", which writes a header-only file
+     * with an empty `DATA;` section. Collapsing the two — as a bare `Uint32Array`
+     * parameter would force a caller to do — silently exported the whole model
+     * when a filter matched nothing (#4659, the STEP twin of #4483/#4484). When
+     * set, the forward `#`-reference closure is added so the subset never dangles
+     * a reference.
      * `mutations_json` carries `MutablePropertyView` edits (attribute updates +
      * property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
      * A non-empty but malformed `mutations_json` throws rather than silently
      * exporting the model with none of the caller's edits applied — mirrors
      * `exportGlb`'s and `exportMerged`'s fail-closed contract on this same API.
      */
-    exportStep(content: Uint8Array, schema: string, included: Uint32Array, mutations_json: string): Uint8Array;
+    exportStep(content: Uint8Array, schema: string, included: Uint32Array | null | undefined, mutations_json: string): Uint8Array;
     /**
      * Export **OpenUSD** (`.usda` ASCII): a real Z-up USD stage — spatial hierarchy of
      * `Xform` prims, `UsdGeomMesh` geometry, `UsdPreviewSurface` materials, IFC
@@ -560,7 +576,9 @@ export class IfcAPI {
      * CANONICAL styles flatten. Returns the exact `styles` event payload the
      * serial path emits. Runs on any worker with `setEntityIndex` installed.
      * Span arguments are `[id, start, len]` triples; `plane_angle_to_radians`
-     * comes from the meta event.
+     * comes from the meta event. `orphanColors` / `geomColors` carry exactly
+     * four floats per id in `orphanIds` / `geomIds`; any other length throws
+     * before either column is read.
      */
     finalizePrepassStyles(data: Uint8Array, orphan_ids: Uint32Array, orphan_colors: Float32Array, geom_ids: Uint32Array, geom_colors: Float32Array, colour_map_spans: Uint32Array, material_def_spans: Uint32Array, rel_material_spans: Uint32Array, void_spans: Uint32Array, fills_spans: Uint32Array, aggregate_spans: Uint32Array, plane_angle_to_radians: number): any;
     /**
@@ -848,6 +866,12 @@ export class IfcAPI {
      * Idempotent in the sense that repeated calls REPLACE the cache —
      * supports the parser-worker pattern of reusing one IfcAPI across
      * multiple loads with different files.
+     *
+     * Throws when the three columns disagree in length. Every call is a
+     * content swap, a rejected one included: the previous file's index,
+     * content-scoped caches and pipeline diagnostics are dropped before the
+     * error is raised, and a rejected or empty index leaves no index, so the
+     * next batch scans the bytes it is given.
      */
     setEntityIndex(ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array): void;
     /**
@@ -1014,7 +1038,9 @@ export class MeshCollection {
      */
     get(index: number): MeshDataJs | undefined;
     /**
-     * Check if RTC offset is significant (>10km)
+     * Check if an RTC offset was applied to these meshes (any non-zero
+     * component). It can be inside 10 km: the placement-bounds fallback
+     * re-bases on the bbox centre when a corner is past 10 km (#4643).
      */
     hasRtcOffset(): boolean;
     /**
@@ -1926,7 +1952,12 @@ export function intersection2d(a: Contours2D, b: Contours2D): Contours2D;
  *
  * `positions` is flat XYZ; `indices` is flat triangle indices. `axis` is
  * 0/1/2 = x/y/z (the cut axis, WebGL Y-up). Returns `undefined` when the mesh
- * has no triangles or projects to nothing.
+ * has no triangles or projects to nothing: the element has no footprint.
+ *
+ * THROWS when the outline was not computed: an `axis` outside 0..=2, or a
+ * mesh with more valid projected triangles than the overlay budget (50 000).
+ * The viewer's outline provider catches the throw and draws its TypeScript
+ * silhouette for that mesh.
  *
  * ```javascript
  * const outline = meshOutline2d(positions, indices, 1, false); // axis 1 = y
@@ -1977,10 +2008,17 @@ export function resolve2d(a: Contours2D): Contours2D;
  * meaningless volumes with a plausible `sumErrorRel`, so the closure proof
  * above is the caller's responsibility and not a formality.
  *
+ * Returns `undefined` when the mesh encloses no volume (no triangles survive
+ * the filter above, or the shell is degenerate): there is nothing to split,
+ * and a result for it would report `pieceCount` 1, `sumErrorRel` 0 and
+ * `remainderFailed` false, a perfect split of nothing. A caller that gates
+ * on those numbers must treat `undefined` as "no split", not as "no error".
+ *
  * ```javascript
  * const split = splitMeshByZones(positions, indices, new Float64Array([
  *   0, 0, 0, 10, 10, 10, 0,
  * ]));
+ * if (!split) return; // the mesh encloses no volume
  * for (let i = 0; i < split.pieceCount; i++) {
  *   const piece = split.piece(i);
  *   // piece.zoneIndex, piece.positions, piece.indices, piece.volume
@@ -1989,7 +2027,7 @@ export function resolve2d(a: Contours2D): Contours2D;
  * split.free();
  * ```
  */
-export function splitMeshByZones(positions: Float64Array, indices: Uint32Array, zones: Float64Array, footprints?: Float64Array | null, footprint_counts?: Uint32Array | null): ZoneSplitJs;
+export function splitMeshByZones(positions: Float64Array, indices: Uint32Array, zones: Float64Array, footprints?: Float64Array | null, footprint_counts?: Uint32Array | null): ZoneSplitJs | undefined;
 
 /**
  * `a ∪ b`.
@@ -2131,7 +2169,7 @@ export interface InitOutput {
     readonly ifcapi_scanEntityIndexShardFromSource: (a: number, b: number, c: number) => number;
     readonly ifcapi_scanGeometryEntitiesFast: (a: number, b: number, c: number) => number;
     readonly ifcapi_setComputeGeometryHashes: (a: number, b: number, c: number) => void;
-    readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+    readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_setInstantiatedTypeIds: (a: number, b: number, c: number) => void;
     readonly ifcapi_setMappedInstancePlan: (a: number, b: number, c: number) => void;
     readonly ifcapi_setMaterialLayerIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;
@@ -2144,7 +2182,7 @@ export interface InitOutput {
     readonly ifcapi_simplifyMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
     readonly ifcapi_version: (a: number, b: number) => void;
     readonly intersection2d: (a: number, b: number) => number;
-    readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+    readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly meshcollection_buildingRotation: (a: number, b: number) => void;
     readonly meshcollection_diagnostics: (a: number) => number;
     readonly meshcollection_geometryAabbValues: (a: number) => number;

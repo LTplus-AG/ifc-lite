@@ -10,7 +10,7 @@ use super::classify::{
     BComponents,
 };
 use super::ray_parity::{operand_extent, point_inside};
-use super::{arrange, arrange_many, BoolOp, MultiArrangement, Tri};
+use super::{arrange, arrange_many, Arrangement, BoolOp, MultiArrangement, Tri};
 use num_traits::ToPrimitive;
 
 /// `∪ meshes` as a watertight triangle list — the N-ary union.
@@ -174,18 +174,7 @@ pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
 pub fn boolean_with_conformity(a: &[Tri], b: &[Tri], op: BoolOp) -> (Vec<Tri>, bool) {
     let arr = arrange(a, b);
     let conforming = arr.unrecovered == 0;
-    let vids = boolean_vids(&arr, a, b, op);
-    let out = vids
-        .into_iter()
-        .map(|t| {
-            [
-                to_f64_pt(&arr, t[0]),
-                to_f64_pt(&arr, t[1]),
-                to_f64_pt(&arr, t[2]),
-            ]
-        })
-        .collect();
-    (out, conforming)
+    (vids_to_tris(&arr, boolean_vids(&arr, a, b, op)), conforming)
 }
 
 /// `a − (∪ comps)` for PAIRWISE-DISJOINT, per-component-closed, OUTWARD-wound
@@ -204,9 +193,14 @@ pub fn boolean_with_conformity(a: &[Tri], b: &[Tri], op: BoolOp) -> (Vec<Tri>, b
 /// grid re-jitters carve vertices off shared planes, so cut N+1 re-cracks what
 /// cut N reconciled (many-void walls' compounding open edges) — and is
 /// ~N× cheaper on N box cutters.
-pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<Vec<Tri>> {
+///
+/// Returns `(difference, changed)`, the same shape as [`union_all`]'s
+/// `(union, conforming)`. `changed == false` means no cutter reaches the solid
+/// `a` bounds (every A sub-triangle kept, no B sub-triangle kept): the
+/// triangles are `a` re-tessellated, not a cut.
+pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<(Vec<Tri>, bool)> {
     if comps.is_empty() {
-        return Some(a.to_vec());
+        return Some((a.to_vec(), false));
     }
     let b_all: Vec<Tri> = comps.iter().flat_map(|c| c.iter().copied()).collect();
     let arr = arrange(a, &b_all);
@@ -219,13 +213,7 @@ pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<Vec<Tri>> {
     if arr.unrecovered > 0 {
         return None;
     }
-    let bc = BComponents::new(comps);
-    let vids = boolean_vids_components(&arr, a, &bc, BoolOp::Difference);
-    Some(
-        vids.into_iter()
-            .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
-            .collect(),
-    )
+    Some(classify_difference(&arr, a, comps))
 }
 
 /// Like [`difference_all`] but WITHOUT the conformity gate — returns the batched
@@ -233,17 +221,29 @@ pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<Vec<Tri>> {
 /// exact batched topology is cleaner than the sequential re-jitter on dense
 /// faceted-reveal walls (issue #098), but its centroid classification can
 /// over/under-cut volume, so the caller (`subtract_many`) VERIFIES the removed
-/// volume against a sequential reference before trusting it.
-pub fn difference_all_lenient(a: &[Tri], comps: &[&[Tri]]) -> Vec<Tri> {
+/// volume against a sequential reference before trusting it. The second
+/// element is the same `changed` bit [`difference_all`] returns.
+pub fn difference_all_lenient(a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool) {
     if comps.is_empty() {
-        return a.to_vec();
+        return (a.to_vec(), false);
     }
     let b_all: Vec<Tri> = comps.iter().flat_map(|c| c.iter().copied()).collect();
     let arr = arrange(a, &b_all);
+    classify_difference(&arr, a, comps)
+}
+
+/// The shared tail of [`difference_all`] and [`difference_all_lenient`]:
+/// classify `a − ∪comps` over `arr` and return `(triangles, changed)`.
+fn classify_difference(arr: &Arrangement, a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool) {
     let bc = BComponents::new(comps);
-    boolean_vids_components(&arr, a, &bc, BoolOp::Difference)
-        .into_iter()
-        .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
+    let (vids, changed) = boolean_vids_components(arr, a, &bc, BoolOp::Difference);
+    (vids_to_tris(arr, vids), changed)
+}
+
+/// Classified Vid triangles back to f64 coordinates.
+fn vids_to_tris(arr: &Arrangement, vids: Vec<[Vid; 3]>) -> Vec<Tri> {
+    vids.into_iter()
+        .map(|t| [to_f64_pt(arr, t[0]), to_f64_pt(arr, t[1]), to_f64_pt(arr, t[2])])
         .collect()
 }
 

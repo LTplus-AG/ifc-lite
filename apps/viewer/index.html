@@ -16,27 +16,20 @@
   </script>
 
   <script>
-    // Boot self-heal + stale Vercel skew-pin cleanup (issue #1457).
+    // Boot self-heal for a retired Vercel skew pin (issues #1457 and #4649).
     //
     // BACKGROUND. The site can run behind Vercel Skew Protection, which routes
-    // same-origin requests to the deployment named by a `__vdpl` cookie. We used
-    // to SET that cookie here to pin a session's lazily-fetched assets (the
-    // geometry WASM) to the deployment that served the page. That pin caused a
-    // worse failure than it prevented: a browser holding a `__vdpl` from an
-    // OLDER deployment loads the CURRENT HTML on a cross-site navigation
-    // (SameSite=Strict suppresses the cookie on the document request) but routes
-    // the content-hashed asset requests — which DO carry the cookie — to the old
-    // deployment, so every /assets/* 404s and the app never boots. It hit
-    // returning Edge/Brave users right after an asset-hash-rotating deploy
-    // (the Vite 7 -> 8 / Rolldown upgrade).
+    // same-origin requests to the deployment named by a `__vdpl` cookie. The old
+    // implementation set a SameSite=Strict cookie in this inline script. On a
+    // cross-site navigation the current HTML could arrive without that cookie,
+    // while the preload scanner raced ahead and fetched its assets with the old
+    // pin. Every /assets/* request then went to the wrong deployment and 404'd.
     //
-    // The original lazy-WASM-404 concern is already handled in app code (see
-    // @ifc-lite/geometry `wasm-asset-error` + apps/viewer `wasm-version-skew`:
-    // detect the rotated-asset 404 and reload once). So we no longer set a pin.
-    // Instead we ACTIVELY EXPIRE any lingering pin, and keep this INLINE boot
-    // self-heal as the backstop for a pinned/mid-rollout 404 that kills the
-    // entry module before any bundle code can run. The reload drops the pin so
-    // it always falls back to the current live deployment.
+    // Root middleware now sets a SameSite=Lax pin in the DOCUMENT RESPONSE
+    // HEADERS. Headers are processed before the response body and preload
+    // scanner, so the document and all content-hashed assets agree. Keep this
+    // INLINE self-heal as a bounded backstop: if retention has removed a pinned
+    // deployment, expire the readable pin before reloading onto current.
     (function () {
       var KEY = 'ifc-lite:boot-reload';
       var COUNT_COOKIE = 'ifc-lite-boot-reload';
@@ -55,9 +48,9 @@
         return parts.length >= 2 ? parts.slice(-2).join('.') : '';
       }
 
-      // Expire any Vercel skew pin in every scope it might have been set. Run on
-      // load (so a browser stuck on an old pin migrates to current) and before
-      // each self-heal reload (so the reload can't re-pin to the broken deploy).
+      // Expire a Vercel skew pin in every scope it might have been set. This is
+      // called only by the bounded failure recovery: clearing a healthy pin on
+      // every load would disable Skew Protection before lazy assets can use it.
       function clearPin() {
         try {
           document.cookie = '__vdpl=; path=/; Max-Age=0; SameSite=Lax';
@@ -116,11 +109,6 @@
         warn('app failed to boot (' + reason + '); reloading to recover');
         location.reload();
       }
-
-      // Proactively expire any lingering pin on every load, so a browser stuck on
-      // a still-alive old pin (which loads fine and so never trips the error path)
-      // migrates to the current deployment on its next navigation.
-      clearPin();
 
       // (a) Fast path: a content-hashed entry/preload module failed to load.
       // Capture phase — resource load errors on script/link elements don't bubble.

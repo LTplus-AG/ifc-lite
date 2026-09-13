@@ -38,7 +38,18 @@ impl IfcAPI {
         index_ids: &[u32], index_starts: &[u32], index_lengths: &[u32], index_classes: &[u8],
         compute_source_fingerprint: bool,
     ) -> Result<JsValue, JsValue> {
-        let prebuilt = ifc_lite_core::ColumnarEntityIndex::from_columns(index_ids, index_starts, index_lengths);
+        // Refuse unequal columns before the index build or the discovery walk
+        // reads any of them (#4614).
+        let refuse = |message: String| JsValue::from_str(&format!("buildPrePassStreamingSharded: {message}"));
+        if index_classes.len() != index_ids.len() {
+            return Err(refuse(format!(
+                "entity index columns disagree in length: ids {}, classes {}",
+                index_ids.len(),
+                index_classes.len()
+            )));
+        }
+        let prebuilt = ifc_lite_core::ColumnarEntityIndex::from_columns(index_ids, index_starts, index_lengths)
+            .map_err(|mismatch| refuse(mismatch.to_string()))?;
         self.pre_pass_streaming_impl(data, on_event, chunk_size, disabled_type_names,
             skip_type_geometry, Some(prebuilt), true,
             Some((index_ids, index_starts, index_lengths, index_classes)), compute_source_fingerprint)

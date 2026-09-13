@@ -134,7 +134,9 @@ describe('reproject helpers', () => {
     assert.ok(Math.abs(origin!.longitude - latLon!.lon) < 1e-9);
     assert.ok(Math.abs(origin!.latitude - latLon!.lat) < 1e-9);
     assert.strictEqual(origin!.ifcOriginHeight, 244);
-    assert.strictEqual(origin!.horizontalScale, 1);
+    assert.strictEqual(origin!.scaleX, 1);
+    assert.strictEqual(origin!.scaleY, 1);
+    assert.strictEqual(origin!.scaleZ, 1);
   });
 
   it('resolves EPSG:28992 and round-trips projected coordinates', async () => {

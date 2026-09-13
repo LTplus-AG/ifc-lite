@@ -32,13 +32,21 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser } from '@ifc-lite/parser';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { createBimContext } from '@ifc-lite/sdk';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { ExtensionHostService } from '@/services/extensions/host.js';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import { StatusBar } from './StatusBar.js';
-import { FIXTURE_MODEL, FIXTURE_STOREY_2, guid } from './anonymized-export/anonymized-export-fixture.test-support.js';
+import {
+  FIXTURE_MODEL,
+  FIXTURE_STOREY_2,
+  FIXTURE_WALL_A,
+  FIXTURE_WALL_B,
+  FIXTURE_WALL_C,
+  guid,
+} from './anonymized-export/anonymized-export-fixture.test-support.js';
 
 // StatusBar unconditionally mounts `<FlavorDialog>` / `<FlavorIndicator>`,
 // both of which call `useExtensionHost()` — stub the host rather than pull
@@ -97,8 +105,17 @@ function federatedModel(id: string, ifcDataStore: FederatedModel['ifcDataStore']
     loadedAt: 1,
     fileSize: 0,
     idOffset,
-    maxExpressId: 100_000 + idOffset,
+    maxExpressId: 100_000,
   } as FederatedModel;
+}
+
+function geometry(flatId: number, instancedOnlyId: number, totalTriangles = 1): GeometryResult {
+  return {
+    meshes: [{ expressId: flatId } as MeshData],
+    totalVertices: 3,
+    totalTriangles,
+    instancedGeometryHashes: new Map([[instancedOnlyId, 1n]]),
+  } as GeometryResult;
 }
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
@@ -141,6 +158,8 @@ beforeEach(async () => {
       ['m2', federatedModel('m2', otherStore, ID_OFFSET)],
     ]),
     selectedStoreys: new Set<number>([FIXTURE_STOREY_2]),
+    activeStorey: null,
+    selectedEntities: [],
   });
 });
 
@@ -148,19 +167,98 @@ describe('StatusBar — federation-space storey element count', () => {
   it('counts a non-active model\'s selected storey through its OWN hierarchy', () => {
     const container = render();
 
-    // No `geometryResult` is set (mesh-derived `stats.elements` is 0), so a
-    // correct resolution renders "2 / 0 elements" — the storey's own count
-    // up front, with the (irrelevant, zero) mesh total as the muted
-    // denominator. The bug produced "0 elements" outright: `count` stayed 0
-    // (nothing found in the active model's hierarchy) so `count ||
-    // stats.elements` fell through to the equally-0 total, and the two being
-    // equal suppressed the "/ N" fraction entirely.
+    // No `geometryResult` is set on either model, so the shape half of the
+    // object rule is a no-op (see `lib/object-count.ts`) and both numbers are
+    // schema-only: the storey's own 2 walls up front, and 4 physical objects
+    // across the two models as the muted denominator. The bug this test was
+    // written for produced "0 elements" outright, with no "/ N" fraction at
+    // all: nothing was found in the ACTIVE model's hierarchy, so the storey
+    // count stayed 0 and fell through to the whole-model total.
     assert.ok(
-      container.textContent?.includes('2 / 0 elements'),
+      container.textContent?.includes('2 / 4 elements'),
       `element count must reflect the selected storey's own 2 elements, resolved via its ` +
-        `own (non-active) model's spatial hierarchy — not a fallback to the active model's ` +
-        `(zero) total from a failed lookup against a hierarchy that has no storey at that id. ` +
+        `own (non-active) model's spatial hierarchy — not a fallback to the whole-model ` +
+        `total from a failed lookup against a hierarchy that has no storey at that id. ` +
         `Got: ${JSON.stringify(container.textContent)}`,
     );
+  });
+
+  it('resolves a global storey id and counts flat plus instanced-only geometry in its model', async () => {
+    const collidingActive = await parseModel(
+      MINIMAL_ACTIVE_MODEL
+        .replace(`#4=IFCBUILDINGSTOREY`, `#${FIXTURE_STOREY_2}=IFCBUILDINGSTOREY`)
+        .replace(`,(#4));`, `,(#${FIXTURE_STOREY_2}));`),
+    );
+    const otherStore = await parseModel(FIXTURE_MODEL);
+    const m1 = federatedModel('m1', collidingActive, 0);
+    const m2 = federatedModel('m2', otherStore, ID_OFFSET);
+    m2.geometryResult = geometry(
+      ID_OFFSET + FIXTURE_WALL_B,
+      ID_OFFSET + FIXTURE_WALL_C,
+      3,
+    );
+    m2.geometryResult.instancedGeometryHashes?.set(ID_OFFSET + FIXTURE_WALL_A, 2n);
+    useViewerStore.setState({
+      ifcDataStore: collidingActive,
+      activeModelId: 'm1',
+      models: new Map([['m1', m1], ['m2', m2]]),
+      selectedStoreys: new Set([ID_OFFSET + FIXTURE_STOREY_2]),
+      activeStorey: null,
+      selectedEntities: [],
+    });
+
+    const container = render();
+    assert.ok(
+      container.textContent?.includes('2 / 3 elements'),
+      'the offset selection belongs to m2; its two storey walls exclude the shaped wall elsewhere',
+    );
+  });
+
+  it('counts every constituent when a unified storey collapses colliding local ids', async () => {
+    const firstStore = await parseModel(FIXTURE_MODEL);
+    const secondStore = await parseModel(FIXTURE_MODEL);
+    useViewerStore.setState({
+      ifcDataStore: firstStore,
+      activeModelId: 'm1',
+      models: new Map([
+        ['m1', federatedModel('m1', firstStore, 0)],
+        ['m2', federatedModel('m2', secondStore, ID_OFFSET)],
+      ]),
+      // A unified hierarchy row stores both model refs but its numeric Set
+      // necessarily collapses the shared local express id to one entry.
+      selectedStoreys: new Set([FIXTURE_STOREY_2]),
+      activeStorey: { modelId: 'm1', expressId: FIXTURE_STOREY_2 },
+      selectedEntities: [
+        { modelId: 'm1', expressId: FIXTURE_STOREY_2 },
+        { modelId: 'm2', expressId: FIXTURE_STOREY_2 },
+      ],
+    });
+
+    const container = render();
+    assert.ok(
+      container.textContent?.includes('4 / 8 elements'),
+      'both model-aware storey refs must contribute even though selectedStoreys contains one id',
+    );
+  });
+
+  it('sums triangle totals across federated models', async () => {
+    const firstStore = await parseModel(MINIMAL_ACTIVE_MODEL);
+    const secondStore = await parseModel(MINIMAL_ACTIVE_MODEL);
+    const m1 = federatedModel('m1', firstStore, 0);
+    const m2 = federatedModel('m2', secondStore, ID_OFFSET);
+    m1.geometryResult = geometry(1, 2, 2);
+    m2.geometryResult = geometry(ID_OFFSET + 1, ID_OFFSET + 2, 3);
+    useViewerStore.setState({
+      ifcDataStore: firstStore,
+      geometryResult: m1.geometryResult,
+      activeModelId: 'm1',
+      models: new Map([['m1', m1], ['m2', m2]]),
+      selectedStoreys: new Set<number>(),
+      activeStorey: null,
+      selectedEntities: [],
+    });
+
+    const container = render();
+    assert.ok(container.textContent?.includes('5 tris'));
   });
 });

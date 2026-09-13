@@ -20,8 +20,8 @@ import {
 } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
-import { getEffectiveGeoreference, getEffectiveHorizontalScale, hasStandardGeoreferencing, type GeorefMutationDataLike } from '../../lib/geo/effective-georef.js';
-import { resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
+import { getEffectiveGeoreference, hasStandardGeoreferencing, type GeorefMutationDataLike } from '../../lib/geo/effective-georef.js';
+import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
 import { effectiveMapConversionForGeometry } from '../../lib/geo/map-absolute.js';
 import { resolveProjection } from '../../lib/geo/reproject.js';
 import {
@@ -34,6 +34,7 @@ import {
   type AffineTransform3D,
   type EntityBoundsAccumulator,
 } from './federationAlignAabb.js';
+import { alignNormals } from './alignment-normals.js';
 import proj4 from 'proj4';
 
 type FederatedGeometryResult = NonNullable<FederatedModel['geometryResult']>;
@@ -64,16 +65,19 @@ function effectiveConv(georef: ModelGeoref): MapConversion {
   );
 }
 
-function getAxis(georef: ModelGeoref): { a: number; o: number; scale: number; denom: number } {
+function getAxis(georef: ModelGeoref): {
+  a: number; o: number; scaleX: number; scaleY: number; scaleZ: number; denom: number;
+} {
   const conversion = effectiveConv(georef);
   const a = conversion.xAxisAbscissa ?? 1;
   const o = conversion.xAxisOrdinate ?? 0;
   // Use the effective horizontal scale: viewer geometry is already in metres,
   // so applying IfcMapConversion.Scale raw would double-scale — see issue #595.
-  const mapUnitScale = resolveMapUnitToMetreScale(georef.projectedCRS.mapUnitScale, georef.lengthUnitScale ?? 1);
-  const scale = getEffectiveHorizontalScale(conversion.scale, mapUnitScale, georef.lengthUnitScale ?? 1);
+  const lengthUnitScale = georef.lengthUnitScale ?? 1;
+  const mapUnitScale = resolveMapUnitToMetreScale(georef.projectedCRS.mapUnitScale, lengthUnitScale);
+  const { x: scaleX, y: scaleY, z: scaleZ } = getEffectiveAxisScales(conversion, mapUnitScale, lengthUnitScale);
   const denom = Math.max(a * a + o * o, 1e-12);
-  return { a, o, scale, denom };
+  return { a, o, scaleX, scaleY, scaleZ, denom };
 }
 
 export function extractModelGeoref(
@@ -156,37 +160,40 @@ function buildGeorefAlignmentTransform(source: ModelGeoref, reference: ModelGeor
   const refConv = effectiveConv(reference);
   const sourceAxis = getAxis(source);
   const refAxis = getAxis(reference);
-  const refDenom = refAxis.scale * refAxis.denom;
-  if (Math.abs(refDenom) < 1e-12) return null;
+  const refDenomX = refAxis.scaleX * refAxis.denom;
+  const refDenomY = refAxis.scaleY * refAxis.denom;
+  if (Math.abs(refDenomX) < 1e-12 || Math.abs(refDenomY) < 1e-12
+    || Math.abs(refAxis.scaleZ) < 1e-12) return null;
 
   const sourceMapUnitScale = getMapUnitScale(source);
   const refMapUnitScale = getMapUnitScale(reference);
   const sourceOffset = totalYupOffset(source.coordinateInfo);
   const refOffset = totalYupOffset(reference.coordinateInfo);
 
-  const eVx = sourceAxis.scale * sourceAxis.a;
-  const eVz = sourceAxis.scale * sourceAxis.o;
+  const eVx = sourceAxis.scaleX * sourceAxis.a;
+  const eVz = sourceAxis.scaleY * sourceAxis.o;
   const eC = sourceConv.eastings * sourceMapUnitScale
-    + sourceAxis.scale * (sourceAxis.a * sourceOffset.x + sourceAxis.o * sourceOffset.z)
+    + sourceAxis.scaleX * sourceAxis.a * sourceOffset.x
+    + sourceAxis.scaleY * sourceAxis.o * sourceOffset.z
     - refConv.eastings * refMapUnitScale;
 
-  const nVx = sourceAxis.scale * sourceAxis.o;
-  const nVz = -sourceAxis.scale * sourceAxis.a;
+  const nVx = sourceAxis.scaleX * sourceAxis.o;
+  const nVz = -sourceAxis.scaleY * sourceAxis.a;
   const nC = sourceConv.northings * sourceMapUnitScale
-    + sourceAxis.scale * (sourceAxis.o * sourceOffset.x - sourceAxis.a * sourceOffset.z)
+    + sourceAxis.scaleX * sourceAxis.o * sourceOffset.x
+    - sourceAxis.scaleY * sourceAxis.a * sourceOffset.z
     - refConv.northings * refMapUnitScale;
 
   const hC = sourceConv.orthogonalHeight * sourceMapUnitScale
-    + sourceOffset.y
+    + sourceAxis.scaleZ * sourceOffset.y
     - refConv.orthogonalHeight * refMapUnitScale;
 
-  const invRefDenom = 1 / refDenom;
-  const xVx = (refAxis.a * eVx + refAxis.o * nVx) * invRefDenom;
-  const xVz = (refAxis.a * eVz + refAxis.o * nVz) * invRefDenom;
-  const xC = (refAxis.a * eC + refAxis.o * nC) * invRefDenom - refOffset.x;
+  const xVx = (refAxis.a * eVx + refAxis.o * nVx) / refDenomX;
+  const xVz = (refAxis.a * eVz + refAxis.o * nVz) / refDenomX;
+  const xC = (refAxis.a * eC + refAxis.o * nC) / refDenomX - refOffset.x;
 
-  const yVx = (-refAxis.o * eVx + refAxis.a * nVx) * invRefDenom;
-  const yVz = (-refAxis.o * eVz + refAxis.a * nVz) * invRefDenom;
+  const yVx = (-refAxis.o * eVx + refAxis.a * nVx) / refDenomY;
+  const yVz = (-refAxis.o * eVz + refAxis.a * nVz) / refDenomY;
   // NOTE: the refOffset handling is intentionally asymmetric between X and Z and
   // must NOT be "symmetrised". refOffset is subtracted from the FINAL viewer
   // coordinate on every axis. X maps positively (`tx = +xC`), so its offset is
@@ -194,7 +201,7 @@ function buildGeorefAlignmentTransform(source: ModelGeoref, reference: ModelGeor
   // offset is applied after the negation, leaving yC offset-free here. This
   // matches alignGeometryAcrossCrs: alignedZ = refWorldZ - refOffset.z with
   // refWorldZ = -ifcYr. Folding -refOffset.z into yC would flip its sign.
-  const yC = (-refAxis.o * eC + refAxis.a * nC) * invRefDenom;
+  const yC = (-refAxis.o * eC + refAxis.a * nC) / refDenomY;
 
   return {
     m00: xVx,
@@ -202,9 +209,9 @@ function buildGeorefAlignmentTransform(source: ModelGeoref, reference: ModelGeor
     m02: xVz,
     tx: xC,
     m10: 0,
-    m11: 1,
+    m11: sourceAxis.scaleZ / refAxis.scaleZ,
     m12: 0,
-    ty: hC - refOffset.y,
+    ty: hC / refAxis.scaleZ - refOffset.y,
     m20: -yVx,
     m21: 0,
     m22: -yVz,
@@ -278,30 +285,9 @@ function applyAlignmentTransformAndUpdateBounds(
     // local-frame origin so downstream consumers don't re-add it.
     if (o) mesh.origin = [0, 0, 0];
 
-    // Rotate normals by the transform's 3×3 linear part (translation omitted)
-    // and renormalize. CRS alignment is a rigid rotation, so the linear part
-    // itself is the correct transform for normals; degenerate results from
-    // zero-length or non-finite inputs are left in place.
     const normals = mesh.normals;
     if (normals && normals.length >= 3) {
-      for (let i = 0; i < normals.length; i += 3) {
-        const nx = normals[i];
-        const ny = normals[i + 1];
-        const nz = normals[i + 2];
-        if (!Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(nz)) {
-          continue;
-        }
-        const rx = transform.m00 * nx + transform.m01 * ny + transform.m02 * nz;
-        const ry = transform.m10 * nx + transform.m11 * ny + transform.m12 * nz;
-        const rz = transform.m20 * nx + transform.m21 * ny + transform.m22 * nz;
-        const len = Math.sqrt(rx * rx + ry * ry + rz * rz);
-        if (!Number.isFinite(len) || len < 1e-12) {
-          continue;
-        }
-        normals[i] = rx / len;
-        normals[i + 1] = ry / len;
-        normals[i + 2] = rz / len;
-      }
+      alignNormals(normals, transform);
     }
   }
 
@@ -370,9 +356,9 @@ async function alignGeometryAcrossCrs(
   const sourceOffset = totalYupOffset(source.coordinateInfo);
   const refOffset = totalYupOffset(reference.coordinateInfo);
 
-  const refDenom = refAxis.scale * refAxis.denom;
-  if (Math.abs(refDenom) < 1e-12) return false;
-  const invRefDenom = 1 / refDenom;
+  const refDenomX = refAxis.scaleX * refAxis.denom;
+  const refDenomY = refAxis.scaleY * refAxis.denom;
+  if ([refDenomX, refDenomY, refAxis.scaleZ].some((value) => Math.abs(value) < 1e-12)) return false;
 
   // Map-absolute geometry (#2526): same per-model guard as the same-CRS path.
   const sourceConv = effectiveConv(source);
@@ -418,10 +404,12 @@ async function alignGeometryAcrossCrs(
 
     // IFC(source) → source projected (apply source MapConversion)
     const eS = sourceConv.eastings * sourceMapUnitScale
-      + sourceAxis.scale * (sourceAxis.a * ifcXs - sourceAxis.o * ifcYs);
+      + sourceAxis.a * sourceAxis.scaleX * ifcXs
+      - sourceAxis.o * sourceAxis.scaleY * ifcYs;
     const nS = sourceConv.northings * sourceMapUnitScale
-      + sourceAxis.scale * (sourceAxis.o * ifcXs + sourceAxis.a * ifcYs);
-    const hS = sourceConv.orthogonalHeight * sourceMapUnitScale + ifcZs;
+      + sourceAxis.o * sourceAxis.scaleX * ifcXs
+      + sourceAxis.a * sourceAxis.scaleY * ifcYs;
+    const hS = sourceConv.orthogonalHeight * sourceMapUnitScale + sourceAxis.scaleZ * ifcZs;
 
     // source projected → reference projected via proj4
     let eR: number;
@@ -441,9 +429,9 @@ async function alignGeometryAcrossCrs(
     // reference projected → IFC(reference): invert reference MapConversion
     const dE = eR - refConv.eastings * refMapUnitScale;
     const dN = nR - refConv.northings * refMapUnitScale;
-    const ifcXr = invRefDenom * (refAxis.a * dE + refAxis.o * dN);
-    const ifcYr = invRefDenom * (-refAxis.o * dE + refAxis.a * dN);
-    const ifcZr = hR - refConv.orthogonalHeight * refMapUnitScale;
+    const ifcXr = (refAxis.a * dE + refAxis.o * dN) / refDenomX;
+    const ifcYr = (-refAxis.o * dE + refAxis.a * dN) / refDenomY;
+    const ifcZr = (hR - refConv.orthogonalHeight * refMapUnitScale) / refAxis.scaleZ;
 
     // IFC(Z-up, reference) → world(Y-up) → viewer(Y-up, reference-local)
     return [ifcXr - refOffset.x, ifcZr - refOffset.y, -ifcYr - refOffset.z];

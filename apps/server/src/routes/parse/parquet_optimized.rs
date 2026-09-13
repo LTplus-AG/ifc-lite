@@ -13,7 +13,7 @@ use super::cache_keys::{
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::{
-    serialize_to_parquet_optimized_with_stats, OptimizedStats, VERTEX_MULTIPLIER,
+    baked_basis_zup, serialize_to_parquet_optimized_with_stats, OptimizedStats, VERTEX_MULTIPLIER,
 };
 use crate::types::{ModelMetadata, ProcessingStats};
 use crate::AppState;
@@ -23,7 +23,9 @@ use axum::{
     http::{header, StatusCode},
     response::Response,
 };
-use ifc_lite_processing::{extract_symbolic_data_with_provenance, process_geometry_filtered_with_quality};
+use ifc_lite_processing::{
+    extract_symbolic_data_with_provenance, process_geometry_filtered_with_quality, MeshCoordinateSpace,
+};
 use serde::Serialize;
 
 /// Response header containing metadata for optimized Parquet response.
@@ -33,7 +35,7 @@ pub struct OptimizedParquetMetadataHeader {
     pub metadata: ModelMetadata,
     pub stats: ProcessingStats,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mesh_coordinate_space: Option<String>,
+    pub mesh_coordinate_space: Option<MeshCoordinateSpace>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub site_transform: Option<Vec<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -184,45 +186,56 @@ pub async fn parse_parquet_optimized(
     let content = data;
     let opening_filter = query.opening_filter;
 
-    // Process on blocking thread pool (CPU-intensive). Extract the 2D symbol
-    // stream (IfcAnnotation + IfcGrid) alongside geometry for endpoint parity
-    // (issue #900) — it's cached and served via the symbolic fetch endpoint.
-    // Guard rides the blocking task (see parse_full).
-    let ((result, symbolic_data), _admission) = tokio::task::spawn_blocking(move || {
-        (
-            rayon::join(
+    // The parse, the 2D symbol stream (IfcAnnotation + IfcGrid, endpoint
+    // parity, issue #900) and the optimized serialization all run in this one
+    // blocking task, so none of it occupies an async worker. Guard rides the
+    // blocking task (see parse_full).
+    let cache_key_for_log = cache_key.clone();
+    let (result, symbolic_data, parquet_data, opt_stats, _admission) =
+        tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+            let (mut result, symbolic_data) = rayon::join(
                 || process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality),
                 || extract_symbolic_data_with_provenance(&content),
-            ),
-            admission_guard,
-        )
-    })
-    .await?;
+            );
+            drop(content);
+            // Don't include normals by default - client can compute them
+            // The frame `result`'s vertices were baked in (#4118): the
+            // collator's emitted `rel` is consumed directly by this route, so
+            // without it a site-rotated model's repeated shapes fail the
+            // residual check and fall back to content-hash dedup.
+            let basis = baked_basis_zup(
+                Some(result.mesh_coordinate_space),
+                result.site_transform.as_deref(),
+                result.metadata.coordinate_info.origin_shift,
+            );
+            let (parquet_data, opt_stats) =
+                serialize_to_parquet_optimized_with_stats(&result.meshes, false, Some(&basis))?;
+            // Nothing after this reads the meshes; free them here rather than
+            // hold the model across the cache writes below.
+            drop(std::mem::take(&mut result.meshes));
+            tracing::info!(
+                cache_key = %cache_key_for_log,
+                input_meshes = opt_stats.input_meshes,
+                unique_meshes = opt_stats.unique_meshes,
+                unique_materials = opt_stats.unique_materials,
+                mesh_reuse_ratio = opt_stats.mesh_reuse_ratio,
+                payload_size = parquet_data.len(),
+                "Optimized Parquet serialization complete"
+            );
+            Ok((result, symbolic_data, parquet_data, opt_stats, admission_guard))
+        })
+        .await??;
 
     // Cache the symbolic stream so the client can fetch it via
     // `GET /api/v1/parse/symbolic/{cache_key}`.
     cache_symbolic_data(&state.cache, &cache_key, &symbolic_data).await;
-
-    // Serialize to optimized Parquet (with deduplication, quantization, etc.)
-    // Don't include normals by default - client can compute them
-    let (parquet_data, opt_stats) =
-        serialize_to_parquet_optimized_with_stats(&result.meshes, false)?;
-
-    tracing::info!(
-        input_meshes = opt_stats.input_meshes,
-        unique_meshes = opt_stats.unique_meshes,
-        unique_materials = opt_stats.unique_materials,
-        mesh_reuse_ratio = opt_stats.mesh_reuse_ratio,
-        payload_size = parquet_data.len(),
-        "Optimized Parquet serialization complete"
-    );
 
     // Create metadata header
     let metadata_header = OptimizedParquetMetadataHeader {
         cache_key: cache_key.clone(),
         metadata: result.metadata,
         stats: result.stats,
-        mesh_coordinate_space: result.mesh_coordinate_space,
+        mesh_coordinate_space: Some(result.mesh_coordinate_space),
         site_transform: result.site_transform,
         building_transform: result.building_transform,
         optimization_stats: opt_stats,

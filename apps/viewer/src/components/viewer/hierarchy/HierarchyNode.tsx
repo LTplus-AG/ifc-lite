@@ -15,8 +15,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { openRepositionModels } from '@/lib/model-placement/commands';
 import { cn } from '@/lib/utils';
-import type { TreeNode } from './types';
-import { isSpatialContainer } from './types';
+import { isSpatialContainer, type TreeNode } from './types';
+import { CountBadgeTooltip } from './CountBadgeTooltip';
 import { IFC_ICON_CODEPOINTS, IFC_ICON_DEFAULT } from './ifc-icons';
 import { ModelRowTags } from './ModelRowTags';
 import { ModelTagGroupRow } from './ModelTagGroupRow';
@@ -389,7 +389,7 @@ export function HierarchyNode({
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              <p className="text-xs">{node.elementCount.toLocaleString()} {node.elementCount === 1 ? 'element' : 'elements'}</p>
+              <CountBadgeTooltip elementCount={node.elementCount} lines={node.countTooltipLines} summary={node.countSummary} />
             </TooltipContent>
           </Tooltip>
         )}

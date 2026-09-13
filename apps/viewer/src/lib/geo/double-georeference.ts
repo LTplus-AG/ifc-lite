@@ -38,7 +38,7 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 
 import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
-import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
+import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 
 export interface DoubleGeoreference {
   /** Model centre in IFC world metres, Z-up (X ≈ easting, Y ≈ northing). */
@@ -138,7 +138,7 @@ export function detectDoubleGeoreference(
   // Where a spec-strict tool would put the model, versus where its geometry
   // already sits in the map CRS. Mirrors `computeProjectedCenter` exactly —
   // including the `?? 1 / ?? 0` axis defaults and the effective (not raw)
-  // horizontal scale — so the quoted error is the one such a tool renders.
+  // per-axis scales — so the quoted error is the one such a tool renders.
   //
   // Deliberately NOT guarded against a non-finite axis or Scale. The guard
   // above does not inspect either, so a malformed file is still corrected on
@@ -146,9 +146,9 @@ export function detectDoubleGeoreference(
   // unknown distance" instead of suppressing the whole message. (#2526.)
   const abscissa = conversion.xAxisAbscissa ?? 1;
   const ordinate = conversion.xAxisOrdinate ?? 0;
-  const scale = getEffectiveHorizontalScale(conversion.scale, mapScale, lengthUnitScale);
-  const appliedE = easting + scale * (abscissa * ifcX - ordinate * ifcY);
-  const appliedN = northing + scale * (ordinate * ifcX + abscissa * ifcY);
+  const { x: scaleX, y: scaleY } = getEffectiveAxisScales(conversion, mapScale, lengthUnitScale);
+  const appliedE = easting + abscissa * scaleX * ifcX - ordinate * scaleY * ifcY;
+  const appliedN = northing + ordinate * scaleX * ifcX + abscissa * scaleY * ifcY;
 
   const rotationIsIdentity = Math.abs(abscissa - 1) < 1e-9 && Math.abs(ordinate) < 1e-9;
   // The tolerance is expressed as INDUCED POSITION ERROR, not as a fraction:
@@ -156,7 +156,7 @@ export function detectDoubleGeoreference(
   // easting is 24 km of drift and a fraction-based band would wave it through.
   // One metre at the model's own distance from the origin is what matters.
   const worldMagnitude = Math.hypot(ifcX, ifcY);
-  const scaleIsUnit = Math.abs(scale - 1) * worldMagnitude <= 1;
+  const scaleIsUnit = Math.max(Math.abs(scaleX - 1), Math.abs(scaleY - 1)) * worldMagnitude <= 1;
   const mapUnitScale = mapScale > 0 ? mapScale : 1;
   const lengthScale = lengthUnitScale > 0 ? lengthUnitScale : 1;
 

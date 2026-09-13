@@ -124,11 +124,12 @@ impl MaterialKey {
 fn serialize_to_parquet_optimized(
     meshes: &[MeshData],
     include_normals: bool,
+    baked_basis: Option<&ifc_lite_geometry::Matrix4<f64>>,
 ) -> Result<(Bytes, usize, usize), ParquetError> {
     // Rotation-aware dedup (#3575): occurrences of one representation at
     // DIFFERENT orientations. Content-hashing baked vertices (below) can
     // never merge these — rotation is baked into the vertex values.
-    let rotated_placements = collate_rotation_aware_placements(meshes);
+    let rotated_placements = collate_rotation_aware_placements(meshes, baked_basis);
 
     // Phase 1: Deduplicate meshes and materials
     let mut unique_meshes: Vec<&MeshData> = Vec::new();
@@ -465,11 +466,8 @@ fn assemble_optimized_output(
     index_parquet: &[u8],
 ) -> Result<Bytes, ParquetError> {
     check_optimized_section_lengths(
-        instance_parquet.len(),
-        mesh_parquet.len(),
-        material_parquet.len(),
-        vertex_parquet.len(),
-        index_parquet.len(),
+        instance_parquet.len(), mesh_parquet.len(), material_parquet.len(),
+        vertex_parquet.len(), index_parquet.len(),
     )?;
 
     let mut output = Vec::with_capacity(
@@ -557,9 +555,10 @@ pub struct OptimizedStats {
 pub fn serialize_to_parquet_optimized_with_stats(
     meshes: &[MeshData],
     include_normals: bool,
+    baked_basis: Option<&ifc_lite_geometry::Matrix4<f64>>,
 ) -> Result<(Bytes, OptimizedStats), ParquetError> {
     let (data, unique_mesh_count, unique_material_count) =
-        serialize_to_parquet_optimized(meshes, include_normals)?;
+        serialize_to_parquet_optimized(meshes, include_normals, baked_basis)?;
 
     let stats = OptimizedStats {
         input_meshes: meshes.len(),

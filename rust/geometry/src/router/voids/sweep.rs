@@ -5,11 +5,20 @@
 //! Post-cut hygiene for void subtraction (#1788): real-change detection and
 //! the stray-shard sweep against the original (pre-cut) host.
 
-use super::geom::{mesh_is_closed_exact, mesh_point, mesh_signed_volume, point_inside_mesh};
+use super::geom::{
+    mesh_is_closed_exact, mesh_point, mesh_signed_volume_about, point_inside_mesh, volume_reference,
+};
 use crate::{Mesh, Point3};
 
-/// Whether a boolean produced a REAL change against the pre-cut host: the
-/// triangle count moved, or the enclosed volume moved beyond noise.
+/// Whether a SINGLE-cutter boolean produced a REAL change against the pre-cut
+/// host: the triangle count moved, or the enclosed volume moved beyond noise.
+///
+/// Only `ClippingProcessor::subtract_mesh` needs this: the kernel's binary
+/// `subtract` returns a `Mesh` unconditionally, and `subtract_mesh` hands the
+/// host back un-cut in that same shape on every bail. The group path does not
+/// go through here: `subtract_mesh_many` returns `GroupCut`, whose `Cut` arm
+/// already carries the kernel's own "changed" bit, exact where this decoder
+/// is a heuristic.
 ///
 /// Triangle count alone misreads two opposite cases (#1788):
 ///  * an end/miter cut can replace a 12-tri box host with another 12-tri box —
@@ -32,12 +41,17 @@ use crate::{Mesh, Point3};
 /// of magnitude more (8.5% on the ISSUE_129 wedge); a real cut smaller than
 /// 0.1% of the host that ALSO keeps the triangle count identical stays on
 /// the (pre-existing) fallback path, no worse than before.
-pub(super) fn cut_changed_mesh(result: &Mesh, tris_before: usize, vol_before: f64) -> bool {
-    if result.triangle_count() != tris_before {
+///
+/// Both meshes are read about the host's one reference point, so a crack in
+/// an open host that the cut did not touch cancels (see
+/// [`mesh_signed_volume_about`], #4632).
+pub(super) fn cut_changed_mesh(result: &Mesh, host: &Mesh) -> bool {
+    if result.triangle_count() != host.triangle_count() {
         return true;
     }
-    let vol_after = mesh_signed_volume(result).abs();
-    let vol_before = vol_before.abs();
+    let reference = volume_reference(host);
+    let vol_before = mesh_signed_volume_about(host, &reference).abs();
+    let vol_after = mesh_signed_volume_about(result, &reference).abs();
     (vol_after - vol_before).abs() > vol_before.max(1.0e-9) * 1.0e-3
 }
 

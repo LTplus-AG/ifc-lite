@@ -76,8 +76,11 @@ impl ShapePlan {
     /// share, so a model with no repeats emits the v5 layout through the same
     /// path it always did rather than through a Shared plan that happens to be
     /// one-to-one.
-    pub(super) fn shared_shapes(meshes: &[MeshData]) -> Self {
-        let placements = collate_rotation_aware_placements(meshes);
+    pub(super) fn shared_shapes(
+        meshes: &[MeshData],
+        baked_basis: Option<&ifc_lite_geometry::Matrix4<f64>>,
+    ) -> Self {
+        let placements = collate_rotation_aware_placements(meshes, baked_basis);
         if placements.is_empty() {
             return Self::Identity;
         }

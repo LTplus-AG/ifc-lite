@@ -366,7 +366,14 @@ async fn issue_4064_cached_complete_preserves_georeferencing_bits() {
     );
     let geometry = crate::services::serialize_to_parquet(&[triangle]).unwrap();
     state.cache.set_bytes(&format!("{key}-parquet-v5"), &well_framed_blob(&geometry)).await.unwrap();
-    state.cache.set_bytes(&format!("{key}-parquet-metadata-v4"), &serde_json::to_vec(&header).unwrap()).await.unwrap();
+    // Cache payloads written before #4615 have no scaled-conversion factors.
+    // They must replay with the IFC default of one instead of failing JSON decode.
+    let mut legacy_header = serde_json::to_value(&header).unwrap();
+    let georef = legacy_header["metadata"]["georeferencing"].as_object_mut().unwrap();
+    georef.remove("factor_x");
+    georef.remove("factor_y");
+    georef.remove("factor_z");
+    state.cache.set_bytes(&format!("{key}-parquet-metadata-v4"), &serde_json::to_vec(&legacy_header).unwrap()).await.unwrap();
     seed_current_data_model(&state, key).await;
     let response = try_cached_replay(&state, key, ParquetLayout::Flat).await.unwrap().expect("cache hit");
     let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
@@ -380,6 +387,7 @@ async fn issue_4064_cached_complete_preserves_georeferencing_bits() {
         let metadata: ModelMetadata = serde_json::from_value(event["metadata"].clone()).unwrap();
         let geo = metadata.georeferencing.unwrap();
         assert_eq!(geo.northings.to_bits(), northing.to_bits());
+        assert_eq!((geo.factor_x, geo.factor_y, geo.factor_z), (1.0, 1.0, 1.0));
         assert_eq!(geo.transform_matrix.map(f64::to_bits), matrix.map(f64::to_bits));
         assert_eq!(metadata.coordinate_info.origin_shift.map(f64::to_bits), header.metadata.coordinate_info.origin_shift.map(f64::to_bits));
         assert_eq!(metadata.length_unit_scale.unwrap().to_bits(), 0.001_f64.to_bits());

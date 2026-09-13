@@ -67,22 +67,25 @@ pub(super) fn build_mesh_data(
         ifc_lite_geometry::mesh_weld::weld(&mut mesh, uvs)
     };
     let mesh_origin = mesh.origin;
-    // #4118/#1474: drop instancing/local-bounds/local-to-world only when the site
-    // placement actually rotates something — a translation-only site-local frame
-    // (#4176) leaves the captured object-frame transforms valid.
+    // #1474: drop local-bounds/local-to-world only when the site placement
+    // actually rotates something — a translation-only site-local frame (#4176)
+    // leaves the captured object-frame transforms valid.
     let site_local_rotates =
         site_local_rotation_invalidates_captured_transforms(ctx.site_local_rotation);
-    // Instancing: capture before the fields are moved into MeshData. A rotating
-    // site-local frame (above) re-transforms positions/origin and would invalidate
-    // the captured transform, so drop instancing when one is active.
-    let instance = if !site_local_rotates {
-        mesh.instance_meta.take()
-    } else {
-        None
-    };
-    // Local bounds/placement transform (issue #1474): same caveat as instancing
-    // above — a rotating site-local frame re-transforms positions and would
-    // invalidate the captured placement, so drop both when one is active.
+    // Instancing metadata is kept UNCONDITIONALLY (#4118 part B). It describes
+    // the mesh in the native frame, which a rotating site-local frame does not
+    // change: `convert_mesh_to_site_local` re-expresses the POSITIONS, and what
+    // it did to them is recoverable as a basis (`processor::site_local`'s
+    // `native_to_baked`) that the collator conjugates both its reconstruction
+    // check and its emitted `rel` by. Dropping the metadata instead cost every
+    // model with a yawed `IfcSite` — most Revit exports with a site rotation —
+    // all geometry sharing, which is what this issue measured.
+    let instance = mesh.instance_meta.take();
+    // Local bounds/placement transform (issue #1474): unlike instancing above,
+    // these are still dropped under a rotating site-local frame. They are read
+    // by a different consumer — the zero-copy mesh getters and the demesher —
+    // which has no basis to conjugate by and never enters collation, so the
+    // captured placement would simply be stale there.
     let (local_bounds, local_to_world) = if !site_local_rotates {
         (mesh.local_bounds, mesh.local_to_world)
     } else {

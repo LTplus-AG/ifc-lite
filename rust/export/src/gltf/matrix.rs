@@ -8,15 +8,20 @@
 //! to that occurrence's Y-up BAKED world position, minus the model-wide
 //! `scene_center` that the root node carries:
 //!
-//!   N_k = T(-scene_center) · S · [ T(-rtc) · (M_k · M_ref⁻¹) · T(rtc) ] · S⁻¹ · T(template_origin_yup)
+//!   N_k = T(-scene_center) · B · (M_k · M_ref⁻¹) · B⁻¹ · T(template_origin_yup)
 //!
 //! where `M = transform · local · canonical` is the per-occurrence world placement
-//! from `InstanceMeta` (Z-up, **pre-RTC**), `rtc` is the model RTC/site offset the
-//! baker subtracted (Z-up), and `S` is the Z-up→Y-up basis `(x,y,z) → (x, z, -y)`.
-//! The `T(-rtc)·…·T(rtc)` conjugation moves the relative transform from the pre-RTC
-//! frame `M` lives in into the POST-RTC baked frame the template geometry is in —
-//! without it, a rotated occurrence under a non-zero site/georef offset is
-//! mis-translated by `(R_rel - I)·rtc` (kilometres at national-grid scale). Everything
+//! from `InstanceMeta` (Z-up, **pre-RTC**) and `B = S · Rᵀ · T(-rtc)` is everything
+//! that happened to the vertices after `M` was captured: the model RTC/site offset
+//! the baker subtracted (`rtc`, Z-up), the site placement's inverse rotation `Rᵀ`
+//! the `site_local` tier baked in on top of it, and the Z-up→Y-up basis
+//! `S: (x,y,z) → (x, z, -y)` the assembler applied. Conjugating by `B` moves the
+//! relative transform from the pre-RTC native frame `M` lives in into the baked
+//! frame the template geometry is actually in — without the `T(-rtc)` factor a
+//! rotated occurrence under a non-zero site/georef offset is mis-translated by
+//! `(R_rel - I)·rtc` (kilometres at national-grid scale), and without `Rᵀ` a
+//! translated sibling under a yawed site is mis-translated by `(I - Rᵀ)·d`
+//! (metres at building scale, #4118). Everything
 //! is f64, recomputed from the f64 `InstanceMeta` (NOT the collator's f32 `rel`), so
 //! the absolute-magnitude terms cancel to a small, f32-precise translation before the
 //! final downcast even at national-grid coordinates.
@@ -60,25 +65,70 @@ fn mat4_mul(a: &[f64; 16], b: &[f64; 16]) -> [f64; 16] {
 }
 
 /// The basis the baked template geometry lives in relative to the frame
-/// `InstanceMeta` (hence a collator `rel`) is expressed in: `S_YUP · T(-rtc_zup)`.
+/// `InstanceMeta` (hence a collator `rel`) is expressed in:
+/// `S_YUP · native_to_baked(tier)`.
 ///
-/// Two conversions separate them. The assembler converts every visible mesh's
-/// baked positions Z-up→Y-up before collation, and the baker has already
-/// subtracted the model RTC offset from them, while `InstanceMeta.transform`
-/// stays Z-up and PRE-RTC. Both terms matter: the RTC one leaves a residual of
-/// `(R_rel - I) · rtc`, which is zero for a translated-only sibling and hundreds
-/// of kilometres for a rotated one at national-grid magnitude.
+/// Three conversions separate them, and this function owns none of the
+/// knowledge about the last two. The assembler converts every visible mesh's
+/// baked positions Z-up→Y-up before collation — that is `S_YUP`, and it is an
+/// export-crate fact. Everything the BAKER did is
+/// `ifc_lite_processing::native_to_baked`: the model RTC offset it subtracted,
+/// and (in the `site_local` tier only) the site placement's inverse rotation
+/// `Rᵀ` that `convert_mesh_to_site_local` applied afterwards. Both of those
+/// terms matter and neither is optional — the RTC one leaves a residual of
+/// `(R_rel - I) · rtc`, hundreds of kilometres for a rotated sibling at
+/// national-grid magnitude, and the `Rᵀ` one leaves `(I - Rᵀ)·d`, metres for a
+/// 6 m sibling under a 34 degree site yaw, which is what made a rotated site
+/// instance nothing at all (#4118).
+///
+/// `site_zup` is `site_restore`'s already-tier-filtered site placement: `Some`
+/// exactly when the model is `site_local`, `None` otherwise.
 ///
 /// Used at BOTH sites that need it — `build_gltf` hands it to
-/// `collate_refs_verified_in` as the `verify_basis`, and
+/// `collate_refs_in_basis` as the `baked_basis`, and
 /// [`occurrence_node_matrix_composed`] conjugates `rel` by it to build the
 /// shipped node matrix — so the frame the check verifies in is the frame the
 /// export actually places in, by construction rather than by two copies agreeing.
-pub(super) fn verify_basis_yup(rtc_zup: [f64; 3]) -> [f64; 16] {
+pub(super) fn baked_basis_yup(rtc_zup: [f64; 3], site_zup: Option<&[f64]>) -> [f64; 16] {
     mat4_mul(
         &S_YUP,
-        &mat4_translation([-rtc_zup[0], -rtc_zup[1], -rtc_zup[2]]),
+        &ifc_lite_processing::native_to_baked(
+            site_zup.map_or(
+                ifc_lite_processing::MeshCoordinateSpace::RawIfc,
+                |_| ifc_lite_processing::MeshCoordinateSpace::SiteLocal,
+            ),
+            site_zup,
+            rtc_zup,
+        ),
     )
+}
+
+/// The inverse of [`baked_basis_yup`], built without a general inversion.
+///
+/// `B = S_YUP · Rᵀ · T(-rtc)`, so `B⁻¹ = T(rtc) · R · S_YUP⁻¹`. `R` is recovered
+/// by transposing `native_to_baked`'s 3x3 block, which is exact: the block is
+/// the transpose of an `IfcAxis2Placement3D` rotation, orthonormal by
+/// construction, and the length-unit scale the router applies touches only a
+/// placement's translation column. That transpose-is-the-inverse identity is
+/// not a new assumption here — it is the one `apply_inverse_rotation_in_place`
+/// uses to un-rotate the vertices in the first place.
+fn baked_basis_yup_inverse(rtc_zup: [f64; 3], site_zup: Option<&[f64]>) -> [f64; 16] {
+    let b = ifc_lite_processing::native_to_baked(
+        site_zup.map_or(
+            ifc_lite_processing::MeshCoordinateSpace::RawIfc,
+            |_| ifc_lite_processing::MeshCoordinateSpace::SiteLocal,
+        ),
+        site_zup,
+        rtc_zup,
+    );
+    #[rustfmt::skip]
+    let r = [
+        b[0], b[4], b[8],  0.0,
+        b[1], b[5], b[9],  0.0,
+        b[2], b[6], b[10], 0.0,
+        0.0,  0.0,  0.0,   1.0,
+    ];
+    mat4_mul(&mat4_translation(rtc_zup), &mat4_mul(&r, &S_YUP_INV))
 }
 
 /// Row-major translation matrix.
@@ -158,6 +208,7 @@ pub(super) fn occurrence_node_matrix(
     occ: &InstanceMeta,
     m_ref_inv: &[f64; 16],
     rtc_zup: [f64; 3],
+    site_zup: Option<&[f64]>,
     template_origin_yup: [f64; 3],
     scene_center: [f64; 3],
 ) -> [f32; 16] {
@@ -165,6 +216,7 @@ pub(super) fn occurrence_node_matrix(
         compose_world_meta(occ),
         m_ref_inv,
         rtc_zup,
+        site_zup,
         template_origin_yup,
         scene_center,
     )
@@ -180,33 +232,38 @@ pub(super) fn occurrence_node_matrix_composed(
     m_k: [f64; 16],
     m_ref_inv: &[f64; 16],
     rtc_zup: [f64; 3],
+    site_zup: Option<&[f64]>,
     template_origin_yup: [f64; 3],
     scene_center: [f64; 3],
 ) -> [f32; 16] {
     // rel maps the template's PRE-RTC world geometry onto occurrence k's.
     let rel_pre = mat4_mul(&m_k, m_ref_inv);
     // Conjugate `rel` into the frame the BAKED template geometry lives in:
-    // POST-RTC (the offset the baker subtracted) and Y-up (the conversion the
-    // assembler applied). `B · rel · B⁻¹` with `B = S_YUP · T(-rtc)`, which is
-    // the same `B` the instancing verifier is handed as its `verify_basis` —
-    // shared through [`verify_basis_yup`] so the two cannot drift apart.
+    // POST-RTC (the offset the baker subtracted), site-local-rotated where the
+    // baker rotated it, and Y-up (the conversion the assembler applied).
+    // `B · rel · B⁻¹` with `B = S_YUP · Rᵀ · T(-rtc)`, which is the same `B` the
+    // collator is handed as its `baked_basis` — shared through
+    // [`baked_basis_yup`] so the two cannot drift apart.
     //
-    // This is NOT bit-identical to computing the two conjugations separately
-    // (`S · (T(-rtc) · rel · T(rtc)) · S⁻¹`), and the earlier claim that it was
-    // is wrong. Folding `S` in is exact — `S_YUP` is a signed permutation, so
-    // multiplying by it only moves and negates entries — but folding the
-    // TRANSLATIONS re-associates real additions, and f64 addition is not
-    // associative: a reviewer measured a max delta of 9.3e-10 m across 20,000
-    // georeferenced cases. That is harmless HERE for two independent reasons,
-    // both worth stating because neither is obvious: the result is cast to f32
-    // below (a ~1e-9 m difference at building scale is far under one f32 ULP, so
-    // the emitted bytes are unchanged), and the collator tolerance this basis
-    // feeds floors at 1e-6 m, a thousand times wider. Anything that changes
-    // either — an f64 node matrix, a tighter tolerance — makes the delta visible
-    // and this note is the warning.
+    // This is NOT bit-identical to computing the conjugations separately
+    // (`S · (Rᵀ · (T(-rtc) · rel · T(rtc)) · R) · S⁻¹`), and the earlier claim
+    // that it was is wrong. Folding `S` in is exact — `S_YUP` is a signed
+    // permutation, so multiplying by it only moves and negates entries — but
+    // folding the TRANSLATIONS re-associates real additions, and f64 addition is
+    // not associative: a reviewer measured a max delta of 9.3e-10 m across
+    // 20,000 georeferenced cases. `Rᵀ` is a third factor of the same kind and
+    // does not change the argument: it is an orthonormal 3x3, so it neither
+    // grows the magnitudes being added nor introduces a new cancellation, and
+    // the re-association delta stays at that scale. It IS harmless here for two
+    // independent reasons, both worth stating because neither is obvious: the
+    // result is cast to f32 below (a ~1e-9 m difference at building scale is far
+    // under one f32 ULP, so the emitted bytes are unchanged), and the collator
+    // tolerance this basis feeds floors at 1e-6 m, a thousand times wider.
+    // Anything that changes either — an f64 node matrix, a tighter tolerance —
+    // makes the delta visible and this note is the warning.
     let rel_yup = mat4_mul(
-        &mat4_mul(&verify_basis_yup(rtc_zup), &rel_pre),
-        &mat4_mul(&mat4_translation(rtc_zup), &S_YUP_INV),
+        &mat4_mul(&baked_basis_yup(rtc_zup, site_zup), &rel_pre),
+        &baked_basis_yup_inverse(rtc_zup, site_zup),
     );
     let n = mat4_mul(
         &mat4_translation([-scene_center[0], -scene_center[1], -scene_center[2]]),

@@ -13,9 +13,33 @@ import { emptyPlacementState } from '@/lib/model-placement/state';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { loadCesium } from './cesium-module';
-import { useCesiumModel } from './useCesiumModel';
+import { buildCesiumModelMatrix, useCesiumModel } from './useCesiumModel';
 
 afterEach(() => { cleanup(); mock.restoreAll(); setGlobalRendererRef({ current: null }); });
+
+it('uses the bridge FactorZ scale for the Cesium model as well as its camera (#4615)', async () => {
+  const Cesium = await loadCesium();
+  const bridge = {
+    modelOrigin: { longitude: 0, latitude: 0, height: 0 },
+    viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 },
+    viewerUpScale: 2,
+  } as unknown as CesiumBridge;
+  const coordinateInfo: GeometryResult['coordinateInfo'] = {
+    originalBounds: { min: { x: 0, y: 8, z: 0 }, max: { x: 0, y: 12, z: 0 } },
+    shiftedBounds: { min: { x: 0, y: 8, z: 0 }, max: { x: 0, y: 12, z: 0 } },
+    originShift: { x: 0, y: 0, z: 0 },
+    hasLargeCoordinates: false,
+  };
+  const matrix = buildCesiumModelMatrix(Cesium, bridge, coordinateInfo);
+  const center = Cesium.Matrix4.multiplyByPoint(matrix, new Cesium.Cartesian3(0, 10, 0), new Cesium.Cartesian3());
+  const oneViewerMetreUp = Cesium.Matrix4.multiplyByPoint(
+    matrix,
+    new Cesium.Cartesian3(0, 11, 0),
+    new Cesium.Cartesian3(),
+  );
+  assert.ok(Math.abs(Cesium.Cartesian3.distance(center, oneViewerMetreUp) - 2) < 1e-9);
+});
+
 it('rebuilds the World Context GLB for preview and cancel without a geometry or visibility edit (#4226)', async () => {
   const Cesium = await loadCesium();
   const blobs: Blob[] = [];
@@ -30,6 +54,7 @@ it('rebuilds the World Context GLB for preview and cancel without a geometry or 
   const viewerRef = { current: { scene: { primitives, requestRender() {} } } as unknown as InstanceType<typeof Cesium.Viewer> };
   const bridgeRef = { current: { modelOrigin: { longitude: 0, latitude: 0, height: 0 },
     viewerRotation: { eastFromVx: 1, eastFromVz: 0, northFromVx: 0, northFromVz: -1 },
+    viewerUpScale: 1,
   } as unknown as CesiumBridge };
   const zero = { x: 0, y: 0, z: 0 };
   const geometry: GeometryResult = { meshes: [{ expressId: 1, origin: [10, 20, 30],

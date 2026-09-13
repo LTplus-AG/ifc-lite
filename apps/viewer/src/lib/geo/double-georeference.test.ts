@@ -72,6 +72,23 @@ const ISSUE_2526_CENTER = { x: 311988.18054, y: 5996148.56499 };
 const METRE_CRS: Pick<ProjectedCRS, 'mapUnitScale'> = { mapUnitScale: 1 };
 
 describe('detectDoubleGeoreference', () => {
+  it('quotes the displacement with IfcMapConversionScaled factors per axis (#4615)', () => {
+    // Metre project and CRS, identity axis, FactorX 2, FactorY 0.5, geometry
+    // already at the anchor: a literal tool puts the centre at
+    // (500000 + 2 * 500000, 5000000 + 0.5 * 5000000), 1 000 km east and
+    // 2 500 km north. One uniform Scale of 1 would quote hypot(500 km, 5 000 km).
+    const conversion: MapConversion = {
+      id: 1, sourceCRS: 2, targetCRS: 3, eastings: 500_000, northings: 5_000_000,
+      orthogonalHeight: 0, xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1, factorX: 2, factorY: 0.5,
+    };
+    const found = detectDoubleGeoreference(conversion, METRE_CRS, coordInfoAt(500_000, 5_000_000), 1);
+    assert.ok(found, 'expected a double georeference report');
+    assert.ok(
+      Math.abs(found!.displacement - Math.hypot(1_000_000, 2_500_000)) < 1,
+      `displacement ${found!.displacement}`,
+    );
+  });
+
   it('reports the issue #2526 file and quotes the displacement a literal tool would produce', () => {
     const found = detectDoubleGeoreference(
       ISSUE_2526_CONVERSION,

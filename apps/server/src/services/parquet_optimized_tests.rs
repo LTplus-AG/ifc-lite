@@ -51,7 +51,7 @@
             ),
         ];
 
-        let (data, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        let (data, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false, None).unwrap();
 
         // Should deduplicate the two identical walls
         assert_eq!(stats.input_meshes, 3);
@@ -105,7 +105,7 @@
             slab(2, [10.0, 20.0, 3.0]),
         ];
 
-        let (data, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        let (data, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false, None).unwrap();
         assert_eq!(stats.unique_meshes, 1, "identical shapes must deduplicate");
 
         // Unframe: [version:u8][flags:u8][instance_len:u32][...4 more lens][instance_parquet]...
@@ -183,7 +183,7 @@
         let neither = base(12, 9.0);
 
         let (data, _) =
-            serialize_to_parquet_optimized_with_stats(&[geo, mat, neither], false).unwrap();
+            serialize_to_parquet_optimized_with_stats(&[geo, mat, neither], false, None).unwrap();
         let instance_len = u32::from_le_bytes(data[2..6].try_into().unwrap()) as usize;
         let header = 2 + 5 * 4;
         let instance_bytes = Bytes::copy_from_slice(&data[header..header + instance_len]);
@@ -247,7 +247,7 @@
         );
 
         let (data, stats) =
-            serialize_to_parquet_optimized_with_stats(&[mesh1, mesh2], false).unwrap();
+            serialize_to_parquet_optimized_with_stats(&[mesh1, mesh2], false, None).unwrap();
         assert_eq!(stats.unique_meshes, 2, "distinct geometry must not dedup");
 
         // Unframe: [version:u8][flags:u8][instance_len][mesh_len][material_len][vertex_len][index_len][instance][mesh]...
@@ -317,8 +317,8 @@
         )];
 
         // Both code paths must survive empty normals.
-        assert!(serialize_to_parquet_optimized_with_stats(&meshes, false).is_ok());
-        assert!(serialize_to_parquet_optimized_with_stats(&meshes, true).is_ok());
+        assert!(serialize_to_parquet_optimized_with_stats(&meshes, false, None).is_ok());
+        assert!(serialize_to_parquet_optimized_with_stats(&meshes, true, None).is_ok());
     }
 
     /// `assemble_optimized_output`'s five section lengths are wire-format
@@ -390,7 +390,7 @@
         let meshes = rotated_repeats();
         let expected_yup = expected_yup(&meshes);
 
-        let (data, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        let (data, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false, None).unwrap();
         assert_eq!(stats.input_meshes, 3);
         assert_eq!(
             stats.unique_meshes, 1,
@@ -523,6 +523,212 @@
         }
     }
 
+    /// #4118 part B on the Parquet transport: a `site_local` model whose
+    /// `IfcSite` placement carries a 34 degree yaw must still share its
+    /// repeated shape.
+    ///
+    /// This is the test that has to exist, because the change it guards can be
+    /// SKIPPED with everything else still green. This route consumes the
+    /// collator's emitted `rel` directly (`verify_and_derive_placement`), so
+    /// without the basis the reconstruction runs `rel · Rᵀp` against baked
+    /// vertices that are `Rᵀ · rel · p`. The residual is `(I − Rᵀ)·d`, about
+    /// 3.5 m for the 6 m sibling here against a 1e-4 m bound, so the group
+    /// fails the check and quietly falls back to content-hash dedup. Nothing
+    /// is misplaced; the sharing simply never happens — absence looks exactly
+    /// like success.
+    ///
+    /// Both directions are asserted: `Some(basis)` shares, `None` does not.
+    #[test]
+    fn a_rotated_site_shares_a_shape_across_the_parquet_route() {
+        use crate::services::parquet_instancing::baked_basis_zup;
+        use arrow::array::{Float32Array, Int32Array};
+        use ifc_lite_geometry::InstanceMeta;
+        use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+
+        let yaw = 34f64.to_radians();
+        let (c, s) = (yaw.cos(), yaw.sin());
+        // In the site_local tier the RTC offset IS the site translation.
+        let rtc = [1_500.0f64, -2_400.0, 12.0];
+        #[rustfmt::skip]
+        let site_zup: Vec<f64> = vec![
+            c,      s,      0.0,    0.0,
+            -s,     c,      0.0,    0.0,
+            0.0,    0.0,    1.0,    0.0,
+            rtc[0], rtc[1], rtc[2], 1.0,
+        ];
+
+        // Two PURE-TRANSLATION siblings six metres apart: with no relative
+        // rotation, every other frame term cancels and the whole residual is
+        // the missing `Rᵀ`.
+        let placements = [
+            rot_z_mat4(0.0, [rtc[0], rtc[1], rtc[2]]),
+            rot_z_mat4(0.0, [rtc[0] + 6.0, rtc[1], rtc[2]]),
+        ];
+        // Bake as the site_local pipeline does: subtract the RTC offset, then
+        // apply the site placement's inverse rotation to every position.
+        let bake_site_local = |m: &[f64; 16]| -> Vec<f32> {
+            bake_triangle(&CANON_TRIANGLE, m)
+                .chunks_exact(3)
+                .flat_map(|p| {
+                    let w = [p[0] as f64 - rtc[0], p[1] as f64 - rtc[1], p[2] as f64 - rtc[2]];
+                    [
+                        (c * w[0] + s * w[1]) as f32,
+                        (-s * w[0] + c * w[1]) as f32,
+                        w[2] as f32,
+                    ]
+                })
+                .collect()
+        };
+        let meshes: Vec<MeshData> = placements
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                MeshData::new(
+                    700 + i as u32,
+                    "IfcBeam".to_string(),
+                    bake_site_local(m),
+                    vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                    vec![0, 1, 2],
+                    [0.6, 0.4, 0.2, 1.0],
+                )
+                .with_instance(Some(InstanceMeta {
+                    // Native frame: pre-RTC, un-rotated. That is the whole
+                    // point — the metadata describes a frame the baked
+                    // vertices are no longer in.
+                    transform: *m,
+                    local_transform: None,
+                    canonical_transform: None,
+                    rep_identity: 4_118,
+                    instanceable: true,
+                }))
+            })
+            .collect();
+
+        // Skipping the basis: the group forms, fails the residual check, and
+        // the route silently keeps one mesh per occurrence.
+        let (_, unaware) =
+            serialize_to_parquet_optimized_with_stats(&meshes, false, None).unwrap();
+        assert_eq!(
+            unaware.unique_meshes, 2,
+            "control: with no basis the site-rotated group must FAIL to share — \
+             if this ever reads 1, the fixture no longer exercises the residual \
+             this test exists to guard"
+        );
+
+        let basis = baked_basis_zup(
+            Some(ifc_lite_processing::MeshCoordinateSpace::SiteLocal),
+            Some(&site_zup),
+            rtc,
+        );
+        let (data, stats) =
+            serialize_to_parquet_optimized_with_stats(&meshes, false, Some(&basis)).unwrap();
+        assert_eq!(
+            stats.unique_meshes, 1,
+            "two occurrences of one shape under a 34 degree site yaw must share \
+             ONE template mesh once the collator is told what frame the vertices \
+             were baked in"
+        );
+        assert_eq!(
+            data[0], 2,
+            "pure-translation siblings must canonicalize their conjugation \
+             roundoff to identity and keep the v2 wire shape on every target"
+        );
+
+        // And the emitted placement must actually put them back. Ground truth
+        // is each occurrence's own baked positions, swapped to the wire frame.
+        let expected = expected_yup(&meshes);
+        let instance_len = u32::from_le_bytes(data[2..6].try_into().unwrap()) as usize;
+        let mesh_len = u32::from_le_bytes(data[6..10].try_into().unwrap()) as usize;
+        let material_len = u32::from_le_bytes(data[10..14].try_into().unwrap()) as usize;
+        let vertex_len = u32::from_le_bytes(data[14..18].try_into().unwrap()) as usize;
+        let header = 2 + 5 * 4;
+        let read = |bytes: Bytes| {
+            ParquetRecordBatchReaderBuilder::try_new(bytes)
+                .unwrap()
+                .build()
+                .unwrap()
+                .map(|b| b.unwrap())
+                .next()
+                .unwrap()
+        };
+        let instance_batch = read(Bytes::copy_from_slice(&data[header..header + instance_len]));
+        let mesh_start = header + instance_len;
+        let mesh_batch = read(Bytes::copy_from_slice(&data[mesh_start..mesh_start + mesh_len]));
+        let vertex_start = mesh_start + mesh_len + material_len;
+        let vertex_batch =
+            read(Bytes::copy_from_slice(&data[vertex_start..vertex_start + vertex_len]));
+
+        let icol = |name: &str| instance_batch.schema().index_of(name).expect(name);
+        let f32col = |name: &str| {
+            instance_batch
+                .column(icol(name))
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .unwrap()
+                .clone()
+        };
+        let f64col = |name: &str| {
+            instance_batch
+                .column(icol(name))
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .unwrap()
+                .clone()
+        };
+        let (ox, oy, oz) = (f64col("origin_x"), f64col("origin_y"), f64col("origin_z"));
+        let rot: Vec<Float32Array> = if data[0] == 3 {
+            (0..9).map(|i| f32col(&format!("rot{i}"))).collect()
+        } else {
+            (0..9)
+                .map(|i| Float32Array::from(vec![IDENTITY_ROTATION[i]; meshes.len()]))
+                .collect()
+        };
+        let vertex_offset = mesh_batch
+            .column(mesh_batch.schema().index_of("vertex_offset").unwrap())
+            .as_any()
+            .downcast_ref::<UInt32Array>()
+            .unwrap()
+            .value(0);
+        let vint = |name: &str| {
+            vertex_batch
+                .column(vertex_batch.schema().index_of(name).expect(name))
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .unwrap()
+                .clone()
+        };
+        let (vx, vy, vz) = (vint("x"), vint("y"), vint("z"));
+        let dequant = 1.0 / VERTEX_MULTIPLIER as f64;
+
+        assert_eq!(instance_batch.num_rows(), 2);
+        for (i, expected_for_instance) in expected.iter().enumerate() {
+            let origin = [ox.value(i), oy.value(i), oz.value(i)];
+            let r: Vec<f64> = (0..9).map(|k| rot[k].value(i) as f64).collect();
+            for (v, want) in expected_for_instance.iter().enumerate() {
+                let src = vertex_offset as usize + v;
+                let t = [
+                    vx.value(src) as f64 * dequant,
+                    vy.value(src) as f64 * dequant,
+                    vz.value(src) as f64 * dequant,
+                ];
+                let got = [
+                    origin[0] + r[0] * t[0] + r[1] * t[1] + r[2] * t[2],
+                    origin[1] + r[3] * t[0] + r[4] * t[1] + r[5] * t[2],
+                    origin[2] + r[6] * t[0] + r[7] * t[1] + r[8] * t[2],
+                ];
+                for axis in 0..3 {
+                    assert!(
+                        (got[axis] - want[axis] as f64).abs() < 1e-3,
+                        "instance {i} vertex {v} axis {axis}: reconstructed {:?} \
+                         vs its own baked position {:?}",
+                        got,
+                        want
+                    );
+                }
+            }
+        }
+    }
+
     /// Control for the test above: a RIGID-tier group (one occurrence carries
     /// `canonical_transform`, meaning the template is congruent but not
     /// bit-identical to this occurrence's own geometry) must NOT be
@@ -561,7 +767,7 @@
             })
             .collect();
 
-        let (_, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        let (_, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false, None).unwrap();
         assert_eq!(
             stats.unique_meshes, 2,
             "rigid-tier (congruent, non-bit-identical) groups must fall back to distinct mesh rows"
@@ -613,7 +819,7 @@
             })
             .collect();
 
-        let (data, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        let (data, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false, None).unwrap();
         assert_eq!(
             stats.unique_meshes, 1,
             "translation-only reuse must still deduplicate to one template"
@@ -723,7 +929,7 @@
             })),
         ];
 
-        let (_, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        let (_, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false, None).unwrap();
         assert_eq!(
             stats.unique_meshes, 2,
             "an unverifiable occurrence must reject rotation-aware dedup for its \
@@ -787,7 +993,7 @@
             })),
         ];
 
-        let (_, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        let (_, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false, None).unwrap();
         assert_eq!(
             stats.unique_meshes, 2,
             "a vertex-count mismatch must reject the group exactly like an \

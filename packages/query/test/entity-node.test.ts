@@ -185,6 +185,104 @@ describe('EntityNode', () => {
       expect(wall.containedIn()).not.toBeNull(); // still resolves to a single answer
       expect(wall.containedInAmbiguous()).toBe(true);
     });
+
+    // #4314: when a wall is duplicate-contained by two storeys and the
+    // FIRST-declared one is itself unreachable from IfcProject (an orphan
+    // spatial node with no IfcRelAggregates edge at all — a malformed file),
+    // containedIn() must fall through to the reachable, later-declared
+    // storey rather than returning the dangling orphan.
+    it('containedIn() falls through to the reachable later-declared storey when the first-declared one is unreachable', () => {
+      const store = createMockStore({
+        entities: [
+          { expressId: 1, type: 'IFCPROJECT', globalId: 'proj-1', name: 'My Project' },
+          { expressId: 2, type: 'IFCBUILDINGSTOREY', globalId: 'storey-orphan', name: 'Orphan Storey' }, // no Aggregates edge at all
+          { expressId: 3, type: 'IFCBUILDINGSTOREY', globalId: 'storey-reachable', name: 'Reachable Storey' },
+          { expressId: 10, type: 'IFCWALL', globalId: 'wall-1', name: 'Exterior Wall' },
+        ],
+        relationships: [
+          { source: 1, target: 3, type: RelationshipType.Aggregates, relId: 100 }, // Project -> Storey B (reachable)
+          { source: 2, target: 10, type: RelationshipType.ContainsElements, relId: 200 }, // Storey A (unreachable), first-declared
+          { source: 3, target: 10, type: RelationshipType.ContainsElements, relId: 201 }, // Storey B (reachable), second-declared
+        ],
+        // As SpatialHierarchyBuilder would publish it: Storey A is never
+        // visited, so it is not in the set.
+        spatialHierarchy: { projectId: 1, byStorey: [[3, [10]]], storeyElevations: [], reachableSpatialNodes: [1, 3] },
+      });
+      const wall = new EntityNode(store, 10);
+      const container = wall.containedIn();
+      expect(container).not.toBeNull();
+      expect(container!.expressId).toBe(3);
+    });
+
+    // Mirror-image fixture (declaration order swapped) so the fix cannot be a
+    // fluke of "just return the second candidate" — the reachable storey
+    // wins regardless of which position it is declared in.
+    it('containedIn() still returns the reachable storey when it is declared FIRST and the orphan second', () => {
+      const store = createMockStore({
+        entities: [
+          { expressId: 1, type: 'IFCPROJECT', globalId: 'proj-1', name: 'My Project' },
+          { expressId: 2, type: 'IFCBUILDINGSTOREY', globalId: 'storey-orphan', name: 'Orphan Storey' },
+          { expressId: 3, type: 'IFCBUILDINGSTOREY', globalId: 'storey-reachable', name: 'Reachable Storey' },
+          { expressId: 10, type: 'IFCWALL', globalId: 'wall-1', name: 'Exterior Wall' },
+        ],
+        relationships: [
+          { source: 1, target: 3, type: RelationshipType.Aggregates, relId: 100 },
+          { source: 3, target: 10, type: RelationshipType.ContainsElements, relId: 200 }, // Storey B (reachable), first-declared
+          { source: 2, target: 10, type: RelationshipType.ContainsElements, relId: 201 }, // Storey A (unreachable), second-declared
+        ],
+        spatialHierarchy: { projectId: 1, byStorey: [[3, [10]]], storeyElevations: [], reachableSpatialNodes: [1, 3] },
+      });
+      const wall = new EntityNode(store, 10);
+      const container = wall.containedIn();
+      expect(container).not.toBeNull();
+      expect(container!.expressId).toBe(3);
+    });
+
+    // When EVERY candidate is unreachable, containedIn() must not go null —
+    // it falls back to the first-declared candidate, same as before #4314.
+    it('containedIn() falls back to first-declared when no candidate is reachable', () => {
+      const store = createMockStore({
+        entities: [
+          { expressId: 1, type: 'IFCPROJECT', globalId: 'proj-1', name: 'My Project' },
+          { expressId: 2, type: 'IFCBUILDINGSTOREY', globalId: 'storey-orphan-a', name: 'Orphan A' },
+          { expressId: 3, type: 'IFCBUILDINGSTOREY', globalId: 'storey-orphan-b', name: 'Orphan B' },
+          { expressId: 10, type: 'IFCWALL', globalId: 'wall-1', name: 'Exterior Wall' },
+        ],
+        relationships: [
+          { source: 2, target: 10, type: RelationshipType.ContainsElements, relId: 200 }, // first-declared, unreachable
+          { source: 3, target: 10, type: RelationshipType.ContainsElements, relId: 201 }, // also unreachable
+        ],
+        // Neither orphan storey was visited, so the project is alone in the set.
+        spatialHierarchy: { projectId: 1, byStorey: [], storeyElevations: [], reachableSpatialNodes: [1] },
+      });
+      const wall = new EntityNode(store, 10);
+      const container = wall.containedIn();
+      expect(container).not.toBeNull();
+      expect(container!.expressId).toBe(2);
+    });
+
+    // A store with no spatial hierarchy carries no reachability information -
+    // which is not the same as "nothing is reachable". Every candidate stays
+    // eligible and first-declared wins, exactly as before #4314. (Such a store
+    // has no `elementToStorey` either, so there is nothing to disagree with.)
+    it('containedIn() returns the first-declared container when the store has no spatial hierarchy', () => {
+      const store = createMockStore({
+        entities: [
+          { expressId: 1, type: 'IFCPROJECT', globalId: 'proj-1', name: 'My Project' },
+          { expressId: 2, type: 'IFCBUILDINGSTOREY', globalId: 'storey-a', name: 'Storey A' }, // orphan
+          { expressId: 3, type: 'IFCBUILDINGSTOREY', globalId: 'storey-b', name: 'Storey B' },
+          { expressId: 10, type: 'IFCWALL', globalId: 'wall-1', name: 'Exterior Wall' },
+        ],
+        relationships: [
+          { source: 1, target: 3, type: RelationshipType.Aggregates, relId: 100 },
+          { source: 2, target: 10, type: RelationshipType.ContainsElements, relId: 200 }, // first-declared, would be skipped if the set were known
+          { source: 3, target: 10, type: RelationshipType.ContainsElements, relId: 201 },
+        ],
+        // spatialHierarchy deliberately omitted.
+      });
+      const wall = new EntityNode(store, 10);
+      expect(wall.containedIn()?.expressId).toBe(2);
+    });
   });
 
   // ── Aggregation ───────────────────────────────────────────────

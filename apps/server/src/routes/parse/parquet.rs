@@ -10,23 +10,9 @@ use super::cache_keys::{
 };
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
-use crate::services::{
-    extract_data_model, serialize_data_model_to_parquet, serialize_to_parquet,
-    serialize_to_parquet_shared_shapes, ParquetError, ParquetLayout,
-};
-
-/// Serialize the whole model under the layout the client asked for. Only
-/// `SharedShapes` runs the shape-sharing planner; a default request gets the
-/// pre-#3888 bytes, which is what lets a pinned client keep working (#3888).
-fn serialize_for_layout(
-    meshes: &[crate::types::MeshData],
-    layout: ParquetLayout,
-) -> Result<bytes::Bytes, ParquetError> {
-    match layout {
-        ParquetLayout::SharedShapes => serialize_to_parquet_shared_shapes(meshes),
-        ParquetLayout::Flat => serialize_to_parquet(meshes),
-    }
-}
+use crate::services::baked_basis_zup;
+use crate::services::parquet::serialize_combined_for_layout;
+use crate::services::{extract_data_model, serialize_data_model_to_parquet};
 use crate::types::{ModelMetadata, ProcessingStats};
 use crate::AppState;
 use axum::{
@@ -35,7 +21,9 @@ use axum::{
     http::{header, StatusCode},
     response::Response,
 };
-use ifc_lite_processing::{extract_symbolic_data_with_provenance, process_geometry_filtered_with_quality};
+use ifc_lite_processing::{
+    extract_symbolic_data_with_provenance, process_geometry_filtered_with_quality, MeshCoordinateSpace,
+};
 use serde::{Deserialize, Serialize};
 
 /// Response header containing metadata for Parquet response.
@@ -45,7 +33,7 @@ pub struct ParquetMetadataHeader {
     pub metadata: ModelMetadata,
     pub stats: ProcessingStats,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mesh_coordinate_space: Option<String>,
+    pub mesh_coordinate_space: Option<MeshCoordinateSpace>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub site_transform: Option<Vec<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -146,7 +134,7 @@ pub async fn parse_parquet(
     // future must not release the admission slot while the work runs on.
     let (
         (
-            (geometry_result, geometry_parquet),
+            (geometry_result, combined_parquet),
             (data_model_stats, data_model_parquet),
             symbolic_data,
         ),
@@ -176,7 +164,22 @@ pub async fn parse_parquet(
             // Second: serialize BOTH geometry and data model in parallel
             // This way data model is ready by the time client needs it
             let (geo_parquet, dm_parquet) = rayon::join(
-                || serialize_for_layout(&geometry_result.meshes, layout),
+                || {
+                    // The frame `geometry_result`'s vertices were baked in
+                    // (#4118). Without it a site-rotated model's repeated
+                    // shapes fail the residual check and silently keep their
+                    // per-occurrence geometry.
+                    let basis = baked_basis_zup(
+                        Some(geometry_result.mesh_coordinate_space),
+                        geometry_result.site_transform.as_deref(),
+                        geometry_result.metadata.coordinate_info.origin_shift,
+                    );
+                    serialize_combined_for_layout(
+                        &geometry_result.meshes,
+                        layout,
+                        Some(&basis),
+                    )
+                },
                 || serialize_data_model_to_parquet(&data_model),
             );
 
@@ -192,13 +195,13 @@ pub async fn parse_parquet(
         .await?;
 
     // Unwrap serialization results
-    let geometry_parquet = geometry_parquet?;
+    let combined_parquet = combined_parquet?;
     let data_model_parquet = data_model_parquet?;
 
     let serialize_time = serialize_start.elapsed();
     tracing::info!(
         meshes = geometry_result.meshes.len(),
-        geometry_parquet_size = geometry_parquet.len(),
+        geometry_parquet_size = combined_parquet.len(),
         data_model_parquet_size = data_model_parquet.len(),
         total_serialize_time_ms = serialize_time.as_millis(),
         "Geometry and data model serialization complete (parallel)"
@@ -224,20 +227,13 @@ pub async fn parse_parquet(
     // fetches `GET /api/v1/parse/symbolic/{cache_key}` (issue #900).
     cache_symbolic_data(&state.cache, &cache_key, &symbolic_data).await;
 
-    // Build geometry-only response (data model available via separate endpoint)
-    let mut combined_parquet = Vec::new();
-    combined_parquet.extend_from_slice(&(geometry_parquet.len() as u32).to_le_bytes());
-    combined_parquet.extend_from_slice(&geometry_parquet);
-    // No data model in immediate response - client fetches separately
-    combined_parquet.extend_from_slice(&0u32.to_le_bytes()); // data_model_len = 0
-
     // Create metadata header with data model stats (captured before background task)
     let cache_key_clone = cache_key.clone();
     let metadata_header = ParquetMetadataHeader {
         cache_key: cache_key_clone.clone(),
         metadata: geometry_result.metadata,
         stats: geometry_result.stats,
-        mesh_coordinate_space: geometry_result.mesh_coordinate_space,
+        mesh_coordinate_space: Some(geometry_result.mesh_coordinate_space),
         site_transform: geometry_result.site_transform,
         building_transform: geometry_result.building_transform,
         data_model_stats: Some(data_model_stats),
@@ -247,7 +243,6 @@ pub async fn parse_parquet(
 
     // Cache the results for future requests. `Bytes` makes the cache task's
     // copy an O(1) refcount bump instead of duplicating the whole payload.
-    let combined_parquet = bytes::Bytes::from(combined_parquet);
     let parquet_cache_key = parquet_geometry_key(&cache_key_clone, layout);
     let metadata_cache_key = parquet_metadata_key(&cache_key_clone);
     let combined_parquet_clone = combined_parquet.clone();

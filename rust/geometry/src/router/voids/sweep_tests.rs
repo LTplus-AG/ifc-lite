@@ -10,6 +10,7 @@
 //! integration tests, which never probed the boundary magnitude.
 
 use super::*;
+use crate::router::voids::geom::mesh_signed_volume;
 use crate::Vector3;
 
 /// Axis-aligned box mesh, outward-wound, `min`..`max`. Volume is exactly
@@ -59,11 +60,13 @@ fn cut_changed_mesh_volume_drift_boundary_is_1e_3_relative() {
     let cube = box_mesh((0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
     let vol_after = mesh_signed_volume(&cube).abs();
     assert!((vol_after - 1.0).abs() < 1e-6, "sanity: unit cube volume ~1.0, got {vol_after}");
-    let tris = cube.triangle_count();
 
-    // Just under the 1e-3 relative-to-vol_before threshold -> NOT changed.
-    // vol_before = 0.99901: diff = 0.00099, threshold = 0.99901 * 1e-3 = 0.00099901.
-    let not_changed = cut_changed_mesh(&cube, tris, 0.99901);
+    // The host's volume is `vol_before`. Just under the 1e-3 relative threshold
+    // -> NOT changed. vol_before = 0.99901: diff = 0.00099, threshold =
+    // 0.99901 * 1e-3 = 0.00099901. f32 rounds the height by ~3e-8, far inside
+    // the 9e-6 margin.
+    let host = box_mesh((0.0, 0.0, 0.0), (1.0, 1.0, 0.99901));
+    let not_changed = cut_changed_mesh(&cube, &host);
     assert!(
         !not_changed,
         "a 0.099% volume drift is inside the 0.1% tolerance and must read as unchanged"
@@ -71,7 +74,8 @@ fn cut_changed_mesh_volume_drift_boundary_is_1e_3_relative() {
 
     // Just over the threshold -> changed.
     // vol_before = 0.99899: diff = 0.00101, threshold = 0.99899 * 1e-3 = 0.00099899.
-    let changed = cut_changed_mesh(&cube, tris, 0.99899);
+    let host = box_mesh((0.0, 0.0, 0.0), (1.0, 1.0, 0.99899));
+    let changed = cut_changed_mesh(&cube, &host);
     assert!(
         changed,
         "a 0.101% volume drift exceeds the 0.1% tolerance and must read as changed"

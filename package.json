@@ -110,6 +110,7 @@
     "@playwright/test": "^1.62.1",
     "@posthog/cli": "0.18.0",
     "@types/node": "^26.4.1",
+    "@vercel/functions": "3.9.7",
     "gltf-validator": "2.0.0-dev.3.10",
     "knip": "^6.34.0",
     "oxlint": "^1.81.0",

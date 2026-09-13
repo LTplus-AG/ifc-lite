@@ -6,6 +6,7 @@
 
 use super::mesh::MeshData;
 use crate::georeferencing::Georeferencing;
+use crate::mesh_frame::MeshCoordinateSpace;
 use crate::symbolic::SymbolicData;
 use serde::{Deserialize, Serialize};
 
@@ -16,13 +17,11 @@ pub struct ParseResponse {
     pub cache_key: String,
     /// All meshes extracted from the IFC file.
     pub meshes: Vec<MeshData>,
-    /// Declares the coordinate space used by serialized mesh vertices:
-    /// * `site_local` — vertices are relative to the IfcSite placement
-    ///   translation (small floats in a meaningful, relatable frame).
-    /// * `model_rtc`  — a model-level detected RTC anchor was subtracted.
-    /// * `raw_ifc`    — no RTC anchor was applied; vertices are in raw IFC space.
+    /// Declares the coordinate space used by serialized mesh vertices (see
+    /// [`MeshCoordinateSpace`] for the three tiers and their wire spelling).
+    /// `None` only on responses written before the tag existed.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mesh_coordinate_space: Option<String>,
+    pub mesh_coordinate_space: Option<MeshCoordinateSpace>,
     /// IfcSite ObjectPlacement as a column-major 4x4 matrix (16 f64 values, in meters).
     /// Used by clients to relocate geometry between global and site-local coordinate systems.
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -78,6 +78,7 @@ export interface SpatialHierarchyColumns {
   elementToStorey: Array<[number, number]>;
   elementToContainer?: Array<[number, number]>;
   ambiguousStorey?: number[]; // #4311
+  reachableSpatialNodes?: number[]; // #4314
 }
 
 function serializeSpatialNode(node: SpatialNode): SerializedSpatialNode {
@@ -118,6 +119,7 @@ export function spatialHierarchyToColumns(hierarchy: SpatialHierarchy): SpatialH
       ? [...hierarchy.elementToContainer.entries()]
       : undefined,
     ambiguousStorey: hierarchy.ambiguousStorey ? [...hierarchy.ambiguousStorey] : undefined, // #4311
+    reachableSpatialNodes: hierarchy.reachableSpatialNodes ? [...hierarchy.reachableSpatialNodes] : undefined, // #4314
   };
 }
 
@@ -134,6 +136,7 @@ export function spatialHierarchyFromColumns(columns: SpatialHierarchyColumns): S
     ? new Map<number, number>(columns.elementToContainer)
     : undefined;
   const ambiguousStorey = columns.ambiguousStorey ? new Set<number>(columns.ambiguousStorey) : undefined; // #4311
+  const reachableSpatialNodes = columns.reachableSpatialNodes ? new Set<number>(columns.reachableSpatialNodes) : undefined; // #4314
 
   return {
     project,
@@ -146,6 +149,7 @@ export function spatialHierarchyFromColumns(columns: SpatialHierarchyColumns): S
     elementToStorey,
     elementToContainer,
     ambiguousStorey, // #4311
+    reachableSpatialNodes, // #4314
 
     getStoreyElements(storeyId: number): number[] {
       return byStorey.get(storeyId) ?? [];

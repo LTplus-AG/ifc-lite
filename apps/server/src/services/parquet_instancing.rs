@@ -13,8 +13,34 @@
 //! the module neither transport owns is not named after either of them.
 
 use crate::types::MeshData;
-use ifc_lite_geometry::{collate_refs, InstanceMeshRef};
+use ifc_lite_geometry::{collate_refs_in_basis, InstanceMeshRef, Matrix4};
 use rustc_hash::FxHashMap;
+
+/// The frame this route's baked vertices are in, relative to the native frame
+/// `MeshData::instance` describes: `Rᵀ · T(-rtc)`, read straight off the
+/// `ProcessingResult` by `ifc_lite_processing::native_to_baked`.
+///
+/// Unlike the glTF exporter, this route CONSUMES the collator's emitted `rel`
+/// (see [`verify_and_derive_placement`]) rather than recomputing placement from
+/// `InstanceMeta`, so the basis is not optional decoration here: without it a
+/// `site_local` model's group fails the 1e-4 m residual check by `(I − Rᵀ)·d` —
+/// about 3.5 m for a 6 m sibling under a 34 degree site yaw — and silently
+/// falls back to content-hash dedup. Nothing breaks; the sharing just never
+/// happens (#4118).
+///
+/// Z-up: this route swaps to Y-up at emission time ([`rotation_zup_to_yup`]),
+/// not before collation, so no axis-swap factor belongs in this basis.
+pub(crate) fn baked_basis_zup(
+    mesh_coordinate_space: Option<ifc_lite_processing::MeshCoordinateSpace>,
+    site_transform: Option<&[f64]>,
+    origin_shift: [f64; 3],
+) -> Matrix4<f64> {
+    Matrix4::from_row_slice(&ifc_lite_processing::native_to_baked(
+        mesh_coordinate_space.unwrap_or(ifc_lite_processing::MeshCoordinateSpace::RawIfc),
+        site_transform,
+        origin_shift,
+    ))
+}
 
 /// Maximum reconstructed-vertex residual (metres) a rotation-aware instance
 /// placement may carry and still be trusted (issue #3575). Compared against
@@ -84,6 +110,7 @@ fn verify_and_derive_placement(
         return (f64::INFINITY, origin_zup, rotation_zup);
     }
     let mut max_err = 0.0f64;
+    let mut identity_err = 0.0f64;
     for v in 0..n {
         let p = [
             template.origin[0] + template.positions[v * 3] as f64,
@@ -102,8 +129,36 @@ fn verify_and_derive_placement(
         if err > max_err {
             max_err = err;
         }
+        // If the same verified placement is also representable by an exact
+        // identity rotation, prefer that canonical form. Conjugating a pure
+        // translation through a site basis can leave platform-dependent
+        // roundoff in the 3x3 block; comparing the f32 block to identity by
+        // exact bits then made the optimized route alternate between v2 and
+        // v3 across targets. This residual check is the safety condition: an
+        // actual small rotation is snapped only when omitting it stays within
+        // the route's existing recomposition tolerance.
+        let identity_world = [
+            origin_zup[0] + template.positions[v * 3] as f64,
+            origin_zup[1] + template.positions[v * 3 + 1] as f64,
+            origin_zup[2] + template.positions[v * 3 + 2] as f64,
+        ];
+        let err = ((identity_world[0] - g[0]).powi(2)
+            + (identity_world[1] - g[1]).powi(2)
+            + (identity_world[2] - g[2]).powi(2))
+        .sqrt();
+        if err > identity_err {
+            identity_err = err;
+        }
     }
-    (max_err, origin_zup, rotation_zup)
+    if identity_err <= RECOMPOSITION_TOLERANCE_M {
+        (
+            identity_err,
+            origin_zup,
+            [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+        )
+    } else {
+        (max_err, origin_zup, rotation_zup)
+    }
 }
 
 /// Z-up → Y-up basis change (see `services::axis::zup_to_yup`), as a rotation
@@ -190,8 +245,14 @@ pub(crate) const IDENTITY_ROTATION: [f32; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.
 /// decoding a lossless-looking mesh table. Only exact-bit groups (the
 /// `IfcMappedItem` / shared-`IfcRepresentationMap` case the issue reports)
 /// are deduplicated this way.
+///
+/// `baked_basis` is [`baked_basis_zup`] for the model these meshes came from,
+/// or `None` when the caller genuinely has no `ProcessingResult` to read it off
+/// (a per-batch streaming writer, a test over synthetic meshes) and the
+/// vertices are therefore native.
 pub(crate) fn collate_rotation_aware_placements(
     meshes: &[MeshData],
+    baked_basis: Option<&Matrix4<f64>>,
 ) -> FxHashMap<usize, RotatedPlacement> {
     let refs: Vec<InstanceMeshRef> = meshes
         .iter()
@@ -212,8 +273,10 @@ pub(crate) fn collate_rotation_aware_placements(
     // per-vertex residual check below is the real safety net regardless (a
     // stale/large offset shows up as a residual over tolerance, not a
     // silent misplacement), so an unhandled RTC rebase degrades to today's
-    // behaviour rather than shipping a wrong placement.
-    let collated = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);
+    // behaviour rather than shipping a wrong placement. The `baked_basis`
+    // carries the model's own `T(-rtc)` (and site rotation) instead, applied to
+    // the emitted `rel` as well as the check.
+    let collated = collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], baked_basis);
 
     let mut placements: FxHashMap<usize, RotatedPlacement> = FxHashMap::default();
     for tmpl in &collated.templates {

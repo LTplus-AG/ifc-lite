@@ -30,20 +30,60 @@ use rustc_hash::FxHashMap;
 /// template origin.
 ///
 /// `InstanceMeta.transform` (hence `rel`) is native-frame (IFC Z-up); positions
-/// must share that frame — see [`collate_refs_verified_in`] otherwise.
+/// must share that frame — see [`collate_refs_in_basis`] otherwise.
 pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize, rtc: [f64; 3]) -> Collated {
-    collate_refs_verified_in(meshes, min_group, rtc, None)
+    collate_refs_in_basis(meshes, min_group, rtc, None)
 }
 
-/// [`collate_refs`], but the #3666 reconstruction check compares in a
-/// caller-supplied basis — see [`super::verify`]'s module doc.
+/// Compatibility entry point preserving the original verify-only emission
+/// contract. Use [`collate_refs_in_basis`] for baked-frame output.
 pub fn collate_refs_verified_in(
     meshes: &[InstanceMeshRef],
     min_group: usize,
     rtc: [f64; 3],
     verify_basis: Option<&Matrix4<f64>>,
 ) -> Collated {
-    // A `verify_basis` that cannot be inverted has no conjugation `S · rel · S⁻¹`.
+    collate_refs_impl(meshes, min_group, rtc, verify_basis, false)
+}
+
+/// [`collate_refs`] against baked positions that are NOT in the native frame:
+/// `baked_basis` is what the baker did to the vertices after `InstanceMeta` was
+/// captured, so that `p_baked = B · p_native`.
+///
+/// `B` is applied to BOTH halves of this function's output, not only to the
+/// #3666 reconstruction check:
+///
+/// * the check compares `B · rel · B⁻¹` against the baked vertices (as it
+///   always did — see [`super::verify`]'s module doc), and
+/// * every emitted [`InstanceOccurrence::transform`] is that same conjugated
+///   `B · rel · B⁻¹`, so a consumer that uses the emitted `rel` directly places
+///   the occurrence in the frame its vertices are in.
+///
+/// This is the `#4118` behaviour change, exposed under a new name because
+/// `collate_refs_verified_in` promised that its basis touched only the check;
+/// that compatibility entry point retains its original output. `rtc` is the same kind of
+/// argument — `to_post_rtc` already applies it to output and check alike — and
+/// the site rotation simply had no slot until now.
+///
+/// Pass `None` (via [`collate_refs`]) when the baked positions ARE native; the
+/// multiplication is then not performed at all, so the bytes are unchanged.
+pub fn collate_refs_in_basis(
+    meshes: &[InstanceMeshRef],
+    min_group: usize,
+    rtc: [f64; 3],
+    baked_basis: Option<&Matrix4<f64>>,
+) -> Collated {
+    collate_refs_impl(meshes, min_group, rtc, baked_basis, true)
+}
+
+fn collate_refs_impl(
+    meshes: &[InstanceMeshRef],
+    min_group: usize,
+    rtc: [f64; 3],
+    baked_basis: Option<&Matrix4<f64>>,
+    emit_in_basis: bool,
+) -> Collated {
+    // A `baked_basis` that cannot be inverted has no conjugation `B · rel · B⁻¹`.
     // This once degraded to `None` — "no basis given" — which compares an
     // UNCONJUGATED `rel` against baked vertices the caller has just said are in a
     // DIFFERENT frame: the one comparison known to be wrong, reported as verified.
@@ -51,17 +91,17 @@ pub fn collate_refs_verified_in(
     // and every drawable mesh still draws, flat. That costs sharing (loud, and
     // visible in the export's size) rather than shipping a mis-grouped occurrence
     // (silent, and wrong on screen).
-    let verify_conjugate = match verify_basis {
+    let basis_conjugate = match baked_basis {
         None => None,
         Some(s) => match s.try_inverse() {
             Some(s_inv) => Some((*s, s_inv)),
             None => {
                 crate::diag::diag_warn!(
-                    { "instancing: verify_basis is singular; refusing the whole collation (nothing instanced, every drawable mesh still drawn flat)" }
+                    { "instancing: baked_basis is singular; refusing the whole collation (nothing instanced, every drawable mesh still drawn flat)" }
                     else {
                         #[cfg(any(debug_assertions, test))]
                         eprintln!(
-                            "[instancing] verify_basis is singular; refusing the whole \
+                            "[instancing] baked_basis is singular; refusing the whole \
                              collation (nothing instanced, every drawable mesh drawn flat)"
                         );
                     }
@@ -70,6 +110,7 @@ pub fn collate_refs_verified_in(
             }
         },
     };
+    let emitted_basis = emit_in_basis.then_some(basis_conjugate.as_ref()).flatten();
     // First-seen order keeps output deterministic regardless of hash iteration.
     let mut order: Vec<u128> = Vec::new();
     let mut groups: FxHashMap<u128, Vec<usize>> = FxHashMap::default();
@@ -151,18 +192,18 @@ pub fn collate_refs_verified_in(
             {
                 out.verification_rejections += 1;
             }
-            fall_back(&mut out, meshes, rep, members, t_idx, None, rtc);
+            fall_back(&mut out, meshes, rep, members, t_idx, None, rtc, emitted_basis);
             continue;
         }
         if members.len() < min_group.max(1) {
-            fall_back(&mut out, meshes, rep, members, t_idx, m_ref_inv.as_ref(), rtc);
+            fall_back(&mut out, meshes, rep, members, t_idx, m_ref_inv.as_ref(), rtc, emitted_basis);
             continue;
         }
         let Some(m_ref_inv) = m_ref_inv else {
             // A singular template placement is the one refusal that genuinely
             // cannot place a placeholder: there is no `rel` to compute for
             // anyone. `fall_back` counts what it has to drop.
-            fall_back(&mut out, meshes, rep, members, t_idx, None, rtc);
+            fall_back(&mut out, meshes, rep, members, t_idx, None, rtc, emitted_basis);
             continue;
         };
 
@@ -214,7 +255,13 @@ pub fn collate_refs_verified_in(
                 break;
             }
             let m_k = to_post_rtc(compose_world(mesh.instance_meta.unwrap()), rtc);
-            let rel = m_k * m_ref_inv;
+            // `rel` in the frame the BAKED vertices are in. The check below and
+            // the occurrence emitted at the bottom are handed the SAME matrix,
+            // so "verified" and "shipped" cannot describe different frames.
+            let rel_native = m_k * m_ref_inv;
+            let rel_baked = basis_conjugate
+                .as_ref()
+                .map_or(rel_native, |(s, s_inv)| s * rel_native * s_inv);
             // #3666: a shared `rep_identity` is not proof of shared geometry —
             // a 128-bit direct-geometry hash collision has been measured on a
             // real merged model. The count check above still lets a same-
@@ -223,23 +270,26 @@ pub fn collate_refs_verified_in(
             // vertices before trusting the pairing. Scoped to the exact tier
             // (rigid-tier members can legitimately carry a different raw
             // vertex count than the template by design — see module docs).
-            if !pose_only && !member_is_rigid {
-                let verify_rel =
-                    verify_conjugate.as_ref().map_or(rel, |(s, s_inv)| s * rel * s_inv);
-                if !verify_pairing(
+            if !pose_only
+                && !member_is_rigid
+                && !verify_pairing(
                     template.origin,
                     template.positions,
                     mesh.origin,
                     mesh.positions,
-                    &verify_rel,
-                ) {
-                    shapes_match = false;
-                    break;
-                }
+                    &rel_baked,
+                )
+            {
+                shapes_match = false;
+                break;
             }
             occurrences.push(InstanceOccurrence {
                 mesh_index: i,
-                transform: mat4_to_row_major_f32(&rel),
+                transform: mat4_to_row_major_f32(if emit_in_basis {
+                    &rel_baked
+                } else {
+                    &rel_native
+                }),
             });
         }
 
@@ -253,7 +303,7 @@ pub fn collate_refs_verified_in(
         }
 
         out.verification_rejections += 1;
-        fall_back(&mut out, meshes, rep, members, t_idx, Some(&m_ref_inv), rtc);
+        fall_back(&mut out, meshes, rep, members, t_idx, Some(&m_ref_inv), rtc, emitted_basis);
     }
     out
 }
@@ -281,6 +331,11 @@ fn fall_back(
     t_idx: usize,
     place_with: Option<&Matrix4<f64>>,
     rtc: [f64; 3],
+    // The same `(B, B⁻¹)` the success path conjugates by. A refused group still
+    // EMITS occurrences (the template and its pose-only placeholders), so
+    // leaving them native here would ship a native `rel` against baked vertices
+    // on exactly the path nothing verifies.
+    basis_conjugate: Option<&(Matrix4<f64>, Matrix4<f64>)>,
 ) {
     let pose_only: Vec<usize> = members
         .iter()
@@ -298,11 +353,13 @@ fn fall_back(
     // once and drawn once.
     let kept: Vec<InstanceOccurrence> = std::iter::once(t_idx)
         .chain(pose_only)
-        .map(|i| InstanceOccurrence {
-            mesh_index: i,
-            transform: mat4_to_row_major_f32(
-                &(to_post_rtc(compose_world(meshes[i].instance_meta.unwrap()), rtc) * m_ref_inv),
-            ),
+        .map(|i| {
+            let rel = to_post_rtc(compose_world(meshes[i].instance_meta.unwrap()), rtc) * m_ref_inv;
+            let rel = basis_conjugate.map_or(rel, |(s, s_inv)| s * rel * s_inv);
+            InstanceOccurrence {
+                mesh_index: i,
+                transform: mat4_to_row_major_f32(&rel),
+            }
         })
         .collect();
     out.templates.push(InstanceTemplate {

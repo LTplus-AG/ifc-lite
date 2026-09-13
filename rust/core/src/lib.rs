@@ -82,7 +82,7 @@ pub mod streaming;
 pub(crate) mod unit_labels;
 pub mod units;
 
-pub use columnar_index::ColumnarEntityIndex;
+pub use columnar_index::{ColumnLengthMismatch, ColumnarEntityIndex};
 pub use decoder::{build_entity_index, EntityDecoder, EntityIndex};
 pub use dense_index::DenseEntityIndex;
 pub use error::{Error, Result};
@@ -92,8 +92,8 @@ pub use fast_parse::{
     parse_indices_direct, process_triangulated_faceset_direct, should_use_fast_path, FastMeshData,
 };
 pub use generated::{IfcType, IFC_TYPES};
-pub use georef::{GeoRefExtractor, GeoRefSource, GeoReference, RtcOffset};
-pub use limits::{MAX_MAPPED_ITEM_DEPTH, MAX_PLACEMENT_DEPTH};
+pub use georef::{GeoRefExtractor, GeoRefSource, GeoReference};
+pub use limits::{RtcVerdict, MAX_MAPPED_ITEM_DEPTH, MAX_PLACEMENT_DEPTH};
 pub use legacy_entities::{
     get_legacy_entity_info, is_legacy_entity, legacy_attribute_names, map_legacy_to_base_type,
     LegacyEntityInfo, LEGACY_ENTITY_NAMES,
@@ -101,8 +101,9 @@ pub use legacy_entities::{
 pub use model_bounds::{scan_model_bounds, scan_placement_bounds, ModelBounds};
 pub use parser::{
     entity_count, find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with,
-    oversized_id_report, parse_entity, report_malformed_records, report_oversized_ids,
-    report_scan_diagnostics, set_report_sink, skip_step_comment, EntityScanner, Token,
+    nth_attribute_is_present, oversized_id_report, parse_entity, report_malformed_records,
+    report_oversized_ids, report_scan_diagnostics, set_report_sink, skip_step_comment,
+    EntityScanner, Token,
 };
 pub use project_units::{
     measure::{measure_unit, MeasureUnit},
@@ -112,10 +113,9 @@ pub use schema_gen::{AttributeValue, DecodedEntity, GeometryCategory, IfcSchema,
 pub use schema_helpers::{
     geometry_flags_by_name, has_geometry_by_name, is_representationless_spatial_container_by_name,
     is_simple_geometry_type,
-    legacy_aware_ifc_type, legacy_aware_ifc_type_from_record, nth_attribute_is_present,
-    type_product_ifc_type,
+    legacy_aware_ifc_type, legacy_aware_ifc_type_from_record, type_product_ifc_type,
 };
-pub use step_encoding::{decode_ifc_string, encode_ifc_string};
+pub use step_encoding::decode_ifc_string;
 pub use streaming::{parse_stream, ParseEvent, StreamConfig};
 pub use units::{
     extract_length_unit_scale, extract_plane_angle_to_radians, get_si_prefix_multiplier,

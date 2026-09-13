@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Cross-package parity for duplicate direct storey containment (#4248).
+ * Cross-package parity for duplicate direct storey containment (#4248, #4314).
  *
  * `SpatialHierarchyBuilder.build()` (packages/parser) computes
  * `elementToStorey`, a flat map. `EntityNode.containedIn()` (this package)
@@ -73,7 +73,12 @@ describe('elementToStorey / containedIn() parity on duplicate direct containment
       ],
       relationships,
     });
-    const wallNode = new EntityNode(store, 10);
+    // Both APIs read ONE builder run: the hierarchy whose `elementToStorey`
+    // is asserted below also carries the `reachableSpatialNodes` set
+    // `containedIn()` resolves its tie-break against (#4314), so a
+    // disagreement here is a real disagreement between the two
+    // implementations and not two independently-built sets drifting.
+    const wallNode = new EntityNode({ ...store, spatialHierarchy: hierarchy }, 10);
 
     expect(hierarchy.elementToStorey.get(10)).toBe(expectedStoreyId);
     expect(wallNode.containedIn()?.expressId).toBe(expectedStoreyId);
@@ -82,24 +87,16 @@ describe('elementToStorey / containedIn() parity on duplicate direct containment
     expect(hierarchy.elementToStorey.get(10)).toBe(wallNode.containedIn()?.expressId);
   });
 
-  // KNOWN REMAINING DIVERGENCE (#4310 follow-up): the parity above holds only
-  // when every candidate storey is reachable from IfcProject. #4310's fix to
-  // `elementToStorey` (spatial-hierarchy-builder.ts) makes it fall through
-  // past an unreachable first-declared storey (e.g. one with no
-  // IfcRelAggregates edge at all - a malformed/orphan spatial node) to the
-  // next VIABLE, reachable one - so it no longer silently drops the element.
-  // `containedIn()` (`EntityNode`, this file) has no reachability notion
-  // whatsoever: it is a pure `relationships.inverse.getEdges(...)[0]` lookup
-  // over the raw entity graph, with no awareness of the aggregation tree at
-  // all. So in exactly this shape the two APIs now disagree in a NEW way -
-  // both return a present, non-null storey, but a DIFFERENT one - instead of
-  // the OLD disagreement #4248 fixed (present vs. silently-dropped/absent).
-  // This is deliberately left open pending a follow-up issue: giving
-  // `containedIn()` a reachability notion is a bigger, separately-scoped
-  // change (it would need to know the canonical-parent/reachability set that
-  // only `SpatialHierarchyBuilder` currently computes), not a small addition
-  // on top of this tie-break fix.
-  it('elementToStorey and containedIn() disagree when the first-declared storey is unreachable', () => {
+  // #4314: the parity above only exercised candidates that are all reachable
+  // from IfcProject. This case pins the harder shape: the FIRST-declared
+  // storey is an orphan spatial node with no IfcRelAggregates edge at all,
+  // so `SpatialHierarchyBuilder.buildNode` never visits it and
+  // `elementToStorey` falls through to the reachable, later-declared storey
+  // (#4310). `containedIn()` had no reachability notion and returned the
+  // orphan, so both APIs answered a present-but-DIFFERENT storey. Both now
+  // consult the SAME reachable-node set (`computeReachableSpatialNodes`,
+  // spatial-hierarchy-canonical-parent.ts) and agree.
+  it('elementToStorey and containedIn() agree when the first-declared storey is unreachable', () => {
     const relationships = [
       { source: 1, target: 3, type: RelationshipType.Aggregates, relId: 100 }, // Project -> Storey B only
       { source: 2, target: 10, type: RelationshipType.ContainsElements, relId: 200 }, // Storey A (unreachable) first-declared
@@ -131,12 +128,18 @@ describe('elementToStorey / containedIn() parity on duplicate direct containment
       ],
       relationships,
     });
-    const wallNode = new EntityNode(store, 10);
+    // Both APIs read ONE builder run: the hierarchy whose `elementToStorey`
+    // is asserted below also carries the `reachableSpatialNodes` set
+    // `containedIn()` resolves its tie-break against (#4314), so a
+    // disagreement here is a real disagreement between the two
+    // implementations and not two independently-built sets drifting.
+    const wallNode = new EntityNode({ ...store, spatialHierarchy: hierarchy }, 10);
 
-    // elementToStorey correctly falls through to the reachable Storey B (#4310).
+    // Both fall through the unreachable Storey A to the reachable Storey B.
     expect(hierarchy.elementToStorey.get(10)).toBe(3);
-    // containedIn() still returns the unreachable Storey A - the raw
-    // first-declared inverse CSR edge, with no reachability check.
-    expect(wallNode.containedIn()?.expressId).toBe(2);
+    expect(wallNode.containedIn()?.expressId).toBe(3);
+    // The actual parity assertion: both live implementations agree with
+    // EACH OTHER, not just with the expected constant.
+    expect(hierarchy.elementToStorey.get(10)).toBe(wallNode.containedIn()?.expressId);
   });
 });

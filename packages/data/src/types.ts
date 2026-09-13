@@ -272,6 +272,12 @@ export interface SpatialHierarchy {
    */
   elementToContainer?: Map<number, number>;
   ambiguousStorey?: Set<number>;  // elementIds with >1 storey declared via direct ContainsElements in source (elementToStorey's answer was a tie-break, #4311); optional, older hierarchies omit it
+  /** Spatial nodes reachable from `IfcProject` via canonical-parent edges — the set
+   * `SpatialHierarchyBuilder` resolved `elementToStorey`'s tie-break against, read by
+   * `EntityNode.containedIn()` so it cannot decide reachability for itself and answer a
+   * different storey (#4314). Absent on legacy / non-parser hierarchies, and absence
+   * means "no reachability information", never "nothing is reachable". */
+  reachableSpatialNodes?: Set<number>;
 
   // Helper methods
   getStoreyElements(storeyId: number): number[];

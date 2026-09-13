@@ -268,7 +268,7 @@
         );
         use crate::services::parquet_optimized::serialize_to_parquet_optimized_with_stats;
         let (blob, _) =
-            serialize_to_parquet_optimized_with_stats(&[mesh], false).expect("optimized serialize");
+            serialize_to_parquet_optimized_with_stats(&[mesh], false, None).expect("optimized serialize");
         // The optimized blob has its OWN framing --
         // [version:u8][flags:u8][5 x len:u32][instance_parquet]... -- not the
         // section layout `read_sections` expects. Using the wrong reader here
@@ -477,4 +477,37 @@
             "serialize_to_parquet should not panic on empty normals: {:?}",
             result.err()
         );
+    }
+
+    /// `serialize_combined_for_layout`, the body `POST /api/v1/parse/parquet`
+    /// now returns, byte-equals what the route used to build by hand: the
+    /// layout's one-shot blob wrapped in `[geo_len][geo_bytes][dm_len=0]`.
+    /// The route's hand-rolled wrap cast the outer length with an unguarded
+    /// `as u32`; the combined writer guards it (`frame_combined_sections`), and
+    /// this pins that moving onto it changed no byte for either layout. The
+    /// fixture shares shapes, so the two layouts really produce different
+    /// bytes and a writer that ignored `layout` fails one of them.
+    /// Regression for #4634.
+    #[test]
+    fn the_combined_parquet_body_matches_the_old_route_wrapping_for_each_layout() {
+        let meshes = crate::services::parquet_test_fixtures::rotated_repeats();
+        let wrap = |inner: Bytes| {
+            let mut old = Vec::new();
+            old.extend_from_slice(&(inner.len() as u32).to_le_bytes());
+            old.extend_from_slice(&inner);
+            old.extend_from_slice(&0u32.to_le_bytes());
+            old
+        };
+        let flat = serialize_combined_for_layout(&meshes, ParquetLayout::Flat, None).unwrap();
+        let shared = serialize_combined_for_layout(&meshes, ParquetLayout::SharedShapes, None).unwrap();
+        // `assert!`, not `assert_eq!`: a mismatch would print two Parquet blobs.
+        assert!(
+            flat.as_ref() == wrap(serialize_to_parquet(&meshes).unwrap()).as_slice(),
+            "the Flat body drifted from the old route's bytes"
+        );
+        assert!(
+            shared.as_ref() == wrap(serialize_to_parquet_shared_shapes(&meshes).unwrap()).as_slice(),
+            "the SharedShapes body drifted from the old route's bytes"
+        );
+        assert!(flat != shared, "the fixture must tell the two layouts apart");
     }

@@ -33,19 +33,18 @@ export interface ViewerToEnuRotation {
  * from this one function, so they can never disagree on north. See #1408.
  */
 export function viewerToEnuRotation(
-  hScale: number,
+  scaleX: number,
   absc: number,
   ordi: number,
   gamma: number,
+  scaleY = scaleX,
 ): ViewerToEnuRotation {
   const cg = Math.cos(gamma);
   const sg = Math.sin(gamma);
-  const ce = hScale * absc;
-  const co = hScale * ordi;
   return {
-    eastFromVx: cg * ce - sg * co,
-    eastFromVz: cg * co + sg * ce,
-    northFromVx: sg * ce + cg * co,
-    northFromVz: sg * co - cg * ce,
+    eastFromVx: scaleX * (cg * absc - sg * ordi),
+    eastFromVz: scaleY * (cg * ordi + sg * absc),
+    northFromVx: scaleX * (sg * absc + cg * ordi),
+    northFromVz: scaleY * (sg * ordi - cg * absc),
   };
 }

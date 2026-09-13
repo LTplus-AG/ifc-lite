@@ -7,6 +7,7 @@ import assert from 'node:assert';
 
 import {
   detectScaleUnitMismatch,
+  getEffectiveGeoreference,
   getEffectiveHorizontalScale,
   hasStandardGeoreferencing,
   inferMapUnitScale,
@@ -15,8 +16,8 @@ import {
   resolveEpsetMapUnitScale,
   supportsStandardGeoreferencing,
 } from './effective-georef.js';
-import { resolveMapUnitToMetreScale } from './geo-scale.js';
-import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale.js';
+import { IfcParser, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 
 describe('effective georeferencing', () => {
   it('recomputes map unit scale when the edited MapUnit changes', () => {
@@ -212,7 +213,42 @@ describe('effective georeferencing', () => {
       xAxisAbscissa: 0,
       xAxisOrdinate: 1,
       scale: 0.9999,
+      factorX: undefined,
+      factorY: undefined,
+      factorZ: undefined,
     });
+  });
+
+  it('keeps IfcMapConversionScaled factors from a parsed file, with and without an edit (#4615)', async () => {
+    // The viewer reads every conversion through getEffectiveGeoreference, so a
+    // factor the parser reads but the merge drops reaches no consumer. Distinct
+    // factors per axis so a swapped or shared slot fails too.
+    const source = `ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4X3_ADD2'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,(#10),#20);
+#10=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,$,$);
+#20=IFCUNITASSIGNMENT((#21));
+#21=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#30=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#21);
+#31=IFCMAPCONVERSIONSCALED(#10,#30,2600000.,1200000.,400.,1.,0.,1.,0.5,0.25,3.);
+ENDSEC;
+END-ISO-10303-21;
+`;
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(source).buffer as ArrayBuffer,
+      { disableWorkerScan: true },
+    );
+    for (const mutations of [undefined, { mapConversion: { eastings: 2600010 } }]) {
+      const conversion = getEffectiveGeoreference(store, undefined, mutations)?.mapConversion;
+      assert.deepStrictEqual(
+        [conversion?.factorX, conversion?.factorY, conversion?.factorZ],
+        [0.5, 0.25, 3],
+        `factors with mutations ${JSON.stringify(mutations)}`,
+      );
+    }
   });
 
   describe('resolveEpsetMapUnitScale (IFC2x3 ePset offsets use the project unit)', () => {
@@ -356,17 +392,77 @@ describe('effective georeferencing', () => {
     });
   });
 
+  describe('getEffectiveAxisScales (#4615)', () => {
+    it('treats a Scaled factor as part of the authored unit conversion', () => {
+      // Feet-authored local coordinates, metre map coordinates: Scale=1 and
+      // Factor=0.3048 together bridge the units, so metre-converted viewer
+      // geometry remains at 1x rather than being scaled by 0.3048 again.
+      assert.deepStrictEqual(
+        getEffectiveAxisScales({ scale: 1, factorX: 0.3048, factorY: 0.3048, factorZ: 0.3048 }, 1, 0.3048),
+        { x: 1, y: 1, z: 1 },
+      );
+    });
+
+    it('preserves a deliberate factor when project and map units match', () => {
+      assert.strictEqual(getEffectiveAxisScales({ scale: 1, factorX: 0.5 }, 1, 1).x, 0.5);
+    });
+
+    it('places unit factors like the plain conversion in a mm project with metre map units', () => {
+      // IFCMAPCONVERSIONSCALED(...,1.,1.,1.,1.) and IFCMAPCONVERSION(...,1.)
+      // are the same transform; the subtype must not draw 1000x larger.
+      assert.deepStrictEqual(
+        getEffectiveAxisScales({ scale: 1, factorX: 1, factorY: 1, factorZ: 1 }, 1, 0.001),
+        getEffectiveAxisScales({ scale: 1 }, 1, 0.001),
+      );
+      assert.strictEqual(getEffectiveAxisScales({ scale: 1, factorX: 1 }, 1, 0.001).x, 1);
+    });
+
+    it('reads an omitted Scale with a unit-bridging factor like Scale=1', () => {
+      // Feet project, metre map, Scale $ (schema default 1), FactorX 0.3048.
+      assert.strictEqual(getEffectiveAxisScales({ factorX: 0.3048 }, 1, 0.3048).x, 1);
+    });
+
+    it('decides the unset-Scale heuristic once, so grid factors stay on every axis', () => {
+      // mm project, metre map, Scale $, FactorX/Y 0.9996 (a grid scale), FactorZ 1.
+      // Deciding per axis read Z's product of 1 as unset and X/Y as spec-strict:
+      // 999.6 wide and 1 tall.
+      assert.deepStrictEqual(
+        getEffectiveAxisScales({ factorX: 0.9996, factorY: 0.9996, factorZ: 1 }, 1, 0.001),
+        { x: 0.9996, y: 0.9996, z: 1 },
+      );
+    });
+  });
+
   describe('detectScaleUnitMismatch', () => {
+    it('checks every axis factor, and quotes the Scale the worst axis needs (#4615)', () => {
+      // Feet project, metre map: Scale 1 x FactorX 0.3048 is spec-correct.
+      const feet = { factorX: 0.3048, factorY: 0.3048, factorZ: 0.3048 };
+      assert.strictEqual(detectScaleUnitMismatch({ scale: 1, ...feet }, 1, 0.3048), null);
+      // metre project and map, Scale 1 x FactorZ 2: the file needs Scale 0.5 on Z.
+      const found = detectScaleUnitMismatch({ scale: 1, factorZ: 2 }, 1, 1);
+      assert.ok(found, 'a FactorZ-only deviation is reported');
+      assert.strictEqual(found!.rawScale, 1);
+      assert.strictEqual(found!.expectedScale, 0.5);
+      assert.strictEqual(found!.specEffectiveScale, 2);
+      assert.strictEqual(found!.effectiveScale, 2);
+      // mm project, metre map, Scale $, factors (0.5, 0.5, 1): Z is furthest
+      // from 1 on paper (1000) and compensated, but X and Y are drawn at 0.5.
+      const partly = detectScaleUnitMismatch({ factorX: 0.5, factorY: 0.5, factorZ: 1 }, 1, 0.001);
+      assert.ok(partly);
+      assert.strictEqual(partly!.compensated, false);
+      assert.strictEqual(partly!.effectiveScale, 0.5);
+    });
+
     it('returns null for spec-compliant Scale (mm/m with Scale=0.001)', () => {
-      assert.strictEqual(detectScaleUnitMismatch(0.001, 1, 0.001), null);
+      assert.strictEqual(detectScaleUnitMismatch({ scale: 0.001 }, 1, 0.001), null);
     });
 
     it('returns null when project=map=metres and Scale=1', () => {
-      assert.strictEqual(detectScaleUnitMismatch(1, 1, 1), null);
+      assert.strictEqual(detectScaleUnitMismatch({ scale: 1 }, 1, 1), null);
     });
 
     it('returns null when project=map=metres and Scale is undefined', () => {
-      assert.strictEqual(detectScaleUnitMismatch(undefined, 1, 1), null);
+      assert.strictEqual(detectScaleUnitMismatch({ scale: undefined }, 1, 1), null);
     });
 
     it('flags the common Scale=1 + mm-project + m-map error as COMPENSATED', () => {
@@ -374,7 +470,7 @@ describe('effective georeferencing', () => {
       // heuristic already places the geometry at 1×. Reporting effectiveScale
       // 1000 here claimed a mis-sizing the code prevents, and that false
       // warning was the only thing the panel said about the #2526 file.
-      const m = detectScaleUnitMismatch(1, 1, 0.001);
+      const m = detectScaleUnitMismatch({ scale: 1 }, 1, 0.001);
       assert.ok(m, 'expected a mismatch report');
       assert.strictEqual(m!.rawScale, 1);
       assert.strictEqual(m!.specEffectiveScale, 1000);
@@ -384,7 +480,7 @@ describe('effective georeferencing', () => {
     });
 
     it('flags Scale omitted when units differ as COMPENSATED', () => {
-      const m = detectScaleUnitMismatch(undefined, 1, 0.001);
+      const m = detectScaleUnitMismatch({ scale: undefined }, 1, 0.001);
       assert.ok(m);
       assert.strictEqual(m!.specEffectiveScale, 1000);
       assert.strictEqual(m!.effectiveScale, 1);
@@ -394,7 +490,7 @@ describe('effective georeferencing', () => {
     it('does NOT mark a genuine mis-scaling as compensated', () => {
       // Scale explicitly 1000 on a mm project: the heuristic only rescues an
       // unset/1 Scale, so this really is applied and really does mis-size.
-      const m = detectScaleUnitMismatch(1000, 1, 0.001);
+      const m = detectScaleUnitMismatch({ scale: 1000 }, 1, 0.001);
       assert.ok(m);
       assert.strictEqual(m!.effectiveScale, 1e6);
       assert.strictEqual(m!.specEffectiveScale, 1e6);
@@ -403,12 +499,12 @@ describe('effective georeferencing', () => {
 
     it('tolerates tiny floating-point noise around 1.0', () => {
       // Scale = 1.0 ± 0.4% should still be considered consistent.
-      assert.strictEqual(detectScaleUnitMismatch(1.004, 1, 1), null);
-      assert.strictEqual(detectScaleUnitMismatch(0.996, 1, 1), null);
+      assert.strictEqual(detectScaleUnitMismatch({ scale: 1.004 }, 1, 1), null);
+      assert.strictEqual(detectScaleUnitMismatch({ scale: 0.996 }, 1, 1), null);
     });
 
     it('flags a deliberate non-unit scaling (Scale=2 with metres)', () => {
-      const m = detectScaleUnitMismatch(2, 1, 1);
+      const m = detectScaleUnitMismatch({ scale: 2 }, 1, 1);
       assert.ok(m);
       assert.strictEqual(m!.effectiveScale, 2);
       assert.strictEqual(m!.compensated, false);
@@ -419,10 +515,10 @@ describe('effective georeferencing', () => {
       // TIGHTENED without failing -- but nothing failed when it was widened, and
       // at 5% it still passed every test in this file. A band is two-sided: pin
       // the first value that must be reported, or only one direction is guarded.
-      assert.strictEqual(detectScaleUnitMismatch(1.004, 1, 1), null);
-      const over = detectScaleUnitMismatch(1.006, 1, 1);
+      assert.strictEqual(detectScaleUnitMismatch({ scale: 1.004 }, 1, 1), null);
+      const over = detectScaleUnitMismatch({ scale: 1.006 }, 1, 1);
       assert.ok(over, '0.6% off unity must be reported, not swallowed by the band');
-      const under = detectScaleUnitMismatch(0.994, 1, 1);
+      const under = detectScaleUnitMismatch({ scale: 0.994 }, 1, 1);
       assert.ok(under, '-0.6% off unity must be reported too');
     });
 
@@ -431,7 +527,7 @@ describe('effective georeferencing', () => {
       // far away (2, 1e6), so the 0.5% width of that band was never load-bearing:
       // it could be widened a hundredfold unnoticed. Scale=1.2 is applied for
       // real and is small enough to fall inside a sloppy band.
-      const m = detectScaleUnitMismatch(1.2, 1, 1);
+      const m = detectScaleUnitMismatch({ scale: 1.2 }, 1, 1);
       assert.ok(m);
       assert.strictEqual(m!.effectiveScale, 1.2);
       assert.strictEqual(m!.compensated, false);

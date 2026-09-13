@@ -126,6 +126,11 @@ struct ParserState<'a> {
     entities_scanned: usize,
     total_entities: usize,
     triangles_generated: usize,
+    /// The `Progress` event owed by the `progress_interval`-th entity. A poll
+    /// returns one event, so the entity's own `EntityScanned` goes first and
+    /// this goes out on the next poll; returning it instead dropped the
+    /// entity from the stream (core review behind #4577, finding 5).
+    pending_progress: Option<ParseEvent>,
     /// Whether [`Self::report_scan_once`] has already fired. The scan is
     /// reported at whichever comes first: the end of the walk, or the state
     /// being dropped under a consumer that stopped early.
@@ -144,6 +149,7 @@ impl<'a> ParserState<'a> {
             entities_scanned: 0,
             total_entities: 0,
             triangles_generated: 0,
+            pending_progress: None,
             scan_reported: false,
         }
     }
@@ -179,6 +185,11 @@ impl<'a> ParserState<'a> {
         // Stream has ended - CRITICAL: prevents infinite loop!
         if self.completed {
             return None;
+        }
+
+        // Progress owed by the previous poll's entity.
+        if let Some(progress) = self.pending_progress.take() {
+            return Some(progress);
         }
 
         // Emit Started event on first call
@@ -235,14 +246,14 @@ impl<'a> ParserState<'a> {
                 position: start,
             };
 
-            // Check if we should emit progress
+            // Queued, not returned: this poll's return is the entity.
             if self
                 .entities_scanned
                 .is_multiple_of(self.config.progress_interval)
             {
                 // Note: In a real implementation, we'd estimate total_entities
                 // by doing a quick pre-scan or using file size heuristics
-                return Some(ParseEvent::Progress {
+                self.pending_progress = Some(ParseEvent::Progress {
                     phase: "Scanning entities".to_string(),
                     percent: 0.0, // Would calculate based on position/file_size
                     entities_processed: self.entities_scanned,

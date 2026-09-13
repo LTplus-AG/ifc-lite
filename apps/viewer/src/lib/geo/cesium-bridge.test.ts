@@ -162,6 +162,16 @@ describe('viewerToEnuRotation — model/camera share one convergence-corrected r
     assert.ok(Math.abs(r.eastFromVz - (cg * g.eastFromVz - sg * g.northFromVz)) < 1e-12);
     assert.ok(Math.abs(r.northFromVz - (sg * g.eastFromVz + cg * g.northFromVz)) < 1e-12);
   });
+
+  it('carries unequal X/Y factors through a rotated frame (#4615)', () => {
+    const r = viewerToEnuRotation(2, 0.6, 0.8, 0, 3);
+    assert.deepStrictEqual(r, {
+      eastFromVx: 1.2,
+      eastFromVz: 2.4000000000000004,
+      northFromVx: 1.6,
+      northFromVz: -1.7999999999999998,
+    });
+  });
 });
 
 describe('createCesiumBridge with map-absolute geometry (#2526)', () => {

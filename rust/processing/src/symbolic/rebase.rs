@@ -40,8 +40,9 @@ impl RenderFrameRebase {
     /// Build the rebase for a detected RTC offset (IFC Z-up metres), or the
     /// identity when the model is not large-coordinate. Below the shared
     /// threshold the model is local-coord territory and re-basing would shift
-    /// the overlay off-screen, so the rebase is the identity, the same
-    /// decision the mesh pipeline makes through the same predicate.
+    /// the overlay off-screen, so the rebase is the identity. The mesh frame
+    /// is chosen elsewhere and can differ, for example when a placement-bounds
+    /// verdict re-bases meshes on a bbox centre inside the threshold (#4665).
     pub(super) fn from_rtc_offset(rtc_offset: (f64, f64, f64)) -> Self {
         if !coord_is_large(rtc_offset) {
             return Self::default();

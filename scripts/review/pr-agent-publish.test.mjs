@@ -48,8 +48,6 @@ test('classifyFailure names the provider failures a maintainer acts on different
 
 test('a status-code-looking number outside the error message is not a status code', () => {
   assert.equal(classifyFailure('INFO | Tokens: 401, total tokens under limit: 32768\nERROR | Failed to review PR'), 'NO_REVIEW');
-  // The timestamp's milliseconds and the source line number are numbers in the
-  // error line itself.
   assert.equal(
     classifyFailure('2026-09-13 13:46:43.401 | ERROR    | pr_agent.algo.x:chat_completion:429 - litellm.ContextWindowExceededError: too long'),
     'CONTEXT_TOO_LONG',

@@ -72,15 +72,14 @@ const FAILURES = [
 const remedy = (reason) => FAILURES.find(([r]) => r === reason)[2];
 
 /**
- * PR-Agent's log prefix: `2026-09-13 13:46:43.401 | ERROR    | module:function:1201 - `.
- * Its milliseconds and source line number are numbers too, and `.401` or `:429`
- * would otherwise read as a status code.
+ * PR-Agent's log prefix, `2026-09-13 13:46:43.401 | ERROR    | module:function:1201 - `.
+ * Its milliseconds and line number would otherwise read as a status code.
  */
-const LOG_PREFIX_RE = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+\s*\|\s*\w+\s*\|\s*\S+\s+-\s+/;
+const LOG_PREFIX_RE = /^[^|]*\|[^|]*\|\s*\S+ - /;
 
 /**
- * Only the message part of error lines is read, so neither a token count
- * ("Tokens: 401") nor a timestamp or line number is taken for a status code.
+ * Reads only the message of error lines, so a token count ("Tokens: 401") is
+ * not taken for a status code either.
  *
  * @param {string|null} logText
  */

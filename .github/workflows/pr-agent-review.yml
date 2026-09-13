@@ -86,9 +86,6 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       vars.PR_AGENT_OPENROUTER_ENABLED == 'true'
     runs-on: ubuntu-latest
-    # Above PR-Agent's worst case, so a hung provider ends as a named failure
-    # from the publish step rather than a job timeout that skips it: two models
-    # at CONFIG__AI_TIMEOUT each, plus LiteLLM's own retries.
     timeout-minutes: 40
     permissions:
       contents: read
@@ -116,6 +113,9 @@ jobs:
       # publish step reports AUTH_FAILED naming this secret (measured).
       - name: Run PR-Agent
         id: run
+        # A STEP timeout fails only this step, so the !cancelled() publish step
+        # still runs and names the failure. A job timeout would cancel it.
+        timeout-minutes: 30
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CONFIG__MODEL: ${{ env.PR_AGENT_OPENROUTER_MODEL }}
@@ -161,9 +161,7 @@ jobs:
     # configured and the PR is not labelled `ci:hosted`. Otherwise a hosted
     # runner, which only runs the probe step to report why.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && vars.PR_AGENT_LOCAL_BASE_URL != '' && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    # Same reasoning as the OpenRouter job: above two model attempts at
-    # CONFIG__AI_TIMEOUT plus LiteLLM's retries.
-    timeout-minutes: 120
+    timeout-minutes: 60
     # No write permission on the self-hosted runner. The hosted job below posts.
     permissions:
       contents: read
@@ -235,6 +233,8 @@ jobs:
       - name: Run PR-Agent
         id: run
         if: steps.probe.outputs.available == 'true'
+        # Step timeout, as in the OpenRouter job, so the upload still runs.
+        timeout-minutes: 45
         env:
           # LiteLLM's `openai/` provider speaks to any OpenAI-compatible server.
           CONFIG__MODEL: openai/${{ env.PR_AGENT_LOCAL_MODEL }}

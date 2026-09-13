@@ -223,7 +223,7 @@ pub use router::take_bool2d_stats;
 pub use router::{take_prism_defers, take_prism_stats};
 pub use router::{
     aggregate_diagnostics, count_attributed_products, format_unsupported_breakdown,
-    local_frame_set_enabled_override, ClassificationStats, UNATTRIBUTED_PRODUCT_ID,
+    local_frame_set_enabled_override, meshed_representations, ClassificationStats, UNATTRIBUTED_PRODUCT_ID,
     GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, FACETED_BREP_DEDUP_FACE_LIMIT,
     ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter,
     HostOpeningDiagnostic, ItemDedupCache, MappedInstancePlan, OpeningDiagnostic, OpeningKindDiag,

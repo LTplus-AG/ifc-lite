@@ -260,6 +260,26 @@ END-ISO-10303-21;
     assert!((georef.eastings - (-0.75)).abs() < 1e-9);
 }
 
+/// #4687: a comment is trivia for the `-0` scan. A comma in one shifted
+/// every later attribute, an apostrophe in one opened a string for the rest
+/// of the record, and one beside the component hid the `-0`.
+#[test]
+fn issue_4687_negative_zero_scan_treats_comments_as_trivia() {
+    for site in [
+        "#1=IFCSITE('1abc',$,/* a, b */'Site',$,$,$,$,$,.ELEMENT.,(-0,30,0),(-0,45,0),0.,$,$);",
+        "#1=IFCSITE('1abc',$,/* it's */'Site',$,$,$,$,$,.ELEMENT.,(-0,30,0),(-0,45,0),0.,$,$);",
+        "#1=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(-0 /* deg */,30,0),( /* deg */ -0,45,0),0.,$,$);",
+    ] {
+        let ifc_content = format!("DATA;\n{site}\nENDSEC;\n");
+        let mut decoder = EntityDecoder::new(&ifc_content);
+        let georef = GeoRefExtractor::extract(&mut decoder, &[(1u32, IfcType::IfcSite)])
+            .expect("decode ok")
+            .expect("legacy site georeference extracted");
+        assert!((georef.northings - (-0.5)).abs() < 1e-9, "{site}: {}", georef.northings);
+        assert!((georef.eastings - (-0.75)).abs() < 1e-9, "{site}: {}", georef.eastings);
+    }
+}
+
 fn ifc4x3_with_conversion(map_conversion_line: &str) -> String {
     format!(
         "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('Test'),'2;1');\nFILE_NAME('t.ifc','2026-01-01',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);\n#4=IFCCARTESIANPOINT((0.,0.,0.));\n#5=IFCAXIS2PLACEMENT3D(#4,$,$);\n#10=IFCPROJECTEDCRS('EPSG:32632',$,$,$,$,$,$);\n{map_conversion_line}\nENDSEC;\nEND-ISO-10303-21;\n"

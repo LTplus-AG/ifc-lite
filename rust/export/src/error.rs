@@ -2,8 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Typed export failures, so callers can fail closed instead of shipping a
-//! structurally valid but empty artifact.
+//! Typed export failures, so callers can fail closed instead of shipping an
+//! empty artifact.
 
 use std::fmt;
 
@@ -12,9 +12,13 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExportError {
     /// The visible mesh set was empty: the model has no render geometry (or the
-    /// caller's visibility filters removed all of it). The export would be a
-    /// valid but empty file, which downstream tools accept silently, so this is
-    /// surfaced as an error rather than an artifact.
+    /// caller's visibility filters removed all of it). The export would not be a
+    /// valid file: an empty GLB has empty `accessors`, `bufferViews`, `meshes`
+    /// and `nodes` arrays (glTF schema `minItems: 1`) and a zero
+    /// `buffers[0].byteLength` (schema `minimum: 1`), and an empty COLLADA
+    /// document has empty libraries its schema requires children in. Some
+    /// downstream tools still accept such a file silently, so this is surfaced
+    /// as an error rather than an artifact.
     NoRenderGeometry,
     /// The projected single-GLB output exceeds the glTF 32-bit (4 GiB) container
     /// / buffer limit — the model is too large for one GLB and must be exported

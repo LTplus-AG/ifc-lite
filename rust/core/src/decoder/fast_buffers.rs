@@ -103,14 +103,10 @@ impl EntityDecoder<'_> {
         &mut self, entity_id: u32, coords: &mut Vec<(f64, f64, f64)>,
     ) -> Option<()> {
         coords.clear();
-        // Ensure index is built once
-        self.build_index();
+        // Builds the index once and refuses a span outside the content (#4697).
+        let bytes = self.get_raw_bytes(entity_id)?;
         let index = self.entity_index.as_ref()?;
         let bytes_full = self.content;
-
-        // Get polyloop raw bytes
-        let (start, end) = index.lookup(entity_id)?;
-        let bytes = &bytes_full[start..end];
 
         // IFCPOLYLOOP((#id1,#id2,#id3,...));
         let mut i = 0;
@@ -176,7 +172,7 @@ impl EntityDecoder<'_> {
                             // Not in cache - parse and cache
                             if let Some((pt_start, pt_end)) = index.lookup(point_id) {
                                 if let Some(coord) =
-                                    parse_cartesian_point_inline(&bytes_full[pt_start..pt_end])
+                                    bytes_full.get(pt_start..pt_end).and_then(parse_cartesian_point_inline)
                                 {
                                     self.point_cache_misses += 1;
                                     self.point_cache.insert(point_id, coord);

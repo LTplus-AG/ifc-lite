@@ -94,8 +94,15 @@ impl AttributeValue {
             Token::TypedValue(type_name, args) => {
                 // For typed values like IFCPARAMETERVALUE(0.), extract the inner value
                 // Store as a list with the type name first, followed by args
+                //
+                // The name is a STEP keyword, so its case is not significant
+                // (ISO 10303-21). Fold it to the EXPRESS spelling here, once, so
+                // every consumer can match uppercase literals and every exporter
+                // emits the canonical name (#4707). Still one allocation: an
+                // uppercase name is borrowed until `into_owned`.
+                let name = String::from_utf8_lossy(type_name);
                 let mut values = vec![AttributeValue::String(
-                    String::from_utf8_lossy(type_name).into_owned(),
+                    crate::schema_helpers::normalise_uppercase(&name).into_owned(),
                 )];
                 values.extend(args.iter().map(Self::from_token));
                 AttributeValue::List(values)

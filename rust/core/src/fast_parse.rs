@@ -16,6 +16,24 @@ fn is_number_start(b: u8) -> bool {
     b.is_ascii_digit() || b == b'-' || b == b'.'
 }
 
+/// The first byte at or after `pos` that `starts_value` accepts, stepping over
+/// `/* ... */` comments whole so their digits are never read as data (#4687).
+/// `None` at the end of `bytes` or at a comment that never closes.
+#[inline(always)]
+fn next_value_start(bytes: &[u8], mut pos: usize, starts_value: fn(u8) -> bool) -> Option<usize> {
+    loop {
+        let b = *bytes.get(pos)?;
+        if starts_value(b) {
+            return Some(pos);
+        }
+        pos = if b == b'/' && bytes.get(pos + 1) == Some(&b'*') {
+            crate::parser::skip_step_comment(bytes, pos)?
+        } else {
+            pos + 1
+        };
+    }
+}
+
 /// Estimate number of floats in coordinate data
 #[inline]
 fn estimate_float_count(bytes: &[u8]) -> usize {
@@ -45,17 +63,9 @@ fn estimate_int_count(bytes: &[u8]) -> usize {
 pub fn parse_coordinates_direct(bytes: &[u8]) -> Vec<f32> {
     let mut result = Vec::with_capacity(estimate_float_count(bytes));
     let mut pos = 0;
-    let len = bytes.len();
 
-    while pos < len {
-        // Skip to next number using SIMD-accelerated search
-        while pos < len && !is_number_start(bytes[pos]) {
-            pos += 1;
-        }
-        if pos >= len {
-            break;
-        }
-
+    while let Some(start) = next_value_start(bytes, pos, is_number_start) {
+        pos = start;
         // Parse float directly
         match fast_float2::parse_partial::<f32, _>(&bytes[pos..]) {
             Ok((value, consumed)) if consumed > 0 => {
@@ -79,16 +89,9 @@ pub fn parse_coordinates_direct(bytes: &[u8]) -> Vec<f32> {
 pub fn parse_coordinates_direct_f64(bytes: &[u8]) -> Vec<f64> {
     let mut result = Vec::with_capacity(estimate_float_count(bytes));
     let mut pos = 0;
-    let len = bytes.len();
 
-    while pos < len {
-        while pos < len && !is_number_start(bytes[pos]) {
-            pos += 1;
-        }
-        if pos >= len {
-            break;
-        }
-
+    while let Some(start) = next_value_start(bytes, pos, is_number_start) {
+        pos = start;
         match fast_float2::parse_partial::<f64, _>(&bytes[pos..]) {
             Ok((value, consumed)) if consumed > 0 => {
                 result.push(value);
@@ -119,14 +122,8 @@ pub fn parse_indices_direct(bytes: &[u8]) -> Vec<u32> {
     let mut pos = 0;
     let len = bytes.len();
 
-    while pos < len {
-        // Skip to next digit
-        while pos < len && !bytes[pos].is_ascii_digit() {
-            pos += 1;
-        }
-        if pos >= len {
-            break;
-        }
+    while let Some(start) = next_value_start(bytes, pos, |b| b.is_ascii_digit()) {
+        pos = start;
 
         // Parse integer inline (avoiding any allocation). Use CHECKED
         // arithmetic so a pathologically large index in malformed input

@@ -10,7 +10,7 @@
 //! `EntityScanner::has_non_null_attribute` copy. Both copies are gone; every
 //! case below runs against the single function.
 
-use super::nth_attribute_is_present;
+use super::{nth_attribute_is_present, StepListItems};
 
 // #1910 review follow-up: `nth_attribute_is_present` had no direct unit
 // test — every existing reference was production use or an integration
@@ -240,4 +240,35 @@ fn an_unterminated_comment_or_string_settles_nothing() {
     assert!(!nth_attribute_is_present(b"#1=IFCWALL('a', /* open $);", 1));
     assert!(!nth_attribute_is_present(b"#1=IFCWALL('open,$);", 0));
     assert!(!nth_attribute_is_present(b"#1=IFCWALL('a',$,'open);", 0));
+}
+
+// ---------------------------------------------------------------------------
+// `StepListItems`, the split under `nth_attribute_is_present` and the two
+// attribute splitters that used to read comments as data (#4687).
+// ---------------------------------------------------------------------------
+
+fn items(record: &[u8]) -> (Vec<&[u8]>, bool) {
+    let mut items = StepListItems::of_record(record).expect("the list opens");
+    let collected = items.by_ref().collect();
+    (collected, items.closed())
+}
+
+#[test]
+fn issue_4687_list_items_are_trimmed_of_comments_and_split_outside_them() {
+    let (attributes, closed) =
+        items(b"#1=IFCWALL( 'a,(b' /* it's, ) */ , /* x */ (#2, /* y, */ #3) ,$);");
+    assert_eq!(attributes, [&b"'a,(b'"[..], b"(#2, /* y, */ #3)", b"$"]);
+    assert!(closed);
+    let nested: Vec<&[u8]> = StepListItems::of_list(attributes[1]).unwrap().collect();
+    assert_eq!(nested, [&b"#2"[..], b"#3"]);
+}
+
+#[test]
+fn issue_4687_list_items_empty_lists_slots_and_unclosed_input() {
+    assert_eq!(items(b"#1=X();"), (vec![], true));
+    assert_eq!(items(b"#1=X( /* none */ );"), (vec![], true));
+    assert_eq!(items(b"#1=X(,);"), (vec![&b""[..], b""], true));
+    assert_eq!(items(b"#1=X('a',$"), (vec![&b"'a'"[..]], false));
+    assert_eq!(items(b"#1=X('a',/* open"), (vec![&b"'a'"[..]], false));
+    assert!(StepListItems::of_list(b"$").is_none());
 }

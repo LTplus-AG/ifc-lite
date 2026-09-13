@@ -4,7 +4,7 @@
 
 use crate::types::response::{QuickMetadataEntitySummary, QuickMetadataSpatialNode};
 use ifc_lite_core::limits::LARGE_COORD_THRESHOLD_METERS;
-use ifc_lite_core::{keyword_eq, IfcType, IFC_TYPES};
+use ifc_lite_core::{keyword_eq, IfcType, StepListItems, IFC_TYPES};
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
@@ -71,46 +71,10 @@ pub fn is_quick_spatial_type_ci(type_name: &str) -> bool {
         .any(|candidate| keyword_eq(type_name, candidate))
 }
 
+/// A record's top-level attributes, trimmed of STEP trivia. The split is
+/// core's [`StepListItems`], so a comment is trivia here too (#4687).
 pub(super) fn parse_step_arguments(entity_bytes: &[u8]) -> Vec<&[u8]> {
-    let Some(open_idx) = entity_bytes.iter().position(|byte| *byte == b'(') else {
-        return Vec::new();
-    };
-    let Some(close_idx) = entity_bytes.iter().rposition(|byte| *byte == b')') else {
-        return Vec::new();
-    };
-    if close_idx <= open_idx {
-        return Vec::new();
-    }
-    let args = &entity_bytes[open_idx + 1..close_idx];
-    let mut parts = Vec::new();
-    let mut in_string = false;
-    let mut depth = 0i32;
-    let mut start = 0usize;
-    let bytes = args;
-    let mut index = 0usize;
-    while index < bytes.len() {
-        match bytes[index] {
-            b'\'' => {
-                if in_string && index + 1 < bytes.len() && bytes[index + 1] == b'\'' {
-                    index += 1;
-                } else {
-                    in_string = !in_string;
-                }
-            }
-            b'(' if !in_string => depth += 1,
-            b')' if !in_string => depth -= 1,
-            b',' if !in_string && depth == 0 => {
-                parts.push(args[start..index].trim_ascii());
-                start = index + 1;
-            }
-            _ => {}
-        }
-        index += 1;
-    }
-    if start <= args.len() {
-        parts.push(args[start..].trim_ascii());
-    }
-    parts
+    StepListItems::of_record(entity_bytes).map(Iterator::collect).unwrap_or_default()
 }
 
 fn parse_step_string(token: &[u8]) -> Option<String> {
@@ -132,12 +96,10 @@ pub(super) fn parse_step_ref(token: &[u8]) -> Option<u32> {
 }
 
 pub(super) fn parse_step_ref_list(token: &[u8]) -> Vec<u32> {
-    let trimmed = token.trim_ascii();
-    let inner = trimmed
-        .strip_prefix(b"(")
-        .and_then(|value| value.strip_suffix(b")"))
-        .unwrap_or(trimmed);
-    inner.split(|byte| *byte == b',').filter_map(parse_step_ref).collect()
+    match StepListItems::of_list(token) {
+        Some(items) => items.filter_map(parse_step_ref).collect(),
+        None => parse_step_ref(token).into_iter().collect(),
+    }
 }
 
 pub(super) fn extract_name_from_args(args: &[&[u8]], fallback: &str) -> String {
@@ -363,6 +325,24 @@ mod tests {
              missing (severed from the spatial tree): {missing:?}\n  \
              extra (invented spatial nodes): {extra:?}"
         );
+    }
+
+    /// #4687: a comment is trivia for the attribute split. A comma in one
+    /// shifted every later attribute, an apostrophe in one opened a string
+    /// for the rest of the record, and one inside a ref list hid the ref.
+    #[test]
+    fn issue_4687_step_arguments_treat_comments_as_trivia() {
+        for record in [
+            &b"#50=IFCRELAGGREGATES('0YvctVUKr0kugbFTf53O9L',$,$,/* a, b */$,#1,(#2,#3));"[..],
+            b"#50=IFCRELAGGREGATES('0YvctVUKr0kugbFTf53O9L',$,$,/* it's */$,#1,(#2,#3));",
+            b"#50=IFCRELAGGREGATES('0YvctVUKr0kugbFTf53O9L',$,$,$,#1 /* x */,(#2, /* door */ #3));",
+        ] {
+            let args = parse_step_arguments(record);
+            let text = String::from_utf8_lossy(record);
+            assert_eq!(args.len(), 6, "{text}");
+            assert_eq!(args.get(4).and_then(|token| parse_step_ref(token)), Some(1), "{text}");
+            assert_eq!(parse_step_ref_list(args[5]), [2, 3], "{text}");
+        }
     }
 
     /// Control fixture for the drift guard above. A regression that made the

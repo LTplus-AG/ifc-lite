@@ -120,7 +120,9 @@ function visitEntityIndex(
       && record[p] !== FORM_FEED
       && record[p] !== VTAB
     ) {
-      typeHash = Math.imul(typeHash ^ record[p], 0x01000193);
+      const byte = record[p];
+      const upper = byte >= 0x61 && byte <= 0x7a ? byte - 0x20 : byte;
+      typeHash = Math.imul(typeHash ^ upper, 0x01000193);
       p++;
     }
     const typeEnd = p;

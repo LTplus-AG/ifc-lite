@@ -105,7 +105,10 @@ export class EntityExtractor {
       // express-id.ts (#3395).
       const expressId = parseInt(match[1], 10);
       if (!isIndexableExpressId(expressId)) return null;
-      const type = match[2];
+      // STEP entity keywords are case-insensitive. The scan ref is already
+      // canonical, but this legacy eager adapter re-reads the record and must
+      // not reintroduce the file's spelling into EntityIndexBuilder.byType.
+      const type = match[2].toUpperCase();
       const paramsText = match[3];
 
       // Parse attributes (simplified - handles basic types)

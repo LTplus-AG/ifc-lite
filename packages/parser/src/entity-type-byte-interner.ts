@@ -23,7 +23,12 @@ export class EntityTypeByteInterner {
       for (const candidate of bucket) {
         if (candidate.length !== length) continue;
         let i = 0;
-        while (i < length && candidate.charCodeAt(i) === bytes[start + i]) i++;
+        while (i < length) {
+          const byte = bytes[start + i];
+          const upper = byte >= 0x61 && byte <= 0x7a ? byte - 0x20 : byte;
+          if (candidate.charCodeAt(i) !== upper) break;
+          i++;
+        }
         if (i === length) return candidate;
       }
       const value = this.readString(bytes, start, end);
@@ -55,13 +60,16 @@ export class EntityTypeByteInterner {
   }
 
   private readString(bytes: Uint8Array, start: number, end: number): string {
-    // Deliberately byte→char: the file's own spelling, unknown names and
-    // non-ASCII bytes included. Not case-folded, unlike the byte scanners in
-    // tokenizer.ts and scan-worker-source.ts, which name a type in upper case
-    // since #4713; consumers of this path upper-case it themselves
-    // (getTypeUpper in columnar-entity-preparation.ts).
+    // Entity keywords are case-insensitive. Canonicalize the pre-scanned path
+    // at its raw boundary, like the tokenizer and worker scanners, so public
+    // EntityRef values and compact byType keys never depend on the load path.
+    // Fold ASCII only: STEP keywords are ASCII, while an invalid high byte is
+    // retained rather than being expanded by Unicode case conversion.
     let value = '';
-    for (let i = start; i < end; i++) value += String.fromCharCode(bytes[i]);
+    for (let i = start; i < end; i++) {
+      const byte = bytes[i];
+      value += String.fromCharCode(byte >= 0x61 && byte <= 0x7a ? byte - 0x20 : byte);
+    }
     return value;
   }
 }

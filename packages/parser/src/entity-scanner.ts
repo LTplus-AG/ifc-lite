@@ -339,14 +339,15 @@ function normalizeWasmEntityRefs(value: unknown): EntityRef[] {
   if (!Array.isArray(value)) return [];
 
   const refs: EntityRef[] = [];
+  const normalizedTypes = new Map<string, string>();
   for (const rawRef of value) {
-    const ref = normalizeWasmEntityRef(rawRef);
+    const ref = normalizeWasmEntityRef(rawRef, normalizedTypes);
     if (ref) refs.push(ref);
   }
   return refs;
 }
 
-function normalizeWasmEntityRef(value: unknown): EntityRef | null {
+function normalizeWasmEntityRef(value: unknown, normalizedTypes: Map<string, string>): EntityRef | null {
   if (!isRecord(value)) return null;
 
   const expressId = readNumber(value, 'expressId') ?? readNumber(value, 'express_id');
@@ -359,9 +360,15 @@ function normalizeWasmEntityRef(value: unknown): EntityRef | null {
     return null;
   }
 
+  let normalizedType = normalizedTypes.get(type);
+  if (normalizedType === undefined) {
+    normalizedType = type.toUpperCase();
+    normalizedTypes.set(type, normalizedType);
+  }
+
   return {
     expressId,
-    type,
+    type: normalizedType,
     byteOffset,
     byteLength,
     lineNumber: lineNumber ?? 0,

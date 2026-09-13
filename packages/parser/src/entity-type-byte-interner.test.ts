@@ -8,7 +8,7 @@ import { buildEntityRefsFromIndex } from './entity-refs-from-index.js';
 import { contiguousSourceBytes } from './source-bytes.js';
 
 describe('issue #3985 byte type interning', () => {
-  it('compares every byte on hash collisions, including mixed case and raw non-ASCII', () => {
+  it('compares every byte on hash collisions and canonicalizes ASCII keyword case', () => {
     const interner = new EntityTypeByteInterner();
     const spellings = ['IFCWALL', 'IFCWaLL', 'UNKNOWN', 'IFC\u00ffALL', ''];
     for (let round = 0; round < 2; round++) {
@@ -16,7 +16,8 @@ describe('issue #3985 byte type interning', () => {
         const bytes = Uint8Array.from(spelling, character => character.charCodeAt(0));
         // Identical caller-supplied hashes represent the collision case. Hash
         // identity must never replace equality of the underlying type bytes.
-        expect(interner.intern(bytes, 0, bytes.length, 23)).toBe(spelling);
+        const expected = spelling.replace(/[a-z]/g, character => character.toUpperCase());
+        expect(interner.intern(bytes, 0, bytes.length, 23)).toBe(expected);
       }
     }
   });
@@ -73,7 +74,7 @@ describe('issue #3985 byte type interning', () => {
     const lengths = Uint32Array.of(recordA.length, recordB.length);
     const expected = [
       { expressId: 1, type: 'IFC\u00ff', byteOffset: recordA.length, byteLength: recordB.length, lineNumber: 0 },
-      { expressId: 2, type: 'IfcWall', byteOffset: 0, byteLength: recordA.length, lineNumber: 0 },
+      { expressId: 2, type: 'IFCWALL', byteOffset: 0, byteLength: recordA.length, lineNumber: 0 },
     ];
     expect(buildEntityRefsFromIndex(source, ids, starts, lengths)).toEqual(expected);
     const accessor = contiguousSourceBytes(source);

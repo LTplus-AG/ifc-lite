@@ -73,14 +73,14 @@ describe('scanIfcEntities', () => {
       scanEntitiesFastBytes: () => [
         {
           express_id: 1,
-          entity_type: 'IFCPROJECT',
+          entity_type: 'ifcproject',
           byte_offset: project.start,
           byte_length: project.length,
           line_number: 6,
         },
         {
           expressId: 7,
-          type: 'IFCWALL',
+          type: 'IfcWall',
           byteOffset: wall.start,
           byteLength: wall.length,
           lineNumber: 12,
@@ -88,7 +88,9 @@ describe('scanIfcEntities', () => {
       ],
     };
 
-    const result = await scanIfcEntities(encodeSource(), {
+    const lowerCaseSource = IFC_SOURCE.replace('IFCPROJECT', 'ifcproject').replace('IFCWALL', 'ifcwall');
+    const lowerCaseBytes = new TextEncoder().encode(lowerCaseSource);
+    const result = await scanIfcEntities(lowerCaseBytes.buffer, {
       disableWorkerScan: true,
       wasmApi,
     });
@@ -112,23 +114,46 @@ describe('scanIfcEntities', () => {
     ]);
   });
 
+  it('keys a WASM-backed parse by the canonical upper-case type', async () => {
+    const wall = entitySpan(7);
+    const lowerCaseSource = IFC_SOURCE.replace('IFCWALL', 'ifcwall');
+    const lowerCaseBytes = new TextEncoder().encode(lowerCaseSource);
+    const wasmApi: WasmScanApi = {
+      scanEntitiesFastBytes: () => [{
+        express_id: 7,
+        entity_type: 'ifcwall',
+        byte_offset: wall.start,
+        byte_length: wall.length,
+        line_number: 12,
+      }],
+    };
+
+    const result = await new IfcParser().parse(lowerCaseBytes.buffer, { disableWorkerScan: true, wasmApi });
+    expect(result.entities.get(7)?.type).toBe('IFCWALL');
+    expect(result.entityIndex.byType.get('IFCWALL')).toEqual([7]);
+    expect(result.entityIndex.byType.has('ifcwall')).toBe(false);
+  });
+
   it('prefers a pre-scanned entity index over worker, WASM, and tokenizer scans', async () => {
     const project = entitySpan(1);
     const wall = entitySpan(7);
+    const lowerCaseSource = IFC_SOURCE.replace('IFCPROJECT', 'ifcproject').replace('IFCWALL', 'ifcwall');
+    const lowerCaseBytes = new TextEncoder().encode(lowerCaseSource);
+    const preScannedEntityIndex = {
+      ids: new Uint32Array([1, 7]),
+      starts: new Uint32Array([project.start, wall.start]),
+      lengths: new Uint32Array([project.length, wall.length]),
+    };
     const wasmApi: WasmScanApi = {
       scanEntitiesFastBytes: () => {
         throw new Error('WASM should not run when pre-scanned refs are available');
       },
     };
 
-    const result = await scanIfcEntities(encodeSource(), {
+    const result = await scanIfcEntities(lowerCaseBytes.buffer, {
       disableWorkerScan: true,
       wasmApi,
-      preScannedEntityIndex: {
-        ids: new Uint32Array([1, 7]),
-        starts: new Uint32Array([project.start, wall.start]),
-        lengths: new Uint32Array([project.length, wall.length]),
-      },
+      preScannedEntityIndex,
     });
 
     expect(result.scanPath).toBe('pre-scanned');
@@ -136,6 +161,10 @@ describe('scanIfcEntities', () => {
       '1:IFCPROJECT',
       '7:IFCWALL',
     ]);
+
+    const store = await new IfcParser().parseColumnar(lowerCaseBytes.buffer, { preScannedEntityIndex });
+    expect(store.entityIndex.byType.get('IFCWALL')).toEqual([7]);
+    expect(store.entityIndex.byType.has('ifcwall')).toBe(false);
   });
 
   // Guards parser.worker.ts's deferred-compile optimization: when a pre-scanned

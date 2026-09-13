@@ -228,6 +228,7 @@ fn assert_directed_edges_unique(mesh: &Mesh2d) {
 /// also LOSE the other lobe's area), `edge_exists(a,b)` read true, and the
 /// audit was switched back off. The walk must bail on a pinch and leave the
 /// mesh untouched; the ordered traversal fallback then recovers the edge.
+/// Regression test (#4640).
 #[test]
 fn pocket_walk_bails_on_a_pinch_instead_of_closing_a_short_loop() {
     let mut it = Interner::new();

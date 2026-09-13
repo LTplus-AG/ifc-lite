@@ -1342,6 +1342,7 @@
     /// `prune_orphans` had no exit other than "no degree-1 vertices left".
     /// Both removals auto-prune, so the whole edit sequence runs under
     /// `edit_or_diagnose`, whose timeout is the assertion.
+    /// Regression test (#4640).
     #[test]
     fn remove_edge_on_a_non_tip_bridge_after_a_merge_terminates_and_cleans_up() {
         let (plate, m, n, patches) = edit_or_diagnose("split, merge across P-M, remove N-Q", || {
@@ -1373,6 +1374,7 @@
     /// The lone-stick change above means the edit path no longer produces such
     /// a tip, so this corrupts one tag by hand to reach the guard. Without the
     /// guard the sweep spins, so it runs under `edit_or_diagnose`.
+    /// Regression test (#4640).
     #[test]
     fn prune_orphans_terminates_when_a_tip_refuses_removal() {
         let mut plate = spur_plate_unpruned();
@@ -1398,6 +1400,7 @@
     /// boundary into the outer rectangle and the column's outside; the second
     /// cycle must get its own (outer) face rather than staying tagged with the
     /// room, where no walk from the room's anchor could reach it.
+    /// Regression test (#4640).
     #[test]
     fn remove_edge_on_a_bridge_to_an_island_gives_the_island_cycle_its_own_face() {
         let mut segs = loop_segments(&rect(0.0, 0.0, 8.0, 6.0), 100);
@@ -1430,6 +1433,7 @@
     /// is where the thickness changes, so neither the build-time collinear
     /// sweep nor a user dissolve may weld the two into one edge (the welded
     /// edge carries ONE `half_thickness` for both twins).
+    /// Regression test (#4640).
     #[test]
     fn dissolve_refuses_a_collinear_node_where_the_wall_thickness_changes() {
         let segs = vec![
@@ -1466,6 +1470,7 @@
     /// and consumed the net ring as the wall axis. A 1 m² gap walled by 6 m
     /// thick rectangles trips the runaway guard (7x7 = 49 > 4·1 + 25); it must
     /// be skipped, leaving only the ordinary room that lifted cleanly.
+    /// Regression test (#4640).
     #[test]
     fn axis_lift_skips_a_gap_whose_offset_failed_instead_of_lifting_the_net_ring() {
         let dx = 30.0;
@@ -1507,6 +1512,7 @@
     /// `p` may be a full `tol` from the end AND a full `tol` from the other
     /// wall's extent, in different directions. Here `e = (1,0)` is 0.15 from
     /// the slanted wall's bbox with tol 0.1, and must still snap to (1.09, 0).
+    /// Regression test (#4640).
     #[test]
     fn corner_snap_reaches_a_corner_two_tolerances_from_the_other_walls_extent() {
         let mut segs = vec![

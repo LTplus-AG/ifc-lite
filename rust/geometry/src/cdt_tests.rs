@@ -226,6 +226,7 @@ use super::*;
     /// with the far side of the seam never split (a T-junction `legalize`
     /// cannot flip away). The point must instead split the seam in lockstep on
     /// both sides, as `split_at` already does for an empty cavity.
+    /// Regression test (#4640).
     #[test]
     fn point_on_a_constraint_inside_a_cavity_splits_both_sides() {
         let points: Vec<P2> =
@@ -251,6 +252,7 @@ use super::*;
     /// used to retire the containing triangle and create only the one
     /// non-degenerate child, leaving the neighbours across the two skipped
     /// edges linked to a dead triangle; `build_from` still returned `Some`.
+    /// Regression test (#4640).
     #[test]
     fn duplicate_free_point_leaves_the_triangulation_valid() {
         let points: Vec<P2> = vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0], [4.0, 4.0], [0.0, 0.0]];
@@ -271,6 +273,7 @@ use super::*;
     /// at (0,0). The duplicate is named by the hole's constraints, so recovery
     /// fails and the caller falls back, but the CDT must decline cleanly rather
     /// than corrupt adjacency first.
+    /// Regression test (#4640).
     #[test]
     fn rings_sharing_a_corner_decline_cleanly() {
         let outer = vec![pt(0.0, 0.0), pt(10.0, 0.0), pt(10.0, 10.0), pt(0.0, 10.0)];
@@ -292,6 +295,7 @@ use super::*;
     /// fallback lands in the `stuck` slot, not the flip-guard `exhausted`
     /// slot. The tally is process-global, so a parallel test that also
     /// declines can only raise the `stuck` delta.
+    /// Regression test (#4640).
     #[test]
     fn an_unrecoverable_constraint_is_tallied_not_silent() {
         let points = [pt(0.0, 0.0), pt(10.0, 0.0), pt(10.0, 10.0), pt(0.0, 10.0)];

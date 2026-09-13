@@ -18,7 +18,9 @@
 //! against each other goes green on behaviour that is wrong the same way on
 //! both sides.
 
-use ifc_lite_core::{EntityDecoder, EntityScanner, GeoRefExtractor, GeoReference, IfcType};
+use ifc_lite_core::{
+    EntityDecoder, EntityScanner, GeoRefExtractor, GeoRefSource, GeoReference, IfcType,
+};
 
 /// Scan the fixture into the `(id, IfcType)` pairs `GeoRefExtractor::extract`
 /// consumes, the way the real pipeline does.
@@ -66,8 +68,9 @@ fn check_case(name: &str, expect: &serde_json::Value, georef: Option<&GeoReferen
         panic!("case `{name}`: expected a georeference, extractor returned None")
     });
 
-    if let Some(want) = expect.get("source").and_then(|s| s.as_str()) {
-        assert_eq!(g.source.label(), want, "case `{name}`: source");
+    // `"source": null` asserts the provenance is absent; omitting it skips.
+    if let Some(want) = opt_str(expect, "source") {
+        assert_eq!(g.source.map(GeoRefSource::label), want, "case `{name}`: source");
     }
     for (key, got) in [
         ("crsName", &g.crs_name),

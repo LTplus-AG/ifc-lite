@@ -79,20 +79,12 @@ pub fn try_export_glb_from_meshes(
             ),
         });
     }
-    // Every check above is about a COUNT running past a buffer. An index whose
-    // VALUE is out of range is a different failure and none of them sees it:
-    // the assembler copies `mesh.indices` into the BIN chunk verbatim, so the
-    // GLB violated glTF 2.0 3.7.2.1 and was reported as success.
-    if let Some((mesh, index, vertex_count)) =
-        crate::mesh_input::first_index_out_of_range(indices, vertex_counts, index_counts)
-    {
-        return Err(ExportError::MalformedMeshInput {
-            detail: format!(
-                "mesh {mesh} has index {index} but only {vertex_count} vertices (glTF 2.0 \
-                 3.7.2.1: an index must be less than the vertex count)"
-            ),
-        });
-    }
+    // Every check above is about a COUNT running past a buffer. A block that is
+    // not whole triangles, or an index VALUE outside its mesh, passes all of
+    // them; the assembler would write the first as a TRIANGLES primitive whose
+    // count is not a multiple of 3 and copy the second into the BIN chunk. The
+    // COLLADA writer refuses both through the same predicate.
+    crate::mesh_input::check_index_blocks(indices, vertex_counts, index_counts)?;
     // Every count is backed and every mesh's normals/indices are present, so the
     // infallible assembler's malformed-input `break` is unreachable and no mesh is dropped.
     let (glb, stats) = export_glb_from_meshes(

@@ -87,8 +87,10 @@ async fn check_cache_returns_200_when_parquet_cached() {
     let hash = "abc123hash";
     let key = parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default(), ParquetLayout::Flat);
     state.cache.set_bytes(&key, b"parquet-bytes").await.unwrap();
-    // A hit also requires a data model at the current payload version (#3869).
+    // A hit also requires a data model at the current payload version (#3869)
+    // and the metadata header the geometry fetch serves (#4675).
     seed_current_data_model(&state, hash, OpeningFilterMode::Default).await;
+    seed_current_metadata(&state, hash, OpeningFilterMode::Default).await;
 
     let response = get(&state, &format!("/api/v1/cache/check/{hash}")).await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -105,6 +107,12 @@ async fn seed_current_data_model(state: &AppState, hash: &str, filter: OpeningFi
         .set_bytes(&data_model_cache_key(&seed), b"data-model-bytes")
         .await
         .unwrap();
+}
+
+/// Seed the Parquet metadata header at the CURRENT version for `hash`.
+async fn seed_current_metadata(state: &AppState, hash: &str, filter: OpeningFilterMode) {
+    let key = parquet_metadata_cache_key(hash, filter, TessellationQuality::default());
+    state.cache.set_bytes(&key, b"{}").await.unwrap();
 }
 
 /// A geometry entry outlives a data-model version bump: the geometry key is
@@ -124,6 +132,7 @@ async fn check_cache_misses_when_the_data_model_predates_the_current_version() {
         .set_bytes(&geometry_key, b"parquet-bytes")
         .await
         .unwrap();
+    seed_current_metadata(&state, hash, OpeningFilterMode::Default).await;
     // The data model this deployment left behind: previous payload version.
     let seed = cache_key_from_parts(hash, OpeningFilterMode::Default, TessellationQuality::default());
     state
@@ -153,6 +162,7 @@ async fn check_cache_misses_when_no_data_model_is_cached_at_all() {
         .set_bytes(&geometry_key, b"parquet-bytes")
         .await
         .unwrap();
+    seed_current_metadata(&state, hash, OpeningFilterMode::Default).await;
 
     let response = get(&state, &format!("/api/v1/cache/check/{hash}")).await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -176,14 +186,49 @@ async fn check_cache_is_scoped_to_opening_filter() {
     let default_response = get(&state, &format!("/api/v1/cache/check/{hash}")).await;
     assert_eq!(default_response.status(), StatusCode::NOT_FOUND);
 
-    // The matching filter must hit (with a current data model beside it).
+    // The matching filter must hit (with current sidecars beside it).
     seed_current_data_model(&state, hash, OpeningFilterMode::IgnoreAll).await;
+    seed_current_metadata(&state, hash, OpeningFilterMode::IgnoreAll).await;
     let scoped_response = get(
         &state,
         &format!("/api/v1/cache/check/{hash}?opening_filter=ignore_all"),
     )
     .await;
     assert_eq!(scoped_response.status(), StatusCode::OK);
+}
+
+/// A metadata header written under a previous version is not a hit (#4675).
+/// A check hit makes `parseParquet` skip the upload and call
+/// `get_cached_geometry`, which needs the header at the CURRENT version, so a
+/// check that answers on geometry alone sends the client to a 404 it never
+/// recovers from. After the #4653 bump every warm deployment holds exactly
+/// this: current geometry and data model beside a `-parquet-metadata-v4` header.
+#[tokio::test]
+async fn issue_4675_check_cache_misses_when_the_metadata_header_predates_the_current_version() {
+    let state = test_state("4675-check-stale-metadata").await;
+    let hash = "stalemetahash";
+    let seed = cache_key_from_parts(hash, OpeningFilterMode::Default, TessellationQuality::default());
+    let geometry_key =
+        parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default(), ParquetLayout::Flat);
+    state.cache.set_bytes(&geometry_key, b"parquet-bytes").await.unwrap();
+    seed_current_data_model(&state, hash, OpeningFilterMode::Default).await;
+    state.cache.set_bytes(&format!("{seed}-parquet-metadata-v4"), b"{}").await.unwrap();
+
+    assert_eq!(
+        get(&state, &format!("/api/v1/cache/geometry/{hash}")).await.status(),
+        StatusCode::NOT_FOUND,
+        "a pre-#4653 header must not be served"
+    );
+    assert_eq!(
+        get(&state, &format!("/api/v1/cache/check/{hash}")).await.status(),
+        StatusCode::NOT_FOUND,
+        "the check must not report a hit the geometry fetch cannot serve"
+    );
+
+    // Anti-vacuity: the current header is what turns both into hits.
+    seed_current_metadata(&state, hash, OpeningFilterMode::Default).await;
+    assert_eq!(get(&state, &format!("/api/v1/cache/check/{hash}")).await.status(), StatusCode::OK);
+    assert_eq!(get(&state, &format!("/api/v1/cache/geometry/{hash}")).await.status(), StatusCode::OK);
 }
 
 // ---------------------------------------------------------------------------
@@ -328,8 +373,12 @@ async fn issue_4459_hash_check_requires_fresh_symbols_before_skipping_upload() {
     let seed = cache_key_from_parts(hash, OpeningFilterMode::Default, TessellationQuality::default());
     let geometry = parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default(), ParquetLayout::Flat);
     state.cache.set_bytes(&geometry, b"unchanged geometry").await.unwrap();
+    seed_current_metadata(&state, hash, OpeningFilterMode::Default).await;
     state.cache.set_bytes(&data_model_cache_key(&seed), b"current data model").await.unwrap();
-    state.cache.set_bytes(&format!("{seed}-symbolic-v1"), b"{}").await.unwrap();
+    // Retired: v1 (#4459, no fill provenance), v2 (#4665, pre mesh-frame rebase).
+    for retired in ["-symbolic-v1", "-symbolic-v2"] {
+        state.cache.set_bytes(&format!("{seed}{retired}"), b"{}").await.unwrap();
+    }
     assert_eq!(get(&state, &format!("/api/v1/cache/check/{hash}")).await.status(), StatusCode::NOT_FOUND);
     seed_current_data_model(&state, hash, OpeningFilterMode::Default).await;
     assert_eq!(get(&state, &format!("/api/v1/cache/check/{hash}")).await.status(), StatusCode::OK);

@@ -23,7 +23,7 @@
 //! [`RenderFrameRebase::plan`] / [`RenderFrameRebase::elevation`], a call
 //! site can no longer pick the wrong one.
 
-use ifc_lite_core::limits::coord_is_large;
+use crate::mesh_frame::MeshFrame;
 
 /// The model's RTC offset, in IFC Z-up metres, as a coordinate rebase.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -37,21 +37,11 @@ pub(super) struct RenderFrameRebase {
 }
 
 impl RenderFrameRebase {
-    /// Build the rebase for a detected RTC offset (IFC Z-up metres), or the
-    /// identity when the model is not large-coordinate. Below the shared
-    /// threshold the model is local-coord territory and re-basing would shift
-    /// the overlay off-screen, so the rebase is the identity. The mesh frame
-    /// is chosen elsewhere and can differ, for example when a placement-bounds
-    /// verdict re-bases meshes on a bbox centre inside the threshold (#4665).
-    pub(super) fn from_rtc_offset(rtc_offset: (f64, f64, f64)) -> Self {
-        if !coord_is_large(rtc_offset) {
-            return Self::default();
-        }
-        Self {
-            x: rtc_offset.0 as f32,
-            y: rtc_offset.1 as f32,
-            z: rtc_offset.2 as f32,
-        }
+    /// The rebase for a mesh frame: subtracts what the frame subtracts, so a
+    /// `RawIfc` frame is the identity. The frame owns the threshold decision.
+    pub(super) fn from_frame(frame: MeshFrame) -> Self {
+        let (x, y, z) = frame.rtc_offset();
+        Self { x: x as f32, y: y as f32, z: z as f32 }
     }
 
     /// IFC plan coordinates → the renderer's 2D pair `(renderX, -renderZ)`,

@@ -95,7 +95,7 @@ async fn miss_when_only_metadata_key_is_cached() {
     let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 1)).unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v4"), &metadata_bytes)
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &metadata_bytes)
         .await
         .unwrap();
     let result = try_cached_replay(&state, cache_key, ParquetLayout::Flat).await;
@@ -112,7 +112,7 @@ async fn corrupt_parquet_blob_falls_back_to_miss_not_error() {
     let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 5)).unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v4"), &metadata_bytes)
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &metadata_bytes)
         .await
         .unwrap();
     state
@@ -139,7 +139,7 @@ async fn corrupt_metadata_json_is_an_error_not_a_miss() {
     let cache_key = "corrupt-metadata-key";
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v4"), b"not valid json")
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), b"not valid json")
         .await
         .unwrap();
     state
@@ -179,7 +179,7 @@ async fn miss_when_the_cached_data_model_predates_the_current_version() {
     let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 3)).unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v4"), &metadata_bytes)
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &metadata_bytes)
         .await
         .unwrap();
     state
@@ -211,7 +211,7 @@ async fn valid_cache_hit_round_trips_the_geometry_in_the_sse_body() {
     let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 7)).unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v4"), &metadata_bytes)
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &metadata_bytes)
         .await
         .unwrap();
     state
@@ -326,6 +326,10 @@ fn issue_4064_json_preserves_coordinate_and_scale_bits() {
 /// #4064: exercise the real metadata-cache read and SSE replay, using a real
 /// Parquet triangle. Compare the cold Complete payload and the cached payload
 /// independently to the original finite values, not only to one another.
+///
+/// The `IfcMapConversionScaled` factors are non-unit and distinct so they are
+/// observed through the cache, and a header written before #4653 (no factor
+/// fields, previous metadata version) must not replay them as 1 (#4675).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn issue_4064_cached_complete_preserves_georeferencing_bits() {
     use super::stream_event::ParquetStreamEvent;
@@ -348,6 +352,9 @@ async fn issue_4064_cached_complete_preserves_georeferencing_bits() {
         eastings: 8.436539,
         orthogonal_height: 110.0,
         scale: 1.0,
+        factor_x: 0.9996,
+        factor_y: 1.25,
+        factor_z: 2.0,
         transform_matrix: matrix,
         ..Default::default()
     });
@@ -366,8 +373,9 @@ async fn issue_4064_cached_complete_preserves_georeferencing_bits() {
     );
     let geometry = crate::services::serialize_to_parquet(&[triangle]).unwrap();
     state.cache.set_bytes(&format!("{key}-parquet-v5"), &well_framed_blob(&geometry)).await.unwrap();
-    // Cache payloads written before #4615 have no scaled-conversion factors.
-    // They must replay with the IFC default of one instead of failing JSON decode.
+    // A header cached before #4653 has no factor fields and would decode with
+    // every factor defaulted to 1. It sits under the previous metadata version
+    // and must not replay.
     let mut legacy_header = serde_json::to_value(&header).unwrap();
     let georef = legacy_header["metadata"]["georeferencing"].as_object_mut().unwrap();
     georef.remove("factor_x");
@@ -375,6 +383,12 @@ async fn issue_4064_cached_complete_preserves_georeferencing_bits() {
     georef.remove("factor_z");
     state.cache.set_bytes(&format!("{key}-parquet-metadata-v4"), &serde_json::to_vec(&legacy_header).unwrap()).await.unwrap();
     seed_current_data_model(&state, key).await;
+    assert!(
+        try_cached_replay(&state, key, ParquetLayout::Flat).await.unwrap().is_none(),
+        "a pre-#4653 metadata header must not replay"
+    );
+    let current_key = super::cache_keys::parquet_metadata_key(key);
+    state.cache.set_bytes(&current_key, &serde_json::to_vec(&header).unwrap()).await.unwrap();
     let response = try_cached_replay(&state, key, ParquetLayout::Flat).await.unwrap().expect("cache hit");
     let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let text = String::from_utf8(body.to_vec()).unwrap();
@@ -387,7 +401,7 @@ async fn issue_4064_cached_complete_preserves_georeferencing_bits() {
         let metadata: ModelMetadata = serde_json::from_value(event["metadata"].clone()).unwrap();
         let geo = metadata.georeferencing.unwrap();
         assert_eq!(geo.northings.to_bits(), northing.to_bits());
-        assert_eq!((geo.factor_x, geo.factor_y, geo.factor_z), (1.0, 1.0, 1.0));
+        assert_eq!([geo.factor_x, geo.factor_y, geo.factor_z].map(f64::to_bits), [0.9996, 1.25, 2.0].map(f64::to_bits));
         assert_eq!(geo.transform_matrix.map(f64::to_bits), matrix.map(f64::to_bits));
         assert_eq!(metadata.coordinate_info.origin_shift.map(f64::to_bits), header.metadata.coordinate_info.origin_shift.map(f64::to_bits));
         assert_eq!(metadata.length_unit_scale.unwrap().to_bits(), 0.001_f64.to_bits());
@@ -401,11 +415,14 @@ async fn issue_4459_stale_symbolic_sidecar_refuses_stream_replay_until_refreshed
     let state = test_state("4459-stale-symbolic").await;
     let key = "4459-stale";
     state.cache.set_bytes(&format!("{key}-parquet-v5"), &well_framed_blob(&[1,2,3])).await.unwrap();
-    state.cache.set_bytes(&format!("{key}-parquet-metadata-v4"),
+    state.cache.set_bytes(&format!("{key}-parquet-metadata-v5"),
         &serde_json::to_vec(&sample_metadata_header(key, 1)).unwrap()).await.unwrap();
     state.cache.set_bytes(&data_model_cache_key(key), b"current data model").await.unwrap();
-    state.cache.set_bytes(&format!("{key}-symbolic-v1"),
-        &serde_json::to_vec(&ifc_lite_processing::SymbolicData::default()).unwrap()).await.unwrap();
+    // Retired: v1 (#4459, no fill provenance), v2 (#4665, pre mesh-frame rebase).
+    for retired in ["-symbolic-v1", "-symbolic-v2"] {
+        state.cache.set_bytes(&format!("{key}{retired}"),
+            &serde_json::to_vec(&ifc_lite_processing::SymbolicData::default()).unwrap()).await.unwrap();
+    }
     assert!(state.cache.get_bytes(&symbolic_cache_key(key)).await.unwrap().is_none());
     assert!(try_cached_replay(&state, key, ParquetLayout::Flat).await.unwrap().is_none());
     cache_symbolic_data(&state.cache, key, &ifc_lite_processing::SymbolicDataWithProvenance::default()).await;

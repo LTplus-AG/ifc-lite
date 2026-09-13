@@ -5,13 +5,21 @@
 //! Handler-level tests for `POST /api/v1/parse/metadata` (`parse_metadata`) —
 //! previously exercised only via status-code assertions elsewhere
 //! (`parity_tests.rs`'s admission tests); this file pins the actual counted
-//! response values.
+//! response values. Also `POST /api/v1/parse` (`parse_full`): where its
+//! encode runs (#4696).
 
+use super::cache_keys::{json_response_cache_key, request_cache_key, symbolic_cache_key};
+use super::worker_thread_tests::{
+    assert_off_the_worker, await_threads_that_logged, record_event_threads, threads_that_logged,
+    SYMBOLIC_CACHED,
+};
+use super::ParseQuery;
 use crate::config::Config;
 use crate::services::cache::DiskCache;
 use crate::{build_router, AppState};
 use axum::body::{to_bytes, Body};
 use axum::http::{header, Request, StatusCode};
+use ifc_lite_processing::TessellationQuality;
 use serde_json::Value;
 use std::sync::Arc;
 use tower::ServiceExt;
@@ -228,4 +236,140 @@ async fn parse_metadata_reports_nothing_on_an_intact_file() {
 
     assert_eq!(json["oversized_id_count"].as_u64().unwrap(), 0);
     assert!(!json["malformed_record_found"].as_bool().unwrap());
+}
+
+// ---------------------------------------------------------------------
+// POST /api/v1/parse encodes off the async runtime (#4696).
+// ---------------------------------------------------------------------
+
+/// What `parse_full` logs right after it encodes a response body.
+const RESPONSE_ENCODED: &str = "JSON parse response encoded";
+
+/// POST `content` to `/api/v1/parse`; returns the content type and the body.
+async fn parse_full_json(state: &AppState, content: &str) -> (String, Value) {
+    let (content_type, body) = multipart_body(content.as_bytes());
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/parse")
+        .header(header::CONTENT_TYPE, content_type)
+        .body(Body::from(body))
+        .unwrap();
+    let response = build_router(state.clone()).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let content_type = response.headers()[header::CONTENT_TYPE].to_str().unwrap().to_string();
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    (content_type, serde_json::from_slice(&bytes).unwrap())
+}
+
+/// `POST /api/v1/parse` encodes the whole model, on a miss and on a hit, and
+/// the symbolic sidecar, on the blocking pool, not on the async worker that
+/// resumes the handler. How this observes it: see `worker_thread_tests`. The
+/// fixture is unique to this test so its `cache_key` is.
+///
+/// Regression for #4696.
+#[tokio::test]
+async fn parse_full_encodes_off_the_async_worker() {
+    record_event_threads();
+    let state = test_state("off-runtime-4696").await;
+    let content = FIXTURE.replace("'W1'", "'W-4696'");
+    let cache_key =
+        request_cache_key(content.as_bytes(), &ParseQuery::default(), TessellationQuality::default());
+
+    let (content_type, miss) = parse_full_json(&state, &content).await;
+    assert_eq!(content_type, "application/json");
+    assert_eq!(miss["cache_key"], cache_key.as_str());
+    assert_eq!(miss["meshes"].as_array().map(Vec::len), Some(1), "the fixture's one wall");
+    assert_eq!(miss["stats"]["from_cache"], false);
+
+    let symbolic =
+        await_threads_that_logged(SYMBOLIC_CACHED, &symbolic_cache_key(&cache_key)).await;
+    assert_off_the_worker(&symbolic, "the symbolic sidecar encode");
+
+    // The response entry is written after the sidecar, by the same detached
+    // task; the second request must be a hit.
+    let response_key = json_response_cache_key(&cache_key);
+    let mut stored = false;
+    for _ in 0..400 {
+        stored = matches!(state.cache.get_bytes(&response_key).await, Ok(Some(_)));
+        if stored {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    assert!(stored, "the response entry for {cache_key} was never written");
+    let (content_type, hit) = parse_full_json(&state, &content).await;
+    assert_eq!(content_type, "application/json");
+    assert_eq!(hit["stats"]["from_cache"], true, "the second request must be a cache hit");
+    assert_eq!(hit["meshes"], miss["meshes"]);
+
+    let encodes = threads_that_logged(RESPONSE_ENCODED, &cache_key);
+    assert_eq!(encodes.len(), 2, "one encode for the miss and one for the hit, got {encodes:?}");
+    assert_off_the_worker(&encodes, "the response encode");
+}
+
+/// `in_flight` from the admission gauges.
+fn admission_in_flight(state: &AppState) -> u64 {
+    let text = state.admission.metrics_text();
+    let line = text
+        .lines()
+        .find(|line| line.starts_with("ifc_server_admission_in_flight "))
+        .expect("the in-flight gauge is exported");
+    line.rsplit(' ').next().unwrap().parse().unwrap()
+}
+
+/// A cache hit cancelled while its decode runs on the blocking pool keeps its
+/// admission slot until that decode exits, the same as the miss path's parse.
+/// Once the hit's decode moved into `spawn_blocking` (#4696), a guard left in
+/// the handler was released by a disconnect or the `TimeoutLayer` while the
+/// orphaned decode still held the model, so a retry was admitted on top.
+///
+/// The hit is inflated to many copies of the fixture's mesh so its decode
+/// outlasts the few polls between the `Cache HIT` log and the abort.
+#[tokio::test]
+async fn a_cancelled_cache_hit_keeps_its_admission_slot_while_it_decodes() {
+    record_event_threads();
+    let state = test_state("hit-admission-4696").await;
+    let content = FIXTURE.replace("'W1'", "'W-4696-hit-admission'");
+    let cache_key =
+        request_cache_key(content.as_bytes(), &ParseQuery::default(), TessellationQuality::default());
+
+    let (_, mut miss) = parse_full_json(&state, &content).await;
+    let response_key = json_response_cache_key(&cache_key);
+    let mut stored = false;
+    for _ in 0..400 {
+        stored = matches!(state.cache.get_bytes(&response_key).await, Ok(Some(_)));
+        if stored {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    assert!(stored, "the response entry for {cache_key} was never written");
+    let mesh = miss["meshes"][0].clone();
+    miss["meshes"] = Value::Array(vec![mesh; 20_000]);
+    let inflated = serde_json::to_vec(&miss).unwrap();
+    state.cache.set_bytes(&response_key, &inflated).await.unwrap();
+    assert_eq!(admission_in_flight(&state), 0);
+
+    let hit = {
+        let state = state.clone();
+        tokio::spawn(async move { parse_full_json(&state, &content).await })
+    };
+    while threads_that_logged("Cache HIT", &cache_key).is_empty() {
+        tokio::task::yield_now().await;
+    }
+    hit.abort();
+    assert!(hit.await.unwrap_err().is_cancelled(), "the hit finished before it could be cancelled");
+
+    assert_eq!(
+        admission_in_flight(&state),
+        1,
+        "the cancelled hit released its slot while its decode was still running"
+    );
+    for _ in 0..400 {
+        if admission_in_flight(&state) == 0 {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    panic!("the slot was never released after the orphaned decode exited");
 }

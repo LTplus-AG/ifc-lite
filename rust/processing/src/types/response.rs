@@ -103,6 +103,38 @@ pub struct QuickMetadataBootstrap {
     pub entity_count: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spatial_tree: Option<QuickMetadataSpatialNode>,
+    /// Child edges the tree walk skipped, in the order it met them (#4662).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pruned_aggregate_edges: Vec<QuickMetadataPrunedEdge>,
+}
+
+/// A spatial child edge left out of [`QuickMetadataBootstrap::spatial_tree`].
+/// Each node is placed where the depth-first walk from the root first reaches
+/// it; every later edge to it is recorded here. This covers the child lists the
+/// walk reads (`IfcRelAggregates`, and the first containment of a spatial
+/// element no aggregate placed). A containment of a spatial element already
+/// placed, by an aggregate or an earlier containment, is dropped before the
+/// walk and is not recorded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuickMetadataPrunedEdge {
+    /// Express id of the node whose child list names the edge.
+    pub parent_express_id: u32,
+    /// Express id of the child the edge names.
+    pub child_express_id: u32,
+    pub kind: QuickMetadataPrunedEdgeKind,
+}
+
+/// Why a [`QuickMetadataPrunedEdge`] was left out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum QuickMetadataPrunedEdgeKind {
+    /// The parent that placed the child names it again.
+    SiblingRepeat,
+    /// A different parent names a child already placed elsewhere.
+    SecondParent,
+    /// A node names itself or one of its own ancestors.
+    BackEdge,
 }
 
 /// Processing statistics.

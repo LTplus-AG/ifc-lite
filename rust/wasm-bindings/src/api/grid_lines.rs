@@ -15,16 +15,16 @@
 //!
 //! This module resolves each axis through the **same** transform pipeline the
 //! meshes use — full `IfcLocalPlacement` chain (`resolve_scaled_placement`) +
-//! `lengthUnitScale` + the same RTC offset
-//! (`detect_rtc_offset_from_first_element`, gated at 10 km and above) — and
-//! emits the endpoints in the renderer's **Y-up, RTC-subtracted, metres** world
-//! space (the exact frame `MeshDataJs::new` produces after its IFC Z-up → WebGL
-//! Y-up swap). Grids then line up with the streamed geometry by construction,
+//! `lengthUnitScale` + the RTC frame the browser meshes select
+//! (`MeshFrame::for_overlay`) — and emits the endpoints in the renderer's
+//! **Y-up, RTC-subtracted, metres** world space (the exact frame
+//! `MeshDataJs::new` produces after its IFC Z-up → WebGL Y-up swap). Grids then line up with the streamed geometry by construction,
 //! mirroring `alignment_lines.rs`.
 
 use super::IfcAPI;
 use ifc_lite_core::{build_entity_index, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
 use ifc_lite_geometry::GeometryRouter;
+use ifc_lite_processing::MeshFrame;
 use wasm_bindgen::prelude::*;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -55,11 +55,8 @@ pub(crate) fn extract_grid_axes(content: &str) -> Vec<GridAxis3D> {
     let router = GeometryRouter::with_units(content, &mut decoder);
     let unit_scale = router.unit_scale();
 
-    // RTC offset (metres). `detect_rtc_offset_from_first_element` returns
-    // (0,0,0) for models within 10 km of the origin, so this is a no-op for
-    // local files and a true shift for georeferenced models — the same offset
-    // the mesh pipeline applies.
-    let rtc = router.detect_rtc_offset_from_first_element(content, &mut decoder);
+    // RTC offset (metres): the one the browser meshes subtract (#4665).
+    let rtc = MeshFrame::for_overlay(&router, content.as_bytes(), &mut decoder).rtc_offset();
 
     let mut out: Vec<GridAxis3D> = Vec::new();
     let mut scanner = EntityScanner::new(content);

@@ -91,6 +91,67 @@ fn chase(id: u32, decoder: &mut EntityDecoder, depth: u32) -> Option<u32> {
   assert.deepEqual(check({ [`${ROOT}/a.rs`]: guarded }).unguarded, []);
 });
 
+test('reports a fan-out walk whose depth/path guards omit a work budget (#4601)', () => {
+  const fanOut = `
+fn walk(id: u32, decoder: &mut EntityDecoder, depth: u32, path: &mut Path) -> Option<u32> {
+    if depth >= MAX_DEPTH || !path.insert(id) { return None; }
+    let item = decoder.decode_by_id(id).ok()?;
+    for child in item.children() {
+        walk(child, decoder, depth + 1, path)?;
+    }
+    Some(id)
+}
+`;
+  const result = check({ [`${ROOT}/fan_out.rs`]: fanOut });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.budgetWarnings, [`${ROOT}/fan_out.rs::walk::recursion`]);
+
+  const budgeted = fanOut.replace(
+    'if depth >= MAX_DEPTH',
+    'if !path.charge() || depth >= MAX_DEPTH'
+  );
+  assert.deepEqual(check({ [`${ROOT}/fan_out.rs`]: budgeted }).budgetWarnings, []);
+
+  const unrelated = fanOut.replace(
+    'if depth >= MAX_DEPTH',
+    'decoder.consume(); if depth >= MAX_DEPTH'
+  );
+  assert.deepEqual(
+    check({ [`${ROOT}/fan_out.rs`]: unrelated }).budgetWarnings,
+    [`${ROOT}/fan_out.rs::walk::recursion`],
+  );
+});
+
+test('an unguarded fan-out walk is both unsafe and missing its work budget (#4601)', () => {
+  const fanOut = `
+fn walk(id: u32, decoder: &mut EntityDecoder) -> Option<u32> {
+    let item = decoder.decode_by_id(id).ok()?;
+    for child in item.children() {
+        walk(child, decoder)?;
+    }
+    Some(id)
+}
+`;
+  const result = check({ [`${ROOT}/fan_out.rs`]: fanOut });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.unguarded, [`${ROOT}/fan_out.rs::walk::recursion`]);
+  assert.deepEqual(result.budgetWarnings, [`${ROOT}/fan_out.rs::walk::recursion`]);
+});
+
+test('two recursive operand calls require a work budget without a loop (#4601)', () => {
+  const binaryWalk = `
+fn walk(id: u32, decoder: &mut EntityDecoder, depth: u32) -> Option<u32> {
+    if depth >= MAX_DEPTH { return None; }
+    let item = decoder.decode_by_id(id).ok()?;
+    walk(item.get_ref(0)?, decoder, depth + 1)?;
+    walk(item.get_ref(1)?, decoder, depth + 1)
+}
+`;
+  const result = check({ [`${ROOT}/binary.rs`]: binaryWalk });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.budgetWarnings, [`${ROOT}/binary.rs::walk::recursion`]);
+});
+
 test('an unrelated bounded loop over a constant is NOT a guard', () => {
   // The regression #2869's parent commit produced: `0..=SEGMENTS` is arc
   // tessellation, not a recursion bound, and reading it as one hid the walk.
@@ -212,6 +273,19 @@ test('a file with fn that will not parse is an error, not a clean file', () => {
   assert.equal(r.ok, false);
 });
 
+// The two vacuity refusals must say what to change, not only what broke
+// (#4701). Each assertion pins the file or constant the author has to edit.
+const EMPTY_ROOT_REMEDY = /remove it from SCAN_ROOTS in scripts\/check-refwalk-guards\.mjs/;
+const ZERO_FN_REMEDY = /Teach extractFunctions in scripts\/lib\/refwalk-classify\.mjs/;
+const ZERO_FN_NOT_ALLOWLIST = /The allowlist cannot clear this/;
+
+test('the zero-function failure names the extractor to fix (#4701)', () => {
+  const r = check({ [`${ROOT}/a.rs`]: 'trait T { fn only_a_declaration(&self) -> u32; }\n' });
+  assert.match(r.errors[0], ZERO_FN_REMEDY);
+  assert.match(r.errors[0], /refwalk-classify\.test\.mjs/);
+  assert.match(r.errors[0], ZERO_FN_NOT_ALLOWLIST);
+});
+
 test('empty input set fails loudly rather than reporting success', () => {
   // A glob resolving to nothing is how verify-esm-entrypoints.mjs,
   // check-tla-chunk-await.mjs and vitest-timeout-audit.mjs each shipped
@@ -223,6 +297,7 @@ test('empty input set fails loudly rather than reporting success', () => {
     const r = runCheck(dir, { roots: [ROOT], allowlist: new Set(), candidateFloor: 0, allowlistCeiling: 0 });
     assert.equal(r.ok, false);
     assert.match(r.errors.join('\n'), /contains no \.rs files/);
+    assert.match(r.errors.join('\n'), EMPTY_ROOT_REMEDY, 'the refusal must name the remedy (#4701)');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -297,25 +372,32 @@ test('allowlist shrinkage must lower the ceiling too', () => {
  * here does: an imported module has `isMain === false` by design, so the bug
  * is invisible from inside the test process. It has to be spawned.
  */
+/**
+ * Copy the gate and everything it imports into `scriptsDir`, so it can be
+ * spawned as a real entry point whose repo root is `scriptsDir/..`.
+ *
+ * @param {string} scriptsDir
+ * @returns {string} path of the copied gate script
+ */
+function copyGateInto(scriptsDir) {
+  mkdirSync(join(scriptsDir, 'lib'), { recursive: true });
+  for (const rel of [
+    'check-refwalk-guards.mjs',
+    'refwalk-guard-allowlist.txt',
+    'lib/refwalk-classify.mjs',
+    'lib/refwalk-cycles.mjs',
+    'lib/is-main-entry.mjs',
+  ]) {
+    writeFileSync(join(scriptsDir, rel), readFileSync(new URL(`./${rel}`, import.meta.url)));
+  }
+  return join(scriptsDir, 'check-refwalk-guards.mjs');
+}
+
 test('the gate actually runs from a path containing a space', () => {
   const dir = mkdtempSync(join(tmpdir(), 'refwalk gate '));
   try {
     assert.ok(dir.includes(' '), `temp dir must contain a space, got ${dir}`);
-    const copied = join(dir, 'check-refwalk-guards.mjs');
-    mkdirSync(join(dir, 'lib'), { recursive: true });
-    writeFileSync(copied, readFileSync(new URL('./check-refwalk-guards.mjs', import.meta.url)));
-    writeFileSync(
-      join(dir, 'lib', 'refwalk-classify.mjs'),
-      readFileSync(new URL('./lib/refwalk-classify.mjs', import.meta.url))
-    );
-    writeFileSync(
-      join(dir, 'lib', 'is-main-entry.mjs'),
-      readFileSync(new URL('./lib/is-main-entry.mjs', import.meta.url))
-    );
-    writeFileSync(
-      join(dir, 'refwalk-guard-allowlist.txt'),
-      readFileSync(new URL('./refwalk-guard-allowlist.txt', import.meta.url))
-    );
+    const copied = copyGateInto(dir);
 
     const run = spawnSync(process.execPath, [copied], { encoding: 'utf8' });
     const output = `${run.stdout}${run.stderr}`;
@@ -339,6 +421,32 @@ test('the gate actually runs from a path containing a space', () => {
       `expected the gate to run and refuse an empty scan, got:\n${output}`
     );
     assert.equal(run.status, 1, 'a gate that scanned nothing must exit non-zero');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run as a script, both vacuity refusals print their remedy and exit non-zero (#4701)', () => {
+  // Spawned, because the remedy only helps if it reaches the terminal: the
+  // printing loop and the exit code live in the entry-point block that an
+  // imported runCheck never executes. rust/core/src and rust/geometry/src are
+  // two of SCAN_ROOTS; the other roots are absent and fail as missing, which
+  // this test tolerates.
+  const dir = mkdtempSync(join(tmpdir(), 'refwalk-gate-'));
+  try {
+    const copied = copyGateInto(join(dir, 'scripts'));
+    mkdirSync(join(dir, 'rust/core/src'), { recursive: true });
+    writeFileSync(join(dir, 'rust/core/src/notes.md'), '# no rust here\n');
+    mkdirSync(join(dir, ROOT), { recursive: true });
+    writeFileSync(join(dir, ROOT, 'a.rs'), 'trait T { fn only_a_declaration(&self) -> u32; }\n');
+
+    const run = spawnSync(process.execPath, [copied], { encoding: 'utf8' });
+    const output = `${run.stdout}${run.stderr}`;
+    assert.match(output, /scan root rust\/core\/src contains no \.rs files/, output);
+    assert.match(output, EMPTY_ROOT_REMEDY, output);
+    assert.match(output, /rust\/geometry\/src\/a\.rs: contains `fn` but parsed to zero functions/, output);
+    assert.match(output, ZERO_FN_REMEDY, output);
+    assert.equal(run.status, 1, 'a remedy in the message must not turn the refusal into a pass');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

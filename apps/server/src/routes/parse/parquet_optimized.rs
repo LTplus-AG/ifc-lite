@@ -7,10 +7,10 @@
 //! (issue #3889) so neither module crosses the 400-line ratchet.
 
 use super::cache_keys::{
-    cache_symbolic_data, has_cached_symbolic, parquet_optimized_cache_key,
+    has_cached_symbolic, parquet_optimized_cache_key,
     parquet_optimized_metadata_cache_key, request_cache_key,
 };
-use super::{extract_file, ParseQuery};
+use super::{cache_symbolic_data_off_runtime, extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::{
     baked_basis_zup, serialize_to_parquet_optimized_with_stats, OptimizedStats, VERTEX_MULTIPLIER,
@@ -228,7 +228,7 @@ pub async fn parse_parquet_optimized(
 
     // Cache the symbolic stream so the client can fetch it via
     // `GET /api/v1/parse/symbolic/{cache_key}`.
-    cache_symbolic_data(&state.cache, &cache_key, &symbolic_data).await;
+    cache_symbolic_data_off_runtime(state.cache.clone(), cache_key.clone(), symbolic_data).await;
 
     // Create metadata header
     let metadata_header = OptimizedParquetMetadataHeader {

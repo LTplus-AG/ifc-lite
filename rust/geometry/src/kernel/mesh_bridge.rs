@@ -10,7 +10,7 @@ use super::arrangement::{
     boolean, boolean_with_conformity, difference_all, difference_all_lenient, BoolOp,
     Tri,
 };
-use super::signed_volume::signed_volume6;
+use super::signed_volume::{signed_volume6, signed_volume6_about, volume_reference};
 use crate::mesh::Mesh;
 
 /// f32-near-coplanar reconciliation snap grid, in the CALLER's unit — NOT
@@ -234,8 +234,14 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> BatchSubtract {
     if oracle_tripped {
         return BatchSubtract::Nonconforming;
     }
-    let host_v = signed_volume6(&h).abs();
-    let batch_removed = host_v - signed_volume6(&batch).abs();
+    // Both readings about the HOST's reference point (#4693). A host can arrive
+    // open (the router does not require a closed host), and an open surface's
+    // sum moves with the reference point: read the batch about its own centre
+    // and a cut that trims the host's bounding box leaves the untouched crack's
+    // flux in `batch_removed`.
+    let reference = volume_reference(&h);
+    let host_v = signed_volume6_about(&h, &reference).abs();
+    let batch_removed = host_v - signed_volume6_about(&batch, &reference).abs();
     // 1% agreement — above f64/FMA noise (parity-stable branch), tight enough to
     // reject the #1167 gross under-cut (3.7 m³ vs 13 m³).
     let tol = inter_sum.abs().max(1.0e-9) * 0.01;

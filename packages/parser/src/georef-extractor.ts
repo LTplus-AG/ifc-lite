@@ -108,16 +108,29 @@ export const MAP_CONVERSION_TYPE_NAMES: readonly string[] = [
   'IfcMapConversionScaled',
 ];
 
-/**
- * Extract georeferencing information from IFC entities
- */
-export function extractGeoreferencing(
+/** IFC4 entities, else the ePSet_MapConversion then IfcSite fallbacks (Rust's precedence). */
+export function extractGeoreferencing(entities: Map<number, IfcEntity>, entitiesByType: Map<string, number[]>): GeoreferenceInfo {
+  return withGeoreferenceFallbacks(extractIfc4Georeferencing(entities, entitiesByType), entities, entitiesByType);
+}
+
+/** Completes an {@link extractIfc4Georeferencing} result that claims nothing with the fallbacks. */
+export function withGeoreferenceFallbacks(
+  info: GeoreferenceInfo,
   entities: Map<number, IfcEntity>,
   entitiesByType: Map<string, number[]>
 ): GeoreferenceInfo {
-  const info: GeoreferenceInfo = {
-    hasGeoreference: false,
-  };
+  if (info.hasGeoreference) return info;
+  return extractEPSetMapConversion(entities, entitiesByType)
+    ?? extractLegacySiteGeoreference(entities, entitiesByType)
+    ?? info;
+}
+
+/**
+ * IfcMapConversion and IfcProjectedCRS only. `hasGeoreference: false` is the one
+ * rule for "the fallbacks run": a loader supplying fallback entities asks this (#4695).
+ */
+export function extractIfc4Georeferencing(entities: Map<number, IfcEntity>, entitiesByType: Map<string, number[]>): GeoreferenceInfo {
+  const info: GeoreferenceInfo = { hasGeoreference: false };
 
   // Extract IfcMapConversion — including IFC4X3's concrete subtype
   // IfcMapConversionScaled, which a type-keyed lookup for the supertype alone
@@ -135,7 +148,7 @@ export function extractGeoreferencing(
     const entity = entities.get(mapConversionIds[0]);
     if (entity) {
       // A refused conversion leaves the field absent and does not claim
-      // `hasGeoreference`. An IfcProjectedCRS further down may still claim it —
+      // `hasGeoreference`. A named IfcProjectedCRS further down may still claim it —
       // correct: the file does declare a CRS, it just carries no usable
       // placement.
       const mapConversion = extractMapConversion(entity);
@@ -152,7 +165,9 @@ export function extractGeoreferencing(
     const entity = entities.get(projectedCRSIds[0]);
     if (entity) {
       info.projectedCRS = extractProjectedCRS(entity, (id) => entities.get(id));
-      info.hasGeoreference = true;
+      // A CRS whose mandatory Name is unset or blank declares none: it still scales
+      // a parsed conversion, but neither claims presence nor holds back the fallbacks (#4695).
+      if (info.projectedCRS.name.trim() !== '') info.hasGeoreference = true;
     }
   }
 
@@ -161,22 +176,6 @@ export function extractGeoreferencing(
     info.source = 'mapConversion';
     info.transformMatrix = computeTransformMatrix(info.mapConversion);
   }
-
-  if (!info.hasGeoreference) {
-    // IFC2x3 ePSet_MapConversion fallback BEFORE the legacy site fallback —
-    // same precedence as the Rust extractor (ifc_lite_core::GeoRefExtractor),
-    // which previously found these models georeferenced while the browser
-    // reported none (alignment audit).
-    const epset = extractEPSetMapConversion(entities, entitiesByType);
-    if (epset) {
-      return epset;
-    }
-    const legacySite = extractLegacySiteGeoreference(entities, entitiesByType);
-    if (legacySite) {
-      return legacySite;
-    }
-  }
-
   return info;
 }
 

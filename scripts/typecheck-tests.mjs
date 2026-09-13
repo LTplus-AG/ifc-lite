@@ -70,6 +70,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -326,8 +327,9 @@ async function checkOnePackage(pkgDir) {
   const name = path.relative(REPO_ROOT, pkgDir);
   const program = writeTestProgram(pkgDir);
   if (!program) {
-    console.log(`typecheck-tests: ${name} has no test files, nothing to check`);
-    return 0;
+    // A typecheck that checked nothing is a failure, not a pass (#4702).
+    console.error(`typecheck-tests: ${name} FAILED: checked 0 test files. Add a test or drop this package's typecheck script.`);
+    return 1;
   }
   const { ok, output } = await tsc(['-p', program.config]);
   if (output.trim()) console.log(output.trimEnd());
@@ -655,12 +657,10 @@ export function parseCliMode(args) {
 
 export { audit, writeTestProgram, GENERATED_CONFIG, relativeExtends };
 
-// Only run the CLI when invoked as one — importing this must not typecheck the
-// repo and call process.exit.
-const invokedDirectly = process.argv[1]
-  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-
-if (invokedDirectly) {
+// Only run the CLI when invoked as one: importing this must not typecheck the
+// repo and call process.exit. isMainEntry, not a path compare: through a
+// symlink the old compare was false and the run exited 0 having done nothing (#4702).
+if (isMainEntry(import.meta.url)) {
   const parsed = parseCliMode(process.argv.slice(2));
   let exitCode;
   if ('error' in parsed) {

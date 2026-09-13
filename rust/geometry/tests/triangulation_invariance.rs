@@ -1461,6 +1461,89 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
     }
 }
 
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn issue_4627_dental_result_remains_closed() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    let path = crate_dir().join("../../tests/models/ara3d/dental_clinic.ifc");
+    if !oracle_fixture_present(&path) {
+        eprintln!("Skipping #4627 dental result oracle: run pnpm fixtures");
+        return;
+    }
+    let content = std::fs::read_to_string(&path).expect("read dental clinic");
+    let voids = void_index(&content);
+    let frame = ModelFrame::new(&content);
+    set_alt(false);
+    for id in [319, 271, 218] {
+        let mesh = process(&frame, id, &voids).expect("dental host must mesh");
+        let stats = edge_stats(&mesh);
+        assert_eq!(
+            (stats.open, stats.strict),
+            (0, 0),
+            "host #{id} must remain closed"
+        );
+    }
+}
+
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
+    let mut failures = Vec::new();
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    for (rel, expected) in [
+        (
+            "various/rvt01.ifc",
+            &[
+                (11477, 33, 33, 159, 18),
+                (11690, 19, 19, 139, 19),
+                (31156, 0, 0, 208, 0),
+                (17553, 7, 9, 165, 0),
+                (17615, 3, 3, 103, 3),
+                (25914, 28, 31, 84, 28),
+                (26610, 0, 0, 84, 0),
+            ][..],
+        ),
+        (
+            "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+            &[
+                (247051, 0, 0, 60, 0),
+                (141060, 0, 0, 70, 0),
+                (145756, 0, 0, 38, 0),
+            ][..],
+        ),
+    ] {
+        let path = crate_dir().join("../../tests/models").join(rel);
+        if !oracle_fixture_present(&path) {
+            eprintln!("Skipping #4627 candidate oracle for {rel}: run pnpm fixtures");
+            continue;
+        }
+        let content = std::fs::read_to_string(&path).expect("read candidate fixture");
+        let voids = void_index(&content);
+        let frame = ModelFrame::new(&content);
+        #[cfg(feature = "triangulation-alt")]
+        let triangulators = &[false, true][..];
+        #[cfg(not(feature = "triangulation-alt"))]
+        let triangulators = &[false][..];
+        for &alt in triangulators {
+            set_alt(alt);
+            for &(id, open, strict, tris, alt_open) in expected {
+                let mesh = process(&frame, id, &voids).expect("candidate host must mesh");
+                let stats = edge_stats(&mesh);
+                if if alt {
+                    stats.open != alt_open
+                } else {
+                    (stats.open, stats.strict, mesh.triangle_count()) != (open, strict, tris)
+                } {
+                    failures.push((id, alt, stats.open, mesh.triangle_count()));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "regressed hosts: {failures:?}");
+}
+
 /// A unit cube as 8 welded vertices and 12 consistently wound triangles.
 ///
 /// Every one of its 18 undirected edges is used exactly once forward and once

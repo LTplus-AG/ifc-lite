@@ -100,13 +100,13 @@ import {
 } from './lib/revert-oracle-result.mjs';
 import { planRuns } from './lib/revert-oracle-plan-runs.mjs';
 import { loadTypeScript, typeOnlyProduction, typecheckPlans, gitShow } from './lib/revert-oracle-type-only.mjs';
-import { runPlan } from './lib/revert-oracle-run-plan.mjs';
+import { realRoot, runPlan } from './lib/revert-oracle-run-plan.mjs';
 import { printHumanReport } from './lib/revert-oracle-human-report.mjs';
 import { buildExecutionLedger, ledgerVerdict, partitionRunnablePlans } from './lib/revert-oracle-ledger.mjs';
 
 const SELF_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const rootFlag = process.argv.indexOf('--root');
-const ROOT = rootFlag === -1 ? SELF_ROOT : resolve(process.argv[rootFlag + 1] ?? SELF_ROOT);
+const ROOT = realRoot(rootFlag === -1 ? SELF_ROOT : resolve(process.argv[rootFlag + 1] ?? SELF_ROOT));
 
 // Restoration state, declared before the first abort path can fire: `die()`
 // consults it, and a `let` in the temporal dead zone would throw instead.

@@ -201,7 +201,7 @@ pub fn resolve_prepass_with_style_seeds(
         if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
             // RepresentedMaterial (attr 3) → Representations (attr 2).
             if let Some(material_id) = entity.get_ref(3) {
-                if let Some(reprs) = refs_from_list(&entity, 2) {
+                if let Some(reprs) = entity.get_refs(2) {
                     out.material_def_reprs
                         .entry(material_id)
                         .or_default()
@@ -214,7 +214,7 @@ pub fn resolve_prepass_with_style_seeds(
         if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
             // RelatingMaterial (attr 5) ← RelatedObjects (attr 4).
             if let Some(material_select_id) = entity.get_ref(5) {
-                if let Some(related) = refs_from_list(&entity, 4) {
+                if let Some(related) = entity.get_refs(4) {
                     for element_id in related {
                         out.element_to_material.insert(element_id, material_select_id);
                     }
@@ -247,7 +247,7 @@ pub fn resolve_prepass_with_style_seeds(
                 let Some(parent_id) = entity.get_ref(4) else {
                     continue;
                 };
-                if let Some(children) = refs_from_list(&entity, 5) {
+                if let Some(children) = entity.get_refs(5) {
                     aggregate_children
                         .entry(parent_id)
                         .or_default()
@@ -679,9 +679,9 @@ pub(crate) fn surface_style_from_styled_item(
     styled_item: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Option<(u32, GeometryStyleInfo)> {
-    for style_id in refs_from_list(styled_item, 1)? {
+    for style_id in styled_item.get_refs(1)? {
         if let Ok(style) = decoder.decode_by_id(style_id) {
-            if let Some(inner_refs) = refs_from_list(&style, 0) {
+            if let Some(inner_refs) = style.get_refs(0) {
                 for inner_id in inner_refs {
                     if let Some(info) = extract_surface_style_info(inner_id, decoder) { return Some((inner_id, info)); }
                 }
@@ -719,17 +719,6 @@ fn normalize_style_name(raw: Option<&str>) -> Option<String> {
         return None;
     }
     Some(name.to_string())
-}
-
-/// Extract entity references from a list attribute.
-pub(crate) fn refs_from_list(entity: &DecodedEntity, index: usize) -> Option<Vec<u32>> {
-    let list = entity.get_list(index)?;
-    let refs: Vec<u32> = list.iter().filter_map(|v| v.as_entity_ref()).collect();
-    if refs.is_empty() {
-        None
-    } else {
-        Some(refs)
-    }
 }
 
 #[cfg(test)]

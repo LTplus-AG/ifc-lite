@@ -36,6 +36,8 @@
 
 use std::borrow::Cow;
 
+use crate::error::ExportError;
+
 /// Non-finite → `0.0`, everything else untouched (including `-0.0`).
 #[inline]
 fn finite_or_zero_f32(v: f32) -> f32 {
@@ -128,37 +130,61 @@ pub(crate) fn scrub_nonfinite<'a>(
     }
 }
 
-/// The first mesh whose index block names a vertex it does not have, as
-/// `(mesh, largest index, that mesh's vertex count)`, or `None`.
+/// Refuse one mesh's index block unless it is whole triangles that each name a
+/// vertex of that mesh.
 ///
-/// glTF 2.0 section 3.7.2.1 requires every index value to be less than the
-/// vertex count. The glTF assembler copies `mesh.indices` into the BIN chunk
-/// verbatim, so this scan in front of it is the only place an out-of-range
-/// value can be refused; `try_export_glb_from_meshes` used to validate COUNTS
-/// only and shipped the value inside a "successful" GLB. COLLADA and USD apply
-/// the same predicate at their own granularity (drop the triangle, refuse the
-/// mesh) over their own inputs, so they do not share this function.
+/// Both from-meshes writers call this, so they refuse the same inputs with the
+/// same [`ExportError::MalformedMeshInput`] (#4684). Two shapes fail:
 ///
-/// The caller has already established that `index_counts` covers every mesh
-/// and that the blocks fit inside `indices`; this walks the same blocking.
-/// The max over each block rather than an early-exit `find`: the fold
+/// * a block whose length is not a multiple of 3. glTF 2.0 requires a
+///   `TRIANGLES` index count divisible by 3, and the GLB assembler writes
+///   `count: indices.len()`; COLLADA used to trim the partial triangle and
+///   report success.
+/// * an index at or past the mesh's vertex count (glTF 2.0 3.7.2.1). The GLB
+///   assembler copies indices into the BIN chunk verbatim; COLLADA used to drop
+///   the triangle and report success with the face missing.
+///
+/// The caller has already established that the block lies inside `indices`.
+/// The max over the block rather than an early-exit `find`: the fold
 /// vectorises, and the reported value is still a concrete offender.
-pub(crate) fn first_index_out_of_range(
+pub(crate) fn check_index_block(
+    mesh: usize,
+    block: &[u32],
+    vertex_count: u32,
+) -> Result<(), ExportError> {
+    if !block.len().is_multiple_of(3) {
+        return Err(ExportError::MalformedMeshInput {
+            detail: format!(
+                "mesh {mesh} has {} indices, which is not a whole number of triangles",
+                block.len()
+            ),
+        });
+    }
+    match block.iter().max() {
+        Some(&largest) if largest >= vertex_count => Err(ExportError::MalformedMeshInput {
+            detail: format!(
+                "mesh {mesh} has index {largest} but only {vertex_count} vertices (an index \
+                 must be less than its mesh's vertex count)"
+            ),
+        }),
+        _ => Ok(()),
+    }
+}
+
+/// [`check_index_block`] over every mesh's block, in order. The caller has
+/// already established that `index_counts` covers every mesh and that the
+/// blocks fit inside `indices`.
+pub(crate) fn check_index_blocks(
     indices: &[u32],
     vertex_counts: &[u32],
     index_counts: &[u32],
-) -> Option<(usize, u32, u32)> {
+) -> Result<(), ExportError> {
     let mut ibase = 0usize;
-    for (i, (&vertex_count, &ic)) in vertex_counts.iter().zip(index_counts).enumerate() {
-        let block = &indices[ibase..ibase + ic as usize];
-        if let Some(&largest) = block.iter().max() {
-            if largest >= vertex_count {
-                return Some((i, largest, vertex_count));
-            }
-        }
+    for (mesh, (&vertex_count, &ic)) in vertex_counts.iter().zip(index_counts).enumerate() {
+        check_index_block(mesh, &indices[ibase..ibase + ic as usize], vertex_count)?;
         ibase += ic as usize;
     }
-    None
+    Ok(())
 }
 
 #[cfg(test)]
@@ -201,5 +227,46 @@ mod tests {
         let p = [-0.0f32];
         let input = scrub_nonfinite(&p, &[], &[], &[]);
         assert!(input.positions[0].is_sign_negative());
+    }
+
+    /// One mesh of three vertices through both from-meshes writers.
+    fn both_writers(
+        indices: &[u32],
+    ) -> (Result<(), crate::ExportError>, Result<(), crate::ExportError>) {
+        let positions = [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        let normals = [0.0f32, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+        let (vc, ic) = ([3u32], [indices.len() as u32]);
+        let (color, origin) = ([0.5f32, 0.5, 0.5, 1.0], [0.0f64; 3]);
+        let glb = crate::try_export_glb_from_meshes(
+            &positions, &normals, indices, &vc, &ic, &color, &origin, &[1], false, true, false,
+        )
+        .map(drop);
+        let dae = crate::try_export_collada_from_meshes(
+            &positions, &normals, indices, &vc, &ic, &color, &origin,
+        )
+        .map(drop);
+        (glb, dae)
+    }
+
+    /// #4684: the GLB and COLLADA writers refuse the same malformed index blocks
+    /// with the same error. GLB used to ship a partial triangle as a TRIANGLES
+    /// primitive whose count is not a multiple of 3; COLLADA used to trim that
+    /// partial triangle and drop a triangle naming a vertex outside its mesh,
+    /// then report success with the face missing.
+    #[test]
+    fn both_from_meshes_writers_refuse_the_same_malformed_index_blocks() {
+        for (label, indices) in [
+            ("partial triangle", &[0u32, 1, 2, 0, 1][..]),
+            ("index past the mesh beside a valid triangle", &[0, 1, 2, 0, 1, 7][..]),
+            ("index equal to the vertex count", &[0, 1, 2, 0, 1, 3][..]),
+        ] {
+            let (glb, dae) = both_writers(indices);
+            assert!(
+                matches!(glb, Err(crate::ExportError::MalformedMeshInput { .. })),
+                "{label}: GLB must refuse, got {glb:?}"
+            );
+            assert_eq!(dae, glb, "{label}: COLLADA must refuse exactly as GLB does");
+        }
+        assert_eq!(both_writers(&[0, 1, 2]), (Ok(()), Ok(())), "a whole in-range triangle exports");
     }
 }

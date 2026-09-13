@@ -649,3 +649,131 @@ mod issue_3353_nary_near_coplanar {
         }
     }
 }
+
+/// A two-cutter group whose arrangement does not conform, so `subtract_many`
+/// reaches its lenient batch and the volume oracle. Captured (exact f32 coords)
+/// from the public `ara3d/dental_clinic.ifc` fixture: a gable wall already
+/// holding three windows, a stepped cutter trimming its sloped end, and a
+/// window cutter sharing the `z = 7.21` plane with it.
+fn lenient_gable_group() -> (Mesh, Mesh, Mesh) {
+    let wall = mesh_of(
+        &[
+            [0.11300659, 35.7639, 9.707001], [0.11300659, 50.47, 9.707001],
+            [0.11300659, 50.47, 4.5700073], [0.11300659, 33.630005, 4.5700073],
+            [0.11300659, 33.630005, 7.2100067], [0.11300659, 35.322647, 9.190659],
+            [0.11300659, 49.10556, 7.2100067], [0.11300659, 48.10556, 7.2100067],
+            [0.11300659, 48.10556, 5.475006], [0.11300659, 49.10556, 5.475006],
+            [0.11300659, 44.085556, 7.2100067], [0.11300659, 43.085556, 7.2100067],
+            [0.11300659, 43.085556, 5.475006], [0.11300659, 44.085556, 5.475006],
+            [0.11300659, 42.164444, 7.2100067], [0.11300659, 41.164444, 7.2100067],
+            [0.11300659, 41.164444, 5.475006], [0.11300659, 42.164444, 5.475006],
+            [0.38000488, 49.10556, 5.475006], [0.38000488, 49.10556, 7.2100067],
+            [0.38000488, 44.085556, 5.475006], [0.38000488, 44.085556, 7.2100067],
+            [0.38000488, 42.164444, 5.475006], [0.38000488, 42.164444, 7.2100067],
+            [0.38000488, 33.630005, 4.5700073], [0.38000488, 33.630005, 7.2100067],
+            [0.38000488, 35.7639, 9.707001], [0.38000488, 48.10556, 7.2100067],
+            [0.38000488, 43.085556, 7.2100067], [0.38000488, 41.164444, 7.2100067],
+            [0.38000488, 50.47, 4.5700073], [0.38000488, 41.164444, 5.475006],
+            [0.38000488, 43.085556, 5.475006], [0.38000488, 48.10556, 5.475006],
+            [0.38000488, 50.47, 9.707001],
+        ],
+        &[
+            [3, 4, 5], [1, 2, 6], [1, 6, 7], [2, 8, 9], [6, 2, 9], [1, 7, 10], [7, 8, 10],
+            [0, 1, 11], [1, 10, 11], [2, 12, 13], [8, 2, 13], [10, 8, 13], [0, 11, 14],
+            [11, 12, 14], [0, 14, 15], [5, 0, 15], [3, 5, 16], [5, 15, 16], [2, 3, 17],
+            [3, 16, 17], [12, 2, 17], [14, 12, 17], [9, 18, 19], [9, 19, 6], [13, 20, 21],
+            [13, 21, 10], [17, 22, 23], [17, 23, 14], [3, 24, 25], [3, 25, 4], [25, 5, 4],
+            [5, 25, 26], [0, 5, 26], [6, 19, 27], [6, 27, 7], [10, 21, 28], [10, 28, 11],
+            [14, 23, 29], [14, 29, 15], [2, 30, 24], [2, 24, 3], [16, 31, 22], [16, 22, 17],
+            [12, 32, 20], [12, 20, 13], [8, 33, 18], [8, 18, 9], [26, 34, 1], [26, 1, 0],
+            [15, 29, 31], [15, 31, 16], [11, 28, 32], [11, 32, 12], [7, 27, 33], [7, 33, 8],
+            [1, 34, 30], [1, 30, 2], [30, 18, 33], [30, 34, 19], [34, 27, 19], [18, 30, 19],
+            [30, 33, 20], [33, 27, 20], [30, 20, 32], [34, 26, 28], [34, 28, 21], [27, 34, 21],
+            [20, 27, 21], [24, 30, 22], [30, 32, 22], [32, 28, 22], [24, 22, 31], [26, 25, 31],
+            [25, 24, 31], [26, 31, 29], [26, 29, 23], [28, 26, 23], [22, 28, 23],
+        ],
+    );
+    let notch = mesh_of(
+        &[
+            [0.032899998, 35.763905, 8.4585], [0.032899998, 35.763905, 9.707],
+            [0.032899998, 33.63, 7.21], [0.032899998, 34.7635, 7.21],
+            [0.032899998, 34.7635, 8.4585], [0.46010488, 35.763905, 8.4585],
+            [0.46010488, 35.763905, 9.707], [0.46010488, 33.63, 7.21],
+            [0.46010488, 34.7635, 7.21], [0.46010488, 34.7635, 8.4585],
+        ],
+        &[
+            [0, 4, 1], [1, 4, 2], [2, 4, 3], [5, 6, 9], [6, 7, 9], [7, 8, 9], [0, 1, 6], [0, 6, 5],
+            [1, 2, 7], [1, 7, 6], [2, 3, 8], [2, 8, 7], [3, 4, 9], [3, 9, 8], [4, 0, 5], [4, 5, 9],
+        ],
+    );
+    let window = mesh_of(
+        &[
+            [0.032899998, 36.66444, 7.21], [0.032899998, 35.66444, 7.21],
+            [0.032899998, 35.66444, 5.475], [0.032899998, 36.66444, 5.475],
+            [0.46010488, 36.66444, 7.21], [0.46010488, 35.66444, 7.21],
+            [0.46010488, 35.66444, 5.475], [0.46010488, 36.66444, 5.475],
+        ],
+        &[
+            [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4],
+            [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7],
+        ],
+    );
+    (wall, notch, window)
+}
+
+/// `subtract_many`'s volume oracle on an OPEN host (#4693).
+///
+/// The oracle accepted a lenient batch when `host − batch` matched Σ|host ∩
+/// cutter| within 1 %, with the host summed about its own AABB centre and the
+/// batch about ITS own. An open surface's sum moves with the reference point,
+/// so when the cut trims the host's bounding box, the flux of a crack the cut
+/// never touched lands in the removed volume.
+///
+/// Fixture: the non-conforming gable group above, plus a closed 0.1 m rod
+/// standing 0.13 m off the wall's +Y end (1.87 m long) and a third cutter that
+/// takes its outer metre. That moves the AABB centre 0.5 m in −Y. The open host
+/// adds one unpaired triangle inside the wall at `y = 45` (normal ±Y, 0.47 m²),
+/// away from every cutter. Both hosts remove the same solid. On origin/main the
+/// closed host is cut and the open one reads 5.577 against the oracle's 5.107
+/// (6× m³) and falls back as `Nonconforming`. Mutation: read `batch` about
+/// `volume_reference(&batch)` again and the open-host assertion fails.
+#[test]
+fn lenient_batch_on_an_open_host_reads_both_volumes_about_one_point_4693() {
+    use super::super::arrangement::{box_mesh, difference_all};
+    use crate::router::voids::geom::mesh_signed_volume_about;
+    let (wall, notch, window) = lenient_gable_group();
+    let rod = tris_to_mesh(&box_mesh([0.2, 50.6, 6.0], [0.3, 52.47, 6.1]));
+    let tip = tris_to_mesh(&box_mesh([0.1, 51.47, 5.9], [0.4, 53.0, 6.2]));
+    let mut closed = wall.clone();
+    closed.merge(&rod);
+    let mut open = closed.clone();
+    open.merge(&mesh_of(&[[0.15, 45.0, 4.8], [0.35, 45.0, 4.8], [0.25, 45.0, 9.5]], &[[0, 1, 2]]));
+    let cutters = [&notch, &window, &tip];
+
+    // Guard: the group must reach the lenient path, or nothing here reads the oracle.
+    let h = orient_outward(mesh_to_tris(&open));
+    let comps: Vec<Vec<Tri>> = cutters
+        .iter()
+        .map(|m| {
+            let mut c = mesh_to_tris(m);
+            promote_cutter_verts_onto_host_faces(&mut c, &h);
+            orient_outward(c)
+        })
+        .collect();
+    let refs: Vec<&[Tri]> = comps.iter().map(|c| c.as_slice()).collect();
+    assert!(difference_all(&h, &refs).is_none(), "the group must not conform");
+
+    // Host and cut read about one point on the unpaired triangle's plane, so
+    // the triangle adds nothing to either reading, snapped or not.
+    let removed = |host: &Mesh, what: &str| {
+        let cut = expect_cut(subtract_many(host, &cutters), what);
+        let o = [0.25, 45.0, 7.0];
+        mesh_signed_volume_about(host, &o) - mesh_signed_volume_about(&cut, &o)
+    };
+    let closed_removed = removed(&closed, "closed host");
+    let open_removed = removed(&open, "open host: the oracle read the crack as removed volume");
+    assert!(
+        (open_removed - closed_removed).abs() < 1e-4,
+        "open host removed {open_removed} m³, closed host {closed_removed} m³"
+    );
+}

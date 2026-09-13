@@ -267,8 +267,10 @@ function runOnce({ testObservesTypes }) {
     run('git', ['config', 'user.name', 'Revert oracle fixture']);
     run('git', ['config', 'user.email', 'oracle@example.invalid']);
     // The slice of this repository the typecheck observer needs.
-    mkdirSync(join(root, 'scripts'));
-    copyFileSync(join(REPO_ROOT, 'scripts/typecheck-tests.mjs'), join(root, 'scripts/typecheck-tests.mjs'));
+    mkdirSync(join(root, 'scripts/lib'), { recursive: true });
+    for (const file of ['scripts/typecheck-tests.mjs', 'scripts/lib/is-main-entry.mjs']) {
+      copyFileSync(join(REPO_ROOT, file), join(root, file));
+    }
     copyFileSync(join(REPO_ROOT, 'tsconfig.tests.base.json'), join(root, 'tsconfig.tests.base.json'));
     symlinkSync(join(REPO_ROOT, 'node_modules'), join(root, 'node_modules'), 'junction');
     writeFileSync(join(root, 'package.json'), '{ "name": "oracle-type-only-fixture", "private": true }\n');

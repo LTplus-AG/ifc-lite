@@ -12,6 +12,10 @@
 //! nothing here caught it before this file existed.
 
 use crate::config::Config;
+use crate::routes::parse::cache_keys::symbolic_cache_key;
+use crate::routes::parse::worker_thread_tests::{
+    assert_off_the_worker, await_threads_that_logged, record_event_threads, SYMBOLIC_CACHED,
+};
 use crate::services::cache::DiskCache;
 use crate::{build_router, AppState};
 use axum::body::{to_bytes, Body};
@@ -270,7 +274,7 @@ async fn await_cache_fill(state: &AppState, live: &[Value]) -> String {
         .to_string();
     let required = [
         format!("{key}-parquet-v5"),
-        format!("{key}-parquet-metadata-v4"),
+        format!("{key}-parquet-metadata-v5"),
         crate::routes::parse::cache_keys::data_model_cache_key(&key),
         crate::routes::parse::cache_keys::symbolic_cache_key(&key),
         crate::routes::parse::stream_progress::stream_progress_cache_key(&key),
@@ -348,6 +352,22 @@ async fn a_cache_hit_reports_the_same_progress_numbers_as_the_miss() {
     };
     assert_eq!(total_estimate(&replay), total_estimate(&live));
     assert_eq!(total_estimate(&replay), live_total);
+}
+
+/// The symbolic sidecar the `Complete` event writes is JSON-encoded on the
+/// blocking pool, not on the async worker (#4696). See `worker_thread_tests`
+/// for how the thread is observed.
+#[tokio::test]
+async fn the_symbolic_sidecar_is_encoded_off_the_async_worker() {
+    record_event_threads();
+    let state = test_state("symbolic-off-runtime").await;
+    let content = TWO_WALL_FIXTURE.replace("r33.ifc", "r33-4696.ifc");
+
+    let live = stream_once(&state, &content).await;
+    let key = await_cache_fill(&state, &live).await;
+
+    let threads = await_threads_that_logged(SYMBOLIC_CACHED, &symbolic_cache_key(&key)).await;
+    assert_off_the_worker(&threads, "the symbolic sidecar encode");
 }
 
 #[path = "parquet_stream_hash_only_tests.rs"]

@@ -33,7 +33,8 @@ const fixturePath = fileURLToPath(
 
 interface Expect {
   hasGeoreference: boolean;
-  source?: string;
+  /** `null` asserts the provenance is absent; omitting it skips the check. */
+  source?: string | null;
   crsName?: string | null;
   crsDescription?: string | null;
   geodeticDatum?: string | null;
@@ -239,7 +240,7 @@ describe.skipIf(!existsSync(fixturePath))('extractGeoreferencing shared parity v
       expect(got.hasGeoreference, 'hasGeoreference').toBe(want.hasGeoreference);
       if (!want.hasGeoreference) return;
 
-      if (want.source !== undefined) expect(got.source, 'source').toBe(want.source);
+      if (want.source !== undefined) expect(got.source ?? null, 'source').toBe(want.source);
 
       const crs = got.projectedCRS;
       if ('mapUnitScale' in want) {

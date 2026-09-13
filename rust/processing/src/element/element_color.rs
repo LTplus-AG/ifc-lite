@@ -8,7 +8,6 @@
 //! a pure function of (geometry id, style map) with its own bounded walk;
 //! the mesh production it serves stays in `element.rs`.
 
-use crate::processor::get_refs_from_list;
 use crate::style::{FullIndexedColourMap, GeometryStyleInfo};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 // Re-exported, not merely imported: the depth-cap test reads it back through
@@ -85,7 +84,7 @@ fn find_geometry_item_color_at(
     let mapped_representation_id = representation_map.get_ref(1)?;
     let mapped_representation = decoder.decode_by_id(mapped_representation_id).ok()?;
     // IfcShapeRepresentation.Items (attr 3).
-    let items = get_refs_from_list(&mapped_representation, 3)?;
+    let items = mapped_representation.get_refs(3)?;
     for underlying in items {
         if let Some(color) =
             find_geometry_item_color_at(underlying, geometry_styles, decoder, depth + 1, visited)
@@ -110,7 +109,7 @@ pub(crate) fn resolve_color_for_representation_map(
     let mapped_rep_id = rep_map.get_ref(1)?;
     let mapped_rep = decoder.decode_by_id(mapped_rep_id).ok()?;
     // IfcShapeRepresentation.Items = attr 3.
-    let item_ids = get_refs_from_list(&mapped_rep, 3)?;
+    let item_ids = mapped_rep.get_refs(3)?;
     for item_id in item_ids {
         if let Some(style) = geometry_style_index.get(&item_id) {
             return Some(style.color);
@@ -132,10 +131,10 @@ pub(crate) fn find_indexed_colour_for_element<'a>(
 ) -> Option<&'a FullIndexedColourMap> {
     let pds_id = entity.get_ref(6)?;
     let pds = decoder.decode_by_id(pds_id).ok()?;
-    let repr_ids = get_refs_from_list(&pds, 2)?;
+    let repr_ids = pds.get_refs(2)?;
     for repr_id in repr_ids {
         if let Ok(repr) = decoder.decode_by_id(repr_id) {
-            if let Some(items) = get_refs_from_list(&repr, 3) {
+            if let Some(items) = repr.get_refs(3) {
                 for item_id in items {
                     if let Some(full) = indexed_colour_full.get(&item_id) {
                         return Some(full);

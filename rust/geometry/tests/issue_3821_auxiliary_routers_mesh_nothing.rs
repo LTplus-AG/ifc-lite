@@ -160,7 +160,7 @@ fn the_symbolic_router_meshes_nothing() {
     let mut dec = decoder();
     let router = GeometryRouter::with_units(BOOLEAN_MODEL.as_bytes(), &mut dec);
     let _ = router.unit_scale();
-    let _ = router.detect_rtc_offset_from_first_element(BOOLEAN_MODEL.as_bytes(), &mut dec);
+    let _ = router.detect_rtc_offset_for_file(BOOLEAN_MODEL.as_bytes(), &mut dec);
     assert_eq!(drained(&router), Vec::<String>::new());
 }
 
@@ -169,7 +169,7 @@ fn the_symbolic_router_meshes_nothing() {
 fn the_alignment_lines_router_meshes_nothing() {
     let mut dec = decoder();
     let router = GeometryRouter::with_scale(1.0);
-    let _ = router.detect_rtc_offset_from_first_element(BOOLEAN_MODEL.as_bytes(), &mut dec);
+    let _ = router.detect_rtc_offset_for_file(BOOLEAN_MODEL.as_bytes(), &mut dec);
     assert_eq!(drained(&router), Vec::<String>::new());
 }
 
@@ -179,7 +179,7 @@ fn the_grid_lines_router_meshes_nothing() {
     let mut dec = decoder();
     let router = GeometryRouter::with_units(BOOLEAN_MODEL.as_bytes(), &mut dec);
     let _ = router.unit_scale();
-    let _ = router.detect_rtc_offset_from_first_element(BOOLEAN_MODEL.as_bytes(), &mut dec);
+    let _ = router.detect_rtc_offset_for_file(BOOLEAN_MODEL.as_bytes(), &mut dec);
     for id in ELEMENT_IDS {
         let element = dec.decode_by_id(id).expect("decode element");
         let _ = router.resolve_scaled_placement(&element, &mut dec);

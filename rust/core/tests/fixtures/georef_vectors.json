@@ -28,7 +28,11 @@
     "these silently reports the base unit, wrong by the prefix's own factor.",
     "",
     "mapUnitScale is null when no MapUnit is authored: per the spec the",
-    "project length unit then applies, and neither half may invent 1.0."
+    "project length unit then applies, and neither half may invent 1.0.",
+    "",
+    "`source: null` asserts the provenance is ABSENT: no conversion, ePSet or",
+    "site supplied the data (a CRS-only file, or a refused conversion that a",
+    "named IfcProjectedCRS stands in for). Omitting `source` skips the check."
   ],
   "requiredCases": [
     "map_conversion_metre_no_rotation",
@@ -82,7 +86,13 @@
     "map_conversion_scaled_factors",
     "map_conversion_scaled_distinct_factors_before_rotation",
     "map_conversion_scaled_zero_factors_default_to_one",
-    "map_conversion_scaled_non_finite_factor_refused_falls_back_to_site"
+    "map_conversion_scaled_non_finite_factor_refused_falls_back_to_site",
+    "projected_crs_only_reports_crs_without_source",
+    "projected_crs_only_takes_precedence_over_site_location",
+    "map_conversion_refused_with_crs_reports_crs_without_source",
+    "map_conversion_refused_nameless_crs_falls_back_to_site",
+    "projected_crs_only_nameless_falls_back_to_site",
+    "projected_crs_only_blank_name_falls_back_to_site"
   ],
   "cases": [
     {
@@ -980,6 +990,75 @@
       "name": "map_conversion_scaled_non_finite_factor_refused_falls_back_to_site",
       "_note": "An overflowing FactorX refuses the whole conversion, matching every other transform component.",
       "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#3=IFCMAPCONVERSIONSCALED(#1,#2,1000.,2000.,42.,1.,0.,1.,1.0E999,1.,1.);\n#4=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(51,30,0),(14,28,0),0.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "siteLocation",
+        "crsName": "EPSG:4326",
+        "eastings": 14.466666666666667,
+        "northings": 51.5,
+        "orthogonalHeight": 0.0
+      }
+    },
+    {
+      "name": "projected_crs_only_reports_crs_without_source",
+      "_note": "An IfcProjectedCRS with no IfcMapConversion declares the CRS but places nothing. The declared CRS is the georeference (a refused conversion is treated the same way), and no conversion was used, so source is absent (#4695).",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": null,
+        "crsName": "EPSG:2056"
+      }
+    },
+    {
+      "name": "projected_crs_only_takes_precedence_over_site_location",
+      "_note": "The same CRS-only file with IfcSite RefLatitude/RefLongitude: the IFC4 CRS still wins over the legacy site fallback, exactly as it does behind a refused conversion (#4695).",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,$);\n#4=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(51,30,0),(14,28,0),0.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": null,
+        "crsName": "EPSG:2056"
+      }
+    },
+    {
+      "name": "map_conversion_refused_with_crs_reports_crs_without_source",
+      "_note": "A refused conversion (overflowing XAxisAbscissa) next to a named IfcProjectedCRS: the CRS stands in, and source stays absent because the refused conversion supplied nothing (#4695).",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,$);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,42.,1.0E999,0.,1.);\n#4=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(51,30,0),(14,28,0),0.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": null,
+        "crsName": "EPSG:2056"
+      }
+    },
+    {
+      "name": "map_conversion_refused_nameless_crs_falls_back_to_site",
+      "_note": "IfcProjectedCRS.Name is mandatory. A CRS with Name unset declares no CRS, so behind a refused conversion it claims nothing and the site fallback answers (#4695).",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS($,$,$,$,$,$,$);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,42.,1.0E999,0.,1.);\n#4=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(51,30,0),(14,28,0),0.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "siteLocation",
+        "crsName": "EPSG:4326",
+        "eastings": 14.466666666666667,
+        "northings": 51.5,
+        "orthogonalHeight": 0.0
+      }
+    },
+    {
+      "name": "projected_crs_only_nameless_falls_back_to_site",
+      "_note": "A nameless IfcProjectedCRS with no conversion at all claims nothing either, so the site fallback answers (#4695).",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS($,$,$,$,$,$,$);\n#4=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(51,30,0),(14,28,0),0.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "siteLocation",
+        "crsName": "EPSG:4326",
+        "eastings": 14.466666666666667,
+        "northings": 51.5,
+        "orthogonalHeight": 0.0
+      }
+    },
+    {
+      "name": "projected_crs_only_blank_name_falls_back_to_site",
+      "_note": "A whitespace-only Name is no more a CRS name than an unset one (the ePSet path already reads blank as missing, and the viewer gates on a non-empty name), so the site fallback answers (#4695).",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS(' ',$,$,$,$,$,$);\n#4=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(51,30,0),(14,28,0),0.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
       "expect": {
         "hasGeoreference": true,
         "source": "siteLocation",

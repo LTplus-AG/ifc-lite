@@ -25,6 +25,7 @@ pub mod csv_cell;
 mod dfjson;
 mod error;
 mod frame;
+mod generated;
 mod geom;
 mod gltf;
 mod hbjson;
@@ -65,16 +66,15 @@ pub use csv::{export_csv, CsvMode, CsvOptions};
 pub use dfjson::DfjsonStats;
 pub use error::ExportError;
 pub use gltf::{
-    export_glb, export_glb_from_meshes, export_glb_streaming_bounded,
-    export_glb_streaming_bounded_with_index, export_glb_with_stats,
-    export_glb_with_stats_with_index, export_gltf_streaming, export_gltf_streaming_with_index,
+    export_glb_from_meshes, export_gltf_streaming, export_gltf_streaming_with_index,
     project_glb_size, project_glb_size_with_index, try_export_glb, try_export_glb_from_meshes,
     try_export_glb_streaming_bounded, try_export_glb_streaming_bounded_with_index,
-    try_export_glb_with_stats, GlbSizeProjection, GltfBuffer, GltfOptions, GltfStats,
+    try_export_glb_with_stats, try_export_glb_with_stats_with_index, GlbSizeProjection,
+    GltfBuffer, GltfOptions, GltfStats,
 };
 pub use hbjson::Model;
 // Re-exported so a caller can `build_entity_index` once and share it across the
-// geometry (`export_glb_with_stats_with_index`) and attribute
+// geometry (`try_export_glb_with_stats_with_index`) and attribute
 // (`stream_export_model_with_index`) passes.
 //
 // `entity_count` is the cheap `O(scan)`, `O(1)`-memory entity tally (issue

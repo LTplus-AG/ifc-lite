@@ -103,7 +103,7 @@ pub use parser::{
     entity_count, find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with,
     nth_attribute_is_present, oversized_id_report, parse_entity, report_malformed_records,
     report_oversized_ids, report_scan_diagnostics, set_report_sink, skip_step_comment,
-    EntityScanner, Token,
+    EntityScanner, StepListItems, Token,
 };
 pub use project_units::{
     measure::{measure_unit, MeasureUnit},

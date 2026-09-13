@@ -79,7 +79,7 @@ impl GeoRefExtractor {
         projected_crs_pset: Option<u32>,
     ) -> Result<Option<GeoReference>> {
         let mut georef = GeoReference::new();
-        georef.source = GeoRefSource::EPSetMapConversion;
+        georef.source = Some(GeoRefSource::EPSetMapConversion);
         let mut target_crs: Option<String> = None;
 
         // HasProperties is typically at index 4

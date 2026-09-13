@@ -43,8 +43,8 @@
 //! - Per-representation `ContextOfItems.WorldCoordinateSystem` is
 //!   composed in when present (Plan reps occasionally use a different
 //!   WCS than Body).
-//! - RTC offset is auto-detected from the first geometry-bearing
-//!   element and subtracted alongside the mesh pipeline.
+//! - The RTC offset comes from the browser mesh frame selection
+//!   (`MeshFrame::for_overlay`).
 //! - The whole RTC offset is subtracted — easting and northing into the
 //!   plan pair (whose Y axis is flipped to match the renderer's section-cut
 //!   handedness), elevation into `world_y`. `rebase::RenderFrameRebase` is
@@ -145,12 +145,10 @@ where
     let router = ifc_lite_geometry::GeometryRouter::with_units(content, &mut decoder);
     let unit_scale = router.unit_scale() as f32;
 
-    // RTC offset detection matches the wasm path so the symbolic stream
-    // aligns with the mesh stream. The threshold (>10 km) is empirical —
-    // anything smaller is local-coord territory where RTC subtraction
-    // would shift things off-screen.
-    let rtc_offset = router.detect_rtc_offset_from_first_element(content, &mut decoder);
-    let rebase = RenderFrameRebase::from_rtc_offset(rtc_offset);
+    // Re-based by the browser mesh frame (`MeshFrame::for_overlay`). The
+    // native server's site-local meshes also remove the site translation and
+    // rotation, which this stream does not (#4706).
+    let rebase = RenderFrameRebase::from_frame(crate::MeshFrame::for_overlay(&router, content, &mut decoder));
 
     // Pre-pass: build a reverse index from "styled representation-item id"
     // to "list of style refs". Walked once at parse start (O(n)) so per-

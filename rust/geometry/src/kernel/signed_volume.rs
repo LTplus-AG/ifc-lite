@@ -38,9 +38,9 @@ pub(crate) fn tetra_volume6(a: &[f64; 3], b: &[f64; 3], c: &[f64; 3], o: &[f64; 
 /// `Σ (v0−o)·((v1−o)×(v2−o))`, ABOUT THE OPERAND'S OWN AABB CENTER `o`. A closed
 /// outward-wound mesh has this `> 0`; an inward-wound one `< 0`. Computed in
 /// plain FMA-free f64 over the snapped operand coords, so only its SIGN is
-/// consumed for orientation — byte-identical native==wasm. The MAGNITUDE (6×
-/// the volume) is also read by `subtract_many`'s volume-safety check, where a
-/// generous 1% tolerance keeps the accept/reject branch parity-stable.
+/// consumed for orientation — byte-identical native==wasm. A before/after
+/// volume difference reads [`signed_volume6_about`] instead, so both sides
+/// share one reference point.
 ///
 /// WHY the local reference point: for a CLOSED mesh
 /// the sign is translation-invariant, so the reference is free. But an operand
@@ -62,10 +62,32 @@ pub(crate) fn signed_volume6(tris: &[Tri]) -> f64 {
 /// `mesh_orient`) shares this reference-point rule instead of carrying its own
 /// copy of it. Two passes: one for the AABB centre, one for the sum.
 pub(crate) fn signed_volume6_of(tris: impl Iterator<Item = Tri> + Clone) -> f64 {
+    match aabb_centre(tris.clone()) {
+        Some(o) => sum_about(tris, &o),
+        None => 0.0,
+    }
+}
+
+/// The point [`signed_volume6`] sums `tris` about: the centre of the AABB of
+/// the vertices they reference (the origin for an empty list).
+pub(crate) fn volume_reference(tris: &[Tri]) -> [f64; 3] {
+    aabb_centre(tris.iter().copied()).unwrap_or([0.0; 3])
+}
+
+/// [`signed_volume6`] about a caller-chosen `o`. A before/after difference over
+/// one host must read both triangle lists about ONE point (the host's
+/// [`volume_reference`]): the flux of a crack the cut did not touch then
+/// cancels, where each list's own centre would leave `(o_after − o_before)`
+/// times that flux in the difference (#4632, #4693).
+pub(crate) fn signed_volume6_about(tris: &[Tri], o: &[f64; 3]) -> f64 {
+    sum_about(tris.iter().copied(), o)
+}
+
+fn aabb_centre(tris: impl Iterator<Item = Tri>) -> Option<[f64; 3]> {
     let mut lo = [f64::MAX; 3];
     let mut hi = [f64::MIN; 3];
     let mut any = false;
-    for t in tris.clone() {
+    for t in tris {
         any = true;
         for v in &t {
             for k in 0..3 {
@@ -74,15 +96,17 @@ pub(crate) fn signed_volume6_of(tris: impl Iterator<Item = Tri> + Clone) -> f64 
             }
         }
     }
-    if !any {
-        return 0.0;
-    }
-    let o = [
-        (lo[0] + hi[0]) * 0.5,
-        (lo[1] + hi[1]) * 0.5,
-        (lo[2] + hi[2]) * 0.5,
-    ];
-    tris.map(|t| tetra_volume6(&t[0], &t[1], &t[2], &o)).sum()
+    any.then(|| {
+        [
+            (lo[0] + hi[0]) * 0.5,
+            (lo[1] + hi[1]) * 0.5,
+            (lo[2] + hi[2]) * 0.5,
+        ]
+    })
+}
+
+fn sum_about(tris: impl Iterator<Item = Tri>, o: &[f64; 3]) -> f64 {
+    tris.map(|t| tetra_volume6(&t[0], &t[1], &t[2], o)).sum()
 }
 
 /// Enclosed volume of a closed triangle soup, in the operands' own units.

@@ -577,16 +577,16 @@ Cache keys are derived from file content:
 # quality appends a "-q{level}" suffix after it
 {SHA256}-{filter}-parquet-v5          # Geometry (default layout)
 {SHA256}-{filter}-parquet-v6          # Geometry (parquet_layout=shared-shapes)
-{SHA256}-{filter}-parquet-metadata-v4 # Metadata header
+{SHA256}-{filter}-parquet-metadata-v5 # Metadata header
 {SHA256}-{filter}-datamodel-v6        # Properties & hierarchy
-{SHA256}-{filter}-symbolic-v1         # 2D symbol stream
+{SHA256}-{filter}-symbolic-v3         # 2D symbol stream
 
 # POST /parse/parquet/optimized has its own pair (issue #3889): the optimized
 # payload is quantized and deduplicated, so a hit on one route must never
 # satisfy the other. Both pairs are built from the same geometry pipeline, so
 # a bump of -parquet-v5 almost always needs a bump of -parquet-optimized-v1.
 {SHA256}-{filter}-parquet-optimized-v1          # Optimized geometry
-{SHA256}-{filter}-parquet-optimized-metadata-v1 # Optimized metadata header
+{SHA256}-{filter}-parquet-optimized-metadata-v2 # Optimized metadata header
 ```
 
 The two geometry keys are LAYOUTS, not versions: they coexist, and a request

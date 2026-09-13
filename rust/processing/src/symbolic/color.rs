@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::style::fill::{extract_color_from_fill_area_style, style_refs};
+use crate::style::fill::extract_color_from_fill_area_style;
 use ifc_lite_core::{keyword_eq, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
 use std::collections::HashMap;
 
@@ -19,9 +19,7 @@ pub(super) fn build_styled_item_index(content: &[u8], decoder: &mut EntityDecode
             continue;
         }
         let Ok(entity) = decoder.decode_at_with_id(id, start, end) else { continue };
-        let Some(styles_attr) = entity.get(0) else { continue };
-        let inner_refs = style_refs(styles_attr);
-        if !inner_refs.is_empty() {
+        if let Some(inner_refs) = entity.get_refs(0) {
             wrappers.insert(id, inner_refs);
         }
     }
@@ -35,9 +33,9 @@ pub(super) fn build_styled_item_index(content: &[u8], decoder: &mut EntityDecode
         }
         let Ok(entity) = decoder.decode_at_with_id(id, start, end) else { continue };
         let Some(item_ref) = entity.get_ref(0) else { continue };
-        let Some(styles_attr) = entity.get(1) else { continue };
+        let Some(styles) = entity.get_refs(1) else { continue };
         let mut final_refs: Vec<u32> = Vec::new();
-        for raw_ref in style_refs(styles_attr) {
+        for raw_ref in styles {
             if let Some(inner) = wrappers.get(&raw_ref) {
                 final_refs.extend(inner.iter().copied());
             } else {

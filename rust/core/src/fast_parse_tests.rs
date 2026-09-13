@@ -293,6 +293,19 @@ fn extract_entity_refs_from_list_refuses_above_u32_max_and_resolves_at_the_bound
     assert_eq!(ids, vec![1, u32::MAX, 2]);
 }
 
+/// #4687: a comment inside a coordinate or index list is trivia. Its digits
+/// used to become an extra coordinate or index, shifting every one after it.
+#[test]
+fn issue_4687_a_comment_in_a_coordinate_or_index_list_is_trivia() {
+    let plain = b"#5=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.)));";
+    let commented = b"#5=IFCCARTESIANPOINTLIST3D(((0.,0.,0.) /* rev 7 */,(1.,0.,0.),(0.,1.,0.)));";
+    assert_eq!(extract_coordinate_list_from_entity(commented), extract_coordinate_list_from_entity(plain));
+    assert_eq!(parse_coordinates_direct_f64(b"((0.,0.,0.)/*-.5*/,(1.,0.,0.))"), [0., 0., 0., 1., 0., 0.]);
+    assert_eq!(parse_indices_direct(b"((1,2,3) /* face 2 */,(2,1,4))"), [0, 1, 2, 1, 0, 3]);
+    // An unterminated comment ends the list rather than reading its contents.
+    assert_eq!(parse_indices_direct(b"((1,2,3) /* 9 9"), [0, 1, 2]);
+}
+
 #[test]
 fn extract_entity_refs_from_list_hash_with_no_digits_does_not_panic() {
     let ids = extract_entity_refs_from_list(b"(#,#2)");

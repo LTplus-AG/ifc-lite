@@ -69,6 +69,38 @@ test('#4109: a Vitest substring match cannot impersonate the requested test file
   }
 });
 
+test('#4682: a --root reached through a symlink still attributes the node --test run, and a missing root still reports ERROR', { timeout: 60_000 }, () => {
+  const { root, run } = fixture('oracle-symlinked-root-');
+  const holder = mkdtempSync(join(tmpdir(), 'oracle-root-link-'));
+  try {
+    for (const dir of ['src', 'scripts']) mkdirSync(join(root, dir));
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ type: 'module', scripts: { test: 'turbo test' } }));
+    writeFileSync(join(root, 'src/value.mjs'), 'export const value = 1;\n');
+    run('git', ['add', '.']);
+    run('git', ['commit', '-qm', 'control']);
+    const base = run('git', ['rev-parse', 'HEAD']).trim();
+    writeFileSync(join(root, 'src/value.mjs'), 'export const value = 2;\n');
+    writeFileSync(join(root, 'scripts/value.test.mjs'), "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { value } from '../src/value.mjs';\ntest('value', () => assert.equal(value, 2));\n");
+    run('git', ['add', '.']);
+    run('git', ['commit', '-qm', 'change production and witness']);
+    const link = join(holder, 'repo');
+    symlinkSync(root, link, process.platform === 'win32' ? 'junction' : 'dir');
+
+    const output = run(process.execPath, [oracle, '--root', link, '--base', base, '--ci', '--json']);
+    const payload = resultPayload(output);
+    assert.equal(payload.verdict, 'OBSERVED');
+    assert.equal(payload.ledger.some((entry) => entry.file === 'scripts/value.test.mjs' && entry.baseline?.attributed === true), true);
+    assert.equal(readFileSync(join(root, 'src/value.mjs'), 'utf8'), 'export const value = 2;\n');
+
+    // Resolving the link must not turn a missing --root into a crash with no result.
+    const missing = resultPayload(run(process.execPath, [oracle, '--root', join(holder, 'missing'), '--base', base, '--ci', '--json'], 2));
+    assert.equal(missing.verdict, 'ERROR');
+  } finally {
+    rmSync(holder, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('#4109: failed cleanliness verification remains RESTORE-FAILED', { timeout: 60_000 }, () => {
   const { root, env, run } = fixture('oracle-restore-state-');
   const shim = mkdtempSync(join(tmpdir(), 'oracle-git-shim-'));

@@ -145,3 +145,78 @@ fn annotation_4406_fill_style_list_is_read_by_the_symbolic_rule() {
     }
     assert!(failures.is_empty(), "{failures:#?}");
 }
+
+/// The 3D surface-style readers take a bare reference where a list is expected
+/// as a one-element list, as the fill reader above and the 2D symbolic index
+/// do (#4694): in `IfcStyledItem.Styles`, in an IFC2X3
+/// `IfcPresentationStyleAssignment.Styles`, `IfcSurfaceStyle.Styles`, and the
+/// material chain's
+/// `IfcStyledRepresentation.Items`.
+///
+/// MUTATION that fails every bare variant: remove the bare-reference arm from
+/// `prepass::refs_from_list`.
+#[test]
+fn surface_style_list_accepts_a_bare_reference_4694() {
+    const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
+    let base = "ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('bare.ifc','2026-09-13T00:00:00',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,(#2),#3);#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));#4=IFCCARTESIANPOINT((0.,0.,0.));#5=IFCAXIS2PLACEMENT3D(#4,$,$);#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#10=IFCBUILDINGELEMENTPROXY('1ProxyBareStylesRef01',$,'Proxy',$,$,#11,#12,$,$);#11=IFCLOCALPLACEMENT($,#5);
+#12=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));#13=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#14));
+#14=IFCTRIANGULATEDFACESET(#15,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#15=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
+#20=IFCSURFACESTYLE('Red',.BOTH.,(#21));#21=IFCSURFACESTYLESHADING(#22,$);#22=IFCCOLOURRGB($,1.,0.,0.);
+#30=IFCSTYLEDITEM(#14,(#20),$);
+ENDSEC;END-ISO-10303-21;";
+    let cases = [
+        ("a list (control)", base.to_string()),
+        (
+            "a bare Styles reference",
+            base.replace("#30=IFCSTYLEDITEM(#14,(#20),$);", "#30=IFCSTYLEDITEM(#14,#20,$);"),
+        ),
+        (
+            "a bare reference inside an IFC2X3 style assignment",
+            base.replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC2X3'))")
+                .replace(
+                    "#30=IFCSTYLEDITEM(#14,(#20),$);",
+                    "#31=IFCPRESENTATIONSTYLEASSIGNMENT(#20);#30=IFCSTYLEDITEM(#14,(#31),$);",
+                ),
+        ),
+        (
+            "a bare surface-style element",
+            base.replace(
+                "#20=IFCSURFACESTYLE('Red',.BOTH.,(#21));",
+                "#20=IFCSURFACESTYLE('Red',.BOTH.,#21);",
+            ),
+        ),
+        (
+            "a bare Items reference on a material's styled representation",
+            base.replace(
+                "#30=IFCSTYLEDITEM(#14,(#20),$);",
+                "#30=IFCSTYLEDITEM($,(#20),$);#40=IFCMATERIAL('Red',$,$);\
+                 #41=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#42),#40);\
+                 #42=IFCSTYLEDREPRESENTATION(#2,'Style','Material',#30);\
+                 #43=IFCRELASSOCIATESMATERIAL('2RelAssocBareItems001',$,$,$,(#10),#40);",
+            ),
+        ),
+    ];
+    let mut failures = Vec::new();
+    for (label, source) in cases {
+        let result = process_geometry(&source.as_bytes());
+        let colors: Vec<_> = result
+            .meshes
+            .iter()
+            .filter(|m| m.express_id == 10)
+            .map(|m| m.color)
+            .collect();
+        // The proxy's default colour is grey, so red can only come from #20.
+        let red = !colors.is_empty()
+            && colors
+                .iter()
+                .all(|color| color.iter().zip(RED).all(|(a, b)| (a - b).abs() < 1e-6));
+        if !red {
+            failures.push(format!("{label}: {colors:?}"));
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}

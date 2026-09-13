@@ -23,6 +23,7 @@ use ifc_lite_core::{
     build_entity_index, extract_length_unit_scale, EntityDecoder, EntityScanner, IfcType,
 };
 use ifc_lite_geometry::{AlignmentCurve, GeometryRouter};
+use ifc_lite_processing::MeshFrame;
 use wasm_bindgen::prelude::*;
 
 /// Station spacing for centerline sampling, in file length units. Mirrors the
@@ -67,12 +68,10 @@ pub(crate) fn extract_alignment_line_vertices(content: &str) -> Vec<f32> {
         }
     }
 
-    // RTC offset (metres) — `detect_rtc_offset_from_first_element` returns
-    // (0,0,0) for models within 10 km of the origin, so this is a no-op for
-    // local files and a true shift for georeferenced infrastructure.
+    // RTC offset (metres): the one the browser meshes subtract (#4665).
     // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     let router = GeometryRouter::with_scale(unit_scale);
-    let rtc = router.detect_rtc_offset_from_first_element(content, &mut decoder);
+    let rtc = MeshFrame::for_overlay(&router, content.as_bytes(), &mut decoder).rtc_offset();
 
     let mut out: Vec<f32> = Vec::new();
     let mut scanner = EntityScanner::new(content);

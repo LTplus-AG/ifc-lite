@@ -90,9 +90,28 @@ describe('extractGeoreferencingOnDemand — IFC2x3 ePset fallback', () => {
     expect(georef?.projectedCRS?.name).toBe('EPSG:4326');
   });
 
+  // A refused IfcMapConversion beside a CRS with no usable Name claims nothing,
+  // so the entity extractor takes the ePSet path. The loader gated the ePSets on
+  // the conversion's presence, never handed them over, and the browser reported
+  // the site fallback where the server reported the ePSet (#4695).
+  it.each(['$', "' '"])('loads the ePSets behind a refused conversion and a CRS named %s', async (name) => {
+    const ifc = `#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);
+#2=IFCPROJECTEDCRS(${name},$,$,$,$,$,$);
+#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,42.,1.0E999,0.,1.);
+#30=IFCSITE('06pHC0eJnCHlVXWW2sVoPO',$,'Site',$,$,$,$,$,.ELEMENT.,(51,26,47,208626),(5,27,36,650968),$,$,$);
+#1360=IFCPROPERTYSINGLEVALUE('TargetCRS',$,IFCLABEL('EPSG:28992'),$);
+#1361=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(155000.),$);
+#1367=IFCPROPERTYSET('2If4Y3Lpv6dgTDkC5x_dnr',$,'ePset_MapConversion',$,(#1360,#1361));`;
+    const georef = extractGeoreferencingOnDemand(await storeFromIfc(ifc));
+
+    expect(georef?.source).toBe('ePSetMapConversion');
+    expect(georef?.projectedCRS?.name).toBe('EPSG:28992');
+    expect(georef?.mapConversion?.eastings).toBe(155000);
+  });
+
   it('memoizes per store so repeated calls do not re-scan property sets', async () => {
     // The on-demand scan considers every IfcPropertySet to find ePset_MapConversion
-    // on models without an IfcMapConversion. The viewer calls this on the render
+    // when the IFC4 entities claim no georeference. The viewer calls this on the render
     // path once per streamed geometry batch, so without caching a property-heavy
     // model re-scans tens of thousands of psets per batch (regression #1404).
     const ifc = `#30=IFCSITE('06pHC0eJnCHlVXWW2sVoPO',$,'Site',$,$,$,$,$,.ELEMENT.,(51,26,47,208626),(5,27,36,650968),$,$,$);
@@ -111,7 +130,7 @@ describe('extractGeoreferencingOnDemand — IFC2x3 ePset fallback', () => {
 
   // Work-count regression guard (deterministic, machine-independent — counts
   // work done, not wall-clock). The georef scan decodes one entity per property
-  // set on models without an IfcMapConversion used to dominate cold load.
+  // set on models whose IFC4 entities claim no georeference used to dominate cold load.
   // Ordinary names need no full decode; subsequent calls remain memoized.
   it('rejects unrelated property sets before decoding and memoizes the site result', async () => {
     const PSET_COUNT = 400;

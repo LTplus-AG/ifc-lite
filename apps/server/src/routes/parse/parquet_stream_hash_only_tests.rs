@@ -122,7 +122,7 @@ async fn a_hash_only_miss_answers_404_and_runs_no_parse() {
 
     // No parse ran, so nothing was written under the key the hash names.
     let key = format!("{hash}-default");
-    for suffix in ["-parquet-v5", "-parquet-v6", "-parquet-metadata-v4"] {
+    for suffix in ["-parquet-v5", "-parquet-v6", "-parquet-metadata-v5"] {
         assert!(
             matches!(
                 state.cache.get_bytes(&format!("{key}{suffix}")).await,

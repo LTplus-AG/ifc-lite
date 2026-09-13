@@ -12,7 +12,8 @@
 import { EntityExtractor } from './entity-extractor.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import {
-    extractGeoreferencing as extractGeorefFromEntities,
+    extractIfc4Georeferencing,
+    withGeoreferenceFallbacks,
     type GeoreferenceInfo,
 } from './georef-extractor.js';
 import { oncePerStore } from './on-demand-cache.js';
@@ -21,8 +22,8 @@ import { oncePerStore } from './on-demand-cache.js';
  * Extract georeferencing info from on-demand store (source buffer + entityIndex).
  * Bridges to the entity-based georef extractor by resolving entities lazily.
  *
- * Memoized per store. On models without an IfcMapConversion (e.g. IFC2x3 files
- * that carry CRS in ePSet_MapConversion / ePSet_ProjectedCRS) the underlying
+ * Memoized per store. When IfcMapConversion/IfcProjectedCRS claim no georeference
+ * (e.g. IFC2x3 files that carry CRS in ePSet_MapConversion) the underlying
  * scan considers every IfcPropertySet to match by name. A conservative resident
  * byte filter skips ordinary names without decoding their property lists.
  * The viewer calls this on the load/render path (ViewportContainer's Cesium-availability check), which
@@ -94,11 +95,15 @@ function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | 
 
     // IFC2x3 fallback: models without IfcMapConversion store georeferencing in
     // ePSet_MapConversion / ePSet_ProjectedCRS property sets. Those aren't
-    // loaded above, so the ePSet path in extractGeorefFromEntities had nothing
-    // to read and the model fell back to the legacy IfcSite EPSG:4326 (wrong
-    // CRS). Only scan property sets when no IfcMapConversion exists, and only
-    // pull in the georef ePSets + their values — not every pset in the model.
-    if (!typeMap.has('IfcMapConversion')) {
+    // loaded above, so the ePSet fallback had nothing to read and the model fell
+    // back to the legacy IfcSite EPSG:4326 (wrong CRS). Only scan property sets
+    // when the IFC4 result claims nothing, the extractor's own fallback rule: a
+    // refused IfcMapConversion beside a nameless CRS takes the fallbacks too, and
+    // gating on the conversion's presence reported the site there instead of the
+    // ePSet (#4695). Only the georef ePSets + their values are pulled in.
+    const entities = entityMap as Parameters<typeof extractIfc4Georeferencing>[0]; // same shape as IfcEntity
+    const ifc4 = extractIfc4Georeferencing(entities, typeMap);
+    if (!ifc4.hasGeoreference) {
         const psetIds = byType.get('IFCPROPERTYSET');
         if (psetIds?.length) {
             const georefPsetIds: number[] = [];
@@ -141,8 +146,7 @@ function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | 
 
     if (entityMap.size === 0) return null;
 
-    // Cast to IfcEntity (they share the same shape)
-    return extractGeorefFromEntities(entityMap as Parameters<typeof extractGeorefFromEntities>[0], typeMap);
+    return withGeoreferenceFallbacks(ifc4, entities, typeMap);
 }
 
 /**

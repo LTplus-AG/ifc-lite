@@ -372,7 +372,7 @@ fn f32_export_is_structurally_conformant() {
         ("unlit", GltfOptions { lit: false, ..Default::default() }),
         ("emissive", GltfOptions { emissive: true, ..Default::default() }),
     ] {
-        let glb = export_glb(&content, &opts);
+        let glb = try_export_glb(&content, &opts).expect("has geometry");
         assert_gltf_conformant(&glb, label);
     }
 }
@@ -385,7 +385,8 @@ fn quantized_export_is_structurally_conformant() {
     // stride, u16-or-u32 indices chosen per mesh). This is its only
     // spec-level check.
     let content = fixture_or_skip!("ara3d/duplex.ifc");
-    let glb = export_glb(&content, &GltfOptions { quantize: true, ..Default::default() });
+    let glb = try_export_glb(&content, &GltfOptions { quantize: true, ..Default::default() })
+        .expect("has geometry");
     assert_gltf_conformant(&glb, "quantized");
 }
 
@@ -430,7 +431,7 @@ fn from_meshes_export_is_structurally_conformant() {
 fn streaming_bounded_quantized_export_is_structurally_conformant() {
     let content = fixture_or_skip!("ara3d/duplex.ifc");
     let opts = GltfOptions { quantize: true, ..Default::default() };
-    let (glb, stats) = export_glb_streaming_bounded(&content, &opts);
+    let (glb, stats) = try_export_glb_streaming_bounded(&content, &opts).expect("has geometry");
     assert!(stats.meshes > 0, "the bounded assembler produced no meshes to check");
     assert_gltf_conformant(&glb, "streaming_bounded_quantized");
 }
@@ -446,7 +447,8 @@ fn streaming_bounded_export_is_structurally_conformant() {
     // path instead — which is exactly what a mutation of the bounded
     // assembler's bufferView offsets revealed while this file was written.
     let content = fixture_or_skip!("ara3d/duplex.ifc");
-    let (glb, stats) = export_glb_streaming_bounded(&content, &GltfOptions::default());
+    let (glb, stats) =
+        try_export_glb_streaming_bounded(&content, &GltfOptions::default()).expect("has geometry");
     assert!(stats.meshes > 0, "the bounded assembler produced no meshes to check");
     assert_gltf_conformant(&glb, "streaming_bounded");
 }

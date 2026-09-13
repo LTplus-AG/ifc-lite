@@ -4,8 +4,8 @@
 
 //! JSON / SSE-JSON parse endpoints.
 
-use super::cache_keys::{cache_symbolic_data, json_response_cache_key, request_cache_key};
-use super::{extract_file, ParseQuery};
+use super::cache_keys::{json_response_cache_key, request_cache_key};
+use super::{cache_symbolic_data_off_runtime, extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::axis::mesh_to_yup_in_place;
 use crate::services::streaming::detect_schema_version;
@@ -13,10 +13,14 @@ use crate::services::process_streaming;
 use crate::types::{MetadataResponse, ParseResponse, SymbolicParseResponse, StreamEvent};
 use crate::AppState;
 use axum::{
+    body::Body,
     extract::{Multipart, Query, State},
+    http::header,
     response::sse::{Event, KeepAlive, Sse},
+    response::{IntoResponse, Response},
     Json,
 };
+use bytes::Bytes;
 use futures::stream::StreamExt;
 use ifc_lite_core::EntityScanner;
 use ifc_lite_processing::process_geometry_filtered_with_quality;
@@ -27,7 +31,7 @@ pub async fn parse_full(
     State(state): State<AppState>,
     Query(query): Query<ParseQuery>,
     mut multipart: Multipart,
-) -> Result<Json<SymbolicParseResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     // Extract file from multipart
     // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
     // upload is buffered, reserving the max upload size since multipart rarely
@@ -47,11 +51,20 @@ pub async fn parse_full(
     // invalidating the parquet caches. See `json_response_cache_key`.
     let response_cache_key = json_response_cache_key(&cache_key);
 
-    // Check cache first
-    if let Some(mut cached) = state.cache.get::<SymbolicParseResponse>(&response_cache_key).await? {
+    // Check cache first. The entry is the whole model as JSON, so a hit is
+    // decoded and re-encoded on the blocking pool (#4696). The admission guard
+    // rides that task, as it does the miss path's below.
+    if let Some(cached) = state.cache.get_bytes(&response_cache_key).await? {
         tracing::info!(cache_key = %cache_key, "Cache HIT");
-        cached.mark_from_cache();
-        return Ok(Json(cached));
+        let (body, _admission) = tokio::task::spawn_blocking(move || {
+            let decoded = serde_json::from_slice::<SymbolicParseResponse>(&cached);
+            drop(cached);
+            let mut cached = decoded?;
+            cached.mark_from_cache();
+            Ok::<_, ApiError>((encode_response(&cached)?, admission_guard))
+        })
+        .await??;
+        return Ok(json_body(body));
     }
 
     tracing::info!(cache_key = %cache_key, size = data.len(), "Cache MISS - processing");
@@ -59,58 +72,78 @@ pub async fn parse_full(
     // Parse content
     let content = data;
     let opening_filter = query.opening_filter;
+    let response_key = cache_key.clone();
 
     // Process on blocking thread pool (CPU-intensive). Bundle the 3D
     // geometry with the 2D symbolic-data extraction (issue #843) so
     // callers can render IfcGrid axes and IfcAnnotation polylines from
-    // the same response without re-uploading the file.
+    // the same response without re-uploading the file. The Y-up swap and the
+    // whole-model encode run in the same task, not on the async worker that
+    // resumes this handler (#4696), and one encoded body serves both the
+    // client and the cache.
     // The guard moves INTO the blocking task and comes back with the result:
     // if the TimeoutLayer (or a disconnect) cancels this handler future, the
     // detached blocking work keeps running - and keeps its admission slot -
     // until it actually exits, so a replacement cannot be admitted on top.
-    let ((result, symbolic_data), _admission) = tokio::task::spawn_blocking(move || {
+    let (body, symbolic_data, _admission) = tokio::task::spawn_blocking(move || {
         let result =
             process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality);
         let symbolic = ifc_lite_processing::extract_symbolic_data_with_provenance(&content);
-        ((result, symbolic), admission_guard)
+        drop(content);
+
+        // Emit the SAME Y-up wire frame as the parquet transports (issue #1841).
+        // This route used to ship `result.meshes` verbatim — i.e. raw IFC Z-up —
+        // while `/parse/parquet*` swapped to Y-up server-side, so a client that
+        // (correctly) treats every transport alike rendered JSON-loaded models
+        // rotated. The frame now comes from one place: services::axis.
+        let mut meshes = result.meshes;
+        for mesh in &mut meshes {
+            mesh_to_yup_in_place(mesh);
+        }
+
+        let response = SymbolicParseResponse::new(ParseResponse {
+            cache_key: response_key,
+            meshes,
+            mesh_coordinate_space: Some(result.mesh_coordinate_space),
+            site_transform: result.site_transform,
+            building_transform: result.building_transform,
+            metadata: result.metadata,
+            stats: result.stats,
+            symbolic_data: Default::default(),
+        }, symbolic);
+        let body = encode_response(&response)?;
+        Ok::<_, ApiError>((body, response.symbolic_data, admission_guard))
     })
-    .await?;
-
-    // Emit the SAME Y-up wire frame as the parquet transports (issue #1841).
-    // This route used to ship `result.meshes` verbatim — i.e. raw IFC Z-up —
-    // while `/parse/parquet*` swapped to Y-up server-side, so a client that
-    // (correctly) treats every transport alike rendered JSON-loaded models
-    // rotated. The frame now comes from one place: services::axis.
-    let mut meshes = result.meshes;
-    for mesh in &mut meshes {
-        mesh_to_yup_in_place(mesh);
-    }
-
-    let response = SymbolicParseResponse::new(ParseResponse {
-        cache_key: cache_key.clone(),
-        meshes,
-        mesh_coordinate_space: Some(result.mesh_coordinate_space),
-        site_transform: result.site_transform,
-        building_transform: result.building_transform,
-        metadata: result.metadata,
-        stats: result.stats,
-        symbolic_data: Default::default(),
-    }, symbolic_data);
+    .await??;
 
     // Cache result (background). Also mirror the symbolic stream into the
-    // dedicated `{cache_key}-symbolic-v2` entry so it's reachable through
+    // dedicated `{cache_key}-symbolic-v3` entry so it's reachable through
     // `GET /api/v1/parse/symbolic/{cache_key}` regardless of which endpoint
     // first processed the file (issue #900).
     let cache = state.cache.clone();
-    let response_clone = response.clone();
+    let cached_body = body.clone();
     tokio::spawn(async move {
-        cache_symbolic_data(&cache, &cache_key, &response_clone.symbolic_data).await;
-        if let Err(e) = cache.set(&response_cache_key, &response_clone).await {
+        cache_symbolic_data_off_runtime(cache.clone(), cache_key, symbolic_data).await;
+        if let Err(e) = cache.set_bytes(&response_cache_key, &cached_body).await {
             tracing::error!(error = %e, "Failed to cache result");
         }
     });
 
-    Ok(Json(response))
+    Ok(json_body(body))
+}
+
+/// Encode a `POST /api/v1/parse` body. It is the whole model, so call this
+/// only on the blocking pool (#4696). The bytes are the ones `Json` would
+/// write and `DiskCache::set` would store.
+fn encode_response(response: &SymbolicParseResponse) -> Result<Bytes, ApiError> {
+    let body = serde_json::to_vec(response)?;
+    tracing::info!(cache_key = %response.cache_key, size = body.len(), "JSON parse response encoded");
+    Ok(body.into())
+}
+
+/// An already-encoded JSON body, with the content type `Json` sets.
+fn json_body(body: Bytes) -> Response {
+    ([(header::CONTENT_TYPE, "application/json")], Body::from(body)).into_response()
 }
 
 /// POST /api/v1/parse/stream - Streaming SSE parse.
@@ -118,8 +151,7 @@ pub async fn parse_stream(
     State(state): State<AppState>,
     Query(query): Query<ParseQuery>,
     mut multipart: Multipart,
-) -> Result<axum::response::Response, ApiError> {
-    use axum::response::IntoResponse;
+) -> Result<Response, ApiError> {
     let tessellation_quality = query.resolved_tessellation_quality()?;
 
     // Extract file

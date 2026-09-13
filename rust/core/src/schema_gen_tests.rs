@@ -93,6 +93,23 @@ fn test_attribute_value_conversion() {
 }
 
 #[test]
+fn typed_value_name_decodes_to_the_express_spelling_4707() {
+    // A typed-value name is a STEP keyword, so its case is not significant.
+    // Every consumer matches the uppercase spelling, so decode folds it once.
+    for spelling in [&b"IFCPARAMETERVALUE"[..], b"ifcparametervalue", b"IfcParameterValue"] {
+        let token = Token::TypedValue(spelling, vec![Token::Float(0.5)]);
+        let attr = AttributeValue::from_token(&token);
+        let items = attr.as_list().expect("typed value decodes to a list");
+        assert_eq!(items[0].as_string(), Some("IFCPARAMETERVALUE"), "{}", String::from_utf8_lossy(spelling));
+        assert_eq!(items[1].as_float(), Some(0.5));
+    }
+    // The payload is not a keyword: a typed string keeps its case.
+    let token = Token::TypedValue(b"ifclabel", vec![Token::String(b"Mixed Case")]);
+    let attr = AttributeValue::from_token(&token);
+    assert_eq!(attr.as_list().unwrap()[1].as_string(), Some("Mixed Case"));
+}
+
+#[test]
 fn test_decoded_entity() {
     let entity = DecodedEntity::new(
         1,
@@ -107,6 +124,29 @@ fn test_decoded_entity() {
     assert_eq!(entity.get_ref(0), Some(2));
     assert_eq!(entity.get_string(1), Some("Wall-001"));
     assert_eq!(entity.get_float(2), Some(3.5));
+}
+
+#[test]
+fn decoded_entity_get_refs_accepts_a_list_or_bare_reference() {
+    let entity = DecodedEntity::new(
+        1,
+        IfcType::IfcWall,
+        vec![
+            AttributeValue::List(vec![
+                AttributeValue::EntityRef(2),
+                AttributeValue::Null,
+                AttributeValue::EntityRef(3),
+            ]),
+            AttributeValue::EntityRef(4),
+            AttributeValue::List(Vec::new()),
+            AttributeValue::Null,
+        ],
+    );
+    assert_eq!(entity.get_refs(0), Some(vec![2, 3]));
+    assert_eq!(entity.get_refs(1), Some(vec![4]));
+    assert_eq!(entity.get_refs(2), None);
+    assert_eq!(entity.get_refs(3), None);
+    assert_eq!(entity.get_refs(4), None);
 }
 
 #[test]

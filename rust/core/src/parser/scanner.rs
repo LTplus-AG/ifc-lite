@@ -15,7 +15,7 @@ use scanner_header::data_section_start;
 // (see `scanner_attributes.rs`'s doc comment).
 #[path = "scanner_attributes.rs"]
 mod scanner_attributes;
-pub use scanner_attributes::nth_attribute_is_present;
+pub use scanner_attributes::{nth_attribute_is_present, StepListItems};
 pub(crate) use scanner_attributes::argument_list_start;
 
 // The refusal/drop reporting surface, likewise (see its doc comment).

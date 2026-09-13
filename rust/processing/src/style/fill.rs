@@ -3,28 +3,13 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Canonical fill-area colour leaf shared by symbolic and 3D annotations.
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
-
-/// The entity references in a style-list attribute (`IfcStyledItem.Styles`,
-/// `IfcPresentationStyleAssignment.Styles`, `IfcFillAreaStyle.FillStyles`),
-/// read by one rule for the 2D symbolic index (`symbolic::color`) and the
-/// pre-pass fill reader below: a list is walked, a bare reference is a
-/// one-element list, and members that are not references are skipped.
-pub(crate) fn style_refs(attr: &AttributeValue) -> Vec<u32> {
-    if let Some(list) = attr.as_list() {
-        list.iter().filter_map(|v| v.as_entity_ref()).collect()
-    } else if let Some(single) = attr.as_entity_ref() {
-        vec![single]
-    } else {
-        Vec::new()
-    }
-}
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 pub(crate) fn extract_color_from_fill_area_style(
     style: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Option<[f32; 4]> {
-    for fs_ref in style_refs(style.get(1)?) {
+    for fs_ref in style.get_refs(1)? {
         let Ok(fs) = decoder.decode_by_id(fs_ref) else {
             continue;
         };
@@ -51,7 +36,7 @@ pub(crate) fn fill_style_from_styled_item(
     if item.ifc_type != IfcType::IfcAnnotationFillArea {
         return None;
     }
-    let refs = style_refs(styled.get(1)?);
+    let refs = styled.get_refs(1)?;
     if refs.len() > 64 {
         return None;
     }
@@ -65,8 +50,7 @@ pub(crate) fn fill_style_from_styled_item(
                 .map(|(_, name, _, _)| ifc_lite_core::keyword_eq(name, "IFCPRESENTATIONSTYLEASSIGNMENT"))
         }) == Some(true)
         {
-            let Some(inner_attr) = style.get(0) else { continue };
-            let inner = style_refs(inner_attr);
+            let Some(inner) = style.get_refs(0) else { continue };
             if inner.len() > 64 {
                 return None;
             }

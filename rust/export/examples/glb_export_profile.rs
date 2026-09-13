@@ -13,7 +13,7 @@
 //! Phases reported:
 //! 1. `index` - `build_entity_index` (the scan)
 //! 2. `mesh` - `process_geometry` (full mesher; the suspected dominant phase)
-//! 3. `export` - `export_glb_with_stats` end to end. It re-runs index+mesh
+//! 3. `export` - `try_export_glb_with_stats` end to end. It re-runs index+mesh
 //!    internally, so `assemble+serialize ~= export - index - mesh` is an
 //!    approximation, printed as such.
 //!
@@ -132,7 +132,11 @@ fn main() {
     // Phase 3: the real export path end to end (index+mesh run again inside).
     let opts = ifc_lite_export::GltfOptions::default();
     let t = Instant::now();
-    let (glb, stats) = ifc_lite_export::export_glb_with_stats(&content, &opts);
+    let (glb, stats) = ifc_lite_export::try_export_glb_with_stats(&content, &opts)
+        .unwrap_or_else(|e| {
+            eprintln!("export {path}: {e}");
+            std::process::exit(1);
+        });
     let t_export = t.elapsed();
     let assemble = t_export
         .checked_sub(t_index + t_mesh)

@@ -136,13 +136,14 @@ impl Georeferencing {
             map_zone: geo.map_zone.clone(),
             map_unit: geo.map_unit.clone(),
             map_unit_scale: geo.map_unit_scale,
-            source: Some(geo.source.label().to_string()),
+            source: geo.source.map(|s| s.label().to_string()),
         }
     }
 }
 
 /// Extract georeferencing from an IFC file, returning `None` when the model
-/// carries no `IfcMapConversion` / `ePSet_MapConversion` data.
+/// carries no `IfcMapConversion`, named `IfcProjectedCRS`,
+/// `ePSet_MapConversion` or `IfcSite` lat/long data.
 ///
 /// Only the entity types the extractor needs (`IfcMapConversion`,
 /// `IfcProjectedCRS`, and `IfcPropertySet` for the IFC2x3 `ePSet_MapConversion`

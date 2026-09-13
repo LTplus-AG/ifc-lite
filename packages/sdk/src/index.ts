@@ -160,6 +160,22 @@ export type {
   WorkScheduleData,
   ScheduleSequenceType,
   ScheduleTaskDurationType,
+
+  StructuralBackendMethods,
+
+  // Structural analysis data
+  StructuralExtractionData,
+  StructuralAnalysisModelData,
+  StructuralMemberData,
+  StructuralConnectionData,
+  StructuralActivityData,
+  StructuralLoadGroupData,
+  StructuralResultGroupData,
+  StructuralLoadData,
+  StructuralLoadConfigurationData,
+  StructuralLoadConfigurationEntryData,
+  StructuralLoadDropReason,
+  BoundaryConditionData,
 } from './types.js';
 
 export { entityRefToString, stringToEntityRef, dispatchToBackend } from './types.js';
@@ -208,6 +224,7 @@ export { EventsNamespace } from './namespaces/events.js';
 export { CreateNamespace } from './namespaces/create.js';
 export { FilesNamespace } from './namespaces/files.js';
 export { ScheduleNamespace } from './namespaces/schedule.js';
+export { StructuralNamespace } from './namespaces/structural.js';
 
 // Clash — geometric interference detection over caller-provided ClashElement[]
 export { ClashNamespace } from './namespaces/clash.js';

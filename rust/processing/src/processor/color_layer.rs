@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::{get_refs_from_list, normalize_optional_string};
+use super::normalize_optional_string;
 use crate::style::GeometryStyleInfo;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -15,7 +15,7 @@ pub(super) fn collect_presentation_layer_assignments(
         return;
     };
 
-    let Some(assigned_items) = get_refs_from_list(layer_assignment, 2) else {
+    let Some(assigned_items) = layer_assignment.get_refs(2) else {
         return;
     };
 
@@ -45,7 +45,7 @@ pub(super) fn resolve_presentation_layer_for_product_definition_shape(
     }
 
     let product_definition_shape = decoder.decode_by_id(product_definition_shape_id).ok()?;
-    let representation_ids = get_refs_from_list(&product_definition_shape, 2)?;
+    let representation_ids = product_definition_shape.get_refs(2)?;
 
     for representation_id in representation_ids {
         if let Some(layer_name) = resolve_presentation_layer_name(
@@ -181,7 +181,7 @@ fn resolve_presentation_layer_name(
                 let Ok(representation) = decoder.decode_by_id(representation_id) else {
                     continue;
                 };
-                let Some(items) = get_refs_from_list(&representation, 3) else {
+                let Some(items) = representation.get_refs(3) else {
                     continue;
                 };
                 for item_id in items.into_iter().rev() {
@@ -238,7 +238,7 @@ fn find_color_in_representation(
     let repr = decoder.decode_by_id(repr_id).ok()?;
 
     // Attribute 2: Representations (list of IfcRepresentation)
-    let repr_list = get_refs_from_list(&repr, 2)?;
+    let repr_list = repr.get_refs(2)?;
 
     for shape_repr_id in repr_list {
         if let Some(color) =
@@ -276,7 +276,7 @@ fn find_color_in_shape_representation(
     decoder: &mut EntityDecoder,
 ) -> Option<[f32; 4]> {
     let repr = decoder.decode_by_id(repr_id).ok()?;
-    let items = get_refs_from_list(&repr, 3)?;
+    let items = repr.get_refs(3)?;
 
     for item_id in items {
         if let Some(color) =

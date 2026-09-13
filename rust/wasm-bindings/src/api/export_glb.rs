@@ -100,12 +100,14 @@ impl IfcAPI {
     ///
     /// Fails CLOSED: if the declared vertex/index counts run past the flattened
     /// `positions` / `indices`, there are fewer `index_counts` than meshes, `normals`
-    /// is empty or too short to cover every vertex, or an index names a vertex its own
-    /// mesh does not have (glTF 2.0 3.7.2.1), this throws an `Error` whose message
-    /// starts with `MALFORMED_MESH_INPUT` — instead of silently emitting a GLB with
-    /// those meshes dropped, or one carrying the out-of-range index straight into the
-    /// BIN chunk. (The viewer always passes fully-backed, normal-covered, in-range
-    /// arrays, so this only fires on a caller bug.)
+    /// is empty or too short to cover every vertex, a mesh's index block is not a
+    /// whole number of triangles, or an index names a vertex its own mesh does not
+    /// have (glTF 2.0 3.7.2.1), this throws an `Error` whose message starts with
+    /// `MALFORMED_MESH_INPUT` — instead of silently emitting a GLB with those meshes
+    /// dropped, a TRIANGLES primitive whose count is not a multiple of 3, or the
+    /// out-of-range index copied into the BIN chunk. (The viewer always passes
+    /// fully-backed, normal-covered, whole-triangle, in-range arrays, so this only
+    /// fires on a caller bug.)
     #[wasm_bindgen(js_name = exportGlbFromMeshes)]
     #[allow(clippy::too_many_arguments)]
     pub fn export_glb_from_meshes(
@@ -153,10 +155,11 @@ impl IfcAPI {
     /// Fails CLOSED: when no triangle survives (an empty visible set, or meshes
     /// whose only triangles are degenerate and collapse in the vertex dedup)
     /// this throws an `Error` whose message starts with `NO_RENDER_GEOMETRY`;
-    /// a declared vertex/index count running past its buffer throws
-    /// `MALFORMED_MESH_INPUT`, as `exportGlbFromMeshes` does. Both used to ship
-    /// as a small "successful" archive: the first around a COLLADA document
-    /// the 1.4.1 schema rejects, the second with every later mesh missing.
+    /// a declared vertex/index count running past its buffer, an index block
+    /// that is not whole triangles, or an index outside its mesh throws
+    /// `MALFORMED_MESH_INPUT`, exactly as `exportGlbFromMeshes` does. These used
+    /// to ship as a "successful" archive: an empty one around a COLLADA
+    /// document the 1.4.1 schema rejects, or one with meshes or faces missing.
     #[wasm_bindgen(js_name = exportKmzFromMeshes)]
     #[allow(clippy::too_many_arguments)]
     pub fn export_kmz_from_meshes(

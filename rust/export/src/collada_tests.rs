@@ -223,24 +223,6 @@ fn large_model_is_chunked_into_small_text_nodes() {
 }
 
 #[test]
-fn triangles_count_matches_index_list_on_ragged_input() {
-    // A malformed index count (not a multiple of 3) must not desync the emitted
-    // <triangles count> from the <p> list — keep only whole triangles.
-    let positions = vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.5, 0.0, 0.5];
-    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 4).flatten().collect();
-    let indices = vec![0u32, 1, 2, 0, 2]; // 5 indices = one whole triangle + a stray pair
-    let xml = String::from_utf8(try_export_collada_from_meshes(
-        &positions, &normals, &indices, &[4], &[5], &[0.3, 0.3, 0.3, 1.0], &[0.0, 0.0, 0.0],
-    ).expect("has geometry"))
-    .unwrap();
-    // Exactly one triangle survives; its <p> holds 3 vertex+normal index pairs (6 ints).
-    assert!(xml.contains("<triangles material=\"sym0\" count=\"1\">"));
-    let p_start = xml.find("<p>").unwrap() + 3;
-    let p = &xml[p_start..xml[p_start..].find("</p>").unwrap() + p_start];
-    assert_eq!(p.split_whitespace().count(), 6, "one triangle = 3 pairs = 6 indices: {p}");
-}
-
-#[test]
 fn translucent_material_emits_transparency() {
     let positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0];
     let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 3).flatten().collect();

@@ -94,5 +94,6 @@ pub use symbolic::{
 pub use types::mesh::{InstanceRecord, MeshData, MeshTextureData, RawInstanceOccurrence};
 pub use types::response::{
     CoordinateInfo, ModelMetadata, ParseResponse, ProcessingStats,
-    QuickMetadataBootstrap, QuickMetadataEntitySummary, QuickMetadataSpatialNode,
+    QuickMetadataBootstrap, QuickMetadataEntitySummary, QuickMetadataPrunedEdge,
+    QuickMetadataPrunedEdgeKind, QuickMetadataSpatialNode,
 };

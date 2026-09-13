@@ -136,6 +136,13 @@ fn detect_schema_ignores_file_schema_literal_text_inside_a_quoted_string() {
 }
 
 #[test]
+fn detect_schema_requires_an_exact_file_schema_record_keyword() {
+    let content = "ISO-10303-21;\nHEADER;\nNOT_FILE_SCHEMA(('IFC2X3'));\n\
+                   FILE_SCHEMA_EXTRA(('IFC2X3'));\nFILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;\nENDSEC;\n";
+    assert_eq!(detect_schema(content.as_bytes()), "IFC4X3");
+}
+
+#[test]
 fn detect_schema_handles_doubled_apostrophe_escape_before_the_real_endsec() {
     // A header field value containing a literal apostrophe, escaped per
     // ISO 10303-21 by doubling (`''`), must not desynchronize the
@@ -200,6 +207,23 @@ fn a_lower_case_ifc2x3_file_is_not_relabelled_ifc4_on_a_plain_re_export() {
     assert!(!out.contains("FILE_SCHEMA(('IFC4'))"), "relabelled: {out}");
     // The records are copied through either way; the label is the whole defect.
     assert!(out.contains("#1=IFCWALL('0abcdefghijklmnopqrstu',$,'W1',$,$,$,$,$);"), "{out}");
+}
+
+#[test]
+fn a_lower_case_schema_past_64_kib_is_still_detected_4593() {
+    let description = "x".repeat(70 * 1024);
+    let src = format!(
+        "ISO-10303-21;\nHEADER;\nfile_description(('{description}'),'2;1');\n\
+         file_schema(('IFC2X3'));\nendsec;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    assert_eq!(detect_schema(src.as_bytes()), "IFC2X3");
+}
+
+#[test]
+fn a_missing_header_endsec_does_not_borrow_a_schema_from_data_4593() {
+    let src = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('x'),'2;1');\n\
+                DATA;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nEND-ISO-10303-21;\n";
+    assert_eq!(detect_schema(src), "IFC4");
 }
 
 /// Controls: an uppercase declaration is answered by the scan (IFC2X3, so

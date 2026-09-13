@@ -319,14 +319,10 @@ export function rebuildOnDemandMaps(
   let quantitySets: number[];
 
   if (entityIndex?.byType) {
-    // entityIndex.byType keys are the original type strings from the IFC file
-    // Check both common casings (STEP files may use either)
-    propertySets =
-      entityIndex.byType.get('IFCPROPERTYSET') || entityIndex.byType.get('IfcPropertySet') || [];
-    quantitySets =
-      entityIndex.byType.get('IFCELEMENTQUANTITY') ||
-      entityIndex.byType.get('IfcElementQuantity') ||
-      [];
+    // byType keys are upper case: the parser, the v4 cache columns and the v3
+    // rebuild in useIfcCache all normalise them (#4712).
+    propertySets = entityIndex.byType.get('IFCPROPERTYSET') ?? [];
+    quantitySets = entityIndex.byType.get('IFCELEMENTQUANTITY') ?? [];
   } else {
     // Fallback for when entityIndex is not provided
     propertySets = entities.getByType(IfcTypeEnum.IfcPropertySet);

@@ -7,7 +7,7 @@
 
 use super::GeometryRouter;
 use crate::coord_is_large;
-use ifc_lite_core::{has_geometry_by_name, DecodedEntity, EntityDecoder, IfcType, RtcVerdict};
+use ifc_lite_core::{geometry_flags_by_name, DecodedEntity, EntityDecoder, IfcType, RtcVerdict};
 
 /// Whether a near-origin element with this `RepresentationType` may cast a
 /// "no-shift" `(0,0,0)` RTC vote when the vertex probe can't cheaply read a
@@ -31,13 +31,9 @@ fn is_rtc_votable_representation(rep_type: &str) -> bool {
 
 impl GeometryRouter {
     /// Compute median-based RTC offset from sampled translations.
-    /// Returns `(0,0,0)` if empty or the median is within
+    /// Returns `(0,0,0)` if the median is within
     /// [`LARGE_COORD_THRESHOLD_METERS`](crate::LARGE_COORD_THRESHOLD_METERS) of the origin.
     fn rtc_offset_from_translations(translations: &[(f64, f64, f64)]) -> (f64, f64, f64) {
-        if translations.is_empty() {
-            return (0.0, 0.0, 0.0);
-        }
-
         let mut x: Vec<f64> = translations.iter().map(|(x, _, _)| *x).collect();
         let mut y: Vec<f64> = translations.iter().map(|(_, y, _)| *y).collect();
         let mut z: Vec<f64> = translations.iter().map(|(_, _, z)| *z).collect();
@@ -375,8 +371,9 @@ impl GeometryRouter {
             .unwrap_or(false)
     }
 
-    /// Detect RTC offset by scanning the file for building elements.
-    /// Used by synchronous parse paths.
+    /// Detect RTC offset by scanning the file for building elements. No
+    /// placement-bounds fallback: a whole-file consumer that must agree with
+    /// the meshes wants [`Self::detect_rtc_offset_for_file`] (#4665).
     pub fn detect_rtc_offset_from_first_element<T>(
         &self,
         content: &T,
@@ -385,40 +382,8 @@ impl GeometryRouter {
     where
         T: AsRef<[u8]> + ?Sized,
     {
-        let content = content.as_ref();
-        use ifc_lite_core::EntityScanner;
-
-        let mut scanner = EntityScanner::new(content);
-        let mut translations: Vec<(f64, f64, f64)> = Vec::new();
-        const MAX_SAMPLES: usize = 50;
-
-        while let Some((_id, type_name, start, end)) = scanner.next_entity() {
-            if translations.len() >= MAX_SAMPLES {
-                break;
-            }
-            // Use the canonical has_geometry_by_name check from the schema
-            // instead of a hardcoded list — any entity class with geometry
-            // is a valid candidate for RTC offset sampling. #1910: also let
-            // through a spatial container `has_geometry_by_name` blocks by
-            // name (`IfcBuilding` et al.) when THIS instance exceptionally
-            // carries a non-null Representation — mirrors the identical
-            // exception in the entity-job scans
-            // (`rust/processing/src/processor/mod.rs`,
-            // `rust/wasm-bindings/src/api/gpu_meshes/prepass.rs`) so RTC
-            // detection and meshing agree on what counts as geometry.
-            let is_exceptional_spatial_container = ifc_lite_core::is_representationless_spatial_container_by_name(type_name)
-                && ifc_lite_core::nth_attribute_is_present(&content[start..end], 6);
-            if !has_geometry_by_name(type_name) && !is_exceptional_spatial_container {
-                continue;
-            }
-            if let Ok(entity) = decoder.decode_at(start, end) {
-                if let Some(t) = self.sample_element_translation(&entity, decoder) {
-                    translations.push(t);
-                }
-            }
-        }
-
-        Self::rtc_offset_from_translations(&translations)
+        let jobs = file_geometry_spans(content.as_ref());
+        self.sample_rtc_offset(jobs, decoder).unwrap_or((0.0, 0.0, 0.0))
     }
 
     /// Detect RTC offset using pre-collected geometry jobs (avoids re-scanning the file).
@@ -429,6 +394,15 @@ impl GeometryRouter {
         jobs: &[(u32, usize, usize, IfcType)],
         decoder: &mut EntityDecoder,
     ) -> Option<(f64, f64, f64)> {
+        self.sample_rtc_offset(jobs.iter().map(|&(id, start, end, _)| (id, start, end)), decoder)
+    }
+
+    /// The median sampler behind every detector here, over `(id, start, end)` spans.
+    fn sample_rtc_offset(
+        &self,
+        spans: impl Iterator<Item = (u32, usize, usize)>,
+        decoder: &mut EntityDecoder,
+    ) -> Option<(f64, f64, f64)> {
         const MAX_SAMPLES: usize = 50;
         // Cap on USABLE samples, not raw jobs: `take` follows `filter_map` so
         // elements that abstain (origin-placed curve/axis-only reps such as
@@ -436,21 +410,14 @@ impl GeometryRouter {
         // budget. Otherwise a file that emits 50+ alignment segments before its
         // real large-coordinate solids would fill the window with abstentions,
         // sample zero positions, and miss the re-basing the solids need.
-        // Matches `detect_rtc_offset_from_first_element`, which likewise counts
-        // pushed samples rather than scanned entities.
-        let translations: Vec<(f64, f64, f64)> = jobs
-            .iter()
-            .filter_map(|&(id, start, end, _)| {
+        let translations: Vec<(f64, f64, f64)> = spans
+            .filter_map(|(id, start, end)| {
                 let entity = decoder.decode_at_with_id(id, start, end).ok()?;
                 self.sample_element_translation(&entity, decoder)
             })
             .take(MAX_SAMPLES)
             .collect();
-
-        if translations.is_empty() {
-            return None;
-        }
-        Some(Self::rtc_offset_from_translations(&translations))
+        (!translations.is_empty()).then(|| Self::rtc_offset_from_translations(&translations))
     }
 
     /// Detect the RTC offset from sampled jobs, falling back to a full-file
@@ -471,7 +438,40 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
         content: &[u8],
     ) -> Option<RtcVerdict> {
-        let bounds = || ifc_lite_core::scan_placement_bounds(content).rtc_offset(self.unit_scale);
-        self.detect_rtc_offset_from_jobs(jobs, decoder).map(RtcVerdict::of_anchor).or_else(bounds)
+        self.verdict_with_bounds_fallback(jobs.iter().map(|&(id, start, end, _)| (id, start, end)), decoder, content)
     }
+
+    /// [`Self::detect_rtc_offset_with_fallback`] with every geometry-bearing
+    /// entity of `content` as the jobs, for a consumer that parses the file
+    /// itself and has no job list: the symbolic, grid and alignment overlays
+    /// (#4665). Scans lazily and stops at the sample cap.
+    pub fn detect_rtc_offset_for_file(&self, content: &[u8], decoder: &mut EntityDecoder) -> Option<RtcVerdict> {
+        self.verdict_with_bounds_fallback(file_geometry_spans(content), decoder, content)
+    }
+
+    /// The sampler's verdict over `spans`, or the placement-bounds scan when it had no sample.
+    fn verdict_with_bounds_fallback(
+        &self,
+        spans: impl Iterator<Item = (u32, usize, usize)>,
+        decoder: &mut EntityDecoder,
+        content: &[u8],
+    ) -> Option<RtcVerdict> {
+        let bounds = || ifc_lite_core::scan_placement_bounds(content).rtc_offset(self.unit_scale);
+        self.sample_rtc_offset(spans, decoder).map(RtcVerdict::of_anchor).or_else(bounds)
+    }
+}
+
+/// The `(id, start, end)` span of every entity the mesh pre-passes schedule,
+/// in file order: the canonical `geometry_flags_by_name` check, plus (#1910) a
+/// spatial container it blocks by name (`IfcBuilding` et al.) whose instance
+/// carries a non-null Representation, mirroring the entity-job scans in
+/// `rust/processing/src/processor/mod.rs` and
+/// `rust/wasm-bindings/src/api/gpu_meshes/prepass.rs`.
+fn file_geometry_spans(content: &[u8]) -> impl Iterator<Item = (u32, usize, usize)> + '_ {
+    let mut scanner = ifc_lite_core::EntityScanner::new(content);
+    std::iter::from_fn(move || scanner.next_entity()).filter_map(move |(id, type_name, start, end)| {
+        let (geometry, spatial) = geometry_flags_by_name(type_name);
+        let has_representation = || ifc_lite_core::nth_attribute_is_present(&content[start..end], 6);
+        (geometry || (spatial && has_representation())).then_some((id, start, end))
+    })
 }

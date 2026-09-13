@@ -11,7 +11,8 @@
 //! through [`MeshFrame::select`], and the wire tag is spelled only by the
 //! `serde` attribute on [`MeshCoordinateSpace`].
 
-use ifc_lite_core::RtcVerdict;
+use ifc_lite_core::{EntityDecoder, RtcVerdict};
+use ifc_lite_geometry::GeometryRouter;
 use serde::{Deserialize, Serialize};
 
 /// Epsilon (metres) below which a placement translation is treated as identity.
@@ -73,6 +74,17 @@ impl MeshFrame {
             }
             _ => Self::RawIfc,
         }
+    }
+
+    /// The frame for a consumer that parses the file itself and has no job
+    /// list: the symbolic, grid and alignment overlays (#4665). It runs the
+    /// browser pre-pass selection (the bounds-fallback ladder, no site tier)
+    /// with every geometry entity of the file as the jobs. The pre-passes
+    /// sample a narrower job window, so a model with widely spread elements
+    /// can still get a different median anchor (#4611), and the native site
+    /// tier is not applied (#4706).
+    pub fn for_overlay(router: &GeometryRouter, content: &[u8], decoder: &mut EntityDecoder) -> Self {
+        Self::select(None, router.detect_rtc_offset_for_file(content, decoder))
     }
 
     /// The translation the router subtracts from every world vertex before

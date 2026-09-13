@@ -9,6 +9,7 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
+import { isMainEntry } from './lib/is-main-entry.mjs';
 import { REVERT_ORACLE_ADAPTERS } from './lib/revert-oracle-adapters.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ORACLE = join(ROOT, 'scripts/check-test-revert-oracle.mjs');
@@ -81,8 +82,8 @@ function buildFixture(adapter, mode, dir) {
     production = 'src/lib.rs'; testFile = 'tests/probe.rs';
     writeFileSync(join(dir, testFile), rustSource(mode));
   } else if (adapter.id === 'typescript') {
-    mkdirSync(join(dir, 'scripts')); mkdirSync(join(dir, 'pkg/src'), { recursive: true });
-    copyFileSync(join(ROOT, 'scripts/typecheck-tests.mjs'), join(dir, 'scripts/typecheck-tests.mjs'));
+    mkdirSync(join(dir, 'scripts/lib'), { recursive: true }); mkdirSync(join(dir, 'pkg/src'), { recursive: true });
+    for (const file of ['scripts/typecheck-tests.mjs', 'scripts/lib/is-main-entry.mjs']) copyFileSync(join(ROOT, file), join(dir, file));
     copyFileSync(join(ROOT, 'tsconfig.tests.base.json'), join(dir, 'tsconfig.tests.base.json'));
     symlinkSync(join(ROOT, 'node_modules'), join(dir, 'node_modules'), 'junction');
     writeFileSync(join(dir, 'package.json'), '{"private":true}\n');
@@ -193,4 +194,4 @@ export function main(argv = process.argv.slice(2)) {
   console.log(`[selfcheck] all ${selected.length} selected adapter(s) passed all three probes`);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (isMainEntry(import.meta.url)) main();

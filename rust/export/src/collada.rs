@@ -142,6 +142,10 @@ pub fn try_export_collada_from_meshes(
             &[]
         };
         let islice = &indices[ibase..ibase + ic];
+        // The GLB twin refuses a partial triangle and an index outside its mesh
+        // through the same predicate; dropping them here shipped the document
+        // with those faces missing as success.
+        crate::mesh_input::check_index_block(i, islice, vertex_counts[i])?;
         let color = [
             colors.get(i * 4).copied().unwrap_or(0.8),
             colors.get(i * 4 + 1).copied().unwrap_or(0.8),
@@ -197,17 +201,13 @@ pub fn try_export_collada_from_meshes(
             mat_tris.push(Vec::new());
             mat_colors.len() - 1
         });
-        // Keep only whole triangles (a trailing partial triangle would desync
-        // `<triangles count>` from `<p>`); drop indices outside this mesh's vertex
-        // range; remap each to its deduped global index, dropping any triangle that
-        // dedup collapsed to zero area (two corners merged).
-        let tri_len = islice.len() - islice.len() % 3;
-        for tri in islice[..tri_len].chunks_exact(3) {
-            if tri.iter().all(|&idx| (idx as usize) < vc) {
-                let (a, b, c) = (l2g[tri[0] as usize], l2g[tri[1] as usize], l2g[tri[2] as usize]);
-                if a != b && b != c && a != c {
-                    mat_tris[mi].extend_from_slice(&[a, b, c]);
-                }
+        // `check_index_block` established whole, in-range triangles. Remap each to
+        // its deduped global index, dropping any triangle that dedup collapsed to
+        // zero area (two corners merged).
+        for tri in islice.chunks_exact(3) {
+            let (a, b, c) = (l2g[tri[0] as usize], l2g[tri[1] as usize], l2g[tri[2] as usize]);
+            if a != b && b != c && a != c {
+                mat_tris[mi].extend_from_slice(&[a, b, c]);
             }
         }
 

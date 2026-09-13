@@ -277,6 +277,8 @@ export function useIfcCache() {
         } else {
           // Backward compatibility for v3 caches: rebuild byte offsets from the
           // source once, then future v4 writes persist this section.
+          // Key `byType` in upper case, as a fresh parse and a v4 load do: not
+          // every scan path canonicalises type names (#4712).
           const tokenizer = new StepTokenizer(source);
           const estimatedCount = cacheStore.entities?.count ?? 100_000;
           const indexBuilder = new CompactEntityIndexBuilder(estimatedCount);
@@ -284,10 +286,11 @@ export function useIfcCache() {
 
           for (const ref of tokenizer.scanEntitiesFast()) {
             indexBuilder.add(ref.expressId, ref.type, ref.offset, ref.length);
-            let typeList = byType.get(ref.type);
+            const typeKey = ref.type.toUpperCase();
+            let typeList = byType.get(typeKey);
             if (!typeList) {
               typeList = [];
-              byType.set(ref.type, typeList);
+              byType.set(typeKey, typeList);
             }
             typeList.push(ref.expressId);
           }

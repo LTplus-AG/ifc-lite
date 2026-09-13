@@ -26,6 +26,7 @@ import type {
   LensBackendMethods,
   FilesBackendMethods,
   ScheduleBackendMethods,
+  StructuralBackendMethods,
 } from '../types.js';
 
 function makeRemoteProxy<T extends object>(namespace: string): T {
@@ -54,6 +55,7 @@ export class RemoteBackend implements BimBackend {
   readonly lens: LensBackendMethods = makeRemoteProxy('lens');
   readonly files: FilesBackendMethods = makeRemoteProxy('files');
   readonly schedule: ScheduleBackendMethods = makeRemoteProxy('schedule');
+  readonly structural: StructuralBackendMethods = makeRemoteProxy('structural');
 
   constructor(private transport: Transport) {}
 

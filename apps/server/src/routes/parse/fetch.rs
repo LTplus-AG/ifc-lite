@@ -5,8 +5,8 @@
 //! GET cache fetch / check endpoints.
 
 use super::cache_keys::{
-    cache_key_from_parts, data_model_cache_key, has_current_data_model, has_cached_symbolic, parquet_cache_key,
-    parquet_metadata_cache_key, symbolic_cache_key,
+    cache_key_from_parts, data_model_cache_key, has_current_data_model, has_cached_symbolic, has_parquet_metadata,
+    parquet_cache_key, parquet_metadata_cache_key, symbolic_cache_key,
 };
 use super::ParseQuery;
 use crate::error::ApiError;
@@ -143,13 +143,17 @@ pub async fn check_cache(
         parquet_cache_key(&hash, query.opening_filter, quality, query.parquet_layout);
     // A geometry entry alone is not enough: the client skips the upload on a
     // hit, so a data model at the current payload version has to exist too, or
-    // nothing will ever write one (issue #3869).
+    // nothing will ever write one (issue #3869). The same holds for the
+    // metadata header: a hit sends the client to `get_cached_geometry`, which
+    // needs it at the current version, and a header version bump leaves the
+    // geometry entry behind (#4675).
     let seed_cache_key = cache_key_from_parts(&hash, query.opening_filter, quality);
-    let data_model_is_current = has_current_data_model(&state.cache, &seed_cache_key).await
-        && has_cached_symbolic(&state.cache, &seed_cache_key).await;
+    let sidecars_are_current = has_current_data_model(&state.cache, &seed_cache_key).await
+        && has_cached_symbolic(&state.cache, &seed_cache_key).await
+        && has_parquet_metadata(&state.cache, &seed_cache_key).await;
 
     match state.cache.get_bytes(&parquet_cache_key).await? {
-        Some(_) if data_model_is_current => {
+        Some(_) if sidecars_are_current => {
             tracing::debug!(hash = %hash, cache_key = %parquet_cache_key, "Cache check HIT");
             let response = Response::builder()
                 .status(StatusCode::OK)

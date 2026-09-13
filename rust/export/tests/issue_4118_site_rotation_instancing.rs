@@ -17,7 +17,7 @@
 //! The un-yawed sibling is the control: it shared before this change and must
 //! still share, so a fix that traded one tier for another shows up here.
 
-use ifc_lite_export::{export_glb_with_stats, GltfOptions};
+use ifc_lite_export::{try_export_glb_with_stats, GltfOptions};
 
 /// Site placement translation (metres); zero rotation (RefDirection omitted).
 const SITE_T: (f64, f64, f64) = (10.0, 20.0, 0.0);
@@ -98,7 +98,8 @@ END-ISO-10303-21;
 
 fn glb_stats(rotation: Option<&str>) -> ifc_lite_export::GltfStats {
     let ifc = model(rotation);
-    let (_glb, stats) = export_glb_with_stats(ifc.as_bytes(), &GltfOptions::default());
+    let (_glb, stats) =
+        try_export_glb_with_stats(ifc.as_bytes(), &GltfOptions::default()).expect("has geometry");
     stats
 }
 

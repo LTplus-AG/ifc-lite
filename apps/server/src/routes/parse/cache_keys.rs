@@ -87,9 +87,12 @@ pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: Tessel
 /// that rightly expects the uniform wire frame. A new suffix retires them.
 /// v3 adds direct symbolic fill provenance (#4459), retiring otherwise valid
 /// JSON responses that cannot suppress duplicate 3D fills.
+/// v4 adds the `IfcMapConversionScaled` factors to `metadata.georeferencing`
+/// (#4653). A v3 entry has no factor fields, decodes cleanly with every factor
+/// defaulted to 1, and a client applying them places a scaled file wrong.
 /// Bump again on any change to what `ParseResponse` means on the wire.
 pub(crate) fn json_response_cache_key(cache_key: &str) -> String {
-    format!("{cache_key}-json-v3")
+    format!("{cache_key}-json-v4")
 }
 
 /// The flat Parquet geometry entry for a request cache key, under the LAYOUT
@@ -128,8 +131,13 @@ pub(crate) fn parquet_geometry_key(cache_key: &str, layout: ParquetLayout) -> St
 /// metadata header, whose shape #3888 did not touch and which is identical for
 /// both layouts of the same file. A hit needs the geometry entry too, so the
 /// layouts still cannot cross-serve.
+///
+/// `v5` with #4653: the header's `metadata.georeferencing` gained the
+/// `IfcMapConversionScaled` factors, and a `v4` header replays them as 1 (see
+/// [`json_response_cache_key`]). The geometry keys stay put: a miss here
+/// re-parses, and the parse rewrites the geometry entry beside it.
 pub(crate) fn parquet_metadata_key(cache_key: &str) -> String {
-    format!("{cache_key}-parquet-metadata-v4")
+    format!("{cache_key}-parquet-metadata-v5")
 }
 
 /// Build the parquet geometry cache key from a file hash and opening filter,
@@ -179,11 +187,15 @@ pub(crate) fn parquet_optimized_cache_key(cache_key: &str) -> String {
 /// Build the optimized-Parquet metadata cache key for a given file cache key.
 ///
 /// Holds the serialized `X-IFC-Metadata` header, `optimization_stats` included,
-/// so a replay carries the same stats the live parse reported. Versioned in
-/// lockstep with [`parquet_optimized_cache_key`], and distinct from the flat
-/// route's `-parquet-metadata-v4` for the same reason the bodies are.
+/// so a replay carries the same stats the live parse reported. Distinct from
+/// the flat route's `-parquet-metadata-v5` for the same reason the bodies are.
+/// A replay needs both entries, so bumping either one retires the pair.
+///
+/// `v2` with #4653: the header's `metadata.georeferencing` gained the
+/// `IfcMapConversionScaled` factors. The body keeps `v1`: a metadata miss
+/// re-parses, and the parse rewrites the body in place.
 pub(crate) fn parquet_optimized_metadata_cache_key(cache_key: &str) -> String {
-    format!("{cache_key}-parquet-optimized-metadata-v1")
+    format!("{cache_key}-parquet-optimized-metadata-v2")
 }
 
 /// Build the data-model cache key for a given file cache key.
@@ -225,9 +237,10 @@ pub(crate) async fn has_current_data_model(cache: &DiskCache, cache_key: &str) -
 /// (#3901) asks this, plus [`has_current_data_model`], BEFORE it takes an
 /// admission slot, so the common miss (a file the server has never seen) is
 /// answered by two small reads rather than by charging a parse slot for a disk
-/// lookup. It is a pre-filter, never the decision: [`try_cached_replay`] still
-/// makes that, and a metadata entry present here with no geometry beside it
-/// falls through to the same 404.
+/// lookup. `check_cache` asks it too, because its hit sends the client to a
+/// fetch that needs the header (#4675). It is a pre-filter, never the
+/// decision: [`try_cached_replay`] still makes that, and a metadata entry
+/// present here with no geometry beside it falls through to the same 404.
 ///
 /// [`try_cached_replay`]: super::cached_replay::try_cached_replay
 pub(crate) async fn has_parquet_metadata(cache: &DiskCache, cache_key: &str) -> bool {
@@ -249,6 +262,9 @@ async fn has_entry(cache: &DiskCache, key: &str) -> bool {
 /// Build the symbolic-data cache key for a given file cache key.
 /// v2 requires direct fill provenance (#4459); v1 remains decodable but is
 /// not a fresh extraction for 3D routing. Geometry namespaces stay unchanged.
+/// v3 re-bases the stream by the mesh frame selection, placement-bounds
+/// fallback included (#4665). A v2 entry for a model the sampler cannot read
+/// is left unshifted, up to the whole offset away from the meshes.
 ///
 /// The 2D symbol stream (`IfcAnnotation` + `IfcGrid`) is cached separately
 /// from geometry so binary-transport endpoints (Parquet, optimized Parquet,
@@ -257,10 +273,10 @@ async fn has_entry(cache: &DiskCache, key: &str) -> bool {
 /// is the full `{hash}-{opening_filter}` key, matching the value embedded in
 /// each response's metadata header.
 pub(crate) fn symbolic_cache_key(cache_key: &str) -> String {
-    format!("{}-symbolic-v2", cache_key)
+    format!("{}-symbolic-v3", cache_key)
 }
 
-/// Serialize symbolic data and write it to the cache under `{cache_key}-symbolic-v2`.
+/// Serialize symbolic data and write it to the cache under `{cache_key}-symbolic-v3`.
 ///
 /// Always stores the JSON (even when empty) so the fetch endpoint can return a
 /// definitive `200` with empty arrays rather than looping on `202`.

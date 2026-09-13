@@ -90,11 +90,12 @@ struct InFlightPath(String);
 
 impl InFlightPath {
     fn register(path: &str) -> Self {
+        let path = path.to_string();
         IN_FLIGHT_PATHS
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(path.to_string());
-        Self(path.to_string())
+            .push(path.clone());
+        Self(path)
     }
 }
 
@@ -110,10 +111,8 @@ impl Drop for InFlightPath {
 }
 
 /// The in-flight paths joined for the panic log, or `<unknown>` when nothing
-/// is registered. A blocking `lock`: another thread holds it only across a
-/// `Vec` push, remove or join, none of which panics (allocation failure
-/// aborts), so the panicking thread never holds it here. `try_lock` would drop
-/// the name whenever a concurrent parse was registering at that instant.
+/// is registered. A blocking `lock` is safe in the hook: holders only push,
+/// remove or join, none of which panics.
 fn in_flight_paths_for_log() -> String {
     let paths = IN_FLIGHT_PATHS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if paths.is_empty() {

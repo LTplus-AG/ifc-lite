@@ -41,6 +41,8 @@
 //! hashmap and columnar paths.
 
 use crate::decoder::EntityIndex;
+use crate::parser::EntityScanner;
+use std::sync::Arc;
 
 fn check_lengths(ids: usize, starts: usize, lengths: usize) -> Result<(), ColumnLengthMismatch> {
     if starts == ids && lengths == ids {
@@ -49,8 +51,6 @@ fn check_lengths(ids: usize, starts: usize, lengths: usize) -> Result<(), Column
         Err(ColumnLengthMismatch { ids, starts, lengths })
     }
 }
-use crate::parser::EntityScanner;
-use std::sync::Arc;
 
 /// Compact, sorted, binary-searched entity index. Columns are kept sorted by
 /// `ids` (strictly ascending, unique) so [`Self::lookup`] can `binary_search`.

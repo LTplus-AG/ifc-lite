@@ -107,6 +107,13 @@ describe('object-count — physical elements that have a shape', () => {
     assert.equal(isObject(9), false, 'and a group');
   });
 
+  it('treats a completed zero-shape result as known-empty', () => {
+    const isObject = createObjectPredicate(
+      model({ meshedIds: new Set<number>(), geometryReady: true }),
+    );
+    assert.equal(isObject(1), false, 'a completed model with no shapes has no shaped objects');
+  });
+
   it('rejects an id the store has no type for', () => {
     assert.equal(createObjectPredicate(model())(999), false);
   });
@@ -122,6 +129,19 @@ describe('collectMeshedIds', () => {
   it('dedupes the express ids of a mesh list', () => {
     const ids = collectMeshedIds({ meshes: [{ expressId: 4 }, { expressId: 4 }, { expressId: 9 }] });
     assert.deepEqual([...ids].sort((a, b) => a - b), [4, 9]);
+  });
+
+  it('includes instanced-only entities and normalises every geometry channel', () => {
+    const ids = collectMeshedIds(
+      {
+        meshes: [{ expressId: 1_000_004 }],
+        instancedGeometryHashes: new Map([[1_000_009, 1n]]),
+        instancedGeometryAabbs: new Map([[1_000_010, {}]]),
+        instancedGeometryVolumes: new Map([[1_000_011, 1]]),
+      },
+      (id) => id - 1_000_000,
+    );
+    assert.deepEqual([...ids].sort((a, b) => a - b), [4, 9, 10, 11]);
   });
 
   it('is empty for a missing geometry result', () => {

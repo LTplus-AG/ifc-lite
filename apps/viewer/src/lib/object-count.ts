@@ -39,12 +39,12 @@
  *
  * ## Before geometry exists
  *
- * While a model is still streaming, no mesh has landed and `meshedIds` is
- * empty. Applying the shape test then would report zero objects for a model
- * that plainly has them, so an empty mesh set disables the shape test and the
- * schema test stands alone — the same "filter is a no-op until geometry
- * exists" contract the hierarchy trees use. The count converges as meshes
- * arrive.
+ * While a model is still streaming, no mesh may have landed and `meshedIds`
+ * can be empty. Applying the shape test then would report zero objects for a
+ * model that plainly has them, so a missing geometry result disables the shape
+ * test and the schema test stands alone — the same "filter is a no-op until
+ * geometry exists" contract the hierarchy trees use. Once geometry processing
+ * has completed, an empty set is authoritative and correctly reports zero.
  */
 
 import { isPhysicalObjectType } from './physical-objects.js';
@@ -56,6 +56,8 @@ export interface ShapeSource {
   relationships?: AggregationRelationships;
   /** Model-local express ids that produced at least one mesh. */
   meshedIds: ReadonlySet<number>;
+  /** Whether geometry processing has produced a result, including a known-empty one. */
+  geometryReady?: boolean;
 }
 
 /** One model's view of the facts the whole object rule needs. */
@@ -81,8 +83,9 @@ export interface ObjectCountModel extends ShapeSource {
  */
 export function createShapePredicate(model: ShapeSource): (expressId: number) => boolean {
   const { relationships, meshedIds } = model;
-  // No geometry has arrived yet — see "Before geometry exists" above.
-  const applyShapeTest = meshedIds.size > 0;
+  // No geometry has arrived yet — see "Before geometry exists" above. An
+  // explicitly ready result with zero shapes is known-empty, not provisional.
+  const applyShapeTest = model.geometryReady ?? meshedIds.size > 0;
   const shapeCache = new Map<number, boolean>();
   const identity = (expressId: number) => expressId;
 
@@ -132,11 +135,24 @@ export function countObjects(expressIds: Iterable<number>, model: ObjectCountMod
   return count;
 }
 
-/** Model-local express ids that produced at least one mesh. */
+/** Geometry-bearing express ids, including entities rendered only through GPU instancing. */
 export function collectMeshedIds(
-  geometryResult: { meshes?: readonly { expressId: number }[] } | null | undefined,
+  geometryResult: {
+    meshes?: readonly { expressId: number }[];
+    instancedGeometryHashes?: ReadonlyMap<number, unknown>;
+    instancedGeometryAabbs?: ReadonlyMap<number, unknown>;
+    instancedGeometryVolumes?: ReadonlyMap<number, unknown>;
+  } | null | undefined,
+  toLocalId: (id: number) => number = (id) => id,
 ): Set<number> {
   const ids = new Set<number>();
-  for (const mesh of geometryResult?.meshes ?? []) ids.add(mesh.expressId);
+  for (const mesh of geometryResult?.meshes ?? []) ids.add(toLocalId(mesh.expressId));
+  for (const map of [
+    geometryResult?.instancedGeometryHashes,
+    geometryResult?.instancedGeometryAabbs,
+    geometryResult?.instancedGeometryVolumes,
+  ]) {
+    for (const id of map?.keys() ?? []) ids.add(toLocalId(id));
+  }
   return ids;
 }

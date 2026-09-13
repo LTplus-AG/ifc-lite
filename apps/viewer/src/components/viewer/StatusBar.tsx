@@ -15,12 +15,15 @@ import { collectPhysicalEntityIds } from '@/lib/physical-objects';
 import { collectMeshedIds, countShapedObjects, createObjectPredicate } from '@/lib/object-count';
 import type { AggregationRelationships } from '@/utils/aggregation';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { GeometryResult } from '@ifc-lite/geometry';
+import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
+import type { EntityRef } from '@/store/types';
 
 /** One loaded model's store paired with the geometry produced from it. */
 interface CountedModel {
+  modelId: string;
   store: IfcDataStore;
-  geometry: GeometryResult | null | undefined;
+  meshedIds: Set<number>;
+  geometryReady: boolean;
 }
 
 export function StatusBar() {
@@ -28,6 +31,8 @@ export function StatusBar() {
   const progress = useViewerStore((s) => s.progress);
   const error = useViewerStore((s) => s.error);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
+  const activeStorey = useViewerStore((s) => s.activeStorey);
+  const selectedEntities = useViewerStore((s) => s.selectedEntities);
   const activeStreamCanceller = useViewerStore((s) => s.activeStreamCanceller);
   const webgpu = useWebGPU();
 
@@ -93,11 +98,26 @@ export function StatusBar() {
     if (models.size > 0) {
       const out: CountedModel[] = [];
       for (const model of models.values()) {
-        if (model.ifcDataStore) out.push({ store: model.ifcDataStore, geometry: model.geometryResult });
+        if (!model.ifcDataStore) continue;
+        const toLocalId = (id: number): number => {
+          const ref = fromGlobalIdFromModels(models, id);
+          return ref?.modelId === model.id ? ref.expressId : id;
+        };
+        out.push({
+          modelId: model.id,
+          store: model.ifcDataStore,
+          meshedIds: collectMeshedIds(model.geometryResult, toLocalId),
+          geometryReady: model.geometryResult != null,
+        });
       }
       return out;
     }
-    return ifcDataStore ? [{ store: ifcDataStore, geometry: geometryResult }] : [];
+    return ifcDataStore ? [{
+      modelId: 'legacy',
+      store: ifcDataStore,
+      meshedIds: collectMeshedIds(geometryResult),
+      geometryReady: geometryResult != null,
+    }] : [];
   }, [models, ifcDataStore, geometryResult]);
 
   // PERF: `state.models` is a NEW Map on every streaming batch commit
@@ -112,7 +132,7 @@ export function StatusBar() {
   const physicalIdsRef = useRef(new WeakMap<IfcDataStore, Set<number>>());
   const totalObjects = useMemo(() => {
     let total = 0;
-    for (const { store, geometry } of countedModels) {
+    for (const { store, meshedIds, geometryReady } of countedModels) {
       let physicalIds = physicalIdsRef.current.get(store);
       if (!physicalIds) {
         physicalIds = collectPhysicalEntityIds(store.entityIndex?.byType);
@@ -120,19 +140,18 @@ export function StatusBar() {
       }
       total += countShapedObjects(physicalIds, {
         relationships: store.relationships as AggregationRelationships | undefined,
-        meshedIds: collectMeshedIds(geometry),
+        meshedIds,
+        geometryReady,
       });
     }
     return total;
   }, [countedModels]);
 
-  // `selectedStoreys` holds raw model-space expressIds (see HierarchyPanel's
-  // `setStoreysSelection`), which may belong to ANY federated model, not just
-  // the active one — `ifcDataStore` only tracks the active model
-  // (`modelSlice.ts`). Resolve each id through the model whose own spatial
-  // hierarchy actually contains it as a storey. Mirrors ViewportOverlays'
-  // storey-name lookup (#3506) for the same reason: a non-active model's
-  // storey must not be counted against the active model's hierarchy.
+  // `selectedStoreys` can contain legacy/local ids from HierarchyPanel or
+  // renderer/global ids from other store clients. Resolve global ids through
+  // the canonical federation helper. For local ids, the model-aware
+  // `activeStorey` disambiguates a single row and `selectedEntities` preserves
+  // every constituent of a unified row whose local ids collide.
   //
   // `byStorey` is the raw `IfcRelContainedInSpatialStructure` membership — no
   // schema filter and no geometry filter — so counting its length answered a
@@ -141,20 +160,51 @@ export function StatusBar() {
   // higher than the trees (#4655).
   const visibleElements = useMemo(() => {
     if (selectedStoreys.size === 0) return totalObjects;
+    const modelsById = new Map(countedModels.map((model) => [model.modelId, model]));
+    const selectedRefs = new Map<string, EntityRef>();
+    const addStoreyRef = (ref: EntityRef): boolean => {
+      const model = modelsById.get(ref.modelId);
+      if (!model?.store.spatialHierarchy?.byStorey.has(ref.expressId)) return false;
+      selectedRefs.set(`${ref.modelId}:${ref.expressId}`, ref);
+      return true;
+    };
+    const selectionMatchesRef = (selection: number, ref: EntityRef): boolean =>
+      selection === ref.expressId ||
+      selection === toGlobalIdFromModels(models, ref.modelId, ref.expressId);
+
+    for (const storeyId of selectedStoreys) {
+      const explicitRefs = selectedEntities.filter((ref) => selectionMatchesRef(storeyId, ref));
+      let addedExplicitRef = false;
+      for (const ref of explicitRefs) {
+        if (addStoreyRef(ref)) addedExplicitRef = true;
+      }
+      if (addedExplicitRef) continue;
+      if (activeStorey && selectionMatchesRef(storeyId, activeStorey) && addStoreyRef(activeStorey)) {
+        continue;
+      }
+      const globalRef = fromGlobalIdFromModels(models, storeyId);
+      if (globalRef && addStoreyRef(globalRef)) continue;
+      // Legacy/raw selection with no model-aware companion. Preserve the old
+      // fallback, but include every matching model rather than silently taking
+      // the first colliding local id.
+      for (const model of countedModels) {
+        addStoreyRef({ modelId: model.modelId, expressId: storeyId });
+      }
+    }
+
     const predicates = new Map<IfcDataStore, (expressId: number) => boolean>();
     let count = 0;
-    let resolvedAnyStorey = false;
-    for (const storeyId of selectedStoreys) {
-      const owner = countedModels.find((m) => m.store.spatialHierarchy?.byStorey.has(storeyId));
+    for (const { modelId, expressId: storeyId } of selectedRefs.values()) {
+      const owner = modelsById.get(modelId);
       const storeyElements = owner?.store.spatialHierarchy?.byStorey.get(storeyId);
       if (!owner || !storeyElements) continue;
-      resolvedAnyStorey = true;
       let isObject = predicates.get(owner.store);
       if (!isObject) {
         isObject = createObjectPredicate({
           getTypeName: (expressId) => owner.store.entities.getTypeName(expressId),
           relationships: owner.store.relationships as AggregationRelationships | undefined,
-          meshedIds: collectMeshedIds(owner.geometry),
+          meshedIds: owner.meshedIds,
+          geometryReady: owner.geometryReady,
         });
         predicates.set(owner.store, isObject);
       }
@@ -165,8 +215,8 @@ export function StatusBar() {
     // A selection naming no storey this session can resolve says nothing about
     // the model — fall back to the whole-model total. A storey that resolves
     // and genuinely holds no objects reports 0, which is the answer.
-    return resolvedAnyStorey ? count : totalObjects;
-  }, [selectedStoreys, countedModels, totalObjects]);
+    return selectedRefs.size > 0 ? count : totalObjects;
+  }, [selectedStoreys, activeStorey, selectedEntities, countedModels, models, totalObjects]);
 
   return (
     <div className="h-7 px-3 border-t bg-muted/30 flex items-center justify-between text-xs text-muted-foreground">

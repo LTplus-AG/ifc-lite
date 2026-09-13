@@ -9,7 +9,10 @@ import { fileURLToPath } from 'node:url';
 
 test('the aggregate freshness command runs the legacy rooted-type generator (#4203)', () => {
   const script = fileURLToPath(new URL('./check-generated.mjs', import.meta.url));
-  const result = spawnSync(process.execPath, [script], { encoding: 'utf8' });
+  const result = spawnSync(process.execPath, [script], {
+    encoding: 'utf8',
+    env: { ...process.env, IFC_LITE_GENERATED_GATE: 'legacy rooted-type freshness' },
+  });
   const output = `${result.stdout}\n${result.stderr}`;
 
   // Other independent freshness gates may be stale in a developer checkout;

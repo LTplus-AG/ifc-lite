@@ -160,8 +160,6 @@
  *   pnpm check:generated --build  # + `pnpm build` first, so api-surface is certain
  *   pnpm check:generated --full   # + actually run plato/wasm gates (needs their toolchains)
  *
- * Exit code: non-zero if any gate FAILS. INFO/SKIP notices never fail the run.
- *
  * @unwired-by-design a pre-push aggregator of gates CI already runs.
  * Every gate in the list above is a CI step in its own right (that is how
  * the list is derived), so this exists to move those failures earlier, not
@@ -176,6 +174,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BUILD_FIRST = process.argv.includes('--build');
 const FULL = process.argv.includes('--full');
+const ONLY_GATE = process.env.IFC_LITE_GENERATED_GATE;
 
 const results = [];
 
@@ -250,6 +249,7 @@ function record(name, status, detail, fix) {
 }
 
 function runGate(name, cmd, args, fix, opts = {}) {
+  if (ONLY_GATE && name !== ONLY_GATE) return;
   hr();
   console.log(`Running ${name}: ${[cmd, ...args].join(' ')}`);
   try {

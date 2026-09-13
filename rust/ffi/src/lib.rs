@@ -110,16 +110,12 @@ impl Drop for InFlightPath {
 }
 
 /// The in-flight paths joined for the panic log, or `<unknown>` when nothing
-/// is registered. `try_lock`, never `lock`: a hook must not block on a lock
-/// held by the thread it interrupted (`register` and `drop` hold it only
-/// across a `Vec` push or remove, but a hook that could deadlock is worse
-/// than one that misses a name).
+/// is registered. A blocking `lock`: another thread holds it only across a
+/// `Vec` push, remove or join, none of which panics (allocation failure
+/// aborts), so the panicking thread never holds it here. `try_lock` would drop
+/// the name whenever a concurrent parse was registering at that instant.
 fn in_flight_paths_for_log() -> String {
-    let paths = match IN_FLIGHT_PATHS.try_lock() {
-        Ok(paths) => paths,
-        Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
-        Err(std::sync::TryLockError::WouldBlock) => return "<unknown>".to_string(),
-    };
+    let paths = IN_FLIGHT_PATHS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if paths.is_empty() {
         "<unknown>".to_string()
     } else {
@@ -338,7 +334,9 @@ unsafe fn run_parse(
 /// - `0` on success
 /// - `1` if a pointer is null or the path is invalid UTF-8
 /// - `2` if the file cannot be read
-/// - `3` if parsing panics or the worker pool cannot be started
+/// - `3` if parsing panics or the worker pool cannot be started (a panic is
+///   only recoverable in an unwinding build such as `server-release`; see the
+///   module header)
 /// - `4` if JSON serialization fails
 ///
 /// On `0`, `*out_ptr` / `*out_len` describe the buffer. On every other code,

@@ -50,7 +50,7 @@ describe('RelationshipGraph', () => {
 
   // The suite above only ever exercises one `RelationshipType` -> IFC entity
   // name mapping (ContainsElements), so a swap between two other entries in
-  // the internal `RelationshipTypeToString` lookup table (e.g. AssignsToGroup
+  // the internal `relationshipTypeName`/`NAMES` lookup table (e.g. AssignsToGroup
   // <-> AssignsToProduct, which are adjacent numeric values 60/61) is
   // invisible to every existing test. This pins every type -> name pair so
   // such a swap fails here.

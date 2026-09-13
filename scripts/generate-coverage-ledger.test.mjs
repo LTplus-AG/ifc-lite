@@ -36,7 +36,7 @@ const SOURCE_RELS = [
   'packages/data/src/ifc-schema/generated/entities-ifc4x3.ts',
   'rust/core/src/generated/schema.rs',
   'rust/core/src/legacy_entities.rs',
-  'packages/data/src/relationship-graph.ts',
+  'packages/data/src/relationship-type.ts',
   'rust/geometry/src/router/processor_registry.rs',
   'packages/create/src/ifc-creator.ts',
   'packages/export/src/schema-converter.ts',
@@ -258,17 +258,22 @@ test('vacuity guard: emptied processor_registry.rs TYPES array fails loudly, not
   assert.equal(ledger, null, 'a vacuity failure must not leave a written ledger behind');
 });
 
-test('vacuity guard: emptied relationship-graph.ts names map fails loudly', () => {
-  const src = real.get('packages/data/src/relationship-graph.ts');
-  const start = src.indexOf('function RelationshipTypeToString'); // @source-text-assertion-ok locates the mutation splice point, not a subject assertion
-  assert.notEqual(start, -1, 'test anchor drifted — RelationshipTypeToString not found');
-  const namesStart = src.indexOf('const names:', start); // @source-text-assertion-ok locates the mutation splice point, not a subject assertion
+test('vacuity guard: emptied relationship-type.ts NAMES map fails loudly', () => {
+  // #4205's "centralize relationship type names" follow-up moved this map
+  // out of relationship-graph.ts's inline `function RelationshipTypeToString`
+  // into its own module, relationship-type.ts, as a top-level `const NAMES`
+  // consumed by the exported `relationshipTypeName()` — same mutation shape,
+  // new home and anchor.
+  const src = real.get('packages/data/src/relationship-type.ts');
+  const start = src.indexOf('export function relationshipTypeName'); // @source-text-assertion-ok locates the mutation splice point, not a subject assertion
+  assert.notEqual(start, -1, 'test anchor drifted — relationshipTypeName not found');
+  const namesStart = src.indexOf('const NAMES:'); // @source-text-assertion-ok locates the mutation splice point, not a subject assertion
   const close = src.indexOf('};', namesStart); // @source-text-assertion-ok locates the mutation splice point, not a subject assertion
-  assert.ok(namesStart !== -1 && close !== -1, 'test anchor drifted — names map not bounded');
-  const mutated = src.slice(0, namesStart) + 'const names: Record<RelationshipType, string> = {' + src.slice(close);
-  const { status, log } = runOn({ 'packages/data/src/relationship-graph.ts': mutated });
+  assert.ok(namesStart !== -1 && namesStart < start && close !== -1, 'test anchor drifted — NAMES map not bounded');
+  const mutated = src.slice(0, namesStart) + 'const NAMES: Readonly<Record<RelationshipType, string>> = {' + src.slice(close);
+  const { status, log } = runOn({ 'packages/data/src/relationship-type.ts': mutated });
   assert.equal(status, 1);
-  assert.match(log, /relationships\(RelationshipTypeToString\)/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
+  assert.match(log, /relationships\(NAMES\)/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
 });
 
 test('vacuity guard: emptied entities-ifc2x3.ts registry table fails loudly', () => {

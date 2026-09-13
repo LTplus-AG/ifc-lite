@@ -37,11 +37,10 @@
  *                    the table `rust/core/src/schema_helpers.rs` says every
  *                    classification pass must consult instead of a bare
  *                    `IfcType::from_str`.
- *   relationships — the entity's name is one of the 17 `IfcRel*` classes
- *                    `packages/data/src/relationship-graph.ts`'s
- *                    `RelationshipTypeToString` maps a `RelationshipType` enum
- *                    member to. Only meaningful for `IfcRel*` rows; every
- *                    other row is `—` (not a relationship entity, not a gap).
+ *   relationships — the entity's name is one of the `IfcRel*` classes
+ *                    `packages/data/src/relationship-type.ts`'s `NAMES` map
+ *                    (behind `relationshipTypeName()`) maps a `RelationshipType`
+ *                    member to. Meaningful only for `IfcRel*` rows; other rows are `—`.
  *   geometry      — the entity's `IfcType` appears in the `TYPES` const array
  *                    in `rust/geometry/src/router/processor_registry.rs`,
  *                    the actual slot table the router dispatches through
@@ -163,20 +162,21 @@ function isRetained(schema, upperName) {
 
 // ─── Relationships (RelationshipType -> IfcRel* class) ──────────────────
 
-const relGraphSrc = read('packages/data/src/relationship-graph.ts');
+// #4205 moved this map from relationship-graph.ts's `RelationshipTypeToString` to relationship-type.ts's `NAMES`.
+const relTypeSrc = read('packages/data/src/relationship-type.ts');
 function extractRelationshipClasses(src) {
-  const start = src.indexOf('function RelationshipTypeToString');
-  if (start === -1) throw new Error('coverage-ledger: RelationshipTypeToString not found in relationship-graph.ts');
-  const namesStart = src.indexOf('const names:', start);
+  const start = src.indexOf('export function relationshipTypeName');
+  if (start === -1) throw new Error('coverage-ledger: relationshipTypeName not found in relationship-type.ts');
+  const namesStart = src.indexOf('const NAMES:');
   const close = src.indexOf('};', namesStart);
-  if (namesStart === -1 || close === -1) {
-    throw new Error('coverage-ledger: could not bound the `names` map in RelationshipTypeToString');
+  if (namesStart === -1 || namesStart > start || close === -1) {
+    throw new Error('coverage-ledger: could not bound the `NAMES` map ahead of relationshipTypeName');
   }
   const body = src.slice(namesStart, close);
   return new Set([...body.matchAll(/:\s*'(IfcRel[A-Za-z0-9]+)'/g)].map((m) => m[1]));
 }
-const relationshipClasses = extractRelationshipClasses(relGraphSrc);
-assertNonEmpty('relationships(RelationshipTypeToString)', relationshipClasses);
+const relationshipClasses = extractRelationshipClasses(relTypeSrc);
+assertNonEmpty('relationships(NAMES)', relationshipClasses);
 const relationshipClassesUpper = new Set([...relationshipClasses].map((n) => n.toUpperCase()));
 
 // ─── Geometry (router processor_registry.rs TYPES table) ────────────────

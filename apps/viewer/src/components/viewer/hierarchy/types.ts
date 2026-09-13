@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { ObjectCountSummary } from './objectCountSummary';
+
 /** Node types for the hierarchy tree */
 export type NodeType =
   | 'unified-storey'      // Grouped storey across models (multi-model only)
@@ -73,7 +75,26 @@ export interface TreeNode {
   hasChildren: boolean;
   isExpanded: boolean;
   isVisible: boolean; // Note: For storeys, computed lazily during render for performance
+  /**
+   * The badge number. On a spatial node it is a count of PHYSICAL OBJECTS THAT
+   * HAVE A SHAPE — see `objectCountSummary.ts` — not a count of the rows
+   * underneath it, which also list annotations and shapeless elements.
+   */
   elementCount?: number;
+  /**
+   * The breakdown behind `elementCount`, for the badge's hover card. Present
+   * on spatial nodes only; rows whose badge counts something else (a class's
+   * instances, a model's entities) leave it undefined and keep the plain
+   * wording.
+   */
+  countSummary?: ObjectCountSummary;
+  /**
+   * The badge's hover lines, ready to render — headline first, then only the
+   * breakdown lines that have something to say. Built here rather than in the
+   * component so the hover a user actually reads is part of the tree model and
+   * can be asserted through the same entry point as the number it explains.
+   */
+  countTooltipLines?: string[];
   storeyElevation?: number;
   /** Internal: ID offset for lazy visibility computation */
   _idOffset?: number;
@@ -94,7 +115,10 @@ export interface StoreyData {
   storeyId: number;
   name: string;
   elevation: number;
+  /** Everything contained in the storey — what the tree lists. */
   elements: number[];
+  /** The object count and its breakdown — what a badge may show. */
+  objects: ObjectCountSummary;
 }
 
 /** Unified storey grouping storeys from multiple models */
@@ -103,7 +127,10 @@ export interface UnifiedStorey {
   name: string;
   elevation: number;
   storeys: StoreyData[];
+  /** Contained entities across every contributing model — rows, not objects. */
   totalElements: number;
+  /** The object count and its breakdown, summed across contributing models. */
+  objects: ObjectCountSummary;
 }
 
 /**

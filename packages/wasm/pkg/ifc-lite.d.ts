@@ -454,10 +454,18 @@ export class IfcAPI {
     exportJson(content: Uint8Array, pretty: boolean, include_properties: boolean, include_quantities: boolean): Uint8Array;
     /**
      * Export **JSON-LD** (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART
-     * IFC4 OWL default. `included` is an express-id isolation filter mirroring the
-     * OBJ/glTF/STEP exporters (empty ⇒ all entities).
+     * IFC4 OWL default.
+     *
+     * `included` is an express-id isolation filter mirroring `exportObj` /
+     * `exportGlb`, and carries the same null-vs-empty distinction across the wasm
+     * boundary: omit it (`undefined`) for "no isolation filter" (every entity is
+     * emitted); pass an empty `Uint32Array` for "isolation is ACTIVE and currently
+     * matches nothing", which emits an empty `@graph`. Collapsing the two — as a
+     * bare `Uint32Array` parameter would force a caller to do — silently exported
+     * the whole model when a filter matched nothing (#4659, the JSON-LD twin of
+     * #4483/#4484). A non-empty `Uint32Array` is the ordinary allowlist.
      */
-    exportJsonld(content: Uint8Array, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included: Uint32Array): Uint8Array;
+    exportJsonld(content: Uint8Array, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included?: Uint32Array | null): Uint8Array;
     /**
      * Package an already-produced **GLB** + georeference into a **KMZ** (`Uint8Array`)
      * for Google Earth: a ZIP of `doc.kml` (a `<Model>` placed at `latitude`/`longitude`/
@@ -531,15 +539,23 @@ export class IfcAPI {
      * is genuinely needed.
      *
      * `schema` is the FILE_SCHEMA label to write (empty ⇒ preserve the source schema).
-     * `included` is an express-id allowlist (empty ⇒ whole model); when set, the forward
-     * `#`-reference closure is added so the subset never dangles a reference.
+     *
+     * `included` is an express-id allowlist carrying the same null-vs-empty
+     * distinction as `exportObj` / `exportGlb`: omit it (`undefined`) for "no
+     * isolation filter" (whole model); pass an empty `Uint32Array` for "isolation
+     * is ACTIVE and currently matches nothing", which writes a header-only file
+     * with an empty `DATA;` section. Collapsing the two — as a bare `Uint32Array`
+     * parameter would force a caller to do — silently exported the whole model
+     * when a filter matched nothing (#4659, the STEP twin of #4483/#4484). When
+     * set, the forward `#`-reference closure is added so the subset never dangles
+     * a reference.
      * `mutations_json` carries `MutablePropertyView` edits (attribute updates +
      * property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
      * A non-empty but malformed `mutations_json` throws rather than silently
      * exporting the model with none of the caller's edits applied — mirrors
      * `exportGlb`'s and `exportMerged`'s fail-closed contract on this same API.
      */
-    exportStep(content: Uint8Array, schema: string, included: Uint32Array, mutations_json: string): Uint8Array;
+    exportStep(content: Uint8Array, schema: string, included: Uint32Array | null | undefined, mutations_json: string): Uint8Array;
     /**
      * Export **OpenUSD** (`.usda` ASCII): a real Z-up USD stage — spatial hierarchy of
      * `Xform` prims, `UsdGeomMesh` geometry, `UsdPreviewSurface` materials, IFC

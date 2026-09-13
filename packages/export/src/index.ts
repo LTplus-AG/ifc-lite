@@ -52,6 +52,10 @@ export { generateLod0 } from './lod0-generator.js';
 export { generateLod1, type GenerateLod1Options } from './lod1-generator.js';
 export { parseGLB, extractGlbMapping, parseGLBToMeshData, countGlbMeshes } from './glb.js';
 export { countObjVertices } from './obj.js';
+// The JSON-LD / STEP twins of the two counters above: "did this export carry
+// any content?", for the formats whose writers emit a valid but entity-free
+// document when an isolation filter excludes everything (#4659).
+export { countJsonldNodes, countStepEntities } from './zero-content.js';
 
 export { columnsToParquet, isParquet } from './columns-to-parquet.js';
 // THE CSV cell escaper for this repo's TypeScript — RFC 4180 quoting plus the

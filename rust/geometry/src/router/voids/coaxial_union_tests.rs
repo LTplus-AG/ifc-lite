@@ -483,3 +483,42 @@ fn feature_off_is_a_noop_and_deterministic() {
     assert_eq!(n1, host.normals, "feature-off leaves normals byte-identical");
     assert_eq!((p1, i1, n1), (p2, i2, n2), "deterministic across runs");
 }
+
+/// `accept_cut`'s removed volume over an OPEN host 9 km out (native positions
+/// are absolute). One unpaired triangle inside the wall stands in for a crack
+/// (normal -X); the cut removes a 1 m rod from the wall's -X face, moving the
+/// mesh's bounding-box centre by 0.5 m. `vol_before` and the after reading
+/// must share one reference point, or the untouched crack leaves
+/// `(o_after - o_before)·N/6` (-0.17 m³ here) in the removed volume and a
+/// bound tighter than the rod still accepts the cut (#4632).
+#[test]
+fn accept_cut_reads_before_and_after_about_one_point_on_an_open_far_host_4632() {
+    const F: [f64; 3] = [9000.375, 5000.25, 300.125];
+    let at = |d: [f64; 3]| [F[0] + d[0], F[1] + d[1], F[2] + d[2]];
+    let join = |parts: &[&Mesh]| {
+        let mut mesh = Mesh::new();
+        for part in parts {
+            let offset = (mesh.positions.len() / 3) as u32;
+            mesh.positions.extend_from_slice(&part.positions);
+            mesh.indices.extend(part.indices.iter().map(|i| offset + i));
+        }
+        mesh
+    };
+    let rod = box_mesh(at([-1.0, 0.0, 0.0]), at([0.0, 0.125, 0.125]));
+    let wall = box_mesh(at([0.0, 0.0, 0.0]), at([3.0, 1.0, 3.0]));
+    let mut crack = Mesh::new();
+    for p in [at([1.5, 0.0, 0.5]), at([1.5, 0.0, 2.5]), at([1.5, 1.0, 0.5])] {
+        crack.positions.extend(p.map(|x| x as f32));
+    }
+    crack.indices = vec![0, 1, 2];
+    let host = join(&[&rod, &wall, &crack]);
+    let cut = join(&[&wall, &crack]);
+    let rod_volume = 1.0 * 0.125 * 0.125;
+
+    let run = |max_removed: f64| {
+        let mut result = host.clone();
+        accept_cut(&mut result, cut.clone(), host.triangle_count(), mesh_signed_volume(&host), max_removed)
+    };
+    assert!(run(rod_volume * (1.0 + 1e-6)), "a bound just above the rod's volume admits the cut");
+    assert!(!run(rod_volume * (1.0 - 1e-3)), "a bound just below the rod's volume refuses it");
+}

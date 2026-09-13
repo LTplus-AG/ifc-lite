@@ -153,6 +153,56 @@ fn test_extract_coordinate_list() {
     assert!((coords[3] - 100.0).abs() < 0.001);
 }
 
+/// The CoordList is attribute 0, found by depth: the old first-`((`-to-last-`))`
+/// span read an IFC4X3 TagList's digits as coordinates and refused a list
+/// written `( (`. Core review behind #4577 (finding 6).
+#[test]
+fn coordinate_list_is_attribute_zero_found_by_depth() {
+    let read = extract_coordinate_list_from_entity;
+    let tagged = b"#1=IFCCARTESIANPOINTLIST3D(((0.,1.,2.)),('P9'));";
+    assert_eq!(read(tagged).unwrap(), [0.0, 1.0, 2.0]);
+    let spaced = b"#1=IFCCARTESIANPOINTLIST3D( /* c) */\t( (0.,1.,2.) ),$);";
+    assert_eq!(read(spaced).unwrap(), [0.0, 1.0, 2.0]);
+    // A `(` in a head comment does not open the list (the rule
+    // `nth_attribute_is_present` uses; a bare `memchr` landed inside it).
+    let head = b"#1=IFCCARTESIANPOINTLIST3D /* (v2) */ (((0.,1.,2.)),$);";
+    assert_eq!(read(head).unwrap(), [0.0, 1.0, 2.0]);
+    assert!(read(b"#1=IFCCARTESIANPOINTLIST3D($,(('P1')));").is_none());
+    assert!(read(b"#1=IFCCARTESIANPOINTLIST3D(((0.,1.,2.)").is_none());
+}
+
+/// `process_triangulated_faceset_direct` handed the coordinate entity's
+/// WHOLE record to `parse_coordinates_direct`, which reads every number it
+/// meets: the instance name `78` and the `3` in `IFCCARTESIANPOINTLIST3D`
+/// came back as the first two coordinates, 11 floats for 3 points, and every
+/// vertex was shifted by two. Reverting the fix fails the `positions`
+/// assertion (it yields `[78.0, 3.0, 0.0, 0.0, 150.0, ...]`).
+/// Found by the core review behind #4577 (finding 6).
+#[test]
+fn process_triangulated_faceset_direct_does_not_read_the_record_prefix_as_coordinates() {
+    let faceset = b"#77=IFCTRIANGULATEDFACESET(#78,$,$,((1,2,3)),$);";
+    let points: &[u8] = b"#78=IFCCARTESIANPOINTLIST3D(((0.,0.,150.),(0.,40.,140.),(100.,0.,0.)));";
+    let mesh =
+        process_triangulated_faceset_direct(faceset, |id| (id == 78).then(|| points.to_vec()))
+            .expect("a well-formed faceset with a resolvable point list");
+
+    assert_eq!(
+        mesh.positions,
+        [0.0, 0.0, 150.0, 0.0, 40.0, 140.0, 100.0, 0.0, 0.0]
+    );
+    assert_eq!(mesh.indices, [0, 1, 2]);
+}
+
+/// A point list whose attribute 0 is not a list has no coordinates to
+/// read, so the faceset is refused rather than meshed from whatever numbers
+/// the record prefix happens to carry.
+#[test]
+fn process_triangulated_faceset_direct_refuses_a_point_list_without_a_coordinate_span() {
+    let faceset = b"#77=IFCTRIANGULATEDFACESET(#78,$,$,((1,2,3)),$);";
+    let points: &[u8] = b"#78=IFCCARTESIANPOINTLIST3D($);";
+    assert!(process_triangulated_faceset_direct(faceset, |_| Some(points.to_vec())).is_none());
+}
+
 #[test]
 fn test_should_use_fast_path() {
     assert!(should_use_fast_path("IFCCARTESIANPOINTLIST3D"));

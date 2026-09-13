@@ -324,26 +324,58 @@ pub(super) fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Poi
     instance_meta: None, local_bounds: None, local_to_world: None, welded_in_object_frame: false }
 }
 
-/// Signed volume of a (closed) triangle mesh via the divergence theorem. Used to
-/// reconcile a union of parametric boxes against the meshed opening solid by volume.
+/// Signed volume of a (closed) triangle mesh via the divergence theorem, about
+/// [`volume_reference`] of the same mesh. Reads the f32 positions unsnapped; an
+/// out-of-range index panics. Used to reconcile a union of parametric boxes
+/// against the meshed opening solid by volume, and by the before/after cut gates.
 pub(crate) fn mesh_signed_volume(mesh: &Mesh) -> f64 {
-    let v = |i: u32| {
-        let b = i as usize * 3;
-        [
-            mesh.positions[b] as f64,
-            mesh.positions[b + 1] as f64,
-            mesh.positions[b + 2] as f64,
-        ]
-    };
+    mesh_signed_volume_about(mesh, &volume_reference(mesh))
+}
+
+/// The point [`mesh_signed_volume`] sums `mesh` about: the centre of its position
+/// bounds (the origin for an empty mesh). `kernel::signed_volume` uses the same
+/// rule over the vertices its triangles reference, so the two agree unless the
+/// buffer holds unreferenced positions. On native, positions are absolute, and an
+/// open surface's divergence sum grows with the distance to the reference point,
+/// so the point must lie within the operand's extent, not at the world origin.
+/// Read off `Mesh::bounds`, a linear scan of the position buffer, so the sum
+/// itself is the only index walk.
+pub(crate) fn volume_reference(mesh: &Mesh) -> [f64; 3] {
+    if mesh.is_empty() {
+        return [0.0; 3];
+    }
+    let (lo, hi) = mesh.bounds();
+    [
+        (f64::from(lo.x) + f64::from(hi.x)) * 0.5,
+        (f64::from(lo.y) + f64::from(hi.y)) * 0.5,
+        (f64::from(lo.z) + f64::from(hi.z)) * 0.5,
+    ]
+}
+
+/// [`mesh_signed_volume`] about a caller-chosen `o`, in one walk. A before/after
+/// difference over the same host must read both meshes about ONE point (the
+/// host's [`volume_reference`]): the flux of a crack the cut did not touch then
+/// cancels, where two per-mesh points would leave `(o_after − o_before)·N/6` of it
+/// in the removed volume (#4632).
+pub(crate) fn mesh_signed_volume_about(mesh: &Mesh, o: &[f64; 3]) -> f64 {
     mesh.indices
         .chunks_exact(3)
         .map(|t| {
-            let (a, b, c) = (v(t[0]), v(t[1]), v(t[2]));
-            a[0] * (b[1] * c[2] - b[2] * c[1]) + a[1] * (b[2] * c[0] - b[0] * c[2])
-                + a[2] * (b[0] * c[1] - b[1] * c[0])
+            let (a, b, c) = (mesh_vertex(mesh, t[0]), mesh_vertex(mesh, t[1]), mesh_vertex(mesh, t[2]));
+            crate::kernel::signed_volume::tetra_volume6(&a, &b, &c, o)
         })
         .sum::<f64>()
         / 6.0
+}
+
+#[inline]
+fn mesh_vertex(mesh: &Mesh, i: u32) -> [f64; 3] {
+    let b = i as usize * 3;
+    [
+        mesh.positions[b] as f64,
+        mesh.positions[b + 1] as f64,
+        mesh.positions[b + 2] as f64,
+    ]
 }
 
 /// Closed-2-manifold self-check (0.1 mm weld): every undirected edge shared by exactly

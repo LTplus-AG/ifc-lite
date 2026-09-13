@@ -10,7 +10,8 @@
     "tsconfig.json",
     "tsconfig.packages.json",
     "tsconfig.tests.base.json",
-    "scripts/typecheck-tests.mjs"
+    "scripts/typecheck-tests.mjs",
+    "scripts/lib/is-main-entry.mjs"
   ],
   "globalPassThroughEnv": [
     "RUSTUP_HOME",

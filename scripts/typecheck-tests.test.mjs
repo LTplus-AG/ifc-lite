@@ -524,7 +524,7 @@ test('a symlinked spelling of the repo root is still the repo root (issue 3362)'
   const dir = mkdtempSync(path.join(tmpdir(), 'typecheck-tests-symlink-'));
   const link = path.join(dir, 'repo');
   try {
-    symlinkSync(REPO_ROOT, link, 'dir');
+    symlinkSync(REPO_ROOT, link, process.platform === 'win32' ? 'junction' : 'dir');
     assert.ok(repoRootRefusal(link), 'a symlink to the repo root must be refused too');
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -602,7 +602,7 @@ test('run through a symlinked checkout, it still checks the package (issue 4702)
   const { dir, pkg } = stagePackage(2);
   try {
     const link = path.join(dir, 'link');
-    symlinkSync(REPO_ROOT, link, 'dir');
+    symlinkSync(REPO_ROOT, link, process.platform === 'win32' ? 'junction' : 'dir');
     const { code, out } = runScript(path.join(link, 'scripts', 'typecheck-tests.mjs'), pkg);
     assert.ok(
       existsSync(path.join(pkg, 'tsconfig.tests.json')),

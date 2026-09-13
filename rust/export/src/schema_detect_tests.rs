@@ -136,6 +136,13 @@ fn detect_schema_ignores_file_schema_literal_text_inside_a_quoted_string() {
 }
 
 #[test]
+fn detect_schema_requires_an_exact_file_schema_record_keyword() {
+    let content = "ISO-10303-21;\nHEADER;\nNOT_FILE_SCHEMA(('IFC2X3'));\n\
+                   FILE_SCHEMA_EXTRA(('IFC2X3'));\nFILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;\nENDSEC;\n";
+    assert_eq!(detect_schema(content.as_bytes()), "IFC4X3");
+}
+
+#[test]
 fn detect_schema_handles_doubled_apostrophe_escape_before_the_real_endsec() {
     // A header field value containing a literal apostrophe, escaped per
     // ISO 10303-21 by doubling (`''`), must not desynchronize the

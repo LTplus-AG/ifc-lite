@@ -17,7 +17,7 @@
 #[path = "source_header_scan.rs"]
 mod scan;
 
-use scan::{find_ascii_ci_from, find_section_marker, Lex};
+use scan::{find_record_open, find_section_marker, Lex};
 
 /// Headers are tiny; cap the scan so a huge file's body is never decoded.
 const MAX_HEADER_BYTES: usize = 64 * 1024;
@@ -170,12 +170,8 @@ pub(crate) fn declared_schema(content: &[u8]) -> Option<String> {
 /// drops the real one (the character after it is not `(`).
 fn extract_record_args(text: &str, keyword: &str) -> Option<String> {
     let bytes = text.as_bytes();
-    let at = find_ascii_ci_from(bytes, keyword.as_bytes())?;
+    let mut i = find_record_open(bytes, keyword.as_bytes())?;
     let mut lex = Lex::new(bytes);
-    let mut i = lex.skip_trivia(at + keyword.len());
-    if bytes.get(i) != Some(&b'(') {
-        return None;
-    }
     let start = i;
     let mut depth: i32 = 0;
     while i < bytes.len() {

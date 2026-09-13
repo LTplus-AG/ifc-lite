@@ -81,25 +81,37 @@ impl<'a> Lex<'a> {
     }
 }
 
-/// Find an ASCII keyword outside literals/comments, ignoring ASCII case.
-pub(crate) fn find_ascii_ci_from(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    if needle.is_empty() || needle.len() > haystack.len() {
+fn is_ident(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
+/// Find the opening parenthesis of an exact record keyword outside
+/// literals/comments, ignoring ASCII case.
+pub(crate) fn find_record_open(haystack: &[u8], keyword: &[u8]) -> Option<usize> {
+    if keyword.is_empty() || keyword.len() > haystack.len() {
         return None;
     }
     let mut lex = Lex::new(haystack);
-    let last_start = haystack.len() - needle.len();
+    let last_start = haystack.len() - keyword.len();
     let mut i = 0;
     while i <= last_start {
         if let Some(end) = lex.skip_lexical_at(i) {
             i = end;
             continue;
         }
-        if haystack[i..i + needle.len()]
-            .iter()
-            .zip(needle)
-            .all(|(a, b)| a.eq_ignore_ascii_case(b))
+        let end = i + keyword.len();
+        let bounded = (i == 0 || !is_ident(haystack[i - 1]))
+            && (end == haystack.len() || !is_ident(haystack[end]));
+        if bounded
+            && haystack[i..end]
+                .iter()
+                .zip(keyword)
+                .all(|(a, b)| a.eq_ignore_ascii_case(b))
         {
-            return Some(i);
+            let open = lex.skip_trivia(end);
+            if haystack.get(open) == Some(&b'(') {
+                return Some(open);
+            }
         }
         i += 1;
     }

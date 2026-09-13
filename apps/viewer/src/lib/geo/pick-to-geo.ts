@@ -34,7 +34,7 @@
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { hasStandardGeoreferencing, type EffectiveGeoreference } from './effective-georef';
 import { getMapUnitScale, metersToMapUnits, viewerDeltaToProjectedDelta } from './cesium-placement';
-import { getEffectiveAxisScale } from './geo-scale';
+import { getEffectiveAxisScales } from './geo-scale';
 import { effectiveMapConversionForGeometry } from './map-absolute';
 
 export interface Vec3 {
@@ -122,7 +122,7 @@ export function viewerPointToProjected(
     // placement applies (cesium-bridge.ts), or a FactorZ of 2 reads a point
     // 5 m up as 5 map metres higher where the model draws it 10 higher.
     height: mapConversion.orthogonalHeight + metersToMapUnits(
-      getEffectiveAxisScale(mapConversion.scale, mapConversion.factorZ, mapUnitScale, lengthUnitScale) * dy,
+      getEffectiveAxisScales(mapConversion, mapUnitScale, lengthUnitScale).z * dy,
       projectedCRS,
       lengthUnitScale,
     ),

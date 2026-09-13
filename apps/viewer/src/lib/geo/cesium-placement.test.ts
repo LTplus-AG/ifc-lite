@@ -24,7 +24,7 @@ import {
 } from './cesium-placement.js';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion } from '@ifc-lite/parser';
-import { getEffectiveAxisScale } from './geo-scale.js';
+import { getEffectiveAxisScales } from './geo-scale.js';
 
 describe('cesium placement helpers', () => {
   it('defaults to METRES when MapUnit is absent (overrides project length unit)', () => {
@@ -271,11 +271,10 @@ describe('cesium placement helpers', () => {
     assert.deepStrictEqual(feetToMetres, { eastings: 2, northings: 1 });
   });
 
-  it('places a Scale x Factor product of one like Scale=1, whichever way it is split (#4615)', () => {
-    // Scale .001 x FactorX 1000 and Scale 1 x FactorX 1 are the same IFC
-    // transform, so they place the same: the unset-or-unity heuristic reads
-    // the product. (Main, which ignored factors, placed both at 1 as well.)
-    assert.strictEqual(getEffectiveAxisScale(0.001, 1000, 1, 0.001), 1);
+  it('keeps an explicit axis factor on top of a unit-bridging Scale (#4615)', () => {
+    // mm project, metre map: Scale .001 is the authored unit bridge, so the
+    // conversion is spec-strict and FactorX 1000 scales on top of it.
+    assert.strictEqual(getEffectiveAxisScales({ scale: 0.001, factorX: 1000 }, 1, 0.001).x, 1000);
   });
 
   it('rotates viewer XY drag deltas by a genuine (non-identity) grid rotation', () => {

@@ -8,7 +8,7 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { findClampAnchorY } from './clamp-anchor';
 import { computeModelCenterInIfcMeters } from './reproject';
 import { effectiveMapConversionForGeometry } from './map-absolute';
-import { getEffectiveAxisScale, getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
+import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 
 export function getMapUnitScale(
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
@@ -168,7 +168,7 @@ export function computeOrthogonalHeightForBaseAltitude({
   // is subtracted, through the same map-absolute neutralisation.
   const mapScale = getMapUnitScale(projectedCRS, lengthUnitScale);
   const conversion = mapConversion && effectiveMapConversionForGeometry(mapConversion, mapScale, coordinateInfo);
-  const scaleZ = getEffectiveAxisScale(conversion?.scale, conversion?.factorZ, mapScale, lengthUnitScale);
+  const scaleZ = getEffectiveAxisScales(conversion ?? {}, mapScale, lengthUnitScale).z;
   const orthogonalHeightMeters = targetBaseAltitude - scaleZ * (rtcYupY + anchorY);
 
   return Math.round(
@@ -194,13 +194,13 @@ export function orthometricTargetForTerrain(
 }
 
 export function computeIfcOriginHeight(
-  mapConversion: Pick<MapConversion, 'orthogonalHeight' | 'scale' | 'factorZ'>,
+  mapConversion: Pick<MapConversion, 'orthogonalHeight' | 'scale' | 'factorX' | 'factorY' | 'factorZ'>,
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
   coordinateInfo: CoordinateInfo | undefined,
   lengthUnitScale: number,
 ): number {
   const mapScale = getMapUnitScale(projectedCRS, lengthUnitScale);
-  const scaleZ = getEffectiveAxisScale(mapConversion.scale, mapConversion.factorZ, mapScale, lengthUnitScale);
+  const scaleZ = getEffectiveAxisScales(mapConversion, mapScale, lengthUnitScale).z;
   return mapConversion.orthogonalHeight * mapScale
     + scaleZ * computeModelCenterInIfcMeters(coordinateInfo).ifcZ;
 }

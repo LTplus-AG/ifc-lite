@@ -67,32 +67,48 @@ export function getEffectiveHorizontalScale(
   return specEffective;
 }
 
-export function getEffectiveAxisScale(
-  ifcMapConversionScale: number | undefined,
-  factor: number | undefined,
-  mapUnitScale: number,
-  lengthUnitScale: number,
-): number {
-  // The axis coefficient is Scale x Factor, and the unset-or-unity heuristic
-  // above reads that product the way it reads a plain Scale. So an
-  // IFCMAPCONVERSIONSCALED with unit factors places exactly like the same
-  // IFCMAPCONVERSION, an omitted Scale places like Scale=1, and a factor that
-  // bridges units (Scale 1, Factor 0.3048, feet project) still evaluates to 1.
-  // An absent Scale or factor reads as 1, which the heuristic treats as unset.
-  return getEffectiveHorizontalScale(
-    (ifcMapConversionScale ?? 1) * (factor ?? 1), mapUnitScale, lengthUnitScale,
-  );
+/** The Scale and IfcMapConversionScaled factors a placement reads. */
+export type ScaleFields = { scale?: number; factorX?: number; factorY?: number; factorZ?: number };
+type AxisScales = { x: number; y: number; z: number };
+
+/** `Scale x Factor x mapUnitScale / lengthUnitScale` per axis, an absent value read as 1. */
+function specAxisScales(c: ScaleFields, mus: number, lus: number): AxisScales {
+  // Divide last, as getEffectiveHorizontalScale does: (1 * 0.3048 * 1) / 0.3048 is exactly 1.
+  const axis = (factor: number | undefined) => ((c.scale ?? 1) * (factor ?? 1) * mus) / lus;
+  return { x: axis(c.factorX), y: axis(c.factorY), z: axis(c.factorZ) };
 }
 
+/**
+ * Effective per-axis scales for metre viewer geometry, the IfcMapConversionScaled
+ * counterpart of {@link getEffectiveHorizontalScale}.
+ *
+ * The unset-or-unity Scale heuristic is decided ONCE for the conversion, then
+ * each axis keeps its own factor. It fires when Scale is absent or 1, the
+ * project and map units differ, and no authored factor already bridges them
+ * (spec coefficient within 0.5% of 1). So:
+ * - Scale 1 with factors (1, 1, 1) in a mm project places like the plain
+ *   IFCMAPCONVERSION, at 1;
+ * - Scale absent with grid factors (0.9996, 0.9996, 1) keeps them, on every axis;
+ * - Scale 1 or absent with factors 0.3048 in a feet project bridges the units
+ *   and places at 1;
+ * - an explicit non-unit Scale (0.001 in a mm project) is spec-strict, and a
+ *   factor scales on top of it.
+ */
 export function getEffectiveAxisScales(
-  conversion: { scale?: number; factorX?: number; factorY?: number; factorZ?: number },
+  conversion: ScaleFields,
   mapUnitScale: number,
   lengthUnitScale: number,
-): { x: number; y: number; z: number } {
-  const axis = (factor: number | undefined) => getEffectiveAxisScale(
-    conversion.scale, factor, mapUnitScale, lengthUnitScale,
-  );
-  return { x: axis(conversion.factorX), y: axis(conversion.factorY), z: axis(conversion.factorZ) };
+): AxisScales {
+  const lus = lengthUnitScale > 0 ? lengthUnitScale : 1;
+  const mus = mapUnitScale > 0 ? mapUnitScale : 1;
+  const spec = specAxisScales(conversion, mus, lus);
+  // Same test as getEffectiveHorizontalScale, so a NaN Scale also reads as unset.
+  const scaleUnset = !(conversion.scale != null && Math.abs(conversion.scale - 1) > 1e-9);
+  const factorBridgesUnits = (['x', 'y', 'z'] as const).some((axis, i) =>
+    [conversion.factorX, conversion.factorY, conversion.factorZ][i] !== undefined
+    && Math.abs(spec[axis] - 1) <= 0.005);
+  if (!scaleUnset || Math.abs(mus - lus) <= 1e-9 || factorBridgesUnits) return spec;
+  return { x: conversion.factorX ?? 1, y: conversion.factorY ?? 1, z: conversion.factorZ ?? 1 };
 }
 
 export interface ScaleUnitMismatch {
@@ -146,21 +162,26 @@ export interface ScaleUnitMismatch {
  * true, the deviation is an authoring defect that ifc-lite absorbs, and the
  * only true statement left to make is about what OTHER tools will do with it.
  *
- * `factor` is the IfcMapConversionScaled FactorX: the coefficient checked is
- * Scale × FactorX, the one {@link getEffectiveAxisScale} places with (#4615).
+ * `factors` carries the IfcMapConversionScaled FactorX/Y/Z: every axis is
+ * checked with {@link getEffectiveAxisScales}, and the numbers reported are
+ * the axis furthest from 1 (#4615).
  */
 export function detectScaleUnitMismatch(
   ifcMapConversionScale: number | undefined,
   mapUnitScale: number | undefined,
   lengthUnitScale: number | undefined,
-  factor?: number,
+  factors: Omit<ScaleFields, 'scale'>,
 ): ScaleUnitMismatch | null {
   const lus = lengthUnitScale && lengthUnitScale > 0 ? lengthUnitScale : 1;
   const mus = mapUnitScale && mapUnitScale > 0 ? mapUnitScale : 1;
   const rawScale = ifcMapConversionScale ?? 1.0;
-  const specEffectiveScale = (rawScale * (factor ?? 1) * mus) / lus;
+  const fields = { scale: ifcMapConversionScale, ...factors };
+  const spec = specAxisScales(fields, mus, lus);
+  const axis = (['x', 'y', 'z'] as const).reduce((a, b) => (Math.abs(spec[b] - 1) > Math.abs(spec[a] - 1) ? b : a));
+  const specEffectiveScale = spec[axis];
   if (Math.abs(specEffectiveScale - 1) <= 0.005) return null;
-  const effectiveScale = getEffectiveAxisScale(ifcMapConversionScale, factor, mus, lus);
+  const effectiveScale = getEffectiveAxisScales(fields, mus, lus)[axis];
+  const factor = { x: factors.factorX, y: factors.factorY, z: factors.factorZ }[axis];
   return {
     effectiveScale,
     specEffectiveScale,

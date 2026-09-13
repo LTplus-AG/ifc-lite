@@ -412,7 +412,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     return detectScaleUnitMismatch(
       mergedConversion.scale,
       mergedCRS?.mapUnitScale,
-      lengthUnitScale, mergedConversion.factorX,
+      lengthUnitScale, mergedConversion,
     );
   }, [mergedConversion, mergedCRS?.mapUnitScale, lengthUnitScale]);
 

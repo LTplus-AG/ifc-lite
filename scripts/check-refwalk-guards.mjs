@@ -160,7 +160,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
  * prevent a seventh of. Both extra roots cost nothing: each contributes zero
  * unguarded candidates today.
  */
-const SCAN_ROOTS = ['rust/geometry/src', 'rust/processing/src', 'rust/wasm-bindings/src'];
+const SCAN_ROOTS = ['rust/core/src', 'rust/geometry/src', 'rust/processing/src', 'rust/wasm-bindings/src'];
 
 /**
  * Lower bound on how many candidate walks the two signals must still find.
@@ -179,7 +179,9 @@ const SCAN_ROOTS = ['rust/geometry/src', 'rust/processing/src', 'rust/wasm-bindi
  * iterative, so it is no longer a candidate, and the margin the 30 carried had
  * already been spent by earlier refactors. Set to 28 to restore a margin of one.
  */
-const CANDIDATE_FLOOR = 28;
+// Re-measured at 33 after adding rust/core/src for #4601. Keep one candidate
+// of churn while making the widened scan visible in the ratchet.
+const CANDIDATE_FLOOR = 32;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that
@@ -228,7 +230,7 @@ function loadAllowlist(path) {
   if (!existsSync(path)) return new Set();
   return new Set(
     readFileSync(path, 'utf8')
-      .split('\n')
+      .split(/\r?\n/)
       .map((line) => line.replace(/#.*$/, '').trim())
       .filter(Boolean)
   );
@@ -250,6 +252,7 @@ export function runCheck(base, opts = {}) {
 
   const errors = [];
   const unguarded = [];
+  const missingBudgets = [];
   const stale = new Set(allowlist);
   let candidates = 0;
   let files = 0;
@@ -280,6 +283,9 @@ export function runCheck(base, opts = {}) {
       }
       for (const c of findWalkCandidates(text)) {
         candidates++;
+        if (c.fansOut && !c.hasWorkBudget) {
+          missingBudgets.push(`${rel}::${c.name}::${c.signal}`);
+        }
         if (c.guard) continue;
         const key = `${rel}::${c.name}::${c.signal}`;
         if (allowlist.has(key)) {
@@ -307,12 +313,24 @@ export function runCheck(base, opts = {}) {
     );
   }
 
-  return { ok: errors.length === 0 && unguarded.length === 0, errors, candidates, unguarded, files };
+  return {
+    ok: errors.length === 0 && unguarded.length === 0,
+    errors,
+    candidates,
+    unguarded,
+    budgetWarnings: missingBudgets,
+    files,
+  };
 }
 
 const isMain = isMainEntry(import.meta.url);
 if (isMain) {
   const result = runCheck(ROOT);
+  if (result.budgetWarnings.length > 0) {
+    console.warn(
+      `\nFan-out walks with no detected work budget (review required):\n  ${result.budgetWarnings.join('\n  ')}`
+    );
+  }
   if (result.unguarded.length > 0) {
     console.error('\nUnguarded file-driven entity-reference walks:\n');
     for (const u of result.unguarded) console.error(`  ${u}`);
@@ -338,6 +356,6 @@ Use ifc_lite_core::limits::MAX_MAPPED_ITEM_DEPTH rather than a fresh \`= 32\`.
   for (const e of result.errors) console.error(`\nrefwalk-guards: ${e}`);
   if (!result.ok) process.exit(1);
   console.log(
-    `check-refwalk-guards: OK (${result.files} .rs files scanned, ${result.candidates} candidate walks, all guarded, 0 unguarded)`
+    `check-refwalk-guards: OK (${result.files} .rs files scanned, ${result.candidates} candidate walks, all guarded, ${result.budgetWarnings.length} fan-out budget review(s), 0 unguarded)`
   );
 }

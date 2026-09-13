@@ -98,7 +98,7 @@ struct TypeProductCandidate {
 }
 
 /// Like [`stream_export_model`] but reuses a pre-built entity index. A caller also
-/// running the geometry pass ([`crate::export_glb_with_stats_with_index`]) over the
+/// running the geometry pass ([`crate::try_export_glb_with_stats_with_index`]) over the
 /// same bytes builds the index once with [`build_entity_index`] and shares it across
 /// both, skipping the duplicate scan. `entity_index` MUST be built from the same
 /// `content`; output is identical to `stream_export_model`.

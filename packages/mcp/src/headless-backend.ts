@@ -2,19 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * HeadlessLikeBackend — minimal `BimBackend` for MCP tool execution.
- *
- * Mirrors `@ifc-lite/cli`'s HeadlessBackend but trimmed to the surface MCP
- * tools touch (model + query + selection + spatial + export + mutate +
- * store + visibility + viewer no-ops). Splitting it out of the CLI lets the
- * MCP package avoid the `@ifc-lite/viewer-core` dependency that the CLI
- * pulls in for `ifc-lite view`.
- *
- * Tools that need richer functionality (geometry mesh data, raycast,
- * heatmap evaluation) call the parser directly via the registry's
- * `LoadedModel.store`, not through this backend.
- */
+/** Minimal `BimBackend` for MCP tools over an already-loaded store. */
 
 import type {
   BimBackend,
@@ -31,6 +19,7 @@ import type {
   LensBackendMethods,
   FilesBackendMethods,
   ScheduleBackendMethods,
+  StructuralBackendMethods,
   EntityRef,
   EntityData,
   PropertySetData,
@@ -48,6 +37,7 @@ import {
 } from '@ifc-lite/parser';
 import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
+import { createStructuralAdapter } from './headless-backend-structural.js';
 import { createQueryAdapter } from './backend-query.js';
 import { overlayFromView, type PendingOverlay } from './overlay.js';
 
@@ -73,6 +63,7 @@ export class HeadlessLikeBackend implements BimBackend {
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
+  readonly structural: StructuralBackendMethods;
 
   private dataStore: IfcDataStore;
   private modelName: string;
@@ -137,6 +128,7 @@ export class HeadlessLikeBackend implements BimBackend {
     this.lens = { presets() { return []; }, create() { return null; }, activate() {}, deactivate() {}, getActive() { return null; } };
     this.files = { list() { return []; }, text() { return null; }, csv() { return null; }, csvColumns() { return []; } };
     this.schedule = this.createScheduleAdapter();
+    this.structural = createStructuralAdapter(this.dataStore, modelId => this.assertKnownModelId(modelId));
   }
 
   subscribe(_event: BimEventType, _handler: (data: unknown) => void): () => void {
@@ -395,4 +387,5 @@ export class HeadlessLikeBackend implements BimBackend {
       sequences: (m) => extract(m).sequences,
     };
   }
+
 }

@@ -74,10 +74,16 @@ describe('HeadlessLikeBackend model-id acceptance', () => {
       { modelId: BASENAME, expressId: 70 }, 'Name', 'Renamed',
     );
     const read = (): unknown => backend.schedule.data(BASENAME);
+    // bim.structural reuses the exact same `assertKnownModelId` the schedule
+    // adapter does (#4206 layer 3) — it must give the SAME wrong answer here,
+    // or the basename becomes readable through one 4D/analysis surface and
+    // not the other, reintroducing #3764's shape one namespace over.
+    const readStructural = (): unknown => backend.structural.data(BASENAME);
 
     expect(backend.acceptsModelId(BASENAME)).toBe(false);
     expect(write).toThrow(/unknown model 'building\.ifc'/);
     expect(read).toThrow(/Unknown modelId 'building\.ifc'/);
+    expect(readStructural).toThrow(/Unknown modelId 'building\.ifc'/);
   });
 
   it('accepts the model id itself on both surfaces', () => {
@@ -86,6 +92,7 @@ describe('HeadlessLikeBackend model-id acceptance', () => {
     expect(backend.acceptsModelId(MODEL_ID)).toBe(true);
     expect(() => backend.mutate.setAttribute({ modelId: MODEL_ID, expressId: 70 }, 'Name', 'Renamed')).not.toThrow();
     expect(() => backend.schedule.data(MODEL_ID)).not.toThrow();
+    expect(() => backend.structural.data(MODEL_ID)).not.toThrow();
   });
 
   it('mints store refs under the same rule', () => {

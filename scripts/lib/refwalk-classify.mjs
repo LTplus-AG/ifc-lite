@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { findRecursionCycles } from './refwalk-cycles.mjs';
+export { findRecursionCycles } from './refwalk-cycles.mjs';
+
 /**
  * Pure classification step for the refwalk gate (issue #2944). The gate that
  * consumes it is `scripts/check-refwalk-guards.mjs`, whose header carries the
@@ -266,15 +269,15 @@ function buildCallGraph(fns) {
  * @param {string} name
  * @returns {boolean}
  */
-function callSitePresent(body, name) {
+function callSitePattern(name) {
   const n = escapeRe(name);
-  // `(?:::\s*<...>)?` is the turbofish: a generic function recursing on itself
-  // is routinely spelled `walk::<T>(store, child)`, and without this the call
-  // site is invisible, so the cycle -- and therefore the whole candidate --
-  // disappears. Bounded by `[^;{}\n]` so a stray `<` cannot swallow the file.
+  // Recognize generic recursion such as `walk::<T>(child)`; the bounded body
+  // keeps a stray `<` from swallowing the rest of the file.
   const tf = '(?:::\\s*<[^;{}\\n]*?>)?\\s*';
-  const re = new RegExp(`(?:(?<![.\\w])${n}|(?<!\\w)self\\.${n}|(?<!\\w)Self::${n})${tf}\\(`);
-  return re.test(body);
+  return `(?:(?<![.\\w])${n}|(?<!\\w)self\\.${n}|(?<!\\w)Self::${n})${tf}\\(`;
+}
+function callSitePresent(body, name) {
+  return new RegExp(callSitePattern(name)).test(body);
 }
 
 /**
@@ -573,86 +576,15 @@ const VISITED_GUARD_RE =
 const DEPTH_GUARD_RE =
   /\b_?depth\b[^;\n]{0,80}?(>=|<=|>|<)|(>=|<=|>|<)[^;\n]{0,40}?\b[A-Z][A-Z0-9_]*(?:DEPTH|MAX|LIMIT|BUDGET|ITER)[A-Z0-9_]*\b|\bMAX_[A-Z0-9_]*\b[^;\n]{0,40}?(>=|<=|>|<)|\b0\s*\.\.=?\s*(?:[A-Za-z_][A-Za-z0-9_]*::)*[A-Z][A-Z0-9_]*(?:DEPTH|MAX|LIMIT|BUDGET|ITER)[A-Z0-9_]*\b/;
 
-/**
- * Tarjan strongly-connected components over the local call graph. A function
- * is part of a recursion cycle when its SCC has more than one member, or when
- * it calls itself directly.
- *
- * SCCs rather than the pairwise DFS `findRecursiveFunctions` uses, because the
- * gate needs the cycle's MEMBERSHIP, not just a yes/no: the guard for a mutual
- * recursion routinely lives in a different member than the decode call.
- * `processors/boolean/mod.rs` is the measured case -- `process_with_depth_inner`
- * holds `if depth > MAX_BOOLEAN_DEPTH` and the `visited` insert, while
- * `process_operand_with_depth` holds the `decode_by_id`. Scoping the guard
- * search to one function at a time reports both halves as unguarded.
- *
- * @param {Map<string, Set<string>>} graph
- * @returns {Map<string, string[]>} function name -> the members of its cycle,
- *   for cycle members only. Non-recursive functions are absent.
- */
-export function findRecursionCycles(graph) {
-  let index = 0;
-  const idx = new Map();
-  const low = new Map();
-  const onStack = new Set();
-  const stack = [];
-  /** @type {string[][]} */
-  const components = [];
-
-  // Iterative Tarjan: a recursive one would itself stack-overflow on a deep
-  // call graph, which would be a poor look for this particular check.
-  for (const root of graph.keys()) {
-    if (idx.has(root)) continue;
-    /** @type {Array<{ node: string, iter: Iterator<string> }>} */
-    const work = [{ node: root, iter: (graph.get(root) ?? new Set()).values() }];
-    idx.set(root, index);
-    low.set(root, index);
-    index++;
-    stack.push(root);
-    onStack.add(root);
-    while (work.length) {
-      const frame = work[work.length - 1];
-      const next = frame.iter.next();
-      if (!next.done) {
-        const w = next.value;
-        if (!idx.has(w)) {
-          idx.set(w, index);
-          low.set(w, index);
-          index++;
-          stack.push(w);
-          onStack.add(w);
-          work.push({ node: w, iter: (graph.get(w) ?? new Set()).values() });
-        } else if (onStack.has(w)) {
-          low.set(frame.node, Math.min(low.get(frame.node), idx.get(w)));
-        }
-        continue;
-      }
-      work.pop();
-      const v = frame.node;
-      if (work.length) {
-        const parent = work[work.length - 1].node;
-        low.set(parent, Math.min(low.get(parent), low.get(v)));
-      }
-      if (low.get(v) === idx.get(v)) {
-        const component = [];
-        for (;;) {
-          const w = stack.pop();
-          onStack.delete(w);
-          component.push(w);
-          if (w === v) break;
-        }
-        components.push(component);
-      }
-    }
-  }
-
-  const cycles = new Map();
-  for (const component of components) {
-    const isCycle = component.length > 1 || (graph.get(component[0])?.has(component[0]) ?? false);
-    if (!isCycle) continue;
-    for (const name of component) cycles.set(name, component);
-  }
-  return cycles;
+// Decoders also `consume`; require repository traversal-state receiver names.
+const WORK_BUDGET_RE =
+  /\b(?:(?:work_?budget|visit_?budget|budget|visited|walk|path)|self\s*\.\s*(?:work_?budget|visit_?budget|budget|visited|walk|path))\s*\.\s*(?:charge|spend|consume)\s*\(|\b(?:work_?budget|visit_?budget|visits)\b[^;\n]{0,80}?(?:>=|>|checked_add|saturating_add|\+=)/i;
+function cycleFansOut(cycle, byName) {
+  return cycle.some((name) => {
+    const body = byName.get(name)?.body ?? '';
+    const calls = cycle.reduce((n, callee) => n + (body.match(new RegExp(callSitePattern(callee), 'g'))?.length ?? 0), 0);
+    return calls > 1 || extractLoopBodies(body).some((loop) => cycle.some((callee) => callSitePresent(loop, callee)));
+  });
 }
 
 /**
@@ -681,7 +613,7 @@ export function guardKindOf(text) {
  * the chase candidate exists for it.
  *
  * @param {string} text
- * @returns {Array<{ name: string, signal: 'recursion'|'chase', guard: 'visited'|'depth'|null, cycle: string[] }>}
+ * @returns {Array<{ name: string, signal: 'recursion'|'chase', guard: 'visited'|'depth'|null, cycle: string[], fansOut: boolean, hasWorkBudget: boolean }>}
  */
 export function findWalkCandidates(text) {
   const fns = extractFunctions(text);
@@ -709,14 +641,28 @@ export function findWalkCandidates(text) {
       // `visited: &mut OperandPath` / `depth: u32` parameter counts even when
       // the member that owns the comparison is elsewhere in the cycle.
       const scope = cycle.map((n) => scopeOf(byName.get(n))).join('\n');
-      out.push({ name: fn.name, signal: 'recursion', guard: guardKindOf(scope), cycle: [...cycle].sort() });
+      out.push({
+        name: fn.name,
+        signal: 'recursion',
+        guard: guardKindOf(scope),
+        cycle: [...cycle].sort(),
+        fansOut: cycleFansOut(cycle, byName),
+        hasWorkBudget: WORK_BUDGET_RE.test(scope),
+      });
     }
     for (const loopBody of extractLoopBodies(fn.body)) {
       if (!chaseLoopBodyMatches(loopBody)) continue;
       const existing = out.find((c) => c.name === fn.name && c.signal === 'chase');
       const guard = guardKindOf(loopBody);
       if (existing) existing.guard = existing.guard ?? guard;
-      else out.push({ name: fn.name, signal: 'chase', guard, cycle: [] });
+      else out.push({
+        name: fn.name,
+        signal: 'chase',
+        guard,
+        cycle: [],
+        fansOut: false,
+        hasWorkBudget: WORK_BUDGET_RE.test(loopBody),
+      });
     }
   }
   return out;

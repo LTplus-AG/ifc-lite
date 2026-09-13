@@ -452,7 +452,9 @@ impl<'a> EntityDecoder<'a> {
     pub fn get_raw_bytes(&mut self, entity_id: u32) -> Option<&'a [u8]> {
         self.build_index();
         let (start, end) = self.entity_index.as_ref()?.lookup(entity_id)?;
-        Some(&self.content[start..end])
+        // An installed index's spans are caller data never checked against
+        // these bytes (#4697); a span outside them is absent, not a panic.
+        self.content.get(start..end)
     }
 
     /// Fast extraction of first entity ref from raw bytes

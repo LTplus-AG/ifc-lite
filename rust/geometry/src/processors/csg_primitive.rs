@@ -161,6 +161,11 @@ impl CsgSolidProcessor {
     /// (`the_path_bound_counts_csg_frames_too_not_only_booleans` now pins it).
     /// Omitting it also made the `IfcCsgSolid -> IfcCsgSolid` rejection below
     /// load-bearing for stack safety instead of a spec check.
+    ///
+    /// The `bool` is the boolean tree root's "empty, loss already on record"
+    /// flag (`BooleanClippingProcessor::process_with_depth`), carried out so
+    /// the boolean that meshed this solid as an operand records one loss once
+    /// (#4691). A primitive root reports `false`.
     pub(crate) fn process_with_boolean_cycle_guard(
         &self,
         entity: &DecodedEntity,
@@ -169,7 +174,7 @@ impl CsgSolidProcessor {
         depth: u32,
         quality: TessellationQuality,
         visited: &mut OperandPath,
-    ) -> Result<Mesh> {
+    ) -> Result<(Mesh, bool)> {
         if !visited.insert(entity.id) {
             return Err(Error::geometry(format!(
                 "Cyclic boolean/CSG operand reference at #{}",
@@ -190,7 +195,7 @@ impl CsgSolidProcessor {
         depth: u32,
         quality: TessellationQuality,
         visited: &mut OperandPath,
-    ) -> Result<Mesh> {
+    ) -> Result<(Mesh, bool)> {
         let root_attr = entity.get(0).ok_or_else(|| {
             Error::geometry("IfcCsgSolid missing TreeRootExpression".to_string())
         })?;
@@ -221,8 +226,12 @@ impl CsgSolidProcessor {
                 self.failures.borrow_mut().extend(boolean.take_failures());
                 out
             }
-            IfcType::IfcBlock => BlockProcessor::new().process(&root, decoder, schema, quality),
-            IfcType::IfcSphere => SphereProcessor::new().process(&root, decoder, schema, quality),
+            IfcType::IfcBlock => {
+                BlockProcessor::new().process(&root, decoder, schema, quality).map(|m| (m, false))
+            }
+            IfcType::IfcSphere => {
+                SphereProcessor::new().process(&root, decoder, schema, quality).map(|m| (m, false))
+            }
             IfcType::IfcCsgSolid => Err(Error::geometry(
                 "IfcCsgSolid TreeRootExpression must be IfcBooleanResult or \
                  IfcCsgPrimitive3D, not another IfcCsgSolid (spec violation)"
@@ -248,6 +257,7 @@ impl GeometryProcessor for CsgSolidProcessor {
         // this is the path a file whose Body item IS the IfcCsgSolid takes).
         let mut visited = OperandPath::default();
         self.resolve_tree_root(entity, decoder, schema, 0, quality, &mut visited)
+            .map(|(mesh, _)| mesh)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

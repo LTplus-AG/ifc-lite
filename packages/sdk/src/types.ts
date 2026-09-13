@@ -9,14 +9,8 @@
  * External tools (ifc-scripts, ifc-flow) depend on these types.
  */
 
-import type {
-  GenerateSpacesAllOptions,
-  GenerateSpacesAllResult,
-  StoreyInfo,
-  ApplyStyleOptions,
-  ApplyStyleResult,
-  SurfaceStyleColor,
-} from '@ifc-lite/create';
+import type { StructuralBackendMethods } from './structural-types.js';
+import type { SpacesBackendMethods, StyleBackendMethods } from './backend-extension-types.js';
 
 // ============================================================================
 // Entity References
@@ -756,6 +750,21 @@ export interface ScheduleBackendMethods {
 }
 
 // ============================================================================
+// Structural analysis — IfcStructuralAnalysisModel, IfcStructuralMember /
+// IfcStructuralConnection / IfcStructuralActivity subtypes, load groups and
+// result groups.
+//
+// Shapes mirror `@ifc-lite/parser`'s `StructuralExtraction` struct, for the
+// same reason as the schedule types above: the SDK layer stays serializable
+// across the sandbox/transport boundary without pulling the parser into
+// consumer bundles.
+// ============================================================================
+
+/** Why one `Values` slot of a load configuration carries no nested load. */
+export * from './structural-types.js';
+export * from './backend-extension-types.js';
+
+// ============================================================================
 // Backend Interface (implemented by local store or remote proxy)
 // ============================================================================
 
@@ -768,45 +777,6 @@ export interface ScheduleBackendMethods {
  * BimHost (wire protocol) uses dispatchToBackend() to route string-based
  * SdkRequests to the typed namespace methods.
  */
-/**
- * Derive IfcSpace from a model's walls/slabs/roofs. Optional on the backend:
- * local backends with direct store access implement it; remote backends (whose
- * store lives server-side) leave it undefined.
- */
-export interface SpacesBackendMethods {
-  /** Every IfcBuildingStorey (id, name, elevation), low → high. */
-  listStoreys(): StoreyInfo[];
-  /**
-   * Derive IfcSpace across the selected storeys, writing them to the backend's
-   * mutation overlay. Persist with `bim.export.toStep()`.
-   */
-  generate(options?: GenerateSpacesAllOptions): GenerateSpacesAllResult;
-}
-
-/**
- * Colour products by writing presentation-style entities into the model, so the
- * colour is in the exported IFC rather than in the current view. Optional on
- * the backend for the same reason as {@link SpacesBackendMethods}: it needs
- * direct store access, which a remote backend does not have.
- *
- * Distinct from `ViewerBackendMethods.colorize`, which paints the view and is
- * gone on export.
- */
-export interface StyleBackendMethods {
-  /**
-   * Give every representation item behind each batch one `IfcSurfaceStyle`,
-   * writing to the backend's mutation overlay. Persist with `bim.export.ifc()`.
-   *
-   * Batched rather than one call per colour because the "at most one
-   * IfcStyledItem per item" rule has to hold across the whole pass, and because
-   * the index of already-styled geometry is the expensive part to build.
-   */
-  applyColors(
-    batches: Array<{ refs: EntityRef[]; color: SurfaceStyleColor; name?: string }>,
-    options?: ApplyStyleOptions,
-  ): ApplyStyleResult[];
-}
-
 export interface BimBackend {
   readonly model: ModelBackendMethods;
   readonly query: QueryBackendMethods;
@@ -820,6 +790,8 @@ export interface BimBackend {
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
+  /** Structural analysis reads, when supported by the backend. */
+  readonly structural?: StructuralBackendMethods;
   /** Space derivation — present only on local backends with store access. */
   readonly spaces?: SpacesBackendMethods;
   /** Persistent colouring — present only on local backends with store access. */

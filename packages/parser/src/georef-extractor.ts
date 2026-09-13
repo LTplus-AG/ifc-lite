@@ -108,16 +108,29 @@ export const MAP_CONVERSION_TYPE_NAMES: readonly string[] = [
   'IfcMapConversionScaled',
 ];
 
-/**
- * Extract georeferencing information from IFC entities
- */
-export function extractGeoreferencing(
+/** IFC4 entities, else the ePSet_MapConversion then IfcSite fallbacks (Rust's precedence). */
+export function extractGeoreferencing(entities: Map<number, IfcEntity>, entitiesByType: Map<string, number[]>): GeoreferenceInfo {
+  return withGeoreferenceFallbacks(extractIfc4Georeferencing(entities, entitiesByType), entities, entitiesByType);
+}
+
+/** Completes an {@link extractIfc4Georeferencing} result that claims nothing with the fallbacks. */
+export function withGeoreferenceFallbacks(
+  info: GeoreferenceInfo,
   entities: Map<number, IfcEntity>,
   entitiesByType: Map<string, number[]>
 ): GeoreferenceInfo {
-  const info: GeoreferenceInfo = {
-    hasGeoreference: false,
-  };
+  if (info.hasGeoreference) return info;
+  return extractEPSetMapConversion(entities, entitiesByType)
+    ?? extractLegacySiteGeoreference(entities, entitiesByType)
+    ?? info;
+}
+
+/**
+ * IfcMapConversion and IfcProjectedCRS only. `hasGeoreference: false` is the one
+ * rule for "the fallbacks run": a loader supplying fallback entities asks this (#4695).
+ */
+export function extractIfc4Georeferencing(entities: Map<number, IfcEntity>, entitiesByType: Map<string, number[]>): GeoreferenceInfo {
+  const info: GeoreferenceInfo = { hasGeoreference: false };
 
   // Extract IfcMapConversion — including IFC4X3's concrete subtype
   // IfcMapConversionScaled, which a type-keyed lookup for the supertype alone
@@ -163,22 +176,6 @@ export function extractGeoreferencing(
     info.source = 'mapConversion';
     info.transformMatrix = computeTransformMatrix(info.mapConversion);
   }
-
-  if (!info.hasGeoreference) {
-    // IFC2x3 ePSet_MapConversion fallback BEFORE the legacy site fallback —
-    // same precedence as the Rust extractor (ifc_lite_core::GeoRefExtractor),
-    // which previously found these models georeferenced while the browser
-    // reported none (alignment audit).
-    const epset = extractEPSetMapConversion(entities, entitiesByType);
-    if (epset) {
-      return epset;
-    }
-    const legacySite = extractLegacySiteGeoreference(entities, entitiesByType);
-    if (legacySite) {
-      return legacySite;
-    }
-  }
-
   return info;
 }
 

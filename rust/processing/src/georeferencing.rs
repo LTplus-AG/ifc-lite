@@ -179,9 +179,7 @@ pub fn extract_georeferencing_with_index(
         }
     }
     extract_georeferencing_from_candidates(
-        &mut EntityDecoder::with_arc_index(content, entity_index.clone()),
-        &entity_types,
-    )
+        &mut EntityDecoder::with_arc_index(content, entity_index.clone()), &entity_types)
 }
 
 /// Candidate classification shared by standalone extraction and the native
@@ -198,7 +196,8 @@ pub fn extract_georeferencing_with_index(
 /// `processor::quick_metadata::is_quick_spatial_type_ci` uses.
 pub(crate) fn georeferencing_candidate_type(type_name: &str) -> Option<IfcType> {
     // Scaled's first eight attributes have the base conversion layout.
-    if keyword_eq(type_name, "IFCMAPCONVERSION") || keyword_eq(type_name, "IFCMAPCONVERSIONSCALED")
+    if keyword_eq(type_name, "IFCMAPCONVERSION")
+        || keyword_eq(type_name, "IFCMAPCONVERSIONSCALED")
     {
         return Some(IfcType::IfcMapConversion);
     }

@@ -73,8 +73,8 @@ function getAxis(georef: ModelGeoref): {
   const o = conversion.xAxisOrdinate ?? 0;
   // Use the effective horizontal scale: viewer geometry is already in metres,
   // so applying IfcMapConversion.Scale raw would double-scale — see issue #595.
-  const mapUnitScale = resolveMapUnitToMetreScale(georef.projectedCRS.mapUnitScale, georef.lengthUnitScale ?? 1);
   const lengthUnitScale = georef.lengthUnitScale ?? 1;
+  const mapUnitScale = resolveMapUnitToMetreScale(georef.projectedCRS.mapUnitScale, lengthUnitScale);
   const { x: scaleX, y: scaleY, z: scaleZ } = getEffectiveAxisScales(conversion, mapUnitScale, lengthUnitScale);
   const denom = Math.max(a * a + o * o, 1e-12);
   return { a, o, scaleX, scaleY, scaleZ, denom };

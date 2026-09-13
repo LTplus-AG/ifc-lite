@@ -294,9 +294,11 @@ export async function createCesiumBridge(
     height: origin.height,
   };
   const mapScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
-  const { height: oHeight, longitude: originLon, latitude: originLat } = origin;
-  // Capture narrowed scalars because TypeScript does not retain object narrowing in callbacks.
-  const { scaleX: originScaleX, scaleY: originScaleY, scaleZ: originScaleZ } = origin;
+  // Scalars, because TypeScript does not keep `origin`'s narrowing inside the callbacks.
+  const {
+    height: oHeight, longitude: originLon, latitude: originLat,
+    scaleX: originScaleX, scaleY: originScaleY, scaleZ: originScaleZ,
+  } = origin;
 
   // Build the viewer-to-ENU 3x3 rotation matrix (converts a delta vector from
   // viewer space to ENU). Viewer Y-up maps to IFC Z-up ((vx,vy,vz) -> (vx,-vz,
@@ -304,6 +306,7 @@ export async function createCesiumBridge(
   // R(gamma) into true-north ENU; `viewerToEnuRotation` composes all three
   // (up = vy). The model-placement matrix reuses the very same `rot` via
   // `bridge.viewerRotation` so the two never drift. Viewer-space deltas are
+  // already metres, so no lengthUnitScale; the axis scales carry Scale x Factor.
   const rot = viewerToEnuRotation(originScaleX, absc, ordi, origin.gamma, originScaleY);
   const m00 = rot.eastFromVx;      // east  from vx
   const m01 = 0;                   // east  from vy
@@ -312,7 +315,7 @@ export async function createCesiumBridge(
   const m11 = 0;                   // north from vy
   const m12 = rot.northFromVz;     // north from vz
   const m20 = 0;                   // up    from vx
-  const m21 = originScaleZ;
+  const m21 = originScaleZ;         // up    from vy (Scale x FactorZ)
   const m22 = 0;                   // up    from vz
 
   // ── Cache for ECEF objects ──

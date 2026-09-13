@@ -118,14 +118,28 @@ function normalizeAxis(rawA: number, rawB: number): { a: number; b: number } | n
   return { a: rawA / len, b: rawB / len };
 }
 
+type AxisScales = { x: number; y: number; z: number };
+
+/** A ~0 or non-finite axis scale collapses or poisons that axis. */
+function usableScales(s: AxisScales): boolean {
+  return [s.x, s.y, s.z].every((value) => Number.isFinite(value) && Math.abs(value) >= 1e-12);
+}
+
+/** Scale x Factor per axis (an absent or zero factor reads as 1), or null when unusable. */
+function axisScales(params: MapConversionParams): AxisScales | null {
+  const scale = params.scale ?? 1;
+  const s = { x: scale * (params.factorX || 1), y: scale * (params.factorY || 1), z: scale * (params.factorZ || 1) };
+  return usableScales(s) ? s : null;
+}
+
 /**
  * Map local engineering coordinates → map (projected CRS) coordinates.
  * Mirrors `rust/core/src/georef.rs` `GeoReference::local_to_map`:
- *   E = Eastings + Scale*(a*x - b*y)
- *   N = Northings + Scale*(b*x + a*y)
- *   H = OrthogonalHeight + Scale*z
- * (a, b) = normalized (XAxisAbscissa, XAxisOrdinate); Scale applies to
- * all three axes uniformly per the IFC4x3 spec.
+ *   E = Eastings + a*sx*x - b*sy*y
+ *   N = Northings + b*sx*x + a*sy*y
+ *   H = OrthogonalHeight + sz*z
+ * (a, b) = normalized (XAxisAbscissa, XAxisOrdinate); (sx, sy, sz) =
+ * Scale x FactorX/Y/Z, applied before the rotation.
  */
 export function applyMapConversion(
   params: MapConversionParams,
@@ -135,15 +149,14 @@ export function applyMapConversion(
 ): { e: number; n: number; h: number } | null {
   const axis = normalizeAxis(params.xAxisAbscissa ?? 1, params.xAxisOrdinate ?? 0);
   if (!axis) return null;
-  const scaleX = (params.scale ?? 1) * (params.factorX || 1);
-  const scaleY = (params.scale ?? 1) * (params.factorY || 1);
-  const scaleZ = (params.scale ?? 1) * (params.factorZ || 1);
   // Reject a ~0 Scale the same way the inverse does. Without this the
   // forward map stays "successful" while collapsing every local point onto
   // (Eastings, Northings, OrthogonalHeight) — a whole cloud silently
   // stacked on one spot reads as a placement bug, where a null reads as
   // the malformed IfcMapConversion it actually is.
-  if (![scaleX, scaleY, scaleZ].every((value) => Number.isFinite(value) && Math.abs(value) >= 1e-12)) return null;
+  const scales = axisScales(params);
+  if (!scales) return null;
+  const { x: scaleX, y: scaleY, z: scaleZ } = scales;
   const { a, b } = axis;
   return {
     e: params.eastings + a * scaleX * x - b * scaleY * y,
@@ -171,10 +184,9 @@ export function invertMapConversion(
 ): { x: number; y: number; z: number } | null {
   const axis = normalizeAxis(params.xAxisAbscissa ?? 1, params.xAxisOrdinate ?? 0);
   if (!axis) return null;
-  const scaleX = (params.scale ?? 1) * (params.factorX || 1);
-  const scaleY = (params.scale ?? 1) * (params.factorY || 1);
-  const scaleZ = (params.scale ?? 1) * (params.factorZ || 1);
-  if (![scaleX, scaleY, scaleZ].every((value) => Number.isFinite(value) && Math.abs(value) >= 1e-12)) return null;
+  const scales = axisScales(params);
+  if (!scales) return null;
+  const { x: scaleX, y: scaleY, z: scaleZ } = scales;
   const { a, b } = axis;
   const dE = e - params.eastings;
   const dN = n - params.northings;
@@ -272,8 +284,9 @@ export function computePointCloudAlignment(
     mapUnitScale,
     georef.coordinateInfo,
   );
-  const { x: scaleX, y: scaleY, z: scaleZ } = getEffectiveAxisScales(conv, mapUnitScale, lengthUnitScale);
-  if (![scaleX, scaleY, scaleZ].every((value) => Number.isFinite(value) && Math.abs(value) >= 1e-12)) return null;
+  const effectiveScales = getEffectiveAxisScales(conv, mapUnitScale, lengthUnitScale);
+  if (!usableScales(effectiveScales)) return null;
+  const { x: scaleX, y: scaleY, z: scaleZ } = effectiveScales;
 
   const rawA = conv.xAxisAbscissa ?? 1;
   const rawB = conv.xAxisOrdinate ?? 0;

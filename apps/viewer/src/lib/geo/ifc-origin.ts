@@ -28,7 +28,7 @@ import proj4 from 'proj4';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { resolveProjection } from './reproject';
-import { getEffectiveAxisScale, resolveMapUnitToMetreScale } from './geo-scale';
+import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 import { effectiveMapConversionForGeometry } from './map-absolute';
 
 export interface IfcOriginPlacement {
@@ -145,9 +145,9 @@ export async function computeIfcOriginViewerPosition(
   const hAnchor = anchorConv.orthogonalHeight * anchorMapUnitScale;
   const anchorAbsc = anchorConv.xAxisAbscissa ?? 1;
   const anchorOrd = anchorConv.xAxisOrdinate ?? 0;
-  const anchorScaleX = getEffectiveAxisScale(anchorConv.scale, anchorConv.factorX, anchorMapUnitScale, anchorLengthScale);
-  const anchorScaleY = getEffectiveAxisScale(anchorConv.scale, anchorConv.factorY, anchorMapUnitScale, anchorLengthScale);
-  const anchorScaleZ = getEffectiveAxisScale(anchorConv.scale, anchorConv.factorZ, anchorMapUnitScale, anchorLengthScale);
+  const { x: anchorScaleX, y: anchorScaleY, z: anchorScaleZ } = getEffectiveAxisScales(
+    anchorConv, anchorMapUnitScale, anchorLengthScale,
+  );
   const axisDenom = Math.max(anchorAbsc * anchorAbsc + anchorOrd * anchorOrd, 1e-12);
   if ([anchorScaleX, anchorScaleY, anchorScaleZ].some((value) => Math.abs(value) < 1e-12)) return null;
   const dE = eA - eAnchor;

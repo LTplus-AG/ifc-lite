@@ -8,7 +8,7 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { findClampAnchorY } from './clamp-anchor';
 import { computeModelCenterInIfcMeters } from './reproject';
 import { effectiveMapConversionForGeometry } from './map-absolute';
-import { getEffectiveAxisScale, resolveMapUnitToMetreScale } from './geo-scale';
+import { getEffectiveAxisScale, getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 
 export function getMapUnitScale(
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
@@ -213,8 +213,7 @@ export function viewerDeltaToProjectedDelta(
   lengthUnitScale: number,
 ): { eastings: number; northings: number } {
   const mapScale = getMapUnitScale(projectedCRS, lengthUnitScale);
-  const scaleX = getEffectiveAxisScale(mapConversion.scale, mapConversion.factorX, mapScale, lengthUnitScale);
-  const scaleY = getEffectiveAxisScale(mapConversion.scale, mapConversion.factorY, mapScale, lengthUnitScale);
+  const { x: scaleX, y: scaleY } = getEffectiveAxisScales(mapConversion, mapScale, lengthUnitScale);
   const abscissa = mapConversion.xAxisAbscissa ?? 1;
   const ordinate = mapConversion.xAxisOrdinate ?? 0;
   const eastMeters = abscissa * scaleX * deltaX + ordinate * scaleY * deltaZ;
@@ -285,8 +284,7 @@ export function projectedDeltaToViewerDelta(
   lengthUnitScale: number,
 ): { x: number; z: number } {
   const mapScale = getMapUnitScale(projectedCRS, lengthUnitScale);
-  const scaleX = getEffectiveAxisScale(mapConversion.scale, mapConversion.factorX, mapScale, lengthUnitScale);
-  const scaleY = getEffectiveAxisScale(mapConversion.scale, mapConversion.factorY, mapScale, lengthUnitScale);
+  const { x: scaleX, y: scaleY } = getEffectiveAxisScales(mapConversion, mapScale, lengthUnitScale);
   const abscissa = mapConversion.xAxisAbscissa ?? 1;
   const ordinate = mapConversion.xAxisOrdinate ?? 0;
   const eastMeters = mapUnitsToMeters(eastingsDelta, projectedCRS, lengthUnitScale);

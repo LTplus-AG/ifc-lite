@@ -91,7 +91,7 @@ import type { Point2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { dxfWorldShift } from './dxfUnderlayMath';
-import { getEffectiveAxisScale, resolveMapUnitToMetreScale } from '@/lib/geo/geo-scale';
+import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from '@/lib/geo/geo-scale';
 import { effectiveMapConversionForGeometry } from '@/lib/geo/map-absolute';
 import {
   selectAnchorGeoref,
@@ -218,13 +218,12 @@ function resolveGeorefLinearParams(georeference: DxfExportGeoreference): {
     georeference.coordinateInfo,
   );
   // Guard the pathological IfcMapConversion.Scale = 0 (or negative/NaN):
-  // getEffectiveHorizontalScale passes an explicit 0 through, which would
+  // getEffectiveAxisScales passes an explicit 0 through, which would
   // collapse every exported point onto the eastings/northings origin (or,
   // inverted, make every map point resolve to the same world point).
   // Falling back to unscaled (1) keeps the geometry intact, which is
   // strictly less wrong than a single-point result.
-  const rawScaleX = getEffectiveAxisScale(mapConversion.scale, mapConversion.factorX, mapUnitScale, lengthUnitScale);
-  const rawScaleY = getEffectiveAxisScale(mapConversion.scale, mapConversion.factorY, mapUnitScale, lengthUnitScale);
+  const { x: rawScaleX, y: rawScaleY } = getEffectiveAxisScales(mapConversion, mapUnitScale, lengthUnitScale);
   const scaleX = Number.isFinite(rawScaleX) && rawScaleX > 0 ? rawScaleX : 1;
   const scaleY = Number.isFinite(rawScaleY) && rawScaleY > 0 ? rawScaleY : 1;
   // IfcMapConversion.XAxisAbscissa/XAxisOrdinate form a direction vector, not

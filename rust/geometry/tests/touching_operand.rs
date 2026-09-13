@@ -232,11 +232,12 @@ fn a_touching_cutter_removes_no_volume() {
     );
 }
 
-/// The cut, or the host a rejection leaves in place. A touching cutter that
-/// never reaches the host solid is `Unchanged` (#4692).
+/// The mesh `subtract_mesh` produced, or the host a rejection leaves in place.
+/// A touching cutter that never reaches the host solid is `Retessellated`
+/// (#4692).
 fn cut_or_host(outcome: GroupCut, host: &Mesh) -> Mesh {
     match outcome {
-        GroupCut::Cut(m) => m,
+        GroupCut::Cut(m) | GroupCut::Retessellated(m) => m,
         GroupCut::Rejected(_) => host.clone(),
     }
 }

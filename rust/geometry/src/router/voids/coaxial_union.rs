@@ -54,9 +54,10 @@ use super::geom::{
     mesh_is_closed_exact, mesh_signed_volume, mesh_signed_volume_about, opening_mesh_thinnest_axis_dir,
     volume_reference,
 };
+use super::sweep::mesh_to_keep;
 use super::{OpeningType, NORMALIZE_EPSILON};
 use crate::bool2d::union_contours_to_shapes;
-use crate::csg::{ClippingProcessor, GroupCut};
+use crate::csg::ClippingProcessor;
 use crate::extrusion::{apply_transform, extrude_profile_watertight};
 use crate::mesh::Mesh;
 use crate::router::GeometryRouter;
@@ -476,9 +477,9 @@ impl GeometryRouter {
             }
             clipper.subtract_mesh(result, &union)
         };
-        // A rejection (any `GroupReject`) is `false`: the caller falls back to
-        // the 3D union, then defers.
-        let GroupCut::Cut(cut) = outcome else {
+        // Nothing to keep is `false`: the caller falls back to the 3D union,
+        // then defers.
+        let Some(cut) = mesh_to_keep(outcome, result) else {
             return false;
         };
         let vol_before = mesh_signed_volume(result);
@@ -500,8 +501,7 @@ fn omy_span(lo: f32, hi: f32) -> f64 {
 /// upstream: each cutter is `mesh_is_closed_exact`, and the kernel's conformity
 /// gate rejects a non-conforming arrangement). A blanket `param_cut_watertight`
 /// scan here is far too slow on the hot path. Whether the cut CHANGED the host
-/// is the caller's: `subtract_mesh` and `subtract_mesh_many` return
-/// `GroupCut::Cut` only when the kernel cut it.
+/// is the caller's: [`mesh_to_keep`] reads it from the subtract's outcome.
 ///
 /// `max_removed` is an OVER-CUT guard: the cut is rejected if it removed more host
 /// volume than the caller's provable upper bound (Σ contributing-cutter footprint

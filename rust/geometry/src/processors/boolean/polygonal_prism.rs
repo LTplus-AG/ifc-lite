@@ -390,7 +390,7 @@ impl BooleanClippingProcessor {
         cutter: &Mesh,
     ) -> Option<Mesh> {
         let m = match clipper.subtract_mesh(base, cutter) {
-            GroupCut::Cut(m) => m,
+            GroupCut::Cut(m) | GroupCut::Retessellated(m) => m,
             GroupCut::Rejected(GroupReject::GateRejected) => return None,
             GroupCut::Rejected(_) => base.clone(),
         };

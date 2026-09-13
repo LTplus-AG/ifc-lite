@@ -32,7 +32,7 @@ use malformed_opening_repair::{
     cutter_is_closed_manifold, opening_obb_if_malformed, recut_malformed_openings,
     translate_cutter_mesh, world_host_bounds, OpeningBox,
 };
-use sweep::drop_faces_outside_host;
+use sweep::{drop_faces_outside_host, mesh_to_keep};
 mod sweep;
 
 /// Epsilon for normalizing direction vectors (guards against zero-length).
@@ -1419,11 +1419,11 @@ impl GeometryRouter {
                         depth_dir,
                     );
                     let cutter = &extended_opening;
-                    let outcome = clipper.subtract_mesh(&result, cutter);
+                    let kept = mesh_to_keep(clipper.subtract_mesh(&result, cutter), &result);
                     // The host is still un-cut: the kernel found no real
                     // intersection, or bailed on a grazing/coplanar cutter.
-                    let csg_unchanged = matches!(outcome, GroupCut::Rejected(_));
-                    if let GroupCut::Cut(csg_result) = outcome {
+                    let csg_unchanged = kept.is_none();
+                    if let Some(csg_result) = kept {
                         let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
                             .max(MIN_VALID_TRIANGLES);
                         if !csg_result.is_empty() && csg_result.triangle_count() >= min_tris {

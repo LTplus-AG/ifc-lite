@@ -868,7 +868,7 @@ impl BooleanClippingProcessor {
             let outcome = clipper.subtract_mesh(&mesh, &second_mesh);
             self.absorb_failures(clipper.take_failures());
             return Ok(match outcome {
-                GroupCut::Cut(cut) => (cut, false),
+                GroupCut::Cut(cut) | GroupCut::Retessellated(cut) => (cut, false),
                 // The host un-cut; any failure is on record above.
                 GroupCut::Rejected(_) => (mesh, false),
             });

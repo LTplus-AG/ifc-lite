@@ -285,13 +285,17 @@ impl ClippingProcessor {
     /// of one. It used to return the host un-cut on every bail, the shape of
     /// a real cut, and callers guessed which one happened from the triangle
     /// count and a 0.1 % volume test that read a small real cut as no cut
-    /// (#4692). A rejection leaves the host untouched.
+    /// (#4692). A rejection leaves the host untouched. A cutter the kernel
+    /// classifies as not reaching the host solid still produces the
+    /// consolidated arrangement output, as it always did; it comes back as
+    /// [`GroupCut::Retessellated`], not as a cut.
     ///
     /// Unlike the group path, the single cutter records a [`BoolFailure`]
     /// (drainable via [`Self::take_failures`]) for an empty cutter
     /// (`EmptyOperand`), a missed bounds overlap (`NoBoundsOverlap`) and a
     /// budget trip (`OperandTooLarge`), as well as for `InvalidOutput` and
-    /// `GateRejected`. `EmptyHost` and `Unchanged` record nothing. The accept
+    /// `GateRejected`. `EmptyHost` records nothing. `Cut` and `Retessellated`
+    /// pass the same validation and gates. The accept
     /// path also runs `record_topology_tear` (#3440 step 1): diagnostic only,
     /// never gates, in every build. `topology_gate_reject` (#3440 step 2) runs
     /// the same closure predicate but, ONLY when the crate is built with the
@@ -342,9 +346,6 @@ impl ClippingProcessor {
             );
             return GroupCut::Rejected(GroupReject::BudgetTripped);
         }
-        if !changed {
-            return GroupCut::Rejected(GroupReject::Unchanged);
-        }
         let result = Self::consolidate_coplanar(raw);
         if !result.is_empty() && !self.validate_mesh(&result) {
             self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
@@ -354,7 +355,11 @@ impl ClippingProcessor {
             return GroupCut::Rejected(GroupReject::GateRejected);
         }
         self.record_topology_tear(BoolOp::Difference, &result);
-        GroupCut::Cut(result)
+        if changed {
+            GroupCut::Cut(result)
+        } else {
+            GroupCut::Retessellated(result)
+        }
     }
 
     /// Intersect two meshes using CSG boolean operations on the pure-Rust

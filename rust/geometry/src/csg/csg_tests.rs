@@ -46,13 +46,16 @@ fn aabb_to_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
 fn group_cut(outcome: GroupCut) -> Mesh {
     match outcome {
         GroupCut::Cut(m) => m,
+        GroupCut::Retessellated(m) => panic!("expected a cut, got a {}-triangle re-tessellation", m.triangle_count()),
         GroupCut::Rejected(why) => panic!("group rejected: {why:?}"),
     }
 }
 
 fn group_reject(outcome: GroupCut) -> GroupReject {
     match outcome {
-        GroupCut::Cut(m) => panic!("expected a rejection, got a {}-triangle cut", m.triangle_count()),
+        GroupCut::Cut(m) | GroupCut::Retessellated(m) => {
+            panic!("expected a rejection, got a {}-triangle mesh", m.triangle_count())
+        }
         GroupCut::Rejected(why) => why,
     }
 }
@@ -104,10 +107,11 @@ fn subtract_mesh_many_names_each_rejection_instead_of_returning_the_host() {
 
 /// The single-cutter twin (#4692). `subtract_mesh` handed the host back
 /// un-cut on every bail, and on a miss it returned the kernel's re-tessellated
-/// host, so the void router guessed the outcome from the triangle count and
-/// a 0.1 % volume test. It now names each outcome; the records it made are
-/// unchanged. Mutations that fail this: return `GroupCut::Cut(host.clone())`
-/// from any bail; drop the `changed` check (the tetra case reads `Cut`).
+/// host in the same shape as a cut, so the void router guessed the outcome
+/// from the triangle count and a 0.1 % volume test. It now names each outcome;
+/// the records it made are unchanged. Mutations that fail this: return
+/// `GroupCut::Cut(host.clone())` from any bail; ignore the `changed` bit (the
+/// tetra case reads `Cut`).
 #[test]
 fn subtract_mesh_names_each_rejection_instead_of_returning_the_host_4692() {
     let host = aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
@@ -119,7 +123,10 @@ fn subtract_mesh_names_each_rejection_instead_of_returning_the_host_4692() {
     assert_eq!(group_reject(p.subtract_mesh(&Mesh::new(), &through)), GroupReject::EmptyHost);
     assert_eq!(group_reject(p.subtract_mesh(&host, &Mesh::new())), GroupReject::NoOverlap);
     assert_eq!(group_reject(p.subtract_mesh(&host, &far)), GroupReject::NoOverlap);
-    assert_eq!(group_reject(p.subtract_mesh(&host, &miss)), GroupReject::Unchanged);
+    let GroupCut::Retessellated(miss_result) = p.subtract_mesh(&host, &miss) else {
+        panic!("a cutter that never reaches the solid is a re-tessellation, not a cut");
+    };
+    assert!(!miss_result.is_empty(), "the re-tessellated host is the host, not nothing");
     let cut = group_cut(p.subtract_mesh(&host, &through));
     assert!(cut.triangle_count() > host.triangle_count(), "through-cutter must carve the host");
     assert_eq!(

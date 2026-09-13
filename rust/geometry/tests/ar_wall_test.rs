@@ -500,7 +500,7 @@ fn test_csg_subtraction_preserves_normals() {
     let result = clipper.subtract_mesh(&wall_mesh, &opening_mesh);
 
     match result {
-        GroupCut::Cut(result_mesh) => {
+        GroupCut::Cut(result_mesh) | GroupCut::Retessellated(result_mesh) => {
             println!("CSG result:");
             println!(
                 "  positions: {}, normals: {}",

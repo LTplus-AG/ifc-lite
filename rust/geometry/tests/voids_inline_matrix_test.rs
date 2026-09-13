@@ -119,6 +119,7 @@ fn check_slab_direct_subtract_merge_bounds(ctx: &InlineCtx) {
     let clipper = ClippingProcessor::new();
     let result_mesh = match clipper.subtract_mesh(&slab_mesh, &opening_mesh) {
         GroupCut::Cut(m) => m,
+        GroupCut::Retessellated(_) => panic!("CSG subtraction did not reach the slab"),
         GroupCut::Rejected(why) => panic!("CSG subtraction rejected: {why:?}"),
     };
 

@@ -23,6 +23,13 @@ pub enum GroupCut {
     /// intermediate passed validation and the accept gates. Empty when the
     /// cutters engulf the host.
     Cut(Mesh),
+    /// Single cutter only: the kernel classified the cutter as not reaching
+    /// the host solid, and this is the host re-tessellated along the
+    /// arrangement, consolidated, validated and gated like a `Cut`. Same solid
+    /// as the host, different triangles. Whether to keep it is the caller's
+    /// choice; the void router has kept it when it changed the triangle count,
+    /// and the watertightness census depends on that (#4692).
+    Retessellated(Mesh),
     /// The host is untouched; the caller cuts the members one by one.
     Rejected(GroupReject),
 }
@@ -44,7 +51,8 @@ pub enum GroupReject {
     /// does not gate on conformity.
     Nonconforming,
     /// Every chunk's arrangement conformed, but no cutter reaches the host
-    /// solid: the kernel kept every host face and no cutter face.
+    /// solid: the kernel kept every host face and no cutter face. Group only:
+    /// the single cutter returns [`GroupCut::Retessellated`] instead.
     Unchanged,
     /// A chunk's intermediate failed [`ClippingProcessor::validate_mesh`]
     /// (recorded as `KernelOutputInvalid`).

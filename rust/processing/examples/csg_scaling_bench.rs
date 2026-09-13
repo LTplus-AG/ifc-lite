@@ -46,10 +46,10 @@ fn replay(job: &CapturedCsgJob) -> usize {
     }
 }
 
-/// Index count of a cut; 0 for a rejection.
+/// Index count of the produced mesh; 0 for a rejection.
 fn cut_index_count(outcome: GroupCut) -> usize {
     match outcome {
-        GroupCut::Cut(m) => m.indices.len(),
+        GroupCut::Cut(m) | GroupCut::Retessellated(m) => m.indices.len(),
         GroupCut::Rejected(_) => 0,
     }
 }

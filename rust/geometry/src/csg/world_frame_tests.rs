@@ -36,6 +36,7 @@ fn recess_volume(case: WorldFrameCase, depth: f64) -> f64 {
     let processor = ClippingProcessor::new();
     match processor.subtract_mesh(&host, &cutter) {
         GroupCut::Cut(result) => mesh_volume(&result),
+        GroupCut::Retessellated(_) => panic!("the recess must cut, got a re-tessellation"),
         GroupCut::Rejected(why) => panic!("the recess must cut, got {why:?}"),
     }
 }

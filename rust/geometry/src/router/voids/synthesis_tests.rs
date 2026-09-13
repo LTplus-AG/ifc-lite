@@ -213,7 +213,7 @@ fn flush_cap_is_not_pushed_into_a_pre_cut_jamb() {
     let before = mesh_signed_volume(&host).abs();
     // A rejection leaves the host as it is, which removes nothing.
     let removed = match clipper.subtract_mesh(&host, &extended) {
-        GroupCut::Cut(cut) => before - mesh_signed_volume(&cut).abs(),
+        GroupCut::Cut(cut) | GroupCut::Retessellated(cut) => before - mesh_signed_volume(&cut).abs(),
         GroupCut::Rejected(_) => 0.0,
     };
 

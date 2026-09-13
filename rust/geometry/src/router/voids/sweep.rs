@@ -2,11 +2,37 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Post-cut hygiene for void subtraction (#1788): the stray-shard sweep
-//! against the original (pre-cut) host.
+//! Post-cut hygiene for void subtraction (#1788): which subtract result the
+//! host continues as, and the stray-shard sweep against the original (pre-cut)
+//! host.
 
 use super::geom::{mesh_is_closed_exact, mesh_point, point_inside_mesh};
+use crate::csg::GroupCut;
 use crate::{Mesh, Point3};
+
+/// The mesh the host continues as after a subtract, or `None` when it stays as
+/// it is and the caller's fallbacks decide.
+///
+/// Whether a cut happened comes from the kernel (#4692): a `Cut` is kept
+/// however little it removed. That used to be guessed from the triangle count
+/// and a 0.1 % volume change, which read a real same-count cut under 0.1 % of
+/// the host as no cut.
+///
+/// A `Retessellated` host (the cutter never reached the solid) is kept only
+/// when the arrangement changed its triangle count. That is not a verdict on
+/// the cut; it keeps the tessellation the router has always continued with.
+/// The old guess took exactly these re-tessellations as "changed", which also
+/// skipped the #635 fallback for them. The watertightness census depends on
+/// it: later cuts run on the consolidated host, and a miss sent to the
+/// fallback can box-cut. Changing either is a census decision, not part of
+/// telling a cut from a miss.
+pub(super) fn mesh_to_keep(outcome: GroupCut, host: &Mesh) -> Option<Mesh> {
+    match outcome {
+        GroupCut::Cut(cut) => Some(cut),
+        GroupCut::Retessellated(m) if m.triangle_count() != host.triangle_count() => Some(m),
+        GroupCut::Retessellated(_) | GroupCut::Rejected(_) => None,
+    }
+}
 
 /// Cap on `result_triangles x host_triangles` for the shard sweep. Every swept
 /// face costs up to five parity/distance queries, each a linear scan of the

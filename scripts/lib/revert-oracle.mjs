@@ -301,7 +301,6 @@ export function parseRunnerOutput(run) {
     return { kind: LOAD_FAILURE, passed: parsed.passed, failed: parsed.failed, total: parsed.total, evidence };
   }
 
-
   const processGap = processResultGap(parsed, run);
   if (processGap) return processGap;
 
@@ -398,6 +397,7 @@ export const OBSERVED = 'OBSERVED';
 export const UNOBSERVED = 'UNOBSERVED';
 export const INCONCLUSIVE = 'INCONCLUSIVE';
 export const BASELINE_BROKEN = 'BASELINE-BROKEN';
+export const REVERT_BROKE_BUILD = 'REVERT-BROKE-BUILD';
 
 /**
  * @param {{baseline: object, reverted: object}} args results from parseRunnerOutput

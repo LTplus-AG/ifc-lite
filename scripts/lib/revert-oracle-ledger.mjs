@@ -7,13 +7,12 @@ import {
   BASELINE_BROKEN,
   LOAD_FAILURE,
   PASS,
+  REVERT_BROKE_BUILD,
   SURGICAL_ADVICE,
   OBSERVED,
   UNOBSERVED,
   INCONCLUSIVE,
 } from './revert-oracle.mjs';
-
-export const REVERT_BROKE_BUILD = 'REVERT-BROKE-BUILD';
 
 const completePass = (run) => run?.kind === PASS && run.attributed === true
   && run.exitCode === 0 && run.signal === null && Number.isInteger(run.total) && run.total > 0;

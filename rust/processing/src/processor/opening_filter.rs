@@ -4,7 +4,7 @@
 
 use super::{get_refs_from_list, normalize_optional_string, EntityJob, OpeningFilterMode};
 use crate::style::GeometryStyleInfo;
-use ifc_lite_core::{EntityDecoder, IfcType};
+use ifc_lite_core::{EntityDecoder, IfcType, MAX_MAPPED_ITEM_DEPTH};
 use rustc_hash::FxHashMap;
 use std::collections::HashSet;
 
@@ -18,6 +18,7 @@ pub(super) fn apply_opening_filter(
     void_index: &FxHashMap<u32, Vec<u32>>,
     filling_by_opening: &FxHashMap<u32, u32>,
     geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
+    element_material_colors: &FxHashMap<u32, Vec<[f32; 4]>>,
     decoder: &mut EntityDecoder,
     mode: OpeningFilterMode,
 ) -> (HashSet<u32>, FxHashMap<u32, Vec<u32>>) {
@@ -50,10 +51,10 @@ pub(super) fn apply_opening_filter(
     }
 
     // IgnoreOpaque: suppress only windows/doors that have no transparent sub-parts.
-    // Mesh suppression uses element color + style traversal (is_opaque_opening).
+    // Mesh suppression uses the colours each opening will render with (is_opaque_opening).
     // Void suppression uses IfcRelFillsElement data when available.
     for (&id, job) in &filling_jobs {
-        if is_opaque_opening(job, geometry_style_index, decoder) {
+        if is_opaque_opening(job, geometry_style_index, element_material_colors, decoder) {
             skipped_entity_ids.insert(id);
         }
     }
@@ -95,11 +96,15 @@ pub(super) fn apply_opening_filter(
 ///
 /// Any of the following makes it NOT opaque (returns `false`):
 /// - Entity name contains "glas" (case-insensitive)
-/// - Resolved element color has any transparency (alpha < 1.0)
-/// - Any sub-geometry style has alpha < 1.0 or a material/style name containing "glas"
+/// - Any associated material colour (#407 chain) has alpha < 1.0
+/// - Any item style, through nested mapped items, has alpha < 1.0 or a name
+///   containing "glas"
+/// - No item is styled, there is no material colour, and the type default is
+///   transparent (the colour the element then renders with)
 fn is_opaque_opening(
     job: &EntityJob,
     styles: &FxHashMap<u32, GeometryStyleInfo>,
+    material_colors: &FxHashMap<u32, Vec<[f32; 4]>>,
     decoder: &mut EntityDecoder,
 ) -> bool {
     let Ok(entity) = decoder.decode_at(job.start, job.end) else {
@@ -115,67 +120,96 @@ fn is_opaque_opening(
         return false;
     }
 
-    // 2. Resolved element color has any transparency → glazed.
-    //    Covers IfcWindow entities using their default colour ([0.6, 0.8, 1.0, 0.4])
-    //    and any entity whose explicit surface style resolved to a transparent colour.
-    if job.element_color[3] < 1.0 {
+    // 2. The filter runs before the metadata phase resolves `job.element_color`
+    //    (it still holds the type default), so judge the colours that phase will
+    //    use. A transparent material colours any item without its own style as
+    //    a glazed sub-mesh (#913); this errs toward keeping an opening whose
+    //    every item is styled opaque.
+    let materials = material_colors.get(&job.id).map_or(&[][..], Vec::as_slice);
+    if materials.iter().any(|c| c[3] < 1.0) {
         return false;
     }
+    let unstyled_is_glazed = materials.is_empty() && job.element_color[3] < 1.0;
 
-    let Some(product_shape_id) = entity.get_ref(6) else {
-        return true; // No shape info — treat as opaque
+    // 3. Walk every representation item, through nested mapped items: a glass
+    //    style anywhere → glazed; no style anywhere → the rule above decides.
+    let Some(repr_ids) = entity
+        .get_ref(6)
+        .and_then(|shape_id| decoder.decode_by_id(shape_id).ok())
+        .and_then(|shape| get_refs_from_list(&shape, 2))
+    else {
+        return !unstyled_is_glazed;
     };
-
-    let Ok(product_shape) = decoder.decode_by_id(product_shape_id) else {
-        return true;
-    };
-
-    let Some(repr_ids) = get_refs_from_list(&product_shape, 2) else {
-        return true;
-    };
-
+    let mut pending: Vec<(u32, u32)> = Vec::new();
     for repr_id in repr_ids {
-        let Ok(repr) = decoder.decode_by_id(repr_id) else {
-            continue;
-        };
-        let Some(item_ids) = get_refs_from_list(&repr, 3) else {
-            continue;
-        };
-        for item_id in item_ids {
-            // Direct style on item
-            if let Some(style) = styles.get(&item_id) {
-                if has_glass_style(style) {
-                    return false;
-                }
-            }
-
-            // Mapped items: IfcMappedItem → IfcRepresentationMap → IfcRepresentation → items
-            if let Ok(item) = decoder.decode_by_id(item_id) {
-                if item.ifc_type == IfcType::IfcMappedItem {
-                    if let Some(source_id) = item.get_ref(0) {
-                        if let Ok(source) = decoder.decode_by_id(source_id) {
-                            if let Some(mapped_repr_id) = source.get_ref(1) {
-                                if let Ok(mapped_repr) = decoder.decode_by_id(mapped_repr_id) {
-                                    if let Some(mapped_items) = get_refs_from_list(&mapped_repr, 3)
-                                    {
-                                        for mapped_item_id in mapped_items {
-                                            if let Some(style) = styles.get(&mapped_item_id) {
-                                                if has_glass_style(style) {
-                                                    return false;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        if let Some(items) = decoder
+            .decode_by_id(repr_id)
+            .ok()
+            .and_then(|repr| get_refs_from_list(&repr, 3))
+        {
+            pending.extend(items.into_iter().map(|id| (id, 0)));
         }
     }
+    match scan_item_styles(pending, styles, decoder) {
+        ItemStyles::Glass => false,
+        ItemStyles::Styled => true,
+        ItemStyles::Unstyled => !unstyled_is_glazed,
+    }
+}
 
-    true // No glass found → opaque
+enum ItemStyles {
+    Glass,
+    Styled,
+    Unstyled,
+}
+
+/// Visit `pending` items and everything under them through nested
+/// `IfcMappedItem`s, as deep as the colour resolver goes
+/// (`MAX_MAPPED_ITEM_DEPTH`). `visited` keeps the depth each item was explored
+/// at and allows a revisit only from nearer the root, the rule
+/// `element_color::find_geometry_item_color_at` documents.
+fn scan_item_styles(
+    mut pending: Vec<(u32, u32)>,
+    styles: &FxHashMap<u32, GeometryStyleInfo>,
+    decoder: &mut EntityDecoder,
+) -> ItemStyles {
+    let mut styled = false;
+    let mut visited: FxHashMap<u32, u32> = FxHashMap::default();
+    while let Some((id, depth)) = pending.pop() {
+        if let Some(style) = styles.get(&id) {
+            if has_glass_style(style) {
+                return ItemStyles::Glass;
+            }
+            styled = true;
+        }
+        if depth >= MAX_MAPPED_ITEM_DEPTH || visited.get(&id).is_some_and(|&seen| seen <= depth) {
+            continue;
+        }
+        visited.insert(id, depth);
+        // IfcMappedItem → IfcRepresentationMap → MappedRepresentation.Items
+        let Ok(item) = decoder.decode_by_id(id) else {
+            continue;
+        };
+        if item.ifc_type != IfcType::IfcMappedItem {
+            continue;
+        }
+        let Some(mapped_repr) = item
+            .get_ref(0)
+            .and_then(|source_id| decoder.decode_by_id(source_id).ok())
+            .and_then(|source| source.get_ref(1))
+            .and_then(|repr_id| decoder.decode_by_id(repr_id).ok())
+        else {
+            continue;
+        };
+        for child in get_refs_from_list(&mapped_repr, 3).unwrap_or_default() {
+            pending.push((child, depth + 1));
+        }
+    }
+    if styled {
+        ItemStyles::Styled
+    } else {
+        ItemStyles::Unstyled
+    }
 }
 
 /// Returns `true` when a geometry style indicates a glass/transparent material.

@@ -393,7 +393,7 @@ impl GeoRefExtractor {
     /// the whole conversion is refused rather than one component replaced
     /// by its default, the rule the TS twin (`extractMapConversion`) applies.
     fn parse_map_conversion(entity: &DecodedEntity, georef: &mut GeoReference) -> bool {
-        if (2..=7).any(|index| entity.get_float(index).is_some_and(|v| !v.is_finite())) {
+        if (2..=10).any(|index| entity.get_float(index).is_some_and(|v| !v.is_finite())) {
             return false;
         }
         georef.has_map_conversion = true;

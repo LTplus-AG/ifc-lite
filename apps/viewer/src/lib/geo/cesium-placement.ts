@@ -8,7 +8,7 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { findClampAnchorY } from './clamp-anchor';
 import { computeModelCenterInIfcMeters } from './reproject';
 import { effectiveMapConversionForGeometry } from './map-absolute';
-import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
+import { getEffectiveAxisScale, resolveMapUnitToMetreScale } from './geo-scale';
 
 export function getMapUnitScale(
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
@@ -185,32 +185,31 @@ export function orthometricTargetForTerrain(
 }
 
 export function computeIfcOriginHeight(
-  mapConversion: Pick<MapConversion, 'orthogonalHeight'>,
+  mapConversion: Pick<MapConversion, 'orthogonalHeight' | 'scale' | 'factorZ'>,
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
   coordinateInfo: CoordinateInfo | undefined,
   lengthUnitScale: number,
 ): number {
   const mapScale = getMapUnitScale(projectedCRS, lengthUnitScale);
-  return mapConversion.orthogonalHeight * mapScale + computeModelCenterInIfcMeters(coordinateInfo).ifcZ;
+  const scaleZ = getEffectiveAxisScale(mapConversion.scale, mapConversion.factorZ, mapScale, lengthUnitScale);
+  return mapConversion.orthogonalHeight * mapScale
+    + scaleZ * computeModelCenterInIfcMeters(coordinateInfo).ifcZ;
 }
 
 export function viewerDeltaToProjectedDelta(
   deltaX: number,
   deltaZ: number,
-  mapConversion: Pick<MapConversion, 'xAxisAbscissa' | 'xAxisOrdinate' | 'scale'>,
+  mapConversion: Pick<MapConversion, 'xAxisAbscissa' | 'xAxisOrdinate' | 'scale' | 'factorX' | 'factorY'>,
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
   lengthUnitScale: number,
 ): { eastings: number; northings: number } {
   const mapScale = getMapUnitScale(projectedCRS, lengthUnitScale);
-  const hScale = getEffectiveHorizontalScale(
-    mapConversion.scale,
-    mapScale,
-    lengthUnitScale,
-  );
+  const scaleX = getEffectiveAxisScale(mapConversion.scale, mapConversion.factorX, mapScale, lengthUnitScale);
+  const scaleY = getEffectiveAxisScale(mapConversion.scale, mapConversion.factorY, mapScale, lengthUnitScale);
   const abscissa = mapConversion.xAxisAbscissa ?? 1;
   const ordinate = mapConversion.xAxisOrdinate ?? 0;
-  const eastMeters = hScale * (abscissa * deltaX + ordinate * deltaZ);
-  const northMeters = hScale * (ordinate * deltaX - abscissa * deltaZ);
+  const eastMeters = abscissa * scaleX * deltaX + ordinate * scaleY * deltaZ;
+  const northMeters = ordinate * scaleX * deltaX - abscissa * scaleY * deltaZ;
 
   return {
     eastings: metersToMapUnits(eastMeters, projectedCRS, lengthUnitScale),
@@ -272,25 +271,22 @@ export function closestYOnVerticalLineFromRay(
 export function projectedDeltaToViewerDelta(
   eastingsDelta: number,
   northingsDelta: number,
-  mapConversion: Pick<MapConversion, 'xAxisAbscissa' | 'xAxisOrdinate' | 'scale'>,
+  mapConversion: Pick<MapConversion, 'xAxisAbscissa' | 'xAxisOrdinate' | 'scale' | 'factorX' | 'factorY'>,
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
   lengthUnitScale: number,
 ): { x: number; z: number } {
   const mapScale = getMapUnitScale(projectedCRS, lengthUnitScale);
-  const hScale = getEffectiveHorizontalScale(
-    mapConversion.scale,
-    mapScale,
-    lengthUnitScale,
-  );
+  const scaleX = getEffectiveAxisScale(mapConversion.scale, mapConversion.factorX, mapScale, lengthUnitScale);
+  const scaleY = getEffectiveAxisScale(mapConversion.scale, mapConversion.factorY, mapScale, lengthUnitScale);
   const abscissa = mapConversion.xAxisAbscissa ?? 1;
   const ordinate = mapConversion.xAxisOrdinate ?? 0;
   const eastMeters = mapUnitsToMeters(eastingsDelta, projectedCRS, lengthUnitScale);
   const northMeters = mapUnitsToMeters(northingsDelta, projectedCRS, lengthUnitScale);
-  const denom = Math.max((abscissa * abscissa + ordinate * ordinate) * hScale, 1e-12);
+  const norm = Math.max(abscissa * abscissa + ordinate * ordinate, 1e-12);
 
   return {
-    x: (abscissa * eastMeters + ordinate * northMeters) / denom,
-    z: (ordinate * eastMeters - abscissa * northMeters) / denom,
+    x: (abscissa * eastMeters + ordinate * northMeters) / (norm * scaleX),
+    z: (ordinate * eastMeters - abscissa * northMeters) / (norm * scaleY),
   };
 }
 

@@ -422,8 +422,16 @@ fn site_lat_long_fallback_matches_ts_parser() {
     assert_eq!(geo.map_unit.as_deref(), Some("DEGREE"));
     // 47°22'30" → 47.375; 8°32'15" → 8.5375 (longitude in eastings,
     // latitude in northings — same packing as the TS fallback).
-    assert!((geo.northings - 47.375).abs() < 1e-9, "lat {}", geo.northings);
-    assert!((geo.eastings - 8.5375).abs() < 1e-9, "long {}", geo.eastings);
+    assert!(
+        (geo.northings - 47.375).abs() < 1e-9,
+        "lat {}",
+        geo.northings
+    );
+    assert!(
+        (geo.eastings - 8.5375).abs() < 1e-9,
+        "long {}",
+        geo.eastings
+    );
     assert!((geo.orthogonal_height - 420.5).abs() < 1e-9);
 }
 
@@ -465,8 +473,12 @@ fn the_index_taking_variant_agrees_with_the_wrapper() {
 #[test]
 fn native_scan_candidates_preserve_georeferencing_with_properties_disabled() {
     for content in [
-        GEOREF_IFC, SCALED_MAP_CONVERSION_IFC, TWO_CONVERSIONS_IFC,
-        IFC2X3_PSET_IFC, IFC2X3_EPSET_LOWERCASE_IFC, SITE_ONLY_IFC,
+        GEOREF_IFC,
+        SCALED_MAP_CONVERSION_IFC,
+        TWO_CONVERSIONS_IFC,
+        IFC2X3_PSET_IFC,
+        IFC2X3_EPSET_LOWERCASE_IFC,
+        SITE_ONLY_IFC,
     ] {
         let expected = extract_georeferencing(content).expect("fixture has georeferencing");
         let result = crate::processor::process_geometry_streaming_with_options_and_bootstrap(
@@ -475,7 +487,9 @@ fn native_scan_candidates_preserve_georeferencing_with_properties_disabled() {
                 include_properties: false,
                 ..Default::default()
             },
-            |_, _, _| {}, |_| {}, |_| {},
+            |_, _, _| {},
+            |_| {},
+            |_| {},
         );
         assert_eq!(result.metadata.georeferencing, Some(expected));
     }
@@ -488,11 +502,21 @@ fn supplied_georeferencing_candidates_preserve_order() {
     let index = Arc::new(ifc_lite_core::build_entity_index(TWO_CONVERSIONS_IFC));
     let geo = extract_georeferencing_from_candidates(
         &mut EntityDecoder::with_arc_index(TWO_CONVERSIONS_IFC, index),
-        &[(10, IfcType::IfcProjectedCRS), (12, IfcType::IfcMapConversion), (11, IfcType::IfcMapConversion)],
-    ).unwrap();
+        &[
+            (10, IfcType::IfcProjectedCRS),
+            (12, IfcType::IfcMapConversion),
+            (11, IfcType::IfcMapConversion),
+        ],
+    )
+    .unwrap();
     assert_eq!(geo.eastings, 999.0);
     assert_eq!(geo.northings, 888.0);
-    assert_eq!(extract_georeferencing(TWO_CONVERSIONS_IFC).unwrap().eastings, 111.0);
+    assert_eq!(
+        extract_georeferencing(TWO_CONVERSIONS_IFC)
+            .unwrap()
+            .eastings,
+        111.0
+    );
 }
 
 #[test]
@@ -506,7 +530,10 @@ fn native_georeferencing_keeps_first_pset_and_first_site() {
     for (content, eastings) in [(psets, 123.0), (sites, 8.0)] {
         let expected = extract_georeferencing(content).unwrap();
         assert_eq!(expected.eastings, eastings);
-        assert_eq!(crate::process_geometry(content).metadata.georeferencing, Some(expected));
+        assert_eq!(
+            crate::process_geometry(content).metadata.georeferencing,
+            Some(expected)
+        );
     }
 }
 
@@ -652,8 +679,16 @@ fn site_fallback_survives_lowercase_keywords() {
     let lowered = lowercase_step_keywords(SITE_ONLY_IFC);
     let geo = extract_georeferencing(&lowered).expect("lowercase site georef");
     assert_eq!(geo.source.as_deref(), Some("siteLocation"));
-    assert!((geo.northings - 47.375).abs() < 1e-9, "lat {}", geo.northings);
-    assert!((geo.eastings - 8.5375).abs() < 1e-9, "long {}", geo.eastings);
+    assert!(
+        (geo.northings - 47.375).abs() < 1e-9,
+        "lat {}",
+        geo.northings
+    );
+    assert!(
+        (geo.eastings - 8.5375).abs() < 1e-9,
+        "long {}",
+        geo.eastings
+    );
 }
 
 /// Lowercase only the `#nn=IFCxxx` keyword tokens, leaving string literals and

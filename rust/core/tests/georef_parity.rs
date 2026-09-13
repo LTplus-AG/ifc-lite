@@ -26,7 +26,12 @@ fn scan_entity_types(ifc: &str) -> Vec<(u32, IfcType)> {
     let mut scanner = EntityScanner::new(ifc);
     let mut out = Vec::new();
     while let Some((id, type_name, _start, _end)) = scanner.next_entity() {
-        out.push((id, IfcType::from_str(type_name)));
+        let ifc_type = if ifc_lite_core::keyword_eq(type_name, "IFCMAPCONVERSIONSCALED") {
+            IfcType::IfcMapConversion
+        } else {
+            IfcType::from_str(type_name)
+        };
+        out.push((id, ifc_type));
     }
     out
 }
@@ -54,7 +59,9 @@ fn opt_str<'a>(v: &'a serde_json::Value, key: &str) -> Option<Option<&'a str>> {
 }
 
 fn check_case(name: &str, expect: &serde_json::Value, georef: Option<&GeoReference>) {
-    let want_has = expect["hasGeoreference"].as_bool().expect("hasGeoreference");
+    let want_has = expect["hasGeoreference"]
+        .as_bool()
+        .expect("hasGeoreference");
     if !want_has {
         assert!(
             georef.is_none(),
@@ -111,6 +118,9 @@ fn check_case(name: &str, expect: &serde_json::Value, georef: Option<&GeoReferen
         ("xAxisAbscissa", g.x_axis_abscissa),
         ("xAxisOrdinate", g.x_axis_ordinate),
         ("scale", g.scale),
+        ("factorX", g.factor_x),
+        ("factorY", g.factor_y),
+        ("factorZ", g.factor_z),
     ] {
         if let Some(want) = expect.get(key).and_then(|v| v.as_f64()) {
             approx(name, key, got, want);
@@ -141,9 +151,24 @@ fn check_case(name: &str, expect: &serde_json::Value, georef: Option<&GeoReferen
             // to_matrix() must agree with local_to_map on the same point:
             // two ways to express one transform, both shipped to consumers.
             let m = g.to_matrix();
-            approx(name, "to_matrix.e", m[0] * l[0] + m[4] * l[1] + m[8] * l[2] + m[12], want[0]);
-            approx(name, "to_matrix.n", m[1] * l[0] + m[5] * l[1] + m[9] * l[2] + m[13], want[1]);
-            approx(name, "to_matrix.h", m[2] * l[0] + m[6] * l[1] + m[10] * l[2] + m[14], want[2]);
+            approx(
+                name,
+                "to_matrix.e",
+                m[0] * l[0] + m[4] * l[1] + m[8] * l[2] + m[12],
+                want[0],
+            );
+            approx(
+                name,
+                "to_matrix.n",
+                m[1] * l[0] + m[5] * l[1] + m[9] * l[2] + m[13],
+                want[1],
+            );
+            approx(
+                name,
+                "to_matrix.h",
+                m[2] * l[0] + m[6] * l[1] + m[10] * l[2] + m[14],
+                want[2],
+            );
 
             // map_to_local is the documented inverse: round-tripping the map
             // point must land back on the local point.

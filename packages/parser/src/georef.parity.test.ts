@@ -46,6 +46,9 @@ interface Expect {
   xAxisAbscissa?: number;
   xAxisOrdinate?: number;
   scale?: number;
+  factorX?: number;
+  factorY?: number;
+  factorZ?: number;
   localToMap?: { local: [number, number, number]; map: [number, number, number] }[];
 }
 
@@ -246,6 +249,9 @@ describe.skipIf(!existsSync(fixturePath))('extractGeoreferencing shared parity v
         approx(mc?.orthogonalHeight, want.orthogonalHeight, 'orthogonalHeight');
       }
       if (want.scale !== undefined) approx(mc?.scale ?? 1, want.scale, 'scale');
+      if (want.factorX !== undefined) approx(mc?.factorX ?? 1, want.factorX, 'factorX');
+      if (want.factorY !== undefined) approx(mc?.factorY ?? 1, want.factorY, 'factorY');
+      if (want.factorZ !== undefined) approx(mc?.factorZ ?? 1, want.factorZ, 'factorZ');
 
       // Behavioural check: the transform, not just the parsed fields.
       for (const point of want.localToMap ?? []) {

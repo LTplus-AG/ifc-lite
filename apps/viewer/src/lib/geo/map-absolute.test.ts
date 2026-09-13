@@ -48,6 +48,9 @@ function makeConversion(overrides: Partial<MapConversion> = {}): MapConversion {
     xAxisAbscissa: 1,
     xAxisOrdinate: 0,
     scale: 0.9996,
+    factorX: 2,
+    factorY: 3,
+    factorZ: 4,
     ...overrides,
   };
 }
@@ -62,6 +65,11 @@ describe('effectiveMapConversionForGeometry — scale neutralisation', () => {
     assert.strictEqual(effective.xAxisAbscissa, 1);
     assert.strictEqual(effective.xAxisOrdinate, 0);
     assert.strictEqual(effective.scale, 1, 'authored Scale=0.9996 must not survive into the neutralised conversion');
+    assert.deepStrictEqual(
+      [effective.factorX, effective.factorY, effective.factorZ],
+      [1, 1, 1],
+      'already-absolute coordinates must not be rescaled by subtype factors',
+    );
   });
 
   it('reproduces the review scenario: without the scale fix the pin would land ~2.4km south', () => {

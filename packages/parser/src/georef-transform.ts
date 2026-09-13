@@ -20,6 +20,9 @@ export function computeTransformMatrix(mapConversion: MapConversion): number[] {
 
   // Default scale to 1.0 if not specified
   const s = scale || 1.0;
+  const sx = s * (mapConversion.factorX ?? 1.0);
+  const sy = s * (mapConversion.factorY ?? 1.0);
+  const sz = s * (mapConversion.factorZ ?? 1.0);
 
   // Compute rotation angle from X-axis direction
   let angle = 0;
@@ -38,9 +41,9 @@ export function computeTransformMatrix(mapConversion: MapConversion): number[] {
   // [0           0          0      1         ]
 
   return [
-    s * cos,  s * sin,  0,  0,
-    -s * sin, s * cos,  0,  0,
-    0,        0,        s,  0,
+    sx * cos,  sx * sin,  0,  0,
+    -sy * sin, sy * cos,  0,  0,
+    0,         0,         sz, 0,
     eastings, northings, orthogonalHeight, 1,
   ];
 }
@@ -82,23 +85,23 @@ export function transformToLocal(
   const m = georef.transformMatrix;
   const [xWorld, yWorld, zWorld] = worldPoint;
 
-  // Extract rotation and scale
-  const scale = georef.mapConversion?.scale || 1.0;
-  const angle = Math.atan2(m[1], m[0]);
-  const cos = Math.cos(-angle);
-  const sin = Math.sin(-angle);
-  const invScale = 1.0 / scale;
-
   // Apply inverse translation
   const xTrans = xWorld - m[12];
   const yTrans = yWorld - m[13];
   const zTrans = zWorld - m[14];
 
-  // Apply inverse rotation and scale
-  const x = invScale * (cos * xTrans - sin * yTrans);
-  const y = invScale * (sin * xTrans + cos * yTrans);
-  // Scale applies to z too (IfcMapConversion scales all three axes).
-  const z = invScale * zTrans;
+  const det = m[0] * m[5] - m[1] * m[4];
+  if (
+    !Number.isFinite(det) ||
+    !Number.isFinite(m[10]) ||
+    Math.abs(det) <= Number.EPSILON ||
+    Math.abs(m[10]) <= Number.EPSILON
+  ) {
+    return null;
+  }
+  const x = (m[5] * xTrans - m[4] * yTrans) / det;
+  const y = (-m[1] * xTrans + m[0] * yTrans) / det;
+  const z = zTrans / m[10];
 
   return [x, y, z];
 }

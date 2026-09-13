@@ -162,6 +162,21 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     assertBoxClose(mesh.geometryAabb, { min: [2500, 0, 0], max: [2501, 2, 3] }, 1e-3, 'translated');
   });
 
+  it('maps unequal source axis factors into the reference frame (#4615)', async () => {
+    const mesh = boxMesh(12, [1, 2, 3], [1, 2, 3]);
+    mesh.normals = new Float32Array([Math.SQRT1_2, Math.SQRT1_2, 0]);
+    const status = await alignGeometryToReference(
+      geometry([mesh]),
+      georef({ factorX: 2, factorY: 3, factorZ: 4 }),
+      georef({ factorX: 1, factorY: 1, factorZ: 1 }),
+    );
+    assert.equal(status, 'same-crs');
+    assert.deepStrictEqual(Array.from(mesh.positions.slice(0, 3)), [2, 8, 9]);
+    assert.ok(mesh.normals);
+    assert.ok(Math.abs(mesh.normals[0] - 0.8944272) < 1e-6);
+    assert.ok(Math.abs(mesh.normals[1] - 0.4472136) < 1e-6);
+  });
+
   it('re-measures a meshed entity from its aligned vertices, not from its old box', async () => {
     // Re-boxing a ROTATED box inflates it — on Building-Architecture.ifc
     // aligned to Infra-Bridge.ifc (60° apart) by 0.87 m, against a 1 mm

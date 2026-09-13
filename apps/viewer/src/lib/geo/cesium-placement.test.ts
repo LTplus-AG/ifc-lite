@@ -173,6 +173,21 @@ describe('cesium placement helpers', () => {
     assert.strictEqual(height, 14);
   });
 
+  it('applies FactorZ to the IFC origin height (#4615)', () => {
+    const height = computeIfcOriginHeight(
+      { orthogonalHeight: 12, scale: 2, factorZ: 0.25 },
+      { mapUnitScale: 1 },
+      {
+        originShift: { x: 0, y: 0, z: 0 },
+        originalBounds: { min: { x: 0, y: 4, z: 0 }, max: { x: 0, y: 8, z: 0 } },
+        shiftedBounds: { min: { x: 0, y: 4, z: 0 }, max: { x: 0, y: 8, z: 0 } },
+        hasLargeCoordinates: false,
+      },
+      1,
+    );
+    assert.strictEqual(height, 15);
+  });
+
   it('converts viewer XY drag deltas into projected map deltas', () => {
     const projected = viewerDeltaToProjectedDelta(
       2,
@@ -195,6 +210,38 @@ describe('cesium placement helpers', () => {
     );
 
     assert.deepStrictEqual(viewer, { x: 2, z: -1 });
+  });
+
+  it('applies IfcMapConversionScaled factors per axis and round-trips the drag', () => {
+    const conversion = {
+      xAxisAbscissa: 0.6,
+      xAxisOrdinate: 0.8,
+      scale: 2,
+      factorX: 0.5,
+      factorY: 0.25,
+    };
+    const projected = viewerDeltaToProjectedDelta(3, -4, conversion, { mapUnitScale: 1 }, 1);
+
+    assert.ok(Math.abs(projected.eastings - 0.2) < 1e-9);
+    assert.ok(Math.abs(projected.northings - 3.6) < 1e-9);
+    const viewer = projectedDeltaToViewerDelta(
+      projected.eastings,
+      projected.northings,
+      conversion,
+      { mapUnitScale: 1 },
+      1,
+    );
+    assert.ok(Math.abs(viewer.x - 3) < 1e-9);
+    assert.ok(Math.abs(viewer.z - -4) < 1e-9);
+
+    const feetToMetres = viewerDeltaToProjectedDelta(
+      2,
+      -1,
+      { xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1, factorX: 0.3048, factorY: 0.3048 },
+      { mapUnitScale: 1 },
+      0.3048,
+    );
+    assert.deepStrictEqual(feetToMetres, { eastings: 2, northings: 1 });
   });
 
   it('rotates viewer XY drag deltas by a genuine (non-identity) grid rotation', () => {

@@ -128,5 +128,8 @@ export function effectiveMapConversionForGeometry(
     xAxisAbscissa: 1,
     xAxisOrdinate: 0,
     scale: 1,
+    factorX: 1,
+    factorY: 1,
+    factorZ: 1,
   };
 }

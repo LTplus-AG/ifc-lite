@@ -90,7 +90,7 @@
  */
 
 import type { ModelGeoref } from './federationAlign.js';
-import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
+import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
 import { effectiveMapConversionForGeometry } from '../../lib/geo/map-absolute.js';
 import { totalYupOffset } from '../../lib/geo/ifc-origin.js';
 
@@ -101,6 +101,9 @@ export interface MapConversionParams {
   xAxisAbscissa?: number;
   xAxisOrdinate?: number;
   scale?: number;
+  factorX?: number;
+  factorY?: number;
+  factorZ?: number;
 }
 
 /** Normalize the (possibly non-unit) XAxisAbscissa/XAxisOrdinate direction
@@ -132,18 +135,20 @@ export function applyMapConversion(
 ): { e: number; n: number; h: number } | null {
   const axis = normalizeAxis(params.xAxisAbscissa ?? 1, params.xAxisOrdinate ?? 0);
   if (!axis) return null;
-  const scale = params.scale ?? 1;
+  const scaleX = (params.scale ?? 1) * (params.factorX || 1);
+  const scaleY = (params.scale ?? 1) * (params.factorY || 1);
+  const scaleZ = (params.scale ?? 1) * (params.factorZ || 1);
   // Reject a ~0 Scale the same way the inverse does. Without this the
   // forward map stays "successful" while collapsing every local point onto
   // (Eastings, Northings, OrthogonalHeight) — a whole cloud silently
   // stacked on one spot reads as a placement bug, where a null reads as
   // the malformed IfcMapConversion it actually is.
-  if (Math.abs(scale) < 1e-12) return null;
+  if (![scaleX, scaleY, scaleZ].every((value) => Number.isFinite(value) && Math.abs(value) >= 1e-12)) return null;
   const { a, b } = axis;
   return {
-    e: params.eastings + scale * (a * x - b * y),
-    n: params.northings + scale * (b * x + a * y),
-    h: params.orthogonalHeight + scale * z,
+    e: params.eastings + a * scaleX * x - b * scaleY * y,
+    n: params.northings + b * scaleX * x + a * scaleY * y,
+    h: params.orthogonalHeight + scaleZ * z,
   };
 }
 
@@ -166,16 +171,17 @@ export function invertMapConversion(
 ): { x: number; y: number; z: number } | null {
   const axis = normalizeAxis(params.xAxisAbscissa ?? 1, params.xAxisOrdinate ?? 0);
   if (!axis) return null;
-  const scale = params.scale ?? 1;
-  if (Math.abs(scale) < 1e-12) return null;
+  const scaleX = (params.scale ?? 1) * (params.factorX || 1);
+  const scaleY = (params.scale ?? 1) * (params.factorY || 1);
+  const scaleZ = (params.scale ?? 1) * (params.factorZ || 1);
+  if (![scaleX, scaleY, scaleZ].every((value) => Number.isFinite(value) && Math.abs(value) >= 1e-12)) return null;
   const { a, b } = axis;
   const dE = e - params.eastings;
   const dN = n - params.northings;
-  const invScale = 1 / scale;
   return {
-    x: invScale * (a * dE + b * dN),
-    y: invScale * (-b * dE + a * dN),
-    z: invScale * (h - params.orthogonalHeight),
+    x: (a * dE + b * dN) / scaleX,
+    y: (-b * dE + a * dN) / scaleY,
+    z: (h - params.orthogonalHeight) / scaleZ,
   };
 }
 
@@ -266,8 +272,8 @@ export function computePointCloudAlignment(
     mapUnitScale,
     georef.coordinateInfo,
   );
-  const scale = getEffectiveHorizontalScale(conv.scale, mapUnitScale, lengthUnitScale);
-  if (Math.abs(scale) < 1e-12) return null;
+  const { x: scaleX, y: scaleY, z: scaleZ } = getEffectiveAxisScales(conv, mapUnitScale, lengthUnitScale);
+  if (![scaleX, scaleY, scaleZ].every((value) => Number.isFinite(value) && Math.abs(value) >= 1e-12)) return null;
 
   const rawA = conv.xAxisAbscissa ?? 1;
   const rawB = conv.xAxisOrdinate ?? 0;
@@ -298,7 +304,10 @@ export function computePointCloudAlignment(
       orthogonalHeight: conv.orthogonalHeight * mapUnitScale,
       xAxisAbscissa: a,
       xAxisOrdinate: b,
-      scale,
+      scale: 1,
+      factorX: scaleX,
+      factorY: scaleY,
+      factorZ: scaleZ,
     },
     off.x,
     -off.z,
@@ -331,11 +340,14 @@ export function computePointCloudAlignment(
   //   viewerX = k*a*px - k*b*pz
   //   viewerY = k*py
   //   viewerZ = k*b*px + k*a*pz
-  const k = sourceUnit === 'mapUnit' ? mapUnitScale / scale : 1 / scale;
+  const unitScale = sourceUnit === 'mapUnit' ? mapUnitScale : 1;
+  const kx = unitScale / scaleX;
+  const ky = unitScale / scaleY;
+  const kz = unitScale / scaleZ;
   const alignedMatrix = new Float64Array([
-    k * a, 0, k * b, 0,
-    0, k, 0, 0,
-    -k * b, 0, k * a, 0,
+    kx * a, 0, ky * b, 0,
+    0, kz, 0, 0,
+    -kx * b, 0, ky * a, 0,
     0, 0, 0, 1,
   ]);
 

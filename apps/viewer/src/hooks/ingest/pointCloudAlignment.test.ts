@@ -92,6 +92,30 @@ describe('invertMapConversion / applyMapConversion (issue #1804)', () => {
     }
   });
 
+  it('round-trips unequal IfcMapConversionScaled factors (#4615)', () => {
+    const params: MapConversionParams = {
+      eastings: 100,
+      northings: 200,
+      orthogonalHeight: 10,
+      xAxisAbscissa: 0.6,
+      xAxisOrdinate: 0.8,
+      scale: 2,
+      factorX: 0.5,
+      factorY: 0.25,
+      factorZ: 3,
+    };
+    const map = applyMapConversion(params, 3, -4, 5);
+    assert.ok(map);
+    assertClose(map.e, 103.4);
+    assertClose(map.n, 201.2);
+    assertClose(map.h, 40);
+    const local = invertMapConversion(params, map.e, map.n, map.h);
+    assert.ok(local);
+    assertClose(local.x, 3);
+    assertClose(local.y, -4);
+    assertClose(local.z, 5);
+  });
+
   it('normalizes a non-unit XAxisAbscissa/XAxisOrdinate direction vector', () => {
     // (2,0) encodes the same "no rotation" direction as (1,0) once
     // normalized — a file that authors non-unit axis components must not

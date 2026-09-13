@@ -15,7 +15,7 @@ import {
   resolveEpsetMapUnitScale,
   supportsStandardGeoreferencing,
 } from './effective-georef.js';
-import { resolveMapUnitToMetreScale } from './geo-scale.js';
+import { getEffectiveAxisScale, resolveMapUnitToMetreScale } from './geo-scale.js';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 describe('effective georeferencing', () => {
@@ -353,6 +353,19 @@ describe('effective georeferencing', () => {
       assert.strictEqual(getEffectiveHorizontalScale(1, 0, 1), 1);
       assert.strictEqual(getEffectiveHorizontalScale(1, 1, 0), 1);
       assert.strictEqual(getEffectiveHorizontalScale(1, -1, 1), 1);
+    });
+  });
+
+  describe('getEffectiveAxisScale (#4615)', () => {
+    it('treats a Scaled factor as part of the authored unit conversion', () => {
+      // Feet-authored local coordinates, metre map coordinates: Scale=1 and
+      // Factor=0.3048 together bridge the units, so metre-converted viewer
+      // geometry remains at 1x rather than being scaled by 0.3048 again.
+      assert.strictEqual(getEffectiveAxisScale(1, 0.3048, 1, 0.3048), 1);
+    });
+
+    it('preserves a deliberate factor when project and map units match', () => {
+      assert.strictEqual(getEffectiveAxisScale(1, 0.5, 1, 1), 0.5);
     });
   });
 

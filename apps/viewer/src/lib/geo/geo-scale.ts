@@ -67,6 +67,27 @@ export function getEffectiveHorizontalScale(
   return specEffective;
 }
 
+export function getEffectiveAxisScale(
+  ifcMapConversionScale: number | undefined,
+  factor: number | undefined,
+  mapUnitScale: number,
+  lengthUnitScale: number,
+): number {
+  const axisScale = (ifcMapConversionScale ?? 1) * (factor ?? 1);
+  return getEffectiveHorizontalScale(axisScale, mapUnitScale, lengthUnitScale);
+}
+
+export function getEffectiveAxisScales(
+  conversion: { scale?: number; factorX?: number; factorY?: number; factorZ?: number },
+  mapUnitScale: number,
+  lengthUnitScale: number,
+): { x: number; y: number; z: number } {
+  const axis = (factor: number | undefined) => getEffectiveAxisScale(
+    conversion.scale, factor, mapUnitScale, lengthUnitScale,
+  );
+  return { x: axis(conversion.factorX), y: axis(conversion.factorY), z: axis(conversion.factorZ) };
+}
+
 export interface ScaleUnitMismatch {
   /**
    * Horizontal scale ifc-lite ACTUALLY applies to viewer-space (metre)

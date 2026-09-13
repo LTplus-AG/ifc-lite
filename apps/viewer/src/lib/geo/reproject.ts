@@ -19,7 +19,7 @@ import proj4 from 'proj4';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { lookupEpsgByCode } from '@ifc-lite/data';
-import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
+import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
 
 export { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
@@ -417,12 +417,12 @@ function computeProjectedCenter(
   // IfcMapConversion.Scale converts project length unit → map unit (e.g. 0.001
   // for mm→m); since geometry is already in metres, use the effective scale —
   // see issue #595.
-  const scale = getEffectiveHorizontalScale(conversion.scale, mapUnitScale, lengthUnitScale);
+  const { x: scaleX, y: scaleY } = getEffectiveAxisScales(conversion, mapUnitScale, lengthUnitScale);
   const abscissa = conversion.xAxisAbscissa ?? 1.0;
   const ordinate = conversion.xAxisOrdinate ?? 0.0;
 
-  const easting = conversion.eastings * mapUnitScale + scale * (abscissa * ifcX - ordinate * ifcY);
-  const northing = conversion.northings * mapUnitScale + scale * (ordinate * ifcX + abscissa * ifcY);
+  const easting = conversion.eastings * mapUnitScale + abscissa * scaleX * ifcX - ordinate * scaleY * ifcY;
+  const northing = conversion.northings * mapUnitScale + ordinate * scaleX * ifcX + abscissa * scaleY * ifcY;
 
   return { easting, northing };
 }
@@ -603,13 +603,13 @@ export async function reprojectFromLatLon(
     const invScale = mapScale !== 0 ? 1 / mapScale : 1;
     const { ifcX, ifcY } = computeModelCenterInIfcMeters(coordinateInfo);
     // Effective horizontal scale for metre-converted geometry — see issue #595.
-    const scale = getEffectiveHorizontalScale(conversion?.scale, mapScale, lengthUnitScale);
+    const { x: scaleX, y: scaleY } = getEffectiveAxisScales(conversion ?? {}, mapScale, lengthUnitScale);
     const abscissa = conversion?.xAxisAbscissa ?? 1.0;
     const ordinate = conversion?.xAxisOrdinate ?? 0.0;
 
     // Result is in IFC native units (the reverse of: E_native * mapScale + geom_offset = E_metres)
-    const easting = (projE - scale * (abscissa * ifcX - ordinate * ifcY)) * invScale;
-    const northing = (projN - scale * (ordinate * ifcX + abscissa * ifcY)) * invScale;
+    const easting = (projE - (abscissa * scaleX * ifcX - ordinate * scaleY * ifcY)) * invScale;
+    const northing = (projN - (ordinate * scaleX * ifcX + abscissa * scaleY * ifcY)) * invScale;
 
     return { easting, northing };
   } catch {
@@ -652,7 +652,7 @@ export async function computeFootprintGeoJSON(
   const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
   // Map-absolute geometry (#2526): same neutralisation as the centre pin.
   const conversion = effectiveMapConversionForGeometry(rawConversion, mapScale, coordinateInfo);
-  const scale = getEffectiveHorizontalScale(conversion.scale, mapScale, lengthUnitScale);
+  const { x: scaleX, y: scaleY } = getEffectiveAxisScales(conversion, mapScale, lengthUnitScale);
   const abscissa = conversion.xAxisAbscissa ?? 1.0;
   const ordinate = conversion.xAxisOrdinate ?? 0.0;
 
@@ -685,8 +685,8 @@ export async function computeFootprintGeoJSON(
 
     // Geometry coords (ifcX/Y) are already in metres; MapConversion values
     // are converted to metres via mapScale.
-    const easting = conversion.eastings * mapScale + scale * (abscissa * ifcX - ordinate * ifcY);
-    const northing = conversion.northings * mapScale + scale * (ordinate * ifcX + abscissa * ifcY);
+    const easting = conversion.eastings * mapScale + abscissa * scaleX * ifcX - ordinate * scaleY * ifcY;
+    const northing = conversion.northings * mapScale + ordinate * scaleX * ifcX + abscissa * scaleY * ifcY;
 
     // Projected CRS → WGS84
     try {

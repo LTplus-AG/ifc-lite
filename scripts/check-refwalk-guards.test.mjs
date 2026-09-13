@@ -111,6 +111,15 @@ fn walk(id: u32, decoder: &mut EntityDecoder, depth: u32, path: &mut Path) -> Op
     'if !path.charge() || depth >= MAX_DEPTH'
   );
   assert.deepEqual(check({ [`${ROOT}/fan_out.rs`]: budgeted }).budgetWarnings, []);
+
+  const unrelated = fanOut.replace(
+    'if depth >= MAX_DEPTH',
+    'decoder.consume(); if depth >= MAX_DEPTH'
+  );
+  assert.deepEqual(
+    check({ [`${ROOT}/fan_out.rs`]: unrelated }).budgetWarnings,
+    [`${ROOT}/fan_out.rs::walk::recursion`],
+  );
 });
 
 test('an unguarded fan-out walk is both unsafe and missing its work budget (#4601)', () => {

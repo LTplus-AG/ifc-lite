@@ -148,18 +148,18 @@ describe('StatusBar — federation-space storey element count', () => {
   it('counts a non-active model\'s selected storey through its OWN hierarchy', () => {
     const container = render();
 
-    // No `geometryResult` is set (mesh-derived `stats.elements` is 0), so a
-    // correct resolution renders "2 / 0 elements" — the storey's own count
-    // up front, with the (irrelevant, zero) mesh total as the muted
-    // denominator. The bug produced "0 elements" outright: `count` stayed 0
-    // (nothing found in the active model's hierarchy) so `count ||
-    // stats.elements` fell through to the equally-0 total, and the two being
-    // equal suppressed the "/ N" fraction entirely.
+    // No `geometryResult` is set on either model, so the shape half of the
+    // object rule is a no-op (see `lib/object-count.ts`) and both numbers are
+    // schema-only: the storey's own 2 walls up front, and 4 physical objects
+    // across the two models as the muted denominator. The bug this test was
+    // written for produced "0 elements" outright, with no "/ N" fraction at
+    // all: nothing was found in the ACTIVE model's hierarchy, so the storey
+    // count stayed 0 and fell through to the whole-model total.
     assert.ok(
-      container.textContent?.includes('2 / 0 elements'),
+      container.textContent?.includes('2 / 4 elements'),
       `element count must reflect the selected storey's own 2 elements, resolved via its ` +
-        `own (non-active) model's spatial hierarchy — not a fallback to the active model's ` +
-        `(zero) total from a failed lookup against a hierarchy that has no storey at that id. ` +
+        `own (non-active) model's spatial hierarchy — not a fallback to the whole-model ` +
+        `total from a failed lookup against a hierarchy that has no storey at that id. ` +
         `Got: ${JSON.stringify(container.textContent)}`,
     );
   });

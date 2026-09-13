@@ -11,7 +11,17 @@ import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { FlavorIndicator } from '@/components/extensions/FlavorIndicator';
 import { FlavorDialog } from '@/components/extensions/FlavorDialog';
-import { createStatusBarStatsAccumulator } from './statusBarStats.js';
+import { collectPhysicalEntityIds } from '@/lib/physical-objects';
+import { collectMeshedIds, countShapedObjects, createObjectPredicate } from '@/lib/object-count';
+import type { AggregationRelationships } from '@/utils/aggregation';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import type { GeometryResult } from '@ifc-lite/geometry';
+
+/** One loaded model's store paired with the geometry produced from it. */
+interface CountedModel {
+  store: IfcDataStore;
+  geometry: GeometryResult | null | undefined;
+}
 
 export function StatusBar() {
   const { loading, geometryResult, ifcDataStore, models } = useIfc();
@@ -76,48 +86,87 @@ export function StatusBar() {
     return () => clearInterval(interval);
   }, []);
 
-  // PERF: geometryResult is a NEW object on every streaming batch commit
-  // (dataSlice.ts appendGeometryBatch), so this memo's dependency never
-  // hits during a stream — it re-derives stats every commit. A full O(meshes
-  // + entityIds) rescan there made a 16.7K-mesh stream spend ~524ms total in
-  // this memo alone (30 commits, allocating a `Set` per merged mesh on EVERY
-  // commit — not just the new ones). The accumulator below tracks how many
-  // meshes it has already folded in (by array identity + length) and only
-  // scans meshes appended since the last call — `geometryResult.meshes` is
-  // the same array reference mutated in place across a stream, so this is
-  // safe; see statusBarStats.ts for the full identity contract.
-  const statsAccRef = useRef(createStatusBarStatsAccumulator());
-  const stats = useMemo(
-    () => statsAccRef.current.update(geometryResult),
-    [geometryResult],
-  );
+  // Every model whose objects this bar speaks for, paired with its own
+  // geometry. Federated models each carry their own store and meshes; legacy
+  // single-model mode has one pair on the top-level hook.
+  const countedModels = useMemo<CountedModel[]>(() => {
+    if (models.size > 0) {
+      const out: CountedModel[] = [];
+      for (const model of models.values()) {
+        if (model.ifcDataStore) out.push({ store: model.ifcDataStore, geometry: model.geometryResult });
+      }
+      return out;
+    }
+    return ifcDataStore ? [{ store: ifcDataStore, geometry: geometryResult }] : [];
+  }, [models, ifcDataStore, geometryResult]);
+
+  // PERF: `state.models` is a NEW Map on every streaming batch commit
+  // (`appendGeometryBatch` in dataSlice.ts rebuilds it to swap one model's
+  // geometryResult), so nothing memoised on it survives a stream. A model's
+  // `ifcDataStore` identity IS stable across those commits, so the expensive
+  // half — the schema walk over the whole entity index — is cached per store
+  // and only the cheap half (a mesh-set lookup per physical id) re-runs as
+  // geometry arrives. Keyed on the store, so it lives exactly as long as the
+  // model does — the same store-identity scope ViewportOverlays' badge uses
+  // for the same walk.
+  const physicalIdsRef = useRef(new WeakMap<IfcDataStore, Set<number>>());
+  const totalObjects = useMemo(() => {
+    let total = 0;
+    for (const { store, geometry } of countedModels) {
+      let physicalIds = physicalIdsRef.current.get(store);
+      if (!physicalIds) {
+        physicalIds = collectPhysicalEntityIds(store.entityIndex?.byType);
+        physicalIdsRef.current.set(store, physicalIds);
+      }
+      total += countShapedObjects(physicalIds, {
+        relationships: store.relationships as AggregationRelationships | undefined,
+        meshedIds: collectMeshedIds(geometry),
+      });
+    }
+    return total;
+  }, [countedModels]);
 
   // `selectedStoreys` holds raw model-space expressIds (see HierarchyPanel's
   // `setStoreysSelection`), which may belong to ANY federated model, not just
   // the active one — `ifcDataStore` only tracks the active model
   // (`modelSlice.ts`). Resolve each id through the model whose own spatial
-  // hierarchy actually contains it as a storey, falling back to the active
-  // store for legacy single-model mode. Mirrors ViewportOverlays' storey-name
-  // lookup (#3506) for the same reason: a non-active model's storey must not
-  // be counted against the active model's hierarchy.
+  // hierarchy actually contains it as a storey. Mirrors ViewportOverlays'
+  // storey-name lookup (#3506) for the same reason: a non-active model's
+  // storey must not be counted against the active model's hierarchy.
+  //
+  // `byStorey` is the raw `IfcRelContainedInSpatialStructure` membership — no
+  // schema filter and no geometry filter — so counting its length answered a
+  // different question from every other "objects" number in the app, and a
+  // storey holding a group-artifact proxy with `Representation = $` read one
+  // higher than the trees (#4655).
   const visibleElements = useMemo(() => {
-    if (selectedStoreys.size === 0 || (!ifcDataStore?.spatialHierarchy && models.size === 0)) {
-      return stats.elements;
-    }
+    if (selectedStoreys.size === 0) return totalObjects;
+    const predicates = new Map<IfcDataStore, (expressId: number) => boolean>();
     let count = 0;
+    let resolvedAnyStorey = false;
     for (const storeyId of selectedStoreys) {
-      const ownHierarchy = models.size > 0
-        ? Array.from(models.values()).find(
-            (m) => m.ifcDataStore?.spatialHierarchy?.byStorey.has(storeyId),
-          )?.ifcDataStore?.spatialHierarchy
-        : ifcDataStore?.spatialHierarchy;
-      const storeyElements = ownHierarchy?.byStorey.get(storeyId);
-      if (storeyElements) {
-        count += storeyElements.length;
+      const owner = countedModels.find((m) => m.store.spatialHierarchy?.byStorey.has(storeyId));
+      const storeyElements = owner?.store.spatialHierarchy?.byStorey.get(storeyId);
+      if (!owner || !storeyElements) continue;
+      resolvedAnyStorey = true;
+      let isObject = predicates.get(owner.store);
+      if (!isObject) {
+        isObject = createObjectPredicate({
+          getTypeName: (expressId) => owner.store.entities.getTypeName(expressId),
+          relationships: owner.store.relationships as AggregationRelationships | undefined,
+          meshedIds: collectMeshedIds(owner.geometry),
+        });
+        predicates.set(owner.store, isObject);
+      }
+      for (const expressId of storeyElements) {
+        if (isObject(expressId)) count++;
       }
     }
-    return count || stats.elements;
-  }, [selectedStoreys, ifcDataStore, models, stats.elements]);
+    // A selection naming no storey this session can resolve says nothing about
+    // the model — fall back to the whole-model total. A storey that resolves
+    // and genuinely holds no objects reports 0, which is the answer.
+    return resolvedAnyStorey ? count : totalObjects;
+  }, [selectedStoreys, countedModels, totalObjects]);
 
   return (
     <div className="h-7 px-3 border-t bg-muted/30 flex items-center justify-between text-xs text-muted-foreground">
@@ -151,8 +200,8 @@ export function StatusBar() {
           <Boxes className="h-3.5 w-3.5" />
           <span>
             {formatNumber(visibleElements)}
-            {selectedStoreys.size > 0 && stats.elements !== visibleElements && (
-              <span className="opacity-60"> / {formatNumber(stats.elements)}</span>
+            {selectedStoreys.size > 0 && totalObjects !== visibleElements && (
+              <span className="opacity-60"> / {formatNumber(totalObjects)}</span>
             )}
             {' '}elements
           </span>
@@ -162,7 +211,7 @@ export function StatusBar() {
 
         <div className="flex items-center gap-1.5">
           <Triangle className="h-3.5 w-3.5" />
-          <span>{formatNumber(stats.triangles)} tris</span>
+          <span>{formatNumber(geometryResult?.totalTriangles ?? 0)} tris</span>
         </div>
       </div>
 

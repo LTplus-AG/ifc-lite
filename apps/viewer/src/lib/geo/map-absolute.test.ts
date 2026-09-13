@@ -23,7 +23,7 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion } from '@ifc-lite/parser';
 
 import { effectiveMapConversionForGeometry } from './map-absolute.js';
-import { getEffectiveHorizontalScale } from './geo-scale.js';
+import { getEffectiveAxisScales, getEffectiveHorizontalScale } from './geo-scale.js';
 
 /** Model geometry centred exactly at the declared anchor (ifcX/ifcY == anchorE/anchorN). */
 function coordinateInfoAtAnchor(anchorE: number, anchorN: number): CoordinateInfo {
@@ -67,8 +67,23 @@ describe('effectiveMapConversionForGeometry — scale neutralisation', () => {
     assert.strictEqual(effective.scale, 1, 'authored Scale=0.9996 must not survive into the neutralised conversion');
     assert.deepStrictEqual(
       [effective.factorX, effective.factorY, effective.factorZ],
-      [1, 1, 1],
+      [undefined, undefined, undefined],
       'already-absolute coordinates must not be rescaled by subtype factors',
+    );
+  });
+
+  it('stays identity through the real axis-scale helper when project and map units differ (#4615)', () => {
+    const conversion = makeConversion({ eastings: 312_007_000, northings: 5_996_161_000 });
+    const mapUnitScale = 1;
+    const lengthUnitScale = 0.001;
+    const coordinateInfo = coordinateInfoAtAnchor(
+      conversion.eastings * mapUnitScale,
+      conversion.northings * mapUnitScale,
+    );
+    const effective = effectiveMapConversionForGeometry(conversion, mapUnitScale, coordinateInfo);
+    assert.deepStrictEqual(
+      getEffectiveAxisScales(effective, mapUnitScale, lengthUnitScale),
+      { x: 1, y: 1, z: 1 },
     );
   });
 

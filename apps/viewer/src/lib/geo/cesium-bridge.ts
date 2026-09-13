@@ -64,6 +64,8 @@ export interface CesiumBridge {
    * meridian convergence off the true-north basemap. See #1408.
    */
   viewerRotation: ViewerToEnuRotation;
+  /** Effective FactorZ/Scale coefficient for viewer Y-up deltas. */
+  viewerUpScale: number;
 
   /**
    * Sync the Cesium camera using lookAtTransform with a viewer→ECEF matrix.
@@ -491,6 +493,7 @@ export async function createCesiumBridge(
     modelOrigin,
     rotationAngle: rotAngle,
     viewerRotation: rot,
+    viewerUpScale: origin.scaleZ,
     syncCamera,
     queryTerrainHeight,
     viewerToGeodetic,

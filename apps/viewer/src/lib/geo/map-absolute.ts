@@ -128,8 +128,11 @@ export function effectiveMapConversionForGeometry(
     xAxisAbscissa: 1,
     xAxisOrdinate: 0,
     scale: 1,
-    factorX: 1,
-    factorY: 1,
-    factorZ: 1,
+    // Clear subtype factors so downstream scale helpers recognise this as the
+    // synthetic identity conversion. Explicit 1 values would carry authored
+    // IfcMapConversionScaled provenance and reintroduce the unit ratio.
+    factorX: undefined,
+    factorY: undefined,
+    factorZ: undefined,
   };
 }

@@ -41,7 +41,7 @@ import { whenModelRenderable, type CesiumModelPrimitive } from './cesium-model-r
  * Extracted as a pure function so it can be called from both
  * the GLB load effect (initial) and the matrix update effect (instant).
  */
-function buildModelMatrix(
+export function buildCesiumModelMatrix(
   Cesium: typeof import('cesium'),
   bridge: CesiumBridge,
   coordinateInfo: CoordinateInfo | undefined,
@@ -69,11 +69,11 @@ function buildModelMatrix(
   const rot = bridge.viewerRotation;
   const tx = -(rot.eastFromVx * mvx + rot.eastFromVz * mvz);
   const ty = -(rot.northFromVx * mvx + rot.northFromVz * mvz);
-  const tz = -mvy;
+  const tz = -bridge.viewerUpScale * mvy;
   const ifcToEnu = new Cesium.Matrix4(
     rot.eastFromVx,  0, rot.eastFromVz,  tx,
     rot.northFromVx, 0, rot.northFromVz, ty,
-    0,               1, 0,               tz,
+    0,               bridge.viewerUpScale, 0,      tz,
     0,               0, 0,               1,
   );
   return Cesium.Matrix4.multiply(enuToEcef, ifcToEnu, new Cesium.Matrix4());
@@ -273,7 +273,7 @@ export function useCesiumModel({
         if (superseded()) return;
 
         // Build initial model matrix
-        const modelMatrix = buildModelMatrix(Cesium, bridge, coordinateInfo);
+        const modelMatrix = buildCesiumModelMatrix(Cesium, bridge, coordinateInfo);
 
         const blob = new Blob([glbBytes as BlobPart], { type: 'model/gltf-binary' });
         const glbUrl = URL.createObjectURL(blob);
@@ -363,7 +363,7 @@ export function useCesiumModel({
     const Cesium = getCesiumModule();
     if (!model || !bridge || !viewer || !Cesium) return;
 
-    const newMatrix = buildModelMatrix(Cesium, bridge, coordinateInfo);
+    const newMatrix = buildCesiumModelMatrix(Cesium, bridge, coordinateInfo);
     model.modelMatrix = newMatrix;
     viewer.scene.requestRender();
     // Depend on bridgeVersion so the matrix is rebuilt with the *new* bridge

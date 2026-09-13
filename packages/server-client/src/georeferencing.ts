@@ -14,10 +14,10 @@ export interface Georeferencing {
   x_axis_abscissa: number;
   x_axis_ordinate: number;
   scale: number;
-  /** Per-axis factors from IfcMapConversionScaled (default 1). */
-  factor_x: number;
-  factor_y: number;
-  factor_z: number;
+  /** Per-axis factors from IfcMapConversionScaled. Absent in older server responses; default to 1. */
+  factor_x?: number;
+  factor_y?: number;
+  factor_z?: number;
   rotation_degrees: number;
   transform_matrix: number[];
   crs_description?: string;

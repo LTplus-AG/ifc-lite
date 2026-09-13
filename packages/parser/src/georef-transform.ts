@@ -90,20 +90,20 @@ export function transformToLocal(
   const yTrans = yWorld - m[13];
   const zTrans = zWorld - m[14];
 
-  const det = m[0] * m[5] - m[1] * m[4];
-  if (
-    !Number.isFinite(det) ||
-    !Number.isFinite(m[10]) ||
-    Math.abs(det) <= Number.EPSILON ||
-    Math.abs(m[10]) <= Number.EPSILON
-  ) {
+  // The horizontal columns are orthogonal rotated axes. Invert them after
+  // normalising each independently, so a small but well-conditioned scale is
+  // not mistaken for a singular matrix merely because sx*sy < EPSILON.
+  const sx = Math.hypot(m[0], m[1]);
+  const sy = Math.hypot(m[4], m[5]);
+  const sz = Math.abs(m[10]);
+  if (![sx, sy, sz].every(Number.isFinite) || sx === 0 || sy === 0 || sz === 0) {
     return null;
   }
-  const x = (m[5] * xTrans - m[4] * yTrans) / det;
-  const y = (-m[1] * xTrans + m[0] * yTrans) / det;
+  const x = ((m[0] / sx) * xTrans + (m[1] / sx) * yTrans) / sx;
+  const y = ((m[4] / sy) * xTrans + (m[5] / sy) * yTrans) / sy;
   const z = zTrans / m[10];
 
-  return [x, y, z];
+  return [x, y, z].every(Number.isFinite) ? [x, y, z] : null;
 }
 
 /**

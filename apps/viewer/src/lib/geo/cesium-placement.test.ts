@@ -24,6 +24,7 @@ import {
 } from './cesium-placement.js';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion } from '@ifc-lite/parser';
+import { getEffectiveAxisScale } from './geo-scale.js';
 
 describe('cesium placement helpers', () => {
   it('defaults to METRES when MapUnit is absent (overrides project length unit)', () => {
@@ -242,6 +243,13 @@ describe('cesium placement helpers', () => {
       0.3048,
     );
     assert.deepStrictEqual(feetToMetres, { eastings: 2, northings: 1 });
+  });
+
+  it('does not erase an explicit axis factor when Scale times Factor equals one (#4615)', () => {
+    // Project millimetres -> map metres: Scale=.001 is the authored unit bridge.
+    // FactorX=1000 is an additional explicit axis scaling, even though their raw
+    // product happens to equal the legacy omitted-Scale sentinel.
+    assert.strictEqual(getEffectiveAxisScale(0.001, 1000, 1, 0.001), 1000);
   });
 
   it('rotates viewer XY drag deltas by a genuine (non-identity) grid rotation', () => {

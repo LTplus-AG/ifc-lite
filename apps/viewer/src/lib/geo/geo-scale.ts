@@ -73,8 +73,21 @@ export function getEffectiveAxisScale(
   mapUnitScale: number,
   lengthUnitScale: number,
 ): number {
-  const axisScale = (ifcMapConversionScale ?? 1) * (factor ?? 1);
-  return getEffectiveHorizontalScale(axisScale, mapUnitScale, lengthUnitScale);
+  if (factor === undefined) {
+    return getEffectiveHorizontalScale(ifcMapConversionScale, mapUnitScale, lengthUnitScale);
+  }
+  if (ifcMapConversionScale === undefined) {
+    return getEffectiveHorizontalScale(undefined, mapUnitScale, lengthUnitScale) * factor;
+  }
+  // A scaled conversion supplies the complete axis coefficient explicitly.
+  // Keep that provenance: applying the legacy Scale==1 compensation to the
+  // product can erase authored factors (Scale=.001, FactorX=1000), while
+  // applying it before the factor corrupts valid Scale=1, FactorX=.3048 unit
+  // bridges. The compatibility heuristic remains for ordinary MapConversion
+  // and for an actually omitted Scale above.
+  const lus = lengthUnitScale > 0 ? lengthUnitScale : 1;
+  const mus = mapUnitScale > 0 ? mapUnitScale : 1;
+  return (ifcMapConversionScale * factor * mus) / lus;
 }
 
 export function getEffectiveAxisScales(

@@ -20,6 +20,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { extractGeoreferencing, transformToWorld, transformToLocal } from './georef-extractor.js';
+import { computeTransformMatrix } from './georef-transform.js';
+import type { GeoreferenceInfo } from './georef-extractor.js';
 import { normalizeIfcTypeName } from './ifc-schema.js';
 import type { IfcEntity } from './entity-extractor.js';
 
@@ -51,6 +53,29 @@ interface Expect {
   factorZ?: number;
   localToMap?: { local: [number, number, number]; map: [number, number, number] }[];
 }
+
+it('round-trips a small but well-conditioned scaled conversion (#4615)', () => {
+  const transformMatrix = computeTransformMatrix({
+    id: 1,
+    sourceCRS: 2,
+    targetCRS: 3,
+    eastings: 0,
+    northings: 0,
+    orthogonalHeight: 0,
+    xAxisAbscissa: 0.6,
+    xAxisOrdinate: 0.8,
+    scale: 1e-8,
+  });
+  const georef: GeoreferenceInfo = { hasGeoreference: true, transformMatrix };
+  const local: [number, number, number] = [10, -20, 5];
+  const world = transformToWorld(local, georef);
+  expect(world).not.toBeNull();
+  const roundTrip = transformToLocal(world!, georef);
+  expect(roundTrip).not.toBeNull();
+  approx(roundTrip?.[0], local[0], 'small-scale x');
+  approx(roundTrip?.[1], local[1], 'small-scale y');
+  approx(roundTrip?.[2], local[2], 'small-scale z');
+});
 
 interface Vector {
   name: string;

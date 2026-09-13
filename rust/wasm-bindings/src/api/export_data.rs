@@ -48,8 +48,16 @@ impl IfcAPI {
     }
 
     /// Export **JSON-LD** (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART
-    /// IFC4 OWL default. `included` is an express-id isolation filter mirroring the
-    /// OBJ/glTF/STEP exporters (empty ⇒ all entities).
+    /// IFC4 OWL default.
+    ///
+    /// `included` is an express-id isolation filter mirroring `exportObj` /
+    /// `exportGlb`, and carries the same null-vs-empty distinction across the wasm
+    /// boundary: omit it (`undefined`) for "no isolation filter" (every entity is
+    /// emitted); pass an empty `Uint32Array` for "isolation is ACTIVE and currently
+    /// matches nothing", which emits an empty `@graph`. Collapsing the two — as a
+    /// bare `Uint32Array` parameter would force a caller to do — silently exported
+    /// the whole model when a filter matched nothing (#4659, the JSON-LD twin of
+    /// #4483/#4484). A non-empty `Uint32Array` is the ordinary allowlist.
     #[wasm_bindgen(js_name = exportJsonld)]
     pub fn export_jsonld(
         &self,
@@ -58,13 +66,13 @@ impl IfcAPI {
         include_properties: bool,
         include_quantities: bool,
         pretty: bool,
-        included: &[u32],
+        included: Option<Vec<u32>>,
     ) -> Vec<u8> {
         let mut opts = JsonLdOptions {
             include_properties,
             include_quantities,
             pretty,
-            included: included.to_vec(),
+            included,
             ..Default::default()
         };
         if !context.is_empty() {

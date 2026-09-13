@@ -17,9 +17,13 @@ pub struct JsonLdOptions {
     pub include_properties: bool,
     pub include_quantities: bool,
     pub pretty: bool,
-    /// Express-id isolation filter (mirrors the OBJ/glTF/STEP exporters): when
-    /// non-empty, only these entities are emitted into `@graph`; empty ⇒ all.
-    pub included: Vec<u32>,
+    /// Express-id isolation filter, mirroring the OBJ/glTF/STEP exporters and
+    /// carrying their null-vs-empty distinction: `None` ⇒ no filter, every
+    /// entity is emitted; `Some(ids)` ⇒ only those entities. `Some(empty)` is
+    /// therefore "the filter is active and matched nothing" and emits an empty
+    /// `@graph` — collapsing it back to `None` exported the whole model to a
+    /// caller who asked for a subset (#4659, the JSON-LD twin of #4483/#4484).
+    pub included: Option<Vec<u32>>,
 }
 
 impl Default for JsonLdOptions {
@@ -29,7 +33,7 @@ impl Default for JsonLdOptions {
             include_properties: true,
             include_quantities: false,
             pretty: false,
-            included: Vec::new(),
+            included: None,
         }
     }
 }
@@ -37,11 +41,10 @@ impl Default for JsonLdOptions {
 /// Export the model as a JSON-LD document string.
 pub fn export_jsonld(content: &[u8], opts: &JsonLdOptions) -> String {
     let model = build_export_model(content);
-    let filter: Option<std::collections::HashSet<u32>> = if opts.included.is_empty() {
-        None
-    } else {
-        Some(opts.included.iter().copied().collect())
-    };
+    let filter: Option<std::collections::HashSet<u32>> = opts
+        .included
+        .as_ref()
+        .map(|ids| ids.iter().copied().collect());
     let mut graph: Vec<Value> = Vec::with_capacity(model.entities.len());
 
     for e in &model.entities {
@@ -139,6 +142,50 @@ mod tests {
         assert!(has_psets, "expected ifc:hasPropertySets somewhere");
     }
 
+
+    /// #4659: `Some(empty)` means "the isolation filter is active and matched
+    /// nothing", not "no filter". Before this, `JsonLdOptions::included` was a
+    /// bare `Vec<u32>` whose emptiness was read as "export everything", so a
+    /// zero-match `--type` silently handed the user the whole model.
+    ///
+    /// The `None` sibling pins the other direction: the two must not collapse
+    /// into each other in either direction.
+    #[test]
+    fn an_active_but_empty_included_set_emits_an_empty_graph() {
+        let ifc = "ISO-10303-21;\n\
+HEADER;\n\
+FILE_DESCRIPTION((''),'');\n\
+FILE_NAME('','',(''),(''),'','','');\n\
+FILE_SCHEMA(('IFC4'));\n\
+ENDSEC;\n\
+DATA;\n\
+#4=IFCPROJECT('0PROJECT0000000000000',$,'P',$,$,$,$,$,$);\n\
+#5=IFCWALL('0WALL000000000000000A',$,'W1',$,$,$,$,$,$);\n\
+#6=IFCWALL('0WALL000000000000000B',$,'W2',$,$,$,$,$,$);\n\
+#7=IFCSLAB('0SLAB000000000000000A',$,'S1',$,$,$,$,$,$);\n\
+ENDSEC;\n\
+END-ISO-10303-21;\n";
+        let graph_len = |opts: &JsonLdOptions| -> usize {
+            let v: Value = serde_json::from_str(&export_jsonld(ifc.as_bytes(), opts)).unwrap();
+            v["@graph"].as_array().expect("graph array").len()
+        };
+
+        // No filter: every entity. Asserted first so the empty-graph assertion
+        // below cannot pass merely because the fixture exports nothing.
+        let unfiltered = graph_len(&JsonLdOptions { included: None, ..Default::default() });
+        assert_eq!(unfiltered, 3, "unfiltered graph carries every entity in the fixture");
+
+        // A filter that matches something still narrows.
+        let narrowed =
+            graph_len(&JsonLdOptions { included: Some(vec![5, 6]), ..Default::default() });
+        assert_eq!(narrowed, 2, "an explicit two-entity filter emits exactly those entities");
+
+        // A filter that matches nothing emits nothing.
+        let zero_match =
+            graph_len(&JsonLdOptions { included: Some(Vec::new()), ..Default::default() });
+        assert_eq!(zero_match, 0, "an active-but-empty filter must not export the whole model");
+    }
+
     #[test]
     fn included_filter_restricts_the_graph() {
         let bytes = fixture_or_skip!("ara3d/duplex.ifc");
@@ -153,7 +200,7 @@ mod tests {
             .map(|n| n["ifc:expressId"].as_u64().unwrap() as u32)
             .collect();
 
-        let opts = JsonLdOptions { included: pick.clone(), ..Default::default() };
+        let opts = JsonLdOptions { included: Some(pick.clone()), ..Default::default() };
         let filtered: Value = serde_json::from_str(&export_jsonld(&bytes, &opts)).unwrap();
         let graph = filtered["@graph"].as_array().unwrap();
         assert_eq!(graph.len(), 2, "isolated export emits only the requested ids");

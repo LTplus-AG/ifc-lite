@@ -458,10 +458,8 @@ fn a_pool_that_cannot_spawn_its_threads_is_an_error_not_a_panic() {
 }
 
 /// Panic records appended from many threads at once come out whole and none
-/// is lost (#4642). Mutation that fails this test: write the record's fields
-/// with separate writes (`writeln!` straight to the file) and drop the lock.
-/// Dropping only the lock does not fail it on a local file, where one small
-/// append write is not split.
+/// is lost (#4642). Mutation that fails this test: remove the `LOG_WRITE`
+/// lock in `append_record`.
 #[test]
 fn concurrent_panic_records_do_not_interleave() {
     let log = temp_path("panic_interleave_log");

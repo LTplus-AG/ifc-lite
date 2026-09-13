@@ -83,16 +83,18 @@ pub(crate) fn ensure_panic_logging() {
 }
 
 /// Serialises whole records (#4642): panics on different pool workers run the
-/// hook concurrently. Held only across the open and one `write_all`, which
-/// can still reach the file in more than one `write` call.
+/// hook concurrently, and a record is two writes.
 static LOG_WRITE: Mutex<()> = Mutex::new(());
 
-/// Append one panic record to `log_path`. The record, backtrace included, is
-/// formatted before [`LOG_WRITE`] is taken, then written in one `write_all`.
+/// Append one panic record to `log_path` under [`LOG_WRITE`]. The file path
+/// and message are written before the backtrace is formatted, so they reach
+/// the disk even if the process dies while symbols resolve.
 pub(crate) fn append_record(log_path: &Path, path: &str, info: impl Display, backtrace: impl Display) {
-    let record = format!("==== ifc-lite panic ====\nfile: {path}\n{info}\nbacktrace:\n{backtrace}\n\n");
+    let header = format!("==== ifc-lite panic ====\nfile: {path}\n{info}\nbacktrace:\n");
     let _serialised = LOG_WRITE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(log_path) {
-        let _ = file.write_all(record.as_bytes());
+        if file.write_all(header.as_bytes()).is_ok() {
+            let _ = file.write_all(format!("{backtrace}\n\n").as_bytes());
+        }
     }
 }

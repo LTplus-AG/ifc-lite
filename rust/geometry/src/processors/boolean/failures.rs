@@ -25,6 +25,7 @@ impl GeometryProcessor for BooleanClippingProcessor {
     ) -> Result<Mesh> {
         let mut visited = OperandPath::default();
         self.process_with_depth(entity, decoder, schema, 0, quality, &mut visited)
+            .map(|(mesh, _)| mesh)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
@@ -102,9 +103,10 @@ impl BooleanClippingProcessor {
     }
 
     /// Record the `EmptyOperand` consequence for an operand that meshed
-    /// empty — UNLESS [`Self::process_operand_checked`] already recorded
-    /// `UnsupportedOperand` for that same operand. One dropped step, one
-    /// record: see the flag's rationale there.
+    /// empty — UNLESS [`Self::process_operand_checked`] reports its loss
+    /// already on record (an unsupported operand, or a nested one emptied by
+    /// a drop inside it). One dropped step, one record: see the flag's
+    /// rationale there.
     pub(super) fn record_empty_operand(&self, op: BoolOp, already_recorded: bool) {
         if !already_recorded {
             self.record_failure(op, BoolFailureReason::EmptyOperand);

@@ -50,7 +50,7 @@ impl DenseEntityIndex {
         let slot = id as usize;
         let start = *self.starts.get(slot)? as usize;
         if self.present[slot / 64] & (1u64 << (slot % 64)) == 0 { return None; }
-        Some((start, start + self.lengths[slot] as usize))
+        Some((start, start.saturating_add(self.lengths[slot] as usize)))
     }
 }
 

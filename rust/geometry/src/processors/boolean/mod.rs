@@ -318,12 +318,12 @@ impl BooleanClippingProcessor {
         // walked iteratively above, so a 12-cutter chain reaches here at the
         // SAME `depth` as a 2-cutter one — the recursion-depth limit can't drop
         // it.
-        let (base_mesh, unsupported) = self.process_operand_checked(
+        let (base_mesh, loss_recorded) = self.process_operand_checked(
             BoolOp::Unknown, &base_entity, decoder, depth, quality, visited)?;
         if base_mesh.is_empty() {
             // Nothing to cut. Returned, not deferred (a deferral re-meshes the
             // base at every spine level), with the flag the one-record rule needs.
-            return Ok(Some((base_mesh, unsupported)));
+            return Ok(Some((base_mesh, loss_recorded)));
         }
 
         // Build each cutter prism (bounds-clamped to the base).
@@ -479,6 +479,10 @@ impl BooleanClippingProcessor {
     /// Revit exports building-element-part chains up to 42 DIFFERENCE nodes
     /// deep; the recursive walk hit the cap at 10, errored, and the router
     /// dropped the whole element's geometry.
+    ///
+    /// The `bool` is true only when the mesh is empty and its loss is already
+    /// on record, so a parent that meshed this node as an operand does not
+    /// record it again (#4691; see `process_operand_checked`).
     pub(crate) fn process_with_depth(
         &self,
         entity: &DecodedEntity,
@@ -487,7 +491,7 @@ impl BooleanClippingProcessor {
         depth: u32,
         quality: TessellationQuality,
         visited: &mut OperandPath,
-    ) -> Result<Mesh> {
+    ) -> Result<(Mesh, bool)> {
         // PATH-scoped, not global: a boolean tree is a DAG and one operand
         // legitimately referenced down two different branches must be PRESENT
         // in both (the accumulation is the parent's subtract, not the node's;
@@ -550,7 +554,7 @@ impl BooleanClippingProcessor {
         depth: u32,
         quality: TessellationQuality,
         visited: &mut OperandPath,
-    ) -> Result<Mesh> {
+    ) -> Result<(Mesh, bool)> {
         // Depth limit to prevent stack overflow from nested boolean operands
         if depth > MAX_BOOLEAN_DEPTH {
             return Err(Error::geometry(format!(
@@ -657,7 +661,7 @@ impl BooleanClippingProcessor {
             empty_recorded = stepped.is_empty() && (empty_recorded || dropped);
             mesh = stepped;
         }
-        Ok(mesh)
+        Ok((mesh, empty_recorded))
     }
 
     /// Apply one boolean node's operator and SecondOperand to an already-built
@@ -841,10 +845,10 @@ impl BooleanClippingProcessor {
             // short-circuit here meant every CSG primitive cut (issue #780
             // bath, any `IfcCsgSolid` with a solid cutter) silently rendered
             // as the uncut host even when the operands were trivially small.
-            let (second_mesh, unsupported) = self
+            let (second_mesh, loss_recorded) = self
                 .process_operand_checked(BoolOp::Difference, &second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
-                self.record_empty_operand(BoolOp::Difference, unsupported);
+                self.record_empty_operand(BoolOp::Difference, loss_recorded);
                 return Ok((mesh, false));
             }
             // Small-cut skip: a cutter far smaller than its host (a steel
@@ -873,10 +877,10 @@ impl BooleanClippingProcessor {
         // Handle UNION operation — a real CSG union (overlap removed) on the
         // pure-Rust exact kernel.
         if operator == BoolOp::Union {
-            let (second_mesh, unsupported) = self
+            let (second_mesh, loss_recorded) = self
                 .process_operand_checked(BoolOp::Union, &second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
-                self.record_empty_operand(BoolOp::Union, unsupported);
+                self.record_empty_operand(BoolOp::Union, loss_recorded);
                 return Ok((mesh, false));
             }
             let clipper = ClippingProcessor::new();
@@ -887,10 +891,10 @@ impl BooleanClippingProcessor {
 
         // What is left is INTERSECTION: a real intersection volume on the
         // pure-Rust exact kernel.
-        let (second_mesh, unsupported) = self
+        let (second_mesh, loss_recorded) = self
             .process_operand_checked(BoolOp::Intersection, &second_operand, decoder, depth, quality, visited)?;
         if second_mesh.is_empty() {
-            self.record_empty_operand(BoolOp::Intersection, unsupported);
+            self.record_empty_operand(BoolOp::Intersection, loss_recorded);
             // Emptied by a dropped operand that is now on record.
             return Ok((Mesh::new(), true));
         }

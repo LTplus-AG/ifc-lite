@@ -5,10 +5,10 @@
 //! Binary Parquet parse endpoints.
 
 use super::cache_keys::{
-    cache_symbolic_data, data_model_cache_key, has_current_data_model, has_cached_symbolic, parquet_geometry_key,
+    data_model_cache_key, has_current_data_model, has_cached_symbolic, parquet_geometry_key,
     parquet_metadata_key, request_cache_key,
 };
-use super::{extract_file, ParseQuery};
+use super::{cache_symbolic_data_off_runtime, extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::baked_basis_zup;
 use crate::services::parquet::serialize_combined_for_layout;
@@ -225,7 +225,7 @@ pub async fn parse_parquet(
 
     // Cache the symbolic stream immediately so it's ready when the client
     // fetches `GET /api/v1/parse/symbolic/{cache_key}` (issue #900).
-    cache_symbolic_data(&state.cache, &cache_key, &symbolic_data).await;
+    cache_symbolic_data_off_runtime(state.cache.clone(), cache_key.clone(), symbolic_data).await;
 
     // Create metadata header with data model stats (captured before background task)
     let cache_key_clone = cache_key.clone();

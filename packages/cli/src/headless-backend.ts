@@ -2,13 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * HeadlessBackend — BimBackend implementation for CLI (no renderer).
- *
- * Wraps an IfcDataStore parsed from an IFC file and exposes it through
- * the standard BimBackend interface. Viewer-specific operations (colorize,
- * flyTo, etc.) are no-ops.
- */
+/** Headless `BimBackend` implementation for the CLI (no renderer). */
 
 import type {
   BimBackend,
@@ -27,6 +21,7 @@ import type {
   LensBackendMethods,
   FilesBackendMethods,
   ScheduleBackendMethods,
+  StructuralBackendMethods,
   EntityRef,
   EntityData,
   EntityAttributeData,
@@ -87,6 +82,7 @@ import {
   isQueryableObjectType,
 } from '@ifc-lite/parser';
 import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { createStructuralAdapter } from './headless-backend-structural.js';
 import { edgeSurvives } from '@ifc-lite/data';
 import { exportHbjson, exportDfjson } from './energy-export.js';
 import { foldQueuedRelated } from './query-overlay-relations.js';
@@ -158,6 +154,7 @@ export class HeadlessBackend implements BimBackend {
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
+  readonly structural: StructuralBackendMethods;
   readonly spaces: SpacesBackendMethods;
   readonly style: StyleBackendMethods;
 
@@ -187,6 +184,7 @@ export class HeadlessBackend implements BimBackend {
     this.lens = this.createLensAdapter();
     this.files = this.createFilesAdapter();
     this.schedule = this.createScheduleAdapter();
+    this.structural = createStructuralAdapter(this.dataStore, modelId => this.assertKnownModelId(modelId));
     this.spaces = this.createSpacesAdapter();
     this.style = this.createStyleAdapter();
   }
@@ -788,4 +786,5 @@ export class HeadlessBackend implements BimBackend {
       sequences: (modelId) => extract(modelId).sequences,
     };
   }
+
 }

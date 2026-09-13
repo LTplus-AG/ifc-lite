@@ -901,7 +901,7 @@ fn material_and_display_colours_are_linear() {
 fn usd_and_gltf_agree_on_every_material_colour() {
     let bytes = hello_wall();
     let usda = export(&bytes);
-    let glb = crate::export_glb(&bytes, &crate::GltfOptions::default());
+    let glb = crate::try_export_glb(&bytes, &crate::GltfOptions::default()).expect("has geometry");
     let json_len = u32::from_le_bytes(glb[12..16].try_into().unwrap()) as usize;
     let json: serde_json::Value = serde_json::from_slice(&glb[20..20 + json_len]).unwrap();
     let gltf: Vec<[f64; 3]> = json["materials"]

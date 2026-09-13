@@ -1493,6 +1493,12 @@ jobs:
       # rebuilds it (fast, single package) otherwise.
       - name: Check codegen output freshness
         run: pnpm run check:codegen-sync
+      # `LEGACY_ROOTED_TYPES` is generated from the older EXPRESS-derived
+      # entity tables, but it is consumed by Rust rather than by the TS codegen
+      # package above. Check its own generator explicitly so a schema refresh
+      # cannot leave the committed Rust table stale while CI stays green.
+      - name: Check legacy rooted-type freshness
+        run: node scripts/generate-legacy-rooted-types.mjs --check
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

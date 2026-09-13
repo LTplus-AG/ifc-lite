@@ -21,11 +21,13 @@ pub use parquet_optimized::parse_parquet_optimized;
 pub use parquet_stream::parse_parquet_stream;
 
 use crate::error::ApiError;
+use crate::services::cache::DiskCache;
 use crate::services::{OpeningFilterMode, ParquetLayout};
 use axum::extract::Multipart;
 use flate2::read::GzDecoder;
-use ifc_lite_processing::TessellationQuality;
+use ifc_lite_processing::{SymbolicDataWithProvenance, TessellationQuality};
 use std::io::{Cursor, Read};
+use std::sync::Arc;
 
 /// Query parameters shared by all parse endpoints.
 #[derive(serde::Deserialize, Default)]
@@ -72,6 +74,28 @@ impl ParseQuery {
                 ))
             }),
         }
+    }
+}
+
+/// Write the symbolic sidecar through [`cache_keys::cache_symbolic_data`] on
+/// the blocking pool (#4696).
+///
+/// That call JSON-encodes the whole 2D symbol stream before it writes, and
+/// awaited on an async worker the encode holds that worker for its whole
+/// length. Every parse route writes the sidecar through here. The write itself
+/// is async, so the blocking thread drives it with `Handle::block_on`.
+async fn cache_symbolic_data_off_runtime(
+    cache: Arc<DiskCache>,
+    cache_key: String,
+    symbolic: SymbolicDataWithProvenance,
+) {
+    let runtime = tokio::runtime::Handle::current();
+    let written = tokio::task::spawn_blocking(move || {
+        runtime.block_on(cache_keys::cache_symbolic_data(&cache, &cache_key, &symbolic))
+    })
+    .await;
+    if let Err(e) = written {
+        tracing::error!(error = %e, "Symbolic data cache task failed");
     }
 }
 
@@ -287,6 +311,9 @@ mod parquet_optimized_tests;
 
 #[cfg(test)]
 mod json_tests;
+
+#[cfg(test)]
+mod worker_thread_tests;
 
 #[cfg(test)]
 mod fetch_tests;

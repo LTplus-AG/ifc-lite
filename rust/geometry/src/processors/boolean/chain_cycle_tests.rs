@@ -1552,3 +1552,87 @@ fn an_unreadable_operator_over_an_empty_first_operand_is_still_recorded() {
     assert!(out.expect("resolves").is_empty(), "the (empty) host comes back un-cut");
     assert_unreadable_operator_recorded(&failures);
 }
+
+// Regression tests for #4691: a nested boolean or `IfcCsgSolid` operand that
+// meshes empty because an operand INSIDE it was dropped is already on record,
+// so the level above must not add `EmptyOperand` for the same loss.
+
+/// `#13` meshes empty because its base `#5` has no mesher, which the inner
+/// walk records as `UnsupportedOperand`. `#20` applies `op` to the host `#1`
+/// and `#13`, reached directly or, when `csg` is set, through an
+/// `IfcCsgSolid` wrapping it.
+fn emptied_nested_cutter(op: &str, csg: bool) -> String {
+    let cutter = if csg { "#14" } else { "#13" };
+    format!(
+        "{TWO_BLOCKS}{UNSUPPORTED_BASE}#13=IFCBOOLEANRESULT(.DIFFERENCE.,#5,#2);\n\
+         #14=IFCCSGSOLID(#13);\n\
+         #20=IFCBOOLEANRESULT(.{op}.,#1,{cutter});\n"
+    )
+}
+
+/// One dropped operand inside a nested second operand, one record, for every
+/// operator and through both nested hops.
+#[test]
+fn a_nested_operand_emptied_by_an_unsupported_operand_records_it_once() {
+    for op in ["DIFFERENCE", "UNION", "INTERSECTION"] {
+        for csg in [false, true] {
+            let (out, failures) = process_root(&emptied_nested_cutter(op, csg), 20);
+            out.unwrap_or_else(|e| panic!("{op} csg={csg}: must resolve, got {e}"));
+            assert_eq!(
+                dropped_operand_records(&failures),
+                (1, 0),
+                "{op} csg={csg}: one record for one dropped operand: {failures:?}"
+            );
+        }
+    }
+}
+
+/// The failing input from #4691: both operands of the inner UNION have no
+/// mesher. Two dropped operands, two records, and no `EmptyOperand` on top.
+#[test]
+fn a_nested_union_of_two_unsupported_operands_records_each_once() {
+    let data = format!(
+        "{TWO_BLOCKS}{UNSUPPORTED_BASE}#6=IFCRIGHTCIRCULARCONE($,1.,0.5);\n\
+         #13=IFCBOOLEANRESULT(.UNION.,#5,#6);\n\
+         #20=IFCBOOLEANRESULT(.DIFFERENCE.,#1,#13);\n"
+    );
+    let (out, failures) = process_root(&data, 20);
+    assert_eq!(out.expect("resolves").triangle_count(), 12, "the host comes back un-cut");
+    assert_eq!(dropped_operand_records(&failures), (2, 0), "two dropped operands, two records: {failures:?}");
+}
+
+/// The batched chain's base is a boolean node (`#11`) that empties on an
+/// unsupported operand. The batched path handed the UNION above that empty
+/// base with the flag unset, so it recorded `EmptyOperand` on top (#4691).
+#[test]
+fn a_union_over_a_batched_chain_on_an_emptied_boolean_base_records_it_once() {
+    let data = format!(
+        "{TWO_BLOCKS}{UNSUPPORTED_BASE}\
+         #11=IFCBOOLEANRESULT(.INTERSECTION.,#1,#5);\n\
+         #30=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#11,#40);\n\
+         #31=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#30,#41);\n\
+         #40=IFCPOLYGONALBOUNDEDHALFSPACE($,$,$,$);\n\
+         #41=IFCPOLYGONALBOUNDEDHALFSPACE($,$,$,$);\n\
+         #10=IFCBOOLEANRESULT(.UNION.,#31,#2);\n"
+    );
+    let (out, failures) = process_root(&data, 10);
+    assert_eq!(out.expect("resolves").triangle_count(), 12, "the second operand's block must survive");
+    assert_eq!(dropped_operand_records(&failures), (1, 0), "one record for one dropped operand: {failures:?}");
+}
+
+/// The counter-case: inside the nested cutter `#13` the dropped base is
+/// rescued by its UNION, and the INTERSECTION with the disjoint `#1` then
+/// empties it for a reason nothing recorded. That is a second loss and the
+/// outer DIFFERENCE still records it: a flag set by any drop record made
+/// inside the nested walk would hide it.
+#[test]
+fn a_nested_operand_emptied_after_a_rescued_drop_is_still_recorded() {
+    let data = format!(
+        "{TWO_BLOCKS}{UNSUPPORTED_BASE}#12=IFCBOOLEANRESULT(.UNION.,#5,#2);\n\
+         #13=IFCBOOLEANRESULT(.INTERSECTION.,#12,#1);\n\
+         #20=IFCBOOLEANRESULT(.DIFFERENCE.,#1,#13);\n"
+    );
+    let (out, failures) = process_root(&data, 20);
+    assert_eq!(out.expect("resolves").triangle_count(), 12, "the host comes back un-cut");
+    assert_eq!(dropped_operand_records(&failures), (1, 1), "two losses, two records: {failures:?}");
+}

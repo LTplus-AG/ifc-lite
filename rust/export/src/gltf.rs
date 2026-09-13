@@ -209,7 +209,7 @@ pub struct GltfStats {
     /// renders, up to 2m from where it belongs).
     ///
     /// Always 0 from the in-memory assembler, which verifies every exact-tier
-    /// pairing. Non-zero only from [`export_glb_streaming_bounded`], which holds
+    /// pairing. Non-zero only from [`try_export_glb_streaming_bounded`], which holds
     /// a PLAN and not geometry (`retain_emitted_meshes: false` is the whole
     /// reason it bounds memory), so it has no occurrence vertices to compare and
     /// cannot run the check as written. That gap was a comment inside the
@@ -970,11 +970,6 @@ fn push_occurrence_node(
     mesh_node + 1
 }
 
-/// Export the render geometry in `content` as a binary **GLB**.
-pub fn export_glb(content: &[u8], opts: &GltfOptions) -> Vec<u8> {
-    export_glb_with_stats(content, opts).0
-}
-
 /// A minimal borrowed view of one renderable mesh for glTF assembly — lets the
 /// from-bytes path (`process_geometry`) and the from-meshes path (the viewer's already
 /// produced MeshData) share one assembler.
@@ -1490,26 +1485,46 @@ fn build_gltf(
     (gltf, stats)
 }
 
-/// Like [`export_glb`] but also returns coverage stats. Meshes the model from bytes.
+/// Export the render geometry in `content` as a binary **GLB**.
 ///
-/// NOTE: this path fails OPEN on an empty visible set: it returns a zero-mesh
-/// GLB reported as success, and that GLB is NOT valid glTF. Its `accessors`,
-/// `bufferViews`, `meshes` and `nodes` are empty arrays (the glTF schema says
-/// `minItems: 1` when present) and `buffers[0].byteLength` is 0 (schema
-/// `minimum: 1`), the same artifact `try_export_glb_from_meshes` documents
-/// refusing. Prefer [`try_export_glb_with_stats`], which turns that case into
-/// [`ExportError::NoRenderGeometry`] so no caller can silently ship it.
+/// Fail-closed: an empty visible mesh set is [`ExportError::NoRenderGeometry`],
+/// never a zero-mesh GLB. That GLB is not valid glTF (its `accessors`,
+/// `bufferViews`, `meshes` and `nodes` are empty arrays where the schema says
+/// `minItems: 1`, and `buffers[0].byteLength` is 0 where it says `minimum: 1`),
+/// so success implies the artifact contains at least one mesh and every caller
+/// (CLI, MCP, SDK, viewer, direct Rust) inherits the guard. Every from-bytes GLB
+/// entry point refuses it the same way (#4685).
+pub fn try_export_glb(content: &[u8], opts: &GltfOptions) -> Result<Vec<u8>, ExportError> {
+    try_export_glb_with_stats(content, opts).map(|(glb, _)| glb)
+}
+
+/// Like [`try_export_glb`] but also returns coverage stats. Meshes the model from bytes.
 ///
 /// Inputs at or above the streaming threshold (default 64 MB, native override
 /// `IFC_LITE_GLB_STREAM_THRESHOLD_MB`, `0` disables) route to the bounded
-/// two-pass assembler ([`export_glb_streaming_bounded`]) so a large model never
-/// materializes all of its `MeshData` at once — the wasm-OOM fix. Small models
-/// keep the in-memory instanced assembler (byte-identical to before).
-pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
+/// two-pass assembler ([`try_export_glb_streaming_bounded`]) so a large model
+/// never materializes all of its `MeshData` at once (the wasm-OOM fix). Small
+/// models keep the in-memory instanced assembler.
+///
+/// Beyond the [`ExportError::NoRenderGeometry`] guard, a large input that would
+/// exceed the glTF 4 GiB single-GLB limit returns [`ExportError::TooLarge`]
+/// instead of panicking: the bounded path fails fast after pass 1, so a caller
+/// can fall back to [`export_gltf_streaming`] without catching a panic (#1516).
+///
+/// A SUB-THRESHOLD input (default < 64 MB) keeps the in-memory instanced
+/// assembler, which retains the historical 4 GiB `pack_glb` assert. That bound is
+/// only reachable if such a small file meshed to over 4 GiB of GLB (a ~64x
+/// expansion, not observed in practice); a caller that must be panic-proof even
+/// then can force the checked bounded path with
+/// `IFC_LITE_GLB_STREAM_THRESHOLD_MB=1`.
+pub fn try_export_glb_with_stats(
+    content: &[u8],
+    opts: &GltfOptions,
+) -> Result<(Vec<u8>, GltfStats), ExportError> {
     if content.len() >= glb_stream_threshold_bytes() {
-        return export_glb_streaming_bounded(content, opts);
+        return try_export_glb_streaming_bounded(content, opts);
     }
-    export_glb_from_result(
+    try_export_glb_from_result(
         process_geometry_filtered_with_quality(
             content,
             OpeningFilterMode::Default,
@@ -1519,67 +1534,20 @@ pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, Gl
     )
 }
 
-/// Fail-closed [`export_glb`]: an empty visible mesh set is an error, not a valid
-/// empty GLB. Success implies the artifact contains at least one mesh, so every
-/// caller (CLI, MCP, SDK, viewer, direct Rust) inherits the guard that previously
-/// lived only in the TS wrappers.
-pub fn try_export_glb(content: &[u8], opts: &GltfOptions) -> Result<Vec<u8>, ExportError> {
-    try_export_glb_with_stats(content, opts).map(|(glb, _)| glb)
-}
-
-/// Fail-closed [`export_glb_with_stats`]; see [`try_export_glb`].
-///
-/// Beyond the [`ExportError::NoRenderGeometry`] guard, an input at/above the
-/// streaming threshold that would exceed the glTF 4 GiB single-GLB limit returns
-/// [`ExportError::TooLarge`] instead of PANICKING (as `export_glb_with_stats`
-/// does) — the checked bounded path fails fast after pass 1, so a caller can fall
-/// back to [`export_gltf_streaming`] without catching a panic (#1516).
-///
-/// A SUB-THRESHOLD input (default < 64 MB) keeps the in-memory instanced
-/// assembler, which retains the historical 4 GiB `pack_glb` assert. That bound is
-/// only reachable if such a small file meshed to over 4 GiB of GLB (a ~64x
-/// expansion — not observed in practice); a caller that must be panic-proof even
-/// then can force the checked bounded path with
-/// `IFC_LITE_GLB_STREAM_THRESHOLD_MB=1`.
-pub fn try_export_glb_with_stats(
-    content: &[u8],
-    opts: &GltfOptions,
-) -> Result<(Vec<u8>, GltfStats), ExportError> {
-    // Mirror `export_glb_with_stats`'s routing, but the large-model branch is the
-    // CHECKED bounded assembler (typed TooLarge, no panic). Small models keep the
-    // in-memory instanced path (see the doc note on its residual 4 GiB assert).
-    let (glb, stats) = if content.len() >= glb_stream_threshold_bytes() {
-        try_export_glb_streaming_bounded(content, opts)?
-    } else {
-        export_glb_from_result(
-            process_geometry_filtered_with_quality(
-                content,
-                OpeningFilterMode::Default,
-                opts.tessellation_quality,
-            ),
-            opts,
-        )
-    };
-    if stats.meshes == 0 {
-        return Err(ExportError::NoRenderGeometry);
-    }
-    Ok((glb, stats))
-}
-
-/// Like [`export_glb_with_stats`] but reuses a pre-built entity index — for a caller
-/// that also runs the attribute pass ([`crate::stream_export_model_with_index`]) over
-/// the same bytes, `build_entity_index` once and share it across both. `index` MUST be
-/// built from the same `content`; output is byte-identical to `export_glb_with_stats`
-/// below the streaming threshold. NOTE: this path always uses the in-memory assembler
-/// (the bounded two-pass path rebuilds its own index per pass and cannot reuse this
-/// one); a native caller that needs bounded memory on a large model should call
-/// [`export_glb_streaming_bounded`] directly.
-pub fn export_glb_with_stats_with_index(
+/// Like [`try_export_glb_with_stats`] but reuses a pre-built entity index — for a
+/// caller that also runs the attribute pass ([`crate::stream_export_model_with_index`])
+/// over the same bytes, `build_entity_index` once and share it across both. `index`
+/// MUST be built from the same `content`; output is byte-identical to
+/// `try_export_glb_with_stats` below the streaming threshold. NOTE: this path always
+/// uses the in-memory assembler (the bounded two-pass path rebuilds its own index per
+/// pass and cannot reuse this one); a native caller that needs bounded memory on a
+/// large model should call [`try_export_glb_streaming_bounded_with_index`] directly.
+pub fn try_export_glb_with_stats_with_index(
     content: &[u8],
     opts: &GltfOptions,
     index: Arc<EntityIndex>,
-) -> (Vec<u8>, GltfStats) {
-    export_glb_from_result(
+) -> Result<(Vec<u8>, GltfStats), ExportError> {
+    try_export_glb_from_result(
         process_geometry_streaming_filtered_with_options(
             content,
             OpeningFilterMode::Default,
@@ -1599,7 +1567,7 @@ pub fn export_glb_with_stats_with_index(
 }
 
 /// Build the Y-up `MeshView`s + RTC offset from a `ProcessingResult` and run `f` over
-/// them. Shared by the GLB (`export_glb_from_result`) and multi-buffer
+/// them. Shared by the GLB (`try_export_glb_from_result`) and multi-buffer
 /// (`export_gltf_streaming_from_result`) paths; the views borrow scratch that lives only
 /// for `f`'s duration.
 fn with_result_views<R>(
@@ -1655,15 +1623,30 @@ fn with_result_views<R>(
     f(&views, rtc_zup, site_zup.as_deref())
 }
 
-fn export_glb_from_result(result: ProcessingResult, opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
+/// The one rule both GLB assemblers refuse on: a build with no mesh is not a
+/// valid GLB (see [`try_export_glb`]), so it is an error rather than an artifact.
+fn refuse_empty(stats: &GltfStats) -> Result<(), ExportError> {
+    if stats.meshes == 0 {
+        return Err(ExportError::NoRenderGeometry);
+    }
+    Ok(())
+}
+
+/// The in-memory assembler behind both `try_export_glb_with_stats*` entry points.
+/// The empty-set refusal is decided on the build's own stats, before packing.
+fn try_export_glb_from_result(
+    result: ProcessingResult,
+    opts: &GltfOptions,
+) -> Result<(Vec<u8>, GltfStats), ExportError> {
     with_result_views(result, opts, |views, rtc_zup, site_zup| {
         let mut ch = Chunker::new(if opts.quantize { 8 } else { 12 }, usize::MAX, None);
         let (gltf, stats) = build_gltf(
             views, opts.include_metadata, opts.model_id.as_deref(), opts.lit, opts.emissive,
             rtc_zup, site_zup, opts.quantize, &mut ch,
         );
+        refuse_empty(&stats)?;
         let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
-        (pack_glb(&json, &ch.pos, &ch.norm, &ch.idx), stats)
+        Ok((pack_glb(&json, &ch.pos, &ch.norm, &ch.idx), stats))
     })
 }
 
@@ -1679,7 +1662,7 @@ pub struct GltfBuffer {
 /// or more external `.bin` buffers, each kept under `chunk_cap` bytes (well below the
 /// 4 GiB glTF limit), so a model of ANY size loads as one logical model. Each finished
 /// buffer is handed to `sink` and dropped, so peak memory is ~one chunk, not the whole
-/// model — this is the path for models too large for a single GLB (`export_glb*` stays
+/// model — this is the path for models too large for a single GLB (`try_export_glb*` stays
 /// the smaller-model path). Compose with `GltfOptions.quantize` to shrink first.
 pub fn export_gltf_streaming(
     content: &[u8],
@@ -1959,7 +1942,7 @@ struct StreamedWrite {
     quant: Option<([f64; 3], [f64; 3], bool)>,
 }
 
-/// Input-size threshold (bytes) above which `export_glb_with_stats` uses the
+/// Input-size threshold (bytes) above which `try_export_glb_with_stats` uses the
 /// bounded streaming assembler instead of the in-memory instanced one.
 /// `IFC_LITE_GLB_STREAM_THRESHOLD_MB` overrides on native (`0` disables
 /// streaming entirely); wasm has no environment, so the default always applies
@@ -2023,10 +2006,12 @@ pub struct GlbSizeProjection {
 /// never a growing three-run scratch, and never a second full copy from a final
 /// concatenation.
 ///
-/// **Oversize** (projected GLB over the glTF 4 GiB limit) PANICS with the
-/// historical messages (a worker classifier matches on them). Prefer
-/// [`try_export_glb_streaming_bounded`] to get [`ExportError::TooLarge`] instead,
-/// or [`project_glb_size`] to decide up front.
+/// Fail-closed on both ends, decided after pass 1 so neither costs the second
+/// meshing pass or the output allocation: an empty visible set returns
+/// [`ExportError::NoRenderGeometry`] (see [`try_export_glb`] for why a zero-mesh
+/// GLB is not a valid artifact, #4685), and a projected GLB over the glTF 4 GiB
+/// limit returns [`ExportError::TooLarge`] carrying the projected byte size
+/// (#1516). [`project_glb_size`] decides the size question up front.
 ///
 /// Tradeoffs vs the in-memory assembler (`build_gltf`):
 /// - rep-identity instancing is done here too, under the same policy
@@ -2051,58 +2036,6 @@ pub struct GlbSizeProjection {
 /// monotone per axis). Caveat: a NaN vertex coordinate quantizes to 0 in the
 /// byte stream on both paths, but only the in-memory fold lets that 0 into the
 /// accessor min/max hint; clean meshes are byte-identical.
-pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
-    export_glb_streaming_bounded_impl(content, opts, None)
-}
-
-/// Like [`export_glb_streaming_bounded`] but reuses a pre-built entity index
-/// instead of scanning `content` again on EACH of the two passes — for a caller
-/// that already built it (e.g. to share with [`crate::stream_export_model_with_index`]),
-/// removing the redundant SIMD scans on the large models this path targets
-/// (#1516). `index` MUST come from [`build_entity_index`](crate::build_entity_index)
-/// over the same `content`; output is byte-identical.
-pub fn export_glb_streaming_bounded_with_index(
-    content: &[u8],
-    opts: &GltfOptions,
-    index: Arc<EntityIndex>,
-) -> (Vec<u8>, GltfStats) {
-    export_glb_streaming_bounded_impl(content, opts, Some(index))
-}
-
-fn export_glb_streaming_bounded_impl(
-    content: &[u8],
-    opts: &GltfOptions,
-    index: Option<Arc<EntityIndex>>,
-) -> (Vec<u8>, GltfStats) {
-    // Build the index ONCE, in parallel on native, so both passes reuse it (no
-    // redundant per-pass inline scan). Byte-identical to the shared-index path (#1516).
-    let index = index.or_else(|| Some(Arc::new(build_entity_index_parallel(content))));
-    let plan = plan_bounded_glb(content, opts, index.clone());
-    // Back-compat: an oversize model PANICS with the historical messages (the
-    // worker's OutputTooLarge classifier matches on them). `try_export_glb*` /
-    // `try_export_glb_streaming_bounded` are the fail-closed alternatives that
-    // return `ExportError::TooLarge` instead.
-    assert!(
-        plan.bin_total <= u32::MAX as u64,
-        "GLB binary buffer is {} bytes, over the glTF 32-bit buffer limit \
-         (4 GiB); the model is too large for a single GLB",
-        plan.bin_total,
-    );
-    assert!(
-        plan.total <= u32::MAX as u64,
-        "GLB total size is {} bytes, over the glTF 32-bit container limit (4 GiB)",
-        plan.total,
-    );
-    write_bounded_glb(content, opts, index, plan)
-}
-
-/// Fail-closed [`export_glb_streaming_bounded`]: an oversize projected GLB
-/// returns [`ExportError::TooLarge`] (carrying the projected byte size) after
-/// pass 1 — no output allocation, no panic (#1516). An empty visible set is
-/// NOT refused here: it returns the zero-mesh GLB described on
-/// [`export_glb_with_stats`], which is not valid glTF; use
-/// [`try_export_glb_with_stats`] for the [`ExportError::NoRenderGeometry`]
-/// guard as well.
 pub fn try_export_glb_streaming_bounded(
     content: &[u8],
     opts: &GltfOptions,
@@ -2110,8 +2043,12 @@ pub fn try_export_glb_streaming_bounded(
     try_export_glb_streaming_bounded_impl(content, opts, None)
 }
 
-/// Shared-index [`try_export_glb_streaming_bounded`] (see
-/// [`export_glb_streaming_bounded_with_index`]).
+/// Like [`try_export_glb_streaming_bounded`] but reuses a pre-built entity index
+/// instead of scanning `content` again on EACH of the two passes — for a caller
+/// that already built it (e.g. to share with [`crate::stream_export_model_with_index`]),
+/// removing the redundant SIMD scans on the large models this path targets
+/// (#1516). `index` MUST come from [`build_entity_index`](crate::build_entity_index)
+/// over the same `content`; output is byte-identical.
 pub fn try_export_glb_streaming_bounded_with_index(
     content: &[u8],
     opts: &GltfOptions,
@@ -2130,6 +2067,7 @@ fn try_export_glb_streaming_bounded_impl(
     // with `index=None` it otherwise paid two internal serial scans.
     let index = index.or_else(|| Some(Arc::new(build_entity_index_parallel(content))));
     let plan = plan_bounded_glb(content, opts, index.clone());
+    refuse_empty(&plan.stats)?;
     if plan.bin_total > u32::MAX as u64 || plan.total > u32::MAX as u64 {
         return Err(ExportError::TooLarge { bytes: plan.total });
     }
@@ -2144,7 +2082,7 @@ pub fn project_glb_size(content: &[u8], opts: &GltfOptions) -> GlbSizeProjection
     project_glb_size_impl(content, opts, None)
 }
 
-/// Shared-index [`project_glb_size`] (see [`export_glb_streaming_bounded_with_index`]).
+/// Shared-index [`project_glb_size`] (see [`try_export_glb_streaming_bounded_with_index`]).
 pub fn project_glb_size_with_index(
     content: &[u8],
     opts: &GltfOptions,
@@ -2172,7 +2110,7 @@ fn project_glb_size_impl(
 /// JSON, the per-mesh write plan (`metas`, each carrying its byte offsets), the
 /// three run lengths, and the projected sizes — WITHOUT the vertex bytes (those
 /// re-stream on pass 2). Holding this between passes is what lets the caller
-/// fail fast on an oversize model before any output is allocated.
+/// fail fast on an empty or oversize model before any output is allocated.
 struct BoundedGlbPlan {
     metas: Vec<StreamedMeshMeta>,
     json: Vec<u8>,
@@ -2733,8 +2671,8 @@ fn plan_bounded_glb(
 
     let bin_total = pos_len + norm_len + idx_len;
     // NOTE: the 4 GiB buffer/container limits are NOT asserted here — the caller
-    // decides (panic in `export_glb_streaming_bounded_impl` vs typed
-    // `ExportError::TooLarge` in the `try_*`/`project_*` paths). The `bin_total as
+    // decides (typed `ExportError::TooLarge` in `try_export_glb_streaming_bounded*`,
+    // a `fits_single_glb` verdict in `project_glb_size*`). The `bin_total as
     // u32` casts below therefore truncate on an oversize model, but that JSON is
     // only ever emitted when the size fits (an oversize plan is discarded), so
     // every path that actually produces bytes stays correct.
@@ -3122,8 +3060,10 @@ END-ISO-10303-21;
         let opts = GltfOptions::default();
         let bytes = ROTATED_SITE.as_bytes();
 
-        let plain = root_trs(&glb_json(&export_glb(bytes, &opts)));
-        let bounded = root_trs(&glb_json(&export_glb_streaming_bounded(bytes, &opts).0));
+        let plain = root_trs(&glb_json(&try_export_glb(bytes, &opts).expect("has geometry")));
+        let bounded = root_trs(&glb_json(
+            &try_export_glb_streaming_bounded(bytes, &opts).expect("has geometry").0,
+        ));
         let streaming = root_trs(&export_gltf_streaming(bytes, &opts, usize::MAX, |_| {}));
 
         assert_eq!(plain, bounded, "bounded disagrees with plain");

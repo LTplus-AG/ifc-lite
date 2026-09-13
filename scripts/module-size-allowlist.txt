@@ -206,7 +206,7 @@
    495 packages/cli/src/commands/create.ts
    458 packages/cli/src/commands/extract-entities.ts
    485 packages/cli/src/commands/query.ts
-   791 packages/cli/src/headless-backend.ts
+   790 packages/cli/src/headless-backend.ts
    457 packages/codegen/src/express-parser.ts
    660 packages/codegen/src/rust-generator.ts
    640 packages/codegen/src/typescript-generator.ts
@@ -330,7 +330,7 @@
    498 packages/sandbox/src/bridge-schema.ts
    673 packages/sandbox/src/sandbox.ts
    458 packages/sdk/src/namespaces/bsdd.ts
-   875 packages/sdk/src/types.ts
+   847 packages/sdk/src/types.ts
   1011 packages/server-client/src/client.ts
    784 packages/server-client/src/data-model-decoder.ts
    444 packages/server-client/src/parquet-tables.ts
@@ -366,7 +366,7 @@
    460 scripts/lib/pr-green-sweep.mjs
   1113 scripts/lib/pr-review-signal.mjs
    443 scripts/lib/prepass-class-boundary.mjs
-   734 scripts/lib/refwalk-classify.mjs
+   680 scripts/lib/refwalk-classify.mjs
    515 scripts/lib/revert-oracle.mjs
    494 scripts/lib/rust-source-text-detect.mjs
   1165 scripts/lib/vitest-timeout-audit.mjs

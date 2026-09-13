@@ -132,10 +132,20 @@ fn subtract_trips_escalation_budget_and_falls_back_deterministically() {
     let restore = budget::cap();
 
     // Unbounded first: confirm this fixture actually exercises the exact tier,
-    // or the trip assertion below would be vacuous.
+    // or the trip assertion below would be vacuous. `escalations > 0` below is
+    // the anti-vacuity guard; the default build also pins the cut itself. With
+    // `csg_manifold_gate` or `csg_topology_gate` on, the gates reject this
+    // near-coplanar host, which #4739 made visible by returning the outcome
+    // instead of the host (#4692).
     budget::set_cap(None);
     let p0 = ClippingProcessor::new();
-    assert!(matches!(p0.subtract_mesh(&host, &cutter), GroupCut::Cut(_)), "the uncapped cut succeeds");
+    let uncapped = p0.subtract_mesh(&host, &cutter);
+    assert!(
+        !matches!(uncapped, GroupCut::Rejected(GroupReject::BudgetTripped)),
+        "the uncapped run must not trip the budget; got {uncapped:?}"
+    );
+    #[cfg(not(any(feature = "csg_manifold_gate", feature = "csg_topology_gate")))]
+    assert!(matches!(uncapped, GroupCut::Cut(_)), "the uncapped cut succeeds; got {uncapped:?}");
     let escalations = budget::count();
 
     // Cap of 1 → trips on the first exact evaluation → host returned un-cut and

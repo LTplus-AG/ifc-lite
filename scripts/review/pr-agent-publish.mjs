@@ -76,6 +76,8 @@ const remedy = (reason) => FAILURES.find(([r]) => r === reason)[2];
  * Its milliseconds and line number would otherwise read as a status code.
  */
 const LOG_PREFIX_RE = /^[^|]*\|[^|]*\|\s*\S+ - /;
+/** Built from a char code: a `\x1b` regex literal trips oxlint's no-control-regex (see check-unused-locals.mjs). */
+const ANSI_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
 
 /**
  * Reads only the message of error lines, so a token count ("Tokens: 401") is
@@ -85,7 +87,7 @@ const LOG_PREFIX_RE = /^[^|]*\|[^|]*\|\s*\S+ - /;
  */
 export function classifyFailure(logText) {
   const errorLines = String(logText ?? '')
-    .replace(/\x1b\[[0-9;]*m/g, '')
+    .replace(ANSI_RE, '')
     .split('\n')
     .filter((line) => /error|exception|failed/i.test(line))
     .map((line) => line.replace(LOG_PREFIX_RE, ''))

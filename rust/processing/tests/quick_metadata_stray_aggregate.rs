@@ -10,8 +10,8 @@
 //! contained space from the tree, or remove the whole tree.
 
 use ifc_lite_processing::{
-    process_geometry_streaming_with_options_and_bootstrap, QuickMetadataSpatialNode,
-    StreamingOptions,
+    process_geometry_streaming_with_options_and_bootstrap, QuickMetadataBootstrap,
+    QuickMetadataSpatialNode, StreamingOptions,
 };
 
 const HEADER: &str = "ISO-10303-21;
@@ -49,6 +49,10 @@ fn file(parts: &[&str]) -> String {
 }
 
 fn tree(ifc: &str) -> Option<QuickMetadataSpatialNode> {
+    bootstrap(ifc).spatial_tree
+}
+
+fn bootstrap(ifc: &str) -> QuickMetadataBootstrap {
     let mut bootstrap = None;
     process_geometry_streaming_with_options_and_bootstrap(
         ifc.as_bytes(),
@@ -60,9 +64,7 @@ fn tree(ifc: &str) -> Option<QuickMetadataSpatialNode> {
         |_| {},
         |b| bootstrap = Some(b.clone()),
     );
-    bootstrap
-        .expect("quick metadata bootstrap was requested")
-        .spatial_tree
+    bootstrap.expect("quick metadata bootstrap was requested")
 }
 
 fn child(node: &QuickMetadataSpatialNode, id: u32) -> &QuickMetadataSpatialNode {
@@ -151,4 +153,74 @@ fn without_a_project_the_unnamed_node_is_still_preferred_as_root() {
     let storey = child(child(&root, 21), 22);
     child(storey, 9);
     child(storey, 31);
+}
+
+#[test]
+fn space_both_aggregated_and_contained_by_its_storey_reports_no_pruned_edge() {
+    // A well-formed file may relate a space to its storey both ways. The
+    // containment is not an IfcRelAggregates edge, so the tree walk skipping
+    // it is not a pruned aggregate edge.
+    const BOTH: &str = "\
+#53=IFCRELAGGREGATES('4689AggStoreySpace0001',$,$,$,#22,(#31));
+";
+    let bootstrap = bootstrap(&file(&[PROJECT, BOTH, CONTAINMENT]));
+    let root = bootstrap
+        .spatial_tree
+        .as_ref()
+        .expect("project root builds a tree");
+    child(storey_under(root), 31);
+    assert_eq!(count(root, 31), 1);
+    assert!(
+        bootstrap.pruned_aggregate_edges.is_empty(),
+        "{:?}",
+        bootstrap.pruned_aggregate_edges
+    );
+}
+
+#[test]
+fn aggregate_placement_wins_over_an_earlier_containment() {
+    // Storey #22 (walked first) contains #31, and storey #23 aggregates it. The
+    // aggregate is the relationship IFC defines for a space, so #31 goes under
+    // #23 whichever storey the walk reaches first.
+    const TWO_STOREYS: &str = "\
+#23=IFCBUILDINGSTOREY('4689Storey00000000002',$,'Level 2',$,$,$,$,$,.ELEMENT.,3.);
+#54=IFCRELAGGREGATES('4689AggBldgStorey00002',$,$,$,#21,(#23));
+#55=IFCRELAGGREGATES('4689AggStorey2Space001',$,$,$,#23,(#31));
+";
+    let bootstrap = bootstrap(&file(&[PROJECT, CONTAINMENT, TWO_STOREYS]));
+    let root = bootstrap
+        .spatial_tree
+        .as_ref()
+        .expect("project root builds a tree");
+    let building = child(child(root, 20), 21);
+    child(child(building, 23), 31);
+    assert_eq!(count(root, 31), 1, "space #31 is placed exactly once");
+    assert!(
+        bootstrap.pruned_aggregate_edges.is_empty(),
+        "{:?}",
+        bootstrap.pruned_aggregate_edges
+    );
+}
+
+#[test]
+fn space_contained_by_two_storeys_reports_no_pruned_edge() {
+    // No aggregate names #31, so neither containment is an aggregate edge; the
+    // first one the walk reaches places it and the second is not reported.
+    const SECOND_CONTAINMENT: &str = "\
+#23=IFCBUILDINGSTOREY('4689Storey00000000002',$,'Level 2',$,$,$,$,$,.ELEMENT.,3.);
+#54=IFCRELAGGREGATES('4689AggBldgStorey00002',$,$,$,#21,(#23));
+#56=IFCRELCONTAINEDINSPATIALSTRUCTURE('4689ContStorey0000002',$,$,$,(#31),#23);
+";
+    let bootstrap = bootstrap(&file(&[PROJECT, CONTAINMENT, SECOND_CONTAINMENT]));
+    let root = bootstrap
+        .spatial_tree
+        .as_ref()
+        .expect("project root builds a tree");
+    child(storey_under(root), 31);
+    assert_eq!(count(root, 31), 1, "space #31 is placed exactly once");
+    assert!(
+        bootstrap.pruned_aggregate_edges.is_empty(),
+        "{:?}",
+        bootstrap.pruned_aggregate_edges
+    );
 }

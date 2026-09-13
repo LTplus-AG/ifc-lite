@@ -8,7 +8,7 @@ use crate::types::response::{
 };
 use ifc_lite_core::limits::LARGE_COORD_THRESHOLD_METERS;
 use ifc_lite_core::{keyword_eq, IfcType, StepListItems, IFC_TYPES};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 #[derive(Clone)]
@@ -17,7 +17,12 @@ pub(super) struct QuickSpatialNodeEntry {
     pub(super) type_name: String,
     pub(super) name: String,
     pub(super) elevation: Option<f64>,
+    /// `IfcRelAggregates` children.
     pub(super) children: Vec<u32>,
+    /// Spatial elements an `IfcRelContainedInSpatialStructure` names, promoted
+    /// to child nodes (#1075). Kept apart from `children`: they are not
+    /// aggregate edges, and an aggregate that places the same node wins.
+    pub(super) contained: Vec<u32>,
     pub(super) elements: Vec<u32>,
     /// Some aggregate or spatial containment edge lists this node as a child.
     /// Read only to pick a root when the file has no `IfcProject`.
@@ -155,12 +160,40 @@ pub(super) fn build_quick_spatial_tree_node(
     let mut placed = HashMap::with_capacity(nodes.len());
     placed.insert(express_id, None);
     let mut pruned = Vec::new();
-    build_subtree(express_id, 0, nodes, element_summaries, &mut placed, &mut pruned)
-        .map(|tree| (tree, pruned))
+    let by_aggregate = reachable_by_aggregate(express_id, nodes);
+    build_subtree(
+        express_id,
+        0,
+        nodes,
+        element_summaries,
+        &by_aggregate,
+        &mut placed,
+        &mut pruned,
+    )
+    .map(|tree| (tree, pruned))
+}
+
+/// Every node an `IfcRelAggregates` path from `root` reaches. The walk places
+/// each of them through an aggregate edge, so a containment naming one is not
+/// followed (#4689).
+fn reachable_by_aggregate(root: u32, nodes: &HashMap<u32, QuickSpatialNodeEntry>) -> HashSet<u32> {
+    let mut reached = HashSet::from([root]);
+    let mut stack = vec![root];
+    while let Some(id) = stack.pop() {
+        for &child in nodes.get(&id).map_or(&[][..], |node| &node.children) {
+            if reached.insert(child) {
+                stack.push(child);
+            }
+        }
+    }
+    reached
 }
 
 /// Each spatial node is emitted once, where the depth-first walk from the root
-/// first reaches it. A malformed IfcRelAggregates graph can list a child twice,
+/// first reaches it, aggregate children before contained ones; a contained
+/// node that some aggregate path reaches is left to that aggregate, and a
+/// skipped containment is not recorded (it is not an aggregate edge). A
+/// malformed IfcRelAggregates graph can list a child twice,
 /// under two parents, or as its own ancestor; all three are skipped and recorded
 /// in `pruned` (#4662). `placed` spans the whole tree, not the root-to-node path
 /// (k repeats per level would emit k^depth nodes): `None` while a node is still
@@ -172,14 +205,20 @@ fn build_subtree(
     depth: usize,
     nodes: &HashMap<u32, QuickSpatialNodeEntry>,
     element_summaries: &HashMap<u32, QuickMetadataEntitySummary>,
+    by_aggregate: &HashSet<u32>,
     placed: &mut HashMap<u32, Option<u32>>,
     pruned: &mut Vec<QuickMetadataPrunedEdge>,
 ) -> Result<QuickMetadataSpatialNode, String> {
     let node = nodes
         .get(&express_id)
         .ok_or_else(|| format!("Quick spatial node #{express_id} not found"))?;
-    let mut children = Vec::with_capacity(node.children.len());
-    for &child_id in &node.children {
+    let mut children = Vec::with_capacity(node.children.len() + node.contained.len());
+    let aggregated = node.children.iter().map(|&id| (id, true));
+    let contained = node.contained.iter().map(|&id| (id, false));
+    for (child_id, via_aggregate) in aggregated.chain(contained) {
+        if !via_aggregate && (placed.contains_key(&child_id) || by_aggregate.contains(&child_id)) {
+            continue;
+        }
         if let Some(&seen) = placed.get(&child_id) {
             let kind = match seen {
                 None => EdgeKind::BackEdge,
@@ -208,6 +247,7 @@ fn build_subtree(
             depth + 1,
             nodes,
             element_summaries,
+            by_aggregate,
             placed,
             pruned,
         )?);

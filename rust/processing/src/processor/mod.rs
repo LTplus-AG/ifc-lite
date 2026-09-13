@@ -603,6 +603,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                         None
                     },
                     children: Vec::new(),
+                    contained: Vec::new(),
                     elements: Vec::new(),
                     named_as_child: false,
                 });
@@ -954,15 +955,14 @@ pub fn process_geometry_streaming_filtered_with_options(
                 // to a child node so it shows in the hierarchy (#1075); anything
                 // that isn't itself a spatial node stays a contained element.
                 //
-                // Wired even when an aggregate also names the child: whether
+                // Recorded even when an aggregate also names the child: whether
                 // that aggregate's parent is reachable from the root is not
                 // known here, and an edge from an orphan or from the child's
                 // own descendant must not take the space out of the tree
-                // (#4689). The tree walk places each node once, where it first
-                // reaches it, and aggregate children precede these in the list.
+                // (#4689). The tree walk prefers a reachable aggregate.
                 if spatial_nodes.contains_key(&child_id) {
                     if let Some(parent) = spatial_nodes.get_mut(&parent_id) {
-                        parent.children.push(child_id);
+                        parent.contained.push(child_id);
                     }
                     if let Some(child) = spatial_nodes.get_mut(&child_id) {
                         child.named_as_child = true;

@@ -11,6 +11,7 @@ fn node(id: u32, children: Vec<u32>) -> QuickSpatialNodeEntry {
         name: format!("#{id}"),
         elevation: None,
         children,
+        contained: vec![],
         elements: vec![],
         named_as_child: false,
     }

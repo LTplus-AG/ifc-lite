@@ -6,7 +6,7 @@
 //! and first geometry vertices to decide whether a model needs re-basing.
 
 use super::GeometryRouter;
-use crate::{coord_is_large, LARGE_COORD_THRESHOLD_METERS};
+use crate::coord_is_large;
 use ifc_lite_core::{has_geometry_by_name, DecodedEntity, EntityDecoder, IfcType};
 
 /// Whether a near-origin element with this `RepresentationType` may cast a
@@ -32,7 +32,7 @@ fn is_rtc_votable_representation(rep_type: &str) -> bool {
 impl GeometryRouter {
     /// Compute median-based RTC offset from sampled translations.
     /// Returns `(0,0,0)` if empty or the median is within
-    /// [`LARGE_COORD_THRESHOLD_METERS`] of the origin.
+    /// [`LARGE_COORD_THRESHOLD_METERS`](crate::LARGE_COORD_THRESHOLD_METERS) of the origin.
     fn rtc_offset_from_translations(translations: &[(f64, f64, f64)]) -> (f64, f64, f64) {
         if translations.is_empty() {
             return (0.0, 0.0, 0.0);
@@ -333,8 +333,8 @@ impl GeometryRouter {
     }
 
     fn raw_coordinate_is_large(&self, point: (f64, f64, f64)) -> bool {
-        let max_abs = point.0.abs().max(point.1.abs()).max(point.2.abs());
-        max_abs * self.unit_scale > LARGE_COORD_THRESHOLD_METERS
+        let s = self.unit_scale;
+        coord_is_large((point.0 * s, point.1 * s, point.2 * s))
     }
 
     pub(super) fn representation_item_uses_raw_large_coordinates(

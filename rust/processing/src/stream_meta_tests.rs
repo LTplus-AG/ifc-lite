@@ -84,11 +84,11 @@ fn small_file_single_resolves_scale_and_offset() {
     );
 
     assert_eq!(meta.length_unit_scale, 1.0, "metric project → scale 1");
-    assert!(meta.needs_shift(), "800 km offset must trigger a shift");
+    assert!(meta.frame.needs_shift(), "800 km offset must trigger a shift");
     assert!(
-        coord_is_large(meta.rtc_offset()),
+        coord_is_large(meta.frame.rtc_offset()),
         "resolved RTC must exceed the large-coordinate threshold, got {:?}",
-        meta.rtc_offset()
+        meta.frame.rtc_offset()
     );
 }
 
@@ -116,11 +116,11 @@ fn streaming_partial_full_index_fallback_recovers_offset() {
     );
 
     assert!(
-        meta.needs_shift(),
+        meta.frame.needs_shift(),
         "3-stage fallback must recover the large offset from the full index, got {:?}",
-        meta.rtc_offset()
+        meta.frame.rtc_offset()
     );
-    assert!(coord_is_large(meta.rtc_offset()));
+    assert!(coord_is_large(meta.frame.rtc_offset()));
 }
 
 /// StreamingPartial suppression: when the FIRST-pass detect SUCCEEDS on the
@@ -184,9 +184,9 @@ fn streaming_partial_first_pass_success_suppresses_fallback() {
         &mut decoder,
     );
 
-    assert!(!meta.needs_shift(), "partial-pass success suppresses the shift");
+    assert!(!meta.frame.needs_shift(), "partial-pass success suppresses the shift");
     assert_eq!(
-        meta.rtc_offset(),
+        meta.frame.rtc_offset(),
         (0.0, 0.0, 0.0),
         "offset comes from the partial pass, not the placement-bounds fallback"
     );
@@ -245,9 +245,9 @@ fn streaming_partial_stage3_placement_bounds_fallback() {
         .expect("the fixture has placement points");
     assert_eq!(raw, (80_000_000.0, 90_000_000.0, 0.0), "raw mm bounds");
     let expected = (raw.0 * scale, raw.1 * scale, raw.2 * scale);
-    assert_eq!(meta.rtc_offset(), expected, "stage 3 unit-scales raw bounds");
-    assert_ne!(meta.rtc_offset(), raw, "scaling changed the value");
-    assert!(meta.needs_shift());
+    assert_eq!(meta.frame.rtc_offset(), expected, "stage 3 unit-scales raw bounds");
+    assert_ne!(meta.frame.rtc_offset(), raw, "scaling changed the value");
+    assert!(meta.frame.needs_shift());
 }
 
 // A metric model whose only geometry job (#40) has NO representation, so both
@@ -275,11 +275,12 @@ END-ISO-10303-21;
 
 /// #4611: the browser resolver and the native pipeline choose the same frame
 /// for the same model. Before the shared `MeshFrame::select`, this fixture
-/// came out `model_rtc` with an 8.5 km anchor on native and `needsShift =
-/// false` beside a non-zero `rtcOffset` in the browser, because the browser
-/// re-gated the detector's anchor on the 10 km test and native did not.
-/// Re-gating `resolve_stream_meta`'s frame on `coord_is_large` fails the
-/// `needs_shift` assertion.
+/// came out `model_rtc` with an 8.5 km origin shift on native, while the
+/// browser meta said `needsShift = false` (beside a non-zero `rtcOffset`)
+/// because it gated the anchor on 10 km and native did not. Both now take the
+/// 10 km rule, which is also what the 2D overlays re-base on. Dropping the
+/// `coord_is_large` filter from `MeshFrame::select` fails the native
+/// assertions and the browser ones.
 #[test]
 fn browser_and_native_pick_the_same_frame_for_a_sub_threshold_anchor() {
     let content = IFC_SUB_THRESHOLD_ANCHOR.as_bytes();
@@ -292,16 +293,16 @@ fn browser_and_native_pick_the_same_frame_for_a_sub_threshold_anchor() {
     assert!(!coord_is_large(anchor), "premise: the anchor is inside 10 km");
 
     let native = crate::process_geometry(IFC_SUB_THRESHOLD_ANCHOR);
-    assert_eq!(native.mesh_coordinate_space, crate::MeshCoordinateSpace::ModelRtc);
-    assert_eq!(native.metadata.coordinate_info.origin_shift, [8500.0, 0.0, 0.0]);
+    assert_eq!(native.mesh_coordinate_space, crate::MeshCoordinateSpace::RawIfc);
+    assert_eq!(native.metadata.coordinate_info.origin_shift, [0.0, 0.0, 0.0]);
 
     for mode in [MetaMode::SmallFileSingle, MetaMode::StreamingPartial] {
         let full_index = ifc_lite_core::build_entity_index(content);
         let mut decoder = EntityDecoder::with_index(content, full_index);
         let jobs = vec![wall_job(content)];
         let meta = resolve_stream_meta(mode, content, Some(1), None, &jobs, &mut decoder);
-        assert_eq!(meta.frame, MeshFrame::ModelRtc { anchor }, "{mode:?}");
-        assert!(meta.needs_shift(), "{mode:?}: the anchor native subtracts must be shifted here too");
+        assert_eq!(meta.frame, MeshFrame::RawIfc, "{mode:?}");
+        assert!(!meta.frame.needs_shift(), "{mode:?}");
         assert_eq!(meta.frame.coordinate_space(), native.mesh_coordinate_space, "{mode:?}");
     }
 }

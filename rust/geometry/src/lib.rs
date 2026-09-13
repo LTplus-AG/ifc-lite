@@ -228,10 +228,8 @@ pub use router::{
     ReasonCount, RectFastSummary, RectParam, SharedMappedItemCache, SharedBrepSignatureCache, WorstHost,
 };
 
-/// The large-coordinate threshold and its predicate. Defined in
-/// `ifc_lite_core::limits` (the lowest crate, so core's own bounds scan can
-/// use it too); re-exported here because this is where downstream crates have
-/// always imported it from.
+/// The large-coordinate threshold and its predicate, defined in
+/// `ifc_lite_core::limits` so core's own bounds scan can use them too.
 pub use ifc_lite_core::limits::{coord_is_large, LARGE_COORD_THRESHOLD_METERS};
 pub use simplify::{simplify_mesh, SimplifyOptions, SimplifyStats};
 pub use tessellation::{scale_segments, TessellationQuality};

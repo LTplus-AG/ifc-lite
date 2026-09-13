@@ -56,7 +56,6 @@ use quick_metadata::{
     parse_step_arguments, parse_step_ref, parse_step_ref_list, QuickSpatialNodeEntry,
 };
 use crate::mesh_frame::{MeshCoordinateSpace, MeshFrame};
-pub(crate) use site_local::translation_is_nonidentity;
 
 /// Wall-clock timer for diagnostic `ProcessingStats`. On wasm32
 /// `std::time::Instant::now()` traps ("time not implemented on this platform"),

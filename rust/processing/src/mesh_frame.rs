@@ -11,8 +11,21 @@
 //! through [`MeshFrame::select`], and the wire tag is spelled only by the
 //! `serde` attribute on [`MeshCoordinateSpace`].
 
-use crate::processor::translation_is_nonidentity;
+use ifc_lite_core::limits::coord_is_large;
 use serde::{Deserialize, Serialize};
+
+/// Epsilon (metres) below which a placement translation is treated as identity.
+/// Avoids overriding a detected RTC anchor when `IfcSite` sits at the origin
+/// while the geometry itself carries large world coordinates. The site-local
+/// rotation test (`processor/site_local.rs`) uses the same epsilon.
+pub(crate) const PLACEMENT_IDENTITY_EPSILON: f64 = 1e-9;
+
+#[inline]
+fn translation_is_nonidentity(t: (f64, f64, f64)) -> bool {
+    t.0.abs() > PLACEMENT_IDENTITY_EPSILON
+        || t.1.abs() > PLACEMENT_IDENTITY_EPSILON
+        || t.2.abs() > PLACEMENT_IDENTITY_EPSILON
+}
 
 /// The frame a pipeline meshes into, with the translation it subtracts.
 ///
@@ -41,15 +54,14 @@ impl MeshFrame {
     ///   `None` when the pipeline has no site tier (the browser pre-pass and
     ///   the appearance authoring path mesh in world axes and pass `None`
     ///   deliberately: see `stream_meta::resolve_stream_meta`).
-    /// * `detected`: what the RTC detector concluded, `None` when it found no
-    ///   coordinate to judge at all, `Some((0,0,0))` when it found coordinates
-    ///   and they are all inside the large-coordinate threshold, `Some(anchor)`
-    ///   otherwise. The detector owns the 10 km rule
-    ///   (`ifc_lite_core::limits::coord_is_large`); this function does not
-    ///   re-apply it, so a detector that answers with a non-zero anchor is
-    ///   honoured even when the anchor itself is inside the threshold (the
-    ///   placement-bounds fallback answers with the bbox centre once any
-    ///   corner is past the threshold, and that centre can be inside it).
+    /// * `detected`: the RTC detector's answer (see
+    ///   `GeometryRouter::detect_rtc_offset_with_fallback`). It is subtracted
+    ///   only when [`coord_is_large`] says so. The job sampler already answers
+    ///   zero below 10 km, but the placement-bounds fallback answers with the
+    ///   bbox centre once any corner is past 10 km, and that centre can be
+    ///   inside it. The 2D overlays (symbolic, grid and alignment lines) re-base
+    ///   on the same 10 km rule, so an anchor they would not subtract must not
+    ///   move the meshes either.
     pub fn select(
         site_translation: Option<(f64, f64, f64)>,
         detected: Option<(f64, f64, f64)>,
@@ -57,7 +69,7 @@ impl MeshFrame {
         if let Some(translation) = site_translation.filter(|t| translation_is_nonidentity(*t)) {
             return Self::SiteLocal { translation };
         }
-        if let Some(anchor) = detected.filter(|a| translation_is_nonidentity(*a)) {
+        if let Some(anchor) = detected.filter(|a| coord_is_large(*a)) {
             return Self::ModelRtc { anchor };
         }
         Self::RawIfc
@@ -169,22 +181,23 @@ mod tests {
         }
     }
 
-    /// The selector does not second-guess the detector with its own 10 km
-    /// test: a non-zero anchor inside the threshold (the bounds fallback's
-    /// answer for a model whose extent straddles the origin) is subtracted.
-    /// This is where the browser resolver used to disagree with native: it
-    /// re-gated the same anchor on `coord_is_large` and shipped
-    /// `needsShift = false` beside a non-zero `rtcOffset`.
+    /// A non-zero anchor inside 10 km (the bounds fallback's bbox centre can
+    /// be one) is not subtracted. Native used to subtract it while the browser
+    /// resolver and the 2D overlays did not. Dropping the `coord_is_large`
+    /// filter on the anchor arm fails this.
     #[test]
-    fn a_sub_threshold_anchor_from_the_detector_is_honoured() {
-        let frame = MeshFrame::select(None, Some((-5_000.0, 0.0, 0.0)));
+    fn a_sub_threshold_anchor_is_not_subtracted() {
+        for anchor in [(-5_000.0, 0.0, 0.0), (8_500.0, 0.0, 0.0), (0.0, 0.0, 10_000.0)] {
+            let frame = MeshFrame::select(None, Some(anchor));
+            assert_eq!(frame, MeshFrame::RawIfc, "{anchor:?}");
+            assert!(!frame.needs_shift());
+        }
         assert_eq!(
-            frame,
+            MeshFrame::select(None, Some((10_000.5, 0.0, 0.0))),
             MeshFrame::ModelRtc {
-                anchor: (-5_000.0, 0.0, 0.0)
+                anchor: (10_000.5, 0.0, 0.0)
             }
         );
-        assert!(frame.needs_shift());
     }
 
     /// Why `ifc_lite_ffi::normalize_to_site_local` could be deleted: it

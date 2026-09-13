@@ -2,19 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::mesh_frame::PLACEMENT_IDENTITY_EPSILON;
 use crate::types::mesh::MeshData;
-
-/// Epsilon (metres) below which a placement translation is treated as identity.
-/// Avoids overriding a detected RTC anchor when `IfcSite` sits at the origin
-/// while the geometry itself carries large world coordinates.
-const PLACEMENT_IDENTITY_EPSILON: f64 = 1e-9;
-
-#[inline]
-pub(crate) fn translation_is_nonidentity(t: (f64, f64, f64)) -> bool {
-    t.0.abs() > PLACEMENT_IDENTITY_EPSILON
-        || t.1.abs() > PLACEMENT_IDENTITY_EPSILON
-        || t.2.abs() > PLACEMENT_IDENTITY_EPSILON
-}
 
 /// True when a column-major 4x4 matrix's 3×3 rotation block is (within
 /// [`PLACEMENT_IDENTITY_EPSILON`]) the identity — i.e. the placement it came

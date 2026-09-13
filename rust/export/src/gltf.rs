@@ -1042,9 +1042,11 @@ fn site_restore(result: &ProcessingResult) -> ([f64; 3], Option<Vec<f64>>) {
     // to put back. `model_rtc` subtracts a detected translation with no
     // rotation, and `raw_ifc` subtracts nothing — but both still need the
     // translation restored, which is why `rtc_zup` returns unconditionally.
-    let site_zup = (result.mesh_coordinate_space == MeshCoordinateSpace::SiteLocal)
-        .then(|| result.site_transform.clone())
-        .flatten();
+    let site_zup = if result.mesh_coordinate_space == MeshCoordinateSpace::SiteLocal {
+        result.site_transform.clone()
+    } else {
+        None
+    };
     (rtc_zup, site_zup)
 }
 

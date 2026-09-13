@@ -71,21 +71,6 @@ pub struct StreamMeta {
     pub building_rotation: Option<f64>,
 }
 
-impl StreamMeta {
-    /// World-space RTC offset to subtract before the f32 cast; zero when
-    /// nothing is subtracted.
-    #[inline]
-    pub fn rtc_offset(&self) -> (f64, f64, f64) {
-        self.frame.rtc_offset()
-    }
-
-    /// True when the model must be re-based.
-    #[inline]
-    pub fn needs_shift(&self) -> bool {
-        self.frame.needs_shift()
-    }
-}
-
 /// Resolve the full [`StreamMeta`] bundle for one pre-pass emission point.
 ///
 /// Seeds the caller's `decoder` with the resolved unit scales (so nothing

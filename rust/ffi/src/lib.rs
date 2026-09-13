@@ -104,11 +104,6 @@ fn ensure_panic_logging() {
 /// processing inside the large-stack pool under `catch_unwind`, and serialize
 /// the response to JSON bytes.
 ///
-/// The meshes are serialized in the frame the pipeline chose
-/// (`mesh_coordinate_space`): a translated `IfcSite` always selects
-/// `site_local` (`ifc_lite_processing::MeshFrame::select`), so there is no
-/// `raw_ifc`-with-a-far-site case left for this layer to repair.
-///
 /// Returns the JSON buffer on success, or one of the FFI error codes on failure
 /// (`2` read, `3` processing panic, `4` serialization) — `0`/`1` are decided by
 /// the wrappers, which own pointer validation.

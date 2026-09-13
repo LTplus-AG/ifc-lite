@@ -267,7 +267,9 @@ export function runCheck(base, opts = {}) {
     }
     const found = walk(abs);
     if (found.length === 0) {
-      errors.push(`scan root ${root} contains no .rs files. Refusing to report success on an empty input set.`);
+      errors.push(
+        `scan root ${root} contains no .rs files. Refusing to report success on an empty input set. Fix the path if the crate moved, or remove it from SCAN_ROOTS in scripts/check-refwalk-guards.mjs if it no longer holds Rust.`
+      );
       continue;
     }
     files += found.length;
@@ -278,7 +280,9 @@ export function runCheck(base, opts = {}) {
       // extractor broke on it. Silently classifying it as clean is exactly the
       // vacuous-pass shape this gate must not have.
       if (extractFunctions(text).length === 0 && /\bfn\s+[A-Za-z_]/.test(text)) {
-        errors.push(`${rel}: contains \`fn\` but parsed to zero functions — the extractor failed on this file.`);
+        errors.push(
+          `${rel}: contains \`fn\` but parsed to zero functions — the extractor failed on this file. Teach extractFunctions in scripts/lib/refwalk-classify.mjs this file's shape and add it as a case in scripts/lib/refwalk-classify.test.mjs. If the file really has no function bodies (declarations only, or \`fn\` only in a comment), narrow the zero-function check in scripts/check-refwalk-guards.mjs instead. The allowlist cannot clear this: its rows name walks, and this file yielded none.`
+        );
         continue;
       }
       for (const c of findWalkCandidates(text)) {

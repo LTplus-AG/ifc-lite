@@ -36,7 +36,7 @@ pub(in crate::router::voids) fn correct_planar_overlap(
         let mut prism = prepare_prism(&opening, mesh.origin)?;
         let aabbs: Vec<_> = tris.iter().map(PTri::aabb).collect();
         extend_prism_caps(&mut prism, &tris, &aabbs);
-        tris = cut_prism(&tris, &prism).ok()?.tris;
+        tris = cut_prism(&tris, &prism).ok()?;
     }
     let out = dedup_cut_vertices(&mesh_from_ptris(&tris, mesh), mesh);
     (directed_closed(&out) || closed_or_hairline(&out)).then_some(out)

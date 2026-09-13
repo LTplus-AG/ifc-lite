@@ -34,7 +34,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { relativeExtends, parseCliMode, auditVacuity, audit, repoRootRefusal } from './typecheck-tests.mjs';
 
@@ -524,7 +524,7 @@ test('a symlinked spelling of the repo root is still the repo root (issue 3362)'
   const dir = mkdtempSync(path.join(tmpdir(), 'typecheck-tests-symlink-'));
   const link = path.join(dir, 'repo');
   try {
-    symlinkSync(REPO_ROOT, link, 'dir');
+    symlinkSync(REPO_ROOT, link, process.platform === 'win32' ? 'junction' : 'dir');
     assert.ok(repoRootRefusal(link), 'a symlink to the repo root must be refused too');
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -564,8 +564,66 @@ test('running it bare from the repo root refuses and writes no program (issue 33
     assert.equal(wroteProgram, false, `it wrote ${generated}: the repository was treated as a package`);
     assert.equal(code, 2, `expected exit 2, got ${code}: ${out}`);
     assert.match(out, /refusing to treat the repository root as a package/);
-    assert.doesNotMatch(out, /has no test files, nothing to check/, 'it must refuse, not report a vacuous pass');
+    assert.doesNotMatch(out, /checked 0 test files/, 'it must refuse as the repo root, not as an empty package');
   } finally {
     rmSync(generated, { force: true });
+  }
+});
+
+// --- Issue 4702: a run that checked nothing must not exit 0 ------------------
+//
+// The CLI guard compared `path.resolve(process.argv[1])` with the module's own
+// path. Node's ESM loader realpaths `import.meta.url` and leaves argv[1] as
+// typed, so `node <symlink>/scripts/typecheck-tests.mjs` skipped the whole CLI
+// block: no output, no generated program, exit 0. The revert oracle reached it
+// through a symlinked --root (#4682). The assertions are on what the run DID (a
+// written program, a nonzero checked-file count), because exit 0 is exactly
+// what the broken run returned.
+
+/** A package outside the repo holding `tests` test files. */
+function stagePackage(tests) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'typecheck-tests-4702-'));
+  const pkg = path.join(dir, 'pkg');
+  mkdirSync(path.join(pkg, 'src'), { recursive: true });
+  writeFileSync(path.join(pkg, 'package.json'), '{ "name": "fixture-4702", "private": true }\n');
+  writeFileSync(path.join(pkg, 'tsconfig.json'), '{ "compilerOptions": { "noEmit": true } }\n');
+  for (let i = 0; i < tests; i += 1) writeFileSync(path.join(pkg, 'src', `t${i}.test.ts`), 'export {};\n');
+  return { dir, pkg };
+}
+
+/** Run the script from `cwd`. tsc's own verdict depends on the install, so no exit code is assumed. */
+function runScript(script, cwd) {
+  const r = spawnSync(process.execPath, [script], { cwd, encoding: 'utf8', timeout: 120_000 });
+  assert.equal(r.error, undefined, `could not run ${script}: ${r.error?.message}`);
+  return { code: r.status, out: `${r.stdout}${r.stderr}` };
+}
+
+test('run through a symlinked checkout, it still checks the package (issue 4702)', () => {
+  const { dir, pkg } = stagePackage(2);
+  try {
+    const link = path.join(dir, 'link');
+    symlinkSync(REPO_ROOT, link, process.platform === 'win32' ? 'junction' : 'dir');
+    const { code, out } = runScript(path.join(link, 'scripts', 'typecheck-tests.mjs'), pkg);
+    assert.ok(
+      existsSync(path.join(pkg, 'tsconfig.tests.json')),
+      `no test program was written (exit ${code}, output ${JSON.stringify(out)})`,
+    );
+    const checked = out.match(/\((\d+) test files\)/);
+    assert.ok(checked, `no checked-file count in the output (exit ${code}): ${JSON.stringify(out)}`);
+    assert.equal(Number(checked[1]), 2, 'both staged test files are in the checked program');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a package with no test files fails instead of passing having checked nothing (issue 4702)', () => {
+  const { dir, pkg } = stagePackage(0);
+  try {
+    const { code, out } = runScript(path.join(REPO_ROOT, 'scripts', 'typecheck-tests.mjs'), pkg);
+    assert.equal(code, 1, `a run that checked zero files must not exit ${code}: ${out}`);
+    assert.match(out, /checked 0 test files/);
+    assert.equal(existsSync(path.join(pkg, 'tsconfig.tests.json')), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

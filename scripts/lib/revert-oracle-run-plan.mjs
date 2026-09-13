@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,16 @@ import { runTypecheckPlan } from './revert-oracle-type-only.mjs';
 
 const toolchainVersions = new Map();
 const RUN_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * The repo root every plan path derives from, with symlinks resolved. V8
+ * coverage and a spawned script's `import.meta.url` name files by their real
+ * path, so a root through a symlink would attribute nothing (#4682). A missing
+ * root stays as given so git reports it as an ERROR result.
+ */
+export function realRoot(root) {
+  return existsSync(root) ? realpathSync(root) : root;
+}
 
 /** Resolve a runner binary the way the owning package would. */
 function resolveCommand(bin, pkgDir, root) {
@@ -87,12 +97,25 @@ export function runPlan(plan, root, label, log = console.log) {
   }
   const recordsExecution = plan.runner.family === 'node-test';
   const coverageDir = recordsExecution ? mkdtempSync(join(tmpdir(), 'revert-oracle-execution-')) : null;
+  // Node 24 changed the default `node --test` reporter from TAP to spec even
+  // for captured output. Select TAP on this invocation instead of through
+  // NODE_OPTIONS: the selected test may itself spawn the oracle, and inherited
+  // NODE_OPTIONS would otherwise add the reporter twice in that nested run.
+  const runnerArgs = recordsExecution
+    ? [...command.prefix, '--test-reporter=tap', ...plan.runner.args]
+    : [...command.prefix, ...plan.runner.args];
   const spawnOptions = {
     cwd,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
     timeout: RUN_TIMEOUT_MS,
-    env: { ...process.env, CI: '1', FORCE_COLOR: '0', NO_COLOR: '1', ...(coverageDir ? { NODE_V8_COVERAGE: coverageDir } : {}) },
+    env: {
+      ...process.env,
+      CI: '1',
+      FORCE_COLOR: '0',
+      NO_COLOR: '1',
+      ...(coverageDir ? { NODE_V8_COVERAGE: coverageDir } : {}),
+    },
   };
   let run;
   let executionFiles = [];
@@ -110,8 +133,8 @@ export function runPlan(plan, root, label, log = console.log) {
         .map((line) => resolve(plan.dir, line));
     }
     run = plan.moduleFilter
-      ? runExactCargoModule(command.bin, [...command.prefix, ...plan.runner.args], plan.moduleFilter, spawnOptions)
-      : spawnSync(command.bin, [...command.prefix, ...plan.runner.args], spawnOptions);
+      ? runExactCargoModule(command.bin, runnerArgs, plan.moduleFilter, spawnOptions)
+      : spawnSync(command.bin, runnerArgs, spawnOptions);
     if (coverageDir) executionFiles = readCoveredFiles(coverageDir);
   } catch (error) {
     executionEvidenceError = error instanceof Error ? error.message : String(error);

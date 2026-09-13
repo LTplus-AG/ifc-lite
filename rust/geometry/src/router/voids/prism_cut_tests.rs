@@ -175,6 +175,11 @@ fn rotated_prism_cutter_fires_and_reconciles() {
     let (cut, residual) = router
         .try_prism_cut(&host, &ctx)
         .expect("rotated box cutter must take the prism path");
+    assert_eq!(
+        dedup_cut_vertices(&cut, &host).positions,
+        cut.positions,
+        "the returned prism mesh must already contain the weld that the caller emits"
+    );
     assert!(residual.is_none());
     assert!(watertight(&cut), "rotated prism cut must be watertight");
     let removed = mesh_volume(&host) - mesh_volume(&cut);
@@ -1038,4 +1043,240 @@ fn tetrahedron_missing_face_fails_directed_closed() {
     let mut m = tetrahedron_mesh();
     m.indices.truncate(m.indices.len() - 3); // drop the last triangle
     assert!(!directed_closed(&m));
+}
+
+// #4627: exercise the complete analytic route and its final closure audit
+// before residual exact openings are applied.
+fn box_opening(mesh: Mesh) -> OpeningType {
+    let (lo, hi) = mesh.bounds();
+    OpeningType::NonRectangular(
+        mesh,
+        lo.cast(),
+        hi.cast(),
+        Some(Vector3::new(0.0, 1.0, 0.0)),
+    )
+}
+
+#[test]
+fn issue_4627_closed_partial_cut_agrees_at_origin_and_ten_km() {
+    use crate::world_frame_fixture::{placed_box_mesh, WORLD_FRAME_CASES};
+    let router = GeometryRouter::new();
+    for case in WORLD_FRAME_CASES {
+        let host = placed_box_mesh(case, [0.0; 3], [1.0; 3]);
+        let cutter = placed_box_mesh(case, [-0.01; 3], [0.75, 1.01, 1.01]);
+        let ctx = ctx_of(vec![box_opening(cutter)]);
+        let (valid, residual) = router
+            .try_prism_cut(&host, &ctx)
+            .expect("partial closed box cut");
+        assert!(residual.is_none());
+        assert!((mesh_volume(&valid) - 0.25).abs() < 1e-6);
+        assert!(watertight(&valid));
+    }
+}
+
+#[test]
+fn issue_4627_small_host_with_ten_km_cutter_remains_closed() {
+    let router = GeometryRouter::new();
+    let host = framed_box_mesh([0.5; 3], axis_frame(), [0.5; 3]);
+    for depth in [1.2, 10_000.0] {
+        let cutter = framed_box_mesh([0.5; 3], axis_frame(), [0.125, depth * 0.5, 0.125]);
+        let ctx = ctx_of(vec![box_opening(cutter)]);
+        let (cut, residual) = router
+            .try_prism_cut(&host, &ctx)
+            .expect("closed through opening");
+        assert!(residual.is_none());
+        assert!(watertight(&cut));
+        assert!((mesh_volume(&cut) - 0.9375).abs() < 1e-6);
+    }
+}
+
+#[test]
+fn issue_4627_small_host_leak_defers_with_short_and_ten_km_cutters() {
+    let router = GeometryRouter::new();
+    let host = framed_box_mesh([0.5; 3], axis_frame(), [0.5; 3]);
+    let mut tris = ptris_from_mesh(&host).unwrap();
+    let tri = tris.remove(0);
+    let [a, b, c] = tri.p;
+    let ab = std::array::from_fn(|k| a[k] + 0.001 * (b[k] - a[k]));
+    let ac = std::array::from_fn(|k| a[k] + 0.001 * (c[k] - a[k]));
+    tris.push(PTri {
+        p: [ab, b, c],
+        n: tri.n,
+    });
+    tris.push(PTri {
+        p: [ab, c, ac],
+        n: tri.n,
+    });
+    let leaking = mesh_from_ptris(&tris, &host);
+    for depth in [1.2, 10_000.0] {
+        let cutter = framed_box_mesh([0.5; 3], axis_frame(), [0.125, depth * 0.5, 0.125]);
+        assert!(
+            router
+                .try_prism_cut(&leaking, &ctx_of(vec![box_opening(cutter)]))
+                .is_none(),
+            "a 5e-7 m² host leak must defer before any open surface volume is read"
+        );
+    }
+}
+
+// #4627: these surface invariants exercise the exact predicates used by
+// cut_prism, independently of the fixture regressions through try_prism_cut.
+#[test]
+fn issue_4627_partition_keeps_relative_clipping_allowance_at_any_origin() {
+    for offset in [[0.0; 3], [10_000.0, -20_000.0, 30_000.0]] {
+        let mut host = ptris_from_mesh(&framed_box_mesh([0.5; 3], axis_frame(), [0.5; 3])).unwrap();
+        for t in &mut host {
+            for p in &mut t.p {
+                *p = add(*p, offset);
+            }
+        }
+        let mut fragments = host.clone();
+        let center = add([0.5; 3], offset);
+        for t in &mut fragments {
+            for p in &mut t.p {
+                *p = add(center, scale(sub(*p, center), 1.0 + 1.0e-8));
+            }
+        }
+        let bounds = host.iter().map(PTri::aabb).collect::<Vec<_>>();
+        assert!(
+            partition_consistent(&host, &fragments, &[], &bounds),
+            "closed clipping error below one part per million must remain admissible"
+        );
+    }
+}
+
+#[test]
+fn issue_4627_partition_detects_gap_flux_hidden_at_center_and_diagonal() {
+    for offset in [[0.0; 3], [10_000.0, -20_000.0, 30_000.0]] {
+        let mut host = ptris_from_mesh(&framed_box_mesh([0.5; 3], axis_frame(), [0.5; 3])).unwrap();
+        let mut fragments = host.clone();
+        // Equal patches on the centre X/Y planes have opposite area vectors.
+        // Their residual vanishes at the centre and along a diagonal probe,
+        // but varies across the host's AABB: they cannot be a partition.
+        for p in [
+            [[0.5, 0.0, 0.0], [0.5, 0.01, 0.0], [0.5, 0.0, 0.002]],
+            [[0.0, 0.5, 0.0], [0.01, 0.5, 0.0], [0.0, 0.5, 0.002]],
+        ] {
+            fragments.push(PTri {
+                p,
+                n: [[0.0, 0.0, 1.0]; 3],
+            });
+        }
+        for t in host.iter_mut().chain(&mut fragments) {
+            for p in &mut t.p {
+                *p = add(*p, offset);
+            }
+        }
+        let bounds = host.iter().map(PTri::aabb).collect::<Vec<_>>();
+        assert!(!partition_consistent(&host, &fragments, &[], &bounds));
+    }
+}
+
+#[test]
+fn issue_4627_region_envelope_distinguishes_thin_cut_from_tiny_contact() {
+    for (half, measurable) in [([0.5, 0.5, 1.0e-7], true), ([0.005, 0.005, 1.0e-7], false)] {
+        let faces = ptris_from_mesh(&framed_box_mesh([0.0; 3], axis_frame(), half)).unwrap();
+        assert_eq!(
+            has_measurable_region(&faces, &[]),
+            measurable,
+            "equal thickness does not imply equal possible removal"
+        );
+    }
+    let planar = [PTri {
+        p: [[0.0; 3], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0]],
+        n: [[0.0, 0.0, 1.0]; 3],
+    }];
+    assert!(
+        !has_measurable_region(&planar, &[]),
+        "an oblique sheet encloses nothing"
+    );
+}
+
+#[test]
+fn issue_4627_partition_absolute_floor_uses_full_host_extent() {
+    let host = ptris_from_mesh(&framed_box_mesh(
+        [5.0, 0.5, 5.0e-6],
+        axis_frame(),
+        [5.0, 0.5, 5.0e-6],
+    ))
+    .unwrap();
+    let bounds = host.iter().map(PTri::aabb).collect::<Vec<_>>();
+    // The 10 m host has a 2.331e-9 m³ absolute allowance; its tiny volume
+    // makes the relative term smaller. Probe ranges straddle that allowance.
+    for (range, accepted) in [(1.8e-9, true), (3.0e-9, false)] {
+        let mut fragments = host.clone();
+        fragments.push(PTri {
+            p: [
+                [5.0, 0.0, 0.0],
+                [5.0, 1.0, 0.0],
+                [5.0, 0.0, range * 6.0 / 10.0],
+            ],
+            n: [[1.0, 0.0, 0.0]; 3],
+        });
+        assert_eq!(
+            partition_consistent(&host, &fragments, &[], &bounds),
+            accepted
+        );
+    }
+}
+
+#[test]
+fn issue_4627_production_rejects_removal_larger_than_committed_cutter() {
+    use crate::world_frame_fixture::{placed_box_mesh, WORLD_FRAME_CASES};
+    let router = GeometryRouter::new();
+    for case in WORLD_FRAME_CASES {
+        let host = placed_box_mesh(case, [0.0; 3], [1.0; 3]);
+        let mut triangles = ptris_from_mesh(&host).unwrap();
+        // A nested outward shell passes the directed edge audit but double-counts
+        // material. Keep a disjoint component outside the cutter so this reaches
+        // the final subtraction audit rather than the engulfing-cutter preflight.
+        let insets = [0.05, 0.1, 0.15];
+        for inset in insets {
+            triangles.extend(
+                ptris_from_mesh(&placed_box_mesh(case, [inset; 3], [1.0 - inset; 3])).unwrap(),
+            );
+        }
+        triangles.extend(
+            ptris_from_mesh(&placed_box_mesh(case, [2.0, 0.25, 0.25], [2.1, 0.75, 0.75])).unwrap(),
+        );
+        let invalid_host = mesh_from_ptris(&triangles, &host);
+        assert!(directed_closed(&invalid_host));
+        let opening = box_opening(placed_box_mesh(case, [-0.01; 3], [1.01; 3]));
+        let mut prism = prepare_prism(&opening, invalid_host.origin).expect("fixed box prism");
+        let bounds = triangles.iter().map(PTri::aabb).collect::<Vec<_>>();
+        extend_prism_caps(&mut prism, &triangles, &bounds);
+        extend_profile_edges(&mut prism, &triangles, &bounds);
+        let removed = 1.0 + insets.iter().map(|d| (1.0 - 2.0 * d).powi(3)).sum::<f64>();
+        // The explicit shell volumes exceed the independently extended cutter
+        // by >0.68 m³. 0.001 m³ already exceeds the two surfaces' grid noise.
+        assert!(removed > prism.volume() + 0.001);
+        assert!(
+            router
+                .try_prism_cut(&invalid_host, &ctx_of(vec![opening]))
+                .is_none(),
+            "{case:?}: an audited surface cannot remove more than the committed cutter"
+        );
+    }
+}
+
+#[test]
+fn issue_4627_final_volume_bounds_reject_growth_and_host_over_removal() {
+    use crate::world_frame_fixture::{placed_box_mesh, WORLD_FRAME_CASES};
+    for case in WORLD_FRAME_CASES {
+        let host = placed_box_mesh(case, [0.0; 3], [1.0; 3]);
+        let valid = placed_box_mesh(case, [0.0; 3], [0.75, 1.0, 1.0]);
+        assert!(result_volume_within_bounds(&host, &valid, 0.25));
+        let grown = placed_box_mesh(case, [0.0; 3], [1.125, 1.0, 1.0]);
+        assert!(directed_closed(&grown));
+        assert!(!result_volume_within_bounds(&host, &grown, 0.25));
+        let mut inverted = placed_box_mesh(case, [0.0; 3], [0.5; 3]);
+        for tri in inverted.indices.chunks_exact_mut(3) {
+            tri.swap(1, 2);
+        }
+        assert!(directed_closed(&inverted));
+        assert!(
+            !result_volume_within_bounds(&host, &inverted, 10_000.0),
+            "a long cutter must not permit removal beyond the entire host"
+        );
+    }
 }

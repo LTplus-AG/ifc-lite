@@ -2,7 +2,7 @@
 //! Non-finite coordinates must never reach an exported mesh file.
 //!
 //! The three from-meshes exporters (`export_glb_from_meshes`,
-//! `export_collada_from_meshes`, and `export_kmz_collada_from_meshes` through it)
+//! `try_export_collada_from_meshes`, and `try_export_kmz_collada_from_meshes` through it)
 //! take the viewer's flattened `MeshData` arrays straight off the wasm FFI. Nothing
 //! between a plugin-supplied mesh and the bytes checked that a coordinate was finite,
 //! and every one of the three failure modes below was observed on `main`:
@@ -20,7 +20,7 @@
 //! `NaN`, `+Infinity` and `-Infinity` are asserted separately: they did not behave
 //! alike (`NaN` left `min`/`max` finite, the infinities produced `null`).
 
-use ifc_lite_export::{export_collada_from_meshes, export_glb_from_meshes};
+use ifc_lite_export::{export_glb_from_meshes, try_export_collada_from_meshes};
 
 /// One triangle whose FIRST vertex's X is `poison`; the other two are finite and
 /// must survive unchanged.
@@ -64,7 +64,7 @@ fn glb_parts(poison: f32) -> (String, Vec<f32>) {
 
 fn collada_positions(poison: f32) -> String {
     let (p, n, i) = tri(poison);
-    let dae = export_collada_from_meshes(
+    let dae = try_export_collada_from_meshes(
         &p,
         &n,
         &i,
@@ -72,7 +72,7 @@ fn collada_positions(poison: f32) -> String {
         &[3],
         &[0.8, 0.8, 0.8, 1.0],
         &[0.0, 0.0, 0.0],
-    );
+    ).expect("has geometry");
     let dae = String::from_utf8_lossy(&dae).to_string();
     let line = dae
         .lines()
@@ -197,7 +197,7 @@ fn finite_meshes_are_untouched() {
     );
     assert!(!json.contains("null"), "finite input produced a null: {json}");
 
-    let dae = export_collada_from_meshes(
+    let dae = try_export_collada_from_meshes(
         &positions,
         &normals,
         &indices,
@@ -205,7 +205,7 @@ fn finite_meshes_are_untouched() {
         &[3],
         &[0.25, 0.5, 0.75, 1.0],
         &[10.0, 20.0, 30.0],
-    );
+    ).expect("has geometry");
     let dae = String::from_utf8_lossy(&dae).to_string();
     let line = dae
         .lines()

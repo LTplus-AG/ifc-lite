@@ -99,11 +99,13 @@ impl IfcAPI {
     /// per-mesh local). The caller passes exactly the meshes it wants emitted.
     ///
     /// Fails CLOSED: if the declared vertex/index counts run past the flattened
-    /// `positions` / `indices`, there are fewer `index_counts` than meshes, or `normals`
-    /// is empty or too short to cover every vertex, this throws an `Error` whose message
-    /// starts with `MALFORMED_MESH_INPUT` — instead of silently emitting a GLB with those
-    /// meshes dropped. (The viewer always passes fully-backed, normal-covered arrays, so
-    /// this only fires on a caller bug.)
+    /// `positions` / `indices`, there are fewer `index_counts` than meshes, `normals`
+    /// is empty or too short to cover every vertex, or an index names a vertex its own
+    /// mesh does not have (glTF 2.0 3.7.2.1), this throws an `Error` whose message
+    /// starts with `MALFORMED_MESH_INPUT` — instead of silently emitting a GLB with
+    /// those meshes dropped, or one carrying the out-of-range index straight into the
+    /// BIN chunk. (The viewer always passes fully-backed, normal-covered, in-range
+    /// arrays, so this only fires on a caller bug.)
     #[wasm_bindgen(js_name = exportGlbFromMeshes)]
     #[allow(clippy::too_many_arguments)]
     pub fn export_glb_from_meshes(
@@ -184,6 +186,14 @@ impl IfcAPI {
     /// `altitude_mode` (`"clampToGround"` default ⇒ rest on terrain, ignoring
     /// `altitude`; `"absolute"` ⇒ place at `altitude` metres MSL) selects the
     /// KML vertical placement (#1427).
+    ///
+    /// Fails CLOSED: when no triangle survives (an empty visible set, or meshes
+    /// whose only triangles are degenerate and collapse in the vertex dedup)
+    /// this throws an `Error` whose message starts with `NO_RENDER_GEOMETRY`;
+    /// a declared vertex/index count running past its buffer throws
+    /// `MALFORMED_MESH_INPUT`, as `exportGlbFromMeshes` does. Both used to ship
+    /// as a small "successful" archive: the first around a COLLADA document
+    /// the 1.4.1 schema rejects, the second with every later mesh missing.
     #[wasm_bindgen(js_name = exportKmzFromMeshes)]
     #[allow(clippy::too_many_arguments)]
     pub fn export_kmz_from_meshes(
@@ -202,7 +212,7 @@ impl IfcAPI {
         x_axis_ordinate: Option<f64>,
         name: String,
         altitude_mode: Option<String>,
-    ) -> Vec<u8> {
+    ) -> Result<Vec<u8>, JsValue> {
         let opts = ifc_lite_export::KmzOptions {
             latitude,
             longitude,
@@ -212,7 +222,7 @@ impl IfcAPI {
             x_axis_ordinate,
             name: if name.is_empty() { None } else { Some(name) },
         };
-        ifc_lite_export::export_kmz_collada_from_meshes(
+        ifc_lite_export::try_export_kmz_collada_from_meshes(
             positions,
             normals,
             indices,
@@ -222,5 +232,6 @@ impl IfcAPI {
             origins,
             &opts,
         )
+        .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))
     }
 }

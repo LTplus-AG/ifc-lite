@@ -1012,6 +1012,57 @@ fn try_from_meshes_rejects_index_counts_past_buffer() {
 }
 
 #[test]
+fn try_from_meshes_rejects_an_index_past_its_own_mesh() {
+    // Every check the fail-closed gate had was about a COUNT running past a
+    // buffer. An index whose VALUE is out of range passes all of them — the
+    // sums here are exact — and the assembler then copies the index buffer
+    // into the BIN chunk verbatim (`bytemuck::cast_slice`), so it reached the
+    // file. glTF 2.0 3.7.2.1: "index values MUST be less than the number of
+    // vertices". The same arrays through `try_export_collada_from_meshes` emit ONE
+    // triangle, because `collada.rs` drops a triangle with an index outside its
+    // mesh's range, and `usd.rs`'s `mesh_emittable` has a third copy of the
+    // rule — so the fail-closed exporter was the one that disagreed.
+    let positions: Vec<f32> =
+        vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0];
+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 6).flatten().collect();
+    // Mesh 1's last index names vertex 7; mesh 1 has three vertices.
+    let indices: Vec<u32> = vec![0, 1, 2, 0, 1, 7];
+    let (vc, ic) = (vec![3u32, 3u32], vec![3u32, 3u32]);
+    let color = vec![0.5, 0.5, 0.5, 1.0, 0.5, 0.5, 0.5, 1.0];
+    let origin = vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    let ids = vec![1u32, 2u32];
+
+    // The gate refuses, naming the mesh and the index.
+    let err = try_export_glb_from_meshes(
+        &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+    )
+    .expect_err("an index past its mesh's vertex count must be MalformedMeshInput");
+    assert!(matches!(err, ExportError::MalformedMeshInput { .. }), "got {err:?}");
+    assert_eq!(err.code(), "MALFORMED_MESH_INPUT");
+    assert!(err.to_string().contains("mesh 1"), "names the offending mesh: {err}");
+    assert!(err.to_string().contains('7'), "names the offending index: {err}");
+
+    // The boundary, both ways round. An index EQUAL to the vertex count is out
+    // of range (indices are zero-based), and `vertex_count - 1` is the last
+    // legal one, so a `>` where the rule wants `>=` is caught here rather than
+    // by the 7-against-3 case above, which both spellings reject.
+    let at_count: Vec<u32> = vec![0, 1, 2, 0, 1, 3];
+    assert!(
+        try_export_glb_from_meshes(
+            &positions, &normals, &at_count, &vc, &ic, &color, &origin, &ids, false, true, false,
+        )
+        .is_err(),
+        "index == vertex_count is out of range"
+    );
+
+    let ok_indices: Vec<u32> = vec![0, 1, 2, 0, 1, 2];
+    try_export_glb_from_meshes(
+        &positions, &normals, &ok_indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+    )
+    .expect("in-range indices must still export");
+}
+
+#[test]
 fn try_from_meshes_rejects_empty_input() {
     // Zero meshes (e.g. a viewer selection whose visible set filtered to
     // nothing) passes every per-count-consistency check trivially — vsum=0,

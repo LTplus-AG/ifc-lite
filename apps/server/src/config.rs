@@ -18,6 +18,12 @@ pub struct Config {
     pub max_file_size_mb: usize,
     /// Request timeout in seconds.
     pub request_timeout_secs: u64,
+    /// Longest a socket write may make no progress before the connection is
+    /// closed (`IFC_STREAM_IDLE_TIMEOUT_SECS`, default 600; 0 disables).
+    /// This is enforced by the connection owner, so closing the transport
+    /// drops Hyper's current frame, the response body, and its admission
+    /// reservation. Producer time does not count because no write is pending.
+    pub stream_idle_timeout_secs: u64,
     /// Number of worker threads for parallel processing.
     pub worker_threads: usize,
     /// Initial batch size for fast first frame (first 3 batches).
@@ -65,6 +71,7 @@ impl std::fmt::Debug for Config {
             .field("cache_dir", &self.cache_dir)
             .field("max_file_size_mb", &self.max_file_size_mb)
             .field("request_timeout_secs", &self.request_timeout_secs)
+            .field("stream_idle_timeout_secs", &self.stream_idle_timeout_secs)
             .field("worker_threads", &self.worker_threads)
             .field("initial_batch_size", &self.initial_batch_size)
             .field("max_batch_size", &self.max_batch_size)
@@ -132,6 +139,9 @@ impl Config {
                 .unwrap_or_else(|| "300".into())
                 .parse()
                 .unwrap_or(300),
+            stream_idle_timeout_secs: get("IFC_STREAM_IDLE_TIMEOUT_SECS")
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(600),
             worker_threads,
             max_concurrent_parses: get("IFC_MAX_CONCURRENT_PARSES")
                 .and_then(|v| v.parse().ok())

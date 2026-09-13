@@ -154,7 +154,9 @@ fn ifcdoortype_maps_to_ifcdoorstyle_preserving_globalid_and_name() {
     // ApplicableOccurrence,HasPropertySets,RepresentationMaps,Tag,
     // ElementType,PredefinedType,OperationType,ParameterTakesPrecedence,
     // UserDefinedOperationType
-    let line = "#1=IFCDOORTYPE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Type',$,$,(#3),(#4),'tag',\
+    // Non-ASCII in the Name: the by-name remap rebuilds the list on every
+    // record, and #4200's splitter mojibaked it (`Ã¶` for `ö`).
+    let line = "#1=IFCDOORTYPE('1mW6gHB0W7lxCAqIKVEzia',#2,'Türtyp Größe',$,$,(#3),(#4),'tag',\
                 $,.DOOR.,.SINGLE_SWING_LEFT.,.T.,$);";
     let out = convert_step_line(line, "IFC4", "IFC2X3", 1);
 
@@ -162,7 +164,7 @@ fn ifcdoortype_maps_to_ifcdoorstyle_preserving_globalid_and_name() {
     assert!(out.starts_with("#1=IFCDOORSTYLE("), "renamed to IfcDoorStyle: {out}");
     // GlobalId, Name, HasPropertySets, RepresentationMaps, Tag all survive.
     assert!(out.contains("'1mW6gHB0W7lxCAqIKVEzia'"), "GlobalId preserved: {out}");
-    assert!(out.contains("'Door Type'"), "Name preserved: {out}");
+    assert!(out.contains("'Türtyp Größe'"), "Name preserved byte for byte: {out}");
     assert!(out.contains("(#3)"), "HasPropertySets preserved: {out}");
     assert!(out.contains("(#4)"), "RepresentationMaps preserved: {out}");
     assert!(out.contains("'tag'"), "Tag preserved: {out}");
@@ -171,7 +173,7 @@ fn ifcdoortype_maps_to_ifcdoorstyle_preserving_globalid_and_name() {
     // OperationType,ConstructionType,ParameterTakesPrecedence,Sizeable
     assert_eq!(
         out,
-        "#1=IFCDOORSTYLE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Type',$,$,(#3),(#4),'tag',\
+        "#1=IFCDOORSTYLE('1mW6gHB0W7lxCAqIKVEzia',#2,'Türtyp Größe',$,$,(#3),(#4),'tag',\
          .SINGLE_SWING_LEFT.,$,.T.,$);"
     );
 }
@@ -231,4 +233,34 @@ fn schema_conversion_refuses_before_type_rename_or_proxy_replacement() {
 
     let proxy = "#99=IFCALIGNMENTCANT('g',\"01,23\",$);";
     assert_eq!(convert_step_line(proxy, "IFC4X3", "IFC4", 99), proxy);
+}
+
+/// LTplus-AG/ifc-lite#4200: the deleted `split_top_level` rebuilt each
+/// attribute with `bytes[i] as char`, re-encoding UTF-8 continuation bytes as
+/// Latin-1, and it fired on the UNTRIMMED branch too (`trim_attributes` joined
+/// the parts back unconditionally). #4584's tests cover the trimmed and
+/// by-name branches; this pins the untrimmed one (eight attributes, IFCWALL's
+/// IFC2X3 cap), byte for byte.
+#[test]
+fn ifc2x3_downgrade_keeps_an_untrimmed_non_ascii_line_byte_for_byte() {
+    let untrimmed = "#1=IFCWALL('0abc',$,'Größe Wand',$,$,$,$,$);";
+    assert_eq!(convert_step_line(untrimmed, "IFC4", "IFC2X3", 1), untrimmed);
+}
+
+/// The same defect measured where a user meets it: `export_step` with an
+/// explicit IFC2X3 target, end to end over a whole file.
+#[test]
+fn export_step_ifc2x3_downgrade_does_not_mojibake_a_name() {
+    let src = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n\
+               FILE_NAME('a.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\n\
+               DATA;\n#1=IFCWALL('0abcdefghijklmnopqrstu',$,'Größe Wand',$,$,$,$,$,.SOLIDWALL.);\n\
+               ENDSEC;\nEND-ISO-10303-21;\n";
+    let out = crate::export_step(
+        src.as_bytes(),
+        &crate::StepOptions { schema: Some("IFC2X3".to_string()), ..Default::default() },
+    );
+    assert!(
+        out.contains("#1=IFCWALL('0abcdefghijklmnopqrstu',$,'Größe Wand',$,$,$,$,$);"),
+        "{out}"
+    );
 }

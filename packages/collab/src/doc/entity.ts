@@ -607,10 +607,10 @@ export function entityToJSON(entity: Y.Map<unknown>): {
   const inheritsJson: Record<string, string> = {};
   if (inherits) for (const [k, v] of inherits.entries()) inheritsJson[k] = v;
 
-  const psetsJson: Record<string, Record<string, PropertyValue>> = {};
+  const psetsJson: Record<string, Record<string, PropertyValue>> = Object.create(null);
   if (psets) {
     for (const [psetName, pset] of psets.entries()) {
-      const props: Record<string, PropertyValue> = {};
+      const props: Record<string, PropertyValue> = Object.create(null);
       for (const [propName, val] of pset.entries()) {
         props[propName] = val;
       }
@@ -618,10 +618,10 @@ export function entityToJSON(entity: Y.Map<unknown>): {
     }
   }
 
-  const quantitiesJson: Record<string, Record<string, number>> = {};
+  const quantitiesJson: Record<string, Record<string, number>> = Object.create(null);
   if (quantities) {
     for (const [qsetName, qset] of quantities.entries()) {
-      const qtys: Record<string, number> = {};
+      const qtys: Record<string, number> = Object.create(null);
       for (const [qtyName, val] of qset.entries()) {
         qtys[qtyName] = val;
       }

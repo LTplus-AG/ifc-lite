@@ -192,7 +192,7 @@ In the IFClite viewer:
 | Tab | Edits | Backed by |
 |---|---|---|
 | **Properties** | IfcRoot named attributes (Name, Description, …), property sets, classifications, materials, documents | `setProperty` / `setAttribute` |
-| **Quantities** | Quantity sets and individual quantities | `setQuantity` / `createQuantitySet` / `deleteQuantitySet` |
+| **Quantities** | Quantity sets and individual quantities | `setQuantity` / `deleteQuantity` / `createQuantitySet` / `deleteQuantitySet` |
 | **bSDD** | Add buildingSMART Data Dictionary properties | `setProperty` |
 | **Raw STEP** | Positional STEP arguments on the selected entity (one row per arg, inline pen-icon editor). Mutated rows show a purple dot. | `setPositionalAttribute` |
 

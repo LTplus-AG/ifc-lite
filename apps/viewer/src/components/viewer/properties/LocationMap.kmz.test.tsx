@@ -29,7 +29,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, afterEach } from 'node:test';
+import { describe, it, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 
@@ -37,6 +37,7 @@ import type { CoordinateInfo, GeometryResult, MeshData, KmzAltitudeMode } from '
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 import { render, cleanup } from '@/test/render.js';
+import { toast } from '@/components/ui/toast.js';
 import { LocationMap } from './LocationMap.js';
 import type { KmzProcessor } from '@/lib/geo/kmz-exporter.js';
 import { setGlobalRendererRef } from '@/hooks/useBCF.js';
@@ -127,6 +128,7 @@ function makeStub() {
 /** Mount the panel and click Google Earth, returning what reached the exporter. */
 async function exportViaButton(
   instancedModelRange?: { idOffset: number; maxExpressId: number } | null,
+  processor?: KmzProcessor,
 ): Promise<RecordedCall[]> {
   const { gp, calls } = makeStub();
   const container = render(
@@ -136,7 +138,7 @@ async function exportViaButton(
       coordinateInfo={MAP_ABSOLUTE_COORDINATE_INFO}
       geometryResult={GEOMETRY_RESULT}
       lengthUnitScale={1}
-      createKmzProcessor={() => gp}
+      createKmzProcessor={() => processor ?? gp}
       instancedModelRange={instancedModelRange}
     />,
   );
@@ -256,6 +258,25 @@ describe('LocationMap — Google Earth (KMZ) export', () => {
       placement(viaPanel[0]),
       placement(calls[0]),
       'the panel and the dialog must place the same model identically',
+    );
+  });
+
+  it('shows a visible error when the now-fallible KMZ exporter rejects the model', async () => {
+    const errorToast = mock.method(toast, 'error', () => {});
+    const failing: KmzProcessor = {
+      async init() {},
+      exportKmzFromMeshes() {
+        throw new Error('KMZ ZIP32 archive exceeds 4 GiB');
+      },
+      dispose() {},
+    };
+
+    await exportViaButton(null, failing);
+
+    assert.strictEqual(errorToast.mock.callCount(), 1);
+    assert.match(
+      String(errorToast.mock.calls[0].arguments[0]),
+      /KMZ export failed: KMZ ZIP32 archive exceeds 4 GiB/,
     );
   });
 });

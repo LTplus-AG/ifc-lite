@@ -31,6 +31,7 @@ export interface MutationApplyTarget {
   deleteProperty(entityId: number, psetName: string, propName: string): unknown;
   deletePropertySet(entityId: number, psetName: string): unknown;
   deleteQuantitySet(entityId: number, qsetName: string): unknown;
+  deleteQuantity(entityId: number, qsetName: string, quantName: string): unknown;
   setQuantity(
     entityId: number,
     qsetName: string,
@@ -62,8 +63,8 @@ export interface MutationApplyTarget {
 
 /**
  * Apply a batch of mutations (e.g., from imported change set) against
- * `target`. `hasNewEntity` and `markQuantitySetDeleted` give this function
- * the two bits of the view's private state the dispatcher needs without
+ * `target`. The callbacks give this function the narrow pieces of the view's
+ * private state the dispatcher needs without
  * exposing those fields publicly.
  */
 export function applyMutationsBatch(
@@ -71,6 +72,12 @@ export function applyMutationsBatch(
   mutations: Mutation[],
   hasNewEntity: (entityId: number) => boolean,
   markQuantitySetDeleted: (entityId: number, qsetName: string) => void,
+  ensureQuantityDeletion: (
+    mutation: Mutation,
+    qsetName: string,
+    quantName: string,
+    retainHistory: boolean,
+  ) => void,
 ): void {
   // CREATE_ENTITY records are skipped (callers must restore the
   // payload via restoreNewEntity). Track the ids we've skipped so a
@@ -160,6 +167,22 @@ export function applyMutationsBatch(
           // on a set that does not exist costs a row in the change list;
           // losing the deletion costs the user's edit.
           markQuantitySetDeleted(mutation.entityId, mutation.psetName);
+        }
+        break;
+
+      case 'DELETE_QUANTITY':
+        if (mutation.psetName && mutation.propName) {
+          const applied = target.deleteQuantity(mutation.entityId, mutation.psetName, mutation.propName);
+          // Like whole-set deletion, replay must retain intent before the
+          // optional base extractor is configured. A successful delete has
+          // already recorded one history row; only the no-op path needs the
+          // supplied record retained explicitly.
+          ensureQuantityDeletion(
+            mutation,
+            mutation.psetName,
+            mutation.propName,
+            applied === null,
+          );
         }
         break;
 

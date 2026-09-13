@@ -185,3 +185,24 @@ fn space_contained_by_two_storeys_reports_no_pruned_edge() {
         bootstrap.pruned_aggregate_edges
     );
 }
+
+#[test]
+fn aggregate_from_a_contained_parent_wins_over_an_earlier_containment() {
+    // Storey #22 contains sub-space #32 before space #31, and #31 (itself
+    // placed only by containment, and named by no aggregate) aggregates #32.
+    // The aggregate still places #32, though the containment lists it first.
+    const SUB_SPACE: &str = "\
+#32=IFCSPACE('4689SubSpace000000001',$,'Alcove',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);
+#57=IFCRELCONTAINEDINSPATIALSTRUCTURE('4689ContStoreySub00001',$,$,$,(#32,#31),#22);
+#91=IFCRELAGGREGATES('4689AggSpaceSub000001',$,$,$,#31,(#32));
+";
+    let bootstrap = bootstrap(&file(&[PROJECT, SUB_SPACE]));
+    let root = tree(&bootstrap);
+    child(child(storey_under(root), 31), 32);
+    assert_eq!(count(root, 32), 1, "sub-space #32 is placed exactly once");
+    assert!(
+        bootstrap.pruned_aggregate_edges.is_empty(),
+        "{:?}",
+        bootstrap.pruned_aggregate_edges
+    );
+}

@@ -111,10 +111,11 @@ pub struct QuickMetadataBootstrap {
 /// A spatial child edge left out of [`QuickMetadataBootstrap::spatial_tree`].
 /// Each node is placed where the depth-first walk from the root first reaches
 /// it; every later `IfcRelAggregates` edge to it is recorded here, as is every
-/// child edge out of a node at the depth limit. A spatial element an
-/// `IfcRelContainedInSpatialStructure` promotes to a child is not an aggregate
-/// edge: skipping it because the node is already placed, or because an
-/// aggregate reaches it, is not recorded (#4689).
+/// child edge the walk would follow out of a node at the depth limit. A spatial
+/// element an `IfcRelContainedInSpatialStructure` promotes to a child is not an
+/// aggregate edge: skipping it because the node is already placed, or because
+/// the node is settled (see [`QuickMetadataPrunedEdgeKind::DepthLimit`]), is not
+/// recorded (#4689).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuickMetadataPrunedEdge {
     /// Express id of the node whose child list names the edge.
@@ -136,7 +137,11 @@ pub enum QuickMetadataPrunedEdgeKind {
     /// A node names itself or one of its own ancestors.
     BackEdge,
     /// The parent sits at the tree's depth limit, so its subtree is cut there
-    /// (#4689). The child still appears if a shorter path reaches it.
+    /// (#4689). The child still appears if the walk reaches it by another
+    /// edge it follows. A containment of a settled node is not followed, even
+    /// when the limit cuts the path that settles it: settled means aggregated
+    /// and reached from the root through aggregates and containments of nodes
+    /// no aggregate names.
     DepthLimit,
 }
 

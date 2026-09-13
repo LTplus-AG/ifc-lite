@@ -98,6 +98,62 @@ fn depth_limited_child_is_placed_by_a_shorter_path() {
     }
 }
 
+/// A space whose only aggregate is an orphan's, contained both at the end of
+/// a chain the depth limit cuts and by a shallow node, stays in the tree
+/// through the shallow containment (#4689).
+#[test]
+fn fallback_containment_past_the_depth_limit_does_not_hide_a_shallow_one() {
+    let last = 10 + MAX_QUICK_SPATIAL_TREE_DEPTH as u32 + 9;
+    let (shallow, space, orphan) = (300, 500, 600);
+    let mut nodes: HashMap<u32, QuickSpatialNodeEntry> =
+        (10..last).map(|id| (id, node(id, vec![id + 1]))).collect();
+    let mut deep_end = node(last, vec![]);
+    deep_end.contained = vec![space];
+    nodes.insert(last, deep_end);
+    let mut shallow_node = node(shallow, vec![]);
+    shallow_node.contained = vec![space];
+    nodes.insert(shallow, shallow_node);
+    nodes.insert(space, node(space, vec![]));
+    nodes.insert(orphan, node(orphan, vec![space]));
+    nodes.insert(0, node(0, vec![shallow, 10]));
+    let (root, _) = build_quick_spatial_tree_node(0, &nodes, &HashMap::new()).unwrap();
+    let shallow_node = root
+        .children
+        .iter()
+        .find(|c| c.summary.express_id == shallow);
+    assert!(
+        shallow_node.is_some_and(|n| n.children.iter().any(|c| c.summary.express_id == space)),
+        "#{space} is placed under #{shallow}"
+    );
+}
+
+/// The same space, but its shallow containment sits below two nodes that are
+/// themselves placed only through containments of orphan-aggregated nodes. It
+/// still keeps that containment and stays in the tree (#4689).
+#[test]
+fn unsettled_space_keeps_a_shallow_containment_found_late() {
+    fn contains(node: &QuickMetadataSpatialNode, id: u32) -> bool {
+        node.summary.express_id == id || node.children.iter().any(|c| contains(c, id))
+    }
+    let last = 10 + MAX_QUICK_SPATIAL_TREE_DEPTH as u32 + 9;
+    let with_contained = |id: u32, contained: Vec<u32>| QuickSpatialNodeEntry {
+        contained,
+        ..node(id, vec![])
+    };
+    let mut nodes: HashMap<u32, QuickSpatialNodeEntry> =
+        (10..last).map(|id| (id, node(id, vec![id + 1]))).collect();
+    nodes.insert(last, with_contained(last, vec![500]));
+    nodes.insert(1, with_contained(1, vec![400]));
+    nodes.insert(400, with_contained(400, vec![300]));
+    nodes.insert(300, with_contained(300, vec![500]));
+    nodes.insert(500, node(500, vec![]));
+    nodes.insert(600, node(600, vec![400, 300]));
+    nodes.insert(601, node(601, vec![500]));
+    nodes.insert(0, node(0, vec![1, 10]));
+    let (root, _) = build_quick_spatial_tree_node(0, &nodes, &HashMap::new()).unwrap();
+    assert!(contains(&root, 500), "#500 is in the tree");
+}
+
 /// DRIFT GUARD. `is_quick_spatial_type_ci` decides which entities become
 /// nodes of the quick-metadata spatial tree. Since #3275 the name list is no
 /// longer written by hand — it is derived from the rule below against the

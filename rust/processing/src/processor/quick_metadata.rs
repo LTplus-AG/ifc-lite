@@ -160,39 +160,65 @@ pub(super) fn build_quick_spatial_tree_node(
     let mut placed = HashMap::with_capacity(nodes.len());
     placed.insert(express_id, None);
     let mut pruned = Vec::new();
-    let by_aggregate = reachable_by_aggregate(express_id, nodes);
+    let containment = ContainmentPlan::new(express_id, nodes);
     build_subtree(
         express_id,
         0,
         nodes,
         element_summaries,
-        &by_aggregate,
+        &containment,
         &mut placed,
         &mut pruned,
     )
     .map(|tree| (tree, pruned))
 }
 
-/// Every node an `IfcRelAggregates` path from `root` reaches. The walk places
-/// each of them through an aggregate edge, so a containment naming one is not
-/// followed (#4689).
-fn reachable_by_aggregate(root: u32, nodes: &HashMap<u32, QuickSpatialNodeEntry>) -> HashSet<u32> {
-    let mut reached = HashSet::from([root]);
-    let mut stack = vec![root];
-    while let Some(id) = stack.pop() {
-        for &child in nodes.get(&id).map_or(&[][..], |node| &node.children) {
-            if reached.insert(child) {
-                stack.push(child);
+/// Which promoted containment edges the tree walk follows (#4689).
+///
+/// A containment of a node no `IfcRelAggregates` names is always followed. A
+/// containment of an aggregated node is followed unless the node is settled:
+/// reached from the root through aggregates and those always-followed
+/// containments alone. So an aggregate from a settled parent, including one
+/// placed by an ordinary containment, places the node, while a node whose
+/// aggregates come only from orphans, from its own descendants, or from other
+/// unsettled nodes keeps every containment, and the walk's order picks among
+/// them. Not depth-aware: a containment of a settled node is not followed even
+/// when the depth limit cuts the aggregate path. One pass, each node and edge
+/// visited once.
+struct ContainmentPlan {
+    settled: HashSet<u32>,
+}
+
+impl ContainmentPlan {
+    fn new(root: u32, nodes: &HashMap<u32, QuickSpatialNodeEntry>) -> Self {
+        let aggregated: HashSet<u32> = nodes
+            .values()
+            .flat_map(|n| n.children.iter().copied())
+            .collect();
+        let mut reached = HashSet::from([root]);
+        let mut stack = vec![root];
+        while let Some(id) = stack.pop() {
+            let Some(node) = nodes.get(&id) else { continue };
+            let contained = node.contained.iter().filter(|c| !aggregated.contains(c));
+            for &child in node.children.iter().chain(contained) {
+                if reached.insert(child) {
+                    stack.push(child);
+                }
             }
         }
+        reached.retain(|id| aggregated.contains(id));
+        Self { settled: reached }
     }
-    reached
+
+    fn follows(&self, child: u32) -> bool {
+        !self.settled.contains(&child)
+    }
 }
 
 /// Each spatial node is emitted once, where the depth-first walk from the root
-/// first reaches it, aggregate children before contained ones; a contained
-/// node that some aggregate path reaches is left to that aggregate, and a
-/// skipped containment is not recorded (it is not an aggregate edge). A
+/// first reaches it, aggregate children before the contained ones `containment`
+/// follows; a skipped containment is not recorded (it is not an aggregate
+/// edge). A
 /// malformed IfcRelAggregates graph can list a child twice,
 /// under two parents, or as its own ancestor; all three are skipped and recorded
 /// in `pruned` (#4662). `placed` spans the whole tree, not the root-to-node path
@@ -205,7 +231,7 @@ fn build_subtree(
     depth: usize,
     nodes: &HashMap<u32, QuickSpatialNodeEntry>,
     element_summaries: &HashMap<u32, QuickMetadataEntitySummary>,
-    by_aggregate: &HashSet<u32>,
+    containment: &ContainmentPlan,
     placed: &mut HashMap<u32, Option<u32>>,
     pruned: &mut Vec<QuickMetadataPrunedEdge>,
 ) -> Result<QuickMetadataSpatialNode, String> {
@@ -216,7 +242,7 @@ fn build_subtree(
     let aggregated = node.children.iter().map(|&id| (id, true));
     let contained = node.contained.iter().map(|&id| (id, false));
     for (child_id, via_aggregate) in aggregated.chain(contained) {
-        if !via_aggregate && (placed.contains_key(&child_id) || by_aggregate.contains(&child_id)) {
+        if !via_aggregate && (placed.contains_key(&child_id) || !containment.follows(child_id)) {
             continue;
         }
         let skipped = match placed.get(&child_id) {
@@ -241,7 +267,7 @@ fn build_subtree(
             depth + 1,
             nodes,
             element_summaries,
-            by_aggregate,
+            containment,
             placed,
             pruned,
         )?);

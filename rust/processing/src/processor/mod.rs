@@ -959,7 +959,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                 // that aggregate's parent is reachable from the root is not
                 // known here, and an edge from an orphan or from the child's
                 // own descendant must not take the space out of the tree
-                // (#4689). The tree walk prefers a reachable aggregate.
+                // (#4689). `ContainmentPlan` lets a settled aggregate win.
                 if spatial_nodes.contains_key(&child_id) {
                     if let Some(parent) = spatial_nodes.get_mut(&parent_id) {
                         parent.contained.push(child_id);

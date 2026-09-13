@@ -177,13 +177,9 @@ export function serializeValue(value: StepValue): string {
  *
  * Backslash and single-quote are doubled per ISO-10303-21. Control characters
  * (CR/LF and other C0 codes plus DEL) are `\X2\00HH\X0\` directives, one per
- * character, the same encoding as every other character outside 32-126. They
- * used to become one space each (#3284 made that per character rather than
- * per run), which kept a record on one line but lost the character: a
- * newline that arrived as `\X2\000A\X0\` was re-exported as a space, a
- * decode-encode-decode trip that was not the identity. The directive keeps
- * the record on one line too (no raw byte below 32 is ever written) and
- * `parseStepValue` reads it back as the newline.
+ * character, like every other character outside 32-126: the record stays on
+ * one line (no raw byte below 32 is written) and `parseStepValue` reads the
+ * character back. A space, which this wrote before, lost it.
  *
  * ISO 10303-21 6.3.3.4 restricts a literal's plain-text bytes to the "basic
  * graphic" range 32-126; anything else is a control directive (`\X\HH`,
@@ -197,10 +193,9 @@ export function escapeStepString(str: string): string {
   const escaped = str
     .replace(/\\/g, '\\\\')  // Backslash
     .replace(/'/g, "''");    // Single quote
-  // Directive encoding for everything outside 32-126 (control characters
-  // included), one character at a time. Must run AFTER backslash-doubling
-  // above: the directive's own backslashes are literal syntax the reader
-  // expects undoubled.
+  // Directive encoding for everything outside 32-126, one character at a time.
+  // Must run AFTER backslash-doubling above: the directive's own backslashes
+  // are literal syntax the reader expects undoubled.
   let out = '';
   for (const ch of escaped) {
     const cp = ch.codePointAt(0)!;

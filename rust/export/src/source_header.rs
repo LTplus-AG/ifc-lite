@@ -14,6 +14,11 @@
 //! `'CoordinateReference [..., ProjectSite: Origin]'`), which a splitter blind
 //! to quote state mis-splits.
 
+#[path = "source_header_scan.rs"]
+mod scan;
+
+use scan::{find_ascii_ci_from, find_section_marker, Lex};
+
 /// Headers are tiny; cap the scan so a huge file's body is never decoded.
 const MAX_HEADER_BYTES: usize = 64 * 1024;
 
@@ -43,126 +48,6 @@ pub struct SourceHeader {
     pub authorization: Option<String>,
     /// `FILE_SCHEMA` identifiers.
     pub schema_identifiers: Vec<String>,
-}
-
-/// ASCII whitespace per ISO 10303-21.
-///
-/// Spelled out rather than `u8::is_ascii_whitespace`, which follows the WhatWG
-/// set and EXCLUDES vertical tab. The TypeScript half's list includes it, so
-/// the stdlib helper made the two halves read `FILE_SCHEMA\x0B(('IFC4X3'))`
-/// differently -- and it was a regression on this side too, since the
-/// `char::is_whitespace` this replaced accepted VT. Reaching for a stdlib
-/// predicate to align two halves is how they came apart: the set has to be the
-/// same set, not two helpers that are nearly the same.
-fn is_step_space(b: u8) -> bool {
-    matches!(b, b' ' | b'\t' | b'\n' | b'\r' | b'\x0B' | b'\x0C')
-}
-
-/// A scan of one byte buffer.
-///
-/// The buffer and the scan state are bound together on purpose. The state is a
-/// memo: once a `*/` search from some `i` fails, no closer exists at or after
-/// any later position either, so no later `/*` can open a comment. Every scan
-/// here moves its index forward monotonically, so AT MOST ONE closer search can
-/// ever fail, and every other one succeeds and consumes a span disjoint from
-/// the rest. That is what keeps the whole thing linear.
-///
-/// Two earlier shapes were both wrong. Searching for the closer at every `/*`
-/// is quadratic: a failing search runs to the end of the buffer, the caller
-/// advances one byte, and the next `/*` repeats it. Hoisting the search to the
-/// top of each scan fixes that but makes every scan pay a full pass even when
-/// the input is well formed and the answer is 100 bytes in, which matters here
-/// more than in the TypeScript half: `detect_schema` is handed whole uncapped
-/// files, where the hoist measured 250ns -> 52ms on 200 MB.
-///
-/// Deferring until a `/*` is actually seen, and remembering the one failure,
-/// costs nothing on well-formed input and stays linear on hostile input.
-///
-/// The TypeScript counterpart is `packages/parser/src/step-lexing.ts`
-/// (`StepTextScan`), and the two must stay in step: this file and that one read
-/// the same headers, and #3284 is the shape of what happens when they drift.
-pub(crate) struct Lex<'a> {
-    bytes: &'a [u8],
-    no_closer: bool,
-    /// `*/` searches performed. At most one can fail; see the type doc.
-    pub(crate) searches: u32,
-}
-
-impl<'a> Lex<'a> {
-    pub(crate) fn new(bytes: &'a [u8]) -> Self {
-        Lex { bytes, no_closer: false, searches: 0 }
-    }
-
-    /// If a `/* ... */` comment starts at `bytes[i]`, the index just past it.
-    ///
-    /// An UNTERMINATED `/*` is not a comment. Running it to end-of-text would
-    /// swallow every record after it and lose the whole header, which is worse
-    /// than the malformed input deserves. Treating it as ordinary text costs
-    /// one `/`.
-    fn skip_comment_at(&mut self, i: usize) -> Option<usize> {
-        if self.bytes.get(i) != Some(&b'/') || self.bytes.get(i + 1) != Some(&b'*') {
-            return None;
-        }
-        if self.no_closer {
-            return None;
-        }
-        self.searches += 1;
-        // Finding where a *closed* comment ends is the same question every
-        // STEP scanner in this repo answers the same way; `skip_step_comment`
-        // is that shared answer (issue #3303). Only the unterminated case —
-        // `no_closer` below — is this call site's own, deliberately
-        // different from `EntityScanner`'s; see the type doc above.
-        match ifc_lite_core::skip_step_comment(self.bytes, i) {
-            Some(end) => Some(end),
-            None => {
-                self.no_closer = true;
-                None
-            }
-        }
-    }
-
-    /// If a string literal or a comment starts at `bytes[i]`, the index just
-    /// past it.
-    ///
-    /// Neither carries structure: a keyword, a comma or a bracket inside one is
-    /// text. Every scan in this file has to agree on that, so it is one method
-    /// rather than a copy per loop.
-    ///
-    /// The two unterminated cases are deliberately not symmetric. An
-    /// unterminated literal runs to end-of-text, because a lone `'` cannot be
-    /// read as ordinary text. An unterminated `/*` is simply not a comment,
-    /// because it can.
-    pub(crate) fn skip_lexical_at(&mut self, i: usize) -> Option<usize> {
-        if self.bytes.get(i)? == &b'\'' {
-            let mut p = i + 1;
-            while p < self.bytes.len() {
-                if self.bytes[p] != b'\'' {
-                    p += 1;
-                } else if self.bytes.get(p + 1) == Some(&b'\'') {
-                    p += 2; // `''` is an escaped apostrophe, not the end
-                } else {
-                    return Some(p + 1);
-                }
-            }
-            return Some(self.bytes.len());
-        }
-        self.skip_comment_at(i)
-    }
-
-    /// Advance past whitespace and comments. ISO 10303-21 allows a comment
-    /// wherever whitespace is allowed, including between a record keyword and
-    /// its `(`.
-    fn skip_trivia(&mut self, mut i: usize) -> usize {
-        loop {
-            while i < self.bytes.len() && is_step_space(self.bytes[i]) {
-                i += 1;
-            }
-            match self.skip_comment_at(i) {
-                Some(end) => i = end,
-                None => return i,
-            }
-        }
-    }
 }
 
 /// Split STEP record arguments at top-level commas, respecting paren/bracket
@@ -218,7 +103,11 @@ fn split_top_level(inner: &str) -> Vec<String> {
 /// separately-escaped apostrophes (`\X\27\X\27`) become `''` and then collapse
 /// into one, losing a character.
 fn decode_literal(inner: &str) -> String {
-    let undoubled = if inner.contains("''") { inner.replace("''", "'") } else { inner.to_string() };
+    let undoubled = if inner.contains("''") {
+        inner.replace("''", "'")
+    } else {
+        inner.to_string()
+    };
     ifc_lite_core::decode_ifc_string(&undoubled).into_owned()
 }
 
@@ -246,79 +135,10 @@ fn decode_string_list(arg: &str) -> Vec<String> {
     if !(t.starts_with('(') && t.ends_with(')')) {
         return decode_opt_string(t).into_iter().collect();
     }
-    split_top_level(&t[1..t.len() - 1]).iter().filter_map(|a| decode_opt_string(a)).collect()
-}
-
-/// Find `needle` (ASCII) in `haystack`, ignoring ASCII case, returning a byte
-/// offset into `haystack` itself. Matches inside a string literal or a comment
-/// are not matches: neither carries structure.
-///
-/// Not `to_uppercase().find(..)`: that builds a copy whose byte offsets can
-/// drift from the original (`'ß'` uppercases to two bytes), and slicing the
-/// original with an offset taken from the copy is how a header value comes back
-/// mangled. Case-folding ASCII in place keeps every offset the caller's.
-///
-/// ASCII case only, which is what ISO 10303-21 means by case-insensitive. A
-/// full Unicode fold maps `'ſ'` to `'S'`, so it would read `ENDſEC` as `ENDSEC`
-/// and truncate the header.
-///
-/// Literals and comments are consumed whole by `skip_lexical_at` rather than
-/// tracked with a toggled flag, which is also how the `''` escape is handled:
-/// a doubled apostrophe is part of the literal, not the end of it.
-fn find_ascii_ci_from(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    if needle.is_empty() || needle.len() > haystack.len() {
-        return None;
-    }
-    let mut lex = Lex::new(haystack);
-    let last_start = haystack.len() - needle.len();
-    let mut i = 0;
-    while i <= last_start {
-        if let Some(end) = lex.skip_lexical_at(i) {
-            i = end;
-            continue;
-        }
-        if haystack[i..i + needle.len()].iter().zip(needle).all(|(a, b)| a.eq_ignore_ascii_case(b))
-        {
-            return Some(i);
-        }
-        i += 1;
-    }
-    None
-}
-
-/// Locate an exact section marker such as `ENDSEC;` or `DATA;`.
-///
-/// Unlike the general keyword finder, this requires an identifier boundary
-/// and a semicolon (with trivia allowed between them), so `METADATA;` cannot
-/// truncate a malformed header at its embedded `DATA` substring.
-fn find_section_marker(haystack: &[u8], keyword: &[u8]) -> Option<usize> {
-    if keyword.is_empty() || keyword.len() > haystack.len() {
-        return None;
-    }
-    let mut lex = Lex::new(haystack);
-    let last_start = haystack.len() - keyword.len();
-    let mut i = 0;
-    while i <= last_start {
-        if let Some(end) = lex.skip_lexical_at(i) {
-            i = end;
-            continue;
-        }
-        let before_is_ident =
-            i > 0 && (haystack[i - 1].is_ascii_alphanumeric() || haystack[i - 1] == b'_');
-        let matches = !before_is_ident
-            && haystack[i..i + keyword.len()]
-                .iter()
-                .zip(keyword)
-                .all(|(a, b)| a.eq_ignore_ascii_case(b));
-        if matches {
-            let after = lex.skip_trivia(i + keyword.len());
-            if haystack.get(after) == Some(&b';') {
-                return Some(i);
-            }
-        }
-        i += 1;
-    }
-    None
+    split_top_level(&t[1..t.len() - 1])
+        .iter()
+        .filter_map(|a| decode_opt_string(a))
+        .collect()
 }
 
 /// Read only the first declared schema identifier from the complete header.
@@ -406,7 +226,10 @@ pub fn parse_source_header(content: &[u8]) -> Option<SourceHeader> {
         return None;
     }
 
-    let mut header = SourceHeader { implementation_level: "2;1".to_string(), ..Default::default() };
+    let mut header = SourceHeader {
+        implementation_level: "2;1".to_string(),
+        ..Default::default()
+    };
 
     if let Some(record) = &desc_record {
         let parts = split_top_level(record);
@@ -414,8 +237,7 @@ pub fn parse_source_header(content: &[u8]) -> Option<SourceHeader> {
             header.description = decode_string_list(p);
         }
         if let Some(p) = parts.get(1) {
-            header.implementation_level =
-                decode_opt_string(p).unwrap_or_else(|| "2;1".to_string());
+            header.implementation_level = decode_opt_string(p).unwrap_or_else(|| "2;1".to_string());
         }
     }
 

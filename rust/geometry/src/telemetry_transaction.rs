@@ -5,6 +5,8 @@
 //! Publish route telemetry only after speculative geometry is accepted (#4617).
 //! Buffers are thread-local: rejecting one host never resets another worker's
 //! counters. Nested attempts publish into their parent until it also commits.
+//! Actual-work measurements (CSG operand census, weld calls and resource budgets)
+//! bypass this buffer so rejected attempts remain visible to performance probes.
 
 use std::cell::RefCell;
 use std::marker::PhantomData;

@@ -1650,11 +1650,11 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // (unequal columns throw, #4614) must never be replayed. The call clears
       // the IfcAPI's pre-pass columns either way.
       cachedEntityIndex = null;
+      cachedPrepassColumns = null;
       prepassColumnsApplied = false;
       ifcApi.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
       cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
       entityIndexApplied = true;
-      applyPrepassColumnsToApi();
       return;
     }
 

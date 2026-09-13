@@ -17,12 +17,24 @@ const wasmMocks = vi.hoisted(() => {
   const finalizePrepassStyles = vi.fn(() => {
     throw new Error('finalizePrepassStyles: orphan style columns disagree: 2 ids need 8 colour floats, got 4');
   });
+  const setReferencedRepmaps = vi.fn();
+  const setInstantiatedTypeIds = vi.fn();
+  const setMappedInstancePlan = vi.fn();
+  const setMaterialLayerIndex = vi.fn();
   class MockIfcAPI {
     setEntityIndex = setEntityIndex;
     finalizePrepassStyles = finalizePrepassStyles;
+    setReferencedRepmaps = setReferencedRepmaps;
+    setInstantiatedTypeIds = setInstantiatedTypeIds;
+    setMappedInstancePlan = setMappedInstancePlan;
+    setMaterialLayerIndex = setMaterialLayerIndex;
     free(): void {}
   }
-  return { init: vi.fn(async () => undefined), initSync: vi.fn(), MockIfcAPI, setEntityIndex, finalizePrepassStyles };
+  return {
+    init: vi.fn(async () => undefined), initSync: vi.fn(), MockIfcAPI,
+    setEntityIndex, finalizePrepassStyles, setReferencedRepmaps,
+    setInstantiatedTypeIds, setMappedInstancePlan, setMaterialLayerIndex,
+  };
 });
 
 vi.mock('@ifc-lite/wasm', () => ({
@@ -47,6 +59,10 @@ beforeEach(async () => {
   posted.length = 0;
   wasmMocks.setEntityIndex.mockClear();
   wasmMocks.finalizePrepassStyles.mockClear();
+  wasmMocks.setReferencedRepmaps.mockClear();
+  wasmMocks.setInstantiatedTypeIds.mockClear();
+  wasmMocks.setMappedInstancePlan.mockClear();
+  wasmMocks.setMaterialLayerIndex.mockClear();
   const g = globalThis as Record<string, unknown>;
   originalSelf = g.self;
   originalPostMessage = g.postMessage;
@@ -64,6 +80,21 @@ afterEach(() => {
 describe('geometry.worker.ts with a rejected entity index', () => {
   it('reports the rejection once and does not replay it onto a re-initialised IfcAPI', async () => {
     await send({ type: 'init' });
+    const emptyU32 = new Uint32Array(0);
+    const emptyF64 = new Float64Array(0);
+    await send({
+      type: 'set-prepass-columns',
+      referencedRepmaps: new Uint32Array([41]),
+      instantiatedTypeIds: new Uint32Array([42]),
+      mappedInstancePlan: new Uint32Array([43]),
+      mliElementIds: emptyU32,
+      mliAxis: emptyU32,
+      mliLayerCounts: emptyU32,
+      mliDirectionSense: emptyF64,
+      mliOffset: emptyF64,
+      mliLayerMaterialIds: emptyU32,
+      mliLayerThicknesses: emptyF64,
+    });
     await send({
       type: 'set-entity-index',
       ids: new Uint32Array([1, 2]),
@@ -77,6 +108,10 @@ describe('geometry.worker.ts with a rejected entity index', () => {
     expect(posted.map((m) => m.type)).toEqual(['ready', 'error', 'ready']);
     expect(posted[1]?.message).toMatch(/disagree in length/);
     expect(wasmMocks.setEntityIndex).toHaveBeenCalledTimes(1);
+    expect(wasmMocks.setReferencedRepmaps).toHaveBeenCalledTimes(1);
+    expect(wasmMocks.setInstantiatedTypeIds).toHaveBeenCalledTimes(1);
+    expect(wasmMocks.setMappedInstancePlan).toHaveBeenCalledTimes(1);
+    expect(wasmMocks.setMaterialLayerIndex).toHaveBeenCalledTimes(1);
   });
 
   it('reports a column refusal from finalizePrepassStyles without retrying on a copy of the file', async () => {

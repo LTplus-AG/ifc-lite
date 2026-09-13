@@ -1,5 +1,12 @@
 # ifc-lite-collab-3d-demo
 
+## 1.0.5
+
+### Patch Changes
+
+- Updated dependencies [[`e18a434`](https://github.com/LTplus-AG/ifc-lite/commit/e18a434ec2258e474728bd9a90146486b38efedb), [`53003de`](https://github.com/LTplus-AG/ifc-lite/commit/53003de1e36a956b7f51e9dffc035218477d5d3c), [`4ab63cd`](https://github.com/LTplus-AG/ifc-lite/commit/4ab63cd72e374dbdc98b6f59599fb9d2050f0f85)]:
+  - @ifc-lite/collab@0.8.0
+
 ## 1.0.4
 
 ### Patch Changes

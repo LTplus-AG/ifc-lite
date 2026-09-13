@@ -19,9 +19,10 @@ use crate::mesh::Mesh;
 #[must_use]
 #[derive(Debug, Clone)]
 pub enum GroupCut {
-    /// The whole group was cut in conforming arrangements and every
-    /// intermediate passed validation and the accept gates. Empty when the
-    /// cutters engulf the host.
+    /// The kernel classified a cut, and every produced intermediate passed
+    /// validation and the accept gates. Single-cutter arrangements are lenient;
+    /// group cuts additionally require conformity or the kernel's volume oracle.
+    /// Empty when the cutters engulf the host.
     Cut(Mesh),
     /// Single cutter only: the kernel classified the cutter as not reaching
     /// the host solid, and this is the host re-tessellated along the

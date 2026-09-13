@@ -232,9 +232,8 @@ pub const NO_VOLUME_REL: f64 = 1e-12;
 /// apportionment path reports as `overlapping`.
 ///
 /// Returns `None` when `host` encloses no volume: no triangles, or a
-/// degenerate shell whose divergence sum is floating-point residue (at most
-/// [`NO_VOLUME_REL`] of its bounding-box diagonal cubed). There is nothing to split,
-/// and a `ZoneSplit` for it would carry one zero-triangle "remainder", a
+/// degenerate shell whose divergence sum is rounding residue (see
+/// [`NO_VOLUME_REL`]). There is nothing to split, and a `ZoneSplit` for it would carry one zero-triangle "remainder", a
 /// `sum_error_rel` of zero and `remainder_failed == false`: every signal a
 /// caller gates on reading as a perfect split of nothing. The wasm entry
 /// drops malformed triangles before calling here, so an all-malformed input
@@ -247,8 +246,7 @@ pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> Option<ZoneSpli
     let whole_volume = signed_volume_of(&host);
     let (host_lo, host_hi) = tris_aabb(&host);
     let diagonal = (0..3).map(|k| (host_hi[k] - host_lo[k]).powi(2)).sum::<f64>().sqrt();
-    // `<=` with a finite bound, so a NaN volume is not refused here; it
-    // reaches `sum_error_rel` as NaN, which callers already refuse.
+    // A NaN volume fails `<=` and falls through to `sum_error_rel` as NaN.
     if whole_volume.abs() <= diagonal.powi(3) * NO_VOLUME_REL {
         return None;
     }

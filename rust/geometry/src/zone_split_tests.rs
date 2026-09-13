@@ -172,8 +172,8 @@ fn a_host_without_volume_is_refused_not_split_perfectly() {
     // "remainder", `sum_error_rel() == 0.0` and `remainder_failed == false`:
     // every signal the wasm boundary forwards read as a perfect split (the
     // predecessor of this test asserted exactly that). Mutation: drop the
-    // `whole_volume` guard in `split_mesh_by_zones` and both cases become
-    // `Some` with a perfect-looking report.
+    // `is_empty` and `NO_VOLUME_REL` guards in `split_mesh_by_zones` and every
+    // case below becomes `Some` with a perfect-looking report.
     assert!(split_mesh_by_zones(&[], &[slab(0.0, 1.0)]).is_none(), "empty host");
     // A non-empty shell that encloses nothing is the same outcome: a flat
     // double-sided sheet has a divergence sum of exactly zero.
@@ -183,9 +183,9 @@ fn a_host_without_volume_is_refused_not_split_perfectly() {
     ];
     assert!(split_mesh_by_zones(&sheet, &[slab(0.0, 1.0)]).is_none(), "zero-volume sheet");
     // Tilted and away from the origin, the same sheet sums to rounding residue
-    // rather than to zero, and an absolute zero test let it through as a
-    // perfect split (found by /code-review on this change). Mutation: compare
-    // against `f64::MIN_POSITIVE` again and this case reads `Some`.
+    // rather than to zero, which an absolute zero test lets through as a
+    // perfect split. Mutation: compare against `f64::MIN_POSITIVE` again and
+    // this case reads `Some`.
     let residue = tilted_double_sided_sheet();
     assert!(
         split_mesh_by_zones(&residue, &[slab(0.0, 10.0)]).is_none(),

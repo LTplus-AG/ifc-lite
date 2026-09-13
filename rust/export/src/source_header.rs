@@ -326,12 +326,18 @@ fn extract_record_args(text: &str, keyword: &str) -> Option<String> {
 ///
 /// Returns `None` when no recognisable header record is present (a non-STEP
 /// input), which is the caller's signal to fall back to its own defaults rather
-/// than to write empty fields. Cheap: only the first [`MAX_HEADER_BYTES`] are
-/// examined, truncated at the first `ENDSEC` so `DATA` is never scanned.
+/// than to write empty fields. The real `ENDSEC` bounds a complete header even
+/// when an authored field pushes it past [`MAX_HEADER_BYTES`]. Malformed input
+/// with no terminator remains capped.
 pub fn parse_source_header(content: &[u8]) -> Option<SourceHeader> {
-    let cap = content.len().min(MAX_HEADER_BYTES);
-    let raw = String::from_utf8_lossy(&content[..cap]);
-    // Truncate at the section terminator so the DATA section is never scanned.
+    // Find the terminator before applying the malformed-input cap. Lex keeps
+    // this whole-buffer search linear and ignores ENDSEC inside literals and
+    // comments, so a long DESCRIPTION cannot hide FILE_SCHEMA (#4593).
+    let header_end = find_ascii_ci_from(content, b"ENDSEC");
+    let window_end = header_end.unwrap_or_else(|| content.len().min(MAX_HEADER_BYTES));
+    let raw = String::from_utf8_lossy(&content[..window_end]);
+    // `raw` is already header-bounded when ENDSEC exists. Retain this search
+    // as a defensive bound for a lossy conversion whose byte offsets differ.
     // The search skips quoted text, for the reason `schema_detect::detect_schema`
     // gives at its own `ENDSEC;` search: a header field's plain-text VALUE can
     // carry the literal `ENDSEC`, and a raw byte search cannot tell that from

@@ -202,6 +202,16 @@ fn a_lower_case_ifc2x3_file_is_not_relabelled_ifc4_on_a_plain_re_export() {
     assert!(out.contains("#1=IFCWALL('0abcdefghijklmnopqrstu',$,'W1',$,$,$,$,$);"), "{out}");
 }
 
+#[test]
+fn a_lower_case_schema_past_64_kib_is_still_detected_4593() {
+    let description = "x".repeat(70 * 1024);
+    let src = format!(
+        "ISO-10303-21;\nHEADER;\nfile_description(('{description}'),'2;1');\n\
+         file_schema(('IFC2X3'));\nendsec;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    assert_eq!(detect_schema(src.as_bytes()), "IFC2X3");
+}
+
 /// Controls: an uppercase declaration is answered by the scan (IFC2X3, so
 /// the default cannot fake the pass), and a file that declares nothing still
 /// answers `IFC4`; the fallback may only speak where the scan is silent.

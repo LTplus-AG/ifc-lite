@@ -226,7 +226,7 @@ export function generatePropertyAndQuantitySetEntities(
   // Generate new quantity entities for mutations
   for (const { entityId, qsets } of pass.newQuantitySets) {
     if (!pass.willBeEmitted(entityId)) continue;
-    const newEntities = generateQuantitySetEntities(ctx, entityId, qsets, pass.willBeEmitted, options.guidRandom);
+    const newEntities = generateQuantitySetEntities(ctx, entityId, qsets, pass.willBeEmitted, pass.effective, options.guidRandom);
     pass.entities.push(...newEntities.lines);
     pass.newEntityCount += newEntities.count;
     if (newEntities.lines.length > 0) pass.modifications.recordEmitted(entityId, 'quantity-set');

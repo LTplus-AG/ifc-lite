@@ -201,7 +201,7 @@ export class StepExporter {
     // The owner history an IFC2X3 downgrade reuses for `$` OwnerHistory slots
     // (#4686): the same surviving one the generated property sets fall back to.
     if (converting && schema === 'IFC2X3') {
-      pass.ownerHistory.prefer(resolveFallbackOwnerHistoryRef(this.propertySetContext(), pass.willBeEmitted));
+      pass.ownerHistory.prefer(resolveFallbackOwnerHistoryRef(this.propertySetContext(), pass.willBeEmitted, pass.effective));
     }
 
     // Write every source-backed record this export keeps (#2475 step 2d),

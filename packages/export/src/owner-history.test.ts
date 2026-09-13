@@ -101,6 +101,22 @@ describe('StepExporter — generated psets inherit the host element owner histor
     expect(out).not.toMatch(/=IFCPROPERTYSET\('.{22}',#5,/);
     expect(danglingRefs(out)).toEqual([]);
   });
+
+  // PR #4729 review: the host's own owner history, retyped by the session to
+  // another class, is no longer an owner history; the pset falls back to #5.
+  it('skips an own owner history the session retyped to another class', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC_MULTI_OH).buffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(null, 'm');
+    view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
+    view.setProperty(10, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean);
+    view.setEntityType(6, 'IfcActor');
+
+    const out = decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content);
+
+    expect(out).toMatch(/#6=IFCACTOR\(/);
+    expect(out).toMatch(/=IFCPROPERTYSET\('.{22}',#5,'Pset_WallCommon'/);
+    expect(out).toMatch(/=IFCRELDEFINESBYPROPERTIES\('.{22}',#5,/);
+  });
 });
 
 // Same two owner histories, but the wall carries NEITHER (`$`), so a generated

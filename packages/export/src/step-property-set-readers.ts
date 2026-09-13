@@ -298,14 +298,21 @@ function getOwnerHistoryRefOfEntity(ctx: PropertySetContext, entityId: number): 
  * only the `visibleOnly` closure, so an overlay-created OwnerHistory that was
  * later deleted still got referenced — a dangling `#N`, reached through the
  * one attribute the generators fill in for themselves.
+ *
+ * And it must still BE an owner history: a record the session retyped to
+ * another class is written under that class, so both paths ask
+ * {@link isWrittenOwnerHistory} (PR #4729 review).
  */
-export function resolveOwnerHistoryRef(ctx: PropertySetContext, hostEntityId: number, willBeEmitted: (id: number) => boolean): string {
+export function resolveOwnerHistoryRef(ctx: PropertySetContext, hostEntityId: number, willBeEmitted: (id: number) => boolean, effective: EffectiveEntityIndex): string {
   const own = getOwnerHistoryRefOfEntity(ctx, hostEntityId);
-  if (own !== null) {
-    const ownId = parseInt(own.slice(1), 10);
-    if (willBeEmitted(ownId)) return own;
-  }
-  return resolveFallbackOwnerHistoryRef(ctx, willBeEmitted) ?? '$';
+  if (own !== null && isWrittenOwnerHistory(parseInt(own.slice(1), 10), willBeEmitted, effective)) return own;
+  return resolveFallbackOwnerHistoryRef(ctx, willBeEmitted, effective) ?? '$';
+}
+
+/** `id` is written by this export AND is an IfcOwnerHistory after the
+ *  session's retypes. The one test both owner-history paths use. */
+function isWrittenOwnerHistory(id: number, willBeEmitted: (id: number) => boolean, effective: EffectiveEntityIndex): boolean {
+  return willBeEmitted(id) && effective.typeOf(id) === 'IFCOWNERHISTORY';
 }
 
 /**
@@ -314,12 +321,12 @@ export function resolveOwnerHistoryRef(ctx: PropertySetContext, hostEntityId: nu
  * the owner history an IFC2X3 downgrade writes into `$` OwnerHistory slots
  * (#4686).
  */
-export function resolveFallbackOwnerHistoryRef(ctx: PropertySetContext, willBeEmitted: (id: number) => boolean): string | null {
+export function resolveFallbackOwnerHistoryRef(ctx: PropertySetContext, willBeEmitted: (id: number) => boolean, effective: EffectiveEntityIndex): string | null {
   if (ctx.ownerHistory.fallbackRef === undefined) {
     // Source-only: the fallback is a best-effort "some owner history the file
     // still has", and the host's OWN history above is the path that resolves
     // an overlay-created one.
-    ctx.ownerHistory.fallbackRef = firstWrittenOwnerHistoryRef(ctx.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), willBeEmitted, 0);
+    ctx.ownerHistory.fallbackRef = firstWrittenOwnerHistoryRef(ctx.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), (id) => isWrittenOwnerHistory(id, willBeEmitted, effective), 0);
   }
   return ctx.ownerHistory.fallbackRef;
 }

@@ -37,6 +37,7 @@ export function generatePropertySetEntities(
   const lines: string[] = [];
   let count = 0;
   const generatedTypeOwnedPsetIds = new Map<string, number>();
+  const ownerHistoryRef = resolveOwnerHistoryRef(ctx, entityId, willBeEmitted, effective);
 
   for (const pset of psets) {
     const propertyIds: number[] = [];
@@ -69,7 +70,7 @@ export function generatePropertySetEntities(
     const globalId = generateGlobalId(random);
 
     // #ID=IFCPROPERTYSET('GlobalId',#ownerHistory,'Name',$,(#props));
-    const psetLine = `#${psetId}=IFCPROPERTYSET('${globalId}',${resolveOwnerHistoryRef(ctx, entityId, willBeEmitted)},'${escapeStepString(pset.name)}',$,(${propRefs}));`;
+    const psetLine = `#${psetId}=IFCPROPERTYSET('${globalId}',${ownerHistoryRef},'${escapeStepString(pset.name)}',$,(${propRefs}));`;
     lines.push(psetLine);
 
     if (typeOwnedPsetNames?.has(pset.name)) {
@@ -81,7 +82,7 @@ export function generatePropertySetEntities(
 
       const relGlobalId = generateGlobalId(random);
       // #ID=IFCRELDEFINESBYPROPERTIES('GlobalId',#ownerHistory,$,$,(#entity),#pset);
-      const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${resolveOwnerHistoryRef(ctx, entityId, willBeEmitted)},$,$,(#${entityId}),#${psetId});`;
+      const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${ownerHistoryRef},$,$,(#${entityId}),#${psetId});`;
       lines.push(relLine);
     }
   }
@@ -97,10 +98,12 @@ export function generateQuantitySetEntities(
   entityId: number,
   qsets: QuantitySet[],
   willBeEmitted: (id: number) => boolean,
+  effective: EffectiveEntityIndex,
   random?: RandomSource
 ): { lines: string[]; count: number } {
   const lines: string[] = [];
   let count = 0;
+  const ownerHistoryRef = resolveOwnerHistoryRef(ctx, entityId, willBeEmitted, effective);
 
   for (const qset of qsets) {
     const quantityIds: number[] = [];
@@ -125,7 +128,7 @@ export function generateQuantitySetEntities(
     const globalId = generateGlobalId(random);
 
     // #ID=IFCELEMENTQUANTITY('GlobalId',#ownerHistory,'Name',$,$,(#quants));
-    const qsetLine = `#${qsetId}=IFCELEMENTQUANTITY('${globalId}',${resolveOwnerHistoryRef(ctx, entityId, willBeEmitted)},'${escapeStepString(qset.name)}',$,$,(${quantRefs}));`;
+    const qsetLine = `#${qsetId}=IFCELEMENTQUANTITY('${globalId}',${ownerHistoryRef},'${escapeStepString(qset.name)}',$,$,(${quantRefs}));`;
     lines.push(qsetLine);
 
     // Create IfcRelDefinesByProperties to link qset to entity
@@ -133,7 +136,7 @@ export function generateQuantitySetEntities(
     count++;
 
     const relGlobalId = generateGlobalId(random);
-    const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${resolveOwnerHistoryRef(ctx, entityId, willBeEmitted)},$,$,(#${entityId}),#${qsetId});`;
+    const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${ownerHistoryRef},$,$,(#${entityId}),#${qsetId});`;
     lines.push(relLine);
   }
 

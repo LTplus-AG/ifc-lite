@@ -94,6 +94,32 @@ describe('IFC2X3 downgrade fills a $ OwnerHistory from an owner history the expo
     expect(unfilledFrom(result.stats.warnings)).toBe(0);
   });
 
+  // PR #4729 review: the fallback came from the SOURCE byType index, so an
+  // owner history the session retyped to another class was still chosen and
+  // every `$` slot pointed at a record that is no longer an IfcOwnerHistory.
+  const retypedOwnerHistories = async (retyped: number[]) => {
+    const store = await parse(stepFile('IFC4', [
+      "#10=IFCWALL('2O2Fr$t4X7Zf8NOew3FLOH',$,'Wall',$,$,$,$,$,$);",
+      '#5=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);',
+      '#6=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);',
+    ]));
+    const view = new MutablePropertyView(null, 'm1');
+    for (const id of retyped) view.setEntityType(id, 'IfcActor');
+    return new StepExporter(store, view).export({ schema: 'IFC2X3', applyMutations: true });
+  };
+
+  it('skips an owner history the session retyped to another class', async () => {
+    const out = decode((await retypedOwnerHistories([5])).content);
+    expect(lineWithId(out, '#5'), out).toMatch(/^#5=IFCACTOR\(/);
+    expect(slot(lineWithId(out, '#10'), 1), out).toBe('#6');
+  });
+
+  it('keeps $ and warns once every owner history was retyped away', async () => {
+    const result = await retypedOwnerHistories([5, 6]);
+    expect(slot(lineWithId(decode(result.content), '#10'), 1)).toBe('$');
+    expect(unfilledFrom(result.stats.warnings)).toBeGreaterThan(0);
+  });
+
   for (const mode of ['export', 'exportAsync'] as const) {
     it(`MergedExporter.${mode}: a model without an owner history reuses the one an earlier model wrote`, async () => {
       const a = await parse(stepFile('IFC4', [

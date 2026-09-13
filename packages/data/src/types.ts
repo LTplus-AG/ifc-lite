@@ -200,48 +200,7 @@ export enum QuantityType {
   Number = 6,
 }
 
-export enum RelationshipType {
-  ContainsElements = 1,
-  Aggregates = 2,
-  /** `IfcRelNests`; also recorded under {@link Aggregates} (#4205). */ Nests = 3,
-  DefinesByProperties = 10,
-  DefinesByType = 11,
-  AssociatesMaterial = 20,
-  AssociatesClassification = 30,
-  AssociatesDocument = 31,
-  ConnectsPathElements = 40,
-  FillsElement = 41,
-  VoidsElement = 42,
-  ConnectsElements = 43,
-  /** `IfcRelConnectsPortToElement` — a port belongs to the element it sits on.
-   *  Forward runs port → element (RelatingPort, RelatedElement). */
-  ConnectsPortToElement = 44,
-  /** `IfcRelConnectsPorts` — one port joined to another; with
-   *  {@link ConnectsPortToElement} makes plant topology traversable. */
-  ConnectsPorts = 45,
-  SpaceBoundary = 50,
-  AssignsToGroup = 60,
-  AssignsToProduct = 61,
-  /** `IfcRelAssignsToGroupByFactor`; also recorded under {@link AssignsToGroup} (#4205). */ AssignsToGroupByFactor = 62,
-  /** `IfcRelAssignsToActor` (#4205). */ AssignsToActor = 63,
-  /** `IfcRelAssignsToResource` (#4205). */ AssignsToResource = 64,
-  /** `IfcRelAssignsToProcess` (#4205). */ AssignsToProcess = 65,
-  /** `IfcRelAssignsToControl` (#4205). */ AssignsToControl = 66,
-  ReferencedInSpatialStructure = 70,
-  /** `IfcRelAssociatesConstraint` (#4205). */ AssociatesConstraint = 32,
-  /** `IfcRelAssociatesApproval` (#4205). */ AssociatesApproval = 33,
-  /** `IfcRelAssociatesLibrary` (#4205). */ AssociatesLibrary = 34,
-  /** `IfcRelDeclares` (#4205). */ Declares = 80,
-  /** `IfcRelInterferesElements` (#4205). */ InterferesElements = 46,
-  /** `IfcRelCoversBldgElements` (#4205). */ CoversBldgElements = 47,
-  /** `IfcRelCoversSpaces` (#4205). */ CoversSpaces = 48,
-  /** `IfcRelServicesBuildings` (#4205). */ ServicesBuildings = 49,
-  /** `IfcRelProjectsElement` (#4205). */ ProjectsElement = 4,
-  /** `IfcRelPositions` — IFC4X3 only (#4205). */ Positions = 90,
-  /** `IfcRelAdheresToElement` — IFC4X3 only (#4205). */ AdheresToElement = 5,
-  /** `IfcRelFlowControlElements` (#4205). */ FlowControlElements = 91,
-  /** `IfcRelSequence` (#4205). */ Sequence = 92,
-}
+export { RelationshipType } from './relationship-type.js';
 
 export enum EntityFlags {
   HAS_GEOMETRY = 0b00000001,

@@ -4814,6 +4814,7 @@
     "relationshipGraphFromColumns: function",
     "relationshipGraphFromEdges: function",
     "relationshipGraphToColumns: function",
+    "relationshipTypeName: function",
     "safeUtf8Decode: function",
     "searchEpsgIndex: function",
     "serializeValue: function",

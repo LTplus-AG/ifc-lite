@@ -8,7 +8,7 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { IfcTypeEnumToString, PropertyValueType, QuantityType, RelationshipType, flattenRelationshipEdges } from '@ifc-lite/data';
+import { IfcTypeEnumToString, PropertyValueType, QuantityType, flattenRelationshipEdges, relationshipTypeName } from '@ifc-lite/data';
 
 export interface SQLResult {
   columns: string[];
@@ -343,56 +343,11 @@ export class DuckDBIntegration {
     const { relationships } = store;
     const batchSize = 1000;
 
-    // `Record<RelationshipType, string>`, not `Record<number, string>`
-    // (#4205 review): the latter type-checks with entries missing and a new
-    // enum member silently falls through to the `|| 'Unknown'` below, which
-    // is exactly the gap that had left `ConnectsPortToElement`,
-    // `ConnectsPorts` and `AssociatesDocument` unnamed here since they were
-    // added — this map's own compile now fails if a member is missing.
-    const relTypeNames: Record<RelationshipType, string> = {
-      [RelationshipType.ContainsElements]: 'ContainsElements',
-      [RelationshipType.Aggregates]: 'Aggregates',
-      [RelationshipType.Nests]: 'IfcRelNests', // matches the other 3 RelationshipType->string maps (#4205 review)
-      [RelationshipType.DefinesByProperties]: 'DefinesByProperties',
-      [RelationshipType.DefinesByType]: 'DefinesByType',
-      [RelationshipType.AssociatesMaterial]: 'AssociatesMaterial',
-      [RelationshipType.AssociatesClassification]: 'AssociatesClassification',
-      [RelationshipType.AssociatesDocument]: 'AssociatesDocument',
-      [RelationshipType.VoidsElement]: 'VoidsElement',
-      [RelationshipType.FillsElement]: 'FillsElement',
-      [RelationshipType.ConnectsPathElements]: 'ConnectsPathElements',
-      [RelationshipType.ConnectsElements]: 'ConnectsElements',
-      [RelationshipType.ConnectsPortToElement]: 'ConnectsPortToElement',
-      [RelationshipType.ConnectsPorts]: 'ConnectsPorts',
-      [RelationshipType.SpaceBoundary]: 'SpaceBoundary',
-      [RelationshipType.AssignsToGroup]: 'AssignsToGroup',
-      [RelationshipType.AssignsToGroupByFactor]: 'IfcRelAssignsToGroupByFactor',
-      [RelationshipType.AssignsToProduct]: 'AssignsToProduct',
-      [RelationshipType.ReferencedInSpatialStructure]: 'ReferencedInSpatialStructure',
-      [RelationshipType.AssignsToActor]: 'AssignsToActor',
-      [RelationshipType.AssignsToResource]: 'AssignsToResource',
-      [RelationshipType.AssignsToProcess]: 'AssignsToProcess',
-      [RelationshipType.AssignsToControl]: 'AssignsToControl',
-      [RelationshipType.AssociatesConstraint]: 'AssociatesConstraint',
-      [RelationshipType.AssociatesApproval]: 'AssociatesApproval',
-      [RelationshipType.AssociatesLibrary]: 'AssociatesLibrary',
-      [RelationshipType.Declares]: 'Declares',
-      [RelationshipType.InterferesElements]: 'InterferesElements',
-      [RelationshipType.CoversBldgElements]: 'CoversBldgElements',
-      [RelationshipType.CoversSpaces]: 'CoversSpaces',
-      [RelationshipType.ServicesBuildings]: 'ServicesBuildings',
-      [RelationshipType.ProjectsElement]: 'ProjectsElement',
-      [RelationshipType.Positions]: 'Positions',
-      [RelationshipType.AdheresToElement]: 'AdheresToElement',
-      [RelationshipType.FlowControlElements]: 'FlowControlElements',
-      [RelationshipType.Sequence]: 'Sequence',
-    };
-
     // One row per `IfcRel*` STEP record, not one row per deduped edge; see `flattenRelationshipEdges`'s doc comment.
     const rows = flattenRelationshipEdges(relationships.forward).map((row) => ({
       sourceId: row.sourceId,
       targetId: row.targetId,
-      relType: relTypeNames[row.type] || 'Unknown',
+      relType: relationshipTypeName(row.type),
       relId: row.relationshipId,
     }));
 

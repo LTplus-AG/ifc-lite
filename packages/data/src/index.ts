@@ -36,9 +36,10 @@ export type {
 } from './relationship-graph.js';
 export { edgeSurvives, flattenRelationshipEdges, binarySearchU32 } from './relationship-graph-helpers.js';
 export type { FlattenedRelationshipEdge } from './relationship-graph-helpers.js';
+export { RelationshipType, relationshipTypeName } from './relationship-type.js';
 export * from './types.js';
 // Explicitly export const enums for runtime use
-export { IfcTypeEnum, PropertyValueType, QuantityType, RelationshipType, EntityFlags } from './types.js';
+export { IfcTypeEnum, PropertyValueType, QuantityType, EntityFlags } from './types.js';
 export type { SpatialNode, SpatialHierarchy } from './types.js';
 export {
   IFC_BUILDING_STOREY_ELEVATION_INDEX,

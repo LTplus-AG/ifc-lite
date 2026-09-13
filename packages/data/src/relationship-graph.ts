@@ -7,7 +7,7 @@
  * Enables fast traversal in both directions
  */
 
-import { RelationshipType } from './types.js';
+import { RelationshipType, relationshipTypeName } from './relationship-type.js';
 import { binarySearchU32, buildShadowedColumns } from './relationship-graph-helpers.js';
 
 export interface Edge {
@@ -326,7 +326,7 @@ export function relationshipGraphFromEdges(
       return forward.getEdges(sourceId)
         .filter((edge: Edge) => edge.target === targetId)
         .map((edge: Edge): RelationshipInfo => {
-          const info: RelationshipInfo = { relationshipId: edge.relationshipId, type: edge.type, typeName: RelationshipTypeToString(edge.type) };
+          const info: RelationshipInfo = { relationshipId: edge.relationshipId, type: edge.type, typeName: relationshipTypeName(edge.type) };
           if (edge.shadowedRelationshipIds !== undefined) info.shadowedRelationshipIds = edge.shadowedRelationshipIds;
           return info;
         });
@@ -370,46 +370,4 @@ export function relationshipGraphToColumns(graph: RelationshipGraph): Relationsh
     forward: toColumns(graph.forward),
     inverse: toColumns(graph.inverse),
   };
-}
-
-function RelationshipTypeToString(type: RelationshipType): string {
-  const names: Record<RelationshipType, string> = {
-    [RelationshipType.ContainsElements]: 'IfcRelContainedInSpatialStructure',
-    [RelationshipType.Aggregates]: 'IfcRelAggregates',
-    [RelationshipType.Nests]: 'IfcRelNests',
-    [RelationshipType.DefinesByProperties]: 'IfcRelDefinesByProperties',
-    [RelationshipType.DefinesByType]: 'IfcRelDefinesByType',
-    [RelationshipType.AssociatesMaterial]: 'IfcRelAssociatesMaterial',
-    [RelationshipType.AssociatesClassification]: 'IfcRelAssociatesClassification',
-    [RelationshipType.AssociatesDocument]: 'IfcRelAssociatesDocument',
-    [RelationshipType.VoidsElement]: 'IfcRelVoidsElement',
-    [RelationshipType.FillsElement]: 'IfcRelFillsElement',
-    [RelationshipType.ConnectsPathElements]: 'IfcRelConnectsPathElements',
-    [RelationshipType.ConnectsElements]: 'IfcRelConnectsElements',
-    [RelationshipType.ConnectsPortToElement]: 'IfcRelConnectsPortToElement',
-    [RelationshipType.ConnectsPorts]: 'IfcRelConnectsPorts',
-    [RelationshipType.SpaceBoundary]: 'IfcRelSpaceBoundary',
-    [RelationshipType.AssignsToGroup]: 'IfcRelAssignsToGroup',
-    [RelationshipType.AssignsToGroupByFactor]: 'IfcRelAssignsToGroupByFactor',
-    [RelationshipType.AssignsToProduct]: 'IfcRelAssignsToProduct',
-    [RelationshipType.ReferencedInSpatialStructure]: 'IfcRelReferencedInSpatialStructure',
-    [RelationshipType.AssignsToActor]: 'IfcRelAssignsToActor',
-    [RelationshipType.AssignsToResource]: 'IfcRelAssignsToResource',
-    [RelationshipType.AssignsToProcess]: 'IfcRelAssignsToProcess',
-    [RelationshipType.AssignsToControl]: 'IfcRelAssignsToControl',
-    [RelationshipType.AssociatesConstraint]: 'IfcRelAssociatesConstraint',
-    [RelationshipType.AssociatesApproval]: 'IfcRelAssociatesApproval',
-    [RelationshipType.AssociatesLibrary]: 'IfcRelAssociatesLibrary',
-    [RelationshipType.Declares]: 'IfcRelDeclares',
-    [RelationshipType.InterferesElements]: 'IfcRelInterferesElements',
-    [RelationshipType.CoversBldgElements]: 'IfcRelCoversBldgElements',
-    [RelationshipType.CoversSpaces]: 'IfcRelCoversSpaces',
-    [RelationshipType.ServicesBuildings]: 'IfcRelServicesBuildings',
-    [RelationshipType.ProjectsElement]: 'IfcRelProjectsElement',
-    [RelationshipType.Positions]: 'IfcRelPositions',
-    [RelationshipType.AdheresToElement]: 'IfcRelAdheresToElement',
-    [RelationshipType.FlowControlElements]: 'IfcRelFlowControlElements',
-    [RelationshipType.Sequence]: 'IfcRelSequence',
-  };
-  return names[type] || 'Unknown';
 }

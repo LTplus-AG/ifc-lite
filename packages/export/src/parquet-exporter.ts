@@ -7,7 +7,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { IfcTypeEnum, EntityFlags, RelationshipType, IFC_ENTITY_NAMES, exactTypeName, flattenRelationshipEdges } from '@ifc-lite/data';
+import { IfcTypeEnum, EntityFlags, IFC_ENTITY_NAMES, exactTypeName, flattenRelationshipEdges, relationshipTypeName } from '@ifc-lite/data';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 import { columnsToParquet } from './columns-to-parquet.js';
 import { PARQUET_UINT32_COLUMNS } from './parquet-uint32-columns.js';
@@ -265,7 +265,7 @@ export class ParquetExporter {
             if (effective && (effective.isDeleted(row.sourceId) || effective.isDeleted(row.targetId) || effective.isDeleted(row.relationshipId))) continue;
             sourceIds.push(row.sourceId);
             targetIds.push(row.targetId);
-            relTypes.push(RelationshipTypeToString(row.type));
+            relTypes.push(relationshipTypeName(row.type));
             relIds.push(row.relationshipId);
         }
 
@@ -589,45 +589,3 @@ function filterColumns<T extends Record<string, unknown[]>>(columns: T, keep: bo
 // so the on-demand writers can share it without importing this file): unused
 // in-repo from this path, but was public surface before the split, so keep it.
 export { quantityTypeToString as QuantityTypeToString } from './parquet-type-strings.js';
-
-function RelationshipTypeToString(type: RelationshipType): string {
-    const names: Record<RelationshipType, string> = {
-        [RelationshipType.ContainsElements]: 'IfcRelContainedInSpatialStructure',
-        [RelationshipType.Aggregates]: 'IfcRelAggregates',
-        [RelationshipType.Nests]: 'IfcRelNests',
-        [RelationshipType.DefinesByProperties]: 'IfcRelDefinesByProperties',
-        [RelationshipType.DefinesByType]: 'IfcRelDefinesByType',
-        [RelationshipType.AssociatesMaterial]: 'IfcRelAssociatesMaterial',
-        [RelationshipType.AssociatesClassification]: 'IfcRelAssociatesClassification',
-        [RelationshipType.AssociatesDocument]: 'IfcRelAssociatesDocument',
-        [RelationshipType.VoidsElement]: 'IfcRelVoidsElement',
-        [RelationshipType.FillsElement]: 'IfcRelFillsElement',
-        [RelationshipType.ConnectsPathElements]: 'IfcRelConnectsPathElements',
-        [RelationshipType.ConnectsElements]: 'IfcRelConnectsElements',
-        [RelationshipType.ConnectsPortToElement]: 'IfcRelConnectsPortToElement',
-        [RelationshipType.ConnectsPorts]: 'IfcRelConnectsPorts',
-        [RelationshipType.SpaceBoundary]: 'IfcRelSpaceBoundary',
-        [RelationshipType.AssignsToGroup]: 'IfcRelAssignsToGroup',
-        [RelationshipType.AssignsToGroupByFactor]: 'IfcRelAssignsToGroupByFactor',
-        [RelationshipType.AssignsToProduct]: 'IfcRelAssignsToProduct',
-        [RelationshipType.AssignsToActor]: 'IfcRelAssignsToActor',
-        [RelationshipType.AssignsToResource]: 'IfcRelAssignsToResource',
-        [RelationshipType.AssignsToProcess]: 'IfcRelAssignsToProcess',
-        [RelationshipType.AssignsToControl]: 'IfcRelAssignsToControl',
-        [RelationshipType.AssociatesConstraint]: 'IfcRelAssociatesConstraint',
-        [RelationshipType.AssociatesApproval]: 'IfcRelAssociatesApproval',
-        [RelationshipType.AssociatesLibrary]: 'IfcRelAssociatesLibrary',
-        [RelationshipType.Declares]: 'IfcRelDeclares',
-        [RelationshipType.InterferesElements]: 'IfcRelInterferesElements',
-        [RelationshipType.CoversBldgElements]: 'IfcRelCoversBldgElements',
-        [RelationshipType.CoversSpaces]: 'IfcRelCoversSpaces',
-        [RelationshipType.ServicesBuildings]: 'IfcRelServicesBuildings',
-        [RelationshipType.ProjectsElement]: 'IfcRelProjectsElement',
-        [RelationshipType.Positions]: 'IfcRelPositions',
-        [RelationshipType.AdheresToElement]: 'IfcRelAdheresToElement',
-        [RelationshipType.FlowControlElements]: 'IfcRelFlowControlElements',
-        [RelationshipType.Sequence]: 'IfcRelSequence',
-        [RelationshipType.ReferencedInSpatialStructure]: 'ReferencedInSpatialStructure',
-    };
-    return names[type] || 'Unknown';
-}

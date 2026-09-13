@@ -7,7 +7,7 @@
  */
 
 import type { RelationshipGraph, Edge, RelationshipInfo } from '@ifc-lite/data';
-import { RelationshipType, binarySearchU32 } from '@ifc-lite/data';
+import { RelationshipType, binarySearchU32, relationshipTypeName } from '@ifc-lite/data';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
 
 /**
@@ -127,7 +127,7 @@ export function readRelationships(reader: BufferReader, version: number): Relati
           const info: RelationshipInfo = {
             relationshipId: e.relationshipId,
             type: e.type,
-            typeName: relationshipTypeToString(e.type),
+            typeName: relationshipTypeName(e.type),
           };
           if (e.shadowedRelationshipIds !== undefined) {
             info.shadowedRelationshipIds = e.shadowedRelationshipIds;
@@ -324,46 +324,4 @@ function readEdges(reader: BufferReader, version: number): {
     shadowedGroupOffsets?: Uint32Array;
     shadowedRelIds?: Uint32Array;
   };
-}
-
-function relationshipTypeToString(type: RelationshipType): string {
-  const names: Record<RelationshipType, string> = {
-    [RelationshipType.ContainsElements]: 'IfcRelContainedInSpatialStructure',
-    [RelationshipType.Aggregates]: 'IfcRelAggregates',
-    [RelationshipType.Nests]: 'IfcRelNests',
-    [RelationshipType.DefinesByProperties]: 'IfcRelDefinesByProperties',
-    [RelationshipType.DefinesByType]: 'IfcRelDefinesByType',
-    [RelationshipType.AssociatesMaterial]: 'IfcRelAssociatesMaterial',
-    [RelationshipType.AssociatesClassification]: 'IfcRelAssociatesClassification',
-    [RelationshipType.AssociatesDocument]: 'IfcRelAssociatesDocument',
-    [RelationshipType.VoidsElement]: 'IfcRelVoidsElement',
-    [RelationshipType.FillsElement]: 'IfcRelFillsElement',
-    [RelationshipType.ConnectsPathElements]: 'IfcRelConnectsPathElements',
-    [RelationshipType.ConnectsElements]: 'IfcRelConnectsElements',
-    [RelationshipType.ConnectsPortToElement]: 'IfcRelConnectsPortToElement',
-    [RelationshipType.ConnectsPorts]: 'IfcRelConnectsPorts',
-    [RelationshipType.SpaceBoundary]: 'IfcRelSpaceBoundary',
-    [RelationshipType.AssignsToGroup]: 'IfcRelAssignsToGroup',
-    [RelationshipType.AssignsToGroupByFactor]: 'IfcRelAssignsToGroupByFactor',
-    [RelationshipType.AssignsToProduct]: 'IfcRelAssignsToProduct',
-    [RelationshipType.AssignsToActor]: 'IfcRelAssignsToActor',
-    [RelationshipType.AssignsToResource]: 'IfcRelAssignsToResource',
-    [RelationshipType.AssignsToProcess]: 'IfcRelAssignsToProcess',
-    [RelationshipType.AssignsToControl]: 'IfcRelAssignsToControl',
-    [RelationshipType.AssociatesConstraint]: 'IfcRelAssociatesConstraint',
-    [RelationshipType.AssociatesApproval]: 'IfcRelAssociatesApproval',
-    [RelationshipType.AssociatesLibrary]: 'IfcRelAssociatesLibrary',
-    [RelationshipType.Declares]: 'IfcRelDeclares',
-    [RelationshipType.InterferesElements]: 'IfcRelInterferesElements',
-    [RelationshipType.CoversBldgElements]: 'IfcRelCoversBldgElements',
-    [RelationshipType.CoversSpaces]: 'IfcRelCoversSpaces',
-    [RelationshipType.ServicesBuildings]: 'IfcRelServicesBuildings',
-    [RelationshipType.ProjectsElement]: 'IfcRelProjectsElement',
-    [RelationshipType.Positions]: 'IfcRelPositions',
-    [RelationshipType.AdheresToElement]: 'IfcRelAdheresToElement',
-    [RelationshipType.FlowControlElements]: 'IfcRelFlowControlElements',
-    [RelationshipType.Sequence]: 'IfcRelSequence',
-    [RelationshipType.ReferencedInSpatialStructure]: 'ReferencedInSpatialStructure',
-  };
-  return names[type] || 'Unknown';
 }

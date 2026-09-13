@@ -27,6 +27,7 @@ import type {
   LensBackendMethods,
   FilesBackendMethods,
   ScheduleBackendMethods,
+  StructuralBackendMethods,
   EntityRef,
   EntityData,
   EntityAttributeData,
@@ -84,6 +85,7 @@ import {
   expandTypes,
   QUERY_REL_TYPE_MAP,
   extractScheduleOnDemand,
+  extractStructuralOnDemand,
   isQueryableObjectType,
 } from '@ifc-lite/parser';
 import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
@@ -158,6 +160,7 @@ export class HeadlessBackend implements BimBackend {
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
+  readonly structural: StructuralBackendMethods;
   readonly spaces: SpacesBackendMethods;
   readonly style: StyleBackendMethods;
 
@@ -187,6 +190,7 @@ export class HeadlessBackend implements BimBackend {
     this.lens = this.createLensAdapter();
     this.files = this.createFilesAdapter();
     this.schedule = this.createScheduleAdapter();
+    this.structural = this.createStructuralAdapter();
     this.spaces = this.createSpacesAdapter();
     this.style = this.createStyleAdapter();
   }
@@ -786,6 +790,33 @@ export class HeadlessBackend implements BimBackend {
       tasks: (modelId) => extract(modelId).tasks,
       workSchedules: (modelId) => extract(modelId).workSchedules,
       sequences: (modelId) => extract(modelId).sequences,
+    };
+  }
+
+  private createStructuralAdapter(): StructuralBackendMethods {
+    const store = this.dataStore;
+    let cached: ReturnType<StructuralBackendMethods['data']> | null = null;
+
+    const assertModel = (modelId?: string) => {
+      if (modelId) this.assertKnownModelId(modelId);
+    };
+
+    const extract = (modelId?: string) => {
+      assertModel(modelId);
+      if (!cached) {
+        cached = extractStructuralOnDemand(store) as ReturnType<StructuralBackendMethods['data']>;
+      }
+      return cached;
+    };
+
+    return {
+      data: (modelId) => extract(modelId),
+      analysisModels: (modelId) => extract(modelId).analysisModels,
+      members: (modelId) => extract(modelId).members,
+      connections: (modelId) => extract(modelId).connections,
+      activities: (modelId) => extract(modelId).activities,
+      loadGroups: (modelId) => extract(modelId).loadGroups,
+      resultGroups: (modelId) => extract(modelId).resultGroups,
     };
   }
 }

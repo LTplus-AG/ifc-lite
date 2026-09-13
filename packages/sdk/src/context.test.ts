@@ -25,6 +25,7 @@ import type {
   SdkRequest,
   SdkResponse,
   SpatialFrustum,
+  StructuralExtractionData,
   Transport,
   TypePropertiesData,
   WorkScheduleData,
@@ -149,6 +150,25 @@ function createMockBackend() {
     sequences: vi.fn((_modelId?: string): ScheduleSequenceData[] => []),
   };
 
+  const structural = {
+    data: vi.fn((_modelId?: string): StructuralExtractionData => ({
+      analysisModels: [],
+      members: [],
+      connections: [],
+      activities: [],
+      loadGroups: [],
+      resultGroups: [],
+      hasStructural: false,
+      loadsTruncated: false,
+    })),
+    analysisModels: vi.fn((_modelId?: string): StructuralExtractionData['analysisModels'] => []),
+    members: vi.fn((_modelId?: string): StructuralExtractionData['members'] => []),
+    connections: vi.fn((_modelId?: string): StructuralExtractionData['connections'] => []),
+    activities: vi.fn((_modelId?: string): StructuralExtractionData['activities'] => []),
+    loadGroups: vi.fn((_modelId?: string): StructuralExtractionData['loadGroups'] => []),
+    resultGroups: vi.fn((_modelId?: string): StructuralExtractionData['resultGroups'] => []),
+  };
+
   const backend: BimBackend = {
     model,
     query,
@@ -162,10 +182,11 @@ function createMockBackend() {
     lens,
     files,
     schedule,
+    structural,
     subscribe: vi.fn(() => () => {}),
   };
 
-  return { backend, model, query, selection, visibility, viewer, mutate, store, spatial, export: exportNs, lens, files, schedule };
+  return { backend, model, query, selection, visibility, viewer, mutate, store, spatial, export: exportNs, lens, files, schedule, structural };
 }
 
 describe('BimContext', () => {

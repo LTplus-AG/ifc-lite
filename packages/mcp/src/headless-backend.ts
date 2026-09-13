@@ -31,6 +31,7 @@ import type {
   LensBackendMethods,
   FilesBackendMethods,
   ScheduleBackendMethods,
+  StructuralBackendMethods,
   EntityRef,
   EntityData,
   PropertySetData,
@@ -45,6 +46,7 @@ import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
   extractScheduleOnDemand,
+  extractStructuralOnDemand,
 } from '@ifc-lite/parser';
 import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
@@ -73,6 +75,7 @@ export class HeadlessLikeBackend implements BimBackend {
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
+  readonly structural: StructuralBackendMethods;
 
   private dataStore: IfcDataStore;
   private modelName: string;
@@ -137,6 +140,7 @@ export class HeadlessLikeBackend implements BimBackend {
     this.lens = { presets() { return []; }, create() { return null; }, activate() {}, deactivate() {}, getActive() { return null; } };
     this.files = { list() { return []; }, text() { return null; }, csv() { return null; }, csvColumns() { return []; } };
     this.schedule = this.createScheduleAdapter();
+    this.structural = this.createStructuralAdapter();
   }
 
   subscribe(_event: BimEventType, _handler: (data: unknown) => void): () => void {
@@ -393,6 +397,28 @@ export class HeadlessLikeBackend implements BimBackend {
       tasks: (m) => extract(m).tasks,
       workSchedules: (m) => extract(m).workSchedules,
       sequences: (m) => extract(m).sequences,
+    };
+  }
+
+  private createStructuralAdapter(): StructuralBackendMethods {
+    const store = this.dataStore;
+    let cached: ReturnType<StructuralBackendMethods['data']> | null = null;
+    const assert = (modelId?: string): void => {
+      if (modelId) this.assertKnownModelId(modelId);
+    };
+    const extract = (modelId?: string): ReturnType<StructuralBackendMethods['data']> => {
+      assert(modelId);
+      if (!cached) cached = extractStructuralOnDemand(store) as ReturnType<StructuralBackendMethods['data']>;
+      return cached;
+    };
+    return {
+      data: (m) => extract(m),
+      analysisModels: (m) => extract(m).analysisModels,
+      members: (m) => extract(m).members,
+      connections: (m) => extract(m).connections,
+      activities: (m) => extract(m).activities,
+      loadGroups: (m) => extract(m).loadGroups,
+      resultGroups: (m) => extract(m).resultGroups,
     };
   }
 }

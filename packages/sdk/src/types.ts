@@ -756,6 +756,178 @@ export interface ScheduleBackendMethods {
 }
 
 // ============================================================================
+// Structural analysis — IfcStructuralAnalysisModel, IfcStructuralMember /
+// IfcStructuralConnection / IfcStructuralActivity subtypes, load groups and
+// result groups.
+//
+// Shapes mirror `@ifc-lite/parser`'s `StructuralExtraction` struct, for the
+// same reason as the schedule types above: the SDK layer stays serializable
+// across the sandbox/transport boundary without pulling the parser into
+// consumer bundles.
+// ============================================================================
+
+/** Why one `Values` slot of a load configuration carries no nested load. */
+export type StructuralLoadDropReason =
+  | 'depth' | 'cycle' | 'budget' | 'invalid-reference' | 'unresolved' | 'unreadable';
+
+/** One `IfcStructuralLoadOrResult` leaf, reduced to its named numeric components. */
+export interface StructuralLoadData {
+  expressId: number;
+  type: string;
+  name?: string;
+  components: Record<string, number>;
+  /** Present only for `IfcStructuralLoadConfiguration`: its nested loads. */
+  configuration?: StructuralLoadConfigurationData;
+}
+
+/** One `Values` slot of an `IfcStructuralLoadConfiguration`, paired with its location. */
+export interface StructuralLoadConfigurationEntryData {
+  value?: StructuralLoadData;
+  dropped?: StructuralLoadDropReason;
+  location?: number[];
+}
+
+/**
+ * The `Values`/`Locations` pair of an `IfcStructuralLoadConfiguration`.
+ *
+ * `truncated` is true when a reader bound (nesting depth, node budget, or a
+ * cycle guard) dropped a slot in this configuration or beneath it — never
+ * when the file itself simply has no more to read. A consumer showing "N
+ * loads" without checking this flag first reports a truncated tree exactly
+ * as it would a genuinely small one.
+ */
+export interface StructuralLoadConfigurationData {
+  entries: StructuralLoadConfigurationEntryData[];
+  locations?: number[][];
+  truncated: boolean;
+}
+
+/** An `IfcBoundaryCondition` leaf, reduced to its named stiffness components. */
+export interface BoundaryConditionData {
+  expressId: number;
+  type: string;
+  name?: string;
+  /** A number for a stiffness magnitude, a boolean for a fixed/free DOF (`.T.`/`.F.`). */
+  components: Record<string, number | boolean>;
+}
+
+export interface StructuralMemberData {
+  expressId: number;
+  globalId: string;
+  type: string;
+  name?: string;
+  description?: string;
+  objectType?: string;
+  predefinedType?: string;
+  thickness?: number;
+  connectionGlobalIds: string[];
+  activityGlobalIds: string[];
+  analysisModelGlobalIds: string[];
+}
+
+export interface StructuralConnectionData {
+  expressId: number;
+  globalId: string;
+  type: string;
+  name?: string;
+  description?: string;
+  objectType?: string;
+  appliedCondition?: BoundaryConditionData;
+  memberGlobalIds: string[];
+  activityGlobalIds: string[];
+  analysisModelGlobalIds: string[];
+}
+
+export interface StructuralActivityData {
+  expressId: number;
+  globalId: string;
+  type: string;
+  kind: 'Action' | 'Reaction' | 'Unknown';
+  name?: string;
+  description?: string;
+  objectType?: string;
+  predefinedType?: string;
+  globalOrLocal?: string;
+  destabilizingLoad?: boolean;
+  appliedLoad?: StructuralLoadData;
+  appliesToGlobalId?: string;
+  groupGlobalIds: string[];
+}
+
+export interface StructuralLoadGroupData {
+  expressId: number;
+  globalId: string;
+  type: string;
+  name?: string;
+  description?: string;
+  objectType?: string;
+  predefinedType?: string;
+  actionType?: string;
+  actionSource?: string;
+  coefficient?: number;
+  purpose?: string;
+  selfWeightCoefficients?: number[];
+  activityGlobalIds: string[];
+}
+
+export interface StructuralResultGroupData {
+  expressId: number;
+  globalId: string;
+  name?: string;
+  description?: string;
+  objectType?: string;
+  theoryType?: string;
+  isLinear?: boolean;
+  resultForLoadGroupGlobalId?: string;
+  activityGlobalIds: string[];
+}
+
+export interface StructuralAnalysisModelData {
+  expressId: number;
+  globalId: string;
+  name?: string;
+  description?: string;
+  objectType?: string;
+  predefinedType?: string;
+  loadGroupGlobalIds: string[];
+  resultGroupGlobalIds: string[];
+  itemGlobalIds: string[];
+}
+
+export interface StructuralExtractionData {
+  analysisModels: StructuralAnalysisModelData[];
+  members: StructuralMemberData[];
+  connections: StructuralConnectionData[];
+  activities: StructuralActivityData[];
+  loadGroups: StructuralLoadGroupData[];
+  resultGroups: StructuralResultGroupData[];
+  hasStructural: boolean;
+  /**
+   * Derived from every `StructuralLoadConfigurationData.truncated` in this
+   * extraction — true if reading ANY activity's applied load hit a reader
+   * bound. See {@link StructuralLoadConfigurationData.truncated}.
+   */
+  loadsTruncated: boolean;
+}
+
+export interface StructuralBackendMethods {
+  /** Extract the full structural analysis graph from the active or specified model. */
+  data(modelId?: string): StructuralExtractionData;
+  /** Convenience — just the analysis models. */
+  analysisModels(modelId?: string): StructuralAnalysisModelData[];
+  /** Convenience — just the members. */
+  members(modelId?: string): StructuralMemberData[];
+  /** Convenience — just the connections. */
+  connections(modelId?: string): StructuralConnectionData[];
+  /** Convenience — just the activities (actions and reactions). */
+  activities(modelId?: string): StructuralActivityData[];
+  /** Convenience — just the load groups / load cases. */
+  loadGroups(modelId?: string): StructuralLoadGroupData[];
+  /** Convenience — just the result groups. */
+  resultGroups(modelId?: string): StructuralResultGroupData[];
+}
+
+// ============================================================================
 // Backend Interface (implemented by local store or remote proxy)
 // ============================================================================
 
@@ -820,6 +992,7 @@ export interface BimBackend {
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
+  readonly structural: StructuralBackendMethods;
   /** Space derivation — present only on local backends with store access. */
   readonly spaces?: SpacesBackendMethods;
   /** Persistent colouring — present only on local backends with store access. */

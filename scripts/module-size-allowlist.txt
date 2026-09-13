@@ -206,7 +206,7 @@
    495 packages/cli/src/commands/create.ts
    458 packages/cli/src/commands/extract-entities.ts
    485 packages/cli/src/commands/query.ts
-   791 packages/cli/src/headless-backend.ts
+   822 packages/cli/src/headless-backend.ts
    457 packages/codegen/src/express-parser.ts
    660 packages/codegen/src/rust-generator.ts
    640 packages/codegen/src/typescript-generator.ts
@@ -277,6 +277,7 @@
    812 packages/lists/src/engine.ts
    412 packages/lists/src/types.ts
    467 packages/mcp/src/backend-query.ts
+   424 packages/mcp/src/headless-backend.ts
    420 packages/mcp/src/overlay.ts
    544 packages/mcp/src/server.ts
    476 packages/mcp/src/tools/diff-fingerprints.ts
@@ -327,10 +328,10 @@
    765 packages/renderer/src/symbolic-overlay-pipelines.ts
    587 packages/sandbox/src/bridge-create.ts
    421 packages/sandbox/src/bridge-query.ts
-   498 packages/sandbox/src/bridge-schema.ts
+   502 packages/sandbox/src/bridge-schema.ts
    673 packages/sandbox/src/sandbox.ts
    458 packages/sdk/src/namespaces/bsdd.ts
-   875 packages/sdk/src/types.ts
+  1048 packages/sdk/src/types.ts
   1011 packages/server-client/src/client.ts
    784 packages/server-client/src/data-model-decoder.ts
    444 packages/server-client/src/parquet-tables.ts

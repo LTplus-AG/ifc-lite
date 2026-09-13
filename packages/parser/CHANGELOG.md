@@ -1,5 +1,14 @@
 # @ifc-lite/parser
 
+## 6.2.1
+
+### Patch Changes
+
+- [#4638](https://github.com/LTplus-AG/ifc-lite/pull/4638) [`e46e766`](https://github.com/LTplus-AG/ifc-lite/commit/e46e766640bd37553b1f92f53bb384a47f58e66a) Thanks [@louistrue](https://github.com/louistrue)! - The legacy `IfcSite` georeference fallback reads `RefLatitude`/`RefLongitude` components by position and refuses the angle when a component is not a number. It used to drop non-numeric components and index what was left, so `($,51,30,0)` placed the site at 51°30' instead of reporting no georeference. The Rust extractor applies the same rule, and both are held to it by the shared georeferencing vectors.
+- Updated dependencies [[`1120b6a`](https://github.com/LTplus-AG/ifc-lite/commit/1120b6a3acbbbb579a4e454083b862ed1d445200), [`c5c462e`](https://github.com/LTplus-AG/ifc-lite/commit/c5c462ec54535acd818375f33ffe3ea61d5981fb)]:
+  - @ifc-lite/data@4.2.1
+  - @ifc-lite/wasm@8.0.1
+
 ## 6.2.0
 
 ### Minor Changes

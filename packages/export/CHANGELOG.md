@@ -1,5 +1,14 @@
 # @ifc-lite/export
 
+## 4.3.1
+
+### Patch Changes
+
+- [`1120b6a`](https://github.com/LTplus-AG/ifc-lite/commit/1120b6a3acbbbb579a4e454083b862ed1d445200) Thanks [@louistrue](https://github.com/louistrue)! - Downgrading an `IfcDoorType` or `IfcWindowType` to IFC2X3 no longer writes `$` into the `IfcDoorStyle`/`IfcWindowStyle` attributes IFC2X3 requires. `OperationType` and `ConstructionType` get `.NOTDEFINED.` and `ParameterTakesPrecedence` and `Sizeable` get `.F.` when the IFC4 source has no value for them, instead of a `$` a strict reader rejects in those slots. Optional slots still get `$`. The Rust exporter follows the same rule.
+- Updated dependencies [[`e46e766`](https://github.com/LTplus-AG/ifc-lite/commit/e46e766640bd37553b1f92f53bb384a47f58e66a), [`1120b6a`](https://github.com/LTplus-AG/ifc-lite/commit/1120b6a3acbbbb579a4e454083b862ed1d445200)]:
+  - @ifc-lite/parser@6.2.1
+  - @ifc-lite/data@4.2.1
+
 ## 4.3.0
 
 ### Minor Changes

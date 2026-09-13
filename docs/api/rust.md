@@ -588,7 +588,7 @@ pub use hbjson::Model;
 pub use ifc5::{export_ifc5, Ifc5Options};
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, JsonLdOptions};
-pub use kmz::{export_kmz, ifc_angle_to_kml_heading, KmzOptions};
+pub use kmz::{ifc_angle_to_kml_heading, try_export_kmz_collada_from_meshes, KmzOptions};
 pub use merged::{export_merged, export_merged_with_stats, MergedOptions, MergedStats};
 pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 pub use step::{export_step, export_step_json, export_step_with_stats,

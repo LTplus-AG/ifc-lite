@@ -62,31 +62,6 @@ fn default_altitude_mode_clamps_to_ground() {
 }
 
 #[test]
-fn kmz_is_a_valid_stored_zip() {
-    let glb = b"glTF\x02\x00\x00\x00placeholder-binary";
-    let opts = KmzOptions {
-        latitude: 0.0,
-        longitude: 0.0,
-        altitude: 0.0,
-        altitude_mode: AltitudeMode::default(),
-        x_axis_abscissa: None,
-        x_axis_ordinate: None,
-        name: None,
-    };
-    let kmz = export_kmz(glb, &opts);
-
-    // Starts with a local file header, ends with the EOCD signature.
-    assert_eq!(&kmz[0..4], &0x0403_4b50u32.to_le_bytes());
-    let eocd = &0x0605_4b50u32.to_le_bytes();
-    assert!(kmz.windows(4).any(|w| w == eocd), "has end-of-central-directory");
-
-    // Both entry names + the GLB bytes are present (stored, uncompressed).
-    assert!(kmz.windows(7).any(|w| w == b"doc.kml"));
-    assert!(kmz.windows(9).any(|w| w == b"model.glb"));
-    assert!(kmz.windows(glb.len()).any(|w| w == glb), "GLB stored verbatim");
-}
-
-#[test]
 fn collada_kmz_embeds_dae_and_references_it() {
     // #1427: the working path embeds a COLLADA model (model.dae) — the format
     // Google Earth's <Model> actually loads — not a glTF GLB.

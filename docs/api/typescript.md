@@ -199,7 +199,6 @@ class GeometryProcessor {
   exportStep(/* ... */): Uint8Array | null;
   exportIfcx(buffer, onlyKnownProperties?, pretty?): Uint8Array | null;
   exportMerged(buffers: Uint8Array[], schema?): Uint8Array | null;
-  exportKmz(/* ... */): Uint8Array | null;
   exportHbjson(buffer, name): Uint8Array | null;
 }
 ```

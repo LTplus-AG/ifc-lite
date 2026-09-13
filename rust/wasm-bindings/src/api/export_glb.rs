@@ -139,43 +139,6 @@ impl IfcAPI {
         .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))
     }
 
-    /// Package an already-produced **GLB** + georeference into a **KMZ** (`Uint8Array`)
-    /// for Google Earth: a ZIP of `doc.kml` (a `<Model>` placed at `latitude`/`longitude`/
-    /// `altitude`) + `model.glb`. `x_axis_abscissa`/`x_axis_ordinate` are the
-    /// `IfcMapConversion` grid-north components; pass both as `undefined` for heading 0.
-    ///
-    /// `altitude_mode` selects the KML vertical placement: `"clampToGround"`
-    /// (the default when omitted) rests the model on the terrain, ignoring
-    /// `altitude`; `"absolute"` places the origin at `altitude` metres MSL.
-    /// Google Earth's terrain already encodes the site elevation, so clamping
-    /// keeps a wrong/zero/double-counted OrthogonalHeight from floating the
-    /// model into the sky (#1427); absolute is offered for models whose
-    /// OrthogonalHeight is a true MSL elevation the user wants honoured.
-    #[wasm_bindgen(js_name = exportKmz)]
-    #[allow(clippy::too_many_arguments)]
-    pub fn export_kmz(
-        &self,
-        glb: &[u8],
-        latitude: f64,
-        longitude: f64,
-        altitude: f64,
-        x_axis_abscissa: Option<f64>,
-        x_axis_ordinate: Option<f64>,
-        name: String,
-        altitude_mode: Option<String>,
-    ) -> Vec<u8> {
-        let opts = ifc_lite_export::KmzOptions {
-            latitude,
-            longitude,
-            altitude,
-            altitude_mode: kmz_altitude_mode(altitude_mode),
-            x_axis_abscissa,
-            x_axis_ordinate,
-            name: if name.is_empty() { None } else { Some(name) },
-        };
-        ifc_lite_export::export_kmz(glb, &opts)
-    }
-
     /// Build a Google-Earth-ready **KMZ** (`Uint8Array`) straight from the viewer's
     /// already-produced meshes — the working path (#1427). The model is embedded as
     /// **COLLADA** (`model.dae`), the only `<Model>` format Google Earth loads (a GLB

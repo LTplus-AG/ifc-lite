@@ -459,21 +459,6 @@ export class IfcAPI {
      */
     exportJsonld(content: Uint8Array, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included: Uint32Array): Uint8Array;
     /**
-     * Package an already-produced **GLB** + georeference into a **KMZ** (`Uint8Array`)
-     * for Google Earth: a ZIP of `doc.kml` (a `<Model>` placed at `latitude`/`longitude`/
-     * `altitude`) + `model.glb`. `x_axis_abscissa`/`x_axis_ordinate` are the
-     * `IfcMapConversion` grid-north components; pass both as `undefined` for heading 0.
-     *
-     * `altitude_mode` selects the KML vertical placement: `"clampToGround"`
-     * (the default when omitted) rests the model on the terrain, ignoring
-     * `altitude`; `"absolute"` places the origin at `altitude` metres MSL.
-     * Google Earth's terrain already encodes the site elevation, so clamping
-     * keeps a wrong/zero/double-counted OrthogonalHeight from floating the
-     * model into the sky (#1427); absolute is offered for models whose
-     * OrthogonalHeight is a true MSL elevation the user wants honoured.
-     */
-    exportKmz(glb: Uint8Array, latitude: number, longitude: number, altitude: number, x_axis_abscissa: number | null | undefined, x_axis_ordinate: number | null | undefined, name: string, altitude_mode?: string | null): Uint8Array;
-    /**
      * Build a Google-Earth-ready **KMZ** (`Uint8Array`) straight from the viewer's
      * already-produced meshes — the working path (#1427). The model is embedded as
      * **COLLADA** (`model.dae`), the only `<Model>` format Google Earth loads (a GLB
@@ -2108,7 +2093,6 @@ export interface InitOutput {
     readonly ifcapi_exportIfcx: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_exportJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
-    readonly ifcapi_exportKmz: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;
     readonly ifcapi_exportKmzFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
     readonly ifcapi_exportMerged: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_exportObj: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;

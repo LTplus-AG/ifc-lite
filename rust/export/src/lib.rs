@@ -98,8 +98,7 @@ pub use relationships::{relationships, Relationships};
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, JsonLdOptions};
 pub use kmz::{
-    export_kmz, ifc_angle_to_kml_heading,
-    try_export_kmz_collada_from_meshes, AltitudeMode, KmzOptions,
+    ifc_angle_to_kml_heading, try_export_kmz_collada_from_meshes, AltitudeMode, KmzOptions,
 };
 pub use merged::{
     deterministic_global_id, export_merged, export_merged_models, export_merged_with_stats,

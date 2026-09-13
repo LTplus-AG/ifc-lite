@@ -670,7 +670,6 @@ The Rust exporter crate backs several more one-call formats on `GeometryProcesso
 | `exportJson(bytes, pretty?, includeProperties?, includeQuantities?)` | Plain JSON entity dump |
 | `exportStep(bytes, schema?, included?, mutationsJson?)` | STEP/IFC re-export (Rust path) |
 | `exportHbjson(bytes, name)` | Honeybee HBJSON energy/daylight model built from the `IfcSpace` volumes |
-| `exportKmz(glb, lat, lon, alt, xAxisAbscissa?, xAxisOrdinate?, name?)` | KMZ (Google Earth) wrapping an already-exported GLB at a georeferenced location |
 | `exportMerged(buffers, schema?)` | Merge several IFC byte buffers into one STEP file (Rust path) |
 
 Each returns a `Uint8Array` (UTF-8 for the text formats; decode with `TextDecoder` when you need a string), or `null` if the processor is not initialized.

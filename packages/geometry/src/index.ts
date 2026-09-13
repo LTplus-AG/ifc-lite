@@ -1395,24 +1395,6 @@ export class GeometryProcessor {
   }
 
   /**
-   * Package an already-produced GLB + georeference into a KMZ (Google Earth) archive.
-   * `xAxisAbscissa`/`xAxisOrdinate` are the `IfcMapConversion` grid-north components
-   * (pass `undefined` for heading 0). Returns null if not initialized.
-   */
-  exportKmz(
-    glb: Uint8Array,
-    latitude: number,
-    longitude: number,
-    altitude: number,
-    xAxisAbscissa: number | undefined,
-    xAxisOrdinate: number | undefined,
-    name = 'IFC Model',
-  ): Uint8Array | null {
-    if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportKmz(glb, latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name);
-  }
-
-  /**
    * Build a Google-Earth-ready KMZ from already-produced meshes (no re-meshing) —
    * the working KMZ path (#1427). The model is embedded as COLLADA (`model.dae`),
    * the only `<Model>` format Google Earth loads (a GLB raises "Unsupported element:

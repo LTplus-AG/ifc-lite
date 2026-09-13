@@ -208,7 +208,6 @@ Each exporter takes the raw IFC bytes (or already-produced meshes) and returns a
 ```typescript
 exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit?): Uint8Array;
 exportGlbFromMeshes(/* flattened MeshData buffers */): Uint8Array;
-exportKmz(glb, latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name): Uint8Array;
 exportObj(content, includeNormals, hidden, isolated): Uint8Array;
 exportCsv(content, mode, delimiter, includeProperties): Uint8Array;
 exportJson(content, pretty, includeProperties, includeQuantities): Uint8Array;

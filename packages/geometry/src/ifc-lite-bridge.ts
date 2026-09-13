@@ -648,34 +648,6 @@ export class IfcLiteBridge {
   }
 
   /**
-   * Package an already-produced GLB + georeference into a KMZ (`doc.kml` + `model.glb`
-   * zip) for Google Earth. `xAxisAbscissa`/`xAxisOrdinate` are the `IfcMapConversion`
-   * grid-north components (pass `undefined` for heading 0).
-   */
-  exportKmz(
-    glb: Uint8Array,
-    latitude: number,
-    longitude: number,
-    altitude: number,
-    xAxisAbscissa: number | undefined,
-    xAxisOrdinate: number | undefined,
-    name: string,
-  ): Uint8Array {
-    if (!this.ifcApi) {
-      throw new Error('IFC-Lite not initialized. Call init() first.');
-    }
-    try {
-      return this.ifcApi.exportKmz(glb, latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name);
-    } catch (error) {
-      log.error('Failed to exportKmz', error, { operation: 'exportKmz' });
-      if (this.isWasmRuntimeError(error)) {
-        this.recordWasmRuntimeTrap();
-      }
-      throw error;
-    }
-  }
-
-  /**
    * Build a Google-Earth-ready KMZ directly from already-produced meshes (flattened
    * parallel arrays). The model is embedded as COLLADA (`model.dae`) — the only
    * `<Model>` format Google Earth loads — with emission-lit, double-sided materials

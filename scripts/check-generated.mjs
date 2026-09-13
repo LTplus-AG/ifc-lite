@@ -57,6 +57,7 @@
  *   8. plato clash-math freshness (plato-check job)          -- INFO only, see below
  *   9. committed wasm .d.ts vs Rust source (build job)        -- INFO only, see below
  *   10. generate-coverage-ledger.mjs --check (node-tests, alongside gate 4; #4207)
+ *   11. generate-legacy-rooted-types.mjs --check (node-tests; #4203)
  *
  * Steps deliberately NOT treated as a generated-artifact gate here, and why:
  *   - `pnpm fixtures:check` (build job) compares downloaded test-fixture
@@ -508,6 +509,16 @@ if (FULL) {
 runGate('check:coverage-ledger', 'node', ['scripts/generate-coverage-ledger.mjs', '--check'],
   'if the output says "is stale": node scripts/generate-coverage-ledger.mjs   (then commit docs/architecture/coverage-ledger.md); ' +
     'if it names a missing source file or an extractor that found ZERO entries, fix that file/extractor first — regenerating cannot');
+
+// 11. Legacy rooted-type table — generated from the EXPRESS-derived IFC2X3/
+// IFC4 entity tables and the generated IFC4X3 Rust enum. This is separate from
+// check:codegen-sync because its committed output belongs to a Rust crate.
+runGate(
+  'legacy rooted-type freshness',
+  'node',
+  ['scripts/generate-legacy-rooted-types.mjs', '--check'],
+  'node scripts/generate-legacy-rooted-types.mjs   (then commit rust/export/src/generated/legacy_rooted_types.rs)',
+);
 hr();
 const failed = results.filter((r) => r.status === 'fail');
 const skipped = results.filter((r) => r.status === 'skip');

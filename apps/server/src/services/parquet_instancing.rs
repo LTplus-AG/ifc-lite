@@ -110,6 +110,7 @@ fn verify_and_derive_placement(
         return (f64::INFINITY, origin_zup, rotation_zup);
     }
     let mut max_err = 0.0f64;
+    let mut identity_err = 0.0f64;
     for v in 0..n {
         let p = [
             template.origin[0] + template.positions[v * 3] as f64,
@@ -128,8 +129,36 @@ fn verify_and_derive_placement(
         if err > max_err {
             max_err = err;
         }
+        // If the same verified placement is also representable by an exact
+        // identity rotation, prefer that canonical form. Conjugating a pure
+        // translation through a site basis can leave platform-dependent
+        // roundoff in the 3x3 block; comparing the f32 block to identity by
+        // exact bits then made the optimized route alternate between v2 and
+        // v3 across targets. This residual check is the safety condition: an
+        // actual small rotation is snapped only when omitting it stays within
+        // the route's existing recomposition tolerance.
+        let identity_world = [
+            origin_zup[0] + template.positions[v * 3] as f64,
+            origin_zup[1] + template.positions[v * 3 + 1] as f64,
+            origin_zup[2] + template.positions[v * 3 + 2] as f64,
+        ];
+        let err = ((identity_world[0] - g[0]).powi(2)
+            + (identity_world[1] - g[1]).powi(2)
+            + (identity_world[2] - g[2]).powi(2))
+        .sqrt();
+        if err > identity_err {
+            identity_err = err;
+        }
     }
-    (max_err, origin_zup, rotation_zup)
+    if identity_err <= RECOMPOSITION_TOLERANCE_M {
+        (
+            identity_err,
+            origin_zup,
+            [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+        )
+    } else {
+        (max_err, origin_zup, rotation_zup)
+    }
 }
 
 /// Z-up → Y-up basis change (see `services::axis::zup_to_yup`), as a rotation

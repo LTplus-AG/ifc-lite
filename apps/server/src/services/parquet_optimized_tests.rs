@@ -628,6 +628,11 @@
              ONE template mesh once the collator is told what frame the vertices \
              were baked in"
         );
+        assert_eq!(
+            data[0], 2,
+            "pure-translation siblings must canonicalize their conjugation \
+             roundoff to identity and keep the v2 wire shape on every target"
+        );
 
         // And the emitted placement must actually put them back. Ground truth
         // is each occurrence's own baked positions, swapped to the wire frame.
@@ -671,7 +676,13 @@
                 .clone()
         };
         let (ox, oy, oz) = (f64col("origin_x"), f64col("origin_y"), f64col("origin_z"));
-        let rot: Vec<Float32Array> = (0..9).map(|i| f32col(&format!("rot{i}"))).collect();
+        let rot: Vec<Float32Array> = if data[0] == 3 {
+            (0..9).map(|i| f32col(&format!("rot{i}"))).collect()
+        } else {
+            (0..9)
+                .map(|i| Float32Array::from(vec![IDENTITY_ROTATION[i]; meshes.len()]))
+                .collect()
+        };
         let vertex_offset = mesh_batch
             .column(mesh_batch.schema().index_of("vertex_offset").unwrap())
             .as_any()

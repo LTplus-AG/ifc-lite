@@ -580,3 +580,99 @@ fn reads_ifc4x3_scaled_map_conversion_as_a_map_conversion() {
     assert_eq!(scaled.source.as_deref(), Some("mapConversion"));
     assert_eq!(scaled.source, plain.source);
 }
+
+/// STEP keyword case is not significant (ISO 10303-21), but
+/// `EntityScanner::next_entity` hands the keyword back exactly as written.
+/// A case-sensitive candidate match therefore drops every candidate in a
+/// lowercase- or CamelCase-keyword file, and the model silently reports no
+/// georeferencing at all despite carrying a complete `IfcMapConversion`.
+#[test]
+fn candidate_classification_ignores_keyword_case() {
+    for (name, expected) in [
+        ("ifcmapconversion", Some(IfcType::IfcMapConversion)),
+        ("IfcMapConversionScaled", Some(IfcType::IfcMapConversion)),
+        ("ifcprojectedcrs", Some(IfcType::IfcProjectedCRS)),
+        ("IfcPropertySet", Some(IfcType::IfcPropertySet)),
+        ("ifcsite", Some(IfcType::IfcSite)),
+        ("IfcWall", None),
+        ("ifcsiteless", None),
+    ] {
+        assert_eq!(
+            georeferencing_candidate_type(name),
+            expected,
+            "candidate classification of {name}"
+        );
+    }
+}
+
+/// DRIFT GUARD. The native geometry scan evaluates
+/// `georeferencing_candidate_type` and `is_quick_spatial_type_ci` on the same
+/// scanner slice in the same loop, so the two must agree on `IFCSITE` for every
+/// spelling of it -- otherwise one feature sees the site and the other does not.
+#[test]
+fn site_candidacy_agrees_with_the_quick_spatial_gate_on_every_spelling() {
+    for name in ["IFCSITE", "ifcsite", "IfcSite", "iFcSiTe"] {
+        assert_eq!(
+            georeferencing_candidate_type(name),
+            Some(IfcType::IfcSite),
+            "{name} must be a georeferencing candidate"
+        );
+        assert!(
+            crate::is_quick_spatial_type_ci(name),
+            "{name} must be a quick-metadata spatial node"
+        );
+    }
+}
+
+/// End-to-end: the same model written with lowercase keywords must produce the
+/// same georeferencing as the uppercase original.
+#[test]
+fn extraction_survives_lowercase_keywords() {
+    let upper = extract_georeferencing(GEOREF_IFC).expect("uppercase georef");
+    let lowered = lowercase_step_keywords(GEOREF_IFC);
+    assert!(
+        lowered.contains("=ifcmapconversion("),
+        "fixture rewrite did not lowercase the keywords"
+    );
+    let lower = extract_georeferencing(&lowered).expect("lowercase georef");
+    assert_eq!(lower.crs_name, upper.crs_name);
+    assert_eq!(lower.geodetic_datum, upper.geodetic_datum);
+    assert_eq!(lower.map_projection, upper.map_projection);
+    assert_eq!(lower.eastings, upper.eastings);
+    assert_eq!(lower.northings, upper.northings);
+    assert_eq!(lower.orthogonal_height, upper.orthogonal_height);
+    assert_eq!(lower.rotation_degrees, upper.rotation_degrees);
+}
+
+/// The `IfcSite` lat/long fallback is a separate extraction path from
+/// `IfcMapConversion`, so it gets its own lowercase fixture rather than being
+/// assumed fixed by the map-conversion test.
+#[test]
+fn site_fallback_survives_lowercase_keywords() {
+    let lowered = lowercase_step_keywords(SITE_ONLY_IFC);
+    let geo = extract_georeferencing(&lowered).expect("lowercase site georef");
+    assert_eq!(geo.source.as_deref(), Some("siteLocation"));
+    assert!((geo.northings - 47.375).abs() < 1e-9, "lat {}", geo.northings);
+    assert!((geo.eastings - 8.5375).abs() < 1e-9, "long {}", geo.eastings);
+}
+
+/// Lowercase only the `#nn=IFCxxx` keyword tokens, leaving string literals and
+/// enumeration values (`.ELEMENT.`, `.METRE.`) untouched -- a blanket
+/// `to_lowercase()` would change the data the assertions read back.
+fn lowercase_step_keywords(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    for line in source.lines() {
+        match line.split_once('=') {
+            Some((lhs, rhs)) if lhs.starts_with('#') => {
+                let split = rhs.find('(').unwrap_or(rhs.len());
+                out.push_str(lhs);
+                out.push('=');
+                out.push_str(&rhs[..split].to_lowercase());
+                out.push_str(&rhs[split..]);
+            }
+            _ => out.push_str(line),
+        }
+        out.push('\n');
+    }
+    out
+}

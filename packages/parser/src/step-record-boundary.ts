@@ -19,6 +19,7 @@ import { opensComment, skipComment, skipStringLiteral, skipTrivia } from './step
 const QUOTE = 0x27; // '\''
 const LPAREN = 0x28; // '('
 const RPAREN = 0x29; // ')'
+const EQUALS = 0x3D; // '='
 
 // Byte length of the record starting at `startOffset` whose argument list
 // opens at `pos`: up to and including the ')' balancing that '('.
@@ -39,6 +40,22 @@ const RPAREN = 0x29; // ')'
 // test comes first, so a '/*' inside a value is text; the comment is then taken
 // whole, so a '(' or a quote inside it is text. Without that, the comment in
 // `#1=IFCWALL('a', /* see IFCWALL( */ $);` opened a depth that never closed.
+//
+// The walk STOPS at the next top-level '=' and answers UNBALANCED_RECORD
+// (#4573; "Why the scan stops at the next `=`" in lexical.rs). 10303-21 has
+// '=' only in `entity_instance_name '=' record`, so a ')' past one closes a
+// LATER record's list, never this one's: `#1=IFCA(2 #2=IFCWALL($));`
+// balanced at #2's ')' and the recovery resumed past #2, dropping it with
+// nothing reported. The same stop is what bounds the walk. Without it a record
+// with no ')' of its own read to end of input, the caller resumed one byte
+// past its '#', and the next declaration repeated the whole walk: a file of
+// `#1=A(2;` repeated measured 2.5s at 10 000 records and 10s at 20 000, 4x
+// per doubling, in this scan and the Blob worker's copy alike. Stopping at
+// the '=' makes each refusal cost its own record's bytes, so a file of refused
+// records costs its length. A byte-window cap is not monotone (work is
+// records x window, and the adversary shrinks the record), and a suffix memo
+// of "no terminator from here on" is disarmed by the `ENDSEC;` every real
+// file ends with; neither substitutes for the grammar rule.
 export const UNBALANCED_RECORD = -1;
 export const UNREADABLE_RECORD = -2;
 export function findEntityLength(buf: Uint8Array, pos: number, startOffset: number): number {
@@ -59,10 +76,16 @@ export function findEntityLength(buf: Uint8Array, pos: number, startOffset: numb
       // Unterminated: the rest of the input is inside the comment.
       if (end < 0) return UNREADABLE_RECORD;
       pos = end;
+    } else if (char === EQUALS) {
+      // The NEXT declaration's: this record's own ')' cannot lie past it.
+      return UNBALANCED_RECORD;
     } else if (char === LPAREN) {
       depth++;
       pos++;
     } else if (char === RPAREN) {
+      // A ')' before any '(' closes nothing, but the bytes after it are
+      // readable: the answer the Rust and worker copies already give.
+      if (depth === 0) return UNBALANCED_RECORD;
       depth--;
       pos++;
       if (depth === 0) return pos - startOffset;

@@ -53,7 +53,7 @@ pub(crate) fn fill_style_from_styled_item(
         if decoder.get_raw_bytes(style.id).and_then(|raw| {
             ifc_lite_core::EntityScanner::new(raw)
                 .next_entity()
-                .map(|(_, name, _, _)| name == "IFCPRESENTATIONSTYLEASSIGNMENT")
+                .map(|(_, name, _, _)| ifc_lite_core::keyword_eq(name, "IFCPRESENTATIONSTYLEASSIGNMENT"))
         }) == Some(true)
         {
             let inner = style.get_list(0)?;

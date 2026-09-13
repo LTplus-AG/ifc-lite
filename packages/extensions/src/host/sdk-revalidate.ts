@@ -16,7 +16,7 @@
 
 import type { Bundle, Capability } from '../types.js';
 import type { ExtensionRuntime } from './runtime.js';
-import { runBundleTests, type TestRunSummary } from '../testing/runner.js';
+import { runBundleTests, type RegexEvaluator, type TestRunSummary } from '../testing/runner.js';
 import {
   evaluateCompatibility,
   findAffected,
@@ -75,6 +75,8 @@ export interface RevalidateOptions {
    * tests that depend on a fixture run against real model data.
    */
   loadFixture?: (name: string) => Promise<unknown>;
+  /** Passed through to `runBundleTests`; see its doc on `RegexEvaluator`. */
+  evaluateRegex?: RegexEvaluator;
 }
 
 /**
@@ -128,6 +130,7 @@ export async function revalidateAgainstSdk(
       bundle,
       grants: installed.grants,
       loadFixture: opts.loadFixture,
+      evaluateRegex: opts.evaluateRegex,
     });
     items.push({
       extensionId: result.extensionId,

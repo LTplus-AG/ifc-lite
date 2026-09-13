@@ -80,9 +80,9 @@ export const TEARDOWN_EXEMPTIONS: Readonly<Record<string, string>> = {
     'is guaranteed stale.',
 
   collabSlice:
-    '`collabRoomModelId` is a documented, deliberate KNOWN GAP (see the field\'s own doc ' +
-    'comment): it goes stale if the room\'s model is removed mid-session, and the comment ' +
-    'explains at length why clearing it on removal would be WORSE (the room would silently ' +
+    '`collabRoomModels` is a documented, deliberate KNOWN GAP (see the field\'s own doc ' +
+    'comment): an entry goes stale if that room\'s model is removed mid-session, and the comment ' +
+    'explains at length why dropping it on removal would be WORSE (the room would silently ' +
     'retarget to `activeModelId` instead of failing closed). This is a recorded product ' +
     'decision, not an oversight — do not add a teardown for this field without revisiting ' +
     'that decision first.',

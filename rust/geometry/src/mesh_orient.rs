@@ -29,6 +29,7 @@
 //! pipeline that knows. [`orient_mesh_outward_verdict`] hands that verdict back
 //! (it used to be computed and dropped on the floor); see [`OrientVerdict`].
 
+use crate::kernel::signed_volume::signed_volume6_of;
 use crate::Mesh;
 use rustc_hash::FxHashMap;
 use std::cell::RefCell;
@@ -319,18 +320,16 @@ pub fn orient_mesh_outward_verdict(mesh: &mut Mesh) -> OrientVerdict {
         }
 
         // Flip the whole CLOSED component outward (positive signed volume).
-        let mut vol6 = 0.0f64;
-        for &t in comp.iter() {
+        // The sum is referenced to the component's own AABB centre, not the
+        // world origin: `kernel::signed_volume` explains why (each term is
+        // O(|v|^3), so far from the origin the SIGN is rounding noise), and
+        // `a_small_solid_far_from_the_origin_is_oriented_by_its_shape_not_its_position`
+        // measures it. One home for that rule; this is a caller.
+        let vol6 = signed_volume6_of(comp.iter().map(|&t| {
             let v = tv(t);
-            let (i0, i1, i2) = if flip[t] {
-                (v[0], v[2], v[1])
-            } else {
-                (v[0], v[1], v[2])
-            };
-            let (a, b, c) = (vpos[i0 as usize], vpos[i1 as usize], vpos[i2 as usize]);
-            vol6 += a[0] * (b[1] * c[2] - b[2] * c[1]) + a[1] * (b[2] * c[0] - b[0] * c[2])
-                + a[2] * (b[0] * c[1] - b[1] * c[0]);
-        }
+            let (i0, i1, i2) = if flip[t] { (v[0], v[2], v[1]) } else { (v[0], v[1], v[2]) };
+            [vpos[i0 as usize], vpos[i1 as usize], vpos[i2 as usize]]
+        }));
         if vol6 < 0.0 {
             for &t in comp.iter() {
                 flip[t] = !flip[t];

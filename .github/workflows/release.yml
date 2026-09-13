@@ -34,6 +34,9 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    # This job holds a live crates.io token. Bound the whole publish attempt;
+    # per-command release deadlines remain the tighter failure signal.
+    timeout-minutes: 90
     environment: release-publish
     permissions:
       contents: write
@@ -122,7 +125,7 @@ jobs:
           # header of the script and its test for the measurement.
           # The script fails OPEN internally, but a bare assignment from a
           # command substitution takes the substitution's exit status, and the
-          # Actions default shell is `bash --noprofile --norc -eo pipefail`.
+          # The Actions default shell uses `bash -e` (without pipefail).
           # So ANY non-zero `node` exit — the script renamed or absent, an
           # import-time throw, OOM, node failing to start — would abort this
           # STEP, leaving `version_changed` unwritten; `verify` would then read
@@ -430,7 +433,7 @@ jobs:
           # commit, which is why `|| true` below is still safe: by the time it
           # runs, any existing tag has been proven to name this same commit. The
           # `$( )` assignment carries the script's exit status under the Actions
-          # default shell (`bash --noprofile --norc -eo pipefail`), so a refusal
+          # default shell (`bash -e`), so a refusal
           # kills the step before anything is pushed.
           VERSION_COMMIT=$(node scripts/release-tag-commit.mjs package.json "${VERSION}" "v${VERSION}")
           git tag "v${VERSION}" "${VERSION_COMMIT}" || true
@@ -545,7 +548,9 @@ jobs:
   verify-npm-publish:
     name: Verify npm publish
     needs: release
-    if: always() && needs.release.outputs.verify == 'true'
+    # Fail closed when a failed/cancelled release leaves the output unset. An
+    # ordinary non-release push writes the explicit literal `false`.
+    if: always() && needs.release.outputs.verify != 'false'
     runs-on: ubuntu-latest
     # Bounded on purpose. The retry budget below is per PACKAGE and the walk
     # is sequential: 40-odd packages x 11 waits x 20s is over two hours with
@@ -589,7 +594,7 @@ jobs:
   verify-crates-publish:
     name: Verify crates.io publish
     needs: release
-    if: always() && needs.release.outputs.verify == 'true'
+    if: always() && needs.release.outputs.verify != 'false'
     runs-on: ubuntu-latest
     # Same reasoning as the npm job: 7 crates x 11 waits x 20s is ~26 minutes
     # of pure waiting during a registry outage, plus an artifact download per

@@ -365,8 +365,17 @@ export class IfcAPI {
      *
      * `hidden` / `isolated` are express-id visibility filters; `hidden_types_csv` is a
      * comma-separated list of IFC type names whose class toggle is off (e.g.
-     * `"IfcOpeningElement,IfcSpace"`). `include_metadata` attaches counts + per-node
-     * `expressId`. Per-mesh RTC origin rides the node translation (precision-safe).
+     * `"IfcOpeningElement,IfcSpace"`). `isolated` carries the isolation allowlist's
+     * null-vs-empty distinction across the wasm boundary: omit it (`undefined`) for
+     * "no isolation filter" (every mesh is a candidate); pass an empty `Uint32Array`
+     * for "isolation is ACTIVE and currently matches nothing" (every mesh is
+     * excluded). Collapsing the two — as a bare `Uint32Array` parameter would force a
+     * caller to do — silently exports the whole model when a filter matches nothing
+     * (#4328 follow-up: reachable by filtering the Class tab to a type present only
+     * in a federated model's secondary member, then exporting "Visible Only"). A
+     * non-empty `Uint32Array` is the ordinary allowlist. `include_metadata` attaches
+     * counts + per-node `expressId`. Per-mesh RTC origin rides the node translation
+     * (precision-safe).
      * `lit` emits standard PBR materials that shade from normals; omitted or
      * `true` ⇒ lit (the default), `false` ⇒ flat `KHR_materials_unlit` (the
      * historical look — #1321). Optional at the boundary so older 5-arg callers
@@ -381,7 +390,7 @@ export class IfcAPI {
      * CLI/MCP wrappers; making the boundary itself refuse means SDK/viewer/
      * direct callers inherit it too (the TS guards stay as defense-in-depth).
      */
-    exportGlb(content: Uint8Array, include_metadata: boolean, hidden: Uint32Array, isolated: Uint32Array, hidden_types_csv: string, lit?: boolean | null, emissive?: boolean | null): Uint8Array;
+    exportGlb(content: Uint8Array, include_metadata: boolean, hidden: Uint32Array, isolated: Uint32Array | null | undefined, hidden_types_csv: string, lit?: boolean | null, emissive?: boolean | null): Uint8Array;
     /**
      * Assemble a **GLB** from already-produced meshes (the viewer's `MeshData`, flattened)
      * — no re-meshing. Per mesh `i`: `vertex_counts[i]` verts + `index_counts[i]` indices
@@ -390,11 +399,13 @@ export class IfcAPI {
      * per-mesh local). The caller passes exactly the meshes it wants emitted.
      *
      * Fails CLOSED: if the declared vertex/index counts run past the flattened
-     * `positions` / `indices`, there are fewer `index_counts` than meshes, or `normals`
-     * is empty or too short to cover every vertex, this throws an `Error` whose message
-     * starts with `MALFORMED_MESH_INPUT` — instead of silently emitting a GLB with those
-     * meshes dropped. (The viewer always passes fully-backed, normal-covered arrays, so
-     * this only fires on a caller bug.)
+     * `positions` / `indices`, there are fewer `index_counts` than meshes, `normals`
+     * is empty or too short to cover every vertex, or an index names a vertex its own
+     * mesh does not have (glTF 2.0 3.7.2.1), this throws an `Error` whose message
+     * starts with `MALFORMED_MESH_INPUT` — instead of silently emitting a GLB with
+     * those meshes dropped, or one carrying the out-of-range index straight into the
+     * BIN chunk. (The viewer always passes fully-backed, normal-covered, in-range
+     * arrays, so this only fires on a caller bug.)
      */
     exportGlbFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, express_ids: Uint32Array, include_metadata: boolean, lit?: boolean | null, emissive?: boolean | null): Uint8Array;
     /**
@@ -473,6 +484,14 @@ export class IfcAPI {
      * `altitude_mode` (`"clampToGround"` default ⇒ rest on terrain, ignoring
      * `altitude`; `"absolute"` ⇒ place at `altitude` metres MSL) selects the
      * KML vertical placement (#1427).
+     *
+     * Fails CLOSED: when no triangle survives (an empty visible set, or meshes
+     * whose only triangles are degenerate and collapse in the vertex dedup)
+     * this throws an `Error` whose message starts with `NO_RENDER_GEOMETRY`;
+     * a declared vertex/index count running past its buffer throws
+     * `MALFORMED_MESH_INPUT`, as `exportGlbFromMeshes` does. Both used to ship
+     * as a small "successful" archive: the first around a COLLADA document
+     * the 1.4.1 schema rejects, the second with every later mesh missing.
      */
     exportKmzFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, latitude: number, longitude: number, altitude: number, x_axis_abscissa: number | null | undefined, x_axis_ordinate: number | null | undefined, name: string, altitude_mode?: string | null): Uint8Array;
     /**
@@ -489,14 +508,21 @@ export class IfcAPI {
      * V8 max-string ceiling (~512 MB); decode with `TextDecoder` when a string
      * is genuinely needed.
      *
-     * `hidden` / `isolated` are express-id filters mirroring the viewer's visibility
-     * state (empty `isolated` ⇒ all visible). Instanced type-library shapes are skipped.
+     * `hidden` is an express-id filter mirroring the viewer's visibility state.
+     * `isolated` carries the isolation allowlist's null-vs-empty distinction across
+     * the wasm boundary: omit it (`undefined`) for "no isolation filter" (every mesh
+     * is a candidate); pass an empty `Uint32Array` for "isolation is ACTIVE and
+     * currently matches nothing" (every mesh is excluded). Collapsing the two — as a
+     * bare `Uint32Array` parameter would force a caller to do — silently exports the
+     * whole model when a filter matches nothing (the OBJ twin of #4328/#4364, fixed
+     * for GLB in `export_glb`). A non-empty `Uint32Array` is the ordinary allowlist.
+     * Instanced type-library shapes are skipped regardless of the filter.
      *
      * ```javascript
-     * const obj = api.exportObj(ifcContent, true, new Uint32Array(), new Uint32Array());
+     * const obj = api.exportObj(ifcContent, true, new Uint32Array(), undefined);
      * ```
      */
-    exportObj(content: Uint8Array, include_normals: boolean, hidden: Uint32Array, isolated: Uint32Array): Uint8Array;
+    exportObj(content: Uint8Array, include_normals: boolean, hidden: Uint32Array, isolated?: Uint32Array | null): Uint8Array;
     /**
      * Re-serialize the model in `content` to STEP/IFC UTF-8 bytes.
      *
@@ -651,13 +677,23 @@ export class IfcAPI {
      */
     planPageAppearance(content: Uint8Array, request_json: string, rgba: Uint8Array): Uint8Array;
     /**
-     * Plan a complete opaque polygonal PDF fill page as canonical IfcAnnotation
-     * geometry. Painted strokes, curves and unsupported states refuse atomically.
+     * Plan an opaque polygonal PDF fill page as canonical IfcAnnotation
+     * geometry with a provenance property set. An exact page plans directly; a
+     * page with visible omissions needs the accepted fidelity report digest.
      */
     planPdfFillAnnotation(source: Uint8Array, request_json: string): Uint8Array;
     /**
-     * Prepare bounded ordered PDF vector graphics states. No IFC entities or
-     * flattened geometry are produced; unsupported content prevents qualification.
+     * Registered RGB point-cloud observations (#4381). `request_json.source`
+     * is `{kind:'points', …}`; `positions` (3n f64, source-frame metres) and
+     * `colors` (3n RGB8) are the payload, `normals` (3n f32, oriented) and
+     * `stations` (n indices into `source.viewpoints`) are empty when absent.
+     * `rgba` carries only the target's existing rasters. Same output as
+     * `planMeshTransfer`; `transfer.source` records the orientation used.
+     */
+    planPointTransfer(content: Uint8Array, request_json: string, rgba: Uint8Array, positions: Float64Array, colors: Uint8Array, normals: Float32Array, stations: Uint32Array): Uint8Array;
+    /**
+     * Prepare bounded ordered PDF vector graphics states and the page fidelity
+     * report (convertible paths, omissions with extent, exact/raster-only).
      */
     preparePdfVectorPage(request_json: string): Uint8Array;
     /**
@@ -2095,6 +2131,7 @@ export interface InitOutput {
     readonly ifcapi_planMeshTransfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_planPageAppearance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_planPdfFillAnnotation: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly ifcapi_planPointTransfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number) => void;
     readonly ifcapi_preparePdfVectorPage: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_processGeometryBatch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
     readonly ifcapi_processGeometryBatchFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;

@@ -1,5 +1,20 @@
 # @ifc-lite/clash
 
+## 2.1.2
+
+### Patch Changes
+
+- [#4278](https://github.com/LTplus-AG/ifc-lite/pull/4278) [`dee75d8`](https://github.com/LTplus-AG/ifc-lite/commit/dee75d86d404e5a5ae15e71910704d970d2426a2) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `fromPositions` (`packages/clash/src/math/aabb.ts`) — the single choke point both the STEP and IFCX clash adapters funnel through when building `ClashElement.bounds` — now throws `NonFiniteAxisError` when every vertex is non-finite on some axis, instead of returning the box inverted (`min > max`) on that axis. The inverted box looked like a safe sentinel (the function's own doc claimed it was "rejected by `boxesTouch`"), but `boxesTouch` is only reached from the duplicates pass, not from the BVH broad phase (`@ifc-lite/spatial`, via `engine-ts/broad.ts`) that hard/soft rule-based clash detection uses: there, an inverted box fails every `min <= queryMax && max >= queryMin` check, so the element silently dropped out of every spatial query it should have participated in — including the one that would have found a genuine hard clash ([#4254](https://github.com/LTplus-AG/ifc-lite/issues/4254)).
+  
+  `elementsFromStep` (`adapters/step.ts`) and `elementsFromIfcx` (`adapters/ifcx.ts`) now catch `NonFiniteAxisError` per occurrence/entity, skip just that one (rather than aborting the whole clash run for one corrupt element among many), and emit a single `console.warn` naming the model and the count — the same shape as their existing `missingGlobalIds` warning — so a dropped element is loud and countable instead of silently invisible. Positions with only *some* non-finite coordinates are unaffected: the existing per-coordinate fold (the finite coordinate of a partly poisoned vertex still counts) is unchanged.
+- Updated dependencies [[`9a271dc`](https://github.com/LTplus-AG/ifc-lite/commit/9a271dcb19dff2f9bca72fc3505ce5a71b3e800b), [`6fe4fc8`](https://github.com/LTplus-AG/ifc-lite/commit/6fe4fc8ddac8cbc18f3556fa7bfa778bf6115928), [`3fdbc2b`](https://github.com/LTplus-AG/ifc-lite/commit/3fdbc2b599fad2b1c43ffe014d2bab5f8b8c576c), [`3a1a322`](https://github.com/LTplus-AG/ifc-lite/commit/3a1a3229412b7822438fa5dba653f6c4e1bd239f), [`7f80d53`](https://github.com/LTplus-AG/ifc-lite/commit/7f80d53d2a2c158a322ec541ce064365f3f3ca8a), [`a53bd7f`](https://github.com/LTplus-AG/ifc-lite/commit/a53bd7fd4510b8d5c992eab26234084c5bb2387e), [`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b), [`abda2d8`](https://github.com/LTplus-AG/ifc-lite/commit/abda2d8114ad17b0366f448100953d6e1972164c), [`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b), [`511e488`](https://github.com/LTplus-AG/ifc-lite/commit/511e488a8de2b90f7d5f7663911873a92b3427c7), [`53c65fe`](https://github.com/LTplus-AG/ifc-lite/commit/53c65fecdac95b4c19a661be923c225d104a7be8), [`a53bd7f`](https://github.com/LTplus-AG/ifc-lite/commit/a53bd7fd4510b8d5c992eab26234084c5bb2387e)]:
+  - @ifc-lite/bcf@4.0.0
+  - @ifc-lite/wasm@7.0.0
+  - @ifc-lite/parser@6.1.0
+  - @ifc-lite/geometry@5.0.0
+  - @ifc-lite/query@2.3.1
+  - @ifc-lite/spatial@1.14.17
+
 ## 2.1.1
 
 ### Patch Changes

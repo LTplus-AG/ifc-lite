@@ -20,9 +20,10 @@
  */
 
 import type * as Y from 'yjs';
-import { createEntity, setPropertyValue } from '../doc/entity.js';
+import { createEntity, setPropertyValue, setQuantityValue } from '../doc/entity.js';
 import { SEED_ORIGIN, assertSchemaInvariants, metaMap } from '../doc/schema.js';
 import type { PropertyValue } from '../doc/schema.js';
+import { legacyModelSlot, slotPath, type ModelSlotRef } from '../doc/model-slot.js';
 
 /** Schema versions the CRDT entity meta accepts (see `EntityMeta`). */
 export type CollabSchemaVersion = 'ifc4' | 'ifc4x3' | 'ifc5';
@@ -57,12 +58,16 @@ export interface StepSeedEntity {
   attributes?: Record<string, unknown>;
   /**
    * Spatial containment + decomposition as IFCX children: a unique key → the
-   * child entity's path (`/<guid>`). Lets the recipient rebuild the spatial
-   * tree (Project → Site → Building → Storey → elements).
+   * child entity's path (`slotPath(slot, guid)`, i.e. `/<guid>` in a
+   * single-model room). Lets the recipient rebuild the spatial tree
+   * (Project → Site → Building → Storey → elements). The adapter that builds
+   * these must use the same slot the seeder is given (#4444).
    */
   children?: Record<string, string>;
   /** Property sets: psetName → propName → value. */
   psets?: Record<string, Record<string, PropertyValue>>;
+  /** Quantity sets: qsetName → quantityName → numeric value. */
+  quantities?: Record<string, Record<string, number>>;
 }
 
 /** Minimal model view the seeder consumes (the viewer adapts its store to this). */
@@ -85,6 +90,12 @@ export interface SeedFromStepOptions {
    * the entity `schemaVersion`. Defaults to {@link defaultSchemaVersion}.
    */
   schemaVersionFor?: (schema: string | undefined) => CollabSchemaVersion;
+  /**
+   * The model slot the entities belong to (#4444). Entity paths become
+   * `slotPath(slot, guid)`. Defaults to the implicit legacy slot, i.e. the
+   * unqualified `/<guid>` scheme of a single-model room.
+   */
+  slot?: ModelSlotRef;
 }
 
 export interface SeedFromStepResult {
@@ -94,9 +105,13 @@ export interface SeedFromStepResult {
   skipped: number;
 }
 
-/** Path key for a STEP entity. Exported so the viewer's `resolveEntity` matches. */
+/**
+ * Path key for a STEP entity in a single-model (legacy-slot) room. Exported
+ * so the viewer's `resolveEntity` matches; slot-qualified rooms use
+ * `slotPath(slot, guid)` from `doc/model-slot.ts`.
+ */
 export function guidToPath(guid: string): string {
-  return `/${guid}`;
+  return slotPath(legacyModelSlot(), guid);
 }
 
 /**
@@ -112,20 +127,23 @@ export function seedFromStep(
   assertSchemaInvariants(doc);
   const schemaVersionFor = opts.schemaVersionFor ?? defaultSchemaVersion;
   const schemaVersion = schemaVersionFor(source.header?.schema);
+  const slot = opts.slot ?? legacyModelSlot();
 
   let seeded = 0;
   let skipped = 0;
 
   doc.transact(() => {
     const meta = metaMap(doc);
-    if (source.header) meta.set('stepHeader', source.header);
+    // One file-level header per room: the first seeded model's. A slot-aware
+    // room records per-model headers on its slot records instead.
+    if (source.header && !meta.has('stepHeader')) meta.set('stepHeader', source.header);
 
     for (const ent of source.entities) {
       if (!ent.guid) {
         skipped++;
         continue;
       }
-      const path = guidToPath(ent.guid);
+      const path = slotPath(slot, ent.guid);
       createEntity(doc, path, {
         ifcClass: ent.ifcClass,
         attributes: ent.attributes ?? {},
@@ -148,6 +166,13 @@ export function seedFromStep(
         for (const [psetName, props] of Object.entries(ent.psets)) {
           for (const [propName, value] of Object.entries(props)) {
             setPropertyValue(doc, path, psetName, propName, value);
+          }
+        }
+      }
+      if (ent.quantities) {
+        for (const [qsetName, quantities] of Object.entries(ent.quantities)) {
+          for (const [quantityName, value] of Object.entries(quantities)) {
+            setQuantityValue(doc, path, qsetName, quantityName, value);
           }
         }
       }

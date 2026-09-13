@@ -54,7 +54,7 @@ import assert from 'node:assert/strict';
 import type { MeshData, DecodedInstance } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { applyFederationOffsetToMesh } from './useIfcLoader.js';
+import { applyFederationOffsetToMesh } from './ingest/federationOffset.js';
 import { applyFederationOffsetToShard } from '../components/viewer/useGeometryStreaming.js';
 
 // ─── The two-model federation this file is about ───────────────────────────

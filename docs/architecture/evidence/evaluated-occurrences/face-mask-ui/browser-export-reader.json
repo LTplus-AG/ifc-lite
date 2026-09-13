@@ -1,0 +1,51 @@
+{
+  "reader": "IfcOpenShell",
+  "version": "0.8.3.post2",
+  "export": "AC20-FZK-Haus_export.ifczip",
+  "product": 35169,
+  "ifcClass": "IfcMember",
+  "GlobalId": "0oTQ6V1VbChulreA_hfmUa",
+  "changedExistingEntities": [
+    35155
+  ],
+  "texturedFaceSet": {
+    "id": 79109,
+    "triangles": 6,
+    "style": 79117,
+    "images": [
+      "textures/712a23fa2d6dd9796c4c039877e69b0c2ddbc9558f7c27764538a6744f33bca8.png"
+    ]
+  },
+  "retainedFaceSet": {
+    "id": 79111,
+    "triangles": 6,
+    "style": 17391,
+    "sourceStyle": true
+  },
+  "archiveResources": [
+    "textures/712a23fa2d6dd9796c4c039877e69b0c2ddbc9558f7c27764538a6744f33bca8.png"
+  ],
+  "authoredTriangles": 12,
+  "readerTrianglesOriginal": 12,
+  "readerTrianglesExported": 12,
+  "maxSurfaceDistanceMetres": {
+    "authoredVerticesToOriginalSurface": 2.052632760770154e-08,
+    "originalVerticesToAuthoredSurface": 9.966138159211985e-08,
+    "readerExportVerticesToOriginalSurface": 2.052632760770154e-08
+  },
+  "surfaceAreaSquareMetres": {
+    "originalReader": 3.0779696856371075,
+    "authored": 3.0779693005889053,
+    "exportedReader": 3.0779693005889053
+  },
+  "siblings": {
+    "ifcClass": "IfcMember",
+    "count": 41,
+    "unchanged": 41,
+    "comparison": "IfcOpenShell world tessellation digest (vertices and faces) equal before and after"
+  },
+  "sourceSchemaFindings": 170,
+  "exportSchemaFindings": 170,
+  "newSchemaFindings": [],
+  "note": "Authored face sets versus IfcOpenShell's tessellation of the original: vertex-to-surface distances and areas, sampled at the vertices, not a Hausdorff proof. The reader's own re-tessellation of the export is reported for reference."
+}

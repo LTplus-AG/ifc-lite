@@ -143,6 +143,12 @@ fi
 # often and cancels out instead of accumulating on one.
 ORDER_FILE="$TMP_ROOT/order.txt"
 node "$ROOT/scripts/perf/ab-order.mjs" "$ITERS" > "$ORDER_FILE"
+# A vacuous run must fail loudly, not print a "within noise" verdict over zero
+# measurements (#4439: the order generator's CLI guard never fired on Windows).
+if [ "$(wc -l < "$ORDER_FILE")" -ne "$ITERS" ]; then
+  echo "ab.sh: ab-order.mjs produced $(wc -l < "$ORDER_FILE") round(s) for --iters $ITERS — refusing to report" >&2
+  exit 1
+fi
 RUNS_JSONL="$TMP_ROOT/runs.jsonl"
 : > "$RUNS_JSONL"
 i=0

@@ -23,6 +23,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -79,15 +80,13 @@ jobs:
 
       - name: Build Rustdoc
         run: cargo doc --no-deps --workspace
-        continue-on-error: true
 
       - name: Copy Rustdoc to site
         run: |
-          if [ -d "target/doc" ]; then
-            mkdir -p site/api/rust
-            cp -r target/doc/* site/api/rust/
-          fi
-        continue-on-error: true
+          test -d target/doc
+          mkdir -p site/api/rust
+          cp -r target/doc/* site/api/rust/
+          node scripts/build-rustdoc-index.mjs target/doc site/api/rust/index.html
 
       - name: Create .nojekyll file
         run: touch site/.nojekyll
@@ -98,7 +97,11 @@ jobs:
           ls -la site/ | head -20
           echo ""
           echo "Checking for index.html:"
-          ls -la site/index.html || echo "index.html not found!"
+          test -f site/index.html
+          ls -la site/index.html
+          echo "Checking for Rust API index.html:"
+          test -f site/api/rust/index.html
+          ls -la site/api/rust/index.html
           echo ""
           echo "Site directory size:"
           du -sh site/
@@ -116,6 +119,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: build
     steps:
       - name: Deploy to GitHub Pages

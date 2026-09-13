@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc f5af3c7d7cb53d88b52dded034feb4a921f84da80e3df3f6afb487b815d6b974 # shrinks to pair = BoxPair { config: "random", a_min: [7.142955097354382, 3.8930258763304124, 1.7326807905302595], a_size: [2.206252778210347, 4.759378629442683, 2.396126549955821], b_min: [7.383360698920378, 5.096809704830507, -2.3216188409075382], b_size: [0.1, 3.5564268697313324, 5.466807412783555] } (issue #4439)

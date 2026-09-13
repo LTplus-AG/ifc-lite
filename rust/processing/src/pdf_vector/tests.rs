@@ -2,10 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::*;
-fn page(ops: Vec<PdfVectorOperator>) -> PdfVectorPage {
+pub(super) fn page(ops: Vec<PdfVectorOperator>) -> PdfVectorPage {
     PdfVectorPage {
         pdf_sha256: "a".repeat(64),
         decoder_version: "6.3.289".into(),
+        pdf_format_version: Some("2.0".into()),
         page_number: 1,
         view_box: [10., 20., 110., 92.],
         user_unit: 2.,
@@ -23,7 +24,7 @@ fn page(ops: Vec<PdfVectorOperator>) -> PdfVectorPage {
             .collect(),
     }
 }
-fn path() -> PdfVectorOperator {
+pub(super) fn path() -> PdfVectorOperator {
     PdfVectorOperator::Path {
         paint: PdfVectorPaint::Stroke,
         commands: vec![0., 10., 20., 1., 82., 20.],
@@ -37,23 +38,17 @@ fn issue_4406_calibrated_transform_preserves_stroke_construction_space_and_resto
             matrix: [2., 0., 0., 3., 4., 5.],
         },
         PdfVectorOperator::LineWidth { width: 2. },
-        PdfVectorOperator::Dash {
-            lengths: vec![4., 2.],
-            phase: 1.,
-        },
         path(),
         PdfVectorOperator::Restore,
         path(),
     ]);
     let report = prepare_pdf_vector_page(&input).unwrap();
-    assert!(report.state_qualified);
-    assert!(!report.geometry_ready);
+    assert!(report.fidelity.exact);
+    assert_eq!(report.fidelity.convertible_paths, 2);
     assert_eq!(report.page_clip_pdf, input.view_box);
-    assert!(report.pending_geometry.contains(&"pageClip"));
     let transformed = &report.paths[0];
-    assert_eq!(transformed.operator_ordinal, 8);
+    assert_eq!(transformed.operator_ordinal, 6);
     assert_eq!(transformed.state.line_width, 2.);
-    assert_eq!(transformed.state.dash_lengths, [4., 2.]);
     let m = transformed.state.model_metres_from_path;
     // Independent successive maps: path (10,20) -> PDF (24,65) -> metres (.09,.172).
     assert!((m[0] * 10. + m[2] * 20. + m[4] - 0.09).abs() < 1e-15);
@@ -64,6 +59,75 @@ fn issue_4406_calibrated_transform_preserves_stroke_construction_space_and_resto
     );
     assert_eq!(report.paths[1].state.line_width, 1.);
     assert!(report.paths[1].state.dash_lengths.is_empty());
+}
+#[test]
+fn issue_4406_conversion_clip_filters_off_crop_geometry_without_rewriting_source_cropbox() {
+    let input = page(vec![
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke, commands: vec![0., 15., 25., 1., 19., 25.] },
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke, commands: vec![0., 80., 80., 1., 90., 80.] },
+    ]);
+    let prepared = prepare_pdf_vector_page_with_clip(&input, Some([10., 20., 20., 30.])).unwrap();
+    assert_eq!(prepared.page_clip_pdf, [10., 20., 20., 30.]);
+    assert_eq!(prepared.paths.len(), 1, "only the supported on-crop paint reaches geometry");
+    assert_eq!(prepared.paths[0].operator_ordinal, 0);
+    assert!(prepared.fidelity.exact);
+
+    assert!(prepare_pdf_vector_page_with_clip(&input, Some([9., 20., 20., 30.]))
+        .unwrap_err().contains("conversion clip"));
+}
+#[test]
+fn issue_4406_conversion_clip_cannot_prove_an_outside_hairline_invisible() {
+    let input = page(vec![
+        PdfVectorOperator::LineWidth { width: 0. },
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke,
+            commands: vec![0., 70., 70., 1., 75., 70.] },
+    ]);
+    let prepared = prepare_pdf_vector_page_with_clip(&input, Some([10., 20., 20., 30.])).unwrap();
+    assert!(!prepared.fidelity.exact,
+        "device-minimum ink may bleed into an interior crop even when its centreline is outside");
+    assert_eq!(prepared.fidelity.summary[0].kind, "hairline");
+    assert_eq!(prepared.fidelity.summary[0].visible_count, 1);
+}
+#[test]
+fn issue_4406_conversion_clip_counts_a_wide_stroke_whose_centerline_is_outside() {
+    let input = page(vec![
+        PdfVectorOperator::LineWidth { width: 6. },
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke, commands: vec![0., 7., 25., 1., 8., 25.] },
+    ]);
+    let error = prepare_pdf_vector_page_with_clip(&input, Some([10., 20., 20., 30.])).unwrap_err();
+    assert!(error.contains("conversion boundary crosses painted path"),
+        "the centreline is outside, but its painted envelope overlaps the crop: {error}");
+}
+#[test]
+fn issue_4406_conversion_clip_combines_square_caps_with_small_miter_limit() {
+    let input = page(vec![
+        PdfVectorOperator::LineWidth { width: 2. },
+        PdfVectorOperator::LineCap { cap: 2 },
+        PdfVectorOperator::LineJoin { join: 0 },
+        PdfVectorOperator::MiterLimit { limit: 1. },
+        PdfVectorOperator::Path { paint: PdfVectorPaint::Stroke,
+            commands: vec![0., 11.5, 22., 1., 15., 22., 1., 15., 28.] },
+    ]);
+    let error = prepare_pdf_vector_page_with_clip(&input, Some([10., 20., 20., 30.])).unwrap_err();
+    assert!(error.contains("conversion boundary crosses painted path"),
+        "square end caps remain part of the envelope when the miter limit is smaller: {error}");
+}
+#[test]
+fn issue_4613_omission_extent_stays_in_the_independent_control_point_contract() {
+    let input = page(vec![
+        PdfVectorOperator::LineWidth { width: 2. },
+        PdfVectorOperator::Path {
+            paint: PdfVectorPaint::Stroke,
+            commands: vec![0., 120., 20., 2., 120., 100., 220., 100., 220., 20.],
+        },
+    ]);
+    let prepared = prepare_pdf_vector_page(&input).unwrap();
+    let omission = &prepared.fidelity.omissions[0];
+    assert_eq!(omission.kind, "curvedStroke");
+    // The MuPDF oracle records cubic controls in this frame. The separate
+    // painted-ink envelope expands by the default miter limit for fail-closed
+    // crop decisions, but must not shift this independently checked extent.
+    assert_eq!(omission.bbox_pdf, Some([120., 20., 220., 100.]));
 }
 #[test]
 fn issue_4406_preserves_curves_fill_rules_and_paint_order_without_claiming_flattening() {
@@ -89,7 +153,7 @@ fn issue_4406_preserves_curves_fill_rules_and_paint_order_without_claiming_flatt
     assert!(report.paths[0].operator_ordinal < report.paths[1].operator_ordinal);
 }
 #[test]
-fn issue_4406_unsupported_content_and_painted_hairlines_never_qualify_partial_paths() {
+fn issue_4406_unsupported_content_and_painted_hairlines_are_reported_not_converted() {
     let report = prepare_pdf_vector_page(&page(vec![
         PdfVectorOperator::LineWidth { width: 0. },
         PdfVectorOperator::Path {
@@ -101,15 +165,15 @@ fn issue_4406_unsupported_content_and_painted_hairlines_never_qualify_partial_pa
             operator: "showText".into(),
         },
         PdfVectorOperator::Unsupported {
-            operator: "clip".into(),
+            operator: "setFillTransparent".into(),
         },
     ]))
     .unwrap();
-    assert!(!report.state_qualified);
-    assert_eq!(report.paths.len(), 1);
-    assert_eq!(report.diagnostics.len(), 3);
-    assert_eq!(report.diagnostics[0].operator_ordinal, 4);
-    assert_eq!(report.diagnostics[1].code, "unsupported:showText");
+    assert!(!report.fidelity.exact);
+    assert!(report.paths.is_empty(), "a hairline is never a convertible path");
+    let kinds: Vec<_> = report.fidelity.omissions.iter().map(|o| (o.operator_ordinal, o.kind.as_str())).collect();
+    assert_eq!(kinds, [(4, "hairline"), (6, "unsupported:showText"), (8, "unsupported:setFillTransparent")]);
+    assert_eq!(report.fidelity.omitted_paints, 1);
 }
 #[test]
 fn issue_4406_binds_page_source_calibration_tolerance_and_original_operator_identity() {
@@ -185,4 +249,46 @@ fn issue_4406_strict_json_rejects_unknown_semantics_instead_of_dropping_them() {
     let mut json = serde_json::to_value(page(vec![path()])).unwrap();
     json["operations"][0]["operation"]["alpha"] = serde_json::json!(0.5);
     assert!(serde_json::from_value::<PdfVectorPage>(json).is_err());
+}
+#[test]
+fn issue_4583_older_hosts_without_a_pdf_version_remain_decodable() {
+    let mut json = serde_json::to_value(page(vec![path()])).unwrap();
+    json.as_object_mut().unwrap().remove("pdfFormatVersion");
+    let decoded: PdfVectorPage = serde_json::from_value(json).unwrap();
+    assert_eq!(decoded.pdf_format_version, None);
+
+    let mut invalid = page(vec![path()]);
+    invalid.pdf_format_version = Some("x".repeat(17));
+    assert!(prepare_pdf_vector_page(&invalid)
+        .unwrap_err()
+        .contains("format version"));
+}
+#[test]
+fn issue_4406_report_operators_use_the_adapter_camel_case_wire_shape() {
+    let mut json = serde_json::to_value(page(vec![path()])).unwrap();
+    json["operations"] = serde_json::json!([
+        {"ordinal": 0, "operation": {"kind": "clip", "evenOdd": true}},
+        {"ordinal": 1, "operation": {"kind": "graphicsState", "lineWidth": 2.5, "lineCap": null, "lineJoin": 2,
+            "miterLimit": null, "dash": [[1.0, 2.0], 0.5], "transparency": ["ca"], "unsupported": []}},
+        {"ordinal": 2, "operation": {"kind": "text", "quad": [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0], "invisible": false}},
+        {"ordinal": 3, "operation": {"kind": "formBegin", "matrix": null, "bbox": [0.0, 0.0, 500.0, 500.0]}},
+        {"ordinal": 4, "operation": {"kind": "markedContent", "visible": false}},
+        {"ordinal": 5, "operation": {"kind": "endMarkedContent"}},
+        {"ordinal": 6, "operation": {"kind": "formEnd"}}
+    ]);
+    let page: PdfVectorPage = serde_json::from_value(json).unwrap();
+    assert!(matches!(page.operations[0].operation, PdfVectorOperator::Clip { even_odd: true }));
+    match &page.operations[1].operation {
+        PdfVectorOperator::GraphicsState { line_width, line_join, dash, transparency, .. } => {
+            assert_eq!((*line_width, *line_join), (Some(2.5), Some(2)));
+            assert_eq!(dash.as_ref().map(|(l, p)| (l.clone(), *p)), Some((vec![1., 2.], 0.5)));
+            assert_eq!(transparency, &["ca".to_string()]);
+        }
+        other => panic!("{other:?}"),
+    }
+    let report = prepare_pdf_vector_page(&page).unwrap();
+    assert_eq!(report.fidelity.summary.iter().map(|s| s.kind.as_str()).collect::<Vec<_>>(), ["text"]);
+    let mut wrong = serde_json::to_value(page).unwrap();
+    wrong["operations"][0]["operation"] = serde_json::json!({"kind": "clip", "even_odd": true});
+    assert!(serde_json::from_value::<PdfVectorPage>(wrong).is_err(), "snake_case is not the adapter wire shape");
 }

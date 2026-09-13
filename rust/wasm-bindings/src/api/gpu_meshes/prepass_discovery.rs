@@ -21,7 +21,6 @@ pub(super) struct ColumnsDiscovery {
     pub site_position: Option<(u32, usize, usize)>,
     pub prepass_spans: ifc_lite_processing::prepass::PrepassSpans,
     pub mapped_item_spans: Vec<(u32, usize, usize)>,
-    pub rel_defines_by_type_spans: Vec<(u32, usize, usize)>,
     pub type_candidate_spans: Vec<(u32, usize, usize, ifc_lite_core::IfcType)>,
     pub has_layer_set: bool,
 }
@@ -38,6 +37,21 @@ fn keyword_at(content: &[u8], start: usize, end: usize) -> &str {
         .map(|p| eq + p)
         .unwrap_or(span.len());
     std::str::from_utf8(&span[eq..kw_end]).unwrap_or("").trim()
+}
+
+/// Is the raw keyword `kw` in the caller's load-time skip set? The set holds
+/// uppercase names, so an uppercase `kw` (every mainstream exporter) is one
+/// hash lookup; only a keyword the file wrote in another case falls to the
+/// folded linear scan. The set is empty in the common case.
+pub(super) fn is_disabled(disabled_types: &rustc_hash::FxHashSet<String>, kw: &str) -> bool {
+    if disabled_types.is_empty() {
+        return false;
+    }
+    if disabled_types.contains(kw) {
+        return true;
+    }
+    kw.bytes().any(|b| b.is_ascii_lowercase())
+        && disabled_types.iter().any(|d| ifc_lite_core::keyword_eq(kw, d))
 }
 
 /// Walk the stitched (file-ordered) class columns and reproduce the serial
@@ -59,7 +73,6 @@ pub(super) fn discover_from_columns(
         site_position: None,
         prepass_spans: p::prepass::PrepassSpans::default(),
         mapped_item_spans: Vec::new(),
-        rel_defines_by_type_spans: Vec::new(),
         type_candidate_spans: Vec::new(),
         has_layer_set: false,
     };
@@ -123,10 +136,10 @@ pub(super) fn discover_from_columns(
                 continue;
             }
             c if c == p::PREPASS_CLASS_REL_DEFINES_BY_TYPE => {
-                d.rel_defines_by_type_spans.push((id, start, end));
-                // Also feed the shared resolver's material type-fallback
-                // (an occurrence with no material of its own inherits its
-                // type's IfcRelAssociatesMaterial).
+                // Feeds both the instantiated-type-id build and the shared
+                // resolver's material type-fallback (an occurrence with no
+                // material of its own inherits its type's
+                // IfcRelAssociatesMaterial).
                 d.prepass_spans.defines_by_type.push((id, start, end));
                 continue;
             }
@@ -143,7 +156,7 @@ pub(super) fn discover_from_columns(
         }
         if class & p::PREPASS_CLASS_FLAG_GEOMETRY_JOB != 0 {
             let kw = keyword_at(content, start, end);
-            if disabled_types.is_empty() || !disabled_types.contains(kw) {
+            if !is_disabled(disabled_types, kw) {
                 // Legacy-aware, for the same reason the type-candidate branch
                 // above is: `classify_type_name` sets this flag through the
                 // legacy-aware `has_geometry_by_name`, so a bare `from_str`

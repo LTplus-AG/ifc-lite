@@ -36,7 +36,9 @@ import {
   metaMap,
 } from '../doc/schema.js';
 import { inflateStructuredAttributes } from './structured-attrs.js';
+import type { ModelSlotRef } from '../doc/model-slot.js';
 import { clearOverlayTombstones, readOverlayTombstones, resolveTombstoneOpinion, resurrectionBlocked, writeOverlayTombstones } from './overlay-tombstones.js';
+import { qualifyNode, writeIfcxFileMeta } from './slot-ifcx.js';
 import { setClassifications, setMaterials, readIfcClass } from './overlay-entity-attrs.js';
 
 export interface SeedOptions {
@@ -44,6 +46,14 @@ export interface SeedOptions {
   origin?: unknown;
   /** If true, clear any existing top-level state before seeding. */
   reset?: boolean;
+  /**
+   * The model slot the file's nodes belong to (#4444). Every node path, and
+   * every `children` / `inherits` reference, is qualified with the slot's
+   * prefix, and the file's header / imports / schemas are recorded for that
+   * slot (see slot-ifcx.ts). Omitted: the implicit legacy slot (paths and
+   * room-wide metadata untouched).
+   */
+  slot?: ModelSlotRef;
 }
 
 export type IfcxInput = ArrayBuffer | Uint8Array | string | IfcxFile;
@@ -87,13 +97,12 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
       clearOverlayTombstones(meta);
     }
 
-    // Stash file-level metadata so we can re-emit it during snapshotting.
-    if (file.header) meta.set('header', file.header);
-    if (file.imports) meta.set('imports', file.imports);
-    if (file.schemas) meta.set('schemas', file.schemas);
+    // Stash file-level metadata so we can re-emit it during snapshotting —
+    // per slot, so a second IFC5 model does not overwrite the first's.
+    writeIfcxFileMeta(meta, opts.slot, file);
 
     for (const node of file.data ?? []) {
-      const decoded = decodeNode(node, false);
+      const decoded = decodeNode(opts.slot ? qualifyNode(opts.slot, node) : node, false);
       if (!decoded) continue;
       restoreGeometryCarriers(doc, decoded, createGeometry);
       createNodeEntity(doc, decoded);

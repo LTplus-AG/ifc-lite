@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { STEP_TRIVIA } from '@ifc-lite/parser';
+import { skipStepComment } from './step-comment-skip.js';
 import { isWellFormedStepSlot } from './step-slot-grammar.js';
 
 /**
@@ -13,7 +14,7 @@ import { isWellFormedStepSlot } from './step-slot-grammar.js';
  * repoint, see below), the same failure class. Compiled once since
  * `replaceStepArgument` runs per rewritten line.
  */
-const RECORD_PREFIX_RE = new RegExp(`^(#\\d+\\s*=\\s*\\w+${STEP_TRIVIA}\\()([\\s\\S]*)(\\)\\s*;)\\s*$`);
+const RECORD_PREFIX_RE = new RegExp(`^(#\\d+\\s*=\\s*(\\w+)${STEP_TRIVIA}\\()([\\s\\S]*)(\\)\\s*;)\\s*$`);
 
 /**
  * The STEP argument parser and rewriter: reading a record's top-level argument
@@ -33,12 +34,13 @@ const RECORD_PREFIX_RE = new RegExp(`^(#\\d+\\s*=\\s*\\w+${STEP_TRIVIA}\\()([\\s
  * parts, and writing a slot by index into those parts lands on the wrong
  * argument while reporting success (LTplus-AG/ifc-lite#2470).
  */
-
 /**
  * Split a STEP argument list on top-level commas, respecting nested
- * parentheses and quoted strings. Used by `applyAttributeMutations`.
+ * parens, quoted strings, and comments (#4227). This permissive helper is for
+ * already-extracted aggregate/list bodies; whole entity records must go
+ * through `readStepSlots` so every slot is validated before mutation.
  */
-export function splitTopLevelArgs(text: string): string[] {
+export function splitTopLevelListItems(text: string): string[] {
   const parts: string[] = [];
   let current = '';
   let depth = 0;
@@ -46,6 +48,12 @@ export function splitTopLevelArgs(text: string): string[] {
 
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
+    if (!inString && char === '/' && text[i + 1] === '*') {
+      const stop = skipStepComment(text, i); // see skipStepComment's docstring
+      current += text.slice(i, stop);
+      i = stop - 1;
+      continue;
+    }
     current += char;
 
     if (inString) {
@@ -94,6 +102,23 @@ export function splitTopLevelArgs(text: string): string[] {
   return parts;
 }
 
+export interface StepRecordSlots {
+  readonly prefix: string;
+  readonly type: string;
+  readonly slots: readonly string[];
+  readonly suffix: string;
+}
+
+/** Parse a complete STEP record into validated, position-addressable slots. */
+export function readStepSlots(entityText: string): StepRecordSlots | null {
+  const match = entityText.match(RECORD_PREFIX_RE);
+  if (!match) return null;
+  const [, prefix, type, attrsText, suffix] = match;
+  const slots = splitTopLevelStepArguments(attrsText);
+  if (slots === null) return null;
+  return { prefix, type: type.toUpperCase(), slots, suffix };
+}
+
 /**
  * Replace ONE top-level argument of a STEP record, by zero-based slot, leaving
  * every other token — and the record's class keyword and id — byte-identical.
@@ -121,11 +146,7 @@ export function replaceStepArgument(
   attrIndex: number,
   replacement: string,
 ): string | null {
-  const match = entityText.match(RECORD_PREFIX_RE);
-  if (!match) return null;
-
-  const [, prefix, attrsText, suffix] = match;
-  const attrs = splitTopLevelStepArguments(attrsText);
+  const record = readStepSlots(entityText);
   // Load-bearing, and covered: the bounds check below READS `attrs.length`, so a
   // null reaches it as a TypeError rather than falling through to a rejection.
   // Deleting this line fails exactly the three malformed-input cases in
@@ -133,7 +154,8 @@ export function replaceStepArgument(
   // closing paren — which throw instead of returning null. Kept as its own line,
   // not folded into that check, because "could not scan it" and "that slot is
   // past the end" are different facts about the input.
-  if (attrs === null) return null;
+  if (record === null) return null;
+  const attrs = [...record.slots];
   // A negative or fractional slot must not reach the assignment below: it would
   // set a NAMED PROPERTY on the array rather than an element, `join` would skip
   // it, and this would hand back the line unchanged — but non-null, which the
@@ -144,14 +166,14 @@ export function replaceStepArgument(
   if (!Number.isInteger(attrIndex) || attrIndex < 0 || attrIndex >= attrs.length) return null;
 
   attrs[attrIndex] = replacement;
-  return `${prefix}${attrs.join(',')}${suffix}`;
+  return `${record.prefix}${attrs.join(',')}${record.suffix}`;
 }
 
 /**
  * Split a STEP argument list on top-level commas while preserving nested syntax,
  * or null when the text is not a well-formed argument list.
  *
- * Similar to `splitTopLevelArgs` but uses a slightly different accumulation style
+ * Similar to `splitTopLevelListItems` but uses a slightly different accumulation style
  * suited for the {@link replaceStepArgument} call-site.
  *
  * ## Why it validates
@@ -207,17 +229,10 @@ export function splitTopLevelStepArguments(input: string): string[] | null {
   for (let i = 0; i < input.length; i++) {
     const char = input[i];
 
-    // A `/* ... */` comment's content is unrestricted ISO-10303-21 text — a
-    // comma, an unbalanced paren, or an odd number of `'` inside one would
-    // otherwise corrupt this scan's comma/paren/quote state, even though the
-    // comment is not itself an argument boundary. Skip the whole region
-    // (open marker through the matching `*/`, or to the end of the text when
-    // unterminated) as one atomic unit so its content cannot be read as
-    // structure; the per-part `isWellFormedStepSlot` check below still
-    // rejects an unterminated comment via `skipTrivia`.
+    // See skipStepComment's docstring; isWellFormedStepSlot below still
+    // rejects an unterminated comment via skipTrivia.
     if (!inString && char === '/' && input[i + 1] === '*') {
-      const end = input.indexOf('*/', i + 2);
-      const stop = end === -1 ? input.length : end + 2;
+      const stop = skipStepComment(input, i);
       current += input.slice(i, stop);
       i = stop - 1;
       continue;

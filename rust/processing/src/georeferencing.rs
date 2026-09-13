@@ -15,7 +15,9 @@
 
 use std::sync::Arc;
 
-use ifc_lite_core::{EntityDecoder, EntityIndex, EntityScanner, GeoRefExtractor, IfcType};
+use ifc_lite_core::{
+    keyword_eq, EntityDecoder, EntityIndex, EntityScanner, GeoRefExtractor, IfcType,
+};
 use serde::{Deserialize, Serialize};
 
 /// Georeferencing metadata (`IfcMapConversion` + `IfcProjectedCRS`).
@@ -140,16 +142,34 @@ pub fn extract_georeferencing_with_index(
 }
 
 /// Candidate classification shared by standalone extraction and the native
-/// geometry scan. Preserve raw-name matching and file order, including all sites.
+/// geometry scan. Preserves file order, including all sites.
+///
+/// `type_name` is the STEP keyword exactly as the scanner read it, and STEP
+/// keyword case is not significant (ISO 10303-21), so the comparison is
+/// case-insensitive. A case-sensitive match silently classified every entity in
+/// a lowercase- or CamelCase-keyword file as a non-candidate, and the model then
+/// reported no georeferencing at all despite carrying complete data (#4497).
+/// `keyword_eq` rather than an uppercase copy: this runs once per entity in
+/// the scan loop, and the comparison is against fixed literals, so there is
+/// nothing an allocated canonical form would be reused for — the same shape
+/// `processor::quick_metadata::is_quick_spatial_type_ci` uses.
 pub(crate) fn georeferencing_candidate_type(type_name: &str) -> Option<IfcType> {
-    match type_name {
-        // Scaled's first eight attributes have the base conversion layout.
-        "IFCMAPCONVERSION" | "IFCMAPCONVERSIONSCALED" => Some(IfcType::IfcMapConversion),
-        "IFCPROJECTEDCRS" => Some(IfcType::IfcProjectedCRS),
-        "IFCPROPERTYSET" => Some(IfcType::IfcPropertySet),
-        "IFCSITE" => Some(IfcType::IfcSite),
-        _ => None,
+    // Scaled's first eight attributes have the base conversion layout.
+    if keyword_eq(type_name, "IFCMAPCONVERSION")
+        || keyword_eq(type_name, "IFCMAPCONVERSIONSCALED")
+    {
+        return Some(IfcType::IfcMapConversion);
     }
+    if keyword_eq(type_name, "IFCPROJECTEDCRS") {
+        return Some(IfcType::IfcProjectedCRS);
+    }
+    if keyword_eq(type_name, "IFCPROPERTYSET") {
+        return Some(IfcType::IfcPropertySet);
+    }
+    if keyword_eq(type_name, "IFCSITE") {
+        return Some(IfcType::IfcSite);
+    }
+    None
 }
 
 /// Reuse candidates from the geometry scan, avoiding the remaining whole-file

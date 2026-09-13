@@ -47,7 +47,7 @@ export const ALL_SKIPPED = 'all-skipped';
  */
 export function classifyExecuted(parsed) {
   if (parsed.failed > 0) {
-    return { kind: ASSERTION_FAILURE, passed: parsed.passed, failed: parsed.failed, total: parsed.total, evidence: parsed.evidence ?? [] };
+    return { kind: ASSERTION_FAILURE, passed: parsed.passed, failed: parsed.failed, total: parsed.total, identities: parsed.identities, evidence: parsed.evidence ?? [] };
   }
   if (parsed.passed === 0) {
     return {
@@ -58,7 +58,7 @@ export function classifyExecuted(parsed) {
       evidence: [`runner executed zero of ${parsed.total} collected test(s) (all skipped)`],
     };
   }
-  return { kind: PASS, passed: parsed.passed, failed: parsed.failed, total: parsed.total, evidence: [] };
+  return { kind: PASS, passed: parsed.passed, failed: parsed.failed, total: parsed.total, identities: parsed.identities, evidence: [] };
 }
 
 /**

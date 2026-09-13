@@ -594,7 +594,7 @@ function finalize(
   pointCount: number,
 ): DecodedPointChunk {
   return {
-    positions: new Float32Array(positions),
+    positions: new Float32Array(positions), normalState: 'absent',
     colors: colors ? new Float32Array(colors) : undefined,
     intensities: intensities ? new Uint16Array(intensities) : undefined,
     classifications: classifications ? new Uint8Array(classifications) : undefined,

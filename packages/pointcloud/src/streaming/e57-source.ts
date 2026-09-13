@@ -494,7 +494,7 @@ function concatParts(
     off += p.count;
   }
   return {
-    positions,
+    positions, normalState: 'absent',
     colors,
     intensities,
     classifications,

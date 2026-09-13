@@ -7,9 +7,8 @@
  * and get the camera back home.
  */
 
-import { Move3D } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
-import { Select, Walk, Annotate, Measure, Section, Home } from '@/icons';
+import { Select, Walk, Annotate, Measure, Section, Home, Reposition } from '@/icons';
 import { useViewerStore } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
@@ -26,7 +25,7 @@ export function HomeTab() {
   return (
     <>
       <RibbonGroup label="Tools">
-        <RibbonLargeButton icon={Move3D} label="Reposition" tooltip="Reposition models and pointclouds" onClick={() => openRepositionModels()} />
+        <RibbonLargeButton icon={Reposition} label="Reposition" tooltip="Reposition models and pointclouds" onClick={() => openRepositionModels()} />
         <RibbonLargeButton
           icon={Select}
           label="Select"

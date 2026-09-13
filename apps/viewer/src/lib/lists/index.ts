@@ -15,6 +15,7 @@ export type {
   DiscoveredColumns,
   EntityAttribute,
   ListGrouping,
+  ListModelTagScope,
 } from '@ifc-lite/lists';
 export {
   ENTITY_ATTRIBUTES,

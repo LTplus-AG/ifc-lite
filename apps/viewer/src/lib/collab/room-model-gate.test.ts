@@ -3,14 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Regression: resolving a room edit against the ROOM's store is only safe when
- * the edit is ON the room's model. Store selection and the room gate are one
- * decision, not two.
+ * Regression: resolving a room edit against a ROOM model's store is only safe
+ * when the edit is ON that room model. Store selection and the room gate are
+ * one decision, not two.
  *
- * `room-model-target.test.ts` pins the first half — `roomStore` must name the
- * room's model rather than the active one. This file pins the half that makes
- * that safe, because getting the store right and the subject wrong is *worse*
- * than the bug it replaced:
+ * `room-model-target.test.ts` pins the first half — the resolvers must name
+ * the room's models rather than the active one. This file pins the half that
+ * makes that safe, because getting the store right and the subject wrong is
+ * *worse* than the bug it replaced:
  *
  *   - resolving against the user's OWN store yields a path in their own id
  *     space (`/MyWindow`). That path does not exist in the room's document, so
@@ -22,9 +22,11 @@
  *     made on their PRIVATE model is written onto an unrelated peer's entity,
  *     for everyone.
  *
- * So every path that resolves through `roomStore` must first establish that the
- * model being edited IS the room's — which is what `roomStoreFor` does, as a
- * single call the caller cannot half-perform.
+ * So every path that resolves a room store must first establish that the
+ * model being edited IS a room model — which is what `roomStoreFor` does, as a
+ * single call the caller cannot half-perform. Inbound, the same property holds
+ * one step earlier: `roomEntityTargetForPath` names the model from the path's
+ * slot and returns no store for a path outside the room's slots (#4444).
  *
  * The mechanism is exercised against the real collab document and the real
  * `mutation-bridge` (`pathForEntity`, `mirrorPlacement`), not a re-statement of
@@ -47,16 +49,12 @@ import {
   USD_XFORMOP,
   PROPERTY_TYPE_NAMES,
 } from '@ifc-lite/collab';
-import type { CollabSession } from '@ifc-lite/collab';
+import type { CollabSession, ModelSlotRef } from '@ifc-lite/collab';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import {
-  mirrorPlacement,
-  pathForEntity,
-  registerEntityMaps,
-  type CollabDocApi,
-} from './mutation-bridge.js';
-import { roomStore, roomStoreFor, type RoomModelTargetState } from './room-model-target.js';
+import { mirrorPlacement, type CollabDocApi } from './mutation-bridge.js';
+import { pathForEntity, registerEntityMaps } from './entity-paths.js';
+import { roomEntityTargetForPath, roomStoreFor, type RoomModelTargetState } from './room-model-target.js';
 import type { FederatedModel } from '../../store/types.js';
 
 /** Minimal CollabDocApi over the real doc helpers, as `collabSlice` wires it. */
@@ -88,7 +86,7 @@ function fakeSession(doc: ReturnType<typeof createCollabDoc>): CollabSession {
   return { doc, transact: (fn: () => void) => doc.transact(fn) } as unknown as CollabSession;
 }
 
-/** A store whose expressId↔path maps are pre-registered (IFCX-origin shape). */
+/** A store whose expressId↔path maps are the injected ones (an IFCX-origin store). */
 function storeWithPaths(idToPath: Map<number, string>): IfcDataStore {
   const store = {} as IfcDataStore;
   const pathToId = new Map<string, number>();
@@ -101,11 +99,12 @@ function model(id: string, store: IfcDataStore): FederatedModel {
   return { id, name: id, ifcDataStore: store } as unknown as FederatedModel;
 }
 
-const ROOM_MODEL_ID = 'room:r1';
+const ROOM_MODEL_ID = 'room:r1:m0';
 const OWN_MODEL_ID = 'my-file.ifc';
+const SLOT_M0: ModelSlotRef = { slotId: 'm0', pathPrefix: '/m0' };
 /** The one expressId that means something different in each model. */
 const SHARED_ID = 2;
-const ROOM_PATH = '/OwnerWallB';
+const ROOM_PATH = '/m0/OwnerWallB';
 const OWN_PATH = '/MyWindow';
 
 describe('room edits are gated on the room model, not just resolved against it', () => {
@@ -129,9 +128,9 @@ describe('room edits are gated on the room model, not just resolved against it',
 
     // The two-click state: joined a room, then loaded and selected own file.
     state = {
-      collabRoomModelId: ROOM_MODEL_ID,
+      collabRoomModels: new Map([[ROOM_MODEL_ID, SLOT_M0]]),
       // A live session: `startCollab` sets this in the same `set()` call as
-      // `collabRoomModelId`, before any await — see room-model-target.ts.
+      // `collabRoomModels`, before any await — see room-model-target.ts.
       collabRoomId: 'r1',
       activeModelId: OWN_MODEL_ID,
       models: new Map([
@@ -162,13 +161,13 @@ describe('room edits are gated on the room model, not just resolved against it',
   });
 
   /**
-   * The corruption, run for real: resolve through `roomStore` with no gate —
+   * The corruption, run for real: resolve the room store with no gate —
    * exactly what an ungated `collabTranslateEntity` / `collabRotateEntity` /
    * `readCollabPlacement` does — while the user edits their PRIVATE model.
    * A peer's wall moves.
    */
   it('ungated: an edit on the user’s private model overwrites a peer’s entity', () => {
-    const ungated = roomStore(state);
+    const ungated = state.models.get(ROOM_MODEL_ID)?.ifcDataStore;
     assert.ok(ungated, 'the room store resolves regardless of which model is edited');
     mirrorPlacement(api, session, ungated, SHARED_ID, { location: [9, 9, 9] });
     assert.deepEqual(
@@ -184,7 +183,7 @@ describe('room edits are gated on the room model, not just resolved against it',
    */
   it('gated: an edit on the user’s private model resolves no store, and the room is untouched', () => {
     const store = roomStoreFor(state, OWN_MODEL_ID);
-    assert.equal(store, null, 'the user’s own model is not the room’s model');
+    assert.equal(store, null, 'the user’s own model is not a room model');
     // The caller returns here. Nothing is written.
     assert.deepEqual(getEntityPlacement(doc, ROOM_PATH)?.location, [0, 0, 0]);
   });
@@ -197,15 +196,24 @@ describe('room edits are gated on the room model, not just resolved against it',
   });
 
   /**
-   * Off a session there is no room model id, so the gate must reduce to the
+   * Inbound is gated one step earlier, by the path (#4444): a peer edit at a
+   * room path names the room model; the user's own path names nothing.
+   */
+  it('inbound: a room path resolves the room model, a path outside every slot resolves nothing', () => {
+    assert.deepEqual(roomEntityTargetForPath(state, ROOM_PATH), { modelId: ROOM_MODEL_ID, store: roomModelStore });
+    assert.equal(roomEntityTargetForPath(state, OWN_PATH), null);
+  });
+
+  /**
+   * Off a session there are no room models, so the gate must reduce to the
    * pre-existing behaviour: the active model is the subject and its store is
    * the top-level one. A single-model session must not change at all.
    */
-  it('with no room model id, reduces to the pre-existing active-model behaviour', () => {
+  it('with no room models, reduces to the pre-existing active-model behaviour', () => {
     // OFF a session entirely — `collabRoomId: null` too — is what "no room
-    // model id" means pre-existing-behaviour-wise. See the next test for the
-    // DIFFERENT (fail-closed) case: a null id WHILE a session is live.
-    const solo: RoomModelTargetState = { ...state, collabRoomModelId: null, collabRoomId: null };
+    // models" means pre-existing-behaviour-wise. See the next test for the
+    // DIFFERENT (fail-closed) case: an empty map WHILE a session is live.
+    const solo: RoomModelTargetState = { ...state, collabRoomModels: new Map(), collabRoomId: null };
     assert.equal(roomStoreFor(solo, OWN_MODEL_ID), ownModelStore);
     assert.equal(roomStoreFor(solo, ROOM_MODEL_ID), null);
   });
@@ -214,27 +222,29 @@ describe('room edits are gated on the room model, not just resolved against it',
    * MAJOR (CodeRabbit CLI, PR #2706 review): `ShareDialog` awaits
    * `mintRoomToken()` and does not re-check cancellation before calling
    * `startCollab`. If the last model is removed during that await,
-   * `startCollab` runs with `activeModelId === null` and records a null
-   * `collabRoomModelId` — WHILE `collabRoomId` is already set (a live
-   * session). The old `roomModelIdOf` could not tell this apart from "no
-   * session" and fell back to `activeModelId`, which would target whatever
-   * the user loads next. Must fail closed instead: no store, for any model.
+   * `startCollab` runs with nothing to seed and records an empty
+   * `collabRoomModels` — WHILE `collabRoomId` is already set (a live
+   * session). The old resolver could not tell this apart from "no session"
+   * and fell back to `activeModelId`, which would target whatever the user
+   * loads next. Must fail closed instead: no store, for any model, any path.
    */
-  it('a live session with no room model id (removed mid-mint) fails closed, never falls back to active', () => {
-    const raced: RoomModelTargetState = { ...state, collabRoomModelId: null, collabRoomId: 'r1' };
+  it('a live session with no room models (removed mid-mint) fails closed, never falls back to active', () => {
+    const raced: RoomModelTargetState = { ...state, collabRoomModels: new Map(), collabRoomId: 'r1' };
     assert.equal(roomStoreFor(raced, OWN_MODEL_ID), null);
     assert.equal(roomStoreFor(raced, ROOM_MODEL_ID), null);
-    assert.equal(roomStore(raced), null, 'must not silently resolve to the active model’s store');
+    assert.equal(roomEntityTargetForPath(raced, ROOM_PATH), null, 'must not silently resolve to the active model’s store');
+    assert.equal(roomEntityTargetForPath(raced, OWN_PATH), null);
   });
 
   /**
-   * A recipient whose `room:<roomId>` is named but not yet reconstructed: the
-   * gate says "the room's model" but there is no store to resolve. The answer
-   * must be "no store", never the user's own.
+   * A recipient whose `room:<roomId>:<slot>` is named but not yet
+   * reconstructed: the gate says "a room model" but there is no store to
+   * resolve. The answer must be "no store", never the user's own.
    */
   it('the room model is named but unregistered: no store, not the user’s', () => {
     const pending: RoomModelTargetState = { ...state, models: new Map() };
     assert.equal(roomStoreFor(pending, ROOM_MODEL_ID), null);
     assert.equal(roomStoreFor(pending, OWN_MODEL_ID), null);
+    assert.equal(roomEntityTargetForPath(pending, ROOM_PATH), null);
   });
 });

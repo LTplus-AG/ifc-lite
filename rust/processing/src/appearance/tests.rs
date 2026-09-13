@@ -58,6 +58,7 @@ fn request(products: Vec<u32>) -> AppearanceRequest {
             offset: [0.25, 0.5],
             rotation_radians: 0.,
         },
+        face_masks: Vec::new(),
     }
 }
 fn wire(value: &A) -> Value {
@@ -78,7 +79,8 @@ fn step(value: &Value) -> String {
     match value {
         Value::Object(value) if value.contains_key("typed") => {
             let typed = &value["typed"];
-            format!("{}({})", typed["type"].as_str().unwrap(), step(&typed["value"]))
+            // Mirrors the host writer, which upper-cases the STEP type keyword.
+            format!("{}({})", typed["type"].as_str().unwrap().to_uppercase(), step(&typed["value"]))
         },
         Value::Null => "$".into(),
         Value::Array(values) => format!(

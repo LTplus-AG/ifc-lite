@@ -17,13 +17,8 @@
 //! reaches them comes from the user's file, so a permissive sibling here would
 //! be a footgun with no consumer.
 //!
-//! The crate still HAS one, though, and this module does not replace it:
-//! `schema_convert.rs`'s `split_top_level` (`schema_convert.rs:203`) is the same
-//! quote/depth/comma state machine in its older `bytes[i] as char` form, and its
-//! callers `trim_attributes` and `remap_attrs_by_name` both rewrite records by
-//! pairing values with slots by POSITION — the failure above, in another file.
-//! Out of scope for #4125, which is the three by-index writers; tracked in
-//! LTplus-AG/ifc-lite#4200.
+//! Schema conversion uses this same splitter too: trimming and by-name remaps
+//! must not build a second, permissive position-addressable array (#4200).
 //!
 //! The TypeScript twin is `packages/export/src/step-argument-parser.ts`'s
 //! `splitTopLevelStepArguments`. The two cannot share code, so the inputs both

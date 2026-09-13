@@ -17,8 +17,8 @@
  * The last two cases are the other direction — what the report must NOT claim.
  * A record whose line the export withholds must not also be reported as written,
  * which is why the report is buffered rather than pushed where it is produced;
- * and the report must not describe the written line at all, because a
- * cross-schema export rewrites it after the buffer is flushed (#4213).
+ * and a cross-schema export must abort before partially converting a record
+ * whose positional slots were refused (#4200).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -178,31 +178,13 @@ END-ISO-10303-21;`;
 
 const CHIMNEY_ID = 50;
 
-describe('the refusal report does not claim how the record was written', () => {
-  it('a cross-schema export rewrites the record the refusal is about', async () => {
-    // Before #4213 the warning opened "was written exactly as the source file
-    // has it", produced by `applySourceLineMutationsReported` — which runs
-    // BEFORE `writeSourceEntityLines` hands the line to `convertStepLine`. On
-    // this path the conversion renames the type, so the sentence was false in
-    // exactly the case a caller needs it: it is asking what became of an edit
-    // the export dropped.
+describe('cross-schema refusal is transactional (#4200)', () => {
+  it('aborts instead of renaming or proxying a record whose slots were refused', async () => {
     const store = await parse(CROSS_SCHEMA_IFC);
     const { view, editor } = newSession(store);
     editor.setAttribute(CHIMNEY_ID, 'Description', 'NEWDESC');
 
-    const result = new StepExporter(store, view).export({ schema: 'IFC2X3' });
-    const text = new TextDecoder().decode(result.content);
-
-    // The edit really was dropped, and really was reported.
-    expect(text).not.toContain('NEWDESC');
-    expect(refusalReportsFor(result.stats.warnings, CHIMNEY_ID)).toHaveLength(1);
-
-    // The record went out under a different class than the source gave it, so
-    // no warning about it may say it went out as the source has it.
-    expect(text).toMatch(new RegExp(`^#${CHIMNEY_ID}\\s*=\\s*IFCBUILDINGELEMENTPROXY`, 'm'));
-    expect(text).not.toMatch(new RegExp(`^#${CHIMNEY_ID}\\s*=\\s*IFCCHIMNEY`, 'm'));
-    for (const warning of result.stats.warnings.filter((w) => w.includes(`#${CHIMNEY_ID}`))) {
-      expect(warning).not.toContain('exactly as the source');
-    }
+    expect(() => new StepExporter(store, view).export({ schema: 'IFC2X3' }))
+      .toThrow(/Schema conversion refused an invalid STEP argument list/);
   });
 });

@@ -9,8 +9,7 @@
  * `useWorkspacePanelControls`, shared with the classic toolbar.
  */
 
-import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring } from '@/icons';
-import { Box as ZoneBox, FileWarning } from 'lucide-react';
+import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring, Zones, LoadReport, Chart, Document } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import {
@@ -85,7 +84,7 @@ export function AnalyzeTab() {
         {/* Location zones (#1810), reachable from a toolbar for the first time
             (#2508): the ActivityBar rail was its only entry point. */}
         <RibbonLargeButton
-          icon={ZoneBox}
+          icon={Zones}
           label="Zones"
           tooltip="Location zones (sections / takt areas)"
           active={activeWorkspacePanels.has('zones')}
@@ -93,7 +92,7 @@ export function AnalyzeTab() {
         />
         {/* Per-model load report (#3927): actionable geometry warnings. */}
         <RibbonLargeButton
-          icon={FileWarning}
+          icon={LoadReport}
           label="Load Report"
           tooltip="Per-model load report and geometry warnings"
           active={activeWorkspacePanels.has('loadReport')}
@@ -117,6 +116,20 @@ export function AnalyzeTab() {
           tooltip="Construction schedule (Gantt)"
           active={activeWorkspacePanels.has('gantt')}
           onClick={() => handleToggleBottomPanel('gantt')}
+        />
+        <RibbonLargeButton
+          icon={Chart}
+          label="Charts"
+          tooltip="Charts bound to the model — click a bar to select it in 3D"
+          active={activeWorkspacePanels.has('charts')}
+          onClick={() => handleToggleBottomPanel('charts')}
+        />
+        <RibbonLargeButton
+          icon={Document}
+          label="Document"
+          tooltip="A page over the model — text with live labels, logos, charts, BCF topics — printed to PDF"
+          active={activeWorkspacePanels.has('document')}
+          onClick={() => handleToggleBottomPanel('document')}
         />
         <RibbonLargeButton
           icon={Script}

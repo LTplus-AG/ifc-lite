@@ -30,6 +30,7 @@ describe('readEntityArgs tolerates STEP trivia between the type name and "("', (
     ['space', "#1=IFCLOCALPLACEMENT ($,#9);"],
     ['block comment', "#1=IFCLOCALPLACEMENT/* c */($,#9);"],
     ['whitespace and comment interleaved', "#1=IFCLOCALPLACEMENT /* a */\t($,#9);"],
+    ['whitespace around positional values', "#1=IFCLOCALPLACEMENT( $ , #9 );"],
   ])('reads the arguments through %s', (_name, record) => {
     const { store: s, index } = store(record);
     expect(readEntityArgs(s, index, 1)).toEqual({ type: 'IFCLOCALPLACEMENT', args: ['$', '#9'] });
@@ -42,6 +43,11 @@ describe('readEntityArgs tolerates STEP trivia between the type name and "("', (
     ['"//" is not a STEP comment', "#1=IFCLOCALPLACEMENT//x\n($,#9);"],
   ])('still refuses %s', (_name, record) => {
     const { store: s, index } = store(record);
+    expect(readEntityArgs(s, index, 1)).toBeNull();
+  });
+
+  it('refuses a malformed binary before exposing position-addressable slots (#4200)', () => {
+    const { store: s, index } = store('#1=IFCLOCALPLACEMENT("01,23",#9);');
     expect(readEntityArgs(s, index, 1)).toBeNull();
   });
 });

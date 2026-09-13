@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::style::fill::extract_color_from_fill_area_style;
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
+use ifc_lite_core::{keyword_eq, AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
 use std::collections::HashMap;
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -25,7 +25,7 @@ pub(super) fn build_styled_item_index(content: &[u8], decoder: &mut EntityDecode
     let mut wrappers: HashMap<u32, Vec<u32>> = HashMap::new();
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name != "IFCPRESENTATIONSTYLEASSIGNMENT" {
+        if !keyword_eq(type_name, "IFCPRESENTATIONSTYLEASSIGNMENT") {
             continue;
         }
         let Ok(entity) = decoder.decode_at_with_id(id, start, end) else { continue };
@@ -40,7 +40,7 @@ pub(super) fn build_styled_item_index(content: &[u8], decoder: &mut EntityDecode
     let mut out: HashMap<u32, Vec<u32>> = HashMap::new();
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name != "IFCSTYLEDITEM" {
+        if !keyword_eq(type_name, "IFCSTYLEDITEM") {
             continue;
         }
         let Ok(entity) = decoder.decode_at_with_id(id, start, end) else { continue };

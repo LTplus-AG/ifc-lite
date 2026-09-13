@@ -294,3 +294,19 @@ fn sharded_column_discovery_labels_a_legacy_geometry_job_with_its_base_type() {
         discovery.buffered_jobs
     );
 }
+
+/// The skip set holds uppercase names and the keyword is whatever case the
+/// file wrote: an uppercase keyword is one hash lookup, a recased one falls
+/// to the case-folded scan, and neither spelling escapes the filter.
+#[test]
+fn a_disabled_type_is_skipped_in_any_keyword_case() {
+    let disabled: rustc_hash::FxHashSet<String> =
+        ["IFCSPACE".to_string(), "IFCOPENINGELEMENT".to_string()].into_iter().collect();
+    for kw in ["IFCSPACE", "ifcspace", "IfcSpace", "IfcOpeningElement"] {
+        assert!(is_disabled(&disabled, kw), "{kw} is in the skip set");
+    }
+    for kw in ["IFCWALL", "ifcwall", "IFCSPACETYPE"] {
+        assert!(!is_disabled(&disabled, kw), "{kw} is not in the skip set");
+    }
+    assert!(!is_disabled(&rustc_hash::FxHashSet::default(), "ifcspace"), "empty set skips nothing");
+}

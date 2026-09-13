@@ -81,6 +81,12 @@ export {
   type WallExtractionResult,
 } from './in-store/extract-walls.js';
 export {
+  storeyPlanFrame,
+  toStoreyLocal,
+  fromStoreyLocal,
+  type StoreyPlanFrame,
+} from './in-store/storey-plan-frame.js';
+export {
   generateSpacesFromWalls,
   offsetRoomFootprint,
   GENERATED_SPACE_OBJECTTYPE,

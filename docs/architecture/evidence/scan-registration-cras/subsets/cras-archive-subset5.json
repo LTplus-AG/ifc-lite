@@ -1,0 +1,106 @@
+{
+  "archive": {
+    "name": "craslabannotated.zip",
+    "bytes": 4267281425,
+    "member": "CRASLAB_annotated.asc",
+    "md5": "e5ecedab8f2a1d1f91861a3aec028a72"
+  },
+  "complete_rows": 584701977,
+  "declared_points": 584701977,
+  "boxes": {
+    "cras-room-a-corridor-s24": {
+      "min": [
+        7.5,
+        -4.5,
+        -3.0
+      ],
+      "max": [
+        10.75,
+        0.5,
+        3.5
+      ],
+      "stride": 24,
+      "points_inside": 11160690,
+      "points_kept": 465029,
+      "bounds_kept": [
+        [
+          7.5005,
+          -4.1385,
+          -1.2725
+        ],
+        [
+          10.7495,
+          0.4995,
+          1.4005
+        ]
+      ],
+      "labels_kept": {
+        "0": 51487,
+        "1": 119589,
+        "2": 90575,
+        "3": 179672,
+        "4": 23706
+      },
+      "ply": {
+        "file": "cras-room-a-corridor-s24.ply",
+        "bytes": 14881358,
+        "sha256": "977927015c581c52b7adf93957381f3d0c7e64a83bdcc553b3c59b9fbf30fbb2"
+      }
+    },
+    "cras-wall-1273-strip-s36": {
+      "min": [
+        10.75,
+        10.5,
+        -3.0
+      ],
+      "max": [
+        18.5,
+        11.5,
+        3.5
+      ],
+      "stride": 36,
+      "points_inside": 22436781,
+      "points_kept": 623244,
+      "bounds_kept": [
+        [
+          10.7505,
+          10.5005,
+          -1.2025
+        ],
+        [
+          18.2025,
+          11.4995,
+          1.5635
+        ]
+      ],
+      "labels_kept": {
+        "0": 50856,
+        "1": 112032,
+        "2": 19851,
+        "3": 291502,
+        "4": 33319,
+        "5": 14999,
+        "6": 16966,
+        "7": 370,
+        "8": 5227,
+        "14": 5796,
+        "15": 24399,
+        "17": 181,
+        "18": 5,
+        "21": 6413,
+        "22": 2524,
+        "29": 1270,
+        "30": 17832,
+        "33": 19702
+      },
+      "ply": {
+        "file": "cras-wall-1273-strip-s36.ply",
+        "bytes": 19944240,
+        "sha256": "f5124f132025d16934bdea65888cfc7e400b576d0623fdb31c1b7e9131b3b6bc"
+      }
+    }
+  },
+  "seconds": 209.5,
+  "registration": null,
+  "normals": false
+}

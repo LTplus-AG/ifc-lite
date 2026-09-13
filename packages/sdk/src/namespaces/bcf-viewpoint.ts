@@ -70,7 +70,23 @@ export interface ViewpointOptions {
   components?: {
     selection?: Array<{ GlobalId: string }>;
     visibility?: {
-      defaultVisibility: boolean;
+      /**
+       * BCF's `<Visibility DefaultVisibility>` attribute, which is OPTIONAL
+       * in the schema and defaults to **true**. Omitting it therefore means
+       * "everything is visible, and `exceptions` names what is HIDDEN" -- it
+       * is NOT a shorthand for isolation. A truthiness test on this field was
+       * wrong in both directions: it read an absent flag as isolation,
+       * inverting the spec, and with no exceptions to isolate it turned a
+       * caller who said nothing about visibility into a blank viewport.
+       *
+       * Pass `false` explicitly to isolate, in which case `exceptions` is the
+       * visible allowlist and an empty or absent list means an active
+       * isolation matching nothing (a blank viewport), not "no visibility
+       * channel" -- which is why the adapter forwards `exceptions ?? []` on
+       * that arm rather than `exceptions?.map(...)`: `@ifc-lite/bcf`'s
+       * `hasVisible` reads an `undefined` allowlist as "no isolation at all".
+       */
+      defaultVisibility?: boolean;
       exceptions?: Array<{ GlobalId: string }>;
     };
     coloring?: Array<{
@@ -101,7 +117,11 @@ export interface ExtractedViewpointState {
   };
   selectedGuids: string[];
   hiddenGuids: string[];
-  visibleGuids: string[];
+  // `null` = no isolation channel in the captured viewpoint (show
+  // everything); a non-null array -- EMPTY included -- = isolation WAS
+  // active, down to "matched nothing". See `@ifc-lite/bcf`'s
+  // `extractViewpointState` for the full rationale.
+  visibleGuids: string[] | null;
   coloredGuids: Array<{ color: string; guids: string[] }>;
 }
 
@@ -162,6 +182,19 @@ export function toVec3(t: [number, number, number]): { x: number; y: number; z: 
 
 export function toTuple(p: { x: number; y: number; z: number }): [number, number, number] {
   return [p.x, p.y, p.z];
+}
+
+/** @ifc-lite/bcf's object-shaped `ViewerBounds`. */
+export type BcfViewerBounds = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
+
+/** Accept either the SDK's tuple `AABB` or @ifc-lite/bcf's own object-shaped
+ * `ViewerBounds` and return the library shape. The tuple form otherwise
+ * reaches the library's `bounds.min.x` reads as `undefined` -> `NaN`. */
+export function toLibraryBounds(bounds: AABB | BcfViewerBounds): BcfViewerBounds {
+  return {
+    min: Array.isArray(bounds.min) ? toVec3(bounds.min) : bounds.min,
+    max: Array.isArray(bounds.max) ? toVec3(bounds.max) : bounds.max,
+  };
 }
 
 /** Names the fields missing from a `ViewpointOptions.camera` (or the whole

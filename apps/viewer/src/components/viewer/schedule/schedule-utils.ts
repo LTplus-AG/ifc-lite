@@ -240,25 +240,35 @@ export function taskBarGeometry(
  */
 /**
  * Build a standalone `IfcWorkPlan` container to add alongside a generated
- * `IfcWorkSchedule`.
+ * `IfcWorkSchedule`, grouping it via `childScheduleGlobalIds`.
  *
- * Grouping an `IfcWorkPlan` around its `IfcWorkSchedule`s doesn't round-trip
- * yet on either relation the schema allows: `schedule-extractor.ts`'s
- * `IfcRelNests` pass only resolves a nesting parent through the task table
- * (a plan nesting a schedule is dropped), and its `IfcRelAssignsToControl`
- * pass has the same task-only blindness (a schedule assigned to a plan that
- * way is dropped too). So this plan intentionally carries no
- * `taskGlobalIds` and is emitted as an unrelated top-level entity — the
- * schema-visible container the issue asked for, without a relation whose
- * read path would silently drop it.
+ * `schedule-extractor.ts` now resolves an `IfcWorkPlan` nesting an
+ * `IfcWorkSchedule` on both relations the schema allows (`IfcRelNests` and
+ * `IfcRelAssignsToControl`), and `schedule-serializer.ts` emits `IFCRELNESTS`
+ * for any plan whose `childScheduleGlobalIds` is non-empty — so the grouping
+ * this builds here now round-trips instead of being silently dropped.
+ *
+ * `scheduleGlobalIds` is always assigned into `childScheduleGlobalIds` as an
+ * array, never left `undefined`, matching the extractor's own convention
+ * (`schedule-extractor.ts`'s Pass 4): this function is a full producer of a
+ * `WorkScheduleInfo`, so it always knows definitively whether the plan has
+ * schedules to group, the same way the extractor always knows once a file
+ * has been walked. An empty array here means "deliberately grouped
+ * nothing", not "grouping wasn't attempted" — there is no "not checked"
+ * state for a plan this function constructs from scratch.
  */
-export function buildWorkPlanInfo(seed: string, name: string): WorkScheduleInfo {
+export function buildWorkPlanInfo(
+  seed: string,
+  name: string,
+  scheduleGlobalIds: string[] = [],
+): WorkScheduleInfo {
   return {
     expressId: 0,
     globalId: deterministicGlobalId(`gen-workplan|${seed}`),
     kind: 'WorkPlan',
     name,
     taskGlobalIds: [],
+    childScheduleGlobalIds: [...new Set(scheduleGlobalIds.filter(Boolean))],
   };
 }
 

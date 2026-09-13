@@ -232,11 +232,12 @@ export function rememberFederationIdentity(
  * a model unregister it from the federation registry in the same breath
  * (`removeModel` → `unregisterModel`, `clearAllModels` → `clear()`), so the
  * caller's fallback range search would simply find nothing. That holds only for
- * a model the registry ever HELD. The collab room model is put into `models` by
- * `collabSlice`'s `upsertModel({ id: 'room:<id>', idOffset: 0 })` and never goes
- * through `registerModelOffset`, so `unregisterModel` is a no-op on it and there
- * is nothing to forget — while a normally loaded file's registered range still
- * covers the same low numbers. Leaving a room keeps the published result
+ * a model the registry ever HELD. The collab room model used to be put into
+ * `models` by `collabSlice`'s `upsertModel({ id: 'room:<id>', idOffset: 0 })`
+ * without `registerModelOffset` (room models register like any added file
+ * since #4444), so `unregisterModel` was a no-op on it and there was nothing
+ * to forget — while a normally loaded file's registered range still covered
+ * the same low numbers. Leaving a room keeps the published result
  * (`removeModel` ends the clash PRESENTATION, it does not clear the result), so
  * the rows stayed clickable and range-searched into a different file, isolating
  * and colouring two of ITS elements with no error at all (measured in review).

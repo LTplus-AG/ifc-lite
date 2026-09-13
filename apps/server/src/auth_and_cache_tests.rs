@@ -45,13 +45,14 @@ async fn test_state(label: &str) -> AppState {
     }
 }
 
-/// GET `uri` with an optional `Authorization: Bearer <token>` header.
-async fn get_with_token(
+/// `method` `uri` with an optional `Authorization: Bearer <token>` header.
+async fn request_with_token(
     state: &AppState,
+    method: &str,
     uri: &str,
     token: Option<&str>,
 ) -> axum::response::Response {
-    let mut builder = Request::builder().method("GET").uri(uri);
+    let mut builder = Request::builder().method(method).uri(uri);
     if let Some(t) = token {
         builder = builder.header(header::AUTHORIZATION, format!("Bearer {t}"));
     }
@@ -59,6 +60,38 @@ async fn get_with_token(
     use tower::ServiceExt;
     build_router(state.clone()).oneshot(request).await.unwrap()
 }
+
+/// GET `uri` with an optional `Authorization: Bearer <token>` header.
+async fn get_with_token(
+    state: &AppState,
+    uri: &str,
+    token: Option<&str>,
+) -> axum::response::Response {
+    request_with_token(state, "GET", uri, token).await
+}
+
+/// Every route registered inside the bearer-token layer in `build_router`,
+/// as (method, path). Hand-maintained and deliberately exhaustive: the older
+/// tests below assert auth at ONE path, so a route added outside the layer,
+/// the whole failure mode the layer exists to prevent, would fail nothing.
+/// Extend this when `build_router` gains a protected route. Nothing here can
+/// notice a route that was added to the router and not to this list; the
+/// list is the reviewer's checklist, not a derivation.
+const PROTECTED_ROUTES: &[(&str, &str)] = &[
+    ("POST", "/api/v1/parse"),
+    ("POST", "/api/v1/parse/stream"),
+    ("POST", "/api/v1/parse/parquet-stream"),
+    ("POST", "/api/v1/parse/metadata"),
+    ("POST", "/api/v1/parse/parquet"),
+    ("POST", "/api/v1/parse/parquet/optimized"),
+    ("GET", "/api/v1/parse/data-model/some-key"),
+    ("GET", "/api/v1/parse/symbolic/some-key"),
+    ("GET", "/api/v1/cache/some-key"),
+    ("DELETE", "/api/v1/cache/some-key"),
+    ("GET", "/api/v1/cache/check/some-hash"),
+    ("GET", "/api/v1/cache/geometry/some-hash"),
+    ("GET", "/api/v1/metrics"),
+];
 
 /// A minimal but structurally complete `ParseResponse`, built from the
 /// `Default` impls of its fields (all of which derive `Default` except
@@ -149,6 +182,41 @@ async fn auth_accepts_correct_token_when_token_configured() {
     // matching-token path actually runs `next.run(request)`.
     let response = get_with_token(&state, "/api/v1/cache/missing-key", Some("s3cr3t")).await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+// ---------------------------------------------------------------------
+// Auth: every protected route, not just one.
+// ---------------------------------------------------------------------
+
+/// With a token configured, every protected route is a 401 without the
+/// header and something OTHER than 401 with it. A typo in `PROTECTED_ROUTES`
+/// fails rather than passes: `Router::layer` does not wrap the fallback, so
+/// an unregistered path is a 404 without the token too, never the 401 the
+/// first half demands. (Several handlers legitimately 404 WITH the token -
+/// a cache miss, metrics while disabled - so the second half asserts only
+/// that the layer let the request through.)
+/// Regression for #4582.
+#[tokio::test]
+async fn every_protected_route_is_behind_the_bearer_layer() {
+    let mut state = test_state("auth-every-route").await;
+    let mut config = (*state.config).clone();
+    config.api_token = Some("s3cr3t".to_string());
+    state.config = Arc::new(config);
+
+    for (method, path) in PROTECTED_ROUTES {
+        let denied = request_with_token(&state, method, path, None).await;
+        assert_eq!(
+            denied.status(),
+            StatusCode::UNAUTHORIZED,
+            "{method} {path} answered without a bearer token"
+        );
+        let allowed = request_with_token(&state, method, path, Some("s3cr3t")).await;
+        assert_ne!(
+            allowed.status(),
+            StatusCode::UNAUTHORIZED,
+            "{method} {path} refused the configured token"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------

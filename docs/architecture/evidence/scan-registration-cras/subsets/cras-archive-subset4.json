@@ -1,0 +1,92 @@
+{
+  "archive": {
+    "name": "craslabannotated.zip",
+    "bytes": 4267281425,
+    "member": "CRASLAB_annotated.asc",
+    "md5": "e5ecedab8f2a1d1f91861a3aec028a72"
+  },
+  "complete_rows": 584701977,
+  "declared_points": 584701977,
+  "boxes": {
+    "cras-window-1327933-N": {
+      "min": [
+        17.6,
+        7.2,
+        0.9
+      ],
+      "max": [
+        18.5,
+        7.75,
+        1.6
+      ],
+      "stride": 1,
+      "points_inside": 233386,
+      "points_kept": 233386,
+      "bounds_kept": [
+        [
+          17.6005,
+          7.2005,
+          0.9005
+        ],
+        [
+          18.1455,
+          7.7495,
+          1.5535
+        ]
+      ],
+      "labels_kept": {
+        "0": 1871,
+        "1": 51452,
+        "3": 132716,
+        "5": 47347
+      },
+      "ply": {
+        "file": "cras-window-1327933-N.ply",
+        "bytes": 7468780,
+        "sha256": "b023617917000670bb56ed3a97760b8916e8d4be53a289dc3dc9c46e6ce1ab96"
+      }
+    },
+    "cras-window-1327965-S": {
+      "min": [
+        17.6,
+        9.65,
+        0.9
+      ],
+      "max": [
+        18.5,
+        10.2,
+        1.6
+      ],
+      "stride": 1,
+      "points_inside": 117472,
+      "points_kept": 117472,
+      "bounds_kept": [
+        [
+          17.6005,
+          9.6505,
+          0.9005
+        ],
+        [
+          18.1865,
+          10.1995,
+          1.5555
+        ]
+      ],
+      "labels_kept": {
+        "0": 1774,
+        "1": 39806,
+        "3": 53123,
+        "5": 11533,
+        "14": 11236
+      },
+      "ply": {
+        "file": "cras-window-1327965-S.ply",
+        "bytes": 3759533,
+        "sha256": "bb2fe1d7dfb1774ab744754469946669fd892d4f7ee3de01183c0b0f8b413fe9"
+      }
+    }
+  },
+  "seconds": 227.5,
+  "registration": null,
+  "normals": false
+}

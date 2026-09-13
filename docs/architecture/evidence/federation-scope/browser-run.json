@@ -1,0 +1,285 @@
+{
+  "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "memberGuid": "0oTQ6V1VbChulreA_hfmUa",
+  "owner": {
+    "invite": "http://127.0.0.1:63650/?room=879b031bf82f&t=<redacted>",
+    "stats": {
+      "slots": [
+        "m0",
+        "m1"
+      ],
+      "entitiesPerSlot": {
+        "m0": 184,
+        "m1": 184
+      },
+      "refsPerSlot": {
+        "m0": 313,
+        "m1": 313
+      },
+      "geometryRecords": 626,
+      "seedMarker": {
+        "expected": 634,
+        "seeded": 634,
+        "failed": 0,
+        "abandoned": false,
+        "interrupted": false,
+        "at": "2026-09-12T07:37:19.239Z"
+      }
+    },
+    "members": [
+      {
+        "modelId": "eecf6c25-c6ba-43ad-97e0-f2bd91eebcb8",
+        "local": 35169,
+        "global": 35169,
+        "storedGlobalId": "0oTQ6V1VbChulreA_hfmUa",
+        "meshCount": 1,
+        "textureSize": null,
+        "texturePixel": null,
+        "textureBlobHash": null,
+        "textureRef": "textures/57cda64cead0869cd5f90dfebb024f4bd9a922aaea91d513de6fa3e949d88921.png"
+      },
+      {
+        "modelId": "08d72196-bf3c-46bd-bfd4-b677908ab339",
+        "local": 35169,
+        "global": 1114277,
+        "storedGlobalId": "0oTQ6V1VbChulreA_hfmUa",
+        "meshCount": 1,
+        "textureSize": null,
+        "texturePixel": null,
+        "textureBlobHash": null,
+        "textureRef": "textures/5c1940856c064a85f1f158cd8926524a4b4710f3afc189817da17a18fa084b25.png"
+      }
+    ],
+    "clipboardRead": true
+  },
+  "guest": {
+    "models": [
+      {
+        "id": "room:879b031bf82f:m0",
+        "slot": "m0",
+        "name": "AC20-FZK-Haus.ifc",
+        "idOffset": 0,
+        "maxExpressId": 184,
+        "meshes": 313,
+        "schemaVersion": "IFC5"
+      },
+      {
+        "id": "room:879b031bf82f:m1",
+        "slot": "m1",
+        "name": "AC20-FZK-Haus.ifc (2)",
+        "idOffset": 1000185,
+        "maxExpressId": 184,
+        "meshes": 313,
+        "schemaVersion": "IFC5"
+      }
+    ],
+    "members": [
+      {
+        "modelId": "room:879b031bf82f:m0",
+        "local": 47,
+        "global": 47,
+        "storedGlobalId": "/m0/0oTQ6V1VbChulreA_hfmUa",
+        "meshCount": 1,
+        "textureSize": [
+          8,
+          8
+        ],
+        "texturePixel": [
+          255,
+          0,
+          0
+        ],
+        "textureBlobHash": "e599ddffab970c2088b8d3f09e49812a",
+        "textureRef": null
+      },
+      {
+        "modelId": "room:879b031bf82f:m1",
+        "local": 47,
+        "global": 1000232,
+        "storedGlobalId": "/m1/0oTQ6V1VbChulreA_hfmUa",
+        "meshCount": 1,
+        "textureSize": [
+          8,
+          8
+        ],
+        "texturePixel": [
+          0,
+          0,
+          255
+        ],
+        "textureBlobHash": "96db23ff0cf2122003d891f069b9072a",
+        "textureRef": null
+      }
+    ],
+    "picks": {
+      "a": {
+        "selected": 47,
+        "lookup": {
+          "modelId": "room:879b031bf82f:m0",
+          "expressId": 47
+        },
+        "clicks": 13,
+        "hiddenOccluders": [
+          95
+        ]
+      },
+      "b": {
+        "selected": 1000232,
+        "lookup": {
+          "modelId": "room:879b031bf82f:m1",
+          "expressId": 47
+        },
+        "clicks": 13,
+        "hiddenOccluders": [
+          1000280
+        ]
+      }
+    },
+    "room": {
+      "slots": [
+        "m0",
+        "m1"
+      ],
+      "entitiesPerSlot": {
+        "m0": 184,
+        "m1": 184
+      },
+      "refsPerSlot": {
+        "m0": 313,
+        "m1": 313
+      },
+      "geometryRecords": 626,
+      "seedMarker": {
+        "expected": 634,
+        "seeded": 634,
+        "failed": 0,
+        "abandoned": false,
+        "interrupted": false,
+        "at": "2026-09-12T07:37:19.239Z"
+      }
+    }
+  },
+  "exports": [
+    {
+      "slot": "m0",
+      "filename": "AC20-FZK-Haus_export.ifcx",
+      "nodes": 111,
+      "entityPaths": 108,
+      "memberPath": "/0oTQ6V1VbChulreA_hfmUa"
+    },
+    {
+      "slot": "m1",
+      "filename": "AC20-FZK-Haus -2_export.ifcx",
+      "nodes": 111,
+      "entityPaths": 108,
+      "memberPath": "/0oTQ6V1VbChulreA_hfmUa"
+    }
+  ],
+  "rejoin": {
+    "models": [
+      {
+        "id": "room:879b031bf82f:m0",
+        "slot": "m0",
+        "name": "AC20-FZK-Haus.ifc",
+        "idOffset": 0,
+        "maxExpressId": 184,
+        "meshes": 313,
+        "schemaVersion": "IFC5"
+      },
+      {
+        "id": "room:879b031bf82f:m1",
+        "slot": "m1",
+        "name": "AC20-FZK-Haus.ifc (2)",
+        "idOffset": 1000185,
+        "maxExpressId": 184,
+        "meshes": 313,
+        "schemaVersion": "IFC5"
+      }
+    ],
+    "members": [
+      {
+        "modelId": "room:879b031bf82f:m0",
+        "local": 47,
+        "global": 47,
+        "storedGlobalId": "/m0/0oTQ6V1VbChulreA_hfmUa",
+        "meshCount": 1,
+        "textureSize": [
+          8,
+          8
+        ],
+        "texturePixel": [
+          255,
+          0,
+          0
+        ],
+        "textureBlobHash": "e599ddffab970c2088b8d3f09e49812a",
+        "textureRef": null
+      },
+      {
+        "modelId": "room:879b031bf82f:m1",
+        "local": 47,
+        "global": 1000232,
+        "storedGlobalId": "/m1/0oTQ6V1VbChulreA_hfmUa",
+        "meshCount": 1,
+        "textureSize": [
+          8,
+          8
+        ],
+        "texturePixel": [
+          0,
+          0,
+          255
+        ],
+        "textureBlobHash": "96db23ff0cf2122003d891f069b9072a",
+        "textureRef": null
+      }
+    ],
+    "picks": {
+      "a": {
+        "selected": 47,
+        "lookup": {
+          "modelId": "room:879b031bf82f:m0",
+          "expressId": 47
+        },
+        "clicks": 13,
+        "hiddenOccluders": [
+          95
+        ]
+      },
+      "b": {
+        "selected": 1000232,
+        "lookup": {
+          "modelId": "room:879b031bf82f:m1",
+          "expressId": 47
+        },
+        "clicks": 13,
+        "hiddenOccluders": [
+          1000280
+        ]
+      }
+    },
+    "room": {
+      "slots": [
+        "m0",
+        "m1"
+      ],
+      "entitiesPerSlot": {
+        "m0": 184,
+        "m1": 184
+      },
+      "refsPerSlot": {
+        "m0": 313,
+        "m1": 313
+      },
+      "geometryRecords": 626,
+      "seedMarker": {
+        "expected": 634,
+        "seeded": 634,
+        "failed": 0,
+        "abandoned": false,
+        "interrupted": false,
+        "at": "2026-09-12T07:37:19.239Z"
+      }
+    }
+  }
+}

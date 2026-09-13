@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { PdfFillAnnotationRequest, PdfFillAnnotationPlan } from './pdf/fill-plan-types';
-import type { MeshTransferRequest, MeshTransferPlan } from './scan/transfer-types';
+import type { PdfVectorPage, PreparedPdfVectorPage } from './pdf/vector-types';
+import type { MeshTransferRequest, MeshTransferPlan, TransferPointPayload } from './scan/transfer-types';
 import type { ScanRegistrationRequest, ScanRegistrationReport } from './scan/types';
 
 import type { IfcAttributeValue, NewEntity } from '@ifc-lite/mutations';
@@ -32,6 +33,16 @@ export interface AppearanceRequest {
   repeatS: boolean;
   repeatT: boolean;
   mapping: AppearanceMapping;
+  /** Reviewable surface targeting; only valid with `evaluatedOccurrence`. Each
+   * mask binds to the `surfaceFingerprint` an earlier plan reported for that
+   * product. A changed surface is an explicit exclusion, never a reused index. */
+  faceMasks?: AppearanceFaceMask[];
+}
+export interface AppearanceFaceMask {
+  productId: number;
+  surfaceFingerprint: string;
+  /** Source triangle ordinals of the product's evaluated surface. */
+  triangles: number[];
 }
 export interface AppearancePlan extends AppearanceEntityPlan {
   /** Original renderer provenance for opted-in occurrence-local Body conversions. */
@@ -41,6 +52,12 @@ export interface AppearancePlan extends AppearanceEntityPlan {
     sourcePositions?: number[]; sourceNormals?: number[];
     sourceOrigin?: [number, number, number]; sourceColor?: [number, number, number, number];
     rtcOffset?: [number, number, number];
+    /** Hex SHA-256 identity of the evaluated local surface; older runtimes omit it. */
+    surfaceFingerprint?: string;
+    /** Accepted ascending source triangle ordinals; absent for a whole-surface conversion. */
+    maskedTriangles?: number[];
+    /** The unmasked face set that keeps the source style under the same Body wrapper. */
+    retainedGeometryItemId?: number;
     sourceRemovedMeshes?: Array<Omit<AnnotationPlanePlan['mesh'], 'uvs' | 'texture'>> }>;
   nextAvailableExpressId: number;
   items: Array<{
@@ -139,8 +156,11 @@ export interface CapturedMeshPlan extends Omit<AnnotationPlanePlan, 'annotationI
   objectId: number;
 }
 export type AppearanceWorkerJob =
+  | { type: 'pdf-fidelity'; request: PdfVectorPage }
   | { type: 'pdf-fill-plan'; request: PdfFillAnnotationRequest }
   | { type: 'mesh-transfer'; request: MeshTransferRequest; rgba: Uint8Array }
+  /** RGB point-cloud source (#4381): the same request shape with `source.kind === 'points'` plus its binary payload. */
+  | { type: 'point-transfer'; request: MeshTransferRequest; rgba: Uint8Array; points: TransferPointPayload }
   | { type: 'scan-registration'; request: ScanRegistrationRequest }
   | { type: 'captured-mesh-plan'; request: CapturedMeshRequest }
   | { type: 'annotation-plan'; request: AnnotationPlaneRequest }
@@ -149,6 +169,7 @@ export type AppearanceWorkerJob =
   | { type: 'page-plan'; request: PageAppearanceRequest; rgba: Uint8Array };
 export type AppearanceWorkerRequest = AppearanceWorkerJob & { id: number; source: Uint8Array };
 export type AppearanceWorkerResponse =
+  | { type: 'pdf-fidelity-complete'; id: number; result: PreparedPdfVectorPage }
   | { type: 'pdf-fill-complete'; id: number; result: PdfFillAnnotationPlan }
   | { type: 'mesh-transfer-complete'; id: number; result: MeshTransferPlan }
   | { type: 'scan-registration-complete'; id: number; result: ScanRegistrationReport }

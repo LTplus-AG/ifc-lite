@@ -1,5 +1,5 @@
 {
-  "sourcePdfSha256": "9fea09825ea88ee4a23661912926c2ba636aa4a9b3b48e7f154fa755f694810f",
+  "sourcePdfSha256": "b7286dd2c4a09b1327faa448ed86b2ecd96779ff2ce0a6d308500b59ce3076ce",
   "mupdfVersion": "1.26.5",
   "ifcopenshellVersion": "0.8.2",
   "calibration": "declared synthetic control:30 PDF units per model metre",
@@ -14,8 +14,8 @@
       "analyticAreaSquareMetres": 2.4,
       "independentTriangleCount": 4,
       "nativeTriangleCount": 4,
-      "geometryWork": 3623,
-      "exportSha256": "1ffeccce28b872990bfce2f5f417baff209e2b655cbae0df80fb9a8c8d0429e3"
+      "geometryWork": 5223,
+      "exportSha256": "d01cd2830a20938defcf8751028a9dc6fef823adf518ea00e70597e2191329b2"
     },
     {
       "pageNumber": 2,
@@ -26,20 +26,20 @@
       "analyticAreaSquareMetres": 2.54,
       "independentTriangleCount": 5,
       "nativeTriangleCount": 5,
-      "geometryWork": 4662,
-      "exportSha256": "7349fa9621ca97559c9f706bc933ec4b337cf3ac8cfca8d1228fa9db6c3d3068"
+      "geometryWork": 6598,
+      "exportSha256": "2be364c1544e84e44e03c98db267988c63a40bd07cbca4bf152f79a226ac085b"
     },
     {
       "pageNumber": 3,
       "pixelsCompared": 57600,
       "rasterMismatchPixels": 4,
-      "maxMismatchDistanceToNativeBoundaryPixels": 1.6803588579425904e-14,
+      "maxMismatchDistanceToNativeBoundaryPixels": 1.4143093156168432e-14,
       "independentAreaSquareMetres": 2.380000000000002,
       "analyticAreaSquareMetres": 2.38,
       "independentTriangleCount": 5,
       "nativeTriangleCount": 5,
-      "geometryWork": 4662,
-      "exportSha256": "dc17251fa8df48ab3d408fbb1003ef321d9b1ee0161295e021b86cf0d0729012"
+      "geometryWork": 6598,
+      "exportSha256": "2a7502b60c540775d626230841daed73aa2fb09779de9251df037f9400821a18"
     },
     {
       "pageNumber": 4,
@@ -50,20 +50,44 @@
       "analyticAreaSquareMetres": 19.36,
       "independentTriangleCount": 10,
       "nativeTriangleCount": 10,
-      "geometryWork": 11829,
-      "exportSha256": "dbb22229bb4ab7b1d64c734f7507f7143ffb5ee4bf671680105e8148bf8e9729"
+      "geometryWork": 15925,
+      "exportSha256": "86119ec3df3bac99b874ca2de98642533416f2e681d1f5474514df78fec73f0b"
     },
     {
       "pageNumber": 5,
       "pixelsCompared": 57600,
       "rasterMismatchPixels": 85,
       "maxMismatchDistanceToNativeBoundaryPixels": 0.46380062471218164,
-      "independentAreaSquareMetres": 1.576799999999999,
+      "independentAreaSquareMetres": 1.5767999999999995,
       "analyticAreaSquareMetres": 1.5768,
       "independentTriangleCount": 4,
       "nativeTriangleCount": 4,
-      "geometryWork": 3623,
-      "exportSha256": "93e357506a7fd0a77267006c4e2b4753c4db2c919b6243acf2a23c13a123739e"
+      "geometryWork": 5223,
+      "exportSha256": "c077aea09eb6747602124b9abcde3b2578de3e713b2ce7d06d4fdcd649986bb9"
+    },
+    {
+      "pageNumber": 6,
+      "pixelsCompared": 57600,
+      "rasterMismatchPixels": 14,
+      "maxMismatchDistanceToNativeBoundaryPixels": 0.47694602697952293,
+      "independentAreaSquareMetres": 1.3256226345544446,
+      "analyticAreaSquareMetres": 1.3256637061435919,
+      "independentTriangleCount": 142,
+      "nativeTriangleCount": 142,
+      "geometryWork": 1821990,
+      "exportSha256": "c216e1011e4e297ce2d613f0a2a2a925b3927888120787f67454fe150bace392"
+    },
+    {
+      "pageNumber": 7,
+      "pixelsCompared": 57600,
+      "rasterMismatchPixels": 2,
+      "maxMismatchDistanceToNativeBoundaryPixels": 0.04250693952850213,
+      "independentAreaSquareMetres": 2.391405974714968,
+      "analyticAreaSquareMetres": 2.3914159265358976,
+      "independentTriangleCount": 40,
+      "nativeTriangleCount": 40,
+      "geometryWork": 163947,
+      "exportSha256": "2ceb29e0fec79a58462ab3db98e868b90cbd992e236c479bbcf66a695cb6d1c0"
     }
   ]
 }

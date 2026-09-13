@@ -66,9 +66,14 @@ export function normalizeExtension(extension: string): string {
  * `model`, `a.b.ifczip` -> `a.b`), leaving a dotless name unchanged. Use before
  * {@link buildExportFilename} so the source extension is not carried into the
  * exported name — the canonical replacement for a hand-rolled `/\.[^.]+$/`.
+ *
+ * A copy suffix after the extension survives (`model.ifc (2)` -> `model (2)`):
+ * a room recipient's second copy of one file is named that way (#4444), and
+ * stripping the suffix with the extension made both copies download under one
+ * name.
  */
 export function stripExtension(name: string): string {
-  return name.replace(/\.[^./\\]+$/, '');
+  return name.replace(/\.[^./\\]+?( \(\d+\))?$/, '$1');
 }
 
 /**

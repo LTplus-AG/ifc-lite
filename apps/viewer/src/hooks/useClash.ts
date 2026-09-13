@@ -58,6 +58,8 @@ import {
   rememberFederationIdentity,
   type ClashFederationIdentity,
 } from '@/lib/clash/federation-identity';
+import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
+import { captureModelTagInputs, rememberModelTagInputs, type ClashModelTagInputs } from '@/lib/clash/model-tag-inputs';
 import { posthog } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
 import { downloadBlob, dataUrlToBytes } from '@/lib/export/download';
@@ -104,7 +106,7 @@ export const CLASH_SUPERSEDED_MESSAGE =
  * loading the model again.
  *
  * The model is not NAMED in the message: `ClashElementRef.model` is a store id
- * (`room:<roomId>`, or a load-time key), the display name lived on the model
+ * (`room:<roomId>:<slotId>`, or a load-time key), the display name lived on the model
  * entry that has just been dropped from `state.models`, and a message quoting
  * an internal id would be worse than one that quotes nothing.
  */
@@ -461,7 +463,7 @@ export function useClash() {
   }, [releaseClashVisibility]);
 
   const run = useCallback(
-    async (rules: ClashRule[]): Promise<void> => {
+    async (rules: ClashRule[], tagInputs: ClashModelTagInputs | null = null): Promise<void> => {
       // Captured before anything else so a call issued while this one is
       // already in flight (`runAll` again, a duplicate scan, a preset) makes
       // every write below — including this call's own error/finally, once
@@ -501,6 +503,7 @@ export function useClash() {
         // federation it examined is gone, or if a newer call has started —
         // see `publishClashResult`.
         if (!publishClashResult(federationIdentity, res, myEpoch)) return;
+        rememberModelTagInputs(res, tagInputs);
         state.setClashSelectedId(null);
         posthog.capture('clash_detection_run', {
           clash_count: res.clashes.length,
@@ -528,15 +531,12 @@ export function useClash() {
   /** Run rules built from PRESETS, resolving each side's optional advanced
    *  filter (#3902) against the loaded models first. A side with no filter is
    *  left to its type selector, so a rule set from before filters existed runs
-   *  through here exactly as it did. */
+   *  through here exactly as it did. Models + tag inputs: ONE `getState()` snapshot (#4215). */
   const runPresets = useCallback(
     async (presets: ClashPreset[]): Promise<void> => {
       const state = useViewerStore.getState();
-      const models = [...state.models].map(([id, m]) => ({
-        id,
-        filterIdentity: m.sourceFingerprint,
-        store: m.ifcDataStore,
-      }));
+      const models = evaluatorModelsFromState(state);
+      const tagInputs = captureModelTagInputs(presets, state.modelTagAssignments);
       const rules = rulesFromPresets(presets, mode, mode === 'clearance' ? clearance : undefined, reportTouch);
       // Resolving the filters is a federation scan that happens BEFORE `run()`
       // takes over the epoch and the running/error state. Take an epoch here
@@ -550,7 +550,7 @@ export function useClash() {
       state.setClashRunning(true);
       let resolved: ClashRule[];
       try {
-        resolved = await withResolvedClashSetFilters(rules, presets, models, state.toGlobalId);
+        resolved = await withResolvedClashSetFilters(rules, presets, models, state.toGlobalId, { definedModelTagIds: definedModelTagIdsOf(state) });
       } catch (err) {
         // A refused filter reports itself here or nothing on screen changes.
         if (!stillWanted(myEpoch)) return;
@@ -559,7 +559,7 @@ export function useClash() {
         return;
       }
       if (!stillWanted(myEpoch)) return;
-      return run(resolved);
+      return run(resolved, tagInputs);
     },
     [run, mode, clearance, reportTouch, stillWanted],
   );
@@ -695,9 +695,9 @@ export function useClash() {
    *
    * The `federationRegistry` singleton (`fromGlobalId`) did that search, and
    * knows only models that went through `registerModelOffset`. A model put into
-   * `state.models` any other way is invisible to it. That is exactly the collab
-   * room model: `collabSlice`'s recipient reconstruct registers it with
-   * `upsertModel({ id: 'room:<id>', ..., idOffset: 0 })` and never calls
+   * `state.models` any other way is invisible to it. That was the collab room
+   * model until #4444: the recipient reconstruct registered it with
+   * `upsertModel({ id: 'room:<id>', ..., idOffset: 0 })` and never called
    * `registerModelOffset`, so in a room EVERY clash row was dead — while
    * clicking the same element in the 3D view selected it normally, that path
    * resolving through `state.models` (`resolveEntityRef`).
@@ -737,10 +737,10 @@ export function useClash() {
    * `federationRegistry.clear()`), so the registry had forgotten it too and the
    * answer was `null` anyway. That does NOT hold for a model the registry never
    * held, which is precisely the class this resolver was fixed for: the collab
-   * room model is created by `upsertModel` with `idOffset: 0` and no
-   * `registerModelOffset` call (`collabSlice`), so `unregisterModel` is a no-op
-   * for it and there is nothing to forget. Leaving the room while a published
-   * clash result is kept drops `room:<roomId>` from `state.models` and sent its
+   * room model was (until #4444) created by `upsertModel` with `idOffset: 0`
+   * and no `registerModelOffset` call, so `unregisterModel` was a no-op for it
+   * and there was nothing to forget. Leaving the room while a published
+   * clash result is kept drops `room:<roomId>:<slotId>` from `state.models` and sent its
    * refs down this fallback, where `fromGlobalId` range-searched the registry
    * and landed inside a DIFFERENT, still-loaded file — isolating and painting
    * two of its elements, with no error. Established by review with an executed
@@ -771,7 +771,7 @@ export function useClash() {
    * order (`packages/ifcx/src/entity-extractor.ts`), so any structural edit
    * renumbers everything after it — and every stale ref then still looks
    * resolvable, and resolves to the WRONG element. Leaving a room and rejoining
-   * rebuilds `room:<roomId>` the same way.
+   * rebuilds `room:<roomId>:<slotId>` the same way.
    *
    * So the result's own recorded federation identity — captured by the run and
    * bound to the result object at the publish site

@@ -80,7 +80,11 @@ projection journey is not yet established by these runs.
 
 The same worker also accepts a `vectors` job. Its pinned PDF.js adapter produces
 ordered decoded operations for `IfcAPI.preparePdfVectorPage`; it neither writes
-IFC nor independently interprets geometry. It never rasterizes a vector job.
+IFC nor independently interprets geometry. Text runs (em-box extents from font
+advances and render mode), images, clips, ExtGState entries, form/group/
+annotation scopes and optional-content visibility are typed operations, so the
+canonical fidelity report can locate and classify what the planner omits; the
+adapter itself decides nothing about fidelity. It never rasterizes a vector job.
 Original source bytes remain attached to their owner, and document/page cleanup
 uses the same `finally` path as inspect/raster jobs. See the
 [canonical preparation contract](../../../../../../docs/architecture/pdf-vector-annotations.md#bounded-graphics-state-preparation).

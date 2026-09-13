@@ -34,6 +34,8 @@ import {
   Layers as LayersIcon,
   Box,
   FileWarning,
+  BarChart3,
+  FileText,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -59,7 +61,9 @@ export type WorkspacePanelId =
   | 'layers'
   | 'zones'
   | 'loadReport'
-  | 'appearance';
+  | 'appearance'
+  | 'charts'
+  | 'document';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -120,15 +124,16 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // non-SIDEBAR_PANEL_FLAGS branch adopts it directly (issue #3927).
   { id: 'loadReport', title: 'Load report', short: 'Load report', Icon: FileWarning, group: 'review', region: 'side' },
   { id: 'appearance', title: 'Appearance', short: 'Appearance', Icon: Palette, group: 'author', region: 'side' },
+  // Charts bound to the model, bidirectional with the 3D view (#3944). Bottom
+  // strip like Lists / Schedule; the table in `bottom-panels.ts` carries it.
+  { id: 'charts', title: 'Charts', short: 'Charts', Icon: BarChart3, group: 'work', region: 'bottom', prefersWide: true },
+  // A free-form page over the model — text with bindings, logos, charts, BCF topics — printed to PDF (#4594).
+  { id: 'document', title: 'Document', short: 'Document', Icon: FileText, group: 'work', region: 'bottom', prefersWide: true },
 ];
 
-/** The bottom-strip panel ids, mapped to their store visibility flag + setter
- *  names — these stay independent of the single-tenant right pane. */
-export type BottomPanelId = Extract<WorkspacePanelId, 'script' | 'gantt' | 'lists'>;
-
-export function isBottomPanel(id: WorkspacePanelId): id is BottomPanelId {
-  return id === 'script' || id === 'gantt' || id === 'lists';
-}
+// The bottom strip (Script / Schedule / Lists) is table-driven; the id union and
+// the type guard are re-exported here so registry consumers keep one import.
+export { isBottomPanel, type BottomPanelId } from './bottom-panels';
 
 /** The left-slot nav panel (Hierarchy, #1267): toggled via `leftPanelCollapsed`,
  *  never floated / popped / docked into the right pane. */

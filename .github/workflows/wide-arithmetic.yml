@@ -82,7 +82,7 @@ env:
 jobs:
   wide-arithmetic-tripwire:
     name: Build + determinism check (wide-arithmetic wasm)
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     # Generous: a cold nightly + wasm-pack build plus a cargo-installed
     # wasm-tools can take a while before caches warm up. Weekly, so slow is fine.
     timeout-minutes: 45
@@ -429,3 +429,15 @@ jobs:
             echo "docs/architecture/wasm-wide-arithmetic.md for the actual measured speedups"
             echo "(1.9-3.1x predicate microbench, 1.71x end-to-end), captured externally."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  report-scheduled-failure:
+    needs: wide-arithmetic-tripwire
+    if: always() && github.event_name == 'schedule' && needs.wide-arithmetic-tripwire.result != 'success'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: WASM wide-arithmetic tripwire
+      jobs: wide-arithmetic-tripwire
+      result: ${{ needs.wide-arithmetic-tripwire.result }}
+    permissions:
+      contents: read
+      issues: write

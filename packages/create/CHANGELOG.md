@@ -1,5 +1,36 @@
 # @ifc-lite/create
 
+## 2.4.0
+
+### Minor Changes
+
+- [#4503](https://github.com/LTplus-AG/ifc-lite/pull/4503) [`5e94b1a`](https://github.com/LTplus-AG/ifc-lite/commit/5e94b1a646d7e02c909b8835f3adf8e0bf4feb5f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add `storeyPlanFrame`, `toStoreyLocal` and `fromStoreyLocal`: the storey's whole
+  `IfcLocalPlacement` chain (storey axis ∘ building ∘ site ∘ …) composed into one
+  planar rigid motion in the model's world frame, in metres, and the two folds
+  between that frame and the storey-local one.
+  
+  `addSpaceToStore` anchors the outer curve to the storey's own placement, so
+  every coordinate it is handed is read back through that chain. The in-package
+  producers are storey-local for exactly that reason; a producer that already
+  works in world coordinates now has a supported way to divide the chain out
+  before authoring, and to fold `existingSpaceFootprintsByStorey`'s storey-local
+  rings the other way for a comparison in its own frame.
+  
+  `storeyPlanFrame` returns `null` rather than approximating when the storey
+  itself will not read, when a link in the chain will not read, or when any link's
+  `Axis` tips out of plan — a tilted chain has no planar inverse. A storey with no
+  `ObjectPlacement` at all gets the identity: `ObjectPlacement` is OPTIONAL on
+  `IfcProduct`, and a product without one carries no transform.
+  
+  The placement-frame primitives these share with `extractWallSegmentsForStorey`
+  move to an internal `placement-frame` module so both sides compose and invert
+  the chain through one implementation. No existing export changes.
+
+### Patch Changes
+
+- Updated dependencies [[`3fdbc2b`](https://github.com/LTplus-AG/ifc-lite/commit/3fdbc2b599fad2b1c43ffe014d2bab5f8b8c576c), [`3a1a322`](https://github.com/LTplus-AG/ifc-lite/commit/3a1a3229412b7822438fa5dba653f6c4e1bd239f), [`7f80d53`](https://github.com/LTplus-AG/ifc-lite/commit/7f80d53d2a2c158a322ec541ce064365f3f3ca8a), [`a53bd7f`](https://github.com/LTplus-AG/ifc-lite/commit/a53bd7fd4510b8d5c992eab26234084c5bb2387e), [`abda2d8`](https://github.com/LTplus-AG/ifc-lite/commit/abda2d8114ad17b0366f448100953d6e1972164c), [`511e488`](https://github.com/LTplus-AG/ifc-lite/commit/511e488a8de2b90f7d5f7663911873a92b3427c7), [`53c65fe`](https://github.com/LTplus-AG/ifc-lite/commit/53c65fecdac95b4c19a661be923c225d104a7be8), [`a53bd7f`](https://github.com/LTplus-AG/ifc-lite/commit/a53bd7fd4510b8d5c992eab26234084c5bb2387e)]:
+  - @ifc-lite/parser@6.1.0
+
 ## 2.3.0
 
 ### Minor Changes

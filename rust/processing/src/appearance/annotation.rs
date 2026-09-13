@@ -20,7 +20,7 @@ pub(super) fn plan_textured_product(bytes:&[u8], request:&AnnotationPlaneRequest
     let f=&r.frame;
     let metadata=super::authored::Metadata {schema:&r.schema,source_revision:&r.source_revision,
         next_express_id:r.next_express_id,container_id:r.container_id,global_id:&r.global_id,
-        containment_global_id:&r.containment_global_id,name:&r.name};
+        containment_global_id:&r.containment_global_id,extra_global_ids:&[],name:&r.name};
     super::authored::validate_metadata(&metadata)?;
     validate_image_uri(&r.image_uri)?;
     let super::authored::Authoring {mut author,mut source,placement,context_id,owner,scale,rtc_offset} =

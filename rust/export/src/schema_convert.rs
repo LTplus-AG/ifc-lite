@@ -5,6 +5,8 @@
 //! trimming on downgrade, padding of the attributes a newer target schema appended
 //! (`schema_pad`), and a proxy fallback for types with no target representation.
 
+use crate::step_slot::split_top_level_args;
+
 /// Canonicalize a FILE_SCHEMA label to one of the four families we convert between.
 fn canon(s: &str) -> &'static str {
     let u = s.to_uppercase();
@@ -94,17 +96,17 @@ fn by_name_attr_remap_names(entity_type: &str) -> Option<(&'static [&'static str
 /// A target attribute with no same-named source attribute becomes `$`
 /// (unknown); a source attribute with no same-named target slot is dropped.
 /// Mirrors TS `schema-converter-attr-remap.ts`'s `remapRenamedAttributesByName`.
-fn remap_attrs_by_name(attrs: &str, src_names: &[&str], tgt_names: &[&str]) -> String {
-    let values = split_top_level(attrs);
+fn remap_attrs_by_name(attrs: &str, src_names: &[&str], tgt_names: &[&str]) -> Option<String> {
+    let values = split_top_level_args(attrs)?;
     let mut by_name: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
     for (name, value) in src_names.iter().zip(values.iter()) {
         by_name.insert(*name, value.as_str());
     }
-    tgt_names
+    Some(tgt_names
         .iter()
         .map(|name| by_name.get(name).copied().unwrap_or("$"))
         .collect::<Vec<_>>()
-        .join(",")
+        .join(","))
 }
 
 fn map_4x3_to_4(t: &str) -> Option<&'static str> {
@@ -200,58 +202,16 @@ pub(crate) fn placeholder_guid(id: u32) -> String {
 /// value strings, respecting nested parentheses and single-quoted strings.
 /// Empty list -> `[]`. Shared by `trim_attributes` (positional truncation)
 /// and `remap_attrs_by_name` (by-name reconciliation).
-fn split_top_level(attrs: &str) -> Vec<String> {
-    if attrs.trim().is_empty() {
-        return Vec::new();
-    }
-    let bytes = attrs.as_bytes();
-    let mut out: Vec<String> = Vec::new();
-    let mut depth = 0i32;
-    let mut in_string = false;
-    let mut current = String::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        let ch = bytes[i] as char;
-        if ch == '\'' && !in_string {
-            in_string = true;
-            current.push(ch);
-        } else if ch == '\'' && in_string {
-            if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
-                current.push_str("''");
-                i += 2;
-                continue;
-            }
-            in_string = false;
-            current.push(ch);
-        } else if in_string {
-            current.push(ch);
-        } else if ch == '(' {
-            depth += 1;
-            current.push(ch);
-        } else if ch == ')' {
-            depth -= 1;
-            current.push(ch);
-        } else if ch == ',' && depth == 0 {
-            out.push(std::mem::take(&mut current));
-        } else {
-            current.push(ch);
-        }
-        i += 1;
-    }
-    out.push(current);
-    out
-}
-
 /// Trim a STEP attribute list to `max_count` top-level attributes (STEP-nesting aware).
-fn trim_attributes(attrs: &str, max_count: usize) -> String {
+fn trim_attributes(attrs: &str, max_count: usize) -> Option<String> {
     if attrs.trim().is_empty() {
-        return attrs.to_string();
+        return Some(attrs.to_string());
     }
-    let out = split_top_level(attrs);
+    let out = split_top_level_args(attrs)?;
     if out.len() > max_count {
-        out[..max_count].join(",")
+        Some(out[..max_count].join(","))
     } else {
-        out.join(",")
+        Some(out.join(","))
     }
 }
 
@@ -282,6 +242,13 @@ pub fn convert_step_line(line: &str, from: &str, to: &str, express_id: u32) -> S
     let entity_type = after[..popen].trim().to_uppercase();
     let attrs = &after[popen + 1..aclose];
 
+    // Validate before choosing any conversion branch. Otherwise a malformed
+    // slot list can still receive a type rename, proxy replacement, trim, or
+    // padding and become a partially converted record (#4200).
+    if split_top_level_args(attrs).is_none() {
+        return line.to_string();
+    }
+
     let new_type = convert_entity_type(&entity_type, cfrom, cto);
 
     if should_skip_entity(&new_type, cto) {
@@ -310,10 +277,16 @@ pub fn convert_step_line(line: &str, from: &str, to: &str, express_id: u32) -> S
     // the generic positional trim below.
     let mut final_attrs = if new_type != entity_type {
         if let Some((src_names, tgt_names)) = by_name_attr_remap_names(&entity_type) {
-            remap_attrs_by_name(attrs, src_names, tgt_names)
+            match remap_attrs_by_name(attrs, src_names, tgt_names) {
+                Some(value) => value,
+                None => return line.to_string(),
+            }
         } else if cto == "IFC2X3" {
             match ifc2x3_attr_count(&new_type) {
-                Some(max) => trim_attributes(attrs, max),
+                Some(max) => match trim_attributes(attrs, max) {
+                    Some(value) => value,
+                    None => return line.to_string(),
+                },
                 None => attrs.to_string(),
             }
         } else {
@@ -321,7 +294,10 @@ pub fn convert_step_line(line: &str, from: &str, to: &str, express_id: u32) -> S
         }
     } else if cto == "IFC2X3" {
         match ifc2x3_attr_count(&new_type) {
-            Some(max) => trim_attributes(attrs, max),
+            Some(max) => match trim_attributes(attrs, max) {
+                Some(value) => value,
+                None => return line.to_string(),
+            },
             None => attrs.to_string(),
         }
     } else {

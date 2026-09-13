@@ -11,9 +11,7 @@
  */
 
 import { EntityExtractor } from './entity-extractor.js';
-import {
-    RelationshipType,
-} from '@ifc-lite/data';
+import { RelationshipType } from '@ifc-lite/data';
 import type { PropertyValue } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { readQuantitySet } from './quantity-collect.js';
@@ -620,6 +618,8 @@ export function extractGroupMembersOnDemand(
     }
     return members;
 }
+
+export { extractGroupAssignmentFactorOnDemand } from './group-assignment-factor.js'; // moved out
 
 // ============================================================================
 // On-Demand Georeferencing Extraction

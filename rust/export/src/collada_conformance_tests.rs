@@ -213,7 +213,7 @@ fn from_meshes_collada_is_structurally_conformant() {
     let positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0];
     let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 4).flatten().collect();
     let indices = vec![0u32, 1, 2, 0, 2, 3];
-    let xml = String::from_utf8(export_collada_from_meshes(
+    let xml = String::from_utf8(try_export_collada_from_meshes(
         &positions,
         &normals,
         &indices,
@@ -221,7 +221,7 @@ fn from_meshes_collada_is_structurally_conformant() {
         &[6],
         &[1.0, 0.0, 0.0, 1.0],
         &[0.0, 0.0, 0.0],
-    ))
+    ).expect("has geometry"))
     .unwrap();
     assert_collada_conformant(&xml, "one_quad");
 }
@@ -238,7 +238,7 @@ fn multi_material_collada_is_structurally_conformant() {
     ];
     let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 7).flatten().collect();
     let indices = vec![0u32, 1, 2, 0, 2, 3, 0, 1, 2];
-    let xml = String::from_utf8(export_collada_from_meshes(
+    let xml = String::from_utf8(try_export_collada_from_meshes(
         &positions,
         &normals,
         &indices,
@@ -246,7 +246,7 @@ fn multi_material_collada_is_structurally_conformant() {
         &[6, 3],
         &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0],
         &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-    ))
+    ).expect("has geometry"))
     .unwrap();
     assert_collada_conformant(&xml, "two_materials");
     // Both materials really are present — otherwise the symbol/material
@@ -279,7 +279,7 @@ fn chunked_collada_is_structurally_conformant() {
         colors.extend_from_slice(&[0.5, 0.5, 0.5, 1.0]);
         origins.extend_from_slice(&[0.0, 0.0, 0.0]);
     }
-    let xml = String::from_utf8(export_collada_from_meshes(
+    let xml = String::from_utf8(try_export_collada_from_meshes(
         &positions,
         &normals,
         &indices,
@@ -287,7 +287,7 @@ fn chunked_collada_is_structurally_conformant() {
         &index_counts,
         &colors,
         &origins,
-    ))
+    ).expect("has geometry"))
     .unwrap();
     // The point of this case is that there IS more than one chunk; without
     // this it would silently degrade into a second single-geometry test if the

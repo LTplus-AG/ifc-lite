@@ -25,12 +25,14 @@ import {
   type FilterRule,
   type SetOp,
   type StringOp,
-  type NumericOp,
 } from '@/lib/search/filter-rules';
 import { ComboInput } from '@/components/ui/combo-input';
 import { propValueKey, type FilterValueSchema } from '@/lib/search/filter-schema';
 import { RULE_KIND_LABEL } from './filter-rule-labels';
 import { GlobalIdEditor, AttributeEditor } from './SearchModal.filter.editors.identity';
+import { ElevationEditor } from './SearchModal.filter.editors.elevation';
+import { ModelTagRuleEditor } from './ModelTagRuleEditor';
+import type { ModelTag } from '@/lib/model-tags/types';
 import {
   SET_OPS,
   STRING_OPS,
@@ -47,6 +49,8 @@ const NO_OPTIONS: readonly string[] = [];
 export interface RuleRowProps {
   rule: FilterRule;
   modelOptions: Array<{ label: string; value: string }>;
+  /** Every model tag that exists, by id — what a `modelTag` chip renders names from (#4215). */
+  tagOptions: ReadonlyMap<string, ModelTag>;
   ifcTypeOptions: string[];
   storeyOptions: ReadonlyArray<readonly [string, number | null]>;
   psetQto: { psets: ReadonlyArray<readonly [string, ReadonlyArray<string>]>; qtos: ReadonlyArray<readonly [string, ReadonlyArray<readonly [string, string]>]> } | null;
@@ -56,7 +60,7 @@ export interface RuleRowProps {
   onRemove: () => void;
 }
 
-export function RuleRow({ rule, modelOptions, ifcTypeOptions, storeyOptions, psetQto, valueSchema, onChange, onRemove }: RuleRowProps) {
+export function RuleRow({ rule, modelOptions, tagOptions, ifcTypeOptions, storeyOptions, psetQto, valueSchema, onChange, onRemove }: RuleRowProps) {
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-950">
       <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
@@ -71,6 +75,8 @@ export function RuleRow({ rule, modelOptions, ifcTypeOptions, storeyOptions, pse
           onChange={(values, op) => onChange(Rule.model(values, op))}
         />
       )}
+
+      {rule.kind === 'modelTag' && <ModelTagRuleEditor rule={rule} tags={tagOptions} onChange={onChange} />}
 
       {rule.kind === 'storey' && (
         <SetRuleEditor
@@ -481,29 +487,3 @@ function ClassificationEditor({
     </>
   );
 }
-
-function ElevationEditor({
-  op,
-  value,
-  onChange,
-}: {
-  op: NumericOp;
-  value: number;
-  onChange: (op: NumericOp, value: number) => void;
-}) {
-  return (
-    <>
-      <OpDropdown ops={NUMERIC_OPS} value={op} onChange={(next) => onChange(next, value)} />
-      <Input
-        type="number"
-        step="any"
-        placeholder="metres"
-        value={value}
-        onChange={(e) => onChange(op, Number.parseFloat(e.target.value) || 0)}
-        className="h-7 w-28 text-xs font-mono"
-      />
-      <span className="text-[10px] text-muted-foreground">m (storey elevation)</span>
-    </>
-  );
-}
-

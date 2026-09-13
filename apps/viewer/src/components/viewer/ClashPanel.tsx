@@ -18,7 +18,6 @@ import {
   ChevronDown,
   ChevronRight,
   Layers,
-  FilePlus,
   MessageSquare,
   Ban,
 } from 'lucide-react';
@@ -32,14 +31,13 @@ import { formatClashSolidVolumeM3 } from '@/lib/clash/clash-solid-volume-format'
 import { useBCF } from '@/hooks/useBCF';
 import { useViewerStore } from '@/store';
 import { ModelBadge } from './ModelBadge';
-import { ClashBcfExportDialog } from '@/components/viewer/ClashBcfExportDialog';
+import { ClashExportActions } from '@/components/viewer/clash/ClashExportActions';
 import { ClashSettingsDialog } from '@/components/viewer/ClashSettingsDialog';
 import { ClashRevisionCompareDialog } from '@/components/viewer/ClashRevisionCompareDialog';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { duplicateSetSections } from '@/lib/clash/duplicate-set-sections';
 import {
-  isTouching,
-  penetrationDepth,
+  isTouching, penetrationDepth,
   sortClashes,
   classifyRuleCoverage,
   describeEmptyRuleSides,
@@ -52,6 +50,7 @@ import {
   type ClashSeverity,
   type ClashSortBy,
 } from '@ifc-lite/clash';
+import { ClashModelTagNotice } from './ClashModelTagNotice';
 
 interface ClashPanelProps {
   onClose?: () => void;
@@ -877,13 +876,13 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         );
       })()}
 
-      {/* Error */}
       {error && (
         <div className="flex items-start gap-2 m-3 p-2 rounded-md bg-[#f7768e]/10 text-[#f7768e] text-xs">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
       )}
+      <ClashModelTagNotice />
 
       {/* Summary */}
       {result && (
@@ -986,21 +985,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                 <option key={s} value={s}>{SORT_LABEL[s]}</option>
               ))}
             </select>
-            <div className="ml-auto flex items-center gap-1 shrink-0">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-xs"
-                disabled={creatingTopic}
-                title={selectedId ? 'Create a BCF topic from the selected clash' : 'Create a BCF topic for this clash report'}
-                onClick={() => void createBcfTopic()}
-                {...tourAnchor(TOUR_ANCHORS.clashBcf)}
-              >
-                {creatingTopic ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <FilePlus className="h-3.5 w-3.5 mr-1" />}
-                BCF topic
-              </Button>
-              <ClashBcfExportDialog />
-            </div>
+            <ClashExportActions selectedId={selectedId} creatingTopic={creatingTopic} createBcfTopic={createBcfTopic} />
           </div>
           {/* Filters: touching + review status, grouped so "what's shown" reads
               as one control cluster (#1468). */}

@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 pub struct PdfVectorPage {
     pub pdf_sha256: String,
     pub decoder_version: String,
+    /// Effective document version reported by the pinned decoder. Older hosts
+    /// may omit it; version-sensitive paints then remain explicit omissions.
+    #[serde(default)]
+    pub pdf_format_version: Option<String>,
     pub page_number: u32,
     /// Unrotated native PDF user-space CropBox.
     pub view_box: [f64; 4],
@@ -31,6 +35,9 @@ pub struct PdfVectorOperation {
     pub operation: PdfVectorOperator,
 }
 
+/// One pinned-decoder operation. Geometry kinds carry construction-space
+/// numbers; semantic kinds carry exactly what the fidelity report needs to
+/// scope, place and classify content the planner cannot convert.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub enum PdfVectorOperator {
@@ -65,8 +72,65 @@ pub enum PdfVectorOperator {
         paint: PdfVectorPaint,
         commands: Vec<f64>,
     },
-    /// Decoder has encountered semantics outside the qualified subset. Even if
-    /// supported paths remain inspectable, the whole page stays unqualified.
+    /// Pending clip consumed by the next path, after that path's own paint.
+    #[serde(rename_all = "camelCase")]
+    Clip {
+        even_odd: bool,
+    },
+    /// Painted text was added to the clip at ET; the rest of the scope is clipped.
+    TextClip,
+    /// One text run. `quad` is its estimated em-box in construction space
+    /// (before the current transform); `invisible` is text render mode 3/7.
+    Text {
+        quad: [f64; 8],
+        invisible: bool,
+    },
+    /// Raster paint. Each transform maps the unit square in construction space.
+    Image {
+        transforms: Vec<[f64; 6]>,
+    },
+    /// `sh` paints the current clip with a shading; its extent is the clip.
+    Shading,
+    FillPattern,
+    StrokePattern,
+    /// Decoded ExtGState dictionary. Supported line state applies in PDF.js
+    /// order; alpha/blend/soft-mask entries taint the scope as transparency.
+    #[serde(rename_all = "camelCase")]
+    GraphicsState {
+        line_width: Option<f64>,
+        line_cap: Option<u8>,
+        line_join: Option<u8>,
+        miter_limit: Option<f64>,
+        dash: Option<(Vec<f64>, f64)>,
+        transparency: Vec<String>,
+        unsupported: Vec<String>,
+    },
+    /// Transparency group wrapping a form. `composited` means PDF.js renders
+    /// it through an offscreen group rather than painting directly.
+    GroupBegin {
+        composited: bool,
+        matrix: Option<[f64; 6]>,
+        bbox: Option<[f64; 4]>,
+    },
+    GroupEnd,
+    /// Form XObject: implicit save, matrix concatenation and bbox clip.
+    FormBegin {
+        matrix: Option<[f64; 6]>,
+        bbox: Option<[f64; 4]>,
+    },
+    FormEnd,
+    /// Annotation appearance stream; `rect` is in page space.
+    AnnotationBegin {
+        rect: Option<[f64; 4]>,
+    },
+    AnnotationEnd,
+    /// Marked content; `visible` resolves optional-content configuration.
+    MarkedContent {
+        visible: bool,
+    },
+    EndMarkedContent,
+    /// Decoder has encountered semantics outside the qualified subset. The
+    /// operation and everything painted afterwards in its scope is omitted.
     Unsupported {
         operator: String,
     },
@@ -88,6 +152,38 @@ pub enum PdfVectorPaint {
 impl PdfVectorPaint {
     pub(super) fn strokes(self) -> bool {
         !matches!(self, Self::Fill | Self::EvenOddFill | Self::EndPath)
+    }
+    pub(super) fn fills(self) -> bool {
+        !matches!(self, Self::Stroke | Self::CloseStroke | Self::EndPath)
+    }
+    pub(super) fn even_odd(self) -> bool {
+        matches!(
+            self,
+            Self::EvenOddFill | Self::EvenOddFillStroke | Self::CloseEvenOddFillStroke
+        )
+    }
+    pub(super) fn closes(self) -> bool {
+        matches!(
+            self,
+            Self::CloseStroke | Self::CloseFillStroke | Self::CloseEvenOddFillStroke
+        )
+    }
+    /// The same paint with its stroke part removed (a combined operator whose
+    /// stroke is omitted keeps its fill).
+    pub(super) fn fill_only(self) -> Self {
+        if self.even_odd() {
+            Self::EvenOddFill
+        } else {
+            Self::Fill
+        }
+    }
+    /// The same paint with its fill part removed.
+    pub(super) fn stroke_only(self) -> Self {
+        if self.closes() {
+            Self::CloseStroke
+        } else {
+            Self::Stroke
+        }
     }
 }
 
@@ -116,13 +212,16 @@ pub struct PreparedPdfVectorPath {
     /// No flattening or contour/fill classification has happened in this report.
     pub commands: Vec<f64>,
     pub state: PdfVectorGraphicsState,
+    /// Authenticated resolution of the version-sensitive closed-dash seam.
+    /// Open dashes and paths without a dashed stroke carry no value.
+    pub dash_closure: Option<PdfDashClosure>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct PdfVectorDiagnostic {
-    pub operator_ordinal: u32,
-    pub code: String,
+pub enum PdfDashClosure {
+    Capped,
+    Joined,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -136,14 +235,10 @@ pub struct PreparedPdfVectorPage {
     pub page_number: u32,
     pub calibration_key: String,
     pub tolerance_metres: f64,
-    /// Only graphics-state preparation qualification. This is NOT an IFC plan,
-    /// geometry fidelity verdict, or permission to publish partial paths.
-    pub state_qualified: bool,
-    /// Always false for state preparation. No geometry/IFC plan exists yet.
-    pub geometry_ready: bool,
     /// Implicit page clipping applies even when the stream has no clip operator.
     pub page_clip_pdf: [f64; 4],
-    pub pending_geometry: [&'static str; 5],
+    /// Only paths whose complete graphics state is understood. Everything the
+    /// planner would omit is listed in `fidelity`, never here.
     pub paths: Vec<PreparedPdfVectorPath>,
-    pub diagnostics: Vec<PdfVectorDiagnostic>,
+    pub fidelity: super::report::FidelityReport,
 }

@@ -7,7 +7,7 @@ import type { EffectiveEntityIndex } from './effective-index.js';
 import { serializeEntityArgs } from './attribute-real-slots.js';
 import { applyOverlayEntityOverrides } from './step-overlay-attribute-overrides.js';
 import { applySourceLineMutations } from './step-attribute-mutations.js';
-import { splitTopLevelArgs } from './step-argument-parser.js';
+import { readStepSlots, splitTopLevelStepArguments } from './step-argument-parser.js';
 import { retypeArgTokens } from './retype.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 
@@ -24,7 +24,11 @@ export function effectiveAppearanceRecord(
     const retype = view.getEntityTypeMutation(id);
     const type = retype?.newType ?? created.type;
     let args = serializeEntityArgs(created.type, created.attributes, schema);
-    if (retype) args = retypeArgTokens(splitTopLevelArgs(args), created.type, type, retype.predefinedType, schema).tokens.join(',');
+    if (retype) {
+      const slots = splitTopLevelStepArguments(args);
+      if (slots === null) throw new Error('Invalid authored IFC entity during appearance cleanup; resources were retained.');
+      args = retypeArgTokens(slots, created.type, type, retype.predefinedType, schema).tokens.join(',');
+    }
     args = applyOverlayEntityOverrides(args, type, named, view.getPositionalMutationsForEntity(id), schema);
     return `#${id}=${type.toUpperCase()}(${args});`;
   }
@@ -37,10 +41,10 @@ export function effectiveAppearanceRecord(
 
 /** URLReference occupies slot 5 after the inherited IfcSurfaceTexture fields. */
 export function effectiveImageUri(line: string): string | undefined {
-  const start = line.indexOf('('), end = line.lastIndexOf(')');
-  if (start < 0 || end < start) throw new Error('Unreadable IFC image during appearance cleanup; resources were retained.');
-  const argument = splitTopLevelArgs(line.slice(start + 1, end))[5];
+  const record = readStepSlots(line);
+  if (record === null) throw new Error('Unreadable IFC image during appearance cleanup; resources were retained.');
+  const argument = record.slots[5];
   if (argument === undefined) return undefined;
-  const value = parseStepValue(argument);
+  const value = parseStepValue(argument.trim());
   return typeof value === 'string' ? value : undefined;
 }

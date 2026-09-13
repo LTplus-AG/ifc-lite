@@ -613,7 +613,9 @@ export interface MutationSlice {
   addSpace: (
     modelId: string,
     storeyExpressId: number,
-    params: SpaceInStoreParams
+    params: SpaceInStoreParams,
+    /** Plan outline for the 3D mirror — see `profileCornersFromParams`. */
+    previewCorners?: Array<[number, number]>
   ) => { expressId: number } | { error: string };
   /** Add an IfcRoof (flat roof) — slab-like rectangle or polygon. */
   addRoof: (
@@ -1049,21 +1051,19 @@ function profileCornersFromParams(
   params:
     | { Profile?: 'rectangle'; Position: [number, number, number]; Width: number; Depth: number }
     | { Profile: 'polygon'; OuterCurve: Array<[number, number]>; Position?: [number, number, number] },
+  /** Plan outline to draw the 3D mirror at INSTEAD of the profile, for a caller
+   *  whose profile is not in the frame `buildElementMesh` renders in — Space
+   *  Sketch is the one, and `useSpaceBake` says why. */
+  previewCorners?: Array<[number, number]>,
 ): Array<[number, number, number]> {
-  if ('Profile' in params && params.Profile === 'polygon') {
-    const z = params.Position?.[2] ?? 0;
-    return params.OuterCurve.map(([x, y]) => [x, y, z]);
-  }
-  const rect = params as {
-    Position: [number, number, number]; Width: number; Depth: number;
-  };
+  const z = ('Position' in params ? params.Position?.[2] : 0) ?? 0;
+  const plan = previewCorners
+    ?? ('Profile' in params && params.Profile === 'polygon' ? params.OuterCurve : null);
+  if (plan) return plan.map(([x, y]): [number, number, number] => [x, y, z]);
+  const rect = params as { Position: [number, number, number]; Width: number; Depth: number };
   const [px, py, pz] = rect.Position;
-  return [
-    [px, py, pz],
-    [px + rect.Width, py, pz],
-    [px + rect.Width, py + rect.Depth, pz],
-    [px, py + rect.Depth, pz],
-  ];
+  return [[px, py, pz], [px + rect.Width, py, pz],
+    [px + rect.Width, py + rect.Depth, pz], [px, py + rect.Depth, pz]];
 }
 
 /** Decode the `@N` form used to encode positional indices into Mutation.attributeName. */
@@ -2460,10 +2460,10 @@ export const createMutationSlice: StateCreator<
     { type: 'window', params: { Width: params.Width, Height: params.Height, FrameThickness: params.FrameThickness ?? 0.05 }, position: params.Position },
   ),
 
-  addSpace: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
+  addSpace: (modelId, storeyExpressId, params, previewCorners) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, 'IFCSPACE', 'add space',
     (editor, anchor) => addSpaceToStore(editor, anchor, params).spaceId,
-    { type: 'space', params: { Width: 0, Depth: 0, Height: params.Height }, corners: profileCornersFromParams(params) },
+    { type: 'space', params: { Width: 0, Depth: 0, Height: params.Height }, corners: profileCornersFromParams(params, previewCorners) },
   ),
 
   addRoof: (modelId, storeyExpressId, params) => runInStoreElementBuilder(

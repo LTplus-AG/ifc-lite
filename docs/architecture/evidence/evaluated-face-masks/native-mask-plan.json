@@ -1,0 +1,118 @@
+{
+  "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+  "test": "cargo test -p ifc-lite-processing appearance::evaluated_mask::tests::issue_4404_real_mapped_member_face_mask --lib (IFCLITE_EVALUATED_EVIDENCE_DIR set)",
+  "request": {
+    "representationPolicy": "evaluatedOccurrence",
+    "productIds": [
+      35169
+    ],
+    "mapping": "box, world frame, 1 m tiles",
+    "faceMasks": [
+      {
+        "productId": 35169,
+        "surfaceFingerprint": "6fb4ffdfa4e2266120a241c6ced3318cc8839a287362efef100d30968988367e",
+        "triangles": [
+          0,
+          1,
+          2,
+          3
+        ]
+      }
+    ]
+  },
+  "conversion": {
+    "productId": 35169,
+    "representationId": 35155,
+    "sourceGeometryItemId": 35135,
+    "geometryItemId": 100001,
+    "retainedGeometryItemId": 100003,
+    "maskedTriangles": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "surfaceFingerprint": "6fb4ffdfa4e2266120a241c6ced3318cc8839a287362efef100d30968988367e",
+    "rtcOffset": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "sourceTriangles": 12,
+  "created": [
+    {
+      "expressId": 100000,
+      "type": "IfcCartesianPointList3D"
+    },
+    {
+      "expressId": 100001,
+      "type": "IfcTriangulatedFaceSet"
+    },
+    {
+      "expressId": 100002,
+      "type": "IfcStyledItem"
+    },
+    {
+      "expressId": 100003,
+      "type": "IfcTriangulatedFaceSet"
+    },
+    {
+      "expressId": 100004,
+      "type": "IfcStyledItem"
+    },
+    {
+      "expressId": 100005,
+      "type": "IfcImageTexture"
+    },
+    {
+      "expressId": 100006,
+      "type": "IfcColourRgb"
+    },
+    {
+      "expressId": 100007,
+      "type": "IfcSurfaceStyleShading"
+    },
+    {
+      "expressId": 100008,
+      "type": "IfcSurfaceStyleWithTextures"
+    },
+    {
+      "expressId": 100009,
+      "type": "IfcSurfaceStyle"
+    },
+    {
+      "expressId": 100010,
+      "type": "IfcTextureVertexList"
+    },
+    {
+      "expressId": 100011,
+      "type": "IfcIndexedTriangleTextureMap"
+    }
+  ],
+  "edits": [
+    {
+      "expressId": 35155,
+      "index": 2,
+      "value": "Tessellation"
+    },
+    {
+      "expressId": 35155,
+      "index": 3,
+      "value": [
+        "#100001",
+        "#100003"
+      ]
+    }
+  ],
+  "removed": [],
+  "exclusions": [],
+  "items": [
+    {
+      "productId": 35169,
+      "geometryItemId": 100001,
+      "triangles": 4
+    }
+  ]
+}

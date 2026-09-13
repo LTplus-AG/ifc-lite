@@ -17,6 +17,7 @@
  */
 
 import type { ViewerState } from '@/store';
+import { activeBottomPanel, bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import type { UiSnapshot, UiSnapshotKey, ViewerStoreApi } from './types';
 
 export function captureUiSnapshot(store: ViewerStoreApi): UiSnapshot {
@@ -32,7 +33,7 @@ export function captureUiSnapshot(store: ViewerStoreApi): UiSnapshot {
       : null,
     leftPanelCollapsed: s.leftPanelCollapsed,
     rightPanelCollapsed: s.rightPanelCollapsed,
-    bottomPanel: s.scriptPanelVisible ? 'script' : s.ganttPanelVisible ? 'gantt' : s.listPanelVisible ? 'lists' : null,
+    bottomPanel: activeBottomPanel(s),
     activeTool: s.activeTool,
     editEnabled: s.editEnabled,
     propertiesActiveTab: s.propertiesActiveTab,
@@ -86,7 +87,7 @@ export function restoreUiSnapshot(
     if (snapshot.bottomPanel) {
       s.showWorkspacePanel(snapshot.bottomPanel);
     } else {
-      store.setState({ scriptPanelVisible: false, ganttPanelVisible: false, listPanelVisible: false });
+      store.setState(bottomPanelFlags(null));
     }
   }
 

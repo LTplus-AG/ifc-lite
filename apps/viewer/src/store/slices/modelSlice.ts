@@ -28,6 +28,7 @@ import {
   type ClashSceneTeardown,
 } from '@/lib/clash/visibility-ownership';
 import { markupTransitionPatch } from './drawing2DSlice.markupTransition.js';
+import { isolateModelsPatch, modelFieldPatch, modelsVisibilityPatch } from './modelSlice.visibility.js';
 import { upsertModelPatch } from './modelSlice.upsert.js';
 
 export interface ModelSlice {
@@ -52,6 +53,10 @@ export interface ModelSlice {
   setActiveModel: (modelId: string | null) => void;
   /** Toggle model visibility */
   setModelVisibility: (modelId: string, visible: boolean) => void;
+  /** Set visibility on many models in ONE write (`modelSlice.visibility.ts`, #4215). */
+  setModelsVisibility: (modelIds: Iterable<string>, visible: boolean) => void;
+  /** Show exactly `modelIds`, hide every other loaded model, in one write (#4215). */
+  isolateModels: (modelIds: Iterable<string>) => void;
   /** Toggle model collapsed state in hierarchy */
   setModelCollapsed: (modelId: string, collapsed: boolean) => void;
   /** Rename a model */
@@ -540,32 +545,11 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     };
   }),
 
-  setModelVisibility: (modelId, visible) => set((state) => {
-    const model = state.models.get(modelId);
-    if (!model) return {};
-
-    const newModels = new Map(state.models);
-    newModels.set(modelId, { ...model, visible });
-    return { models: newModels };
-  }),
-
-  setModelCollapsed: (modelId, collapsed) => set((state) => {
-    const model = state.models.get(modelId);
-    if (!model) return {};
-
-    const newModels = new Map(state.models);
-    newModels.set(modelId, { ...model, collapsed });
-    return { models: newModels };
-  }),
-
-  setModelName: (modelId, name) => set((state) => {
-    const model = state.models.get(modelId);
-    if (!model) return {};
-
-    const newModels = new Map(state.models);
-    newModels.set(modelId, { ...model, name });
-    return { models: newModels };
-  }),
+  setModelVisibility: (modelId, visible) => set((state) => modelFieldPatch(state, modelId, { visible })),
+  setModelsVisibility: (modelIds, visible) => set((state) => modelsVisibilityPatch(state, modelIds, visible)),
+  isolateModels: (modelIds) => set((state) => isolateModelsPatch(state, modelIds)),
+  setModelCollapsed: (modelId, collapsed) => set((state) => modelFieldPatch(state, modelId, { collapsed })),
+  setModelName: (modelId, name) => set((state) => modelFieldPatch(state, modelId, { name })),
 
   // Getters (synchronous access via get())
   getModel: (modelId) => get().models.get(modelId),

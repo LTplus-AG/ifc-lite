@@ -7,8 +7,7 @@
  * (Cesium / sun / SpaceMouse), and interface options.
  */
 
-import { Globe2, MousePointerClick, Move, PanelTop, } from 'lucide-react';
-import { Orthographic, Viewpoint, SpaceMouse, Lighting } from '@/icons';
+import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, ClassicBar } from '@/icons';
 import { useViewerStore } from '@/store';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { useCameraCommands } from '../../toolbar/CameraCommands';
@@ -134,7 +133,7 @@ export function ViewTab() {
             tint signals a modal pose whose exit affordance stays visible). */}
         {cesiumAvailable && (
           <RibbonLargeButton
-            icon={Globe2}
+            icon={World}
             label="World"
             tooltip={cesiumEnabled ? 'Hide 3D world context (Cesium)' : 'Show 3D world context (Cesium)'}
             active={cesiumEnabled}
@@ -200,7 +199,7 @@ export function ViewTab() {
         />
         <RibbonSmallStack>
           <RibbonSmallButton
-            icon={MousePointerClick}
+            icon={FollowWork}
             label="Follow work"
             tooltip="Open the Elements tab on selection and Author in edit mode, then hand the tab back"
             active={ribbonContextualTabs}
@@ -208,7 +207,7 @@ export function ViewTab() {
             {...tourAnchor(TOUR_ANCHORS.ribbonFollowWork)}
           />
           <RibbonSmallButton
-            icon={PanelTop}
+            icon={ClassicBar}
             label="Classic bar"
             tooltip="Switch back to the classic single-strip toolbar (remembered on this browser)"
             onClick={() => setToolbarStyle('classic')}

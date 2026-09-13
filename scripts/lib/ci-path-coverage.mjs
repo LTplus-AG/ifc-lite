@@ -150,6 +150,9 @@ export function splitJobs(text) {
   return jobs.map((j) => ({ id: j.id, text: j.lines.join('\n') }));
 }
 
+// Not path filters: `noop` (the no-op `edited` probe, scripts/ci-verdict-replay.mjs) says nothing about paths, so a job gated on it alone still reads as "every path".
+const NON_FILTER_OUTPUTS = new Set(['noop']);
+
 /**
  * The filter outputs that must be `true` for a job to run, read off its `if:`.
  *
@@ -162,12 +165,9 @@ export function gatingFilters(jobText) {
   const ifLine = jobText.match(/^\s{4}if:\s*(.*)$/m);
   if (!ifLine) return null;
   const expr = ifLine[1];
-  const positives = [...expr.matchAll(/needs\.changes\.outputs\.([A-Za-z0-9_]+)\s*==\s*'true'/g)].map(
-    (m) => m[1],
-  );
-  const negatives = [...expr.matchAll(/needs\.changes\.outputs\.([A-Za-z0-9_]+)\s*!=\s*'true'/g)].map(
-    (m) => m[1],
-  );
+  const isFilter = (n) => !NON_FILTER_OUTPUTS.has(n);
+  const positives = [...expr.matchAll(/needs\.changes\.outputs\.([A-Za-z0-9_]+)\s*==\s*'true'/g)].map((m) => m[1]).filter(isFilter);
+  const negatives = [...expr.matchAll(/needs\.changes\.outputs\.([A-Za-z0-9_]+)\s*!=\s*'true'/g)].map((m) => m[1]).filter(isFilter);
   if (positives.length === 0) {
     // An `if:` that never mentions a filter output (e.g. `always()`, or an
     // event-name guard) does not path-gate the job.

@@ -3,19 +3,22 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Test-only loader hook for `collabSlice.leave-during-join-race.test.ts`.
+ * Test-only loader hook for the collabSlice race tests
+ * (`collabSlice.leave-during-join-race.test.ts`, `collabSlice.seed-phase.test.ts`).
  *
- * Registered via `node:module`'s `register()` from inside that one test
- * file, so it only affects that file's (isolated, per-file) process — it
+ * Registered via `node:module`'s `register()` from inside each of those test
+ * files, so it only affects that file's (isolated, per-file) process — it
  * does not touch the shared `vite-module-hooks` pipeline other suites rely
  * on, and it does not change what `@ifc-lite/collab` exports for anything
  * else.
  *
- * Wraps `createCollabSession` so the test can pause the REAL session's
- * `whenSynced` at a chosen point (after the real IndexedDB/CRDT bring-up
- * has actually happened) and resume it on demand — the deterministic
- * substitute for "the network happened to take a while". Every other
- * export passes through untouched.
+ * Wraps `createCollabSession` so a test can (a) receive the REAL session via
+ * `globalThis.__collabSessionCreated`, to read the doc before `startCollab`
+ * commits `collabSession`, and (b) pause that session's `whenSynced` via
+ * `globalThis.__collabSyncGate` at a chosen point (after the real
+ * IndexedDB/CRDT bring-up has actually happened) and resume it on demand —
+ * the deterministic substitute for "the network happened to take a while".
+ * Every other export passes through untouched.
  */
 
 const MARKER = 'collab-session-race-hook:';
@@ -58,6 +61,10 @@ export * from ${JSON.stringify(realUrl)};
 import { createCollabSession as __realCreateCollabSession } from ${JSON.stringify(realUrl)};
 export async function createCollabSession(opts) {
   const session = await __realCreateCollabSession(opts);
+  // Hand the REAL session to the test so it can inspect the doc the seed
+  // wrote (collabSlice.seed-phase.test.ts): \`collabSession\` is only committed
+  // at the very end of \`startCollab\`, after the phases under test.
+  globalThis.__collabSessionCreated?.(session);
   const gate = globalThis.__collabSyncGate;
   if (gate) {
     const original = session.whenSynced;

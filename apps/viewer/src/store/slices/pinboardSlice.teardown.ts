@@ -24,6 +24,7 @@ export const pinboardTeardown = defineSliceTeardown(
     'basketViews',
     'activeBasketViewId',
     'basketPresentationVisible',
+    'basketVisibilityOwned',
   ],
   {
     'session-reset': () => ({
@@ -33,6 +34,7 @@ export const pinboardTeardown = defineSliceTeardown(
       activeBasketViewId: null,
       basketPresentationVisible: false,
       hierarchyBasketSelection: new Set<string>(),
+      basketVisibilityOwned: null,
     }),
     // Same dangling-ref shape as the 'model-removed' purge below, for the
     // full-teardown path: with every model gone, every basket ref is stale by
@@ -43,6 +45,7 @@ export const pinboardTeardown = defineSliceTeardown(
     'all-models-cleared': () => ({
       pinboardEntities: new Set<string>(),
       hierarchyBasketSelection: new Set<string>(),
+      basketVisibilityOwned: null,
     }),
     'model-removed': (scope, state) => {
       // Pinboard/basket state is keyed the same way as `selectedEntitiesSet` --
@@ -70,14 +73,33 @@ export const pinboardTeardown = defineSliceTeardown(
       // equal-but-new Sets. `syncSourceModel` runs this same scope again
       // straight after `removeModel`, and a fresh reference there would re-notify
       // every basket subscriber for a set that did not move.
+      // The ownership record names global ids; the visibility teardown drops
+      // the removed model's ids from the channel in this same merged patch,
+      // so the record is FILTERED the same way — dropping it instead would
+      // leave the surviving basket unable to close an isolation it opened
+      // (an empty basket with the dock's buttons disabled). Null only when
+      // nothing of it survives.
+      const owned = state.basketVisibilityOwned ?? null;
+      const ownedStale =
+        owned !== null && ([...owned.ids].some(scope.isStale) || [...owned.claims].some(scope.isStale));
       if (
         keptPinboard.size === priorPinboard.size &&
-        keptHierarchyBasket.size === priorHierarchyBasket.size
+        keptHierarchyBasket.size === priorHierarchyBasket.size &&
+        !ownedStale
       ) {
         return {};
       }
+      const keptIds = owned ? new Set([...owned.ids].filter((id) => !scope.isStale(id))) : null;
+      const keptOwned =
+        owned && keptIds && keptIds.size > 0
+          ? { ...owned, ids: keptIds, claims: new Set([...owned.claims].filter((id) => !scope.isStale(id))) }
+          : null;
 
-      return { pinboardEntities: keptPinboard, hierarchyBasketSelection: keptHierarchyBasket };
+      return {
+        pinboardEntities: keptPinboard,
+        hierarchyBasketSelection: keptHierarchyBasket,
+        ...(ownedStale ? { basketVisibilityOwned: keptOwned } : {}),
+      };
     },
   },
 );

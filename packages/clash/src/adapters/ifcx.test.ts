@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { elementsFromIfcx } from './ifcx.js';
 import { createClashEngine } from '../engine.js';
 import type { ClashRule } from '../types.js';
@@ -377,4 +377,104 @@ describe('elementsFromIfcx - drops non-physical / container classes (parity with
     expect(keys).toEqual(['Project/Storey/Wall']);
     expect(elements[0].tag).toBe('IfcWall');
   });
+});
+
+// #4254: a mesh whose every vertex is non-finite on some axis used to produce
+// an inverted (`min > max`) AABB from `fromPositions` — sound-looking, but
+// invisible to the BVH broad phase (`engine-ts/broad.ts`), so the entity
+// silently never clashed with anything. `fromPositions` now throws
+// `NonFiniteAxisError` for that shape; this adapter catches it, drops just
+// that entity, and warns once with a count.
+function nonFiniteIfcxFile() {
+  const ifcClass = (code: string) => ({
+    code,
+    uri: `https://identifier.buildingsmart.org/uri/buildingsmart/ifc/5/class/${code}`,
+  });
+  return {
+    header: {
+      id: 'clash-ifcx-nonfinite-fixture',
+      ifcxVersion: 'ifcx_alpha',
+      dataVersion: '1.0.0',
+      author: 'ifc-lite clash adapter test',
+      timestamp: '2025-01-01T00:00:00Z',
+    },
+    imports: [],
+    schemas: {
+      'bsi::ifc::class': { value: SCHEMA_VALUE },
+      'usd::usdgeom::mesh': { value: SCHEMA_VALUE },
+    },
+    data: [
+      {
+        path: 'Project',
+        attributes: { 'bsi::ifc::class': ifcClass('IfcProject') },
+        children: {
+          WallBad: 'Project/WallBad',
+          WallGood: 'Project/WallGood',
+        },
+      },
+      {
+        path: 'Project/WallBad',
+        attributes: { 'bsi::ifc::class': ifcClass('IfcWall') },
+        children: { Body: 'Project/WallBad/Body' },
+      },
+      {
+        path: 'Project/WallBad/Body',
+        attributes: {
+          'usd::usdgeom::mesh': {
+            // Every point has a non-finite x; y/z are fine — matches the
+            // #4254 repro (`fromPositions([NaN,1,1, NaN,2,2])`). Plain JSON
+            // cannot encode a literal NaN/Infinity token (`JSON.stringify`
+            // turns both into `null`), so `__INF__` below is substituted
+            // with the numeric literal `1e400` AFTER stringifying — that is
+            // syntactically an ordinary (very large) JSON number, and
+            // `JSON.parse` rounds it to `Infinity` per IEEE 754, which is
+            // just as non-finite as NaN for this guard.
+            points: [
+              ['__INF__', 0, 0], ['__INF__', 0, 0], ['__INF__', 1, 0],
+            ],
+            faceVertexIndices: [0, 1, 2],
+          },
+        },
+      },
+      {
+        path: 'Project/WallGood',
+        attributes: { 'bsi::ifc::class': ifcClass('IfcWall') },
+        children: { Body: 'Project/WallGood/Body' },
+      },
+      {
+        path: 'Project/WallGood/Body',
+        attributes: { 'usd::usdgeom::mesh': cubeMesh(10, 0, 0, 1) },
+      },
+    ],
+  };
+}
+
+function nonFiniteIfcxBuffer(): ArrayBuffer {
+  const json = JSON.stringify(nonFiniteIfcxFile()).replaceAll('"__INF__"', '1e400');
+  return new TextEncoder().encode(json).buffer as ArrayBuffer;
+}
+
+describe('elementsFromIfcx - drops an entity with a non-finite axis (#4254)', () => {
+  it('excludes the corrupt entity and warns once, naming the model and the count', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { elements } = await elementsFromIfcx({
+        buffer: nonFiniteIfcxBuffer(),
+        modelId: 'ifcx-4254',
+      });
+      // The corrupt entity never becomes a ClashElement — never an inverted
+      // box that would silently vanish from every spatial query.
+      expect(elements).toHaveLength(1);
+      expect(elements[0].key).toBe('Project/WallGood');
+      expect(elements[0].tag).toBe('IfcWall');
+      expect(warn).toHaveBeenCalledTimes(1);
+      const msg = warn.mock.calls[0].join(' ');
+      expect(msg).toContain('[clash/ifcx]');
+      expect(msg).toContain('ifcx-4254');
+      expect(msg).toContain('skipped 1');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
 });

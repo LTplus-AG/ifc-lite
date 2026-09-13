@@ -1,0 +1,114 @@
+{
+  "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+  "baseSource": "e700a7ba3 (origin/main)",
+  "branchSource": "feat/4381-scan-transfer-f4 working tree before commit; Rust diff confined to rust/processing/src/appearance/transfer*.rs",
+  "command": "target/profiling/examples/perf_probe <fixture> --iters 5 --json --fingerprint, built with cargo build --profile profiling -p ifc-lite-processing --example perf_probe in each checkout",
+  "measurement": "Interleaved native five-iteration normal-load A/B/A/B (base, branch, base, branch) on a shared Windows 11 host running other agent workloads, not an explicitly idle machine. Probe parse/geometry/total values are best-of-five. The changed code (registered mesh transfer sampling) is not on the model-load path; this run only shows the normal-load pipeline is unaffected. No worker-pool, browser or transfer-throughput claim.",
+  "runs": [
+    {
+      "version": "base",
+      "parseMs": 6,
+      "geometryMs": 7,
+      "totalMs": 13,
+      "allTotalsMs": [
+        19,
+        14,
+        15,
+        13,
+        14
+      ],
+      "allWallMs": [
+        20.6712,
+        16.1554,
+        16.8232,
+        15.41,
+        16.1004
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "version": "branch",
+      "parseMs": 5,
+      "geometryMs": 7,
+      "totalMs": 13,
+      "allTotalsMs": [
+        17,
+        14,
+        13,
+        14,
+        14
+      ],
+      "allWallMs": [
+        19.258999999999997,
+        15.5365,
+        15.2412,
+        15.5008,
+        15.956299999999999
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "version": "base",
+      "parseMs": 6,
+      "geometryMs": 7,
+      "totalMs": 14,
+      "allTotalsMs": [
+        18,
+        14,
+        14,
+        14,
+        14
+      ],
+      "allWallMs": [
+        20.228199999999998,
+        15.9428,
+        16.1211,
+        15.975900000000001,
+        15.9772
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    {
+      "version": "branch",
+      "parseMs": 5,
+      "geometryMs": 8,
+      "totalMs": 13,
+      "allTotalsMs": [
+        18,
+        13,
+        14,
+        17,
+        14
+      ],
+      "allWallMs": [
+        20.3565,
+        15.4255,
+        16.1795,
+        18.7375,
+        15.9785
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "meshFingerprintsFnv1a64": [
+        "25ac885b6ff4ad00"
+      ]
+    }
+  ]
+}

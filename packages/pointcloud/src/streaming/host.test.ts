@@ -282,11 +282,13 @@ describe('streamPointCloud (in-process source)', () => {
     // here and report a bbox that includes the origin even though no real
     // point is anywhere near it.
     const goodChunk: DecodedPointChunk = {
+      normalState: 'absent',
       positions: new Float32Array([500000, 200000, 100, 500100, 200100, 120]),
       pointCount: 2,
       bbox: { min: [500000, 200000, 100], max: [500100, 200100, 120] },
     };
     const badChunk: DecodedPointChunk = {
+      normalState: 'absent',
       positions: new Float32Array(0),
       pointCount: 0,
       bbox: {
@@ -323,6 +325,7 @@ describe('streamPointCloud (in-process source)', () => {
 
   it('falls back to the header bbox when every chunk in the stream is non-finite', async () => {
     const badChunk: DecodedPointChunk = {
+      normalState: 'absent',
       positions: new Float32Array(0),
       pointCount: 0,
       bbox: {

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { createCollabDoc } from '../src/doc/schema.js';
 import { createEntity, addGeometryRef } from '../src/doc/entity.js';
 import { createGeometry, setGeometryBlobHash } from '../src/doc/geometry.js';
+import { createModelSlot } from '../src/doc/model-slot.js';
 import { MemoryBlobStore } from '../src/geometry/blob-store.js';
 import {
   collectReferencedBlobHashes,
@@ -22,6 +23,12 @@ describe('blob GC', () => {
 
     const referenced = collectReferencedBlobHashes(doc);
     expect(referenced.has('a'.repeat(32))).toBe(true);
+  });
+
+  it('keeps a portable model source referenced by its room slot (#4604)', () => {
+    const doc = createCollabDoc();
+    createModelSlot(doc, 'm0', { name: 'annotation.ifc', order: 0, stepSourceBlobHash: 'b'.repeat(32) });
+    expect(collectReferencedBlobHashes(doc)).toContain('b'.repeat(32));
   });
 
   it('plans + sweeps unreferenced blobs older than the epoch', async () => {

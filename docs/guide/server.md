@@ -663,6 +663,7 @@ faster than the first load.
 | `WORKER_THREADS` | CPU cores | Parallel processing threads |
 | `CACHE_DIR` | `./.cache` (`/app/cache` in Docker) | Cache directory path |
 | `REQUEST_TIMEOUT_SECS` | 300 | Request timeout in seconds |
+| `IFC_STREAM_IDLE_TIMEOUT_SECS` | 600 | Close a streaming connection after this many seconds with no socket-write progress; `0` disables |
 | `INITIAL_BATCH_SIZE` | 100 | Streaming initial batch size |
 | `MAX_BATCH_SIZE` | 1000 | Streaming maximum batch size |
 | `CACHE_MAX_AGE_DAYS` | 7 | Cache retention in days |

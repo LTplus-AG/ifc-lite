@@ -17,6 +17,42 @@ Geometry blobs are content-addressed and remain separate from the CRDT document.
 The document contains references and parametric state, which keeps ordinary
 updates small and makes missing or corrupt blobs detectable.
 
+A room carries one or more *model slots* (`models` map, `slotId → record`).
+Slot ids are minted in share order (`m0`, `m1`, …), never derived from a file
+name, its bytes or its GlobalIds, and every entity path is qualified by its
+slot: `/<slotId>/<GlobalId>` for STEP-seeded entities, `/<slotId>` prepended to
+the file's own path for IFCX seeds, whose header, imports and schemas are
+recorded per slot as well. Two copies of one file are therefore two disjoint
+entity sets, each with its own geometry references (STEP mesh blobs encode the
+federation-global express id, so the copies do not share blobs). Rooms shared
+before slots existed have an empty `models` map and unqualified paths; readers
+treat them as a single implicit slot with an empty prefix, so nothing on disk
+is rewritten. A recipient reconstructs one federated viewer model per slot,
+registered in its own global-id range like any added file, and suffixes a
+model name that another slot also carries (`AC20-FZK-Haus.ifc (2)`). The
+reconstructed store keys entities by their room path (the IFCX ingest uses the
+node path as GlobalId); an IFCX export of a room model removes the slot prefix
+again (`Ifc5ExportOptions.stripPathPrefix`, chosen by `roomExportPathPrefix`
+for the recipient's `room:<roomId>:<slotId>` models only), so the file carries
+`/<GlobalId>` like a single-model room's export. The owner's seed writes each
+slot in four transactions (slot record, structure, mesh resolve with every
+placement-baseline stamp, geometry records + refs) plus one seed marker: the
+relay's per-connection write budget is a token bucket, and an unbatched burst of
+per-entity frames is dropped there — after which Yjs holds every later frame
+from that client pending — so the frame count is pinned by test.
+
+STEP models with authored `IfcAnnotation` representations also carry one
+content-addressed, mutation-materialized STEP source in their slot record. The
+room snapshot remains authoritative for live roots and edits; recipients attach
+the STEP source for representation-level symbolic extraction and remap its
+owners through slot-qualified GlobalIds. This preserves native 2D fills while
+the same annotation's mesh blobs remain selectable 3D parts. The source upload
+and recipient fetch are both capped at 96 MiB, and only canonical 32-character lowercase blob
+references are accepted. When that source still covers every live room root,
+Export emits ordinary STEP and remaps room edits and visibility IDs back to
+source express IDs. A root created later in the room makes IFCX the complete
+export again, so it is never omitted to preserve the older STEP representation.
+
 ## Synchronization
 
 Clients exchange Yjs updates through `@ifc-lite/collab-server`. The server owns

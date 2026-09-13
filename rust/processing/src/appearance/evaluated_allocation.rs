@@ -52,6 +52,7 @@ pub(super) fn compact(plan: &mut AppearancePlan, types: &BTreeMap<u32,IfcType>) 
     for item in &mut plan.conversions {
         if let Some(&id)=ids.get(&item.geometry_item_id) {item.geometry_item_id=id;}
         if let Some(&id)=ids.get(&item.representation_id) {item.representation_id=id;}
+        if let Some(&id)=item.retained_geometry_item_id.as_ref().and_then(|retained|ids.get(retained)) {item.retained_geometry_item_id=Some(id);}
     }
     plan.next_available_express_id=plan.next_express_id+plan.created.len() as u32;
     Ok(ids)

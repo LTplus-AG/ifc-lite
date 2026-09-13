@@ -76,7 +76,7 @@ describe('the ladder is a real instrument', () => {
     const opts = { hostile, sizes: [320_000], budgetMs: 20 } as const;
     expect(firstBlownRung(linear, opts)).toBeNull();
     expect(firstBlownRung(heavy, opts)).toBe(320_000);
-  });
+  }, 30_000); // a deliberately expensive measurement: ~5.5 s on a contended CI runner, past vitest's 5 s default
 });
 
 describe('it reads the CPU clock, not the wall clock (#3224)', () => {

@@ -685,6 +685,41 @@ describe('hydrated selection meshes across renders', () => {
         h.render({});
         assert.strictEqual(scene.getMeshes().filter((m) => m.hydrated).length, 0);
     });
+
+    // #4382, a follow-up on #2985: RenderOptions.selectedItemId narrows the
+    // whole-product highlight to one representation item. End-to-end through
+    // the real render() loop (unlike scene-level tests, this also proves
+    // index.ts's own selectedMeshes/hydration filtering, not just Scene's).
+    it('RenderOptions.selectedItemId hydrates and highlights only the matching representation item', () => {
+        const ITEM_A = 301;
+        const ITEM_B = 302;
+        const h = makeHarness();
+        seedBatches(h);
+        const scene = sceneOf(h);
+        scene.addMeshData({ ...triangle(50, GREY), geometryItemId: ITEM_A } as MeshData);
+        scene.addMeshData({ ...triangle(50, GREY), geometryItemId: ITEM_B } as MeshData);
+
+        h.render({ selectedId: 50, selectedItemId: ITEM_A });
+        let hydrated = scene.getMeshes().filter((m) => m.hydrated && m.expressId === 50);
+        assert.strictEqual(hydrated.length, 1, 'only the item-A piece hydrates');
+        assert.strictEqual(hydrated[0].geometryItemId, ITEM_A);
+        const itemAMesh = hydrated[0];
+
+        // Switching the item within the SAME still-selected product replaces
+        // the highlight cleanly: item A's piece is disposed (not left
+        // resident alongside item B's).
+        h.render({ selectedId: 50, selectedItemId: ITEM_B });
+        hydrated = scene.getMeshes().filter((m) => m.hydrated && m.expressId === 50);
+        assert.strictEqual(hydrated.length, 1, 'item A is disposed, only item B hydrates');
+        assert.strictEqual(hydrated[0].geometryItemId, ITEM_B);
+        assert.strictEqual((itemAMesh.vertexBuffer as unknown as FakeBuffer).destroyed, 1);
+
+        // Dropping selectedItemId (whole product again) is the ordinary path
+        // and must be unaffected: both pieces hydrate.
+        h.render({ selectedId: 50 });
+        hydrated = scene.getMeshes().filter((m) => m.hydrated && m.expressId === 50);
+        assert.strictEqual(hydrated.length, 2, 'whole-product selection hydrates every piece');
+    });
 });
 
 /**

@@ -33,11 +33,10 @@ import {
   mirrorAttribute,
   mirrorEntityDelete,
   attachRemoteApply,
-  registerEntityMaps,
-  registerEntityPath,
   type CollabDocApi,
   type RemoteApplyHandlers,
 } from './mutation-bridge.js';
+import { pathForEntity, pathForGuid, registerEntityMaps, registerEntityPath, registerStoreSlot } from './entity-paths.js';
 
 /**
  * `yjs` is a transitive dependency (via `@ifc-lite/collab`), not a direct
@@ -84,6 +83,9 @@ const api: CollabDocApi = {
   PROPERTY_TYPE_NAMES,
 };
 
+/** The one room model these inbound tests resolve every path to. */
+const MODEL = 'room:r1:m0';
+
 /** A fake session — only `.doc` and `.transact` are exercised by the bridge. */
 function fakeSession(doc: ReturnType<typeof createCollabDoc>): CollabSession {
   return { doc, transact: (fn: () => void) => doc.transact(fn) } as unknown as CollabSession;
@@ -116,13 +118,13 @@ describe('mutation-bridge entity-map registration', () => {
     assert.deepEqual(placed!.location, [7, 8, 9]);
 
     const handlers = recordingHandlers();
-    const teardown = attachRemoteApply(api, fakeSession(doc), store, handlers);
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
     applyAsRemoteEdit(doc, (remote) => {
       setAttribute(remote, '/newWall', 'bsi::ifc::prop::Name', 'New Wall');
     });
     teardown();
     assert.strictEqual(handlers.calls.length, 1, 'registerEntityPath must make the path resolvable inbound (entityForPath)');
-    assert.deepEqual(handlers.calls[0], { fn: 'onAttribute', args: [42, 'bsi::ifc::prop::Name', 'New Wall'] });
+    assert.deepEqual(handlers.calls[0], { fn: 'onAttribute', args: [MODEL, 42, 'bsi::ifc::prop::Name', 'New Wall'] });
   });
 });
 
@@ -317,7 +319,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     setPropertyValue(doc, '/wallA', 'Pset_WallCommon', 'Reference', { type: 'IfcIdentifier', value: 'seed' });
     const store = fakeStore(new Map([[1, '/wallA']]));
     const handlers = recordingHandlers();
-    const teardown = attachRemoteApply(api, fakeSession(doc), store, handlers);
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
 
     applyAsRemoteEdit(doc, (remote) => {
       setPropertyValue(remote, '/wallA', 'Pset_WallCommon', 'IsExternal', { type: 'IfcBoolean', value: true });
@@ -327,7 +329,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     assert.strictEqual(handlers.calls.length, 1);
     assert.deepEqual(handlers.calls[0], {
       fn: 'onProperty',
-      args: [1, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean],
+      args: [MODEL, 1, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean],
     });
   });
 
@@ -351,7 +353,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     }
     const store = fakeStore(new Map([[1, '/wallA']]));
     const handlers = recordingHandlers();
-    const teardown = attachRemoteApply(api, fakeSession(doc), store, handlers);
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
 
     applyAsRemoteEdit(doc, (remote) => {
       for (const { ifcType } of cases) {
@@ -363,10 +365,10 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     assert.strictEqual(handlers.calls.length, cases.length);
     for (const { ifcType, expected } of cases) {
       const call = handlers.calls.find(
-        (c) => c.fn === 'onProperty' && c.args[1] === `Pset_${ifcType}`,
+        (c) => c.fn === 'onProperty' && c.args[2] === `Pset_${ifcType}`,
       );
       assert.ok(call, `expected an onProperty call for ${ifcType}`);
-      assert.strictEqual(call!.args[4], expected, `${ifcType} should map to PropertyValueType ${expected}`);
+      assert.strictEqual(call!.args[5], expected, `${ifcType} should map to PropertyValueType ${expected}`);
     }
   });
 
@@ -389,7 +391,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' }); // psets map starts empty
     const store = fakeStore(new Map([[1, '/wallA']]));
     const handlers = recordingHandlers();
-    const teardown = attachRemoteApply(api, fakeSession(doc), store, handlers);
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
 
     applyAsRemoteEdit(doc, (remote) => {
       setPropertyValue(remote, '/wallA', 'Pset_WallCommon', 'IsExternal', { type: 'IfcBoolean', value: true });
@@ -405,7 +407,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     assert.strictEqual(handlers.calls.length, 1);
     assert.deepEqual(handlers.calls[0], {
       fn: 'onProperty',
-      args: [1, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean],
+      args: [MODEL, 1, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean],
     });
   });
 
@@ -418,7 +420,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     setPropertyValue(doc, '/wallA', 'Pset_WallCommon', 'Reference', { type: 'IfcIdentifier', value: 'seed' });
     const store = fakeStore(new Map([[1, '/wallA']]));
     const handlers = recordingHandlers();
-    const teardown = attachRemoteApply(api, fakeSession(doc), store, handlers);
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
 
     applyAsRemoteEdit(doc, (remote) => {
       deletePropertyValue(remote, '/wallA', 'Pset_WallCommon', 'IsExternal');
@@ -428,7 +430,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     assert.strictEqual(handlers.calls.length, 1);
     assert.deepEqual(handlers.calls[0], {
       fn: 'onPropertyDelete',
-      args: [1, 'Pset_WallCommon', 'IsExternal'],
+      args: [MODEL, 1, 'Pset_WallCommon', 'IsExternal'],
     });
   });
 
@@ -456,7 +458,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     setPropertyValue(doc, '/wallA', 'Pset_WallCommon', 'IsExternal', { type: 'IfcBoolean', value: true });
     const store = fakeStore(new Map([[1, '/wallA']]));
     const handlers = recordingHandlers();
-    const teardown = attachRemoteApply(api, fakeSession(doc), store, handlers);
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
 
     applyAsRemoteEdit(doc, (remote) => {
       deletePropertyValue(remote, '/wallA', 'Pset_WallCommon', 'IsExternal');
@@ -470,7 +472,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     assert.strictEqual(handlers.calls.length, 1);
     assert.deepEqual(handlers.calls[0], {
       fn: 'onPsetDelete',
-      args: [1, 'Pset_WallCommon'],
+      args: [MODEL, 1, 'Pset_WallCommon'],
     });
   });
 
@@ -479,7 +481,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
     const store = fakeStore(new Map([[1, '/wallA']]));
     const handlers = recordingHandlers();
-    const teardown = attachRemoteApply(api, fakeSession(doc), store, handlers);
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
 
     applyAsRemoteEdit(doc, (remote) => {
       setAttribute(remote, '/wallA', 'bsi::ifc::prop::Name', 'Wall-A');
@@ -489,7 +491,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     assert.strictEqual(handlers.calls.length, 1);
     assert.deepEqual(handlers.calls[0], {
       fn: 'onAttribute',
-      args: [1, 'bsi::ifc::prop::Name', 'Wall-A'],
+      args: [MODEL, 1, 'bsi::ifc::prop::Name', 'Wall-A'],
     });
   });
 
@@ -506,7 +508,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     setAttribute(doc, '/wallA', 'bsi::ifc::prop::Name', 'Wall-A');
     const store = fakeStore(new Map([[1, '/wallA']]));
     const handlers = recordingHandlers();
-    const teardown = attachRemoteApply(api, fakeSession(doc), store, handlers);
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
 
     applyAsRemoteEdit(doc, (remote) => {
       deleteAttribute(remote, '/wallA', 'bsi::ifc::prop::Name');
@@ -521,7 +523,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
     const store = fakeStore(new Map([[1, '/wallA']]));
     const handlers = recordingHandlers();
-    const teardown = attachRemoteApply(api, fakeSession(doc), store, handlers);
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
 
     applyAsRemoteEdit(doc, (remote) => {
       setEntityPlacement(remote, '/wallA', { location: [5, 6, 7] });
@@ -530,8 +532,9 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     teardown();
     assert.strictEqual(handlers.calls.length, 1, 'exactly one handler call, not also onAttribute');
     assert.strictEqual(handlers.calls[0].fn, 'onPlacement');
-    assert.strictEqual(handlers.calls[0].args[0], 1);
-    assert.deepEqual((handlers.calls[0].args[1] as { location: number[] }).location, [5, 6, 7]);
+    assert.strictEqual(handlers.calls[0].args[0], MODEL);
+    assert.strictEqual(handlers.calls[0].args[1], 1);
+    assert.deepEqual((handlers.calls[0].args[2] as { location: number[] }).location, [5, 6, 7]);
   });
 
   it('dispatches a remote entity delete to onEntityDelete', () => {
@@ -539,7 +542,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
     const store = fakeStore(new Map([[1, '/wallA']]));
     const handlers = recordingHandlers();
-    const teardown = attachRemoteApply(api, fakeSession(doc), store, handlers);
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
 
     applyAsRemoteEdit(doc, (remote) => {
       deleteEntity(remote, '/wallA');
@@ -547,7 +550,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
 
     teardown();
     assert.strictEqual(handlers.calls.length, 1);
-    assert.deepEqual(handlers.calls[0], { fn: 'onEntityDelete', args: [1] });
+    assert.deepEqual(handlers.calls[0], { fn: 'onEntityDelete', args: [MODEL, 1] });
   });
 
   it('ignores local writes (own outbound mirror) — no echo back into handlers', () => {
@@ -555,7 +558,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
     const store = fakeStore(new Map([[1, '/wallA']]));
     const handlers = recordingHandlers();
-    const teardown = attachRemoteApply(api, fakeSession(doc), store, handlers);
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
 
     // A direct local transact — this is exactly what `mirrorAttribute` does.
     doc.transact(() => {
@@ -572,7 +575,7 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     // Store has no maps at all — entityForPath resolves null for every path.
     const store = fakeStore(new Map());
     const handlers = recordingHandlers();
-    const teardown = attachRemoteApply(api, fakeSession(doc), store, handlers);
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
 
     applyAsRemoteEdit(doc, (remote) => {
       setAttribute(remote, '/wallA', 'bsi::ifc::prop::Name', 'Wall-A');
@@ -580,5 +583,66 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
 
     teardown();
     assert.strictEqual(handlers.calls.length, 0, 'unresolvable path must not reach any handler');
+  });
+});
+
+/**
+ * #4444 — one room, several models. Two loaded copies of one file share every
+ * GlobalId, so the path a store resolves to has to carry the store's room
+ * slot, and an inbound edit has to be routed to the model its path names.
+ */
+describe('mutation-bridge model slots (#4444)', () => {
+  const GUID = '0aBcDeFgHiJkLmNoPqRsT1';
+
+  /** A STEP-shaped store: paths derive from the entity table's GlobalIds. */
+  function stepStore(): IfcDataStore {
+    return {
+      entityIndex: { byId: new Map([[7, { type: 'IFCWALL', byteOffset: 0, byteLength: 0 }]]), byType: new Map() },
+      entities: { getGlobalId: (id: number) => (id === 7 ? GUID : '') },
+    } as unknown as IfcDataStore;
+  }
+
+  it('two stores with the same GlobalId resolve to two paths once each is bound to its slot', () => {
+    const a = stepStore();
+    const b = stepStore();
+    // Unbound: the legacy single-model scheme, as every pre-slot room used.
+    assert.equal(pathForEntity(a, 7), `/${GUID}`);
+    registerStoreSlot(a, { slotId: 'm0', pathPrefix: '/m0' });
+    registerStoreSlot(b, { slotId: 'm1', pathPrefix: '/m1' });
+    assert.equal(pathForEntity(a, 7), `/m0/${GUID}`);
+    assert.equal(pathForEntity(b, 7), `/m1/${GUID}`);
+    assert.equal(pathForGuid(b, GUID), `/m1/${GUID}`);
+    assert.notEqual(pathForEntity(a, 7), pathForEntity(b, 7));
+  });
+
+  it('routes an inbound edit to the model whose slot the path names, never to the other copy', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, `/m0/${GUID}`, { ifcClass: 'IfcWall' });
+    createEntity(doc, `/m1/${GUID}`, { ifcClass: 'IfcWall' });
+    // Same local expressId in both reconstructed stores — exactly what two
+    // copies of one file produce.
+    const storeA = fakeStore(new Map([[5, `/m0/${GUID}`]]));
+    const storeB = fakeStore(new Map([[5, `/m1/${GUID}`]]));
+    const resolve = (path: string) =>
+      path.startsWith('/m1/') ? { modelId: 'B', store: storeB } : path.startsWith('/m0/') ? { modelId: 'A', store: storeA } : null;
+    const handlers = recordingHandlers();
+    const teardown = attachRemoteApply(api, fakeSession(doc), resolve, handlers);
+    applyAsRemoteEdit(doc, (remote) => {
+      setAttribute(remote, `/m1/${GUID}`, 'bsi::ifc::prop::Name', 'Copy B wall');
+    });
+    teardown();
+    assert.deepEqual(handlers.calls, [{ fn: 'onAttribute', args: ['B', 5, 'bsi::ifc::prop::Name', 'Copy B wall'] }]);
+  });
+
+  it('drops an inbound edit whose path resolves to no room model', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, `/m3/${GUID}`, { ifcClass: 'IfcWall' });
+    const handlers = recordingHandlers();
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => null, handlers);
+    applyAsRemoteEdit(doc, (remote) => {
+      setAttribute(remote, `/m3/${GUID}`, 'bsi::ifc::prop::Name', 'nobody');
+    });
+    teardown();
+    assert.deepEqual(handlers.calls, []);
   });
 });

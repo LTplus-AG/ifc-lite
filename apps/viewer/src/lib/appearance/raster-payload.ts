@@ -8,7 +8,9 @@ import type { AppearanceRaster } from './planner-types';
 const MAX_INPUT_BYTES = 64 * 1024 * 1024;
 
 /** Read retained image pixels only; Rust owns all projection and sampling. */
-export async function prepareAppearanceRasterPayload(modelId: string, productIds: readonly number[], sourceAssetId: string,
+/** `sourceAssetId` is null when the source carries its colours per point (#4381):
+ * the payload then holds only the target's existing rasters and `sourceImage` is null. */
+export async function prepareAppearanceRasterPayload(modelId: string, productIds: readonly number[], sourceAssetId: string | null,
   owner: AppearanceAssetOwner, signal: AbortSignal, validate: () => void) {
   const chunks: Uint8Array[] = [];
   let byteLength = 0;
@@ -33,8 +35,11 @@ export async function prepareAppearanceRasterPayload(modelId: string, productIds
       return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
     });
   }
-  appearanceAssets.retain(sourceAssetId, owner);
-  const sourceImage = fromBitmap(await appearanceAssets.decode(sourceAssetId, owner, signal));
+  let sourceImage: AppearanceRaster | null = null;
+  if (sourceAssetId !== null) {
+    appearanceAssets.retain(sourceAssetId, owner);
+    sourceImage = fromBitmap(await appearanceAssets.decode(sourceAssetId, owner, signal));
+  }
   const images = new Map<string, AppearanceRaster>();
   const state = useViewerStore.getState();
   const selected = new Set(productIds.map(id => state.toGlobalId(modelId, id)));

@@ -1012,6 +1012,57 @@ fn try_from_meshes_rejects_index_counts_past_buffer() {
 }
 
 #[test]
+fn try_from_meshes_rejects_an_index_past_its_own_mesh() {
+    // Every check the fail-closed gate had was about a COUNT running past a
+    // buffer. An index whose VALUE is out of range passes all of them — the
+    // sums here are exact — and the assembler then copies the index buffer
+    // into the BIN chunk verbatim (`bytemuck::cast_slice`), so it reached the
+    // file. glTF 2.0 3.7.2.1: "index values MUST be less than the number of
+    // vertices". The same arrays through `try_export_collada_from_meshes` emit ONE
+    // triangle, because `collada.rs` drops a triangle with an index outside its
+    // mesh's range, and `usd.rs`'s `mesh_emittable` has a third copy of the
+    // rule — so the fail-closed exporter was the one that disagreed.
+    let positions: Vec<f32> =
+        vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0];
+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 6).flatten().collect();
+    // Mesh 1's last index names vertex 7; mesh 1 has three vertices.
+    let indices: Vec<u32> = vec![0, 1, 2, 0, 1, 7];
+    let (vc, ic) = (vec![3u32, 3u32], vec![3u32, 3u32]);
+    let color = vec![0.5, 0.5, 0.5, 1.0, 0.5, 0.5, 0.5, 1.0];
+    let origin = vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    let ids = vec![1u32, 2u32];
+
+    // The gate refuses, naming the mesh and the index.
+    let err = try_export_glb_from_meshes(
+        &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+    )
+    .expect_err("an index past its mesh's vertex count must be MalformedMeshInput");
+    assert!(matches!(err, ExportError::MalformedMeshInput { .. }), "got {err:?}");
+    assert_eq!(err.code(), "MALFORMED_MESH_INPUT");
+    assert!(err.to_string().contains("mesh 1"), "names the offending mesh: {err}");
+    assert!(err.to_string().contains('7'), "names the offending index: {err}");
+
+    // The boundary, both ways round. An index EQUAL to the vertex count is out
+    // of range (indices are zero-based), and `vertex_count - 1` is the last
+    // legal one, so a `>` where the rule wants `>=` is caught here rather than
+    // by the 7-against-3 case above, which both spellings reject.
+    let at_count: Vec<u32> = vec![0, 1, 2, 0, 1, 3];
+    assert!(
+        try_export_glb_from_meshes(
+            &positions, &normals, &at_count, &vc, &ic, &color, &origin, &ids, false, true, false,
+        )
+        .is_err(),
+        "index == vertex_count is out of range"
+    );
+
+    let ok_indices: Vec<u32> = vec![0, 1, 2, 0, 1, 2];
+    try_export_glb_from_meshes(
+        &positions, &normals, &ok_indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+    )
+    .expect("in-range indices must still export");
+}
+
+#[test]
 fn try_from_meshes_rejects_empty_input() {
     // Zero meshes (e.g. a viewer selection whose visible set filtered to
     // nothing) passes every per-count-consistency check trivially — vsum=0,
@@ -1491,10 +1542,51 @@ fn metadata_and_isolation() {
         .unwrap();
     let iso = export_glb_with_stats(
         &fixture_or_skip!("ara3d/duplex.ifc"),
-        &GltfOptions { isolated: vec![some_id], ..GltfOptions::default() },
+        &GltfOptions { isolated: Some(vec![some_id]), ..GltfOptions::default() },
     )
     .1;
     assert!(iso.meshes >= 1 && iso.meshes <= full.meshes);
+}
+
+/// #4328 follow-up, three states over a real fixture: `None` (no filter) keeps
+/// the full model, an active filter matching zero express ids exports NOTHING
+/// (not the whole model), and an active filter matching one id exports exactly
+/// that id's mesh(es) — the middle case is the one a careless fix breaks in
+/// either direction (over-hiding a normal allowlist, or falling back to
+/// "export everything" on an empty one).
+#[test]
+fn isolation_three_states_over_a_real_fixture() {
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
+
+    let no_filter = export_glb_with_stats(&bytes, &GltfOptions::default()).1;
+    assert!(no_filter.meshes > 1, "fixture must have more than one visible mesh to discriminate");
+
+    let empty_active = export_glb_with_stats(
+        &bytes,
+        &GltfOptions { isolated: Some(vec![]), ..GltfOptions::default() },
+    )
+    .1;
+    assert_eq!(
+        empty_active.meshes, 0,
+        "an ACTIVE isolation filter matching zero express ids must export zero meshes, \
+         not silently fall back to the whole model"
+    );
+
+    let some_id = process_geometry(&bytes[..])
+        .meshes
+        .iter()
+        .find(|m| super::mesh_visible(m, &GltfOptions::default()))
+        .map(|m| m.express_id)
+        .unwrap();
+    let one_match = export_glb_with_stats(
+        &bytes,
+        &GltfOptions { isolated: Some(vec![some_id]), ..GltfOptions::default() },
+    )
+    .1;
+    assert!(
+        one_match.meshes >= 1 && one_match.meshes < no_filter.meshes,
+        "a non-empty allowlist must still export exactly its matches, not everything and not nothing"
+    );
 }
 
 /// A minimal but valid triangulated mesh (one triangle, matching normals),
@@ -2510,5 +2602,27 @@ fn the_bounded_path_counts_identities_not_colour_buckets() {
         stats.unverified_instance_groups, 1,
         "four occurrences of one representation map are ONE unverified identity, \
          whatever the colours split them into"
+    );
+}
+
+#[test]
+fn mesh_visible_empty_isolated_set_is_indistinguishable_from_no_filter_bug_repro() {
+    // #4328 follow-up: an ACTIVE isolation filter that matches nothing must hide
+    // every mesh, not export the whole model. `GltfOptions::isolated` today is a
+    // bare `Vec<u32>`, so "no filter" and "filter active, zero matches" both
+    // arrive as an empty vec and collapse to the same `isolated_active = false`.
+    // This test pins that collapse; it must go RED before the fix (isolated_active
+    // becomes `Option<Vec<u32>>`-driven) and GREEN after.
+    let mesh = synthetic_mesh(99, "IfcWall");
+
+    let no_filter = GltfOptions::default();
+    let empty_active_filter = GltfOptions { isolated: Some(vec![]), ..GltfOptions::default() };
+
+    assert!(mesh_visible(&mesh, &no_filter), "no isolation filter: mesh stays visible");
+    assert!(
+        !mesh_visible(&mesh, &empty_active_filter),
+        "an isolation filter active with zero matches must hide every mesh, not export everything \
+         (currently BOTH read as `isolated_active = false` because `Vec::is_empty()` can't tell \
+         'no filter' from 'filter matched nothing')"
     );
 }

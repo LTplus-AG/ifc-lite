@@ -256,18 +256,7 @@ fn resolve_fixture_wires(content: &[u8]) -> FixtureWires {
     let mut spans = PrepassSpans::default();
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        match type_name {
-            "IFCSTYLEDITEM" => spans.styled_items.push((id, start, end)),
-            "IFCINDEXEDCOLOURMAP" => spans.indexed_colour_maps.push((id, start, end)),
-            "IFCMATERIALDEFINITIONREPRESENTATION" => {
-                spans.material_def_reprs.push((id, start, end))
-            }
-            "IFCRELASSOCIATESMATERIAL" => spans.rel_associates_material.push((id, start, end)),
-            "IFCRELVOIDSELEMENT" => spans.void_rels.push((id, start, end)),
-            "IFCRELFILLSELEMENT" => spans.fills_rels.push((id, start, end)),
-            "IFCRELAGGREGATES" => spans.aggregate_rels.push((id, start, end)),
-            _ => {}
-        }
+        spans.stash(type_name, id, start, end);
     }
     let resolved = resolve_prepass(&spans, &mut decoder, ResolveOptions::default());
     let (void_keys, void_counts, void_values) = flat_voids(&resolved.void_index);

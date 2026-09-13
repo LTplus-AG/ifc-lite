@@ -46,6 +46,8 @@ import { appearanceReferenceTeardown } from './slices/appearanceReferenceSlice.j
 import { composeTeardown, createTeardownRegistry, type AnySliceTeardown } from './teardown.js';
 
 import { loadingTeardown } from './slices/loadingSlice.js';
+import { chartTeardown } from './slices/chartSlice.js';
+import { documentTeardown } from './slices/documentSlice.js';
 import { selectionTeardown } from './slices/selectionSlice.teardown.js';
 import { visibilityTeardown } from './slices/visibilitySlice.teardown.js';
 import { uiTeardown } from './slices/uiSlice.teardown.js';
@@ -76,6 +78,7 @@ import { modelPlacementTeardown } from './slices/modelPlacementSlice.js';
 import { pointCloudTeardown } from './slices/pointCloudSlice.js';
 import { zonesTeardown } from './slices/zonesSlice.js';
 import { layerStackTeardown } from './slices/layerStackSlice.teardown.js';
+import { modelTagsTeardown } from './slices/modelTagsSlice.teardown.js';
 
 /**
  * Every slice teardown the viewer store knows about.
@@ -117,6 +120,9 @@ export const viewerTeardownRegistry: readonly AnySliceTeardown[] = createTeardow
   appearanceReferenceTeardown,
   zonesTeardown,
   layerStackTeardown,
+  modelTagsTeardown,
+  chartTeardown,
+  documentTeardown,
 ]);
 
 /**

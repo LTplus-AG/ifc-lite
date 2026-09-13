@@ -28,6 +28,7 @@ import type { BCFViewpoint } from '@ifc-lite/bcf';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
+import { toast } from '@/components/ui/toast';
 import { useBCF } from './useBCF.js';
 
 /** Express ids behind the three GUIDs the viewpoints below reference. */
@@ -144,6 +145,92 @@ describe('useBCF — applyViewpoint isolation', () => {
       after,
       new Set([SPACE_B]),
       'a viewpoint apply must install its own isolation on every apply',
+    );
+  });
+
+  // The read-side mirror of the write-side fix in `createViewpoint`'s
+  // `hasVisible` (packages/bcf/src/viewpoint.ts): a viewpoint captured (by
+  // this app or any other BCF tool) with `DefaultVisibility="false"` and no
+  // `<Exceptions>` records an ACTIVE isolation that matches nothing -- an
+  // empty viewport, not an unfiltered one. `extractViewpointState` returns
+  // `visibleGuids: []` (not `null`) for that shape; applying it must install
+  // an EMPTY isolation Set, not fall through to the `hiddenGuids` branch or
+  // clear isolation back to `null`.
+  it('applies an active-but-empty isolation as an empty Set, not null (#4509)', () => {
+    // First install a real isolation, so a regression to the "no isolation
+    // channel" branch is visible as `null` rather than coinciding with the
+    // hook's own initial state.
+    act(() => {
+      api!.applyViewpoint(isolationViewpoint('vp-a', 'WALL-A00000000000000000'), false);
+    });
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([WALL_A]), 'sanity: isolation installed');
+
+    act(() => {
+      api!.applyViewpoint(
+        { guid: 'vp-empty', components: { visibility: { defaultVisibility: false, exceptions: [] } } } as BCFViewpoint,
+        false,
+      );
+    });
+
+    const isolated = useViewerStore.getState().isolatedEntities;
+    assert.notEqual(isolated, null, 'BUG: an active-but-empty isolate was read as no isolation at all');
+    assert.deepEqual(isolated, new Set(), 'isolation is active and matches nothing');
+  });
+
+  // The THIRD state, distinct from both of the above (#4509 review). A BCF
+  // file is normally authored against one model and opened against another,
+  // so a viewpoint's `visibleGuids` can be NON-empty and yet name nothing
+  // that exists in the currently loaded model: every `globalIdToExpressId`
+  // answers null. That is not "isolation matched nothing" -- the isolation
+  // could not be evaluated here at all -- and collapsing it to an empty Set
+  // hides every element of a model the viewpoint never spoke about, which
+  // reads to the user as a broken viewer with no way back. Treat it as an
+  // inapplicable visibility channel: leave isolation off, and say so.
+  it("does not blank the view when a viewpoint's visibleGuids name nothing in this model (#4509)", () => {
+    const seen: string[] = [];
+    const originalInfo = toast.info;
+    toast.info = (message: string) => { seen.push(message); };
+    try {
+      act(() => {
+        api!.applyViewpoint(isolationViewpoint('vp-foreign', 'FOREIGN-MODEL-GUID-0001'), false);
+      });
+
+      const isolated = useViewerStore.getState().isolatedEntities;
+      assert.notDeepEqual(
+        isolated,
+        new Set(),
+        'BUG: an unresolvable isolation became an empty isolate Set, hiding the whole loaded model',
+      );
+      assert.equal(isolated, null, 'an inapplicable visibility channel leaves isolation off');
+      assert.equal(seen.length, 1, "the user is told the viewpoint's visibility could not be applied");
+      assert.match(seen[0], /visib/i);
+    } finally {
+      toast.info = originalInfo;
+    }
+  });
+
+  // Guard the OTHER direction of the same rule: a PARTIALLY resolvable
+  // viewpoint IS applicable, so it must still isolate the guids that did
+  // resolve rather than falling into the "cannot apply" arm above.
+  it('isolates the resolvable subset when only some guids are foreign (#4509)', () => {
+    act(() => {
+      api!.applyViewpoint(
+        {
+          guid: 'vp-partial',
+          components: {
+            visibility: {
+              defaultVisibility: false,
+              exceptions: [{ ifcGuid: 'WALL-A00000000000000000' }, { ifcGuid: 'FOREIGN-MODEL-GUID-0001' }],
+            },
+          },
+        } as BCFViewpoint,
+        false,
+      );
+    });
+    assert.deepEqual(
+      useViewerStore.getState().isolatedEntities,
+      new Set([WALL_A]),
+      'a partially-resolvable viewpoint still applies the part that resolved',
     );
   });
 });

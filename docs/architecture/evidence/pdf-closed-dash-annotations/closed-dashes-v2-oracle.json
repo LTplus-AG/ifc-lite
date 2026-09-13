@@ -1,0 +1,69 @@
+{
+  "ifcopenshell": "0.8.2",
+  "schema": "IFC4",
+  "annotations": [
+    {
+      "expressId": 203,
+      "GlobalId": "0aaaaaaaaaaaaaaaaaaaaa",
+      "Name": "PDF fidelity evidence control:closedDashesV2",
+      "Description": "PDF vectors, page 1: exact conversion",
+      "containedIn": [
+        "Level"
+      ],
+      "representationItems": 14,
+      "provenance": {
+        "SourcePdfSha256": "4e62b68a2e9d93c260af98386b5fff4dc079f8f457e0cc0a0941f4da24c59d0f",
+        "SourcePdfFormatVersion": "2.0",
+        "SourcePageNumber": 1,
+        "SourceCropBox": "[10.0,20.0,110.0,92.0]",
+        "SourceUserUnit": 2.0,
+        "SourceRotation": 90,
+        "DecoderVersion": "PDF.js 6.3.289",
+        "CalibrationKey": "synthetic-control-30-pdf-units-per-metre",
+        "ModelMetresFromPdf": "[0.03333333333333333,0.0,0.0,0.03333333333333333,0.0,0.0]",
+        "ToleranceMetres": 0.0001,
+        "GridSizeMetres": 3.90625e-07,
+        "Algorithm": "ifclite-pdf-fill-annotation-v1",
+        "RequestSha256": "c910c3468de49d4d023b1bb2fac7b5ae081398673d430ae03ae21445722139c4",
+        "FidelityAlgorithm": "ifclite-pdf-fidelity-v1",
+        "FidelitySha256": "336958c33962538c6cabb6f6e5593492b74457feb6b4596af7262b5db6986651",
+        "ExactConversion": true,
+        "AcceptedPartialConversion": false,
+        "ConvertedPaths": 3,
+        "FillRegions": 14,
+        "OmittedPaints": 0,
+        "Omissions": "[]",
+        "id": 226
+      }
+    }
+  ],
+  "raster": {
+    "mupdf": "1.26.5",
+    "renderScale": 4,
+    "pixelsCompared": 460800,
+    "pixmap": [
+      576,
+      800
+    ],
+    "rasterMode": "MuPDF antialiasing disabled; all pixel centres; one 8-bit quantization step allowed",
+    "reportedVisibleExtentsPdf": [],
+    "native3dVersusReader2dPixels": 0,
+    "comparisons": {
+      "native3d": {
+        "mismatchPixels": 128,
+        "insideReportedExtent": 0,
+        "withinOnePixelOfNativeBoundary": 56,
+        "unexplained": 72,
+        "maxBoundaryDistancePixels": 3.75
+      },
+      "reader2d": {
+        "mismatchPixels": 128,
+        "insideReportedExtent": 0,
+        "withinOnePixelOfNativeBoundary": 56,
+        "unexplained": 72,
+        "maxBoundaryDistancePixels": 3.75
+      }
+    },
+    "expectedReaderDivergence": "ISO 32000-2 joins first/last on-dash pieces; MuPDF 1.26.5 caps them"
+  }
+}

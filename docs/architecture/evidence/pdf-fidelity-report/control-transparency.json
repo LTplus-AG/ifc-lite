@@ -1,0 +1,68 @@
+{
+  "input": "control:transparency",
+  "sourceBytes": 708,
+  "sourceSha256": "8cbba5b8f457737f64bc807179b9b4a55c96265680675f9a4f5ea372197003c7",
+  "decoderVersion": "6.3.289",
+  "pageNumber": 1,
+  "viewBox": [
+    10,
+    20,
+    110,
+    92
+  ],
+  "userUnit": 2,
+  "intrinsicRotation": 90,
+  "calibration": {
+    "modelMetresFromPdf": [
+      0.03333333333333333,
+      0,
+      0,
+      0.03333333333333333,
+      0,
+      0
+    ],
+    "calibrationKey": "synthetic-control-30-pdf-units-per-metre",
+    "toleranceMetres": 0.0001
+  },
+  "operations": 7,
+  "operators": {
+    "save": 1,
+    "graphicsState": 1,
+    "fillColor": 2,
+    "path": 2,
+    "restore": 1
+  },
+  "preparation": {
+    "algorithm": "ifclite-pdf-vector-state-v1",
+    "requestSha256": "87dab9bae7cf563e993032cb403407ab5569ece3623307e3c2b14acfd98d0ee8",
+    "pageClipPdf": [
+      10,
+      20,
+      110,
+      92
+    ]
+  },
+  "fidelity": {
+    "sha256": "0a0c39801392f619db2dd4b82f3cd2dd7341490f777503c56b731dac4cd49806",
+    "algorithm": "ifclite-pdf-fidelity-v1",
+    "exact": false,
+    "rasterOnly": false,
+    "convertiblePaths": 1,
+    "omittedPaints": 1,
+    "summary": [
+      {
+        "kind": "transparency",
+        "count": 1,
+        "visibleCount": 1,
+        "bboxPdf": [
+          20,
+          30,
+          30,
+          40
+        ]
+      }
+    ],
+    "omissionsTruncated": false,
+    "listedOmissions": 1
+  }
+}

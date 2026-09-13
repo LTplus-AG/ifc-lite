@@ -55,8 +55,9 @@ use nalgebra::Matrix4;
 
 static LOCAL_FRAME_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
-/// Test/harness-only: force [`local_frame_enabled`] on/off, or `None` for the
-/// target default. Mirrors `rect_fast::param_set_enabled_override`. The
+/// Test/harness-only: force the target/env fallback on/off, or `None` for the
+/// target default. A router constructed with an explicit frame policy does not
+/// consult this process-global hook. Mirrors `rect_fast::param_set_enabled_override`. The
 /// mesh-output determinism manifest uses it to run native and wasm with the
 /// SAME flag state (wasm defaults ON, native defaults OFF below), so the two
 /// targets' outputs are comparable byte-for-byte.
@@ -79,8 +80,8 @@ pub fn local_frame_set_enabled_override(v: Option<bool>) {
 /// local frame. Consumers reconstruct world = `MeshData.origin` + position.
 /// Default is ON for wasm (the precision-critical viewer path, whose renderer
 /// consumes `origin`) and OFF for native, where `IFC_LITE_LOCAL_FRAME=1` opts
-/// in. Env/cfg default read once and cached; the
-/// [`local_frame_set_enabled_override`] hook takes precedence on every call.
+/// in. Env/cfg default read once and cached. An explicit per-router policy takes
+/// precedence; otherwise [`local_frame_set_enabled_override`] selects this fallback.
 pub(crate) fn local_frame_enabled() -> bool {
     match LOCAL_FRAME_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
         0 => return false,
@@ -143,6 +144,10 @@ pub(crate) fn mat4_to_row_major(m: &Matrix4<f64>) -> [f64; 16] {
 }
 
 impl GeometryRouter {
+    pub(super) fn local_frame_enabled(&self) -> bool {
+        self.local_frame_enabled.unwrap_or_else(local_frame_enabled)
+    }
+
     /// Apply local placement transformation to mesh
     ///
     /// Welds the source vertices FIRST (#4103). This is the last point at which

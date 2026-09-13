@@ -23,16 +23,30 @@
  * STEP source buffer. Re-running it with the same inputs produces the same
  * output (deterministic), which keeps round-trip exports stable and makes
  * unit tests simple.
+ *
+ * The low-level STEP string encoding and the per-entity line builders
+ * (`buildWorkControl`, `buildTaskTime`, `buildTask`, …) live in
+ * `schedule-serializer-builders.ts` — this file owns only the orchestration:
+ * which entities and relationships to emit, in what order, and how their
+ * express IDs cross-reference each other.
  */
 
-import type {
-  ScheduleExtraction,
-  ScheduleTaskInfo,
-  ScheduleSequenceInfo,
-  WorkScheduleInfo,
-} from './schedule-extractor.js';
-import { deterministicGlobalId } from './deterministic-global-id.js';
+import type { ScheduleExtraction, ScheduleSequenceInfo } from './schedule-extractor.js';
 import { secondsToIso8601Duration } from './iso8601-duration.js';
+import { deterministicGlobalId } from './deterministic-global-id.js';
+import {
+  escStr,
+  optStr,
+  optEnum,
+  ownerRef,
+  refList,
+  ensureGlobalId,
+  buildWorkControl,
+  taskHasTimeData,
+  buildTaskTime,
+  buildTask,
+  resolveProductIds,
+} from './schedule-serializer-builders.js';
 
 export interface SerializeScheduleOptions {
   /** First free express ID for the synthesized entities. */
@@ -66,48 +80,6 @@ export interface SerializeScheduleResult {
     assignsToProcess: number;
     relNests: number;
   };
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// STEP encoding helpers (kept local — same convention as @ifc-lite/create)
-// ─────────────────────────────────────────────────────────────────────────
-
-function escStr(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/'/g, "''");
-}
-
-function optStr(v: string | undefined | null): string {
-  return v === undefined || v === null || v === '' ? '$' : `'${escStr(v)}'`;
-}
-
-function optEnum(v: string | undefined | null): string {
-  return v === undefined || v === null || v === '' ? '$' : `.${v}.`;
-}
-
-function optBool(v: boolean | undefined | null): string {
-  return v === undefined || v === null ? '$' : v ? '.T.' : '.F.';
-}
-
-function optReal(v: number | undefined | null): string {
-  if (v === undefined || v === null || !Number.isFinite(v)) return '$';
-  // Integer-format avoids "1.0" → "1." re-import differences across viewers.
-  return Number.isInteger(v) ? `${v}.` : String(v);
-}
-
-function ownerRef(ownerHistoryId: number | undefined): string {
-  return ownerHistoryId !== undefined ? `#${ownerHistoryId}` : '$';
-}
-
-function refList(ids: number[]): string {
-  return ids.length === 0 ? '$' : `(${ids.map(id => `#${id}`).join(',')})`;
-}
-
-function ensureGlobalId(existing: string | undefined, seed: string): string {
-  // Round-tripping should preserve whatever GlobalId the upstream extraction
-  // saw, even when it isn't exactly 22 chars (some authoring tools emit
-  // shorter ids). Only invent a deterministic value when the input is empty.
-  if (existing && existing.length > 0) return existing;
-  return deterministicGlobalId(seed);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -196,6 +168,29 @@ export function serializeScheduleToStep(
     stats.relNests += 1;
   }
 
+  // ── 4b. Work-plan → work-schedule grouping (IfcRelNests) ──────────
+  for (const plan of data.workSchedules) {
+    // `?.length` treats `undefined` and `[]` the same — both mean "emit no
+    // relation for this plan" — so any producer is free to use either for
+    // "no schedules grouped", whether that's "deliberately none" or a field
+    // it doesn't populate at all.
+    if (plan.kind !== 'WorkPlan' || !plan.childScheduleGlobalIds?.length) continue;
+    const parentId = scheduleExpressIdByGlobalId.get(plan.globalId);
+    if (parentId === undefined) continue;
+    const childIds: number[] = [];
+    for (const childGid of plan.childScheduleGlobalIds) {
+      const cid = scheduleExpressIdByGlobalId.get(childGid);
+      if (cid !== undefined) childIds.push(cid);
+    }
+    if (childIds.length === 0) continue;
+    const relId = nextId++;
+    const relGid = deterministicGlobalId(`rel-nests-plan|${plan.globalId}`);
+    lines.push(
+      `#${relId}=IFCRELNESTS('${relGid}',${owner},$,$,#${parentId},${refList(childIds)});`,
+    );
+    stats.relNests += 1;
+  }
+
   // ── 5. Products → tasks (IfcRelAssignsToProcess) ─────────────────
   for (const task of data.tasks) {
     if (task.productExpressIds.length === 0 && task.productGlobalIds.length === 0) continue;
@@ -248,147 +243,4 @@ export function serializeScheduleToStep(
   }
 
   return { lines, nextId, stats };
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// Internal builders
-// ─────────────────────────────────────────────────────────────────────────
-
-function buildWorkControl(id: number, ws: WorkScheduleInfo, owner: string): string {
-  const entity = ws.kind === 'WorkPlan' ? 'IFCWORKPLAN' : 'IFCWORKSCHEDULE';
-  const globalId = ensureGlobalId(ws.globalId, `ws|${ws.kind}|${ws.name}`);
-  // Deterministic fallback ordering — don't touch `Date.now()` here, it would
-  // give identical inputs different STEP output and break diff-based export
-  // round-trips. Anchor on whatever the upstream extractor already picked,
-  // then on the schedule's own start/finish time.
-  const creationDate = ws.creationDate ?? ws.startTime ?? ws.finishTime ?? '1970-01-01T00:00:00';
-  // `StartTime` is REQUIRED on IfcWorkControl in IFC4 (ENTITY IfcWorkControl
-  // ... StartTime : IfcDateTime) — emitting `$` would fail schema
-  // validation on strict viewers. Fall back through the same deterministic
-  // chain as `creationDate`. `FinishTime` IS optional, but writing a real
-  // value is still friendlier than `$` when the schedule's own `startTime`
-  // is the only datum we have.
-  const startTime = ws.startTime ?? ws.finishTime ?? creationDate;
-  const finishTime = ws.finishTime ?? startTime;
-  // IFC4: GlobalId, OwnerHistory, Name, Description, ObjectType,
-  //       Identification, CreationDate, Creators, Purpose,
-  //       Duration, TotalFloat, StartTime, FinishTime, PredefinedType
-  return [
-    `#${id}=${entity}(`,
-    `'${globalId}',`,
-    `${owner},`,
-    `'${escStr(ws.name)}',`,
-    `${optStr(ws.description)},`,
-    `$,`,
-    `${optStr(ws.identification)},`,
-    `'${escStr(creationDate)}',`,
-    `$,`,
-    `${optStr(ws.purpose)},`,
-    `${optStr(ws.duration)},`,
-    `$,`,
-    `'${escStr(startTime)}',`,
-    `'${escStr(finishTime)}',`,
-    `${optEnum(ws.predefinedType)});`,
-  ].join('');
-}
-
-function taskHasTimeData(task: ScheduleTaskInfo): boolean {
-  const t = task.taskTime;
-  if (!t) return false;
-  return Boolean(
-    t.scheduleStart || t.scheduleFinish || t.scheduleDuration
-    || t.actualStart || t.actualFinish || t.actualDuration
-    || t.earlyStart || t.earlyFinish || t.lateStart || t.lateFinish
-    || t.freeFloat || t.totalFloat || t.remainingTime || t.statusTime
-    || t.durationType || t.isCritical !== undefined || t.completion !== undefined,
-  );
-}
-
-function buildTaskTime(id: number, task: ScheduleTaskInfo): string {
-  const t = task.taskTime!;
-  // IFC4: Name, DataOrigin, UDDataOrigin, DurationType,
-  //       ScheduleDuration, ScheduleStart, ScheduleFinish,
-  //       Early/Late Start/Finish, FreeFloat, TotalFloat, IsCritical,
-  //       StatusTime, ActualDuration, ActualStart, ActualFinish,
-  //       RemainingTime, Completion
-  return [
-    `#${id}=IFCTASKTIME(`,
-    `$,$,$,`,
-    `${optEnum(t.durationType)},`,
-    `${optStr(t.scheduleDuration)},`,
-    `${optStr(t.scheduleStart)},`,
-    `${optStr(t.scheduleFinish)},`,
-    `${optStr(t.earlyStart)},`,
-    `${optStr(t.earlyFinish)},`,
-    `${optStr(t.lateStart)},`,
-    `${optStr(t.lateFinish)},`,
-    `${optStr(t.freeFloat)},`,
-    `${optStr(t.totalFloat)},`,
-    `${optBool(t.isCritical)},`,
-    `${optStr(t.statusTime)},`,
-    `${optStr(t.actualDuration)},`,
-    `${optStr(t.actualStart)},`,
-    `${optStr(t.actualFinish)},`,
-    `${optStr(t.remainingTime)},`,
-    `${optReal(t.completion)});`,
-  ].join('');
-}
-
-function buildTask(
-  id: number,
-  task: ScheduleTaskInfo,
-  owner: string,
-  taskTimeId: number | undefined,
-): string {
-  const globalId = ensureGlobalId(task.globalId, `task|${task.name}`);
-  const taskTimeRef = taskTimeId !== undefined ? `#${taskTimeId}` : '$';
-  // IFC4: GlobalId, OwnerHistory, Name, Description, ObjectType,
-  //       Identification, LongDescription, Status, WorkMethod, IsMilestone,
-  //       Priority, TaskTime, PredefinedType
-  return [
-    `#${id}=IFCTASK(`,
-    `'${globalId}',`,
-    `${owner},`,
-    `'${escStr(task.name)}',`,
-    `${optStr(task.description)},`,
-    `${optStr(task.objectType)},`,
-    `${optStr(task.identification)},`,
-    `${optStr(task.longDescription)},`,
-    `${optStr(task.status)},`,
-    `${optStr(task.workMethod)},`,
-    `${task.isMilestone ? '.T.' : '.F.'},`,
-    `${task.priority !== undefined ? Math.trunc(task.priority) : '$'},`,
-    `${taskTimeRef},`,
-    `${optEnum(task.predefinedType)});`,
-  ].join('');
-}
-
-function resolveProductIds(
-  task: ScheduleTaskInfo,
-  resolver?: (gid: string) => number | undefined,
-): number[] {
-  // Prefer expressIds when they're present and non-zero (the in-memory schedule
-  // path). When only globalIds are known (e.g. round-tripping through the SDK
-  // boundary), use the caller-supplied resolver to look them up against the
-  // current model — falls back to expressIds whenever the resolver returns
-  // undefined.
-  //
-  // Walk the union of both arrays so global-id-only entries (common for
-  // generated schedules where expressId was never filled in) still hit the
-  // resolver instead of being silently dropped.
-  const out: number[] = [];
-  const count = Math.max(task.productExpressIds.length, task.productGlobalIds.length);
-  for (let i = 0; i < count; i++) {
-    const expressId = task.productExpressIds[i];
-    const globalId = task.productGlobalIds[i];
-    if (resolver && globalId) {
-      const resolved = resolver(globalId);
-      if (resolved !== undefined && resolved > 0) {
-        out.push(resolved);
-        continue;
-      }
-    }
-    if (expressId !== undefined && expressId > 0) out.push(expressId);
-  }
-  return out;
 }

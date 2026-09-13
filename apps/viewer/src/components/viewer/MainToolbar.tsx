@@ -4,6 +4,7 @@
 import { hasWorkspaceHistory, replayWorkspaceHistory } from '@/lib/model-placement/history';
 
 import { AuthorPanelMenuItems } from './toolbar/AuthorPanelMenuItems.js';
+import { BottomPanelMenuItems } from './toolbar/BottomPanelMenuItems.js';
 import React, { useCallback, useMemo } from 'react';
 import {
   FolderOpen,
@@ -32,8 +33,6 @@ import {
   Layout,
   Layers,
   LayoutTemplate,
-  FileCode2,
-  CalendarClock,
   Globe2,
   Sun,
   Move,
@@ -64,7 +63,7 @@ import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeVi
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { FileSpreadsheet, Filter, Upload, Pencil, DraftingCompass, Box, Cloud } from 'lucide-react';
+import { Filter, Upload, Pencil, DraftingCompass, Box, Cloud } from 'lucide-react';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
@@ -548,30 +547,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <TooltipContent>{workspacePanelLabel ? `Panels: ${workspacePanelLabel}` : 'Panels'}</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Workspace
-          </DropdownMenuLabel>
-          <DropdownMenuCheckboxItem
-            checked={activeWorkspacePanels.has('script')}
-            onCheckedChange={() => handleToggleBottomPanel('script')}
-          >
-            <FileCode2 className="h-4 w-4 mr-2" />
-            Script Editor
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem
-            checked={activeWorkspacePanels.has('lists')}
-            onCheckedChange={() => handleToggleBottomPanel('lists')}
-          >
-            <FileSpreadsheet className="h-4 w-4 mr-2" />
-            Lists
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem
-            checked={activeWorkspacePanels.has('gantt')}
-            onCheckedChange={() => handleToggleBottomPanel('gantt')}
-          >
-            <CalendarClock className="h-4 w-4 mr-2" />
-            Schedule (Gantt)
-          </DropdownMenuCheckboxItem>
+          <BottomPanelMenuItems active={activeWorkspacePanels} onToggle={handleToggleBottomPanel} />
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
             Inspect & validate

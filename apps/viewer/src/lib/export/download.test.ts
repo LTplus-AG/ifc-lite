@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { sanitizeFilename, buildExportFilename } from './download.js';
+import { sanitizeFilename, buildExportFilename, stripExtension } from './download.js';
 
 describe('sanitizeFilename', () => {
   it('preserves uppercase letters (issue #1299)', () => {
@@ -110,5 +110,24 @@ describe('buildExportFilename', () => {
     assert.ok(result.length <= 60, `expected ${result} length <= 60, got ${result.length}`);
     // The stem must still get a meaningful, non-empty budget.
     assert.ok(!result.startsWith('.'), `expected a non-empty stem, got ${result}`);
+  });
+});
+
+describe('stripExtension', () => {
+  it('drops the last extension only and leaves a dotless name alone', () => {
+    assert.strictEqual(stripExtension('model.ifc'), 'model');
+    assert.strictEqual(stripExtension('a.b.ifczip'), 'a.b');
+    assert.strictEqual(stripExtension('my model.ifc'), 'my model');
+    assert.strictEqual(stripExtension('noext'), 'noext');
+  });
+
+  // #4444: a room recipient's second copy of one file is listed as
+  // "name.ifc (2)". Stripping ".ifc (2)" as one extension made both copies
+  // export under the same filename; the copy suffix has to survive.
+  it('keeps a copy suffix that follows the extension', () => {
+    assert.strictEqual(stripExtension('AC20-FZK-Haus.ifc (2)'), 'AC20-FZK-Haus (2)');
+    assert.strictEqual(stripExtension('model.ifc (12)'), 'model (12)');
+    assert.strictEqual(stripExtension('Haus (2)'), 'Haus (2)');
+    assert.notStrictEqual(stripExtension('AC20-FZK-Haus.ifc (2)'), stripExtension('AC20-FZK-Haus.ifc'));
   });
 });

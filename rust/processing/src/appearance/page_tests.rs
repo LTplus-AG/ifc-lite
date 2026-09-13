@@ -13,7 +13,7 @@ fn fixture() -> (PageAppearanceRequest, Vec<u8>) {
         appearance: AppearanceRequest { representation_policy: RepresentationPolicy::Preserve, schema: "IFC4".into(), source_revision: "page-fixture".into(),
             next_express_id: 100, product_ids: vec![10, 30], image_uri: "appearance/page.png".into(),
             repeat_s: false, repeat_t: false, mapping: Mapping::Planar { frame: MappingFrame::World,
-                origin: [0.2, 0.2, 0.], axis_u: [1., 0., 0.], axis_v: [0., 1., 0.], metres_per_tile: [0.4, 0.4] } },
+                origin: [0.2, 0.2, 0.], axis_u: [1., 0., 0.], axis_v: [0., 1., 0.], metres_per_tile: [0.4, 0.4] }, face_masks: Vec::new() },
         page: AppearanceRaster { width: 1, height: 1, byte_offset: 0, byte_length: 4 },
         source_images: vec![AppearanceSourceRaster { image_uri: "textures/wood.jpg".into(), raster: AppearanceRaster {
             width: 2, height: 2, byte_offset: 4, byte_length: 16 } }], texels_per_metre: 128.,

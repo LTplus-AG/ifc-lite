@@ -345,3 +345,26 @@ it('resolves capture originals across URI spelling and rejects ambiguous or remo
   assert.throws(() => models.resolveImageAsset('capture', 'wood.png'), /missing/);
   assert.equal(inventory.get(id), undefined);
 });
+
+// #4477: the loader publishes a model before its images settle; a panel that
+// saw "still loading" needs a moment to retry rather than staying stuck.
+it('pendingDecode resolves when the source decode finishes or is cancelled, and is absent when idle', async () => {
+  const inventory = new AppearanceAssetInventory({ decode: async () => image() });
+  const models = new ModelAppearanceAssets(inventory);
+  assert.equal(models.pendingDecode('idle'), undefined);
+  const load = models.begin('capture');
+  let settled = false;
+  const waiting = models.pendingDecode('capture')!.then(() => { settled = true; });
+  await load.decode(archive());
+  assert.equal(settled, false, 'decoding alone does not settle the lease');
+  load.finish(true);
+  await waiting;
+  assert.equal(models.pendingDecode('capture'), undefined);
+  assert.doesNotThrow(() => models.resolveImageAsset('capture', 'wood.png'));
+  const replaced = models.begin('capture');
+  const cancelled = models.pendingDecode('capture')!;
+  models.remove('capture');
+  await cancelled;
+  assert.equal(models.pendingDecode('capture'), undefined);
+  replaced.finish(true);
+});

@@ -30,7 +30,24 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { roundOrder, seededRand } from './ab-order.mjs';
+
+test('the CLI prints one pairing per round on every platform (#4439: the file-URL guard never matched a Windows argv[1])', () => {
+  const cli = fileURLToPath(new URL('./ab-order.mjs', import.meta.url));
+  const out = execFileSync(process.execPath, [cli, '5', '4439'], { encoding: 'utf8' });
+  const lines = out.trim().split(/\r?\n/);
+  assert.equal(lines.length, 5, `expected 5 order lines, got: ${JSON.stringify(out)}`);
+  for (const line of lines) {
+    assert.ok(line === 'base branch' || line === 'branch base', line);
+  }
+  assert.deepEqual(
+    lines.map((l) => l.split(' ')),
+    roundOrder(5, seededRand(4439)),
+    'the CLI and the exported roundOrder must agree for the same seed',
+  );
+});
 
 test('balance: base-first count is ceil(iters/2) for a range of round counts', () => {
   for (const iters of [1, 2, 3, 4, 5, 6, 7, 10, 11, 20]) {

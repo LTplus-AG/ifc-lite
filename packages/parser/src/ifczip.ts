@@ -110,7 +110,8 @@ export async function unwrapIfcZipWithLimit(
 ): Promise<ArrayBuffer> {
   if (!isZipBuffer(buffer)) return buffer;
   const { entry } = await openZipModelEntry(buffer, maxUncompressedBytes);
-  return entry.async('arraybuffer');
+  const bytes = await extractEntryWithLimit(entry, maxUncompressedBytes);
+  return bytes.buffer as ArrayBuffer;
 }
 
 /** Sibling raster-image entries `IfcImageTexture.URLReference` can point at. */
@@ -161,9 +162,12 @@ export interface IfcZipContents {
  */
 export async function unwrapIfcZipWithResources(
   buffer: ArrayBuffer,
+  maxModelBytes: number = MAX_UNCOMPRESSED_BYTES,
 ): Promise<IfcZipContents> {
   if (!isZipBuffer(buffer)) return { model: buffer, resources: new Map(), originalResources: new Map(), resourcesIncomplete: false };
-  const { zip, entry } = await openZipModelEntry(buffer, MAX_UNCOMPRESSED_BYTES);
+  const { zip, entry } = await openZipModelEntry(buffer, maxModelBytes);
+  const modelBytes = await extractEntryWithLimit(entry, maxModelBytes);
+  const model = modelBytes.buffer as ArrayBuffer;
 
   const resources = new Map<string, Uint8Array>();
   const originalResources = new Map<string, Uint8Array>();
@@ -176,7 +180,16 @@ export async function unwrapIfcZipWithResources(
     if (typeof size === 'number' && size > MAX_IMAGE_BYTES) { resourcesIncomplete = true; continue; }
     const basename = res.name.split('/').pop()?.toLowerCase();
     if (!basename) continue;
-    const bytes = await res.async('uint8array');
+    const remaining = MAX_TOTAL_IMAGE_BYTES - totalImageBytes;
+    let bytes: Uint8Array;
+    try {
+      bytes = await extractEntryWithLimit(res, Math.min(MAX_IMAGE_BYTES, remaining));
+    } catch (error) {
+      if (!(error instanceof ZipEntryLimitError)) throw error;
+      resourcesIncomplete = true;
+      if (remaining <= MAX_IMAGE_BYTES) break;
+      continue;
+    }
     // Enforce the aggregate budget on REAL decompressed sizes (the central-
     // directory declaration is advisory and absent on some writers).
     if (bytes.byteLength > MAX_IMAGE_BYTES) { resourcesIncomplete = true; continue; }
@@ -187,7 +200,54 @@ export async function unwrapIfcZipWithResources(
     if (!resources.has(basename)) resources.set(basename, bytes);
   }
 
-  return { model: await entry.async('arraybuffer'), resources, originalResources, modelPath: entry.name, resourcesIncomplete };
+  return { model, resources, originalResources, modelPath: entry.name, resourcesIncomplete };
+}
+
+class ZipEntryLimitError extends Error {}
+
+interface ZipUint8Stream {
+  on(event: 'data', callback: (chunk: Uint8Array) => void): ZipUint8Stream;
+  on(event: 'error', callback: (error: Error) => void): ZipUint8Stream;
+  on(event: 'end', callback: () => void): ZipUint8Stream;
+  pause(): ZipUint8Stream;
+  resume(): ZipUint8Stream;
+}
+
+/** Inflate incrementally so falsified ZIP metadata cannot bypass the limit. */
+function extractEntryWithLimit(entry: JSZip.JSZipObject, limit: number): Promise<Uint8Array<ArrayBuffer>> {
+  return new Promise((resolve, reject) => {
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    let settled = false;
+    // `internalStream` is JSZip's browser streaming API but is omitted from
+    // the package's public TypeScript declaration.
+    const stream = (entry as unknown as {
+      internalStream(type: 'uint8array'): ZipUint8Stream;
+    }).internalStream('uint8array');
+    stream.on('data', (chunk: Uint8Array) => {
+      if (settled) return;
+      total += chunk.byteLength;
+      if (total > limit) {
+        settled = true;
+        stream.pause();
+        reject(new ZipEntryLimitError(
+          `This .ifcZIP archive's extracted entry "${entry.name}" exceeds the ${(limit / (1024 * 1024)).toFixed(0)} MiB limit.`,
+        ));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    stream.on('error', (error: Error) => { if (!settled) { settled = true; reject(error); } });
+    stream.on('end', () => {
+      if (settled) return;
+      settled = true;
+      const output = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) { output.set(chunk, offset); offset += chunk.byteLength; }
+      resolve(output);
+    });
+    stream.resume();
+  });
 }
 
 /** JSZip's central-directory uncompressed size — internal field, so read

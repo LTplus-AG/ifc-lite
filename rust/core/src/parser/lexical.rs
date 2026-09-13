@@ -178,6 +178,30 @@ pub fn closes_with_paren(plain: &[u8], carried: bool) -> bool {
 /// strictly weaker, and admits shapes the exact rule rejects, `#2=IFCB(2) (3);`
 /// among them.
 ///
+/// ## Why the scan stops at the next `=`
+///
+/// The second rule above binds HERE too, and for the same reason: a `)` found
+/// after a top-level `=` closes some LATER record's parameter list, never this
+/// one's. Reporting it would hand back a resume point past a record the scan
+/// has not read, which drops that record outright — `#1=A(2 #2=IFCWALL($));`
+/// balanced at #2's `)` and resumed past it, losing #2.
+///
+/// It is also what bounds the walk. Without it a record with no `)` of its own
+/// walks to end of input to answer [`RecordClose::Unbalanced`], the caller
+/// resumes one byte past the `#`, and the NEXT declaration repeats the whole
+/// walk: a file of `#1=A(2;` repeated is clean O(n^2), measured 16.2s at 80 000
+/// records (0.6 MB) and rising 4x per doubling. With the bound each refusal
+/// costs its own record's bytes, so the total is the file length however many
+/// records are malformed. `close_step_record` is on every untrusted-bytes entry
+/// point (`entity_count`, `build_entity_index`, `ColumnarEntityIndex::from_scan`,
+/// the wasm prepass, the server's parse routes), so that shape was reachable
+/// from a plain upload.
+///
+/// The TypeScript half (`findEntityLength`, `step-record-boundary.ts`, and the
+/// hand-duplicate in `scan-worker-source.ts`) is tracked as #4573: it carries
+/// neither bound, so the browser scan worker takes the same quadratic shape
+/// and still balances past a following declaration.
+///
 /// ## Why a refusal RECOVERS instead of stopping
 ///
 /// 10303-21 closes every record's parameter list, so the `)` this function
@@ -219,6 +243,11 @@ pub fn close_step_record(bytes: &[u8]) -> RecordClose {
                 Some(next) => pos = next,
                 None => return RecordClose::Unreadable,
             },
+            // An '=' out here is the NEXT declaration's, so this record's own
+            // ')' cannot lie past it: see "Why the scan stops at the next '='"
+            // above. Bounds the walk to the record's own reach, which is what
+            // keeps a file of unbalanced records linear rather than quadratic.
+            b'=' => return RecordClose::Unbalanced,
             b'(' => {
                 depth += 1;
                 pos += 1;
@@ -313,6 +342,26 @@ mod tests {
         assert_eq!(close_step_record(b"IFCWALL(2;#3=IFCC(3);"), RecordClose::Unbalanced);
         // A ')' before any '(' must not underflow.
         assert_eq!(close_step_record(b")))"), RecordClose::Unbalanced);
+    }
+
+    /// A `)` after a top-level `=` closes a LATER record's parameter list, so
+    /// the walk stops at that `=` rather than balancing across a declaration
+    /// it has not read. Pre-fix `IFCA(2 #2=IFCWALL($));` answered `At`, and
+    /// the scanner resumed past #2 and lost it. The same bound is what keeps
+    /// a file of unbalanced records linear instead of O(n^2).
+    /// Regression for #4577.
+    #[test]
+    fn close_step_record_stops_at_the_next_declaration() {
+        assert_eq!(close_step_record(b"IFCA(2 #2=IFCWALL($));"), RecordClose::Unbalanced);
+        assert_eq!(close_step_record(b"IFCA(2;\n#2=IFCB(3);"), RecordClose::Unbalanced);
+        // An '=' inside a literal or a comment is text, not a declaration, so
+        // a record carrying one still closes where it really closes.
+        assert_eq!(close_step_record(b"IFCA('a=b');"), RecordClose::At(11));
+        assert_eq!(close_step_record(b"IFCA(/* a=b */$);"), RecordClose::At(16));
+        assert_eq!(
+            close_step_record(b"IFCDOCUMENTREFERENCE('http://h/q?a=b&c=d',$);"),
+            RecordClose::At(44)
+        );
     }
 
     #[test]

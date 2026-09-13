@@ -1,0 +1,77 @@
+{
+ "oracle": "IfcOpenShell apply of the canonical plan + independent reopen; Pillow atlas decode",
+ "ifcopenshell": "0.8.3.post2",
+ "target": {
+  "file": "craslabbim-ifc4-tessellated.ifc",
+  "sha256": "45a69aee943d6d460af5880ee73168ea0a03f5a43987bbb77c7ad765ad7d6984"
+ },
+ "transferred": {
+  "file": "craslabbim-ifc4-tessellated-transferred-tolerance.ifc",
+  "sha256": "c49becfda473e13a00a7a55d74987ecbc759cee0bdaacd37cde3ac4a95ddb43b",
+  "bytes": 81155,
+  "entities": 492
+ },
+ "asset": {
+  "uri": "textures/d032099a48a597fd6734bfca3c28d993de2135ec9cd5441b3ab7df80c00f567b.png",
+  "sha256": "d032099a48a597fd6734bfca3c28d993de2135ec9cd5441b3ab7df80c00f567b",
+  "width": 512,
+  "height": 374
+ },
+ "wall": {
+  "globalId": "3qeiF73TD1uOeHIcNGcTy8",
+  "expressId": 258,
+  "triangles": 60,
+  "vertices": 32
+ },
+ "checks": {
+  "geometry_unchanged": true,
+  "texture_map_covers_every_triangle": true,
+  "image_uri_matches_asset": true,
+  "surface_style_with_textures_assigned": true,
+  "triangle_uv_centroids_observed_like": 12,
+  "triangle_uv_centroids_prior_like": 48,
+  "triangles_sampled": 60,
+  "observed_by_face_normal": {
+   "-z": {
+    "triangles": 12,
+    "samples": 660,
+    "observed": 91,
+    "observed_fraction": 0.138
+   },
+   "-x": {
+    "triangles": 2,
+    "samples": 110,
+    "observed": 26,
+    "observed_fraction": 0.236
+   },
+   "+z": {
+    "triangles": 12,
+    "samples": 660,
+    "observed": 3,
+    "observed_fraction": 0.005
+   },
+   "+x": {
+    "triangles": 6,
+    "samples": 330,
+    "observed": 70,
+    "observed_fraction": 0.212
+   },
+   "+y": {
+    "triangles": 14,
+    "samples": 770,
+    "observed": 57,
+    "observed_fraction": 0.074
+   },
+   "-y": {
+    "triangles": 14,
+    "samples": 770,
+    "observed": 377,
+    "observed_fraction": 0.49
+   }
+  },
+  "schema_validation": {
+   "errors": 0,
+   "first": []
+  }
+ }
+}

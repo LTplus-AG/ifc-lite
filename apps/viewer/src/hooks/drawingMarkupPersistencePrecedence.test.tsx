@@ -162,6 +162,23 @@ async function flush(): Promise<void> {
   });
 }
 
+/**
+ * Keep flushing until `done()` holds, bounded. The positive assertion at the
+ * end of the "parse finishes FIRST" test sits behind a released hash gate:
+ * `arrayBuffer()` -> `crypto.subtle.digest` -> the localStorage lookup -> the
+ * deferred restore. Two macrotask ticks cover that chain on an idle machine,
+ * but a loaded CI runner (it failed on Viewer tests shard 1 of #4330 and #4503
+ * on 2026-09-11 with `0 !== 1`) can need more. The NEGATIVE assertions keep
+ * the fixed two-tick flush: "nothing happened yet" cannot be waited for.
+ */
+async function settleUntil(done: () => boolean, budgetMs = 2000): Promise<void> {
+  const deadline = Date.now() + budgetMs;
+  do {
+    await flush();
+    if (done()) return;
+  } while (Date.now() < deadline);
+}
+
 beforeEach(() => {
   clearAllDrawing2DEntries();
   __resetDrawingMarkupRestoreForTests();
@@ -279,7 +296,7 @@ describe('localStorage (#4159) vs IFC-embedded (#4170) markup restore precedence
     // file, so the decision is "no saved entry" — the deferred IFC restore
     // may finally proceed.
     await act(async () => { held.release(); });
-    await flush();
+    await settleUntil(() => useViewerStore.getState().measure2DResults.length === 1);
     const state = useViewerStore.getState();
     assert.equal(
       state.measure2DResults.length,

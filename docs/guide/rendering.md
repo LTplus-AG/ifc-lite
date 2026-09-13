@@ -564,7 +564,9 @@ Scene raycasts and magnetic snapping include regular, batched, textured and
 instanced geometry. A textured surface in front of another object participates
 in nearest-surface selection, with the same hidden/isolation filters and retained
 local origins. CPU raycasts intersect triangles; texture alpha does not cut holes
-in the picking surface.
+in the picking surface. `Renderer.raycastScene()` also uses the active section
+plane and crop box; when a front triangle is clipped, the ray continues to the
+nearest visible triangle behind it.
 
 Custom `RaycastEngine` scene adapters can optionally implement
 `getTexturedMeshes()` returning owners with `expressId` and optional `modelIndex`;
@@ -584,8 +586,17 @@ if (result) {
   console.log(`Distance: ${intersection.distance}`);
   console.log(`Entity: #${intersection.expressId}`);
   console.log(`Triangle: ${intersection.triangleIndex}`);
+  console.log(`Federation model: ${intersection.modelIndex}`);
+  console.log(`Representation item: ${intersection.geometryItemId}`);
+  console.log(`Evaluated-surface triangle: ${intersection.sourceTriangleIndex}`);
 }
 ```
+
+`triangleIndex` is local to the rendered mesh piece. Use
+`sourceTriangleIndex` for persisted face masks: it follows
+`MeshData.appearanceSource.cornerIndices` through streaming fragments, UV seam
+expansion and textured/retained mask partitions. The key is absent when that
+mapping or the representation-item identity cannot be proved.
 
 ## Visibility Control
 

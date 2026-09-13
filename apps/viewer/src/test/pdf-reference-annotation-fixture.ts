@@ -21,8 +21,10 @@ import type { PdfWorkerClient } from '@/lib/appearance/pdf/worker-client';
 import { serializeReferences } from '@/lib/appearance/references/persistence';
 import type { RegisteredAppearanceReference } from '@/lib/appearance/references/types';
 
-/** Real PDF decoder, source owner, IFC store and reference state; raster pixels are not needed for vector preparation. */
-export async function pdfReferenceAnnotationFixture() {
+/** Real PDF decoder, source owner, IFC store and reference state; raster pixels are not needed for vector preparation.
+ * `contents`/`resources` replace the controlled page-1 stream so fidelity cases (text, clips, images) reuse the same
+ * registration and calibration. */
+export async function pdfReferenceAnnotationFixture(page: { contents?: string; resources?: string } = {}) {
   federationRegistry.clear();
   const data = await new IfcParser().parseColumnar(texturedProductSource.slice().buffer);
   const view = new MutablePropertyView(data.properties, 'pdf-target'), editor = new StoreEditor(data, view);
@@ -38,7 +40,7 @@ export async function pdfReferenceAnnotationFixture() {
   const backend: PdfEngineBackend = { getDocument: pdf.getDocument, vectorDecoder: { version: pdf.version, ops: pdf.OPS },
     options: { disableFontFace: true, useSystemFonts: false }, surface() { throw new Error('Vector preparation cannot create a raster surface'); } };
   const worker: PdfWorkerClient = { run: (bytes, job, options) => runPdfJob(backend, bytes, job, options), cancel() {}, dispose() {} };
-  const bytes = controlledPdf();
+  const bytes = controlledPdf(page.contents, page.resources);
   const document = await PdfAppearanceSource.open(new File([bytes], 'original.pdf'), appearanceAssets, { worker });
   const key = registerPdfDocument(document);
   const loading = pdf.getDocument({ data: bytes.slice(), disableFontFace: true, useSystemFonts: false });

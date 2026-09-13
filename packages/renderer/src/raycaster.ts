@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import { appearanceSourceTriangle } from './appearance-uvs.js';
+import { reportableItemId } from './pick-resolve.js';
 
 export interface Ray {
   origin: { x: number; y: number; z: number };
@@ -22,6 +24,12 @@ export interface Intersection {
   meshIndex: number;
   triangleIndex: number;
   expressId: number;
+  /** Federation model slot of the exact rendered piece. */
+  modelIndex?: number;
+  /** Exact representation item, absent for an ambiguous merged piece. */
+  geometryItemId?: number;
+  /** Triangle ordinal in the canonical evaluated surface. */
+  sourceTriangleIndex?: number;
   barycentricCoord: { u: number; v: number; w: number };
 }
 
@@ -31,13 +39,17 @@ export class Raycaster {
   /**
    * Cast a ray through all meshes and return the closest intersection
    */
-  raycast(ray: Ray, meshes: MeshData[]): Intersection | null {
+  raycast(
+    ray: Ray,
+    meshes: MeshData[],
+    accept?: (intersection: Intersection, mesh: MeshData) => boolean,
+  ): Intersection | null {
     let closestIntersection: Intersection | null = null;
     let closestDistance = Infinity;
 
     for (let meshIndex = 0; meshIndex < meshes.length; meshIndex++) {
       const mesh = meshes[meshIndex];
-      const intersection = this.raycastMesh(ray, mesh, meshIndex);
+      const intersection = this.raycastMesh(ray, mesh, meshIndex, accept);
 
       if (intersection && intersection.distance < closestDistance) {
         closestDistance = intersection.distance;
@@ -51,7 +63,12 @@ export class Raycaster {
   /**
    * Cast ray through a single mesh
    */
-  private raycastMesh(ray: Ray, mesh: MeshData, meshIndex: number): Intersection | null {
+  private raycastMesh(
+    ray: Ray,
+    mesh: MeshData,
+    meshIndex: number,
+    accept?: (intersection: Intersection, mesh: MeshData) => boolean,
+  ): Intersection | null {
     const positions = mesh.positions;
     const indices = mesh.indices;
 
@@ -126,8 +143,6 @@ export class Raycaster {
       const intersection = this.intersectTriangle(localRay, v0, v1, v2);
 
       if (intersection && intersection.distance < closestDistance) {
-        closestDistance = intersection.distance;
-
         // Calculate normal from triangle
         const normal = this.calculateTriangleNormal(v0, v1, v2);
 
@@ -136,16 +151,27 @@ export class Raycaster {
         const worldPoint: Vec3 = o
           ? { x: intersection.point.x + o[0], y: intersection.point.y + o[1], z: intersection.point.z + o[2] }
           : intersection.point;
+        const geometryItemId = reportableItemId(mesh, mesh.expressId);
+        // A canonical ordinal is only actionable together with the exact IFC
+        // representation item whose evaluated surface owns it.
+        const sourceTriangleIndex = geometryItemId === undefined ? undefined : appearanceSourceTriangle(mesh, i / 3);
 
-        closestIntersection = {
+        const exact: Intersection = {
           point: worldPoint,
           normal,
           distance: intersection.distance,
           meshIndex,
           triangleIndex: i / 3,
           expressId: mesh.expressId,
+          modelIndex: mesh.modelIndex ?? 0,
+          ...(geometryItemId === undefined ? {} : { geometryItemId }),
+          ...(sourceTriangleIndex === undefined ? {} : { sourceTriangleIndex }),
           barycentricCoord: intersection.barycentricCoord,
         };
+        if (!accept || accept(exact, mesh)) {
+          closestDistance = intersection.distance;
+          closestIntersection = exact;
+        }
       }
     }
 

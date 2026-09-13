@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { ListModelTagScope } from './model-tag-scope.js';
+
 /**
  * Types for the Lists feature - configurable property tables from IFC data
  */
@@ -194,6 +196,9 @@ export interface ListDefinition {
    * snapshots don't over-select when local express IDs collide across files.
    */
   expressIdsByModel?: Record<string, number[]>;
+
+  /** Optional MODEL scope by model tag (#4215, `model-tag-scope.ts`); absent = every model. */
+  modelTagScope?: ListModelTagScope;
 
   /** Optional property-based filter conditions */
   conditions: PropertyCondition[];
@@ -405,19 +410,3 @@ export interface DiscoveredColumns {
   quantities: Map<string, string[]>; // qsetName -> quantNames[]
 }
 
-// ============================================================================
-// Built-in Attributes
-// ============================================================================
-
-export const ENTITY_ATTRIBUTES = [
-  'Name',
-  'GlobalId',
-  'Class',
-  'Type',
-  'Description',
-  'ObjectType',
-  'PredefinedType',
-  'Tag',
-] as const;
-
-export type EntityAttribute = typeof ENTITY_ATTRIBUTES[number];

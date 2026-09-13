@@ -31,6 +31,7 @@ import { BufferEntitySource } from './entity-source.js';
 import { batchExtractGlobalIdAndName } from './columnar-parser-attributes.js';
 import {
     REL_TYPE_MAP,
+    SECONDARY_REL_TYPE_MAP,
 } from './columnar-parser-indexes.js';
 import { extractRelFast, extractPropertyRelFast } from './columnar-parser-relationships.js';
 import { detectSchemaVersion, parseSourceHeader } from './source-header.js';
@@ -305,6 +306,17 @@ export async function parseColumnarInput(
                 if (relType) {
                     for (const targetId of rel.relatedObjects) {
                         relationshipGraphBuilder.addEdge(rel.relatingObject, targetId, relType, ref.expressId);
+                    }
+                }
+                // A second, distinct edge for STEP classes REL_TYPE_MAP folds
+                // into a broader bucket (IfcRelNests -> also Nests,
+                // IfcRelAssignsToGroupByFactor -> also AssignsToGroupByFactor)
+                // so a caller can ask for exactly that class without losing
+                // any existing consumer of the broader one (#4205).
+                const secondaryRelType = SECONDARY_REL_TYPE_MAP[typeUpper];
+                if (secondaryRelType) {
+                    for (const targetId of rel.relatedObjects) {
+                        relationshipGraphBuilder.addEdge(rel.relatingObject, targetId, secondaryRelType, ref.expressId);
                     }
                 }
             }
@@ -754,6 +766,7 @@ export {
     extractDocumentsOnDemand,
     extractRelationshipsOnDemand,
     extractGroupMembersOnDemand,
+    extractGroupAssignmentFactorOnDemand,
     extractGeoreferencingOnDemand,
     parsePropertyValue,
     extractPsetsFromIds,

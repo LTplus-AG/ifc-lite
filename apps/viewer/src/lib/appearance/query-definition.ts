@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { compileNameMatcher, isNamePattern } from '@ifc-lite/lists';
 import type { Combinator, FilterRule } from '../search/filter-rules.js';
+import { isModelTagOp } from '../model-tags/types.js';
 
 export interface AppearanceQueryDefinition {
   name: string;
@@ -37,7 +38,7 @@ export function ownAppearanceQuery(raw: unknown): AppearanceQueryDefinition {
     const rule = record(rawRule);
     if (typeof rule.op !== 'string') throw new Error('The saved filter operator is invalid.');
     const fields: Record<string, string[]> = {
-      model: ['values'], storey: ['values', 'refs'], ifcType: ['values'], predefinedType: ['values'], globalId: ['values'],
+      model: ['values'], modelTag: ['tagIds'], storey: ['values', 'refs'], ifcType: ['values'], predefinedType: ['values'], globalId: ['values'],
       name: ['value', 'valueKind'], material: ['value', 'valueKind'], type: ['value', 'valueKind'],
       attribute: ['name', 'value', 'valueKind'],
       property: ['setName', 'setNameKind', 'propertyName', 'propertyNameKind', 'value', 'valueKind'],
@@ -61,6 +62,13 @@ export function ownAppearanceQuery(raw: unknown): AppearanceQueryDefinition {
         }
         if (rule.kind === 'storey' && rule.refs !== undefined) {
           throw new Error('Exact storey selections are session-bound. Save a filter using storey names before applying appearance.');
+        }
+        break;
+      case 'modelTag':
+        // Same membership budget as `model`; `untagged` names no tag, so its list may be empty.
+        if (!isModelTagOp(rule.op) || !Array.isArray(rule.tagIds) || rule.tagIds.length > 1000
+          || !rule.tagIds.every(text) || (rule.op !== 'untagged' && rule.tagIds.length === 0)) {
+          throw new Error('The saved filter contains an invalid model tag rule.');
         }
         break;
       case 'name': case 'material': case 'type': requireFields(rule, ['value'], stringOps); break;

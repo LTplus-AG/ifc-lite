@@ -19,7 +19,7 @@ import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useFilterRuleOptions } from '@/hooks/useFilterRuleOptions';
 import type { FilterRule } from '@/lib/search/filter-rules';
-import type { ClashSetFilter } from '@/lib/clash/set-filter';
+import { unreadableRuleCount, type ClashSetFilter } from '@/lib/clash/set-filter';
 import { AddRuleMenu, CombinatorToggle, blankRuleOfKind } from './FilterRuleControls';
 import { RuleRow } from './SearchModal.filter.editors';
 
@@ -35,12 +35,16 @@ export interface ClashSetFilterEditorProps {
 export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilterEditorProps) {
   const rules = filter?.rules ?? NO_RULES;
   const combinator = filter?.combinator ?? 'AND';
+  const unreadable = unreadableRuleCount(filter);
   const ruleOptions = useFilterRuleOptions(rules);
 
   const commit = useCallback(
     (nextRules: readonly FilterRule[], nextCombinator = combinator) => {
       // No rules is no filter — never an empty filter, which the resolver
-      // would (correctly) read as "this side matches nothing".
+      // would (correctly) read as "this side matches nothing". An edit here
+      // is the user's explicit decision about this filter, so the rules this
+      // build could not read (#4215) are let go with it — the notice below
+      // says so before they touch anything.
       onChange(
         nextRules.length === 0 ? undefined : { combinator: nextCombinator, rules: [...nextRules] },
       );
@@ -71,6 +75,14 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
           </Button>
         )}
       </div>
+
+      {unreadable > 0 && (
+        <p role="alert" data-clash-filter-unreadable className="text-[10px] leading-snug text-amber-700 dark:text-amber-400">
+          {unreadable === 1 ? 'One rule in this filter' : `${unreadable} rules in this filter`} cannot be read by this
+          version (saved by a newer version, or malformed). Runs using it are refused; any edit here discards
+          {unreadable === 1 ? ' that rule' : ' those rules'}.
+        </p>
+      )}
 
       {rules.map((rule, i) => (
         <RuleRow

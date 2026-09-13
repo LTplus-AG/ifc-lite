@@ -91,6 +91,8 @@ function unionByType(store: IfcDataStore, names: readonly string[]): number[] | 
 const RULE_COST: Record<FilterRule['kind'], number> = {
   // Constant-time comparison against the entity's owning model.
   model:          0,
+  // Constant-time set lookups against the owning model's tag set (#4215).
+  modelTag:       0,
   // Column-only — single TypedArray read.
   ifcType:        0,
   // Pre-built reverse-map lookup.

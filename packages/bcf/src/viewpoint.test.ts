@@ -254,6 +254,50 @@ describe('BCF Viewpoint Coordinate Conversion', () => {
       expect(hide.components?.visibility?.exceptions).toEqual([{ ifcGuid: 'HIDEME0000000000000001' }]);
     });
 
+    // An isolation that currently matches nothing is still an ACTIVE isolation:
+    // the user is looking at an empty viewport, and the viewpoint has to say so.
+    // `visibleGuids: []` is the empty-but-active allowlist -- distinct from
+    // omitting the option, which means "no isolation channel at all" -- exactly
+    // the distinction `packages/renderer/src/entity-visibility.ts`'s
+    // `isEntityVisible` draws for `isolatedIds`. Collapsing the two writes a
+    // viewpoint claiming the whole model is visible.
+    it('encodes an active-but-empty isolation as defaultVisibility=false', () => {
+      const isolateNothing = createViewpoint({ camera, visibleGuids: [] });
+      expect(isolateNothing.components?.visibility?.defaultVisibility).toBe(false);
+
+      // Omitting the option is still "no isolation", and must stay that way.
+      const noIsolation = createViewpoint({ camera });
+      expect(noIsolation.components?.visibility).toBeUndefined();
+    });
+
+    // BCF's `<Visibility>` carries ONE `DefaultVisibility` flag, so an
+    // allowlist and a blocklist cannot both be written. Passing both is
+    // therefore not a lossy choice but a subsumption: an isolation allowlist
+    // already hides everything outside it, `hiddenGuids` included. Pinned
+    // because the drop is otherwise invisible at the call site, and because
+    // the `visibleGuids: []` case makes it look like a bug -- "isolate
+    // nothing, and by the way hide these" is a redundant instruction, not a
+    // lost one.
+    it('lets an isolation allowlist subsume hiddenGuids, which it already hides', () => {
+      const both = createViewpoint({
+        camera,
+        visibleGuids: ['KEEPVISIBLE00000000001'],
+        hiddenGuids: ['HIDEME0000000000000001'],
+      });
+      expect(both.components?.visibility?.defaultVisibility).toBe(false);
+      expect(both.components?.visibility?.exceptions).toEqual([{ ifcGuid: 'KEEPVISIBLE00000000001' }]);
+
+      // The degenerate end of the same rule: isolate-to-nothing hides the
+      // whole model, so the blocklist is satisfied by the allowlist alone.
+      const isolateNothing = createViewpoint({
+        camera,
+        visibleGuids: [],
+        hiddenGuids: ['HIDEME0000000000000001'],
+      });
+      expect(isolateNothing.components?.visibility?.defaultVisibility).toBe(false);
+      expect(isolateNothing.components?.visibility?.exceptions).toEqual([]);
+    });
+
     it('round-trips isolation and hiding back into the right bucket', () => {
       const isolate = extractViewpointState(createViewpoint({ camera, visibleGuids: ['A000000000000000000001'] }));
       expect(isolate.visibleGuids).toEqual(['A000000000000000000001']);
@@ -261,7 +305,35 @@ describe('BCF Viewpoint Coordinate Conversion', () => {
 
       const hide = extractViewpointState(createViewpoint({ camera, hiddenGuids: ['B000000000000000000001'] }));
       expect(hide.hiddenGuids).toEqual(['B000000000000000000001']);
-      expect(hide.visibleGuids).toEqual([]);
+      // Hide mode carries no isolation channel at all -- `null`, not `[]`.
+      expect(hide.visibleGuids).toBeNull();
+    });
+
+    // The read-side half of the empty-but-active fix above: a viewpoint
+    // captured (or authored by any BCF tool) with an active isolation that
+    // matches nothing must round-trip back as an active-but-empty isolation,
+    // not as "no isolation at all". `visibleGuids: null` is reserved for a
+    // viewpoint that never had an isolation channel.
+    it('round-trips an active-but-empty isolation as [], not null', () => {
+      const isolateNothing = extractViewpointState(createViewpoint({ camera, visibleGuids: [] }));
+      expect(isolateNothing.visibleGuids).toEqual([]);
+      expect(isolateNothing.visibleGuids).not.toBeNull();
+
+      const noIsolation = extractViewpointState(createViewpoint({ camera }));
+      expect(noIsolation.visibleGuids).toBeNull();
+    });
+
+    // Independent oracle: `createViewpoint` always writes `exceptions: []`, so
+    // the round-trip above cannot tell whether the extractor also handles a
+    // viewpoint from another BCF tool that omits `<Exceptions>` entirely.
+    it('reads defaultVisibility=false with no exceptions element as an active-but-empty isolation', () => {
+      const foreign = {
+        guid: '11111111-2222-3333-4444-555555555555',
+        components: { visibility: { defaultVisibility: false } },
+      } as unknown as Parameters<typeof extractViewpointState>[0];
+      const state = extractViewpointState(foreign);
+      expect(state.visibleGuids).toEqual([]);
+      expect(state.hiddenGuids).toEqual([]);
     });
 
     it('omits components entirely when nothing is selected, hidden or coloured', () => {

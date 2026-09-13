@@ -26,6 +26,7 @@ import {
   parseClashSetFilter,
   activeClashSetFilter,
   describeClashSetFilter,
+  unreadableRuleCount,
   type ClashSetFilter,
 } from './set-filter.js';
 import { resolveClashSetFilter, withResolvedClashSetFilters } from './set-filter-resolve.js';
@@ -193,6 +194,17 @@ describe('withResolvedClashSetFilters', () => {
     assert.deepEqual(out.membersA, [clashMemberKey('m1', 100)]);
   });
 
+  it('REFUSES a filter carrying a rule this build cannot read, rather than running the readable rest (#4215)', async () => {
+    const filterA: ClashSetFilter = {
+      ...filter('AND', Rule.ifcType(['IfcWall'])),
+      unreadableRules: [{ kind: 'modelTag', op: 'fromTheFuture' }],
+    };
+    await assert.rejects(
+      withResolvedClashSetFilters([rule], [{ id: 'r1', filterA }], await models(), toGlobalId),
+      /cannot read/,
+    );
+  });
+
   it('carries an unsatisfiable filter through as an empty member list', async () => {
     const [out] = await withResolvedClashSetFilters(
       [rule],
@@ -205,13 +217,45 @@ describe('withResolvedClashSetFilters', () => {
 });
 
 describe('parseClashSetFilter (persisted shape)', () => {
-  it('accepts a stored filter and drops rules it does not recognise', () => {
+  it('accepts a stored filter and KEEPS rules it does not recognise as unreadable (#4215)', () => {
     const parsed = parseClashSetFilter({
       combinator: 'OR',
       rules: [{ kind: 'ifcType', values: ['IfcWall'], op: 'in' }, { kind: 'nonsense' }, 42],
     });
     assert.equal(parsed?.combinator, 'OR');
     assert.deepEqual(parsed?.rules, [{ kind: 'ifcType', values: ['IfcWall'], op: 'in' }]);
+    // Dropping them would leave an AND filter with fewer conditions — a
+    // silently WIDER set — and a re-save would make that permanent.
+    assert.deepEqual(parsed?.unreadableRules, [{ kind: 'nonsense' }, 42]);
+    assert.equal(unreadableRuleCount(parsed), 2);
+    assert.equal(describeClashSetFilter(parsed!), '1 rule · 2 unreadable');
+  });
+
+  it('a filter with nothing but unreadable rules is still an ACTIVE filter, not a fallback to the selector (#4215)', () => {
+    const parsed = parseClashSetFilter({ combinator: 'AND', rules: [{ kind: 'modelTag', op: 'fromTheFuture', tagIds: [] }] });
+    assert.deepEqual(parsed?.rules, []);
+    assert.equal(unreadableRuleCount(parsed), 1);
+    assert.equal(activeClashSetFilter(parsed), parsed, 'must reach the resolver so it can refuse');
+  });
+
+  it('re-tries rules an older build parked in unreadableRules, so a round trip through it loses nothing (#4215)', () => {
+    // Written by a build that did not know `modelTag`: the rule sat in
+    // `unreadableRules`, and the readable rule in `rules`.
+    const parsed = parseClashSetFilter({
+      combinator: 'AND',
+      rules: [{ kind: 'ifcType', values: ['IfcWall'], op: 'in' }],
+      unreadableRules: [{ kind: 'modelTag', op: 'hasAny', tagIds: ['t1'] }, { kind: 'still-nonsense' }],
+    });
+    assert.deepEqual(parsed?.rules, [
+      { kind: 'ifcType', values: ['IfcWall'], op: 'in' },
+      { kind: 'modelTag', op: 'hasAny', tagIds: ['t1'] },
+    ]);
+    assert.deepEqual(parsed?.unreadableRules, [{ kind: 'still-nonsense' }]);
+  });
+
+  it('a filter with no unreadable rules carries no unreadableRules key (byte-stable storage)', () => {
+    const parsed = parseClashSetFilter({ combinator: 'AND', rules: [{ kind: 'name', op: 'contains', value: 'a' }] });
+    assert.equal('unreadableRules' in (parsed ?? {}), false);
   });
 
   it('is undefined for anything that is not a filter, including a rule-less one', () => {

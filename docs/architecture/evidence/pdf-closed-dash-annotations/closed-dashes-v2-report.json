@@ -1,0 +1,72 @@
+{
+  "input": "control:closedDashesV2",
+  "sourceBytes": 803,
+  "sourceSha256": "4e62b68a2e9d93c260af98386b5fff4dc079f8f457e0cc0a0941f4da24c59d0f",
+  "decoderVersion": "6.3.289",
+  "pdfFormatVersion": "2.0",
+  "pageNumber": 1,
+  "viewBox": [
+    10,
+    20,
+    110,
+    92
+  ],
+  "userUnit": 2,
+  "intrinsicRotation": 90,
+  "calibration": {
+    "modelMetresFromPdf": [
+      0.03333333333333333,
+      0,
+      0,
+      0.03333333333333333,
+      0,
+      0
+    ],
+    "calibrationKey": "synthetic-control-30-pdf-units-per-metre",
+    "toleranceMetres": 0.0001
+  },
+  "operations": 10,
+  "operators": {
+    "strokeColor": 1,
+    "lineWidth": 1,
+    "lineCap": 1,
+    "lineJoin": 1,
+    "dash": 3,
+    "path": 3
+  },
+  "preparation": {
+    "algorithm": "ifclite-pdf-vector-state-v1",
+    "requestSha256": "c910c3468de49d4d023b1bb2fac7b5ae081398673d430ae03ae21445722139c4",
+    "pageClipPdf": [
+      10,
+      20,
+      110,
+      92
+    ],
+    "dashClosures": [
+      "joined",
+      "joined",
+      "joined"
+    ]
+  },
+  "fidelity": {
+    "sha256": "336958c33962538c6cabb6f6e5593492b74457feb6b4596af7262b5db6986651",
+    "algorithm": "ifclite-pdf-fidelity-v1",
+    "exact": true,
+    "rasterOnly": false,
+    "convertiblePaths": 3,
+    "omittedPaints": 0,
+    "summary": [],
+    "omissionsTruncated": false,
+    "listedOmissions": 0
+  },
+  "accepted": {
+    "ifc": "closed-dashes-v2.ifc",
+    "plan": "closed-dashes-v2-plan.json",
+    "annotationId": 203,
+    "propertySetId": 226,
+    "regions": 14,
+    "requestSha256": "2fbf23d882d36e2793e2680e75e1023f9e4050f40dbb4a4b172ef2d34248e70b",
+    "acceptedFidelitySha256": null
+  }
+}

@@ -25,6 +25,8 @@
 // branch-first / round 3 base-first…, could still resonate with a
 // periodic effect).
 
+import { pathToFileURL } from 'node:url';
+
 /**
  * @param {number} iters positive integer round count
  * @param {() => number} rand uniform [0,1) generator (defaults to Math.random)
@@ -60,7 +62,13 @@ export function seededRand(seed) {
 
 // CLI: `node ab-order.mjs <iters> [seed]` prints one "first second" line per
 // round (e.g. "base branch"), consumed by ab.sh.
-if (import.meta.url === `file://${process.argv[1]}`) {
+//
+// The guard goes through `pathToFileURL` rather than string-prefixing
+// `file://`: on Windows `process.argv[1]` is `C:\...b-order.mjs` while
+// `import.meta.url` is `file:///C:/.../ab-order.mjs`, so the naive comparison
+// never matched there and ab.sh ran ZERO rounds while still printing a
+// "within noise, counts matched" verdict (#4439).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const iters = Number(process.argv[2]);
   const seedArg = process.argv[3];
   const rand = seedArg !== undefined ? seededRand(Number(seedArg)) : Math.random;

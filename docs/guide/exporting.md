@@ -137,7 +137,7 @@ const glb = gp.exportGlb(
   bytes,                 // Uint8Array of the .ifc
   true,                  // includeMetadata: expressId/ifcType/GlobalId in node extras
   new Uint32Array(),     // hidden  express-ids (empty = none hidden)
-  new Uint32Array(),     // isolated express-ids (empty = all visible)
+  undefined,             // isolated: undefined = no filter; a Uint32Array = keep ONLY these (empty = keep nothing)
   '',                    // hidden IFC-type CSV (e.g. 'IfcSpace,IfcOpeningElement')
   true,                  // lit: PBR materials; false = flat KHR_materials_unlit
 );
@@ -157,7 +157,7 @@ RTC origins ride a glTF node translation so large-coordinate models stay precise
 |-----------|---------|
 | `includeMetadata` | Write `expressId` / `ifcType` / `GlobalId` (plus `modelId` for federated exports) into each node's `extras` |
 | `hidden` | Express-ids to omit (mirrors the viewer's hide set) |
-| `isolated` | Express-ids to keep; empty = all visible |
+| `isolated` | `undefined` = no isolation filter (everything not hidden exports). A `Uint32Array` = an **active** allowlist: only these express-ids export, and an **empty** array exports nothing (`NO_RENDER_GEOMETRY`). Pass `undefined`, not `new Uint32Array()`, when your filter is inactive — `exportObj` follows the same contract (`isolated?`); on the Rust side this is `GltfOptions::isolated` / `ObjOptions::isolated: Option<Vec<u32>>` (`None` vs `Some(ids)`) |
 | hidden-types CSV | IFC class names to drop wholesale, e.g. `IfcSpace,IfcOpeningElement` |
 | `lit` | `true` (default) emits standard PBR materials that shade from normals; `false` emits flat `KHR_materials_unlit` materials |
 

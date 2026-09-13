@@ -315,13 +315,13 @@ pub fn build_texture_index(
     decoder: &mut EntityDecoder,
 ) -> FxHashMap<u32, ResolvedTextureMap> {
     let mut index = FxHashMap::default();
-    if memchr::memmem::find(content, b"IFCINDEXEDTRIANGLETEXTUREMAP").is_none() {
+    if ifc_lite_core::find_keyword(content, b"IFCINDEXEDTRIANGLETEXTUREMAP").is_none() {
         return index;
     }
     let mut texture_cache: FxHashMap<u32, Option<TextureSource>> = FxHashMap::default();
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name != "IFCINDEXEDTRIANGLETEXTUREMAP" {
+        if !ifc_lite_core::keyword_eq(type_name, "IFCINDEXEDTRIANGLETEXTUREMAP") {
             continue;
         }
         if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {

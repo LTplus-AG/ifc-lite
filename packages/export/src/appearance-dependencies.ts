@@ -10,7 +10,7 @@ import type { IfcAttributeValue, MutablePropertyView } from '@ifc-lite/mutations
 import { getEffectiveEntityIndex } from './effective-index.js';
 import { effectiveAppearanceRecord } from './effective-appearance-record.js';
 import { collectRefsInByteRange, refGroupFromArg } from './reference-collector.js';
-import { splitTopLevelArgs } from './step-argument-parser.js';
+import { readStepSlots } from './step-argument-parser.js';
 
 const RELATING = new Map([['IFCRELASSOCIATESMATERIAL', 'RelatingMaterial'], ['IFCRELDEFINESBYTYPE', 'RelatingType']]);
 const BINDINGS = new Map([
@@ -45,7 +45,7 @@ export function captureAppearanceDependencies(
     // dependency graph may contain both, including higher precision new UVs.
     const byteLimit = 192 * 1024 * 1024;
     const encoder = new TextEncoder(), scratch = new Uint8Array(16 * 1024);
-    const refuse = () => { throw new Error(`Appearance dependency validation exceeds its safety budget (${bytes} bytes, ${values} attribute values). Choose a smaller scope.`); };
+    const refuse = (): never => { throw new Error(`Appearance dependency validation exceeds its safety budget (${bytes} bytes, ${values} attribute values). Choose a smaller scope.`); };
     const inspect = (value: IfcAttributeValue | undefined) => {
       const frames: Array<{ values: ReadonlyArray<IfcAttributeValue | undefined>; cursor: number }> = [{ values: [value], cursor: 0 }];
       while (frames.length) {
@@ -105,8 +105,9 @@ export function captureAppearanceDependencies(
         // a type/material are not dependencies of this object's appearance.
         const slot = getAttributeNamesAcrossSchemas(type).indexOf(relating);
         if (slot < 0) refuse();
-        const args = splitTopLevelArgs(line.slice(line.indexOf('(') + 1, line.lastIndexOf(')')));
-        const ref = args[slot] === undefined ? undefined : refGroupFromArg(args[slot]);
+        const recordSlots = readStepSlots(line);
+        if (recordSlots === null) throw new Error('Invalid STEP record during appearance validation.');
+        const ref = recordSlots.slots[slot] === undefined ? undefined : refGroupFromArg(recordSlots.slots[slot]);
         forward = typeof ref === 'number' ? [ref] : ref ?? [];
       }
       result = { line, refs: forward };
@@ -120,8 +121,9 @@ export function captureAppearanceDependencies(
       if (slot < 0) throw new Error(`Cannot resolve ${type}.${attribute} for appearance validation.`);
       for (const id of index.byType.get(type) ?? []) {
         const line = row(id).line;
-        const args = splitTopLevelArgs(line.slice(line.indexOf('(') + 1, line.lastIndexOf(')')));
-        const target = args[slot] === undefined ? null : refGroupFromArg(args[slot]);
+        const recordSlots = readStepSlots(line);
+        if (recordSlots === null) throw new Error('Invalid STEP record during appearance validation.');
+        const target = recordSlots.slots[slot] === undefined ? null : refGroupFromArg(recordSlots.slots[slot]);
         for (const targetId of typeof target === 'number' ? [target] : target ?? []) {
           if (!Number.isSafeInteger(targetId)) refuse();
           const ids = inverse.get(targetId) ?? []; ids.push(id); inverse.set(targetId, ids);

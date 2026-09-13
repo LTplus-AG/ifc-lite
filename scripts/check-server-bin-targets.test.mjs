@@ -39,7 +39,10 @@ const INPUTS = {
   workflow: '.github/workflows/server-binaries.yml',
 };
 const real = Object.fromEntries(
-  Object.entries(INPUTS).map(([key, rel]) => [key, readFileSync(join(ROOT, rel), 'utf8')]),
+  Object.entries(INPUTS).map(([key, rel]) => [
+    key,
+    readFileSync(join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n'),
+  ]),
 );
 
 // GitHub Actions expressions used as literal mutation anchors, not JS templates.
@@ -298,6 +301,146 @@ test('an upload argument that braces the asset variable is green', () => {
     workflow: (s) => mutate(s, RELEASE_UPLOAD, RELEASE_UPLOAD.replace('"$asset"', BRACED_ASSET_ARG)),
   });
   assertGreen(result);
+});
+
+// ---- Build profile. The published binaries must unwind on panic: under the
+// repo-root [profile.release] panic = 'abort', the CatchPanicLayer in
+// apps/server/src/main.rs is inert and one malformed IFC upload aborts the
+// whole multi-tenant process. Every one of these mutations shipped in the
+// real workflow until this gate learned about the profile.
+
+// GitHub Actions expressions used as literal mutation anchors, not JS templates.
+/* eslint-disable no-template-curly-in-string */
+const CARGO_BUILD_LINE =
+  '            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --profile server-release' +
+  ' --package ifc-lite-server --target ${{ matrix.rust-target }}';
+const CROSS_BUILD_LINE =
+  '            cross build --profile server-release --package ifc-lite-server' +
+  ' --target ${{ matrix.rust-target }}';
+const UNIX_COPY_LINE = '          cp target/${{ matrix.rust-target }}/server-release/ifc-lite-server dist/';
+/* eslint-enable no-template-curly-in-string */
+const ASSERT_STEP_NAME = '- name: Assert the built binary unwinds';
+const SELFTEST_FLAG = '--panic-strategy-selftest';
+const WINDOWS_SELFTEST_CONDITION = " || matrix.target == 'win32-x64'";
+const WINDOWS_BINARY_SUFFIX = 'bin="$' + '{bin}.exe"';
+const RELEASE_SELFTEST_SOURCE_GUARD =
+  "          if grep -Fq -- '--panic-strategy-selftest' apps/server/src/panic_strategy.rs 2>/dev/null; then";
+const RELEASE_SELFTEST_BODY = `        if: matrix.target == 'linux-x64' || matrix.target == 'darwin-arm64' || matrix.target == 'linux-x64-musl' || matrix.target == 'win32-x64'
+        shell: bash
+        run: |
+`;
+
+test('profile: a cargo build leg back on --release is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, CARGO_BUILD_LINE, CARGO_BUILD_LINE.replace('--profile server-release', '--release')),
+  });
+  assertRed(result, /passes --release[\s\S]*panic = 'abort'/);
+});
+
+test('profile: a cross build leg back on --release is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, CROSS_BUILD_LINE, CROSS_BUILD_LINE.replace('--profile server-release', '--release')),
+  });
+  assertRed(result, /"cross build" in job "validate-server-binaries"[\s\S]*passes --release/);
+});
+
+test('profile: a build leg naming no profile at all is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, CARGO_BUILD_LINE, CARGO_BUILD_LINE.replace(' --profile server-release', '')),
+  });
+  assertRed(result, /does not pass --profile server-release/);
+});
+
+test('profile: a build step whose build lines are all commented out is red, not vacuously green', () => {
+  // Both branches of the first (validate-server-binaries) step, so that step
+  // runs no build at all. A commented-out command is absent, never compliant.
+  const result = runChecker({
+    workflow: (s) => mutate(
+      mutate(s, CROSS_BUILD_LINE, `            # ${CROSS_BUILD_LINE.trim()}`),
+      CARGO_BUILD_LINE,
+      `            # ${CARGO_BUILD_LINE.trim()}`,
+    ),
+  });
+  assertRed(
+    result,
+    /runs no cargo\/cross build command[\s\S]*Restore an active cargo build or cross build --profile server-release/,
+  );
+});
+
+test('profile: archiving out of target/<triple>/release/ is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, UNIX_COPY_LINE, UNIX_COPY_LINE.replace('/server-release/', '/release/')),
+  });
+  assertRed(result, /the archived bytes must come from[\s\S]*server-release/);
+});
+
+test('profile: a release archive step that stops copying the profile binary is red', () => {
+  // The self-test line still names the profile path, so a workflow-wide scan
+  // alone would stay green here.
+  const result = runChecker({
+    workflow: (s) => mutate(s, UNIX_COPY_LINE, '          cp dist/prebuilt/ifc-lite-server dist/'),
+  });
+  assertRed(result, /"Prepare Binary \(Unix\)" step of job "release-server-binaries"/);
+});
+
+test('profile: deleting the behavioural self-test step is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, ASSERT_STEP_NAME, '- name: Assert nothing in particular'),
+  });
+  assertRed(result, /has no "Assert the built binary unwinds" step/);
+});
+
+test('profile: keeping the step but dropping the self-test flag is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, SELFTEST_FLAG, '--help'),
+  });
+  assertRed(result, /has no "Assert the built binary unwinds" step running the built binary/);
+});
+
+test('profile: dropping the self-test verdict comparison is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, 'test "$verdict" = "panic-strategy: unwind"', 'true'),
+  });
+  assertRed(result, /has no "Assert the built binary unwinds" step running the built binary/);
+});
+
+test('profile: skipping the native Windows release self-test is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, WINDOWS_SELFTEST_CONDITION, ''),
+  });
+  assertRed(result, /does not run for native target "win32-x64"/);
+});
+
+test('profile: historical backfills must guard the unsupported behavioural flag', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(
+      s,
+      RELEASE_SELFTEST_SOURCE_GUARD,
+      `          echo "${RELEASE_SELFTEST_SOURCE_GUARD.trim()}"\n          if true; then`,
+    ),
+  });
+  assertRed(
+    result,
+    /does not guard[\s\S]*upload-to-tag[\s\S]*hanging the release job[\s\S]*restore the active if grep/,
+  );
+});
+
+test('profile: running the extensionless path for the Windows self-test is red', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(s, WINDOWS_BINARY_SUFFIX, WINDOWS_BINARY_SUFFIX.replace('.exe', '')),
+  });
+  assertRed(result, /does not select the \.exe path on Windows/);
+});
+
+test('profile: an unnamed sibling cannot supply a named self-test step contents', () => {
+  const replacement = RELEASE_SELFTEST_BODY.replace(
+    '        run: |\n',
+    '        run: echo "named step no longer tests the binary"\n\n      - run: |\n',
+  );
+  const result = runChecker({
+    workflow: (s) => mutate(s, RELEASE_SELFTEST_BODY, replacement),
+  });
+  assertRed(result, /has no "Assert the built binary unwinds" step running the built binary/);
 });
 
 // ---- The gate's original eight deliberate regressions, re-confirmed so the

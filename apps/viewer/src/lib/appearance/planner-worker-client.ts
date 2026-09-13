@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { PdfFillAnnotationRequest, PdfFillAnnotationPlan } from './pdf/fill-plan-types';
-import type { MeshTransferRequest, MeshTransferPlan } from './scan/transfer-types';
+import type { PdfVectorPage, PreparedPdfVectorPage } from './pdf/vector-types';
+import type { MeshTransferRequest, MeshTransferPlan, TransferPointPayload } from './scan/transfer-types';
 import type { ScanRegistrationRequest, ScanRegistrationReport } from './scan/types';
 import type { CapturedMeshPlan, CapturedMeshRequest, AnnotationPlanePlan, AnnotationPlaneRequest, PageAppearancePlan, PageAppearanceRequest, AppearanceCatalog, AppearanceCatalogRequest, AppearancePlan, AppearanceRequest, AppearanceWorkerJob, AppearanceWorkerRequest, AppearanceWorkerResponse } from './planner-types.js';
 
@@ -14,8 +15,12 @@ export interface AppearanceWorker {
   terminate(): void;
 }
 export interface AppearancePlanner {
+  /** Canonical fidelity report for a decoded page; no IFC source is involved. */
+  pdfFidelity(page: PdfVectorPage, options?: { signal?: AbortSignal }): Promise<PreparedPdfVectorPage>;
   pdfFillPlan(source: Uint8Array, request: PdfFillAnnotationRequest, options?: { signal?: AbortSignal }): Promise<PdfFillAnnotationPlan>;
   meshTransfer(source: Uint8Array, request: MeshTransferRequest, rgba: Uint8Array, options?: { signal?: AbortSignal }): Promise<MeshTransferPlan>;
+  /** Registered RGB point-cloud transfer (#4381); `request.source.kind` must be `points` and `points` is its binary payload. */
+  pointTransfer(source: Uint8Array, request: MeshTransferRequest, rgba: Uint8Array, points: TransferPointPayload, options?: { signal?: AbortSignal }): Promise<MeshTransferPlan>;
   registerScan(request: ScanRegistrationRequest, options?: { signal?: AbortSignal }): Promise<ScanRegistrationReport>;
   capturedMeshPlan(source: Uint8Array, request: CapturedMeshRequest, options?: { signal?: AbortSignal }): Promise<CapturedMeshPlan>;
   annotationPlan(source: Uint8Array, request: AnnotationPlaneRequest, options?: { signal?: AbortSignal }): Promise<AnnotationPlanePlan>;
@@ -26,6 +31,14 @@ export interface AppearancePlanner {
   dispose(): void;
 }
 const aborted = () => new DOMException('Appearance planning was cancelled', 'AbortError');
+function acceptTransfer(message: Exclude<AppearanceWorkerResponse, { type: 'error' }>, request: MeshTransferRequest, kind: 'mesh' | 'points'): MeshTransferPlan {
+  if (message.type !== 'mesh-transfer-complete' || !message.result.transfer || message.result.transfer.source?.kind !== kind
+    || message.result.transfer.registrationSha256 !== request.registrationSha256
+    || message.result.transfer.registration.requestSha256 !== request.registrationSha256
+    || !/^[a-f0-9]{64}$/.test(message.result.transfer.preparedSha256)
+    || (message.result.plan && (message.result.plan.sourceRevision !== request.sourceRevision || message.result.plan.nextExpressId !== request.nextExpressId))) throw new Error('Scan worker returned a stale transfer');
+  return message.result;
+}
 
 /** New requests supersede old jobs. Cancellation terminates CPU-heavy Rust
  * immediately rather than waiting for the worker event loop to receive it. */
@@ -53,7 +66,7 @@ export function createAppearancePlanner(options: {
       return Promise.reject(new Error('Appearance source exceeds 128 MiB. Use a smaller IFC model.'));
     }
     const request = job.type === 'page-plan' ? job.request.appearance : job.request;
-    if ((job.type === 'page-plan' || job.type === 'mesh-transfer') && job.rgba.byteLength > 128 * 1024 * 1024) {
+    if ((job.type === 'page-plan' || job.type === 'mesh-transfer' || job.type === 'point-transfer') && job.rgba.byteLength > 128 * 1024 * 1024) {
       return Promise.reject(new Error('Page raster payload exceeds 128 MiB. Use a smaller source.'));
     }
     // Refuse oversized capture arrays before structured clone and JSON encoding
@@ -111,17 +124,24 @@ export function createAppearancePlanner(options: {
     cancel,
     dispose() { disposed = true; cancel(); },
     meshTransfer(source, request, rgba, options) {
-      const mesh = request.sourceMesh;
-      if ([mesh.positions.length, mesh.triangles.length, mesh.uvs.length].some(n => n === 0 || n > 200_000)
+      const mesh = request.source;
+      if (mesh.kind !== 'mesh' || [mesh.positions.length, mesh.triangles.length, mesh.uvs.length].some(n => n === 0 || n > 200_000)
         || request.registration.fit.length > 256 || request.registration.heldOut.length > 256) return Promise.reject(new Error('Scan transfer exceeds its source or landmark budget. Choose a smaller source.'));
-      return run(source, { type: 'mesh-transfer', request, rgba }, message => {
-        if (message.type !== 'mesh-transfer-complete' || !message.result.transfer
-          || message.result.transfer.registrationSha256 !== request.registrationSha256
-          || message.result.transfer.registration.requestSha256 !== request.registrationSha256
-          || !/^[a-f0-9]{64}$/.test(message.result.transfer.preparedSha256)
-          || (message.result.plan && (message.result.plan.sourceRevision !== request.sourceRevision || message.result.plan.nextExpressId !== request.nextExpressId))) throw new Error('Scan worker returned a stale transfer');
-        return message.result;
-      }, options);
+      return run(source, { type: 'mesh-transfer', request, rgba }, message => acceptTransfer(message, request, 'mesh'), options);
+    },
+    pointTransfer(source, request, rgba, points, options) {
+      const spec = request.source;
+      const invalidOrientationPayload = spec.kind === 'points' && (
+        (spec.orientation === 'source-normals' && (points.normals.length !== spec.pointCount * 3 || points.stations.length !== 0))
+        || (spec.orientation === 'viewpoints' && (points.normals.length !== 0 || points.stations.length !== spec.pointCount))
+        || (spec.orientation === 'target-referenced' && (points.normals.length !== 0 || points.stations.length !== 0))
+      );
+      if (invalidOrientationPayload) {
+        return Promise.reject(new Error(`Point-cloud ${spec.kind === 'points' ? spec.orientation : 'unknown'} orientation has mismatched normal or station rows.`));
+      }
+      if (spec.kind !== 'points' || spec.pointCount === 0 || spec.pointCount > 2_000_000 || points.positions.length !== spec.pointCount * 3 || points.colors.length !== spec.pointCount * 3
+        || request.registration.fit.length > 256 || request.registration.heldOut.length > 256) return Promise.reject(new Error('Point-cloud transfer exceeds its 2,000,000-point or landmark budget. Choose a smaller source.'));
+      return run(source, { type: 'point-transfer', request, rgba, points }, message => acceptTransfer(message, request, 'points'), options);
     },
     registerScan(request, options) {
       if (request.fit.length > 256 || request.heldOut.length > 256 || new TextEncoder().encode(JSON.stringify(request)).byteLength > 512 * 1024) return Promise.reject(new Error('Scan registration exceeds its request budget'));
@@ -142,6 +162,24 @@ export function createAppearancePlanner(options: {
         return message.plan;
       }, options);
     },
+    pdfFidelity(page, options) {
+      if (page.operations.length > 100_000 || new TextEncoder().encode(JSON.stringify(page)).byteLength > 32 * 1024 * 1024) {
+        return Promise.reject(new Error('PDF fidelity request exceeds its bounded display-list budget'));
+      }
+      const frozen = structuredClone(page);
+      return run(new Uint8Array(), { type: 'pdf-fidelity', request: frozen }, message => {
+        if (message.type !== 'pdf-fidelity-complete' || !message.result
+          || message.result.algorithm !== 'ifclite-pdf-vector-state-v1' || message.result.pdfSha256 !== frozen.pdfSha256
+          || message.result.pageNumber !== frozen.pageNumber || message.result.calibrationKey !== frozen.calibrationKey
+          || message.result.toleranceMetres !== frozen.toleranceMetres
+          || message.result.fidelity?.algorithm !== 'ifclite-pdf-fidelity-v1' || !/^[a-f0-9]{64}$/.test(message.result.fidelity.sha256)
+          || !/^[a-f0-9]{64}$/.test(message.result.requestSha256) || !Array.isArray(message.result.fidelity.summary)
+          || !Array.isArray(message.result.fidelity.omissions)) {
+          throw new Error('Appearance worker returned a stale or invalid PDF fidelity report');
+        }
+        return message.result;
+      }, options);
+    },
     pdfFillPlan(source, request, options) {
       if (request.page.operations.length > 100_000 || request.page.operations.reduce((n, row) =>
         n + (row.operation.kind === 'path' ? row.operation.commands.length : 0), 0) > 2_000_000
@@ -159,6 +197,9 @@ export function createAppearancePlanner(options: {
           || JSON.stringify([message.result.frame.origin, message.result.frame.axisU, message.result.frame.axisV, message.result.frame.sizeMetres])
             !== JSON.stringify([frozen.frame.origin, frozen.frame.axisU, frozen.frame.axisV, frozen.frame.sizeMetres])
           || !/^[a-f0-9]{64}$/.test(message.result.requestSha256) || !/^[a-f0-9]{64}$/.test(message.result.sourceIfcSha256)
+          || message.result.fidelity?.algorithm !== 'ifclite-pdf-fidelity-v1' || !/^[a-f0-9]{64}$/.test(message.result.fidelity.sha256)
+          || typeof message.result.fidelity.exact !== 'boolean' || !Array.isArray(message.result.fidelity.summary)
+          || !Number.isInteger(message.result.propertySetId)
           || !message.result.meshes?.length || message.result.meshes.some(mesh => mesh.express_id !== message.result.annotationId
             || mesh.texture !== undefined || mesh.uvs !== undefined)) {
           throw new Error('Appearance worker returned a stale or invalid PDF fill annotation plan');

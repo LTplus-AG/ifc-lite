@@ -9,6 +9,7 @@
 //! Note: The IfcType enum is renamed to FullIfcType to avoid conflicts
 //! with the main schema::IfcType enum.
 
+pub mod legacy_attribute_names;
 mod schema;
 mod type_ids;
 

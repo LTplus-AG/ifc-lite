@@ -11,6 +11,7 @@ import { recordDownloadedSourceFile } from './persistence';
 import { enqueueSourceLoad } from './loadQueue';
 import { loadResolvedSourcePrefs } from './preferences';
 import { sanitizeFilename } from '@/lib/export/download';
+import { captureModelTags, restoreModelTags } from '../model-tags/carry-over.js';
 
 const IFC_NAME_PATTERNS = ['*.ifc', '*.ifcx', '*.ifc5'];
 const LIST_PAGE_LIMIT = 200;
@@ -187,6 +188,8 @@ async function doSyncSourceModel({
   // Swap: drop the old model (this also removes its source tag via the model
   // slice), purge ids that pointed into its now-burned global-id range, and
   // restore the sibling collapse states addModel just collapsed.
+  // Carry the user's model tags onto the replacement before the old id's are torn down (#4215).
+  restoreModelTags(useViewerStore.getState(), captureModelTags(useViewerStore.getState(), [modelId]), modelId, replacementId);
   removeModel(modelId);
   // Then drop every stored entity id that no longer belongs to a surviving
   // model: ids in the removed model's now-burned global-id range, its

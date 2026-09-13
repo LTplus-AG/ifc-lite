@@ -11,7 +11,7 @@
  * Three neighbours are deliberately NOT here, because none turns a value into
  * a token and each has rules of its own worth finding on its own:
  *   - `step-argument-parser.ts` reads a record's arguments back OUT of a line
- *     and writes one slot by index (`splitTopLevelArgs`, `replaceStepArgument`,
+ *     and writes one slot by index (`splitTopLevelListItems`, `replaceStepArgument`,
  *     `splitTopLevelStepArguments`);
  *   - `step-file-assembly.ts` joins a finished header and finished entity lines
  *     into the delivered file (`assembleStepBytes`, `assembleStepBlob`);

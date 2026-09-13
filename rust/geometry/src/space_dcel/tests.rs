@@ -1182,3 +1182,104 @@
             );
         }
     }
+
+    // ─── Concave faces and free wall ends ───
+
+    /// Wall rectangles (0.2 thick) enclosing an L-shaped corridor: a 40 m long
+    /// arm with a short stub at its left end.
+    fn l_corridor_rects() -> Vec<[[f64; 2]; 4]> {
+        vec![
+            [[-0.2, -0.2], [40.2, -0.2], [40.2, 0.0], [-0.2, 0.0]], // below the long arm
+            [[40.0, -0.2], [40.2, -0.2], [40.2, 1.2], [40.0, 1.2]], // the far end cap
+            [[1.0, 1.0], [40.2, 1.0], [40.2, 1.2], [1.0, 1.2]],     // over the long arm
+            [[1.0, 1.0], [1.2, 1.0], [1.2, 2.6], [1.0, 2.6]],       // beside the short arm
+            [[-0.2, 2.4], [1.2, 2.4], [1.2, 2.6], [-0.2, 2.6]],     // over the short arm
+            [[-0.2, -0.2], [0.0, -0.2], [0.0, 2.6], [-0.2, 2.6]],   // the outer end
+        ]
+    }
+
+    /// A 10×6 room with a 0.2 thick stub wall rising off the bottom wall to
+    /// y = 3 and stopping there, free, in the middle of the room.
+    fn free_end_rects() -> Vec<[[f64; 2]; 4]> {
+        vec![
+            [[-0.2, -0.2], [10.2, -0.2], [10.2, 0.0], [-0.2, 0.0]],
+            [[-0.2, 6.0], [10.2, 6.0], [10.2, 6.2], [-0.2, 6.2]],
+            [[-0.2, -0.2], [0.0, -0.2], [0.0, 6.2], [-0.2, 6.2]],
+            [[10.0, -0.2], [10.2, -0.2], [10.2, 6.2], [10.0, 6.2]],
+            [[4.9, 0.0], [5.1, 0.0], [5.1, 3.0], [4.9, 3.0]],
+        ]
+    }
+
+    /// The average of a ring's corners is not a point of the ring. Both fixtures
+    /// below are built so that it lands in a WALL, which is what made the room
+    /// vanish: the gap test read the wall's answer instead of the room's.
+    fn corner_average(pts: &[[f64; 2]]) -> [f64; 2] {
+        let n = pts.len() as f64;
+        let (mut x, mut y) = (0.0, 0.0);
+        for p in pts {
+            x += p[0];
+            y += p[1];
+        }
+        [x / n, y / n]
+    }
+
+    #[test]
+    fn representative_point_leaves_the_notch_of_a_concave_ring() {
+        // A U: the centroid sits in the gap between the prongs, outside the ring.
+        let u = [
+            [0.0, 0.0], [6.0, 0.0], [6.0, 6.0], [4.0, 6.0],
+            [4.0, 2.0], [2.0, 2.0], [2.0, 6.0], [0.0, 6.0],
+        ];
+        let p = representative_point(&u).expect("a ring with area has an interior point");
+        assert!(point_in_polygon(p, &u), "representative point {p:?} is outside the ring");
+    }
+
+    #[test]
+    fn an_l_shaped_corridor_is_detected_though_its_corner_average_lies_in_a_wall() {
+        let rects = l_corridor_rects();
+        let plate = SpacePlate::build_from_wall_rects(&rects, BuildOptions::default());
+        assert_eq!(plate.room_count(), 1, "the L-shaped corridor is one room");
+        let room = plate.rooms().next().unwrap();
+        // Guard the guard: if the fixture ever stops putting the corner average
+        // inside a wall, this test still passes but no longer bites, and the
+        // regression it exists for could come back unnoticed.
+        let avg = corner_average(&plate.face_outline(room));
+        assert!(
+            rects.iter().any(|r| point_in_quad(avg, r)),
+            "fixture no longer exercises the defect: corner average {avg:?} is in no wall",
+        );
+    }
+
+    #[test]
+    fn a_room_keeps_its_identity_when_a_stub_wall_stands_inside_it() {
+        let rects = free_end_rects();
+        let plate = SpacePlate::build_from_wall_rects(&rects, BuildOptions::default());
+        assert_eq!(plate.room_count(), 1, "a stub wall divides nothing — the room is still one room");
+        let room = plate.rooms().next().unwrap();
+        let avg = corner_average(&plate.face_outline(room));
+        assert!(
+            rects.iter().any(|r| point_in_quad(avg, r)),
+            "fixture no longer exercises the defect: corner average {avg:?} is in no wall",
+        );
+    }
+
+    #[test]
+    fn a_free_wall_end_is_capped_square_rather_than_sliced_across() {
+        let plate = SpacePlate::build_from_wall_rects(&free_end_rects(), BuildOptions::default());
+        let room = plate.rooms().next().unwrap();
+        let net = plate.net_outline(room, true);
+        assert!(is_simple_polygon(&net), "net outline crosses itself: {net:?}");
+        // 10×6 room less the 0.2×3 stub standing in it. The old outline ran
+        // diagonally from one flank's base to the other's tip and measured
+        // 59.71 — too much room, and through a wall.
+        let area = polygon_area(&net).abs();
+        assert!((area - 59.4).abs() < 1e-6, "net area {area}, want 59.4");
+        // Both flanks must reach the wall's REAL end at y = 3.0 (the axis stops
+        // half a thickness short of it, so the cap is what squares the end off).
+        for want in [[4.9, 3.0], [5.1, 3.0]] {
+            assert!(
+                net.iter().any(|p| (p[0] - want[0]).abs() < 1e-9 && (p[1] - want[1]).abs() < 1e-9),
+                "cap corner {want:?} missing from {net:?}",
+            );
+        }
+    }

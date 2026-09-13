@@ -96,6 +96,9 @@ export async function exportChangedModelToIfcx(
     includeProperties: true,
     applyMutations: true,
     visibleOnly: false,
+    // A recipient's room model is keyed by room path; `buildChangedArtifacts`
+    // resolves the slot to drop so the file carries its own paths (#4444).
+    stripPathPrefix: invocation.stripPathPrefix,
     // A round-trip "export my edits" should not silently drop properties that
     // lack an official IFC5 schema, so keep full fidelity here. (The Export
     // dialog exposes this as a user toggle that defaults to on; the one-click

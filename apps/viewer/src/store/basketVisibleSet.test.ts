@@ -276,7 +276,7 @@ describe('basketVisibleSet', () => {
       assert.strictEqual(isBasketIsolationActiveFromStore(), false);
     });
 
-    it('returns false when isolated size differs from basket', () => {
+    it('returns false when a basket element is missing from the isolation', () => {
       useViewerStore.setState({
         pinboardEntities: new Set(['legacy:100', 'legacy:200']),
         isolatedEntities: new Set([100]),
@@ -285,29 +285,22 @@ describe('basketVisibleSet', () => {
       assert.strictEqual(isBasketIsolationActiveFromStore(), false);
     });
 
+    it('returns true when the isolation is a SUPERSET of the basket (the basket widened a foreign isolation, #4527)', () => {
+      useViewerStore.setState({
+        pinboardEntities: new Set(['legacy:100', 'legacy:200']),
+        isolatedEntities: new Set([100, 200, 900]),
+        models: new Map(),
+      });
+
+      assert.strictEqual(isBasketIsolationActiveFromStore(), true, 'every basket element is shown; "Show active basket" would evict 900');
+    });
+
     it('returns false when isolated has the same SIZE as the basket but different members', () => {
       // A size-only check would be fooled by a swap: same cardinality,
       // disjoint contents. Membership must actually be verified.
       useViewerStore.setState({
         pinboardEntities: new Set(['legacy:100', 'legacy:200']),
         isolatedEntities: new Set([300, 400]),
-        models: new Map(),
-      });
-
-      assert.strictEqual(isBasketIsolationActiveFromStore(), false);
-    });
-
-    it('returns false when the isolation is a strict SUPERSET of the basket', () => {
-      // The existing "size differs" case only covers isolation SMALLER than
-      // the basket, where the membership loop also fails — so the `!==`
-      // size check itself was never discriminated and could be weakened to
-      // `>` unnoticed. Here every basket id IS isolated but extra elements
-      // are isolated too, so only the size check can say "no". Getting this
-      // wrong lights up the basket's "isolation active" toggle when the
-      // viewport is showing more than the basket.
-      useViewerStore.setState({
-        pinboardEntities: new Set(['legacy:100']),
-        isolatedEntities: new Set([100, 200]),
         models: new Map(),
       });
 

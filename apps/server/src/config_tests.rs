@@ -33,6 +33,7 @@ fn defaults_apply_when_nothing_is_set() {
     assert_eq!(c.port, 8080, "the container/Railway port contract");
     assert_eq!(c.max_file_size_mb, 500);
     assert_eq!(c.request_timeout_secs, 300);
+    assert_eq!(c.stream_idle_timeout_secs, 600);
     assert_eq!(c.initial_batch_size, 100);
     assert_eq!(c.max_batch_size, 1000);
     assert_eq!(c.cache_max_age_days, 7);
@@ -53,6 +54,7 @@ fn scalar_overrides_are_honoured_and_garbage_falls_back() {
         ("PORT", "9443"),
         ("MAX_FILE_SIZE_MB", "42"),
         ("REQUEST_TIMEOUT_SECS", "17"),
+        ("IFC_STREAM_IDLE_TIMEOUT_SECS", "23"),
         ("INITIAL_BATCH_SIZE", "7"),
         ("MAX_BATCH_SIZE", "77"),
         ("CACHE_MAX_AGE_DAYS", "1"),
@@ -61,6 +63,7 @@ fn scalar_overrides_are_honoured_and_garbage_falls_back() {
     assert_eq!(c.port, 9443);
     assert_eq!(c.max_file_size_mb, 42);
     assert_eq!(c.request_timeout_secs, 17);
+    assert_eq!(c.stream_idle_timeout_secs, 23);
     assert_eq!(c.initial_batch_size, 7);
     assert_eq!(c.max_batch_size, 77);
     assert_eq!(c.cache_max_age_days, 1);
@@ -70,6 +73,7 @@ fn scalar_overrides_are_honoured_and_garbage_falls_back() {
         ("PORT", "not-a-port"),
         ("MAX_FILE_SIZE_MB", "-1"),
         ("REQUEST_TIMEOUT_SECS", ""),
+        ("IFC_STREAM_IDLE_TIMEOUT_SECS", "never"),
         ("INITIAL_BATCH_SIZE", "1e6"),
         ("MAX_BATCH_SIZE", "∞"),
         ("CACHE_MAX_AGE_DAYS", "seven"),
@@ -78,10 +82,21 @@ fn scalar_overrides_are_honoured_and_garbage_falls_back() {
     assert_eq!(bad.port, 8080);
     assert_eq!(bad.max_file_size_mb, 500);
     assert_eq!(bad.request_timeout_secs, 300);
+    assert_eq!(bad.stream_idle_timeout_secs, 600);
     assert_eq!(bad.initial_batch_size, 100);
     assert_eq!(bad.max_batch_size, 1000);
     assert_eq!(bad.cache_max_age_days, 7);
     assert_eq!(bad.admission_queue_timeout_secs, 5);
+}
+
+/// Regression for #4582: zero is the documented opt-out, not an immediate
+/// disconnect, and must survive configuration parsing unchanged.
+#[test]
+fn stream_idle_timeout_zero_disables_the_transport_bound() {
+    assert_eq!(
+        cfg(&[("IFC_STREAM_IDLE_TIMEOUT_SECS", "0")]).stream_idle_timeout_secs,
+        0
+    );
 }
 
 /// `IFC_MAX_CONCURRENT_PARSES` feeds the admission CPU semaphore. `0` must be

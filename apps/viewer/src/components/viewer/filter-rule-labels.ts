@@ -6,6 +6,7 @@ import type { FilterRule } from '@/lib/search/filter-rules';
 
 export const RULE_KIND_LABEL: Record<FilterRule['kind'], string> = {
   model: 'Model',
+  modelTag: 'Model Tag',
   storey: 'Storey',
   ifcType: 'IFC Type',
   predefinedType: 'Predefined Type',

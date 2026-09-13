@@ -4,7 +4,10 @@
 import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { alignedScanPreview, scanPreviewPoint } from '@/lib/appearance/scan/preview';
+import { sourceLandmark } from '@/lib/appearance/scan/landmarks';
+import { alignedPointPreview, pointLandmark, pointPreviewPosition } from '@/lib/appearance/scan/point-source';
 import { AppearanceMeshPreview } from './AppearanceMeshPreview';
+import { AppearancePointPreview } from './AppearancePointPreview';
 import { ScanTransferFields } from './ScanTransferFields';
 import { useScanTransfer } from './useScanTransfer';
 import { useScanWorkbench } from './useScanWorkbench';
@@ -16,22 +19,30 @@ export function AppearanceScanPanel() {
   const work = useScanWorkbench();
   const transfer = useScanTransfer(work);
   const report = work.result?.report;
-  const mesh = useMemo(() => work.session && (work.aligned && report ? alignedScanPreview(work.session.source, report) : work.session.source), [work.session, work.aligned, report]);
+  const meshSource = work.session?.source.kind === 'mesh' ? work.session.source : null;
+  const pointSource = work.session?.source.kind === 'points' ? work.session.source.points : null;
+  const mesh = useMemo(() => meshSource && (work.aligned && report ? alignedScanPreview(meshSource.mesh, report) : meshSource.mesh), [meshSource, work.aligned, report]);
+  const points = useMemo(() => pointSource && (work.aligned && report ? alignedPointPreview(pointSource, report) : pointSource.positions), [pointSource, work.aligned, report]);
   const triangles = useMemo(() => mesh ? Array.from({ length: mesh.indices.length / 3 }, (_, index) => index) : [], [mesh]);
   const fit = work.pairs.filter(pair => pair.partition === 'fit').length;
   const checks = work.pairs.length - fit;
   const markers = useMemo(() => work.pairs.flatMap((pair, index) => {
-    const point = pair.source.point;
-    const origin = work.session?.source.origin ?? [0, 0, 0];
-    const source = work.aligned && report ? scanPreviewPoint(report, point, true) : { x: point[0] - origin[0], y: point[1] - origin[1], z: point[2] - origin[2] };
+    const point = pair.source.point, aligned = work.aligned && report ? report : null;
+    const origin = meshSource?.mesh.origin ?? [0, 0, 0];
+    const source = pointSource ? pointPreviewPosition(pointSource, aligned, point, true)
+      : aligned ? scanPreviewPoint(aligned, point, true) : { x: point[0] - origin[0], y: point[1] - origin[1], z: point[2] - origin[2] };
     const marker = { id: `P${index + 1}`, point: source, check: pair.partition === 'check' };
-    return work.aligned && report ? [marker, { id: `IFC ${index + 1}`, point: scanPreviewPoint(report, pair.correspondence.target, false), check: true }] : [marker];
-  }), [work.pairs, work.session, work.aligned, report]);
+    const target = aligned ? (pointSource ? pointPreviewPosition(pointSource, aligned, pair.correspondence.target, false) : scanPreviewPoint(aligned, pair.correspondence.target, false)) : null;
+    return target ? [marker, { id: `IFC ${index + 1}`, point: target, check: true }] : [marker];
+  }), [work.pairs, meshSource, pointSource, work.aligned, report]);
+  const previewDisabled = work.busy || work.stale || transfer.busy || transfer.ready;
+  const previewInstruction = work.aligned ? 'Aligned preview. P marks scan landmarks; IFC marks their target positions.' : undefined;
   return <section className="space-y-3 pt-4" aria-label="Scan alignment" aria-busy={work.busy}>
     <fieldset className="space-y-3" disabled={transfer.busy || transfer.ready}><div><h2 className="text-sm font-semibold">Align scan</h2><p className="mt-1 text-xs text-muted-foreground">Match scan landmarks to IFC surfaces, then review the alignment and independent checks.</p></div>
-    <label className="block text-xs">Scan surface<select className="mt-1 w-full rounded border bg-background p-2" value={work.sourceId} disabled={work.busy} onChange={event => work.setSourceId(event.target.value)}><option value="">Choose a textured GLB surface</option>{work.sources.map(source => <option key={source.id} value={source.id}>{source.label}</option>)}</select></label>
+    <label className="block text-xs">Scan source<select className="mt-1 w-full rounded border bg-background p-2" value={work.sourceId} disabled={work.busy} onChange={event => work.setSourceId(event.target.value)}><option value="">Choose a textured GLB surface or point cloud</option>{work.sources.map(source => <option key={source.id} value={source.id}>{source.label}</option>)}</select></label>
     <label className="block text-xs">IFC model<select className="mt-1 w-full rounded border bg-background p-2" value={work.targetId} disabled={work.busy} onChange={event => work.setTargetId(event.target.value)}><option value="">Choose an IFC model</option>{work.targets.map(target => <option key={target.id} value={target.id}>{target.name}</option>)}</select></label>
-    {mesh && work.session && <AppearanceMeshPreview mesh={mesh} assetId={work.session.assetId} triangles={triangles} disabled={work.busy || work.stale || transfer.busy || transfer.ready} regionControls={false} onRegion={ignoreRegion} onReady={work.setPreviewReady} onError={work.previewError} onLandmark={work.pickSource} markers={markers} canvasLabel="Scan landmark preview" instruction={work.aligned ? 'Aligned preview. P marks scan landmarks; IFC marks their target positions.' : 'Click a scan landmark, then its matching point in the main IFC view. Drag to orbit; scroll to zoom.'} />}
+    {mesh && meshSource && <AppearanceMeshPreview mesh={mesh} assetId={meshSource.assetId} triangles={triangles} disabled={previewDisabled} regionControls={false} onRegion={ignoreRegion} onReady={work.setPreviewReady} onError={work.previewError} onLandmark={hit => work.pickSource(sourceLandmark(meshSource.mesh, hit, meshSource.meshOrdinal))} markers={markers} canvasLabel="Scan landmark preview" instruction={previewInstruction ?? 'Click a scan landmark, then its matching point in the main IFC view. Drag to orbit; scroll to zoom.'} />}
+    {points && pointSource && <AppearancePointPreview source={pointSource} positions={points} disabled={previewDisabled} onReady={work.setPreviewReady} onError={work.previewError} onLandmark={index => work.pickSource(pointLandmark(pointSource, index))} markers={markers} canvasLabel="Scan landmark preview" instruction={previewInstruction} />}
     <div role="group" aria-label="Landmark purpose" className="grid grid-cols-2 gap-2">
       <Button size="sm" variant={work.partition === 'fit' ? 'secondary' : 'outline'} aria-pressed={work.partition === 'fit'} disabled={work.busy || work.aligned} onClick={() => work.setPartition('fit')}>Fit · {fit}</Button>
       <Button size="sm" variant={work.partition === 'check' ? 'secondary' : 'outline'} aria-pressed={work.partition === 'check'} disabled={work.busy || work.aligned} onClick={() => work.setPartition('check')}>Check · {checks}</Button>

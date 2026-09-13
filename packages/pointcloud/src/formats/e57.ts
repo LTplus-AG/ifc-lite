@@ -98,6 +98,7 @@ export function decodeE57(
   return {
     positions,
     colors,
+    normalState: 'absent',
     intensities,
     classifications,
     pointCount: total,

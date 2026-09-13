@@ -91,7 +91,7 @@ where
     let mut scanner = EntityScanner::new(content.as_ref());
     let mut aggregate_children: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name != "IFCRELAGGREGATES" {
+        if !ifc_lite_core::keyword_eq(type_name, "IFCRELAGGREGATES") {
             continue;
         }
         let entity = match decoder.decode_at_with_id(id, start, end) {
@@ -264,7 +264,7 @@ impl VoidIndex {
 
         while let Some((_id, type_name, start, end)) = scanner.next_entity() {
             // Look for IfcRelVoidsElement relationships
-            if type_name == "IFCRELVOIDSELEMENT" {
+            if ifc_lite_core::keyword_eq(type_name, "IFCRELVOIDSELEMENT") {
                 if let Ok(entity) = decoder.decode_at(start, end) {
                     // IfcRelVoidsElement structure:
                     // #id = IFCRELVOIDSELEMENT(GlobalId, OwnerHistory, Name, Description,

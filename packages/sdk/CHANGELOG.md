@@ -1,5 +1,45 @@
 # @ifc-lite/sdk
 
+## 5.0.0
+
+### Major Changes
+
+- [#4509](https://github.com/LTplus-AG/ifc-lite/pull/4509) [`9a271dc`](https://github.com/LTplus-AG/ifc-lite/commit/9a271dcb19dff2f9bca72fc3505ce5a71b3e800b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `createViewpoint`/`extractViewpointState` reading an active-but-empty isolation (the viewer isolated to a set that currently matches nothing — an empty viewport) the same as no isolation at all.
+  
+  - `createViewpoint({ visibleGuids: [] })` (isolation active, zero entities) previously wrote no `components.visibility` at all, so the resulting BCF viewpoint claimed the whole model was visible. It now correctly writes `defaultVisibility: false` with no exceptions. This was reachable via `@ifc-lite/sdk`'s `bim.bcf.createViewpoint()`, which already produced `visibleGuids: []` for `{ defaultVisibility: false, exceptions: [] }` input — a real caller shape, not a hypothetical.
+  - `extractViewpointState()`'s `visibleGuids` field is now `string[] | null` (was `string[]`): `null` means the read viewpoint carried no isolation channel, while a non-null array — empty included — means isolation was active in the captured viewpoint, down to "matched nothing". A BCF viewpoint from any conformant tool with `<Visibility DefaultVisibility="false"/>` and no `<Exceptions>` is spec-valid and previously round-tripped back as "no isolation" instead of "isolated to nothing". `@ifc-lite/sdk`'s `ExtractedViewpointState.visibleGuids` carries the same type change.
+  
+  - `bim.bcf.createViewpoint()`'s `components.visibility.defaultVisibility` is now **optional**, and an absent value is read as `true`, per BCF's schema default ("everything is visible, the exceptions are HIDDEN"). It was previously truthy-tested, which mapped an absent value onto the isolation arm — inverting the spec's default, and, with no exceptions to isolate, turning a caller who said nothing about visibility into a viewpoint asserting a blank viewport. Pass `defaultVisibility: false` explicitly to isolate.
+  
+  `hiddenGuids` is unaffected: it is a blocklist, where an absent and an empty set both correctly mean "hide nothing" (matching `packages/renderer/src/entity-visibility.ts`'s `isEntityVisible` convention), so it keeps its `.length > 0` check.
+  
+  When both `visibleGuids` and `hiddenGuids` are supplied, the isolation allowlist wins and the blocklist is not written. That is deliberate and lossless rather than a dropped input: BCF's `<Visibility>` carries a single `DefaultVisibility` flag, so only one of the two modes is expressible at all, and an allowlist already hides everything outside itself.
+
+### Minor Changes
+
+- [#4293](https://github.com/LTplus-AG/ifc-lite/pull/4293) [`4c9a88d`](https://github.com/LTplus-AG/ifc-lite/commit/4c9a88d80b9ba9631be97050d896b5f5834d3628) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `bim.bcf.sectionPlaneToClippingPlane()` and `bim.bcf.clippingPlaneToSectionPlane()` each accepted only their first argument and silently dropped the `bounds` argument `@ifc-lite/bcf`'s underlying functions require to place an absolute location or compute a percentage position. A documented call — passing a section plane or clipping plane plus the model's bounds, exactly as `createViewpoint()`'s own error message recommends — threw a raw, unhandled `TypeError` reading `bounds.min`/`bounds.max` from inside the library instead of forwarding it or returning a usable result.
+  
+  Both wrappers now accept and forward `bounds`, matching their `@ifc-lite/bcf` signatures.
+
+- [#4293](https://github.com/LTplus-AG/ifc-lite/pull/4293) [`4c9a88d`](https://github.com/LTplus-AG/ifc-lite/commit/4c9a88d80b9ba9631be97050d896b5f5834d3628) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `bim.bcf.cameraToOrthogonal()` accepted only the `camera` argument and silently dropped `viewToWorldScale`, the second, required argument `@ifc-lite/bcf`'s underlying `cameraToOrthogonal()` needs to compute the camera's view extent. Unlike the `sectionPlaneToClippingPlane`/`clippingPlaneToSectionPlane` converters fixed for the same reason, the underlying function does not dereference the dropped argument, so the call did not throw: it returned a well-formed-looking `BCFOrthogonalCamera` with `viewToWorldScale: undefined`. `ViewToWorldScale` is a required element when the camera is written to a BCF archive, so a viewpoint built this way failed later, at `bim.bcf.write()`, far from the call that dropped the argument.
+  
+  `cameraToOrthogonal()` now accepts and forwards `viewToWorldScale`, matching its `@ifc-lite/bcf` signature.
+
+### Patch Changes
+
+- Updated dependencies [[`9a271dc`](https://github.com/LTplus-AG/ifc-lite/commit/9a271dcb19dff2f9bca72fc3505ce5a71b3e800b), [`3fdbc2b`](https://github.com/LTplus-AG/ifc-lite/commit/3fdbc2b599fad2b1c43ffe014d2bab5f8b8c576c), [`39d5158`](https://github.com/LTplus-AG/ifc-lite/commit/39d5158fd5192a14fc2552d73a531b1334831e5a), [`3a1a322`](https://github.com/LTplus-AG/ifc-lite/commit/3a1a3229412b7822438fa5dba653f6c4e1bd239f), [`7f80d53`](https://github.com/LTplus-AG/ifc-lite/commit/7f80d53d2a2c158a322ec541ce064365f3f3ca8a), [`dee75d8`](https://github.com/LTplus-AG/ifc-lite/commit/dee75d86d404e5a5ae15e71910704d970d2426a2), [`a53bd7f`](https://github.com/LTplus-AG/ifc-lite/commit/a53bd7fd4510b8d5c992eab26234084c5bb2387e), [`5e94b1a`](https://github.com/LTplus-AG/ifc-lite/commit/5e94b1a646d7e02c909b8835f3adf8e0bf4feb5f), [`abda2d8`](https://github.com/LTplus-AG/ifc-lite/commit/abda2d8114ad17b0366f448100953d6e1972164c), [`c952d49`](https://github.com/LTplus-AG/ifc-lite/commit/c952d497c424ec15b972d87b878b41bf0573460b), [`511e488`](https://github.com/LTplus-AG/ifc-lite/commit/511e488a8de2b90f7d5f7663911873a92b3427c7), [`53c65fe`](https://github.com/LTplus-AG/ifc-lite/commit/53c65fecdac95b4c19a661be923c225d104a7be8), [`a53bd7f`](https://github.com/LTplus-AG/ifc-lite/commit/a53bd7fd4510b8d5c992eab26234084c5bb2387e)]:
+  - @ifc-lite/bcf@4.0.0
+  - @ifc-lite/parser@6.1.0
+  - @ifc-lite/export@4.2.0
+  - @ifc-lite/clash@2.1.2
+  - @ifc-lite/create@2.4.0
+  - @ifc-lite/data@4.2.0
+  - @ifc-lite/query@2.3.1
+  - @ifc-lite/ids@1.16.2
+  - @ifc-lite/drawing-2d@4.0.1
+  - @ifc-lite/spatial@1.14.17
+  - @ifc-lite/lists@2.1.2
+
 ## 4.1.0
 
 ### Minor Changes

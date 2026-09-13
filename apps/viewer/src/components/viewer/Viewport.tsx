@@ -46,6 +46,7 @@ import {
   type BoundingBox3D,
 } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
+import { installViewportDebugHooks, clearViewportDebugHooks } from '@/lib/viewport-debug-hooks';
 import { expandToGeometryBearingIds } from '../../utils/aggregation.js';
 import { hasNoRenderableTarget } from '@/lib/presentation/resolvePresentationIds';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -875,14 +876,9 @@ export function Viewport({
           console.log(`[Viewport] quantized vertices ${on ? 'on (12B lattice)' : 'UNAVAILABLE (pipeline probe failed)'}`);
         });
       }
-      // Read-only debug/e2e hook (same convention as __ifc_lite_viewer_store__):
-      // live frame stats + resident GPU/CPU bytes for Playwright assertions
-      // and console inspection. Cleared on viewport teardown below.
-      (globalThis as Record<string, unknown>).__ifc_lite_render_stats__ = () => ({
-        frame: renderer.getFrameStats(),
-        gpu: renderer.getScene().getResidentGpuBytes(),
-        cpuBytes: renderer.getScene().getResidentCpuBytes(),
-      });
+      // Read-only debug/e2e hooks (same convention as __ifc_lite_viewer_store__),
+      // cleared on viewport teardown below.
+      installViewportDebugHooks(renderer);
       setIsInitialized(true);
 
       const camera = renderer.getCamera();
@@ -1392,7 +1388,7 @@ export function Viewport({
       renderer.destroy();
       // Clear BCF global refs to prevent memory leaks
       clearGlobalRefs();
-      delete (globalThis as Record<string, unknown>).__ifc_lite_render_stats__;
+      clearViewportDebugHooks();
     };
     // Note: selectedEntityId is intentionally NOT in dependencies
     // The click handler captures setSelectedEntityId via closure

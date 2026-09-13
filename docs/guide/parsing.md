@@ -552,16 +552,16 @@ const storeyId = hierarchy.elementToStorey.get(wallId);
 
 ## Schema Support
 
-| Schema | Entities | Status |
-|--------|----------|--------|
-| IFC2X3 | - | :material-check: Supported |
-| IFC4 | 776 | :material-check: Full Support |
-| IFC4X3 | 876 | :material-check: Supported |
-| IFC5 (IFCX) | - | :material-check: Beta |
+IFC2X3, IFC4 and IFC4X3 are parsed with the same pipeline; the runtime schema
+registry itself is generated from IFC4. IFC5 (IFCX) support is a separate,
+beta code path (`@ifc-lite/ifcx`) not covered by the entity tables below.
 
-Entity counts are taken from the EXPRESS schemas the code generators consume
-(`IFC4_ADD2_TC1`, `IFC4X3`). IFC2X3 files are parsed with the same pipeline;
-the runtime schema registry itself is generated from IFC4.
+Per-entity support for IFC2X3/IFC4/IFC4X3 — whether each concrete class is
+in the schema registry at all, resolves to a real internal type instead of
+being dropped, is routed to a geometry processor, can be created by
+`@ifc-lite/create`, and converts across schema versions — is generated
+directly from source, not hand-maintained, in the
+[coverage ledger](../architecture/coverage-ledger.md).
 
 ### Native Rust geometry classification
 

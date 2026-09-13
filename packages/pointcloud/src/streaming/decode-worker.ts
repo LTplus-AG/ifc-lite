@@ -21,6 +21,7 @@ import {
   type WorkerRequest,
   type WorkerResponse,
 } from './protocol.js';
+import { normalizePointStride } from './stride.js';
 // Format-specific decoders are lazy-imported in `createSource` below. That
 // keeps the IIFE bundle this worker ships in (see scripts/build-worker-bundle.mjs)
 // small — only the format the consumer actually opens gets pulled into the
@@ -63,7 +64,7 @@ async function handleOpen(msg: Extract<WorkerRequest, { kind: 'open' }>): Promis
   try {
     const source = await createSource(msg.format, msg.blob, {
       label: msg.label,
-      downsample: { stride: Math.max(1, msg.stride | 0) },
+      downsample: { stride: normalizePointStride(msg.stride) },
       originOffset: msg.originOffset,
     });
     const abort = new AbortController();

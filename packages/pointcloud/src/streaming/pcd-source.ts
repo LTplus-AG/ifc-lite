@@ -101,6 +101,7 @@ function applyStride(chunk: DecodedPointChunk, stride: number): DecodedPointChun
   return {
     positions,
     colors,
+    normalState: chunk.normalState,
     classifications,
     intensities,
     pointCount: newCount,

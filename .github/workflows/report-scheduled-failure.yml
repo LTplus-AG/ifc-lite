@@ -1,0 +1,49 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Report scheduled CI failure
+
+on:
+  workflow_call:
+    inputs:
+      workflow_name:
+        description: Human-readable workflow name.
+        required: true
+        type: string
+      jobs:
+        description: Jobs whose result is being reported.
+        required: true
+        type: string
+      result:
+        description: Serialized result or results from the caller's needs context.
+        required: true
+        type: string
+      dry_run:
+        description: Exercise the reporter without changing issue state.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout reporter implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Open or update the scheduled-lane issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: ${{ inputs.workflow_name }}
+          JOBS: ${{ inputs.jobs }}
+          RESULT: ${{ inputs.result }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node scripts/report-scheduled-failure.mjs

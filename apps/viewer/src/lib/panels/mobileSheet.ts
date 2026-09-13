@@ -18,6 +18,7 @@
  */
 
 import type { WorkspacePanelId } from './registry';
+import type { BottomPanelId } from './bottom-panels';
 
 export type MobileSheetContent =
   | { kind: 'extension' }
@@ -28,9 +29,8 @@ export interface MobileSheetInput {
   /** An analysis extension currently owns the slot (either placement). */
   hasAnalysisExtension: boolean;
   activeTool: string;
-  ganttVisible: boolean;
-  scriptVisible: boolean;
-  listVisible: boolean;
+  /** The bottom-strip panel whose flag is on (`activeBottomPanel`), if any. */
+  bottomPanel: BottomPanelId | null;
   /** The single side panel the sidebar considers docked. */
   sidebarActivePanel: WorkspacePanelId;
 }
@@ -43,8 +43,6 @@ export interface MobileSheetInput {
 export function resolveMobileSheet(input: MobileSheetInput): MobileSheetContent {
   if (input.hasAnalysisExtension) return { kind: 'extension' };
   if (input.activeTool === 'addElement') return { kind: 'addElement' };
-  if (input.ganttVisible) return { kind: 'panel', id: 'gantt' };
-  if (input.scriptVisible) return { kind: 'panel', id: 'script' };
-  if (input.listVisible) return { kind: 'panel', id: 'lists' };
+  if (input.bottomPanel) return { kind: 'panel', id: input.bottomPanel };
   return { kind: 'panel', id: input.sidebarActivePanel };
 }

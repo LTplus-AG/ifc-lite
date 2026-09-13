@@ -5,6 +5,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { access, readFile } from 'node:fs/promises';
 import type { AppearancePlan, AppearanceRequest } from './planner-types.js';
+import { appearanceSourceTriangle } from '@ifc-lite/renderer';
+import type { MeshData } from '@ifc-lite/geometry';
+
+function assertCanonicalSurface(conversion: NonNullable<AppearancePlan['conversions']>[number]): void {
+  const indices = new Uint32Array(conversion.sourceIndices);
+  const mesh: MeshData = { expressId: conversion.productId, geometryItemId: conversion.sourceGeometryItemId,
+    positions: new Float32Array(conversion.sourcePositions!), normals: new Float32Array(conversion.sourceNormals!),
+    indices, color: conversion.sourceColor!, appearanceSource: { kind: 'canonical-item', indices, sourceIndices: indices } };
+  assert.equal(appearanceSourceTriangle(mesh, indices.length / 3 - 1), indices.length / 3 - 1);
+}
 
 test('real WASM preserves mapped occurrences unless explicitly opted in and composes finite PDF appearance (#4404)', async t => {
   const wasmUrl = new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
@@ -32,6 +42,7 @@ test('real WASM preserves mapped occurrences unless explicitly opted in and comp
     assert.equal(result.conversions?.[0].sourceGeometryItemId, 35135);
     assert.equal(result.conversions?.[0].sourceIndices.length, 36);
     original = result.conversions![0];
+    assertCanonicalSurface(original);
     assert.ok(original.sourcePositions?.length && original.sourceNormals?.length);
     assert.equal(original.sourcePositions.length, original.sourceNormals.length);
     assert.ok(original.sourceIndices.every(index => index < original!.sourcePositions!.length / 3));
@@ -42,6 +53,30 @@ test('real WASM preserves mapped occurrences unless explicitly opted in and comp
     assert.ok(result.edits.every(edit => edit.expressId === 35155));
     assert.equal(result.items[0].geometryItemId, result.conversions?.[0].geometryItemId);
     assert.throws(() => api.planAppearance(source, JSON.stringify({ ...request, representationPolicy: 'silentlyFlatten' })), /unknown variant/);
+    // Face masks bind to the reported surface identity and split the authored
+    // Body into a textured and a retained face set; a stale identity is refused.
+    const fingerprint = original.surfaceFingerprint;
+    assert.match(fingerprint ?? '', /^[0-9a-f]{64}$/);
+    assert.equal(original.maskedTriangles, undefined); assert.equal(original.retainedGeometryItemId, undefined);
+    const masked = JSON.parse(new TextDecoder().decode(api.planAppearance(source, JSON.stringify({ ...request,
+      faceMasks: [{ productId: 35169, surfaceFingerprint: fingerprint, triangles: [3, 0, 1, 2] }] })))) as AppearancePlan;
+    assert.deepEqual(masked.exclusions, []);
+    const conversion = masked.conversions![0];
+    assert.equal(conversion.surfaceFingerprint, fingerprint);
+    assert.deepEqual(conversion.maskedTriangles, [0, 1, 2, 3]);
+    assert.deepEqual(conversion.sourceIndices, original.sourceIndices, 'the whole source surface stays the preview/history original');
+    assert.equal(masked.items.length, 1); assert.equal(masked.items[0].geometryItemId, conversion.geometryItemId);
+    assert.equal(masked.items[0].sourceIndices.length, 12);
+    const faceSets = masked.created.filter(row => row.type === 'IfcTriangulatedFaceSet').map(row => row.expressId);
+    assert.deepEqual(faceSets, [conversion.geometryItemId, conversion.retainedGeometryItemId]);
+    assert.deepEqual(masked.created.map(row => row.expressId), Array.from({ length: masked.created.length }, (_, index) => masked.nextExpressId + index));
+    assert.deepEqual(masked.edits.find(edit => edit.expressId === 35155 && edit.index === 3)?.value, faceSets.map(id => `#${id}`));
+    const stale = JSON.parse(new TextDecoder().decode(api.planAppearance(source, JSON.stringify({ ...request,
+      faceMasks: [{ productId: 35169, surfaceFingerprint: fingerprint!.replace(/^./, c => c === '0' ? '1' : '0'), triangles: [0] }] })))) as AppearancePlan;
+    assert.equal(stale.items.length, 0); assert.equal(stale.created.length, 0);
+    assert.match(stale.exclusions[0]?.reason ?? '', /stale/);
+    assert.throws(() => api.planAppearance(source, JSON.stringify({ ...request, representationPolicy: 'preserve',
+      faceMasks: [{ productId: 35169, surfaceFingerprint: fingerprint, triangles: [0] }] })), /evaluatedOccurrence/);
   } finally { api.free(); }
   const { runPageAppearancePlanning } = await import('../../workers/appearance.worker.js');
   const page = await runPageAppearancePlanning(source, {
@@ -80,6 +115,7 @@ test('real WASM image and page conversion preserve cut slab and opening companio
   finally { api.free(); }
   assert.equal(image.items.length, 1); assert.deepEqual(image.exclusions, []);
   const conversion = image.conversions![0];
+  assertCanonicalSurface(conversion);
   assert.equal(conversion.sourceIndices.length / 3, 32);
   assert.equal(conversion.sourceRemovedMeshes?.length, 1);
   const opening = conversion.sourceRemovedMeshes![0];

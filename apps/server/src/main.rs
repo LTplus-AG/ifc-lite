@@ -52,8 +52,10 @@ mod config;
 mod mem_policy;
 mod error;
 mod middleware;
+mod panic_strategy;
 mod routes;
 mod services;
+mod write_timeout;
 mod types;
 
 /// Slack added on top of `max_file_size_mb` for the raw framework-level body
@@ -238,6 +240,24 @@ fn build_router(state: AppState) -> Router {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Build-profile self-check, before anything else starts. The release
+    // pipeline runs the SHIPPED binary with this flag to prove it unwinds,
+    // because `CatchPanicLayer` below is inert under `panic = "abort"` and
+    // nothing about an aborting binary looks wrong until the first malformed
+    // upload kills the process for every tenant on it. Under `abort` this
+    // call never returns (SIGABRT), which is the failure the CI step reads.
+    if std::env::args().skip(1).any(|arg| arg == panic_strategy::SELFTEST_FLAG) {
+        if panic_strategy::panic_unwinds() {
+            println!("{}", panic_strategy::UNWIND_VERDICT);
+            return Ok(());
+        }
+        anyhow::bail!(
+            "panic-strategy: NOT unwind. This binary was built with a non-unwinding \
+             panic strategy, so CatchPanicLayer cannot contain a malformed-IFC panic \
+             to one request. Build with `--profile server-release`."
+        );
+    }
+
     // Initialize logging
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -331,6 +351,10 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .with_context(|| format!("failed to bind to {addr}"))?;
+    let listener = write_timeout::WriteTimeoutListener::new(
+        listener,
+        Duration::from_secs(config.stream_idle_timeout_secs),
+    );
     axum::serve(listener, app)
         .await
         .context("server exited with an error")?;

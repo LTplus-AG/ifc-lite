@@ -5,6 +5,7 @@
 //! geometry changes. Plans are applied atomically by the host mutation editor.
 mod budget;
 mod evaluated;
+mod evaluated_mask;
 mod evaluated_source;
 mod evaluated_openings;
 mod evaluated_replacement;
@@ -13,8 +14,9 @@ mod evaluated_allocation;
 mod annotation;
 mod authored;
 mod pdf_fill;
+mod pdf_fill_provenance;
 mod pdf_fill_types;
-pub use pdf_fill::plan_pdf_fill_annotation;
+pub use pdf_fill::{plan_pdf_fill_annotation, plan_pdf_fill_annotation_with_clip};
 pub use pdf_fill_types::{PdfFillAnnotationRequest,PdfFillAnnotationPlan,PdfFillRegion};
 mod captured;
 mod captured_types;
@@ -38,7 +40,11 @@ mod transfer_budget;
 mod transfer_surface;
 mod transfer_target;
 mod transfer_sampler;
-pub use transfer::plan_mesh_transfer;
+mod transfer_source;
+mod transfer_points;
+mod transfer_points_index;
+mod transfer_occlusion;
+pub use transfer::{plan_mesh_transfer, plan_point_transfer};
 pub use transfer_types::*;
 mod atlas_plan;
 mod page_atlas;
@@ -119,6 +125,11 @@ fn plan_with_source(bytes:&[u8], request:&AppearanceRequest, source:&mut Source<
     }
     if request.product_ids.len() > 10_000 {
         return Err("Appearance scope must contain 1..10000 products".into());
+    }
+    // Normalization consumes its masks and clears them; a mask reaching the
+    // direct pass means the caller never permitted conversion.
+    if !request.face_masks.is_empty() {
+        return Err("Face masks require the evaluatedOccurrence representation policy".into());
     }
     let uri = &request.image_uri;
     validate_image_uri(uri)?;

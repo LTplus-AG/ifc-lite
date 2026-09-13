@@ -146,22 +146,51 @@ fn watertight_violation(mesh: &Mesh) -> Option<String> {
             }
         }
     }
-    edges
-        .iter()
-        .find(|(_, &(fwd, rev))| (fwd, rev) != (1, 1))
-        .map(|(&(a, b), &(fwd, rev))| {
-            let p = |i: u32| {
-                let base = i as usize * 3;
-                &welded.positions[base..base + 3]
-            };
-            format!(
-                "edge ({a}, {b}) [{:?} -> {:?}] has {} directed uses \
-                 ({fwd} forward, {rev} reverse); expected exactly one in each direction",
-                p(a),
-                p(b),
-                fwd + rev
-            )
-        })
+    // Sorted, so the edge named is a deterministic function of the mesh: the
+    // HashMap's iteration order used to pick a different edge of the same tear
+    // on every run (issue #4439), which made two runs of one seed read as two
+    // different failures.
+    let mut bad: Vec<((u32, u32), (u32, u32))> = edges
+        .into_iter()
+        .filter(|&(_, (fwd, rev))| (fwd, rev) != (1, 1))
+        .collect();
+    bad.sort_unstable();
+    let &((a, b), (fwd, rev)) = bad.first()?;
+    let p = |i: u32| {
+        let base = i as usize * 3;
+        &welded.positions[base..base + 3]
+    };
+    Some(format!(
+        "{} violating edge(s); first: edge ({a}, {b}) [{:?} -> {:?}] has {} directed uses \
+         ({fwd} forward, {rev} reverse); expected exactly one in each direction",
+        bad.len(),
+        p(a),
+        p(b),
+        fwd + rev
+    ))
+}
+
+/// Directed-edge pairing audit at EXACT f32 bit patterns — no weld at all. A
+/// closed oriented surface pairs every directed edge with its reverse; any
+/// imbalance is an exact-coordinate crack. The same audit the kernel's own
+/// `mesh_bridge_tests::exact_open_edges` runs, for the raw kernel output.
+fn exact_open_edges(mesh: &Mesh) -> usize {
+    let key = |i: u32| {
+        let b = i as usize * 3;
+        (
+            mesh.positions[b].to_bits(),
+            mesh.positions[b + 1].to_bits(),
+            mesh.positions[b + 2].to_bits(),
+        )
+    };
+    let mut edges: HashMap<_, i64> = HashMap::new();
+    for t in mesh.indices.chunks_exact(3) {
+        for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+            *edges.entry((key(a), key(b))).or_insert(0) += 1;
+            *edges.entry((key(b), key(a))).or_insert(0) -= 1;
+        }
+    }
+    edges.values().filter(|&&c| c != 0).count()
 }
 
 /// Guard the checker itself: a signed-cancellation-only check would pass a
@@ -346,8 +375,9 @@ fn arb_box_pair() -> impl Strategy<Value = BoxPair> {
                     b_size,
                 }
             });
-        // B exactly face-touching A (gap = 0): the coplanar-classifier
-        // precision boundary the cutter inflation exists for.
+        // B exactly face-touching A (gap = 0): the coincident-face
+        // precision boundary of the kernel's classifier (regime 1 in
+        // `kernel::arrangement::classify`).
         let touching =
             (0usize..3, proptest::array::uniform3(0.1f64..5.0)).prop_map(move |(axis, b_size)| {
                 let mut b_min = a_min;
@@ -407,9 +437,10 @@ proptest! {
         prop_assert!(vol.is_finite(), "result volume is not finite");
 
         // Tolerance: f32 round-trips of ~10-unit coordinates plus the
-        // deliberate ~10 µm cutter inflation, both scaled by operand
-        // surface areas. 1e-3·(1 + volA + volB) bounds that comfortably
-        // while staying far below any meaningful feature volume.
+        // kernel's 2⁻¹⁶ (~15 µm) snap-grid quantization of every operand
+        // vertex (`mesh_bridge::SNAP_GRID`), both scaled by operand surface
+        // areas. 1e-3·(1 + volA + volB) bounds that comfortably while
+        // staying far below any meaningful feature volume.
         let eps = 1e-3 * (1.0 + vol_a + vol_b);
 
         // (b) volume bounds
@@ -461,6 +492,68 @@ proptest! {
             violation.as_deref().unwrap_or("")
         );
     }
+}
+
+/// Issue #4439 — the saved `box_difference_volume_invariants` counterexample
+/// as a plain example test, so the case does not depend on proptest replaying
+/// `csg_property_test.proptest-regressions` (which carries the same seed).
+///
+/// B is a 0.1 m thin slab notching A from below and poking 824 µm above A's
+/// +Y face. B's +Z face diagonal pierces A's +Y face 23 µm short of the notch
+/// corner, so the exact arrangement legitimately splits A's +Y face into two
+/// 23 µm-wide needle sub-triangles INSIDE the notch that hug B's PERPENDICULAR
+/// +X face. Their centroids sit 7.8 µm inside B — within the kernel's
+/// near-coplanar band of that face — and regime 1 of the classifier
+/// (`kernel::arrangement::classify`) took them for a coincident shared face
+/// and kept them by "normal agreement" with a dot product of exactly zero: an
+/// extra directed cycle on the seam — 8 exact-coordinate open edges in the raw
+/// kernel output, 4 after the 1 µm weld (measured with the pre-#4439
+/// classifier). The eight corners are the f32-quantized values `quantized()`
+/// produces for the shrunk input in the issue.
+#[test]
+fn box_difference_thin_notch_seam_is_watertight_4439() {
+    let a_min = [7.142955303192139, 3.8930258750915527, 1.7326807975769043];
+    let a_max = [9.349207878112793, 8.65240478515625, 4.128807544708252];
+    let b_min = [7.383360862731934, 5.0968098640441895, -2.3216187953948975];
+    let b_max = [7.483360767364502, 8.653236389160156, 3.145188570022583];
+    // The corners must be f32-exact, or the test measures authoring error.
+    for v in a_min.iter().chain(&a_max).chain(&b_min).chain(&b_max) {
+        assert_eq!(q(*v), *v, "corner {v} is not f32-exact");
+    }
+    let size = |lo: [f64; 3], hi: [f64; 3]| [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
+    let (a_size, b_size) = (size(a_min, a_max), size(b_min, b_max));
+    let a = box_mesh(a_min, a_size);
+    let b = box_mesh(b_min, b_size);
+
+    // The defect is the kernel's: the raw arrangement output must already be
+    // closed — bit-exactly, before any weld — before consolidation sees it.
+    let raw = ifc_lite_geometry::kernel::mesh_bridge::subtract(&a, &b);
+    assert_eq!(
+        exact_open_edges(&raw),
+        0,
+        "raw kernel output has exact-coordinate open edges"
+    );
+    assert_eq!(watertight_violation(&raw), None, "raw kernel output is torn");
+
+    let result = ClippingProcessor::new()
+        .subtract_mesh(&a, &b)
+        .expect("subtract_mesh must not error");
+    assert!(all_finite(&result), "result has NaN/Inf positions");
+    let vol = mesh_volume(&result);
+    let vol_a = a_size[0] * a_size[1] * a_size[2];
+    let vol_b = b_size[0] * b_size[1] * b_size[2];
+    let vol_ab = aabb_intersection_volume(a_min, a_size, b_min, b_size);
+    let eps = 1e-3 * (1.0 + vol_a + vol_b);
+    assert!(
+        (vol - (vol_a - vol_ab)).abs() <= eps,
+        "vol(A-B)={vol} != vol(A)-vol(A∩B)={}",
+        vol_a - vol_ab
+    );
+    assert_eq!(
+        watertight_violation(&result),
+        None,
+        "difference result is not watertight"
+    );
 }
 
 // ---------------------------------------------------------------------------

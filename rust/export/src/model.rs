@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use ifc_lite_core::{DecodedEntity, EntityDecoder, EntityIndex, EntityScanner, IfcType};
+use ifc_lite_core::{keyword_eq, DecodedEntity, EntityDecoder, EntityIndex, EntityScanner, IfcType};
 use ifc_lite_geometry::GeometryRouter;
 use ifc_lite_processing::element::{plan_type_geometry, TypeGeometryMode};
 use ifc_lite_processing::prepass::{resolve_unit_scales, UnitScales};
@@ -80,6 +80,12 @@ pub fn stream_export_model(content: &[u8], f: impl FnMut(EntityRow)) -> UnitScal
 struct TypeProductCandidate {
     express_id: u32,
     ifc_type: IfcType,
+    /// The raw STEP keyword (e.g. `"IFCDOORSTYLE"`), kept ONLY so a later
+    /// `render_attributes` call can look up a legacy entity's own attribute
+    /// names (#4203) — `ifc_type` above is already legacy-aware-resolved
+    /// (`IfcDoorType`, not `Unknown`) and is what every other consumer of
+    /// this candidate wants.
+    type_name: String,
     global_id: Option<String>,
     name: Option<String>,
     description: Option<String>,
@@ -169,34 +175,32 @@ pub fn stream_export_model_with_options(
     {
         let mut scanner = EntityScanner::new(content);
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
-            match type_name {
-                "IFCRELDEFINESBYPROPERTIES" => {
-                    let rel = match decoder.decode_at_uncached(start, end) {
-                        Ok(e) => e,
-                        Err(_) => continue,
-                    };
-                    let def_id = match rel.get(5).and_then(|a| a.as_entity_ref()) {
-                        Some(d) => d,
-                        None => continue,
-                    };
-                    if let Some(objs) = rel.get(4).and_then(|a| a.as_list()) {
-                        for o in objs {
-                            if let Some(oid) = o.as_entity_ref() {
-                                defs_by_object.entry(oid).or_default().push(def_id);
-                            }
+            if keyword_eq(type_name, "IFCRELDEFINESBYPROPERTIES") {
+                let rel = match decoder.decode_at_uncached(start, end) {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+                let def_id = match rel.get(5).and_then(|a| a.as_entity_ref()) {
+                    Some(d) => d,
+                    None => continue,
+                };
+                if let Some(objs) = rel.get(4).and_then(|a| a.as_list()) {
+                    for o in objs {
+                        if let Some(oid) = o.as_entity_ref() {
+                            defs_by_object.entry(oid).or_default().push(def_id);
                         }
                     }
                 }
+            } else if keyword_eq(type_name, "IFCMAPPEDITEM") {
                 // IfcMappedItem.MappingSource (attr 0) → the RepresentationMap an
                 // occurrence instances; such maps draw through the occurrence, so
                 // they are NOT orphan type geometry.
-                "IFCMAPPEDITEM" => {
-                    if let Ok(mi) = decoder.decode_at_uncached(start, end) {
-                        if let Some(src) = mi.get(0).and_then(|a| a.as_entity_ref()) {
-                            referenced_representation_maps.insert(src);
-                        }
+                if let Ok(mi) = decoder.decode_at_uncached(start, end) {
+                    if let Some(src) = mi.get(0).and_then(|a| a.as_entity_ref()) {
+                        referenced_representation_maps.insert(src);
                     }
                 }
+            } else if keyword_eq(type_name, "IFCRELDEFINESBYTYPE") {
                 // IfcRelDefinesByType.RelatingType (attr 5) → a type WITH occurrences;
                 // its geometry is drawn by those occurrences, never as orphan type
                 // geometry (the AC20/ArchiCAD duplicate-boxes guard).
@@ -206,62 +210,61 @@ pub fn stream_export_model_with_options(
                 // HasPropertySets reachable from the occurrence, and building the
                 // map costs an allocation per typed occurrence that the geometry
                 // bookkeeping above has no use for.
-                "IFCRELDEFINESBYTYPE" => {
-                    if let Ok(rel) = decoder.decode_at_uncached(start, end) {
-                        if let Some(tid) = rel.get(5).and_then(|a| a.as_entity_ref()) {
-                            instantiated_type_ids.insert(tid);
-                            if opts.inherit_type_properties {
-                                if let Some(objs) = rel.get(4).and_then(|a| a.as_list()) {
-                                    for o in objs {
-                                        if let Some(oid) = o.as_entity_ref() {
-                                            // FIRST relationship wins if a file
-                                            // types one object twice (a schema
-                                            // violation, but exports do it).
-                                            // `typeIds[0]` is what the TS
-                                            // extractor takes, and scan order
-                                            // here is file order, so the two
-                                            // pick the same type rather than
-                                            // disagreeing per engine.
-                                            type_by_object.entry(oid).or_insert(tid);
-                                        }
+                if let Ok(rel) = decoder.decode_at_uncached(start, end) {
+                    if let Some(tid) = rel.get(5).and_then(|a| a.as_entity_ref()) {
+                        instantiated_type_ids.insert(tid);
+                        if opts.inherit_type_properties {
+                            if let Some(objs) = rel.get(4).and_then(|a| a.as_list()) {
+                                for o in objs {
+                                    if let Some(oid) = o.as_entity_ref() {
+                                        // FIRST relationship wins if a file
+                                        // types one object twice (a schema
+                                        // violation, but exports do it).
+                                        // `typeIds[0]` is what the TS
+                                        // extractor takes, and scan order
+                                        // here is file order, so the two
+                                        // pick the same type rather than
+                                        // disagreeing per engine.
+                                        type_by_object.entry(oid).or_insert(tid);
                                     }
                                 }
                             }
                         }
                     }
                 }
-                "IFCPROJECT" => project_id = project_id.or(Some(id)),
+            } else if keyword_eq(type_name, "IFCPROJECT") {
+                project_id = project_id.or(Some(id));
+            } else {
                 // An IfcTypeProduct subtype carrying RepresentationMaps (attr 6).
                 // `type_product_ifc_type` keeps its own cheap suffix pre-filter, so
                 // the non-type majority still pays only that.
                 //
-                // Asked once, in the arm body rather than in a match guard: a guard
-                // cannot bind, so guarding on `.is_some()` forced a second identical
-                // call to get the value. Shares `type_product_ifc_type` with the
+                // Asked once, in the branch body rather than in its condition: a
+                // condition cannot bind, so testing `.is_some()` there forced a
+                // second identical call to get the value. Shares `type_product_ifc_type` with the
                 // processor's type-geometry gate, so this pass cannot admit a
                 // different set than the one that gets meshed (#1518, #3187).
-                _ => {
-                    let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) else {
-                        continue;
-                    };
-                    let t = match decoder.decode_at_uncached(start, end) {
-                        Ok(e) => e,
-                        Err(_) => continue,
-                    };
-                    let rep_map_ids = ref_list(t.get(6));
-                    if rep_map_ids.is_empty() {
-                        continue;
-                    }
-                    type_product_candidates.push(TypeProductCandidate {
-                        express_id: id,
-                        ifc_type: type_ty,
-                        global_id: opt_string(t.get(0)),
-                        name: opt_string(t.get(2)),
-                        description: opt_string(t.get(3)),
-                        rep_map_ids,
-                        pset_def_ids: ref_list(t.get(5)),
-                    });
+                let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) else {
+                    continue;
+                };
+                let t = match decoder.decode_at_uncached(start, end) {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+                let rep_map_ids = ref_list(t.get(6));
+                if rep_map_ids.is_empty() {
+                    continue;
                 }
+                type_product_candidates.push(TypeProductCandidate {
+                    express_id: id,
+                    ifc_type: type_ty,
+                    type_name: type_name.to_string(),
+                    global_id: opt_string(t.get(0)),
+                    name: opt_string(t.get(2)),
+                    description: opt_string(t.get(3)),
+                    rep_map_ids,
+                    pset_def_ids: ref_list(t.get(5)),
+                });
             }
         }
     }
@@ -363,7 +366,7 @@ pub fn stream_export_model_with_options(
             property_sets,
             quantity_sets,
             attributes: if opts.attributes {
-                render_attributes(&entity)
+                render_attributes(&entity, type_name, ty)
             } else {
                 Vec::new()
             },
@@ -432,7 +435,7 @@ pub fn stream_export_model_with_options(
                 decoder
                     .decode_by_id(cand.express_id)
                     .ok()
-                    .map(|t| render_attributes(&t))
+                    .map(|t| render_attributes(&t, &cand.type_name, cand.ifc_type))
                     .unwrap_or_default()
             } else {
                 Vec::new()

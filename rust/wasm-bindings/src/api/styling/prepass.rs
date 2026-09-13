@@ -32,7 +32,7 @@ pub(crate) fn combined_pre_pass(
     content: &[u8],
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> PrePassData {
-    use ifc_lite_core::EntityScanner;
+    use ifc_lite_core::{keyword_eq, EntityScanner};
     use ifc_lite_processing::prepass::{resolve_prepass, PrepassSpans, ResolveOptions};
 
     let estimated_elements = content.len() / 2000;
@@ -46,56 +46,43 @@ pub(crate) fn combined_pre_pass(
     let mut scanner = EntityScanner::new(content);
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        match type_name {
-            "IFCSTYLEDITEM" => spans.styled_items.push((id, start, end)),
-            "IFCINDEXEDCOLOURMAP" => spans.indexed_colour_maps.push((id, start, end)),
-            "IFCMATERIALDEFINITIONREPRESENTATION" => {
-                spans.material_def_reprs.push((id, start, end))
+        if spans.stash(type_name, id, start, end) {
+            continue;
+        }
+        if keyword_eq(type_name, "IFCPROJECT") {
+            if project_id.is_none() {
+                project_id = Some(id);
             }
-            "IFCRELASSOCIATESMATERIAL" => spans.rel_associates_material.push((id, start, end)),
-            "IFCRELVOIDSELEMENT" => spans.void_rels.push((id, start, end)),
-            "IFCRELFILLSELEMENT" => spans.fills_rels.push((id, start, end)),
-            "IFCRELAGGREGATES" => spans.aggregate_rels.push((id, start, end)),
-            "IFCRELDEFINESBYTYPE" => spans.defines_by_type.push((id, start, end)),
-            "IFCPROJECT" => {
-                if project_id.is_none() {
-                    project_id = Some(id);
-                }
+        } else if keyword_eq(type_name, "IFCSITE") {
+            if site_position.is_none() {
+                site_position = Some((id, start, end));
             }
-            "IFCSITE" => {
-                if site_position.is_none() {
-                    site_position = Some((id, start, end));
-                }
-                let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+            let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+            complex_jobs.push((id, start, end, ifc_type));
+        } else if ifc_lite_core::has_geometry_by_name(type_name) {
+            let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+            if ifc_lite_core::is_simple_geometry_type(type_name) {
+                simple_jobs.push((id, start, end, ifc_type));
+            } else {
                 complex_jobs.push((id, start, end, ifc_type));
             }
-            _ => {
-                if ifc_lite_core::has_geometry_by_name(type_name) {
-                    let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
-                    if ifc_lite_core::is_simple_geometry_type(type_name) {
-                        simple_jobs.push((id, start, end, ifc_type));
-                    } else {
-                        complex_jobs.push((id, start, end, ifc_type));
-                    }
-                } else if ifc_lite_core::is_representationless_spatial_container_by_name(type_name)
-                    && ifc_lite_core::nth_attribute_is_present(&content[start..end], 6)
-                {
-                    // #1910 (third instance, Greptile-flagged displaced-path
-                    // gap: this single-shot `buildPrePassOnce` combined scan
-                    // is a third geometry-job discovery path, alongside the
-                    // serial streaming scan (`gpu_meshes/prepass.rs`) and the
-                    // sharded column scan (`processing/shard_classes.rs`),
-                    // and had the identical `has_geometry_by_name` gap. A
-                    // spatial container it blocks by name (`IfcBuilding` et
-                    // al.) that exceptionally carries a non-null
-                    // Representation must still be scheduled, or small files
-                    // routed through this one-shot path keep rendering
-                    // nothing. Filed as complex (not simple) — it is never
-                    // one of the named simple element types.
-                    let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
-                    complex_jobs.push((id, start, end, ifc_type));
-                }
-            }
+        } else if ifc_lite_core::is_representationless_spatial_container_by_name(type_name)
+            && ifc_lite_core::nth_attribute_is_present(&content[start..end], 6)
+        {
+            // #1910 (third instance, Greptile-flagged displaced-path
+            // gap: this single-shot `buildPrePassOnce` combined scan
+            // is a third geometry-job discovery path, alongside the
+            // serial streaming scan (`gpu_meshes/prepass.rs`) and the
+            // sharded column scan (`processing/shard_classes.rs`),
+            // and had the identical `has_geometry_by_name` gap. A
+            // spatial container it blocks by name (`IfcBuilding` et
+            // al.) that exceptionally carries a non-null
+            // Representation must still be scheduled, or small files
+            // routed through this one-shot path keep rendering
+            // nothing. Filed as complex (not simple) — it is never
+            // one of the named simple element types.
+            let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+            complex_jobs.push((id, start, end, ifc_type));
         }
     }
 
@@ -145,15 +132,12 @@ pub(crate) fn collect_type_geometry_jobs(
     content: &[u8],
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Vec<(u32, usize, usize, ifc_lite_core::IfcType)> {
-    use ifc_lite_core::{EntityScanner, IfcType};
+    use ifc_lite_core::{keyword_eq, EntityScanner, IfcType};
 
     // Fast bail-out: type geometry can only exist when the file authors at least
     // one IfcRepresentationMap. The overwhelming majority of files pay only a
     // single substring search instead of a full entity scan + decode.
-    if !content
-        .windows(b"IFCREPRESENTATIONMAP".len())
-        .any(|window| window == b"IFCREPRESENTATIONMAP")
-    {
+    if ifc_lite_core::find_keyword(content, b"IFCREPRESENTATIONMAP").is_none() {
         return Vec::new();
     }
 
@@ -166,7 +150,7 @@ pub(crate) fn collect_type_geometry_jobs(
 
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name == "IFCMAPPEDITEM" {
+        if keyword_eq(type_name, "IFCMAPPEDITEM") {
             if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
                 // IfcMappedItem.MappingSource = attr 0.
                 if let Some(source_id) = entity.get_ref(0) {
@@ -245,11 +229,11 @@ pub(crate) fn build_referenced_representation_maps(
     content: &[u8],
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> rustc_hash::FxHashSet<u32> {
-    use ifc_lite_core::EntityScanner;
+    use ifc_lite_core::{keyword_eq, EntityScanner};
     let mut spans: Vec<(u32, usize, usize)> = Vec::new();
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name == "IFCMAPPEDITEM" {
+        if keyword_eq(type_name, "IFCMAPPEDITEM") {
             spans.push((id, start, end));
         }
     }
@@ -318,11 +302,11 @@ pub(crate) fn build_instantiated_type_ids(
     content: &[u8],
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> rustc_hash::FxHashSet<u32> {
-    use ifc_lite_core::EntityScanner;
+    use ifc_lite_core::{keyword_eq, EntityScanner};
     let mut spans: Vec<(u32, usize, usize)> = Vec::new();
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name == "IFCRELDEFINESBYTYPE" {
+        if keyword_eq(type_name, "IFCRELDEFINESBYTYPE") {
             spans.push((id, start, end));
         }
     }

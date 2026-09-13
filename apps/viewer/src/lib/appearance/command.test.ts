@@ -160,7 +160,10 @@ END-ISO-10303-21;`);
   const sourceCheckpoint = captureAppearanceSource(view);
   const preview = new AppearancePreviewSession(renderer);
   preview.stage(groups);
-  const exported = () => new StepExporter(data, view).export({ schema: 'IFC4', applyMutations: true }).content;
+  // Pin the FILE_NAME timestamp: two snapshots taken across a wall-clock
+  // second boundary otherwise differ by one header digit and fail the
+  // byte-equality assertions below (seen on loaded CI runners).
+  const exported = () => new StepExporter(data, view).export({ schema: 'IFC4', applyMutations: true, timeStamp: '20260101T000000' }).content;
   const assertUncommitted = (initial: ReturnType<typeof snapshot>) => {
     assert.deepEqual(snapshot(), initial);
     assert.strictEqual(useViewerStore.getState().models.get(MODEL)?.geometryResult, geometry);

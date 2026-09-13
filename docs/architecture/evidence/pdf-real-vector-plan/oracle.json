@@ -1,0 +1,69 @@
+{
+  "ifcopenshell": "0.8.2",
+  "schema": "IFC4",
+  "annotations": [
+    {
+      "expressId": 261,
+      "GlobalId": "0aaaaaaaaaaaaaaaaaaaaa",
+      "Name": "PDF fidelity evidence HouseFlrPlan.pdf",
+      "Description": "PDF vectors, page 1: exact conversion",
+      "containedIn": [
+        "Level"
+      ],
+      "representationItems": 3,
+      "provenance": {
+        "SourcePdfSha256": "de2e10df02059bc14a0eae6c1922cd2a699c1938a4c74c97978fccf1ef5df550",
+        "SourcePdfFormatVersion": "1.3",
+        "SourcePageNumber": 1,
+        "SourceCropBox": "[0.0,0.0,218.25,150.75]",
+        "ConversionClipPdf": "[0.0,0.0,218.25,150.75]",
+        "SourceUserUnit": 1.0,
+        "SourceRotation": 0,
+        "DecoderVersion": "PDF.js 6.3.289",
+        "CalibrationKey": "evidence-nominal-100-pdf-units-per-metre",
+        "ModelMetresFromPdf": "[0.01,0.0,0.0,0.01,0.0,0.0]",
+        "ToleranceMetres": 0.002,
+        "GridSizeMetres": 1.5625e-05,
+        "Algorithm": "ifclite-pdf-fill-annotation-v1",
+        "RequestSha256": "77992ad154cbbf74b56616ac6d1ba556954b4476cd5f8a2dfea46c98ae5ad8eb",
+        "FidelityAlgorithm": "ifclite-pdf-fidelity-v1",
+        "FidelitySha256": "349ef69ae9efc49751c5dac73235524541c389491fc5b80b363303e83e9a1e9f",
+        "ExactConversion": true,
+        "AcceptedPartialConversion": false,
+        "ConvertedPaths": 1,
+        "FillRegions": 3,
+        "OmittedPaints": 0,
+        "Omissions": "[]",
+        "id": 285
+      }
+    }
+  ],
+  "raster": {
+    "mupdf": "1.26.5",
+    "renderScale": 4,
+    "pixelsCompared": 526419,
+    "pixmap": [
+      873,
+      603
+    ],
+    "rasterMode": "MuPDF antialiasing disabled; all pixel centres; one 8-bit quantization step allowed",
+    "reportedVisibleExtentsPdf": [],
+    "native3dVersusReader2dPixels": 0,
+    "comparisons": {
+      "native3d": {
+        "mismatchPixels": 5777,
+        "insideReportedExtent": 0,
+        "withinOnePixelOfNativeBoundary": 5777,
+        "unexplained": 0,
+        "maxBoundaryDistancePixels": 0.5484580402908459
+      },
+      "reader2d": {
+        "mismatchPixels": 5777,
+        "insideReportedExtent": 0,
+        "withinOnePixelOfNativeBoundary": 5777,
+        "unexplained": 0,
+        "maxBoundaryDistancePixels": 0.5484580402908459
+      }
+    }
+  }
+}

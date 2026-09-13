@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "6.5.0",
+  "version": "7.0.0",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -23,9 +23,11 @@
     "fixtures:manifest": "node scripts/fixtures/build-manifest.mjs",
     "fixtures:upload": "node scripts/fixtures/upload-fixtures.mjs",
     "test": "turbo test",
+    "test:revert-oracle-selfcheck": "node scripts/revert-oracle-selfcheck.mjs",
     "test:collab": "pnpm --filter @ifc-lite/collab --filter @ifc-lite/collab-server test",
     "test:e2e": "playwright test --project=viewer-e2e",
     "test:e2e:ci": "playwright test --project=viewer-e2e-ci",
+    "test:e2e:collab": "playwright test --project=viewer-collab-e2e",
     "test:api": "tsx --tsconfig tests/tsconfig.json --test \"tests/api/**/*.test.ts\"",
     "test:integration": "tsx --tsconfig tests/tsconfig.json tests/integration.test.ts",
     "test:wasm-contract": "node scripts/test-wasm-contract.mjs",
@@ -33,6 +35,7 @@
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
     "check:ci-path-coverage": "node scripts/check-ci-path-coverage.mjs",
     "check:ci-aggregate-coverage": "node scripts/check-ci-aggregate-coverage.mjs",
+    "check:workflow-report-paths": "node scripts/check-workflow-report-paths.mjs",
     "check:test-glob-coverage": "node scripts/check-test-glob-coverage.mjs",
     "check:source-text-assertions": "node scripts/check-source-text-assertions.mjs",
     "check:rust-source-text-assertions": "node scripts/check-rust-source-text-assertions.mjs",
@@ -78,6 +81,8 @@
     "docs:check-samples": "node scripts/docs/check-doc-samples.mjs",
     "docs:generate": "node scripts/docs/generate-docs-sections.mjs",
     "docs:check-generated": "node scripts/docs/generate-docs-sections.mjs --check",
+    "generate:coverage-ledger": "node scripts/generate-coverage-ledger.mjs",
+    "check:coverage-ledger": "node scripts/generate-coverage-ledger.mjs --check",
     "docs:check-readmes": "node scripts/docs/check-package-readmes.mjs",
     "changeset": "changeset",
     "version": "changeset version && node scripts/sync-versions.js",
@@ -110,7 +115,8 @@
     "oxlint": "^1.81.0",
     "tsx": "^4.23.13",
     "turbo": "^2.10.12",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "yaml": "^2.9.0"
   },
   "engines": {
     "node": ">=22.13 <23 || 24.x",
@@ -142,11 +148,13 @@
       "picomatch@>=4": "^4.0.4",
       "uuid@<11.1.1": "^11.1.1",
       "@babel/core": "^7.29.6",
-      "js-yaml@4": "^4.3.1",
+      "js-yaml@4": "^4.3.2",
       "read-yaml-file": "^2.1.0",
       "brace-expansion": "^5.0.9",
       "minimatch": "^10.2.5",
-      "@zip.js/zip.js": "2.8.26"
+      "@zip.js/zip.js": "2.8.26",
+      "browserslist": "^4.28.9",
+      "baseline-browser-mapping": "^2.11.22"
     },
     "patchedDependencies": {
       "vite-plugin-top-level-await@1.6.0": "patches/vite-plugin-top-level-await@1.6.0.patch",

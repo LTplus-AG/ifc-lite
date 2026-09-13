@@ -20,7 +20,7 @@ import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
 import { getEffectiveEntityIndex } from './effective-index.js';
 import { applyPlacementAnonymization } from './anonymize-placement.js';
-import { splitTopLevelArgs } from './step-argument-parser.js';
+import { splitTopLevelListItems } from './step-argument-parser.js';
 
 const enc = (s: string): ArrayBuffer => new TextEncoder().encode(s).buffer as ArrayBuffer;
 const decode = (b: Uint8Array): string => new TextDecoder().decode(b);
@@ -138,6 +138,31 @@ DATA;
 #25=IFCPOSTALADDRESS($,$,$,$,('2 Real Avenue'),$,'Real Town','Real Region','12345','Real Country');
 #2=IFCSITE('${guid(2)}',$,'Site',$,$,$,$,$,.ELEMENT.,(47,22,15,0),(8,32,0,0),430.5,'LT-12345',#24);
 #3=IFCBUILDING('${guid(3)}',$,'Building',$,$,$,$,$,.ELEMENT.,$,$,#25);
+ENDSEC;
+END-ISO-10303-21;`;
+
+/**
+ * Regression fixture for the adversarial-review gap: #2's `ObjectPlacement`
+ * slot is the same root chain as {@link FIXTURE}, but the reference itself is
+ * wrapped in a STEP comment (legal ISO-10303-21 trivia, #4227) rather than a
+ * bare `#20`. `zeroRootPlacements`'s `parseRef` used to be the one caller
+ * still on the narrow `/^#(\d+)$/` regex, so this slot failed to match and
+ * `if (placementId === null) continue;` silently skipped the product — its
+ * real-world coordinates would survive untouched in an "anonymized" export.
+ */
+const FIXTURE_COMMENTED_PLACEMENT = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('placement-fixture-commented.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('${guid(1)}',$,'Project',$,$,$,$,$,$);
+#20=IFCLOCALPLACEMENT($,#21);
+#21=IFCAXIS2PLACEMENT3D(#22,$,#23);
+#22=IFCCARTESIANPOINT((1000.,2000.,30.));
+#23=IFCDIRECTION((0.7071067811865476,0.7071067811865475,0.));
+#2=IFCSITE('${guid(2)}',$,'Site',$,$,/* void */#20,$,$,.ELEMENT.,$,$,$,$,$);
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -266,7 +291,7 @@ describe('applyPlacementAnonymization (anonymized isolated export, #2934)', () =
 
     const siteLine = content.match(/^#2=IFCSITE\(([^;]*)\);$/m);
     expect(siteLine).not.toBeNull();
-    const siteArgs = splitTopLevelArgs(siteLine![1]);
+    const siteArgs = splitTopLevelListItems(siteLine![1]);
     // RefLatitude, RefLongitude, RefElevation, LandTitleNumber, SiteAddress
     // are IfcSite's last five positional slots.
     const [refLatitude, refLongitude, refElevation, landTitleNumber, siteAddress] = siteArgs.slice(-5);
@@ -279,7 +304,7 @@ describe('applyPlacementAnonymization (anonymized isolated export, #2934)', () =
 
     const buildingLine = content.match(/^#3=IFCBUILDING\(([^;]*)\);$/m);
     expect(buildingLine).not.toBeNull();
-    const buildingArgs = splitTopLevelArgs(buildingLine![1]);
+    const buildingArgs = splitTopLevelListItems(buildingLine![1]);
     expect(buildingArgs.at(-1)).toBe('$'); // BuildingAddress
     expect(buildingArgs).not.toContain("''");
 
@@ -292,6 +317,36 @@ describe('applyPlacementAnonymization (anonymized isolated export, #2934)', () =
     expect(content).not.toMatch(/^#25=/m);
     expect(content).not.toContain('1 Real Street');
     expect(content).not.toContain('2 Real Avenue');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('zeroes a root placement whose ObjectPlacement slot is comment-wrapped (privacy gap)', async () => {
+    const store = await parse(FIXTURE_COMMENTED_PLACEMENT);
+    const view = new MutablePropertyView(null, 'anonymize');
+    const editor = new StoreEditor(store, view);
+    const index = getEffectiveEntityIndex(store, view, true);
+    const includedIds = new Set([1, 2]);
+
+    const result = applyPlacementAnonymization(store, index, includedIds, editor, view);
+
+    // The failure mode this pins: without `parseRef` recognizing the
+    // comment-wrapped ref, `zeroRootPlacements` silently `continue`s past #2
+    // and `zeroedPlacements` stays empty — the real coordinates (1000,2000,30)
+    // would then still be reachable in the export.
+    expect(result.zeroedPlacements).toHaveLength(1);
+    expect(result.zeroedPlacements[0]).toEqual({ expressId: 20, translation: [1000, 2000, 30] });
+
+    const exported = new StepExporter(store, view).export({
+      schema: store.schemaVersion,
+      subsetEntityIds: includedIds,
+      applyMutations: true,
+    });
+    const content = decode(exported.content);
+
+    // The original point is gone from the file: clone-and-repoint, not
+    // rewrite-in-place, and nothing else in this fixture still names it.
+    expect(content).not.toContain('1000.');
+    expect(content).not.toContain('2000.');
     expect(findDanglingRefs(content)).toEqual([]);
   });
 });

@@ -119,10 +119,11 @@ export function unreachable({ needs, judged }) {
  * failure cannot stop a merge.
  */
 export const UNJUDGED_BY_DESIGN = {
-  'csg-accept-gates':
-    'Advisory. Runs only when geometry changed and reports accept-gate deltas; ' +
-    'it is not in the branch ruleset either. Whether it SHOULD block is an open ' +
-    'question, tracked separately rather than decided by this gate.',
+  // Empty since the CI redesign (step 5): `csg-accept-gates`, the one entry,
+  // moved off the PR lane into the merge queue and INTO the aggregate's
+  // `needs:` there, where a moved pin dequeues the batch. Keep this list empty
+  // unless a lane genuinely must not block; the default has to be "blocking"
+  // for the aggregate to mean anything.
 };
 
 /**

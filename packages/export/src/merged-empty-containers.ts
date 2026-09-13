@@ -25,8 +25,9 @@
  */
 
 import type { IfcSourceBytes } from '@ifc-lite/parser';
-import { asSourceBytes, STEP_TRIVIA } from '@ifc-lite/parser';
-import { splitTopLevelArgs } from './step-argument-parser.js';
+import { asSourceBytes } from '@ifc-lite/parser';
+import { readStepSlots, splitTopLevelListItems } from './step-argument-parser.js';
+import { BARE_REF_RE } from './reference-collector.js';
 import type { CompleteEntityIndex } from './entity-iteration.js';
 
 /**
@@ -37,8 +38,6 @@ import type { CompleteEntityIndex } from './entity-iteration.js';
  * `null`), which the caller treats as "can't safely rewrite" and blocks the
  * empty-container drop for that entity.
  */
-const RECORD_RE = new RegExp(`^#\\d+\\s*=\\s*\\w+${STEP_TRIVIA}\\(([\\s\\S]*)\\)\\s*;?\\s*$`);
-
 /**
  * Spatial container types dropped when they end up empty. `IfcProject` is
  * deliberately absent: it is the file's root, never a candidate.
@@ -296,14 +295,13 @@ function lineOf(view: EmptyContainerModelView, localId: number): string {
 
 /** Top-level arguments of a `#id=TYPE(…);` line, or `null` when unparseable. */
 function topLevelAttrs(line: string): string[] | null {
-  const match = line.match(RECORD_RE);
-  if (!match) return null;
-  return splitTopLevelArgs(match[1]).map(arg => arg.trim());
+  const record = readStepSlots(line);
+  return record === null ? null : record.slots.map(arg => arg.trim());
 }
 
-/** Parse an argument that is exactly one reference (`"#7"` → `7`). */
+/** `"#7"` → `7` via shared, trivia-tolerant {@link BARE_REF_RE} (#4227 — a narrower regex misclassified a comment-wrapped `RelatingObject`). */
 function singleRef(arg: string): number | null {
-  const match = arg.trim().match(/^#(\d+)$/);
+  const match = BARE_REF_RE.exec(arg);
   return match ? Number(match[1]) : null;
 }
 
@@ -314,7 +312,7 @@ function refList(arg: string): number[] {
   const inner = trimmed.slice(1, -1).trim();
   if (inner === '') return [];
   const ids: number[] = [];
-  for (const item of splitTopLevelArgs(inner)) {
+  for (const item of splitTopLevelListItems(inner)) {
     const id = singleRef(item);
     if (id !== null) ids.push(id);
   }
@@ -342,7 +340,7 @@ function classifyRefs(line: string): Array<[number, boolean]> | null {
     if (attr.startsWith('(') && attr.endsWith(')')) {
       const inner = attr.slice(1, -1).trim();
       if (inner === '') continue;
-      for (const item of splitTopLevelArgs(inner)) {
+      for (const item of splitTopLevelListItems(inner)) {
         const id = singleRef(item);
         if (id !== null) out.push([id, false]);
         else for (const nested of argRefs(item)) out.push([nested, true]);

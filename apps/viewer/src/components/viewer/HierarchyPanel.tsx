@@ -4,16 +4,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import {
-  Search,
-  Building2,
-  Layers,
-  LayoutTemplate,
-  FileBox,
-  GripHorizontal,
-  Palette,
-  Network,
-} from 'lucide-react';
+import { Search, Building2, Layers, LayoutTemplate, FileBox, GripHorizontal, Palette, Network } from 'lucide-react';
 import { extractGroupMembersOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -27,12 +18,13 @@ import { toast } from '@/components/ui/toast';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { syncSourceModel } from '@/lib/sources/syncSourceModel';
 
-import type { TreeNode } from './hierarchy/types';
-import { isSpatialContainer } from './hierarchy/types';
+import { isSpatialContainer, type TreeNode } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
 import { SectionHeader } from './hierarchy/SectionHeader';
+import { useModelRowSize } from './hierarchy/ModelRowTags';
+import { ModelsSectionHeader, useModelTagView } from './hierarchy/ModelsSectionHeader';
 import { StoreyDisplayControls } from './hierarchy/StoreyDisplayControls';
 import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
@@ -158,7 +150,7 @@ export function HierarchyPanel() {
   );
   const filteredNodes = useMemo(() => stripPartNodes(rawFilteredNodes), [stripPartNodes, rawFilteredNodes]);
   const storeysNodes = useMemo(() => stripPartNodes(rawStoreysNodes), [stripPartNodes, rawStoreysNodes]);
-  const modelsNodes = useMemo(() => stripPartNodes(rawModelsNodes), [stripPartNodes, rawModelsNodes]);
+  const modelsNodes = useModelTagView(useMemo(() => stripPartNodes(rawModelsNodes), [stripPartNodes, rawModelsNodes])); // #4215 tag filter / By tag: rows only
 
   // Explorer-style multi-select over the leaf element / space rows: Ctrl/Cmd
   // toggles, Shift selects the contiguous range in the visible order. Built
@@ -209,7 +201,7 @@ export function HierarchyPanel() {
   const modelsVirtualizer = useVirtualizer({
     count: modelsNodes.length,
     getScrollElement: () => modelsRef.current,
-    estimateSize: () => 36,
+    estimateSize: useModelRowSize(modelsNodes, () => modelsVirtualizer.measure()), // #4215: a tagged model row carries a chips line
     overscan: 10,
   });
 
@@ -986,7 +978,7 @@ export function HierarchyPanel() {
 
           {/* Models Section */}
           <div style={{ height: `${(1 - splitRatio) * 100}%` }} className="flex flex-col min-h-0">
-            <SectionHeader icon={FileBox} title="Models" count={models.size} />
+            <ModelsSectionHeader count={models.size} />
             <div ref={modelsRef} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
               <div
                 style={{

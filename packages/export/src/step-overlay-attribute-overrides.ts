@@ -12,7 +12,7 @@
 
 import type { IfcAttributeValue } from '@ifc-lite/parser';
 import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
-import { splitTopLevelArgs } from './step-argument-parser.js';
+import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { getRealTypedSlots } from './attribute-real-slots.js';
 import { serializeNamedAttribute, serializePositionalOverride } from './step-attribute-serializers.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
@@ -46,7 +46,11 @@ export function applyOverlayEntityOverrides(
   schemaVersion: IfcSchemaVersion,
   onRejected?: (attrName: string, value: string) => void,
 ): string {
-  const args = argsText.length > 0 ? splitTopLevelArgs(argsText) : [];
+  const parsed = splitTopLevelStepArguments(argsText);
+  if (parsed === null) {
+    throw new Error('Cannot apply an overlay override to an invalid STEP argument list.');
+  }
+  const args = parsed;
   const attrNames = getAttributeNamesAcrossSchemas(entityType);
 
   const named: Array<[number, string]> = [];

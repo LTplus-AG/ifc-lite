@@ -40,6 +40,8 @@ export interface FederationSetupApplyResult {
   anchorRestored: boolean;
   /** True when the setup had a saved anchor but that model could not be restored. */
   anchorMissing: boolean;
+  /** Slots that carried tags but had no local file, so their tags stayed unassigned (#4215). */
+  taggedSlotsMissing: string[];
 }
 
 export function useFederationSetup() {
@@ -61,7 +63,7 @@ export function useFederationSetup() {
     const reference = findReferenceGeorefModel();
     const anchorModelId = reference?.modelId ?? anchorModelIdOverride ?? null;
 
-    const setup = await buildFederationSetupFile(models, anchorModelId);
+    const setup = await buildFederationSetupFile(models, anchorModelId, state);
     const json = serializeFederationSetupFile(setup);
     const stem = models.length === 1
       ? sanitizeFilename(models[0].name, { fallback: 'federation' })
@@ -85,13 +87,17 @@ export function useFederationSetup() {
    * the anchor could be restored.
    */
   const applyFederationSetup = useCallback(
-    async (matches: readonly FederationSetupSlotMatch[]): Promise<FederationSetupApplyResult> => {
+    async (setup: FederationSetupFile, matches: readonly FederationSetupSlotMatch[]): Promise<FederationSetupApplyResult> => {
       const summary = summarizeFederationSetupMatches(matches);
       const loadable = matches.filter((m) => m.file !== null);
 
       let restoredCount = 0;
       let restoredAnchorModelId: string | null = null;
       const hadAnchorSlot = matches.some((m) => m.slot.anchor);
+      // Tags are applied after the loads, and only for the slots that came
+      // back: the vocabulary is persisted per browser, and a reopen that
+      // restored nothing must not leave the file's tags behind in it (#4215).
+      const restoredTagged: Array<{ modelId: string; tagIds: readonly string[] }> = [];
 
       // Sequential, in saved order — mirrors loadFilesSequentially (the WASM
       // parser isn't thread-safe) and preserves the saved federation's
@@ -106,7 +112,21 @@ export function useFederationSetup() {
         if (modelId) {
           restoredCount += 1;
           if (match.slot.anchor) restoredAnchorModelId = modelId;
+          // After `addModel` returns: the runtime id is fresh, the tags are not (#4215).
+          if (match.slot.tagIds.length > 0) restoredTagged.push({ modelId, tagIds: match.slot.tagIds });
         }
+      }
+
+      if (restoredTagged.length > 0) {
+        // Definitions the restored slots reference, by id, so the assignments
+        // resolve. A live tag already under an id wins; a live tag that already
+        // carries a saved tag's NAME under another id absorbs it, and the
+        // slot's ids are mapped through `remap` so no assignment is dropped
+        // for a spelling both machines typed.
+        const { upsertModelTagDefinitions, assignModelTags } = useViewerStore.getState();
+        const referenced = new Set(restoredTagged.flatMap((r) => r.tagIds));
+        const remap = upsertModelTagDefinitions(setup.tags.filter((t) => referenced.has(t.id)));
+        for (const { modelId, tagIds } of restoredTagged) assignModelTags([modelId], tagIds.map((id) => remap.get(id) ?? id));
       }
 
       let anchorRestored = false;
@@ -127,6 +147,7 @@ export function useFederationSetup() {
         mismatchedSlots: summary.mismatched.map((m) => m.slot.name),
         anchorRestored,
         anchorMissing: hadAnchorSlot && !anchorRestored,
+        taggedSlotsMissing: summary.missing.filter((m) => m.slot.tagIds.length > 0).map((m) => m.slot.name),
       };
     },
     [addModel, realignFederation, setAnchorModelIdOverride],

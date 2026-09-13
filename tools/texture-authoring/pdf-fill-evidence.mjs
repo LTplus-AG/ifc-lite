@@ -26,7 +26,7 @@ try {
   if(decoded.kind!=='vectors')throw new Error('Wrong decoder response');
   const data=await new IfcParser().parseColumnar(texturedProductSource.slice().buffer,{disableWorkerScan:true});
   const view=new MutablePropertyView(data.properties,'pdf-fill'),editor=new StoreEditor(data,view);
-  const request={schema:'IFC4',sourceRevision:'actual-pdf-control',nextExpressId:view.peekNextExpressId(),containerId:40,GlobalId:'0aaaaaaaaaaaaaaaaaaaaa',containmentGlobalId:'0bbbbbbbbbbbbbbbbbbbbb',Name:'Actual PDF fill control',frame:{origin:[2,3,4],axisU:[1,0,0],axisV:[0,0,1],sizeMetres:[8,8]},page:decoded.page};
+  const request={schema:'IFC4',sourceRevision:'actual-pdf-control',nextExpressId:view.peekNextExpressId(),containerId:40,GlobalId:'0aaaaaaaaaaaaaaaaaaaaa',containmentGlobalId:'0bbbbbbbbbbbbbbbbbbbbb',propertySetGlobalId:'0cccccccccccccccccccc1',propertyRelationGlobalId:'0cccccccccccccccccccc2',Name:'Actual PDF fill control',acceptedFidelitySha256:null,frame:{origin:[2,3,4],axisU:[1,0,0],axisV:[0,0,1],sizeMetres:[8,8]},page:decoded.page};
   await writeFile(`${output}/page-${pageNumber}-request.json`,JSON.stringify(request,null,2));
   const result=JSON.parse(new TextDecoder().decode(api.planPdfFillAnnotation(texturedProductSource,JSON.stringify(request))));
   for(const row of result.plan.created){const actual=editor.addEntity(row.type,row.attributes);if(actual.expressId!==row.expressId)throw new Error('Allocation mismatch');}

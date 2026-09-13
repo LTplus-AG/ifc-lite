@@ -15,6 +15,26 @@ The renderer requires **WebGPU**, a next-generation graphics API.
 | Firefox | 141+ (Windows; other platforms in later releases) | :material-check-circle:{ .success } Stable |
 | Safari | 26+ | :material-check-circle:{ .success } Stable |
 
+!!! tip "No WebGPU on any browser?"
+    That is usually one of three causes, and only one of them is about your
+    device:
+
+    - **The page is not a secure context.** `navigator.gpu` is undefined on
+      plain HTTP served from an IP address or hostname (HTTPS and
+      `http://localhost` are fine). This looks identical to "unsupported"
+      in every browser you try, but has nothing to do with your GPU.
+    - **The browser doesn't expose the API.** An embedded webview, an
+      enterprise/MDM policy, or a version older than the table above.
+    - **No usable GPU adapter.** A blocklisted GPU, a VM or remote-desktop
+      session without GPU passthrough, or a machine with no working
+      Vulkan/Metal/D3D12 driver. This is the only case a browser flag can
+      fix — see the in-app troubleshooting panel for the flags.
+
+    Whichever it is, the 3D viewport is the only part of ifc-lite that
+    needs WebGPU. Parsing, querying, IDS validation, export, clash
+    detection, and BCF all run on the CPU with no browser at all — see the
+    [CLI Toolkit](cli.md) and [MCP for AI Agents](mcp.md).
+
 ### Checking WebGPU Support
 
 ```typescript

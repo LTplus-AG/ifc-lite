@@ -212,8 +212,15 @@ async function runRule(
 
   const matchedIds = matched.map(e => e.ref.expressId);
 
-  // Push visualization — isolate BEFORE colorize so colors aren't wiped
-  if (rule.isolate && matchedIds.length > 0) {
+  // Push visualization — isolate BEFORE colorize so colors aren't wiped.
+  // Send whenever `--isolate` was requested, even when the rule matched
+  // nothing: `viewer-html.ts`'s `isolateEntities` handler fades every
+  // entity NOT in `ids` (empty `ids` fades everything), so an empty send
+  // correctly shows "this rule matched zero elements" as an empty
+  // viewport. Gating on `matchedIds.length > 0` used to skip the command
+  // entirely in that case, silently leaving whatever was on screen before
+  // instead of reflecting the zero-match result.
+  if (rule.isolate) {
     await sendViewerCommand(viewerPort, {
       action: 'isolateEntities',
       ids: matchedIds,

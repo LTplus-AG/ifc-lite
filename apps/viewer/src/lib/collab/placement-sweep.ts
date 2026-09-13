@@ -120,6 +120,14 @@ export function collectPlacementDrift(
   pathToId: Map<string, number> | undefined,
   appliedLoc: ReadonlyMap<number, [number, number, number]> | null,
   appliedYaw: ReadonlyMap<number, number> | null,
+  /**
+   * The key the applied maps are read under for an entity. A room holds one
+   * model per slot (#4444) and two slots can share every local expressId, so
+   * the live reconciler keys the maps by federation GLOBAL id; pass the same
+   * `expressId → globalId` here or a sweep reads another model's bookkeeping.
+   * Identity by default (single-model rooms, tests).
+   */
+  keyFor: (entityId: number) => number = (id) => id,
 ): PlacementDrift[] {
   if (!pathToId) return [];
   const out: PlacementDrift[] = [];
@@ -132,14 +140,15 @@ export function collectPlacementDrift(
     if (!baseline) continue;
 
     const target = rendererDeltaForPlacement(baseline, placement);
-    const applied = appliedLoc?.get(entityId) ?? [0, 0, 0];
+    const key = keyFor(entityId);
+    const applied = appliedLoc?.get(key) ?? [0, 0, 0];
     const movedEnough =
       Math.abs(target[0] - applied[0]) >= PLACEMENT_EPS ||
       Math.abs(target[1] - applied[1]) >= PLACEMENT_EPS ||
       Math.abs(target[2] - applied[2]) >= PLACEMENT_EPS;
 
     const targetYaw = yawOf(placement) - yawOf(baseline);
-    const turnedEnough = Math.abs(targetYaw - (appliedYaw?.get(entityId) ?? 0)) >= YAW_EPS;
+    const turnedEnough = Math.abs(targetYaw - (appliedYaw?.get(key) ?? 0)) >= YAW_EPS;
 
     if (movedEnough || turnedEnough) out.push({ path, entityId, placement });
   }
@@ -183,8 +192,9 @@ export function sweepPlacements(
   appliedLoc: Map<number, [number, number, number]> | null,
   appliedYaw: Map<number, number> | null,
   reconcile: (entityId: number, placement: LocalPlacement) => void,
+  keyFor?: (entityId: number) => number,
 ): number {
-  const drift = collectPlacementDrift(api, doc, pathToId, appliedLoc, appliedYaw);
+  const drift = collectPlacementDrift(api, doc, pathToId, appliedLoc, appliedYaw, keyFor);
   for (const d of drift) reconcile(d.entityId, d.placement);
   return drift.length;
 }

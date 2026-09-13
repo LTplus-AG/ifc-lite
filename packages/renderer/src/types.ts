@@ -245,6 +245,7 @@ export interface RenderOptions {
   isolatedIds?: Set<number> | null;
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
   selectedIds?: Set<number>;      // Multi-selection support
+  selectedItemId?: number;        // #4382: narrows selectedId's highlight to one representation item (geometryItemId); no effect on selectedIds
   /**
    * Render the active colour overrides almost full-bright so they POP like a
    * highlight rather than reading as normal lit materials. Used while a clash is

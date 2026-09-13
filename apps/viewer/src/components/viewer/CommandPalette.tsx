@@ -5,10 +5,7 @@
 /** Ctrl/Cmd+K command search with scoring and recent usage. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import {
   Search,
   Play,
@@ -36,7 +33,6 @@ import {
   Building2,
   Layout,
   TreeDeciduous,
-  FileCode2,
   MessageSquare,
   ClipboardCheck,
   FileWarning,
@@ -53,7 +49,7 @@ import {
   FolderOpen,
   Clock,
   Save,
-  CalendarClock,
+  Tag,
   CalendarPlus,
   Sparkles,
   Eraser,
@@ -104,6 +100,8 @@ import { buildCommandPaletteJsonEntities } from './commandPaletteJsonExport';
 import { getRecentFiles, formatFileSize, getCachedFile, getCachedFileNames } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
+import type { BottomPanelId } from '@/lib/panels/bottom-panels';
+import { bottomPanelCommands } from './commandPaletteBottomPanels';
 import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import {
   type Command,
@@ -124,11 +122,10 @@ function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' 
   useViewerStore.getState().toggleWorkspacePanel(panel);
 }
 
-/** Bottom panel (Script / Lists / Gantt) — mutually exclusive in the bottom strip,
- *  independent of the sidebar. The store owns the toggle, including the re-dock of a
- *  floating or popped-out panel; the hand-rolled flag flips that used to live here
- *  knew only the dock flags, so toggling a FLOATING Lists panel left it on screen with nothing latched. */
-function activateBottomPanel(panel: 'script' | 'lists' | 'gantt') {
+/** Bottom panel — mutually exclusive in the bottom strip, independent of the sidebar. The store
+ *  owns the toggle, including the re-dock of a floating or popped-out panel; the hand-rolled flag
+ *  flips that used to live here knew only the dock flags, so toggling a FLOATING Lists panel left it on screen with nothing latched. */
+function activateBottomPanel(panel: BottomPanelId) {
   closeActiveAnalysisExtension();
   useViewerStore.getState().toggleBottomPanel(panel);
 }
@@ -189,6 +186,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       // #3930 portable federation setup — handlers live in `FederationSetupControls` (mounted from `useFileCommands`, ShareDialog's pattern).
       { id: 'file:save-federation-setup', label: 'Save Federation Setup', keywords: 'federation setup save export portable models order alignment anchor', category: 'File', icon: Save, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:save-federation-setup')); } },
       { id: 'file:open-federation-setup', label: 'Open Federation Setup', keywords: 'federation setup restore reopen import portable models order alignment anchor', category: 'File', icon: FolderOpen, immediate: true, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:open-federation-setup')); } },
+      // #4215 model tags: the editor for the active model, the only entry point in a one-model session (`ModelTagsCommand`).
+      { id: 'file:model-tags', label: 'Model Tags', keywords: 'model tags label discipline federation organise organize', category: 'File', icon: Tag, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:edit-model-tags')); } },
     );
     for (const rf of recentFiles) {
       const fileName = rf.name;
@@ -347,12 +346,11 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
     // ── Panels ──
     c.push(
+      ...bottomPanelCommands(activateBottomPanel),
       { id: 'panel:properties', label: 'Information', keywords: 'properties attributes material classification schedule task panel right inspector information', category: 'Panels', icon: Layout,
         action: () => { useViewerStore.getState().showWorkspacePanel('properties'); } },
       { id: 'panel:tree', label: 'Hierarchy', keywords: 'spatial tree hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
         action: () => { const s = useViewerStore.getState(); s.setLeftPanelCollapsed(!s.leftPanelCollapsed); } },
-      { id: 'panel:script', label: 'Script Editor', keywords: 'code automation console', category: 'Panels', icon: FileCode2,
-        action: () => { activateBottomPanel('script'); } },
       { id: 'panel:bcf', label: 'BCF Topics', keywords: 'collaboration topics comments viewpoint', category: 'Panels', icon: MessageSquare,
         action: () => { activateRightPanel('bcf'); } },
       { id: 'panel:ids', label: 'IDS Validation', keywords: 'information delivery specification check', category: 'Panels', icon: ClipboardCheck,
@@ -361,10 +359,6 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { activateRightPanel('clash'); } },
       { id: 'panel:compare', label: 'Compare Models', keywords: 'diff revision version change added deleted modified geometry data', category: 'Panels', icon: GitCompareArrows,
         action: () => { activateRightPanel('compare'); } },
-      { id: 'panel:lists', label: 'Entity Lists', keywords: 'table spreadsheet', category: 'Panels', icon: FileSpreadsheet,
-        action: () => { activateBottomPanel('lists'); } },
-      { id: 'panel:gantt', label: 'Construction Schedule (Gantt)', keywords: '4d timeline tasks ifctask sequence playback animation', category: 'Panels', icon: CalendarClock,
-        action: () => { activateBottomPanel('gantt'); } },
       { id: 'panel:lens', label: 'Lens Rules', keywords: 'color filter highlight', category: 'Panels', icon: Palette,
         action: () => { activateRightPanel('lens'); } },
       { id: 'panel:layers', label: 'Layer Stack', keywords: 'ifcx layers federation draft publish merge review provenance registry version overlay', category: 'Panels', icon: Layers,

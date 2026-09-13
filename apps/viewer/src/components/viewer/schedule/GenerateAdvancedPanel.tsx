@@ -37,12 +37,11 @@ export interface GenerateAdvancedPanelProps {
     value: GenerateScheduleOptions[K],
   ) => void;
   /**
-   * Whether to add a standalone `IfcWorkPlan` container alongside the
+   * Whether to add a standalone `IfcWorkPlan` container that groups the
    * generated `IfcWorkSchedule`. Kept out of `GenerateScheduleOptions` (its
    * own on/off + name pair here) rather than folded into the generator's
-   * options — the plan isn't grouped with the schedule (see
-   * `buildWorkPlanInfo`'s doc comment for why), so it doesn't belong to the
-   * generation algorithm itself.
+   * options, as an optional feature (see `buildWorkPlanInfo`'s doc comment
+   * for round-trip details).
    */
   createWorkPlan: boolean;
   onCreateWorkPlanChange: (next: boolean) => void;
@@ -139,7 +138,7 @@ export function GenerateAdvancedPanel({
           />
           <ToggleRow
             label="Add an IfcWorkPlan container"
-            description="A standalone plan entity alongside the schedule — not yet grouped with it (grouping doesn't round-trip)."
+            description="A standalone plan entity that groups the generated schedule(s). The grouping survives export and re-import."
             checked={createWorkPlan}
             onChange={onCreateWorkPlanChange}
           />

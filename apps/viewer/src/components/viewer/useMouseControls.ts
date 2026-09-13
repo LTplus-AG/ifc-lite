@@ -774,7 +774,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
       mouseState.isDragging = false;
       mouseState.isPanning = false;
-      canvas.style.cursor = tool === 'pan' ? 'grab' : (tool === 'walk' ? 'crosshair' : (tool === 'measure' ? 'crosshair' : 'default'));
+      canvas.style.cursor = tool === 'pan' ? 'grab' : (tool === 'walk' || tool === 'measure' || tool === 'appearance-face' ? 'crosshair' : 'default');
     };
 
     const handleMouseLeave = () => {
@@ -794,7 +794,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       sectionLastCastPosRef.current = null;
       setSectionPickPreview(null);
       // Restore cursor based on active tool
-      if (tool === 'measure') {
+      if (tool === 'measure' || tool === 'appearance-face') {
         canvas.style.cursor = 'crosshair';
       } else if (tool === 'pan') {
         canvas.style.cursor = 'grab';

@@ -23,6 +23,7 @@ import { propertyKey, quantityKey, attributeKey, generateMutationId } from './ty
 import { collectEffectiveChanges, type AttributeExtractor } from './effective-changes.js';
 import { applyMutationsBatch } from './apply-mutations.js';
 import { MutableOverlayState, type ForgottenEntityOverlay } from './mutable-overlay-state.js';
+import { deleteQuantityMember, deleteQuantitySetOverlay } from './quantity-member-delete.js';
 
 export type { AttributeExtractor } from './effective-changes.js';
 
@@ -930,6 +931,24 @@ export class MutablePropertyView extends MutableOverlayState {
     return mutation;
   }
 
+  /** Delete one quantity while retaining the rest of its quantity set. */
+  deleteQuantity(
+    entityId: number,
+    qsetName: string,
+    quantName: string,
+    skipHistory: boolean = false,
+  ): Mutation | null {
+    return deleteQuantityMember({
+      modelId: this.modelId, entityId, qsetName, quantName,
+      baseQsets: this.getBaseQuantitiesForEntity(entityId), entityQsets: this.newQsets.get(entityId),
+      setMutation: (key, mutation) => this.setQuantityMutation(entityId, key, mutation),
+      deleteMutation: key => { this.deleteQuantityMutation(entityId, key); },
+      deleteEntityQsets: () => { this.newQsets.delete(entityId); },
+      pushHistory: mutation => { if (!skipHistory) this.mutationHistory.push(mutation); },
+      mutationId: generateMutationId, key: () => quantityKey(entityId, qsetName, quantName),
+    });
+  }
+
   /**
    * Delete an entire quantity set - the inverse of `createQuantitySet`, and the
    * exact mirror of `deletePropertySet` one level up.
@@ -942,49 +961,14 @@ export class MutablePropertyView extends MutableOverlayState {
    * property saying the volume could not be computed.
    */
   deleteQuantitySet(entityId: number, qsetName: string): Mutation {
-    // In-session qsets carry their own quantity mutations, recorded by
-    // `createQuantitySet`. Drop both, for `deletePropertySet`'s reasons: an
-    // empty Map left behind keeps reporting the entity as modified, and an
-    // orphaned SET mutation re-adds the quantity to a base qset of the same
-    // name.
-    const entityQsets = this.newQsets.get(entityId);
-    const inSessionQset = entityQsets?.get(qsetName);
-    if (entityQsets && inSessionQset) {
-      entityQsets.delete(qsetName);
-      if (entityQsets.size === 0) {
-        this.newQsets.delete(entityId);
-      }
-      for (const quantity of inSessionQset.quantities) {
-        this.deleteQuantityMutation(entityId, quantityKey(entityId, qsetName, quantity.name));
-      }
-    }
-
-    // Only masks a qset that genuinely exists in the base file, and covers
-    // EVERY same-named one - both arguments as in `deletePropertySet` above.
-    for (const baseQset of this.getBaseQuantitiesForEntity(entityId)) {
-      if (baseQset.name !== qsetName) continue;
-      this.deletedQsets.add(`${entityId}:${qsetName}`);
-      for (const quantity of baseQset.quantities) {
-        this.setQuantityMutation(entityId, quantityKey(entityId, qsetName, quantity.name), { operation: 'DELETE' });
-      }
-    }
-
-    const mutation: Mutation = {
-      // Its OWN type rather than a `DELETE_QUANTITY` with no `propName`: both
-      // replay consumers (`applyMutations` here, `change-set-to-ops`) key the
-      // member-delete case off `propName`, so a set removal filed under it
-      // matched nothing, resurrected the set on import and vanished from a
-      // layer publish without reaching `skipped`.
-      id: generateMutationId(),
-      type: 'DELETE_QUANTITY_SET',
-      timestamp: Date.now(),
-      modelId: this.modelId,
-      entityId,
-      psetName: qsetName,
-    };
-
-    this.mutationHistory.push(mutation);
-    return mutation;
+    return deleteQuantitySetOverlay({
+      modelId: this.modelId, entityId, qsetName, baseQsets: this.getBaseQuantitiesForEntity(entityId),
+      entityQsets: this.newQsets.get(entityId), deleteEntityQsets: () => { this.newQsets.delete(entityId); },
+      deleteMutation: name => { this.deleteQuantityMutation(entityId, quantityKey(entityId, qsetName, name)); },
+      maskSet: () => { this.deletedQsets.add(`${entityId}:${qsetName}`); },
+      setMutation: name => this.setQuantityMutation(entityId, quantityKey(entityId, qsetName, name), { operation: 'DELETE' }),
+      mutationId: generateMutationId, pushHistory: mutation => { this.mutationHistory.push(mutation); },
+    });
   }
 
   /**
@@ -1870,6 +1854,14 @@ export class MutablePropertyView extends MutableOverlayState {
       mutations,
       (entityId) => this.newEntities.has(entityId),
       (entityId, qsetName) => this.deletedQsets.add(`${entityId}:${qsetName}`),
+      (mutation, qsetName, quantName, retainHistory) => {
+        this.setQuantityMutation(
+          mutation.entityId,
+          quantityKey(mutation.entityId, qsetName, quantName),
+          { operation: 'DELETE' },
+        );
+        if (retainHistory) this.mutationHistory.push(mutation);
+      },
     );
   }
 

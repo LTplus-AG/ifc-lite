@@ -3,10 +3,44 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Cut-skip heuristics for boolean DIFFERENCE operations: preview-tier
-//! small-cut dropping (#1286) and the host-face coincidence test that gates
-//! half-space plane clips.
+//! small-cut dropping (#1286), the host-face coincidence test that gates
+//! half-space plane clips, and the full-host-removal guard built on it
+//! (moved here from `boolean/mod.rs` under the module-size ratchet).
 
+use super::BooleanClippingProcessor;
+use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::{Mesh, Point3, TessellationQuality, Vector3};
+
+impl BooleanClippingProcessor {
+    /// If a DIFFERENCE clip emptied a non-empty host **and** the cutter's
+    /// plane is coincident with one of the host's bounding-box faces,
+    /// revert to the host and record the loss. The coincidence test is
+    /// what keeps this from rendering geometry the model explicitly
+    /// removed: a half-space deliberately placed far from the host so it
+    /// engulfs the body (e.g. a demolition-phase cutter) still produces
+    /// the correct empty mesh because no host face touches that plane.
+    /// Only the Revit IFC2x3 "top-trim at exactly the wall top" pattern
+    /// — issue #821 TallBuilding.ifc walls #615, #1297, #2401 and similar
+    /// Revit exports where the spec-correct cut would erase the wall —
+    /// hits the fallback.
+    pub(super) fn guard_against_full_host_removal(
+        &self,
+        host: Mesh,
+        result: Mesh,
+        plane_point: Point3<f64>,
+        plane_normal: Vector3<f64>,
+    ) -> Mesh {
+        if host.is_empty() || !result.is_empty() {
+            return result;
+        }
+        if !plane_is_coincident_with_host_face(&host, plane_point, plane_normal) {
+            // Spec-correct full removal — respect the author's intent.
+            return result;
+        }
+        self.record_failure(BoolOp::Difference, BoolFailureReason::DifferenceEmptiedHost);
+        host
+    }
+}
 
 /// Whether this tessellation tier drops sub-threshold boolean cuts (preview
 /// tiers only). `Medium` (the default) and finer keep every cut, so their

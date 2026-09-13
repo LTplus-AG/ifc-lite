@@ -901,15 +901,21 @@ describe('filterHiddenRefsFromRelationshipLine: trivia between the type name and
     expect(out).toBe("#5=IFCRELAGGREGATES/* has ( and ; inside */('GUID',$,$,$,#1,(#2));");
   });
 
-  it('two-way rule: an unterminated comment before "(" leaves the line unchanged (falls through, not corrupted)', () => {
+  it('withholds an entity whose unterminated comment makes its slots unverifiable (#4200)', () => {
     const line = "#5=IFCRELAGGREGATES/* never closes ('GUID',$,$,$,#1,(#2,#3));";
-    expect(filterHiddenRefsFromRelationshipLine(line, (id) => id === 3)).toBe(line);
+    expect(filterHiddenRefsFromRelationshipLine(line, (id) => id === 3)).toBeNull();
   });
 
   it('still narrows an adjacent line correctly (no regression)', () => {
     const line = "#5=IFCRELAGGREGATES('GUID',$,$,$,#1,(#2,#3));";
     const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 3);
     expect(out).toBe("#5=IFCRELAGGREGATES('GUID',$,$,$,#1,(#2));");
+  });
+
+  it('recognizes a list surrounded by legal STEP whitespace (#4200)', () => {
+    const line = "#5=IFCRELAGGREGATES('GUID',$,$,$,#1, (#2,#3) );";
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 3);
+    expect(out).toBe("#5=IFCRELAGGREGATES('GUID',$,$,$,#1, (#2) );");
   });
 
   // CodeRabbit finding on this PR: widening the record regex put the trivia
@@ -941,5 +947,43 @@ describe('filterHiddenRefsFromRelationshipLine: trivia between the type name and
   it('two-way rule: a commented NON-exempt relationship still withholds the whole line', () => {
     const line = "#1=IFCRELCONNECTSWITHECCENTRICITY/* c */('G',$,$,$,#2,#3,$,$,$,#9,#8);";
     expect(filterHiddenRefsFromRelationshipLine(line, (id) => id === 9)).toBeNull();
+  });
+});
+
+/**
+ * #4227: a `/* ... *​/` comment INSIDE the argument list (not before the
+ * record's `(`, which #3789 above already covers) hit `splitTopLevelListItems`
+ * directly — the sibling splitter with no comment-skip logic at the time.
+ * The comma inside the comment split a mandatory single-valued `#5` slot
+ * into two phantom slots, neither of which matched the `^#(\d+)$` bare-ref
+ * regex this function's exclusion check requires, so the hidden reference
+ * was never recognized and the line was returned byte-identical — shipping
+ * a dangling reference to a withheld entity into the output file.
+ */
+describe('filterHiddenRefsFromRelationshipLine: comment inside the argument list (#4227)', () => {
+  it('control: a hidden mandatory single-valued ref with no comment withholds the whole line', () => {
+    const line = "#10=IFCRELVOIDSELEMENT('guid',$,$,$,#1,#5);";
+    expect(filterHiddenRefsFromRelationshipLine(line, (id) => id === 5)).toBeNull();
+  });
+
+  it('the exact adversarial line: a comment containing a comma sits right before the hidden ref', () => {
+    const line = "#10=IFCRELVOIDSELEMENT('guid',$,$,$,#1,/* void, comment */#5);";
+    expect(filterHiddenRefsFromRelationshipLine(line, (id) => id === 5)).toBeNull();
+  });
+
+  it('nested-list variant: a commented comma sits inside a list argument alongside the hidden ref', () => {
+    const line = "#10=IFCRELASSIGNSTOGROUP('guid',$,$,$,(#2,/* c, x */#3),#1,$);";
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 3);
+    expect(out).toBe("#10=IFCRELASSIGNSTOGROUP('guid',$,$,$,(#2),#1,$);");
+  });
+
+  it('a comment with an odd quote count (an apostrophe) does not flip string-scan state', () => {
+    const line = "#10=IFCRELVOIDSELEMENT('guid',$,$,$,#1,/* it's void */#5);";
+    expect(filterHiddenRefsFromRelationshipLine(line, (id) => id === 5)).toBeNull();
+  });
+
+  it('a comment before the record\'s "(" still narrows correctly (already-working case, pinned)', () => {
+    const line = "#10=IFCRELVOIDSELEMENT/* c */('guid',$,$,$,#1,#5);";
+    expect(filterHiddenRefsFromRelationshipLine(line, (id) => id === 5)).toBeNull();
   });
 });

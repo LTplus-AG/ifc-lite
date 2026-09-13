@@ -1,0 +1,169 @@
+{
+  "request": {
+    "schema": "IFC4",
+    "sourceRevision": "mask-export",
+    "nextExpressId": 79108,
+    "productIds": [
+      59290
+    ],
+    "imageUri": "textures/6b1048f8a6d40bac0b2954c18fefa40c4ea7a96120fc2e54b7317c0e43c2bbec.png",
+    "repeatS": true,
+    "repeatT": true,
+    "representationPolicy": "evaluatedOccurrence",
+    "mapping": {
+      "kind": "box",
+      "frame": "world",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "metresPerTile": [
+        1,
+        1,
+        1
+      ]
+    },
+    "faceMasks": [
+      {
+        "productId": 59290,
+        "surfaceFingerprint": "5c5b15848829e46eb8090afdff63352710b26096beb4a66872f6cb297705706f",
+        "triangles": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ]
+      }
+    ]
+  },
+  "conversion": {
+    "productId": 59290,
+    "representationId": 79113,
+    "sourceGeometryItemId": 59274,
+    "geometryItemId": 79109,
+    "sourceOrigin": [
+      6,
+      5,
+      2.6
+    ],
+    "sourceColor": [
+      0.49411765,
+      0.49764708,
+      0.44470587,
+      1
+    ],
+    "rtcOffset": [
+      0,
+      0,
+      0
+    ],
+    "surfaceFingerprint": "5c5b15848829e46eb8090afdff63352710b26096beb4a66872f6cb297705706f",
+    "maskedTriangles": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ],
+    "retainedGeometryItemId": 79111
+  },
+  "sourceTriangles": 32,
+  "edits": [
+    {
+      "expressId": 59286,
+      "index": 2,
+      "value": [
+        "#79113",
+        "#59284"
+      ]
+    },
+    {
+      "expressId": 59354,
+      "index": 1,
+      "value": "Reference"
+    }
+  ],
+  "created": [
+    [
+      79108,
+      "IfcCartesianPointList3D"
+    ],
+    [
+      79109,
+      "IfcTriangulatedFaceSet"
+    ],
+    [
+      79110,
+      "IfcStyledItem"
+    ],
+    [
+      79111,
+      "IfcTriangulatedFaceSet"
+    ],
+    [
+      79112,
+      "IfcStyledItem"
+    ],
+    [
+      79113,
+      "IfcShapeRepresentation"
+    ],
+    [
+      79114,
+      "IfcPresentationLayerAssignment"
+    ],
+    [
+      79115,
+      "IfcImageTexture"
+    ],
+    [
+      79116,
+      "IfcColourRgb"
+    ],
+    [
+      79117,
+      "IfcSurfaceStyleShading"
+    ],
+    [
+      79118,
+      "IfcSurfaceStyleWithTextures"
+    ],
+    [
+      79119,
+      "IfcSurfaceStyle"
+    ],
+    [
+      79120,
+      "IfcTextureVertexList"
+    ],
+    [
+      79121,
+      "IfcIndexedTriangleTextureMap"
+    ]
+  ],
+  "exclusions": []
+}

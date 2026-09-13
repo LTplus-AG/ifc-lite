@@ -46,8 +46,19 @@ pub(super) fn align_source_corners(
         })
         .collect();
     let after = produce(source, product_id, &replacements, None)?;
-    if before.len() != items.len() || after.len() != items.len() {
+    // A face-masked conversion leaves one retained face set unmapped; it must
+    // survive both passes with identical geometry and no texture binding.
+    let retained = source.evaluated_splits.get(&product_id).map(|split| split.retained);
+    let expected = items.len() + usize::from(retained.is_some());
+    if before.len() != expected || after.len() != expected {
         return Err("Canonical representation was split, combined, or rejected".into());
+    }
+    if let Some(id) = retained {
+        let (old, new) = (one_item(&before, id)?, one_item(&after, id)?);
+        if old.positions != new.positions || old.indices != new.indices || old.normals != new.normals
+            || old.origin != new.origin || old.uvs.is_some() || new.uvs.is_some() || old.texture.is_some() || new.texture.is_some() {
+            return Err("The unmasked face set must keep its source geometry without a texture".into());
+        }
     }
     for item in items {
         let old = one_item(&before, item.geometry_item_id)?;
@@ -119,6 +130,28 @@ pub(super) fn produce(
     textures: &FxHashMap<u32, ResolvedTextureMap>,
     appearance: Option<&crate::prepass::ResolvedPrepass>,
 ) -> Result<Vec<MeshData>, String> {
+    produce_with_frame(source, product_id, textures, appearance, false)
+}
+
+/// Evaluate an occurrence in the same placement-independent frame on native
+/// and wasm. This is kept separate from ordinary canonical production because
+/// authoring previews must retain the target's established output frame.
+pub(super) fn produce_evaluated(
+    source: &mut Source<'_>,
+    product_id: u32,
+    textures: &FxHashMap<u32, ResolvedTextureMap>,
+    appearance: Option<&crate::prepass::ResolvedPrepass>,
+) -> Result<Vec<MeshData>, String> {
+    produce_with_frame(source, product_id, textures, appearance, true)
+}
+
+fn produce_with_frame(
+    source: &mut Source<'_>,
+    product_id: u32,
+    textures: &FxHashMap<u32, ResolvedTextureMap>,
+    appearance: Option<&crate::prepass::ResolvedPrepass>,
+    evaluated: bool,
+) -> Result<Vec<MeshData>, String> {
     let product = source.entity(product_id)?;
     source.validate_world_placement(&product)?;
     let scale = source.decoder.length_unit_scale();
@@ -134,7 +167,7 @@ pub(super) fn produce(
     if context.layers.is_sliceable(product_id) {
         return Err("Material-layer slicing is unsupported for appearance authoring".into());
     }
-    let router = context.router();
+    let router = if evaluated { context.evaluated_router() } else { context.router() };
     let voids = FxHashMap::default();
     let styles = FxHashMap::default();
     let colours = FxHashMap::default();

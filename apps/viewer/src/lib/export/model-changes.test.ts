@@ -13,8 +13,6 @@ import {
   collectChangedModels,
   totalChangeCount,
   buildChangedArtifacts,
-  uniqueArtifactBase,
-  mapStepSchema,
   LEGACY_MODEL_ID,
   type ChangesExportState,
   type BuildArtifactsDeps,
@@ -59,6 +57,8 @@ function mkState(partial: Partial<ChangesExportState>): ChangesExportState {
     scheduleData: null,
     scheduleIsEdited: false,
     scheduleSourceModelId: null,
+    collabRoomId: null,
+    collabRoomModels: new Map(),
     ...partial,
   };
 }
@@ -361,28 +361,6 @@ describe('badge-vs-dialog agreement (maintainer finding on #1967)', () => {
   });
 });
 
-// ── pure helpers ─────────────────────────────────────────────────────────────
-
-describe('uniqueArtifactBase', () => {
-  it('dedupes same name+ext, leaves different ext alone', () => {
-    const used = new Set<string>();
-    assert.strictEqual(uniqueArtifactBase('model', 'ifc', used), 'model');
-    assert.strictEqual(uniqueArtifactBase('model', 'ifc', used), 'model-2');
-    assert.strictEqual(uniqueArtifactBase('model', 'ifc', used), 'model-3');
-    // same base, different extension is a distinct filename -> no suffix.
-    assert.strictEqual(uniqueArtifactBase('model', 'ifcx', used), 'model');
-  });
-});
-
-describe('mapStepSchema', () => {
-  it('maps schema versions to STEP tokens', () => {
-    assert.strictEqual(mapStepSchema('IFC2X3'), 'IFC2X3');
-    assert.strictEqual(mapStepSchema('IFC4'), 'IFC4');
-    assert.strictEqual(mapStepSchema('IFC4X3'), 'IFC4X3');
-    assert.strictEqual(mapStepSchema('IFC5'), 'IFC4'); // caller routes IFC5 elsewhere
-  });
-});
-
 // ── buildChangedArtifacts ────────────────────────────────────────────────────
 
 interface StepCall {
@@ -567,5 +545,47 @@ describe('buildChangedArtifacts', () => {
     assert.strictEqual(files[0].modelId, 'b');
     assert.strictEqual(skipped.length, 1);
     assert.strictEqual(skipped[0].reason, 'boom');
+  });
+
+  // #4444: a recipient's room model is keyed by `/<slotId>/<GlobalId>`; the
+  // one-click "Export changes" route must un-home it the same way the Export
+  // dialog does, and leave the owner's own model of the same room alone.
+  it('hands the IFCX exporter the room slot prefix for a recipient room model only', async () => {
+    const roomId = 'r1';
+    const guestId = `room:${roomId}:m1`;
+    const models = new Map<string, FederatedModel>([
+      [guestId, mkModel(guestId, 'shared.ifcx (2)', 'IFC5')],
+      ['own', mkModel('own', 'own.ifcx', 'IFC5')],
+    ]);
+    const mutationViews = new Map<string, MutablePropertyView>([
+      [guestId, mkView(1)],
+      ['own', mkView(1)],
+    ]);
+    const prefixes = new Map<string, string | undefined>();
+    const { deps } = fakeDeps({
+      exportIfcx: async (modelId, _ds, _view, inv): Promise<ChangesExportArtifact> => {
+        prefixes.set(modelId, inv.stripPathPrefix);
+        return { content: `IFCX:${modelId}`, ext: 'ifcx', mime: 'application/json' };
+      },
+    });
+    const state = mkState({
+      models,
+      mutationViews,
+      collabRoomId: roomId,
+      collabRoomModels: new Map([
+        [guestId, { slotId: 'm1', pathPrefix: '/m1' }],
+        ['own', { slotId: 'm0', pathPrefix: '/m0' }],
+      ]),
+    });
+    const { files } = await buildChangedArtifacts(state, deps);
+    assert.strictEqual(prefixes.get(guestId), '/m1');
+    assert.strictEqual(prefixes.get('own'), undefined);
+    // The copy suffix survives the extension strip, so the two files differ.
+    assert.deepStrictEqual(files.map((f) => `${f.base}.${f.ext}`).sort(), ['own.ifcx', 'shared -2.ifcx']);
+
+    // Off a session the same models export with their own paths untouched.
+    prefixes.clear();
+    await buildChangedArtifacts(mkState({ models, mutationViews }), deps);
+    assert.strictEqual(prefixes.get(guestId), undefined);
   });
 });

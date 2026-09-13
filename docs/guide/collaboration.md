@@ -17,7 +17,7 @@ Collaboration ships behind a flag so it stays out of the way until you want it.
 | How | What |
 | --- | --- |
 | Build env | Set `VITE_COLLAB_ENABLED=true` (and a server URL — see below) when building/serving the viewer. |
-| Per-browser (dev) | In the browser console: `localStorage.setItem('ifc-lite:collab:enabled', 'true')`, then reload. |
+| Per-browser (dev) | In the browser console: `localStorage.setItem('ifc-lite:collab:enabled', 'true')`, then reload. `localStorage.setItem('ifc-lite:collab:server-url', 'ws://127.0.0.1:1234')` likewise points this browser at a relay without a rebuild (an empty string forces local-only). |
 
 When enabled, a **Share** button appears in the toolbar (it's active once a model
 is loaded). To sync across machines you also need a [collaboration server](collab-server.md);
@@ -43,6 +43,28 @@ Opening the dialog puts you in the room as **admin** and starts sharing your
 model into it. You can re-copy a link at any access level, and you stay admin
 for the room.
 
+### Sharing several models
+
+With more than one model loaded, the dialog first asks what the room should
+carry, and creates the room only when you press **Create link**:
+
+| Scope | The room holds… |
+| --- | --- |
+| **All N loaded models** (default) | Every loaded model, each as its own model. Recipients see the whole workspace and can pick, edit and export each model separately (a second copy of a file is listed as "name (2)"). N counts the models that can be shared: a GLB, a point cloud or a model still loading has nothing to put in a room, and the option says "All 2 of 3 loaded models" when one is left out. |
+| **Active model only** | The model that is active in the hierarchy. The others stay private. |
+
+Each shared model gets its own *slot* in the room, so two copies of the same
+file — same file name, same bytes, same IFC GlobalIds — stay two distinct
+models with their own geometry, placement and textures. The scope is fixed once
+the room exists; re-opening the dialog shows how many models the room carries.
+While several models upload, the progress row names the model it is on
+("model 2 of 3"). A recipient exports each room model separately. A shared
+STEP model with native authored annotations exports back to `.ifc` while its
+portable source covers the complete room model; other room models export to
+`.ifcx` (merged export is STEP-only). The IFCX file carries the model's own `/<GlobalId>`
+paths, never the room's slot, so it opens in any viewer and diffs against the
+other copy's export.
+
 Textured models share their UV coordinates and image pixels with the geometry.
 Recipients do not need the original IFCZIP or access to its image filenames.
 Images are shared once per content hash, with each surface retaining its wrap
@@ -50,6 +72,13 @@ settings. Each decoded image is limited to 16,777,216 pixels total (4096 × 4096
 with at most 8192 pixels on either side; an unavailable or
 oversized image is reported as a sharing failure instead of silently dropping
 its appearance.
+
+Native PDF-vector `IfcAnnotation` objects can be created before opening Share.
+The share operation materializes pending authored rows automatically; no local
+export/reopen step is required. A fresh recipient gets every colored 3D part
+under the annotation's one selectable identity, plus its symbolic fills in 2D.
+An IFC export from that fresh room reopens with the same annotation identity and
+symbolic content.
 
 Both owner and recipient need a viewer version that supports textured room
 geometry. Older rooms that were shared without texture data cannot recover it

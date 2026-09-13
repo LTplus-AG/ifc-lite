@@ -2,22 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Intersection } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
+import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
 import { createAppearancePlanner } from '@/lib/appearance/planner-worker-client';
-import { prepareScanSession, type ScanSession } from '@/lib/appearance/scan/session';
-import { sourceLandmark, targetLandmark } from '@/lib/appearance/scan/landmarks';
+import { prepareScanSession, type ScanSession, type ScanSourceSelector } from '@/lib/appearance/scan/session';
+import { targetLandmark } from '@/lib/appearance/scan/landmarks';
 import type { ScanLandmark, ScanPair, ScanRegistrationRequest, ScanRegistrationReport } from '@/lib/appearance/scan/types';
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
+export interface ScanSourceOption { id: string; modelId: string; selector: ScanSourceSelector; label: string }
 
 export function useScanWorkbench() {
   const models = useViewerStore(s => s.models), mutationVersion = useViewerStore(s => s.mutationVersion);
   const mutationViews = useViewerStore(s => s.mutationViews);
   const section = useViewerStore(s => s.sectionPlane), terrain = useViewerStore(s => s.cesiumTerrainClipY), cesium = useViewerStore(s => s.cesiumEnabled);
   const placement = useViewerStore(s => s.modelPlacement), room = useViewerStore(s => s.collabRoomId);
-  const sources = useMemo(() => [...models.values()].filter(model => /\.glb$/i.test(model.sourceFile?.name ?? '')).flatMap(model =>
-    (model.geometryResult?.meshes ?? []).flatMap((mesh, index) => mesh.textureRef && mesh.uvs ? [{ id: `${model.id}:${index}`, modelId: model.id, index, label: `${model.name} · Surface ${index + 1}` }] : [])), [models]);
+  // Textured GLB surfaces, then completely streamed point clouds whose retained sample can be aligned (#4381).
+  const sources = useMemo((): ScanSourceOption[] => [...models.values()].flatMap(model => {
+    if (/\.glb$/i.test(model.sourceFile?.name ?? '')) return (model.geometryResult?.meshes ?? []).flatMap((mesh, index): ScanSourceOption[] => mesh.textureRef && mesh.uvs ? [{ id: `${model.id}:${index}`, modelId: model.id, selector: index, label: `${model.name} · Surface ${index + 1}` }] : []);
+    const retained = model.pointCloudHandleId === undefined || model.loadState === 'error' ? null : getPointCloudScanSample(model.pointCloudHandleId);
+    return retained && retained.count >= 4 ? [{ id: `${model.id}:points`, modelId: model.id, selector: 'points', label: `${model.name} · Point cloud (${retained.count.toLocaleString()} of ${retained.seen.toLocaleString()} points retained)` }] : [];
+  }), [models]);
   const targets = useMemo(() => [...models.values()].filter(model => model.ifcDataStore && !/\.glb$/i.test(model.sourceFile?.name ?? '')), [models]);
   const [sourceId, setSourceId] = useState(''), [targetId, setTargetId] = useState(''), [restart, setRestart] = useState(0);
   const [session, setSession] = useState<ScanSession | null>(null), [pairs, setPairs] = useState<ScanPair[]>([]);
@@ -25,7 +30,7 @@ export function useScanWorkbench() {
   const [pending, setPending] = useState<{ point: ScanLandmark; partition: 'fit' | 'check' } | null>(null);
   const [result, setResult] = useState<{ request: ScanRegistrationRequest; report: ScanRegistrationReport } | null>(null);
   const [busy, setBusy] = useState(false), [stale, setStale] = useState(false), [previewReady, setPreviewReady] = useState(false);
-  const [status, setStatus] = useState('Open a textured GLB and an IFC model to align a scan.'), [error, setError] = useState(false), [aligned, setAligned] = useState(false);
+  const [status, setStatus] = useState('Open a textured GLB or a point cloud and an IFC model to align a scan.'), [error, setError] = useState(false), [aligned, setAligned] = useState(false);
   const planner = useRef<ReturnType<typeof createAppearancePlanner> | null>(null), operation = useRef<AbortController | null>(null);
   const ownAppearance = useRef(false);
   const recovery = useRef<{ request: ScanRegistrationRequest; rebind: (next: ScanSession) => void } | null>(null);
@@ -38,7 +43,7 @@ export function useScanWorkbench() {
     recovery.current = null; setSession(null); setPending(null); setPairs([]); setResult(null); setAligned(false); setStale(false); setError(false);
     if (!source || !models.has(targetId)) { setBusy(false); setStatus('Choose a loaded scan surface and IFC model.'); return () => controller.abort(); }
     setBusy(true); setStatus('Preparing source and IFC coordinate frames…');
-    void prepareScanSession(source.modelId, source.index, targetId, controller.signal).then(prepared => {
+    void prepareScanSession(source.modelId, source.selector, targetId, controller.signal).then(prepared => {
       if (controller.signal.aborted) return; setSession(prepared); setStatus('Click a landmark on the scan preview, then its matching IFC point in the main view.');
     }).catch(failure => { if (!controller.signal.aborted) { setError(true); setStatus(message(failure)); } }).finally(() => { if (!controller.signal.aborted) setBusy(false); if (operation.current === controller) operation.current = null; });
     return () => controller.abort();
@@ -69,9 +74,10 @@ export function useScanWorkbench() {
     canvas.addEventListener('pointerdown', start, true); canvas.addEventListener('pointerup', pick, true);
     return () => { canvas.removeEventListener('pointerdown', start, true); canvas.removeEventListener('pointerup', pick, true); };
   }, [pending, session, stale]);
-  function pickSource(hit: Intersection) {
+  /** The preview resolves its own pick (triangle barycentrics or a retained point) into a native-frame landmark. */
+  function pickSource(landmark: ScanLandmark) {
     if (!session || stale || busy || aligned) return;
-    try { session.validate(); setPending({ point: sourceLandmark(session.source, hit, session.sourceMeshOrdinal), partition }); setError(false); setStatus('Now click the matching visible surface point in the chosen IFC model. Drag the main view to orbit if needed.'); }
+    try { session.validate(); setPending({ point: landmark, partition }); setError(false); setStatus('Now click the matching visible surface point in the chosen IFC model. Drag the main view to orbit if needed.'); }
     catch (failure) { setError(true); setStatus(message(failure)); }
   }
   async function calculate() {
@@ -90,7 +96,7 @@ export function useScanWorkbench() {
     const saved = recovery.current;
     if (!session || !saved || !planner.current) throw new Error('No retained landmark binding is available.');
     setResult(null); setAligned(false); setStatus('Refreshing alignment against the updated IFC…');
-    const next = await prepareScanSession(session.sourceModelId, session.sourceMeshOrdinal, session.targetModelId, controller.signal);
+    const next = await prepareScanSession(session.sourceModelId, session.selector, session.targetModelId, controller.signal);
     saved.rebind(next);
     const request: ScanRegistrationRequest = { ...structuredClone(saved.request), sourceFrame: next.sourceFrame, targetFrame: next.targetFrame };
     const report = await planner.current.registerScan(request, { signal: controller.signal });

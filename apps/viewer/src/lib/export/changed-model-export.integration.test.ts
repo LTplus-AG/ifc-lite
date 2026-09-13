@@ -92,6 +92,8 @@ function twoEditedModels(): { state: ChangesExportState; resolve: (id: string) =
     scheduleData: null,
     scheduleIsEdited: false,
     scheduleSourceModelId: null,
+    collabRoomId: null,
+    collabRoomModels: new Map(),
   };
   return { state, resolve: async (id) => stores.get(id) ?? null };
 }

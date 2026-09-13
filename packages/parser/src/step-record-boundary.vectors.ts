@@ -67,6 +67,60 @@ export const UNRESUMABLE_BODIES: readonly string[] = [
   'IFCWALL(/* never closes $)',
 ];
 
+/**
+ * A record whose parens balance only PAST a later declaration must not hand
+ * back a resume point past that declaration (#4573). Pre-fix the balance walk
+ * closed #1 at #2's ')' and the fast scan resumed after it, so #2 vanished
+ * with nothing reported. The walk now stops at #2's '=', #1 is dropped alone,
+ * and #2 (its own ')' then ';') is found by the re-hunt. Matches Rust's
+ * `recovery_does_not_resume_past_the_next_declaration_4179`.
+ */
+export const NEXT_DECLARATION_CASE = {
+  text: '#1=IFCA(2 #2=IFCWALL($));\n#3=IFCC(3);\n',
+  spans: [[2, '#2=IFCWALL($));'], [3, '#3=IFCC(3);']] as const,
+};
+
+/**
+ * A refused record must not damage its NEIGHBOUR. #1 is refused at the stray
+ * '=' in its body and re-hunted from past its '#'; the hunt then meets
+ * `#5 = 3);`, which has a declaration's `#<digits> =` prefix. It is refused
+ * at the type-name check (a record needs a keyword after the '='), so the
+ * real #5 declared a line earlier is the only #5. Matches Rust's
+ * `a_stray_equals_in_a_refused_body_does_not_mint_a_phantom_neighbour`.
+ */
+export const PHANTOM_NEIGHBOUR_CASE = {
+  text: '#5=IFCCARTESIANPOINT((0.,0.));\n#1=IFCWALL(#5 = 3);\n#6=IFCWALL($);\n',
+  ids: [5, 6] as const,
+};
+
+/**
+ * Files that are nothing but refused records, one per way of reaching the
+ * balance walk (#4573). `#1=A(2;` finds a ';' with no ')' before it, so the
+ * exact check balances the record; `#1=A(` never finds a ';' at all, so the
+ * recovery balances it. The trailers are what disarmed a suffix-memo cut of
+ * the fix: a lone ';', and the `ENDSEC;` every real file ends with.
+ *
+ * Pre-fix each walk read to end of input and the next declaration repeated
+ * it: measured 1.8-2.5s at 10 000 records and 7.4-10s at 20 000, 4x per
+ * doubling, on the fast scan and the worker copy alike. Bounded at the next
+ * '=', all four cost the file's length. `RECORDS` is sized so the unfixed
+ * walk overruns the budget many times over on any machine (the well-formed
+ * twin takes ~2ms here; the 20ms floor keeps timer noise out), while a fixed
+ * scan finishes in single-digit milliseconds.
+ */
+export const QUADRATIC_SHAPES: readonly (readonly [string, string, string])[] = [
+  ['#1=A(2;\\n', '#1=A(2;\n', ''],
+  ['#1=A(\\n', '#1=A(\n', ''],
+  ['#1=A(\\n then ;', '#1=A(\n', ';'],
+  ['#1=A(\\n then ENDSEC', '#1=A(\n', 'ENDSEC;\nEND-ISO-10303-21;\n'],
+];
+export const QUADRATIC_RECORDS = 20_000;
+export const QUADRATIC_WELL_FORMED = '#1=A();\n';
+/** The budget a refused-record file must scan within, from the well-formed twin's time. */
+export function quadraticBudgetMs(baselineMs: number): number {
+  return Math.max(baselineMs, 20) * 20;
+}
+
 /** The two shapes #4179 is about, as `[label, text, expected spans]`. */
 /**
  * Records whose LINE numbers a cold re-walk must not disturb.

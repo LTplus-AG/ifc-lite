@@ -34,11 +34,12 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, unlinkSync, rmSync
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { relocatedGateSource } from './lib/relocated-gate-source.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const GATE = join(ROOT, 'scripts', 'check-source-text-assertions.mjs');
-const DETECT = join(ROOT, 'scripts', 'source-text-assertion-detect.mjs');
+const SCRIPTS = join(ROOT, 'scripts');
+const GATE = join(SCRIPTS, 'check-source-text-assertions.mjs');
 
 /** A source-text-assertion test fixture the detector flags, naming `rel`. */
 function violatingTest(rel) {
@@ -74,18 +75,11 @@ function gitTree(testFiles, allowlistText) {
   // so the synthetic tree needs a copy of the real gate under the same path.
   // Copying the file under test, rather than writing a stub, is the point:
   // the identity check's own ceiling-parsing regex is exercised against the
-  // real file, not a hand-written approximation of it.
-  // The detector import is repointed at the REAL file's absolute path rather
-  // than copied alongside: it pulls in `typescript` from this repo's
-  // node_modules, which a temp dir outside the repo cannot resolve, and
-  // nothing under test here is the detector itself (that has its own harness,
-  // scripts/check-source-text-assertions.test.mjs).
-  const gateSrc = readFileSync(GATE, 'utf8').replace(
-    "from './source-text-assertion-detect.mjs'",
-    `from ${JSON.stringify(pathToFileURL(DETECT).href)}`,
-  );
-  assert.notEqual(gateSrc, readFileSync(GATE, 'utf8'), 'detector import rewrite did not match');
-  writeFileSync(join(dir, 'scripts', 'check-source-text-assertions.mjs'), gateSrc);
+  // real file, not a hand-written approximation of it. Its relative imports
+  // are repointed at the REAL files' absolute paths rather than copied
+  // alongside (see lib/relocated-gate-source.mjs for why); nothing under
+  // test here is the detector or the git helper themselves.
+  writeFileSync(join(dir, 'scripts', 'check-source-text-assertions.mjs'), relocatedGateSource(GATE, SCRIPTS));
 
   const git = (...argv) => {
     const res = spawnSync('git', ['-C', dir, ...argv], { encoding: 'utf8' });
@@ -185,6 +179,12 @@ test('an untouched allowlist and tree passes with no identity failure', () => {
   const { code, out } = run(dir);
   assert.equal(code, 0, out);
   assert.doesNotMatch(out, /New allowlist entries/);
+  // Every tree here has a local `main` and no `origin`, so the base comes
+  // from the fallback ref. The shared derivation (lib/module-size-git.mjs,
+  // #4536) reports that as `fellBack` rather than printing; the gate must
+  // still turn it into its own warning, and still run the check.
+  assert.match(out, /WARNING -- no merge base with origin\/main; fell back to local 'main'/);
+  assert.match(out, /identity-checked vs main \([0-9a-f]{9}\)/);
 });
 
 test('a genuinely new violation with no allowlist row still fails as before', () => {

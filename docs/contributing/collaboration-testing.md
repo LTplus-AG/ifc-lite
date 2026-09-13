@@ -193,6 +193,110 @@ Useful things to try:
 - **History:** click "Capture snapshot" twice; the history sidecar
   records IFCX entries you can inspect via the "history" panel.
 
+### Sharing several models (federation scope)
+
+Exercise the multi-model room with the real viewer (TL;DR step 3b) and two
+copies of one file, so that every IFC identity collides on purpose:
+
+1. Owner: load `tests/models/…/AC20-FZK-Haus.ifc` twice (`pnpm fixtures`
+   downloads it), apply a different appearance source to the same member in
+   each copy, then File → Share. With two models loaded the dialog asks for
+   the scope before any room exists; keep **All 2 loaded models**, press
+   **Create link**, wait for the upload row ("model 2 of 2") to clear, and
+   copy the link.
+2. Recipient (second profile): open the link. The hierarchy lists two models
+   named after the file, the second suffixed `(2)`; each is selectable on its
+   own, each keeps its own texture, and a property edit on one copy lands on
+   that copy only.
+3. Rejoin: close the recipient, open the link again — still two models.
+4. Export on the recipient: the Export dialog lists both `room:*` models
+   like any federation. Room models are IFC5, and merged export is STEP-only,
+   so export each to its own `.ifcx`. Inside, the entity paths are the model's
+   own `/<GlobalId>` paths — the room's slot (`/m0/…`, `/m1/…`) is stripped on
+   export, so either copy's file reads like a single-model room export and
+   diffs against the other where the copies actually differ (here: the
+   member's texture).
+
+What to look for in the doc (DevTools, `session.doc`): the `models` map holds
+`m0` and `m1`, and every entity path is `/m0/<GlobalId>` or `/m1/<GlobalId>`.
+The recipient's own store keys entities by that room path too (the inspector
+shows `/m1/<GlobalId>` as the GlobalId); only the exported file is un-homed.
+
+Known limit: an IFCX seed re-homes `children` / `inherits` references under
+the slot, but not path-valued *attributes* of a custom schema — the runtime
+cannot tell a path-typed attribute from a string. Such an attribute keeps the
+file's unqualified path and dangles on a recipient. STEP seeds are unaffected.
+
+The same journey is automated, in real Chrome against a disposable signed
+relay and a private `vite preview` of this checkout's build, both started by
+the spec (`tests/e2e/collab/relay.ts`, `preview.ts` — the harness shared with
+the #4446 relay acceptance):
+
+```sh
+pnpm fixtures                                        # AC20-FZK-Haus.ifc
+pnpm turbo build --filter=@ifc-lite/collab-server    # the relay (dist/bin.js)
+pnpm --filter @ifc-lite/viewer build                 # the ordinary build, no collab env needed
+pnpm test:e2e:collab                                 # Playwright project viewer-collab-e2e
+```
+
+The project runs real Google Chrome (`channel: 'chrome'`, headless, WebGPU);
+a host with only Playwright's bundled Chromium fails at launch with "chrome
+distribution not found" — install Chrome, the spec cannot detect that ahead
+of time the way it skips on a missing fixture or build.
+
+`tests/e2e/collab-federation-scope.e2e.spec.ts` loads the fixture twice, paints
+the same IfcMember red in copy 1 and blue in copy 2 through the Appearance
+workspace, shares "All 2 loaded models", closes the owner, and checks a fresh
+guest and a rejoin: two models, each with its own texture, the member picked by
+a real canvas click in each copy, no geometry notice, and one slot-free `.ifcx`
+per model from the Export dialog. A second test shares "Active model only" and
+checks the single-slot guest keeps `globalId === expressId`. The built viewer
+is pointed at the relay through the `ifc-lite:collab:server-url` /
+`ifc-lite:collab:enabled` `localStorage` overrides, so an unmodified build is
+what runs. Set `E2E_EVIDENCE_DIR` to also write the run's JSON and screenshots
+to a directory; the recorded run lives in
+`docs/architecture/evidence/federation-scope/`. The project is opt-in (CI's
+required lanes select `viewer-e2e-ci` by name).
+
+Headless equivalents:
+`pnpm --filter viewer exec tsx --import ./src/test/vite-module-hooks.mjs --test src/lib/collab/room-reconstruct.test.ts`
+runs the owner → recipient → rejoin sequence on a synthetic two-entity model,
+`room-two-copies.ac20.test.ts` beside it on the real fixture (skipped until
+`pnpm fixtures` has run), and `owner-seed.frames.test.ts` pins the seed to a
+handful of doc updates — the relay's per-connection write budget dropped a
+per-entity burst and lost the second copy's geometry before that.
+
+### Relay acceptance for the share invite (#4446)
+
+The invite must not appear before the room — on the relay — holds the model.
+`pnpm test:e2e:collab` runs `tests/e2e/collab-share-seed.e2e.spec.ts`
+(Playwright project `viewer-collab-e2e`, opt-in, not in CI's default lanes):
+
+```sh
+pnpm fixtures                                  # AC20-FZK-Haus.ifc
+pnpm turbo build --filter=@ifc-lite/viewer     # the ordinary viewer build — no VITE_COLLAB_* needed
+pnpm --filter @ifc-lite/collab-server build
+pnpm test:e2e:collab
+```
+
+The spec spawns its own signed relay (random `COLLAB_TOKEN_SECRET`, temp data
+dir) and its own `vite preview` of `apps/viewer/dist`, both on ephemeral
+ports (the config's shared `:3000` webServer is not started when this is the
+only project selected — it would test whichever checkout holds that port), and
+enables collab per browser context through the `localStorage`
+overrides (`ifc-lite:collab:enabled`, `ifc-lite:collab:server-url`). It
+builds a textured AC20 IFCZIP on the fly (`tests/e2e/collab/textured-ac20.ts`,
+one wall re-bodied as a textured `IfcTriangulatedFaceSet`), shares it, closes
+the owner the instant Copy is enabled, and checks a fresh guest, a rejoin and
+the guest's export against the owner's room counts and the textured wall's
+byte-exact pixels/UVs. Two controls show the gate at work: slowed blob uploads
+(Copy withheld, "Leave (abandons upload)", an abandoned room has no geometry)
+and the owner's websocket frames held back (Copy withheld in `confirming`
+until the relay's state vector covers the owner's). Numbers and screenshots of
+one run: `docs/architecture/evidence/share-seed-ready/`. The spec skips, with a
+pointer, when the fixture, the wasm runtime, the viewer build or the relay
+build is missing.
+
 ### The 3D variant
 
 ```sh

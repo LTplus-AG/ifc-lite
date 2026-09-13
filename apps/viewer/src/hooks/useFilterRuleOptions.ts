@@ -32,13 +32,14 @@ import type { RuleRowProps } from '@/components/viewer/SearchModal.filter.editor
 /** Exactly the option props `RuleRow` takes, so a caller can spread this. */
 export type FilterRuleOptions = Pick<
   RuleRowProps,
-  'modelOptions' | 'ifcTypeOptions' | 'storeyOptions' | 'psetQto' | 'valueSchema'
+  'modelOptions' | 'tagOptions' | 'ifcTypeOptions' | 'storeyOptions' | 'psetQto' | 'valueSchema'
 >;
 
 export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOptions {
   const {
     schemaMap,
     models,
+    modelTags,
     activeModelId,
     setFilterSchema,
     setFilterPsetQtoSchema,
@@ -47,6 +48,7 @@ export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOp
     useShallow((s) => ({
       schemaMap: s.searchFilterSchema,
       models: s.models,
+      modelTags: s.modelTags,
       activeModelId: s.activeModelId,
       setFilterSchema: s.setFilterSchema,
       setFilterPsetQtoSchema: s.setFilterPsetQtoSchema,
@@ -135,6 +137,7 @@ export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOp
 
   return {
     modelOptions,
+    tagOptions: modelTags,
     ifcTypeOptions,
     storeyOptions: schemaEntry?.basic.storeys ?? [],
     psetQto,

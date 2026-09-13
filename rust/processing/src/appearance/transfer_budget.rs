@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Aggregate scan-owned memory and work, including atlas samples and BVH traversal.
+pub(super) const WORK_LIMIT: usize = 128_000_000;
 pub(super) struct TransferBudget {
     pub work: usize,
     memory: usize,
@@ -9,7 +10,7 @@ pub(super) struct TransferBudget {
 impl TransferBudget {
     pub fn new() -> Self {
         Self {
-            work: 128_000_000,
+            work: WORK_LIMIT,
             memory: 256 * 1024 * 1024,
         }
     }

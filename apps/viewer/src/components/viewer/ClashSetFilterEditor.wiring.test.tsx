@@ -86,6 +86,7 @@ describe('ClashSetFilterEditor', () => {
     const container = render(
       <RuleRow
         rule={Rule.model([])}
+        tagOptions={new Map()}
         modelOptions={[
           { label: 'Architecture.ifc', value: 'Architecture.ifc:fingerprint-a' },
           { label: 'Structure.ifc', value: 'Structure.ifc:fingerprint-b' },

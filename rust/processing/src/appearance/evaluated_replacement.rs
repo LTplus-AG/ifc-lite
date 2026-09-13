@@ -31,8 +31,10 @@ pub(super) fn layers(source: &mut Source<'_>, body: u32) -> Result<Vec<DecodedEn
     Ok(result)
 }
 
+/// `items` is the complete new Items list: one face set, or the masked and
+/// retained pair of a face-masked conversion.
 pub(super) fn replace(
-    source:&mut Source<'_>, product:u32, body:&mut DecodedEntity, item:u32,
+    source:&mut Source<'_>, product:u32, body:&mut DecodedEntity, items:&[u32],
     layers:Vec<DecodedEntity>, plan:&mut AppearancePlan,
     entities:&mut FxHashMap<u32,Arc<DecodedEntity>>,
 )->Result<(),String> {
@@ -42,10 +44,10 @@ pub(super) fn replace(
     let shared=source.incoming.get(&old_body).is_some_and(|parents|parents.iter()
         .any(|id|*id!=pds_id && source.types.get(id)!=Some(&IfcType::IfcPresentationLayerAssignment)));
     Arc::make_mut(&mut body.attributes)[2]=A::String("Tessellation".into());
-    Arc::make_mut(&mut body.attributes)[3]=A::List(vec![A::EntityRef(item)]);
+    Arc::make_mut(&mut body.attributes)[3]=A::List(items.iter().copied().map(A::EntityRef).collect());
     if !shared {
         plan.edits.extend([PositionalEdit {express_id:old_body,index:2,value:json!("Tessellation")},
-            PositionalEdit {express_id:old_body,index:3,value:json!([reference(item)])}]);
+            PositionalEdit {express_id:old_body,index:3,value:json!(items.iter().copied().map(reference).collect::<Vec<_>>())}]);
         return Ok(());
     }
     let new_body=authored(plan,entities,IfcType::IfcShapeRepresentation,body.attributes.to_vec());

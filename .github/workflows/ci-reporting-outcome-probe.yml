@@ -1,0 +1,68 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: CI reporting outcome probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      outcome:
+        description: Real dependency conclusion to send through the reporter.
+        required: true
+        type: choice
+        options:
+          - failure
+          - deadline
+          - skipped
+          - cancelled
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+jobs:
+  subject:
+    if: inputs.outcome != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      evidence: ${{ steps.completed.outputs.evidence }}
+      deadline: ${{ steps.deadline.outputs.evidence }}
+    steps:
+      - name: Produce a real failed dependency
+        if: inputs.outcome == 'failure'
+        run: exit 23
+      - name: Turn a real hang into a failed inner deadline
+        id: deadline
+        if: inputs.outcome == 'deadline'
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=1s 1s sleep 300
+          rc=$?
+          echo "evidence=deadline-rc-$rc" >> "$GITHUB_OUTPUT"
+          exit "$rc"
+      - name: Cancel this workflow through the Actions API
+        if: inputs.outcome == 'cancelled'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/cancel"
+          sleep 300
+      - name: Output written only by a successful subject
+        id: completed
+        run: echo 'evidence=unexpected-success' >> "$GITHUB_OUTPUT"
+
+  report:
+    needs: subject
+    if: always() && inputs.outcome != 'cancelled'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: CI reporting outcome probe
+      jobs: subject
+      result: ${{ needs.subject.result }} output=${{ needs.subject.outputs.evidence }} deadline=${{ needs.subject.outputs.deadline }}
+      dry_run: true
+    permissions:
+      contents: read
+      issues: write

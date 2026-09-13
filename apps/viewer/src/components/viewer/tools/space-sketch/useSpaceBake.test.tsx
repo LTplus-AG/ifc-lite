@@ -18,12 +18,12 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, before, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store/index.js';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { SpacePlateSession } from '@/lib/space-plate-session.js';
 import type { Pt } from '@/lib/space-sketch-geometry.js';
 import { useSpaceBake, type UseSpaceBake } from './useSpaceBake.js';
@@ -46,8 +46,43 @@ function fakeSession(n: number, alive = true): SpacePlateSession {
   } as unknown as SpacePlateSession;
 }
 
-/** `existingSpaceFootprintsByStorey` short-circuits to empty without a source. */
-const EMPTY_STORE = { source: undefined } as unknown as IfcDataStore;
+/**
+ * Two storeys, both at the origin without rotation — the shape most models
+ * have, where the room frame and the storey frame coincide and the bake's
+ * storey fold is the identity. What the fold DOES is pinned separately in
+ * `useSpaceBake.frame.test.tsx`, on a storey that is placed and turned; here
+ * it must leave the ledger behaviour below exactly as it was.
+ */
+const IDENTITY_STOREYS = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCBUILDINGSTOREY('0STOREY00000000000001',$,'L1',$,$,#11,$,$,.ELEMENT.,0.);
+#11=IFCLOCALPLACEMENT($,#12);
+#12=IFCAXIS2PLACEMENT3D(#13,$,$);
+#13=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCBUILDINGSTOREY('0STOREY00000000000002',$,'L2',$,$,#21,$,$,.ELEMENT.,3.);
+#21=IFCLOCALPLACEMENT($,#22);
+#22=IFCAXIS2PLACEMENT3D(#23,$,$);
+#23=IFCCARTESIANPOINT((0.,0.,3.));
+#30=IFCPROJECT('0PROJECT000000000000',$,'Proj',$,$,$,$,(#31),#32);
+#31=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#33,$);
+#33=IFCAXIS2PLACEMENT3D(#34,$,$);
+#34=IFCCARTESIANPOINT((0.,0.,0.));
+#32=IFCUNITASSIGNMENT((#35));
+#35=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+let dataStore: IfcDataStore;
+
+before(async () => {
+  dataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(IDENTITY_STOREYS).buffer);
+});
 
 interface Emitted { modelId: string; storeyId: number; name: string }
 
@@ -68,10 +103,11 @@ function Harness() {
   const ref = { current: sessions };
   api = useSpaceBake({
     sketchModelId: MODEL,
-    ifcDataStore: EMPTY_STORE,
+    ifcDataStore: dataStore,
     boundaryMode: 'center',
     sessionsRef: ref,
     floorToFloor: () => 3,
+    coordinateInfo: undefined,
   });
   return null;
 }

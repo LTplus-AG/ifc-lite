@@ -1,0 +1,18 @@
+{
+  "filename": "AC20-FZK-Haus_export.ifcx",
+  "member": {
+    "path": "/0oTQ6V1VbChulreA_hfmUa",
+    "children": {
+      "Appearance 1": "ifclite-mesh-0"
+    },
+    "attributes": {
+      "bsi::ifc::class": {
+        "code": "IfcMember",
+        "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/5/class/IfcMember"
+      },
+      "bsi::ifc::prop::Name": "Sparren-1",
+      "bsi::ifc::prop::IsExternal": false
+    }
+  },
+  "fragments": 1
+}

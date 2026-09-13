@@ -330,6 +330,7 @@ function relationshipTypeToString(type: RelationshipType): string {
   const names: Record<RelationshipType, string> = {
     [RelationshipType.ContainsElements]: 'IfcRelContainedInSpatialStructure',
     [RelationshipType.Aggregates]: 'IfcRelAggregates',
+    [RelationshipType.Nests]: 'IfcRelNests',
     [RelationshipType.DefinesByProperties]: 'IfcRelDefinesByProperties',
     [RelationshipType.DefinesByType]: 'IfcRelDefinesByType',
     [RelationshipType.AssociatesMaterial]: 'IfcRelAssociatesMaterial',
@@ -343,6 +344,7 @@ function relationshipTypeToString(type: RelationshipType): string {
     [RelationshipType.ConnectsPorts]: 'IfcRelConnectsPorts',
     [RelationshipType.SpaceBoundary]: 'IfcRelSpaceBoundary',
     [RelationshipType.AssignsToGroup]: 'IfcRelAssignsToGroup',
+    [RelationshipType.AssignsToGroupByFactor]: 'IfcRelAssignsToGroupByFactor',
     [RelationshipType.AssignsToProduct]: 'IfcRelAssignsToProduct',
     [RelationshipType.ReferencedInSpatialStructure]: 'ReferencedInSpatialStructure',
   };

@@ -310,3 +310,39 @@ fn a_traversal_of_exactly_the_budget_still_returns_its_profile() {
         .expect("a traversal that spends the budget exactly must not be refused");
     assert!(!pts.is_empty(), "and it must return its points");
 }
+
+/// A polyline point ref that parses but names no record must refuse the whole
+/// curve, not drop the corner. `get_polyloop_point_ids_fast` sees ids, not
+/// entities, so whether `#26` resolves is this caller's half of the one rule
+/// (#3421); before this it was `if let Some(..) { push }`, and a 4-point
+/// polyline with one dangling ref came back as a 3-point outline, meshed as
+/// if it were the authored one. `helpers::extract_loop_points_by_id` already
+/// refused; this arm did not.
+#[test]
+fn a_dangling_polyline_point_refuses_the_curve_instead_of_shortening_it() {
+    const DANGLING: &str = "#10=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#22);\n\
+#22=IFCPOLYLINE((#23,#24,#26,#25));\n\
+#23=IFCCARTESIANPOINT((0.,0.));\n\
+#24=IFCCARTESIANPOINT((1.,0.));\n\
+#25=IFCCARTESIANPOINT((0.,1.));\n";
+    let content = wrap(DANGLING);
+    let mut decoder = EntityDecoder::new(&content);
+    let result = SurfaceOfLinearExtrusionProcessor::get_profile_curve_points(10, &mut decoder);
+    assert!(
+        result.is_err(),
+        "a dangling point must refuse the curve; got {:?} points instead of an error",
+        result.map(|p| p.len())
+    );
+}
+
+/// Control: the same polyline with every point present resolves all four.
+#[test]
+fn a_fully_resolved_polyline_keeps_every_point() {
+    const COMPLETE: &str = "#10=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#22);\n\
+#22=IFCPOLYLINE((#23,#24,#26,#25));\n\
+#23=IFCCARTESIANPOINT((0.,0.));\n\
+#24=IFCCARTESIANPOINT((1.,0.));\n\
+#26=IFCCARTESIANPOINT((1.,1.));\n\
+#25=IFCCARTESIANPOINT((0.,1.));\n";
+    assert_eq!(profile_points(COMPLETE, 10).len(), 4);
+}

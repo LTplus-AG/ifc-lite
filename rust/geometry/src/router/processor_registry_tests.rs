@@ -5,7 +5,11 @@
 // Included by the existing test module, never the new production registry:
 // a production-only revert must still collect and run every assertion.
 use crate::processors::*;
-use crate::{BoolFailure, GeometryProcessor, GeometryRouter, Mesh, Result, TessellationQuality};
+use crate::router::processor_registry::TYPES;
+use crate::{
+    BoolFailure, BoolFailureReason, GeometryProcessor, GeometryRouter, Mesh, Result,
+    TessellationQuality,
+};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use std::cell::Cell;
 use std::rc::Rc;
@@ -133,4 +137,43 @@ fn issue_3987_two_routers_cannot_share_failure_state() {
     mesh_unsupported_boolean(&second);
     assert_eq!(failure_count(&first), 1);
     assert_eq!(failure_count(&second), 1);
+}
+
+/// #4560: the boolean operand path dispatches from the SAME built-in table the
+/// router does, so whatever the router can mesh is a boolean operand too.
+/// Each registered type is offered as the base operand of a DIFFERENCE with an
+/// attribute-less fixture (a bounded decoder fixture, as above): its processor
+/// may error or mesh empty, but the boolean must never file the type as
+/// `UnsupportedOperand` — the record that, before the fix, meant "cutter
+/// dropped, host rendered un-cut" for `IfcPolygonalFaceSet` and every other
+/// built-in the operand path's own six-arm copy of this table had forgotten.
+#[test]
+fn issue_4560_every_router_builtin_is_a_boolean_operand() {
+    let mut forgotten = Vec::new();
+    for ifc_type in TYPES.iter().flat_map(|types| types.iter()) {
+        let source = format!(
+            "#1=IFCBOOLEANRESULT(.DIFFERENCE.,#2,#3);
+#2={}();
+#3=IFCEXTRUDEDAREASOLID($,$,$,1.);",
+            ifc_type.to_string().to_uppercase()
+        );
+        let mut decoder = EntityDecoder::new(&source);
+        let entity = decoder.decode_by_id(1).unwrap();
+        let router = GeometryRouter::new();
+        // An attribute-less operand legitimately errors or meshes empty; only
+        // the diagnostic that names it unsupported is the defect.
+        let _ = router.process_representation_item(&entity, &mut decoder);
+        let unsupported = router
+            .take_csg_failures()
+            .into_values()
+            .flatten()
+            .any(|f| matches!(f.reason, BoolFailureReason::UnsupportedOperand(_)));
+        if unsupported {
+            forgotten.push(*ifc_type);
+        }
+    }
+    assert!(
+        forgotten.is_empty(),
+        "router built-ins the boolean operand path rejects as UnsupportedOperand: {forgotten:?}"
+    );
 }

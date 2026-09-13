@@ -9,6 +9,35 @@
 
 import { IfcTypeEnumToString, IfcTypeEnumFromString } from '@ifc-lite/data';
 
+/**
+ * Property names that have official IFC5 schema definitions in prop@v5a.ifcx.
+ * Source: https://github.com/buildingSMART/ifcx.dev/blob/main/@standards.buildingsmart.org/ifc/core/prop@v5a.ifcx
+ *
+ * IFC4 properties NOT in this set (e.g. Reference, LoadBearing, ExtendToStructure)
+ * must be omitted from IFC5 export — the viewer reports "Missing schema" errors for them.
+ *
+ * Name and Description are handled separately (always exported), so they're excluded here.
+ */
+export const IFC5_KNOWN_PROP_NAMES = new Set([
+  'UsageType',
+  'TypeName',
+  'IsExternal',
+  'RefElevation',
+  'ElevationOfRefHeight',
+  'ElevationOfTerrain',
+  'NumberOfStoreys',
+  'Height',
+  'Width',
+  'Length',
+  'Depth',
+  'Volume',
+  'NetVolume',
+  'NetArea',
+  'NetSideArea',
+  'CrossSectionArea',
+  'Station',
+]);
+
 /** IFCX node in output, matching the shape `collectRequiredImports` scans. */
 interface IfcxNodeOutputLike {
   attributes?: Record<string, unknown>;
@@ -88,4 +117,17 @@ export function stepTypeToClassName(stepType: string): string {
     return 'Ifc' + lower.charAt(3).toUpperCase() + lower.slice(4);
   }
   return stepType;
+}
+
+/**
+ * The exported node path of an entity whose GlobalId is a namespaced path
+ * (#4444): a store reconstructed from a shared room keys its entities by room
+ * path, `/<slotId>/<GlobalId>`, and an exported file must not carry the
+ * room-internal slot. Removes `prefix` when the GlobalId is under it
+ * (`/m1/<GlobalId>` → `/<GlobalId>`); any other GlobalId is returned verbatim,
+ * so an owner's own STEP-parsed store (bare GlobalIds) is unaffected.
+ */
+export function stripNodePathPrefix(globalId: string, prefix: string | undefined): string {
+  if (!prefix || !globalId.startsWith(`${prefix}/`)) return globalId;
+  return globalId.slice(prefix.length);
 }

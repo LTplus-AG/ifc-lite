@@ -32,12 +32,13 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { analyze } from './source-text-assertion-detect.mjs';
+import { relocatedGateSource } from './lib/relocated-gate-source.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const GATE = join(ROOT, 'scripts', 'check-source-text-assertions.mjs');
-const DETECT = join(ROOT, 'scripts', 'source-text-assertion-detect.mjs');
+const SCRIPTS = join(ROOT, 'scripts');
+const GATE = join(SCRIPTS, 'check-source-text-assertions.mjs');
 
 const flagged = (src) => analyze(src).flagged;
 
@@ -1400,14 +1401,12 @@ test('PLANTED PROBE - delete me', () => {
     );
     writeFileSync(join(dir, 'scripts', 'source-text-assertion-allowlist.txt'), '');
     // A copy of the real gate with its ceiling zeroed (the synthetic allowlist
-    // is empty) and its detector import repointed at the real file, the same
-    // rewrite check-source-text-assertions-identity.test.mjs uses so this
+    // is empty) and its relative imports repointed at the real files
+    // (lib/relocated-gate-source.mjs, shared with the identity test), so this
     // exercises the shipped gate rather than a hand-written stand-in.
-    const realGateSrc = readFileSync(GATE, 'utf8');
-    const gateSrc = realGateSrc
-      .replace("from './source-text-assertion-detect.mjs'", `from ${JSON.stringify(pathToFileURL(DETECT).href)}`)
-      .replace(/const ALLOWLIST_CEILING = \d+;/, 'const ALLOWLIST_CEILING = 0;');
-    assert.notEqual(gateSrc, realGateSrc, 'ceiling/import rewrite did not match the real gate source');
+    const relocatedSrc = relocatedGateSource(GATE, SCRIPTS);
+    const gateSrc = relocatedSrc.replace(/const ALLOWLIST_CEILING = \d+;/, 'const ALLOWLIST_CEILING = 0;');
+    assert.notEqual(gateSrc, relocatedSrc, 'ceiling rewrite did not match the real gate source');
     const gateCopy = join(dir, 'scripts', 'check-source-text-assertions.mjs');
     writeFileSync(gateCopy, gateSrc);
 
@@ -1456,11 +1455,9 @@ test('PLANTED PROBE - delete me', () => {
 `,
     );
     writeFileSync(join(dir, 'scripts', 'source-text-assertion-allowlist.txt'), '');
-    const realGateSrc = readFileSync(GATE, 'utf8');
-    const gateSrc = realGateSrc
-      .replace("from './source-text-assertion-detect.mjs'", `from ${JSON.stringify(pathToFileURL(DETECT).href)}`)
-      .replace(/const ALLOWLIST_CEILING = \d+;/, 'const ALLOWLIST_CEILING = 0;');
-    assert.notEqual(gateSrc, realGateSrc, 'ceiling/import rewrite did not match the real gate source');
+    const relocatedSrc = relocatedGateSource(GATE, SCRIPTS);
+    const gateSrc = relocatedSrc.replace(/const ALLOWLIST_CEILING = \d+;/, 'const ALLOWLIST_CEILING = 0;');
+    assert.notEqual(gateSrc, relocatedSrc, 'ceiling rewrite did not match the real gate source');
     const gateCopy = join(dir, 'scripts', 'check-source-text-assertions.mjs');
     writeFileSync(gateCopy, gateSrc);
 

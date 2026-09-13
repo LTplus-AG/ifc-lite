@@ -34,7 +34,7 @@ impl GeometryRouter {
     /// during raw world-coordinate triangulation are guarded by `rtc_applied`.
     #[inline]
     pub(crate) fn transform_mesh_world(&self, mesh: &mut Mesh, transform: &Matrix4<f64>) {
-        self.transform_mesh_world_framed(mesh, transform, super::local_frame_enabled());
+        self.transform_mesh_world_framed(mesh, transform, self.local_frame_enabled());
     }
 
     /// World placement with an explicit choice of whether to relativize positions
@@ -250,5 +250,19 @@ mod local_bounds_tests {
         assert_eq!(mesh2.local_bounds, mesh.local_bounds);
         assert_eq!(mesh2.local_to_world, mesh.local_to_world);
         assert_eq!(mesh2.origin, [0.0; 3], "absolute path never sets origin");
+    }
+
+    #[test]
+    fn issue_4550_router_local_frame_policy_is_explicit_per_instance() {
+        let transform = Translation3::new(12.345, 67.891, 0.1).to_homogeneous();
+        let mut framed = unit_box();
+        GeometryRouter::with_scale_and_local_frame(1.0, true)
+            .transform_mesh_world(&mut framed, &transform);
+        assert_ne!(framed.origin, [0.0; 3]);
+
+        let mut absolute = unit_box();
+        GeometryRouter::with_scale_and_local_frame(1.0, false)
+            .transform_mesh_world(&mut absolute, &transform);
+        assert_eq!(absolute.origin, [0.0; 3]);
     }
 }

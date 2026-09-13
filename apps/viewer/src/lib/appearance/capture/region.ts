@@ -36,7 +36,7 @@ export function captureRegistration(modelId: string, mesh: MeshData,
     const state = getState(), current = state.models.get(modelId);
     const offset = totalYupOffset(placementFrameCoordinateInfo(state));
     if (current !== model || current?.geometryResult !== geometry || !geometry.meshes.includes(mesh)
-      || state.mutationVersion !== initial.mutationVersion || state.modelPlacement.preview
+      || state.modelPlacement.preview
       || placementFrameKey(state) !== frameKey
       || !placementFor(state.modelPlacement, modelId).translation.every((v, i) => v === modelTranslationIfc[i])
       || offset.x !== renderOffset.x || offset.y !== renderOffset.y || offset.z !== renderOffset.z
@@ -62,7 +62,7 @@ export function captureRegion(mesh: MeshData, triangleIds: readonly number[], re
   if (!mesh.textureRef || mesh.texture) throw new Error('The captured surface needs one external image texture.');
   if (mesh.color.some(value => Math.fround(value) !== 1)) throw new Error('Bake the material tint and opacity into the image before IFC capture.');
   if ((mesh.geometryClass ?? 0) === 2 || mesh.entityIds) throw new Error('Choose one concrete surface occurrence.');
-  if (triangleIds.length === 0 || triangleIds.length > MAX_ROWS) throw new Error('Choose 1..200000 captured triangles.');
+  if (triangleIds.length === 0 || triangleIds.length > MAX_ROWS) throw new Error('Select a smaller region with 1–200,000 triangles.');
   const vertexCount = mesh.positions.length / 3;
   if (!Number.isInteger(vertexCount) || mesh.indices.length % 3 || mesh.uvs?.length !== vertexCount * 2) {
     throw new Error('Captured geometry needs complete positions, triangles and per-vertex image coordinates.');
@@ -74,7 +74,7 @@ export function captureRegion(mesh: MeshData, triangleIds: readonly number[], re
   const vertex = (id: number): number => {
     if (!Number.isInteger(id) || id < 0 || id >= vertexCount) throw new Error('Captured triangle vertex is out of bounds.');
     const prior = remap.get(id); if (prior !== undefined) return prior;
-    if (positions.length >= MAX_ROWS) throw new Error('Captured region exceeds 200000 position or UV rows.');
+    if (positions.length >= MAX_ROWS) throw new Error('Select a smaller region with at most 200,000 vertices.');
     const p = fromRenderTranslation({ x: mesh.positions[id * 3] + origin[0] + offset.x,
       y: mesh.positions[id * 3 + 1] + origin[1] + offset.y, z: mesh.positions[id * 3 + 2] + origin[2] + offset.z });
     const world: [number, number, number] = [p[0] + registration.modelTranslationIfc[0],

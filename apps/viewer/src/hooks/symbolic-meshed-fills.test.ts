@@ -5,7 +5,7 @@ import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
-import { applyFederationOffsetToMesh } from './useIfcLoader.js';
+import { applyFederationOffsetToMesh } from './ingest/federationOffset.js';
 import { meshedFillItems } from './symbolic-meshed-fills.js';
 import { buildSymbolicRichChannels } from './symbolic-rich-channels.js';
 import { createEmptyFlatSymbolic, buildParseResult } from '../lib/overlay-parse/symbolic-parse.js';

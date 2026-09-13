@@ -1,0 +1,181 @@
+{
+ "wall": {
+  "globalId": "1gsZ4XbYD0qRhfvwOUEK3Z",
+  "expressId": 216,
+  "axis": "x",
+  "minFace": 0.390691991,
+  "maxFace": 0.490691991,
+  "thicknessMetres": 0.1
+ },
+ "subset": {
+  "file": "cras-room-a-corridor-s24.ply",
+  "sha256": "977927015c581c52b7adf93957381f3d0c7e64a83bdcc553b3c59b9fbf30fbb2",
+  "points": 465029
+ },
+ "registration": {
+  "requestSha256": "d8e25e598b6d7b1a06a23e96b9ac246ffe58162ddda00f15901ed8b0ae61b53a"
+ },
+ "footprintInsetMetres": 0.2,
+ "pointsConsidered": 52588,
+ "binMetres": 0.01,
+ "peaks": [
+  {
+   "fromMinFaceMetres": -0.07,
+   "points": 2763,
+   "share": 0.053,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.06,
+   "points": 47243,
+   "share": 0.898,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.05,
+   "points": 1147,
+   "share": 0.022,
+   "where": "outside, on the minimum-face side"
+  }
+ ],
+ "bins": [
+  {
+   "fromMinFaceMetres": -0.3,
+   "points": 217,
+   "share": 0.004,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.29,
+   "points": 242,
+   "share": 0.005,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.28,
+   "points": 232,
+   "share": 0.004,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.27,
+   "points": 240,
+   "share": 0.005,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.26,
+   "points": 240,
+   "share": 0.005,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.25,
+   "points": 103,
+   "share": 0.002,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.19,
+   "points": 2,
+   "share": 0,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.18,
+   "points": 15,
+   "share": 0,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.17,
+   "points": 12,
+   "share": 0,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.16,
+   "points": 10,
+   "share": 0,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.15,
+   "points": 9,
+   "share": 0,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.14,
+   "points": 4,
+   "share": 0,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.13,
+   "points": 4,
+   "share": 0,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.12,
+   "points": 7,
+   "share": 0,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.11,
+   "points": 8,
+   "share": 0,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.1,
+   "points": 8,
+   "share": 0,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.09,
+   "points": 21,
+   "share": 0,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.08,
+   "points": 44,
+   "share": 0.001,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.07,
+   "points": 2763,
+   "share": 0.053,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.06,
+   "points": 47243,
+   "share": 0.898,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.05,
+   "points": 1147,
+   "share": 0.022,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.04,
+   "points": 13,
+   "share": 0,
+   "where": "outside, on the minimum-face side"
+  },
+  {
+   "fromMinFaceMetres": -0.03,
+   "points": 4,
+   "share": 0,
+   "where": "outside, on the minimum-face side"
+  }
+ ]
+}

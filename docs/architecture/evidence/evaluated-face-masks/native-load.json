@@ -1,0 +1,90 @@
+{
+  "base": "e700a7ba3",
+  "branch": "e9273525c",
+  "fixtures": [
+    {
+      "fixture": "AC20-FZK-Haus.ifc",
+      "phases": [
+        {
+          "phase": "parse",
+          "baseMedianMs": 14,
+          "branchMedianMs": 12,
+          "deltaPct": -14.285714285714285,
+          "noisePct": 42.857142857142854,
+          "real": false
+        },
+        {
+          "phase": "entity-scan",
+          "baseMedianMs": 9,
+          "branchMedianMs": 8,
+          "deltaPct": -11.11111111111111,
+          "noisePct": 66.66666666666666,
+          "real": false
+        },
+        {
+          "phase": "lookup/styles",
+          "baseMedianMs": 2,
+          "branchMedianMs": 2,
+          "deltaPct": 0,
+          "noisePct": 100,
+          "real": false
+        },
+        {
+          "phase": "preprocess",
+          "baseMedianMs": 1,
+          "branchMedianMs": 1,
+          "deltaPct": 0,
+          "noisePct": 200,
+          "real": false
+        },
+        {
+          "phase": "geometry",
+          "baseMedianMs": 13,
+          "branchMedianMs": 14,
+          "deltaPct": 7.6923076923076925,
+          "noisePct": 38.46153846153847,
+          "real": false
+        },
+        {
+          "phase": "TOTAL",
+          "baseMedianMs": 27,
+          "branchMedianMs": 26,
+          "deltaPct": -3.7037037037037033,
+          "noisePct": 37.03703703703704,
+          "real": false
+        }
+      ],
+      "fingerprint": {
+        "meshes": {
+          "base": [
+            285
+          ],
+          "branch": [
+            285
+          ]
+        },
+        "vertices": {
+          "base": [
+            35940
+          ],
+          "branch": [
+            35940
+          ]
+        },
+        "triangles": {
+          "base": [
+            19456
+          ],
+          "branch": [
+            19456
+          ]
+        }
+      }
+    }
+  ],
+  "verdict": {
+    "fingerprintDrift": false,
+    "tooNoisy": true,
+    "realChange": false
+  }
+}

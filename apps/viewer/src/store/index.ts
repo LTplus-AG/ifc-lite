@@ -28,13 +28,16 @@ import { createIdsSlice, type IDSSlice } from './slices/idsSlice.js';
 import { createExtensionsSlice, type ExtensionsSlice } from './slices/extensionsSlice.js';
 import { createSourcesSlice, type SourcesSlice } from './slices/sourcesSlice.js';
 import { createListSlice, type ListSlice } from './slices/listSlice.js';
+import { createChartSlice, type ChartSlice } from './slices/chartSlice.js';
+import { createDocumentSlice, type DocumentSlice } from './slices/documentSlice.js';
 import { createPinboardSlice, type PinboardSlice } from './slices/pinboardSlice.js';
 import { createLensSlice, type LensSlice } from './slices/lensSlice.js';
 import { createClashSlice, type ClashSlice } from './slices/clashSlice.js';
 import { createCompareSlice, type CompareSlice } from './slices/compareSlice.js';
 import { createDockSlice, type DockSlice } from './slices/dockSlice.js';
 import { createSidebarSlice, type SidebarSlice } from './slices/sidebarSlice.js';
-import { isBottomPanel, type WorkspacePanelId, type BottomPanelId } from '@/lib/panels/registry';
+import { type WorkspacePanelId } from '@/lib/panels/registry';
+import { bottomPanelFlags, isBottomPanel, isBottomPanelOpen, type BottomPanelId } from '@/lib/panels/bottom-panels';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
@@ -55,6 +58,7 @@ import { createUnitDisplaySlice, type UnitDisplaySlice } from './slices/unitDisp
 import { createSpaceMouseSlice, type SpaceMouseSlice } from './slices/spaceMouseSlice.js';
 import { createLayerStackSlice, type LayerStackSlice } from './slices/layerStackSlice.js';
 import { createZonesSlice, type ZonesSlice } from './slices/zonesSlice.js';
+import { createModelTagsSlice, type ModelTagsSlice } from './slices/modelTagsSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 import { withPlacementHistory } from './placement-history.js';
 import { withVisibilityOwnershipInvalidation } from './visibility-invalidation.js';
@@ -87,22 +91,18 @@ export type { ForwardModelMapLike } from './globalId.js';
 // Re-export Drawing2D types
 export type { Drawing2DState, Drawing2DStatus, Annotation2DTool, PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D, SelectedAnnotation2D } from './slices/drawing2DSlice.js';
 
-// Re-export Sheet types
+// Re-export Sheet / Collab / BCF types
 export type { SheetState } from './slices/sheetSlice.js';
-
-// Re-export Collab types
 export type { CollabSlice, CollabRole, CollabStatus, StartCollabOptions } from './slices/collabSlice.js';
-
-// Re-export BCF types
 export type { BCFSlice, BCFSliceState } from './slices/bcfSlice.js';
 
 // Re-export IDS types
 export type { IDSSlice, IDSSliceState, IDSDisplayOptions, IDSFilterMode, IDSFocusMode } from './slices/idsSlice.js';
 
-// Re-export List types
+// Re-export List / Chart / Document / Pinboard types
 export type { ListSlice } from './slices/listSlice.js';
-
-// Re-export Pinboard types
+export type { ChartSlice, ChartFocusMode } from './slices/chartSlice.js';
+export type { DocumentSlice } from './slices/documentSlice.js';
 export type { PinboardSlice } from './slices/pinboardSlice.js';
 
 // Re-export Lens types
@@ -152,6 +152,8 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   BCFSlice &
   IDSSlice &
   ListSlice &
+  ChartSlice &
+  DocumentSlice &
   PinboardSlice &
   LensSlice &
   ClashSlice &
@@ -174,11 +176,8 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   SplitToolSlice &
   LevelDisplaySlice &
   PointCloudSlice & ModelPlacementSlice &
-  UnitDisplaySlice &
-  SpaceMouseSlice &
-  ZonesSlice &
-  ExtensionsSlice &
-  SourcesSlice & {
+  UnitDisplaySlice & SpaceMouseSlice & ZonesSlice & ModelTagsSlice &
+  ExtensionsSlice & SourcesSlice & {
     resetViewerState: () => void;
     /**
      * Open one right-side analysis panel and close the others, so the chosen
@@ -248,6 +247,8 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createBcfSlice(...args),
   ...createIdsSlice(...args),
   ...createListSlice(...args),
+  ...createChartSlice(...args),
+  ...createDocumentSlice(...args),
   ...createPinboardSlice(...args),
   ...createLensSlice(...args),
   ...createClashSlice(...args),
@@ -274,6 +275,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createUnitDisplaySlice(...args),
   ...createSpaceMouseSlice(...args),
   ...createZonesSlice(...args),
+  ...createModelTagsSlice(...args),
   ...createExtensionsSlice(...args),
   ...createSourcesSlice(...args),
   ...createAppearanceSlice(...args),
@@ -396,12 +398,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
     // routes through this fn with the panel id), so it must land in its home
     // region instead of flipping side-panel flags it doesn't own (#1208).
     if (isBottomPanel(panel)) {
-      set({
-        scriptPanelVisible: panel === 'script',
-        ganttPanelVisible: panel === 'gantt',
-        listPanelVisible: panel === 'lists',
-        rightPanelCollapsed: false,
-      });
+      set({ ...bottomPanelFlags(panel), rightPanelCollapsed: false });
       return;
     }
     if (panel === 'properties') {
@@ -441,21 +438,16 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   toggleBottomPanel: (panel) => {
     const [set, get] = args;
     const s = get();
-    const flagActive = panel === 'script' ? s.scriptPanelVisible : panel === 'gantt' ? s.ganttPanelVisible : s.listPanelVisible;
+    const flagActive = isBottomPanelOpen(s, panel);
     const detached = s.floatingPanels.some((p) => p.id === panel) || s.poppedOutIds.includes(panel);
     // Re-dock any float / OS window for it first.
     get().closeFloatingPanel(panel);
     get().setPanelPoppedOut(panel, false);
     if (flagActive && !detached) {
       // Toggle off (only one bottom panel shows at a time).
-      set({ scriptPanelVisible: false, ganttPanelVisible: false, listPanelVisible: false });
+      set(bottomPanelFlags(null));
     } else {
-      set({
-        scriptPanelVisible: panel === 'script',
-        ganttPanelVisible: panel === 'gantt',
-        listPanelVisible: panel === 'lists',
-        rightPanelCollapsed: false,
-      });
+      set({ ...bottomPanelFlags(panel), rightPanelCollapsed: false });
     }
   },
 
@@ -464,12 +456,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
     if (isBottomPanel(panel)) {
       get().closeFloatingPanel(panel);
       get().setPanelPoppedOut(panel, false);
-      set({
-        scriptPanelVisible: panel === 'script',
-        ganttPanelVisible: panel === 'gantt',
-        listPanelVisible: panel === 'lists',
-        rightPanelCollapsed: false,
-      });
+      set({ ...bottomPanelFlags(panel), rightPanelCollapsed: false });
     } else {
       get().showWorkspacePanel(panel);
     }

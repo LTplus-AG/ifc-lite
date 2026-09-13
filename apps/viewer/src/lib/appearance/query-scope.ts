@@ -5,6 +5,7 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { evaluateFilterRulesFederated } from '../search/filter-evaluate.js';
 import { ownAppearanceQuery } from './query-definition.js';
+import { definedModelTagIdsOf } from '../model-tags/evaluator-models.js';
 import { appearanceScope } from './scope.js';
 import type { AppearanceScope } from './draft-types.js';
 import type { AppearanceSnapshot } from './snapshot.js';
@@ -25,7 +26,8 @@ export async function resolveAppearanceScope(snapshot: AppearanceSnapshot, selec
   if (snapshot.bytes.byteLength > 128 * 1024 * 1024 || snapshot.productIds.length > 10_000) {
     throw new Error('The effective IFC exceeds the appearance query budget.');
   }
-  const model = useViewerStore.getState().models.get(snapshot.modelId);
+  const state = useViewerStore.getState();
+  const model = state.models.get(snapshot.modelId);
   if (!model) throw new Error('The query model is no longer loaded.');
   if (query.rules.some(rule => rule.kind === 'model') && !model.sourceFingerprint) {
     throw new Error('The model source identity is unavailable. Review the filter after reloading the model.');
@@ -38,8 +40,9 @@ export async function resolveAppearanceScope(snapshot: AppearanceSnapshot, selec
     parsedSnapshots.set(snapshot, data);
   }
   const matches = await evaluateFilterRulesFederated(
-    [{ id: snapshot.modelId, filterIdentity: model.sourceFingerprint, store: data }], query.rules, query.combinator,
-    { signal, limit: snapshot.productIds.length + 1, chunkSize: 128,
+    [{ id: snapshot.modelId, filterIdentity: model.sourceFingerprint, tagIds: state.modelTagAssignments.get(snapshot.modelId), store: data }],
+    query.rules, query.combinator,
+    { signal, limit: snapshot.productIds.length + 1, chunkSize: 128, definedModelTagIds: definedModelTagIdsOf(state),
       candidateExpressIdsByModel: new Map([[snapshot.modelId, snapshot.productIds]]) });
   check();
   const candidates = new Set(snapshot.productIds);

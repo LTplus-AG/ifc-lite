@@ -73,6 +73,7 @@ export function decodePointsArray(attr: PointsArrayAttribute): DecodedPointChunk
   return {
     positions,
     colors,
+    normalState: 'absent',
     pointCount: count,
     bbox: computeBBox(positions),
   };
@@ -108,6 +109,7 @@ export function decodePointsBase64(attr: PointsBase64Attribute): DecodedPointChu
   return {
     positions,
     colors,
+    normalState: 'absent',
     pointCount: count,
     bbox: computeBBox(positions),
   };

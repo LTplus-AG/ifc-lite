@@ -16,6 +16,7 @@ import {
   type DragOverlayState,
 } from './dragOverlayState';
 import { ViewportOverlays } from './ViewportOverlays';
+import { WebGpuDisabledCaption, WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
 import { LevelDisplayIndicator } from './LevelDisplayIndicator';
@@ -39,13 +40,14 @@ import { isTypeVisible } from '@/store/typeVisibilityFilter';
 import type { AggregationRelationships } from '@/utils/aggregation';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
-import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRecentFiles, type RecentFileEntry } from '@/lib/recent-files';
+import { formatFileSize, getCachedFile, type RecentFileEntry } from '@/lib/recent-files';
 import {
   supportsFileSystemAccess,
   openIfcFilesWithHandles,
   handlesFromDataTransfer,
 } from '@/services/file-system-access';
-import { FILE_ACCEPT, isSupportedModelFile } from '@/services/supported-model-files';
+import { FILE_ACCEPT, isGltfBundleFile, isSupportedModelFile } from '@/services/supported-model-files';
+import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
 import {
   SOURCE_DOWNLOAD_EVENT,
   type SourceDownloadEvent,
@@ -115,9 +117,6 @@ export function ViewportContainer() {
     geometryContentVersion,
   } = viewportStoreState;
   const storeModels = models;
-
-  // Check if we have models loaded (for determining add vs replace behavior)
-  const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
 
   // Multi-model: create mapping from modelId to modelIndex (stable order)
   const modelIdToIndex = useMemo(() => modelIndices(storeModels), [storeModels]);
@@ -344,6 +343,11 @@ export function ViewportContainer() {
     files: File[],
     handles?: (FileSystemFileHandle | undefined)[],
   ) => {
+    // Read the loaded state now, not at render: bundle preparation awaits
+    // before routing, and a model that arrived meanwhile must be added to,
+    // not replaced (#4476 review).
+    const current = viewerStoreApi.getState();
+    const hasModelsLoaded = current.models.size > 0 || (current.geometryResult?.meshes?.length ?? 0) > 0;
     if (hasModelsLoaded) {
       // Models already loaded - add new files sequentially (federate).
       void loadFilesSequentially(files, handles);
@@ -356,7 +360,9 @@ export function ViewportContainer() {
       clearAllModels();
       void loadFilesSequentially(files, handles);
     }
-  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, hasModelsLoaded]);
+  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, viewerStoreApi]);
+
+  const prepareAndRoute = usePreparedModelFileRoute(routeLoad, setRecentFiles);
 
   // Cloud source providers (Dalux Build, etc.) download bytes outside the
   // viewer and hand them off via this event rather than calling addModel()
@@ -469,8 +475,8 @@ export function ViewportContainer() {
     if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
     if (allDropped.length === 0) return;
 
-    // Filter to supported files (IFC, IFCX, GLB, point clouds)
-    const supportedFiles = allDropped.filter(isSupportedFile);
+    // Keep glTF sidecars beside the document until they are packed into GLB.
+    const supportedFiles = allDropped.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
 
     if (supportedFiles.length === 0) {
       // Tell the user *why* — common case is a Recap project / SketchUp
@@ -486,18 +492,14 @@ export function ViewportContainer() {
       // Prefer the handle-paired files (Chromium): each file + handle comes from
       // the same dropped item, so no filename matching is needed. Fall back to
       // the plain dropped files when no handles were captured (Firefox/Safari).
-      const supportedOpened = (opened ?? []).filter((o) => isSupportedFile(o.file));
+      const supportedOpened = (opened ?? []).filter((o) => isSupportedFile(o.file) || isGltfBundleFile(o.file));
       const useHandles = supportedOpened.length > 0;
       const files = useHandles ? supportedOpened.map((o) => o.file) : supportedFiles;
       const handles = useHandles ? supportedOpened.map((o) => o.handle) : undefined;
 
-      recordRecentFiles(files.map((file) => ({ name: file.name, size: file.size })));
-      void cacheFileBlobs(files);
-      setRecentFiles(getRecentFiles().slice(0, 3));
-
-      routeLoad(files, handles);
+      void prepareAndRoute(files, handles);
     });
-  }, [routeLoad, applyDragEvent, isSupportedFile, webgpu.supported]);
+  }, [prepareAndRoute, applyDragEvent, isSupportedFile, webgpu.supported]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     // Block file loading if WebGPU not supported
@@ -514,22 +516,18 @@ export function ViewportContainer() {
 
     // Filter to supported files (IFC, IFCX, GLB). The <input> path yields no
     // live handle, so these models are not refreshable.
-    const supportedFiles = modelFiles.filter(isSupportedFile);
+    const supportedFiles = modelFiles.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
 
     if (supportedFiles.length === 0) {
       e.target.value = '';
       return;
     }
 
-    recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
-    void cacheFileBlobs(supportedFiles);
-    setRecentFiles(getRecentFiles().slice(0, 3));
-
-    routeLoad(supportedFiles);
+    void prepareAndRoute(supportedFiles);
 
     // Reset input so same file can be selected again
     e.target.value = '';
-  }, [routeLoad, isSupportedFile, webgpu.supported]);
+  }, [prepareAndRoute, isSupportedFile, webgpu.supported]);
 
   // Preferred open path: the File System Access picker (Chromium) captures a
   // live handle per file so the model can be refreshed from disk. Falls back to
@@ -545,16 +543,12 @@ export function ViewportContainer() {
     // DXF reference underlays split off before model routing (issue #1782).
     const dxfPicked = opened.filter((o) => o.file.name.toLowerCase().endsWith('.dxf'));
     if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map((o) => o.file));
-    const supported = opened.filter((o) => isSupportedFile(o.file));
+    const supported = opened.filter((o) => isSupportedFile(o.file) || isGltfBundleFile(o.file));
     if (supported.length === 0) return;
 
     const files = supported.map((o) => o.file);
-    recordRecentFiles(files.map((f) => ({ name: f.name, size: f.size })));
-    void cacheFileBlobs(files);
-    setRecentFiles(getRecentFiles().slice(0, 3));
-
-    routeLoad(files, supported.map((o) => o.handle));
-  }, [routeLoad, isSupportedFile, webgpu.supported]);
+    prepareAndRoute(files, supported.map((o) => o.handle));
+  }, [prepareAndRoute, isSupportedFile, webgpu.supported]);
 
   const handleStartBlank = useCallback(async () => {
     if (!webgpu.supported) return;
@@ -977,7 +971,7 @@ export function ViewportContainer() {
                     WebGPU Not Available
                   </h3>
                   <p className="font-mono text-sm text-[#a9b1d6] leading-relaxed">
-                    This viewer requires WebGPU which is not supported by your browser or device.
+                    {webGpuBannerBlurb(webgpu.category)}
                     {webgpu.reason && (
                       <span className="block mt-1 text-[#565f89]">
                         {webgpu.reason}
@@ -1009,54 +1003,7 @@ export function ViewportContainer() {
                   </button>
 
                   {showTroubleshooting && (
-                    <div className="mt-4 p-4 bg-[#1f2335] border border-[#3b4261] text-xs font-mono space-y-4">
-                      <div>
-                        <h4 className="font-bold text-[#ff9e64] uppercase tracking-wide mb-2">Blocklist Override</h4>
-                        <p className="text-[#a9b1d6] mb-2">
-                          WebGPU may be disabled due to GPU/driver blocklist. Try these flags:
-                        </p>
-                        <div className="space-y-1 text-[#7dcfff]">
-                          <p><code className="bg-[#16161e] px-1.5 py-0.5">chrome://flags/#enable-unsafe-webgpu</code> → Enable</p>
-                          <p><code className="bg-[#16161e] px-1.5 py-0.5">chrome://flags/#ignore-gpu-blocklist</code> → Enable</p>
-                        </div>
-                      </div>
-
-                      <div>
-                        <h4 className="font-bold text-[#bb9af7] uppercase tracking-wide mb-2">Firefox</h4>
-                        <p className="text-[#a9b1d6] mb-2">
-                          WebGPU enabled by default in Firefox 141+. For older versions:
-                        </p>
-                        <p className="text-[#7dcfff]">
-                          <code className="bg-[#16161e] px-1.5 py-0.5">about:config</code> → <code className="bg-[#16161e] px-1.5 py-0.5">dom.webgpu.enabled</code> → true
-                        </p>
-                      </div>
-
-                      <div>
-                        <h4 className="font-bold text-[#9ece6a] uppercase tracking-wide mb-2">Safari</h4>
-                        <p className="text-[#a9b1d6]">
-                          Safari → Settings → Feature Flags → Enable "WebGPU"
-                        </p>
-                      </div>
-
-                      <div>
-                        <h4 className="font-bold text-[#7aa2f7] uppercase tracking-wide mb-2">Verify Status</h4>
-                        <p className="text-[#a9b1d6] mb-2">Check your GPU status page:</p>
-                        <div className="space-y-1 text-[#7dcfff]">
-                          <p>Chrome/Edge: <code className="bg-[#16161e] px-1.5 py-0.5">chrome://gpu</code></p>
-                          <p>Firefox: <code className="bg-[#16161e] px-1.5 py-0.5">about:support</code></p>
-                        </div>
-                      </div>
-
-                      <a
-                        href="https://developer.chrome.com/docs/web-platform/webgpu/troubleshooting-tips"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-[#7aa2f7] hover:underline"
-                      >
-                        Full Troubleshooting Guide
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </div>
+                    <WebGpuTroubleshootingDetails category={webgpu.category} />
                   )}
                 </div>
               </div>
@@ -1134,7 +1081,7 @@ export function ViewportContainer() {
             </button>
 
             <p className="mt-2.5 text-[11px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
-              {webgpu.supported ? 'or drag & drop anywhere' : 'file upload disabled'}
+              {webgpu.supported ? 'or drag & drop anywhere' : <WebGpuDisabledCaption />}
             </p>
 
             {/* Subtle "or" rule — anchors the symmetry between the two tracks */}

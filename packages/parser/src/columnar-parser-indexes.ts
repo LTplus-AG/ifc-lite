@@ -63,7 +63,11 @@ export const REL_TYPE_MAP: Record<string, RelationshipType> = {
     'IFCRELAGGREGATES': RelationshipType.Aggregates,
     // IfcRelNests is semantically a decomposition relationship; map it
     // onto the same edge bucket so partOf checks for either traverse
-    // the same graph.
+    // the same graph. This is the PRIMARY edge only — SECONDARY_REL_TYPE_MAP
+    // below also records every IfcRelNests edge under the distinct
+    // RelationshipType.Nests, so a caller that needs to tell "nested" apart
+    // from "aggregated" can, without disturbing anything that already reads
+    // the Aggregates bucket (#4205).
     'IFCRELNESTS': RelationshipType.Aggregates,
     'IFCRELDEFINESBYPROPERTIES': RelationshipType.DefinesByProperties,
     'IFCRELDEFINESBYTYPE': RelationshipType.DefinesByType,
@@ -79,10 +83,36 @@ export const REL_TYPE_MAP: Record<string, RelationshipType> = {
     'IFCRELSPACEBOUNDARY': RelationshipType.SpaceBoundary,
     'IFCRELASSIGNSTOGROUP': RelationshipType.AssignsToGroup,
     // Subtype of IfcRelAssignsToGroup (adds a Factor); same RelatingGroup /
-    // RelatedObjects membership semantics, so it shares the same edge type.
+    // RelatedObjects membership semantics, so it shares this PRIMARY edge
+    // type — existing group-membership traversal (extractGroupMembersOnDemand,
+    // extractRelationshipsOnDemand) is unchanged. SECONDARY_REL_TYPE_MAP below
+    // also records it under the distinct RelationshipType.AssignsToGroupByFactor
+    // so a caller can tell it apart from a plain assignment and look its
+    // Factor value up on the relationship entity itself (#4205).
     'IFCRELASSIGNSTOGROUPBYFACTOR': RelationshipType.AssignsToGroup,
     'IFCRELASSIGNSTOPRODUCT': RelationshipType.AssignsToProduct,
     'IFCRELREFERENCEDINSPATIALSTRUCTURE': RelationshipType.ReferencedInSpatialStructure,
+};
+
+/**
+ * A second, distinct edge recorded IN ADDITION TO the primary one above for
+ * the two IfcRelationship subtypes that {@link REL_TYPE_MAP} intentionally
+ * folds into a broader bucket for backward compatibility. Absent from this
+ * map means "no second edge" — every STEP keyword handled here still gets
+ * its primary edge from `REL_TYPE_MAP`. Consumed by the relationship-parsing
+ * loop in `columnar-parser.ts` right after the primary-edge loop.
+ *
+ * Keeping both a broad bucket (existing consumers keep working unchanged)
+ * and a precise one (a new consumer can ask for exactly this STEP class) is
+ * cheaper and lower-risk than migrating every existing Aggregates/AssignsToGroup
+ * consumer to also check the narrower type — see #4205, which named
+ * `spatial-hierarchy-builder.ts`, `decomposition.ts`, `owning-project.ts` and
+ * the IDS `partOf`/ancestors bridge as call sites that must keep seeing
+ * IfcRelNests through the Aggregates bucket.
+ */
+export const SECONDARY_REL_TYPE_MAP: Record<string, RelationshipType> = {
+    'IFCRELNESTS': RelationshipType.Nests,
+    'IFCRELASSIGNSTOGROUPBYFACTOR': RelationshipType.AssignsToGroupByFactor,
 };
 
 export const QUANTITY_TYPE_MAP: Record<string, QuantityType> = {

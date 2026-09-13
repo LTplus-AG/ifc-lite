@@ -19,7 +19,7 @@ use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-const TYPES: [&[IfcType]; 18] = [
+pub(super) const TYPES: [&[IfcType]; 18] = [
     &[IfcType::IfcExtrudedAreaSolid],
     &[IfcType::IfcExtrudedAreaSolidTapered],
     &[IfcType::IfcTriangulatedFaceSet, IfcType::IfcTriangulatedIrregularNetwork],
@@ -86,6 +86,24 @@ fn create(index: usize, schema: &IfcSchema) -> Rc<dyn GeometryProcessor> {
         17 => Rc::new(IfcAlignmentProcessor::new()),
         _ => unreachable!("built-in processor slot"),
     }
+}
+
+/// One FRESH built-in processor for `ifc_type`, or `None` when no built-in
+/// meshes that type.
+///
+/// This is the single "what can the engine mesh" table. The router's lazy
+/// registry below caches one instance per slot; the boolean operand path
+/// (`BooleanClippingProcessor::process_operand_checked`) builds a transient
+/// one per operand instead, exactly as it always constructed its leaf
+/// processors by hand. Before #4560 that path kept its OWN six-arm copy of
+/// this table, so every built-in it forgot — `IfcPolygonalFaceSet` first of
+/// all, the cutter Bonsai/IfcOpenShell emits for a wall clipped by a roof —
+/// meshed empty as an operand and the host rendered un-cut.
+pub(crate) fn builtin_processor(
+    ifc_type: IfcType,
+    schema: &IfcSchema,
+) -> Option<Rc<dyn GeometryProcessor>> {
+    slot(ifc_type).map(|index| create(index, schema))
 }
 
 pub(super) struct ProcessorRegistry {

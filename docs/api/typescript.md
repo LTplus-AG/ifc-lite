@@ -46,6 +46,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/codegen`](#ifc-litecodegen) | TypeScript code generator from IFC EXPRESS schemas |
 | [`create-ifc-lite`](#create-ifc-lite) | Create IFC-Lite projects with one command |
 | [`@ifc-lite/bcf-api`](https://www.npmjs.com/package/@ifc-lite/bcf-api) | BCF API (OpenCDE) REST client for connecting to BCF servers |
+| [`@ifc-lite/charts`](https://www.npmjs.com/package/@ifc-lite/charts) | Headless chart data binding for IFC-Lite: aggregate model rows into buckets that keep their element ids, build ECharts options, render SVG |
 | [`@ifc-lite/merge`](https://www.npmjs.com/package/@ifc-lite/merge) | Three-way merge engine for IFCX layers — MergePlan with auto-merged ops and explicit conflict records, merge-layer emission, rebase, and revert. |
 | [`@ifc-lite/oauth-pkce`](https://www.npmjs.com/package/@ifc-lite/oauth-pkce) | Browser OAuth 2.0 Authorization Code + PKCE flow, shared by ifc-lite's file-source providers |
 | [`@ifc-lite/plugin-api`](https://www.npmjs.com/package/@ifc-lite/plugin-api) | Dependency-free type surface for ifc-lite file-source plugins |
@@ -463,7 +464,9 @@ Visibility is passed via `render()` options (`hiddenIds`, `isolatedIds`); frustu
 
 Other exports: `Camera`, `Picker`, `Raycaster`, `SnapDetector`, `BVH`, `RaycastEngine`, `SectionPlaneRenderer`, `PointCloudRenderer`, `FederationRegistry` (multi-model id ranges), and the section-cap / plane-basis helpers.
 
-`Renderer.hasActiveClipping()` reports section, terrain or box clipping from the last rendered frame. `raycastScene()` does not clip triangle hits; exact correspondence tools can use this query to refuse clipped views.
+`Renderer.hasActiveClipping()` reports section, terrain or box clipping from the last rendered frame. `raycastScene()` applies the same clip state and its `Intersection` includes `modelIndex`, plus `geometryItemId` and `sourceTriangleIndex` when the hit has unambiguous representation-item and canonical evaluated-surface provenance. `appearanceSourceTriangle(mesh, triangleIndex)` performs that strict provenance lookup directly and returns `undefined` for absent, stale or mixed-corner identity.
+
+An appearance preview may carry an `AppearancePartition` whose `sourceGeometryItemId` and `triangleCount` name one canonical evaluated surface. Its `before` and `after` parts use side-local `partId` values and canonical triangle ordinals, allowing repeated representation-item ids across streaming fragments. `validateAppearancePartition(partition, before, after)` verifies bounded, disjoint and complete provenance plus exact ownership, placement and corner geometry; `invertAppearancePartition(partition)` describes the reverse transition for Undo.
 
 `Scene` and `Section2DOverlayRenderer` are package-internal from 2.0: reach the scene through `getScene(): SceneContents`, and the 3D line overlays through `Renderer.setLineOverlay`. `PickingManager` is package-internal from 2.0 as well: its constructor takes the now-internal `Scene`, so an exported class nobody could construct would have been worse than no export. Pick through `Renderer.pick` / `Renderer.pickRect`.
 

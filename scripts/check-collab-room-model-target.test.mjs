@@ -38,19 +38,22 @@ const CHECKER = join(SCRIPTS, 'check-collab-room-model-target.mjs');
 
 const COLLAB_REL = 'apps/viewer/src/store/slices/collabSlice.ts';
 const MUTATION_REL = 'apps/viewer/src/store/slices/mutationSlice.ts';
+// The recipient's reconstruct region moved here with #4444 (one model per slot).
+const RECONSTRUCT_REL = 'apps/viewer/src/lib/collab/room-reconstruct.ts';
 
 const realCollab = readFileSync(join(ROOT, COLLAB_REL), 'utf8');
 const realMutation = readFileSync(join(ROOT, MUTATION_REL), 'utf8');
+const realReconstruct = readFileSync(join(ROOT, RECONSTRUCT_REL), 'utf8');
 
 /**
- * Writes a (possibly mutated) two-file tree to a temp dir and runs the
- * checker on it via `--root`. The checker only ever reads these two files by
+ * Writes a (possibly mutated) three-file tree to a temp dir and runs the
+ * checker on it via `--root`. The checker only ever reads these files by
  * their fixed relative path, so nothing else needs to exist in the tree.
  */
-function runOn({ collab = realCollab, mutation = realMutation }) {
+function runOn({ collab = realCollab, mutation = realMutation, reconstruct = realReconstruct }) {
   const dir = mkdtempSync(join(tmpdir(), 'collab-room-model-target-'));
   try {
-    for (const [rel, content] of [[COLLAB_REL, collab], [MUTATION_REL, mutation]]) {
+    for (const [rel, content] of [[COLLAB_REL, collab], [MUTATION_REL, mutation], [RECONSTRUCT_REL, reconstruct]]) {
       const abs = join(dir, rel);
       mkdirSync(dirname(abs), { recursive: true });
       writeFileSync(abs, content);

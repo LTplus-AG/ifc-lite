@@ -423,9 +423,23 @@ test('classifyPath: a test-support module that only registers assertions for a t
   // scripts/test-wasm-contract.mjs imports it and nothing else does; editing it
   // changes what that suite asserts, so it must not read as production.
   assert.equal(classifyPath('scripts/lib/shard-refusal-boundary.mjs'), 'test');
+  // Only the two source-text gate tests import this one; reverting it as
+  // production took both down at load time, an attribution gap (#4536).
+  assert.equal(classifyPath('scripts/lib/relocated-gate-source.mjs'), 'test');
   // The allowlist is exact: its siblings are real tooling and stay production.
   assert.equal(classifyPath('scripts/lib/revert-oracle.mjs'), 'production');
 });
+test('classifyPath: Playwright e2e specs and helpers are ignored, not runner-less test files (#4553)', () => {
+  // The root package runs `turbo test`; the oracle cannot derive a runner for
+  // tests/e2e/** and used to ABORT the lane instead of judging the unit tests.
+  assert.equal(classifyPath('tests/e2e/collab-share-seed.e2e.spec.ts'), 'ignored');
+  assert.equal(classifyPath('tests/e2e/collab/relay.ts'), 'ignored');
+  // Everything else under tests/ keeps its scaffolding classification, so a
+  // branch whose only observer is an e2e spec still fails as UNOBSERVED.
+  assert.equal(classifyPath('tests/integration.test.ts'), 'test');
+  assert.equal(classifyPath('tests/api/handlers.ts'), 'test');
+});
+
 test('classifyPath: production sources', () => {
   assert.equal(classifyPath('packages/renderer/src/device.ts'), 'production');
   assert.equal(classifyPath('apps/viewer/src/hooks/useSymbolicAnnotations.ts'), 'production');
@@ -451,6 +465,10 @@ test('classifyPath: Python `test_*.py` / `*_test.py` are tests, not production (
   assert.equal(classifyPath('tools/ifcopenshell_reference/test_validate_export.py'), 'test');
   assert.equal(classifyPath('tools/ifcopenshell_reference/validate_export_test.py'), 'test');
   assert.equal(classifyPath('a/b/c/test_deep.py'), 'test');
+});
+
+test('#4109: unsupported Go entrypoints stay tests so planning can expose a capability gap', () => {
+  assert.equal(classifyPath('cmd/widget_test.go'), 'test');
 });
 
 test('classifyPath: a Python module that merely CONTAINS "test" stays production', () => {
@@ -787,6 +805,13 @@ test('node --test: all green', () => {
   assert.equal(r.passed, 197);
 });
 
+test('#4109: a green summary cannot override nonzero, missing, or signalled process status', () => {
+  for (const processState of [{ exitCode: 9 }, { exitCode: null }, { exitCode: null, signal: 'SIGTERM' }]) {
+    const parsed = parseRunnerOutput({ family: 'node-test', stdout: NODE_ALL_PASS, stderr: '', ...processState });
+    assert.equal(parsed.kind, UNPARSEABLE);
+  }
+});
+
 test('node --test: zero collected tests is never a pass', () => {
   const r = parseRunnerOutput({ family: 'node-test', stdout: NODE_ZERO_TESTS, stderr: '', exitCode: 0 });
   assert.equal(r.kind, NO_TESTS);
@@ -1026,10 +1051,10 @@ test('verdict: a missing run never reports clean', () => {
   assert.notEqual(verdict({ baseline: green, reverted: null }).exitCode, 0);
 });
 
-test('#3661: CI blocks misses and broken baselines, but not honest inconclusives', () => {
+test('#4109: CI blocks misses, broken baselines, and oracle capability gaps', () => {
   assert.equal(ciExitCode(OBSERVED), 0);
   assert.equal(ciExitCode(UNOBSERVED), 1);
-  assert.equal(ciExitCode(INCONCLUSIVE), 0);
+  assert.notEqual(ciExitCode(INCONCLUSIVE), 0);
   assert.notEqual(ciExitCode(BASELINE_BROKEN), 0);
 });
 
@@ -1102,6 +1127,32 @@ test('#4131 regression: multi-package all-skipped-plus-evidence run does not blo
   const v = verdict({ baseline, reverted });
   assert.equal(v.verdict, OBSERVED);
   assert.equal(v.exitCode, 0);
+});
+
+test('#4109: a green structured run may log the literal `SyntaxError:` as fixture data', () => {
+  const parsed = parseRunnerOutput({
+    family: 'node-test',
+    stdout: 'fixture caught: SyntaxError: expected\n# tests 120\n# pass 120\n# fail 0\n',
+    stderr: '',
+    exitCode: 0,
+  });
+  assert.equal(parsed.kind, 'pass');
+  assert.equal(parsed.total, 120);
+});
+
+test('#4109: incomplete execution cannot support a negative UNOBSERVED finding', () => {
+  const baseline = aggregate([
+    { kind: PASS, passed: 12, failed: 0, total: 12, evidence: [] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+  ]);
+  const reverted = aggregate([
+    { kind: PASS, passed: 12, failed: 0, total: 12, evidence: [] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+  ]);
+  const v = verdict({ baseline, reverted });
+  assert.equal(v.verdict, INCONCLUSIVE);
+  assert.match(v.reason, /cannot support an UNOBSERVED finding/);
+  assert.notEqual(ciExitCode(v.verdict), 0);
 });
 
 test('#4108 (still fixed): aggregate: a SINGLE all-skipped package is still ALL_SKIPPED and still blocks', () => {

@@ -21,6 +21,7 @@ export const MODEL_FILE_EXTENSIONS = [
   '.ifcx',
   '.ifczip',
   '.glb',
+  '.gltf',
   '.las',
   '.laz',
   '.ply',
@@ -41,6 +42,7 @@ export const REFERENCE_FILE_EXTENSIONS = ['.dxf'] as const;
 export const PICKER_FILE_EXTENSIONS: readonly string[] = [
   ...MODEL_FILE_EXTENSIONS,
   ...REFERENCE_FILE_EXTENSIONS,
+  '.bin', '.png', '.jpg', '.jpeg',
 ];
 
 /** `accept` attribute for the hidden `<input type="file">` elements. */
@@ -50,4 +52,9 @@ export const FILE_ACCEPT = PICKER_FILE_EXTENSIONS.join(',');
 export function isSupportedModelFile(f: File): boolean {
   const n = f.name.toLowerCase();
   return MODEL_FILE_EXTENSIONS.some((ext) => n.endsWith(ext));
+}
+
+/** Files retained alongside a `.gltf` document until its local bundle is packed. */
+export function isGltfBundleFile(f: File): boolean {
+  return /\.(?:gltf|bin|png|jpe?g)$/i.test(f.name);
 }

@@ -7,7 +7,6 @@ import { findDuplicates } from './duplicates.js';
 import { groupClashes } from './grouping.js';
 import { groupDuplicateSets } from './duplicate-sets.js';
 import { makeExclusionSet, qualifiedKey } from './exclude.js';
-import { fromPositions } from './math/aabb.js';
 import type { ClashElement, Vec3 } from './types.js';
 
 let nextRef = 1;
@@ -585,14 +584,17 @@ describe('findDuplicates', () => {
     });
     expect(findDuplicates(withNaN).clashes).toHaveLength(pairs);
 
-    // The `fromPositions` guard does not make this unreachable. When no vertex
-    // is finite on an axis it returns the box INVERTED (min `+Infinity`, max
-    // `-Infinity`) so `boxesTouch` rejects it — a sound bound, but still a
-    // non-finite minimum, and `Infinity - Infinity` is NaN too. Two such
-    // elements are enough, and they come through the adapters, not the SDK.
+    // `fromPositions` itself can no longer produce this: an axis with no
+    // finite vertex now throws `NonFiniteAxisError` (#4254), and both
+    // adapters catch it and drop the element before it ever reaches here. An
+    // inverted (min `+Infinity`, max `-Infinity`) bound is still reachable
+    // the same way plain NaN bounds are above — an SDK caller building
+    // `ClashElement.bounds` by hand — so the sweep still has to tolerate it:
+    // still a non-finite minimum, and `Infinity - Infinity` is NaN too. Two
+    // such elements are enough.
     const inverted = (key: string): ClashElement => ({
       key, ref: nextRef++, model: 'm', tag: 'IfcWall',
-      bounds: fromPositions(new Float32Array([NaN, NaN, NaN, NaN, NaN, NaN])),
+      bounds: { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] },
       positions: new Float32Array(0), indices: new Uint32Array(0),
     });
     expect(Number.isFinite(inverted('probe').bounds.min[0])).toBe(false);

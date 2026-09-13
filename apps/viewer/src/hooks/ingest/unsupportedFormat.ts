@@ -15,8 +15,11 @@
  */
 export function describeUnsupportedFormat(fileName: string): string | null {
   const lower = fileName.toLowerCase();
+  if (lower.endsWith('.blend')) {
+    return 'Blender scene — export a GLB from Blender, or select the exported .gltf, .bin and texture files together.';
+  }
   if (lower.endsWith('.zip')) {
-    return 'ZIP archive — please extract first. .ply / .las / .laz / .e57 files inside will load.';
+    return 'ZIP archive — please extract first. GLB, glTF bundles, PLY, LAS, LAZ and E57 files inside can load.';
   }
   if (
     lower.endsWith('.rwp') || lower.endsWith('.rwi')

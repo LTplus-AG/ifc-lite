@@ -20,6 +20,7 @@ import {
   Search, Mountain, MapPin, X, Check,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { toast } from '@/components/ui/toast';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { downloadBlob } from '@/lib/export/download';
@@ -568,8 +569,7 @@ export function LocationMap({
   const handleExportKmz = useCallback(async () => {
     if (!latLon || !geometryResult || !mapConversion || !projectedCRS) return;
     try {
-      // Embed the model as COLLADA (Rust exporter): Google Earth's <Model> only loads
-      // COLLADA, renders it bright via emission, and clampToGround keeps it on the
+      // Embed as COLLADA: Google Earth's <Model> only loads COLLADA, and clampToGround keeps it on the
       // terrain so the MSL orthogonal height no longer floats it (#1427).
       //
       // Placement is NOT computed here. This used to call `buildKmz` directly
@@ -598,12 +598,12 @@ export function LocationMap({
         name: 'IFC Model',
       }, createKmzProcessor);
       if (typeof kmz === 'string') {
-        console.error('KMZ export failed:', kmz);
+        toast.error(`KMZ export failed: ${kmz}`);
         return;
       }
       downloadBlob(new Blob([kmz as BlobPart], { type: 'application/vnd.google-earth.kmz' }), 'model.kmz');
     } catch (err) {
-      console.error('KMZ export failed:', err);
+      toast.error(`KMZ export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   }, [latLon, geometryResult, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, createKmzProcessor, instancedModelRange]);
 

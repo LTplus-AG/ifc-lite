@@ -26,6 +26,7 @@ import {
 } from '@/lib/lists';
 import type { ListDefinition, ListResult, ListDataProvider, ListGrouping } from '@/lib/lists';
 import { mergeResultColumns } from '@/lib/lists/merge-result-columns';
+import { scopeModelPairs } from '@/lib/lists/model-tag-scope';
 import { extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets';
 import { makeWorldPositionGetter } from '@/lib/geo/entity-world-position';
@@ -158,7 +159,9 @@ export function ListPanel({ onClose }: ListPanelProps) {
     requestAnimationFrame(() => {
       try {
         const resultParts: ListResult[] = [];
-        for (const { modelId, provider } of modelProviderPairs) {
+        // The list's model tag scope (#4215) decides which providers run;
+        // an unresolved or empty scope throws its reason into the box below.
+        for (const { modelId, provider } of scopeModelPairs(definition, modelProviderPairs, useViewerStore.getState())) {
           resultParts.push(executeList(definition, provider, modelId));
         }
 

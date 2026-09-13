@@ -86,11 +86,7 @@ END-ISO-10303-21;
         let mut spans = PrepassSpans::default();
         let mut scanner = EntityScanner::new(IFC);
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
-            match type_name {
-                "IFCRELASSOCIATESMATERIAL" => spans.rel_associates_material.push((id, start, end)),
-                "IFCRELDEFINESBYTYPE" => spans.defines_by_type.push((id, start, end)),
-                _ => {}
-            }
+            spans.stash(type_name, id, start, end);
         }
 
         let mut decoder = EntityDecoder::new(IFC);

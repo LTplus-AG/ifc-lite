@@ -18,13 +18,14 @@ import {
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
 import { closePanelWindow } from '@/services/panel-windows';
+import { BOTTOM_PANEL_IDS, isBottomPanelOpen, type BottomPanelId } from '@/lib/panels/bottom-panels';
 
 /** Registry ids, deliberately. This hook used to spell the entity-list panel
  *  `'list'` while the registry and the store spell it `'lists'`, and the cost
  *  was structural rather than cosmetic: with ids that did not match, the bottom
  *  branch below could not simply hand the click to the store, so it re-derived
  *  the flag flips and lost the float / pop-out cleanup along the way. */
-export type BottomPanel = 'script' | 'lists' | 'gantt';
+export type BottomPanel = BottomPanelId;
 export type RightPanel = 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions' | 'sources' | 'appearance';
 export type WorkspacePanel = BottomPanel | RightPanel | string;
 
@@ -50,6 +51,8 @@ export function useWorkspacePanelControls() {
   const scriptPanelVisible = useViewerStore((state) => state.scriptPanelVisible);
   const setScriptPanelVisible = useViewerStore((state) => state.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((state) => state.ganttPanelVisible);
+  const chartPanelVisible = useViewerStore((state) => state.chartPanelVisible);
+  const documentPanelVisible = useViewerStore((state) => state.documentPanelVisible);
   const setGanttPanelVisible = useViewerStore((state) => state.setGanttPanelVisible);
   const layersPanelVisible = useViewerStore((state) => state.layersPanelVisible);
   const collabPanelVisible = useViewerStore((state) => state.collabPanelVisible);
@@ -237,9 +240,8 @@ export function useWorkspacePanelControls() {
     // activity bar never had the bug because it reads `panelLocation`.
     for (const panel of floatingPanels) panels.add(panel.id);
     for (const id of poppedOutIds) panels.add(id);
-    if (scriptPanelVisible) panels.add('script');
-    if (listPanelVisible) panels.add('lists');
-    if (ganttPanelVisible) panels.add('gantt');
+    const bottomFlags = { ganttPanelVisible, scriptPanelVisible, listPanelVisible, chartPanelVisible, documentPanelVisible };
+    for (const id of BOTTOM_PANEL_IDS) if (isBottomPanelOpen(bottomFlags, id)) panels.add(id);
     if (bcfPanelVisible) panels.add('bcf');
     if (idsPanelVisible) panels.add('ids');
     if (lensPanelVisible) panels.add('lens');
@@ -265,6 +267,8 @@ export function useWorkspacePanelControls() {
     comparePanelVisible,
     extensionsPanelVisible,
     ganttPanelVisible,
+    chartPanelVisible,
+    documentPanelVisible,
     idsPanelVisible,
     lensPanelVisible,
     listPanelVisible,

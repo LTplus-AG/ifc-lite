@@ -22,7 +22,9 @@
 //! this resolution layer, not in the span stashing.
 
 use crate::style::{FullIndexedColourMap, GeometryStyleInfo};
-use ifc_lite_core::{express_id::parse_express_id, DecodedEntity, EntityDecoder};
+use ifc_lite_core::{
+    express_id::parse_express_id, find_keyword, keyword_eq, DecodedEntity, EntityDecoder,
+};
 use rustc_hash::FxHashMap;
 
 /// One stashed entity span: `(express_id, start, end)`.
@@ -49,6 +51,41 @@ pub struct PrepassSpans {
     /// propagation (#845, IfcWallElementedCase etc.).
     pub aggregate_rels: Vec<Span>,
     pub defines_by_type: Vec<Span>, // IFCRELDEFINESBYTYPE, for prepass_type_material.
+}
+
+impl PrepassSpans {
+    /// Stash `(id, start, end)` under the list `type_name` belongs to, and say
+    /// whether it belonged to one at all.
+    ///
+    /// `type_name` is the raw keyword from `EntityScanner::next_entity`, in
+    /// whatever case the file wrote it, so the dispatch goes through
+    /// [`keyword_eq`]. Every scan loop that only needs the span lists calls
+    /// this instead of spelling the same keyword table again; `processor::mod`
+    /// keeps its own arms (its `continue`s interleave with other work) but
+    /// compares the same way.
+    pub fn stash(&mut self, type_name: &str, id: u32, start: usize, end: usize) -> bool {
+        let list = if keyword_eq(type_name, "IFCSTYLEDITEM") {
+            &mut self.styled_items
+        } else if keyword_eq(type_name, "IFCINDEXEDCOLOURMAP") {
+            &mut self.indexed_colour_maps
+        } else if keyword_eq(type_name, "IFCMATERIALDEFINITIONREPRESENTATION") {
+            &mut self.material_def_reprs
+        } else if keyword_eq(type_name, "IFCRELASSOCIATESMATERIAL") {
+            &mut self.rel_associates_material
+        } else if keyword_eq(type_name, "IFCRELVOIDSELEMENT") {
+            &mut self.void_rels
+        } else if keyword_eq(type_name, "IFCRELFILLSELEMENT") {
+            &mut self.fills_rels
+        } else if keyword_eq(type_name, "IFCRELAGGREGATES") {
+            &mut self.aggregate_rels
+        } else if keyword_eq(type_name, "IFCRELDEFINESBYTYPE") {
+            &mut self.defines_by_type
+        } else {
+            return false;
+        };
+        list.push((id, start, end));
+        true
+    }
 }
 
 /// Resolution switches (both pipelines share the resolver).
@@ -374,6 +411,18 @@ pub fn find_ifcproject_id(content: &[u8]) -> Option<u32> {
     result
 }
 
+/// Case-insensitive search for the literal keyword `IFCPROJECT(` at or after
+/// `from` (issue #4497: STEP keyword case is not significant, so a lowercase
+/// or CamelCase exporter's `ifcproject(`/`IfcProject(` must resolve exactly
+/// like the uppercase form). [`find_keyword`] anchors on `J`, which occurs in
+/// almost nothing else; the measurement that chose it over the lead `I` is
+/// recorded on that function's module. The `from` cut matters because the
+/// caller resumes at `previous_hit + 1`, so a hit behind it would be
+/// returned forever.
+fn find_ifcproject_keyword(content: &[u8], from: usize) -> Option<usize> {
+    find_keyword(content.get(from..)?, b"IFCPROJECT(").map(|rel| from + rel)
+}
+
 fn find_ifcproject_id_inner(content: &[u8], refused: &mut usize) -> Option<u32> {
     let mut from = 0usize;
     // Search for the keyword+paren only; the `=` and `#<id>` are reconstructed by
@@ -383,8 +432,7 @@ fn find_ifcproject_id_inner(content: &[u8], refused: &mut usize) -> Option<u32> 
     // on a mm model, plane-angle → radians on a degree model, making arched
     // openings render as full circles — issue #1367). `IFCPROJECT(` cannot
     // collide with `IFCPROJECTEDCRS(` because the `(` must immediately follow.
-    while let Some(rel) = memchr::memmem::find(&content[from..], b"IFCPROJECT(") {
-        let kw = from + rel;
+    while let Some(kw) = find_ifcproject_keyword(content, from) {
         // Backtrack over optional whitespace, then require '='.
         let mut i = kw;
         while i > 0 && content[i - 1].is_ascii_whitespace() {
@@ -401,7 +449,8 @@ fn find_ifcproject_id_inner(content: &[u8], refused: &mut usize) -> Option<u32> 
             while i > 0 && content[i - 1].is_ascii_digit() {
                 i -= 1;
             }
-            if i > 0 && content[i - 1] == b'#' && i < digits_end {
+            if i > 0 && content[i - 1] == b'#' && i < digits_end && starts_a_record(content, i - 1)
+            {
                 // Refuse (not wrap) above u32::MAX (#3421); None here just
                 // keeps searching, same as the "not found" case below.
                 // Counted (issue #3752) so the caller can report it via the
@@ -412,11 +461,54 @@ fn find_ifcproject_id_inner(content: &[u8], refused: &mut usize) -> Option<u32> 
                 }
             }
         }
-        // `IFCPROJECT(` not preceded by `#<digits>=` (e.g. inside a string)
-        // — keep searching.
+        // `IFCPROJECT(` not preceded by a record-starting `#<digits>=` (e.g.
+        // the whole thing quoted inside a string) — keep searching.
         from = kw + 1;
     }
     None
+}
+
+/// Does the `#` at `hash` begin a record, rather than sit inside a quoted
+/// string or a comment?
+///
+/// 10303-21 terminates every entity instance with `;`, so a declaration's
+/// `#` is preceded — across trivia only — by that `;` or by the start of
+/// input. Without this check a description or comment containing a
+/// record-shaped decoy such as `'note: #9=ifcproject( …'` is accepted, and
+/// the scan returns a WRONG express id AND stops, so the real project is
+/// never reached: `extract_length_unit_scale` then rejects that id on its
+/// `IFCPROJECT` type guard and the caller's `unwrap_or(1.0)` restores the
+/// 1000×-oversized millimetre default issue #4497 exists to remove. The
+/// hazard predates case-insensitive matching, which only widens it from
+/// uppercase decoys to ordinary lowercase prose.
+///
+/// Validating instead that the id decodes to an `IFCPROJECT` would be
+/// stricter, but it needs an entity index per candidate — the
+/// O(file)-scan-per-decoder cost [`resolve_unit_scales`] exists to keep
+/// dead. This stays a single linear byte scan.
+///
+/// "Trivia", not whitespace: a `/* … */` comment is legal wherever
+/// whitespace is, so `#1=IFCWALL(…); /* note */ #7=IFCPROJECT(…)` is a real
+/// declaration and must not be refused (the entity scanner's `skip_step_trivia`
+/// makes the same allowance in the forward direction).
+fn starts_a_record(content: &[u8], hash: usize) -> bool {
+    let mut i = hash;
+    loop {
+        while i > 0 && content[i - 1].is_ascii_whitespace() {
+            i -= 1;
+        }
+        // A closing `*/` here means a comment sits between the boundary and
+        // the `#`; skip back over it and re-test. An unopened `*/` is not
+        // trivia, so refuse rather than loop.
+        if i >= 2 && content[i - 1] == b'/' && content[i - 2] == b'*' {
+            match memchr::memmem::rfind(&content[..i - 2], b"/*") {
+                Some(open) => i = open,
+                None => return false,
+            }
+            continue;
+        }
+        return i == 0 || content[i - 1] == b';';
+    }
 }
 
 /// Flat wire encodings of the resolved styles for the browser's

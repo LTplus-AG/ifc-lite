@@ -1,0 +1,112 @@
+{
+  "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+  "baseSource": "1996e9281 (origin/main), built in a detached throwaway worktree",
+  "branchSource": "feat/4381-rgb-points-real-pair at 25d00f7c1 (Rust diff confined to rust/processing/src/appearance/transfer*.rs and rust/geometry/src/kernel/broadphase/bounded.rs); re-measured after the review fix to transfer_points.rs",
+  "command": "target/profiling/examples/perf_probe <fixture> --iters 5 --json --fingerprint, built with cargo build --profile profiling -p ifc-lite-processing --example perf_probe in each checkout",
+  "measurement": "Interleaved native five-iteration normal-load A/B/A/B on a shared Windows 11 host during other work (four concurrent agent worktrees building); a no-regression control only. The point transfer sampler is not on the load path.",
+  "order": [
+    "A1",
+    "B1",
+    "A2",
+    "B2"
+  ],
+  "runs": {
+    "A1": {
+      "label": "base 1996e9281, run 1",
+      "bestTotalMs": 16,
+      "allTotalsMs": [
+        19,
+        17,
+        16,
+        16,
+        26
+      ],
+      "allWallMs": [
+        21.2199,
+        19.336699999999997,
+        18.0555,
+        18.286,
+        27.6815
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "fingerprints": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    "B1": {
+      "label": "branch, run 1",
+      "bestTotalMs": 14,
+      "allTotalsMs": [
+        22,
+        15,
+        16,
+        17,
+        14
+      ],
+      "allWallMs": [
+        23.7635,
+        17.9836,
+        17.591800000000003,
+        18.9194,
+        16.0866
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "fingerprints": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    "A2": {
+      "label": "base 1996e9281, run 2",
+      "bestTotalMs": 15,
+      "allTotalsMs": [
+        21,
+        19,
+        16,
+        15,
+        18
+      ],
+      "allWallMs": [
+        23.6687,
+        20.855800000000002,
+        18.415999999999997,
+        17.5291,
+        20.915
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "fingerprints": [
+        "25ac885b6ff4ad00"
+      ]
+    },
+    "B2": {
+      "label": "branch, run 2",
+      "bestTotalMs": 15,
+      "allTotalsMs": [
+        19,
+        15,
+        15,
+        17,
+        15
+      ],
+      "allWallMs": [
+        21.2123,
+        17.8826,
+        16.9076,
+        19.215300000000003,
+        16.9805
+      ],
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 19456,
+      "fingerprints": [
+        "25ac885b6ff4ad00"
+      ]
+    }
+  }
+}

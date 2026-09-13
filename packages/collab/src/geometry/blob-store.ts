@@ -47,6 +47,8 @@ export interface BlobPutOptions {
 }
 
 export interface BlobStore {
+  /** Recompute this backend's content identity without writing the blob. */
+  hashBytes?(bytes: Uint8Array): BlobHash;
   put(bytes: Uint8Array, contentType?: string, options?: BlobPutOptions): Promise<BlobMeta>;
   get(hash: BlobHash): Promise<Uint8Array | null>;
   has(hash: BlobHash): Promise<boolean>;
@@ -92,6 +94,8 @@ export const fnv128: BlobHasher = (bytes) => {
 export class MemoryBlobStore implements BlobStore {
   private readonly blobs = new Map<BlobHash, { bytes: Uint8Array; meta: BlobMeta }>();
   constructor(private readonly hasher: BlobHasher = fnv128) {}
+
+  hashBytes(bytes: Uint8Array): BlobHash { return this.hasher(bytes); }
 
   async put(bytes: Uint8Array, contentType?: string): Promise<BlobMeta> {
     const hash = this.hasher(bytes);
@@ -175,6 +179,9 @@ export async function createIndexedDbBlobStore(
     });
 
   return {
+    hashBytes(bytes) {
+      return hasher(bytes);
+    },
     async put(bytes: Uint8Array, contentType?: string) {
       const hash = hasher(bytes);
       const meta: BlobMeta = {
@@ -250,6 +257,10 @@ export class HttpBlobStore implements BlobStore {
     const h: Record<string, string> = { ...(extra ?? {}) };
     if (this.opts.token) h['authorization'] = `Bearer ${this.opts.token}`;
     return h;
+  }
+
+  hashBytes(bytes: Uint8Array): BlobHash {
+    return this.hasher(bytes);
   }
 
   async put(
@@ -332,6 +343,17 @@ export class HttpBlobStore implements BlobStore {
  */
 export class LayeredBlobStore implements BlobStore {
   constructor(private readonly local: BlobStore, private readonly remote: BlobStore) {}
+
+  hashBytes(bytes: Uint8Array): BlobHash {
+    const local = this.local.hashBytes?.(bytes);
+    const remote = this.remote.hashBytes?.(bytes);
+    if (local && remote && local !== remote) {
+      throw new Error('@ifc-lite/collab: layered blob stores use different content hashers');
+    }
+    const hash = local ?? remote;
+    if (!hash) throw new Error('@ifc-lite/collab: blob store cannot verify content identity');
+    return hash;
+  }
 
   async put(
     bytes: Uint8Array,

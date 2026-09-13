@@ -78,6 +78,8 @@ name: Issue queue
 # `ready_for_review` covers the draft->ready transition, same as
 # pr-review-signal.yml.
 on:
+  merge_group:
+    types: [checks_requested]
   pull_request:
     types:
       [opened, synchronize, reopened, edited, labeled, unlabeled, ready_for_review]
@@ -107,11 +109,12 @@ env:
 jobs:
   issue-queue:
     name: Issue queue
+    if: github.event_name == 'pull_request'
     # Free runner: one GraphQL round trip and a pure evaluation, not
     # compute-bound. No poll, so no budget to measure -- unlike
     # pr-review-signal.yml this gate asks a question that is already answered
     # when the PR event fires, rather than waiting for other jobs to appear.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -182,3 +185,14 @@ jobs:
         run: |
           node scripts/check-partial-close-admission.mjs \
             --shared-state-file "${RUNNER_TEMP}/issue-queue-pr.json"
+
+  # Merge-queue batches have no PR to inspect; the PR-level run already gated
+  # entry to the queue. This reports the required 'Issue queue' check so a batch
+  # can complete, instead of waiting forever on a check that never runs.
+  issue-queue-merge-group:
+    name: Issue queue
+    if: github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo 'Issue queue - satisfied at PR level; nothing to check on a merge-queue batch'

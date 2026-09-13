@@ -32,6 +32,9 @@ pub(super) struct Metadata<'a> {
     pub container_id: u32,
     pub global_id: &'a str,
     pub containment_global_id: &'a str,
+    /// Further host-owned IfcRoot GlobalIds this plan authors (property sets,
+    /// relationships). Validated and collision-checked like the two above.
+    pub extra_global_ids: &'a [&'a str],
     pub name: &'a str,
 }
 pub(super) struct Authoring<'a> {
@@ -53,6 +56,9 @@ fn valid_guid(value: &str) -> bool {
 }
 // Only our fixed authored schema rows reach this conversion: file-supplied
 // aggregate values are never recursively cloned or reinterpreted here.
+// Core spells a type-qualified value `IFCTEXT('x')` as the two-element list
+// [type-name, value]; the host writer takes the explicit `typed` marker and
+// resolves the type's EXPRESS base from its registry spelling (`IfcText`).
 fn wire(value: &A) -> Value {
     match value {
         A::EntityRef(id) => reference(*id),
@@ -62,8 +68,20 @@ fn wire(value: &A) -> Value {
         A::String(s) => json!(s),
         A::Integer(n) => json!(n),
         A::Float(n) => json!(n),
-        A::List(v) => json!(v.iter().map(wire).collect::<Vec<_>>()),
+        A::List(v) => match v.as_slice() {
+            [A::String(name), inner]
+                if name.get(..3).is_some_and(|prefix| prefix.eq_ignore_ascii_case("IFC"))
+                    && !matches!(inner, A::List(_)) =>
+            {
+                json!({"typed": {"type": name, "value": wire(inner)}})
+            }
+            _ => json!(v.iter().map(wire).collect::<Vec<_>>()),
+        },
     }
+}
+/// Build a type-qualified attribute value in core's representation.
+pub(super) fn typed(name: &str, value: A) -> A {
+    A::List(vec![A::String(name.into()), value])
 }
 pub(super) struct Author {
     pub plan: AppearancePlan,
@@ -82,13 +100,19 @@ impl Author {
     }
 }
 
+fn all_global_ids<'a>(r: &'a Metadata<'a>) -> impl Iterator<Item = &'a str> + 'a {
+    [r.global_id, r.containment_global_id]
+        .into_iter()
+        .chain(r.extra_global_ids.iter().copied())
+}
 pub(super) fn validate_metadata(r: &Metadata<'_>) -> Result<(),String> {
+    let ids: Vec<&str> = all_global_ids(r).collect();
+    let distinct = ids.iter().all(|a| ids.iter().filter(|b| *b == a).count() == 1);
     if !matches!(r.schema, "IFC4" | "IFC4X3")
         || r.source_revision.len() > 4096
         || r.name.len() > 1024
-        || !valid_guid(r.global_id)
-        || !valid_guid(r.containment_global_id)
-        || r.global_id == r.containment_global_id
+        || !ids.iter().all(|id| valid_guid(id))
+        || !distinct
     {
         return Err(
             "Annotation needs IFC4/IFC4X3, bounded metadata and distinct valid IFC GlobalIds"
@@ -145,7 +169,7 @@ pub(super) fn prepare<'a>(
         let entity = source.entity(id)?;
         if entity
             .get_string(0)
-            .is_some_and(|guid| guid == r.global_id || guid == r.containment_global_id)
+            .is_some_and(|guid| all_global_ids(r).any(|ours| ours == guid))
         {
             return Err("Annotation GlobalId already exists in the effective model".into());
         }

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
 import { Scene } from './scene.js';
 import { expandAppearanceCorners } from './appearance-uvs.js';
+import { Raycaster } from './raycaster.js';
 
 (globalThis as Record<string, unknown>).GPUBufferUsage = {
   COPY_DST: 8,
@@ -671,6 +672,15 @@ describe('instanced occurrence appearance history (#4404)', () => {
     const start = () => api.begin(owner, { materializedOriginals: [original], geometryItemRemaps: [{ from: 21, to: 31 }] });
     return { scene, state, original, replacement, owner, api, start };
   }
+  it('materialized occurrence hits retain owner, item, model and canonical face identity (#4555)', () => {
+    const { scene, original } = setup();
+    const hit = new Raycaster().raycast({ origin: { x: 0.2, y: 1, z: -0.2 },
+      direction: { x: 0, y: -1, z: 0 } }, [original]);
+    assert.deepEqual(hit && { expressId: hit.expressId, modelIndex: hit.modelIndex,
+      geometryItemId: hit.geometryItemId, sourceTriangleIndex: hit.sourceTriangleIndex },
+    { expressId: 7, modelIndex: 3, geometryItemId: 21, sourceTriangleIndex: 0 });
+    scene.clear();
+  });
   it('cancels a remapped preview and abandons invalid remaps without retaining a lease', () => {
     const { scene, original, replacement, owner, api, start } = setup();
     assert.throws(() => api.begin(owner, { materializedOriginals: [original], geometryItemRemaps: [{ from: 99, to: 31 }] }), /remap/);

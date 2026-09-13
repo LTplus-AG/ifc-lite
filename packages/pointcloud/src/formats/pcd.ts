@@ -90,7 +90,7 @@ export function decodePcd(
   }
 
   return {
-    positions,
+    positions, normalState: 'absent',
     colors,
     pointCount: header.pointCount,
     bbox: computeBBox(positions),

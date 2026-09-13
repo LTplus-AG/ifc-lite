@@ -1,0 +1,75 @@
+{
+  "input": "control:text",
+  "sourceBytes": 774,
+  "sourceSha256": "529c5fc262bf8948af31df1c10e60b898f37fecac1c4331143a51932bbf95d51",
+  "decoderVersion": "6.3.289",
+  "pageNumber": 1,
+  "viewBox": [
+    10,
+    20,
+    110,
+    92
+  ],
+  "userUnit": 2,
+  "intrinsicRotation": 90,
+  "calibration": {
+    "modelMetresFromPdf": [
+      0.03333333333333333,
+      0,
+      0,
+      0.03333333333333333,
+      0,
+      0
+    ],
+    "calibrationKey": "synthetic-control-30-pdf-units-per-metre",
+    "toleranceMetres": 0.0001
+  },
+  "operations": 5,
+  "operators": {
+    "text": 1,
+    "fillColor": 2,
+    "path": 2
+  },
+  "preparation": {
+    "algorithm": "ifclite-pdf-vector-state-v1",
+    "requestSha256": "ceb015a51ec54dafccd471965a51b7e2bf5c5a07ddc668efb6f0c3a14534d32f",
+    "pageClipPdf": [
+      10,
+      20,
+      110,
+      92
+    ]
+  },
+  "fidelity": {
+    "sha256": "c2cb8ffd31bcffa33c5e8932511ace44cdf774a5f301e9cbc3f2c13ac5f6c6aa",
+    "algorithm": "ifclite-pdf-fidelity-v1",
+    "exact": false,
+    "rasterOnly": false,
+    "convertiblePaths": 2,
+    "omittedPaints": 0,
+    "summary": [
+      {
+        "kind": "text",
+        "count": 1,
+        "visibleCount": 1,
+        "bboxPdf": [
+          10,
+          16.4,
+          68.02,
+          32
+        ]
+      }
+    ],
+    "omissionsTruncated": false,
+    "listedOmissions": 1
+  },
+  "accepted": {
+    "ifc": "control-text-accepted.ifc",
+    "plan": "control-text-accepted-plan.json",
+    "annotationId": 79,
+    "propertySetId": 101,
+    "regions": 2,
+    "requestSha256": "4a0025e9f0e4cb74cb58eec6c945611dda1981f7d684c9dc47150036cb82bd25",
+    "acceptedFidelitySha256": "c2cb8ffd31bcffa33c5e8932511ace44cdf774a5f301e9cbc3f2c13ac5f6c6aa"
+  }
+}

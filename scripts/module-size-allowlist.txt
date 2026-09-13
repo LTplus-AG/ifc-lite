@@ -34,6 +34,25 @@
 # says what changed) while making any two PRs touching the same scope collide
 # on that single pinned line, even when their row edits were disjoint. See
 # scripts/check-module-size.mjs for the two teeth this gate still has.
+#
+# AFTER A MERGE CONFLICT IN THIS FILE (#4388): never resolve by picking a side.
+# The two sides usually change DIFFERENT rows for DIFFERENT reasons, so "take
+# main's" and "take theirs" are both wrong at once. Diff BOTH sides against
+# the MERGE BASE and ask, per row, who changed it and why:
+#
+#   git diff $(git merge-base main BRANCH) main   -- scripts/module-size-allowlist.txt
+#   git diff $(git merge-base main BRANCH) BRANCH -- scripts/module-size-allowlist.txt
+#
+# Then DELETE every row for a file your change did not touch that the gate
+# names (a scoped `--update` leaves those alone), rebase or merge main so the
+# count CI measures is the count you measure, and re-run
+# `pnpm lint:module-size-baseline` for the rest and commit what it writes. The
+# gate diffs this file against the merge base on every run and FAILS a row
+# that differs from it when the file's measured count does not justify it: a
+# row added or raised above the file's size, a row edited for a file under
+# 400 (or gone), or a row kept for a file this change shrank under 400 or
+# removed. A hand-picked number fails; a shrink that landed in another PR
+# stays a note, and so does slack left on a row this change only lowered.
    524 apps/viewer-embed/src/bridge/handler.ts
    481 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
    431 apps/viewer/src/components/extensions/FlavorDialog.tsx
@@ -46,7 +65,7 @@
    758 apps/viewer/src/components/viewer/AddElementPanel.tsx
    508 apps/viewer/src/components/viewer/BasketPresentationDock.tsx
    428 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
-   531 apps/viewer/src/components/viewer/BCFPanel.tsx
+   541 apps/viewer/src/components/viewer/BCFPanel.tsx
   1061 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    487 apps/viewer/src/components/viewer/CesiumOverlay.tsx
   1098 apps/viewer/src/components/viewer/CesiumPlacementEditor.tsx
@@ -60,16 +79,16 @@
    536 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
    426 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
    583 apps/viewer/src/components/viewer/EntityContextMenu.tsx
-   859 apps/viewer/src/components/viewer/ExportDialog.tsx
+   848 apps/viewer/src/components/viewer/ExportDialog.tsx
    531 apps/viewer/src/components/viewer/GLBExportDialog.tsx
   1424 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    435 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
-  1155 apps/viewer/src/components/viewer/HierarchyPanel.tsx
+  1147 apps/viewer/src/components/viewer/HierarchyPanel.tsx
   1119 apps/viewer/src/components/viewer/IDSPanel.tsx
    569 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
    534 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1709 apps/viewer/src/components/viewer/LensPanel.tsx
-  1465 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
+  1411 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
    548 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
   1139 apps/viewer/src/components/viewer/MainToolbar.tsx
    715 apps/viewer/src/components/viewer/measureHandlers.ts
@@ -106,32 +125,30 @@
    406 apps/viewer/src/components/viewer/useAnimationLoop.ts
    980 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    946 apps/viewer/src/components/viewer/useMouseControls.ts
-   782 apps/viewer/src/components/viewer/ViewerLayout.tsx
-  1819 apps/viewer/src/components/viewer/Viewport.tsx
+   684 apps/viewer/src/components/viewer/ViewerLayout.tsx
+  1815 apps/viewer/src/components/viewer/Viewport.tsx
   1382 apps/viewer/src/components/viewer/ViewportContainer.tsx
    511 apps/viewer/src/components/viewer/ZonesPanel.tsx
    862 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
    525 apps/viewer/src/hooks/ingest/pointCloudIngest.ts
    461 apps/viewer/src/hooks/useAnnotation2D.ts
-   690 apps/viewer/src/hooks/useBCF.ts
+   718 apps/viewer/src/hooks/useBCF.ts
   1358 apps/viewer/src/hooks/useClash.ts
    482 apps/viewer/src/hooks/useCompare.ts
   1353 apps/viewer/src/hooks/useDrawingExport.ts
-  1029 apps/viewer/src/hooks/useDrawingGeneration.ts
+  1042 apps/viewer/src/hooks/useDrawingGeneration.ts
   1226 apps/viewer/src/hooks/useIDS.ts
    586 apps/viewer/src/hooks/useIfcCache.ts
    667 apps/viewer/src/hooks/useIfcFederation.ts
-  2245 apps/viewer/src/hooks/useIfcLoader.ts
+  2201 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    483 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    493 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
    627 apps/viewer/src/lib/clash/persistence.ts
-   419 apps/viewer/src/lib/collab/geometry-sync.ts
    441 apps/viewer/src/lib/compare/buildFingerprints.ts
    436 apps/viewer/src/lib/compare/worldPlacement.ts
-   417 apps/viewer/src/lib/export/model-changes.ts
    501 apps/viewer/src/lib/geo/cesium-bridge.ts
    461 apps/viewer/src/lib/geo/custom-basemap.ts
    405 apps/viewer/src/lib/geo/map-webgl-support.ts
@@ -145,7 +162,7 @@
    410 apps/viewer/src/lib/llm/stream-client.ts
    809 apps/viewer/src/lib/llm/system-prompt.ts
    491 apps/viewer/src/lib/scripts/templates/create-building.ts
-   598 apps/viewer/src/lib/search/filter-evaluate.ts
+   583 apps/viewer/src/lib/search/filter-evaluate.ts
    450 apps/viewer/src/lib/search/tier1-index.ts
    452 apps/viewer/src/lib/slab-edit.ts
    412 apps/viewer/src/lib/sources/persistence.ts
@@ -155,18 +172,17 @@
    561 apps/viewer/src/services/ifc-cache.ts
    581 apps/viewer/src/store/basketVisibleSet.ts
    485 apps/viewer/src/store/constants.ts
-   579 apps/viewer/src/store/index.ts
+   568 apps/viewer/src/store/index.ts
    404 apps/viewer/src/store/slices/addElementMeshes.ts
    452 apps/viewer/src/store/slices/chatSlice.ts
    992 apps/viewer/src/store/slices/clashSlice.ts
-  1598 apps/viewer/src/store/slices/collabSlice.ts
+  1306 apps/viewer/src/store/slices/collabSlice.ts
    482 apps/viewer/src/store/slices/dataSlice.ts
    874 apps/viewer/src/store/slices/drawing2DSlice.ts
    482 apps/viewer/src/store/slices/idsSlice.ts
    820 apps/viewer/src/store/slices/measurementSlice.ts
-   651 apps/viewer/src/store/slices/modelSlice.ts
+   635 apps/viewer/src/store/slices/modelSlice.ts
   3277 apps/viewer/src/store/slices/mutationSlice.ts
-   478 apps/viewer/src/store/slices/pinboardSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts
    536 apps/viewer/src/store/slices/scriptSlice.ts
    574 apps/viewer/src/store/slices/sectionSlice.ts
@@ -178,13 +194,12 @@
    457 apps/viewer/src/utils/serverDataModel.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
-   417 apps/viewer/vite.config.ts
+   405 apps/viewer/vite.config.ts
    788 packages/bcf/src/ids-reporter.ts
    495 packages/bcf/src/overlay-renderer.ts
    801 packages/bcf/src/reader.ts
-   595 packages/bcf/src/viewpoint.ts
+   627 packages/bcf/src/viewpoint.ts
    753 packages/bcf/src/writer.ts
-   414 packages/clash/src/adapters/step.ts
    441 packages/clash/src/bcf-bridge.ts
    433 packages/clash/src/duplicates.ts
    547 packages/cli/src/commands/ask.ts
@@ -207,7 +222,7 @@
   2843 packages/create/src/ifc-creator.ts
    448 packages/create/src/in-store/apply-style.ts
    535 packages/create/src/in-store/auto-space-detect.ts
-  1164 packages/create/src/in-store/extract-walls.ts
+   878 packages/create/src/in-store/extract-walls.ts
    819 packages/create/src/types.ts
   1106 packages/data/scripts/generate-ifc-schema.ts
    432 packages/data/src/property-table.ts
@@ -234,7 +249,7 @@
    573 packages/drawing-2d/src/symbols/door-symbol.ts
    808 packages/drawing-2d/src/types.ts
    592 packages/export/src/effective-index.ts
-   824 packages/export/src/ifc5-exporter.ts
+   810 packages/export/src/ifc5-exporter.ts
   1585 packages/export/src/merged-exporter.ts
    616 packages/export/src/parquet-exporter.ts
    976 packages/export/src/reference-collector.ts
@@ -260,7 +275,7 @@
    426 packages/lens/src/matching.ts
    416 packages/lens/src/types.ts
    812 packages/lists/src/engine.ts
-   423 packages/lists/src/types.ts
+   412 packages/lists/src/types.ts
    467 packages/mcp/src/backend-query.ts
    420 packages/mcp/src/overlay.ts
    544 packages/mcp/src/server.ts
@@ -281,7 +296,6 @@
    530 packages/parser/src/data-store-transport.ts
    827 packages/parser/src/material-resolver.ts
    796 packages/parser/src/on-demand-extractors.ts
-   594 packages/parser/src/schedule-extractor.ts
    494 packages/parser/src/source-bytes.ts
    513 packages/plugin-api/src/types.ts
    678 packages/pointcloud/src/formats/e57-decode.ts
@@ -301,7 +315,7 @@
    952 packages/renderer/src/pipeline.ts
    475 packages/renderer/src/pointcloud/point-cloud-renderer.ts
    758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
-   474 packages/renderer/src/raycast-engine.ts
+   467 packages/renderer/src/raycast-engine.ts
    401 packages/renderer/src/render-section-plane.ts
    462 packages/renderer/src/scene-raycaster.ts
   4214 packages/renderer/src/scene.ts
@@ -329,30 +343,31 @@
    500 scripts/check-agents-md-size.mjs
    680 scripts/check-changeset-bump.mjs
    526 scripts/check-ci-path-coverage.mjs
-   574 scripts/check-collab-room-model-target.mjs
-   529 scripts/check-generated.mjs
+   572 scripts/check-collab-room-model-target.mjs
+   533 scripts/check-generated.mjs
    430 scripts/check-git-lfs.mjs
    560 scripts/check-isolate-expansion-routing.mjs
    957 scripts/check-issue-queue.mjs
    448 scripts/check-legacy-entity-coverage.mjs
   1145 scripts/check-loader-hook-specifier-match.mjs
-   554 scripts/check-module-size.mjs
+   512 scripts/check-module-size.mjs
   1066 scripts/check-pr-review-signal.mjs
    855 scripts/check-review-posted.mjs
-   446 scripts/check-source-text-assertions.mjs
+   425 scripts/check-source-text-assertions.mjs
    423 scripts/check-test-glob-coverage.mjs
-   607 scripts/check-test-revert-oracle.mjs
+   605 scripts/check-test-revert-oracle.mjs
    703 scripts/check-test-wiring.mjs
    488 scripts/check-wasm-disposal.mjs
    499 scripts/docs/check-doc-samples.mjs
    506 scripts/generate-bim-globals.mjs
+   506 scripts/generate-coverage-ledger.mjs
    423 scripts/generate-epsg-index.ts
    403 scripts/lib/ci-path-coverage.mjs
    460 scripts/lib/pr-green-sweep.mjs
   1113 scripts/lib/pr-review-signal.mjs
    443 scripts/lib/prepass-class-boundary.mjs
    734 scripts/lib/refwalk-classify.mjs
-   523 scripts/lib/revert-oracle.mjs
+   515 scripts/lib/revert-oracle.mjs
    494 scripts/lib/rust-source-text-detect.mjs
   1165 scripts/lib/vitest-timeout-audit.mjs
    691 scripts/review/build-context-pack.mjs

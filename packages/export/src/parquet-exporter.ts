@@ -533,7 +533,7 @@ export class ParquetExporter {
                 vertexCount: this.geometryResult ? this.geometryResult.totalVertices : 0,
                 triangleCount: this.geometryResult ? this.geometryResult.totalTriangles : 0,
                 propertyCount: this.store.properties.count,
-                relationshipCount: this.store.relationships.forward.edgeTargets.length,
+                relationshipCount: new Set([...this.store.relationships.forward.edgeRelIds, ...(this.store.relationships.forward.shadowedRelIds ?? [])]).size, // distinct IfcRel* records, not raw edges (#3760/#4205)
             },
         };
 
@@ -586,16 +586,15 @@ function filterColumns<T extends Record<string, unknown[]>>(columns: T, keep: bo
 }
 
 // Kept exported under its original name here (moved to `parquet-type-strings.ts`
-// so the on-demand writers can share it without importing this file, which
-// imports them): nothing in-repo imports it from this path — index.ts never
-// re-exported it — but it was public `export function` surface before the
-// module split, so a re-export costs nothing to keep.
+// so the on-demand writers can share it without importing this file): unused
+// in-repo from this path, but was public surface before the split, so keep it.
 export { quantityTypeToString as QuantityTypeToString } from './parquet-type-strings.js';
 
 function RelationshipTypeToString(type: RelationshipType): string {
     const names: Record<RelationshipType, string> = {
         [RelationshipType.ContainsElements]: 'IfcRelContainedInSpatialStructure',
         [RelationshipType.Aggregates]: 'IfcRelAggregates',
+        [RelationshipType.Nests]: 'IfcRelNests',
         [RelationshipType.DefinesByProperties]: 'IfcRelDefinesByProperties',
         [RelationshipType.DefinesByType]: 'IfcRelDefinesByType',
         [RelationshipType.AssociatesMaterial]: 'IfcRelAssociatesMaterial',
@@ -609,6 +608,7 @@ function RelationshipTypeToString(type: RelationshipType): string {
         [RelationshipType.ConnectsPorts]: 'IfcRelConnectsPorts',
         [RelationshipType.SpaceBoundary]: 'IfcRelSpaceBoundary',
         [RelationshipType.AssignsToGroup]: 'IfcRelAssignsToGroup',
+        [RelationshipType.AssignsToGroupByFactor]: 'IfcRelAssignsToGroupByFactor',
         [RelationshipType.AssignsToProduct]: 'IfcRelAssignsToProduct',
         [RelationshipType.ReferencedInSpatialStructure]: 'ReferencedInSpatialStructure',
     };

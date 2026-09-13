@@ -27,6 +27,36 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Boolean operands dispatch from the router's built-in table (#4560)
+
+The boolean operand resolver no longer keeps its own list of meshable operand
+types; it falls through to the registry's `builtin_processor` for everything
+except the two arms that carry `depth` and the cycle guard (`IfcCsgSolid`,
+the boolean types). A processor is still built fresh per operand, exactly as
+the hand-written arms did, so the only new work per operand is one `Rc`
+allocation. Interleaved native A/B/A/B (5 rounds, `ab.sh`) on AC20-FZK-Haus
+and ISSUE_129 resolved no phase beyond the base's own noise floor; mesh,
+vertex and triangle counts were identical on every round of both fixtures
+(285/35,940/19,456 and 1,402/218,365/132,657), as expected: neither corpus
+authors a boolean operand of a type the old list lacked. Output changes only
+where a boolean names such an operand — `IfcPolygonalFaceSet` cutters on the
+Bonsai wall fixture now cut. This is a correctness fix, not a speedup. The
+lesson: a second copy of a dispatch table drifts the moment a processor is
+registered in one and not the other, and the drift is invisible because the
+loser is an `UnsupportedOperand` record nobody reads; derive the operand set
+from the registry instead of maintaining it.
+
+## Qualified PDF dash expansion (#4406)
+
+Dash expansion is reachable only from the explicit PDF annotation planner; it
+does not enter ordinary IFC element production. An idle source-matched
+AC20-FZK-Haus base/branch probe reported equal best parse, geometry and total
+phases across five runs. Every run retained the same ordered mesh fingerprint,
+mesh count and triangle count. The verdict is no ordinary-load regression, not
+a PDF-page throughput claim. The lesson is to charge each dash advance and each
+vertex crossed by a continuing run: a piece cap alone does not bound one long
+on-run across attacker-controlled path vertices.
+
 ## Canonical appearance provenance (#4243)
 
 Item-identified geometry now retains its canonical triangle-order identity at
@@ -1140,6 +1170,40 @@ speedup. Preserve literal-versus-reference schema slots when compacting plans;
 never trade semantic fidelity for convenient generic string rewriting.
 [Follow-up samples and limits](../../docs/architecture/evidence/evaluated-occurrences/allocation-load.json).
 
+### Evaluated face masks and tessellatable-body policy (#4404)
+
+Face masks and the widened evaluated policy live only inside an explicit
+appearance plan; normal loading does not touch them. The interleaved,
+order-balanced native AC20 base/branch probe (nine rounds per side, prebuilt
+profiling binaries, `scripts/perf/ab-order.mjs` seed 4404) found phase
+medians equal or within two milliseconds, every phase inside the reporter's
+noise band, and the reporter refused a verdict because the base's own spread
+exceeded its 15% threshold on a machine shared with other builds. This is
+"no resolvable change", not a speedup or a regression claim, and no browser
+worker-pool measurement was made. A separate `--fingerprint` run of both
+binaries reports identical mesh, vertex and triangle counts and identical
+ordered geometry fingerprints. Tool lesson: at the time of this probe
+`scripts/perf/ab-order.mjs`'s CLI guard compared `import.meta.url` with a bare
+`file://` prefix and printed nothing on Windows, so `ab.sh` there produced
+zero rounds and a vacuous "within noise" verdict; the probe drove `roundOrder`
+directly and checked the run count. #4541 fixed the guard with
+`pathToFileURL`; always check the round count `ab.sh` reports.
+[Raw rounds](../../docs/architecture/evidence/evaluated-face-masks/native-load.json) and [fingerprints](../../docs/architecture/evidence/evaluated-face-masks/native-fingerprints.json).
+
+The #4550 native/wasm fingerprint-parity follow-up makes the existing
+per-element local frame explicit only inside opt-in appearance planning. Fresh
+interleaved base/branch and branch/base AC20 normal-load controls resolved no
+change at the probe's phase precision, and every run retained identical mesh,
+vertex and triangle counts plus ordered geometry fingerprint. The useful lesson
+is to select frame policy per router before its caches are populated: a
+process-global override would make concurrent native planning unsafe, while
+changing the native load default would needlessly disturb deterministic output.
+An interleaved release A/B over the real AC20 mapped-member
+`plan_appearance` path also retained the same source-index checksum and
+fingerprint with no slowdown. The final implementation evaluates the canonical
+surface once and shares that mesh between replacement and fingerprinting; a
+second identity-only evaluation was measured and removed before review.
+
 ### Shared appearance atlas sampling (#4381)
 
 Factoring target appearance preservation, charts and canonical image binding into
@@ -1271,6 +1335,51 @@ pair and matching second pair with identical ordered geometry; no consistent
 regression or zero-overhead claim follows. This is measured capacity acceptance, not a throughput
 speedup. [Worker, independent-reader and refusal evidence](../../docs/architecture/evidence/mesh-transfer-full-target/README.md).
 
+### Behind-surface refusal for thin-wall transfer (#4381)
+
+Registered mesh transfer now refuses a same-facing nearest scan surface that
+lies deeper than an explicit `maxBehindMetres` behind the IFC face. The
+controlled 4 mm partition showed the gap the symmetric distance bound left
+open: with a 20 mm bound, a surface 10 mm beyond the wall painted the near face
+although both faces were classified correctly against each other. The check is
+one closest-point dot product after the existing nearest/ambiguity/normal
+refusals, so it adds no BVH work; a coplanar capture is tolerated within f64
+rounding under a zero bound because the centroid-only control runs exactly
+there. Interleaved native AC20 A/B/A/B probes on a shared host found equal
+best totals within run spread and identical ordered geometry fingerprints and
+counts; the sampler is not on the load path, so this is only a no-regression
+control, not a transfer-throughput claim. The lesson is that nearest-first
+matching needs a signed depth bound, not a larger symmetric one: relaxing the
+distance bound to reach the opposite face reintroduces every far-side bleed.
+See the [controls and raw probe samples](../../docs/architecture/evidence/mesh-transfer-surfaces/README.md).
+
+### RGB point-cloud transfer source (#4381)
+
+The registered transfer source became a tagged union and gained an RGB
+point-cloud path: a bounded uniform grid (16 bytes/point) instead of a BVH leaf
+per point, a least-squares plane per sample, and a target self-occlusion rule
+that costs two budgeted BVH ray queries per sample (exact segment for the
+nearest point, one thickness probe for the rest of the support) after a first
+version that spent one ray per supporting point exhausted the 128 M budget on a
+real 25 m² wall. Review then added the nearest-face rule for unoriented
+captures inside the solid: a sample whose nearest capture lies deeper inside
+than one surface band pays one wider query out to the distance bound to look
+for a capture in front, and the support is regathered around the nearest point
+whenever it lies farther than half the radius. On the CRAS corridor drywall the
+accepted plan used 43.5 M of 128 M units in 376 ms (Node, 465 k points,
+64 texels/m); the windowed north wall with both faces scanned was refused at
+64 texels/m and accepted at 32 (59.5 M units, 331 ms; 49.0 M before the rule),
+so the planner now reports `budget.workUsed` next to coverage. Interleaved
+native AC20 A/B/A/B probes on a shared host at the final head: best totals
+16/15 ms (base 1996e9281) vs 14/15 ms (branch), identical mesh/vertex/triangle
+counts (285 / 35,940 / 19,456) and identical ordered geometry fingerprint
+`25ac885b6ff4ad00` in all four runs — no load-path regression, and, as before,
+only a control: the sampler is not on the load path. Lesson: for point sources
+the per-sample cost is set by point density times the support area, not by the
+point count, so the grid cell must follow the support radius and any per-point
+occlusion test must be replaced by a per-sample one. See the
+[real-pair evidence](../../docs/architecture/evidence/scan-registration-cras/README.md).
+
 ## Qualified PDF fill composition (#4406)
 
 The new explicit creation API leaves ordinary model loading on the existing
@@ -1307,12 +1416,33 @@ or browser worker-pool timing claim is made. See the
 This changes the authoring path, not the normal-load mesh evaluator; future
 optimization should measure the explicit conversion workload independently.
 
+## Version-bound closed PDF dashes (#4583, #4406)
+
+Closed-dash interpretation is confined to opt-in PDF preparation and annotation
+planning. Independently compiled base/branch then branch/base native-load
+controls on AC20-FZK-Haus retained identical ordered mesh fingerprint
+`25ac885b6ff4ad00` and counts (285 meshes, 35,940 vertices, 19,456 triangles)
+in all 20 iterations. Paired wall-time medians were 14.28/16.03 ms and
+14.45/14.65 ms; the second pair nearly converges and the absolute differences
+are below the probe's useful phase resolution, so no material ordinary-load
+regression is observed. This is not a PDF-planning or browser-worker throughput
+measurement. The useful lesson is semantic: the effective PDF version must be
+bound before geometry because the compatibility policy caps a PDF 1.x
+closed-dash seam while PDF 2.0 explicitly requires a join, and a mature
+independent reader may still render the capped form for both. See the
+[paired raw runs and reader evidence](../../docs/architecture/evidence/pdf-closed-dash-annotations/README.md).
+
 ## Qualified solid straight PDF strokes (#4406)
 
-Exact-source native A/B/A/B normal-load controls resolve no regression, with
-identical phase minima in each pair and identical ordered mesh fingerprints and
-counts. This does not measure PDF authoring or worker-pool throughput. The new
-path remains opt-in through the existing PDF annotation planner. A draft union
+Fresh exact-source native A/B, A/B, then reverse B/A normal-load controls for
+the round-cap/join expansion resolve no regression. The warmed pairs reported
+base/branch totals of 9/8 ms, 9/9 ms, then branch/base totals of 8/9 ms, while
+mesh, vertex and triangle counts and every ordered mesh fingerprint remained
+identical. This isolates the normal IFC load path; it does
+not measure opt-in PDF authoring or worker-pool throughput. Stable sagitta
+inversion also reduced the independent round controls' bounded planner work and
+triangle counts without changing analytic acceptance; the source-specific
+oracle carries those measurements. A draft union
 of segment rectangles and join wedges was rejected by existing conservative
 contact/intersection guards even on ordinary joins; direct offset contours
 retain the same guards and avoid manufacturing those internal boundaries.
@@ -1343,3 +1473,61 @@ certificate avoids treating an unrelated infinite-line side change as an edge
 intersection. No tolerance/endpoint guard was replaced by epsilon snapping.
 [Source-matched raw samples and original PDF evidence](../../docs/architecture/evidence/pdf-composition-lattice/README.md)
 record the control and prevent repeating the float-roundtrip approach.
+
+## Regime-1 coincidence requires near-parallel planes (#4439)
+
+The exact boolean classifier's "sub-triangle lies ON a coincident shared face"
+regime now also requires the sub-triangle's own plane to be within 45° of the
+candidate face (`coincident_planes`, a sqrt-free `2·d² ≥ |n₁|²|n₂|²` test on
+products the classifier already forms). Interleaved native A/B/A/B on AC20 and
+ISSUE_129 resolved no phase delta beyond the base's own noise floor; AC20's
+ordered mesh fingerprint is identical on every run. ISSUE_129's output changes
+on purpose: host #9094 is one of the 17 census hosts the gate reclassifies
+(triangle delta of the whole run equals that row's census delta), so its timing
+is not a like-for-like comparison and is not claimed either way. This is a
+correctness fix, not a speedup. The lesson: a centroid-in-band test locates a
+face, it does not establish coincidence — a needle hugging the intersection
+line of two transversal faces sits in both planes' bands with no orientation to
+agree with, and a `dot > 0` verdict there is a coin flip that can override an
+exact ray-cast. Add the angle premise per candidate face rather than gating on
+a parent flag (the parent-flag gate was measured to cost 20+ census hosts).
+[Raw interleaved runs and fingerprints](../../docs/architecture/evidence/csg-coincident-planes/native-load.json).
+Found while measuring: on Windows `ab.sh` ran ZERO rounds and still printed a
+"within noise, counts matched" verdict, because `ab-order.mjs`'s CLI guard
+compared `import.meta.url` with a backslash `argv[1]` and never fired. Fixed in
+the same PR (`pathToFileURL`, a CLI test, and `ab.sh` now refuses an order file
+with fewer lines than `--iters`); the recorded runs replicate the procedure by
+hand with the same `roundOrder()` and reporter.
+
+## PDF fidelity report and partial acceptance (#4406)
+
+Bounded graphics-state preparation now interprets forms, groups, annotation
+appearances, clips, ExtGState dictionaries, optional content, text, images and
+stroke features into a page-level fidelity report, and fill planning records
+the accepted verdict in a provenance property set. None of this is on the
+parse or element-geometry path. An interleaved base/branch/base/branch native
+AC20-FZK-Haus probe (5 iterations each) retained identical ordered mesh
+fingerprints and mesh/vertex/triangle counts in all 20 iterations; total-phase
+medians were 13 and 20 ms on base against 24 and 19 ms on the branch, so the
+base-to-base spread exceeds any base/branch difference and no regression is
+observed. The host was shared with other builds during the first branch pair,
+which the raw record states. The verdict is no material regression on that
+fixture, not a PDF-preparation throughput claim: the report interpreter is
+bounded by the existing operation, path-number and save-depth budgets plus a
+4,096-entry listed-omission cap with complete summary counts. See the
+[raw runs](../../docs/architecture/evidence/pdf-fidelity-report/native-load.json).
+
+## Mixed planar and residual opening compatibility (#4610)
+
+Interleaved native end-to-end probes show byte-identical AC20 output and no
+material phase change. ISSUE_129 intentionally restores the exact mesh,
+vertex, and triangle counts from immediately before #4579; its comparison with
+the regressed parent is not like-for-like because the parent dropped geometry.
+A separate interleaved comparison against that pre-regression commit produced
+identical output and timings within run-to-run noise. The discarded topology
+fallback was materially slower because it built both the torn hybrid candidate
+and the full-context candidate. The useful lesson is to quarantine a known
+composition incompatibility before doing either expensive route, while keeping
+the public and pure-2D union operation correct; #4617 owns removing that
+temporary boundary once mixed routing can preserve both union semantics and
+final topology.

@@ -33,20 +33,17 @@ import { type GeometryResult } from '@ifc-lite/geometry';
 import {
   getWholeSourceForWorker,
   parseProfilesFlat,
-  parseSymbolicFlat,
 } from '@/lib/overlay-parse/index.js';
 import { placedConstructionProfiles } from '@/lib/model-placement/construction-profiles';
 import { buildProfileEntries, warnAboutSkippedProfiles } from '@/lib/overlay-parse/profile-entries.js';
-import {
-  buildSymbolicDrawingLines,
-  type SymbolicDrawingLine,
-} from '@/lib/overlay-parse/symbolic-drawing-lines.js';
+import { type SymbolicDrawingLine } from '@/lib/overlay-parse/symbolic-drawing-lines.js';
 import type { SpatialHierarchy } from '@ifc-lite/data';
 import * as IfcWasm from '@ifc-lite/wasm';
 import { customPlaneCenter, useViewerStore } from '@/store';
 import { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './useDrawing2DPersistence.js';
 import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
 import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
+import { drawingStoreIdentity, roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
 
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
@@ -229,7 +226,7 @@ export function useDrawingGeneration({
     // For multi-model: create cache key from model count and visible model IDs
     // For single-model: use source byteLength as before
     const modelCacheKey = models.size > 0
-      ? `${models.size}-${[...models.values()].filter(m => m.visible).map(m => m.id).sort().join('|')}`
+      ? `${models.size}-${[...models.values()].filter(m => m.visible).map(m => m.id).sort().join('|')}:${drawingStoreIdentity(ifcDataStore)}`
       : (ifcDataStore?.source ? String(ifcDataStore.source.byteLength) : null);
 
     const useSymbolic = displayOptions.useSymbolicRepresentations && !!ifcDataStore?.source;
@@ -262,14 +259,9 @@ export function useDrawingGeneration({
           //
           // `'all'`, not the overlay's IfcAnnotation/IfcGridAxis filter: the
           // drawing renders the symbolic representation of every product type.
-          const flat = await parseSymbolicFlat(
-            getWholeSourceForWorker(ifcDataStore!),
-            false,
-            'all',
-          );
           // Single-model (legacy) mode, so model index is always 0. Multi-model
           // symbolic parsing would require iterating over each model separately.
-          const symbolic = buildSymbolicDrawingLines(flat, 0);
+          const symbolic = await roomDrawingSymbolic(ifcDataStore!);
           symbolicLines = symbolic.lines;
           entitiesWithSymbols = symbolic.entities;
 
@@ -415,7 +407,14 @@ export function useDrawingGeneration({
         !sectionPlane.custom &&
         models.size <= 1 &&
         combinedIsolatedIds === null &&
-        !(computedIsolatedIds && computedIsolatedIds.size > 0) &&
+        // `computedIsolatedIds` is meaningfully nullable: null/undefined means
+        // no isolation channel is active, while a non-null Set — EMPTY
+        // included — means one is (matching the convention
+        // `packages/renderer/src/entity-visibility.ts`'s `isEntityVisible`
+        // uses). A `.size > 0` check here would read an active-but-empty
+        // isolate as "no isolation" and let floor auto-scoping run over the
+        // isolated-to-nothing set.
+        computedIsolatedIds == null &&
         sh !== undefined &&
         sh.byBuilding.size <= 1;
       if (canScopeFloor && sh) {
@@ -526,8 +525,14 @@ export function useDrawingGeneration({
         );
       }
 
-      // Also filter by computedIsolatedIds (storey selection)
-      if (computedIsolatedIds !== null && computedIsolatedIds !== undefined && computedIsolatedIds.size > 0) {
+      // Also filter by computedIsolatedIds (storey selection). Meaningfully
+      // nullable, same convention as `combinedIsolatedIds` above and
+      // `packages/renderer/src/entity-visibility.ts`'s `isEntityVisible`:
+      // null/undefined means no isolation channel is active, while a
+      // non-null Set — EMPTY included — means one is and matches nothing. A
+      // `.size > 0` check here would read an active-but-empty isolate as "no
+      // isolation" and redraw the whole model instead of nothing.
+      if (computedIsolatedIds != null) {
         const isolatedSet = computedIsolatedIds;
         meshesToProcess = meshesToProcess.filter(
           mesh => isolatedSet.has(mesh.expressId)
@@ -570,7 +575,8 @@ export function useDrawingGeneration({
         if (combinedIsolatedIds !== null) {
           projectionProfiles = projectionProfiles.filter((p) => combinedIsolatedIds.has(p.expressId));
         }
-        if (computedIsolatedIds !== null && computedIsolatedIds !== undefined && computedIsolatedIds.size > 0) {
+        // Meaningfully nullable, same convention as the mesh filter above.
+        if (computedIsolatedIds != null) {
           const isolatedSet = computedIsolatedIds;
           projectionProfiles = projectionProfiles.filter((p) => isolatedSet.has(p.expressId));
         }

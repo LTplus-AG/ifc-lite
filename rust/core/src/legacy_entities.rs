@@ -7,6 +7,7 @@
 //! Maps deprecated IFC2x3/IFC4 entities (removed in IFC4x3) to their IFC4x3 equivalents.
 //! This allows parsing older IFC files without maintaining full multi-schema support.
 
+use crate::generated::legacy_attribute_names::LEGACY_ATTRIBUTE_NAMES;
 use crate::generated::IfcType;
 
 /// Information about a legacy entity
@@ -198,6 +199,45 @@ pub fn get_legacy_entity_info(entity_name: &str) -> Option<LegacyEntityInfo> {
 
         _ => None,
     }
+}
+
+/// Own positional attribute names for a legacy (IFC2X3/IFC4, removed by
+/// IFC4X3) entity, read from `generated::legacy_attribute_names` — a table
+/// generated per schema version from the same EXPRESS-derived tables the
+/// TypeScript side reads (#4203) — rather than approximated from the entity's
+/// resolved [`get_legacy_entity_info`] base type.
+///
+/// The base type is NOT a safe substitute here: `IFCDOORSTYLE` (IFC2X3/IFC4)
+/// ends `[…, "OperationType", "ConstructionType", "ParameterTakesPrecedence",
+/// "Sizeable"]` while its resolved base type `IfcDoorType` (IFC4X3) ends
+/// `[…, "PredefinedType", "OperationType", "ParameterTakesPrecedence",
+/// "UserDefinedOperationType"]` — same length, different names from index 8
+/// on, so reusing the base type's names would rename `Sizeable`'s value to
+/// `UserDefinedOperationType` rather than merely drop it. `None` means the
+/// name is not a recognised legacy entity (including: it is a modern name the
+/// generated `IfcType` enum already resolves, which should call
+/// [`IfcType::attribute_names`] instead).
+pub fn legacy_attribute_names(entity_name: &str) -> Option<&'static [&'static str]> {
+    // Case-insensitive, same as `legacy_aware_ifc_type` (and every other
+    // legacy lookup in `schema_helpers.rs`): a STEP keyword is not guaranteed
+    // to arrive uppercase, and this table's caller (`render_attributes`)
+    // passes the raw keyword as written in the file, unnormalised. Reuses the
+    // SAME `normalise_uppercase` helper `legacy_aware_ifc_type` uses (rather
+    // than a second, divergent normalisation) so this and the DISPLAY-type
+    // resolver cannot disagree on case handling again — that disagreement
+    // used to make a lowercase legacy entity (`ifcproxy`) fall through to
+    // `IfcType::attribute_names()` on its resolved BASE type, silently
+    // relabelling its own attribute values under the base type's names
+    // instead of just dropping them (#4203 follow-up).
+    let entity_name = crate::schema_helpers::normalise_uppercase(entity_name);
+    // Linear scan, not `binary_search`: the table is sorted by the
+    // generator's JS `localeCompare`, which this crate has no obligation to
+    // match byte-for-byte, and a 285-row scan is not on any hot path (it
+    // fires once per legacy entity occurrence, not per attribute).
+    LEGACY_ATTRIBUTE_NAMES
+        .iter()
+        .find(|(k, _)| *k == entity_name.as_ref())
+        .map(|(_, v)| *v)
 }
 
 /// Check if an entity name is a known legacy entity

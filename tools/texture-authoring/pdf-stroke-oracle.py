@@ -10,7 +10,11 @@ from PIL import Image
 root,source=Path(sys.argv[1]),Path(sys.argv[2]);pdf=fitz.open(source)
 fitz.TOOLS.set_aa_level(0)
 reports=[]
-for number,expected_area in enumerate([2.4,2.54,2.38,19.36,1.5768],1):
+for number,expected_area in enumerate([
+ 2.4,2.54,2.38,19.36,1.5768,
+ (1080+36*np.pi)/900,
+ (2124+9*np.pi)/900,
+],1):
  data=json.loads((root/f'page-{number}.json').read_text());plan=data['result']
  pix=pdf[number-1].get_pixmap(alpha=False)
  expected=np.frombuffer(pix.samples,dtype=np.uint8).reshape(240,240,pix.n)[:,:,:3]

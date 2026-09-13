@@ -551,13 +551,12 @@ export function getSmartBasketInputFromStore(): { refs: EntityRef[]; source: Bas
   return { refs: [], source: 'empty' };
 }
 
+/** "Is the basket shown?" — every basket element is isolated. A subset test, not equality: a basket that
+ *  WIDENED a foreign isolation (#4527) is shown too, and "Show active basket" would evict the foreign ids. */
 export function isBasketIsolationActiveFromStore(): boolean {
   const state = useViewerStore.getState();
   if (state.pinboardEntities.size === 0 || state.isolatedEntities === null) return false;
-
-  const basketIds = basketToGlobalIds(state);
-  if (basketIds.size !== state.isolatedEntities.size) return false;
-  for (const id of basketIds) {
+  for (const id of basketToGlobalIds(state)) {
     if (!state.isolatedEntities.has(id)) return false;
   }
   return true;

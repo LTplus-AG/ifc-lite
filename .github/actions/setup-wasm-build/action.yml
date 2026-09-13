@@ -20,6 +20,24 @@ inputs:
   cache-prefix:
     description: 'Swatinem/rust-cache prefix-key, to namespace the cargo cache per workflow'
     required: true
+  # ONE CACHE PER WORKFLOW, WRITTEN FROM MAIN, READ BY EVERY PR (CI redesign,
+  # step 1; the same shape test.yml's Rust jobs adopted in #4511). Without
+  # `shared-key` rust-cache keys on the job AND the git ref, so every PR branch
+  # wrote its own copy: measured at 46 caches / 10.96 GB against a 10 GB
+  # budget, with `semver` alone at 19 x 269 MB and `build` at 19 x 142 MB,
+  # while `main` itself held NO rust-tests cache -- the one every PR could
+  # have restored from. With `shared-key: main` every caller of this action
+  # restores `<prefix>-main-<lockfile hash>`, and `save-if` defaults to
+  # writing it only from a push to main or a merge-queue batch, so PRs
+  # restore and never save. Footprint ~3.1 GB, x2 during a lockfile turnover.
+  shared-key:
+    description: 'Swatinem/rust-cache shared-key; every ref restores this one key'
+    required: false
+    default: main
+  save-if:
+    description: 'Swatinem/rust-cache save-if; by default only a push to main or a merge_group batch writes the cache'
+    required: false
+    default: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
 
 runs:
   using: composite
@@ -34,6 +52,8 @@ runs:
       uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       with:
         prefix-key: ${{ inputs.cache-prefix }}
+        shared-key: ${{ inputs.shared-key }}
+        save-if: ${{ inputs.save-if }}
 
     - name: Install wasm-pack
       uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0

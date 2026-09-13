@@ -24,5 +24,10 @@ export interface ScanRegistrationReport {
   targetSpread: ScanRegistrationReport['sourceSpread'];
   fit: ScanResiduals; heldOut: ScanResiduals; diagnostics: string[];
 }
-export interface ScanLandmark { point: ScanPoint; observation: string; triangle: number; barycentric: ScanPoint }
+/** A picked scan observation: a barycentric point on a GLB triangle, or one
+ * retained point of a streamed point cloud (#4381). `point` is in the source's
+ * native frame; `observation` is its stable identity in that source. */
+export type ScanLandmark = { point: ScanPoint; observation: string } & (
+  | { kind: 'triangle'; triangle: number; barycentric: ScanPoint }
+  | { kind: 'point'; index: number });
 export interface ScanPair { correspondence: ScanCorrespondence; source: ScanLandmark; partition: 'fit' | 'check' }

@@ -25,10 +25,26 @@ import {
   extractMaterialsOnDemand,
   type IfcDataStore,
 } from '@ifc-lite/parser';
-import type { StepSeedEntity, StepSeedSource } from '@ifc-lite/collab';
+import { PropertyValueType } from '@ifc-lite/data';
+import type { ModelSlotRef, StepSeedEntity, StepSeedSource } from '@ifc-lite/collab';
+import { LEGACY_ROOM_SLOT, roomSlotPath } from './model-slot-ref';
 
 const IFC_CLASS_URI = (code: string) =>
   `https://identifier.buildingsmart.org/uri/buildingsmart/ifc/5/class/${code}`;
+
+const PROPERTY_TYPE_NAMES: Record<number, string> = {
+  [PropertyValueType.String]: 'IfcText',
+  [PropertyValueType.Real]: 'IfcReal',
+  [PropertyValueType.Integer]: 'IfcInteger',
+  [PropertyValueType.Boolean]: 'IfcBoolean',
+  [PropertyValueType.Logical]: 'IfcLogical',
+  [PropertyValueType.Label]: 'IfcLabel',
+  [PropertyValueType.Identifier]: 'IfcIdentifier',
+  [PropertyValueType.Text]: 'IfcText',
+  [PropertyValueType.Enum]: 'IfcLabel',
+  [PropertyValueType.Reference]: 'IfcLabel',
+  [PropertyValueType.List]: 'IfcText',
+};
 
 /** A spatial-tree node as exposed on `IfcDataStore.spatialHierarchy.project`. */
 interface SpatialNodeLike {
@@ -72,11 +88,21 @@ function buildChildrenByPath(
   return byPath;
 }
 
-/** Adapt a parsed STEP `IfcDataStore` into an IFCX-native collab `StepSeedSource`. */
-export function buildStepSeedSource(store: IfcDataStore, fileName?: string): StepSeedSource {
+/**
+ * Adapt a parsed STEP `IfcDataStore` into an IFCX-native collab `StepSeedSource`.
+ * `slot` is the room slot the model is shared into (#4444): every path the
+ * source carries — the `children` references — is qualified with it, and the
+ * seeder must be handed the same slot so entity paths and references agree.
+ * Omitted, the source is shaped for a single-model room (`/<guid>`).
+ */
+export function buildStepSeedSource(
+  store: IfcDataStore,
+  fileName?: string,
+  slot: ModelSlotRef = LEGACY_ROOM_SLOT,
+): StepSeedSource {
   const guidPathFor = (expressId: number): string | null => {
     const guid = store.entities.getGlobalId(expressId);
-    return guid ? `/${guid}` : null;
+    return guid ? roomSlotPath(slot, guid) : null;
   };
   const childrenByPath = buildChildrenByPath(store, guidPathFor);
   const storeyElevations = store.spatialHierarchy?.storeyElevations;
@@ -108,9 +134,11 @@ export function buildStepSeedSource(store: IfcDataStore, fileName?: string): Ste
       const name = store.entities.getName(expressId);
       const description = store.entities.getDescription(expressId);
       const objectType = store.entities.getObjectType(expressId);
+      const tag = store.entities.getTag?.(expressId);
       if (name) attributes['bsi::ifc::prop::Name'] = name;
       if (description) attributes['bsi::ifc::prop::Description'] = description;
       if (objectType) attributes['bsi::ifc::prop::ObjectType'] = objectType;
+      if (tag) attributes['bsi::ifc::prop::Tag'] = tag;
 
       // Storey elevation drives the hierarchy builder's storey ordering.
       if (ifcClass === 'IfcBuildingStorey') {
@@ -120,12 +148,27 @@ export function buildStepSeedSource(store: IfcDataStore, fileName?: string): Ste
         }
       }
 
-      // Property sets → IFCX flat property attributes, namespaced by pset so the
-      // recipient's `extractProperties` regroups them (`IFC Properties - <Pset>`).
+      // Structured carriers preserve exact set names and distinguish them
+      // from IFCX display groups derived from ordinary root attributes.
+      // IFC names are file-controlled. Null-prototype dictionaries preserve
+      // legal names such as "__proto__" as ordinary data.
+      const psets: NonNullable<StepSeedEntity['psets']> = Object.create(null);
       for (const pset of extractPropertiesOnDemand(store, expressId)) {
         for (const prop of pset.properties) {
           if (prop.value === null || prop.value === undefined) continue;
-          attributes[`bsi::ifc::prop::${pset.name}::${prop.name}`] = prop.value;
+          const values = psets[pset.name] ?? (psets[pset.name] = Object.create(null));
+          const value = Array.isArray(prop.value) ? JSON.stringify(prop.value) : prop.value;
+          values[prop.name] = {
+            type: prop.dataType ?? PROPERTY_TYPE_NAMES[prop.type] ?? 'IfcLabel',
+            value,
+          };
+        }
+      }
+      const quantities: NonNullable<StepSeedEntity['quantities']> = Object.create(null);
+      for (const qset of store.getQuantities?.(expressId) ?? store.quantities?.getForEntity?.(expressId) ?? []) {
+        for (const quantity of qset.quantities) {
+          const values = quantities[qset.name] ?? (quantities[qset.name] = Object.create(null));
+          values[quantity.name] = quantity.value;
         }
       }
 
@@ -150,7 +193,9 @@ export function buildStepSeedSource(store: IfcDataStore, fileName?: string): Ste
         guid,
         ifcClass,
         attributes,
-        children: childrenByPath.get(`/${guid}`),
+        psets: Object.keys(psets).length ? psets : undefined,
+        quantities: Object.keys(quantities).length ? quantities : undefined,
+        children: childrenByPath.get(roomSlotPath(slot, guid)),
       };
     }
   }

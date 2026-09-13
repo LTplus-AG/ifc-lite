@@ -1,0 +1,254 @@
+{
+ "sourceFrame": {
+  "assetSha256": "933732e81910116cec5e74c9205074b82d1f571f3d9816386b68a0a909112671",
+  "frameKey": "cras-archive-native-metres-v1"
+ },
+ "targetFrame": {
+  "assetSha256": "45a69aee943d6d460af5880ee73168ea0a03f5a43987bbb77c7ad765ad7d6984",
+  "frameKey": "ifc-world-z-up-metres"
+ },
+ "fit": [
+  {
+   "id": "B-north-band-E-head",
+   "sourceObservation": "planes:b2faa2e1d1e729b4+530930b8fa7b47e5+4ab3b2fdd6064c89",
+   "targetFeature": "3qeiF73TD1uOeHIcNGcTy8+0FDABnXCHCUR8gI54b$Kx2:wall-face+return-face+head:B-north-band-E-head",
+   "source": [
+    17.981837430332977,
+    11.115884264916915,
+    1.5505630757310136
+   ],
+   "target": [
+    7.986239344287008,
+    10.861515201350679,
+    2.7699999999999974
+   ]
+  },
+  {
+   "id": "B-south-band-E-head",
+   "sourceObservation": "planes:dd8d9cdb482f916c+7523b3e1a5aa02c5+a563b9d989bc73f7",
+   "targetFeature": "1gsZ4XbYD0qRhfvwOUEI1z+0FDABnXCHCUR8gI54b$Kx2:wall-face+return-face+head:B-south-band-E-head",
+   "source": [
+    17.862201665527504,
+    3.1609770823941097,
+    1.5295777035352827
+   ],
+   "target": [
+    7.986239344287008,
+    3.0085152013711807,
+    2.7699999999999987
+   ]
+  },
+  {
+   "id": "B-east-1327917-S-head",
+   "sourceObservation": "planes:0099c81bd5dbed3e+6c16133c9fea59eb+723ad0361f9fe921",
+   "targetFeature": "0FDABnXCHCUR8gI54b$Kx2+1clZEeY_LECBal6MUv_jTu:wall-face+jamb+sill-or-head:B-east-1327917-S-head",
+   "source": [
+    17.89352084942861,
+    5.451535077430236,
+    1.527961896527602
+   ],
+   "target": [
+    7.986239344287008,
+    5.2100385753542655,
+    2.760000000000001
+   ]
+  },
+  {
+   "id": "B-east-1327933-S-head",
+   "sourceObservation": "planes:c14f05d3f9b00618+9551d427eae27f44+b8dd0f760c8cf268",
+   "targetFeature": "0FDABnXCHCUR8gI54b$Kx2+1clZEeY_LECBal6MUv_ikp:wall-face+jamb+sill-or-head:B-east-1327933-S-head",
+   "source": [
+    17.917567498829655,
+    6.946868726978822,
+    1.531051637430176
+   ],
+   "target": [
+    7.986239344287008,
+    6.710038707530871,
+    2.760000000000001
+   ]
+  },
+  {
+   "id": "B-east-1327949-N-head",
+   "sourceObservation": "planes:a0ab03acf9e146e9+f8b4f39a48d7ff0a+be4f9cfca830f340",
+   "targetFeature": "0FDABnXCHCUR8gI54b$Kx2+1clZEeY_LECBal6MUv_ikx:wall-face+jamb+sill-or-head:B-east-1327949-N-head",
+   "source": [
+    17.944686130686573,
+    8.929191507101365,
+    1.530502412855577
+   ],
+   "target": [
+    7.986239344287008,
+    8.710038707460047,
+    2.760000000000001
+   ]
+  },
+  {
+   "id": "B-west-door-S-floor",
+   "sourceObservation": "planes:2db57fe9bf87c509+5d41bc319d006ee7+aa6199bdb4eb32b5",
+   "targetFeature": "3qeiF73TD1uOeHIcNGcVOd+0WU0DUvgT6tu4IXEg9kNX5:wall-face+jamb+floor:B-west-door-S-floor",
+   "source": [
+    11.200368229551529,
+    9.608360124506381,
+    -1.1403549438549598
+   ],
+   "target": [
+    1.1806893394299858,
+    9.35896719999379,
+    0.1
+   ]
+  },
+  {
+   "id": "A-floor-SW",
+   "sourceObservation": "planes:49734d12c53cb3d9+c7b1affe55c2459b+c5965a3314bd50e3",
+   "targetFeature": "0FDABnXCHCUR8gI54b$LZ2+1gsZ4XbYD0qRhfvwOUEJ7O:x-face+y-face+floor:A-floor-SW",
+   "source": [
+    7.826738890470445,
+    -3.9696995002277395,
+    -1.157597227012507
+   ],
+   "target": [
+    -2.01973527661579,
+    -4.333520020041769,
+    0.1
+   ]
+  },
+  {
+   "id": "A-door-W-floor",
+   "sourceObservation": "planes:99531e1e94ff5004+d4851a1a47dbaf9b+1fe7368e9f051a2d",
+   "targetFeature": "1gsZ4XbYD0qRhfvwOUEJ7O+0WU0DUvgT6tu4IXEg9kM_7:wall-face+jamb+floor:A-door-W-floor",
+   "source": [
+    8.147337361783759,
+    -3.980100451605823,
+    -1.1585413281239025
+   ],
+   "target": [
+    -1.6720590608635577,
+    -4.333520020041769,
+    0.1
+   ]
+  }
+ ],
+ "heldOut": [
+  {
+   "id": "B-south-band-W-head",
+   "sourceObservation": "planes:027b5d47824aac3f+1548e528dec9dfaa+fad6abb2fe466771",
+   "targetFeature": "1gsZ4XbYD0qRhfvwOUEI1z+1L1ux2$dP8WO2wszhYGdzv:wall-face+jamb+sill-or-head:B-south-band-W-head",
+   "source": [
+    12.351542063829939,
+    3.2382004344255835,
+    1.4946156346222061
+   ],
+   "target": [
+    2.466239344287021,
+    3.0085152013711807,
+    2.7699999999999987
+   ]
+  },
+  {
+   "id": "B-east-1328061-S-head",
+   "sourceObservation": "planes:4cec6e3a9ccde7f3+ecf1b13a9a0d4b3c+6930f4a5e2af823a",
+   "targetFeature": "0FDABnXCHCUR8gI54b$Kx2+3iJGmd4gX4uwx4kvBSqaZ_:wall-face+jamb+sill-or-head:B-east-1328061-S-head",
+   "source": [
+    17.868678310054722,
+    3.9472495794746942,
+    1.519984111618142
+   ],
+   "target": [
+    7.986239344287008,
+    3.7100384431069737,
+    2.760000000000001
+   ]
+  },
+  {
+   "id": "B-east-1327917-N-head",
+   "sourceObservation": "planes:a9bb8d67af09d673+b795694c71677bb0+e787d6a3d64a2523",
+   "targetFeature": "0FDABnXCHCUR8gI54b$Kx2+1clZEeY_LECBal6MUv_jTu:wall-face+jamb+sill-or-head:B-east-1327917-N-head",
+   "source": [
+    17.902011227041513,
+    5.939836784444262,
+    1.5278791592657182
+   ],
+   "target": [
+    7.986239344287008,
+    5.710038575354266,
+    2.760000000000001
+   ]
+  },
+  {
+   "id": "B-east-1327933-N-head",
+   "sourceObservation": "planes:1c23bb80245a40af+ad1132a1dd4d6677+156840e8994c55de",
+   "targetFeature": "0FDABnXCHCUR8gI54b$Kx2+1clZEeY_LECBal6MUv_ikp:wall-face+jamb+sill-or-head:B-east-1327933-N-head",
+   "source": [
+    17.922412164906554,
+    7.4317545074095115,
+    1.5279600603386951
+   ],
+   "target": [
+    7.986239344287008,
+    7.210038707530872,
+    2.760000000000001
+   ]
+  },
+  {
+   "id": "B-east-1327965-N-head",
+   "sourceObservation": "planes:e838b946fe83a2c3+08868cc4b5d4d244+ff60239e7b49a34d",
+   "targetFeature": "0FDABnXCHCUR8gI54b$Kx2+1clZEeY_LECBal6MUv_ikZ:wall-face+jamb+sill-or-head:B-east-1327965-N-head",
+   "source": [
+    17.96871780901059,
+    10.417198692508402,
+    1.5278373963609566
+   ],
+   "target": [
+    7.986239344287008,
+    10.210038707459638,
+    2.760000000000001
+   ]
+  },
+  {
+   "id": "B-west-door-S-head",
+   "sourceObservation": "planes:4cdf6ebcbd380e87+a080744b771e08a8+68ca33223fedd708",
+   "targetFeature": "3qeiF73TD1uOeHIcNGcVOd+0WU0DUvgT6tu4IXEg9kNX5:wall-face+jamb+sill-or-head:B-west-door-S-head",
+   "source": [
+    11.19441249552157,
+    9.605388859957896,
+    1.046313947794643
+   ],
+   "target": [
+    1.1806893394299858,
+    9.35896719999379,
+    2.3000000000000003
+   ]
+  },
+  {
+   "id": "A-floor-SE",
+   "sourceObservation": "planes:a1f90ea120325725+c1174dda49f8adb7+de1d05862288e9c9",
+   "targetFeature": "1gsZ4XbYD0qRhfvwOUEK3Z+1gsZ4XbYD0qRhfvwOUEJ7O:x-face+y-face+floor:A-floor-SE",
+   "source": [
+    10.151711396762943,
+    -3.9974567383921915,
+    -1.1589982687461011
+   ],
+   "target": [
+    0.39069199098903595,
+    -4.333520020041769,
+    0.1
+   ]
+  },
+  {
+   "id": "A-door-E-floor",
+   "sourceObservation": "planes:fbfe2b3e84a60b63+4260e1ab0ba1eea0+e15d76b583137f9f",
+   "targetFeature": "1gsZ4XbYD0qRhfvwOUEJ7O+0WU0DUvgT6tu4IXEg9kM_7:wall-face+jamb+floor:A-door-E-floor",
+   "source": [
+    9.835950025125555,
+    -3.99067764860158,
+    -1.156578331845267
+   ],
+   "target": [
+    0.04794093913644226,
+    -4.333520020041769,
+    0.1
+   ]
+  }
+ ]
+}

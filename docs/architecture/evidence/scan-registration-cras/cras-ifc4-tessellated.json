@@ -1,0 +1,1474 @@
+{
+ "source": {
+  "file": "craslabbim.ifc",
+  "schema": "IFC2X3",
+  "sha256": "a83e573037b0c4cbba30f1167ed96cda52eb51859091d2c7d47cec7a59e1a36b",
+  "entities": 1328372
+ },
+ "derived": {
+  "file": "craslabbim-ifc4-tessellated.ifc",
+  "schema": "IFC4",
+  "sha256": "45a69aee943d6d460af5880ee73168ea0a03f5a43987bbb77c7ad765ad7d6984",
+  "entities": 484,
+  "bytes": 73495,
+  "walls": 61,
+  "slabs": 5
+ },
+ "method": "IfcOpenShell world-coordinate tessellation with openings applied; one IfcTriangulatedFaceSet body per element under an identity placement; GlobalIds and names preserved; no property sets, materials or fillings",
+ "ifcopenshell": "0.8.3.post2",
+ "seconds": 5.9,
+ "elements": [
+  {
+   "globalId": "3XP_HdJcfD9xJPuaOu_1Uv",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(35cm) Tijolo cer\u00e2mico acabamento pintura branca:914875",
+   "status": "ok",
+   "vertices": 120,
+   "triangles": 292,
+   "openings": 14,
+   "bbox": [
+    [
+     -9.9158,
+     -0.9409,
+     0.1
+    ],
+    [
+     -9.6158,
+     19.7515,
+     3.0
+    ]
+   ],
+   "expressId": 27
+  },
+  {
+   "globalId": "3XP_HdJcfD9xJPuaOu_1HV",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(20cm) Tijolo cer\u00e2mico acabamento pintura branca:915037",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -9.9158,
+     19.7515,
+     0.1
+    ],
+    [
+     8.2862,
+     19.9515,
+     3.0
+    ]
+   ],
+   "expressId": 34
+  },
+  {
+   "globalId": "0FDABnXCHCUR8gI54b$Kx2",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(35cm) Tijolo cer\u00e2mico acabamento pintura branca:919433",
+   "status": "ok",
+   "vertices": 136,
+   "triangles": 332,
+   "openings": 18,
+   "bbox": [
+    [
+     7.9862,
+     -4.3099,
+     0.1
+    ],
+    [
+     8.2862,
+     19.7515,
+     3.0
+    ]
+   ],
+   "expressId": 41
+  },
+  {
+   "globalId": "0FDABnXCHCUR8gI54b$K1a",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(15cm) Tijolo cer\u00e2mico acabamento pintura branca:919855",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     1.1807,
+     -4.3099,
+     0.1
+    ],
+    [
+     7.9862,
+     -4.1599,
+     3.0
+    ]
+   ],
+   "expressId": 48
+  },
+  {
+   "globalId": "0FDABnXCHCUR8gI54b$KPS",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(15cm) Tijolo cer\u00e2mico acabamento pintura branca:921367",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -9.6158,
+     -0.9409,
+     0.1
+    ],
+    [
+     -2.8093,
+     -0.7909,
+     3.0
+    ]
+   ],
+   "expressId": 55
+  },
+  {
+   "globalId": "0FDABnXCHCUR8gI54b$LZ2",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(15cm) Tijolo cer\u00e2mico acabamento pintura branca:921993",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.1697,
+     -4.5335,
+     0.1
+    ],
+    [
+     -2.0197,
+     -1.6135,
+     3.0
+    ]
+   ],
+   "expressId": 62
+  },
+  {
+   "globalId": "1E1B1LzKP1fOal0Nog1F_3",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(15cm) Tijolo cer\u00e2mico acabamento pintura branca:941802",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.2147,
+     13.9265,
+     0.1
+    ],
+    [
+     -2.0647,
+     19.7515,
+     3.0
+    ]
+   ],
+   "expressId": 69
+  },
+  {
+   "globalId": "1E1B1LzKP1fOal0Nog1Fuu",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(15cm) Tijolo cer\u00e2mico acabamento pintura branca:941905",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.2147,
+     13.7765,
+     0.1
+    ],
+    [
+     -1.8072,
+     13.9265,
+     3.0
+    ]
+   ],
+   "expressId": 76
+  },
+  {
+   "globalId": "1E1B1LzKP1fOal0Nog1C7k",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(15cm) Tijolo cer\u00e2mico acabamento pintura branca:942215",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.4353,
+     13.9115,
+     0.1
+    ],
+    [
+     0.5853,
+     19.7515,
+     3.0
+    ]
+   ],
+   "expressId": 83
+  },
+  {
+   "globalId": "1E1B1LzKP1fOal0Nog1C0_",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(15cm) Tijolo cer\u00e2mico acabamento pintura branca:942423",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -0.8372,
+     13.7765,
+     0.1
+    ],
+    [
+     -0.6247,
+     13.9265,
+     3.0
+    ]
+   ],
+   "expressId": 90
+  },
+  {
+   "globalId": "1E1B1LzKP1fOal0Nog1CDg",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(15cm) Tijolo cer\u00e2mico acabamento pintura branca:942595",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -0.7747,
+     13.9265,
+     0.1
+    ],
+    [
+     -0.6247,
+     18.2137,
+     3.0
+    ]
+   ],
+   "expressId": 97
+  },
+  {
+   "globalId": "1E1B1LzKP1fOal0Nog1CCw",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(15cm) Tijolo cer\u00e2mico acabamento pintura branca:942675",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -0.6247,
+     18.0637,
+     0.1
+    ],
+    [
+     0.4353,
+     18.2137,
+     3.0
+    ]
+   ],
+   "expressId": 104
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEI1z",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:961571",
+   "status": "ok",
+   "vertices": 32,
+   "triangles": 60,
+   "openings": 5,
+   "bbox": [
+    [
+     1.1807,
+     2.9085,
+     0.1
+    ],
+    [
+     7.9862,
+     3.0085,
+     3.0
+    ]
+   ],
+   "expressId": 111
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEIAE",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:962256",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.4907,
+     3.4115,
+     0.1
+    ],
+    [
+     1.0807,
+     3.5115,
+     3.0
+    ]
+   ],
+   "expressId": 118
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEIF9",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:962455",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.4907,
+     2.7835,
+     0.1
+    ],
+    [
+     1.0807,
+     2.8835,
+     3.0
+    ]
+   ],
+   "expressId": 125
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEIEw",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:962532",
+   "status": "ok",
+   "vertices": 16,
+   "triangles": 28,
+   "openings": 1,
+   "bbox": [
+    [
+     0.3907,
+     1.3835,
+     0.1
+    ],
+    [
+     0.4907,
+     9.2564,
+     3.0
+    ]
+   ],
+   "expressId": 132
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEJvs",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:963112",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.7093,
+     -0.3165,
+     0.1
+    ],
+    [
+     -2.0197,
+     -0.2165,
+     3.0
+    ]
+   ],
+   "expressId": 139
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEJzI",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:963340",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.1197,
+     -1.5135,
+     0.1
+    ],
+    [
+     -2.0197,
+     -0.3165,
+     3.0
+    ]
+   ],
+   "expressId": 146
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEJ$V",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:963457",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.8093,
+     -1.6135,
+     0.1
+    ],
+    [
+     -2.0197,
+     -1.5135,
+     3.0
+    ]
+   ],
+   "expressId": 153
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEJZF",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:963729",
+   "status": "ok",
+   "vertices": 16,
+   "triangles": 28,
+   "openings": 1,
+   "bbox": [
+    [
+     -2.8093,
+     -1.5135,
+     0.1
+    ],
+    [
+     -2.7093,
+     2.7835,
+     3.0
+    ]
+   ],
+   "expressId": 160
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEJcy",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:964066",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.3907,
+     1.2835,
+     0.1
+    ],
+    [
+     1.0807,
+     1.3835,
+     3.0
+    ]
+   ],
+   "expressId": 167
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEJij",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:964467",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.7093,
+     2.6835,
+     0.1
+    ],
+    [
+     -2.1197,
+     2.7835,
+     3.0
+    ]
+   ],
+   "expressId": 174
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEJHg",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:964660",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.7093,
+     1.2835,
+     0.1
+    ],
+    [
+     -2.0197,
+     1.3835,
+     3.0
+    ]
+   ],
+   "expressId": 181
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEJV_",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:965536",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.3907,
+     -4.5335,
+     0.1
+    ],
+    [
+     1.1807,
+     -4.4335,
+     3.0
+    ]
+   ],
+   "expressId": 188
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEJ17",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:965657",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.4907,
+     -4.1885,
+     0.1
+    ],
+    [
+     1.0807,
+     -4.0885,
+     3.0
+    ]
+   ],
+   "expressId": 195
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEJ7O",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(20cm) Tijolo cer\u00e2mico acabamento pintura branca:966022",
+   "status": "ok",
+   "vertices": 16,
+   "triangles": 28,
+   "openings": 1,
+   "bbox": [
+    [
+     -2.0197,
+     -4.5335,
+     0.1
+    ],
+    [
+     0.3907,
+     -4.3335,
+     3.0
+    ]
+   ],
+   "expressId": 202
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEKlH",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:968591",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.3907,
+     -0.3165,
+     0.1
+    ],
+    [
+     1.0807,
+     -0.2165,
+     3.0
+    ]
+   ],
+   "expressId": 209
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEK3Z",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:969917",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.3907,
+     -4.4335,
+     0.1
+    ],
+    [
+     0.4907,
+     -0.3165,
+     3.0
+    ]
+   ],
+   "expressId": 216
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEK7Q",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:970116",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.4907,
+     -3.2715,
+     0.1
+    ],
+    [
+     1.0807,
+     -3.1715,
+     3.0
+    ]
+   ],
+   "expressId": 223
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEK9q",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:970282",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.4907,
+     -1.7715,
+     0.1
+    ],
+    [
+     1.0807,
+     -1.6715,
+     3.0
+    ]
+   ],
+   "expressId": 230
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUEKFH",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:970639",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.8093,
+     14.6835,
+     0.1
+    ],
+    [
+     -2.2147,
+     14.7835,
+     3.0
+    ]
+   ],
+   "expressId": 237
+  },
+  {
+   "globalId": "1gsZ4XbYD0qRhfvwOUELvf",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:971319",
+   "status": "ok",
+   "vertices": 16,
+   "triangles": 28,
+   "openings": 1,
+   "bbox": [
+    [
+     1.0807,
+     -4.4335,
+     0.1
+    ],
+    [
+     1.1807,
+     3.5115,
+     3.0
+    ]
+   ],
+   "expressId": 244
+  },
+  {
+   "globalId": "3qeiF73TD1uOeHIcNGcTKH",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:971683",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.5853,
+     14.6835,
+     0.1
+    ],
+    [
+     1.1807,
+     14.7835,
+     3.0
+    ]
+   ],
+   "expressId": 251
+  },
+  {
+   "globalId": "3qeiF73TD1uOeHIcNGcTy8",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:973242",
+   "status": "ok",
+   "vertices": 32,
+   "triangles": 60,
+   "openings": 5,
+   "bbox": [
+    [
+     1.1807,
+     10.8615,
+     0.1
+    ],
+    [
+     7.9862,
+     10.9615,
+     3.0
+    ]
+   ],
+   "expressId": 258
+  },
+  {
+   "globalId": "3qeiF73TD1uOeHIcNGcUCm",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:976258",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.4353,
+     13.2835,
+     0.1
+    ],
+    [
+     0.5353,
+     13.9115,
+     3.0
+    ]
+   ],
+   "expressId": 265
+  },
+  {
+   "globalId": "3qeiF73TD1uOeHIcNGcUCE",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:976316",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.5353,
+     13.2835,
+     0.1
+    ],
+    [
+     1.0807,
+     13.3835,
+     3.0
+    ]
+   ],
+   "expressId": 272
+  },
+  {
+   "globalId": "3qeiF73TD1uOeHIcNGcU1j",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:976607",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.3907,
+     11.6835,
+     0.1
+    ],
+    [
+     1.0807,
+     11.7835,
+     3.0
+    ]
+   ],
+   "expressId": 279
+  },
+  {
+   "globalId": "3qeiF73TD1uOeHIcNGcU7L",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:976743",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.3907,
+     10.8615,
+     0.1
+    ],
+    [
+     0.4907,
+     11.6835,
+     3.0
+    ]
+   ],
+   "expressId": 286
+  },
+  {
+   "globalId": "3qeiF73TD1uOeHIcNGcU5f",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:976859",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.4907,
+     10.8615,
+     0.1
+    ],
+    [
+     1.0807,
+     10.9615,
+     3.0
+    ]
+   ],
+   "expressId": 293
+  },
+  {
+   "globalId": "3qeiF73TD1uOeHIcNGcUyj",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:977311",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.3907,
+     9.2564,
+     0.1
+    ],
+    [
+     1.0807,
+     9.3564,
+     3.0
+    ]
+   ],
+   "expressId": 300
+  },
+  {
+   "globalId": "3qeiF73TD1uOeHIcNGcUXS",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:978670",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.4907,
+     7.2615,
+     0.1
+    ],
+    [
+     1.1807,
+     7.3615,
+     3.0
+    ]
+   ],
+   "expressId": 307
+  },
+  {
+   "globalId": "3qeiF73TD1uOeHIcNGcVOd",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:979093",
+   "status": "ok",
+   "vertices": 24,
+   "triangles": 44,
+   "openings": 2,
+   "bbox": [
+    [
+     1.0807,
+     7.3615,
+     0.1
+    ],
+    [
+     1.1807,
+     14.6835,
+     3.0
+    ]
+   ],
+   "expressId": 314
+  },
+  {
+   "globalId": "0oqzbjvSb0$vZTZRUtb1Sf",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:980786",
+   "status": "ok",
+   "vertices": 32,
+   "triangles": 60,
+   "openings": 3,
+   "bbox": [
+    [
+     -2.1197,
+     1.3835,
+     0.1
+    ],
+    [
+     -2.0197,
+     11.7835,
+     3.0
+    ]
+   ],
+   "expressId": 321
+  },
+  {
+   "globalId": "0oqzbjvSb0$vZTZRUtb1Yl",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:981172",
+   "status": "ok",
+   "vertices": 16,
+   "triangles": 28,
+   "openings": 1,
+   "bbox": [
+    [
+     -2.8093,
+     10.2835,
+     0.1
+    ],
+    [
+     -2.7093,
+     14.6835,
+     3.0
+    ]
+   ],
+   "expressId": 328
+  },
+  {
+   "globalId": "0oqzbjvSb0$vZTZRUtb1ZX",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:981242",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.7093,
+     10.2835,
+     0.1
+    ],
+    [
+     -2.1197,
+     10.3835,
+     3.0
+    ]
+   ],
+   "expressId": 335
+  },
+  {
+   "globalId": "0oqzbjvSb0$vZTZRUtb1dQ",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:981441",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.7093,
+     11.6835,
+     0.1
+    ],
+    [
+     -2.1197,
+     11.7835,
+     3.0
+    ]
+   ],
+   "expressId": 342
+  },
+  {
+   "globalId": "0oqzbjvSb0$vZTZRUtb1gx",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:981664",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.7093,
+     13.2835,
+     0.1
+    ],
+    [
+     -2.0148,
+     13.3835,
+     3.0
+    ]
+   ],
+   "expressId": 349
+  },
+  {
+   "globalId": "0oqzbjvSb0$vZTZRUtb1kd",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:981948",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.8093,
+     7.2835,
+     0.1
+    ],
+    [
+     -2.1197,
+     7.3835,
+     3.0
+    ]
+   ],
+   "expressId": 356
+  },
+  {
+   "globalId": "0oqzbjvSb0$vZTZRUtb1mb",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:982078",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.8093,
+     7.3835,
+     0.1
+    ],
+    [
+     -2.7093,
+     8.7835,
+     3.0
+    ]
+   ],
+   "expressId": 363
+  },
+  {
+   "globalId": "0oqzbjvSb0$vZTZRUtb1nb",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:982142",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.7093,
+     8.6835,
+     0.1
+    ],
+    [
+     -2.1197,
+     8.7835,
+     3.0
+    ]
+   ],
+   "expressId": 370
+  },
+  {
+   "globalId": "0oqzbjvSb0$vZTZRUtb1rK",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:982351",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.8093,
+     5.6839,
+     0.1
+    ],
+    [
+     -2.1197,
+     5.7839,
+     3.0
+    ]
+   ],
+   "expressId": 377
+  },
+  {
+   "globalId": "02YF6m7eLAdg$Ov49N6Ccx",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:983725",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.8093,
+     4.2835,
+     0.1
+    ],
+    [
+     -2.1197,
+     4.3835,
+     3.0
+    ]
+   ],
+   "expressId": 384
+  },
+  {
+   "globalId": "02YF6m7eLAdg$Ov49N6CWu",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:983854",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.8093,
+     4.3835,
+     0.1
+    ],
+    [
+     -2.7093,
+     5.6839,
+     3.0
+    ]
+   ],
+   "expressId": 391
+  },
+  {
+   "globalId": "3j6v11QKf2WOfL75uASwqW",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(10cm) Drywall:1047423",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.1148,
+     13.3835,
+     0.1
+    ],
+    [
+     -2.0148,
+     13.7765,
+     3.0
+    ]
+   ],
+   "expressId": 398
+  },
+  {
+   "globalId": "0m4dHdJwjEdwQqA272LU9r",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(20cm) Tijolo cer\u00e2mico acabamento pastilha azul:1156417",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -9.0893,
+     2.2591,
+     -1.17
+    ],
+    [
+     -8.8893,
+     7.4591,
+     0.84
+    ]
+   ],
+   "expressId": 405
+  },
+  {
+   "globalId": "0m4dHdJwjEdwQqA272LUAO",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(20cm) Tijolo cer\u00e2mico acabamento pastilha azul:1156524",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -8.8893,
+     2.2591,
+     -1.17
+    ],
+    [
+     -4.2893,
+     2.4591,
+     0.84
+    ]
+   ],
+   "expressId": 412
+  },
+  {
+   "globalId": "0m4dHdJwjEdwQqA272LUB7",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(20cm) Tijolo cer\u00e2mico acabamento pastilha azul:1156595",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -4.4893,
+     2.4591,
+     -1.17
+    ],
+    [
+     -4.2893,
+     7.4591,
+     0.84
+    ]
+   ],
+   "expressId": 419
+  },
+  {
+   "globalId": "0m4dHdJwjEdwQqA272LU3o",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(40cm) Tijolo cer\u00e2mico acabamento pastilha:1157062",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -8.8893,
+     7.0591,
+     -1.17
+    ],
+    [
+     -4.4893,
+     7.4591,
+     0.84
+    ]
+   ],
+   "expressId": 426
+  },
+  {
+   "globalId": "0CX_MeLNH88ekhhWV4e$F7",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(45cm) Tijolo cer\u00e2mico acabamento pintura branca 2:1438546",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -9.1658,
+     12.6415,
+     2.83
+    ],
+    [
+     -2.8093,
+     13.0915,
+     2.93
+    ]
+   ],
+   "expressId": 433
+  },
+  {
+   "globalId": "0CX_MeLNH88ekhhWV4e$QH",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(45cm) Tijolo cer\u00e2mico acabamento pintura branca 2:1439236",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -9.6158,
+     -0.7909,
+     2.83
+    ],
+    [
+     -9.1658,
+     19.7515,
+     2.93
+    ]
+   ],
+   "expressId": 440
+  },
+  {
+   "globalId": "33gtcvddH7cec8$WOT4ecj",
+   "type": "IfcWallStandardCase",
+   "name": "Basic Wall:(35cm) Tijolo cer\u00e2mico acabamento pintura branca:1534316",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     0.5853,
+     19.4115,
+     0.1
+    ],
+    [
+     0.8853,
+     19.7515,
+     3.0
+    ]
+   ],
+   "expressId": 447
+  },
+  {
+   "globalId": "3XP_HdJcfD9xJPuaOu_0Jb",
+   "type": "IfcSlab",
+   "name": "Floor:(15cm) Piso + Porcelanato cinza claro 60 X 60:911079",
+   "status": "ok",
+   "vertices": 47,
+   "triangles": 94,
+   "openings": 2,
+   "bbox": [
+    [
+     -9.9158,
+     -4.5335,
+     -0.05
+    ],
+    [
+     8.2862,
+     19.9515,
+     0.1
+    ]
+   ],
+   "expressId": 454
+  },
+  {
+   "globalId": "3qeiF73TD1uOeHIcNGcUKc",
+   "type": "IfcSlab",
+   "name": "Cast-In-Place Stair:Stair:975096 Landing 1",
+   "status": "ok",
+   "vertices": 24,
+   "triangles": 52,
+   "openings": 0,
+   "bbox": [
+    [
+     -2.0647,
+     17.3765,
+     1.7508
+    ],
+    [
+     0.4353,
+     19.7515,
+     2.1471
+    ]
+   ],
+   "expressId": 461
+  },
+  {
+   "globalId": "0m4dHdJwjEdwQqA272LUIb",
+   "type": "IfcSlab",
+   "name": "Floor:(15cm) Piso + Pastilha azul:1155985",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -8.8893,
+     2.4591,
+     -1.17
+    ],
+    [
+     -4.4893,
+     7.0591,
+     -1.02
+    ]
+   ],
+   "expressId": 468
+  },
+  {
+   "globalId": "1rv7r_bWn3AP4mJITwGEQ5",
+   "type": "IfcSlab",
+   "name": "Floor:(12cm) Laje:1305914",
+   "status": "ok",
+   "vertices": 20,
+   "triangles": 36,
+   "openings": 0,
+   "bbox": [
+    [
+     -9.2893,
+     2.0591,
+     -0.14
+    ],
+    [
+     -2.8093,
+     7.6591,
+     -0.02
+    ]
+   ],
+   "expressId": 475
+  },
+  {
+   "globalId": "1rv7r_bWn3AP4mJITwGFWy",
+   "type": "IfcSlab",
+   "name": "Floor:(12cm) Laje:1307523",
+   "status": "ok",
+   "vertices": 8,
+   "triangles": 12,
+   "openings": 0,
+   "bbox": [
+    [
+     -4.2893,
+     4.1991,
+     -0.14
+    ],
+    [
+     -3.0693,
+     5.4991,
+     -0.02
+    ]
+   ],
+   "expressId": 482
+  }
+ ]
+}

@@ -13,6 +13,7 @@ mod test_support;
 
 mod adjacency;
 mod collada;
+mod collada_document;
 mod collada_fmt;
 mod constructions;
 mod csv;
@@ -58,7 +59,7 @@ mod usd;
 /// The STEP string-literal escaper; `escape`'s docs say why it is public.
 pub use step_text::escape as escape_step_string;
 
-pub use collada::export_collada_from_meshes;
+pub use collada::try_export_collada_from_meshes;
 pub use csv::{export_csv, CsvMode, CsvOptions};
 pub use dfjson::DfjsonStats;
 pub use error::ExportError;
@@ -96,7 +97,8 @@ pub use relationships::{relationships, Relationships};
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, JsonLdOptions};
 pub use kmz::{
-    export_kmz, export_kmz_collada_from_meshes, ifc_angle_to_kml_heading, AltitudeMode, KmzOptions,
+    export_kmz, ifc_angle_to_kml_heading,
+    try_export_kmz_collada_from_meshes, AltitudeMode, KmzOptions,
 };
 pub use merged::{
     deterministic_global_id, export_merged, export_merged_models, export_merged_with_stats,

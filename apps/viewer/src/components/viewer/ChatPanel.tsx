@@ -44,6 +44,8 @@ import { buildStreamMessagesForModel, filterAttachmentsForModel } from '@/lib/ll
 import { buildSystemPrompt } from '@/lib/llm/system-prompt';
 import { getModelContext, parseCSV } from '@/lib/llm/context-builder';
 import { collectActiveFileAttachments } from '@/lib/attachments';
+import { MAX_PDF_ATTACHMENT_BYTES } from '@/lib/llm/document-text';
+import { attachPdfDocument, createDocumentUploadGate, shouldContinueDocumentUploadBatch } from '@/lib/llm/document-upload';
 import { extractCodeBlocks } from '@/lib/llm/code-extractor';
 import { extractScriptEditOps, filterUnappliedScriptOps } from '@/lib/llm/script-edit-ops';
 import { createPatchDiagnostic, getPrimaryRootCause, type RepairScope } from '@/lib/llm/script-diagnostics';
@@ -89,22 +91,9 @@ const MAX_INLINE_IMAGE_DATA_URL_CHARS = 1_200_000;
 const MAX_ATTACHMENTS_PER_MESSAGE = 6;
 const MAX_TEXT_ATTACHMENT_BYTES = 512_000;
 const MAX_IMAGE_ATTACHMENT_BYTES = 8_000_000;
-/** Anthropic's PDF content-block limit is ~32 MB; keep our upload cap lower. */
-const MAX_PDF_ATTACHMENT_BYTES = 16_000_000;
 
 function createAttachmentId(): string {
   return crypto.randomUUID();
-}
-
-/** Convert an ArrayBuffer (binary file) to raw base64 — no data-URL prefix. */
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
-  }
-  return btoa(binary);
 }
 
 interface ChatSendOptions {
@@ -350,6 +339,9 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const documentUploadsRef = useRef<ReturnType<typeof createDocumentUploadGate> | null>(null);
+  documentUploadsRef.current ??= createDocumentUploadGate();
+  const documentUploads = documentUploadsRef.current;
   const dragCounterRef = useRef(0);
   const autoRepairAttemptCountsRef = useRef(new Map<string, { attempts: number; lastScope: RepairScope }>());
 
@@ -363,6 +355,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   useEffect(() => {
     resizeInput();
   }, [inputText, resizeInput]);
+  useEffect(() => () => documentUploads.cancel(), [activeModel, documentUploads]);
 
   // ── Smart auto-scroll ──
   // Only auto-scroll if user hasn't scrolled up to read old messages
@@ -1144,6 +1137,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
   // ── Clear with confirmation ──
   const handleClearClick = useCallback(() => {
+    documentUploads.cancel();
     if (messages.length <= 2) {
       resetScriptEditorForNewChat();
       clearMessages();
@@ -1154,9 +1148,10 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     } else {
       setShowClearConfirm(true);
     }
-  }, [messages.length, clearMessages, resetScriptEditorForNewChat, setChatToolReady]);
+  }, [messages.length, clearMessages, resetScriptEditorForNewChat, setChatToolReady, documentUploads]);
 
   const confirmClear = useCallback(() => {
+    documentUploads.cancel();
     resetScriptEditorForNewChat();
     clearMessages();
     setChatToolReady(null);
@@ -1164,7 +1159,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     setInputText('');
     setLastFinishReason(null);
     setShowClearConfirm(false);
-  }, [clearMessages, resetScriptEditorForNewChat, setChatToolReady]);
+  }, [clearMessages, resetScriptEditorForNewChat, setChatToolReady, documentUploads]);
 
   // ── File upload (button + drag-drop + paste) ──
   const processFiles = useCallback(async (files: FileList | File[]) => {
@@ -1172,8 +1167,10 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     const supportsImages = model?.supportsImages ?? false;
     const supportsFileAttachments = model?.supportsFileAttachments ?? true;
     let remainingSlots = Math.max(0, MAX_ATTACHMENTS_PER_MESSAGE - attachments.length);
+    const documentBatch = documentUploads.begin();
 
     for (const file of Array.from(files)) {
+      if (!documentBatch.current()) break;
       if (remainingSlots <= 0) {
         setChatError(`You can attach up to ${MAX_ATTACHMENTS_PER_MESSAGE} files per message.`);
         break;
@@ -1206,9 +1203,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           remainingSlots -= 1;
           continue;
         }
-        // PDFs are supported by Claude as native document content blocks.
-        // Route them separately from text attachments so the chat request
-        // can emit the correct multimodal block type.
+        // Extract PDF text locally so the same bounded document context works
+        // with every configured model and with bim.files scripts.
         if (file.name.match(/\.pdf$/i) || file.type === 'application/pdf') {
           if (!supportsFileAttachments) {
             setChatError('Selected model does not support file attachments. Switch model to attach PDFs.');
@@ -1218,17 +1214,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             setChatError(`PDF attachments must be smaller than ${Math.round(MAX_PDF_ATTACHMENT_BYTES / 1_000_000)} MB.`);
             continue;
           }
-          const buffer = await file.arrayBuffer();
-          const base64 = arrayBufferToBase64(buffer);
-          const attachment: FileAttachment = {
-            id: createAttachmentId(),
-            name: file.name,
-            type: 'application/pdf',
-            size: file.size,
-            pdfBase64: base64,
-            isPdf: true,
-          };
-          addAttachment(attachment);
+          await attachPdfDocument(file, documentBatch, addAttachment);
           remainingSlots -= 1;
           continue;
         }
@@ -1253,8 +1239,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           remainingSlots -= 1;
           continue;
         }
-        // Text-based files — CSV, TSV, JSON, TXT
-        if (!file.name.match(/\.(csv|json|txt|tsv)$/i)) continue;
+        // Text-based files — CSV, TSV, JSON, TXT and Markdown.
+        if (!file.name.match(/\.(csv|json|txt|tsv|md|markdown)$/i)) continue;
         if (!supportsFileAttachments) {
           setChatError('Selected model does not support file attachments. Switch model to attach files.');
           continue;
@@ -1279,10 +1265,11 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         addAttachment(attachment);
         remainingSlots -= 1;
       } catch (error) {
+        if (!shouldContinueDocumentUploadBatch(error)) break;
         setChatError(`Could not read ${file.name}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-  }, [activeModel, addAttachment, attachments.length, setChatError]);
+  }, [activeModel, addAttachment, attachments.length, setChatError, documentUploads]);
 
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -1352,7 +1339,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const modelSupportsFiles = modelForUi?.supportsFileAttachments ?? true;
   const attachmentAccept = [
     modelSupportsFiles
-      ? '.csv,.json,.txt,.tsv,.pdf,application/pdf,.xlsx,.xls,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.oasis.opendocument.spreadsheet'
+      ? '.csv,.json,.txt,.tsv,.md,.markdown,text/markdown,.pdf,application/pdf,.xlsx,.xls,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.oasis.opendocument.spreadsheet'
       : '',
     modelSupportsImages ? 'image/*' : '',
   ].filter(Boolean).join(',');

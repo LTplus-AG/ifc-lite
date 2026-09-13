@@ -27,7 +27,7 @@ import {
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
 import type { IfcSourceBytes } from './source-bytes.js';
-import { computeCanonicalParent } from './spatial-hierarchy-canonical-parent.js';
+import { computeCanonicalParent, computeReachableSpatialNodes } from './spatial-hierarchy-canonical-parent.js';
 import {
   type AttributeSource,
   extractLongName,
@@ -51,6 +51,9 @@ interface BuildContext {
   elementToContainer: Map<number, number>;
   visited: Set<number>;
   canonicalParent: Map<number, number>; // childId -> its one allowed builder (#4095)
+  /** Spatial-structure nodes buildNode will actually visit from IfcProject
+   *  (see computeReachableSpatialNodes) - set once IfcProject is known, #4310. */
+  reachableSpatialNodes: Set<number>;
   attrSource?: AttributeSource;
   /** One extractor reused across the recursion so LongName reads don't re-allocate per node. */
   attrExtractor?: EntityExtractor;
@@ -105,6 +108,7 @@ export class SpatialHierarchyBuilder {
       elementToContainer: new Map(),
       visited: new Set(),
       canonicalParent: computeCanonicalParent(entities, relationships),
+      reachableSpatialNodes: new Set(), // filled in below once IfcProject is known
       attrSource,
       attrExtractor: attrSource ? new EntityExtractor(attrSource.source) : undefined,
     };
@@ -117,6 +121,11 @@ export class SpatialHierarchyBuilder {
       }
       return undefined;
     }
+
+    // Which storeys buildNode will actually recurse into, computed up front
+    // so ContainsElements resolution below never depends on this node's own
+    // position in the traversal (#4310) - see computeReachableSpatialNodes.
+    ctx.reachableSpatialNodes = computeReachableSpatialNodes(projectIds[0], ctx.canonicalParent);
 
     const projectNode = this.buildNode(projectIds[0], ctx);
 
@@ -175,10 +184,16 @@ export class SpatialHierarchyBuilder {
     // the primary label (never duplicate it into the secondary slot).
     const longName = rawLongName && rawLongName !== name ? rawLongName : undefined;
 
-    // Guard against cyclic IfcRelAggregates chains (A aggregates B, B aggregates
-    // A), which would otherwise recurse unbounded and overflow the stack. A
-    // revisited node is returned as a leaf so the rest of the hierarchy still
-    // builds.
+    // This is NOT what actually prevents unbounded recursion on a cyclic
+    // IfcRelAggregates chain (A aggregates B, B aggregates A) - it never
+    // fires today. Recursion here only ever follows a node's ONE canonical
+    // parent (computeCanonicalParent in spatial-hierarchy-canonical-parent.ts
+    // picks exactly one, and skips any candidate that would close a cycle
+    // back through the child, #4246), so a cycle can supply at most one
+    // recursion edge into any node - which structurally cannot loop. Kept as
+    // defence in depth in case that single-parent invariant is ever
+    // weakened; if it does fire, a revisited node is returned as a leaf so
+    // the rest of the hierarchy still builds.
     if (ctx.visited.has(expressId)) {
       return { expressId, type: typeEnum, name, longName, elevation: undefined, children: [], elements: [] };
     }
@@ -254,6 +269,27 @@ export class SpatialHierarchyBuilder {
 
     if (isStoreyLikeSpatialType(typeEnum)) {
       for (const elementId of containedElements) {
+        // First-declared wins on duplicate containment, matching containedIn()
+        // (#4248) - but only among storeys buildNode actually visits. A
+        // first-declared edge naming an unreachable storey (no path back to
+        // IfcProject, e.g. missing its own IfcRelAggregates edge) is not a
+        // real competing answer: buildNode never runs that storey's own
+        // branch, so nothing would ever claim the element there, and the
+        // element must not be dropped just because a later-declared but
+        // VIABLE storey lost a tie to a candidate that can't win (#4310).
+        // Only storey-like containers compete: a reachable IfcSpace edge
+        // declared first is not a storey answer, and letting it win here
+        // would leave the element with no elementToStorey entry at all
+        // (spaces never run this branch).
+        const containerEdges = relationships.inverse.getEdges(elementId, RelationshipType.ContainsElements);
+        const firstViableContainer = containerEdges.find((edge) =>
+          ctx.reachableSpatialNodes.has(edge.target) && isStoreyLikeSpatialType(entities.getTypeEnum(edge.target)));
+        // expressId is always reachable here (buildNode only runs on reachable
+        // nodes) and always has an edge to elementId (elementId came from THIS
+        // storey's own containedElements), so firstViableContainer is always
+        // defined - it can never fall through to the pre-#4310 "assign
+        // unconditionally" behavior by surprise.
+        if (firstViableContainer && firstViableContainer.target !== expressId) continue; // a viable earlier-declared storey wins instead
         ctx.elementToStorey.set(elementId, expressId);
         // Propagate the storey assignment to aggregated descendants (e.g. an
         // IfcBuildingElementPart child of an IfcWall). Without this, parts have no

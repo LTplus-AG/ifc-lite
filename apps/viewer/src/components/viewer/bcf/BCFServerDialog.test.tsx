@@ -15,7 +15,11 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { render, cleanup, click } from '@/test/render.js';
 import { useViewerStore } from '@/store';
-import { clearBcfServerConfig, saveBcfServerConfig } from '@/services/bcf-server';
+import {
+  clearBcfServerConfig,
+  loadBcfServerConfig,
+  saveBcfServerConfig,
+} from '@/services/bcf-server';
 import type { BCFProject } from '@ifc-lite/bcf';
 import { BCFServerDialog } from './BCFServerDialog.js';
 
@@ -304,11 +308,20 @@ describe('BCFServerDialog', () => {
       await waitFor(() => tokenForms.length === 1, 'authorization code exchanged');
       assert.equal(tokenForms[0].get('grant_type'), 'authorization_code');
       assert.equal(tokenForms[0].get('client_id'), 'PlayGround_Client');
-      assert.equal(tokenForms[0].get('client_secret'), 'play-secret');
+      assert.equal(
+        tokenForms[0].get('client_secret'),
+        null,
+        'a VITE_ value must never become a browser-sent client secret',
+      );
       assert.equal(tokenForms[0].get('redirect_uri'), `${window.location.origin}/Callback`);
       await waitFor(
         () => document.body.textContent?.includes('Signed in as tester@example.com') ?? false,
         'signed-in banner',
+      );
+      assert.equal(
+        loadBcfServerConfig()?.clientSecret,
+        '',
+        'refresh must persist the vendor app as a public client',
       );
     } finally {
       window.open = realOpen;

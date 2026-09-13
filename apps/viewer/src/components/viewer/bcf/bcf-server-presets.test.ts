@@ -99,15 +99,28 @@ describe('vendorAppForPreset', () => {
     assert.equal(vendorAppForPreset('bimcollab'), null, 'a secret alone is not an app');
   });
 
-  it('reads the id, secret and redirect override, trimmed', () => {
+  it('reads the id and redirect override but ignores a build-time secret', () => {
     setEnv('VITE_BCF_APP_BIMCOLLAB_CLIENT_ID', ' PlayGround_Client ');
     setEnv('VITE_BCF_APP_BIMCOLLAB_CLIENT_SECRET', 'k!x ');
     setEnv('VITE_BCF_APP_BIMCOLLAB_REDIRECT_URI', 'http://localhost:5000/Callback');
     assert.deepEqual(vendorAppForPreset('bimcollab'), {
       clientId: 'PlayGround_Client',
-      clientSecret: 'k!x',
       redirectUri: 'http://localhost:5000/Callback',
     });
+  });
+
+  it('keeps public-client configuration for other named presets', () => {
+    setEnv('VITE_BCF_APP_ACONEX_EUROPE_CLIENT_ID', ' aconex-public ');
+    setEnv('VITE_BCF_APP_ACONEX_EUROPE_REDIRECT_URI', 'https://viewer.example/aconex');
+    try {
+      assert.deepEqual(vendorAppForPreset('aconex-europe'), {
+        clientId: 'aconex-public',
+        redirectUri: 'https://viewer.example/aconex',
+      });
+    } finally {
+      setEnv('VITE_BCF_APP_ACONEX_EUROPE_CLIENT_ID', undefined);
+      setEnv('VITE_BCF_APP_ACONEX_EUROPE_REDIRECT_URI', undefined);
+    }
   });
 
   it('never applies to the custom preset', () => {

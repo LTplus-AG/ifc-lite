@@ -38,34 +38,106 @@ export interface BcfServerPreset {
 }
 
 /**
- * OAuth application this deployment holds with a vendor, so its users sign
- * in without ever seeing a client id. Read from the build env per preset:
+ * OAuth public client this deployment holds with a named vendor, so its users
+ * sign in without ever seeing a client id. Read from the allowlisted build env:
  *
  *   VITE_BCF_APP_<PRESET>_CLIENT_ID      required; absent = no app
- *   VITE_BCF_APP_<PRESET>_CLIENT_SECRET  when the vendor issued one
  *   VITE_BCF_APP_<PRESET>_REDIRECT_URI   only when the vendor registered a
  *                                        different callback than this
  *                                        origin's `/oauth/bcf/callback`
  *
  * `<PRESET>` is the preset id upper-cased with `-` as `_`, e.g.
- * `VITE_BCF_APP_BIMCOLLAB_CLIENT_ID`. The secret ships in the bundle, which
- * is the model these vendors work with (their published playground client
- * comes with one, and every desktop BCF manager embeds its own): it
- * identifies the application, and PKCE plus the registered redirect URI are
- * what protect the authorization code. A deployment that would rather not
- * ship it leaves the variables unset and the form falls back to asking for
- * a client id.
+ * `VITE_BCF_APP_BIMCOLLAB_CLIENT_ID`. Vendor apps are OAuth public clients:
+ * no client secret is read from `VITE_*` or sent from the browser. PKCE and
+ * the registered redirect URI protect the authorization code. Confidential
+ * clients require a server-side token exchange and are not supported here.
  */
 export interface BcfVendorApp {
   clientId: string;
-  clientSecret: string;
   /** Absolute redirect URI registered with the vendor; empty = the default. */
   redirectUri: string;
 }
 
-function readEnv(name: string): string {
-  const env = import.meta.env as Record<string, string | undefined>;
-  return (env[name] ?? '').trim();
+function publicVendorEnv(presetId: string): readonly [string | undefined, string | undefined] | null {
+  switch (presetId) {
+    case 'aconex-americas':
+      return [
+        import.meta.env.VITE_BCF_APP_ACONEX_AMERICAS_CLIENT_ID,
+        import.meta.env.VITE_BCF_APP_ACONEX_AMERICAS_REDIRECT_URI,
+      ];
+    case 'aconex-asia':
+      return [
+        import.meta.env.VITE_BCF_APP_ACONEX_ASIA_CLIENT_ID,
+        import.meta.env.VITE_BCF_APP_ACONEX_ASIA_REDIRECT_URI,
+      ];
+    case 'aconex-aunz':
+      return [
+        import.meta.env.VITE_BCF_APP_ACONEX_AUNZ_CLIENT_ID,
+        import.meta.env.VITE_BCF_APP_ACONEX_AUNZ_REDIRECT_URI,
+      ];
+    case 'aconex-europe':
+      return [
+        import.meta.env.VITE_BCF_APP_ACONEX_EUROPE_CLIENT_ID,
+        import.meta.env.VITE_BCF_APP_ACONEX_EUROPE_REDIRECT_URI,
+      ];
+    case 'aconex-hongkong':
+      return [
+        import.meta.env.VITE_BCF_APP_ACONEX_HONGKONG_CLIENT_ID,
+        import.meta.env.VITE_BCF_APP_ACONEX_HONGKONG_REDIRECT_URI,
+      ];
+    case 'aconex-china':
+      return [
+        import.meta.env.VITE_BCF_APP_ACONEX_CHINA_CLIENT_ID,
+        import.meta.env.VITE_BCF_APP_ACONEX_CHINA_REDIRECT_URI,
+      ];
+    case 'aconex-saudi':
+      return [
+        import.meta.env.VITE_BCF_APP_ACONEX_SAUDI_CLIENT_ID,
+        import.meta.env.VITE_BCF_APP_ACONEX_SAUDI_REDIRECT_URI,
+      ];
+    case 'aconex-uk':
+      return [
+        import.meta.env.VITE_BCF_APP_ACONEX_UK_CLIENT_ID,
+        import.meta.env.VITE_BCF_APP_ACONEX_UK_REDIRECT_URI,
+      ];
+    case 'bimcollab':
+      return [
+        import.meta.env.VITE_BCF_APP_BIMCOLLAB_CLIENT_ID,
+        import.meta.env.VITE_BCF_APP_BIMCOLLAB_REDIRECT_URI,
+      ];
+    case 'bimdata':
+      return [
+        import.meta.env.VITE_BCF_APP_BIMDATA_CLIENT_ID,
+        import.meta.env.VITE_BCF_APP_BIMDATA_REDIRECT_URI,
+      ];
+    case 'bimtrack':
+      return [
+        import.meta.env.VITE_BCF_APP_BIMTRACK_CLIENT_ID,
+        import.meta.env.VITE_BCF_APP_BIMTRACK_REDIRECT_URI,
+      ];
+    case 'catenda':
+      return [
+        import.meta.env.VITE_BCF_APP_CATENDA_CLIENT_ID,
+        import.meta.env.VITE_BCF_APP_CATENDA_REDIRECT_URI,
+      ];
+    case 'dalux':
+      return [
+        import.meta.env.VITE_BCF_APP_DALUX_CLIENT_ID,
+        import.meta.env.VITE_BCF_APP_DALUX_REDIRECT_URI,
+      ];
+    case 'openproject':
+      return [
+        import.meta.env.VITE_BCF_APP_OPENPROJECT_CLIENT_ID,
+        import.meta.env.VITE_BCF_APP_OPENPROJECT_REDIRECT_URI,
+      ];
+    case 'streambim':
+      return [
+        import.meta.env.VITE_BCF_APP_STREAMBIM_CLIENT_ID,
+        import.meta.env.VITE_BCF_APP_STREAMBIM_REDIRECT_URI,
+      ];
+    default:
+      return null;
+  }
 }
 
 export function vendorAppEnvPrefix(presetId: string): string {
@@ -73,14 +145,16 @@ export function vendorAppEnvPrefix(presetId: string): string {
 }
 
 export function vendorAppForPreset(presetId: string): BcfVendorApp | null {
-  if (presetId === CUSTOM_PRESET_ID) return null;
-  const prefix = vendorAppEnvPrefix(presetId);
-  const clientId = readEnv(`${prefix}_CLIENT_ID`);
+  // Static property reads are deliberate. Vite replaces them individually;
+  // aliasing the whole import.meta.env object would serialize every VITE_*
+  // value into the browser bundle, including a mistakenly configured secret.
+  const values = publicVendorEnv(presetId);
+  if (!values) return null;
+  const clientId = (values[0] ?? '').trim();
   if (!clientId) return null;
   return {
     clientId,
-    clientSecret: readEnv(`${prefix}_CLIENT_SECRET`),
-    redirectUri: readEnv(`${prefix}_REDIRECT_URI`),
+    redirectUri: (values[1] ?? '').trim(),
   };
 }
 
@@ -163,14 +237,15 @@ export const BCF_SERVER_PRESETS: readonly BcfServerPreset[] = [
     // client, two requests differing only in this parameter. These three are
     // what the Connection API implementation guide documents.
     oauthScope: 'openid offline_access bcf',
-    // BIMcollab issues a client id and secret to an application once it has
-    // been demonstrated to them (Connection API implementation guide, §
+    // BIMcollab issues a client id to an application once it has been
+    // demonstrated to them (Connection API implementation guide, §
     // Authentication); a space administrator cannot create one. Their
     // IdentityServer also refuses the password and client-credentials grants
     // for such a client (`unauthorized_client`, measured on
     // playground.bimcollab.com against the published playground client), so
-    // the browser flow through a deployment-held app is the only sign-in
-    // that can work — and the reason for `vendorAppForPreset`.
+    // the browser's PKCE public-client flow through a deployment-held app is
+    // the only sign-in that can work — and the reason for
+    // `vendorAppForPreset`.
     vendorIssuedClientsOnly: true,
     note: 'Your space URL, e.g. https://myspace.bimcollab.com. The same address you give Solibri or a BCF manager.',
   },

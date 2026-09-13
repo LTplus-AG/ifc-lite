@@ -125,7 +125,9 @@ export function BCFServerConnectForm({
         }
         const preparation = await prepareBcfOAuth(serverUrl, {
           clientId: vendorApp?.clientId ?? clientId,
-          clientSecret: vendorApp?.clientSecret ?? clientSecret,
+          // A build-time vendor app is a browser public client. Never carry a
+          // manually entered secret across a preset switch into that flow.
+          clientSecret: vendorApp ? '' : clientSecret,
           redirectUri: vendorApp?.redirectUri || undefined,
           scope: preset.oauthScope,
           missingClientIdMessage,

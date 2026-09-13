@@ -130,6 +130,7 @@ pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
 }
 
 /// What [`subtract_many`] made of a cutter group.
+#[must_use]
 #[derive(Debug, Clone)]
 pub enum BatchSubtract {
     /// The arrangement conformed (or its lenient batch passed the volume

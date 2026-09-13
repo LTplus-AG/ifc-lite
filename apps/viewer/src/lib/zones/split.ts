@@ -205,8 +205,7 @@ export function splitElementByZones(
   const flat = flattenZones(zones);
   const handle = split(positions, indices, flat.zones, flat.footprints, flat.footprintCounts);
   // The binding answers `undefined` for a mesh that encloses no volume (every
-  // triangle dropped as malformed, or a degenerate shell). That is "nothing to
-  // split", and it used to arrive as a handle whose every number read perfect.
+  // triangle dropped as malformed, or a degenerate shell): nothing to split.
   if (!handle) return null;
   try {
     // Inverted rather than `> tolerance`, so a NaN report REFUSES: `NaN >

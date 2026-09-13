@@ -61,7 +61,7 @@ fn group_reject(outcome: GroupCut) -> GroupReject {
 /// the shape of a real cut, and the router re-derived the bit with a triangle
 /// count and a 0.1 % volume gate (`router/voids/sweep.rs`; repaired twice
 /// under #1788). The seam now names the outcome. Mutations that fail this:
-/// return `Ok(GroupCut::Cut(host.clone()))` from any bail; force `changed =
+/// return `GroupCut::Cut(host_mesh.clone())` from any bail; force `changed =
 /// true` in the kernel classifier (the tetra case reads `Cut`).
 #[test]
 fn subtract_mesh_many_names_each_rejection_instead_of_returning_the_host() {
@@ -584,12 +584,11 @@ fn topology_tear_recorded_once_per_batched_subtract_not_once_per_chunk() {
     for cutter_count in [16usize, 17] {
         let refs: Vec<&Mesh> = cutters.iter().take(cutter_count).collect();
         let p = ClippingProcessor::new();
+        // `group_cut` panics on a rejection, which would make this vacuous.
         let result = group_cut(p.subtract_mesh_many(&open_host, &refs));
-        // The group must have been CUT, not rejected — a rejected group returns
-        // the host un-cut and records nothing, which would make this vacuous.
         assert!(
             result.triangle_count() > open_host.triangle_count(),
-            "{cutter_count} cutters: the group was rejected, so this proves nothing"
+            "{cutter_count} cutters: the cut must carve the host"
         );
         assert!(
             !crate::router::voids::prism_cut::closure_checks::directed_closed(&result)

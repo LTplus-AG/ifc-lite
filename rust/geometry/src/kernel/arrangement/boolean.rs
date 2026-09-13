@@ -174,18 +174,7 @@ pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
 pub fn boolean_with_conformity(a: &[Tri], b: &[Tri], op: BoolOp) -> (Vec<Tri>, bool) {
     let arr = arrange(a, b);
     let conforming = arr.unrecovered == 0;
-    let vids = boolean_vids(&arr, a, b, op);
-    let out = vids
-        .into_iter()
-        .map(|t| {
-            [
-                to_f64_pt(&arr, t[0]),
-                to_f64_pt(&arr, t[1]),
-                to_f64_pt(&arr, t[2]),
-            ]
-        })
-        .collect();
-    (out, conforming)
+    (vids_to_tris(&arr, boolean_vids(&arr, a, b, op)), conforming)
 }
 
 /// `a − (∪ comps)` for PAIRWISE-DISJOINT, per-component-closed, OUTWARD-wound
@@ -248,11 +237,14 @@ pub fn difference_all_lenient(a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool) {
 fn classify_difference(arr: &Arrangement, a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool) {
     let bc = BComponents::new(comps);
     let (vids, changed) = boolean_vids_components(arr, a, &bc, BoolOp::Difference);
-    let tris = vids
-        .into_iter()
+    (vids_to_tris(arr, vids), changed)
+}
+
+/// Classified Vid triangles back to f64 coordinates.
+fn vids_to_tris(arr: &Arrangement, vids: Vec<[Vid; 3]>) -> Vec<Tri> {
+    vids.into_iter()
         .map(|t| [to_f64_pt(arr, t[0]), to_f64_pt(arr, t[1]), to_f64_pt(arr, t[2])])
-        .collect();
-    (tris, changed)
+        .collect()
 }
 
 /// Topology fingerprint of a boolean result: each oriented Vid triangle rotated

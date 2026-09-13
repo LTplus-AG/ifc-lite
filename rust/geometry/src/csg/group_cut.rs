@@ -15,6 +15,7 @@ use crate::kernel::mesh_bridge::{subtract_many, BatchSubtract};
 use crate::mesh::Mesh;
 
 /// Outcome of [`ClippingProcessor::subtract_mesh_many`].
+#[must_use]
 #[derive(Debug, Clone)]
 pub enum GroupCut {
     /// The whole group was cut in conforming arrangements and every

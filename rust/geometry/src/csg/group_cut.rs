@@ -34,6 +34,17 @@ pub enum GroupCut {
     Rejected(GroupReject),
 }
 
+impl GroupCut {
+    /// The mesh the subtract produced, a cut or a re-tessellated miss; `None`
+    /// for a rejection.
+    pub fn into_mesh(self) -> Option<Mesh> {
+        match self {
+            Self::Cut(m) | Self::Retessellated(m) => Some(m),
+            Self::Rejected(_) => None,
+        }
+    }
+}
+
 /// Why a group was not cut. For a group, only `InvalidOutput` and
 /// `GateRejected` record a [`crate::diagnostics::BoolFailure`]: the others are
 /// the expected, handled outcome (see [`ClippingProcessor::subtract_mesh_many`]).

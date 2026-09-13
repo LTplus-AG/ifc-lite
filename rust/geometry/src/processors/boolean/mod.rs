@@ -9,7 +9,7 @@
 
 use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 use crate::{
-    ClippingProcessor, Error, GroupCut, Mesh, Point3, Result, TessellationQuality, Vector3,
+    ClippingProcessor, Error, Mesh, Point3, Result, TessellationQuality, Vector3,
 };
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use std::cell::RefCell;
@@ -867,11 +867,8 @@ impl BooleanClippingProcessor {
             let clipper = ClippingProcessor::new();
             let outcome = clipper.subtract_mesh(&mesh, &second_mesh);
             self.absorb_failures(clipper.take_failures());
-            return Ok(match outcome {
-                GroupCut::Cut(cut) | GroupCut::Retessellated(cut) => (cut, false),
-                // The host un-cut; any failure is on record above.
-                GroupCut::Rejected(_) => (mesh, false),
-            });
+            // A rejection keeps the host un-cut; any failure is on record above.
+            return Ok((outcome.into_mesh().unwrap_or(mesh), false));
         }
 
         // Handle UNION operation — a real CSG union (overlap removed) on the

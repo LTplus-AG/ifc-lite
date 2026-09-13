@@ -462,7 +462,6 @@ impl GeometryRouter {
         max_removed: f64,
         clipper: &ClippingProcessor,
     ) -> bool {
-        let tri_before = result.triangle_count();
         let cutters: Vec<&Mesh> = prisms.iter().collect();
         let outcome = if !multi_slab {
             clipper.subtract_mesh_many(result, &cutters)
@@ -482,8 +481,7 @@ impl GeometryRouter {
         let Some(cut) = mesh_to_keep(outcome, result) else {
             return false;
         };
-        let vol_before = mesh_signed_volume(result);
-        accept_cut(result, cut, tri_before, vol_before, max_removed)
+        accept_cut(result, cut, max_removed)
     }
 
 
@@ -509,20 +507,14 @@ fn omy_span(lo: f32, hi: f32) -> f64 {
 /// cannot over-cut). This catches an approximate union reconstruction — a bridged
 /// depth band, a residual projection inflation — before it is committed and consumed
 /// as if it were an exact cut, so the cluster instead defers to the exact path.
-pub(super) fn accept_cut(
-    result: &mut Mesh,
-    cut: Mesh,
-    tri_before: usize,
-    vol_before: f64,
-    max_removed: f64,
-) -> bool {
+pub(super) fn accept_cut(result: &mut Mesh, cut: Mesh, max_removed: f64) -> bool {
     use super::{CSG_TRIANGLE_RETENTION_DIVISOR, MIN_VALID_TRIANGLES};
-    let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR).max(MIN_VALID_TRIANGLES);
+    let min_tris = (result.triangle_count() / CSG_TRIANGLE_RETENTION_DIVISOR).max(MIN_VALID_TRIANGLES);
     // Removed volume = host solid before − after (both same orientation). A cut that
     // removed MORE than the caller's upper bound is an over-cut → reject (defer).
-    // `vol_before` is `mesh_signed_volume(result)`, summed about the host's
-    // `volume_reference`; the after reading shares that point (#4632).
-    let removed = vol_before - mesh_signed_volume_about(&cut, &volume_reference(result));
+    // Both readings are summed about the host's one reference point (#4632).
+    let reference = volume_reference(result);
+    let removed = mesh_signed_volume_about(result, &reference) - mesh_signed_volume_about(&cut, &reference);
     if !cut.is_empty() && cut.triangle_count() >= min_tris && removed <= max_removed {
         *result = cut;
         true

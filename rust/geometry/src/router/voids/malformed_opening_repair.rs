@@ -7,7 +7,7 @@
 //! translation helper. Split out of `mod.rs` to keep it under the
 //! module-size ratchet.
 
-use crate::csg::{ClippingProcessor, GroupCut};
+use crate::csg::ClippingProcessor;
 use crate::{Mesh, Point3, Vector3};
 use nalgebra::Matrix3;
 use rustc_hash::FxHashMap;
@@ -278,9 +278,7 @@ pub(super) fn recut_malformed_openings(result: &mut Mesh, boxes: &[OpeningBox]) 
         // Extend 2 m past the opening along the thin axis so the box fully
         // penetrates any normal wall (the subtract only removes box ∩ host).
         let box_mesh = bx.extended_box_mesh(result.origin, 2.0);
-        if let GroupCut::Cut(cut) | GroupCut::Retessellated(cut) =
-            clipper.subtract_mesh(result, &box_mesh)
-        {
+        if let Some(cut) = clipper.subtract_mesh(result, &box_mesh).into_mesh() {
             // A clean box can only remove the opening prism, so it never empties
             // a real wall; ignore a degenerate empty result defensively.
             if !cut.is_empty() {

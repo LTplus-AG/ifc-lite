@@ -16,7 +16,7 @@
 //! isolates the atomics tax; threaded-serial vs threaded-parallel(N) gives the
 //! scaling; plain-serial vs threaded-parallel(N) is the decision number.
 
-use ifc_lite_geometry::csg::{ClippingProcessor, GroupCut};
+use ifc_lite_geometry::csg::ClippingProcessor;
 use ifc_lite_geometry::csg_capture::{deserialize, CapturedCsgJob};
 use ifc_lite_geometry::mesh::Mesh;
 use std::sync::OnceLock;
@@ -35,20 +35,14 @@ static CORPUS: OnceLock<Vec<CapturedCsgJob>> = OnceLock::new();
 fn replay_one(job: &CapturedCsgJob) -> usize {
     let csg = ClippingProcessor::new();
     match job {
-        CapturedCsgJob::Single { host, cutter } => cut_index_count(csg.subtract_mesh(host, cutter)),
+        CapturedCsgJob::Single { host, cutter } => csg.subtract_mesh(host, cutter),
         CapturedCsgJob::Many { host, cutters } => {
             let refs: Vec<&Mesh> = cutters.iter().collect();
-            cut_index_count(csg.subtract_mesh_many(host, &refs))
+            csg.subtract_mesh_many(host, &refs)
         }
     }
-}
-
-/// Index count of the produced mesh; 0 for a rejection.
-fn cut_index_count(outcome: GroupCut) -> usize {
-    match outcome {
-        GroupCut::Cut(m) | GroupCut::Retessellated(m) => m.indices.len(),
-        GroupCut::Rejected(_) => 0,
-    }
+    .into_mesh()
+    .map_or(0, |m| m.indices.len())
 }
 
 /// Load the captured corpus blob. Returns the job count.

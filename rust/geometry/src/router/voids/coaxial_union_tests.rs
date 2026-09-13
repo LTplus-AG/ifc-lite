@@ -529,7 +529,7 @@ fn accept_cut_reads_before_and_after_about_one_point_on_an_open_far_host_4632() 
 
     let run = |max_removed: f64| {
         let mut result = host.clone();
-        accept_cut(&mut result, cut.clone(), host.triangle_count(), mesh_signed_volume(&host), max_removed)
+        accept_cut(&mut result, cut.clone(), max_removed)
     };
     assert!(run(rod_volume * (1.0 + 1e-6)), "a bound just above the rod's volume admits the cut");
     assert!(!run(rod_volume * (1.0 - 1e-3)), "a bound just below the rod's volume refuses it");

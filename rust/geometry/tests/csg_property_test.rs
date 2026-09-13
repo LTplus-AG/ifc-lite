@@ -428,10 +428,7 @@ proptest! {
         let processor = ClippingProcessor::new();
         // A rejection leaves `a` as it is; the volume identity below still
         // has to hold for it, so a wrongful rejection of a real overlap fails.
-        let result = match processor.subtract_mesh(&a, &b) {
-            GroupCut::Cut(m) | GroupCut::Retessellated(m) => m,
-            GroupCut::Rejected(_) => a.clone(),
-        };
+        let result = processor.subtract_mesh(&a, &b).into_mesh().unwrap_or_else(|| a.clone());
 
         // (a) numeric sanity
         prop_assert!(all_finite(&result), "result has NaN/Inf positions");

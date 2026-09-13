@@ -224,11 +224,12 @@ pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<(Vec<Tri>, bool)> {
 /// volume against a sequential reference before trusting it. The second
 /// element is the same `changed` bit [`difference_all`] returns.
 pub fn difference_all_lenient(a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool) {
-    if comps.is_empty() {
-        return (a.to_vec(), false);
-    }
-    let b_all: Vec<Tri> = comps.iter().flat_map(|c| c.iter().copied()).collect();
-    let arr = arrange(a, &b_all);
+    let arr = match comps {
+        [] => return (a.to_vec(), false),
+        // One component (the single-cutter subtract) is already the B operand.
+        [only] => arrange(a, only),
+        _ => arrange(a, &comps.iter().flat_map(|c| c.iter().copied()).collect::<Vec<Tri>>()),
+    };
     classify_difference(&arr, a, comps)
 }
 

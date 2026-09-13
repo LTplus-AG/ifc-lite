@@ -14,11 +14,15 @@ const wasmMocks = vi.hoisted(() => {
   const setEntityIndex = vi.fn(() => {
     throw new Error('setEntityIndex: entity index columns disagree in length');
   });
+  const finalizePrepassStyles = vi.fn(() => {
+    throw new Error('finalizePrepassStyles: orphan style columns disagree: 2 ids need 8 colour floats, got 4');
+  });
   class MockIfcAPI {
     setEntityIndex = setEntityIndex;
+    finalizePrepassStyles = finalizePrepassStyles;
     free(): void {}
   }
-  return { init: vi.fn(async () => undefined), initSync: vi.fn(), MockIfcAPI, setEntityIndex };
+  return { init: vi.fn(async () => undefined), initSync: vi.fn(), MockIfcAPI, setEntityIndex, finalizePrepassStyles };
 });
 
 vi.mock('@ifc-lite/wasm', () => ({
@@ -42,6 +46,7 @@ async function send(data: unknown): Promise<void> {
 beforeEach(async () => {
   posted.length = 0;
   wasmMocks.setEntityIndex.mockClear();
+  wasmMocks.finalizePrepassStyles.mockClear();
   const g = globalThis as Record<string, unknown>;
   originalSelf = g.self;
   originalPostMessage = g.postMessage;
@@ -72,5 +77,24 @@ describe('geometry.worker.ts with a rejected entity index', () => {
     expect(posted.map((m) => m.type)).toEqual(['ready', 'error', 'ready']);
     expect(posted[1]?.message).toMatch(/disagree in length/);
     expect(wasmMocks.setEntityIndex).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a column refusal from finalizePrepassStyles without retrying on a copy of the file', async () => {
+    await send({ type: 'init' });
+    const empty = new Uint32Array(0);
+    await send({
+      type: 'finalize-styles',
+      sharedBuffer: new SharedArrayBuffer(8),
+      orphanIds: new Uint32Array([1, 2]), orphanColors: new Float32Array(4),
+      geomIds: empty, geomColors: new Float32Array(0),
+      colourMapSpans: empty, materialDefSpans: empty, relMaterialSpans: empty,
+      voidSpans: empty, fillsSpans: empty, aggregateSpans: empty,
+      planeAngleToRadians: 1,
+    });
+
+    expect(posted.map((m) => m.type)).toEqual(['ready', 'error']);
+    expect(posted[1]?.message).toMatch(/columns disagree/);
+    // The SAB-view fallback would call it a second time with a materialised copy.
+    expect(wasmMocks.finalizePrepassStyles).toHaveBeenCalledTimes(1);
   });
 });

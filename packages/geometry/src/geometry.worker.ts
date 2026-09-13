@@ -705,6 +705,17 @@ function viewSharedBytes(sharedBuffer: SharedArrayBuffer): Uint8Array {
   return new Uint8Array(sharedBuffer);
 }
 
+/**
+ * A wasm refusal of malformed column arguments (#4614): the text of
+ * `ColumnLengthMismatch` in rust/core/src/columnar_index.rs, the class-column
+ * check in source_fingerprint_prepass.rs and `check_rgba_columns` in
+ * prepass_sharded.rs. Retrying with a materialised copy of the file cannot
+ * change that verdict, so the SAB-view fallbacks rethrow it instead.
+ */
+function isColumnLengthRefusal(err: unknown): boolean {
+  return /columns disagree/.test(err instanceof Error ? err.message : String(err));
+}
+
 /** Fallback path: copy SAB into a fresh ArrayBuffer-backed Uint8Array. */
 function materialiseSharedBytes(sharedBuffer: SharedArrayBuffer): Uint8Array {
   const local = new Uint8Array(sharedBuffer.byteLength);
@@ -1398,6 +1409,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       try {
         run(viewSharedBytes(sharedBuffer), indexIds, indexStarts, indexLengths, indexClasses);
       } catch (err) {
+        if (isColumnLengthRefusal(err)) throw err;
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`[Worker] Sharded streaming prepass with SAB view failed (${msg}), retrying with copy`);
         try {
@@ -1446,6 +1458,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       try {
         payload = callFinalize(viewSharedBytes(m.sharedBuffer));
       } catch (err) {
+        if (isColumnLengthRefusal(err)) throw err;
         // SAB-view rejection fallback (see scan-shard above).
         warnSabViewFallbackOnce('finalize-prepass-styles', err);
         payload = finalizeApi.finalizePrepassStyles(materialiseSharedBytes(m.sharedBuffer), ...args);

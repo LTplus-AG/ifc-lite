@@ -237,7 +237,7 @@ pub async fn parse_parquet_stream(
                 let metadata_clone = metadata.clone();
                 let writer_for_cache = cache_writer.clone();
                 let recorded_progress = progress_recorder.take();
-                let coord_space = mesh_coordinate_space.clone();
+                let coord_space = mesh_coordinate_space;
                 let site_tf = site_transform.clone();
                 let building_tf = building_transform.clone();
 

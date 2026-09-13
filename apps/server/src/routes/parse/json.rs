@@ -89,7 +89,7 @@ pub async fn parse_full(
     let response = SymbolicParseResponse::new(ParseResponse {
         cache_key: cache_key.clone(),
         meshes,
-        mesh_coordinate_space: result.mesh_coordinate_space,
+        mesh_coordinate_space: Some(result.mesh_coordinate_space),
         site_transform: result.site_transform,
         building_transform: result.building_transform,
         metadata: result.metadata,

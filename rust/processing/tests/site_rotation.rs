@@ -14,7 +14,7 @@
 //! normals. Uses INLINE minimal IFC (one 4 x 1 x 2 extruded box placed
 //! relative to the site) so the test runs in CI without external fixtures.
 
-use ifc_lite_processing::{process_geometry, MeshData, ProcessingResult};
+use ifc_lite_processing::{process_geometry, MeshCoordinateSpace, MeshData, ProcessingResult};
 
 /// Box dimensions in the element's local frame (metres).
 const BOX: [f64; 3] = [4.0, 1.0, 2.0];
@@ -182,8 +182,8 @@ fn rotated_site_meshes_are_inverse_rotated_into_site_local_frame() {
 
     // Tier selection: non-identity site translation picks site_local.
     assert_eq!(
-        result.mesh_coordinate_space.as_deref(),
-        Some("site_local"),
+        result.mesh_coordinate_space,
+        MeshCoordinateSpace::SiteLocal,
         "non-identity site translation must select the site_local tier"
     );
     approx(
@@ -245,7 +245,7 @@ fn translated_only_site_still_selects_site_local_and_keeps_axes() {
     let ifc = model(TRANSLATED_SITE_PLACEMENT);
     let result = process_geometry(&ifc);
 
-    assert_eq!(result.mesh_coordinate_space.as_deref(), Some("site_local"));
+    assert_eq!(result.mesh_coordinate_space, MeshCoordinateSpace::SiteLocal);
     approx(
         result.metadata.coordinate_info.origin_shift,
         SITE_T,
@@ -267,8 +267,8 @@ fn identity_site_passes_through_unchanged() {
 
     // No site translation and no large coordinates: raw_ifc, zero RTC.
     assert_eq!(
-        result.mesh_coordinate_space.as_deref(),
-        Some("raw_ifc"),
+        result.mesh_coordinate_space,
+        MeshCoordinateSpace::RawIfc,
         "identity site must not trigger the site_local tier"
     );
     approx(

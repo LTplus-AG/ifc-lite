@@ -1045,7 +1045,9 @@ export class MeshCollection {
      */
     get(index: number): MeshDataJs | undefined;
     /**
-     * Check if RTC offset is significant (>10km)
+     * Check if an RTC offset was applied to these meshes (any non-zero
+     * component). It can be inside 10 km: the placement-bounds fallback
+     * re-bases on the bbox centre when a corner is past 10 km (#4643).
      */
     hasRtcOffset(): boolean;
     /**

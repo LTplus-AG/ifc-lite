@@ -9,6 +9,7 @@ export function printHumanReport(result, observer, narrowed, log = console.log) 
     UNOBSERVED: '  ✘ UNOBSERVED  <-- FINDING',
     INCONCLUSIVE: '  ? INCONCLUSIVE  <-- ORACLE CAPABILITY GAP',
     'BASELINE-BROKEN': '  ! BASELINE-BROKEN  <-- ORACLE COULD NOT MEASURE',
+    'REVERT-BROKE-BUILD': '  ! REVERT-BROKE-BUILD  <-- NO ASSERTION RAN; DECLARE A --mutation',
   }[result.verdict];
 
   log('\n' + '='.repeat(78));

@@ -97,10 +97,10 @@ impl MeshOutlineJs {
 pub fn mesh_outline_2d_js(
     positions: &[f32],
     indices: &[u32],
-    axis: u8,
+    axis: f64,
     flipped: bool,
 ) -> Result<Option<MeshOutlineJs>, JsError> {
-    let Some(axis) = ProjectionAxis::from_u8(axis) else {
+    let Some(axis) = axis_from_js(axis) else {
         return Err(JsError::new(&format!("meshOutline2d: axis must be 0, 1 or 2, got {axis}")));
     };
     let outline = match mesh_outline_2d(positions, indices, axis, flipped) {
@@ -129,4 +129,35 @@ pub fn mesh_outline_2d_js(
         axis_min: outline.axis_min,
         axis_max: outline.axis_max,
     }))
+}
+
+/// The JS `axis` number as a [`ProjectionAxis`], or `None` unless it is
+/// exactly 0, 1 or 2. Taken as `f64` because a `u8` parameter is wrapped by
+/// the wasm ABI before any check runs (`256` and `NaN` arrive as `0`, `1.5`
+/// as `1`), which computes an outline for an axis the caller never named.
+fn axis_from_js(axis: f64) -> Option<ProjectionAxis> {
+    if !(0.0..=2.0).contains(&axis) || axis.fract() != 0.0 {
+        return None;
+    }
+    ProjectionAxis::from_u8(axis as u8)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// meshOutline2d took `axis: u8`, and the wasm ABI wrapped the JS number
+    /// before any check: on the previous build 256, NaN and Infinity computed
+    /// an X outline and 257 and 1.5 a Y outline (#4644). Mutation: return
+    /// `ProjectionAxis::from_u8(axis as u8)` without the check, and NaN, 1.5,
+    /// 0.5 and -1 decode to an axis.
+    #[test]
+    fn only_an_exact_0_1_or_2_decodes_to_an_axis() {
+        assert_eq!(axis_from_js(0.0), Some(ProjectionAxis::X));
+        assert_eq!(axis_from_js(1.0), Some(ProjectionAxis::Y));
+        assert_eq!(axis_from_js(2.0), Some(ProjectionAxis::Z));
+        for refused in [3.0, 256.0, -1.0, 1.5, 0.5, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(axis_from_js(refused), None, "axis {refused}");
+        }
+    }
 }

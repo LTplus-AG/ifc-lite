@@ -243,6 +243,31 @@ describe('unified storey headline', () => {
       'an element also indexed under a descendant space is not duplicated in a contribution',
     );
   });
+
+  it('counts a store whose spatialHierarchy carries no project node', () => {
+    // A cache-restored or synthetic store has the containment maps and no
+    // `project`. Walking the tree from that root to reach each storey node
+    // threw, taking the whole Models section down with it rather than just
+    // the count — so the fallback is the raw containment list, not a crash.
+    const model = (id: string): FederatedModel => {
+      const ifcDataStore = createStoreyDataStore();
+      const hierarchy = ifcDataStore.spatialHierarchy as unknown as { project?: SpatialNode };
+      delete hierarchy.project;
+      return { id, name: id, idOffset: 0, maxExpressId: 61, ifcDataStore } as unknown as FederatedModel;
+    };
+    const unified = buildUnifiedStoreys(new Map([
+      ['model-a', model('model-a')],
+      ['model-b', model('model-b')],
+    ]));
+
+    assert.strictEqual(unified.length, 1);
+    assert.strictEqual(unified[0].objects.rows, 10, 'the raw containment list, both models');
+    assert.strictEqual(
+      unified[0].objects.spacesNotCounted,
+      0,
+      'with no node to read children from, no space can be reported as excluded',
+    );
+  });
 });
 
 describe('one question, one number: the two trees agree about a storey', () => {

@@ -174,8 +174,19 @@ function collectDescendantSpaceElements(
   return elementIds;
 }
 
-function indexSpatialNodes(root: SpatialNode): Map<number, SpatialNode> {
+/**
+ * Every spatial node by expressId, so a unified storey can reach the node
+ * behind a `byStorey` key and apply the same space exclusion the per-model
+ * tree does.
+ *
+ * `root` is optional because `spatialHierarchy` can exist with no `project`:
+ * a cache-restored or synthetic store carries the containment maps and nothing
+ * else, and the Models section renders such a store on every "By tag" test.
+ * Dereferencing it there crashed the whole panel, not just the count.
+ */
+function indexSpatialNodes(root: SpatialNode | undefined): Map<number, SpatialNode> {
   const nodes = new Map<number, SpatialNode>();
+  if (!root) return nodes;
   const pending = [root];
   while (pending.length > 0) {
     const node = pending.pop()!;

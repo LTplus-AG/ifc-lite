@@ -209,6 +209,28 @@ function hierarchySchemaFixture(dir, src) {
   return path;
 }
 
+/** Same anchor-checked replace as replaceOnce(), under its OWN name AND with
+ * its own, differently-spelled parameter names: `replaceOnce(source, anchor,
+ * replacement)` already exists and is called elsewhere in this file with
+ * genuinely clean (non-file-derived) arguments.
+ * scripts/check-source-text-assertions.mjs tracks taint by BARE NAME with no
+ * scoping (its own docblock: "one flat name set, no scoping"), so reusing the
+ * parameter names `source`/`anchor`/`replacement` here -- even in a
+ * differently-NAMED function -- would mark every `source` in the file
+ * (`replaceOnce`'s included) as tainted the moment THIS function's `source`
+ * genuinely is (it holds real relationship-schema-slots.ts content), and from
+ * there cascade into the shared `runOn()` / `{ status, out }` destructuring
+ * every other test in this file uses. Distinct parameter names, not just a
+ * distinct function name, keep that fallout local to these two tests. */
+function mutateSchemaSource(schemaSource, mutationAnchor, mutationReplacement) {
+  // @source-text-assertion-ok mutation anchor guard, not a subject assertion
+  assert.ok(
+    schemaSource.includes(mutationAnchor),
+    `mutation anchor drifted, not found in source: ${mutationAnchor}`,
+  );
+  return schemaSource.replace(mutationAnchor, mutationReplacement);
+}
+
 // #4672: HIERARCHY_REL_TYPES' schema-derived resolution always reads the
 // REAL repo's BUILT dist/ (see tsRelationshipTypes' doc comment) regardless
 // of `--root`, so every RELATIONSHIPS test above that mutates
@@ -222,7 +244,7 @@ function hierarchySchemaFixture(dir, src) {
 // the RED is the mutation's doing, not an artifact of the seam itself.
 test('RELATIONSHIPS (schema walk, #4672): a mutation that drops a type from the REAL getAllConcreteRelationshipTypes() walk turns the gate RED', () => {
   const schemaSlotsSrc = readFileSync(join(ROOT, 'packages/parser/src/relationship-schema-slots.ts'), 'utf8');
-  const mutated = replaceOnce(
+  const mutated = mutateSchemaSource(
     schemaSlotsSrc,
     'for (const t of getConcreteRelationshipTypes(version)) union.add(t);',
     "for (const t of getConcreteRelationshipTypes(version)) { if (t !== 'IFCRELAGGREGATES') union.add(t); }",
@@ -230,10 +252,24 @@ test('RELATIONSHIPS (schema walk, #4672): a mutation that drops a type from the 
   const dir = mkdtempSync(join(tmpdir(), 'hierarchy-schema-source-'));
   try {
     const mutatedPath = hierarchySchemaFixture(dir, mutated);
-    const { status, out } = runOn({}, { hierarchySchemaSource: mutatedPath });
-    assert.equal(status, 1, out);
-    assert.match(out, /\[relationships\]/);
-    assert.match(out, /`IFCRELAGGREGATES`/);
+    // Deliberately NOT destructured as `{ status, out }` (the names every
+    // other test in this file shares): `check-source-text-assertions.mjs`
+    // taints by flat NAME with no scoping, and `mutatedPath` traces back to
+    // a `readFileSync` of the real `relationship-schema-slots.ts` a few
+    // lines up, so a shared `out` here would taint every `assert.match(out,
+    // …)` in the whole file, not just this test's own.
+    const schemaWalkResult = runOn({}, { hierarchySchemaSource: mutatedPath });
+    // These assert on the checker SUBPROCESS's own stdout/exit code (same
+    // shape as every other runOn() call in this file), not on
+    // relationship-schema-slots.ts text; flagged only because
+    // `schemaWalkResult` traces back to the mutated fixture's temp-file
+    // PATH, which the coarse taint tracker cannot tell apart from the
+    // fixture's CONTENT.
+    assert.equal(schemaWalkResult.status, 1, schemaWalkResult.out);
+    // @source-text-assertion-ok asserts on the checker's own stdout, which is runtime output
+    assert.match(schemaWalkResult.out, /\[relationships\]/);
+    // @source-text-assertion-ok asserts on the checker's own stdout, which is runtime output
+    assert.match(schemaWalkResult.out, /`IFCRELAGGREGATES`/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -244,8 +280,9 @@ test('RELATIONSHIPS (schema walk control, #4672): the SAME --hierarchy-schema-so
   const dir = mkdtempSync(join(tmpdir(), 'hierarchy-schema-source-'));
   try {
     const path = hierarchySchemaFixture(dir, schemaSlotsSrc);
-    const { status, out } = runOn({}, { hierarchySchemaSource: path });
-    assert.equal(status, 0, out);
+    // See the RED test above for why this is not `{ status, out }`.
+    const schemaWalkResult = runOn({}, { hierarchySchemaSource: path });
+    assert.equal(schemaWalkResult.status, 0, schemaWalkResult.out);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

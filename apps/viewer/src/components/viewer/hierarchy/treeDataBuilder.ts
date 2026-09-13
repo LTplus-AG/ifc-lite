@@ -174,6 +174,17 @@ function collectDescendantSpaceElements(
   return elementIds;
 }
 
+function indexSpatialNodes(root: SpatialNode): Map<number, SpatialNode> {
+  const nodes = new Map<number, SpatialNode>();
+  const pending = [root];
+  while (pending.length > 0) {
+    const node = pending.pop()!;
+    nodes.set(node.expressId, node);
+    pending.push(...(node.children ?? []));
+  }
+  return nodes;
+}
+
 function getSpatialNodeElements(
   spatialNode: SpatialNode,
   dataStore: IfcDataStore,
@@ -251,29 +262,44 @@ export function buildUnifiedStoreys(
 
     const hierarchy = dataStore.spatialHierarchy;
     const { byStorey, storeyElevations } = hierarchy;
+    const spatialNodes = indexSpatialNodes(hierarchy.project);
+    const descendantSpaceCache = new Map<number, Set<number>>();
 
     for (const [storeyId, elements] of byStorey.entries()) {
       const elevation = storeyElevations.get(storeyId) ?? 0;
       const name = dataStore.entities.getName(storeyId) || `Storey #${storeyId}`;
       const key = elevationKey(elevation);
+      const storeyNode = spatialNodes.get(storeyId);
+      const directElements = storeyNode
+        ? getSpatialNodeElements(
+            storeyNode,
+            dataStore,
+            'IfcBuildingStorey',
+            descendantSpaceCache,
+          )
+        : elements as number[];
+      const spacesNotCounted = storeyNode
+        ? (storeyNode.children ?? []).filter((child) => isSpaceLikeSpatialType(child.type)).length
+        : 0;
 
       const storeyData: StoreyData = {
         modelId,
         storeyId,
         name,
         elevation,
-        elements: elements as number[],
+        elements: directElements,
         objects: summarizeObjects(
-          elements as number[],
+          directElements,
           (id) => dataStore.entities?.getTypeName(id),
           makeShapeTest(dataStore, modelId, models, geometricIds),
+          spacesNotCounted,
         ),
       };
 
       if (storeysByElevation.has(key)) {
         const unified = storeysByElevation.get(key)!;
         unified.storeys.push(storeyData);
-        unified.totalElements += elements.length;
+        unified.totalElements += directElements.length;
         unified.objects = mergeObjectCounts(unified.objects, storeyData.objects);
         if (name.length < unified.name.length) {
           unified.name = name;
@@ -284,7 +310,7 @@ export function buildUnifiedStoreys(
           name,
           elevation,
           storeys: [storeyData],
-          totalElements: elements.length,
+          totalElements: directElements.length,
           objects: storeyData.objects,
         });
       }

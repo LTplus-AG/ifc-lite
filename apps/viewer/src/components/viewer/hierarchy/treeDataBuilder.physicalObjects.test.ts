@@ -26,7 +26,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { IfcTypeEnum, RelationshipType, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { buildTreeData, buildTypeTree } from './treeDataBuilder';
+import type { FederatedModel } from '@/store';
+import { buildTreeData, buildTypeTree, buildUnifiedStoreys } from './treeDataBuilder';
 import { isPhysicalObjectType } from '@/lib/physical-objects';
 
 const STOREY_ID = 4;
@@ -211,6 +212,35 @@ describe("storey headline: physical objects that have a shape", () => {
       storeyNodeOf(createStoreyDataStore(), GEOMETRY_LOADED).storey.countSummary?.rows,
       5,
       'five contained rows behind a headline of three',
+    );
+  });
+});
+
+describe('unified storey headline', () => {
+  it('uses the same space exclusion as each model tree', () => {
+    const model = (id: string): FederatedModel => {
+      const ifcDataStore = createStoreyDataStore();
+      const hierarchy = ifcDataStore.spatialHierarchy!;
+      hierarchy.byStorey.set(STOREY_ID, [...hierarchy.byStorey.get(STOREY_ID)!, 41]);
+      return {
+        id,
+        name: id,
+        idOffset: id === 'model-a' ? 100 : 200,
+        maxExpressId: 61,
+        ifcDataStore,
+      } as unknown as FederatedModel;
+    };
+    const unified = buildUnifiedStoreys(new Map([
+      ['model-a', model('model-a')],
+      ['model-b', model('model-b')],
+    ]));
+
+    assert.strictEqual(unified.length, 1);
+    assert.strictEqual(unified[0].objects.counted, 8, 'four direct objects per model');
+    assert.strictEqual(unified[0].objects.spacesNotCounted, 2, 'one space per model');
+    assert.ok(
+      unified[0].storeys.every((storey) => !storey.elements.includes(41)),
+      'an element also indexed under a descendant space is not duplicated in a contribution',
     );
   });
 });

@@ -146,3 +146,49 @@ describe(`StructuralCard against structural_analysis_curve.ifc${skipMsg}`, () =>
     assert.equal(text, '');
   });
 });
+
+describe('StructuralCard synthetic boundary-condition invariants', () => {
+  it('reports numeric stiffness as elastic instead of fixed', () => {
+    const data: StructuralExtraction = {
+      analysisModels: [],
+      members: [{
+        expressId: 10,
+        globalId: 'member',
+        type: 'IfcStructuralCurveMember',
+        connectionGlobalIds: ['connection'],
+        activityGlobalIds: [],
+        analysisModelGlobalIds: [],
+      }],
+      connections: [{
+        expressId: 20,
+        globalId: 'connection',
+        type: 'IfcStructuralPointConnection',
+        appliedCondition: {
+          expressId: 30,
+          type: 'IfcBoundaryNodeCondition',
+          components: {
+            TranslationalStiffnessX: true,
+            TranslationalStiffnessY: false,
+            TranslationalStiffnessZ: 1500,
+          },
+        },
+        memberGlobalIds: ['member'],
+        activityGlobalIds: [],
+        analysisModelGlobalIds: [],
+      }],
+      activities: [],
+      loadGroups: [],
+      resultGroups: [],
+      hasStructural: true,
+      loadsTruncated: false,
+    };
+
+    const text = render(
+      <StructuralCard structuralData={data} selectedExpressId={10} selectedGlobalId="member" />,
+    );
+    assert.ok(text.includes('1 DOF fixed'), `boolean true is fixed in: ${text}`);
+    assert.ok(text.includes('1 DOF elastic'), `numeric stiffness is elastic in: ${text}`);
+    assert.ok(text.includes('1 DOF free'), `boolean false is free in: ${text}`);
+    assert.ok(!text.includes('3 DOFs fixed'), `numeric stiffness must not be called fixed in: ${text}`);
+  });
+});

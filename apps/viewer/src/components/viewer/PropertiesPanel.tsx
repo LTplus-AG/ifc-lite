@@ -1651,7 +1651,8 @@ export function PropertiesPanel() {
               && renderedMaterialProperties.length === 0
               && renderedDocuments.length === 0
               && !renderedEntityRelationships
-              && !hasScheduleForSelection ? (
+              && !hasScheduleForSelection
+              && !hasStructuralForSelection ? (
               <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">No property sets</p>
             ) : (
               <div className="space-y-3 w-full overflow-hidden">

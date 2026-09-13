@@ -219,14 +219,19 @@ function formatComponents(components: Record<string, number>): string {
   return entries.map(([k, v]) => `${k}: ${v}`).join(', ');
 }
 
-/** Summarize a boundary condition as fixed/free per degree of freedom. */
+/** Summarize the boolean and stiffness-select branches per degree of freedom. */
 function formatDofs(components: Record<string, number | boolean>): string {
   const entries = Object.entries(components);
   if (entries.length === 0) return '(no DOFs)';
-  const fixed = entries.filter(([, v]) => v === true || (typeof v === 'number' && v !== 0));
-  if (fixed.length === entries.length) return `${entries.length} DOFs fixed`;
-  if (fixed.length === 0) return `${entries.length} DOFs free`;
-  return `${fixed.length}/${entries.length} DOFs fixed`;
+  const fixed = entries.filter(([, value]) => value === true).length;
+  const free = entries.filter(([, value]) => value === false).length;
+  const elastic = entries.length - fixed - free;
+  const label = (count: number, kind: string) => `${count} ${count === 1 ? 'DOF' : 'DOFs'} ${kind}`;
+  return [
+    fixed > 0 ? label(fixed, 'fixed') : null,
+    elastic > 0 ? label(elastic, 'elastic') : null,
+    free > 0 ? label(free, 'free') : null,
+  ].filter((part): part is string => part !== null).join(', ');
 }
 
 /**

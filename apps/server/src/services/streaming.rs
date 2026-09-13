@@ -8,7 +8,7 @@
 //! blocking task runs `process_geometry_streaming_filtered_with_options`
 //! (the same code path as `POST /api/v1/parse` and the wasm
 //! `processGeometryBatch` boundary) and forwards its batch callbacks through
-//! an unbounded channel as [`StreamEvent`]s.
+//! a bounded channel as [`StreamEvent`]s (see [`EVENT_BUFFER_EVENTS`]).
 //!
 //! This file used to host a third, bespoke geometry pipeline with its own
 //! scan, style index (SurfaceColour-only, no material chain, no indexed
@@ -29,6 +29,27 @@ use ifc_lite_processing::{
 };
 use std::pin::Pin;
 use tokio::sync::mpsc;
+
+/// How many events the blocking producer may run ahead of the response
+/// stream before it waits for the client.
+///
+/// The channel between the two is the only place the parse's emit rate meets
+/// the client's read rate. A client that stops reading keeps its connection
+/// until the write-idle timeout closes it (`IFC_STREAM_IDLE_TIMEOUT_SECS`,
+/// see `write_timeout.rs`); until then only this bound stops the producer
+/// from queuing every batch of the model on top of the parse's working set,
+/// which admission does not account for (it charges the UPLOAD size, not the
+/// tessellated output). A full queue parks the producer in `blocking_send`
+/// (legal there, it runs on a `spawn_blocking` thread), so a stalled reader
+/// stalls its own parse instead of growing the process.
+///
+/// Four events is two batches: the pipeline emits each batch as a `Batch`
+/// frame followed by its `Progress` frame, so the consumer always has one
+/// batch to serialise and one queued behind it while the producer meshes the
+/// next. Nothing is dropped: the producer waits for capacity. A receiver that
+/// goes away makes a parked send return at once, and the next callback sees
+/// `tx.is_closed()` and cancels.
+pub(crate) const EVENT_BUFFER_EVENTS: usize = 4;
 
 fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack
@@ -78,7 +99,7 @@ pub fn process_streaming(
     let initial_batch_size = initial_batch_size.max(1);
     let max_batch_size = max_batch_size.max(1);
 
-    let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
+    let (tx, mut rx) = mpsc::channel::<StreamEvent>(EVENT_BUFFER_EVENTS);
 
     // Disconnect-aware cancellation: when the SSE client hangs up, the
     // receiver drops, the batch callback notices via `tx.is_closed()`, and the
@@ -91,10 +112,11 @@ pub fn process_streaming(
     // The admission permit must be held until BOTH sides are done: the
     // blocking producer (on disconnect the stream drops first, but the task
     // keeps its memory/CPU until the cooperative cancel takes effect) AND the
-    // response stream (the unbounded channel can hold every emitted batch
-    // after a fast producer exits, so dropping the permit at task exit would
-    // let a replacement parse be admitted on top of the undrained buffers).
-    // An Arc'd guard held by both releases on whichever finishes last.
+    // response stream (the channel can still hold `EVENT_BUFFER_EVENTS`
+    // emitted events after the producer exits, so dropping the permit at task
+    // exit would let a replacement parse be admitted on top of the undrained
+    // buffers). An Arc'd guard held by both releases on whichever finishes
+    // last.
     let admission = admission.map(std::sync::Arc::new);
     let admission_for_task = admission.clone();
 
@@ -126,10 +148,10 @@ pub fn process_streaming(
                 }
                 if !started {
                     started = true;
-                    let _ = tx.send(StreamEvent::Start {
+                    let _ = tx.blocking_send(StreamEvent::Start {
                         total_estimate: total,
                     });
-                    let _ = tx.send(StreamEvent::Progress {
+                    let _ = tx.blocking_send(StreamEvent::Progress {
                         processed: 0,
                         total,
                         current_type: "indexing".into(),
@@ -140,12 +162,12 @@ pub fn process_streaming(
                 }
                 if !meshes.is_empty() {
                     batch_number += 1;
-                    let _ = tx.send(StreamEvent::Batch {
+                    let _ = tx.blocking_send(StreamEvent::Batch {
                         meshes: meshes.to_vec(),
                         batch_number,
                     });
                 }
-                let _ = tx.send(StreamEvent::Progress {
+                let _ = tx.blocking_send(StreamEvent::Progress {
                     processed,
                     total,
                     current_type: last_type.clone(),
@@ -170,7 +192,7 @@ pub fn process_streaming(
         if !started {
             // Zero-geometry model: the batch callback never ran. Emit Start
             // so consumers still observe the Start → Complete contract.
-            let _ = tx.send(StreamEvent::Start { total_estimate: 0 });
+            let _ = tx.blocking_send(StreamEvent::Start { total_estimate: 0 });
         }
 
         // 2D symbolic stream (IfcAnnotation + IfcGrid) on the same blocking
@@ -178,7 +200,7 @@ pub fn process_streaming(
         // Georeferencing already rides in `result.metadata`.
         let symbolic_data = extract_symbolic_data_with_provenance(&content);
 
-        let _ = tx.send(StreamEvent::Complete {
+        let _ = tx.blocking_send(StreamEvent::Complete {
             stats: result.stats,
             metadata: result.metadata,
             cache_key,

@@ -853,9 +853,7 @@ fn two_disjoint_below_band_slivers_are_withheld_not_pooled_into_one_bounding_box
 }
 
 /// Divergence-theorem volume of a possibly-OPEN triangle soup, about the world
-/// origin — the same summation `clash_solid_geom::tri_volume` performs before
-/// the trust gate withholds the result. Reproduced here because that function
-/// is `pub(super)` and unreachable from an integration test.
+/// origin: the raw reading the trust gate exists to withhold.
 fn raw_divergence_volume(tris: &[[[f64; 3]; 3]]) -> f64 {
     tris.iter()
         .map(|t| {

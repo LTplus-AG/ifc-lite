@@ -12,7 +12,12 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
-import { countGlbMeshes, countObjVertices } from '@ifc-lite/export';
+import {
+  countGlbMeshes,
+  countJsonldNodes,
+  countObjVertices,
+  countStepEntities,
+} from '@ifc-lite/export';
 import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
 import { logger } from '../logger.js';
 import { formatGeometryReport, NO_DIAGNOSTICS_LINE } from '../geometry-report.js';
@@ -64,9 +69,14 @@ export async function exportRustFormat(
   const isolated = filterActive
     ? new Uint32Array(refs.map((r) => r.expressId))
     : new Uint32Array();
-  // An empty isolation set means "export everything" to the Rust exporters, so a
-  // filter that matched nothing would silently dump the whole model. Fail loudly
-  // instead — the user asked for a subset and got zero matches.
+  // Every isolating format's FIRST line of defence. Each format branch below
+  // carries a second, independent one (an artifact-content check, and for GLB
+  // the Rust fail-closed error too), so neutering this line still leaves all
+  // five failing closed — see `export.zero-match.test.ts`. Both are needed:
+  // the Rust exporters used to read an empty isolation set as "export
+  // everything", so a filter that matched nothing silently dumped the whole
+  // model. Fail loudly instead — the user asked for a subset and got zero
+  // matches.
   if (filterActive && isolated.length === 0) {
     fatal('Filter matched 0 entities — nothing to export. Check --type/--storey/--where/--limit.');
   }
@@ -93,12 +103,41 @@ export async function exportRustFormat(
     } else if (format === 'step') {
       // Rust faithful re-serialization (+ reference-closed subset when filtered).
       const schema = getFlag(args, '--schema') ?? '';
-      const out = gp.exportStep(bytes, schema, isolated);
+      // `isolated` is empty-but-active only when a filter matched nothing
+      // (rejected above); an inactive filter must pass `undefined` to
+      // exportStep, not an empty Uint32Array — the wasm boundary now treats an
+      // explicit empty array as "isolation active, matches nothing" (#4659),
+      // and would fail-close every unfiltered export otherwise.
+      const out = gp.exportStep(bytes, schema, filterActive ? isolated : undefined);
       if (out == null) fatal('STEP export failed (geometry pipeline not initialized)');
+      // Defense-in-depth mirroring the OBJ/GLB guards below: the STEP writer
+      // always regenerates a valid ISO-10303-21 header, so a file with an
+      // empty DATA; section is still hundreds of non-zero bytes and a size
+      // check cannot see it. Entity count is the content signal.
+      if (countStepEntities(out as Uint8Array) === 0) {
+        fatal(
+          filterActive
+            ? 'STEP export produced 0 entities — the matched entities did not survive the export. Check --type/--storey/--where/--limit.'
+            : 'STEP export produced 0 entities — the model has no exportable entities (or the export failed).',
+        );
+      }
+      logger.debug(`STEP entities: ${countStepEntities(out as Uint8Array)}`);
       await writeOutput(out as Uint8Array, outPath);
     } else if (format === 'jsonld') {
-      const out = gp.exportJsonld(bytes, '', true, false, false, isolated);
+      // Same null-vs-empty contract as `exportStep` above (#4659).
+      const out = gp.exportJsonld(bytes, '', true, false, false, filterActive ? isolated : undefined);
       if (out == null) fatal('JSON-LD export failed (geometry pipeline not initialized)');
+      // Defense-in-depth: a JSON-LD document with an empty `@graph` still
+      // carries its `@context`, so it is neither zero bytes nor invalid JSON.
+      // Node count is the content signal.
+      if (countJsonldNodes(out as Uint8Array) === 0) {
+        fatal(
+          filterActive
+            ? 'JSON-LD export produced 0 nodes — the matched entities did not survive the export. Check --type/--storey/--where/--limit.'
+            : 'JSON-LD export produced 0 nodes — the model has no exportable entities (or the export failed).',
+        );
+      }
+      logger.debug(`JSON-LD nodes: ${countJsonldNodes(out as Uint8Array)}`);
       await writeOutput(out as Uint8Array, outPath);
     } else if (format === 'obj') {
       // `isolated` is empty-but-active only when a filter matched nothing

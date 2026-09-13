@@ -16,8 +16,10 @@
 //!   can recover or re-localise),
 //! - **welded / indexed** triangles straight from the kernel mesh (the GLB's
 //!   per-face duplication happens later, in the glTF exporter),
-//! - **occurrences only** (`geometry_class == 0`); type-product RepresentationMap
-//!   geometry is omitted, matching what occurrence-based tessellators emit.
+//! - **occurrences only**: type-product RepresentationMap geometry
+//!   (`geometry_class` 1 and 2) is omitted, matching what occurrence-based
+//!   tessellators emit. A material-layer wall's slices (class 3,
+//!   `GEOM_CLASS_LAYER_SLICE`) are that occurrence's own body and are kept.
 //!
 //! Keyed by IFC STEP/express id. Submeshes of one element (per-material splits)
 //! are merged into a single triangle soup per id. f64 throughout so building- and
@@ -87,8 +89,9 @@ pub fn build_geometry_data_export(
     };
 
     for m in meshes {
-        // Occurrences only — skip type-product RepresentationMap geometry.
-        if m.geometry_class != 0 || m.indices.is_empty() {
+        // Occurrences only: skip type-product RepresentationMap geometry. Class 3
+        // is a layered wall's body, which has no class-0 mesh to fall back on.
+        if matches!(m.geometry_class, 1 | 2) || m.indices.is_empty() {
             continue;
         }
 

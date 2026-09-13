@@ -40,3 +40,18 @@ fn rust_step_escape_matches_shared_vectors() {
         );
     }
 }
+
+/// The read side of the same pin: what `escape` writes for non-ASCII text,
+/// `ifc_lite_core::decode_ifc_string` reads back. This round trip used to be
+/// tested in core against a second encoder (`encode_ifc_string`) that wrote
+/// `\X\` for U+0080..U+00FF and never doubled `'`; that encoder is deleted
+/// (architecture review behind #4577, F6), so the property is pinned here against
+/// the one writer that remains. Inputs carry no `'` or `\`, since doubling
+/// those is a literal-context rule the tokenizer's consumers undo, not the
+/// decoder.
+#[test]
+fn escape_round_trips_through_the_core_decoder() {
+    for s in ["plain", "Br\u{FC}cke", "\u{1F600}", "a\u{E9}b", "\u{0430}\u{0431}"] {
+        assert_eq!(ifc_lite_core::decode_ifc_string(&escape(s)), s, "{s:?}");
+    }
+}

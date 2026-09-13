@@ -951,3 +951,51 @@ fn a_broken_writer_is_an_error() {
     let Err(err) = r else { panic!("a full disk is not a successful export") };
     assert_eq!(err.kind(), std::io::ErrorKind::StorageFull);
 }
+
+/// #4659: `Some(empty)` is "the isolation filter is active and matched
+/// nothing", and must write a header-only file rather than the whole model.
+///
+/// `export_step_json` has always taken `Option<Vec<u32>>` and got this right;
+/// the collapse lived one layer up, in the `exportStep` wasm binding, which
+/// took a bare slice and mapped an empty one back to `None`. That binding now
+/// passes the `Option` straight through, so this pins the contract it relies
+/// on — and the `None` sibling pins the other direction, so the two cannot be
+/// re-collapsed into each other here either.
+#[test]
+fn an_active_but_empty_included_set_writes_no_entities() {
+    let src = "ISO-10303-21;\n\
+HEADER;\n\
+FILE_DESCRIPTION((''),'');\n\
+FILE_NAME('','',(''),(''),'','','');\n\
+FILE_SCHEMA(('IFC4'));\n\
+ENDSEC;\n\
+DATA;\n\
+#1=IFCWALL('0WALL000000000000000A',$,'W1',$,$,$,$,$,$);\n\
+#2=IFCWALL('0WALL000000000000000B',$,'W2',$,$,$,$,$,$);\n\
+#3=IFCSLAB('0SLAB000000000000000A',$,'S1',$,$,$,$,$,$);\n\
+ENDSEC;\n\
+END-ISO-10303-21;\n";
+
+    // No filter: the whole model. Asserted first so "writes nothing" below
+    // cannot pass because the fixture or the writer produces nothing at all.
+    let whole = export_step_json(src.as_bytes(), None, None, "").expect("unfiltered export");
+    let (whole_count, _ids, _schema) = parse_back(&whole);
+    assert_eq!(whole_count, 3, "unfiltered export carries every entity");
+
+    // A filter that matches something still narrows.
+    let narrowed = export_step_json(src.as_bytes(), None, Some(vec![1, 2]), "")
+        .expect("filtered export");
+    let (narrowed_count, ids, _schema) = parse_back(&narrowed);
+    assert_eq!(narrowed_count, 2, "an explicit two-entity filter writes exactly those");
+    assert!(ids.contains(&1) && ids.contains(&2));
+
+    // A filter that matches nothing writes nothing.
+    let zero_match = export_step_json(src.as_bytes(), None, Some(Vec::new()), "")
+        .expect("zero-match export");
+    let (zero_count, _ids, _schema) = parse_back(&zero_match);
+    assert_eq!(zero_count, 0, "an active-but-empty filter must not export the whole model");
+    // Still a well-formed STEP file, just an empty one — the shape the CLI's
+    // entity-count guard then refuses to write.
+    assert!(zero_match.contains("FILE_SCHEMA"));
+    assert!(zero_match.contains("END-ISO-10303-21;"));
+}

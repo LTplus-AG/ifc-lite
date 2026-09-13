@@ -914,11 +914,16 @@ pub fn process_geometry_streaming_filtered_with_options(
     lookup_span.record("phase_ms", lookup_time.as_millis() as u64);
     drop(lookup_span);
 
+    // Fold indexed-colour-map colours in where no IFCSTYLEDITEM already claimed
+    // the geometry (styled items win, matching the browser precedence). Before
+    // the opening filter, so IgnoreOpaque sees the colours the meshes will get.
+    crate::prepass::merge_indexed_colours(&mut geometry_style_index, &indexed_colour_index);
     let (skipped_entity_ids, filtered_void_index) = apply_opening_filter(
         &entity_jobs,
         &void_index,
         &filling_by_opening,
         &geometry_style_index,
+        &element_material_colors,
         &mut decoder,
         opening_filter,
     );
@@ -1131,9 +1136,6 @@ pub fn process_geometry_streaming_filtered_with_options(
     let seed_plane_angle_to_radians = unit_scales.plane_angle_to_radians;
     let void_index_arc = Arc::new(filtered_void_index);
     let skipped_entity_ids = Arc::new(skipped_entity_ids);
-    // Fold indexed-colour-map colours in where no IFCSTYLEDITEM already claimed
-    // the geometry (styled items win, matching the browser precedence).
-    crate::prepass::merge_indexed_colours(&mut geometry_style_index, &indexed_colour_index);
     let mut geometry_style_index = Arc::new(geometry_style_index);
     let indexed_colour_full = Arc::new(indexed_colour_full);
     // #961: decode surface textures (IfcBlobTexture PNG / IfcPixelTexture) and

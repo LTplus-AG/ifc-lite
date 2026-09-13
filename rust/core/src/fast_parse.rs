@@ -162,26 +162,31 @@ pub fn parse_indices_direct(bytes: &[u8]) -> Vec<u32> {
     result
 }
 
-/// Parse a single entity's coordinate list attribute
-///
-/// Takes the raw bytes of an entity line like:
-/// `#78=IFCCARTESIANPOINTLIST3D(((0.,0.,150.),(0.,40.,140.),...));`
-///
-/// And extracts just the coordinate data.
+/// Parse a whole point-list record's `CoordList` (attribute 0), found by depth, not by the
+/// last `))`: an IFC4X3 `TagList` after it ends in `))` and its digits became phantom
+/// vertices (core review behind #4577, finding 6). `None` when attribute 0 is not a list.
 #[inline]
 pub fn extract_coordinate_list_from_entity(bytes: &[u8]) -> Option<Vec<f32>> {
-    // Find the opening '((' which starts the coordinate list
-    let start = memchr::memmem::find(bytes, b"((")?;
-
-    // Find matching closing '))'
-    let end = memchr::memmem::rfind(bytes, b"))")?;
-
-    if end <= start {
+    let head = crate::parser::argument_list_start(bytes)?;
+    let open = crate::parser::skip_step_trivia(bytes, head)?;
+    if bytes.get(open) != Some(&b'(') {
         return None;
     }
-
-    // Parse the coordinate data
-    Some(parse_coordinates_direct(&bytes[start..end + 2]))
+    let (mut i, mut depth) = (open + 1, 1usize);
+    loop {
+        i += memchr::memchr3(b'(', b')', b'/', &bytes[i..])?;
+        match bytes[i] {
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                i = crate::parser::skip_step_comment(bytes, i)?;
+                continue;
+            }
+            b'(' => depth += 1,
+            b')' if depth == 1 => return Some(parse_coordinates_direct(&bytes[open..=i])),
+            b')' => depth -= 1,
+            _ => {}
+        }
+        i += 1;
+    }
 }
 
 /// Parse face indices from IfcTriangulatedFaceSet entity
@@ -339,8 +344,7 @@ where
     // Get raw bytes of coordinate list entity
     let coord_bytes = get_entity_bytes(coord_entity_id)?;
 
-    // Parse coordinates directly
-    let positions = parse_coordinates_direct(&coord_bytes);
+    let positions = extract_coordinate_list_from_entity(&coord_bytes)?;
 
     // Extract and parse indices from attribute 3 (CoordIndex)
     let indices = extract_face_indices_from_entity(faceset_bytes)?;

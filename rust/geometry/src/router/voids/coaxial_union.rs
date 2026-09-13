@@ -50,7 +50,10 @@ mod union3d;
 
 use nalgebra::{Matrix4, Point2, Vector3};
 
-use super::geom::{mesh_is_closed_exact, mesh_signed_volume, opening_mesh_thinnest_axis_dir};
+use super::geom::{
+    mesh_is_closed_exact, mesh_signed_volume, mesh_signed_volume_about, opening_mesh_thinnest_axis_dir,
+    volume_reference,
+};
 use super::sweep::cut_changed_mesh;
 use super::{OpeningType, NORMALIZE_EPSILON};
 use crate::bool2d::union_contours_to_shapes;
@@ -521,7 +524,9 @@ fn accept_cut(
     let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR).max(MIN_VALID_TRIANGLES);
     // Removed volume = host solid before − after (both same orientation). A cut that
     // removed MORE than the caller's upper bound is an over-cut → reject (defer).
-    let removed = vol_before - mesh_signed_volume(&cut);
+    // `vol_before` is `mesh_signed_volume(result)`, summed about the host's
+    // `volume_reference`; the after reading shares that point (#4632).
+    let removed = vol_before - mesh_signed_volume_about(&cut, &volume_reference(result));
     if !cut.is_empty() && cut.triangle_count() >= min_tris && removed <= max_removed {
         *result = cut;
         true

@@ -35,10 +35,6 @@ fn main() {
                     "Has geometry: {}",
                     ifc_lite_core::has_geometry_by_name(type_name)
                 );
-                println!(
-                    "Has geometry (schema): {}",
-                    router.schema().has_geometry(&ifc_type)
-                );
 
                 // Try to decode
                 if let Ok(entity) = decoder.decode_at(start, end) {

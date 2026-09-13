@@ -96,7 +96,7 @@ pub use ifc5::{export_ifc5, Ifc5Options};
 // models them as separate entities that are not products.
 pub use relationships::{relationships, Relationships};
 pub use json::{export_json, JsonOptions};
-pub use jsonld::{export_jsonld, JsonLdOptions};
+pub use jsonld::{export_jsonld, export_jsonld_with_filter, JsonLdOptions};
 pub use kmz::{
     export_kmz, ifc_angle_to_kml_heading,
     try_export_kmz_collada_from_meshes, AltitudeMode, KmzOptions,

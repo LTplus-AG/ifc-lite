@@ -261,12 +261,16 @@ fn resolve_unit_entity(
             let unit_type = entity.get(1).and_then(|a| a.as_enum()).map(str_token);
             let name = entity.get(2).and_then(|a| a.as_string()).unwrap_or("");
             // A factor the file does not resolve falls back to the name's known
-            // factor, the table the geometry length scale reads; a name with
-            // none leaves the unit unresolved rather than guessed at 1.0 (#4690).
+            // factor, from the linear table the geometry length scale reads, so
+            // only for a LENGTHUNIT; anything else is left unresolved rather
+            // than guessed at 1.0 (#4690).
             let scale = entity
                 .get_ref(3)
                 .and_then(|r| conversion_factor_scale(decoder, r, walk))
-                .or_else(|| crate::unit_labels::get_conversion_based_unit_factor(name));
+                .or_else(|| match unit_type.as_deref() {
+                    Some("LENGTHUNIT") => crate::unit_labels::get_conversion_based_unit_factor(name),
+                    _ => None,
+                });
             let resolved = scale.map(|scale| ResolvedUnit::new(conversion_unit_symbol(name), scale));
             Some((unit_type, resolved, false))
         }

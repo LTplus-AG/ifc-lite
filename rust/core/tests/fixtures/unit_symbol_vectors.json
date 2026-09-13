@@ -76,6 +76,13 @@
       "measures": [
         { "measure": "IfcPressureMeasure", "symbol": "psi", "siScale": 6894.757 }
       ]
+    },
+    {
+      "name": "non_length_unit_named_foot_dangling_component_shows_no_unit",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);\n#2=IFCUNITASSIGNMENT((#3));\n#3=IFCCONVERSIONBASEDUNIT(#4,.AREAUNIT.,'FOOT',#5);\n#4=IFCDIMENSIONALEXPONENTS(2,0,0,0,0,0,0);\n#5=IFCMEASUREWITHUNIT(IFCAREAMEASURE(0.09290304),#99);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "measures": [
+        { "measure": "IfcAreaMeasure", "symbol": null, "siScale": null }
+      ]
     }
   ]
 }

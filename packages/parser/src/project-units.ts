@@ -148,11 +148,13 @@ function resolveDeclaredUnit(
       const unitType = cleanEnum(attrs[1]);
       const name = typeof attrs[2] === 'string' ? attrs[2] : '';
       // A factor the file does not resolve falls back to the name's known
-      // factor, the table the geometry length scale reads; a name with none
-      // leaves the unit unresolved rather than guessed at 1.0 (#4690).
+      // factor, from the linear table the geometry length scale reads, so only
+      // for a LENGTHUNIT; anything else is left unresolved rather than guessed
+      // at 1.0 (#4690).
+      const namedFactor = unitType === 'LENGTHUNIT' ? CONVERSION_BASED_UNIT_FACTORS[name.toUpperCase()] : undefined;
       const scale = (typeof attrs[3] === 'number'
         ? conversionFactorScale(extractor, entityIndex, attrs[3])
-        : null) ?? CONVERSION_BASED_UNIT_FACTORS[name.toUpperCase()];
+        : null) ?? namedFactor;
       const resolved = scale === undefined ? null : { symbol: conversionUnitSymbol(name), siScale: scale };
       return { unitType, resolved, monetary: false };
     }

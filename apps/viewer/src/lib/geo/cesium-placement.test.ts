@@ -275,7 +275,7 @@ describe('cesium placement helpers', () => {
     // Scale .001 x FactorX 1000 and Scale 1 x FactorX 1 are the same IFC
     // transform, so they place the same: the unset-or-unity heuristic reads
     // the product. (Main, which ignored factors, placed both at 1 as well.)
-    assert.strictEqual(getEffectiveAxisScale(0.001, 1000, 1, 0.001), getEffectiveAxisScale(1, 1, 1, 0.001));
+    assert.strictEqual(getEffectiveAxisScale(0.001, 1000, 1, 0.001), 1);
   });
 
   it('rotates viewer XY drag deltas by a genuine (non-identity) grid rotation', () => {

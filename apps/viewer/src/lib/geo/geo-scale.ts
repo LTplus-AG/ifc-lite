@@ -78,10 +78,10 @@ export function getEffectiveAxisScale(
   // IFCMAPCONVERSIONSCALED with unit factors places exactly like the same
   // IFCMAPCONVERSION, an omitted Scale places like Scale=1, and a factor that
   // bridges units (Scale 1, Factor 0.3048, feet project) still evaluates to 1.
-  if (ifcMapConversionScale === undefined && factor === undefined) {
-    return getEffectiveHorizontalScale(undefined, mapUnitScale, lengthUnitScale);
-  }
-  return getEffectiveHorizontalScale((ifcMapConversionScale ?? 1) * (factor ?? 1), mapUnitScale, lengthUnitScale);
+  // An absent Scale or factor reads as 1, which the heuristic treats as unset.
+  return getEffectiveHorizontalScale(
+    (ifcMapConversionScale ?? 1) * (factor ?? 1), mapUnitScale, lengthUnitScale,
+  );
 }
 
 export function getEffectiveAxisScales(
@@ -127,7 +127,8 @@ export interface ScaleUnitMismatch {
   lengthUnitScale: number;
   /**
    * Scale value the file would need for the IFC formula to map local→map
-   * coordinates without any extra scaling (i.e. lengthUnitScale / mapUnitScale).
+   * coordinates without any extra scaling (i.e. lengthUnitScale / mapUnitScale,
+   * divided by the IfcMapConversionScaled factor when there is one).
    */
   expectedScale: number;
 }
@@ -144,18 +145,22 @@ export interface ScaleUnitMismatch {
  * diagnostic data. Read `compensated` before choosing the wording: when it is
  * true, the deviation is an authoring defect that ifc-lite absorbs, and the
  * only true statement left to make is about what OTHER tools will do with it.
+ *
+ * `factor` is the IfcMapConversionScaled FactorX: the coefficient checked is
+ * Scale × FactorX, the one {@link getEffectiveAxisScale} places with (#4615).
  */
 export function detectScaleUnitMismatch(
   ifcMapConversionScale: number | undefined,
   mapUnitScale: number | undefined,
   lengthUnitScale: number | undefined,
+  factor?: number,
 ): ScaleUnitMismatch | null {
   const lus = lengthUnitScale && lengthUnitScale > 0 ? lengthUnitScale : 1;
   const mus = mapUnitScale && mapUnitScale > 0 ? mapUnitScale : 1;
   const rawScale = ifcMapConversionScale ?? 1.0;
-  const specEffectiveScale = (rawScale * mus) / lus;
+  const specEffectiveScale = (rawScale * (factor ?? 1) * mus) / lus;
   if (Math.abs(specEffectiveScale - 1) <= 0.005) return null;
-  const effectiveScale = getEffectiveHorizontalScale(ifcMapConversionScale, mus, lus);
+  const effectiveScale = getEffectiveAxisScale(ifcMapConversionScale, factor, mus, lus);
   return {
     effectiveScale,
     specEffectiveScale,
@@ -163,7 +168,7 @@ export function detectScaleUnitMismatch(
     rawScale,
     mapUnitScale: mus,
     lengthUnitScale: lus,
-    expectedScale: lus / mus,
+    expectedScale: lus / mus / (factor ?? 1),
   };
 }
 

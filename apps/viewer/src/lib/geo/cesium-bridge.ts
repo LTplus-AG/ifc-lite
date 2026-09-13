@@ -295,7 +295,8 @@ export async function createCesiumBridge(
   };
   const mapScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
   // Scalars, because TypeScript does not keep `origin`'s narrowing inside the callbacks.
-  const { height: oHeight, longitude: originLon, latitude: originLat, scaleX: originScaleX, scaleY: originScaleY, scaleZ: originScaleZ } = origin;
+  const { height: oHeight, longitude: originLon, latitude: originLat } = origin;
+  const { scaleX: originScaleX, scaleY: originScaleY, scaleZ: originScaleZ } = origin;
 
   // Build the viewer-to-ENU 3x3 rotation matrix (converts a delta vector from
   // viewer space to ENU). Viewer Y-up maps to IFC Z-up ((vx,vy,vz) -> (vx,-vz,

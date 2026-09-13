@@ -407,7 +407,6 @@ END-ISO-10303-21;
     it('places unit factors like the plain conversion in a mm project with metre map units', () => {
       // IFCMAPCONVERSIONSCALED(...,1.,1.,1.,1.) and IFCMAPCONVERSION(...,1.)
       // are the same transform; the subtype must not draw 1000x larger.
-      assert.strictEqual(getEffectiveAxisScale(1, 1, 1, 0.001), getEffectiveHorizontalScale(1, 1, 0.001));
       assert.strictEqual(getEffectiveAxisScale(1, 1, 1, 0.001), 1);
     });
 
@@ -418,6 +417,18 @@ END-ISO-10303-21;
   });
 
   describe('detectScaleUnitMismatch', () => {
+    it('checks Scale x FactorX, and quotes the Scale the factor leaves needed (#4615)', () => {
+      // Feet project, metre map: Scale 1 x FactorX 0.3048 is spec-correct.
+      assert.strictEqual(detectScaleUnitMismatch(1, 1, 0.3048, 0.3048), null);
+      // mm project, metre map, Scale 1 x FactorX 2: the file needs Scale 0.0005.
+      const found = detectScaleUnitMismatch(1, 1, 0.001, 2);
+      assert.ok(found);
+      assert.strictEqual(found!.rawScale, 1);
+      assert.strictEqual(found!.expectedScale, 0.0005);
+      assert.strictEqual(found!.specEffectiveScale, 2000);
+      assert.strictEqual(found!.effectiveScale, 2000);
+    });
+
     it('returns null for spec-compliant Scale (mm/m with Scale=0.001)', () => {
       assert.strictEqual(detectScaleUnitMismatch(0.001, 1, 0.001), null);
     });

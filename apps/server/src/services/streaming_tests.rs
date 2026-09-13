@@ -110,7 +110,7 @@ DATA;
 /// frame still arrive, inside a timeout so a producer that never resumes
 /// fails instead of hanging.
 ///
-/// Regression for the streaming finding of the 2026-09 server review.
+/// Regression for #4634.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_consumer_that_stops_reading_parks_the_producer_instead_of_buffering_the_model() {
     use futures::StreamExt;

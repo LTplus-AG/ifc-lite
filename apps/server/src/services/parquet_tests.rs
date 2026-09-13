@@ -487,6 +487,7 @@
     /// this pins that moving onto it changed no byte for either layout. The
     /// fixture shares shapes, so the two layouts really produce different
     /// bytes and a writer that ignored `layout` fails one of them.
+    /// Regression for #4634.
     #[test]
     fn the_combined_parquet_body_matches_the_old_route_wrapping_for_each_layout() {
         let meshes = crate::services::parquet_test_fixtures::rotated_repeats();

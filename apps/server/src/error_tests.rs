@@ -361,6 +361,7 @@ async fn error_bodies_carry_the_documented_code() {
 /// path, so the body assertion cannot pass on an error that never had one.
 /// Unix only: `ENOTDIR` is the Unix answer, and Windows can map the same
 /// open to a path-not-found error, which cacache would read as a miss.
+/// Regression for #4634.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_cache_error_body_does_not_carry_the_cache_directory() {

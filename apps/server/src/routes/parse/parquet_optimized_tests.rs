@@ -428,8 +428,7 @@ fn serialization_threads() -> SerializationThreads {
 /// fixture is unique to this test so its `cache_key` is, and a concurrent
 /// test's request cannot stand in for this one.
 ///
-/// Regression for the runtime-starvation finding of the 2026-09 server
-/// review.
+/// Regression for #4634.
 #[tokio::test]
 async fn the_optimized_serialization_runs_off_the_async_worker() {
     let seen = serialization_threads();

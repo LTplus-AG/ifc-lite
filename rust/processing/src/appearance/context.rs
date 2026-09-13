@@ -53,9 +53,7 @@ impl Context {
         self.configure(GeometryRouter::with_scale_and_local_frame(self.meta.length_unit_scale, true))
     }
     fn configure(&self, mut router: GeometryRouter) -> GeometryRouter {
-        if self.meta.needs_shift {
-            router.set_rtc_offset(self.meta.rtc_offset);
-        }
+        router.set_rtc_offset(self.meta.frame.rtc_offset());
         router.set_material_layer_index(Arc::clone(&self.layers));
         router
     }

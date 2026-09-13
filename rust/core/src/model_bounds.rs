@@ -86,7 +86,6 @@ impl ModelBounds {
     /// afterwards could not undo a decision already taken.
     #[inline]
     pub fn has_large_coordinates(&self, length_unit_scale: f64) -> bool {
-        const THRESHOLD_METERS: f64 = 10000.0;
         if !self.is_valid() {
             return false;
         }
@@ -99,21 +98,26 @@ impl ModelBounds {
             self.max_z,
         ]
         .iter()
-        .any(|v| (v * length_unit_scale).abs() > THRESHOLD_METERS)
+        .any(|v| (v * length_unit_scale).abs() > crate::limits::LARGE_COORD_THRESHOLD_METERS)
     }
 
-    /// The RTC offset IN METRES: the unit-scaled bbox centre when the bounds
-    /// are large (see [`has_large_coordinates`](Self::has_large_coordinates)),
-    /// zero otherwise. Same unit as the router's job-sampled offset, so the
-    /// two fallback ladders agree.
+    /// The RTC verdict in metres: `None` when no point was sampled, `Large`
+    /// with the unit-scaled bbox centre when a corner is past the threshold
+    /// (see [`has_large_coordinates`](Self::has_large_coordinates)), `Small`
+    /// otherwise. The centre can be inside the threshold while a corner is not,
+    /// which is why the decision is carried rather than re-derived from it.
     #[inline]
-    pub fn rtc_offset(&self, length_unit_scale: f64) -> (f64, f64, f64) {
-        if self.has_large_coordinates(length_unit_scale) {
-            let (x, y, z) = self.centroid();
-            (x * length_unit_scale, y * length_unit_scale, z * length_unit_scale)
-        } else {
-            (0.0, 0.0, 0.0)
+    pub fn rtc_offset(&self, length_unit_scale: f64) -> Option<crate::RtcVerdict> {
+        if !self.is_valid() {
+            return None;
         }
+        Some(if self.has_large_coordinates(length_unit_scale) {
+            let (x, y, z) = self.centroid();
+            let s = length_unit_scale;
+            crate::RtcVerdict::Large { anchor: (x * s, y * s, z * s) }
+        } else {
+            crate::RtcVerdict::Small
+        })
     }
 }
 

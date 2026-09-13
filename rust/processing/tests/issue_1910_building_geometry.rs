@@ -19,7 +19,7 @@
 //! were found emitting it with a body. The gate only *permits* meshing; a
 //! building with no representation still produces nothing.
 
-use ifc_lite_processing::process_geometry;
+use ifc_lite_processing::{process_geometry, MeshCoordinateSpace};
 
 /// The reported file's shape: `IfcShellBasedSurfaceModel` on `IfcBuilding`,
 /// `IfcMapConversion` with zero eastings/northings, every placement at the
@@ -146,8 +146,8 @@ fn building_hosted_raw_coordinates_are_rtc_rebased() {
     // where the ULP at northing 5.5e6 is ~0.5 m and metre-scale triangles
     // collapse.
     assert_eq!(
-        result.mesh_coordinate_space.as_deref(),
-        Some("model_rtc"),
+        result.mesh_coordinate_space,
+        MeshCoordinateSpace::ModelRtc,
         "raw projected coordinates must be re-based"
     );
 

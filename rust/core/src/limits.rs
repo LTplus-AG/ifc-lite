@@ -2,7 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Bounds on walks over file-supplied entity references.
+//! Bounds on walks over file-supplied entity references, plus the
+//! large-coordinate threshold every crate gates the RTC re-base on
+//! ([`LARGE_COORD_THRESHOLD_METERS`]).
 //!
 //! A cap bounds one path's LENGTH only. A walk that can revisit also needs a
 //! cycle guard, and one that fans out over a DAG also needs a work budget; the
@@ -71,9 +73,82 @@ pub const MAX_MAPPED_ITEM_DEPTH: u32 = 32;
 /// also needs a cycle guard; see the module docs above.
 pub const MAX_PLACEMENT_DEPTH: usize = 100;
 
+/// The large-coordinate threshold (metres): a world coordinate whose magnitude
+/// exceeds this needs RTC re-basing before it is cast to f32, or the model
+/// renders with vertex jitter.
+///
+/// Shared because every crate that decides "is this model far from the
+/// origin" must draw the line in the same place: a copy that drifts fails
+/// silently (one side re-bases, the other does not, and the two frames differ
+/// by the whole offset). It lives in `ifc_lite_core` because core's own
+/// placement-bounds scan needs it and cannot import from above;
+/// `ifc_lite_geometry` re-exports it under the same name.
+///
+/// Prefer [`coord_is_large`] to comparing against this directly, so the
+/// comparison (strictly greater, any axis, absolute value) also has one home.
+pub const LARGE_COORD_THRESHOLD_METERS: f64 = 10000.0;
+
+/// True when any component of `point` (metres) lies strictly beyond
+/// [`LARGE_COORD_THRESHOLD_METERS`] from the origin.
+#[inline]
+pub fn coord_is_large(point: (f64, f64, f64)) -> bool {
+    point.0.abs() > LARGE_COORD_THRESHOLD_METERS
+        || point.1.abs() > LARGE_COORD_THRESHOLD_METERS
+        || point.2.abs() > LARGE_COORD_THRESHOLD_METERS
+}
+
+/// What an RTC detector concluded about a model's coordinates. The anchor and
+/// the decision travel together because the decision is not a property of the
+/// anchor: the placement-bounds scan decides on the bbox CORNERS and answers
+/// with the bbox CENTRE, which can be inside the threshold (8.5 km centre, 15 km
+/// corner) or even the origin, while the coordinates still need re-basing.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RtcVerdict {
+    /// Every coordinate judged is inside the threshold: nothing to subtract.
+    Small,
+    /// Some coordinate is past the threshold: subtract `anchor` before the f32
+    /// cast, whatever the anchor's own magnitude.
+    Large { anchor: (f64, f64, f64) },
+}
+
+impl RtcVerdict {
+    /// For a detector whose anchor IS its evidence (the job sampler's median).
+    #[inline]
+    pub fn of_anchor(anchor: (f64, f64, f64)) -> Self {
+        if coord_is_large(anchor) {
+            Self::Large { anchor }
+        } else {
+            Self::Small
+        }
+    }
+
+    /// The translation to subtract: the anchor when large, zero when small.
+    #[inline]
+    pub fn offset(self) -> (f64, f64, f64) {
+        match self {
+            Self::Small => (0.0, 0.0, 0.0),
+            Self::Large { anchor } => anchor,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #4611. The documented contract: 10 km, strictly greater, any axis, sign
+    /// ignored. Pinned here because every former copy compared the same way
+    /// and a predicate that flipped to `>=` or dropped an axis would move the
+    /// needs-shift decision for every consumer at once.
+    #[test]
+    fn large_coord_threshold_is_the_documented_10_km() {
+        assert_eq!(LARGE_COORD_THRESHOLD_METERS, 10_000.0);
+        assert!(!coord_is_large((10_000.0, 0.0, 0.0)));
+        assert!(!coord_is_large((-10_000.0, -10_000.0, -10_000.0)));
+        assert!(coord_is_large((10_000.5, 0.0, 0.0)));
+        assert!(coord_is_large((0.0, -10_000.5, 0.0)));
+        assert!(coord_is_large((0.0, 0.0, 10_000.5)));
+    }
 
     /// The documented contract. This pins the VALUE; the constant being shared
     /// is what pins agreement between the three walks, and that is now

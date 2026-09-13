@@ -52,6 +52,8 @@ pub mod simplify_session;
 #[cfg(test)]
 #[path = "simplify_session_tests.rs"]
 mod simplify_session_tests;
+mod mesh_frame;
+pub use mesh_frame::{MeshCoordinateSpace, MeshFrame};
 pub mod stream_meta;
 pub mod style;
 mod symbolic;

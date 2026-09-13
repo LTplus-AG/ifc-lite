@@ -38,7 +38,7 @@ async function load(page: Page, file: string | { name: string; mimeType: string;
     if (!state) return { store: 'missing' };
     return {
       loading: state.loading, geometryStreamingActive: state.geometryStreamingActive, models: state.models.size,
-      perModel: [...state.models.values()].map((m) => ({ pointCloud: m.pointCloudHandleId !== undefined, meshes: m.geometryResult?.meshes.length ?? null })),
+      perModel: [...state.models.values()].map((m) => ({ loadState: m.loadState, pointCloud: m.pointCloudHandleId !== undefined, meshes: m.geometryResult?.meshes.length ?? null })),
       error: (state as { error?: unknown }).error ?? null,
     };
   }).catch((e) => ({ evaluateFailed: String(e) }));
@@ -323,6 +323,10 @@ test('construction projection is invariant when the model and cut move together 
   const errors: string[] = [];
   page.on('console', (message) => { if (message.text().includes('Profile extraction failed')) errors.push(message.text()); });
   await page.goto('/'); await load(page, IFC, 1);
+  // Geometry readiness precedes metadata completion (#4672). Both snapshots
+  // need the same completed hierarchy, or the first drawing uses full-extent
+  // bands and the post-move drawing switches to storey-scoped projection.
+  await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__.getState().getActiveModel()?.loadState === 'complete');
   await page.evaluate(() => {
     const s = globalThis.__ifc_lite_viewer_store__.getState();
     s.updateDrawing2DDisplayOptions({ showConstructionProjection: true });
@@ -349,10 +353,10 @@ test('construction projection is invariant when the model and cut move together 
     return s.drawing2DStatus === 'ready' && Math.abs((s.drawing2D?.config.plane.position ?? 0) - expected) < 0.0001;
   }, before.position + 100);
   const after = await snapshot();
+  await info.attach('Construction projection before and after 100 m move', { body: JSON.stringify({ before, after }), contentType: 'application/json' });
   expect(errors).toEqual([]);
   expect(after.lines).toHaveLength(before.lines.length);
   for (let i = 0; i < before.bands.length; i++) expect(after.bands[i]).toBeCloseTo(before.bands[i]!, 5);
-  await info.attach('Construction projection before and after 100 m move', { body: JSON.stringify({ before, after }), contentType: 'application/json' });
   for (let i = 0; i < before.lines.length; i++) {
     expect(after.lines[i][0]).toBe(before.lines[i][0]);
     for (let axis = 1; axis < 5; axis++) expect(Math.abs(after.lines[i][axis] - before.lines[i][axis])).toBeLessThan(0.005);

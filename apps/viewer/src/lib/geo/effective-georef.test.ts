@@ -437,9 +437,9 @@ END-ISO-10303-21;
     it('checks every axis factor, and quotes the Scale the worst axis needs (#4615)', () => {
       // Feet project, metre map: Scale 1 x FactorX 0.3048 is spec-correct.
       const feet = { factorX: 0.3048, factorY: 0.3048, factorZ: 0.3048 };
-      assert.strictEqual(detectScaleUnitMismatch(1, 1, 0.3048, feet), null);
+      assert.strictEqual(detectScaleUnitMismatch({ scale: 1, ...feet }, 1, 0.3048), null);
       // metre project and map, Scale 1 x FactorZ 2: the file needs Scale 0.5 on Z.
-      const found = detectScaleUnitMismatch(1, 1, 1, { factorZ: 2 });
+      const found = detectScaleUnitMismatch({ scale: 1, factorZ: 2 }, 1, 1);
       assert.ok(found, 'a FactorZ-only deviation is reported');
       assert.strictEqual(found!.rawScale, 1);
       assert.strictEqual(found!.expectedScale, 0.5);
@@ -448,15 +448,15 @@ END-ISO-10303-21;
     });
 
     it('returns null for spec-compliant Scale (mm/m with Scale=0.001)', () => {
-      assert.strictEqual(detectScaleUnitMismatch(0.001, 1, 0.001, {}), null);
+      assert.strictEqual(detectScaleUnitMismatch({ scale: 0.001 }, 1, 0.001), null);
     });
 
     it('returns null when project=map=metres and Scale=1', () => {
-      assert.strictEqual(detectScaleUnitMismatch(1, 1, 1, {}), null);
+      assert.strictEqual(detectScaleUnitMismatch({ scale: 1 }, 1, 1), null);
     });
 
     it('returns null when project=map=metres and Scale is undefined', () => {
-      assert.strictEqual(detectScaleUnitMismatch(undefined, 1, 1, {}), null);
+      assert.strictEqual(detectScaleUnitMismatch({ scale: undefined }, 1, 1), null);
     });
 
     it('flags the common Scale=1 + mm-project + m-map error as COMPENSATED', () => {
@@ -464,7 +464,7 @@ END-ISO-10303-21;
       // heuristic already places the geometry at 1×. Reporting effectiveScale
       // 1000 here claimed a mis-sizing the code prevents, and that false
       // warning was the only thing the panel said about the #2526 file.
-      const m = detectScaleUnitMismatch(1, 1, 0.001, {});
+      const m = detectScaleUnitMismatch({ scale: 1 }, 1, 0.001);
       assert.ok(m, 'expected a mismatch report');
       assert.strictEqual(m!.rawScale, 1);
       assert.strictEqual(m!.specEffectiveScale, 1000);
@@ -474,7 +474,7 @@ END-ISO-10303-21;
     });
 
     it('flags Scale omitted when units differ as COMPENSATED', () => {
-      const m = detectScaleUnitMismatch(undefined, 1, 0.001, {});
+      const m = detectScaleUnitMismatch({ scale: undefined }, 1, 0.001);
       assert.ok(m);
       assert.strictEqual(m!.specEffectiveScale, 1000);
       assert.strictEqual(m!.effectiveScale, 1);
@@ -484,7 +484,7 @@ END-ISO-10303-21;
     it('does NOT mark a genuine mis-scaling as compensated', () => {
       // Scale explicitly 1000 on a mm project: the heuristic only rescues an
       // unset/1 Scale, so this really is applied and really does mis-size.
-      const m = detectScaleUnitMismatch(1000, 1, 0.001, {});
+      const m = detectScaleUnitMismatch({ scale: 1000 }, 1, 0.001);
       assert.ok(m);
       assert.strictEqual(m!.effectiveScale, 1e6);
       assert.strictEqual(m!.specEffectiveScale, 1e6);
@@ -493,12 +493,12 @@ END-ISO-10303-21;
 
     it('tolerates tiny floating-point noise around 1.0', () => {
       // Scale = 1.0 ± 0.4% should still be considered consistent.
-      assert.strictEqual(detectScaleUnitMismatch(1.004, 1, 1, {}), null);
-      assert.strictEqual(detectScaleUnitMismatch(0.996, 1, 1, {}), null);
+      assert.strictEqual(detectScaleUnitMismatch({ scale: 1.004 }, 1, 1), null);
+      assert.strictEqual(detectScaleUnitMismatch({ scale: 0.996 }, 1, 1), null);
     });
 
     it('flags a deliberate non-unit scaling (Scale=2 with metres)', () => {
-      const m = detectScaleUnitMismatch(2, 1, 1, {});
+      const m = detectScaleUnitMismatch({ scale: 2 }, 1, 1);
       assert.ok(m);
       assert.strictEqual(m!.effectiveScale, 2);
       assert.strictEqual(m!.compensated, false);
@@ -509,10 +509,10 @@ END-ISO-10303-21;
       // TIGHTENED without failing -- but nothing failed when it was widened, and
       // at 5% it still passed every test in this file. A band is two-sided: pin
       // the first value that must be reported, or only one direction is guarded.
-      assert.strictEqual(detectScaleUnitMismatch(1.004, 1, 1, {}), null);
-      const over = detectScaleUnitMismatch(1.006, 1, 1, {});
+      assert.strictEqual(detectScaleUnitMismatch({ scale: 1.004 }, 1, 1), null);
+      const over = detectScaleUnitMismatch({ scale: 1.006 }, 1, 1);
       assert.ok(over, '0.6% off unity must be reported, not swallowed by the band');
-      const under = detectScaleUnitMismatch(0.994, 1, 1, {});
+      const under = detectScaleUnitMismatch({ scale: 0.994 }, 1, 1);
       assert.ok(under, '-0.6% off unity must be reported too');
     });
 
@@ -521,7 +521,7 @@ END-ISO-10303-21;
       // far away (2, 1e6), so the 0.5% width of that band was never load-bearing:
       // it could be widened a hundredfold unnoticed. Scale=1.2 is applied for
       // real and is small enough to fall inside a sloppy band.
-      const m = detectScaleUnitMismatch(1.2, 1, 1, {});
+      const m = detectScaleUnitMismatch({ scale: 1.2 }, 1, 1);
       assert.ok(m);
       assert.strictEqual(m!.effectiveScale, 1.2);
       assert.strictEqual(m!.compensated, false);

@@ -409,11 +409,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
 
   const scaleMismatch = useMemo(() => {
     if (!mergedConversion) return null;
-    return detectScaleUnitMismatch(
-      mergedConversion.scale,
-      mergedCRS?.mapUnitScale,
-      lengthUnitScale, mergedConversion,
-    );
+    return detectScaleUnitMismatch(mergedConversion, mergedCRS?.mapUnitScale, lengthUnitScale);
   }, [mergedConversion, mergedCRS?.mapUnitScale, lengthUnitScale]);
 
   // Geometry already at absolute map coordinates AND a MapConversion repeating

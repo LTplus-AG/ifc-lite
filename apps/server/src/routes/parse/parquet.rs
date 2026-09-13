@@ -10,6 +10,7 @@ use super::cache_keys::{
 };
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
+use crate::services::baked_basis_zup;
 use crate::services::parquet::serialize_combined_for_layout;
 use crate::services::{extract_data_model, serialize_data_model_to_parquet};
 use crate::types::{ModelMetadata, ProcessingStats};
@@ -161,7 +162,22 @@ pub async fn parse_parquet(
             // Second: serialize BOTH geometry and data model in parallel
             // This way data model is ready by the time client needs it
             let (geo_parquet, dm_parquet) = rayon::join(
-                || serialize_combined_for_layout(&geometry_result.meshes, layout),
+                || {
+                    // The frame `geometry_result`'s vertices were baked in
+                    // (#4118). Without it a site-rotated model's repeated
+                    // shapes fail the residual check and silently keep their
+                    // per-occurrence geometry.
+                    let basis = baked_basis_zup(
+                        geometry_result.mesh_coordinate_space.as_deref(),
+                        geometry_result.site_transform.as_deref(),
+                        geometry_result.metadata.coordinate_info.origin_shift,
+                    );
+                    serialize_combined_for_layout(
+                        &geometry_result.meshes,
+                        layout,
+                        Some(&basis),
+                    )
+                },
                 || serialize_data_model_to_parquet(&data_model),
             );
 

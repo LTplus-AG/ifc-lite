@@ -173,14 +173,26 @@ fn translated_only_site_keeps_instancing_metadata() {
     );
 }
 
-/// #4118 counterpart: a genuinely ROTATED site must still drop instancing —
-/// this is the property the guard exists to preserve. `site_rotation.rs`
-/// proves a rotated site still rotates positions but never checks `instance`;
-/// the sibling test above proves a translated-only site keeps instancing but
-/// never checks a rotated one. Neither alone can catch the guard being
-/// deleted or inverted; this pins the missing corner.
+/// #4118 part B: a genuinely ROTATED site must ALSO keep its instancing
+/// metadata. This test used to assert the exact opposite, and the reason it
+/// did was sound at the time: `convert_mesh_to_site_local` re-expresses
+/// positions and origin in the site frame after the transform was captured, so
+/// the captured transform describes a frame the vertices are no longer in.
+///
+/// What changed is that the discrepancy is now expressible instead of fatal.
+/// `site_local::native_to_baked` returns exactly what the baker did, and the
+/// collator conjugates both its reconstruction check and the `rel` it emits by
+/// that basis, so the metadata is usable in the frame it was captured in. On
+/// the reporter's file, dropping it cost 30 meshes their 3 shared templates —
+/// 1,562,110 vertices shipped instead of 156,211.
+///
+/// `instance.is_some()` observes the MECHANISM and not the damage, and would
+/// pass even if every downstream consumer then misplaced the group. The tests
+/// that observe the damage are `a_yawed_site_still_instances_its_repeated_shape`
+/// (glTF, reconstructed against the instancing-off export) and
+/// `a_rotated_site_shares_a_shape_across_the_parquet_route`.
 #[test]
-fn rotated_site_drops_instancing_metadata() {
+fn rotated_site_keeps_instancing_metadata() {
     let meshes = run(Some(SITE_ROTATION_30DEG));
     let proxy_meshes: Vec<&MeshData> = meshes
         .iter()
@@ -190,13 +202,37 @@ fn rotated_site_drops_instancing_metadata() {
         !proxy_meshes.is_empty(),
         "expected meshes for the two box proxies (#48, #58)"
     );
-    for m in &proxy_meshes {
-        assert!(
-            m.instance.is_none(),
-            "a 30-degree-yawed site must drop instancing metadata on \
-             express_id {} — a site-local rotation re-transforms positions/origin \
-             and would invalidate the captured instance transform if kept",
-            m.express_id
-        );
-    }
+    let by_id: std::collections::BTreeMap<u32, bool> = proxy_meshes
+        .iter()
+        .map(|m| (m.express_id, m.instance.is_some()))
+        .collect();
+    assert_eq!(
+        by_id,
+        std::collections::BTreeMap::from([(48, true), (58, true)]),
+        "a 30-degree-yawed site must keep instancing metadata on BOTH box \
+         proxies (#48, #58) — the site rotation travels to the collator as a \
+         basis now, it does not cost the metadata; got: {:?}",
+        by_id
+    );
+
+    // Both occurrences share ONE representation map, so they must agree on
+    // rep_identity: without that the metadata is present but useless, and the
+    // assertion above would still pass.
+    let reps: Vec<u128> = proxy_meshes
+        .iter()
+        .filter_map(|m| m.instance.as_ref().map(|i| i.rep_identity))
+        .collect();
+    assert_eq!(reps.len(), 2, "both occurrences must carry a rep_identity");
+    assert_eq!(
+        reps[0], reps[1],
+        "two occurrences of one IfcRepresentationMap must share a rep_identity, \
+         or nothing can ever group them"
+    );
+    assert!(
+        proxy_meshes
+            .iter()
+            .all(|m| m.instance.as_ref().is_some_and(|i| i.instanceable)),
+        "metadata that is not `instanceable` is skipped by the collator, so \
+         keeping it would buy nothing"
+    );
 }

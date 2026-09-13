@@ -2259,7 +2259,7 @@ fn the_streamed_mesh_plan_stays_small() {
 /// reconstruction check sees is PRE-RTC, while the baked positions it compares
 /// against are POST-RTC (and Y-up). The residual left by that mismatch is
 /// `(R_rel - I) * rtc` — zero for a translated-only sibling, but hundreds of
-/// kilometres for a rotated one at national-grid magnitude. A `verify_basis` of
+/// kilometres for a rotated one at national-grid magnitude. A `baked_basis` of
 /// `S_YUP` alone does not account for it, so the check rejected every rotated
 /// group on a georeferenced model and the geometry fell back to flat (no
 /// instancing at all). The basis has to be `S_YUP · T(-rtc_zup)`, which is
@@ -2654,4 +2654,179 @@ fn mesh_visible_empty_isolated_set_is_indistinguishable_from_no_filter_bug_repro
          (currently BOTH read as `isolated_active = false` because `Vec::is_empty()` can't tell \
          'no filter' from 'filter matched nothing')"
     );
+}
+
+/// #4118 part B: two occurrences of one representation on a `site_local` model
+/// whose `IfcSite` placement carries a 34 degree yaw — the reporter's own case.
+///
+/// The baker applies `Rᵀ` to every position AFTER `InstanceMeta` was captured
+/// (`convert_mesh_to_site_local`), so a `rel` built from `InstanceMeta` alone
+/// reconstructs `rel · Rᵀp` where the baked vertices are `Rᵀ · rel · p`. For the
+/// two siblings here that residual is `(I − Rᵀ)·d` with `|d| = 6 m`, about 3.5 m
+/// — thousands of times over the collator's tolerance — so the group was
+/// rejected and the shape shipped twice. The fix is a basis, not a looser
+/// bound: `baked_basis_yup` folds `Rᵀ` in alongside the RTC and Y-up terms.
+///
+/// Ground truth is each occurrence's OWN baked vertices, which the instanced
+/// path never reads, so this cannot pass by sharing the fix's blind spot.
+#[test]
+fn a_yawed_site_still_instances_its_repeated_shape() {
+    use ifc_lite_geometry::Vector3;
+
+    // 34 degree yaw about Z plus a site translation; in the site_local tier the
+    // RTC offset IS that translation (`processor/mod.rs`'s tier selection).
+    let yaw = 34f64.to_radians();
+    let (c, s) = (yaw.cos(), yaw.sin());
+    let rtc = [2_600_000.0f64, 1_200_000.0, 400.0];
+    #[rustfmt::skip]
+    let site_zup: Vec<f64> = vec![
+        c,      s,      0.0,    0.0,
+        -s,     c,      0.0,    0.0,
+        0.0,    0.0,    1.0,    0.0,
+        rtc[0], rtc[1], rtc[2], 1.0,
+    ];
+
+    const CANON: [f64; 12] = [0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 1.5];
+    let indices: Vec<u32> = vec![0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3];
+
+    // Two PRE-RTC world placements six metres apart, differing by a PURE
+    // translation. That is the case the old code was most wrong about: with no
+    // relative rotation the RTC conjugation alone leaves zero residual, so the
+    // 3.5 m this test exercises is entirely the missing `Rᵀ`.
+    let place = |offset: [f64; 3]| {
+        Matrix4::new_translation(&Vector3::new(
+            rtc[0] + offset[0],
+            rtc[1] + offset[1],
+            rtc[2] + offset[2],
+        ))
+    };
+    let m_a = place([10.0, 5.0, 1.0]);
+    let m_b = place([16.0, 5.0, 1.0]);
+
+    let row_major = |m: &Matrix4<f64>| {
+        let mut out = [0.0f64; 16];
+        for r in 0..4 {
+            for col in 0..4 {
+                out[r * 4 + col] = m[(r, col)];
+            }
+        }
+        out
+    };
+    // Bake exactly like the site_local pipeline: world = M * canon, minus the
+    // RTC offset (the router), then the site placement's INVERSE rotation
+    // (`convert_mesh_to_site_local`), then Z-up -> Y-up (`frame::to_yup_in_place`,
+    // which runs before `build_gltf` sees a view).
+    let bake_yup = |m: &Matrix4<f64>| {
+        let mut out = Vec::with_capacity(CANON.len());
+        for v in CANON.chunks_exact(3) {
+            let w = [
+                m[(0, 0)] * v[0] + m[(0, 1)] * v[1] + m[(0, 2)] * v[2] + m[(0, 3)] - rtc[0],
+                m[(1, 0)] * v[0] + m[(1, 1)] * v[1] + m[(1, 2)] * v[2] + m[(1, 3)] - rtc[1],
+                m[(2, 0)] * v[0] + m[(2, 1)] * v[1] + m[(2, 2)] * v[2] + m[(2, 3)] - rtc[2],
+            ];
+            // Rᵀ, the same product `apply_inverse_rotation_in_place` forms from
+            // the COLUMNS of the column-major site matrix.
+            let (x, y, z) = (c * w[0] + s * w[1], -s * w[0] + c * w[1], w[2]);
+            out.push(x as f32);
+            out.push(z as f32);
+            out.push(-y as f32);
+        }
+        out
+    };
+    let pos_a = bake_yup(&m_a);
+    let pos_b = bake_yup(&m_b);
+    let normals = vec![0.0f32; CANON.len()];
+
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: row_major(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 41_180,
+        instanceable: true,
+    };
+    let (meta_a, meta_b) = (meta(&m_a), meta(&m_b));
+
+    fn mesh_view<'a>(
+        id: u32,
+        positions: &'a [f32],
+        normals: &'a [f32],
+        indices: &'a [u32],
+        im: Option<&'a InstanceMeta>,
+    ) -> MeshView<'a> {
+        MeshView {
+            express_id: id,
+            ifc_type: "IfcBeam",
+            global_id: None,
+            positions,
+            normals,
+            indices,
+            color: [0.5, 0.5, 0.5, 1.0],
+            origin: [0.0, 0.0, 0.0],
+            instance: im,
+        }
+    }
+
+    // Ground truth: the SAME fixture exported with instancing off. `instance:
+    // None` is exactly what the pipeline handed the exporter for a yawed site
+    // before this fix, so this is also the pre-#4118 output.
+    let flat_views = vec![
+        mesh_view(1, &pos_a, &normals, &indices, None),
+        mesh_view(2, &pos_b, &normals, &indices, None),
+    ];
+    let mut flat_ch = Chunker::new(12, usize::MAX, None);
+    let (flat_gltf, _) = build_gltf(
+        &flat_views, false, None, true, false, rtc, Some(&site_zup), false, &mut flat_ch,
+    );
+    assert_eq!(
+        flat_gltf.meshes.len(),
+        2,
+        "the instancing-off reference must keep one mesh per occurrence"
+    );
+
+    let views = vec![
+        mesh_view(1, &pos_a, &normals, &indices, Some(&meta_a)),
+        mesh_view(2, &pos_b, &normals, &indices, Some(&meta_b)),
+    ];
+    let mut ch = Chunker::new(12, usize::MAX, None);
+    let (gltf, _stats) = build_gltf(
+        &views, false, None, true, false, rtc, Some(&site_zup), false, &mut ch,
+    );
+
+    assert_eq!(
+        gltf.meshes.len(),
+        1,
+        "a repeated shape under a YAWED site must share ONE template mesh; got {} \
+         meshes, i.e. the group was rejected and nothing collated",
+        gltf.meshes.len()
+    );
+    let placed: Vec<[f32; 16]> = gltf.nodes.iter().filter_map(|n| n.matrix).collect();
+    assert_eq!(placed.len(), 2, "both occurrences placed by a node matrix");
+
+    // Reconstruct each occurrence from (template geometry, node matrix) and
+    // compare against its own baked vertices. `scene_center` cancels out of the
+    // DIFFERENCE between the two nodes, which is what makes this independent of
+    // the centring the exporter chose.
+    let apply = |m: &[f32; 16], p: [f64; 3]| {
+        // glTF node matrices are column-major.
+        [
+            m[0] as f64 * p[0] + m[4] as f64 * p[1] + m[8] as f64 * p[2] + m[12] as f64,
+            m[1] as f64 * p[0] + m[5] as f64 * p[1] + m[9] as f64 * p[2] + m[13] as f64,
+            m[2] as f64 * p[0] + m[6] as f64 * p[1] + m[10] as f64 * p[2] + m[14] as f64,
+        ]
+    };
+    for v in 0..pos_a.len() / 3 {
+        let p = [pos_a[v * 3] as f64, pos_a[v * 3 + 1] as f64, pos_a[v * 3 + 2] as f64];
+        let d0 = apply(&placed[0], p);
+        let d1 = apply(&placed[1], p);
+        for k in 0..3 {
+            let expected = (pos_b[v * 3 + k] - pos_a[v * 3 + k]) as f64;
+            let got = d1[k] - d0[k];
+            assert!(
+                (got - expected).abs() < 1e-3,
+                "occurrence node placement off by {} m on axis {k} (vertex {v}) \
+                 under a 34 degree site yaw",
+                got - expected
+            );
+        }
+    }
 }

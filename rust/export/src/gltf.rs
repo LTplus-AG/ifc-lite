@@ -33,7 +33,7 @@ use crate::color_space::srgba_to_linear;
 use crate::error::ExportError;
 use ifc_lite_core::EntityIndex;
 use ifc_lite_geometry::{
-    collate_refs_verified_in, InstanceMeshRef, InstanceMeta, InstanceTemplate, Matrix4,
+    collate_refs_in_basis, InstanceMeshRef, InstanceMeta, InstanceTemplate, Matrix4,
 };
 use ifc_lite_processing::{
     build_entity_index_parallel, process_geometry_filtered_with_quality,
@@ -1201,11 +1201,10 @@ fn build_gltf(
     // here too would conjugate twice. The wasm GPU-shard path, which consumes the
     // relative transform directly (no downstream conjugation), passes the real rtc.
     //
-    // `verify_basis = S_YUP · T(-rtc_zup)`: exactly the conjugation
-    // `occurrence_node_matrix` applies to the same `rel`
-    // (`S · T(-rtc) · rel · T(rtc) · S⁻¹`, see gltf/matrix.rs), because the
-    // reconstruction check has to compare in the frame the BAKED positions are
-    // actually in. Two conversions separate the two:
+    // `baked_basis = S_YUP · Rᵀ · T(-rtc_zup)`: exactly the conjugation
+    // `occurrence_node_matrix` applies to the same `rel` (see gltf/matrix.rs),
+    // because the reconstruction check has to compare in the frame the BAKED
+    // positions are actually in. Three conversions separate the two:
     //  • Y-up: `visible`'s positions/origin were already converted Z-up→Y-up before
     //    this function was entered — `with_result_views` (this file) runs
     //    `crate::frame::to_yup_in_place` over every visible mesh in `result` and only
@@ -1216,10 +1215,16 @@ fn build_gltf(
     //    `(R_rel - I) · rtc` — zero for a translated-only sibling, but hundreds of
     //    kilometres for a ROTATED one at national-grid magnitude, so `S_YUP` alone
     //    rejected every rotated group on a georeferenced model.
-    // Without both terms the check reads a frame mismatch as a #3666 collision and
-    // drops the whole group to flat.
-    let verify_basis = Matrix4::from_row_slice(&matrix::verify_basis_yup(rtc_zup));
-    let collated = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&verify_basis));
+    //  • Site rotation: in the `site_local` tier the baker ALSO applied the site
+    //    placement's inverse rotation to every position (#4118). The residual that
+    //    leaves is `(I - Rᵀ) · d` for a sibling `d` metres away — 3.5 m for a 6 m
+    //    sibling under a 34 degree yaw, far over any tolerance — so a yawed site
+    //    instanced nothing at all. `site_zup` is `Some` exactly in that tier;
+    //    `baked_basis_yup` folds it in and is the identity's neighbour otherwise.
+    // Without all three terms the check reads a frame mismatch as a #3666 collision
+    // and drops the whole group to flat.
+    let baked_basis = Matrix4::from_row_slice(&matrix::baked_basis_yup(rtc_zup, site_zup));
+    let collated = collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], Some(&baked_basis));
 
     // Partition into instanced templates (non-rigid, exact-bit) and a flat remainder.
     // Only EXACT-bit groups are instanced: the template's local geometry IS each
@@ -1411,7 +1416,7 @@ fn build_gltf(
                 // an instance side-channel and the template inverse exists.
                 let occ_meta = occ_view.instance.expect("instanced occurrence has InstanceMeta");
                 let matrix = occurrence_node_matrix(
-                    occ_meta, &m_ref_inv, rtc_zup, t_origin_yup, scene_center,
+                    occ_meta, &m_ref_inv, rtc_zup, site_zup, t_origin_yup, scene_center,
                 );
                 let extras = node_extras(include_metadata, occ_view.express_id, occ_view.ifc_type, occ_view.global_id, model_id);
                 let node_idx = push_occurrence_node(&mut nodes, mesh_idx, matrix, dequant, extras);
@@ -2671,6 +2676,7 @@ fn plan_bounded_glb(
                 m_k,
                 &group.m_ref_inv,
                 rtc_zup,
+                site_zup.as_deref(),
                 group.template_origin,
                 scene_center,
             )

@@ -36,13 +36,18 @@
 //! is always computed from `InstanceMeta.transform`, native-frame (IFC Z-up) —
 //! to the template's OWN baked vertices, so the comparison is only valid when
 //! the baked vertices it is handed (`template.positions`/`mesh.positions`) are
-//! ALSO in that native frame. `collate_refs_verified_in`'s `verify_basis`
+//! ALSO in that native frame. `collate_refs_in_basis`'s `baked_basis`
 //! parameter exists because the glTF exporter's in-memory assembler converts
 //! every visible mesh's baked positions Z-up→Y-up BEFORE calling in (so the
 //! template/flat geometry it emits is already Y-up), while `InstanceMeta`
 //! itself stays Z-up throughout — the per-occurrence node matrix is
 //! independently recomposed and Y-up-conjugated downstream (`occurrence_node_matrix`
-//! in the export crate), never reading this module's `rel` back. Left
+//! in the export crate), never reading this module's `rel` back. The same
+//! parameter now also carries the site-local inverse rotation `Rᵀ` that
+//! `convert_mesh_to_site_local` bakes into positions after `InstanceMeta` was
+//! captured (#4118), and — since #4118 — it conjugates the EMITTED `rel` as
+//! well as the one checked here, for the consumers that read `rel` back
+//! instead of recomputing. Left
 //! unaccounted for, that frame mismatch reads as a `rep_identity` collision on
 //! nearly every rotated group in a real model (a Z-up `rel` reconstructing
 //! against Y-up vertices), which is what motivated this parameter rather than

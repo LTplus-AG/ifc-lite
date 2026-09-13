@@ -97,7 +97,7 @@ fn occurrence_matrix_reconstructs_rotated_instance_under_national_grid_rtc() {
     };
     let m_ref_inv = super::affine_inverse(&super::compose_world_meta(&meta(m_ref)))
         .expect("template placement invertible");
-    let node = super::occurrence_node_matrix(&meta(m_k), &m_ref_inv, rtc, origin_yup, scene_center);
+    let node = super::occurrence_node_matrix(&meta(m_k), &m_ref_inv, rtc, None, origin_yup, scene_center);
 
     // Reconstruct: world = scene_center(root) + node(col-major) · template_local.
     let mut max_err = 0.0f64;
@@ -115,6 +115,124 @@ fn occurrence_matrix_reconstructs_rotated_instance_under_national_grid_rtc() {
     assert!(
         max_err < 1e-3,
         "rotated instance under national-grid RTC mis-reconstructed by {max_err} m"
+    );
+}
+
+/// #4118: the same reconstruction under a `site_local` model whose site
+/// placement carries a 34 degree yaw, against a brute-force reference built by
+/// baking each occurrence independently.
+///
+/// The sibling here is a PURE translation, which is the case that isolates the
+/// new factor: with no relative rotation the RTC conjugation contributes
+/// nothing, so any error is entirely the missing `Rᵀ`. It is `(I − Rᵀ)·d` —
+/// about 3.5 m for the 6 m offset used below, three orders of magnitude past
+/// the bound.
+#[test]
+fn occurrence_matrix_reconstructs_a_translated_sibling_under_a_yawed_site() {
+    use ifc_lite_geometry::InstanceMeta;
+
+    let translate = |t: [f64; 3]| -> [f64; 16] {
+        [1., 0., 0., t[0], 0., 1., 0., t[1], 0., 0., 1., t[2], 0., 0., 0., 1.]
+    };
+    let apply = |m: &[f64; 16], p: [f64; 3]| -> [f64; 3] {
+        [
+            m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3],
+            m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7],
+            m[8] * p[0] + m[9] * p[1] + m[10] * p[2] + m[11],
+        ]
+    };
+
+    let yaw = 34f64.to_radians();
+    let (c, s) = (yaw.cos(), yaw.sin());
+    // The site_local tier's RTC offset IS the site translation.
+    let rtc = [2_600_000.0f64, 1_200_000.0, 400.0];
+    // Column-major, as `ProcessingResult::site_transform` stores it.
+    #[rustfmt::skip]
+    let site_zup: Vec<f64> = vec![
+        c,      s,      0.0,    0.0,
+        -s,     c,      0.0,    0.0,
+        0.0,    0.0,    1.0,    0.0,
+        rtc[0], rtc[1], rtc[2], 1.0,
+    ];
+
+    let m_ref = translate([rtc[0] + 10.0, rtc[1] + 5.0, rtc[2] + 1.0]);
+    let m_k = translate([rtc[0] + 16.0, rtc[1] + 5.0, rtc[2] + 1.0]);
+
+    let canonical = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 2.0, 0.0],
+        [0.5, 0.5, 1.5],
+        [2.0, 0.3, 0.7],
+    ];
+    // Brute force: placement·canonical, minus rtc, then Rᵀ — the exact sequence
+    // the router plus `convert_mesh_to_site_local` perform, written out here so
+    // the reference does not go through the code under test.
+    let bake = |m: &[f64; 16]| -> Vec<[f64; 3]> {
+        canonical
+            .iter()
+            .map(|&x| {
+                let w = apply(m, x);
+                let (dx, dy, dz) = (w[0] - rtc[0], w[1] - rtc[1], w[2] - rtc[2]);
+                [c * dx + s * dy, -s * dx + c * dy, dz]
+            })
+            .collect()
+    };
+    let tmpl_baked = bake(&m_ref);
+    let occ_baked = bake(&m_k);
+
+    let n = canonical.len() as f64;
+    let origin_z = {
+        let mut o = [0.0; 3];
+        for p in &tmpl_baked {
+            for k in 0..3 {
+                o[k] += p[k] / n;
+            }
+        }
+        o
+    };
+    let origin_yup = crate::frame::yup_f64(origin_z);
+    let tmpl_local_yup: Vec<[f64; 3]> = tmpl_baked
+        .iter()
+        .map(|p| crate::frame::yup_f64([p[0] - origin_z[0], p[1] - origin_z[1], p[2] - origin_z[2]]))
+        .collect();
+    let occ_world_yup: Vec<[f64; 3]> = occ_baked.iter().map(|p| crate::frame::yup_f64(*p)).collect();
+
+    let meta = |transform: [f64; 16]| InstanceMeta {
+        transform,
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4118,
+        instanceable: true,
+    };
+    let m_ref_inv = super::affine_inverse(&super::compose_world_meta(&meta(m_ref)))
+        .expect("template placement invertible");
+    // scene_center is left at zero: it cancels between the node and the root,
+    // and this test compares against un-centred baked truth.
+    let node = super::occurrence_node_matrix(
+        &meta(m_k),
+        &m_ref_inv,
+        rtc,
+        Some(&site_zup),
+        origin_yup,
+        [0.0; 3],
+    );
+
+    let mut max_err = 0.0f64;
+    for (lv, truth) in tmpl_local_yup.iter().zip(&occ_world_yup) {
+        let (x, y, z) = (lv[0], lv[1], lv[2]);
+        let world = [
+            node[0] as f64 * x + node[4] as f64 * y + node[8] as f64 * z + node[12] as f64,
+            node[1] as f64 * x + node[5] as f64 * y + node[9] as f64 * z + node[13] as f64,
+            node[2] as f64 * x + node[6] as f64 * y + node[10] as f64 * z + node[14] as f64,
+        ];
+        for k in 0..3 {
+            max_err = max_err.max((world[k] - truth[k]).abs());
+        }
+    }
+    assert!(
+        max_err < 1e-3,
+        "a translated sibling under a 34 degree site yaw is mis-placed by {max_err} m"
     );
 }
 
@@ -204,7 +322,7 @@ fn zero_rtc_places_non_identity_occurrence() {
     let m_k = super::compose_world_meta(&meta(
         super::mat4_mul(&translate([7.0, -3.0, 2.0]), &rot_z(25.0)),
     ));
-    let node = super::occurrence_node_matrix(&meta(m_k), &m_ref_inv, [0.0; 3], [0.0; 3], [0.0; 3]);
+    let node = super::occurrence_node_matrix(&meta(m_k), &m_ref_inv, [0.0; 3], None, [0.0; 3], [0.0; 3]);
 
     let canonical = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.3, 0.4, 0.5]];
     let mut max_err = 0.0f64;

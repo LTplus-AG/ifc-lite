@@ -23,6 +23,8 @@ pub mod processor;
 pub mod streaming;
 
 pub use data_model::extract_data_model;
+/// The baked-vertex frame (#4118) both Parquet routes hand to the collator.
+pub(crate) use parquet_instancing::baked_basis_zup;
 pub use parquet::{serialize_batch_with_layout, ParquetError, StreamingParquetCacheWriter};
 #[cfg(test)]
 pub use parquet::serialize_to_parquet;

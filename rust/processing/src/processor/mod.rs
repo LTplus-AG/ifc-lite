@@ -39,7 +39,9 @@ mod schema_detection;
 mod site_local;
 
 pub use quick_metadata::is_quick_spatial_type_ci;
-pub use site_local::convert_mesh_to_site_local;
+pub use site_local::{
+    convert_mesh_to_site_local, native_to_baked, SITE_LOCAL_MESH_COORDINATE_SPACE,
+};
 pub(crate) use site_local::site_local_rotation_invalidates_captured_transforms;
 
 use jobs::{build_color_updates_for_jobs, process_entity_job};
@@ -57,7 +59,6 @@ use quick_metadata::{
 };
 use site_local::{
     translation_is_nonidentity, MODEL_RTC_MESH_COORDINATE_SPACE, RAW_IFC_MESH_COORDINATE_SPACE,
-    SITE_LOCAL_MESH_COORDINATE_SPACE,
 };
 
 /// Wall-clock timer for diagnostic `ProcessingStats`. On wasm32
@@ -1195,17 +1196,27 @@ pub fn process_geometry_streaming_filtered_with_options(
     // MeshData must survive in `meshes` for the finalize to place instances onto it).
     //
     // NOT armed for the `site_local` coordinate tier (IfcSite has a non-identity
-    // placement). There, `build_mesh_data` drops the template's `instance_meta`
-    // (site-local meshes are pre-transformed into the site frame via
-    // `convert_mesh_to_site_local`, so a world-placement instance transform no
-    // longer composes) — exactly why the renderer's own instancing (#1238) does not
-    // instance site-local models either. Leaving the plan armed would strand every
-    // occurrence in single-threaded finalize orphan-recovery: a perf REGRESSION on a
-    // translated site (re-bake serially, worse than plain flat) and MISPLACED
-    // geometry on a rotated site (orphan flats baked in the world frame while
-    // siblings sit in the site-local frame). Route the whole model to flat instead —
-    // correct, and no slower than today. (Extending instancing to site-local needs
-    // the renderer to instance in the site frame too; tracked as a follow-up.)
+    // placement).
+    //
+    // The original reason — "`build_mesh_data` drops the template's
+    // `instance_meta` there" — is no longer true. It stopped being true for a
+    // translation-only site with #4176, and for a rotated one with #4118 part B:
+    // `element_mesh_build.rs` now keeps instancing metadata unconditionally, and
+    // the frame the baker left the vertices in travels to the collator as a
+    // basis (`site_local::native_to_baked`) instead of costing the metadata.
+    // The EXPORT path therefore does instance site-local models today.
+    //
+    // What still holds is the reason this particular gate exists, which is a
+    // different thing: the #1623 don't-bake plan replaces an occurrence's
+    // geometry with a placeholder that only the renderer's own instancing can
+    // draw. Arming it here would strand every occurrence in single-threaded
+    // finalize orphan-recovery — a perf REGRESSION on a translated site (re-bake
+    // serially, worse than plain flat) and MISPLACED geometry on a rotated site
+    // (orphan flats baked in the world frame while siblings sit in the
+    // site-local frame). Route the whole model to flat instead — correct, and no
+    // slower than today. Lifting this gate needs the renderer to instance in the
+    // site frame too, and an in-browser verification that it does; that remains
+    // a follow-up, and #4118 part B deliberately does not touch it.
     let instancing_plan: Option<ifc_lite_geometry::MappedInstancePlan> = (options.enable_instancing
         && options.retain_emitted_meshes
         && coord_space != SITE_LOCAL_MESH_COORDINATE_SPACE)

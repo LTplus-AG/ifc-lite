@@ -77,7 +77,7 @@ pub fn serialize_batch_with_layout(
 pub fn serialize_to_parquet_shared_shapes(meshes: &[MeshData]) -> Result<Bytes, ParquetError> {
     serialize_with_plan(
         meshes,
-        &ShapePlan::shared_shapes(meshes),
+        &ShapePlan::shared_shapes(meshes, None),
         ParquetLayout::SharedShapes,
     )
 }
@@ -92,9 +92,10 @@ pub fn serialize_to_parquet_shared_shapes(meshes: &[MeshData]) -> Result<Bytes, 
 pub(crate) fn serialize_combined_for_layout(
     meshes: &[MeshData],
     layout: ParquetLayout,
+    baked_basis: Option<&ifc_lite_geometry::Matrix4<f64>>,
 ) -> Result<Bytes, ParquetError> {
     let plan = match layout {
-        ParquetLayout::SharedShapes => ShapePlan::shared_shapes(meshes),
+        ParquetLayout::SharedShapes => ShapePlan::shared_shapes(meshes, baked_basis),
         ParquetLayout::Flat => ShapePlan::Identity,
     };
     let (mesh, vertex, index) = write_sections(meshes, &plan, layout)?;

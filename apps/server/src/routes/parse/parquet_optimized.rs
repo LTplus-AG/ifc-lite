@@ -13,7 +13,7 @@ use super::cache_keys::{
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::{
-    serialize_to_parquet_optimized_with_stats, OptimizedStats, VERTEX_MULTIPLIER,
+    baked_basis_zup, serialize_to_parquet_optimized_with_stats, OptimizedStats, VERTEX_MULTIPLIER,
 };
 use crate::types::{ModelMetadata, ProcessingStats};
 use crate::AppState;
@@ -197,8 +197,17 @@ pub async fn parse_parquet_optimized(
             );
             drop(content);
             // Don't include normals by default - client can compute them
+            // The frame `result`'s vertices were baked in (#4118): the
+            // collator's emitted `rel` is consumed directly by this route, so
+            // without it a site-rotated model's repeated shapes fail the
+            // residual check and fall back to content-hash dedup.
+            let basis = baked_basis_zup(
+                result.mesh_coordinate_space.as_deref(),
+                result.site_transform.as_deref(),
+                result.metadata.coordinate_info.origin_shift,
+            );
             let (parquet_data, opt_stats) =
-                serialize_to_parquet_optimized_with_stats(&result.meshes, false)?;
+                serialize_to_parquet_optimized_with_stats(&result.meshes, false, Some(&basis))?;
             // Nothing after this reads the meshes; free them here rather than
             // hold the model across the cache writes below.
             drop(std::mem::take(&mut result.meshes));

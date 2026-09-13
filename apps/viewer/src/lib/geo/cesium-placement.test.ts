@@ -140,6 +140,7 @@ describe('cesium placement helpers', () => {
         wasmRtcOffset: { x: 0, y: 0, z: 3 },
       },
       projectedCRS: { mapUnitScale: 0.3048 },
+      mapConversion: undefined,
       lengthUnitScale: 1,
       storeyElevations,
       targetBaseAltitude: 245,
@@ -150,6 +151,31 @@ describe('cesium placement helpers', () => {
     // must NOT be subtracted again here — only the RTC offset still needs
     // folding in: 245 - rtcYupY(3) - anchorY(5) = 237 meters; /0.3048 mapUnitScale.
     assert.strictEqual(orthogonalHeight, 777.56);
+  });
+
+  it('inverts the FactorZ-scaled read path when solving OrthogonalHeight (#4615)', () => {
+    // Read path: base altitude = OrthogonalHeight + scaleZ * (rtc + anchorY).
+    // Scale 1 x FactorZ 2, anchor storey at 5, RTC 3, target 100:
+    // 100 - 2 * (3 + 5) = 84, which the read path places at 84 + 16 = 100.
+    // Scaling only the anchor would give 87; ignoring FactorZ gives 92.
+    const orthogonalHeight = computeOrthogonalHeightForBaseAltitude({
+      coordinateInfo: {
+        originShift: { x: 0, y: 0, z: 0 },
+        originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 10, z: 10 } },
+        shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 10, z: 10 } },
+        hasLargeCoordinates: false,
+        wasmRtcOffset: { x: 0, y: 0, z: 3 },
+      },
+      projectedCRS: { mapUnitScale: 1 },
+      mapConversion: {
+        id: 1, sourceCRS: 2, targetCRS: 3, eastings: 0, northings: 0, orthogonalHeight: 0,
+        scale: 1, factorZ: 2,
+      },
+      lengthUnitScale: 1,
+      storeyElevations: new Map([[1, 5]]),
+      targetBaseAltitude: 100,
+    });
+    assert.strictEqual(orthogonalHeight, 84);
   });
 
   it('computes the IFC origin height from OrthogonalHeight and model center', () => {
@@ -399,6 +425,7 @@ describe('snap-to-terrain geoid round-trip (#1456)', () => {
     const appliedN = 45.3;
     const target = orthometricTargetForTerrain(ellipsoidalTerrain, appliedN);
     const orthogonalHeight = computeOrthogonalHeightForBaseAltitude({
+      mapConversion: undefined,
       lengthUnitScale: 1,
       targetBaseAltitude: target,
     });

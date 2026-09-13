@@ -7,6 +7,7 @@ import assert from 'node:assert';
 
 import {
   detectScaleUnitMismatch,
+  getEffectiveGeoreference,
   getEffectiveHorizontalScale,
   hasStandardGeoreferencing,
   inferMapUnitScale,
@@ -16,7 +17,7 @@ import {
   supportsStandardGeoreferencing,
 } from './effective-georef.js';
 import { getEffectiveAxisScale, resolveMapUnitToMetreScale } from './geo-scale.js';
-import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import { IfcParser, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 
 describe('effective georeferencing', () => {
   it('recomputes map unit scale when the edited MapUnit changes', () => {
@@ -212,7 +213,42 @@ describe('effective georeferencing', () => {
       xAxisAbscissa: 0,
       xAxisOrdinate: 1,
       scale: 0.9999,
+      factorX: undefined,
+      factorY: undefined,
+      factorZ: undefined,
     });
+  });
+
+  it('keeps IfcMapConversionScaled factors from a parsed file, with and without an edit (#4615)', async () => {
+    // The viewer reads every conversion through getEffectiveGeoreference, so a
+    // factor the parser reads but the merge drops reaches no consumer. Distinct
+    // factors per axis so a swapped or shared slot fails too.
+    const source = `ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4X3_ADD2'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,(#10),#20);
+#10=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,$,$);
+#20=IFCUNITASSIGNMENT((#21));
+#21=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#30=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#21);
+#31=IFCMAPCONVERSIONSCALED(#10,#30,2600000.,1200000.,400.,1.,0.,1.,0.5,0.25,3.);
+ENDSEC;
+END-ISO-10303-21;
+`;
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(source).buffer as ArrayBuffer,
+      { disableWorkerScan: true },
+    );
+    for (const mutations of [undefined, { mapConversion: { eastings: 2600010 } }]) {
+      const conversion = getEffectiveGeoreference(store, undefined, mutations)?.mapConversion;
+      assert.deepStrictEqual(
+        [conversion?.factorX, conversion?.factorY, conversion?.factorZ],
+        [0.5, 0.25, 3],
+        `factors with mutations ${JSON.stringify(mutations)}`,
+      );
+    }
   });
 
   describe('resolveEpsetMapUnitScale (IFC2x3 ePset offsets use the project unit)', () => {

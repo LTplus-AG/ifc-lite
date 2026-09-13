@@ -136,6 +136,8 @@ export function computeCesiumPlacement({
 export interface OrthogonalHeightForBaseAltitudeInput {
   coordinateInfo?: CoordinateInfo;
   projectedCRS?: Pick<ProjectedCRS, 'mapUnitScale'>;
+  /** The conversion the read path places with; its Scale x FactorZ scales the anchor's height. */
+  mapConversion: MapConversion | undefined;
   lengthUnitScale: number;
   storeyElevations?: Map<number, number>;
   targetBaseAltitude: number;
@@ -144,6 +146,7 @@ export interface OrthogonalHeightForBaseAltitudeInput {
 export function computeOrthogonalHeightForBaseAltitude({
   coordinateInfo,
   projectedCRS,
+  mapConversion,
   lengthUnitScale,
   storeyElevations,
   targetBaseAltitude,
@@ -160,7 +163,13 @@ export function computeOrthogonalHeightForBaseAltitude({
   const anchorY = findClampAnchorY(bounds, storeyElevations);
   // RTC offset is stored in IFC Z-up; viewer-Y aligns to its Z component.
   const rtcYupY = coordinateInfo?.wasmRtcOffset?.z ?? 0;
-  const orthogonalHeightMeters = targetBaseAltitude - rtcYupY - anchorY;
+  // The read path places IFC height z at `OrthogonalHeight*mapScale +
+  // scaleZ*z` (cesium-bridge.ts), so the anchor's height is scaled before it
+  // is subtracted, through the same map-absolute neutralisation.
+  const mapScale = getMapUnitScale(projectedCRS, lengthUnitScale);
+  const conversion = mapConversion && effectiveMapConversionForGeometry(mapConversion, mapScale, coordinateInfo);
+  const scaleZ = getEffectiveAxisScale(conversion?.scale, conversion?.factorZ, mapScale, lengthUnitScale);
+  const orthogonalHeightMeters = targetBaseAltitude - scaleZ * (rtcYupY + anchorY);
 
   return Math.round(
     metersToMapUnits(orthogonalHeightMeters, projectedCRS, lengthUnitScale) * 100,

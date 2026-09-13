@@ -182,6 +182,9 @@ export function mergeMapConversion(
     xAxisAbscissa: mutations?.xAxisAbscissa ?? original?.xAxisAbscissa,
     xAxisOrdinate: mutations?.xAxisOrdinate ?? original?.xAxisOrdinate,
     scale: mutations?.scale ?? original?.scale,
+    factorX: mutations?.factorX ?? original?.factorX,
+    factorY: mutations?.factorY ?? original?.factorY,
+    factorZ: mutations?.factorZ ?? original?.factorZ,
   };
 }
 

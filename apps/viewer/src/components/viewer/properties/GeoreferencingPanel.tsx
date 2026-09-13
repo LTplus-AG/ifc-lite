@@ -452,11 +452,12 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     return computeOrthogonalHeightForBaseAltitude({
       coordinateInfo,
       projectedCRS: mergedCRS,
+      mapConversion: mergedConversion,
       lengthUnitScale: lengthUnitScale ?? 1,
       storeyElevations,
       targetBaseAltitude,
     });
-  }, [coordinateInfo, mergedCRS, lengthUnitScale, storeyElevations]);
+  }, [coordinateInfo, mergedCRS, mergedConversion, lengthUnitScale, storeyElevations]);
 
   const isMutated = useCallback((entity: 'projectedCRS' | 'mapConversion', field: string): boolean => {
     if (!mutations) return false;

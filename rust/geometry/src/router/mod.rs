@@ -22,6 +22,7 @@ mod mapped_item;
 mod processing;
 mod processor;
 mod rtc_offset;
+mod structural;
 mod textured;
 pub(crate) mod transforms;
 pub(crate) mod voids;
@@ -718,3 +719,5 @@ impl Default for GeometryRouter {
 mod reference_opening_tests;
 #[cfg(test)]
 mod annotation_tests;
+#[cfg(test)]
+mod structural_tests;

@@ -10,16 +10,16 @@ use crate::processors::{
     AdvancedBrepProcessor, BSplineSurfaceProcessor, BlockProcessor, BooleanClippingProcessor,
     CsgSolidProcessor, ExtrudedAreaSolidProcessor, ExtrudedAreaSolidTaperedProcessor,
     FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, IfcAlignmentProcessor,
-    PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor, SectionedSolidHorizontalProcessor,
-    ShellBasedSurfaceModelProcessor, SphereProcessor, SurfaceCurveSweptAreaSolidProcessor,
-    SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
+    IfcEdgeProcessor, PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor,
+    SectionedSolidHorizontalProcessor, ShellBasedSurfaceModelProcessor, SphereProcessor,
+    SurfaceCurveSweptAreaSolidProcessor, SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
 use ifc_lite_core::{IfcSchema, IfcType};
 use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub(super) const TYPES: [&[IfcType]; 18] = [
+pub(super) const TYPES: [&[IfcType]; 19] = [
     &[IfcType::IfcExtrudedAreaSolid],
     &[IfcType::IfcExtrudedAreaSolidTapered],
     &[IfcType::IfcTriangulatedFaceSet, IfcType::IfcTriangulatedIrregularNetwork],
@@ -38,6 +38,7 @@ pub(super) const TYPES: [&[IfcType]; 18] = [
     &[IfcType::IfcSphere],
     &[IfcType::IfcCsgSolid],
     &[IfcType::IfcAlignment],
+    &[IfcType::IfcEdge],
 ];
 
 fn slot(ifc_type: IfcType) -> Option<usize> {
@@ -60,6 +61,7 @@ fn slot(ifc_type: IfcType) -> Option<usize> {
         IfcType::IfcSphere => 15,
         IfcType::IfcCsgSolid => 16,
         IfcType::IfcAlignment => 17,
+        IfcType::IfcEdge => 18,
         _ => return None,
     })
 }
@@ -84,6 +86,7 @@ fn create(index: usize, schema: &IfcSchema) -> Rc<dyn GeometryProcessor> {
         15 => Rc::new(SphereProcessor::new()),
         16 => Rc::new(CsgSolidProcessor::new()),
         17 => Rc::new(IfcAlignmentProcessor::new()),
+        18 => Rc::new(IfcEdgeProcessor::new()),
         _ => unreachable!("built-in processor slot"),
     }
 }

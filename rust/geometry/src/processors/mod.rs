@@ -28,6 +28,7 @@ pub(crate) mod extrusion;
 mod extrusion_tapered;
 mod helpers;
 mod sectioned;
+mod structural_edge;
 mod surface;
 mod swept;
 mod tessellated;
@@ -48,6 +49,7 @@ pub use sphere::SphereProcessor;
 pub use extrusion::ExtrudedAreaSolidProcessor;
 pub use extrusion_tapered::ExtrudedAreaSolidTaperedProcessor;
 pub use sectioned::SectionedSolidHorizontalProcessor;
+pub use structural_edge::IfcEdgeProcessor;
 pub use surface::SurfaceOfLinearExtrusionProcessor;
 pub use swept::{
     RevolvedAreaSolidProcessor, SurfaceCurveSweptAreaSolidProcessor, SweptDiskSolidProcessor,

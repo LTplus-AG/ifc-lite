@@ -57,13 +57,29 @@ pub fn meshed_representations<'a>(
     representations: &'a [DecodedEntity],
 ) -> impl Iterator<Item = &'a DecodedEntity> + 'a {
     let is_shape = |rep: &&DecodedEntity| rep.ifc_type == IfcType::IfcShapeRepresentation;
+    // A structural curve member's edge geometry lives on an
+    // `IfcTopologyRepresentation`, not an `IfcShapeRepresentation` — a
+    // different entity type entirely, though both are `IfcRepresentation`
+    // subtypes sharing the same `ContextOfItems`/`RepresentationIdentifier`/
+    // `RepresentationType`/`Items` attribute layout, so `effective_rep_type`
+    // reads it the same way. Gated on `structural::accepts` so this doesn't
+    // open `IfcTopologyRepresentation` up generally (e.g. the fixture's
+    // `'Vertex'`-typed ones on `IfcStructuralPointConnection`, out of scope
+    // here — see `structural::accepts`'s doc comment).
+    let is_meshable_rep = move |rep: &&DecodedEntity| {
+        is_shape(rep)
+            || (rep.ifc_type == IfcType::IfcTopologyRepresentation
+                && effective_rep_type(rep).is_some_and(|rt| super::structural::accepts(element, rt)))
+    };
     let has_direct_geometry = representations.iter().filter(is_shape).any(|rep| {
         effective_element_rep_type(element, rep).is_some_and(is_direct_body_representation)
     });
-    representations.iter().filter(is_shape).filter(move |rep| {
+    representations.iter().filter(is_meshable_rep).filter(move |rep| {
         effective_element_rep_type(element, rep).is_none_or(|rep_type| {
             !(rep_type == "MappedRepresentation" && has_direct_geometry)
-                && (is_body_representation(rep_type) || super::annotation::accepts(element, rep_type))
+                && (is_body_representation(rep_type)
+                    || super::annotation::accepts(element, rep_type)
+                    || super::structural::accepts(element, rep_type))
         })
     })
 }

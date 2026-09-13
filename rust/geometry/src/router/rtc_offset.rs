@@ -463,11 +463,8 @@ impl GeometryRouter {
     /// (previously the wasm prepasses silently fell back to (0,0,0) and the
     /// browser rendered f32 vertex jitter that the server never saw).
     ///
-    /// `None` means NEITHER ladder found a coordinate to judge (no usable
-    /// placement sample and no `IfcCartesianPoint` in the file); `Some((0,0,0))`
-    /// means one of them did and the model is small. The selector that turns
-    /// this into a mesh frame (`ifc_lite_processing::MeshFrame::select`) is
-    /// the one place that decides what `None` means.
+    /// `None` means neither ladder found a coordinate to judge; `MeshFrame::select`
+    /// in `ifc_lite_processing` decides what that means.
     pub fn detect_rtc_offset_with_fallback(
         &self,
         jobs: &[(u32, usize, usize, IfcType)],

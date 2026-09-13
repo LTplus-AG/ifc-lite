@@ -604,7 +604,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     },
                     children: Vec::new(),
                     elements: Vec::new(),
-                    parent: None,
+                    named_as_child: false,
                 });
             } else if keyword_eq(type_name, "IFCRELAGGREGATES") {
                 let args = parse_step_arguments(&content[start..end]);
@@ -938,7 +938,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     parent.children.push(child_id);
                 }
                 if let Some(child) = spatial_nodes.get_mut(&child_id) {
-                    child.parent = Some(parent_id);
+                    child.named_as_child = true;
                 }
             }
         }
@@ -953,19 +953,19 @@ pub fn process_geometry_streaming_filtered_with_options(
                 // node of the spatial tree, not a contained product. Promote it
                 // to a child node so it shows in the hierarchy (#1075); anything
                 // that isn't itself a spatial node stays a contained element.
+                //
+                // Wired even when an aggregate also names the child: whether
+                // that aggregate's parent is reachable from the root is not
+                // known here, and an edge from an orphan or from the child's
+                // own descendant must not take the space out of the tree
+                // (#4689). The tree walk places each node once, where it first
+                // reaches it, and aggregate children precede these in the list.
                 if spatial_nodes.contains_key(&child_id) {
-                    // Skip if already placed via IfcRelAggregates (wired just
-                    // above) to avoid a duplicate child / parent overwrite.
-                    let already_placed = spatial_nodes
-                        .get(&child_id)
-                        .is_some_and(|child| child.parent.is_some());
-                    if !already_placed {
-                        if let Some(parent) = spatial_nodes.get_mut(&parent_id) {
-                            parent.children.push(child_id);
-                        }
-                        if let Some(child) = spatial_nodes.get_mut(&child_id) {
-                            child.parent = Some(parent_id);
-                        }
+                    if let Some(parent) = spatial_nodes.get_mut(&parent_id) {
+                        parent.children.push(child_id);
+                    }
+                    if let Some(child) = spatial_nodes.get_mut(&child_id) {
+                        child.named_as_child = true;
                     }
                 } else if let Some(parent) = spatial_nodes.get_mut(&parent_id) {
                     parent.elements.push(child_id);
@@ -999,11 +999,13 @@ pub fn process_geometry_streaming_filtered_with_options(
             .map(|node| node.express_id)
             .min()
             .or_else(|| {
+                // Prefer a node no edge names as a child, but when every node
+                // is one (a back-edge to the top node) still build from the
+                // lowest id rather than emit no tree (#4689).
                 spatial_nodes
                     .values()
-                    .filter(|node| node.parent.is_none())
+                    .min_by_key(|node| (node.named_as_child, node.express_id))
                     .map(|node| node.express_id)
-                    .min()
             });
         let (spatial_tree, pruned_aggregate_edges) = root_id
             .and_then(|root| {

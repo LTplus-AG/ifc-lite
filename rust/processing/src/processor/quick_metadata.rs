@@ -19,7 +19,9 @@ pub(super) struct QuickSpatialNodeEntry {
     pub(super) elevation: Option<f64>,
     pub(super) children: Vec<u32>,
     pub(super) elements: Vec<u32>,
-    pub(super) parent: Option<u32>,
+    /// Some aggregate or spatial containment edge lists this node as a child.
+    /// Read only to pick a root when the file has no `IfcProject`.
+    pub(super) named_as_child: bool,
 }
 
 /// Which types the schema calls nodes of the quick-metadata spatial tree.
@@ -225,7 +227,7 @@ mod tests {
             elevation: None,
             children,
             elements: vec![],
-            parent: None,
+            named_as_child: false,
         }
     }
 

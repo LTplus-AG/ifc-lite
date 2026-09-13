@@ -409,8 +409,8 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
 
   const scaleMismatch = useMemo(() => {
     if (!mergedConversion) return null;
-    return detectScaleUnitMismatch(
-      mergedConversion.scale,
+    return detectScaleUnitMismatch( // Scale x FactorX, the coefficient the placement reads (#4615)
+      mergedConversion.factorX === undefined ? mergedConversion.scale : (mergedConversion.scale ?? 1) * mergedConversion.factorX,
       mergedCRS?.mapUnitScale,
       lengthUnitScale,
     );

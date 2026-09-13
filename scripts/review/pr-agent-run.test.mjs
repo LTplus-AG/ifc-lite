@@ -25,7 +25,7 @@ test('the PR-Agent runner treats candidate scripts as diff data, never executabl
   git(trusted, 'config', 'user.email', 'test@example.invalid');
   git(trusted, 'config', 'user.name', 'PR Agent test');
   git(trusted, 'add', 'scripts/review/pr-agent-run.sh');
-  git(trusted, 'commit', '--quiet', '-m', 'trusted runner under test');
+  git(trusted, 'commit', '--quiet', '--allow-empty', '-m', 'trusted runner under test');
   const base = git(trusted, 'rev-parse', 'HEAD');
 
   execFileSync('git', ['clone', '--quiet', '--no-local', trusted, candidate]);

@@ -9,7 +9,9 @@
 //! triangle areas, so the footprint is correct regardless of the source
 //! mesh's (unreliable) triangle winding.
 
-use ifc_lite_geometry::projection_outline::{mesh_outline_2d, ProjectionAxis};
+use ifc_lite_geometry::projection_outline::{
+    mesh_outline_2d, NoOutline, ProjectionAxis, MAX_OVERLAY_TRIANGLES,
+};
 use wasm_bindgen::prelude::*;
 
 /// A mesh's projected footprint outline.
@@ -75,7 +77,12 @@ impl MeshOutlineJs {
 ///
 /// `positions` is flat XYZ; `indices` is flat triangle indices. `axis` is
 /// 0/1/2 = x/y/z (the cut axis, WebGL Y-up). Returns `undefined` when the mesh
-/// has no triangles or projects to nothing.
+/// has no triangles or projects to nothing: the element has no footprint.
+///
+/// THROWS when the outline was not computed: an `axis` outside 0..=2, or a
+/// mesh with more valid projected triangles than the overlay budget (50 000).
+/// The viewer's outline provider catches the throw and draws its TypeScript
+/// silhouette for that mesh.
 ///
 /// ```javascript
 /// const outline = meshOutline2d(positions, indices, 1, false); // axis 1 = y
@@ -90,11 +97,21 @@ impl MeshOutlineJs {
 pub fn mesh_outline_2d_js(
     positions: &[f32],
     indices: &[u32],
-    axis: u8,
+    axis: f64,
     flipped: bool,
-) -> Option<MeshOutlineJs> {
-    let axis = ProjectionAxis::from_u8(axis)?;
-    let outline = mesh_outline_2d(positions, indices, axis, flipped)?;
+) -> Result<Option<MeshOutlineJs>, JsError> {
+    let Some(axis) = axis_from_js(axis) else {
+        return Err(JsError::new(&format!("meshOutline2d: axis must be 0, 1 or 2, got {axis}")));
+    };
+    let outline = match mesh_outline_2d(positions, indices, axis, flipped) {
+        Ok(outline) => outline,
+        Err(NoOutline::Empty) => return Ok(None),
+        Err(NoOutline::OverBudget { triangles }) => {
+            return Err(JsError::new(&format!(
+                "meshOutline2d: {triangles} triangles exceed the {MAX_OVERLAY_TRIANGLES}-triangle overlay budget; outline not computed"
+            )));
+        }
+    };
     let contours = outline
         .contours
         .into_iter()
@@ -107,9 +124,40 @@ pub fn mesh_outline_2d_js(
             flat
         })
         .collect();
-    Some(MeshOutlineJs {
+    Ok(Some(MeshOutlineJs {
         contours,
         axis_min: outline.axis_min,
         axis_max: outline.axis_max,
-    })
+    }))
+}
+
+/// The JS `axis` number as a [`ProjectionAxis`], or `None` unless it is
+/// exactly 0, 1 or 2. Taken as `f64` because a `u8` parameter is wrapped by
+/// the wasm ABI before any check runs (`256` and `NaN` arrive as `0`, `1.5`
+/// as `1`), which computes an outline for an axis the caller never named.
+fn axis_from_js(axis: f64) -> Option<ProjectionAxis> {
+    if !(0.0..=2.0).contains(&axis) || axis.fract() != 0.0 {
+        return None;
+    }
+    ProjectionAxis::from_u8(axis as u8)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// meshOutline2d took `axis: u8`, and the wasm ABI wrapped the JS number
+    /// before any check: on the previous build 256, NaN and Infinity computed
+    /// an X outline and 257 and 1.5 a Y outline (#4644). Mutation: return
+    /// `ProjectionAxis::from_u8(axis as u8)` without the check, and NaN, 1.5,
+    /// 0.5 and -1 decode to an axis.
+    #[test]
+    fn only_an_exact_0_1_or_2_decodes_to_an_axis() {
+        assert_eq!(axis_from_js(0.0), Some(ProjectionAxis::X));
+        assert_eq!(axis_from_js(1.0), Some(ProjectionAxis::Y));
+        assert_eq!(axis_from_js(2.0), Some(ProjectionAxis::Z));
+        for refused in [3.0, 256.0, -1.0, 1.5, 0.5, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(axis_from_js(refused), None, "axis {refused}");
+        }
+    }
 }

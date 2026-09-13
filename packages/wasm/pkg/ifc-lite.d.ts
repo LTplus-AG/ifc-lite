@@ -1941,7 +1941,12 @@ export function intersection2d(a: Contours2D, b: Contours2D): Contours2D;
  *
  * `positions` is flat XYZ; `indices` is flat triangle indices. `axis` is
  * 0/1/2 = x/y/z (the cut axis, WebGL Y-up). Returns `undefined` when the mesh
- * has no triangles or projects to nothing.
+ * has no triangles or projects to nothing: the element has no footprint.
+ *
+ * THROWS when the outline was not computed: an `axis` outside 0..=2, or a
+ * mesh with more valid projected triangles than the overlay budget (50 000).
+ * The viewer's outline provider catches the throw and draws its TypeScript
+ * silhouette for that mesh.
  *
  * ```javascript
  * const outline = meshOutline2d(positions, indices, 1, false); // axis 1 = y
@@ -1992,10 +1997,17 @@ export function resolve2d(a: Contours2D): Contours2D;
  * meaningless volumes with a plausible `sumErrorRel`, so the closure proof
  * above is the caller's responsibility and not a formality.
  *
+ * Returns `undefined` when the mesh encloses no volume (no triangles survive
+ * the filter above, or the shell is degenerate): there is nothing to split,
+ * and a result for it would report `pieceCount` 1, `sumErrorRel` 0 and
+ * `remainderFailed` false, a perfect split of nothing. A caller that gates
+ * on those numbers must treat `undefined` as "no split", not as "no error".
+ *
  * ```javascript
  * const split = splitMeshByZones(positions, indices, new Float64Array([
  *   0, 0, 0, 10, 10, 10, 0,
  * ]));
+ * if (!split) return; // the mesh encloses no volume
  * for (let i = 0; i < split.pieceCount; i++) {
  *   const piece = split.piece(i);
  *   // piece.zoneIndex, piece.positions, piece.indices, piece.volume
@@ -2004,7 +2016,7 @@ export function resolve2d(a: Contours2D): Contours2D;
  * split.free();
  * ```
  */
-export function splitMeshByZones(positions: Float64Array, indices: Uint32Array, zones: Float64Array, footprints?: Float64Array | null, footprint_counts?: Uint32Array | null): ZoneSplitJs;
+export function splitMeshByZones(positions: Float64Array, indices: Uint32Array, zones: Float64Array, footprints?: Float64Array | null, footprint_counts?: Uint32Array | null): ZoneSplitJs | undefined;
 
 /**
  * `a ∪ b`.
@@ -2160,7 +2172,7 @@ export interface InitOutput {
     readonly ifcapi_simplifyMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
     readonly ifcapi_version: (a: number, b: number) => void;
     readonly intersection2d: (a: number, b: number) => number;
-    readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+    readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly meshcollection_buildingRotation: (a: number, b: number) => void;
     readonly meshcollection_diagnostics: (a: number) => number;
     readonly meshcollection_geometryAabbValues: (a: number) => number;

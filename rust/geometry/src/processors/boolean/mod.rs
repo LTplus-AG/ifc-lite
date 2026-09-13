@@ -183,16 +183,15 @@ impl BooleanClippingProcessor {
     ) -> Result<Mesh> {
         use crate::csg::{ClippingProcessor, Plane};
 
-        // For DIFFERENCE operation with HalfSpaceSolid:
-        // - AgreementFlag=.T. means material is on positive side of plane normal
-        // - AgreementFlag=.F. means material is on negative side of plane normal
-        // Since we're SUBTRACTING the half-space, we keep the opposite side:
-        // - If material is on positive side (agreement=true), remove positive side → keep negative side → clip_normal = plane_normal
-        // - If material is on negative side (agreement=false), remove negative side → keep positive side → clip_normal = -plane_normal
+        // DIFFERENCE with a HalfSpaceSolid. `clip_mesh` KEEPS the +`clip_normal`
+        // side (`csg/plane_eps.rs`). AgreementFlag .T. puts the half-space
+        // material on the NEGATIVE side of the surface normal, .F. on the
+        // positive side (as in `polygonal_prism.rs`, `halfspace_cap.rs`), and
+        // the material is what gets removed.
         let clip_normal = if agreement {
-            plane_normal // Material on positive side, remove it, keep negative side
+            plane_normal
         } else {
-            -plane_normal // Material on negative side, remove it, keep positive side
+            -plane_normal
         };
 
         let plane = Plane::new(plane_point, clip_normal);
@@ -253,15 +252,9 @@ impl BooleanClippingProcessor {
             ) {
                 break;
             }
-            // Operator must be DIFFERENCE.
-            let op = current
-                .get(0)
-                .and_then(|v| match v {
-                    ifc_lite_core::AttributeValue::Enum(e) => Some(e.as_str().to_string()),
-                    _ => None,
-                })
-                .unwrap_or_else(|| ".DIFFERENCE.".to_string());
-            if op != ".DIFFERENCE." && op != "DIFFERENCE" {
+            // Operator must be DIFFERENCE (an unreadable one on a bare
+            // IfcBooleanResult is not).
+            if operand::boolean_operator(&current) != Ok(BoolOp::Difference) {
                 break;
             }
             let Some(second_attr) = current.get(2) else { break };
@@ -312,7 +305,7 @@ impl BooleanClippingProcessor {
         depth: u32,
         quality: TessellationQuality,
         visited: &mut OperandPath,
-    ) -> Result<Option<Mesh>> {
+    ) -> Result<Option<(Mesh, bool)>> {
         let (base_entity, cutters) = self.collect_polygonal_chain(entity.clone(), decoder)?;
         if cutters.len() < 2 {
             return Ok(None);
@@ -325,10 +318,12 @@ impl BooleanClippingProcessor {
         // walked iteratively above, so a 12-cutter chain reaches here at the
         // SAME `depth` as a 2-cutter one — the recursion-depth limit can't drop
         // it.
-        let base_mesh =
-            self.process_operand_with_depth(&base_entity, decoder, depth, quality, visited)?;
+        let (base_mesh, unsupported) = self.process_operand_checked(
+            BoolOp::Unknown, &base_entity, decoder, depth, quality, visited)?;
         if base_mesh.is_empty() {
-            return Ok(Some(base_mesh));
+            // Nothing to cut. Returned, not deferred (a deferral re-meshes the
+            // base at every spine level), with the flag the one-record rule needs.
+            return Ok(Some((base_mesh, unsupported)));
         }
 
         // Build each cutter prism (bounds-clamped to the base).
@@ -473,18 +468,7 @@ impl BooleanClippingProcessor {
         if under_removed {
             return self.defer_after(mark);
         }
-        Ok(Some(clipped))
-    }
-
-    /// The node's operator enum as authored (the parser may strip the dots).
-    fn boolean_operator(entity: &DecodedEntity) -> &str {
-        entity
-            .get(0)
-            .and_then(|v| match v {
-                ifc_lite_core::AttributeValue::Enum(e) => Some(e.as_str()),
-                _ => None,
-            })
-            .unwrap_or(".DIFFERENCE.")
+        Ok(Some((clipped, false)))
     }
 
     /// Internal processing with depth tracking to prevent stack overflow.
@@ -593,7 +577,9 @@ impl BooleanClippingProcessor {
         // cutter has siblings already folded into `mesh`, even though it is
         // the only node left in `spine` — see the `solo_step` comment below.
         let mut based_on_batch = false;
-        let mut mesh = loop {
+        // `empty_recorded`: the current empty mesh's loss is already on record
+        // (one dropped operand, one record: see `process_operand_checked`).
+        let (mut mesh, mut empty_recorded) = loop {
             if !spine_seen.insert(current.id) {
                 // Cyclic FirstOperand chain (malformed input). The recursive
                 // walk bottomed out on the depth cap; fail the same way with
@@ -608,10 +594,10 @@ impl BooleanClippingProcessor {
                 IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult
             ) {
                 // Bottom of the spine: the base solid.
-                break self.process_operand_with_depth(&current, decoder, depth, quality, visited)?;
+                break self.process_operand_checked(
+                    BoolOp::Unknown, &current, decoder, depth, quality, visited)?;
             }
-            let operator = Self::boolean_operator(&current);
-            if operator == ".DIFFERENCE." || operator == "DIFFERENCE" {
+            if operand::boolean_operator(&current) == Ok(BoolOp::Difference) {
                 // The batched attempt meshes the base provisionally and can
                 // be retried at every spine level it defers on. Those are real
                 // node entries and remain charged: refunding them permits
@@ -650,11 +636,26 @@ impl BooleanClippingProcessor {
         let solo_step = spine.len() == 1 && !based_on_batch;
         for node in spine.iter().rev() {
             if mesh.is_empty() {
-                // An emptied intermediate ends the chain, matching the old
-                // per-level early-out (for every operator, UNION included).
-                return Ok(mesh);
+                match operand::boolean_operator(node) {
+                    // DIFFERENCE or INTERSECTION of nothing is nothing: skip
+                    // the step (a UNION higher up still gets its second operand).
+                    Ok(BoolOp::Difference | BoolOp::Intersection) => continue,
+                    // UNION(empty, B) = B: the step runs on the second operand
+                    // alone, and the emptied first operand is on record once.
+                    Ok(BoolOp::Union) => {
+                        self.record_empty_operand(BoolOp::Union, empty_recorded);
+                        empty_recorded = true;
+                    }
+                    // Unknown or unreadable: the step records it, mesh unchanged.
+                    Ok(BoolOp::Unknown) | Err(_) => {}
+                }
             }
-            mesh = self.apply_boolean_step(node, mesh, decoder, depth, quality, visited, solo_step)?;
+            let (stepped, dropped) =
+                self.apply_boolean_step(node, mesh, decoder, depth, quality, visited, solo_step)?;
+            // The flag follows the emptiness: a step that emptied the mesh by
+            // dropping its operand recorded that; a later emptying is new.
+            empty_recorded = stepped.is_empty() && (empty_recorded || dropped);
+            mesh = stepped;
         }
         Ok(mesh)
     }
@@ -706,6 +707,9 @@ impl BooleanClippingProcessor {
     /// one cutter at a time. See the `IfcPolygonalBoundedHalfSpace` branch
     /// below for why that distinction gates the accept-gate-rejection
     /// fallback.
+    ///
+    /// The `bool` is true only when the step emptied the mesh by dropping its
+    /// second operand, a loss it has already recorded.
     fn apply_boolean_step(
         &self,
         entity: &DecodedEntity,
@@ -715,8 +719,18 @@ impl BooleanClippingProcessor {
         quality: TessellationQuality,
         visited: &mut OperandPath,
         solo_step: bool,
-    ) -> Result<Mesh> {
-        let operator = Self::boolean_operator(entity);
+    ) -> Result<(Mesh, bool)> {
+        // An unknown or unreadable operator is recorded BEFORE SecondOperand is
+        // resolved: that operand is unused, and a `$` there must not turn the
+        // record into an `Err` that drops the parent's host.
+        let operator = match operand::boolean_operator(entity) {
+            Ok(op @ (BoolOp::Difference | BoolOp::Union | BoolOp::Intersection)) => op,
+            other => {
+                let keyword = other.map_or_else(str::to_string, |op| op.to_string());
+                self.record_failure(BoolOp::Unknown, BoolFailureReason::UnknownBooleanOperator(keyword));
+                return Ok((mesh, false));
+            }
+        };
 
         // NOTE: a previous version had a "fast path for chained polygonal-
         // bounded half-space clips" here that mesh-merged every cutter in
@@ -760,8 +774,7 @@ impl BooleanClippingProcessor {
             .ok_or_else(|| Error::geometry("Failed to resolve SecondOperand".to_string()))?;
 
         // Handle DIFFERENCE operation
-        // Note: Parser may strip dots from enum values, so check both forms
-        if operator == ".DIFFERENCE." || operator == "DIFFERENCE" {
+        if operator == BoolOp::Difference {
             // Check if second operand is a half-space solid (simple or polygonally bounded)
             if second_operand.ifc_type == IfcType::IfcHalfSpaceSolid {
                 // Simple half-space: use plane clipping
@@ -769,12 +782,12 @@ impl BooleanClippingProcessor {
                     self.parse_half_space_solid(&second_operand, decoder)?;
                 let clipped =
                     self.clip_mesh_with_half_space(&mesh, plane_point, plane_normal, agreement)?;
-                return Ok(self.guard_against_full_host_removal(
+                return Ok((self.guard_against_full_host_removal(
                     mesh,
                     clipped,
                     plane_point,
                     plane_normal,
-                ));
+                ), false));
             }
 
             if second_operand.ifc_type == IfcType::IfcPolygonalBoundedHalfSpace {
@@ -793,14 +806,14 @@ impl BooleanClippingProcessor {
                     // depends on `solo_step`.
                     match self.resolve_single_cutter_subtract(&mesh, &bound_mesh, solo_step) {
                         SingleCutterSubtract::Clipped(clipped) => {
-                            return Ok(self.guard_against_full_host_removal(
+                            return Ok((self.guard_against_full_host_removal(
                                 mesh,
                                 clipped,
                                 plane_point,
                                 plane_normal,
-                            ));
+                            ), false));
                         }
-                        SingleCutterSubtract::KeepUncut => return Ok(mesh),
+                        SingleCutterSubtract::KeepUncut => return Ok((mesh, false)),
                         SingleCutterSubtract::FallThrough => {}
                     }
                 }
@@ -815,12 +828,12 @@ impl BooleanClippingProcessor {
                 );
                 let clipped =
                     self.clip_mesh_with_half_space(&mesh, plane_point, plane_normal, agreement)?;
-                return Ok(self.guard_against_full_host_removal(
+                return Ok((self.guard_against_full_host_removal(
                     mesh,
                     clipped,
                     plane_point,
                     plane_normal,
-                ));
+                ), false));
             }
 
             // Solid-solid difference on the exact kernel (no operand-size
@@ -831,8 +844,8 @@ impl BooleanClippingProcessor {
             let (second_mesh, unsupported) = self
                 .process_operand_checked(BoolOp::Difference, &second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
-                self.record_empty_second_operand(BoolOp::Difference, unsupported);
-                return Ok(mesh);
+                self.record_empty_operand(BoolOp::Difference, unsupported);
+                return Ok((mesh, false));
             }
             // Small-cut skip: a cutter far smaller than its host (a steel
             // cope/notch, a small detail recess) costs a full exact subtract —
@@ -849,49 +862,42 @@ impl BooleanClippingProcessor {
             if (quality_skips_small_cuts(quality) || self.skip_small_cuts)
                 && cutter_below_skip_ratio(&mesh, &second_mesh)
             {
-                return Ok(mesh);
+                return Ok((mesh, false));
             }
             let clipper = ClippingProcessor::new();
             let result = clipper.subtract_mesh(&mesh, &second_mesh);
             self.absorb_failures(clipper.take_failures());
-            return result;
+            return result.map(|m| (m, false));
         }
 
         // Handle UNION operation — a real CSG union (overlap removed) on the
         // pure-Rust exact kernel.
-        if operator == ".UNION." || operator == "UNION" {
+        if operator == BoolOp::Union {
             let (second_mesh, unsupported) = self
                 .process_operand_checked(BoolOp::Union, &second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
-                self.record_empty_second_operand(BoolOp::Union, unsupported);
-                return Ok(mesh);
+                self.record_empty_operand(BoolOp::Union, unsupported);
+                return Ok((mesh, false));
             }
             let clipper = ClippingProcessor::new();
             let result = clipper.union_mesh(&mesh, &second_mesh);
             self.absorb_failures(clipper.take_failures());
-            return result;
+            return result.map(|m| (m, false));
         }
 
-        // Handle INTERSECTION operation — a real intersection volume on the
+        // What is left is INTERSECTION: a real intersection volume on the
         // pure-Rust exact kernel.
-        if operator == ".INTERSECTION." || operator == "INTERSECTION" {
-            let (second_mesh, unsupported) = self
-                .process_operand_checked(BoolOp::Intersection, &second_operand, decoder, depth, quality, visited)?;
-            if second_mesh.is_empty() {
-                self.record_empty_second_operand(BoolOp::Intersection, unsupported);
-                return Ok(Mesh::new());
-            }
-            let clipper = ClippingProcessor::new();
-            let result = clipper.intersection_mesh(&mesh, &second_mesh);
-            self.absorb_failures(clipper.take_failures());
-            return result;
+        let (second_mesh, unsupported) = self
+            .process_operand_checked(BoolOp::Intersection, &second_operand, decoder, depth, quality, visited)?;
+        if second_mesh.is_empty() {
+            self.record_empty_operand(BoolOp::Intersection, unsupported);
+            // Emptied by a dropped operand that is now on record.
+            return Ok((Mesh::new(), true));
         }
-
-        self.record_failure(
-            BoolOp::Unknown,
-            BoolFailureReason::UnknownBooleanOperator(operator.to_string()),
-        );
-        Ok(mesh)
+        let clipper = ClippingProcessor::new();
+        let result = clipper.intersection_mesh(&mesh, &second_mesh);
+        self.absorb_failures(clipper.take_failures());
+        result.map(|m| (m, false))
     }
 }
 

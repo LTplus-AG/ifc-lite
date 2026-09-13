@@ -182,6 +182,34 @@ fn a_host_without_volume_is_refused_not_split_perfectly() {
         [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]],
     ];
     assert!(split_mesh_by_zones(&sheet, &[slab(0.0, 1.0)]).is_none(), "zero-volume sheet");
+    // Tilted and away from the origin, the same sheet sums to rounding residue
+    // rather than to zero, and an absolute zero test let it through as a
+    // perfect split (found by /code-review on this change). Mutation: compare
+    // against `f64::MIN_POSITIVE` again and this case reads `Some`.
+    let residue = tilted_double_sided_sheet();
+    assert!(
+        split_mesh_by_zones(&residue, &[slab(0.0, 10.0)]).is_none(),
+        "a tilted double-sided sheet encloses no volume"
+    );
+}
+
+/// A 6 by 6 grid on the plane z = 0.3x + 0.1y + 2.7, offset from the origin,
+/// front triangles then the same triangles reversed.
+fn tilted_double_sided_sheet() -> Vec<Tri> {
+    let p = |i: usize, j: usize| {
+        let (x, y) = (3.1 + 0.37 * i as f64, -1.3 + 0.41 * j as f64);
+        [x, y, 0.3 * x + 0.1 * y + 2.7]
+    };
+    let mut front = Vec::new();
+    for i in 0..6 {
+        for j in 0..6 {
+            front.push([p(i, j), p(i + 1, j), p(i + 1, j + 1)]);
+            front.push([p(i, j), p(i + 1, j + 1), p(i, j + 1)]);
+        }
+    }
+    let back: Vec<Tri> = front.iter().map(|t| [t[0], t[2], t[1]]).collect();
+    front.extend(back);
+    front
 }
 
 #[test]

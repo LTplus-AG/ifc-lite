@@ -207,6 +207,13 @@ impl ZoneSplit {
 /// apportionment path's own negligible-share threshold, one level up.
 pub const NEGLIGIBLE_PIECE_REL: f64 = 1e-9;
 
+/// A host whose enclosed volume is at most this fraction of its bounding-box
+/// diagonal cubed encloses nothing: a double-sided sheet off the axis planes
+/// sums to rounding residue (about 1e-32 for a unit sheet), not to exactly
+/// zero. A real solid is many orders above it (a 1 mm by 1 m by 1 m plate is
+/// 1e-3 of a diagonal cubed of about 2.8).
+pub const NO_VOLUME_REL: f64 = 1e-12;
+
 /// Split `host` into one solid per zone it reaches, plus the remainder.
 ///
 /// `host` must be a closed orientable solid; the caller is responsible for that
@@ -225,7 +232,8 @@ pub const NEGLIGIBLE_PIECE_REL: f64 = 1e-9;
 /// apportionment path reports as `overlapping`.
 ///
 /// Returns `None` when `host` encloses no volume: no triangles, or a
-/// degenerate shell whose divergence sum is zero. There is nothing to split,
+/// degenerate shell whose divergence sum is floating-point residue (at most
+/// [`NO_VOLUME_REL`] of its bounding-box diagonal cubed). There is nothing to split,
 /// and a `ZoneSplit` for it would carry one zero-triangle "remainder", a
 /// `sum_error_rel` of zero and `remainder_failed == false`: every signal a
 /// caller gates on reading as a perfect split of nothing. The wasm entry
@@ -233,12 +241,18 @@ pub const NEGLIGIBLE_PIECE_REL: f64 = 1e-9;
 /// arrives as an empty host.
 pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> Option<ZoneSplit> {
     let host = orient_outward(host.to_vec());
+    if host.is_empty() {
+        return None;
+    }
     let whole_volume = signed_volume_of(&host);
-    if whole_volume.abs() <= f64::MIN_POSITIVE {
+    let (host_lo, host_hi) = tris_aabb(&host);
+    let diagonal = (0..3).map(|k| (host_hi[k] - host_lo[k]).powi(2)).sum::<f64>().sqrt();
+    // `<=` with a finite bound, so a NaN volume is not refused here; it
+    // reaches `sum_error_rel` as NaN, which callers already refuse.
+    if whole_volume.abs() <= diagonal.powi(3) * NO_VOLUME_REL {
         return None;
     }
     let negligible = whole_volume.abs() * NEGLIGIBLE_PIECE_REL;
-    let (host_lo, host_hi) = tris_aabb(&host);
 
     let mut pieces = Vec::new();
     let mut reached: Vec<Vec<Tri>> = Vec::new();

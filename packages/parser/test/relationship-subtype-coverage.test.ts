@@ -57,8 +57,19 @@ describe('previously wholly-unindexed IfcRelationship subtypes (#4205)', () => {
     const store = await parse();
     const declared = store.relationships!.getRelated(12, RelationshipType.Declares, 'forward');
     expect(declared).toEqual([10]);
-    // Not folded into AssignsToActor or any other bucket.
-    expect(store.relationships!.getRelated(12, RelationshipType.AssignsToActor, 'forward')).not.toContain(21);
+    // Not folded into AssignsToActor or any other bucket. Checked by
+    // relationship RECORD id (#21), not by target entity id: getRelated()
+    // returns edge.target (10/11 here), so a target-id check can never see
+    // a relationship record misclassified as AssignsToActor — only
+    // inspecting relationshipId/shadowedRelationshipIds on the actual edges
+    // can (CodeRabbit finding on #4672, verified against
+    // relationship-graph.ts's Edge shape).
+    const assignsEdges = store.relationships!.forward.getEdges(12, RelationshipType.AssignsToActor);
+    const assignsRelationshipIds = assignsEdges.flatMap((edge) => [
+      edge.relationshipId,
+      ...(edge.shadowedRelationshipIds ?? []),
+    ]);
+    expect(assignsRelationshipIds).not.toContain(21);
   });
 
   it('IfcRelSequence: both RelatingProcess and RelatedProcess are single references', async () => {

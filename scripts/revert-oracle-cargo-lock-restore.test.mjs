@@ -93,6 +93,7 @@ test('#4592 preserves a substantive post-test edit instead of normalizing it awa
     const result = run(dir, process.execPath, [ORACLE, '--root', dir, '--base', base]);
     assert.notEqual(result.status, 0);
     assert.match(result.stdout + result.stderr, /substantive post-test change preserved: crates\/a\/Cargo\.toml/);
+    assert.match(result.stdout + result.stderr, /committing or stashing it, then rerun from a clean working tree/);
     assert.match(readFileSync(join(dir, 'crates', 'a', 'Cargo.toml'), 'utf8'), /post-test edit/); // @source-text-assertion-ok the temp repository's preserved mutation is subprocess output, not production source
   } finally {
     rmSync(dir, { recursive: true, force: true });

@@ -421,7 +421,9 @@ function restore(context) {
   const checkoutError = normalizeRestoredPaths(rawGit, headSha, restorationPaths);
   if (checkoutError) {
     restoration = 'failed';
-    console.error(`\n[revert-oracle] !!! RESTORE NORMALISATION FAILED (${context}) !!!\n${checkoutError}`); return false;
+    console.error(`\n[revert-oracle] !!! RESTORE NORMALISATION FAILED (${context}) !!!\n${checkoutError}`);
+    console.error('Preserve the post-test edit by committing or stashing it, then rerun from a clean working tree.');
+    return false;
   }
   const statusRun = rawGit(['status', '--porcelain']);
   if (statusRun.error || statusRun.status !== 0) {

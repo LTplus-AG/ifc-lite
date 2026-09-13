@@ -79,6 +79,8 @@
     "site_compound_angle_non_numeric_component_refused",
     "site_compound_angle_four_numeric_components",
     "map_conversion_non_finite_component_refused_falls_back_to_site",
+    "map_conversion_scaled_factors",
+    "map_conversion_scaled_distinct_factors_before_rotation",
     "map_conversion_scaled_zero_factors_default_to_one",
     "map_conversion_scaled_non_finite_factor_refused_falls_back_to_site"
   ],
@@ -850,6 +852,26 @@
             ]
           }
         ]
+      }
+    },
+    {
+      "name": "map_conversion_scaled_distinct_factors_before_rotation",
+      "_note": "Scale 2 and factors (0.5, 0.25, 3) with a (0.6, 0.8) axis (#4615). Each axis is scaled before the rotation: local (10, 20, 5) scales to (10, 10, 30) and rotates to (998, 2014, 72). Rotating first gives (990, 2010, 72); one factor for both horizontal axes or a swapped FactorX/FactorY lands elsewhere too.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,$);\n#3=IFCMAPCONVERSIONSCALED(#1,#2,1000.,2000.,42.,0.6,0.8,2.,0.5,0.25,3.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2056",
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 42.0,
+        "xAxisAbscissa": 0.6,
+        "xAxisOrdinate": 0.8,
+        "scale": 2.0,
+        "factorX": 0.5,
+        "factorY": 0.25,
+        "factorZ": 3.0,
+        "localToMap": [{ "local": [10.0, 20.0, 5.0], "map": [998.0, 2014.0, 72.0] }]
       }
     },
     {

@@ -3,6 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
+import { RelationshipType } from '@ifc-lite/data';
+import {
+  ASSOCIATION_REL_TYPES, HIERARCHY_REL_TYPES, PROPERTY_REL_TYPES, REL_TYPE_MAP,
+} from './columnar-parser-indexes.js';
+import { prepareColumnarEntities } from './columnar-entity-preparation.js';
 import { getRelationshipSlotPlan, getAllConcreteRelationshipTypes, getConcreteRelationshipTypes } from './relationship-schema-slots.js';
 
 describe('relationship-schema-slots (#4205)', () => {
@@ -48,14 +53,33 @@ describe('relationship-schema-slots (#4205)', () => {
     expect(getRelationshipSlotPlan('IFCRELTOTALLYMADEUP')).toBeUndefined();
   });
 
-  it('the schema-derived GATE contains every concrete IfcRelationship subtype used in this codebase\'s REL_TYPE_MAP, across schema versions', () => {
+  it('every REL_TYPE_MAP key reaches its correct category and resolves a schema slot plan (#4672)', async () => {
+    const entries = Object.entries(REL_TYPE_MAP);
+    expect(entries.length).toBeGreaterThan(0);
+    const prepared = await prepareColumnarEntities(entries.map(([type], index) => ({
+      expressId: index + 1, type, byteOffset: 0, byteLength: 0, lineNumber: 0,
+    })), false, async () => {});
     const union = getAllConcreteRelationshipTypes();
-    for (const t of [
-      'IFCRELCONTAINEDINSPATIALSTRUCTURE', 'IFCRELAGGREGATES', 'IFCRELNESTS',
-      'IFCRELASSIGNSTOACTOR', 'IFCRELDECLARES', 'IFCRELSEQUENCE',
-      'IFCRELPOSITIONS', 'IFCRELADHERESTOELEMENT',
-    ]) {
-      expect(union.has(t)).toBe(true);
+    for (const [type, relationshipType] of entries) {
+      // Assert the routing contract independently of membership in the
+      // production gate sets: properties and these three associations have
+      // specialized extraction; every other mapped type needs hierarchy
+      // extraction. In particular, DefinesByType belongs to hierarchy.
+      const property = relationshipType === RelationshipType.DefinesByProperties;
+      const association = [RelationshipType.AssociatesMaterial,
+        RelationshipType.AssociatesClassification, RelationshipType.AssociatesDocument,
+      ].includes(relationshipType);
+      const hierarchy = !property && !association;
+      expect(union.has(type), type).toBe(true);
+      expect([
+        PROPERTY_REL_TYPES.has(type), ASSOCIATION_REL_TYPES.has(type), HIERARCHY_REL_TYPES.has(type),
+      ], type).toEqual([property, association, hierarchy]);
+      expect([
+        prepared.propertyRelRefs.some(ref => ref.type === type),
+        prepared.associationRelRefs.some(ref => ref.type === type),
+        prepared.relationshipRefs.some(ref => ref.type === type),
+      ], type).toEqual([property, association, hierarchy]);
+      expect(getRelationshipSlotPlan(type), type).toBeDefined();
     }
   });
 

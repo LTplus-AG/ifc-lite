@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/data": patch
+"@ifc-lite/data": minor
 "@ifc-lite/parser": patch
 "@ifc-lite/export": patch
 "@ifc-lite/cache": patch

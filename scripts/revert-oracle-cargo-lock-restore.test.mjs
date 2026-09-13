@@ -65,7 +65,7 @@ test('#4592 reverts changed manifests with Cargo.lock and restores byte-clean', 
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.match(result.stdout, /OBSERVED/);
     assert.equal(git(dir, 'status', '--porcelain'), '');
-    assert.match(readFileSync(join(dir, 'Cargo.lock'), 'utf8'), /serde and itoa/);
+    assert.match(readFileSync(join(dir, 'Cargo.lock'), 'utf8'), /serde and itoa/); // @source-text-assertion-ok the temp repository's restored lockfile is subprocess output, not production source
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -93,7 +93,7 @@ test('#4592 preserves a substantive post-test edit instead of normalizing it awa
     const result = run(dir, process.execPath, [ORACLE, '--root', dir, '--base', base]);
     assert.notEqual(result.status, 0);
     assert.match(result.stdout + result.stderr, /substantive post-test change preserved: crates\/a\/Cargo\.toml/);
-    assert.match(readFileSync(join(dir, 'crates', 'a', 'Cargo.toml'), 'utf8'), /post-test edit/);
+    assert.match(readFileSync(join(dir, 'crates', 'a', 'Cargo.toml'), 'utf8'), /post-test edit/); // @source-text-assertion-ok the temp repository's preserved mutation is subprocess output, not production source
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

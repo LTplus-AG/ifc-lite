@@ -45,6 +45,7 @@ const FACTOR_KEY = { x: 'factorX', y: 'factorY', z: 'factorZ' } as const;
 /** A coefficient this close to 1 bridges the units (and raises no warning). */
 const NEAR_UNITY = 0.005;
 const offUnity = (value: number) => Math.abs(value - 1);
+const worstAxis = (s: AxisScales): Axis => AXES.reduce((a, b) => (offUnity(s[b]) > offUnity(s[a]) ? b : a));
 
 /** `Scale x Factor x mapUnitScale / lengthUnitScale` per axis, an absent value read as 1. */
 function specAxisScales(c: ScaleFields, mus: number, lus: number): AxisScales {
@@ -145,8 +146,9 @@ export interface ScaleUnitMismatch {
  * like this render at the wrong size in any tool that follows the schema
  * strictly — see issue #595.
  *
- * Every axis is checked, and the numbers reported are for the axis furthest
- * from 1 (#4615). Returns null when all are consistent (within 0.5% of 1.0).
+ * Every axis is checked (#4615). The numbers reported are for the axis ifc-lite
+ * draws furthest from 1, or, when every axis is compensated, the axis furthest
+ * from 1 on paper. Returns null when all are consistent (within 0.5% of 1.0).
  * Read `compensated` before choosing the wording: when it is true, the
  * deviation is an authoring defect that ifc-lite absorbs, and the only true
  * statement left to make is about what OTHER tools will do with it.
@@ -159,13 +161,14 @@ export function detectScaleUnitMismatch(
   const lus = lengthUnitScale && lengthUnitScale > 0 ? lengthUnitScale : 1;
   const mus = mapUnitScale && mapUnitScale > 0 ? mapUnitScale : 1;
   const spec = specAxisScales(conversion, mus, lus);
-  const worst = (s: AxisScales) => AXES.reduce((a, b) => (offUnity(s[b]) > offUnity(s[a]) ? b : a));
-  if (offUnity(spec[worst(spec)]) <= NEAR_UNITY) return null;
+  const specAxis = worstAxis(spec);
+  if (offUnity(spec[specAxis]) <= NEAR_UNITY) return null;
   // Report an axis ifc-lite still draws off-size before one it compensates,
   // so a compensated Z cannot hide X and Y placed at 0.5.
   const placed = getEffectiveAxisScales(conversion, mus, lus);
-  const compensated = offUnity(placed[worst(placed)]) <= NEAR_UNITY;
-  const axis = compensated ? worst(spec) : worst(placed);
+  const placedAxis = worstAxis(placed);
+  const compensated = offUnity(placed[placedAxis]) <= NEAR_UNITY;
+  const axis = compensated ? specAxis : placedAxis;
   return {
     effectiveScale: placed[axis],
     specEffectiveScale: spec[axis],

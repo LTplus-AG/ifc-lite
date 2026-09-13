@@ -120,6 +120,15 @@ export function StatusBar() {
     }] : [];
   }, [models, ifcDataStore, geometryResult]);
 
+  const triangleCount = useMemo(() => {
+    if (models.size === 0) return geometryResult?.totalTriangles ?? 0;
+    let total = 0;
+    for (const model of models.values()) {
+      total += model.geometryResult?.totalTriangles ?? 0;
+    }
+    return total;
+  }, [models, geometryResult]);
+
   // PERF: `state.models` is a NEW Map on every streaming batch commit
   // (`appendGeometryBatch` in dataSlice.ts rebuilds it to swap one model's
   // geometryResult), so nothing memoised on it survives a stream. A model's
@@ -261,7 +270,7 @@ export function StatusBar() {
 
         <div className="flex items-center gap-1.5">
           <Triangle className="h-3.5 w-3.5" />
-          <span>{formatNumber(geometryResult?.totalTriangles ?? 0)} tris</span>
+          <span>{formatNumber(triangleCount)} tris</span>
         </div>
       </div>
 

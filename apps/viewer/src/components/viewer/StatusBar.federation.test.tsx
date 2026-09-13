@@ -42,6 +42,7 @@ import { StatusBar } from './StatusBar.js';
 import {
   FIXTURE_MODEL,
   FIXTURE_STOREY_2,
+  FIXTURE_WALL_A,
   FIXTURE_WALL_B,
   FIXTURE_WALL_C,
   guid,
@@ -108,11 +109,11 @@ function federatedModel(id: string, ifcDataStore: FederatedModel['ifcDataStore']
   } as FederatedModel;
 }
 
-function geometry(flatId: number, instancedOnlyId: number): GeometryResult {
+function geometry(flatId: number, instancedOnlyId: number, totalTriangles = 1): GeometryResult {
   return {
     meshes: [{ expressId: flatId } as MeshData],
     totalVertices: 3,
-    totalTriangles: 1,
+    totalTriangles,
     instancedGeometryHashes: new Map([[instancedOnlyId, 1n]]),
   } as GeometryResult;
 }
@@ -194,7 +195,9 @@ describe('StatusBar — federation-space storey element count', () => {
     m2.geometryResult = geometry(
       ID_OFFSET + FIXTURE_WALL_B,
       ID_OFFSET + FIXTURE_WALL_C,
+      3,
     );
+    m2.geometryResult.instancedGeometryHashes?.set(ID_OFFSET + FIXTURE_WALL_A, 2n);
     useViewerStore.setState({
       ifcDataStore: collidingActive,
       activeModelId: 'm1',
@@ -206,8 +209,8 @@ describe('StatusBar — federation-space storey element count', () => {
 
     const container = render();
     assert.ok(
-      container.textContent?.includes('2 elements'),
-      'the offset selection belongs to m2; its flat wall and instanced-only wall both count',
+      container.textContent?.includes('2 / 3 elements'),
+      'the offset selection belongs to m2; its two storey walls exclude the shaped wall elsewhere',
     );
   });
 
@@ -236,5 +239,26 @@ describe('StatusBar — federation-space storey element count', () => {
       container.textContent?.includes('4 / 8 elements'),
       'both model-aware storey refs must contribute even though selectedStoreys contains one id',
     );
+  });
+
+  it('sums triangle totals across federated models', async () => {
+    const firstStore = await parseModel(MINIMAL_ACTIVE_MODEL);
+    const secondStore = await parseModel(MINIMAL_ACTIVE_MODEL);
+    const m1 = federatedModel('m1', firstStore, 0);
+    const m2 = federatedModel('m2', secondStore, ID_OFFSET);
+    m1.geometryResult = geometry(1, 2, 2);
+    m2.geometryResult = geometry(ID_OFFSET + 1, ID_OFFSET + 2, 3);
+    useViewerStore.setState({
+      ifcDataStore: firstStore,
+      geometryResult: m1.geometryResult,
+      activeModelId: 'm1',
+      models: new Map([['m1', m1], ['m2', m2]]),
+      selectedStoreys: new Set<number>(),
+      activeStorey: null,
+      selectedEntities: [],
+    });
+
+    const container = render();
+    assert.ok(container.textContent?.includes('5 tris'));
   });
 });

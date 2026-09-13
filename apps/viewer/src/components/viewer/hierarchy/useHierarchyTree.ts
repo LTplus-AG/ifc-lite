@@ -5,7 +5,7 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { useViewerStore, type FederatedModel, type HierarchyMode } from '@/store';
+import { useViewerStore, type FederatedModel } from '@/store';
 import type { TreeNode, UnifiedStorey, HierarchySortMode } from './types';
 import { HIERARCHY_SORT_MODES, DEFAULT_HIERARCHY_SORT } from './types';
 import {
@@ -21,6 +21,11 @@ import {
   type AuthoredProduct,
   type GroupSubFilter,
 } from './treeDataBuilder';
+import {
+  buildGeometricIdSet,
+  collectAnnotationEntityIds,
+  collectGeometryReadyModelIds,
+} from './hierarchyGeometry';
 
 export type { HierarchyMode } from '@/store';
 
@@ -46,70 +51,6 @@ interface UseHierarchyTreeParams {
   ifcDataStore: IfcDataStore | null | undefined;
   isMultiModel: boolean;
   geometryResult?: GeometryResult | null;
-}
-
-/**
- * Build a stable Set of global IDs that have geometry.
- * Only rebuilds when the actual set of IDs changes, NOT when mesh colors change.
- */
-function buildGeometricIdSet(
-  models: Map<string, FederatedModel>,
-  legacyGeometry: GeometryResult | null | undefined,
-): Set<number> {
-  const ids = new Set<number>();
-  if (models.size > 0) {
-    for (const [, model] of models) {
-      if (model.geometryResult) {
-        for (const mesh of model.geometryResult.meshes) {
-          ids.add(mesh.expressId);
-        }
-      }
-    }
-  } else if (legacyGeometry) {
-    for (const mesh of legacyGeometry.meshes) {
-      ids.add(mesh.expressId);
-    }
-  }
-  return ids;
-}
-
-/**
- * Global IDs of `IfcAnnotation` entities. Their 2D curves (plot boundaries,
- * "Model Lines", leaders) render through the symbolic overlay, not the mesh
- * pipeline, so they never enter `buildGeometricIdSet` and were absent from the
- * "By Class" tree — the user could see them in 3D but not select or hide them
- * (issue #1480). Folding them into the tree's inclusion set makes each an
- * ordinary, hideable row; the overlay honours that hide (see
- * `useSymbolicAnnotations`). Text annotations that carry a real brep mesh are
- * already in the geometric set, so the union is idempotent for them.
- */
-function collectAnnotationEntityIds(
-  models: Map<string, FederatedModel>,
-  legacyStore: IfcDataStore | null | undefined,
-): Set<number> {
-  const ids = new Set<number>();
-  const addFrom = (store: IfcDataStore | null | undefined, toGlobal: (localId: number) => number) => {
-    // `getEntitiesByType` is a lazy accessor; guard for the rare
-    // cache-restored store whose accessors have not been reattached yet.
-    if (typeof store?.getEntitiesByType !== 'function') return;
-    for (const ent of store.getEntitiesByType('IfcAnnotation')) {
-      ids.add(toGlobal(ent.expressId));
-    }
-  };
-  if (models.size > 0) {
-    const state = useViewerStore.getState();
-    for (const [modelId, model] of models) {
-      // modelId comes straight from `models`, so it is always resolvable —
-      // only the legacy sentinel needs the raw local id (matches the id the
-      // tree builder assigns via `resolveTreeGlobalId`).
-      addFrom(model.ifcDataStore, (localId) =>
-        modelId === 'legacy' ? localId : state.toGlobalId(modelId, localId),
-      );
-    }
-  } else {
-    addFrom(legacyStore, (localId) => localId);
-  }
-  return ids;
 }
 
 export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryResult }: UseHierarchyTreeParams) {
@@ -147,10 +88,23 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     [models, hasGeometrySource ? meshCount : 0]
   );
 
+  // Geometry readiness is per model: one streamed federation member must not
+  // make an unstreamed sibling look known-empty. A completed model with zero
+  // meshes is still known, so its physical-object count legitimately becomes 0.
+  const geometryReadyModelIds = useMemo(
+    () => collectGeometryReadyModelIds(models, geometryResult),
+    [models, geometryResult],
+  );
+
   // Build unified storey data for multi-model mode (moved before useEffect that depends on it)
   const unifiedStoreys = useMemo(
-    (): UnifiedStorey[] => buildUnifiedStoreys(models, sortMode, geometricIds),
-    [models, sortMode, geometricIds]
+    (): UnifiedStorey[] => buildUnifiedStoreys(
+      models,
+      sortMode,
+      geometricIds,
+      geometryReadyModelIds,
+    ),
+    [models, sortMode, geometricIds, geometryReadyModelIds]
   );
 
   // Auto-expand nodes on initial load based on model count
@@ -299,20 +253,37 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   const treeData = useMemo(
     (): TreeNode[] => {
       if (groupingMode === 'type') {
-        return buildTypeTree(models, ifcDataStore, expandedNodes, isMultiModel, classTreeIds, authoredProducts);
+        return buildTypeTree(
+          models,
+          ifcDataStore,
+          expandedNodes,
+          isMultiModel,
+          classTreeIds,
+          authoredProducts,
+          geometryReadyModelIds,
+        );
       }
       if (groupingMode === 'ifc-type') {
-        return buildIfcTypeTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds);
+        return buildIfcTypeTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, geometryReadyModelIds);
       }
       if (groupingMode === 'material') {
-        return buildMaterialTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds);
+        return buildMaterialTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, geometryReadyModelIds);
       }
       if (groupingMode === 'groups') {
         return buildGroupTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, groupFilter);
       }
-      return buildTreeData(models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode, geometricIds);
+      return buildTreeData(
+        models,
+        ifcDataStore,
+        expandedNodes,
+        isMultiModel,
+        unifiedStoreys,
+        sortMode,
+        geometricIds,
+        geometryReadyModelIds,
+      );
     },
-    [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, classTreeIds, authoredProducts, groupFilter]
+    [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds]
   );
 
   // Filter nodes based on search

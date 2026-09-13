@@ -217,19 +217,25 @@ describe("storey headline: physical objects that have a shape", () => {
 });
 
 describe('unified storey headline', () => {
+  const model = (id: string): FederatedModel => {
+    const ifcDataStore = createStoreyDataStore();
+    const hierarchy = ifcDataStore.spatialHierarchy!;
+    hierarchy.byStorey.set(STOREY_ID, [...hierarchy.byStorey.get(STOREY_ID)!, 41]);
+    return {
+      id,
+      name: id,
+      idOffset: id === 'model-a' ? 100 : 200,
+      maxExpressId: 61,
+      ifcDataStore,
+    } as unknown as FederatedModel;
+  };
+
+  const models = () => new Map([
+    ['model-a', model('model-a')],
+    ['model-b', model('model-b')],
+  ]);
+
   it('uses the same space exclusion as each model tree', () => {
-    const model = (id: string): FederatedModel => {
-      const ifcDataStore = createStoreyDataStore();
-      const hierarchy = ifcDataStore.spatialHierarchy!;
-      hierarchy.byStorey.set(STOREY_ID, [...hierarchy.byStorey.get(STOREY_ID)!, 41]);
-      return {
-        id,
-        name: id,
-        idOffset: id === 'model-a' ? 100 : 200,
-        maxExpressId: 61,
-        ifcDataStore,
-      } as unknown as FederatedModel;
-    };
     const unified = buildUnifiedStoreys(new Map([
       ['model-a', model('model-a')],
       ['model-b', model('model-b')],
@@ -242,6 +248,47 @@ describe('unified storey headline', () => {
       unified[0].storeys.every((storey) => !storey.elements.includes(41)),
       'an element also indexed under a descendant space is not duplicated in a contribution',
     );
+  });
+
+  it('treats a completed model with zero meshes as known-empty', () => {
+    const unified = buildUnifiedStoreys(
+      models(),
+      'elevation-desc',
+      new Set(),
+      new Set(['model-a', 'model-b']),
+    );
+
+    assert.strictEqual(unified[0].objects.counted, 0);
+    assert.strictEqual(unified[0].objects.withoutGeometry, 8);
+    assert.strictEqual(unified[0].objects.geometryKnown, true);
+  });
+
+  it('does not apply one model\'s geometry readiness to an unstreamed sibling', () => {
+    const federation = models();
+    const unified = buildUnifiedStoreys(
+      federation,
+      'elevation-desc',
+      new Set(),
+      new Set(['model-a']),
+    );
+
+    assert.strictEqual(unified[0].objects.counted, 4, 'the unstreamed model stays optimistic');
+    assert.strictEqual(unified[0].objects.withoutGeometry, 4, 'only the known-empty model is shapeless');
+    assert.strictEqual(unified[0].objects.geometryKnown, false, 'the combined row remains provisional');
+
+    const classNodes = buildTypeTree(
+      federation,
+      null,
+      new Set(),
+      true,
+      new Set(),
+      undefined,
+      new Set(['model-a']),
+    );
+    const physicalRows = classNodes
+      .filter((entry) => entry.type === 'type-group' && isPhysicalObjectType(entry.ifcType!))
+      .reduce((sum, entry) => sum + (entry.elementCount ?? 0), 0);
+    assert.strictEqual(physicalRows, 6, 'the By Class tab retains every physical row from model-b');
   });
 });
 

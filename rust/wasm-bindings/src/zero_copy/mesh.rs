@@ -570,14 +570,12 @@ impl MeshCollection {
         self.rtc_offset_z
     }
 
-    /// Check if RTC offset is significant (>10km)
+    /// Check if an RTC offset was applied to these meshes (any non-zero
+    /// component). It can be inside 10 km: the placement-bounds fallback
+    /// re-bases on the bbox centre when a corner is past 10 km (#4643).
     #[wasm_bindgen(js_name = hasRtcOffset)]
     pub fn has_rtc_offset(&self) -> bool {
-        ifc_lite_core::limits::coord_is_large((
-            self.rtc_offset_x,
-            self.rtc_offset_y,
-            self.rtc_offset_z,
-        ))
+        self.rtc_offset_x != 0.0 || self.rtc_offset_y != 0.0 || self.rtc_offset_z != 0.0
     }
 
     /// Get building rotation angle in radians (from IfcSite placement)

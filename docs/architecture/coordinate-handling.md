@@ -130,6 +130,7 @@ Detection is sample-based, not first-element-wins:
 2. Sample each element's placement translation, up to 50 usable samples (elements that abstain, such as origin-placed axis-only representations, do not consume the budget).
 3. Take the per-axis **median** of the samples.
 4. If any median axis exceeds 10 km (`LARGE_COORD_THRESHOLD_METERS`), that centroid becomes the RTC offset; otherwise the offset is `(0, 0, 0)`.
+5. Only when no element gives a usable sample, fall back to the placement-bounds scan (`ModelBounds::rtc_offset`). It decides on the bbox corners: if any corner is past 10 km the verdict is `RtcVerdict::Large` with the bbox centre as the anchor, even when that centre is itself inside 10 km. `MeshFrame::select` honours a `Large` verdict as given; it does not re-judge the anchor's magnitude.
 
 Using the median of many samples instead of the first element makes detection robust against a single outlier element parked at a survey point.
 

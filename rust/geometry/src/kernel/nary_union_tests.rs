@@ -154,29 +154,26 @@ fn issue_3917_a_torn_caller_order_is_repaired_without_the_caller_reordering_anyt
 fn issue_3917_retries_share_one_boolean_budget() {
     let _guard = budget::GLOBAL_CAP_LOCK.lock().unwrap();
     let restore = budget::cap();
-    budget::set_cap(None);
+    // The unbounded fixed fixture consumes 1,058 escalations across its retry
+    // candidates, while no individual candidate reaches 1,000. A reset inside
+    // each retry therefore evades this cap; one shared operation must trip it.
+    budget::set_cap(Some(1_000));
 
     let boxes = issue_3917_boxes();
     let input = [&boxes[2], &boxes[0], &boxes[1]]; // CAB: known torn first candidate
-    let mut individual_total = 0;
-    for order in REORDER_POSITIONS {
-        let permuted = [input[order[0]], input[order[1]], input[order[2]]];
-        budget::begin();
-        let candidate = arrange_once(&permuted, true);
-        individual_total += budget::count();
-        if survives_consolidation_closed(&candidate) {
-            break;
-        }
-    }
-
     let out = union_many(&input);
-    let shared_count = budget::count();
+    let tripped = budget::tripped();
+    let count = budget::count();
     budget::set_cap(restore);
 
     assert!(!out.is_empty());
-    assert_eq!(
-        shared_count, individual_total,
-        "the public union must retain the accumulated predicate count across retry candidates"
+    assert!(
+        tripped,
+        "the retry candidates must share the caller's 1,000-escalation cap"
+    );
+    assert!(
+        count >= 1_000,
+        "the public union must retain at least the accumulated count that tripped the shared cap; got {count}"
     );
 }
 

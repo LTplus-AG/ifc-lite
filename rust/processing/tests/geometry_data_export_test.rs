@@ -196,8 +196,7 @@ fn produce_layered_wall() -> Vec<MeshData> {
 
 /// The export filtered on `geometry_class != 0`, which also caught class 3
 /// (`GEOM_CLASS_LAYER_SLICE`): a material-layer wall's slices are its body, not
-/// type-product geometry, so the wall vanished from the export. Processing
-/// orchestrator review, finding 3.
+/// type-product geometry, so the wall vanished from the export (#4663).
 #[test]
 fn geometry_data_export_keeps_a_material_layer_wall() {
     let meshes = produce_layered_wall();

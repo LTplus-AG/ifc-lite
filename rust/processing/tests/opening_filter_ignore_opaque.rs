@@ -6,8 +6,8 @@
 //! transparent part. The filter ran before the metadata phase resolved each
 //! element's colour, so it only ever saw the type default: every `IfcWindow`
 //! (default alpha 0.4) was kept even with an opaque surface style, and a door
-//! whose glazing came only from the #407 material chain was suppressed.
-//! Processing orchestrator review, finding 7.
+//! whose glazing came only from the #407 material chain was suppressed
+//! (#4663).
 
 use ifc_lite_processing::{process_geometry_filtered, MeshData, OpeningFilterMode};
 

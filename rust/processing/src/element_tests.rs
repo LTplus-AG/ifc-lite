@@ -433,8 +433,8 @@ mod reference_openings;
 /// with `try_lock`). Both per-element thread-local scopes used to open with a
 /// plain reset, so the stolen element zeroed the outer element's CSG escalation
 /// total (#1109 budget) and its degenerate-triangle tally (the #1891 closure
-/// retraction input). Processing orchestrator review, finding 4. The nested
-/// call below is that steal, run on one thread.
+/// retraction input) (#4663). The nested call below is that steal, run on
+/// one thread.
 #[test]
 fn nested_element_leaves_the_outer_elements_scopes_intact() {
     const IFC: &str = r#"ISO-10303-21;

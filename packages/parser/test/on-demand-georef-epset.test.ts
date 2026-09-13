@@ -111,7 +111,7 @@ describe('extractGeoreferencingOnDemand — IFC2x3 ePset fallback', () => {
 
   it('memoizes per store so repeated calls do not re-scan property sets', async () => {
     // The on-demand scan considers every IfcPropertySet to find ePset_MapConversion
-    // on models without an IfcMapConversion. The viewer calls this on the render
+    // when the IFC4 entities claim no georeference. The viewer calls this on the render
     // path once per streamed geometry batch, so without caching a property-heavy
     // model re-scans tens of thousands of psets per batch (regression #1404).
     const ifc = `#30=IFCSITE('06pHC0eJnCHlVXWW2sVoPO',$,'Site',$,$,$,$,$,.ELEMENT.,(51,26,47,208626),(5,27,36,650968),$,$,$);
@@ -130,7 +130,7 @@ describe('extractGeoreferencingOnDemand — IFC2x3 ePset fallback', () => {
 
   // Work-count regression guard (deterministic, machine-independent — counts
   // work done, not wall-clock). The georef scan decodes one entity per property
-  // set on models without an IfcMapConversion used to dominate cold load.
+  // set on models whose IFC4 entities claim no georeference used to dominate cold load.
   // Ordinary names need no full decode; subsequent calls remain memoized.
   it('rejects unrelated property sets before decoding and memoizes the site result', async () => {
     const PSET_COUNT = 400;

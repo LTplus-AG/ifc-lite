@@ -22,8 +22,8 @@ import { oncePerStore } from './on-demand-cache.js';
  * Extract georeferencing info from on-demand store (source buffer + entityIndex).
  * Bridges to the entity-based georef extractor by resolving entities lazily.
  *
- * Memoized per store. On models without an IfcMapConversion (e.g. IFC2x3 files
- * that carry CRS in ePSet_MapConversion / ePSet_ProjectedCRS) the underlying
+ * Memoized per store. When IfcMapConversion/IfcProjectedCRS claim no georeference
+ * (e.g. IFC2x3 files that carry CRS in ePSet_MapConversion) the underlying
  * scan considers every IfcPropertySet to match by name. A conservative resident
  * byte filter skips ordinary names without decoding their property lists.
  * The viewer calls this on the load/render path (ViewportContainer's Cesium-availability check), which

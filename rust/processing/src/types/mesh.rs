@@ -129,7 +129,8 @@ pub struct MeshData {
     /// Provenance of the geometry for the viewer's Model/Types switch (#957):
     /// 0 = ordinary occurrence, 1 = orphan type-product RepresentationMap (no
     /// occurrence instantiates it), 2 = instanced type-product map (the type
-    /// library shape; its occurrences already draw the real geometry).
+    /// library shape; its occurrences already draw the real geometry), 3 =
+    /// occurrence geometry of a material-layer wall (`GEOM_CLASS_LAYER_SLICE`).
     /// Serde-default so existing JSON payloads and disk caches stay readable;
     /// skipped when 0 so ordinary meshes serialize byte-identically.
     #[serde(default, skip_serializing_if = "geometry_class_is_occurrence")]

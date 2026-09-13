@@ -4,12 +4,18 @@
 
 //! Removal bound for a coordinate-moving roof cutter repair (#3925).
 
-use crate::{Mesh, router::voids::geom::mesh_signed_volume};
+use crate::{
+    Mesh,
+    router::voids::geom::{mesh_signed_volume_about, volume_reference},
+};
 
 /// The union cannot remove more than the sum of its individual removals.
 /// Overlap makes this an upper bound, not an estimate of the correct answer.
 /// A diagnostically invalid trial disables coordinate-moving repair.
 pub(super) struct RemovalBound {
+    /// Every reading is summed about the host's reference point, so a crack the
+    /// trial did not touch cancels in `host_volume - trial` (#4632).
+    reference: [f64; 3],
     host_volume: f64,
     maximum_removed: f64,
     valid: bool,
@@ -17,12 +23,18 @@ pub(super) struct RemovalBound {
 
 impl RemovalBound {
     pub(super) fn new(host: &Mesh) -> Self {
-        let host_volume = mesh_signed_volume(host).abs();
-        Self { host_volume, maximum_removed: 0.0, valid: host_volume.is_finite() && host_volume > 0.0 }
+        let reference = volume_reference(host);
+        let host_volume = mesh_signed_volume_about(host, &reference).abs();
+        Self {
+            reference,
+            host_volume,
+            maximum_removed: 0.0,
+            valid: host_volume.is_finite() && host_volume > 0.0,
+        }
     }
 
     pub(super) fn observe(&mut self, trial: &Mesh) {
-        let removed = self.host_volume - mesh_signed_volume(trial).abs();
+        let removed = self.host_volume - mesh_signed_volume_about(trial, &self.reference).abs();
         self.valid &= removed.is_finite() && removed >= 0.0;
         self.maximum_removed += removed;
     }
@@ -36,7 +48,7 @@ impl RemovalBound {
     }
 
     pub(super) fn allows(&self, candidate: &Mesh) -> bool {
-        let removed = self.host_volume - mesh_signed_volume(candidate).abs();
+        let removed = self.host_volume - mesh_signed_volume_about(candidate, &self.reference).abs();
         self.is_valid() && removed.is_finite()
             && removed >= 0.0 && removed <= self.maximum_removed
     }

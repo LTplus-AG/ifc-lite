@@ -65,9 +65,9 @@ const FAILURES = [
     'Lower PR_AGENT_OPENROUTER_MAX_MODEL_TOKENS or PR_AGENT_LOCAL_MAX_MODEL_TOKENS so PR-Agent clips the diff.'],
   ['ENDPOINT_UNREACHABLE', /APIConnectionError|connection refused|ConnectError|timed? ?out/i,
     'The model endpoint did not answer. Check it is running and reachable from the runner.'],
-  ['NO_REVIEW', null, 'If the run step timed out, its annotation says so. The log tail is printed below this line in the job output.'],
+  ['NO_REVIEW', null, 'The log of the PR-Agent review check has the details, including a timeout.'],
   ['NO_OUTPUT', null, "PR-Agent left no output at all, so the run step did not finish. Read that job's log."],
-  ['BAD_OUTPUT', null, 'PR-Agent wrote output this script cannot read. The log tail is printed below this line in the job output.'],
+  ['BAD_OUTPUT', null, 'PR-Agent wrote output this script cannot read. The log of the PR-Agent review check has the details.'],
 ];
 const remedy = (reason) => FAILURES.find(([r]) => r === reason)[2];
 
@@ -219,7 +219,7 @@ if (isMainEntry(import.meta.url)) {
     // it first, so the one place a reader can always find the log is here.
     const log = values.dir ? readIfPresent(join(values.dir, 'pr-agent.log')) : null;
     if (log !== null) {
-      const tail = log.replace(/\x1b\[[0-9;]*m/g, '').split('\n').filter((l) => !l.includes('| DEBUG ')).slice(-60);
+      const tail = log.replace(/\x1b\[[0-9;]*m/g, '').trimEnd().split('\n').filter((l) => !l.includes('| DEBUG ')).slice(-60);
       console.error(`--- last ${tail.length} lines of pr-agent.log ---\n${tail.join('\n')}`);
     }
     process.exit(1);

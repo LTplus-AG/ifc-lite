@@ -300,6 +300,9 @@ jobs:
       - name: Publish the review
         env:
           GH_TOKEN: ${{ github.token }}
+          # Not used here. Referencing the secret makes the runner mask it in
+          # the pr-agent.log tail this step prints on failure.
+          PR_AGENT_LOCAL_API_KEY: ${{ secrets.PR_AGENT_LOCAL_API_KEY }}
         run: |
           node scripts/review/pr-agent-publish.mjs \
             --lane local \

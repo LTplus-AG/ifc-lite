@@ -123,10 +123,34 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   // deliberately not persisted (#1622).
   const [groupFilter, setGroupFilter] = useState<GroupSubFilter>('all');
 
+  // Stable mesh count — only changes when models are added/removed, not on color updates.
+  // Used as a dep proxy so the geometric ID set doesn't rebuild on every color change.
+  const meshCount = useMemo(() => {
+    if (models.size > 0) {
+      let count = 0;
+      for (const [, model] of models) {
+        count += model.geometryResult?.meshes.length ?? 0;
+      }
+      return count;
+    }
+    return geometryResult?.meshes.length ?? 0;
+  }, [models, geometryResult?.meshes.length]);
+
+  // Pre-computed set of global IDs with geometry — stable across color changes.
+  // PERF: Skip when no geometry source exists (during initial streaming before
+  // any data is ready). Gate on models OR ifcDataStore so federated scenarios
+  // (models.size > 0 but ifcDataStore is null) still build the set correctly.
+  const hasGeometrySource = models.size > 0 || !!ifcDataStore;
+  const geometricIds = useMemo(
+    () => hasGeometrySource ? buildGeometricIdSet(models, geometryResult) : new Set<number>(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- meshCount is a stable proxy; hasGeometrySource gates streaming
+    [models, hasGeometrySource ? meshCount : 0]
+  );
+
   // Build unified storey data for multi-model mode (moved before useEffect that depends on it)
   const unifiedStoreys = useMemo(
-    (): UnifiedStorey[] => buildUnifiedStoreys(models, sortMode),
-    [models, sortMode]
+    (): UnifiedStorey[] => buildUnifiedStoreys(models, sortMode, geometricIds),
+    [models, sortMode, geometricIds]
   );
 
   // Auto-expand nodes on initial load based on model count
@@ -216,30 +240,6 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     [models]
   );
 
-  // Stable mesh count — only changes when models are added/removed, not on color updates.
-  // Used as a dep proxy so the geometric ID set doesn't rebuild on every color change.
-  const meshCount = useMemo(() => {
-    if (models.size > 0) {
-      let count = 0;
-      for (const [, model] of models) {
-        count += model.geometryResult?.meshes.length ?? 0;
-      }
-      return count;
-    }
-    return geometryResult?.meshes.length ?? 0;
-  }, [models, geometryResult?.meshes.length]);
-
-  // Pre-computed set of global IDs with geometry — stable across color changes.
-  // PERF: Skip when no geometry source exists (during initial streaming before
-  // any data is ready). Gate on models OR ifcDataStore so federated scenarios
-  // (models.size > 0 but ifcDataStore is null) still build the set correctly.
-  const hasGeometrySource = models.size > 0 || !!ifcDataStore;
-  const geometricIds = useMemo(
-    () => hasGeometrySource ? buildGeometricIdSet(models, geometryResult) : new Set<number>(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- meshCount is a stable proxy; hasGeometrySource gates streaming
-    [models, hasGeometrySource ? meshCount : 0]
-  );
-
   // `IfcAnnotation` entities are a fixed set per loaded model (independent of
   // streaming mesh count), so this is keyed on model identity only. Unioned
   // into the "By Class" inclusion set so curve-only annotations appear as
@@ -310,7 +310,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       if (groupingMode === 'groups') {
         return buildGroupTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, groupFilter);
       }
-      return buildTreeData(models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode);
+      return buildTreeData(models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode, geometricIds);
     },
     [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, classTreeIds, authoredProducts, groupFilter]
   );

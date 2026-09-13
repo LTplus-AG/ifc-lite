@@ -2,6 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+// happy-dom first: this file imports the viewer store, whose persistence
+// layer reads localStorage at module init and logs a ReferenceError without
+// it. Registering the globals keeps that out of the runner's output, where a
+// stray ReferenceError reads as a dead import rather than as the log line it is.
+import '@/test/setup-dom';
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import {
@@ -1360,14 +1365,12 @@ describe('buildIfcTypeTree — geometry-less assembly occurrences (By Type tab)'
 });
 
 describe('makeAssemblyGeometry — spatial guard (deep-review follow-up)', () => {
-  it('never treats a spatial container as a decomposing assembly, even with an empty geometry filter', () => {
+  it('keeps a storey out of the products tree even with an empty geometry filter', () => {
     // The real state during initial streaming: no geometry source has arrived
-    // yet, so `geometricIds` is empty and `applyFilter` is false — the
-    // unfiltered branch lists everything, INCLUDING the storey. Before the
-    // fix `parts()` had no spatial guard at all when unfiltered, so the
-    // storey's aggregated descendants (the wall) leaked in as
-    // `assemblyChildGlobalIds`, and clicking the storey row would have
-    // isolated the wall as if the storey were an assembly.
+    // yet, so `geometricIds` is empty and `applyFilter` is inert. The tree
+    // used to list EVERY parsed entity in that window, storey included, and a
+    // count read off the tab then counted the spatial chain. The class test
+    // runs ahead of the geometry filter, so the storey is gone in both states.
     const ds = createDecompositionDataStore();
     const rel = ds.relationships as unknown as {
       getRelated: (id: number, t: RelationshipType, d: 'forward' | 'inverse') => number[];
@@ -1376,15 +1379,11 @@ describe('makeAssemblyGeometry — spatial guard (deep-review follow-up)', () =>
     rel.getRelated = (id, t, d) =>
       t === RelationshipType.Aggregates && d === 'forward' && id === 16 ? [14] : inner(id, t, d);
 
-    // Group nodes only expand into 'element' rows when their group id is in
-    // `expandedNodes` — expand the storey's class group to actually see it.
     const nodes = buildTypeTree(new Map(), ds, new Set(['type-IfcBuildingStorey']), false, new Set());
-    const storey = nodes.find((n) => n.type === 'element' && n.expressIds[0] === 16);
-    assert.ok(storey, 'the unfiltered tree lists everything, including the storey');
     assert.strictEqual(
-      storey.assemblyChildGlobalIds,
+      nodes.find((n) => n.expressIds[0] === 16),
       undefined,
-      'IfcBuildingStorey must never be handed its descendants as "aggregated parts"',
+      'IfcBuildingStorey has no row in the By-Class tab, filter active or not',
     );
   });
 

@@ -1,5 +1,11 @@
 # @ifc-lite/data
 
+## 4.2.1
+
+### Patch Changes
+
+- [`1120b6a`](https://github.com/LTplus-AG/ifc-lite/commit/1120b6a3acbbbb579a4e454083b862ed1d445200) Thanks [@louistrue](https://github.com/louistrue)! - `escapeStepString` now encodes ASCII control characters (the C0 range and DEL) as `\X2\00HH\X0\` directives instead of one space each, so a newline in a header field or a serialized string value survives a write-and-read round trip. The record still stays on one line (no raw byte below 32 is written). Shared with the Rust `escape_step_string` through the cross-language vector file both are pinned to.
+
 ## 4.2.0
 
 ### Minor Changes

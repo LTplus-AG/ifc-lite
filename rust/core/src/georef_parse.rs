@@ -17,27 +17,33 @@ use crate::schema_gen::DecodedEntity;
 /// integers: degrees, minutes, seconds, optional millionth-seconds) to
 /// decimal degrees. Same sign handling as the TS parser: any negative
 /// component makes the whole angle negative.
+///
+/// Components are read BY POSITION and the whole angle is refused when any
+/// of the first three is not numeric. Compacting the list first (dropping
+/// non-numeric entries, then indexing the survivors) re-indexed
+/// `($,51,30,0)` as 51 deg 30 min: the fourth component slid into the
+/// seconds slot and the site was placed instead of refused.
 pub(super) fn compound_plane_angle_to_degrees(entity: &DecodedEntity, index: usize) -> Option<f64> {
     let list = entity.get_list(index)?;
-    let mut numbers = Vec::with_capacity(4);
-    for value in list {
-        if let Some(v) = value.as_float() {
-            numbers.push(v);
-        }
-    }
-    if numbers.len() < 3 {
+    if list.len() < 3 {
         return None;
     }
-    let millionths = numbers.get(3).copied().unwrap_or(0.0);
-    let sign = if numbers[0] < 0.0 || numbers[1] < 0.0 || numbers[2] < 0.0 || millionths < 0.0 {
+    let degrees = list[0].as_float()?;
+    let minutes = list[1].as_float()?;
+    let seconds = list[2].as_float()?;
+    // The optional fourth component: absent is 0; present but non-numeric
+    // is refused like the mandatory three.
+    let millionths = match list.get(3) {
+        Some(value) => value.as_float()?,
+        None => 0.0,
+    };
+    let sign = if degrees < 0.0 || minutes < 0.0 || seconds < 0.0 || millionths < 0.0 {
         -1.0
     } else {
         1.0
     };
-    let degrees = numbers[0].abs();
-    let minutes = numbers[1].abs();
-    let seconds = numbers[2].abs();
-    let millionths = millionths.abs();
+    let (degrees, minutes, seconds, millionths) =
+        (degrees.abs(), minutes.abs(), seconds.abs(), millionths.abs());
     Some(sign * (degrees + minutes / 60.0 + (seconds + millionths / 1_000_000.0) / 3600.0))
 }
 

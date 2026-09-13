@@ -30,8 +30,7 @@ fn is_rtc_votable_representation(rep_type: &str) -> bool {
 }
 
 impl GeometryRouter {
-    /// Compute median-based RTC offset from sampled translations.
-    /// Returns `(0,0,0)` if empty or coordinates are within 10km of origin.
+    /// Median RTC offset of sampled translations; `(0,0,0)` if empty or within 10 km of origin.
     fn rtc_offset_from_translations(translations: &[(f64, f64, f64)]) -> (f64, f64, f64) {
         if translations.is_empty() {
             return (0.0, 0.0, 0.0);
@@ -465,6 +464,7 @@ impl GeometryRouter {
     /// carries >10 km coordinates must be re-based identically everywhere
     /// (previously the wasm prepasses silently fell back to (0,0,0) and the
     /// browser rendered f32 vertex jitter that the server never saw).
+    /// Both arms answer in METRES: the bounds fallback gets `unit_scale`, so its 10 km gate never sees raw file units.
     pub fn detect_rtc_offset_with_fallback(
         &self,
         jobs: &[(u32, usize, usize, IfcType)],
@@ -473,7 +473,7 @@ impl GeometryRouter {
     ) -> (f64, f64, f64) {
         match self.detect_rtc_offset_from_jobs(jobs, decoder) {
             Some(offset) => offset,
-            None => ifc_lite_core::scan_placement_bounds(content).rtc_offset(),
+            None => ifc_lite_core::scan_placement_bounds(content).rtc_offset(self.unit_scale),
         }
     }
 }

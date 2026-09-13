@@ -3,21 +3,28 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Canonical fill-area colour leaf shared by symbolic and 3D annotations.
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+
+/// The entity references in a style-list attribute (`IfcStyledItem.Styles`,
+/// `IfcPresentationStyleAssignment.Styles`, `IfcFillAreaStyle.FillStyles`),
+/// read by one rule for the 2D symbolic index (`symbolic::color`) and the
+/// pre-pass fill reader below: a list is walked, a bare reference is a
+/// one-element list, and members that are not references are skipped.
+pub(crate) fn style_refs(attr: &AttributeValue) -> Vec<u32> {
+    if let Some(list) = attr.as_list() {
+        list.iter().filter_map(|v| v.as_entity_ref()).collect()
+    } else if let Some(single) = attr.as_entity_ref() {
+        vec![single]
+    } else {
+        Vec::new()
+    }
+}
 
 pub(crate) fn extract_color_from_fill_area_style(
     style: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Option<[f32; 4]> {
-    let fill_styles_attr = style.get(1)?;
-    let fill_style_refs: Vec<u32> = if let Some(list) = fill_styles_attr.as_list() {
-        list.iter().filter_map(|v| v.as_entity_ref()).collect()
-    } else if let Some(single) = fill_styles_attr.as_entity_ref() {
-        vec![single]
-    } else {
-        return None;
-    };
-    for fs_ref in fill_style_refs {
+    for fs_ref in style_refs(style.get(1)?) {
         let Ok(fs) = decoder.decode_by_id(fs_ref) else {
             continue;
         };
@@ -44,24 +51,27 @@ pub(crate) fn fill_style_from_styled_item(
     if item.ifc_type != IfcType::IfcAnnotationFillArea {
         return None;
     }
-    let refs = styled.get_list(1)?;
+    let refs = style_refs(styled.get(1)?);
     if refs.len() > 64 {
         return None;
     }
-    for attr in refs {
-        let style = decoder.decode_by_id(attr.as_entity_ref()?).ok()?;
+    // An unresolved reference (dangling in a partial export) is skipped, as
+    // `symbolic::color` skips it, never fatal for the whole styled item.
+    for style_ref in refs {
+        let Ok(style) = decoder.decode_by_id(style_ref) else { continue };
         if decoder.get_raw_bytes(style.id).and_then(|raw| {
             ifc_lite_core::EntityScanner::new(raw)
                 .next_entity()
                 .map(|(_, name, _, _)| ifc_lite_core::keyword_eq(name, "IFCPRESENTATIONSTYLEASSIGNMENT"))
         }) == Some(true)
         {
-            let inner = style.get_list(0)?;
+            let Some(inner_attr) = style.get(0) else { continue };
+            let inner = style_refs(inner_attr);
             if inner.len() > 64 {
                 return None;
             }
-            for attr in inner {
-                let fill = decoder.decode_by_id(attr.as_entity_ref()?).ok()?;
+            for fill_ref in inner {
+                let Ok(fill) = decoder.decode_by_id(fill_ref) else { continue };
                 if let Some(info) = fill_info(&fill, decoder) {
                     return Some(info);
                 }

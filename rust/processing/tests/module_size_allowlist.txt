@@ -20,7 +20,6 @@
 # -35: the ePSet MapUnit label rules moved to unit_labels.rs, next to the unit
 # tables they resolve through (#3292); 793 -> 758.
      758 rust/core/src/georef.rs
-     445 rust/core/src/model_bounds.rs
 # -50: data_section_start (the STEP HEADER-skip, self-contained, no scanner
 # state) split out to scanner_header.rs (62 lines, under budget, no row) to
 # bring this file back under budget after a merge combined two independent

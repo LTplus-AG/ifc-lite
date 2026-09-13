@@ -104,10 +104,11 @@ export interface MapConversionParams {
 }
 
 /** Normalize the (possibly non-unit) XAxisAbscissa/XAxisOrdinate direction
- *  vector to unit length. Mirrors `GeoReference::normalize_axis` in
- *  `rust/core/src/georef.rs` — IfcMapConversion's axis attributes form a
- *  DIRECTION, and files may author non-unit components. Returns `null`
- *  when the direction is degenerate (both components ~0). */
+ *  vector to unit length, as `GeoReference::sanitize_transform` in
+ *  `rust/core/src/georef.rs` does for a usable axis — IfcMapConversion's axis
+ *  attributes form a DIRECTION, and files may author non-unit components.
+ *  Returns `null` when the direction is degenerate (both components ~0),
+ *  where Rust instead resets the axis to (1, 0). */
 function normalizeAxis(rawA: number, rawB: number): { a: number; b: number } | null {
   const len = Math.hypot(rawA, rawB);
   if (len < 1e-9) return null;

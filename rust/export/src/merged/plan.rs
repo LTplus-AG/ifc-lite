@@ -108,22 +108,24 @@ pub fn resolve_included(
 ) -> HashSet<u32> {
     match roots {
         None => {
-            // Every id is included regardless, so this is purely a counting
-            // pass: it must not touch `keep`/`stack`, only `refused`, or an
-            // unfiltered model's oversized references would go unreported
-            // (CodeRabbit, PR #3766) — the `Some(roots)` arm below already
-            // counts as it walks the closure; here nothing walks anything, so
-            // the count has to come from a dedicated scan of every line.
-            if let Some(refused) = refused.as_deref_mut() {
-                let mut refs = Vec::new();
-                for &id in &index.order {
-                    if let Some(bytes) = index.line_bytes(id) {
-                        refs.clear();
-                        refs_in_line_counted(bytes, &mut refs, refused);
-                    }
+            // Every line, plus the highest id a line NAMES. A dangling `#N` has
+            // no line but `rewrite_refs` still moves it to `N + offset`, so
+            // `next_offset` must clear it (the `Some(roots)` closure below keeps
+            // such targets too). The scan also counts oversized refs (PR #3766).
+            let mut keep: HashSet<u32> = index.order.iter().copied().collect();
+            let (mut uncounted, mut refs, mut top) = (0usize, Vec::new(), 0u32);
+            let refused = refused.unwrap_or(&mut uncounted);
+            for &id in &index.order {
+                if let Some(bytes) = index.line_bytes(id) {
+                    refs.clear();
+                    refs_in_line_counted(bytes, &mut refs, refused);
+                    top = refs.iter().copied().fold(top, u32::max);
                 }
             }
-            index.order.iter().copied().collect()
+            if top != 0 {
+                keep.insert(top);
+            }
+            keep
         }
         Some(roots) => {
             let mut keep: HashSet<u32> = HashSet::new();
@@ -158,7 +160,8 @@ pub fn resolve_included(
 ///
 /// Bound by the largest VISIBLE id, not `index.max_id`: an excluded high id is
 /// never emitted, so it must not consume id space or omit a later model that
-/// would actually fit (CR #2952).
+/// would actually fit (CR #2952). A dangling id an emitted line names does
+/// count (`resolve_included` keeps it), or the next model's entity takes it.
 ///
 /// Single home for the rule because two callers must agree on it exactly: the
 /// emit loop, and the empty-container pre-pass (#3643), which has to stop at

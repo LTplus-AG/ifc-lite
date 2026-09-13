@@ -228,26 +228,16 @@ function resolveGeorefLinearParams(georeference: DxfExportGeoreference): {
   // necessarily unit length — the IFC spec allows an authoring tool to write
   // any non-zero (cos, sin)-proportional pair. Used raw, a non-unit vector
   // scales the whole transform by its magnitude. Normalize like the Rust
-  // source of truth (rust/core/src/georef.rs normalize_axis) for the
-  // general and near-zero cases: a near-zero vector (both components ~0)
-  // falls back to the no-rotation default (1, 0), matching that function's
-  // guard. NOT exact parity for non-finite input, though -- see below.
+  // source of truth (rust/core/src/georef.rs sanitize_transform): a
+  // near-zero or non-finite vector falls back to the no-rotation default
+  // (1, 0), matching that function's guard.
   //
   // PR #1965 review: `axisLen < 1e-9` alone only catches the near-zero
   // MAGNITUDE case — `NaN < 1e-9` and `Infinity < 1e-9` are both `false`, so
   // a non-finite component used to fall through to the divide branch and
-  // manufacture a NaN axis.
-  //
-  // This is a DELIBERATE divergence from `normalize_axis`, not an oversight
-  // left over from the "exactly like Rust" framing above: `normalize_axis`
-  // tests `len > f64::EPSILON` (also false for NaN) but then *skips*
-  // normalization on the degenerate branch, leaving the raw (possibly NaN)
-  // value in place -- `local_to_map` would still consume that NaN as
-  // cos_r/sin_r. The TS side instead substitutes the no-rotation default
-  // BEFORE computing `axisLen`, so a non-finite component here produces a
-  // finite (1, 0) fallback rather than propagating NaN, consistent with
-  // every other guard in this function (Scale, eastings, northings) always
-  // preferring a finite fallback over an exact-parity NaN.
+  // manufacture a NaN axis. Rust had the same hole (it left a NaN axis in
+  // place) until sanitize_transform reset any axis whose length is not
+  // finite and above epsilon; the two now agree on non-finite input too.
   //
   // PR #1965 review, round 2: a MIXED pair (one finite, one not -- e.g.
   // XAxisAbscissa: NaN, XAxisOrdinate: 0.6) needs the SAME fallback as the

@@ -191,7 +191,7 @@ describe('buildDxfExportTransform', () => {
     // Some authoring tools write (abscissa, ordinate) scaled by an arbitrary
     // magnitude even though the IFC spec models it as a direction. A vector
     // scaled by 2 must produce the SAME map coordinates as its unit form,
-    // not a drawing scaled by 2x (rust/core/src/georef.rs normalize_axis is
+    // not a drawing scaled by 2x (rust/core/src/georef.rs sanitize_transform is
     // the source of truth this mirrors).
     const angle = (15 * Math.PI) / 180;
     const unitCos = Math.cos(angle);

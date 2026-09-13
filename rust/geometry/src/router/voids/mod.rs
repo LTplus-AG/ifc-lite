@@ -135,6 +135,16 @@ impl VoidContext {
         self.openings.is_empty()
     }
 
+    /// Rectangular openings in the merged set: what every cut path records as
+    /// `HostOpeningDiagnostic::rect_boxes_processed`, so the silent-no-op
+    /// detector reads one quantity whichever path cut the host.
+    fn rect_opening_count(&self) -> usize {
+        self.merged_openings
+            .iter()
+            .filter(|o| matches!(o, OpeningType::Rectangular(..)))
+            .count()
+    }
+
     /// True iff every cutter mesh is already in world coords (`origin == 0`). When
     /// so AND the host is world-framed, `apply_void_context` can run the inner CSG
     /// directly (the native / legacy fast path) without cloning the cutters; if any
@@ -190,6 +200,16 @@ impl VoidContext {
 }
 
 impl OpeningType {
+    /// The cutter mesh and its extrusion direction, for the two mesh-carrying
+    /// kinds; `None` for `Rectangular`, which has no mesh until synthesised.
+    fn mesh_cutter(&self) -> Option<(&Mesh, Option<Vector3<f64>>)> {
+        match self {
+            OpeningType::Rectangular(..) => None,
+            OpeningType::DiagonalRectangular(m, f) => Some((m, Some(f.depth))),
+            OpeningType::NonRectangular(m, _, _, d) => Some((m, *d)),
+        }
+    }
+
     /// Return a copy translated by `-origin` (world → host-local frame). Bounds
     /// (`Point3`) shift; direction vectors and the oriented `OpeningFrame` are
     /// translation-invariant and pass through unchanged.
@@ -244,6 +264,26 @@ impl GeometryRouter {
         }
     }
 
+    /// A batch-group cutter: the opening extended through `host`, welded (1 µm)
+    /// to bit-identical, and kept only if it is then exactly closed (#2176: only
+    /// per-component-watertight solids may join a group). The weld lets a
+    /// geometrically-watertight cutter whose shared-edge f32 coords differ in
+    /// bits after the placement transform pass the bit-exact gate (#098).
+    /// Admission and the re-extension after a host cut both call this, so a
+    /// cutter admitted because of the weld is not refused at cut time.
+    fn batch_cutter(
+        opening_mesh: &Mesh,
+        extrusion_dir: Option<Vector3<f64>>,
+        host: &Mesh,
+    ) -> Option<Mesh> {
+        let depth_dir = extrusion_dir
+            .filter(|d| d.norm() > NORMALIZE_EPSILON)
+            .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
+        let ext = Self::extend_opening_mesh_through_host(opening_mesh, host, depth_dir)
+            .welded_by_position(1.0e-6);
+        mesh_is_closed_exact(&ext).then_some(ext)
+    }
+
     /// Process element with void subtraction (openings)
     /// Process element with voids using optimized plane clipping
     ///
@@ -283,12 +323,7 @@ impl GeometryRouter {
             }
         };
 
-        let wall_mesh = match self.process_element(element, decoder) {
-            Ok(m) => m,
-            Err(_) => {
-                return self.process_element(element, decoder);
-            }
-        };
+        let wall_mesh = self.process_element(element, decoder)?;
 
         let mut voided = self.apply_voids_to_mesh(wall_mesh, element, opening_ids, decoder);
         // Clean slivers the CSG cut can introduce at opening seams — same
@@ -658,7 +693,7 @@ impl GeometryRouter {
                             element_id,
                             prism_tris_before,
                             cut.triangle_count(),
-                            ctx.merged_openings.len(),
+                            ctx.rect_opening_count(),
                             prism_bounds,
                         );
                         cut
@@ -924,7 +959,7 @@ impl GeometryRouter {
                     element_id,
                     tris_before,
                     fast.triangle_count(),
-                    ctx.merged_openings.len(),
+                    ctx.rect_opening_count(),
                     host_bounds_capture,
                 );
                 return fast;
@@ -1115,12 +1150,7 @@ impl GeometryRouter {
                 if batch_consumed[idx] {
                     continue;
                 }
-                let norm: Option<(&Mesh, Option<Vector3<f64>>)> = match **opening {
-                    OpeningType::Rectangular(..) => None,
-                    OpeningType::DiagonalRectangular(ref m, ref f) => Some((m, Some(f.depth))),
-                    OpeningType::NonRectangular(ref m, _, _, ref d) => Some((m, *d)),
-                };
-                let Some((opening_mesh, extrusion_dir)) = norm else { continue };
+                let Some((opening_mesh, extrusion_dir)) = opening.mesh_cutter() else { continue };
                 // Same admission guards as the sequential loop.
                 let opening_valid = !opening_mesh.is_empty()
                     && opening_mesh.positions.iter().all(|&v| v.is_finite())
@@ -1145,19 +1175,9 @@ impl GeometryRouter {
                 if open_vol < Self::min_opening_volume(self.tessellation_quality) {
                     continue;
                 }
-                let depth_dir = extrusion_dir
-                    .filter(|d| d.norm() > NORMALIZE_EPSILON)
-                    .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
-                // Weld (1 µm) to bit-identical so a geometrically-watertight cutter
-                // whose shared-edge f32 coords differ in bits after the placement
-                // transform still passes the bit-exact closure gate below and can
-                // join a batch instead of re-jittering through sequential cuts (#098).
-                let ext = Self::extend_opening_mesh_through_host(opening_mesh, &result, depth_dir)
-                    .welded_by_position(1.0e-6);
-                // #2176: only per-component-watertight solids may join a group.
-                if !mesh_is_closed_exact(&ext) {
+                let Some(ext) = Self::batch_cutter(opening_mesh, extrusion_dir, &result) else {
                     continue;
-                }
+                };
                 let (lo, hi) = ext.bounds();
                 // Engulf-class exclusion: a cutter whose extended AABB covers
                 // the whole host on EVERY axis (3% slack, the sequential
@@ -1250,33 +1270,13 @@ impl GeometryRouter {
                         extended = members;
                     } else {
                         for &(m_idx, _) in &members {
-                            let norm: Option<(&Mesh, Option<Vector3<f64>>)> =
-                                match *all_openings[m_idx] {
-                                    OpeningType::Rectangular(..) => None,
-                                    OpeningType::DiagonalRectangular(ref m, ref f) => {
-                                        Some((m, Some(f.depth)))
-                                    }
-                                    OpeningType::NonRectangular(ref m, _, _, ref d) => {
-                                        Some((m, *d))
-                                    }
-                                };
-                            let Some((opening_mesh, extrusion_dir)) = norm else {
+                            let ext = all_openings[m_idx]
+                                .mesh_cutter()
+                                .and_then(|(m, dir)| Self::batch_cutter(m, dir, &result));
+                            let Some(ext) = ext else {
                                 admissible = false;
                                 break;
                             };
-                            let depth_dir = extrusion_dir
-                                .filter(|d| d.norm() > NORMALIZE_EPSILON)
-                                .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
-                            let ext = Self::extend_opening_mesh_through_host(
-                                opening_mesh,
-                                &result,
-                                depth_dir,
-                            );
-                            // the re-extended cutter must stay watertight (#2176)
-                            if !mesh_is_closed_exact(&ext) {
-                                admissible = false;
-                                break;
-                            }
                             extended.push((m_idx, ext));
                         }
                     }
@@ -1657,7 +1657,7 @@ impl GeometryRouter {
             element_id,
             tris_before,
             result.triangle_count(),
-            synth_rect.len(),
+            ctx.rect_opening_count(),
             host_bounds_capture,
         );
 
@@ -1737,3 +1737,7 @@ impl GeometryRouter {
 
 #[cfg(test)]
 mod flap_clip_tests;
+#[cfg(test)]
+mod batch_cutter_tests;
+#[cfg(test)]
+mod cut_effect_count_tests;

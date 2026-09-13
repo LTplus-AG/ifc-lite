@@ -133,3 +133,38 @@ fn faceset_is_split_per_triangle_palette_group() {
     let total: usize = parts.iter().map(|m| m.indices.len() / 3).sum();
     assert_eq!(total, 12, "split must preserve the original triangle count");
 }
+
+/// `FullIndexedColourMap::dominant()` on a TIE picks the lowest palette index
+/// (first authored wins). It used to return whichever tied entry `FxHashMap`
+/// iterated last, an order set by the hasher's pointer-width constants and not
+/// by the file, so the 64-bit server and the wasm32 viewer could seed one
+/// element's style index with different colours (Rust review finding G3; the
+/// `dominant()` seed is in `prepass.rs`, #913 / #663).
+///
+/// Several tie shapes, each asserting on the returned colour, so no single
+/// lucky iteration order can pass the reverted `max_by_key(|(_, c)| *c)`.
+#[test]
+fn dominant_breaks_a_tie_by_palette_order_not_hash_order() {
+    use ifc_lite_processing::style::FullIndexedColourMap;
+    use ifc_lite_processing::Rgba;
+
+    let palette: Vec<Rgba> = (0..8).map(|i| Rgba::new(i as f32 / 8.0, 0.0, 0.0, 1.0)).collect();
+    let cases: [(&str, Vec<usize>, usize); 4] = [
+        ("every entry once", (0..8).collect(), 0),
+        ("every entry once, authored in reverse", (0..8).rev().collect(), 0),
+        ("two-way tie above a minority", vec![5, 3, 5, 3, 7], 3),
+        ("four-way tie", vec![6, 4, 2, 1, 1, 2, 4, 6], 1),
+    ];
+    for (label, triangle_palette, expected) in cases {
+        let map = FullIndexedColourMap {
+            geometry_id: 1,
+            colours: palette.clone(),
+            triangle_palette,
+        };
+        assert_eq!(
+            map.dominant(),
+            palette[expected],
+            "{label}: a tie must go to the lowest tied palette index ({expected})"
+        );
+    }
+}

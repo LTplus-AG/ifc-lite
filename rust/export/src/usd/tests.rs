@@ -868,3 +868,61 @@ fn emitted_matrix4d_roundtrips_usd_transform_rows() {
     }
     assert_eq!([m[3][0], m[3][1], m[3][2]], [expected[3][0], expected[3][1], expected[3][2]]);
 }
+
+/// Export review finding H5: `UsdPreviewSurface.inputs:diffuseColor` and
+/// `primvars:displayColor` are linear, like glTF's `baseColorFactor`, and an
+/// `IfcColourRgb` is sRGB. The USD writer only clamped, so mid-grey `0.5`
+/// reached USD as `0.5` and glTF as `0.214`. The expected value is the
+/// IEC 61966-2-1 decode of 0.5, written out rather than computed here.
+#[test]
+fn material_and_display_colours_are_linear() {
+    let mut out = String::new();
+    let color = [0.5, 0.5, 0.5, 0.25];
+    super::emit::emit_material(&mut out, 0, color_key(color), color);
+    super::emit::write_display_material(&mut out, 0, color);
+    let expected = 0.214_041_14_f32;
+    let diffuse = out.lines().find(|l| l.contains("inputs:diffuseColor")).expect("diffuseColor");
+    let display = out.lines().find(|l| l.contains("primvars:displayColor")).expect("displayColor");
+    for (what, line) in [("diffuseColor", diffuse), ("displayColor", display)] {
+        let rgb = nums_f32(line.split('=').nth(1).unwrap());
+        assert_eq!(rgb.len(), 3, "{what}: {line}");
+        for c in rgb {
+            assert!((c - expected).abs() < 1e-5, "{what} must be the linear decode of 0.5: {line}");
+        }
+    }
+    // Alpha is opacity, not light: it is not decoded.
+    assert!(out.contains("float inputs:opacity = 0.25"), "{out}");
+    assert!(out.contains("float[] primvars:displayOpacity = [0.25]"), "{out}");
+}
+
+/// The same model exported to glTF and USD carries the same linear colours:
+/// every USD `diffuseColor` is one of the glTF `baseColorFactor`s.
+#[test]
+fn usd_and_gltf_agree_on_every_material_colour() {
+    let bytes = hello_wall();
+    let usda = export(&bytes);
+    let glb = crate::export_glb(&bytes, &crate::GltfOptions::default());
+    let json_len = u32::from_le_bytes(glb[12..16].try_into().unwrap()) as usize;
+    let json: serde_json::Value = serde_json::from_slice(&glb[20..20 + json_len]).unwrap();
+    let gltf: Vec<[f64; 3]> = json["materials"]
+        .as_array()
+        .expect("glTF materials")
+        .iter()
+        .map(|m| {
+            let f = &m["pbrMetallicRoughness"]["baseColorFactor"];
+            [0, 1, 2].map(|k| f[k].as_f64().unwrap())
+        })
+        .collect();
+    let usd: Vec<Vec<f32>> = usda
+        .lines()
+        .filter(|l| l.contains("inputs:diffuseColor"))
+        .map(|l| nums_f32(l.split('=').nth(1).unwrap()))
+        .collect();
+    assert!(!usd.is_empty(), "hello-wall has styled materials");
+    for rgb in &usd {
+        assert!(
+            gltf.iter().any(|g| (0..3).all(|k| (g[k] - rgb[k] as f64).abs() < 1e-4)),
+            "USD diffuseColor {rgb:?} matches no glTF baseColorFactor {gltf:?}"
+        );
+    }
+}

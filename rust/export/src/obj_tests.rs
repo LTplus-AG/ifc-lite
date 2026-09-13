@@ -302,3 +302,30 @@ fn mesh_visible_rejects_non_finite_geometry() {
     assert!(!mesh_visible(&bad, &None, &[]), "non-finite origin must be rejected — it poisons every vertex");
 }
 
+/// Export review finding H6: OBJ `vn` indices are global and independent of
+/// `v` indices. A mesh whose normals do not cover its positions writes `v`
+/// lines and no `vn` lines, and the face writer reused the running VERTEX
+/// counter as the normal index, so every later mesh's `f a//a` named a normal
+/// that belonged to nothing or to another mesh. `process_geometry` keeps the
+/// normals full today, so this drives the writer with meshes directly.
+#[test]
+fn a_mesh_without_normals_does_not_shift_later_normal_indices() {
+    let mut bare = good_mesh();
+    bare.express_id = 1;
+    bare.normals.clear();
+    let mut lit = good_mesh();
+    lit.express_id = 2;
+    let (obj, stats) = write_obj(&[bare, lit], &ObjOptions::default());
+    assert_eq!(stats.meshes, 2);
+    let vn = obj.lines().filter(|l| l.starts_with("vn ")).count();
+    assert_eq!(vn, 3, "only the second mesh has normals: {obj}");
+    let faces: Vec<&str> = obj.lines().filter(|l| l.starts_with("f ")).collect();
+    assert_eq!(faces, ["f 1 2 3", "f 4//1 5//2 6//3"], "{obj}");
+    // Every normal index names a `vn` line that exists.
+    for f in &faces {
+        for n in f.split_whitespace().filter_map(|t| t.split("//").nth(1)) {
+            let n: usize = n.parse().unwrap();
+            assert!((1..=vn).contains(&n), "normal index {n} past the {vn} vn lines: {f}");
+        }
+    }
+}

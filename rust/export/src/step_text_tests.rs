@@ -334,3 +334,110 @@ fn export_step_counts_a_refused_attribute_edit() {
         "the control edit must land; got:\n{control_step}"
     );
 }
+
+/// An edit whose `index` is past the record's arity used to be dropped with
+/// no count: the record came back as a `String` the caller read as success,
+/// and every `StepStats` refusal counter stayed at zero. The edit was not in
+/// the file. `index` is caller-supplied JSON on the wasm bridge, so this is
+/// reachable input, not a typo in a test. The other edits on the record still
+/// apply; the record counts once.
+#[test]
+fn apply_attr_mutations_counts_an_edit_past_the_records_arity_as_refused() {
+    let line = "#1=IFCWALL('g',$,'W',$,$,$,$,$,.SOLIDWALL.);";
+    let mut muts = BTreeMap::new();
+    muts.insert(12usize, "'New Name'".to_string());
+    let mut refused = 0usize;
+    let out = apply_attr_mutations_counted(line, &muts, &mut refused);
+    assert_eq!(out, line, "an edit past the arity must not change the record");
+    assert_eq!(refused, 1, "and the dropped edit must be counted, not silent");
+
+    // Mixed: one edit lands, one is out of range. The record still counts
+    // once, and the in-range edit is in the output.
+    muts.insert(2usize, "'Renamed'".to_string());
+    let mut refused = 0usize;
+    let out = apply_attr_mutations_counted(line, &muts, &mut refused);
+    assert_eq!(out, "#1=IFCWALL('g',$,'Renamed',$,$,$,$,$,.SOLIDWALL.);");
+    assert_eq!(refused, 1, "one record with a dropped edit is one refusal");
+
+    // Control: the same edit at the last valid index is not a refusal.
+    let mut muts = BTreeMap::new();
+    muts.insert(8usize, ".NOTDEFINED.".to_string());
+    let mut refused = 0usize;
+    let out = apply_attr_mutations_counted(line, &muts, &mut refused);
+    assert_eq!(out, "#1=IFCWALL('g',$,'W',$,$,$,$,$,.NOTDEFINED.);");
+    assert_eq!(refused, 0, "an in-range edit must not be counted as refused");
+}
+
+/// The same refusal through the public `export_step_with_stats` path the
+/// wasm bridge's `export_step_json` reaches: `attribute_edits_refused` must
+/// be non-zero when a caller's `index` is past the record's arity.
+#[test]
+fn export_step_counts_an_attribute_edit_past_the_arity() {
+    use crate::step::{export_step_with_stats, AttrMutation, StepOptions};
+
+    let source = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCWALL('g',$,'W',$,$,$,$,$,.SOLIDWALL.);\nENDSEC;\nEND-ISO-10303-21;\n";
+    let opts = StepOptions {
+        attribute_mutations: vec![AttrMutation {
+            express_id: 1,
+            index: 12,
+            value: "'New Name'".to_string(),
+        }],
+        ..Default::default()
+    };
+    let (step, stats) = export_step_with_stats(source, &opts);
+    assert_eq!(stats.attribute_edits_refused, 1, "the out-of-range edit must be reported");
+    assert!(!step.contains("New Name"), "and must not be in the output; got:\n{step}");
+    assert!(
+        step.contains("#1=IFCWALL('g',$,'W',$,$,$,$,$,.SOLIDWALL.);"),
+        "the record ships as the source wrote it; got:\n{step}"
+    );
+}
+
+/// A control character has a faithful ISO 10303-21 encoding (`\X2\000A\X0\`
+/// for a newline), and `escape` used to throw it away: the whole C0 range and
+/// DEL became a space, so a header field that arrived properly encoded as
+/// `line1\X2\000A\X0\line2` was re-exported as `line1 line2`. Every other
+/// character class already round-trips through `decode_ifc_string`; this pins
+/// the one that did not.
+#[test]
+fn escape_round_trips_control_characters_through_the_decoder() {
+    use ifc_lite_core::decode_ifc_string;
+
+    for (input, expected) in [
+        ("line1\nline2", "line1\\X2\\000A\\X0\\line2"),
+        ("a\tb", "a\\X2\\0009\\X0\\b"),
+        ("\u{7F}", "\\X2\\007F\\X0\\"),
+        ("\0", "\\X2\\0000\\X0\\"),
+    ] {
+        let escaped = escape(input);
+        assert_eq!(escaped, expected, "escape({input:?})");
+        assert!(
+            escaped.bytes().all(|b| (0x20..=0x7E).contains(&b)),
+            "no raw byte outside 32-126 may reach the literal: {escaped:?}"
+        );
+        assert_eq!(
+            decode_ifc_string(&escaped).as_ref(),
+            input,
+            "decode(escape(x)) must be x for a control character too"
+        );
+    }
+}
+
+/// The same loss through the public path: a source `FILE_DESCRIPTION` whose
+/// text carries an encoded newline must come back with the newline encoded,
+/// not flattened to a space.
+#[test]
+fn export_step_keeps_an_encoded_newline_in_a_header_field() {
+    use crate::step::{export_step_with_stats, StepOptions};
+
+    let source = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('line1\\X2\\000A\\X0\\line2'),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
+    let (step, _stats) = export_step_with_stats(source, &StepOptions::default());
+    let line = step
+        .lines()
+        .find(|l| l.starts_with("FILE_DESCRIPTION("))
+        .expect("a FILE_DESCRIPTION header line");
+    assert_eq!(
+        line, "FILE_DESCRIPTION(('line1\\X2\\000A\\X0\\line2'),'2;1');",
+        "the encoded newline must survive a re-export, not become a space"
+    );
+}

@@ -279,33 +279,6 @@ pub(super) fn parse_axis2_placement_2d(
     }
 }
 
-/// Resolve a circle / ellipse Position → Location → (x, y, z) in metres.
-pub(super) fn circle_center(
-    item: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-    unit_scale: f32,
-) -> (f32, f32, f32) {
-    let Some(pos_ref) = item.get_ref(0) else {
-        return (0.0, 0.0, 0.0);
-    };
-    let Ok(placement) = decoder.decode_by_id(pos_ref) else {
-        return (0.0, 0.0, 0.0);
-    };
-    let Some(loc_ref) = placement.get_ref(0) else {
-        return (0.0, 0.0, 0.0);
-    };
-    let Ok(loc) = decoder.decode_by_id(loc_ref) else {
-        return (0.0, 0.0, 0.0);
-    };
-    let Some(coords) = loc.get(0).and_then(|a| a.as_list()) else {
-        return (0.0, 0.0, 0.0);
-    };
-    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-    let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
-    (x, y, z)
-}
-
 #[cfg(test)]
 #[path = "transform_tests.rs"]
 mod transform_tests;

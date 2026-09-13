@@ -1,5 +1,20 @@
 # @ifc-lite/server-bin
 
+## 1.17.2
+
+### Patch Changes
+
+- [#4647](https://github.com/LTplus-AG/ifc-lite/pull/4647) [`bb63753`](https://github.com/LTplus-AG/ifc-lite/commit/bb63753052f4cea9440f0b532886ebbf942f8f59) Thanks [@louistrue](https://github.com/louistrue)! - Ship fresh native server binaries containing the Rust fixes merged after the 1.17.1 version commit, including outward-wound swept-disk walls, hollow-pipe bores, consistent void bookkeeping, and strict georeference component handling. This bump ensures the `v1.17.2` binary release is built from the same source generation as the 8.0.1 WASM and 13.0.1 Rust releases instead of reusing the earlier `v1.17.1` source commit.
+
+## 1.17.1
+
+### Patch Changes
+
+- [#4628](https://github.com/LTplus-AG/ifc-lite/pull/4628) [`5583362`](https://github.com/LTplus-AG/ifc-lite/commit/5583362ea8d7c988c84d44bf3b27c6c72fb6b798) Thanks [@louistrue](https://github.com/louistrue)! - Keep the public geometry bridge and downloadable server binary aligned with the implementations they expose.
+  
+  - `@ifc-lite/geometry`: `GeometryProcessor.getApi()` and `IfcLiteBridge.getApi()` expose the concrete `@ifc-lite/wasm` `IfcAPI`, so the breaking PDF-fidelity and scan-transfer JSON migrations in WASM 8 are also breaking for callers that obtain the API through Geometry. Geometry therefore advances to 6.0.0 instead of accepting only a dependency patch.
+  - `@ifc-lite/server-bin`: publish fresh binaries containing the server-release unwinding profile, the bounded stalled-stream permit timeout, and bounded cache-invalidation walks. The previous 1.17.0 package resolves the older September 4 binary release and cannot contain those fixes.
+
 ## 1.17.0
 
 ### Minor Changes

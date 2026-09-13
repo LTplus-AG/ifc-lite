@@ -15,7 +15,7 @@ use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Propagate openings from hosts that aggregate parts to every aggregated
-/// descendant — recursive and type-agnostic (IfcWallElementedCase panels,
+/// descendant — any depth, any type (IfcWallElementedCase panels,
 /// IfcRoof → IfcSlab skylights, nested assemblies, …).
 ///
 /// The IFC4 spec allows an opening on a host whose geometry is distributed
@@ -27,9 +27,11 @@ use rustc_hash::{FxHashMap, FxHashSet};
 /// wasm `buildPrePassOnce`, wasm `buildPrePassStreaming`) so they cannot
 /// drift on which descendants receive the cut.
 ///
-/// Propagation is breadth-first with a visited-set cycle guard. Existing
-/// void entries for a part are extended (deduplicated) so an authored direct
-/// void is never overwritten.
+/// Propagation is an iterative worklist walk with a per-host visited set
+/// (AGENTS.md "Bounding walks over file-supplied references": no recursion
+/// to overflow, and a cycle or fan-in in `IfcRelAggregates` is visited once
+/// per host). Existing void entries for a part are extended (deduplicated)
+/// so an authored direct void is never overwritten.
 pub fn propagate_voids_via_aggregates(
     void_index: &mut FxHashMap<u32, Vec<u32>>,
     aggregate_children: &FxHashMap<u32, Vec<u32>>,
@@ -40,6 +42,7 @@ pub fn propagate_voids_via_aggregates(
 
     // Snapshot host ids first — we mutate void_index inside the loop.
     let hosts: Vec<u32> = void_index.keys().copied().collect();
+    let mut seen: FxHashSet<u32> = FxHashSet::default();
 
     for host in hosts {
         let openings = match void_index.get(&host) {
@@ -47,33 +50,39 @@ pub fn propagate_voids_via_aggregates(
             _ => continue,
         };
 
-        // BFS over aggregated descendants of `host`. Skip the host itself.
-        let mut stack: Vec<u32> = match aggregate_children.get(&host) {
-            Some(kids) => kids.clone(),
-            None => continue,
-        };
-        let mut seen: FxHashSet<u32> = FxHashSet::default();
-        seen.insert(host);
-
-        while let Some(part) = stack.pop() {
-            if !seen.insert(part) {
-                continue;
-            }
-
-            // Mirror the openings onto this part, deduplicated.
+        // Mirror the openings onto every descendant, deduplicated.
+        walk_aggregate_descendants(host, aggregate_children, &mut seen, |part| {
             let entry = void_index.entry(part).or_default();
             for opening in &openings {
                 if !entry.contains(opening) {
                     entry.push(*opening);
                 }
             }
+            true
+        });
+    }
+}
 
-            if let Some(grand_kids) = aggregate_children.get(&part) {
-                for kid in grand_kids {
-                    if !seen.contains(kid) {
-                        stack.push(*kid);
-                    }
-                }
+/// Visit every aggregated descendant of `root` (not `root` itself) once, with
+/// an explicit stack and the `seen` set (cleared here) as the cycle and
+/// fan-in guard (AGENTS.md "Bounding walks over file-supplied references").
+/// `visit` returns whether to descend into that node's own children.
+fn walk_aggregate_descendants(
+    root: u32,
+    aggregate_children: &FxHashMap<u32, Vec<u32>>,
+    seen: &mut FxHashSet<u32>,
+    mut visit: impl FnMut(u32) -> bool,
+) {
+    let Some(kids) = aggregate_children.get(&root) else {
+        return;
+    };
+    seen.clear();
+    seen.insert(root);
+    let mut stack = kids.clone();
+    while let Some(id) = stack.pop() {
+        if seen.insert(id) && visit(id) {
+            if let Some(kids) = aggregate_children.get(&id) {
+                stack.extend(kids.iter().filter(|k| !seen.contains(k)));
             }
         }
     }
@@ -131,19 +140,25 @@ where
 ///
 /// This function scans for `IfcRelAggregates` and, in the same pass:
 ///
-/// 1. Copies parent-wall void relationships to every child part that has a
-///    `Representation` so each layer slice still gets window/door cutouts.
-/// 2. Returns a [`FxHashMap`] mapping every emitted child `IfcBuildingElementPart`
-///    id to its parent element id. Callers use this to skip per-part geometry
-///    emission when the "merge multilayer wall as a single solid" toggle is on
-///    (issue #540) — but **only** for parents that have their own
-///    `Representation` attribute set (otherwise the parent has no fallback
-///    geometry and the layer parts must be kept).
+/// 1. Copies the host's void relationships to EVERY aggregated descendant,
+///    any depth and any type, whether or not it has a `Representation`
+///    ([`propagate_voids_via_aggregates`]; an entry for a geometry-less part
+///    is never looked up). Each layer slice still gets its window/door cutouts.
+/// 2. Returns a [`FxHashMap`] mapping every `IfcBuildingElementPart` that has
+///    its own `Representation` to its NEAREST aggregating ancestor that also
+///    has one. Callers use this to skip per-part geometry emission when the
+///    "merge multilayer wall as a single solid" toggle is on (issue #540): the
+///    ancestor's merged solid is drawn instead, which is only possible when
+///    that ancestor has geometry of its own.
 ///
-/// The map only contains children whose parent has a non-null `Representation`
-/// (attribute index 6 on `IfcProduct`); parents without their own geometry are
-/// left out of the returned map so the caller can never "skip" the only
-/// geometry available for the assembly.
+/// The map walk descends to the same depth as the void propagation, but only
+/// through representation-less intermediates (an `IfcElementAssembly` that
+/// merely groups), so `IfcWall -> IfcElementAssembly -> IfcBuildingElementPart`
+/// lands the part on the wall. A child with its own `Representation` ends the
+/// descent: it is the parent of its own subtree in this same loop
+/// (`tests/void_index_nested_aggregates.rs`). Parents without their own
+/// geometry never appear as a map value, so the caller can never "skip" the
+/// only geometry available for the assembly.
 #[must_use = "the returned part → parent map is needed to honour the merge-layers toggle"]
 pub fn propagate_voids_to_parts<T>(
     void_index: &mut FxHashMap<u32, Vec<u32>>,
@@ -156,33 +171,37 @@ where
     let content = content.as_ref();
     let aggregate_children = build_aggregate_children_index(content, decoder);
 
-    // Void propagation: recursive + type-agnostic over the FULL aggregate
-    // tree (shared kernel — same behaviour as the server pipeline). The
-    // BEP/representation filters below apply only to the part → parent map.
+    // Void propagation: every descendant, any depth, any type (shared kernel,
+    // same behaviour as the server pipeline). The BEP/representation filters
+    // below apply only to the part → parent map.
     propagate_voids_via_aggregates(void_index, &aggregate_children);
 
-    // part → parent map: restricted to IfcBuildingElementPart children with
-    // their own Representation, under parents that also have one (otherwise
-    // the caller could "skip" the only geometry available for the assembly).
+    // (type, has own Representation); `decode_by_id` caches the decode.
+    let info = |id: u32, decoder: &mut EntityDecoder| -> Option<(IfcType, bool)> {
+        let e = decoder.decode_by_id(id).ok()?;
+        Some((e.ifc_type, e.get(6).is_some_and(|a| !a.is_null())))
+    };
+
+    // part → parent map: each IfcBuildingElementPart with its own
+    // Representation maps to its nearest ancestor that has one. The descent
+    // passes only through representation-less nodes, so a child with geometry
+    // ends it (it is a parent in this loop).
     let mut part_to_parent: FxHashMap<u32, u32> = FxHashMap::default();
-    for (&parent_id, children) in &aggregate_children {
-        let parent_has_repr = decoder
-            .decode_by_id(parent_id)
-            .map(|p| p.get(6).map(|a| !a.is_null()).unwrap_or(false))
-            .unwrap_or(false);
-        if !parent_has_repr {
+    let mut seen: FxHashSet<u32> = FxHashSet::default();
+    for &parent_id in aggregate_children.keys() {
+        if !matches!(info(parent_id, decoder), Some((_, true))) {
             continue;
         }
-        for &child_id in children {
-            if let Ok(child) = decoder.decode_by_id(child_id) {
-                if child.ifc_type == IfcType::IfcBuildingElementPart {
-                    let has_repr = child.get(6).map(|a| !a.is_null()).unwrap_or(false);
-                    if has_repr {
-                        part_to_parent.insert(child_id, parent_id);
-                    }
+        walk_aggregate_descendants(parent_id, &aggregate_children, &mut seen, |id| {
+            match info(id, decoder) {
+                Some((IfcType::IfcBuildingElementPart, true)) => {
+                    part_to_parent.insert(id, parent_id);
+                    false
                 }
+                Some((_, has_repr)) => !has_repr,
+                None => false,
             }
-        }
+        });
     }
 
     part_to_parent
@@ -197,9 +216,11 @@ where
 /// kernels ([`propagate_voids_to_parts`] for part→parent + void propagation, and
 /// [`MaterialLayerIndex::is_sliceable`]) so the driver lives in the geometry
 /// crate next to its kernels rather than inline in a consumer (#913 Phase 4 /
-/// §2.6). The browser's `merge_layers` path calls it; a `void_index` scratch map
-/// is filled and discarded (callers that also need the propagated voids should
-/// call [`propagate_voids_to_parts`] directly with their own `void_index`).
+/// §2.6). The browser's `merge_layers` path calls it. The `void_index` it hands
+/// to [`propagate_voids_to_parts`] is EMPTY and stays empty: propagation is a
+/// no-op on an empty index, and only the part → parent map is wanted here.
+/// Callers that also need the propagated voids call
+/// [`propagate_voids_to_parts`] directly with their own seeded `void_index`.
 #[must_use]
 pub fn compute_parts_to_skip<T>(
     content: &T,

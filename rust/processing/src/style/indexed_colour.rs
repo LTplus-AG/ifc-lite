@@ -47,6 +47,10 @@ impl FullIndexedColourMap {
 
     /// The most-frequently-referenced colour (single-colour maps return their
     /// only colour). Used to fill the element style index.
+    ///
+    /// A tie goes to the LOWEST palette index, so the result never depends on
+    /// `FxHashMap` order, which differs between 64-bit (server) and wasm32
+    /// (browser) builds.
     pub fn dominant(&self) -> Rgba {
         let mut counts: rustc_hash::FxHashMap<usize, u32> = rustc_hash::FxHashMap::default();
         for &p in &self.triangle_palette {
@@ -54,7 +58,7 @@ impl FullIndexedColourMap {
         }
         let idx = counts
             .iter()
-            .max_by_key(|(_, c)| *c)
+            .max_by_key(|(&i, &c)| (c, std::cmp::Reverse(i)))
             .map(|(&i, _)| i)
             .unwrap_or(0);
         self.colours.get(idx).copied().unwrap_or(Rgba::new(0.8, 0.8, 0.8, 1.0))

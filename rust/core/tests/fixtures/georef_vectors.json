@@ -72,7 +72,13 @@
     "epset_map_unit_label_US_SURVEY_FEET_WORD_ORDER",
     "epset_map_unit_label_SQUARE_METRES_REFUSED",
     "epset_map_unit_label_SURVEY_FOOT_NO_NATION_REFUSED",
-    "epset_map_unit_label_ABBREVIATION_M_REFUSED"
+    "epset_map_unit_label_ABBREVIATION_M_REFUSED",
+    "map_conversion_zero_axis_direction_reads_as_identity",
+    "map_conversion_rotation_only_geographic_target_crs",
+    "map_conversion_zero_scale_reads_as_one",
+    "site_compound_angle_non_numeric_component_refused",
+    "site_compound_angle_four_numeric_components",
+    "map_conversion_non_finite_component_refused_falls_back_to_site"
   ],
   "cases": [
     {
@@ -768,6 +774,129 @@
         "eastings": 1000.0,
         "northings": 2000.0,
         "orthogonalHeight": 3.0
+      }
+    },
+    {
+      "name": "map_conversion_zero_axis_direction_reads_as_identity",
+      "_note": "XAxisAbscissa = XAxisOrdinate = 0 is a DIRECTION with no length. Neither half may use it as cos/sin (that maps every local point onto Eastings/Northings); both read it as no rotation, the angle atan2(0, 0) = 0 gives.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,$);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,42.,0.,0.,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2056",
+        "eastings": 1000.0,
+        "northings": 2000.0,
+        "orthogonalHeight": 42.0,
+        "localToMap": [
+          {
+            "local": [
+              10.0,
+              20.0,
+              5.0
+            ],
+            "map": [
+              1010.0,
+              2020.0,
+              47.0
+            ]
+          },
+          {
+            "local": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "map": [
+              1001.0,
+              2000.0,
+              42.0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "map_conversion_rotation_only_geographic_target_crs",
+      "_note": "Zero offsets, a 30 degree rotation, and a TargetCRS that is an IfcGeographicCRS (legal: TargetCRS is IfcCoordinateReferenceSystem), so there is no IfcProjectedCRS and no CRS name. A parsed conversion is georeferencing; deriving presence from non-zero offsets reported none.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCGEOGRAPHICCRS('EPSG:4326',$,$,$,$,$,$);\n#3=IFCMAPCONVERSION(#1,#2,0.,0.,0.,0.86602540378443871,0.49999999999999994,1.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "eastings": 0.0,
+        "northings": 0.0,
+        "orthogonalHeight": 0.0,
+        "localToMap": [
+          {
+            "local": [
+              100.0,
+              0.0,
+              0.0
+            ],
+            "map": [
+              86.60254037844386,
+              50.0,
+              0.0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "map_conversion_zero_scale_reads_as_one",
+      "_note": "Scale is OPTIONAL IfcReal and a zero scale collapses every local point onto the translation. Both halves read an authored 0 as the default 1.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,$);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,42.,1.,0.,0.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "mapConversion",
+        "crsName": "EPSG:2056",
+        "localToMap": [
+          {
+            "local": [
+              10.0,
+              20.0,
+              5.0
+            ],
+            "map": [
+              1010.0,
+              2020.0,
+              47.0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "site_compound_angle_non_numeric_component_refused",
+      "_note": "IfcCompoundPlaneAngleMeasure is read BY POSITION (degrees, minutes, seconds, optional millionths). A non-numeric component refuses the whole angle; compacting the list first re-indexed ($,51,30,0) as 51 deg 30 min and placed the site.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,($,51,30,0),(14,28,0),0.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": false
+      }
+    },
+    {
+      "name": "site_compound_angle_four_numeric_components",
+      "_note": "Control for the refusal above: four numeric components resolve by position, the fourth in millionths of a second.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(51,30,0,500000),(14,28,0),0.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "siteLocation",
+        "crsName": "EPSG:4326",
+        "eastings": 14.466666666666667,
+        "northings": 51.50013888888889,
+        "orthogonalHeight": 0.0
+      }
+    },
+    {
+      "name": "map_conversion_non_finite_component_refused_falls_back_to_site",
+      "_note": "XAxisAbscissa 1.0E999 is outside the double range. The WHOLE conversion is refused rather than one component replaced by its default, and with no IfcProjectedCRS nothing else claims georeferencing, so the legacy IfcSite fallback answers.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#3=IFCMAPCONVERSION(#1,#2,1000.,2000.,42.,1.0E999,0.,1.);\n#4=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(51,30,0),(14,28,0),0.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "siteLocation",
+        "crsName": "EPSG:4326",
+        "eastings": 14.466666666666667,
+        "northings": 51.5,
+        "orthogonalHeight": 0.0
       }
     }
   ]

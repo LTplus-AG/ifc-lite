@@ -207,9 +207,10 @@ pub fn intersection_solid(a: &Mesh, b: &Mesh) -> IntersectionSolid {
     // axis and sails past the gate. `component_groups` below partitions
     // `tris` by shared-vertex connectivity (the same bitwise key the welding
     // step already uses) so each disjoint piece is measured against its OWN
-    // extent; the reported `thickness` is the worst (thinnest) extent found
-    // in ANY single component along ANY candidate axis, so one bad component
-    // still withholds the whole pair rather than being averaged away.
+    // extent. Any single (component, axis) inside its own band withholds the
+    // whole pair rather than being averaged away, and the reported
+    // `thickness` is the thinnest such VIOLATING extent, not the thinnest
+    // extent overall.
     //
     // The `required` band paired with that thickness must be measured along
     // the SAME axis, not collapsed to one world-distance-derived scalar: a

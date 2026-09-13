@@ -86,7 +86,16 @@ fn survives_consolidation_closed(mesh: &Mesh) -> bool {
 }
 
 fn arrange(meshes: &[&Mesh], reconcile: bool) -> Mesh {
+    // One public union is one budgeted boolean operation. Retries below are
+    // candidates for that same operation, so they must share its counter.
+    budget::begin();
+    if budget::tripped() {
+        return Mesh::new();
+    }
     let out = arrange_once(meshes, reconcile);
+    if budget::tripped() {
+        return out;
+    }
     if !reconcile || meshes.len() != REORDER_SEARCH_OPERAND_COUNT {
         return out;
     }
@@ -136,7 +145,6 @@ fn arrange(meshes: &[&Mesh], reconcile: bool) -> Mesh {
 }
 
 fn arrange_once(meshes: &[&Mesh], reconcile: bool) -> Mesh {
-    budget::begin();
     if budget::tripped() {
         return Mesh::new();
     }

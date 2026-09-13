@@ -92,8 +92,7 @@ fn open_edges_3917(m: &Mesh) -> usize {
 /// other 5 orderings of this exact 3-operand union when the caller's own
 /// order (`CAB` here) comes back open, and one of them (verified to still be
 /// `BCA` in the trace) closes.
-#[test]
-fn issue_3917_a_torn_caller_order_is_repaired_without_the_caller_reordering_anything() {
+fn issue_3917_boxes() -> [Mesh; 3] {
     const SG: f64 = 1.0 / 65536.0;
     let (bx, by, dz) = (0.5, 0.5, SG);
     let a = boxed_3917([0.0, 0.0, 0.0], [1.0, 1.0, 1.0], None);
@@ -115,6 +114,12 @@ fn issue_3917_a_torn_caller_order_is_repaired_without_the_caller_reordering_anyt
             [-bx + 0.5, by + 0.5, 0.5 + dz],
         )),
     );
+    [a, b, c]
+}
+
+#[test]
+fn issue_3917_a_torn_caller_order_is_repaired_without_the_caller_reordering_anything() {
+    let [a, b, c] = issue_3917_boxes();
 
     // CAB: the ordering the issue measured at 53 unmatched directed edges.
     let cab: [&Mesh; 3] = [&c, &a, &b];
@@ -140,6 +145,39 @@ fn issue_3917_a_torn_caller_order_is_repaired_without_the_caller_reordering_anyt
             "ordering {order:?} of the same 3 physical operands must also close"
         );
     }
+}
+
+/// The retry candidates belong to one public boolean operation. Resetting the
+/// per-operation counter for each permutation would let one `union_many` call
+/// spend up to six times the configured exact-predicate cap (#1109).
+#[test]
+fn issue_3917_retries_share_one_boolean_budget() {
+    let _guard = budget::GLOBAL_CAP_LOCK.lock().unwrap();
+    let restore = budget::cap();
+    budget::set_cap(None);
+
+    let boxes = issue_3917_boxes();
+    let input = [&boxes[2], &boxes[0], &boxes[1]]; // CAB: known torn first candidate
+    let mut individual_total = 0;
+    for order in REORDER_POSITIONS {
+        let permuted = [input[order[0]], input[order[1]], input[order[2]]];
+        budget::begin();
+        let candidate = arrange_once(&permuted, true);
+        individual_total += budget::count();
+        if survives_consolidation_closed(&candidate) {
+            break;
+        }
+    }
+
+    let out = union_many(&input);
+    let shared_count = budget::count();
+    budget::set_cap(restore);
+
+    assert!(!out.is_empty());
+    assert_eq!(
+        shared_count, individual_total,
+        "the public union must retain the accumulated predicate count across retry candidates"
+    );
 }
 
 fn tetrahedron(offset: [f32; 3]) -> Mesh {

@@ -42,6 +42,61 @@ fn aabb_to_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
     mesh
 }
 
+/// The cut mesh of a group subtraction, or a panic naming the rejection.
+fn group_cut(outcome: GroupCut) -> Mesh {
+    match outcome {
+        GroupCut::Cut(m) => m,
+        GroupCut::Rejected(why) => panic!("group rejected: {why:?}"),
+    }
+}
+
+fn group_reject(outcome: GroupCut) -> GroupReject {
+    match outcome {
+        GroupCut::Cut(m) => panic!("expected a rejection, got a {}-triangle cut", m.triangle_count()),
+        GroupCut::Rejected(why) => why,
+    }
+}
+
+/// Every way a group is turned down used to come back as `Ok(host.clone())`,
+/// the shape of a real cut, and the router re-derived the bit with a triangle
+/// count and a 0.1 % volume gate (`router/voids/sweep.rs`; repaired twice
+/// under #1788). The seam now names the outcome. Mutations that fail this:
+/// return `GroupCut::Cut(host_mesh.clone())` from any bail; force `changed =
+/// true` in the kernel classifier (the tetra case reads `Cut`).
+#[test]
+fn subtract_mesh_many_names_each_rejection_instead_of_returning_the_host() {
+    let host = aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    let far = aabb_to_mesh(Point3::new(5.0, 5.0, 5.0), Point3::new(6.0, 6.0, 6.0));
+    let through = aabb_to_mesh(Point3::new(0.4, 0.4, -0.1), Point3::new(0.6, 0.6, 1.1));
+    // Tetrahedron in the x + y > 2.2 corner of the host's AABB: its AABB
+    // overlaps the cube, its solid never reaches it.
+    let mut miss = Mesh::new();
+    let (a, b, c, d) = (
+        Point3::new(2.1, 0.1, 0.5),
+        Point3::new(0.1, 2.1, 0.5),
+        Point3::new(2.1, 2.1, 0.5),
+        Point3::new(2.1, 2.1, 1.5),
+    );
+    for t in [
+        Triangle::new(a, b, c),
+        Triangle::new(a, d, b),
+        Triangle::new(b, d, c),
+        Triangle::new(c, d, a),
+    ] {
+        add_triangle_to_mesh(&mut miss, &t);
+    }
+    let p = ClippingProcessor::new();
+
+    assert_eq!(group_reject(p.subtract_mesh_many(&Mesh::new(), &[&through])), GroupReject::EmptyHost);
+    assert_eq!(group_reject(p.subtract_mesh_many(&host, &[&far])), GroupReject::NoOverlap);
+    assert_eq!(group_reject(p.subtract_mesh_many(&host, &[])), GroupReject::NoOverlap);
+    assert_eq!(group_reject(p.subtract_mesh_many(&host, &[&miss])), GroupReject::Unchanged);
+    // A miss alongside a real cutter is still a cut.
+    let cut = group_cut(p.subtract_mesh_many(&host, &[&miss, &through]));
+    assert!(cut.triangle_count() > host.triangle_count(), "through-cutter must carve the host");
+    assert_eq!(p.take_failures(), vec![], "none of these rejections is a failure record");
+}
+
 /// More cutters than MAX_CUTTERS_PER_ARRANGEMENT force the chunked path in
 /// `subtract_mesh_many`; the result must match the sequential subtract chain.
 /// Set difference is order-independent (`host - {all}` equals
@@ -78,9 +133,7 @@ fn subtract_mesh_many_chunks_match_sequential() {
         })
         .collect();
     let refs: Vec<&Mesh> = cutters.iter().collect();
-    let batched = csg
-        .subtract_mesh_many(&wall, &refs)
-        .expect("chunked subtract must conform");
+    let batched = group_cut(csg.subtract_mesh_many(&wall, &refs));
     let mut seq = wall.clone();
     for c in &cutters {
         seq = csg.subtract_mesh(&seq, c).expect("sequential subtract");
@@ -430,7 +483,7 @@ fn topology_tear_recorded_by_every_boolean_op_without_gating() {
     let cases: Vec<(&str, BoolOp, Mesh)> = {
         let p = ClippingProcessor::new();
         let subtract = p.subtract_mesh(&open_host, &through_cutter).unwrap();
-        let batched = p.subtract_mesh_many(&open_host, &[&through_cutter]).unwrap();
+        let batched = group_cut(p.subtract_mesh_many(&open_host, &[&through_cutter]));
         let union = p.union_mesh(&open_host, &overlapping).unwrap();
         let intersection = p.intersection_mesh(&open_host, &overlapping).unwrap();
         // One processor, four ops, four records — in call order.
@@ -481,7 +534,7 @@ fn topology_tear_not_recorded_for_closed_results() {
 
     let p = ClippingProcessor::new();
     p.subtract_mesh(&closed_host, &through_cutter).unwrap();
-    p.subtract_mesh_many(&closed_host, &[&through_cutter]).unwrap();
+    group_cut(p.subtract_mesh_many(&closed_host, &[&through_cutter]));
     p.union_mesh(&closed_host, &overlapping).unwrap();
     p.intersection_mesh(&closed_host, &overlapping).unwrap();
 
@@ -531,12 +584,11 @@ fn topology_tear_recorded_once_per_batched_subtract_not_once_per_chunk() {
     for cutter_count in [16usize, 17] {
         let refs: Vec<&Mesh> = cutters.iter().take(cutter_count).collect();
         let p = ClippingProcessor::new();
-        let result = p.subtract_mesh_many(&open_host, &refs).unwrap();
-        // The group must have been CUT, not rejected — a rejected group returns
-        // the host un-cut and records nothing, which would make this vacuous.
+        // `group_cut` panics on a rejection, which would make this vacuous.
+        let result = group_cut(p.subtract_mesh_many(&open_host, &refs));
         assert!(
             result.triangle_count() > open_host.triangle_count(),
-            "{cutter_count} cutters: the group was rejected, so this proves nothing"
+            "{cutter_count} cutters: the cut must carve the host"
         );
         assert!(
             !crate::router::voids::prism_cut::closure_checks::directed_closed(&result)
@@ -710,7 +762,7 @@ fn topology_gate_is_a_true_noop_without_the_feature() {
 
     let p = ClippingProcessor::new();
     let subtract = p.subtract_mesh(&open_host, &through_cutter).unwrap();
-    let batched = p.subtract_mesh_many(&open_host, &[&through_cutter]).unwrap();
+    let batched = group_cut(p.subtract_mesh_many(&open_host, &[&through_cutter]));
     let union = p.union_mesh(&open_host, &overlapping).unwrap();
     let intersection = p.intersection_mesh(&open_host, &overlapping).unwrap();
 
@@ -744,12 +796,15 @@ fn topology_gate_rejects_every_torn_boolean_result_when_enabled() {
 
     let p = ClippingProcessor::new();
     let subtract = p.subtract_mesh(&open_host, &through_cutter).unwrap();
-    let batched = p.subtract_mesh_many(&open_host, &[&through_cutter]).unwrap();
+    let batched = p.subtract_mesh_many(&open_host, &[&through_cutter]);
     let union = p.union_mesh(&open_host, &overlapping).unwrap();
     let intersection = p.intersection_mesh(&open_host, &overlapping).unwrap();
 
     assert_eq!(subtract.indices, open_host.indices, "subtract_mesh must fall back to the un-cut host");
-    assert_eq!(batched.indices, open_host.indices, "subtract_mesh_many must fall back to the un-cut host");
+    assert!(
+        matches!(batched, GroupCut::Rejected(GroupReject::GateRejected)),
+        "subtract_mesh_many must reject the group at the gate"
+    );
     assert!(intersection.is_empty(), "intersection_mesh must fall back to an empty mesh");
     let mut expected_union_merge = open_host.clone();
     expected_union_merge.merge(&overlapping);
@@ -832,16 +887,16 @@ fn manifold_gate_rejects_a_non_manifold_result_at_the_accept_seam() {
 
     let p = ClippingProcessor::new();
     let subtract = p.subtract_mesh(&host, &through_cutter).unwrap();
-    let batched = p.subtract_mesh_many(&host, &[&through_cutter]).unwrap();
+    let batched = p.subtract_mesh_many(&host, &[&through_cutter]);
     let union = p.union_mesh(&host, &overlapping).unwrap();
 
     assert_eq!(
         subtract.indices, host.indices,
         "subtract_mesh must fall back to the un-cut host"
     );
-    assert_eq!(
-        batched.indices, host.indices,
-        "subtract_mesh_many must fall back to the un-cut host"
+    assert!(
+        matches!(batched, GroupCut::Rejected(GroupReject::GateRejected)),
+        "subtract_mesh_many must reject the group at the gate"
     );
     let mut expected_union_merge = host.clone();
     expected_union_merge.merge(&overlapping);

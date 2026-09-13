@@ -250,11 +250,13 @@ pub fn produce_element_meshes(
     // cuts bail to the #635 AABB fallback — instead of grinding the geometry
     // stream past the 95% watchdog. The per-boolean cap alone could not see this
     // distributed cost. Unbounded under the server/offline-export profile.
-    ifc_lite_geometry::kernel::budget::begin_element();
+    // Both scopes restore the enclosing element's counters on drop: a rayon
+    // work-steal can run another element to completion inside this one.
+    let _budget_scope = ifc_lite_geometry::kernel::budget::enter_element();
 
-    // Open this element's degenerate-backstop scope (same begin/drain shape as
-    // the kernel budget above); see the `degenerate` child module.
-    degenerate::begin_element();
+    // Open this element's degenerate-backstop scope; see the `degenerate` child
+    // module.
+    let _degenerate_scope = degenerate::begin_element();
 
     let mut hasher = match (&job.kind, opts.geometry_hash) {
         (ElementJobKind::Product, Some(cfg)) => {

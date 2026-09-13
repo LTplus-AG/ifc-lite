@@ -6,7 +6,15 @@
 //! metres, occurrences only. Uses an INLINE minimal IFC (a unit cube at the
 //! origin) so the test runs in CI without any external fixture.
 
-use ifc_lite_processing::{build_geometry_data_export, process_geometry};
+use ifc_lite_core::{EntityDecoder, IfcType};
+use ifc_lite_geometry::{GeometryRouter, MaterialLayerIndex};
+use ifc_lite_processing::element::{
+    produce_element_meshes, ElementJobKind, ElementMeshJob, MeshProductionContext,
+    MeshProductionOptions, GEOM_CLASS_LAYER_SLICE,
+};
+use ifc_lite_processing::{build_geometry_data_export, process_geometry, MeshData};
+use rustc_hash::FxHashMap;
+use std::sync::Arc;
 
 /// Minimal IFC4: one IfcBuildingElementProxy, a unit cube extruded over
 /// [0,0,0]..[1,1,1], identity placement, metre units.
@@ -106,4 +114,101 @@ fn geometry_data_export_is_welded_zup_world() {
     // JSON contract round-trips.
     let json = export.to_json().expect("serialize");
     assert!(json.contains("ifc-lite-geometry-data"));
+}
+
+/// A three-layer wall (50 mm / 200 mm / 50 mm, one swept-solid body item) that
+/// the material-layer index calls sliceable, so its body comes out as class-3
+/// layer slices and no class-0 mesh.
+const LAYERED_WALL_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('geometry-data export layered wall'),'2;1');
+FILE_NAME('wall.ifc','2026-09-13T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('1234567890123456789012',$,'Test',$,$,$,$,(#10),#7);
+#7=IFCUNITASSIGNMENT((#8));
+#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#10=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#11,$);
+#11=IFCAXIS2PLACEMENT3D(#12,$,$);
+#12=IFCCARTESIANPOINT((0.,0.,0.));
+#13=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#10,$,.MODEL_VIEW.,$);
+#20=IFCLOCALPLACEMENT($,#21);
+#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);
+#22=IFCCARTESIANPOINT((0.,0.,0.));
+#23=IFCDIRECTION((0.,0.,1.));
+#24=IFCDIRECTION((1.,0.,0.));
+#30=IFCRECTANGLEPROFILEDEF(.AREA.,'Wall',#31,4.0,0.3);
+#31=IFCAXIS2PLACEMENT2D(#32,#33);
+#32=IFCCARTESIANPOINT((0.,0.));
+#33=IFCDIRECTION((1.,0.));
+#40=IFCEXTRUDEDAREASOLID(#30,#41,#42,3.0);
+#41=IFCAXIS2PLACEMENT3D(#43,$,$);
+#42=IFCDIRECTION((0.,0.,1.));
+#43=IFCCARTESIANPOINT((0.,0.,0.));
+#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#40));
+#51=IFCPRODUCTDEFINITIONSHAPE($,$,(#50));
+#100=IFCWALL('0001234567890123456789',$,'LayeredWall',$,$,#20,#51,'Test',$);
+#200=IFCMATERIAL('Finish',$,$);
+#201=IFCMATERIAL('Core',$,$);
+#210=IFCMATERIALLAYER(#200,0.05,$,'FinishOuter',$,$,$);
+#211=IFCMATERIALLAYER(#201,0.2,$,'Core',$,$,$);
+#212=IFCMATERIALLAYER(#200,0.05,$,'FinishInner',$,$,$);
+#220=IFCMATERIALLAYERSET((#210,#211,#212),'3LayerBuildup',$);
+#221=IFCMATERIALLAYERSETUSAGE(#220,.AXIS2.,.POSITIVE.,-0.15,$);
+#300=IFCRELASSOCIATESMATERIAL('0001234567890123456790',$,$,$,(#100),#221);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// Mesh wall #100 through the canonical producer with the material-layer index
+/// armed, as the wasm batch path and the appearance context do.
+fn produce_layered_wall() -> Vec<MeshData> {
+    let mut decoder = EntityDecoder::new(LAYERED_WALL_IFC);
+    let mut router = GeometryRouter::with_units(LAYERED_WALL_IFC, &mut decoder);
+    let index = MaterialLayerIndex::from_content(LAYERED_WALL_IFC, &mut decoder);
+    router.set_material_layer_index(Arc::new(index));
+    let wall = decoder.decode_by_id(100).expect("decode wall #100");
+    let void_index = FxHashMap::default();
+    let geometry_style_index = FxHashMap::default();
+    let indexed_colour_full = FxHashMap::default();
+    let element_material_colors = FxHashMap::default();
+    let texture_index = FxHashMap::default();
+    let ctx = MeshProductionContext {
+        void_index: &void_index,
+        geometry_style_index: &geometry_style_index,
+        indexed_colour_full: &indexed_colour_full,
+        element_material_colors: &element_material_colors,
+        texture_index: &texture_index,
+        site_local_rotation: None,
+    };
+    let job = ElementMeshJob {
+        id: 100,
+        ifc_type: IfcType::IfcWall,
+        entity: &wall,
+        kind: ElementJobKind::Product,
+        element_color: None,
+        metadata: None,
+    };
+    let options = MeshProductionOptions::default();
+    produce_element_meshes(&job, &ctx, &options, &mut decoder, &router).meshes
+}
+
+/// The export filtered on `geometry_class != 0`, which also caught class 3
+/// (`GEOM_CLASS_LAYER_SLICE`): a material-layer wall's slices are its body, not
+/// type-product geometry, so the wall vanished from the export (#4663).
+#[test]
+fn geometry_data_export_keeps_a_material_layer_wall() {
+    let meshes = produce_layered_wall();
+    assert!(
+        meshes.len() == 3 && meshes.iter().all(|m| m.geometry_class == GEOM_CLASS_LAYER_SLICE),
+        "fixture premise: the wall meshes as three class-3 layer slices, got classes {:?}",
+        meshes.iter().map(|m| m.geometry_class).collect::<Vec<_>>()
+    );
+
+    let export = build_geometry_data_export(&meshes, [0.0; 3], None);
+    let wall = export.elements.get(&100).expect("layered wall #100 must be exported");
+    let (mn, mx) = bbox(&wall.vertices);
+    approx(mn, [-2.0, -0.15, 0.0], "layered wall min");
+    approx(mx, [2.0, 0.15, 3.0], "layered wall max");
 }

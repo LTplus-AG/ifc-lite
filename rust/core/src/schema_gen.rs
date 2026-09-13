@@ -432,56 +432,6 @@ impl IfcSchema {
     pub fn is_profile_type(&self, ifc_type: &IfcType) -> bool {
         self.profile_types.contains_key(ifc_type)
     }
-
-    /// Check if type has geometry
-    pub fn has_geometry(&self, ifc_type: &IfcType) -> bool {
-        // Building elements, furnishing, etc.
-        let name = ifc_type.name();
-        (matches!(
-            ifc_type,
-            IfcType::IfcWall
-                | IfcType::IfcWallStandardCase
-                | IfcType::IfcSlab
-                | IfcType::IfcBeam
-                | IfcType::IfcColumn
-                | IfcType::IfcRoof
-                | IfcType::IfcStair
-                | IfcType::IfcRamp
-                | IfcType::IfcRailing
-                | IfcType::IfcPlate
-                | IfcType::IfcMember
-                | IfcType::IfcFooting
-                | IfcType::IfcPile
-                | IfcType::IfcCovering
-                | IfcType::IfcCurtainWall
-                | IfcType::IfcDoor
-                | IfcType::IfcWindow
-                | IfcType::IfcChimney
-                | IfcType::IfcShadingDevice
-                | IfcType::IfcBuildingElementProxy
-                | IfcType::IfcBuildingElementPart
-        ) || name.contains("Reinforc"))
-            || matches!(
-                ifc_type,
-                IfcType::IfcFurnishingElement
-                | IfcType::IfcFurniture
-                | IfcType::IfcDuctSegment
-                | IfcType::IfcPipeSegment
-                | IfcType::IfcCableSegment
-                | IfcType::IfcProduct // Base type for all products
-                | IfcType::IfcDistributionElement
-                | IfcType::IfcFlowSegment
-                | IfcType::IfcFlowFitting
-                | IfcType::IfcFlowTerminal
-            )
-            // Spatial elements with geometry (for visibility toggling)
-            || matches!(
-                ifc_type,
-                IfcType::IfcSpace
-                | IfcType::IfcOpeningElement
-                | IfcType::IfcSite
-            )
-    }
 }
 
 impl Default for IfcSchema {

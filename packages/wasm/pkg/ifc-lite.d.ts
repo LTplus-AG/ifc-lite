@@ -454,10 +454,18 @@ export class IfcAPI {
     exportJson(content: Uint8Array, pretty: boolean, include_properties: boolean, include_quantities: boolean): Uint8Array;
     /**
      * Export **JSON-LD** (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART
-     * IFC4 OWL default. `included` is an express-id isolation filter mirroring the
-     * OBJ/glTF/STEP exporters (empty ⇒ all entities).
+     * IFC4 OWL default.
+     *
+     * `included` is an express-id isolation filter mirroring `exportObj` /
+     * `exportGlb`, and carries the same null-vs-empty distinction across the wasm
+     * boundary: omit it (`undefined`) for "no isolation filter" (every entity is
+     * emitted); pass an empty `Uint32Array` for "isolation is ACTIVE and currently
+     * matches nothing", which emits an empty `@graph`. Collapsing the two — as a
+     * bare `Uint32Array` parameter would force a caller to do — silently exported
+     * the whole model when a filter matched nothing (#4659, the JSON-LD twin of
+     * #4483/#4484). A non-empty `Uint32Array` is the ordinary allowlist.
      */
-    exportJsonld(content: Uint8Array, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included: Uint32Array): Uint8Array;
+    exportJsonld(content: Uint8Array, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included?: Uint32Array | null): Uint8Array;
     /**
      * Package an already-produced **GLB** + georeference into a **KMZ** (`Uint8Array`)
      * for Google Earth: a ZIP of `doc.kml` (a `<Model>` placed at `latitude`/`longitude`/
@@ -531,15 +539,23 @@ export class IfcAPI {
      * is genuinely needed.
      *
      * `schema` is the FILE_SCHEMA label to write (empty ⇒ preserve the source schema).
-     * `included` is an express-id allowlist (empty ⇒ whole model); when set, the forward
-     * `#`-reference closure is added so the subset never dangles a reference.
+     *
+     * `included` is an express-id allowlist carrying the same null-vs-empty
+     * distinction as `exportObj` / `exportGlb`: omit it (`undefined`) for "no
+     * isolation filter" (whole model); pass an empty `Uint32Array` for "isolation
+     * is ACTIVE and currently matches nothing", which writes a header-only file
+     * with an empty `DATA;` section. Collapsing the two — as a bare `Uint32Array`
+     * parameter would force a caller to do — silently exported the whole model
+     * when a filter matched nothing (#4659, the STEP twin of #4483/#4484). When
+     * set, the forward `#`-reference closure is added so the subset never dangles
+     * a reference.
      * `mutations_json` carries `MutablePropertyView` edits (attribute updates +
      * property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
      * A non-empty but malformed `mutations_json` throws rather than silently
      * exporting the model with none of the caller's edits applied — mirrors
      * `exportGlb`'s and `exportMerged`'s fail-closed contract on this same API.
      */
-    exportStep(content: Uint8Array, schema: string, included: Uint32Array, mutations_json: string): Uint8Array;
+    exportStep(content: Uint8Array, schema: string, included: Uint32Array | null | undefined, mutations_json: string): Uint8Array;
     /**
      * Export **OpenUSD** (`.usda` ASCII): a real Z-up USD stage — spatial hierarchy of
      * `Xform` prims, `UsdGeomMesh` geometry, `UsdPreviewSurface` materials, IFC
@@ -1941,7 +1957,12 @@ export function intersection2d(a: Contours2D, b: Contours2D): Contours2D;
  *
  * `positions` is flat XYZ; `indices` is flat triangle indices. `axis` is
  * 0/1/2 = x/y/z (the cut axis, WebGL Y-up). Returns `undefined` when the mesh
- * has no triangles or projects to nothing.
+ * has no triangles or projects to nothing: the element has no footprint.
+ *
+ * THROWS when the outline was not computed: an `axis` outside 0..=2, or a
+ * mesh with more valid projected triangles than the overlay budget (50 000).
+ * The viewer's outline provider catches the throw and draws its TypeScript
+ * silhouette for that mesh.
  *
  * ```javascript
  * const outline = meshOutline2d(positions, indices, 1, false); // axis 1 = y
@@ -1992,10 +2013,17 @@ export function resolve2d(a: Contours2D): Contours2D;
  * meaningless volumes with a plausible `sumErrorRel`, so the closure proof
  * above is the caller's responsibility and not a formality.
  *
+ * Returns `undefined` when the mesh encloses no volume (no triangles survive
+ * the filter above, or the shell is degenerate): there is nothing to split,
+ * and a result for it would report `pieceCount` 1, `sumErrorRel` 0 and
+ * `remainderFailed` false, a perfect split of nothing. A caller that gates
+ * on those numbers must treat `undefined` as "no split", not as "no error".
+ *
  * ```javascript
  * const split = splitMeshByZones(positions, indices, new Float64Array([
  *   0, 0, 0, 10, 10, 10, 0,
  * ]));
+ * if (!split) return; // the mesh encloses no volume
  * for (let i = 0; i < split.pieceCount; i++) {
  *   const piece = split.piece(i);
  *   // piece.zoneIndex, piece.positions, piece.indices, piece.volume
@@ -2004,7 +2032,7 @@ export function resolve2d(a: Contours2D): Contours2D;
  * split.free();
  * ```
  */
-export function splitMeshByZones(positions: Float64Array, indices: Uint32Array, zones: Float64Array, footprints?: Float64Array | null, footprint_counts?: Uint32Array | null): ZoneSplitJs;
+export function splitMeshByZones(positions: Float64Array, indices: Uint32Array, zones: Float64Array, footprints?: Float64Array | null, footprint_counts?: Uint32Array | null): ZoneSplitJs | undefined;
 
 /**
  * `a ∪ b`.
@@ -2160,7 +2188,7 @@ export interface InitOutput {
     readonly ifcapi_simplifyMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
     readonly ifcapi_version: (a: number, b: number) => void;
     readonly intersection2d: (a: number, b: number) => number;
-    readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+    readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly meshcollection_buildingRotation: (a: number, b: number) => void;
     readonly meshcollection_diagnostics: (a: number) => number;
     readonly meshcollection_geometryAabbValues: (a: number) => number;

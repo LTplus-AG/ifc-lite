@@ -36,6 +36,7 @@
 //! missing void").
 
 use std::cell::Cell;
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Serialises every test that mutates the process-global `CAP` / `ELEMENT_CAP`
@@ -188,10 +189,11 @@ pub fn begin() {
 }
 
 /// Begin an ELEMENT scope (#1109 follow-up): reset the per-element accumulator
-/// and snapshot the per-element cap. Call once per element at the unified
-/// mesh-production entry (`ifc_lite_processing::element::produce_element_meshes`),
-/// BEFORE its booleans run, so every boolean the element issues accumulates into
-/// one budget and a hard element degrades as a whole.
+/// and snapshot the per-element cap, BEFORE the element's booleans run, so every
+/// boolean the element issues accumulates into one budget and a hard element
+/// degrades as a whole. Mesh production opens it through [`enter_element`],
+/// which also restores the enclosing element's scope; call this directly only
+/// where no element can be nested on the same thread.
 ///
 /// The per-element cap is unbounded whenever the per-boolean profile is unbounded
 /// (`set_cap(None)` / `IFC_LITE_CSG_BUDGET=0` — the server/offline-export
@@ -219,6 +221,70 @@ pub fn begin_element() {
     };
     ELEM_CAP.with(|c| c.set(if elem_cap == 0 { u64::MAX } else { elem_cap }));
     ELEM_COUNT.with(|c| c.set(0));
+}
+
+/// An open per-element budget scope. Returned by [`enter_element`]; dropping it
+/// restores every accumulator to the value it had when the scope opened.
+///
+/// A rayon worker blocked on a nested `par_iter` (faceted-brep triangulation)
+/// can steal another element job onto its own thread and run it to completion
+/// before resuming the first. The thread-locals are shared by both, so a bare
+/// [`begin_element`] in the stolen element zeroes the outer element's total and
+/// whether the outer element trips its cap depends on scheduling. Scopes nest
+/// in stack order, so a save on entry and a restore on drop keep each element's
+/// count its own.
+///
+/// The scope is not `Send`, so it cannot be dropped on a thread other than the
+/// one whose counters it saved (#4663):
+///
+/// ```compile_fail
+/// fn assert_send<T: Send>() {}
+/// assert_send::<ifc_lite_geometry::kernel::budget::ElementScope>();
+/// ```
+#[must_use = "dropping the scope immediately restores the enclosing element's budget"]
+pub struct ElementScope {
+    count: u64,
+    op_cap: u64,
+    elem_count: u64,
+    elem_cap: u64,
+    /// Not `Send`: the scope restores the thread-locals of the thread that
+    /// opened it, so it must be dropped there.
+    _thread_bound: PhantomData<*const ()>,
+}
+
+/// Open a per-element budget scope ([`begin_element`]) that restores the
+/// enclosing scope's counters and caps when dropped. Use this, not a bare
+/// [`begin_element`], wherever element meshing can be re-entered on one thread.
+pub fn enter_element() -> ElementScope {
+    let scope = ElementScope {
+        count: COUNT.with(Cell::get),
+        op_cap: OP_CAP.with(Cell::get),
+        elem_count: ELEM_COUNT.with(Cell::get),
+        elem_cap: ELEM_CAP.with(Cell::get),
+        _thread_bound: PhantomData,
+    };
+    begin_element();
+    scope
+}
+
+impl Drop for ElementScope {
+    fn drop(&mut self) {
+        // Fold the scope's last boolean and its element total into the peaks
+        // before the restore overwrites them (`begin` / `begin_element` fold a
+        // finished count only when the next one starts on this thread).
+        let last_op = COUNT.with(Cell::get);
+        if last_op != 0 {
+            PEAK.fetch_max(last_op, Ordering::Relaxed);
+        }
+        let finished = ELEM_COUNT.with(Cell::get);
+        if finished != 0 {
+            ELEM_PEAK.fetch_max(finished, Ordering::Relaxed);
+        }
+        COUNT.with(|c| c.set(self.count));
+        OP_CAP.with(|c| c.set(self.op_cap));
+        ELEM_COUNT.with(|c| c.set(self.elem_count));
+        ELEM_CAP.with(|c| c.set(self.elem_cap));
+    }
 }
 
 /// Highest single-boolean escalation count observed since process start (or the
@@ -301,100 +367,5 @@ pub(crate) fn restore_counters((op, elem): (u64, u64)) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The cap counts escalations and trips at exactly the configured count,
-    /// deterministically; `begin()` resets; unbounded never trips.
-    #[test]
-    fn cap_counts_and_trips_deterministically() {
-        let _guard = GLOBAL_CAP_LOCK.lock().unwrap();
-        let restore = cap();
-
-        set_cap(Some(5));
-        begin();
-        assert_eq!(count(), 0);
-        assert!(!tripped(), "fresh op must not be tripped");
-        for _ in 0..4 {
-            note_escalation();
-        }
-        assert_eq!(count(), 4);
-        assert!(!tripped(), "4 < cap 5 must not trip");
-        note_escalation(); // the 5th reaches the cap
-        assert_eq!(count(), 5);
-        assert!(tripped(), "count == cap must trip");
-        note_escalation(); // stays tripped past the cap
-        assert!(tripped());
-
-        // begin() resets the per-op counter + trip latch.
-        begin();
-        assert_eq!(count(), 0);
-        assert!(!tripped());
-
-        // Unbounded never trips, no matter how many escalations.
-        set_cap(None);
-        begin();
-        for _ in 0..10_000 {
-            note_escalation();
-        }
-        assert_eq!(count(), 10_000);
-        assert!(!tripped(), "unbounded (cap None) must never trip");
-
-        set_cap(restore);
-    }
-
-    /// The per-element budget (#1109 follow-up) accumulates across an element's
-    /// booleans even though `begin()` resets the per-boolean counter, trips the
-    /// element as a whole, and is reset by `begin_element()`. It stays unbounded
-    /// for callers that never open an element scope (the kernel/router tests and
-    /// the server profile), which is what keeps the pinned snapshots unchanged.
-    #[test]
-    fn per_element_budget_accumulates_across_booleans() {
-        let _guard = GLOBAL_CAP_LOCK.lock().unwrap();
-        let restore_cap = cap();
-        let restore_ecap = element_cap();
-        // A bounded per-boolean profile so begin_element() activates the element
-        // cap (it is unbounded only when the per-boolean profile is unbounded).
-        set_cap(Some(1_000_000));
-        set_element_cap(Some(10));
-
-        begin_element();
-        assert_eq!(element_count(), 0);
-        assert!(!tripped(), "fresh element must not be tripped");
-
-        // Three booleans, 4 escalations each = 12 total > the element cap of 10,
-        // even though no single boolean's per-op count (4) reaches it.
-        for _ in 0..3 {
-            begin(); // per-boolean reset — does NOT reset the element accumulator
-            assert_eq!(count(), 0, "begin() resets the per-boolean counter");
-            for _ in 0..4 {
-                note_escalation();
-            }
-        }
-        assert_eq!(element_count(), 12);
-        assert!(tripped(), "element total 12 >= element cap 10 must trip");
-        // ...and it stays tripped through the NEXT boolean even after begin()
-        // zeroes the per-boolean counter — so the element's remaining cuts bail.
-        begin();
-        assert_eq!(count(), 0);
-        assert!(tripped(), "element budget stays blown across begin()");
-
-        // begin_element() opens a fresh scope and clears the trip.
-        begin_element();
-        assert_eq!(element_count(), 0);
-        assert!(!tripped());
-
-        // An unbounded per-boolean profile makes the element cap unbounded too
-        // (the single server/offline-export switch), so it never trips.
-        set_cap(None);
-        begin_element();
-        for _ in 0..100_000 {
-            note_escalation();
-        }
-        assert_eq!(element_count(), 100_000);
-        assert!(!tripped(), "unbounded per-boolean profile ⇒ unbounded element");
-
-        set_cap(restore_cap);
-        set_element_cap(restore_ecap);
-    }
-}
+#[path = "budget_tests.rs"]
+mod tests;

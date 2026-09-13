@@ -514,13 +514,13 @@ export class IfcLiteBridge {
 
   /**
    * Re-serialize the model in `content` to a STEP/IFC string (P1: base
-   * re-serialization + reference-closed subset). Empty `schema` ⇒ preserve source;
-   * empty `included` ⇒ whole model.
+   * re-serialization + reference-closed subset). Empty `schema` preserves the source;
+   * `included` distinguishes no filter (`undefined`) from an active empty filter (#4659).
    */
   exportStep(
     content: Uint8Array,
     schema = '',
-    included: Uint32Array = new Uint32Array(),
+    included: Uint32Array | undefined = undefined,
     mutationsJson = '',
   ): Uint8Array {
     return this.runExport('exportStep', content, (api) =>
@@ -558,8 +558,8 @@ export class IfcLiteBridge {
 
   /**
    * Export JSON-LD (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART IFC4 OWL.
-   * `included` is an express-id isolation filter (empty ⇒ all entities), mirroring the
-   * OBJ/glTF/STEP exporters so `--type`/`--storey`/`--where`/`--limit` subsets apply.
+   * `included` distinguishes no filter (`undefined`) from an active empty filter and
+   * otherwise applies an express-id allowlist like the OBJ/glTF/STEP exporters (#4659).
    */
   exportJsonld(
     content: Uint8Array,
@@ -567,7 +567,7 @@ export class IfcLiteBridge {
     includeProperties = true,
     includeQuantities = false,
     pretty = false,
-    included: Uint32Array = new Uint32Array(),
+    included: Uint32Array | undefined = undefined,
   ): Uint8Array {
     return this.runExport('exportJsonld', content, (api) =>
       api.exportJsonld(content, context, includeProperties, includeQuantities, pretty, included),

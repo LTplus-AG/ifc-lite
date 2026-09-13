@@ -96,16 +96,16 @@ impl BooleanClippingProcessor {
     /// [`Self::rewind_to`] plus the deferral itself, so a guard in
     /// `try_union_polygonal_chain` reads as one line and cannot rewind without
     /// deferring or defer without rewinding.
-    pub(super) fn defer_after(&self, mark: usize) -> crate::Result<Option<crate::Mesh>> {
+    pub(super) fn defer_after<T>(&self, mark: usize) -> crate::Result<Option<T>> {
         self.rewind_to(mark);
         Ok(None)
     }
 
-    /// Record the `EmptyOperand` consequence for a second operand that meshed
+    /// Record the `EmptyOperand` consequence for an operand that meshed
     /// empty — UNLESS [`Self::process_operand_checked`] already recorded
     /// `UnsupportedOperand` for that same operand. One dropped step, one
     /// record: see the flag's rationale there.
-    pub(super) fn record_empty_second_operand(&self, op: BoolOp, already_recorded: bool) {
+    pub(super) fn record_empty_operand(&self, op: BoolOp, already_recorded: bool) {
         if !already_recorded {
             self.record_failure(op, BoolFailureReason::EmptyOperand);
         }

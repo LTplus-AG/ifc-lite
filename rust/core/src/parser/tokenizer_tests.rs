@@ -206,7 +206,7 @@ fn comment_before_a_value_is_not_part_of_the_value() {
 }
 
 /// A comment before the `$` must not make the null slot look non-null --
-/// same shape `has_non_null_attribute`'s tests cover at the scanner layer.
+/// same shape `nth_attribute_is_present`'s tests cover at the scanner layer.
 #[test]
 fn comment_before_dollar_still_decodes_as_null() {
     let input = "#1=IFCWALL(/* c1 */ $);";

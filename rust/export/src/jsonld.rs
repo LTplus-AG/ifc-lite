@@ -17,8 +17,9 @@ pub struct JsonLdOptions {
     pub include_properties: bool,
     pub include_quantities: bool,
     pub pretty: bool,
-    /// Express-id isolation filter (mirrors the OBJ/glTF/STEP exporters): when
-    /// non-empty, only these entities are emitted into `@graph`; empty ⇒ all.
+    /// Express-id isolation filter. Empty preserves the historical public API
+    /// contract and means all entities; callers that must distinguish an
+    /// active empty filter use [`export_jsonld_with_filter`].
     pub included: Vec<u32>,
 }
 
@@ -36,12 +37,24 @@ impl Default for JsonLdOptions {
 
 /// Export the model as a JSON-LD document string.
 pub fn export_jsonld(content: &[u8], opts: &JsonLdOptions) -> String {
+    let included = (!opts.included.is_empty()).then_some(opts.included.as_slice());
+    export_jsonld_with_filter(content, opts, included)
+}
+
+/// Export JSON-LD with an explicit null-vs-empty isolation filter.
+///
+/// `None` means no filter, `Some(ids)` means an active allowlist, and
+/// `Some(empty)` emits an empty `@graph`. This additive entry point lets wasm
+/// preserve that distinction without changing [`JsonLdOptions`]' stable public
+/// field shape (#4659).
+pub fn export_jsonld_with_filter(
+    content: &[u8],
+    opts: &JsonLdOptions,
+    included: Option<&[u32]>,
+) -> String {
     let model = build_export_model(content);
-    let filter: Option<std::collections::HashSet<u32>> = if opts.included.is_empty() {
-        None
-    } else {
-        Some(opts.included.iter().copied().collect())
-    };
+    let filter: Option<std::collections::HashSet<u32>> =
+        included.map(|ids| ids.iter().copied().collect());
     let mut graph: Vec<Value> = Vec::with_capacity(model.entities.len());
 
     for e in &model.entities {
@@ -137,6 +150,62 @@ mod tests {
         // At least one node carries property sets in the ifc: namespace.
         let has_psets = graph.iter().any(|n| n["ifc:hasPropertySets"].is_array());
         assert!(has_psets, "expected ifc:hasPropertySets somewhere");
+    }
+    /// #4659: `Some(empty)` means "the isolation filter is active and matched
+    /// nothing", not "no filter". The wasm binding previously collapsed its
+    /// empty array into the legacy `JsonLdOptions::included` meaning of
+    /// "export everything", so a zero-match `--type` handed the user the whole
+    /// model. The explicit helper preserves both contracts without breaking
+    /// existing Rust callers.
+    ///
+    /// The `None` sibling pins the other direction: the two must not collapse
+    /// into each other in either direction.
+    #[test]
+    fn an_active_but_empty_included_set_emits_an_empty_graph() {
+        let ifc = "ISO-10303-21;\n\
+HEADER;\n\
+FILE_DESCRIPTION((''),'');\n\
+FILE_NAME('','',(''),(''),'','','');\n\
+FILE_SCHEMA(('IFC4'));\n\
+ENDSEC;\n\
+DATA;\n\
+#4=IFCPROJECT('0PROJECT0000000000000',$,'P',$,$,$,$,$,$);\n\
+#5=IFCWALL('0WALL000000000000000A',$,'W1',$,$,$,$,$,$);\n\
+#6=IFCWALL('0WALL000000000000000B',$,'W2',$,$,$,$,$,$);\n\
+#7=IFCSLAB('0SLAB000000000000000A',$,'S1',$,$,$,$,$,$);\n\
+ENDSEC;\n\
+END-ISO-10303-21;\n";
+        // No filter: every entity. Asserted first so the empty-graph assertion
+        // below cannot pass merely because the fixture exports nothing.
+        let opts = JsonLdOptions::default();
+        let unfiltered: Value = serde_json::from_str(&export_jsonld_with_filter(
+            ifc.as_bytes(),
+            &opts,
+            None,
+        ))
+        .unwrap();
+        let unfiltered = unfiltered["@graph"].as_array().expect("graph array").len();
+        assert_eq!(unfiltered, 3, "unfiltered graph carries every entity in the fixture");
+
+        // A filter that matches something still narrows.
+        let narrowed: Value = serde_json::from_str(&export_jsonld_with_filter(
+            ifc.as_bytes(),
+            &opts,
+            Some(&[5, 6]),
+        ))
+        .unwrap();
+        let narrowed = narrowed["@graph"].as_array().expect("graph array").len();
+        assert_eq!(narrowed, 2, "an explicit two-entity filter emits exactly those entities");
+
+        // A filter that matches nothing emits nothing.
+        let zero_match: Value = serde_json::from_str(&export_jsonld_with_filter(
+            ifc.as_bytes(),
+            &opts,
+            Some(&[]),
+        ))
+        .unwrap();
+        let zero_match = zero_match["@graph"].as_array().expect("graph array").len();
+        assert_eq!(zero_match, 0, "an active-but-empty filter must not export the whole model");
     }
 
     #[test]

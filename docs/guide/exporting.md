@@ -308,11 +308,17 @@ const jsonld = gp.exportJsonld(
   true,                  // includeProperties
   false,                 // includeQuantities
   true,                  // pretty
-  new Uint32Array(),     // express-id isolation filter (empty ⇒ all entities)
+  undefined,             // express-id isolation filter — see below
 );
 
 await saveFile('model.jsonld', jsonld);
 ```
+
+The isolation filter carries a null-vs-empty distinction, the same one
+`exportObj` / `exportGlb` / `exportStep` use: `undefined` means "no filter",
+and an empty `Uint32Array` means "the filter is active and matched nothing",
+which produces an empty `@graph`. Collapsing the two would hand a user who
+asked for a subset the entire model.
 
 ### JSON-LD Structure
 
@@ -769,7 +775,13 @@ await gp.init();
 const glb = gp.exportGlb(bytes, true, new Uint32Array(), isolated, '');
 // … the same `isolated` set also filters OBJ, STEP and JSON-LD:
 const jsonld = gp.exportJsonld(bytes, '', true, false, true, isolated);
+const step = gp.exportStep(bytes, '', isolated);
 ```
+
+All four take `undefined` for "no isolation filter" and an empty
+`Uint32Array` for "the filter is active and matched nothing" — the latter
+exports nothing rather than everything. Pass `undefined`, not
+`new Uint32Array()`, when you do not want to filter.
 
 ## Export Pipeline
 

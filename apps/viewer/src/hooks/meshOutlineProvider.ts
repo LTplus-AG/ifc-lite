@@ -93,8 +93,9 @@ export function createMeshOutlineProvider(outlineFn: MeshOutline2dFn): MeshOutli
       if (!reportedFailure) {
         reportedFailure = true;
         console.warn(
-          '[drawing-2d] meshOutline2d failed; projection falls back to the TS mesh '
-          + 'silhouette for the rest of this drawing. Further failures are not logged.',
+          '[drawing-2d] meshOutline2d failed (a broken binding, or a mesh over its '
+          + 'triangle budget); that mesh uses the TS mesh silhouette. Further failures '
+          + 'in this drawing are not logged.',
           err,
         );
       }

@@ -25,8 +25,10 @@ use crate::{build_router, AppState};
 use axum::body::{to_bytes, Body};
 use axum::http::{header, Request, StatusCode};
 use ifc_lite_processing::TessellationQuality;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::thread::ThreadId;
 use tower::ServiceExt;
+use tracing_subscriber::layer::SubscriberExt;
 
 const BOUNDARY: &str = "ifclite-3889-optimized-boundary";
 
@@ -347,5 +349,112 @@ async fn a_different_file_does_not_hit_the_first_files_optimized_entry() {
     assert_ne!(
         body, SENTINEL_BODY,
         "a different file read the first file's cached body"
+    );
+}
+
+// ---------------------------------------------------------------------
+// The serialization runs off the async runtime.
+// ---------------------------------------------------------------------
+
+/// The message the route logs right after serialising, with the payload
+/// size the serialization produced, so the event cannot precede the work.
+const SERIALIZATION_DONE: &str = "Optimized Parquet serialization complete";
+
+type SerializationThreads = Arc<Mutex<Vec<(String, ThreadId)>>>;
+
+/// A `tracing` layer that records, for every [`SERIALIZATION_DONE`] event,
+/// the request's `cache_key` field and the thread the event was emitted on.
+struct RecordSerializationThread(SerializationThreads);
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for RecordSerializationThread {
+    fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
+        #[derive(Default)]
+        struct Fields {
+            message: String,
+            cache_key: String,
+        }
+        impl tracing::field::Visit for Fields {
+            fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+                match field.name() {
+                    "message" => self.message = format!("{value:?}"),
+                    "cache_key" => self.cache_key = format!("{value:?}"),
+                    _ => {}
+                }
+            }
+        }
+        let mut fields = Fields::default();
+        event.record(&mut fields);
+        if fields.message == SERIALIZATION_DONE {
+            self.0
+                .lock()
+                .unwrap()
+                .push((fields.cache_key, std::thread::current().id()));
+        }
+    }
+}
+
+/// Install the recording layer as the process-wide `tracing` subscriber,
+/// once. Global rather than thread-scoped because the event under test is
+/// emitted from a blocking-pool thread, which a `with_default` scope on the
+/// test thread would never see.
+fn serialization_threads() -> SerializationThreads {
+    static RECORDER: OnceLock<SerializationThreads> = OnceLock::new();
+    RECORDER
+        .get_or_init(|| {
+            let seen: SerializationThreads = Arc::new(Mutex::new(Vec::new()));
+            let subscriber =
+                tracing_subscriber::registry().with(RecordSerializationThread(Arc::clone(&seen)));
+            tracing::subscriber::set_global_default(subscriber)
+                .expect("no other test in this binary installs a global tracing subscriber");
+            seen
+        })
+        .clone()
+}
+
+/// The optimized serialization (mesh dedup, quantization, five Parquet
+/// encodes over the whole model) runs on the blocking pool, not on the async
+/// worker that resumes the handler. It used to serialise the whole model
+/// after the `spawn_blocking` returned: with `max_concurrent_parses` defaulting to
+/// `num_cpus`, which is also Tokio's worker count, that many requests
+/// serialising at once left no worker to poll any other connection, the
+/// liveness probe included.
+///
+/// How this observes it: under `#[tokio::test]` the runtime is
+/// `current_thread`, so its one worker IS this test's thread, and every
+/// `spawn_blocking` closure runs on some other thread. The route logs
+/// [`SERIALIZATION_DONE`] with the size of the payload it just produced, and
+/// the recording layer notes the thread that event came from. Serialising on
+/// the worker (the defect) puts the event on this thread and fails. The
+/// fixture is unique to this test so its `cache_key` is, and a concurrent
+/// test's request cannot stand in for this one.
+///
+/// Regression for #4634.
+#[tokio::test]
+async fn the_optimized_serialization_runs_off_the_async_worker() {
+    let seen = serialization_threads();
+    let state = test_state("serialize-off-runtime").await;
+    let content = MINIMAL_IFC.replace("'W1'", "'W-off-runtime'");
+    let content = content.as_bytes();
+    let cache_key = request_cache_key(content, &ParseQuery::default(), TessellationQuality::default());
+
+    let (status, _, _) = post_optimized(&state, content).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let threads: Vec<ThreadId> = seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(key, _)| *key == cache_key)
+        .map(|(_, thread)| *thread)
+        .collect();
+    assert_eq!(
+        threads.len(),
+        1,
+        "the route must log {SERIALIZATION_DONE:?} exactly once for this request, got {threads:?}"
+    );
+    assert_ne!(
+        threads[0],
+        std::thread::current().id(),
+        "the optimized serialization ran on the async worker (this test's thread) instead of the blocking pool"
     );
 }

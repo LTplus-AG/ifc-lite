@@ -212,6 +212,13 @@ fn a_lower_case_schema_past_64_kib_is_still_detected_4593() {
     assert_eq!(detect_schema(src.as_bytes()), "IFC2X3");
 }
 
+#[test]
+fn a_missing_header_endsec_does_not_borrow_a_schema_from_data_4593() {
+    let src = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('x'),'2;1');\n\
+                DATA;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nEND-ISO-10303-21;\n";
+    assert_eq!(detect_schema(src), "IFC4");
+}
+
 /// Controls: an uppercase declaration is answered by the scan (IFC2X3, so
 /// the default cannot fake the pass), and a file that declares nothing still
 /// answers `IFC4`; the fallback may only speak where the scan is silent.

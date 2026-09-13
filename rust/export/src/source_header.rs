@@ -286,6 +286,62 @@ fn find_ascii_ci_from(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     None
 }
 
+/// Locate an exact section marker such as `ENDSEC;` or `DATA;`.
+///
+/// Unlike the general keyword finder, this requires an identifier boundary
+/// and a semicolon (with trivia allowed between them), so `METADATA;` cannot
+/// truncate a malformed header at its embedded `DATA` substring.
+fn find_section_marker(haystack: &[u8], keyword: &[u8]) -> Option<usize> {
+    if keyword.is_empty() || keyword.len() > haystack.len() {
+        return None;
+    }
+    let mut lex = Lex::new(haystack);
+    let last_start = haystack.len() - keyword.len();
+    let mut i = 0;
+    while i <= last_start {
+        if let Some(end) = lex.skip_lexical_at(i) {
+            i = end;
+            continue;
+        }
+        let before_is_ident =
+            i > 0 && (haystack[i - 1].is_ascii_alphanumeric() || haystack[i - 1] == b'_');
+        let matches = !before_is_ident
+            && haystack[i..i + keyword.len()]
+                .iter()
+                .zip(keyword)
+                .all(|(a, b)| a.eq_ignore_ascii_case(b));
+        if matches {
+            let after = lex.skip_trivia(i + keyword.len());
+            if haystack.get(after) == Some(&b';') {
+                return Some(i);
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Read only the first declared schema identifier from the complete header.
+///
+/// This is the uncapped schema-detection entry point. It shares this module's
+/// lexical and record parser, but does not widen [`parse_source_header`]'s
+/// public 64 KiB allocation contract. If a malformed header omits its own
+/// `ENDSEC;`, `DATA;` still stops the window before the model body. With no
+/// recognisable section boundary at all, the allocation remains capped.
+pub(crate) fn declared_schema(content: &[u8]) -> Option<String> {
+    let boundary = [
+        find_section_marker(content, b"ENDSEC"),
+        find_section_marker(content, b"DATA"),
+    ]
+    .into_iter()
+    .flatten()
+    .min()
+    .unwrap_or_else(|| content.len().min(MAX_HEADER_BYTES));
+    let text = String::from_utf8_lossy(&content[..boundary]);
+    extract_record_args(&text, "FILE_SCHEMA")
+        .and_then(|record| decode_string_list(&record).into_iter().next())
+}
+
 /// Extract the argument substring inside the parentheses of `KEYWORD( ... )`.
 /// Quote- and nesting-aware, so a quoted `)` never closes the record early.
 ///
@@ -326,25 +382,18 @@ fn extract_record_args(text: &str, keyword: &str) -> Option<String> {
 ///
 /// Returns `None` when no recognisable header record is present (a non-STEP
 /// input), which is the caller's signal to fall back to its own defaults rather
-/// than to write empty fields. The real `ENDSEC` bounds a complete header even
-/// when an authored field pushes it past [`MAX_HEADER_BYTES`]. Malformed input
-/// with no terminator remains capped.
+/// than to write empty fields. Cheap: only the first [`MAX_HEADER_BYTES`] are
+/// examined, truncated at the first `ENDSEC` so `DATA` is never scanned.
 pub fn parse_source_header(content: &[u8]) -> Option<SourceHeader> {
-    // Find the terminator before applying the malformed-input cap. Lex keeps
-    // this whole-buffer search linear and ignores ENDSEC inside literals and
-    // comments, so a long DESCRIPTION cannot hide FILE_SCHEMA (#4593).
-    let header_end = find_ascii_ci_from(content, b"ENDSEC");
-    let window_end = header_end.unwrap_or_else(|| content.len().min(MAX_HEADER_BYTES));
-    let raw = String::from_utf8_lossy(&content[..window_end]);
-    // `raw` is already header-bounded when ENDSEC exists. Retain this search
-    // as a defensive bound for a lossy conversion whose byte offsets differ.
+    let cap = content.len().min(MAX_HEADER_BYTES);
+    let raw = String::from_utf8_lossy(&content[..cap]);
     // The search skips quoted text, for the reason `schema_detect::detect_schema`
     // gives at its own `ENDSEC;` search: a header field's plain-text VALUE can
     // carry the literal `ENDSEC`, and a raw byte search cannot tell that from
     // the terminator — it would cut the header short and drop every record
     // after it. The offset comes from the string itself, so it is already a
     // char boundary.
-    let text = match find_ascii_ci_from(raw.as_bytes(), b"ENDSEC") {
+    let text = match find_section_marker(raw.as_bytes(), b"ENDSEC") {
         Some(end) => raw[..end].to_string(),
         None => raw.to_string(),
     };

@@ -11,8 +11,7 @@
 /// Detect the source `FILE_SCHEMA` label (for example `IFC2X3`); defaults
 /// to `IFC4` when the input has no readable declaration.
 pub(crate) fn detect_schema(content: &[u8]) -> String {
-    crate::source_header::parse_source_header(content)
-        .and_then(|header| header.schema_identifiers.into_iter().next())
+    crate::source_header::declared_schema(content)
         .filter(|label| !label.is_empty())
         .unwrap_or_else(|| "IFC4".to_string())
 }

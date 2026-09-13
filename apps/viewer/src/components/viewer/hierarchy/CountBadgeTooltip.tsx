@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { countBadgeLines } from './countBadgeLabel';
+import type { ObjectCountSummary } from './objectCountSummary';
 
 /** The hover card behind a tree row's count badge — headline first, then only
  *  the breakdown lines that have something to say. Spatial rows arrive with
@@ -11,11 +12,13 @@ import { countBadgeLines } from './countBadgeLabel';
 export function CountBadgeTooltip({
   elementCount,
   lines,
+  summary,
 }: {
   elementCount: number;
   lines?: string[];
+  summary?: ObjectCountSummary;
 }) {
-  const [headline, ...rest] = lines ?? countBadgeLines(elementCount);
+  const [headline, ...rest] = lines ?? countBadgeLines(elementCount, summary);
   return (
     <>
       <p className="text-xs">{headline}</p>

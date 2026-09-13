@@ -103,7 +103,7 @@
  * separate seam from `--root` to be mutation-testable at all.
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -155,6 +155,7 @@ const TS_QTY_MAP = 'packages/parser/src/columnar-parser-indexes.ts';
 const TS_QTY_COLLECT = 'packages/parser/src/quantity-collect.ts';
 const RUST_MATERIALS = 'apps/server/src/services/data_model/materials.rs';
 const TS_MATERIALS = 'packages/parser/src/material-resolver.ts';
+const HIERARCHY_SCHEMA_DIST = 'packages/parser/dist/relationship-schema-slots.js';
 
 export { ALLOWLIST };
 
@@ -162,12 +163,14 @@ const CONCEPTS = [
   {
     name: 'relationships',
     rust: () => rustRelationshipTypes(read(RUST_REL)),
-    // repoRoot is NOT `ROOT` here on purpose: HIERARCHY_REL_TYPES resolves
-    // against the real, BUILT @ifc-lite/parser (see tsRelationshipTypes'
-    // doc comment), which is a property of the actual repo, not of
-    // whichever source tree `--root` is currently pointing reads at (a
-    // `--root`ed test fixture copies mutated SOURCE files, not `dist/`).
-    ts: () => tsRelationshipTypes(read(TS_REL_INDEXES), { hierarchySourcePath: HIERARCHY_SCHEMA_SOURCE }),
+    // A complete alternate checkout owns both the source being inspected and
+    // its built schema. The mutation fixtures intentionally omit dist/, so
+    // they retain the current checkout's build unless their explicit source
+    // seam below overrides it.
+    ts: () => tsRelationshipTypes(read(TS_REL_INDEXES), {
+      repoRoot: existsSync(join(ROOT, HIERARCHY_SCHEMA_DIST)) ? ROOT : process.cwd(),
+      hierarchySourcePath: HIERARCHY_SCHEMA_SOURCE,
+    }),
     rustLabel: RUST_REL,
     tsLabel: TS_REL_INDEXES,
   },

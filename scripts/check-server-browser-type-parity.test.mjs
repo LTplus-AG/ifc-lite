@@ -109,6 +109,27 @@ test('the unmutated repo passes for every concept, given the documented allowlis
   }
 });
 
+test('RELATIONSHIPS (#4672): a complete alternate checkout uses its matching built schema', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'server-browser-type-parity-complete-'));
+  try {
+    for (const [key, rel] of Object.entries(FILES)) {
+      const abs = join(dir, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, real[key]);
+    }
+    const dist = join(dir, 'packages/parser/dist/relationship-schema-slots.js');
+    mkdirSync(dirname(dist), { recursive: true });
+    writeFileSync(dist, "module.exports = { getAllConcreteRelationshipTypes: () => new Set(['IFCRELAGGREGATES']) };\n");
+    const result = spawnSync(process.execPath, [CHECKER, '--root', dir], { encoding: 'utf8' });
+    const output = `${result.stdout}${result.stderr}`;
+    assert.equal(result.status, 1, output);
+    assert.match(output, /\[relationships\]/);
+    assert.match(output, /Rust server .* handles .*`IFCRELASSIGNSTOGROUP`.* but the TS parser .* does not/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // -- relationships -----------------------------------------------------
 
 test('RELATIONSHIPS: RED when a type is removed from the Rust rel_types array', () => {
@@ -231,9 +252,9 @@ function mutateSchemaSource(schemaSource, mutationAnchor, mutationReplacement) {
   return schemaSource.replace(mutationAnchor, mutationReplacement);
 }
 
-// #4672: HIERARCHY_REL_TYPES' schema-derived resolution always reads the
-// REAL repo's BUILT dist/ (see tsRelationshipTypes' doc comment) regardless
-// of `--root`, so every RELATIONSHIPS test above that mutates
+// #4672: The partial `--root` fixtures above intentionally have no dist/, so
+// HIERARCHY_REL_TYPES' schema-derived resolution reads the real repo's built
+// output. Consequently, every RELATIONSHIPS test above that mutates
 // TS_REL_INDEXES can only ever exercise the still-literal PROPERTY_REL_TYPES
 // / ASSOCIATION_REL_TYPES sibling Sets (their own comments say so) — a
 // mutation to the actual schema walk in relationship-schema-slots.ts

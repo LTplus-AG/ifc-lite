@@ -248,7 +248,7 @@ fn crack_one_vertex(mesh: &mut Mesh) {
 /// CLOSED is the control: f32 coordinates keep the cross products exact, and
 /// a world-origin sum read only ~3e-9 relative off. CRACKED by one f32 ulp
 /// (#198779's seam shape), a world-origin sum read 0.1135 against 0.1112
-/// (2 %, twenty times the gate); about the mesh's own AABB centre the two
+/// (2 %, twenty times the gate); about the mesh's bounding-box centre the two
 /// readings agree.
 #[test]
 fn mesh_signed_volume_reads_the_same_volume_9km_out_as_at_the_origin() {

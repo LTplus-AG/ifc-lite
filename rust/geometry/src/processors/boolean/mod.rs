@@ -720,7 +720,17 @@ impl BooleanClippingProcessor {
         visited: &mut OperandPath,
         solo_step: bool,
     ) -> Result<(Mesh, bool)> {
-        let operator = operand::boolean_operator(entity);
+        // An unknown or unreadable operator is recorded BEFORE SecondOperand is
+        // resolved: that operand is unused, and a `$` there must not turn the
+        // record into an `Err` that drops the parent's host.
+        let operator = match operand::boolean_operator(entity) {
+            Ok(op @ (BoolOp::Difference | BoolOp::Union | BoolOp::Intersection)) => op,
+            other => {
+                let keyword = other.map_or_else(str::to_string, |op| op.to_string());
+                self.record_failure(BoolOp::Unknown, BoolFailureReason::UnknownBooleanOperator(keyword));
+                return Ok((mesh, false));
+            }
+        };
 
         // NOTE: a previous version had a "fast path for chained polygonal-
         // bounded half-space clips" here that mesh-merged every cutter in
@@ -764,7 +774,7 @@ impl BooleanClippingProcessor {
             .ok_or_else(|| Error::geometry("Failed to resolve SecondOperand".to_string()))?;
 
         // Handle DIFFERENCE operation
-        if operator == Ok(BoolOp::Difference) {
+        if operator == BoolOp::Difference {
             // Check if second operand is a half-space solid (simple or polygonally bounded)
             if second_operand.ifc_type == IfcType::IfcHalfSpaceSolid {
                 // Simple half-space: use plane clipping
@@ -862,7 +872,7 @@ impl BooleanClippingProcessor {
 
         // Handle UNION operation — a real CSG union (overlap removed) on the
         // pure-Rust exact kernel.
-        if operator == Ok(BoolOp::Union) {
+        if operator == BoolOp::Union {
             let (second_mesh, unsupported) = self
                 .process_operand_checked(BoolOp::Union, &second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
@@ -875,25 +885,19 @@ impl BooleanClippingProcessor {
             return result.map(|m| (m, false));
         }
 
-        // Handle INTERSECTION operation — a real intersection volume on the
+        // What is left is INTERSECTION: a real intersection volume on the
         // pure-Rust exact kernel.
-        if operator == Ok(BoolOp::Intersection) {
-            let (second_mesh, unsupported) = self
-                .process_operand_checked(BoolOp::Intersection, &second_operand, decoder, depth, quality, visited)?;
-            if second_mesh.is_empty() {
-                self.record_empty_operand(BoolOp::Intersection, unsupported);
-                // Emptied by a dropped operand that is now on record.
-                return Ok((Mesh::new(), true));
-            }
-            let clipper = ClippingProcessor::new();
-            let result = clipper.intersection_mesh(&mesh, &second_mesh);
-            self.absorb_failures(clipper.take_failures());
-            return result.map(|m| (m, false));
+        let (second_mesh, unsupported) = self
+            .process_operand_checked(BoolOp::Intersection, &second_operand, decoder, depth, quality, visited)?;
+        if second_mesh.is_empty() {
+            self.record_empty_operand(BoolOp::Intersection, unsupported);
+            // Emptied by a dropped operand that is now on record.
+            return Ok((Mesh::new(), true));
         }
-
-        let keyword = operator.map_or_else(str::to_string, |op| op.to_string());
-        self.record_failure(BoolOp::Unknown, BoolFailureReason::UnknownBooleanOperator(keyword));
-        Ok((mesh, false))
+        let clipper = ClippingProcessor::new();
+        let result = clipper.intersection_mesh(&mesh, &second_mesh);
+        self.absorb_failures(clipper.take_failures());
+        result.map(|m| (m, false))
     }
 }
 

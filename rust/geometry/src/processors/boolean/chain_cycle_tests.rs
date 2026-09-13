@@ -1287,6 +1287,10 @@ fn provisional_batch_attempts_spend_the_monotonic_work_budget() {
 }
 
 
+// Regression tests for #4639: an unreadable boolean operator executed as
+// DIFFERENCE, and an emptied intermediate ending a UNION chain, with the
+// one-record-per-dropped-operand bookkeeping around both.
+
 /// Two unit blocks side by side (`#2` is placed at x = 1), so the three
 /// operators give three different solids: DIFFERENCE leaves `#1`, UNION
 /// spans both, INTERSECTION is empty.
@@ -1518,6 +1522,24 @@ fn a_second_emptying_after_a_rescued_base_is_recorded_on_its_own() {
     let (out, failures) = process_root(&data, 12);
     assert_eq!(out.expect("resolves").triangle_count(), 12, "the outer UNION keeps its second operand");
     assert_eq!(dropped_operand_records(&failures), (1, 1), "two losses, two records: {failures:?}");
+}
+
+/// (#4639) The SecondOperand of an unreadable-operator node is never used, so
+/// a `$` there must not become an `Err`. The damage case: `#10` has an
+/// emptied first operand (so #4639 lets it run instead of ending the chain)
+/// and is itself the cutter of `#20`. Resolving its `$` first made `#20` an
+/// `Err` and dropped the valid host `#1`; recording first hands `#20` an
+/// empty cutter, and the host comes back un-cut.
+#[test]
+fn an_unreadable_operator_does_not_resolve_its_unused_second_operand() {
+    let data = format!(
+        "{TWO_BLOCKS}{UNSUPPORTED_BASE}#10=IFCBOOLEANRESULT($,#5,$);\n\
+         #20=IFCBOOLEANRESULT(.DIFFERENCE.,#1,#10);\n"
+    );
+    let (out, failures) = process_root(&data, 20);
+    let mesh = out.unwrap_or_else(|e| panic!("an unused `$` must not drop the parent's host: {e}"));
+    assert_eq!(mesh.triangle_count(), 12, "the parent's host #1 comes back un-cut");
+    assert_unreadable_operator_recorded(&failures);
 }
 
 /// An unreadable operator over an EMPTY first operand is still on record:

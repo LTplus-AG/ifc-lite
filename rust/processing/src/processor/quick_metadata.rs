@@ -8,7 +8,7 @@ use crate::types::response::{
 };
 use ifc_lite_core::limits::LARGE_COORD_THRESHOLD_METERS;
 use ifc_lite_core::{keyword_eq, IfcType, StepListItems, IFC_TYPES};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::LazyLock;
 
 #[derive(Clone)]

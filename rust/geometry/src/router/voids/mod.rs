@@ -1425,10 +1425,11 @@ impl GeometryRouter {
                         depth_dir,
                     );
                     let cutter = &extended_opening;
+                    let vol_before = mesh_signed_volume(&result);
                     if let Ok(csg_result) = clipper.subtract_mesh(&result, cutter) {
                         let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
                             .max(MIN_VALID_TRIANGLES);
-                        let changed = cut_changed_mesh(&csg_result, &result);
+                        let changed = cut_changed_mesh(&csg_result, tri_before, vol_before);
                         csg_unchanged = !changed;
                         if !csg_result.is_empty()
                             && csg_result.triangle_count() >= min_tris

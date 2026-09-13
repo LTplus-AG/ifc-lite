@@ -7,17 +7,30 @@
 # .github/workflows/pr-agent-review.yml. The model, endpoint and token caps
 # arrive in the environment; this script is the same for both lanes.
 #
-#   pr-agent-run.sh <base-sha> <head-sha> <out-dir>
+#   pr-agent-run.sh <base-sha> <head-sha> <out-dir> [candidate-repo]
 #
 # Writes <out-dir>/review.json, review.md and pr-agent.log. Whether a review
 # happened is decided by scripts/review/pr-agent-publish.mjs, not by an exit
-# code here. Run from the repository root with <head-sha> checked out, so
-# PR-Agent can read the changed files in full.
+# code here. This executable and its imported policy must come from the base
+# checkout. The optional candidate repository is read only through `git diff`;
+# no code or configuration from it is executed.
 set -euo pipefail
 
 base="$1"
 head="$2"
 out="$3"
+candidate="${4:-.}"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+trusted_root="$(git -C "$script_dir" rev-parse --show-toplevel)"
+trusted_head="$(git -C "$trusted_root" rev-parse HEAD)"
+if [ "$trusted_head" != "$base" ]; then
+  echo "trusted checkout is $trusted_head, expected base $base" >&2
+  exit 2
+fi
+if [ "$(git -C "$candidate" rev-parse HEAD)" != "$head" ]; then
+  echo "candidate checkout does not match head $head" >&2
+  exit 2
+fi
 mkdir -p "$out"
 rm -f "$out/review.json" "$out/review.md"
 
@@ -29,10 +42,12 @@ rm -f "$out/review.json" "$out/review.md"
 # against 12,038 without it).
 # --no-renames lists BOTH sides of a rename, so the second `git diff` still
 # sees a moved file as a rename instead of a whole new file.
-git diff --name-only --no-renames -z "$base...$head" \
-  | node --input-type=module -e "
+git -C "$candidate" diff --name-only --no-renames -z "$base...$head" \
+  | IFC_LITE_TRUSTED_ROOT="$trusted_root" node --input-type=module -e "
       import { readFileSync } from 'node:fs';
-      import { isExcluded } from './scripts/review/build-review-input.mjs';
+      import { pathToFileURL } from 'node:url';
+      const policy = pathToFileURL(process.env.IFC_LITE_TRUSTED_ROOT + '/scripts/review/build-review-input.mjs');
+      const { isExcluded } = await import(policy);
       const paths = readFileSync(0, 'utf8').split('\0').filter(Boolean);
       process.stdout.write(paths.filter((p) => !isExcluded(p)).map((p) => p + '\0').join(''));
     " > "$out/paths"
@@ -45,13 +60,14 @@ if [ ! -s "$out/paths" ]; then
 fi
 # xargs may split a long list into several `git diff` calls; their outputs
 # concatenate into one valid diff with each file once.
-xargs -0 git diff --no-color --no-ext-diff "$base...$head" -- < "$out/paths" > "$out/pr.diff"
+xargs -0 git -C "$candidate" diff --no-color --no-ext-diff "$base...$head" -- < "$out/paths" > "$out/pr.diff"
 echo "pr-agent: diff is $(wc -c < "$out/pr.diff") bytes"
 
 # The instructions come from the BASE commit, so a PR cannot rewrite what
 # reviews it. The PR that adds the file has no base copy and runs on defaults.
 config_args=()
-if git show "$base:.pr_agent.toml" > "$out/pr_agent.base.toml" 2>/dev/null; then
+if [ -f "$trusted_root/.pr_agent.toml" ]; then
+  cp "$trusted_root/.pr_agent.toml" "$out/pr_agent.base.toml"
   config_args=(--extra_config_url "$out/pr_agent.base.toml")
 else
   echo "::notice title=PR-Agent review::No .pr_agent.toml on the base commit yet; running with PR-Agent defaults."
@@ -64,6 +80,7 @@ fi
 stop_token="pr-agent-$RANDOM$RANDOM"
 echo "::stop-commands::$stop_token"
 rc=0
+cd "$trusted_root"
 LOG_LEVEL=INFO PYTHONUNBUFFERED=1 python -m pr_agent.cli \
   --diff-file "$out/pr.diff" \
   ${config_args[@]+"${config_args[@]}"} \

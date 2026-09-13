@@ -58,7 +58,10 @@ name: PR-Agent review
 # signal. The `ci:hosted` label keeps the job off the self-hosted runner, as it
 # does everywhere else.
 on:
-  pull_request:
+  # This workflow handles provider credentials and a self-hosted runner. Keep
+  # its executable definition on the trusted base branch; candidate code is
+  # checked out separately and used only as inert input to `git diff`.
+  pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
@@ -93,10 +96,19 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+          path: trusted
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           lfs: false
           persist-credentials: false
+          path: candidate
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -132,10 +144,11 @@ jobs:
           OR_SITE_URL: https://github.com/${{ github.repository }}
           OR_APP_NAME: ifc-lite PR-Agent review
         run: |
-          bash scripts/review/pr-agent-run.sh \
+          bash trusted/scripts/review/pr-agent-run.sh \
             "${{ github.event.pull_request.base.sha }}" \
             "${{ github.event.pull_request.head.sha }}" \
-            "$RUNNER_TEMP/pr-agent"
+            "$RUNNER_TEMP/pr-agent" \
+            "$GITHUB_WORKSPACE/candidate"
 
       - name: Publish the review
         # !cancelled(), not success(): a crashed install or run step must still
@@ -145,7 +158,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          node scripts/review/pr-agent-publish.mjs \
+          node trusted/scripts/review/pr-agent-publish.mjs \
             --lane openrouter \
             --dir "$RUNNER_TEMP/pr-agent" \
             --repo "${{ github.repository }}" \
@@ -211,10 +224,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.probe.outputs.available == 'true'
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+          path: trusted
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.probe.outputs.available == 'true'
+        with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           lfs: false
           persist-credentials: false
+          path: candidate
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.probe.outputs.available == 'true'
@@ -247,10 +270,11 @@ jobs:
           OPENAI__API_BASE: ${{ vars.PR_AGENT_LOCAL_BASE_URL }}
           OPENAI__KEY: ${{ secrets.PR_AGENT_LOCAL_API_KEY || 'not-needed' }}
         run: |
-          bash scripts/review/pr-agent-run.sh \
+          bash trusted/scripts/review/pr-agent-run.sh \
             "${{ github.event.pull_request.base.sha }}" \
             "${{ github.event.pull_request.head.sha }}" \
-            "$RUNNER_TEMP/pr-agent"
+            "$RUNNER_TEMP/pr-agent" \
+            "$GITHUB_WORKSPACE/candidate"
 
       # Uploaded after a failed run too, so the verdict job can name the failure
       # from pr-agent.log. A run that left no file at all fails here; the
@@ -281,8 +305,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           lfs: false
           persist-credentials: false
+          path: trusted
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -301,7 +327,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          node scripts/review/pr-agent-publish.mjs \
+          node trusted/scripts/review/pr-agent-publish.mjs \
             --lane local \
             --dir "$RUNNER_TEMP/pr-agent" \
             --repo "${{ github.repository }}" \

@@ -1945,10 +1945,8 @@ export function intersection2d(a: Contours2D, b: Contours2D): Contours2D;
  *
  * THROWS when the outline was not computed: an `axis` outside 0..=2, or a
  * mesh with more valid projected triangles than the overlay budget (50 000).
- * The two used to share `undefined` with "no footprint", so a caller could
- * not tell a refusal from an element with nothing to draw. The viewer's
- * outline provider catches the throw and draws its TypeScript silhouette, as
- * it does for `undefined`.
+ * The viewer's outline provider catches the throw and draws its TypeScript
+ * silhouette for that mesh.
  *
  * ```javascript
  * const outline = meshOutline2d(positions, indices, 1, false); // axis 1 = y

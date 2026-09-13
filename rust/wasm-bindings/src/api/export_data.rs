@@ -72,13 +72,12 @@ impl IfcAPI {
             include_properties,
             include_quantities,
             pretty,
-            included,
             ..Default::default()
         };
         if !context.is_empty() {
             opts.context = context;
         }
-        ifc_lite_export::export_jsonld(content, &opts).into_bytes()
+        ifc_lite_export::export_jsonld_with_filter(content, &opts, included.as_deref()).into_bytes()
     }
 
     /// Export **IFC5 / IFCX** (the USD-style node graph). `only_known_properties` keeps

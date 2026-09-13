@@ -17,13 +17,10 @@ pub struct JsonLdOptions {
     pub include_properties: bool,
     pub include_quantities: bool,
     pub pretty: bool,
-    /// Express-id isolation filter, mirroring the OBJ/glTF/STEP exporters and
-    /// carrying their null-vs-empty distinction: `None` ⇒ no filter, every
-    /// entity is emitted; `Some(ids)` ⇒ only those entities. `Some(empty)` is
-    /// therefore "the filter is active and matched nothing" and emits an empty
-    /// `@graph` — collapsing it back to `None` exported the whole model to a
-    /// caller who asked for a subset (#4659, the JSON-LD twin of #4483/#4484).
-    pub included: Option<Vec<u32>>,
+    /// Express-id isolation filter. Empty preserves the historical public API
+    /// contract and means all entities; callers that must distinguish an
+    /// active empty filter use [`export_jsonld_with_filter`].
+    pub included: Vec<u32>,
 }
 
 impl Default for JsonLdOptions {
@@ -33,18 +30,31 @@ impl Default for JsonLdOptions {
             include_properties: true,
             include_quantities: false,
             pretty: false,
-            included: None,
+            included: Vec::new(),
         }
     }
 }
 
 /// Export the model as a JSON-LD document string.
 pub fn export_jsonld(content: &[u8], opts: &JsonLdOptions) -> String {
+    let included = (!opts.included.is_empty()).then_some(opts.included.as_slice());
+    export_jsonld_with_filter(content, opts, included)
+}
+
+/// Export JSON-LD with an explicit null-vs-empty isolation filter.
+///
+/// `None` means no filter, `Some(ids)` means an active allowlist, and
+/// `Some(empty)` emits an empty `@graph`. This additive entry point lets wasm
+/// preserve that distinction without changing [`JsonLdOptions`]' stable public
+/// field shape (#4659).
+pub fn export_jsonld_with_filter(
+    content: &[u8],
+    opts: &JsonLdOptions,
+    included: Option<&[u32]>,
+) -> String {
     let model = build_export_model(content);
-    let filter: Option<std::collections::HashSet<u32>> = opts
-        .included
-        .as_ref()
-        .map(|ids| ids.iter().copied().collect());
+    let filter: Option<std::collections::HashSet<u32>> =
+        included.map(|ids| ids.iter().copied().collect());
     let mut graph: Vec<Value> = Vec::with_capacity(model.entities.len());
 
     for e in &model.entities {
@@ -141,12 +151,12 @@ mod tests {
         let has_psets = graph.iter().any(|n| n["ifc:hasPropertySets"].is_array());
         assert!(has_psets, "expected ifc:hasPropertySets somewhere");
     }
-
-
     /// #4659: `Some(empty)` means "the isolation filter is active and matched
-    /// nothing", not "no filter". Before this, `JsonLdOptions::included` was a
-    /// bare `Vec<u32>` whose emptiness was read as "export everything", so a
-    /// zero-match `--type` silently handed the user the whole model.
+    /// nothing", not "no filter". The wasm binding previously collapsed its
+    /// empty array into the legacy `JsonLdOptions::included` meaning of
+    /// "export everything", so a zero-match `--type` handed the user the whole
+    /// model. The explicit helper preserves both contracts without breaking
+    /// existing Rust callers.
     ///
     /// The `None` sibling pins the other direction: the two must not collapse
     /// into each other in either direction.
@@ -165,24 +175,36 @@ DATA;\n\
 #7=IFCSLAB('0SLAB000000000000000A',$,'S1',$,$,$,$,$,$);\n\
 ENDSEC;\n\
 END-ISO-10303-21;\n";
-        let graph_len = |opts: &JsonLdOptions| -> usize {
-            let v: Value = serde_json::from_str(&export_jsonld(ifc.as_bytes(), opts)).unwrap();
-            v["@graph"].as_array().expect("graph array").len()
-        };
-
         // No filter: every entity. Asserted first so the empty-graph assertion
         // below cannot pass merely because the fixture exports nothing.
-        let unfiltered = graph_len(&JsonLdOptions { included: None, ..Default::default() });
+        let opts = JsonLdOptions::default();
+        let unfiltered: Value = serde_json::from_str(&export_jsonld_with_filter(
+            ifc.as_bytes(),
+            &opts,
+            None,
+        ))
+        .unwrap();
+        let unfiltered = unfiltered["@graph"].as_array().expect("graph array").len();
         assert_eq!(unfiltered, 3, "unfiltered graph carries every entity in the fixture");
 
         // A filter that matches something still narrows.
-        let narrowed =
-            graph_len(&JsonLdOptions { included: Some(vec![5, 6]), ..Default::default() });
+        let narrowed: Value = serde_json::from_str(&export_jsonld_with_filter(
+            ifc.as_bytes(),
+            &opts,
+            Some(&[5, 6]),
+        ))
+        .unwrap();
+        let narrowed = narrowed["@graph"].as_array().expect("graph array").len();
         assert_eq!(narrowed, 2, "an explicit two-entity filter emits exactly those entities");
 
         // A filter that matches nothing emits nothing.
-        let zero_match =
-            graph_len(&JsonLdOptions { included: Some(Vec::new()), ..Default::default() });
+        let zero_match: Value = serde_json::from_str(&export_jsonld_with_filter(
+            ifc.as_bytes(),
+            &opts,
+            Some(&[]),
+        ))
+        .unwrap();
+        let zero_match = zero_match["@graph"].as_array().expect("graph array").len();
         assert_eq!(zero_match, 0, "an active-but-empty filter must not export the whole model");
     }
 
@@ -200,7 +222,7 @@ END-ISO-10303-21;\n";
             .map(|n| n["ifc:expressId"].as_u64().unwrap() as u32)
             .collect();
 
-        let opts = JsonLdOptions { included: Some(pick.clone()), ..Default::default() };
+        let opts = JsonLdOptions { included: pick.clone(), ..Default::default() };
         let filtered: Value = serde_json::from_str(&export_jsonld(&bytes, &opts)).unwrap();
         let graph = filtered["@graph"].as_array().unwrap();
         assert_eq!(graph.len(), 2, "isolated export emits only the requested ids");

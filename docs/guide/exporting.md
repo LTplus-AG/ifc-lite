@@ -673,6 +673,7 @@ The Rust exporter crate backs several more one-call formats on `GeometryProcesso
 |--------|--------|
 | `exportUsd(bytes)` | OpenUSD ASCII (`.usda`) stage of the whole model |
 | `exportObj(bytes, includeNormals?, hidden?, isolated?)` | Wavefront OBJ of the render geometry |
+| `exportKmzFromMeshes(meshes, latitude, longitude, altitude, xAxisAbscissa?, xAxisOrdinate?, name?, altitudeMode?)` | Google Earth KMZ with a supported COLLADA `model.dae`; preserves each mesh origin and accepts IFC map-conversion grid-north components |
 | `exportJson(bytes, pretty?, includeProperties?, includeQuantities?)` | Plain JSON entity dump |
 | `exportStep(bytes, schema?, included?, mutationsJson?)` | STEP/IFC re-export (Rust path) |
 | `exportHbjson(bytes, name)` | Honeybee HBJSON energy/daylight model built from the `IfcSpace` volumes |

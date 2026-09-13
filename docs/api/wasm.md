@@ -209,6 +209,10 @@ Each exporter takes the raw IFC bytes (or already-produced meshes) and returns a
 exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit?): Uint8Array;
 exportGlbFromMeshes(/* flattened MeshData buffers */): Uint8Array;
 exportObj(content, includeNormals, hidden, isolated): Uint8Array;
+exportKmzFromMeshes(
+  positions, normals, indices, vertexCounts, indexCounts, colors, origins,
+  latitude, longitude, altitude, xAxisAbscissa?, xAxisOrdinate?, name?, altitudeMode?
+): Uint8Array;
 exportCsv(content, mode, delimiter, includeProperties): Uint8Array;
 exportJson(content, pretty, includeProperties, includeQuantities): Uint8Array;
 exportJsonld(content, context, includeProperties, includeQuantities, pretty, included?): Uint8Array;

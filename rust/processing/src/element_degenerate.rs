@@ -45,6 +45,8 @@ fn disabled() -> bool {
 #[must_use = "dropping the scope immediately restores the enclosing element's tally"]
 pub(crate) struct ElementTally {
     saved: u64,
+    /// Not `Send`: it restores this thread's tally, so it must drop here.
+    _thread_bound: std::marker::PhantomData<*const ()>,
 }
 
 impl Drop for ElementTally {
@@ -57,6 +59,7 @@ impl Drop for ElementTally {
 pub(crate) fn begin_element() -> ElementTally {
     ElementTally {
         saved: DROPPED.with(|c| c.replace(0)),
+        _thread_bound: std::marker::PhantomData,
     }
 }
 

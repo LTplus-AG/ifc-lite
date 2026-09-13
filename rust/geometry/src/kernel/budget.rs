@@ -36,6 +36,7 @@
 //! missing void").
 
 use std::cell::Cell;
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Serialises every test that mutates the process-global `CAP` / `ELEMENT_CAP`
@@ -232,12 +233,23 @@ pub fn begin_element() {
 /// whether the outer element trips its cap depends on scheduling. Scopes nest
 /// in stack order, so a save on entry and a restore on drop keep each element's
 /// count its own.
+///
+/// The scope is not `Send`, so it cannot be dropped on a thread other than the
+/// one whose counters it saved (#4663):
+///
+/// ```compile_fail
+/// fn assert_send<T: Send>() {}
+/// assert_send::<ifc_lite_geometry::kernel::budget::ElementScope>();
+/// ```
 #[must_use = "dropping the scope immediately restores the enclosing element's budget"]
 pub struct ElementScope {
     count: u64,
     op_cap: u64,
     elem_count: u64,
     elem_cap: u64,
+    /// Not `Send`: the scope restores the thread-locals of the thread that
+    /// opened it, so it must be dropped there.
+    _thread_bound: PhantomData<*const ()>,
 }
 
 /// Open a per-element budget scope ([`begin_element`]) that restores the
@@ -249,6 +261,7 @@ pub fn enter_element() -> ElementScope {
         op_cap: OP_CAP.with(Cell::get),
         elem_count: ELEM_COUNT.with(Cell::get),
         elem_cap: ELEM_CAP.with(Cell::get),
+        _thread_bound: PhantomData,
     };
     begin_element();
     scope

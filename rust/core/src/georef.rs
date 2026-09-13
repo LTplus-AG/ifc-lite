@@ -83,9 +83,10 @@ pub struct GeoReference {
     /// Scale factor (default 1.0)
     pub scale: f64,
     /// Per-axis factors from `IfcMapConversionScaled.FactorX/Y/Z` (IFC4X3),
-    /// each 1.0 when absent. They multiply `scale` on their own axis: a
-    /// feet-authored scaled conversion carries 0.3048 here and 1.0 in
-    /// `scale`, and applying only `scale` placed such models 3.28x out.
+    /// each 1.0 when absent. Per the schema they scale coordinates, not
+    /// units (`scale` converts units): each multiplies its own local axis
+    /// before the rotation, on top of `scale`. Ignoring them applied a
+    /// conversion authored with factors of 0.3048 at 3.28x.
     pub factor_x: f64,
     pub factor_y: f64,
     pub factor_z: f64,
@@ -159,10 +160,12 @@ impl GeoReference {
     /// parse time by every extraction path.
     ///
     /// A direction with no usable length (both components authored `0.`, or
-    /// a component that overflowed to infinity) is refused and reset to the
-    /// identity `(1, 0)`, the angle the TS twin's `atan2(0, 0)` gives. Passed
-    /// through, `(0, 0)` collapsed every map coordinate to
-    /// `(Eastings, Northings)` and an infinite length divided into NaN.
+    /// a non-finite component reaching here from the ePSet path) is reset to
+    /// the identity `(1, 0)`, the angle the TS twin's `atan2(0, 0)` gives.
+    /// Passed through, `(0, 0)` collapsed every map coordinate to
+    /// `(Eastings, Northings)` and an infinite length divided into NaN. An
+    /// `IfcMapConversion` with a non-finite component never gets here:
+    /// `parse_map_conversion` refuses it whole.
     ///
     /// `Scale` and `FactorX/Y/Z` follow the same rule: zero collapses every
     /// coordinate onto the translation and a non-finite value poisons it, so
@@ -361,7 +364,14 @@ impl GeoRefExtractor {
         //             XAxisAbscissa, XAxisOrdinate, Scale
         if let Some(id) = map_conversion_id {
             let entity = decoder.decode_by_id(id)?;
-            Self::parse_map_conversion(&entity, &mut georef);
+            // A refused conversion claims nothing. With no IfcProjectedCRS to
+            // claim georeferencing either, the fallbacks run, as in TS.
+            if !Self::parse_map_conversion(&entity, &mut georef) && projected_crs_id.is_none() {
+                if let Some(georef) = Self::extract_from_pset(decoder, entity_types)? {
+                    return Ok(Some(georef));
+                }
+                return Self::extract_from_site(decoder, entity_types);
+            }
         }
 
         // Parse IfcProjectedCRS
@@ -383,7 +393,15 @@ impl GeoRefExtractor {
 
     /// Parse IfcMapConversion entity (and the IFC4X3 `IfcMapConversionScaled`
     /// subtype, whose first eight attributes have the same layout).
-    fn parse_map_conversion(entity: &DecodedEntity, georef: &mut GeoReference) {
+    ///
+    /// Returns false, leaving `georef` untouched, when Eastings through Scale
+    /// (attributes 2..=7) hold a number the double range cannot represent:
+    /// the whole conversion is refused rather than one component replaced
+    /// by its default, the rule the TS twin (`extractMapConversion`) applies.
+    fn parse_map_conversion(entity: &DecodedEntity, georef: &mut GeoReference) -> bool {
+        if (2..=7).any(|index| entity.get_float(index).is_some_and(|v| !v.is_finite())) {
+            return false;
+        }
         georef.has_map_conversion = true;
         // Index 2: Eastings
         if let Some(e) = entity.get_float(2) {
@@ -423,6 +441,7 @@ impl GeoRefExtractor {
                 *factor = f;
             }
         }
+        true
     }
 
     /// Parse IfcProjectedCRS entity

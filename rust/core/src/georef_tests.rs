@@ -429,12 +429,34 @@ fn zero_length_axis_direction_resets_to_identity() {
     // Two distinct local points must map to two distinct map points.
     assert_ne!(geo.local_to_map(1.0, 0.0, 0.0), geo.local_to_map(2.0, 0.0, 0.0));
 
-    // An abscissa that overflows the double range has an infinite length:
-    // dividing by it gave a NaN axis and NaN for every map coordinate.
-    let geo = extract_map_conversion("#11=IFCMAPCONVERSION(#2,#10,1000.,2000.,42.,1.0E999,0.,1.);")
-        .expect("georeference");
-    assert_eq!((geo.x_axis_abscissa, geo.x_axis_ordinate), (1.0, 0.0));
-    assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1010.0, 2020.0, 47.0));
+}
+
+/// A component that overflows the double range (`1.0E999` parses to
+/// infinity) refuses the WHOLE conversion, as the TS twin's
+/// `extractMapConversion` does, instead of one component being replaced by
+/// its default: an infinite abscissa used to divide into a NaN axis, and a
+/// reset axis would still place the model with a rotation the file did not
+/// state. The IfcProjectedCRS still claims georeferencing (TS: no
+/// `transformMatrix`); without one, the IfcSite fallback runs.
+#[test]
+fn map_conversion_with_a_non_finite_component_is_refused_whole() {
+    for slot in 2..=7 {
+        let mut values = ["1000.", "2000.", "42.", "1.", "0.", "1."];
+        values[slot - 2] = "1.0E999";
+        let line = format!("#11=IFCMAPCONVERSION(#2,#10,{});", values.join(","));
+        let geo = extract_map_conversion(&line).expect("the IfcProjectedCRS still claims georeferencing");
+        assert!(!geo.has_map_conversion, "slot {slot}: conversion must be refused");
+        assert_eq!(geo.crs_name.as_deref(), Some("EPSG:32632"));
+        assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (10.0, 20.0, 5.0), "slot {slot}");
+    }
+
+    let content = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('Test'),'2;1');\nFILE_NAME('t.ifc','2026-01-01',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#11=IFCMAPCONVERSION(#2,#10,1000.,2000.,42.,1.0E999,0.,1.);\n#1=IFCSITE('1abc',$,'Site',$,$,$,$,$,.ELEMENT.,(51,30,0),(14,28,0),0.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
+    let mut decoder = EntityDecoder::new(content);
+    let types = [(11u32, IfcType::IfcMapConversion), (1, IfcType::IfcSite)];
+    let geo = GeoRefExtractor::extract(&mut decoder, &types)
+        .expect("decode ok")
+        .expect("with no CRS, the IfcSite fallback answers");
+    assert_eq!(geo.source, GeoRefSource::SiteLocation);
 }
 
 /// An explicit `Scale` of 0 collapsed every local point onto

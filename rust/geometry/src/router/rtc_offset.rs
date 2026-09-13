@@ -6,8 +6,8 @@
 //! and first geometry vertices to decide whether a model needs re-basing.
 
 use super::GeometryRouter;
-use crate::LARGE_COORD_THRESHOLD_METERS;
-use ifc_lite_core::{has_geometry_by_name, DecodedEntity, EntityDecoder, IfcType};
+use crate::coord_is_large;
+use ifc_lite_core::{has_geometry_by_name, DecodedEntity, EntityDecoder, IfcType, RtcVerdict};
 
 /// Whether a near-origin element with this `RepresentationType` may cast a
 /// "no-shift" `(0,0,0)` RTC vote when the vertex probe can't cheaply read a
@@ -30,7 +30,9 @@ fn is_rtc_votable_representation(rep_type: &str) -> bool {
 }
 
 impl GeometryRouter {
-    /// Median RTC offset of sampled translations; `(0,0,0)` if empty or within 10 km of origin.
+    /// Compute median-based RTC offset from sampled translations.
+    /// Returns `(0,0,0)` if empty or the median is within
+    /// [`LARGE_COORD_THRESHOLD_METERS`](crate::LARGE_COORD_THRESHOLD_METERS) of the origin.
     fn rtc_offset_from_translations(translations: &[(f64, f64, f64)]) -> (f64, f64, f64) {
         if translations.is_empty() {
             return (0.0, 0.0, 0.0);
@@ -51,11 +53,7 @@ impl GeometryRouter {
             *z.get(mid).unwrap_or(&0.0),
         );
 
-        const THRESHOLD: f64 = 10000.0;
-        if centroid.0.abs() > THRESHOLD
-            || centroid.1.abs() > THRESHOLD
-            || centroid.2.abs() > THRESHOLD
-        {
+        if coord_is_large(centroid) {
             return centroid;
         }
 
@@ -335,8 +333,8 @@ impl GeometryRouter {
     }
 
     fn raw_coordinate_is_large(&self, point: (f64, f64, f64)) -> bool {
-        let max_abs = point.0.abs().max(point.1.abs()).max(point.2.abs());
-        max_abs * self.unit_scale > LARGE_COORD_THRESHOLD_METERS
+        let s = self.unit_scale;
+        coord_is_large((point.0 * s, point.1 * s, point.2 * s))
     }
 
     pub(super) fn representation_item_uses_raw_large_coordinates(
@@ -464,16 +462,16 @@ impl GeometryRouter {
     /// carries >10 km coordinates must be re-based identically everywhere
     /// (previously the wasm prepasses silently fell back to (0,0,0) and the
     /// browser rendered f32 vertex jitter that the server never saw).
-    /// Both arms answer in METRES: the bounds fallback gets `unit_scale`, so its 10 km gate never sees raw file units.
+    ///
+    /// `None` means neither ladder found a coordinate to judge; `MeshFrame::select`
+    /// in `ifc_lite_processing` decides what that means.
     pub fn detect_rtc_offset_with_fallback(
         &self,
         jobs: &[(u32, usize, usize, IfcType)],
         decoder: &mut EntityDecoder,
         content: &[u8],
-    ) -> (f64, f64, f64) {
-        match self.detect_rtc_offset_from_jobs(jobs, decoder) {
-            Some(offset) => offset,
-            None => ifc_lite_core::scan_placement_bounds(content).rtc_offset(self.unit_scale),
-        }
+    ) -> Option<RtcVerdict> {
+        let bounds = || ifc_lite_core::scan_placement_bounds(content).rtc_offset(self.unit_scale);
+        self.detect_rtc_offset_from_jobs(jobs, decoder).map(RtcVerdict::of_anchor).or_else(bounds)
     }
 }

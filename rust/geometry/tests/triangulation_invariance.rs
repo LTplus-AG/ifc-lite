@@ -124,7 +124,7 @@
 
 mod census_golden;
 
-#[path = "census_rtc/mod.rs"]
+#[path = "corpus/rtc_frame.rs"]
 mod census_rtc;
 
 mod support;

@@ -209,7 +209,7 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
         normalized.request.next_express_id=plan.next_available_express_id;
         normalized.request.product_ids.push(product_id);
         let context=source.context.as_ref().ok_or("Missing canonical source frame")?;
-        let rtc_offset: [f64;3]=if context.meta.needs_shift {context.meta.rtc_offset.into()} else {[0.;3]};
+        let rtc_offset: [f64;3]=context.meta.frame.rtc_offset().into();
         if rtc_offset.iter().any(|value|!value.is_finite()) {return Err("Invalid canonical source RTC frame".into());}
         normalized.conversions.push(Conversion {plan,styled_id:styled,binding:AppearanceConversion {
             product_id,representation_id:body_id,source_geometry_item_id:old_item,geometry_item_id:item,

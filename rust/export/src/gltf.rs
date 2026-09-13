@@ -37,8 +37,8 @@ use ifc_lite_geometry::{
 };
 use ifc_lite_processing::{
     build_entity_index_parallel, process_geometry_filtered_with_quality,
-    process_geometry_streaming_filtered_with_options, MeshData, OpeningFilterMode,
-    ProcessingResult, StreamingOptions, TessellationQuality,
+    process_geometry_streaming_filtered_with_options, MeshCoordinateSpace, MeshData,
+    OpeningFilterMode, ProcessingResult, StreamingOptions, TessellationQuality,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -1042,11 +1042,11 @@ fn site_restore(result: &ProcessingResult) -> ([f64; 3], Option<Vec<f64>>) {
     // to put back. `model_rtc` subtracts a detected translation with no
     // rotation, and `raw_ifc` subtracts nothing — but both still need the
     // translation restored, which is why `rtc_zup` returns unconditionally.
-    let site_zup = result
-        .mesh_coordinate_space
-        .as_deref()
-        .filter(|space| *space == "site_local")
-        .and(result.site_transform.clone());
+    let site_zup = if result.mesh_coordinate_space == MeshCoordinateSpace::SiteLocal {
+        result.site_transform.clone()
+    } else {
+        None
+    };
     (rtc_zup, site_zup)
 }
 

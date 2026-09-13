@@ -24,11 +24,12 @@ pub(super) fn set_stream_meta_props(
     crate::api::set_js_prop(obj, "unitScale", &meta.length_unit_scale.into());
     crate::api::set_js_prop(obj, "planeAngleToRadians", &meta.plane_angle_to_radians.into());
     let rtc_arr = js_sys::Float64Array::new_with_length(3);
-    rtc_arr.set_index(0, meta.rtc_offset.0);
-    rtc_arr.set_index(1, meta.rtc_offset.1);
-    rtc_arr.set_index(2, meta.rtc_offset.2);
+    let (rtc_x, rtc_y, rtc_z) = meta.frame.rtc_offset();
+    rtc_arr.set_index(0, rtc_x);
+    rtc_arr.set_index(1, rtc_y);
+    rtc_arr.set_index(2, rtc_z);
     crate::api::set_js_prop(obj, "rtcOffset", &rtc_arr);
-    crate::api::set_js_prop(obj, "needsShift", &meta.needs_shift.into());
+    crate::api::set_js_prop(obj, "needsShift", &meta.frame.needs_shift().into());
     match meta.building_rotation {
         Some(rot) => crate::api::set_js_prop(obj, "buildingRotation", &rot.into()),
         None => crate::api::set_js_prop(obj, "buildingRotation", &JsValue::NULL),

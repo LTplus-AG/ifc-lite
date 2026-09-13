@@ -23,7 +23,9 @@ use axum::{
     http::{header, StatusCode},
     response::Response,
 };
-use ifc_lite_processing::{extract_symbolic_data_with_provenance, process_geometry_filtered_with_quality};
+use ifc_lite_processing::{
+    extract_symbolic_data_with_provenance, process_geometry_filtered_with_quality, MeshCoordinateSpace,
+};
 use serde::Serialize;
 
 /// Response header containing metadata for optimized Parquet response.
@@ -33,7 +35,7 @@ pub struct OptimizedParquetMetadataHeader {
     pub metadata: ModelMetadata,
     pub stats: ProcessingStats,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mesh_coordinate_space: Option<String>,
+    pub mesh_coordinate_space: Option<MeshCoordinateSpace>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub site_transform: Option<Vec<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -224,7 +226,7 @@ pub async fn parse_parquet_optimized(
         cache_key: cache_key.clone(),
         metadata: result.metadata,
         stats: result.stats,
-        mesh_coordinate_space: result.mesh_coordinate_space,
+        mesh_coordinate_space: Some(result.mesh_coordinate_space),
         site_transform: result.site_transform,
         building_transform: result.building_transform,
         optimization_stats: opt_stats,

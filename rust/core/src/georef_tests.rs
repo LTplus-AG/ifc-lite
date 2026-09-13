@@ -440,10 +440,12 @@ fn zero_length_axis_direction_resets_to_identity() {
 /// `transformMatrix`); without one, the IfcSite fallback runs.
 #[test]
 fn map_conversion_with_a_non_finite_component_is_refused_whole() {
-    for slot in 2..=7 {
-        let mut values = ["1000.", "2000.", "42.", "1.", "0.", "1."];
+    for slot in 2..=10 {
+        let mut values = [
+            "1000.", "2000.", "42.", "1.", "0.", "1.", "1.", "1.", "1.",
+        ];
         values[slot - 2] = "1.0E999";
-        let line = format!("#11=IFCMAPCONVERSION(#2,#10,{});", values.join(","));
+        let line = format!("#11=IFCMAPCONVERSIONSCALED(#2,#10,{});", values.join(","));
         let geo = extract_map_conversion(&line).expect("the IfcProjectedCRS still claims georeferencing");
         assert!(!geo.has_map_conversion, "slot {slot}: conversion must be refused");
         assert_eq!(geo.crs_name.as_deref(), Some("EPSG:32632"));
@@ -463,21 +465,21 @@ fn map_conversion_with_a_non_finite_component_is_refused_whole() {
 }
 
 /// An explicit `Scale` of 0 collapsed every local point onto
-/// `(Eastings, Northings)`, the same failure as a zero axis, and a factor that
-/// overflows to infinity poisoned its axis. Both reset to 1.0.
+/// `(Eastings, Northings)`, the same failure as a zero axis. A zero scaled-axis
+/// factor has the same effect on that axis. Both reset to 1.0.
 #[test]
-fn zero_or_non_finite_scale_resets_to_one() {
+fn zero_scale_or_factor_resets_to_one() {
     let geo = extract_map_conversion("#11=IFCMAPCONVERSION(#2,#10,1000.,2000.,42.,1.,0.,0.);")
         .expect("georeference");
     assert_eq!(geo.scale, 1.0);
     assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1010.0, 2020.0, 47.0));
 
     let geo = extract_map_conversion(
-        "#11=IFCMAPCONVERSIONSCALED(#2,#10,1000.,2000.,42.,1.,0.,$,1.0E999,0.,2.);",
+        "#11=IFCMAPCONVERSIONSCALED(#2,#10,1000.,2000.,42.,1.,0.,$,3.,0.,2.);",
     )
     .expect("georeference");
-    assert_eq!((geo.factor_x, geo.factor_y, geo.factor_z), (1.0, 1.0, 2.0));
-    assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1010.0, 2020.0, 52.0));
+    assert_eq!((geo.factor_x, geo.factor_y, geo.factor_z), (3.0, 1.0, 2.0));
+    assert_eq!(geo.local_to_map(10.0, 20.0, 5.0), (1030.0, 2020.0, 52.0));
 }
 
 /// A rotation-only conversion (zero offsets, 30 degrees to grid north, no

@@ -542,9 +542,9 @@ fn accept_cut_reads_before_and_after_about_one_point_on_an_open_far_host_4632() 
 /// the bounding-box centre 0.5 m in X. Read about each mesh's own centre, the
 /// untouched crack's reading moves by `-(o_after - o_before)·2A·n/6`, exactly
 /// the 0.25 m³ the cut removed, so a real cut reads as unchanged. Read about
-/// the host's one reference point the crack cancels (#4632).
+/// the host's one reference point the crack cancels (#4632, #4671).
 #[test]
-fn a_same_count_cut_on_an_open_far_host_reads_as_changed_4632() {
+fn a_same_count_cut_on_an_open_far_host_reads_as_changed_4671() {
     let rod = box_mesh(far([-2.0, 0.0, 0.0]), far([0.0, 0.5, 0.5]));
     let short_rod = box_mesh(far([-1.0, 0.0, 0.0]), far([0.0, 0.5, 0.5]));
     let wall = box_mesh(far([0.0, 0.0, 0.0]), far([3.0, 1.0, 3.0]));

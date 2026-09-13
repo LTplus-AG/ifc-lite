@@ -576,11 +576,9 @@ const VISITED_GUARD_RE =
 const DEPTH_GUARD_RE =
   /\b_?depth\b[^;\n]{0,80}?(>=|<=|>|<)|(>=|<=|>|<)[^;\n]{0,40}?\b[A-Z][A-Z0-9_]*(?:DEPTH|MAX|LIMIT|BUDGET|ITER)[A-Z0-9_]*\b|\bMAX_[A-Z0-9_]*\b[^;\n]{0,40}?(>=|<=|>|<)|\b0\s*\.\.=?\s*(?:[A-Za-z_][A-Za-z0-9_]*::)*[A-Z][A-Z0-9_]*(?:DEPTH|MAX|LIMIT|BUDGET|ITER)[A-Z0-9_]*\b/;
 
-// Method names alone are not evidence: decoders and streams also `consume`.
-// Require the receiver names used by the repository's traversal-state types.
+// Decoders also `consume`; require repository traversal-state receiver names.
 const WORK_BUDGET_RE =
   /\b(?:(?:work_?budget|visit_?budget|budget|visited|walk|path)|self\s*\.\s*(?:work_?budget|visit_?budget|budget|visited|walk|path))\s*\.\s*(?:charge|spend|consume)\s*\(|\b(?:work_?budget|visit_?budget|visits)\b[^;\n]{0,80}?(?:>=|>|checked_add|saturating_add|\+=)/i;
-
 function cycleFansOut(cycle, byName) {
   const names = cycle.map(escapeRe).join('|'), recursiveCalls = new RegExp(`\\b(?:${names})\\s*\\(`, 'g');
   return cycle.some((name) => {

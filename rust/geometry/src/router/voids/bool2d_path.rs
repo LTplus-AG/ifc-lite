@@ -292,8 +292,11 @@ impl GeometryRouter {
                 Some(correction)
             })
             .collect::<Option<Vec<_>>>()?;
-        FIRES.fetch_add(1, Ordering::Relaxed);
-        FOOTPRINTS.fetch_add(cut.footprints.len() as u64, Ordering::Relaxed);
+        let footprints = cut.footprints.len() as u64;
+        crate::telemetry_transaction::record(move || {
+            FIRES.fetch_add(1, Ordering::Relaxed);
+            FOOTPRINTS.fetch_add(footprints, Ordering::Relaxed);
+        });
         Some((out, corrections))
     }
 
@@ -333,3 +336,7 @@ fn reconcile_solid(host: &Mesh, solid: &Mesh) -> bool {
 #[cfg(test)]
 #[path = "bool2d_path_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "bool2d_transaction_tests.rs"]
+mod transaction_tests;

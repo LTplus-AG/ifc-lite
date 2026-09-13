@@ -286,16 +286,12 @@ fn footprint_interior_gates_boundary_breach() {
     assert!(!footprint_interior(&breaching, &profile));
 }
 
-/// #4617: duplicate footprints cancel in the staged precursor, so this case
-/// cannot pass by merely returning the precursor or by checking its closure.
-#[test]
-fn mixed_duplicate_footprints_apply_mandatory_union_correction_4617() {
+pub(super) fn mixed_overlap_fixture() -> (Mesh, VoidContext) {
     let rect = |x0, y0, x1, y1| vec![
         Point2::new(x0, y0), Point2::new(x1, y0),
         Point2::new(x1, y1), Point2::new(x0, y1),
     ];
     let profile = Profile2D::new(rect(0.0, 0.0, 10.0, 10.0));
-    let router = GeometryRouter::new();
     let residual_opening = super::super::OpeningType::Rectangular(
         Point3::new(1.0, 1.0, -1.0), Point3::new(3.0, 3.0, 0.5),
         Some(Vector3::z()),
@@ -328,6 +324,15 @@ fn mixed_duplicate_footprints_apply_mandatory_union_correction_4617() {
         param: None,
         bool2d: Some(cut),
     };
+    (host, context)
+}
+
+/// #4617: duplicate footprints cancel in the staged precursor, so this case
+/// cannot pass by merely returning the precursor or by checking its closure.
+#[test]
+fn mixed_duplicate_footprints_apply_mandatory_union_correction_4617() {
+    let (host, context) = mixed_overlap_fixture();
+    let router = GeometryRouter::new();
     // Exercise the existing production entry point, including the mandatory
     // correction call. Reverting production still compiles this test and exposes
     // the former parity result (94), rather than failing at a new private API.

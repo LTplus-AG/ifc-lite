@@ -147,6 +147,7 @@ pub(crate) mod profile_generic;
 #[cfg(test)]
 #[path = "scalar_adjoint_tests.rs"]
 mod scalar_adjoint;
+mod telemetry_transaction;
 pub use rect_fast::RectFastStats;
 pub(crate) mod router;
 /// Per-element mesh simplification for the demesher (cavity removal, grid

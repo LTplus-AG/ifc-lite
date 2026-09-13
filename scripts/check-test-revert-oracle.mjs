@@ -80,7 +80,6 @@ import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { cargoLockPatchPaths, normalizeRestoredPaths, partialCargoManifestSelection } from './lib/revert-oracle-cargo-lock.mjs';
 import { parseRevertOracleArgs } from './lib/revert-oracle-args.mjs';
-
 import {
   parseNameStatus,
   classifyDiff,
@@ -421,8 +420,7 @@ function restore(context) {
   const checkoutError = normalizeRestoredPaths(rawGit, headSha, restorationPaths);
   if (checkoutError) {
     restoration = 'failed';
-    console.error(`\n[revert-oracle] !!! RESTORE NORMALISATION FAILED (${context}) !!!\n${checkoutError}`);
-    console.error('Preserve the post-test edit by committing or stashing it, then rerun from a clean working tree.');
+    console.error(`\n[revert-oracle] !!! RESTORE NORMALISATION FAILED (${context}) !!!\n${checkoutError}\nPreserve the post-test edit by committing or stashing it, then rerun from a clean working tree.`);
     return false;
   }
   const statusRun = rawGit(['status', '--porcelain']);

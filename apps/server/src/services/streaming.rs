@@ -204,7 +204,7 @@ pub fn process_streaming(
             stats: result.stats,
             metadata: result.metadata,
             cache_key,
-            mesh_coordinate_space: result.mesh_coordinate_space,
+            mesh_coordinate_space: Some(result.mesh_coordinate_space),
             site_transform: result.site_transform,
             building_transform: result.building_transform,
             symbolic_data,

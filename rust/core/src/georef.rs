@@ -602,61 +602,6 @@ impl GeoRefExtractor {
     }
 }
 
-/// RTC (Relative-To-Center) coordinate handler for large coordinates
-#[derive(Debug, Clone, Default)]
-pub struct RtcOffset {
-    /// Center offset (subtracted from all coordinates)
-    pub x: f64,
-    pub y: f64,
-    pub z: f64,
-}
-
-impl RtcOffset {
-    /// Centroid of the whole `[x, y, z]` triples in `positions`.
-    ///
-    /// A trailing partial triple is ignored. A buffer with no whole triple
-    /// (length 0, 1 or 2) has no centroid and yields the zero offset, meaning
-    /// "no rebase": guarding on `is_empty()` alone let lengths 1 and 2 reach
-    /// `0.0 / 0`, and `apply` wrote that NaN into every vertex.
-    #[inline]
-    pub fn from_positions(positions: &[f32]) -> Self {
-        let count = positions.len() / 3;
-        if count == 0 {
-            return Self::default();
-        }
-        let mut sum = (0.0f64, 0.0f64, 0.0f64);
-
-        for chunk in positions.chunks_exact(3) {
-            sum.0 += chunk[0] as f64;
-            sum.1 += chunk[1] as f64;
-            sum.2 += chunk[2] as f64;
-        }
-
-        Self {
-            x: sum.0 / count as f64,
-            y: sum.1 / count as f64,
-            z: sum.2 / count as f64,
-        }
-    }
-
-    /// Check if offset is significant (>10km from origin)
-    #[inline]
-    pub fn is_significant(&self) -> bool {
-        const THRESHOLD: f64 = 10000.0; // 10km
-        self.x.abs() > THRESHOLD || self.y.abs() > THRESHOLD || self.z.abs() > THRESHOLD
-    }
-
-    /// Apply offset to positions in-place
-    #[inline]
-    pub fn apply(&self, positions: &mut [f32]) {
-        for chunk in positions.chunks_exact_mut(3) {
-            chunk[0] = (chunk[0] as f64 - self.x) as f32;
-            chunk[1] = (chunk[1] as f64 - self.y) as f32;
-            chunk[2] = (chunk[2] as f64 - self.z) as f32;
-        }
-    }
-}
-
 #[cfg(test)]
 #[path = "georef_tests.rs"]
 mod georef_tests;

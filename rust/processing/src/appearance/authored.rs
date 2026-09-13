@@ -209,11 +209,7 @@ pub(super) fn prepare<'a>(
         .context
         .as_ref()
         .ok_or("Missing canonical load context")?;
-    let rtc_offset = if context.meta.needs_shift {
-        context.meta.rtc_offset.into()
-    } else {
-        [0.; 3]
-    };
+    let rtc_offset = context.meta.frame.rtc_offset().into();
     let transform = context
         .router()
         .resolve_scaled_placement(&container, &mut source.decoder)

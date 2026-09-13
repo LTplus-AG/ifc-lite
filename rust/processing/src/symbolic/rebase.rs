@@ -23,11 +23,7 @@
 //! [`RenderFrameRebase::plan`] / [`RenderFrameRebase::elevation`], a call
 //! site can no longer pick the wrong one.
 
-/// Large-coordinate threshold (metres). Below it the model is local-coord
-/// territory and re-basing would shift the overlay off-screen, so the rebase
-/// is the identity — matching `ModelBounds::has_large_coordinates` and the
-/// mesh pipeline's own needs-shift decision.
-const LARGE_COORD_THRESHOLD: f64 = 10_000.0;
+use ifc_lite_core::limits::coord_is_large;
 
 /// The model's RTC offset, in IFC Z-up metres, as a coordinate rebase.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -42,12 +38,13 @@ pub(super) struct RenderFrameRebase {
 
 impl RenderFrameRebase {
     /// Build the rebase for a detected RTC offset (IFC Z-up metres), or the
-    /// identity when the model is not large-coordinate.
+    /// identity when the model is not large-coordinate. Below the shared
+    /// threshold the model is local-coord territory and re-basing would shift
+    /// the overlay off-screen, so the rebase is the identity. The mesh frame
+    /// is chosen elsewhere and can differ, for example when a placement-bounds
+    /// verdict re-bases meshes on a bbox centre inside the threshold (#4665).
     pub(super) fn from_rtc_offset(rtc_offset: (f64, f64, f64)) -> Self {
-        let needs_rtc = rtc_offset.0.abs() > LARGE_COORD_THRESHOLD
-            || rtc_offset.1.abs() > LARGE_COORD_THRESHOLD
-            || rtc_offset.2.abs() > LARGE_COORD_THRESHOLD;
-        if !needs_rtc {
+        if !coord_is_large(rtc_offset) {
             return Self::default();
         }
         Self {

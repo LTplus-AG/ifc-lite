@@ -11,6 +11,13 @@
 //! lean). KMZ readers accept stored entries; the trade-off is a larger file than a
 //! deflated archive, acceptable for this infrequent georef export.
 
+// Keep this declaration before item-level attributes. The revert oracle maps
+// sibling Rust tests from this declaration, and a declaration at the foot of a
+// long module can otherwise inherit an unrelated intervening `#[cfg(...)]`.
+#[cfg(test)]
+#[path = "kmz_tests.rs"]
+mod tests;
+
 /// KML `<altitudeMode>` — how Google Earth interprets the model's `altitude`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum AltitudeMode {
@@ -354,7 +361,3 @@ fn crc32(data: &[u8]) -> u32 {
     }
     !crc
 }
-
-#[cfg(test)]
-#[path = "kmz_tests.rs"]
-mod tests;

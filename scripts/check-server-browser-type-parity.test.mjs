@@ -24,7 +24,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -71,8 +71,12 @@ for (const [key, rel] of Object.entries(FILES)) {
 }
 
 /** Writes the real tree (with optional per-file overrides, keyed like FILES)
- * to a temp dir and runs the checker on it. */
-function runOn(overrides = {}) {
+ * to a temp dir and runs the checker on it. `hierarchySchemaSource`, when
+ * given, is forwarded as `--hierarchy-schema-source` — the #4672 seam that
+ * lets a schema-walk mutation test (below) point HIERARCHY_REL_TYPES'
+ * resolution at a mutated `relationship-schema-slots.ts` run off source,
+ * since this fixture's `--root`ed `dir` never contains a rebuilt `dist/`. */
+function runOn(overrides = {}, { hierarchySchemaSource } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'server-browser-type-parity-'));
   try {
     for (const [key, rel] of Object.entries(FILES)) {
@@ -81,7 +85,9 @@ function runOn(overrides = {}) {
       mkdirSync(dirname(abs), { recursive: true });
       writeFileSync(abs, content);
     }
-    const r = spawnSync(process.execPath, [CHECKER, '--root', dir], { encoding: 'utf8' });
+    const args = [CHECKER, '--root', dir];
+    if (hierarchySchemaSource) args.push('--hierarchy-schema-source', hierarchySchemaSource);
+    const r = spawnSync(process.execPath, args, { encoding: 'utf8' });
     return { status: r.status, out: `${r.stdout}${r.stderr}` };
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -187,6 +193,62 @@ test('RELATIONSHIPS: adding a type to BOTH sides keeps it passing', () => {
   );
   const { status, out } = runOn({ RUST_REL: rust, TS_REL_INDEXES: ts });
   assert.equal(status, 0, out);
+});
+
+/** Builds a `--hierarchy-schema-source` fixture: a copy of
+ * `relationship-schema-slots.ts` (optionally mutated) plus an UNTOUCHED
+ * copy of its `generated/` dependency tree, so the mutated file's own
+ * `import`s still resolve when run straight off source under
+ * `--experimental-strip-types` (see `hierarchy-schema-loader.mjs` and
+ * `ts-source-loader.mjs`). Returns the mutated file's path to pass as
+ * `hierarchySchemaSource` to `runOn`. Caller owns cleanup of `dir`. */
+function hierarchySchemaFixture(dir, src) {
+  const path = join(dir, 'relationship-schema-slots.ts');
+  writeFileSync(path, src);
+  cpSync(join(ROOT, 'packages/parser/src/generated'), join(dir, 'generated'), { recursive: true });
+  return path;
+}
+
+// #4672: HIERARCHY_REL_TYPES' schema-derived resolution always reads the
+// REAL repo's BUILT dist/ (see tsRelationshipTypes' doc comment) regardless
+// of `--root`, so every RELATIONSHIPS test above that mutates
+// TS_REL_INDEXES can only ever exercise the still-literal PROPERTY_REL_TYPES
+// / ASSOCIATION_REL_TYPES sibling Sets (their own comments say so) — a
+// mutation to the actual schema walk in relationship-schema-slots.ts
+// (getAllConcreteRelationshipTypes(), packages/parser/src) was invisible to
+// this suite. These two tests close that gap via `--hierarchy-schema-source`
+// (added for this fix): the RED case proves a real mutation to the walk
+// turns the gate red; the GREEN control on the SAME fixture mechanism proves
+// the RED is the mutation's doing, not an artifact of the seam itself.
+test('RELATIONSHIPS (schema walk, #4672): a mutation that drops a type from the REAL getAllConcreteRelationshipTypes() walk turns the gate RED', () => {
+  const schemaSlotsSrc = readFileSync(join(ROOT, 'packages/parser/src/relationship-schema-slots.ts'), 'utf8');
+  const mutated = replaceOnce(
+    schemaSlotsSrc,
+    'for (const t of getConcreteRelationshipTypes(version)) union.add(t);',
+    "for (const t of getConcreteRelationshipTypes(version)) { if (t !== 'IFCRELAGGREGATES') union.add(t); }",
+  );
+  const dir = mkdtempSync(join(tmpdir(), 'hierarchy-schema-source-'));
+  try {
+    const mutatedPath = hierarchySchemaFixture(dir, mutated);
+    const { status, out } = runOn({}, { hierarchySchemaSource: mutatedPath });
+    assert.equal(status, 1, out);
+    assert.match(out, /\[relationships\]/);
+    assert.match(out, /`IFCRELAGGREGATES`/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('RELATIONSHIPS (schema walk control, #4672): the SAME --hierarchy-schema-source fixture, UNMUTATED, still passes', () => {
+  const schemaSlotsSrc = readFileSync(join(ROOT, 'packages/parser/src/relationship-schema-slots.ts'), 'utf8');
+  const dir = mkdtempSync(join(tmpdir(), 'hierarchy-schema-source-'));
+  try {
+    const path = hierarchySchemaFixture(dir, schemaSlotsSrc);
+    const { status, out } = runOn({}, { hierarchySchemaSource: path });
+    assert.equal(status, 0, out);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 // -- spatial types -------------------------------------------------------
@@ -499,17 +561,15 @@ test('mutation control: disabling the under-read detector lets the same silent-p
     // temp copy of the WHOLE scripts dir with the mutated lib swapped in.
     const scriptsCopy = join(dir, '__scripts__');
     mkdirSync(scriptsCopy, { recursive: true });
-    mkdirSync(join(scriptsCopy, 'lib'), { recursive: true });
+    // Whole-`lib`-dir copy (not an enumerated file list): server-browser-type-extractors.mjs
+    // now has its own sibling modules (hierarchy-schema-loader.mjs,
+    // ts-source-loader.mjs, #4672) — an enumerated copy silently drifts out
+    // of sync with its import graph every time a new sibling is split out,
+    // which is exactly the shape of bug this whole file's method (copy the
+    // REAL sources, mutate one) exists to avoid.
     writeFileSync(join(scriptsCopy, 'check-server-browser-type-parity.mjs'), readFileSync(CHECKER, 'utf8'));
+    cpSync(join(SCRIPTS, 'lib'), join(scriptsCopy, 'lib'), { recursive: true });
     writeFileSync(join(scriptsCopy, 'lib', 'server-browser-type-extractors.mjs'), mutatedLib);
-    writeFileSync(
-      join(scriptsCopy, 'lib', 'allowlist-staleness.mjs'),
-      readFileSync(join(SCRIPTS, 'lib', 'allowlist-staleness.mjs'), 'utf8'),
-    );
-    writeFileSync(
-      join(scriptsCopy, 'lib', 'server-browser-type-allowlist.mjs'),
-      readFileSync(join(SCRIPTS, 'lib', 'server-browser-type-allowlist.mjs'), 'utf8'),
-    );
 
     const relMutated = replaceOnce(
       real.RUST_REL,
@@ -646,7 +706,9 @@ test('E2E: a FAKE allowlist entry for a type both sides already handle identical
       writeFileSync(abs, real[key]);
     }
     const scriptsCopy = join(dir, '__scripts__');
-    mkdirSync(join(scriptsCopy, 'lib'), { recursive: true });
+    // Whole-`lib`-dir copy — see the identical comment on the mutation
+    // control test above for why an enumerated file list drifts.
+    cpSync(join(SCRIPTS, 'lib'), join(scriptsCopy, 'lib'), { recursive: true });
     // ALLOWLIST moved to its own module (scripts/lib/server-browser-type-allowlist.mjs,
     // split out purely to stay under the module-size budget once #4205's
     // rows were added — see that file's header), so the fabricated stale
@@ -665,14 +727,6 @@ test('E2E: a FAKE allowlist entry for a type both sides already handle identical
       `${marker}  'relationships:IFCRELAGGREGATES': { status: 'pending', note: 'TEST: fabricated stale entry' },\n`,
     );
     writeFileSync(join(scriptsCopy, 'check-server-browser-type-parity.mjs'), readFileSync(CHECKER, 'utf8'));
-    writeFileSync(
-      join(scriptsCopy, 'lib', 'server-browser-type-extractors.mjs'),
-      readFileSync(join(SCRIPTS, 'lib', 'server-browser-type-extractors.mjs'), 'utf8'),
-    );
-    writeFileSync(
-      join(scriptsCopy, 'lib', 'allowlist-staleness.mjs'),
-      readFileSync(join(SCRIPTS, 'lib', 'allowlist-staleness.mjs'), 'utf8'),
-    );
     writeFileSync(join(scriptsCopy, 'lib', 'server-browser-type-allowlist.mjs'), mutatedAllowlist);
     const r = spawnSync(
       process.execPath,

@@ -13,8 +13,8 @@
  * header for the overall approach and its limits.
  */
 
-import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { loadHierarchySchemaModule } from './hierarchy-schema-loader.mjs';
 
 // The DEFAULT for `tsRelationshipTypes`' `repoRoot` option — callers (the
 // real checker, or a test driving it under `--root`) may pass their own.
@@ -130,27 +130,33 @@ const HIERARCHY_DERIVED_MARKER = /getAllConcreteRelationshipTypes\(\)/;
  * is guaranteed built before this checker runs (the `node-tests` CI job
  * `needs: [changes, build]` and downloads `build-output` into `packages/`
  * first). Local runs need `pnpm build` (or `pnpm --filter @ifc-lite/parser
- * build`) first for the same reason any other dist-consuming check does. */
-function schemaDerivedHierarchyRelTypes(repoRoot) {
+ * build`) first for the same reason any other dist-consuming check does.
+ *
+ * `sourcePath` is a TEST-ONLY escape hatch (see
+ * `hierarchy-schema-loader.mjs`, and #4672): it lets
+ * `check-server-browser-type-parity.test.mjs` prove a mutation to the REAL
+ * `getAllConcreteRelationshipTypes()` walk turns this gate red, without
+ * rebuilding `dist/` or re-deriving the walk under test. The real checker
+ * never passes it, so this parameter changes nothing about the path above. */
+function schemaDerivedHierarchyRelTypes(repoRoot, { sourcePath } = {}) {
   const distPath = join(repoRoot, 'packages/parser/dist/relationship-schema-slots.js');
   let mod;
   try {
-    const require = createRequire(import.meta.url);
-    mod = require(distPath);
+    mod = loadHierarchySchemaModule({ distPath, sourcePath });
   } catch (e) {
     throw new ExtractorUnderReadError(
-      `tsRelationshipTypes: HIERARCHY_REL_TYPES is schema-derived (getAllConcreteRelationshipTypes()) but ${distPath} could not be loaded — build @ifc-lite/parser first (pnpm build). (${e.message})`,
+      `tsRelationshipTypes: HIERARCHY_REL_TYPES is schema-derived (getAllConcreteRelationshipTypes()) but ${sourcePath ?? distPath} could not be loaded — build @ifc-lite/parser first (pnpm build). (${e.message})`,
     );
   }
   if (typeof mod.getAllConcreteRelationshipTypes !== 'function') {
     throw new ExtractorUnderReadError(
-      `tsRelationshipTypes: ${distPath} no longer exports getAllConcreteRelationshipTypes() — the extractor is under-reading a renamed/moved export.`,
+      `tsRelationshipTypes: ${sourcePath ?? distPath} no longer exports getAllConcreteRelationshipTypes() — the extractor is under-reading a renamed/moved export.`,
     );
   }
   return mod.getAllConcreteRelationshipTypes();
 }
 
-export function tsRelationshipTypes(src, { repoRoot = REPO_ROOT } = {}) {
+export function tsRelationshipTypes(src, { repoRoot = REPO_ROOT, hierarchySourcePath } = {}) {
   const code = stripComments(src);
   const RECOGNIZED = ['HIERARCHY_REL_TYPES', 'PROPERTY_REL_TYPES', 'ASSOCIATION_REL_TYPES'];
   // Mirrors the Rust-side guard above: a future 4th `export const
@@ -180,7 +186,7 @@ export function tsRelationshipTypes(src, { repoRoot = REPO_ROOT } = {}) {
       );
     }
     if (HIERARCHY_DERIVED_MARKER.test(m[1])) {
-      for (const t of schemaDerivedHierarchyRelTypes(repoRoot)) found.add(t);
+      for (const t of schemaDerivedHierarchyRelTypes(repoRoot, { sourcePath: hierarchySourcePath })) found.add(t);
       continue;
     }
     for (const x of m[1].matchAll(/'([A-Z0-9]+)'/g)) found.add(x[1]);

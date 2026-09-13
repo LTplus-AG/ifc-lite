@@ -98,6 +98,9 @@
  * job, see .github/workflows/test.yml). `--root <dir>` points every read at
  * an alternate tree; `check-server-browser-type-parity.test.mjs` uses it to
  * drive the unmodified checker against mutated copies of the real sources.
+ * `--hierarchy-schema-source <file>` is a second, TEST-ONLY flag: see
+ * `hierarchy-schema-loader.mjs` for why HIERARCHY_REL_TYPES needs a
+ * separate seam from `--root` to be mutation-testable at all.
  */
 
 import { readFileSync } from 'node:fs';
@@ -126,6 +129,14 @@ const ROOT =
   rootFlag !== -1 && process.argv[rootFlag + 1]
     ? process.argv[rootFlag + 1]
     : join(dirname(fileURLToPath(import.meta.url)), '..');
+
+// TEST-ONLY (#4672): lets check-server-browser-type-parity.test.mjs point
+// HIERARCHY_REL_TYPES' schema-derived resolution at a mutated COPY of
+// relationship-schema-slots.ts run straight off source (see
+// hierarchy-schema-loader.mjs), so a mutation to the real schema walk is
+// provably detectable by this gate. Never set by a real invocation.
+const hierarchySourceFlag = process.argv.indexOf('--hierarchy-schema-source');
+const HIERARCHY_SCHEMA_SOURCE = hierarchySourceFlag !== -1 ? process.argv[hierarchySourceFlag + 1] : undefined;
 
 function read(rel) {
   return readFileSync(join(ROOT, rel), 'utf8');
@@ -156,7 +167,7 @@ const CONCEPTS = [
     // doc comment), which is a property of the actual repo, not of
     // whichever source tree `--root` is currently pointing reads at (a
     // `--root`ed test fixture copies mutated SOURCE files, not `dist/`).
-    ts: () => tsRelationshipTypes(read(TS_REL_INDEXES)),
+    ts: () => tsRelationshipTypes(read(TS_REL_INDEXES), { hierarchySourcePath: HIERARCHY_SCHEMA_SOURCE }),
     rustLabel: RUST_REL,
     tsLabel: TS_REL_INDEXES,
   },

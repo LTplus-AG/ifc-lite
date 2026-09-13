@@ -119,13 +119,6 @@ fn issue_3917_boxes() -> [Mesh; 3] {
 
 #[test]
 fn issue_3917_a_torn_caller_order_is_repaired_without_the_caller_reordering_anything() {
-    // This test relies on the DEFAULT (effectively unbounded for this fixture)
-    // cap so all 6 permutations get a chance to close. `issue_3917_retries_share_one_boolean_budget`
-    // below temporarily narrows the shared process-global cap to 1,000 to prove
-    // sharing; take the same lock so the two can never interleave and starve
-    // this test's retries mid-run (cargo's default parallel runner races them
-    // otherwise, since both touch the same global atomics).
-    let _guard = budget::GLOBAL_CAP_LOCK.lock().unwrap();
     let [a, b, c] = issue_3917_boxes();
 
     // CAB: the ordering the issue measured at 53 unmatched directed edges.
@@ -159,28 +152,20 @@ fn issue_3917_a_torn_caller_order_is_repaired_without_the_caller_reordering_anyt
 /// spend up to six times the configured exact-predicate cap (#1109).
 #[test]
 fn issue_3917_retries_share_one_boolean_budget() {
-    let _guard = budget::GLOBAL_CAP_LOCK.lock().unwrap();
-    let restore = budget::cap();
-    // The unbounded fixed fixture consumes 1,058 escalations across its retry
-    // candidates, while no individual candidate reaches 1,000. A reset inside
-    // each retry therefore evades this cap; one shared operation must trip it.
-    budget::set_cap(Some(1_000));
-
+    // The fixed fixture consumes 1,058 escalations across its retry candidates,
+    // while no individual candidate reaches 1,000. Reading the thread-local
+    // counter therefore distinguishes one shared operation from a reset inside
+    // every retry without mutating the process-global cap (and racing other
+    // parallel geometry tests).
     let boxes = issue_3917_boxes();
     let input = [&boxes[2], &boxes[0], &boxes[1]]; // CAB: known torn first candidate
     let out = union_many(&input);
-    let tripped = budget::tripped();
     let count = budget::count();
-    budget::set_cap(restore);
 
     assert!(!out.is_empty());
     assert!(
-        tripped,
-        "the retry candidates must share the caller's 1,000-escalation cap"
-    );
-    assert!(
         count >= 1_000,
-        "the public union must retain at least the accumulated count that tripped the shared cap; got {count}"
+        "the public union must retain the retry candidates' accumulated count; got {count}"
     );
 }
 

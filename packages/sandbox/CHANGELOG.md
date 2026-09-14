@@ -1,5 +1,18 @@
 # @ifc-lite/sandbox
 
+## 2.3.0
+
+### Minor Changes
+
+- [#4677](https://github.com/LTplus-AG/ifc-lite/pull/4677) [`4db9471`](https://github.com/LTplus-AG/ifc-lite/commit/4db9471098a42ed948c4920cce1cb71a99d60d6a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Added `bim.structural` — a read-only query surface over the structural analysis data `extractStructuralOnDemand` already parses (analysis models, members, connections, actions/reactions, load groups, result groups). `bim.structural.data()` returns the full extraction plus `loadsTruncated`; `analysisModels()`, `members()`, `connections()`, `activities()`, `loadGroups()` and `resultGroups()` are convenience accessors over the same collections. Every consumer of `data()` — the SDK namespace, the sandbox script bridge, and both headless backends (CLI, MCP) plus the viewer's local backend — forwards `loadsTruncated` unchanged rather than defaulting it away, so a caller reading an applied load's configuration can tell a genuinely small load tree from one a reader bound (nesting depth, node budget, or a cycle guard) cut short.
+  
+  This is layer 3 of [#4206](https://github.com/LTplus-AG/ifc-lite/issues/4206)'s six-layer structural analysis stack (semantic extraction, the read model, this query surface). A properties-card / panel UI, geometry, and a write/round-trip serializer remain out of scope for this change.
+
+### Patch Changes
+
+- Updated dependencies [[`4db9471`](https://github.com/LTplus-AG/ifc-lite/commit/4db9471098a42ed948c4920cce1cb71a99d60d6a)]:
+  - @ifc-lite/sdk@5.1.0
+
 ## 2.2.4
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @ifc-lite/spatial
 
+## 1.14.19
+
+### Patch Changes
+
+- Updated dependencies [[`b4bc7df`](https://github.com/LTplus-AG/ifc-lite/commit/b4bc7df25e9cdcd6c46f4affd289c0b3da7829fa), [`9b9f2df`](https://github.com/LTplus-AG/ifc-lite/commit/9b9f2df47e0b1192fe033ca36021499af532220b), [`be2fed0`](https://github.com/LTplus-AG/ifc-lite/commit/be2fed0945e7dff83e3fb5d9ba810f0b5a6339a7)]:
+  - @ifc-lite/geometry@7.0.0
+
 ## 1.14.18
 
 ### Patch Changes

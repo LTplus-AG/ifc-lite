@@ -1,5 +1,26 @@
 # @ifc-lite/sdk
 
+## 5.1.0
+
+### Minor Changes
+
+- [#4677](https://github.com/LTplus-AG/ifc-lite/pull/4677) [`4db9471`](https://github.com/LTplus-AG/ifc-lite/commit/4db9471098a42ed948c4920cce1cb71a99d60d6a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Added `bim.structural` — a read-only query surface over the structural analysis data `extractStructuralOnDemand` already parses (analysis models, members, connections, actions/reactions, load groups, result groups). `bim.structural.data()` returns the full extraction plus `loadsTruncated`; `analysisModels()`, `members()`, `connections()`, `activities()`, `loadGroups()` and `resultGroups()` are convenience accessors over the same collections. Every consumer of `data()` — the SDK namespace, the sandbox script bridge, and both headless backends (CLI, MCP) plus the viewer's local backend — forwards `loadsTruncated` unchanged rather than defaulting it away, so a caller reading an applied load's configuration can tell a genuinely small load tree from one a reader bound (nesting depth, node budget, or a cycle guard) cut short.
+  
+  This is layer 3 of [#4206](https://github.com/LTplus-AG/ifc-lite/issues/4206)'s six-layer structural analysis stack (semantic extraction, the read model, this query surface). A properties-card / panel UI, geometry, and a write/round-trip serializer remain out of scope for this change.
+
+### Patch Changes
+
+- Updated dependencies [[`bb42608`](https://github.com/LTplus-AG/ifc-lite/commit/bb426086f8a3e07d1035f2baa3be973c41cba3e0), [`a1b2b77`](https://github.com/LTplus-AG/ifc-lite/commit/a1b2b77d7d3de6878d14e73d888e04b50295a5e2), [`b4bc7df`](https://github.com/LTplus-AG/ifc-lite/commit/b4bc7df25e9cdcd6c46f4affd289c0b3da7829fa), [`a2bc270`](https://github.com/LTplus-AG/ifc-lite/commit/a2bc270fb652466f4bd30511aa560997637ee83b), [`5a82260`](https://github.com/LTplus-AG/ifc-lite/commit/5a82260e3e0bf686851e724b24dbfa05d11d9c7c), [`6d8ebeb`](https://github.com/LTplus-AG/ifc-lite/commit/6d8ebebb7cd8722534ff1ad7817cf7a7d0191aaf), [`2ecf0f0`](https://github.com/LTplus-AG/ifc-lite/commit/2ecf0f096d0f2d6079963040d3293e5964785486), [`4986957`](https://github.com/LTplus-AG/ifc-lite/commit/4986957c383b88616f3807ee5fe27d41fb0380f4)]:
+  - @ifc-lite/parser@6.4.0
+  - @ifc-lite/export@4.3.2
+  - @ifc-lite/data@4.4.0
+  - @ifc-lite/query@2.3.4
+  - @ifc-lite/clash@2.2.1
+  - @ifc-lite/ids@1.16.6
+  - @ifc-lite/drawing-2d@4.0.3
+  - @ifc-lite/spatial@1.14.19
+  - @ifc-lite/lists@2.2.3
+
 ## 5.0.0
 
 ### Major Changes

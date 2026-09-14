@@ -1,5 +1,11 @@
 # @ifc-lite/server-client
 
+## 2.2.0
+
+### Minor Changes
+
+- [#4653](https://github.com/LTplus-AG/ifc-lite/pull/4653) [`a2bc270`](https://github.com/LTplus-AG/ifc-lite/commit/a2bc270fb652466f4bd30511aa560997637ee83b) Thanks [@louistrue](https://github.com/louistrue)! - Read `IfcMapConversionScaled` FactorX, FactorY and FactorZ and apply them per axis before the rotation, as the Rust georeference does. `MapConversion` gains optional `factorX`, `factorY` and `factorZ`, and the server-client `Georeferencing` gains optional `factor_x`, `factor_y` and `factor_z` (absent in older server responses; treat a missing factor as 1). A non-finite factor refuses the whole conversion; a zero factor reads as 1. The viewer now also applies the effective `Scale` to heights, as the IFC transform does, so a plain `IfcMapConversion` with a non-unit `Scale` after unit bridging (for example 0.9996) scales heights as well as eastings and northings.
+
 ## 2.1.0
 
 ### Minor Changes

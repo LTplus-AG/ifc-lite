@@ -1,5 +1,19 @@
 # @ifc-lite/data
 
+## 4.4.0
+
+### Minor Changes
+
+- [#4672](https://github.com/LTplus-AG/ifc-lite/pull/4672) [`6d8ebeb`](https://github.com/LTplus-AG/ifc-lite/commit/6d8ebebb7cd8722534ff1ad7817cf7a7d0191aaf) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `extractRelFast`'s hand-written per-STEP-keyword branch ladder (`packages/parser/src/columnar-parser-relationships.ts`) is replaced by a single schema-derived algorithm: for any `IfcRelationship` subtype, the relating (single-reference) and related (reference-or-list) attribute positions are read straight from the codegen-generated schema registries, keyed by the `Relating*`/`Related*` EXPRESS naming convention, not a hand-typed table. `HIERARCHY_REL_TYPES` (the gate that decides which STEP keywords ever reach relationship extraction) is derived the same way, from every concrete `IfcRelationship` subtype across the bundled IFC2X3/IFC4/IFC4X3 registries, replacing an enumeration that [#3964](https://github.com/LTplus-AG/ifc-lite/issues/3964), [#3237](https://github.com/LTplus-AG/ifc-lite/issues/3237) and [#1075](https://github.com/LTplus-AG/ifc-lite/issues/1075) each landed because it was missing one more class.
+  
+  17 previously wholly-unindexed relationship classes (`IfcRelAssignsToActor`, `IfcRelAssignsToResource`, `IfcRelAssignsToProcess`, `IfcRelAssignsToControl`, `IfcRelAssociatesConstraint`, `IfcRelAssociatesApproval`, `IfcRelAssociatesLibrary`, `IfcRelDeclares`, `IfcRelInterferesElements`, `IfcRelCoversBldgElements`, `IfcRelCoversSpaces`, `IfcRelServicesBuildings`, `IfcRelProjectsElement`, `IfcRelFlowControlElements`, `IfcRelSequence`, and the IFC4X3-only `IfcRelPositions`/`IfcRelAdheresToElement`) each get their own `RelationshipType` enum member and edge, instead of being invisible to the relationship graph. `RelationshipType`-keyed name maps in `relationship-graph.ts`, `parquet-exporter.ts`, `cache/sections/relationships.ts` and `duckdb-integration.ts` were extended for exhaustiveness; the last of those was also converted from a non-exhaustive `Record<number, string>` to `Record<RelationshipType, string>` (it had silently been missing `ConnectsPortToElement`, `ConnectsPorts` and `AssociatesDocument` since they were added).
+  
+  A handful of concrete relationship subtypes (`IfcRelDefinesByObject`, `IfcRelDefinesByTemplate`, `IfcRelConnectsStructuralActivity`, `IfcRelConnectsStructuralMember`, `IfcRelConnectsWithEccentricity`, `IfcRelConnectsWithRealizingElements`, `IfcRelSpaceBoundary1stLevel`/`2ndLevel`, plus ten IFC2X3-legacy classes such as `IfcRelAssignsTasks`) now pass the schema-derived gate but still have no dedicated `RelationshipType`/edge — a deliberately scoped remainder, not a regression, tracked against [#4205](https://github.com/LTplus-AG/ifc-lite/issues/4205).
+
+### Patch Changes
+
+- [#4725](https://github.com/LTplus-AG/ifc-lite/pull/4725) [`5a82260`](https://github.com/LTplus-AG/ifc-lite/commit/5a82260e3e0bf686851e724b24dbfa05d11d9c7c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `EntityFlags.HAS_GEOMETRY` (and `entities.hasGeometry()`) now reflects an `IfcProduct` descendant's own `Representation` attribute presence instead of a class-bucket guess. Previously every entity of a class in the geometry bucket (`IfcElement`, `IfcSpace`, `IfcSite`, …) was stamped `HAS_GEOMETRY` unconditionally, so a placement-only stub — e.g. an `IfcBuildingElementProxy` authored with `Representation` set to `$` — reported geometry it did not have ([#4666](https://github.com/LTplus-AG/ifc-lite/issues/4666)). The flag still does not cover geometry contributed only by aggregated (`IfcRelAggregates`) children: a container whose own Representation is `$` reads `false` even when its aggregated parts have geometry.
+
 ## 4.3.0
 
 ### Minor Changes

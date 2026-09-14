@@ -124,7 +124,7 @@
     "svgo": "^4.1.0",
     "tsx": "^4.23.13",
     "typescript": "^6.0.3",
-    "unplugin-icons": "^23.0.1",
+    "unplugin-icons": "^24.0.0",
     "vite": "^8.2.2",
     "vite-plugin-static-copy": "^4.1.1",
     "vite-plugin-top-level-await": "^1.6.0",

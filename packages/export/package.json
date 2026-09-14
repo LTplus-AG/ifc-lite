@@ -27,7 +27,7 @@
     "@ifc-lite/mutations": "workspace:^",
     "parquet-wasm": "^0.7.2",
     "apache-arrow": "^21.2.0",
-    "jszip": "^3.10.0",
+    "jszip": "^3.10.2",
     "@ifc-lite/ifcx": "workspace:^"
   },
   "devDependencies": {

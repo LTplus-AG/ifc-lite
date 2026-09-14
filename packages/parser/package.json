@@ -29,7 +29,7 @@
     "@ifc-lite/wasm": "workspace:^",
     "@ifc-lite/wasm-lifecycle": "workspace:^",
     "fflate": "^0.8.3",
-    "jszip": "^3.10.0"
+    "jszip": "^3.10.2"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

@@ -5,21 +5,33 @@
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
+import { collectMeshedIds } from '@/lib/object-count';
 
-/** Build the global-id set used by hierarchy geometry filters. */
+/**
+ * Build the global-id set used by hierarchy geometry filters.
+ *
+ * Delegates to {@link collectMeshedIds} — the single "which ids have
+ * geometry" rule — rather than re-deriving it from `meshes` alone, which
+ * used to drop every GPU-instanced-only entity (present only in
+ * `instancedGeometryHashes`/`Aabbs`/`Volumes`) from the hierarchy trees while
+ * the StatusBar counted it. A federated model's `geometryResult` ids are
+ * already global (`originalExpressId + idOffset`, `store/types.ts`), and so
+ * are the instanced-only side-channel keys (`useIfcLoader.ts` re-keys them by
+ * `idOffset` on federation), so no local/global conversion is needed here —
+ * `collectMeshedIds`'s default identity `toLocalId` is exactly right.
+ */
 export function buildGeometricIdSet(
   models: Map<string, FederatedModel>,
   legacyGeometry: GeometryResult | null | undefined,
 ): Set<number> {
-  const ids = new Set<number>();
   if (models.size > 0) {
+    const ids = new Set<number>();
     for (const model of models.values()) {
-      for (const mesh of model.geometryResult?.meshes ?? []) ids.add(mesh.expressId);
+      for (const id of collectMeshedIds(model.geometryResult)) ids.add(id);
     }
-  } else {
-    for (const mesh of legacyGeometry?.meshes ?? []) ids.add(mesh.expressId);
+    return ids;
   }
-  return ids;
+  return collectMeshedIds(legacyGeometry);
 }
 
 /** Models whose geometry result exists, including completed zero-mesh models. */

@@ -28,6 +28,7 @@ import type { PropertySet } from './encodingUtils';
 import type { FederatedModel } from '@/store/types';
 import { extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, extractClassificationSystemsOnDemand, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
+import { computeModelStats } from './modelMetadataStats';
 
 /** Model metadata panel - displays file info, schema version, entity counts, etc. */
 export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
@@ -72,18 +73,12 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
     return { name, globalId, description, properties };
   }, [dataStore]);
 
-  // Count storeys and elements
-  const stats = useMemo(() => {
-    if (!dataStore?.spatialHierarchy) {
-      return { storeys: 0, elementsWithGeometry: 0 };
-    }
-    const storeys = dataStore.spatialHierarchy.byStorey.size;
-    let elementsWithGeometry = 0;
-    for (const elements of dataStore.spatialHierarchy.byStorey.values()) {
-      elementsWithGeometry += (elements as number[]).length;
-    }
-    return { storeys, elementsWithGeometry };
-  }, [dataStore]);
+  // Count storeys and elements — see `modelMetadataStats.ts` for what
+  // "Elements with Geometry" means and why raw `byStorey` membership isn't it.
+  const stats = useMemo(
+    () => computeModelStats(dataStore, model.geometryResult, model.idOffset ?? 0),
+    [dataStore, model.geometryResult, model.idOffset],
+  );
 
   // Extract georeferencing info
   const georef = useMemo(() => {

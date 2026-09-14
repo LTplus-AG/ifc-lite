@@ -35,6 +35,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
   const dataStore = model.ifcDataStore;
   // Display-unit converter overrides (issue #1573 proposal 2).
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
+  const fromGlobalId = useViewerStore((s) => s.fromGlobalId);
 
   // Format file size
   const formatFileSize = (bytes: number): string => {
@@ -76,8 +77,22 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
   // Count storeys and elements — see `modelMetadataStats.ts` for what
   // "Elements with Geometry" means and why raw `byStorey` membership isn't it.
   const stats = useMemo(
-    () => computeModelStats(dataStore, model.geometryResult, model.idOffset ?? 0),
-    [dataStore, model.geometryResult, model.idOffset],
+    () => computeModelStats(dataStore, model.geometryResult, {
+      // A completed cache hit may validly contain no geometry result. That is
+      // a known-empty model, unlike the same null while streaming.
+      geometryReady:
+        model.geometryResult != null ||
+        model.loadState === 'complete' ||
+        model.geometryLoadState === 'complete',
+      toLocalId: (globalId) => {
+        if (model.id === 'legacy' || model.id === 'default' || model.id === '__legacy__') {
+          return globalId;
+        }
+        const ref = fromGlobalId(globalId);
+        return ref?.modelId === model.id ? ref.expressId : undefined;
+      },
+    }),
+    [dataStore, fromGlobalId, model.geometryLoadState, model.geometryResult, model.id, model.loadState],
   );
 
   // Extract georeferencing info

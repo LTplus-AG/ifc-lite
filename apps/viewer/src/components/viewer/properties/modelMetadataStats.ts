@@ -28,23 +28,33 @@ export interface ModelStats {
   elementsWithGeometry: number;
 }
 
+export interface ModelStatsGeometryContext {
+  /** Whether an empty geometry result is authoritative rather than provisional. */
+  geometryReady: boolean;
+  /** Resolve a renderer/global id only when it belongs to the displayed model. */
+  toLocalId: (globalId: number) => number | undefined;
+}
+
 /**
- * `dataStore`'s spatial/type indices are model-local express ids.
- * `geometryResult`'s ids are global (`originalExpressId + idOffset`,
- * `store/types.ts`) for a federated model, so `idOffset` converts them back
- * before the schema/shape tests run. `idOffset` is 0 for the legacy
- * single-model path, so the subtraction is a no-op there.
+ * `dataStore`'s spatial/type indices are model-local express ids while a
+ * federated `geometryResult` uses renderer/global ids. The caller supplies a
+ * FederationRegistry-backed resolver so ownership and the single-model
+ * fallback stay canonical; IDs belonging to another model are ignored.
  */
 export function computeModelStats(
   dataStore: IfcDataStore | null | undefined,
   geometryResult: GeometryResult | null | undefined,
-  idOffset: number,
+  geometry: ModelStatsGeometryContext,
 ): ModelStats {
   if (!dataStore?.spatialHierarchy) {
     return { storeys: 0, elementsWithGeometry: 0 };
   }
   const storeys = dataStore.spatialHierarchy.byStorey.size;
-  const meshedIds = collectMeshedIds(geometryResult, (id) => id - idOffset);
+  const meshedIds = new Set<number>();
+  for (const globalId of collectMeshedIds(geometryResult)) {
+    const localId = geometry.toLocalId(globalId);
+    if (localId !== undefined) meshedIds.add(localId);
+  }
   const physicalIds = collectPhysicalEntityIds(dataStore.entityIndex?.byType);
   const elementsWithGeometry = countShapedObjects(physicalIds, {
     relationships: dataStore.relationships as AggregationRelationships | undefined,
@@ -52,7 +62,7 @@ export function computeModelStats(
     // A still-streaming model may have no geometry result yet; the shape
     // test must then stand aside (see `object-count.ts`'s "Before geometry
     // exists") rather than read as zero.
-    geometryReady: geometryResult != null,
+    geometryReady: geometry.geometryReady,
   });
   return { storeys, elementsWithGeometry };
 }

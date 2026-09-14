@@ -13,6 +13,9 @@
  * implementation.
  */
 
+// The hierarchy module imports the persisted viewer store, which reads
+// localStorage at module initialization.
+import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FederatedModel } from '@/store/types';

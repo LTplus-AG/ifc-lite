@@ -1,5 +1,16 @@
 # @ifc-lite/viewer
 
+## 1.45.2
+
+### Patch Changes
+
+- [#4847](https://github.com/LTplus-AG/ifc-lite/pull/4847) [`3b81ebf`](https://github.com/LTplus-AG/ifc-lite/commit/3b81ebf0f9c1f3e3ec6a097ac5db785a8ba3a163) Thanks [@louistrue](https://github.com/louistrue)! - Finish the viewer contrast survey by using dark foregrounds on light primary accents, strengthening muted text on muted surfaces, and raising the remaining always-visible low-opacity coordinate, execution-duration, and document-preview text to AA-safe semantic tiers.
+- Updated dependencies [[`12482c5`](https://github.com/LTplus-AG/ifc-lite/commit/12482c5f64c1298782508d536af65c4b30c342b2), [`ce84d98`](https://github.com/LTplus-AG/ifc-lite/commit/ce84d98de5fa2276eb598dff636d580df252babc), [`3b10435`](https://github.com/LTplus-AG/ifc-lite/commit/3b10435ab117b1fcaf3ad7c47f7d9fdf74e0f2a4)]:
+  - @ifc-lite/geometry@7.1.0
+  - @ifc-lite/wasm@9.1.0
+  - @ifc-lite/cache@3.5.0
+  - @ifc-lite/export@4.3.4
+
 ## 1.45.1
 
 ### Patch Changes
